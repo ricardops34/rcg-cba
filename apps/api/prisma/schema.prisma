@@ -1,0 +1,269 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------------
+// Identidade & acesso
+// ------------------------------------------------------------------
+
+model Empresa {
+  id           String   @id @default(uuid())
+  razaoSocial  String
+  nomeFantasia String
+  cnpj         String   @unique
+  ativo        Boolean  @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  usuarioEmpresas UsuarioEmpresa[]
+  perfis          Perfil[]
+  colaboradores   Colaborador[]
+
+  @@map("empresas")
+}
+
+model Usuario {
+  id          String    @id @default(uuid())
+  nome        String
+  email       String    @unique
+  senhaHash   String
+  ativo       Boolean   @default(true)
+  ultimoLogin DateTime?
+  avatarUrl   String?
+  mfaEnabled  Boolean   @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  usuarioEmpresas UsuarioEmpresa[]
+  colaborador     Colaborador?
+  refreshTokens   RefreshToken[]
+
+  @@map("usuarios")
+}
+
+model UsuarioEmpresa {
+  id        String  @id @default(uuid())
+  usuarioId String
+  empresaId String
+  perfilId  String
+  ativo     Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  perfil  Perfil  @relation(fields: [perfilId], references: [id])
+
+  @@unique([usuarioId, empresaId])
+  @@map("usuario_empresas")
+}
+
+model Perfil {
+  id          String  @id @default(uuid())
+  empresaId   String
+  nome        String
+  descricao   String?
+  sistemaBase Boolean @default(false)
+  ativo       Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa         Empresa           @relation(fields: [empresaId], references: [id])
+  usuarioEmpresas UsuarioEmpresa[]
+  permissoes      PerfilPermissao[]
+
+  @@unique([empresaId, nome])
+  @@map("perfis")
+}
+
+model Modulo {
+  id     String  @id @default(uuid())
+  nome   String
+  icone  String?
+  ordem  Int     @default(0)
+  ativo  Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  menus Menu[]
+
+  @@map("modulos")
+}
+
+model Menu {
+  id        String  @id @default(uuid())
+  moduloId  String
+  menuPaiId String?
+  nome      String
+  icone     String?
+  rota      String?
+  ordem     Int     @default(0)
+  ativo     Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  modulo   Modulo   @relation(fields: [moduloId], references: [id])
+  menuPai  Menu?    @relation("MenuSubmenu", fields: [menuPaiId], references: [id])
+  submenus Menu[]   @relation("MenuSubmenu")
+  rotinas  Rotina[]
+
+  @@map("menus")
+}
+
+model Rotina {
+  id     String  @id @default(uuid())
+  menuId String
+  nome   String
+  codigo String
+  ativo  Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  menu       Menu              @relation(fields: [menuId], references: [id])
+  permissoes PerfilPermissao[]
+
+  @@unique([codigo])
+  @@map("rotinas")
+}
+
+enum Acao {
+  visualizar
+  cadastrar
+  editar
+  excluir
+  importar
+  exportar
+  aprovar
+  cancelar
+  bloquear
+}
+
+model PerfilPermissao {
+  id        String  @id @default(uuid())
+  perfilId  String
+  rotinaId  String
+  acao      Acao
+  permitido Boolean @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  perfil Perfil @relation(fields: [perfilId], references: [id])
+  rotina Rotina @relation(fields: [rotinaId], references: [id])
+
+  @@unique([perfilId, rotinaId, acao])
+  @@map("perfil_permissoes")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  usuarioId String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  ip        String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@map("refresh_tokens")
+}
+
+// ------------------------------------------------------------------
+// Organização comercial
+// ------------------------------------------------------------------
+
+enum Cargo {
+  diretor
+  gerente
+  supervisor
+  vendedor
+}
+
+model Colaborador {
+  id         String  @id @default(uuid())
+  empresaId  String
+  usuarioId  String  @unique
+  superiorId String?
+  cargo      Cargo
+  matricula  String?
+  ativo      Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa    Empresa       @relation(fields: [empresaId], references: [id])
+  usuario    Usuario       @relation(fields: [usuarioId], references: [id])
+  superior   Colaborador?  @relation("ColaboradorHierarquia", fields: [superiorId], references: [id])
+  liderados  Colaborador[] @relation("ColaboradorHierarquia")
+
+  @@map("colaboradores")
+}
+
+// ------------------------------------------------------------------
+// Sistema
+// ------------------------------------------------------------------
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  entidade      String
+  entidadeId    String
+  acao          String
+  usuarioId     String?
+  valorAnterior Json?
+  valorNovo     Json?
+  ip            String?
+  userAgent     String?
+  criadoEm      DateTime @default(now())
+
+  @@index([entidade, entidadeId])
+  @@map("audit_logs")
+}
