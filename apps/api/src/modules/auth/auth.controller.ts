@@ -12,7 +12,7 @@ import {
   LOGIN_EXAMPLE,
 } from '@plataforma/contracts';
 import { AuthService } from './auth.service';
-import { LoginDto, RefreshDto } from './dto/auth.dto';
+import { LoginDto, RefreshDto, SwitchEmpresaDto } from './dto/auth.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ApiBodyExample } from '../../common/decorators/api-body-example.decorator';
 import {
@@ -90,5 +90,25 @@ export class AuthController {
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.me(user.id, user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Trocar empresa ativa',
+    description:
+      'Emite um novo par de tokens com outra empresa ativa, para usuários vinculados a mais de uma empresa. ' +
+      'Falha com 403 se o usuário não tiver vínculo ativo com a empresa informada.',
+  })
+  @ApiBodyExample({ empresaId: CURRENT_USER_EXAMPLE.empresaAtivaId })
+  @ApiResponse({ status: 201, schema: { example: AUTH_TOKENS_EXAMPLE } })
+  @ApiResponse({ status: 403, description: 'Usuário não tem acesso a esta empresa' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Post('switch-empresa')
+  switchEmpresa(
+    @Body() dto: SwitchEmpresaDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: Request,
+  ) {
+    return this.authService.switchEmpresa(user.id, dto.empresaId, this.meta(req));
   }
 }

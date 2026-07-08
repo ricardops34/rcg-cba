@@ -1,5 +1,9 @@
 import { randomBytes, createHash } from 'node:crypto';
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -61,6 +65,18 @@ export class AuthService {
     return { accessToken, vinculo };
   }
 
+  private async findVinculoAtivo(usuarioId: string, empresaId?: string) {
+    return this.prisma.usuarioEmpresa.findFirst({
+      where: {
+        usuarioId,
+        ativo: true,
+        empresa: { ativo: true },
+        ...(empresaId ? { empresaId } : {}),
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
   async login(input: LoginInput, meta: RequestMeta) {
     const usuario = await this.prisma.usuario.findUnique({
       where: { email: input.email.toLowerCase() },
@@ -75,11 +91,7 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
-    const vinculo = await this.prisma.usuarioEmpresa.findFirst({
-      where: { usuarioId: usuario.id, ativo: true, empresa: { ativo: true } },
-      orderBy: { createdAt: 'asc' },
-    });
-
+    const vinculo = await this.findVinculoAtivo(usuario.id);
     if (!vinculo) {
       throw new UnauthorizedException(
         'Usuário sem empresa ativa vinculada',
@@ -87,7 +99,11 @@ export class AuthService {
     }
 
     const { accessToken } = await this.buildAccessToken(vinculo.id);
-    const refreshToken = await this.issueRefreshToken(usuario.id, meta);
+    const refreshToken = await this.issueRefreshToken(
+      usuario.id,
+      vinculo.empresaId,
+      meta,
+    );
 
     await this.prisma.usuario.update({
       where: { id: usuario.id },
@@ -101,11 +117,16 @@ export class AuthService {
     };
   }
 
-  private async issueRefreshToken(usuarioId: string, meta: RequestMeta) {
+  private async issueRefreshToken(
+    usuarioId: string,
+    empresaId: string,
+    meta: RequestMeta,
+  ) {
     const token = randomBytes(48).toString('hex');
     await this.prisma.refreshToken.create({
       data: {
         usuarioId,
+        empresaId,
         tokenHash: this.hashToken(token),
         expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
         ip: meta.ip,
@@ -134,20 +155,22 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
 
-    const vinculo = await this.prisma.usuarioEmpresa.findFirst({
-      where: {
-        usuarioId: stored.usuarioId,
-        ativo: true,
-        empresa: { ativo: true },
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+    // Mantém a mesma empresa ativa da sessão original; só cai para a
+    // primeira disponível se aquele vínculo específico não existir mais.
+    const vinculo =
+      (stored.empresaId
+        ? await this.findVinculoAtivo(stored.usuarioId, stored.empresaId)
+        : null) ?? (await this.findVinculoAtivo(stored.usuarioId));
     if (!vinculo) {
       throw new UnauthorizedException('Usuário sem empresa ativa vinculada');
     }
 
     const { accessToken } = await this.buildAccessToken(vinculo.id);
-    const refreshToken = await this.issueRefreshToken(stored.usuarioId, meta);
+    const refreshToken = await this.issueRefreshToken(
+      stored.usuarioId,
+      vinculo.empresaId,
+      meta,
+    );
 
     return { accessToken, refreshToken, expiresIn: 15 * 60 };
   }
@@ -159,6 +182,25 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
     return { success: true };
+  }
+
+  /** Troca a empresa ativa da sessão, emitindo um novo par de tokens. */
+  async switchEmpresa(usuarioId: string, empresaId: string, meta: RequestMeta) {
+    const vinculo = await this.findVinculoAtivo(usuarioId, empresaId);
+    if (!vinculo) {
+      throw new ForbiddenException(
+        'Usuário não tem acesso a esta empresa',
+      );
+    }
+
+    const { accessToken } = await this.buildAccessToken(vinculo.id);
+    const refreshToken = await this.issueRefreshToken(
+      usuarioId,
+      vinculo.empresaId,
+      meta,
+    );
+
+    return { accessToken, refreshToken, expiresIn: 15 * 60 };
   }
 
   async me(usuarioId: string, empresaAtivaId: string) {

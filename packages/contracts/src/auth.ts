@@ -22,6 +22,14 @@ export const refreshInputSchema = z.object({
 });
 export type RefreshInput = z.infer<typeof refreshInputSchema>;
 
+export const switchEmpresaInputSchema = z.object({
+  empresaId: z
+    .string()
+    .uuid()
+    .describe("Empresa para a qual a sessão deve trocar (o usuário precisa ter vínculo ativo com ela)"),
+});
+export type SwitchEmpresaInput = z.infer<typeof switchEmpresaInputSchema>;
+
 export const currentUserSchema = z.object({
   id: z.string().uuid().describe("Identificador do usuário autenticado"),
   nome: z.string().describe("Nome completo do usuário"),

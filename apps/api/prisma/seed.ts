@@ -287,6 +287,39 @@ async function main() {
     console.log(`  vendedores: ${cfg.vendedores.map((v) => v.email).join(', ')}`);
   }
 
+  // Vincula o admin da primeira empresa também à segunda, como Administrador
+  // lá também — para testar a troca de empresa ativa (várias empresas, um
+  // único login).
+  const [primeira, segunda] = EMPRESAS;
+  if (primeira && segunda) {
+    const usuarioMultiEmpresa = await prisma.usuario.findUnique({
+      where: { email: primeira.adminEmail },
+    });
+    const empresaSegunda = await prisma.empresa.findUnique({ where: { cnpj: segunda.cnpj } });
+    const perfilAdminSegunda = empresaSegunda
+      ? await prisma.perfil.findUnique({
+          where: { empresaId_nome: { empresaId: empresaSegunda.id, nome: 'Administrador' } },
+        })
+      : null;
+
+    if (usuarioMultiEmpresa && empresaSegunda && perfilAdminSegunda) {
+      await prisma.usuarioEmpresa.upsert({
+        where: {
+          usuarioId_empresaId: { usuarioId: usuarioMultiEmpresa.id, empresaId: empresaSegunda.id },
+        },
+        create: {
+          usuarioId: usuarioMultiEmpresa.id,
+          empresaId: empresaSegunda.id,
+          perfilId: perfilAdminSegunda.id,
+        },
+        update: { perfilId: perfilAdminSegunda.id, ativo: true },
+      });
+      console.log(
+        `\n${primeira.adminEmail} também tem acesso a "${segunda.nomeFantasia}" (para testar troca de empresa).`,
+      );
+    }
+  }
+
   console.log(`\nSenha de todos os usuários: ${SENHA_PADRAO}`);
 }
 

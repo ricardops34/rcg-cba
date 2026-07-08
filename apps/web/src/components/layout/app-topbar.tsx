@@ -3,8 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { HelpCircle, LogOut, Menu, Moon, Search, Sun } from "lucide-react";
+import { toast } from "sonner";
+import { ChevronDown, HelpCircle, LogOut, Menu, Moon, Search, Sun } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
+import { apiFetch, ApiError } from "@/lib/api-client";
+import type { CurrentUser } from "@plataforma/contracts";
 import { avatarColorClass, initials } from "@/lib/avatar-color";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,8 +37,9 @@ export function AppTopbar({
 }) {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
-  const { user, logout } = useAuthStore();
+  const { user, logout, setTokens, setUser } = useAuthStore();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -43,6 +47,27 @@ export function AppTopbar({
   };
 
   const empresaAtiva = user?.empresas.find((e) => e.empresaId === user.empresaAtivaId);
+  const podeTrocar = (user?.empresas.length ?? 0) > 1;
+
+  const handleSwitch = async (empresaId: string) => {
+    if (empresaId === user?.empresaAtivaId || switching) return;
+    setSwitching(true);
+    try {
+      const tokens = await apiFetch<{ accessToken: string; refreshToken: string }>(
+        "/auth/switch-empresa",
+        { method: "POST", body: { empresaId } },
+      );
+      setTokens(tokens.accessToken, tokens.refreshToken);
+      const me = await apiFetch<CurrentUser>("/auth/me");
+      setUser(me);
+      // Recarrega a app inteira: garante que nenhum dado em cache da
+      // empresa anterior fique visível na tela após a troca.
+      window.location.href = "/";
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Erro ao trocar de empresa");
+      setSwitching(false);
+    }
+  };
 
   return (
     <header className="flex h-14 items-center gap-3 border-b border-border/70 bg-background px-4">
@@ -97,7 +122,11 @@ export function AppTopbar({
         {empresaAtiva && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="ml-1 hidden items-center gap-2 px-2 sm:flex">
+              <Button
+                variant="ghost"
+                className="ml-1 hidden items-center gap-2 px-2 sm:flex"
+                disabled={switching}
+              >
                 <div className="flex size-6 items-center justify-center rounded-md bg-primary/10 text-primary">
                   <span className="text-[0.65rem] font-bold">
                     {empresaAtiva.nomeFantasia.slice(0, 2).toUpperCase()}
@@ -107,13 +136,18 @@ export function AppTopbar({
                   <p className="text-xs font-medium">{empresaAtiva.nomeFantasia}</p>
                   <p className="text-[0.65rem] text-muted-foreground">Empresa ativa</p>
                 </div>
+                {podeTrocar && <ChevronDown className="size-3.5 text-muted-foreground" />}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Empresas vinculadas</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {user?.empresas.map((e) => (
-                <DropdownMenuItem key={e.empresaId} disabled={e.empresaId === user.empresaAtivaId}>
+                <DropdownMenuItem
+                  key={e.empresaId}
+                  disabled={e.empresaId === user.empresaAtivaId}
+                  onClick={() => handleSwitch(e.empresaId)}
+                >
                   {e.nomeFantasia}
                   {e.empresaId === user.empresaAtivaId && (
                     <Badge variant="outline" className="ml-auto">

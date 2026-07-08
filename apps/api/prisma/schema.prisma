@@ -200,6 +200,7 @@ model PerfilPermissao {
 model RefreshToken {
   id        String    @id @default(uuid())
   usuarioId String
+  empresaId String?
   tokenHash String    @unique
   expiresAt DateTime
   revokedAt DateTime?
