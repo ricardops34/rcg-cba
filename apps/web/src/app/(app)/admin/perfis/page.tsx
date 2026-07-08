@@ -8,7 +8,8 @@ import { perfilCreateSchema, type Perfil, type PerfilCreate } from "@plataforma/
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
-import { DataTable, type ColumnDef } from "@/components/crud/data-table";
+import { ListPanel } from "@/components/crud/list-panel";
+import { EntityIconAvatar } from "@/components/crud/entity-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +27,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { MoreHorizontal, Pencil, ShieldCheck, Trash2 } from "lucide-react";
 
 export default function PerfisPage() {
   const [search, setSearch] = useState("");
@@ -85,46 +86,6 @@ export default function PerfisPage() {
     }
   };
 
-  const columns: ColumnDef<Perfil>[] = [
-    {
-      header: "Nome",
-      cell: (p) => (
-        <div className="flex items-center gap-2">
-          <span className="font-medium">{p.nome}</span>
-          {p.sistemaBase && <Badge variant="outline">Base do sistema</Badge>}
-        </div>
-      ),
-    },
-    { header: "Descrição", cell: (p) => p.descricao ?? "—" },
-    {
-      header: "Status",
-      cell: (p) => (
-        <Badge variant={p.ativo ? "success" : "secondary"}>{p.ativo ? "Ativo" : "Inativo"}</Badge>
-      ),
-    },
-    {
-      header: "",
-      className: "w-10",
-      cell: (p) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => openEdit(p)}>
-              <Pencil className="size-4" /> Editar
-            </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={() => onDelete(p)}>
-              <Trash2 className="size-4" /> Excluir
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
-    },
-  ];
-
   return (
     <div className="space-y-4">
       <CrudHeader
@@ -139,14 +100,44 @@ export default function PerfisPage() {
         createLabel="Novo perfil"
       />
 
-      <DataTable
-        columns={columns}
+      <ListPanel
         rows={data?.data ?? []}
         rowKey={(p) => p.id}
         isLoading={isLoading}
         page={data?.page ?? 1}
         totalPages={data?.totalPages ?? 1}
         onPageChange={setPage}
+        onRowClick={openEdit}
+        renderAvatar={() => <EntityIconAvatar icon={ShieldCheck} />}
+        renderTitle={(p) => p.nome}
+        renderSubtitle={(p) => p.descricao ?? "Sem descrição"}
+        renderMeta={(p) => (
+          <>
+            {p.sistemaBase && (
+              <Badge variant="outline" className="hidden sm:inline-flex">
+                Base do sistema
+              </Badge>
+            )}
+            <Badge variant={p.ativo ? "success" : "secondary"}>{p.ativo ? "Ativo" : "Inativo"}</Badge>
+          </>
+        )}
+        renderActions={(p) => (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-8">
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => openEdit(p)}>
+                <Pencil className="size-4" /> Editar
+              </DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onClick={() => onDelete(p)}>
+                <Trash2 className="size-4" /> Excluir
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       />
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

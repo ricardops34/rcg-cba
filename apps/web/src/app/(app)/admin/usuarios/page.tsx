@@ -16,7 +16,8 @@ import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { useQuery } from "@tanstack/react-query";
 import { CrudHeader } from "@/components/crud/crud-header";
-import { DataTable, type ColumnDef } from "@/components/crud/data-table";
+import { ListPanel } from "@/components/crud/list-panel";
+import { EntityAvatar } from "@/components/crud/entity-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -95,38 +96,6 @@ export default function UsuariosPage() {
     }
   };
 
-  const columns: ColumnDef<Usuario>[] = [
-    { header: "Nome", cell: (u) => <span className="font-medium">{u.nome}</span> },
-    { header: "E-mail", cell: (u) => u.email },
-    {
-      header: "Status",
-      cell: (u) => (
-        <Badge variant={u.ativo ? "success" : "secondary"}>{u.ativo ? "Ativo" : "Inativo"}</Badge>
-      ),
-    },
-    {
-      header: "",
-      className: "w-10",
-      cell: (u) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => openEdit(u)}>
-              <Pencil className="size-4" /> Editar
-            </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={() => onDelete(u)}>
-              <Trash2 className="size-4" /> Excluir
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
-    },
-  ];
-
   return (
     <div className="space-y-4">
       <CrudHeader
@@ -141,14 +110,37 @@ export default function UsuariosPage() {
         createLabel="Novo usuário"
       />
 
-      <DataTable
-        columns={columns}
+      <ListPanel
         rows={data?.data ?? []}
         rowKey={(u) => u.id}
         isLoading={isLoading}
         page={data?.page ?? 1}
         totalPages={data?.totalPages ?? 1}
         onPageChange={setPage}
+        onRowClick={openEdit}
+        renderAvatar={(u) => <EntityAvatar name={u.nome} />}
+        renderTitle={(u) => u.nome}
+        renderSubtitle={(u) => u.email}
+        renderMeta={(u) => (
+          <Badge variant={u.ativo ? "success" : "secondary"}>{u.ativo ? "Ativo" : "Inativo"}</Badge>
+        )}
+        renderActions={(u) => (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-8">
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => openEdit(u)}>
+                <Pencil className="size-4" /> Editar
+              </DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onClick={() => onDelete(u)}>
+                <Trash2 className="size-4" /> Excluir
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       />
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

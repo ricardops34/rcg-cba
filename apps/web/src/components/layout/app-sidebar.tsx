@@ -14,8 +14,8 @@ export function AppSidebar() {
 
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
-      <div className="flex h-14 items-center gap-2.5 px-5">
-        <div className="flex size-7 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
+      <div className="flex h-14 items-center gap-2.5 px-4">
+        <div className="flex size-8 items-center justify-center rounded-full bg-sidebar-primary text-sidebar-primary-foreground">
           <LayoutDashboard className="size-4" />
         </div>
         <span className="font-semibold tracking-tight">Plataforma Comercial</span>
@@ -26,7 +26,7 @@ export function AppSidebar() {
 
         {isLoading &&
           Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-8 w-full bg-sidebar-accent/60" />
+            <Skeleton key={i} className="h-9 w-full rounded-full bg-sidebar-accent/60" />
           ))}
 
         {modulos?.map((modulo) => (
@@ -67,8 +67,8 @@ function NavLink({
     <Link
       href={href}
       className={cn(
-        "flex items-center gap-2.5 rounded-md border-l-2 border-transparent py-2 pr-3 pl-2.5 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-        active && "border-sidebar-primary bg-sidebar-accent text-sidebar-accent-foreground",
+        "flex items-center gap-2.5 rounded-full px-3.5 py-2 text-sm font-medium text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        active && "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm hover:bg-sidebar-primary",
       )}
     >
       {icon}

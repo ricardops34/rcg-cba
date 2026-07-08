@@ -18,7 +18,8 @@ import {
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
-import { DataTable, type ColumnDef } from "@/components/crud/data-table";
+import { ListPanel } from "@/components/crud/list-panel";
+import { EntityAvatar } from "@/components/crud/entity-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -127,41 +128,6 @@ export default function ColaboradoresPage() {
     }
   };
 
-  const columns: ColumnDef<ColaboradorRow>[] = [
-    { header: "Nome", cell: (c) => <span className="font-medium">{c.usuario.nome}</span> },
-    { header: "E-mail", cell: (c) => c.usuario.email },
-    { header: "Cargo", cell: (c) => <Badge variant="outline">{CARGO_LABEL[c.cargo]}</Badge> },
-    { header: "Superior", cell: (c) => c.superior?.usuario.nome ?? "—" },
-    { header: "Matrícula", cell: (c) => c.matricula ?? "—" },
-    {
-      header: "Status",
-      cell: (c) => (
-        <Badge variant={c.ativo ? "success" : "secondary"}>{c.ativo ? "Ativo" : "Inativo"}</Badge>
-      ),
-    },
-    {
-      header: "",
-      className: "w-10",
-      cell: (c) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => openEdit(c)}>
-              <Pencil className="size-4" /> Editar
-            </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={() => onDelete(c)}>
-              <Trash2 className="size-4" /> Excluir
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
-    },
-  ];
-
   return (
     <div className="space-y-4">
       <CrudHeader
@@ -176,15 +142,45 @@ export default function ColaboradoresPage() {
         createLabel="Novo colaborador"
       />
 
-      <DataTable
-        columns={columns}
+      <ListPanel
         rows={data?.data ?? []}
         rowKey={(c) => c.id}
         isLoading={isLoading}
         page={data?.page ?? 1}
         totalPages={data?.totalPages ?? 1}
         onPageChange={setPage}
+        onRowClick={openEdit}
         emptyMessage="Nenhum colaborador cadastrado ainda."
+        renderAvatar={(c) => <EntityAvatar name={c.usuario.nome} />}
+        renderTitle={(c) => c.usuario.nome}
+        renderSubtitle={(c) =>
+          c.superior ? `${CARGO_LABEL[c.cargo]} · reporta a ${c.superior.usuario.nome}` : CARGO_LABEL[c.cargo]
+        }
+        renderMeta={(c) => (
+          <>
+            {c.matricula && (
+              <span className="hidden font-mono text-xs text-muted-foreground sm:inline">{c.matricula}</span>
+            )}
+            <Badge variant={c.ativo ? "success" : "secondary"}>{c.ativo ? "Ativo" : "Inativo"}</Badge>
+          </>
+        )}
+        renderActions={(c) => (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-8">
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => openEdit(c)}>
+                <Pencil className="size-4" /> Editar
+              </DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onClick={() => onDelete(c)}>
+                <Trash2 className="size-4" /> Excluir
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       />
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

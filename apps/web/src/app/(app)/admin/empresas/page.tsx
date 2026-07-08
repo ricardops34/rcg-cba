@@ -12,7 +12,8 @@ import {
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
-import { DataTable, type ColumnDef } from "@/components/crud/data-table";
+import { ListPanel } from "@/components/crud/list-panel";
+import { EntityIconAvatar } from "@/components/crud/entity-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +31,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Building2, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 export default function EmpresasPage() {
   const [search, setSearch] = useState("");
@@ -90,38 +91,8 @@ export default function EmpresasPage() {
     }
   };
 
-  const columns: ColumnDef<Empresa>[] = [
-    { header: "Nome fantasia", cell: (e) => <span className="font-medium">{e.nomeFantasia}</span> },
-    { header: "Razão social", cell: (e) => e.razaoSocial },
-    { header: "CNPJ", cell: (e) => e.cnpj },
-    {
-      header: "Status",
-      cell: (e) => (
-        <Badge variant={e.ativo ? "success" : "secondary"}>{e.ativo ? "Ativa" : "Inativa"}</Badge>
-      ),
-    },
-    {
-      header: "",
-      className: "w-10",
-      cell: (e) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => openEdit(e)}>
-              <Pencil className="size-4" /> Editar
-            </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={() => onDelete(e)}>
-              <Trash2 className="size-4" /> Excluir
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
-    },
-  ];
+  const formatCnpj = (cnpj: string) =>
+    cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
 
   return (
     <div className="space-y-4">
@@ -137,14 +108,37 @@ export default function EmpresasPage() {
         createLabel="Nova empresa"
       />
 
-      <DataTable
-        columns={columns}
+      <ListPanel
         rows={data?.data ?? []}
         rowKey={(e) => e.id}
         isLoading={isLoading}
         page={data?.page ?? 1}
         totalPages={data?.totalPages ?? 1}
         onPageChange={setPage}
+        onRowClick={openEdit}
+        renderAvatar={() => <EntityIconAvatar icon={Building2} />}
+        renderTitle={(e) => e.nomeFantasia}
+        renderSubtitle={(e) => `${e.razaoSocial} · ${formatCnpj(e.cnpj)}`}
+        renderMeta={(e) => (
+          <Badge variant={e.ativo ? "success" : "secondary"}>{e.ativo ? "Ativa" : "Inativa"}</Badge>
+        )}
+        renderActions={(e) => (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-8">
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => openEdit(e)}>
+                <Pencil className="size-4" /> Editar
+              </DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onClick={() => onDelete(e)}>
+                <Trash2 className="size-4" /> Excluir
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       />
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

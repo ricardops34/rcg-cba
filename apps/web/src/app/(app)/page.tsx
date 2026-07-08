@@ -52,7 +52,7 @@ export default function DashboardPage() {
             <Link key={atalho.href} href={atalho.href}>
               <Card className="h-full shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:ring-primary/30">
                 <CardHeader>
-                  <div className="mb-1 flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <div className="mb-1 flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
                     <atalho.icon className="size-5" />
                   </div>
                   <CardTitle className="text-base">{atalho.title}</CardTitle>
