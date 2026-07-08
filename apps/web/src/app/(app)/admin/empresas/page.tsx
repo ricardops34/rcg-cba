@@ -97,7 +97,7 @@ export default function EmpresasPage() {
     {
       header: "Status",
       cell: (e) => (
-        <Badge variant={e.ativo ? "default" : "secondary"}>{e.ativo ? "Ativa" : "Inativa"}</Badge>
+        <Badge variant={e.ativo ? "success" : "secondary"}>{e.ativo ? "Ativa" : "Inativa"}</Badge>
       ),
     },
     {

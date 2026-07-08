@@ -35,10 +35,10 @@ export function AppTopbar() {
   };
 
   return (
-    <header className="flex h-14 items-center justify-between gap-4 border-b bg-background px-4">
+    <header className="flex h-14 items-center justify-between gap-4 border-b border-border/70 bg-background px-5">
       <div>
         {user && (
-          <p className="text-sm text-muted-foreground">
+          <p className="font-mono text-xs tracking-wide text-muted-foreground uppercase">
             {user.empresas.find((e) => e.empresaId === user.empresaAtivaId)?.nomeFantasia}
           </p>
         )}
@@ -59,7 +59,7 @@ export function AppTopbar() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="gap-2 px-2">
               <Avatar className="size-7">
-                <AvatarFallback className="text-xs">
+                <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
                   {user ? initials(user.nome) : "?"}
                 </AvatarFallback>
               </Avatar>

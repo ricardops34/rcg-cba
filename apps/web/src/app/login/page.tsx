@@ -5,13 +5,19 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
+import { LayoutDashboard } from "lucide-react";
 import { loginSchema, type LoginInput, type CurrentUser } from "@plataforma/contracts";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+
+const DESTAQUES = [
+  "Multiempresa com isolamento por Row-Level Security",
+  "RBAC por empresa, perfil, menu e rotina",
+  "Hierarquia comercial e apuração de metas",
+];
 
 export default function LoginPage() {
   const router = useRouter();
@@ -46,20 +52,56 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-svh items-center justify-center overflow-hidden bg-muted/30 p-6">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,color-mix(in_oklch,var(--primary)_18%,transparent),transparent_55%),radial-gradient(circle_at_80%_75%,color-mix(in_oklch,var(--primary)_12%,transparent),transparent_50%)]"
-      />
-      <Card className="relative w-full max-w-sm shadow-lg">
-        <CardHeader>
-          <div className="mb-1 flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-semibold">
-            PC
+    <div className="grid min-h-svh lg:grid-cols-2">
+      {/* Painel de marca — mesma identidade visual do sidebar do app */}
+      <div className="relative hidden flex-col justify-between overflow-hidden bg-sidebar p-10 text-sidebar-foreground lg:flex">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:linear-gradient(to_right,white_1px,transparent_1px),linear-gradient(to_bottom,white_1px,transparent_1px)] [background-size:2.5rem_2.5rem]"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-24 -right-24 size-80 rounded-full bg-sidebar-primary/25 blur-3xl"
+        />
+
+        <div className="relative flex items-center gap-2.5">
+          <div className="flex size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
+            <LayoutDashboard className="size-4.5" />
           </div>
-          <CardTitle className="text-xl">Entrar</CardTitle>
-          <CardDescription>Acesse a plataforma comercial com seu e-mail e senha.</CardDescription>
-        </CardHeader>
-        <CardContent>
+          <span className="font-semibold tracking-tight">Plataforma Comercial</span>
+        </div>
+
+        <div className="relative max-w-sm space-y-6">
+          <p className="text-2xl leading-snug font-medium text-balance">
+            Um único lugar para vender, gerenciar e acompanhar todas as empresas do grupo.
+          </p>
+          <ul className="space-y-2.5 text-sm text-sidebar-foreground/70">
+            {DESTAQUES.map((item) => (
+              <li key={item} className="flex items-start gap-2.5">
+                <span className="mt-2 size-1 shrink-0 rounded-full bg-sidebar-primary" />
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <p className="relative font-mono text-xs text-sidebar-foreground/40">v1.0 · ambiente de desenvolvimento</p>
+      </div>
+
+      {/* Formulário */}
+      <div className="flex items-center justify-center bg-background p-6">
+        <div className="w-full max-w-sm">
+          <div className="mb-8 lg:hidden">
+            <div className="mb-4 flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <LayoutDashboard className="size-4.5" />
+            </div>
+          </div>
+
+          <h1 className="text-2xl font-semibold tracking-tight">Entrar</h1>
+          <p className="mt-1 mb-8 text-sm text-muted-foreground">
+            Acesse a plataforma comercial com seu e-mail e senha.
+          </p>
+
           <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
             <FieldGroup>
               <Field data-invalid={!!form.formState.errors.email}>
@@ -91,8 +133,8 @@ export default function LoginPage() {
               </Button>
             </FieldGroup>
           </form>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

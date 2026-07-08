@@ -136,7 +136,7 @@ export default function ColaboradoresPage() {
     {
       header: "Status",
       cell: (c) => (
-        <Badge variant={c.ativo ? "default" : "secondary"}>{c.ativo ? "Ativo" : "Inativo"}</Badge>
+        <Badge variant={c.ativo ? "success" : "secondary"}>{c.ativo ? "Ativo" : "Inativo"}</Badge>
       ),
     },
     {

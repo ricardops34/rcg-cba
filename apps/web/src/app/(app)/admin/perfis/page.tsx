@@ -99,7 +99,7 @@ export default function PerfisPage() {
     {
       header: "Status",
       cell: (p) => (
-        <Badge variant={p.ativo ? "default" : "secondary"}>{p.ativo ? "Ativo" : "Inativo"}</Badge>
+        <Badge variant={p.ativo ? "success" : "secondary"}>{p.ativo ? "Ativo" : "Inativo"}</Badge>
       ),
     },
     {

@@ -101,7 +101,7 @@ export default function UsuariosPage() {
     {
       header: "Status",
       cell: (u) => (
-        <Badge variant={u.ativo ? "default" : "secondary"}>{u.ativo ? "Ativo" : "Inativo"}</Badge>
+        <Badge variant={u.ativo ? "success" : "secondary"}>{u.ativo ? "Ativo" : "Inativo"}</Badge>
       ),
     },
     {
