@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ZodValidationException } from 'nestjs-zod';
+import type { ZodError } from 'zod';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -18,10 +19,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
 
     if (exception instanceof ZodValidationException) {
+      const zodError = exception.getZodError() as ZodError;
       response.status(HttpStatus.BAD_REQUEST).json({
         code: 'VALIDATION_ERROR',
         message: 'Dados inválidos',
-        details: exception.getZodError().issues.map((issue) => ({
+        details: zodError.issues.map((issue) => ({
           path: issue.path.join('.'),
           message: issue.message,
         })),
