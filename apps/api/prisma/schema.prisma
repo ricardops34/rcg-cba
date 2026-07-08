@@ -225,13 +225,14 @@ enum Cargo {
 }
 
 model Colaborador {
-  id         String  @id @default(uuid())
-  empresaId  String
-  usuarioId  String  @unique
-  superiorId String?
-  cargo      Cargo
-  matricula  String?
-  ativo      Boolean @default(true)
+  id           String  @id @default(uuid())
+  empresaId    String
+  usuarioId    String  @unique
+  superiorId   String?
+  cargo        Cargo
+  codigoErp    String?
+  nomeReduzido String?
+  ativo        Boolean @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

@@ -12,34 +12,38 @@ import {
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
-import { ListPanel } from "@/components/crud/list-panel";
-import { EntityIconAvatar } from "@/components/crud/entity-avatar";
-import { Badge } from "@/components/ui/badge";
+import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
+import { StatusDot } from "@/components/crud/status-dot";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Building2, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 export default function EmpresasPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [editing, setEditing] = useState<Empresa | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
-  const { data, isLoading } = useResourceList<Empresa>("empresas", { search, page, pageSize: 10 });
+  const { data, isLoading, isFetching, refetch } = useResourceList<Empresa>("empresas", {
+    search,
+    page,
+    pageSize,
+  });
   const { create, update, remove } = useResourceMutations<EmpresaCreate, Partial<EmpresaCreate>>(
     "empresas",
   );
@@ -52,7 +56,7 @@ export default function EmpresasPage() {
   const openCreate = () => {
     setEditing(null);
     form.reset({ razaoSocial: "", nomeFantasia: "", cnpj: "", ativo: true });
-    setDialogOpen(true);
+    setSheetOpen(true);
   };
 
   const openEdit = (empresa: Empresa) => {
@@ -63,7 +67,7 @@ export default function EmpresasPage() {
       cnpj: empresa.cnpj,
       ativo: empresa.ativo,
     });
-    setDialogOpen(true);
+    setSheetOpen(true);
   };
 
   const onSubmit = async (values: EmpresaCreate) => {
@@ -75,7 +79,7 @@ export default function EmpresasPage() {
         await create.mutateAsync(values);
         toast.success("Empresa cadastrada");
       }
-      setDialogOpen(false);
+      setSheetOpen(false);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Erro ao salvar empresa");
     }
@@ -94,61 +98,78 @@ export default function EmpresasPage() {
   const formatCnpj = (cnpj: string) =>
     cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
 
+  const columns: ColumnDef<Empresa>[] = [
+    { header: "Nome fantasia", cell: (e) => <span className="font-medium">{e.nomeFantasia}</span> },
+    { header: "Razão social", cell: (e) => e.razaoSocial },
+    { header: "CNPJ", cell: (e) => <span className="font-mono text-xs">{formatCnpj(e.cnpj)}</span> },
+    { header: "Status", cell: (e) => <StatusDot active={e.ativo} labelOn="Ativa" labelOff="Inativa" /> },
+    {
+      header: "",
+      className: "w-10",
+      cell: (e) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="size-8" onClick={(ev) => ev.stopPropagation()}>
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => openEdit(e)}>
+              <Pencil className="size-4" /> Editar
+            </DropdownMenuItem>
+            <DropdownMenuItem variant="destructive" onClick={() => onDelete(e)}>
+              <Trash2 className="size-4" /> Excluir
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-4">
       <CrudHeader
-        title="Empresas"
-        description="Empresas cadastradas no sistema, base do isolamento multiempresa."
         search={search}
         onSearchChange={(v) => {
           setSearch(v);
           setPage(1);
         }}
+        onRefresh={() => refetch()}
+        isRefreshing={isFetching}
         onCreate={openCreate}
         createLabel="Nova empresa"
       />
 
-      <ListPanel
+      <EntityTable
+        columns={columns}
         rows={data?.data ?? []}
         rowKey={(e) => e.id}
         isLoading={isLoading}
-        page={data?.page ?? 1}
+        page={data?.page ?? page}
+        pageSize={data?.pageSize ?? pageSize}
+        total={data?.total ?? 0}
         totalPages={data?.totalPages ?? 1}
         onPageChange={setPage}
+        onPageSizeChange={(n) => {
+          setPageSize(n);
+          setPage(1);
+        }}
         onRowClick={openEdit}
-        renderAvatar={() => <EntityIconAvatar icon={Building2} />}
-        renderTitle={(e) => e.nomeFantasia}
-        renderSubtitle={(e) => `${e.razaoSocial} · ${formatCnpj(e.cnpj)}`}
-        renderMeta={(e) => (
-          <Badge variant={e.ativo ? "success" : "secondary"}>{e.ativo ? "Ativa" : "Inativa"}</Badge>
-        )}
-        renderActions={(e) => (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-8">
-                <MoreHorizontal className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => openEdit(e)}>
-                <Pencil className="size-4" /> Editar
-              </DropdownMenuItem>
-              <DropdownMenuItem variant="destructive" onClick={() => onDelete(e)}>
-                <Trash2 className="size-4" /> Excluir
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
       />
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
-            <DialogHeader>
-              <DialogTitle>{editing ? "Editar empresa" : "Nova empresa"}</DialogTitle>
-            </DialogHeader>
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent className="flex flex-col sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>{editing ? "Editar empresa" : "Nova empresa"}</SheetTitle>
+          </SheetHeader>
 
-            <FieldGroup className="py-4">
+          <form
+            id="empresa-form"
+            onSubmit={form.handleSubmit(onSubmit)}
+            noValidate
+            className="flex-1 overflow-y-auto px-4"
+          >
+            <FieldGroup>
               <Field data-invalid={!!form.formState.errors.razaoSocial}>
                 <FieldLabel htmlFor="razaoSocial">Razão social</FieldLabel>
                 <Input id="razaoSocial" {...form.register("razaoSocial")} />
@@ -167,15 +188,18 @@ export default function EmpresasPage() {
                 <FieldError errors={[form.formState.errors.cnpj]} />
               </Field>
             </FieldGroup>
-
-            <DialogFooter>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                {editing ? "Salvar alterações" : "Cadastrar"}
-              </Button>
-            </DialogFooter>
           </form>
-        </DialogContent>
-      </Dialog>
+
+          <SheetFooter className="flex-row justify-end border-t border-border/60 pt-3">
+            <Button variant="outline" onClick={() => setSheetOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="empresa-form" disabled={form.formState.isSubmitting}>
+              {editing ? "Salvar alterações" : "Cadastrar"}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

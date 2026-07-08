@@ -18,12 +18,18 @@ export const colaboradorCreateSchema = z.object({
     .default(null)
     .describe("Colaborador superior na hierarquia (líder direto); null se for o topo"),
   cargo: cargoSchema,
-  matricula: z
+  codigoErp: z
     .string()
     .trim()
     .max(40)
     .optional()
-    .describe("Matrícula/código interno do colaborador, se houver"),
+    .describe("Código do vendedor no ERP de origem (ex.: Protheus), usado para conciliar vendas importadas"),
+  nomeReduzido: z
+    .string()
+    .trim()
+    .max(60)
+    .optional()
+    .describe("Nome curto/apelido usado em listagens e relatórios (ex.: 'CARLOS' em vez do nome completo)"),
   ativo: z.boolean().default(true).describe("Colaboradores inativos saem dos relatórios e da hierarquia ativa"),
 });
 export type ColaboradorCreate = z.infer<typeof colaboradorCreateSchema>;
@@ -44,7 +50,8 @@ export const COLABORADOR_CREATE_EXAMPLE: ColaboradorCreate = {
   usuarioId: "827167a9-93f9-4fd8-9cc5-dcd8077c600d",
   superiorId: null,
   cargo: "vendedor",
-  matricula: "V-0042",
+  codigoErp: "000315",
+  nomeReduzido: "CARLOS",
   ativo: true,
 };
 

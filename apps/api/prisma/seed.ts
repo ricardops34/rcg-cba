@@ -1,4 +1,4 @@
-import { PrismaClient, Acao } from '@prisma/client';
+import { Acao, Cargo, PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -14,65 +14,98 @@ const ACOES: Acao[] = [
   'cancelar',
   'bloquear',
 ];
+const CRUD: Acao[] = ['visualizar', 'cadastrar', 'editar', 'excluir'];
+const SENHA_PADRAO = 'Demo@123';
+
+interface EmpresaSeed {
+  cnpj: string;
+  razaoSocial: string;
+  nomeFantasia: string;
+  adminEmail: string;
+  adminNome: string;
+  gerenteEmail: string;
+  gerenteNome: string;
+  vendedores: { email: string; nome: string; codigoErp: string; nomeReduzido: string }[];
+}
+
+const EMPRESAS: EmpresaSeed[] = [
+  {
+    cnpj: '00000000000191',
+    razaoSocial: 'Empresa Demonstração LTDA',
+    nomeFantasia: 'RCG',
+    adminEmail: 'admin@demo.com',
+    adminNome: 'Administrador do Sistema',
+    gerenteEmail: 'gerente@rcg.com',
+    gerenteNome: 'Ricardo Gerente',
+    vendedores: [
+      { email: 'ana@rcg.com', nome: 'Ana Cristina Gomes', codigoErp: '000034', nomeReduzido: 'ANA' },
+      { email: 'carlos@rcg.com', nome: 'Carlos Augusto Pagliarini', codigoErp: '000320', nomeReduzido: 'CARLOS' },
+    ],
+  },
+  {
+    cnpj: '11111111000191',
+    razaoSocial: 'Andrade Comercial Ltda',
+    nomeFantasia: 'Andrade Distribuidora',
+    adminEmail: 'admin@andrade.com',
+    adminNome: 'Administrador Andrade',
+    gerenteEmail: 'gerente@andrade.com',
+    gerenteNome: 'Fernanda Lima',
+    vendedores: [
+      { email: 'joao@andrade.com', nome: 'João Pereira', codigoErp: '000011', nomeReduzido: 'JOAO' },
+      { email: 'marcia@andrade.com', nome: 'Márcia Duarte', codigoErp: '000012', nomeReduzido: 'MARCIA' },
+    ],
+  },
+  {
+    cnpj: '22222222000191',
+    razaoSocial: 'Beta Comércio e Distribuição Ltda',
+    nomeFantasia: 'Beta Comércio',
+    adminEmail: 'admin@beta.com',
+    adminNome: 'Administrador Beta',
+    gerenteEmail: 'gerente@beta.com',
+    gerenteNome: 'Rodrigo Alves',
+    vendedores: [
+      { email: 'patricia@beta.com', nome: 'Patrícia Santos', codigoErp: '000021', nomeReduzido: 'PATRICIA' },
+      { email: 'bruno@beta.com', nome: 'Bruno Costa', codigoErp: '000022', nomeReduzido: 'BRUNO' },
+    ],
+  },
+];
 
 async function main() {
-  const empresa = await prisma.empresa.upsert({
-    where: { cnpj: '00000000000191' },
-    create: {
-      razaoSocial: 'Empresa Demonstração LTDA',
-      nomeFantasia: 'Empresa Demo',
-      cnpj: '00000000000191',
-      ativo: true,
-    },
-    update: {},
-  });
-
-  const modulo = await prisma.modulo.upsert({
+  // Estrutura de menu — compartilhada por todas as empresas (é o mesmo sistema).
+  const moduloAdministracao = await prisma.modulo.upsert({
     where: { id: 'seed-modulo-administracao' },
-    create: {
-      id: 'seed-modulo-administracao',
-      nome: 'Administração',
-      icone: 'settings',
-      ordem: 1,
-    },
-    update: {},
+    create: { id: 'seed-modulo-administracao', nome: 'Administração', icone: 'settings', ordem: 1 },
+    update: { nome: 'Administração', icone: 'settings', ordem: 1 },
   });
 
-  const menuDefs: { id: string; nome: string; rota: string; icone: string; codigo: string }[] = [
-    { id: 'seed-menu-empresas', nome: 'Empresas', rota: '/admin/empresas', icone: 'building', codigo: 'empresas' },
-    { id: 'seed-menu-usuarios', nome: 'Usuários', rota: '/admin/usuarios', icone: 'users', codigo: 'usuarios' },
-    { id: 'seed-menu-perfis', nome: 'Perfis', rota: '/admin/perfis', icone: 'shield', codigo: 'perfis' },
-    { id: 'seed-menu-estrutura', nome: 'Estrutura de Menu', rota: '/admin/estrutura', icone: 'layout-grid', codigo: 'menus' },
-    { id: 'seed-menu-colaboradores', nome: 'Colaboradores', rota: '/comercial/colaboradores', icone: 'user-round', codigo: 'colaboradores' },
+  const moduloComercial = await prisma.modulo.upsert({
+    where: { id: 'seed-modulo-comercial' },
+    create: { id: 'seed-modulo-comercial', nome: 'Comercial', icone: 'briefcase', ordem: 2 },
+    update: { nome: 'Comercial', icone: 'briefcase', ordem: 2 },
+  });
+
+  const menuDefs: { id: string; nome: string; rota: string; icone: string; codigo: string; moduloId: string }[] = [
+    { id: 'seed-menu-empresas', nome: 'Empresas', rota: '/admin/empresas', icone: 'building', codigo: 'empresas', moduloId: moduloAdministracao.id },
+    { id: 'seed-menu-usuarios', nome: 'Usuários', rota: '/admin/usuarios', icone: 'users', codigo: 'usuarios', moduloId: moduloAdministracao.id },
+    { id: 'seed-menu-perfis', nome: 'Perfis', rota: '/admin/perfis', icone: 'shield', codigo: 'perfis', moduloId: moduloAdministracao.id },
+    { id: 'seed-menu-estrutura', nome: 'Estrutura de Menu', rota: '/admin/estrutura', icone: 'layout-grid', codigo: 'menus', moduloId: moduloAdministracao.id },
+    { id: 'seed-menu-colaboradores', nome: 'Vendedores', rota: '/comercial/vendedores', icone: 'user-round', codigo: 'colaboradores', moduloId: moduloComercial.id },
   ];
 
   for (const [i, m] of menuDefs.entries()) {
     const menu = await prisma.menu.upsert({
       where: { id: m.id },
-      create: {
-        id: m.id,
-        moduloId: modulo.id,
-        nome: m.nome,
-        rota: m.rota,
-        icone: m.icone,
-        ordem: i + 1,
-      },
-      update: {},
+      create: { id: m.id, moduloId: m.moduloId, nome: m.nome, rota: m.rota, icone: m.icone, ordem: i + 1 },
+      update: { moduloId: m.moduloId, nome: m.nome, rota: m.rota, icone: m.icone },
     });
 
     await prisma.rotina.upsert({
       where: { codigo: m.codigo },
-      create: {
-        id: `seed-rotina-${m.codigo}`,
-        menuId: menu.id,
-        nome: m.nome,
-        codigo: m.codigo,
-      },
+      create: { id: `seed-rotina-${m.codigo}`, menuId: menu.id, nome: m.nome, codigo: m.codigo },
       update: {},
     });
   }
 
-  // "modulos" e "rotinas" também são rotinas administráveis (gestão da própria estrutura de menu)
   for (const codigo of ['modulos', 'rotinas']) {
     await prisma.rotina.upsert({
       where: { codigo },
@@ -86,51 +119,175 @@ async function main() {
     });
   }
 
-  const perfilAdmin = await prisma.perfil.upsert({
-    where: { empresaId_nome: { empresaId: empresa.id, nome: 'Administrador' } },
-    create: {
-      empresaId: empresa.id,
-      nome: 'Administrador',
-      descricao: 'Perfil com acesso total ao sistema',
-      sistemaBase: true,
-    },
-    update: {},
-  });
-
   const rotinas = await prisma.rotina.findMany({ where: { deletedAt: null } });
-  for (const rotina of rotinas) {
-    for (const acao of ACOES) {
+  const rotinaColaboradores = rotinas.find((r) => r.codigo === 'colaboradores');
+  const senhaHash = await bcrypt.hash(SENHA_PADRAO, 12);
+
+  console.log('Seed concluído. Credenciais (todas com a mesma senha):\n');
+
+  // Cada empresa é isolada (RLS): perfis, colaboradores e o vínculo de
+  // usuário só existem dentro dela. Isso permite testar que um usuário de
+  // uma empresa nunca vê dados de outra.
+  for (const cfg of EMPRESAS) {
+    const empresa = await prisma.empresa.upsert({
+      where: { cnpj: cfg.cnpj },
+      create: {
+        razaoSocial: cfg.razaoSocial,
+        nomeFantasia: cfg.nomeFantasia,
+        cnpj: cfg.cnpj,
+        ativo: true,
+      },
+      update: {},
+    });
+
+    const perfilAdmin = await prisma.perfil.upsert({
+      where: { empresaId_nome: { empresaId: empresa.id, nome: 'Administrador' } },
+      create: {
+        empresaId: empresa.id,
+        nome: 'Administrador',
+        descricao: 'Perfil com acesso total ao sistema',
+        sistemaBase: true,
+      },
+      update: {},
+    });
+
+    for (const rotina of rotinas) {
+      for (const acao of ACOES) {
+        await prisma.perfilPermissao.upsert({
+          where: { perfilId_rotinaId_acao: { perfilId: perfilAdmin.id, rotinaId: rotina.id, acao } },
+          create: { perfilId: perfilAdmin.id, rotinaId: rotina.id, acao, permitido: true },
+          update: { permitido: true },
+        });
+      }
+    }
+
+    const perfilGerente = await prisma.perfil.upsert({
+      where: { empresaId_nome: { empresaId: empresa.id, nome: 'Gerente' } },
+      create: {
+        empresaId: empresa.id,
+        nome: 'Gerente',
+        descricao: 'Gerencia a equipe comercial e o cadastro de vendedores',
+        sistemaBase: false,
+      },
+      update: {},
+    });
+
+    if (rotinaColaboradores) {
+      for (const acao of CRUD) {
+        await prisma.perfilPermissao.upsert({
+          where: {
+            perfilId_rotinaId_acao: { perfilId: perfilGerente.id, rotinaId: rotinaColaboradores.id, acao },
+          },
+          create: { perfilId: perfilGerente.id, rotinaId: rotinaColaboradores.id, acao, permitido: true },
+          update: { permitido: true },
+        });
+      }
+    }
+
+    // Vendedor: só visualiza a própria lista de colaboradores, sem gerenciar.
+    const perfilVendedor = await prisma.perfil.upsert({
+      where: { empresaId_nome: { empresaId: empresa.id, nome: 'Vendedor' } },
+      create: {
+        empresaId: empresa.id,
+        nome: 'Vendedor',
+        descricao: 'Acesso de consulta ao cadastro de vendedores da própria empresa',
+        sistemaBase: false,
+      },
+      update: {},
+    });
+    if (rotinaColaboradores) {
       await prisma.perfilPermissao.upsert({
         where: {
-          perfilId_rotinaId_acao: { perfilId: perfilAdmin.id, rotinaId: rotina.id, acao },
+          perfilId_rotinaId_acao: {
+            perfilId: perfilVendedor.id,
+            rotinaId: rotinaColaboradores.id,
+            acao: 'visualizar',
+          },
         },
-        create: { perfilId: perfilAdmin.id, rotinaId: rotina.id, acao, permitido: true },
+        create: {
+          perfilId: perfilVendedor.id,
+          rotinaId: rotinaColaboradores.id,
+          acao: 'visualizar',
+          permitido: true,
+        },
         update: { permitido: true },
       });
     }
+
+    // Usuário administrador
+    const admin = await prisma.usuario.upsert({
+      where: { email: cfg.adminEmail },
+      create: { nome: cfg.adminNome, email: cfg.adminEmail, senhaHash, ativo: true },
+      update: {},
+    });
+    await prisma.usuarioEmpresa.upsert({
+      where: { usuarioId_empresaId: { usuarioId: admin.id, empresaId: empresa.id } },
+      create: { usuarioId: admin.id, empresaId: empresa.id, perfilId: perfilAdmin.id },
+      update: { perfilId: perfilAdmin.id, ativo: true },
+    });
+
+    // Usuário gerente + colaborador (topo da hierarquia comercial da empresa)
+    const gerenteUsuario = await prisma.usuario.upsert({
+      where: { email: cfg.gerenteEmail },
+      create: { nome: cfg.gerenteNome, email: cfg.gerenteEmail, senhaHash, ativo: true },
+      update: {},
+    });
+    await prisma.usuarioEmpresa.upsert({
+      where: { usuarioId_empresaId: { usuarioId: gerenteUsuario.id, empresaId: empresa.id } },
+      create: { usuarioId: gerenteUsuario.id, empresaId: empresa.id, perfilId: perfilGerente.id },
+      update: { perfilId: perfilGerente.id, ativo: true },
+    });
+    const gerenteColaborador = await prisma.colaborador.upsert({
+      where: { usuarioId: gerenteUsuario.id },
+      create: {
+        empresaId: empresa.id,
+        usuarioId: gerenteUsuario.id,
+        cargo: Cargo.gerente,
+        superiorId: null,
+        ativo: true,
+      },
+      update: { empresaId: empresa.id, cargo: Cargo.gerente },
+    });
+
+    // Vendedores, reportando ao gerente da própria empresa
+    for (const v of cfg.vendedores) {
+      const usuario = await prisma.usuario.upsert({
+        where: { email: v.email },
+        create: { nome: v.nome, email: v.email, senhaHash, ativo: true },
+        update: {},
+      });
+      await prisma.usuarioEmpresa.upsert({
+        where: { usuarioId_empresaId: { usuarioId: usuario.id, empresaId: empresa.id } },
+        create: { usuarioId: usuario.id, empresaId: empresa.id, perfilId: perfilVendedor.id },
+        update: { perfilId: perfilVendedor.id, ativo: true },
+      });
+      await prisma.colaborador.upsert({
+        where: { usuarioId: usuario.id },
+        create: {
+          empresaId: empresa.id,
+          usuarioId: usuario.id,
+          cargo: Cargo.vendedor,
+          superiorId: gerenteColaborador.id,
+          codigoErp: v.codigoErp,
+          nomeReduzido: v.nomeReduzido,
+          ativo: true,
+        },
+        update: {
+          empresaId: empresa.id,
+          superiorId: gerenteColaborador.id,
+          codigoErp: v.codigoErp,
+          nomeReduzido: v.nomeReduzido,
+        },
+      });
+    }
+
+    console.log(`— ${cfg.nomeFantasia} (${empresa.id})`);
+    console.log(`  admin:   ${cfg.adminEmail}`);
+    console.log(`  gerente: ${cfg.gerenteEmail}`);
+    console.log(`  vendedores: ${cfg.vendedores.map((v) => v.email).join(', ')}`);
   }
 
-  const senhaHash = await bcrypt.hash('Admin@123', 12);
-  const admin = await prisma.usuario.upsert({
-    where: { email: 'admin@demo.com' },
-    create: {
-      nome: 'Administrador do Sistema',
-      email: 'admin@demo.com',
-      senhaHash,
-      ativo: true,
-    },
-    update: {},
-  });
-
-  await prisma.usuarioEmpresa.upsert({
-    where: { usuarioId_empresaId: { usuarioId: admin.id, empresaId: empresa.id } },
-    create: { usuarioId: admin.id, empresaId: empresa.id, perfilId: perfilAdmin.id },
-    update: { perfilId: perfilAdmin.id, ativo: true },
-  });
-
-  console.log('Seed concluído.');
-  console.log(`Empresa: ${empresa.nomeFantasia} (${empresa.id})`);
-  console.log('Login: admin@demo.com / senha: Admin@123');
+  console.log(`\nSenha de todos os usuários: ${SENHA_PADRAO}`);
 }
 
 main()

@@ -18,19 +18,19 @@ import {
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
-import { ListPanel } from "@/components/crud/list-panel";
-import { EntityAvatar } from "@/components/crud/entity-avatar";
+import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
+import { StatusDot } from "@/components/crud/status-dot";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DropdownMenu,
@@ -52,16 +52,17 @@ interface ColaboradorRow extends Colaborador {
   superior: { usuario: { nome: string } } | null;
 }
 
-export default function ColaboradoresPage() {
+export default function VendedoresPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [editing, setEditing] = useState<ColaboradorRow | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
-  const { data, isLoading } = useResourceList<ColaboradorRow>("colaboradores", {
+  const { data, isLoading, isFetching, refetch } = useResourceList<ColaboradorRow>("colaboradores", {
     search,
     page,
-    pageSize: 10,
+    pageSize,
   });
 
   const { data: usuarios } = useQuery({
@@ -81,13 +82,27 @@ export default function ColaboradoresPage() {
   const schema = editing ? colaboradorUpdateSchema : colaboradorCreateSchema;
   const form = useForm<ColaboradorCreate>({
     resolver: zodResolver(schema as typeof colaboradorCreateSchema),
-    defaultValues: { usuarioId: "", superiorId: null, cargo: "vendedor", matricula: "", ativo: true },
+    defaultValues: {
+      usuarioId: "",
+      superiorId: null,
+      cargo: "vendedor",
+      codigoErp: "",
+      nomeReduzido: "",
+      ativo: true,
+    },
   });
 
   const openCreate = () => {
     setEditing(null);
-    form.reset({ usuarioId: "", superiorId: null, cargo: "vendedor", matricula: "", ativo: true });
-    setDialogOpen(true);
+    form.reset({
+      usuarioId: "",
+      superiorId: null,
+      cargo: "vendedor",
+      codigoErp: "",
+      nomeReduzido: "",
+      ativo: true,
+    });
+    setSheetOpen(true);
   };
 
   const openEdit = (colaborador: ColaboradorRow) => {
@@ -96,101 +111,125 @@ export default function ColaboradoresPage() {
       usuarioId: colaborador.usuarioId,
       superiorId: colaborador.superiorId,
       cargo: colaborador.cargo,
-      matricula: colaborador.matricula ?? "",
+      codigoErp: colaborador.codigoErp ?? "",
+      nomeReduzido: colaborador.nomeReduzido ?? "",
       ativo: colaborador.ativo,
     });
-    setDialogOpen(true);
+    setSheetOpen(true);
   };
 
   const onSubmit = async (values: ColaboradorCreate) => {
     try {
       if (editing) {
-        const { superiorId, cargo, matricula, ativo } = values;
-        await update.mutateAsync({ id: editing.id, input: { superiorId, cargo, matricula, ativo } });
-        toast.success("Colaborador atualizado");
+        const { superiorId, cargo, codigoErp, nomeReduzido, ativo } = values;
+        await update.mutateAsync({
+          id: editing.id,
+          input: { superiorId, cargo, codigoErp, nomeReduzido, ativo },
+        });
+        toast.success("Vendedor atualizado");
       } else {
         await create.mutateAsync(values);
-        toast.success("Colaborador cadastrado");
+        toast.success("Vendedor cadastrado");
       }
-      setDialogOpen(false);
+      setSheetOpen(false);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Erro ao salvar colaborador");
+      toast.error(err instanceof ApiError ? err.message : "Erro ao salvar vendedor");
     }
   };
 
   const onDelete = async (colaborador: ColaboradorRow) => {
-    if (!confirm(`Excluir o colaborador "${colaborador.usuario.nome}"?`)) return;
+    if (!confirm(`Excluir o vendedor "${colaborador.usuario.nome}"?`)) return;
     try {
       await remove.mutateAsync(colaborador.id);
-      toast.success("Colaborador excluído");
+      toast.success("Vendedor excluído");
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Erro ao excluir colaborador");
+      toast.error(err instanceof ApiError ? err.message : "Erro ao excluir vendedor");
     }
   };
+
+  const columns: ColumnDef<ColaboradorRow>[] = [
+    { header: "Código ERP", cell: (c) => <span className="font-mono text-xs">{c.codigoErp ?? "—"}</span> },
+    {
+      header: "Nome",
+      cell: (c) => (
+        <div>
+          <p className="font-medium">{c.nomeReduzido || c.usuario.nome}</p>
+          {c.nomeReduzido && <p className="text-xs text-muted-foreground">{c.usuario.nome}</p>}
+        </div>
+      ),
+    },
+    { header: "E-mail", cell: (c) => c.usuario.email },
+    { header: "Cargo", cell: (c) => <Badge variant="outline">{CARGO_LABEL[c.cargo]}</Badge> },
+    { header: "Superior", cell: (c) => c.superior?.usuario.nome ?? "—" },
+    { header: "Status", cell: (c) => <StatusDot active={c.ativo} /> },
+    {
+      header: "",
+      className: "w-10",
+      cell: (c) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="size-8" onClick={(ev) => ev.stopPropagation()}>
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => openEdit(c)}>
+              <Pencil className="size-4" /> Editar
+            </DropdownMenuItem>
+            <DropdownMenuItem variant="destructive" onClick={() => onDelete(c)}>
+              <Trash2 className="size-4" /> Excluir
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-4">
       <CrudHeader
-        title="Colaboradores"
-        description="Vendedores e hierarquia comercial (diretor → gerente → supervisor → vendedor)."
         search={search}
         onSearchChange={(v) => {
           setSearch(v);
           setPage(1);
         }}
+        onRefresh={() => refetch()}
+        isRefreshing={isFetching}
         onCreate={openCreate}
-        createLabel="Novo colaborador"
+        createLabel="Novo vendedor"
       />
 
-      <ListPanel
+      <EntityTable
+        columns={columns}
         rows={data?.data ?? []}
         rowKey={(c) => c.id}
         isLoading={isLoading}
-        page={data?.page ?? 1}
+        page={data?.page ?? page}
+        pageSize={data?.pageSize ?? pageSize}
+        total={data?.total ?? 0}
         totalPages={data?.totalPages ?? 1}
         onPageChange={setPage}
+        onPageSizeChange={(n) => {
+          setPageSize(n);
+          setPage(1);
+        }}
         onRowClick={openEdit}
-        emptyMessage="Nenhum colaborador cadastrado ainda."
-        renderAvatar={(c) => <EntityAvatar name={c.usuario.nome} />}
-        renderTitle={(c) => c.usuario.nome}
-        renderSubtitle={(c) =>
-          c.superior ? `${CARGO_LABEL[c.cargo]} · reporta a ${c.superior.usuario.nome}` : CARGO_LABEL[c.cargo]
-        }
-        renderMeta={(c) => (
-          <>
-            {c.matricula && (
-              <span className="hidden font-mono text-xs text-muted-foreground sm:inline">{c.matricula}</span>
-            )}
-            <Badge variant={c.ativo ? "success" : "secondary"}>{c.ativo ? "Ativo" : "Inativo"}</Badge>
-          </>
-        )}
-        renderActions={(c) => (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-8">
-                <MoreHorizontal className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => openEdit(c)}>
-                <Pencil className="size-4" /> Editar
-              </DropdownMenuItem>
-              <DropdownMenuItem variant="destructive" onClick={() => onDelete(c)}>
-                <Trash2 className="size-4" /> Excluir
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+        emptyMessage="Nenhum vendedor cadastrado ainda."
       />
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
-            <DialogHeader>
-              <DialogTitle>{editing ? "Editar colaborador" : "Novo colaborador"}</DialogTitle>
-            </DialogHeader>
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent className="flex flex-col sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>{editing ? "Editar vendedor" : "Novo vendedor"}</SheetTitle>
+          </SheetHeader>
 
-            <FieldGroup className="py-4">
+          <form
+            id="colaborador-form"
+            onSubmit={form.handleSubmit(onSubmit)}
+            noValidate
+            className="flex-1 overflow-y-auto px-4"
+          >
+            <FieldGroup>
               {!editing && (
                 <Field data-invalid={!!form.formState.errors.usuarioId}>
                   <FieldLabel htmlFor="usuarioId">Usuário</FieldLabel>
@@ -257,21 +296,30 @@ export default function ColaboradoresPage() {
                 </Select>
               </Field>
 
-              <Field data-invalid={!!form.formState.errors.matricula}>
-                <FieldLabel htmlFor="matricula">Matrícula (opcional)</FieldLabel>
-                <Input id="matricula" {...form.register("matricula")} />
-                <FieldError errors={[form.formState.errors.matricula]} />
+              <Field data-invalid={!!form.formState.errors.nomeReduzido}>
+                <FieldLabel htmlFor="nomeReduzido">Nome reduzido (opcional)</FieldLabel>
+                <Input id="nomeReduzido" placeholder="Ex.: CARLOS" {...form.register("nomeReduzido")} />
+                <FieldError errors={[form.formState.errors.nomeReduzido]} />
+              </Field>
+
+              <Field data-invalid={!!form.formState.errors.codigoErp}>
+                <FieldLabel htmlFor="codigoErp">Código ERP (opcional)</FieldLabel>
+                <Input id="codigoErp" placeholder="Ex.: 000315" {...form.register("codigoErp")} />
+                <FieldError errors={[form.formState.errors.codigoErp]} />
               </Field>
             </FieldGroup>
-
-            <DialogFooter>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                {editing ? "Salvar alterações" : "Cadastrar"}
-              </Button>
-            </DialogFooter>
           </form>
-        </DialogContent>
-      </Dialog>
+
+          <SheetFooter className="flex-row justify-end border-t border-border/60 pt-3">
+            <Button variant="outline" onClick={() => setSheetOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="colaborador-form" disabled={form.formState.isSubmitting}>
+              {editing ? "Salvar alterações" : "Cadastrar"}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

@@ -35,7 +35,7 @@ export class UsuariosService {
         : {}),
     };
 
-    const [data, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       this.prisma.usuario.findMany({
         where,
         ...paginationToSkipTake(query),
@@ -51,10 +51,20 @@ export class UsuariosService {
           updatedAt: true,
           createdBy: true,
           updatedBy: true,
+          usuarioEmpresas: {
+            where: { empresaId, ativo: true },
+            select: { perfil: { select: { id: true, nome: true } } },
+            take: 1,
+          },
         },
       }),
       this.prisma.usuario.count({ where }),
     ]);
+
+    const data = rows.map(({ usuarioEmpresas, ...usuario }) => ({
+      ...usuario,
+      perfil: usuarioEmpresas[0]?.perfil ?? null,
+    }));
 
     return buildPaginatedResult(data, total, query);
   }

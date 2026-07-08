@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { LayoutDashboard } from "lucide-react";
+import { LayoutDashboard, Lock, Mail } from "lucide-react";
 import { loginSchema, type LoginInput, type CurrentUser } from "@plataforma/contracts";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
@@ -91,10 +92,8 @@ export default function LoginPage() {
       {/* Formulário */}
       <div className="flex items-center justify-center bg-background p-6">
         <div className="w-full max-w-sm">
-          <div className="mb-8 lg:hidden">
-            <div className="mb-4 flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <LayoutDashboard className="size-4.5" />
-            </div>
+          <div className="mb-8 flex justify-center lg:hidden">
+            <Image src="/rcglogo.png" alt="RCG Distribuidora" width={140} height={48} priority />
           </div>
 
           <h1 className="text-2xl font-semibold tracking-tight">Entrar</h1>
@@ -106,25 +105,33 @@ export default function LoginPage() {
             <FieldGroup>
               <Field data-invalid={!!form.formState.errors.email}>
                 <FieldLabel htmlFor="email">E-mail</FieldLabel>
-                <Input
-                  id="email"
-                  type="email"
-                  autoComplete="username"
-                  placeholder="voce@empresa.com"
-                  {...form.register("email")}
-                />
+                <div className="relative">
+                  <Mail className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="email"
+                    type="email"
+                    autoComplete="username"
+                    placeholder="voce@empresa.com"
+                    className="pl-9"
+                    {...form.register("email")}
+                  />
+                </div>
                 <FieldError errors={[form.formState.errors.email]} />
               </Field>
 
               <Field data-invalid={!!form.formState.errors.senha}>
                 <FieldLabel htmlFor="senha">Senha</FieldLabel>
-                <Input
-                  id="senha"
-                  type="password"
-                  autoComplete="current-password"
-                  placeholder="••••••••"
-                  {...form.register("senha")}
-                />
+                <div className="relative">
+                  <Lock className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="senha"
+                    type="password"
+                    autoComplete="current-password"
+                    placeholder="••••••••"
+                    className="pl-9"
+                    {...form.register("senha")}
+                  />
+                </div>
                 <FieldError errors={[form.formState.errors.senha]} />
               </Field>
 

@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { LogOut, Moon, Sun } from "lucide-react";
+import { HelpCircle, LogOut, Menu, Moon, Search, Sun } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
+import { avatarColorClass, initials } from "@/lib/avatar-color";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { GlobalSearch } from "@/components/layout/global-search";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,55 +17,126 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
-function initials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase())
-    .join("");
-}
-
-export function AppTopbar() {
+export function AppTopbar({
+  onToggleSidebar,
+  title,
+  subtitle,
+}: {
+  onToggleSidebar: () => void;
+  title?: string;
+  subtitle?: string;
+}) {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const { user, logout } = useAuthStore();
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
     router.replace("/login");
   };
 
-  return (
-    <header className="flex h-14 items-center justify-between gap-4 border-b border-border/70 bg-background px-5">
-      <div>
-        {user && (
-          <p className="font-mono text-xs tracking-wide text-muted-foreground uppercase">
-            {user.empresas.find((e) => e.empresaId === user.empresaAtivaId)?.nomeFantasia}
-          </p>
-        )}
-      </div>
+  const empresaAtiva = user?.empresas.find((e) => e.empresaId === user.empresaAtivaId);
 
-      <div className="flex items-center gap-2">
+  return (
+    <header className="flex h-14 items-center gap-3 border-b border-border/70 bg-background px-4">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="ghost" size="icon" onClick={onToggleSidebar} aria-label="Recolher menu">
+            <Menu className="size-4.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Recolher menu</TooltipContent>
+      </Tooltip>
+
+      {title && (
+        <div className="hidden shrink-0 md:block">
+          <p className="text-sm leading-tight font-semibold">{title}</p>
+          {subtitle && <p className="text-xs leading-tight text-muted-foreground">{subtitle}</p>}
+        </div>
+      )}
+
+      <button
+        onClick={() => setSearchOpen(true)}
+        className="ml-2 flex h-8 flex-1 items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted sm:max-w-xs"
+      >
+        <Search className="size-3.5" />
+        <span className="flex-1 text-left">Buscar no sistema...</span>
+        <kbd className="hidden rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[0.65rem] sm:inline">
+          ⌘K
+        </kbd>
+      </button>
+      <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
+
+      <div className="ml-auto flex items-center gap-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label="Ajuda">
+              <HelpCircle className="size-4.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Ajuda</TooltipContent>
+        </Tooltip>
+
         <Button
           variant="ghost"
           size="icon"
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           aria-label="Alternar tema"
         >
-          <Sun className="size-4 scale-100 dark:scale-0" />
-          <Moon className="absolute size-4 scale-0 dark:scale-100" />
+          <Sun className="size-4.5 scale-100 dark:scale-0" />
+          <Moon className="absolute size-4.5 scale-0 dark:scale-100" />
         </Button>
+
+        {empresaAtiva && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="ml-1 hidden items-center gap-2 px-2 sm:flex">
+                <div className="flex size-6 items-center justify-center rounded-md bg-primary/10 text-primary">
+                  <span className="text-[0.65rem] font-bold">
+                    {empresaAtiva.nomeFantasia.slice(0, 2).toUpperCase()}
+                  </span>
+                </div>
+                <div className="text-left leading-tight">
+                  <p className="text-xs font-medium">{empresaAtiva.nomeFantasia}</p>
+                  <p className="text-[0.65rem] text-muted-foreground">Empresa ativa</p>
+                </div>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Empresas vinculadas</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {user?.empresas.map((e) => (
+                <DropdownMenuItem key={e.empresaId} disabled={e.empresaId === user.empresaAtivaId}>
+                  {e.nomeFantasia}
+                  {e.empresaId === user.empresaAtivaId && (
+                    <Badge variant="outline" className="ml-auto">
+                      Ativa
+                    </Badge>
+                  )}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="gap-2 px-2">
-              <Avatar className="size-7">
-                <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
-                  {user ? initials(user.nome) : "?"}
-                </AvatarFallback>
-              </Avatar>
+              <div
+                className={
+                  "flex size-7 items-center justify-center rounded-full text-xs font-semibold " +
+                  (user ? avatarColorClass(user.nome) : "bg-muted")
+                }
+              >
+                {user ? initials(user.nome) : "?"}
+              </div>
               <span className="hidden text-sm font-medium sm:inline">{user?.nome}</span>
             </Button>
           </DropdownMenuTrigger>

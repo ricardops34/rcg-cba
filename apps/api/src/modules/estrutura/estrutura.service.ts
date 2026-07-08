@@ -18,7 +18,15 @@ export class EstruturaService {
     return this.prisma.modulo.findMany({
       where: { deletedAt: null },
       orderBy: { ordem: 'asc' },
-      include: { menus: { where: { deletedAt: null }, orderBy: { ordem: 'asc' } } },
+      include: {
+        menus: {
+          where: { deletedAt: null },
+          orderBy: { ordem: 'asc' },
+          include: {
+            rotinas: { where: { deletedAt: null }, select: { id: true, codigo: true, nome: true } },
+          },
+        },
+      },
     });
   }
 

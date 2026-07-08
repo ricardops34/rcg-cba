@@ -8,19 +8,21 @@ import { perfilCreateSchema, type Perfil, type PerfilCreate } from "@plataforma/
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
-import { ListPanel } from "@/components/crud/list-panel";
-import { EntityIconAvatar } from "@/components/crud/entity-avatar";
+import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
+import { StatusDot } from "@/components/crud/status-dot";
+import { PermissoesMatrix } from "@/components/crud/permissoes-matrix";
+import { roleColorClass } from "@/lib/role-color";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,10 +34,16 @@ import { MoreHorizontal, Pencil, ShieldCheck, Trash2 } from "lucide-react";
 export default function PerfisPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [editing, setEditing] = useState<Perfil | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [permissoesFor, setPermissoesFor] = useState<Perfil | null>(null);
 
-  const { data, isLoading } = useResourceList<Perfil>("perfis", { search, page, pageSize: 10 });
+  const { data, isLoading, isFetching, refetch } = useResourceList<Perfil>("perfis", {
+    search,
+    page,
+    pageSize,
+  });
   const { create, update, remove } = useResourceMutations<PerfilCreate, Partial<PerfilCreate>>(
     "perfis",
   );
@@ -48,13 +56,13 @@ export default function PerfisPage() {
   const openCreate = () => {
     setEditing(null);
     form.reset({ nome: "", descricao: "", ativo: true });
-    setDialogOpen(true);
+    setSheetOpen(true);
   };
 
   const openEdit = (perfil: Perfil) => {
     setEditing(perfil);
     form.reset({ nome: perfil.nome, descricao: perfil.descricao ?? "", ativo: perfil.ativo });
-    setDialogOpen(true);
+    setSheetOpen(true);
   };
 
   const onSubmit = async (values: PerfilCreate) => {
@@ -66,7 +74,7 @@ export default function PerfisPage() {
         await create.mutateAsync(values);
         toast.success("Perfil cadastrado");
       }
-      setDialogOpen(false);
+      setSheetOpen(false);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Erro ao salvar perfil");
     }
@@ -86,68 +94,92 @@ export default function PerfisPage() {
     }
   };
 
+  const columns: ColumnDef<Perfil>[] = [
+    {
+      header: "Nome",
+      cell: (p) => (
+        <div className="flex items-center gap-2">
+          <Badge className={roleColorClass(p.nome)} variant="outline">
+            {p.nome}
+          </Badge>
+          {p.sistemaBase && (
+            <span className="text-xs text-muted-foreground">Base do sistema</span>
+          )}
+        </div>
+      ),
+    },
+    { header: "Descrição", cell: (p) => p.descricao ?? "—" },
+    { header: "Status", cell: (p) => <StatusDot active={p.ativo} /> },
+    {
+      header: "",
+      className: "w-10",
+      cell: (p) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="size-8" onClick={(ev) => ev.stopPropagation()}>
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setPermissoesFor(p)}>
+              <ShieldCheck className="size-4" /> Permissões
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => openEdit(p)}>
+              <Pencil className="size-4" /> Editar
+            </DropdownMenuItem>
+            <DropdownMenuItem variant="destructive" onClick={() => onDelete(p)}>
+              <Trash2 className="size-4" /> Excluir
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-4">
       <CrudHeader
-        title="Perfis"
-        description="Papéis (RBAC) da empresa ativa. A definição de permissões por rotina será feita na tela de detalhe do perfil."
         search={search}
         onSearchChange={(v) => {
           setSearch(v);
           setPage(1);
         }}
+        onRefresh={() => refetch()}
+        isRefreshing={isFetching}
         onCreate={openCreate}
         createLabel="Novo perfil"
       />
 
-      <ListPanel
+      <EntityTable
+        columns={columns}
         rows={data?.data ?? []}
         rowKey={(p) => p.id}
         isLoading={isLoading}
-        page={data?.page ?? 1}
+        page={data?.page ?? page}
+        pageSize={data?.pageSize ?? pageSize}
+        total={data?.total ?? 0}
         totalPages={data?.totalPages ?? 1}
         onPageChange={setPage}
-        onRowClick={openEdit}
-        renderAvatar={() => <EntityIconAvatar icon={ShieldCheck} />}
-        renderTitle={(p) => p.nome}
-        renderSubtitle={(p) => p.descricao ?? "Sem descrição"}
-        renderMeta={(p) => (
-          <>
-            {p.sistemaBase && (
-              <Badge variant="outline" className="hidden sm:inline-flex">
-                Base do sistema
-              </Badge>
-            )}
-            <Badge variant={p.ativo ? "success" : "secondary"}>{p.ativo ? "Ativo" : "Inativo"}</Badge>
-          </>
-        )}
-        renderActions={(p) => (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-8">
-                <MoreHorizontal className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => openEdit(p)}>
-                <Pencil className="size-4" /> Editar
-              </DropdownMenuItem>
-              <DropdownMenuItem variant="destructive" onClick={() => onDelete(p)}>
-                <Trash2 className="size-4" /> Excluir
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+        onPageSizeChange={(n) => {
+          setPageSize(n);
+          setPage(1);
+        }}
+        onRowClick={(p) => setPermissoesFor(p)}
       />
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
-            <DialogHeader>
-              <DialogTitle>{editing ? "Editar perfil" : "Novo perfil"}</DialogTitle>
-            </DialogHeader>
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent className="flex flex-col sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>{editing ? "Editar perfil" : "Novo perfil"}</SheetTitle>
+          </SheetHeader>
 
-            <FieldGroup className="py-4">
+          <form
+            id="perfil-form"
+            onSubmit={form.handleSubmit(onSubmit)}
+            noValidate
+            className="flex-1 overflow-y-auto px-4"
+          >
+            <FieldGroup>
               <Field data-invalid={!!form.formState.errors.nome}>
                 <FieldLabel htmlFor="nome">Nome</FieldLabel>
                 <Input id="nome" {...form.register("nome")} />
@@ -160,15 +192,34 @@ export default function PerfisPage() {
                 <FieldError errors={[form.formState.errors.descricao]} />
               </Field>
             </FieldGroup>
-
-            <DialogFooter>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                {editing ? "Salvar alterações" : "Cadastrar"}
-              </Button>
-            </DialogFooter>
           </form>
-        </DialogContent>
-      </Dialog>
+
+          <SheetFooter className="flex-row justify-end border-t border-border/60 pt-3">
+            <Button variant="outline" onClick={() => setSheetOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="perfil-form" disabled={form.formState.isSubmitting}>
+              {editing ? "Salvar alterações" : "Cadastrar"}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={!!permissoesFor} onOpenChange={(open) => !open && setPermissoesFor(null)}>
+        <SheetContent className="flex w-full flex-col sm:max-w-2xl">
+          <SheetHeader>
+            <SheetTitle>Permissões — {permissoesFor?.nome}</SheetTitle>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto px-4 pb-4">
+            {permissoesFor && (
+              <PermissoesMatrix
+                perfilId={permissoesFor.id}
+                onSaved={() => setPermissoesFor(null)}
+              />
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
