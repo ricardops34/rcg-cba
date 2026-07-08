@@ -46,9 +46,16 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-svh items-center justify-center bg-muted/30 p-6">
-      <Card className="w-full max-w-sm">
+    <div className="relative flex min-h-svh items-center justify-center overflow-hidden bg-muted/30 p-6">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,color-mix(in_oklch,var(--primary)_18%,transparent),transparent_55%),radial-gradient(circle_at_80%_75%,color-mix(in_oklch,var(--primary)_12%,transparent),transparent_50%)]"
+      />
+      <Card className="relative w-full max-w-sm shadow-lg">
         <CardHeader>
+          <div className="mb-1 flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-semibold">
+            PC
+          </div>
           <CardTitle className="text-xl">Entrar</CardTitle>
           <CardDescription>Acesse a plataforma comercial com seu e-mail e senha.</CardDescription>
         </CardHeader>

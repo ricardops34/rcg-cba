@@ -50,9 +50,11 @@ export default function DashboardPage() {
         {ATALHOS.filter((a) => hasPermission(a.permissao.split(".")[0], a.permissao.split(".")[1])).map(
           (atalho) => (
             <Link key={atalho.href} href={atalho.href}>
-              <Card className="h-full transition-colors hover:border-primary/50">
+              <Card className="h-full shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:ring-primary/30">
                 <CardHeader>
-                  <atalho.icon className="size-5 text-primary" />
+                  <div className="mb-1 flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <atalho.icon className="size-5" />
+                  </div>
                   <CardTitle className="text-base">{atalho.title}</CardTitle>
                   <CardDescription>{atalho.description}</CardDescription>
                 </CardHeader>
