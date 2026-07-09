@@ -10,6 +10,8 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module';
 import { PerfisModule } from './modules/perfis/perfis.module';
 import { EstruturaModule } from './modules/estrutura/estrutura.module';
 import { ColaboradoresModule } from './modules/colaboradores/colaboradores.module';
+import { MetasModule } from './modules/metas/metas.module';
+import { ClientesModule } from './modules/clientes/clientes.module';
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { ColaboradoresModule } from './modules/colaboradores/colaboradores.modul
     PerfisModule,
     EstruturaModule,
     ColaboradoresModule,
+    MetasModule,
+    ClientesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

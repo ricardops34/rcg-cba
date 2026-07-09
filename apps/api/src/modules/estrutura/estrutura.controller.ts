@@ -53,10 +53,12 @@ export class EstruturaController {
 
   // Módulos
   @ApiOperation({
-    summary: 'Listar módulos',
-    description: 'Estrutura global do menu (não isolada por empresa). Inclui os menus de cada módulo. Requer modulos.visualizar.',
+    summary: 'Listar módulos (árvore do menu)',
+    description:
+      'Estrutura global do menu (não isolada por empresa), usada para montar o menu lateral. ' +
+      'Disponível para qualquer usuário autenticado — o cliente filtra os itens visíveis pelas ' +
+      'permissões de cada rotina. As mutações de estrutura continuam exigindo modulos.*.',
   })
-  @RequirePermission('modulos', 'visualizar')
   @Get('modulos')
   listModulos() {
     return this.service.listModulos();

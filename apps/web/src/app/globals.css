@@ -129,6 +129,31 @@
   --chart-5: oklch(0.72 0.2 25);
 }
 
+/*
+  Escopo de tema claro fixo: reaplica a paleta do modo claro dentro de um
+  container, mesmo quando o app está em dark. Usado no painel de login para
+  mantê-lo sempre branco, independente do tema do usuário.
+*/
+.theme-light {
+  --background: oklch(0.99 0.002 258);
+  --foreground: oklch(0.2 0.016 258);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.016 258);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.016 258);
+  --primary: oklch(0.5 0.19 258);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.96 0.007 258);
+  --secondary-foreground: oklch(0.25 0.016 258);
+  --muted: oklch(0.96 0.007 258);
+  --muted-foreground: oklch(0.5 0.018 258);
+  --accent: oklch(0.94 0.035 258);
+  --accent-foreground: oklch(0.32 0.15 258);
+  --border: oklch(0.91 0.008 258);
+  --input: oklch(0.91 0.008 258);
+  --ring: oklch(0.5 0.19 258);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

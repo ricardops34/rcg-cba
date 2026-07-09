@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
-import { ChevronDown, HelpCircle, LogOut, Menu, Moon, Search, Sun } from "lucide-react";
+import { Bell, Building2, ChevronDown, HelpCircle, LogOut, Menu, Moon, Search, Sun } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import type { CurrentUser } from "@plataforma/contracts";
@@ -100,6 +100,21 @@ export function AppTopbar({
       <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
 
       <div className="ml-auto flex items-center gap-1">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label="Notificações">
+              <Bell className="size-4.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuLabel>Notificações</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+              Nenhuma notificação por enquanto.
+            </p>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="icon" aria-label="Ajuda">
@@ -127,10 +142,8 @@ export function AppTopbar({
                 className="ml-1 hidden items-center gap-2 px-2 sm:flex"
                 disabled={switching}
               >
-                <div className="flex size-6 items-center justify-center rounded-md bg-primary/10 text-primary">
-                  <span className="text-[0.65rem] font-bold">
-                    {empresaAtiva.nomeFantasia.slice(0, 2).toUpperCase()}
-                  </span>
+                <div className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary">
+                  <Building2 className="size-4" />
                 </div>
                 <div className="text-left leading-tight">
                   <p className="text-xs font-medium">{empresaAtiva.nomeFantasia}</p>

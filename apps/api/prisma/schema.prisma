@@ -28,6 +28,8 @@ model Empresa {
   usuarioEmpresas UsuarioEmpresa[]
   perfis          Perfil[]
   colaboradores   Colaborador[]
+  metas           MetaVendedor[]
+  clientes        Cliente[]
 
   @@map("empresas")
 }
@@ -246,8 +248,80 @@ model Colaborador {
   usuario    Usuario       @relation(fields: [usuarioId], references: [id])
   superior   Colaborador?  @relation("ColaboradorHierarquia", fields: [superiorId], references: [id])
   liderados  Colaborador[] @relation("ColaboradorHierarquia")
+  metas      MetaVendedor[]
+  clientes   Cliente[]
 
   @@map("colaboradores")
+}
+
+// Cliente da carteira comercial. Vinculado a um vendedor (colaborador), o que
+// permite a visão por hierarquia: vendedor vê a própria carteira, supervisor/
+// gerente veem a de toda a equipe abaixo.
+model Cliente {
+  id            String  @id @default(uuid())
+  empresaId     String
+  colaboradorId String?
+  codigoErp     String?
+  razaoSocial   String
+  nomeFantasia  String?
+  cnpjCpf       String?
+  inscricaoEstadual String?
+  contato       String?
+  email         String?
+  telefone      String?
+  celular       String?
+  endereco      String?
+  bairro        String?
+  municipio     String?
+  uf            String?
+  cep           String?
+  ativo         Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa     Empresa      @relation(fields: [empresaId], references: [id])
+  colaborador Colaborador? @relation(fields: [colaboradorId], references: [id])
+
+  @@unique([empresaId, codigoErp])
+  @@index([empresaId, colaboradorId])
+  @@map("clientes")
+}
+
+// Meta mensal por vendedor — formato herdado do sistema antigo
+// (meta_vendedor_mes): objetivo de faturamento, meta de positivação
+// (nº de clientes) e de novos clientes. O realizado é lançado aqui até
+// existir integração com vendas/ERP.
+model MetaVendedor {
+  id                  String @id @default(uuid())
+  empresaId           String
+  colaboradorId       String
+  ano                 Int
+  mes                 Int
+  valorObjetivo       Float  @default(0)
+  metaClientes        Int    @default(0)
+  metaNovosClientes   Int    @default(0)
+  valorRealizado      Float  @default(0)
+  clientesPositivados Int    @default(0)
+  observacao          String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa     Empresa     @relation(fields: [empresaId], references: [id])
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id])
+
+  @@unique([colaboradorId, ano, mes])
+  @@index([empresaId, ano, mes])
+  @@map("meta_vendedor_mes")
 }
 
 // ------------------------------------------------------------------

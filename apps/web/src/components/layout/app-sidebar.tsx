@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, LayoutDashboard } from "lucide-react";
@@ -37,14 +38,31 @@ export function AppSidebar({ collapsed }: { collapsed: boolean }) {
         collapsed ? "w-[4.5rem]" : "w-64",
       )}
     >
-      <div className={cn("flex h-14 items-center gap-2.5 px-4", collapsed && "justify-center px-0")}>
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <LayoutDashboard className="size-4" />
-        </div>
-        {!collapsed && <span className="truncate font-semibold tracking-tight">Plataforma Comercial</span>}
+      <div className={cn("flex h-16 items-center px-5", collapsed && "justify-center px-0")}>
+        {collapsed ? (
+          // Recolhida: apenas a gota do logo (recorte da arte completa)
+          <div className="h-9 w-9 overflow-hidden" aria-label="RCG Distribuidora">
+            <Image
+              src="/rcglogo.png"
+              alt="RCG Distribuidora"
+              width={106}
+              height={36}
+              className="max-w-none brightness-0 invert"
+            />
+          </div>
+        ) : (
+          <Image
+            src="/rcglogo.png"
+            alt="RCG Distribuidora"
+            width={118}
+            height={40}
+            priority
+            className="brightness-0 invert"
+          />
+        )}
       </div>
 
-      <nav className={cn("flex-1 space-y-5 overflow-y-auto px-3 pt-2 pb-4", collapsed && "px-2")}>
+      <nav className={cn("flex-1 space-y-5 overflow-y-auto px-3 pt-4 pb-4", collapsed && "px-2")}>
         <NavLink
           href="/"
           icon={<LayoutDashboard className="size-4" />}
@@ -140,7 +158,8 @@ function NavLink({
       className={cn(
         "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/85 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         collapsed && "justify-center px-0",
-        active && "bg-sidebar-accent text-sidebar-accent-foreground",
+        active &&
+          "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm hover:bg-sidebar-primary hover:text-sidebar-primary-foreground",
       )}
     >
       {icon}
