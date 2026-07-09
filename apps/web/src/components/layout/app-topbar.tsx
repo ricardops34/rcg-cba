@@ -175,7 +175,7 @@ export function AppTopbar({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="gap-2 px-2">
+            <Button variant="ghost" size="icon" className="rounded-full" aria-label="Conta">
               <div
                 className={
                   "flex size-7 items-center justify-center rounded-full text-xs font-semibold " +
@@ -184,7 +184,6 @@ export function AppTopbar({
               >
                 {user ? initials(user.nome) : "?"}
               </div>
-              <span className="hidden text-sm font-medium sm:inline">{user?.nome}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">

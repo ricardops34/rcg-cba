@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Target, TrendingUp, Percent, Users } from "lucide-react";
 import type { AcompanhamentoResponse, Meta } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -18,18 +17,6 @@ const brl = (v: number) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
 const hoje = new Date();
-
-// Faixas de atingimento, no mesmo espírito do "Resumo do período" da referência.
-const FAIXAS = [
-  { key: "atingido", label: "Atingido", min: 100, color: "bg-emerald-500", text: "text-emerald-500" },
-  { key: "andamento", label: "Em andamento", min: 60, color: "bg-blue-500", text: "text-blue-500" },
-  { key: "atencao", label: "Atenção", min: 30, color: "bg-amber-500", text: "text-amber-500" },
-  { key: "atrasado", label: "Atrasado", min: 0, color: "bg-red-500", text: "text-red-500" },
-] as const;
-
-function faixaDe(p: number) {
-  return FAIXAS.find((f) => p >= f.min)!.key;
-}
 
 export default function AcompanhamentoPage() {
   const [ano, setAno] = useState(hoje.getFullYear());
@@ -55,18 +42,6 @@ export default function AcompanhamentoPage() {
   });
 
   const anos = Array.from({ length: 6 }, (_, i) => hoje.getFullYear() - i);
-
-  const resumo = useMemo(() => {
-    const base = { atingido: 0, andamento: 0, atencao: 0, atrasado: 0 };
-    const valor = { ...base };
-    const qtd = { ...base };
-    for (const l of data?.linhas ?? []) {
-      const k = faixaDe(l.percentual);
-      valor[k] += l.valorRealizado;
-      qtd[k] += 1;
-    }
-    return { valor, qtd };
-  }, [data]);
 
   const totalObjetivo = data?.totalObjetivo ?? 0;
   const totalRealizado = data?.totalRealizado ?? 0;
@@ -108,9 +83,8 @@ export default function AcompanhamentoPage() {
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
-        {/* Ranking de vendedores */}
-        <div className="overflow-hidden rounded-xl border border-border/70 bg-card">
+      {/* Ranking de vendedores */}
+      <div className="overflow-hidden rounded-xl border border-border/70 bg-card">
           <div className="border-b border-border/60 px-4 py-3">
             <h2 className="text-sm font-semibold">Ranking de vendedores — {MESES[mes - 1]}/{ano}</h2>
             <p className="text-xs text-muted-foreground">Objetivo x realizado da equipe supervisionada</p>
@@ -185,35 +159,6 @@ export default function AcompanhamentoPage() {
               )}
             </Table>
           </div>
-        </div>
-
-        {/* Resumo do período */}
-        <div className="rounded-xl border border-border/70 bg-card p-4">
-          <h2 className="text-sm font-semibold">Resumo do período</h2>
-          <p className="mb-4 text-xs text-muted-foreground">Vendedores por faixa de atingimento da meta</p>
-
-          <div className="mb-1 flex h-3 w-full overflow-hidden rounded-full bg-muted">
-            {FAIXAS.map((f) => {
-              const total = totalRealizado || 1;
-              const w = (resumo.valor[f.key] / total) * 100;
-              return w > 0 ? <div key={f.key} className={f.color} style={{ width: `${w}%` }} /> : null;
-            })}
-          </div>
-          <p className="mb-4 text-right text-xs text-muted-foreground">
-            Realizado total: <span className="font-semibold text-foreground">{brl(totalRealizado)}</span>
-          </p>
-
-          <ul className="space-y-3">
-            {FAIXAS.map((f) => (
-              <li key={f.key} className="flex items-center gap-3">
-                <span className={`size-2.5 shrink-0 rounded-full ${f.color}`} />
-                <span className="flex-1 text-sm">{f.label}</span>
-                <span className="text-sm font-medium tabular-nums">{brl(resumo.valor[f.key])}</span>
-                <Badge variant="outline" className="tabular-nums">{resumo.qtd[f.key]}</Badge>
-              </li>
-            ))}
-          </ul>
-        </div>
       </div>
     </div>
   );

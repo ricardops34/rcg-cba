@@ -22,7 +22,7 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
 export default function AppShellLayout({ children }: { children: React.ReactNode }) {
   const { isReady } = useAuthGuard();
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
 
   if (!isReady) {
     return <div className="flex min-h-svh items-center justify-center text-muted-foreground">Carregando...</div>;
