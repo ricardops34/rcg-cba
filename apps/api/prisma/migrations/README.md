@@ -50,6 +50,6 @@ Documente o motivo na própria migration. Casos atuais:
 
 ## Cobertura atual
 
-Com RLS: `perfis`, `colaboradores`, `clientes`, `meta_vendedor_mes`.
+Com RLS: `perfis`, `colaboradores`, `clientes`, `meta_vendedor_mes`, `notas_saida`, `produtos`, `titulos_receber`.
 </content>
 </invoke>

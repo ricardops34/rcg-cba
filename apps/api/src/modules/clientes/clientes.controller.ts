@@ -42,6 +42,18 @@ export class ClientesController {
     return this.service.findAll(user.empresaAtivaId, user, query);
   }
 
+  @ApiOperation({
+    summary: 'Posição consolidada do cliente',
+    description:
+      'Indicadores de compra, financeiro (títulos) e comodato do cliente — usada na tela de ' +
+      'posição de clientes. Mesma regra de visão por hierarquia da listagem. Requer posicao-clientes.visualizar.',
+  })
+  @RequirePermission('posicao-clientes', 'visualizar')
+  @Get(':id/posicao')
+  posicao(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.posicao(user.empresaAtivaId, user, id);
+  }
+
   @ApiOperation({ summary: 'Cadastrar cliente', description: 'Requer clientes.cadastrar.' })
   @RequirePermission('clientes', 'cadastrar')
   @Post()

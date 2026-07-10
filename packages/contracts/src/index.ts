@@ -6,4 +6,7 @@ export * from "./menu";
 export * from "./colaborador";
 export * from "./meta";
 export * from "./cliente";
+export * from "./nota-saida";
+export * from "./produto";
+export * from "./titulo-receber";
 export * from "./auth";

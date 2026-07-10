@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
+import { z } from "zod";
 import {
   cargoSchema,
   colaboradorCreateSchema,
@@ -52,6 +53,16 @@ interface ColaboradorRow extends Colaborador {
   superior: { usuario: { nome: string } } | null;
 }
 
+// Formulário usa dataNascimento como string (input type="date"); convertido
+// para Date apenas no submit, para não acoplar a UI ao coerce.date() do contrato.
+const colaboradorFormSchema = colaboradorCreateSchema.extend({
+  dataNascimento: z.string().optional(),
+});
+const colaboradorUpdateFormSchema = colaboradorUpdateSchema.extend({
+  dataNascimento: z.string().optional(),
+});
+type ColaboradorFormValues = z.infer<typeof colaboradorFormSchema>;
+
 export default function VendedoresPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -79,15 +90,22 @@ export default function VendedoresPage() {
     "colaboradores",
   );
 
-  const schema = editing ? colaboradorUpdateSchema : colaboradorCreateSchema;
-  const form = useForm<ColaboradorCreate>({
-    resolver: zodResolver(schema as typeof colaboradorCreateSchema),
+  const usuarioIdsJaVinculados = new Set(
+    colaboradoresParaSuperior?.data.map((c) => c.usuarioId),
+  );
+
+  const schema = editing ? colaboradorUpdateFormSchema : colaboradorFormSchema;
+  const form = useForm<ColaboradorFormValues>({
+    resolver: zodResolver(schema as typeof colaboradorFormSchema),
     defaultValues: {
       usuarioId: "",
       superiorId: null,
       cargo: "vendedor",
       codigoErp: "",
       nomeReduzido: "",
+      telefone: "",
+      celular: "",
+      dataNascimento: "",
       ativo: true,
     },
   });
@@ -100,6 +118,9 @@ export default function VendedoresPage() {
       cargo: "vendedor",
       codigoErp: "",
       nomeReduzido: "",
+      telefone: "",
+      celular: "",
+      dataNascimento: "",
       ativo: true,
     });
     setSheetOpen(true);
@@ -113,22 +134,28 @@ export default function VendedoresPage() {
       cargo: colaborador.cargo,
       codigoErp: colaborador.codigoErp ?? "",
       nomeReduzido: colaborador.nomeReduzido ?? "",
+      telefone: colaborador.telefone ?? "",
+      celular: colaborador.celular ?? "",
+      dataNascimento: colaborador.dataNascimento
+        ? new Date(colaborador.dataNascimento).toISOString().slice(0, 10)
+        : "",
       ativo: colaborador.ativo,
     });
     setSheetOpen(true);
   };
 
-  const onSubmit = async (values: ColaboradorCreate) => {
+  const onSubmit = async (values: ColaboradorFormValues) => {
+    const dataNascimento = values.dataNascimento ? new Date(values.dataNascimento) : null;
     try {
       if (editing) {
-        const { superiorId, cargo, codigoErp, nomeReduzido, ativo } = values;
+        const { superiorId, cargo, codigoErp, nomeReduzido, telefone, celular, ativo } = values;
         await update.mutateAsync({
           id: editing.id,
-          input: { superiorId, cargo, codigoErp, nomeReduzido, ativo },
+          input: { superiorId, cargo, codigoErp, nomeReduzido, telefone, celular, dataNascimento, ativo },
         });
         toast.success("Vendedor atualizado");
       } else {
-        await create.mutateAsync(values);
+        await create.mutateAsync({ ...values, dataNascimento });
         toast.success("Vendedor cadastrado");
       }
       setSheetOpen(false);
@@ -241,11 +268,13 @@ export default function VendedoresPage() {
                       <SelectValue placeholder="Selecione um usuário" />
                     </SelectTrigger>
                     <SelectContent>
-                      {usuarios?.data.map((u) => (
-                        <SelectItem key={u.id} value={u.id}>
-                          {u.nome} ({u.email})
-                        </SelectItem>
-                      ))}
+                      {usuarios?.data
+                        .filter((u) => !usuarioIdsJaVinculados.has(u.id))
+                        .map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {u.nome} ({u.email})
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                   <FieldError errors={[form.formState.errors.usuarioId]} />
@@ -307,6 +336,26 @@ export default function VendedoresPage() {
                 <Input id="codigoErp" placeholder="Ex.: 000315" {...form.register("codigoErp")} />
                 <FieldError errors={[form.formState.errors.codigoErp]} />
               </Field>
+
+              <Field data-invalid={!!form.formState.errors.dataNascimento}>
+                <FieldLabel htmlFor="dataNascimento">Data de nascimento (opcional)</FieldLabel>
+                <Input id="dataNascimento" type="date" {...form.register("dataNascimento")} />
+                <FieldError errors={[form.formState.errors.dataNascimento]} />
+              </Field>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field data-invalid={!!form.formState.errors.telefone}>
+                  <FieldLabel htmlFor="telefone">Telefone (opcional)</FieldLabel>
+                  <Input id="telefone" {...form.register("telefone")} />
+                  <FieldError errors={[form.formState.errors.telefone]} />
+                </Field>
+
+                <Field data-invalid={!!form.formState.errors.celular}>
+                  <FieldLabel htmlFor="celular">Celular (opcional)</FieldLabel>
+                  <Input id="celular" {...form.register("celular")} />
+                  <FieldError errors={[form.formState.errors.celular]} />
+                </Field>
+              </div>
             </FieldGroup>
           </form>
 

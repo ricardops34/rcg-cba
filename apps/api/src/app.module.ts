@@ -14,6 +14,9 @@ import { EstruturaModule } from './modules/estrutura/estrutura.module';
 import { ColaboradoresModule } from './modules/colaboradores/colaboradores.module';
 import { MetasModule } from './modules/metas/metas.module';
 import { ClientesModule } from './modules/clientes/clientes.module';
+import { NotasSaidaModule } from './modules/notas-saida/notas-saida.module';
+import { ProdutosModule } from './modules/produtos/produtos.module';
+import { TitulosReceberModule } from './modules/titulos-receber/titulos-receber.module';
 
 @Module({
   imports: [
@@ -34,6 +37,9 @@ import { ClientesModule } from './modules/clientes/clientes.module';
     ColaboradoresModule,
     MetasModule,
     ClientesModule,
+    NotasSaidaModule,
+    ProdutosModule,
+    TitulosReceberModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -94,4 +94,111 @@ export class ClientesService {
       });
     });
   }
+
+  /**
+   * Posição consolidada do cliente: indicadores de compra (notas de saída),
+   * financeiro (títulos a receber) e comodato — equivalente às views
+   * cliente_indicadores / view_cliente_saldo_titulo do sistema legado.
+   */
+  async posicao(empresaId: string, user: AuthenticatedUser, id: string) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const equipe = await equipeColaboradorIds(tx, empresaId, user);
+      const cliente = await tx.cliente.findFirst({
+        where: {
+          id,
+          empresaId,
+          deletedAt: null,
+          ...(equipe ? { colaboradorId: { in: equipe } } : {}),
+        },
+        include: {
+          colaborador: {
+            select: { nomeReduzido: true, usuario: { select: { nome: true } } },
+          },
+        },
+      });
+      if (!cliente) throw new NotFoundException('Cliente não encontrado');
+
+      const hoje = new Date();
+      const inicio12m = new Date(hoje);
+      inicio12m.setMonth(inicio12m.getMonth() - 12);
+
+      const notasWhere = { empresaId, clienteId: id, deletedAt: null, ativo: true };
+      const titulosWhere = { empresaId, clienteId: id, deletedAt: null, ativo: true };
+
+      const [vendas, faturamento12m, comodatos, titulosAbertos, tituloMaisAtrasado] =
+        await Promise.all([
+          tx.notaSaida.aggregate({
+            where: { ...notasWhere, comodato: false },
+            _count: true,
+            _sum: { vlrItens: true },
+            _min: { dtEmissao: true },
+            _max: { dtEmissao: true },
+          }),
+          tx.notaSaida.aggregate({
+            where: { ...notasWhere, comodato: false, dtEmissao: { gte: inicio12m } },
+            _sum: { vlrItens: true },
+          }),
+          tx.notaSaida.aggregate({
+            where: { ...notasWhere, comodato: true },
+            _count: true,
+            _sum: { vlrItens: true },
+          }),
+          tx.tituloReceber.aggregate({
+            where: { ...titulosWhere, saldo: { gt: 0 } },
+            _count: true,
+            _sum: { saldo: true },
+          }),
+          tx.tituloReceber.findFirst({
+            where: { ...titulosWhere, saldo: { gt: 0 }, vencimento: { lt: hoje } },
+            orderBy: { vencimento: 'asc' },
+            select: { vencimento: true },
+          }),
+        ]);
+
+      const vencidos = await tx.tituloReceber.aggregate({
+        where: { ...titulosWhere, saldo: { gt: 0 }, vencimento: { lt: hoje } },
+        _sum: { saldo: true },
+      });
+
+      const ultimaCompra = vendas._max.dtEmissao;
+      const qtdNotas = vendas._count;
+      const faturamentoTotal = vendas._sum.vlrItens ?? 0;
+      const DIA_MS = 24 * 60 * 60 * 1000;
+
+      return {
+        cliente: {
+          id: cliente.id,
+          codigoErp: cliente.codigoErp,
+          razaoSocial: cliente.razaoSocial,
+          nomeFantasia: cliente.nomeFantasia,
+          cnpjCpf: cliente.cnpjCpf,
+          municipio: cliente.municipio,
+          uf: cliente.uf,
+          telefone: cliente.telefone,
+          email: cliente.email,
+          ativo: cliente.ativo,
+          vendedorNome:
+            cliente.colaborador?.nomeReduzido ?? cliente.colaborador?.usuario.nome ?? null,
+        },
+        indicadores: {
+          primeiraCompra: vendas._min.dtEmissao?.toISOString() ?? null,
+          ultimaCompra: ultimaCompra?.toISOString() ?? null,
+          diasSemCompra: ultimaCompra
+            ? Math.floor((hoje.getTime() - ultimaCompra.getTime()) / DIA_MS)
+            : null,
+          qtdNotas,
+          faturamento12m: faturamento12m._sum.vlrItens ?? 0,
+          ticketMedio: qtdNotas > 0 ? faturamentoTotal / qtdNotas : 0,
+          saldoAberto: titulosAbertos._sum.saldo ?? 0,
+          valorVencido: vencidos._sum.saldo ?? 0,
+          titulosAbertos: titulosAbertos._count,
+          maiorAtraso: tituloMaisAtrasado
+            ? Math.floor((hoje.getTime() - tituloMaisAtrasado.vencimento.getTime()) / DIA_MS)
+            : 0,
+          comodatoAtivo: comodatos._sum.vlrItens ?? 0,
+          qtdComodatos: comodatos._count,
+        },
+      };
+    });
+  }
 }

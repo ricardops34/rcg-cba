@@ -94,9 +94,32 @@ export function UsuarioEmpresasSection({ usuarioId }: { usuarioId: string }) {
               key={link.empresaId}
               className="flex items-center justify-between gap-2 rounded-xl border border-border/70 px-3 py-2"
             >
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{link.empresa.nomeFantasia}</p>
-                <p className="text-xs text-muted-foreground">{link.perfil.nome}</p>
+                {link.empresaId === empresaAtivaId ? (
+                  <Select
+                    value={link.perfilId}
+                    disabled={vincular.isPending}
+                    onValueChange={(value) => {
+                      if (value !== link.perfilId) {
+                        vincular.mutate(value);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="mt-1 h-7 w-full max-w-48 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {perfisQuery.data?.data.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="text-xs text-muted-foreground">{link.perfil.nome}</p>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {link.empresaId === empresaAtivaId && <Badge variant="outline">Empresa ativa</Badge>}
