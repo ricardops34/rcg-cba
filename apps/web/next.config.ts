@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  allowedDevOrigins: ["rcgcba.bjsoft.com.br"],
 };
 
 export default nextConfig;

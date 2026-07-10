@@ -1,0 +1,52 @@
+version: "3.8"
+
+services:
+  api:
+    image: rcgcba-api-dev:latest
+    working_dir: /app
+    volumes:
+      - type: bind
+        source: /root/rcgcba
+        target: /app
+    networks:
+      network_public:
+        aliases:
+          - rcgcba-api
+    deploy:
+      replicas: 1
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=network_public"
+        - "traefik.http.routers.rcgcba-api.rule=Host(`api.rcgcba.bjsoft.com.br`)"
+        - "traefik.http.routers.rcgcba-api.entrypoints=websecure"
+        - "traefik.http.routers.rcgcba-api.tls=true"
+        - "traefik.http.routers.rcgcba-api.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.rcgcba-api.loadbalancer.server.port=3001"
+
+  web:
+    image: rcgcba-web-dev:latest
+    working_dir: /app
+    environment:
+      NEXT_PUBLIC_API_URL: "https://api.rcgcba.bjsoft.com.br/api/v1"
+    volumes:
+      - type: bind
+        source: /root/rcgcba
+        target: /app
+    networks:
+      network_public:
+        aliases:
+          - rcgcba-web
+    deploy:
+      replicas: 1
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=network_public"
+        - "traefik.http.routers.rcgcba-web.rule=Host(`rcgcba.bjsoft.com.br`)"
+        - "traefik.http.routers.rcgcba-web.entrypoints=websecure"
+        - "traefik.http.routers.rcgcba-web.tls=true"
+        - "traefik.http.routers.rcgcba-web.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.rcgcba-web.loadbalancer.server.port=3000"
+
+networks:
+  network_public:
+    external: true
