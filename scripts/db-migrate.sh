@@ -29,10 +29,6 @@ else
   echo "Usando DATABASE_URL de apps/api/.env."
 fi
 
-# Garante o Prisma Client atualizado com o schema (idempotente).
-log "prisma generate"
-pnpm exec prisma generate
-
 log "Migrations pendentes (antes)"
 pnpm exec prisma migrate status || true
 
