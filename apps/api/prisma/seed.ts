@@ -15,6 +15,9 @@ interface LegacyVendedor {
   email: string | null;
   status: string | null;
   desligado: string | null;
+  telefone: string | null;
+  celular: string | null;
+  dataNascimento: string | null;
 }
 interface LegacyMeta {
   vendedorId: number;
@@ -145,6 +148,10 @@ async function main() {
     { id: 'seed-menu-estrutura', nome: 'Estrutura de Menu', rota: '/admin/estrutura', icone: 'layout-grid', codigo: 'menus', moduloId: moduloAdministracao.id },
     { id: 'seed-menu-colaboradores', nome: 'Vendedores', rota: '/comercial/vendedores', icone: 'user-round', codigo: 'colaboradores', moduloId: moduloComercial.id },
     { id: 'seed-menu-clientes', nome: 'Clientes', rota: '/comercial/clientes', icone: 'contact', codigo: 'clientes', moduloId: moduloComercial.id },
+    { id: 'seed-menu-notas-saida', nome: 'Notas Fiscais de Saída', rota: '/comercial/notas-saida', icone: 'file-text', codigo: 'notas-saida', moduloId: moduloComercial.id },
+    { id: 'seed-menu-produtos', nome: 'Produtos', rota: '/comercial/produtos', icone: 'package', codigo: 'produtos', moduloId: moduloComercial.id },
+    { id: 'seed-menu-titulos-receber', nome: 'Títulos a Receber', rota: '/comercial/titulos-receber', icone: 'receipt', codigo: 'titulos-receber', moduloId: moduloComercial.id },
+    { id: 'seed-menu-posicao-clientes', nome: 'Posição de Clientes', rota: '/comercial/posicao-clientes', icone: 'user-search', codigo: 'posicao-clientes', moduloId: moduloComercial.id },
     { id: 'seed-menu-metas', nome: 'Metas', rota: '/comercial/metas', icone: 'target', codigo: 'metas', moduloId: moduloComercial.id },
     { id: 'seed-menu-acompanhamento', nome: 'Acompanhamento', rota: '/comercial/acompanhamento', icone: 'line-chart', codigo: 'acompanhamento', moduloId: moduloComercial.id },
   ];
@@ -179,6 +186,10 @@ async function main() {
   const rotinas = await prisma.rotina.findMany({ where: { deletedAt: null } });
   const rotinaColaboradores = rotinas.find((r) => r.codigo === 'colaboradores');
   const rotinaClientes = rotinas.find((r) => r.codigo === 'clientes');
+  const rotinaNotasSaida = rotinas.find((r) => r.codigo === 'notas-saida');
+  const rotinaProdutos = rotinas.find((r) => r.codigo === 'produtos');
+  const rotinaTitulos = rotinas.find((r) => r.codigo === 'titulos-receber');
+  const rotinaPosicao = rotinas.find((r) => r.codigo === 'posicao-clientes');
   const rotinaMetas = rotinas.find((r) => r.codigo === 'metas');
   const rotinaAcompanhamento = rotinas.find((r) => r.codigo === 'acompanhamento');
   const senhaHash = await bcrypt.hash(SENHA_PADRAO, 12);
@@ -247,6 +258,10 @@ async function main() {
     // desempenho de toda a estrutura abaixo dele.
     if (rotinaColaboradores) await conceder(perfilGerente.id, rotinaColaboradores.id, CRUD);
     if (rotinaClientes) await conceder(perfilGerente.id, rotinaClientes.id, CRUD);
+    if (rotinaNotasSaida) await conceder(perfilGerente.id, rotinaNotasSaida.id, CRUD);
+    if (rotinaProdutos) await conceder(perfilGerente.id, rotinaProdutos.id, CRUD);
+    if (rotinaTitulos) await conceder(perfilGerente.id, rotinaTitulos.id, CRUD);
+    if (rotinaPosicao) await conceder(perfilGerente.id, rotinaPosicao.id, ['visualizar']);
     if (rotinaMetas) await conceder(perfilGerente.id, rotinaMetas.id, CRUD);
     if (rotinaAcompanhamento) await conceder(perfilGerente.id, rotinaAcompanhamento.id, ['visualizar']);
 
@@ -264,6 +279,10 @@ async function main() {
     });
     if (rotinaColaboradores) await conceder(perfilSupervisor.id, rotinaColaboradores.id, CRUD);
     if (rotinaClientes) await conceder(perfilSupervisor.id, rotinaClientes.id, CRUD);
+    if (rotinaNotasSaida) await conceder(perfilSupervisor.id, rotinaNotasSaida.id, CRUD);
+    if (rotinaProdutos) await conceder(perfilSupervisor.id, rotinaProdutos.id, CRUD);
+    if (rotinaTitulos) await conceder(perfilSupervisor.id, rotinaTitulos.id, CRUD);
+    if (rotinaPosicao) await conceder(perfilSupervisor.id, rotinaPosicao.id, ['visualizar']);
     if (rotinaMetas) await conceder(perfilSupervisor.id, rotinaMetas.id, CRUD);
     if (rotinaAcompanhamento) await conceder(perfilSupervisor.id, rotinaAcompanhamento.id, ['visualizar']);
 
@@ -281,6 +300,10 @@ async function main() {
     });
     if (rotinaColaboradores) await conceder(perfilVendedor.id, rotinaColaboradores.id, ['visualizar']);
     if (rotinaClientes) await conceder(perfilVendedor.id, rotinaClientes.id, ['visualizar', 'cadastrar', 'editar']);
+    if (rotinaNotasSaida) await conceder(perfilVendedor.id, rotinaNotasSaida.id, ['visualizar', 'cadastrar', 'editar']);
+    if (rotinaProdutos) await conceder(perfilVendedor.id, rotinaProdutos.id, ['visualizar']);
+    if (rotinaTitulos) await conceder(perfilVendedor.id, rotinaTitulos.id, ['visualizar']);
+    if (rotinaPosicao) await conceder(perfilVendedor.id, rotinaPosicao.id, ['visualizar']);
     if (rotinaMetas) await conceder(perfilVendedor.id, rotinaMetas.id, ['visualizar']);
     if (rotinaAcompanhamento) await conceder(perfilVendedor.id, rotinaAcompanhamento.id, ['visualizar']);
 
@@ -399,11 +422,15 @@ async function main() {
   if (legado && primeira) {
     const empresaRcg = await prisma.empresa.findUnique({ where: { cnpj: primeira.cnpj } });
     if (empresaRcg) {
-      const [perfilSup, perfilVend, gerenteUser] = await Promise.all([
+      const [perfilAdmin, perfilSup, perfilVend, gerenteUser] = await Promise.all([
+        prisma.perfil.findUnique({ where: { empresaId_nome: { empresaId: empresaRcg.id, nome: 'Administrador' } } }),
         prisma.perfil.findUnique({ where: { empresaId_nome: { empresaId: empresaRcg.id, nome: 'Supervisor' } } }),
         prisma.perfil.findUnique({ where: { empresaId_nome: { empresaId: empresaRcg.id, nome: 'Vendedor' } } }),
         prisma.usuario.findUnique({ where: { email: primeira.gerenteEmail } }),
       ]);
+      // Usuário real do sistema legado que deve ter acesso total (TI) — recebe o
+      // perfil Administrador em vez do perfil do próprio cargo organizacional.
+      const EMAIL_ADMIN_REAL = 'informatica@rcgdist.com.br';
       const gerenteColab = gerenteUser
         ? await prisma.colaborador.findUnique({ where: { usuarioId: gerenteUser.id } })
         : null;
@@ -434,6 +461,9 @@ async function main() {
           const nome = p.nome || p.nomeReduzido || `${tipo} ${p.codErp ?? p.id}`;
           const ativo = p.desligado !== 'S';
           const email = emailPara(p, tipo);
+          const ehAdminReal = p.email?.trim().toLowerCase() === EMAIL_ADMIN_REAL;
+          const perfilFinal = ehAdminReal && perfilAdmin ? perfilAdmin.id : perfilId;
+          const dataNascimento = p.dataNascimento ? new Date(p.dataNascimento) : null;
           const usuario = await prisma.usuario.upsert({
             where: { email },
             create: { nome, email, senhaHash, ativo },
@@ -441,8 +471,8 @@ async function main() {
           });
           await prisma.usuarioEmpresa.upsert({
             where: { usuarioId_empresaId: { usuarioId: usuario.id, empresaId: empresaRcg.id } },
-            create: { usuarioId: usuario.id, empresaId: empresaRcg.id, perfilId },
-            update: { perfilId, ativo: true },
+            create: { usuarioId: usuario.id, empresaId: empresaRcg.id, perfilId: perfilFinal },
+            update: { perfilId: perfilFinal, ativo: true },
           });
           const colab = await prisma.colaborador.upsert({
             where: { usuarioId: usuario.id },
@@ -453,9 +483,21 @@ async function main() {
               superiorId,
               codigoErp: p.codErp,
               nomeReduzido: p.nomeReduzido,
+              telefone: p.telefone,
+              celular: p.celular,
+              dataNascimento,
               ativo,
             },
-            update: { empresaId: empresaRcg.id, cargo, superiorId, codigoErp: p.codErp, nomeReduzido: p.nomeReduzido },
+            update: {
+              empresaId: empresaRcg.id,
+              cargo,
+              superiorId,
+              codigoErp: p.codErp,
+              nomeReduzido: p.nomeReduzido,
+              telefone: p.telefone,
+              celular: p.celular,
+              dataNascimento,
+            },
           });
           return colab.id;
         };

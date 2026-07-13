@@ -30,6 +30,9 @@ export const colaboradorCreateSchema = z.object({
     .max(60)
     .optional()
     .describe("Nome curto/apelido usado em listagens e relatórios (ex.: 'CARLOS' em vez do nome completo)"),
+  telefone: z.string().trim().max(20).optional().or(z.literal("")),
+  celular: z.string().trim().max(20).optional().or(z.literal("")),
+  dataNascimento: z.coerce.date().nullable().optional(),
   ativo: z.boolean().default(true).describe("Colaboradores inativos saem dos relatórios e da hierarquia ativa"),
 });
 export type ColaboradorCreate = z.infer<typeof colaboradorCreateSchema>;
@@ -52,6 +55,9 @@ export const COLABORADOR_CREATE_EXAMPLE: ColaboradorCreate = {
   cargo: "vendedor",
   codigoErp: "000315",
   nomeReduzido: "CARLOS",
+  telefone: "",
+  celular: "",
+  dataNascimento: null,
   ativo: true,
 };
 

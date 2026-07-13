@@ -13,3 +13,6 @@ backup/
 
 # Arquivos enviados por usuários (logos de empresa); não versionados.
 apps/api/uploads/
+
+# Dumps grandes extraídos do MySQL legado para importação (gerados sob demanda)
+apps/api/prisma/seed-data/import-legado/

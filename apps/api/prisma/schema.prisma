@@ -32,6 +32,9 @@ model Empresa {
   colaboradores   Colaborador[]
   metas           MetaVendedor[]
   clientes        Cliente[]
+  notasSaida      NotaSaida[]
+  produtos        Produto[]
+  titulosReceber  TituloReceber[]
 
   @@map("empresas")
 }
@@ -230,14 +233,17 @@ enum Cargo {
 }
 
 model Colaborador {
-  id           String  @id @default(uuid())
-  empresaId    String
-  usuarioId    String  @unique
-  superiorId   String?
-  cargo        Cargo
-  codigoErp    String?
-  nomeReduzido String?
-  ativo        Boolean @default(true)
+  id             String    @id @default(uuid())
+  empresaId      String
+  usuarioId      String    @unique
+  superiorId     String?
+  cargo          Cargo
+  codigoErp      String?
+  nomeReduzido   String?
+  telefone       String?
+  celular        String?
+  dataNascimento DateTime?
+  ativo          Boolean   @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -250,8 +256,10 @@ model Colaborador {
   usuario    Usuario       @relation(fields: [usuarioId], references: [id])
   superior   Colaborador?  @relation("ColaboradorHierarquia", fields: [superiorId], references: [id])
   liderados  Colaborador[] @relation("ColaboradorHierarquia")
-  metas      MetaVendedor[]
-  clientes   Cliente[]
+  metas          MetaVendedor[]
+  clientes       Cliente[]
+  notasSaida     NotaSaida[]
+  titulosReceber TituloReceber[]
 
   @@map("colaboradores")
 }
@@ -286,12 +294,152 @@ model Cliente {
   updatedBy String?
   deletedBy String?
 
-  empresa     Empresa      @relation(fields: [empresaId], references: [id])
-  colaborador Colaborador? @relation(fields: [colaboradorId], references: [id])
+  empresa        Empresa         @relation(fields: [empresaId], references: [id])
+  colaborador    Colaborador?    @relation(fields: [colaboradorId], references: [id])
+  notasSaida     NotaSaida[]
+  titulosReceber TituloReceber[]
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, colaboradorId])
   @@map("clientes")
+}
+
+// Catálogo de produtos, espelhando a tabela `produto` do sistema legado
+// (categoria/subcategoria achatadas como texto — o legado usa FK, mas o
+// cadastro novo não precisa da tabela auxiliar para as análises comerciais).
+model Produto {
+  id           String  @id @default(uuid())
+  empresaId    String
+  codigoErp    String
+  descricao    String
+  unidade      String?
+  categoria    String?
+  subCategoria String?
+  marca        String?
+  codigoBarras String?
+  ncm          String?
+  qtdEmbalagem Float?
+  peso         Float?
+  ultimoPreco  Float?
+  observacao   String?
+  ativo        Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa        Empresa         @relation(fields: [empresaId], references: [id])
+  itensNotaSaida NotaSaidaItem[]
+
+  @@unique([empresaId, codigoErp])
+  @@index([empresaId, descricao])
+  @@map("produtos")
+}
+
+// Título a receber (contas a receber), espelhando `titulo_receber` do legado.
+// `saldo` > 0 = em aberto; vencido quando além disso vencimento < hoje.
+// `dtBaixa` registra a liquidação. Vinculado ao vendedor para a visão por
+// hierarquia (mesma regra de notas de saída).
+model TituloReceber {
+  id            String    @id @default(uuid())
+  empresaId     String
+  clienteId     String?
+  colaboradorId String?
+  numero        String
+  parcela       String?
+  prefixo       String?
+  tipo          String?
+  emissao       DateTime
+  vencimento    DateTime
+  valor         Float     @default(0)
+  saldo         Float     @default(0)
+  dtBaixa       DateTime?
+  historico     String?
+  ativo         Boolean   @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa     Empresa      @relation(fields: [empresaId], references: [id])
+  cliente     Cliente?     @relation(fields: [clienteId], references: [id])
+  colaborador Colaborador? @relation(fields: [colaboradorId], references: [id])
+
+  @@index([empresaId, clienteId])
+  @@index([empresaId, colaboradorId, vencimento])
+  @@map("titulos_receber")
+}
+
+// Nota fiscal de saída (venda faturada), espelhando a tabela `nota_saida` do
+// sistema legado. `vlrItens` é o valor de faturamento por trás do
+// `valorRealizado` em MetaVendedor — hoje lançado manualmente lá, mas esta é
+// a fonte de dados real para futura consolidação automática do acompanhamento.
+model NotaSaida {
+  id            String    @id @default(uuid())
+  empresaId     String
+  clienteId     String?
+  colaboradorId String?
+  numero        String
+  serie         String?
+  especieFiscal String?
+  dtEmissao     DateTime
+  ano           Int
+  mes           Int
+  vlrMercadoria Float     @default(0)
+  vlrDesconto   Float     @default(0)
+  vlrIcms       Float     @default(0)
+  vlrIpi        Float     @default(0)
+  vlrFrete      Float     @default(0)
+  vlrItens      Float     @default(0)
+  chaveNfe      String?
+  observacao    String?
+  comodato      Boolean   @default(false)
+  ativo         Boolean   @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa     Empresa         @relation(fields: [empresaId], references: [id])
+  cliente     Cliente?        @relation(fields: [clienteId], references: [id])
+  colaborador Colaborador?    @relation(fields: [colaboradorId], references: [id])
+  itens       NotaSaidaItem[]
+
+  @@unique([empresaId, numero, serie])
+  @@index([empresaId, colaboradorId, ano, mes])
+  @@index([empresaId, clienteId])
+  @@map("notas_saida")
+}
+
+model NotaSaidaItem {
+  id          String  @id @default(uuid())
+  notaSaidaId String
+  produtoId   String?
+  item        Int
+  descricao   String
+  quantidade  Float   @default(1)
+  vlrUnitario Float   @default(0)
+  vlrDesconto Float   @default(0)
+  vlrTotal    Float   @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notaSaida NotaSaida @relation(fields: [notaSaidaId], references: [id], onDelete: Cascade)
+  produto   Produto?  @relation(fields: [produtoId], references: [id])
+
+  @@index([notaSaidaId])
+  @@index([produtoId])
+  @@map("notas_saida_itens")
 }
 
 // Meta mensal por vendedor — formato herdado do sistema antigo
