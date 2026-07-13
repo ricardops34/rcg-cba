@@ -1,0 +1,61 @@
+# Stack de produção/teste na VPS — imagens buildadas pelo GitHub Actions e
+# publicadas no ghcr.io (ver .github/workflows/deploy.yml). Sem bind mount:
+# o código está dentro da imagem; deploy = push na main.
+#
+# Os valores de DATABASE_URL/JWT_*/etc. NÃO ficam neste arquivo: são definidos
+# como variáveis de ambiente do stack no Portainer (Stacks → rcgcba → Env).
+version: "3.8"
+
+services:
+  api:
+    image: ghcr.io/ricardops34/rcgcba-api:latest
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN}
+      PORT: "3001"
+      CORS_ORIGIN: ${CORS_ORIGIN}
+    volumes:
+      # Uploads (logos de empresa) persistem fora do container.
+      - uploads:/app/apps/api/uploads
+    networks:
+      network_public:
+        aliases:
+          - rcgcba-api
+    deploy:
+      replicas: 1
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=network_public"
+        - "traefik.http.routers.rcgcba-api.rule=Host(`api.rcgcba.bjsoft.com.br`)"
+        - "traefik.http.routers.rcgcba-api.entrypoints=websecure"
+        - "traefik.http.routers.rcgcba-api.tls=true"
+        - "traefik.http.routers.rcgcba-api.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.rcgcba-api.loadbalancer.server.port=3001"
+
+  web:
+    image: ghcr.io/ricardops34/rcgcba-web:latest
+    networks:
+      network_public:
+        aliases:
+          - rcgcba-web
+    deploy:
+      replicas: 1
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=network_public"
+        - "traefik.http.routers.rcgcba-web.rule=Host(`rcgcba.bjsoft.com.br`)"
+        - "traefik.http.routers.rcgcba-web.entrypoints=websecure"
+        - "traefik.http.routers.rcgcba-web.tls=true"
+        - "traefik.http.routers.rcgcba-web.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.rcgcba-web.loadbalancer.server.port=3000"
+
+volumes:
+  uploads:
+
+networks:
+  network_public:
+    external: true

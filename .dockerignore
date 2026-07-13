@@ -1,0 +1,20 @@
+# Mantém o contexto de build enxuto (e sem segredos).
+.git
+node_modules
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+coverage
+backup
+*.log
+.env
+.env.*
+**/.env
+**/.env.*
+apps/api/uploads
+apps/api/prisma/seed-data/import-legado
+docker
+scripts
+.claude
+.github
