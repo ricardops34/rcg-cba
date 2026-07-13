@@ -10,3 +10,6 @@ coverage/
 .DS_Store
 backup/
 .claude/settings.local.json
+
+# Arquivos enviados por usuários (logos de empresa); não versionados.
+apps/api/uploads/

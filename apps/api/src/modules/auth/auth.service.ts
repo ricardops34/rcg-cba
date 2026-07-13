@@ -2,6 +2,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import {
   ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -91,11 +92,26 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
-    const vinculo = await this.findVinculoAtivo(usuario.id);
+    // Quando o login vem com o alias da empresa (?empresa=<alias> na tela de
+    // login), a sessão entra diretamente nessa empresa — desde que o usuário
+    // tenha vínculo ativo com ela. Sem alias, cai na primeira empresa ativa.
+    let empresaId: string | undefined;
+    if (input.empresaAlias) {
+      const empresa = await this.prisma.empresa.findFirst({
+        where: { alias: input.empresaAlias, ativo: true, deletedAt: null },
+        select: { id: true },
+      });
+      if (!empresa) {
+        throw new ForbiddenException('Você não tem acesso a esta empresa');
+      }
+      empresaId = empresa.id;
+    }
+
+    const vinculo = await this.findVinculoAtivo(usuario.id, empresaId);
     if (!vinculo) {
-      throw new UnauthorizedException(
-        'Usuário sem empresa ativa vinculada',
-      );
+      throw input.empresaAlias
+        ? new ForbiddenException('Você não tem acesso a esta empresa')
+        : new UnauthorizedException('Usuário sem empresa ativa vinculada');
     }
 
     const { accessToken } = await this.buildAccessToken(vinculo.id);
@@ -114,6 +130,25 @@ export class AuthService {
       accessToken,
       refreshToken,
       expiresIn: 15 * 60,
+    };
+  }
+
+  /**
+   * Branding público de uma empresa pelo alias, para a tela de login exibir
+   * logo e nome antes de existir sessão. Não expõe dados sensíveis.
+   */
+  async empresaBranding(alias: string) {
+    const empresa = await this.prisma.empresa.findFirst({
+      where: { alias: alias.toLowerCase(), ativo: true, deletedAt: null },
+      select: { alias: true, nomeFantasia: true, logoUrl: true },
+    });
+    if (!empresa || !empresa.alias) {
+      throw new NotFoundException('Empresa não encontrada');
+    }
+    return {
+      alias: empresa.alias,
+      nomeFantasia: empresa.nomeFantasia,
+      logoUrl: empresa.logoUrl,
     };
   }
 

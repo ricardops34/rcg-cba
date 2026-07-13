@@ -16,6 +16,8 @@ model Empresa {
   razaoSocial  String
   nomeFantasia String
   cnpj         String   @unique
+  alias        String?  @unique
+  logoUrl      String?
   ativo        Boolean  @default(true)
 
   createdAt DateTime  @default(now())

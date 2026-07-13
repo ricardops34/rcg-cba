@@ -2,6 +2,16 @@ import { useAuthStore } from "@/stores/auth-store";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api/v1";
 
+/** Origem da API (sem o prefixo /api/v1), usada para servir assets como logos. */
+export const API_ORIGIN = new URL(API_URL).origin;
+
+/** Monta a URL absoluta de um asset servido pela API (ex.: /uploads/logos/x.png). */
+export function assetUrl(path: string | null | undefined): string | null {
+  if (!path) return null;
+  if (/^https?:\/\//.test(path)) return path;
+  return `${API_ORIGIN}${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -78,5 +88,38 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   }
 
   if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
+/** Envia um arquivo (multipart/form-data) com autenticação e refresh de token. */
+export async function apiUpload<T>(path: string, file: File, field = "file"): Promise<T> {
+  const url = `${API_URL}${path}`;
+
+  const doRequest = async (token: string | null) => {
+    const formData = new FormData();
+    formData.append(field, file);
+    return fetch(url, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+  };
+
+  let token = useAuthStore.getState().accessToken;
+  let res = await doRequest(token);
+
+  if (res.status === 401 && useAuthStore.getState().refreshToken) {
+    refreshPromise ??= refreshAccessToken().finally(() => {
+      refreshPromise = null;
+    });
+    token = await refreshPromise;
+    if (token) res = await doRequest(token);
+  }
+
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}));
+    throw new ApiError(payload.message ?? res.statusText, res.status, payload.details);
+  }
+
   return res.json() as Promise<T>;
 }

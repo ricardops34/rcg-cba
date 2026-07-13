@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -9,6 +9,7 @@ import type { Request } from 'express';
 import {
   AUTH_TOKENS_EXAMPLE,
   CURRENT_USER_EXAMPLE,
+  EMPRESA_BRANDING_EXAMPLE,
   LOGIN_EXAMPLE,
 } from '@plataforma/contracts';
 import { AuthService } from './auth.service';
@@ -47,6 +48,20 @@ export class AuthController {
   @Post('login')
   login(@Body() dto: LoginDto, @Req() req: Request) {
     return this.authService.login(dto, this.meta(req));
+  }
+
+  @ApiOperation({
+    summary: 'Branding público da empresa por alias',
+    description:
+      'Endpoint público (sem autenticação) usado pela tela de login para exibir ' +
+      'logo e nome da empresa a partir do alias informado na URL (?empresa=<alias>). ' +
+      'Retorna 404 se não houver empresa ativa com esse alias.',
+  })
+  @ApiResponse({ status: 200, schema: { example: EMPRESA_BRANDING_EXAMPLE } })
+  @ApiResponse({ status: 404, description: 'Empresa não encontrada' })
+  @Get('empresa-branding')
+  empresaBranding(@Query('alias') alias: string) {
+    return this.authService.empresaBranding(alias ?? '');
   }
 
   @ApiOperation({

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -10,7 +10,7 @@ import {
   type EmpresaCreate,
 } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
-import { ApiError } from "@/lib/api-client";
+import { ApiError, apiUpload, assetUrl } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
@@ -30,7 +30,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ImageIcon, MoreHorizontal, Pencil, Trash2, Upload } from "lucide-react";
 
 export default function EmpresasPage() {
   const [search, setSearch] = useState("");
@@ -38,6 +38,8 @@ export default function EmpresasPage() {
   const [pageSize, setPageSize] = useState(10);
   const [editing, setEditing] = useState<Empresa | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   const { data, isLoading, isFetching, refetch } = useResourceList<Empresa>("empresas", {
     search,
@@ -50,12 +52,12 @@ export default function EmpresasPage() {
 
   const form = useForm<EmpresaCreate>({
     resolver: zodResolver(empresaCreateSchema),
-    defaultValues: { razaoSocial: "", nomeFantasia: "", cnpj: "", ativo: true },
+    defaultValues: { razaoSocial: "", nomeFantasia: "", cnpj: "", alias: null, ativo: true },
   });
 
   const openCreate = () => {
     setEditing(null);
-    form.reset({ razaoSocial: "", nomeFantasia: "", cnpj: "", ativo: true });
+    form.reset({ razaoSocial: "", nomeFantasia: "", cnpj: "", alias: null, ativo: true });
     setSheetOpen(true);
   };
 
@@ -65,9 +67,27 @@ export default function EmpresasPage() {
       razaoSocial: empresa.razaoSocial,
       nomeFantasia: empresa.nomeFantasia,
       cnpj: empresa.cnpj,
+      alias: empresa.alias ?? null,
       ativo: empresa.ativo,
     });
     setSheetOpen(true);
+  };
+
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !editing) return;
+    setUploadingLogo(true);
+    try {
+      const updated = await apiUpload<Empresa>(`/empresas/${editing.id}/logo`, file);
+      setEditing(updated);
+      toast.success("Logo atualizado");
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Erro ao enviar logo");
+    } finally {
+      setUploadingLogo(false);
+    }
   };
 
   const onSubmit = async (values: EmpresaCreate) => {
@@ -187,6 +207,63 @@ export default function EmpresasPage() {
                 <Input id="cnpj" maxLength={14} {...form.register("cnpj")} />
                 <FieldError errors={[form.formState.errors.cnpj]} />
               </Field>
+
+              <Field data-invalid={!!form.formState.errors.alias}>
+                <FieldLabel htmlFor="alias">Alias (URL de login)</FieldLabel>
+                <Input
+                  id="alias"
+                  placeholder="ex.: rcg"
+                  maxLength={40}
+                  {...form.register("alias", {
+                    setValueAs: (v) => (v?.trim() ? v.trim().toLowerCase() : null),
+                  })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Usado em <span className="font-mono">/login?empresa=&lt;alias&gt;</span>. Apenas
+                  letras minúsculas, números e hífen.
+                </p>
+                <FieldError errors={[form.formState.errors.alias]} />
+              </Field>
+
+              {editing && (
+                <Field>
+                  <FieldLabel>Logo</FieldLabel>
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border/60 bg-muted/40">
+                      {editing.logoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={assetUrl(editing.logoUrl) ?? ""}
+                          alt="Logo da empresa"
+                          className="size-full object-contain"
+                        />
+                      ) : (
+                        <ImageIcon className="size-6 text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <input
+                        ref={logoInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        className="hidden"
+                        onChange={handleLogoUpload}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={uploadingLogo}
+                        onClick={() => logoInputRef.current?.click()}
+                      >
+                        <Upload className="size-4" />
+                        {uploadingLogo ? "Enviando..." : "Enviar logo"}
+                      </Button>
+                      <p className="text-xs text-muted-foreground">PNG, JPEG, WEBP ou SVG (até 2 MB).</p>
+                    </div>
+                  </div>
+                </Field>
+              )}
             </FieldGroup>
           </form>
 

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import {
   BadgeCheck,
   BarChart3,
   Briefcase,
+  Building2,
   Eye,
   EyeOff,
   Handshake,
@@ -18,14 +19,20 @@ import {
   Lightbulb,
   Lock,
   Mail,
+  Pencil,
   Radar,
   ShieldCheck,
   Target,
   TrendingUp,
   Users,
 } from "lucide-react";
-import { loginSchema, type LoginInput, type CurrentUser } from "@plataforma/contracts";
-import { apiFetch, ApiError } from "@/lib/api-client";
+import {
+  loginSchema,
+  type LoginInput,
+  type CurrentUser,
+  type EmpresaBranding,
+} from "@plataforma/contracts";
+import { apiFetch, ApiError, assetUrl } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,15 +57,65 @@ const PILARES = [
   { icon: BadgeCheck, label: "Resultados" },
 ];
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlAlias = searchParams.get("empresa")?.trim().toLowerCase() ?? "";
+
   const { accessToken, setTokens, setUser } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
 
+  // Branding da empresa: quando o alias resolve, exibimos logo e nome dela e
+  // escondemos o campo de digitação. Sem alias resolvido, mostramos o campo.
+  const [alias, setAlias] = useState(urlAlias);
+  const [branding, setBranding] = useState<EmpresaBranding | null>(null);
+  const [brandingLoading, setBrandingLoading] = useState(false);
+  const aliasInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (accessToken) router.replace("/");
   }, [accessToken, router]);
+
+  // Busca o branding sempre que o alias muda (com debounce), e reflete na URL.
+  useEffect(() => {
+    const value = alias.trim().toLowerCase();
+    if (value.length < 2) {
+      setBranding(null);
+      setBrandingLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setBrandingLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const data = await apiFetch<EmpresaBranding>("/auth/empresa-branding", {
+          query: { alias: value },
+        });
+        if (cancelled) return;
+        setBranding(data);
+        // Reflete o alias resolvido na URL, para o link ficar compartilhável.
+        window.history.replaceState(null, "", `/login?empresa=${data.alias}`);
+      } catch {
+        if (!cancelled) setBranding(null);
+      } finally {
+        if (!cancelled) setBrandingLoading(false);
+      }
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [alias]);
+
+  const trocarEmpresa = () => {
+    setBranding(null);
+    setAlias("");
+    window.history.replaceState(null, "", "/login");
+    setTimeout(() => aliasInputRef.current?.focus(), 0);
+  };
 
   const form = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
@@ -69,7 +126,10 @@ export default function LoginPage() {
     try {
       const tokens = await apiFetch<{ accessToken: string; refreshToken: string }>(
         "/auth/login",
-        { method: "POST", body: values },
+        {
+          method: "POST",
+          body: { ...values, empresaAlias: branding?.alias ?? (alias.trim() || undefined) },
+        },
       );
       setTokens(tokens.accessToken, tokens.refreshToken);
 
@@ -145,12 +205,58 @@ export default function LoginPage() {
       {/* Formulário — sempre em tema claro (fundo branco) */}
       <div className="theme-light flex items-center justify-center overflow-y-auto bg-background p-6 text-foreground">
         <div className="w-full max-w-sm py-4">
-          <div className="mb-8 flex justify-center">
-            <Image src="/rcglogo.png" alt="RCG Distribuidora" width={150} height={51} priority />
+          <div className="mb-8 flex flex-col items-center gap-3">
+            {branding?.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={assetUrl(branding.logoUrl) ?? ""}
+                alt={branding.nomeFantasia}
+                className="h-12 w-auto max-w-[200px] object-contain"
+              />
+            ) : (
+              <Image src="/logo_bj.png" alt="Plataforma Comercial" width={150} height={51} priority />
+            )}
           </div>
 
           <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
             <FieldGroup>
+              {branding ? (
+                <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/30 px-3 py-2">
+                  <span className="flex items-center gap-2 text-sm">
+                    <Building2 className="size-4 text-muted-foreground" />
+                    <span className="font-medium">{branding.nomeFantasia}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={trocarEmpresa}
+                    className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                  >
+                    <Pencil className="size-3" /> Trocar
+                  </button>
+                </div>
+              ) : (
+                <Field>
+                  <FieldLabel htmlFor="empresa-alias">Empresa</FieldLabel>
+                  <div className="relative">
+                    <Building2 className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="empresa-alias"
+                      ref={aliasInputRef}
+                      autoCapitalize="none"
+                      autoComplete="organization"
+                      placeholder="identificador da empresa (ex.: rcg)"
+                      className="h-10 pl-9"
+                      value={alias}
+                      onChange={(e) => setAlias(e.target.value)}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {brandingLoading
+                      ? "Buscando empresa..."
+                      : "Informe o identificador da sua empresa para acessá-la."}
+                  </p>
+                </Field>
+              )}
               <Field data-invalid={!!form.formState.errors.email}>
                 <FieldLabel htmlFor="email">E-mail</FieldLabel>
                 <div className="relative">
@@ -228,5 +334,14 @@ export default function LoginPage() {
       </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  // useSearchParams exige um limite de Suspense no App Router.
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

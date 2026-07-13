@@ -9,7 +9,11 @@ import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  app.use(helmet());
+  // A API é consumida por outra origem (web) e serve assets embutidos via <img>
+  // (logos em /uploads). O CORP padrão "same-origin" bloquearia esse embed
+  // cross-origin, então liberamos para "cross-origin" (o acesso já é controlado
+  // por CORS + autenticação nas rotas de dados).
+  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
   app.enableCors({
     origin: process.env.CORS_ORIGIN?.split(',') ?? 'http://localhost:3000',
     credentials: true,

@@ -29,5 +29,29 @@ services:
       timeout: 5s
       retries: 10
 
+  # MySQL de origem (dump legado rcgdistc_portal) para a rotina de importação.
+  # O dump é carregado automaticamente na primeira subida (initdb) contra o
+  # banco MYSQL_DATABASE. Para reimportar, remova o volume mysql_data.
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: rcgdistc_portal
+      MYSQL_USER: rcg
+      MYSQL_PASSWORD: rcg
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ../backup/backup_mysql.sql:/docker-entrypoint-initdb.d/backup_mysql.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
 volumes:
   postgres_data:
+  mysql_data:

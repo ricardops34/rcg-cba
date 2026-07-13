@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -7,10 +8,15 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiParam,
   ApiResponse,
@@ -26,6 +32,7 @@ import { ApiBodyExample } from '../../common/decorators/api-body-example.decorat
 import { CurrentUser, type AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { PaginationQueryDto } from '../../common/dto/pagination.dto';
 import { ApiPaginationQuery } from '../../common/decorators/api-pagination-query.decorator';
+import { logoUploadOptions } from '../../common/uploads/uploads.config';
 
 const EMPRESA_ID_EXAMPLE = EMPRESA_EXAMPLE.id;
 
@@ -88,6 +95,34 @@ export class EmpresasController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.update(id, dto, user.id);
+  }
+
+  @ApiOperation({
+    summary: 'Enviar logo da empresa',
+    description:
+      'Faz upload do logo (PNG, JPEG, WEBP ou SVG, até 2 MB) e grava o caminho em logoUrl. ' +
+      'Requer a permissão empresas.editar.',
+  })
+  @ApiParam({ name: 'id', example: EMPRESA_ID_EXAMPLE })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiResponse({ status: 201, schema: { example: EMPRESA_EXAMPLE } })
+  @ApiResponse({ status: 400, description: 'Arquivo ausente ou formato inválido' })
+  @RequirePermission('empresas', 'editar')
+  @Post(':id/logo')
+  @UseInterceptors(FileInterceptor('file', logoUploadOptions))
+  uploadLogo(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    if (!file) throw new BadRequestException('Nenhum arquivo enviado');
+    return this.service.setLogo(id, file.filename, user.id);
   }
 
   @ApiOperation({

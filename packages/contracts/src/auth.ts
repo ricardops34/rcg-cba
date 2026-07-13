@@ -3,6 +3,13 @@ import { z } from "zod";
 export const loginSchema = z.object({
   email: z.string().trim().email().describe("E-mail cadastrado do usuário"),
   senha: z.string().min(1, "Informe a senha").describe("Senha em texto plano (validada via bcrypt no servidor)"),
+  empresaAlias: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(1)
+    .optional()
+    .describe("Alias da empresa em que o usuário quer entrar; se omitido, entra na primeira empresa ativa"),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
