@@ -266,6 +266,7 @@ export class AuthService {
       empresas: vinculos.map((v) => ({
         empresaId: v.empresaId,
         nomeFantasia: v.empresa.nomeFantasia,
+        logoUrl: v.empresa.logoUrl,
         perfilId: v.perfilId,
         perfilNome: v.perfil.nome,
       })),

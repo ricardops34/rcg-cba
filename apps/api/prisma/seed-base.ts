@@ -55,8 +55,12 @@ const ACOES: Acao[] = [
 async function limparDados() {
   // Ordem respeita as FKs. colaborador tem auto-referência (superiorId): zera
   // antes de apagar para não violar a constraint.
+  await prisma.notaSaidaItem.deleteMany();
+  await prisma.notaSaida.deleteMany();
+  await prisma.tituloReceber.deleteMany();
   await prisma.metaVendedor.deleteMany();
   await prisma.cliente.deleteMany();
+  await prisma.produto.deleteMany();
   await prisma.colaborador.updateMany({ data: { superiorId: null } });
   await prisma.colaborador.deleteMany();
   await prisma.refreshToken.deleteMany();

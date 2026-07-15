@@ -211,7 +211,7 @@ function LoginForm() {
               <img
                 src={assetUrl(branding.logoUrl) ?? ""}
                 alt={branding.nomeFantasia}
-                className="h-12 w-auto max-w-[200px] object-contain"
+                className="h-32 w-auto max-w-[360px] object-contain sm:h-36 sm:max-w-[420px]"
               />
             ) : (
               <Image src="/logo_bj.png" alt="Plataforma Comercial" width={150} height={51} priority />
@@ -244,7 +244,7 @@ function LoginForm() {
                       ref={aliasInputRef}
                       autoCapitalize="none"
                       autoComplete="organization"
-                      placeholder="identificador da empresa (ex.: rcg)"
+                      placeholder="identificador da empresa"
                       className="h-10 pl-9"
                       value={alias}
                       onChange={(e) => setAlias(e.target.value)}

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, LayoutDashboard } from "lucide-react";
@@ -13,11 +12,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { assetUrl } from "@/lib/api-client";
 
 export function AppSidebar({ collapsed }: { collapsed: boolean }) {
   const { data: modulos, isLoading } = useMenu();
   const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
+  const empresaAtiva = user?.empresas.find((empresa) => empresa.empresaId === user.empresaAtivaId);
+  const logo = assetUrl(empresaAtiva?.logoUrl);
   const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
 
   const toggleGroup = (id: string) =>
@@ -38,27 +40,20 @@ export function AppSidebar({ collapsed }: { collapsed: boolean }) {
         collapsed ? "w-[4.5rem]" : "w-64",
       )}
     >
-      <div className={cn("flex h-16 items-center px-5", collapsed && "justify-center px-0")}>
-        {collapsed ? (
-          // Recolhida: apenas a gota do logo (recorte da arte completa)
-          <div className="h-9 w-9 overflow-hidden" aria-label="RCG Distribuidora">
-            <Image
-              src="/rcglogo.png"
-              alt="RCG Distribuidora"
-              width={106}
-              height={36}
-              className="max-w-none brightness-0 invert"
-            />
-          </div>
-        ) : (
-          <Image
-            src="/rcglogo.png"
-            alt="RCG Distribuidora"
-            width={118}
-            height={40}
-            priority
-            className="brightness-0 invert"
+      <div className="flex h-16 items-center justify-center px-3">
+        {logo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={logo}
+            alt={empresaAtiva?.nomeFantasia ?? "Empresa ativa"}
+            className={cn("max-h-11 object-contain", collapsed ? "max-w-11" : "max-w-[180px]")}
           />
+        ) : (
+          <span className={cn("truncate text-center font-semibold", collapsed ? "text-xs" : "text-sm")}>
+            {collapsed
+              ? empresaAtiva?.nomeFantasia.slice(0, 2).toUpperCase()
+              : empresaAtiva?.nomeFantasia ?? "Plataforma Comercial"}
+          </span>
         )}
       </div>
 

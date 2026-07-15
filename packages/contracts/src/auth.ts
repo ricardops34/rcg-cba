@@ -47,6 +47,7 @@ export const currentUserSchema = z.object({
       z.object({
         empresaId: z.string().uuid().describe("Identificador da empresa"),
         nomeFantasia: z.string().describe("Nome fantasia da empresa"),
+        logoUrl: z.string().nullable().describe("Caminho do logo da empresa, quando cadastrado"),
         perfilId: z.string().uuid().describe("Perfil do usuário nesta empresa"),
         perfilNome: z.string().describe("Nome do perfil, para exibição"),
       }),
@@ -78,6 +79,7 @@ export const CURRENT_USER_EXAMPLE: CurrentUser = {
     {
       empresaId: "2113ce67-5cf9-40e6-b1ed-fa88281c2a92",
       nomeFantasia: "Empresa Demo",
+      logoUrl: null,
       perfilId: "06b281c4-c6d6-454c-82c6-75106224bbfc",
       perfilNome: "Administrador",
     },

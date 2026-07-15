@@ -17,6 +17,7 @@ COPY apps/api/package.json apps/api/
 
 FROM base AS build
 RUN pnpm install --frozen-lockfile --filter @plataforma/api...
+COPY packages/config packages/config
 COPY packages/contracts packages/contracts
 COPY apps/api apps/api
 RUN pnpm --filter @plataforma/contracts build \

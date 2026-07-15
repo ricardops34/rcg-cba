@@ -6,11 +6,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import {
   empresaCreateSchema,
+  type CurrentUser,
   type Empresa,
   type EmpresaCreate,
 } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
-import { ApiError, apiUpload, assetUrl } from "@/lib/api-client";
+import { ApiError, apiFetch, apiUpload, assetUrl } from "@/lib/api-client";
+import { useAuthStore } from "@/stores/auth-store";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
@@ -33,6 +35,7 @@ import {
 import { ImageIcon, MoreHorizontal, Pencil, Trash2, Upload } from "lucide-react";
 
 export default function EmpresasPage() {
+  const setUser = useAuthStore((state) => state.setUser);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -81,6 +84,8 @@ export default function EmpresasPage() {
     try {
       const updated = await apiUpload<Empresa>(`/empresas/${editing.id}/logo`, file);
       setEditing(updated);
+      const me = await apiFetch<CurrentUser>("/auth/me");
+      setUser(me);
       toast.success("Logo atualizado");
       refetch();
     } catch (err) {

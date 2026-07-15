@@ -1,6 +1,6 @@
-# Stack de produção/teste na VPS — imagens buildadas pelo GitHub Actions e
-# publicadas no ghcr.io (ver .github/workflows/deploy.yml). Sem bind mount:
-# o código está dentro da imagem; deploy = push na main.
+# Stack de produção/teste na VPS — imagens buildadas e publicadas manualmente
+# no Docker Hub via publish.ps1 (raiz do repo). Sem bind mount: o código está
+# dentro da imagem; deploy = rodar publish.ps1 + redeploy no Portainer.
 #
 # Os valores de DATABASE_URL/JWT_*/etc. NÃO ficam neste arquivo: são definidos
 # como variáveis de ambiente do stack no Portainer (Stacks → rcgcba → Env).
@@ -8,7 +8,7 @@ version: "3.8"
 
 services:
   api:
-    image: ghcr.io/ricardops34/rcgcba-api:latest
+    image: bjsoftware/rcgcba-api:latest
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
@@ -37,7 +37,7 @@ services:
         - "traefik.http.services.rcgcba-api.loadbalancer.server.port=3001"
 
   web:
-    image: ghcr.io/ricardops34/rcgcba-web:latest
+    image: bjsoftware/rcgcba-web:latest
     networks:
       network_public:
         aliases:

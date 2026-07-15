@@ -18,6 +18,7 @@ FROM base AS build
 ARG NEXT_PUBLIC_API_URL=https://api.rcgcba.bjsoft.com.br/api/v1
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN pnpm install --frozen-lockfile --filter web...
+COPY packages/config packages/config
 COPY packages/contracts packages/contracts
 COPY apps/web apps/web
 RUN pnpm --filter @plataforma/contracts build \

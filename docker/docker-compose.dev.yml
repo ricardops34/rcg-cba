@@ -1,6 +1,92 @@
 name: plataforma-comercial-dev
 
 services:
+  deps:
+    build:
+      context: ..
+      dockerfile: docker/api.Dockerfile.dev
+    working_dir: /app
+    command: pnpm install --frozen-lockfile
+    volumes:
+      - ..:/app
+      - node_modules:/app/node_modules
+      - api_node_modules:/app/apps/api/node_modules
+      - web_node_modules:/app/apps/web/node_modules
+      - contracts_node_modules:/app/packages/contracts/node_modules
+
+  db-init:
+    build:
+      context: ..
+      dockerfile: docker/api.Dockerfile.dev
+    working_dir: /app
+    environment:
+      DATABASE_URL: postgresql://plataforma:plataforma@postgres:5432/plataforma_comercial?schema=public
+    command: >-
+      sh -c "pnpm --filter @plataforma/contracts build &&
+      pnpm --filter @plataforma/api prisma:generate &&
+      pnpm --filter @plataforma/api prisma:deploy &&
+      pnpm --filter @plataforma/api exec ts-node prisma/seed-base.ts"
+    volumes:
+      - ..:/app
+      - node_modules:/app/node_modules
+      - api_node_modules:/app/apps/api/node_modules
+      - contracts_node_modules:/app/packages/contracts/node_modules
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/api.Dockerfile.dev
+    working_dir: /app
+    environment:
+      DATABASE_URL: postgresql://plataforma:plataforma@postgres:5432/plataforma_comercial?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: desenvolvimento-local-access
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_SECRET: desenvolvimento-local-refresh
+      JWT_REFRESH_EXPIRES_IN: 7d
+      PORT: 3001
+      CORS_ORIGIN: http://localhost:3002
+    command: pnpm --filter @plataforma/api start:dev
+    ports:
+      - "3001:3001"
+    volumes:
+      - ..:/app
+      - node_modules:/app/node_modules
+      - api_node_modules:/app/apps/api/node_modules
+      - contracts_node_modules:/app/packages/contracts/node_modules
+      - api_uploads:/app/apps/api/uploads
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/web.Dockerfile.dev
+    working_dir: /app
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001/api/v1
+    command: pnpm --filter web exec next dev -H 0.0.0.0 -p 3000
+    ports:
+      - "3002:3000"
+    volumes:
+      - ..:/app
+      - node_modules:/app/node_modules
+      - web_node_modules:/app/apps/web/node_modules
+      - contracts_node_modules:/app/packages/contracts/node_modules
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+      api:
+        condition: service_started
+
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -9,7 +95,7 @@ services:
       POSTGRES_PASSWORD: plataforma
       POSTGRES_DB: plataforma_comercial
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -45,7 +131,6 @@ services:
       - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-      - ../backup/backup_mysql.sql:/docker-entrypoint-initdb.d/backup_mysql.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
       interval: 10s
@@ -55,3 +140,8 @@ services:
 volumes:
   postgres_data:
   mysql_data:
+  node_modules:
+  api_node_modules:
+  web_node_modules:
+  contracts_node_modules:
+  api_uploads:

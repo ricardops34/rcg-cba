@@ -4,13 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
-import { Bell, Building2, ChevronDown, HelpCircle, LogOut, Menu, Moon, Search, Sun } from "lucide-react";
+import { Bell, Building2, Check, HelpCircle, LogOut, Menu, Moon, Search, Sun } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import type { CurrentUser } from "@plataforma/contracts";
 import { avatarColorClass, initials } from "@/lib/avatar-color";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { GlobalSearch } from "@/components/layout/global-search";
 import {
   DropdownMenu,
@@ -47,7 +46,6 @@ export function AppTopbar({
   };
 
   const empresaAtiva = user?.empresas.find((e) => e.empresaId === user.empresaAtivaId);
-  const podeTrocar = (user?.empresas.length ?? 0) > 1;
 
   const handleSwitch = async (empresaId: string) => {
     if (empresaId === user?.empresaAtivaId || switching) return;
@@ -134,45 +132,6 @@ export function AppTopbar({
           <Moon className="absolute size-4.5 scale-0 dark:scale-100" />
         </Button>
 
-        {empresaAtiva && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                className="ml-1 hidden items-center gap-2 px-2 sm:flex"
-                disabled={switching}
-              >
-                <div className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary">
-                  <Building2 className="size-4" />
-                </div>
-                <div className="text-left leading-tight">
-                  <p className="text-xs font-medium">{empresaAtiva.nomeFantasia}</p>
-                  <p className="text-[0.65rem] text-muted-foreground">Empresa ativa</p>
-                </div>
-                {podeTrocar && <ChevronDown className="size-3.5 text-muted-foreground" />}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Empresas vinculadas</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {user?.empresas.map((e) => (
-                <DropdownMenuItem
-                  key={e.empresaId}
-                  disabled={e.empresaId === user.empresaAtivaId}
-                  onClick={() => handleSwitch(e.empresaId)}
-                >
-                  {e.nomeFantasia}
-                  {e.empresaId === user.empresaAtivaId && (
-                    <Badge variant="outline" className="ml-auto">
-                      Ativa
-                    </Badge>
-                  )}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="rounded-full" aria-label="Conta">
@@ -186,8 +145,33 @@ export function AppTopbar({
               </div>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>{user?.email}</DropdownMenuLabel>
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuLabel className="space-y-0.5">
+              <p>{user?.nome}</p>
+              <p className="text-xs font-normal text-muted-foreground">{user?.email}</p>
+            </DropdownMenuLabel>
+            {empresaAtiva && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Building2 className="size-3.5" />
+                  Empresa ativa
+                </DropdownMenuLabel>
+                {user?.empresas.map((empresa) => {
+                  const ativa = empresa.empresaId === user.empresaAtivaId;
+                  return (
+                    <DropdownMenuItem
+                      key={empresa.empresaId}
+                      disabled={ativa || switching}
+                      onClick={() => handleSwitch(empresa.empresaId)}
+                    >
+                      <span className="truncate">{empresa.nomeFantasia}</span>
+                      {ativa && <Check className="ml-auto size-4 text-primary" />}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout}>
               <LogOut className="size-4" />
