@@ -43,7 +43,10 @@ services:
       dockerfile: docker/api.Dockerfile.dev
     working_dir: /app
     environment:
-      DATABASE_URL: postgresql://plataforma:plataforma@postgres:5432/plataforma_comercial?schema=public
+      # Role de app (sem BYPASSRLS/superuser) — ver migration
+      # 20260715221500_app_role_least_privilege. Migrations/seed (serviço
+      # db-init) continuam rodando com o role "plataforma", dono das tabelas.
+      DATABASE_URL: postgresql://plataforma_app:plataforma_app_dev_only@postgres:5432/plataforma_comercial?schema=public
       REDIS_URL: redis://redis:6379
       JWT_ACCESS_SECRET: desenvolvimento-local-access
       JWT_ACCESS_EXPIRES_IN: 15m

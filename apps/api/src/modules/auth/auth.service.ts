@@ -29,21 +29,32 @@ export class AuthService {
   }
 
   private async buildAccessToken(usuarioEmpresaId: string) {
-    const vinculo = await this.prisma.usuarioEmpresa.findUniqueOrThrow({
+    // "perfis" tem RLS habilitada: precisamos da empresa do vínculo primeiro
+    // (usuario_empresas não tem RLS — é a exceção documentada em
+    // prisma/migrations/README.md) pra então abrir o contexto de tenant e
+    // trazer o perfil sem a policy do Postgres bloquear o include.
+    const { empresaId } = await this.prisma.usuarioEmpresa.findUniqueOrThrow({
       where: { id: usuarioEmpresaId },
-      include: {
-        usuario: true,
-        empresa: true,
-        perfil: {
-          include: {
-            permissoes: {
-              where: { permitido: true },
-              include: { rotina: true },
+      select: { empresaId: true },
+    });
+
+    const vinculo = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.usuarioEmpresa.findUniqueOrThrow({
+        where: { id: usuarioEmpresaId },
+        include: {
+          usuario: true,
+          empresa: true,
+          perfil: {
+            include: {
+              permissoes: {
+                where: { permitido: true },
+                include: { rotina: true },
+              },
             },
           },
         },
-      },
-    });
+      }),
+    );
 
     const permissoes = vinculo.perfil.permissoes.map(
       (p) => `${p.rotina.codigo}.${p.acao}`,
@@ -245,8 +256,22 @@ export class AuthService {
 
     const vinculos = await this.prisma.usuarioEmpresa.findMany({
       where: { usuarioId, ativo: true },
-      include: { empresa: true, perfil: true },
+      include: { empresa: true },
     });
+
+    // "perfis" tem RLS habilitada e só permite uma empresa ativa por vez;
+    // como o usuário pode ter vínculo com várias empresas aqui, o nome do
+    // perfil de cada uma precisa ser buscado no contexto de tenant dela.
+    const perfis = await Promise.all(
+      vinculos.map((v) =>
+        this.prisma.withTenant(v.empresaId, (tx) =>
+          tx.perfil.findUniqueOrThrow({
+            where: { id: v.perfilId },
+            select: { nome: true },
+          }),
+        ),
+      ),
+    );
 
     const ativo = vinculos.find((v) => v.empresaId === empresaAtivaId);
     const permissoes = ativo
@@ -263,12 +288,12 @@ export class AuthService {
       nome: usuario.nome,
       email: usuario.email,
       empresaAtivaId,
-      empresas: vinculos.map((v) => ({
+      empresas: vinculos.map((v, i) => ({
         empresaId: v.empresaId,
         nomeFantasia: v.empresa.nomeFantasia,
         logoUrl: v.empresa.logoUrl,
         perfilId: v.perfilId,
-        perfilNome: v.perfil.nome,
+        perfilNome: perfis[i].nome,
       })),
       permissoes,
     };

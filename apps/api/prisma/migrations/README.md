@@ -44,9 +44,16 @@ Documente o motivo na própria migration. Casos atuais:
 
 ## Pré-requisitos operacionais
 
-- RLS é **ignorada** por superusuário ou role com atributo `BYPASSRLS`.
-  Em produção a API deve conectar com um role de aplicação **sem** `BYPASSRLS`,
-  distinto do role que roda as migrations.
+- RLS é **ignorada** por superusuário, por role com atributo `BYPASSRLS` e
+  também pelo **dono da tabela** (mesmo sem `BYPASSRLS`), a menos que a tabela
+  tenha `FORCE ROW LEVEL SECURITY`. A API deve sempre conectar com um role de
+  aplicação distinto do role que roda as migrations/dono das tabelas.
+- Esse role (`plataforma_app`) é criado pela migration
+  `20260715221500_app_role_least_privilege`: `LOGIN`, `NOSUPERUSER`,
+  `NOBYPASSRLS`, sem privilégio de DDL. `docker-compose.dev.yml` já usa esse
+  role na `DATABASE_URL` do serviço `api` (migrations/seed continuam com o
+  role dono, via serviço `db-init`). Em produção, troque a senha placeholder
+  logo após o primeiro deploy — ver comentário em `docker/.env.prod.example`.
 
 ## Cobertura atual
 
