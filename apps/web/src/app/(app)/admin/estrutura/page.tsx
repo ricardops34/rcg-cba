@@ -511,7 +511,7 @@ function MenuFormDialog({
             </Field>
             <Field>
               <FieldLabel htmlFor="rota">Rota no sistema</FieldLabel>
-              <Input id="rota" placeholder="/comercial/clientes" {...form.register("rota")} />
+              <Input id="rota" placeholder="/comercial/produtos" {...form.register("rota")} />
             </Field>
             <Field>
               <FieldLabel htmlFor="icone">Ícone (lucide-react)</FieldLabel>
@@ -586,9 +586,9 @@ function RotinaFormDialog({
             </Field>
             <Field data-invalid={!!form.formState.errors.codigo}>
               <FieldLabel htmlFor="codigo">Código</FieldLabel>
-              <Input id="codigo" placeholder="clientes" disabled={!!editing} {...form.register("codigo")} />
+              <Input id="codigo" placeholder="produtos" disabled={!!editing} {...form.register("codigo")} />
               <FieldDescription>
-                Identificador único usado nas permissões (ex.: <code>clientes.editar</code>). Não pode ser
+                Identificador único usado nas permissões (ex.: <code>produtos.editar</code>). Não pode ser
                 alterado depois de criado.
               </FieldDescription>
               <FieldError errors={[form.formState.errors.codigo]} />

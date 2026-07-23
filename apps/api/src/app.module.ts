@@ -11,10 +11,7 @@ import { EmpresasModule } from './modules/empresas/empresas.module';
 import { UsuariosModule } from './modules/usuarios/usuarios.module';
 import { PerfisModule } from './modules/perfis/perfis.module';
 import { EstruturaModule } from './modules/estrutura/estrutura.module';
-import { ClientesModule } from './modules/clientes/clientes.module';
-import { NotasSaidaModule } from './modules/notas-saida/notas-saida.module';
 import { ProdutosModule } from './modules/produtos/produtos.module';
-import { TitulosReceberModule } from './modules/titulos-receber/titulos-receber.module';
 
 @Module({
   imports: [
@@ -32,10 +29,7 @@ import { TitulosReceberModule } from './modules/titulos-receber/titulos-receber.
     UsuariosModule,
     PerfisModule,
     EstruturaModule,
-    ClientesModule,
-    NotasSaidaModule,
     ProdutosModule,
-    TitulosReceberModule,
   ],
   controllers: [AppController],
   providers: [AppService],

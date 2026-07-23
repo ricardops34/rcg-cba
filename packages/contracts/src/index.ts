@@ -3,8 +3,5 @@ export * from "./empresa";
 export * from "./usuario";
 export * from "./perfil";
 export * from "./menu";
-export * from "./cliente";
-export * from "./nota-saida";
 export * from "./produto";
-export * from "./titulo-receber";
 export * from "./auth";

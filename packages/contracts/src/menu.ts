@@ -82,16 +82,16 @@ export const MODULO_CREATE_EXAMPLE: ModuloCreate = {
 export const MENU_CREATE_EXAMPLE: MenuCreate = {
   moduloId: "seed-modulo-administracao",
   menuPaiId: null,
-  nome: "Clientes",
-  icone: "contact",
-  rota: "/comercial/clientes",
+  nome: "Produtos",
+  icone: "package",
+  rota: "/comercial/produtos",
   ordem: 1,
   ativo: true,
 };
 
 export const ROTINA_CREATE_EXAMPLE: RotinaCreate = {
-  menuId: "seed-menu-clientes",
-  nome: "Clientes",
-  codigo: "clientes",
+  menuId: "seed-menu-produtos",
+  nome: "Produtos",
+  codigo: "produtos",
   ativo: true,
 };

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { acaoSchema, auditFieldsSchema } from "./common";
 
 export const perfilCreateSchema = z.object({
-  nome: z.string().trim().min(2).max(80).describe("Nome do perfil (ex.: Administrador, Vendedor)"),
+  nome: z.string().trim().min(2).max(80).describe("Nome do perfil (ex.: Administrador, Gerente)"),
   descricao: z
     .string()
     .trim()
@@ -43,20 +43,20 @@ export type PerfilPermissoesUpdate = z.infer<
 >;
 
 export const PERFIL_CREATE_EXAMPLE: PerfilCreate = {
-  nome: "Vendedor",
-  descricao: "Acesso aos próprios cadastros comerciais",
+  nome: "Gerente",
+  descricao: "Acesso aos cadastros comerciais",
   ativo: true,
 };
 
 export const PERFIL_PERMISSOES_UPDATE_EXAMPLE: PerfilPermissoesUpdate = {
   permissoes: [
     {
-      rotinaId: "seed-rotina-clientes",
+      rotinaId: "seed-rotina-produtos",
       acao: "visualizar",
       permitido: true,
     },
     {
-      rotinaId: "seed-rotina-clientes",
+      rotinaId: "seed-rotina-produtos",
       acao: "editar",
       permitido: false,
     },

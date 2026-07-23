@@ -32,7 +32,7 @@ volta vazia.
 
 ## `usuario_empresas`: RLS com duas policies (tenant + self)
 
-`usuario_empresas` carrega hierarquia/dados de vendedor do vínculo
+`usuario_empresas` carrega hierarquia/dados do vínculo
 (ver `docs/regras-de-negocio.md`), então é dado de negócio e tem RLS — mas
 precisa continuar sendo consultável **antes** de existir empresa ativa (login
 descobrindo a quais empresas o usuário pertence; `AuthService.me()` listando
@@ -75,6 +75,6 @@ usuários).
 
 ## Cobertura atual
 
-Com RLS: `perfis`, `usuario_empresas`, `clientes`, `meta_vendedor_mes`, `notas_saida`, `produtos`, `titulos_receber`.
+Com RLS: `perfis`, `usuario_empresas`, `produtos`.
 </content>
 </invoke>

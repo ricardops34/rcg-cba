@@ -119,7 +119,7 @@ export class EstruturaController {
 
   @ApiOperation({ summary: 'Editar menu', description: 'Requer menus.editar.' })
   @ApiParam({ name: 'id', example: MENU_ID_EXAMPLE })
-  @ApiBodyExample({ rota: '/comercial/vendedores' })
+  @ApiBodyExample({ rota: '/comercial/produtos' })
   @RequirePermission('menus', 'editar')
   @Patch('menus/:id')
   updateMenu(
@@ -165,7 +165,7 @@ export class EstruturaController {
 
   @ApiOperation({ summary: 'Editar rotina', description: 'Requer rotinas.editar.' })
   @ApiParam({ name: 'id', example: ROTINA_ID_EXAMPLE })
-  @ApiBodyExample({ nome: 'Colaboradores (Vendedores)' })
+  @ApiBodyExample({ nome: 'Produtos' })
   @RequirePermission('rotinas', 'editar')
   @Patch('rotinas/:id')
   updateRotina(

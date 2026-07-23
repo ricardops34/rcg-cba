@@ -4,7 +4,7 @@
  *   - 1 usuário Admin com acesso (perfil Administrador) às 3 empresas
  *
  * Idempotente: pode rodar várias vezes. LIMPA os dados de negócio/tenant antes
- * de popular (empresas, perfis, usuários, vínculos, clientes, refresh
+ * de popular (empresas, perfis, usuários, vínculos, produtos, refresh
  * tokens). A estrutura de menu/módulos/rotinas é reconstruída via upsert (as
  * permissões do Admin dependem das rotinas existirem).
  *
@@ -55,10 +55,6 @@ const ACOES: Acao[] = [
 async function limparDados() {
   // Ordem respeita as FKs. usuarioEmpresa tem auto-referência (superiorId,
   // hierarquia): zera antes de apagar para não violar a constraint.
-  await prisma.notaSaidaItem.deleteMany();
-  await prisma.notaSaida.deleteMany();
-  await prisma.tituloReceber.deleteMany();
-  await prisma.cliente.deleteMany();
   await prisma.produto.deleteMany();
   await prisma.refreshToken.deleteMany();
   await prisma.usuarioEmpresa.updateMany({ data: { superiorId: null } });
@@ -86,7 +82,7 @@ async function bootstrapMenu() {
     { id: 'seed-menu-usuarios', nome: 'Usuários', rota: '/admin/usuarios', icone: 'users', codigo: 'usuarios', moduloId: moduloAdministracao.id },
     { id: 'seed-menu-perfis', nome: 'Perfis', rota: '/admin/perfis', icone: 'shield', codigo: 'perfis', moduloId: moduloAdministracao.id },
     { id: 'seed-menu-estrutura', nome: 'Estrutura de Menu', rota: '/admin/estrutura', icone: 'layout-grid', codigo: 'menus', moduloId: moduloAdministracao.id },
-    { id: 'seed-menu-clientes', nome: 'Clientes', rota: '/comercial/clientes', icone: 'contact', codigo: 'clientes', moduloId: moduloComercial.id },
+    { id: 'seed-menu-produtos', nome: 'Produtos', rota: '/comercial/produtos', icone: 'package', codigo: 'produtos', moduloId: moduloComercial.id },
   ];
 
   for (const [i, m] of menuDefs.entries()) {
