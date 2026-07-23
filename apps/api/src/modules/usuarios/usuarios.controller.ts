@@ -18,7 +18,11 @@ import {
 } from '@nestjs/swagger';
 import { USUARIO_CREATE_EXAMPLE, USUARIO_EXAMPLE } from '@plataforma/contracts';
 import { UsuariosService } from './usuarios.service';
-import { UsuarioCreateDto, UsuarioUpdateDto } from './dto/usuario.dto';
+import {
+  UsuarioCreateDto,
+  UsuarioEmpresaCreateDto,
+  UsuarioUpdateDto,
+} from './dto/usuario.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -108,9 +112,11 @@ export class UsuariosController {
   }
 
   @ApiOperation({
-    summary: 'Vincular usuário a outra empresa',
+    summary: 'Vincular usuário a outra empresa (ou editar um vínculo existente)',
     description:
-      'Cria ou reativa o vínculo do usuário com a empresa informada, atribuindo o perfil enviado no corpo. Requer usuarios.editar.',
+      'Cria ou edita o vínculo do usuário com a empresa informada: perfil (RBAC) + ' +
+      'hierarquia/dados de vendedor. Mesma rota serve pra vincular a uma empresa nova e pra ' +
+      'completar/editar um vínculo já existente. Requer usuarios.editar.',
   })
   @ApiParam({ name: 'id', example: USUARIO_ID_EXAMPLE })
   @ApiParam({ name: 'empresaId', example: EMPRESA_ID_EXAMPLE })
@@ -121,10 +127,10 @@ export class UsuariosController {
   vincular(
     @Param('id') id: string,
     @Param('empresaId') empresaId: string,
-    @Body('perfilId') perfilId: string,
+    @Body() dto: UsuarioEmpresaCreateDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.vincularEmpresa(id, empresaId, perfilId, user.id);
+    return this.service.vincularEmpresa(id, empresaId, dto, user.id);
   }
 
   @ApiOperation({

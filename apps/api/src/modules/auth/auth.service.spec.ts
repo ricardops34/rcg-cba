@@ -26,6 +26,7 @@ describe('AuthService', () => {
     };
     perfilPermissao: { findMany: jest.Mock };
     withTenant: jest.Mock;
+    withUsuario: jest.Mock;
   };
   let jwt: { signAsync: jest.Mock };
 
@@ -75,10 +76,15 @@ describe('AuthService', () => {
       },
       perfilPermissao: { findMany: jest.fn() },
       withTenant: jest.fn(),
+      withUsuario: jest.fn(),
     };
-    // Mesmo comportamento de PrismaService.withTenant: roda fn contra as
-    // mesmas coleções mockadas, só sem abrir transação/SET LOCAL de verdade.
+    // Mesmo comportamento de PrismaService.withTenant/withUsuario: roda fn
+    // contra as mesmas coleções mockadas, só sem abrir transação/SET LOCAL
+    // de verdade.
     prisma.withTenant.mockImplementation((_empresaId: string, fn: (tx: unknown) => unknown) =>
+      fn(prisma),
+    );
+    prisma.withUsuario.mockImplementation((_usuarioId: string, fn: (tx: unknown) => unknown) =>
       fn(prisma),
     );
     jwt = { signAsync: jest.fn().mockResolvedValue('signed.jwt.token') };
@@ -156,6 +162,7 @@ describe('AuthService', () => {
       expect(signPayload.permissoes).toEqual(['clientes.visualizar']);
       expect(signPayload.isAdmin).toBe(false);
     });
+
   });
 
   describe('refresh', () => {

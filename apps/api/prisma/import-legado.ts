@@ -159,7 +159,7 @@ async function main() {
     if (novo) clientePorLegado.set(c.id, novo);
   }
 
-  const colabsDb = await prisma.colaborador.findMany({
+  const colabsDb = await prisma.usuarioEmpresa.findMany({
     where: { empresaId },
     select: { id: true, codigoErp: true },
   });

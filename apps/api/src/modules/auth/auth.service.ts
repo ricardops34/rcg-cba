@@ -28,16 +28,7 @@ export class AuthService {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  private async buildAccessToken(usuarioEmpresaId: string) {
-    // "perfis" tem RLS habilitada: precisamos da empresa do vínculo primeiro
-    // (usuario_empresas não tem RLS — é a exceção documentada em
-    // prisma/migrations/README.md) pra então abrir o contexto de tenant e
-    // trazer o perfil sem a policy do Postgres bloquear o include.
-    const { empresaId } = await this.prisma.usuarioEmpresa.findUniqueOrThrow({
-      where: { id: usuarioEmpresaId },
-      select: { empresaId: true },
-    });
-
+  private async buildAccessToken(usuarioEmpresaId: string, empresaId: string) {
     const vinculo = await this.prisma.withTenant(empresaId, (tx) =>
       tx.usuarioEmpresa.findUniqueOrThrow({
         where: { id: usuarioEmpresaId },
@@ -78,15 +69,17 @@ export class AuthService {
   }
 
   private async findVinculoAtivo(usuarioId: string, empresaId?: string) {
-    return this.prisma.usuarioEmpresa.findFirst({
-      where: {
-        usuarioId,
-        ativo: true,
-        empresa: { ativo: true },
-        ...(empresaId ? { empresaId } : {}),
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+    return this.prisma.withUsuario(usuarioId, (tx) =>
+      tx.usuarioEmpresa.findFirst({
+        where: {
+          usuarioId,
+          ativo: true,
+          empresa: { ativo: true },
+          ...(empresaId ? { empresaId } : {}),
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+    );
   }
 
   async login(input: LoginInput, meta: RequestMeta) {
@@ -125,7 +118,7 @@ export class AuthService {
         : new UnauthorizedException('Usuário sem empresa ativa vinculada');
     }
 
-    const { accessToken } = await this.buildAccessToken(vinculo.id);
+    const { accessToken } = await this.buildAccessToken(vinculo.id, vinculo.empresaId);
     const refreshToken = await this.issueRefreshToken(
       usuario.id,
       vinculo.empresaId,
@@ -211,7 +204,7 @@ export class AuthService {
       throw new UnauthorizedException('Usuário sem empresa ativa vinculada');
     }
 
-    const { accessToken } = await this.buildAccessToken(vinculo.id);
+    const { accessToken } = await this.buildAccessToken(vinculo.id, vinculo.empresaId);
     const refreshToken = await this.issueRefreshToken(
       stored.usuarioId,
       vinculo.empresaId,
@@ -239,7 +232,7 @@ export class AuthService {
       );
     }
 
-    const { accessToken } = await this.buildAccessToken(vinculo.id);
+    const { accessToken } = await this.buildAccessToken(vinculo.id, vinculo.empresaId);
     const refreshToken = await this.issueRefreshToken(
       usuarioId,
       vinculo.empresaId,
@@ -254,10 +247,12 @@ export class AuthService {
       where: { id: usuarioId },
     });
 
-    const vinculos = await this.prisma.usuarioEmpresa.findMany({
-      where: { usuarioId, ativo: true },
-      include: { empresa: true },
-    });
+    const vinculos = await this.prisma.withUsuario(usuarioId, (tx) =>
+      tx.usuarioEmpresa.findMany({
+        where: { usuarioId, ativo: true },
+        include: { empresa: true },
+      }),
+    );
 
     // "perfis" tem RLS habilitada e só permite uma empresa ativa por vez;
     // como o usuário pode ter vínculo com várias empresas aqui, o nome do

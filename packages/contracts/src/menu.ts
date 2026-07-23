@@ -59,7 +59,7 @@ export const rotinaCreateSchema = z.object({
     .max(60)
     .regex(/^[a-z0-9._-]+$/, "Use apenas minúsculas, números, ponto, hífen ou underline")
     .describe(
-      "Código único usado nas permissões e no decorator @RequirePermission (ex.: 'empresas', 'colaboradores')",
+      "Código único usado nas permissões e no decorator @RequirePermission (ex.: 'empresas', 'clientes')",
     ),
   ativo: z.boolean().default(true).describe("Rotinas inativas não podem receber permissões"),
 });
@@ -82,16 +82,16 @@ export const MODULO_CREATE_EXAMPLE: ModuloCreate = {
 export const MENU_CREATE_EXAMPLE: MenuCreate = {
   moduloId: "seed-modulo-administracao",
   menuPaiId: null,
-  nome: "Colaboradores",
-  icone: "user-round",
-  rota: "/comercial/colaboradores",
+  nome: "Clientes",
+  icone: "contact",
+  rota: "/comercial/clientes",
   ordem: 1,
   ativo: true,
 };
 
 export const ROTINA_CREATE_EXAMPLE: RotinaCreate = {
-  menuId: "seed-menu-colaboradores",
-  nome: "Colaboradores",
-  codigo: "colaboradores",
+  menuId: "seed-menu-clientes",
+  nome: "Clientes",
+  codigo: "clientes",
   ativo: true,
 };

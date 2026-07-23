@@ -36,9 +36,9 @@ interface ClienteRow extends Cliente {
 }
 interface ColabOption {
   id: string;
-  cargo: string;
+  vinculoId: string | null;
   nomeReduzido: string | null;
-  usuario: { nome: string };
+  nome: string;
 }
 
 const NENHUM = "__none__";
@@ -57,12 +57,10 @@ export default function ClientesPage() {
   });
 
   const { data: colaboradores } = useQuery({
-    queryKey: ["colaboradores", "select-clientes"],
-    queryFn: () => apiFetch<{ data: ColabOption[] }>("/colaboradores", { query: { pageSize: 200 } }),
+    queryKey: ["usuarios", "select-clientes"],
+    queryFn: () => apiFetch<{ data: ColabOption[] }>("/usuarios", { query: { pageSize: 200 } }),
   });
-  const vendedores = (colaboradores?.data ?? []).filter(
-    (c) => c.cargo === "vendedor" || c.cargo === "supervisor",
-  );
+  const vendedores = (colaboradores?.data ?? []).filter((c) => c.vinculoId);
 
   const { create, update, remove } = useResourceMutations<ClienteCreate, ClienteUpdate>("clientes");
 
@@ -164,7 +162,7 @@ export default function ClientesPage() {
       header: "Vendedor",
       cell: (c) =>
         c.colaborador ? (
-          c.colaborador.nomeReduzido || c.colaborador.usuario.nome
+          c.colaborador.nomeReduzido || c.colaborador.usuario?.nome
         ) : (
           <span className="text-muted-foreground">Sem vendedor</span>
         ),
@@ -275,8 +273,8 @@ export default function ClientesPage() {
                   <SelectContent>
                     <SelectItem value={NENHUM}>Sem vendedor</SelectItem>
                     {vendedores.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.nomeReduzido || c.usuario.nome}
+                      <SelectItem key={c.id} value={c.vinculoId!}>
+                        {c.nomeReduzido || c.nome}
                       </SelectItem>
                     ))}
                   </SelectContent>

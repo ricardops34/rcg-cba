@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Building2, ShieldCheck, UserRound, Users, type LucideIcon } from "lucide-react";
+import { ArrowRight, Building2, ShieldCheck, Users, type LucideIcon } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { apiFetch } from "@/lib/api-client";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,15 +45,6 @@ const INDICADORES: Indicador[] = [
     icon: ShieldCheck,
     permissao: "perfis.visualizar",
     gradient: "from-amber-500 to-orange-600",
-  },
-  {
-    resource: "colaboradores",
-    href: "/comercial/vendedores",
-    title: "Colaboradores",
-    description: "Hierarquia comercial",
-    icon: UserRound,
-    permissao: "colaboradores.visualizar",
-    gradient: "from-cyan-500 to-cyan-700",
   },
 ];
 

@@ -3,8 +3,6 @@ export * from "./empresa";
 export * from "./usuario";
 export * from "./perfil";
 export * from "./menu";
-export * from "./colaborador";
-export * from "./meta";
 export * from "./cliente";
 export * from "./nota-saida";
 export * from "./produto";

@@ -45,6 +45,23 @@ export class PrismaService
       return fn(tx);
     });
   }
+
+  /**
+   * Mesma ideia de `withTenant`, mas escopado pelo próprio usuário
+   * (`app.current_usuario_id`) em vez da empresa ativa — necessário pra
+   * consultar `usuario_empresas` (tem RLS) antes de existir empresa ativa no
+   * contexto: login (descobrir a quais empresas o usuário pertence) e
+   * `AuthService.me()` (listar todas as empresas do usuário).
+   */
+  async withUsuario<T>(
+    usuarioId: string,
+    fn: (tx: TenantTx) => Promise<T>,
+  ): Promise<T> {
+    return this.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_usuario_id', ${usuarioId}, true)`;
+      return fn(tx);
+    });
+  }
 }
 
 export type { TenantTx };

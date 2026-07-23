@@ -2,13 +2,15 @@ import type { TenantTx } from '../prisma/prisma.service';
 import type { AuthenticatedUser } from '../decorators/current-user.decorator';
 
 /**
- * IDs dos colaboradores que o usuário logado supervisiona: toda a subárvore
- * abaixo do seu próprio colaborador (subordinados diretos e indiretos), mais
- * ele mesmo. Segue a hierarquia Gerente → Supervisor → Vendedor.
+ * IDs dos vínculos (UsuarioEmpresa) que o usuário logado supervisiona: toda a
+ * subárvore abaixo do seu próprio vínculo (subordinados diretos e
+ * indiretos), mais ele mesmo.
  *
- * Retorna `null` para admins (isAdmin) — o chamador então não aplica filtro
- * (enxerga tudo da empresa). Um usuário sem colaborador vinculado recebe uma
- * lista vazia (não vê nada de negócio ligado a vendedor).
+ * Retorna `null` para quem tem perfil `sistemaBase` (isAdmin) — o chamador
+ * então não aplica filtro (enxerga tudo da empresa, sem restrição de
+ * carteira). Qualquer outro perfil é escopado igual, pela árvore
+ * `superiorId` — não depende do nome/nível do perfil. Um usuário sem vínculo
+ * na empresa recebe lista vazia (não vê nada de negócio ligado a vendedor).
  */
 export async function equipeColaboradorIds(
   tx: TenantTx,
@@ -17,7 +19,7 @@ export async function equipeColaboradorIds(
 ): Promise<string[] | null> {
   if (user.isAdmin) return null;
 
-  const colaboradores = await tx.colaborador.findMany({
+  const colaboradores = await tx.usuarioEmpresa.findMany({
     where: { empresaId, deletedAt: null },
     select: { id: true, superiorId: true, usuarioId: true },
   });

@@ -84,5 +84,5 @@ export const CURRENT_USER_EXAMPLE: CurrentUser = {
       perfilNome: "Administrador",
     },
   ],
-  permissoes: ["empresas.visualizar", "empresas.editar", "colaboradores.cadastrar"],
+  permissoes: ["empresas.visualizar", "empresas.editar", "clientes.cadastrar"],
 };

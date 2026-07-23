@@ -1,4 +1,4 @@
-import { Acao, Cargo, PrismaClient } from '@prisma/client';
+import { Acao, PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -18,14 +18,6 @@ interface LegacyVendedor {
   telefone: string | null;
   celular: string | null;
   dataNascimento: string | null;
-}
-interface LegacyMeta {
-  vendedorId: number;
-  mes: number;
-  ano: number;
-  valor: number | null;
-  numeroCliente: number | null;
-  novoCliente: number | null;
 }
 interface LegacyCliente {
   id: number;
@@ -50,7 +42,6 @@ interface LegacyData {
   vendedores: LegacyVendedor[];
   supervisores: LegacyVendedor[];
   supervisorVendedor: { vendedorId: number; supervisorId: number }[];
-  metas: LegacyMeta[];
   clientes: LegacyCliente[];
 }
 
@@ -146,14 +137,11 @@ async function main() {
     { id: 'seed-menu-usuarios', nome: 'Usuários', rota: '/admin/usuarios', icone: 'users', codigo: 'usuarios', moduloId: moduloAdministracao.id },
     { id: 'seed-menu-perfis', nome: 'Perfis', rota: '/admin/perfis', icone: 'shield', codigo: 'perfis', moduloId: moduloAdministracao.id },
     { id: 'seed-menu-estrutura', nome: 'Estrutura de Menu', rota: '/admin/estrutura', icone: 'layout-grid', codigo: 'menus', moduloId: moduloAdministracao.id },
-    { id: 'seed-menu-colaboradores', nome: 'Vendedores', rota: '/comercial/vendedores', icone: 'user-round', codigo: 'colaboradores', moduloId: moduloComercial.id },
     { id: 'seed-menu-clientes', nome: 'Clientes', rota: '/comercial/clientes', icone: 'contact', codigo: 'clientes', moduloId: moduloComercial.id },
     { id: 'seed-menu-notas-saida', nome: 'Notas Fiscais de Saída', rota: '/comercial/notas-saida', icone: 'file-text', codigo: 'notas-saida', moduloId: moduloComercial.id },
     { id: 'seed-menu-produtos', nome: 'Produtos', rota: '/comercial/produtos', icone: 'package', codigo: 'produtos', moduloId: moduloComercial.id },
     { id: 'seed-menu-titulos-receber', nome: 'Títulos a Receber', rota: '/comercial/titulos-receber', icone: 'receipt', codigo: 'titulos-receber', moduloId: moduloComercial.id },
     { id: 'seed-menu-posicao-clientes', nome: 'Posição de Clientes', rota: '/comercial/posicao-clientes', icone: 'user-search', codigo: 'posicao-clientes', moduloId: moduloComercial.id },
-    { id: 'seed-menu-metas', nome: 'Metas', rota: '/comercial/metas', icone: 'target', codigo: 'metas', moduloId: moduloComercial.id },
-    { id: 'seed-menu-acompanhamento', nome: 'Acompanhamento', rota: '/comercial/acompanhamento', icone: 'line-chart', codigo: 'acompanhamento', moduloId: moduloComercial.id },
   ];
 
   for (const [i, m] of menuDefs.entries()) {
@@ -184,14 +172,11 @@ async function main() {
   }
 
   const rotinas = await prisma.rotina.findMany({ where: { deletedAt: null } });
-  const rotinaColaboradores = rotinas.find((r) => r.codigo === 'colaboradores');
   const rotinaClientes = rotinas.find((r) => r.codigo === 'clientes');
   const rotinaNotasSaida = rotinas.find((r) => r.codigo === 'notas-saida');
   const rotinaProdutos = rotinas.find((r) => r.codigo === 'produtos');
   const rotinaTitulos = rotinas.find((r) => r.codigo === 'titulos-receber');
   const rotinaPosicao = rotinas.find((r) => r.codigo === 'posicao-clientes');
-  const rotinaMetas = rotinas.find((r) => r.codigo === 'metas');
-  const rotinaAcompanhamento = rotinas.find((r) => r.codigo === 'acompanhamento');
   const senhaHash = await bcrypt.hash(SENHA_PADRAO, 12);
 
   // Concede uma lista de ações de uma rotina a um perfil (idempotente).
@@ -207,9 +192,9 @@ async function main() {
 
   console.log('Seed concluído. Credenciais (todas com a mesma senha):\n');
 
-  // Cada empresa é isolada (RLS): perfis, colaboradores e o vínculo de
-  // usuário só existem dentro dela. Isso permite testar que um usuário de
-  // uma empresa nunca vê dados de outra.
+  // Cada empresa é isolada (RLS): perfis e vínculos de usuário só existem
+  // dentro dela. Isso permite testar que um usuário de uma empresa nunca vê
+  // dados de outra.
   for (const cfg of EMPRESAS) {
     const empresa = await prisma.empresa.upsert({
       where: { cnpj: cfg.cnpj },
@@ -254,16 +239,13 @@ async function main() {
       update: {},
     });
 
-    // Gerente: gerencia a equipe (vendedores), define metas e acompanha o
-    // desempenho de toda a estrutura abaixo dele.
-    if (rotinaColaboradores) await conceder(perfilGerente.id, rotinaColaboradores.id, CRUD);
+    // Gerente: gerencia a equipe (vendedores) e a carteira de toda a
+    // estrutura abaixo dele.
     if (rotinaClientes) await conceder(perfilGerente.id, rotinaClientes.id, CRUD);
     if (rotinaNotasSaida) await conceder(perfilGerente.id, rotinaNotasSaida.id, CRUD);
     if (rotinaProdutos) await conceder(perfilGerente.id, rotinaProdutos.id, CRUD);
     if (rotinaTitulos) await conceder(perfilGerente.id, rotinaTitulos.id, CRUD);
     if (rotinaPosicao) await conceder(perfilGerente.id, rotinaPosicao.id, ['visualizar']);
-    if (rotinaMetas) await conceder(perfilGerente.id, rotinaMetas.id, CRUD);
-    if (rotinaAcompanhamento) await conceder(perfilGerente.id, rotinaAcompanhamento.id, ['visualizar']);
 
     // Supervisor: mesmas telas do gerente, mas o escopo (equipe) é resolvido
     // pela hierarquia na API — vê apenas os vendedores abaixo dele.
@@ -272,40 +254,33 @@ async function main() {
       create: {
         empresaId: empresa.id,
         nome: 'Supervisor',
-        descricao: 'Coordena os vendedores da própria equipe, define metas e acompanha resultados',
+        descricao: 'Coordena os vendedores da própria equipe',
         sistemaBase: false,
       },
       update: {},
     });
-    if (rotinaColaboradores) await conceder(perfilSupervisor.id, rotinaColaboradores.id, CRUD);
     if (rotinaClientes) await conceder(perfilSupervisor.id, rotinaClientes.id, CRUD);
     if (rotinaNotasSaida) await conceder(perfilSupervisor.id, rotinaNotasSaida.id, CRUD);
     if (rotinaProdutos) await conceder(perfilSupervisor.id, rotinaProdutos.id, CRUD);
     if (rotinaTitulos) await conceder(perfilSupervisor.id, rotinaTitulos.id, CRUD);
     if (rotinaPosicao) await conceder(perfilSupervisor.id, rotinaPosicao.id, ['visualizar']);
-    if (rotinaMetas) await conceder(perfilSupervisor.id, rotinaMetas.id, CRUD);
-    if (rotinaAcompanhamento) await conceder(perfilSupervisor.id, rotinaAcompanhamento.id, ['visualizar']);
 
-    // Vendedor: consulta a estrutura, vê as próprias metas e acompanha o
-    // próprio desempenho (a API restringe a linha a ele mesmo).
+    // Vendedor: consulta a própria carteira (a API restringe a linha a ele mesmo).
     const perfilVendedor = await prisma.perfil.upsert({
       where: { empresaId_nome: { empresaId: empresa.id, nome: 'Vendedor' } },
       create: {
         empresaId: empresa.id,
         nome: 'Vendedor',
-        descricao: 'Consulta a equipe, as próprias metas e o próprio desempenho',
+        descricao: 'Consulta e mantém a própria carteira de clientes',
         sistemaBase: false,
       },
       update: {},
     });
-    if (rotinaColaboradores) await conceder(perfilVendedor.id, rotinaColaboradores.id, ['visualizar']);
     if (rotinaClientes) await conceder(perfilVendedor.id, rotinaClientes.id, ['visualizar', 'cadastrar', 'editar']);
     if (rotinaNotasSaida) await conceder(perfilVendedor.id, rotinaNotasSaida.id, ['visualizar', 'cadastrar', 'editar']);
     if (rotinaProdutos) await conceder(perfilVendedor.id, rotinaProdutos.id, ['visualizar']);
     if (rotinaTitulos) await conceder(perfilVendedor.id, rotinaTitulos.id, ['visualizar']);
     if (rotinaPosicao) await conceder(perfilVendedor.id, rotinaPosicao.id, ['visualizar']);
-    if (rotinaMetas) await conceder(perfilVendedor.id, rotinaMetas.id, ['visualizar']);
-    if (rotinaAcompanhamento) await conceder(perfilVendedor.id, rotinaAcompanhamento.id, ['visualizar']);
 
     // Usuário administrador
     const admin = await prisma.usuario.upsert({
@@ -319,27 +294,20 @@ async function main() {
       update: { perfilId: perfilAdmin.id, ativo: true },
     });
 
-    // Usuário gerente + colaborador (topo da hierarquia comercial da empresa)
+    // Usuário gerente (topo da hierarquia comercial da empresa)
     const gerenteUsuario = await prisma.usuario.upsert({
       where: { email: cfg.gerenteEmail },
       create: { nome: cfg.gerenteNome, email: cfg.gerenteEmail, senhaHash, ativo: true },
       update: { senhaHash },
     });
-    await prisma.usuarioEmpresa.upsert({
+    const gerenteVinculo = await prisma.usuarioEmpresa.upsert({
       where: { usuarioId_empresaId: { usuarioId: gerenteUsuario.id, empresaId: empresa.id } },
-      create: { usuarioId: gerenteUsuario.id, empresaId: empresa.id, perfilId: perfilGerente.id },
-      update: { perfilId: perfilGerente.id, ativo: true },
-    });
-    const gerenteColaborador = await prisma.colaborador.upsert({
-      where: { usuarioId: gerenteUsuario.id },
       create: {
-        empresaId: empresa.id,
         usuarioId: gerenteUsuario.id,
-        cargo: Cargo.gerente,
-        superiorId: null,
-        ativo: true,
+        empresaId: empresa.id,
+        perfilId: perfilGerente.id,
       },
-      update: { empresaId: empresa.id, cargo: Cargo.gerente },
+      update: { perfilId: perfilGerente.id, ativo: true },
     });
 
     // Vendedores, reportando ao gerente da própria empresa
@@ -351,25 +319,20 @@ async function main() {
       });
       await prisma.usuarioEmpresa.upsert({
         where: { usuarioId_empresaId: { usuarioId: usuario.id, empresaId: empresa.id } },
-        create: { usuarioId: usuario.id, empresaId: empresa.id, perfilId: perfilVendedor.id },
-        update: { perfilId: perfilVendedor.id, ativo: true },
-      });
-      await prisma.colaborador.upsert({
-        where: { usuarioId: usuario.id },
         create: {
-          empresaId: empresa.id,
           usuarioId: usuario.id,
-          cargo: Cargo.vendedor,
-          superiorId: gerenteColaborador.id,
+          empresaId: empresa.id,
+          perfilId: perfilVendedor.id,
+          superiorId: gerenteVinculo.id,
+          codigoErp: v.codigoErp,
+          nomeReduzido: v.nomeReduzido,
+        },
+        update: {
+          perfilId: perfilVendedor.id,
+          superiorId: gerenteVinculo.id,
           codigoErp: v.codigoErp,
           nomeReduzido: v.nomeReduzido,
           ativo: true,
-        },
-        update: {
-          empresaId: empresa.id,
-          superiorId: gerenteColaborador.id,
-          codigoErp: v.codigoErp,
-          nomeReduzido: v.nomeReduzido,
         },
       });
     }
@@ -415,7 +378,7 @@ async function main() {
 
   // --------------------------------------------------------------------
   // Importação dos dados reais do sistema antigo (vendedores, supervisores,
-  // hierarquia e metas) para a empresa RCG. Faz parte da substituição do
+  // hierarquia e clientes) para a empresa RCG. Faz parte da substituição do
   // sistema legado: os números precisam ser reais para as análises.
   // --------------------------------------------------------------------
   const legado = carregarLegado();
@@ -429,10 +392,12 @@ async function main() {
         prisma.usuario.findUnique({ where: { email: primeira.gerenteEmail } }),
       ]);
       // Usuário real do sistema legado que deve ter acesso total (TI) — recebe o
-      // perfil Administrador em vez do perfil do próprio cargo organizacional.
+      // perfil Administrador em vez do perfil correspondente à sua função (sup/vend).
       const EMAIL_ADMIN_REAL = 'informatica@rcgdist.com.br';
       const gerenteColab = gerenteUser
-        ? await prisma.colaborador.findUnique({ where: { usuarioId: gerenteUser.id } })
+        ? await prisma.usuarioEmpresa.findUnique({
+            where: { usuarioId_empresaId: { usuarioId: gerenteUser.id, empresaId: empresaRcg.id } },
+          })
         : null;
 
       if (perfilSup && perfilVend && gerenteColab) {
@@ -454,7 +419,6 @@ async function main() {
         const importarColab = async (
           p: LegacyVendedor,
           tipo: string,
-          cargo: Cargo,
           perfilId: string,
           superiorId: string | null,
         ) => {
@@ -469,17 +433,21 @@ async function main() {
             create: { nome, email, senhaHash, ativo },
             update: { nome, senhaHash, ativo },
           });
-          await prisma.usuarioEmpresa.upsert({
+          const vinculo = await prisma.usuarioEmpresa.upsert({
             where: { usuarioId_empresaId: { usuarioId: usuario.id, empresaId: empresaRcg.id } },
-            create: { usuarioId: usuario.id, empresaId: empresaRcg.id, perfilId: perfilFinal },
-            update: { perfilId: perfilFinal, ativo: true },
-          });
-          const colab = await prisma.colaborador.upsert({
-            where: { usuarioId: usuario.id },
             create: {
-              empresaId: empresaRcg.id,
               usuarioId: usuario.id,
-              cargo,
+              empresaId: empresaRcg.id,
+              perfilId: perfilFinal,
+              superiorId,
+              codigoErp: p.codErp,
+              nomeReduzido: p.nomeReduzido,
+              telefone: p.telefone,
+              celular: p.celular,
+              dataNascimento,
+            },
+            update: {
+              perfilId: perfilFinal,
               superiorId,
               codigoErp: p.codErp,
               nomeReduzido: p.nomeReduzido,
@@ -488,24 +456,14 @@ async function main() {
               dataNascimento,
               ativo,
             },
-            update: {
-              empresaId: empresaRcg.id,
-              cargo,
-              superiorId,
-              codigoErp: p.codErp,
-              nomeReduzido: p.nomeReduzido,
-              telefone: p.telefone,
-              celular: p.celular,
-              dataNascimento,
-            },
           });
-          return colab.id;
+          return vinculo.id;
         };
 
         // Supervisores → abaixo do gerente
         const supColabPorLegado = new Map<number, string>();
         for (const s of legado.supervisores) {
-          const id = await importarColab(s, 'sup', Cargo.supervisor, perfilSup.id, gerenteColab.id);
+          const id = await importarColab(s, 'sup', perfilSup.id, gerenteColab.id);
           supColabPorLegado.set(s.id, id);
         }
 
@@ -517,33 +475,8 @@ async function main() {
         for (const v of legado.vendedores) {
           const supLegadoId = superiorDoVendedor.get(v.id);
           const superiorId = (supLegadoId && supColabPorLegado.get(supLegadoId)) || gerenteColab.id;
-          const id = await importarColab(v, 'vend', Cargo.vendedor, perfilVend.id, superiorId);
+          const id = await importarColab(v, 'vend', perfilVend.id, superiorId);
           vendColabPorLegado.set(v.id, id);
-        }
-
-        // Metas mensais reais
-        let metasImportadas = 0;
-        for (const m of legado.metas) {
-          const colaboradorId = vendColabPorLegado.get(m.vendedorId);
-          if (!colaboradorId) continue;
-          await prisma.metaVendedor.upsert({
-            where: { colaboradorId_ano_mes: { colaboradorId, ano: m.ano, mes: m.mes } },
-            create: {
-              empresaId: empresaRcg.id,
-              colaboradorId,
-              ano: m.ano,
-              mes: m.mes,
-              valorObjetivo: m.valor ?? 0,
-              metaClientes: Math.round(m.numeroCliente ?? 0),
-              metaNovosClientes: Math.round(m.novoCliente ?? 0),
-            },
-            update: {
-              valorObjetivo: m.valor ?? 0,
-              metaClientes: Math.round(m.numeroCliente ?? 0),
-              metaNovosClientes: Math.round(m.novoCliente ?? 0),
-            },
-          });
-          metasImportadas++;
         }
 
         // Clientes reais (carteira). Só importa se ainda não houver clientes,
@@ -582,7 +515,7 @@ async function main() {
 
         console.log(
           `\nDados legados importados para RCG: ${legado.supervisores.length} supervisores, ` +
-            `${legado.vendedores.length} vendedores, ${metasImportadas} metas, ` +
+            `${legado.vendedores.length} vendedores, ` +
             `${clientesImportados || jaTemClientes} clientes.`,
         );
       }

@@ -43,10 +43,32 @@ export const usuarioSchema = z.object({
 });
 export type Usuario = z.infer<typeof usuarioSchema>;
 
+// Corpo de POST /usuarios/:id/empresas/:empresaId — cria o vínculo (ou edita
+// um existente, mesma rota) com o perfil (RBAC) + hierarquia/dados de
+// vendedor completos.
 export const usuarioEmpresaCreateSchema = z.object({
-  usuarioId: z.string().uuid().describe("Usuário a ser vinculado"),
-  empresaId: z.string().uuid().describe("Empresa à qual o usuário será vinculado"),
-  perfilId: z.string().uuid().describe("Perfil do usuário nesta empresa"),
+  perfilId: z.string().uuid().describe("Perfil (RBAC) do usuário nesta empresa"),
+  superiorId: z
+    .string()
+    .uuid()
+    .nullable()
+    .optional()
+    .describe("Vínculo (usuário×empresa) superior na hierarquia; null se for o topo"),
+  codigoErp: z
+    .string()
+    .trim()
+    .max(40)
+    .optional()
+    .describe("Código do vendedor no ERP de origem (ex.: Protheus), usado para conciliar vendas importadas"),
+  nomeReduzido: z
+    .string()
+    .trim()
+    .max(60)
+    .optional()
+    .describe("Nome curto/apelido usado em listagens e relatórios (ex.: 'CARLOS' em vez do nome completo)"),
+  telefone: z.string().trim().max(20).optional().or(z.literal("")),
+  celular: z.string().trim().max(20).optional().or(z.literal("")),
+  dataNascimento: z.coerce.date().nullable().optional(),
   ativo: z.boolean().default(true).describe("Vínculo ativo permite login nesta empresa"),
 });
 export type UsuarioEmpresaCreate = z.infer<typeof usuarioEmpresaCreateSchema>;

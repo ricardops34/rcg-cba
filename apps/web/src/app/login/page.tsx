@@ -22,7 +22,6 @@ import {
   Pencil,
   Radar,
   ShieldCheck,
-  Target,
   TrendingUp,
   Users,
 } from "lucide-react";
@@ -40,7 +39,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 
 const SERVICOS = [
-  { icon: Target, label: "Metas e indicadores" },
   { icon: TrendingUp, label: "Histórico e tendências" },
   { icon: Lightbulb, label: "Sugestão de venda" },
   { icon: Layers, label: "Mix ideal do cliente" },

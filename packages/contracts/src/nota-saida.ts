@@ -73,9 +73,7 @@ export const notaSaidaSchema = notaSaidaCreateSchema.extend({
   vlrMercadoria: z.number().describe("Soma dos itens antes de desconto/impostos"),
   vlrItens: z
     .number()
-    .describe(
-      "Valor faturado da nota (soma dos itens líquida de desconto) — fonte de dados para valorRealizado em MetaVendedor",
-    ),
+    .describe("Valor faturado da nota (soma dos itens líquida de desconto)"),
   itens: z.array(notaSaidaItemSchema),
   ...auditFieldsSchema.shape,
 });

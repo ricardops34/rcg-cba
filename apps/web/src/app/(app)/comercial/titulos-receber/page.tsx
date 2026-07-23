@@ -37,9 +37,9 @@ interface TituloReceberRow extends TituloReceber {
 }
 interface ColabOption {
   id: string;
-  cargo: string;
+  vinculoId: string | null;
   nomeReduzido: string | null;
-  usuario: { nome: string };
+  nome: string;
 }
 interface ClienteOption {
   id: string;
@@ -97,12 +97,10 @@ export default function TitulosReceberPage() {
   });
 
   const { data: colaboradores } = useQuery({
-    queryKey: ["colaboradores", "select-titulos-receber"],
-    queryFn: () => apiFetch<{ data: ColabOption[] }>("/colaboradores", { query: { pageSize: 100 } }),
+    queryKey: ["usuarios", "select-titulos-receber"],
+    queryFn: () => apiFetch<{ data: ColabOption[] }>("/usuarios", { query: { pageSize: 100 } }),
   });
-  const vendedores = (colaboradores?.data ?? []).filter(
-    (c) => c.cargo === "vendedor" || c.cargo === "supervisor",
-  );
+  const vendedores = (colaboradores?.data ?? []).filter((c) => c.vinculoId);
 
   const { data: clientes } = useQuery({
     queryKey: ["clientes", "select-titulos-receber"],
@@ -195,7 +193,7 @@ export default function TitulosReceberPage() {
       header: "Vendedor",
       cell: (t) =>
         t.colaborador ? (
-          t.colaborador.nomeReduzido || t.colaborador.usuario.nome
+          t.colaborador.nomeReduzido || t.colaborador.usuario?.nome
         ) : (
           <span className="text-muted-foreground">—</span>
         ),
@@ -354,8 +352,8 @@ export default function TitulosReceberPage() {
                   <SelectContent>
                     <SelectItem value={NENHUM}>Sem vendedor</SelectItem>
                     {vendedores.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.nomeReduzido || c.usuario.nome}
+                      <SelectItem key={c.id} value={c.vinculoId!}>
+                        {c.nomeReduzido || c.nome}
                       </SelectItem>
                     ))}
                   </SelectContent>

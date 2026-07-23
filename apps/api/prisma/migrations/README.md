@@ -30,14 +30,32 @@ O `app.current_empresa_id` é definido por transação em
 `withTenant(empresaId, ...)`, senão a policy filtra tudo (valor vazio) e a query
 volta vazia.
 
-## Exceções (tabelas com `empresaId` que **não** recebem RLS)
+## `usuario_empresas`: RLS com duas policies (tenant + self)
 
-Documente o motivo na própria migration. Casos atuais:
+`usuario_empresas` carrega hierarquia/dados de vendedor do vínculo
+(ver `docs/regras-de-negocio.md`), então é dado de negócio e tem RLS — mas
+precisa continuar sendo consultável **antes** de existir empresa ativa (login
+descobrindo a quais empresas o usuário pertence; `AuthService.me()` listando
+todas). Por isso tem uma policy extra, além da de tenant padrão:
 
-- **`usuario_empresas`** — tabela de vínculo usada no login para descobrir a quais
-  empresas o usuário pertence, **antes** de existir "empresa ativa" no contexto.
-  Não há valor para o RLS filtrar contra. Filtro por usuário/empresa é feito pela
-  aplicação em toda consulta.
+```sql
+CREATE POLICY tenant_isolation_usuario_empresas ON "usuario_empresas"
+  USING ("empresaId" = current_setting('app.current_empresa_id', true));
+
+CREATE POLICY self_usuario_empresas ON "usuario_empresas"
+  USING ("usuarioId" = current_setting('app.current_usuario_id', true));
+```
+
+Postgres combina policies permissivas com OR, então uma linha fica visível se
+QUALQUER uma bater. `app.current_usuario_id` é setado por
+[`PrismaService.withUsuario`](../../src/common/prisma/prisma.service.ts),
+irmão do `withTenant`. Use `withUsuario` para consultar os vínculos do
+**próprio** usuário logado (login, `me()`); use `withTenant` pra consultar
+vínculos de outros usuários dentro da empresa ativa (admin gerenciando
+usuários).
+
+## Exceção (tabela com `empresaId` que **não** recebe RLS)
+
 - **`refresh_tokens`** — consultada por `tokenHash`/`usuarioId` no fluxo de
   login/refresh (via `this.prisma.refreshToken`, **sem** `withTenant`), antes de
   haver empresa ativa. A coluna `empresaId` é nullable e apenas informativa.
@@ -57,6 +75,6 @@ Documente o motivo na própria migration. Casos atuais:
 
 ## Cobertura atual
 
-Com RLS: `perfis`, `colaboradores`, `clientes`, `meta_vendedor_mes`, `notas_saida`, `produtos`, `titulos_receber`.
+Com RLS: `perfis`, `usuario_empresas`, `clientes`, `meta_vendedor_mes`, `notas_saida`, `produtos`, `titulos_receber`.
 </content>
 </invoke>

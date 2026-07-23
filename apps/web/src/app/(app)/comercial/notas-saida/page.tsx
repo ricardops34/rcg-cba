@@ -37,9 +37,9 @@ interface NotaSaidaRow extends NotaSaida {
 }
 interface ColabOption {
   id: string;
-  cargo: string;
+  vinculoId: string | null;
   nomeReduzido: string | null;
-  usuario: { nome: string };
+  nome: string;
 }
 interface ClienteOption {
   id: string;
@@ -91,12 +91,10 @@ export default function NotasSaidaPage() {
   });
 
   const { data: colaboradores } = useQuery({
-    queryKey: ["colaboradores", "select-notas-saida"],
-    queryFn: () => apiFetch<{ data: ColabOption[] }>("/colaboradores", { query: { pageSize: 200 } }),
+    queryKey: ["usuarios", "select-notas-saida"],
+    queryFn: () => apiFetch<{ data: ColabOption[] }>("/usuarios", { query: { pageSize: 200 } }),
   });
-  const vendedores = (colaboradores?.data ?? []).filter(
-    (c) => c.cargo === "vendedor" || c.cargo === "supervisor",
-  );
+  const vendedores = (colaboradores?.data ?? []).filter((c) => c.vinculoId);
 
   const { data: clientes } = useQuery({
     queryKey: ["clientes", "select-notas-saida"],
@@ -197,7 +195,7 @@ export default function NotasSaidaPage() {
       header: "Vendedor",
       cell: (n) =>
         n.colaborador ? (
-          n.colaborador.nomeReduzido || n.colaborador.usuario.nome
+          n.colaborador.nomeReduzido || n.colaborador.usuario?.nome
         ) : (
           <span className="text-muted-foreground">—</span>
         ),
@@ -332,8 +330,8 @@ export default function NotasSaidaPage() {
                     <SelectContent>
                       <SelectItem value={NENHUM}>Sem vendedor</SelectItem>
                       {vendedores.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.nomeReduzido || c.usuario.nome}
+                        <SelectItem key={c.id} value={c.vinculoId!}>
+                          {c.nomeReduzido || c.nome}
                         </SelectItem>
                       ))}
                     </SelectContent>

@@ -93,7 +93,7 @@ function NotasTab({ clienteId, comodato, emptyMessage }: { clienteId: string; co
       header: "Vendedor",
       cell: (n) =>
         n.colaborador ? (
-          n.colaborador.nomeReduzido || n.colaborador.usuario.nome
+          n.colaborador.nomeReduzido || n.colaborador.usuario?.nome
         ) : (
           <span className="text-muted-foreground">—</span>
         ),

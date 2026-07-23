@@ -4,9 +4,9 @@
  *   - 1 usuário Admin com acesso (perfil Administrador) às 3 empresas
  *
  * Idempotente: pode rodar várias vezes. LIMPA os dados de negócio/tenant antes
- * de popular (empresas, perfis, usuários, vínculos, colaboradores, clientes,
- * metas, refresh tokens). A estrutura de menu/módulos/rotinas é reconstruída
- * via upsert (as permissões do Admin dependem das rotinas existirem).
+ * de popular (empresas, perfis, usuários, vínculos, clientes, refresh
+ * tokens). A estrutura de menu/módulos/rotinas é reconstruída via upsert (as
+ * permissões do Admin dependem das rotinas existirem).
  *
  * Rodar (a partir da raiz do repo):
  *   pnpm --filter @plataforma/api exec ts-node prisma/seed-base.ts
@@ -53,17 +53,15 @@ const ACOES: Acao[] = [
 ];
 
 async function limparDados() {
-  // Ordem respeita as FKs. colaborador tem auto-referência (superiorId): zera
-  // antes de apagar para não violar a constraint.
+  // Ordem respeita as FKs. usuarioEmpresa tem auto-referência (superiorId,
+  // hierarquia): zera antes de apagar para não violar a constraint.
   await prisma.notaSaidaItem.deleteMany();
   await prisma.notaSaida.deleteMany();
   await prisma.tituloReceber.deleteMany();
-  await prisma.metaVendedor.deleteMany();
   await prisma.cliente.deleteMany();
   await prisma.produto.deleteMany();
-  await prisma.colaborador.updateMany({ data: { superiorId: null } });
-  await prisma.colaborador.deleteMany();
   await prisma.refreshToken.deleteMany();
+  await prisma.usuarioEmpresa.updateMany({ data: { superiorId: null } });
   await prisma.usuarioEmpresa.deleteMany();
   await prisma.perfilPermissao.deleteMany();
   await prisma.perfil.deleteMany();
@@ -88,10 +86,7 @@ async function bootstrapMenu() {
     { id: 'seed-menu-usuarios', nome: 'Usuários', rota: '/admin/usuarios', icone: 'users', codigo: 'usuarios', moduloId: moduloAdministracao.id },
     { id: 'seed-menu-perfis', nome: 'Perfis', rota: '/admin/perfis', icone: 'shield', codigo: 'perfis', moduloId: moduloAdministracao.id },
     { id: 'seed-menu-estrutura', nome: 'Estrutura de Menu', rota: '/admin/estrutura', icone: 'layout-grid', codigo: 'menus', moduloId: moduloAdministracao.id },
-    { id: 'seed-menu-colaboradores', nome: 'Vendedores', rota: '/comercial/vendedores', icone: 'user-round', codigo: 'colaboradores', moduloId: moduloComercial.id },
     { id: 'seed-menu-clientes', nome: 'Clientes', rota: '/comercial/clientes', icone: 'contact', codigo: 'clientes', moduloId: moduloComercial.id },
-    { id: 'seed-menu-metas', nome: 'Metas', rota: '/comercial/metas', icone: 'target', codigo: 'metas', moduloId: moduloComercial.id },
-    { id: 'seed-menu-acompanhamento', nome: 'Acompanhamento', rota: '/comercial/acompanhamento', icone: 'line-chart', codigo: 'acompanhamento', moduloId: moduloComercial.id },
   ];
 
   for (const [i, m] of menuDefs.entries()) {

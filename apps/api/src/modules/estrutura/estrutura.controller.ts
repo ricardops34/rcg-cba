@@ -41,8 +41,8 @@ import {
 } from '../../common/decorators/current-user.decorator';
 
 const MODULO_ID_EXAMPLE = 'seed-modulo-administracao';
-const MENU_ID_EXAMPLE = 'seed-menu-colaboradores';
-const ROTINA_ID_EXAMPLE = 'seed-rotina-colaboradores';
+const MENU_ID_EXAMPLE = 'seed-menu-clientes';
+const ROTINA_ID_EXAMPLE = 'seed-rotina-clientes';
 
 @ApiTags('estrutura-menu')
 @ApiBearerAuth()
@@ -154,7 +154,7 @@ export class EstruturaController {
   @ApiOperation({
     summary: 'Cadastrar rotina',
     description:
-      'Cria uma rotina (funcionalidade permissionável). O "codigo" é o que aparece nas permissões, ex.: colaboradores.editar. Requer rotinas.cadastrar.',
+      'Cria uma rotina (funcionalidade permissionável). O "codigo" é o que aparece nas permissões, ex.: clientes.editar. Requer rotinas.cadastrar.',
   })
   @ApiBodyExample(ROTINA_CREATE_EXAMPLE)
   @RequirePermission('rotinas', 'cadastrar')

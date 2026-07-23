@@ -13,14 +13,11 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   "/admin/usuarios": { title: "Usuários", subtitle: "Cadastro e permissões" },
   "/admin/perfis": { title: "Perfis", subtitle: "Papéis e permissões (RBAC)" },
   "/admin/estrutura": { title: "Estrutura de menu", subtitle: "Módulos, menus e rotinas" },
-  "/comercial/vendedores": { title: "Vendedores", subtitle: "Colaboradores e hierarquia" },
   "/comercial/clientes": { title: "Clientes", subtitle: "Carteira comercial" },
   "/comercial/notas-saida": { title: "Notas Fiscais de Saída", subtitle: "Faturamento por vendedor" },
   "/comercial/produtos": { title: "Produtos", subtitle: "Catálogo de produtos" },
   "/comercial/titulos-receber": { title: "Títulos a Receber", subtitle: "Contas a receber por vendedor" },
   "/comercial/posicao-clientes": { title: "Posição de Clientes", subtitle: "Indicadores e histórico por cliente" },
-  "/comercial/metas": { title: "Metas", subtitle: "Objetivos mensais por vendedor" },
-  "/comercial/acompanhamento": { title: "Acompanhamento", subtitle: "Desempenho da equipe" },
 };
 
 export default function AppShellLayout({ children }: { children: React.ReactNode }) {

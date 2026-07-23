@@ -72,13 +72,25 @@ export default function UsuariosPage() {
 
   const openCreate = () => {
     setEditing(null);
-    form.reset({ nome: "", email: "", senha: "", ativo: true, perfilId: perfis?.data[0]?.id ?? "" });
+    form.reset({
+      nome: "",
+      email: "",
+      senha: "",
+      ativo: true,
+      perfilId: perfis?.data[0]?.id ?? "",
+    });
     setSheetOpen(true);
   };
 
   const openEdit = (usuario: UsuarioRow) => {
     setEditing(usuario);
-    form.reset({ nome: usuario.nome, email: usuario.email, senha: "", ativo: usuario.ativo, perfilId: "" });
+    form.reset({
+      nome: usuario.nome,
+      email: usuario.email,
+      senha: "",
+      ativo: usuario.ativo,
+      perfilId: "",
+    });
     setSheetOpen(true);
   };
 

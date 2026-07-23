@@ -14,20 +14,26 @@ function buildUser(overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUse
   };
 }
 
-function buildTx(colaboradores: Array<{ id: string; superiorId: string | null; usuarioId: string }>) {
+function buildTx(
+  colaboradores: Array<{
+    id: string;
+    superiorId: string | null;
+    usuarioId: string;
+  }>,
+) {
   return {
-    colaborador: {
+    usuarioEmpresa: {
       findMany: jest.fn().mockResolvedValue(colaboradores),
     },
   } as unknown as TenantTx;
 }
 
 describe('equipeColaboradorIds', () => {
-  it('retorna null para admin, sem consultar colaboradores', async () => {
+  it('retorna null para admin, sem consultar usuarioEmpresa', async () => {
     const tx = buildTx([]);
     const result = await equipeColaboradorIds(tx, 'empresa-1', buildUser({ isAdmin: true }));
     expect(result).toBeNull();
-    expect((tx.colaborador.findMany as jest.Mock)).not.toHaveBeenCalled();
+    expect((tx.usuarioEmpresa.findMany as jest.Mock)).not.toHaveBeenCalled();
   });
 
   it('retorna lista vazia quando o usuário não tem colaborador vinculado', async () => {

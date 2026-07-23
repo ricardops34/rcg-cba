@@ -20,9 +20,21 @@ CREATE POLICY tenant_isolation_<tabela> ON "<tabela>"
 - `app.current_empresa_id` é setado por transação em `PrismaService.withTenant`
   (`apps/api/src/common/prisma/prisma.service.ts`). Todo acesso a tabela com RLS
   precisa passar por `withTenant(empresaId, ...)`.
-- Exceções (sem RLS, por design — consultadas no login antes de haver empresa
-  ativa): `usuario_empresas` e `refresh_tokens`. Documente o motivo na migration.
+- `usuario_empresas` tem RLS com **duas** policies permissivas (Postgres
+  combina com OR): a de tenant de sempre (`empresaId`), mais uma de
+  auto-acesso (`usuarioId = current_setting('app.current_usuario_id', true)`)
+  — necessária porque login/`AuthService.me()` precisam descobrir a quais
+  empresas o usuário pertence *antes* de existir empresa ativa no contexto.
+  Use `PrismaService.withUsuario(usuarioId, ...)` pra esses casos.
+- Exceção (sem RLS, por design — consultada no login antes de haver empresa
+  ativa, e não guarda dado de negócio): `refresh_tokens`. Documente o motivo
+  na migration.
 - Em produção, a API deve conectar com role de aplicação **sem** `BYPASSRLS`.
 
 Detalhes e template completo: `apps/api/prisma/migrations/README.md`.
+
+## Regras de negócio
+
+Regras do domínio comercial (perfil de acesso, hierarquia de visualização de
+dados, etc.) estão em `docs/regras-de-negocio.md`, não aqui.
 </content>

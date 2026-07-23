@@ -178,7 +178,7 @@ export class ClientesService {
           email: cliente.email,
           ativo: cliente.ativo,
           vendedorNome:
-            cliente.colaborador?.nomeReduzido ?? cliente.colaborador?.usuario.nome ?? null,
+            cliente.colaborador?.nomeReduzido ?? cliente.colaborador?.usuario?.nome ?? null,
         },
         indicadores: {
           primeiraCompra: vendas._min.dtEmissao?.toISOString() ?? null,

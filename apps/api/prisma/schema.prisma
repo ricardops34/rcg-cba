@@ -29,8 +29,6 @@ model Empresa {
 
   usuarioEmpresas UsuarioEmpresa[]
   perfis          Perfil[]
-  colaboradores   Colaborador[]
-  metas           MetaVendedor[]
   clientes        Cliente[]
   notasSaida      NotaSaida[]
   produtos        Produto[]
@@ -57,18 +55,29 @@ model Usuario {
   deletedBy String?
 
   usuarioEmpresas UsuarioEmpresa[]
-  colaborador     Colaborador?
   refreshTokens   RefreshToken[]
 
   @@map("usuarios")
 }
 
+// Vínculo usuário×empresa: perfil (RBAC) + hierarquia/dados de vendedor
+// nessa empresa (ver docs/regras-de-negocio.md). Um usuário multiempresa tem
+// um registro aqui por empresa, cada um com seu próprio perfil/superior. O
+// perfil sistemaBase enxerga tudo da empresa sem restrição de carteira; os
+// demais são escopados pela árvore superiorId, qualquer que seja o perfil.
 model UsuarioEmpresa {
   id        String  @id @default(uuid())
   usuarioId String
   empresaId String
   perfilId  String
   ativo     Boolean @default(true)
+
+  superiorId     String?
+  codigoErp      String?
+  nomeReduzido   String?
+  telefone       String?
+  celular        String?
+  dataNascimento DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -77,9 +86,15 @@ model UsuarioEmpresa {
   updatedBy String?
   deletedBy String?
 
-  usuario Usuario @relation(fields: [usuarioId], references: [id])
-  empresa Empresa @relation(fields: [empresaId], references: [id])
-  perfil  Perfil  @relation(fields: [perfilId], references: [id])
+  usuario   Usuario          @relation(fields: [usuarioId], references: [id])
+  empresa   Empresa          @relation(fields: [empresaId], references: [id])
+  perfil    Perfil           @relation(fields: [perfilId], references: [id])
+  superior  UsuarioEmpresa?  @relation("UsuarioEmpresaHierarquia", fields: [superiorId], references: [id])
+  liderados UsuarioEmpresa[] @relation("UsuarioEmpresaHierarquia")
+
+  clientes       Cliente[]
+  notasSaida     NotaSaida[]
+  titulosReceber TituloReceber[]
 
   @@unique([usuarioId, empresaId])
   @@map("usuario_empresas")
@@ -225,45 +240,6 @@ model RefreshToken {
 // Organização comercial
 // ------------------------------------------------------------------
 
-enum Cargo {
-  diretor
-  gerente
-  supervisor
-  vendedor
-}
-
-model Colaborador {
-  id             String    @id @default(uuid())
-  empresaId      String
-  usuarioId      String    @unique
-  superiorId     String?
-  cargo          Cargo
-  codigoErp      String?
-  nomeReduzido   String?
-  telefone       String?
-  celular        String?
-  dataNascimento DateTime?
-  ativo          Boolean   @default(true)
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-  createdBy String?
-  updatedBy String?
-  deletedBy String?
-
-  empresa    Empresa       @relation(fields: [empresaId], references: [id])
-  usuario    Usuario       @relation(fields: [usuarioId], references: [id])
-  superior   Colaborador?  @relation("ColaboradorHierarquia", fields: [superiorId], references: [id])
-  liderados  Colaborador[] @relation("ColaboradorHierarquia")
-  metas          MetaVendedor[]
-  clientes       Cliente[]
-  notasSaida     NotaSaida[]
-  titulosReceber TituloReceber[]
-
-  @@map("colaboradores")
-}
-
 // Cliente da carteira comercial. Vinculado a um vendedor (colaborador), o que
 // permite a visão por hierarquia: vendedor vê a própria carteira, supervisor/
 // gerente veem a de toda a equipe abaixo.
@@ -295,7 +271,7 @@ model Cliente {
   deletedBy String?
 
   empresa        Empresa         @relation(fields: [empresaId], references: [id])
-  colaborador    Colaborador?    @relation(fields: [colaboradorId], references: [id])
+  colaborador    UsuarioEmpresa? @relation(fields: [colaboradorId], references: [id])
   notasSaida     NotaSaida[]
   titulosReceber TituloReceber[]
 
@@ -367,9 +343,9 @@ model TituloReceber {
   updatedBy String?
   deletedBy String?
 
-  empresa     Empresa      @relation(fields: [empresaId], references: [id])
-  cliente     Cliente?     @relation(fields: [clienteId], references: [id])
-  colaborador Colaborador? @relation(fields: [colaboradorId], references: [id])
+  empresa     Empresa         @relation(fields: [empresaId], references: [id])
+  cliente     Cliente?        @relation(fields: [clienteId], references: [id])
+  colaborador UsuarioEmpresa? @relation(fields: [colaboradorId], references: [id])
 
   @@index([empresaId, clienteId])
   @@index([empresaId, colaboradorId, vencimento])
@@ -377,9 +353,7 @@ model TituloReceber {
 }
 
 // Nota fiscal de saída (venda faturada), espelhando a tabela `nota_saida` do
-// sistema legado. `vlrItens` é o valor de faturamento por trás do
-// `valorRealizado` em MetaVendedor — hoje lançado manualmente lá, mas esta é
-// a fonte de dados real para futura consolidação automática do acompanhamento.
+// sistema legado.
 model NotaSaida {
   id            String    @id @default(uuid())
   empresaId     String
@@ -411,7 +385,7 @@ model NotaSaida {
 
   empresa     Empresa         @relation(fields: [empresaId], references: [id])
   cliente     Cliente?        @relation(fields: [clienteId], references: [id])
-  colaborador Colaborador?    @relation(fields: [colaboradorId], references: [id])
+  colaborador UsuarioEmpresa? @relation(fields: [colaboradorId], references: [id])
   itens       NotaSaidaItem[]
 
   @@unique([empresaId, numero, serie])
@@ -440,38 +414,6 @@ model NotaSaidaItem {
   @@index([notaSaidaId])
   @@index([produtoId])
   @@map("notas_saida_itens")
-}
-
-// Meta mensal por vendedor — formato herdado do sistema antigo
-// (meta_vendedor_mes): objetivo de faturamento, meta de positivação
-// (nº de clientes) e de novos clientes. O realizado é lançado aqui até
-// existir integração com vendas/ERP.
-model MetaVendedor {
-  id                  String @id @default(uuid())
-  empresaId           String
-  colaboradorId       String
-  ano                 Int
-  mes                 Int
-  valorObjetivo       Float  @default(0)
-  metaClientes        Int    @default(0)
-  metaNovosClientes   Int    @default(0)
-  valorRealizado      Float  @default(0)
-  clientesPositivados Int    @default(0)
-  observacao          String?
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-  createdBy String?
-  updatedBy String?
-  deletedBy String?
-
-  empresa     Empresa     @relation(fields: [empresaId], references: [id])
-  colaborador Colaborador @relation(fields: [colaboradorId], references: [id])
-
-  @@unique([colaboradorId, ano, mes])
-  @@index([empresaId, ano, mes])
-  @@map("meta_vendedor_mes")
 }
 
 // ------------------------------------------------------------------

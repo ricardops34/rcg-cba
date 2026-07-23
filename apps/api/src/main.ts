@@ -25,7 +25,7 @@ async function bootstrap() {
 
   const config = new DocumentBuilder()
     .setTitle('Plataforma Comercial API')
-    .setDescription('Cadastros base, permissões e colaboradores')
+    .setDescription('Cadastros base, permissões e gestão comercial')
     .setVersion('1.0')
     .addBearerAuth()
     .addApiKey({ type: 'apiKey', name: 'x-api-key', in: 'header' }, 'apiKey')

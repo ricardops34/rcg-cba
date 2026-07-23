@@ -44,19 +44,19 @@ export type PerfilPermissoesUpdate = z.infer<
 
 export const PERFIL_CREATE_EXAMPLE: PerfilCreate = {
   nome: "Vendedor",
-  descricao: "Acesso aos próprios cadastros comerciais e ao dashboard de metas",
+  descricao: "Acesso aos próprios cadastros comerciais",
   ativo: true,
 };
 
 export const PERFIL_PERMISSOES_UPDATE_EXAMPLE: PerfilPermissoesUpdate = {
   permissoes: [
     {
-      rotinaId: "seed-rotina-colaboradores",
+      rotinaId: "seed-rotina-clientes",
       acao: "visualizar",
       permitido: true,
     },
     {
-      rotinaId: "seed-rotina-colaboradores",
+      rotinaId: "seed-rotina-clientes",
       acao: "editar",
       permitido: false,
     },
