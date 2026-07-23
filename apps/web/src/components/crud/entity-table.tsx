@@ -4,12 +4,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, ChevronRight, Inbox } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, ChevronDown, Inbox } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export interface ColumnDef<T> {
   header: string;
   cell: (row: T) => React.ReactNode;
   className?: string;
+  /** Nome do campo usado em sortBy/sortOrder. Ausente = coluna não ordenável. */
+  sortKey?: string;
 }
 
 interface EntityTableProps<T> {
@@ -25,6 +28,9 @@ interface EntityTableProps<T> {
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   onRowClick?: (row: T) => void;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+  onSortChange?: (sortBy: string, sortOrder: "asc" | "desc") => void;
 }
 
 export function EntityTable<T>({
@@ -40,18 +46,51 @@ export function EntityTable<T>({
   onPageChange,
   onPageSizeChange,
   onRowClick,
+  sortBy,
+  sortOrder = "asc",
+  onSortChange,
 }: EntityTableProps<T>) {
+  const toggleSort = (key: string) => {
+    if (!onSortChange) return;
+    if (sortBy !== key) onSortChange(key, "asc");
+    else onSortChange(key, sortOrder === "asc" ? "desc" : "asc");
+  };
+
   return (
     <div className="overflow-hidden rounded-xl border border-border/70 bg-card">
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              {columns.map((col) => (
-                <TableHead key={col.header} className={col.className}>
-                  {col.header}
-                </TableHead>
-              ))}
+              {columns.map((col) =>
+                col.sortKey ? (
+                  <TableHead key={col.header} className={col.className}>
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex items-center gap-1 text-xs font-medium tracking-wide uppercase hover:text-foreground",
+                        sortBy === col.sortKey ? "text-foreground" : "text-muted-foreground",
+                      )}
+                      onClick={() => toggleSort(col.sortKey!)}
+                    >
+                      {col.header}
+                      {sortBy === col.sortKey ? (
+                        sortOrder === "asc" ? (
+                          <ChevronUp className="size-3.5" />
+                        ) : (
+                          <ChevronDown className="size-3.5" />
+                        )
+                      ) : (
+                        <ChevronsUpDown className="size-3.5 opacity-40" />
+                      )}
+                    </button>
+                  </TableHead>
+                ) : (
+                  <TableHead key={col.header} className={col.className}>
+                    {col.header}
+                  </TableHead>
+                ),
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>

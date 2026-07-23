@@ -1,26 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import {
-  produtoCreateSchema,
-  produtoUpdateSchema,
-  type Produto,
-  type ProdutoCreate,
-  type ProdutoUpdate,
-} from "@plataforma/contracts";
+import type { Produto } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
+import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
+import { FiltersPopover } from "@/components/crud/filters-popover";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { FieldLabel } from "@/components/ui/field";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,92 +22,30 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
-const emptyToNull = (v: unknown) => (v === "" || v === null || v === undefined ? null : Number(v));
-const nanToNull = (v: number | null | undefined) =>
-  v == null || Number.isNaN(v) ? null : v;
-
 export default function ProdutosPage() {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [editing, setEditing] = useState<Produto | null>(null);
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sortBy, setSortBy] = useState("descricao");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [status, setStatus] = useState<StatusFilterValue>("todos");
+  const [categoria, setCategoria] = useState("");
+  const [categoriaInput, setCategoriaInput] = useState("");
 
   const { data, isLoading, isFetching, refetch } = useResourceList<Produto>("produtos", {
     search,
     page,
     pageSize,
+    sortBy,
+    sortOrder,
+    ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
+    ...(categoria ? { categoria } : {}),
   });
 
-  const { create, update, remove } = useResourceMutations<ProdutoCreate, ProdutoUpdate>("produtos");
+  const { remove } = useResourceMutations("produtos");
 
-  const schema = editing ? produtoUpdateSchema : produtoCreateSchema;
-  const empty: ProdutoCreate = {
-    codigoErp: "",
-    descricao: "",
-    unidade: "",
-    categoria: "",
-    subCategoria: "",
-    marca: "",
-    codigoBarras: "",
-    ncm: "",
-    qtdEmbalagem: null,
-    peso: null,
-    ultimoPreco: null,
-    observacao: "",
-    ativo: true,
-  };
-  const form = useForm<ProdutoCreate>({
-    resolver: zodResolver(schema as typeof produtoCreateSchema),
-    defaultValues: empty,
-  });
-
-  const openCreate = () => {
-    setEditing(null);
-    form.reset(empty);
-    setSheetOpen(true);
-  };
-
-  const openEdit = (p: Produto) => {
-    setEditing(p);
-    form.reset({
-      codigoErp: p.codigoErp,
-      descricao: p.descricao,
-      unidade: p.unidade ?? "",
-      categoria: p.categoria ?? "",
-      subCategoria: p.subCategoria ?? "",
-      marca: p.marca ?? "",
-      codigoBarras: p.codigoBarras ?? "",
-      ncm: p.ncm ?? "",
-      qtdEmbalagem: p.qtdEmbalagem ?? null,
-      peso: p.peso ?? null,
-      ultimoPreco: p.ultimoPreco ?? null,
-      observacao: p.observacao ?? "",
-      ativo: p.ativo,
-    });
-    setSheetOpen(true);
-  };
-
-  const onSubmit = async (values: ProdutoCreate) => {
-    const payload: ProdutoCreate = {
-      ...values,
-      qtdEmbalagem: nanToNull(values.qtdEmbalagem),
-      peso: nanToNull(values.peso),
-      ultimoPreco: nanToNull(values.ultimoPreco),
-    };
-    try {
-      if (editing) {
-        await update.mutateAsync({ id: editing.id, input: payload });
-        toast.success("Produto atualizado");
-      } else {
-        await create.mutateAsync(payload);
-        toast.success("Produto cadastrado");
-      }
-      setSheetOpen(false);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Erro ao salvar produto");
-    }
-  };
+  const openEdit = (p: Produto) => router.push(`/comercial/produtos/${p.id}`);
 
   const onDelete = async (p: Produto) => {
     if (!confirm(`Excluir o produto "${p.descricao}"?`)) return;
@@ -126,10 +57,18 @@ export default function ProdutosPage() {
     }
   };
 
+  const filtrosAtivos = !!categoria;
+  const limparFiltros = () => {
+    setCategoria("");
+    setCategoriaInput("");
+    setPage(1);
+  };
+
   const columns: ColumnDef<Produto>[] = [
-    { header: "Código", cell: (p) => <span className="font-mono text-xs">{p.codigoErp}</span> },
+    { header: "Código", sortKey: "codigoErp", cell: (p) => <span className="font-mono text-xs">{p.codigoErp}</span> },
     {
       header: "Produto",
+      sortKey: "descricao",
       cell: (p) => (
         <div>
           <p className="font-medium">{p.descricao}</p>
@@ -139,6 +78,7 @@ export default function ProdutosPage() {
     },
     {
       header: "Categoria",
+      sortKey: "categoria",
       cell: (p) =>
         p.categoria ? (
           <span>
@@ -154,12 +94,13 @@ export default function ProdutosPage() {
     { header: "Unidade", cell: (p) => p.unidade || "—" },
     {
       header: "Últ. preço",
+      sortKey: "ultimoPreco",
       cell: (p) =>
         p.ultimoPreco != null
           ? p.ultimoPreco.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
           : "—",
     },
-    { header: "Status", cell: (p) => <StatusDot active={p.ativo} /> },
+    { header: "Status", sortKey: "ativo", cell: (p) => <StatusDot active={p.ativo} /> },
     {
       header: "",
       className: "w-10",
@@ -193,9 +134,40 @@ export default function ProdutosPage() {
         }}
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
-        onCreate={openCreate}
+        onCreate={() => router.push("/comercial/produtos/novo")}
         createLabel="Novo produto"
       />
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <StatusQuickFilter
+          value={status}
+          onChange={(v) => {
+            setStatus(v);
+            setPage(1);
+          }}
+        />
+        <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+          <div className="space-y-2">
+            <FieldLabel htmlFor="filtro-categoria">Categoria</FieldLabel>
+            <Input
+              id="filtro-categoria"
+              placeholder="Ex.: COZINHA"
+              value={categoriaInput}
+              onChange={(e) => setCategoriaInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  setCategoria(categoriaInput);
+                  setPage(1);
+                }
+              }}
+              onBlur={() => {
+                setCategoria(categoriaInput);
+                setPage(1);
+              }}
+            />
+          </div>
+        </FiltersPopover>
+      </div>
 
       <EntityTable
         columns={columns}
@@ -213,114 +185,13 @@ export default function ProdutosPage() {
         }}
         onRowClick={openEdit}
         emptyMessage="Nenhum produto cadastrado."
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSortChange={(key, order) => {
+          setSortBy(key);
+          setSortOrder(order);
+        }}
       />
-
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent className="flex flex-col sm:max-w-lg">
-          <SheetHeader>
-            <SheetTitle>{editing ? "Editar produto" : "Novo produto"}</SheetTitle>
-          </SheetHeader>
-
-          <form id="produto-form" onSubmit={form.handleSubmit(onSubmit)} noValidate className="flex-1 overflow-y-auto px-4">
-            <FieldGroup>
-              <div className="grid grid-cols-2 gap-3">
-                <Field data-invalid={!!form.formState.errors.codigoErp}>
-                  <FieldLabel htmlFor="codigoErp">Código ERP</FieldLabel>
-                  <Input id="codigoErp" {...form.register("codigoErp")} />
-                  <FieldError errors={[form.formState.errors.codigoErp]} />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="unidade">Unidade</FieldLabel>
-                  <Input id="unidade" maxLength={4} {...form.register("unidade")} />
-                </Field>
-              </div>
-
-              <Field data-invalid={!!form.formState.errors.descricao}>
-                <FieldLabel htmlFor="descricao">Descrição</FieldLabel>
-                <Input id="descricao" {...form.register("descricao")} />
-                <FieldError errors={[form.formState.errors.descricao]} />
-              </Field>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Field>
-                  <FieldLabel htmlFor="categoria">Categoria</FieldLabel>
-                  <Input id="categoria" {...form.register("categoria")} />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="subCategoria">Subcategoria</FieldLabel>
-                  <Input id="subCategoria" {...form.register("subCategoria")} />
-                </Field>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Field>
-                  <FieldLabel htmlFor="marca">Marca</FieldLabel>
-                  <Input id="marca" {...form.register("marca")} />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="codigoBarras">Código de barras</FieldLabel>
-                  <Input id="codigoBarras" {...form.register("codigoBarras")} />
-                </Field>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Field>
-                  <FieldLabel htmlFor="ncm">NCM</FieldLabel>
-                  <Input id="ncm" {...form.register("ncm")} />
-                </Field>
-                <Field data-invalid={!!form.formState.errors.qtdEmbalagem}>
-                  <FieldLabel htmlFor="qtdEmbalagem">Qtd. embalagem</FieldLabel>
-                  <Input
-                    id="qtdEmbalagem"
-                    type="number"
-                    step="any"
-                    {...form.register("qtdEmbalagem", { setValueAs: emptyToNull })}
-                  />
-                  <FieldError errors={[form.formState.errors.qtdEmbalagem]} />
-                </Field>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Field data-invalid={!!form.formState.errors.peso}>
-                  <FieldLabel htmlFor="peso">Peso</FieldLabel>
-                  <Input id="peso" type="number" step="any" {...form.register("peso", { setValueAs: emptyToNull })} />
-                  <FieldError errors={[form.formState.errors.peso]} />
-                </Field>
-                <Field data-invalid={!!form.formState.errors.ultimoPreco}>
-                  <FieldLabel htmlFor="ultimoPreco">Último preço</FieldLabel>
-                  <Input
-                    id="ultimoPreco"
-                    type="number"
-                    step="any"
-                    {...form.register("ultimoPreco", { setValueAs: emptyToNull })}
-                  />
-                  <FieldError errors={[form.formState.errors.ultimoPreco]} />
-                </Field>
-              </div>
-
-              <Field>
-                <FieldLabel htmlFor="observacao">Observação</FieldLabel>
-                <Input id="observacao" {...form.register("observacao")} />
-              </Field>
-
-              <label className="flex cursor-pointer items-center gap-2 text-sm">
-                <Checkbox
-                  checked={form.watch("ativo")}
-                  onCheckedChange={(v) => form.setValue("ativo", v === true)}
-                />
-                Produto ativo
-              </label>
-            </FieldGroup>
-          </form>
-
-          <SheetFooter className="flex-row justify-end border-t border-border/60 pt-3">
-            <Button variant="outline" onClick={() => setSheetOpen(false)}>Cancelar</Button>
-            <Button type="submit" form="produto-form" disabled={form.formState.isSubmitting}>
-              {editing ? "Salvar alterações" : "Cadastrar"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }

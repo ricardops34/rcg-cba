@@ -88,7 +88,7 @@ export function UsuarioEmpresasSection({ usuarioId }: { usuarioId: string }) {
 
   const superioresQuery = useQuery({
     queryKey: ["usuarios", "select", empresaAtivaId],
-    queryFn: () => apiFetch<{ data: UsuarioOption[] }>("/usuarios", { query: { pageSize: 200 } }),
+    queryFn: () => apiFetch<{ data: UsuarioOption[] }>("/usuarios", { query: { pageSize: 100 } }),
   });
 
   const links = detailQuery.data?.usuarioEmpresas ?? [];

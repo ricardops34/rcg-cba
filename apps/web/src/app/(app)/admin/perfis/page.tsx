@@ -1,28 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { perfilCreateSchema, type Perfil, type PerfilCreate } from "@plataforma/contracts";
+import type { Perfil } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
-import { PermissoesMatrix } from "@/components/crud/permissoes-matrix";
+import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
+import { FiltersPopover } from "@/components/crud/filters-popover";
 import { roleColorClass } from "@/lib/role-color";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import {
-  Sheet,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { FieldLabel } from "@/components/ui/field";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,54 +24,37 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, Pencil, ShieldCheck, Trash2 } from "lucide-react";
 
+type SimNaoTodos = "todos" | "sim" | "nao";
+
 export default function PerfisPage() {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [editing, setEditing] = useState<Perfil | null>(null);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [permissoesFor, setPermissoesFor] = useState<Perfil | null>(null);
+  const [sortBy, setSortBy] = useState("nome");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [status, setStatus] = useState<StatusFilterValue>("todos");
+  const [sistemaBase, setSistemaBase] = useState<SimNaoTodos>("todos");
 
   const { data, isLoading, isFetching, refetch } = useResourceList<Perfil>("perfis", {
     search,
     page,
     pageSize,
+    sortBy,
+    sortOrder,
+    ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
+    ...(sistemaBase !== "todos" ? { sistemaBase: sistemaBase === "sim" } : {}),
   });
-  const { create, update, remove } = useResourceMutations<PerfilCreate, Partial<PerfilCreate>>(
-    "perfis",
-  );
+  const { remove } = useResourceMutations("perfis");
 
-  const form = useForm<PerfilCreate>({
-    resolver: zodResolver(perfilCreateSchema),
-    defaultValues: { nome: "", descricao: "", ativo: true },
-  });
-
-  const openCreate = () => {
-    setEditing(null);
-    form.reset({ nome: "", descricao: "", ativo: true });
-    setSheetOpen(true);
+  const filtrosAtivos = sistemaBase !== "todos";
+  const limparFiltros = () => {
+    setSistemaBase("todos");
+    setPage(1);
   };
 
-  const openEdit = (perfil: Perfil) => {
-    setEditing(perfil);
-    form.reset({ nome: perfil.nome, descricao: perfil.descricao ?? "", ativo: perfil.ativo });
-    setSheetOpen(true);
-  };
-
-  const onSubmit = async (values: PerfilCreate) => {
-    try {
-      if (editing) {
-        await update.mutateAsync({ id: editing.id, input: values });
-        toast.success("Perfil atualizado");
-      } else {
-        await create.mutateAsync(values);
-        toast.success("Perfil cadastrado");
-      }
-      setSheetOpen(false);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Erro ao salvar perfil");
-    }
-  };
+  const openEdit = (p: Perfil) => router.push(`/admin/perfis/${p.id}`);
+  const openPermissoes = (p: Perfil) => router.push(`/admin/perfis/${p.id}?tab=permissoes`);
 
   const onDelete = async (perfil: Perfil) => {
     if (perfil.sistemaBase) {
@@ -97,6 +73,7 @@ export default function PerfisPage() {
   const columns: ColumnDef<Perfil>[] = [
     {
       header: "Nome",
+      sortKey: "nome",
       cell: (p) => (
         <div className="flex items-center gap-2">
           <Badge className={roleColorClass(p.nome)} variant="outline">
@@ -109,7 +86,7 @@ export default function PerfisPage() {
       ),
     },
     { header: "Descrição", cell: (p) => p.descricao ?? "—" },
-    { header: "Status", cell: (p) => <StatusDot active={p.ativo} /> },
+    { header: "Status", sortKey: "ativo", cell: (p) => <StatusDot active={p.ativo} /> },
     {
       header: "",
       className: "w-10",
@@ -121,7 +98,7 @@ export default function PerfisPage() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setPermissoesFor(p)}>
+            <DropdownMenuItem onClick={() => openPermissoes(p)}>
               <ShieldCheck className="size-4" /> Permissões
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => openEdit(p)}>
@@ -146,9 +123,40 @@ export default function PerfisPage() {
         }}
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
-        onCreate={openCreate}
+        onCreate={() => router.push("/admin/perfis/novo")}
         createLabel="Novo perfil"
       />
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <StatusQuickFilter
+          value={status}
+          onChange={(v) => {
+            setStatus(v);
+            setPage(1);
+          }}
+        />
+        <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+          <div className="space-y-2">
+            <FieldLabel>Base do sistema</FieldLabel>
+            <Select
+              value={sistemaBase}
+              onValueChange={(v) => {
+                setSistemaBase(v as SimNaoTodos);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                <SelectItem value="sim">Sim</SelectItem>
+                <SelectItem value="nao">Não</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </FiltersPopover>
+      </div>
 
       <EntityTable
         columns={columns}
@@ -164,62 +172,14 @@ export default function PerfisPage() {
           setPageSize(n);
           setPage(1);
         }}
-        onRowClick={(p) => setPermissoesFor(p)}
+        onRowClick={openEdit}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSortChange={(key, order) => {
+          setSortBy(key);
+          setSortOrder(order);
+        }}
       />
-
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent className="flex flex-col sm:max-w-md">
-          <SheetHeader>
-            <SheetTitle>{editing ? "Editar perfil" : "Novo perfil"}</SheetTitle>
-          </SheetHeader>
-
-          <form
-            id="perfil-form"
-            onSubmit={form.handleSubmit(onSubmit)}
-            noValidate
-            className="flex-1 overflow-y-auto px-4"
-          >
-            <FieldGroup>
-              <Field data-invalid={!!form.formState.errors.nome}>
-                <FieldLabel htmlFor="nome">Nome</FieldLabel>
-                <Input id="nome" {...form.register("nome")} />
-                <FieldError errors={[form.formState.errors.nome]} />
-              </Field>
-
-              <Field data-invalid={!!form.formState.errors.descricao}>
-                <FieldLabel htmlFor="descricao">Descrição</FieldLabel>
-                <Input id="descricao" {...form.register("descricao")} />
-                <FieldError errors={[form.formState.errors.descricao]} />
-              </Field>
-            </FieldGroup>
-          </form>
-
-          <SheetFooter className="flex-row justify-end border-t border-border/60 pt-3">
-            <Button variant="outline" onClick={() => setSheetOpen(false)}>
-              Cancelar
-            </Button>
-            <Button type="submit" form="perfil-form" disabled={form.formState.isSubmitting}>
-              {editing ? "Salvar alterações" : "Cadastrar"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
-
-      <Sheet open={!!permissoesFor} onOpenChange={(open) => !open && setPermissoesFor(null)}>
-        <SheetContent className="flex w-full flex-col sm:max-w-2xl">
-          <SheetHeader>
-            <SheetTitle>Permissões — {permissoesFor?.nome}</SheetTitle>
-          </SheetHeader>
-          <div className="flex-1 overflow-y-auto px-4 pb-4">
-            {permissoesFor && (
-              <PermissoesMatrix
-                perfilId={permissoesFor.id}
-                onSaved={() => setPermissoesFor(null)}
-              />
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }

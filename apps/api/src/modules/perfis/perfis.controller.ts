@@ -22,6 +22,7 @@ import { PerfisService } from './perfis.service';
 import {
   PerfilCreateDto,
   PerfilPermissoesUpdateDto,
+  PerfilQueryDto,
   PerfilUpdateDto,
 } from './dto/perfil.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -32,7 +33,6 @@ import {
   CurrentUser,
   type AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
-import { PaginationQueryDto } from '../../common/dto/pagination.dto';
 import { ApiPaginationQuery } from '../../common/decorators/api-pagination-query.decorator';
 
 const PERFIL_ID_EXAMPLE = '06b281c4-c6d6-454c-82c6-75106224bbfc';
@@ -51,7 +51,7 @@ export class PerfisController {
   @ApiPaginationQuery()
   @RequirePermission('perfis', 'visualizar')
   @Get()
-  findAll(@Query() query: PaginationQueryDto, @CurrentUser() user: AuthenticatedUser) {
+  findAll(@Query() query: PerfilQueryDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.findAll(user.empresaAtivaId, query);
   }
 

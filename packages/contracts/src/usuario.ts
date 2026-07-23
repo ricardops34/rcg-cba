@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { auditFieldsSchema } from "./common";
+import { auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
 
 export const usuarioCreateSchema = z.object({
   nome: z.string().trim().min(2).max(120).describe("Nome completo do usuário"),
@@ -72,6 +72,12 @@ export const usuarioEmpresaCreateSchema = z.object({
   ativo: z.boolean().default(true).describe("Vínculo ativo permite login nesta empresa"),
 });
 export type UsuarioEmpresaCreate = z.infer<typeof usuarioEmpresaCreateSchema>;
+
+export const usuarioQuerySchema = paginationQuerySchema.extend({
+  ativo: booleanQueryParam,
+  perfilId: z.string().uuid().optional(),
+});
+export type UsuarioQuery = z.infer<typeof usuarioQuerySchema>;
 
 export const USUARIO_CREATE_EXAMPLE: UsuarioCreate = {
   nome: "Maria Souza",

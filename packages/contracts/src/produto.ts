@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { auditFieldsSchema } from "./common";
+import { auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
 
 const opt = (max: number) => z.string().trim().max(max).optional().or(z.literal(""));
 
@@ -29,6 +29,12 @@ export const produtoSchema = produtoCreateSchema.extend({
   ...auditFieldsSchema.shape,
 });
 export type Produto = z.infer<typeof produtoSchema>;
+
+export const produtoQuerySchema = paginationQuerySchema.extend({
+  ativo: booleanQueryParam,
+  categoria: z.string().trim().optional(),
+});
+export type ProdutoQuery = z.infer<typeof produtoQuerySchema>;
 
 export const PRODUTO_CREATE_EXAMPLE: ProdutoCreate = {
   codigoErp: "11400443",

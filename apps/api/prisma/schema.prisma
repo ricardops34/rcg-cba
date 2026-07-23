@@ -30,6 +30,7 @@ model Empresa {
   usuarioEmpresas UsuarioEmpresa[]
   perfis          Perfil[]
   produtos        Produto[]
+  vendedores      Vendedor[]
 
   @@map("empresas")
 }
@@ -53,6 +54,7 @@ model Usuario {
 
   usuarioEmpresas UsuarioEmpresa[]
   refreshTokens   RefreshToken[]
+  vendedores      Vendedor[]
 
   @@map("usuarios")
 }
@@ -265,6 +267,51 @@ model Produto {
   @@unique([empresaId, codigoErp])
   @@index([empresaId, descricao])
   @@map("produtos")
+}
+
+// Cadastro de vendedores, supervisores e gerentes (mesma tabela, com flags
+// de papel — uma pessoa pode acumular mais de um papel). supervisorId e
+// gerenteId são dois vínculos hierárquicos independentes, ambos
+// autorreferenciando esta tabela, análogos a UsuarioEmpresa.superiorId mas
+// sem checagem de ciclo (mesma limitação já aceita lá).
+model Vendedor {
+  id             String    @id @default(uuid())
+  empresaId      String
+  usuarioId      String?
+  codigoErp      String?
+  nome           String
+  nomeReduzido   String?
+  telefone       String?
+  email          String?
+  dataNascimento DateTime?
+
+  vendedor     Boolean @default(true)
+  supervisorId String?
+  supervisor   Boolean @default(false)
+  gerenteId    String?
+  gerente      Boolean @default(false)
+
+  ativo     Boolean @default(true)
+  desligado Boolean @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa Empresa  @relation(fields: [empresaId], references: [id])
+  usuario Usuario? @relation(fields: [usuarioId], references: [id])
+
+  supervisorVendedor Vendedor?  @relation("VendedorSupervisor", fields: [supervisorId], references: [id])
+  supervisionados    Vendedor[] @relation("VendedorSupervisor")
+  gerenteVendedor    Vendedor?  @relation("VendedorGerente", fields: [gerenteId], references: [id])
+  gerenciados        Vendedor[] @relation("VendedorGerente")
+
+  @@unique([empresaId, codigoErp])
+  @@index([empresaId, nome])
+  @@map("vendedores")
 }
 
 // ------------------------------------------------------------------

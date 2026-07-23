@@ -4,16 +4,18 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPaginatedResult, paginationToSkipTake } from '../../common/pagination/paginate';
 import { LOGOS_DIR, logoPublicPath } from '../../common/uploads/uploads.config';
-import type { EmpresaCreate, EmpresaUpdate } from '@plataforma/contracts';
-import type { PaginationQuery } from '@plataforma/contracts';
+import type { EmpresaCreate, EmpresaQuery, EmpresaUpdate } from '@plataforma/contracts';
+
+const SORT_FIELDS = new Set(['razaoSocial', 'nomeFantasia', 'cnpj', 'ativo', 'createdAt']);
 
 @Injectable()
 export class EmpresasService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(query: PaginationQuery) {
+  async findAll(query: EmpresaQuery) {
     const where = {
       deletedAt: null,
+      ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
       ...(query.search
         ? {
             OR: [
@@ -24,12 +26,13 @@ export class EmpresasService {
           }
         : {}),
     };
+    const sortField = query.sortBy && SORT_FIELDS.has(query.sortBy) ? query.sortBy : 'razaoSocial';
 
     const [data, total] = await Promise.all([
       this.prisma.empresa.findMany({
         where,
         ...paginationToSkipTake(query),
-        orderBy: { [query.sortBy ?? 'razaoSocial']: query.sortOrder },
+        orderBy: { [sortField]: query.sortOrder },
       }),
       this.prisma.empresa.count({ where }),
     ]);

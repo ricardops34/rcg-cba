@@ -14,7 +14,9 @@ interface PaginatedResponse<T> {
 
 export function useResourceList<T>(
   resource: string,
-  query: Partial<PaginationQuery>,
+  // Além dos campos de paginação/busca/ordenação, aceita filtros extras
+  // específicos de cada recurso (ex.: ativo, papel, perfilId).
+  query: Partial<PaginationQuery> & Record<string, string | number | boolean | undefined>,
 ) {
   return useQuery({
     queryKey: [resource, "list", query],

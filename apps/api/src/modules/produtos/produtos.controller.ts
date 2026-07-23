@@ -11,12 +11,11 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ProdutosService } from './produtos.service';
-import { ProdutoCreateDto, ProdutoUpdateDto } from './dto/produto.dto';
+import { ProdutoCreateDto, ProdutoQueryDto, ProdutoUpdateDto } from './dto/produto.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { ApiPaginationQuery } from '../../common/decorators/api-pagination-query.decorator';
-import { PaginationQueryDto } from '../../common/dto/pagination.dto';
 import {
   CurrentUser,
   type AuthenticatedUser,
@@ -37,8 +36,15 @@ export class ProdutosController {
   @ApiPaginationQuery()
   @RequirePermission('produtos', 'visualizar')
   @Get()
-  findAll(@Query() query: PaginationQueryDto, @CurrentUser() user: AuthenticatedUser) {
+  findAll(@Query() query: ProdutoQueryDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.findAll(user.empresaAtivaId, query);
+  }
+
+  @ApiOperation({ summary: 'Detalhar produto', description: 'Requer produtos.visualizar.' })
+  @RequirePermission('produtos', 'visualizar')
+  @Get(':id')
+  findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.findOne(user.empresaAtivaId, id);
   }
 
   @ApiOperation({ summary: 'Cadastrar produto', description: 'Requer produtos.cadastrar.' })

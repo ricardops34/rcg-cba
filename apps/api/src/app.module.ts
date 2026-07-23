@@ -12,6 +12,7 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module';
 import { PerfisModule } from './modules/perfis/perfis.module';
 import { EstruturaModule } from './modules/estrutura/estrutura.module';
 import { ProdutosModule } from './modules/produtos/produtos.module';
+import { VendedoresModule } from './modules/vendedores/vendedores.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ProdutosModule } from './modules/produtos/produtos.module';
     PerfisModule,
     EstruturaModule,
     ProdutosModule,
+    VendedoresModule,
   ],
   controllers: [AppController],
   providers: [AppService],

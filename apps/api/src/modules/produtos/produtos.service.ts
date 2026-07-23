@@ -5,11 +5,13 @@ import {
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
 import type {
-  PaginationQuery,
   ProdutoCreate,
+  ProdutoQuery,
   ProdutoUpdate,
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+
+const SORT_FIELDS = new Set(['descricao', 'codigoErp', 'marca', 'categoria', 'ultimoPreco', 'ativo']);
 
 @Injectable()
 export class ProdutosService {
@@ -22,11 +24,15 @@ export class ProdutosService {
     return out;
   }
 
-  findAll(empresaId: string, query: PaginationQuery) {
+  findAll(empresaId: string, query: ProdutoQuery) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const where = {
         empresaId,
         deletedAt: null,
+        ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
+        ...(query.categoria
+          ? { categoria: { contains: query.categoria, mode: 'insensitive' as const } }
+          : {}),
         ...(query.search
           ? {
               OR: [
@@ -39,15 +45,24 @@ export class ProdutosService {
             }
           : {}),
       };
+      const sortField = query.sortBy && SORT_FIELDS.has(query.sortBy) ? query.sortBy : 'descricao';
       const [data, total] = await Promise.all([
         tx.produto.findMany({
           where,
           ...paginationToSkipTake(query),
-          orderBy: { descricao: 'asc' },
+          orderBy: { [sortField]: query.sortOrder },
         }),
         tx.produto.count({ where }),
       ]);
       return buildPaginatedResult(data, total, query);
+    });
+  }
+
+  async findOne(empresaId: string, id: string) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const produto = await tx.produto.findFirst({ where: { id, empresaId, deletedAt: null } });
+      if (!produto) throw new NotFoundException('Produto não encontrado');
+      return produto;
     });
   }
 

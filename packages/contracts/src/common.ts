@@ -15,6 +15,18 @@ export const acaoSchema = z
   .describe("Operação controlada pelo RBAC dentro de uma rotina");
 export type Acao = z.infer<typeof acaoSchema>;
 
+/**
+ * Boolean vindo de query string ("true"/"false"). NÃO usar z.coerce.boolean()
+ * pra isso — Boolean("false") é true em JS (string não-vazia é truthy),
+ * então ?ativo=false seria coagido pra true. Aceita string ou boolean (já
+ * que query params sempre chegam como string, mas o schema também é usado
+ * fora de query em alguns lugares).
+ */
+export const booleanQueryParam = z
+  .union([z.boolean(), z.enum(["true", "false"])])
+  .transform((v) => v === true || v === "true")
+  .optional();
+
 export const auditFieldsSchema = z.object({
   createdAt: z.string().datetime().describe("Data/hora de criação do registro (ISO 8601)"),
   updatedAt: z.string().datetime().describe("Data/hora da última alteração (ISO 8601)"),

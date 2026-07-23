@@ -10,13 +10,14 @@ import {
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
 import type {
-  PaginationQuery,
   UsuarioCreate,
   UsuarioEmpresaCreate,
+  UsuarioQuery,
   UsuarioUpdate,
 } from '@plataforma/contracts';
 
 const SALT_ROUNDS = 12;
+const SORT_FIELDS = new Set(['nome', 'email', 'ativo', 'ultimoLogin', 'createdAt']);
 
 @Injectable()
 export class UsuariosService {
@@ -28,10 +29,17 @@ export class UsuariosService {
    * enxergam linhas dentro do contexto de tenant — por isso roda tudo dentro
    * de `withTenant`, mesmo `usuario` em si não tendo RLS.
    */
-  async findAll(empresaId: string, query: PaginationQuery) {
+  async findAll(empresaId: string, query: UsuarioQuery) {
     const where = {
       deletedAt: null,
-      usuarioEmpresas: { some: { empresaId, ativo: true } },
+      usuarioEmpresas: {
+        some: {
+          empresaId,
+          ativo: true,
+          ...(query.perfilId ? { perfilId: query.perfilId } : {}),
+        },
+      },
+      ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
       ...(query.search
         ? {
             OR: [
@@ -41,13 +49,14 @@ export class UsuariosService {
           }
         : {}),
     };
+    const sortField = query.sortBy && SORT_FIELDS.has(query.sortBy) ? query.sortBy : 'nome';
 
     const [rows, total] = await this.prisma.withTenant(empresaId, (tx) =>
       Promise.all([
         tx.usuario.findMany({
           where,
           ...paginationToSkipTake(query),
-          orderBy: { [query.sortBy ?? 'nome']: query.sortOrder },
+          orderBy: { [sortField]: query.sortOrder },
           select: {
             id: true,
             nome: true,

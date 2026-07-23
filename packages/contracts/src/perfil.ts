@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { acaoSchema, auditFieldsSchema } from "./common";
+import { acaoSchema, auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
 
 export const perfilCreateSchema = z.object({
   nome: z.string().trim().min(2).max(80).describe("Nome do perfil (ex.: Administrador, Gerente)"),
@@ -41,6 +41,12 @@ export const perfilPermissoesUpdateSchema = z.object({
 export type PerfilPermissoesUpdate = z.infer<
   typeof perfilPermissoesUpdateSchema
 >;
+
+export const perfilQuerySchema = paginationQuerySchema.extend({
+  ativo: booleanQueryParam,
+  sistemaBase: booleanQueryParam,
+});
+export type PerfilQuery = z.infer<typeof perfilQuerySchema>;
 
 export const PERFIL_CREATE_EXAMPLE: PerfilCreate = {
   nome: "Gerente",

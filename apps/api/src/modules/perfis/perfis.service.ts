@@ -5,30 +5,35 @@ import {
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
 import type {
-  PaginationQuery,
   PerfilCreate,
   PerfilPermissoesUpdate,
+  PerfilQuery,
   PerfilUpdate,
 } from '@plataforma/contracts';
+
+const SORT_FIELDS = new Set(['nome', 'ativo', 'sistemaBase', 'createdAt']);
 
 @Injectable()
 export class PerfisService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(empresaId: string, query: PaginationQuery) {
+  findAll(empresaId: string, query: PerfilQuery) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const where = {
         empresaId,
         deletedAt: null,
+        ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
+        ...(query.sistemaBase !== undefined ? { sistemaBase: query.sistemaBase } : {}),
         ...(query.search
           ? { nome: { contains: query.search, mode: 'insensitive' as const } }
           : {}),
       };
+      const sortField = query.sortBy && SORT_FIELDS.has(query.sortBy) ? query.sortBy : 'nome';
       const [data, total] = await Promise.all([
         tx.perfil.findMany({
           where,
           ...paginationToSkipTake(query),
-          orderBy: { [query.sortBy ?? 'nome']: query.sortOrder },
+          orderBy: { [sortField]: query.sortOrder },
         }),
         tx.perfil.count({ where }),
       ]);

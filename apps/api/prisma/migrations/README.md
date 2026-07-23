@@ -75,6 +75,6 @@ usuários).
 
 ## Cobertura atual
 
-Com RLS: `perfis`, `usuario_empresas`, `produtos`.
+Com RLS: `perfis`, `usuario_empresas`, `produtos`, `vendedores`.
 </content>
 </invoke>

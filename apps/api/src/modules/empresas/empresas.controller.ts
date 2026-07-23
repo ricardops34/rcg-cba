@@ -24,13 +24,12 @@ import {
 } from '@nestjs/swagger';
 import { EMPRESA_CREATE_EXAMPLE, EMPRESA_EXAMPLE } from '@plataforma/contracts';
 import { EmpresasService } from './empresas.service';
-import { EmpresaCreateDto, EmpresaUpdateDto } from './dto/empresa.dto';
+import { EmpresaCreateDto, EmpresaQueryDto, EmpresaUpdateDto } from './dto/empresa.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { ApiBodyExample } from '../../common/decorators/api-body-example.decorator';
 import { CurrentUser, type AuthenticatedUser } from '../../common/decorators/current-user.decorator';
-import { PaginationQueryDto } from '../../common/dto/pagination.dto';
 import { ApiPaginationQuery } from '../../common/decorators/api-pagination-query.decorator';
 import { logoUploadOptions } from '../../common/uploads/uploads.config';
 
@@ -56,7 +55,7 @@ export class EmpresasController {
   @ApiPaginationQuery()
   @RequirePermission('empresas', 'visualizar')
   @Get()
-  findAll(@Query() query: PaginationQueryDto) {
+  findAll(@Query() query: EmpresaQueryDto) {
     return this.service.findAll(query);
   }
 

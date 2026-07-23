@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { auditFieldsSchema } from "./common";
+import { auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
 
 export const empresaCreateSchema = z.object({
   razaoSocial: z
@@ -58,6 +58,11 @@ export const empresaSchema = empresaCreateSchema.extend({
   ...auditFieldsSchema.shape,
 });
 export type Empresa = z.infer<typeof empresaSchema>;
+
+export const empresaQuerySchema = paginationQuerySchema.extend({
+  ativo: booleanQueryParam,
+});
+export type EmpresaQuery = z.infer<typeof empresaQuerySchema>;
 
 export const EMPRESA_CREATE_EXAMPLE: EmpresaCreate = {
   razaoSocial: "Comercial Andrade Ltda",

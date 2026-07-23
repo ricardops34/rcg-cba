@@ -21,6 +21,7 @@ import { UsuariosService } from './usuarios.service';
 import {
   UsuarioCreateDto,
   UsuarioEmpresaCreateDto,
+  UsuarioQueryDto,
   UsuarioUpdateDto,
 } from './dto/usuario.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -31,7 +32,6 @@ import {
   CurrentUser,
   type AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
-import { PaginationQueryDto } from '../../common/dto/pagination.dto';
 import { ApiPaginationQuery } from '../../common/decorators/api-pagination-query.decorator';
 
 const USUARIO_ID_EXAMPLE = USUARIO_EXAMPLE.id;
@@ -56,7 +56,7 @@ export class UsuariosController {
   @ApiPaginationQuery()
   @RequirePermission('usuarios', 'visualizar')
   @Get()
-  findAll(@Query() query: PaginationQueryDto, @CurrentUser() user: AuthenticatedUser) {
+  findAll(@Query() query: UsuarioQueryDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.findAll(user.empresaAtivaId, query);
   }
 
