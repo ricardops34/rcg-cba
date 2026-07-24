@@ -27,11 +27,18 @@ model Empresa {
   updatedBy String?
   deletedBy String?
 
-  usuarioEmpresas UsuarioEmpresa[]
-  perfis          Perfil[]
-  produtos        Produto[]
-  vendedores      Vendedor[]
-  clientes        Cliente[]
+  usuarioEmpresas    UsuarioEmpresa[]
+  perfis             Perfil[]
+  produtos           Produto[]
+  vendedores         Vendedor[]
+  clientes           Cliente[]
+  categorias         Categoria[]
+  condicoesPagamento CondicaoPagamento[]
+  armazens           Armazem[]
+  estoques           Estoque[]
+  notasSaida         NotaSaida[]
+  notasSaidaItens    NotaSaidaItem[]
+  titulosReceber     TituloReceber[]
 
   @@map("empresas")
 }
@@ -236,25 +243,27 @@ model RefreshToken {
 // Organização comercial
 // ------------------------------------------------------------------
 
-// Catálogo de produtos, espelhando a tabela `produto` do sistema legado
-// (categoria/subcategoria achatadas como texto — o legado usa FK, mas o
-// cadastro novo não precisa da tabela auxiliar para as análises comerciais).
+// Catálogo de produtos, espelhando a tabela `produto` do sistema legado.
+// Categoria/subcategoria/armazém apontam para os cadastros auxiliares (a
+// versão inicial usava texto achatado; virou FK quando os auxiliares foram
+// implementados).
 model Produto {
-  id           String  @id @default(uuid())
-  empresaId    String
-  codigoErp    String
-  descricao    String
-  unidade      String?
-  categoria    String?
-  subCategoria String?
-  marca        String?
-  codigoBarras String?
-  ncm          String?
-  qtdEmbalagem Float?
-  peso         Float?
-  ultimoPreco  Float?
-  observacao   String?
-  ativo        Boolean @default(true)
+  id             String  @id @default(uuid())
+  empresaId      String
+  codigoErp      String
+  descricao      String
+  unidade        String?
+  categoriaId    String?
+  subCategoriaId String?
+  armazemId      String?
+  marca          String?
+  codigoBarras   String?
+  ncm            String?
+  qtdEmbalagem   Float?
+  peso           Float?
+  ultimoPreco    Float?
+  observacao     String?
+  ativo          Boolean @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -263,10 +272,17 @@ model Produto {
   updatedBy String?
   deletedBy String?
 
-  empresa Empresa @relation(fields: [empresaId], references: [id])
+  empresa      Empresa    @relation(fields: [empresaId], references: [id])
+  categoria    Categoria? @relation("ProdutoCategoria", fields: [categoriaId], references: [id])
+  subCategoria Categoria? @relation("ProdutoSubCategoria", fields: [subCategoriaId], references: [id])
+  armazem      Armazem?   @relation(fields: [armazemId], references: [id])
+
+  estoques        Estoque[]
+  notasSaidaItens NotaSaidaItem[]
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, descricao])
+  @@index([empresaId, categoriaId])
   @@map("produtos")
 }
 
@@ -310,6 +326,9 @@ model Vendedor {
   gerenteVendedor    Vendedor?  @relation("VendedorGerente", fields: [gerenteId], references: [id])
   gerenciados        Vendedor[] @relation("VendedorGerente")
   clientes           Cliente[]
+  notasSaida         NotaSaida[]
+  notasSaidaItens    NotaSaidaItem[]
+  titulosReceber     TituloReceber[]
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, nome])
@@ -387,10 +406,399 @@ model Cliente {
   empresa  Empresa   @relation(fields: [empresaId], references: [id])
   vendedor Vendedor? @relation(fields: [vendedorId], references: [id])
 
+  notasSaida      NotaSaida[]
+  notasSaidaItens NotaSaidaItem[]
+  titulosReceber  TituloReceber[]
+
   @@unique([empresaId, codigoErp])
   @@index([empresaId, razaoSocial])
   @@index([empresaId, vendedorId])
   @@map("clientes")
+}
+
+// ------------------------------------------------------------------
+// Cadastros auxiliares
+// ------------------------------------------------------------------
+// Dois grupos (decisão registrada em docs/planos): os geográficos/fiscais
+// (Pais, Estado, Municipio, Cep, Cnae) são referência universal compartilhada
+// entre as empresas — sem empresaId e sem RLS, como Modulo/Menu. Os de
+// negócio (Categoria, CondicaoPagamento, Armazem) são por empresa com RLS,
+// como Produto. codigoErp é a chave natural de upsert dos imports do legado
+// e o ponto de amarração dos futuros módulos (Estoque, NF Saída, Títulos).
+
+model Pais {
+  id        String  @id @default(uuid())
+  codigoErp String?
+  nome      String
+  sigla     String?
+  comexId   String?
+  ativo     Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  @@unique([codigoErp])
+  @@map("paises")
+}
+
+model Estado {
+  id         String  @id @default(uuid())
+  codigoErp  String?
+  sigla      String
+  descricao  String
+  codigoIbge String?
+  ativo      Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  municipios Municipio[]
+  ceps       Cep[]
+
+  @@unique([sigla])
+  @@map("estados")
+}
+
+model Municipio {
+  id         String  @id @default(uuid())
+  estadoId   String?
+  codigoErp  String?
+  descricao  String
+  codigoIbge String?
+  ativo      Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  estado Estado? @relation(fields: [estadoId], references: [id])
+  ceps   Cep[]
+
+  @@unique([codigoErp])
+  @@index([descricao])
+  @@map("municipios")
+}
+
+// Cache de consultas de CEP (o legado alimentava via serviço dos Correios —
+// campo `origem` guarda a procedência da consulta).
+model Cep {
+  id          String  @id @default(uuid())
+  cep         String
+  estadoId    String?
+  municipioId String?
+  bairro      String?
+  endereco    String?
+  latitude    Float?
+  longitude   Float?
+  origem      String?
+  ativo       Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  estado    Estado?    @relation(fields: [estadoId], references: [id])
+  municipio Municipio? @relation(fields: [municipioId], references: [id])
+
+  @@unique([cep])
+  @@map("ceps")
+}
+
+model Cnae {
+  id        String  @id @default(uuid())
+  codigoErp String?
+  secao     String?
+  divisao   String?
+  grupo     String?
+  classe    String?
+  subclasse String?
+  descricao String
+  ativo     Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  @@unique([codigoErp])
+  @@map("cnaes")
+}
+
+// Categorias e subcategorias de produto na mesma tabela (auto-referência via
+// categoriaPaiId), unificando as tabelas categoria/sub_categoria do legado —
+// os cod_erp dos dois níveis não colidem. `usado` replica o flag S/N do
+// legado (só existe no nível raiz; null nas subcategorias).
+model Categoria {
+  id             String   @id @default(uuid())
+  empresaId      String
+  categoriaPaiId String?
+  codigoErp      String
+  descricao      String
+  usado          Boolean?
+  ativo          Boolean  @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa       Empresa     @relation(fields: [empresaId], references: [id])
+  categoriaPai  Categoria?  @relation("CategoriaSubcategoria", fields: [categoriaPaiId], references: [id])
+  subcategorias Categoria[] @relation("CategoriaSubcategoria")
+
+  produtos    Produto[] @relation("ProdutoCategoria")
+  produtosSub Produto[] @relation("ProdutoSubCategoria")
+
+  @@unique([empresaId, codigoErp])
+  @@index([empresaId, descricao])
+  @@map("categorias")
+}
+
+model CondicaoPagamento {
+  id        String  @id @default(uuid())
+  empresaId String
+  codigoErp String
+  descricao String
+  forma     String?
+  ativo     Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa    Empresa     @relation(fields: [empresaId], references: [id])
+  notasSaida NotaSaida[]
+
+  @@unique([empresaId, codigoErp])
+  @@map("condicoes_pagamento")
+}
+
+model Armazem {
+  id        String  @id @default(uuid())
+  empresaId String
+  codigoErp String
+  descricao String
+  ativo     Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa  Empresa   @relation(fields: [empresaId], references: [id])
+  produtos Produto[]
+  estoques Estoque[]
+
+  @@unique([empresaId, codigoErp])
+  @@map("armazens")
+}
+
+// ------------------------------------------------------------------
+// Movimento comercial (consulta)
+// ------------------------------------------------------------------
+// Espelhos read-only do ERP legado (estoque, notas fiscais de saída e
+// títulos a receber): a API só expõe listagem/detalhe — os dados entram
+// exclusivamente pelos scripts de import (e no futuro pela API externa de
+// manutenção). codigoLegado guarda o id da linha no MySQL e é a chave de
+// upsert idempotente dos imports (as chaves "naturais" do legado têm
+// duplicata/nulos). Notas, itens e títulos carregam vendedorId para o mesmo
+// escopo hierárquico de Clientes.
+
+model Estoque {
+  id        String @id @default(uuid())
+  empresaId String
+  produtoId String
+  armazemId String
+
+  saldo        Float     @default(0)
+  reserva      Float?
+  custo        Float?
+  ultimoPreco  Float?
+  ultimaCompra DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  produto Produto @relation(fields: [produtoId], references: [id])
+  armazem Armazem @relation(fields: [armazemId], references: [id])
+
+  @@unique([empresaId, produtoId, armazemId])
+  @@index([empresaId, armazemId])
+  @@map("estoques")
+}
+
+model NotaSaida {
+  id                  String @id @default(uuid())
+  empresaId           String
+  codigoLegado        Int?
+  clienteId           String?
+  vendedorId          String?
+  condicaoPagamentoId String?
+
+  numero        String
+  serie         String?
+  especieFiscal String?
+  tipo          String?
+  dtEmissao     DateTime?
+  ano           Int?
+  mes           Int?
+
+  vlrBruto      Float @default(0)
+  vlrMercadoria Float @default(0)
+  vlrItens      Float @default(0)
+  vlrDesconto   Float @default(0)
+  vlrIcms       Float @default(0)
+  vlrIpi        Float @default(0)
+  vlrFrete      Float @default(0)
+  vlrDevolucao  Float @default(0)
+
+  chaveNfe String?
+  dtNfe    DateTime?
+  mensagem String?
+  comodato Boolean @default(false)
+  ativo    Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa           Empresa            @relation(fields: [empresaId], references: [id])
+  cliente           Cliente?           @relation(fields: [clienteId], references: [id])
+  vendedor          Vendedor?          @relation(fields: [vendedorId], references: [id])
+  condicaoPagamento CondicaoPagamento? @relation(fields: [condicaoPagamentoId], references: [id])
+  itens             NotaSaidaItem[]
+
+  @@unique([empresaId, codigoLegado])
+  @@index([empresaId, numero])
+  @@index([empresaId, vendedorId, ano, mes])
+  @@index([empresaId, clienteId])
+  @@index([empresaId, dtEmissao])
+  @@map("notas_saida")
+}
+
+// Item de nota com empresaId/clienteId/vendedorId/dtEmissao denormalizados
+// (como no legado) — viabiliza a tela própria de itens com RLS e escopo sem
+// join na nota.
+model NotaSaidaItem {
+  id           String @id @default(uuid())
+  empresaId    String
+  notaSaidaId  String
+  codigoLegado Int?
+  clienteId    String?
+  vendedorId   String?
+  produtoId    String?
+
+  item      Int?
+  dtEmissao DateTime?
+  ano       Int?
+  mes       Int?
+  cfop      String?
+  tipo      String?
+
+  quantidade    Float  @default(0)
+  vlrUnitario   Float  @default(0)
+  vlrTabela     Float?
+  percDesconto  Float?
+  vlrDesconto   Float  @default(0)
+  vlrTotal      Float  @default(0)
+  quantidadeDev Float?
+  vlrDev        Float?
+  peso          Float?
+
+  comodato Boolean @default(false)
+  ativo    Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa   Empresa   @relation(fields: [empresaId], references: [id])
+  notaSaida NotaSaida @relation(fields: [notaSaidaId], references: [id], onDelete: Cascade)
+  cliente   Cliente?  @relation(fields: [clienteId], references: [id])
+  vendedor  Vendedor? @relation(fields: [vendedorId], references: [id])
+  produto   Produto?  @relation(fields: [produtoId], references: [id])
+
+  @@unique([empresaId, codigoLegado])
+  @@index([notaSaidaId])
+  @@index([empresaId, produtoId])
+  @@index([empresaId, vendedorId, dtEmissao])
+  @@map("notas_saida_itens")
+}
+
+model TituloReceber {
+  id           String @id @default(uuid())
+  empresaId    String
+  codigoLegado Int?
+  clienteId    String?
+  vendedorId   String?
+
+  numero  String
+  parcela String?
+  prefixo String?
+  tipo    String?
+
+  emissao        DateTime?
+  vencimento     DateTime?
+  vencimentoReal DateTime?
+  valor          Float     @default(0)
+  saldo          Float     @default(0)
+  acrescimo      Float?
+  decrescimo     Float?
+  dtBaixa        DateTime?
+  formaPgto      String?
+  historico      String?
+  ativo          Boolean   @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa  Empresa   @relation(fields: [empresaId], references: [id])
+  cliente  Cliente?  @relation(fields: [clienteId], references: [id])
+  vendedor Vendedor? @relation(fields: [vendedorId], references: [id])
+
+  @@unique([empresaId, codigoLegado])
+  @@index([empresaId, clienteId])
+  @@index([empresaId, vendedorId, vencimento])
+  @@index([empresaId, vencimento])
+  @@map("titulos_receber")
 }
 
 // ------------------------------------------------------------------

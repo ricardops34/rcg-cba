@@ -75,6 +75,12 @@ usuários).
 
 ## Cobertura atual
 
-Com RLS: `perfis`, `usuario_empresas`, `produtos`, `vendedores`, `clientes`.
+Com RLS: `perfis`, `usuario_empresas`, `produtos`, `vendedores`, `clientes`,
+`categorias`, `condicoes_pagamento`, `armazens`, `estoques`, `notas_saida`,
+`notas_saida_itens`, `titulos_receber`.
+
+Sem RLS por serem referência global (sem coluna `empresaId`): `paises`,
+`estados`, `municipios`, `ceps`, `cnaes` (além das tabelas de sistema
+`modulos`/`menus`/`rotinas`).
 </content>
 </invoke>

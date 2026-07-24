@@ -2,18 +2,19 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { Produto } from "@plataforma/contracts";
+import type { Categoria, Produto } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
-import { ApiError } from "@/lib/api-client";
+import { apiFetch, ApiError } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
 import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/field";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +22,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+
+type ProdutoRow = Produto & {
+  categoria?: { id: string; descricao: string } | null;
+  subCategoria?: { id: string; descricao: string } | null;
+  armazem?: { id: string; descricao: string } | null;
+};
 
 export default function ProdutosPage() {
   const router = useRouter();
@@ -30,24 +37,29 @@ export default function ProdutosPage() {
   const [sortBy, setSortBy] = useState("descricao");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [status, setStatus] = useState<StatusFilterValue>("todos");
-  const [categoria, setCategoria] = useState("");
-  const [categoriaInput, setCategoriaInput] = useState("");
+  const [categoriaId, setCategoriaId] = useState<string | undefined>(undefined);
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<Produto>("produtos", {
+  const categoriasQuery = useQuery({
+    queryKey: ["categorias", "select", "raizes"],
+    queryFn: () =>
+      apiFetch<{ data: Categoria[] }>("/categorias", { query: { pageSize: 100, raiz: true } }),
+  });
+
+  const { data, isLoading, isFetching, refetch } = useResourceList<ProdutoRow>("produtos", {
     search,
     page,
     pageSize,
     sortBy,
     sortOrder,
     ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
-    ...(categoria ? { categoria } : {}),
+    ...(categoriaId ? { categoriaId } : {}),
   });
 
   const { remove } = useResourceMutations("produtos");
 
-  const openEdit = (p: Produto) => router.push(`/comercial/produtos/${p.id}`);
+  const openEdit = (p: ProdutoRow) => router.push(`/comercial/produtos/${p.id}`);
 
-  const onDelete = async (p: Produto) => {
+  const onDelete = async (p: ProdutoRow) => {
     if (!confirm(`Excluir o produto "${p.descricao}"?`)) return;
     try {
       await remove.mutateAsync(p.id);
@@ -57,14 +69,13 @@ export default function ProdutosPage() {
     }
   };
 
-  const filtrosAtivos = !!categoria;
+  const filtrosAtivos = !!categoriaId;
   const limparFiltros = () => {
-    setCategoria("");
-    setCategoriaInput("");
+    setCategoriaId(undefined);
     setPage(1);
   };
 
-  const columns: ColumnDef<Produto>[] = [
+  const columns: ColumnDef<ProdutoRow>[] = [
     { header: "Código", sortKey: "codigoErp", cell: (p) => <span className="font-mono text-xs">{p.codigoErp}</span> },
     {
       header: "Produto",
@@ -78,13 +89,12 @@ export default function ProdutosPage() {
     },
     {
       header: "Categoria",
-      sortKey: "categoria",
       cell: (p) =>
         p.categoria ? (
           <span>
-            {p.categoria}
+            {p.categoria.descricao}
             {p.subCategoria && (
-              <span className="text-muted-foreground"> · {p.subCategoria}</span>
+              <span className="text-muted-foreground"> · {p.subCategoria.descricao}</span>
             )}
           </span>
         ) : (
@@ -148,23 +158,26 @@ export default function ProdutosPage() {
         />
         <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
           <div className="space-y-2">
-            <FieldLabel htmlFor="filtro-categoria">Categoria</FieldLabel>
-            <Input
-              id="filtro-categoria"
-              placeholder="Ex.: COZINHA"
-              value={categoriaInput}
-              onChange={(e) => setCategoriaInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  setCategoria(categoriaInput);
-                  setPage(1);
-                }
-              }}
-              onBlur={() => {
-                setCategoria(categoriaInput);
+            <FieldLabel>Categoria</FieldLabel>
+            <Select
+              value={categoriaId ?? "none"}
+              onValueChange={(v) => {
+                setCategoriaId(v === "none" ? undefined : v);
                 setPage(1);
               }}
-            />
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Todas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Todas</SelectItem>
+                {(categoriasQuery.data?.data ?? []).map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.descricao}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </FiltersPopover>
       </div>

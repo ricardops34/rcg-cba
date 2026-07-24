@@ -56,10 +56,21 @@ async function limparDados() {
   // Ordem respeita as FKs. usuarioEmpresa e vendedor têm auto-referência
   // (superiorId; supervisorId/gerenteId): zera antes de apagar para não
   // violar a constraint.
+  await prisma.notaSaidaItem.deleteMany();
+  await prisma.notaSaida.deleteMany();
+  await prisma.tituloReceber.deleteMany();
+  await prisma.estoque.deleteMany();
   await prisma.cliente.deleteMany();
   await prisma.vendedor.updateMany({ data: { supervisorId: null, gerenteId: null } });
   await prisma.vendedor.deleteMany();
   await prisma.produto.deleteMany();
+  // Auxiliares por empresa (categoria tem auto-referência categoriaPaiId).
+  // Os auxiliares globais (estados, municípios, ceps, países, cnaes) não são
+  // limpos: não referenciam empresa e sobrevivem ao re-seed, como menus.
+  await prisma.categoria.updateMany({ data: { categoriaPaiId: null } });
+  await prisma.categoria.deleteMany();
+  await prisma.condicaoPagamento.deleteMany();
+  await prisma.armazem.deleteMany();
   await prisma.refreshToken.deleteMany();
   await prisma.usuarioEmpresa.updateMany({ data: { superiorId: null } });
   await prisma.usuarioEmpresa.deleteMany();
@@ -85,6 +96,11 @@ async function bootstrapMenu() {
     create: { id: 'seed-modulo-gerencial', nome: 'Gerencial', icone: 'users-round', ordem: 3 },
     update: { nome: 'Gerencial', icone: 'users-round', ordem: 3 },
   });
+  const moduloCadastros = await prisma.modulo.upsert({
+    where: { id: 'seed-modulo-cadastros' },
+    create: { id: 'seed-modulo-cadastros', nome: 'Cadastros', icone: 'database', ordem: 4 },
+    update: { nome: 'Cadastros', icone: 'database', ordem: 4 },
+  });
 
   const menuDefs = [
     { id: 'seed-menu-empresas', nome: 'Empresas', rota: '/admin/empresas', icone: 'building', codigo: 'empresas', moduloId: moduloAdministracao.id },
@@ -93,7 +109,19 @@ async function bootstrapMenu() {
     { id: 'seed-menu-estrutura', nome: 'Estrutura de Menu', rota: '/admin/estrutura', icone: 'layout-grid', codigo: 'menus', moduloId: moduloAdministracao.id },
     { id: 'seed-menu-produtos', nome: 'Produtos', rota: '/comercial/produtos', icone: 'package', codigo: 'produtos', moduloId: moduloComercial.id },
     { id: 'seed-menu-clientes', nome: 'Clientes', rota: '/comercial/clientes', icone: 'users', codigo: 'clientes', moduloId: moduloComercial.id },
+    { id: 'seed-menu-estoque', nome: 'Estoque', rota: '/comercial/estoque', icone: 'boxes', codigo: 'estoque', moduloId: moduloComercial.id },
+    { id: 'seed-menu-notas-saida', nome: 'Notas de Saída', rota: '/comercial/notas-saida', icone: 'file-text', codigo: 'notas-saida', moduloId: moduloComercial.id },
+    { id: 'seed-menu-itens-nota-saida', nome: 'Itens de NF de Saída', rota: '/comercial/itens-nota-saida', icone: 'list', codigo: 'itens-nota-saida', moduloId: moduloComercial.id },
+    { id: 'seed-menu-titulos-receber', nome: 'Títulos a Receber', rota: '/comercial/titulos-receber', icone: 'receipt', codigo: 'titulos-receber', moduloId: moduloComercial.id },
     { id: 'seed-menu-vendedores', nome: 'Vendedores', rota: '/gerencial/vendedores', icone: 'user-round', codigo: 'vendedores', moduloId: moduloGerencial.id },
+    { id: 'seed-menu-categorias', nome: 'Categorias', rota: '/cadastros/categorias', icone: 'tags', codigo: 'categorias', moduloId: moduloCadastros.id },
+    { id: 'seed-menu-condicoes-pagamento', nome: 'Condições de Pagamento', rota: '/cadastros/condicoes-pagamento', icone: 'credit-card', codigo: 'condicoes-pagamento', moduloId: moduloCadastros.id },
+    { id: 'seed-menu-armazens', nome: 'Armazéns', rota: '/cadastros/armazens', icone: 'warehouse', codigo: 'armazens', moduloId: moduloCadastros.id },
+    { id: 'seed-menu-estados', nome: 'Estados', rota: '/cadastros/estados', icone: 'map', codigo: 'estados', moduloId: moduloCadastros.id },
+    { id: 'seed-menu-municipios', nome: 'Municípios', rota: '/cadastros/municipios', icone: 'map-pin', codigo: 'municipios', moduloId: moduloCadastros.id },
+    { id: 'seed-menu-ceps', nome: 'CEPs', rota: '/cadastros/ceps', icone: 'map-pinned', codigo: 'ceps', moduloId: moduloCadastros.id },
+    { id: 'seed-menu-paises', nome: 'Países', rota: '/cadastros/paises', icone: 'globe', codigo: 'paises', moduloId: moduloCadastros.id },
+    { id: 'seed-menu-cnaes', nome: 'CNAEs', rota: '/cadastros/cnaes', icone: 'file-badge', codigo: 'cnaes', moduloId: moduloCadastros.id },
   ];
 
   for (const [i, m] of menuDefs.entries()) {

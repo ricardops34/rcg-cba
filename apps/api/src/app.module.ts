@@ -14,6 +14,11 @@ import { EstruturaModule } from './modules/estrutura/estrutura.module';
 import { ProdutosModule } from './modules/produtos/produtos.module';
 import { VendedoresModule } from './modules/vendedores/vendedores.module';
 import { ClientesModule } from './modules/clientes/clientes.module';
+import { CadastrosModule } from './modules/cadastros/cadastros.module';
+import { EscopoModule } from './modules/escopo/escopo.module';
+import { EstoqueModule } from './modules/estoque/estoque.module';
+import { NotasSaidaModule } from './modules/notas-saida/notas-saida.module';
+import { TitulosReceberModule } from './modules/titulos-receber/titulos-receber.module';
 
 @Module({
   imports: [
@@ -34,6 +39,11 @@ import { ClientesModule } from './modules/clientes/clientes.module';
     ProdutosModule,
     VendedoresModule,
     ClientesModule,
+    CadastrosModule,
+    EscopoModule,
+    EstoqueModule,
+    NotasSaidaModule,
+    TitulosReceberModule,
   ],
   controllers: [AppController],
   providers: [AppService],

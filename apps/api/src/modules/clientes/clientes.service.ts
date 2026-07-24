@@ -1,5 +1,10 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
+import { PrismaService } from '../../common/prisma/prisma.service';
+import {
+  combinarFiltroVendedor,
+  resolverEscopoVendedores,
+  type EscopoVendedores,
+} from '../../common/escopo/escopo-vendedores';
 import {
   buildPaginatedResult,
   paginationToSkipTake,
@@ -27,12 +32,8 @@ const SORT_FIELDS = new Set([
 // Dados do vendedor anexados às respostas (coluna "Vendedor" da listagem).
 const VENDEDOR_SELECT = { select: { id: true, nome: true, nomeReduzido: true } };
 
-/**
- * null = sem restrição de carteira (admin, "Diretor" ou usuário sem Vendedor
- * vinculado, ex.: Administrativo). string[] = ids de Vendedor cujas carteiras
- * o usuário logado pode ver/mexer.
- */
-type EscopoVendedores = string[] | null;
+// A resolução de escopo hierárquico mora em common/escopo/escopo-vendedores
+// — compartilhada com Notas de Saída, Itens e Títulos a Receber.
 
 @Injectable()
 export class ClientesService {
@@ -43,57 +44,6 @@ export class ClientesService {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(input)) out[k] = v === '' ? null : v;
     return out;
-  }
-
-  /**
-   * Resolve o escopo hierárquico do usuário logado a partir do cadastro de
-   * Vendedor (vínculo por usuarioId). Sem CTE recursiva: supervisorId e
-   * gerenteId são campos diretos por linha do time todo, então uma query por
-   * papel basta (ver docs/planos/clientes-crud.md).
-   */
-  private async resolverEscopoVendedores(
-    tx: TenantTx,
-    empresaId: string,
-    user: AuthenticatedUser,
-  ): Promise<EscopoVendedores> {
-    if (user.isAdmin) return null; // acesso total (cobre Administrador; "Diretor" tratado igual)
-
-    const vendedor = await tx.vendedor.findFirst({
-      where: { usuarioId: user.id, empresaId, deletedAt: null },
-      select: { id: true, supervisor: true, gerente: true },
-    });
-    if (!vendedor) return null; // sem Vendedor vinculado (ex.: Administrativo) = acesso total
-
-    if (vendedor.gerente) {
-      const gerenciados = await tx.vendedor.findMany({
-        where: { empresaId, gerenteId: vendedor.id, deletedAt: null },
-        select: { id: true },
-      });
-      return [vendedor.id, ...gerenciados.map((v) => v.id)];
-    }
-    if (vendedor.supervisor) {
-      const supervisionados = await tx.vendedor.findMany({
-        where: { empresaId, supervisorId: vendedor.id, deletedAt: null },
-        select: { id: true },
-      });
-      return [vendedor.id, ...supervisionados.map((v) => v.id)];
-    }
-    return [vendedor.id]; // vendedor "puro": só a própria carteira
-  }
-
-  /**
-   * Combina o escopo com o filtro ?vendedorId= da query sem deixar o filtro
-   * sobrescrever a restrição: um vendedorId fora do escopo força resultado
-   * vazio em vez de vazar carteiras de fora do time.
-   */
-  private combinarFiltroVendedor(escopo: EscopoVendedores, vendedorIdQuery?: string) {
-    if (escopo === null) return vendedorIdQuery ? { vendedorId: vendedorIdQuery } : {};
-    if (!vendedorIdQuery) return { vendedorId: { in: escopo } };
-    return {
-      vendedorId: escopo.includes(vendedorIdQuery)
-        ? vendedorIdQuery
-        : { in: [] as string[] },
-    };
   }
 
   /**
@@ -114,11 +64,11 @@ export class ClientesService {
 
   findAll(empresaId: string, user: AuthenticatedUser, query: ClienteQuery) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await this.resolverEscopoVendedores(tx, empresaId, user);
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
       const where = {
         empresaId,
         deletedAt: null,
-        ...this.combinarFiltroVendedor(escopo, query.vendedorId),
+        ...combinarFiltroVendedor(escopo, query.vendedorId),
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
         ...(query.tipoPessoa ? { tipoPessoa: query.tipoPessoa } : {}),
         ...(query.uf ? { uf: query.uf } : {}),
@@ -151,7 +101,7 @@ export class ClientesService {
 
   async findOne(empresaId: string, user: AuthenticatedUser, id: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await this.resolverEscopoVendedores(tx, empresaId, user);
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
       const cliente = await tx.cliente.findFirst({
         where: {
           id,
@@ -168,7 +118,7 @@ export class ClientesService {
 
   create(empresaId: string, user: AuthenticatedUser, input: ClienteCreate) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await this.resolverEscopoVendedores(tx, empresaId, user);
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
       this.validarVendedorNoEscopo(escopo, input.vendedorId ?? null);
       return tx.cliente.create({
         data: {
@@ -183,7 +133,7 @@ export class ClientesService {
 
   async update(empresaId: string, user: AuthenticatedUser, id: string, input: ClienteUpdate) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await this.resolverEscopoVendedores(tx, empresaId, user);
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
       const cliente = await tx.cliente.findFirst({
         where: {
           id,
@@ -203,7 +153,7 @@ export class ClientesService {
 
   async remove(empresaId: string, user: AuthenticatedUser, id: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await this.resolverEscopoVendedores(tx, empresaId, user);
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
       const cliente = await tx.cliente.findFirst({
         where: {
           id,
@@ -227,7 +177,7 @@ export class ClientesService {
    */
   vendedoresEscopo(empresaId: string, user: AuthenticatedUser) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await this.resolverEscopoVendedores(tx, empresaId, user);
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
       const data = await tx.vendedor.findMany({
         where: {
           empresaId,

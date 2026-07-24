@@ -42,6 +42,29 @@ export const vendedorQuerySchema = paginationQuerySchema.extend({
 });
 export type VendedorQuery = z.infer<typeof vendedorQuerySchema>;
 
+export const VENDEDOR_EXAMPLE: Vendedor = {
+  id: "b7c2c1de-4a45-4b8a-9f2e-6a1d6c1e9f10",
+  empresaId: "7b2f2f64-9b1c-4a86-9d3e-1f4a5b6c7d8e",
+  codigoErp: "000234",
+  nome: "FABIANO OLIVEIRA",
+  nomeReduzido: "FABIANO",
+  telefone: "(67) 3354-9465",
+  email: "fabiano@rcg.com.br",
+  dataNascimento: null,
+  usuarioId: null,
+  vendedor: true,
+  supervisorId: null,
+  supervisor: false,
+  gerenteId: null,
+  gerente: false,
+  ativo: true,
+  desligado: false,
+  createdAt: "2026-07-24T12:00:00.000Z",
+  updatedAt: "2026-07-24T12:00:00.000Z",
+  createdBy: null,
+  updatedBy: null,
+};
+
 export const VENDEDOR_CREATE_EXAMPLE: VendedorCreate = {
   codigoErp: "000234",
   nome: "FABIANO OLIVEIRA",

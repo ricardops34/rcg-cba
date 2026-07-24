@@ -11,7 +11,16 @@ import type {
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
-const SORT_FIELDS = new Set(['descricao', 'codigoErp', 'marca', 'categoria', 'ultimoPreco', 'ativo']);
+const SORT_FIELDS = new Set(['descricao', 'codigoErp', 'marca', 'ultimoPreco', 'ativo']);
+
+// Cadastros auxiliares anexados às respostas (colunas da listagem/form).
+const CATEGORIA_SELECT = { select: { id: true, codigoErp: true, descricao: true } };
+const ARMAZEM_SELECT = { select: { id: true, codigoErp: true, descricao: true } };
+const PRODUTO_INCLUDE = {
+  categoria: CATEGORIA_SELECT,
+  subCategoria: CATEGORIA_SELECT,
+  armazem: ARMAZEM_SELECT,
+};
 
 @Injectable()
 export class ProdutosService {
@@ -30,16 +39,20 @@ export class ProdutosService {
         empresaId,
         deletedAt: null,
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
-        ...(query.categoria
-          ? { categoria: { contains: query.categoria, mode: 'insensitive' as const } }
-          : {}),
+        ...(query.categoriaId ? { categoriaId: query.categoriaId } : {}),
+        ...(query.subCategoriaId ? { subCategoriaId: query.subCategoriaId } : {}),
+        ...(query.armazemId ? { armazemId: query.armazemId } : {}),
         ...(query.search
           ? {
               OR: [
                 { descricao: { contains: query.search, mode: 'insensitive' as const } },
                 { codigoErp: { contains: query.search, mode: 'insensitive' as const } },
                 { marca: { contains: query.search, mode: 'insensitive' as const } },
-                { categoria: { contains: query.search, mode: 'insensitive' as const } },
+                {
+                  categoria: {
+                    descricao: { contains: query.search, mode: 'insensitive' as const },
+                  },
+                },
                 { codigoBarras: { contains: query.search, mode: 'insensitive' as const } },
               ],
             }
@@ -49,6 +62,7 @@ export class ProdutosService {
       const [data, total] = await Promise.all([
         tx.produto.findMany({
           where,
+          include: PRODUTO_INCLUDE,
           ...paginationToSkipTake(query),
           orderBy: { [sortField]: query.sortOrder },
         }),
@@ -60,7 +74,10 @@ export class ProdutosService {
 
   async findOne(empresaId: string, id: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const produto = await tx.produto.findFirst({ where: { id, empresaId, deletedAt: null } });
+      const produto = await tx.produto.findFirst({
+        where: { id, empresaId, deletedAt: null },
+        include: PRODUTO_INCLUDE,
+      });
       if (!produto) throw new NotFoundException('Produto não encontrado');
       return produto;
     });

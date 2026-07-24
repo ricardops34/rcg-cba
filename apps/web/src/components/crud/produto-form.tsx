@@ -3,20 +3,24 @@
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   produtoCreateSchema,
   produtoUpdateSchema,
+  type Armazem,
+  type Categoria,
   type Produto,
   type ProdutoCreate,
   type ProdutoUpdate,
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
-import { ApiError } from "@/lib/api-client";
+import { apiFetch, ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { ArrowLeft } from "lucide-react";
 
@@ -35,8 +39,9 @@ export function ProdutoForm({ produto }: { produto?: Produto }) {
     codigoErp: "",
     descricao: "",
     unidade: "",
-    categoria: "",
-    subCategoria: "",
+    categoriaId: null,
+    subCategoriaId: null,
+    armazemId: null,
     marca: "",
     codigoBarras: "",
     ncm: "",
@@ -53,8 +58,9 @@ export function ProdutoForm({ produto }: { produto?: Produto }) {
           codigoErp: produto.codigoErp,
           descricao: produto.descricao,
           unidade: produto.unidade ?? "",
-          categoria: produto.categoria ?? "",
-          subCategoria: produto.subCategoria ?? "",
+          categoriaId: produto.categoriaId ?? null,
+          subCategoriaId: produto.subCategoriaId ?? null,
+          armazemId: produto.armazemId ?? null,
           marca: produto.marca ?? "",
           codigoBarras: produto.codigoBarras ?? "",
           ncm: produto.ncm ?? "",
@@ -65,6 +71,27 @@ export function ProdutoForm({ produto }: { produto?: Produto }) {
           ativo: produto.ativo,
         }
       : empty,
+  });
+
+  const categoriaId = form.watch("categoriaId");
+
+  const categoriasQuery = useQuery({
+    queryKey: ["categorias", "select", "raizes"],
+    queryFn: () =>
+      apiFetch<{ data: Categoria[] }>("/categorias", { query: { pageSize: 100, raiz: true } }),
+  });
+  // Subcategorias dependem da categoria raiz escolhida.
+  const subCategoriasQuery = useQuery({
+    queryKey: ["categorias", "select", "subs", categoriaId],
+    queryFn: () =>
+      apiFetch<{ data: Categoria[] }>("/categorias", {
+        query: { pageSize: 100, categoriaPaiId: categoriaId ?? undefined },
+      }),
+    enabled: !!categoriaId,
+  });
+  const armazensQuery = useQuery({
+    queryKey: ["armazens", "select"],
+    queryFn: () => apiFetch<{ data: Armazem[] }>("/armazens", { query: { pageSize: 100 } }),
   });
 
   const onSubmit = async (values: ProdutoCreate) => {
@@ -121,14 +148,67 @@ export function ProdutoForm({ produto }: { produto?: Produto }) {
                 <FieldError errors={[form.formState.errors.descricao]} />
               </Field>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <Field>
-                  <FieldLabel htmlFor="categoria">Categoria</FieldLabel>
-                  <Input id="categoria" {...form.register("categoria")} />
+                  <FieldLabel htmlFor="categoriaId">Categoria</FieldLabel>
+                  <Select
+                    value={form.watch("categoriaId") ?? "none"}
+                    onValueChange={(v) => {
+                      form.setValue("categoriaId", v === "none" ? null : v);
+                      form.setValue("subCategoriaId", null);
+                    }}
+                  >
+                    <SelectTrigger id="categoriaId" className="w-full">
+                      <SelectValue placeholder="Sem categoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sem categoria</SelectItem>
+                      {(categoriasQuery.data?.data ?? []).map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.descricao}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="subCategoria">Subcategoria</FieldLabel>
-                  <Input id="subCategoria" {...form.register("subCategoria")} />
+                  <FieldLabel htmlFor="subCategoriaId">Subcategoria</FieldLabel>
+                  <Select
+                    value={form.watch("subCategoriaId") ?? "none"}
+                    onValueChange={(v) => form.setValue("subCategoriaId", v === "none" ? null : v)}
+                    disabled={!categoriaId}
+                  >
+                    <SelectTrigger id="subCategoriaId" className="w-full">
+                      <SelectValue placeholder="Sem subcategoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sem subcategoria</SelectItem>
+                      {(subCategoriasQuery.data?.data ?? []).map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.descricao}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="armazemId">Armazém</FieldLabel>
+                  <Select
+                    value={form.watch("armazemId") ?? "none"}
+                    onValueChange={(v) => form.setValue("armazemId", v === "none" ? null : v)}
+                  >
+                    <SelectTrigger id="armazemId" className="w-full">
+                      <SelectValue placeholder="Sem armazém" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sem armazém</SelectItem>
+                      {(armazensQuery.data?.data ?? []).map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.descricao}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </Field>
               </div>
 

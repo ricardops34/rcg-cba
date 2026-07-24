@@ -1,230 +1,239 @@
 /**
  * Importa do sistema legado (MySQL rcgdistc_portal) o catálogo de produtos e
- * o cadastro de vendedores/supervisores para a empresa RCG.
+ * o cadastro de vendedores/supervisores para a empresa RCG, conectando direto
+ * via mysql2 em runtime — mesmo padrão de import-clientes.ts e
+ * import-auxiliares.ts. Nenhum arquivo de dados intermediário é usado (o
+ * mecanismo antigo de .jsonl foi aposentado: dado real não pode ficar no
+ * repositório).
  *
- * Pré-requisitos:
- * - Seed já rodado (empresa RCG existente).
- * - Arquivo prisma/seed-data/import-legado/produtos.jsonl e/ou
- *   vendedores.jsonl (um JSON por linha), gerados a partir do MySQL com
- *   JSON_OBJECT sobre as tabelas produto/vendedor (mysql -N -B -r).
+ * Idempotente: upsert por (empresaId, codigoErp), pode rodar quantas vezes
+ * for preciso. No update de vendedor, gerente/gerenteId/usuarioId são
+ * preservados — são vínculos mantidos manualmente pela tela, sem
+ * correspondência no legado.
  *
- * Idempotência: cada import só roda se a tabela de destino estiver vazia
- * para a empresa (checagem independente por tabela).
+ * Pré-requisitos: seed rodado (empresa com alias 'rcg') e MySQL do dump
+ * acessível (serviço `mysql` do docker-compose.dev.yml; vars MYSQL_* no .env).
  *
- * O host tem pouca RAM: o arquivo é processado em streaming, gravando em
- * lotes, sem carregar tudo em memória. Rodar de preferência em um container
- * dedicado (sem o NestJS junto):
- *   docker run --rm -m 700m -v /root/rcgcba:/app -w /app/apps/api \
- *     --network network_public rcgcba-api-dev:latest npx ts-node prisma/import-legado.ts
+ * Rodar (a partir da raiz do repo):
+ *   pnpm --filter @plataforma/api exec ts-node prisma/import-legado.ts
+ * Dentro do container api (MySQL na rede do compose):
+ *   MYSQL_HOST=mysql MYSQL_PORT=3306 pnpm --filter @plataforma/api exec ts-node prisma/import-legado.ts
  */
-import { PrismaClient, type Prisma } from '@prisma/client';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import * as readline from 'node:readline';
+import { PrismaClient } from '@prisma/client';
+import * as mysql from 'mysql2/promise';
 
 const prisma = new PrismaClient();
-const DIR = path.join(__dirname, 'seed-data', 'import-legado');
-const CNPJ_RCG = '00000000000191';
-const LOTE = 1000;
 
-/** Processa um .jsonl linha a linha, sem carregar o arquivo inteiro. */
-async function streamJsonl<T>(arquivo: string, cb: (row: T) => Promise<void> | void) {
-  const caminho = path.join(DIR, arquivo);
-  if (!fs.existsSync(caminho)) throw new Error(`Arquivo não encontrado: ${caminho}`);
-  const rl = readline.createInterface({
-    input: fs.createReadStream(caminho, 'utf8'),
-    crlfDelay: Infinity,
-  });
-  for await (const linha of rl) {
-    const l = linha.trim();
-    if (l) await cb(JSON.parse(l) as T);
-  }
-}
+const MYSQL_CONFIG = {
+  host: process.env.MYSQL_HOST ?? 'localhost',
+  port: Number(process.env.MYSQL_PORT ?? 3307),
+  user: process.env.MYSQL_USER ?? 'rcg',
+  password: process.env.MYSQL_PASSWORD ?? 'rcg',
+  database: process.env.MYSQL_DATABASE ?? 'rcgdistc_portal',
+  dateStrings: true as const,
+};
 
-/** Acumula linhas e grava em lotes via createMany. */
-function loteador<T>(gravar: (rows: T[]) => Promise<unknown>) {
-  let buffer: T[] = [];
-  let total = 0;
-  return {
-    async push(row: T) {
-      buffer.push(row);
-      if (buffer.length >= LOTE) {
-        await gravar(buffer);
-        total += buffer.length;
-        buffer = [];
-      }
-    },
-    async flush() {
-      if (buffer.length) {
-        await gravar(buffer);
-        total += buffer.length;
-        buffer = [];
-      }
-      return total;
-    },
-  };
-}
+const ALIAS_EMPRESA = 'rcg';
+const LOTE = 200;
+
+const texto = (v: string | null | undefined): string | null => {
+  if (v == null) return null;
+  const t = v.trim();
+  return t === '' ? null : t;
+};
+
+const data = (v: string | null | undefined): Date | null => {
+  if (!v || v.startsWith('0000')) return null;
+  const d = new Date(v.includes(' ') ? v.replace(' ', 'T') : `${v}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
 
 interface LegadoProduto {
   id: number;
-  codErp: string;
+  cod_erp: string;
   descricao: string;
-  unidade: string | null;
-  categoria: string | null;
-  subCategoria: string | null;
+  um: string | null;
+  categoria_cod: string | null; // cod_erp da categoria (join) — resolve a FK no cadastro novo
+  sub_categoria_cod: string | null; // idem para subcategoria
+  armazem_cod: string | null; // idem para armazém
   marca: string | null;
-  codigoBarras: string | null;
+  codigo_barras: string | null;
   ncm: string | null;
-  qtdEmbalagem: number | null;
+  qtd_embalagem: number | null;
   peso: number | null;
-  ultimoPreco: number | null;
+  ult_preco: number | null;
   observacao: string | null;
   status: string | null;
 }
 
-async function importProdutos() {
-  const empresa = await prisma.empresa.findUnique({ where: { cnpj: CNPJ_RCG } });
-  if (!empresa) throw new Error('Empresa RCG não encontrada — rode o seed antes.');
-  const empresaId = empresa.id;
-
-  const jaTemProdutos = await prisma.produto.count({ where: { empresaId } });
-  if (jaTemProdutos === 0) {
-    const lote = loteador<Prisma.ProdutoCreateManyInput>((rows) =>
-      prisma.produto.createMany({ data: rows, skipDuplicates: true }),
-    );
-    await streamJsonl<LegadoProduto>('produtos.jsonl', async (p) => {
-      await lote.push({
-        empresaId,
-        codigoErp: p.codErp,
-        descricao: p.descricao,
-        unidade: p.unidade,
-        categoria: p.categoria,
-        subCategoria: p.subCategoria,
-        marca: p.marca,
-        codigoBarras: p.codigoBarras,
-        ncm: p.ncm,
-        qtdEmbalagem: p.qtdEmbalagem,
-        peso: p.peso,
-        ultimoPreco: p.ultimoPreco,
-        observacao: p.observacao,
-        ativo: p.status !== 'B',
-      });
-    });
-    console.log(`Produtos importados: ${await lote.flush()}`);
-  } else {
-    console.log(`Produtos já importados (${jaTemProdutos}) — pulando.`);
-  }
-}
-
 interface LegadoVendedor {
   id: number;
-  codErp: string;
+  cod_erp: string | null;
   nome: string;
-  nomeReduzido: string | null;
+  nome_reduzido: string | null;
   ddd: string | null;
   telefone: string | null;
-  celular: string | null;
   email: string | null;
   status: string | null;
   desligado: string | null;
   vendedor: string | null;
   supervisor: string | null;
-  supervisorId: number | null;
-  dtNascimento: string | null;
-}
-
-/**
- * Importa vendedor/supervisor/gerente do legado (tabela `vendedor` do MySQL,
- * exportada previamente para vendedores.jsonl via JSON_OBJECT — ver
- * AGENTS.md ou o histórico do chat para o comando exato).
- *
- * Diferente de importProdutos: busca a empresa por `alias` ('rcg'), não por
- * CNPJ — o CNPJ_RCG usado no import de produtos não bate com o que o
- * seed-base.ts atual semeia (bug pré-existente, fora de escopo aqui).
- *
- * Duas passadas: 1ª cria todos os vendedores (sem hierarquia, pra ter os
- * ids novos); 2ª resolve supervisorId a partir do id do legado, usando o
- * mapa id-legado→id-novo montado na 1ª passada. `gerente`/`gerenteId`
- * ficam de fora — o legado não tem esse conceito; hierarquia de gerente é
- * cadastrada manualmente depois pela tela.
- */
-async function importVendedores() {
-  const empresa = await prisma.empresa.findUnique({ where: { alias: 'rcg' } });
-  if (!empresa) throw new Error('Empresa RCG (alias "rcg") não encontrada — rode o seed antes.');
-  const empresaId = empresa.id;
-
-  // "vendedores" tem RLS (ver AGENTS.md): qualquer leitura/escrita precisa
-  // rodar dentro de uma transação com app.current_empresa_id setado, senão
-  // a policy zera o SELECT (idempotência sempre veria 0) e rejeita o
-  // INSERT. Aqui replicamos manualmente o que PrismaService.withTenant faz
-  // — este script roda com PrismaClient puro, fora do Nest.
-  await prisma.$transaction(
-    async (tx: Prisma.TransactionClient) => {
-      await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${empresaId}, true)`;
-
-      const jaTemVendedores = await tx.vendedor.count({ where: { empresaId } });
-      if (jaTemVendedores > 0) {
-        console.log(`Vendedores já importados (${jaTemVendedores}) — pulando.`);
-        return;
-      }
-
-      const legadoIdParaNovoId = new Map<number, string>();
-      const linhas: LegadoVendedor[] = [];
-
-      await streamJsonl<LegadoVendedor>('vendedores.jsonl', async (v) => {
-        linhas.push(v);
-        const telefone = v.ddd && v.telefone ? `(${v.ddd}) ${v.telefone}` : v.telefone;
-        const criado = await tx.vendedor.create({
-          data: {
-            empresaId,
-            codigoErp: v.codErp,
-            nome: v.nome,
-            nomeReduzido: v.nomeReduzido,
-            // celular do legado é sempre null (campo unificado com telefone
-            // no cadastro novo) — não é gravado.
-            telefone,
-            email: v.email,
-            dataNascimento: v.dtNascimento ? new Date(v.dtNascimento) : null,
-            vendedor: v.vendedor === 'S',
-            supervisor: v.supervisor === 'S',
-            gerente: false,
-            ativo: v.status === 'A',
-            desligado: v.desligado === 'S',
-          },
-        });
-        legadoIdParaNovoId.set(v.id, criado.id);
-      });
-
-      let hierarquiaResolvida = 0;
-      for (const v of linhas) {
-        if (v.supervisorId == null) continue;
-        const supervisorNovoId = legadoIdParaNovoId.get(v.supervisorId);
-        const vendedorNovoId = legadoIdParaNovoId.get(v.id);
-        if (!supervisorNovoId || !vendedorNovoId) continue;
-        await tx.vendedor.update({
-          where: { id: vendedorNovoId },
-          data: { supervisorId: supervisorNovoId },
-        });
-        hierarquiaResolvida++;
-      }
-
-      console.log(
-        `Vendedores importados: ${linhas.length} (hierarquia resolvida em ${hierarquiaResolvida} registros).`,
-      );
-    },
-    { timeout: 30_000 },
-  );
+  supervisor_id: number | null;
+  dt_nascmento: string | null;
 }
 
 async function main() {
-  // Cada import é independente — um falhar (ex.: bug conhecido do CNPJ_RCG
-  // em importProdutos, ver comentário na função) não deve impedir o outro.
-  try {
-    await importProdutos();
-  } catch (e) {
-    console.error('Falha em importProdutos (pulando):', e);
+  console.log(
+    `Conectando ao MySQL legado em ${MYSQL_CONFIG.host}:${MYSQL_CONFIG.port}/${MYSQL_CONFIG.database}...`,
+  );
+  const conexao = await mysql.createConnection(MYSQL_CONFIG);
+  const [produtosRows] = await conexao.query(
+    `SELECT p.id, p.cod_erp, p.descricao, p.um, c.cod_erp AS categoria_cod,
+            s.cod_erp AS sub_categoria_cod, a.cod_erp AS armazem_cod,
+            p.marca, p.codigo_barras, p.ncm, p.qtd_embalagem, p.peso,
+            p.ult_preco, p.observacao, p.status
+       FROM produto p
+       LEFT JOIN categoria c ON c.id = p.categoria_id
+       LEFT JOIN sub_categoria s ON s.id = p.sub_categoria_id
+       LEFT JOIN armazem a ON a.id = p.armazem_id`,
+  );
+  const [vendedoresRows] = await conexao.query('SELECT * FROM vendedor');
+  await conexao.end();
+
+  const produtos = produtosRows as LegadoProduto[];
+  const vendedores = vendedoresRows as LegadoVendedor[];
+  console.log(`Legado: ${produtos.length} produtos, ${vendedores.length} vendedores.`);
+
+  const empresa = await prisma.empresa.findUnique({ where: { alias: ALIAS_EMPRESA } });
+  if (!empresa) {
+    throw new Error(`Empresa com alias "${ALIAS_EMPRESA}" não encontrada — rode o seed antes.`);
   }
-  await importVendedores();
+  const empresaId = empresa.id;
+
+  // "produtos"/"vendedores" têm RLS: leitura/escrita dentro de transação com
+  // app.current_empresa_id setado (replica PrismaService.withTenant — o
+  // script roda fora do Nest/DI).
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${empresaId}, true)`;
+
+      // Categoria/subcategoria/armazém viram FK, casadas por cod_erp com os
+      // cadastros auxiliares — rode import-auxiliares.ts antes deste.
+      const categorias = await tx.categoria.findMany({
+        where: { empresaId, deletedAt: null },
+        select: { id: true, codigoErp: true },
+      });
+      const categoriaPorCodErp = new Map(categorias.map((c) => [c.codigoErp, c.id]));
+      const armazens = await tx.armazem.findMany({
+        where: { empresaId, deletedAt: null },
+        select: { id: true, codigoErp: true },
+      });
+      const armazemPorCodErp = new Map(armazens.map((a) => [a.codigoErp, a.id]));
+
+      let gravados = 0;
+      let semCategoria = 0;
+      for (let i = 0; i < produtos.length; i += LOTE) {
+        const chunk = produtos.slice(i, i + LOTE);
+        await Promise.all(
+          chunk.map((p) => {
+            const codigoErp = p.cod_erp.trim();
+            const categoriaCod = texto(p.categoria_cod);
+            const subCod = texto(p.sub_categoria_cod);
+            const armazemCod = texto(p.armazem_cod);
+            if (categoriaCod && !categoriaPorCodErp.has(categoriaCod)) semCategoria++;
+            const dados = {
+              descricao: p.descricao.trim(),
+              unidade: texto(p.um),
+              categoriaId: categoriaCod ? (categoriaPorCodErp.get(categoriaCod) ?? null) : null,
+              subCategoriaId: subCod ? (categoriaPorCodErp.get(subCod) ?? null) : null,
+              armazemId: armazemCod ? (armazemPorCodErp.get(armazemCod) ?? null) : null,
+              marca: texto(p.marca),
+              codigoBarras: texto(p.codigo_barras),
+              ncm: texto(p.ncm),
+              qtdEmbalagem: p.qtd_embalagem,
+              peso: p.peso,
+              ultimoPreco: p.ult_preco,
+              observacao: texto(p.observacao),
+              ativo: p.status !== 'B',
+            };
+            return tx.produto.upsert({
+              where: { empresaId_codigoErp: { empresaId, codigoErp } },
+              create: { ...dados, empresaId, codigoErp },
+              update: dados,
+            });
+          }),
+        );
+        gravados += chunk.length;
+      }
+      console.log(
+        `Produtos: ${gravados} gravados (upsert)` +
+          (semCategoria
+            ? `; ${semCategoria} com categoria do legado sem correspondência (rode import-auxiliares antes)`
+            : ''),
+      );
+    },
+    { timeout: 600_000 },
+  );
+
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${empresaId}, true)`;
+
+      // 1ª passada: upsert dos vendedores; 2ª: resolve supervisorId pelo
+      // cod_erp (o id do legado muda a cada dump, o cod_erp não).
+      const codErpParaNovoId = new Map<string, string>();
+      for (const v of vendedores) {
+        const codigoErp = texto(v.cod_erp) ?? `LEGADO-${v.id}`;
+        const telefone = v.ddd && v.telefone ? `(${v.ddd}) ${v.telefone}` : texto(v.telefone);
+        const dados = {
+          nome: v.nome.trim(),
+          nomeReduzido: texto(v.nome_reduzido),
+          telefone,
+          email: texto(v.email),
+          dataNascimento: data(v.dt_nascmento),
+          vendedor: v.vendedor === 'S',
+          supervisor: v.supervisor === 'S',
+          ativo: v.status === 'A',
+          desligado: v.desligado === 'S',
+        };
+        const novo = await tx.vendedor.upsert({
+          where: { empresaId_codigoErp: { empresaId, codigoErp } },
+          // gerente/gerenteId/usuarioId ficam fora do update: não existem no
+          // legado e são mantidos manualmente pela tela.
+          create: { ...dados, empresaId, codigoErp, gerente: false },
+          update: dados,
+        });
+        codErpParaNovoId.set(codigoErp, novo.id);
+      }
+
+      let hierarquiaResolvida = 0;
+      const legadoIdParaCodErp = new Map<number, string>();
+      for (const v of vendedores) {
+        legadoIdParaCodErp.set(v.id, texto(v.cod_erp) ?? `LEGADO-${v.id}`);
+      }
+      for (const v of vendedores) {
+        const codigoErp = texto(v.cod_erp) ?? `LEGADO-${v.id}`;
+        const vendedorNovoId = codErpParaNovoId.get(codigoErp);
+        const supervisorCodErp =
+          v.supervisor_id != null ? legadoIdParaCodErp.get(v.supervisor_id) : undefined;
+        const supervisorNovoId = supervisorCodErp
+          ? codErpParaNovoId.get(supervisorCodErp)
+          : undefined;
+        if (!vendedorNovoId) continue;
+        await tx.vendedor.update({
+          where: { id: vendedorNovoId },
+          data: { supervisorId: supervisorNovoId ?? null },
+        });
+        if (supervisorNovoId) hierarquiaResolvida++;
+      }
+      console.log(
+        `Vendedores: ${vendedores.length} gravados (upsert; hierarquia resolvida em ${hierarquiaResolvida} registros).`,
+      );
+    },
+    { timeout: 600_000 },
+  );
+
+  console.log('Import do legado (produtos + vendedores) concluído.');
 }
 
 main()
