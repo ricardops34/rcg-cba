@@ -56,6 +56,7 @@ async function limparDados() {
   // Ordem respeita as FKs. usuarioEmpresa e vendedor têm auto-referência
   // (superiorId; supervisorId/gerenteId): zera antes de apagar para não
   // violar a constraint.
+  await prisma.cliente.deleteMany();
   await prisma.vendedor.updateMany({ data: { supervisorId: null, gerenteId: null } });
   await prisma.vendedor.deleteMany();
   await prisma.produto.deleteMany();
@@ -91,6 +92,7 @@ async function bootstrapMenu() {
     { id: 'seed-menu-perfis', nome: 'Perfis', rota: '/admin/perfis', icone: 'shield', codigo: 'perfis', moduloId: moduloAdministracao.id },
     { id: 'seed-menu-estrutura', nome: 'Estrutura de Menu', rota: '/admin/estrutura', icone: 'layout-grid', codigo: 'menus', moduloId: moduloAdministracao.id },
     { id: 'seed-menu-produtos', nome: 'Produtos', rota: '/comercial/produtos', icone: 'package', codigo: 'produtos', moduloId: moduloComercial.id },
+    { id: 'seed-menu-clientes', nome: 'Clientes', rota: '/comercial/clientes', icone: 'users', codigo: 'clientes', moduloId: moduloComercial.id },
     { id: 'seed-menu-vendedores', nome: 'Vendedores', rota: '/gerencial/vendedores', icone: 'user-round', codigo: 'vendedores', moduloId: moduloGerencial.id },
   ];
 

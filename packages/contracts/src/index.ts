@@ -5,4 +5,5 @@ export * from "./perfil";
 export * from "./menu";
 export * from "./produto";
 export * from "./vendedor";
+export * from "./cliente";
 export * from "./auth";

@@ -31,6 +31,7 @@ model Empresa {
   perfis          Perfil[]
   produtos        Produto[]
   vendedores      Vendedor[]
+  clientes        Cliente[]
 
   @@map("empresas")
 }
@@ -308,10 +309,88 @@ model Vendedor {
   supervisionados    Vendedor[] @relation("VendedorSupervisor")
   gerenteVendedor    Vendedor?  @relation("VendedorGerente", fields: [gerenteId], references: [id])
   gerenciados        Vendedor[] @relation("VendedorGerente")
+  clientes           Cliente[]
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, nome])
   @@map("vendedores")
+}
+
+enum TipoPessoa {
+  fisica
+  juridica
+}
+
+// Carteira de clientes, espelhando a tabela `cliente` do sistema legado
+// (lookups como segmento/região ficaram de fora do v1 — ver
+// docs/planos/clientes-crud.md). vendedorId define a carteira e é a base do
+// escopo hierárquico aplicado em ClientesService (vendedor vê a própria
+// carteira, supervisor/gerente veem o time). Campos de histórico comercial
+// (primeiraCompra, ultimaCompra, ...) são preenchidos pelo import do legado,
+// não pelo formulário.
+model Cliente {
+  id         String  @id @default(uuid())
+  empresaId  String
+  vendedorId String?
+  codigoErp  String?
+
+  tipoPessoa         TipoPessoa @default(juridica)
+  razaoSocial        String
+  nomeFantasia       String?
+  cnpjCpf            String?
+  inscricaoEstadual  String?
+  inscricaoMunicipal String?
+  contribuinteIcms   Boolean?
+  rg                 String?
+  dataNascimento     DateTime?
+
+  contato   String?
+  email     String?
+  telefone  String?
+  telefone2 String?
+  celular   String?
+
+  endereco    String?
+  complemento String?
+  bairro      String?
+  municipio   String?
+  uf          String?
+  cep         String?
+  latitude    Float?
+  longitude   Float?
+
+  ativo            Boolean  @default(true)
+  carteira         Boolean?
+  site             String?
+  limiteCredito    Float?
+  vencimentoLimite DateTime?
+  observacao       String?
+
+  dataBloqueio         DateTime?
+  observacaoBloqueio   String?
+  dataReativacao       DateTime?
+  observacaoReativacao String?
+
+  primeiraCompra    DateTime?
+  ultimaVisita      DateTime?
+  ultimaCompra      DateTime?
+  ultimoAtendimento DateTime?
+  dataConsultaRfb   DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa  Empresa   @relation(fields: [empresaId], references: [id])
+  vendedor Vendedor? @relation(fields: [vendedorId], references: [id])
+
+  @@unique([empresaId, codigoErp])
+  @@index([empresaId, razaoSocial])
+  @@index([empresaId, vendedorId])
+  @@map("clientes")
 }
 
 // ------------------------------------------------------------------

@@ -44,8 +44,8 @@ services:
     working_dir: /app
     environment:
       # Role de app (sem BYPASSRLS/superuser) — ver migration
-      # 20260715221500_app_role_least_privilege. Migrations/seed (serviço
-      # db-init) continuam rodando com o role "plataforma", dono das tabelas.
+      # 20260724000000_baseline. Migrations/seed (serviço db-init) continuam
+      # rodando com o role "plataforma", dono das tabelas.
       DATABASE_URL: postgresql://plataforma_app:plataforma_app_dev_only@postgres:5432/plataforma_comercial?schema=public
       REDIS_URL: redis://redis:6379
       JWT_ACCESS_SECRET: desenvolvimento-local-access
@@ -134,6 +134,9 @@ services:
       - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./mysql/00-legacy-definers.sql:/docker-entrypoint-initdb.d/00-legacy-definers.sql:ro
+      - ./mysql/10-restore-legacy.sh:/docker-entrypoint-initdb.d/10-restore-legacy.sh:ro
+      - ../backup/rcgdistc_portal.sql:/legacy/rcgdistc_portal.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
       interval: 10s
