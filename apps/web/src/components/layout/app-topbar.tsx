@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
-import { Bell, Building2, Check, HelpCircle, LogOut, Menu, Moon, Search, Sun } from "lucide-react";
+import { Bell, Building2, Check, HelpCircle, LogOut, Menu, Moon, Search, Sun, UserCog } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import type { CurrentUser } from "@plataforma/contracts";
@@ -172,6 +172,11 @@ export function AppTopbar({
                 })}
               </>
             )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => router.push("/perfil")}>
+              <UserCog className="size-4" />
+              Meu perfil
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout}>
               <LogOut className="size-4" />

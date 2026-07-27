@@ -19,8 +19,8 @@ export function useAuthGuard() {
       logout();
       return;
     }
-    if (!accessToken) router.replace("/login");
-  }, [accessToken, router, logout]);
+    if (!accessToken || !user) router.replace("/login");
+  }, [accessToken, user, router, logout]);
 
   return { isReady: !!accessToken && !!user, user };
 }

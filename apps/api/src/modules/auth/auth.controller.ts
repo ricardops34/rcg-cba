@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -13,7 +13,7 @@ import {
   LOGIN_EXAMPLE,
 } from '@plataforma/contracts';
 import { AuthService } from './auth.service';
-import { LoginDto, RefreshDto, SwitchEmpresaDto } from './dto/auth.dto';
+import { ChangePasswordDto, LoginDto, RefreshDto, SwitchEmpresaDto } from './dto/auth.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ApiBodyExample } from '../../common/decorators/api-body-example.decorator';
 import {
@@ -125,5 +125,21 @@ export class AuthController {
     @Req() req: Request,
   ) {
     return this.authService.switchEmpresa(user.id, dto.empresaId, this.meta(req));
+  }
+
+  @ApiOperation({
+    summary: 'Trocar a própria senha',
+    description:
+      'Troca a senha do usuário logado. Exige a senha atual e valida a nova contra a ' +
+      'política de senha vigente (GET /politica-senha) e o histórico de reuso.',
+  })
+  @ApiResponse({ status: 200, schema: { example: { success: true } } })
+  @ApiResponse({ status: 401, description: 'Senha atual incorreta' })
+  @ApiResponse({ status: 400, description: 'Nova senha não atende à política vigente' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Patch('change-password')
+  changePassword(@Body() dto: ChangePasswordDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.authService.changePassword(user.id, dto);
   }
 }

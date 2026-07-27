@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import type { TituloReceber } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
@@ -33,6 +34,7 @@ const dataBr = (v: string | null | undefined) => {
 
 // Consulta read-only, com o mesmo escopo hierárquico de Clientes.
 export default function TitulosReceberPage() {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -181,6 +183,7 @@ export default function TitulosReceberPage() {
           setPageSize(n);
           setPage(1);
         }}
+        onRowClick={(t) => router.push(`/comercial/titulos-receber/${t.id}`)}
         emptyMessage="Nenhum título a receber."
         sortBy={sortBy}
         sortOrder={sortOrder}

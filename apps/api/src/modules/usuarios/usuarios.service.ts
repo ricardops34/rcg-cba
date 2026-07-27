@@ -5,11 +5,13 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { PoliticaSenhaService } from '../politica-senha/politica-senha.service';
 import {
   buildPaginatedResult,
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
 import type {
+  ResetPasswordInput,
   UsuarioCreate,
   UsuarioEmpresaCreate,
   UsuarioQuery,
@@ -21,7 +23,10 @@ const SORT_FIELDS = new Set(['nome', 'email', 'ativo', 'ultimoLogin', 'createdAt
 
 @Injectable()
 export class UsuariosService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly politicaSenhaService: PoliticaSenhaService,
+  ) {}
 
   /**
    * "usuario_empresas" e "perfis" têm RLS: o filtro por relação
@@ -154,6 +159,7 @@ export class UsuariosService {
     });
     if (existente) throw new ConflictException('E-mail já cadastrado');
 
+    await this.politicaSenhaService.validarSenha(input.senha);
     const senhaHash = await bcrypt.hash(input.senha, SALT_ROUNDS);
 
     return this.prisma.$transaction(async (tx) => {
@@ -164,6 +170,7 @@ export class UsuariosService {
           email: input.email,
           ativo: input.ativo,
           senhaHash,
+          senhaAlteradaEm: new Date(),
           createdBy: actorId,
           updatedBy: actorId,
           usuarioEmpresas: {
@@ -200,6 +207,35 @@ export class UsuariosService {
         updatedAt: true,
       },
     });
+  }
+
+  /** Reset de senha por admin — não exige a senha atual do usuário-alvo. */
+  async resetSenha(id: string, input: ResetPasswordInput, actorId: string) {
+    const usuario = await this.prisma.usuario.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!usuario) throw new NotFoundException('Usuário não encontrado');
+
+    await this.politicaSenhaService.validarSenha(input.novaSenha);
+    await this.politicaSenhaService.validarReuso(id, input.novaSenha, usuario.senhaHash);
+
+    const novoHash = await bcrypt.hash(input.novaSenha, SALT_ROUNDS);
+    await this.prisma.$transaction(async (tx) => {
+      await this.politicaSenhaService.registrarHistorico(id, usuario.senhaHash, tx);
+      await tx.usuario.update({
+        where: { id },
+        data: {
+          senhaHash: novoHash,
+          senhaAlteradaEm: new Date(),
+          deveTrocarSenha: input.deveTrocarSenha,
+          tentativasFalhas: 0,
+          bloqueadoAte: null,
+          updatedBy: actorId,
+        },
+      });
+    });
+
+    return { success: true };
   }
 
   async remove(id: string, actorId: string) {

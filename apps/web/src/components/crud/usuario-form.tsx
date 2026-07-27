@@ -9,16 +9,19 @@ import {
   usuarioCreateSchema,
   usuarioUpdateSchema,
   type Perfil,
+  type PoliticaSenha,
   type Usuario,
   type UsuarioCreate,
   type UsuarioUpdate,
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
 import { ApiError, apiFetch } from "@/lib/api-client";
+import { buildSenhaSchema, describeRequisitos } from "@/lib/politica-senha";
 import { UsuarioEmpresasSection } from "@/components/crud/usuario-empresas-section";
+import { UsuarioResetSenhaSection } from "@/components/crud/usuario-reset-senha-section";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { ArrowLeft } from "lucide-react";
@@ -32,8 +35,17 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
     queryKey: ["perfis", "select"],
     queryFn: () => apiFetch<{ data: Perfil[] }>("/perfis", { query: { pageSize: 100 } }),
   });
+  const { data: politica } = useQuery({
+    queryKey: ["politica-senha"],
+    queryFn: () => apiFetch<PoliticaSenha>("/politica-senha"),
+    enabled: !usuario,
+  });
 
-  const schema = usuario ? usuarioUpdateSchema : usuarioCreateSchema;
+  const schema = usuario
+    ? usuarioUpdateSchema
+    : politica
+      ? usuarioCreateSchema.extend({ senha: buildSenhaSchema(politica) })
+      : usuarioCreateSchema;
   const form = useForm<UsuarioCreate>({
     resolver: zodResolver(schema as typeof usuarioCreateSchema),
     defaultValues: usuario
@@ -86,11 +98,16 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
                   <FieldError errors={[form.formState.errors.email]} />
                 </Field>
 
+                {usuario && <UsuarioResetSenhaSection usuarioId={usuario.id} />}
+
                 {!usuario && (
                   <>
                     <Field data-invalid={!!form.formState.errors.senha}>
                       <FieldLabel htmlFor="senha">Senha inicial</FieldLabel>
                       <Input id="senha" type="password" {...form.register("senha")} />
+                      {politica && (
+                        <FieldDescription>{describeRequisitos(politica).join(" · ")}</FieldDescription>
+                      )}
                       <FieldError errors={[form.formState.errors.senha]} />
                     </Field>
 

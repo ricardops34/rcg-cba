@@ -24,6 +24,15 @@ export const authTokensSchema = z.object({
 });
 export type AuthTokens = z.infer<typeof authTokensSchema>;
 
+export const loginResultSchema = authTokensSchema.extend({
+  mustChangePassword: z
+    .boolean()
+    .describe(
+      "Se true, a senha expirou ou foi redefinida por um admin — o frontend deve levar o usuário à tela de troca de senha antes de liberar a navegação normal",
+    ),
+});
+export type LoginResult = z.infer<typeof loginResultSchema>;
+
 export const refreshInputSchema = z.object({
   refreshToken: z.string().describe("Refresh token obtido no login ou no refresh anterior"),
 });
@@ -36,6 +45,18 @@ export const switchEmpresaInputSchema = z.object({
     .describe("Empresa para a qual a sessão deve trocar (o usuário precisa ter vínculo ativo com ela)"),
 });
 export type SwitchEmpresaInput = z.infer<typeof switchEmpresaInputSchema>;
+
+export const changePasswordSchema = z
+  .object({
+    senhaAtual: z.string().min(1, "Informe a senha atual"),
+    novaSenha: z.string().min(1, "Informe a nova senha"),
+    confirmarNovaSenha: z.string().min(1, "Confirme a nova senha"),
+  })
+  .refine((v) => v.novaSenha === v.confirmarNovaSenha, {
+    message: "As senhas não conferem",
+    path: ["confirmarNovaSenha"],
+  });
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
 export const currentUserSchema = z.object({
   id: z.string().uuid().describe("Identificador do usuário autenticado"),

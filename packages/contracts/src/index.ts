@@ -15,6 +15,8 @@ export * from "./categoria";
 export * from "./condicao-pagamento";
 export * from "./armazem";
 export * from "./estoque";
+export * from "./posicao-cliente";
 export * from "./nota-saida";
 export * from "./titulo-receber";
 export * from "./auth";
+export * from "./politica-senha";

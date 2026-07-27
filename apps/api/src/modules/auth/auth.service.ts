@@ -1,6 +1,8 @@
 import { randomBytes, createHash } from 'node:crypto';
 import {
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -8,13 +10,15 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import type { LoginInput, RefreshInput } from '@plataforma/contracts';
+import { PoliticaSenhaService } from '../politica-senha/politica-senha.service';
+import type { ChangePasswordInput, LoginInput, RefreshInput } from '@plataforma/contracts';
 
 interface RequestMeta {
   ip?: string;
   userAgent?: string;
 }
 
+const SALT_ROUNDS = 12;
 const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 @Injectable()
@@ -22,6 +26,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly politicaSenhaService: PoliticaSenhaService,
   ) {}
 
   private hashToken(token: string) {
@@ -91,8 +96,27 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
+    if (usuario.bloqueadoAte && usuario.bloqueadoAte > new Date()) {
+      throw new HttpException(
+        'Conta temporariamente bloqueada por excesso de tentativas. Tente novamente mais tarde.',
+        HttpStatus.LOCKED,
+      );
+    }
+
     const senhaValida = await bcrypt.compare(input.senha, usuario.senhaHash);
     if (!senhaValida) {
+      const politica = await this.politicaSenhaService.getVigente();
+      const tentativas = usuario.tentativasFalhas + 1;
+      const bloqueou = tentativas >= politica.tentativasAntesBloqueio;
+      await this.prisma.usuario.update({
+        where: { id: usuario.id },
+        data: bloqueou
+          ? {
+              tentativasFalhas: 0,
+              bloqueadoAte: new Date(Date.now() + politica.minutosBloqueio * 60_000),
+            }
+          : { tentativasFalhas: tentativas },
+      });
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
@@ -125,15 +149,24 @@ export class AuthService {
       meta,
     );
 
+    const politica = await this.politicaSenhaService.getVigente();
+    const senhaExpirada =
+      !!politica.diasParaExpirar &&
+      !!usuario.senhaAlteradaEm &&
+      Date.now() - usuario.senhaAlteradaEm.getTime() >=
+        politica.diasParaExpirar * 24 * 60 * 60 * 1000;
+    const mustChangePassword = usuario.deveTrocarSenha || senhaExpirada;
+
     await this.prisma.usuario.update({
       where: { id: usuario.id },
-      data: { ultimoLogin: new Date() },
+      data: { ultimoLogin: new Date(), tentativasFalhas: 0, bloqueadoAte: null },
     });
 
     return {
       accessToken,
       refreshToken,
       expiresIn: 15 * 60,
+      mustChangePassword,
     };
   }
 
@@ -292,5 +325,37 @@ export class AuthService {
       })),
       permissoes,
     };
+  }
+
+  /** Troca a senha do próprio usuário logado, exigindo a senha atual. */
+  async changePassword(usuarioId: string, input: ChangePasswordInput) {
+    const usuario = await this.prisma.usuario.findUniqueOrThrow({
+      where: { id: usuarioId },
+    });
+
+    const senhaAtualValida = await bcrypt.compare(input.senhaAtual, usuario.senhaHash);
+    if (!senhaAtualValida) {
+      throw new UnauthorizedException('Senha atual incorreta');
+    }
+
+    await this.politicaSenhaService.validarSenha(input.novaSenha);
+    await this.politicaSenhaService.validarReuso(usuarioId, input.novaSenha, usuario.senhaHash);
+
+    const novoHash = await bcrypt.hash(input.novaSenha, SALT_ROUNDS);
+    await this.prisma.$transaction(async (tx) => {
+      await this.politicaSenhaService.registrarHistorico(usuarioId, usuario.senhaHash, tx);
+      await tx.usuario.update({
+        where: { id: usuarioId },
+        data: {
+          senhaHash: novoHash,
+          senhaAlteradaEm: new Date(),
+          deveTrocarSenha: false,
+          tentativasFalhas: 0,
+          bloqueadoAte: null,
+        },
+      });
+    });
+
+    return { success: true };
   }
 }

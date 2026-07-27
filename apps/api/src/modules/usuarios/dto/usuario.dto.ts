@@ -1,5 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import {
+  resetPasswordSchema,
   usuarioCreateSchema,
   usuarioEmpresaCreateSchema,
   usuarioQuerySchema,
@@ -12,3 +13,4 @@ export class UsuarioQueryDto extends createZodDto(usuarioQuerySchema) {}
 export class UsuarioEmpresaCreateDto extends createZodDto(
   usuarioEmpresaCreateSchema,
 ) {}
+export class ResetPasswordDto extends createZodDto(resetPasswordSchema) {}

@@ -9,12 +9,14 @@ export const usuarioCreateSchema = z.object({
     .email()
     .toLowerCase()
     .describe("E-mail de login, único no sistema"),
+  // A força real da senha é validada dinamicamente pelo backend
+  // (PoliticaSenhaService.validarSenha) contra os parâmetros vigentes em
+  // PoliticaSenha — este schema só garante que o campo não chegue vazio.
   senha: z
     .string()
-    .min(8, "Mínimo de 8 caracteres")
-    .regex(/[A-Z]/, "Deve conter ao menos uma letra maiúscula")
-    .regex(/[0-9]/, "Deve conter ao menos um número")
-    .describe("Senha inicial do usuário (mín. 8 caracteres, 1 maiúscula, 1 número)"),
+    .min(1, "Informe a senha")
+    .max(128)
+    .describe("Senha inicial do usuário — validada contra a política de senha vigente"),
   ativo: z.boolean().default(true).describe("Usuários inativos não conseguem autenticar"),
   perfilId: z
     .string()
@@ -27,6 +29,23 @@ export const usuarioUpdateSchema = usuarioCreateSchema
   .omit({ senha: true, perfilId: true })
   .partial();
 export type UsuarioUpdate = z.infer<typeof usuarioUpdateSchema>;
+
+// Corpo de PATCH /usuarios/:id/senha — reset de senha por admin, sem exigir
+// a senha atual (complementa a troca self-service de POST /auth/change-password).
+export const resetPasswordSchema = z
+  .object({
+    novaSenha: z.string().min(1, "Informe a nova senha"),
+    confirmarNovaSenha: z.string().min(1, "Confirme a nova senha"),
+    deveTrocarSenha: z
+      .boolean()
+      .default(true)
+      .describe("Se true, o usuário é obrigado a trocar a senha no próximo login"),
+  })
+  .refine((v) => v.novaSenha === v.confirmarNovaSenha, {
+    message: "As senhas não conferem",
+    path: ["confirmarNovaSenha"],
+  });
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 
 export const usuarioSchema = z.object({
   id: z.string().uuid().describe("Identificador único do usuário (UUID v4)"),

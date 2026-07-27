@@ -75,18 +75,6 @@ export const notaSaidaItemSchema = z.object({
 });
 export type NotaSaidaItem = z.infer<typeof notaSaidaItemSchema>;
 
-export const notaSaidaItemQuerySchema = paginationQuerySchema.extend({
-  ativo: booleanQueryParam,
-  notaSaidaId: z.string().uuid().optional(),
-  clienteId: z.string().uuid().optional(),
-  vendedorId: z.string().uuid().optional(),
-  produtoId: z.string().uuid().optional(),
-  comodato: booleanQueryParam,
-  ano: z.coerce.number().int().optional(),
-  mes: z.coerce.number().int().min(1).max(12).optional(),
-});
-export type NotaSaidaItemQuery = z.infer<typeof notaSaidaItemQuerySchema>;
-
 export const NOTA_SAIDA_EXAMPLE: NotaSaida = {
   id: "9c0d1e2f-3a4b-4c5d-6e7f-8091a2b3c4d5",
   empresaId: "7b2f2f64-9b1c-4a86-9d3e-1f4a5b6c7d8e",

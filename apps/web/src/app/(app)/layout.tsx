@@ -12,7 +12,9 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   "/admin/empresas": { title: "Empresas", subtitle: "Cadastro base" },
   "/admin/usuarios": { title: "Usuários", subtitle: "Cadastro e permissões" },
   "/admin/perfis": { title: "Perfis", subtitle: "Papéis e permissões (RBAC)" },
+  "/admin/politica-senha": { title: "Política de Senha", subtitle: "Regras de senha e bloqueio" },
   "/admin/estrutura": { title: "Estrutura de menu", subtitle: "Módulos, menus e rotinas" },
+  "/perfil": { title: "Meu perfil", subtitle: "Dados da conta" },
   "/comercial/produtos": { title: "Produtos", subtitle: "Catálogo de produtos" },
 };
 

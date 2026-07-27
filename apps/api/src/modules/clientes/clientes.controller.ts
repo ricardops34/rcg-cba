@@ -62,6 +62,18 @@ export class ClientesController {
     return this.service.findOne(user.empresaAtivaId, user, id);
   }
 
+  @ApiOperation({
+    summary: 'Posição de cliente',
+    description:
+      'Tela agrupada: cliente + notas de saída + títulos a receber + mix de produtos comprados. ' +
+      'Requer posicao-cliente.visualizar.',
+  })
+  @RequirePermission('posicao-cliente', 'visualizar')
+  @Get(':id/posicao')
+  posicao(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.posicao(user.empresaAtivaId, user, id);
+  }
+
   @ApiOperation({ summary: 'Cadastrar cliente', description: 'Requer clientes.cadastrar.' })
   @RequirePermission('clientes', 'cadastrar')
   @Post()

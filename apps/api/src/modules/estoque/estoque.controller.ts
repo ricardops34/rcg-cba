@@ -21,8 +21,9 @@ export class EstoqueController {
   @ApiOperation({
     summary: 'Listar estoque',
     description:
-      'Saldo de estoque por produto/armazém da empresa ativa (consulta — dados entram pelo ' +
-      'import do ERP). Busca pela descrição ou código do produto. Requer estoque.visualizar.',
+      'Saldo de estoque por produto da empresa ativa, somado em todos os armazéns (ou só no ' +
+      'armazém filtrado). Consulta — dados entram pelo import do ERP. Busca pela descrição ou ' +
+      'código do produto. Requer estoque.visualizar.',
   })
   @ApiPaginationQuery()
   @RequirePermission('estoque', 'visualizar')
@@ -31,10 +32,13 @@ export class EstoqueController {
     return this.service.findAll(user.empresaAtivaId, query);
   }
 
-  @ApiOperation({ summary: 'Detalhar registro de estoque', description: 'Requer estoque.visualizar.' })
+  @ApiOperation({
+    summary: 'Detalhar saldo do produto por armazém',
+    description: 'Requer estoque.visualizar.',
+  })
   @RequirePermission('estoque', 'visualizar')
-  @Get(':id')
-  findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.findOne(user.empresaAtivaId, id);
+  @Get(':produtoId')
+  findByProduto(@Param('produtoId') produtoId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.findByProduto(user.empresaAtivaId, produtoId);
   }
 }

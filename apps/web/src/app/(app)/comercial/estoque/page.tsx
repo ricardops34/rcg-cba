@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import type { Armazem, Estoque } from "@plataforma/contracts";
+import type { Armazem, EstoqueProdutoResumo } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
 import { apiFetch } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
@@ -11,25 +12,21 @@ import { FiltersPopover } from "@/components/crud/filters-popover";
 import { FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-type EstoqueRow = Estoque & {
-  produto?: { id: string; codigoErp: string; descricao: string; unidade: string | null } | null;
-  armazem?: { id: string; codigoErp: string; descricao: string } | null;
-};
-
-const moeda = (v: number | null | undefined) =>
-  v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
 const dataBr = (v: string | null | undefined) => {
   if (!v) return "—";
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
 };
 
-// Consulta read-only: os saldos entram pelo import do ERP.
+// Consulta read-only: os saldos entram pelo import do ERP. Uma linha por
+// produto, com o saldo somado em todos os armazéns (ou só no armazém
+// filtrado); o detalhamento por armazém fica na tela de visualização.
 export default function EstoquePage() {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [sortBy, setSortBy] = useState("");
+  const [sortBy, setSortBy] = useState("descricao");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [armazemId, setArmazemId] = useState<string | undefined>(undefined);
   const [comSaldo, setComSaldo] = useState<"todos" | "sim" | "nao">("todos");
@@ -39,11 +36,12 @@ export default function EstoquePage() {
     queryFn: () => apiFetch<{ data: Armazem[] }>("/armazens", { query: { pageSize: 100 } }),
   });
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<EstoqueRow>("estoque", {
+  const { data, isLoading, isFetching, refetch } = useResourceList<EstoqueProdutoResumo>("estoque", {
     search,
     page,
     pageSize,
-    ...(sortBy ? { sortBy, sortOrder } : {}),
+    sortBy,
+    sortOrder,
     ...(armazemId ? { armazemId } : {}),
     ...(comSaldo !== "todos" ? { comSaldo: comSaldo === "sim" } : {}),
   });
@@ -55,35 +53,40 @@ export default function EstoquePage() {
     setPage(1);
   };
 
-  const columns: ColumnDef<EstoqueRow>[] = [
+  const columns: ColumnDef<EstoqueProdutoResumo>[] = [
+    {
+      header: "Código",
+      sortKey: "codigoErp",
+      cell: (p) => <span className="font-mono text-xs">{p.codigoErp}</span>,
+    },
     {
       header: "Produto",
-      cell: (e) => (
-        <div>
-          <p className="font-medium">{e.produto?.descricao ?? "—"}</p>
-          <p className="font-mono text-xs text-muted-foreground">{e.produto?.codigoErp}</p>
-        </div>
-      ),
+      sortKey: "descricao",
+      cell: (p) => <p className="font-medium">{p.descricao}</p>,
     },
-    { header: "Armazém", cell: (e) => <span className="text-xs">{e.armazem?.descricao ?? "—"}</span> },
     {
-      header: "Saldo",
-      sortKey: "saldo",
-      cell: (e) => (
-        <span className={e.saldo > 0 ? "" : "text-muted-foreground"}>
-          {e.saldo.toLocaleString("pt-BR")}
-          {e.produto?.unidade && <span className="text-xs text-muted-foreground"> {e.produto.unidade}</span>}
+      header: "Categoria",
+      sortKey: "categoria",
+      cell: (p) => p.categoria?.descricao ?? "—",
+    },
+    {
+      header: "Armazéns",
+      cell: (p) => <span className="text-xs text-muted-foreground">{p.qtdArmazens}</span>,
+    },
+    {
+      header: "Saldo total",
+      cell: (p) => (
+        <span className={p.saldoTotal > 0 ? "" : "text-muted-foreground"}>
+          {p.saldoTotal.toLocaleString("pt-BR")}
+          {p.unidade && <span className="text-xs text-muted-foreground"> {p.unidade}</span>}
         </span>
       ),
     },
     {
-      header: "Reserva",
-      sortKey: "reserva",
-      cell: (e) => (e.reserva != null ? e.reserva.toLocaleString("pt-BR") : "—"),
+      header: "Reserva total",
+      cell: (p) => (p.reservaTotal != null ? p.reservaTotal.toLocaleString("pt-BR") : "—"),
     },
-    { header: "Custo", sortKey: "custo", cell: (e) => moeda(e.custo) },
-    { header: "Últ. preço", sortKey: "ultimoPreco", cell: (e) => moeda(e.ultimoPreco) },
-    { header: "Últ. compra", sortKey: "ultimaCompra", cell: (e) => dataBr(e.ultimaCompra) },
+    { header: "Últ. compra", cell: (p) => dataBr(p.ultimaCompra) },
   ];
 
   return (
@@ -148,7 +151,7 @@ export default function EstoquePage() {
       <EntityTable
         columns={columns}
         rows={data?.data ?? []}
-        rowKey={(e) => e.id}
+        rowKey={(p) => p.id}
         isLoading={isLoading}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
@@ -159,6 +162,7 @@ export default function EstoquePage() {
           setPageSize(n);
           setPage(1);
         }}
+        onRowClick={(p) => router.push(`/comercial/estoque/${p.id}`)}
         emptyMessage="Nenhum registro de estoque."
         sortBy={sortBy}
         sortOrder={sortOrder}

@@ -3,25 +3,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
 import type { Categoria, Produto } from "@plataforma/contracts";
-import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
-import { apiFetch, ApiError } from "@/lib/api-client";
+import { useResourceList } from "@/hooks/use-resource";
+import { apiFetch } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
 import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
 import { FiltersPopover } from "@/components/crud/filters-popover";
-import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 type ProdutoRow = Produto & {
   categoria?: { id: string; descricao: string } | null;
@@ -54,20 +45,6 @@ export default function ProdutosPage() {
     ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
     ...(categoriaId ? { categoriaId } : {}),
   });
-
-  const { remove } = useResourceMutations("produtos");
-
-  const openEdit = (p: ProdutoRow) => router.push(`/comercial/produtos/${p.id}`);
-
-  const onDelete = async (p: ProdutoRow) => {
-    if (!confirm(`Excluir o produto "${p.descricao}"?`)) return;
-    try {
-      await remove.mutateAsync(p.id);
-      toast.success("Produto excluído");
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Erro ao excluir produto");
-    }
-  };
 
   const filtrosAtivos = !!categoriaId;
   const limparFiltros = () => {
@@ -111,27 +88,6 @@ export default function ProdutosPage() {
           : "—",
     },
     { header: "Status", sortKey: "ativo", cell: (p) => <StatusDot active={p.ativo} /> },
-    {
-      header: "",
-      className: "w-10",
-      cell: (p) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-8" onClick={(ev) => ev.stopPropagation()}>
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => openEdit(p)}>
-              <Pencil className="size-4" /> Editar
-            </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={() => onDelete(p)}>
-              <Trash2 className="size-4" /> Excluir
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
-    },
   ];
 
   return (
@@ -144,8 +100,6 @@ export default function ProdutosPage() {
         }}
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
-        onCreate={() => router.push("/comercial/produtos/novo")}
-        createLabel="Novo produto"
       />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -196,7 +150,7 @@ export default function ProdutosPage() {
           setPageSize(n);
           setPage(1);
         }}
-        onRowClick={openEdit}
+        onRowClick={(p) => router.push(`/comercial/produtos/${p.id}`)}
         emptyMessage="Nenhum produto cadastrado."
         sortBy={sortBy}
         sortOrder={sortOrder}

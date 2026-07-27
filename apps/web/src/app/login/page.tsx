@@ -28,6 +28,7 @@ import {
 import {
   loginSchema,
   type LoginInput,
+  type LoginResult,
   type CurrentUser,
   type EmpresaBranding,
 } from "@plataforma/contracts";
@@ -122,13 +123,10 @@ function LoginForm() {
 
   const onSubmit = async (values: LoginInput) => {
     try {
-      const tokens = await apiFetch<{ accessToken: string; refreshToken: string }>(
-        "/auth/login",
-        {
-          method: "POST",
-          body: { ...values, empresaAlias: branding?.alias ?? (alias.trim() || undefined) },
-        },
-      );
+      const tokens = await apiFetch<LoginResult>("/auth/login", {
+        method: "POST",
+        body: { ...values, empresaAlias: branding?.alias ?? (alias.trim() || undefined) },
+      });
       setTokens(tokens.accessToken, tokens.refreshToken);
 
       // "Lembrar de mim": sem a marca de sessão, o guard encerra o acesso
@@ -143,10 +141,21 @@ function LoginForm() {
       const me = await apiFetch<CurrentUser>("/auth/me");
       setUser(me);
 
+      if (tokens.mustChangePassword) {
+        toast.info("Sua senha expirou ou foi redefinida — troque-a para continuar.");
+        router.replace("/perfil");
+        return;
+      }
+
       toast.success(`Bem-vindo, ${me.nome.split(" ")[0]}`);
       router.replace("/");
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Falha ao entrar";
+      const message =
+        err instanceof ApiError
+          ? err.status === 423
+            ? "Conta temporariamente bloqueada por excesso de tentativas. Tente novamente mais tarde."
+            : err.message
+          : "Falha ao entrar";
       toast.error(message);
     }
   };

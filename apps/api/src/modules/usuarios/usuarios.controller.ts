@@ -19,6 +19,7 @@ import {
 import { USUARIO_CREATE_EXAMPLE, USUARIO_EXAMPLE } from '@plataforma/contracts';
 import { UsuariosService } from './usuarios.service';
 import {
+  ResetPasswordDto,
   UsuarioCreateDto,
   UsuarioEmpresaCreateDto,
   UsuarioQueryDto,
@@ -97,6 +98,26 @@ export class UsuariosController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.update(id, dto, user.id);
+  }
+
+  @ApiOperation({
+    summary: 'Redefinir a senha de outro usuário (reset por admin)',
+    description:
+      'Não exige a senha atual — uso do admin para o caso de usuário esquecido. ' +
+      'A nova senha é validada contra a política vigente e o histórico de reuso. ' +
+      'Por padrão, força a troca no próximo login (deveTrocarSenha). Requer usuarios.editar.',
+  })
+  @ApiParam({ name: 'id', example: USUARIO_ID_EXAMPLE })
+  @ApiResponse({ status: 200, schema: { example: { success: true } } })
+  @ApiResponse({ status: 400, description: 'Nova senha não atende à política vigente' })
+  @RequirePermission('usuarios', 'editar')
+  @Patch(':id/senha')
+  resetSenha(
+    @Param('id') id: string,
+    @Body() dto: ResetPasswordDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.resetSenha(id, dto, user.id);
   }
 
   @ApiOperation({

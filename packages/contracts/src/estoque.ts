@@ -23,6 +23,41 @@ export const estoqueQuerySchema = paginationQuerySchema.extend({
 });
 export type EstoqueQuery = z.infer<typeof estoqueQuerySchema>;
 
+const categoriaRefSchema = z.object({ id: z.string().uuid(), descricao: z.string() }).nullable();
+
+// Linha da listagem: um produto, com o saldo somado em todos os armazéns
+// (ou só no armazém filtrado, quando informado em armazemId).
+export const estoqueProdutoResumoSchema = z.object({
+  id: z.string().uuid(),
+  codigoErp: z.string(),
+  descricao: z.string(),
+  unidade: z.string().nullable(),
+  categoria: categoriaRefSchema,
+  saldoTotal: z.number(),
+  reservaTotal: z.number().nullable(),
+  qtdArmazens: z.number().int(),
+  ultimaCompra: z.string().datetime().nullable(),
+});
+export type EstoqueProdutoResumo = z.infer<typeof estoqueProdutoResumoSchema>;
+
+// Detalhe: saldo do produto aberto por armazém.
+export const estoqueSaldoArmazemSchema = estoqueSchema.omit({ produtoId: true }).extend({
+  armazem: z.object({ id: z.string().uuid(), codigoErp: z.string().nullable(), descricao: z.string() }),
+});
+export type EstoqueSaldoArmazem = z.infer<typeof estoqueSaldoArmazemSchema>;
+
+export const estoqueDetalheSchema = z.object({
+  produto: z.object({
+    id: z.string().uuid(),
+    codigoErp: z.string(),
+    descricao: z.string(),
+    unidade: z.string().nullable(),
+    categoria: categoriaRefSchema,
+  }),
+  saldos: z.array(estoqueSaldoArmazemSchema),
+});
+export type EstoqueDetalhe = z.infer<typeof estoqueDetalheSchema>;
+
 export const ESTOQUE_EXAMPLE: Estoque = {
   id: "8b9c0d1e-2f3a-4b4c-5d6e-7f8091a2b3c4",
   empresaId: "7b2f2f64-9b1c-4a86-9d3e-1f4a5b6c7d8e",

@@ -76,6 +76,11 @@ async function limparDados() {
   await prisma.usuarioEmpresa.deleteMany();
   await prisma.perfilPermissao.deleteMany();
   await prisma.perfil.deleteMany();
+  // Limpeza pontual: "Itens de NF de Saída" foi unificado dentro do
+  // mestre-detalhe de Notas de Saída — remove a rotina/menu órfãos de bases
+  // já seedadas (bootstrapMenu só faz upsert, não apaga o que saiu da lista).
+  await prisma.rotina.deleteMany({ where: { codigo: 'itens-nota-saida' } });
+  await prisma.menu.deleteMany({ where: { id: 'seed-menu-itens-nota-saida' } });
   await prisma.usuario.deleteMany();
   await prisma.empresa.deleteMany();
 }
@@ -106,12 +111,15 @@ async function bootstrapMenu() {
     { id: 'seed-menu-empresas', nome: 'Empresas', rota: '/admin/empresas', icone: 'building', codigo: 'empresas', moduloId: moduloAdministracao.id },
     { id: 'seed-menu-usuarios', nome: 'Usuários', rota: '/admin/usuarios', icone: 'users', codigo: 'usuarios', moduloId: moduloAdministracao.id },
     { id: 'seed-menu-perfis', nome: 'Perfis', rota: '/admin/perfis', icone: 'shield', codigo: 'perfis', moduloId: moduloAdministracao.id },
+    { id: 'seed-menu-politica-senha', nome: 'Política de Senha', rota: '/admin/politica-senha', icone: 'lock', codigo: 'politica-senha', moduloId: moduloAdministracao.id },
     { id: 'seed-menu-estrutura', nome: 'Estrutura de Menu', rota: '/admin/estrutura', icone: 'layout-grid', codigo: 'menus', moduloId: moduloAdministracao.id },
     { id: 'seed-menu-produtos', nome: 'Produtos', rota: '/comercial/produtos', icone: 'package', codigo: 'produtos', moduloId: moduloComercial.id },
     { id: 'seed-menu-clientes', nome: 'Clientes', rota: '/comercial/clientes', icone: 'users', codigo: 'clientes', moduloId: moduloComercial.id },
+    { id: 'seed-menu-posicao-cliente', nome: 'Posição de Cliente', rota: '/comercial/posicao-cliente', icone: 'user-search', codigo: 'posicao-cliente', moduloId: moduloComercial.id },
     { id: 'seed-menu-estoque', nome: 'Estoque', rota: '/comercial/estoque', icone: 'boxes', codigo: 'estoque', moduloId: moduloComercial.id },
+    // Notas de Saída é um cadastro mestre-detalhe: os itens vêm embutidos no
+    // detalhe da nota (GET /notas-saida/:id), sem menu/rotina própria.
     { id: 'seed-menu-notas-saida', nome: 'Notas de Saída', rota: '/comercial/notas-saida', icone: 'file-text', codigo: 'notas-saida', moduloId: moduloComercial.id },
-    { id: 'seed-menu-itens-nota-saida', nome: 'Itens de NF de Saída', rota: '/comercial/itens-nota-saida', icone: 'list', codigo: 'itens-nota-saida', moduloId: moduloComercial.id },
     { id: 'seed-menu-titulos-receber', nome: 'Títulos a Receber', rota: '/comercial/titulos-receber', icone: 'receipt', codigo: 'titulos-receber', moduloId: moduloComercial.id },
     { id: 'seed-menu-vendedores', nome: 'Vendedores', rota: '/gerencial/vendedores', icone: 'user-round', codigo: 'vendedores', moduloId: moduloGerencial.id },
     { id: 'seed-menu-categorias', nome: 'Categorias', rota: '/cadastros/categorias', icone: 'tags', codigo: 'categorias', moduloId: moduloCadastros.id },
@@ -153,18 +161,36 @@ async function bootstrapMenu() {
   return prisma.rotina.findMany({ where: { deletedAt: null } });
 }
 
+// Garante a linha singleton de PoliticaSenha (também é criada sob demanda,
+// via upsert lazy, por PoliticaSenhaService.getVigente() — replicado aqui só
+// por completude do estado esperado em dev).
+async function bootstrapPoliticaSenha() {
+  await prisma.politicaSenha.upsert({
+    where: { id: 'singleton' },
+    update: {},
+    create: { id: 'singleton' },
+  });
+}
+
 async function main() {
   console.log('Limpando dados existentes...');
   await limparDados();
 
   console.log('Reconstruindo estrutura de menu/rotinas...');
   const rotinas = await bootstrapMenu();
+  await bootstrapPoliticaSenha();
 
   const senhaHash = await bcrypt.hash(SENHA_ADMIN, 12);
 
   // Um único usuário Admin, vinculado como Administrador nas 3 empresas.
   const admin = await prisma.usuario.create({
-    data: { nome: ADMIN.nome, email: ADMIN.email, senhaHash, ativo: true },
+    data: {
+      nome: ADMIN.nome,
+      email: ADMIN.email,
+      senhaHash,
+      ativo: true,
+      senhaAlteradaEm: new Date(),
+    },
   });
 
   for (const cfg of EMPRESAS) {

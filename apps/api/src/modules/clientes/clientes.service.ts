@@ -171,6 +171,90 @@ export class ClientesService {
   }
 
   /**
+   * Posição de Cliente: tela agrupada (cliente + notas de saída + títulos a
+   * receber + mix de produtos comprados), cada bloco ligado ao registro
+   * detalhado correspondente (nota, produto). Read-only — os dados entram
+   * pelo import do ERP.
+   */
+  async posicao(empresaId: string, user: AuthenticatedUser, clienteId: string) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const filtroEscopo = escopo ? { vendedorId: { in: escopo } } : {};
+
+      const cliente = await tx.cliente.findFirst({
+        where: { id: clienteId, empresaId, deletedAt: null, ...filtroEscopo },
+        include: { vendedor: VENDEDOR_SELECT },
+      });
+      if (!cliente) throw new NotFoundException('Cliente não encontrado');
+
+      const [notas, titulos, mixGrupos] = await Promise.all([
+        tx.notaSaida.findMany({
+          where: { clienteId, empresaId, deletedAt: null, ...filtroEscopo },
+          include: { vendedor: VENDEDOR_SELECT },
+          orderBy: { dtEmissao: 'desc' },
+        }),
+        tx.tituloReceber.findMany({
+          where: { clienteId, empresaId, deletedAt: null, ...filtroEscopo },
+          orderBy: { vencimento: 'desc' },
+        }),
+        tx.notaSaidaItem.groupBy({
+          by: ['produtoId'],
+          where: {
+            clienteId,
+            empresaId,
+            deletedAt: null,
+            produtoId: { not: null },
+            ...filtroEscopo,
+          },
+          _sum: { quantidade: true, vlrTotal: true },
+          _count: { _all: true },
+          _max: { dtEmissao: true },
+        }),
+      ]);
+
+      const produtoIds = mixGrupos
+        .map((g) => g.produtoId)
+        .filter((id): id is string => id !== null);
+      const produtos = produtoIds.length
+        ? await tx.produto.findMany({
+            where: { id: { in: produtoIds } },
+            select: { id: true, codigoErp: true, descricao: true, unidade: true },
+          })
+        : [];
+      const produtoPorId = new Map(produtos.map((p) => [p.id, p]));
+
+      const mix = mixGrupos
+        .map((g) => {
+          const produto = g.produtoId ? produtoPorId.get(g.produtoId) : undefined;
+          return {
+            produtoId: g.produtoId as string,
+            codigoErp: produto?.codigoErp ?? '—',
+            descricao: produto?.descricao ?? '—',
+            unidade: produto?.unidade ?? null,
+            quantidadeTotal: g._sum.quantidade ?? 0,
+            vlrTotal: g._sum.vlrTotal ?? 0,
+            qtdNotas: g._count._all,
+            ultimaCompra: g._max.dtEmissao,
+          };
+        })
+        .sort((a, b) => b.vlrTotal - a.vlrTotal);
+
+      const hoje = new Date();
+      const titulosAbertos = titulos.filter((t) => !t.dtBaixa);
+      const resumo = {
+        totalNotas: notas.length,
+        totalComprado: notas.reduce((acc, n) => acc + n.vlrBruto, 0),
+        totalTitulosAberto: titulosAbertos.reduce((acc, t) => acc + t.saldo, 0),
+        totalTitulosVencido: titulosAbertos
+          .filter((t) => t.vencimento && new Date(t.vencimento) < hoje)
+          .reduce((acc, t) => acc + t.saldo, 0),
+      };
+
+      return { cliente, resumo, notas, titulos, mix };
+    });
+  }
+
+  /**
    * Vendedores dentro do escopo do usuário logado — alimenta o filtro
    * "Vendedor" da listagem e o Select do formulário sem expor o
    * VendedoresController (que não tem restrição de carteira).

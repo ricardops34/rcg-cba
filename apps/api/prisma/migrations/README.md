@@ -81,6 +81,7 @@ Com RLS: `perfis`, `usuario_empresas`, `produtos`, `vendedores`, `clientes`,
 
 Sem RLS por serem referência global (sem coluna `empresaId`): `paises`,
 `estados`, `municipios`, `ceps`, `cnaes` (além das tabelas de sistema
-`modulos`/`menus`/`rotinas`).
+`modulos`/`menus`/`rotinas`, e de `politica_senha`/`senha_historico` — login e
+senha são globais, então a política é única para toda a plataforma).
 </content>
 </invoke>

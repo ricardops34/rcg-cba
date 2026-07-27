@@ -19,6 +19,7 @@ import { EscopoModule } from './modules/escopo/escopo.module';
 import { EstoqueModule } from './modules/estoque/estoque.module';
 import { NotasSaidaModule } from './modules/notas-saida/notas-saida.module';
 import { TitulosReceberModule } from './modules/titulos-receber/titulos-receber.module';
+import { PoliticaSenhaModule } from './modules/politica-senha/politica-senha.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { TitulosReceberModule } from './modules/titulos-receber/titulos-receber.
     EstoqueModule,
     NotasSaidaModule,
     TitulosReceberModule,
+    PoliticaSenhaModule,
   ],
   controllers: [AppController],
   providers: [AppService],
