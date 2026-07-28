@@ -87,6 +87,25 @@ export class AuthService {
     );
   }
 
+  /**
+   * true se a senha foi marcada para troca obrigatória (reset por admin,
+   * senha provisória de vendedor) ou expirou pela política vigente — usado
+   * tanto no login quanto em `me()` (esta última reavalia a cada carga da
+   * sessão, pra pegar uma expiração que ocorreu no meio de uma sessão longa).
+   */
+  private async computeMustChangePassword(usuario: {
+    deveTrocarSenha: boolean;
+    senhaAlteradaEm: Date | null;
+  }): Promise<boolean> {
+    const politica = await this.politicaSenhaService.getVigente();
+    const senhaExpirada =
+      !!politica.diasParaExpirar &&
+      !!usuario.senhaAlteradaEm &&
+      Date.now() - usuario.senhaAlteradaEm.getTime() >=
+        politica.diasParaExpirar * 24 * 60 * 60 * 1000;
+    return usuario.deveTrocarSenha || senhaExpirada;
+  }
+
   async login(input: LoginInput, meta: RequestMeta) {
     const usuario = await this.prisma.usuario.findUnique({
       where: { email: input.email.toLowerCase() },
@@ -149,13 +168,7 @@ export class AuthService {
       meta,
     );
 
-    const politica = await this.politicaSenhaService.getVigente();
-    const senhaExpirada =
-      !!politica.diasParaExpirar &&
-      !!usuario.senhaAlteradaEm &&
-      Date.now() - usuario.senhaAlteradaEm.getTime() >=
-        politica.diasParaExpirar * 24 * 60 * 60 * 1000;
-    const mustChangePassword = usuario.deveTrocarSenha || senhaExpirada;
+    const mustChangePassword = await this.computeMustChangePassword(usuario);
 
     await this.prisma.usuario.update({
       where: { id: usuario.id },
@@ -310,6 +323,8 @@ export class AuthService {
         ).map((p) => `${p.rotina.codigo}.${p.acao}`)
       : [];
 
+    const mustChangePassword = await this.computeMustChangePassword(usuario);
+
     return {
       id: usuario.id,
       nome: usuario.nome,
@@ -323,6 +338,7 @@ export class AuthService {
         perfilNome: perfis[i].nome,
       })),
       permissoes,
+      mustChangePassword,
     };
   }
 

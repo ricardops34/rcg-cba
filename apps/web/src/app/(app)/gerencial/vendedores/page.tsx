@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Vendedor } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
@@ -23,7 +23,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { KeyRound, Lock, MoreHorizontal, Pencil, Trash2, Unlock, UserPlus } from "lucide-react";
 
 type SimNaoTodos = "todos" | "sim" | "nao";
 
@@ -64,6 +64,7 @@ export default function VendedoresPage() {
   });
 
   const { remove } = useResourceMutations("vendedores");
+  const queryClient = useQueryClient();
 
   const openEdit = (v: Vendedor) => router.push(`/gerencial/vendedores/${v.id}`);
 
@@ -75,6 +76,52 @@ export default function VendedoresPage() {
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Erro ao excluir vendedor");
     }
+  };
+
+  const criarUsuario = useMutation({
+    mutationFn: (id: string) => apiFetch(`/vendedores/${id}/criar-usuario`, { method: "POST" }),
+    onSuccess: () => {
+      toast.success("Usuário criado — senha provisória enviada por e-mail");
+      queryClient.invalidateQueries({ queryKey: ["vendedores"] });
+      queryClient.invalidateQueries({ queryKey: ["usuarios"] });
+    },
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : "Erro ao criar usuário"),
+  });
+
+  const onCriarUsuario = (v: Vendedor) => {
+    if (!confirm(`Criar usuário de acesso para "${v.nome}" e enviar senha provisória por e-mail?`)) return;
+    criarUsuario.mutate(v.id);
+  };
+
+  const reenviarSenha = useMutation({
+    mutationFn: (id: string) => apiFetch(`/vendedores/${id}/reenviar-senha`, { method: "POST" }),
+    onSuccess: () => toast.success("Nova senha provisória enviada por e-mail"),
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : "Erro ao reenviar senha"),
+  });
+
+  const onReenviarSenha = (v: Vendedor) => {
+    if (!confirm(`Enviar uma nova senha provisória para "${v.nome}" (${v.email})?`)) return;
+    reenviarSenha.mutate(v.id);
+  };
+
+  const toggleBloqueio = useMutation({
+    mutationFn: ({ id, bloquear }: { id: string; bloquear: boolean }) =>
+      apiFetch(`/vendedores/${id}/${bloquear ? "bloquear" : "desbloquear"}`, { method: "PATCH" }),
+    onSuccess: (_data, { bloquear }) => {
+      toast.success(bloquear ? "Vendedor bloqueado" : "Vendedor desbloqueado");
+      queryClient.invalidateQueries({ queryKey: ["vendedores"] });
+      queryClient.invalidateQueries({ queryKey: ["usuarios"] });
+    },
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : "Erro ao atualizar bloqueio"),
+  });
+
+  const onToggleBloqueio = (v: Vendedor) => {
+    const bloquear = v.ativo;
+    const msg = bloquear
+      ? `Bloquear o vendedor "${v.nome}"?${v.usuarioId ? " O usuário de acesso também será bloqueado." : ""}`
+      : `Desbloquear o vendedor "${v.nome}"?${v.usuarioId ? " O usuário de acesso também será reativado." : ""}`;
+    if (!confirm(msg)) return;
+    toggleBloqueio.mutate({ id: v.id, bloquear });
   };
 
   const filtrosAtivos =
@@ -138,6 +185,25 @@ export default function VendedoresPage() {
             <DropdownMenuItem onClick={() => openEdit(v)}>
               <Pencil className="size-4" /> Editar
             </DropdownMenuItem>
+            {v.ativo && !v.usuarioId && (
+              <DropdownMenuItem onClick={() => onCriarUsuario(v)}>
+                <UserPlus className="size-4" /> Criar usuário
+              </DropdownMenuItem>
+            )}
+            {v.usuarioId && (
+              <DropdownMenuItem onClick={() => onReenviarSenha(v)}>
+                <KeyRound className="size-4" /> Reenviar senha
+              </DropdownMenuItem>
+            )}
+            {v.ativo ? (
+              <DropdownMenuItem onClick={() => onToggleBloqueio(v)}>
+                <Lock className="size-4" /> Bloquear
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={() => onToggleBloqueio(v)}>
+                <Unlock className="size-4" /> Desbloquear
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem variant="destructive" onClick={() => onDelete(v)}>
               <Trash2 className="size-4" /> Excluir
             </DropdownMenuItem>

@@ -77,6 +77,11 @@ export const currentUserSchema = z.object({
   permissoes: z
     .array(z.string())
     .describe("Permissões da empresa ativa, no formato 'rotinaCodigo.acao' (ex.: 'empresas.editar')"),
+  mustChangePassword: z
+    .boolean()
+    .describe(
+      "Se true, a senha expirou ou foi redefinida por um admin — o frontend deve bloquear a navegação até a troca (ver POST /auth/login)",
+    ),
 });
 export type CurrentUser = z.infer<typeof currentUserSchema>;
 
@@ -106,4 +111,5 @@ export const CURRENT_USER_EXAMPLE: CurrentUser = {
     },
   ],
   permissoes: ["empresas.visualizar", "empresas.editar", "clientes.cadastrar"],
+  mustChangePassword: false,
 };

@@ -2,17 +2,18 @@
 
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { changePasswordSchema, type ChangePasswordInput, type PoliticaSenha } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { buildSenhaSchema, describeRequisitos } from "@/lib/politica-senha";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function ChangePasswordForm() {
+  const queryClient = useQueryClient();
   const { data: politica } = useQuery({
     queryKey: ["politica-senha"],
     queryFn: () => apiFetch<PoliticaSenha>("/politica-senha"),
@@ -43,6 +44,7 @@ export function ChangePasswordForm() {
       await changePassword.mutateAsync(values);
       toast.success("Senha alterada com sucesso");
       form.reset({ senhaAtual: "", novaSenha: "", confirmarNovaSenha: "" });
+      queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Erro ao trocar senha");
     }
@@ -58,13 +60,13 @@ export function ChangePasswordForm() {
           <FieldGroup>
             <Field data-invalid={!!form.formState.errors.senhaAtual}>
               <FieldLabel htmlFor="senhaAtual">Senha atual</FieldLabel>
-              <Input id="senhaAtual" type="password" autoComplete="current-password" {...form.register("senhaAtual")} />
+              <PasswordInput id="senhaAtual" autoComplete="current-password" {...form.register("senhaAtual")} />
               <FieldError errors={[form.formState.errors.senhaAtual]} />
             </Field>
 
             <Field data-invalid={!!form.formState.errors.novaSenha}>
               <FieldLabel htmlFor="novaSenha">Nova senha</FieldLabel>
-              <Input id="novaSenha" type="password" autoComplete="new-password" {...form.register("novaSenha")} />
+              <PasswordInput id="novaSenha" autoComplete="new-password" {...form.register("novaSenha")} />
               {politica && (
                 <FieldDescription>{describeRequisitos(politica).join(" · ")}</FieldDescription>
               )}
@@ -73,9 +75,8 @@ export function ChangePasswordForm() {
 
             <Field data-invalid={!!form.formState.errors.confirmarNovaSenha}>
               <FieldLabel htmlFor="confirmarNovaSenha">Confirmar nova senha</FieldLabel>
-              <Input
+              <PasswordInput
                 id="confirmarNovaSenha"
-                type="password"
                 autoComplete="new-password"
                 {...form.register("confirmarNovaSenha")}
               />

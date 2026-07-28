@@ -84,4 +84,41 @@ export class VendedoresController {
   criarUsuario(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.criarUsuario(user.empresaAtivaId, user.id, id);
   }
+
+  @ApiOperation({
+    summary: 'Reenviar senha provisória do vendedor',
+    description:
+      'Gera uma nova senha provisória para o usuário já vinculado ao vendedor e reenvia por ' +
+      'e-mail; exige troca no próximo login. Falha se o vendedor não tiver usuário associado. ' +
+      'Requer vendedores.editar.',
+  })
+  @RequirePermission('vendedores', 'editar')
+  @Post(':id/reenviar-senha')
+  reenviarSenha(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.reenviarSenha(user.empresaAtivaId, user.id, id);
+  }
+
+  @ApiOperation({
+    summary: 'Bloquear vendedor',
+    description:
+      'Marca o vendedor como inativo. Se houver usuário de acesso vinculado, bloqueia o ' +
+      'usuário também. Requer vendedores.bloquear.',
+  })
+  @RequirePermission('vendedores', 'bloquear')
+  @Patch(':id/bloquear')
+  bloquear(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.bloquear(user.empresaAtivaId, user.id, id);
+  }
+
+  @ApiOperation({
+    summary: 'Desbloquear vendedor',
+    description:
+      'Reativa o vendedor. Se houver usuário de acesso vinculado, reativa o usuário também. ' +
+      'Requer vendedores.bloquear.',
+  })
+  @RequirePermission('vendedores', 'bloquear')
+  @Patch(':id/desbloquear')
+  desbloquear(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.desbloquear(user.empresaAtivaId, user.id, id);
+  }
 }

@@ -21,6 +21,7 @@ import { UsuarioEmpresasSection } from "@/components/crud/usuario-empresas-secti
 import { UsuarioResetSenhaSection } from "@/components/crud/usuario-reset-senha-section";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
@@ -104,7 +105,7 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
                   <>
                     <Field data-invalid={!!form.formState.errors.senha}>
                       <FieldLabel htmlFor="senha">Senha inicial</FieldLabel>
-                      <Input id="senha" type="password" {...form.register("senha")} />
+                      <PasswordInput id="senha" {...form.register("senha")} />
                       {politica && (
                         <FieldDescription>{describeRequisitos(politica).join(" · ")}</FieldDescription>
                       )}

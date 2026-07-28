@@ -9,7 +9,7 @@ import { resetPasswordSchema, type PoliticaSenha, type ResetPasswordInput } from
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { buildSenhaSchema, describeRequisitos } from "@/lib/politica-senha";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -74,13 +74,13 @@ export function UsuarioResetSenhaSection({ usuarioId }: { usuarioId: string }) {
 
             <Field data-invalid={!!form.formState.errors.novaSenha}>
               <FieldLabel htmlFor="novaSenha">Nova senha</FieldLabel>
-              <Input id="novaSenha" type="password" {...form.register("novaSenha")} />
+              <PasswordInput id="novaSenha" {...form.register("novaSenha")} />
               <FieldError errors={[form.formState.errors.novaSenha]} />
             </Field>
 
             <Field data-invalid={!!form.formState.errors.confirmarNovaSenha}>
               <FieldLabel htmlFor="confirmarNovaSenha">Confirmar nova senha</FieldLabel>
-              <Input id="confirmarNovaSenha" type="password" {...form.register("confirmarNovaSenha")} />
+              <PasswordInput id="confirmarNovaSenha" {...form.register("confirmarNovaSenha")} />
               <FieldError errors={[form.formState.errors.confirmarNovaSenha]} />
             </Field>
 

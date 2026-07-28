@@ -198,4 +198,117 @@ export class VendedoresService {
       <p>Por segurança, você precisará trocar essa senha no primeiro acesso.</p>
     `;
   }
+
+  /**
+   * Gera uma nova senha provisória para o usuário já vinculado ao vendedor
+   * e reenvia por e-mail — mesmo fluxo de `criarUsuario`, mas para quem já
+   * tem acesso e esqueceu/perdeu a senha original.
+   */
+  async reenviarSenha(empresaId: string, actorId: string, id: string) {
+    return this.prisma.withTenant(
+      empresaId,
+      async (tx) => {
+        const vendedor = await tx.vendedor.findFirst({ where: { id, empresaId, deletedAt: null } });
+        if (!vendedor) throw new NotFoundException('Vendedor não encontrado');
+        if (!vendedor.usuarioId) {
+          throw new BadRequestException('Vendedor não possui usuário de acesso associado');
+        }
+
+        const usuario = await tx.usuario.findFirst({
+          where: { id: vendedor.usuarioId, deletedAt: null },
+        });
+        if (!usuario) throw new NotFoundException('Usuário do vendedor não encontrado');
+        if (!vendedor.email) {
+          throw new BadRequestException(
+            'Cadastre um e-mail para o vendedor antes de reenviar a senha',
+          );
+        }
+
+        const senha = await this.politicaSenhaService.gerarSenhaProvisoria();
+        const senhaHash = await bcrypt.hash(senha, SALT_ROUNDS);
+
+        await this.politicaSenhaService.registrarHistorico(usuario.id, usuario.senhaHash, tx);
+        await tx.usuario.update({
+          where: { id: usuario.id },
+          data: {
+            senhaHash,
+            senhaAlteradaEm: new Date(),
+            deveTrocarSenha: true,
+            tentativasFalhas: 0,
+            bloqueadoAte: null,
+            updatedBy: actorId,
+          },
+        });
+
+        await this.mailService.send(
+          vendedor.email,
+          'Nova senha provisória — Plataforma Comercial',
+          this.buildSenhaReenviadaEmailHtml(vendedor.nome, vendedor.email, senha),
+        );
+
+        return { success: true };
+      },
+      { timeout: 15_000 },
+    );
+  }
+
+  private buildSenhaReenviadaEmailHtml(nome: string, email: string, senha: string): string {
+    return `
+      <p>Olá, ${nome}!</p>
+      <p>Sua senha de acesso à Plataforma Comercial foi redefinida:</p>
+      <ul>
+        <li><strong>Login:</strong> ${email}</li>
+        <li><strong>Nova senha provisória:</strong> ${senha}</li>
+      </ul>
+      <p>Por segurança, você precisará trocar essa senha no primeiro acesso.</p>
+    `;
+  }
+
+  /**
+   * Bloqueia o vendedor (ativo = false). Se houver usuário de acesso
+   * vinculado, bloqueia o usuário junto — um vendedor bloqueado não deve
+   * continuar conseguindo logar na plataforma.
+   */
+  async bloquear(empresaId: string, actorId: string, id: string) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const vendedor = await tx.vendedor.findFirst({ where: { id, empresaId, deletedAt: null } });
+      if (!vendedor) throw new NotFoundException('Vendedor não encontrado');
+
+      const atualizado = await tx.vendedor.update({
+        where: { id },
+        data: { ativo: false, updatedBy: actorId },
+      });
+
+      if (vendedor.usuarioId) {
+        await tx.usuario.update({
+          where: { id: vendedor.usuarioId },
+          data: { ativo: false, updatedBy: actorId },
+        });
+      }
+
+      return atualizado;
+    });
+  }
+
+  /** Reverte o bloqueio: reativa o vendedor e, se houver, o usuário vinculado. */
+  async desbloquear(empresaId: string, actorId: string, id: string) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const vendedor = await tx.vendedor.findFirst({ where: { id, empresaId, deletedAt: null } });
+      if (!vendedor) throw new NotFoundException('Vendedor não encontrado');
+
+      const atualizado = await tx.vendedor.update({
+        where: { id },
+        data: { ativo: true, updatedBy: actorId },
+      });
+
+      if (vendedor.usuarioId) {
+        await tx.usuario.update({
+          where: { id: vendedor.usuarioId },
+          data: { ativo: true, updatedBy: actorId },
+        });
+      }
+
+      return atualizado;
+    });
+  }
 }

@@ -143,11 +143,9 @@ function LoginForm() {
 
       if (tokens.mustChangePassword) {
         toast.info("Sua senha expirou ou foi redefinida — troque-a para continuar.");
-        router.replace("/perfil");
-        return;
+      } else {
+        toast.success(`Bem-vindo, ${me.nome.split(" ")[0]}`);
       }
-
-      toast.success(`Bem-vindo, ${me.nome.split(" ")[0]}`);
       router.replace("/");
     } catch (err) {
       const message =

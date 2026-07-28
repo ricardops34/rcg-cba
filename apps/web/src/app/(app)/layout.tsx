@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useAuthGuard } from "@/hooks/use-auth-guard";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
+import { ForcedPasswordChangeGate } from "@/components/auth/forced-password-change-gate";
 
 const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   "/": { title: "Dashboard", subtitle: "Visão comercial" },
@@ -31,6 +32,7 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
 
   return (
     <div className="flex min-h-svh flex-col">
+      <ForcedPasswordChangeGate />
       {/* Faixa magenta da marca allia — full-width no topo da tela */}
       <div className="flex h-10 shrink-0 items-center justify-center bg-[#bd1e7d]">
         <Image
