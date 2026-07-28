@@ -45,14 +45,15 @@ export class PerfisController {
   constructor(private readonly service: PerfisService) {}
 
   @ApiOperation({
-    summary: 'Listar perfis da empresa ativa',
-    description: 'Requer perfis.visualizar. Isolado por Row-Level Security no Postgres.',
+    summary: 'Listar perfis',
+    description:
+      'Perfis (papéis RBAC) são globais, compartilhados por todas as empresas. Requer perfis.visualizar.',
   })
   @ApiPaginationQuery()
   @RequirePermission('perfis', 'visualizar')
   @Get()
-  findAll(@Query() query: PerfilQueryDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.findAll(user.empresaAtivaId, query);
+  findAll(@Query() query: PerfilQueryDto) {
+    return this.service.findAll(query);
   }
 
   @ApiOperation({ summary: 'Detalhar perfil, incluindo suas permissões por rotina/ação' })
@@ -60,22 +61,28 @@ export class PerfisController {
   @ApiResponse({ status: 404, description: 'Perfil não encontrado' })
   @RequirePermission('perfis', 'visualizar')
   @Get(':id')
-  findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.findOne(user.empresaAtivaId, id);
+  findOne(@Param('id') id: string) {
+    return this.service.findOne(id);
   }
 
   @ApiOperation({
     summary: 'Cadastrar perfil',
-    description: 'Cria um novo perfil (papel) na empresa ativa. Requer perfis.cadastrar.',
+    description:
+      'Cria um novo perfil (papel), disponível para todas as empresas. Requer perfis.cadastrar. ' +
+      'Atenção: como o perfil é global, essa permissão concedida em qualquer empresa afeta todas as demais.',
   })
   @ApiBodyExample(PERFIL_CREATE_EXAMPLE)
   @RequirePermission('perfis', 'cadastrar')
   @Post()
   create(@Body() dto: PerfilCreateDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.create(user.empresaAtivaId, dto, user.id);
+    return this.service.create(dto, user.id);
   }
 
-  @ApiOperation({ summary: 'Editar perfil', description: 'Requer perfis.editar.' })
+  @ApiOperation({
+    summary: 'Editar perfil',
+    description:
+      'Requer perfis.editar. Atenção: como o perfil é global, a edição afeta todas as empresas que o utilizam.',
+  })
   @ApiParam({ name: 'id', example: PERFIL_ID_EXAMPLE })
   @ApiBodyExample({ descricao: 'Acesso comercial padrão' })
   @RequirePermission('perfis', 'editar')
@@ -85,7 +92,7 @@ export class PerfisController {
     @Body() dto: PerfilUpdateDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.update(user.empresaAtivaId, id, dto, user.id);
+    return this.service.update(id, dto, user.id);
   }
 
   @ApiOperation({
@@ -97,7 +104,7 @@ export class PerfisController {
   @RequirePermission('perfis', 'excluir')
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.remove(user.empresaAtivaId, id, user.id);
+    return this.service.remove(id, user.id);
   }
 
   @ApiOperation({
@@ -115,6 +122,6 @@ export class PerfisController {
     @Body() dto: PerfilPermissoesUpdateDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.updatePermissoes(user.empresaAtivaId, id, dto, user.id);
+    return this.service.updatePermissoes(id, dto, user.id);
   }
 }

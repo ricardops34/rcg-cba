@@ -287,9 +287,8 @@ export class AuthService {
       }),
     );
 
-    // "perfis" tem RLS habilitada e só permite uma empresa ativa por vez;
-    // como o usuário pode ter vínculo com várias empresas aqui, o nome do
-    // perfil de cada uma precisa ser buscado no contexto de tenant dela.
+    // "perfis" é global (sem RLS) — o withTenant aqui não é por causa do
+    // perfil, e sim de reaproveitar o mesmo helper de transação por vínculo.
     const perfis = await Promise.all(
       vinculos.map((v) =>
         this.prisma.withTenant(v.empresaId, (tx) =>

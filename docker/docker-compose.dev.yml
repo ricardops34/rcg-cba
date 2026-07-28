@@ -54,6 +54,12 @@ services:
       JWT_REFRESH_EXPIRES_IN: 7d
       PORT: 3001
       CORS_ORIGIN: http://localhost:3002
+      # Mailhog captura os e-mails localmente (não envia de verdade) — ver UI
+      # web em http://localhost:8025. Sem SMTP_USER: Mailhog não exige auth.
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+      SMTP_SECURE: "false"
+      MAIL_FROM: "Plataforma Comercial <no-reply@plataforma.local>"
     command: pnpm --filter @plataforma/api start:dev
     ports:
       - "3001:3001"
@@ -68,6 +74,8 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+      mailhog:
+        condition: service_started
 
   web:
     build:
@@ -117,6 +125,15 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  # Captura os e-mails enviados pela API em dev, sem enviar de verdade. UI web
+  # em http://localhost:8025; a API fala SMTP com ele na porta 1025.
+  mailhog:
+    image: mailhog/mailhog
+    restart: unless-stopped
+    ports:
+      - "8025:8025"
+      - "1025:1025"
 
   # MySQL de origem (dump legado rcgdistc_portal) para a rotina de importação.
   # O dump é carregado automaticamente na primeira subida (initdb) contra o

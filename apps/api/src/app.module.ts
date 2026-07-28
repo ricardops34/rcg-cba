@@ -6,6 +6,7 @@ import { UPLOADS_DIR } from './common/uploads/uploads.config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './common/prisma/prisma.module';
+import { MailModule } from './common/mail/mail.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { EmpresasModule } from './modules/empresas/empresas.module';
 import { UsuariosModule } from './modules/usuarios/usuarios.module';
@@ -32,6 +33,7 @@ import { PoliticaSenhaModule } from './modules/politica-senha/politica-senha.mod
       serveRoot: '/uploads',
     }),
     PrismaModule,
+    MailModule,
     AuthModule,
     EmpresasModule,
     UsuariosModule,

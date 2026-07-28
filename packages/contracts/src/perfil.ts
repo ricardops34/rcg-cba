@@ -18,7 +18,6 @@ export type PerfilUpdate = z.infer<typeof perfilUpdateSchema>;
 
 export const perfilSchema = perfilCreateSchema.extend({
   id: z.string().uuid().describe("Identificador único do perfil (UUID v4)"),
-  empresaId: z.string().uuid().describe("Empresa dona do perfil"),
   sistemaBase: z
     .boolean()
     .describe("Perfis base do sistema têm acesso total e não podem ser excluídos"),

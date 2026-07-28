@@ -1,5 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { PoliticaSenhaService } from '../politica-senha/politica-senha.service';
+import { MailService } from '../../common/mail/mail.service';
 import {
   buildPaginatedResult,
   paginationToSkipTake,
@@ -14,10 +22,15 @@ import type { AuthenticatedUser } from '../../common/decorators/current-user.dec
 // Campos que a listagem aceita ordenar por — whitelist pra não repassar
 // direto pro Prisma um sortBy arbitrário vindo da query string.
 const SORT_FIELDS = new Set(['nome', 'codigoErp', 'email', 'ativo', 'createdAt']);
+const SALT_ROUNDS = 12;
 
 @Injectable()
 export class VendedoresService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly politicaSenhaService: PoliticaSenhaService,
+    private readonly mailService: MailService,
+  ) {}
 
   private limpar<T extends Record<string, unknown>>(input: T) {
     // Campos string vazios do formulário viram null no banco.
@@ -101,5 +114,88 @@ export class VendedoresService {
         data: { deletedAt: new Date(), deletedBy: user.id, ativo: false },
       });
     });
+  }
+
+  /**
+   * Cria um Usuario de acesso para o vendedor, com o perfil "Vendedor"
+   * (global) e senha provisória enviada por e-mail. Tudo dentro de uma única
+   * transação — se o e-mail falhar, a exceção propaga e o Prisma desfaz a
+   * criação do usuário/vínculo (não fica usuário órfão sem senha comunicada).
+   */
+  async criarUsuario(empresaId: string, actorId: string, id: string) {
+    return this.prisma.withTenant(
+      empresaId,
+      async (tx) => {
+        const vendedor = await tx.vendedor.findFirst({ where: { id, empresaId, deletedAt: null } });
+        if (!vendedor) throw new NotFoundException('Vendedor não encontrado');
+        if (vendedor.usuarioId) {
+          throw new ConflictException('Vendedor já possui usuário vinculado');
+        }
+        if (!vendedor.email) {
+          throw new BadRequestException(
+            'Cadastre um e-mail para o vendedor antes de criar o usuário',
+          );
+        }
+
+        const existente = await tx.usuario.findUnique({ where: { email: vendedor.email } });
+        if (existente) {
+          throw new ConflictException('Já existe um usuário cadastrado com este e-mail');
+        }
+
+        const perfilVendedor = await tx.perfil.findFirst({
+          where: { nome: 'Vendedor', deletedAt: null },
+        });
+        if (!perfilVendedor) {
+          throw new NotFoundException(
+            'Perfil "Vendedor" não encontrado — verifique o cadastro de perfis',
+          );
+        }
+
+        const senha = await this.politicaSenhaService.gerarSenhaProvisoria();
+        const senhaHash = await bcrypt.hash(senha, SALT_ROUNDS);
+
+        const usuario = await tx.usuario.create({
+          data: {
+            nome: vendedor.nome,
+            email: vendedor.email,
+            senhaHash,
+            ativo: true,
+            deveTrocarSenha: true,
+            senhaAlteradaEm: new Date(),
+            createdBy: actorId,
+            updatedBy: actorId,
+            usuarioEmpresas: {
+              create: { empresaId, perfilId: perfilVendedor.id, createdBy: actorId, updatedBy: actorId },
+            },
+          },
+        });
+
+        await tx.vendedor.update({
+          where: { id },
+          data: { usuarioId: usuario.id, updatedBy: actorId },
+        });
+
+        await this.mailService.send(
+          vendedor.email,
+          'Acesso à Plataforma Comercial',
+          this.buildSenhaProvisoriaEmailHtml(vendedor.nome, vendedor.email, senha),
+        );
+
+        return { id: usuario.id, nome: usuario.nome, email: usuario.email };
+      },
+      { timeout: 15_000 },
+    );
+  }
+
+  private buildSenhaProvisoriaEmailHtml(nome: string, email: string, senha: string): string {
+    return `
+      <p>Olá, ${nome}!</p>
+      <p>Foi criado um acesso para você na Plataforma Comercial:</p>
+      <ul>
+        <li><strong>Login:</strong> ${email}</li>
+        <li><strong>Senha provisória:</strong> ${senha}</li>
+      </ul>
+      <p>Por segurança, você precisará trocar essa senha no primeiro acesso.</p>
+    `;
   }
 }

@@ -75,13 +75,16 @@ usuários).
 
 ## Cobertura atual
 
-Com RLS: `perfis`, `usuario_empresas`, `produtos`, `vendedores`, `clientes`,
+Com RLS: `usuario_empresas`, `produtos`, `vendedores`, `clientes`,
 `categorias`, `condicoes_pagamento`, `armazens`, `estoques`, `notas_saida`,
 `notas_saida_itens`, `titulos_receber`.
 
 Sem RLS por serem referência global (sem coluna `empresaId`): `paises`,
 `estados`, `municipios`, `ceps`, `cnaes` (além das tabelas de sistema
-`modulos`/`menus`/`rotinas`, e de `politica_senha`/`senha_historico` — login e
-senha são globais, então a política é única para toda a plataforma).
+`modulos`/`menus`/`rotinas`, de `politica_senha`/`senha_historico` — login e
+senha são globais — e de `perfis`, desde a migration `perfil_global`: um
+mesmo papel/RBAC, ex. "Administrador"/"Vendedor", é compartilhado por todas
+as empresas; cada vínculo usuário×empresa continua escolhendo seu próprio
+perfil dessa lista global).
 </content>
 </invoke>

@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { randomInt } from 'node:crypto';
 import * as bcrypt from 'bcryptjs';
 import {
   PrismaService,
@@ -23,6 +24,16 @@ const DEFAULTS = {
 } as const;
 
 const CARACTERE_ESPECIAL_REGEX = /[^A-Za-z0-9]/;
+
+// Sem caracteres ambíguos (0/O, 1/l/I) para facilitar digitação manual da
+// senha provisória, caso o usuário precise copiar do e-mail digitando.
+const SENHA_PROVISORIA_CHARSET = {
+  maiuscula: 'ABCDEFGHJKLMNPQRSTUVWXYZ',
+  minuscula: 'abcdefghijkmnpqrstuvwxyz',
+  numero: '23456789',
+  especial: '!@#$%&*?',
+};
+const SENHA_PROVISORIA_TAMANHO_BASE = 14;
 
 @Injectable()
 export class PoliticaSenhaService {
@@ -79,6 +90,32 @@ export class PoliticaSenhaService {
     if (violacoes.length > 0) {
       throw new BadRequestException(violacoes.join('; '));
     }
+  }
+
+  /**
+   * Gera uma senha aleatória (não é escolhida pelo usuário, então pode ser
+   * bem mais forte que o mínimo) que já satisfaz a política vigente —
+   * sempre inclui as 4 categorias de caractere, independente do que a
+   * política exige, porque variedade a mais nunca viola `validarSenha`.
+   * Usada em fluxos de provisionamento (ex.: criar usuário para vendedor).
+   */
+  async gerarSenhaProvisoria(): Promise<string> {
+    const politica = await this.getVigente();
+    let tamanho = Math.max(politica.tamanhoMinimo, SENHA_PROVISORIA_TAMANHO_BASE);
+    if (politica.tamanhoMaximo) tamanho = Math.min(tamanho, politica.tamanhoMaximo);
+
+    const categorias = Object.values(SENHA_PROVISORIA_CHARSET);
+    const todos = categorias.join('');
+    const senha = categorias.map((c) => c[randomInt(c.length)]);
+    while (senha.length < tamanho) senha.push(todos[randomInt(todos.length)]);
+
+    // Fisher-Yates com randomInt (criptograficamente seguro, não Math.random).
+    for (let i = senha.length - 1; i > 0; i--) {
+      const j = randomInt(i + 1);
+      [senha[i], senha[j]] = [senha[j], senha[i]];
+    }
+
+    return senha.join('');
   }
 
   /**

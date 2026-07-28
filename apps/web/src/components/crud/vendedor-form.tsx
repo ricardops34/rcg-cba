@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   vendedorCreateSchema,
@@ -17,10 +17,10 @@ import { apiFetch, ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, UserPlus } from "lucide-react";
 
 const LIST_ROUTE = "/gerencial/vendedores";
 
@@ -38,7 +38,29 @@ const inputToDate = (v: unknown) => (v === "" || v == null ? null : new Date(`${
 
 export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { create, update } = useResourceMutations<VendedorCreate, VendedorUpdate>("vendedores");
+
+  const criarUsuario = useMutation({
+    mutationFn: () => apiFetch(`/vendedores/${vendedor?.id}/criar-usuario`, { method: "POST" }),
+    onSuccess: () => {
+      toast.success("Usuário criado — senha provisória enviada por e-mail");
+      queryClient.invalidateQueries({ queryKey: ["vendedores"] });
+      queryClient.invalidateQueries({ queryKey: ["usuarios"] });
+    },
+  });
+
+  const onCriarUsuario = () => {
+    if (!vendedor) return;
+    if (!confirm(`Criar usuário de acesso para "${vendedor.nome}" e enviar senha provisória para ${vendedor.email}?`)) {
+      return;
+    }
+    criarUsuario.mutate(undefined, {
+      onError: (err) => {
+        toast.error(err instanceof ApiError ? err.message : "Erro ao criar usuário");
+      },
+    });
+  };
 
   const vendedoresSelectQuery = useQuery({
     queryKey: ["vendedores", "select"],
@@ -187,6 +209,25 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
                     ))}
                   </SelectContent>
                 </Select>
+                {vendedor && !vendedor.usuarioId && (
+                  <div className="pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!vendedor.email || criarUsuario.isPending}
+                      onClick={onCriarUsuario}
+                    >
+                      <UserPlus className="size-4" />
+                      Criar usuário
+                    </Button>
+                    {!vendedor.email && (
+                      <FieldDescription>
+                        Cadastre um e-mail para o vendedor antes de criar o usuário.
+                      </FieldDescription>
+                    )}
+                  </div>
+                )}
               </Field>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

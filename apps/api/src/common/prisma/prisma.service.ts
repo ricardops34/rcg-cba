@@ -39,11 +39,12 @@ export class PrismaService
   async withTenant<T>(
     empresaId: string,
     fn: (tx: TenantTx) => Promise<T>,
+    options?: { timeout?: number },
   ): Promise<T> {
     return this.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${empresaId}, true)`;
       return fn(tx);
-    });
+    }, options);
   }
 
   /**

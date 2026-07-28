@@ -52,6 +52,18 @@ const ACOES: Acao[] = [
   'bloquear',
 ];
 
+// Perfil Vendedor: acesso à própria carteira de clientes (visualizar/cadastrar/
+// editar) e consulta às demais telas comerciais. titulos-receber e notas-saida
+// só têm rota de visualização na API (mirror read-only do ERP legado), então
+// não faz sentido conceder outras ações a elas.
+const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
+  clientes: ['visualizar', 'cadastrar', 'editar'],
+  'posicao-cliente': ['visualizar'],
+  'titulos-receber': ['visualizar'],
+  'notas-saida': ['visualizar'],
+  produtos: ['visualizar'],
+};
+
 async function limparDados() {
   // Ordem respeita as FKs. usuarioEmpresa e vendedor têm auto-referência
   // (superiorId; supervisorId/gerenteId): zera antes de apagar para não
@@ -72,6 +84,7 @@ async function limparDados() {
   await prisma.condicaoPagamento.deleteMany();
   await prisma.armazem.deleteMany();
   await prisma.refreshToken.deleteMany();
+  await prisma.senhaHistorico.deleteMany();
   await prisma.usuarioEmpresa.updateMany({ data: { superiorId: null } });
   await prisma.usuarioEmpresa.deleteMany();
   await prisma.perfilPermissao.deleteMany();
@@ -172,6 +185,51 @@ async function bootstrapPoliticaSenha() {
   });
 }
 
+// Perfil é global (ver migration perfil_global) — Administrador e Vendedor
+// são criados uma única vez, compartilhados por todas as empresas.
+async function bootstrapPerfis(rotinas: { id: string; codigo: string }[]) {
+  // Administrador: acesso total (todas as ações em todas as rotinas).
+  // sistemaBase = perfil protegido/base do sistema.
+  const perfilAdmin = await prisma.perfil.create({
+    data: {
+      nome: 'Administrador',
+      descricao: 'Perfil com acesso total ao sistema',
+      sistemaBase: true,
+    },
+  });
+  await prisma.perfilPermissao.createMany({
+    data: rotinas.flatMap((rotina) =>
+      ACOES.map((acao) => ({ perfilId: perfilAdmin.id, rotinaId: rotina.id, acao, permitido: true })),
+    ),
+    skipDuplicates: true,
+  });
+
+  // Vendedor: acesso à carteira de clientes + consultas comerciais (ver
+  // VENDEDOR_PERMISSOES).
+  const perfilVendedor = await prisma.perfil.create({
+    data: {
+      nome: 'Vendedor',
+      descricao: 'Acesso à carteira de clientes e consultas comerciais',
+      sistemaBase: false,
+    },
+  });
+  await prisma.perfilPermissao.createMany({
+    data: rotinas
+      .filter((rotina) => rotina.codigo in VENDEDOR_PERMISSOES)
+      .flatMap((rotina) =>
+        VENDEDOR_PERMISSOES[rotina.codigo].map((acao) => ({
+          perfilId: perfilVendedor.id,
+          rotinaId: rotina.id,
+          acao,
+          permitido: true,
+        })),
+      ),
+    skipDuplicates: true,
+  });
+
+  return { perfilAdmin, perfilVendedor };
+}
+
 async function main() {
   console.log('Limpando dados existentes...');
   await limparDados();
@@ -179,6 +237,7 @@ async function main() {
   console.log('Reconstruindo estrutura de menu/rotinas...');
   const rotinas = await bootstrapMenu();
   await bootstrapPoliticaSenha();
+  const { perfilAdmin } = await bootstrapPerfis(rotinas);
 
   const senhaHash = await bcrypt.hash(SENHA_ADMIN, 12);
 
@@ -202,24 +261,6 @@ async function main() {
         alias: cfg.alias,
         ativo: true,
       },
-    });
-
-    // Perfil Administrador da empresa: acesso total (todas as ações em todas
-    // as rotinas). sistemaBase = perfil protegido/base do sistema.
-    const perfilAdmin = await prisma.perfil.create({
-      data: {
-        empresaId: empresa.id,
-        nome: 'Administrador',
-        descricao: 'Perfil com acesso total ao sistema',
-        sistemaBase: true,
-      },
-    });
-
-    await prisma.perfilPermissao.createMany({
-      data: rotinas.flatMap((rotina) =>
-        ACOES.map((acao) => ({ perfilId: perfilAdmin.id, rotinaId: rotina.id, acao, permitido: true })),
-      ),
-      skipDuplicates: true,
     });
 
     await prisma.usuarioEmpresa.create({

@@ -71,4 +71,17 @@ export class VendedoresController {
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.remove(user.empresaAtivaId, user, id);
   }
+
+  @ApiOperation({
+    summary: 'Criar usuário de acesso para o vendedor',
+    description:
+      'Usa os dados do vendedor (nome, e-mail) e o perfil "Vendedor". Gera uma senha provisória ' +
+      'e envia por e-mail; exige troca no primeiro login. Falha se o vendedor já tiver usuário, ' +
+      'não tiver e-mail cadastrado, ou o e-mail já pertencer a outro usuário. Requer vendedores.editar.',
+  })
+  @RequirePermission('vendedores', 'editar')
+  @Post(':id/criar-usuario')
+  criarUsuario(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.criarUsuario(user.empresaAtivaId, user.id, id);
+  }
 }

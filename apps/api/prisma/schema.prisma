@@ -28,7 +28,6 @@ model Empresa {
   deletedBy String?
 
   usuarioEmpresas    UsuarioEmpresa[]
-  perfis             Perfil[]
   produtos           Produto[]
   vendedores         Vendedor[]
   clientes           Cliente[]
@@ -113,9 +112,11 @@ model UsuarioEmpresa {
   @@map("usuario_empresas")
 }
 
+// Perfil (papel RBAC) é global — compartilhado por todas as empresas, sem
+// empresaId/RLS (mesmo precedente de Modulo/Menu/Rotina). Cada vínculo
+// usuário×empresa (UsuarioEmpresa) escolhe um perfil dessa lista global.
 model Perfil {
   id          String  @id @default(uuid())
-  empresaId   String
   nome        String
   descricao   String?
   sistemaBase Boolean @default(false)
@@ -128,11 +129,10 @@ model Perfil {
   updatedBy String?
   deletedBy String?
 
-  empresa         Empresa           @relation(fields: [empresaId], references: [id])
   usuarioEmpresas UsuarioEmpresa[]
   permissoes      PerfilPermissao[]
 
-  @@unique([empresaId, nome])
+  @@unique([nome])
   @@map("perfis")
 }
 

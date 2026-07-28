@@ -115,11 +115,9 @@ export class UsuariosService {
   }
 
   /**
-   * "perfis" tem RLS habilitada e o usuário pode ter vínculo com várias
-   * empresas ao mesmo tempo — então cada perfil só pode ser buscado no
-   * contexto de tenant da própria empresa do vínculo (mesmo padrão de
-   * AuthService.me). Buscar "perfil" direto no include, sem withTenant,
-   * quebra: RLS filtra e o Prisma lança erro porque a relação é obrigatória.
+   * "perfis" é global (sem RLS) — o withTenant abaixo é só reaproveitamento
+   * do helper de transação por vínculo (mesmo padrão de AuthService.me),
+   * não uma exigência de RLS sobre o perfil em si.
    */
   async findOne(id: string) {
     const usuario = await this.prisma.usuario.findFirst({

@@ -63,7 +63,10 @@ export function UsuarioResetSenhaSection({ usuarioId }: { usuarioId: string }) {
         <ChevronDown className={`size-4 transition-transform ${open ? "rotate-180" : ""}`} />
       </CollapsibleTrigger>
       <CollapsibleContent className="pt-3">
-        <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
+        {/* Div, não <form>: este bloco vive dentro do <form> principal de
+            edição do usuário, e HTML não permite <form> aninhado. O submit é
+            disparado manualmente pelo onClick do botão. */}
+        <div>
           <FieldGroup>
             {politica && (
               <FieldDescription>{describeRequisitos(politica).join(" · ")}</FieldDescription>
@@ -90,12 +93,17 @@ export function UsuarioResetSenhaSection({ usuarioId }: { usuarioId: string }) {
             </label>
 
             <div className="flex justify-end">
-              <Button type="submit" size="sm" disabled={form.formState.isSubmitting}>
+              <Button
+                type="button"
+                size="sm"
+                onClick={form.handleSubmit(onSubmit)}
+                disabled={form.formState.isSubmitting}
+              >
                 Redefinir senha
               </Button>
             </div>
           </FieldGroup>
-        </form>
+        </div>
       </CollapsibleContent>
     </Collapsible>
   );
