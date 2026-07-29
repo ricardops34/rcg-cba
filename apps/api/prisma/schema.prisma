@@ -816,6 +816,69 @@ model TituloReceber {
 }
 
 // ------------------------------------------------------------------
+// Objetivos (metas comerciais)
+// ------------------------------------------------------------------
+// Mestre-detalhe (mês/ano/vendedor + linhas por categoria), espelhando as
+// tabelas `meta_vendedor_mes`/`meta_vendedor_categoria` do legado — base do
+// Dashboard Comercial (realizado vs objetivo). Cadastro editável (não
+// read-only como NotaSaida/Item), com o mesmo escopo hierárquico de
+// vendedor das demais telas comerciais.
+model ObjetivoVendedorMes {
+  id            String  @id @default(uuid())
+  empresaId     String
+  vendedorId    String
+  codigoLegado  Int?
+
+  mes           Int
+  ano           Int
+  valor         Float   @default(0)
+  numeroCliente Float?
+  novoCliente   Float?
+  tipo          String?
+  ativo         Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa    Empresa                     @relation(fields: [empresaId], references: [id])
+  vendedor   Vendedor                    @relation(fields: [vendedorId], references: [id])
+  categorias ObjetivoVendedorCategoria[]
+
+  @@unique([empresaId, vendedorId, mes, ano])
+  @@unique([empresaId, codigoLegado])
+  @@index([empresaId, ano, mes])
+  @@map("objetivos_vendedor_mes")
+}
+
+model ObjetivoVendedorCategoria {
+  id                    String @id @default(uuid())
+  empresaId             String
+  objetivoVendedorMesId String
+  categoriaId           String
+  codigoLegado          Int?
+  valor                 Float  @default(0)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa   Empresa             @relation(fields: [empresaId], references: [id])
+  objetivo  ObjetivoVendedorMes @relation(fields: [objetivoVendedorMesId], references: [id], onDelete: Cascade)
+  categoria Categoria           @relation(fields: [categoriaId], references: [id])
+
+  @@unique([objetivoVendedorMesId, categoriaId])
+  @@unique([empresaId, codigoLegado])
+  @@map("objetivos_vendedor_categoria")
+}
+
+// ------------------------------------------------------------------
 // Sistema
 // ------------------------------------------------------------------
 

@@ -19,5 +19,7 @@ export * from "./posicao-cliente";
 export * from "./posicao-cliente-lista";
 export * from "./nota-saida";
 export * from "./titulo-receber";
+export * from "./objetivo";
+export * from "./objetivo-dashboard";
 export * from "./auth";
 export * from "./politica-senha";

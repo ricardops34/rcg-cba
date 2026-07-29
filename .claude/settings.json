@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep -ln \"icone\\\\|ICON_MAP\\\\|iconMap\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3002/gerencial/objetivos)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3002/gerencial/objetivos/novo)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3002/comercial/dashboard)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3002/gerencial/vendedores/novo)",
+      "Bash(curl -s http://localhost:3002/gerencial/objetivos/novo)",
+      "Bash(curl -s -o /dev/null -w \"vendedores/novo: %{http_code}\\\\n\" http://localhost:3002/gerencial/vendedores/novo)",
+      "Bash(curl -s -o /dev/null -w \"objetivos/novo: %{http_code}\\\\n\" http://localhost:3002/gerencial/objetivos/novo)",
+      "Bash(curl -s -o /dev/null -w \"objetivos: %{http_code}\\\\n\" http://localhost:3002/gerencial/objetivos)",
+      "Bash(curl -s -o /dev/null -w \"dashboard: %{http_code}\\\\n\" http://localhost:3002/comercial/dashboard)",
+      "Bash(curl -s -o /dev/null -w \"vendedores/novo again: %{http_code}\\\\n\" http://localhost:3002/gerencial/vendedores/novo)",
+      "Bash(curl -s -o /dev/null -w \"objetivos/[id]: %{http_code}\\\\n\" http://localhost:3002/gerencial/objetivos/fake-id)"
+    ]
+  }
+}

@@ -21,6 +21,7 @@ import { EstoqueModule } from './modules/estoque/estoque.module';
 import { NotasSaidaModule } from './modules/notas-saida/notas-saida.module';
 import { TitulosReceberModule } from './modules/titulos-receber/titulos-receber.module';
 import { PoliticaSenhaModule } from './modules/politica-senha/politica-senha.module';
+import { ObjetivosModule } from './modules/objetivos/objetivos.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { PoliticaSenhaModule } from './modules/politica-senha/politica-senha.mod
     NotasSaidaModule,
     TitulosReceberModule,
     PoliticaSenhaModule,
+    ObjetivosModule,
   ],
   controllers: [AppController],
   providers: [AppService],

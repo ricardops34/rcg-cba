@@ -62,6 +62,8 @@ const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
   'titulos-receber': ['visualizar'],
   'notas-saida': ['visualizar'],
   produtos: ['visualizar'],
+  objetivos: ['visualizar'],
+  'dashboard-comercial': ['visualizar'],
 };
 
 async function limparDados() {
@@ -126,6 +128,7 @@ async function bootstrapMenu() {
     { id: 'seed-menu-perfis', nome: 'Perfis', rota: '/admin/perfis', icone: 'shield', codigo: 'perfis', moduloId: moduloAdministracao.id },
     { id: 'seed-menu-politica-senha', nome: 'Política de Senha', rota: '/admin/politica-senha', icone: 'lock', codigo: 'politica-senha', moduloId: moduloAdministracao.id },
     { id: 'seed-menu-estrutura', nome: 'Estrutura de Menu', rota: '/admin/estrutura', icone: 'layout-grid', codigo: 'menus', moduloId: moduloAdministracao.id },
+    { id: 'seed-menu-dashboard-comercial', nome: 'Dashboard', rota: '/comercial/dashboard', icone: 'gauge', codigo: 'dashboard-comercial', moduloId: moduloComercial.id },
     { id: 'seed-menu-produtos', nome: 'Produtos', rota: '/comercial/produtos', icone: 'package', codigo: 'produtos', moduloId: moduloComercial.id },
     { id: 'seed-menu-clientes', nome: 'Clientes', rota: '/comercial/clientes', icone: 'users', codigo: 'clientes', moduloId: moduloComercial.id },
     { id: 'seed-menu-posicao-cliente', nome: 'Posição de Cliente', rota: '/comercial/posicao-cliente', icone: 'user-search', codigo: 'posicao-cliente', moduloId: moduloComercial.id },
@@ -135,6 +138,7 @@ async function bootstrapMenu() {
     { id: 'seed-menu-notas-saida', nome: 'Notas de Saída', rota: '/comercial/notas-saida', icone: 'file-text', codigo: 'notas-saida', moduloId: moduloComercial.id },
     { id: 'seed-menu-titulos-receber', nome: 'Títulos a Receber', rota: '/comercial/titulos-receber', icone: 'receipt', codigo: 'titulos-receber', moduloId: moduloComercial.id },
     { id: 'seed-menu-vendedores', nome: 'Vendedores', rota: '/gerencial/vendedores', icone: 'user-round', codigo: 'vendedores', moduloId: moduloGerencial.id },
+    { id: 'seed-menu-objetivos', nome: 'Objetivos', rota: '/gerencial/objetivos', icone: 'target', codigo: 'objetivos', moduloId: moduloGerencial.id },
     { id: 'seed-menu-categorias', nome: 'Categorias', rota: '/cadastros/categorias', icone: 'tags', codigo: 'categorias', moduloId: moduloCadastros.id },
     { id: 'seed-menu-condicoes-pagamento', nome: 'Condições de Pagamento', rota: '/cadastros/condicoes-pagamento', icone: 'credit-card', codigo: 'condicoes-pagamento', moduloId: moduloCadastros.id },
     { id: 'seed-menu-armazens', nome: 'Armazéns', rota: '/cadastros/armazens', icone: 'warehouse', codigo: 'armazens', moduloId: moduloCadastros.id },
