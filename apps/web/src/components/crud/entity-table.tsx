@@ -1,11 +1,21 @@
 "use client";
 
+import { useState } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, ChevronDown, Inbox } from "lucide-react";
-import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { SortableTableHead } from "@/components/crud/sortable-table-head";
+import { useAuthStore } from "@/stores/auth-store";
+import { ChevronLeft, ChevronRight, Inbox, Settings2 } from "lucide-react";
 
 export interface ColumnDef<T> {
   header: string;
@@ -13,6 +23,50 @@ export interface ColumnDef<T> {
   className?: string;
   /** Nome do campo usado em sortBy/sortOrder. Ausente = coluna não ordenável. */
   sortKey?: string;
+  /**
+   * Identificador estável pra persistir visibilidade da coluna (ver
+   * `storageKey` de EntityTable). Ausente = usa `header` — só troque por um
+   * `id` explícito se duas colunas puderem ter o mesmo `header` (ex.: duas
+   * colunas de ação sem título).
+   */
+  id?: string;
+}
+
+/**
+ * Lê/grava a lista de colunas ocultas no localStorage, isolada por usuário
+ * logado (a chave leva o usuarioId) — por enquanto é por navegador, não
+ * segue o usuário pra outro dispositivo.
+ */
+function useColumnVisibility(columnIds: string[], storageKey?: string) {
+  const usuarioId = useAuthStore((s) => s.user?.id);
+  const fullKey = storageKey && usuarioId ? `plataforma-colunas-${storageKey}-${usuarioId}` : null;
+
+  // Inicializador preguiçoso (não um efeito): EntityTable só monta depois do
+  // guard de autenticação liberar a tela, então o usuarioId já está
+  // disponível na primeira renderização — não precisa reagir a mudanças.
+  const [hidden, setHidden] = useState<string[]>(() => {
+    if (!fullKey || typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem(fullKey);
+      return raw ? (JSON.parse(raw) as string[]) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const toggle = (id: string) => {
+    if (!fullKey) return;
+    setHidden((atual) => {
+      const estaOculta = atual.includes(id);
+      // Impede esconder a última coluna visível.
+      if (!estaOculta && columnIds.length - (atual.length + 1) < 1) return atual;
+      const next = estaOculta ? atual.filter((i) => i !== id) : [...atual, id];
+      window.localStorage.setItem(fullKey, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  return { hidden, toggle, ativo: !!fullKey };
 }
 
 interface EntityTableProps<T> {
@@ -31,6 +85,13 @@ interface EntityTableProps<T> {
   sortBy?: string;
   sortOrder?: "asc" | "desc";
   onSortChange?: (sortBy: string, sortOrder: "asc" | "desc") => void;
+  /**
+   * Chave única da tela (ex.: "posicao-cliente") — quando informada, mostra
+   * o botão de escolher colunas (engrenagem) e persiste a visibilidade no
+   * navegador, por usuário logado. Sem essa prop a tabela funciona como
+   * antes, sem seletor de colunas.
+   */
+  storageKey?: string;
 }
 
 export function EntityTable<T>({
@@ -49,6 +110,7 @@ export function EntityTable<T>({
   sortBy,
   sortOrder = "asc",
   onSortChange,
+  storageKey,
 }: EntityTableProps<T>) {
   const toggleSort = (key: string) => {
     if (!onSortChange) return;
@@ -56,37 +118,58 @@ export function EntityTable<T>({
     else onSortChange(key, sortOrder === "asc" ? "desc" : "asc");
   };
 
+  const columnIds = columns.map((col) => col.id ?? col.header);
+  const { hidden, toggle, ativo: seletorAtivo } = useColumnVisibility(columnIds, storageKey);
+  const colunasVisiveis = seletorAtivo
+    ? columns.filter((col) => !hidden.includes(col.id ?? col.header))
+    : columns;
+
   return (
     <div className="overflow-hidden rounded-xl border border-border/70 bg-card">
+      {seletorAtivo && (
+        <div className="flex items-center justify-end border-b border-border/60 px-2 py-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label="Escolher colunas visíveis">
+                <Settings2 className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Colunas visíveis</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {columns.map((col) => {
+                const id = col.id ?? col.header;
+                return (
+                  <DropdownMenuCheckboxItem
+                    key={id}
+                    checked={!hidden.includes(id)}
+                    onSelect={(e) => e.preventDefault()}
+                    onCheckedChange={() => toggle(id)}
+                  >
+                    {col.header || "(sem título)"}
+                  </DropdownMenuCheckboxItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              {columns.map((col) =>
+              {colunasVisiveis.map((col) =>
                 col.sortKey ? (
-                  <TableHead key={col.header} className={col.className}>
-                    <button
-                      type="button"
-                      className={cn(
-                        "flex items-center gap-1 text-xs font-medium tracking-wide uppercase hover:text-foreground",
-                        sortBy === col.sortKey ? "text-foreground" : "text-muted-foreground",
-                      )}
-                      onClick={() => toggleSort(col.sortKey!)}
-                    >
-                      {col.header}
-                      {sortBy === col.sortKey ? (
-                        sortOrder === "asc" ? (
-                          <ChevronUp className="size-3.5" />
-                        ) : (
-                          <ChevronDown className="size-3.5" />
-                        )
-                      ) : (
-                        <ChevronsUpDown className="size-3.5 opacity-40" />
-                      )}
-                    </button>
-                  </TableHead>
+                  <SortableTableHead
+                    key={col.id ?? col.header}
+                    label={col.header}
+                    className={col.className}
+                    active={sortBy === col.sortKey}
+                    order={sortOrder}
+                    onClick={() => toggleSort(col.sortKey!)}
+                  />
                 ) : (
-                  <TableHead key={col.header} className={col.className}>
+                  <TableHead key={col.id ?? col.header} className={col.className}>
                     {col.header}
                   </TableHead>
                 ),
@@ -97,8 +180,8 @@ export function EntityTable<T>({
             {isLoading &&
               Array.from({ length: 6 }).map((_, i) => (
                 <TableRow key={i}>
-                  {columns.map((col) => (
-                    <TableCell key={col.header}>
+                  {colunasVisiveis.map((col) => (
+                    <TableCell key={col.id ?? col.header}>
                       <Skeleton className="h-4 w-full max-w-36" />
                     </TableCell>
                   ))}
@@ -107,7 +190,10 @@ export function EntityTable<T>({
 
             {!isLoading && rows.length === 0 && (
               <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={columns.length} className="h-40 text-center text-muted-foreground">
+                <TableCell
+                  colSpan={colunasVisiveis.length}
+                  className="h-40 text-center text-muted-foreground"
+                >
                   <div className="flex flex-col items-center gap-2">
                     <Inbox className="size-6" />
                     {emptyMessage}
@@ -123,8 +209,8 @@ export function EntityTable<T>({
                   onClick={() => onRowClick?.(row)}
                   className={onRowClick ? "cursor-pointer" : undefined}
                 >
-                  {columns.map((col) => (
-                    <TableCell key={col.header} className={col.className}>
+                  {colunasVisiveis.map((col) => (
+                    <TableCell key={col.id ?? col.header} className={col.className}>
                       {col.cell(row)}
                     </TableCell>
                   ))}

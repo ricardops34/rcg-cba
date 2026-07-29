@@ -38,6 +38,8 @@ model Empresa {
   notasSaida         NotaSaida[]
   notasSaidaItens    NotaSaidaItem[]
   titulosReceber     TituloReceber[]
+  objetivosVendedorMes       ObjetivoVendedorMes[]
+  objetivosVendedorCategoria ObjetivoVendedorCategoria[]
 
   @@map("empresas")
 }
@@ -339,6 +341,7 @@ model Vendedor {
   notasSaida         NotaSaida[]
   notasSaidaItens    NotaSaidaItem[]
   titulosReceber     TituloReceber[]
+  objetivosVendedorMes ObjetivoVendedorMes[]
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, nome])
@@ -576,6 +579,7 @@ model Categoria {
 
   produtos    Produto[] @relation("ProdutoCategoria")
   produtosSub Produto[] @relation("ProdutoSubCategoria")
+  objetivosVendedorCategoria ObjetivoVendedorCategoria[]
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, descricao])

@@ -11,7 +11,12 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ClientesService } from './clientes.service';
-import { ClienteCreateDto, ClienteQueryDto, ClienteUpdateDto } from './dto/cliente.dto';
+import {
+  ClienteCreateDto,
+  ClienteQueryDto,
+  ClienteUpdateDto,
+  PosicaoClienteListQueryDto,
+} from './dto/cliente.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -53,6 +58,25 @@ export class ClientesController {
   @Get('vendedores-escopo')
   vendedoresEscopo(@CurrentUser() user: AuthenticatedUser) {
     return this.service.vendedoresEscopo(user.empresaAtivaId, user);
+  }
+
+  // Declarado antes de GET :id pelo mesmo motivo de vendedores-escopo.
+  @ApiOperation({
+    summary: 'Listagem de Posição de Cliente',
+    description:
+      'Carteira de clientes com colunas de venda calculadas ao vivo: venda dos últimos 30 dias, ' +
+      'venda média (últimos 90 dias ÷ 3), diferença entre as duas, dias desde a última compra, ' +
+      'comodato em aberto e bloqueio. Aceita os filtros de clientes.visualizar (busca, ativo, uf, ' +
+      'vendedorId, carteira) mais diasSemComprar (filtro rápido) e bloqueado. Requer posicao-cliente.visualizar.',
+  })
+  @ApiPaginationQuery()
+  @RequirePermission('posicao-cliente', 'visualizar')
+  @Get('posicao')
+  listagemPosicao(
+    @Query() query: PosicaoClienteListQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.listagemPosicao(user.empresaAtivaId, user, query);
   }
 
   @ApiOperation({ summary: 'Detalhar cliente', description: 'Requer clientes.visualizar.' })

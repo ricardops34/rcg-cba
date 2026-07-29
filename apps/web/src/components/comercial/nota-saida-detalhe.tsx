@@ -6,7 +6,8 @@ import { apiFetch } from "@/lib/api-client";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ResizableSheetContent } from "@/components/ui/resizable-sheet-content";
 import {
   Table,
   TableBody,
@@ -140,7 +141,7 @@ export function NotaSaidaSheet({
 
   return (
     <Sheet open={!!id} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-2xl!">
+      <ResizableSheetContent defaultWidth={720}>
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             {nota ? (
@@ -165,7 +166,7 @@ export function NotaSaidaSheet({
           {isError && <p className="text-sm text-muted-foreground">Nota de saída não encontrada.</p>}
           {nota && <NotaSaidaDetalheContent nota={nota} />}
         </div>
-      </SheetContent>
+      </ResizableSheetContent>
     </Sheet>
   );
 }

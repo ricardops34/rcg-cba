@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import type { Cliente, TipoPessoa, Vendedor } from "@plataforma/contracts";
+import type { PosicaoClienteListRow, TipoPessoa, Vendedor } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
 import { apiFetch } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
@@ -12,34 +12,44 @@ import { StatusDot } from "@/components/crud/status-dot";
 import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { FieldLabel } from "@/components/ui/field";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CircleCheck, Lock } from "lucide-react";
 
 const UFS = [
   "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT",
   "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
 ];
 
+const DIAS_OPCOES = [120, 90, 60, 30, 15] as const;
+
 type SimNaoTodos = "todos" | "sim" | "nao";
 type TipoPessoaFiltro = "todos" | TipoPessoa;
 
-type ClienteRow = Cliente & {
-  vendedor?: { id: string; nome: string; nomeReduzido: string | null } | null;
+const moeda = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const dataBr = (v: string | null) => {
+  if (!v) return "—";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
 };
 
-// Listagem base: os mesmos filtros de Clientes. A visualização (clique na
-// linha) é a Posição de Cliente — agrupado de notas, títulos e mix.
+// Listagem base de Posição de Cliente: colunas de venda calculadas ao vivo
+// (GET /clientes/posicao). O clique na linha abre a Posição de Cliente
+// detalhada — agrupado de notas, títulos e mix.
 export default function PosicaoClientePage() {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [sortBy, setSortBy] = useState("razaoSocial");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [sortBy, setSortBy] = useState("ultimaCompra");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [status, setStatus] = useState<StatusFilterValue>("todos");
   const [tipoPessoa, setTipoPessoa] = useState<TipoPessoaFiltro>("todos");
   const [uf, setUf] = useState<string | undefined>(undefined);
   const [vendedorId, setVendedorId] = useState<string | undefined>(undefined);
   const [carteira, setCarteira] = useState<SimNaoTodos>("todos");
+  const [diasSemComprar, setDiasSemComprar] = useState<number | undefined>(undefined);
+  const [bloqueado, setBloqueado] = useState(false);
 
   // Opções de vendedor já restritas ao escopo do usuário logado — não usa
   // /vendedores direto (aquele endpoint não tem restrição de carteira).
@@ -51,77 +61,111 @@ export default function PosicaoClientePage() {
   const restrito = vendedoresEscopoQuery.data?.restrito ?? false;
   const mostrarFiltroVendedor = !restrito || opcoesVendedor.length > 1;
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<ClienteRow>("clientes", {
-    search,
-    page,
-    pageSize,
-    sortBy,
-    sortOrder,
-    ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
-    ...(tipoPessoa !== "todos" ? { tipoPessoa } : {}),
-    ...(uf ? { uf } : {}),
-    ...(vendedorId ? { vendedorId } : {}),
-    ...(carteira !== "todos" ? { carteira: carteira === "sim" } : {}),
-  });
+  const { data, isLoading, isFetching, refetch } = useResourceList<PosicaoClienteListRow>(
+    "clientes/posicao",
+    {
+      search,
+      page,
+      pageSize,
+      sortBy,
+      sortOrder,
+      ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
+      ...(tipoPessoa !== "todos" ? { tipoPessoa } : {}),
+      ...(uf ? { uf } : {}),
+      ...(vendedorId ? { vendedorId } : {}),
+      ...(carteira !== "todos" ? { carteira: carteira === "sim" } : {}),
+      ...(diasSemComprar !== undefined ? { diasSemComprar } : {}),
+      ...(bloqueado ? { bloqueado: true } : {}),
+    },
+  );
 
-  const filtrosAtivos = tipoPessoa !== "todos" || !!uf || !!vendedorId || carteira !== "todos";
+  const filtrosAtivos =
+    tipoPessoa !== "todos" ||
+    !!uf ||
+    !!vendedorId ||
+    carteira !== "todos" ||
+    diasSemComprar !== undefined ||
+    bloqueado;
 
   const limparFiltros = () => {
     setTipoPessoa("todos");
     setUf(undefined);
     setVendedorId(undefined);
     setCarteira("todos");
+    setDiasSemComprar(undefined);
+    setBloqueado(false);
     setPage(1);
   };
 
-  const columns: ColumnDef<ClienteRow>[] = [
-    {
-      header: "Razão social",
-      sortKey: "razaoSocial",
-      cell: (c) => (
-        <div>
-          <p className="font-medium">{c.razaoSocial}</p>
-          {c.nomeFantasia && <p className="text-xs text-muted-foreground">{c.nomeFantasia}</p>}
-        </div>
-      ),
-    },
+  const aplicarFiltroRapidoDias = (dias: number) => {
+    setBloqueado(false);
+    setDiasSemComprar((atual) => (atual === dias ? undefined : dias));
+    setPage(1);
+  };
+  const aplicarFiltroRapidoBloqueados = () => {
+    setDiasSemComprar(undefined);
+    setBloqueado((atual) => !atual);
+    setPage(1);
+  };
+  const aplicarFiltroRapidoAtivo = () => {
+    setDiasSemComprar(undefined);
+    setBloqueado(false);
+    setStatus("ativos");
+    setPage(1);
+  };
+
+  const columns: ColumnDef<PosicaoClienteListRow>[] = [
+    { header: "Situação", sortKey: "ativo", cell: (c) => <StatusDot active={c.ativo} /> },
     {
       header: "Código",
       sortKey: "codigoErp",
       cell: (c) => <span className="font-mono text-xs">{c.codigoErp || "—"}</span>,
     },
+    { header: "Últ. Compra", sortKey: "ultimaCompra", cell: (c) => dataBr(c.ultimaCompra) },
     {
-      header: "CNPJ/CPF",
-      sortKey: "cnpjCpf",
-      cell: (c) => <span className="font-mono text-xs">{c.cnpjCpf || "—"}</span>,
+      header: "Razão Social",
+      sortKey: "razaoSocial",
+      className: "whitespace-normal",
+      cell: (c) => <span className="block max-w-56 font-medium">{c.razaoSocial}</span>,
     },
     {
-      header: "Município/UF",
+      header: "Cidade",
       sortKey: "municipio",
-      cell: (c) =>
-        c.municipio || c.uf ? (
-          <span className="text-xs">{[c.municipio, c.uf].filter(Boolean).join("/")}</span>
-        ) : (
-          "—"
-        ),
-    },
-    {
-      header: "Vendedor",
       cell: (c) => (
-        <span className="text-xs">{c.vendedor ? c.vendedor.nomeReduzido || c.vendedor.nome : "—"}</span>
+        <span className="block max-w-28 truncate" title={c.municipio ?? undefined}>
+          {c.municipio || "—"}
+        </span>
       ),
     },
     {
-      header: "Contato",
+      header: "Dif. Mês/Média",
+      sortKey: "difMesEMedia",
+      className: "text-right",
       cell: (c) => (
-        <div className="text-xs">
-          {c.telefone && <p>{c.telefone}</p>}
-          {c.email && <p className="text-muted-foreground">{c.email}</p>}
-          {!c.telefone && !c.email && "—"}
-        </div>
+        <span className={c.difMesEMedia >= 0 ? "text-emerald-600" : "text-destructive"}>
+          {moeda(c.difMesEMedia)}
+        </span>
       ),
     },
-    { header: "Status", sortKey: "ativo", cell: (c) => <StatusDot active={c.ativo} /> },
+    {
+      header: "Venda 30 dias",
+      sortKey: "vendaUltimos30Dias",
+      className: "text-right",
+      cell: (c) => moeda(c.vendaUltimos30Dias),
+    },
+    {
+      header: "Venda Média 90d",
+      sortKey: "vendaMedia90Dias",
+      className: "text-right",
+      cell: (c) => moeda(c.vendaMedia90Dias),
+    },
+    {
+      header: "Dias",
+      sortKey: "dias",
+      className: "text-right",
+      cell: (c) => c.dias ?? "—",
+    },
+    { header: "Comodato", sortKey: "comodato", cell: (c) => (c.comodato ? "Sim" : "Não") },
   ];
 
   return (
@@ -145,6 +189,43 @@ export default function PosicaoClientePage() {
           }}
         />
         <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+          <div className="space-y-2">
+            <FieldLabel>Filtros rápidos</FieldLabel>
+            <div className="flex flex-wrap gap-1.5">
+              {DIAS_OPCOES.map((dias) => (
+                <Button
+                  key={dias}
+                  type="button"
+                  size="sm"
+                  variant={diasSemComprar === dias ? "default" : "outline"}
+                  onClick={() => aplicarFiltroRapidoDias(dias)}
+                >
+                  +{dias} dias
+                </Button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <Button
+                type="button"
+                size="sm"
+                variant={bloqueado ? "default" : "outline"}
+                onClick={aplicarFiltroRapidoBloqueados}
+              >
+                <Lock className="size-3.5" />
+                Bloqueados
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={status === "ativos" ? "default" : "outline"}
+                onClick={aplicarFiltroRapidoAtivo}
+              >
+                <CircleCheck className="size-3.5" />
+                Ativo
+              </Button>
+            </div>
+          </div>
+
           <div className="space-y-2">
             <FieldLabel>Tipo de pessoa</FieldLabel>
             <Select
@@ -257,6 +338,7 @@ export default function PosicaoClientePage() {
           setSortBy(key);
           setSortOrder(order);
         }}
+        storageKey="posicao-cliente"
       />
     </div>
   );

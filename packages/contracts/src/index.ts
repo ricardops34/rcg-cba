@@ -16,6 +16,7 @@ export * from "./condicao-pagamento";
 export * from "./armazem";
 export * from "./estoque";
 export * from "./posicao-cliente";
+export * from "./posicao-cliente-lista";
 export * from "./nota-saida";
 export * from "./titulo-receber";
 export * from "./auth";

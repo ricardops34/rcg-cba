@@ -13,22 +13,33 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusDot } from "@/components/crud/status-dot";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { SortableTableHead } from "@/components/crud/sortable-table-head";
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { NotaSaidaSheet } from "@/components/comercial/nota-saida-detalhe";
 import { TituloReceberSheet } from "@/components/comercial/titulo-receber-detalhe";
+import { ProdutoSheet } from "@/components/comercial/produto-detalhe";
 import { ArrowLeft, Search } from "lucide-react";
 
 const LIST_ROUTE = "/comercial/posicao-cliente";
 
 type NotaStatusFiltro = "todas" | "ativas" | "inativas";
 type TituloSituacaoFiltro = "todos" | "aberto" | "vencido" | "baixado";
+type SortOrder = "asc" | "desc";
+
+type NotaRow = PosicaoCliente["notas"][number];
+type TituloRow = PosicaoCliente["titulos"][number];
+type MixRow = PosicaoCliente["mix"][number];
+
+// Comparador genérico pra ordenação client-side: string usa localeCompare
+// pt-BR, número/booleano (já convertido em 0/1) usa subtração; null sempre
+// vai pro fim, independente da direção.
+function compareValores(a: string | number | null, b: string | number | null): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  if (typeof a === "string" && typeof b === "string") return a.localeCompare(b, "pt-BR");
+  return (a as number) - (b as number);
+}
 
 const moeda = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
@@ -72,6 +83,30 @@ export default function PosicaoClienteDetalhePage() {
 
   const [notaSelecionadaId, setNotaSelecionadaId] = useState<string | null>(null);
   const [tituloSelecionadoId, setTituloSelecionadoId] = useState<string | null>(null);
+  const [produtoSelecionadoId, setProdutoSelecionadoId] = useState<string | null>(null);
+
+  // Ordenação padrão de cada aba replica a ordem que já vinha do back-end
+  // (mais recente/maior valor primeiro) até o usuário clicar num cabeçalho.
+  const [notaSortBy, setNotaSortBy] = useState("dtEmissao");
+  const [notaSortOrder, setNotaSortOrder] = useState<SortOrder>("desc");
+  const [tituloSortBy, setTituloSortBy] = useState("vencimento");
+  const [tituloSortOrder, setTituloSortOrder] = useState<SortOrder>("desc");
+  const [mixSortBy, setMixSortBy] = useState("vlrTotal");
+  const [mixSortOrder, setMixSortOrder] = useState<SortOrder>("desc");
+
+  const toggleSort = (
+    key: string,
+    sortBy: string,
+    setSortBy: (k: string) => void,
+    setSortOrder: (fn: (o: SortOrder) => SortOrder) => void,
+  ) => {
+    if (sortBy !== key) {
+      setSortBy(key);
+      setSortOrder(() => "asc");
+    } else {
+      setSortOrder((o) => (o === "asc" ? "desc" : "asc"));
+    }
+  };
 
   const { data: posicao, isLoading, isError } = useQuery({
     queryKey: ["clientes", id, "posicao"],
@@ -122,6 +157,71 @@ export default function PosicaoClienteDetalhePage() {
       (m) => m.codigoErp.toLowerCase().includes(termo) || m.descricao.toLowerCase().includes(termo),
     );
   }, [mix, mixSearch]);
+
+  const notasOrdenadas = useMemo(() => {
+    const valor = (n: NotaRow): string | number | null => {
+      switch (notaSortBy) {
+        case "numero":
+          return n.numero;
+        case "dtEmissao":
+          return n.dtEmissao;
+        case "vendedor":
+          return n.vendedor ? n.vendedor.nomeReduzido || n.vendedor.nome : null;
+        case "vlrBruto":
+          return n.vlrBruto;
+        case "ativo":
+          return n.ativo ? 1 : 0;
+        default:
+          return null;
+      }
+    };
+    const ordenadas = [...notasFiltradas].sort((a, b) => compareValores(valor(a), valor(b)));
+    return notaSortOrder === "desc" ? ordenadas.reverse() : ordenadas;
+  }, [notasFiltradas, notaSortBy, notaSortOrder]);
+
+  const titulosOrdenados = useMemo(() => {
+    const valor = (t: TituloRow): string | number | null => {
+      switch (tituloSortBy) {
+        case "numero":
+          return t.numero;
+        case "vencimento":
+          return t.vencimento;
+        case "valor":
+          return t.valor;
+        case "saldo":
+          return t.saldo;
+        case "situacao":
+          return t.dtBaixa ? 1 : 0;
+        default:
+          return null;
+      }
+    };
+    const ordenados = [...titulosFiltrados].sort((a, b) => compareValores(valor(a), valor(b)));
+    return tituloSortOrder === "desc" ? ordenados.reverse() : ordenados;
+  }, [titulosFiltrados, tituloSortBy, tituloSortOrder]);
+
+  const mixOrdenado = useMemo(() => {
+    const valor = (m: MixRow): string | number | null => {
+      switch (mixSortBy) {
+        case "codigoErp":
+          return m.codigoErp;
+        case "descricao":
+          return m.descricao;
+        case "quantidadeTotal":
+          return m.quantidadeTotal;
+        case "vlrTotal":
+          return m.vlrTotal;
+        case "qtdNotas":
+          return m.qtdNotas;
+        case "ultimaCompra":
+          return m.ultimaCompra;
+        default:
+          return null;
+      }
+    };
+    const ordenado = [...mixFiltrado].sort((a, b) => compareValores(valor(a), valor(b)));
+    return mixSortOrder === "desc" ? ordenado.reverse() : ordenado;
+  }, [mixFiltrado, mixSortBy, mixSortOrder]);
 
   if (isLoading) {
     return (
@@ -210,22 +310,54 @@ export default function PosicaoClienteDetalhePage() {
                 </Select>
               </div>
 
-              {notasFiltradas.length === 0 ? (
+              {notasOrdenadas.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhuma nota encontrada.</p>
               ) : (
                 <div className="max-h-[440px] overflow-y-auto rounded-lg border">
                   <Table>
                     <TableHeader className="sticky top-0 z-10 bg-card">
                       <TableRow>
-                        <TableHead>Nota</TableHead>
-                        <TableHead>Emissão</TableHead>
-                        <TableHead>Vendedor</TableHead>
-                        <TableHead className="text-right">Vlr. bruto</TableHead>
-                        <TableHead>Status</TableHead>
+                        <SortableTableHead
+                          label="Nota"
+                          active={notaSortBy === "numero"}
+                          order={notaSortOrder}
+                          onClick={() => toggleSort("numero", notaSortBy, setNotaSortBy, setNotaSortOrder)}
+                        />
+                        <SortableTableHead
+                          label="Emissão"
+                          active={notaSortBy === "dtEmissao"}
+                          order={notaSortOrder}
+                          onClick={() =>
+                            toggleSort("dtEmissao", notaSortBy, setNotaSortBy, setNotaSortOrder)
+                          }
+                        />
+                        <SortableTableHead
+                          label="Vendedor"
+                          active={notaSortBy === "vendedor"}
+                          order={notaSortOrder}
+                          onClick={() =>
+                            toggleSort("vendedor", notaSortBy, setNotaSortBy, setNotaSortOrder)
+                          }
+                        />
+                        <SortableTableHead
+                          label="Vlr. bruto"
+                          className="text-right"
+                          active={notaSortBy === "vlrBruto"}
+                          order={notaSortOrder}
+                          onClick={() =>
+                            toggleSort("vlrBruto", notaSortBy, setNotaSortBy, setNotaSortOrder)
+                          }
+                        />
+                        <SortableTableHead
+                          label="Status"
+                          active={notaSortBy === "ativo"}
+                          order={notaSortOrder}
+                          onClick={() => toggleSort("ativo", notaSortBy, setNotaSortBy, setNotaSortOrder)}
+                        />
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {notasFiltradas.map((n) => (
+                      {notasOrdenadas.map((n) => (
                         <TableRow
                           key={n.id}
                           className="cursor-pointer"
@@ -282,22 +414,59 @@ export default function PosicaoClienteDetalhePage() {
                 </Select>
               </div>
 
-              {titulosFiltrados.length === 0 ? (
+              {titulosOrdenados.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhum título encontrado.</p>
               ) : (
                 <div className="max-h-[440px] overflow-y-auto rounded-lg border">
                   <Table>
                     <TableHeader className="sticky top-0 z-10 bg-card">
                       <TableRow>
-                        <TableHead>Título</TableHead>
-                        <TableHead>Vencimento</TableHead>
-                        <TableHead className="text-right">Valor</TableHead>
-                        <TableHead className="text-right">Saldo</TableHead>
-                        <TableHead>Situação</TableHead>
+                        <SortableTableHead
+                          label="Título"
+                          active={tituloSortBy === "numero"}
+                          order={tituloSortOrder}
+                          onClick={() =>
+                            toggleSort("numero", tituloSortBy, setTituloSortBy, setTituloSortOrder)
+                          }
+                        />
+                        <SortableTableHead
+                          label="Vencimento"
+                          active={tituloSortBy === "vencimento"}
+                          order={tituloSortOrder}
+                          onClick={() =>
+                            toggleSort("vencimento", tituloSortBy, setTituloSortBy, setTituloSortOrder)
+                          }
+                        />
+                        <SortableTableHead
+                          label="Valor"
+                          className="text-right"
+                          active={tituloSortBy === "valor"}
+                          order={tituloSortOrder}
+                          onClick={() =>
+                            toggleSort("valor", tituloSortBy, setTituloSortBy, setTituloSortOrder)
+                          }
+                        />
+                        <SortableTableHead
+                          label="Saldo"
+                          className="text-right"
+                          active={tituloSortBy === "saldo"}
+                          order={tituloSortOrder}
+                          onClick={() =>
+                            toggleSort("saldo", tituloSortBy, setTituloSortBy, setTituloSortOrder)
+                          }
+                        />
+                        <SortableTableHead
+                          label="Situação"
+                          active={tituloSortBy === "situacao"}
+                          order={tituloSortOrder}
+                          onClick={() =>
+                            toggleSort("situacao", tituloSortBy, setTituloSortBy, setTituloSortOrder)
+                          }
+                        />
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {titulosFiltrados.map((t) => (
+                      {titulosOrdenados.map((t) => (
                         <TableRow
                           key={t.id}
                           className="cursor-pointer"
@@ -341,27 +510,64 @@ export default function PosicaoClienteDetalhePage() {
                 />
               </div>
 
-              {mixFiltrado.length === 0 ? (
+              {mixOrdenado.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhum produto encontrado.</p>
               ) : (
                 <div className="max-h-[440px] overflow-y-auto rounded-lg border">
                   <Table>
                     <TableHeader className="sticky top-0 z-10 bg-card">
                       <TableRow>
-                        <TableHead>Código</TableHead>
-                        <TableHead>Produto</TableHead>
-                        <TableHead className="text-right">Qtd. total</TableHead>
-                        <TableHead className="text-right">Vlr. total</TableHead>
-                        <TableHead className="text-right">Nº notas</TableHead>
-                        <TableHead>Última compra</TableHead>
+                        <SortableTableHead
+                          label="Código"
+                          active={mixSortBy === "codigoErp"}
+                          order={mixSortOrder}
+                          onClick={() => toggleSort("codigoErp", mixSortBy, setMixSortBy, setMixSortOrder)}
+                        />
+                        <SortableTableHead
+                          label="Produto"
+                          active={mixSortBy === "descricao"}
+                          order={mixSortOrder}
+                          onClick={() => toggleSort("descricao", mixSortBy, setMixSortBy, setMixSortOrder)}
+                        />
+                        <SortableTableHead
+                          label="Qtd. total"
+                          className="text-right"
+                          active={mixSortBy === "quantidadeTotal"}
+                          order={mixSortOrder}
+                          onClick={() =>
+                            toggleSort("quantidadeTotal", mixSortBy, setMixSortBy, setMixSortOrder)
+                          }
+                        />
+                        <SortableTableHead
+                          label="Vlr. total"
+                          className="text-right"
+                          active={mixSortBy === "vlrTotal"}
+                          order={mixSortOrder}
+                          onClick={() => toggleSort("vlrTotal", mixSortBy, setMixSortBy, setMixSortOrder)}
+                        />
+                        <SortableTableHead
+                          label="Nº notas"
+                          className="text-right"
+                          active={mixSortBy === "qtdNotas"}
+                          order={mixSortOrder}
+                          onClick={() => toggleSort("qtdNotas", mixSortBy, setMixSortBy, setMixSortOrder)}
+                        />
+                        <SortableTableHead
+                          label="Última compra"
+                          active={mixSortBy === "ultimaCompra"}
+                          order={mixSortOrder}
+                          onClick={() =>
+                            toggleSort("ultimaCompra", mixSortBy, setMixSortBy, setMixSortOrder)
+                          }
+                        />
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {mixFiltrado.map((m) => (
+                      {mixOrdenado.map((m) => (
                         <TableRow
                           key={m.produtoId}
                           className="cursor-pointer"
-                          onClick={() => router.push(`/comercial/produtos/${m.produtoId}`)}
+                          onClick={() => setProdutoSelecionadoId(m.produtoId)}
                         >
                           <TableCell className="font-mono text-xs">{m.codigoErp}</TableCell>
                           <TableCell>
@@ -389,6 +595,10 @@ export default function PosicaoClienteDetalhePage() {
       <TituloReceberSheet
         id={tituloSelecionadoId}
         onOpenChange={(o) => !o && setTituloSelecionadoId(null)}
+      />
+      <ProdutoSheet
+        id={produtoSelecionadoId}
+        onOpenChange={(o) => !o && setProdutoSelecionadoId(null)}
       />
     </div>
   );
