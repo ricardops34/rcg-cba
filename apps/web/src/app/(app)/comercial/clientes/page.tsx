@@ -23,11 +23,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
-const UFS = [
-  "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT",
-  "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
-];
-
 type SimNaoTodos = "todos" | "sim" | "nao";
 type TipoPessoaFiltro = "todos" | TipoPessoa;
 
@@ -59,6 +54,14 @@ export default function ClientesPage() {
   const restrito = vendedoresEscopoQuery.data?.restrito ?? false;
   // Restrito a uma única opção = o próprio usuário; filtrar não faz sentido.
   const mostrarFiltroVendedor = !restrito || opcoesVendedor.length > 1;
+
+  // UFs distintas presentes na carteira visível ao usuário — só lista o que
+  // realmente existe no cadastro.
+  const ufsEscopoQuery = useQuery({
+    queryKey: ["clientes", "ufs-escopo"],
+    queryFn: () => apiFetch<{ data: string[] }>("/clientes/ufs-escopo"),
+  });
+  const opcoesUf = ufsEscopoQuery.data?.data ?? [];
 
   const { data, isLoading, isFetching, refetch } = useResourceList<ClienteRow>("clientes", {
     search,
@@ -225,7 +228,7 @@ export default function ClientesPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="todas">Todas</SelectItem>
-                {UFS.map((sigla) => (
+                {opcoesUf.map((sigla) => (
                   <SelectItem key={sigla} value={sigla}>
                     {sigla}
                   </SelectItem>

@@ -62,6 +62,32 @@ export class ClientesController {
 
   // Declarado antes de GET :id pelo mesmo motivo de vendedores-escopo.
   @ApiOperation({
+    summary: 'Municípios no escopo do usuário logado',
+    description:
+      'Municípios distintos presentes na carteira visível ao usuário logado, pro filtro ' +
+      '"Município" da Posição de Cliente. Requer clientes.visualizar.',
+  })
+  @RequirePermission('clientes', 'visualizar')
+  @Get('municipios-escopo')
+  municipiosEscopo(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.municipiosEscopo(user.empresaAtivaId, user);
+  }
+
+  // Declarado antes de GET :id pelo mesmo motivo de vendedores-escopo.
+  @ApiOperation({
+    summary: 'UFs no escopo do usuário logado',
+    description:
+      'UFs distintas presentes na carteira visível ao usuário logado, pro filtro "UF" ' +
+      '(Clientes e Posição de Cliente). Requer clientes.visualizar.',
+  })
+  @RequirePermission('clientes', 'visualizar')
+  @Get('ufs-escopo')
+  ufsEscopo(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.ufsEscopo(user.empresaAtivaId, user);
+  }
+
+  // Declarado antes de GET :id pelo mesmo motivo de vendedores-escopo.
+  @ApiOperation({
     summary: 'Listagem de Posição de Cliente',
     description:
       'Carteira de clientes com colunas de venda calculadas ao vivo: venda dos últimos 30 dias, ' +

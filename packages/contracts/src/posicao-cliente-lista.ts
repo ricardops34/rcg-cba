@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { booleanQueryParam, paginationQuerySchema } from "./common";
-import { tipoPessoaSchema } from "./cliente";
 
 // Linha da listagem de Posição de Cliente (não confundir com a Posição de
 // Cliente detalhada em posicao-cliente.ts). Colunas de venda são calculadas
@@ -31,8 +30,8 @@ export type PosicaoClienteListRow = z.infer<typeof posicaoClienteListRowSchema>;
 
 export const posicaoClienteListQuerySchema = paginationQuerySchema.extend({
   ativo: booleanQueryParam,
-  tipoPessoa: tipoPessoaSchema.optional(),
   uf: z.string().trim().length(2).optional(),
+  municipio: z.string().trim().optional(),
   vendedorId: z.string().uuid().optional(),
   carteira: booleanQueryParam,
   diasSemComprar: z.coerce

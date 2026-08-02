@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { QuickFilterButton, QuickFilterGroup } from "@/components/crud/quick-filter-group";
 
 export type StatusFilterValue = "todos" | "ativos" | "inativos";
 
@@ -28,22 +28,12 @@ export function StatusQuickFilter({
   };
 
   return (
-    <div className="inline-flex items-center gap-1 rounded-lg bg-muted p-[3px]">
+    <QuickFilterGroup>
       {OPTIONS.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => onChange(opt.value)}
-          className={cn(
-            "rounded-md px-2.5 py-1 text-sm font-medium transition-colors",
-            value === opt.value
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
+        <QuickFilterButton key={opt.value} active={value === opt.value} onClick={() => onChange(opt.value)}>
           {labels[opt.value]}
-        </button>
+        </QuickFilterButton>
       ))}
-    </div>
+    </QuickFilterGroup>
   );
 }

@@ -1,19 +1,14 @@
 import { z } from "zod";
 import { auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
 
-export const armazemCreateSchema = z.object({
-  codigoErp: z.string().trim().min(1, "Informe o código ERP").max(10),
-  descricao: z.string().trim().min(1, "Informe a descrição").max(50),
-  ativo: z.boolean().default(true),
-});
-export type ArmazemCreate = z.infer<typeof armazemCreateSchema>;
-
-export const armazemUpdateSchema = armazemCreateSchema.partial();
-export type ArmazemUpdate = z.infer<typeof armazemUpdateSchema>;
-
-export const armazemSchema = armazemCreateSchema.extend({
+// Somente consulta: armazéns entram pelo import (e no futuro pela API
+// externa de manutenção), não por esta API.
+export const armazemSchema = z.object({
   id: z.string().uuid(),
   empresaId: z.string().uuid(),
+  codigoErp: z.string(),
+  descricao: z.string(),
+  ativo: z.boolean(),
   ...auditFieldsSchema.shape,
 });
 export type Armazem = z.infer<typeof armazemSchema>;
@@ -33,10 +28,4 @@ export const ARMAZEM_EXAMPLE: Armazem = {
   updatedAt: "2026-07-24T12:00:00.000Z",
   createdBy: null,
   updatedBy: null,
-};
-
-export const ARMAZEM_CREATE_EXAMPLE: ArmazemCreate = {
-  codigoErp: "001",
-  descricao: "ARMAZÉM CENTRAL",
-  ativo: true,
 };

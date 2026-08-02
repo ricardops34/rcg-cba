@@ -12,7 +12,19 @@
       "Bash(curl -s -o /dev/null -w \"objetivos: %{http_code}\\\\n\" http://localhost:3002/gerencial/objetivos)",
       "Bash(curl -s -o /dev/null -w \"dashboard: %{http_code}\\\\n\" http://localhost:3002/comercial/dashboard)",
       "Bash(curl -s -o /dev/null -w \"vendedores/novo again: %{http_code}\\\\n\" http://localhost:3002/gerencial/vendedores/novo)",
-      "Bash(curl -s -o /dev/null -w \"objetivos/[id]: %{http_code}\\\\n\" http://localhost:3002/gerencial/objetivos/fake-id)"
+      "Bash(curl -s -o /dev/null -w \"objetivos/[id]: %{http_code}\\\\n\" http://localhost:3002/gerencial/objetivos/fake-id)",
+      "Bash(awk '/^CREATE TABLE `tabela_preco_item`/,/^\\\\\\) ENGINE/' /c/VPS/rcg/backup/rcgdistc_portal.sql)",
+      "Bash(grep -c \"^INSERT INTO \\\\`tabela_preco\\\\`\" /c/VPS/rcg/backup/rcgdistc_portal.sql)",
+      "Bash(grep -c \"^INSERT INTO \\\\`tabela_preco_item\\\\`\" /c/VPS/rcg/backup/rcgdistc_portal.sql)",
+      "Bash(grep \"^INSERT INTO \\\\`tabela_preco\\\\` \" /c/VPS/rcg/backup/rcgdistc_portal.sql)",
+      "Bash(grep \"^INSERT INTO \\\\`tabela_preco_item\\\\` \" /c/VPS/rcg/backup/rcgdistc_portal.sql)",
+      "Bash(pnpm exec *)",
+      "PowerShell(Get-Command pnpm -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command node -ErrorAction SilentlyContinue)",
+      "Bash(command -v node)",
+      "Bash(command -v pnpm)",
+      "Bash(command -v npm)",
+      "Bash(docker compose *)"
     ]
   }
 }

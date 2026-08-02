@@ -66,6 +66,10 @@ const SORT_FIELDS = new Set([
 // Dados do vendedor anexados às respostas (coluna "Vendedor" da listagem).
 const VENDEDOR_SELECT = { select: { id: true, nome: true, nomeReduzido: true } };
 
+// Dados da tabela de preço vinculada ao cliente (Posição de Cliente usa isso
+// pra calcular a coluna "Preço de tabela" do mix).
+const TABELA_PRECO_SELECT = { select: { id: true, codigoErp: true, descricao: true } };
+
 // A resolução de escopo hierárquico mora em common/escopo/escopo-vendedores
 // — compartilhada com Notas de Saída, Itens e Títulos a Receber.
 
@@ -217,7 +221,10 @@ export class ClientesService {
 
       const cliente = await tx.cliente.findFirst({
         where: { id: clienteId, empresaId, deletedAt: null, ...filtroEscopo },
-        include: { vendedor: VENDEDOR_SELECT },
+        include: {
+          vendedor: VENDEDOR_SELECT,
+          tabelaPreco: TABELA_PRECO_SELECT,
+        },
       });
       if (!cliente) throw new NotFoundException('Cliente não encontrado');
 
@@ -249,17 +256,33 @@ export class ClientesService {
       const produtoIds = mixGrupos
         .map((g) => g.produtoId)
         .filter((id): id is string => id !== null);
-      const produtos = produtoIds.length
-        ? await tx.produto.findMany({
-            where: { id: { in: produtoIds } },
-            select: { id: true, codigoErp: true, descricao: true, unidade: true },
-          })
-        : [];
+      const tabelaPrecoId = cliente.tabelaPrecoId;
+      const [produtos, itensTabelaPreco] = await Promise.all([
+        tx.produto.findMany({
+          where: { id: { in: produtoIds } },
+          select: { id: true, codigoErp: true, descricao: true, unidade: true },
+        }),
+        tabelaPrecoId
+          ? tx.tabelaPrecoItem.findMany({
+              where: {
+                tabelaPrecoId,
+                produtoId: { in: produtoIds },
+                deletedAt: null,
+              },
+              select: { produtoId: true, preco: true },
+            })
+          : Promise.resolve([] as { produtoId: string; preco: number }[]),
+      ]);
       const produtoPorId = new Map(produtos.map((p) => [p.id, p]));
+      const precoPorProduto = new Map(
+        itensTabelaPreco.map((i) => [i.produtoId, i.preco]),
+      );
 
       const mix = mixGrupos
         .map((g) => {
-          const produto = g.produtoId ? produtoPorId.get(g.produtoId) : undefined;
+          const produto = g.produtoId
+            ? produtoPorId.get(g.produtoId)
+            : undefined;
           return {
             produtoId: g.produtoId as string,
             codigoErp: produto?.codigoErp ?? '—',
@@ -269,6 +292,9 @@ export class ClientesService {
             vlrTotal: g._sum.vlrTotal ?? 0,
             qtdNotas: g._count._all,
             ultimaCompra: g._max.dtEmissao,
+            precoTabela: g.produtoId
+              ? (precoPorProduto.get(g.produtoId) ?? null)
+              : null,
           };
         })
         .sort((a, b) => b.vlrTotal - a.vlrTotal);
@@ -324,8 +350,8 @@ export class ClientesService {
         );
       }
       if (query.ativo !== undefined) condicoes.push(Prisma.sql`c."ativo" = ${query.ativo}`);
-      if (query.tipoPessoa) condicoes.push(Prisma.sql`c."tipoPessoa" = ${query.tipoPessoa}`);
       if (query.uf) condicoes.push(Prisma.sql`c."uf" = ${query.uf}`);
+      if (query.municipio) condicoes.push(Prisma.sql`c."municipio" = ${query.municipio}`);
       if (query.carteira !== undefined)
         condicoes.push(Prisma.sql`c."carteira" = ${query.carteira}`);
       if (query.search) {
@@ -430,10 +456,22 @@ export class ClientesService {
    * Vendedores dentro do escopo do usuário logado — alimenta o filtro
    * "Vendedor" da listagem e o Select do formulário sem expor o
    * VendedoresController (que não tem restrição de carteira).
+   *
+   * ehVendedorPuro: true só quando o próprio usuário é um vendedor "de
+   * carteira" (nem supervisor nem gerente) — a tela usa isso pra esconder o
+   * filtro Vendedor por completo (filtrar pela própria carteira não faz
+   * sentido). Supervisor/gerente continuam vendo o filtro, já restrito ao
+   * próprio time pelo escopo acima.
    */
   vendedoresEscopo(empresaId: string, user: AuthenticatedUser) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const [escopo, vendedorProprio] = await Promise.all([
+        resolverEscopoVendedores(tx, empresaId, user),
+        tx.vendedor.findFirst({
+          where: { usuarioId: user.id, empresaId, deletedAt: null },
+          select: { supervisor: true, gerente: true },
+        }),
+      ]);
       const data = await tx.vendedor.findMany({
         where: {
           empresaId,
@@ -442,7 +480,57 @@ export class ClientesService {
         },
         orderBy: { nome: 'asc' },
       });
-      return { data, restrito: escopo !== null };
+      const ehVendedorPuro =
+        escopo !== null && !vendedorProprio?.supervisor && !vendedorProprio?.gerente;
+      return { data, restrito: escopo !== null, ehVendedorPuro };
+    });
+  }
+
+  /**
+   * Municípios distintos presentes na carteira visível ao usuário logado —
+   * alimenta o filtro "Município" da listagem de Posição de Cliente. Mesmo
+   * racional de vendedoresEscopo: nunca expõe municípios de clientes fora do
+   * escopo hierárquico do usuário.
+   */
+  municipiosEscopo(empresaId: string, user: AuthenticatedUser) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const rows = await tx.cliente.findMany({
+        where: {
+          empresaId,
+          deletedAt: null,
+          municipio: { not: null },
+          ...(escopo ? { vendedorId: { in: escopo } } : {}),
+        },
+        select: { municipio: true },
+        distinct: ['municipio'],
+        orderBy: { municipio: 'asc' },
+      });
+      return { data: rows.map((r) => r.municipio as string) };
+    });
+  }
+
+  /**
+   * UFs distintas presentes na carteira visível ao usuário logado — alimenta
+   * o filtro "UF" (Clientes e Posição de Cliente). Mesmo racional de
+   * municipiosEscopo: só lista o que realmente existe no cadastro, e nunca
+   * expõe UFs de clientes fora do escopo hierárquico do usuário.
+   */
+  ufsEscopo(empresaId: string, user: AuthenticatedUser) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const rows = await tx.cliente.findMany({
+        where: {
+          empresaId,
+          deletedAt: null,
+          uf: { not: null },
+          ...(escopo ? { vendedorId: { in: escopo } } : {}),
+        },
+        select: { uf: true },
+        distinct: ['uf'],
+        orderBy: { uf: 'asc' },
+      });
+      return { data: rows.map((r) => r.uf as string) };
     });
   }
 }

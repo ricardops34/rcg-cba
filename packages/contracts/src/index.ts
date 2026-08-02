@@ -15,6 +15,7 @@ export * from "./categoria";
 export * from "./condicao-pagamento";
 export * from "./armazem";
 export * from "./estoque";
+export * from "./tabela-preco";
 export * from "./posicao-cliente";
 export * from "./posicao-cliente-lista";
 export * from "./nota-saida";

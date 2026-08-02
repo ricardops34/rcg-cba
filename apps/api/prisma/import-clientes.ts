@@ -10,6 +10,8 @@
  * - Import de Vendedores já rodado (import-legado.ts) — o vendedor_id do
  *   legado é resolvido casando vendedor.cod_erp (MySQL) com
  *   Vendedor.codigoErp (Postgres).
+ * - Import de Tabelas de Preço já rodado (import-tabela-preco.ts) — mesmo
+ *   esquema de casamento por cod_erp, pro tabela_preco_id do legado.
  * - MySQL do dump legado acessível (serviço `mysql` do
  *   docker-compose.dev.yml; vars MYSQL_* no .env, ver .env.example).
  *
@@ -82,6 +84,7 @@ interface LegadoCliente {
   nascimento: string | null;
   email: string | null;
   vendedor_id: number | null;
+  tabela_preco_id: number | null;
   primeira_compra: string | null;
   ultima_visita: string | null;
   seguimento_id: number | null;
@@ -102,6 +105,11 @@ interface LegadoCliente {
 }
 
 interface LegadoVendedorRef {
+  id: number;
+  cod_erp: string | null;
+}
+
+interface LegadoTabelaPrecoRef {
   id: number;
   cod_erp: string | null;
 }
@@ -127,6 +135,7 @@ const data = (v: string | null | undefined): Date | null => {
 function mapearCliente(
   c: LegadoCliente,
   vendedorId: string | null,
+  tabelaPrecoId: string | null,
 ): Omit<Prisma.ClienteUncheckedCreateInput, 'empresaId' | 'codigoErp'> {
   return {
     ativo: c.status !== 'B',
@@ -153,6 +162,7 @@ function mapearCliente(
     latitude: c.latitude,
     longitude: c.longitude,
     vendedorId,
+    tabelaPrecoId,
     carteira: simNao(c.carteira),
     site: texto(c.site),
     limiteCredito: c.limite,
@@ -180,6 +190,8 @@ async function main() {
   const clientes = clientesRows as LegadoCliente[];
   const [vendedoresRows] = await conexao.query('SELECT id, cod_erp FROM vendedor');
   const vendedoresLegado = vendedoresRows as LegadoVendedorRef[];
+  const [tabelasPrecoRows] = await conexao.query('SELECT id, cod_erp FROM tabela_preco');
+  const tabelasPrecoLegado = tabelasPrecoRows as LegadoTabelaPrecoRef[];
   await conexao.end();
   console.log(`Legado: ${clientes.length} clientes, ${vendedoresLegado.length} vendedores.`);
 
@@ -188,6 +200,14 @@ async function main() {
   for (const v of vendedoresLegado) {
     const codErp = texto(v.cod_erp);
     if (codErp) vendedorLegadoCodErp.set(v.id, codErp);
+  }
+
+  // id da tabela de preço no legado → cod_erp (idem, pra resolver
+  // cliente.tabela_preco_id contra o cadastro novo de Tabela de Preço).
+  const tabelaPrecoLegadoCodErp = new Map<number, string>();
+  for (const t of tabelasPrecoLegado) {
+    const codErp = texto(t.cod_erp);
+    if (codErp) tabelaPrecoLegadoCodErp.set(t.id, codErp);
   }
 
   // Agrupa por empresa de destino (falha alto em filial_id desconhecido).
@@ -213,15 +233,25 @@ async function main() {
       async (tx) => {
         await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${empresaId}, true)`;
 
-        const vendedoresNovos = await tx.vendedor.findMany({
-          where: { empresaId, deletedAt: null, codigoErp: { not: null } },
-          select: { id: true, codigoErp: true },
-        });
+        const [vendedoresNovos, tabelasPrecoNovas] = await Promise.all([
+          tx.vendedor.findMany({
+            where: { empresaId, deletedAt: null, codigoErp: { not: null } },
+            select: { id: true, codigoErp: true },
+          }),
+          tx.tabelaPreco.findMany({
+            where: { empresaId, deletedAt: null },
+            select: { id: true, codigoErp: true },
+          }),
+        ]);
         const codErpParaVendedorId = new Map(
           vendedoresNovos.map((v) => [v.codigoErp as string, v.id]),
         );
+        const codErpParaTabelaPrecoId = new Map(
+          tabelasPrecoNovas.map((t) => [t.codigoErp, t.id]),
+        );
 
         let semVendedor = 0;
+        let semTabelaPreco = 0;
         const upserts = grupo.map((c) => {
           const codErpVendedor =
             c.vendedor_id != null ? vendedorLegadoCodErp.get(c.vendedor_id) : undefined;
@@ -230,8 +260,15 @@ async function main() {
             : null;
           if (c.vendedor_id != null && !vendedorId) semVendedor++;
 
+          const codErpTabelaPreco =
+            c.tabela_preco_id != null ? tabelaPrecoLegadoCodErp.get(c.tabela_preco_id) : undefined;
+          const tabelaPrecoId = codErpTabelaPreco
+            ? (codErpParaTabelaPrecoId.get(codErpTabelaPreco) ?? null)
+            : null;
+          if (c.tabela_preco_id != null && !tabelaPrecoId) semTabelaPreco++;
+
           const codigoErp = texto(c.cod_erp) ?? `LEGADO-${c.id}`;
-          const dados = mapearCliente(c, vendedorId);
+          const dados = mapearCliente(c, vendedorId, tabelaPrecoId);
           return { codigoErp, dados };
         });
 
@@ -254,6 +291,9 @@ async function main() {
           `— ${alias}: ${gravados} clientes gravados (upsert)` +
             (semVendedor
               ? `; ${semVendedor} com vendedor_id do legado sem correspondência no cadastro novo (ficaram sem carteira)`
+              : '') +
+            (semTabelaPreco
+              ? `; ${semTabelaPreco} com tabela_preco_id do legado sem correspondência no cadastro novo (ficaram sem tabela de preço)`
               : ''),
         );
       },

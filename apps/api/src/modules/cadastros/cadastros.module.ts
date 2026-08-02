@@ -5,6 +5,8 @@ import { CondicoesPagamentoController } from './condicoes-pagamento/condicoes-pa
 import { CondicoesPagamentoService } from './condicoes-pagamento/condicoes-pagamento.service';
 import { ArmazensController } from './armazens/armazens.controller';
 import { ArmazensService } from './armazens/armazens.service';
+import { TabelasPrecoController } from './tabelas-preco/tabelas-preco.controller';
+import { TabelasPrecoService } from './tabelas-preco/tabelas-preco.service';
 import { EstadosController } from './estados/estados.controller';
 import { EstadosService } from './estados/estados.service';
 import { MunicipiosController } from './municipios/municipios.controller';
@@ -25,6 +27,7 @@ import { CnaesService } from './cnaes/cnaes.service';
     CategoriasController,
     CondicoesPagamentoController,
     ArmazensController,
+    TabelasPrecoController,
     EstadosController,
     MunicipiosController,
     CepsController,
@@ -35,6 +38,7 @@ import { CnaesService } from './cnaes/cnaes.service';
     CategoriasService,
     CondicoesPagamentoService,
     ArmazensService,
+    TabelasPrecoService,
     EstadosService,
     MunicipiosService,
     CepsService,

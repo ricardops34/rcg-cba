@@ -36,6 +36,7 @@ export const clienteCreateSchema = z.object({
   longitude: z.coerce.number().min(-180).max(180).nullable().optional(),
 
   vendedorId: z.string().uuid().nullable().optional(),
+  tabelaPrecoId: z.string().uuid().nullable().optional(),
   ativo: z.boolean().default(true),
   carteira: z.boolean().nullable().optional(),
   site: opt(150),
@@ -109,6 +110,7 @@ export const CLIENTE_EXAMPLE: Cliente = {
   latitude: null,
   longitude: null,
   vendedorId: "b7c2c1de-4a45-4b8a-9f2e-6a1d6c1e9f10",
+  tabelaPrecoId: "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
   ativo: true,
   carteira: true,
   site: "",
@@ -155,6 +157,7 @@ export const CLIENTE_CREATE_EXAMPLE: ClienteCreate = {
   latitude: null,
   longitude: null,
   vendedorId: null,
+  tabelaPrecoId: null,
   ativo: true,
   carteira: true,
   site: "",

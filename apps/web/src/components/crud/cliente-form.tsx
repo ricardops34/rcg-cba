@@ -11,6 +11,7 @@ import {
   type Cliente,
   type ClienteCreate,
   type ClienteUpdate,
+  type TabelaPreco,
   type Vendedor,
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
@@ -69,6 +70,13 @@ export function ClienteForm({ cliente }: { cliente?: Cliente }) {
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
   const restrito = vendedoresEscopoQuery.data?.restrito ?? false;
 
+  const tabelasPrecoQuery = useQuery({
+    queryKey: ["tabelas-preco", "select"],
+    queryFn: () =>
+      apiFetch<{ data: TabelaPreco[] }>("/tabelas-preco", { query: { pageSize: 100, ativo: true } }),
+  });
+  const opcoesTabelaPreco = tabelasPrecoQuery.data?.data ?? [];
+
   const schema = cliente ? clienteUpdateSchema : clienteCreateSchema;
   const empty: ClienteCreate = {
     codigoErp: "",
@@ -95,6 +103,7 @@ export function ClienteForm({ cliente }: { cliente?: Cliente }) {
     latitude: null,
     longitude: null,
     vendedorId: null,
+    tabelaPrecoId: null,
     ativo: true,
     carteira: null,
     site: "",
@@ -134,6 +143,7 @@ export function ClienteForm({ cliente }: { cliente?: Cliente }) {
           latitude: cliente.latitude ?? null,
           longitude: cliente.longitude ?? null,
           vendedorId: cliente.vendedorId ?? null,
+          tabelaPrecoId: cliente.tabelaPrecoId ?? null,
           ativo: cliente.ativo,
           carteira: cliente.carteira ?? null,
           site: cliente.site ?? "",
@@ -386,7 +396,7 @@ export function ClienteForm({ cliente }: { cliente?: Cliente }) {
               <FieldSet>
                 <FieldLegend>Comercial</FieldLegend>
                 <FieldGroup>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <Field>
                       <FieldLabel htmlFor="vendedorId">Vendedor</FieldLabel>
                       <Select
@@ -402,6 +412,25 @@ export function ClienteForm({ cliente }: { cliente?: Cliente }) {
                           {opcoesVendedor.map((v) => (
                             <SelectItem key={v.id} value={v.id}>
                               {v.nomeReduzido || v.nome}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="tabelaPrecoId">Tabela de preço</FieldLabel>
+                      <Select
+                        value={form.watch("tabelaPrecoId") ?? "none"}
+                        onValueChange={(v) => form.setValue("tabelaPrecoId", v === "none" ? null : v)}
+                      >
+                        <SelectTrigger id="tabelaPrecoId" className="w-full">
+                          <SelectValue placeholder="Sem tabela de preço" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Sem tabela de preço</SelectItem>
+                          {opcoesTabelaPreco.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>
+                              {t.descricao}
                             </SelectItem>
                           ))}
                         </SelectContent>

@@ -3,26 +3,17 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
 import type { Categoria } from "@plataforma/contracts";
-import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
-import { apiFetch, ApiError } from "@/lib/api-client";
+import { useResourceList } from "@/hooks/use-resource";
+import { apiFetch } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
 import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 type CategoriaRow = Categoria & {
   categoriaPai?: { id: string; codigoErp: string; descricao: string } | null;
@@ -35,7 +26,7 @@ export default function CategoriasPage() {
   const [pageSize, setPageSize] = useState(10);
   const [sortBy, setSortBy] = useState("descricao");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
-  const [status, setStatus] = useState<StatusFilterValue>("todos");
+  const [status, setStatus] = useState<StatusFilterValue>("ativos");
   const [nivel, setNivel] = useState<"todos" | "raiz">("todos");
   const [categoriaPaiId, setCategoriaPaiId] = useState<string | undefined>(undefined);
 
@@ -56,19 +47,7 @@ export default function CategoriasPage() {
     ...(categoriaPaiId ? { categoriaPaiId } : {}),
   });
 
-  const { remove } = useResourceMutations("categorias");
-
-  const openEdit = (c: CategoriaRow) => router.push(`/cadastros/categorias/${c.id}`);
-
-  const onDelete = async (c: CategoriaRow) => {
-    if (!confirm(`Excluir a categoria "${c.descricao}"?`)) return;
-    try {
-      await remove.mutateAsync(c.id);
-      toast.success("Categoria excluída");
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Erro ao excluir categoria");
-    }
-  };
+  const abrirDetalhe = (c: CategoriaRow) => router.push(`/cadastros/categorias/${c.id}`);
 
   const filtrosAtivos = nivel !== "todos" || !!categoriaPaiId;
 
@@ -96,34 +75,15 @@ export default function CategoriasPage() {
     },
     {
       header: "Nível",
+      sortKey: "categoriaPaiId",
       cell: (c) => <span className="text-xs">{c.categoriaPaiId ? "Subcategoria" : "Categoria"}</span>,
     },
     {
       header: "Usada",
+      sortKey: "usado",
       cell: (c) => <span className="text-xs">{c.usado == null ? "—" : c.usado ? "Sim" : "Não"}</span>,
     },
     { header: "Status", sortKey: "ativo", cell: (c) => <StatusDot active={c.ativo} /> },
-    {
-      header: "",
-      className: "w-10",
-      cell: (c) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-8" onClick={(ev) => ev.stopPropagation()}>
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => openEdit(c)}>
-              <Pencil className="size-4" /> Editar
-            </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={() => onDelete(c)}>
-              <Trash2 className="size-4" /> Excluir
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
-    },
   ];
 
   return (
@@ -136,8 +96,6 @@ export default function CategoriasPage() {
         }}
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
-        onCreate={() => router.push("/cadastros/categorias/novo")}
-        createLabel="Nova categoria"
       />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -207,7 +165,7 @@ export default function CategoriasPage() {
           setPageSize(n);
           setPage(1);
         }}
-        onRowClick={openEdit}
+        onRowClick={abrirDetalhe}
         emptyMessage="Nenhuma categoria cadastrada."
         sortBy={sortBy}
         sortOrder={sortOrder}

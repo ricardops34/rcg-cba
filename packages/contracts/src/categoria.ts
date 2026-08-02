@@ -1,21 +1,16 @@
 import { z } from "zod";
 import { auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
 
-export const categoriaCreateSchema = z.object({
-  codigoErp: z.string().trim().min(1, "Informe o código ERP").max(10),
-  descricao: z.string().trim().min(1, "Informe a descrição").max(200),
-  categoriaPaiId: z.string().uuid().nullable().optional(),
-  usado: z.boolean().nullable().optional(),
-  ativo: z.boolean().default(true),
-});
-export type CategoriaCreate = z.infer<typeof categoriaCreateSchema>;
-
-export const categoriaUpdateSchema = categoriaCreateSchema.partial();
-export type CategoriaUpdate = z.infer<typeof categoriaUpdateSchema>;
-
-export const categoriaSchema = categoriaCreateSchema.extend({
+// Somente consulta: categorias/subcategorias entram pelo import (e no futuro
+// pela API externa de manutenção), não por esta API.
+export const categoriaSchema = z.object({
   id: z.string().uuid(),
   empresaId: z.string().uuid(),
+  codigoErp: z.string(),
+  descricao: z.string(),
+  categoriaPaiId: z.string().uuid().nullable(),
+  usado: z.boolean().nullable(),
+  ativo: z.boolean(),
   ...auditFieldsSchema.shape,
 });
 export type Categoria = z.infer<typeof categoriaSchema>;
@@ -41,12 +36,4 @@ export const CATEGORIA_EXAMPLE: Categoria = {
   updatedAt: "2026-07-24T12:00:00.000Z",
   createdBy: null,
   updatedBy: null,
-};
-
-export const CATEGORIA_CREATE_EXAMPLE: CategoriaCreate = {
-  codigoErp: "000004",
-  descricao: "COZINHA",
-  categoriaPaiId: null,
-  usado: true,
-  ativo: true,
 };

@@ -3,28 +3,22 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import type { PosicaoClienteListRow, TipoPessoa, Vendedor } from "@plataforma/contracts";
+import type { PosicaoClienteListRow, Vendedor } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
 import { apiFetch } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
 import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
+import { QuickFilterButton, QuickFilterGroup } from "@/components/crud/quick-filter-group";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { FieldLabel } from "@/components/ui/field";
-import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CircleCheck, Lock } from "lucide-react";
-
-const UFS = [
-  "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT",
-  "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
-];
 
 const DIAS_OPCOES = [120, 90, 60, 30, 15] as const;
 
 type SimNaoTodos = "todos" | "sim" | "nao";
-type TipoPessoaFiltro = "todos" | TipoPessoa;
 
 const moeda = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const dataBr = (v: string | null) => {
@@ -44,8 +38,8 @@ export default function PosicaoClientePage() {
   const [sortBy, setSortBy] = useState("ultimaCompra");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [status, setStatus] = useState<StatusFilterValue>("todos");
-  const [tipoPessoa, setTipoPessoa] = useState<TipoPessoaFiltro>("todos");
   const [uf, setUf] = useState<string | undefined>(undefined);
+  const [municipio, setMunicipio] = useState<string | undefined>(undefined);
   const [vendedorId, setVendedorId] = useState<string | undefined>(undefined);
   const [carteira, setCarteira] = useState<SimNaoTodos>("todos");
   const [diasSemComprar, setDiasSemComprar] = useState<number | undefined>(undefined);
@@ -53,13 +47,34 @@ export default function PosicaoClientePage() {
 
   // Opções de vendedor já restritas ao escopo do usuário logado — não usa
   // /vendedores direto (aquele endpoint não tem restrição de carteira).
+  // ehVendedorPuro (vendedor "de carteira", nem supervisor nem gerente):
+  // filtrar a própria carteira pelo próprio vendedor não faz sentido, então
+  // o filtro Vendedor some por completo pra esse perfil; supervisor/gerente
+  // continuam vendo, já restrito ao próprio time.
   const vendedoresEscopoQuery = useQuery({
     queryKey: ["clientes", "vendedores-escopo"],
-    queryFn: () => apiFetch<{ data: Vendedor[]; restrito: boolean }>("/clientes/vendedores-escopo"),
+    queryFn: () =>
+      apiFetch<{ data: Vendedor[]; restrito: boolean; ehVendedorPuro: boolean }>(
+        "/clientes/vendedores-escopo",
+      ),
   });
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
-  const restrito = vendedoresEscopoQuery.data?.restrito ?? false;
-  const mostrarFiltroVendedor = !restrito || opcoesVendedor.length > 1;
+  const mostrarFiltroVendedor = !(vendedoresEscopoQuery.data?.ehVendedorPuro ?? false);
+
+  // UFs e municípios distintos presentes na carteira visível ao usuário —
+  // só lista o que realmente existe no cadastro (mesmo racional de escopo
+  // do filtro Vendedor).
+  const ufsEscopoQuery = useQuery({
+    queryKey: ["clientes", "ufs-escopo"],
+    queryFn: () => apiFetch<{ data: string[] }>("/clientes/ufs-escopo"),
+  });
+  const opcoesUf = ufsEscopoQuery.data?.data ?? [];
+
+  const municipiosEscopoQuery = useQuery({
+    queryKey: ["clientes", "municipios-escopo"],
+    queryFn: () => apiFetch<{ data: string[] }>("/clientes/municipios-escopo"),
+  });
+  const opcoesMunicipio = municipiosEscopoQuery.data?.data ?? [];
 
   const { data, isLoading, isFetching, refetch } = useResourceList<PosicaoClienteListRow>(
     "clientes/posicao",
@@ -70,8 +85,8 @@ export default function PosicaoClientePage() {
       sortBy,
       sortOrder,
       ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
-      ...(tipoPessoa !== "todos" ? { tipoPessoa } : {}),
       ...(uf ? { uf } : {}),
+      ...(municipio ? { municipio } : {}),
       ...(vendedorId ? { vendedorId } : {}),
       ...(carteira !== "todos" ? { carteira: carteira === "sim" } : {}),
       ...(diasSemComprar !== undefined ? { diasSemComprar } : {}),
@@ -80,16 +95,16 @@ export default function PosicaoClientePage() {
   );
 
   const filtrosAtivos =
-    tipoPessoa !== "todos" ||
     !!uf ||
+    !!municipio ||
     !!vendedorId ||
     carteira !== "todos" ||
     diasSemComprar !== undefined ||
     bloqueado;
 
   const limparFiltros = () => {
-    setTipoPessoa("todos");
     setUf(undefined);
+    setMunicipio(undefined);
     setVendedorId(undefined);
     setCarteira("todos");
     setDiasSemComprar(undefined);
@@ -113,6 +128,16 @@ export default function PosicaoClientePage() {
     setStatus("ativos");
     setPage(1);
   };
+
+  // Os três atalhos (dias/bloqueados/ativo) já se excluem mutuamente nos
+  // handlers acima — isso só deriva qual botão do grupo aparece marcado.
+  const filtroRapidoAtivo = bloqueado
+    ? "bloqueados"
+    : diasSemComprar !== undefined
+      ? `dias-${diasSemComprar}`
+      : status === "ativos"
+        ? "ativo"
+        : null;
 
   const columns: ColumnDef<PosicaoClienteListRow>[] = [
     { header: "Situação", sortKey: "ativo", cell: (c) => <StatusDot active={c.ativo} /> },
@@ -191,59 +216,31 @@ export default function PosicaoClientePage() {
         <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
           <div className="space-y-2">
             <FieldLabel>Filtros rápidos</FieldLabel>
-            <div className="flex flex-wrap gap-1.5">
+            <QuickFilterGroup>
               {DIAS_OPCOES.map((dias) => (
-                <Button
+                <QuickFilterButton
                   key={dias}
-                  type="button"
-                  size="sm"
-                  variant={diasSemComprar === dias ? "default" : "outline"}
+                  active={filtroRapidoAtivo === `dias-${dias}`}
                   onClick={() => aplicarFiltroRapidoDias(dias)}
                 >
                   +{dias} dias
-                </Button>
+                </QuickFilterButton>
               ))}
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              <Button
-                type="button"
-                size="sm"
-                variant={bloqueado ? "default" : "outline"}
+              <QuickFilterButton
+                active={filtroRapidoAtivo === "bloqueados"}
                 onClick={aplicarFiltroRapidoBloqueados}
               >
                 <Lock className="size-3.5" />
                 Bloqueados
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={status === "ativos" ? "default" : "outline"}
+              </QuickFilterButton>
+              <QuickFilterButton
+                active={filtroRapidoAtivo === "ativo"}
                 onClick={aplicarFiltroRapidoAtivo}
               >
                 <CircleCheck className="size-3.5" />
                 Ativo
-              </Button>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <FieldLabel>Tipo de pessoa</FieldLabel>
-            <Select
-              value={tipoPessoa}
-              onValueChange={(v) => {
-                setTipoPessoa(v as TipoPessoaFiltro);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="juridica">Jurídica</SelectItem>
-                <SelectItem value="fisica">Física</SelectItem>
-              </SelectContent>
-            </Select>
+              </QuickFilterButton>
+            </QuickFilterGroup>
           </div>
 
           <div className="space-y-2">
@@ -260,9 +257,32 @@ export default function PosicaoClientePage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="todas">Todas</SelectItem>
-                {UFS.map((sigla) => (
+                {opcoesUf.map((sigla) => (
                   <SelectItem key={sigla} value={sigla}>
                     {sigla}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <FieldLabel>Município</FieldLabel>
+            <Select
+              value={municipio ?? "todos"}
+              onValueChange={(v) => {
+                setMunicipio(v === "todos" ? undefined : v);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                {opcoesMunicipio.map((m) => (
+                  <SelectItem key={m} value={m}>
+                    {m}
                   </SelectItem>
                 ))}
               </SelectContent>

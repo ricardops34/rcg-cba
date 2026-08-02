@@ -25,7 +25,8 @@
     "import:legado": "ts-node prisma/import-legado.ts",
     "import:clientes": "ts-node prisma/import-clientes.ts",
     "import:auxiliares": "ts-node prisma/import-auxiliares.ts",
-    "import:negocio": "ts-node prisma/import-negocio.ts"
+    "import:negocio": "ts-node prisma/import-negocio.ts",
+    "import:tabela-preco": "ts-node prisma/import-tabela-preco.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

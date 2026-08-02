@@ -35,6 +35,8 @@ model Empresa {
   condicoesPagamento CondicaoPagamento[]
   armazens           Armazem[]
   estoques           Estoque[]
+  tabelasPreco       TabelaPreco[]
+  tabelasPrecoItens  TabelaPrecoItem[]
   notasSaida         NotaSaida[]
   notasSaidaItens    NotaSaidaItem[]
   titulosReceber     TituloReceber[]
@@ -289,8 +291,9 @@ model Produto {
   subCategoria Categoria? @relation("ProdutoSubCategoria", fields: [subCategoriaId], references: [id])
   armazem      Armazem?   @relation(fields: [armazemId], references: [id])
 
-  estoques        Estoque[]
-  notasSaidaItens NotaSaidaItem[]
+  estoques          Estoque[]
+  tabelasPrecoItens TabelaPrecoItem[]
+  notasSaidaItens   NotaSaidaItem[]
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, descricao])
@@ -361,10 +364,11 @@ enum TipoPessoa {
 // (primeiraCompra, ultimaCompra, ...) são preenchidos pelo import do legado,
 // não pelo formulário.
 model Cliente {
-  id         String  @id @default(uuid())
-  empresaId  String
-  vendedorId String?
-  codigoErp  String?
+  id            String  @id @default(uuid())
+  empresaId     String
+  vendedorId    String?
+  tabelaPrecoId String?
+  codigoErp     String?
 
   tipoPessoa         TipoPessoa @default(juridica)
   razaoSocial        String
@@ -416,8 +420,9 @@ model Cliente {
   updatedBy String?
   deletedBy String?
 
-  empresa  Empresa   @relation(fields: [empresaId], references: [id])
-  vendedor Vendedor? @relation(fields: [vendedorId], references: [id])
+  empresa     Empresa      @relation(fields: [empresaId], references: [id])
+  vendedor    Vendedor?    @relation(fields: [vendedorId], references: [id])
+  tabelaPreco TabelaPreco? @relation(fields: [tabelaPrecoId], references: [id])
 
   notasSaida      NotaSaida[]
   notasSaidaItens NotaSaidaItem[]
@@ -426,6 +431,7 @@ model Cliente {
   @@unique([empresaId, codigoErp])
   @@index([empresaId, razaoSocial])
   @@index([empresaId, vendedorId])
+  @@index([empresaId, tabelaPrecoId])
   @@map("clientes")
 }
 
@@ -628,6 +634,64 @@ model Armazem {
 
   @@unique([empresaId, codigoErp])
   @@map("armazens")
+}
+
+// Tabela de preços — cabeçalho. Espelha `tabela_preco` do legado; campos
+// nunca usados no legado (filial_id, system_unit_id, utiliza) foram
+// descartados (sempre NULL no dump).
+model TabelaPreco {
+  id        String    @id @default(uuid())
+  empresaId String
+  codigoErp String
+  descricao String
+  dtInicio  DateTime?
+  dtFim     DateTime?
+  ativo     Boolean   @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa  Empresa           @relation(fields: [empresaId], references: [id])
+  itens    TabelaPrecoItem[]
+  clientes Cliente[]
+
+  @@unique([empresaId, codigoErp])
+  @@index([empresaId, descricao])
+  @@map("tabelas_preco")
+}
+
+// Item (produto + preço) de uma tabela de preço. empresaId denormalizado
+// (mesmo padrão de NotaSaidaItem) para RLS/consulta sem join na tabela mãe.
+// codigoLegado é a chave de idempotência do import (linhas criadas
+// manualmente ficam com codigoLegado = null).
+model TabelaPrecoItem {
+  id            String  @id @default(uuid())
+  empresaId     String
+  tabelaPrecoId String
+  produtoId     String
+  codigoLegado  Int?
+  preco         Float
+  ativo         Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa     Empresa     @relation(fields: [empresaId], references: [id])
+  tabelaPreco TabelaPreco @relation(fields: [tabelaPrecoId], references: [id], onDelete: Cascade)
+  produto     Produto     @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+
+  @@unique([empresaId, codigoLegado])
+  @@index([tabelaPrecoId, produtoId])
+  @@index([empresaId, produtoId])
+  @@map("tabela_preco_itens")
 }
 
 // ------------------------------------------------------------------

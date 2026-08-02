@@ -215,6 +215,8 @@ export default function PosicaoClienteDetalhePage() {
           return m.qtdNotas;
         case "ultimaCompra":
           return m.ultimaCompra;
+        case "precoTabela":
+          return m.precoTabela;
         default:
           return null;
       }
@@ -259,6 +261,7 @@ export default function PosicaoClienteDetalhePage() {
             label="Vendedor"
             value={cliente.vendedor ? cliente.vendedor.nomeReduzido || cliente.vendedor.nome : "—"}
           />
+          <Info label="Tabela de preço" value={cliente.tabelaPreco?.descricao || "—"} />
           <Info
             label="Município/UF"
             value={[cliente.municipio, cliente.uf].filter(Boolean).join("/") || "—"}
@@ -560,6 +563,15 @@ export default function PosicaoClienteDetalhePage() {
                             toggleSort("ultimaCompra", mixSortBy, setMixSortBy, setMixSortOrder)
                           }
                         />
+                        <SortableTableHead
+                          label="Preço de tabela"
+                          className="text-right"
+                          active={mixSortBy === "precoTabela"}
+                          order={mixSortOrder}
+                          onClick={() =>
+                            toggleSort("precoTabela", mixSortBy, setMixSortBy, setMixSortOrder)
+                          }
+                        />
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -580,6 +592,7 @@ export default function PosicaoClienteDetalhePage() {
                           <TableCell className="text-right">{moeda(m.vlrTotal)}</TableCell>
                           <TableCell className="text-right">{m.qtdNotas}</TableCell>
                           <TableCell>{dataBr(m.ultimaCompra)}</TableCell>
+                          <TableCell className="text-right">{moeda(m.precoTabela)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

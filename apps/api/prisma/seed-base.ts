@@ -35,9 +35,24 @@ interface EmpresaSeed {
 
 // CNPJs são placeholders — troque pelos reais quando tiver.
 const EMPRESAS: EmpresaSeed[] = [
-  { razaoSocial: 'BJSoftware LTDA', nomeFantasia: 'BJSoftware', cnpj: '11222333000181', alias: 'bjs'},
-  { razaoSocial: 'RCG Distribuidora LTDA', nomeFantasia: 'RCG Distribuidora', cnpj: '22333444000172', alias: 'rcg' },
-  { razaoSocial: 'CBA Distribuidora LTDA', nomeFantasia: 'CBA Distribuidora', cnpj: '33444555000163', alias: 'cba' },
+  {
+    razaoSocial: 'BJSoftware LTDA',
+    nomeFantasia: 'BJSoftware',
+    cnpj: '11222333000181',
+    alias: 'bjs',
+  },
+  {
+    razaoSocial: 'RCG Distribuidora LTDA',
+    nomeFantasia: 'RCG Distribuidora',
+    cnpj: '22333444000172',
+    alias: 'rcg',
+  },
+  {
+    razaoSocial: 'CBA Distribuidora LTDA',
+    nomeFantasia: 'CBA Distribuidora',
+    cnpj: '33444555000163',
+    alias: 'cba',
+  },
 ];
 
 const ACOES: Acao[] = [
@@ -62,6 +77,7 @@ const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
   'titulos-receber': ['visualizar'],
   'notas-saida': ['visualizar'],
   produtos: ['visualizar'],
+  'tabelas-preco': ['visualizar'],
   objetivos: ['visualizar'],
   'dashboard-comercial': ['visualizar'],
 };
@@ -74,8 +90,13 @@ async function limparDados() {
   await prisma.notaSaida.deleteMany();
   await prisma.tituloReceber.deleteMany();
   await prisma.estoque.deleteMany();
+  await prisma.tabelaPrecoItem.deleteMany();
+  await prisma.tabelaPreco.deleteMany();
+  await prisma.objetivoVendedorMes.deleteMany();
   await prisma.cliente.deleteMany();
-  await prisma.vendedor.updateMany({ data: { supervisorId: null, gerenteId: null } });
+  await prisma.vendedor.updateMany({
+    data: { supervisorId: null, gerenteId: null },
+  });
   await prisma.vendedor.deleteMany();
   await prisma.produto.deleteMany();
   // Auxiliares por empresa (categoria tem auto-referência categoriaPaiId).
@@ -103,61 +124,261 @@ async function limparDados() {
 async function bootstrapMenu() {
   const moduloAdministracao = await prisma.modulo.upsert({
     where: { id: 'seed-modulo-administracao' },
-    create: { id: 'seed-modulo-administracao', nome: 'Administração', icone: 'settings', ordem: 1 },
+    create: {
+      id: 'seed-modulo-administracao',
+      nome: 'Administração',
+      icone: 'settings',
+      ordem: 1,
+    },
     update: { nome: 'Administração', icone: 'settings', ordem: 1 },
   });
   const moduloComercial = await prisma.modulo.upsert({
     where: { id: 'seed-modulo-comercial' },
-    create: { id: 'seed-modulo-comercial', nome: 'Comercial', icone: 'briefcase', ordem: 2 },
+    create: {
+      id: 'seed-modulo-comercial',
+      nome: 'Comercial',
+      icone: 'briefcase',
+      ordem: 2,
+    },
     update: { nome: 'Comercial', icone: 'briefcase', ordem: 2 },
   });
   const moduloGerencial = await prisma.modulo.upsert({
     where: { id: 'seed-modulo-gerencial' },
-    create: { id: 'seed-modulo-gerencial', nome: 'Gerencial', icone: 'users-round', ordem: 3 },
+    create: {
+      id: 'seed-modulo-gerencial',
+      nome: 'Gerencial',
+      icone: 'users-round',
+      ordem: 3,
+    },
     update: { nome: 'Gerencial', icone: 'users-round', ordem: 3 },
   });
   const moduloCadastros = await prisma.modulo.upsert({
     where: { id: 'seed-modulo-cadastros' },
-    create: { id: 'seed-modulo-cadastros', nome: 'Cadastros', icone: 'database', ordem: 4 },
+    create: {
+      id: 'seed-modulo-cadastros',
+      nome: 'Cadastros',
+      icone: 'database',
+      ordem: 4,
+    },
     update: { nome: 'Cadastros', icone: 'database', ordem: 4 },
   });
 
   const menuDefs = [
-    { id: 'seed-menu-empresas', nome: 'Empresas', rota: '/admin/empresas', icone: 'building', codigo: 'empresas', moduloId: moduloAdministracao.id },
-    { id: 'seed-menu-usuarios', nome: 'Usuários', rota: '/admin/usuarios', icone: 'users', codigo: 'usuarios', moduloId: moduloAdministracao.id },
-    { id: 'seed-menu-perfis', nome: 'Perfis', rota: '/admin/perfis', icone: 'shield', codigo: 'perfis', moduloId: moduloAdministracao.id },
-    { id: 'seed-menu-politica-senha', nome: 'Política de Senha', rota: '/admin/politica-senha', icone: 'lock', codigo: 'politica-senha', moduloId: moduloAdministracao.id },
-    { id: 'seed-menu-estrutura', nome: 'Estrutura de Menu', rota: '/admin/estrutura', icone: 'layout-grid', codigo: 'menus', moduloId: moduloAdministracao.id },
-    { id: 'seed-menu-dashboard-comercial', nome: 'Dashboard', rota: '/comercial/dashboard', icone: 'gauge', codigo: 'dashboard-comercial', moduloId: moduloComercial.id },
-    { id: 'seed-menu-produtos', nome: 'Produtos', rota: '/comercial/produtos', icone: 'package', codigo: 'produtos', moduloId: moduloComercial.id },
-    { id: 'seed-menu-clientes', nome: 'Clientes', rota: '/comercial/clientes', icone: 'users', codigo: 'clientes', moduloId: moduloComercial.id },
-    { id: 'seed-menu-posicao-cliente', nome: 'Posição de Cliente', rota: '/comercial/posicao-cliente', icone: 'user-search', codigo: 'posicao-cliente', moduloId: moduloComercial.id },
-    { id: 'seed-menu-estoque', nome: 'Estoque', rota: '/comercial/estoque', icone: 'boxes', codigo: 'estoque', moduloId: moduloComercial.id },
+    {
+      id: 'seed-menu-empresas',
+      nome: 'Empresas',
+      rota: '/admin/empresas',
+      icone: 'building',
+      codigo: 'empresas',
+      moduloId: moduloAdministracao.id,
+    },
+    {
+      id: 'seed-menu-usuarios',
+      nome: 'Usuários',
+      rota: '/admin/usuarios',
+      icone: 'users',
+      codigo: 'usuarios',
+      moduloId: moduloAdministracao.id,
+    },
+    {
+      id: 'seed-menu-perfis',
+      nome: 'Perfis',
+      rota: '/admin/perfis',
+      icone: 'shield',
+      codigo: 'perfis',
+      moduloId: moduloAdministracao.id,
+    },
+    {
+      id: 'seed-menu-politica-senha',
+      nome: 'Política de Senha',
+      rota: '/admin/politica-senha',
+      icone: 'lock',
+      codigo: 'politica-senha',
+      moduloId: moduloAdministracao.id,
+    },
+    {
+      id: 'seed-menu-estrutura',
+      nome: 'Estrutura de Menu',
+      rota: '/admin/estrutura',
+      icone: 'layout-grid',
+      codigo: 'menus',
+      moduloId: moduloAdministracao.id,
+    },
+    {
+      id: 'seed-menu-dashboard-comercial',
+      nome: 'Dashboard',
+      rota: '/comercial/dashboard',
+      icone: 'gauge',
+      codigo: 'dashboard-comercial',
+      moduloId: moduloComercial.id,
+    },
+    {
+      id: 'seed-menu-produtos',
+      nome: 'Produtos',
+      rota: '/comercial/produtos',
+      icone: 'package',
+      codigo: 'produtos',
+      moduloId: moduloComercial.id,
+    },
+    {
+      id: 'seed-menu-clientes',
+      nome: 'Clientes',
+      rota: '/comercial/clientes',
+      icone: 'users',
+      codigo: 'clientes',
+      moduloId: moduloComercial.id,
+    },
+    {
+      id: 'seed-menu-posicao-cliente',
+      nome: 'Posição de Cliente',
+      rota: '/comercial/posicao-cliente',
+      icone: 'user-search',
+      codigo: 'posicao-cliente',
+      moduloId: moduloComercial.id,
+    },
+    {
+      id: 'seed-menu-estoque',
+      nome: 'Estoque',
+      rota: '/comercial/estoque',
+      icone: 'boxes',
+      codigo: 'estoque',
+      moduloId: moduloComercial.id,
+    },
     // Notas de Saída é um cadastro mestre-detalhe: os itens vêm embutidos no
     // detalhe da nota (GET /notas-saida/:id), sem menu/rotina própria.
-    { id: 'seed-menu-notas-saida', nome: 'Notas de Saída', rota: '/comercial/notas-saida', icone: 'file-text', codigo: 'notas-saida', moduloId: moduloComercial.id },
-    { id: 'seed-menu-titulos-receber', nome: 'Títulos a Receber', rota: '/comercial/titulos-receber', icone: 'receipt', codigo: 'titulos-receber', moduloId: moduloComercial.id },
-    { id: 'seed-menu-vendedores', nome: 'Vendedores', rota: '/gerencial/vendedores', icone: 'user-round', codigo: 'vendedores', moduloId: moduloGerencial.id },
-    { id: 'seed-menu-objetivos', nome: 'Objetivos', rota: '/gerencial/objetivos', icone: 'target', codigo: 'objetivos', moduloId: moduloGerencial.id },
-    { id: 'seed-menu-categorias', nome: 'Categorias', rota: '/cadastros/categorias', icone: 'tags', codigo: 'categorias', moduloId: moduloCadastros.id },
-    { id: 'seed-menu-condicoes-pagamento', nome: 'Condições de Pagamento', rota: '/cadastros/condicoes-pagamento', icone: 'credit-card', codigo: 'condicoes-pagamento', moduloId: moduloCadastros.id },
-    { id: 'seed-menu-armazens', nome: 'Armazéns', rota: '/cadastros/armazens', icone: 'warehouse', codigo: 'armazens', moduloId: moduloCadastros.id },
-    { id: 'seed-menu-estados', nome: 'Estados', rota: '/cadastros/estados', icone: 'map', codigo: 'estados', moduloId: moduloCadastros.id },
-    { id: 'seed-menu-municipios', nome: 'Municípios', rota: '/cadastros/municipios', icone: 'map-pin', codigo: 'municipios', moduloId: moduloCadastros.id },
-    { id: 'seed-menu-ceps', nome: 'CEPs', rota: '/cadastros/ceps', icone: 'map-pinned', codigo: 'ceps', moduloId: moduloCadastros.id },
-    { id: 'seed-menu-paises', nome: 'Países', rota: '/cadastros/paises', icone: 'globe', codigo: 'paises', moduloId: moduloCadastros.id },
-    { id: 'seed-menu-cnaes', nome: 'CNAEs', rota: '/cadastros/cnaes', icone: 'file-badge', codigo: 'cnaes', moduloId: moduloCadastros.id },
+    {
+      id: 'seed-menu-notas-saida',
+      nome: 'Notas de Saída',
+      rota: '/comercial/notas-saida',
+      icone: 'file-text',
+      codigo: 'notas-saida',
+      moduloId: moduloComercial.id,
+    },
+    {
+      id: 'seed-menu-titulos-receber',
+      nome: 'Títulos a Receber',
+      rota: '/comercial/titulos-receber',
+      icone: 'receipt',
+      codigo: 'titulos-receber',
+      moduloId: moduloComercial.id,
+    },
+    {
+      id: 'seed-menu-vendedores',
+      nome: 'Vendedores',
+      rota: '/gerencial/vendedores',
+      icone: 'user-round',
+      codigo: 'vendedores',
+      moduloId: moduloGerencial.id,
+    },
+    {
+      id: 'seed-menu-objetivos',
+      nome: 'Objetivos',
+      rota: '/gerencial/objetivos',
+      icone: 'target',
+      codigo: 'objetivos',
+      moduloId: moduloGerencial.id,
+    },
+    {
+      id: 'seed-menu-categorias',
+      nome: 'Categorias',
+      rota: '/cadastros/categorias',
+      icone: 'tags',
+      codigo: 'categorias',
+      moduloId: moduloCadastros.id,
+    },
+    {
+      id: 'seed-menu-condicoes-pagamento',
+      nome: 'Condições de Pagamento',
+      rota: '/cadastros/condicoes-pagamento',
+      icone: 'credit-card',
+      codigo: 'condicoes-pagamento',
+      moduloId: moduloCadastros.id,
+    },
+    {
+      id: 'seed-menu-armazens',
+      nome: 'Armazéns',
+      rota: '/cadastros/armazens',
+      icone: 'warehouse',
+      codigo: 'armazens',
+      moduloId: moduloCadastros.id,
+    },
+    // Itens da tabela de preço vêm embutidos no detalhe (GET /tabelas-preco/:id/itens), sem menu/rotina própria — mesmo racional de Notas de Saída.
+    {
+      id: 'seed-menu-tabelas-preco',
+      nome: 'Tabelas de Preço',
+      rota: '/cadastros/tabelas-preco',
+      icone: 'tag',
+      codigo: 'tabelas-preco',
+      moduloId: moduloCadastros.id,
+    },
+    {
+      id: 'seed-menu-estados',
+      nome: 'Estados',
+      rota: '/cadastros/estados',
+      icone: 'map',
+      codigo: 'estados',
+      moduloId: moduloCadastros.id,
+    },
+    {
+      id: 'seed-menu-municipios',
+      nome: 'Municípios',
+      rota: '/cadastros/municipios',
+      icone: 'map-pin',
+      codigo: 'municipios',
+      moduloId: moduloCadastros.id,
+    },
+    {
+      id: 'seed-menu-ceps',
+      nome: 'CEPs',
+      rota: '/cadastros/ceps',
+      icone: 'map-pinned',
+      codigo: 'ceps',
+      moduloId: moduloCadastros.id,
+    },
+    {
+      id: 'seed-menu-paises',
+      nome: 'Países',
+      rota: '/cadastros/paises',
+      icone: 'globe',
+      codigo: 'paises',
+      moduloId: moduloCadastros.id,
+    },
+    {
+      id: 'seed-menu-cnaes',
+      nome: 'CNAEs',
+      rota: '/cadastros/cnaes',
+      icone: 'file-badge',
+      codigo: 'cnaes',
+      moduloId: moduloCadastros.id,
+    },
   ];
 
   for (const [i, m] of menuDefs.entries()) {
     const menu = await prisma.menu.upsert({
       where: { id: m.id },
-      create: { id: m.id, moduloId: m.moduloId, nome: m.nome, rota: m.rota, icone: m.icone, ordem: i + 1 },
-      update: { moduloId: m.moduloId, nome: m.nome, rota: m.rota, icone: m.icone },
+      create: {
+        id: m.id,
+        moduloId: m.moduloId,
+        nome: m.nome,
+        rota: m.rota,
+        icone: m.icone,
+        ordem: i + 1,
+      },
+      update: {
+        moduloId: m.moduloId,
+        nome: m.nome,
+        rota: m.rota,
+        icone: m.icone,
+      },
     });
     await prisma.rotina.upsert({
       where: { codigo: m.codigo },
-      create: { id: `seed-rotina-${m.codigo}`, menuId: menu.id, nome: m.nome, codigo: m.codigo },
+      create: {
+        id: `seed-rotina-${m.codigo}`,
+        menuId: menu.id,
+        nome: m.nome,
+        codigo: m.codigo,
+      },
       update: {},
     });
   }
@@ -203,7 +424,12 @@ async function bootstrapPerfis(rotinas: { id: string; codigo: string }[]) {
   });
   await prisma.perfilPermissao.createMany({
     data: rotinas.flatMap((rotina) =>
-      ACOES.map((acao) => ({ perfilId: perfilAdmin.id, rotinaId: rotina.id, acao, permitido: true })),
+      ACOES.map((acao) => ({
+        perfilId: perfilAdmin.id,
+        rotinaId: rotina.id,
+        acao,
+        permitido: true,
+      })),
     ),
     skipDuplicates: true,
   });
@@ -268,7 +494,12 @@ async function main() {
     });
 
     await prisma.usuarioEmpresa.create({
-      data: { usuarioId: admin.id, empresaId: empresa.id, perfilId: perfilAdmin.id, ativo: true },
+      data: {
+        usuarioId: admin.id,
+        empresaId: empresa.id,
+        perfilId: perfilAdmin.id,
+        ativo: true,
+      },
     });
 
     console.log(`— ${cfg.nomeFantasia}  (alias: ${cfg.alias})`);
