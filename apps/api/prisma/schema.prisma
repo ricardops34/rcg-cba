@@ -12,13 +12,13 @@ datasource db {
 // ------------------------------------------------------------------
 
 model Empresa {
-  id           String   @id @default(uuid())
+  id           String  @id @default(uuid())
   razaoSocial  String
   nomeFantasia String
-  cnpj         String   @unique
-  alias        String?  @unique
+  cnpj         String  @unique
+  alias        String? @unique
   logoUrl      String?
-  ativo        Boolean  @default(true)
+  ativo        Boolean @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -27,21 +27,25 @@ model Empresa {
   updatedBy String?
   deletedBy String?
 
-  usuarioEmpresas    UsuarioEmpresa[]
-  produtos           Produto[]
-  vendedores         Vendedor[]
-  clientes           Cliente[]
-  categorias         Categoria[]
-  condicoesPagamento CondicaoPagamento[]
-  armazens           Armazem[]
-  estoques           Estoque[]
-  tabelasPreco       TabelaPreco[]
-  tabelasPrecoItens  TabelaPrecoItem[]
-  notasSaida         NotaSaida[]
-  notasSaidaItens    NotaSaidaItem[]
-  titulosReceber     TituloReceber[]
+  usuarioEmpresas            UsuarioEmpresa[]
+  produtos                   Produto[]
+  vendedores                 Vendedor[]
+  clientes                   Cliente[]
+  categorias                 Categoria[]
+  condicoesPagamento         CondicaoPagamento[]
+  armazens                   Armazem[]
+  estoques                   Estoque[]
+  tabelasPreco               TabelaPreco[]
+  tabelasPrecoItens          TabelaPrecoItem[]
+  notasSaida                 NotaSaida[]
+  notasSaidaItens            NotaSaidaItem[]
+  titulosReceber             TituloReceber[]
+  oportunidades              Oportunidade[]
+  atividades                 Atividade[]
   objetivosVendedorMes       ObjetivoVendedorMes[]
   objetivosVendedorCategoria ObjetivoVendedorCategoria[]
+  orcamentos                 Orcamento[]
+  orcamentoItens             OrcamentoItem[]
 
   @@map("empresas")
 }
@@ -141,11 +145,11 @@ model Perfil {
 }
 
 model Modulo {
-  id     String  @id @default(uuid())
-  nome   String
-  icone  String?
-  ordem  Int     @default(0)
-  ativo  Boolean @default(true)
+  id    String  @id @default(uuid())
+  nome  String
+  icone String?
+  ordem Int     @default(0)
+  ativo Boolean @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -224,8 +228,8 @@ model PerfilPermissao {
   acao      Acao
   permitido Boolean @default(false)
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   createdBy String?
   updatedBy String?
 
@@ -294,6 +298,7 @@ model Produto {
   estoques          Estoque[]
   tabelasPrecoItens TabelaPrecoItem[]
   notasSaidaItens   NotaSaidaItem[]
+  orcamentoItens    OrcamentoItem[]
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, descricao])
@@ -336,15 +341,18 @@ model Vendedor {
   empresa Empresa  @relation(fields: [empresaId], references: [id])
   usuario Usuario? @relation(fields: [usuarioId], references: [id])
 
-  supervisorVendedor Vendedor?  @relation("VendedorSupervisor", fields: [supervisorId], references: [id])
-  supervisionados    Vendedor[] @relation("VendedorSupervisor")
-  gerenteVendedor    Vendedor?  @relation("VendedorGerente", fields: [gerenteId], references: [id])
-  gerenciados        Vendedor[] @relation("VendedorGerente")
-  clientes           Cliente[]
-  notasSaida         NotaSaida[]
-  notasSaidaItens    NotaSaidaItem[]
-  titulosReceber     TituloReceber[]
+  supervisorVendedor   Vendedor?             @relation("VendedorSupervisor", fields: [supervisorId], references: [id])
+  supervisionados      Vendedor[]            @relation("VendedorSupervisor")
+  gerenteVendedor      Vendedor?             @relation("VendedorGerente", fields: [gerenteId], references: [id])
+  gerenciados          Vendedor[]            @relation("VendedorGerente")
+  clientes             Cliente[]
+  notasSaida           NotaSaida[]
+  notasSaidaItens      NotaSaidaItem[]
+  titulosReceber       TituloReceber[]
+  oportunidades        Oportunidade[]
+  atividades           Atividade[]
   objetivosVendedorMes ObjetivoVendedorMes[]
+  orcamentos           Orcamento[]
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, nome])
@@ -395,7 +403,7 @@ model Cliente {
   latitude    Float?
   longitude   Float?
 
-  ativo            Boolean  @default(true)
+  ativo            Boolean   @default(true)
   carteira         Boolean?
   site             String?
   limiteCredito    Float?
@@ -427,6 +435,9 @@ model Cliente {
   notasSaida      NotaSaida[]
   notasSaidaItens NotaSaidaItem[]
   titulosReceber  TituloReceber[]
+  oportunidades   Oportunidade[]
+  atividades      Atividade[]
+  orcamentos      Orcamento[]
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, razaoSocial])
@@ -583,8 +594,8 @@ model Categoria {
   categoriaPai  Categoria?  @relation("CategoriaSubcategoria", fields: [categoriaPaiId], references: [id])
   subcategorias Categoria[] @relation("CategoriaSubcategoria")
 
-  produtos    Produto[] @relation("ProdutoCategoria")
-  produtosSub Produto[] @relation("ProdutoSubCategoria")
+  produtos                   Produto[]                   @relation("ProdutoCategoria")
+  produtosSub                Produto[]                   @relation("ProdutoSubCategoria")
   objetivosVendedorCategoria ObjetivoVendedorCategoria[]
 
   @@unique([empresaId, codigoErp])
@@ -609,6 +620,7 @@ model CondicaoPagamento {
 
   empresa    Empresa     @relation(fields: [empresaId], references: [id])
   notasSaida NotaSaida[]
+  orcamentos Orcamento[]
 
   @@unique([empresaId, codigoErp])
   @@map("condicoes_pagamento")
@@ -734,7 +746,7 @@ model Estoque {
 }
 
 model NotaSaida {
-  id                  String @id @default(uuid())
+  id                  String  @id @default(uuid())
   empresaId           String
   codigoLegado        Int?
   clienteId           String?
@@ -761,8 +773,8 @@ model NotaSaida {
   chaveNfe String?
   dtNfe    DateTime?
   mensagem String?
-  comodato Boolean @default(false)
-  ativo    Boolean @default(true)
+  comodato Boolean   @default(false)
+  ativo    Boolean   @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -789,7 +801,7 @@ model NotaSaida {
 // (como no legado) — viabiliza a tela própria de itens com RLS e escopo sem
 // join na nota.
 model NotaSaidaItem {
-  id           String @id @default(uuid())
+  id           String  @id @default(uuid())
   empresaId    String
   notaSaidaId  String
   codigoLegado Int?
@@ -838,7 +850,7 @@ model NotaSaidaItem {
 }
 
 model TituloReceber {
-  id           String @id @default(uuid())
+  id           String  @id @default(uuid())
   empresaId    String
   codigoLegado Int?
   clienteId    String?
@@ -880,6 +892,172 @@ model TituloReceber {
 }
 
 // ------------------------------------------------------------------
+// CRM (funil de vendas + atividades comerciais)
+// ------------------------------------------------------------------
+// Cadastro novo (não vem do legado), editável, com o mesmo escopo
+// hierárquico de vendedor das demais telas comerciais. Oportunidade e
+// Atividade são recursos independentes (não mestre-detalhe entre si) — cada
+// um referencia Cliente/Vendedor diretamente, e Atividade tem um vínculo
+// opcional a uma Oportunidade.
+
+enum EstagioOportunidade {
+  prospeccao
+  qualificacao
+  proposta
+  negociacao
+  ganha
+  perdida
+}
+
+enum TipoAtividade {
+  ligacao
+  reuniao
+  email
+  visita
+  tarefa
+}
+
+model Oportunidade {
+  id             String              @id @default(uuid())
+  empresaId      String
+  clienteId      String
+  vendedorId     String
+  titulo         String
+  estagio        EstagioOportunidade @default(prospeccao)
+  valorPrevisto  Float?
+  dataPrevisao   DateTime?
+  dataFechamento DateTime?
+  motivoPerda    String?
+  observacao     String?
+  ativo          Boolean             @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa    Empresa     @relation(fields: [empresaId], references: [id])
+  cliente    Cliente     @relation(fields: [clienteId], references: [id])
+  vendedor   Vendedor    @relation(fields: [vendedorId], references: [id])
+  atividades Atividade[]
+  orcamentos Orcamento[]
+
+  @@index([empresaId, vendedorId])
+  @@index([empresaId, clienteId])
+  @@index([empresaId, estagio])
+  @@map("oportunidades")
+}
+
+model Atividade {
+  id             String        @id @default(uuid())
+  empresaId      String
+  clienteId      String?
+  oportunidadeId String?
+  vendedorId     String
+  tipo           TipoAtividade @default(tarefa)
+  titulo         String
+  descricao      String?
+  dataVencimento DateTime?
+  concluida      Boolean       @default(false)
+  dataConclusao  DateTime?
+  ativo          Boolean       @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa      Empresa       @relation(fields: [empresaId], references: [id])
+  cliente      Cliente?      @relation(fields: [clienteId], references: [id])
+  oportunidade Oportunidade? @relation(fields: [oportunidadeId], references: [id])
+  vendedor     Vendedor      @relation(fields: [vendedorId], references: [id])
+
+  @@index([empresaId, vendedorId])
+  @@index([empresaId, clienteId])
+  @@index([empresaId, oportunidadeId])
+  @@index([empresaId, dataVencimento])
+  @@map("atividades")
+}
+
+// Orçamento/Proposta: mestre-detalhe editável (mesmo padrão de mestre-detalhe
+// de ObjetivoVendedorMes — os itens são substituídos por inteiro a cada
+// update, sem upsert por linha). vlrTabela referencia o preço vigente na
+// TabelaPreco do cliente no momento em que o item foi adicionado (mesma
+// convenção de NotaSaidaItem.vlrTabela); vlrUnitario é o preço praticado,
+// que o vendedor pode ajustar manualmente. Não gera Nota de Saída — é só
+// registro comercial nesta primeira versão.
+enum StatusOrcamento {
+  rascunho
+  enviado
+  aprovado
+  recusado
+  expirado
+}
+
+model Orcamento {
+  id                  String          @id @default(uuid())
+  empresaId           String
+  clienteId           String
+  vendedorId          String
+  oportunidadeId      String?
+  condicaoPagamentoId String?
+  titulo              String
+  status              StatusOrcamento @default(rascunho)
+  dataValidade        DateTime?
+  observacao          String?
+  vlrTotal            Float           @default(0)
+  ativo               Boolean         @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa           Empresa            @relation(fields: [empresaId], references: [id])
+  cliente           Cliente            @relation(fields: [clienteId], references: [id])
+  vendedor          Vendedor           @relation(fields: [vendedorId], references: [id])
+  oportunidade      Oportunidade?      @relation(fields: [oportunidadeId], references: [id])
+  condicaoPagamento CondicaoPagamento? @relation(fields: [condicaoPagamentoId], references: [id])
+  itens             OrcamentoItem[]
+
+  @@index([empresaId, vendedorId])
+  @@index([empresaId, clienteId])
+  @@index([empresaId, status])
+  @@map("orcamentos")
+}
+
+model OrcamentoItem {
+  id          String @id @default(uuid())
+  empresaId   String
+  orcamentoId String
+  produtoId   String
+
+  quantidade   Float  @default(1)
+  vlrTabela    Float?
+  vlrUnitario  Float  @default(0)
+  percDesconto Float?
+  vlrDesconto  Float  @default(0)
+  vlrTotal     Float  @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa   Empresa   @relation(fields: [empresaId], references: [id])
+  orcamento Orcamento @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
+  produto   Produto   @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+
+  @@index([empresaId, produtoId])
+  @@index([orcamentoId])
+  @@map("orcamento_itens")
+}
+
+// ------------------------------------------------------------------
 // Objetivos (metas comerciais)
 // ------------------------------------------------------------------
 // Mestre-detalhe (mês/ano/vendedor + linhas por categoria), espelhando as
@@ -888,10 +1066,10 @@ model TituloReceber {
 // read-only como NotaSaida/Item), com o mesmo escopo hierárquico de
 // vendedor das demais telas comerciais.
 model ObjetivoVendedorMes {
-  id            String  @id @default(uuid())
-  empresaId     String
-  vendedorId    String
-  codigoLegado  Int?
+  id           String @id @default(uuid())
+  empresaId    String
+  vendedorId   String
+  codigoLegado Int?
 
   mes           Int
   ano           Int

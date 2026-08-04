@@ -22,6 +22,8 @@ import { NotasSaidaModule } from './modules/notas-saida/notas-saida.module';
 import { TitulosReceberModule } from './modules/titulos-receber/titulos-receber.module';
 import { PoliticaSenhaModule } from './modules/politica-senha/politica-senha.module';
 import { ObjetivosModule } from './modules/objetivos/objetivos.module';
+import { OportunidadesModule } from './modules/oportunidades/oportunidades.module';
+import { AtividadesModule } from './modules/atividades/atividades.module';
 
 @Module({
   imports: [
@@ -50,6 +52,8 @@ import { ObjetivosModule } from './modules/objetivos/objetivos.module';
     TitulosReceberModule,
     PoliticaSenhaModule,
     ObjetivosModule,
+    OportunidadesModule,
+    AtividadesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

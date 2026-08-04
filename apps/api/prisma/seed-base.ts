@@ -80,7 +80,27 @@ const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
   'tabelas-preco': ['visualizar'],
   objetivos: ['visualizar'],
   'dashboard-comercial': ['visualizar'],
+  // CRM: o vendedor administra o próprio funil/agenda, mas não exclui
+  // registros (mesmo critério de clientes — só Admin/Diretor excluem).
+  oportunidades: ['visualizar', 'cadastrar', 'editar'],
+  atividades: ['visualizar', 'cadastrar', 'editar'],
+  // Agenda é só uma visão em calendário das próprias atividades — não tem
+  // rotas/CRUD dela mesma, então só precisa de 'visualizar' (o cadastro/edição
+  // passa pela permissão de 'atividades' de qualquer forma).
+  agenda: ['visualizar'],
 };
+
+// Rotinas de administração do sistema — o perfil Diretor tem acesso irrestrito
+// aos dados comerciais, mas não a estas (ver bootstrapPerfilDiretor).
+const ROTINAS_ADMIN_ONLY = new Set([
+  'empresas',
+  'usuarios',
+  'perfis',
+  'politica-senha',
+  'menus',
+  'modulos',
+  'rotinas',
+]);
 
 async function limparDados() {
   // Ordem respeita as FKs. usuarioEmpresa e vendedor têm auto-referência
@@ -93,6 +113,8 @@ async function limparDados() {
   await prisma.tabelaPrecoItem.deleteMany();
   await prisma.tabelaPreco.deleteMany();
   await prisma.objetivoVendedorMes.deleteMany();
+  await prisma.atividade.deleteMany();
+  await prisma.oportunidade.deleteMany();
   await prisma.cliente.deleteMany();
   await prisma.vendedor.updateMany({
     data: { supervisorId: null, gerenteId: null },
@@ -142,15 +164,25 @@ async function bootstrapMenu() {
     },
     update: { nome: 'Comercial', icone: 'briefcase', ordem: 2 },
   });
+  const moduloCrm = await prisma.modulo.upsert({
+    where: { id: 'seed-modulo-crm' },
+    create: {
+      id: 'seed-modulo-crm',
+      nome: 'CRM',
+      icone: 'handshake',
+      ordem: 3,
+    },
+    update: { nome: 'CRM', icone: 'handshake', ordem: 3 },
+  });
   const moduloGerencial = await prisma.modulo.upsert({
     where: { id: 'seed-modulo-gerencial' },
     create: {
       id: 'seed-modulo-gerencial',
       nome: 'Gerencial',
       icone: 'users-round',
-      ordem: 3,
+      ordem: 4,
     },
-    update: { nome: 'Gerencial', icone: 'users-round', ordem: 3 },
+    update: { nome: 'Gerencial', icone: 'users-round', ordem: 4 },
   });
   const moduloCadastros = await prisma.modulo.upsert({
     where: { id: 'seed-modulo-cadastros' },
@@ -158,9 +190,9 @@ async function bootstrapMenu() {
       id: 'seed-modulo-cadastros',
       nome: 'Cadastros',
       icone: 'database',
-      ordem: 4,
+      ordem: 5,
     },
-    update: { nome: 'Cadastros', icone: 'database', ordem: 4 },
+    update: { nome: 'Cadastros', icone: 'database', ordem: 5 },
   });
 
   const menuDefs = [
@@ -261,6 +293,30 @@ async function bootstrapMenu() {
       icone: 'receipt',
       codigo: 'titulos-receber',
       moduloId: moduloComercial.id,
+    },
+    {
+      id: 'seed-menu-oportunidades',
+      nome: 'Oportunidades',
+      rota: '/crm/oportunidades',
+      icone: 'trending-up',
+      codigo: 'oportunidades',
+      moduloId: moduloCrm.id,
+    },
+    {
+      id: 'seed-menu-atividades',
+      nome: 'Atividades',
+      rota: '/crm/atividades',
+      icone: 'list-checks',
+      codigo: 'atividades',
+      moduloId: moduloCrm.id,
+    },
+    {
+      id: 'seed-menu-agenda',
+      nome: 'Agenda',
+      rota: '/crm/agenda',
+      icone: 'calendar-days',
+      codigo: 'agenda',
+      moduloId: moduloCrm.id,
     },
     {
       id: 'seed-menu-vendedores',
@@ -460,6 +516,42 @@ async function bootstrapPerfis(rotinas: { id: string; codigo: string }[]) {
   return { perfilAdmin, perfilVendedor };
 }
 
+/**
+ * Diretor: acesso irrestrito aos dados comerciais, mas sem as telas de
+ * administração do sistema (Usuários/Perfis/Empresas/Política de Senha/
+ * Estrutura de Menu). Importante: NÃO usa sistemaBase=true — isso ligaria
+ * `isAdmin` no JWT, e `PermissionsGuard` bypassa toda checagem de permissão
+ * pra isAdmin=true (inclusive as rotinas de administração). Em vez disso,
+ * Diretor recebe permissão explícita em tudo exceto ROTINAS_ADMIN_ONLY; o
+ * acesso irrestrito aos *dados* (escopo de vendedor) vem de
+ * resolverEscopoVendedores retornar null quando o usuário não tem nenhum
+ * Vendedor vinculado — por isso um usuário Diretor nunca deve ganhar um
+ * registro de Vendedor.
+ */
+async function bootstrapPerfilDiretor(rotinas: { id: string; codigo: string }[]) {
+  const perfilDiretor = await prisma.perfil.create({
+    data: {
+      nome: 'Diretor',
+      descricao: 'Acesso irrestrito aos dados comerciais, sem administração do sistema',
+      sistemaBase: false,
+    },
+  });
+  await prisma.perfilPermissao.createMany({
+    data: rotinas
+      .filter((rotina) => !ROTINAS_ADMIN_ONLY.has(rotina.codigo))
+      .flatMap((rotina) =>
+        ACOES.map((acao) => ({
+          perfilId: perfilDiretor.id,
+          rotinaId: rotina.id,
+          acao,
+          permitido: true,
+        })),
+      ),
+    skipDuplicates: true,
+  });
+  return perfilDiretor;
+}
+
 async function main() {
   console.log('Limpando dados existentes...');
   await limparDados();
@@ -468,6 +560,7 @@ async function main() {
   const rotinas = await bootstrapMenu();
   await bootstrapPoliticaSenha();
   const { perfilAdmin } = await bootstrapPerfis(rotinas);
+  await bootstrapPerfilDiretor(rotinas);
 
   const senhaHash = await bcrypt.hash(SENHA_ADMIN, 12);
 
