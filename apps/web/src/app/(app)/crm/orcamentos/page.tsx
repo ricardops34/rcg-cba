@@ -1,0 +1,242 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
+import type { Orcamento, StatusOrcamento, Vendedor } from "@plataforma/contracts";
+import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
+import { apiFetch, ApiError } from "@/lib/api-client";
+import { CrudHeader } from "@/components/crud/crud-header";
+import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
+import { StatusDot } from "@/components/crud/status-dot";
+import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
+import { FiltersPopover } from "@/components/crud/filters-popover";
+import {
+  STATUS_ORCAMENTO,
+  STATUS_ORCAMENTO_LABEL,
+  STATUS_ORCAMENTO_VARIANT,
+} from "@/components/crud/orcamento-status";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { FieldLabel } from "@/components/ui/field";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+
+type StatusFiltro = "todos" | StatusOrcamento;
+
+const moeda = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const dataBr = (v: string | null) => {
+  if (!v) return "—";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
+};
+
+export default function OrcamentosPage() {
+  const router = useRouter();
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [sortBy, setSortBy] = useState("createdAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [status_, setStatus] = useState<StatusFilterValue>("ativos");
+  const [statusOrcamento, setStatusOrcamento] = useState<StatusFiltro>("todos");
+  const [vendedorId, setVendedorId] = useState<string | undefined>(undefined);
+
+  const vendedoresEscopoQuery = useQuery({
+    queryKey: ["clientes", "vendedores-escopo"],
+    queryFn: () =>
+      apiFetch<{ data: Vendedor[]; restrito: boolean; ehVendedorPuro: boolean }>(
+        "/clientes/vendedores-escopo",
+      ),
+  });
+  const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
+  const mostrarFiltroVendedor = !(vendedoresEscopoQuery.data?.ehVendedorPuro ?? false);
+
+  const { data, isLoading, isFetching, refetch } = useResourceList<Orcamento>("orcamentos", {
+    search,
+    page,
+    pageSize,
+    sortBy,
+    sortOrder,
+    ...(status_ !== "todos" ? { ativo: status_ === "ativos" } : {}),
+    ...(statusOrcamento !== "todos" ? { status: statusOrcamento } : {}),
+    ...(vendedorId ? { vendedorId } : {}),
+  });
+
+  const { remove } = useResourceMutations("orcamentos");
+
+  const abrirEdicao = (o: Orcamento) => router.push(`/crm/orcamentos/${o.id}`);
+
+  const onDelete = async (o: Orcamento) => {
+    if (!confirm(`Excluir o orçamento "${o.titulo}"?`)) return;
+    try {
+      await remove.mutateAsync(o.id);
+      toast.success("Orçamento excluído");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Erro ao excluir orçamento");
+    }
+  };
+
+  const filtrosAtivos = statusOrcamento !== "todos" || !!vendedorId;
+  const limparFiltros = () => {
+    setStatusOrcamento("todos");
+    setVendedorId(undefined);
+    setPage(1);
+  };
+
+  const columns: ColumnDef<Orcamento>[] = [
+    { header: "Título", sortKey: "titulo", cell: (o) => <p className="font-medium">{o.titulo}</p> },
+    {
+      header: "Cliente",
+      cell: (o) => <span className="text-xs">{o.cliente.nomeFantasia || o.cliente.razaoSocial}</span>,
+    },
+    {
+      header: "Vendedor",
+      cell: (o) => <span className="text-xs">{o.vendedor.nomeReduzido || o.vendedor.nome}</span>,
+    },
+    {
+      header: "Status",
+      sortKey: "status",
+      cell: (o) => (
+        <Badge variant={STATUS_ORCAMENTO_VARIANT[o.status]}>{STATUS_ORCAMENTO_LABEL[o.status]}</Badge>
+      ),
+    },
+    {
+      header: "Total",
+      sortKey: "vlrTotal",
+      className: "text-right",
+      cell: (o) => moeda(o.vlrTotal),
+    },
+    { header: "Válido até", sortKey: "dataValidade", cell: (o) => dataBr(o.dataValidade) },
+    { header: "Ativo", sortKey: "ativo", cell: (o) => <StatusDot active={o.ativo} /> },
+    {
+      header: "",
+      className: "w-10",
+      cell: (o) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="size-8" onClick={(ev) => ev.stopPropagation()}>
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => abrirEdicao(o)}>
+              <Pencil className="size-4" /> Editar
+            </DropdownMenuItem>
+            <DropdownMenuItem variant="destructive" onClick={() => onDelete(o)}>
+              <Trash2 className="size-4" /> Excluir
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <CrudHeader
+        search={search}
+        onSearchChange={(v) => {
+          setSearch(v);
+          setPage(1);
+        }}
+        onRefresh={() => refetch()}
+        isRefreshing={isFetching}
+        onCreate={() => router.push("/crm/orcamentos/novo")}
+        createLabel="Novo orçamento"
+      />
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <StatusQuickFilter
+          value={status_}
+          onChange={(v) => {
+            setStatus(v);
+            setPage(1);
+          }}
+        />
+
+        <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+          <div className="space-y-2">
+            <FieldLabel>Status</FieldLabel>
+            <Select
+              value={statusOrcamento}
+              onValueChange={(v) => {
+                setStatusOrcamento(v as StatusFiltro);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                {STATUS_ORCAMENTO.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>
+                    {s.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {mostrarFiltroVendedor && (
+            <div className="space-y-2">
+              <FieldLabel>Vendedor</FieldLabel>
+              <Select
+                value={vendedorId ?? "none"}
+                onValueChange={(v) => {
+                  setVendedorId(v === "none" ? undefined : v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Qualquer" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Qualquer</SelectItem>
+                  {opcoesVendedor.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.nomeReduzido || v.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </FiltersPopover>
+      </div>
+
+      <EntityTable
+        columns={columns}
+        rows={data?.data ?? []}
+        rowKey={(o) => o.id}
+        isLoading={isLoading}
+        page={data?.page ?? page}
+        pageSize={data?.pageSize ?? pageSize}
+        total={data?.total ?? 0}
+        totalPages={data?.totalPages ?? 1}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => {
+          setPageSize(n);
+          setPage(1);
+        }}
+        onRowClick={abrirEdicao}
+        emptyMessage="Nenhum orçamento cadastrado."
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSortChange={(key, order) => {
+          setSortBy(key);
+          setSortOrder(order);
+        }}
+        storageKey="orcamentos"
+      />
+    </div>
+  );
+}

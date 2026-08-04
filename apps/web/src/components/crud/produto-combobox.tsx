@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronsUpDown, Check } from "lucide-react";
-import type { Cliente } from "@plataforma/contracts";
+import type { Produto } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -16,27 +16,23 @@ import {
   CommandList,
 } from "@/components/ui/command";
 
-/**
- * Select de cliente com busca no servidor — a carteira pode ter milhares de
- * clientes, não cabe num Select comum. A busca em GET /clientes já vem
- * restrita ao escopo hierárquico do usuário logado (ClientesService.findAll).
- */
-export function ClienteCombobox({
+/** Select de produto com busca no servidor — mesmo padrão de ClienteCombobox. */
+export function ProdutoCombobox({
   value,
   onChange,
-  placeholder = "Selecionar cliente",
+  placeholder = "Selecionar produto",
 }: {
   value: string | null;
-  onChange: (id: string | null) => void;
+  onChange: (produto: Produto | null) => void;
   placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
   const { data } = useQuery({
-    queryKey: ["clientes", "combobox", search],
+    queryKey: ["produtos", "combobox", search],
     queryFn: () =>
-      apiFetch<{ data: Cliente[] }>("/clientes", {
+      apiFetch<{ data: Produto[] }>("/produtos", {
         query: { pageSize: 50, search: search || undefined, ativo: true },
       }),
     enabled: open,
@@ -46,13 +42,13 @@ export function ClienteCombobox({
   // Mantém o rótulo do valor selecionado mesmo quando ele não está na página
   // atual de resultados da busca.
   const selecionadoQuery = useQuery({
-    queryKey: ["clientes", value],
-    queryFn: () => apiFetch<Cliente>(`/clientes/${value}`),
+    queryKey: ["produtos", value],
+    queryFn: () => apiFetch<Produto>(`/produtos/${value}`),
     enabled: !!value,
   });
   const rotulo = value
     ? (selecionadoQuery.data
-        ? selecionadoQuery.data.nomeFantasia || selecionadoQuery.data.razaoSocial
+        ? `${selecionadoQuery.data.codigoErp} — ${selecionadoQuery.data.descricao}`
         : "...")
     : placeholder;
 
@@ -72,30 +68,22 @@ export function ClienteCombobox({
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
         <Command shouldFilter={false}>
-          <CommandInput placeholder="Buscar cliente..." value={search} onValueChange={setSearch} />
+          <CommandInput placeholder="Buscar produto..." value={search} onValueChange={setSearch} />
           <CommandList>
-            <CommandEmpty>Nenhum cliente encontrado.</CommandEmpty>
-            <CommandItem
-              value="__none__"
-              onSelect={() => {
-                onChange(null);
-                setOpen(false);
-              }}
-            >
-              <Check className={cn("size-4", value ? "opacity-0" : "opacity-100")} />
-              Sem cliente
-            </CommandItem>
-            {opcoes.map((c) => (
+            <CommandEmpty>Nenhum produto encontrado.</CommandEmpty>
+            {opcoes.map((p) => (
               <CommandItem
-                key={c.id}
-                value={c.id}
+                key={p.id}
+                value={p.id}
                 onSelect={() => {
-                  onChange(c.id);
+                  onChange(p);
                   setOpen(false);
                 }}
               >
-                <Check className={cn("size-4", value === c.id ? "opacity-100" : "opacity-0")} />
-                {c.nomeFantasia || c.razaoSocial}
+                <Check className={cn("size-4", value === p.id ? "opacity-100" : "opacity-0")} />
+                <span className="truncate">
+                  {p.codigoErp} — {p.descricao}
+                </span>
               </CommandItem>
             ))}
           </CommandList>

@@ -476,6 +476,7 @@ export class ClientesService {
         where: {
           empresaId,
           deletedAt: null,
+          ativo: true,
           ...(escopo ? { id: { in: escopo } } : {}),
         },
         orderBy: { nome: 'asc' },

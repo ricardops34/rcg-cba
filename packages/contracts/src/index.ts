@@ -24,5 +24,6 @@ export * from "./objetivo";
 export * from "./objetivo-dashboard";
 export * from "./oportunidade";
 export * from "./atividade";
+export * from "./orcamento";
 export * from "./auth";
 export * from "./politica-senha";

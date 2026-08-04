@@ -30,10 +30,12 @@ const CLIENTE_SELECT = {
 };
 const VENDEDOR_SELECT = { select: { id: true, nome: true, nomeReduzido: true } };
 const OPORTUNIDADE_SELECT = { select: { id: true, titulo: true } };
+const ORCAMENTO_SELECT = { select: { id: true, titulo: true } };
 const INCLUDE = {
   cliente: CLIENTE_SELECT,
   vendedor: VENDEDOR_SELECT,
   oportunidade: OPORTUNIDADE_SELECT,
+  orcamento: ORCAMENTO_SELECT,
 };
 
 @Injectable()
@@ -84,6 +86,22 @@ export class AtividadesService {
     }
   }
 
+  private async garantirOrcamentoNoEscopo(
+    tx: TenantTx,
+    empresaId: string,
+    escopo: EscopoVendedores,
+    orcamentoId: string,
+  ) {
+    const orcamento = await tx.orcamento.findFirst({
+      where: { id: orcamentoId, empresaId, deletedAt: null },
+      select: { vendedorId: true },
+    });
+    if (!orcamento) throw new NotFoundException('Orçamento não encontrado');
+    if (escopo !== null && !escopo.includes(orcamento.vendedorId)) {
+      throw new NotFoundException('Orçamento fora do seu escopo');
+    }
+  }
+
   /** Marcar concluída seta a data de conclusão (se não informada); reabrir limpa. */
   private normalizarConclusao<T extends { concluida?: boolean; dataConclusao?: Date | null }>(
     input: T,
@@ -106,6 +124,7 @@ export class AtividadesService {
         ...combinarFiltroVendedor(escopo, query.vendedorId),
         ...(query.clienteId ? { clienteId: query.clienteId } : {}),
         ...(query.oportunidadeId ? { oportunidadeId: query.oportunidadeId } : {}),
+        ...(query.orcamentoId ? { orcamentoId: query.orcamentoId } : {}),
         ...(query.tipo ? { tipo: query.tipo } : {}),
         ...(query.concluida !== undefined ? { concluida: query.concluida } : {}),
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
@@ -164,6 +183,9 @@ export class AtividadesService {
       if (input.oportunidadeId) {
         await this.garantirOportunidadeNoEscopo(tx, empresaId, escopo, input.oportunidadeId);
       }
+      if (input.orcamentoId) {
+        await this.garantirOrcamentoNoEscopo(tx, empresaId, escopo, input.orcamentoId);
+      }
 
       return tx.atividade.create({
         data: {
@@ -194,6 +216,9 @@ export class AtividadesService {
       if (input.clienteId) await this.garantirClienteNoEscopo(tx, empresaId, escopo, input.clienteId);
       if (input.oportunidadeId) {
         await this.garantirOportunidadeNoEscopo(tx, empresaId, escopo, input.oportunidadeId);
+      }
+      if (input.orcamentoId) {
+        await this.garantirOrcamentoNoEscopo(tx, empresaId, escopo, input.orcamentoId);
       }
 
       return tx.atividade.update({

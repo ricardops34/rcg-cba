@@ -84,6 +84,7 @@ const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
   // registros (mesmo critério de clientes — só Admin/Diretor excluem).
   oportunidades: ['visualizar', 'cadastrar', 'editar'],
   atividades: ['visualizar', 'cadastrar', 'editar'],
+  orcamentos: ['visualizar', 'cadastrar', 'editar'],
   // Agenda é só uma visão em calendário das próprias atividades — não tem
   // rotas/CRUD dela mesma, então só precisa de 'visualizar' (o cadastro/edição
   // passa pela permissão de 'atividades' de qualquer forma).
@@ -114,6 +115,8 @@ async function limparDados() {
   await prisma.tabelaPreco.deleteMany();
   await prisma.objetivoVendedorMes.deleteMany();
   await prisma.atividade.deleteMany();
+  await prisma.orcamentoItem.deleteMany();
+  await prisma.orcamento.deleteMany();
   await prisma.oportunidade.deleteMany();
   await prisma.cliente.deleteMany();
   await prisma.vendedor.updateMany({
@@ -316,6 +319,14 @@ async function bootstrapMenu() {
       rota: '/crm/agenda',
       icone: 'calendar-days',
       codigo: 'agenda',
+      moduloId: moduloCrm.id,
+    },
+    {
+      id: 'seed-menu-orcamentos',
+      nome: 'Orçamentos',
+      rota: '/crm/orcamentos',
+      icone: 'clipboard-list',
+      codigo: 'orcamentos',
       moduloId: moduloCrm.id,
     },
     {

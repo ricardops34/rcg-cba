@@ -7,6 +7,7 @@ export type TipoAtividade = z.infer<typeof tipoAtividadeSchema>;
 export const atividadeCreateSchema = z.object({
   clienteId: z.string().uuid().nullable().optional(),
   oportunidadeId: z.string().uuid().nullable().optional(),
+  orcamentoId: z.string().uuid().nullable().optional(),
   vendedorId: z.string().uuid("Selecione um vendedor"),
   tipo: tipoAtividadeSchema.default("tarefa"),
   titulo: z.string().trim().min(1, "Informe um título").max(150),
@@ -26,6 +27,7 @@ export const atividadeSchema = z.object({
   empresaId: z.string().uuid(),
   clienteId: z.string().uuid().nullable(),
   oportunidadeId: z.string().uuid().nullable(),
+  orcamentoId: z.string().uuid().nullable(),
   vendedorId: z.string().uuid(),
   tipo: tipoAtividadeSchema,
   titulo: z.string(),
@@ -47,6 +49,12 @@ export const atividadeSchema = z.object({
       titulo: z.string(),
     })
     .nullable(),
+  orcamento: z
+    .object({
+      id: z.string().uuid(),
+      titulo: z.string(),
+    })
+    .nullable(),
   vendedor: z.object({
     id: z.string().uuid(),
     nome: z.string(),
@@ -62,6 +70,7 @@ export const atividadeQuerySchema = paginationQuerySchema.extend({
   vendedorId: z.string().uuid().optional(),
   clienteId: z.string().uuid().optional(),
   oportunidadeId: z.string().uuid().optional(),
+  orcamentoId: z.string().uuid().optional(),
   concluida: booleanQueryParam,
   vencidas: booleanQueryParam.describe(
     "Atalho: dataVencimento no passado e concluida=false",
@@ -76,6 +85,7 @@ export const ATIVIDADE_EXAMPLE: Atividade = {
   empresaId: "7b2f2f64-9b1c-4a86-9d3e-1f4a5b6c7d8e",
   clienteId: "d4e5f6a7-8b9c-4d0e-9f1a-2b3c4d5e6f70",
   oportunidadeId: "a1b2c3d4-5e6f-4708-9a0b-1c2d3e4f5a6b",
+  orcamentoId: null,
   vendedorId: "b7c2c1de-4a45-4b8a-9f2e-6a1d6c1e9f10",
   tipo: "ligacao",
   titulo: "Ligar pra confirmar recebimento da proposta",
@@ -93,6 +103,7 @@ export const ATIVIDADE_EXAMPLE: Atividade = {
     id: "a1b2c3d4-5e6f-4708-9a0b-1c2d3e4f5a6b",
     titulo: "Reposição de estoque — linha de limpeza",
   },
+  orcamento: null,
   vendedor: {
     id: "b7c2c1de-4a45-4b8a-9f2e-6a1d6c1e9f10",
     nome: "CARLOS SILVA",
@@ -107,6 +118,7 @@ export const ATIVIDADE_EXAMPLE: Atividade = {
 export const ATIVIDADE_CREATE_EXAMPLE: AtividadeCreate = {
   clienteId: "d4e5f6a7-8b9c-4d0e-9f1a-2b3c4d5e6f70",
   oportunidadeId: "a1b2c3d4-5e6f-4708-9a0b-1c2d3e4f5a6b",
+  orcamentoId: null,
   vendedorId: "b7c2c1de-4a45-4b8a-9f2e-6a1d6c1e9f10",
   tipo: "ligacao",
   titulo: "Ligar pra confirmar recebimento da proposta",

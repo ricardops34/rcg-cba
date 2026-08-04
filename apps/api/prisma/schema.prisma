@@ -955,6 +955,7 @@ model Atividade {
   empresaId      String
   clienteId      String?
   oportunidadeId String?
+  orcamentoId    String?
   vendedorId     String
   tipo           TipoAtividade @default(tarefa)
   titulo         String
@@ -974,11 +975,13 @@ model Atividade {
   empresa      Empresa       @relation(fields: [empresaId], references: [id])
   cliente      Cliente?      @relation(fields: [clienteId], references: [id])
   oportunidade Oportunidade? @relation(fields: [oportunidadeId], references: [id])
+  orcamento    Orcamento?    @relation(fields: [orcamentoId], references: [id])
   vendedor     Vendedor      @relation(fields: [vendedorId], references: [id])
 
   @@index([empresaId, vendedorId])
   @@index([empresaId, clienteId])
   @@index([empresaId, oportunidadeId])
+  @@index([empresaId, orcamentoId])
   @@index([empresaId, dataVencimento])
   @@map("atividades")
 }
@@ -1008,6 +1011,12 @@ model Orcamento {
   titulo              String
   status              StatusOrcamento @default(rascunho)
   dataValidade        DateTime?
+  // Data de retorno/follow-up: ao ser definida (na criação ou numa edição
+  // que muda o valor), o backend gera automaticamente uma Atividade de
+  // acompanhamento (tipo ligação) vinculada a este orçamento, com
+  // dataVencimento = dataRetorno — vira um lembrete na Agenda/Atividades pro
+  // vendedor retomar contato, que pode resultar num novo orçamento.
+  dataRetorno         DateTime?
   observacao          String?
   vlrTotal            Float           @default(0)
   ativo               Boolean         @default(true)
@@ -1025,6 +1034,7 @@ model Orcamento {
   oportunidade      Oportunidade?      @relation(fields: [oportunidadeId], references: [id])
   condicaoPagamento CondicaoPagamento? @relation(fields: [condicaoPagamentoId], references: [id])
   itens             OrcamentoItem[]
+  atividades        Atividade[]
 
   @@index([empresaId, vendedorId])
   @@index([empresaId, clienteId])

@@ -3,10 +3,11 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import type { Atividade, TipoAtividade, Vendedor } from "@plataforma/contracts";
+import type { Atividade, Orcamento, TipoAtividade, Vendedor } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
 import { apiFetch } from "@/lib/api-client";
 import { TIPOS, TIPO_COR } from "@/components/crud/atividade-tipo";
+import { STATUS_ORCAMENTO_COR } from "@/components/crud/orcamento-status";
 import { QuickFilterButton, QuickFilterGroup } from "@/components/crud/quick-filter-group";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
 type TipoFiltro = "todos" | TipoAtividade;
+type AgendaItem =
+  | { kind: "atividade"; id: string; data: Atividade }
+  | { kind: "orcamento"; id: string; data: Orcamento };
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -66,7 +70,7 @@ export default function AgendaPage() {
     return Array.from({ length: total }, (_, i) => addDays(gridStart, i));
   }, [gridStart, gridEnd]);
 
-  const { data, isLoading } = useResourceList<Atividade>("atividades", {
+  const atividadesQuery = useResourceList<Atividade>("atividades", {
     dataInicio: toKey(gridStart),
     dataFim: toKey(gridEnd),
     pageSize: 100,
@@ -77,23 +81,46 @@ export default function AgendaPage() {
     ...(somentePendentes ? { concluida: false } : {}),
   });
 
+  // Orçamentos entram na Agenda pela data de criação — registro do que foi
+  // feito naquele dia, ao lado dos agendamentos/atividades.
+  const orcamentosQuery = useResourceList<Orcamento>("orcamentos", {
+    dataInicio: toKey(gridStart),
+    dataFim: toKey(gridEnd),
+    pageSize: 100,
+    sortBy: "createdAt",
+    sortOrder: "asc",
+    ...(vendedorId ? { vendedorId } : {}),
+  });
+
+  const isLoading = atividadesQuery.isLoading || orcamentosQuery.isLoading;
+
   const porDia = useMemo(() => {
-    const mapa = new Map<string, Atividade[]>();
-    for (const a of data?.data ?? []) {
-      if (!a.dataVencimento) continue;
-      const key = toKey(new Date(a.dataVencimento));
+    const mapa = new Map<string, AgendaItem[]>();
+    const add = (key: string, item: AgendaItem) => {
       const lista = mapa.get(key) ?? [];
-      lista.push(a);
+      lista.push(item);
       mapa.set(key, lista);
+    };
+    for (const a of atividadesQuery.data?.data ?? []) {
+      if (!a.dataVencimento) continue;
+      add(toKey(new Date(a.dataVencimento)), { kind: "atividade", id: a.id, data: a });
+    }
+    for (const o of orcamentosQuery.data?.data ?? []) {
+      add(toKey(new Date(o.createdAt)), { kind: "orcamento", id: o.id, data: o });
     }
     return mapa;
-  }, [data]);
+  }, [atividadesQuery.data, orcamentosQuery.data]);
 
   const hoje = new Date();
   const filtrosAtivos = tipo !== "todos" || !!vendedorId;
   const limparFiltros = () => {
     setTipo("todos");
     setVendedorId(undefined);
+  };
+
+  const onSelectItem = (item: AgendaItem) => {
+    if (item.kind === "atividade") router.push(`/crm/atividades/${item.id}`);
+    else router.push(`/crm/orcamentos/${item.id}`);
   };
 
   return (
@@ -192,10 +219,10 @@ export default function AgendaPage() {
             dia={dia}
             noMes={dia.getMonth() === mesAtual.getMonth()}
             hoje={isSameDay(dia, hoje)}
-            atividades={porDia.get(toKey(dia)) ?? []}
+            itens={porDia.get(toKey(dia)) ?? []}
             isLoading={isLoading}
             onSelectDia={() => router.push(`/crm/atividades/novo?data=${toKey(dia)}`)}
-            onSelectAtividade={(a) => router.push(`/crm/atividades/${a.id}`)}
+            onSelectItem={onSelectItem}
           />
         ))}
       </div>
@@ -207,21 +234,21 @@ function DayCell({
   dia,
   noMes,
   hoje,
-  atividades,
+  itens,
   isLoading,
   onSelectDia,
-  onSelectAtividade,
+  onSelectItem,
 }: {
   dia: Date;
   noMes: boolean;
   hoje: boolean;
-  atividades: Atividade[];
+  itens: AgendaItem[];
   isLoading: boolean;
   onSelectDia: () => void;
-  onSelectAtividade: (a: Atividade) => void;
+  onSelectItem: (item: AgendaItem) => void;
 }) {
-  const visiveis = atividades.slice(0, MAX_VISIVEL);
-  const resto = atividades.length - visiveis.length;
+  const visiveis = itens.slice(0, MAX_VISIVEL);
+  const resto = itens.length - visiveis.length;
 
   return (
     <div
@@ -245,8 +272,8 @@ function DayCell({
         <Skeleton className="h-4 w-full" />
       ) : (
         <div className="flex flex-col gap-1">
-          {visiveis.map((a) => (
-            <AtividadeChip key={a.id} atividade={a} onSelect={() => onSelectAtividade(a)} />
+          {visiveis.map((item) => (
+            <AgendaItemChip key={`${item.kind}-${item.id}`} item={item} onSelect={() => onSelectItem(item)} />
           ))}
           {resto > 0 && (
             <Popover>
@@ -263,8 +290,12 @@ function DayCell({
                 className="w-64 space-y-1 p-2"
                 onClick={(ev) => ev.stopPropagation()}
               >
-                {atividades.map((a) => (
-                  <AtividadeChip key={a.id} atividade={a} onSelect={() => onSelectAtividade(a)} />
+                {itens.map((item) => (
+                  <AgendaItemChip
+                    key={`${item.kind}-${item.id}`}
+                    item={item}
+                    onSelect={() => onSelectItem(item)}
+                  />
                 ))}
               </PopoverContent>
             </Popover>
@@ -275,8 +306,12 @@ function DayCell({
   );
 }
 
-function AtividadeChip({ atividade, onSelect }: { atividade: Atividade; onSelect: () => void }) {
-  const vencida = estaVencida(atividade);
+function AgendaItemChip({ item, onSelect }: { item: AgendaItem; onSelect: () => void }) {
+  const vencida = item.kind === "atividade" && estaVencida(item.data);
+  const concluida = item.kind === "atividade" && item.data.concluida;
+  const titulo = item.kind === "atividade" ? item.data.titulo : item.data.titulo;
+  const cor = item.kind === "atividade" ? TIPO_COR[item.data.tipo] : STATUS_ORCAMENTO_COR[item.data.status];
+
   return (
     <button
       type="button"
@@ -284,17 +319,13 @@ function AtividadeChip({ atividade, onSelect }: { atividade: Atividade; onSelect
         ev.stopPropagation();
         onSelect();
       }}
-      title={atividade.titulo}
+      title={titulo}
       className={`flex w-full items-center gap-1.5 truncate rounded px-1 py-0.5 text-left text-xs hover:bg-muted ${
-        atividade.concluida
-          ? "text-muted-foreground line-through"
-          : vencida
-            ? "text-destructive"
-            : ""
+        concluida ? "text-muted-foreground line-through" : vencida ? "text-destructive" : ""
       }`}
     >
-      <span className={`size-1.5 shrink-0 rounded-full ${TIPO_COR[atividade.tipo]}`} />
-      <span className="truncate">{atividade.titulo}</span>
+      <span className={`size-1.5 shrink-0 rounded-full ${cor}`} />
+      <span className="truncate">{titulo}</span>
     </button>
   );
 }

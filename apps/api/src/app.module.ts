@@ -24,6 +24,7 @@ import { PoliticaSenhaModule } from './modules/politica-senha/politica-senha.mod
 import { ObjetivosModule } from './modules/objetivos/objetivos.module';
 import { OportunidadesModule } from './modules/oportunidades/oportunidades.module';
 import { AtividadesModule } from './modules/atividades/atividades.module';
+import { OrcamentosModule } from './modules/orcamentos/orcamentos.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { AtividadesModule } from './modules/atividades/atividades.module';
     ObjetivosModule,
     OportunidadesModule,
     AtividadesModule,
+    OrcamentosModule,
   ],
   controllers: [AppController],
   providers: [AppService],
