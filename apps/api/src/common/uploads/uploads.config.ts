@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync } from 'node:fs';
-import { extname, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import { BadRequestException } from '@nestjs/common';
 import { diskStorage } from 'multer';
 import type { Request } from 'express';
@@ -27,9 +28,24 @@ export function logoPublicPath(filename: string) {
   return `/uploads/logos/${filename}`;
 }
 
+/** Extensões aceitas — mapeadas 1:1 a LOGO_MIME_TYPES, nunca derivadas do nome enviado pelo cliente. */
+const EXT_POR_MIME: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/webp': '.webp',
+  'image/svg+xml': '.svg',
+};
+
 /**
  * Opções do multer para o upload de logo: grava em disco, valida MIME e tamanho.
- * O nome do arquivo é derivado do id da empresa (:id na rota) + timestamp.
+ *
+ * O nome do arquivo NUNCA deriva de input do cliente (nem `:id` da rota, nem
+ * `file.originalname`/extname dele) — ambos podem conter sequências como
+ * `../` (via segmento de rota percent-encoded, ou nome de arquivo forjado) e
+ * o multer não sanitiza o valor retornado por `filename`, então uma extensão
+ * ou nome malicioso vira um path traversal na hora de gravar em disco. O
+ * nome final é sempre um UUID gerado no servidor + extensão fixa por MIME
+ * (validado por fileFilter antes deste callback rodar).
  */
 export const logoUploadOptions = {
   storage: diskStorage({
@@ -37,10 +53,9 @@ export const logoUploadOptions = {
       if (!existsSync(LOGOS_DIR)) mkdirSync(LOGOS_DIR, { recursive: true });
       cb(null, LOGOS_DIR);
     },
-    filename: (req: Request, file, cb) => {
-      const empresaId = req.params.id ?? 'empresa';
-      const ext = extname(file.originalname).toLowerCase() || '.png';
-      cb(null, `${empresaId}-${Date.now()}${ext}`);
+    filename: (_req: Request, file, cb) => {
+      const ext = EXT_POR_MIME[file.mimetype] ?? '.png';
+      cb(null, `${randomUUID()}${ext}`);
     },
   }),
   limits: { fileSize: LOGO_MAX_BYTES },

@@ -78,7 +78,8 @@ usuários).
 Com RLS: `usuario_empresas`, `produtos`, `vendedores`, `clientes`,
 `categorias`, `condicoes_pagamento`, `armazens`, `estoques`, `tabelas_preco`,
 `tabela_preco_itens`, `notas_saida`, `notas_saida_itens`, `titulos_receber`,
-`oportunidades`, `atividades`, `orcamentos`, `orcamento_itens`.
+`objetivos_vendedor_mes`, `objetivos_vendedor_categoria`, `oportunidades`,
+`atividades`, `orcamentos`, `orcamento_itens`.
 
 Sem RLS por serem referência global (sem coluna `empresaId`): `paises`,
 `estados`, `municipios`, `ceps`, `cnaes` (além das tabelas de sistema

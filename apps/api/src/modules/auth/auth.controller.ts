@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -45,6 +46,11 @@ export class AuthController {
     schema: { example: AUTH_TOKENS_EXAMPLE },
   })
   @ApiResponse({ status: 401, description: 'Credenciais inválidas ou usuário sem empresa ativa' })
+  // Throttle por IP mais rígido que o default global (200/min) — o lockout de
+  // conta (tentativasFalhas/bloqueadoAte, ver PoliticaSenhaService) já cobre
+  // força bruta contra uma única conta, mas não contra credential stuffing
+  // espalhado por muitas contas a partir do mesmo IP.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login')
   login(@Body() dto: LoginDto, @Req() req: Request) {
     return this.authService.login(dto, this.meta(req));

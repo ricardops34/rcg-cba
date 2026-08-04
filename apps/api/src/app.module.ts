@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { UPLOADS_DIR } from './common/uploads/uploads.config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -58,6 +59,6 @@ import { OrcamentosModule } from './modules/orcamentos/orcamentos.module';
     OrcamentosModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}
