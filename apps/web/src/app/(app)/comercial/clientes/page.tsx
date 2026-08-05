@@ -4,9 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { Cliente, TipoPessoa, Vendedor } from "@plataforma/contracts";
+import type { Cliente, TipoPessoa } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { apiFetch, ApiError } from "@/lib/api-client";
+import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
+import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
@@ -46,14 +48,12 @@ export default function ClientesPage() {
 
   // Opções de vendedor já restritas ao escopo do usuário logado — não usa
   // /vendedores direto (aquele endpoint não tem restrição de carteira).
-  const vendedoresEscopoQuery = useQuery({
-    queryKey: ["clientes", "vendedores-escopo"],
-    queryFn: () => apiFetch<{ data: Vendedor[]; restrito: boolean }>("/clientes/vendedores-escopo"),
-  });
+  const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
   const restrito = vendedoresEscopoQuery.data?.restrito ?? false;
   // Restrito a uma única opção = o próprio usuário; filtrar não faz sentido.
   const mostrarFiltroVendedor = !restrito || opcoesVendedor.length > 1;
+  useVendedorPadrao(vendedoresEscopoQuery.data?.meuVendedorId, setVendedorId);
 
   // UFs distintas presentes na carteira visível ao usuário — só lista o que
   // realmente existe no cadastro.
@@ -254,7 +254,7 @@ export default function ClientesPage() {
                   <SelectItem value="none">Qualquer</SelectItem>
                   {opcoesVendedor.map((v) => (
                     <SelectItem key={v.id} value={v.id}>
-                      {v.nomeReduzido || v.nome}
+                      {vendedorFiltroLabel(v)}
                     </SelectItem>
                   ))}
                 </SelectContent>

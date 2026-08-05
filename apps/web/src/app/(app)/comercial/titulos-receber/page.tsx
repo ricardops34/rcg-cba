@@ -9,7 +9,7 @@ import { apiFetch } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { FiltersPopover } from "@/components/crud/filters-popover";
-import { Badge } from "@/components/ui/badge";
+import { TituloStatusBadge } from "@/components/comercial/titulo-status-badge";
 import { FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -41,7 +41,7 @@ export default function TitulosReceberPage() {
   const [sortBy, setSortBy] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [vendedorId, setVendedorId] = useState<string | undefined>(undefined);
-  const [situacao, setSituacao] = useState<"todos" | "abertos" | "baixados">("todos");
+  const [status, setStatus] = useState<"todos" | "aberto" | "vencido" | "baixado">("todos");
 
   const escopoQuery = useQuery({
     queryKey: ["escopo", "vendedores"],
@@ -58,13 +58,13 @@ export default function TitulosReceberPage() {
     pageSize,
     ...(sortBy ? { sortBy, sortOrder } : {}),
     ...(vendedorId ? { vendedorId } : {}),
-    ...(situacao !== "todos" ? { aberto: situacao === "abertos" } : {}),
+    ...(status !== "todos" ? { status } : {}),
   });
 
-  const filtrosAtivos = !!vendedorId || situacao !== "todos";
+  const filtrosAtivos = !!vendedorId || status !== "todos";
   const limparFiltros = () => {
     setVendedorId(undefined);
-    setSituacao("todos");
+    setStatus("todos");
     setPage(1);
   };
 
@@ -96,16 +96,8 @@ export default function TitulosReceberPage() {
     { header: "Vencimento", sortKey: "vencimento", cell: (t) => dataBr(t.vencimento) },
     { header: "Valor", sortKey: "valor", cell: (t) => moeda(t.valor) },
     { header: "Saldo", sortKey: "saldo", cell: (t) => moeda(t.saldo) },
-    {
-      header: "Situação",
-      sortKey: "dtBaixa",
-      cell: (t) =>
-        t.dtBaixa ? (
-          <Badge variant="outline">Baixado {dataBr(t.dtBaixa)}</Badge>
-        ) : (
-          <Badge>Aberto</Badge>
-        ),
-    },
+    { header: "Status", cell: (t) => <TituloStatusBadge status={t.status} /> },
+    { header: "Data de baixa", sortKey: "dtBaixa", cell: (t) => dataBr(t.dtBaixa) },
   ];
 
   return (
@@ -148,11 +140,11 @@ export default function TitulosReceberPage() {
           )}
 
           <div className="space-y-2">
-            <FieldLabel>Situação</FieldLabel>
+            <FieldLabel>Status</FieldLabel>
             <Select
-              value={situacao}
+              value={status}
               onValueChange={(v) => {
-                setSituacao(v as "todos" | "abertos" | "baixados");
+                setStatus(v as "todos" | "aberto" | "vencido" | "baixado");
                 setPage(1);
               }}
             >
@@ -161,8 +153,9 @@ export default function TitulosReceberPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="abertos">Abertos</SelectItem>
-                <SelectItem value="baixados">Baixados</SelectItem>
+                <SelectItem value="aberto">Aberto</SelectItem>
+                <SelectItem value="vencido">Vencido</SelectItem>
+                <SelectItem value="baixado">Baixado</SelectItem>
               </SelectContent>
             </Select>
           </div>

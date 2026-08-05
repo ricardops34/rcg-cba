@@ -17,6 +17,8 @@ import type {
   PosicaoClienteListRow,
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { calcularStatusTituloReceber } from '../titulos-receber/titulo-receber-status';
+import { ClienteCampoConfigService } from '../cliente-campo-config/cliente-campo-config.service';
 
 // Colunas calculadas ao vivo (agregação de notas_saida) que a listagem de
 // Posição de Cliente aceita ordenar — mapeia sortBy -> expressão/alias SQL já
@@ -48,6 +50,9 @@ interface ListagemPosicaoRawRow {
   difMesEMedia: number;
   comodato: boolean;
   bloqueado: boolean;
+  temTituloVencido: boolean;
+  temTituloVencendo: boolean;
+  temTituloNaoVencido: boolean;
 }
 
 // Campos que a listagem aceita ordenar por — whitelist pra não repassar
@@ -75,7 +80,10 @@ const TABELA_PRECO_SELECT = { select: { id: true, codigoErp: true, descricao: tr
 
 @Injectable()
 export class ClientesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly campoConfig: ClienteCampoConfigService,
+  ) {}
 
   private limpar<T extends Record<string, unknown>>(input: T) {
     // Campos string vazios do formulário viram null no banco.
@@ -170,6 +178,14 @@ export class ClientesService {
   }
 
   async update(empresaId: string, user: AuthenticatedUser, id: string, input: ClienteUpdate) {
+    // Reforço server-side da config de campos editáveis (apps/api/src/modules/
+    // cliente-campo-config/) — mesmo que alguém tente forçar via API direto,
+    // não só via UI, um campo travado (editavel:false) é ignorado aqui.
+    const config = await this.campoConfig.obterConfig(empresaId);
+    const inputPermitido = Object.fromEntries(
+      Object.entries(input).filter(([campo]) => config[campo] !== false),
+    ) as ClienteUpdate;
+
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
       const cliente = await tx.cliente.findFirst({
@@ -181,10 +197,10 @@ export class ClientesService {
         },
       });
       if (!cliente) throw new NotFoundException('Cliente não encontrado');
-      this.validarVendedorNoEscopo(escopo, input.vendedorId);
+      this.validarVendedorNoEscopo(escopo, inputPermitido.vendedorId);
       return tx.cliente.update({
         where: { id },
-        data: { ...(this.limpar(input) as object), updatedBy: user.id } as never,
+        data: { ...(this.limpar(inputPermitido) as object), updatedBy: user.id } as never,
       });
     });
   }
@@ -300,17 +316,23 @@ export class ClientesService {
         .sort((a, b) => b.vlrTotal - a.vlrTotal);
 
       const hoje = new Date();
-      const titulosAbertos = titulos.filter((t) => !t.dtBaixa);
+      const titulosComStatus = titulos.map((titulo) => ({
+        ...titulo,
+        status: calcularStatusTituloReceber(titulo, hoje),
+      }));
+      const titulosAbertos = titulosComStatus.filter(
+        (t) => t.status !== 'baixado',
+      );
       const resumo = {
         totalNotas: notas.length,
         totalComprado: notas.reduce((acc, n) => acc + n.vlrBruto, 0),
         totalTitulosAberto: titulosAbertos.reduce((acc, t) => acc + t.saldo, 0),
         totalTitulosVencido: titulosAbertos
-          .filter((t) => t.vencimento && new Date(t.vencimento) < hoje)
+          .filter((t) => t.status === 'vencido')
           .reduce((acc, t) => acc + t.saldo, 0),
       };
 
-      return { cliente, resumo, notas, titulos, mix };
+      return { cliente, resumo, notas, titulos: titulosComStatus, mix };
     });
   }
 
@@ -404,7 +426,24 @@ export class ClientesService {
             WHERE cm."clienteId" = c.id AND cm."empresaId" = c."empresaId"
               AND cm."comodato" = true AND cm."deletedAt" IS NULL
           ) AS "comodato",
-          (c."dataBloqueio" IS NOT NULL AND (c."dataReativacao" IS NULL OR c."dataReativacao" < c."dataBloqueio")) AS "bloqueado"
+          (c."dataBloqueio" IS NOT NULL AND (c."dataReativacao" IS NULL OR c."dataReativacao" < c."dataBloqueio")) AS "bloqueado",
+          EXISTS (
+            SELECT 1 FROM titulos_receber tv
+            WHERE tv."clienteId" = c.id AND tv."empresaId" = c."empresaId"
+              AND tv."deletedAt" IS NULL AND tv."dtBaixa" IS NULL AND tv."vencimento" < now()
+          ) AS "temTituloVencido",
+          EXISTS (
+            SELECT 1 FROM titulos_receber tz
+            WHERE tz."clienteId" = c.id AND tz."empresaId" = c."empresaId"
+              AND tz."deletedAt" IS NULL AND tz."dtBaixa" IS NULL
+              AND tz."vencimento" >= now() AND tz."vencimento" < now() + interval '7 days'
+          ) AS "temTituloVencendo",
+          EXISTS (
+            SELECT 1 FROM titulos_receber ta
+            WHERE ta."clienteId" = c.id AND ta."empresaId" = c."empresaId"
+              AND ta."deletedAt" IS NULL AND ta."dtBaixa" IS NULL
+              AND (ta."vencimento" IS NULL OR ta."vencimento" >= now() + interval '7 days')
+          ) AS "temTituloNaoVencido"
         FROM clientes c
         LEFT JOIN (
           SELECT "clienteId", SUM("vlrBruto") AS total
@@ -446,6 +485,9 @@ export class ClientesService {
         difMesEMedia: Number(r.difMesEMedia),
         comodato: r.comodato,
         bloqueado: r.bloqueado,
+        temTituloVencido: r.temTituloVencido,
+        temTituloVencendo: r.temTituloVencendo,
+        temTituloNaoVencido: r.temTituloNaoVencido,
       }));
 
       return buildPaginatedResult(data, countRows[0]?.count ?? 0, query);
@@ -462,28 +504,65 @@ export class ClientesService {
    * filtro Vendedor por completo (filtrar pela própria carteira não faz
    * sentido). Supervisor/gerente continuam vendo o filtro, já restrito ao
    * próprio time pelo escopo acima.
+   *
+   * meuVendedorId: id do Vendedor vinculado ao usuário logado (null se não
+   * houver vínculo) — usado por telas com filtro de Vendedor (ex.: Dashboard
+   * Comercial) pra pré-selecionar a própria carteira em vez de "Todos".
    */
-  vendedoresEscopo(empresaId: string, user: AuthenticatedUser) {
+  vendedoresEscopo(
+    empresaId: string,
+    user: AuthenticatedUser,
+    apenasComCliente = false,
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const [escopo, vendedorProprio] = await Promise.all([
         resolverEscopoVendedores(tx, empresaId, user),
         tx.vendedor.findFirst({
           where: { usuarioId: user.id, empresaId, deletedAt: null },
-          select: { supervisor: true, gerente: true },
+          select: { id: true, supervisor: true, gerente: true },
         }),
       ]);
-      const data = await tx.vendedor.findMany({
+      const vendedores = await tx.vendedor.findMany({
         where: {
           empresaId,
           deletedAt: null,
-          ativo: true,
+          // apenasComCliente inclui vendedor bloqueado (ativo:false) de
+          // propósito — é útil justamente pra localizar/filtrar carteira de
+          // um vendedor que foi bloqueado mas ainda tem clientes vinculados.
+          ...(apenasComCliente ? {} : { ativo: true }),
+          ...(apenasComCliente
+            ? { clientes: { some: { deletedAt: null } } }
+            : {}),
           ...(escopo ? { id: { in: escopo } } : {}),
         },
         orderBy: { nome: 'asc' },
       });
+
+      // Quantidade de clientes por vendedor — exibida nos selects de filtro
+      // de vendedor do sistema.
+      const contagens = await tx.cliente.groupBy({
+        by: ['vendedorId'],
+        where: {
+          empresaId,
+          deletedAt: null,
+          vendedorId: { in: vendedores.map((v) => v.id) },
+        },
+        _count: { _all: true },
+      });
+      const totalPorVendedor = new Map(contagens.map((c) => [c.vendedorId, c._count._all]));
+      const data = vendedores.map((v) => ({
+        ...v,
+        totalClientes: totalPorVendedor.get(v.id) ?? 0,
+      }));
+
       const ehVendedorPuro =
         escopo !== null && !vendedorProprio?.supervisor && !vendedorProprio?.gerente;
-      return { data, restrito: escopo !== null, ehVendedorPuro };
+      return {
+        data,
+        restrito: escopo !== null,
+        ehVendedorPuro,
+        meuVendedorId: vendedorProprio?.id ?? null,
+      };
     });
   }
 
@@ -496,18 +575,20 @@ export class ClientesService {
   municipiosEscopo(empresaId: string, user: AuthenticatedUser) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
-      const rows = await tx.cliente.findMany({
+      const grupos = await tx.cliente.groupBy({
+        by: ['municipio'],
         where: {
           empresaId,
           deletedAt: null,
           municipio: { not: null },
           ...(escopo ? { vendedorId: { in: escopo } } : {}),
         },
-        select: { municipio: true },
-        distinct: ['municipio'],
+        _count: { _all: true },
         orderBy: { municipio: 'asc' },
       });
-      return { data: rows.map((r) => r.municipio as string) };
+      return {
+        data: grupos.map((g) => ({ municipio: g.municipio as string, total: g._count._all })),
+      };
     });
   }
 
@@ -520,18 +601,20 @@ export class ClientesService {
   ufsEscopo(empresaId: string, user: AuthenticatedUser) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
-      const rows = await tx.cliente.findMany({
+      const grupos = await tx.cliente.groupBy({
+        by: ['uf'],
         where: {
           empresaId,
           deletedAt: null,
           uf: { not: null },
           ...(escopo ? { vendedorId: { in: escopo } } : {}),
         },
-        select: { uf: true },
-        distinct: ['uf'],
+        _count: { _all: true },
         orderBy: { uf: 'asc' },
       });
-      return { data: rows.map((r) => r.uf as string) };
+      return {
+        data: grupos.map((g) => ({ uf: g.uf as string, total: g._count._all })),
+      };
     });
   }
 }

@@ -170,7 +170,9 @@ export function EntityTable<T>({
                   />
                 ) : (
                   <TableHead key={col.id ?? col.header} className={col.className}>
-                    {col.header}
+                    <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                      {col.header}
+                    </span>
                   </TableHead>
                 ),
               )}

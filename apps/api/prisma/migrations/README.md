@@ -59,6 +59,10 @@ usuários).
 - **`refresh_tokens`** — consultada por `tokenHash`/`usuarioId` no fluxo de
   login/refresh (via `this.prisma.refreshToken`, **sem** `withTenant`), antes de
   haver empresa ativa. A coluna `empresaId` é nullable e apenas informativa.
+- **`integracao_api_keys`** — consultada por `chaveHash` pelo `ApiKeyGuard`
+  (ver `docs/planos/api-integracao-erp.md`) antes de existir `empresaId` de
+  contexto: é essa consulta que descobre o tenant da requisição. Mesmo
+  raciocínio de `refresh_tokens`.
 
 ## Pré-requisitos operacionais
 
@@ -80,6 +84,9 @@ Com RLS: `usuario_empresas`, `produtos`, `vendedores`, `clientes`,
 `tabela_preco_itens`, `notas_saida`, `notas_saida_itens`, `titulos_receber`,
 `objetivos_vendedor_mes`, `objetivos_vendedor_categoria`, `oportunidades`,
 `atividades`, `orcamentos`, `orcamento_itens`.
+
+`integracao_api_keys` tem `empresaId` mas está na lista de exceções acima
+(não recebe RLS, pelo mesmo motivo de `refresh_tokens`).
 
 Sem RLS por serem referência global (sem coluna `empresaId`): `paises`,
 `estados`, `municipios`, `ceps`, `cnaes` (além das tabelas de sistema

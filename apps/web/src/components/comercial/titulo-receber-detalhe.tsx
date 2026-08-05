@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { TituloReceber } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
-import { Badge } from "@/components/ui/badge";
+import { TituloStatusBadge } from "@/components/comercial/titulo-status-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -36,6 +36,7 @@ export function TituloReceberDetalheContent({ titulo }: { titulo: TituloReceberD
   return (
     <Card>
       <CardContent className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <Info label="Status" value={<TituloStatusBadge status={titulo.status} />} />
         <Info label="Cliente" value={titulo.cliente?.razaoSocial ?? "—"} />
         <Info
           label="Vendedor"
@@ -89,11 +90,7 @@ export function TituloReceberSheet({
                 {titulo.prefixo && `${titulo.prefixo}-`}
                 {titulo.numero}
                 {titulo.parcela && `/${titulo.parcela}`}
-                {titulo.dtBaixa ? (
-                  <Badge variant="outline">Baixado {dataBr(titulo.dtBaixa)}</Badge>
-                ) : (
-                  <Badge>Aberto</Badge>
-                )}
+                <TituloStatusBadge status={titulo.status} />
               </>
             ) : (
               "Título a receber"

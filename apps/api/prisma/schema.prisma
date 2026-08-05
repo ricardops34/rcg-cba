@@ -46,6 +46,8 @@ model Empresa {
   objetivosVendedorCategoria ObjetivoVendedorCategoria[]
   orcamentos                 Orcamento[]
   orcamentoItens             OrcamentoItem[]
+  integracaoApiKeys          IntegracaoApiKey[]
+  clienteCampoConfigs        ClienteCampoConfig[]
 
   @@map("empresas")
 }
@@ -257,6 +259,36 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
+// Chave de integração máquina-a-máquina (ERP externo → plataforma, ver
+// docs/planos/api-integracao-erp.md). A chave em claro só é exibida na
+// criação; o banco guarda hash SHA-256. `prefixo` (8 primeiros chars da
+// chave em claro) permite identificar a chave em tela/log sem expor o
+// segredo. Sem RLS de propósito — mesma exceção de `refresh_tokens`: o
+// ApiKeyGuard consulta por `chaveHash` antes de existir empresaId de
+// contexto (é essa consulta que descobre o tenant).
+model IntegracaoApiKey {
+  id        String    @id @default(uuid())
+  empresaId String
+  nome      String
+  chaveHash String    @unique
+  prefixo   String
+  ativo     Boolean   @default(true)
+  expiraEm  DateTime?
+  ultimoUso DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@index([empresaId])
+  @@map("integracao_api_keys")
+}
+
 // ------------------------------------------------------------------
 // Organização comercial
 // ------------------------------------------------------------------
@@ -444,6 +476,26 @@ model Cliente {
   @@index([empresaId, vendedorId])
   @@index([empresaId, tabelaPrecoId])
   @@map("clientes")
+}
+
+// Define, por empresa, quais campos do cadastro de Cliente o formulário
+// interno permite alterar (ex.: travar campos que vêm do ERP). Sem linha
+// para um campo = editável por padrão — ver ClienteCampoConfigService.
+model ClienteCampoConfig {
+  id        String  @id @default(uuid())
+  empresaId String
+  campo     String
+  editavel  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@unique([empresaId, campo])
+  @@map("cliente_campo_config")
 }
 
 // ------------------------------------------------------------------
@@ -1004,6 +1056,10 @@ enum StatusOrcamento {
 model Orcamento {
   id                  String          @id @default(uuid())
   empresaId           String
+  // Chave de upsert idempotente da API de integração ERP — null pra
+  // orçamentos criados manualmente na tela do CRM (mesmo padrão de
+  // NotaSaida/ObjetivoVendedorMes: os dois caminhos de escrita coexistem).
+  codigoLegado        Int?
   clienteId           String
   vendedorId          String
   oportunidadeId      String?
@@ -1036,6 +1092,7 @@ model Orcamento {
   itens             OrcamentoItem[]
   atividades        Atividade[]
 
+  @@unique([empresaId, codigoLegado])
   @@index([empresaId, vendedorId])
   @@index([empresaId, clienteId])
   @@index([empresaId, status])

@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { Atividade, TipoAtividade, Vendedor } from "@plataforma/contracts";
+import type { Atividade, TipoAtividade } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
-import { apiFetch, ApiError } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-client";
+import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
+import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
@@ -46,15 +47,10 @@ export default function AtividadesPage() {
   const [vendedorId, setVendedorId] = useState<string | undefined>(undefined);
   const [vencidas, setVencidas] = useState(false);
 
-  const vendedoresEscopoQuery = useQuery({
-    queryKey: ["clientes", "vendedores-escopo"],
-    queryFn: () =>
-      apiFetch<{ data: Vendedor[]; restrito: boolean; ehVendedorPuro: boolean }>(
-        "/clientes/vendedores-escopo",
-      ),
-  });
+  const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
   const mostrarFiltroVendedor = !(vendedoresEscopoQuery.data?.ehVendedorPuro ?? false);
+  useVendedorPadrao(vendedoresEscopoQuery.data?.meuVendedorId, setVendedorId);
 
   const { data, isLoading, isFetching, refetch } = useResourceList<Atividade>("atividades", {
     search,

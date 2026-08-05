@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { ObjetivoVendedorMes, Vendedor } from "@plataforma/contracts";
+import type { ObjetivoVendedorMes } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
-import { apiFetch, ApiError } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-client";
+import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
+import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
@@ -42,11 +43,9 @@ export default function ObjetivosPage() {
   const [mes, setMes] = useState<string | undefined>(undefined);
   const [vendedorId, setVendedorId] = useState<string | undefined>(undefined);
 
-  const vendedoresEscopoQuery = useQuery({
-    queryKey: ["clientes", "vendedores-escopo"],
-    queryFn: () => apiFetch<{ data: Vendedor[]; restrito: boolean }>("/clientes/vendedores-escopo"),
-  });
+  const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
+  useVendedorPadrao(vendedoresEscopoQuery.data?.meuVendedorId, setVendedorId);
 
   const { data, isLoading, isFetching, refetch } = useResourceList<ObjetivoVendedorMes>("objetivos", {
     search,

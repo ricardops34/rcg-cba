@@ -25,6 +25,15 @@ export const posicaoClienteListRowSchema = z.object({
   bloqueado: z
     .boolean()
     .describe("dataBloqueio preenchida sem reativação posterior (dataReativacao)"),
+  temTituloVencido: z
+    .boolean()
+    .describe("Tem título a receber em aberto (sem baixa) com vencimento no passado"),
+  temTituloVencendo: z
+    .boolean()
+    .describe("Tem título a receber em aberto (sem baixa) vencendo nos próximos 7 dias"),
+  temTituloNaoVencido: z
+    .boolean()
+    .describe("Tem título a receber em aberto (sem baixa) vencendo em mais de 7 dias, ou sem vencimento"),
 });
 export type PosicaoClienteListRow = z.infer<typeof posicaoClienteListRowSchema>;
 
@@ -58,4 +67,7 @@ export const POSICAO_CLIENTE_LIST_ROW_EXAMPLE: PosicaoClienteListRow = {
   difMesEMedia: 273.33,
   comodato: true,
   bloqueado: false,
+  temTituloVencido: false,
+  temTituloVencendo: false,
+  temTituloNaoVencido: true,
 };

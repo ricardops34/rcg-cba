@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../common/prisma/prisma.service';
+import { PrismaService, Prisma } from '../../common/prisma/prisma.service';
 import {
   combinarFiltroVendedor,
   resolverEscopoVendedores,
@@ -10,6 +10,7 @@ import {
 } from '../../common/pagination/paginate';
 import type { TituloReceberQuery } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { calcularStatusTituloReceber } from './titulo-receber-status';
 
 const SORT_FIELDS = new Set(['numero', 'emissao', 'vencimento', 'valor', 'saldo', 'dtBaixa', 'createdAt']);
 
@@ -26,15 +27,25 @@ export class TitulosReceberService {
   findAll(empresaId: string, user: AuthenticatedUser, query: TituloReceberQuery) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const hoje = new Date();
+      const condicoesStatus: Prisma.TituloReceberWhereInput[] = [];
+      if (query.status === 'baixado') {
+        condicoesStatus.push({ dtBaixa: { not: null } });
+      } else if (query.status === 'aberto') {
+        condicoesStatus.push(
+          { dtBaixa: null },
+          { OR: [{ vencimento: null }, { vencimento: { gte: hoje } }] },
+        );
+      } else if (query.status === 'vencido') {
+        condicoesStatus.push({ dtBaixa: null }, { vencimento: { lt: hoje } });
+      }
       const where = {
         empresaId,
         deletedAt: null,
         ...combinarFiltroVendedor(escopo, query.vendedorId),
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
         ...(query.clienteId ? { clienteId: query.clienteId } : {}),
-        ...(query.aberto !== undefined
-          ? { dtBaixa: query.aberto ? null : { not: null } }
-          : {}),
+        ...(condicoesStatus.length ? { AND: condicoesStatus } : {}),
         ...(query.search
           ? {
               OR: [
@@ -59,7 +70,11 @@ export class TitulosReceberService {
         }),
         tx.tituloReceber.count({ where }),
       ]);
-      return buildPaginatedResult(data, total, query);
+      const comStatus = data.map((titulo) => ({
+        ...titulo,
+        status: calcularStatusTituloReceber(titulo, hoje),
+      }));
+      return buildPaginatedResult(comStatus, total, query);
     });
   }
 
@@ -76,7 +91,10 @@ export class TitulosReceberService {
         include: { cliente: CLIENTE_SELECT, vendedor: VENDEDOR_SELECT },
       });
       if (!titulo) throw new NotFoundException('Título não encontrado');
-      return titulo;
+      return {
+        ...titulo,
+        status: calcularStatusTituloReceber(titulo, new Date()),
+      };
     });
   }
 }

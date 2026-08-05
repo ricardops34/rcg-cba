@@ -11,11 +11,12 @@ import {
 } from '../../common/pagination/paginate';
 import type {
   OrcamentoCreate,
-  OrcamentoItemLinha,
   OrcamentoQuery,
   OrcamentoUpdate,
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { criarAtividadeRetorno } from './criar-atividade-retorno';
+import { calcularItensOrcamento } from './calcular-itens-orcamento';
 
 const SORT_FIELDS = new Set(['titulo', 'status', 'vlrTotal', 'dataValidade', 'ativo', 'createdAt']);
 
@@ -80,99 +81,6 @@ export class OrcamentosService {
     }
   }
 
-  /**
-   * Resolve vlrTabela de cada item na Tabela de Preço vinculada ao cliente
-   * (batch, mesmo padrão de ClientesService.posicao) e calcula desconto/total
-   * a partir do vlrUnitario informado (editável por linha). Sem tabela
-   * vinculada ao cliente, ou sem preço cadastrado pro produto, vlrTabela fica
-   * null — o vlrUnitario informado é usado do mesmo jeito, sem desconto
-   * calculado.
-   */
-  private async calcularItens(
-    tx: TenantTx,
-    empresaId: string,
-    clienteId: string,
-    itens: OrcamentoItemLinha[],
-  ) {
-    if (itens.length === 0) return { data: [] as Record<string, unknown>[], vlrTotal: 0 };
-
-    const cliente = await tx.cliente.findFirst({
-      where: { id: clienteId, empresaId },
-      select: { tabelaPrecoId: true },
-    });
-
-    const produtoIds = itens.map((i) => i.produtoId);
-    const precos = cliente?.tabelaPrecoId
-      ? await tx.tabelaPrecoItem.findMany({
-          where: {
-            tabelaPrecoId: cliente.tabelaPrecoId,
-            produtoId: { in: produtoIds },
-            deletedAt: null,
-          },
-          select: { produtoId: true, preco: true },
-        })
-      : [];
-    const precoPorProduto = new Map(precos.map((p) => [p.produtoId, p.preco]));
-
-    let vlrTotalOrcamento = 0;
-    const data = itens.map((item) => {
-      const vlrTabela = precoPorProduto.get(item.produtoId) ?? null;
-      const vlrDesconto =
-        vlrTabela != null && vlrTabela > item.vlrUnitario
-          ? Math.round((vlrTabela - item.vlrUnitario) * item.quantidade * 100) / 100
-          : 0;
-      const percDesconto =
-        vlrTabela ? Math.round(((vlrTabela - item.vlrUnitario) / vlrTabela) * 10000) / 100 : null;
-      const vlrTotalItem = Math.round(item.vlrUnitario * item.quantidade * 100) / 100;
-      vlrTotalOrcamento += vlrTotalItem;
-      return {
-        empresaId,
-        produtoId: item.produtoId,
-        quantidade: item.quantidade,
-        vlrTabela,
-        vlrUnitario: item.vlrUnitario,
-        percDesconto,
-        vlrDesconto,
-        vlrTotal: vlrTotalItem,
-      };
-    });
-    return { data, vlrTotal: Math.round(vlrTotalOrcamento * 100) / 100 };
-  }
-
-  /**
-   * dataRetorno definida (na criação, ou numa edição que muda o valor) gera
-   * uma Atividade de acompanhamento (tipo ligação) vinculada ao orçamento —
-   * vira lembrete na Agenda/Atividades pro vendedor retomar contato com o
-   * cliente, que pode resultar num novo orçamento.
-   */
-  private async criarAtividadeRetorno(
-    tx: TenantTx,
-    empresaId: string,
-    user: AuthenticatedUser,
-    params: {
-      orcamentoId: string;
-      titulo: string;
-      clienteId: string;
-      vendedorId: string;
-      oportunidadeId: string | null;
-      dataRetorno: Date;
-    },
-  ) {
-    await tx.atividade.create({
-      data: {
-        empresaId,
-        clienteId: params.clienteId,
-        oportunidadeId: params.oportunidadeId,
-        orcamentoId: params.orcamentoId,
-        vendedorId: params.vendedorId,
-        tipo: 'ligacao',
-        titulo: `Retorno: ${params.titulo}`,
-        dataVencimento: params.dataRetorno,
-        createdBy: user.id,
-        updatedBy: user.id,
-      },
-    });
-  }
 
   /**
    * Preço de um produto pra um cliente específico — alimenta o pré-preenchimento
@@ -271,7 +179,7 @@ export class OrcamentosService {
       }
 
       const { itens, ...header } = input;
-      const { data: itensData, vlrTotal } = await this.calcularItens(
+      const { data: itensData, vlrTotal } = await calcularItensOrcamento(
         tx,
         empresaId,
         input.clienteId,
@@ -291,7 +199,7 @@ export class OrcamentosService {
       });
 
       if (header.dataRetorno) {
-        await this.criarAtividadeRetorno(tx, empresaId, user, {
+        await criarAtividadeRetorno(tx, empresaId, user.id, {
           orcamentoId: orcamento.id,
           titulo: orcamento.titulo,
           clienteId: orcamento.clienteId,
@@ -329,7 +237,7 @@ export class OrcamentosService {
       if (itens) {
         await tx.orcamentoItem.deleteMany({ where: { orcamentoId: id } });
         const clienteId = input.clienteId ?? orcamento.clienteId;
-        const { data: itensData, vlrTotal } = await this.calcularItens(
+        const { data: itensData, vlrTotal } = await calcularItensOrcamento(
           tx,
           empresaId,
           clienteId,
@@ -352,7 +260,7 @@ export class OrcamentosService {
         header.dataRetorno != null &&
         (!orcamento.dataRetorno || header.dataRetorno.getTime() !== orcamento.dataRetorno.getTime());
       if (dataRetornoMudou) {
-        await this.criarAtividadeRetorno(tx, empresaId, user, {
+        await criarAtividadeRetorno(tx, empresaId, user.id, {
           orcamentoId: atualizado.id,
           titulo: atualizado.titulo,
           clienteId: atualizado.clienteId,

@@ -1,0 +1,265 @@
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  PrismaService,
+  Prisma,
+  type TenantTx,
+} from '../../../common/prisma/prisma.service';
+import {
+  buildPaginatedResult,
+  paginationToSkipTake,
+} from '../../../common/pagination/paginate';
+import type {
+  IntegracaoTituloReceber,
+  IntegracaoTituloReceberCreate,
+  IntegracaoTituloReceberQuery,
+  IntegracaoTituloReceberUpdate,
+} from '@plataforma/contracts';
+import { autorIntegracao } from '../common/autor-integracao';
+
+const INCLUDE = {
+  cliente: { select: { codigoErp: true } },
+  vendedor: { select: { codigoErp: true } },
+} satisfies Prisma.TituloReceberInclude;
+type TituloComRelacoes = Prisma.TituloReceberGetPayload<{
+  include: typeof INCLUDE;
+}>;
+
+@Injectable()
+export class IntegracaoTitulosReceberService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  private paraLeitura(row: TituloComRelacoes): IntegracaoTituloReceber {
+    return {
+      id: row.id,
+      codigoLegado: row.codigoLegado ?? 0,
+      clienteCodigo: row.cliente?.codigoErp ?? null,
+      vendedorCodigo: row.vendedor?.codigoErp ?? null,
+      numero: row.numero,
+      parcela: row.parcela,
+      prefixo: row.prefixo,
+      tipo: row.tipo,
+      emissao: row.emissao,
+      vencimento: row.vencimento,
+      vencimentoReal: row.vencimentoReal,
+      valor: row.valor,
+      saldo: row.saldo,
+      acrescimo: row.acrescimo,
+      decrescimo: row.decrescimo,
+      dtBaixa: row.dtBaixa,
+      formaPgto: row.formaPgto,
+      historico: row.historico,
+      ativo: row.ativo,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      createdBy: row.createdBy,
+      updatedBy: row.updatedBy,
+    };
+  }
+
+  findAll(empresaId: string, query: IntegracaoTituloReceberQuery) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const where = {
+        empresaId,
+        deletedAt: null,
+        ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
+        ...(query.search
+          ? { numero: { contains: query.search, mode: 'insensitive' as const } }
+          : {}),
+      };
+      const [data, total] = await Promise.all([
+        tx.tituloReceber.findMany({
+          where,
+          include: INCLUDE,
+          ...paginationToSkipTake(query),
+          orderBy: { codigoLegado: 'asc' },
+        }),
+        tx.tituloReceber.count({ where }),
+      ]);
+      return buildPaginatedResult(
+        data.map((r) => this.paraLeitura(r)),
+        total,
+        query,
+      );
+    });
+  }
+
+  async findOne(
+    empresaId: string,
+    codigoLegado: number,
+  ): Promise<IntegracaoTituloReceber> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const row = await tx.tituloReceber.findFirst({
+        where: { empresaId, codigoLegado, deletedAt: null },
+        include: INCLUDE,
+      });
+      if (!row) throw new NotFoundException('Título a receber não encontrado');
+      return this.paraLeitura(row);
+    });
+  }
+
+  async create(
+    empresaId: string,
+    apiKeyId: string,
+    input: IntegracaoTituloReceberCreate,
+  ): Promise<IntegracaoTituloReceber> {
+    const autor = autorIntegracao(apiKeyId);
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const existente = await tx.tituloReceber.findFirst({
+        where: { empresaId, codigoLegado: input.codigoLegado },
+      });
+      if (existente) {
+        throw new ConflictException(
+          `Já existe título com codigoLegado '${input.codigoLegado}'`,
+        );
+      }
+
+      const clienteId = await this.resolverCliente(
+        tx,
+        empresaId,
+        input.clienteCodigo,
+      );
+      const vendedorId = await this.resolverVendedor(
+        tx,
+        empresaId,
+        input.vendedorCodigo,
+      );
+
+      const criado = await tx.tituloReceber.create({
+        data: {
+          empresaId,
+          codigoLegado: input.codigoLegado,
+          clienteId,
+          vendedorId,
+          numero: input.numero,
+          parcela: input.parcela ?? null,
+          prefixo: input.prefixo ?? null,
+          tipo: input.tipo ?? null,
+          emissao: input.emissao ?? null,
+          vencimento: input.vencimento ?? null,
+          vencimentoReal: input.vencimentoReal ?? null,
+          valor: input.valor,
+          saldo: input.saldo,
+          acrescimo: input.acrescimo ?? null,
+          decrescimo: input.decrescimo ?? null,
+          dtBaixa: input.dtBaixa ?? null,
+          formaPgto: input.formaPgto ?? null,
+          historico: input.historico ?? null,
+          ativo: input.ativo,
+          createdBy: autor,
+          updatedBy: autor,
+        },
+        include: INCLUDE,
+      });
+      return this.paraLeitura(criado);
+    });
+  }
+
+  async update(
+    empresaId: string,
+    apiKeyId: string,
+    codigoLegado: number,
+    input: IntegracaoTituloReceberUpdate,
+  ): Promise<IntegracaoTituloReceber> {
+    const autor = autorIntegracao(apiKeyId);
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const existente = await tx.tituloReceber.findFirst({
+        where: { empresaId, codigoLegado, deletedAt: null },
+      });
+      if (!existente)
+        throw new NotFoundException('Título a receber não encontrado');
+
+      const clienteId =
+        input.clienteCodigo !== undefined
+          ? await this.resolverCliente(tx, empresaId, input.clienteCodigo)
+          : undefined;
+      const vendedorId =
+        input.vendedorCodigo !== undefined
+          ? await this.resolverVendedor(tx, empresaId, input.vendedorCodigo)
+          : undefined;
+
+      const camposDiretos = [
+        'numero',
+        'parcela',
+        'prefixo',
+        'tipo',
+        'emissao',
+        'vencimento',
+        'vencimentoReal',
+        'valor',
+        'saldo',
+        'acrescimo',
+        'decrescimo',
+        'dtBaixa',
+        'formaPgto',
+        'historico',
+        'ativo',
+      ] as const;
+      const data: Record<string, unknown> = { updatedBy: autor };
+      for (const campo of camposDiretos) {
+        if (input[campo] !== undefined) data[campo] = input[campo];
+      }
+      if (clienteId !== undefined) data.clienteId = clienteId;
+      if (vendedorId !== undefined) data.vendedorId = vendedorId;
+
+      const atualizado = await tx.tituloReceber.update({
+        where: { id: existente.id },
+        data: data as never,
+        include: INCLUDE,
+      });
+      return this.paraLeitura(atualizado);
+    });
+  }
+
+  async remove(
+    empresaId: string,
+    apiKeyId: string,
+    codigoLegado: number,
+  ): Promise<void> {
+    const autor = autorIntegracao(apiKeyId);
+    await this.prisma.withTenant(empresaId, async (tx) => {
+      const existente = await tx.tituloReceber.findFirst({
+        where: { empresaId, codigoLegado, deletedAt: null },
+      });
+      if (!existente)
+        throw new NotFoundException('Título a receber não encontrado');
+      await tx.tituloReceber.update({
+        where: { id: existente.id },
+        data: { deletedAt: new Date(), deletedBy: autor, ativo: false },
+      });
+    });
+  }
+
+  private async resolverCliente(
+    tx: TenantTx,
+    empresaId: string,
+    codigo: string | null | undefined,
+  ) {
+    if (!codigo) return null;
+    const cliente = await tx.cliente.findFirst({
+      where: { empresaId, codigoErp: codigo, deletedAt: null },
+      select: { id: true },
+    });
+    if (!cliente)
+      throw new NotFoundException(`clienteCodigo '${codigo}' não encontrado`);
+    return cliente.id;
+  }
+
+  private async resolverVendedor(
+    tx: TenantTx,
+    empresaId: string,
+    codigo: string | null | undefined,
+  ) {
+    if (!codigo) return null;
+    const vendedor = await tx.vendedor.findFirst({
+      where: { empresaId, codigoErp: codigo, deletedAt: null },
+      select: { id: true },
+    });
+    if (!vendedor)
+      throw new NotFoundException(`vendedorCodigo '${codigo}' não encontrado`);
+    return vendedor.id;
+  }
+}

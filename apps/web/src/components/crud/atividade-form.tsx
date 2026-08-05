@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,10 +14,10 @@ import {
   type AtividadeUpdate,
   type Oportunidade,
   type TipoAtividade,
-  type Vendedor,
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
 import { apiFetch, ApiError } from "@/lib/api-client";
+import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -54,13 +55,7 @@ export function AtividadeForm({
   const router = useRouter();
   const { create, update } = useResourceMutations<AtividadeCreate, AtividadeUpdate>("atividades");
 
-  const vendedoresEscopoQuery = useQuery({
-    queryKey: ["clientes", "vendedores-escopo"],
-    queryFn: () =>
-      apiFetch<{ data: Vendedor[]; restrito: boolean; ehVendedorPuro: boolean }>(
-        "/clientes/vendedores-escopo",
-      ),
-  });
+  const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
 
   const schema = atividade ? atividadeUpdateSchema : atividadeCreateSchema;
@@ -96,6 +91,17 @@ export function AtividadeForm({
 
   const vendedorId = form.watch("vendedorId");
   const concluida = form.watch("concluida");
+
+  // Ao criar (não editar), pré-seleciona o próprio vendedor do usuário
+  // logado, se houver vínculo — só na primeira carga.
+  const [vendedorPadraoAplicado, setVendedorPadraoAplicado] = useState(false);
+  const meuVendedorId = vendedoresEscopoQuery.data?.meuVendedorId;
+  useEffect(() => {
+    if (!atividade && !vendedorPadraoAplicado && meuVendedorId) {
+      form.setValue("vendedorId", meuVendedorId);
+      setVendedorPadraoAplicado(true);
+    }
+  }, [atividade, vendedorPadraoAplicado, meuVendedorId, form]);
 
   // Oportunidades do vendedor escolhido — só as ativas, pra não linkar numa
   // oportunidade já ganha/perdida por engano.

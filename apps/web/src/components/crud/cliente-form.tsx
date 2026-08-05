@@ -1,21 +1,23 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   clienteCreateSchema,
   clienteUpdateSchema,
   type Cliente,
+  type ClienteCamposConfig,
   type ClienteCreate,
   type ClienteUpdate,
   type TabelaPreco,
-  type Vendedor,
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
 import { apiFetch, ApiError } from "@/lib/api-client";
+import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -30,6 +32,10 @@ import {
 } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Sheet, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ResizableSheetContent } from "@/components/ui/resizable-sheet-content";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft } from "lucide-react";
 
 const LIST_ROUTE = "/comercial/clientes";
@@ -58,15 +64,28 @@ const nanToNull = (v: number | null | undefined) => (v == null || Number.isNaN(v
 const boolToSelect = (v: boolean | null | undefined) => (v == null ? "nao-informado" : v ? "sim" : "nao");
 const selectToBool = (v: string) => (v === "nao-informado" ? null : v === "sim");
 
-export function ClienteForm({ cliente }: { cliente?: Cliente }) {
-  const router = useRouter();
+/**
+ * Corpo do formulário de cliente (cartão + campos) — usado tanto na página
+ * cheia (`ClienteForm`, `variant="page"`, seções empilhadas) quanto na
+ * cortina lateral (`ClienteSheet`, `variant="sheet"`, seções em abas — cabe
+ * melhor numa cortina mais estreita).
+ */
+export function ClienteFormContent({
+  cliente,
+  readOnly = false,
+  onClose,
+  variant = "page",
+}: {
+  cliente?: Cliente;
+  readOnly?: boolean;
+  /** Chamado ao cancelar ou depois de salvar com sucesso. */
+  onClose: () => void;
+  variant?: "page" | "sheet";
+}) {
   const { create, update } = useResourceMutations<ClienteCreate, ClienteUpdate>("clientes");
 
   // Opções de vendedor já restritas ao escopo hierárquico do usuário logado.
-  const vendedoresEscopoQuery = useQuery({
-    queryKey: ["clientes", "vendedores-escopo"],
-    queryFn: () => apiFetch<{ data: Vendedor[]; restrito: boolean }>("/clientes/vendedores-escopo"),
-  });
+  const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
   const restrito = vendedoresEscopoQuery.data?.restrito ?? false;
 
@@ -76,6 +95,14 @@ export function ClienteForm({ cliente }: { cliente?: Cliente }) {
       apiFetch<{ data: TabelaPreco[] }>("/tabelas-preco", { query: { pageSize: 100, ativo: true } }),
   });
   const opcoesTabelaPreco = tabelasPrecoQuery.data?.data ?? [];
+
+  // Quais campos a opção "Alterar Cliente" permite editar (Admin > Campos do
+  // Cliente) — campo sem configuração prévia é considerado editável.
+  const camposConfigQuery = useQuery({
+    queryKey: ["clientes-config"],
+    queryFn: () => apiFetch<ClienteCamposConfig>("/clientes-config/campos"),
+  });
+  const desabilitado = (campo: string) => readOnly || camposConfigQuery.data?.[campo] === false;
 
   const schema = cliente ? clienteUpdateSchema : clienteCreateSchema;
   const empty: ClienteCreate = {
@@ -160,6 +187,18 @@ export function ClienteForm({ cliente }: { cliente?: Cliente }) {
 
   const tipoPessoa = form.watch("tipoPessoa");
 
+  // Ao criar (não editar), pré-seleciona o próprio vendedor do usuário
+  // logado, se houver vínculo — só na primeira carga. Não se aplica a
+  // usuário restrito (a carteira já é dele por definição, o Select some).
+  const [vendedorPadraoAplicado, setVendedorPadraoAplicado] = useState(false);
+  const meuVendedorId = vendedoresEscopoQuery.data?.meuVendedorId;
+  useEffect(() => {
+    if (!cliente && !restrito && !vendedorPadraoAplicado && meuVendedorId) {
+      form.setValue("vendedorId", meuVendedorId);
+      setVendedorPadraoAplicado(true);
+    }
+  }, [cliente, restrito, vendedorPadraoAplicado, meuVendedorId, form]);
+
   const onSubmit = async (values: ClienteCreate) => {
     const payload: ClienteCreate = {
       ...values,
@@ -175,11 +214,475 @@ export function ClienteForm({ cliente }: { cliente?: Cliente }) {
         await create.mutateAsync(payload);
         toast.success("Cliente cadastrado");
       }
-      router.push(LIST_ROUTE);
+      onClose();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Erro ao salvar cliente");
     }
   };
+
+  const camposIdentificacao = (
+    <FieldGroup>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Field>
+          <FieldLabel htmlFor="tipoPessoa">Tipo de pessoa</FieldLabel>
+          <Select
+            value={tipoPessoa}
+            onValueChange={(v) => form.setValue("tipoPessoa", v as "fisica" | "juridica")}
+            disabled={desabilitado("tipoPessoa")}
+          >
+            <SelectTrigger id="tipoPessoa" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="juridica">Jurídica</SelectItem>
+              <SelectItem value="fisica">Física</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="codigoErp">Código ERP</FieldLabel>
+          <Input id="codigoErp" {...form.register("codigoErp")} disabled={desabilitado("codigoErp")} />
+        </Field>
+        <Field data-invalid={!!form.formState.errors.cnpjCpf}>
+          <FieldLabel htmlFor="cnpjCpf">{tipoPessoa === "fisica" ? "CPF" : "CNPJ"}</FieldLabel>
+          <Input id="cnpjCpf" {...form.register("cnpjCpf")} disabled={desabilitado("cnpjCpf")} />
+          <FieldError errors={[form.formState.errors.cnpjCpf]} />
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field data-invalid={!!form.formState.errors.razaoSocial}>
+          <FieldLabel htmlFor="razaoSocial">
+            {tipoPessoa === "fisica" ? "Nome" : "Razão social"}
+          </FieldLabel>
+          <Input
+            id="razaoSocial"
+            {...form.register("razaoSocial")}
+            disabled={desabilitado("razaoSocial")}
+          />
+          <FieldError errors={[form.formState.errors.razaoSocial]} />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="nomeFantasia">Nome fantasia</FieldLabel>
+          <Input
+            id="nomeFantasia"
+            {...form.register("nomeFantasia")}
+            disabled={desabilitado("nomeFantasia")}
+          />
+        </Field>
+      </div>
+
+      {tipoPessoa === "juridica" ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Field>
+            <FieldLabel htmlFor="inscricaoEstadual">Inscrição estadual</FieldLabel>
+            <Input
+              id="inscricaoEstadual"
+              {...form.register("inscricaoEstadual")}
+              disabled={desabilitado("inscricaoEstadual")}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="inscricaoMunicipal">Inscrição municipal</FieldLabel>
+            <Input
+              id="inscricaoMunicipal"
+              {...form.register("inscricaoMunicipal")}
+              disabled={desabilitado("inscricaoMunicipal")}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="contribuinteIcms">Contribuinte ICMS</FieldLabel>
+            <Select
+              value={boolToSelect(form.watch("contribuinteIcms"))}
+              onValueChange={(v) => form.setValue("contribuinteIcms", selectToBool(v))}
+              disabled={desabilitado("contribuinteIcms")}
+            >
+              <SelectTrigger id="contribuinteIcms" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="nao-informado">Não informado</SelectItem>
+                <SelectItem value="sim">Sim</SelectItem>
+                <SelectItem value="nao">Não</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="rg">RG</FieldLabel>
+            <Input id="rg" {...form.register("rg")} disabled={desabilitado("rg")} />
+          </Field>
+          <Field data-invalid={!!form.formState.errors.dataNascimento}>
+            <FieldLabel htmlFor="dataNascimento">Data de nascimento</FieldLabel>
+            <Input
+              id="dataNascimento"
+              type="date"
+              defaultValue={dateToInput(form.getValues("dataNascimento"))}
+              onChange={(e) => form.setValue("dataNascimento", inputToDate(e.target.value))}
+              disabled={desabilitado("dataNascimento")}
+            />
+          </Field>
+        </div>
+      )}
+    </FieldGroup>
+  );
+
+  const camposContato = (
+    <FieldGroup>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field>
+          <FieldLabel htmlFor="contato">Pessoa de contato</FieldLabel>
+          <Input id="contato" {...form.register("contato")} disabled={desabilitado("contato")} />
+        </Field>
+        <Field data-invalid={!!form.formState.errors.email}>
+          <FieldLabel htmlFor="email">E-mail</FieldLabel>
+          <Input id="email" {...form.register("email")} disabled={desabilitado("email")} />
+          <FieldError errors={[form.formState.errors.email]} />
+        </Field>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+        <Field>
+          <FieldLabel htmlFor="telefone">Telefone</FieldLabel>
+          <Input id="telefone" {...form.register("telefone")} disabled={desabilitado("telefone")} />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="telefone2">Telefone 2</FieldLabel>
+          <Input id="telefone2" {...form.register("telefone2")} disabled={desabilitado("telefone2")} />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="celular">Celular</FieldLabel>
+          <Input id="celular" {...form.register("celular")} disabled={desabilitado("celular")} />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="site">Site</FieldLabel>
+          <Input id="site" {...form.register("site")} disabled={desabilitado("site")} />
+        </Field>
+      </div>
+    </FieldGroup>
+  );
+
+  const camposEndereco = (
+    <FieldGroup>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Field className="sm:col-span-2">
+          <FieldLabel htmlFor="endereco">Endereço</FieldLabel>
+          <Input id="endereco" {...form.register("endereco")} disabled={desabilitado("endereco")} />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="complemento">Complemento</FieldLabel>
+          <Input
+            id="complemento"
+            {...form.register("complemento")}
+            disabled={desabilitado("complemento")}
+          />
+        </Field>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+        <Field>
+          <FieldLabel htmlFor="bairro">Bairro</FieldLabel>
+          <Input id="bairro" {...form.register("bairro")} disabled={desabilitado("bairro")} />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="municipio">Município</FieldLabel>
+          <Input id="municipio" {...form.register("municipio")} disabled={desabilitado("municipio")} />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="uf">UF</FieldLabel>
+          <Select
+            value={form.watch("uf") || "none"}
+            onValueChange={(v) => form.setValue("uf", v === "none" ? "" : v)}
+            disabled={desabilitado("uf")}
+          >
+            <SelectTrigger id="uf" className="w-full">
+              <SelectValue placeholder="—" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">—</SelectItem>
+              {UFS.map((uf) => (
+                <SelectItem key={uf} value={uf}>
+                  {uf}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="cep">CEP</FieldLabel>
+          <Input id="cep" {...form.register("cep")} disabled={desabilitado("cep")} />
+        </Field>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field data-invalid={!!form.formState.errors.latitude}>
+          <FieldLabel htmlFor="latitude">Latitude</FieldLabel>
+          <Input
+            id="latitude"
+            type="number"
+            step="any"
+            {...form.register("latitude", { setValueAs: emptyToNull })}
+            disabled={desabilitado("latitude")}
+          />
+          <FieldError errors={[form.formState.errors.latitude]} />
+        </Field>
+        <Field data-invalid={!!form.formState.errors.longitude}>
+          <FieldLabel htmlFor="longitude">Longitude</FieldLabel>
+          <Input
+            id="longitude"
+            type="number"
+            step="any"
+            {...form.register("longitude", { setValueAs: emptyToNull })}
+            disabled={desabilitado("longitude")}
+          />
+          <FieldError errors={[form.formState.errors.longitude]} />
+        </Field>
+      </div>
+    </FieldGroup>
+  );
+
+  const camposComercial = (
+    <FieldGroup>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Field>
+          <FieldLabel htmlFor="vendedorId">Vendedor</FieldLabel>
+          <Select
+            value={form.watch("vendedorId") ?? "none"}
+            onValueChange={(v) => form.setValue("vendedorId", v === "none" ? null : v)}
+            disabled={desabilitado("vendedorId")}
+          >
+            <SelectTrigger id="vendedorId" className="w-full">
+              <SelectValue placeholder="Sem vendedor" />
+            </SelectTrigger>
+            <SelectContent>
+              {/* Usuário restrito é obrigado a manter o cliente na própria carteira/time. */}
+              {!restrito && <SelectItem value="none">Sem vendedor</SelectItem>}
+              {opcoesVendedor.map((v) => (
+                <SelectItem key={v.id} value={v.id}>
+                  {v.nomeReduzido || v.nome}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="tabelaPrecoId">Tabela de preço</FieldLabel>
+          <Select
+            value={form.watch("tabelaPrecoId") ?? "none"}
+            onValueChange={(v) => form.setValue("tabelaPrecoId", v === "none" ? null : v)}
+            disabled={desabilitado("tabelaPrecoId")}
+          >
+            <SelectTrigger id="tabelaPrecoId" className="w-full">
+              <SelectValue placeholder="Sem tabela de preço" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Sem tabela de preço</SelectItem>
+              {opcoesTabelaPreco.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.descricao}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="carteira">Cliente de carteira</FieldLabel>
+          <Select
+            value={boolToSelect(form.watch("carteira"))}
+            onValueChange={(v) => form.setValue("carteira", selectToBool(v))}
+            disabled={desabilitado("carteira")}
+          >
+            <SelectTrigger id="carteira" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="nao-informado">Não informado</SelectItem>
+              <SelectItem value="sim">Sim</SelectItem>
+              <SelectItem value="nao">Não</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field data-invalid={!!form.formState.errors.limiteCredito}>
+          <FieldLabel htmlFor="limiteCredito">Limite de crédito</FieldLabel>
+          <Input
+            id="limiteCredito"
+            type="number"
+            step="any"
+            {...form.register("limiteCredito", { setValueAs: emptyToNull })}
+            disabled={desabilitado("limiteCredito")}
+          />
+          <FieldError errors={[form.formState.errors.limiteCredito]} />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="vencimentoLimite">Vencimento do limite</FieldLabel>
+          <Input
+            id="vencimentoLimite"
+            type="date"
+            defaultValue={dateToInput(form.getValues("vencimentoLimite"))}
+            onChange={(e) => form.setValue("vencimentoLimite", inputToDate(e.target.value))}
+            disabled={desabilitado("vencimentoLimite")}
+          />
+        </Field>
+      </div>
+      <Field>
+        <FieldLabel htmlFor="observacao">Observação</FieldLabel>
+        <Textarea
+          id="observacao"
+          rows={3}
+          {...form.register("observacao")}
+          disabled={desabilitado("observacao")}
+        />
+      </Field>
+      <label className="flex cursor-pointer items-center gap-2 text-sm">
+        <Checkbox
+          checked={form.watch("ativo")}
+          onCheckedChange={(v) => form.setValue("ativo", v === true)}
+          disabled={desabilitado("ativo")}
+        />
+        Cliente ativo
+      </label>
+    </FieldGroup>
+  );
+
+  const camposBloqueio = cliente && (
+    <FieldGroup>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field>
+          <FieldLabel htmlFor="dataBloqueio">Data de bloqueio</FieldLabel>
+          <Input
+            id="dataBloqueio"
+            type="date"
+            defaultValue={dateToInput(form.getValues("dataBloqueio"))}
+            onChange={(e) => form.setValue("dataBloqueio", inputToDate(e.target.value))}
+            disabled={desabilitado("dataBloqueio")}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="observacaoBloqueio">Motivo do bloqueio</FieldLabel>
+          <Input
+            id="observacaoBloqueio"
+            {...form.register("observacaoBloqueio")}
+            disabled={desabilitado("observacaoBloqueio")}
+          />
+        </Field>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field>
+          <FieldLabel htmlFor="dataReativacao">Data de reativação</FieldLabel>
+          <Input
+            id="dataReativacao"
+            type="date"
+            defaultValue={dateToInput(form.getValues("dataReativacao"))}
+            onChange={(e) => form.setValue("dataReativacao", inputToDate(e.target.value))}
+            disabled={desabilitado("dataReativacao")}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="observacaoReativacao">Observação da reativação</FieldLabel>
+          <Input
+            id="observacaoReativacao"
+            {...form.register("observacaoReativacao")}
+            disabled={desabilitado("observacaoReativacao")}
+          />
+        </Field>
+      </div>
+    </FieldGroup>
+  );
+
+  const camposHistorico = cliente && (
+    // Preenchido pelo import do legado — somente leitura.
+    <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
+      {(
+        [
+          ["Primeira compra", cliente.primeiraCompra],
+          ["Última visita", cliente.ultimaVisita],
+          ["Última compra", cliente.ultimaCompra],
+          ["Último atendimento", cliente.ultimoAtendimento],
+          ["Consulta RFB", cliente.dataConsultaRfb],
+        ] as const
+      ).map(([label, value]) => (
+        <div key={label}>
+          <p className="text-xs text-muted-foreground">{label}</p>
+          <p>{dateToLabel(value)}</p>
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <Card>
+      <form id="cliente-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
+        <CardContent>
+          {variant === "sheet" ? (
+            <Tabs defaultValue="identificacao">
+              <TabsList>
+                <TabsTrigger value="identificacao">Identificação</TabsTrigger>
+                <TabsTrigger value="contato">Contato</TabsTrigger>
+                <TabsTrigger value="endereco">Endereço</TabsTrigger>
+                <TabsTrigger value="comercial">Comercial</TabsTrigger>
+                {cliente && <TabsTrigger value="bloqueio">Bloqueio</TabsTrigger>}
+                {cliente && <TabsTrigger value="historico">Histórico</TabsTrigger>}
+              </TabsList>
+              <TabsContent value="identificacao">{camposIdentificacao}</TabsContent>
+              <TabsContent value="contato">{camposContato}</TabsContent>
+              <TabsContent value="endereco">{camposEndereco}</TabsContent>
+              <TabsContent value="comercial">{camposComercial}</TabsContent>
+              {cliente && <TabsContent value="bloqueio">{camposBloqueio}</TabsContent>}
+              {cliente && <TabsContent value="historico">{camposHistorico}</TabsContent>}
+            </Tabs>
+          ) : (
+            <FieldGroup>
+              <FieldSet>
+                <FieldLegend>Identificação</FieldLegend>
+                {camposIdentificacao}
+              </FieldSet>
+              <FieldSet>
+                <FieldLegend>Contato</FieldLegend>
+                {camposContato}
+              </FieldSet>
+              <FieldSet>
+                <FieldLegend>Endereço</FieldLegend>
+                {camposEndereco}
+              </FieldSet>
+              <FieldSet>
+                <FieldLegend>Comercial</FieldLegend>
+                {camposComercial}
+              </FieldSet>
+              {cliente && (
+                <FieldSet>
+                  <FieldLegend>Bloqueio</FieldLegend>
+                  {camposBloqueio}
+                </FieldSet>
+              )}
+              {cliente && (
+                <FieldSet>
+                  <FieldLegend>Histórico comercial</FieldLegend>
+                  {camposHistorico}
+                </FieldSet>
+              )}
+            </FieldGroup>
+          )}
+        </CardContent>
+
+        <CardFooter className="justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            {readOnly ? "Voltar" : "Cancelar"}
+          </Button>
+          {!readOnly && (
+            <Button type="submit" disabled={form.formState.isSubmitting}>
+              {cliente ? "Salvar alterações" : "Cadastrar"}
+            </Button>
+          )}
+        </CardFooter>
+      </form>
+    </Card>
+  );
+}
+
+/** Página cheia de cadastro/edição/visualização de cliente. */
+export function ClienteForm({ cliente, readOnly = false }: { cliente?: Cliente; readOnly?: boolean }) {
+  const router = useRouter();
 
   return (
     <div className="space-y-4">
@@ -188,379 +691,67 @@ export function ClienteForm({ cliente }: { cliente?: Cliente }) {
           <ArrowLeft className="size-4" />
         </Button>
         <h1 className="text-xl font-semibold tracking-tight">
-          {cliente ? "Editar cliente" : "Novo cliente"}
+          {readOnly ? "Visualizar cliente" : cliente ? "Editar cliente" : "Novo cliente"}
         </h1>
       </div>
 
-      <Card>
-        <form id="cliente-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
-          <CardContent>
-            <FieldGroup>
-              <FieldSet>
-                <FieldLegend>Identificação</FieldLegend>
-                <FieldGroup>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <Field>
-                      <FieldLabel htmlFor="tipoPessoa">Tipo de pessoa</FieldLabel>
-                      <Select
-                        value={tipoPessoa}
-                        onValueChange={(v) => form.setValue("tipoPessoa", v as "fisica" | "juridica")}
-                      >
-                        <SelectTrigger id="tipoPessoa" className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="juridica">Jurídica</SelectItem>
-                          <SelectItem value="fisica">Física</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="codigoErp">Código ERP</FieldLabel>
-                      <Input id="codigoErp" {...form.register("codigoErp")} />
-                    </Field>
-                    <Field data-invalid={!!form.formState.errors.cnpjCpf}>
-                      <FieldLabel htmlFor="cnpjCpf">{tipoPessoa === "fisica" ? "CPF" : "CNPJ"}</FieldLabel>
-                      <Input id="cnpjCpf" {...form.register("cnpjCpf")} />
-                      <FieldError errors={[form.formState.errors.cnpjCpf]} />
-                    </Field>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Field data-invalid={!!form.formState.errors.razaoSocial}>
-                      <FieldLabel htmlFor="razaoSocial">
-                        {tipoPessoa === "fisica" ? "Nome" : "Razão social"}
-                      </FieldLabel>
-                      <Input id="razaoSocial" {...form.register("razaoSocial")} />
-                      <FieldError errors={[form.formState.errors.razaoSocial]} />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="nomeFantasia">Nome fantasia</FieldLabel>
-                      <Input id="nomeFantasia" {...form.register("nomeFantasia")} />
-                    </Field>
-                  </div>
-
-                  {tipoPessoa === "juridica" ? (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      <Field>
-                        <FieldLabel htmlFor="inscricaoEstadual">Inscrição estadual</FieldLabel>
-                        <Input id="inscricaoEstadual" {...form.register("inscricaoEstadual")} />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="inscricaoMunicipal">Inscrição municipal</FieldLabel>
-                        <Input id="inscricaoMunicipal" {...form.register("inscricaoMunicipal")} />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="contribuinteIcms">Contribuinte ICMS</FieldLabel>
-                        <Select
-                          value={boolToSelect(form.watch("contribuinteIcms"))}
-                          onValueChange={(v) => form.setValue("contribuinteIcms", selectToBool(v))}
-                        >
-                          <SelectTrigger id="contribuinteIcms" className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="nao-informado">Não informado</SelectItem>
-                            <SelectItem value="sim">Sim</SelectItem>
-                            <SelectItem value="nao">Não</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <Field>
-                        <FieldLabel htmlFor="rg">RG</FieldLabel>
-                        <Input id="rg" {...form.register("rg")} />
-                      </Field>
-                      <Field data-invalid={!!form.formState.errors.dataNascimento}>
-                        <FieldLabel htmlFor="dataNascimento">Data de nascimento</FieldLabel>
-                        <Input
-                          id="dataNascimento"
-                          type="date"
-                          defaultValue={dateToInput(form.getValues("dataNascimento"))}
-                          onChange={(e) => form.setValue("dataNascimento", inputToDate(e.target.value))}
-                        />
-                      </Field>
-                    </div>
-                  )}
-                </FieldGroup>
-              </FieldSet>
-
-              <FieldSet>
-                <FieldLegend>Contato</FieldLegend>
-                <FieldGroup>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Field>
-                      <FieldLabel htmlFor="contato">Pessoa de contato</FieldLabel>
-                      <Input id="contato" {...form.register("contato")} />
-                    </Field>
-                    <Field data-invalid={!!form.formState.errors.email}>
-                      <FieldLabel htmlFor="email">E-mail</FieldLabel>
-                      <Input id="email" {...form.register("email")} />
-                      <FieldError errors={[form.formState.errors.email]} />
-                    </Field>
-                  </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-                    <Field>
-                      <FieldLabel htmlFor="telefone">Telefone</FieldLabel>
-                      <Input id="telefone" {...form.register("telefone")} />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="telefone2">Telefone 2</FieldLabel>
-                      <Input id="telefone2" {...form.register("telefone2")} />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="celular">Celular</FieldLabel>
-                      <Input id="celular" {...form.register("celular")} />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="site">Site</FieldLabel>
-                      <Input id="site" {...form.register("site")} />
-                    </Field>
-                  </div>
-                </FieldGroup>
-              </FieldSet>
-
-              <FieldSet>
-                <FieldLegend>Endereço</FieldLegend>
-                <FieldGroup>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <Field className="sm:col-span-2">
-                      <FieldLabel htmlFor="endereco">Endereço</FieldLabel>
-                      <Input id="endereco" {...form.register("endereco")} />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="complemento">Complemento</FieldLabel>
-                      <Input id="complemento" {...form.register("complemento")} />
-                    </Field>
-                  </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-                    <Field>
-                      <FieldLabel htmlFor="bairro">Bairro</FieldLabel>
-                      <Input id="bairro" {...form.register("bairro")} />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="municipio">Município</FieldLabel>
-                      <Input id="municipio" {...form.register("municipio")} />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="uf">UF</FieldLabel>
-                      <Select
-                        value={form.watch("uf") || "none"}
-                        onValueChange={(v) => form.setValue("uf", v === "none" ? "" : v)}
-                      >
-                        <SelectTrigger id="uf" className="w-full">
-                          <SelectValue placeholder="—" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">—</SelectItem>
-                          {UFS.map((uf) => (
-                            <SelectItem key={uf} value={uf}>
-                              {uf}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="cep">CEP</FieldLabel>
-                      <Input id="cep" {...form.register("cep")} />
-                    </Field>
-                  </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Field data-invalid={!!form.formState.errors.latitude}>
-                      <FieldLabel htmlFor="latitude">Latitude</FieldLabel>
-                      <Input
-                        id="latitude"
-                        type="number"
-                        step="any"
-                        {...form.register("latitude", { setValueAs: emptyToNull })}
-                      />
-                      <FieldError errors={[form.formState.errors.latitude]} />
-                    </Field>
-                    <Field data-invalid={!!form.formState.errors.longitude}>
-                      <FieldLabel htmlFor="longitude">Longitude</FieldLabel>
-                      <Input
-                        id="longitude"
-                        type="number"
-                        step="any"
-                        {...form.register("longitude", { setValueAs: emptyToNull })}
-                      />
-                      <FieldError errors={[form.formState.errors.longitude]} />
-                    </Field>
-                  </div>
-                </FieldGroup>
-              </FieldSet>
-
-              <FieldSet>
-                <FieldLegend>Comercial</FieldLegend>
-                <FieldGroup>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <Field>
-                      <FieldLabel htmlFor="vendedorId">Vendedor</FieldLabel>
-                      <Select
-                        value={form.watch("vendedorId") ?? "none"}
-                        onValueChange={(v) => form.setValue("vendedorId", v === "none" ? null : v)}
-                      >
-                        <SelectTrigger id="vendedorId" className="w-full">
-                          <SelectValue placeholder="Sem vendedor" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {/* Usuário restrito é obrigado a manter o cliente na própria carteira/time. */}
-                          {!restrito && <SelectItem value="none">Sem vendedor</SelectItem>}
-                          {opcoesVendedor.map((v) => (
-                            <SelectItem key={v.id} value={v.id}>
-                              {v.nomeReduzido || v.nome}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="tabelaPrecoId">Tabela de preço</FieldLabel>
-                      <Select
-                        value={form.watch("tabelaPrecoId") ?? "none"}
-                        onValueChange={(v) => form.setValue("tabelaPrecoId", v === "none" ? null : v)}
-                      >
-                        <SelectTrigger id="tabelaPrecoId" className="w-full">
-                          <SelectValue placeholder="Sem tabela de preço" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Sem tabela de preço</SelectItem>
-                          {opcoesTabelaPreco.map((t) => (
-                            <SelectItem key={t.id} value={t.id}>
-                              {t.descricao}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="carteira">Cliente de carteira</FieldLabel>
-                      <Select
-                        value={boolToSelect(form.watch("carteira"))}
-                        onValueChange={(v) => form.setValue("carteira", selectToBool(v))}
-                      >
-                        <SelectTrigger id="carteira" className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="nao-informado">Não informado</SelectItem>
-                          <SelectItem value="sim">Sim</SelectItem>
-                          <SelectItem value="nao">Não</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                  </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Field data-invalid={!!form.formState.errors.limiteCredito}>
-                      <FieldLabel htmlFor="limiteCredito">Limite de crédito</FieldLabel>
-                      <Input
-                        id="limiteCredito"
-                        type="number"
-                        step="any"
-                        {...form.register("limiteCredito", { setValueAs: emptyToNull })}
-                      />
-                      <FieldError errors={[form.formState.errors.limiteCredito]} />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="vencimentoLimite">Vencimento do limite</FieldLabel>
-                      <Input
-                        id="vencimentoLimite"
-                        type="date"
-                        defaultValue={dateToInput(form.getValues("vencimentoLimite"))}
-                        onChange={(e) => form.setValue("vencimentoLimite", inputToDate(e.target.value))}
-                      />
-                    </Field>
-                  </div>
-                  <Field>
-                    <FieldLabel htmlFor="observacao">Observação</FieldLabel>
-                    <Textarea id="observacao" rows={3} {...form.register("observacao")} />
-                  </Field>
-                  <label className="flex cursor-pointer items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={form.watch("ativo")}
-                      onCheckedChange={(v) => form.setValue("ativo", v === true)}
-                    />
-                    Cliente ativo
-                  </label>
-                </FieldGroup>
-              </FieldSet>
-
-              {cliente && (
-                <FieldSet>
-                  <FieldLegend>Bloqueio</FieldLegend>
-                  <FieldGroup>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <Field>
-                        <FieldLabel htmlFor="dataBloqueio">Data de bloqueio</FieldLabel>
-                        <Input
-                          id="dataBloqueio"
-                          type="date"
-                          defaultValue={dateToInput(form.getValues("dataBloqueio"))}
-                          onChange={(e) => form.setValue("dataBloqueio", inputToDate(e.target.value))}
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="observacaoBloqueio">Motivo do bloqueio</FieldLabel>
-                        <Input id="observacaoBloqueio" {...form.register("observacaoBloqueio")} />
-                      </Field>
-                    </div>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <Field>
-                        <FieldLabel htmlFor="dataReativacao">Data de reativação</FieldLabel>
-                        <Input
-                          id="dataReativacao"
-                          type="date"
-                          defaultValue={dateToInput(form.getValues("dataReativacao"))}
-                          onChange={(e) => form.setValue("dataReativacao", inputToDate(e.target.value))}
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="observacaoReativacao">Observação da reativação</FieldLabel>
-                        <Input id="observacaoReativacao" {...form.register("observacaoReativacao")} />
-                      </Field>
-                    </div>
-                  </FieldGroup>
-                </FieldSet>
-              )}
-
-              {cliente && (
-                <FieldSet>
-                  <FieldLegend>Histórico comercial</FieldLegend>
-                  {/* Preenchido pelo import do legado — somente leitura. */}
-                  <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
-                    {(
-                      [
-                        ["Primeira compra", cliente.primeiraCompra],
-                        ["Última visita", cliente.ultimaVisita],
-                        ["Última compra", cliente.ultimaCompra],
-                        ["Último atendimento", cliente.ultimoAtendimento],
-                        ["Consulta RFB", cliente.dataConsultaRfb],
-                      ] as const
-                    ).map(([label, value]) => (
-                      <div key={label}>
-                        <p className="text-xs text-muted-foreground">{label}</p>
-                        <p>{dateToLabel(value)}</p>
-                      </div>
-                    ))}
-                  </div>
-                </FieldSet>
-              )}
-            </FieldGroup>
-          </CardContent>
-
-          <CardFooter className="justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => router.push(LIST_ROUTE)}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={form.formState.isSubmitting}>
-              {cliente ? "Salvar alterações" : "Cadastrar"}
-            </Button>
-          </CardFooter>
-        </form>
-      </Card>
+      <ClienteFormContent cliente={cliente} readOnly={readOnly} onClose={() => router.push(LIST_ROUTE)} />
     </div>
+  );
+}
+
+/**
+ * Cortina lateral com o cadastro do cliente (visualizar ou alterar) — usada
+ * a partir da listagem de Posição de Cliente, pra não perder busca/filtro/
+ * paginação de quem está consultando a lista. Campos organizados em abas
+ * (não empilhados), já que a cortina é mais estreita que a página cheia.
+ */
+export function ClienteSheet({
+  id,
+  modo,
+  onOpenChange,
+}: {
+  id: string | null;
+  modo: "visualizar" | "alterar";
+  onOpenChange: (open: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const { data: cliente, isLoading, isError } = useQuery({
+    queryKey: ["clientes", id],
+    queryFn: () => apiFetch<Cliente>(`/clientes/${id}`),
+    enabled: !!id,
+  });
+
+  const handleClose = () => {
+    onOpenChange(false);
+    // Garante que a listagem (e a Posição de Cliente detalhada, se aberta em
+    // outra aba) reflitam uma eventual alteração salva.
+    void queryClient.invalidateQueries({ queryKey: ["clientes"] });
+  };
+
+  return (
+    <Sheet open={!!id} onOpenChange={onOpenChange}>
+      <ResizableSheetContent defaultWidth={720}>
+        <SheetHeader>
+          <SheetTitle>
+            {modo === "visualizar" ? "Visualizar cliente" : "Alterar cliente"}
+            {cliente ? ` — ${cliente.razaoSocial}` : ""}
+          </SheetTitle>
+        </SheetHeader>
+        <div className="px-4 pb-4">
+          {isLoading && <Skeleton className="h-96 w-full rounded-xl" />}
+          {isError && <p className="text-sm text-muted-foreground">Cliente não encontrado.</p>}
+          {cliente && (
+            <ClienteFormContent
+              key={cliente.id}
+              cliente={cliente}
+              readOnly={modo === "visualizar"}
+              onClose={handleClose}
+              variant="sheet"
+            />
+          )}
+        </div>
+      </ResizableSheetContent>
+    </Sheet>
   );
 }

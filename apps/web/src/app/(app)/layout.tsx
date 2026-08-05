@@ -4,7 +4,8 @@ import { useState } from "react";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuthGuard } from "@/hooks/use-auth-guard";
-import { AppSidebar } from "@/components/layout/app-sidebar";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { AppSidebar, MobileSidebar } from "@/components/layout/app-sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
 import { ForcedPasswordChangeGate } from "@/components/auth/forced-password-change-gate";
 
@@ -15,6 +16,10 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   "/admin/perfis": { title: "Perfis", subtitle: "Papéis e permissões (RBAC)" },
   "/admin/politica-senha": { title: "Política de Senha", subtitle: "Regras de senha e bloqueio" },
   "/admin/estrutura": { title: "Estrutura de menu", subtitle: "Módulos, menus e rotinas" },
+  "/admin/clientes-config": {
+    title: "Campos do Cliente",
+    subtitle: "Defina quais campos podem ser alterados",
+  },
   "/perfil": { title: "Meu perfil", subtitle: "Dados da conta" },
   "/comercial/produtos": { title: "Produtos", subtitle: "Catálogo de produtos" },
 };
@@ -22,13 +27,19 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
 export default function AppShellLayout({ children }: { children: React.ReactNode }) {
   const { isReady } = useAuthGuard();
   const pathname = usePathname();
+  const isMobile = useIsMobile();
   const [collapsed, setCollapsed] = useState(true);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   if (!isReady) {
     return <div className="flex min-h-svh items-center justify-center text-muted-foreground">Carregando...</div>;
   }
 
   const page = PAGE_TITLES[pathname];
+  const handleToggleSidebar = () => {
+    if (isMobile) setMobileOpen((open) => !open);
+    else setCollapsed((c) => !c);
+  };
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -47,8 +58,9 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
 
       <div className="flex min-h-0 flex-1">
         <AppSidebar collapsed={collapsed} />
+        <MobileSidebar open={mobileOpen} onOpenChange={setMobileOpen} />
         <div className="flex min-w-0 flex-1 flex-col">
-          <AppTopbar onToggleSidebar={() => setCollapsed((c) => !c)} title={page?.title} subtitle={page?.subtitle} />
+          <AppTopbar onToggleSidebar={handleToggleSidebar} title={page?.title} subtitle={page?.subtitle} />
           <main className="flex-1 overflow-y-auto bg-muted/30 p-6">{children}</main>
         </div>
       </div>

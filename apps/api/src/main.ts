@@ -4,6 +4,7 @@ import { VersioningType } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ZodValidationPipe, cleanupOpenApiDoc } from 'nestjs-zod';
 import { AppModule } from './app.module';
+import { IntegracaoModule } from './modules/integracao/integracao.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
@@ -24,13 +25,31 @@ async function bootstrap() {
   app.useGlobalPipes(new ZodValidationPipe());
 
   const config = new DocumentBuilder()
-    .setTitle('Plataforma Comercial API')
-    .setDescription('Cadastros base, permissões e gestão comercial')
+    .setTitle('Plataforma Comercial — API de Integração ERP')
+    .setDescription(
+      'Documentação pública só da API de integração com ERP externo — as rotas ' +
+        'de uso interno do frontend (login, cadastros, permissões etc.) não são ' +
+        'documentadas aqui.\n\n' +
+        '**Autenticação**: só via header `x-api-key` (nunca login de usuário). ' +
+        'Chaves são criadas e revogadas na tela Administração > Integração ' +
+        '(requer permissão integracao.cadastrar); a chave em claro só é exibida ' +
+        'uma única vez, na criação.',
+    )
     .setVersion('1.0')
-    .addBearerAuth()
-    .addApiKey({ type: 'apiKey', name: 'x-api-key', in: 'header' }, 'apiKey')
+    .addApiKey(
+      {
+        type: 'apiKey',
+        name: 'x-api-key',
+        in: 'header',
+        description:
+          'Chave da API de integração ERP — ver Administração > Integração',
+      },
+      'apiKey',
+    )
     .build();
-  const document = cleanupOpenApiDoc(SwaggerModule.createDocument(app, config));
+  const document = cleanupOpenApiDoc(
+    SwaggerModule.createDocument(app, config, { include: [IntegracaoModule] }),
+  );
   SwaggerModule.setup('api/docs', app, document);
 
   await app.listen(process.env.PORT ?? 3001);

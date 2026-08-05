@@ -132,6 +132,17 @@ export const CLIENTE_EXAMPLE: Cliente = {
   updatedBy: null,
 };
 
+// apenasComCliente=true: além do escopo hierárquico normal, só devolve
+// vendedores com pelo menos um cliente vinculado, e inclui os bloqueados
+// (ativo:false) — usado no filtro rápido de vendedor da Posição de Cliente,
+// que precisa localizar/filtrar até vendedor bloqueado que ainda tenha
+// clientes na carteira. Sem o parâmetro, comportamento igual a sempre foi
+// (só vendedores ativos, sem exigir cliente).
+export const vendedoresEscopoQuerySchema = z.object({
+  apenasComCliente: booleanQueryParam,
+});
+export type VendedoresEscopoQuery = z.infer<typeof vendedoresEscopoQuerySchema>;
+
 export const CLIENTE_CREATE_EXAMPLE: ClienteCreate = {
   codigoErp: "004417",
   tipoPessoa: "juridica",

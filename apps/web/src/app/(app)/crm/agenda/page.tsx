@@ -2,10 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import type { Atividade, Orcamento, TipoAtividade, Vendedor } from "@plataforma/contracts";
+import type { Atividade, Orcamento, TipoAtividade } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
-import { apiFetch } from "@/lib/api-client";
+import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
+import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
 import { TIPOS, TIPO_COR } from "@/components/crud/atividade-tipo";
 import { STATUS_ORCAMENTO_COR } from "@/components/crud/orcamento-status";
 import { QuickFilterButton, QuickFilterGroup } from "@/components/crud/quick-filter-group";
@@ -50,15 +50,10 @@ export default function AgendaPage() {
   const [tipo, setTipo] = useState<TipoFiltro>("todos");
   const [somentePendentes, setSomentePendentes] = useState(false);
 
-  const vendedoresEscopoQuery = useQuery({
-    queryKey: ["clientes", "vendedores-escopo"],
-    queryFn: () =>
-      apiFetch<{ data: Vendedor[]; restrito: boolean; ehVendedorPuro: boolean }>(
-        "/clientes/vendedores-escopo",
-      ),
-  });
+  const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
   const mostrarFiltroVendedor = !(vendedoresEscopoQuery.data?.ehVendedorPuro ?? false);
+  useVendedorPadrao(vendedoresEscopoQuery.data?.meuVendedorId, setVendedorId);
 
   const gridStart = useMemo(() => addDays(startOfMonth(mesAtual), -startOfMonth(mesAtual).getDay()), [mesAtual]);
   const gridEnd = useMemo(() => {

@@ -4,21 +4,15 @@ import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   TituloReceberDetalheContent,
   type TituloReceberDetalhe,
 } from "@/components/comercial/titulo-receber-detalhe";
+import { TituloStatusBadge } from "@/components/comercial/titulo-status-badge";
 import { ArrowLeft } from "lucide-react";
 
 const LIST_ROUTE = "/comercial/titulos-receber";
-
-const dataBr = (v: string | null | undefined) => {
-  if (!v) return "—";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
-};
 
 // Detalhe read-only: os dados entram pelo import do ERP.
 export default function TituloReceberDetalhePage() {
@@ -54,11 +48,7 @@ export default function TituloReceberDetalhePage() {
           {titulo.numero}
           {titulo.parcela && `/${titulo.parcela}`}
         </h1>
-        {titulo.dtBaixa ? (
-          <Badge variant="outline">Baixado {dataBr(titulo.dtBaixa)}</Badge>
-        ) : (
-          <Badge>Aberto</Badge>
-        )}
+        <TituloStatusBadge status={titulo.status} />
       </div>
 
       <TituloReceberDetalheContent titulo={titulo} />

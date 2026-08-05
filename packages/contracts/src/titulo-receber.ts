@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
 
+// aberto: sem baixa e ainda não vencido; vencido: sem baixa e vencimento no
+// passado; baixado: com data de baixa. Calculado no backend a cada consulta
+// (não é uma coluna própria).
+export const tituloReceberStatusSchema = z.enum(["aberto", "vencido", "baixado"]);
+export type TituloReceberStatus = z.infer<typeof tituloReceberStatusSchema>;
+
 // Espelho read-only do ERP: sem create/update — os dados entram só pelo
 // import (e no futuro pela API externa de manutenção).
 export const tituloReceberSchema = z.object({
@@ -21,6 +27,7 @@ export const tituloReceberSchema = z.object({
   acrescimo: z.number().nullable(),
   decrescimo: z.number().nullable(),
   dtBaixa: z.string().datetime().nullable(),
+  status: tituloReceberStatusSchema,
   formaPgto: z.string().nullable(),
   historico: z.string().nullable(),
   ativo: z.boolean(),
@@ -28,12 +35,11 @@ export const tituloReceberSchema = z.object({
 });
 export type TituloReceber = z.infer<typeof tituloReceberSchema>;
 
-// aberto=true → sem baixa (dtBaixa null); aberto=false → baixados.
 export const tituloReceberQuerySchema = paginationQuerySchema.extend({
   ativo: booleanQueryParam,
   clienteId: z.string().uuid().optional(),
   vendedorId: z.string().uuid().optional(),
-  aberto: booleanQueryParam,
+  status: tituloReceberStatusSchema.optional(),
 });
 export type TituloReceberQuery = z.infer<typeof tituloReceberQuerySchema>;
 
@@ -55,6 +61,7 @@ export const TITULO_RECEBER_EXAMPLE: TituloReceber = {
   acrescimo: null,
   decrescimo: null,
   dtBaixa: null,
+  status: "vencido",
   formaPgto: "B",
   historico: null,
   ativo: true,

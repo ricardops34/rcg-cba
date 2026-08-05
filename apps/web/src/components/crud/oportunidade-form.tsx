@@ -1,9 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   oportunidadeCreateSchema,
@@ -12,10 +12,10 @@ import {
   type Oportunidade,
   type OportunidadeCreate,
   type OportunidadeUpdate,
-  type Vendedor,
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
-import { apiFetch, ApiError } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-client";
+import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -52,13 +52,7 @@ export function OportunidadeForm({ oportunidade }: { oportunidade?: Oportunidade
   );
 
   // Vendedores já restritos ao escopo hierárquico do usuário logado.
-  const vendedoresEscopoQuery = useQuery({
-    queryKey: ["clientes", "vendedores-escopo"],
-    queryFn: () =>
-      apiFetch<{ data: Vendedor[]; restrito: boolean; ehVendedorPuro: boolean }>(
-        "/clientes/vendedores-escopo",
-      ),
-  });
+  const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
 
   const schema = oportunidade ? oportunidadeUpdateSchema : oportunidadeCreateSchema;
@@ -95,6 +89,17 @@ export function OportunidadeForm({ oportunidade }: { oportunidade?: Oportunidade
   });
 
   const estagio = form.watch("estagio");
+
+  // Ao criar (não editar), pré-seleciona o próprio vendedor do usuário
+  // logado, se houver vínculo — só na primeira carga.
+  const [vendedorPadraoAplicado, setVendedorPadraoAplicado] = useState(false);
+  const meuVendedorId = vendedoresEscopoQuery.data?.meuVendedorId;
+  useEffect(() => {
+    if (!oportunidade && !vendedorPadraoAplicado && meuVendedorId) {
+      form.setValue("vendedorId", meuVendedorId);
+      setVendedorPadraoAplicado(true);
+    }
+  }, [oportunidade, vendedorPadraoAplicado, meuVendedorId, form]);
 
   const onSubmit = async (values: OportunidadeCreate) => {
     const payload: OportunidadeCreate = {

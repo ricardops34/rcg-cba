@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusDot } from "@/components/crud/status-dot";
+import { TituloStatusBadge } from "@/components/comercial/titulo-status-badge";
 import { SortableTableHead } from "@/components/crud/sortable-table-head";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { NotaSaidaSheet } from "@/components/comercial/nota-saida-detalhe";
@@ -40,6 +41,8 @@ function compareValores(a: string | number | null, b: string | number | null): n
   if (typeof a === "string" && typeof b === "string") return a.localeCompare(b, "pt-BR");
   return (a as number) - (b as number);
 }
+
+const STATUS_ORDEM: Record<TituloRow["status"], number> = { aberto: 0, vencido: 1, baixado: 2 };
 
 const moeda = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
@@ -117,10 +120,6 @@ export default function PosicaoClienteDetalhePage() {
   const titulos = useMemo(() => posicao?.titulos ?? [], [posicao]);
   const mix = useMemo(() => posicao?.mix ?? [], [posicao]);
 
-  // O lint de regras do React Compiler trata Date.now() como chamada impura
-  // em qualquer ponto do corpo do componente; new Date() não é sinalizado.
-  const agora = new Date().getTime();
-
   const notasFiltradas = useMemo(() => {
     const termo = notaSearch.trim().toLowerCase();
     return notas.filter((n) => {
@@ -134,13 +133,7 @@ export default function PosicaoClienteDetalhePage() {
   const titulosFiltrados = useMemo(() => {
     const termo = tituloSearch.trim().toLowerCase();
     return titulos.filter((t) => {
-      if (tituloSituacao === "aberto" && t.dtBaixa) return false;
-      if (tituloSituacao === "baixado" && !t.dtBaixa) return false;
-      if (
-        tituloSituacao === "vencido" &&
-        (t.dtBaixa || !t.vencimento || new Date(t.vencimento).getTime() >= agora)
-      )
-        return false;
+      if (tituloSituacao !== "todos" && t.status !== tituloSituacao) return false;
       if (
         termo &&
         !`${t.prefixo ?? ""} ${t.numero} ${t.parcela ?? ""}`.toLowerCase().includes(termo)
@@ -148,7 +141,7 @@ export default function PosicaoClienteDetalhePage() {
         return false;
       return true;
     });
-  }, [titulos, tituloSituacao, tituloSearch, agora]);
+  }, [titulos, tituloSituacao, tituloSearch]);
 
   const mixFiltrado = useMemo(() => {
     const termo = mixSearch.trim().toLowerCase();
@@ -190,8 +183,10 @@ export default function PosicaoClienteDetalhePage() {
           return t.valor;
         case "saldo":
           return t.saldo;
-        case "situacao":
-          return t.dtBaixa ? 1 : 0;
+        case "status":
+          return STATUS_ORDEM[t.status];
+        case "dtBaixa":
+          return t.dtBaixa;
         default:
           return null;
       }
@@ -459,11 +454,19 @@ export default function PosicaoClienteDetalhePage() {
                           }
                         />
                         <SortableTableHead
-                          label="Situação"
-                          active={tituloSortBy === "situacao"}
+                          label="Status"
+                          active={tituloSortBy === "status"}
                           order={tituloSortOrder}
                           onClick={() =>
-                            toggleSort("situacao", tituloSortBy, setTituloSortBy, setTituloSortOrder)
+                            toggleSort("status", tituloSortBy, setTituloSortBy, setTituloSortOrder)
+                          }
+                        />
+                        <SortableTableHead
+                          label="Data de baixa"
+                          active={tituloSortBy === "dtBaixa"}
+                          order={tituloSortOrder}
+                          onClick={() =>
+                            toggleSort("dtBaixa", tituloSortBy, setTituloSortBy, setTituloSortOrder)
                           }
                         />
                       </TableRow>
@@ -484,12 +487,9 @@ export default function PosicaoClienteDetalhePage() {
                           <TableCell className="text-right">{moeda(t.valor)}</TableCell>
                           <TableCell className="text-right">{moeda(t.saldo)}</TableCell>
                           <TableCell>
-                            {t.dtBaixa ? (
-                              <Badge variant="outline">Baixado {dataBr(t.dtBaixa)}</Badge>
-                            ) : (
-                              <Badge>Aberto</Badge>
-                            )}
+                            <TituloStatusBadge status={t.status} />
                           </TableCell>
+                          <TableCell>{dataBr(t.dtBaixa)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

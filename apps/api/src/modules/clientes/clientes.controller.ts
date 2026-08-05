@@ -16,6 +16,7 @@ import {
   ClienteQueryDto,
   ClienteUpdateDto,
   PosicaoClienteListQueryDto,
+  VendedoresEscopoQueryDto,
 } from './dto/cliente.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -52,12 +53,22 @@ export class ClientesController {
     summary: 'Vendedores no escopo do usuário logado',
     description:
       'Opções de vendedor para o filtro/formulário de clientes, já restritas ao escopo ' +
-      'hierárquico. restrito=false indica acesso total. Requer clientes.visualizar.',
+      'hierárquico. restrito=false indica acesso total. meuVendedorId é o vendedor vinculado ao ' +
+      'usuário logado (null se não houver vínculo). apenasComCliente=true troca pra só listar ' +
+      'vendedores com pelo menos um cliente vinculado (inclui bloqueados nesse caso — usado no ' +
+      'filtro rápido de vendedor da Posição de Cliente). Requer clientes.visualizar.',
   })
   @RequirePermission('clientes', 'visualizar')
   @Get('vendedores-escopo')
-  vendedoresEscopo(@CurrentUser() user: AuthenticatedUser) {
-    return this.service.vendedoresEscopo(user.empresaAtivaId, user);
+  vendedoresEscopo(
+    @Query() query: VendedoresEscopoQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.vendedoresEscopo(
+      user.empresaAtivaId,
+      user,
+      query.apenasComCliente ?? false,
+    );
   }
 
   // Declarado antes de GET :id pelo mesmo motivo de vendedores-escopo.

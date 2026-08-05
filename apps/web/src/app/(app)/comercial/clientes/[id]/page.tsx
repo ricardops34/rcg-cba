@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import type { Cliente } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
@@ -9,6 +9,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function EditarClientePage() {
   const { id } = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const readOnly = searchParams.get("modo") === "visualizar";
 
   const { data: cliente, isLoading, isError } = useQuery({
     queryKey: ["clientes", id],
@@ -28,5 +30,5 @@ export default function EditarClientePage() {
     return <p className="text-sm text-muted-foreground">Cliente não encontrado.</p>;
   }
 
-  return <ClienteForm cliente={cliente} />;
+  return <ClienteForm cliente={cliente} readOnly={readOnly} />;
 }

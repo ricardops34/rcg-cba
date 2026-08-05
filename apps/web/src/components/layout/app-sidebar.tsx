@@ -11,10 +11,45 @@ import { avatarColorClass, initials } from "@/lib/avatar-color";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { assetUrl } from "@/lib/api-client";
 
 export function AppSidebar({ collapsed }: { collapsed: boolean }) {
+  return (
+    <aside
+      className={cn(
+        "hidden shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:flex",
+        collapsed ? "w-[4.5rem]" : "w-64",
+      )}
+    >
+      <SidebarContent collapsed={collapsed} />
+    </aside>
+  );
+}
+
+export function MobileSidebar({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="left" className="w-72 flex-col bg-sidebar p-0 text-sidebar-foreground">
+        <SheetHeader className="sr-only">
+          <SheetTitle>Menu</SheetTitle>
+        </SheetHeader>
+        <SidebarContent collapsed={false} onNavigate={() => onOpenChange(false)} />
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
   const { data: modulos, isLoading } = useMenu();
   const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
@@ -34,13 +69,8 @@ export function AppSidebar({ collapsed }: { collapsed: boolean }) {
     });
 
   return (
-    <aside
-      className={cn(
-        "hidden shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:flex",
-        collapsed ? "w-[4.5rem]" : "w-64",
-      )}
-    >
-      <div className="flex h-16 items-center justify-center px-3">
+    <>
+      <div className="flex h-16 shrink-0 items-center justify-center px-3">
         {logo ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -64,6 +94,7 @@ export function AppSidebar({ collapsed }: { collapsed: boolean }) {
           label="Dashboard"
           active={pathname === "/"}
           collapsed={collapsed}
+          onNavigate={onNavigate}
         />
 
         {isLoading &&
@@ -73,18 +104,43 @@ export function AppSidebar({ collapsed }: { collapsed: boolean }) {
 
         {modulos?.map((modulo) =>
           collapsed ? (
-            <div key={modulo.id} className="space-y-0.5">
-              {modulo.menus.map((menu) => (
-                <NavLink
-                  key={menu.id}
-                  href={menu.rota ?? "#"}
-                  icon={<DynamicIcon name={menu.icone} className="size-4" />}
-                  label={menu.nome}
-                  active={pathname === menu.rota}
-                  collapsed={collapsed}
-                />
-              ))}
-            </div>
+            <DropdownMenu key={modulo.id}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex w-full items-center justify-center rounded-md py-2 text-sidebar-foreground/85 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground",
+                        modulo.menus.some((menu) => menu.rota === pathname) &&
+                          "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground",
+                      )}
+                    >
+                      <DynamicIcon name={modulo.icone} className="size-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="right">{modulo.nome}</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent side="right" align="start" className="min-w-48">
+                <DropdownMenuLabel>{modulo.nome}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {modulo.menus.map((menu) => (
+                  <DropdownMenuItem key={menu.id} asChild>
+                    <Link
+                      href={menu.rota ?? "#"}
+                      className={cn(
+                        "flex items-center gap-2",
+                        pathname === menu.rota && "bg-accent text-accent-foreground",
+                      )}
+                    >
+                      <DynamicIcon name={menu.icone} className="size-4" />
+                      <span>{menu.nome}</span>
+                    </Link>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : (
             <Collapsible key={modulo.id} open={!closedGroups.has(modulo.id)} onOpenChange={() => toggleGroup(modulo.id)}>
               <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-1 text-left">
@@ -102,6 +158,7 @@ export function AppSidebar({ collapsed }: { collapsed: boolean }) {
                     label={menu.nome}
                     active={pathname === menu.rota}
                     collapsed={collapsed}
+                    onNavigate={onNavigate}
                   />
                 ))}
               </CollapsibleContent>
@@ -111,7 +168,7 @@ export function AppSidebar({ collapsed }: { collapsed: boolean }) {
       </nav>
 
       {user && (
-        <div className={cn("border-t border-sidebar-border p-3", collapsed && "flex justify-center px-2")}>
+        <div className={cn("shrink-0 border-t border-sidebar-border p-3", collapsed && "flex justify-center px-2")}>
           <div className={cn("flex items-center gap-2.5", collapsed && "justify-center")}>
             <div
               className={cn(
@@ -130,7 +187,7 @@ export function AppSidebar({ collapsed }: { collapsed: boolean }) {
           </div>
         </div>
       )}
-    </aside>
+    </>
   );
 }
 
@@ -140,16 +197,19 @@ function NavLink({
   label,
   active,
   collapsed,
+  onNavigate,
 }: {
   href: string;
   icon: React.ReactNode;
   label: string;
   active: boolean;
   collapsed: boolean;
+  onNavigate?: () => void;
 }) {
   const link = (
     <Link
       href={href}
+      onClick={onNavigate}
       className={cn(
         "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/85 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         collapsed && "justify-center px-0",

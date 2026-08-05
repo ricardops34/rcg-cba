@@ -3,18 +3,37 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import type { PosicaoClienteListRow, Vendedor } from "@plataforma/contracts";
+import type { PosicaoClienteListRow } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
 import { apiFetch } from "@/lib/api-client";
+import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
+import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
 import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
 import { QuickFilterButton, QuickFilterGroup } from "@/components/crud/quick-filter-group";
 import { FiltersPopover } from "@/components/crud/filters-popover";
+import { ClienteSheet } from "@/components/crud/cliente-form";
+import { OrcamentoSheet } from "@/components/crud/orcamento-form";
 import { FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CircleCheck, Lock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  ClipboardList,
+  Eye,
+  FilePlus2,
+  Lock,
+  MoreHorizontal,
+  Pencil,
+} from "lucide-react";
 
 const DIAS_OPCOES = [120, 90, 60, 30, 15] as const;
 
@@ -27,6 +46,16 @@ const dataBr = (v: string | null) => {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
 };
 
+// Prioridade vencido > vencendo (≤7 dias) > não vencido — o $ mostra só a
+// pior situação entre os títulos em aberto do cliente; sem título em
+// aberto, não mostra nada.
+function tituloIndicador(c: PosicaoClienteListRow): { cor: string; legenda: string } | null {
+  if (c.temTituloVencido) return { cor: "text-destructive", legenda: "Tem título vencido" };
+  if (c.temTituloVencendo) return { cor: "text-blue-600 dark:text-blue-400", legenda: "Tem título vencendo nos próximos 7 dias" };
+  if (c.temTituloNaoVencido) return { cor: "text-success", legenda: "Tem título em aberto, não vencido" };
+  return null;
+}
+
 // Listagem base de Posição de Cliente: colunas de venda calculadas ao vivo
 // (GET /clientes/posicao). O clique na linha abre a Posição de Cliente
 // detalhada — agrupado de notas, títulos e mix.
@@ -37,29 +66,34 @@ export default function PosicaoClientePage() {
   const [pageSize, setPageSize] = useState(10);
   const [sortBy, setSortBy] = useState("ultimaCompra");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
-  const [status, setStatus] = useState<StatusFilterValue>("todos");
+  const [status, setStatus] = useState<StatusFilterValue>("ativos");
   const [uf, setUf] = useState<string | undefined>(undefined);
   const [municipio, setMunicipio] = useState<string | undefined>(undefined);
   const [vendedorId, setVendedorId] = useState<string | undefined>(undefined);
   const [carteira, setCarteira] = useState<SimNaoTodos>("todos");
   const [diasSemComprar, setDiasSemComprar] = useState<number | undefined>(undefined);
-  const [bloqueado, setBloqueado] = useState(false);
+
+  // Visualizar/Alterar Cliente e Incluir Orçamento abrem em cortina lateral
+  // (não navegam pra fora desta listagem) — só nesta tela; o cadastro de
+  // Clientes continua abrindo em página cheia normalmente.
+  const [clienteSheet, setClienteSheet] = useState<{ id: string; modo: "visualizar" | "alterar" } | null>(
+    null,
+  );
+  const [orcamentoClienteId, setOrcamentoClienteId] = useState<string | null>(null);
 
   // Opções de vendedor já restritas ao escopo do usuário logado — não usa
   // /vendedores direto (aquele endpoint não tem restrição de carteira).
   // ehVendedorPuro (vendedor "de carteira", nem supervisor nem gerente):
   // filtrar a própria carteira pelo próprio vendedor não faz sentido, então
   // o filtro Vendedor some por completo pra esse perfil; supervisor/gerente
-  // continuam vendo, já restrito ao próprio time.
-  const vendedoresEscopoQuery = useQuery({
-    queryKey: ["clientes", "vendedores-escopo"],
-    queryFn: () =>
-      apiFetch<{ data: Vendedor[]; restrito: boolean; ehVendedorPuro: boolean }>(
-        "/clientes/vendedores-escopo",
-      ),
-  });
+  // continuam vendo, já restrito ao próprio time. apenasComCliente: só
+  // vendedores com pelo menos um cliente (inclui bloqueados) — filtrar por
+  // um vendedor sem nenhum cliente na Posição de Cliente não serviria pra
+  // nada, e um vendedor bloqueado ainda pode ter carteira pra revisar.
+  const vendedoresEscopoQuery = useVendedoresEscopo({ apenasComCliente: true });
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
   const mostrarFiltroVendedor = !(vendedoresEscopoQuery.data?.ehVendedorPuro ?? false);
+  useVendedorPadrao(vendedoresEscopoQuery.data?.meuVendedorId, setVendedorId);
 
   // UFs e municípios distintos presentes na carteira visível ao usuário —
   // só lista o que realmente existe no cadastro (mesmo racional de escopo
@@ -90,56 +124,51 @@ export default function PosicaoClientePage() {
       ...(vendedorId ? { vendedorId } : {}),
       ...(carteira !== "todos" ? { carteira: carteira === "sim" } : {}),
       ...(diasSemComprar !== undefined ? { diasSemComprar } : {}),
-      ...(bloqueado ? { bloqueado: true } : {}),
     },
   );
 
+  // "Ativos" é o status inicial da tela — não conta como filtro "aplicado"
+  // pro indicador do botão Filtros; só sai desse estado padrão se o usuário
+  // trocar pra Todos/Inativos.
   const filtrosAtivos =
+    status !== "ativos" ||
     !!uf ||
     !!municipio ||
     !!vendedorId ||
     carteira !== "todos" ||
-    diasSemComprar !== undefined ||
-    bloqueado;
+    diasSemComprar !== undefined;
 
   const limparFiltros = () => {
+    setStatus("ativos");
     setUf(undefined);
     setMunicipio(undefined);
     setVendedorId(undefined);
     setCarteira("todos");
     setDiasSemComprar(undefined);
-    setBloqueado(false);
     setPage(1);
   };
 
   const aplicarFiltroRapidoDias = (dias: number) => {
-    setBloqueado(false);
     setDiasSemComprar((atual) => (atual === dias ? undefined : dias));
     setPage(1);
   };
-  const aplicarFiltroRapidoBloqueados = () => {
-    setDiasSemComprar(undefined);
-    setBloqueado((atual) => !atual);
-    setPage(1);
-  };
-  const aplicarFiltroRapidoAtivo = () => {
-    setDiasSemComprar(undefined);
-    setBloqueado(false);
-    setStatus("ativos");
-    setPage(1);
-  };
-
-  // Os três atalhos (dias/bloqueados/ativo) já se excluem mutuamente nos
-  // handlers acima — isso só deriva qual botão do grupo aparece marcado.
-  const filtroRapidoAtivo = bloqueado
-    ? "bloqueados"
-    : diasSemComprar !== undefined
-      ? `dias-${diasSemComprar}`
-      : status === "ativos"
-        ? "ativo"
-        : null;
 
   const columns: ColumnDef<PosicaoClienteListRow>[] = [
+    {
+      header: "Títulos",
+      cell: (c) => {
+        const indicador = tituloIndicador(c);
+        if (!indicador) return null;
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className={`text-base font-bold ${indicador.cor}`}>$</span>
+            </TooltipTrigger>
+            <TooltipContent>{indicador.legenda}</TooltipContent>
+          </Tooltip>
+        );
+      },
+    },
     { header: "Situação", sortKey: "ativo", cell: (c) => <StatusDot active={c.ativo} /> },
     {
       header: "Código",
@@ -191,6 +220,33 @@ export default function PosicaoClientePage() {
       cell: (c) => c.dias ?? "—",
     },
     { header: "Comodato", sortKey: "comodato", cell: (c) => (c.comodato ? "Sim" : "Não") },
+    {
+      header: "",
+      className: "w-10",
+      cell: (c) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="size-8" onClick={(ev) => ev.stopPropagation()}>
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" onClick={(ev) => ev.stopPropagation()}>
+            <DropdownMenuItem onClick={() => setClienteSheet({ id: c.id, modo: "visualizar" })}>
+              <Eye className="size-4" /> Visualizar Cliente
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setClienteSheet({ id: c.id, modo: "alterar" })}>
+              <Pencil className="size-4" /> Alterar Cliente
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push(`/comercial/posicao-cliente/${c.id}`)}>
+              <ClipboardList className="size-4" /> Posição do Cliente
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setOrcamentoClienteId(c.id)}>
+              <FilePlus2 className="size-4" /> Incluir Orçamento
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
   ];
 
   return (
@@ -206,43 +262,27 @@ export default function PosicaoClientePage() {
       />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <StatusQuickFilter
-          value={status}
-          onChange={(v) => {
-            setStatus(v);
-            setPage(1);
-          }}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusQuickFilter
+            value={status}
+            onChange={(v) => {
+              setStatus(v);
+              setPage(1);
+            }}
+          />
+          <QuickFilterGroup>
+            {DIAS_OPCOES.map((dias) => (
+              <QuickFilterButton
+                key={dias}
+                active={diasSemComprar === dias}
+                onClick={() => aplicarFiltroRapidoDias(dias)}
+              >
+                +{dias} dias
+              </QuickFilterButton>
+            ))}
+          </QuickFilterGroup>
+        </div>
         <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
-          <div className="space-y-2">
-            <FieldLabel>Filtros rápidos</FieldLabel>
-            <QuickFilterGroup>
-              {DIAS_OPCOES.map((dias) => (
-                <QuickFilterButton
-                  key={dias}
-                  active={filtroRapidoAtivo === `dias-${dias}`}
-                  onClick={() => aplicarFiltroRapidoDias(dias)}
-                >
-                  +{dias} dias
-                </QuickFilterButton>
-              ))}
-              <QuickFilterButton
-                active={filtroRapidoAtivo === "bloqueados"}
-                onClick={aplicarFiltroRapidoBloqueados}
-              >
-                <Lock className="size-3.5" />
-                Bloqueados
-              </QuickFilterButton>
-              <QuickFilterButton
-                active={filtroRapidoAtivo === "ativo"}
-                onClick={aplicarFiltroRapidoAtivo}
-              >
-                <CircleCheck className="size-3.5" />
-                Ativo
-              </QuickFilterButton>
-            </QuickFilterGroup>
-          </div>
-
           <div className="space-y-2">
             <FieldLabel>UF</FieldLabel>
             <Select
@@ -306,7 +346,15 @@ export default function PosicaoClientePage() {
                   <SelectItem value="none">Qualquer</SelectItem>
                   {opcoesVendedor.map((v) => (
                     <SelectItem key={v.id} value={v.id}>
-                      {v.nomeReduzido || v.nome}
+                      <span className="flex items-center gap-1.5">
+                        {v.nomeReduzido || v.nome}
+                        {!v.ativo && (
+                          <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
+                            <Lock className="size-3" />
+                            bloqueado
+                          </span>
+                        )}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -336,6 +384,19 @@ export default function PosicaoClientePage() {
         </FiltersPopover>
       </div>
 
+      <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+        <span className="font-medium">Títulos em aberto:</span>
+        <span className="flex items-center gap-1">
+          <span className="text-sm font-bold text-destructive">$</span> vencido
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="text-sm font-bold text-blue-600 dark:text-blue-400">$</span> vencendo em até 7 dias
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="text-sm font-bold text-success">$</span> não vencido
+        </span>
+      </div>
+
       <EntityTable
         columns={columns}
         rows={data?.data ?? []}
@@ -359,6 +420,16 @@ export default function PosicaoClientePage() {
           setSortOrder(order);
         }}
         storageKey="posicao-cliente"
+      />
+
+      <ClienteSheet
+        id={clienteSheet?.id ?? null}
+        modo={clienteSheet?.modo ?? "visualizar"}
+        onOpenChange={(open) => !open && setClienteSheet(null)}
+      />
+      <OrcamentoSheet
+        clienteId={orcamentoClienteId}
+        onOpenChange={(open) => !open && setOrcamentoClienteId(null)}
       />
     </div>
   );

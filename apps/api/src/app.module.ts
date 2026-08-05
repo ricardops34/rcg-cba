@@ -26,6 +26,9 @@ import { ObjetivosModule } from './modules/objetivos/objetivos.module';
 import { OportunidadesModule } from './modules/oportunidades/oportunidades.module';
 import { AtividadesModule } from './modules/atividades/atividades.module';
 import { OrcamentosModule } from './modules/orcamentos/orcamentos.module';
+import { IntegracaoModule } from './modules/integracao/integracao.module';
+import { IntegracaoKeysModule } from './modules/integracao-keys/integracao-keys.module';
+import { ClienteCampoConfigModule } from './modules/cliente-campo-config/cliente-campo-config.module';
 
 @Module({
   imports: [
@@ -57,6 +60,9 @@ import { OrcamentosModule } from './modules/orcamentos/orcamentos.module';
     OportunidadesModule,
     AtividadesModule,
     OrcamentosModule,
+    IntegracaoModule,
+    IntegracaoKeysModule,
+    ClienteCampoConfigModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

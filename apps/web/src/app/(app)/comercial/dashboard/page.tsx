@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { ObjetivoDashboard, Vendedor } from "@plataforma/contracts";
+import type { ObjetivoDashboard } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
+import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
+import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -71,11 +73,16 @@ export default function DashboardComercialPage() {
   const [vendedorId, setVendedorId] = useState<string | undefined>(undefined);
   const [filtros, setFiltros] = useState({ mes, ano, vendedorId });
 
-  const vendedoresEscopoQuery = useQuery({
-    queryKey: ["clientes", "vendedores-escopo"],
-    queryFn: () => apiFetch<{ data: Vendedor[]; restrito: boolean }>("/clientes/vendedores-escopo"),
-  });
+  const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
+
+  // Usuário com vendedor vinculado: a tela abre já filtrada pra própria
+  // carteira em vez de "Todos" — só na primeira carga, não sobrescreve se o
+  // usuário voltar pra "Todos" manualmente depois.
+  useVendedorPadrao(vendedoresEscopoQuery.data?.meuVendedorId, (id) => {
+    setVendedorId(id);
+    setFiltros((f) => ({ ...f, vendedorId: id }));
+  });
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ["objetivos", "dashboard", filtros],
@@ -145,7 +152,7 @@ export default function DashboardComercialPage() {
                 <SelectItem value="none">Todos</SelectItem>
                 {opcoesVendedor.map((v) => (
                   <SelectItem key={v.id} value={v.id}>
-                    {v.nomeReduzido || v.nome}
+                    {vendedorFiltroLabel(v)}
                   </SelectItem>
                 ))}
               </SelectContent>

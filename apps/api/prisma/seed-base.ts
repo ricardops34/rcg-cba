@@ -101,6 +101,12 @@ const ROTINAS_ADMIN_ONLY = new Set([
   'menus',
   'modulos',
   'rotinas',
+  // Gestão de chaves da API de integração ERP: capacidade de segurança/
+  // sistema, não dado comercial — fora do "acesso irrestrito" do Diretor.
+  'integracao',
+  // Define quais campos do cadastro de Cliente podem ser alterados: config
+  // de sistema, não dado comercial.
+  'clientes-config',
 ]);
 
 async function limparDados() {
@@ -237,6 +243,22 @@ async function bootstrapMenu() {
       rota: '/admin/estrutura',
       icone: 'layout-grid',
       codigo: 'menus',
+      moduloId: moduloAdministracao.id,
+    },
+    {
+      id: 'seed-menu-integracao',
+      nome: 'Integração',
+      rota: '/admin/integracao',
+      icone: 'plug',
+      codigo: 'integracao',
+      moduloId: moduloAdministracao.id,
+    },
+    {
+      id: 'seed-menu-clientes-config',
+      nome: 'Campos do Cliente',
+      rota: '/admin/clientes-config',
+      icone: 'list-checks',
+      codigo: 'clientes-config',
       moduloId: moduloAdministracao.id,
     },
     {
