@@ -1,5 +1,9 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
+import {
+  Prisma,
+  PrismaService,
+  type TenantTx,
+} from '../../common/prisma/prisma.service';
 import {
   combinarFiltroVendedor,
   resolverEscopoVendedores,
@@ -323,7 +327,9 @@ export class ClientesService {
     return mixGrupos
       .map((g) => {
         const produto = g.produtoId ? produtoPorId.get(g.produtoId) : undefined;
-        const ultimo = g.produtoId ? ultimoPorProduto.get(g.produtoId) : undefined;
+        const ultimo = g.produtoId
+          ? ultimoPorProduto.get(g.produtoId)
+          : undefined;
         return {
           produtoId: g.produtoId as string,
           codigoErp: produto?.codigoErp ?? '—',
@@ -332,7 +338,9 @@ export class ClientesService {
           ultimaCompra: g._max.dtEmissao,
           ultimoPrecoUnitario: ultimo?.vlrUnitario ?? null,
           ultimoDesconto: ultimo?.percDesconto ?? null,
-          precoTabela: g.produtoId ? (precoPorProduto.get(g.produtoId) ?? null) : null,
+          precoTabela: g.produtoId
+            ? (precoPorProduto.get(g.produtoId) ?? null)
+            : null,
           ativo: produto?.ativo ?? true,
         };
       })

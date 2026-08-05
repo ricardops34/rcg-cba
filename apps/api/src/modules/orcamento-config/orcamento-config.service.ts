@@ -23,7 +23,11 @@ export class OrcamentoConfigService {
     );
   }
 
-  async update(empresaId: string, input: OrcamentoConfigUpdate, actorId: string) {
+  async update(
+    empresaId: string,
+    input: OrcamentoConfigUpdate,
+    actorId: string,
+  ) {
     await this.getVigente(empresaId);
     return this.prisma.withTenant(empresaId, (tx) =>
       tx.orcamentoConfig.update({

@@ -1,5 +1,10 @@
 import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { ORCAMENTO_CONFIG_EXAMPLE } from '@plataforma/contracts';
 import { OrcamentoConfigService } from './orcamento-config.service';
 import { OrcamentoConfigUpdateDto } from './dto/orcamento-config.dto';
@@ -40,7 +45,10 @@ export class OrcamentoConfigController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermission('orcamento-config', 'editar')
   @Patch()
-  update(@Body() dto: OrcamentoConfigUpdateDto, @CurrentUser() user: AuthenticatedUser) {
+  update(
+    @Body() dto: OrcamentoConfigUpdateDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.service.update(user.empresaAtivaId, dto, user.id);
   }
 }

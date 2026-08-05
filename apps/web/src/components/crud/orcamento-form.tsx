@@ -57,11 +57,45 @@ const dataBr = (v: string | null | undefined) => {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
 };
 
-/** Info local (não vai pro submit) de cada linha de item, pra render das colunas Descrição/Preço tabela. */
+/**
+ * Input mascarado no padrão "dígitos viram centavos" (ex.: digitar 4600 exibe
+ * "46,00") — usado nas colunas Preço e Desconto (%) da tabela de itens, pra
+ * não mostrar o valor cru sem separador decimal.
+ */
+function MaskedNumberInput({
+  value,
+  onChange,
+  suffix,
+  className,
+  disabled,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  suffix?: string;
+  className?: string;
+  disabled?: boolean;
+}) {
+  const display = (value || 0).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return (
+    <Input
+      type="text"
+      inputMode="decimal"
+      className={className}
+      disabled={disabled}
+      value={suffix ? `${display}${suffix}` : display}
+      onChange={(e) => {
+        const digitos = e.target.value.replace(/\D/g, "");
+        onChange(digitos ? Number(digitos) / 100 : 0);
+      }}
+    />
+  );
+}
+
+/** Info local (não vai pro submit) de cada linha de item, pra render da coluna Preço tabela/Desconto. */
 interface LinhaInfo {
-  codigoErp: string;
-  descricao: string;
-  unidade: string | null;
   vlrTabela: number | null;
 }
 
@@ -84,12 +118,7 @@ export function OrcamentoFormContent({
   const { create, update } = useResourceMutations<OrcamentoCreate, OrcamentoUpdate>("orcamentos");
   const [infoPorLinha, setInfoPorLinha] = useState<(LinhaInfo | null)[]>(
     orcamento
-      ? orcamento.itens.map((i) => ({
-          codigoErp: i.produto.codigoErp,
-          descricao: i.produto.descricao,
-          unidade: i.produto.unidade,
-          vlrTabela: i.vlrTabela,
-        }))
+      ? orcamento.itens.map((i) => ({ vlrTabela: i.vlrTabela }))
       : [],
   );
 
@@ -223,16 +252,17 @@ export function OrcamentoFormContent({
     setInfoPorLinha((arr) => arr.filter((_, i) => i !== index));
   };
 
+  /** Editar o desconto (%) recalcula o preço unitário a partir do preço de tabela. */
+  const aplicarDesconto = (index: number, percentual: number) => {
+    const vlrTabela = infoPorLinha[index]?.vlrTabela;
+    if (vlrTabela == null) return;
+    const novoPreco = Math.round(vlrTabela * (1 - percentual / 100) * 100) / 100;
+    form.setValue(`itens.${index}.vlrUnitario`, novoPreco);
+  };
+
   const onSelecionarProduto = async (index: number, produto: Produto | null) => {
     if (!produto) return;
     form.setValue(`itens.${index}.produtoId`, produto.id);
-    setInfoPorLinha((arr) =>
-      arr.map((v, i) =>
-        i === index
-          ? { codigoErp: produto.codigoErp, descricao: produto.descricao, unidade: produto.unidade ?? null, vlrTabela: v?.vlrTabela ?? null }
-          : v,
-      ),
-    );
     if (!clienteId) return;
     try {
       const resp = await apiFetch<{ vlrTabela: number | null; ultimoPreco: number | null }>(
@@ -240,13 +270,7 @@ export function OrcamentoFormContent({
         { query: { clienteId, produtoId: produto.id } },
       );
       form.setValue(`itens.${index}.vlrUnitario`, resp.vlrTabela ?? resp.ultimoPreco ?? 0);
-      setInfoPorLinha((arr) =>
-        arr.map((v, i) =>
-          i === index
-            ? { codigoErp: produto.codigoErp, descricao: produto.descricao, unidade: produto.unidade ?? null, vlrTabela: resp.vlrTabela }
-            : v,
-        ),
-      );
+      setInfoPorLinha((arr) => arr.map((v, i) => (i === index ? { vlrTabela: resp.vlrTabela } : v)));
     } catch {
       // Sem preço disponível — fica com o que já estava, o vendedor ajusta na mão.
     }
@@ -269,15 +293,7 @@ export function OrcamentoFormContent({
         ? Math.round(produto.precoTabela * (1 - produto.ultimoDesconto / 100) * 100) / 100
         : (produto.ultimoPrecoUnitario ?? produto.precoTabela ?? 0);
     linhas.append({ produtoId: produto.produtoId, quantidade: 1, vlrUnitario });
-    setInfoPorLinha((arr) => [
-      ...arr,
-      {
-        codigoErp: produto.codigoErp,
-        descricao: produto.descricao,
-        unidade: produto.unidade,
-        vlrTabela: produto.precoTabela,
-      },
-    ]);
+    setInfoPorLinha((arr) => [...arr, { vlrTabela: produto.precoTabela }]);
     toast.success("Item adicionado ao orçamento");
   };
 
@@ -472,10 +488,11 @@ export function OrcamentoFormContent({
                       <TableHeader>
                         <TableRow>
                           <TableHead>Produto</TableHead>
-                          <TableHead>Descrição</TableHead>
                           <TableHead className="text-right">Quantidade</TableHead>
                           <TableHead className="text-right">Preço</TableHead>
+                          <TableHead className="text-right">Últ. preço</TableHead>
                           <TableHead className="text-right">Desconto</TableHead>
+                          <TableHead className="text-right">Últ. desc.</TableHead>
                           <TableHead>Última venda</TableHead>
                           <TableHead className="text-right">Preço tabela</TableHead>
                           <TableHead className="w-9" />
@@ -491,9 +508,9 @@ export function OrcamentoFormContent({
                             vlrTabela != null && vlrTabela > 0
                               ? ((vlrTabela - vlrUnitario) / vlrTabela) * 100
                               : null;
-                          const ultimaVenda = produtoId
-                            ? (mixPorProduto.get(produtoId)?.ultimaCompra ?? null)
-                            : null;
+                          const mixInfo = produtoId ? mixPorProduto.get(produtoId) : undefined;
+                          const ultimaVenda = mixInfo?.ultimaCompra ?? null;
+                          const ultimoPreco = mixInfo?.ultimoPrecoUnitario ?? null;
                           return (
                             <TableRow key={linha.id}>
                               <TableCell className="min-w-48">
@@ -501,9 +518,6 @@ export function OrcamentoFormContent({
                                   value={produtoId || null}
                                   onChange={(produto) => onSelecionarProduto(index, produto)}
                                 />
-                              </TableCell>
-                              <TableCell className="max-w-56 truncate text-muted-foreground">
-                                {info?.descricao ?? "—"}
                               </TableCell>
                               <TableCell className="text-right">
                                 <Input
@@ -517,18 +531,26 @@ export function OrcamentoFormContent({
                                 />
                               </TableCell>
                               <TableCell className="text-right">
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  min={0}
+                                <MaskedNumberInput
                                   className="w-28 text-right"
-                                  {...form.register(`itens.${index}.vlrUnitario`, {
-                                    valueAsNumber: true,
-                                  })}
+                                  value={vlrUnitario}
+                                  onChange={(v) => form.setValue(`itens.${index}.vlrUnitario`, v)}
                                 />
                               </TableCell>
                               <TableCell className="text-right text-muted-foreground">
-                                {percentual(desconto)}
+                                {moeda(ultimoPreco)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <MaskedNumberInput
+                                  className="w-24 text-right"
+                                  suffix="%"
+                                  disabled={vlrTabela == null}
+                                  value={desconto ?? 0}
+                                  onChange={(v) => aplicarDesconto(index, v)}
+                                />
+                              </TableCell>
+                              <TableCell className="text-right text-muted-foreground">
+                                {percentual(mixInfo?.ultimoDesconto ?? null)}
                               </TableCell>
                               <TableCell className="text-muted-foreground">
                                 {dataBr(ultimaVenda)}
