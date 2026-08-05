@@ -91,7 +91,7 @@ export class OrcamentosController {
     summary: 'Editar orçamento',
     description:
       'Quando "itens" é enviado, substitui o conjunto inteiro de itens e recalcula o total. ' +
-      'Requer orcamentos.editar.',
+      'Orçamento com status "aprovado" não pode mais ser alterado (409). Requer orcamentos.editar.',
   })
   @RequirePermission('orcamentos', 'editar')
   @Patch(':id')

@@ -37,7 +37,7 @@ export function ProdutoCombobox({
       }),
     enabled: open,
   });
-  const opcoes = data?.data ?? [];
+  const opcoesBusca = data?.data ?? [];
 
   // Mantém o rótulo do valor selecionado mesmo quando ele não está na página
   // atual de resultados da busca.
@@ -51,6 +51,15 @@ export function ProdutoCombobox({
         ? `${selecionadoQuery.data.codigoErp} — ${selecionadoQuery.data.descricao}`
         : "...")
     : placeholder;
+
+  // Ao abrir sem busca digitada, garante que o produto já selecionado apareça
+  // na lista (com o check marcado) mesmo que não esteja entre os 50 primeiros
+  // resultados padrão — senão o combobox abre "vazio" pra quem já escolheu
+  // um produto fora dessa primeira página.
+  const opcoes =
+    !search && value && selecionadoQuery.data && !opcoesBusca.some((p) => p.id === value)
+      ? [selecionadoQuery.data, ...opcoesBusca]
+      : opcoesBusca;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

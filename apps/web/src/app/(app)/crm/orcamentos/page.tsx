@@ -28,7 +28,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { CheckCircle2, Clock, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 type StatusFiltro = "todos" | StatusOrcamento;
 
@@ -38,6 +39,25 @@ const dataBr = (v: string | null) => {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
 };
+
+// Acompanhamento da integração com o ERP: só faz sentido depois de aprovado
+// (é quando o orçamento fica disponível pro ERP puxar via API). codigoLegado
+// preenchido = o ERP já vinculou o registro; null = ainda aguardando.
+function integracaoIndicador(o: Orcamento) {
+  if (o.status !== "aprovado") return null;
+  if (o.codigoLegado != null) {
+    return {
+      icone: CheckCircle2,
+      cor: "text-emerald-600",
+      legenda: `Integrado ao ERP (código ${o.codigoLegado})`,
+    };
+  }
+  return {
+    icone: Clock,
+    cor: "text-amber-500",
+    legenda: "Aprovado — aguardando integração com o ERP",
+  };
+}
 
 export default function OrcamentosPage() {
   const router = useRouter();
@@ -103,6 +123,22 @@ export default function OrcamentosPage() {
       cell: (o) => (
         <Badge variant={STATUS_ORCAMENTO_VARIANT[o.status]}>{STATUS_ORCAMENTO_LABEL[o.status]}</Badge>
       ),
+    },
+    {
+      header: "Integração",
+      cell: (o) => {
+        const indicador = integracaoIndicador(o);
+        if (!indicador) return <span className="text-muted-foreground">—</span>;
+        const Icone = indicador.icone;
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Icone className={`size-4 ${indicador.cor}`} />
+            </TooltipTrigger>
+            <TooltipContent>{indicador.legenda}</TooltipContent>
+          </Tooltip>
+        );
+      },
     },
     {
       header: "Total",

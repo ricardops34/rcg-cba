@@ -41,7 +41,7 @@ export function ClienteCombobox({
       }),
     enabled: open,
   });
-  const opcoes = data?.data ?? [];
+  const opcoesBusca = data?.data ?? [];
 
   // Mantém o rótulo do valor selecionado mesmo quando ele não está na página
   // atual de resultados da busca.
@@ -55,6 +55,15 @@ export function ClienteCombobox({
         ? selecionadoQuery.data.nomeFantasia || selecionadoQuery.data.razaoSocial
         : "...")
     : placeholder;
+
+  // Ao abrir sem busca digitada, garante que o cliente já selecionado
+  // apareça na lista (com o check marcado) mesmo que não esteja entre os 50
+  // primeiros resultados padrão — senão o combobox abre "vazio" pra quem já
+  // escolheu um cliente fora dessa primeira página.
+  const opcoes =
+    !search && value && selecionadoQuery.data && !opcoesBusca.some((c) => c.id === value)
+      ? [selecionadoQuery.data, ...opcoesBusca]
+      : opcoesBusca;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

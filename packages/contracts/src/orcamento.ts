@@ -68,6 +68,12 @@ export type OrcamentoItem = z.infer<typeof orcamentoItemSchema>;
 export const orcamentoSchema = z.object({
   id: z.string().uuid(),
   empresaId: z.string().uuid(),
+  // Código do orçamento no ERP — null enquanto não for vinculado (ver
+  // POST /integracao/orcamentos/pendentes/{id} da API de integração).
+  // Aprovado + codigoLegado null = aguardando integração; codigoLegado
+  // preenchido = já integrado. Alimenta o ícone de acompanhamento na
+  // listagem de Orçamentos.
+  codigoLegado: z.number().int().nullable(),
   clienteId: z.string().uuid(),
   vendedorId: z.string().uuid(),
   oportunidadeId: z.string().uuid().nullable(),
@@ -120,6 +126,7 @@ export type OrcamentoQuery = z.infer<typeof orcamentoQuerySchema>;
 export const ORCAMENTO_EXAMPLE: Orcamento = {
   id: "0d1e2f3a-4b5c-4d6e-7f80-91a2b3c4d5e6",
   empresaId: "7b2f2f64-9b1c-4a86-9d3e-1f4a5b6c7d8e",
+  codigoLegado: null,
   clienteId: "d4e5f6a7-8b9c-4d0e-9f1a-2b3c4d5e6f70",
   vendedorId: "b7c2c1de-4a45-4b8a-9f2e-6a1d6c1e9f10",
   oportunidadeId: "a1b2c3d4-5e6f-4708-9a0b-1c2d3e4f5a6b",

@@ -821,6 +821,18 @@ export const integracaoOrcamentoQuerySchema = paginationQuerySchema.extend({
 });
 export type IntegracaoOrcamentoQuery = z.infer<typeof integracaoOrcamentoQuerySchema>;
 
+// Vincula um orçamento aprovado criado na plataforma (sem codigoLegado) ao
+// código que o ERP passa a usar pra ele — ver GET/PATCH .../pendentes
+// abaixo. Só pode ser feito uma vez por orçamento (não pode reatribuir).
+export const integracaoOrcamentoVincularSchema = z.object({
+  codigoLegado: z.coerce
+    .number()
+    .int()
+    .positive()
+    .describe("Código gerado no ERP pra esse orçamento, ao importar"),
+});
+export type IntegracaoOrcamentoVincular = z.infer<typeof integracaoOrcamentoVincularSchema>;
+
 export const INTEGRACAO_ORCAMENTO_CREATE_EXAMPLE: IntegracaoOrcamentoCreate = {
   codigoLegado: 7301,
   clienteCodigo: "004417",
@@ -842,4 +854,8 @@ export const INTEGRACAO_ORCAMENTO_EXAMPLE: IntegracaoOrcamento = {
   updatedAt: "2026-08-04T12:00:00.000Z",
   createdBy: null,
   updatedBy: null,
+};
+
+export const INTEGRACAO_ORCAMENTO_VINCULAR_EXAMPLE: IntegracaoOrcamentoVincular = {
+  codigoLegado: 7301,
 };

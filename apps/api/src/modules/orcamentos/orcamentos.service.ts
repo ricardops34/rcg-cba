@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
 import {
   combinarFiltroVendedor,
@@ -83,10 +87,13 @@ export class OrcamentosService {
 
 
   /**
-   * Preço de um produto pra um cliente específico — alimenta o pré-preenchimento
-   * de vlrUnitario ao adicionar um item no form de orçamento (vlrTabela da
-   * Tabela de Preço vinculada ao cliente, com ultimoPreco do produto como
-   * fallback informativo quando não há tabela/preço cadastrado).
+   * Preço/estoque de um produto pra um cliente específico — alimenta o
+   * pré-preenchimento de vlrUnitario ao adicionar um item no form de
+   * orçamento (vlrTabela da Tabela de Preço vinculada ao cliente, com
+   * ultimoPreco do produto como fallback informativo quando não há
+   * tabela/preço cadastrado) e a coluna "Estoque" (saldo somado em todos os
+   * armazéns). Usa a permissão de orcamentos, não a de estoque — é só
+   * informativo dentro do form, não a tela de Estoque em si.
    */
   async precoProduto(
     empresaId: string,
@@ -102,7 +109,7 @@ export class OrcamentosService {
         where: { id: clienteId, empresaId },
         select: { tabelaPrecoId: true },
       });
-      const [tabelaItem, produto] = await Promise.all([
+      const [tabelaItem, produto, estoque] = await Promise.all([
         cliente?.tabelaPrecoId
           ? tx.tabelaPrecoItem.findFirst({
               where: { tabelaPrecoId: cliente.tabelaPrecoId, produtoId, deletedAt: null },
@@ -110,8 +117,16 @@ export class OrcamentosService {
             })
           : Promise.resolve(null),
         tx.produto.findFirst({ where: { id: produtoId, empresaId }, select: { ultimoPreco: true } }),
+        tx.estoque.aggregate({
+          where: { empresaId, produtoId, deletedAt: null },
+          _sum: { saldo: true },
+        }),
       ]);
-      return { vlrTabela: tabelaItem?.preco ?? null, ultimoPreco: produto?.ultimoPreco ?? null };
+      return {
+        vlrTabela: tabelaItem?.preco ?? null,
+        ultimoPreco: produto?.ultimoPreco ?? null,
+        saldoEstoque: estoque._sum.saldo ?? 0,
+      };
     });
   }
 
@@ -225,6 +240,9 @@ export class OrcamentosService {
         },
       });
       if (!orcamento) throw new NotFoundException('Orçamento não encontrado');
+      if (orcamento.status === 'aprovado') {
+        throw new ConflictException('Orçamento aprovado não pode ser alterado');
+      }
 
       if (input.vendedorId) this.garantirVendedorNoEscopo(escopo, input.vendedorId);
       if (input.clienteId) await this.garantirClienteNoEscopo(tx, empresaId, escopo, input.clienteId);

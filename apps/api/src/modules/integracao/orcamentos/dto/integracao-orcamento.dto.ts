@@ -3,6 +3,7 @@ import {
   integracaoOrcamentoCreateSchema,
   integracaoOrcamentoQuerySchema,
   integracaoOrcamentoUpdateSchema,
+  integracaoOrcamentoVincularSchema,
 } from '@plataforma/contracts';
 
 export class IntegracaoOrcamentoCreateDto extends createZodDto(
@@ -13,4 +14,7 @@ export class IntegracaoOrcamentoUpdateDto extends createZodDto(
 ) {}
 export class IntegracaoOrcamentoQueryDto extends createZodDto(
   integracaoOrcamentoQuerySchema,
+) {}
+export class IntegracaoOrcamentoVincularDto extends createZodDto(
+  integracaoOrcamentoVincularSchema,
 ) {}

@@ -18,6 +18,7 @@ import type {
   IntegracaoOrcamentoItem,
   IntegracaoOrcamentoQuery,
   IntegracaoOrcamentoUpdate,
+  PaginationQuery,
 } from '@plataforma/contracts';
 import { calcularItensOrcamento } from '../../orcamentos/calcular-itens-orcamento';
 import { criarAtividadeRetorno } from '../../orcamentos/criar-atividade-retorno';
@@ -99,6 +100,82 @@ export class IntegracaoOrcamentosService {
       });
       if (!row) throw new NotFoundException('Orçamento não encontrado');
       return this.paraLeitura(row);
+    });
+  }
+
+  /**
+   * Orçamentos aprovados criados na plataforma (sem codigoLegado ainda) —
+   * prontos pro ERP importar. Depois de importar, o ERP chama vincular()
+   * com o código gerado lá pra "reivindicar" o registro; a partir daí ele
+   * passa a aparecer no findAll/findOne normais, como qualquer outro.
+   */
+  findAllPendentes(empresaId: string, query: PaginationQuery) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const where = {
+        empresaId,
+        codigoLegado: null,
+        status: 'aprovado' as const,
+        deletedAt: null,
+      };
+      const [data, total] = await Promise.all([
+        tx.orcamento.findMany({
+          where,
+          include: INCLUDE,
+          ...paginationToSkipTake(query),
+          orderBy: { createdAt: 'asc' },
+        }),
+        tx.orcamento.count({ where }),
+      ]);
+      return buildPaginatedResult(
+        data.map((r) => this.paraLeitura(r)),
+        total,
+        query,
+      );
+    });
+  }
+
+  /**
+   * Vincula um orçamento aprovado (criado na plataforma) ao codigoLegado
+   * gerado pelo ERP ao importá-lo. Só funciona uma vez — já vinculado, ainda
+   * não aprovado, ou codigoLegado colidindo com outro orçamento dão 409.
+   */
+  async vincular(
+    empresaId: string,
+    apiKeyId: string,
+    id: string,
+    codigoLegado: number,
+  ): Promise<IntegracaoOrcamento> {
+    const autor = autorIntegracao(apiKeyId);
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const existente = await tx.orcamento.findFirst({
+        where: { id, empresaId, deletedAt: null },
+      });
+      if (!existente) throw new NotFoundException('Orçamento não encontrado');
+      if (existente.codigoLegado != null) {
+        throw new ConflictException(
+          'Orçamento já está vinculado a um codigoLegado',
+        );
+      }
+      if (existente.status !== 'aprovado') {
+        throw new ConflictException(
+          'Só orçamentos aprovados podem ser vinculados',
+        );
+      }
+      const duplicado = await tx.orcamento.findFirst({
+        where: { empresaId, codigoLegado },
+      });
+      if (duplicado) {
+        throw new ConflictException(
+          `Já existe orçamento com codigoLegado '${codigoLegado}'`,
+        );
+      }
+
+      const atualizado = await tx.orcamento.update({
+        where: { id },
+        data: { codigoLegado, updatedBy: autor },
+        include: INCLUDE,
+      });
+      return this.paraLeitura(atualizado);
     });
   }
 
@@ -259,6 +336,9 @@ export class IntegracaoOrcamentosService {
         where: { empresaId, codigoLegado, deletedAt: null },
       });
       if (!existente) throw new NotFoundException('Orçamento não encontrado');
+      if (existente.status === 'aprovado') {
+        throw new ConflictException('Orçamento aprovado não pode ser alterado');
+      }
 
       const clienteId =
         input.clienteCodigo !== undefined

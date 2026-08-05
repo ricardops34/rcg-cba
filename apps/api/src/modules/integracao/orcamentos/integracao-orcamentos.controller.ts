@@ -21,18 +21,21 @@ import { Throttle } from '@nestjs/throttler';
 import {
   INTEGRACAO_ORCAMENTO_CREATE_EXAMPLE,
   INTEGRACAO_ORCAMENTO_EXAMPLE,
+  INTEGRACAO_ORCAMENTO_VINCULAR_EXAMPLE,
 } from '@plataforma/contracts';
 import { IntegracaoOrcamentosService } from './integracao-orcamentos.service';
 import {
   IntegracaoOrcamentoCreateDto,
   IntegracaoOrcamentoQueryDto,
   IntegracaoOrcamentoUpdateDto,
+  IntegracaoOrcamentoVincularDto,
 } from './dto/integracao-orcamento.dto';
 import { ApiKeyGuard, type IntegracaoContext } from '../guards/api-key.guard';
 import { CurrentIntegracao } from '../decorators/current-integracao.decorator';
 import { ApiBodyExample } from '../../../common/decorators/api-body-example.decorator';
 import { ApiPaginationQuery } from '../../../common/decorators/api-pagination-query.decorator';
 import { ApiIntegracaoAuthResponses } from '../common/api-integracao-responses.decorator';
+import { PaginationQueryDto } from '../../../common/dto/pagination.dto';
 
 @ApiTags('orcamentos')
 @ApiSecurity('apiKey')
@@ -46,7 +49,9 @@ export class IntegracaoOrcamentosController {
   @ApiOperation({
     summary: 'Listar orçamentos',
     description:
-      'Paginado; filtra por ativo e status. Só orçamentos com codigoLegado (criados via API).',
+      'Paginado; filtra por ativo e status. Só orçamentos com codigoLegado (ou seja, já ' +
+      'vinculados ao ERP — criados por aqui via POST, ou criados na plataforma e vinculados via ' +
+      'PATCH .../pendentes/{id}). Orçamentos aprovados aguardando vínculo estão em GET .../pendentes.',
   })
   @ApiPaginationQuery()
   @Get()
@@ -55,6 +60,59 @@ export class IntegracaoOrcamentosController {
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
     return this.service.findAll(integracao.empresaId, query);
+  }
+
+  // Declarado antes de GET :codigo, senão o Nest casa "pendentes" como :codigo.
+  @ApiOperation({
+    summary: 'Listar orçamentos aprovados pendentes de integração',
+    description:
+      'Orçamentos aprovados criados na plataforma (sem codigoLegado ainda) — prontos pro ERP ' +
+      'importar. Depois de importar, chame PATCH .../pendentes/{id} com o codigoLegado gerado no ' +
+      'ERP pra vincular; a partir daí o orçamento passa a aparecer no GET normal, como qualquer outro.',
+  })
+  @ApiPaginationQuery()
+  @Get('pendentes')
+  findAllPendentes(
+    @Query() query: PaginationQueryDto,
+    @CurrentIntegracao() integracao: IntegracaoContext,
+  ) {
+    return this.service.findAllPendentes(integracao.empresaId, query);
+  }
+
+  // Idem: declarado antes de PATCH :codigo.
+  @ApiOperation({
+    summary: 'Vincular orçamento aprovado ao codigoLegado do ERP',
+    description:
+      'Marca o orçamento como integrado, gravando o codigoLegado gerado ao importar no ERP. Só ' +
+      'funciona uma vez — orçamento já vinculado, ainda não aprovado, ou codigoLegado colidindo ' +
+      'com outro orçamento retornam 409.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'id interno da plataforma (retornado no GET .../pendentes)',
+  })
+  @ApiBodyExample(INTEGRACAO_ORCAMENTO_VINCULAR_EXAMPLE)
+  @ApiResponse({
+    status: 200,
+    schema: { example: INTEGRACAO_ORCAMENTO_EXAMPLE },
+  })
+  @ApiResponse({ status: 404, description: 'Orçamento não encontrado' })
+  @ApiResponse({
+    status: 409,
+    description: 'Já vinculado, ainda não aprovado, ou codigoLegado duplicado',
+  })
+  @Patch('pendentes/:id')
+  vincular(
+    @Param('id') id: string,
+    @Body() dto: IntegracaoOrcamentoVincularDto,
+    @CurrentIntegracao() integracao: IntegracaoContext,
+  ) {
+    return this.service.vincular(
+      integracao.empresaId,
+      integracao.apiKeyId,
+      id,
+      dto.codigoLegado,
+    );
   }
 
   @ApiOperation({ summary: 'Detalhar orçamento por codigoLegado' })
@@ -106,7 +164,8 @@ export class IntegracaoOrcamentosController {
     summary: 'Atualizar orçamento',
     description:
       'Atualização parcial. Se "itens" for enviado, substitui o conjunto inteiro de itens. dataRetorno ' +
-      'alterada gera automaticamente uma nova Atividade de acompanhamento.',
+      'alterada gera automaticamente uma nova Atividade de acompanhamento. Orçamento com status ' +
+      '"aprovado" não pode mais ser alterado (409).',
   })
   @ApiParam({
     name: 'codigo',
@@ -117,6 +176,10 @@ export class IntegracaoOrcamentosController {
     schema: { example: INTEGRACAO_ORCAMENTO_EXAMPLE },
   })
   @ApiResponse({ status: 404, description: 'Orçamento não encontrado' })
+  @ApiResponse({
+    status: 409,
+    description: 'Orçamento aprovado não pode ser alterado',
+  })
   @Patch(':codigo')
   update(
     @Param('codigo', ParseIntPipe) codigo: number,

@@ -51,6 +51,8 @@ const moeda = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
 const percentual = (v: number | null | undefined) =>
   v != null ? `${v.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%` : "—";
+const numero = (v: number | null | undefined) =>
+  v != null ? v.toLocaleString("pt-BR", { maximumFractionDigits: 2 }) : "—";
 const dataBr = (v: string | null | undefined) => {
   if (!v) return "—";
   const d = new Date(v);
@@ -94,9 +96,10 @@ function MaskedNumberInput({
   );
 }
 
-/** Info local (não vai pro submit) de cada linha de item, pra render da coluna Preço tabela/Desconto. */
+/** Info local (não vai pro submit) de cada linha de item, pra render das colunas Preço tabela/Desconto/Estoque. */
 interface LinhaInfo {
   vlrTabela: number | null;
+  saldoEstoque: number | null;
 }
 
 /**
@@ -118,7 +121,7 @@ export function OrcamentoFormContent({
   const { create, update } = useResourceMutations<OrcamentoCreate, OrcamentoUpdate>("orcamentos");
   const [infoPorLinha, setInfoPorLinha] = useState<(LinhaInfo | null)[]>(
     orcamento
-      ? orcamento.itens.map((i) => ({ vlrTabela: i.vlrTabela }))
+      ? orcamento.itens.map((i) => ({ vlrTabela: i.vlrTabela, saldoEstoque: null }))
       : [],
   );
 
@@ -181,6 +184,10 @@ export function OrcamentoFormContent({
   const vendedorId = form.watch("vendedorId");
   const status = form.watch("status");
 
+  // Orçamento aprovado é imutável — o servidor já recusa a alteração
+  // (ConflictException), isso aqui só trava a UI pra não deixar tentar.
+  const bloqueado = orcamento?.status === "aprovado";
+
   // Ao criar (não editar), pré-seleciona o próprio vendedor do usuário
   // logado, se houver vínculo — só na primeira carga.
   const [vendedorPadraoAplicado, setVendedorPadraoAplicado] = useState(false);
@@ -215,6 +222,28 @@ export function OrcamentoFormContent({
       setValidadePadraoAplicada(true);
     }
   }, [orcamento, validadePadraoAplicada, diasValidade, form]);
+
+  // Ao editar, busca o saldo de estoque dos itens já salvos — só na primeira
+  // carga (preco-produto não é chamado de novo pra vlrTabela/vlrUnitario,
+  // que já vêm salvos no orçamento, só pro saldo de estoque atual).
+  const [estoquePadraoAplicado, setEstoquePadraoAplicado] = useState(false);
+  useEffect(() => {
+    if (!orcamento || estoquePadraoAplicado) return;
+    setEstoquePadraoAplicado(true);
+    orcamento.itens.forEach((item, index) => {
+      apiFetch<{ saldoEstoque: number }>("/orcamentos/preco-produto", {
+        query: { clienteId: orcamento.clienteId, produtoId: item.produtoId },
+      })
+        .then((resp) => {
+          setInfoPorLinha((arr) =>
+            arr.map((v, i) => (i === index ? { ...(v ?? { vlrTabela: null }), saldoEstoque: resp.saldoEstoque } : v)),
+          );
+        })
+        .catch(() => {
+          // Sem saldo disponível — coluna Estoque fica em branco pra essa linha.
+        });
+    });
+  }, [orcamento, estoquePadraoAplicado]);
 
   const itensAtuais = form.watch("itens");
   const totalCalculado = itensAtuais.reduce(
@@ -265,12 +294,17 @@ export function OrcamentoFormContent({
     form.setValue(`itens.${index}.produtoId`, produto.id);
     if (!clienteId) return;
     try {
-      const resp = await apiFetch<{ vlrTabela: number | null; ultimoPreco: number | null }>(
-        "/orcamentos/preco-produto",
-        { query: { clienteId, produtoId: produto.id } },
-      );
+      const resp = await apiFetch<{
+        vlrTabela: number | null;
+        ultimoPreco: number | null;
+        saldoEstoque: number;
+      }>("/orcamentos/preco-produto", { query: { clienteId, produtoId: produto.id } });
       form.setValue(`itens.${index}.vlrUnitario`, resp.vlrTabela ?? resp.ultimoPreco ?? 0);
-      setInfoPorLinha((arr) => arr.map((v, i) => (i === index ? { vlrTabela: resp.vlrTabela } : v)));
+      setInfoPorLinha((arr) =>
+        arr.map((v, i) =>
+          i === index ? { vlrTabela: resp.vlrTabela, saldoEstoque: resp.saldoEstoque } : v,
+        ),
+      );
     } catch {
       // Sem preço disponível — fica com o que já estava, o vendedor ajusta na mão.
     }
@@ -283,7 +317,7 @@ export function OrcamentoFormContent({
    * como está — se não houver tabela vigente ou desconto anterior, cai no
    * último preço praticado.
    */
-  const adicionarDoMix = (produto: PosicaoClienteMix) => {
+  const adicionarDoMix = async (produto: PosicaoClienteMix) => {
     if (itensAtuais.some((it) => it.produtoId === produto.produtoId)) {
       toast.info("Produto já está nos itens do orçamento");
       return;
@@ -292,9 +326,24 @@ export function OrcamentoFormContent({
       produto.precoTabela != null && produto.ultimoDesconto != null
         ? Math.round(produto.precoTabela * (1 - produto.ultimoDesconto / 100) * 100) / 100
         : (produto.ultimoPrecoUnitario ?? produto.precoTabela ?? 0);
+    const novoIndex = itensAtuais.length;
     linhas.append({ produtoId: produto.produtoId, quantidade: 1, vlrUnitario });
-    setInfoPorLinha((arr) => [...arr, { vlrTabela: produto.precoTabela }]);
+    setInfoPorLinha((arr) => [...arr, { vlrTabela: produto.precoTabela, saldoEstoque: null }]);
     toast.success("Item adicionado ao orçamento");
+
+    if (!clienteId) return;
+    try {
+      const resp = await apiFetch<{ saldoEstoque: number }>("/orcamentos/preco-produto", {
+        query: { clienteId, produtoId: produto.produtoId },
+      });
+      setInfoPorLinha((arr) =>
+        arr.map((v, i) =>
+          i === novoIndex ? { vlrTabela: produto.precoTabela, saldoEstoque: resp.saldoEstoque } : v,
+        ),
+      );
+    } catch {
+      // Sem saldo disponível — coluna Estoque fica em branco pra essa linha.
+    }
   };
 
   const onSubmit = async (values: OrcamentoCreate) => {
@@ -316,6 +365,12 @@ export function OrcamentoFormContent({
     <Card>
       <form id="orcamento-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
         <CardContent>
+          {bloqueado && (
+            <p className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+              Orçamento aprovado — não pode mais ser alterado.
+            </p>
+          )}
+          <fieldset disabled={bloqueado} className="m-0 min-w-0 border-0 p-0">
           <FieldGroup>
             <Field data-invalid={!!form.formState.errors.titulo}>
               <FieldLabel htmlFor="titulo">Título</FieldLabel>
@@ -484,18 +539,19 @@ export function OrcamentoFormContent({
                   )}
 
                   {linhas.fields.length > 0 && (
-                    <Table>
+                    <Table className="text-xs">
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Produto</TableHead>
-                          <TableHead className="text-right">Quantidade</TableHead>
-                          <TableHead className="text-right">Preço</TableHead>
-                          <TableHead className="text-right">Últ. preço</TableHead>
-                          <TableHead className="text-right">Desconto</TableHead>
-                          <TableHead className="text-right">Últ. desc.</TableHead>
-                          <TableHead>Última venda</TableHead>
-                          <TableHead className="text-right">Preço tabela</TableHead>
-                          <TableHead className="w-9" />
+                          <TableHead className="px-1.5">Produto</TableHead>
+                          <TableHead className="px-1.5 text-right">Estoque</TableHead>
+                          <TableHead className="px-1.5 text-right">Qtd.</TableHead>
+                          <TableHead className="px-1.5 text-right">Preço</TableHead>
+                          <TableHead className="px-1.5 text-right">Últ. preço</TableHead>
+                          <TableHead className="px-1.5 text-right">Desc.</TableHead>
+                          <TableHead className="px-1.5 text-right">Últ. desc.</TableHead>
+                          <TableHead className="px-1.5">Últ. venda</TableHead>
+                          <TableHead className="px-1.5 text-right">Pç. tabela</TableHead>
+                          <TableHead className="w-7 px-1" />
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -513,60 +569,63 @@ export function OrcamentoFormContent({
                           const ultimoPreco = mixInfo?.ultimoPrecoUnitario ?? null;
                           return (
                             <TableRow key={linha.id}>
-                              <TableCell className="min-w-48">
+                              <TableCell className="min-w-36 px-1.5">
                                 <ProdutoCombobox
                                   value={produtoId || null}
                                   onChange={(produto) => onSelecionarProduto(index, produto)}
                                 />
                               </TableCell>
-                              <TableCell className="text-right">
+                              <TableCell className="px-1.5 text-right text-muted-foreground">
+                                {numero(info?.saldoEstoque)}
+                              </TableCell>
+                              <TableCell className="px-1.5 text-right">
                                 <Input
                                   type="number"
                                   step="0.01"
                                   min={0.01}
-                                  className="w-20 text-right"
+                                  className="w-14 text-right"
                                   {...form.register(`itens.${index}.quantidade`, {
                                     valueAsNumber: true,
                                   })}
                                 />
                               </TableCell>
-                              <TableCell className="text-right">
+                              <TableCell className="px-1.5 text-right">
                                 <MaskedNumberInput
-                                  className="w-28 text-right"
+                                  className="w-20 text-right"
                                   value={vlrUnitario}
                                   onChange={(v) => form.setValue(`itens.${index}.vlrUnitario`, v)}
                                 />
                               </TableCell>
-                              <TableCell className="text-right text-muted-foreground">
+                              <TableCell className="px-1.5 text-right text-muted-foreground">
                                 {moeda(ultimoPreco)}
                               </TableCell>
-                              <TableCell className="text-right">
+                              <TableCell className="px-1.5 text-right">
                                 <MaskedNumberInput
-                                  className="w-24 text-right"
+                                  className="w-[4.5rem] text-right"
                                   suffix="%"
                                   disabled={vlrTabela == null}
                                   value={desconto ?? 0}
                                   onChange={(v) => aplicarDesconto(index, v)}
                                 />
                               </TableCell>
-                              <TableCell className="text-right text-muted-foreground">
+                              <TableCell className="px-1.5 text-right text-muted-foreground">
                                 {percentual(mixInfo?.ultimoDesconto ?? null)}
                               </TableCell>
-                              <TableCell className="text-muted-foreground">
+                              <TableCell className="px-1.5 text-muted-foreground">
                                 {dataBr(ultimaVenda)}
                               </TableCell>
-                              <TableCell className="text-right text-muted-foreground">
+                              <TableCell className="px-1.5 text-right text-muted-foreground">
                                 {moeda(vlrTabela)}
                               </TableCell>
-                              <TableCell>
+                              <TableCell className="px-1">
                                 <Button
                                   type="button"
                                   variant="ghost"
                                   size="icon"
-                                  className="size-8"
+                                  className="size-7"
                                   onClick={() => removerItem(index)}
                                 >
-                                  <Trash2 className="size-4" />
+                                  <Trash2 className="size-3.5" />
                                 </Button>
                               </TableCell>
                             </TableRow>
@@ -647,15 +706,18 @@ export function OrcamentoFormContent({
               </Tabs>
             </div>
           </FieldGroup>
+          </fieldset>
         </CardContent>
 
         <CardFooter className="justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose}>
-            Cancelar
+            {bloqueado ? "Voltar" : "Cancelar"}
           </Button>
-          <Button type="submit" disabled={form.formState.isSubmitting}>
-            {orcamento ? "Salvar alterações" : "Cadastrar"}
-          </Button>
+          {!bloqueado && (
+            <Button type="submit" disabled={form.formState.isSubmitting}>
+              {orcamento ? "Salvar alterações" : "Cadastrar"}
+            </Button>
+          )}
         </CardFooter>
       </form>
     </Card>
@@ -709,7 +771,7 @@ export function OrcamentoSheet({
 
   return (
     <Sheet open={!!clienteId} onOpenChange={onOpenChange}>
-      <ResizableSheetContent defaultWidth={720}>
+      <ResizableSheetContent defaultWidth={860}>
         <SheetHeader>
           <SheetTitle>Novo orçamento</SheetTitle>
         </SheetHeader>
