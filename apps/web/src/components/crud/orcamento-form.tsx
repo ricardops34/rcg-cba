@@ -12,8 +12,10 @@ import {
   type CondicaoPagamento,
   type Oportunidade,
   type Orcamento,
+  type OrcamentoConfig,
   type OrcamentoCreate,
   type OrcamentoUpdate,
+  type PosicaoClienteMix,
   type Produto,
   type StatusOrcamento,
 } from "@plataforma/contracts";
@@ -32,6 +34,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Sheet, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ResizableSheetContent } from "@/components/ui/resizable-sheet-content";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { StatusDot } from "@/components/crud/status-dot";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 
 const LIST_ROUTE = "/crm/orcamentos";
@@ -42,7 +47,23 @@ const dateToInput = (v: unknown) => {
   return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
 };
 const inputToDate = (v: unknown) => (v === "" || v == null ? null : new Date(`${v}T00:00:00`));
-const moeda = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const moeda = (v: number | null | undefined) =>
+  v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
+const percentual = (v: number | null | undefined) =>
+  v != null ? `${v.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%` : "—";
+const dataBr = (v: string | null | undefined) => {
+  if (!v) return "—";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
+};
+
+/** Info local (não vai pro submit) de cada linha de item, pra render das colunas Descrição/Preço tabela. */
+interface LinhaInfo {
+  codigoErp: string;
+  descricao: string;
+  unidade: string | null;
+  vlrTabela: number | null;
+}
 
 /**
  * Corpo do formulário de orçamento (cartão + campos) — usado tanto na página
@@ -61,12 +82,24 @@ export function OrcamentoFormContent({
   onClose: () => void;
 }) {
   const { create, update } = useResourceMutations<OrcamentoCreate, OrcamentoUpdate>("orcamentos");
-  const [tabelaPorLinha, setTabelaPorLinha] = useState<(number | null)[]>(
-    orcamento ? orcamento.itens.map((i) => i.vlrTabela) : [],
+  const [infoPorLinha, setInfoPorLinha] = useState<(LinhaInfo | null)[]>(
+    orcamento
+      ? orcamento.itens.map((i) => ({
+          codigoErp: i.produto.codigoErp,
+          descricao: i.produto.descricao,
+          unidade: i.produto.unidade,
+          vlrTabela: i.vlrTabela,
+        }))
+      : [],
   );
 
   const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
+
+  const orcamentoConfigQuery = useQuery({
+    queryKey: ["orcamento-config"],
+    queryFn: () => apiFetch<OrcamentoConfig>("/orcamento-config"),
+  });
 
   const condicoesQuery = useQuery({
     queryKey: ["condicoes-pagamento", "select"],
@@ -140,6 +173,20 @@ export function OrcamentoFormContent({
     }
   }, [orcamento, clientePadraoAplicado, clienteIdPadrao, form]);
 
+  // Ao criar, sugere "Válido até" = hoje + diasValidade do parâmetro de
+  // sistema (admin/orcamento-config) — só na primeira carga, o vendedor pode
+  // ajustar a data livremente depois.
+  const [validadePadraoAplicada, setValidadePadraoAplicada] = useState(false);
+  const diasValidade = orcamentoConfigQuery.data?.diasValidade;
+  useEffect(() => {
+    if (!orcamento && !validadePadraoAplicada && diasValidade != null) {
+      const data = new Date();
+      data.setDate(data.getDate() + diasValidade);
+      form.setValue("dataValidade", data);
+      setValidadePadraoAplicada(true);
+    }
+  }, [orcamento, validadePadraoAplicada, diasValidade, form]);
+
   const itensAtuais = form.watch("itens");
   const totalCalculado = itensAtuais.reduce(
     (acc, it) => acc + (it.quantidade || 0) * (it.vlrUnitario || 0),
@@ -157,18 +204,35 @@ export function OrcamentoFormContent({
   });
   const opcoesOportunidade = oportunidadesQuery.data?.data ?? [];
 
+  // Mix de produtos já comprados pelo cliente — alimenta a aba "Mix" (adicionar
+  // ao orçamento) e a coluna "Última venda" da aba Itens.
+  const mixQuery = useQuery({
+    queryKey: ["clientes", clienteId, "mix"],
+    queryFn: () => apiFetch<PosicaoClienteMix[]>(`/clientes/${clienteId}/mix`),
+    enabled: !!clienteId,
+  });
+  const mix = mixQuery.data ?? [];
+  const mixPorProduto = new Map(mix.map((m) => [m.produtoId, m]));
+
   const adicionarItem = () => {
     linhas.append({ produtoId: "", quantidade: 1, vlrUnitario: 0 });
-    setTabelaPorLinha((arr) => [...arr, null]);
+    setInfoPorLinha((arr) => [...arr, null]);
   };
   const removerItem = (index: number) => {
     linhas.remove(index);
-    setTabelaPorLinha((arr) => arr.filter((_, i) => i !== index));
+    setInfoPorLinha((arr) => arr.filter((_, i) => i !== index));
   };
 
   const onSelecionarProduto = async (index: number, produto: Produto | null) => {
     if (!produto) return;
     form.setValue(`itens.${index}.produtoId`, produto.id);
+    setInfoPorLinha((arr) =>
+      arr.map((v, i) =>
+        i === index
+          ? { codigoErp: produto.codigoErp, descricao: produto.descricao, unidade: produto.unidade ?? null, vlrTabela: v?.vlrTabela ?? null }
+          : v,
+      ),
+    );
     if (!clienteId) return;
     try {
       const resp = await apiFetch<{ vlrTabela: number | null; ultimoPreco: number | null }>(
@@ -176,10 +240,45 @@ export function OrcamentoFormContent({
         { query: { clienteId, produtoId: produto.id } },
       );
       form.setValue(`itens.${index}.vlrUnitario`, resp.vlrTabela ?? resp.ultimoPreco ?? 0);
-      setTabelaPorLinha((arr) => arr.map((v, i) => (i === index ? resp.vlrTabela : v)));
+      setInfoPorLinha((arr) =>
+        arr.map((v, i) =>
+          i === index
+            ? { codigoErp: produto.codigoErp, descricao: produto.descricao, unidade: produto.unidade ?? null, vlrTabela: resp.vlrTabela }
+            : v,
+        ),
+      );
     } catch {
       // Sem preço disponível — fica com o que já estava, o vendedor ajusta na mão.
     }
+  };
+
+  /**
+   * Adiciona um item a partir da aba Mix, respeitando os valores/% da última
+   * venda: reaplica o desconto praticado na última compra (ultimoDesconto)
+   * sobre o preço de tabela vigente hoje, em vez de reusar o preço antigo
+   * como está — se não houver tabela vigente ou desconto anterior, cai no
+   * último preço praticado.
+   */
+  const adicionarDoMix = (produto: PosicaoClienteMix) => {
+    if (itensAtuais.some((it) => it.produtoId === produto.produtoId)) {
+      toast.info("Produto já está nos itens do orçamento");
+      return;
+    }
+    const vlrUnitario =
+      produto.precoTabela != null && produto.ultimoDesconto != null
+        ? Math.round(produto.precoTabela * (1 - produto.ultimoDesconto / 100) * 100) / 100
+        : (produto.ultimoPrecoUnitario ?? produto.precoTabela ?? 0);
+    linhas.append({ produtoId: produto.produtoId, quantidade: 1, vlrUnitario });
+    setInfoPorLinha((arr) => [
+      ...arr,
+      {
+        codigoErp: produto.codigoErp,
+        descricao: produto.descricao,
+        unidade: produto.unidade,
+        vlrTabela: produto.precoTabela,
+      },
+    ]);
+    toast.success("Item adicionado ao orçamento");
   };
 
   const onSubmit = async (values: OrcamentoCreate) => {
@@ -311,7 +410,7 @@ export function OrcamentoFormContent({
                 <Input
                   id="dataValidade"
                   type="date"
-                  defaultValue={dateToInput(form.getValues("dataValidade"))}
+                  value={dateToInput(form.watch("dataValidade"))}
                   onChange={(e) => form.setValue("dataValidade", inputToDate(e.target.value))}
                 />
               </Field>
@@ -340,78 +439,190 @@ export function OrcamentoFormContent({
             </label>
 
             <div className="space-y-2 border-t border-border/70 pt-3">
-              <div className="flex items-center justify-between">
-                <FieldLabel>Itens</FieldLabel>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={!clienteId}
-                  onClick={adicionarItem}
-                >
-                  <Plus className="size-3.5" />
-                  Adicionar item
-                </Button>
-              </div>
+              <Tabs defaultValue="itens">
+                <TabsList>
+                  <TabsTrigger value="itens">Itens ({linhas.fields.length})</TabsTrigger>
+                  <TabsTrigger value="mix">Mix de produtos ({mix.length})</TabsTrigger>
+                </TabsList>
 
-              {!clienteId && (
-                <p className="text-sm text-muted-foreground">Selecione um cliente primeiro.</p>
-              )}
-              {clienteId && linhas.fields.length === 0 && (
-                <p className="text-sm text-muted-foreground">Nenhum item adicionado.</p>
-              )}
-
-              <div className="space-y-1.5">
-                {linhas.fields.map((linha, index) => (
-                  <div key={linha.id} className="flex items-start gap-2">
-                    <div className="flex-1 space-y-1">
-                      <ProdutoCombobox
-                        value={form.watch(`itens.${index}.produtoId`) || null}
-                        onChange={(produto) => onSelecionarProduto(index, produto)}
-                      />
-                      {tabelaPorLinha[index] != null && (
-                        <p className="px-1 text-xs text-muted-foreground">
-                          Tabela: {moeda(tabelaPorLinha[index] as number)}
-                        </p>
-                      )}
-                    </div>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min={0.01}
-                      className="w-24"
-                      placeholder="Qtd"
-                      {...form.register(`itens.${index}.quantidade`, { valueAsNumber: true })}
-                    />
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min={0}
-                      className="w-32"
-                      placeholder="Preço unit."
-                      {...form.register(`itens.${index}.vlrUnitario`, { valueAsNumber: true })}
-                    />
-                    <div className="flex h-9 w-28 shrink-0 items-center justify-end text-sm font-medium">
-                      {moeda((itensAtuais[index]?.quantidade || 0) * (itensAtuais[index]?.vlrUnitario || 0))}
-                    </div>
+                <TabsContent value="itens" className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <FieldLabel>Itens</FieldLabel>
                     <Button
                       type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-9 shrink-0"
-                      onClick={() => removerItem(index)}
+                      variant="outline"
+                      size="sm"
+                      disabled={!clienteId}
+                      onClick={adicionarItem}
                     >
-                      <Trash2 className="size-4" />
+                      <Plus className="size-3.5" />
+                      Adicionar item
                     </Button>
                   </div>
-                ))}
-              </div>
 
-              {linhas.fields.length > 0 && (
-                <div className="flex justify-end border-t border-border/70 pt-2 text-sm font-medium">
-                  Total: {moeda(totalCalculado)}
-                </div>
-              )}
+                  {!clienteId && (
+                    <p className="text-sm text-muted-foreground">Selecione um cliente primeiro.</p>
+                  )}
+                  {clienteId && linhas.fields.length === 0 && (
+                    <p className="text-sm text-muted-foreground">Nenhum item adicionado.</p>
+                  )}
+
+                  {linhas.fields.length > 0 && (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Produto</TableHead>
+                          <TableHead>Descrição</TableHead>
+                          <TableHead className="text-right">Quantidade</TableHead>
+                          <TableHead className="text-right">Preço</TableHead>
+                          <TableHead className="text-right">Desconto</TableHead>
+                          <TableHead>Última venda</TableHead>
+                          <TableHead className="text-right">Preço tabela</TableHead>
+                          <TableHead className="w-9" />
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {linhas.fields.map((linha, index) => {
+                          const info = infoPorLinha[index];
+                          const produtoId = itensAtuais[index]?.produtoId;
+                          const vlrUnitario = itensAtuais[index]?.vlrUnitario || 0;
+                          const vlrTabela = info?.vlrTabela ?? null;
+                          const desconto =
+                            vlrTabela != null && vlrTabela > 0
+                              ? ((vlrTabela - vlrUnitario) / vlrTabela) * 100
+                              : null;
+                          const ultimaVenda = produtoId
+                            ? (mixPorProduto.get(produtoId)?.ultimaCompra ?? null)
+                            : null;
+                          return (
+                            <TableRow key={linha.id}>
+                              <TableCell className="min-w-48">
+                                <ProdutoCombobox
+                                  value={produtoId || null}
+                                  onChange={(produto) => onSelecionarProduto(index, produto)}
+                                />
+                              </TableCell>
+                              <TableCell className="max-w-56 truncate text-muted-foreground">
+                                {info?.descricao ?? "—"}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min={0.01}
+                                  className="w-20 text-right"
+                                  {...form.register(`itens.${index}.quantidade`, {
+                                    valueAsNumber: true,
+                                  })}
+                                />
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min={0}
+                                  className="w-28 text-right"
+                                  {...form.register(`itens.${index}.vlrUnitario`, {
+                                    valueAsNumber: true,
+                                  })}
+                                />
+                              </TableCell>
+                              <TableCell className="text-right text-muted-foreground">
+                                {percentual(desconto)}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {dataBr(ultimaVenda)}
+                              </TableCell>
+                              <TableCell className="text-right text-muted-foreground">
+                                {moeda(vlrTabela)}
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8"
+                                  onClick={() => removerItem(index)}
+                                >
+                                  <Trash2 className="size-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  )}
+
+                  {linhas.fields.length > 0 && (
+                    <div className="flex justify-end border-t border-border/70 pt-2 text-sm font-medium">
+                      Total: {moeda(totalCalculado)}
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="mix" className="space-y-2">
+                  {!clienteId && (
+                    <p className="text-sm text-muted-foreground">Selecione um cliente primeiro.</p>
+                  )}
+                  {clienteId && mixQuery.isLoading && (
+                    <p className="text-sm text-muted-foreground">Carregando mix de produtos...</p>
+                  )}
+                  {clienteId && !mixQuery.isLoading && mix.length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      Cliente ainda não comprou nenhum produto.
+                    </p>
+                  )}
+                  {mix.length > 0 && (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Código</TableHead>
+                          <TableHead>Descrição</TableHead>
+                          <TableHead>Última compra</TableHead>
+                          <TableHead className="text-right">Últ. preço</TableHead>
+                          <TableHead className="text-right">Últ. desconto</TableHead>
+                          <TableHead className="text-right">Preço tabela</TableHead>
+                          <TableHead>Situação</TableHead>
+                          <TableHead className="w-28" />
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {mix.map((m) => {
+                          const jaAdicionado = itensAtuais.some((it) => it.produtoId === m.produtoId);
+                          return (
+                            <TableRow key={m.produtoId}>
+                              <TableCell>{m.codigoErp}</TableCell>
+                              <TableCell className="max-w-56 truncate">{m.descricao}</TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {dataBr(m.ultimaCompra)}
+                              </TableCell>
+                              <TableCell className="text-right">{moeda(m.ultimoPrecoUnitario)}</TableCell>
+                              <TableCell className="text-right">{percentual(m.ultimoDesconto)}</TableCell>
+                              <TableCell className="text-right">{moeda(m.precoTabela)}</TableCell>
+                              <TableCell>
+                                <StatusDot active={m.ativo} />
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={jaAdicionado}
+                                  onClick={() => adicionarDoMix(m)}
+                                >
+                                  <Plus className="size-3.5" />
+                                  {jaAdicionado ? "Adicionado" : "Adicionar"}
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  )}
+                </TabsContent>
+              </Tabs>
             </div>
           </FieldGroup>
         </CardContent>

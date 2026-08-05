@@ -48,6 +48,7 @@ model Empresa {
   orcamentoItens             OrcamentoItem[]
   integracaoApiKeys          IntegracaoApiKey[]
   clienteCampoConfigs        ClienteCampoConfig[]
+  orcamentoConfig            OrcamentoConfig?
 
   @@map("empresas")
 }
@@ -496,6 +497,24 @@ model ClienteCampoConfig {
 
   @@unique([empresaId, campo])
   @@map("cliente_campo_config")
+}
+
+// Parâmetro comercial (por empresa) usado pra sugerir a "Válido até" na
+// criação de um Orçamento. Singleton por empresa, mesmo padrão de
+// PoliticaSenha (upsert idempotente no primeiro GET), só que aqui escopado
+// por empresaId (RLS) porque cada tenant pode ter um prazo diferente.
+model OrcamentoConfig {
+  id           String @id @default(uuid())
+  empresaId    String @unique
+  diasValidade Int    @default(30)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@map("orcamento_config")
 }
 
 // ------------------------------------------------------------------

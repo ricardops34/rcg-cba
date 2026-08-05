@@ -26,6 +26,7 @@ export * from "./objetivo-dashboard";
 export * from "./oportunidade";
 export * from "./atividade";
 export * from "./orcamento";
+export * from "./orcamento-config";
 export * from "./integracao";
 export * from "./integracao-api-key";
 export * from "./auth";

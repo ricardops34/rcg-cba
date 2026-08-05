@@ -83,7 +83,8 @@ Com RLS: `usuario_empresas`, `produtos`, `vendedores`, `clientes`,
 `categorias`, `condicoes_pagamento`, `armazens`, `estoques`, `tabelas_preco`,
 `tabela_preco_itens`, `notas_saida`, `notas_saida_itens`, `titulos_receber`,
 `objetivos_vendedor_mes`, `objetivos_vendedor_categoria`, `oportunidades`,
-`atividades`, `orcamentos`, `orcamento_itens`.
+`atividades`, `orcamentos`, `orcamento_itens`, `cliente_campo_config`,
+`orcamento_config`.
 
 `integracao_api_keys` tem `empresaId` mas está na lista de exceções acima
 (não recebe RLS, pelo mesmo motivo de `refresh_tokens`).

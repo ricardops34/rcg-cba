@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, PrismaService } from '../../common/prisma/prisma.service';
+import { Prisma, PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
 import {
   combinarFiltroVendedor,
   resolverEscopoVendedores,
@@ -225,6 +225,143 @@ export class ClientesService {
   }
 
   /**
+   * Mix de produtos comprados pelo cliente (código, descrição, última
+   * compra, preço/desconto praticados na compra mais recente, preço vigente
+   * na tabela de preço do cliente). Compartilhado entre Posição de Cliente
+   * (aba Mix, read-only) e Orçamento (aba Mix, com "adicionar ao orçamento"
+   * usando esses mesmos valores/%).
+   */
+  private async mixProdutos(
+    tx: TenantTx,
+    empresaId: string,
+    clienteId: string,
+    tabelaPrecoId: string | null,
+  ) {
+    const mixGrupos = await tx.notaSaidaItem.groupBy({
+      by: ['produtoId'],
+      where: {
+        clienteId,
+        empresaId,
+        deletedAt: null,
+        produtoId: { not: null },
+      },
+      _max: { dtEmissao: true },
+    });
+
+    const produtoIds = mixGrupos
+      .map((g) => g.produtoId)
+      .filter((id): id is string => id !== null);
+    const [produtos, itensTabelaPreco, ultimosItens] = await Promise.all([
+      tx.produto.findMany({
+        where: { id: { in: produtoIds } },
+        select: {
+          id: true,
+          codigoErp: true,
+          descricao: true,
+          unidade: true,
+          ativo: true,
+        },
+      }),
+      tabelaPrecoId
+        ? tx.tabelaPrecoItem.findMany({
+            where: {
+              tabelaPrecoId,
+              produtoId: { in: produtoIds },
+              deletedAt: null,
+            },
+            select: { produtoId: true, preco: true },
+          })
+        : Promise.resolve([] as { produtoId: string; preco: number }[]),
+      // Preço/desconto praticados na última compra de cada produto — casa
+      // (produtoId, dtEmissao) com o máximo já apurado no groupBy acima
+      // (não dá pra pedir "o vlrUnitario da linha mais recente" direto num
+      // groupBy).
+      produtoIds.length
+        ? tx.notaSaidaItem.findMany({
+            where: {
+              clienteId,
+              empresaId,
+              deletedAt: null,
+              OR: mixGrupos
+                .filter((g) => g.produtoId && g._max.dtEmissao)
+                .map((g) => ({
+                  produtoId: g.produtoId,
+                  dtEmissao: g._max.dtEmissao,
+                })),
+            },
+            select: {
+              produtoId: true,
+              vlrUnitario: true,
+              percDesconto: true,
+            },
+          })
+        : Promise.resolve(
+            [] as {
+              produtoId: string | null;
+              vlrUnitario: number;
+              percDesconto: number | null;
+            }[],
+          ),
+    ]);
+    const produtoPorId = new Map(produtos.map((p) => [p.id, p]));
+    const precoPorProduto = new Map(
+      itensTabelaPreco.map((i) => [i.produtoId, i.preco]),
+    );
+    const ultimoPorProduto = new Map<
+      string,
+      { vlrUnitario: number; percDesconto: number | null }
+    >();
+    for (const item of ultimosItens) {
+      if (item.produtoId && !ultimoPorProduto.has(item.produtoId)) {
+        ultimoPorProduto.set(item.produtoId, {
+          vlrUnitario: item.vlrUnitario,
+          percDesconto: item.percDesconto,
+        });
+      }
+    }
+
+    return mixGrupos
+      .map((g) => {
+        const produto = g.produtoId ? produtoPorId.get(g.produtoId) : undefined;
+        const ultimo = g.produtoId ? ultimoPorProduto.get(g.produtoId) : undefined;
+        return {
+          produtoId: g.produtoId as string,
+          codigoErp: produto?.codigoErp ?? '—',
+          descricao: produto?.descricao ?? '—',
+          unidade: produto?.unidade ?? null,
+          ultimaCompra: g._max.dtEmissao,
+          ultimoPrecoUnitario: ultimo?.vlrUnitario ?? null,
+          ultimoDesconto: ultimo?.percDesconto ?? null,
+          precoTabela: g.produtoId ? (precoPorProduto.get(g.produtoId) ?? null) : null,
+          ativo: produto?.ativo ?? true,
+        };
+      })
+      .sort((a, b) => {
+        const dataA = a.ultimaCompra ? a.ultimaCompra.getTime() : 0;
+        const dataB = b.ultimaCompra ? b.ultimaCompra.getTime() : 0;
+        return dataB - dataA;
+      });
+  }
+
+  /**
+   * Mix de produtos do cliente, isolado da Posição de Cliente completa —
+   * usado pela aba "Mix" do formulário de Orçamento (adicionar item usando
+   * valores/% da última venda).
+   */
+  async mix(empresaId: string, user: AuthenticatedUser, clienteId: string) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const filtroEscopo = escopo ? { vendedorId: { in: escopo } } : {};
+      const cliente = await tx.cliente.findFirst({
+        where: { id: clienteId, empresaId, deletedAt: null, ...filtroEscopo },
+        select: { tabelaPrecoId: true },
+      });
+      if (!cliente) throw new NotFoundException('Cliente não encontrado');
+      return this.mixProdutos(tx, empresaId, clienteId, cliente.tabelaPrecoId);
+    });
+  }
+
+  /**
    * Posição de Cliente: tela agrupada (cliente + notas de saída + títulos a
    * receber + mix de produtos comprados), cada bloco ligado ao registro
    * detalhado correspondente (nota, produto). Read-only — os dados entram
@@ -244,130 +381,23 @@ export class ClientesService {
       });
       if (!cliente) throw new NotFoundException('Cliente não encontrado');
 
-      const [notas, titulos, mixGrupos] = await Promise.all([
+      // Escopo já foi verificado acima via cliente.vendedorId — não reaplicar
+      // filtroEscopo nas notas/títulos, pois o vendedorId de cada um deles é
+      // "quem executou aquele registro" (pode divergir do vendedor titular
+      // do cliente) e não deve restringir a visibilidade de dados de um
+      // cliente que o usuário já está autorizado a ver.
+      const [notas, titulos, mix] = await Promise.all([
         tx.notaSaida.findMany({
-          where: { clienteId, empresaId, deletedAt: null, ...filtroEscopo },
+          where: { clienteId, empresaId, deletedAt: null },
           include: { vendedor: VENDEDOR_SELECT },
           orderBy: { dtEmissao: 'desc' },
         }),
         tx.tituloReceber.findMany({
-          where: { clienteId, empresaId, deletedAt: null, ...filtroEscopo },
+          where: { clienteId, empresaId, deletedAt: null },
           orderBy: { vencimento: 'desc' },
         }),
-        tx.notaSaidaItem.groupBy({
-          by: ['produtoId'],
-          where: {
-            clienteId,
-            empresaId,
-            deletedAt: null,
-            produtoId: { not: null },
-            ...filtroEscopo,
-          },
-          _max: { dtEmissao: true },
-        }),
+        this.mixProdutos(tx, empresaId, clienteId, cliente.tabelaPrecoId),
       ]);
-
-      const produtoIds = mixGrupos
-        .map((g) => g.produtoId)
-        .filter((id): id is string => id !== null);
-      const tabelaPrecoId = cliente.tabelaPrecoId;
-      const [produtos, itensTabelaPreco, ultimosItens] = await Promise.all([
-        tx.produto.findMany({
-          where: { id: { in: produtoIds } },
-          select: {
-            id: true,
-            codigoErp: true,
-            descricao: true,
-            unidade: true,
-            ativo: true,
-          },
-        }),
-        tabelaPrecoId
-          ? tx.tabelaPrecoItem.findMany({
-              where: {
-                tabelaPrecoId,
-                produtoId: { in: produtoIds },
-                deletedAt: null,
-              },
-              select: { produtoId: true, preco: true },
-            })
-          : Promise.resolve([] as { produtoId: string; preco: number }[]),
-        // Preço/desconto praticados na última compra de cada produto —
-        // casa (produtoId, dtEmissao) com o máximo já apurado no groupBy
-        // acima (não dá pra pedir "o vlrUnitario da linha mais recente"
-        // direto num groupBy).
-        produtoIds.length
-          ? tx.notaSaidaItem.findMany({
-              where: {
-                clienteId,
-                empresaId,
-                deletedAt: null,
-                ...filtroEscopo,
-                OR: mixGrupos
-                  .filter((g) => g.produtoId && g._max.dtEmissao)
-                  .map((g) => ({
-                    produtoId: g.produtoId,
-                    dtEmissao: g._max.dtEmissao,
-                  })),
-              },
-              select: {
-                produtoId: true,
-                vlrUnitario: true,
-                percDesconto: true,
-              },
-            })
-          : Promise.resolve(
-              [] as {
-                produtoId: string | null;
-                vlrUnitario: number;
-                percDesconto: number | null;
-              }[],
-            ),
-      ]);
-      const produtoPorId = new Map(produtos.map((p) => [p.id, p]));
-      const precoPorProduto = new Map(
-        itensTabelaPreco.map((i) => [i.produtoId, i.preco]),
-      );
-      const ultimoPorProduto = new Map<
-        string,
-        { vlrUnitario: number; percDesconto: number | null }
-      >();
-      for (const item of ultimosItens) {
-        if (item.produtoId && !ultimoPorProduto.has(item.produtoId)) {
-          ultimoPorProduto.set(item.produtoId, {
-            vlrUnitario: item.vlrUnitario,
-            percDesconto: item.percDesconto,
-          });
-        }
-      }
-
-      const mix = mixGrupos
-        .map((g) => {
-          const produto = g.produtoId
-            ? produtoPorId.get(g.produtoId)
-            : undefined;
-          const ultimo = g.produtoId
-            ? ultimoPorProduto.get(g.produtoId)
-            : undefined;
-          return {
-            produtoId: g.produtoId as string,
-            codigoErp: produto?.codigoErp ?? '—',
-            descricao: produto?.descricao ?? '—',
-            unidade: produto?.unidade ?? null,
-            ultimaCompra: g._max.dtEmissao,
-            ultimoPrecoUnitario: ultimo?.vlrUnitario ?? null,
-            ultimoDesconto: ultimo?.percDesconto ?? null,
-            precoTabela: g.produtoId
-              ? (precoPorProduto.get(g.produtoId) ?? null)
-              : null,
-            ativo: produto?.ativo ?? true,
-          };
-        })
-        .sort((a, b) => {
-          const dataA = a.ultimaCompra ? a.ultimaCompra.getTime() : 0;
-          const dataB = b.ultimaCompra ? b.ultimaCompra.getTime() : 0;
-          return dataB - dataA;
-        });
 
       const hoje = new Date();
       const titulosComStatus = titulos.map((titulo) => ({

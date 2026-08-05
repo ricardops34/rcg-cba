@@ -21,6 +21,12 @@ const CONDICAO_SELECT = { select: { id: true, codigoErp: true, descricao: true }
 
 // Consulta read-only com o mesmo escopo hierárquico de Clientes: usuário
 // restrito só enxerga notas da própria carteira/time.
+//
+// notaSaida.vendedorId é quem efetivamente fez aquela venda (exibido na
+// tela) — mas escopo/filtro de "quem pode ver esta nota" considera o
+// vendedor do CADASTRO DO CLIENTE (cliente.vendedorId), não o da nota: uma
+// nota registrada por outro vendedor (cobrindo, por exemplo) continua
+// visível pra quem enxerga aquele cliente.
 @Injectable()
 export class NotasSaidaService {
   constructor(private readonly prisma: PrismaService) {}
@@ -31,7 +37,7 @@ export class NotasSaidaService {
       const where = {
         empresaId,
         deletedAt: null,
-        ...combinarFiltroVendedor(escopo, query.vendedorId),
+        cliente: combinarFiltroVendedor(escopo, query.vendedorId),
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
         ...(query.clienteId ? { clienteId: query.clienteId } : {}),
         ...(query.comodato !== undefined ? { comodato: query.comodato } : {}),
@@ -78,7 +84,7 @@ export class NotasSaidaService {
           id,
           empresaId,
           deletedAt: null,
-          ...(escopo ? { vendedorId: { in: escopo } } : {}),
+          ...(escopo ? { cliente: { vendedorId: { in: escopo } } } : {}),
         },
         include: {
           cliente: CLIENTE_SELECT,

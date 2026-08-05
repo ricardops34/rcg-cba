@@ -29,6 +29,7 @@ import { OrcamentosModule } from './modules/orcamentos/orcamentos.module';
 import { IntegracaoModule } from './modules/integracao/integracao.module';
 import { IntegracaoKeysModule } from './modules/integracao-keys/integracao-keys.module';
 import { ClienteCampoConfigModule } from './modules/cliente-campo-config/cliente-campo-config.module';
+import { OrcamentoConfigModule } from './modules/orcamento-config/orcamento-config.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { ClienteCampoConfigModule } from './modules/cliente-campo-config/cliente
     IntegracaoModule,
     IntegracaoKeysModule,
     ClienteCampoConfigModule,
+    OrcamentoConfigModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

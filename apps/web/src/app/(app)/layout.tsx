@@ -20,6 +20,10 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
     title: "Campos do Cliente",
     subtitle: "Defina quais campos podem ser alterados",
   },
+  "/admin/orcamento-config": {
+    title: "Validade de Orçamento",
+    subtitle: "Dias de validade sugeridos ao criar um orçamento",
+  },
   "/perfil": { title: "Meu perfil", subtitle: "Dados da conta" },
   "/comercial/produtos": { title: "Produtos", subtitle: "Catálogo de produtos" },
 };

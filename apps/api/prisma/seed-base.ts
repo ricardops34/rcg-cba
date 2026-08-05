@@ -107,6 +107,9 @@ const ROTINAS_ADMIN_ONLY = new Set([
   // Define quais campos do cadastro de Cliente podem ser alterados: config
   // de sistema, não dado comercial.
   'clientes-config',
+  // Define os dias de validade padrão do Orçamento: config de sistema, não
+  // dado comercial.
+  'orcamento-config',
 ]);
 
 async function limparDados() {
@@ -149,6 +152,8 @@ async function limparDados() {
   await prisma.rotina.deleteMany({ where: { codigo: 'itens-nota-saida' } });
   await prisma.menu.deleteMany({ where: { id: 'seed-menu-itens-nota-saida' } });
   await prisma.usuario.deleteMany();
+  await prisma.clienteCampoConfig.deleteMany();
+  await prisma.orcamentoConfig.deleteMany();
   await prisma.empresa.deleteMany();
 }
 
@@ -259,6 +264,14 @@ async function bootstrapMenu() {
       rota: '/admin/clientes-config',
       icone: 'list-checks',
       codigo: 'clientes-config',
+      moduloId: moduloAdministracao.id,
+    },
+    {
+      id: 'seed-menu-orcamento-config',
+      nome: 'Validade de Orçamento',
+      rota: '/admin/orcamento-config',
+      icone: 'calendar-clock',
+      codigo: 'orcamento-config',
       moduloId: moduloAdministracao.id,
     },
     {

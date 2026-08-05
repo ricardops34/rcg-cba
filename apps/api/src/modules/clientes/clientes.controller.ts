@@ -149,6 +149,19 @@ export class ClientesController {
     return this.service.posicao(user.empresaAtivaId, user, id);
   }
 
+  @ApiOperation({
+    summary: 'Mix de produtos do cliente',
+    description:
+      'Produtos já comprados pelo cliente (código, descrição, última compra, preço/desconto da ' +
+      'compra mais recente, preço vigente na tabela de preço do cliente) — usado pela aba "Mix" ' +
+      'do formulário de Orçamento. Requer clientes.visualizar.',
+  })
+  @RequirePermission('clientes', 'visualizar')
+  @Get(':id/mix')
+  mix(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.mix(user.empresaAtivaId, user, id);
+  }
+
   @ApiOperation({ summary: 'Cadastrar cliente', description: 'Requer clientes.cadastrar.' })
   @RequirePermission('clientes', 'cadastrar')
   @Post()
