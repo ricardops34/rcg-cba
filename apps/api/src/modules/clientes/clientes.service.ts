@@ -263,8 +263,6 @@ export class ClientesService {
             produtoId: { not: null },
             ...filtroEscopo,
           },
-          _sum: { quantidade: true, vlrTotal: true },
-          _count: { _all: true },
           _max: { dtEmissao: true },
         }),
       ]);
@@ -273,10 +271,16 @@ export class ClientesService {
         .map((g) => g.produtoId)
         .filter((id): id is string => id !== null);
       const tabelaPrecoId = cliente.tabelaPrecoId;
-      const [produtos, itensTabelaPreco] = await Promise.all([
+      const [produtos, itensTabelaPreco, ultimosItens] = await Promise.all([
         tx.produto.findMany({
           where: { id: { in: produtoIds } },
-          select: { id: true, codigoErp: true, descricao: true, unidade: true },
+          select: {
+            id: true,
+            codigoErp: true,
+            descricao: true,
+            unidade: true,
+            ativo: true,
+          },
         }),
         tabelaPrecoId
           ? tx.tabelaPrecoItem.findMany({
@@ -288,32 +292,82 @@ export class ClientesService {
               select: { produtoId: true, preco: true },
             })
           : Promise.resolve([] as { produtoId: string; preco: number }[]),
+        // Preço/desconto praticados na última compra de cada produto —
+        // casa (produtoId, dtEmissao) com o máximo já apurado no groupBy
+        // acima (não dá pra pedir "o vlrUnitario da linha mais recente"
+        // direto num groupBy).
+        produtoIds.length
+          ? tx.notaSaidaItem.findMany({
+              where: {
+                clienteId,
+                empresaId,
+                deletedAt: null,
+                ...filtroEscopo,
+                OR: mixGrupos
+                  .filter((g) => g.produtoId && g._max.dtEmissao)
+                  .map((g) => ({
+                    produtoId: g.produtoId,
+                    dtEmissao: g._max.dtEmissao,
+                  })),
+              },
+              select: {
+                produtoId: true,
+                vlrUnitario: true,
+                percDesconto: true,
+              },
+            })
+          : Promise.resolve(
+              [] as {
+                produtoId: string | null;
+                vlrUnitario: number;
+                percDesconto: number | null;
+              }[],
+            ),
       ]);
       const produtoPorId = new Map(produtos.map((p) => [p.id, p]));
       const precoPorProduto = new Map(
         itensTabelaPreco.map((i) => [i.produtoId, i.preco]),
       );
+      const ultimoPorProduto = new Map<
+        string,
+        { vlrUnitario: number; percDesconto: number | null }
+      >();
+      for (const item of ultimosItens) {
+        if (item.produtoId && !ultimoPorProduto.has(item.produtoId)) {
+          ultimoPorProduto.set(item.produtoId, {
+            vlrUnitario: item.vlrUnitario,
+            percDesconto: item.percDesconto,
+          });
+        }
+      }
 
       const mix = mixGrupos
         .map((g) => {
           const produto = g.produtoId
             ? produtoPorId.get(g.produtoId)
             : undefined;
+          const ultimo = g.produtoId
+            ? ultimoPorProduto.get(g.produtoId)
+            : undefined;
           return {
             produtoId: g.produtoId as string,
             codigoErp: produto?.codigoErp ?? '—',
             descricao: produto?.descricao ?? '—',
             unidade: produto?.unidade ?? null,
-            quantidadeTotal: g._sum.quantidade ?? 0,
-            vlrTotal: g._sum.vlrTotal ?? 0,
-            qtdNotas: g._count._all,
             ultimaCompra: g._max.dtEmissao,
+            ultimoPrecoUnitario: ultimo?.vlrUnitario ?? null,
+            ultimoDesconto: ultimo?.percDesconto ?? null,
             precoTabela: g.produtoId
               ? (precoPorProduto.get(g.produtoId) ?? null)
               : null,
+            ativo: produto?.ativo ?? true,
           };
         })
-        .sort((a, b) => b.vlrTotal - a.vlrTotal);
+        .sort((a, b) => {
+          const dataA = a.ultimaCompra ? a.ultimaCompra.getTime() : 0;
+          const dataB = b.ultimaCompra ? b.ultimaCompra.getTime() : 0;
+          return dataB - dataA;
+        });
 
       const hoje = new Date();
       const titulosComStatus = titulos.map((titulo) => ({

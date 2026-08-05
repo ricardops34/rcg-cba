@@ -28,14 +28,16 @@ export const posicaoClienteMixSchema = z.object({
   codigoErp: z.string(),
   descricao: z.string(),
   unidade: z.string().nullable(),
-  quantidadeTotal: z.number(),
-  vlrTotal: z.number(),
-  qtdNotas: z.number().int(),
   ultimaCompra: z.string().datetime().nullable(),
+  // Preço e desconto (%) praticados na nota mais recente em que o cliente
+  // comprou este produto.
+  ultimoPrecoUnitario: z.number().nullable(),
+  ultimoDesconto: z.number().nullable(),
   // Preço vigente do produto na tabela de preço vinculada ao cliente
   // (cliente.tabelaPrecoId) — null se o cliente não tem tabela vinculada ou
   // se o produto não consta nela.
   precoTabela: z.number().nullable(),
+  ativo: z.boolean(),
 });
 export type PosicaoClienteMix = z.infer<typeof posicaoClienteMixSchema>;
 

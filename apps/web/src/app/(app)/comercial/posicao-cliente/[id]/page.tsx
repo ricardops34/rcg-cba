@@ -46,6 +46,8 @@ const STATUS_ORDEM: Record<TituloRow["status"], number> = { aberto: 0, vencido: 
 
 const moeda = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
+const percentual = (v: number | null | undefined) =>
+  v != null ? `${v.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%` : "—";
 const dataBr = (v: string | null | undefined) => {
   if (!v) return "—";
   const d = new Date(v);
@@ -94,7 +96,7 @@ export default function PosicaoClienteDetalhePage() {
   const [notaSortOrder, setNotaSortOrder] = useState<SortOrder>("desc");
   const [tituloSortBy, setTituloSortBy] = useState("vencimento");
   const [tituloSortOrder, setTituloSortOrder] = useState<SortOrder>("desc");
-  const [mixSortBy, setMixSortBy] = useState("vlrTotal");
+  const [mixSortBy, setMixSortBy] = useState("ultimaCompra");
   const [mixSortOrder, setMixSortOrder] = useState<SortOrder>("desc");
 
   const toggleSort = (
@@ -202,16 +204,16 @@ export default function PosicaoClienteDetalhePage() {
           return m.codigoErp;
         case "descricao":
           return m.descricao;
-        case "quantidadeTotal":
-          return m.quantidadeTotal;
-        case "vlrTotal":
-          return m.vlrTotal;
-        case "qtdNotas":
-          return m.qtdNotas;
-        case "ultimaCompra":
-          return m.ultimaCompra;
+        case "ultimoPrecoUnitario":
+          return m.ultimoPrecoUnitario;
+        case "ultimoDesconto":
+          return m.ultimoDesconto;
         case "precoTabela":
           return m.precoTabela;
+        case "ultimaCompra":
+          return m.ultimaCompra;
+        case "ativo":
+          return m.ativo ? 1 : 0;
         default:
           return null;
       }
@@ -533,34 +535,21 @@ export default function PosicaoClienteDetalhePage() {
                           onClick={() => toggleSort("descricao", mixSortBy, setMixSortBy, setMixSortOrder)}
                         />
                         <SortableTableHead
-                          label="Qtd. total"
+                          label="Últ. preço unit."
                           className="text-right"
-                          active={mixSortBy === "quantidadeTotal"}
+                          active={mixSortBy === "ultimoPrecoUnitario"}
                           order={mixSortOrder}
                           onClick={() =>
-                            toggleSort("quantidadeTotal", mixSortBy, setMixSortBy, setMixSortOrder)
+                            toggleSort("ultimoPrecoUnitario", mixSortBy, setMixSortBy, setMixSortOrder)
                           }
                         />
                         <SortableTableHead
-                          label="Vlr. total"
+                          label="Últ. desconto"
                           className="text-right"
-                          active={mixSortBy === "vlrTotal"}
-                          order={mixSortOrder}
-                          onClick={() => toggleSort("vlrTotal", mixSortBy, setMixSortBy, setMixSortOrder)}
-                        />
-                        <SortableTableHead
-                          label="Nº notas"
-                          className="text-right"
-                          active={mixSortBy === "qtdNotas"}
-                          order={mixSortOrder}
-                          onClick={() => toggleSort("qtdNotas", mixSortBy, setMixSortBy, setMixSortOrder)}
-                        />
-                        <SortableTableHead
-                          label="Última compra"
-                          active={mixSortBy === "ultimaCompra"}
+                          active={mixSortBy === "ultimoDesconto"}
                           order={mixSortOrder}
                           onClick={() =>
-                            toggleSort("ultimaCompra", mixSortBy, setMixSortBy, setMixSortOrder)
+                            toggleSort("ultimoDesconto", mixSortBy, setMixSortBy, setMixSortOrder)
                           }
                         />
                         <SortableTableHead
@@ -571,6 +560,20 @@ export default function PosicaoClienteDetalhePage() {
                           onClick={() =>
                             toggleSort("precoTabela", mixSortBy, setMixSortBy, setMixSortOrder)
                           }
+                        />
+                        <SortableTableHead
+                          label="Última compra"
+                          active={mixSortBy === "ultimaCompra"}
+                          order={mixSortOrder}
+                          onClick={() =>
+                            toggleSort("ultimaCompra", mixSortBy, setMixSortBy, setMixSortOrder)
+                          }
+                        />
+                        <SortableTableHead
+                          label="Situação"
+                          active={mixSortBy === "ativo"}
+                          order={mixSortOrder}
+                          onClick={() => toggleSort("ativo", mixSortBy, setMixSortBy, setMixSortOrder)}
                         />
                       </TableRow>
                     </TableHeader>
@@ -586,13 +589,13 @@ export default function PosicaoClienteDetalhePage() {
                             {m.descricao}
                             {m.unidade && <span className="text-xs text-muted-foreground"> ({m.unidade})</span>}
                           </TableCell>
-                          <TableCell className="text-right">
-                            {m.quantidadeTotal.toLocaleString("pt-BR")}
-                          </TableCell>
-                          <TableCell className="text-right">{moeda(m.vlrTotal)}</TableCell>
-                          <TableCell className="text-right">{m.qtdNotas}</TableCell>
-                          <TableCell>{dataBr(m.ultimaCompra)}</TableCell>
+                          <TableCell className="text-right">{moeda(m.ultimoPrecoUnitario)}</TableCell>
+                          <TableCell className="text-right">{percentual(m.ultimoDesconto)}</TableCell>
                           <TableCell className="text-right">{moeda(m.precoTabela)}</TableCell>
+                          <TableCell>{dataBr(m.ultimaCompra)}</TableCell>
+                          <TableCell>
+                            <StatusDot active={m.ativo} />
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
