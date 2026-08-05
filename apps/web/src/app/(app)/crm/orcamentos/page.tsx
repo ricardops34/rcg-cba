@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import type { Orcamento, StatusOrcamento } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError } from "@/lib/api-client";
-import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
+import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
 import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
@@ -199,7 +199,7 @@ export default function OrcamentosPage() {
                   <SelectItem value="none">Qualquer</SelectItem>
                   {opcoesVendedor.map((v) => (
                     <SelectItem key={v.id} value={v.id}>
-                      {v.nomeReduzido || v.nome}
+                      {vendedorFiltroLabel(v)}
                     </SelectItem>
                   ))}
                 </SelectContent>

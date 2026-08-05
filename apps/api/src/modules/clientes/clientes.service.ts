@@ -513,6 +513,7 @@ export class ClientesService {
     empresaId: string,
     user: AuthenticatedUser,
     apenasComCliente = false,
+    filtros: { uf?: string; municipio?: string } = {},
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const [escopo, vendedorProprio] = await Promise.all([
@@ -522,6 +523,17 @@ export class ClientesService {
           select: { id: true, supervisor: true, gerente: true },
         }),
       ]);
+      // uf/municipio (facetas irmãs já selecionadas no filtro) sempre
+      // restringem a "tem cliente que bate com isso", mesmo sem
+      // apenasComCliente — é o mesmo cliente-relation-filter, só que também
+      // casado com uf/municipio quando informados.
+      const clientesFiltro = {
+        deletedAt: null,
+        ...(filtros.uf ? { uf: filtros.uf } : {}),
+        ...(filtros.municipio ? { municipio: filtros.municipio } : {}),
+      };
+      const exigeCliente =
+        apenasComCliente || !!filtros.uf || !!filtros.municipio;
       const vendedores = await tx.vendedor.findMany({
         where: {
           empresaId,
@@ -530,26 +542,28 @@ export class ClientesService {
           // propósito — é útil justamente pra localizar/filtrar carteira de
           // um vendedor que foi bloqueado mas ainda tem clientes vinculados.
           ...(apenasComCliente ? {} : { ativo: true }),
-          ...(apenasComCliente
-            ? { clientes: { some: { deletedAt: null } } }
-            : {}),
+          ...(exigeCliente ? { clientes: { some: clientesFiltro } } : {}),
           ...(escopo ? { id: { in: escopo } } : {}),
         },
         orderBy: { nome: 'asc' },
       });
 
       // Quantidade de clientes por vendedor — exibida nos selects de filtro
-      // de vendedor do sistema.
+      // de vendedor do sistema (já considerando uf/municipio selecionados).
       const contagens = await tx.cliente.groupBy({
         by: ['vendedorId'],
         where: {
           empresaId,
           deletedAt: null,
           vendedorId: { in: vendedores.map((v) => v.id) },
+          ...(filtros.uf ? { uf: filtros.uf } : {}),
+          ...(filtros.municipio ? { municipio: filtros.municipio } : {}),
         },
         _count: { _all: true },
       });
-      const totalPorVendedor = new Map(contagens.map((c) => [c.vendedorId, c._count._all]));
+      const totalPorVendedor = new Map(
+        contagens.map((c) => [c.vendedorId, c._count._all]),
+      );
       const data = vendedores.map((v) => ({
         ...v,
         totalClientes: totalPorVendedor.get(v.id) ?? 0,
@@ -570,9 +584,15 @@ export class ClientesService {
    * Municípios distintos presentes na carteira visível ao usuário logado —
    * alimenta o filtro "Município" da listagem de Posição de Cliente. Mesmo
    * racional de vendedoresEscopo: nunca expõe municípios de clientes fora do
-   * escopo hierárquico do usuário.
+   * escopo hierárquico do usuário. uf/vendedorId (facetas irmãs já
+   * selecionadas) restringem a contagem — selecionar uma UF só mostra os
+   * municípios daquela UF.
    */
-  municipiosEscopo(empresaId: string, user: AuthenticatedUser) {
+  municipiosEscopo(
+    empresaId: string,
+    user: AuthenticatedUser,
+    filtros: { uf?: string; vendedorId?: string } = {},
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
       const grupos = await tx.cliente.groupBy({
@@ -581,13 +601,17 @@ export class ClientesService {
           empresaId,
           deletedAt: null,
           municipio: { not: null },
-          ...(escopo ? { vendedorId: { in: escopo } } : {}),
+          ...(filtros.uf ? { uf: filtros.uf } : {}),
+          ...combinarFiltroVendedor(escopo, filtros.vendedorId),
         },
         _count: { _all: true },
         orderBy: { municipio: 'asc' },
       });
       return {
-        data: grupos.map((g) => ({ municipio: g.municipio as string, total: g._count._all })),
+        data: grupos.map((g) => ({
+          municipio: g.municipio as string,
+          total: g._count._all,
+        })),
       };
     });
   }
@@ -597,8 +621,14 @@ export class ClientesService {
    * o filtro "UF" (Clientes e Posição de Cliente). Mesmo racional de
    * municipiosEscopo: só lista o que realmente existe no cadastro, e nunca
    * expõe UFs de clientes fora do escopo hierárquico do usuário.
+   * município/vendedorId (facetas irmãs já selecionadas) restringem a
+   * contagem, mesma regra de municipiosEscopo.
    */
-  ufsEscopo(empresaId: string, user: AuthenticatedUser) {
+  ufsEscopo(
+    empresaId: string,
+    user: AuthenticatedUser,
+    filtros: { municipio?: string; vendedorId?: string } = {},
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
       const grupos = await tx.cliente.groupBy({
@@ -607,7 +637,8 @@ export class ClientesService {
           empresaId,
           deletedAt: null,
           uf: { not: null },
-          ...(escopo ? { vendedorId: { in: escopo } } : {}),
+          ...(filtros.municipio ? { municipio: filtros.municipio } : {}),
+          ...combinarFiltroVendedor(escopo, filtros.vendedorId),
         },
         _count: { _all: true },
         orderBy: { uf: 'asc' },

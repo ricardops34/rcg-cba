@@ -140,8 +140,27 @@ export const CLIENTE_EXAMPLE: Cliente = {
 // (só vendedores ativos, sem exigir cliente).
 export const vendedoresEscopoQuerySchema = z.object({
   apenasComCliente: booleanQueryParam,
+  // Facetas irmãs já selecionadas no filtro (Posição de Cliente/Clientes) —
+  // restringem a lista de vendedores a quem tem cliente batendo com elas.
+  uf: z.string().trim().length(2).optional(),
+  municipio: z.string().trim().optional(),
 });
 export type VendedoresEscopoQuery = z.infer<typeof vendedoresEscopoQuerySchema>;
+
+// Facetas irmãs (uf/vendedorId ou município/vendedorId) já selecionadas no
+// filtro — cada endpoint de escopo (uf/município/vendedor) usa as dos outros
+// dois pra restringir sua própria contagem/lista.
+export const municipiosEscopoQuerySchema = z.object({
+  uf: z.string().trim().length(2).optional(),
+  vendedorId: z.string().uuid().optional(),
+});
+export type MunicipiosEscopoQuery = z.infer<typeof municipiosEscopoQuerySchema>;
+
+export const ufsEscopoQuerySchema = z.object({
+  municipio: z.string().trim().optional(),
+  vendedorId: z.string().uuid().optional(),
+});
+export type UfsEscopoQuery = z.infer<typeof ufsEscopoQuerySchema>;
 
 export const CLIENTE_CREATE_EXAMPLE: ClienteCreate = {
   codigoErp: "004417",

@@ -3,7 +3,9 @@ import {
   clienteCreateSchema,
   clienteQuerySchema,
   clienteUpdateSchema,
+  municipiosEscopoQuerySchema,
   posicaoClienteListQuerySchema,
+  ufsEscopoQuerySchema,
   vendedoresEscopoQuerySchema,
 } from '@plataforma/contracts';
 
@@ -16,3 +18,7 @@ export class PosicaoClienteListQueryDto extends createZodDto(
 export class VendedoresEscopoQueryDto extends createZodDto(
   vendedoresEscopoQuerySchema,
 ) {}
+export class MunicipiosEscopoQueryDto extends createZodDto(
+  municipiosEscopoQuerySchema,
+) {}
+export class UfsEscopoQueryDto extends createZodDto(ufsEscopoQuerySchema) {}

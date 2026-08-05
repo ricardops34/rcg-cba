@@ -47,8 +47,10 @@ export default function ClientesPage() {
   const [carteira, setCarteira] = useState<SimNaoTodos>("todos");
 
   // Opções de vendedor já restritas ao escopo do usuário logado — não usa
-  // /vendedores direto (aquele endpoint não tem restrição de carteira).
-  const vendedoresEscopoQuery = useVendedoresEscopo();
+  // /vendedores direto (aquele endpoint não tem restrição de carteira). uf
+  // (faceta irmã já selecionada) restringe a lista a vendedores com cliente
+  // naquela UF, e vice-versa (ufsEscopoQuery abaixo usa vendedorId).
+  const vendedoresEscopoQuery = useVendedoresEscopo({ uf });
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
   const restrito = vendedoresEscopoQuery.data?.restrito ?? false;
   // Restrito a uma única opção = o próprio usuário; filtrar não faz sentido.
@@ -58,8 +60,11 @@ export default function ClientesPage() {
   // UFs distintas presentes na carteira visível ao usuário — só lista o que
   // realmente existe no cadastro.
   const ufsEscopoQuery = useQuery({
-    queryKey: ["clientes", "ufs-escopo"],
-    queryFn: () => apiFetch<{ data: string[] }>("/clientes/ufs-escopo"),
+    queryKey: ["clientes", "ufs-escopo", vendedorId],
+    queryFn: () =>
+      apiFetch<{ data: { uf: string; total: number }[] }>("/clientes/ufs-escopo", {
+        query: { vendedorId },
+      }),
   });
   const opcoesUf = ufsEscopoQuery.data?.data ?? [];
 
@@ -228,9 +233,9 @@ export default function ClientesPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="todas">Todas</SelectItem>
-                {opcoesUf.map((sigla) => (
-                  <SelectItem key={sigla} value={sigla}>
-                    {sigla}
+                {opcoesUf.map((o) => (
+                  <SelectItem key={o.uf} value={o.uf}>
+                    {o.uf} ({o.total})
                   </SelectItem>
                 ))}
               </SelectContent>

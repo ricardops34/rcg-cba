@@ -21,14 +21,23 @@ export interface VendedoresEscopoResponse {
  * incluindo bloqueados (ativo:false) — usado no filtro rápido de vendedor da
  * Posição de Cliente. Sem esse parâmetro, comportamento padrão (só ativos,
  * sem exigir cliente) usado em todo o resto do app.
+ *
+ * `uf`/`municipio`: facetas irmãs já selecionadas no filtro (Posição de
+ * Cliente) — restringem a lista a vendedores com cliente batendo com elas.
  */
-export function useVendedoresEscopo(params?: { apenasComCliente?: boolean }) {
+export function useVendedoresEscopo(params?: {
+  apenasComCliente?: boolean;
+  uf?: string;
+  municipio?: string;
+}) {
   const apenasComCliente = params?.apenasComCliente ?? false;
+  const uf = params?.uf;
+  const municipio = params?.municipio;
   return useQuery({
-    queryKey: ["clientes", "vendedores-escopo", apenasComCliente],
+    queryKey: ["clientes", "vendedores-escopo", apenasComCliente, uf, municipio],
     queryFn: () =>
       apiFetch<VendedoresEscopoResponse>("/clientes/vendedores-escopo", {
-        query: apenasComCliente ? { apenasComCliente: true } : undefined,
+        query: { apenasComCliente: apenasComCliente || undefined, uf, municipio },
       }),
   });
 }

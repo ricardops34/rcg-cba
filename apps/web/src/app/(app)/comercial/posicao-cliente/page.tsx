@@ -90,23 +90,32 @@ export default function PosicaoClientePage() {
   // vendedores com pelo menos um cliente (inclui bloqueados) — filtrar por
   // um vendedor sem nenhum cliente na Posição de Cliente não serviria pra
   // nada, e um vendedor bloqueado ainda pode ter carteira pra revisar.
-  const vendedoresEscopoQuery = useVendedoresEscopo({ apenasComCliente: true });
+  const vendedoresEscopoQuery = useVendedoresEscopo({ apenasComCliente: true, uf, municipio });
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
   const mostrarFiltroVendedor = !(vendedoresEscopoQuery.data?.ehVendedorPuro ?? false);
   useVendedorPadrao(vendedoresEscopoQuery.data?.meuVendedorId, setVendedorId);
 
   // UFs e municípios distintos presentes na carteira visível ao usuário —
   // só lista o que realmente existe no cadastro (mesmo racional de escopo
-  // do filtro Vendedor).
+  // do filtro Vendedor). Cada um usa os demais filtros já selecionados
+  // (facetas irmãs) pra se restringir — selecionar uma UF só mostra
+  // municípios daquela UF, selecionar um vendedor só mostra UF/município da
+  // carteira dele, e vice-versa.
   const ufsEscopoQuery = useQuery({
-    queryKey: ["clientes", "ufs-escopo"],
-    queryFn: () => apiFetch<{ data: string[] }>("/clientes/ufs-escopo"),
+    queryKey: ["clientes", "ufs-escopo", municipio, vendedorId],
+    queryFn: () =>
+      apiFetch<{ data: { uf: string; total: number }[] }>("/clientes/ufs-escopo", {
+        query: { municipio, vendedorId },
+      }),
   });
   const opcoesUf = ufsEscopoQuery.data?.data ?? [];
 
   const municipiosEscopoQuery = useQuery({
-    queryKey: ["clientes", "municipios-escopo"],
-    queryFn: () => apiFetch<{ data: string[] }>("/clientes/municipios-escopo"),
+    queryKey: ["clientes", "municipios-escopo", uf, vendedorId],
+    queryFn: () =>
+      apiFetch<{ data: { municipio: string; total: number }[] }>("/clientes/municipios-escopo", {
+        query: { uf, vendedorId },
+      }),
   });
   const opcoesMunicipio = municipiosEscopoQuery.data?.data ?? [];
 
@@ -289,6 +298,9 @@ export default function PosicaoClientePage() {
               value={uf ?? "todas"}
               onValueChange={(v) => {
                 setUf(v === "todas" ? undefined : v);
+                // Um município de outra UF deixaria de existir na lista —
+                // evita ficar com um filtro de município inválido/invisível.
+                setMunicipio(undefined);
                 setPage(1);
               }}
             >
@@ -297,9 +309,9 @@ export default function PosicaoClientePage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="todas">Todas</SelectItem>
-                {opcoesUf.map((sigla) => (
-                  <SelectItem key={sigla} value={sigla}>
-                    {sigla}
+                {opcoesUf.map((o) => (
+                  <SelectItem key={o.uf} value={o.uf}>
+                    {o.uf} ({o.total})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -320,9 +332,9 @@ export default function PosicaoClientePage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="todos">Todos</SelectItem>
-                {opcoesMunicipio.map((m) => (
-                  <SelectItem key={m} value={m}>
-                    {m}
+                {opcoesMunicipio.map((o) => (
+                  <SelectItem key={o.municipio} value={o.municipio}>
+                    {o.municipio} ({o.total})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -347,7 +359,7 @@ export default function PosicaoClientePage() {
                   {opcoesVendedor.map((v) => (
                     <SelectItem key={v.id} value={v.id}>
                       <span className="flex items-center gap-1.5">
-                        {v.nomeReduzido || v.nome}
+                        {vendedorFiltroLabel(v)}
                         {!v.ativo && (
                           <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
                             <Lock className="size-3" />

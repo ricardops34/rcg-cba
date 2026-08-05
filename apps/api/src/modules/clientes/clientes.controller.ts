@@ -15,7 +15,9 @@ import {
   ClienteCreateDto,
   ClienteQueryDto,
   ClienteUpdateDto,
+  MunicipiosEscopoQueryDto,
   PosicaoClienteListQueryDto,
+  UfsEscopoQueryDto,
   VendedoresEscopoQueryDto,
 } from './dto/cliente.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -56,7 +58,9 @@ export class ClientesController {
       'hierárquico. restrito=false indica acesso total. meuVendedorId é o vendedor vinculado ao ' +
       'usuário logado (null se não houver vínculo). apenasComCliente=true troca pra só listar ' +
       'vendedores com pelo menos um cliente vinculado (inclui bloqueados nesse caso — usado no ' +
-      'filtro rápido de vendedor da Posição de Cliente). Requer clientes.visualizar.',
+      'filtro rápido de vendedor da Posição de Cliente). uf/municipio (facetas irmãs já ' +
+      'selecionadas no filtro) restringem a lista a vendedores com cliente batendo com elas. ' +
+      'Requer clientes.visualizar.',
   })
   @RequirePermission('clientes', 'visualizar')
   @Get('vendedores-escopo')
@@ -68,6 +72,7 @@ export class ClientesController {
       user.empresaAtivaId,
       user,
       query.apenasComCliente ?? false,
+      { uf: query.uf, municipio: query.municipio },
     );
   }
 
@@ -76,12 +81,17 @@ export class ClientesController {
     summary: 'Municípios no escopo do usuário logado',
     description:
       'Municípios distintos presentes na carteira visível ao usuário logado, pro filtro ' +
-      '"Município" da Posição de Cliente. Requer clientes.visualizar.',
+      '"Município" da Posição de Cliente. uf/vendedorId (facetas irmãs já selecionadas no ' +
+      'filtro) restringem a lista — selecionar uma UF só mostra municípios daquela UF. ' +
+      'Requer clientes.visualizar.',
   })
   @RequirePermission('clientes', 'visualizar')
   @Get('municipios-escopo')
-  municipiosEscopo(@CurrentUser() user: AuthenticatedUser) {
-    return this.service.municipiosEscopo(user.empresaAtivaId, user);
+  municipiosEscopo(
+    @Query() query: MunicipiosEscopoQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.municipiosEscopo(user.empresaAtivaId, user, query);
   }
 
   // Declarado antes de GET :id pelo mesmo motivo de vendedores-escopo.
@@ -89,12 +99,16 @@ export class ClientesController {
     summary: 'UFs no escopo do usuário logado',
     description:
       'UFs distintas presentes na carteira visível ao usuário logado, pro filtro "UF" ' +
-      '(Clientes e Posição de Cliente). Requer clientes.visualizar.',
+      '(Clientes e Posição de Cliente). município/vendedorId (facetas irmãs já selecionadas no ' +
+      'filtro) restringem a lista, mesma regra de municipios-escopo. Requer clientes.visualizar.',
   })
   @RequirePermission('clientes', 'visualizar')
   @Get('ufs-escopo')
-  ufsEscopo(@CurrentUser() user: AuthenticatedUser) {
-    return this.service.ufsEscopo(user.empresaAtivaId, user);
+  ufsEscopo(
+    @Query() query: UfsEscopoQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.ufsEscopo(user.empresaAtivaId, user, query);
   }
 
   // Declarado antes de GET :id pelo mesmo motivo de vendedores-escopo.

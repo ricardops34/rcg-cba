@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Atividade, Orcamento, TipoAtividade } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
-import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
+import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
 import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
 import { TIPOS, TIPO_COR } from "@/components/crud/atividade-tipo";
 import { STATUS_ORCAMENTO_COR } from "@/components/crud/orcamento-status";
@@ -189,7 +189,7 @@ export default function AgendaPage() {
                   <SelectItem value="none">Qualquer</SelectItem>
                   {opcoesVendedor.map((v) => (
                     <SelectItem key={v.id} value={v.id}>
-                      {v.nomeReduzido || v.nome}
+                      {vendedorFiltroLabel(v)}
                     </SelectItem>
                   ))}
                 </SelectContent>
