@@ -71,14 +71,15 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
     queryFn: () => apiFetch<{ data: UsuarioOption[] }>("/usuarios", { query: { pageSize: 100 } }),
   });
 
-  // Só lista quem já tem o papel marcado — mas mantém o valor atualmente
-  // salvo na lista mesmo que o papel tenha sido desmarcado depois, senão o
-  // Select mostra um valor "fantasma" ao editar.
+  // Só lista quem já tem o papel marcado e está ativo — mas mantém o valor
+  // atualmente salvo na lista mesmo que o papel tenha sido desmarcado ou o
+  // vendedor bloqueado depois, senão o Select mostra um valor "fantasma" ao
+  // editar.
   const opcoesSupervisor = (vendedoresSelectQuery.data?.data ?? []).filter(
-    (v) => v.id !== vendedor?.id && (v.supervisor || v.id === vendedor?.supervisorId),
+    (v) => v.id !== vendedor?.id && (v.id === vendedor?.supervisorId || (v.supervisor && v.ativo)),
   );
   const opcoesGerente = (vendedoresSelectQuery.data?.data ?? []).filter(
-    (v) => v.id !== vendedor?.id && (v.gerente || v.id === vendedor?.gerenteId),
+    (v) => v.id !== vendedor?.id && (v.id === vendedor?.gerenteId || (v.gerente && v.ativo)),
   );
   const opcoesUsuario = usuariosSelectQuery.data?.data ?? [];
 

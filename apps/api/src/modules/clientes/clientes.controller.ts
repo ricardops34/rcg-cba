@@ -60,9 +60,10 @@ export class ClientesController {
       'vendedores com pelo menos um cliente vinculado (inclui bloqueados nesse caso — usado no ' +
       'filtro rápido de vendedor da Posição de Cliente). uf/municipio (facetas irmãs já ' +
       'selecionadas no filtro) restringem a lista a vendedores com cliente batendo com elas. ' +
-      'Requer clientes.visualizar.',
+      'Endpoint utilitário compartilhado por várias telas com filtro de Vendedor (Posição de ' +
+      'Cliente, Orçamentos, Atividades etc.) — só exige login, sem permissão de módulo ' +
+      'específica, já que o resultado já vem restrito ao escopo hierárquico do usuário.',
   })
-  @RequirePermission('clientes', 'visualizar')
   @Get('vendedores-escopo')
   vendedoresEscopo(
     @Query() query: VendedoresEscopoQueryDto,
@@ -83,9 +84,8 @@ export class ClientesController {
       'Municípios distintos presentes na carteira visível ao usuário logado, pro filtro ' +
       '"Município" da Posição de Cliente. uf/vendedorId (facetas irmãs já selecionadas no ' +
       'filtro) restringem a lista — selecionar uma UF só mostra municípios daquela UF. ' +
-      'Requer clientes.visualizar.',
+      'Endpoint utilitário compartilhado (ver vendedores-escopo) — só exige login.',
   })
-  @RequirePermission('clientes', 'visualizar')
   @Get('municipios-escopo')
   municipiosEscopo(
     @Query() query: MunicipiosEscopoQueryDto,
@@ -100,9 +100,9 @@ export class ClientesController {
     description:
       'UFs distintas presentes na carteira visível ao usuário logado, pro filtro "UF" ' +
       '(Clientes e Posição de Cliente). município/vendedorId (facetas irmãs já selecionadas no ' +
-      'filtro) restringem a lista, mesma regra de municipios-escopo. Requer clientes.visualizar.',
+      'filtro) restringem a lista, mesma regra de municipios-escopo. Endpoint utilitário ' +
+      'compartilhado (ver vendedores-escopo) — só exige login.',
   })
-  @RequirePermission('clientes', 'visualizar')
   @Get('ufs-escopo')
   ufsEscopo(
     @Query() query: UfsEscopoQueryDto,

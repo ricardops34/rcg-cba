@@ -642,11 +642,14 @@ export class ClientesService {
 
       // Quantidade de clientes por vendedor — exibida nos selects de filtro
       // de vendedor do sistema (já considerando uf/municipio selecionados).
+      // Só conta cliente ativo: cliente inativo não deveria "inflar" o
+      // número mostrado ao lado do vendedor no filtro.
       const contagens = await tx.cliente.groupBy({
         by: ['vendedorId'],
         where: {
           empresaId,
           deletedAt: null,
+          ativo: true,
           vendedorId: { in: vendedores.map((v) => v.id) },
           ...(filtros.uf ? { uf: filtros.uf } : {}),
           ...(filtros.municipio ? { municipio: filtros.municipio } : {}),

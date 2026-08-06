@@ -34,7 +34,7 @@ export default function VendedoresPage() {
   const [pageSize, setPageSize] = useState(10);
   const [sortBy, setSortBy] = useState("nome");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
-  const [status, setStatus] = useState<StatusFilterValue>("todos");
+  const [status, setStatus] = useState<StatusFilterValue>("ativos");
   const [papeis, setPapeis] = useState<{ vendedor: boolean; supervisor: boolean; gerente: boolean }>({
     vendedor: false,
     supervisor: false,

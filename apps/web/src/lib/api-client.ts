@@ -24,8 +24,19 @@ export class ApiError extends Error {
 
 let refreshPromise: Promise<string | null> | null = null;
 
+/** Lê a claim empresaAtivaId de um access token sem validar assinatura — só pra
+ *  detectar localmente se o refresh trocou de empresa (ver comentário abaixo). */
+function empresaAtivaIdDoToken(accessToken: string): string | null {
+  try {
+    const payload = JSON.parse(atob(accessToken.split(".")[1]));
+    return payload.empresaAtivaId ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function refreshAccessToken(): Promise<string | null> {
-  const { refreshToken, setTokens, logout } = useAuthStore.getState();
+  const { refreshToken, user, setTokens, setUser, logout } = useAuthStore.getState();
   if (!refreshToken) return null;
 
   const res = await fetch(`${API_URL}/auth/refresh`, {
@@ -41,6 +52,18 @@ async function refreshAccessToken(): Promise<string | null> {
 
   const data = await res.json();
   setTokens(data.accessToken, data.refreshToken);
+
+  // O refresh normalmente mantém a mesma empresa ativa da sessão, mas pode
+  // cair em outra (ex.: vínculo original não existe mais) — se isso
+  // acontecer sem resincronizar `user`, a topbar mostra a empresa errada
+  // (cache velho) enquanto as chamadas já usam o token da empresa nova.
+  if (empresaAtivaIdDoToken(data.accessToken) !== user?.empresaAtivaId) {
+    const meRes = await fetch(`${API_URL}/auth/me`, {
+      headers: { Authorization: `Bearer ${data.accessToken}` },
+    });
+    if (meRes.ok) setUser(await meRes.json());
+  }
+
   return data.accessToken as string;
 }
 

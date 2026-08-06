@@ -6,6 +6,7 @@ dist/
 *.log
 .env
 .env.local
+docker/mysql-import.env
 coverage/
 .DS_Store
 backup/

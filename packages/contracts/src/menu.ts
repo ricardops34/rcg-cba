@@ -22,10 +22,10 @@ export const moduloSchema = moduloCreateSchema.extend({
 export type Modulo = z.infer<typeof moduloSchema>;
 
 export const menuCreateSchema = z.object({
-  moduloId: z.string().uuid().describe("Módulo ao qual este menu pertence"),
+  moduloId: z.string().min(1).describe("Módulo ao qual este menu pertence"),
   menuPaiId: z
     .string()
-    .uuid()
+    .min(1)
     .nullable()
     .default(null)
     .describe("Menu pai, para criar submenus; null para menu de primeiro nível"),
@@ -50,7 +50,7 @@ export const menuSchema = menuCreateSchema.extend({
 export type Menu = z.infer<typeof menuSchema>;
 
 export const rotinaCreateSchema = z.object({
-  menuId: z.string().uuid().describe("Menu ao qual esta rotina pertence"),
+  menuId: z.string().min(1).describe("Menu ao qual esta rotina pertence"),
   nome: z.string().trim().min(2).max(80).describe("Nome amigável da rotina"),
   codigo: z
     .string()

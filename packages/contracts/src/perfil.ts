@@ -26,7 +26,7 @@ export const perfilSchema = perfilCreateSchema.extend({
 export type Perfil = z.infer<typeof perfilSchema>;
 
 export const perfilPermissaoItemSchema = z.object({
-  rotinaId: z.string().uuid().describe("Rotina (funcionalidade) sendo permissionada"),
+  rotinaId: z.string().min(1).describe("Rotina (funcionalidade) sendo permissionada"),
   acao: acaoSchema.describe("Operação dentro da rotina"),
   permitido: z.boolean().describe("true libera a ação, false bloqueia"),
 });

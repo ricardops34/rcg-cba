@@ -22,7 +22,8 @@ COPY packages/contracts packages/contracts
 COPY apps/api apps/api
 RUN pnpm --filter @plataforma/contracts build \
   && pnpm --filter @plataforma/api prisma:generate \
-  && pnpm --filter @plataforma/api build
+  && pnpm --filter @plataforma/api build \
+  && pnpm --filter @plataforma/api exec tsc -p prisma/tsconfig.scripts.json
 
 FROM base AS runtime
 ENV NODE_ENV=production
@@ -30,6 +31,12 @@ RUN pnpm install --frozen-lockfile --prod --filter @plataforma/api...
 COPY --from=build /app/packages/contracts/dist packages/contracts/dist
 COPY --from=build /app/apps/api/dist apps/api/dist
 COPY apps/api/prisma apps/api/prisma
+# Scripts de seed/importação (apps/api/prisma/*.ts) já compilados pra JS puro
+# — dá pra rodar com "node prisma/dist/seed-base.js" num serviço avulso na
+# mesma stack, sem precisar de imagem/stack separada (só funciona pra scripts
+# sem dependência fora do prod: seed-base.js sim, os import-*.js não — esses
+# usam mysql2, que é devDependency, não vem nesta imagem).
+COPY --from=build /app/apps/api/prisma/dist apps/api/prisma/dist
 # Gera o Prisma Client dentro do node_modules de produção.
 RUN pnpm --filter @plataforma/api exec prisma generate
 

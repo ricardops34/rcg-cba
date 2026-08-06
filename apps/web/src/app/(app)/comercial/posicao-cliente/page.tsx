@@ -92,8 +92,13 @@ export default function PosicaoClientePage() {
   // nada, e um vendedor bloqueado ainda pode ter carteira pra revisar.
   const vendedoresEscopoQuery = useVendedoresEscopo({ apenasComCliente: true, uf, municipio });
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
-  const mostrarFiltroVendedor = !(vendedoresEscopoQuery.data?.ehVendedorPuro ?? false);
-  useVendedorPadrao(vendedoresEscopoQuery.data?.meuVendedorId, setVendedorId);
+  const ehVendedorPuro = vendedoresEscopoQuery.data?.ehVendedorPuro ?? false;
+  const mostrarFiltroVendedor = !ehVendedorPuro;
+  // Supervisor/gerente: tela inicia com o filtro em "Qualquer" (não faz
+  // sentido pré-filtrar pela própria carteira de quem enxerga a de vários
+  // vendedores) — só vendedor puro (que nem vê este filtro) recebe o próprio
+  // id como padrão.
+  useVendedorPadrao(ehVendedorPuro ? vendedoresEscopoQuery.data?.meuVendedorId : null, setVendedorId);
 
   // UFs e municípios distintos presentes na carteira visível ao usuário —
   // só lista o que realmente existe no cadastro (mesmo racional de escopo

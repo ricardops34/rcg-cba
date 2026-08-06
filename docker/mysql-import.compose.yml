@@ -1,0 +1,112 @@
+# Importação pontual da base legada (MySQL) pra popular um Postgres de
+# demonstração/teste — fora do fluxo normal de dev (docker-compose.dev.yml,
+# que já tem isso) e fora da stack de produção (stack.rcgcba.prod.yml, que
+# não inclui banco nenhum: Postgres já roda à parte na VPS).
+#
+# O mysql já vem pronto aqui (mesmos dados fixos do compose de dev — nada a
+# configurar). Só o Postgres de destino é externo à VPS/rede que você já tem
+# rodando, então isso entra via .env (ver mysql-import.env.example).
+#
+# Pré-requisitos:
+# - backup/rcgdistc_portal.sql presente na raiz do repo (não vem pelo git —
+#   está no .gitignore, precisa ser copiado manualmente pra VPS).
+# - Postgres de destino já criado/vazio (empresa 'rcg' é recriada pelo seed).
+# - Rede Docker externa onde o Postgres já está rodando (POSTGRES_NETWORK).
+#
+# Rodar (a partir da raiz do repo):
+#   cp docker/mysql-import.env.example docker/mysql-import.env
+#   # edita docker/mysql-import.env com os valores reais
+#
+#   docker compose -f docker/mysql-import.compose.yml --env-file docker/mysql-import.env up -d mysql
+#   docker compose -f docker/mysql-import.compose.yml --env-file docker/mysql-import.env logs -f mysql
+#   # espera aparecer "ready for connections" pela SEGUNDA vez (a primeira é
+#   # antes de rodar os scripts de init que carregam o dump)
+#
+#   # ATENÇÃO: seed-base.ts é DESTRUTIVO (limpa dados antes de recriar) — só
+#   # rode isso contra um banco vazio/dedicado à demo, nunca contra um banco
+#   # com dado real.
+#   docker compose -f docker/mysql-import.compose.yml --env-file docker/mysql-import.env run --rm seed
+#
+#   docker compose -f docker/mysql-import.compose.yml --env-file docker/mysql-import.env run --rm import
+#
+#   # depois de importado, derruba o mysql temporário (não precisa persistir
+#   # pra uma demo estática):
+#   docker compose -f docker/mysql-import.compose.yml --env-file docker/mysql-import.env down -v
+
+services:
+  mysql:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: rcgdistc_portal
+      MYSQL_USER: rcg
+      MYSQL_PASSWORD: rcg
+    volumes:
+      - mysql_import_data:/var/lib/mysql
+      - ./mysql/00-legacy-definers.sql:/docker-entrypoint-initdb.d/00-legacy-definers.sql:ro
+      - ./mysql/10-restore-legacy.sh:/docker-entrypoint-initdb.d/10-restore-legacy.sh:ro
+      - ../backup/rcgdistc_portal.sql:/legacy/rcgdistc_portal.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # Aplica schema (migrations) + bootstrap de empresas/perfis/admin no
+  # Postgres de destino. Roda uma vez só, contra um banco vazio.
+  seed:
+    build:
+      context: ..
+      dockerfile: docker/api.Dockerfile.dev
+    working_dir: /app
+    environment:
+      DATABASE_URL: ${DATABASE_URL_OWNER}
+    volumes:
+      - ..:/app
+    command: >-
+      sh -c "pnpm install --frozen-lockfile --filter @plataforma/contracts --filter @plataforma/api &&
+      pnpm --filter @plataforma/contracts build &&
+      pnpm --filter @plataforma/api prisma:generate &&
+      pnpm --filter @plataforma/api prisma:deploy &&
+      pnpm --filter @plataforma/api exec ts-node prisma/seed-base.ts"
+    networks:
+      - postgres_net
+
+  # Puxa do mysql (serviço acima) pro Postgres de destino, na ordem de
+  # dependência entre os importadores (ver docstring de cada import-*.ts).
+  import:
+    build:
+      context: ..
+      dockerfile: docker/api.Dockerfile.dev
+    working_dir: /app
+    environment:
+      DATABASE_URL: ${DATABASE_URL_OWNER}
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+    volumes:
+      - ..:/app
+    command: >-
+      sh -c "pnpm install --frozen-lockfile --filter @plataforma/contracts --filter @plataforma/api &&
+      pnpm --filter @plataforma/api exec ts-node prisma/import-auxiliares.ts &&
+      pnpm --filter @plataforma/api exec ts-node prisma/import-legado.ts &&
+      pnpm --filter @plataforma/api exec ts-node prisma/import-tabela-preco.ts &&
+      pnpm --filter @plataforma/api exec ts-node prisma/import-clientes.ts &&
+      pnpm --filter @plataforma/api exec ts-node prisma/import-negocio.ts &&
+      pnpm --filter @plataforma/api exec ts-node prisma/import-objetivos.ts"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - default
+      - postgres_net
+
+networks:
+  default:
+    name: mysql_import_net
+  postgres_net:
+    external: true
+    name: ${POSTGRES_NETWORK}
+
+volumes:
+  mysql_import_data:
