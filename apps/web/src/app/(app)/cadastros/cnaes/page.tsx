@@ -28,7 +28,7 @@ export default function CnaesPage() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [status, setStatus] = useState<StatusFilterValue>("todos");
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<Cnae>("cnaes", {
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<Cnae>("cnaes", {
     search,
     page,
     pageSize,
@@ -114,6 +114,7 @@ export default function CnaesPage() {
         rows={data?.data ?? []}
         rowKey={(c) => c.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

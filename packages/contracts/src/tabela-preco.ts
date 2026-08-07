@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { regraDescontoVinculoFields } from "./regra-desconto";
 import { auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
 
 // Somente consulta: tabelas de preço e itens entram pelo import (e no futuro
@@ -53,6 +54,7 @@ export const tabelaPrecoItemSchema = z.object({
   preco: z.number(),
   ativo: z.boolean(),
   produto: tabelaPrecoItemProdutoSchema,
+  ...regraDescontoVinculoFields,
   ...auditFieldsSchema.shape,
 });
 export type TabelaPrecoItem = z.infer<typeof tabelaPrecoItemSchema>;

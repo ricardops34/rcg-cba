@@ -49,7 +49,7 @@ export default function VendedoresPage() {
       apiFetch<{ data: Vendedor[] }>("/vendedores", { query: { pageSize: 100, supervisor: true } }),
   });
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<Vendedor>("vendedores", {
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<Vendedor>("vendedores", {
     search,
     page,
     pageSize,
@@ -169,6 +169,14 @@ export default function VendedoresPage() {
           {v.gerente && <Badge variant="outline">Gerente</Badge>}
         </div>
       ),
+    },
+    {
+      header: "% Comissão",
+      className: "text-right",
+      cell: (v) =>
+        v.percComissao != null
+          ? `${v.percComissao.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`
+          : "—",
     },
     { header: "Status", sortKey: "ativo", cell: (v) => <StatusDot active={v.ativo} /> },
     {
@@ -304,6 +312,7 @@ export default function VendedoresPage() {
         rows={data?.data ?? []}
         rowKey={(v) => v.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

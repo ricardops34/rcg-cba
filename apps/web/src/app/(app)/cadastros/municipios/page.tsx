@@ -41,7 +41,7 @@ export default function MunicipiosPage() {
       apiFetch<{ data: Estado[] }>("/estados", { query: { pageSize: 100, sortBy: "sigla" } }),
   });
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<MunicipioRow>("municipios", {
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<MunicipioRow>("municipios", {
     search,
     page,
     pageSize,
@@ -161,6 +161,7 @@ export default function MunicipiosPage() {
         rows={data?.data ?? []}
         rowKey={(m) => m.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

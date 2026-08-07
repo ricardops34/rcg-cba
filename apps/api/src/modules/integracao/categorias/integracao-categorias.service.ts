@@ -19,9 +19,11 @@ import type {
   IntegracaoCategoriaUpdate,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
+import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 
 const INCLUDE = {
   categoriaPai: { select: { codigoErp: true } },
+  regraDesconto: { select: { codigoErp: true } },
 } satisfies Prisma.CategoriaInclude;
 type CategoriaComPai = Prisma.CategoriaGetPayload<{ include: typeof INCLUDE }>;
 
@@ -35,6 +37,7 @@ export class IntegracaoCategoriasService {
       codigoErp: row.codigoErp,
       descricao: row.descricao,
       categoriaPaiCodigo: row.categoriaPai?.codigoErp ?? null,
+      regraDescontoCodigo: row.regraDesconto?.codigoErp ?? null,
       ativo: row.ativo,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -111,12 +114,19 @@ export class IntegracaoCategoriasService {
         input.categoriaPaiCodigo,
       );
 
+      const regraDescontoId = await resolverRegraDesconto(
+        tx,
+        empresaId,
+        input.regraDescontoCodigo,
+      );
+
       const criada = await tx.categoria.create({
         data: {
           empresaId,
           codigoErp: input.codigoErp,
           descricao: input.descricao,
           categoriaPaiId,
+          regraDescontoId: regraDescontoId ?? null,
           ativo: input.ativo,
           createdBy: autor,
           updatedBy: autor,
@@ -149,6 +159,12 @@ export class IntegracaoCategoriasService {
             )
           : undefined;
 
+      const regraDescontoId = await resolverRegraDesconto(
+        tx,
+        empresaId,
+        input.regraDescontoCodigo,
+      );
+
       const atualizada = await tx.categoria.update({
         where: { id: existente.id },
         data: {
@@ -156,6 +172,7 @@ export class IntegracaoCategoriasService {
             ? { descricao: input.descricao }
             : {}),
           ...(categoriaPaiId !== undefined ? { categoriaPaiId } : {}),
+          ...(regraDescontoId !== undefined ? { regraDescontoId } : {}),
           ...(input.ativo !== undefined ? { ativo: input.ativo } : {}),
           updatedBy: autor,
         },

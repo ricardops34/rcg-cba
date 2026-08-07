@@ -192,6 +192,26 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
                 </Field>
               </div>
 
+              {/* Comissão vem do ERP pela API de integração — exibida, nunca
+                  editada aqui (o campo nem faz parte do create/update). */}
+              <Field>
+                <FieldLabel htmlFor="percComissao">% de comissão</FieldLabel>
+                <Input
+                  id="percComissao"
+                  readOnly
+                  disabled
+                  className="sm:max-w-40"
+                  value={
+                    vendedor?.percComissao != null
+                      ? `${vendedor.percComissao.toLocaleString("pt-BR", {
+                          maximumFractionDigits: 2,
+                        })}%`
+                      : "—"
+                  }
+                />
+                <FieldDescription>Mantido pelo ERP; não editável por aqui.</FieldDescription>
+              </Field>
+
               <Field>
                 <FieldLabel htmlFor="usuarioId">Usuário do sistema (opcional)</FieldLabel>
                 <Select

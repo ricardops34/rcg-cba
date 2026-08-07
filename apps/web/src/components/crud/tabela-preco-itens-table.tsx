@@ -7,6 +7,7 @@ import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
 import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
 import { Input } from "@/components/ui/input";
+import { regraDescontoLabel } from "@/lib/regra-desconto";
 
 const formatarMoeda = (v: number) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -48,6 +49,10 @@ export function TabelaPrecoItensTable({ tabelaPrecoId }: { tabelaPrecoId: string
       cell: (i) => <span className="text-xs">{i.produto.unidade || "—"}</span>,
     },
     { header: "Preço", sortKey: "preco", cell: (i) => formatarMoeda(i.preco) },
+    {
+      header: "Regra de desconto",
+      cell: (i) => <span className="text-xs">{regraDescontoLabel(i.regraDesconto)}</span>,
+    },
     { header: "Status", sortKey: "ativo", cell: (i) => <StatusDot active={i.ativo} /> },
   ];
 

@@ -24,8 +24,12 @@ import type {
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { criarAtividadeRetorno } from './criar-atividade-retorno';
 import { calcularItensOrcamento } from './calcular-itens-orcamento';
+import { proximoNumeroOrcamento } from './proximo-numero-orcamento';
+import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
+import { resolverRegrasDescontoDosItens } from '../../common/precos/resolver-regra-desconto-item';
 
 const SORT_FIELDS = new Set([
+  'numero',
   'titulo',
   'status',
   'vlrTotal',
@@ -34,11 +38,25 @@ const SORT_FIELDS = new Set([
   'createdAt',
 ]);
 
+/** Termo de busca como Nº de orçamento, ou null se não for um int válido. */
+function numeroDeBusca(search: string): number | null {
+  if (!/^\d+$/.test(search.trim())) return null;
+  const n = Number(search.trim());
+  return n > 0 && n <= 2147483647 ? n : null;
+}
+
 const CLIENTE_SELECT = {
   select: { id: true, razaoSocial: true, nomeFantasia: true },
 };
 const VENDEDOR_SELECT = {
-  select: { id: true, nome: true, nomeReduzido: true },
+  // email/telefone saem no cabeçalho da proposta em PDF (contato do vendedor).
+  select: {
+    id: true,
+    nome: true,
+    nomeReduzido: true,
+    email: true,
+    telefone: true,
+  },
 };
 const OPORTUNIDADE_SELECT = { select: { id: true, titulo: true } };
 const CONDICAO_PAGAMENTO_SELECT = { select: { id: true, descricao: true } };
@@ -50,7 +68,12 @@ const INCLUDE = {
   vendedor: VENDEDOR_SELECT,
   oportunidade: OPORTUNIDADE_SELECT,
   condicaoPagamento: CONDICAO_PAGAMENTO_SELECT,
-  itens: { include: { produto: PRODUTO_SELECT } },
+  itens: {
+    include: {
+      produto: PRODUTO_SELECT,
+      regraDesconto: { select: { id: true, codigoErp: true, descricao: true } },
+    },
+  },
 };
 
 @Injectable()
@@ -127,15 +150,16 @@ export class OrcamentosService {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
       await this.garantirClienteNoEscopo(tx, empresaId, escopo, clienteId);
 
-      const cliente = await tx.cliente.findFirst({
-        where: { id: clienteId, empresaId },
-        select: { tabelaPrecoId: true },
-      });
+      const tabelaPrecoId = await resolverTabelaPrecoCliente(
+        tx,
+        empresaId,
+        clienteId,
+      );
       const [tabelaItem, produto, estoque] = await Promise.all([
-        cliente?.tabelaPrecoId
+        tabelaPrecoId
           ? tx.tabelaPrecoItem.findFirst({
               where: {
-                tabelaPrecoId: cliente.tabelaPrecoId,
+                tabelaPrecoId,
                 produtoId,
                 deletedAt: null,
               },
@@ -151,10 +175,21 @@ export class OrcamentosService {
           _sum: { saldo: true },
         }),
       ]);
+      // Regra aplicável ao item, pra tela avisar em tempo real quando o
+      // desconto passa do limite e mostrar a prévia da comissão — o valor
+      // gravado é sempre o que o servidor recalcula ao salvar.
+      const regras = await resolverRegrasDescontoDosItens(
+        tx,
+        empresaId,
+        [produtoId],
+        tabelaPrecoId,
+      );
+
       return {
         vlrTabela: tabelaItem?.preco ?? null,
         ultimoPreco: produto?.ultimoPreco ?? null,
         saldoEstoque: estoque._sum.saldo ?? 0,
+        regraDesconto: regras.get(produtoId) ?? null,
       };
     });
   }
@@ -162,6 +197,7 @@ export class OrcamentosService {
   findAll(empresaId: string, user: AuthenticatedUser, query: OrcamentoQuery) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const numeroBuscado = query.search ? numeroDeBusca(query.search) : null;
       const where = {
         empresaId,
         deletedAt: null,
@@ -173,7 +209,19 @@ export class OrcamentosService {
         ...(query.status ? { status: query.status } : {}),
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
         ...(query.search
-          ? { titulo: { contains: query.search, mode: 'insensitive' as const } }
+          ? {
+              OR: [
+                {
+                  titulo: {
+                    contains: query.search,
+                    mode: 'insensitive' as const,
+                  },
+                },
+                // Termo só de dígitos também procura pelo Nº do orçamento —
+                // é por ele que o cliente cobra o vendedor.
+                ...(numeroBuscado !== null ? [{ numero: numeroBuscado }] : []),
+              ],
+            }
           : {}),
         ...(query.dataInicio || query.dataFim
           ? {
@@ -243,12 +291,14 @@ export class OrcamentosService {
         empresaId,
         input.clienteId,
         itens,
+        input.vendedorId,
       );
 
       const orcamento = await tx.orcamento.create({
         data: {
           ...(this.limpar(header) as object),
           empresaId,
+          numero: await proximoNumeroOrcamento(tx, empresaId),
           vlrTotal,
           createdBy: user.id,
           updatedBy: user.id,
@@ -329,6 +379,7 @@ export class OrcamentosService {
           empresaId,
           clienteId,
           itens,
+          input.vendedorId ?? orcamento.vendedorId,
         );
         itensUpdate = { vlrTotal, itens: { create: itensData } };
       }

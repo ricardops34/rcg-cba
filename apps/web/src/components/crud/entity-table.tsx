@@ -15,7 +15,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SortableTableHead } from "@/components/crud/sortable-table-head";
 import { useAuthStore } from "@/stores/auth-store";
-import { ChevronLeft, ChevronRight, Inbox, Settings2 } from "lucide-react";
+import { ApiError } from "@/lib/api-client";
+import { ChevronLeft, ChevronRight, Inbox, Settings2, TriangleAlert } from "lucide-react";
+
+/** Explica por que a listagem não carregou, em vez de fingir lista vazia. */
+function mensagemDeErro(error: unknown) {
+  if (error instanceof ApiError && error.status === 403) {
+    return "Seu perfil não tem permissão para visualizar estes registros.";
+  }
+  if (error instanceof ApiError) return error.message;
+  return "Não foi possível carregar os registros.";
+}
 
 export interface ColumnDef<T> {
   header: string;
@@ -75,6 +85,13 @@ interface EntityTableProps<T> {
   rowKey: (row: T) => string;
   isLoading?: boolean;
   emptyMessage?: string;
+  /**
+   * Erro da consulta que alimenta a tabela (o `error` do useResourceList).
+   * Sem isso, uma listagem que falhou (403 por falta de permissão, rede fora)
+   * fica idêntica a uma sem registros — o usuário lê "nenhum cadastro" e vai
+   * procurar o problema nos dados.
+   */
+  error?: unknown;
   page: number;
   pageSize: number;
   total: number;
@@ -100,6 +117,7 @@ export function EntityTable<T>({
   rowKey,
   isLoading,
   emptyMessage = "Nenhum registro encontrado.",
+  error,
   page,
   pageSize,
   total,
@@ -197,8 +215,17 @@ export function EntityTable<T>({
                   className="h-40 text-center text-muted-foreground"
                 >
                   <div className="flex flex-col items-center gap-2">
-                    <Inbox className="size-6" />
-                    {emptyMessage}
+                    {error ? (
+                      <>
+                        <TriangleAlert className="size-6 text-amber-500" />
+                        {mensagemDeErro(error)}
+                      </>
+                    ) : (
+                      <>
+                        <Inbox className="size-6" />
+                        {emptyMessage}
+                      </>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>

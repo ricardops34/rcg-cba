@@ -36,7 +36,7 @@ export default function ProdutosPage() {
       apiFetch<{ data: Categoria[] }>("/categorias", { query: { pageSize: 100, raiz: true } }),
   });
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<ProdutoRow>("produtos", {
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<ProdutoRow>("produtos", {
     search,
     page,
     pageSize,
@@ -141,6 +141,7 @@ export default function ProdutosPage() {
         rows={data?.data ?? []}
         rowKey={(p) => p.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

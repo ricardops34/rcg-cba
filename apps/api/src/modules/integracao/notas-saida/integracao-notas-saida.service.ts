@@ -20,12 +20,18 @@ import type {
   IntegracaoNotaSaidaUpdate,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
+import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 
 const INCLUDE = {
   cliente: { select: { codigoErp: true } },
   vendedor: { select: { codigoErp: true } },
   condicaoPagamento: { select: { codigoErp: true } },
-  itens: { include: { produto: { select: { codigoErp: true } } } },
+  itens: {
+    include: {
+      produto: { select: { codigoErp: true } },
+      regraDesconto: { select: { codigoErp: true } },
+    },
+  },
 } satisfies Prisma.NotaSaidaInclude;
 type NotaComRelacoes = Prisma.NotaSaidaGetPayload<{ include: typeof INCLUDE }>;
 
@@ -74,6 +80,8 @@ export class IntegracaoNotasSaidaService {
         vlrDev: item.vlrDev,
         peso: item.peso,
         comodato: item.comodato,
+        percComissao: item.percComissao,
+        regraDescontoCodigo: item.regraDesconto?.codigoErp ?? null,
         ativo: item.ativo,
       })),
       createdAt: row.createdAt.toISOString(),
@@ -173,6 +181,13 @@ export class IntegracaoNotasSaidaService {
           vlrDev: item.vlrDev ?? null,
           peso: item.peso ?? null,
           comodato: item.comodato,
+          percComissao: item.percComissao ?? null,
+          regraDescontoId:
+            (await resolverRegraDesconto(
+              tx,
+              empresaId,
+              item.regraDescontoCodigo,
+            )) ?? null,
           ativo: item.ativo,
         };
       }),

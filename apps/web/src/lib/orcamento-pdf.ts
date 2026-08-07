@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import type { Cliente, Orcamento } from "@plataforma/contracts";
+import type { Cliente, Empresa, Orcamento } from "@plataforma/contracts";
 import { STATUS_ORCAMENTO_LABEL } from "@/components/crud/orcamento-status";
 
 /**
@@ -8,9 +8,10 @@ import { STATUS_ORCAMENTO_LABEL } from "@/components/crud/orcamento-status";
  * um orçamento já salvo — só o registro salvo tem os itens com produto
  * (código/descrição/unidade) e o total consolidado pelo servidor.
  *
- * O cabeçalho usa o logo/nome fantasia da empresa ativa que já estão na
- * sessão (CurrentUser.empresas): buscar razão social/CNPJ exigiria
- * `empresas.visualizar`, permissão de admin que o vendedor não tem.
+ * O cabeçalho traz o cadastro da empresa emitente (razão social, CNPJ, IE,
+ * endereço, contato), lido em GET /empresas/ativa — rota liberada a qualquer
+ * usuário autenticado justamente porque o vendedor não tem
+ * `empresas.visualizar`.
  */
 
 const MARGEM = 14;
@@ -19,8 +20,6 @@ const moeda = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
 const numero = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { maximumFractionDigits: 2 }) : "—";
-const percentual = (v: number | null | undefined) =>
-  v != null ? `${v.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%` : "—";
 const dataBr = (v: string | null | undefined) => {
   if (!v) return "—";
   const d = new Date(v);
@@ -31,26 +30,71 @@ const dataBr = (v: string | null | undefined) => {
 const juntar = (partes: (string | null | undefined)[], separador = " · ") =>
   partes.map((p) => p?.trim()).filter((p): p is string => !!p).join(separador);
 
+// Documento/CEP/telefone são guardados sem máscara (só dígitos) — no papel
+// eles precisam sair formatados. Valor fora do tamanho esperado sai como veio.
+const soDigitos = (v: string) => v.replace(/\D/g, "");
+const formatarDocumento = (v: string | null | undefined) => {
+  if (!v) return null;
+  const d = soDigitos(v);
+  if (d.length === 14) return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
+  if (d.length === 11) return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+  return v;
+};
+const formatarCep = (v: string | null | undefined) => {
+  if (!v) return null;
+  const d = soDigitos(v);
+  return d.length === 8 ? d.replace(/(\d{5})(\d{3})/, "$1-$2") : v;
+};
+const formatarTelefone = (v: string | null | undefined) => {
+  if (!v) return null;
+  const d = soDigitos(v);
+  if (d.length === 11) return d.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
+  if (d.length === 10) return d.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
+  return v;
+};
+
+/** Caixa (mm) em que o logo é encaixado no cabeçalho, preservando a proporção. */
+const LOGO_LARGURA = 40;
+const LOGO_ALTURA = 18;
+
 /**
- * Baixa o logo e converte pra data URL — jsPDF precisa dos bytes da imagem,
- * não da URL. Falha silenciosa: sem logo o PDF sai só com o nome da empresa.
+ * Baixa o logo e devolve um PNG em data URL — jsPDF precisa dos bytes da
+ * imagem, não da URL. O redesenho num canvas normaliza o formato: a tela de
+ * Empresas aceita WEBP e SVG no upload, que o jsPDF não embute direto.
+ * Falha silenciosa: sem logo o PDF sai só com o nome da empresa.
  */
-async function carregarLogo(url: string): Promise<{ dataUrl: string; formato: string } | null> {
+async function carregarLogo(url: string): Promise<string | null> {
+  let objectUrl: string | null = null;
   try {
     const resp = await fetch(url);
     if (!resp.ok) return null;
     const blob = await resp.blob();
-    const formato = blob.type === "image/jpeg" ? "JPEG" : blob.type === "image/png" ? "PNG" : null;
-    if (!formato) return null;
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(new Error("Falha ao ler o logo"));
-      reader.readAsDataURL(blob);
+    if (!blob.type.startsWith("image/")) return null;
+    objectUrl = URL.createObjectURL(blob);
+
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error("Falha ao carregar o logo"));
+      el.src = objectUrl as string;
     });
-    return { dataUrl, formato };
+
+    // SVG sem width/height explícitos chega com dimensão 0 em alguns
+    // navegadores; nesse caso rasteriza na proporção da caixa do cabeçalho.
+    const escalaPx = 8; // px por mm — resolução suficiente pra impressão
+    const largura = img.naturalWidth || LOGO_LARGURA * escalaPx;
+    const altura = img.naturalHeight || LOGO_ALTURA * escalaPx;
+    const canvas = document.createElement("canvas");
+    canvas.width = largura;
+    canvas.height = altura;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, largura, altura);
+    return canvas.toDataURL("image/png");
   } catch {
     return null;
+  } finally {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
   }
 }
 
@@ -58,6 +102,9 @@ export interface OrcamentoPdfParams {
   orcamento: Orcamento;
   /** Cadastro completo do cliente (GET /clientes/:id) — endereço, contato, documento. */
   cliente?: Cliente | null;
+  /** Cadastro da empresa emitente (GET /empresas/ativa) — cabeçalho do documento. */
+  empresa?: Empresa | null;
+  /** Nome fantasia da sessão, usado enquanto o cadastro da empresa não chega. */
   empresaNome?: string | null;
   /** URL absoluta do logo da empresa ativa (ver assetUrl). */
   empresaLogoUrl?: string | null;
@@ -67,6 +114,7 @@ export interface OrcamentoPdfParams {
 export async function gerarOrcamentoPdf({
   orcamento,
   cliente,
+  empresa,
   empresaNome,
   empresaLogoUrl,
 }: OrcamentoPdfParams): Promise<void> {
@@ -74,17 +122,16 @@ export async function gerarOrcamentoPdf({
   const larguraPagina = doc.internal.pageSize.getWidth();
   let y = MARGEM;
 
-  // --- Cabeçalho: logo + empresa à esquerda, identificação do documento à direita
+  // --- Cabeçalho: logo + cadastro da empresa à esquerda, identificação do
+  // documento à direita.
   const logo = empresaLogoUrl ? await carregarLogo(empresaLogoUrl) : null;
+  let alturaLogo = 0;
   if (logo) {
-    // Mantém a proporção original dentro de uma caixa de 32x16mm.
-    const props = doc.getImageProperties(logo.dataUrl);
-    const escala = Math.min(32 / props.width, 16 / props.height);
-    doc.addImage(logo.dataUrl, logo.formato, MARGEM, y, props.width * escala, props.height * escala);
-  }
-  if (empresaNome) {
-    doc.setFont("helvetica", "bold").setFontSize(12);
-    doc.text(empresaNome, MARGEM, y + (logo ? 21 : 5));
+    // Mantém a proporção original dentro da caixa do cabeçalho.
+    const props = doc.getImageProperties(logo);
+    const escala = Math.min(LOGO_LARGURA / props.width, LOGO_ALTURA / props.height);
+    alturaLogo = props.height * escala;
+    doc.addImage(logo, "PNG", MARGEM, y, props.width * escala, alturaLogo);
   }
 
   doc.setFont("helvetica", "bold").setFontSize(16);
@@ -92,25 +139,52 @@ export async function gerarOrcamentoPdf({
   doc.setFont("helvetica", "normal").setFontSize(9);
   doc.text(
     [
-      orcamento.codigoLegado != null ? `Nº ${orcamento.codigoLegado}` : "",
+      `Nº ${orcamento.numero}`,
       `Emissão: ${dataBr(orcamento.createdAt)}`,
       `Status: ${STATUS_ORCAMENTO_LABEL[orcamento.status]}`,
-    ]
-      .filter(Boolean)
-      .join("\n"),
+    ].join("\n"),
     larguraPagina - MARGEM,
     y + 11,
     { align: "right" },
   );
 
-  y += logo ? 26 : 20;
+  // Bloco da empresa: abaixo do logo, limitado à largura que sobra antes do
+  // bloco da direita (Nº/emissão/status) pra não haver sobreposição.
+  let yEmpresa = y + (logo ? alturaLogo + 5 : 5);
+  const larguraEmpresa = larguraPagina - MARGEM * 2 - 50;
+  const titulo = empresa?.nomeFantasia || empresaNome;
+  if (titulo) {
+    doc.setFont("helvetica", "bold").setFontSize(12);
+    doc.text(titulo, MARGEM, yEmpresa);
+    yEmpresa += 5;
+  }
+  const linhasEmpresa = empresa
+    ? [
+        juntar([
+          empresa.razaoSocial,
+          empresa.cnpj ? `CNPJ: ${formatarDocumento(empresa.cnpj)}` : null,
+          empresa.inscricaoEstadual ? `IE: ${empresa.inscricaoEstadual}` : null,
+          empresa.inscricaoMunicipal ? `IM: ${empresa.inscricaoMunicipal}` : null,
+        ]),
+        juntar([empresa.endereco, empresa.complemento, empresa.bairro]),
+        juntar([empresa.municipio, empresa.uf, formatarCep(empresa.cep)]),
+        juntar([formatarTelefone(empresa.telefone), empresa.email, empresa.site]),
+      ].filter(Boolean)
+    : [];
+  if (linhasEmpresa.length) {
+    doc.setFont("helvetica", "normal").setFontSize(8);
+    const quebradas = linhasEmpresa.flatMap(
+      (linha) => doc.splitTextToSize(linha, larguraEmpresa) as string[],
+    );
+    doc.text(quebradas, MARGEM, yEmpresa);
+    yEmpresa += quebradas.length * 3.6;
+  }
+
+  // O cabeçalho acaba no que for mais baixo: o bloco da direita (3 linhas) ou
+  // o bloco da empresa à esquerda.
+  y = Math.max(y + 22, yEmpresa);
   doc.setDrawColor(200).line(MARGEM, y, larguraPagina - MARGEM, y);
   y += 6;
-
-  // --- Título do orçamento
-  doc.setFont("helvetica", "bold").setFontSize(11);
-  doc.text(orcamento.titulo, MARGEM, y);
-  y += 7;
 
   // --- Cliente
   doc.setFont("helvetica", "bold").setFontSize(9);
@@ -121,14 +195,15 @@ export async function gerarOrcamentoPdf({
     cliente?.razaoSocial ?? orcamento.cliente.razaoSocial,
     juntar([
       cliente?.nomeFantasia || orcamento.cliente.nomeFantasia,
-      cliente?.cnpjCpf ? `CNPJ/CPF: ${cliente.cnpjCpf}` : null,
+      cliente?.cnpjCpf ? `CNPJ/CPF: ${formatarDocumento(cliente.cnpjCpf)}` : null,
+      cliente?.inscricaoEstadual ? `IE: ${cliente.inscricaoEstadual}` : null,
     ]),
     juntar([cliente?.endereco, cliente?.complemento, cliente?.bairro]),
-    juntar([cliente?.municipio, cliente?.uf, cliente?.cep]),
+    juntar([cliente?.municipio, cliente?.uf, formatarCep(cliente?.cep)]),
     juntar([
       cliente?.contato ? `Contato: ${cliente.contato}` : null,
-      cliente?.telefone,
-      cliente?.celular,
+      formatarTelefone(cliente?.telefone),
+      formatarTelefone(cliente?.celular),
       cliente?.email,
     ]),
   ].filter(Boolean);
@@ -141,7 +216,11 @@ export async function gerarOrcamentoPdf({
   y += 4.5;
   doc.setFont("helvetica", "normal").setFontSize(9);
   const linhasCondicoes = [
-    `Vendedor: ${orcamento.vendedor.nomeReduzido || orcamento.vendedor.nome}`,
+    juntar([
+      `Vendedor: ${orcamento.vendedor.nomeReduzido || orcamento.vendedor.nome}`,
+      formatarTelefone(orcamento.vendedor.telefone),
+      orcamento.vendedor.email,
+    ]),
     `Condição de pagamento: ${orcamento.condicaoPagamento?.descricao ?? "—"}`,
     `Válido até: ${dataBr(orcamento.dataValidade)}    Data de retorno: ${dataBr(orcamento.dataRetorno)}`,
   ];
@@ -152,14 +231,15 @@ export async function gerarOrcamentoPdf({
   autoTable(doc, {
     startY: y,
     margin: { left: MARGEM, right: MARGEM },
-    head: [["Código", "Produto", "Un.", "Qtd.", "Preço", "Desc.", "Total"]],
+    // vlrUnitario já é o preço praticado (líquido) — o desconto sobre a tabela
+    // de preço é só um derivado interno, que não vai pra proposta do cliente.
+    head: [["Código", "Produto", "Un.", "Qtd.", "Preço unit.", "Total"]],
     body: orcamento.itens.map((i) => [
       i.produto.codigoErp,
       i.produto.descricao,
       i.produto.unidade ?? "—",
       numero(i.quantidade),
       moeda(i.vlrUnitario),
-      percentual(i.percDesconto),
       moeda(i.vlrTotal),
     ]),
     styles: { fontSize: 8, cellPadding: 1.6 },
@@ -169,24 +249,38 @@ export async function gerarOrcamentoPdf({
       3: { halign: "right" },
       4: { halign: "right" },
       5: { halign: "right" },
-      6: { halign: "right" },
     },
   });
   // O autoTable grava onde a tabela terminou — daí seguimos com total/observação.
   y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
 
+  // Só o autoTable pagina sozinho; o que vem depois dele precisa checar se
+  // ainda cabe na folha (tabela terminando no rodapé é o caso comum).
+  const alturaPagina = doc.internal.pageSize.getHeight();
+  const garantirEspaco = (altura: number) => {
+    if (y + altura > alturaPagina - MARGEM) {
+      doc.addPage();
+      y = MARGEM;
+    }
+  };
+
   // --- Total
+  garantirEspaco(10);
   doc.setFont("helvetica", "bold").setFontSize(11);
   doc.text(`Total: ${moeda(orcamento.vlrTotal)}`, larguraPagina - MARGEM, y, { align: "right" });
   y += 10;
 
-  // --- Observação
+  // --- Observação (só quando preenchida)
   if (orcamento.observacao?.trim()) {
+    const linhas = doc.splitTextToSize(
+      orcamento.observacao.trim(),
+      larguraPagina - MARGEM * 2,
+    ) as string[];
+    garantirEspaco(4.5 + linhas.length * 4.2);
     doc.setFont("helvetica", "bold").setFontSize(9);
     doc.text("OBSERVAÇÃO", MARGEM, y);
     y += 4.5;
     doc.setFont("helvetica", "normal").setFontSize(9);
-    const linhas = doc.splitTextToSize(orcamento.observacao, larguraPagina - MARGEM * 2) as string[];
     doc.text(linhas, MARGEM, y);
   }
 
@@ -204,6 +298,5 @@ export async function gerarOrcamentoPdf({
     doc.setTextColor(0);
   }
 
-  const nome = orcamento.codigoLegado != null ? `orcamento-${orcamento.codigoLegado}` : "orcamento";
-  doc.save(`${nome}.pdf`);
+  doc.save(`orcamento-${orcamento.numero}.pdf`);
 }

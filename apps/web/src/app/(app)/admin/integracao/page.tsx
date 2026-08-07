@@ -51,7 +51,7 @@ export default function IntegracaoPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<IntegracaoApiKey>(
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<IntegracaoApiKey>(
     "integracao-keys",
     { search, page, pageSize, sortBy: "createdAt", sortOrder: "desc" },
   );
@@ -149,6 +149,7 @@ export default function IntegracaoPage() {
         rows={data?.data ?? []}
         rowKey={(c) => c.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

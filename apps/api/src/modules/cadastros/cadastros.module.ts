@@ -17,6 +17,8 @@ import { PaisesController } from './paises/paises.controller';
 import { PaisesService } from './paises/paises.service';
 import { CnaesController } from './cnaes/cnaes.controller';
 import { CnaesService } from './cnaes/cnaes.service';
+import { RegrasDescontoController } from './regras-desconto/regras-desconto.controller';
+import { RegrasDescontoService } from './regras-desconto/regras-desconto.service';
 
 // Família de CRUDs auxiliares (módulo "Cadastros" do menu). Cada entidade tem
 // sua pasta controller/service/dto no padrão de produtos/vendedores; o módulo
@@ -33,6 +35,7 @@ import { CnaesService } from './cnaes/cnaes.service';
     CepsController,
     PaisesController,
     CnaesController,
+    RegrasDescontoController,
   ],
   providers: [
     CategoriasService,
@@ -44,6 +47,7 @@ import { CnaesService } from './cnaes/cnaes.service';
     CepsService,
     PaisesService,
     CnaesService,
+    RegrasDescontoService,
   ],
 })
 export class CadastrosModule {}

@@ -16,10 +16,16 @@ const SORT_FIELDS = new Set(['descricao', 'codigoErp', 'marca', 'ultimoPreco', '
 // Cadastros auxiliares anexados às respostas (colunas da listagem/form).
 const CATEGORIA_SELECT = { select: { id: true, codigoErp: true, descricao: true } };
 const ARMAZEM_SELECT = { select: { id: true, codigoErp: true, descricao: true } };
+// Regra de desconto vinculada (SZ0): acompanha a leitura pra tela exibir sem
+// um segundo fetch.
+const REGRA_DESCONTO_SELECT = {
+  select: { id: true, codigoErp: true, descricao: true },
+};
 const PRODUTO_INCLUDE = {
   categoria: CATEGORIA_SELECT,
   subCategoria: CATEGORIA_SELECT,
   armazem: ARMAZEM_SELECT,
+  regraDesconto: REGRA_DESCONTO_SELECT,
 };
 
 @Injectable()
@@ -40,6 +46,7 @@ export class ProdutosService {
         deletedAt: null,
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
         ...(query.categoriaId ? { categoriaId: query.categoriaId } : {}),
+        ...(query.regraDescontoId ? { regraDescontoId: query.regraDescontoId } : {}),
         ...(query.subCategoriaId ? { subCategoriaId: query.subCategoriaId } : {}),
         ...(query.armazemId ? { armazemId: query.armazemId } : {}),
         ...(query.search
@@ -84,16 +91,17 @@ export class ProdutosService {
   }
 
   create(empresaId: string, user: AuthenticatedUser, input: ProdutoCreate) {
-    return this.prisma.withTenant(empresaId, (tx) =>
-      tx.produto.create({
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      return tx.produto.create({
         data: {
           ...(this.limpar(input) as object),
           empresaId,
           createdBy: user.id,
           updatedBy: user.id,
         } as never,
-      }),
-    );
+        include: PRODUTO_INCLUDE,
+      });
+    });
   }
 
   async update(empresaId: string, user: AuthenticatedUser, id: string, input: ProdutoUpdate) {
@@ -103,6 +111,7 @@ export class ProdutosService {
       return tx.produto.update({
         where: { id },
         data: { ...(this.limpar(input) as object), updatedBy: user.id } as never,
+        include: PRODUTO_INCLUDE,
       });
     });
   }

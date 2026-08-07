@@ -12,6 +12,13 @@ const SORT_FIELDS = new Set(['razaoSocial', 'nomeFantasia', 'cnpj', 'ativo', 'cr
 export class EmpresasService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Campo vazio do formulário vira null no banco (mesmo padrão dos demais cadastros). */
+  private limpar<T extends Record<string, unknown>>(input: T) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(input)) out[k] = v === '' ? null : v;
+    return out;
+  }
+
   async findAll(query: EmpresaQuery) {
     const where = {
       deletedAt: null,
@@ -57,7 +64,11 @@ export class EmpresasService {
     if (input.alias) await this.ensureAliasDisponivel(input.alias);
 
     return this.prisma.empresa.create({
-      data: { ...input, createdBy: userId, updatedBy: userId },
+      data: {
+        ...(this.limpar(input) as object),
+        createdBy: userId,
+        updatedBy: userId,
+      } as never,
     });
   }
 
@@ -66,7 +77,7 @@ export class EmpresasService {
     if (input.alias) await this.ensureAliasDisponivel(input.alias, id);
     return this.prisma.empresa.update({
       where: { id },
-      data: { ...input, updatedBy: userId },
+      data: { ...(this.limpar(input) as object), updatedBy: userId } as never,
     });
   }
 

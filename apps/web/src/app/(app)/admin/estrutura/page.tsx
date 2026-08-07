@@ -58,6 +58,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   ChevronRight,
   FolderTree,
   GripVertical,
@@ -281,6 +288,7 @@ export default function EstruturaPage() {
       {menuDialog && (
         <MenuFormDialog
           moduloId={menuDialog.moduloId}
+          modulos={modulosQuery.data ?? []}
           editing={menuDialog.editing}
           onClose={() => setMenuDialog(null)}
           onCreate={(input) => createMenu.mutateAsync(input)}
@@ -632,12 +640,15 @@ function ModuloFormDialog({
 
 function MenuFormDialog({
   moduloId,
+  modulos,
   editing,
   onClose,
   onCreate,
   onUpdate,
 }: {
   moduloId: string;
+  /** Todos os módulos com seus menus — destino possível e base do cálculo da ordem. */
+  modulos: ModuloComMenus[];
   editing: Menu | null;
   onClose: () => void;
   onCreate: (input: MenuCreate) => Promise<unknown>;
@@ -655,14 +666,28 @@ function MenuFormDialog({
       ativo: editing?.ativo ?? true,
     },
   });
+  const moduloSelecionado = form.watch("moduloId");
 
   const onSubmit = async (values: MenuCreate) => {
+    // Mudou de módulo: entra no fim do destino (a ordem antiga é do módulo de
+    // origem e cairia no meio da lista de lá) e larga o menu pai, que pertence
+    // à árvore do módulo de origem.
+    const trocouDeModulo = values.moduloId !== moduloId;
+    const menusDoDestino = modulos.find((m) => m.id === values.moduloId)?.menus ?? [];
+    const dados: MenuCreate = trocouDeModulo
+      ? {
+          ...values,
+          menuPaiId: null,
+          ordem: Math.max(0, ...menusDoDestino.map((m) => m.ordem)) + 1,
+        }
+      : values;
+
     try {
       if (editing) {
-        await onUpdate(editing.id, values);
-        toast.success("Menu atualizado");
+        await onUpdate(editing.id, dados);
+        toast.success(trocouDeModulo ? "Menu movido de módulo" : "Menu atualizado");
       } else {
-        await onCreate(values);
+        await onCreate(dados);
         toast.success("Menu cadastrado");
       }
       onClose();
@@ -683,6 +708,30 @@ function MenuFormDialog({
               <FieldLabel htmlFor="nome">Nome</FieldLabel>
               <Input id="nome" {...form.register("nome")} />
               <FieldError errors={[form.formState.errors.nome]} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="moduloId">Módulo</FieldLabel>
+              <Select
+                value={moduloSelecionado}
+                onValueChange={(v) => form.setValue("moduloId", v)}
+              >
+                <SelectTrigger id="moduloId" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {modulos.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {editing && moduloSelecionado !== moduloId && (
+                <FieldDescription>
+                  Ao salvar, o menu vai para o fim da lista do módulo escolhido — a ordem dentro
+                  dele pode ser ajustada arrastando.
+                </FieldDescription>
+              )}
             </Field>
             <Field>
               <FieldLabel htmlFor="rota">Rota no sistema</FieldLabel>

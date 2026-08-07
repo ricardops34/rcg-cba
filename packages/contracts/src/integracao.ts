@@ -17,6 +17,13 @@ export const integracaoCategoriaCreateSchema = z.object({
     .nullable()
     .optional()
     .describe("codigoErp da categoria pai, se esta for uma subcategoria"),
+  regraDescontoCodigo: z
+    .string()
+    .trim()
+    .max(30)
+    .nullable()
+    .optional()
+    .describe("codigoErp da regra de desconto (Z0_CODIGO da SZ0)"),
   ativo: z.boolean().default(true),
 });
 export type IntegracaoCategoriaCreate = z.infer<typeof integracaoCategoriaCreateSchema>;
@@ -41,6 +48,7 @@ export const INTEGRACAO_CATEGORIA_CREATE_EXAMPLE: IntegracaoCategoriaCreate = {
   codigoErp: "000004",
   descricao: "COZINHA",
   categoriaPaiCodigo: null,
+  regraDescontoCodigo: null,
   ativo: true,
 };
 
@@ -163,6 +171,13 @@ export const integracaoProdutoCreateSchema = z.object({
   peso: z.coerce.number().min(0).nullable().optional(),
   ultimoPreco: z.coerce.number().min(0).nullable().optional(),
   observacao: z.string().trim().max(500).nullable().optional(),
+  regraDescontoCodigo: z
+    .string()
+    .trim()
+    .max(30)
+    .nullable()
+    .optional()
+    .describe("codigoErp da regra de desconto (Z0_CODIGO da SZ0)"),
   ativo: z.boolean().default(true),
 });
 export type IntegracaoProdutoCreate = z.infer<typeof integracaoProdutoCreateSchema>;
@@ -197,6 +212,7 @@ export const INTEGRACAO_PRODUTO_CREATE_EXAMPLE: IntegracaoProdutoCreate = {
   peso: 5.2,
   ultimoPreco: 28.9,
   observacao: "",
+  regraDescontoCodigo: null,
   ativo: true,
 };
 
@@ -232,6 +248,13 @@ export const integracaoVendedorCreateSchema = z.object({
     .optional()
     .describe("codigoErp do vendedor que é supervisor deste"),
   supervisor: z.boolean().default(false).describe("true = este vendedor é supervisor de outros"),
+  percComissao: z.coerce
+    .number()
+    .min(0)
+    .max(100)
+    .nullable()
+    .optional()
+    .describe("Percentual de comissão do vendedor"),
   ativo: z.boolean().default(true),
   desligado: z.boolean().default(false),
 });
@@ -263,6 +286,7 @@ export const INTEGRACAO_VENDEDOR_CREATE_EXAMPLE: IntegracaoVendedorCreate = {
   vendedor: true,
   supervisorCodigo: null,
   supervisor: false,
+  percComissao: 4,
   ativo: true,
   desligado: false,
 };
@@ -409,6 +433,13 @@ export const INTEGRACAO_CLIENTE_EXAMPLE: IntegracaoCliente = {
 export const integracaoTabelaPrecoItemSchema = z.object({
   produtoCodigo: z.string().trim().min(1).max(30).describe("codigoErp do produto"),
   preco: z.coerce.number().min(0),
+  regraDescontoCodigo: z
+    .string()
+    .trim()
+    .max(30)
+    .nullable()
+    .optional()
+    .describe("codigoErp da regra de desconto (Z0_CODIGO da SZ0)"),
   ativo: z.boolean().default(true),
 });
 export type IntegracaoTabelaPrecoItem = z.infer<typeof integracaoTabelaPrecoItemSchema>;
@@ -448,7 +479,7 @@ export const INTEGRACAO_TABELA_PRECO_CREATE_EXAMPLE: IntegracaoTabelaPrecoCreate
   dtInicio: new Date("2019-07-11T00:00:00.000Z"),
   dtFim: null,
   ativo: true,
-  itens: [{ produtoCodigo: "11400443", preco: 735.3, ativo: true }],
+  itens: [{ produtoCodigo: "11400443", preco: 735.3, regraDescontoCodigo: null, ativo: true }],
 };
 
 export const INTEGRACAO_TABELA_PRECO_EXAMPLE: IntegracaoTabelaPreco = {
@@ -602,6 +633,20 @@ export const integracaoNotaSaidaItemSchema = z.object({
   vlrDev: z.coerce.number().nullable().optional(),
   peso: z.coerce.number().nullable().optional(),
   comodato: z.boolean().default(false),
+  percComissao: z.coerce
+    .number()
+    .min(0)
+    .max(100)
+    .nullable()
+    .optional()
+    .describe("Percentual de comissão apurado na linha"),
+  regraDescontoCodigo: z
+    .string()
+    .trim()
+    .max(30)
+    .nullable()
+    .optional()
+    .describe("codigoErp da regra de desconto (Z0_CODIGO da SZ0)"),
   ativo: z.boolean().default(true),
 });
 export type IntegracaoNotaSaidaItem = z.infer<typeof integracaoNotaSaidaItemSchema>;
@@ -791,6 +836,20 @@ export const integracaoOrcamentoItemSchema = z.object({
   produtoCodigo: z.string().trim().min(1).max(30).describe("codigoErp do produto"),
   quantidade: z.coerce.number().positive(),
   vlrUnitario: z.coerce.number().min(0),
+  percComissao: z.coerce
+    .number()
+    .min(0)
+    .max(100)
+    .nullable()
+    .optional()
+    .describe("Percentual de comissão apurado na linha"),
+  regraDescontoCodigo: z
+    .string()
+    .trim()
+    .max(30)
+    .nullable()
+    .optional()
+    .describe("codigoErp da regra de desconto (Z0_CODIGO da SZ0)"),
 });
 export type IntegracaoOrcamentoItem = z.infer<typeof integracaoOrcamentoItemSchema>;
 
@@ -852,7 +911,7 @@ export const INTEGRACAO_ORCAMENTO_CREATE_EXAMPLE: IntegracaoOrcamentoCreate = {
   dataRetorno: new Date("2026-08-11T00:00:00.000Z"),
   observacao: null,
   ativo: true,
-  itens: [{ produtoCodigo: "11400443", quantidade: 5, vlrUnitario: 735.3 }],
+  itens: [{ produtoCodigo: "11400443", quantidade: 5, vlrUnitario: 735.3, regraDescontoCodigo: null }],
 };
 
 export const INTEGRACAO_ORCAMENTO_EXAMPLE: IntegracaoOrcamento = {
@@ -866,4 +925,91 @@ export const INTEGRACAO_ORCAMENTO_EXAMPLE: IntegracaoOrcamento = {
 
 export const INTEGRACAO_ORCAMENTO_VINCULAR_EXAMPLE: IntegracaoOrcamentoVincular = {
   codigoLegado: 7301,
+};
+
+// ------------------------------------------------------------------
+// Regras de desconto (mestre-detalhe) — chave: codigoErp (Z0_CODIGO da SZ0).
+// ------------------------------------------------------------------
+// As faixas vêm no mesmo corpo e substituem o conjunto inteiro a cada PATCH,
+// como os itens de orçamento — o ERP é dono da regra completa.
+
+export const integracaoRegraDescontoFaixaSchema = z.object({
+  sequencia: z.coerce.number().int().min(1).describe("Z0_SEQ"),
+  percInicial: z.coerce.number().min(0).max(100).describe("Desconto inicial da faixa (Z0_PERCDE)"),
+  percFinal: z.coerce.number().min(0).max(100).describe("Desconto final da faixa (Z0_PERCATE)"),
+  percBaseComissao: z.coerce
+    .number()
+    .min(0)
+    .max(100)
+    .describe("% da comissão cheia paga nesta faixa (Z0_BASE)"),
+});
+export type IntegracaoRegraDescontoFaixa = z.infer<typeof integracaoRegraDescontoFaixaSchema>;
+
+export const integracaoRegraDescontoCreateSchema = z.object({
+  codigoErp: z.string().trim().min(1).max(30).describe("Chave natural do registro (Z0_CODIGO)"),
+  descricao: z.string().trim().min(1).max(120).describe("Z0_DESC"),
+  percDescontoAutorizado: z.coerce
+    .number()
+    .min(0)
+    .max(100)
+    .default(0)
+    .describe("Percentual de desconto autorizado (Z0_DESCAUT)"),
+  percDescontoMaximo: z.coerce
+    .number()
+    .min(0)
+    .max(100)
+    .default(0)
+    .describe("Percentual de desconto máximo (Z0_PERMAX)"),
+  percComissao: z.coerce
+    .number()
+    .min(0)
+    .max(100)
+    .default(0)
+    .describe("Comissão cheia da regra (Z0_COMISS)"),
+  padrao: z.boolean().default(false).describe("Regra padrão da empresa (Z0_PADRAO)"),
+  ativo: z.boolean().default(true),
+  faixas: z
+    .array(integracaoRegraDescontoFaixaSchema)
+    .default([])
+    .describe("Substitui o conjunto inteiro de faixas a cada PATCH"),
+});
+export type IntegracaoRegraDescontoCreate = z.infer<typeof integracaoRegraDescontoCreateSchema>;
+
+export const integracaoRegraDescontoUpdateSchema = integracaoRegraDescontoCreateSchema
+  .omit({ codigoErp: true })
+  .partial();
+export type IntegracaoRegraDescontoUpdate = z.infer<typeof integracaoRegraDescontoUpdateSchema>;
+
+export const integracaoRegraDescontoSchema = integracaoRegraDescontoCreateSchema.extend({
+  id: z.string().uuid(),
+  ...auditFieldsSchema.shape,
+});
+export type IntegracaoRegraDesconto = z.infer<typeof integracaoRegraDescontoSchema>;
+
+export const integracaoRegraDescontoQuerySchema = paginationQuerySchema.extend({
+  ativo: booleanQueryParam,
+});
+export type IntegracaoRegraDescontoQuery = z.infer<typeof integracaoRegraDescontoQuerySchema>;
+
+export const INTEGRACAO_REGRA_DESCONTO_CREATE_EXAMPLE: IntegracaoRegraDescontoCreate = {
+  codigoErp: "000001",
+  descricao: "REGRA GERAL",
+  percDescontoAutorizado: 35,
+  percDescontoMaximo: 30,
+  percComissao: 10,
+  padrao: true,
+  ativo: true,
+  faixas: [
+    { sequencia: 1, percInicial: 0, percFinal: 10, percBaseComissao: 100 },
+    { sequencia: 2, percInicial: 10.01, percFinal: 15, percBaseComissao: 90 },
+  ],
+};
+
+export const INTEGRACAO_REGRA_DESCONTO_EXAMPLE: IntegracaoRegraDesconto = {
+  ...INTEGRACAO_REGRA_DESCONTO_CREATE_EXAMPLE,
+  id: "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b8c",
+  createdAt: "2026-08-07T12:00:00.000Z",
+  updatedAt: "2026-08-07T12:00:00.000Z",
+  createdBy: null,
+  updatedBy: null,
 };

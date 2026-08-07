@@ -36,7 +36,7 @@ export default function PerfisPage() {
   const [status, setStatus] = useState<StatusFilterValue>("todos");
   const [sistemaBase, setSistemaBase] = useState<SimNaoTodos>("todos");
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<Perfil>("perfis", {
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<Perfil>("perfis", {
     search,
     page,
     pageSize,
@@ -163,6 +163,7 @@ export default function PerfisPage() {
         rows={data?.data ?? []}
         rowKey={(p) => p.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

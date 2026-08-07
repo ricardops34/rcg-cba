@@ -39,7 +39,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft } from "lucide-react";
 
-const LIST_ROUTE = "/comercial/clientes";
+const LIST_ROUTE = "/cadastros/clientes";
 
 const UFS = [
   "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT",
@@ -95,7 +95,6 @@ export function ClienteFormContent({
     queryFn: () =>
       apiFetch<{ data: TabelaPreco[] }>("/tabelas-preco", { query: { pageSize: 100, ativo: true } }),
   });
-  const opcoesTabelaPreco = tabelasPrecoQuery.data?.data ?? [];
 
   const condicoesPagamentoQuery = useQuery({
     queryKey: ["condicoes-pagamento", "select"],
@@ -104,7 +103,28 @@ export function ClienteFormContent({
         query: { pageSize: 100, ativo: true },
       }),
   });
-  const opcoesCondicaoPagamento = condicoesPagamentoQuery.data?.data ?? [];
+
+  /**
+   * Opções do Select somadas ao vínculo atual do cliente. As duas listas
+   * trazem só registros ativos e exigem permissão de cadastro (o vendedor não
+   * tem) — sem o vínculo que vem no detalhe do cliente, o campo apareceria em
+   * branco mesmo preenchido, que é o caso da maioria das tabelas de preço
+   * herdadas do legado, hoje inativas.
+   */
+  const comVinculoAtual = (
+    lista: { id: string; descricao: string }[],
+    vinculo: { id: string; descricao: string } | null | undefined,
+  ) =>
+    vinculo && !lista.some((item) => item.id === vinculo.id) ? [vinculo, ...lista] : lista;
+
+  const opcoesTabelaPreco = comVinculoAtual(
+    tabelasPrecoQuery.data?.data ?? [],
+    cliente?.tabelaPreco,
+  );
+  const opcoesCondicaoPagamento = comVinculoAtual(
+    condicoesPagamentoQuery.data?.data ?? [],
+    cliente?.condicaoPagamento,
+  );
 
   // Quais campos a opção "Alterar Cliente" permite editar (Admin > Campos do
   // Cliente) — campo sem configuração prévia é considerado editável.

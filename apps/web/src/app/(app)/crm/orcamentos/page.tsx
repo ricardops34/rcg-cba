@@ -7,7 +7,6 @@ import type { Orcamento, StatusOrcamento } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError } from "@/lib/api-client";
 import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
-import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
@@ -73,9 +72,8 @@ export default function OrcamentosPage() {
   const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
   const mostrarFiltroVendedor = !(vendedoresEscopoQuery.data?.ehVendedorPuro ?? false);
-  useVendedorPadrao(vendedoresEscopoQuery.data?.meuVendedorId, setVendedorId);
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<Orcamento>("orcamentos", {
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<Orcamento>("orcamentos", {
     search,
     page,
     pageSize,
@@ -108,6 +106,12 @@ export default function OrcamentosPage() {
   };
 
   const columns: ColumnDef<Orcamento>[] = [
+    {
+      header: "Nº",
+      sortKey: "numero",
+      className: "w-16",
+      cell: (o) => <span className="font-mono text-xs">{o.numero}</span>,
+    },
     { header: "Título", sortKey: "titulo", cell: (o) => <p className="font-medium">{o.titulo}</p> },
     {
       header: "Cliente",
@@ -250,6 +254,7 @@ export default function OrcamentosPage() {
         rows={data?.data ?? []}
         rowKey={(o) => o.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

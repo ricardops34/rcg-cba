@@ -36,7 +36,7 @@ export default function CategoriasPage() {
       apiFetch<{ data: Categoria[] }>("/categorias", { query: { pageSize: 100, raiz: true } }),
   });
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<CategoriaRow>("categorias", {
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<CategoriaRow>("categorias", {
     search,
     page,
     pageSize,
@@ -156,6 +156,7 @@ export default function CategoriasPage() {
         rows={data?.data ?? []}
         rowKey={(c) => c.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

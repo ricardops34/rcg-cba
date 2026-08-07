@@ -34,6 +34,11 @@ const PRODUTO_SELECT = {
   select: { id: true, codigoErp: true, descricao: true, unidade: true },
 };
 
+// Regra de desconto do item (SZ0), pra tela exibir sem segundo fetch.
+const REGRA_DESCONTO_SELECT = {
+  select: { id: true, codigoErp: true, descricao: true },
+};
+
 @Injectable()
 export class TabelasPrecoService {
   constructor(private readonly prisma: PrismaService) {}
@@ -138,7 +143,10 @@ export class TabelasPrecoService {
       const [data, total] = await Promise.all([
         tx.tabelaPrecoItem.findMany({
           where,
-          include: { produto: PRODUTO_SELECT },
+          include: {
+            produto: PRODUTO_SELECT,
+            regraDesconto: REGRA_DESCONTO_SELECT,
+          },
           ...paginationToSkipTake(query),
           orderBy,
         }),

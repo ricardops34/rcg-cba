@@ -7,22 +7,26 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  calcularComissaoItem,
   orcamentoCreateSchema,
   orcamentoUpdateSchema,
   type Cliente,
   type CondicaoPagamento,
+  type Empresa,
   type Oportunidade,
   type Orcamento,
   type OrcamentoConfig,
   type OrcamentoCreate,
   type OrcamentoUpdate,
   type PosicaoClienteMix,
+  type RegraParaCalculo,
   type Produto,
   type StatusOrcamento,
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
 import { apiFetch, ApiError, assetUrl } from "@/lib/api-client";
 import { gerarOrcamentoPdf } from "@/lib/orcamento-pdf";
+import { regraDescontoLabel } from "@/lib/regra-desconto";
 import { useAuthStore } from "@/stores/auth-store";
 import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
 import { STATUS_ORCAMENTO, STATUS_ORCAMENTO_LABEL } from "@/components/crud/orcamento-status";
@@ -38,6 +42,7 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Sheet, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ResizableSheetContent } from "@/components/ui/resizable-sheet-content";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusDot } from "@/components/crud/status-dot";
 import { SortableTableHead } from "@/components/crud/sortable-table-head";
@@ -51,6 +56,7 @@ import {
   MinusCircle,
   Plus,
   Trash2,
+  TriangleAlert,
 } from "lucide-react";
 
 const LIST_ROUTE = "/crm/orcamentos";
@@ -164,6 +170,23 @@ function MaskedNumberInput({
 interface LinhaInfo {
   vlrTabela: number | null;
   saldoEstoque: number | null;
+  /** Regra aplicável ao produto (tabela de preço > produto > categoria > padrão). */
+  regra?: RegraAplicavel | null;
+}
+
+/** Resumo da regra que /orcamentos/preco-produto devolve, pro cálculo na tela. */
+type RegraAplicavel = RegraParaCalculo & {
+  id: string;
+  codigoErp: string | null;
+  descricao: string;
+};
+
+/** Resposta de /orcamentos/preco-produto. */
+interface PrecoProdutoResposta {
+  vlrTabela: number | null;
+  ultimoPreco: number | null;
+  saldoEstoque: number;
+  regraDesconto: RegraAplicavel | null;
 }
 
 /** Colunas ordenáveis da aba Mix (ordenação client-side, ver `mixVisivel`). */
@@ -245,6 +268,7 @@ export function OrcamentoFormContent({
   });
   const opcoesCondicao = condicoesQuery.data?.data ?? [];
 
+
   const schema = orcamento ? orcamentoUpdateSchema : orcamentoCreateSchema;
   const empty: OrcamentoCreate = {
     clienteId: "",
@@ -286,6 +310,8 @@ export function OrcamentoFormContent({
   const clienteId = form.watch("clienteId");
   const vendedorId = form.watch("vendedorId");
   const status = form.watch("status");
+  // % base de comissão do vendedor escolhido — entra no cálculo por linha.
+  const vendedorSelecionado = opcoesVendedor.find((v) => v.id === vendedorId);
 
   /**
    * Registro já gravado: o que veio por prop (edição) ou o que acabou de ser
@@ -416,12 +442,20 @@ export function OrcamentoFormContent({
     if (!orcamento || estoquePadraoAplicado) return;
     setEstoquePadraoAplicado(true);
     orcamento.itens.forEach((item, index) => {
-      apiFetch<{ saldoEstoque: number }>("/orcamentos/preco-produto", {
+      apiFetch<PrecoProdutoResposta>("/orcamentos/preco-produto", {
         query: { clienteId: orcamento.clienteId, produtoId: item.produtoId },
       })
         .then((resp) => {
           setInfoPorLinha((arr) =>
-            arr.map((v, i) => (i === index ? { ...(v ?? { vlrTabela: null }), saldoEstoque: resp.saldoEstoque } : v)),
+            arr.map((v, i) =>
+              i === index
+                ? {
+                    ...(v ?? { vlrTabela: null }),
+                    saldoEstoque: resp.saldoEstoque,
+                    regra: resp.regraDesconto,
+                  }
+                : v,
+            ),
           );
         })
         .catch(() => {
@@ -468,9 +502,15 @@ export function OrcamentoFormContent({
     if (!registro) return;
     setGerandoPdf(true);
     try {
+      // Cadastro da empresa emitente pro cabeçalho (CNPJ, IE, endereço,
+      // contato) — buscado na hora, e não mantido em cache de query, porque
+      // só o PDF usa. A rota é liberada a qualquer usuário autenticado; se
+      // falhar, o PDF ainda sai com o nome fantasia da sessão.
+      const empresa = await apiFetch<Empresa>("/empresas/ativa").catch(() => null);
       await gerarOrcamentoPdf({
         orcamento: registro,
         cliente: clienteSelecionadoQuery.data,
+        empresa,
         empresaNome: empresaAtiva?.nomeFantasia,
         empresaLogoUrl: assetUrl(empresaAtiva?.logoUrl),
       });
@@ -526,15 +566,19 @@ export function OrcamentoFormContent({
     form.setValue(`itens.${index}.produtoId`, produto.id);
     if (!clienteId) return;
     try {
-      const resp = await apiFetch<{
-        vlrTabela: number | null;
-        ultimoPreco: number | null;
-        saldoEstoque: number;
-      }>("/orcamentos/preco-produto", { query: { clienteId, produtoId: produto.id } });
+      const resp = await apiFetch<PrecoProdutoResposta>("/orcamentos/preco-produto", {
+        query: { clienteId, produtoId: produto.id },
+      });
       form.setValue(`itens.${index}.vlrUnitario`, resp.vlrTabela ?? resp.ultimoPreco ?? 0);
       setInfoPorLinha((arr) =>
         arr.map((v, i) =>
-          i === index ? { vlrTabela: resp.vlrTabela, saldoEstoque: resp.saldoEstoque } : v,
+          i === index
+            ? {
+                vlrTabela: resp.vlrTabela,
+                saldoEstoque: resp.saldoEstoque,
+                regra: resp.regraDesconto,
+              }
+            : v,
         ),
       );
     } catch {
@@ -565,12 +609,18 @@ export function OrcamentoFormContent({
 
     if (!clienteId) return;
     try {
-      const resp = await apiFetch<{ saldoEstoque: number }>("/orcamentos/preco-produto", {
+      const resp = await apiFetch<PrecoProdutoResposta>("/orcamentos/preco-produto", {
         query: { clienteId, produtoId: produto.produtoId },
       });
       setInfoPorLinha((arr) =>
         arr.map((v, i) =>
-          i === novoIndex ? { vlrTabela: produto.precoTabela, saldoEstoque: resp.saldoEstoque } : v,
+          i === novoIndex
+            ? {
+                vlrTabela: produto.precoTabela,
+                saldoEstoque: resp.saldoEstoque,
+                regra: resp.regraDesconto,
+              }
+            : v,
         ),
       );
     } catch {
@@ -844,6 +894,8 @@ export function OrcamentoFormContent({
                           <TableHead className="px-1.5 text-right">Desc.</TableHead>
                           <TableHead className="px-1.5 text-right">Últ. desc.</TableHead>
                           <TableHead className="px-1.5">Últ. venda</TableHead>
+                          <TableHead className="px-1.5 text-right">% Comis.</TableHead>
+                          <TableHead className="px-1.5">Regra desc.</TableHead>
                           <TableHead className="px-1.5 text-right">Pç. tabela</TableHead>
                           <TableHead className="w-7 px-1" />
                         </TableRow>
@@ -861,6 +913,16 @@ export function OrcamentoFormContent({
                           const mixInfo = produtoId ? mixPorProduto.get(produtoId) : undefined;
                           const ultimaVenda = mixInfo?.ultimaCompra ?? null;
                           const ultimoPreco = mixInfo?.ultimoPrecoUnitario ?? null;
+                          // Prévia da comissão enquanto o vendedor mexe no
+                          // preço: mesma função que o servidor usa ao salvar
+                          // (calculo-comissao, nos contratos), então o número
+                          // exibido é o que vai ser gravado.
+                          const regraDaLinha = info?.regra ?? null;
+                          const comissao = calcularComissaoItem(
+                            regraDaLinha,
+                            desconto,
+                            vendedorSelecionado?.percComissao ?? null,
+                          );
                           return (
                             <TableRow key={linha.id}>
                               <TableCell className="min-w-36 px-1.5">
@@ -907,6 +969,29 @@ export function OrcamentoFormContent({
                               </TableCell>
                               <TableCell className="px-1.5 text-muted-foreground">
                                 {dataBr(ultimaVenda)}
+                              </TableCell>
+                              {/* Comissão e regra são calculadas pelo servidor;
+                                  aqui é a prévia, e o alerta de desconto acima
+                                  do limite da regra (que não bloqueia salvar). */}
+                              <TableCell className="px-1.5 text-right text-muted-foreground">
+                                {percentual(comissao.percComissao)}
+                              </TableCell>
+                              <TableCell className="px-1.5 text-xs text-muted-foreground">
+                                <div className="flex items-center gap-1">
+                                  {regraDescontoLabel(regraDaLinha)}
+                                  {comissao.acimaDoMaximo && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <TriangleAlert className="size-3.5 shrink-0 text-amber-500" />
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        {comissao.acimaDoAutorizado
+                                          ? `Desconto acima do autorizado (${percentual(regraDaLinha?.percDescontoAutorizado)})`
+                                          : `Desconto acima do máximo da regra (${percentual(regraDaLinha?.percDescontoMaximo)})`}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  )}
+                                </div>
                               </TableCell>
                               <TableCell className="px-1.5 text-right text-muted-foreground">
                                 {moeda(vlrTabela)}
@@ -1076,6 +1161,10 @@ export function OrcamentoFormContent({
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <Field>
+                    <FieldLabel>Nº do orçamento</FieldLabel>
+                    <div className="text-sm">{registro.numero}</div>
+                  </Field>
+                  <Field>
                     <FieldLabel>Status do orçamento</FieldLabel>
                     <div className="text-sm">{STATUS_ORCAMENTO_LABEL[registro.status]}</div>
                   </Field>
@@ -1167,7 +1256,7 @@ export function OrcamentoForm({ orcamento }: { orcamento?: Orcamento }) {
           <ArrowLeft className="size-4" />
         </Button>
         <h1 className="text-xl font-semibold tracking-tight">
-          {orcamento ? "Editar orçamento" : "Novo orçamento"}
+          {orcamento ? `Editar orçamento Nº ${orcamento.numero}` : "Novo orçamento"}
         </h1>
       </div>
 

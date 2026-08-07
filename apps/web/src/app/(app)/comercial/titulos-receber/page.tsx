@@ -52,7 +52,7 @@ export default function TitulosReceberPage() {
   const restrito = escopoQuery.data?.restrito ?? false;
   const mostrarFiltroVendedor = !restrito || opcoesVendedor.length > 1;
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<TituloRow>("titulos-receber", {
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<TituloRow>("titulos-receber", {
     search,
     page,
     pageSize,
@@ -167,6 +167,7 @@ export default function TitulosReceberPage() {
         rows={data?.data ?? []}
         rowKey={(t) => t.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

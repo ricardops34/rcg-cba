@@ -18,7 +18,7 @@ export default function CondicoesPagamentoPage() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [status, setStatus] = useState<StatusFilterValue>("ativos");
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<CondicaoPagamento>(
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<CondicaoPagamento>(
     "condicoes-pagamento",
     {
       search,
@@ -68,6 +68,7 @@ export default function CondicoesPagamentoPage() {
         rows={data?.data ?? []}
         rowKey={(c) => c.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

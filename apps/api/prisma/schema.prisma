@@ -20,6 +20,21 @@ model Empresa {
   logoUrl      String?
   ativo        Boolean @default(true)
 
+  // Identificação fiscal e contato — o que sai no cabeçalho de documentos
+  // emitidos pro cliente (hoje a proposta em PDF do orçamento). Todos
+  // opcionais: empresa cadastrada antes destes campos continua válida.
+  inscricaoEstadual  String?
+  inscricaoMunicipal String?
+  endereco           String?
+  complemento        String?
+  bairro             String?
+  municipio          String?
+  uf                 String?
+  cep                String?
+  telefone           String?
+  email              String?
+  site               String?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -36,6 +51,8 @@ model Empresa {
   armazens                   Armazem[]
   estoques                   Estoque[]
   tabelasPreco               TabelaPreco[]
+  regrasDesconto             RegraDesconto[]
+  regrasDescontoFaixas       RegraDescontoFaixa[]
   tabelasPrecoItens          TabelaPrecoItem[]
   notasSaida                 NotaSaida[]
   notasSaidaItens            NotaSaidaItem[]
@@ -316,6 +333,11 @@ model Produto {
   observacao     String?
   ativo          Boolean @default(true)
 
+  // Regra de desconto aplicável (SZ0 do ERP). Nulo = sem regra própria;
+  // a resolução de qual regra vale ainda não existe — por ora é só o vínculo.
+  regraDescontoId String?
+
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -323,8 +345,9 @@ model Produto {
   updatedBy String?
   deletedBy String?
 
-  empresa      Empresa    @relation(fields: [empresaId], references: [id])
-  categoria    Categoria? @relation("ProdutoCategoria", fields: [categoriaId], references: [id])
+  empresa       Empresa        @relation(fields: [empresaId], references: [id])
+  regraDesconto RegraDesconto? @relation(fields: [regraDescontoId], references: [id])
+  categoria     Categoria?     @relation("ProdutoCategoria", fields: [categoriaId], references: [id])
   subCategoria Categoria? @relation("ProdutoSubCategoria", fields: [subCategoriaId], references: [id])
   armazem      Armazem?   @relation(fields: [armazemId], references: [id])
 
@@ -336,6 +359,7 @@ model Produto {
   @@unique([empresaId, codigoErp])
   @@index([empresaId, descricao])
   @@index([empresaId, categoriaId])
+  @@index([empresaId, regraDescontoId])
   @@map("produtos")
 }
 
@@ -354,6 +378,10 @@ model Vendedor {
   telefone       String?
   email          String?
   dataNascimento DateTime?
+
+  // Percentual de comissão do vendedor. Mantido pelo ERP (API de integração),
+  // somente leitura na tela — mesmo tratamento dos campos de regra de desconto.
+  percComissao Float?
 
   vendedor     Boolean @default(true)
   supervisorId String?
@@ -510,6 +538,10 @@ model OrcamentoConfig {
   id           String @id @default(uuid())
   empresaId    String @unique
   diasValidade Int    @default(30)
+  // Contador do Orcamento.numero. Incrementado por um INSERT ... ON CONFLICT
+  // DO UPDATE (ver proximoNumeroOrcamento) — atômico, então dois vendedores
+  // gravando ao mesmo tempo nunca pegam o mesmo número.
+  ultimoNumero Int    @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -657,6 +689,11 @@ model Categoria {
   usado          Boolean?
   ativo          Boolean  @default(true)
 
+  // Regra de desconto aplicável (SZ0 do ERP). Nulo = sem regra própria;
+  // a resolução de qual regra vale ainda não existe — por ora é só o vínculo.
+  regraDescontoId String?
+
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -664,8 +701,9 @@ model Categoria {
   updatedBy String?
   deletedBy String?
 
-  empresa       Empresa     @relation(fields: [empresaId], references: [id])
-  categoriaPai  Categoria?  @relation("CategoriaSubcategoria", fields: [categoriaPaiId], references: [id])
+  empresa       Empresa        @relation(fields: [empresaId], references: [id])
+  regraDesconto RegraDesconto? @relation(fields: [regraDescontoId], references: [id])
+  categoriaPai  Categoria?     @relation("CategoriaSubcategoria", fields: [categoriaPaiId], references: [id])
   subcategorias Categoria[] @relation("CategoriaSubcategoria")
 
   produtos                   Produto[]                   @relation("ProdutoCategoria")
@@ -674,6 +712,7 @@ model Categoria {
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, descricao])
+  @@index([empresaId, regraDescontoId])
   @@map("categorias")
 }
 
@@ -764,6 +803,11 @@ model TabelaPrecoItem {
   preco         Float
   ativo         Boolean @default(true)
 
+  // Regra de desconto aplicável (SZ0 do ERP). Nulo = sem regra própria;
+  // a resolução de qual regra vale ainda não existe — por ora é só o vínculo.
+  regraDescontoId String?
+
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -771,14 +815,93 @@ model TabelaPrecoItem {
   updatedBy String?
   deletedBy String?
 
-  empresa     Empresa     @relation(fields: [empresaId], references: [id])
-  tabelaPreco TabelaPreco @relation(fields: [tabelaPrecoId], references: [id], onDelete: Cascade)
+  empresa       Empresa        @relation(fields: [empresaId], references: [id])
+  regraDesconto RegraDesconto? @relation(fields: [regraDescontoId], references: [id])
+  tabelaPreco   TabelaPreco    @relation(fields: [tabelaPrecoId], references: [id], onDelete: Cascade)
   produto     Produto     @relation(fields: [produtoId], references: [id], onDelete: Restrict)
 
   @@unique([empresaId, codigoLegado])
   @@index([tabelaPrecoId, produtoId])
   @@index([empresaId, produtoId])
+  @@index([empresaId, regraDescontoId])
   @@map("tabela_preco_itens")
+}
+
+// Regra de desconto (SZ0 do ERP): teto de desconto e escalonamento da
+// comissão do vendedor conforme o desconto concedido. Mestre-detalhe —
+// o cabeçalho traz os limites e a comissão cheia, e as faixas dizem quanto
+// dessa comissão sobra em cada intervalo de desconto.
+//
+// Por ora é só cadastro: nada no orçamento consulta estas regras ainda, e
+// elas não estão vinculadas a produto/categoria/cliente.
+model RegraDesconto {
+  id        String  @id @default(uuid())
+  empresaId String
+  // Z0_CODIGO — chave de upsert da API de integração; null quando a regra
+  // nasce na tela do CRM (mesmo padrão de Orcamento.codigoLegado).
+  codigoErp String?
+  descricao String
+
+  // Z0_DESCAUT ("% Desc. Aut"): percentual de desconto autorizado.
+  percDescontoAutorizado Float @default(0)
+  // Z0_PERMAX ("% Desc Max"): percentual de desconto máximo da regra.
+  percDescontoMaximo Float @default(0)
+  // Z0_COMIS: comissão cheia da regra, sobre a qual as faixas aplicam a base.
+  percComissao Float @default(0)
+  // Z0_PADRAO: regra usada quando nenhuma outra se aplica.
+  padrao Boolean @default(false)
+  ativo  Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa Empresa              @relation(fields: [empresaId], references: [id])
+  faixas  RegraDescontoFaixa[]
+
+  // Quem aponta pra esta regra. A precedência entre eles (item > tabela de
+  // preço > produto > categoria) ainda não está implementada.
+  categorias        Categoria[]
+  produtos          Produto[]
+  tabelaPrecoItens  TabelaPrecoItem[]
+  notasSaidaItens   NotaSaidaItem[]
+  orcamentoItens    OrcamentoItem[]
+
+  @@unique([empresaId, codigoErp])
+  @@index([empresaId, descricao])
+  @@map("regras_desconto")
+}
+
+// Faixa de desconto de uma regra (uma linha Z0_SEQ da SZ0): dentro do
+// intervalo percInicial..percFinal, o vendedor recebe percBaseComissao% da
+// comissão cheia da regra. empresaId denormalizado para RLS sem join na
+// tabela mãe, como TabelaPrecoItem.
+model RegraDescontoFaixa {
+  id              String @id @default(uuid())
+  empresaId       String
+  regraDescontoId String
+
+  sequencia        Int
+  percInicial      Float @default(0)
+  percFinal        Float @default(0)
+  percBaseComissao Float @default(0)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa       Empresa       @relation(fields: [empresaId], references: [id])
+  regraDesconto RegraDesconto @relation(fields: [regraDescontoId], references: [id], onDelete: Cascade)
+
+  @@unique([regraDescontoId, sequencia])
+  @@index([empresaId, regraDescontoId])
+  @@map("regras_desconto_faixas")
 }
 
 // ------------------------------------------------------------------
@@ -904,6 +1027,16 @@ model NotaSaidaItem {
   comodato Boolean @default(false)
   ativo    Boolean @default(true)
 
+  // Percentual de comissão apurado na linha (resultado da regra de desconto
+  // aplicada). Nulo enquanto não houver cálculo — nada preenche ainda.
+  percComissao Float?
+
+
+  // Regra de desconto aplicável (SZ0 do ERP). Nulo = sem regra própria;
+  // a resolução de qual regra vale ainda não existe — por ora é só o vínculo.
+  regraDescontoId String?
+
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -911,8 +1044,9 @@ model NotaSaidaItem {
   updatedBy String?
   deletedBy String?
 
-  empresa   Empresa   @relation(fields: [empresaId], references: [id])
-  notaSaida NotaSaida @relation(fields: [notaSaidaId], references: [id], onDelete: Cascade)
+  empresa       Empresa        @relation(fields: [empresaId], references: [id])
+  regraDesconto RegraDesconto? @relation(fields: [regraDescontoId], references: [id])
+  notaSaida     NotaSaida      @relation(fields: [notaSaidaId], references: [id], onDelete: Cascade)
   cliente   Cliente?  @relation(fields: [clienteId], references: [id])
   vendedor  Vendedor? @relation(fields: [vendedorId], references: [id])
   produto   Produto?  @relation(fields: [produtoId], references: [id])
@@ -921,6 +1055,7 @@ model NotaSaidaItem {
   @@index([notaSaidaId])
   @@index([empresaId, produtoId])
   @@index([empresaId, vendedorId, dtEmissao])
+  @@index([empresaId, regraDescontoId])
   @@map("notas_saida_itens")
 }
 
@@ -1083,6 +1218,11 @@ model Orcamento {
   // orçamentos criados manualmente na tela do CRM (mesmo padrão de
   // NotaSaida/ObjetivoVendedorMes: os dois caminhos de escrita coexistem).
   codigoLegado        Int?
+  // Número do orçamento pro cliente (é o que sai na proposta em PDF):
+  // sequencial por empresa, atribuído na criação a partir do contador
+  // OrcamentoConfig.ultimoNumero. Existe desde o rascunho — diferente do
+  // codigoLegado, que só aparece quando o ERP integra.
+  numero              Int
   clienteId           String
   vendedorId          String
   oportunidadeId      String?
@@ -1116,6 +1256,7 @@ model Orcamento {
   atividades        Atividade[]
 
   @@unique([empresaId, codigoLegado])
+  @@unique([empresaId, numero])
   @@index([empresaId, vendedorId])
   @@index([empresaId, clienteId])
   @@index([empresaId, status])
@@ -1135,15 +1276,24 @@ model OrcamentoItem {
   vlrDesconto  Float  @default(0)
   vlrTotal     Float  @default(0)
 
+  // Regra de desconto aplicável (SZ0 do ERP). Nulo = sem regra própria;
+  // a resolução de qual regra vale ainda não existe — por ora é só o vínculo.
+  regraDescontoId String?
+  // Percentual de comissão apurado na linha (resultado da regra de desconto
+  // aplicada). Nulo enquanto não houver cálculo — nada preenche ainda.
+  percComissao Float?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  empresa   Empresa   @relation(fields: [empresaId], references: [id])
-  orcamento Orcamento @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
-  produto   Produto   @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  empresa       Empresa        @relation(fields: [empresaId], references: [id])
+  regraDesconto RegraDesconto? @relation(fields: [regraDescontoId], references: [id])
+  orcamento     Orcamento      @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
+  produto       Produto        @relation(fields: [produtoId], references: [id], onDelete: Restrict)
 
   @@index([empresaId, produtoId])
   @@index([orcamentoId])
+  @@index([empresaId, regraDescontoId])
   @@map("orcamento_itens")
 }
 

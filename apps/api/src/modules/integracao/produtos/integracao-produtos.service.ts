@@ -19,11 +19,13 @@ import type {
   IntegracaoProdutoUpdate,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
+import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 
 const INCLUDE = {
   categoria: { select: { codigoErp: true } },
   subCategoria: { select: { codigoErp: true } },
   armazem: { select: { codigoErp: true } },
+  regraDesconto: { select: { codigoErp: true } },
 } satisfies Prisma.ProdutoInclude;
 type ProdutoComRelacoes = Prisma.ProdutoGetPayload<{ include: typeof INCLUDE }>;
 
@@ -47,6 +49,7 @@ export class IntegracaoProdutosService {
       peso: row.peso,
       ultimoPreco: row.ultimoPreco,
       observacao: row.observacao,
+      regraDescontoCodigo: row.regraDesconto?.codigoErp ?? null,
       ativo: row.ativo,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -133,6 +136,11 @@ export class IntegracaoProdutosService {
         empresaId,
         input.armazemCodigo,
       );
+      const regraDescontoId = await resolverRegraDesconto(
+        tx,
+        empresaId,
+        input.regraDescontoCodigo,
+      );
 
       const criado = await tx.produto.create({
         data: {
@@ -150,6 +158,7 @@ export class IntegracaoProdutosService {
           peso: input.peso ?? null,
           ultimoPreco: input.ultimoPreco ?? null,
           observacao: input.observacao ?? null,
+          regraDescontoId: regraDescontoId ?? null,
           ativo: input.ativo,
           createdBy: autor,
           updatedBy: autor,
@@ -195,6 +204,11 @@ export class IntegracaoProdutosService {
         input.armazemCodigo !== undefined
           ? await this.resolverArmazem(tx, empresaId, input.armazemCodigo)
           : undefined;
+      const regraDescontoId = await resolverRegraDesconto(
+        tx,
+        empresaId,
+        input.regraDescontoCodigo,
+      );
 
       const atualizado = await tx.produto.update({
         where: { id: existente.id },
@@ -206,6 +220,7 @@ export class IntegracaoProdutosService {
           ...(categoriaId !== undefined ? { categoriaId } : {}),
           ...(subCategoriaId !== undefined ? { subCategoriaId } : {}),
           ...(armazemId !== undefined ? { armazemId } : {}),
+          ...(regraDescontoId !== undefined ? { regraDescontoId } : {}),
           ...(input.marca !== undefined ? { marca: input.marca } : {}),
           ...(input.codigoBarras !== undefined
             ? { codigoBarras: input.codigoBarras }

@@ -36,7 +36,7 @@ export default function EstoquePage() {
     queryFn: () => apiFetch<{ data: Armazem[] }>("/armazens", { query: { pageSize: 100 } }),
   });
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<EstoqueProdutoResumo>("estoque", {
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<EstoqueProdutoResumo>("estoque", {
     search,
     page,
     pageSize,
@@ -153,6 +153,7 @@ export default function EstoquePage() {
         rows={data?.data ?? []}
         rowKey={(p) => p.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

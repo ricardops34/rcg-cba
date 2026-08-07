@@ -124,7 +124,7 @@ export default function PosicaoClientePage() {
   });
   const opcoesMunicipio = municipiosEscopoQuery.data?.data ?? [];
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<PosicaoClienteListRow>(
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<PosicaoClienteListRow>(
     "clientes/posicao",
     {
       search,
@@ -419,6 +419,7 @@ export default function PosicaoClientePage() {
         rows={data?.data ?? []}
         rowKey={(c) => c.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

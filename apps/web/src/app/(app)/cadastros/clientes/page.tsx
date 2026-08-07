@@ -8,7 +8,6 @@ import type { Cliente, TipoPessoa } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
-import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
@@ -55,7 +54,6 @@ export default function ClientesPage() {
   const restrito = vendedoresEscopoQuery.data?.restrito ?? false;
   // Restrito a uma única opção = o próprio usuário; filtrar não faz sentido.
   const mostrarFiltroVendedor = !restrito || opcoesVendedor.length > 1;
-  useVendedorPadrao(vendedoresEscopoQuery.data?.meuVendedorId, setVendedorId);
 
   // UFs distintas presentes na carteira visível ao usuário — só lista o que
   // realmente existe no cadastro.
@@ -68,7 +66,7 @@ export default function ClientesPage() {
   });
   const opcoesUf = ufsEscopoQuery.data?.data ?? [];
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<ClienteRow>("clientes", {
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<ClienteRow>("clientes", {
     search,
     page,
     pageSize,
@@ -83,7 +81,7 @@ export default function ClientesPage() {
 
   const { remove } = useResourceMutations("clientes");
 
-  const openEdit = (c: ClienteRow) => router.push(`/comercial/clientes/${c.id}`);
+  const openEdit = (c: ClienteRow) => router.push(`/cadastros/clientes/${c.id}`);
 
   const onDelete = async (c: ClienteRow) => {
     if (!confirm(`Excluir o cliente "${c.razaoSocial}"?`)) return;
@@ -186,7 +184,7 @@ export default function ClientesPage() {
         }}
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
-        onCreate={() => router.push("/comercial/clientes/novo")}
+        onCreate={() => router.push("/cadastros/clientes/novo")}
         createLabel="Novo cliente"
       />
 
@@ -294,6 +292,7 @@ export default function ClientesPage() {
         rows={data?.data ?? []}
         rowKey={(c) => c.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

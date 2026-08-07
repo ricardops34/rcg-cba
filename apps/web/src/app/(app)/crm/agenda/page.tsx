@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import type { Atividade, Orcamento, TipoAtividade } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
 import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
-import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
 import { TIPOS, TIPO_COR } from "@/components/crud/atividade-tipo";
 import { STATUS_ORCAMENTO_COR } from "@/components/crud/orcamento-status";
 import { QuickFilterButton, QuickFilterGroup } from "@/components/crud/quick-filter-group";
@@ -53,7 +52,6 @@ export default function AgendaPage() {
   const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
   const mostrarFiltroVendedor = !(vendedoresEscopoQuery.data?.ehVendedorPuro ?? false);
-  useVendedorPadrao(vendedoresEscopoQuery.data?.meuVendedorId, setVendedorId);
 
   const gridStart = useMemo(() => addDays(startOfMonth(mesAtual), -startOfMonth(mesAtual).getDay()), [mesAtual]);
   const gridEnd = useMemo(() => {

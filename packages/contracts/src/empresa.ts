@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
 
+/** Campo de texto opcional que também aceita "" vindo do formulário. */
+const opt = (max: number) => z.string().trim().max(max).optional().or(z.literal(""));
+
 export const empresaCreateSchema = z.object({
   razaoSocial: z
     .string()
@@ -40,6 +43,21 @@ export const empresaCreateSchema = z.object({
     .boolean()
     .default(true)
     .describe("Empresas inativas não permitem novos logins de usuários vinculados"),
+
+  // Identificação fiscal, endereço e contato — é o que sai no cabeçalho dos
+  // documentos emitidos pro cliente (proposta de orçamento em PDF). Todos
+  // opcionais, no mesmo padrão do cadastro de Cliente.
+  inscricaoEstadual: opt(20).describe("Inscrição estadual, como deve sair nos documentos"),
+  inscricaoMunicipal: opt(20),
+  endereco: opt(150).describe("Logradouro e número"),
+  complemento: opt(100),
+  bairro: opt(100),
+  municipio: opt(100),
+  uf: opt(2),
+  cep: opt(10),
+  telefone: opt(20).describe("Telefone geral da empresa"),
+  email: z.string().trim().max(120).email("E-mail inválido").optional().or(z.literal("")),
+  site: opt(150),
 });
 export type EmpresaCreate = z.infer<typeof empresaCreateSchema>;
 
@@ -71,6 +89,17 @@ export const EMPRESA_CREATE_EXAMPLE: EmpresaCreate = {
   alias: "andrade",
   logoUrl: null,
   ativo: true,
+  inscricaoEstadual: "283456789",
+  inscricaoMunicipal: "",
+  endereco: "AV. AFONSO PENA 1234",
+  complemento: "GALPÃO 2",
+  bairro: "CENTRO",
+  municipio: "CAMPO GRANDE",
+  uf: "MS",
+  cep: "79002070",
+  telefone: "6733214000",
+  email: "comercial@andrade.com.br",
+  site: "www.andrade.com.br",
 };
 
 export const EMPRESA_EXAMPLE: Empresa = {

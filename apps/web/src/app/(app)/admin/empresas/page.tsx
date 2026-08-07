@@ -28,7 +28,7 @@ export default function EmpresasPage() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [status, setStatus] = useState<StatusFilterValue>("todos");
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<Empresa>("empresas", {
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<Empresa>("empresas", {
     search,
     page,
     pageSize,
@@ -118,6 +118,7 @@ export default function EmpresasPage() {
         rows={data?.data ?? []}
         rowKey={(e) => e.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

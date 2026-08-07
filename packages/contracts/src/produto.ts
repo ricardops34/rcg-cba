@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
+import { regraDescontoVinculoSchema } from "./regra-desconto";
 
 const opt = (max: number) => z.string().trim().max(max).optional().or(z.literal(""));
 
@@ -27,12 +28,17 @@ export type ProdutoUpdate = z.infer<typeof produtoUpdateSchema>;
 export const produtoSchema = produtoCreateSchema.extend({
   id: z.string().uuid(),
   empresaId: z.string().uuid(),
+  // Regra de desconto (SZ0): leitura apenas — quem mantém é o ERP, pela API
+  // de integração; nem a tela nem o CRUD interno gravam este vínculo.
+  regraDescontoId: z.string().uuid().nullable().optional(),
+  regraDesconto: regraDescontoVinculoSchema.nullable().optional(),
   ...auditFieldsSchema.shape,
 });
 export type Produto = z.infer<typeof produtoSchema>;
 
 export const produtoQuerySchema = paginationQuerySchema.extend({
   ativo: booleanQueryParam,
+  regraDescontoId: z.string().uuid().optional(),
   categoriaId: z.string().uuid().optional(),
   subCategoriaId: z.string().uuid().optional(),
   armazemId: z.string().uuid().optional(),
@@ -56,6 +62,8 @@ export const PRODUTO_EXAMPLE: Produto = {
   ultimoPreco: 28.9,
   observacao: "",
   ativo: true,
+  regraDescontoId: null,
+  regraDesconto: null,
   createdAt: "2026-07-24T12:00:00.000Z",
   updatedAt: "2026-07-24T12:00:00.000Z",
   createdBy: null,

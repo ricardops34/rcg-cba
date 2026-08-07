@@ -7,7 +7,6 @@ import type { ObjetivoVendedorMes } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError } from "@/lib/api-client";
 import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
-import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
@@ -45,9 +44,8 @@ export default function ObjetivosPage() {
 
   const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
-  useVendedorPadrao(vendedoresEscopoQuery.data?.meuVendedorId, setVendedorId);
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<ObjetivoVendedorMes>("objetivos", {
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<ObjetivoVendedorMes>("objetivos", {
     search,
     page,
     pageSize,
@@ -217,6 +215,7 @@ export default function ObjetivosPage() {
         rows={data?.data ?? []}
         rowKey={(o) => o.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { NotaSaida, NotaSaidaItem } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
+import { regraDescontoLabel } from "@/lib/regra-desconto";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,6 +29,8 @@ export type NotaSaidaDetalhe = NotaSaida & {
   >;
 };
 
+const percentual = (v: number | null | undefined) =>
+  v != null ? `${v.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%` : "—";
 const moeda = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
 const dataBr = (v: string | null | undefined) => {
@@ -88,6 +91,8 @@ export function NotaSaidaDetalheContent({ nota }: { nota: NotaSaidaDetalhe }) {
                   <TableHead className="text-right">Vlr. unit.</TableHead>
                   <TableHead className="text-right">Desconto</TableHead>
                   <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">% Comissão</TableHead>
+                  <TableHead>Regra de desconto</TableHead>
                   <TableHead>CFOP</TableHead>
                 </TableRow>
               </TableHeader>
@@ -110,6 +115,8 @@ export function NotaSaidaDetalheContent({ nota }: { nota: NotaSaidaDetalhe }) {
                     <TableCell className="text-right">{moeda(it.vlrUnitario)}</TableCell>
                     <TableCell className="text-right">{moeda(it.vlrDesconto)}</TableCell>
                     <TableCell className="text-right">{moeda(it.vlrTotal)}</TableCell>
+                    <TableCell className="text-right">{percentual(it.percComissao)}</TableCell>
+                    <TableCell className="text-xs">{regraDescontoLabel(it.regraDesconto)}</TableCell>
                     <TableCell className="font-mono text-xs">{it.cfop || "—"}</TableCell>
                   </TableRow>
                 ))}

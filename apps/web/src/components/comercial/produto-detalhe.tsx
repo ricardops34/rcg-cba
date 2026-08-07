@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ResizableSheetContent } from "@/components/ui/resizable-sheet-content";
 import { StatusDot } from "@/components/crud/status-dot";
+import { regraDescontoLabel } from "@/lib/regra-desconto";
 
 export type ProdutoDetalhe = Produto & {
   categoria?: { id: string; codigoErp: string | null; descricao: string } | null;
@@ -44,6 +45,7 @@ export function ProdutoDetalheContent({ produto }: { produto: ProdutoDetalhe }) 
         <Info label="Qtd. embalagem" value={produto.qtdEmbalagem ?? "—"} />
         <Info label="Peso" value={produto.peso ?? "—"} />
         <Info label="Último preço" value={moeda(produto.ultimoPreco)} />
+        <Info label="Regra de desconto" value={regraDescontoLabel(produto.regraDesconto)} />
         {produto.observacao && (
           <div className="col-span-2 sm:col-span-4">
             <p className="text-xs text-muted-foreground">Observação</p>

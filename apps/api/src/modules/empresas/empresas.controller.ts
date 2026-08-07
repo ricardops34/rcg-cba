@@ -59,6 +59,21 @@ export class EmpresasController {
     return this.service.findAll(query);
   }
 
+  @ApiOperation({
+    summary: 'Detalhar a empresa ativa do usuário logado',
+    description:
+      'Cadastro completo da própria empresa ativa (razão social, CNPJ, IE, endereço, contato) — ' +
+      'usado no cabeçalho da proposta de orçamento em PDF. Qualquer usuário autenticado pode ' +
+      'consultar: são os dados da empresa dele, e o vendedor não tem empresas.visualizar. ' +
+      'Não colocar @RequirePermission aqui. Declarada antes de GET :id para não ser capturada ' +
+      'pela rota de parâmetro.',
+  })
+  @ApiResponse({ status: 200, schema: { example: EMPRESA_EXAMPLE } })
+  @Get('ativa')
+  findAtiva(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.findOne(user.empresaAtivaId);
+  }
+
   @ApiOperation({ summary: 'Detalhar empresa' })
   @ApiParam({ name: 'id', example: EMPRESA_ID_EXAMPLE })
   @ApiResponse({ status: 200, schema: { example: EMPRESA_EXAMPLE } })

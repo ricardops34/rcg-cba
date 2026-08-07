@@ -28,7 +28,7 @@ export default function PaisesPage() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [status, setStatus] = useState<StatusFilterValue>("todos");
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<Pais>("paises", {
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<Pais>("paises", {
     search,
     page,
     pageSize,
@@ -114,6 +114,7 @@ export default function PaisesPage() {
         rows={data?.data ?? []}
         rowKey={(p) => p.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

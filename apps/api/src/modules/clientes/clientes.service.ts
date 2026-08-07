@@ -23,6 +23,7 @@ import type {
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { calcularStatusTituloReceber } from '../titulos-receber/titulo-receber-status';
 import { ClienteCampoConfigService } from '../cliente-campo-config/cliente-campo-config.service';
+import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
 
 // Colunas calculadas ao vivo (agregação de notas_saida) que a listagem de
 // Posição de Cliente aceita ordenar — mapeia sortBy -> expressão/alias SQL já
@@ -78,6 +79,22 @@ const VENDEDOR_SELECT = { select: { id: true, nome: true, nomeReduzido: true } }
 // Dados da tabela de preço vinculada ao cliente (Posição de Cliente usa isso
 // pra calcular a coluna "Preço de tabela" do mix).
 const TABELA_PRECO_SELECT = { select: { id: true, codigoErp: true, descricao: true } };
+
+// Condição de pagamento vinculada, no mesmo formato.
+const CONDICAO_PAGAMENTO_SELECT = {
+  select: { id: true, codigoErp: true, descricao: true },
+};
+
+// O detalhe do cliente devolve os vínculos já resolvidos porque o formulário
+// não consegue descobrir a descrição sozinho: as listas de /tabelas-preco e
+// /condicoes-pagamento exigem permissão de cadastro (que o vendedor não tem)
+// e trazem só os registros ativos — a maioria das tabelas de preço herdadas
+// do legado está inativa. Sem isso o campo aparece em branco mesmo vinculado.
+const DETALHE_INCLUDE = {
+  vendedor: VENDEDOR_SELECT,
+  tabelaPreco: TABELA_PRECO_SELECT,
+  condicaoPagamento: CONDICAO_PAGAMENTO_SELECT,
+};
 
 // A resolução de escopo hierárquico mora em common/escopo/escopo-vendedores
 // — compartilhada com Notas de Saída, Itens e Títulos a Receber.
@@ -159,7 +176,7 @@ export class ClientesService {
           deletedAt: null,
           ...(escopo ? { vendedorId: { in: escopo } } : {}),
         },
-        include: { vendedor: VENDEDOR_SELECT },
+        include: DETALHE_INCLUDE,
       });
       if (!cliente) throw new NotFoundException('Cliente não encontrado');
       return cliente;
@@ -205,6 +222,7 @@ export class ClientesService {
       return tx.cliente.update({
         where: { id },
         data: { ...(this.limpar(inputPermitido) as object), updatedBy: user.id } as never,
+        include: DETALHE_INCLUDE,
       });
     });
   }
@@ -365,7 +383,12 @@ export class ClientesService {
         select: { tabelaPrecoId: true },
       });
       if (!cliente) throw new NotFoundException('Cliente não encontrado');
-      return this.mixProdutos(tx, empresaId, clienteId, cliente.tabelaPrecoId);
+      return this.mixProdutos(
+        tx,
+        empresaId,
+        clienteId,
+        await resolverTabelaPrecoCliente(tx, empresaId, clienteId),
+      );
     });
   }
 
@@ -404,7 +427,11 @@ export class ClientesService {
           where: { clienteId, empresaId, deletedAt: null },
           orderBy: { vencimento: 'desc' },
         }),
-        this.mixProdutos(tx, empresaId, clienteId, cliente.tabelaPrecoId),
+        // Preço de tabela do mix segue a mesma regra do orçamento: tabela do
+        // cadastro quando válida, senão a padrão de capital/interior.
+        resolverTabelaPrecoCliente(tx, empresaId, clienteId).then((tabelaId) =>
+          this.mixProdutos(tx, empresaId, clienteId, tabelaId),
+        ),
       ]);
 
       const hoje = new Date();

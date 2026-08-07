@@ -293,10 +293,12 @@ async function bootstrapMenu() {
     {
       id: 'seed-menu-clientes',
       nome: 'Clientes',
-      rota: '/comercial/clientes',
+      rota: '/cadastros/clientes',
       icone: 'users',
       codigo: 'clientes',
-      moduloId: moduloComercial.id,
+      // Cadastro de Clientes mora em Cadastros (junto de Tabelas de Preço,
+      // Condições de Pagamento etc.), não em Comercial, que é operação.
+      moduloId: moduloCadastros.id,
     },
     {
       id: 'seed-menu-posicao-cliente',
@@ -451,6 +453,14 @@ async function bootstrapMenu() {
       rota: '/cadastros/cnaes',
       icone: 'file-badge',
       codigo: 'cnaes',
+      moduloId: moduloCadastros.id,
+    },
+    {
+      id: 'seed-menu-regras-desconto',
+      nome: 'Regras de Desconto',
+      rota: '/cadastros/regras-desconto',
+      icone: 'percent',
+      codigo: 'regras-desconto',
       moduloId: moduloCadastros.id,
     },
   ];

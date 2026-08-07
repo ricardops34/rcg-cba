@@ -39,6 +39,17 @@ export function EmpresaForm({ empresa }: { empresa?: Empresa }) {
           cnpj: empresa.cnpj,
           alias: empresa.alias ?? null,
           ativo: empresa.ativo,
+          inscricaoEstadual: empresa.inscricaoEstadual ?? "",
+          inscricaoMunicipal: empresa.inscricaoMunicipal ?? "",
+          endereco: empresa.endereco ?? "",
+          complemento: empresa.complemento ?? "",
+          bairro: empresa.bairro ?? "",
+          municipio: empresa.municipio ?? "",
+          uf: empresa.uf ?? "",
+          cep: empresa.cep ?? "",
+          telefone: empresa.telefone ?? "",
+          email: empresa.email ?? "",
+          site: empresa.site ?? "",
         }
       : { razaoSocial: "", nomeFantasia: "", cnpj: "", alias: null, ativo: true },
   });
@@ -127,6 +138,95 @@ export function EmpresaForm({ empresa }: { empresa?: Empresa }) {
                     letras minúsculas, números e hífen.
                   </p>
                   <FieldError errors={[form.formState.errors.alias]} />
+                </Field>
+              </div>
+
+              {/* Dados que saem no cabeçalho dos documentos emitidos pro
+                  cliente — hoje, a proposta de orçamento em PDF. */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field data-invalid={!!form.formState.errors.inscricaoEstadual}>
+                  <FieldLabel htmlFor="inscricaoEstadual">Inscrição estadual</FieldLabel>
+                  <Input id="inscricaoEstadual" maxLength={20} {...form.register("inscricaoEstadual")} />
+                  <FieldError errors={[form.formState.errors.inscricaoEstadual]} />
+                </Field>
+
+                <Field data-invalid={!!form.formState.errors.inscricaoMunicipal}>
+                  <FieldLabel htmlFor="inscricaoMunicipal">Inscrição municipal</FieldLabel>
+                  <Input
+                    id="inscricaoMunicipal"
+                    maxLength={20}
+                    {...form.register("inscricaoMunicipal")}
+                  />
+                  <FieldError errors={[form.formState.errors.inscricaoMunicipal]} />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[2fr_1fr]">
+                <Field data-invalid={!!form.formState.errors.endereco}>
+                  <FieldLabel htmlFor="endereco">Endereço</FieldLabel>
+                  <Input
+                    id="endereco"
+                    placeholder="Logradouro e número"
+                    maxLength={150}
+                    {...form.register("endereco")}
+                  />
+                  <FieldError errors={[form.formState.errors.endereco]} />
+                </Field>
+
+                <Field data-invalid={!!form.formState.errors.complemento}>
+                  <FieldLabel htmlFor="complemento">Complemento</FieldLabel>
+                  <Input id="complemento" maxLength={100} {...form.register("complemento")} />
+                  <FieldError errors={[form.formState.errors.complemento]} />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+                <Field data-invalid={!!form.formState.errors.bairro}>
+                  <FieldLabel htmlFor="bairro">Bairro</FieldLabel>
+                  <Input id="bairro" maxLength={100} {...form.register("bairro")} />
+                  <FieldError errors={[form.formState.errors.bairro]} />
+                </Field>
+
+                <Field data-invalid={!!form.formState.errors.municipio}>
+                  <FieldLabel htmlFor="municipio">Município</FieldLabel>
+                  <Input id="municipio" maxLength={100} {...form.register("municipio")} />
+                  <FieldError errors={[form.formState.errors.municipio]} />
+                </Field>
+
+                <Field data-invalid={!!form.formState.errors.uf}>
+                  <FieldLabel htmlFor="uf">UF</FieldLabel>
+                  <Input
+                    id="uf"
+                    maxLength={2}
+                    {...form.register("uf", { setValueAs: (v) => (v ?? "").trim().toUpperCase() })}
+                  />
+                  <FieldError errors={[form.formState.errors.uf]} />
+                </Field>
+
+                <Field data-invalid={!!form.formState.errors.cep}>
+                  <FieldLabel htmlFor="cep">CEP</FieldLabel>
+                  <Input id="cep" maxLength={10} {...form.register("cep")} />
+                  <FieldError errors={[form.formState.errors.cep]} />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <Field data-invalid={!!form.formState.errors.telefone}>
+                  <FieldLabel htmlFor="telefone">Telefone</FieldLabel>
+                  <Input id="telefone" maxLength={20} {...form.register("telefone")} />
+                  <FieldError errors={[form.formState.errors.telefone]} />
+                </Field>
+
+                <Field data-invalid={!!form.formState.errors.email}>
+                  <FieldLabel htmlFor="email">E-mail</FieldLabel>
+                  <Input id="email" type="email" maxLength={120} {...form.register("email")} />
+                  <FieldError errors={[form.formState.errors.email]} />
+                </Field>
+
+                <Field data-invalid={!!form.formState.errors.site}>
+                  <FieldLabel htmlFor="site">Site</FieldLabel>
+                  <Input id="site" maxLength={150} {...form.register("site")} />
+                  <FieldError errors={[form.formState.errors.site]} />
                 </Field>
               </div>
 

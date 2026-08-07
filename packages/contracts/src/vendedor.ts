@@ -27,6 +27,10 @@ export type VendedorUpdate = z.infer<typeof vendedorUpdateSchema>;
 export const vendedorSchema = vendedorCreateSchema.extend({
   id: z.string().uuid(),
   empresaId: z.string().uuid(),
+  // Comissão do vendedor: leitura apenas — quem mantém é o ERP, pela API de
+  // integração. Fora do create/update de propósito, como os campos de regra
+  // de desconto.
+  percComissao: z.number().nullable().optional(),
   ...auditFieldsSchema.shape,
 });
 export type Vendedor = z.infer<typeof vendedorSchema>;
@@ -59,6 +63,7 @@ export const VENDEDOR_EXAMPLE: Vendedor = {
   gerente: false,
   ativo: true,
   desligado: false,
+  percComissao: null,
   createdAt: "2026-07-24T12:00:00.000Z",
   updatedAt: "2026-07-24T12:00:00.000Z",
   createdBy: null,

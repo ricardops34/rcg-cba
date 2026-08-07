@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { IntegracaoCategoriasController } from './categorias/integracao-categorias.controller';
 import { IntegracaoCategoriasService } from './categorias/integracao-categorias.service';
+import { IntegracaoRegrasDescontoController } from './regras-desconto/integracao-regras-desconto.controller';
+import { IntegracaoRegrasDescontoService } from './regras-desconto/integracao-regras-desconto.service';
 import { IntegracaoCondicoesPagamentoController } from './condicoes-pagamento/integracao-condicoes-pagamento.controller';
 import { IntegracaoCondicoesPagamentoService } from './condicoes-pagamento/integracao-condicoes-pagamento.service';
 import { IntegracaoArmazensController } from './armazens/integracao-armazens.controller';
@@ -28,6 +30,7 @@ import { ApiKeyGuard } from './guards/api-key.guard';
 @Module({
   controllers: [
     IntegracaoCategoriasController,
+    IntegracaoRegrasDescontoController,
     IntegracaoCondicoesPagamentoController,
     IntegracaoArmazensController,
     IntegracaoProdutosController,
@@ -43,6 +46,7 @@ import { ApiKeyGuard } from './guards/api-key.guard';
   providers: [
     ApiKeyGuard,
     IntegracaoCategoriasService,
+    IntegracaoRegrasDescontoService,
     IntegracaoCondicoesPagamentoService,
     IntegracaoArmazensService,
     IntegracaoProdutosService,

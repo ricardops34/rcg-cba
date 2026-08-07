@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { regraDescontoVinculoFields } from "./regra-desconto";
 import { auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
 
 // Espelhos read-only do ERP: sem create/update — os dados entram só pelo
@@ -71,6 +72,10 @@ export const notaSaidaItemSchema = z.object({
   peso: z.number().nullable(),
   comodato: z.boolean(),
   ativo: z.boolean(),
+  // Percentual de comissão apurado na linha (resultado da regra de desconto).
+  // Nulo = ainda não apurado — o cálculo não existe por enquanto.
+  percComissao: z.number().nullable().optional(),
+  ...regraDescontoVinculoFields,
   ...auditFieldsSchema.shape,
 });
 export type NotaSaidaItem = z.infer<typeof notaSaidaItemSchema>;

@@ -24,7 +24,7 @@ export default function TabelasPrecoPage() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [status, setStatus] = useState<StatusFilterValue>("ativos");
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<TabelaPreco>("tabelas-preco", {
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<TabelaPreco>("tabelas-preco", {
     search,
     page,
     pageSize,
@@ -79,6 +79,7 @@ export default function TabelasPrecoPage() {
         rows={data?.data ?? []}
         rowKey={(t) => t.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

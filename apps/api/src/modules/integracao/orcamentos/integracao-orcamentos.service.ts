@@ -22,13 +22,20 @@ import type {
 } from '@plataforma/contracts';
 import { calcularItensOrcamento } from '../../orcamentos/calcular-itens-orcamento';
 import { criarAtividadeRetorno } from '../../orcamentos/criar-atividade-retorno';
+import { proximoNumeroOrcamento } from '../../orcamentos/proximo-numero-orcamento';
 import { autorIntegracao } from '../common/autor-integracao';
+import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 
 const INCLUDE = {
   cliente: { select: { codigoErp: true } },
   vendedor: { select: { codigoErp: true } },
   condicaoPagamento: { select: { codigoErp: true } },
-  itens: { include: { produto: { select: { codigoErp: true } } } },
+  itens: {
+    include: {
+      produto: { select: { codigoErp: true } },
+      regraDesconto: { select: { codigoErp: true } },
+    },
+  },
 } satisfies Prisma.OrcamentoInclude;
 type OrcamentoComRelacoes = Prisma.OrcamentoGetPayload<{
   include: typeof INCLUDE;
@@ -55,6 +62,8 @@ export class IntegracaoOrcamentosService {
         produtoCodigo: item.produto?.codigoErp ?? '',
         quantidade: item.quantidade,
         vlrUnitario: item.vlrUnitario,
+        percComissao: item.percComissao,
+        regraDescontoCodigo: item.regraDesconto?.codigoErp ?? null,
       })),
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -229,6 +238,7 @@ export class IntegracaoOrcamentosService {
     empresaId: string,
     clienteId: string,
     itens: IntegracaoOrcamentoItem[],
+    vendedorId: string,
   ) {
     const itensParaCalculo = await Promise.all(
       itens.map(async (item) => {
@@ -244,10 +254,22 @@ export class IntegracaoOrcamentosService {
           produtoId: produto.id,
           quantidade: item.quantidade,
           vlrUnitario: item.vlrUnitario,
+          percComissao: item.percComissao ?? null,
+          regraDescontoId: await resolverRegraDesconto(
+            tx,
+            empresaId,
+            item.regraDescontoCodigo,
+          ),
         };
       }),
     );
-    return calcularItensOrcamento(tx, empresaId, clienteId, itensParaCalculo);
+    return calcularItensOrcamento(
+      tx,
+      empresaId,
+      clienteId,
+      itensParaCalculo,
+      vendedorId,
+    );
   }
 
   async create(
@@ -286,12 +308,14 @@ export class IntegracaoOrcamentosService {
         empresaId,
         clienteId,
         input.itens,
+        vendedorId,
       );
 
       const criado = await tx.orcamento.create({
         data: {
           empresaId,
           codigoLegado: input.codigoLegado,
+          numero: await proximoNumeroOrcamento(tx, empresaId),
           clienteId,
           vendedorId,
           condicaoPagamentoId,
@@ -366,6 +390,7 @@ export class IntegracaoOrcamentosService {
           empresaId,
           clienteIdFinal,
           input.itens,
+          vendedorId ?? existente.vendedorId,
         );
         await tx.orcamentoItem.deleteMany({
           where: { orcamentoId: existente.id },

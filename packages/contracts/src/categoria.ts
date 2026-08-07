@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
+import { regraDescontoVinculoFields } from "./regra-desconto";
 
 // Somente consulta: categorias/subcategorias entram pelo import (e no futuro
 // pela API externa de manutenção), não por esta API.
@@ -11,6 +12,7 @@ export const categoriaSchema = z.object({
   categoriaPaiId: z.string().uuid().nullable(),
   usado: z.boolean().nullable(),
   ativo: z.boolean(),
+  ...regraDescontoVinculoFields,
   ...auditFieldsSchema.shape,
 });
 export type Categoria = z.infer<typeof categoriaSchema>;
@@ -32,6 +34,8 @@ export const CATEGORIA_EXAMPLE: Categoria = {
   categoriaPaiId: null,
   usado: true,
   ativo: true,
+  regraDescontoId: null,
+  regraDesconto: null,
   createdAt: "2026-07-24T12:00:00.000Z",
   updatedAt: "2026-07-24T12:00:00.000Z",
   createdBy: null,

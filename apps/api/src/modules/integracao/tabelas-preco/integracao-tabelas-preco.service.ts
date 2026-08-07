@@ -15,11 +15,15 @@ import type {
   IntegracaoTabelaPrecoUpdate,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
+import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 
 const INCLUDE = {
   itens: {
     where: { deletedAt: null },
-    include: { produto: { select: { codigoErp: true } } },
+    include: {
+      produto: { select: { codigoErp: true } },
+      regraDesconto: { select: { codigoErp: true } },
+    },
   },
 } satisfies Prisma.TabelaPrecoInclude;
 type TabelaComItens = Prisma.TabelaPrecoGetPayload<{ include: typeof INCLUDE }>;
@@ -39,6 +43,7 @@ export class IntegracaoTabelasPrecoService {
       itens: row.itens.map((item) => ({
         produtoCodigo: item.produto.codigoErp,
         preco: item.preco,
+        regraDescontoCodigo: item.regraDesconto?.codigoErp ?? null,
         ativo: item.ativo,
       })),
       createdAt: row.createdAt.toISOString(),
@@ -128,6 +133,12 @@ export class IntegracaoTabelasPrecoService {
             empresaId,
             produtoId: produto.id,
             preco: item.preco,
+            regraDescontoId:
+              (await resolverRegraDesconto(
+                tx,
+                empresaId,
+                item.regraDescontoCodigo,
+              )) ?? null,
             ativo: item.ativo,
           };
         }),
@@ -186,6 +197,12 @@ export class IntegracaoTabelasPrecoService {
               empresaId,
               produtoId: produto.id,
               preco: item.preco,
+              regraDescontoId:
+                (await resolverRegraDesconto(
+                  tx,
+                  empresaId,
+                  item.regraDescontoCodigo,
+                )) ?? null,
               ativo: item.ativo,
             };
           }),

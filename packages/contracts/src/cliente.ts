@@ -66,9 +66,21 @@ const historicoComercialSchema = z.object({
   dataConsultaRfb: z.string().datetime().nullable(),
 });
 
+// Vínculos resolvidos que acompanham o detalhe do cliente (GET /clientes/:id):
+// a descrição não pode ser buscada no formulário, porque as listas de
+// /tabelas-preco e /condicoes-pagamento exigem permissão de cadastro e só
+// trazem registros ativos. Ausentes na listagem, por isso opcionais.
+const vinculoSchema = z.object({
+  id: z.string().uuid(),
+  codigoErp: z.string().nullable(),
+  descricao: z.string(),
+});
+
 export const clienteSchema = clienteCreateSchema.extend({
   id: z.string().uuid(),
   empresaId: z.string().uuid(),
+  tabelaPreco: vinculoSchema.nullable().optional(),
+  condicaoPagamento: vinculoSchema.nullable().optional(),
   ...historicoComercialSchema.shape,
   ...auditFieldsSchema.shape,
 });

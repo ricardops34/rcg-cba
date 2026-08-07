@@ -55,7 +55,7 @@ export default function NotasSaidaPage() {
   const restrito = escopoQuery.data?.restrito ?? false;
   const mostrarFiltroVendedor = !restrito || opcoesVendedor.length > 1;
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<NotaRow>("notas-saida", {
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<NotaRow>("notas-saida", {
     search,
     page,
     pageSize,
@@ -189,6 +189,7 @@ export default function NotasSaidaPage() {
         rows={data?.data ?? []}
         rowKey={(n) => n.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

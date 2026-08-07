@@ -44,7 +44,7 @@ export default function CepsPage() {
       apiFetch<{ data: Estado[] }>("/estados", { query: { pageSize: 100, sortBy: "sigla" } }),
   });
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<CepRow>("ceps", {
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<CepRow>("ceps", {
     search,
     page,
     pageSize,
@@ -169,6 +169,7 @@ export default function CepsPage() {
         rows={data?.data ?? []}
         rowKey={(c) => c.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

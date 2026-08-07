@@ -17,6 +17,12 @@ const SORT_FIELDS = new Set([
 
 const PAI_SELECT = { select: { id: true, codigoErp: true, descricao: true } };
 
+// Regra de desconto vinculada (SZ0), pra tela exibir sem segundo fetch.
+const REGRA_DESCONTO_SELECT = {
+  select: { id: true, codigoErp: true, descricao: true },
+};
+
+
 @Injectable()
 export class CategoriasService {
   constructor(private readonly prisma: PrismaService) {}
@@ -58,7 +64,10 @@ export class CategoriasService {
       const [data, total] = await Promise.all([
         tx.categoria.findMany({
           where,
-          include: { categoriaPai: PAI_SELECT },
+          include: {
+            categoriaPai: PAI_SELECT,
+            regraDesconto: REGRA_DESCONTO_SELECT,
+          },
           ...paginationToSkipTake(query),
           orderBy: { [sortField]: query.sortOrder },
         }),
@@ -72,7 +81,10 @@ export class CategoriasService {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const categoria = await tx.categoria.findFirst({
         where: { id, empresaId, deletedAt: null },
-        include: { categoriaPai: PAI_SELECT },
+        include: {
+            categoriaPai: PAI_SELECT,
+            regraDesconto: REGRA_DESCONTO_SELECT,
+          },
       });
       if (!categoria) throw new NotFoundException('Categoria não encontrada');
       return categoria;

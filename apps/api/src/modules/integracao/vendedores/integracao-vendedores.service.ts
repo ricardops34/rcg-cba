@@ -39,6 +39,7 @@ export class IntegracaoVendedoresService {
       vendedor: row.vendedor,
       supervisorCodigo: row.supervisorVendedor?.codigoErp ?? null,
       supervisor: row.supervisor,
+      percComissao: row.percComissao,
       ativo: row.ativo,
       desligado: row.desligado,
       createdAt: row.createdAt.toISOString(),
@@ -136,6 +137,7 @@ export class IntegracaoVendedoresService {
           vendedor: input.vendedor,
           supervisorId,
           supervisor: input.supervisor,
+          percComissao: input.percComissao ?? null,
           ativo: input.ativo,
           desligado: input.desligado,
           createdBy: autor,
@@ -196,6 +198,9 @@ export class IntegracaoVendedoresService {
             : {}),
           ...(input.vendedor !== undefined ? { vendedor: input.vendedor } : {}),
           ...(supervisorId !== undefined ? { supervisorId } : {}),
+          ...(input.percComissao !== undefined
+            ? { percComissao: input.percComissao }
+            : {}),
           ...(input.supervisor !== undefined
             ? { supervisor: input.supervisor }
             : {}),

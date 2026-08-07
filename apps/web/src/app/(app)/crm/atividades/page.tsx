@@ -7,7 +7,6 @@ import type { Atividade, TipoAtividade } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError } from "@/lib/api-client";
 import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
-import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
@@ -55,9 +54,8 @@ export default function AtividadesPage() {
   const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
   const mostrarFiltroVendedor = !(vendedoresEscopoQuery.data?.ehVendedorPuro ?? false);
-  useVendedorPadrao(vendedoresEscopoQuery.data?.meuVendedorId, setVendedorId);
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<Atividade>("atividades", {
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<Atividade>("atividades", {
     search,
     page,
     pageSize,
@@ -239,6 +237,7 @@ export default function AtividadesPage() {
         rows={data?.data ?? []}
         rowKey={(a) => a.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

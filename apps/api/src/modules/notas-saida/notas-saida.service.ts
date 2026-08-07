@@ -95,6 +95,7 @@ export class NotasSaidaService {
             orderBy: { item: 'asc' },
             include: {
               produto: { select: { id: true, codigoErp: true, descricao: true, unidade: true } },
+              regraDesconto: { select: { id: true, codigoErp: true, descricao: true } },
             },
           },
         },

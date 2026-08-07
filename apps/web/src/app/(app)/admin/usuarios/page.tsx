@@ -44,7 +44,7 @@ export default function UsuariosPage() {
     queryFn: () => apiFetch<{ data: Perfil[] }>("/perfis", { query: { pageSize: 100 } }),
   });
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<UsuarioRow>("usuarios", {
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<UsuarioRow>("usuarios", {
     search,
     page,
     pageSize,
@@ -183,6 +183,7 @@ export default function UsuariosPage() {
         rows={data?.data ?? []}
         rowKey={(u) => u.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

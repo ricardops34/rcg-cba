@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { regraDescontoVinculoFields } from "./regra-desconto";
 import { auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
 
 export const statusOrcamentoSchema = z.enum([
@@ -20,7 +21,17 @@ export const orcamentoItemLinhaSchema = z.object({
   quantidade: z.coerce.number().positive("Informe uma quantidade"),
   vlrUnitario: z.coerce.number().min(0, "Informe o preço unitário"),
 });
-export type OrcamentoItemLinha = z.infer<typeof orcamentoItemLinhaSchema>;
+
+/**
+ * Linha de item como o servidor a monta. Regra de desconto e comissão ficam
+ * fora do schema de entrada de propósito: são somente leitura na tela e só a
+ * API de integração as preenche — mas o cálculo dos itens (compartilhado
+ * entre tela e integração) precisa carregá-las.
+ */
+export type OrcamentoItemLinha = z.infer<typeof orcamentoItemLinhaSchema> & {
+  regraDescontoId?: string | null;
+  percComissao?: number | null;
+};
 
 export const orcamentoCreateSchema = z.object({
   clienteId: z.string().uuid("Selecione um cliente"),
@@ -62,6 +73,10 @@ export const orcamentoItemSchema = z.object({
   vlrDesconto: z.number(),
   vlrTotal: z.number(),
   produto: orcamentoItemProdutoSchema,
+  // Percentual de comissão apurado na linha (resultado da regra de desconto).
+  // Nulo = ainda não apurado — o cálculo não existe por enquanto.
+  percComissao: z.number().nullable().optional(),
+  ...regraDescontoVinculoFields,
 });
 export type OrcamentoItem = z.infer<typeof orcamentoItemSchema>;
 
@@ -74,6 +89,10 @@ export const orcamentoSchema = z.object({
   // preenchido = já integrado. Alimenta o ícone de acompanhamento na
   // listagem de Orçamentos.
   codigoLegado: z.number().int().nullable(),
+  // Numeração própria do CRM, sequencial por empresa e atribuída na criação —
+  // é o "Nº" que o cliente vê na proposta em PDF. Não confundir com
+  // codigoLegado (chave do ERP, preenchida só na integração).
+  numero: z.number().int(),
   clienteId: z.string().uuid(),
   vendedorId: z.string().uuid(),
   oportunidadeId: z.string().uuid().nullable(),
@@ -94,6 +113,9 @@ export const orcamentoSchema = z.object({
     id: z.string().uuid(),
     nome: z.string(),
     nomeReduzido: z.string().nullable(),
+    // Contato do vendedor no cabeçalho da proposta em PDF.
+    email: z.string().nullable(),
+    telefone: z.string().nullable(),
   }),
   oportunidade: z
     .object({
@@ -127,6 +149,7 @@ export const ORCAMENTO_EXAMPLE: Orcamento = {
   id: "0d1e2f3a-4b5c-4d6e-7f80-91a2b3c4d5e6",
   empresaId: "7b2f2f64-9b1c-4a86-9d3e-1f4a5b6c7d8e",
   codigoLegado: null,
+  numero: 128,
   clienteId: "d4e5f6a7-8b9c-4d0e-9f1a-2b3c4d5e6f70",
   vendedorId: "b7c2c1de-4a45-4b8a-9f2e-6a1d6c1e9f10",
   oportunidadeId: "a1b2c3d4-5e6f-4708-9a0b-1c2d3e4f5a6b",
@@ -147,6 +170,8 @@ export const ORCAMENTO_EXAMPLE: Orcamento = {
     id: "b7c2c1de-4a45-4b8a-9f2e-6a1d6c1e9f10",
     nome: "CARLOS SILVA",
     nomeReduzido: "CARLOS",
+    email: "carlos@andrade.com.br",
+    telefone: "67999887766",
   },
   oportunidade: {
     id: "a1b2c3d4-5e6f-4708-9a0b-1c2d3e4f5a6b",

@@ -28,7 +28,7 @@ export default function EstadosPage() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [status, setStatus] = useState<StatusFilterValue>("todos");
 
-  const { data, isLoading, isFetching, refetch } = useResourceList<Estado>("estados", {
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<Estado>("estados", {
     search,
     page,
     pageSize,
@@ -114,6 +114,7 @@ export default function EstadosPage() {
         rows={data?.data ?? []}
         rowKey={(e) => e.id}
         isLoading={isLoading}
+        error={error}
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}

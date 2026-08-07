@@ -1,41 +1,66 @@
 import type { TenantTx } from '../../common/prisma/prisma.service';
-import type { OrcamentoItemLinha } from '@plataforma/contracts';
+import {
+  calcularComissaoItem,
+  type OrcamentoItemLinha,
+} from '@plataforma/contracts';
+import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
+import { resolverRegrasDescontoDosItens } from '../../common/precos/resolver-regra-desconto-item';
 
 /**
- * Resolve vlrTabela de cada item na Tabela de Preço vinculada ao cliente
- * (batch, mesmo padrão de ClientesService.posicao) e calcula desconto/total
- * a partir do vlrUnitario informado (editável por linha). Sem tabela
- * vinculada ao cliente, ou sem preço cadastrado pro produto, vlrTabela fica
- * null — o vlrUnitario informado é usado do mesmo jeito, sem desconto
- * calculado. Compartilhado entre OrcamentosService (tela) e
- * IntegracaoOrcamentosService (API externa).
+ * Resolve vlrTabela de cada item na Tabela de Preço que vale pro cliente
+ * (ver resolverTabelaPrecoCliente — cai na tabela padrão de capital/interior
+ * quando a do cadastro está vazia ou inativa) e calcula desconto/total a
+ * partir do vlrUnitario informado (editável por linha). Sem tabela aplicável,
+ * ou sem preço cadastrado pro produto, vlrTabela fica null — o vlrUnitario
+ * informado é usado do mesmo jeito, sem desconto calculado.
+ *
+ * Também apura, por linha, a regra de desconto aplicável (tabela de preço >
+ * produto > categoria > regra padrão) e a comissão resultante: o percentual
+ * do vendedor é a base, e a faixa em que o desconto caiu diz quanto dessa base
+ * ele recebe. Desconto acima do limite da regra **não** bloqueia a gravação —
+ * só aparece como aviso na tela.
+ *
+ * Compartilhado entre OrcamentosService (tela) e IntegracaoOrcamentosService
+ * (API externa).
  */
 export async function calcularItensOrcamento(
   tx: TenantTx,
   empresaId: string,
   clienteId: string,
   itens: OrcamentoItemLinha[],
+  vendedorId: string,
 ) {
   if (itens.length === 0)
     return { data: [] as Record<string, unknown>[], vlrTotal: 0 };
 
-  const cliente = await tx.cliente.findFirst({
-    where: { id: clienteId, empresaId },
-    select: { tabelaPrecoId: true },
-  });
-
   const produtoIds = itens.map((i) => i.produtoId);
-  const precos = cliente?.tabelaPrecoId
-    ? await tx.tabelaPrecoItem.findMany({
-        where: {
-          tabelaPrecoId: cliente.tabelaPrecoId,
-          produtoId: { in: produtoIds },
-          deletedAt: null,
-        },
-        select: { produtoId: true, preco: true },
-      })
-    : [];
+  const tabelaPrecoId = await resolverTabelaPrecoCliente(
+    tx,
+    empresaId,
+    clienteId,
+  );
+
+  const [precos, regrasPorProduto, vendedor] = await Promise.all([
+    tabelaPrecoId
+      ? tx.tabelaPrecoItem.findMany({
+          where: {
+            tabelaPrecoId,
+            produtoId: { in: produtoIds },
+            deletedAt: null,
+          },
+          select: { produtoId: true, preco: true },
+        })
+      : Promise.resolve([] as { produtoId: string; preco: number }[]),
+    resolverRegrasDescontoDosItens(tx, empresaId, produtoIds, tabelaPrecoId),
+    tx.vendedor.findFirst({
+      where: { id: vendedorId, empresaId },
+      select: { percComissao: true },
+    }),
+  ]);
   const precoPorProduto = new Map(precos.map((p) => [p.produtoId, p.preco]));
+  // Sem % base no cadastro do vendedor não há como apurar: a comissão da
+  // linha fica null (não apurada), e não zero.
+  const percBaseVendedor = vendedor?.percComissao ?? null;
 
   let vlrTotalOrcamento = 0;
   const data = itens.map((item) => {
@@ -51,6 +76,10 @@ export async function calcularItensOrcamento(
     const vlrTotalItem =
       Math.round(item.vlrUnitario * item.quantidade * 100) / 100;
     vlrTotalOrcamento += vlrTotalItem;
+
+    const regra = regrasPorProduto.get(item.produtoId) ?? null;
+    const comissao = calcularComissaoItem(regra, percDesconto, percBaseVendedor);
+
     return {
       empresaId,
       produtoId: item.produtoId,
@@ -60,6 +89,10 @@ export async function calcularItensOrcamento(
       percDesconto,
       vlrDesconto,
       vlrTotal: vlrTotalItem,
+      // Valor vindo da API de integração prevalece: naquele caminho o ERP é
+      // dono do número. Pela tela nada é informado, então vale o cálculo.
+      regraDescontoId: item.regraDescontoId ?? regra?.id ?? null,
+      percComissao: item.percComissao ?? comissao.percComissao,
     };
   });
   return { data, vlrTotal: Math.round(vlrTotalOrcamento * 100) / 100 };
