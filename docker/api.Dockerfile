@@ -33,9 +33,10 @@ COPY --from=build /app/apps/api/dist apps/api/dist
 COPY apps/api/prisma apps/api/prisma
 # Scripts de seed/importação (apps/api/prisma/*.ts) já compilados pra JS puro
 # — dá pra rodar com "node prisma/dist/seed-base.js" num serviço avulso na
-# mesma stack, sem precisar de imagem/stack separada (só funciona pra scripts
-# sem dependência fora do prod: seed-base.js sim, os import-*.js não — esses
-# usam mysql2, que é devDependency, não vem nesta imagem).
+# mesma stack, sem precisar de imagem/stack separada. Os import-*.js também
+# rodam aqui: mysql2 e bcryptjs são dependências de produção. Passe um
+# DATABASE_URL com a role DONA (não plataforma_app): os scripts rodam fora do
+# Nest e setam o tenant na mão, então precisam contornar a RLS.
 COPY --from=build /app/apps/api/prisma/dist apps/api/prisma/dist
 # Gera o Prisma Client dentro do node_modules de produção.
 RUN pnpm --filter @plataforma/api exec prisma generate

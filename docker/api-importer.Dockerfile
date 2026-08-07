@@ -7,9 +7,11 @@
 # Contexto de build: a RAIZ do repositório.
 #   docker build -f docker/api-importer.Dockerfile -t bjsoftware/rcgcba-importer:latest .
 #
-# Uso (Portainer Stack/serviço avulso) — comando do container:
-#   node dist/seed-base.js
-#   node dist/import-auxiliares.js && node dist/import-legado.js && node dist/import-tabela-preco.js && node dist/import-clientes.js && node dist/import-negocio.js && node dist/import-objetivos.js
+# Uso (Portainer Stack/serviço avulso) — comando do container. O WORKDIR é
+# /app/apps/api e os scripts compilados ficam em prisma/dist (outDir de
+# prisma/tsconfig.scripts.json), não em dist:
+#   node prisma/dist/seed-base.js
+#   node prisma/dist/import-auxiliares.js && node prisma/dist/import-legado.js && node prisma/dist/import-tabela-preco.js && node prisma/dist/import-clientes.js && node prisma/dist/import-negocio.js && node prisma/dist/import-objetivos.js
 # Variáveis de ambiente: DATABASE_URL (role DONO, não plataforma_app — os
 # scripts bypassam RLS/fazem DDL do zero se rodando prisma migrate à parte),
 # MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE.
