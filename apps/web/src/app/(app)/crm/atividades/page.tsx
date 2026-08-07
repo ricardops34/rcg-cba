@@ -29,10 +29,15 @@ import { AlertTriangle, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 type TipoFiltro = "todos" | TipoAtividade;
 
+// Mostra a hora só quando ela foi informada: atividade "de dia inteiro" fica
+// gravada em 00:00 e ganharia um "00:00" inútil na listagem.
 const dataBr = (v: string | null) => {
   if (!v) return "—";
   const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
+  if (Number.isNaN(d.getTime())) return "—";
+  const dia = d.toLocaleDateString("pt-BR");
+  if (d.getHours() === 0 && d.getMinutes() === 0) return dia;
+  return `${dia} ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
 };
 
 export default function AtividadesPage() {

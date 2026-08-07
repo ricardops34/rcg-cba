@@ -25,10 +25,12 @@ export function ClienteCombobox({
   value,
   onChange,
   placeholder = "Selecionar cliente",
+  disabled = false,
 }: {
   value: string | null;
   onChange: (id: string | null) => void;
   placeholder?: string;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -73,6 +75,7 @@ export function ClienteCombobox({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          disabled={disabled}
           className={cn("w-full justify-between font-normal", !value && "text-muted-foreground")}
         >
           <span className="truncate">{rotulo}</span>

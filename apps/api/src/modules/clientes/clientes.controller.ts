@@ -46,7 +46,10 @@ export class ClientesController {
   @ApiPaginationQuery()
   @RequirePermission('clientes', 'visualizar')
   @Get()
-  findAll(@Query() query: ClienteQueryDto, @CurrentUser() user: AuthenticatedUser) {
+  findAll(
+    @Query() query: ClienteQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.service.findAll(user.empresaAtivaId, user, query);
   }
 
@@ -130,8 +133,16 @@ export class ClientesController {
     return this.service.listagemPosicao(user.empresaAtivaId, user, query);
   }
 
-  @ApiOperation({ summary: 'Detalhar cliente', description: 'Requer clientes.visualizar.' })
-  @RequirePermission('clientes', 'visualizar')
+  @ApiOperation({
+    summary: 'Detalhar cliente',
+    description:
+      'Requer clientes.visualizar ou posicao-cliente.visualizar — esta segunda rota também ' +
+      'busca o cliente pré-selecionado ao abrir "Incluir Orçamento" na Posição de Cliente.',
+  })
+  @RequirePermission('clientes', 'visualizar', [
+    'posicao-cliente',
+    'visualizar',
+  ])
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.findOne(user.empresaAtivaId, user, id);
@@ -154,22 +165,35 @@ export class ClientesController {
     description:
       'Produtos já comprados pelo cliente (código, descrição, última compra, preço/desconto da ' +
       'compra mais recente, preço vigente na tabela de preço do cliente) — usado pela aba "Mix" ' +
-      'do formulário de Orçamento. Requer clientes.visualizar.',
+      'do formulário de Orçamento. Requer clientes.visualizar ou posicao-cliente.visualizar ' +
+      '(orçamento aberto a partir da Posição de Cliente).',
   })
-  @RequirePermission('clientes', 'visualizar')
+  @RequirePermission('clientes', 'visualizar', [
+    'posicao-cliente',
+    'visualizar',
+  ])
   @Get(':id/mix')
   mix(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.mix(user.empresaAtivaId, user, id);
   }
 
-  @ApiOperation({ summary: 'Cadastrar cliente', description: 'Requer clientes.cadastrar.' })
+  @ApiOperation({
+    summary: 'Cadastrar cliente',
+    description: 'Requer clientes.cadastrar.',
+  })
   @RequirePermission('clientes', 'cadastrar')
   @Post()
-  create(@Body() dto: ClienteCreateDto, @CurrentUser() user: AuthenticatedUser) {
+  create(
+    @Body() dto: ClienteCreateDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.service.create(user.empresaAtivaId, user, dto);
   }
 
-  @ApiOperation({ summary: 'Editar cliente', description: 'Requer clientes.editar.' })
+  @ApiOperation({
+    summary: 'Editar cliente',
+    description: 'Requer clientes.editar.',
+  })
   @RequirePermission('clientes', 'editar')
   @Patch(':id')
   update(
@@ -180,7 +204,10 @@ export class ClientesController {
     return this.service.update(user.empresaAtivaId, user, id, dto);
   }
 
-  @ApiOperation({ summary: 'Excluir cliente (soft delete)', description: 'Requer clientes.excluir.' })
+  @ApiOperation({
+    summary: 'Excluir cliente (soft delete)',
+    description: 'Requer clientes.excluir.',
+  })
   @RequirePermission('clientes', 'excluir')
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {

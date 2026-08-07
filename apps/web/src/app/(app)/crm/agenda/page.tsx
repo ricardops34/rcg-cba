@@ -306,6 +306,14 @@ function AgendaItemChip({ item, onSelect }: { item: AgendaItem; onSelect: () => 
   const concluida = item.kind === "atividade" && item.data.concluida;
   const titulo = item.kind === "atividade" ? item.data.titulo : item.data.titulo;
   const cor = item.kind === "atividade" ? TIPO_COR[item.data.tipo] : STATUS_ORCAMENTO_COR[item.data.status];
+  // Hora só quando informada (atividade de dia inteiro fica em 00:00) — ajuda
+  // a ordenar visualmente o dia sem poluir quem não marcou horário.
+  const hora = (() => {
+    if (item.kind !== "atividade" || !item.data.dataVencimento) return null;
+    const d = new Date(item.data.dataVencimento);
+    if (Number.isNaN(d.getTime()) || (d.getHours() === 0 && d.getMinutes() === 0)) return null;
+    return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  })();
 
   return (
     <button
@@ -320,6 +328,7 @@ function AgendaItemChip({ item, onSelect }: { item: AgendaItem; onSelect: () => 
       }`}
     >
       <span className={`size-1.5 shrink-0 rounded-full ${cor}`} />
+      {hora && <span className="shrink-0 tabular-nums text-muted-foreground">{hora}</span>}
       <span className="truncate">{titulo}</span>
     </button>
   );

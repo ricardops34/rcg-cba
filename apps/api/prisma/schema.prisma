@@ -405,11 +405,12 @@ enum TipoPessoa {
 // (primeiraCompra, ultimaCompra, ...) são preenchidos pelo import do legado,
 // não pelo formulário.
 model Cliente {
-  id            String  @id @default(uuid())
-  empresaId     String
-  vendedorId    String?
-  tabelaPrecoId String?
-  codigoErp     String?
+  id                  String  @id @default(uuid())
+  empresaId           String
+  vendedorId          String?
+  tabelaPrecoId       String?
+  condicaoPagamentoId String?
+  codigoErp           String?
 
   tipoPessoa         TipoPessoa @default(juridica)
   razaoSocial        String
@@ -461,9 +462,10 @@ model Cliente {
   updatedBy String?
   deletedBy String?
 
-  empresa     Empresa      @relation(fields: [empresaId], references: [id])
-  vendedor    Vendedor?    @relation(fields: [vendedorId], references: [id])
-  tabelaPreco TabelaPreco? @relation(fields: [tabelaPrecoId], references: [id])
+  empresa           Empresa            @relation(fields: [empresaId], references: [id])
+  vendedor          Vendedor?          @relation(fields: [vendedorId], references: [id])
+  tabelaPreco       TabelaPreco?       @relation(fields: [tabelaPrecoId], references: [id])
+  condicaoPagamento CondicaoPagamento? @relation(fields: [condicaoPagamentoId], references: [id])
 
   notasSaida      NotaSaida[]
   notasSaidaItens NotaSaidaItem[]
@@ -476,6 +478,7 @@ model Cliente {
   @@index([empresaId, razaoSocial])
   @@index([empresaId, vendedorId])
   @@index([empresaId, tabelaPrecoId])
+  @@index([empresaId, condicaoPagamentoId])
   @@map("clientes")
 }
 
@@ -692,6 +695,7 @@ model CondicaoPagamento {
   empresa    Empresa     @relation(fields: [empresaId], references: [id])
   notasSaida NotaSaida[]
   orcamentos Orcamento[]
+  clientes   Cliente[]
 
   @@unique([empresaId, codigoErp])
   @@map("condicoes_pagamento")

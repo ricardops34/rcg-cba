@@ -3,7 +3,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
+import {
+  PrismaService,
+  type TenantTx,
+} from '../../common/prisma/prisma.service';
 import {
   combinarFiltroVendedor,
   resolverEscopoVendedores,
@@ -22,13 +25,26 @@ import type { AuthenticatedUser } from '../../common/decorators/current-user.dec
 import { criarAtividadeRetorno } from './criar-atividade-retorno';
 import { calcularItensOrcamento } from './calcular-itens-orcamento';
 
-const SORT_FIELDS = new Set(['titulo', 'status', 'vlrTotal', 'dataValidade', 'ativo', 'createdAt']);
+const SORT_FIELDS = new Set([
+  'titulo',
+  'status',
+  'vlrTotal',
+  'dataValidade',
+  'ativo',
+  'createdAt',
+]);
 
-const CLIENTE_SELECT = { select: { id: true, razaoSocial: true, nomeFantasia: true } };
-const VENDEDOR_SELECT = { select: { id: true, nome: true, nomeReduzido: true } };
+const CLIENTE_SELECT = {
+  select: { id: true, razaoSocial: true, nomeFantasia: true },
+};
+const VENDEDOR_SELECT = {
+  select: { id: true, nome: true, nomeReduzido: true },
+};
 const OPORTUNIDADE_SELECT = { select: { id: true, titulo: true } };
 const CONDICAO_PAGAMENTO_SELECT = { select: { id: true, descricao: true } };
-const PRODUTO_SELECT = { select: { id: true, codigoErp: true, descricao: true, unidade: true } };
+const PRODUTO_SELECT = {
+  select: { id: true, codigoErp: true, descricao: true, unidade: true },
+};
 const INCLUDE = {
   cliente: CLIENTE_SELECT,
   vendedor: VENDEDOR_SELECT,
@@ -47,7 +63,10 @@ export class OrcamentosService {
     return out;
   }
 
-  private garantirVendedorNoEscopo(escopo: EscopoVendedores, vendedorId: string) {
+  private garantirVendedorNoEscopo(
+    escopo: EscopoVendedores,
+    vendedorId: string,
+  ) {
     if (escopo !== null && !escopo.includes(vendedorId)) {
       throw new NotFoundException('Vendedor fora do seu escopo');
     }
@@ -64,7 +83,10 @@ export class OrcamentosService {
       select: { vendedorId: true },
     });
     if (!cliente) throw new NotFoundException('Cliente não encontrado');
-    if (escopo !== null && (!cliente.vendedorId || !escopo.includes(cliente.vendedorId))) {
+    if (
+      escopo !== null &&
+      (!cliente.vendedorId || !escopo.includes(cliente.vendedorId))
+    ) {
       throw new NotFoundException('Cliente fora do seu escopo');
     }
   }
@@ -79,12 +101,12 @@ export class OrcamentosService {
       where: { id: oportunidadeId, empresaId, deletedAt: null },
       select: { vendedorId: true },
     });
-    if (!oportunidade) throw new NotFoundException('Oportunidade não encontrada');
+    if (!oportunidade)
+      throw new NotFoundException('Oportunidade não encontrada');
     if (escopo !== null && !escopo.includes(oportunidade.vendedorId)) {
       throw new NotFoundException('Oportunidade fora do seu escopo');
     }
   }
-
 
   /**
    * Preço/estoque de um produto pra um cliente específico — alimenta o
@@ -112,11 +134,18 @@ export class OrcamentosService {
       const [tabelaItem, produto, estoque] = await Promise.all([
         cliente?.tabelaPrecoId
           ? tx.tabelaPrecoItem.findFirst({
-              where: { tabelaPrecoId: cliente.tabelaPrecoId, produtoId, deletedAt: null },
+              where: {
+                tabelaPrecoId: cliente.tabelaPrecoId,
+                produtoId,
+                deletedAt: null,
+              },
               select: { preco: true },
             })
           : Promise.resolve(null),
-        tx.produto.findFirst({ where: { id: produtoId, empresaId }, select: { ultimoPreco: true } }),
+        tx.produto.findFirst({
+          where: { id: produtoId, empresaId },
+          select: { ultimoPreco: true },
+        }),
         tx.estoque.aggregate({
           where: { empresaId, produtoId, deletedAt: null },
           _sum: { saldo: true },
@@ -138,7 +167,9 @@ export class OrcamentosService {
         deletedAt: null,
         ...combinarFiltroVendedor(escopo, query.vendedorId),
         ...(query.clienteId ? { clienteId: query.clienteId } : {}),
-        ...(query.oportunidadeId ? { oportunidadeId: query.oportunidadeId } : {}),
+        ...(query.oportunidadeId
+          ? { oportunidadeId: query.oportunidadeId }
+          : {}),
         ...(query.status ? { status: query.status } : {}),
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
         ...(query.search
@@ -153,7 +184,10 @@ export class OrcamentosService {
             }
           : {}),
       };
-      const sortField = query.sortBy && SORT_FIELDS.has(query.sortBy) ? query.sortBy : 'createdAt';
+      const sortField =
+        query.sortBy && SORT_FIELDS.has(query.sortBy)
+          ? query.sortBy
+          : 'createdAt';
       const [data, total] = await Promise.all([
         tx.orcamento.findMany({
           where,
@@ -188,9 +222,19 @@ export class OrcamentosService {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
       this.garantirVendedorNoEscopo(escopo, input.vendedorId);
-      await this.garantirClienteNoEscopo(tx, empresaId, escopo, input.clienteId);
+      await this.garantirClienteNoEscopo(
+        tx,
+        empresaId,
+        escopo,
+        input.clienteId,
+      );
       if (input.oportunidadeId) {
-        await this.garantirOportunidadeNoEscopo(tx, empresaId, escopo, input.oportunidadeId);
+        await this.garantirOportunidadeNoEscopo(
+          tx,
+          empresaId,
+          escopo,
+          input.oportunidadeId,
+        );
       }
 
       const { itens, ...header } = input;
@@ -228,7 +272,12 @@ export class OrcamentosService {
     });
   }
 
-  async update(empresaId: string, user: AuthenticatedUser, id: string, input: OrcamentoUpdate) {
+  async update(
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+    input: OrcamentoUpdate,
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
       const orcamento = await tx.orcamento.findFirst({
@@ -243,11 +292,31 @@ export class OrcamentosService {
       if (orcamento.status === 'aprovado') {
         throw new ConflictException('Orçamento aprovado não pode ser alterado');
       }
+      // Vencido é registro histórico: não se altera nem se aprova ("efetiva").
+      // O caminho para reaproveitá-lo é copiar, que gera um novo orçamento com
+      // validade reiniciada.
+      if (orcamento.status === 'expirado') {
+        throw new ConflictException(
+          'Orçamento vencido não pode ser alterado — faça uma cópia para gerar um novo',
+        );
+      }
 
-      if (input.vendedorId) this.garantirVendedorNoEscopo(escopo, input.vendedorId);
-      if (input.clienteId) await this.garantirClienteNoEscopo(tx, empresaId, escopo, input.clienteId);
+      if (input.vendedorId)
+        this.garantirVendedorNoEscopo(escopo, input.vendedorId);
+      if (input.clienteId)
+        await this.garantirClienteNoEscopo(
+          tx,
+          empresaId,
+          escopo,
+          input.clienteId,
+        );
       if (input.oportunidadeId) {
-        await this.garantirOportunidadeNoEscopo(tx, empresaId, escopo, input.oportunidadeId);
+        await this.garantirOportunidadeNoEscopo(
+          tx,
+          empresaId,
+          escopo,
+          input.oportunidadeId,
+        );
       }
 
       const { itens, ...header } = input;
@@ -276,7 +345,8 @@ export class OrcamentosService {
 
       const dataRetornoMudou =
         header.dataRetorno != null &&
-        (!orcamento.dataRetorno || header.dataRetorno.getTime() !== orcamento.dataRetorno.getTime());
+        (!orcamento.dataRetorno ||
+          header.dataRetorno.getTime() !== orcamento.dataRetorno.getTime());
       if (dataRetornoMudou) {
         await criarAtividadeRetorno(tx, empresaId, user.id, {
           orcamentoId: atualizado.id,

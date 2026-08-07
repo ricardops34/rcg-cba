@@ -23,6 +23,7 @@ import { autorIntegracao } from '../common/autor-integracao';
 const INCLUDE = {
   vendedor: { select: { codigoErp: true } },
   tabelaPreco: { select: { codigoErp: true } },
+  condicaoPagamento: { select: { codigoErp: true } },
 } satisfies Prisma.ClienteInclude;
 type ClienteComRelacoes = Prisma.ClienteGetPayload<{ include: typeof INCLUDE }>;
 
@@ -58,6 +59,7 @@ export class IntegracaoClientesService {
       longitude: row.longitude,
       vendedorCodigo: row.vendedor?.codigoErp ?? null,
       tabelaPrecoCodigo: row.tabelaPreco?.codigoErp ?? null,
+      condicaoPagamentoCodigo: row.condicaoPagamento?.codigoErp ?? null,
       ativo: row.ativo,
       carteira: row.carteira,
       site: row.site,
@@ -151,6 +153,11 @@ export class IntegracaoClientesService {
         empresaId,
         input.tabelaPrecoCodigo,
       );
+      const condicaoPagamentoId = await this.resolverCondicaoPagamento(
+        tx,
+        empresaId,
+        input.condicaoPagamentoCodigo,
+      );
 
       const criado = await tx.cliente.create({
         data: {
@@ -180,6 +187,7 @@ export class IntegracaoClientesService {
           longitude: input.longitude ?? null,
           vendedorId,
           tabelaPrecoId,
+          condicaoPagamentoId,
           ativo: input.ativo,
           carteira: input.carteira ?? null,
           site: input.site ?? null,
@@ -229,6 +237,14 @@ export class IntegracaoClientesService {
               input.tabelaPrecoCodigo,
             )
           : undefined;
+      const condicaoPagamentoId =
+        input.condicaoPagamentoCodigo !== undefined
+          ? await this.resolverCondicaoPagamento(
+              tx,
+              empresaId,
+              input.condicaoPagamentoCodigo,
+            )
+          : undefined;
 
       const camposDiretos = [
         'tipoPessoa',
@@ -275,6 +291,8 @@ export class IntegracaoClientesService {
       }
       if (vendedorId !== undefined) data.vendedorId = vendedorId;
       if (tabelaPrecoId !== undefined) data.tabelaPrecoId = tabelaPrecoId;
+      if (condicaoPagamentoId !== undefined)
+        data.condicaoPagamentoId = condicaoPagamentoId;
 
       const atualizado = await tx.cliente.update({
         where: { id: existente.id },
@@ -333,5 +351,22 @@ export class IntegracaoClientesService {
         `tabelaPrecoCodigo '${codigo}' não encontrado`,
       );
     return tabela.id;
+  }
+
+  private async resolverCondicaoPagamento(
+    tx: TenantTx,
+    empresaId: string,
+    codigo: string | null | undefined,
+  ) {
+    if (!codigo) return null;
+    const condicao = await tx.condicaoPagamento.findFirst({
+      where: { empresaId, codigoErp: codigo, deletedAt: null },
+      select: { id: true },
+    });
+    if (!condicao)
+      throw new NotFoundException(
+        `condicaoPagamentoCodigo '${codigo}' não encontrado`,
+      );
+    return condicao.id;
   }
 }

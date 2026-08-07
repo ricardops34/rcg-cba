@@ -13,6 +13,7 @@ import {
   type ClienteCamposConfig,
   type ClienteCreate,
   type ClienteUpdate,
+  type CondicaoPagamento,
   type TabelaPreco,
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
@@ -96,6 +97,15 @@ export function ClienteFormContent({
   });
   const opcoesTabelaPreco = tabelasPrecoQuery.data?.data ?? [];
 
+  const condicoesPagamentoQuery = useQuery({
+    queryKey: ["condicoes-pagamento", "select"],
+    queryFn: () =>
+      apiFetch<{ data: CondicaoPagamento[] }>("/condicoes-pagamento", {
+        query: { pageSize: 100, ativo: true },
+      }),
+  });
+  const opcoesCondicaoPagamento = condicoesPagamentoQuery.data?.data ?? [];
+
   // Quais campos a opção "Alterar Cliente" permite editar (Admin > Campos do
   // Cliente) — campo sem configuração prévia é considerado editável.
   const camposConfigQuery = useQuery({
@@ -131,6 +141,7 @@ export function ClienteFormContent({
     longitude: null,
     vendedorId: null,
     tabelaPrecoId: null,
+    condicaoPagamentoId: null,
     ativo: true,
     carteira: null,
     site: "",
@@ -171,6 +182,7 @@ export function ClienteFormContent({
           longitude: cliente.longitude ?? null,
           vendedorId: cliente.vendedorId ?? null,
           tabelaPrecoId: cliente.tabelaPrecoId ?? null,
+          condicaoPagamentoId: cliente.condicaoPagamentoId ?? null,
           ativo: cliente.ativo,
           carteira: cliente.carteira ?? null,
           site: cliente.site ?? "",
@@ -479,6 +491,26 @@ export function ClienteFormContent({
               {opcoesTabelaPreco.map((t) => (
                 <SelectItem key={t.id} value={t.id}>
                   {t.descricao}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="condicaoPagamentoId">Condição de pagamento</FieldLabel>
+          <Select
+            value={form.watch("condicaoPagamentoId") ?? "none"}
+            onValueChange={(v) => form.setValue("condicaoPagamentoId", v === "none" ? null : v)}
+            disabled={desabilitado("condicaoPagamentoId")}
+          >
+            <SelectTrigger id="condicaoPagamentoId" className="w-full">
+              <SelectValue placeholder="Sem condição de pagamento" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Sem condição de pagamento</SelectItem>
+              {opcoesCondicaoPagamento.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.descricao}
                 </SelectItem>
               ))}
             </SelectContent>

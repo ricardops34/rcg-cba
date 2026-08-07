@@ -308,6 +308,13 @@ export const integracaoClienteCreateSchema = z.object({
   longitude: z.coerce.number().min(-180).max(180).nullable().optional(),
   vendedorCodigo: z.string().trim().max(30).nullable().optional().describe("codigoErp do vendedor"),
   tabelaPrecoCodigo: z.string().trim().max(30).nullable().optional().describe("codigoErp da tabela de preço"),
+  condicaoPagamentoCodigo: z
+    .string()
+    .trim()
+    .max(30)
+    .nullable()
+    .optional()
+    .describe("codigoErp da condição de pagamento padrão"),
   ativo: z.boolean().default(true),
   carteira: z.boolean().nullable().optional(),
   site: z.string().trim().max(150).nullable().optional(),
@@ -368,6 +375,7 @@ export const INTEGRACAO_CLIENTE_CREATE_EXAMPLE: IntegracaoClienteCreate = {
   longitude: null,
   vendedorCodigo: "000234",
   tabelaPrecoCodigo: "001",
+  condicaoPagamentoCodigo: "001",
   ativo: true,
   carteira: true,
   site: null,

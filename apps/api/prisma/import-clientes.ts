@@ -12,6 +12,9 @@
  *   Vendedor.codigoErp (Postgres).
  * - Import de Tabelas de Preço já rodado (import-tabela-preco.ts) — mesmo
  *   esquema de casamento por cod_erp, pro tabela_preco_id do legado.
+ * - Import de Condições de Pagamento já rodado (import-auxiliares.ts) —
+ *   mesmo esquema de casamento por cod_erp, pro condicao_pagamento_id do
+ *   legado.
  * - MySQL do dump legado acessível (serviço `mysql` do
  *   docker-compose.dev.yml; vars MYSQL_* no .env, ver .env.example).
  *
@@ -20,7 +23,7 @@
  * Dentro do container api (MySQL na rede do compose):
  *   MYSQL_HOST=mysql MYSQL_PORT=3306 pnpm --filter @plataforma/api exec ts-node prisma/import-clientes.ts
  */
-import { PrismaClient, type Prisma, type TipoPessoa } from '@prisma/client';
+import { PrismaClient, type Prisma } from '@prisma/client';
 import * as mysql from 'mysql2/promise';
 
 const prisma = new PrismaClient();
@@ -85,6 +88,7 @@ interface LegadoCliente {
   email: string | null;
   vendedor_id: number | null;
   tabela_preco_id: number | null;
+  condicao_pagamento_id: number | null;
   primeira_compra: string | null;
   ultima_visita: string | null;
   seguimento_id: number | null;
@@ -114,6 +118,11 @@ interface LegadoTabelaPrecoRef {
   cod_erp: string | null;
 }
 
+interface LegadoCondicaoPagamentoRef {
+  id: number;
+  cod_erp: string | null;
+}
+
 /** '' e espaços viram null; demais strings são trimadas. */
 const texto = (v: string | null | undefined): string | null => {
   if (v == null) return null;
@@ -136,10 +145,11 @@ function mapearCliente(
   c: LegadoCliente,
   vendedorId: string | null,
   tabelaPrecoId: string | null,
+  condicaoPagamentoId: string | null,
 ): Omit<Prisma.ClienteUncheckedCreateInput, 'empresaId' | 'codigoErp'> {
   return {
     ativo: c.status !== 'B',
-    tipoPessoa: (c.tipo === 'F' ? 'fisica' : 'juridica') as TipoPessoa,
+    tipoPessoa: c.tipo === 'F' ? 'fisica' : 'juridica',
     razaoSocial: c.razao.trim(),
     nomeFantasia: texto(c.fantasia),
     cnpjCpf: texto(c.cnpj_cpf),
@@ -163,6 +173,7 @@ function mapearCliente(
     longitude: c.longitude,
     vendedorId,
     tabelaPrecoId,
+    condicaoPagamentoId,
     carteira: simNao(c.carteira),
     site: texto(c.site),
     limiteCredito: c.limite,
@@ -188,12 +199,23 @@ async function main() {
 
   const [clientesRows] = await conexao.query('SELECT * FROM cliente');
   const clientes = clientesRows as LegadoCliente[];
-  const [vendedoresRows] = await conexao.query('SELECT id, cod_erp FROM vendedor');
+  const [vendedoresRows] = await conexao.query(
+    'SELECT id, cod_erp FROM vendedor',
+  );
   const vendedoresLegado = vendedoresRows as LegadoVendedorRef[];
-  const [tabelasPrecoRows] = await conexao.query('SELECT id, cod_erp FROM tabela_preco');
+  const [tabelasPrecoRows] = await conexao.query(
+    'SELECT id, cod_erp FROM tabela_preco',
+  );
   const tabelasPrecoLegado = tabelasPrecoRows as LegadoTabelaPrecoRef[];
+  const [condicoesPagamentoRows] = await conexao.query(
+    'SELECT id, cod_erp FROM condicao_pagamento',
+  );
+  const condicoesPagamentoLegado =
+    condicoesPagamentoRows as LegadoCondicaoPagamentoRef[];
   await conexao.end();
-  console.log(`Legado: ${clientes.length} clientes, ${vendedoresLegado.length} vendedores.`);
+  console.log(
+    `Legado: ${clientes.length} clientes, ${vendedoresLegado.length} vendedores.`,
+  );
 
   // id do vendedor no legado → cod_erp (chave de casamento com o cadastro novo).
   const vendedorLegadoCodErp = new Map<number, string>();
@@ -210,6 +232,15 @@ async function main() {
     if (codErp) tabelaPrecoLegadoCodErp.set(t.id, codErp);
   }
 
+  // id da condição de pagamento no legado → cod_erp (idem, pra resolver
+  // cliente.condicao_pagamento_id contra o cadastro novo de Condição de
+  // Pagamento).
+  const condicaoPagamentoLegadoCodErp = new Map<number, string>();
+  for (const cp of condicoesPagamentoLegado) {
+    const codErp = texto(cp.cod_erp);
+    if (codErp) condicaoPagamentoLegadoCodErp.set(cp.id, codErp);
+  }
+
   // Agrupa por empresa de destino (falha alto em filial_id desconhecido).
   const porAlias = new Map<string, LegadoCliente[]>();
   for (const c of clientes) {
@@ -222,7 +253,9 @@ async function main() {
   for (const [alias, grupo] of porAlias) {
     const empresa = await prisma.empresa.findUnique({ where: { alias } });
     if (!empresa) {
-      throw new Error(`Empresa com alias "${alias}" não encontrada — rode o seed antes.`);
+      throw new Error(
+        `Empresa com alias "${alias}" não encontrada — rode o seed antes.`,
+      );
     }
     const empresaId = empresa.id;
 
@@ -233,42 +266,71 @@ async function main() {
       async (tx) => {
         await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${empresaId}, true)`;
 
-        const [vendedoresNovos, tabelasPrecoNovas] = await Promise.all([
-          tx.vendedor.findMany({
-            where: { empresaId, deletedAt: null, codigoErp: { not: null } },
-            select: { id: true, codigoErp: true },
-          }),
-          tx.tabelaPreco.findMany({
-            where: { empresaId, deletedAt: null },
-            select: { id: true, codigoErp: true },
-          }),
-        ]);
+        const [vendedoresNovos, tabelasPrecoNovas, condicoesPagamentoNovas] =
+          await Promise.all([
+            tx.vendedor.findMany({
+              where: { empresaId, deletedAt: null, codigoErp: { not: null } },
+              select: { id: true, codigoErp: true },
+            }),
+            tx.tabelaPreco.findMany({
+              where: { empresaId, deletedAt: null },
+              select: { id: true, codigoErp: true },
+            }),
+            tx.condicaoPagamento.findMany({
+              where: { empresaId, deletedAt: null },
+              select: { id: true, codigoErp: true },
+            }),
+          ]);
         const codErpParaVendedorId = new Map(
           vendedoresNovos.map((v) => [v.codigoErp as string, v.id]),
         );
         const codErpParaTabelaPrecoId = new Map(
           tabelasPrecoNovas.map((t) => [t.codigoErp, t.id]),
         );
+        const codErpParaCondicaoPagamentoId = new Map(
+          condicoesPagamentoNovas.map((cp) => [cp.codigoErp, cp.id]),
+        );
 
         let semVendedor = 0;
         let semTabelaPreco = 0;
+        let semCondicaoPagamento = 0;
         const upserts = grupo.map((c) => {
           const codErpVendedor =
-            c.vendedor_id != null ? vendedorLegadoCodErp.get(c.vendedor_id) : undefined;
+            c.vendedor_id != null
+              ? vendedorLegadoCodErp.get(c.vendedor_id)
+              : undefined;
           const vendedorId = codErpVendedor
             ? (codErpParaVendedorId.get(codErpVendedor) ?? null)
             : null;
           if (c.vendedor_id != null && !vendedorId) semVendedor++;
 
           const codErpTabelaPreco =
-            c.tabela_preco_id != null ? tabelaPrecoLegadoCodErp.get(c.tabela_preco_id) : undefined;
+            c.tabela_preco_id != null
+              ? tabelaPrecoLegadoCodErp.get(c.tabela_preco_id)
+              : undefined;
           const tabelaPrecoId = codErpTabelaPreco
             ? (codErpParaTabelaPrecoId.get(codErpTabelaPreco) ?? null)
             : null;
           if (c.tabela_preco_id != null && !tabelaPrecoId) semTabelaPreco++;
 
+          const codErpCondicaoPagamento =
+            c.condicao_pagamento_id != null
+              ? condicaoPagamentoLegadoCodErp.get(c.condicao_pagamento_id)
+              : undefined;
+          const condicaoPagamentoId = codErpCondicaoPagamento
+            ? (codErpParaCondicaoPagamentoId.get(codErpCondicaoPagamento) ??
+              null)
+            : null;
+          if (c.condicao_pagamento_id != null && !condicaoPagamentoId)
+            semCondicaoPagamento++;
+
           const codigoErp = texto(c.cod_erp) ?? `LEGADO-${c.id}`;
-          const dados = mapearCliente(c, vendedorId, tabelaPrecoId);
+          const dados = mapearCliente(
+            c,
+            vendedorId,
+            tabelaPrecoId,
+            condicaoPagamentoId,
+          );
           return { codigoErp, dados };
         });
 
@@ -294,6 +356,9 @@ async function main() {
               : '') +
             (semTabelaPreco
               ? `; ${semTabelaPreco} com tabela_preco_id do legado sem correspondência no cadastro novo (ficaram sem tabela de preço)`
+              : '') +
+            (semCondicaoPagamento
+              ? `; ${semCondicaoPagamento} com condicao_pagamento_id do legado sem correspondência no cadastro novo (ficaram sem condição de pagamento)`
               : ''),
         );
       },

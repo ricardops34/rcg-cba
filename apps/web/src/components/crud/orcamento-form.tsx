@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import {
   orcamentoCreateSchema,
   orcamentoUpdateSchema,
+  type Cliente,
   type CondicaoPagamento,
   type Oportunidade,
   type Orcamento,
@@ -20,9 +21,11 @@ import {
   type StatusOrcamento,
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
-import { apiFetch, ApiError } from "@/lib/api-client";
+import { apiFetch, ApiError, assetUrl } from "@/lib/api-client";
+import { gerarOrcamentoPdf } from "@/lib/orcamento-pdf";
+import { useAuthStore } from "@/stores/auth-store";
 import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
-import { STATUS_ORCAMENTO } from "@/components/crud/orcamento-status";
+import { STATUS_ORCAMENTO, STATUS_ORCAMENTO_LABEL } from "@/components/crud/orcamento-status";
 import { ClienteCombobox } from "@/components/crud/cliente-combobox";
 import { ProdutoCombobox } from "@/components/crud/produto-combobox";
 import { Button } from "@/components/ui/button";
@@ -37,7 +40,18 @@ import { ResizableSheetContent } from "@/components/ui/resizable-sheet-content";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusDot } from "@/components/crud/status-dot";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { SortableTableHead } from "@/components/crud/sortable-table-head";
+import { OrcamentoTimeline } from "@/components/crud/orcamento-timeline";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Clock,
+  Copy,
+  FileDown,
+  MinusCircle,
+  Plus,
+  Trash2,
+} from "lucide-react";
 
 const LIST_ROUTE = "/crm/orcamentos";
 
@@ -47,6 +61,20 @@ const dateToInput = (v: unknown) => {
   return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
 };
 const inputToDate = (v: unknown) => (v === "" || v == null ? null : new Date(`${v}T00:00:00`));
+/**
+ * Par date<->input do campo Data de retorno, que é datetime-local (a hora vai
+ * pro vencimento da Atividade de acompanhamento gerada pelo backend, então
+ * aparece no horário certo na Agenda). Formata com os getters locais de
+ * propósito: `toISOString()` converteria pra UTC e deslocaria a hora exibida.
+ */
+const dateTimeToInput = (v: unknown) => {
+  if (!v) return "";
+  const d = new Date(v as string);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+const inputToDateTime = (v: unknown) => (v === "" || v == null ? null : new Date(v as string));
 const moeda = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
 const percentual = (v: number | null | undefined) =>
@@ -58,6 +86,42 @@ const dataBr = (v: string | null | undefined) => {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
 };
+const dataHoraBr = (v: string | null | undefined) => {
+  if (!v) return "—";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("pt-BR");
+};
+
+/**
+ * Situação do orçamento perante o ERP, pra aba "Aprovação e integração" —
+ * mesmos três estados do ícone da listagem de Orçamentos: só aprovado fica
+ * disponível pro ERP puxar; codigoLegado preenchido = já vinculado lá.
+ */
+function situacaoIntegracao(orcamento: Orcamento) {
+  if (orcamento.status !== "aprovado") {
+    return {
+      icone: MinusCircle,
+      classe: "border-border/70 bg-muted/40 text-muted-foreground",
+      titulo: "Ainda não disponível para o ERP",
+      descricao: "O orçamento só é enviado ao ERP depois de aprovado.",
+    };
+  }
+  if (orcamento.codigoLegado != null) {
+    return {
+      icone: CheckCircle2,
+      classe:
+        "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+      titulo: "Integrado ao ERP",
+      descricao: `Importado pelo ERP com o código ${orcamento.codigoLegado}.`,
+    };
+  }
+  return {
+    icone: Clock,
+    classe: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+    titulo: "Aprovado — aguardando integração",
+    descricao: "Disponível para o ERP importar; o código será preenchido no vínculo.",
+  };
+}
 
 /**
  * Input mascarado no padrão "dígitos viram centavos" (ex.: digitar 4600 exibe
@@ -102,6 +166,44 @@ interface LinhaInfo {
   saldoEstoque: number | null;
 }
 
+/** Colunas ordenáveis da aba Mix (ordenação client-side, ver `mixVisivel`). */
+type MixSortKey =
+  | "codigoErp"
+  | "descricao"
+  | "ultimaCompra"
+  | "ultimoPrecoUnitario"
+  | "ultimoDesconto"
+  | "precoTabela"
+  | "ativo";
+
+/**
+ * Comparador de duas linhas do mix já na direção pedida. Valor nulo vai
+ * sempre pro fim, nas duas direções — "sem última compra"/"sem preço" não
+ * deve disputar o topo da lista ao inverter a ordenação.
+ */
+function compararMix(
+  a: PosicaoClienteMix,
+  b: PosicaoClienteMix,
+  key: MixSortKey,
+  order: "asc" | "desc",
+): number {
+  const sinal = order === "asc" ? 1 : -1;
+  if (key === "codigoErp" || key === "descricao") {
+    return a[key].localeCompare(b[key], "pt-BR") * sinal;
+  }
+  if (key === "ativo") {
+    return (Number(a.ativo) - Number(b.ativo)) * sinal;
+  }
+  const valor = (m: PosicaoClienteMix) =>
+    key === "ultimaCompra" ? (m.ultimaCompra ? new Date(m.ultimaCompra).getTime() : null) : m[key];
+  const va = valor(a);
+  const vb = valor(b);
+  if (va == null && vb == null) return 0;
+  if (va == null) return 1;
+  if (vb == null) return -1;
+  return (va - vb) * sinal;
+}
+
 /**
  * Corpo do formulário de orçamento (cartão + campos) — usado tanto na página
  * cheia (`OrcamentoForm`) quanto na cortina lateral (`OrcamentoSheet`, aberta
@@ -119,6 +221,7 @@ export function OrcamentoFormContent({
   onClose: () => void;
 }) {
   const { create, update } = useResourceMutations<OrcamentoCreate, OrcamentoUpdate>("orcamentos");
+  const queryClient = useQueryClient();
   const [infoPorLinha, setInfoPorLinha] = useState<(LinhaInfo | null)[]>(
     orcamento
       ? orcamento.itens.map((i) => ({ vlrTabela: i.vlrTabela, saldoEstoque: null }))
@@ -184,20 +287,60 @@ export function OrcamentoFormContent({
   const vendedorId = form.watch("vendedorId");
   const status = form.watch("status");
 
-  // Orçamento aprovado é imutável — o servidor já recusa a alteração
-  // (ConflictException), isso aqui só trava a UI pra não deixar tentar.
-  const bloqueado = orcamento?.status === "aprovado";
+  /**
+   * Registro já gravado: o que veio por prop (edição) ou o que acabou de ser
+   * salvo aqui pelo "Salvar" (sem fechar). É ele que libera PDF, Histórico e
+   * Aprovação/integração — e que faz o próximo salvamento virar uma alteração
+   * em vez de cadastrar um segundo orçamento.
+   */
+  const [salvoNaSessao, setSalvoNaSessao] = useState<Orcamento | null>(null);
+  /**
+   * Modo cópia: o formulário volta a se comportar como cadastro novo (mesmo
+   * cliente/itens, validade reiniciada), sem tocar no orçamento de origem.
+   */
+  const [copiando, setCopiando] = useState(false);
+  const registro = copiando ? null : (salvoNaSessao ?? orcamento ?? null);
 
-  // Ao criar (não editar), pré-seleciona o próprio vendedor do usuário
-  // logado, se houver vínculo — só na primeira carga.
+  // Aprovado e vencido são imutáveis — o servidor já recusa a alteração
+  // (ConflictException), isso aqui só trava a UI pra não deixar tentar. Vencido
+  // também não pode ser efetivado; o caminho é copiar.
+  const bloqueado = registro?.status === "aprovado" || registro?.status === "expirado";
+
+  // Ao criar vindo de "Incluir Orçamento" (Posição de Cliente ou ?clienteId=
+  // na URL), busca o cliente pré-selecionado pra ler o vendedor cadastrado
+  // nele (mesma queryKey do ClienteCombobox, reaproveita o cache).
+  const clienteIdPadraoQuery = useQuery({
+    queryKey: ["clientes", clienteIdPadrao],
+    queryFn: () => apiFetch<Cliente>(`/clientes/${clienteIdPadrao}`),
+    enabled: !orcamento && !!clienteIdPadrao,
+  });
+
+  // Ao criar (não editar), pré-seleciona o vendedor cadastrado no cliente
+  // informado (clienteIdPadrao); sem cliente pré-selecionado, cai pro
+  // próprio vendedor do usuário logado, se houver vínculo — só na primeira
+  // carga.
   const [vendedorPadraoAplicado, setVendedorPadraoAplicado] = useState(false);
   const meuVendedorId = vendedoresEscopoQuery.data?.meuVendedorId;
+  const vendedorDoClientePadrao = clienteIdPadraoQuery.data?.vendedorId;
   useEffect(() => {
-    if (!orcamento && !vendedorPadraoAplicado && meuVendedorId) {
-      form.setValue("vendedorId", meuVendedorId);
+    if (orcamento || vendedorPadraoAplicado) return;
+    // Aguarda o cliente carregar antes de decidir — exceto se a busca falhou
+    // (ex.: sem permissão clientes.visualizar), aí cai direto pro fallback.
+    if (clienteIdPadrao && clienteIdPadraoQuery.isPending) return;
+    const vendedorPadrao = vendedorDoClientePadrao || meuVendedorId;
+    if (vendedorPadrao) {
+      form.setValue("vendedorId", vendedorPadrao);
       setVendedorPadraoAplicado(true);
     }
-  }, [orcamento, vendedorPadraoAplicado, meuVendedorId, form]);
+  }, [
+    orcamento,
+    vendedorPadraoAplicado,
+    clienteIdPadrao,
+    clienteIdPadraoQuery.isPending,
+    vendedorDoClientePadrao,
+    meuVendedorId,
+    form,
+  ]);
 
   // Ao criar vindo de "Incluir Orçamento" (Posição de Cliente ou ?clienteId=
   // na URL), pré-seleciona o cliente informado — só na primeira carga.
@@ -222,6 +365,48 @@ export function OrcamentoFormContent({
       setValidadePadraoAplicada(true);
     }
   }, [orcamento, validadePadraoAplicada, diasValidade, form]);
+
+  // Ao criar, sugere "Data de retorno" = "Válido até", acompanhando essa data
+  // enquanto o vendedor não mexer manualmente no campo de retorno.
+  const [retornoTocado, setRetornoTocado] = useState(false);
+  const dataValidadeAtual = form.watch("dataValidade");
+  useEffect(() => {
+    if (!orcamento && !retornoTocado) {
+      form.setValue("dataRetorno", dataValidadeAtual ?? null);
+    }
+  }, [orcamento, retornoTocado, dataValidadeAtual, form]);
+
+  // Cadastro completo do cliente escolhido (mesma queryKey do ClienteCombobox,
+  // reaproveita o cache) — fonte dos padrões de Título/Condição de pagamento
+  // abaixo (só ao criar) e dos dados de cliente do PDF (só ao editar).
+  const clienteSelecionadoQuery = useQuery({
+    queryKey: ["clientes", clienteId],
+    queryFn: () => apiFetch<Cliente>(`/clientes/${clienteId}`),
+    enabled: !!clienteId,
+  });
+
+  // Ao criar, sugere "Título" = "Orçamento Cliente <nome fantasia>", acompanhando
+  // o cliente escolhido enquanto o vendedor não mexer manualmente no título.
+  const [tituloTocado, setTituloTocado] = useState(false);
+  const nomeClienteSelecionado =
+    clienteSelecionadoQuery.data?.nomeFantasia || clienteSelecionadoQuery.data?.razaoSocial;
+  useEffect(() => {
+    if (!orcamento && !tituloTocado && nomeClienteSelecionado) {
+      form.setValue("titulo", `Orçamento Cliente ${nomeClienteSelecionado}`);
+    }
+  }, [orcamento, tituloTocado, nomeClienteSelecionado, form]);
+  const tituloReg = form.register("titulo");
+
+  // Ao criar, sugere "Condição de pagamento" = a cadastrada no cliente,
+  // acompanhando o cliente escolhido enquanto o vendedor não mexer
+  // manualmente no campo.
+  const [condicaoPagamentoTocada, setCondicaoPagamentoTocada] = useState(false);
+  const condicaoPagamentoDoCliente = clienteSelecionadoQuery.data?.condicaoPagamentoId;
+  useEffect(() => {
+    if (!orcamento && !condicaoPagamentoTocada && clienteSelecionadoQuery.data) {
+      form.setValue("condicaoPagamentoId", condicaoPagamentoDoCliente ?? null);
+    }
+  }, [orcamento, condicaoPagamentoTocada, clienteSelecionadoQuery.data, condicaoPagamentoDoCliente, form]);
 
   // Ao editar, busca o saldo de estoque dos itens já salvos — só na primeira
   // carga (preco-produto não é chamado de novo pra vlrTabela/vlrUnitario,
@@ -271,6 +456,53 @@ export function OrcamentoFormContent({
   });
   const mix = mixQuery.data ?? [];
   const mixPorProduto = new Map(mix.map((m) => [m.produtoId, m]));
+
+  const integracao = registro ? situacaoIntegracao(registro) : null;
+
+  // Proposta em PDF — só pra orçamento já salvo: os itens só carregam produto
+  // (código/descrição/unidade) e total consolidado depois de gravados.
+  const usuario = useAuthStore((s) => s.user);
+  const empresaAtiva = usuario?.empresas.find((e) => e.empresaId === usuario.empresaAtivaId);
+  const [gerandoPdf, setGerandoPdf] = useState(false);
+  const baixarPdf = async () => {
+    if (!registro) return;
+    setGerandoPdf(true);
+    try {
+      await gerarOrcamentoPdf({
+        orcamento: registro,
+        cliente: clienteSelecionadoQuery.data,
+        empresaNome: empresaAtiva?.nomeFantasia,
+        empresaLogoUrl: assetUrl(empresaAtiva?.logoUrl),
+      });
+    } catch {
+      toast.error("Não foi possível gerar o PDF do orçamento");
+    } finally {
+      setGerandoPdf(false);
+    }
+  };
+
+  // Busca/ordenação da aba Mix acontecem no cliente: a rota devolve o mix
+  // inteiro de uma vez (sem paginação), então não vale ida ao servidor.
+  const [mixBusca, setMixBusca] = useState("");
+  const [mixSortBy, setMixSortBy] = useState<MixSortKey>("ultimaCompra");
+  const [mixSortOrder, setMixSortOrder] = useState<"asc" | "desc">("desc");
+  const ordenarMix = (key: MixSortKey) => {
+    if (mixSortBy !== key) {
+      setMixSortBy(key);
+      setMixSortOrder("asc");
+    } else {
+      setMixSortOrder(mixSortOrder === "asc" ? "desc" : "asc");
+    }
+  };
+  const termoMix = mixBusca.trim().toLowerCase();
+  const mixVisivel = [...mix]
+    .filter(
+      (m) =>
+        !termoMix ||
+        m.codigoErp.toLowerCase().includes(termoMix) ||
+        m.descricao.toLowerCase().includes(termoMix),
+    )
+    .sort((a, b) => compararMix(a, b, mixSortBy, mixSortOrder));
 
   const adicionarItem = () => {
     linhas.append({ produtoId: "", quantidade: 1, vlrUnitario: 0 });
@@ -346,35 +578,92 @@ export function OrcamentoFormContent({
     }
   };
 
-  const onSubmit = async (values: OrcamentoCreate) => {
+  /**
+   * Grava o orçamento e, quando `fechar` é false, permanece no formulário com
+   * o registro recém-salvo — é o que permite cadastrar e emitir o PDF / abrir
+   * as abas de Histórico e Integração sem sair da tela.
+   *
+   * A resposta do POST/PATCH é o próprio orçamento (com itens e total já
+   * consolidados pelo servidor); useResourceMutations não é tipado no retorno,
+   * daí o cast.
+   */
+  const salvar = async (values: OrcamentoCreate, fechar: boolean) => {
     try {
-      if (orcamento) {
-        await update.mutateAsync({ id: orcamento.id, input: values });
-        toast.success("Orçamento atualizado");
-      } else {
-        await create.mutateAsync(values);
-        toast.success("Orçamento cadastrado");
-      }
-      onClose();
+      const salvo = registro
+        ? ((await update.mutateAsync({ id: registro.id, input: values })) as Orcamento)
+        : ((await create.mutateAsync(values)) as Orcamento);
+      setSalvoNaSessao(salvo);
+      setCopiando(false);
+      // A data de retorno gera/atualiza uma Atividade de acompanhamento no
+      // backend — sem invalidar, a aba Histórico e a Agenda ficariam com o
+      // cache anterior.
+      void queryClient.invalidateQueries({ queryKey: ["atividades"] });
+      toast.success(registro ? "Orçamento atualizado" : "Orçamento cadastrado");
+      if (fechar) onClose();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Erro ao salvar orçamento");
     }
   };
 
+  /**
+   * Copia o orçamento para um novo cadastro: mantém cliente, vendedor e itens
+   * já carregados no formulário, reinicia a validade (hoje + diasValidade do
+   * parâmetro de sistema) e volta o status pra rascunho. É o caminho para
+   * reaproveitar um orçamento vencido, que não pode mais ser alterado.
+   */
+  const copiar = () => {
+    setCopiando(true);
+    setSalvoNaSessao(null);
+    form.setValue("status", "rascunho");
+    if (diasValidade != null) {
+      const validade = new Date();
+      validade.setDate(validade.getDate() + diasValidade);
+      form.setValue("dataValidade", validade);
+      if (!retornoTocado) form.setValue("dataRetorno", validade);
+    }
+    toast.info("Cópia iniciada — revise os dados e salve para gerar um novo orçamento.");
+  };
+
   return (
     <Card>
-      <form id="orcamento-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
+      <form
+        id="orcamento-form"
+        onSubmit={form.handleSubmit((v) => salvar(v, true))}
+        noValidate
+      >
         <CardContent>
           {bloqueado && (
             <p className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
-              Orçamento aprovado — não pode mais ser alterado.
+              {registro?.status === "expirado"
+                ? "Orçamento vencido — não pode ser alterado nem efetivado. Use “Copiar” para gerar um novo com a validade reiniciada."
+                : "Orçamento aprovado — não pode mais ser alterado."}
             </p>
           )}
           <fieldset disabled={bloqueado} className="m-0 min-w-0 border-0 p-0">
-          <FieldGroup>
+          <Tabs defaultValue="orcamento">
+            <TabsList>
+              <TabsTrigger value="orcamento">Orçamento</TabsTrigger>
+              <TabsTrigger value="itens">Itens ({linhas.fields.length})</TabsTrigger>
+              <TabsTrigger value="mix">Mix de produtos ({mix.length})</TabsTrigger>
+              {/* O histórico é do cliente, então já vale antes de gravar. Já
+                  aprovação/integração só existe depois (status, codigoLegado e
+                  auditoria vêm do servidor). */}
+              {clienteId && <TabsTrigger value="historico">Histórico</TabsTrigger>}
+              {registro && <TabsTrigger value="integracao">Aprovação e integração</TabsTrigger>}
+            </TabsList>
+
+            <TabsContent value="orcamento" className="space-y-4 pt-3">
+            <FieldGroup>
             <Field data-invalid={!!form.formState.errors.titulo}>
               <FieldLabel htmlFor="titulo">Título</FieldLabel>
-              <Input id="titulo" {...form.register("titulo")} />
+              <Input
+                id="titulo"
+                {...tituloReg}
+                onChange={(e) => {
+                  setTituloTocado(true);
+                  tituloReg.onChange(e);
+                }}
+              />
               <FieldError errors={[form.formState.errors.titulo]} />
             </Field>
 
@@ -384,6 +673,7 @@ export function OrcamentoFormContent({
                 <ClienteCombobox
                   value={form.watch("clienteId") || null}
                   onChange={(id) => form.setValue("clienteId", id ?? "")}
+                  disabled={!orcamento && !!clienteIdPadrao}
                 />
                 <FieldError errors={[form.formState.errors.clienteId]} />
               </Field>
@@ -438,9 +728,10 @@ export function OrcamentoFormContent({
                 <FieldLabel htmlFor="condicaoPagamentoId">Condição de pagamento</FieldLabel>
                 <Select
                   value={form.watch("condicaoPagamentoId") ?? "none"}
-                  onValueChange={(v) =>
-                    form.setValue("condicaoPagamentoId", v === "none" ? null : v)
-                  }
+                  onValueChange={(v) => {
+                    setCondicaoPagamentoTocada(true);
+                    form.setValue("condicaoPagamentoId", v === "none" ? null : v);
+                  }}
                 >
                   <SelectTrigger id="condicaoPagamentoId" className="w-full">
                     <SelectValue placeholder="Sem condição" />
@@ -486,12 +777,15 @@ export function OrcamentoFormContent({
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="dataRetorno">Data de retorno</FieldLabel>
+                <FieldLabel htmlFor="dataRetorno">Data e hora de retorno</FieldLabel>
                 <Input
                   id="dataRetorno"
-                  type="date"
-                  defaultValue={dateToInput(form.getValues("dataRetorno"))}
-                  onChange={(e) => form.setValue("dataRetorno", inputToDate(e.target.value))}
+                  type="datetime-local"
+                  value={dateTimeToInput(form.watch("dataRetorno"))}
+                  onChange={(e) => {
+                    setRetornoTocado(true);
+                    form.setValue("dataRetorno", inputToDateTime(e.target.value));
+                  }}
                 />
               </Field>
             </div>
@@ -509,14 +803,14 @@ export function OrcamentoFormContent({
               Orçamento ativo
             </label>
 
-            <div className="space-y-2 border-t border-border/70 pt-3">
-              <Tabs defaultValue="itens">
-                <TabsList>
-                  <TabsTrigger value="itens">Itens ({linhas.fields.length})</TabsTrigger>
-                  <TabsTrigger value="mix">Mix de produtos ({mix.length})</TabsTrigger>
-                </TabsList>
+            <Field>
+              <FieldLabel>Total</FieldLabel>
+              <div className="text-lg font-semibold">{moeda(totalCalculado)}</div>
+            </Field>
+            </FieldGroup>
+            </TabsContent>
 
-                <TabsContent value="itens" className="space-y-2">
+            <TabsContent value="itens" className="space-y-2 pt-3">
                   <div className="flex items-center justify-between">
                     <FieldLabel>Itens</FieldLabel>
                     <Button
@@ -642,7 +936,7 @@ export function OrcamentoFormContent({
                   )}
                 </TabsContent>
 
-                <TabsContent value="mix" className="space-y-2">
+                <TabsContent value="mix" className="space-y-2 pt-3">
                   {!clienteId && (
                     <p className="text-sm text-muted-foreground">Selecione um cliente primeiro.</p>
                   )}
@@ -655,24 +949,90 @@ export function OrcamentoFormContent({
                     </p>
                   )}
                   {mix.length > 0 && (
+                    <Input
+                      placeholder="Buscar produto por código ou descrição..."
+                      value={mixBusca}
+                      onChange={(e) => setMixBusca(e.target.value)}
+                      className="max-w-sm"
+                    />
+                  )}
+                  {mix.length > 0 && mixVisivel.length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      Nenhum produto do mix corresponde à busca.
+                    </p>
+                  )}
+                  {mixVisivel.length > 0 && (
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Código</TableHead>
-                          <TableHead>Descrição</TableHead>
-                          <TableHead>Última compra</TableHead>
-                          <TableHead className="text-right">Últ. preço</TableHead>
-                          <TableHead className="text-right">Últ. desconto</TableHead>
-                          <TableHead className="text-right">Preço tabela</TableHead>
-                          <TableHead>Situação</TableHead>
-                          <TableHead className="w-28" />
+                          <TableHead className="w-9" />
+                          <SortableTableHead
+                            label="Código"
+                            active={mixSortBy === "codigoErp"}
+                            order={mixSortOrder}
+                            onClick={() => ordenarMix("codigoErp")}
+                          />
+                          <SortableTableHead
+                            label="Descrição"
+                            active={mixSortBy === "descricao"}
+                            order={mixSortOrder}
+                            onClick={() => ordenarMix("descricao")}
+                          />
+                          <SortableTableHead
+                            label="Última compra"
+                            active={mixSortBy === "ultimaCompra"}
+                            order={mixSortOrder}
+                            onClick={() => ordenarMix("ultimaCompra")}
+                          />
+                          <SortableTableHead
+                            label="Últ. preço"
+                            className="text-right"
+                            active={mixSortBy === "ultimoPrecoUnitario"}
+                            order={mixSortOrder}
+                            onClick={() => ordenarMix("ultimoPrecoUnitario")}
+                          />
+                          <SortableTableHead
+                            label="Últ. desconto"
+                            className="text-right"
+                            active={mixSortBy === "ultimoDesconto"}
+                            order={mixSortOrder}
+                            onClick={() => ordenarMix("ultimoDesconto")}
+                          />
+                          <SortableTableHead
+                            label="Preço tabela"
+                            className="text-right"
+                            active={mixSortBy === "precoTabela"}
+                            order={mixSortOrder}
+                            onClick={() => ordenarMix("precoTabela")}
+                          />
+                          <SortableTableHead
+                            label="Situação"
+                            active={mixSortBy === "ativo"}
+                            order={mixSortOrder}
+                            onClick={() => ordenarMix("ativo")}
+                          />
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {mix.map((m) => {
+                        {mixVisivel.map((m) => {
                           const jaAdicionado = itensAtuais.some((it) => it.produtoId === m.produtoId);
                           return (
                             <TableRow key={m.produtoId}>
+                              <TableCell>
+                                {m.ativo && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    className="size-7"
+                                    disabled={jaAdicionado}
+                                    title={jaAdicionado ? "Adicionado" : "Adicionar"}
+                                    onClick={() => adicionarDoMix(m)}
+                                  >
+                                    <Plus className="size-3.5" />
+                                  </Button>
+                                )}
+                              </TableCell>
                               <TableCell>{m.codigoErp}</TableCell>
                               <TableCell className="max-w-56 truncate">{m.descricao}</TableCell>
                               <TableCell className="text-muted-foreground">
@@ -682,19 +1042,7 @@ export function OrcamentoFormContent({
                               <TableCell className="text-right">{percentual(m.ultimoDesconto)}</TableCell>
                               <TableCell className="text-right">{moeda(m.precoTabela)}</TableCell>
                               <TableCell>
-                                <StatusDot active={m.ativo} />
-                              </TableCell>
-                              <TableCell>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={jaAdicionado}
-                                  onClick={() => adicionarDoMix(m)}
-                                >
-                                  <Plus className="size-3.5" />
-                                  {jaAdicionado ? "Adicionado" : "Adicionar"}
-                                </Button>
+                                <StatusDot active={m.ativo} showLabel={false} offColor="danger" />
                               </TableCell>
                             </TableRow>
                           );
@@ -703,20 +1051,102 @@ export function OrcamentoFormContent({
                     </Table>
                   )}
                 </TabsContent>
-              </Tabs>
-            </div>
-          </FieldGroup>
+
+            {clienteId && (
+              <TabsContent value="historico" className="space-y-2 pt-3">
+                <p className="text-sm text-muted-foreground">
+                  Atendimentos registrados com este cliente — tudo que aconteceu até chegar neste
+                  orçamento.
+                </p>
+                <OrcamentoTimeline clienteId={clienteId} orcamentoId={registro?.id} />
+              </TabsContent>
+            )}
+
+            {registro && integracao && (
+              <TabsContent value="integracao" className="space-y-4 pt-3">
+                <div
+                  className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 ${integracao.classe}`}
+                >
+                  <integracao.icone className="mt-0.5 size-4 shrink-0" />
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium">{integracao.titulo}</p>
+                    <p className="text-sm opacity-90">{integracao.descricao}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field>
+                    <FieldLabel>Status do orçamento</FieldLabel>
+                    <div className="text-sm">{STATUS_ORCAMENTO_LABEL[registro.status]}</div>
+                  </Field>
+                  <Field>
+                    <FieldLabel>Código no ERP</FieldLabel>
+                    <div className="text-sm">
+                      {registro.codigoLegado ?? "— (ainda não integrado)"}
+                    </div>
+                  </Field>
+                  <Field>
+                    <FieldLabel>Criado em</FieldLabel>
+                    <div className="text-sm">{dataHoraBr(registro.createdAt)}</div>
+                  </Field>
+                  <Field>
+                    <FieldLabel>Última alteração</FieldLabel>
+                    <div className="text-sm">{dataHoraBr(registro.updatedAt)}</div>
+                  </Field>
+                </div>
+
+                <p className="text-sm text-muted-foreground">
+                  Só orçamentos aprovados ficam disponíveis para o ERP importar. Depois de importar,
+                  o ERP vincula o registro e o código gerado lá aparece aqui.
+                </p>
+              </TabsContent>
+            )}
+          </Tabs>
           </fieldset>
         </CardContent>
 
         <CardFooter className="justify-end gap-2">
+          {/* PDF só depois de salvo — precisa dos itens com produto e do total
+              consolidado pelo servidor. */}
+          {registro && (
+            <Button
+              type="button"
+              variant="outline"
+              className="mr-auto"
+              disabled={gerandoPdf}
+              onClick={() => void baixarPdf()}
+            >
+              <FileDown className="size-4" />
+              {gerandoPdf ? "Gerando..." : "Gerar PDF"}
+            </Button>
+          )}
+          {/* Copiar é a saída para orçamento aprovado/vencido, que não aceita
+              mais alteração — gera um novo cadastro a partir deste. */}
+          {registro && (
+            <Button type="button" variant="outline" onClick={copiar}>
+              <Copy className="size-4" />
+              Copiar
+            </Button>
+          )}
           <Button type="button" variant="outline" onClick={onClose}>
             {bloqueado ? "Voltar" : "Cancelar"}
           </Button>
           {!bloqueado && (
-            <Button type="submit" disabled={form.formState.isSubmitting}>
-              {orcamento ? "Salvar alterações" : "Cadastrar"}
-            </Button>
+            <>
+              {/* Salva e continua na tela — é assim que dá pra emitir o PDF e
+                  abrir Histórico/Integração logo depois de cadastrar. */}
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={form.formState.isSubmitting}
+                onClick={form.handleSubmit((v) => salvar(v, false))}
+              >
+                Salvar
+              </Button>
+              <Button type="submit" disabled={form.formState.isSubmitting}>
+                {registro ? "Salvar e fechar" : "Cadastrar e fechar"}
+              </Button>
+            </>
           )}
         </CardFooter>
       </form>
