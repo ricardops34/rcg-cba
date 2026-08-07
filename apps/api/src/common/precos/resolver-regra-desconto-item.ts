@@ -104,7 +104,8 @@ export async function resolverRegrasDescontoDosItens(
     );
   }
   // Produto que não existe mais (ou de outra empresa) fica sem regra.
-  for (const id of ids) if (!resultado.has(id)) resultado.set(id, padrao ?? null);
+  for (const id of ids)
+    if (!resultado.has(id)) resultado.set(id, padrao ?? null);
 
   return resultado;
 }

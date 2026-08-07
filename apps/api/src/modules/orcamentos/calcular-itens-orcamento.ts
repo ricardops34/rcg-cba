@@ -78,7 +78,11 @@ export async function calcularItensOrcamento(
     vlrTotalOrcamento += vlrTotalItem;
 
     const regra = regrasPorProduto.get(item.produtoId) ?? null;
-    const comissao = calcularComissaoItem(regra, percDesconto, percBaseVendedor);
+    const comissao = calcularComissaoItem(
+      regra,
+      percDesconto,
+      percBaseVendedor,
+    );
 
     return {
       empresaId,
