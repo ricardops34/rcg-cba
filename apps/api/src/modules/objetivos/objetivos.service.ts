@@ -9,6 +9,7 @@ import {
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
 import type {
+  ObjetivoCopiarPeriodo,
   ObjetivoDashboardQuery,
   ObjetivoVendedorMesCreate,
   ObjetivoVendedorMesQuery,
@@ -184,6 +185,100 @@ export class ObjetivosService {
         where: { id },
         data: { deletedAt: new Date(), deletedBy: user.id, ativo: false },
       });
+    });
+  }
+
+  /**
+   * Copia os objetivos de um mês/ano para outro, aplicando um percentual de
+   * reajuste (negativo reduz) sobre os valores em R$ — meta do mês e linhas
+   * por categoria, na mesma proporção. Quantidades (nº de clientes, novos
+   * clientes) vêm como estão: reajustá-las geraria fração de cliente.
+   *
+   * Vendedor que já tem objetivo no destino é **pulado**, nunca sobrescrito —
+   * o destino costuma ser um mês já em uso, e perder meta digitada seria pior
+   * que copiar de menos. O retorno diz quantos e quais ficaram de fora.
+   *
+   * Respeita o escopo hierárquico: um supervisor copia o período do seu time,
+   * não o da empresa inteira.
+   */
+  copiarPeriodo(
+    empresaId: string,
+    user: AuthenticatedUser,
+    input: ObjetivoCopiarPeriodo,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const fator = 1 + input.percReajuste / 100;
+      const ajustar = (valor: number) => Math.round(valor * fator * 100) / 100;
+
+      const origem = await tx.objetivoVendedorMes.findMany({
+        where: {
+          empresaId,
+          mes: input.mesOrigem,
+          ano: input.anoOrigem,
+          deletedAt: null,
+          ...combinarFiltroVendedor(escopo, undefined),
+        },
+        include: {
+          vendedor: { select: { nome: true, nomeReduzido: true } },
+          categorias: { where: { deletedAt: null } },
+        },
+      });
+      if (origem.length === 0) {
+        throw new NotFoundException(
+          `Nenhum objetivo encontrado em ${String(input.mesOrigem).padStart(2, '0')}/${input.anoOrigem}`,
+        );
+      }
+
+      const jaExistem = await tx.objetivoVendedorMes.findMany({
+        where: {
+          empresaId,
+          mes: input.mesDestino,
+          ano: input.anoDestino,
+          deletedAt: null,
+          vendedorId: { in: origem.map((o) => o.vendedorId) },
+        },
+        select: { vendedorId: true },
+      });
+      const ocupados = new Set(jaExistem.map((o) => o.vendedorId));
+
+      const aCopiar = origem.filter((o) => !ocupados.has(o.vendedorId));
+      for (const objetivo of aCopiar) {
+        await tx.objetivoVendedorMes.create({
+          data: {
+            empresaId,
+            vendedorId: objetivo.vendedorId,
+            mes: input.mesDestino,
+            ano: input.anoDestino,
+            valor: ajustar(objetivo.valor),
+            numeroCliente: objetivo.numeroCliente,
+            novoCliente: objetivo.novoCliente,
+            tipo: objetivo.tipo,
+            ativo: objetivo.ativo,
+            // codigoLegado fica nulo: a cópia nasce aqui, não veio do ERP.
+            createdBy: user.id,
+            updatedBy: user.id,
+            categorias: {
+              create: objetivo.categorias.map((c) => ({
+                empresaId,
+                categoriaId: c.categoriaId,
+                valor: ajustar(c.valor),
+                createdBy: user.id,
+                updatedBy: user.id,
+              })),
+            },
+          },
+        });
+      }
+
+      const pulados = origem.filter((o) => ocupados.has(o.vendedorId));
+      return {
+        copiados: aCopiar.length,
+        pulados: pulados.length,
+        vendedoresPulados: pulados.map(
+          (o) => o.vendedor.nomeReduzido || o.vendedor.nome,
+        ),
+      };
     });
   }
 

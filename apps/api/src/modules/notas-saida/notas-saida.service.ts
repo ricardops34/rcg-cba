@@ -10,6 +10,7 @@ import {
 } from '../../common/pagination/paginate';
 import type { NotaSaidaQuery } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { ocultarComissaoDosItens } from '../../common/permissoes/pode-ver-comissao';
 
 const SORT_FIELDS = new Set(['numero', 'dtEmissao', 'vlrItens', 'vlrBruto', 'ativo', 'createdAt']);
 
@@ -95,13 +96,15 @@ export class NotasSaidaService {
             orderBy: { item: 'asc' },
             include: {
               produto: { select: { id: true, codigoErp: true, descricao: true, unidade: true } },
-              regraDesconto: { select: { id: true, codigoErp: true, descricao: true } },
+              regraDesconto: {
+                select: { id: true, codigoErp: true, descricao: true },
+              },
             },
           },
         },
       });
       if (!nota) throw new NotFoundException('Nota de saída não encontrada');
-      return nota;
+      return ocultarComissaoDosItens(nota, user);
     });
   }
 }

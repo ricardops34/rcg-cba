@@ -508,6 +508,21 @@ async function bootstrapMenu() {
     });
   }
 
+  // Rotina sem tela própria: controla quem enxerga os valores de comissão nos
+  // itens de orçamento e de nota de saída. Fica sob o menu de Orçamentos, que
+  // é onde a comissão aparece primeiro, e é configurada como qualquer outra
+  // permissão na tela de Perfis.
+  await prisma.rotina.upsert({
+    where: { codigo: 'comissao' },
+    create: {
+      id: 'seed-rotina-comissao',
+      menuId: 'seed-menu-orcamentos',
+      nome: 'Comissão (valores)',
+      codigo: 'comissao',
+    },
+    update: {},
+  });
+
   return prisma.rotina.findMany({ where: { deletedAt: null } });
 }
 

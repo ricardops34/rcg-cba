@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { NotaSaida, NotaSaidaItem } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
 import { regraDescontoLabel } from "@/lib/regra-desconto";
+import { useAuthStore } from "@/stores/auth-store";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -50,6 +51,9 @@ function Info({ label, value }: { label: string; value: React.ReactNode }) {
 
 /** Corpo do detalhe de uma nota de saída — usado tanto na página cheia quanto na cortina. */
 export function NotaSaidaDetalheContent({ nota }: { nota: NotaSaidaDetalhe }) {
+  // Valores de comissão são restritos (o perfil Vendedor não vê) — a API já
+  // devolve nulo pra quem não pode, e aqui a coluna some junto.
+  const podeVerComissao = useAuthStore((s) => s.hasPermission)("comissao", "visualizar");
   return (
     <div className="space-y-4">
       <Card>
@@ -91,7 +95,9 @@ export function NotaSaidaDetalheContent({ nota }: { nota: NotaSaidaDetalhe }) {
                   <TableHead className="text-right">Vlr. unit.</TableHead>
                   <TableHead className="text-right">Desconto</TableHead>
                   <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">% Comissão</TableHead>
+                  {podeVerComissao && (
+                    <TableHead className="text-right">% Comissão</TableHead>
+                  )}
                   <TableHead>Regra de desconto</TableHead>
                   <TableHead>CFOP</TableHead>
                 </TableRow>
@@ -115,7 +121,9 @@ export function NotaSaidaDetalheContent({ nota }: { nota: NotaSaidaDetalhe }) {
                     <TableCell className="text-right">{moeda(it.vlrUnitario)}</TableCell>
                     <TableCell className="text-right">{moeda(it.vlrDesconto)}</TableCell>
                     <TableCell className="text-right">{moeda(it.vlrTotal)}</TableCell>
-                    <TableCell className="text-right">{percentual(it.percComissao)}</TableCell>
+                    {podeVerComissao && (
+                      <TableCell className="text-right">{percentual(it.percComissao)}</TableCell>
+                    )}
                     <TableCell className="text-xs">{regraDescontoLabel(it.regraDesconto)}</TableCell>
                     <TableCell className="font-mono text-xs">{it.cfop || "—"}</TableCell>
                   </TableRow>

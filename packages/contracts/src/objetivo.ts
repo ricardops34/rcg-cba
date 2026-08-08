@@ -104,3 +104,47 @@ export const OBJETIVO_VENDEDOR_MES_CREATE_EXAMPLE: ObjetivoVendedorMesCreate = {
   ativo: true,
   categorias: [{ categoriaId: "9e8d7c6b-5a49-4382-b1c0-d9e8f7a6b5c4", valor: 13805.34 }],
 };
+
+// ------------------------------------------------------------------
+// Cópia de período
+// ------------------------------------------------------------------
+// Replica os objetivos de um mês/ano para outro, aplicando um percentual de
+// reajuste (positivo) ou redução (negativo) sobre os valores em R$ — meta do
+// mês e linhas por categoria, na mesma proporção. Metas de quantidade (nº de
+// clientes, novos clientes) são copiadas como estão: reajustar geraria
+// fração de cliente.
+
+export const objetivoCopiarPeriodoSchema = z
+  .object({
+    mesOrigem: z.coerce.number().int().min(1).max(12),
+    anoOrigem: z.coerce.number().int().min(2000).max(2100),
+    mesDestino: z.coerce.number().int().min(1).max(12),
+    anoDestino: z.coerce.number().int().min(2000).max(2100),
+    percReajuste: z.coerce
+      .number()
+      .min(-100, "A redução não pode passar de 100%")
+      .max(1000)
+      .default(0)
+      .describe("Percentual aplicado sobre os valores copiados; negativo reduz"),
+  })
+  .refine(
+    (v) => v.mesOrigem !== v.mesDestino || v.anoOrigem !== v.anoDestino,
+    { message: "O período de destino deve ser diferente da origem", path: ["mesDestino"] },
+  );
+export type ObjetivoCopiarPeriodo = z.infer<typeof objetivoCopiarPeriodoSchema>;
+
+export const objetivoCopiarPeriodoResultadoSchema = z.object({
+  copiados: z.number().int().describe("Objetivos criados no período de destino"),
+  // Vendedor que já tinha objetivo no destino é preservado, nunca sobrescrito.
+  pulados: z.number().int().describe("Vendedores que já tinham objetivo no destino"),
+  vendedoresPulados: z.array(z.string()).describe("Nomes dos vendedores pulados"),
+});
+export type ObjetivoCopiarPeriodoResultado = z.infer<typeof objetivoCopiarPeriodoResultadoSchema>;
+
+export const OBJETIVO_COPIAR_PERIODO_EXAMPLE: ObjetivoCopiarPeriodo = {
+  mesOrigem: 7,
+  anoOrigem: 2026,
+  mesDestino: 8,
+  anoDestino: 2026,
+  percReajuste: 8,
+};

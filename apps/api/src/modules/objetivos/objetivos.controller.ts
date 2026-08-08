@@ -12,6 +12,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ObjetivosService } from './objetivos.service';
 import {
+  ObjetivoCopiarPeriodoDto,
   ObjetivoCreateDto,
   ObjetivoDashboardQueryDto,
   ObjetivoQueryDto,
@@ -78,6 +79,22 @@ export class ObjetivosController {
   @Post()
   create(@Body() dto: ObjetivoCreateDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.create(user.empresaAtivaId, user, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Copiar objetivos de um período para outro',
+    description:
+      'Replica os objetivos de um mês/ano para outro aplicando um percentual de reajuste ' +
+      '(negativo reduz) sobre a meta e as linhas por categoria. Vendedor que já tem objetivo ' +
+      'no destino é pulado, nunca sobrescrito. Requer objetivos.cadastrar.',
+  })
+  @RequirePermission('objetivos', 'cadastrar')
+  @Post('copiar-periodo')
+  copiarPeriodo(
+    @Body() dto: ObjetivoCopiarPeriodoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.copiarPeriodo(user.empresaAtivaId, user, dto);
   }
 
   @ApiOperation({

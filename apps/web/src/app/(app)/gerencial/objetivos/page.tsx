@@ -12,6 +12,7 @@ import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
 import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
 import { FiltersPopover } from "@/components/crud/filters-popover";
+import { ObjetivoCopiarDialog } from "@/components/crud/objetivo-copiar-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/field";
@@ -22,7 +23,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Copy, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 const MES_ABREV = [
   "Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez",
@@ -58,6 +59,7 @@ export default function ObjetivosPage() {
   });
 
   const { remove } = useResourceMutations("objetivos");
+  const [copiarAberto, setCopiarAberto] = useState(false);
 
   const openEdit = (o: ObjetivoVendedorMes) => router.push(`/gerencial/objetivos/${o.id}`);
 
@@ -139,6 +141,12 @@ export default function ObjetivosPage() {
       />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setCopiarAberto(true)}>
+            <Copy className="size-4" />
+            Copiar período
+          </Button>
+        </div>
         <StatusQuickFilter
           value={status}
           onChange={(v) => {
@@ -234,6 +242,12 @@ export default function ObjetivosPage() {
           setSortOrder(order);
         }}
         storageKey="objetivos"
+      />
+
+      <ObjetivoCopiarDialog
+        open={copiarAberto}
+        onOpenChange={setCopiarAberto}
+        onCopiado={() => refetch()}
       />
     </div>
   );

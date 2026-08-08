@@ -27,6 +27,10 @@ import { calcularItensOrcamento } from './calcular-itens-orcamento';
 import { proximoNumeroOrcamento } from './proximo-numero-orcamento';
 import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
 import { resolverRegrasDescontoDosItens } from '../../common/precos/resolver-regra-desconto-item';
+import {
+  ocultarComissaoDosItens,
+  podeVerComissao,
+} from '../../common/permissoes/pode-ver-comissao';
 
 const SORT_FIELDS = new Set([
   'numero',
@@ -185,11 +189,16 @@ export class OrcamentosService {
         tabelaPrecoId,
       );
 
+      // Os limites de desconto todo mundo vê (alimentam o aviso na tela); as
+      // faixas saem do payload de quem não pode ver comissão, porque é delas
+      // que a prévia é calculada.
+      const regra = regras.get(produtoId) ?? null;
       return {
         vlrTabela: tabelaItem?.preco ?? null,
         ultimoPreco: produto?.ultimoPreco ?? null,
         saldoEstoque: estoque._sum.saldo ?? 0,
-        regraDesconto: regras.get(produtoId) ?? null,
+        regraDesconto:
+          regra && !podeVerComissao(user) ? { ...regra, faixas: [] } : regra,
       };
     });
   }
@@ -245,7 +254,11 @@ export class OrcamentosService {
         }),
         tx.orcamento.count({ where }),
       ]);
-      return buildPaginatedResult(data, total, query);
+      return buildPaginatedResult(
+        data.map((o) => ocultarComissaoDosItens(o, user)),
+        total,
+        query,
+      );
     });
   }
 
@@ -262,7 +275,7 @@ export class OrcamentosService {
         include: INCLUDE,
       });
       if (!orcamento) throw new NotFoundException('Orçamento não encontrado');
-      return orcamento;
+      return ocultarComissaoDosItens(orcamento, user);
     });
   }
 
@@ -318,7 +331,7 @@ export class OrcamentosService {
         });
       }
 
-      return orcamento;
+      return ocultarComissaoDosItens(orcamento, user);
     });
   }
 
@@ -409,7 +422,7 @@ export class OrcamentosService {
         });
       }
 
-      return atualizado;
+      return ocultarComissaoDosItens(atualizado, user);
     });
   }
 

@@ -312,6 +312,9 @@ export function OrcamentoFormContent({
   const status = form.watch("status");
   // % base de comissão do vendedor escolhido — entra no cálculo por linha.
   const vendedorSelecionado = opcoesVendedor.find((v) => v.id === vendedorId);
+  // Valores de comissão são restritos (o perfil Vendedor não vê) — a API já
+  // devolve nulo pra quem não pode, e aqui a coluna some junto.
+  const podeVerComissao = useAuthStore((s) => s.hasPermission)("comissao", "visualizar");
 
   /**
    * Registro já gravado: o que veio por prop (edição) ou o que acabou de ser
@@ -894,7 +897,9 @@ export function OrcamentoFormContent({
                           <TableHead className="px-1.5 text-right">Desc.</TableHead>
                           <TableHead className="px-1.5 text-right">Últ. desc.</TableHead>
                           <TableHead className="px-1.5">Últ. venda</TableHead>
-                          <TableHead className="px-1.5 text-right">% Comis.</TableHead>
+                          {podeVerComissao && (
+                            <TableHead className="px-1.5 text-right">% Comis.</TableHead>
+                          )}
                           <TableHead className="px-1.5">Regra desc.</TableHead>
                           <TableHead className="px-1.5 text-right">Pç. tabela</TableHead>
                           <TableHead className="w-7 px-1" />
@@ -973,9 +978,11 @@ export function OrcamentoFormContent({
                               {/* Comissão e regra são calculadas pelo servidor;
                                   aqui é a prévia, e o alerta de desconto acima
                                   do limite da regra (que não bloqueia salvar). */}
-                              <TableCell className="px-1.5 text-right text-muted-foreground">
-                                {percentual(comissao.percComissao)}
-                              </TableCell>
+                              {podeVerComissao && (
+                                <TableCell className="px-1.5 text-right text-muted-foreground">
+                                  {percentual(comissao.percComissao)}
+                                </TableCell>
+                              )}
                               <TableCell className="px-1.5 text-xs text-muted-foreground">
                                 <div className="flex items-center gap-1">
                                   {regraDescontoLabel(regraDaLinha)}
