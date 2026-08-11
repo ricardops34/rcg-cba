@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
-import { MESES_LABEL, type ConsultaVendasResultado } from "@plataforma/contracts";
+import type { ConsultaVendasResultado } from "@plataforma/contracts";
 
 /**
  * Exportação das Consultas de venda (PDF e Excel), montada no navegador a
@@ -34,19 +34,24 @@ const slug = (v: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
 
-/** Nome do arquivo: vendas-por-cliente-2026-caroline.xlsx */
+/** Nome do arquivo: vendas-por-cliente-jan26-jul26-caroline.xlsx */
 function nomeArquivo(
   { resultado, titulo }: ExportParams,
   extensao: "pdf" | "xlsx",
 ): string {
-  const partes = [slug(titulo), String(resultado.ano)];
+  const { colunas } = resultado;
+  const partes = [slug(titulo)];
+  if (colunas.length > 0) {
+    partes.push(slug(colunas[0].label));
+    if (colunas.length > 1) partes.push(slug(colunas[colunas.length - 1].label));
+  }
   if (resultado.vendedor) partes.push(slug(resultado.vendedor.nome));
   return `${partes.join("-")}.${extensao}`;
 }
 
 /** Linhas do subtítulo: o mesmo texto no PDF e na primeira aba do Excel. */
 function descreverFiltros({ resultado }: ExportParams): string[] {
-  const linhas = [`Ano: ${resultado.ano}`];
+  const linhas = [`Período: ${resultado.periodo.label}`];
   linhas.push(`Vendedor: ${resultado.vendedor?.nome ?? "Todos"}`);
   if (resultado.categoria) linhas.push(`Categoria: ${resultado.categoria.descricao}`);
   linhas.push(
@@ -84,17 +89,16 @@ export function exportarConsultaPdf(params: ExportParams): void {
   y += 2;
   doc.setTextColor(0);
 
+  const rotulosMes = resultado.colunas.map((c) => c.label);
   autoTable(doc, {
     startY: y + 2,
-    head: [[rotuloEntidade, ...MESES_LABEL, "Total"]],
+    head: [[rotuloEntidade, ...rotulosMes, "Total"]],
     body: resultado.linhas.map((l) => [
       l.codigo ? `${l.codigo} · ${l.descricao}` : l.descricao,
-      ...l.meses.map(moeda),
+      ...l.valores.map(moeda),
       moeda(l.total),
     ]),
-    foot: [
-      ["Total geral", ...resultado.totaisMes.map(moeda), moeda(resultado.total)],
-    ],
+    foot: [["Total geral", ...resultado.totais.map(moeda), moeda(resultado.total)]],
     styles: { fontSize: 6.5, cellPadding: 1 },
     headStyles: { fillColor: [40, 40, 40], fontSize: 6.5 },
     footStyles: { fillColor: [235, 235, 235], textColor: 0, fontStyle: "bold" },
@@ -103,7 +107,10 @@ export function exportarConsultaPdf(params: ExportParams): void {
       // Mês e total alinhados à direita: número em coluna estreita só se lê
       // comparado pela unidade.
       ...Object.fromEntries(
-        Array.from({ length: 13 }, (_, i) => [i + 1, { halign: "right" as const }]),
+        Array.from({ length: rotulosMes.length + 1 }, (_, i) => [
+          i + 1,
+          { halign: "right" as const },
+        ]),
       ),
     },
     margin: { left: margem, right: margem },
@@ -119,17 +126,18 @@ export function exportarConsultaPdf(params: ExportParams): void {
 export function exportarConsultaExcel(params: ExportParams): void {
   const { resultado, titulo, rotuloEntidade } = params;
 
-  const cabecalho = [rotuloEntidade, "Código", ...MESES_LABEL, "Total"];
+  const rotulosMes = resultado.colunas.map((c) => c.label);
+  const cabecalho = [rotuloEntidade, "Código", ...rotulosMes, "Total"];
   const corpo = resultado.linhas.map((l) => [
     l.descricao,
     l.codigo ?? "",
-    ...l.meses,
+    ...l.valores,
     l.total,
   ]);
-  const rodape = ["Total geral", "", ...resultado.totaisMes, resultado.total];
+  const rodape = ["Total geral", "", ...resultado.totais, resultado.total];
 
   // Duas linhas de contexto antes da tabela: sem elas a planilha exportada
-  // não diz de que ano/vendedor ela é.
+  // não diz de que período/vendedor ela é.
   const linhas = [
     [titulo],
     [descreverFiltros(params).join("   ·   ")],
@@ -152,7 +160,7 @@ export function exportarConsultaExcel(params: ExportParams): void {
   sheet["!cols"] = [
     { wch: 45 },
     { wch: 14 },
-    ...MESES_LABEL.map(() => ({ wch: 13 })),
+    ...rotulosMes.map(() => ({ wch: 13 })),
     { wch: 15 },
   ];
   const wb = XLSX.utils.book_new();

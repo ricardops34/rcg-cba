@@ -10,6 +10,7 @@ import { ConsultasService } from './consultas.service';
 import {
   ConsultaVendasClienteQueryDto,
   ConsultaVendasProdutoQueryDto,
+  ConsultaVendasVendedorQueryDto,
 } from './dto/consulta.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -31,12 +32,16 @@ export class ConsultasController {
   constructor(private readonly service: ConsultasService) {}
 
   @ApiOperation({
-    summary: 'Vendas por vendedor/ano, somadas mês a mês por cliente',
+    summary: 'Vendas do período somadas mês a mês por cliente',
     description:
-      'Uma linha por cliente com os 12 meses do ano e o total, ordenada pelo total (maior ' +
-      'primeiro). Considera nota ativa e não-comodato. O vendedor considerado (quem vendeu ou ' +
-      'o titular da carteira) vem do parâmetro CONSULTA_VENDAS_BASE_VENDEDOR. Restrita ao ' +
-      'escopo hierárquico do usuário. Requer consulta-vendas-cliente.visualizar.',
+      'Uma linha por cliente com uma coluna por mês do período (mês/ano inicial a mês/ano ' +
+      'final, no máximo 12 meses) e o total, ordenada pelo total (maior primeiro). Considera ' +
+      'apenas nota de venda: ativa, não-comodato e do tipo Normal (devolução e remessa ficam ' +
+      'de fora). O vendedor creditado (quem vendeu ou o titular da carteira) ' +
+      'vem do parâmetro CONSULTA_VENDAS_BASE_VENDEDOR, e pode ser sobrescrito por ' +
+      '?baseVendedor=. A visibilidade é sempre a carteira de clientes que o usuário alcança ' +
+      '(escopo hierárquico), independente dessa escolha. Requer ' +
+      'consulta-vendas-cliente.visualizar.',
   })
   @ApiResponse({
     status: 200,
@@ -52,12 +57,36 @@ export class ConsultasController {
   }
 
   @ApiOperation({
-    summary: 'Vendas por vendedor/ano, somadas mês a mês por produto',
+    summary: 'Vendas do período somadas mês a mês por vendedor',
     description:
-      'Uma linha por produto com os 12 meses do ano e o total, ordenada pelo total (maior ' +
-      'primeiro), com filtro opcional de categoria. Soma o vlrTotal dos itens de notas ativas ' +
-      'e não-comodato. Restrita ao escopo hierárquico do usuário. Requer ' +
-      'consulta-vendas-produto.visualizar.',
+      'Uma linha por vendedor com uma coluna por mês do período (máximo 12 meses) e o total, ' +
+      'ordenada pelo total (maior primeiro). Mesma base da consulta por cliente (nota de venda ' +
+      'ativa, não-comodato e do tipo Normal, vlrBruto). Com a base em `cliente`, a venda é ' +
+      'creditada ao titular da ' +
+      'carteira em vez de a quem emitiu a nota. Restrita à carteira de clientes que o usuário ' +
+      'alcança. Requer consulta-vendas-vendedor.visualizar.',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: { example: CONSULTA_VENDAS_RESULTADO_EXAMPLE },
+  })
+  @RequirePermission('consulta-vendas-vendedor', 'visualizar')
+  @Get('vendas-vendedor')
+  vendasPorVendedor(
+    @Query() query: ConsultaVendasVendedorQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.vendasPorVendedor(user.empresaAtivaId, user, query);
+  }
+
+  @ApiOperation({
+    summary: 'Vendas do período somadas mês a mês por produto',
+    description:
+      'Uma linha por produto com uma coluna por mês do período (máximo 12 meses) e o total, ' +
+      'ordenada pelo total (maior primeiro), com filtro opcional de categoria. Soma o vlrTotal ' +
+      'dos itens de notas de venda (ativas, não-comodato, tipo Normal). Restrita à carteira de ' +
+      'clientes que o usuário ' +
+      'alcança. Requer consulta-vendas-produto.visualizar.',
   })
   @ApiResponse({
     status: 200,

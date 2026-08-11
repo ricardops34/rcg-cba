@@ -584,6 +584,14 @@ async function bootstrapMenu() {
       codigo: 'consulta-vendas-produto',
       moduloId: moduloConsultas.id,
     },
+    {
+      id: 'seed-menu-consulta-vendas-vendedor',
+      nome: 'Vendas por Vendedor',
+      rota: '/consultas/vendas-vendedor',
+      icone: 'user-round',
+      codigo: 'consulta-vendas-vendedor',
+      moduloId: moduloConsultas.id,
+    },
   ];
 
   for (const [i, m] of menuDefs.entries()) {

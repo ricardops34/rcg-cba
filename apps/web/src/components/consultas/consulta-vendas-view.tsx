@@ -4,7 +4,10 @@ import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  MAX_MESES_CONSULTA,
   MESES_LABEL,
+  emMeses,
+  totalDeMeses,
   type ConsultaVendasLinha,
   type ConsultaVendasResultado,
 } from "@plataforma/contracts";
@@ -35,19 +38,32 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { FileSpreadsheet, FileText, Search } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Sheet, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ResizableSheetContent } from "@/components/ui/resizable-sheet-content";
+import { FileSpreadsheet, FileText, Search, SlidersHorizontal } from "lucide-react";
+
+/** Item do resumo de parâmetros mostrado acima da tabela. */
+function Resumo({ label, valor }: { label: string; valor: string }) {
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-sm">{valor}</p>
+    </div>
+  );
+}
 
 /** Valor "todos" dos selects — Radix não aceita SelectItem com value="". */
 export const TODOS = "todos";
 
-/** Colunas ordenáveis: a identificação (nome/descrição) e o total do ano. */
+/** Colunas ordenáveis: a identificação (nome/descrição) e o total do período. */
 type OrdenarPor = "descricao" | "total";
 
 const moeda = (v: number) =>
   v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-/** Zero em coluna de mês vira "—": a tabela tem 13 colunas numéricas e o
- *  olho precisa achar onde houve venda. */
+/** Zero em coluna de mês vira "—": a tabela é quase toda numérica e o olho
+ *  precisa achar onde houve venda. */
 const celula = (v: number) => (v === 0 ? "—" : moeda(v));
 
 /** Últimos 6 anos + o atual, do mais recente para o mais antigo. */
@@ -56,21 +72,74 @@ export function anosDisponiveis(): number[] {
   return Array.from({ length: 7 }, (_, i) => atual - i);
 }
 
+/** Select adicional específico de uma consulta (hoje só Categoria). */
 export interface FiltroExtra {
-  /** Rótulo do select adicional (ex.: "Categoria"). */
+  /** Nome do parâmetro na API, ex.: "categoriaId". */
+  chave: string;
   label: string;
-  valor: string;
-  onChange: (v: string) => void;
+  /** Rótulo da opção "sem filtro", ex.: "Todas". */
+  rotuloTodos: string;
   opcoes: { id: string; descricao: string }[];
-  carregando?: boolean;
 }
 
 /**
- * Tela das Consultas de venda: filtros no topo, tabela pivô (uma linha por
- * cliente/produto, 12 colunas de mês + total) e exportação.
+ * "padrao" = respeita o parâmetro CONSULTA_VENDAS_BASE_VENDEDOR da empresa;
+ * as outras duas sobrescrevem só nesta consulta.
+ */
+const PADRAO_EMPRESA = "padrao";
+
+/** Estado dos filtros da consulta — o que a cortina edita e o botão aplica. */
+interface Filtros {
+  anoInicial: string;
+  mesInicial: string;
+  anoFinal: string;
+  mesFinal: string;
+  vendedorId: string;
+  baseVendedor: string;
+  extra: string;
+}
+
+/** Período padrão: os 12 meses que terminam no mês corrente. */
+function periodoPadrao(): Pick<
+  Filtros,
+  "anoInicial" | "mesInicial" | "anoFinal" | "mesFinal"
+> {
+  const hoje = new Date();
+  const fim = { ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 };
+  const inicioEmMeses = emMeses(fim.ano, fim.mes) - (MAX_MESES_CONSULTA - 1);
+  // emMeses = ano*12 + mes, com mes de 1 a 12: desfazer a conta exige tratar
+  // o mês 12 como resto 0 do ano anterior.
+  const ano = Math.floor((inicioEmMeses - 1) / 12);
+  const mes = inicioEmMeses - ano * 12;
+  return {
+    anoInicial: String(ano),
+    mesInicial: String(mes),
+    anoFinal: String(fim.ano),
+    mesFinal: String(fim.mes),
+  };
+}
+
+/** Mensagem de erro do período, ou null se estiver válido. */
+function erroDoPeriodo(f: Filtros): string | null {
+  const p = {
+    anoInicial: Number(f.anoInicial),
+    mesInicial: Number(f.mesInicial),
+    anoFinal: Number(f.anoFinal),
+    mesFinal: Number(f.mesFinal),
+  };
+  const meses = totalDeMeses(p);
+  if (meses < 1) return "O fim do período não pode ser anterior ao início.";
+  if (meses > MAX_MESES_CONSULTA)
+    return `O período não pode passar de ${MAX_MESES_CONSULTA} meses (escolhido: ${meses}).`;
+  return null;
+}
+
+/**
+ * Tela das Consultas de venda: filtros numa cortina lateral, tabela pivô (uma
+ * linha por cliente/produto/vendedor, 12 colunas de mês + total) e exportação.
  *
- * As duas consultas do módulo compartilham este componente — muda só a rota
- * da API, o rótulo da primeira coluna e o filtro extra de categoria.
+ * As consultas do módulo compartilham este componente — muda só a rota da
+ * API, o rótulo da primeira coluna e o filtro extra de categoria.
  */
 export function ConsultaVendasView({
   titulo,
@@ -78,7 +147,6 @@ export function ConsultaVendasView({
   rota,
   rotina,
   filtroExtra,
-  queryExtra,
 }: {
   titulo: string;
   rotuloEntidade: string;
@@ -87,12 +155,23 @@ export function ConsultaVendasView({
   /** Código da rotina, para a permissão de exportar. */
   rotina: string;
   filtroExtra?: FiltroExtra;
-  /** Parâmetros extras da consulta (ex.: categoriaId). */
-  queryExtra?: Record<string, string | undefined>;
 }) {
   const anos = useMemo(() => anosDisponiveis(), []);
-  const [ano, setAno] = useState(() => String(anos[0]));
-  const [vendedorId, setVendedorId] = useState(TODOS);
+  const filtrosIniciais: Filtros = useMemo(
+    () => ({
+      ...periodoPadrao(),
+      vendedorId: TODOS,
+      baseVendedor: PADRAO_EMPRESA,
+      extra: TODOS,
+    }),
+    [],
+  );
+  // `filtros` é o que está valendo na consulta; `rascunho` é o que a cortina
+  // está editando. Sem essa separação, cada clique dentro da cortina dispara
+  // uma consulta de ano inteiro no banco.
+  const [filtros, setFiltros] = useState<Filtros>(filtrosIniciais);
+  const [rascunho, setRascunho] = useState<Filtros>(filtrosIniciais);
+  const [cortinaAberta, setCortinaAberta] = useState(false);
   const [busca, setBusca] = useState("");
   // Ordenação client-side: o ano inteiro já está na mão, e o relatório tem
   // poucas centenas de linhas. Começa pelo maior total, como o back-end
@@ -109,14 +188,59 @@ export function ConsultaVendasView({
   const vendedores = useVendedoresEscopo();
 
   const query = {
-    ano,
-    vendedorId: vendedorId === TODOS ? undefined : vendedorId,
-    ...queryExtra,
+    anoInicial: filtros.anoInicial,
+    mesInicial: filtros.mesInicial,
+    anoFinal: filtros.anoFinal,
+    mesFinal: filtros.mesFinal,
+    vendedorId: filtros.vendedorId === TODOS ? undefined : filtros.vendedorId,
+    baseVendedor:
+      filtros.baseVendedor === PADRAO_EMPRESA ? undefined : filtros.baseVendedor,
+    ...(filtroExtra && filtros.extra !== TODOS
+      ? { [filtroExtra.chave]: filtros.extra }
+      : {}),
   };
   const { data, isLoading, isError } = useQuery({
     queryKey: ["consultas", rota, query],
     queryFn: () => apiFetch<ConsultaVendasResultado>(rota, { query }),
   });
+
+  const abrirCortina = (aberta: boolean) => {
+    // Reabrir a cortina depois de fechar sem aplicar precisa mostrar o que
+    // está valendo, não o rascunho abandonado.
+    if (aberta) setRascunho(filtros);
+    setCortinaAberta(aberta);
+  };
+
+  // A mesma regra do back-end (validarPeriodo) roda aqui para o usuário ver o
+  // problema antes de disparar a consulta.
+  const erroPeriodo = erroDoPeriodo(rascunho);
+  const mesesDoRascunho = totalDeMeses({
+    anoInicial: Number(rascunho.anoInicial),
+    mesInicial: Number(rascunho.mesInicial),
+    anoFinal: Number(rascunho.anoFinal),
+    mesFinal: Number(rascunho.mesFinal),
+  });
+
+  const aplicarFiltros = () => {
+    if (erroPeriodo) return;
+    setFiltros(rascunho);
+    setCortinaAberta(false);
+  };
+
+  const nomeVendedorFiltrado =
+    filtros.vendedorId === TODOS
+      ? null
+      : (vendedores.data?.data ?? []).find((v) => v.id === filtros.vendedorId)
+          ?.nomeReduzido ?? null;
+  const nomeExtraFiltrado =
+    filtroExtra && filtros.extra !== TODOS
+      ? filtroExtra.opcoes.find((o) => o.id === filtros.extra)?.descricao ?? null
+      : null;
+  const quantidadeFiltros = [
+    filtros.vendedorId !== TODOS,
+    filtros.baseVendedor !== PADRAO_EMPRESA,
+    filtros.extra !== TODOS,
+  ].filter(Boolean).length;
 
   const ordenar = useCallback(
     (linhas: ConsultaVendasLinha[]) => {
@@ -180,89 +304,67 @@ export function ConsultaVendasView({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-tight">{titulo}</h1>
-        {podeExportar && (
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!data || data.linhas.length === 0}
-              onClick={() => exportar("pdf")}
-            >
-              <FileText className="size-4" />
-              PDF
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!data || data.linhas.length === 0}
-              onClick={() => exportar("excel")}
-            >
-              <FileSpreadsheet className="size-4" />
-              Excel
-            </Button>
-          </div>
-        )}
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => abrirCortina(true)}>
+            <SlidersHorizontal className="size-4" />
+            Parâmetros
+            {quantidadeFiltros > 0 && (
+              <Badge variant="secondary" className="ml-1">
+                {quantidadeFiltros}
+              </Badge>
+            )}
+          </Button>
+          {podeExportar && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!data || data.linhas.length === 0}
+                onClick={() => exportar("pdf")}
+              >
+                <FileText className="size-4" />
+                PDF
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!data || data.linhas.length === 0}
+                onClick={() => exportar("excel")}
+              >
+                <FileSpreadsheet className="size-4" />
+                Excel
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
+      {/* Resumo do que está valendo: com os filtros na cortina, a tela
+          precisa dizer sozinha de que recorte é o número exibido. */}
       <Card>
-        <CardContent className="flex flex-wrap items-end gap-3">
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Ano</p>
-            <Select value={ano} onValueChange={setAno}>
-              <SelectTrigger className="w-28">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {anos.map((a) => (
-                  <SelectItem key={a} value={String(a)}>
-                    {a}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Vendedor</p>
-            <Select value={vendedorId} onValueChange={setVendedorId}>
-              <SelectTrigger className="w-64">
-                <SelectValue placeholder="Todos" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={TODOS}>Todos</SelectItem>
-                {(vendedores.data?.data ?? []).map((v) => (
-                  <SelectItem key={v.id} value={v.id}>
-                    {vendedorFiltroLabel(v)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
+        <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <Resumo label="Período" valor={data?.periodo.label ?? "—"} />
+          <Resumo label="Vendedor" valor={nomeVendedorFiltrado ?? "Todos"} />
           {filtroExtra && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">{filtroExtra.label}</p>
-              <Select value={filtroExtra.valor} onValueChange={filtroExtra.onChange}>
-                <SelectTrigger className="w-64">
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={TODOS}>Todas</SelectItem>
-                  {filtroExtra.opcoes.map((o) => (
-                    <SelectItem key={o.id} value={o.id}>
-                      {o.descricao}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <Resumo
+              label={filtroExtra.label}
+              valor={nomeExtraFiltrado ?? filtroExtra.rotuloTodos}
+            />
           )}
-
-          <div className="relative w-full sm:max-w-xs">
-            <p className="mb-1 text-xs text-muted-foreground">Buscar na lista</p>
-            <Search className="absolute bottom-2.5 left-2.5 size-3.5 text-muted-foreground" />
+          <Resumo
+            label="Base"
+            valor={
+              data
+                ? data.baseVendedor === "cliente"
+                  ? "Vendedor do cliente"
+                  : "Vendedor da nota"
+                : "—"
+            }
+          />
+          <div className="relative ml-auto w-full sm:max-w-xs">
+            <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder={`Filtrar ${rotuloEntidade.toLowerCase()}...`}
+              placeholder={`Buscar ${rotuloEntidade.toLowerCase()} na lista...`}
               className="pl-8"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
@@ -270,6 +372,169 @@ export function ConsultaVendasView({
           </div>
         </CardContent>
       </Card>
+
+      <Sheet open={cortinaAberta} onOpenChange={abrirCortina}>
+        <ResizableSheetContent defaultWidth={420}>
+          <SheetHeader>
+            <SheetTitle>Parâmetros da consulta</SheetTitle>
+          </SheetHeader>
+          <div className="space-y-4 px-4 pb-4">
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground">Período inicial</p>
+              <div className="flex gap-2">
+                <Select
+                  value={rascunho.mesInicial}
+                  onValueChange={(v) => setRascunho((r) => ({ ...r, mesInicial: v }))}
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MESES_LABEL.map((m, i) => (
+                      <SelectItem key={m} value={String(i + 1)}>
+                        {m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={rascunho.anoInicial}
+                  onValueChange={(v) => setRascunho((r) => ({ ...r, anoInicial: v }))}
+                >
+                  <SelectTrigger className="w-28">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {anos.map((a) => (
+                      <SelectItem key={a} value={String(a)}>
+                        {a}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground">Período final</p>
+              <div className="flex gap-2">
+                <Select
+                  value={rascunho.mesFinal}
+                  onValueChange={(v) => setRascunho((r) => ({ ...r, mesFinal: v }))}
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MESES_LABEL.map((m, i) => (
+                      <SelectItem key={m} value={String(i + 1)}>
+                        {m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={rascunho.anoFinal}
+                  onValueChange={(v) => setRascunho((r) => ({ ...r, anoFinal: v }))}
+                >
+                  <SelectTrigger className="w-28">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {anos.map((a) => (
+                      <SelectItem key={a} value={String(a)}>
+                        {a}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {erroPeriodo ? (
+                <p className="text-xs text-destructive">{erroPeriodo}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {mesesDoRascunho} {mesesDoRascunho === 1 ? "mês" : "meses"} no
+                  período (máximo {MAX_MESES_CONSULTA}).
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground">Vendedor</p>
+              <Select
+                value={rascunho.vendedorId}
+                onValueChange={(v) => setRascunho((r) => ({ ...r, vendedorId: v }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={TODOS}>Todos</SelectItem>
+                  {(vendedores.data?.data ?? []).map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {vendedorFiltroLabel(v)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {filtroExtra && (
+              <div className="space-y-1.5">
+                <p className="text-xs text-muted-foreground">{filtroExtra.label}</p>
+                <Select
+                  value={rascunho.extra}
+                  onValueChange={(v) => setRascunho((r) => ({ ...r, extra: v }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={filtroExtra.rotuloTodos} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={TODOS}>{filtroExtra.rotuloTodos}</SelectItem>
+                    {filtroExtra.opcoes.map((o) => (
+                      <SelectItem key={o.id} value={o.id}>
+                        {o.descricao}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground">Vendedor considerado</p>
+              <Select
+                value={rascunho.baseVendedor}
+                onValueChange={(v) => setRascunho((r) => ({ ...r, baseVendedor: v }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={PADRAO_EMPRESA}>Padrão da empresa</SelectItem>
+                  <SelectItem value="nota">Vendedor da nota</SelectItem>
+                  <SelectItem value="cliente">Vendedor do cadastro do cliente</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Quem leva o crédito da venda: quem emitiu a nota, ou o titular da
+                carteira do cliente. O padrão vem do parâmetro
+                CONSULTA_VENDAS_BASE_VENDEDOR (Administração &gt; Parâmetros) e
+                pode ser trocado só nesta consulta.
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button onClick={aplicarFiltros} disabled={!!erroPeriodo}>
+                Aplicar
+              </Button>
+              <Button variant="ghost" onClick={() => setRascunho(filtrosIniciais)}>
+                Limpar
+              </Button>
+            </div>
+          </div>
+        </ResizableSheetContent>
+      </Sheet>
 
       {isLoading ? (
         <Skeleton className="h-96 w-full rounded-xl" />
@@ -296,10 +561,10 @@ export function ConsultaVendasView({
                 : "vendedor da nota"}
             </p>
             {/* Sem rolagem horizontal: a tabela é `table-fixed`, a coluna de
-                identificação leva 18% e quebra em várias linhas, e as 13
-                colunas de valor dividem o resto. Em tela estreita o que
-                acontece é o texto quebrar em mais linhas — nunca aparecer
-                barra horizontal. */}
+                identificação leva 18% e quebra em várias linhas, e as colunas
+                de valor dividem o resto — quanto menor o período, mais larga
+                cada uma. Em tela estreita o texto quebra em mais linhas, e
+                nunca aparece barra horizontal. */}
             <div className="max-h-[70vh] overflow-x-hidden overflow-y-auto rounded-lg border">
               <Table className="w-full table-fixed">
                 <TableHeader className="sticky top-0 z-10 bg-card">
@@ -311,16 +576,19 @@ export function ConsultaVendasView({
                       order={sortOrder}
                       onClick={() => alternarOrdem("descricao")}
                     />
-                    {MESES_LABEL.map((m) => (
-                      <TableHead key={m} className="px-1.5 text-right text-xs">
-                        {m}
+                    {data.colunas.map((c) => (
+                      <TableHead
+                        key={c.label}
+                        className="px-1.5 text-right text-xs whitespace-nowrap"
+                      >
+                        {c.label}
                       </TableHead>
                     ))}
                     <SortableTableHead
                       label="Total"
                       // O botão do cabeçalho é flex block-level: alinhar o
                       // rótulo à direita exige largura cheia + justify-end.
-                      className="w-[8%] px-1.5 [&>button]:w-full [&>button]:justify-end"
+                      className="px-1.5 [&>button]:w-full [&>button]:justify-end"
                       active={sortBy === "total"}
                       order={sortOrder}
                       onClick={() => alternarOrdem("total")}
@@ -340,7 +608,7 @@ export function ConsultaVendasView({
                           </p>
                         )}
                       </TableCell>
-                      {l.meses.map((v, i) => (
+                      {l.valores.map((v, i) => (
                         <TableCell
                           key={i}
                           className="px-1.5 text-right align-top text-[11px] tabular-nums"
@@ -357,7 +625,7 @@ export function ConsultaVendasView({
                 <tfoot className="sticky bottom-0 z-10 bg-card">
                   <TableRow className="font-medium">
                     <TableCell className="px-2 text-xs">Total geral</TableCell>
-                    {data.totaisMes.map((v, i) => (
+                    {data.totais.map((v, i) => (
                       <TableCell
                         key={i}
                         className="px-1.5 text-right text-[11px] tabular-nums"

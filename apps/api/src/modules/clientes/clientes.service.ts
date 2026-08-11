@@ -28,6 +28,25 @@ import {
 import { ClienteCampoConfigService } from '../cliente-campo-config/cliente-campo-config.service';
 import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
 
+/**
+ * O que conta como venda na Posição de Cliente — a mesma definição das
+ * Consultas: nota ativa, fora de comodato e do tipo Normal do ERP. Tipo 'D'
+ * (devolução/remessa), 'B', 'C' e 'I' são outros documentos e não entram no
+ * histórico de compra, no total comprado nem no mix.
+ *
+ * A aba Comodato é a exceção deliberada: lá o filtro é justamente
+ * `comodato: true`, porque a remessa é o assunto da aba.
+ */
+const NOTA_DE_VENDA = {
+  deletedAt: null,
+  ativo: true,
+  comodato: false,
+  tipo: 'N',
+} as const;
+
+/** Mesma regra, em SQL — a listagem usa query bruta. */
+const NOTA_DE_VENDA_SQL = Prisma.sql`"deletedAt" IS NULL AND "ativo" = true AND "comodato" = false AND "tipo" = 'N'`;
+
 // Colunas calculadas ao vivo (agregação de notas_saida) que a listagem de
 // Posição de Cliente aceita ordenar — mapeia sortBy -> expressão/alias SQL já
 // presente no SELECT. Whitelist: nunca interpolar sortBy do usuário direto
@@ -269,6 +288,7 @@ export class ClientesService {
         empresaId,
         deletedAt: null,
         produtoId: { not: null },
+        notaSaida: NOTA_DE_VENDA,
       },
       _max: { dtEmissao: true },
     });
@@ -307,6 +327,7 @@ export class ClientesService {
               clienteId,
               empresaId,
               deletedAt: null,
+              notaSaida: NOTA_DE_VENDA,
               OR: mixGrupos
                 .filter((g) => g.produtoId && g._max.dtEmissao)
                 .map((g) => ({
@@ -420,24 +441,27 @@ export class ClientesService {
       // "quem executou aquele registro" (pode divergir do vendedor titular
       // do cliente) e não deve restringir a visibilidade de dados de um
       // cliente que o usuário já está autorizado a ver.
-      const notasWhere = {
-        clienteId,
-        empresaId,
-        deletedAt: null,
-        ativo: true,
-      };
       const [notas, comodatos, titulos, mix] = await Promise.all([
-        // Só o histórico de venda efetiva: nota inativa (cancelada no ERP) e
-        // remessa de comodato não entram nem na lista nem no resumo — o
-        // legado tem muita nota inativa zerada, que só polui a consulta.
+        // Só o histórico de venda efetiva (ver NOTA_DE_VENDA): nota inativa
+        // (cancelada no ERP), devolução/remessa e comodato não entram nem na
+        // lista nem no resumo — o legado tem muita nota inativa zerada, que
+        // só polui a consulta.
         tx.notaSaida.findMany({
-          where: { ...notasWhere, comodato: false },
+          where: { clienteId, empresaId, ...NOTA_DE_VENDA },
           include: { vendedor: VENDEDOR_SELECT },
           orderBy: { dtEmissao: 'desc' },
         }),
-        // Comodato tem aba própria: é remessa, não venda.
+        // Comodato tem aba própria: é remessa, não venda. Aqui não se filtra
+        // por tipo — o que interessa é a movimentação de comodato do cliente,
+        // inclusive uma eventual devolução.
         tx.notaSaida.findMany({
-          where: { ...notasWhere, comodato: true },
+          where: {
+            clienteId,
+            empresaId,
+            deletedAt: null,
+            ativo: true,
+            comodato: true,
+          },
           include: { vendedor: VENDEDOR_SELECT },
           orderBy: { dtEmissao: 'desc' },
         }),
@@ -594,17 +618,19 @@ export class ClientesService {
               AND (ta."vencimento" IS NULL OR ta."vencimento" >= CURRENT_DATE + interval '7 days')
           ) AS "temTituloNaoVencido"
         FROM clientes c
+        -- Venda dos últimos 30/90 dias conta só nota de venda, igual à aba de
+        -- notas do detalhe e às Consultas (ver NOTA_DE_VENDA_SQL).
         LEFT JOIN (
           SELECT "clienteId", SUM("vlrBruto") AS total
           FROM notas_saida
-          WHERE "empresaId" = ${empresaId} AND "deletedAt" IS NULL
+          WHERE "empresaId" = ${empresaId} AND ${NOTA_DE_VENDA_SQL}
             AND "dtEmissao" >= now() - interval '30 days'
           GROUP BY "clienteId"
         ) v30 ON v30."clienteId" = c.id
         LEFT JOIN (
           SELECT "clienteId", SUM("vlrBruto") AS total
           FROM notas_saida
-          WHERE "empresaId" = ${empresaId} AND "deletedAt" IS NULL
+          WHERE "empresaId" = ${empresaId} AND ${NOTA_DE_VENDA_SQL}
             AND "dtEmissao" >= now() - interval '90 days'
           GROUP BY "clienteId"
         ) v90 ON v90."clienteId" = c.id
