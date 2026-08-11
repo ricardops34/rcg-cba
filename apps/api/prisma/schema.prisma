@@ -66,6 +66,7 @@ model Empresa {
   integracaoApiKeys          IntegracaoApiKey[]
   clienteCampoConfigs        ClienteCampoConfig[]
   orcamentoConfig            OrcamentoConfig?
+  parametros                 ParametroEmpresa[]
 
   @@map("empresas")
 }
@@ -534,10 +535,51 @@ model ClienteCampoConfig {
 // criação de um Orçamento. Singleton por empresa, mesmo padrão de
 // PoliticaSenha (upsert idempotente no primeiro GET), só que aqui escopado
 // por empresaId (RLS) porque cada tenant pode ter um prazo diferente.
+enum TipoParametro {
+  texto
+  numero
+  booleano
+  data
+  senha
+}
+
+// Parâmetros do sistema por empresa, no formato clássico de tabela de
+// parâmetros de ERP (uma linha por parâmetro, com tipo e conteúdo em texto).
+// Centraliza o que antes ficava espalhado em telas próprias de Administração.
+//
+// conteudo é sempre texto: o campo `tipo` diz como interpretá-lo (ver
+// ParametrosService.valorDe, que converte e valida). Parâmetro de tipo
+// `senha` nunca tem o conteúdo devolvido pela API.
+model ParametroEmpresa {
+  id        String        @id @default(uuid())
+  empresaId String
+  parametro String
+  tipo      TipoParametro @default(texto)
+  // Limite de caracteres do conteúdo (texto/senha) ou de dígitos (numero).
+  tamanho   Int?
+  conteudo  String?
+  descricao String?
+  ativo     Boolean       @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@unique([empresaId, parametro])
+  @@index([empresaId, parametro])
+  @@map("parametros_empresa")
+}
+
+// Só o contador da numeração do orçamento — os parâmetros de negócio (dias
+// de validade) migraram para ParametroEmpresa.
 model OrcamentoConfig {
   id           String @id @default(uuid())
   empresaId    String @unique
-  diasValidade Int    @default(30)
   // Contador do Orcamento.numero. Incrementado por um INSERT ... ON CONFLICT
   // DO UPDATE (ver proximoNumeroOrcamento) — atômico, então dois vendedores
   // gravando ao mesmo tempo nunca pegam o mesmo número.

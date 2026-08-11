@@ -21,7 +21,10 @@ import type {
   PosicaoClienteListRow,
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
-import { calcularStatusTituloReceber } from '../titulos-receber/titulo-receber-status';
+import {
+  calcularStatusTituloReceber,
+  inicioDoDia,
+} from '../titulos-receber/titulo-receber-status';
 import { ClienteCampoConfigService } from '../cliente-campo-config/cliente-campo-config.service';
 import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
 
@@ -417,9 +420,24 @@ export class ClientesService {
       // "quem executou aquele registro" (pode divergir do vendedor titular
       // do cliente) e não deve restringir a visibilidade de dados de um
       // cliente que o usuário já está autorizado a ver.
-      const [notas, titulos, mix] = await Promise.all([
+      const notasWhere = {
+        clienteId,
+        empresaId,
+        deletedAt: null,
+        ativo: true,
+      };
+      const [notas, comodatos, titulos, mix] = await Promise.all([
+        // Só o histórico de venda efetiva: nota inativa (cancelada no ERP) e
+        // remessa de comodato não entram nem na lista nem no resumo — o
+        // legado tem muita nota inativa zerada, que só polui a consulta.
         tx.notaSaida.findMany({
-          where: { clienteId, empresaId, deletedAt: null },
+          where: { ...notasWhere, comodato: false },
+          include: { vendedor: VENDEDOR_SELECT },
+          orderBy: { dtEmissao: 'desc' },
+        }),
+        // Comodato tem aba própria: é remessa, não venda.
+        tx.notaSaida.findMany({
+          where: { ...notasWhere, comodato: true },
           include: { vendedor: VENDEDOR_SELECT },
           orderBy: { dtEmissao: 'desc' },
         }),
@@ -434,7 +452,9 @@ export class ClientesService {
         ),
       ]);
 
-      const hoje = new Date();
+      // Corte na meia-noite: "Títulos vencidos" soma só quem venceu antes de
+      // hoje — quem vence hoje ainda conta como em aberto.
+      const hoje = inicioDoDia();
       const titulosComStatus = titulos.map((titulo) => ({
         ...titulo,
         status: calcularStatusTituloReceber(titulo, hoje),
@@ -451,7 +471,14 @@ export class ClientesService {
           .reduce((acc, t) => acc + t.saldo, 0),
       };
 
-      return { cliente, resumo, notas, titulos: titulosComStatus, mix };
+      return {
+        cliente,
+        resumo,
+        notas,
+        comodatos,
+        titulos: titulosComStatus,
+        mix,
+      };
     });
   }
 
@@ -546,22 +573,25 @@ export class ClientesService {
               AND cm."comodato" = true AND cm."deletedAt" IS NULL
           ) AS "comodato",
           (c."dataBloqueio" IS NOT NULL AND (c."dataReativacao" IS NULL OR c."dataReativacao" < c."dataBloqueio")) AS "bloqueado",
+          -- Vencimento é data pura: o corte é CURRENT_DATE, não now(), senão
+          -- quem vence hoje já apareceria como vencido depois da meia-noite
+          -- (mesma regra de calcularStatusTituloReceber).
           EXISTS (
             SELECT 1 FROM titulos_receber tv
             WHERE tv."clienteId" = c.id AND tv."empresaId" = c."empresaId"
-              AND tv."deletedAt" IS NULL AND tv."dtBaixa" IS NULL AND tv."vencimento" < now()
+              AND tv."deletedAt" IS NULL AND tv."dtBaixa" IS NULL AND tv."vencimento" < CURRENT_DATE
           ) AS "temTituloVencido",
           EXISTS (
             SELECT 1 FROM titulos_receber tz
             WHERE tz."clienteId" = c.id AND tz."empresaId" = c."empresaId"
               AND tz."deletedAt" IS NULL AND tz."dtBaixa" IS NULL
-              AND tz."vencimento" >= now() AND tz."vencimento" < now() + interval '7 days'
+              AND tz."vencimento" >= CURRENT_DATE AND tz."vencimento" < CURRENT_DATE + interval '7 days'
           ) AS "temTituloVencendo",
           EXISTS (
             SELECT 1 FROM titulos_receber ta
             WHERE ta."clienteId" = c.id AND ta."empresaId" = c."empresaId"
               AND ta."deletedAt" IS NULL AND ta."dtBaixa" IS NULL
-              AND (ta."vencimento" IS NULL OR ta."vencimento" >= now() + interval '7 days')
+              AND (ta."vencimento" IS NULL OR ta."vencimento" >= CURRENT_DATE + interval '7 days')
           ) AS "temTituloNaoVencido"
         FROM clientes c
         LEFT JOIN (

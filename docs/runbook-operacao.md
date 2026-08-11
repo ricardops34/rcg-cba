@@ -138,6 +138,28 @@ docker exec plataforma-comercial-dev-web-1 sh -c "cd /app/apps/web && pnpm exec 
 docker exec plataforma-comercial-dev-api-1 sh -c "cd /app/apps/api && pnpm exec nest build"
 ```
 
+## Armadilha: cache do Turbopack corrompido derruba o web em dev **[verificado em 2026-08-11]**
+
+Sintoma: **todas** as rotas do web passam a responder **404** em dev — inclusive `/` e
+telas que funcionavam —, e o log do container mostra:
+
+```
+Persisting failed: Unable to write SST file 00002373.sst
+Caused by: ... Out of memory (os error 12)
+```
+
+Não é rota faltando nem erro de código: é o cache de build (`apps/web/.next`, que chegou
+a 3,5 GB) inutilizado depois de o Turbopack estourar a memória do container. Reiniciar o
+container **não** resolve — o cache continua lá. Apagar e subir de novo resolve:
+
+```bash
+docker stop plataforma-comercial-dev-web-1
+# no host (PowerShell): Remove-Item -Recurse -Force c:\VPS\rcg\apps\web\.next
+docker start plataforma-comercial-dev-web-1
+```
+
+A primeira compilação depois disso demora (~25 s por rota); é esperado.
+
 ## Armadilha: `pnpm run lint` da API tem `--fix`
 
 `apps/api/package.json` define `"lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix"`.

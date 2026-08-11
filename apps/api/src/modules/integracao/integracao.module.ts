@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ParametrosModule } from '../parametros/parametros.module';
 import { IntegracaoCategoriasController } from './categorias/integracao-categorias.controller';
 import { IntegracaoCategoriasService } from './categorias/integracao-categorias.service';
 import { IntegracaoRegrasDescontoController } from './regras-desconto/integracao-regras-desconto.controller';
@@ -28,6 +29,7 @@ import { IntegracaoOrcamentosService } from './orcamentos/integracao-orcamentos.
 import { ApiKeyGuard } from './guards/api-key.guard';
 
 @Module({
+  imports: [ParametrosModule],
   controllers: [
     IntegracaoCategoriasController,
     IntegracaoRegrasDescontoController,

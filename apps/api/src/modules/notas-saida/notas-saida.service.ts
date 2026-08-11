@@ -11,6 +11,7 @@ import {
 import type { NotaSaidaQuery } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ocultarComissaoDosItens } from '../../common/permissoes/pode-ver-comissao';
+import { ParametrosService } from '../parametros/parametros.service';
 
 const SORT_FIELDS = new Set(['numero', 'dtEmissao', 'vlrItens', 'vlrBruto', 'ativo', 'createdAt']);
 
@@ -30,7 +31,10 @@ const CONDICAO_SELECT = { select: { id: true, codigoErp: true, descricao: true }
 // visível pra quem enxerga aquele cliente.
 @Injectable()
 export class NotasSaidaService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly parametros: ParametrosService,
+  ) {}
 
   findAll(empresaId: string, user: AuthenticatedUser, query: NotaSaidaQuery) {
     return this.prisma.withTenant(empresaId, async (tx) => {
@@ -104,7 +108,15 @@ export class NotasSaidaService {
         },
       });
       if (!nota) throw new NotFoundException('Nota de saída não encontrada');
-      return ocultarComissaoDosItens(nota, user);
+      return ocultarComissaoDosItens(
+        nota,
+        user,
+        await this.parametros.obterBoolean(
+          empresaId,
+          'COMISSAO_OCULTA_PARA_TODOS',
+          false,
+        ),
+      );
     });
   }
 }

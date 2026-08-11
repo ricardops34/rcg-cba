@@ -10,7 +10,10 @@ import {
 } from '../../common/pagination/paginate';
 import type { TituloReceberQuery } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
-import { calcularStatusTituloReceber } from './titulo-receber-status';
+import {
+  calcularStatusTituloReceber,
+  inicioDoDia,
+} from './titulo-receber-status';
 
 const SORT_FIELDS = new Set(['numero', 'emissao', 'vencimento', 'valor', 'saldo', 'dtBaixa', 'createdAt']);
 
@@ -27,7 +30,10 @@ export class TitulosReceberService {
   findAll(empresaId: string, user: AuthenticatedUser, query: TituloReceberQuery) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
-      const hoje = new Date();
+      // Mesmo corte usado por calcularStatusTituloReceber — se o filtro do
+      // banco e o cálculo do badge divergirem, a lista mostra "aberto" numa
+      // busca por "vencido".
+      const hoje = inicioDoDia();
       const condicoesStatus: Prisma.TituloReceberWhereInput[] = [];
       if (query.status === 'baixado') {
         condicoesStatus.push({ dtBaixa: { not: null } });
@@ -93,7 +99,7 @@ export class TitulosReceberService {
       if (!titulo) throw new NotFoundException('Título não encontrado');
       return {
         ...titulo,
-        status: calcularStatusTituloReceber(titulo, new Date()),
+        status: calcularStatusTituloReceber(titulo, inicioDoDia()),
       };
     });
   }

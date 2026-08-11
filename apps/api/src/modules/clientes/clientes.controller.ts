@@ -151,8 +151,9 @@ export class ClientesController {
   @ApiOperation({
     summary: 'Posição de cliente',
     description:
-      'Tela agrupada: cliente + notas de saída + títulos a receber + mix de produtos comprados. ' +
-      'Requer posicao-cliente.visualizar.',
+      'Tela agrupada: cliente + notas de saída + remessas de comodato + títulos a receber + ' +
+      'mix de produtos comprados. Notas inativas ficam de fora, e as de comodato saem separadas ' +
+      'em `comodatos` (não entram em `notas` nem no resumo). Requer posicao-cliente.visualizar.',
   })
   @RequirePermission('posicao-cliente', 'visualizar')
   @Get(':id/posicao')

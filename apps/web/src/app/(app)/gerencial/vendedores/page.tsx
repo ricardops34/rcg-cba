@@ -27,6 +27,23 @@ import { KeyRound, Lock, MoreHorizontal, Pencil, Trash2, Unlock, UserPlus } from
 
 type SimNaoTodos = "todos" | "sim" | "nao";
 
+/** Resposta de criar-usuario / reenviar-senha: quando o e-mail não sai,
+ * a senha provisória volta aqui pro admin repassar (o acesso já existe). */
+interface AcessoVendedorResposta {
+  emailEnviado?: boolean;
+  senhaProvisoria?: string;
+}
+
+/**
+ * Texto do aviso: com SMTP fora do ar o acesso é criado do mesmo jeito, e a
+ * senha provisória vem na resposta pro admin repassar ao vendedor.
+ */
+function mensagemAcesso(titulo: string, r: AcessoVendedorResposta) {
+  return r.emailEnviado === false && r.senhaProvisoria
+    ? `${titulo}, mas o e-mail não pôde ser enviado. Senha provisória: ${r.senhaProvisoria}`
+    : `${titulo} — senha provisória enviada por e-mail`;
+}
+
 export default function VendedoresPage() {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -79,9 +96,10 @@ export default function VendedoresPage() {
   };
 
   const criarUsuario = useMutation({
-    mutationFn: (id: string) => apiFetch(`/vendedores/${id}/criar-usuario`, { method: "POST" }),
-    onSuccess: () => {
-      toast.success("Usuário criado — senha provisória enviada por e-mail");
+    mutationFn: (id: string) =>
+      apiFetch<AcessoVendedorResposta>(`/vendedores/${id}/criar-usuario`, { method: "POST" }),
+    onSuccess: (r) => {
+      toast.success(mensagemAcesso("Usuário criado", r));
       queryClient.invalidateQueries({ queryKey: ["vendedores"] });
       queryClient.invalidateQueries({ queryKey: ["usuarios"] });
     },
@@ -94,8 +112,9 @@ export default function VendedoresPage() {
   };
 
   const reenviarSenha = useMutation({
-    mutationFn: (id: string) => apiFetch(`/vendedores/${id}/reenviar-senha`, { method: "POST" }),
-    onSuccess: () => toast.success("Nova senha provisória enviada por e-mail"),
+    mutationFn: (id: string) =>
+      apiFetch<AcessoVendedorResposta>(`/vendedores/${id}/reenviar-senha`, { method: "POST" }),
+    onSuccess: (r) => toast.success(mensagemAcesso("Senha redefinida", r)),
     onError: (err) => toast.error(err instanceof ApiError ? err.message : "Erro ao reenviar senha"),
   });
 

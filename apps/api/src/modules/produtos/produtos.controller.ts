@@ -40,8 +40,16 @@ export class ProdutosController {
     return this.service.findAll(user.empresaAtivaId, query);
   }
 
-  @ApiOperation({ summary: 'Detalhar produto', description: 'Requer produtos.visualizar.' })
-  @RequirePermission('produtos', 'visualizar')
+  @ApiOperation({
+    summary: 'Detalhar produto',
+    description:
+      'Requer produtos.visualizar ou posicao-cliente.visualizar — a cortina de detalhe da ' +
+      'Posição de Cliente abre esta rota a partir do mix de produtos que a própria tela já listou.',
+  })
+  @RequirePermission('produtos', 'visualizar', [
+    'posicao-cliente',
+    'visualizar',
+  ])
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.findOne(user.empresaAtivaId, id);

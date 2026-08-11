@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import type { TenantTx } from '../../common/prisma/prisma.service';
 import {
   calcularComissaoItem,
@@ -29,6 +30,8 @@ export async function calcularItensOrcamento(
   clienteId: string,
   itens: OrcamentoItemLinha[],
   vendedorId: string,
+  /** Parâmetro DESCONTO_ACIMA_LIMITE_BLOQUEIA da empresa. */
+  bloquearAcimaDoLimite = false,
 ) {
   if (itens.length === 0)
     return { data: [] as Record<string, unknown>[], vlrTotal: 0 };
@@ -83,6 +86,14 @@ export async function calcularItensOrcamento(
       percDesconto,
       percBaseVendedor,
     );
+    // Com o parâmetro ligado, desconto acima do limite da regra recusa a
+    // gravação em vez de só avisar na tela.
+    if (bloquearAcimaDoLimite && comissao.acimaDoMaximo) {
+      throw new BadRequestException(
+        `Desconto de ${percDesconto}% excede o máximo de ` +
+          `${regra?.percDescontoMaximo}% da regra ${regra?.descricao}`,
+      );
+    }
 
     return {
       empresaId,

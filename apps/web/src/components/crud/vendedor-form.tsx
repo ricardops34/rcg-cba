@@ -42,9 +42,19 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
   const { create, update } = useResourceMutations<VendedorCreate, VendedorUpdate>("vendedores");
 
   const criarUsuario = useMutation({
-    mutationFn: () => apiFetch(`/vendedores/${vendedor?.id}/criar-usuario`, { method: "POST" }),
-    onSuccess: () => {
-      toast.success("Usuário criado — senha provisória enviada por e-mail");
+    mutationFn: () =>
+      apiFetch<{ emailEnviado?: boolean; senhaProvisoria?: string }>(
+        `/vendedores/${vendedor?.id}/criar-usuario`,
+        { method: "POST" },
+      ),
+    // SMTP fora do ar não impede a criação do acesso — a senha provisória vem
+    // na resposta pro admin repassar ao vendedor.
+    onSuccess: (r) => {
+      toast.success(
+        r.emailEnviado === false && r.senhaProvisoria
+          ? `Usuário criado, mas o e-mail não pôde ser enviado. Senha provisória: ${r.senhaProvisoria}`
+          : "Usuário criado — senha provisória enviada por e-mail",
+      );
       queryClient.invalidateQueries({ queryKey: ["vendedores"] });
       queryClient.invalidateQueries({ queryKey: ["usuarios"] });
     },

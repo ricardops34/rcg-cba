@@ -32,8 +32,16 @@ export class TitulosReceberController {
     return this.service.findAll(user.empresaAtivaId, user, query);
   }
 
-  @ApiOperation({ summary: 'Detalhar título', description: 'Requer titulos-receber.visualizar.' })
-  @RequirePermission('titulos-receber', 'visualizar')
+  @ApiOperation({
+    summary: 'Detalhar título',
+    description:
+      'Requer titulos-receber.visualizar ou posicao-cliente.visualizar — a cortina de detalhe da ' +
+      'Posição de Cliente abre esta rota a partir de um título que a própria tela já listou.',
+  })
+  @RequirePermission('titulos-receber', 'visualizar', [
+    'posicao-cliente',
+    'visualizar',
+  ])
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.findOne(user.empresaAtivaId, user, id);

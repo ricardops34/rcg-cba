@@ -23,7 +23,6 @@ import { ArrowLeft, Search } from "lucide-react";
 
 const LIST_ROUTE = "/comercial/posicao-cliente";
 
-type NotaStatusFiltro = "todas" | "ativas" | "inativas";
 type TituloSituacaoFiltro = "todos" | "aberto" | "vencido" | "baixado";
 type SortOrder = "asc" | "desc";
 
@@ -72,16 +71,140 @@ function Metrica({ label, value }: { label: string; value: string }) {
   );
 }
 
-// Posição de Cliente: agrupa cliente + notas de saída + títulos a receber +
-// mix de produtos comprados. Cada aba tem seu próprio filtro e barra de
-// rolagem; o detalhe de nota/título abre numa cortina lateral (não navega
-// pra outra página), pra não perder a busca/scroll de quem está consultando.
+/** Busca por número/série — o resto do filtro (ativa, comodato) é do back-end. */
+function filtrarNotas(lista: NotaRow[], busca: string): NotaRow[] {
+  const termo = busca.trim().toLowerCase();
+  if (!termo) return lista;
+  return lista.filter((n) => `${n.numero} ${n.serie ?? ""}`.toLowerCase().includes(termo));
+}
+
+function ordenarNotas(lista: NotaRow[], sortBy: string, sortOrder: SortOrder): NotaRow[] {
+  const valor = (n: NotaRow): string | number | null => {
+    switch (sortBy) {
+      case "numero":
+        return n.numero;
+      case "dtEmissao":
+        return n.dtEmissao;
+      case "vendedor":
+        return n.vendedor ? n.vendedor.nomeReduzido || n.vendedor.nome : null;
+      case "vlrBruto":
+        return n.vlrBruto;
+      default:
+        return null;
+    }
+  };
+  const ordenadas = [...lista].sort((a, b) => compareValores(valor(a), valor(b)));
+  return sortOrder === "desc" ? ordenadas.reverse() : ordenadas;
+}
+
+/**
+ * Tabela das abas de nota — "Notas fiscais" e "Comodato" mostram as mesmas
+ * colunas e abrem a mesma cortina de detalhe; só muda a lista de origem.
+ */
+function TabelaNotas({
+  notas,
+  busca,
+  onBuscaChange,
+  sortBy,
+  sortOrder,
+  onToggleSort,
+  onSelecionar,
+  mensagemVazio,
+}: {
+  notas: NotaRow[];
+  busca: string;
+  onBuscaChange: (v: string) => void;
+  sortBy: string;
+  sortOrder: SortOrder;
+  onToggleSort: (key: string) => void;
+  onSelecionar: (id: string) => void;
+  mensagemVazio: string;
+}) {
+  return (
+    <Card>
+      <CardContent className="space-y-3">
+        <div className="relative w-full sm:max-w-xs">
+          <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por número..."
+            className="pl-8"
+            value={busca}
+            onChange={(e) => onBuscaChange(e.target.value)}
+          />
+        </div>
+
+        {notas.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{mensagemVazio}</p>
+        ) : (
+          <div className="max-h-[440px] overflow-y-auto rounded-lg border">
+            <Table>
+              <TableHeader className="sticky top-0 z-10 bg-card">
+                <TableRow>
+                  <SortableTableHead
+                    label="Nota"
+                    active={sortBy === "numero"}
+                    order={sortOrder}
+                    onClick={() => onToggleSort("numero")}
+                  />
+                  <SortableTableHead
+                    label="Emissão"
+                    active={sortBy === "dtEmissao"}
+                    order={sortOrder}
+                    onClick={() => onToggleSort("dtEmissao")}
+                  />
+                  <SortableTableHead
+                    label="Vendedor"
+                    active={sortBy === "vendedor"}
+                    order={sortOrder}
+                    onClick={() => onToggleSort("vendedor")}
+                  />
+                  <SortableTableHead
+                    label="Vlr. bruto"
+                    className="text-right"
+                    active={sortBy === "vlrBruto"}
+                    order={sortOrder}
+                    onClick={() => onToggleSort("vlrBruto")}
+                  />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {notas.map((n) => (
+                  <TableRow
+                    key={n.id}
+                    className="cursor-pointer"
+                    onClick={() => onSelecionar(n.id)}
+                  >
+                    <TableCell className="font-mono font-medium">
+                      {n.numero}
+                      {n.serie && <span className="text-muted-foreground">/{n.serie}</span>}
+                    </TableCell>
+                    <TableCell>{dataBr(n.dtEmissao)}</TableCell>
+                    <TableCell className="text-xs">
+                      {n.vendedor ? n.vendedor.nomeReduzido || n.vendedor.nome : "—"}
+                    </TableCell>
+                    <TableCell className="text-right">{moeda(n.vlrBruto)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Posição de Cliente: agrupa cliente + notas de saída + remessas de comodato
+// + títulos a receber + mix de produtos comprados. Cada aba tem seu próprio
+// filtro e barra de rolagem; o detalhe de nota/título abre numa cortina
+// lateral (não navega pra outra página), pra não perder a busca/scroll de
+// quem está consultando.
 export default function PosicaoClienteDetalhePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
 
   const [notaSearch, setNotaSearch] = useState("");
-  const [notaStatus, setNotaStatus] = useState<NotaStatusFiltro>("todas");
+  const [comodatoSearch, setComodatoSearch] = useState("");
   const [tituloSearch, setTituloSearch] = useState("");
   const [tituloSituacao, setTituloSituacao] = useState<TituloSituacaoFiltro>("todos");
   const [mixSearch, setMixSearch] = useState("");
@@ -94,6 +217,8 @@ export default function PosicaoClienteDetalhePage() {
   // (mais recente/maior valor primeiro) até o usuário clicar num cabeçalho.
   const [notaSortBy, setNotaSortBy] = useState("dtEmissao");
   const [notaSortOrder, setNotaSortOrder] = useState<SortOrder>("desc");
+  const [comodatoSortBy, setComodatoSortBy] = useState("dtEmissao");
+  const [comodatoSortOrder, setComodatoSortOrder] = useState<SortOrder>("desc");
   const [tituloSortBy, setTituloSortBy] = useState("vencimento");
   const [tituloSortOrder, setTituloSortOrder] = useState<SortOrder>("desc");
   const [mixSortBy, setMixSortBy] = useState("ultimaCompra");
@@ -119,18 +244,9 @@ export default function PosicaoClienteDetalhePage() {
   });
 
   const notas = useMemo(() => posicao?.notas ?? [], [posicao]);
+  const comodatos = useMemo(() => posicao?.comodatos ?? [], [posicao]);
   const titulos = useMemo(() => posicao?.titulos ?? [], [posicao]);
   const mix = useMemo(() => posicao?.mix ?? [], [posicao]);
-
-  const notasFiltradas = useMemo(() => {
-    const termo = notaSearch.trim().toLowerCase();
-    return notas.filter((n) => {
-      if (notaStatus === "ativas" && !n.ativo) return false;
-      if (notaStatus === "inativas" && n.ativo) return false;
-      if (termo && !`${n.numero} ${n.serie ?? ""}`.toLowerCase().includes(termo)) return false;
-      return true;
-    });
-  }, [notas, notaStatus, notaSearch]);
 
   const titulosFiltrados = useMemo(() => {
     const termo = tituloSearch.trim().toLowerCase();
@@ -153,26 +269,20 @@ export default function PosicaoClienteDetalhePage() {
     );
   }, [mix, mixSearch]);
 
-  const notasOrdenadas = useMemo(() => {
-    const valor = (n: NotaRow): string | number | null => {
-      switch (notaSortBy) {
-        case "numero":
-          return n.numero;
-        case "dtEmissao":
-          return n.dtEmissao;
-        case "vendedor":
-          return n.vendedor ? n.vendedor.nomeReduzido || n.vendedor.nome : null;
-        case "vlrBruto":
-          return n.vlrBruto;
-        case "ativo":
-          return n.ativo ? 1 : 0;
-        default:
-          return null;
-      }
-    };
-    const ordenadas = [...notasFiltradas].sort((a, b) => compareValores(valor(a), valor(b)));
-    return notaSortOrder === "desc" ? ordenadas.reverse() : ordenadas;
-  }, [notasFiltradas, notaSortBy, notaSortOrder]);
+  const notasOrdenadas = useMemo(
+    () => ordenarNotas(filtrarNotas(notas, notaSearch), notaSortBy, notaSortOrder),
+    [notas, notaSearch, notaSortBy, notaSortOrder],
+  );
+
+  const comodatosOrdenados = useMemo(
+    () =>
+      ordenarNotas(
+        filtrarNotas(comodatos, comodatoSearch),
+        comodatoSortBy,
+        comodatoSortOrder,
+      ),
+    [comodatos, comodatoSearch, comodatoSortBy, comodatoSortOrder],
+  );
 
   const titulosOrdenados = useMemo(() => {
     const valor = (t: TituloRow): string | number | null => {
@@ -281,108 +391,37 @@ export default function PosicaoClienteDetalhePage() {
       <Tabs defaultValue="notas">
         <TabsList>
           <TabsTrigger value="notas">Notas fiscais ({notas.length})</TabsTrigger>
+          <TabsTrigger value="comodato">Comodato ({comodatos.length})</TabsTrigger>
           <TabsTrigger value="titulos">Títulos a receber ({titulos.length})</TabsTrigger>
           <TabsTrigger value="mix">Mix de produtos ({mix.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="notas">
-          <Card>
-            <CardContent className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="relative w-full sm:max-w-xs">
-                  <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar por número..."
-                    className="pl-8"
-                    value={notaSearch}
-                    onChange={(e) => setNotaSearch(e.target.value)}
-                  />
-                </div>
-                <Select value={notaStatus} onValueChange={(v) => setNotaStatus(v as NotaStatusFiltro)}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todas">Todas</SelectItem>
-                    <SelectItem value="ativas">Ativas</SelectItem>
-                    <SelectItem value="inativas">Inativas</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+          <TabelaNotas
+            notas={notasOrdenadas}
+            busca={notaSearch}
+            onBuscaChange={setNotaSearch}
+            sortBy={notaSortBy}
+            sortOrder={notaSortOrder}
+            onToggleSort={(k) => toggleSort(k, notaSortBy, setNotaSortBy, setNotaSortOrder)}
+            onSelecionar={setNotaSelecionadaId}
+            mensagemVazio="Nenhuma nota encontrada."
+          />
+        </TabsContent>
 
-              {notasOrdenadas.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhuma nota encontrada.</p>
-              ) : (
-                <div className="max-h-[440px] overflow-y-auto rounded-lg border">
-                  <Table>
-                    <TableHeader className="sticky top-0 z-10 bg-card">
-                      <TableRow>
-                        <SortableTableHead
-                          label="Nota"
-                          active={notaSortBy === "numero"}
-                          order={notaSortOrder}
-                          onClick={() => toggleSort("numero", notaSortBy, setNotaSortBy, setNotaSortOrder)}
-                        />
-                        <SortableTableHead
-                          label="Emissão"
-                          active={notaSortBy === "dtEmissao"}
-                          order={notaSortOrder}
-                          onClick={() =>
-                            toggleSort("dtEmissao", notaSortBy, setNotaSortBy, setNotaSortOrder)
-                          }
-                        />
-                        <SortableTableHead
-                          label="Vendedor"
-                          active={notaSortBy === "vendedor"}
-                          order={notaSortOrder}
-                          onClick={() =>
-                            toggleSort("vendedor", notaSortBy, setNotaSortBy, setNotaSortOrder)
-                          }
-                        />
-                        <SortableTableHead
-                          label="Vlr. bruto"
-                          className="text-right"
-                          active={notaSortBy === "vlrBruto"}
-                          order={notaSortOrder}
-                          onClick={() =>
-                            toggleSort("vlrBruto", notaSortBy, setNotaSortBy, setNotaSortOrder)
-                          }
-                        />
-                        <SortableTableHead
-                          label="Status"
-                          active={notaSortBy === "ativo"}
-                          order={notaSortOrder}
-                          onClick={() => toggleSort("ativo", notaSortBy, setNotaSortBy, setNotaSortOrder)}
-                        />
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {notasOrdenadas.map((n) => (
-                        <TableRow
-                          key={n.id}
-                          className="cursor-pointer"
-                          onClick={() => setNotaSelecionadaId(n.id)}
-                        >
-                          <TableCell className="font-mono font-medium">
-                            {n.numero}
-                            {n.serie && <span className="text-muted-foreground">/{n.serie}</span>}
-                          </TableCell>
-                          <TableCell>{dataBr(n.dtEmissao)}</TableCell>
-                          <TableCell className="text-xs">
-                            {n.vendedor ? n.vendedor.nomeReduzido || n.vendedor.nome : "—"}
-                          </TableCell>
-                          <TableCell className="text-right">{moeda(n.vlrBruto)}</TableCell>
-                          <TableCell>
-                            <StatusDot active={n.ativo} />
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        <TabsContent value="comodato">
+          <TabelaNotas
+            notas={comodatosOrdenados}
+            busca={comodatoSearch}
+            onBuscaChange={setComodatoSearch}
+            sortBy={comodatoSortBy}
+            sortOrder={comodatoSortOrder}
+            onToggleSort={(k) =>
+              toggleSort(k, comodatoSortBy, setComodatoSortBy, setComodatoSortOrder)
+            }
+            onSelecionar={setNotaSelecionadaId}
+            mensagemVazio="Nenhuma nota de comodato encontrada."
+          />
         </TabsContent>
 
         <TabsContent value="titulos">

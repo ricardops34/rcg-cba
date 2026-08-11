@@ -91,6 +91,88 @@ const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
   agenda: ['visualizar'],
 };
 
+/**
+ * Parâmetros que toda empresa nasce tendo (Administração > Parâmetros). Os
+ * mesmos da migration 20260810184018_parametros_empresa — quem lê cada um
+ * está no service correspondente (ex.: ORCAMENTO_DIAS_VALIDADE em
+ * OrcamentoConfigService). O admin pode criar outros pela tela.
+ */
+const PARAMETROS_PADRAO = [
+  {
+    parametro: 'ORCAMENTO_DIAS_VALIDADE',
+    tipo: 'numero' as const,
+    tamanho: 3,
+    conteudo: '30',
+    descricao: 'Dias somados à emissão para sugerir a validade do orçamento',
+  },
+  {
+    parametro: 'DESCONTO_ACIMA_LIMITE_BLOQUEIA',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'false',
+    descricao:
+      'Recusa a gravação do orçamento com desconto acima do limite da regra; falso apenas avisa na tela',
+  },
+  {
+    parametro: 'CONSULTA_VENDAS_BASE_VENDEDOR',
+    tipo: 'texto' as const,
+    tamanho: 10,
+    conteudo: 'nota',
+    descricao:
+      'Vendedor considerado nas Consultas de venda: nota (quem vendeu) ou cliente (titular da carteira)',
+  },
+  {
+    parametro: 'COMISSAO_OCULTA_PARA_TODOS',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'false',
+    descricao:
+      'Esconde os valores de comissão de todos os perfis, ignorando a permissão comissao.visualizar',
+  },
+  {
+    parametro: 'SMTP_HOST',
+    tipo: 'texto' as const,
+    tamanho: 120,
+    conteudo: null,
+    descricao: 'Servidor de e-mail; vazio usa a configuração do servidor',
+  },
+  {
+    parametro: 'SMTP_PORTA',
+    tipo: 'numero' as const,
+    tamanho: 5,
+    conteudo: null,
+    descricao: 'Porta do servidor de e-mail (ex.: 587)',
+  },
+  {
+    parametro: 'SMTP_SEGURO',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'false',
+    descricao: 'Conexão SSL/TLS direta com o servidor de e-mail',
+  },
+  {
+    parametro: 'SMTP_USUARIO',
+    tipo: 'texto' as const,
+    tamanho: 120,
+    conteudo: null,
+    descricao: 'Usuário de autenticação no servidor de e-mail',
+  },
+  {
+    parametro: 'SMTP_SENHA',
+    tipo: 'senha' as const,
+    tamanho: 120,
+    conteudo: null,
+    descricao: 'Senha de autenticação no servidor de e-mail',
+  },
+  {
+    parametro: 'SMTP_REMETENTE',
+    tipo: 'texto' as const,
+    tamanho: 150,
+    conteudo: null,
+    descricao: 'Endereço exibido como remetente dos e-mails',
+  },
+];
+
 // Rotinas de administração do sistema — o perfil Diretor tem acesso irrestrito
 // aos dados comerciais, mas não a estas (ver bootstrapPerfilDiretor).
 const ROTINAS_ADMIN_ONLY = new Set([
@@ -110,6 +192,8 @@ const ROTINAS_ADMIN_ONLY = new Set([
   // Define os dias de validade padrão do Orçamento: config de sistema, não
   // dado comercial.
   'orcamento-config',
+  // Parâmetros do sistema por empresa: config, não dado comercial.
+  'parametros',
 ]);
 
 async function limparDados() {
@@ -154,6 +238,7 @@ async function limparDados() {
   await prisma.usuario.deleteMany();
   await prisma.clienteCampoConfig.deleteMany();
   await prisma.orcamentoConfig.deleteMany();
+  await prisma.parametroEmpresa.deleteMany();
   await prisma.empresa.deleteMany();
 }
 
@@ -207,6 +292,16 @@ async function bootstrapMenu() {
       ordem: 5,
     },
     update: { nome: 'Cadastros', icone: 'database', ordem: 5 },
+  });
+  const moduloConsultas = await prisma.modulo.upsert({
+    where: { id: 'seed-modulo-consultas' },
+    create: {
+      id: 'seed-modulo-consultas',
+      nome: 'Consultas',
+      icone: 'chart-column',
+      ordem: 4,
+    },
+    update: { nome: 'Consultas', icone: 'chart-column', ordem: 4 },
   });
 
   const menuDefs = [
@@ -264,6 +359,14 @@ async function bootstrapMenu() {
       rota: '/admin/clientes-config',
       icone: 'list-checks',
       codigo: 'clientes-config',
+      moduloId: moduloAdministracao.id,
+    },
+    {
+      id: 'seed-menu-parametros',
+      nome: 'Parâmetros',
+      rota: '/admin/parametros',
+      icone: 'sliders-horizontal',
+      codigo: 'parametros',
       moduloId: moduloAdministracao.id,
     },
     {
@@ -463,6 +566,24 @@ async function bootstrapMenu() {
       codigo: 'regras-desconto',
       moduloId: moduloCadastros.id,
     },
+    // Consultas gerenciais: uma rotina por tela, para que a permissão de
+    // exportar possa ser dada em uma e não na outra.
+    {
+      id: 'seed-menu-consulta-vendas-cliente',
+      nome: 'Vendas por Cliente',
+      rota: '/consultas/vendas-cliente',
+      icone: 'users-round',
+      codigo: 'consulta-vendas-cliente',
+      moduloId: moduloConsultas.id,
+    },
+    {
+      id: 'seed-menu-consulta-vendas-produto',
+      nome: 'Vendas por Produto',
+      rota: '/consultas/vendas-produto',
+      icone: 'package-search',
+      codigo: 'consulta-vendas-produto',
+      moduloId: moduloConsultas.id,
+    },
   ];
 
   for (const [i, m] of menuDefs.entries()) {
@@ -584,6 +705,33 @@ async function bootstrapPerfis(rotinas: { id: string; codigo: string }[]) {
     skipDuplicates: true,
   });
 
+  // Supervisor e Gerente: as mesmas telas do Vendedor (VENDEDOR_PERMISSOES).
+  // O que muda entre eles não é o RBAC, e sim o alcance da carteira, que vem
+  // do cadastro de Vendedor (flags supervisor/gerente + supervisorId/
+  // gerenteId) e é resolvido por resolverEscopoVendedores — por isso os três
+  // perfis compartilham a mesma lista de permissões.
+  for (const [nome, descricao] of [
+    ['Supervisor', 'Mesmas telas do Vendedor; a carteira alcançada vem da hierarquia do cadastro de Vendedores'],
+    ['Gerente', 'Mesmas telas do Vendedor; a carteira alcançada vem da hierarquia do cadastro de Vendedores'],
+  ]) {
+    const perfil = await prisma.perfil.create({
+      data: { nome, descricao, sistemaBase: false },
+    });
+    await prisma.perfilPermissao.createMany({
+      data: rotinas
+        .filter((rotina) => rotina.codigo in VENDEDOR_PERMISSOES)
+        .flatMap((rotina) =>
+          VENDEDOR_PERMISSOES[rotina.codigo].map((acao) => ({
+            perfilId: perfil.id,
+            rotinaId: rotina.id,
+            acao,
+            permitido: true,
+          })),
+        ),
+      skipDuplicates: true,
+    });
+  }
+
   return { perfilAdmin, perfilVendedor };
 }
 
@@ -664,6 +812,11 @@ async function main() {
         perfilId: perfilAdmin.id,
         ativo: true,
       },
+    });
+
+    await prisma.parametroEmpresa.createMany({
+      data: PARAMETROS_PADRAO.map((p) => ({ ...p, empresaId: empresa.id })),
+      skipDuplicates: true,
     });
 
     console.log(`— ${cfg.nomeFantasia}  (alias: ${cfg.alias})`);

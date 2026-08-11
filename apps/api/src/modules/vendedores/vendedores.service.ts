@@ -2,12 +2,17 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { PoliticaSenhaService } from '../politica-senha/politica-senha.service';
-import { MailService } from '../../common/mail/mail.service';
+import {
+  MailService,
+  type ConfiguracaoSmtp,
+} from '../../common/mail/mail.service';
+import { ParametrosService } from '../parametros/parametros.service';
 import {
   buildPaginatedResult,
   paginationToSkipTake,
@@ -26,10 +31,13 @@ const SALT_ROUNDS = 12;
 
 @Injectable()
 export class VendedoresService {
+  private readonly logger = new Logger(VendedoresService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly politicaSenhaService: PoliticaSenhaService,
     private readonly mailService: MailService,
+    private readonly parametros: ParametrosService,
   ) {}
 
   private limpar<T extends Record<string, unknown>>(input: T) {
@@ -123,7 +131,7 @@ export class VendedoresService {
    * criação do usuário/vínculo (não fica usuário órfão sem senha comunicada).
    */
   async criarUsuario(empresaId: string, actorId: string, id: string) {
-    return this.prisma.withTenant(
+    const criado = await this.prisma.withTenant(
       empresaId,
       async (tx) => {
         const vendedor = await tx.vendedor.findFirst({ where: { id, empresaId, deletedAt: null } });
@@ -175,16 +183,79 @@ export class VendedoresService {
           data: { usuarioId: usuario.id, updatedBy: actorId },
         });
 
-        await this.mailService.send(
-          vendedor.email,
-          'Acesso à Plataforma Comercial',
-          this.buildSenhaProvisoriaEmailHtml(vendedor.nome, vendedor.email, senha),
-        );
-
-        return { id: usuario.id, nome: usuario.nome, email: usuario.email };
+        return { usuario, email: vendedor.email, nome: vendedor.nome, senha };
       },
       { timeout: 15_000 },
     );
+
+    // Envio fica FORA da transação de propósito: SMTP indisponível derrubava
+    // a transação inteira e o usuário nem chegava a ser criado. O acesso é o
+    // que importa; o e-mail é entrega, e pode ser refeito por "Reenviar senha".
+    const emailEnviado = await this.enviarSenhaPorEmail(
+      empresaId,
+      criado.email,
+      'Acesso à Plataforma Comercial',
+      this.buildSenhaProvisoriaEmailHtml(
+        criado.nome,
+        criado.email,
+        criado.senha,
+      ),
+    );
+
+    return {
+      id: criado.usuario.id,
+      nome: criado.usuario.nome,
+      email: criado.usuario.email,
+      emailEnviado,
+      // Sem e-mail entregue, ninguém saberia a senha e o acesso nasceria
+      // inutilizável. Devolve só nesse caso, para o admin repassar — mesmo
+      // princípio da chave de integração, exibida uma única vez na criação.
+      senhaProvisoria: emailEnviado ? undefined : criado.senha,
+    };
+  }
+
+  /**
+   * Envia o e-mail sem deixar a falha derrubar a operação — devolve se saiu.
+   * Sem SMTP configurado nem tenta (o MailService avisa e devolve false);
+   * servidor fora do ar é problema de entrega, não motivo para desfazer um
+   * acesso já criado.
+   */
+  /** SMTP dos parâmetros da empresa; sem host preenchido cai no ambiente. */
+  private async smtpDaEmpresa(
+    empresaId: string,
+  ): Promise<ConfiguracaoSmtp | null> {
+    const host = await this.parametros.obterTexto(empresaId, 'SMTP_HOST');
+    if (!host) return null;
+    return {
+      host,
+      porta: await this.parametros.obterNumero(empresaId, 'SMTP_PORTA', 587),
+      seguro: await this.parametros.obterBoolean(
+        empresaId,
+        'SMTP_SEGURO',
+        false,
+      ),
+      usuario: await this.parametros.obterTexto(empresaId, 'SMTP_USUARIO'),
+      senha: await this.parametros.obterTexto(empresaId, 'SMTP_SENHA'),
+      remetente: await this.parametros.obterTexto(empresaId, 'SMTP_REMETENTE'),
+    };
+  }
+
+  private async enviarSenhaPorEmail(
+    empresaId: string,
+    para: string,
+    assunto: string,
+    html: string,
+  ): Promise<boolean> {
+    const smtp = await this.smtpDaEmpresa(empresaId);
+    if (!this.mailService.configurado(smtp)) return false;
+    try {
+      return await this.mailService.send(para, assunto, html, smtp);
+    } catch (erro) {
+      this.logger.error(
+        `Falha ao enviar senha provisória para ${para}: ${(erro as Error).message}`,
+      );
+      return false;
+    }
   }
 
   private buildSenhaProvisoriaEmailHtml(nome: string, email: string, senha: string): string {
@@ -205,7 +276,7 @@ export class VendedoresService {
    * tem acesso e esqueceu/perdeu a senha original.
    */
   async reenviarSenha(empresaId: string, actorId: string, id: string) {
-    return this.prisma.withTenant(
+    const redefinida = await this.prisma.withTenant(
       empresaId,
       async (tx) => {
         const vendedor = await tx.vendedor.findFirst({ where: { id, empresaId, deletedAt: null } });
@@ -240,16 +311,30 @@ export class VendedoresService {
           },
         });
 
-        await this.mailService.send(
-          vendedor.email,
-          'Nova senha provisória — Plataforma Comercial',
-          this.buildSenhaReenviadaEmailHtml(vendedor.nome, vendedor.email, senha),
-        );
-
-        return { success: true };
+        return { email: vendedor.email, nome: vendedor.nome, senha };
       },
       { timeout: 15_000 },
     );
+
+    // Mesma razão de criarUsuario: a senha já foi trocada no banco, então
+    // falha de SMTP não pode desfazer a operação (nem deixar o vendedor com a
+    // senha antiga, que já não vale mais).
+    const emailEnviado = await this.enviarSenhaPorEmail(
+      empresaId,
+      redefinida.email,
+      'Nova senha provisória — Plataforma Comercial',
+      this.buildSenhaReenviadaEmailHtml(
+        redefinida.nome,
+        redefinida.email,
+        redefinida.senha,
+      ),
+    );
+
+    return {
+      success: true,
+      emailEnviado,
+      senhaProvisoria: emailEnviado ? undefined : redefinida.senha,
+    };
   }
 
   private buildSenhaReenviadaEmailHtml(nome: string, email: string, senha: string): string {

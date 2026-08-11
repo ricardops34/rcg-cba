@@ -24,6 +24,7 @@ import { calcularItensOrcamento } from '../../orcamentos/calcular-itens-orcament
 import { criarAtividadeRetorno } from '../../orcamentos/criar-atividade-retorno';
 import { proximoNumeroOrcamento } from '../../orcamentos/proximo-numero-orcamento';
 import { autorIntegracao } from '../common/autor-integracao';
+import { ParametrosService } from '../../parametros/parametros.service';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 
 const INCLUDE = {
@@ -43,7 +44,10 @@ type OrcamentoComRelacoes = Prisma.OrcamentoGetPayload<{
 
 @Injectable()
 export class IntegracaoOrcamentosService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly parametros: ParametrosService,
+  ) {}
 
   private paraLeitura(row: OrcamentoComRelacoes): IntegracaoOrcamento {
     return {
@@ -269,6 +273,11 @@ export class IntegracaoOrcamentosService {
       clienteId,
       itensParaCalculo,
       vendedorId,
+      await this.parametros.obterBoolean(
+        empresaId,
+        'DESCONTO_ACIMA_LIMITE_BLOQUEIA',
+        false,
+      ),
     );
   }
 

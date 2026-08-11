@@ -27,6 +27,7 @@ import { calcularItensOrcamento } from './calcular-itens-orcamento';
 import { proximoNumeroOrcamento } from './proximo-numero-orcamento';
 import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
 import { resolverRegrasDescontoDosItens } from '../../common/precos/resolver-regra-desconto-item';
+import { ParametrosService } from '../parametros/parametros.service';
 import {
   ocultarComissaoDosItens,
   podeVerComissao,
@@ -82,7 +83,19 @@ const INCLUDE = {
 
 @Injectable()
 export class OrcamentosService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly parametros: ParametrosService,
+  ) {}
+
+  /** Parâmetro da empresa que esconde comissão de todos os perfis. */
+  private comissaoOcultaParaTodos(empresaId: string) {
+    return this.parametros.obterBoolean(
+      empresaId,
+      'COMISSAO_OCULTA_PARA_TODOS',
+      false,
+    );
+  }
 
   private limpar<T extends Record<string, unknown>>(input: T) {
     const out: Record<string, unknown> = {};
@@ -198,7 +211,10 @@ export class OrcamentosService {
         ultimoPreco: produto?.ultimoPreco ?? null,
         saldoEstoque: estoque._sum.saldo ?? 0,
         regraDesconto:
-          regra && !podeVerComissao(user) ? { ...regra, faixas: [] } : regra,
+          regra &&
+          !podeVerComissao(user, await this.comissaoOcultaParaTodos(empresaId))
+            ? { ...regra, faixas: [] }
+            : regra,
       };
     });
   }
@@ -254,8 +270,9 @@ export class OrcamentosService {
         }),
         tx.orcamento.count({ where }),
       ]);
+      const oculta = await this.comissaoOcultaParaTodos(empresaId);
       return buildPaginatedResult(
-        data.map((o) => ocultarComissaoDosItens(o, user)),
+        data.map((o) => ocultarComissaoDosItens(o, user, oculta)),
         total,
         query,
       );
@@ -275,7 +292,11 @@ export class OrcamentosService {
         include: INCLUDE,
       });
       if (!orcamento) throw new NotFoundException('Orçamento não encontrado');
-      return ocultarComissaoDosItens(orcamento, user);
+      return ocultarComissaoDosItens(
+        orcamento,
+        user,
+        await this.comissaoOcultaParaTodos(empresaId),
+      );
     });
   }
 
@@ -305,6 +326,11 @@ export class OrcamentosService {
         input.clienteId,
         itens,
         input.vendedorId,
+        await this.parametros.obterBoolean(
+          empresaId,
+          'DESCONTO_ACIMA_LIMITE_BLOQUEIA',
+          false,
+        ),
       );
 
       const orcamento = await tx.orcamento.create({
@@ -331,7 +357,11 @@ export class OrcamentosService {
         });
       }
 
-      return ocultarComissaoDosItens(orcamento, user);
+      return ocultarComissaoDosItens(
+        orcamento,
+        user,
+        await this.comissaoOcultaParaTodos(empresaId),
+      );
     });
   }
 
@@ -393,6 +423,11 @@ export class OrcamentosService {
           clienteId,
           itens,
           input.vendedorId ?? orcamento.vendedorId,
+          await this.parametros.obterBoolean(
+            empresaId,
+            'DESCONTO_ACIMA_LIMITE_BLOQUEIA',
+            false,
+          ),
         );
         itensUpdate = { vlrTotal, itens: { create: itensData } };
       }
@@ -422,7 +457,11 @@ export class OrcamentosService {
         });
       }
 
-      return ocultarComissaoDosItens(atualizado, user);
+      return ocultarComissaoDosItens(
+        atualizado,
+        user,
+        await this.comissaoOcultaParaTodos(empresaId),
+      );
     });
   }
 

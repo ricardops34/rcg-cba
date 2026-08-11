@@ -34,9 +34,14 @@ export class NotasSaidaController {
 
   @ApiOperation({
     summary: 'Detalhar nota de saída (com itens)',
-    description: 'Requer notas-saida.visualizar.',
+    description:
+      'Requer notas-saida.visualizar ou posicao-cliente.visualizar — a cortina de detalhe da ' +
+      'Posição de Cliente abre esta rota a partir de uma nota que a própria tela já listou.',
   })
-  @RequirePermission('notas-saida', 'visualizar')
+  @RequirePermission('notas-saida', 'visualizar', [
+    'posicao-cliente',
+    'visualizar',
+  ])
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.findOne(user.empresaAtivaId, user, id);
