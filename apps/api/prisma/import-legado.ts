@@ -185,23 +185,32 @@ async function main() {
       for (const v of vendedores) {
         const codigoErp = texto(v.cod_erp) ?? `LEGADO-${v.id}`;
         const telefone = v.ddd && v.telefone ? `(${v.ddd}) ${v.telefone}` : texto(v.telefone);
+        const desligado = v.desligado === 'S';
         const dados = {
           nome: v.nome.trim(),
           nomeReduzido: texto(v.nome_reduzido),
           telefone,
           email: texto(v.email),
           dataNascimento: data(v.dt_nascmento),
-          vendedor: v.vendedor === 'S',
-          supervisor: v.supervisor === 'S',
-          ativo: v.status === 'A',
-          desligado: v.desligado === 'S',
+          ativo: v.status === 'A' && !desligado,
+          desligado,
         };
+        // O legado tem dois flags independentes; aqui o papel é um só, e
+        // supervisor prevalece sobre vendedor.
+        const tipo = v.supervisor === 'S' ? 'supervisor' : 'vendedor';
+        const existente = await tx.vendedor.findUnique({
+          where: { empresaId_codigoErp: { empresaId, codigoErp } },
+          select: { tipo: true },
+        });
+        // `gerente` não existe no legado — é promoção feita na tela, e o
+        // import não a desfaz.
+        const ehGerente = existente?.tipo === 'gerente';
         const novo = await tx.vendedor.upsert({
           where: { empresaId_codigoErp: { empresaId, codigoErp } },
-          // gerente/gerenteId/usuarioId ficam fora do update: não existem no
-          // legado e são mantidos manualmente pela tela.
-          create: { ...dados, empresaId, codigoErp, gerente: false },
-          update: dados,
+          // gerenteId/usuarioId/vinculo/usaDashboard ficam fora do update: não
+          // existem no legado e são mantidos manualmente pela tela.
+          create: { ...dados, tipo, empresaId, codigoErp },
+          update: ehGerente ? dados : { ...dados, tipo },
         });
         codErpParaNovoId.set(codigoErp, novo.id);
       }

@@ -1,6 +1,9 @@
 import { createZodDto } from 'nestjs-zod';
 import {
+  dashboardGerencialQuerySchema,
+  dashboardGerencialVendedorQuerySchema,
   objetivoCopiarPeriodoSchema,
+  objetivoDashboardMunicipiosQuerySchema,
   objetivoDashboardQuerySchema,
   objetivoVendedorMesCreateSchema,
   objetivoVendedorMesQuerySchema,
@@ -12,3 +15,12 @@ export class ObjetivoUpdateDto extends createZodDto(objetivoVendedorMesUpdateSch
 export class ObjetivoQueryDto extends createZodDto(objetivoVendedorMesQuerySchema) {}
 export class ObjetivoDashboardQueryDto extends createZodDto(objetivoDashboardQuerySchema) {}
 export class ObjetivoCopiarPeriodoDto extends createZodDto(objetivoCopiarPeriodoSchema) {}
+export class DashboardGerencialQueryDto extends createZodDto(
+  dashboardGerencialQuerySchema,
+) {}
+export class DashboardGerencialVendedorQueryDto extends createZodDto(
+  dashboardGerencialVendedorQuerySchema,
+) {}
+export class ObjetivoDashboardMunicipiosQueryDto extends createZodDto(
+  objetivoDashboardMunicipiosQuerySchema,
+) {}

@@ -160,6 +160,34 @@ docker start plataforma-comercial-dev-web-1
 
 A primeira compilação depois disso demora (~25 s por rota); é esperado.
 
+## SQL avulso de carga/correção de cadastro (`docs/sql/`)
+
+Ajustes pontuais de cadastro que não são estrutura (ex.: sincronizar os vendedores
+com a SA3 do ERP) ficam como script versionado em `docs/sql/`, e **não** como
+migration — migration é para schema e para menu/rotina/permissão.
+
+Os scripts são idempotentes (casam pela chave natural, ex.: `empresaId` +
+`codigoErp`) e resolvem a empresa por `empresas.alias`, para o mesmo arquivo
+servir dev e VPS sem editar UUID.
+
+### Dev local **[verificado em 2026-08-11]**
+
+```bash
+docker cp docs/sql/<arquivo>.sql plataforma-comercial-dev-postgres-1:/tmp/carga.sql
+docker exec plataforma-comercial-dev-postgres-1 \
+  psql -U plataforma -d plataforma_comercial -f /tmp/carga.sql
+```
+
+Role `plataforma` (a dona) — `plataforma_app` não passa pela RLS e atualizaria 0
+linhas em silêncio. Cada script termina com um SELECT de conferência; confira a
+saída antes de dar o trabalho por feito.
+
+### VPS **[a confirmar]**
+
+> **PENDENTE:** registrar aqui como o `psql` é alcançado na VPS (container do
+> Postgres ou conexão externa) e qual `DATABASE_URL` usar. Enquanto isso não
+> estiver preenchido, **pergunte** em vez de montar um comando novo.
+
 ## Armadilha: `pnpm run lint` da API tem `--fix`
 
 `apps/api/package.json` define `"lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix"`.

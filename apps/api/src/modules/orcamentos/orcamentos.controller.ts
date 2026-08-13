@@ -112,4 +112,57 @@ export class OrcamentosController {
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.remove(user.empresaAtivaId, user, id);
   }
+
+  @ApiOperation({
+    summary: 'Solicitar autorização de desconto',
+    description:
+      'Primeira etapa da liberação de um orçamento com item cujo desconto alcançou ou passou o ' +
+      '"% Desc Máximo" da regra: registra a solicitação e abre uma Atividade pendente na agenda ' +
+      'do supervisor (ou gerente) do vendedor. Recusa com 409 se não houver item nessa situação, ' +
+      'ou se o desconto já estiver autorizado. Requer orcamentos.editar.',
+  })
+  @RequirePermission('orcamentos', 'editar')
+  @Post(':id/solicitar-autorizacao-desconto')
+  solicitarAutorizacaoDesconto(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.solicitarAutorizacaoDesconto(
+      user.empresaAtivaId,
+      user,
+      id,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Autorizar o desconto do orçamento',
+    description:
+      'Segunda etapa: libera a proposta em PDF e a efetivação (status aprovado) do orçamento, ' +
+      'conclui a pendência aberta na solicitação e registra o evento no histórico. A autorização ' +
+      'vale para os itens como estão — alterá-los derruba a liberação. Requer orcamentos.aprovar.',
+  })
+  @RequirePermission('orcamentos', 'aprovar')
+  @Post(':id/autorizar-desconto')
+  autorizarDesconto(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.autorizarDesconto(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Registrar a emissão da proposta em PDF',
+    description:
+      'O PDF é montado no navegador; esta rota grava o evento no histórico do orçamento/cliente. ' +
+      'Recusa com 409 quando há desconto igual ou acima do máximo da regra sem autorização — a ' +
+      'mesma trava que a tela aplica no botão. Requer orcamentos.visualizar.',
+  })
+  @RequirePermission('orcamentos', 'visualizar')
+  @Post(':id/registrar-pdf')
+  registrarPdf(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.registrarPdf(user.empresaAtivaId, user, id);
+  }
 }

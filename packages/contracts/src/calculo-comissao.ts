@@ -27,9 +27,14 @@ export interface ComissaoCalculada {
   sequenciaFaixa: number | null;
   /** % da comissão do vendedor pago na faixa (campo Base). */
   percBaseComissao: number | null;
-  /** Desconto passou do "% Desc Máximo" (Z0_PERMAX) — só avisa, não bloqueia. */
+  /**
+   * Desconto alcançou ou passou o "% Desc Máximo" (Z0_PERMAX). Trava a
+   * proposta em PDF e a efetivação do orçamento até haver autorização de
+   * desconto (ver `autorizacaoDesconto` no contrato de Orçamento); salvar
+   * continua liberado.
+   */
   acimaDoMaximo: boolean;
-  /** Desconto passou também do "% Desc Autorizado" (Z0_DESCAUT). */
+  /** Desconto alcançou ou passou também o "% Desc Autorizado" (Z0_DESCAUT). */
   acimaDoAutorizado: boolean;
 }
 
@@ -84,8 +89,13 @@ export function calcularComissaoItem(
   // Sem preço de tabela não há desconto conhecido: trata como venda sem
   // desconto, que é a primeira faixa.
   const desconto = Math.max(0, percDesconto ?? 0);
-  const acimaDoMaximo = desconto > regra.percDescontoMaximo;
-  const acimaDoAutorizado = desconto > regra.percDescontoAutorizado;
+  // Igual ao limite já conta: um desconto exatamente no "% Desc Máximo" é o
+  // teto da regra, e a partir dele o orçamento precisa de autorização. Venda
+  // sem desconto nenhum nunca adverte — senão uma regra com máximo 0 (não
+  // permite desconto) acusaria todas as linhas de tabela cheia.
+  const acimaDoMaximo = desconto > 0 && desconto >= regra.percDescontoMaximo;
+  const acimaDoAutorizado =
+    desconto > 0 && desconto >= regra.percDescontoAutorizado;
 
   const faixa = faixaDoDesconto(regra.faixas, desconto);
   if (!faixa) {

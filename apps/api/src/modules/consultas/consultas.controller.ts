@@ -5,9 +5,13 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { CONSULTA_VENDAS_RESULTADO_EXAMPLE } from '@plataforma/contracts';
+import {
+  CONSULTA_EVOLUCAO_RESULTADO_EXAMPLE,
+  CONSULTA_VENDAS_RESULTADO_EXAMPLE,
+} from '@plataforma/contracts';
 import { ConsultasService } from './consultas.service';
 import {
+  ConsultaEvolucaoQueryDto,
   ConsultaVendasClienteQueryDto,
   ConsultaVendasProdutoQueryDto,
   ConsultaVendasVendedorQueryDto,
@@ -99,5 +103,31 @@ export class ConsultasController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.vendasPorProduto(user.empresaAtivaId, user, query);
+  }
+
+  @ApiOperation({
+    summary: 'Evolução mensal por vendedor no indicador escolhido',
+    description:
+      'Uma linha por vendedor com uma coluna por mês do período (máximo 12 meses) e o total — o ' +
+      'mesmo formato das demais consultas, pensado para alimentar o gráfico de evolução. O ' +
+      'parâmetro `indicador` escolhe o que é medido: `vendas` (faturamento do mês), ' +
+      '`positivados` (clientes distintos que compraram no mês), `novos` (clientes cuja primeira ' +
+      'compra de todo o histórico caiu no mês) ou `inativados` (clientes com data de bloqueio no ' +
+      'mês). Os três primeiros usam a mesma base de nota de venda das outras consultas (ativa, ' +
+      'não-comodato, tipo Normal) e respeitam `baseVendedor`; `inativados` parte do cadastro do ' +
+      'cliente e credita sempre o vendedor titular. Restrita à carteira de clientes que o ' +
+      'usuário alcança. Requer consulta-evolucao.visualizar.',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: { example: CONSULTA_EVOLUCAO_RESULTADO_EXAMPLE },
+  })
+  @RequirePermission('consulta-evolucao', 'visualizar')
+  @Get('evolucao')
+  evolucao(
+    @Query() query: ConsultaEvolucaoQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.evolucao(user.empresaAtivaId, user, query);
   }
 }

@@ -26,6 +26,7 @@ export * from "./nota-saida";
 export * from "./titulo-receber";
 export * from "./objetivo";
 export * from "./objetivo-dashboard";
+export * from "./dashboard-gerencial";
 export * from "./oportunidade";
 export * from "./atividade";
 export * from "./orcamento";

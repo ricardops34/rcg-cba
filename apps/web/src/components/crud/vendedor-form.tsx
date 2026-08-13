@@ -6,11 +6,15 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  TIPO_VENDEDOR_LABEL,
+  VINCULO_VENDEDOR_LABEL,
   vendedorCreateSchema,
   vendedorUpdateSchema,
+  type TipoVendedor,
   type Vendedor,
   type VendedorCreate,
   type VendedorUpdate,
+  type VinculoVendedor,
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
 import { apiFetch, ApiError } from "@/lib/api-client";
@@ -86,10 +90,14 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
   // vendedor bloqueado depois, senão o Select mostra um valor "fantasma" ao
   // editar.
   const opcoesSupervisor = (vendedoresSelectQuery.data?.data ?? []).filter(
-    (v) => v.id !== vendedor?.id && (v.id === vendedor?.supervisorId || (v.supervisor && v.ativo)),
+    (v) =>
+      v.id !== vendedor?.id &&
+      (v.id === vendedor?.supervisorId || (v.tipo === "supervisor" && v.ativo)),
   );
   const opcoesGerente = (vendedoresSelectQuery.data?.data ?? []).filter(
-    (v) => v.id !== vendedor?.id && (v.id === vendedor?.gerenteId || (v.gerente && v.ativo)),
+    (v) =>
+      v.id !== vendedor?.id &&
+      (v.id === vendedor?.gerenteId || (v.tipo === "gerente" && v.ativo)),
   );
   const opcoesUsuario = usuariosSelectQuery.data?.data ?? [];
 
@@ -102,11 +110,11 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
     email: "",
     dataNascimento: null,
     usuarioId: null,
-    vendedor: true,
+    tipo: "vendedor",
+    vinculo: null,
+    usaDashboard: true,
     supervisorId: null,
-    supervisor: false,
     gerenteId: null,
-    gerente: false,
     ativo: true,
     desligado: false,
   };
@@ -121,11 +129,11 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
           email: vendedor.email ?? "",
           dataNascimento: vendedor.dataNascimento ?? null,
           usuarioId: vendedor.usuarioId ?? null,
-          vendedor: vendedor.vendedor,
+          tipo: vendedor.tipo,
+          vinculo: vendedor.vinculo ?? null,
+          usaDashboard: vendedor.usaDashboard,
           supervisorId: vendedor.supervisorId ?? null,
-          supervisor: vendedor.supervisor,
           gerenteId: vendedor.gerenteId ?? null,
-          gerente: vendedor.gerente,
           ativo: vendedor.ativo,
           desligado: vendedor.desligado,
         }
@@ -302,44 +310,81 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
                 </Field>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {/* Tipo e vínculo são escolhas únicas: o cadastro é de um papel
+                  só (era possível marcar vendedor+supervisor+gerente ao mesmo
+                  tempo, o que não existe no negócio). */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field>
+                  <FieldLabel htmlFor="tipo">Tipo</FieldLabel>
+                  <Select
+                    value={form.watch("tipo")}
+                    onValueChange={(val) => form.setValue("tipo", val as TipoVendedor)}
+                  >
+                    <SelectTrigger id="tipo" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(TIPO_VENDEDOR_LABEL) as TipoVendedor[]).map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {TIPO_VENDEDOR_LABEL[t]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FieldDescription>
+                    Define o alcance nas telas: gerente vê o time todo, supervisor vê os
+                    vendedores abaixo dele, vendedor vê a própria carteira.
+                  </FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="vinculo">Vínculo</FieldLabel>
+                  <Select
+                    value={form.watch("vinculo") ?? "none"}
+                    onValueChange={(val) =>
+                      form.setValue("vinculo", val === "none" ? null : (val as VinculoVendedor))
+                    }
+                  >
+                    <SelectTrigger id="vinculo" className="w-full">
+                      <SelectValue placeholder="Não informado" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Não informado</SelectItem>
+                      {(Object.keys(VINCULO_VENDEDOR_LABEL) as VinculoVendedor[]).map((v) => (
+                        <SelectItem key={v} value={v}>
+                          {VINCULO_VENDEDOR_LABEL[v]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FieldDescription>
+                    “Sistema” são os cadastros que não são pessoas de venda (escritório,
+                    e-commerce, balcão).
+                  </FieldDescription>
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <label className="flex cursor-pointer items-center gap-2 text-sm">
                   <Checkbox
-                    checked={form.watch("vendedor")}
-                    onCheckedChange={(v) => form.setValue("vendedor", v === true)}
+                    checked={form.watch("usaDashboard")}
+                    onCheckedChange={(v) => form.setValue("usaDashboard", v === true)}
                   />
-                  É vendedor
+                  Usa em Dashboard
                 </label>
-                <label className="flex cursor-pointer items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={form.watch("supervisor")}
-                    onCheckedChange={(v) => form.setValue("supervisor", v === true)}
-                  />
-                  É supervisor
-                </label>
-                <label className="flex cursor-pointer items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={form.watch("gerente")}
-                    onCheckedChange={(v) => form.setValue("gerente", v === true)}
-                  />
-                  É gerente
-                </label>
+                {/* Desligado é o que inativa: o servidor mantém `ativo` como
+                    espelho, e é `ativo` que os selects do sistema consultam. */}
                 <label className="flex cursor-pointer items-center gap-2 text-sm">
                   <Checkbox
                     checked={form.watch("desligado")}
-                    onCheckedChange={(v) => form.setValue("desligado", v === true)}
+                    onCheckedChange={(v) => {
+                      form.setValue("desligado", v === true);
+                      form.setValue("ativo", v !== true);
+                    }}
                   />
                   Desligado
                 </label>
               </div>
 
-              <label className="flex cursor-pointer items-center gap-2 text-sm">
-                <Checkbox
-                  checked={form.watch("ativo")}
-                  onCheckedChange={(v) => form.setValue("ativo", v === true)}
-                />
-                Usa em Dashboard
-              </label>
             </FieldGroup>
           </CardContent>
 

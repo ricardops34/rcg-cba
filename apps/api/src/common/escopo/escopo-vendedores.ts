@@ -26,18 +26,18 @@ export async function resolverEscopoVendedores(
 
   const vendedor = await tx.vendedor.findFirst({
     where: { usuarioId: user.id, empresaId, deletedAt: null },
-    select: { id: true, supervisor: true, gerente: true },
+    select: { id: true, tipo: true },
   });
   if (!vendedor) return null; // sem Vendedor vinculado (ex.: Administrativo) = acesso total
 
-  if (vendedor.gerente) {
+  if (vendedor.tipo === 'gerente') {
     const gerenciados = await tx.vendedor.findMany({
       where: { empresaId, gerenteId: vendedor.id, deletedAt: null },
       select: { id: true },
     });
     return [vendedor.id, ...gerenciados.map((v) => v.id)];
   }
-  if (vendedor.supervisor) {
+  if (vendedor.tipo === 'supervisor') {
     const supervisionados = await tx.vendedor.findMany({
       where: { empresaId, supervisorId: vendedor.id, deletedAt: null },
       select: { id: true },

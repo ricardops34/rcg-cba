@@ -384,12 +384,24 @@ model Vendedor {
   // somente leitura na tela — mesmo tratamento dos campos de regra de desconto.
   percComissao Float?
 
-  vendedor     Boolean @default(true)
-  supervisorId String?
-  supervisor   Boolean @default(false)
-  gerenteId    String?
-  gerente      Boolean @default(false)
+  // Papel na hierarquia comercial — exatamente um. Antes eram três booleanos
+  // independentes (vendedor/supervisor/gerente), que aceitavam combinações
+  // sem sentido; o enum torna o estado inválido impossível.
+  tipo TipoVendedor @default(vendedor)
+  // Como o vendedor se liga à empresa. `sistema` são os cadastros que não são
+  // pessoas de venda (ESCRITORIO, E-COMMERCE...), mantidos porque o ERP
+  // credita notas a eles.
+  vinculo VinculoVendedor?
+  // Aparece nas telas gerenciais (dashboard/objetivos). Cadastro de sistema e
+  // vendedor sem carteira normalmente ficam de fora.
+  usaDashboard Boolean @default(true)
 
+  supervisorId String?
+  gerenteId    String?
+
+  // `desligado` é o controle de saída do vendedor, e é ele que a tela exibe;
+  // o serviço mantém `ativo` como seu espelho (desligado = não ativo), porque
+  // `ativo` é o que todos os selects e filtros do sistema já consultam.
   ativo     Boolean @default(true)
   desligado Boolean @default(false)
 
@@ -424,6 +436,24 @@ model Vendedor {
 enum TipoPessoa {
   fisica
   juridica
+}
+
+/// Papel do vendedor na hierarquia comercial — um só por cadastro. `gerente`
+/// enxerga o time inteiro, `supervisor` os vendedores abaixo dele e `vendedor`
+/// só a própria carteira (ver escopo-vendedores.ts).
+enum TipoVendedor {
+  vendedor
+  supervisor
+  gerente
+}
+
+/// Vínculo do vendedor com a empresa. `sistema` marca os cadastros que não são
+/// pessoas de venda (ESCRITORIO, E-COMMERCE, balcão), mas que recebem nota no
+/// ERP e por isso precisam existir aqui.
+enum VinculoVendedor {
+  clt
+  representante
+  sistema
 }
 
 // Carteira de clientes, espelhando a tabela `cliente` do sistema legado
@@ -1281,6 +1311,18 @@ model Orcamento {
   observacao          String?
   vlrTotal            Float           @default(0)
   ativo               Boolean         @default(true)
+
+  // Autorização de desconto em duas etapas: item com desconto igual ou acima
+  // do "% Desc Máximo" da regra trava PDF e efetivação (status aprovado) até
+  // alguém com permissão de aprovar autorizar. O vendedor solicita
+  // (solicitadoEm/Por, que gera uma Atividade de pendência para o supervisor)
+  // e o autorizador libera (autorizadoEm/Por). Autorizado vale para o
+  // orçamento como está: mexer nos itens ou nos preços derruba a autorização,
+  // senão daria para autorizar 15% e gravar 40% depois.
+  descontoSolicitadoEm  DateTime?
+  descontoSolicitadoPor String?
+  descontoAutorizadoEm  DateTime?
+  descontoAutorizadoPor String?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

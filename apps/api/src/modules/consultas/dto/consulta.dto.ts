@@ -1,5 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import {
+  consultaEvolucaoQuerySchema,
   consultaVendasClienteQuerySchema,
   consultaVendasProdutoQuerySchema,
   consultaVendasVendedorQuerySchema,
@@ -13,4 +14,7 @@ export class ConsultaVendasVendedorQueryDto extends createZodDto(
 ) {}
 export class ConsultaVendasProdutoQueryDto extends createZodDto(
   consultaVendasProdutoQuerySchema,
+) {}
+export class ConsultaEvolucaoQueryDto extends createZodDto(
+  consultaEvolucaoQuerySchema,
 ) {}

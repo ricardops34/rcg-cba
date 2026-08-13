@@ -12,8 +12,11 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ObjetivosService } from './objetivos.service';
 import {
+  DashboardGerencialQueryDto,
+  DashboardGerencialVendedorQueryDto,
   ObjetivoCopiarPeriodoDto,
   ObjetivoCreateDto,
+  ObjetivoDashboardMunicipiosQueryDto,
   ObjetivoDashboardQueryDto,
   ObjetivoQueryDto,
   ObjetivoUpdateDto,
@@ -47,6 +50,77 @@ export class ObjetivosController {
   @Get('dashboard')
   dashboard(@Query() query: ObjetivoDashboardQueryDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.dashboard(user.empresaAtivaId, user, query);
+  }
+
+  @ApiOperation({
+    summary: 'Municípios com venda no período (filtro do Dashboard Comercial)',
+    description:
+      'Municípios distintos dos clientes que compraram no mês/ano informados, dentro do escopo ' +
+      'do usuário (e do vendedor, quando informado). Alimenta o filtro de município do ' +
+      'Dashboard Comercial — só entram municípios com movimento, para o filtro não oferecer ' +
+      'opção que deixaria a tela zerada. Requer dashboard-comercial.visualizar.',
+  })
+  @RequirePermission('dashboard-comercial', 'visualizar')
+  @Get('dashboard/municipios')
+  municipiosDashboard(
+    @Query() query: ObjetivoDashboardMunicipiosQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.municipiosDashboard(user.empresaAtivaId, user, query);
+  }
+
+  @ApiOperation({
+    summary: 'Dashboard Gerencial',
+    description:
+      'Acompanhamento do mês por vendedor: objetivo, realizado (líquido de devolução), ' +
+      'positivação (meta e realizada) e o percentual de cada um, mais os indicadores de topo ' +
+      '(base de clientes, clientes sem vendedor, ticket médio e devolução). vendedorId omitido ' +
+      'agrega todo o escopo hierárquico do usuário. Requer dashboard-gerencial.visualizar.',
+  })
+  @RequirePermission('dashboard-gerencial', 'visualizar')
+  @Get('dashboard-gerencial')
+  dashboardGerencial(
+    @Query() query: DashboardGerencialQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.dashboardGerencial(user.empresaAtivaId, user, query);
+  }
+
+  @ApiOperation({
+    summary: 'Dashboard Gerencial — clientes sem vendedor ativo',
+    description:
+      'Detalhe do card: clientes ativos sem vendedor no cadastro ou apontando para ' +
+      'vendedor inativo/excluído, com código, razão social, CNPJ/CPF e a última compra ' +
+      '(a mais recente entre o cadastro e a última nota). Segue a visibilidade do card — ' +
+      'em escopo restrito devolve lista vazia. Requer dashboard-gerencial.visualizar.',
+  })
+  @RequirePermission('dashboard-gerencial', 'visualizar')
+  @Get('dashboard-gerencial/clientes-sem-vendedor')
+  clientesSemVendedor(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.clientesSemVendedor(user.empresaAtivaId, user);
+  }
+
+  @ApiOperation({
+    summary: 'Dashboard Gerencial — detalhe do vendedor por categoria',
+    description:
+      'Abre uma linha do Dashboard Gerencial: o mês daquele vendedor repartido por ' +
+      'categoria de produto, com meta (linhas de categoria do objetivo) e realizado ' +
+      '(líquido dos itens, pela categoria do produto). Vendedor fora do escopo do ' +
+      'usuário responde 404. Requer dashboard-gerencial.visualizar.',
+  })
+  @RequirePermission('dashboard-gerencial', 'visualizar')
+  @Get('dashboard-gerencial/vendedor/:vendedorId')
+  dashboardGerencialVendedor(
+    @Param('vendedorId') vendedorId: string,
+    @Query() query: DashboardGerencialVendedorQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.dashboardGerencialVendedor(
+      user.empresaAtivaId,
+      user,
+      vendedorId,
+      query,
+    );
   }
 
   @ApiOperation({

@@ -53,9 +53,11 @@ export class VendedoresService {
         empresaId,
         deletedAt: null,
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
-        ...(query.vendedor !== undefined ? { vendedor: query.vendedor } : {}),
-        ...(query.supervisor !== undefined ? { supervisor: query.supervisor } : {}),
-        ...(query.gerente !== undefined ? { gerente: query.gerente } : {}),
+        ...(query.tipo ? { tipo: query.tipo } : {}),
+        ...(query.vinculo ? { vinculo: query.vinculo } : {}),
+        ...(query.usaDashboard !== undefined
+          ? { usaDashboard: query.usaDashboard }
+          : {}),
         ...(query.desligado !== undefined ? { desligado: query.desligado } : {}),
         ...(query.supervisorId ? { supervisorId: query.supervisorId } : {}),
         ...(query.search
@@ -77,7 +79,42 @@ export class VendedoresService {
         }),
         tx.vendedor.count({ where }),
       ]);
-      return buildPaginatedResult(data, total, query);
+
+      // Tamanho da carteira de cada vendedor da página, separando cliente
+      // ativo de inativo — é o que a listagem mostra na coluna "Clientes".
+      //
+      // PENDENTE: cliente PJ com CNPJ baixado não deve entrar nesta conta (a
+      // carteira real não o inclui). O corte sai da `situacao_cadastral_id` do
+      // legado, que ainda não foi trazida para cá — quando o campo existir,
+      // basta somar a condição ao `where` abaixo. O `motivo_bloqueio` do
+      // legado não serve: é uma letra sem tabela de descrição preenchida.
+      const contagens = await tx.cliente.groupBy({
+        by: ['vendedorId', 'ativo'],
+        where: {
+          empresaId,
+          deletedAt: null,
+          vendedorId: { in: data.map((v) => v.id) },
+        },
+        _count: { _all: true },
+      });
+      const carteira = new Map<string, { ativos: number; inativos: number }>();
+      for (const c of contagens) {
+        if (!c.vendedorId) continue;
+        const atual = carteira.get(c.vendedorId) ?? { ativos: 0, inativos: 0 };
+        if (c.ativo) atual.ativos += c._count._all;
+        else atual.inativos += c._count._all;
+        carteira.set(c.vendedorId, atual);
+      }
+
+      return buildPaginatedResult(
+        data.map((v) => ({
+          ...v,
+          clientesAtivos: carteira.get(v.id)?.ativos ?? 0,
+          clientesInativos: carteira.get(v.id)?.inativos ?? 0,
+        })),
+        total,
+        query,
+      );
     });
   }
 
@@ -89,11 +126,24 @@ export class VendedoresService {
     });
   }
 
+  /**
+   * `desligado` é o controle de saída do vendedor: é ele que a tela mostra, e
+   * `ativo` o acompanha. Sem esse espelho, um vendedor desligado continuaria
+   * aparecendo em todo select do sistema, que filtra por `ativo`.
+   *
+   * Marcar `ativo` diretamente (pela API de integração, por exemplo) continua
+   * valendo enquanto `desligado` não vier na mesma gravação.
+   */
+  private espelharDesligado<T extends Record<string, unknown>>(dados: T) {
+    if (dados.desligado === undefined) return dados;
+    return { ...dados, ativo: dados.desligado !== true };
+  }
+
   create(empresaId: string, user: AuthenticatedUser, input: VendedorCreate) {
     return this.prisma.withTenant(empresaId, (tx) =>
       tx.vendedor.create({
         data: {
-          ...(this.limpar(input) as object),
+          ...(this.espelharDesligado(this.limpar(input)) as object),
           empresaId,
           createdBy: user.id,
           updatedBy: user.id,
@@ -108,7 +158,10 @@ export class VendedoresService {
       if (!vendedor) throw new NotFoundException('Vendedor não encontrado');
       return tx.vendedor.update({
         where: { id },
-        data: { ...(this.limpar(input) as object), updatedBy: user.id } as never,
+        data: {
+          ...(this.espelharDesligado(this.limpar(input)) as object),
+          updatedBy: user.id,
+        } as never,
       });
     });
   }

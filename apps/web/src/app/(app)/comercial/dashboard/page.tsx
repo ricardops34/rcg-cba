@@ -70,10 +70,27 @@ export default function DashboardComercialPage() {
   const [mes, setMes] = useState(hoje.getMonth() + 1);
   const [ano, setAno] = useState(hoje.getFullYear());
   const [vendedorId, setVendedorId] = useState<string | undefined>(undefined);
-  const [filtros, setFiltros] = useState({ mes, ano, vendedorId });
+  const [municipio, setMunicipio] = useState<string | undefined>(undefined);
+  const [filtros, setFiltros] = useState({ mes, ano, vendedorId, municipio });
 
   const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
+
+  // Opções de município do período que está sendo montado nos selects (e não
+  // do último "Buscar"): quem troca o mês precisa ver as cidades daquele mês
+  // antes de aplicar o filtro.
+  const municipiosQuery = useQuery({
+    queryKey: ["objetivos", "dashboard", "municipios", mes, ano, vendedorId],
+    queryFn: () =>
+      apiFetch<string[]>("/objetivos/dashboard/municipios", {
+        query: { mes, ano, ...(vendedorId ? { vendedorId } : {}) },
+      }),
+  });
+  const opcoesMunicipio = municipiosQuery.data ?? [];
+  // Município escolhido que sumiu da lista (mudou o mês, ou o vendedor) não
+  // pode continuar valendo em silêncio.
+  const municipioValido =
+    municipio && opcoesMunicipio.includes(municipio) ? municipio : undefined;
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ["objetivos", "dashboard", filtros],
@@ -83,17 +100,24 @@ export default function DashboardComercialPage() {
           mes: filtros.mes,
           ano: filtros.ano,
           ...(filtros.vendedorId ? { vendedorId: filtros.vendedorId } : {}),
+          ...(filtros.municipio ? { municipio: filtros.municipio } : {}),
         },
       }),
   });
 
-  const buscar = () => setFiltros({ mes, ano, vendedorId });
+  const buscar = () => setFiltros({ mes, ano, vendedorId, municipio: municipioValido });
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Dashboard Comercial</h1>
-        <p className="text-sm text-muted-foreground">Objetivo vs. realizado no período selecionado.</p>
+        <p className="text-sm text-muted-foreground">
+          Objetivo vs. realizado no período selecionado
+          {data?.municipio ? ` — ${data.municipio}` : ""}.
+          {data?.municipio
+            ? " Com município filtrado, o objetivo segue sendo o do vendedor no mês: a meta é cadastrada por vendedor, não por cidade."
+            : ""}
+        </p>
       </div>
 
       <Card>
@@ -144,6 +168,31 @@ export default function DashboardComercialPage() {
                 {opcoesVendedor.map((v) => (
                   <SelectItem key={v.id} value={v.id}>
                     {vendedorFiltroLabel(v)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Só municípios com venda no mês/ano escolhidos (e no vendedor,
+              quando há um): oferecer a carteira inteira encheria o select de
+              cidades que deixariam a tela zerada. A lista acompanha os selects
+              acima, mesmo antes de clicar em Buscar. */}
+          <div className="w-56 space-y-1.5">
+            <FieldLabel>Município</FieldLabel>
+            <Select
+              value={municipioValido ?? "none"}
+              onValueChange={(v) => setMunicipio(v === "none" ? undefined : v)}
+              disabled={municipiosQuery.isLoading || opcoesMunicipio.length === 0}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Todos</SelectItem>
+                {opcoesMunicipio.map((m) => (
+                  <SelectItem key={m} value={m}>
+                    {m}
                   </SelectItem>
                 ))}
               </SelectContent>

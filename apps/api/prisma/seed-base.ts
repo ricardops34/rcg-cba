@@ -592,6 +592,22 @@ async function bootstrapMenu() {
       codigo: 'consulta-vendas-vendedor',
       moduloId: moduloConsultas.id,
     },
+    {
+      id: 'seed-menu-dashboard-gerencial',
+      nome: 'Dashboard Gerencial',
+      rota: '/gerencial/dashboard',
+      icone: 'gauge',
+      codigo: 'dashboard-gerencial',
+      moduloId: moduloGerencial.id,
+    },
+    {
+      id: 'seed-menu-consulta-evolucao',
+      nome: 'Evolução Mensal',
+      rota: '/consultas/evolucao',
+      icone: 'trending-up',
+      codigo: 'consulta-evolucao',
+      moduloId: moduloConsultas.id,
+    },
   ];
 
   for (const [i, m] of menuDefs.entries()) {

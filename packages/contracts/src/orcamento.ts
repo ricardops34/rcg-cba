@@ -18,7 +18,10 @@ export type StatusOrcamento = z.infer<typeof statusOrcamentoSchema>;
 // cliente + vlrUnitario informado, não são input.
 export const orcamentoItemLinhaSchema = z.object({
   produtoId: z.string().uuid(),
-  quantidade: z.coerce.number().positive("Informe uma quantidade"),
+  quantidade: z.coerce
+    .number()
+    .int("A quantidade deve ser um número inteiro")
+    .positive("Informe uma quantidade"),
   vlrUnitario: z.coerce.number().min(0, "Informe o preço unitário"),
 });
 
@@ -104,6 +107,12 @@ export const orcamentoSchema = z.object({
   observacao: z.string().nullable(),
   vlrTotal: z.number(),
   ativo: z.boolean(),
+  // Autorização de desconto (ver autorizacaoDescontoSituacao): preenchidas
+  // pelas rotas de solicitar/autorizar, nunca pelo update comum.
+  descontoSolicitadoEm: z.string().datetime().nullable(),
+  descontoSolicitadoPor: z.string().nullable(),
+  descontoAutorizadoEm: z.string().datetime().nullable(),
+  descontoAutorizadoPor: z.string().nullable(),
   cliente: z.object({
     id: z.string().uuid(),
     razaoSocial: z.string(),
@@ -134,6 +143,31 @@ export const orcamentoSchema = z.object({
 });
 export type Orcamento = z.infer<typeof orcamentoSchema>;
 
+/**
+ * Em que pé está a autorização de desconto do orçamento. Derivada dos quatro
+ * campos gravados, para tela e servidor lerem a mesma coisa:
+ *
+ * - `nao_solicitada` — ninguém pediu ainda;
+ * - `pendente` — o vendedor solicitou e o autorizador ainda não respondeu;
+ * - `autorizada` — liberado; PDF e efetivação voltam a funcionar.
+ *
+ * Alterar itens ou preços derruba a autorização (o servidor limpa os campos no
+ * update), senão daria para autorizar 15% e gravar 40% depois.
+ */
+export type AutorizacaoDescontoSituacao =
+  | "nao_solicitada"
+  | "pendente"
+  | "autorizada";
+
+export function autorizacaoDescontoSituacao(o: {
+  descontoSolicitadoEm: string | Date | null;
+  descontoAutorizadoEm: string | Date | null;
+}): AutorizacaoDescontoSituacao {
+  if (o.descontoAutorizadoEm) return "autorizada";
+  if (o.descontoSolicitadoEm) return "pendente";
+  return "nao_solicitada";
+}
+
 export const orcamentoQuerySchema = paginationQuerySchema.extend({
   ativo: booleanQueryParam,
   status: statusOrcamentoSchema.optional(),
@@ -161,6 +195,10 @@ export const ORCAMENTO_EXAMPLE: Orcamento = {
   observacao: "",
   vlrTotal: 3676.5,
   ativo: true,
+  descontoSolicitadoEm: null,
+  descontoSolicitadoPor: null,
+  descontoAutorizadoEm: null,
+  descontoAutorizadoPor: null,
   cliente: {
     id: "d4e5f6a7-8b9c-4d0e-9f1a-2b3c4d5e6f70",
     razaoSocial: "MERCADO ANDRADE LTDA",

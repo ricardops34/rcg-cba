@@ -162,7 +162,7 @@ export class UsuariosService {
 
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${empresaId}, true)`;
-      return tx.usuario.create({
+      const usuario = await tx.usuario.create({
         data: {
           nome: input.nome,
           email: input.email,
@@ -189,6 +189,23 @@ export class UsuariosService {
           updatedAt: true,
         },
       });
+
+      // Usuário criado para alguém que já é vendedor sai daqui vinculado: sem
+      // isso o acesso nasce sem carteira nenhuma (o escopo hierárquico procura
+      // o Vendedor pelo usuarioId) e alguém teria que lembrar de ligar os dois
+      // na mão. O e-mail é a chave — é único nos dois cadastros. Vendedor que
+      // já tem outro usuário não é tocado.
+      await tx.vendedor.updateMany({
+        where: {
+          empresaId,
+          email: input.email,
+          usuarioId: null,
+          deletedAt: null,
+        },
+        data: { usuarioId: usuario.id, updatedBy: actorId },
+      });
+
+      return usuario;
     });
   }
 

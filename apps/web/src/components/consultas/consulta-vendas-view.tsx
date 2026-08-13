@@ -6,18 +6,25 @@ import { toast } from "sonner";
 import {
   MAX_MESES_CONSULTA,
   MESES_LABEL,
-  emMeses,
-  totalDeMeses,
   type ConsultaVendasLinha,
   type ConsultaVendasResultado,
 } from "@plataforma/contracts";
+import {
+  PADRAO_EMPRESA,
+  TODOS,
+  anosDisponiveis,
+  erroDoPeriodo,
+  mesesDoPeriodo,
+  periodoPadrao,
+} from "@/components/consultas/periodo-consulta";
 import { apiFetch } from "@/lib/api-client";
 import {
   exportarConsultaExcel,
   exportarConsultaPdf,
 } from "@/lib/consulta-export";
 import { useAuthStore } from "@/stores/auth-store";
-import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
+import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
+import { VendedoresMultiSelect } from "@/components/crud/vendedores-multi-select";
 import { SortableTableHead } from "@/components/crud/sortable-table-head";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -53,11 +60,12 @@ function Resumo({ label, valor }: { label: string; valor: string }) {
   );
 }
 
-/** Valor "todos" dos selects — Radix não aceita SelectItem com value="". */
-export const TODOS = "todos";
-
-/** Colunas ordenáveis: a identificação (nome/descrição) e o total do período. */
-type OrdenarPor = "descricao" | "total";
+/**
+ * Colunas ordenáveis: a identificação (nome/descrição), o total do período e a
+ * média — ordenar por média responde "quem compra mais por vez", que é outra
+ * pergunta que a ordem por total não responde.
+ */
+type OrdenarPor = "descricao" | "total" | "media";
 
 const moeda = (v: number) =>
   v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -65,12 +73,6 @@ const moeda = (v: number) =>
 /** Zero em coluna de mês vira "—": a tabela é quase toda numérica e o olho
  *  precisa achar onde houve venda. */
 const celula = (v: number) => (v === 0 ? "—" : moeda(v));
-
-/** Últimos 6 anos + o atual, do mais recente para o mais antigo. */
-export function anosDisponiveis(): number[] {
-  const atual = new Date().getFullYear();
-  return Array.from({ length: 7 }, (_, i) => atual - i);
-}
 
 /** Select adicional específico de uma consulta (hoje só Categoria). */
 export interface FiltroExtra {
@@ -82,56 +84,16 @@ export interface FiltroExtra {
   opcoes: { id: string; descricao: string }[];
 }
 
-/**
- * "padrao" = respeita o parâmetro CONSULTA_VENDAS_BASE_VENDEDOR da empresa;
- * as outras duas sobrescrevem só nesta consulta.
- */
-const PADRAO_EMPRESA = "padrao";
-
 /** Estado dos filtros da consulta — o que a cortina edita e o botão aplica. */
 interface Filtros {
   anoInicial: string;
   mesInicial: string;
   anoFinal: string;
   mesFinal: string;
-  vendedorId: string;
+  /** Vazio = todos os vendedores do escopo. */
+  vendedorIds: string[];
   baseVendedor: string;
   extra: string;
-}
-
-/** Período padrão: os 12 meses que terminam no mês corrente. */
-function periodoPadrao(): Pick<
-  Filtros,
-  "anoInicial" | "mesInicial" | "anoFinal" | "mesFinal"
-> {
-  const hoje = new Date();
-  const fim = { ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 };
-  const inicioEmMeses = emMeses(fim.ano, fim.mes) - (MAX_MESES_CONSULTA - 1);
-  // emMeses = ano*12 + mes, com mes de 1 a 12: desfazer a conta exige tratar
-  // o mês 12 como resto 0 do ano anterior.
-  const ano = Math.floor((inicioEmMeses - 1) / 12);
-  const mes = inicioEmMeses - ano * 12;
-  return {
-    anoInicial: String(ano),
-    mesInicial: String(mes),
-    anoFinal: String(fim.ano),
-    mesFinal: String(fim.mes),
-  };
-}
-
-/** Mensagem de erro do período, ou null se estiver válido. */
-function erroDoPeriodo(f: Filtros): string | null {
-  const p = {
-    anoInicial: Number(f.anoInicial),
-    mesInicial: Number(f.mesInicial),
-    anoFinal: Number(f.anoFinal),
-    mesFinal: Number(f.mesFinal),
-  };
-  const meses = totalDeMeses(p);
-  if (meses < 1) return "O fim do período não pode ser anterior ao início.";
-  if (meses > MAX_MESES_CONSULTA)
-    return `O período não pode passar de ${MAX_MESES_CONSULTA} meses (escolhido: ${meses}).`;
-  return null;
 }
 
 /**
@@ -160,7 +122,7 @@ export function ConsultaVendasView({
   const filtrosIniciais: Filtros = useMemo(
     () => ({
       ...periodoPadrao(),
-      vendedorId: TODOS,
+      vendedorIds: [],
       baseVendedor: PADRAO_EMPRESA,
       extra: TODOS,
     }),
@@ -192,7 +154,9 @@ export function ConsultaVendasView({
     mesInicial: filtros.mesInicial,
     anoFinal: filtros.anoFinal,
     mesFinal: filtros.mesFinal,
-    vendedorId: filtros.vendedorId === TODOS ? undefined : filtros.vendedorId,
+    // CSV: o apiFetch serializa só escalares, e a API aceita as duas formas.
+    vendedorIds:
+      filtros.vendedorIds.length > 0 ? filtros.vendedorIds.join(",") : undefined,
     baseVendedor:
       filtros.baseVendedor === PADRAO_EMPRESA ? undefined : filtros.baseVendedor,
     ...(filtroExtra && filtros.extra !== TODOS
@@ -211,15 +175,8 @@ export function ConsultaVendasView({
     setCortinaAberta(aberta);
   };
 
-  // A mesma regra do back-end (validarPeriodo) roda aqui para o usuário ver o
-  // problema antes de disparar a consulta.
   const erroPeriodo = erroDoPeriodo(rascunho);
-  const mesesDoRascunho = totalDeMeses({
-    anoInicial: Number(rascunho.anoInicial),
-    mesInicial: Number(rascunho.mesInicial),
-    anoFinal: Number(rascunho.anoFinal),
-    mesFinal: Number(rascunho.mesFinal),
-  });
+  const mesesDoRascunho = mesesDoPeriodo(rascunho);
 
   const aplicarFiltros = () => {
     if (erroPeriodo) return;
@@ -227,17 +184,20 @@ export function ConsultaVendasView({
     setCortinaAberta(false);
   };
 
+  // Um nome cabe no resumo; vários viram contagem, senão a linha estoura.
   const nomeVendedorFiltrado =
-    filtros.vendedorId === TODOS
+    filtros.vendedorIds.length === 0
       ? null
-      : (vendedores.data?.data ?? []).find((v) => v.id === filtros.vendedorId)
-          ?.nomeReduzido ?? null;
+      : filtros.vendedorIds.length === 1
+        ? ((vendedores.data?.data ?? []).find((v) => v.id === filtros.vendedorIds[0])
+            ?.nomeReduzido ?? null)
+        : `${filtros.vendedorIds.length} vendedores`;
   const nomeExtraFiltrado =
     filtroExtra && filtros.extra !== TODOS
       ? filtroExtra.opcoes.find((o) => o.id === filtros.extra)?.descricao ?? null
       : null;
   const quantidadeFiltros = [
-    filtros.vendedorId !== TODOS,
+    filtros.vendedorIds.length > 0,
     filtros.baseVendedor !== PADRAO_EMPRESA,
     filtros.extra !== TODOS,
   ].filter(Boolean).length;
@@ -247,7 +207,9 @@ export function ConsultaVendasView({
       const ordenadas = [...linhas].sort((a, b) =>
         sortBy === "descricao"
           ? a.descricao.localeCompare(b.descricao, "pt-BR")
-          : a.total - b.total,
+          : sortBy === "media"
+            ? a.media - b.media
+            : a.total - b.total,
       );
       return sortOrder === "desc" ? ordenadas.reverse() : ordenadas;
     },
@@ -461,22 +423,17 @@ export function ConsultaVendasView({
 
             <div className="space-y-1.5">
               <p className="text-xs text-muted-foreground">Vendedor</p>
-              <Select
-                value={rascunho.vendedorId}
-                onValueChange={(v) => setRascunho((r) => ({ ...r, vendedorId: v }))}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={TODOS}>Todos</SelectItem>
-                  {(vendedores.data?.data ?? []).map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {vendedorFiltroLabel(v)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <VendedoresMultiSelect
+                value={rascunho.vendedorIds}
+                onChange={(ids) => setRascunho((r) => ({ ...r, vendedorIds: ids }))}
+              />
+              {rascunho.vendedorIds.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {rascunho.vendedorIds.length}{" "}
+                  {rascunho.vendedorIds.length === 1 ? "selecionado" : "selecionados"} —
+                  sem nenhum, a consulta traz todos do seu escopo.
+                </p>
+              )}
             </div>
 
             {filtroExtra && (
@@ -586,19 +543,29 @@ export function ConsultaVendasView({
                     ))}
                     <SortableTableHead
                       label="Total"
-                      // O botão do cabeçalho é flex block-level: alinhar o
-                      // rótulo à direita exige largura cheia + justify-end.
-                      className="px-1.5 [&>button]:w-full [&>button]:justify-end"
+                      className="px-1.5 text-right"
                       active={sortBy === "total"}
                       order={sortOrder}
                       onClick={() => alternarOrdem("total")}
+                    />
+                    <SortableTableHead
+                      label="Média"
+                      className="px-1.5 text-right"
+                      active={sortBy === "media"}
+                      order={sortOrder}
+                      onClick={() => alternarOrdem("media")}
                     />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {linhasVisiveis.map((l) => (
                     <TableRow key={l.id}>
-                      <TableCell className="px-2 align-top">
+                      {/* `whitespace-normal` desfaz o `whitespace-nowrap` que
+                          TableCell aplica por padrão: como white-space é
+                          herdado, sem isso o `break-words` do parágrafo não
+                          tem efeito e o nome do cliente invade a coluna do
+                          primeiro mês em vez de quebrar. */}
+                      <TableCell className="px-2 align-top whitespace-normal">
                         <p className="text-xs break-words hyphens-auto">
                           {l.descricao}
                         </p>
@@ -619,6 +586,9 @@ export function ConsultaVendasView({
                       <TableCell className="px-1.5 text-right align-top text-[11px] font-medium tabular-nums">
                         {moeda(l.total)}
                       </TableCell>
+                      <TableCell className="px-1.5 text-right align-top text-[11px] tabular-nums">
+                        {celula(l.media)}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -635,6 +605,9 @@ export function ConsultaVendasView({
                     ))}
                     <TableCell className="px-1.5 text-right text-[11px] tabular-nums">
                       {moeda(data.total)}
+                    </TableCell>
+                    <TableCell className="px-1.5 text-right text-[11px] tabular-nums">
+                      {celula(data.media)}
                     </TableCell>
                   </TableRow>
                 </tfoot>

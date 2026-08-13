@@ -9,7 +9,13 @@ import {
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
 import type {
+  DashboardGerencial,
+  DashboardGerencialClientesSemVendedor,
+  DashboardGerencialQuery,
+  DashboardGerencialVendedor,
+  DashboardGerencialVendedorQuery,
   ObjetivoCopiarPeriodo,
+  ObjetivoDashboardMunicipiosQuery,
   ObjetivoDashboardQuery,
   ObjetivoVendedorMesCreate,
   ObjetivoVendedorMesQuery,
@@ -18,6 +24,24 @@ import type {
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
 const SORT_FIELDS = new Set(['ano', 'mes', 'valor', 'ativo', 'createdAt']);
+
+/**
+ * Cliente que ninguém está atendendo: sem vendedor no cadastro ou apontando
+ * para vendedor inativo/excluído. Mora aqui numa constante só porque o card
+ * do Dashboard Gerencial conta e a listagem do card lista — se as duas
+ * escrevessem o critério na mão, um dia o número deixaria de bater com a
+ * lista que ele abre.
+ */
+const CLIENTE_SEM_VENDEDOR_ATIVO = {
+  OR: [
+    { vendedorId: null },
+    { vendedor: { is: { ativo: false } } },
+    { vendedor: { is: { deletedAt: { not: null } } } },
+  ],
+};
+
+/** Teto da listagem de clientes sem vendedor — a resposta diz o total real. */
+const LIMITE_CLIENTES_SEM_VENDEDOR = 1000;
 
 const VENDEDOR_SELECT = { select: { id: true, nome: true, nomeReduzido: true } };
 const CATEGORIA_LINHA_INCLUDE = {
@@ -318,6 +342,12 @@ export class ObjetivosService {
         }
       }
 
+      // O município vem do cadastro do cliente e recorta o que foi vendido e a
+      // base de clientes. O objetivo fica de fora: a meta é por vendedor/mês,
+      // não existe meta por município — a tela diz isso ao lado do card.
+      const filtroMunicipio = query.municipio
+        ? { cliente: { municipio: query.municipio } }
+        : {};
       const itensWhere = {
         empresaId,
         deletedAt: null,
@@ -325,21 +355,29 @@ export class ObjetivosService {
         ano: query.ano,
         mes: query.mes,
         ...filtroVendedor,
+        ...filtroMunicipio,
       };
-      const [gruposPorProduto, clientesPositivadosGrupos, baseTotal] = await Promise.all([
-        tx.notaSaidaItem.groupBy({
-          by: ['produtoId'],
-          where: itensWhere,
-          _sum: { vlrTotal: true, vlrDev: true },
-        }),
-        tx.notaSaidaItem.groupBy({
-          by: ['clienteId'],
-          where: { ...itensWhere, clienteId: { not: null } },
-        }),
-        tx.cliente.count({
-          where: { empresaId, deletedAt: null, ativo: true, ...filtroVendedor },
-        }),
-      ]);
+      const [gruposPorProduto, clientesPositivadosGrupos, baseTotal] =
+        await Promise.all([
+          tx.notaSaidaItem.groupBy({
+            by: ['produtoId'],
+            where: itensWhere,
+            _sum: { vlrTotal: true, vlrDev: true },
+          }),
+          tx.notaSaidaItem.groupBy({
+            by: ['clienteId'],
+            where: { ...itensWhere, clienteId: { not: null } },
+          }),
+          tx.cliente.count({
+            where: {
+              empresaId,
+              deletedAt: null,
+              ativo: true,
+              ...filtroVendedor,
+              ...(query.municipio ? { municipio: query.municipio } : {}),
+            },
+          }),
+        ]);
 
       const produtoIds = gruposPorProduto
         .map((g) => g.produtoId)
@@ -397,8 +435,492 @@ export class ObjetivosService {
         baseTotal,
         percBase: perc(clientesPositivados, baseTotal),
         devolucaoTotal,
+        municipio: query.municipio ?? null,
         categorias,
       };
+    });
+  }
+
+  /**
+   * Municípios com venda no período — as opções do filtro de município do
+   * Dashboard Comercial. Listar a carteira inteira encheria o select de
+   * cidades que deixariam a tela zerada; aqui só entra quem tem movimento no
+   * mês/ano (e no vendedor, quando escolhido).
+   */
+  async municipiosDashboard(
+    empresaId: string,
+    user: AuthenticatedUser,
+    query: ObjetivoDashboardMunicipiosQuery,
+  ): Promise<string[]> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const filtroVendedor = combinarFiltroVendedor(escopo, query.vendedorId);
+
+      const grupos = await tx.notaSaidaItem.groupBy({
+        by: ['clienteId'],
+        where: {
+          empresaId,
+          deletedAt: null,
+          ativo: true,
+          ano: query.ano,
+          mes: query.mes,
+          clienteId: { not: null },
+          ...filtroVendedor,
+        },
+      });
+      const clienteIds = grupos
+        .map((g) => g.clienteId)
+        .filter((id): id is string => id !== null);
+      if (clienteIds.length === 0) return [];
+
+      const clientes = await tx.cliente.findMany({
+        where: { id: { in: clienteIds }, empresaId, municipio: { not: null } },
+        select: { municipio: true },
+        distinct: ['municipio'],
+        orderBy: { municipio: 'asc' },
+      });
+      return clientes
+        .map((c) => c.municipio)
+        .filter((m): m is string => !!m && m.trim() !== '');
+    });
+  }
+
+  /**
+   * Dashboard Gerencial: o mesmo mês visto por vendedor — objetivo e
+   * realizado, tanto em valor quanto em positivação de clientes.
+   *
+   * `clientesSemVendedor` conta cliente ativo que ninguém está atendendo: sem
+   * vendedor no cadastro **ou** apontando para vendedor inativo/excluído — o
+   * segundo caso é o que aparece quando alguém sai da equipe e a carteira não
+   * é redistribuída, e some da conta se olharmos só o campo nulo. Só faz
+   * sentido para quem enxerga a base inteira: num escopo restrito esses
+   * clientes não estão na carteira de ninguém do time, e o número sai zerado
+   * em vez de contar gente de fora.
+   */
+  async dashboardGerencial(
+    empresaId: string,
+    user: AuthenticatedUser,
+    query: DashboardGerencialQuery,
+  ): Promise<DashboardGerencial> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const filtroVendedor = combinarFiltroVendedor(escopo, query.vendedorId);
+
+      const itensWhere = {
+        empresaId,
+        deletedAt: null,
+        ativo: true,
+        ano: query.ano,
+        mes: query.mes,
+        ...filtroVendedor,
+      };
+
+      const [
+        objetivos,
+        porVendedor,
+        positivacaoGrupos,
+        baseTotal,
+        clientesSemVendedor,
+        totalNotas,
+      ] = await Promise.all([
+        tx.objetivoVendedorMes.findMany({
+          where: {
+            empresaId,
+            deletedAt: null,
+            ativo: true,
+            mes: query.mes,
+            ano: query.ano,
+            ...filtroVendedor,
+          },
+          select: { vendedorId: true, valor: true, numeroCliente: true },
+        }),
+        tx.notaSaidaItem.groupBy({
+          by: ['vendedorId'],
+          where: itensWhere,
+          _sum: { vlrTotal: true, vlrDev: true },
+        }),
+        // Um par (vendedor, cliente) por linha: a contagem de clientes
+        // distintos de cada vendedor sai do tamanho de cada grupo.
+        tx.notaSaidaItem.groupBy({
+          by: ['vendedorId', 'clienteId'],
+          where: { ...itensWhere, clienteId: { not: null } },
+        }),
+        tx.cliente.count({
+          where: { empresaId, deletedAt: null, ativo: true, ...filtroVendedor },
+        }),
+        escopo === null
+          ? tx.cliente.count({
+              where: {
+                empresaId,
+                deletedAt: null,
+                ativo: true,
+                ...CLIENTE_SEM_VENDEDOR_ATIVO,
+              },
+            })
+          : Promise.resolve(0),
+        tx.notaSaida.count({
+          where: {
+            empresaId,
+            deletedAt: null,
+            ativo: true,
+            comodato: false,
+            tipo: 'N',
+            ano: query.ano,
+            mes: query.mes,
+            ...filtroVendedor,
+          },
+        }),
+      ]);
+
+      const objetivoPorVendedor = new Map<
+        string,
+        { valor: number; clientes: number }
+      >();
+      for (const o of objetivos) {
+        const atual = objetivoPorVendedor.get(o.vendedorId) ?? {
+          valor: 0,
+          clientes: 0,
+        };
+        atual.valor += o.valor;
+        atual.clientes += o.numeroCliente ?? 0;
+        objetivoPorVendedor.set(o.vendedorId, atual);
+      }
+
+      const realizadoPorVendedor = new Map<string, number>();
+      let devolucao = 0;
+      for (const g of porVendedor) {
+        if (!g.vendedorId) continue;
+        const liquido = (g._sum.vlrTotal ?? 0) - (g._sum.vlrDev ?? 0);
+        realizadoPorVendedor.set(
+          g.vendedorId,
+          (realizadoPorVendedor.get(g.vendedorId) ?? 0) + liquido,
+        );
+        devolucao += g._sum.vlrDev ?? 0;
+      }
+
+      const positivacaoPorVendedor = new Map<string, number>();
+      const clientesDistintos = new Set<string>();
+      for (const g of positivacaoGrupos) {
+        if (g.clienteId) clientesDistintos.add(g.clienteId);
+        if (!g.vendedorId) continue;
+        positivacaoPorVendedor.set(
+          g.vendedorId,
+          (positivacaoPorVendedor.get(g.vendedorId) ?? 0) + 1,
+        );
+      }
+
+      // Entra na tabela quem tem meta ou movimento no período — vendedor sem
+      // nenhum dos dois não tem o que acompanhar.
+      const vendedorIds = [
+        ...new Set([
+          ...objetivoPorVendedor.keys(),
+          ...realizadoPorVendedor.keys(),
+          ...positivacaoPorVendedor.keys(),
+        ]),
+      ];
+      const vendedores = vendedorIds.length
+        ? await tx.vendedor.findMany({
+            where: { id: { in: vendedorIds }, empresaId, deletedAt: null },
+            select: { id: true, nome: true, nomeReduzido: true },
+          })
+        : [];
+
+      const perc = (num: number, den: number) =>
+        den > 0 ? Math.round((num * 10000) / den) / 100 : 0;
+      const linhas = vendedores
+        .map((v) => {
+          const metaVendedor = objetivoPorVendedor.get(v.id);
+          const objetivo = metaVendedor?.valor ?? 0;
+          const realizado =
+            Math.round((realizadoPorVendedor.get(v.id) ?? 0) * 100) / 100;
+          const positivacaoObjetivo = metaVendedor?.clientes ?? 0;
+          const positivacaoRealizado = positivacaoPorVendedor.get(v.id) ?? 0;
+          return {
+            vendedorId: v.id,
+            nome: v.nomeReduzido || v.nome,
+            positivacaoObjetivo,
+            positivacaoRealizado,
+            percPositivacao: perc(positivacaoRealizado, positivacaoObjetivo),
+            objetivo,
+            realizado,
+            percRealizado: perc(realizado, objetivo),
+          };
+        })
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
+      const realizado =
+        Math.round(
+          [...realizadoPorVendedor.values()].reduce((a, b) => a + b, 0) * 100,
+        ) / 100;
+      const objetivo = [...objetivoPorVendedor.values()].reduce(
+        (acc, o) => acc + o.valor,
+        0,
+      );
+      const objetivoClientes = [...objetivoPorVendedor.values()].reduce(
+        (acc, o) => acc + o.clientes,
+        0,
+      );
+      const clientesPositivados = clientesDistintos.size;
+
+      return {
+        periodo: {
+          mes: query.mes,
+          ano: query.ano,
+          label: `${String(query.mes).padStart(2, '0')}/${query.ano}`,
+        },
+        resumo: {
+          realizado,
+          objetivo,
+          percRealizado: perc(realizado, objetivo),
+          clientesPositivados,
+          objetivoClientes,
+          percClientes: perc(clientesPositivados, objetivoClientes),
+          devolucao: Math.round(devolucao * 100) / 100,
+          baseTotal,
+          percBase: perc(clientesPositivados, baseTotal),
+          clientesSemVendedor,
+          totalNotas,
+          ticketMedio:
+            totalNotas > 0
+              ? Math.round((realizado / totalNotas) * 100) / 100
+              : 0,
+        },
+        linhas,
+      };
+    });
+  }
+
+  /**
+   * Detalhe de uma linha do Dashboard Gerencial: o mês daquele vendedor
+   * repartido por categoria de produto.
+   *
+   * O vendedor passa pelo mesmo `combinarFiltroVendedor` da listagem — pedir
+   * o id de alguém fora do escopo devolve tudo zerado, não a carteira do
+   * outro. Categoria só com meta e categoria só com venda entram as duas.
+   */
+  async dashboardGerencialVendedor(
+    empresaId: string,
+    user: AuthenticatedUser,
+    vendedorId: string,
+    query: DashboardGerencialVendedorQuery,
+  ): Promise<DashboardGerencialVendedor> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const filtroVendedor = combinarFiltroVendedor(escopo, vendedorId);
+      const noEscopo = escopo === null || escopo.includes(vendedorId);
+
+      const vendedor = noEscopo
+        ? await tx.vendedor.findFirst({
+            where: { id: vendedorId, empresaId, deletedAt: null },
+            select: { id: true, nome: true, nomeReduzido: true },
+          })
+        : null;
+      if (!vendedor) throw new NotFoundException('Vendedor não encontrado');
+
+      const [objetivos, gruposPorProduto] = await Promise.all([
+        tx.objetivoVendedorMes.findMany({
+          where: {
+            empresaId,
+            deletedAt: null,
+            ativo: true,
+            mes: query.mes,
+            ano: query.ano,
+            ...filtroVendedor,
+          },
+          include: { categorias: { where: { deletedAt: null } } },
+        }),
+        tx.notaSaidaItem.groupBy({
+          by: ['produtoId'],
+          where: {
+            empresaId,
+            deletedAt: null,
+            ativo: true,
+            ano: query.ano,
+            mes: query.mes,
+            ...filtroVendedor,
+          },
+          _sum: { vlrTotal: true, vlrDev: true },
+        }),
+      ]);
+
+      const objetivo = objetivos.reduce((acc, o) => acc + o.valor, 0);
+      const objetivoPorCategoria = new Map<string, number>();
+      for (const o of objetivos) {
+        for (const c of o.categorias) {
+          objetivoPorCategoria.set(
+            c.categoriaId,
+            (objetivoPorCategoria.get(c.categoriaId) ?? 0) + c.valor,
+          );
+        }
+      }
+
+      const produtoIds = gruposPorProduto
+        .map((g) => g.produtoId)
+        .filter((id): id is string => id !== null);
+      const produtos = produtoIds.length
+        ? await tx.produto.findMany({
+            where: { id: { in: produtoIds } },
+            select: { id: true, categoriaId: true },
+          })
+        : [];
+      const categoriaPorProduto = new Map(
+        produtos.map((p) => [p.id, p.categoriaId]),
+      );
+
+      let realizado = 0;
+      let realizadoSemCategoria = 0;
+      const realizadoPorCategoria = new Map<string, number>();
+      for (const g of gruposPorProduto) {
+        const liquido = (g._sum.vlrTotal ?? 0) - (g._sum.vlrDev ?? 0);
+        realizado += liquido;
+        const categoriaId = g.produtoId
+          ? categoriaPorProduto.get(g.produtoId)
+          : null;
+        if (categoriaId) {
+          realizadoPorCategoria.set(
+            categoriaId,
+            (realizadoPorCategoria.get(categoriaId) ?? 0) + liquido,
+          );
+        } else {
+          realizadoSemCategoria += liquido;
+        }
+      }
+
+      const categoriaIds = new Set([
+        ...objetivoPorCategoria.keys(),
+        ...realizadoPorCategoria.keys(),
+      ]);
+      const categoriasInfo = categoriaIds.size
+        ? await tx.categoria.findMany({
+            where: { id: { in: [...categoriaIds] } },
+            select: { id: true, codigoErp: true, descricao: true },
+          })
+        : [];
+
+      const arredondar = (v: number) => Math.round(v * 100) / 100;
+      const perc = (num: number, den: number) =>
+        den > 0 ? Math.round((num * 10000) / den) / 100 : 0;
+
+      const categorias = categoriasInfo
+        .map((c) => {
+          const objetivoCategoria = objetivoPorCategoria.get(c.id) ?? 0;
+          const realizadoCategoria = arredondar(
+            realizadoPorCategoria.get(c.id) ?? 0,
+          );
+          return {
+            categoriaId: c.id,
+            codigoErp: c.codigoErp,
+            descricao: c.descricao,
+            objetivo: objetivoCategoria,
+            realizado: realizadoCategoria,
+            percRealizado: perc(realizadoCategoria, objetivoCategoria),
+          };
+        })
+        .sort((a, b) => a.codigoErp.localeCompare(b.codigoErp));
+
+      return {
+        vendedorId: vendedor.id,
+        nome: vendedor.nomeReduzido || vendedor.nome,
+        periodo: {
+          mes: query.mes,
+          ano: query.ano,
+          label: `${String(query.mes).padStart(2, '0')}/${query.ano}`,
+        },
+        objetivo,
+        realizado: arredondar(realizado),
+        percRealizado: perc(arredondar(realizado), objetivo),
+        categorias,
+        realizadoSemCategoria: arredondar(realizadoSemCategoria),
+      };
+    });
+  }
+
+  /**
+   * Quem são os clientes contados no card "Clientes sem vendedor ativo".
+   *
+   * Segue a mesma regra de visibilidade do card: num escopo restrito esses
+   * clientes não estão na carteira de ninguém do time, o card mostra zero e
+   * aqui a lista sai vazia — não é a lista de outra pessoa para conferir.
+   *
+   * A data exibida é a mais recente entre `cliente.ultimaCompra` (histórico
+   * vindo do import) e a última nota na base: nos dados de hoje há cliente
+   * com uma e não a outra, e o que o gestor quer saber é há quanto tempo
+   * aquele cliente não compra, venha o dado de onde vier.
+   */
+  async clientesSemVendedor(
+    empresaId: string,
+    user: AuthenticatedUser,
+  ): Promise<DashboardGerencialClientesSemVendedor> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      if (escopo !== null) {
+        return { total: 0, limite: LIMITE_CLIENTES_SEM_VENDEDOR, linhas: [] };
+      }
+
+      const where = {
+        empresaId,
+        deletedAt: null,
+        ativo: true,
+        ...CLIENTE_SEM_VENDEDOR_ATIVO,
+      };
+      const [total, clientes] = await Promise.all([
+        tx.cliente.count({ where }),
+        tx.cliente.findMany({
+          where,
+          select: {
+            id: true,
+            codigoErp: true,
+            razaoSocial: true,
+            cnpjCpf: true,
+            ultimaCompra: true,
+          },
+          orderBy: { razaoSocial: 'asc' },
+          take: LIMITE_CLIENTES_SEM_VENDEDOR,
+        }),
+      ]);
+
+      const notas = clientes.length
+        ? await tx.notaSaida.groupBy({
+            by: ['clienteId'],
+            where: {
+              empresaId,
+              deletedAt: null,
+              ativo: true,
+              tipo: 'N',
+              clienteId: { in: clientes.map((c) => c.id) },
+            },
+            _max: { dtEmissao: true },
+          })
+        : [];
+      const ultimaNotaPorCliente = new Map<string, Date>();
+      for (const n of notas) {
+        if (n.clienteId && n._max.dtEmissao) {
+          ultimaNotaPorCliente.set(n.clienteId, n._max.dtEmissao);
+        }
+      }
+
+      const linhas = clientes
+        .map((c) => {
+          const ultimaNota = ultimaNotaPorCliente.get(c.id) ?? null;
+          const maisRecente =
+            c.ultimaCompra && ultimaNota
+              ? c.ultimaCompra > ultimaNota
+                ? c.ultimaCompra
+                : ultimaNota
+              : (c.ultimaCompra ?? ultimaNota);
+          return {
+            clienteId: c.id,
+            codigo: c.codigoErp,
+            nome: c.razaoSocial,
+            cnpjCpf: c.cnpjCpf,
+            ultimaCompra: maisRecente ? maisRecente.toISOString() : null,
+          };
+        })
+        // Quem comprou mais recentemente primeiro: é o cliente ativo que está
+        // sem dono agora. Sem compra nenhuma vai para o fim da lista.
+        .sort((a, b) => (b.ultimaCompra ?? '').localeCompare(a.ultimaCompra ?? ''));
+
+      return { total, limite: LIMITE_CLIENTES_SEM_VENDEDOR, linhas };
     });
   }
 }

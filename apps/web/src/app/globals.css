@@ -96,6 +96,24 @@
   --chart-3: oklch(0.75 0.16 80);
   --chart-4: oklch(0.58 0.15 148);
   --chart-5: oklch(0.63 0.22 25);
+  /*
+    Paleta categórica dos gráficos (uma cor por série). Separada de --chart-N,
+    que é a paleta decorativa do tema: estes seis tons foram escolhidos e
+    conferidos para continuarem distinguíveis entre si sob daltonismo
+    (protanopia/deuteranopia) sobre o fundo de card dos dois temas — ordem
+    fixa, atribuída por entidade e nunca reciclada. A sétima série em diante
+    vira "Outros", em cinza.
+
+    Nos dois modos claros o amarelo, o verde-água e o magenta ficam abaixo de
+    3:1 contra o branco: por isso o gráfico sempre traz legenda com nome e a
+    tabela logo abaixo, e nunca depende só da cor.
+  */
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-4: #eda100;
+  --viz-5: #e87ba4;
+  --viz-6: #008300;
   --radius: 0.625rem;
 }
 
@@ -127,6 +145,14 @@
   --chart-3: oklch(0.82 0.15 80);
   --chart-4: oklch(0.7 0.15 148);
   --chart-5: oklch(0.72 0.2 25);
+  /* Mesmas seis matizes da paleta categórica, com o passo de luminosidade
+     escolhido para o card escuro (todas ≥ 3:1 contra ele). */
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-4: #c98500;
+  --viz-5: #d55181;
+  --viz-6: #008300;
 }
 
 /*

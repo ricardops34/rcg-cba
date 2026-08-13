@@ -7,14 +7,18 @@ import {
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
 import type {
   BaseVendedor,
+  ConsultaEvolucaoQuery,
+  ConsultaEvolucaoResultado,
   ConsultaVendasClienteQuery,
   ConsultaVendasColuna,
   ConsultaVendasLinha,
   ConsultaVendasProdutoQuery,
   ConsultaVendasResultado,
   ConsultaVendasVendedorQuery,
+  FormatoEvolucao,
 } from '@plataforma/contracts';
 import {
+  INDICADORES_EVOLUCAO,
   PARAMETRO_BASE_VENDEDOR,
   colunasDoPeriodo,
   emMeses,
@@ -94,20 +98,22 @@ export class ConsultasService {
   }
 
   /**
-   * Filtro de vendedor escolhido na tela, sobre a coluna que a base define.
-   * Um vendedorId fora do escopo zera o resultado em vez de vazar carteira de
-   * fora do time (mesma regra de combinarFiltroVendedor).
+   * Filtro de vendedor(es) escolhido na tela, sobre a coluna que a base
+   * define. Ids fora do escopo são descartados em vez de consultados — e se
+   * NENHUM dos pedidos for permitido, o resultado é vazio, não "todos": cair
+   * no sem-filtro aqui mostraria a carteira inteira a quem pediu justamente a
+   * de outra pessoa (mesma regra de combinarFiltroVendedor).
    */
   private condicaoFiltroVendedor(
     coluna: Prisma.Sql,
     escopo: string[] | null,
-    vendedorId?: string,
+    vendedorIds?: string[],
   ): Prisma.Sql[] {
-    if (!vendedorId) return [];
-    const permitido = escopo === null || escopo.includes(vendedorId);
-    return [
-      permitido ? Prisma.sql`${coluna} = ${vendedorId}` : Prisma.sql`false`,
-    ];
+    if (!vendedorIds || vendedorIds.length === 0) return [];
+    const permitidos =
+      escopo === null ? vendedorIds : vendedorIds.filter((id) => escopo.includes(id));
+    if (permitidos.length === 0) return [Prisma.sql`false`];
+    return [Prisma.sql`${coluna} IN (${Prisma.join(permitidos)})`];
   }
 
   /**
@@ -139,6 +145,18 @@ export class ConsultasService {
     ];
   }
 
+  /**
+   * Média por mês COM movimento: o divisor é quantos meses tiveram valor, não
+   * o tamanho do período. Cliente que comprou em 2 dos 12 meses tem a média do
+   * que ele compra quando compra — dividir por 12 diluiria o número até virar
+   * outra coisa. Mês que zerou por compensação (venda e devolução iguais) não
+   * conta, porque `valores` guarda o líquido e ele ficou 0.
+   */
+  private mediaMesesComMovimento(valores: number[], total: number): number {
+    const meses = valores.filter((v) => v !== 0).length;
+    return meses > 0 ? Math.round((total / meses) * 100) / 100 : 0;
+  }
+
   /** Pivota as linhas (entidade, ano, mês) numa linha por entidade. */
   private pivotar(
     agregadas: LinhaAgregada[],
@@ -147,6 +165,7 @@ export class ConsultasService {
     linhas: ConsultaVendasLinha[];
     totais: number[];
     total: number;
+    media: number;
   } {
     const indicePorMes = new Map(
       colunas.map((c, i) => [emMeses(c.ano, c.mes), i]),
@@ -166,6 +185,7 @@ export class ConsultasService {
           descricao: linha.descricao,
           valores: Array<number>(colunas.length).fill(0),
           total: 0,
+          media: 0, // preenchido no fim, com os valores todos somados
         };
         porEntidade.set(linha.id, atual);
       }
@@ -176,16 +196,36 @@ export class ConsultasService {
     }
 
     const linhas = [...porEntidade.values()].sort((a, b) => b.total - a.total);
-    return { linhas, totais, total: totais.reduce((acc, v) => acc + v, 0) };
+    for (const linha of linhas) {
+      linha.media = this.mediaMesesComMovimento(linha.valores, linha.total);
+    }
+    const total = totais.reduce((acc, v) => acc + v, 0);
+    return {
+      linhas,
+      totais,
+      total,
+      media: this.mediaMesesComMovimento(totais, total),
+    };
   }
 
-  private async vendedorRef(tx: TenantTx, empresaId: string, id?: string) {
-    if (!id) return null;
-    const v = await tx.vendedor.findFirst({
-      where: { id, empresaId, deletedAt: null },
+  /**
+   * Nomes dos vendedores filtrados, para a tela e o cabeçalho do PDF dizerem
+   * de quem é o número. Ordena por nome, não pela ordem em que vieram na
+   * query — o cabeçalho é para ler, não para refletir cliques.
+   */
+  private async vendedoresRef(
+    tx: TenantTx,
+    empresaId: string,
+    ids?: string[],
+  ): Promise<{ id: string; nome: string }[]> {
+    if (!ids || ids.length === 0) return [];
+    const encontrados = await tx.vendedor.findMany({
+      where: { id: { in: ids }, empresaId, deletedAt: null },
       select: { id: true, nome: true, nomeReduzido: true },
     });
-    return v ? { id: v.id, nome: v.nomeReduzido || v.nome } : null;
+    return encontrados
+      .map((v) => ({ id: v.id, nome: v.nomeReduzido || v.nome }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   }
 
   /** Cabeçalho comum das três consultas. */
@@ -228,7 +268,7 @@ export class ConsultasService {
         ...this.condicaoFiltroVendedor(
           colunaVendedor,
           escopo,
-          query.vendedorId,
+          query.vendedorIds,
         ),
       ];
 
@@ -249,7 +289,7 @@ export class ConsultasService {
       const cabecalho = this.cabecalho(query, base);
       return {
         ...cabecalho,
-        vendedor: await this.vendedorRef(tx, empresaId, query.vendedorId),
+        vendedores: await this.vendedoresRef(tx, empresaId, query.vendedorIds),
         categoria: null,
         ...this.pivotar(agregadas, cabecalho.colunas),
       };
@@ -284,7 +324,7 @@ export class ConsultasService {
         ...this.condicaoFiltroVendedor(
           colunaVendedor,
           escopo,
-          query.vendedorId,
+          query.vendedorIds,
         ),
       ];
 
@@ -306,7 +346,7 @@ export class ConsultasService {
       const cabecalho = this.cabecalho(query, base);
       return {
         ...cabecalho,
-        vendedor: await this.vendedorRef(tx, empresaId, query.vendedorId),
+        vendedores: await this.vendedoresRef(tx, empresaId, query.vendedorIds),
         categoria: null,
         ...this.pivotar(agregadas, cabecalho.colunas),
       };
@@ -342,7 +382,7 @@ export class ConsultasService {
         ...this.condicaoFiltroVendedor(
           colunaVendedor,
           escopo,
-          query.vendedorId,
+          query.vendedorIds,
         ),
       ];
       if (query.categoriaId) {
@@ -375,10 +415,207 @@ export class ConsultasService {
       const cabecalho = this.cabecalho(query, base);
       return {
         ...cabecalho,
-        vendedor: await this.vendedorRef(tx, empresaId, query.vendedorId),
+        vendedores: await this.vendedoresRef(tx, empresaId, query.vendedorIds),
         categoria,
         ...this.pivotar(agregadas, cabecalho.colunas),
       };
     });
+  }
+
+  /**
+   * Evolução mensal por vendedor, no indicador escolhido (ver
+   * INDICADORES_EVOLUCAO nos contratos). Sai no mesmo formato pivô das outras
+   * consultas — uma linha por vendedor, uma coluna por mês —, que o gráfico da
+   * tela lê como uma série por vendedor.
+   *
+   * Os três indicadores de cliente contam clientes, não dinheiro:
+   *
+   * - `positivados` — clientes distintos com compra no mês;
+   * - `novos` — clientes cuja primeira compra de TODO o histórico caiu no mês
+   *   (a apuração da primeira compra ignora o período consultado de
+   *   propósito: senão todo cliente que comprou no primeiro mês da consulta
+   *   pareceria novo);
+   * - `inativados` — clientes com data de bloqueio no mês. Não há nota
+   *   envolvida, então o crédito é sempre do vendedor do cadastro e a escolha
+   *   de base é ignorada (a resposta devolve `cliente`, que é o que valeu).
+   */
+  async evolucao(
+    empresaId: string,
+    user: AuthenticatedUser,
+    query: ConsultaEvolucaoQuery,
+  ): Promise<ConsultaEvolucaoResultado> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const baseEscolhida = await this.baseVendedor(
+        empresaId,
+        tx,
+        query.baseVendedor,
+      );
+      const base: BaseVendedor =
+        query.indicador === 'inativados' ? 'cliente' : baseEscolhida;
+
+      const agregadas =
+        query.indicador === 'inativados'
+          ? await this.evolucaoInativados(tx, empresaId, escopo, query)
+          : query.indicador === 'novos'
+            ? await this.evolucaoNovos(tx, empresaId, escopo, base, query)
+            : await this.evolucaoSobreNotas(tx, empresaId, escopo, base, query);
+
+      const formato: FormatoEvolucao =
+        INDICADORES_EVOLUCAO.find((i) => i.valor === query.indicador)
+          ?.formato ?? 'quantidade';
+
+      const cabecalho = this.cabecalho(query, base);
+      return {
+        ...cabecalho,
+        vendedores: await this.vendedoresRef(tx, empresaId, query.vendedorIds),
+        categoria: null,
+        indicador: query.indicador,
+        formato,
+        ...this.pivotar(agregadas, cabecalho.colunas),
+      };
+    });
+  }
+
+  /** Colunas de identificação do vendedor, iguais em todos os indicadores. */
+  private readonly selecaoVendedor = Prisma.sql`
+    v."id"        AS "id",
+    v."codigoErp" AS "codigo",
+    COALESCE(v."nomeReduzido", v."nome") AS "descricao"`;
+  private readonly agrupamentoVendedor = Prisma.sql`v."id", v."codigoErp", v."nomeReduzido", v."nome"`;
+
+  /** `vendas` (soma do vlrBruto) e `positivados` (clientes distintos no mês). */
+  private evolucaoSobreNotas(
+    tx: TenantTx,
+    empresaId: string,
+    escopo: string[] | null,
+    base: BaseVendedor,
+    query: ConsultaEvolucaoQuery,
+  ) {
+    const colunaVendedor =
+      base === 'cliente'
+        ? Prisma.sql`c."vendedorId"`
+        : Prisma.sql`n."vendedorId"`;
+    const condicoes: Prisma.Sql[] = [
+      Prisma.sql`n."empresaId" = ${empresaId}`,
+      ...this.condicoesNotaDeVenda,
+      ...this.condicaoPeriodo(Prisma.sql`n`, query),
+      ...this.condicaoEscopoClientes(escopo),
+      ...this.condicaoFiltroVendedor(colunaVendedor, escopo, query.vendedorIds),
+    ];
+    const medida =
+      query.indicador === 'positivados'
+        ? Prisma.sql`COUNT(DISTINCT n."clienteId")::float8`
+        : Prisma.sql`SUM(n."vlrBruto")::float8`;
+
+    return tx.$queryRaw<LinhaAgregada[]>(Prisma.sql`
+      SELECT
+        ${this.selecaoVendedor},
+        n."ano" AS "ano",
+        n."mes" AS "mes",
+        ${medida} AS "valor"
+      FROM "notas_saida" n
+      JOIN "clientes" c ON c."id" = n."clienteId" AND c."deletedAt" IS NULL
+      JOIN "vendedores" v ON v."id" = ${colunaVendedor} AND v."deletedAt" IS NULL
+      WHERE ${Prisma.join(condicoes, ' AND ')}
+      GROUP BY ${this.agrupamentoVendedor}, n."ano", n."mes"
+    `);
+  }
+
+  /**
+   * `novos`: a CTE reduz cada cliente à sua primeira nota de venda de todo o
+   * histórico (DISTINCT ON pelo cliente, ordenado por ano/mês/emissão), e só
+   * depois o período recorta quem estreou dentro dele. Com a base em `nota`, o
+   * crédito vai para quem emitiu essa primeira nota.
+   */
+  private evolucaoNovos(
+    tx: TenantTx,
+    empresaId: string,
+    escopo: string[] | null,
+    base: BaseVendedor,
+    query: ConsultaEvolucaoQuery,
+  ) {
+    const colunaVendedor =
+      base === 'cliente'
+        ? Prisma.sql`c."vendedorId"`
+        : Prisma.sql`p."vendedorId"`;
+    const condicoesPrimeira: Prisma.Sql[] = [
+      Prisma.sql`n."empresaId" = ${empresaId}`,
+      ...this.condicoesNotaDeVenda,
+      Prisma.sql`n."clienteId" IS NOT NULL`,
+      Prisma.sql`n."ano" IS NOT NULL`,
+      Prisma.sql`n."mes" IS NOT NULL`,
+    ];
+    const condicoes: Prisma.Sql[] = [
+      ...this.condicaoPeriodo(Prisma.sql`p`, query),
+      ...this.condicaoEscopoClientes(escopo),
+      ...this.condicaoFiltroVendedor(colunaVendedor, escopo, query.vendedorIds),
+    ];
+
+    return tx.$queryRaw<LinhaAgregada[]>(Prisma.sql`
+      WITH "primeira_compra" AS (
+        SELECT DISTINCT ON (n."clienteId")
+          n."clienteId"  AS "clienteId",
+          n."ano"        AS "ano",
+          n."mes"        AS "mes",
+          n."vendedorId" AS "vendedorId"
+        FROM "notas_saida" n
+        WHERE ${Prisma.join(condicoesPrimeira, ' AND ')}
+        ORDER BY n."clienteId", n."ano", n."mes", n."dtEmissao"
+      )
+      SELECT
+        ${this.selecaoVendedor},
+        p."ano" AS "ano",
+        p."mes" AS "mes",
+        COUNT(*)::float8 AS "valor"
+      FROM "primeira_compra" p
+      JOIN "clientes" c ON c."id" = p."clienteId" AND c."deletedAt" IS NULL
+      JOIN "vendedores" v ON v."id" = ${colunaVendedor} AND v."deletedAt" IS NULL
+      WHERE ${Prisma.join(condicoes, ' AND ')}
+      GROUP BY ${this.agrupamentoVendedor}, p."ano", p."mes"
+    `);
+  }
+
+  /**
+   * `inativados`: parte do cadastro do cliente, não de nota — o mês vem da
+   * data de bloqueio e o vendedor é o titular da carteira. Conta o bloqueio
+   * registrado, mesmo que o cliente tenha sido reativado depois (a data
+   * permanece no cadastro).
+   */
+  private evolucaoInativados(
+    tx: TenantTx,
+    empresaId: string,
+    escopo: string[] | null,
+    query: ConsultaEvolucaoQuery,
+  ) {
+    const mesDoBloqueio = Prisma.sql`(EXTRACT(YEAR FROM c."dataBloqueio")::int * 12 + EXTRACT(MONTH FROM c."dataBloqueio")::int)`;
+    const condicoes: Prisma.Sql[] = [
+      Prisma.sql`c."empresaId" = ${empresaId}`,
+      Prisma.sql`c."deletedAt" IS NULL`,
+      Prisma.sql`c."dataBloqueio" IS NOT NULL`,
+      Prisma.sql`${mesDoBloqueio} BETWEEN ${emMeses(
+        query.anoInicial,
+        query.mesInicial,
+      )} AND ${emMeses(query.anoFinal, query.mesFinal)}`,
+      ...this.condicaoEscopoClientes(escopo),
+      ...this.condicaoFiltroVendedor(
+        Prisma.sql`c."vendedorId"`,
+        escopo,
+        query.vendedorIds,
+      ),
+    ];
+
+    return tx.$queryRaw<LinhaAgregada[]>(Prisma.sql`
+      SELECT
+        ${this.selecaoVendedor},
+        EXTRACT(YEAR FROM c."dataBloqueio")::int  AS "ano",
+        EXTRACT(MONTH FROM c."dataBloqueio")::int AS "mes",
+        COUNT(*)::float8 AS "valor"
+      FROM "clientes" c
+      JOIN "vendedores" v ON v."id" = c."vendedorId" AND v."deletedAt" IS NULL
+      WHERE ${Prisma.join(condicoes, ' AND ')}
+      GROUP BY ${this.agrupamentoVendedor},
+        EXTRACT(YEAR FROM c."dataBloqueio"), EXTRACT(MONTH FROM c."dataBloqueio")
+    `);
   }
 }

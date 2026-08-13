@@ -695,7 +695,7 @@ export class ClientesService {
         resolverEscopoVendedores(tx, empresaId, user),
         tx.vendedor.findFirst({
           where: { usuarioId: user.id, empresaId, deletedAt: null },
-          select: { id: true, supervisor: true, gerente: true },
+          select: { id: true, tipo: true },
         }),
       ]);
       // uf/municipio (facetas irmãs já selecionadas no filtro) sempre
@@ -713,6 +713,11 @@ export class ClientesService {
         where: {
           empresaId,
           deletedAt: null,
+          // Só quem é do tipo `vendedor`: os selects de Vendedor do sistema
+          // (orçamento, atividade, filtros) escolhem quem atende o cliente, e
+          // supervisor/gerente estão na hierarquia para enxergar o time, não
+          // para receber carteira.
+          tipo: 'vendedor',
           // apenasComCliente inclui vendedor bloqueado (ativo:false) de
           // propósito — é útil justamente pra localizar/filtrar carteira de
           // um vendedor que foi bloqueado mas ainda tem clientes vinculados.
@@ -748,7 +753,7 @@ export class ClientesService {
       }));
 
       const ehVendedorPuro =
-        escopo !== null && !vendedorProprio?.supervisor && !vendedorProprio?.gerente;
+        escopo !== null && vendedorProprio?.tipo === 'vendedor';
       return {
         data,
         restrito: escopo !== null,

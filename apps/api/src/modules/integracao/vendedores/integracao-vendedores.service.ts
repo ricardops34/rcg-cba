@@ -36,9 +36,12 @@ export class IntegracaoVendedoresService {
       telefone: row.telefone,
       email: row.email,
       dataNascimento: row.dataNascimento,
-      vendedor: row.vendedor,
+      // O contrato com o ERP continua falando em dois booleanos; internamente
+      // o papel virou um campo só (Vendedor.tipo). A conversão fica aqui para
+      // não quebrar quem já integra.
+      vendedor: row.tipo === 'vendedor',
       supervisorCodigo: row.supervisorVendedor?.codigoErp ?? null,
-      supervisor: row.supervisor,
+      supervisor: row.tipo === 'supervisor',
       percComissao: row.percComissao,
       ativo: row.ativo,
       desligado: row.desligado,
@@ -134,11 +137,11 @@ export class IntegracaoVendedoresService {
           telefone: input.telefone ?? null,
           email: input.email ?? null,
           dataNascimento: input.dataNascimento ?? null,
-          vendedor: input.vendedor,
+          tipo: input.supervisor ? 'supervisor' : 'vendedor',
           supervisorId,
-          supervisor: input.supervisor,
           percComissao: input.percComissao ?? null,
-          ativo: input.ativo,
+          // Desligado manda no ativo, como na tela.
+          ativo: input.desligado ? false : input.ativo,
           desligado: input.desligado,
           createdBy: autor,
           updatedBy: autor,
@@ -184,9 +187,21 @@ export class IntegracaoVendedoresService {
         }
       }
 
+      // `gerente` é papel mantido na tela: o ERP não o conhece e não deve
+      // rebaixar quem foi promovido aqui. Fora esse caso, os dois booleanos do
+      // contrato definem o tipo.
+      const tipo =
+        existente.tipo === 'gerente' ||
+        (input.supervisor === undefined && input.vendedor === undefined)
+          ? undefined
+          : (input.supervisor ?? existente.tipo === 'supervisor')
+            ? ('supervisor' as const)
+            : ('vendedor' as const);
+
       const atualizado = await tx.vendedor.update({
         where: { id: existente.id },
         data: {
+          ...(tipo !== undefined ? { tipo } : {}),
           ...(input.nome !== undefined ? { nome: input.nome } : {}),
           ...(input.nomeReduzido !== undefined
             ? { nomeReduzido: input.nomeReduzido }
@@ -196,17 +211,13 @@ export class IntegracaoVendedoresService {
           ...(input.dataNascimento !== undefined
             ? { dataNascimento: input.dataNascimento }
             : {}),
-          ...(input.vendedor !== undefined ? { vendedor: input.vendedor } : {}),
           ...(supervisorId !== undefined ? { supervisorId } : {}),
           ...(input.percComissao !== undefined
             ? { percComissao: input.percComissao }
             : {}),
-          ...(input.supervisor !== undefined
-            ? { supervisor: input.supervisor }
-            : {}),
           ...(input.ativo !== undefined ? { ativo: input.ativo } : {}),
           ...(input.desligado !== undefined
-            ? { desligado: input.desligado }
+            ? { desligado: input.desligado, ativo: !input.desligado }
             : {}),
           updatedBy: autor,
         },

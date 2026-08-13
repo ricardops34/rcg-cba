@@ -4,7 +4,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { Vendedor } from "@plataforma/contracts";
+import {
+  TIPO_VENDEDOR_LABEL,
+  VINCULO_VENDEDOR_LABEL,
+  type TipoVendedor,
+  type Vendedor,
+  type VinculoVendedor,
+} from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
@@ -14,8 +20,8 @@ import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/sta
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { FieldLabel } from "@/components/ui/field";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DropdownMenu,
@@ -52,18 +58,21 @@ export default function VendedoresPage() {
   const [sortBy, setSortBy] = useState("nome");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [status, setStatus] = useState<StatusFilterValue>("ativos");
-  const [papeis, setPapeis] = useState<{ vendedor: boolean; supervisor: boolean; gerente: boolean }>({
-    vendedor: false,
-    supervisor: false,
-    gerente: false,
-  });
+  // O tipo é o recorte principal da tela: as abas agrupam a listagem por
+  // papel, e o filtro vai junto para o servidor (uma linha por vendedor, sem
+  // paginação bagunçada por agrupamento client-side).
+  const [tipo, setTipo] = useState<TipoVendedor | "todos">("todos");
+  const [vinculo, setVinculo] = useState<VinculoVendedor | "todos">("todos");
   const [desligado, setDesligado] = useState<SimNaoTodos>("todos");
+  const [usaDashboard, setUsaDashboard] = useState<SimNaoTodos>("todos");
   const [supervisorId, setSupervisorId] = useState<string | undefined>(undefined);
 
   const supervisoresQuery = useQuery({
     queryKey: ["vendedores", "select", "supervisores"],
     queryFn: () =>
-      apiFetch<{ data: Vendedor[] }>("/vendedores", { query: { pageSize: 100, supervisor: true } }),
+      apiFetch<{ data: Vendedor[] }>("/vendedores", {
+        query: { pageSize: 100, tipo: "supervisor" },
+      }),
   });
 
   const { data, isLoading, isFetching, refetch, error } = useResourceList<Vendedor>("vendedores", {
@@ -73,9 +82,9 @@ export default function VendedoresPage() {
     sortBy,
     sortOrder,
     ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
-    ...(papeis.vendedor ? { vendedor: true } : {}),
-    ...(papeis.supervisor ? { supervisor: true } : {}),
-    ...(papeis.gerente ? { gerente: true } : {}),
+    ...(tipo !== "todos" ? { tipo } : {}),
+    ...(vinculo !== "todos" ? { vinculo } : {}),
+    ...(usaDashboard !== "todos" ? { usaDashboard: usaDashboard === "sim" } : {}),
     ...(desligado !== "todos" ? { desligado: desligado === "sim" } : {}),
     ...(supervisorId ? { supervisorId } : {}),
   });
@@ -144,10 +153,14 @@ export default function VendedoresPage() {
   };
 
   const filtrosAtivos =
-    papeis.vendedor || papeis.supervisor || papeis.gerente || desligado !== "todos" || !!supervisorId;
+    vinculo !== "todos" ||
+    usaDashboard !== "todos" ||
+    desligado !== "todos" ||
+    !!supervisorId;
 
   const limparFiltros = () => {
-    setPapeis({ vendedor: false, supervisor: false, gerente: false });
+    setVinculo("todos");
+    setUsaDashboard("todos");
     setDesligado("todos");
     setSupervisorId(undefined);
     setPage(1);
@@ -180,13 +193,37 @@ export default function VendedoresPage() {
       ),
     },
     {
-      header: "Papéis",
+      header: "Tipo",
+      sortKey: "tipo",
       cell: (v) => (
-        <div className="flex flex-wrap gap-1">
-          {v.vendedor && <Badge variant="outline">Vendedor</Badge>}
-          {v.supervisor && <Badge variant="outline">Supervisor</Badge>}
-          {v.gerente && <Badge variant="outline">Gerente</Badge>}
+        <div className="flex flex-wrap items-center gap-1">
+          <Badge variant="outline">{TIPO_VENDEDOR_LABEL[v.tipo]}</Badge>
+          {v.vinculo && (
+            <span className="text-xs text-muted-foreground">
+              {VINCULO_VENDEDOR_LABEL[v.vinculo]}
+            </span>
+          )}
         </div>
+      ),
+    },
+    {
+      header: "Clientes",
+      className: "text-right",
+      cell: (v) => (
+        <div className="text-xs tabular-nums">
+          <p>{(v.clientesAtivos ?? 0).toLocaleString("pt-BR")} ativos</p>
+          {(v.clientesInativos ?? 0) > 0 && (
+            <p className="text-muted-foreground">
+              {(v.clientesInativos ?? 0).toLocaleString("pt-BR")} inativos
+            </p>
+          )}
+        </div>
+      ),
+    },
+    {
+      header: "Dashboard",
+      cell: (v) => (
+        <span className="text-xs text-muted-foreground">{v.usaDashboard ? "Sim" : "—"}</span>
       ),
     },
     {
@@ -254,6 +291,25 @@ export default function VendedoresPage() {
         createLabel="Novo vendedor"
       />
 
+      {/* Agrupamento por tipo: cada aba é o recorte de um papel, e o filtro
+          vai para o servidor junto com a paginação. */}
+      <Tabs
+        value={tipo}
+        onValueChange={(v) => {
+          setTipo(v as TipoVendedor | "todos");
+          setPage(1);
+        }}
+      >
+        <TabsList>
+          <TabsTrigger value="todos">Todos</TabsTrigger>
+          {(Object.keys(TIPO_VENDEDOR_LABEL) as TipoVendedor[]).map((t) => (
+            <TabsTrigger key={t} value={t}>
+              {TIPO_VENDEDOR_LABEL[t]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <StatusQuickFilter
           value={status}
@@ -264,21 +320,46 @@ export default function VendedoresPage() {
         />
         <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
           <div className="space-y-2">
-            <FieldLabel>Papel</FieldLabel>
-            <div className="space-y-1.5">
-              {(["vendedor", "supervisor", "gerente"] as const).map((papel) => (
-                <label key={papel} className="flex cursor-pointer items-center gap-2 text-sm capitalize">
-                  <Checkbox
-                    checked={papeis[papel]}
-                    onCheckedChange={(v) => {
-                      setPapeis((prev) => ({ ...prev, [papel]: v === true }));
-                      setPage(1);
-                    }}
-                  />
-                  {papel === "vendedor" ? "Vendedor" : papel === "supervisor" ? "Supervisor" : "Gerente"}
-                </label>
-              ))}
-            </div>
+            <FieldLabel>Vínculo</FieldLabel>
+            <Select
+              value={vinculo}
+              onValueChange={(v) => {
+                setVinculo(v as VinculoVendedor | "todos");
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                {(Object.keys(VINCULO_VENDEDOR_LABEL) as VinculoVendedor[]).map((v) => (
+                  <SelectItem key={v} value={v}>
+                    {VINCULO_VENDEDOR_LABEL[v]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <FieldLabel>Usa em Dashboard</FieldLabel>
+            <Select
+              value={usaDashboard}
+              onValueChange={(v) => {
+                setUsaDashboard(v as SimNaoTodos);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                <SelectItem value="sim">Sim</SelectItem>
+                <SelectItem value="nao">Não</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">

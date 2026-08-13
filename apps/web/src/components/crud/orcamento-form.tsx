@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useFieldArray, useForm } from "react-hook-form";
+import { useFieldArray, useForm, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  autorizacaoDescontoSituacao,
   calcularComissaoItem,
   orcamentoCreateSchema,
   orcamentoUpdateSchema,
@@ -18,6 +19,7 @@ import {
   type OrcamentoConfig,
   type OrcamentoCreate,
   type OrcamentoUpdate,
+  type PosicaoCliente,
   type PosicaoClienteMix,
   type RegraParaCalculo,
   type Produto,
@@ -50,9 +52,11 @@ import { OrcamentoTimeline } from "@/components/crud/orcamento-timeline";
 import {
   ArrowLeft,
   CheckCircle2,
+  CircleCheck,
   Clock,
   Copy,
   FileDown,
+  Info,
   MinusCircle,
   Plus,
   Trash2,
@@ -166,12 +170,240 @@ function MaskedNumberInput({
   );
 }
 
+/**
+ * Quantidade da linha de item: descarta tudo que não for dígito, porque
+ * quantidade de orçamento é inteira (o schema em contracts também barra
+ * fracionário). Campo vazio guarda 0 no formulário — o zod recusa no submit —
+ * e volta a aparecer vazio, pra dar pra apagar e digitar outro número.
+ */
+function QuantidadeInput({
+  value,
+  onChange,
+  className,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  className?: string;
+}) {
+  return (
+    <Input
+      type="text"
+      inputMode="numeric"
+      className={className}
+      aria-invalid={!value}
+      value={value ? String(value) : ""}
+      onChange={(e) => onChange(Number(e.target.value.replace(/\D/g, "")) || 0)}
+    />
+  );
+}
+
 /** Info local (não vai pro submit) de cada linha de item, pra render das colunas Preço tabela/Desconto/Estoque. */
 interface LinhaInfo {
   vlrTabela: number | null;
   saldoEstoque: number | null;
   /** Regra aplicável ao produto (tabela de preço > produto > categoria > padrão). */
   regra?: RegraAplicavel | null;
+  /** "código — descrição" do produto, só pra identificar a linha na aba Advertências. */
+  produtoLabel?: string | null;
+}
+
+/**
+ * Advertência de uma linha de item: `critico` pinta a linha de vermelho (e o
+ * ícone no início dela), `aviso` fica em âmbar. Nada aqui bloqueia a gravação
+ * — exceto desconto acima do limite quando o parâmetro
+ * DESCONTO_ACIMA_LIMITE_BLOQUEIA da empresa está ligado, e aí quem recusa é o
+ * servidor.
+ */
+interface Advertencia {
+  nivel: "critico" | "aviso";
+  titulo: string;
+  detalhe: string;
+}
+
+/**
+ * Fração do saldo que, se for tudo o que sobra depois do item, já rende o
+ * aviso de "estoque baixo" — é o "próximo de zero" da aba Advertências.
+ */
+const ESTOQUE_BAIXO_RESTANTE = 0.1;
+
+/**
+ * Escala do desconto da linha, medida contra o "% Desc Máximo" da regra. Cada
+ * degrau acende um sinal mais forte que o anterior:
+ *
+ * | Desconto                          | Sinal                              |
+ * |-----------------------------------|------------------------------------|
+ * | negativo (preço acima da tabela)  | ícone azul                         |
+ * | de zero até metade do máximo      | ícone verde                        |
+ * | ≥ metade do máximo                | ícone amarelo                      |
+ * | ≥ 80% do máximo                   | ícone vermelho                     |
+ * | ≥ 90% do máximo                   | ícone e números da linha vermelhos |
+ * | ≥ o máximo da regra               | + linha inteira destacada          |
+ * | ≥ o "% Desc Autorizado"           | ícone preto, linha destacada       |
+ *
+ * Os degraus intermediários são só sinalização. Do máximo em diante o
+ * orçamento passa a exigir autorização de desconto (ver `travadoPorDesconto`).
+ */
+type ChaveNivelDesconto =
+  | "acima-tabela"
+  | "normal"
+  | "atencao"
+  | "alto"
+  | "muito-alto"
+  | "no-maximo"
+  | "faixa-aprovacao";
+
+interface NivelDesconto {
+  chave: ChaveNivelDesconto;
+  /** Classe de cor do ícone da linha. */
+  corIcone: string;
+  /** Números da linha em vermelho. */
+  textoVermelho: boolean;
+  /** Linha inteira destacada em vermelho. */
+  linhaDestacada: boolean;
+  legenda: string;
+}
+
+const NIVEL_SEM_REGRA: NivelDesconto = {
+  chave: "normal",
+  corIcone: "text-success",
+  textoVermelho: false,
+  linhaDestacada: false,
+  legenda: "Sem regra de desconto aplicável a este produto",
+};
+
+function nivelDoDesconto(
+  desconto: number | null,
+  regra: RegraAplicavel | null,
+): NivelDesconto | null {
+  // Sem preço de tabela não há desconto conhecido — nada a sinalizar.
+  if (desconto == null) return null;
+  if (desconto < 0) {
+    return {
+      chave: "acima-tabela",
+      corIcone: "text-blue-600 dark:text-blue-400",
+      textoVermelho: false,
+      linhaDestacada: false,
+      legenda: "Preço acima da tabela (desconto negativo)",
+    };
+  }
+  if (!regra) return NIVEL_SEM_REGRA;
+
+  const maximo = regra.percDescontoMaximo;
+  const autorizado = regra.percDescontoAutorizado;
+  // A faixa de aprovação só existe quando o cadastro prevê um teto autorizado
+  // acima do máximo — é o degrau em que a venda só sai com liberação.
+  if (autorizado > maximo && desconto >= autorizado) {
+    return {
+      chave: "faixa-aprovacao",
+      corIcone: "text-foreground",
+      textoVermelho: true,
+      linhaDestacada: true,
+      legenda: `Desconto na faixa de aprovação da regra (a partir de ${percentual(autorizado)})`,
+    };
+  }
+  if (desconto > 0 && desconto >= maximo) {
+    return {
+      chave: "no-maximo",
+      corIcone: "text-destructive",
+      textoVermelho: true,
+      linhaDestacada: true,
+      legenda: `Desconto igual ou acima do máximo da regra (${percentual(maximo)})`,
+    };
+  }
+  if (maximo > 0 && desconto >= maximo * 0.9) {
+    return {
+      chave: "muito-alto",
+      corIcone: "text-destructive",
+      textoVermelho: true,
+      linhaDestacada: false,
+      legenda: `Desconto em 90% ou mais do máximo da regra (${percentual(maximo)})`,
+    };
+  }
+  if (maximo > 0 && desconto >= maximo * 0.8) {
+    return {
+      chave: "alto",
+      corIcone: "text-destructive",
+      textoVermelho: false,
+      linhaDestacada: false,
+      legenda: `Desconto em 80% ou mais do máximo da regra (${percentual(maximo)})`,
+    };
+  }
+  if (maximo > 0 && desconto >= maximo * 0.5) {
+    return {
+      chave: "atencao",
+      corIcone: "text-amber-500",
+      textoVermelho: false,
+      linhaDestacada: false,
+      legenda: `Desconto na metade ou mais do máximo da regra (${percentual(maximo)})`,
+    };
+  }
+  return {
+    chave: "normal",
+    corIcone: "text-success",
+    textoVermelho: false,
+    linhaDestacada: false,
+    legenda:
+      desconto === 0
+        ? "Venda sem desconto"
+        : `Desconto dentro do previsto pela regra (máximo ${percentual(maximo)})`,
+  };
+}
+
+/**
+ * Advertências da linha: desconto acima do limite da regra e situação de
+ * estoque (zerado, insuficiente pro que foi pedido, ou perto de zerar).
+ * Compartilhada entre o ícone da linha na aba Itens e a aba Advertências,
+ * pra as duas dizerem exatamente a mesma coisa.
+ */
+function advertenciasDaLinha(
+  regra: RegraAplicavel | null,
+  desconto: number | null,
+  nivel: NivelDesconto | null,
+  quantidade: number,
+  saldoEstoque: number | null,
+): Advertencia[] {
+  const lista: Advertencia[] = [];
+  const daRegra = regra ? ` da regra ${regraDescontoLabel(regra)}` : "";
+  // Do "atenção" (metade do máximo) para cima o desconto vira advertência
+  // listada; abaixo disso o ícone verde/azul da linha já diz o suficiente.
+  if (nivel && nivel.chave !== "normal" && nivel.chave !== "acima-tabela") {
+    const trava =
+      nivel.chave === "no-maximo" || nivel.chave === "faixa-aprovacao";
+    lista.push({
+      nivel: trava ? "critico" : "aviso",
+      titulo:
+        nivel.chave === "faixa-aprovacao"
+          ? "Desconto na faixa de aprovação"
+          : nivel.chave === "no-maximo"
+            ? "Desconto igual ou acima do máximo"
+            : "Desconto se aproximando do máximo",
+      detalhe:
+        `Desconto de ${percentual(desconto)}${daRegra} — ${nivel.legenda.toLowerCase()}.` +
+        (trava ? " PDF e efetivação exigem autorização de desconto." : ""),
+    });
+  }
+  if (saldoEstoque != null) {
+    if (saldoEstoque <= 0) {
+      lista.push({
+        nivel: "critico",
+        titulo: "Produto sem estoque",
+        detalhe: `Saldo disponível de ${numero(saldoEstoque)} — o item foi lançado sem estoque para atender.`,
+      });
+    } else if (saldoEstoque < quantidade) {
+      lista.push({
+        nivel: "critico",
+        titulo: "Estoque insuficiente",
+        detalhe: `Quantidade pedida (${numero(quantidade)}) maior que o saldo disponível (${numero(saldoEstoque)}).`,
+      });
+    } else if (saldoEstoque - quantidade <= saldoEstoque * ESTOQUE_BAIXO_RESTANTE) {
+      lista.push({
+        nivel: "aviso",
+        titulo: "Estoque próximo de zero",
+        detalhe: `Sobram ${numero(saldoEstoque - quantidade)} de saldo depois deste item (disponível hoje: ${numero(saldoEstoque)}).`,
+      });
+    }
+  }
+  return lista;
 }
 
 /** Resumo da regra que /orcamentos/preco-produto devolve, pro cálculo na tela. */
@@ -247,7 +479,11 @@ export function OrcamentoFormContent({
   const queryClient = useQueryClient();
   const [infoPorLinha, setInfoPorLinha] = useState<(LinhaInfo | null)[]>(
     orcamento
-      ? orcamento.itens.map((i) => ({ vlrTabela: i.vlrTabela, saldoEstoque: null }))
+      ? orcamento.itens.map((i) => ({
+          vlrTabela: i.vlrTabela,
+          saldoEstoque: null,
+          produtoLabel: `${i.produto.codigoErp} — ${i.produto.descricao}`,
+        }))
       : [],
   );
 
@@ -315,6 +551,12 @@ export function OrcamentoFormContent({
   // Valores de comissão são restritos (o perfil Vendedor não vê) — a API já
   // devolve nulo pra quem não pode, e aqui a coluna some junto.
   const podeVerComissao = useAuthStore((s) => s.hasPermission)("comissao", "visualizar");
+  // Quem aprova orçamento é quem libera desconto acima do máximo da regra
+  // (segunda etapa da autorização).
+  const podeAutorizarDesconto = useAuthStore((s) => s.hasPermission)(
+    "orcamentos",
+    "aprovar",
+  );
 
   /**
    * Registro já gravado: o que veio por prop (edição) ou o que acabou de ser
@@ -467,11 +709,141 @@ export function OrcamentoFormContent({
     });
   }, [orcamento, estoquePadraoAplicado]);
 
+  /**
+   * Posição do cliente (mesma rota da tela Posição de Cliente): traz o resumo
+   * de compras, os títulos em aberto e o cadastro com o bloqueio. É daqui que
+   * saem o sinalizador de título ao lado do cliente e as advertências que não
+   * dependem dos itens. A rota exige posicao-cliente.visualizar — sem essa
+   * permissão a consulta falha e o formulário simplesmente não mostra esses
+   * avisos, em vez de quebrar.
+   */
+  const posicaoQuery = useQuery({
+    queryKey: ["clientes", clienteId, "posicao"],
+    queryFn: () => apiFetch<PosicaoCliente>(`/clientes/${clienteId}/posicao`),
+    enabled: !!clienteId,
+    retry: false,
+  });
+  const posicao = posicaoQuery.data;
+
   const itensAtuais = form.watch("itens");
   const totalCalculado = itensAtuais.reduce(
     (acc, it) => acc + (it.quantidade || 0) * (it.vlrUnitario || 0),
     0,
   );
+
+  /**
+   * Números derivados de cada linha (desconto praticado, prévia da comissão e
+   * advertências), calculados uma vez só e consumidos pela tabela de Itens e
+   * pela aba Advertências — as duas mostram o mesmo resultado.
+   *
+   * A comissão usa a mesma função do servidor (calculo-comissao, nos
+   * contratos), então o número exibido é o que vai ser gravado.
+   */
+  const linhasCalculadas = itensAtuais.map((item, index) => {
+    const info = infoPorLinha[index] ?? null;
+    const vlrTabela = info?.vlrTabela ?? null;
+    const vlrUnitario = item?.vlrUnitario || 0;
+    const quantidade = item?.quantidade || 0;
+    const desconto =
+      vlrTabela != null && vlrTabela > 0 ? ((vlrTabela - vlrUnitario) / vlrTabela) * 100 : null;
+    const regra = info?.regra ?? null;
+    const comissao = calcularComissaoItem(
+      regra,
+      desconto,
+      vendedorSelecionado?.percComissao ?? null,
+    );
+    const nivel = nivelDoDesconto(desconto, regra);
+    const advertencias = advertenciasDaLinha(
+      regra,
+      desconto,
+      nivel,
+      quantidade,
+      info?.saldoEstoque ?? null,
+    );
+    return {
+      info,
+      vlrTabela,
+      vlrUnitario,
+      quantidade,
+      desconto,
+      regra,
+      comissao,
+      nivel,
+      advertencias,
+      temCritico: advertencias.some((a) => a.nivel === "critico"),
+    };
+  });
+  /**
+   * Advertências que são do cliente, não de um item: títulos vencidos e
+   * cadastro bloqueado. Nenhuma das duas impede salvar, gerar PDF ou efetivar
+   * — são informação para o vendedor decidir.
+   */
+  const advertenciasDoCliente: Advertencia[] = [];
+  const titulosVencidos = posicao?.titulos.filter((t) => t.status === "vencido") ?? [];
+  if (posicao && posicao.resumo.totalTitulosVencido > 0) {
+    advertenciasDoCliente.push({
+      nivel: "critico",
+      titulo: "Cliente com títulos vencidos",
+      detalhe:
+        `${moeda(posicao.resumo.totalTitulosVencido)} vencidos em ` +
+        `${titulosVencidos.length} ${titulosVencidos.length === 1 ? "título" : "títulos"}` +
+        (posicao.resumo.totalTitulosAberto > 0
+          ? `, de ${moeda(posicao.resumo.totalTitulosAberto)} em aberto.`
+          : "."),
+    });
+  }
+  const dataBloqueioCliente = clienteSelecionadoQuery.data?.dataBloqueio ?? null;
+  if (dataBloqueioCliente) {
+    advertenciasDoCliente.push({
+      nivel: "critico",
+      titulo: "Cliente bloqueado",
+      detalhe:
+        `Bloqueado em ${dataBr(String(dataBloqueioCliente))}.` +
+        (clienteSelecionadoQuery.data?.observacaoBloqueio
+          ? ` Motivo: ${clienteSelecionadoQuery.data.observacaoBloqueio}`
+          : ""),
+    });
+  }
+
+  const totalAdvertencias =
+    linhasCalculadas.reduce((n, l) => n + l.advertencias.length, 0) +
+    advertenciasDoCliente.length;
+
+  /**
+   * Situação do cliente nos títulos em aberto, no mesmo código de cores da
+   * Posição de Cliente: vermelho = vencido, azul = vence em até 7 dias, verde
+   * = em aberto e não vencido. Sem título em aberto, não mostra nada.
+   */
+  const indicadorTitulo = (() => {
+    if (!posicao) return null;
+    const abertos = posicao.titulos.filter((t) => t.status !== "baixado");
+    if (abertos.length === 0) return null;
+    if (abertos.some((t) => t.status === "vencido")) {
+      return { cor: "text-destructive", legenda: "Cliente tem título vencido" };
+    }
+    const seteDias = Date.now() + 7 * 24 * 60 * 60 * 1000;
+    if (
+      abertos.some((t) => t.vencimento && new Date(t.vencimento).getTime() <= seteDias)
+    ) {
+      return {
+        cor: "text-blue-600 dark:text-blue-400",
+        legenda: "Cliente tem título vencendo nos próximos 7 dias",
+      };
+    }
+    return { cor: "text-success", legenda: "Cliente tem título em aberto, não vencido" };
+  })();
+
+  /**
+   * Trava do desconto: linha que alcançou ou passou o "% Desc Máximo" da regra
+   * exige autorização antes de gerar a proposta em PDF ou efetivar (aprovar).
+   * A prévia aqui usa o mesmo cálculo do servidor — que é quem recusa de fato,
+   * pelas rotas.
+   */
+  const exigeAutorizacao = linhasCalculadas.some((l) => l.comissao.acimaDoMaximo);
+  const situacaoAutorizacao = registro
+    ? autorizacaoDescontoSituacao(registro)
+    : "nao_solicitada";
+  const travadoPorDesconto = exigeAutorizacao && situacaoAutorizacao !== "autorizada";
 
   // Oportunidades do vendedor escolhido — só as ativas, mesmo critério do form de Atividade.
   const oportunidadesQuery = useQuery({
@@ -503,6 +875,12 @@ export function OrcamentoFormContent({
   const [gerandoPdf, setGerandoPdf] = useState(false);
   const baixarPdf = async () => {
     if (!registro) return;
+    if (travadoPorDesconto) {
+      toast.error(
+        "Desconto igual ou acima do máximo da regra — é preciso autorizar antes de gerar o PDF",
+      );
+      return;
+    }
     setGerandoPdf(true);
     try {
       // Cadastro da empresa emitente pro cabeçalho (CNPJ, IE, endereço,
@@ -517,10 +895,46 @@ export function OrcamentoFormContent({
         empresaNome: empresaAtiva?.nomeFantasia,
         empresaLogoUrl: assetUrl(empresaAtiva?.logoUrl),
       });
+      // O arquivo é montado aqui no navegador; o servidor só registra que a
+      // proposta foi emitida, para o evento entrar no histórico do cliente
+      // junto dos demais. Falhar o registro não invalida o PDF já baixado.
+      await apiFetch(`/orcamentos/${registro.id}/registrar-pdf`, { method: "POST" })
+        .then(() => queryClient.invalidateQueries({ queryKey: ["atividades"] }))
+        .catch(() => undefined);
     } catch {
       toast.error("Não foi possível gerar o PDF do orçamento");
     } finally {
       setGerandoPdf(false);
+    }
+  };
+
+  /**
+   * Autorização de desconto em duas etapas: o vendedor solicita (abre a
+   * pendência na agenda do supervisor) e quem tem permissão de aprovar libera.
+   * Enquanto não houver liberação, PDF e efetivação ficam travados.
+   */
+  const [acaoAutorizacao, setAcaoAutorizacao] = useState(false);
+  const chamarAutorizacao = async (rota: "solicitar-autorizacao-desconto" | "autorizar-desconto") => {
+    if (!registro) return;
+    setAcaoAutorizacao(true);
+    try {
+      const atualizado = await apiFetch<Orcamento>(`/orcamentos/${registro.id}/${rota}`, {
+        method: "POST",
+      });
+      setSalvoNaSessao(atualizado);
+      void queryClient.invalidateQueries({ queryKey: ["atividades"] });
+      void queryClient.invalidateQueries({ queryKey: ["orcamentos"] });
+      toast.success(
+        rota === "autorizar-desconto"
+          ? "Desconto autorizado — PDF e efetivação liberados"
+          : "Autorização solicitada ao supervisor",
+      );
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "Não foi possível concluir a ação",
+      );
+    } finally {
+      setAcaoAutorizacao(false);
     }
   };
 
@@ -580,6 +994,7 @@ export function OrcamentoFormContent({
                 vlrTabela: resp.vlrTabela,
                 saldoEstoque: resp.saldoEstoque,
                 regra: resp.regraDesconto,
+                produtoLabel: `${produto.codigoErp} — ${produto.descricao}`,
               }
             : v,
         ),
@@ -607,7 +1022,14 @@ export function OrcamentoFormContent({
         : (produto.ultimoPrecoUnitario ?? produto.precoTabela ?? 0);
     const novoIndex = itensAtuais.length;
     linhas.append({ produtoId: produto.produtoId, quantidade: 1, vlrUnitario });
-    setInfoPorLinha((arr) => [...arr, { vlrTabela: produto.precoTabela, saldoEstoque: null }]);
+    setInfoPorLinha((arr) => [
+      ...arr,
+      {
+        vlrTabela: produto.precoTabela,
+        saldoEstoque: null,
+        produtoLabel: `${produto.codigoErp} — ${produto.descricao}`,
+      },
+    ]);
     toast.success("Item adicionado ao orçamento");
 
     if (!clienteId) return;
@@ -622,6 +1044,7 @@ export function OrcamentoFormContent({
                 vlrTabela: produto.precoTabela,
                 saldoEstoque: resp.saldoEstoque,
                 regra: resp.regraDesconto,
+                produtoLabel: `${produto.codigoErp} — ${produto.descricao}`,
               }
             : v,
         ),
@@ -659,6 +1082,31 @@ export function OrcamentoFormContent({
   };
 
   /**
+   * Clicar em Salvar sem passar na validação não fazia nada: o formulário só
+   * marcava os campos, e os erros de item (quantidade, produto) não têm onde
+   * aparecer na tabela — dava a impressão de botão travado. Aqui o motivo vira
+   * um aviso na tela, dizendo qual linha está impedindo.
+   */
+  const avisarInvalido = (erros: FieldErrors<OrcamentoCreate>) => {
+    const itensComErro = Array.isArray(erros.itens)
+      ? erros.itens
+          .map((erro, i) => (erro ? i + 1 : null))
+          .filter((i): i is number => i !== null)
+      : [];
+    if (itensComErro.length > 0) {
+      toast.error(
+        `Revise ${itensComErro.length === 1 ? "o item" : "os itens"} ${itensComErro.join(", ")} ` +
+          "da aba Itens: produto e quantidade (número inteiro maior que zero) são obrigatórios.",
+      );
+      return;
+    }
+    const primeiro = Object.values(erros).find(
+      (e) => e && typeof e === "object" && "message" in e && e.message,
+    ) as { message?: string } | undefined;
+    toast.error(primeiro?.message ?? "Revise os campos destacados antes de salvar.");
+  };
+
+  /**
    * Copia o orçamento para um novo cadastro: mantém cliente, vendedor e itens
    * já carregados no formulário, reinicia a validade (hoje + diasValidade do
    * parâmetro de sistema) e volta o status pra rascunho. É o caminho para
@@ -681,7 +1129,7 @@ export function OrcamentoFormContent({
     <Card>
       <form
         id="orcamento-form"
-        onSubmit={form.handleSubmit((v) => salvar(v, true))}
+        onSubmit={form.handleSubmit((v) => salvar(v, true), avisarInvalido)}
         noValidate
       >
         <CardContent>
@@ -692,12 +1140,73 @@ export function OrcamentoFormContent({
                 : "Orçamento aprovado — não pode mais ser alterado."}
             </p>
           )}
+
+          {/* Trava do desconto acima do máximo: o vendedor continua salvando,
+              mas PDF e efetivação só depois da autorização. */}
+          {exigeAutorizacao && (
+            <div
+              className={`mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border px-3 py-2 text-sm ${
+                situacaoAutorizacao === "autorizada"
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                  : "border-destructive/40 bg-destructive/10 text-destructive"
+              }`}
+            >
+              <TriangleAlert className="size-4 shrink-0" />
+              <span className="min-w-0 flex-1">
+                {situacaoAutorizacao === "autorizada"
+                  ? `Desconto autorizado em ${dataHoraBr(registro?.descontoAutorizadoEm ?? null)} — PDF e efetivação liberados.`
+                  : situacaoAutorizacao === "pendente"
+                    ? `Autorização solicitada em ${dataHoraBr(registro?.descontoSolicitadoEm ?? null)} — aguardando liberação. PDF e efetivação seguem bloqueados.`
+                    : "Há item com desconto igual ou acima do máximo da regra. PDF e efetivação ficam bloqueados até a autorização."}
+              </span>
+              {registro && situacaoAutorizacao === "nao_solicitada" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={acaoAutorizacao}
+                  onClick={() => void chamarAutorizacao("solicitar-autorizacao-desconto")}
+                >
+                  Solicitar autorização
+                </Button>
+              )}
+              {registro && situacaoAutorizacao !== "autorizada" && podeAutorizarDesconto && (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={acaoAutorizacao}
+                  onClick={() => void chamarAutorizacao("autorizar-desconto")}
+                >
+                  Autorizar desconto
+                </Button>
+              )}
+              {!registro && (
+                <span className="text-xs opacity-90">
+                  Salve o orçamento para solicitar a autorização.
+                </span>
+              )}
+            </div>
+          )}
           <fieldset disabled={bloqueado} className="m-0 min-w-0 border-0 p-0">
           <Tabs defaultValue="orcamento">
             <TabsList>
               <TabsTrigger value="orcamento">Orçamento</TabsTrigger>
               <TabsTrigger value="itens">Itens ({linhas.fields.length})</TabsTrigger>
               <TabsTrigger value="mix">Mix de produtos ({mix.length})</TabsTrigger>
+              <TabsTrigger value="advertencias">
+                <span className="flex items-center gap-1.5">
+                  {totalAdvertencias > 0 && (
+                    <TriangleAlert
+                      className={`size-3.5 ${
+                        linhasCalculadas.some((l) => l.temCritico)
+                          ? "text-destructive"
+                          : "text-amber-500"
+                      }`}
+                    />
+                  )}
+                  Advertências ({totalAdvertencias})
+                </span>
+              </TabsTrigger>
               {/* O histórico é do cliente, então já vale antes de gravar. Já
                   aprovação/integração só existe depois (status, codigoLegado e
                   auditoria vêm do servidor). */}
@@ -722,7 +1231,19 @@ export function OrcamentoFormContent({
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field data-invalid={!!form.formState.errors.clienteId}>
-                <FieldLabel htmlFor="clienteId">Cliente</FieldLabel>
+                <FieldLabel htmlFor="clienteId">
+                  Cliente
+                  {/* Mesmo sinalizador de título da Posição de Cliente — a cor
+                      diz a pior situação entre os títulos em aberto. */}
+                  {indicadorTitulo && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className={`ml-1 font-bold ${indicadorTitulo.cor}`}>$</span>
+                      </TooltipTrigger>
+                      <TooltipContent>{indicadorTitulo.legenda}</TooltipContent>
+                    </Tooltip>
+                  )}
+                </FieldLabel>
                 <ClienteCombobox
                   value={form.watch("clienteId") || null}
                   onChange={(id) => form.setValue("clienteId", id ?? "")}
@@ -813,8 +1334,17 @@ export function OrcamentoFormContent({
                   </SelectTrigger>
                   <SelectContent>
                     {STATUS_ORCAMENTO.map((s) => (
-                      <SelectItem key={s.value} value={s.value}>
+                      <SelectItem
+                        key={s.value}
+                        value={s.value}
+                        // Efetivar exige a autorização do desconto; o servidor
+                        // recusa de todo jeito, aqui a opção nem fica clicável.
+                        disabled={s.value === "aprovado" && travadoPorDesconto}
+                      >
                         {s.label}
+                        {s.value === "aprovado" && travadoPorDesconto
+                          ? " (requer autorização)"
+                          : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -860,6 +1390,7 @@ export function OrcamentoFormContent({
               <FieldLabel>Total</FieldLabel>
               <div className="text-lg font-semibold">{moeda(totalCalculado)}</div>
             </Field>
+
             </FieldGroup>
             </TabsContent>
 
@@ -889,10 +1420,13 @@ export function OrcamentoFormContent({
                     <Table className="text-xs">
                       <TableHeader>
                         <TableRow>
+                          {/* Coluna do sinalizador de advertência da linha. */}
+                          <TableHead className="w-7 px-1" />
                           <TableHead className="px-1.5">Produto</TableHead>
                           <TableHead className="px-1.5 text-right">Estoque</TableHead>
                           <TableHead className="px-1.5 text-right">Qtd.</TableHead>
                           <TableHead className="px-1.5 text-right">Preço</TableHead>
+                          <TableHead className="px-1.5 text-right">Total</TableHead>
                           <TableHead className="px-1.5 text-right">Últ. preço</TableHead>
                           <TableHead className="px-1.5 text-right">Desc.</TableHead>
                           <TableHead className="px-1.5 text-right">Últ. desc.</TableHead>
@@ -907,29 +1441,74 @@ export function OrcamentoFormContent({
                       </TableHeader>
                       <TableBody>
                         {linhas.fields.map((linha, index) => {
-                          const info = infoPorLinha[index];
+                          const calc = linhasCalculadas[index];
+                          const info = calc?.info ?? infoPorLinha[index] ?? null;
                           const produtoId = itensAtuais[index]?.produtoId;
-                          const vlrUnitario = itensAtuais[index]?.vlrUnitario || 0;
-                          const vlrTabela = info?.vlrTabela ?? null;
-                          const desconto =
-                            vlrTabela != null && vlrTabela > 0
-                              ? ((vlrTabela - vlrUnitario) / vlrTabela) * 100
-                              : null;
+                          const quantidade = calc?.quantidade ?? 0;
+                          const vlrUnitario = calc?.vlrUnitario ?? 0;
+                          const vlrTabela = calc?.vlrTabela ?? null;
+                          const desconto = calc?.desconto ?? null;
                           const mixInfo = produtoId ? mixPorProduto.get(produtoId) : undefined;
                           const ultimaVenda = mixInfo?.ultimaCompra ?? null;
                           const ultimoPreco = mixInfo?.ultimoPrecoUnitario ?? null;
-                          // Prévia da comissão enquanto o vendedor mexe no
-                          // preço: mesma função que o servidor usa ao salvar
-                          // (calculo-comissao, nos contratos), então o número
-                          // exibido é o que vai ser gravado.
-                          const regraDaLinha = info?.regra ?? null;
-                          const comissao = calcularComissaoItem(
-                            regraDaLinha,
-                            desconto,
-                            vendedorSelecionado?.percComissao ?? null,
-                          );
+                          const regraDaLinha = calc?.regra ?? null;
+                          const comissao = calc?.comissao;
+                          const advertencias = calc?.advertencias ?? [];
+                          const nivel = calc?.nivel ?? null;
+                          // A escala do desconto manda no ícone; um problema
+                          // crítico de estoque puxa para vermelho quando a
+                          // escala estaria em verde/azul/amarelo — o único
+                          // sinal mais forte que o vermelho é o preto da faixa
+                          // de aprovação.
+                          const corSinal =
+                            nivel?.chave === "faixa-aprovacao"
+                              ? nivel.corIcone
+                              : calc?.temCritico
+                                ? "text-destructive"
+                                : (nivel?.corIcone ??
+                                  (advertencias.length > 0 ? "text-amber-500" : null));
+                          const IconeSinal =
+                            nivel?.chave === "normal"
+                              ? CircleCheck
+                              : nivel?.chave === "acima-tabela"
+                                ? Info
+                                : TriangleAlert;
+                          const textoVermelho =
+                            nivel?.textoVermelho === true ? "text-destructive" : "";
                           return (
-                            <TableRow key={linha.id}>
+                            <TableRow
+                              key={linha.id}
+                              // Linha destacada em vermelho a partir do máximo
+                              // da regra, e também quando o item foi lançado
+                              // sem saldo para atender.
+                              className={
+                                nivel?.linhaDestacada || calc?.temCritico
+                                  ? "bg-destructive/10 hover:bg-destructive/15"
+                                  : undefined
+                              }
+                            >
+                              {/* O texto só no hover do ícone; o detalhe
+                                  completo fica na aba Advertências. */}
+                              <TableCell className="px-1">
+                                {corSinal && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <IconeSinal className={`size-3.5 shrink-0 ${corSinal}`} />
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-72">
+                                      <ul className="space-y-1">
+                                        {nivel && <li>{nivel.legenda}</li>}
+                                        {advertencias.map((a) => (
+                                          <li key={a.titulo}>
+                                            <span className="font-medium">{a.titulo}</span> —{" "}
+                                            {a.detalhe}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                              </TableCell>
                               <TableCell className="min-w-36 px-1.5">
                                 <ProdutoCombobox
                                   value={produtoId || null}
@@ -940,30 +1519,30 @@ export function OrcamentoFormContent({
                                 {numero(info?.saldoEstoque)}
                               </TableCell>
                               <TableCell className="px-1.5 text-right">
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  min={0.01}
+                                <QuantidadeInput
                                   className="w-14 text-right"
-                                  {...form.register(`itens.${index}.quantidade`, {
-                                    valueAsNumber: true,
-                                  })}
+                                  value={quantidade}
+                                  onChange={(v) => form.setValue(`itens.${index}.quantidade`, v)}
                                 />
                               </TableCell>
                               <TableCell className="px-1.5 text-right">
                                 <MaskedNumberInput
-                                  className="w-20 text-right"
+                                  className={`w-20 text-right ${textoVermelho}`}
                                   value={vlrUnitario}
                                   onChange={(v) => form.setValue(`itens.${index}.vlrUnitario`, v)}
                                 />
+                              </TableCell>
+                              <TableCell
+                                className={`px-1.5 text-right font-medium ${textoVermelho}`}
+                              >
+                                {moeda(quantidade * vlrUnitario)}
                               </TableCell>
                               <TableCell className="px-1.5 text-right text-muted-foreground">
                                 {moeda(ultimoPreco)}
                               </TableCell>
                               <TableCell className="px-1.5 text-right">
                                 <MaskedNumberInput
-                                  className="w-[4.5rem] text-right"
-                                  suffix="%"
+                                  className={`w-[4.5rem] text-right ${textoVermelho}`}
                                   disabled={vlrTabela == null}
                                   value={desconto ?? 0}
                                   onChange={(v) => aplicarDesconto(index, v)}
@@ -976,29 +1555,15 @@ export function OrcamentoFormContent({
                                 {dataBr(ultimaVenda)}
                               </TableCell>
                               {/* Comissão e regra são calculadas pelo servidor;
-                                  aqui é a prévia, e o alerta de desconto acima
-                                  do limite da regra (que não bloqueia salvar). */}
+                                  aqui é a prévia. O alerta de desconto acima do
+                                  limite virou o ícone no início da linha. */}
                               {podeVerComissao && (
                                 <TableCell className="px-1.5 text-right text-muted-foreground">
-                                  {percentual(comissao.percComissao)}
+                                  {percentual(comissao?.percComissao ?? null)}
                                 </TableCell>
                               )}
                               <TableCell className="px-1.5 text-xs text-muted-foreground">
-                                <div className="flex items-center gap-1">
-                                  {regraDescontoLabel(regraDaLinha)}
-                                  {comissao.acimaDoMaximo && (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <TriangleAlert className="size-3.5 shrink-0 text-amber-500" />
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        {comissao.acimaDoAutorizado
-                                          ? `Desconto acima do autorizado (${percentual(regraDaLinha?.percDescontoAutorizado)})`
-                                          : `Desconto acima do máximo da regra (${percentual(regraDaLinha?.percDescontoMaximo)})`}
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  )}
-                                </div>
+                                {regraDescontoLabel(regraDaLinha)}
                               </TableCell>
                               <TableCell className="px-1.5 text-right text-muted-foreground">
                                 {moeda(vlrTabela)}
@@ -1025,6 +1590,127 @@ export function OrcamentoFormContent({
                     <div className="flex justify-end border-t border-border/70 pt-2 text-sm font-medium">
                       Total: {moeda(totalCalculado)}
                     </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="advertencias" className="space-y-3 pt-3">
+                  <p className="text-sm text-muted-foreground">
+                    Pontos de atenção do orçamento: situação do cliente (títulos vencidos,
+                    cadastro bloqueado), desconto no limite da regra e situação de estoque (sem
+                    saldo, saldo menor que a quantidade pedida ou saldo prestes a zerar). Salvar
+                    continua liberado em todos os casos; só o desconto igual ou acima do máximo
+                    trava a proposta em PDF e a efetivação, até haver autorização.
+                  </p>
+
+                  {/* Legenda da escala de desconto — a mesma cor que aparece
+                      no ícone de cada linha da aba Itens. */}
+                  <div className="flex flex-wrap gap-x-4 gap-y-1.5 rounded-lg border border-border/70 px-3 py-2 text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <Info className="size-3.5 text-blue-600 dark:text-blue-400" />
+                      Preço acima da tabela
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <CircleCheck className="size-3.5 text-success" />
+                      Até metade do máximo
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <TriangleAlert className="size-3.5 text-amber-500" />≥ 50% do máximo
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <TriangleAlert className="size-3.5 text-destructive" />≥ 80% do máximo
+                    </span>
+                    <span className="flex items-center gap-1.5 text-destructive">
+                      <TriangleAlert className="size-3.5" />≥ 90% do máximo
+                    </span>
+                    <span className="flex items-center gap-1.5 rounded bg-destructive/10 px-1.5 text-destructive">
+                      <TriangleAlert className="size-3.5" />≥ o máximo (trava PDF/efetivação)
+                    </span>
+                    <span className="flex items-center gap-1.5 rounded bg-destructive/10 px-1.5">
+                      <TriangleAlert className="size-3.5 text-foreground" />
+                      Faixa de aprovação
+                    </span>
+                  </div>
+
+                  {totalAdvertencias === 0 && (
+                    <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">
+                      Nenhuma advertência neste orçamento.
+                    </p>
+                  )}
+
+                  {/* Advertências do cliente (títulos vencidos, bloqueio) vêm
+                      primeiro: são o pano de fundo do negócio inteiro, não de
+                      uma linha. Nenhuma delas trava nada. */}
+                  {advertenciasDoCliente.length > 0 && (
+                    <div className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2.5">
+                      <p className="text-sm font-medium">
+                        {clienteSelecionadoQuery.data?.nomeFantasia ||
+                          clienteSelecionadoQuery.data?.razaoSocial ||
+                          "Cliente"}
+                      </p>
+                      <ul className="space-y-1.5">
+                        {advertenciasDoCliente.map((a) => (
+                          <li key={a.titulo} className="flex items-start gap-2 text-sm">
+                            <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-destructive" />
+                            <span>
+                              <span className="font-medium text-destructive">{a.titulo}</span>{" "}
+                              — {a.detalhe}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {linhasCalculadas.map((l, index) =>
+                    l.advertencias.length === 0 ? null : (
+                      <div
+                        key={linhas.fields[index]?.id ?? index}
+                        className={`space-y-2 rounded-lg border px-3 py-2.5 ${
+                          l.temCritico
+                            ? "border-destructive/40 bg-destructive/5"
+                            : "border-amber-500/30 bg-amber-500/5"
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                          <p className="text-sm font-medium">
+                            {l.info?.produtoLabel ?? `Item ${index + 1}`}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Qtd. {numero(l.quantidade)} × {moeda(l.vlrUnitario)} ={" "}
+                            {moeda(l.quantidade * l.vlrUnitario)}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                          <span>Preço de tabela: {moeda(l.vlrTabela)}</span>
+                          <span>Desconto: {percentual(l.desconto)}</span>
+                          <span>Estoque: {numero(l.info?.saldoEstoque)}</span>
+                          <span>Regra: {regraDescontoLabel(l.regra)}</span>
+                        </div>
+                        <ul className="space-y-1.5">
+                          {l.advertencias.map((a) => (
+                            <li key={a.titulo} className="flex items-start gap-2 text-sm">
+                              <TriangleAlert
+                                className={`mt-0.5 size-3.5 shrink-0 ${
+                                  a.nivel === "critico" ? "text-destructive" : "text-amber-500"
+                                }`}
+                              />
+                              <span>
+                                <span
+                                  className={`font-medium ${
+                                    a.nivel === "critico"
+                                      ? "text-destructive"
+                                      : "text-amber-700 dark:text-amber-400"
+                                  }`}
+                                >
+                                  {a.titulo}
+                                </span>{" "}
+                                — {a.detalhe}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ),
                   )}
                 </TabsContent>
 
@@ -1209,7 +1895,12 @@ export function OrcamentoFormContent({
               type="button"
               variant="outline"
               className="mr-auto"
-              disabled={gerandoPdf}
+              disabled={gerandoPdf || travadoPorDesconto}
+              title={
+                travadoPorDesconto
+                  ? "Desconto igual ou acima do máximo da regra — autorize antes de gerar o PDF"
+                  : undefined
+              }
               onClick={() => void baixarPdf()}
             >
               <FileDown className="size-4" />
@@ -1235,7 +1926,7 @@ export function OrcamentoFormContent({
                 type="button"
                 variant="secondary"
                 disabled={form.formState.isSubmitting}
-                onClick={form.handleSubmit((v) => salvar(v, false))}
+                onClick={form.handleSubmit((v) => salvar(v, false), avisarInvalido)}
               >
                 Salvar
               </Button>

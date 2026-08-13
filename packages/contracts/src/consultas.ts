@@ -50,6 +50,31 @@ export const PARAMETRO_BASE_VENDEDOR = "CONSULTA_VENDAS_BASE_VENDEDOR";
 const anoSchema = z.coerce.number().int().min(2000).max(2100);
 const mesSchema = z.coerce.number().int().min(1).max(12);
 
+/** Teto de vendedores por consulta — segura o tamanho do IN no SQL. */
+export const MAX_VENDEDORES_FILTRO = 50;
+
+/**
+ * Filtro de vendedor com seleção múltipla. Chega pela querystring, então
+ * aceita as duas formas que um cliente HTTP produz: repetida
+ * (`?vendedorIds=a&vendedorIds=b`) e separada por vírgula (`?vendedorIds=a,b`)
+ * — esta última é a que o `apiFetch` do web monta.
+ *
+ * Ausente ou vazio = todos os vendedores do escopo do usuário, que é o padrão
+ * da tela ("Todos"). O escopo hierárquico continua valendo por cima disto:
+ * pedir um id de fora do time zera o resultado, não o libera.
+ */
+export const vendedorIdsSchema = z.preprocess(
+  (valor) => {
+    if (valor === undefined || valor === null || valor === "") return undefined;
+    const lista = (Array.isArray(valor) ? valor : [valor])
+      .flatMap((v) => String(v).split(","))
+      .map((v) => v.trim())
+      .filter(Boolean);
+    return lista.length > 0 ? lista : undefined;
+  },
+  z.array(z.string().uuid()).max(MAX_VENDEDORES_FILTRO).optional(),
+);
+
 const periodoFields = {
   anoInicial: anoSchema,
   mesInicial: mesSchema,
@@ -103,7 +128,7 @@ export function validarPeriodo(
 export const consultaVendasClienteQuerySchema = z
   .object({
     ...periodoFields,
-    vendedorId: z.string().uuid().optional(),
+    vendedorIds: vendedorIdsSchema,
     // Omitido = usa o parâmetro da empresa.
     baseVendedor: baseVendedorSchema.optional(),
   })
@@ -122,7 +147,7 @@ export type ConsultaVendasVendedorQuery = z.infer<
 export const consultaVendasProdutoQuerySchema = z
   .object({
     ...periodoFields,
-    vendedorId: z.string().uuid().optional(),
+    vendedorIds: vendedorIdsSchema,
     baseVendedor: baseVendedorSchema.optional(),
     categoriaId: z.string().uuid().optional(),
   })
@@ -146,6 +171,13 @@ export const consultaVendasLinhaSchema = z.object({
   descricao: z.string(),
   valores: z.array(z.number()),
   total: z.number(),
+  media: z
+    .number()
+    .describe(
+      "total ÷ meses COM movimento (valor ≠ 0). Mês zerado não entra no divisor: " +
+        "quem comprou 2 vezes em 12 meses tem média do que compra quando compra, " +
+        "não do período todo. Sem nenhum mês com movimento, 0.",
+    ),
 });
 export type ConsultaVendasLinha = z.infer<typeof consultaVendasLinhaSchema>;
 
@@ -159,10 +191,9 @@ export const consultaVendasResultadoSchema = z.object({
   }),
   colunas: z.array(consultaVendasColunaSchema),
   baseVendedor: baseVendedorSchema,
-  vendedor: z
-    .object({ id: z.string().uuid(), nome: z.string() })
-    .nullable()
-    .describe("Vendedor filtrado; nulo = todos os do escopo do usuário"),
+  vendedores: z
+    .array(z.object({ id: z.string().uuid(), nome: z.string() }))
+    .describe("Vendedores filtrados; lista vazia = todos os do escopo"),
   categoria: z
     .object({ id: z.string().uuid(), descricao: z.string() })
     .nullable()
@@ -170,6 +201,9 @@ export const consultaVendasResultadoSchema = z.object({
   linhas: z.array(consultaVendasLinhaSchema),
   totais: z.array(z.number()).describe("Total de cada coluna"),
   total: z.number(),
+  media: z
+    .number()
+    .describe("Média do rodapé: total ÷ meses com movimento no consolidado"),
 });
 export type ConsultaVendasResultado = z.infer<
   typeof consultaVendasResultadoSchema
@@ -201,6 +235,106 @@ export function colunasDoPeriodo(p: {
   return colunas;
 }
 
+// ------------------------------------------------------------------
+// Evolução mensal (gráfico) — mesmos filtros das consultas acima, com o
+// indicador escolhido na tela.
+// ------------------------------------------------------------------
+
+/**
+ * O que a consulta de evolução mede, mês a mês, por vendedor:
+ *
+ * - `vendas`      — faturamento (vlrBruto das notas de venda);
+ * - `positivados` — clientes distintos que compraram no mês;
+ * - `novos`       — clientes cuja PRIMEIRA compra (em todo o histórico, não só
+ *                   no período consultado) caiu no mês;
+ * - `inativados`  — clientes cuja data de bloqueio caiu no mês.
+ */
+export const indicadorEvolucaoSchema = z.enum([
+  "vendas",
+  "positivados",
+  "novos",
+  "inativados",
+]);
+export type IndicadorEvolucao = z.infer<typeof indicadorEvolucaoSchema>;
+
+/** Como o número é lido: dinheiro ou contagem de clientes. */
+export const formatoEvolucaoSchema = z.enum(["moeda", "quantidade"]);
+export type FormatoEvolucao = z.infer<typeof formatoEvolucaoSchema>;
+
+/**
+ * Catálogo dos indicadores — a tela monta as abas a partir daqui e o servidor
+ * usa o `formato` na resposta, então as duas pontas concordam sobre o que cada
+ * número significa.
+ */
+export const INDICADORES_EVOLUCAO: {
+  valor: IndicadorEvolucao;
+  label: string;
+  /** Explicação curta, mostrada abaixo do título do gráfico. */
+  descricao: string;
+  formato: FormatoEvolucao;
+  /** Se o total do período é a soma dos meses ou uma contagem sem repetição. */
+  totalSomaMeses: boolean;
+}[] = [
+  {
+    valor: "vendas",
+    label: "Vendas",
+    descricao:
+      "Faturamento do mês (nota de venda ativa, não-comodato e do tipo Normal).",
+    formato: "moeda",
+    totalSomaMeses: true,
+  },
+  {
+    valor: "positivados",
+    label: "Clientes positivados",
+    descricao:
+      "Clientes distintos que compraram no mês. O total do período soma os meses — quem comprou em três meses conta três vezes.",
+    formato: "quantidade",
+    totalSomaMeses: true,
+  },
+  {
+    valor: "novos",
+    label: "Clientes novos",
+    descricao:
+      "Clientes cuja primeira compra de todo o histórico caiu no mês. Cada cliente aparece uma única vez.",
+    formato: "quantidade",
+    totalSomaMeses: false,
+  },
+  {
+    valor: "inativados",
+    label: "Clientes inativados",
+    descricao:
+      "Clientes cuja data de bloqueio caiu no mês, creditados ao vendedor do cadastro. Cada cliente aparece uma única vez.",
+    formato: "quantidade",
+    totalSomaMeses: false,
+  },
+];
+
+export const consultaEvolucaoQuerySchema = z
+  .object({
+    ...periodoFields,
+    vendedorIds: vendedorIdsSchema,
+    // Omitido = usa o parâmetro da empresa. Ignorado em `inativados`, que não
+    // parte de nota nenhuma: lá o crédito é sempre do vendedor do cadastro.
+    baseVendedor: baseVendedorSchema.optional(),
+    indicador: indicadorEvolucaoSchema.default("vendas"),
+  })
+  .superRefine(validarPeriodo);
+export type ConsultaEvolucaoQuery = z.infer<typeof consultaEvolucaoQuerySchema>;
+
+/**
+ * Mesma estrutura pivô das outras consultas (uma linha por vendedor, uma
+ * coluna por mês) — o gráfico lê cada linha como uma série e cada coluna como
+ * um ponto no tempo.
+ */
+export const consultaEvolucaoResultadoSchema =
+  consultaVendasResultadoSchema.extend({
+    indicador: indicadorEvolucaoSchema,
+    formato: formatoEvolucaoSchema,
+  });
+export type ConsultaEvolucaoResultado = z.infer<
+  typeof consultaEvolucaoResultadoSchema
+>;
+
 export const CONSULTA_VENDAS_RESULTADO_EXAMPLE: ConsultaVendasResultado = {
   periodo: {
     anoInicial: 2026,
@@ -216,10 +350,12 @@ export const CONSULTA_VENDAS_RESULTADO_EXAMPLE: ConsultaVendasResultado = {
     { ano: 2026, mes: 7, label: "Jul/26" },
   ],
   baseVendedor: "nota",
-  vendedor: {
-    id: "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b8c",
-    nome: "CAROLINE DA SILVA DE JESUS",
-  },
+  vendedores: [
+    {
+      id: "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b8c",
+      nome: "CAROLINE DA SILVA DE JESUS",
+    },
+  ],
   categoria: null,
   linhas: [
     {
@@ -228,8 +364,27 @@ export const CONSULTA_VENDAS_RESULTADO_EXAMPLE: ConsultaVendasResultado = {
       descricao: "MATTER CLINICA E DIAGNOSTICOS LTDA",
       valores: [1200.5, 0, 980, 4963.25],
       total: 7143.75,
+      // 3 meses com movimento (Mai/26 ficou zerado), não 4.
+      media: 2381.25,
     },
   ],
   totais: [1200.5, 0, 980, 4963.25],
   total: 7143.75,
+  media: 2381.25,
+};
+
+export const CONSULTA_EVOLUCAO_RESULTADO_EXAMPLE: ConsultaEvolucaoResultado = {
+  ...CONSULTA_VENDAS_RESULTADO_EXAMPLE,
+  linhas: [
+    {
+      id: "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b8c",
+      codigo: "000012",
+      descricao: "CAROLINE DA SILVA DE JESUS",
+      valores: [1200.5, 0, 980, 4963.25],
+      total: 7143.75,
+      media: 2381.25,
+    },
+  ],
+  indicador: "vendas",
+  formato: "moeda",
 };

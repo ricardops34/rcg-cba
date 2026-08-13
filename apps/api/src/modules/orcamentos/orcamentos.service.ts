@@ -23,6 +23,10 @@ import type {
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { criarAtividadeRetorno } from './criar-atividade-retorno';
+import {
+  orcamentoExigeAutorizacao,
+  registrarAtividadeOrcamento,
+} from './registrar-atividade-orcamento';
 import { calcularItensOrcamento } from './calcular-itens-orcamento';
 import { proximoNumeroOrcamento } from './proximo-numero-orcamento';
 import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
@@ -346,6 +350,17 @@ export class OrcamentosService {
         include: INCLUDE,
       });
 
+      // Cadastrar já aprovado passa pela mesma trava da efetivação.
+      if (
+        orcamento.status === 'aprovado' &&
+        (await orcamentoExigeAutorizacao(tx, orcamento.id))
+      ) {
+        throw new ConflictException(
+          'Orçamento com desconto igual ou acima do máximo da regra — ' +
+            'solicite a autorização de desconto antes de efetivar',
+        );
+      }
+
       if (header.dataRetorno) {
         await criarAtividadeRetorno(tx, empresaId, user.id, {
           orcamentoId: orcamento.id,
@@ -356,6 +371,15 @@ export class OrcamentosService {
           dataRetorno: header.dataRetorno,
         });
       }
+
+      await registrarAtividadeOrcamento(tx, empresaId, user.id, 'criacao', {
+        id: orcamento.id,
+        numero: orcamento.numero,
+        titulo: orcamento.titulo,
+        clienteId: orcamento.clienteId,
+        vendedorId: orcamento.vendedorId,
+        oportunidadeId: orcamento.oportunidadeId,
+      });
 
       return ocultarComissaoDosItens(
         orcamento,
@@ -429,7 +453,17 @@ export class OrcamentosService {
             false,
           ),
         );
-        itensUpdate = { vlrTotal, itens: { create: itensData } };
+        itensUpdate = {
+          vlrTotal,
+          itens: { create: itensData },
+          // Mexeu nos itens, a autorização de desconto anterior não vale mais:
+          // ela foi dada para aqueles preços. Volta à estaca zero, e o vendedor
+          // solicita de novo se o novo desconto ainda passar do máximo.
+          descontoSolicitadoEm: null,
+          descontoSolicitadoPor: null,
+          descontoAutorizadoEm: null,
+          descontoAutorizadoPor: null,
+        };
       }
 
       const atualizado = await tx.orcamento.update({
@@ -441,6 +475,63 @@ export class OrcamentosService {
         } as never,
         include: INCLUDE,
       });
+
+      // Efetivar (aprovar) exige autorização quando alguma linha bateu ou
+      // passou o máximo da regra. A checagem é feita depois da gravação dos
+      // itens — é o orçamento como ficou que vale — e a exceção desfaz a
+      // transação inteira.
+      if (
+        header.status === 'aprovado' &&
+        !atualizado.descontoAutorizadoEm &&
+        (await orcamentoExigeAutorizacao(tx, id))
+      ) {
+        throw new ConflictException(
+          'Orçamento com desconto igual ou acima do máximo da regra — ' +
+            'solicite a autorização de desconto antes de efetivar',
+        );
+      }
+
+      const paraAtividade = {
+        id: atualizado.id,
+        numero: atualizado.numero,
+        titulo: atualizado.titulo,
+        clienteId: atualizado.clienteId,
+        vendedorId: atualizado.vendedorId,
+        oportunidadeId: atualizado.oportunidadeId,
+      };
+      // Toda gravação vira registro no histórico do cliente; a resposta do
+      // cliente (aprovou/recusou) entra como evento próprio, e não como mais
+      // uma alteração.
+      // Chegar aqui com o status anterior 'aprovado' é impossível (a guarda
+      // no topo já recusou), então virar 'aprovado' é sempre transição nova.
+      if (header.status === 'aprovado') {
+        await registrarAtividadeOrcamento(
+          tx,
+          empresaId,
+          user.id,
+          'aprovacao_cliente',
+          paraAtividade,
+        );
+      } else if (
+        header.status === 'recusado' &&
+        orcamento.status !== 'recusado'
+      ) {
+        await registrarAtividadeOrcamento(
+          tx,
+          empresaId,
+          user.id,
+          'recusa_cliente',
+          paraAtividade,
+        );
+      } else {
+        await registrarAtividadeOrcamento(
+          tx,
+          empresaId,
+          user.id,
+          'alteracao',
+          paraAtividade,
+        );
+      }
 
       const dataRetornoMudou =
         header.dataRetorno != null &&
@@ -481,6 +572,168 @@ export class OrcamentosService {
         where: { id },
         data: { deletedAt: new Date(), deletedBy: user.id, ativo: false },
       });
+    });
+  }
+
+  /** Orçamento dentro do escopo do usuário, com o que as ações abaixo usam. */
+  private async buscarParaAcao(
+    tx: TenantTx,
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+  ) {
+    const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+    const orcamento = await tx.orcamento.findFirst({
+      where: {
+        id,
+        empresaId,
+        deletedAt: null,
+        ...(escopo ? { vendedorId: { in: escopo } } : {}),
+      },
+    });
+    if (!orcamento) throw new NotFoundException('Orçamento não encontrado');
+    return orcamento;
+  }
+
+  /**
+   * Primeira etapa da autorização de desconto: o vendedor pede a liberação.
+   * Gera a pendência na agenda do supervisor (ver
+   * registrarAtividadeOrcamento) e deixa o orçamento em "aguardando
+   * autorização" — o PDF e a efetivação continuam travados até alguém
+   * autorizar.
+   */
+  async solicitarAutorizacaoDesconto(
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const orcamento = await this.buscarParaAcao(tx, empresaId, user, id);
+      if (orcamento.descontoAutorizadoEm) {
+        throw new ConflictException(
+          'O desconto deste orçamento já está autorizado',
+        );
+      }
+      if (!(await orcamentoExigeAutorizacao(tx, id))) {
+        throw new ConflictException(
+          'Nenhum item deste orçamento tem desconto igual ou acima do máximo da regra',
+        );
+      }
+
+      const atualizado = await tx.orcamento.update({
+        where: { id },
+        data: {
+          descontoSolicitadoEm: new Date(),
+          descontoSolicitadoPor: user.id,
+          updatedBy: user.id,
+        },
+        include: INCLUDE,
+      });
+      await registrarAtividadeOrcamento(
+        tx,
+        empresaId,
+        user.id,
+        'autorizacao_solicitada',
+        atualizado,
+        `Desconto acima do máximo da regra no orçamento "${atualizado.titulo}" — aguardando autorização.`,
+      );
+      return ocultarComissaoDosItens(
+        atualizado,
+        user,
+        await this.comissaoOcultaParaTodos(empresaId),
+      );
+    });
+  }
+
+  /**
+   * Segunda etapa: quem tem permissão de aprovar libera o desconto. A partir
+   * daqui a proposta em PDF e a efetivação voltam a funcionar — até que os
+   * itens mudem, o que derruba a autorização (ver update).
+   */
+  async autorizarDesconto(
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const orcamento = await this.buscarParaAcao(tx, empresaId, user, id);
+      if (orcamento.descontoAutorizadoEm) {
+        throw new ConflictException(
+          'O desconto deste orçamento já está autorizado',
+        );
+      }
+      if (!(await orcamentoExigeAutorizacao(tx, id))) {
+        throw new ConflictException(
+          'Nenhum item deste orçamento tem desconto igual ou acima do máximo da regra',
+        );
+      }
+
+      const atualizado = await tx.orcamento.update({
+        where: { id },
+        data: {
+          descontoAutorizadoEm: new Date(),
+          descontoAutorizadoPor: user.id,
+          updatedBy: user.id,
+        },
+        include: INCLUDE,
+      });
+      // Fecha a pendência aberta na solicitação: quem autorizou já resolveu a
+      // tarefa, e ela não deve continuar na agenda do supervisor.
+      await tx.atividade.updateMany({
+        where: {
+          orcamentoId: id,
+          empresaId,
+          concluida: false,
+          titulo: { startsWith: 'Autorização de desconto solicitada' },
+        },
+        data: {
+          concluida: true,
+          dataConclusao: new Date(),
+          updatedBy: user.id,
+        },
+      });
+      await registrarAtividadeOrcamento(
+        tx,
+        empresaId,
+        user.id,
+        'autorizacao_concedida',
+        atualizado,
+        `Desconto acima do máximo liberado para o orçamento "${atualizado.titulo}".`,
+      );
+      return ocultarComissaoDosItens(
+        atualizado,
+        user,
+        await this.comissaoOcultaParaTodos(empresaId),
+      );
+    });
+  }
+
+  /**
+   * Registra no histórico que a proposta em PDF foi emitida. O arquivo é
+   * montado no navegador (ver gerarOrcamentoPdf), então é a tela que avisa o
+   * servidor — a rota existe para o rastro ficar no mesmo lugar dos demais
+   * eventos do orçamento.
+   */
+  async registrarPdf(empresaId: string, user: AuthenticatedUser, id: string) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const orcamento = await this.buscarParaAcao(tx, empresaId, user, id);
+      if (
+        !orcamento.descontoAutorizadoEm &&
+        (await orcamentoExigeAutorizacao(tx, id))
+      ) {
+        throw new ConflictException(
+          'Orçamento com desconto igual ou acima do máximo da regra — ' +
+            'solicite a autorização de desconto antes de gerar o PDF',
+        );
+      }
+      await registrarAtividadeOrcamento(
+        tx,
+        empresaId,
+        user.id,
+        'pdf',
+        orcamento,
+      );
+      return { registrado: true };
     });
   }
 }
