@@ -22,6 +22,38 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Código que a API manda no corpo do 403 quando o acesso é recusado por
+ * horário de trabalho (ver ForaDoExpedienteException na API). Diferente de uma
+ * falta de permissão: a sessão acabou de ser encerrada no servidor, então a
+ * tela precisa voltar ao login em vez de só avisar.
+ */
+const CODIGO_FORA_HORARIO = "FORA_HORARIO";
+
+export function ehForaDoExpediente(erro: unknown): boolean {
+  return (
+    erro instanceof ApiError &&
+    erro.status === 403 &&
+    (erro.details as { codigo?: string } | undefined)?.codigo === CODIGO_FORA_HORARIO
+  );
+}
+
+/**
+ * Fim de expediente durante o uso: os tokens já foram revogados no servidor,
+ * então limpa a sessão local e manda para o login com o motivo — sem isso a
+ * tela ficaria repetindo 403 em cada consulta.
+ */
+function encerrarPorHorario(mensagem: string) {
+  const { logout } = useAuthStore.getState();
+  logout();
+  if (typeof window !== "undefined") {
+    sessionStorage.setItem("plataforma-auth-motivo", mensagem);
+    if (!window.location.pathname.startsWith("/login")) {
+      window.location.href = "/login";
+    }
+  }
+}
+
 let refreshPromise: Promise<string | null> | null = null;
 
 /** Lê a claim empresaAtivaId de um access token sem validar assinatura — só pra
@@ -46,6 +78,16 @@ async function refreshAccessToken(): Promise<string | null> {
   });
 
   if (!res.ok) {
+    // Renovar fora do expediente é recusado com o mesmo 403 das demais rotas
+    // — aqui a mensagem é a que explica ao usuário por que ele caiu.
+    const payload = await res.json().catch(() => ({}));
+    if (
+      res.status === 403 &&
+      (payload.details as { codigo?: string } | undefined)?.codigo === CODIGO_FORA_HORARIO
+    ) {
+      encerrarPorHorario(payload.message ?? "Acesso permitido apenas em horário de trabalho.");
+      return null;
+    }
     logout();
     return null;
   }
@@ -107,7 +149,9 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 
   if (!res.ok) {
     const payload = await res.json().catch(() => ({}));
-    throw new ApiError(payload.message ?? res.statusText, res.status, payload.details);
+    const erro = new ApiError(payload.message ?? res.statusText, res.status, payload.details);
+    if (ehForaDoExpediente(erro)) encerrarPorHorario(erro.message);
+    throw erro;
   }
 
   if (res.status === 204) return undefined as T;
@@ -141,7 +185,9 @@ export async function apiUpload<T>(path: string, file: File, field = "file"): Pr
 
   if (!res.ok) {
     const payload = await res.json().catch(() => ({}));
-    throw new ApiError(payload.message ?? res.statusText, res.status, payload.details);
+    const erro = new ApiError(payload.message ?? res.statusText, res.status, payload.details);
+    if (ehForaDoExpediente(erro)) encerrarPorHorario(erro.message);
+    throw erro;
   }
 
   return res.json() as Promise<T>;

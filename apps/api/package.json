@@ -22,6 +22,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "ts-node prisma/seed-base.ts",
+    "sync:ibge": "ts-node prisma/sync-ibge.ts",
+    "enrich:cnae": "ts-node prisma/enrich-cnae.ts",
     "import:legado": "ts-node prisma/import-legado.ts",
     "import:clientes": "ts-node prisma/import-clientes.ts",
     "import:auxiliares": "ts-node prisma/import-auxiliares.ts",
@@ -29,6 +31,7 @@
     "import:tabela-preco": "ts-node prisma/import-tabela-preco.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.117.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.1",

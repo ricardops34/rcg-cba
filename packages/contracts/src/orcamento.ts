@@ -38,6 +38,10 @@ export type OrcamentoItemLinha = z.infer<typeof orcamentoItemLinhaSchema> & {
 
 export const orcamentoCreateSchema = z.object({
   clienteId: z.string().uuid("Selecione um cliente"),
+  // O vendedor do orçamento é o cadastrado no cliente: o servidor sobrescreve
+  // o que vier aqui pelo vendedor do cliente, e só usa este valor quando o
+  // cliente não tem vendedor vinculado. Na edição, o vendedor gravado só muda
+  // se o cliente mudar (ver OrcamentosService.create/update).
   vendedorId: z.string().uuid("Selecione um vendedor"),
   oportunidadeId: z.string().uuid().nullable().optional(),
   condicaoPagamentoId: z.string().uuid().nullable().optional(),

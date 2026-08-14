@@ -67,6 +67,14 @@ model Empresa {
   clienteCampoConfigs        ClienteCampoConfig[]
   orcamentoConfig            OrcamentoConfig?
   parametros                 ParametroEmpresa[]
+  clienteCnaes               ClienteCnae[]
+  clienteAlteracoes          ClienteAlteracao[]
+  clienteHistorico           ClienteHistorico[]
+  sugestoesCompra            SugestaoCompraGerada[]
+  agenteConfig               AgenteConfig?
+  agenteCredenciais          AgenteCredencial[]
+  agenteConversas            AgenteConversa[]
+  agenteMensagens            AgenteMensagem[]
 
   @@map("empresas")
 }
@@ -90,6 +98,13 @@ model Usuario {
   bloqueadoAte     DateTime?
   deveTrocarSenha  Boolean   @default(false)
 
+  // Restrição de expediente (ver UsuarioHorario): quando false — o padrão —
+  // o usuário acessa a qualquer hora. Ligada, o login e cada requisição
+  // autenticada passam a exigir que o momento esteja dentro de uma das faixas
+  // cadastradas, no fuso da operação. O flag separado é necessário porque
+  // "nenhuma faixa cadastrada" significa coisas opostas nos dois casos.
+  restringirHorario Boolean @default(false)
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -101,8 +116,41 @@ model Usuario {
   refreshTokens   RefreshToken[]
   vendedores      Vendedor[]
   senhaHistorico  SenhaHistorico[]
+  horarios        UsuarioHorario[]
+  acessos         AcessoLog[]
+  sessoes         Sessao[]
 
   @@map("usuarios")
+}
+
+/**
+ * Faixa de expediente de um usuário, uma por dia da semana (0 = domingo …
+ * 6 = sábado). Dia sem linha = sem acesso naquele dia, quando
+ * `Usuario.restringirHorario` está ligado.
+ *
+ * Horas ficam como texto "HH:MM" de propósito: é hora de parede no fuso da
+ * operação (America/Campo_Grande), não um instante — guardar em DateTime
+ * traria fuso e data junto, que não têm significado aqui.
+ *
+ * Sem `empresaId`: a trava é da conta (login é global, como a política de
+ * senha), não do vínculo com uma empresa. Por isso não tem RLS.
+ */
+model UsuarioHorario {
+  id         String @id @default(uuid())
+  usuarioId  String
+  diaSemana  Int
+  horaInicio String
+  horaFim    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@unique([usuarioId, diaSemana])
+  @@map("usuario_horarios")
 }
 
 // Vínculo usuário×empresa: perfil (RBAC) + hierarquia/dados de vendedor
@@ -270,12 +318,88 @@ model RefreshToken {
   revokedAt DateTime?
   ip        String?
   userAgent String?
+  // Sessão a que este token pertence (ver Sessao): o login abre a sessão e
+  // cada rotação de refresh carrega o mesmo id adiante, então o logout sabe
+  // qual sessão encerrar e o tempo de uso não recomeça a cada 15 minutos.
+  sessaoId  String?
 
   createdAt DateTime @default(now())
 
   usuario Usuario @relation(fields: [usuarioId], references: [id])
+  sessao  Sessao? @relation(fields: [sessaoId], references: [id])
 
   @@map("refresh_tokens")
+}
+
+/**
+ * Uso do sistema por sessão: do login até o logout (ou até a última renovação
+ * de token, quando o usuário simplesmente fecha o navegador). Alimenta o
+ * "tempo de uso" da tela Administração > Acessos.
+ *
+ * `ultimaAtividadeEm` avança a cada renovação de token (~15 min) e na troca de
+ * empresa — não a cada requisição, que custaria uma escrita por chamada de
+ * API. A precisão do tempo de uso é, portanto, da ordem de um ciclo de token.
+ *
+ * Sem RLS pelo mesmo motivo de `refresh_tokens`: é escrita no login, antes de
+ * haver empresa ativa no contexto. `empresaId` fica como informação de qual
+ * empresa a sessão abriu, e é o que a consulta filtra.
+ */
+model Sessao {
+  id                String    @id @default(uuid())
+  usuarioId         String
+  empresaId         String?
+  iniciadaEm        DateTime  @default(now())
+  ultimaAtividadeEm DateTime  @default(now())
+  encerradaEm       DateTime?
+  // "logout", "troca_empresa", "fora_horario" — nulo enquanto aberta.
+  motivoFim         String?
+  ip                String?
+  userAgent         String?
+
+  usuario       Usuario        @relation(fields: [usuarioId], references: [id])
+  refreshTokens RefreshToken[]
+
+  @@index([usuarioId, iniciadaEm])
+  @@map("sessoes")
+}
+
+enum AcessoEvento {
+  login_sucesso
+  login_falha
+  login_bloqueado
+  login_fora_horario
+  acesso_fora_horario
+  logout
+  troca_empresa
+}
+
+/**
+ * Rastro de cada tentativa de autenticação e seu desfecho — inclusive as que
+ * falharam, que são justamente as que interessam investigar. Alimenta a tela
+ * Administração > Acessos.
+ *
+ * `usuarioId` é nulo quando o e-mail digitado não existe no cadastro (a
+ * tentativa é registrada mesmo assim, com o e-mail em `email`). Sem RLS pelo
+ * mesmo motivo de `refresh_tokens`: é escrito no login, antes de existir
+ * empresa ativa — a consulta é que filtra por empresa (ver AcessosService).
+ */
+model AcessoLog {
+  id        String       @id @default(uuid())
+  usuarioId String?
+  email     String
+  empresaId String?
+  evento    AcessoEvento
+  detalhe   String?
+  ip        String?
+  userAgent String?
+
+  criadoEm DateTime @default(now())
+
+  usuario Usuario? @relation(fields: [usuarioId], references: [id])
+
+  @@index([criadoEm])
+  @@index([usuarioId, criadoEm])
+  @@map("acessos_log")
 }
 
 // Chave de integração máquina-a-máquina (ERP externo → plataforma, ver
@@ -356,6 +480,7 @@ model Produto {
   tabelasPrecoItens TabelaPrecoItem[]
   notasSaidaItens   NotaSaidaItem[]
   orcamentoItens    OrcamentoItem[]
+  sugestoesCompra   SugestaoCompraGerada[]
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, descricao])
@@ -532,6 +657,10 @@ model Cliente {
   oportunidades   Oportunidade[]
   atividades      Atividade[]
   orcamentos      Orcamento[]
+  cnaes           ClienteCnae[]
+  alteracoes      ClienteAlteracao[]
+  historico       ClienteHistorico[]
+  sugestoesCompra SugestaoCompraGerada[]
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, razaoSocial])
@@ -539,6 +668,270 @@ model Cliente {
   @@index([empresaId, tabelaPrecoId])
   @@index([empresaId, condicaoPagamentoId])
   @@map("clientes")
+}
+
+// De onde partiu a alteração do cadastro de cliente. Todas passam pela mesma
+// fila de aprovação — inclusive `integracao`: decisão de 2026-08-14, nenhuma
+// origem altera cliente sem alguém com direito aprovar.
+enum OrigemAlteracaoCliente {
+  manual
+  enriquecimento
+  integracao
+  agente
+}
+
+enum StatusAlteracaoCliente {
+  pendente
+  aprovada
+  rejeitada
+}
+
+/**
+ * Solicitação de alteração de cliente: o "de → para" aguardando aprovação.
+ *
+ * `alteracoes` é um JSON `{ campo: { de, para } }` calculado sempre contra o
+ * estado atual do cliente — é o que torna a fila idempotente perante o ERP,
+ * que reenvia o mesmo payload a cada sincronização: payload igual ao gravado
+ * gera diff vazio e nenhuma solicitação.
+ *
+ * Tabela volátil (a solicitação se resolve); o rastro permanente é
+ * ClienteHistorico.
+ */
+model ClienteAlteracao {
+  id        String                 @id @default(uuid())
+  empresaId String
+  clienteId String
+  origem    OrigemAlteracaoCliente @default(manual)
+  status    StatusAlteracaoCliente @default(pendente)
+
+  alteracoes    Json
+  justificativa String?
+
+  solicitadoPor String?
+  solicitadoEm  DateTime  @default(now())
+  analisadoPor  String?
+  analisadoEm   DateTime?
+  motivoRecusa  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  // Índice único parcial (só entre as pendentes) é criado na migration por SQL
+  // — o Prisma não modela `WHERE status = 'pendente'`. Uma pendência por
+  // cliente **por origem**: o pedido do vendedor e o do ERP não se misturam.
+  @@index([empresaId, status])
+  @@index([empresaId, clienteId])
+  @@map("cliente_alteracoes")
+}
+
+/**
+ * Log imutável do que efetivamente mudou no cliente, campo a campo. Responde
+ * "quem mexeu no limite de crédito deste cliente, quando e por quê" — inclusive
+ * para mudanças vindas do ERP.
+ */
+model ClienteHistorico {
+  id          String                 @id @default(uuid())
+  empresaId   String
+  clienteId   String
+  alteracaoId String?
+  campo       String
+  // Texto porque o histórico é para leitura humana; o valor tipado vive no
+  // cliente, não aqui.
+  valorAnterior String?
+  valorNovo     String?
+  // `origem` é de onde a mudança nasceu (tela, ERP, consulta de CNPJ);
+  // `autor` é quem a **aplicou** — ou seja, quem aprovou, e portanto responde
+  // por ela. Quem pediu está em ClienteAlteracao.solicitadoPor, alcançável
+  // por `alteracaoId`.
+  origem        OrigemAlteracaoCliente
+  autor         String?
+
+  criadoEm DateTime @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId, clienteId, criadoEm])
+  @@map("cliente_historico")
+}
+
+enum OrigemSugestaoCompra {
+  local
+  ia
+}
+
+enum AgentePapel {
+  usuario
+  sistema
+  assistente
+  ferramenta
+}
+
+/**
+ * Configuração do agente de IA por empresa (singleton, padrão do
+ * OrcamentoConfig). A personalidade e a temperatura são editáveis em tela para
+ * ajustar o comportamento sem redeploy.
+ *
+ * `apiKeyCifrada` é AES-256-GCM (ver `agente-cripto.ts`) — precisa ser
+ * reversível, porque a chave é usada para chamar o provedor; não é hash. A
+ * chave em claro **nunca** sai da API: a leitura devolve só os últimos 4
+ * dígitos, como a tela de parâmetros faz com tipo senha.
+ */
+model AgenteConfig {
+  id        String  @id @default(uuid())
+  empresaId String  @unique
+  ativo     Boolean @default(false)
+
+  // Provedor ativo. As chaves ficam em AgenteCredencial, uma por provedor,
+  // para trocar de provedor não exigir recolar a chave.
+  provedor String @default("anthropic")
+  baseUrl  String @default("https://api.anthropic.com")
+  modelo   String @default("claude-opus-5")
+
+  // Mantidos por compatibilidade com o que já foi gravado antes da tabela de
+  // credenciais existir; a leitura prefere AgenteCredencial.
+  apiKeyCifrada  String?
+  apiKeyUltimos4 String?
+
+  systemPrompt String? @db.Text
+  temperatura  Float   @default(0.3)
+  maxTokens    Int     @default(2048)
+
+  // Teto de voltas do laço de ferramentas: sem ele, um modelo em loop de
+  // tool_calls consome tokens (pagos) indefinidamente.
+  maxIteracoesFerramentas Int @default(5)
+  historicoMensagens      Int @default(20)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@map("agente_config")
+}
+
+/**
+ * Chave de API por provedor. Existe para tornar a troca de provedor um clique:
+ * alternar entre Claude e Groq não pode exigir recolar a chave do outro.
+ *
+ * `modelo` guarda o último modelo usado naquele provedor, para a volta trazer
+ * a configuração de antes em vez do padrão.
+ */
+model AgenteCredencial {
+  id        String @id @default(uuid())
+  empresaId String
+  provedor  String
+
+  apiKeyCifrada  String
+  apiKeyUltimos4 String
+  modelo         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@unique([empresaId, provedor])
+  @@map("agente_credenciais")
+}
+
+model AgenteConversa {
+  id        String  @id @default(uuid())
+  empresaId String
+  usuarioId String
+  titulo    String?
+  arquivada Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa   Empresa          @relation(fields: [empresaId], references: [id])
+  mensagens AgenteMensagem[]
+
+  @@index([empresaId, usuarioId, updatedAt])
+  @@map("agente_conversas")
+}
+
+/**
+ * Cada passo da conversa, inclusive as chamadas de ferramenta — é aqui que
+ * mora a auditoria: qual ferramenta o agente quis executar, com que argumentos
+ * exatos, e quem confirmou.
+ *
+ * `pendente` marca a ação de escrita que ainda não foi confirmada pelo
+ * usuário; até `confirmadaEm` ser preenchida, nada foi gravado no sistema.
+ */
+model AgenteMensagem {
+  id         String      @id @default(uuid())
+  empresaId  String
+  conversaId String
+  papel      AgentePapel
+
+  conteudo   String? @db.Text
+  ferramenta String?
+  argumentos Json?
+  resultado  Json?
+
+  pendente     Boolean   @default(false)
+  confirmadaEm DateTime?
+  confirmadaPor String?
+
+  tokensEntrada Int?
+  tokensSaida   Int?
+
+  criadaEm DateTime @default(now())
+
+  empresa  Empresa        @relation(fields: [empresaId], references: [id])
+  conversa AgenteConversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId, conversaId, criadaEm])
+  @@map("agente_mensagens")
+}
+
+/**
+ * Sugestão de compra gerada para um cliente: produto que clientes semelhantes
+ * compram e ele não.
+ *
+ * Guardar o resultado não é cache por preguiça — é requisito. A geração por IA
+ * é paga e lenta demais para rodar a cada abertura de tela, e a linha gravada é
+ * o que permite auditar **o que a IA sugeriu** depois.
+ *
+ * `origem` distingue o motor determinístico (`local`, SQL sobre a cesta de
+ * compras e o CNAE) da recomendação do modelo (`ia`). `loteId` agrupa o que
+ * saiu de uma mesma execução, para substituir um lote inteiro sem apagar o
+ * outro motor.
+ *
+ * Nada de valor ou nome de cliente vai para a IA — ver `anonimizar.ts`. Aqui
+ * só voltam códigos de produto, que são reenriquecidos na leitura.
+ */
+model SugestaoCompraGerada {
+  id        String               @id @default(uuid())
+  empresaId String
+  clienteId String
+  produtoId String
+  origem    OrigemSugestaoCompra @default(local)
+
+  ordem  Int
+  score  Float?
+  motivo String?
+  modelo String?
+  loteId String
+
+  geradaEm DateTime @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  produto Produto @relation(fields: [produtoId], references: [id])
+
+  @@unique([clienteId, produtoId, origem])
+  @@index([empresaId, clienteId, origem, ordem])
+  @@index([empresaId, loteId])
+  @@map("sugestoes_compra")
 }
 
 // Define, por empresa, quais campos do cadastro de Cliente o formulário
@@ -694,6 +1087,10 @@ model Municipio {
   ceps   Cep[]
 
   @@unique([codigoErp])
+  // Chave natural do sync do IBGE e do casamento com o município que a
+  // MinhaReceita/ViaCEP devolvem por código. Nulo é permitido (Postgres não
+  // colide NULLs no índice único) — município cadastrado à mão fica de fora.
+  @@unique([codigoIbge])
   @@index([descricao])
   @@map("municipios")
 }
@@ -726,6 +1123,9 @@ model Cep {
   @@map("ceps")
 }
 
+// Referência de CNAEs. Vinha vazia do legado — quem popula é o `sync-ibge.ts`
+// (subclasses da API do IBGE), então aqui `codigoErp` guarda o código da
+// subclasse (7 dígitos) na fonte oficial, e não um código de ERP.
 model Cnae {
   id        String  @id @default(uuid())
   codigoErp String?
@@ -744,8 +1144,40 @@ model Cnae {
   updatedBy String?
   deletedBy String?
 
+  clientes ClienteCnae[]
+
   @@unique([codigoErp])
   @@map("cnaes")
+}
+
+// CNAEs de um cliente (principal + secundárias), apontando para a referência
+// `cnaes`. `principal` distingue o CNAE fiscal principal — o legado não tinha
+// essa marca, a MinhaReceita tem (`cnae_fiscal` × `cnaes_secundarias`).
+//
+// É o eixo de afinidade da sugestão de compra: clientes do mesmo ramo tendem a
+// comprar o mesmo conjunto de produtos.
+model ClienteCnae {
+  id        String  @id @default(uuid())
+  empresaId String
+  clienteId String
+  cnaeId    String
+  principal Boolean @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  cnae    Cnae    @relation(fields: [cnaeId], references: [id])
+
+  @@unique([clienteId, cnaeId])
+  @@index([empresaId, clienteId])
+  @@index([empresaId, cnaeId])
+  @@map("cliente_cnaes")
 }
 
 // Categorias e subcategorias de produto na mesma tabela (auto-referência via
@@ -1128,6 +1560,9 @@ model NotaSaidaItem {
   @@index([empresaId, produtoId])
   @@index([empresaId, vendedorId, dtEmissao])
   @@index([empresaId, regraDescontoId])
+  // Monta a cesta de compras de um cliente (Sugestão de Compra) — sem ele,
+  // cada cliente-alvo faz seq scan na maior tabela da base.
+  @@index([empresaId, clienteId, produtoId])
   @@map("notas_saida_itens")
 }
 

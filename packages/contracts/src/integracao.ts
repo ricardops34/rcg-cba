@@ -373,6 +373,27 @@ export const integracaoClienteQuerySchema = paginationQuerySchema.extend({
 });
 export type IntegracaoClienteQuery = z.infer<typeof integracaoClienteQuerySchema>;
 
+/**
+ * Resposta do PUT de cliente. Desde 2026-08-14 o ERP **não grava direto**:
+ * a alteração entra na fila de aprovação interna (ver `cliente-alteracao.ts`),
+ * então `cliente` é o cadastro **como está agora** — ainda sem as mudanças
+ * enviadas —, `pendente` diz se ficou algo aguardando aprovação e
+ * `camposPendentes` lista o que mudou em relação ao que já estava gravado.
+ *
+ * Reenviar o mesmo payload é inofensivo: o diff sai vazio, `pendente` volta
+ * `false` e nada é enfileirado.
+ */
+export const integracaoClienteUpdateResultadoSchema = z.object({
+  cliente: integracaoClienteSchema,
+  pendente: z.boolean().describe("Há alteração aguardando aprovação interna"),
+  camposPendentes: z
+    .array(z.string())
+    .describe("Campos que diferem do cadastro atual e foram enfileirados"),
+});
+export type IntegracaoClienteUpdateResultado = z.infer<
+  typeof integracaoClienteUpdateResultadoSchema
+>;
+
 export const INTEGRACAO_CLIENTE_CREATE_EXAMPLE: IntegracaoClienteCreate = {
   codigoErp: "004417",
   tipoPessoa: "juridica",

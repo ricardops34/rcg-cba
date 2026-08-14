@@ -9,8 +9,16 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { CONSULTA_CNPJ_EXAMPLE } from '@plataforma/contracts';
 import { ClientesService } from './clientes.service';
+import { EnriquecimentoService } from './enriquecimento.service';
+import { ClienteAlteracoesService } from './cliente-alteracoes.service';
 import {
   ClienteCreateDto,
   ClienteQueryDto,
@@ -34,7 +42,11 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('clientes')
 export class ClientesController {
-  constructor(private readonly service: ClientesService) {}
+  constructor(
+    private readonly service: ClientesService,
+    private readonly enriquecimento: EnriquecimentoService,
+    private readonly alteracoes: ClienteAlteracoesService,
+  ) {}
 
   @ApiOperation({
     summary: 'Listar clientes',
@@ -133,6 +145,25 @@ export class ClientesController {
     return this.service.listagemPosicao(user.empresaAtivaId, user, query);
   }
 
+  // Declarado antes de GET :id pelo mesmo motivo de vendedores-escopo.
+  @ApiOperation({
+    summary: 'Consultar CNPJ na base pública da Receita Federal',
+    description:
+      'Consulta a MinhaReceita e devolve os dados cadastrais normalizados do CNPJ, incluindo os ' +
+      'CNAEs (principal + secundárias) já casados com a referência local — CNAE cujo código não ' +
+      'estiver na referência volta com `cnaeId: null` (sinal de que o sync do IBGE está atrasado). ' +
+      '**Não grava nada**: o resultado é sugestão para o formulário. Responde 404 para CNPJ ' +
+      'inexistente e 502 quando a fonte pública está fora do ar. Requer clientes.visualizar.',
+  })
+  @ApiResponse({ status: 200, schema: { example: CONSULTA_CNPJ_EXAMPLE } })
+  @ApiResponse({ status: 404, description: 'CNPJ não encontrado na Receita' })
+  @ApiResponse({ status: 502, description: 'Fonte pública indisponível' })
+  @RequirePermission('clientes', 'visualizar')
+  @Get('consulta-cnpj/:cnpj')
+  consultarCnpj(@Param('cnpj') cnpj: string) {
+    return this.enriquecimento.consultarCnpj(cnpj);
+  }
+
   @ApiOperation({
     summary: 'Detalhar cliente',
     description:
@@ -203,6 +234,22 @@ export class ClientesController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.update(user.empresaAtivaId, user, id, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Histórico de alterações do cliente',
+    description:
+      'O que já mudou no cadastro, campo a campo, com origem e autor — inclusive alterações ' +
+      'vindas da integração do ERP. Últimos 200 registros, mais recente primeiro. ' +
+      'Requer clientes.visualizar.',
+  })
+  @RequirePermission('clientes', 'visualizar')
+  @Get(':id/historico-alteracoes')
+  historicoAlteracoes(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.alteracoes.historicoDoCliente(user.empresaAtivaId, user, id);
   }
 
   @ApiOperation({

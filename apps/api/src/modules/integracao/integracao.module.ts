@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ParametrosModule } from '../parametros/parametros.module';
+import { ClientesModule } from '../clientes/clientes.module';
 import { IntegracaoCategoriasController } from './categorias/integracao-categorias.controller';
 import { IntegracaoCategoriasService } from './categorias/integracao-categorias.service';
 import { IntegracaoRegrasDescontoController } from './regras-desconto/integracao-regras-desconto.controller';
@@ -29,7 +30,9 @@ import { IntegracaoOrcamentosService } from './orcamentos/integracao-orcamentos.
 import { ApiKeyGuard } from './guards/api-key.guard';
 
 @Module({
-  imports: [ParametrosModule],
+  // ClientesModule: o upsert de cliente do ERP passa pela mesma fila de
+  // aprovação da tela (ClienteAlteracoesService).
+  imports: [ParametrosModule, ClientesModule],
   controllers: [
     IntegracaoCategoriasController,
     IntegracaoRegrasDescontoController,

@@ -11,6 +11,9 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { PoliticaSenhaService } from '../politica-senha/politica-senha.service';
+import { AcessosService } from '../acessos/acessos.service';
+import { HorarioTrabalhoService } from '../acessos/horario-trabalho.service';
+import { ForaDoExpedienteException } from '../../common/horario/horario-trabalho';
 import type { ChangePasswordInput, LoginInput, RefreshInput } from '@plataforma/contracts';
 
 interface RequestMeta {
@@ -27,6 +30,8 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly politicaSenhaService: PoliticaSenhaService,
+    private readonly acessos: AcessosService,
+    private readonly horarios: HorarioTrabalhoService,
   ) {}
 
   private hashToken(token: string) {
@@ -107,15 +112,28 @@ export class AuthService {
   }
 
   async login(input: LoginInput, meta: RequestMeta) {
-    const usuario = await this.prisma.usuario.findUnique({
-      where: { email: input.email.toLowerCase() },
-    });
+    const email = input.email.toLowerCase();
+    const usuario = await this.prisma.usuario.findUnique({ where: { email } });
 
     if (!usuario || !usuario.ativo) {
+      await this.acessos.registrar({
+        evento: 'login_falha',
+        email,
+        usuarioId: usuario?.id ?? null,
+        detalhe: usuario ? 'Usuário inativo' : 'E-mail não cadastrado',
+        ...meta,
+      });
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
     if (usuario.bloqueadoAte && usuario.bloqueadoAte > new Date()) {
+      await this.acessos.registrar({
+        evento: 'login_bloqueado',
+        email,
+        usuarioId: usuario.id,
+        detalhe: `Conta bloqueada até ${usuario.bloqueadoAte.toISOString()}`,
+        ...meta,
+      });
       throw new HttpException(
         'Conta temporariamente bloqueada por excesso de tentativas. Tente novamente mais tarde.',
         HttpStatus.LOCKED,
@@ -136,7 +154,32 @@ export class AuthService {
             }
           : { tentativasFalhas: tentativas },
       });
+      await this.acessos.registrar({
+        evento: bloqueou ? 'login_bloqueado' : 'login_falha',
+        email,
+        usuarioId: usuario.id,
+        detalhe: bloqueou
+          ? `Senha incorreta ${tentativas}ª vez — conta bloqueada por ${politica.minutosBloqueio} min`
+          : `Senha incorreta (tentativa ${tentativas} de ${politica.tentativasAntesBloqueio})`,
+        ...meta,
+      });
       throw new UnauthorizedException('Credenciais inválidas');
+    }
+
+    // Expediente só é avaliado depois da senha conferir: quem erra a senha
+    // recebe sempre a mesma resposta, sem descobrir de tabela nenhuma.
+    const expediente = await this.horarios.verificar(usuario.id);
+    if (!expediente.dentro) {
+      await this.acessos.registrar({
+        evento: 'login_fora_horario',
+        email,
+        usuarioId: usuario.id,
+        detalhe: expediente.motivo,
+        ...meta,
+      });
+      throw new ForaDoExpedienteException(
+        `Acesso permitido apenas em horário de trabalho. ${expediente.motivo}.`,
+      );
     }
 
     // Quando o login vem com o alias da empresa (?empresa=<alias> na tela de
@@ -156,16 +199,34 @@ export class AuthService {
 
     const vinculo = await this.findVinculoAtivo(usuario.id, empresaId);
     if (!vinculo) {
+      await this.acessos.registrar({
+        evento: 'login_falha',
+        email,
+        usuarioId: usuario.id,
+        detalhe: input.empresaAlias
+          ? 'Sem vínculo ativo com a empresa informada'
+          : 'Usuário sem empresa ativa vinculada',
+        ...meta,
+      });
       throw input.empresaAlias
         ? new ForbiddenException('Você não tem acesso a esta empresa')
         : new UnauthorizedException('Usuário sem empresa ativa vinculada');
     }
 
     const { accessToken } = await this.buildAccessToken(vinculo.id, vinculo.empresaId);
+    // A sessão nasce aqui e acompanha as renovações de token pelo sessaoId —
+    // é ela que mede o tempo de uso na tela de Acessos.
+    const sessaoId = await this.acessos.abrirSessao({
+      usuarioId: usuario.id,
+      empresaId: vinculo.empresaId,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
     const refreshToken = await this.issueRefreshToken(
       usuario.id,
       vinculo.empresaId,
       meta,
+      sessaoId,
     );
 
     const mustChangePassword = await this.computeMustChangePassword(usuario);
@@ -173,6 +234,14 @@ export class AuthService {
     await this.prisma.usuario.update({
       where: { id: usuario.id },
       data: { ultimoLogin: new Date(), tentativasFalhas: 0, bloqueadoAte: null },
+    });
+
+    await this.acessos.registrar({
+      evento: 'login_sucesso',
+      email,
+      usuarioId: usuario.id,
+      empresaId: vinculo.empresaId,
+      ...meta,
     });
 
     return {
@@ -206,6 +275,7 @@ export class AuthService {
     usuarioId: string,
     empresaId: string,
     meta: RequestMeta,
+    sessaoId: string | null,
   ) {
     const token = randomBytes(48).toString('hex');
     await this.prisma.refreshToken.create({
@@ -216,6 +286,7 @@ export class AuthService {
         expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
         ip: meta.ip,
         userAgent: meta.userAgent,
+        sessaoId,
       },
     });
     return token;
@@ -240,6 +311,18 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
 
+    // A renovação não passa pelo JwtAuthGuard (é rota pública, autenticada
+    // pelo próprio refresh token), então a trava de expediente precisa ser
+    // conferida aqui também — senão bastaria deixar a aba aberta para o
+    // sistema se renovar indefinidamente depois do fim do turno.
+    const expediente = await this.horarios.verificar(stored.usuarioId);
+    if (!expediente.dentro) {
+      await this.encerrarAcessoPorHorario(stored.usuarioId, expediente.motivo);
+      throw new ForaDoExpedienteException(
+        `Acesso permitido apenas em horário de trabalho. ${expediente.motivo}.`,
+      );
+    }
+
     // Mantém a mesma empresa ativa da sessão original; só cai para a
     // primeira disponível se aquele vínculo específico não existir mais.
     const vinculo =
@@ -255,17 +338,66 @@ export class AuthService {
       stored.usuarioId,
       vinculo.empresaId,
       meta,
+      stored.sessaoId,
     );
+    // Renovar token é o sinal de que a sessão segue em uso — é o que faz o
+    // tempo de uso crescer sem uma escrita por requisição.
+    if (stored.sessaoId) {
+      await this.acessos.tocarSessao(stored.sessaoId, vinculo.empresaId);
+    }
 
     return { accessToken, refreshToken, expiresIn: 15 * 60 };
   }
 
+  /**
+   * Corta o acesso de quem saiu do expediente: revoga os refresh tokens
+   * abertos (para a aba deixada aberta não se renovar), fecha as sessões e
+   * deixa o evento no rastro de acessos.
+   */
+  private async encerrarAcessoPorHorario(usuarioId: string, motivo: string) {
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { id: usuarioId },
+      select: { email: true },
+    });
+    await this.prisma.refreshToken.updateMany({
+      where: { usuarioId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    await this.acessos.encerrarSessoesDoUsuario(usuarioId, 'fora_horario');
+    await this.acessos.registrar({
+      evento: 'acesso_fora_horario',
+      email: usuario?.email ?? '',
+      usuarioId,
+      detalhe: motivo,
+    });
+  }
+
   async logout(input: RefreshInput) {
     const tokenHash = this.hashToken(input.refreshToken);
+    const stored = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash },
+      select: {
+        sessaoId: true,
+        empresaId: true,
+        usuarioId: true,
+        usuario: { select: { email: true } },
+      },
+    });
     await this.prisma.refreshToken.updateMany({
       where: { tokenHash, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    if (stored) {
+      if (stored.sessaoId) {
+        await this.acessos.encerrarSessao(stored.sessaoId, 'logout');
+      }
+      await this.acessos.registrar({
+        evento: 'logout',
+        email: stored.usuario.email,
+        usuarioId: stored.usuarioId,
+        empresaId: stored.empresaId,
+      });
+    }
     return { success: true };
   }
 
@@ -279,11 +411,42 @@ export class AuthService {
     }
 
     const { accessToken } = await this.buildAccessToken(vinculo.id, vinculo.empresaId);
+    // Trocar de empresa não é uma sessão nova — é a mesma pessoa, seguindo o
+    // trabalho. Reaproveita a sessão aberta (o corpo da requisição não traz o
+    // refresh token, então ela é localizada pelo usuário) e só abre outra se
+    // não houver nenhuma, caso de sessão já encerrada por horário.
+    const aberta = await this.prisma.sessao.findFirst({
+      where: { usuarioId, encerradaEm: null },
+      orderBy: { iniciadaEm: 'desc' },
+      select: { id: true },
+    });
+    const sessaoId =
+      aberta?.id ??
+      (await this.acessos.abrirSessao({
+        usuarioId,
+        empresaId: vinculo.empresaId,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+      }));
     const refreshToken = await this.issueRefreshToken(
       usuarioId,
       vinculo.empresaId,
       meta,
+      sessaoId,
     );
+    await this.acessos.tocarSessao(sessaoId, vinculo.empresaId);
+
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { id: usuarioId },
+      select: { email: true },
+    });
+    await this.acessos.registrar({
+      evento: 'troca_empresa',
+      email: usuario?.email ?? '',
+      usuarioId,
+      empresaId: vinculo.empresaId,
+      ...meta,
+    });
 
     return { accessToken, refreshToken, expiresIn: 15 * 60 };
   }

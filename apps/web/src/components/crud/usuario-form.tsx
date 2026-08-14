@@ -19,6 +19,7 @@ import { ApiError, apiFetch } from "@/lib/api-client";
 import { buildSenhaSchema, describeRequisitos } from "@/lib/politica-senha";
 import { UsuarioEmpresasSection } from "@/components/crud/usuario-empresas-section";
 import { UsuarioResetSenhaSection } from "@/components/crud/usuario-reset-senha-section";
+import { UsuarioHorariosSection } from "@/components/crud/usuario-horarios-section";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -100,6 +101,11 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
                 </Field>
 
                 {usuario && <UsuarioResetSenhaSection usuarioId={usuario.id} />}
+
+                {/* Horário de trabalho grava por rota própria (PUT
+                    /usuarios/:id/horarios), como a redefinição de senha — por
+                    isso só aparece na edição, quando já existe o id. */}
+                {usuario && <UsuarioHorariosSection usuarioId={usuario.id} />}
 
                 {!usuario && (
                   <>

@@ -5,5 +5,7 @@ import { TitulosReceberService } from './titulos-receber.service';
 @Module({
   controllers: [TitulosReceberController],
   providers: [TitulosReceberService],
+  // Exportado para o agente consumir como ferramenta.
+  exports: [TitulosReceberService],
 })
 export class TitulosReceberModule {}

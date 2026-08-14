@@ -48,6 +48,12 @@ services:
       # rodando com o role "plataforma", dono das tabelas.
       DATABASE_URL: postgresql://plataforma_app:plataforma_app_dev_only@postgres:5432/plataforma_comercial?schema=public
       REDIS_URL: redis://redis:6379
+      # Cifra a chave de API do provedor de IA (AES-256-GCM, 32 bytes em
+      # base64). Sem ela a gravação da chave é recusada — de propósito, para
+      # não guardar segredo de terceiro em claro. Em produção, gere outra:
+      #   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+      # Trocar esta chave invalida o que já está gravado (é preciso regravar).
+      AGENTE_IA_CRYPTO_KEY: ${AGENTE_IA_CRYPTO_KEY:-ZGV2LW9ubHktbmFvLXVzZS1lbS1wcm9kdWNhby0zMmI=}
       JWT_ACCESS_SECRET: desenvolvimento-local-access
       JWT_ACCESS_EXPIRES_IN: 15m
       JWT_REFRESH_SECRET: desenvolvimento-local-refresh

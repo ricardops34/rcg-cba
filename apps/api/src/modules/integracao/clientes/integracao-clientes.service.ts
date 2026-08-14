@@ -17,8 +17,10 @@ import type {
   IntegracaoClienteCreate,
   IntegracaoClienteQuery,
   IntegracaoClienteUpdate,
+  IntegracaoClienteUpdateResultado,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
+import { ClienteAlteracoesService } from '../../clientes/cliente-alteracoes.service';
 
 const INCLUDE = {
   vendedor: { select: { codigoErp: true } },
@@ -29,7 +31,10 @@ type ClienteComRelacoes = Prisma.ClienteGetPayload<{ include: typeof INCLUDE }>;
 
 @Injectable()
 export class IntegracaoClientesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly alteracoes: ClienteAlteracoesService,
+  ) {}
 
   private paraLeitura(row: ClienteComRelacoes): IntegracaoCliente {
     return {
@@ -217,7 +222,7 @@ export class IntegracaoClientesService {
     apiKeyId: string,
     codigoErp: string,
     input: IntegracaoClienteUpdate,
-  ): Promise<IntegracaoCliente> {
+  ): Promise<IntegracaoClienteUpdateResultado> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.cliente.findFirst({
@@ -294,12 +299,34 @@ export class IntegracaoClientesService {
       if (condicaoPagamentoId !== undefined)
         data.condicaoPagamentoId = condicaoPagamentoId;
 
-      const atualizado = await tx.cliente.update({
+      // O ERP não grava direto: a alteração entra na mesma fila de aprovação
+      // das demais origens (decisão de 2026-08-14). O diff é calculado contra o
+      // estado atual, então reenviar o mesmo cadastro — que é o que a
+      // sincronização faz o tempo todo — não gera solicitação nenhuma.
+      const registro = await this.alteracoes.registrar(tx, {
+        empresaId,
+        clienteId: existente.id,
+        atual: existente as unknown as Record<string, unknown>,
+        input: data,
+        origem: 'integracao',
+        autorId: autor,
+        // Nunca aplica direto: não há usuário por trás para responder pela
+        // mudança.
+        aplicarDireto: false,
+      });
+
+      const atual = await tx.cliente.findUniqueOrThrow({
         where: { id: existente.id },
-        data: data as never,
         include: INCLUDE,
       });
-      return this.paraLeitura(atualizado);
+      return {
+        cliente: this.paraLeitura(atual),
+        pendente: registro.resultado === 'pendente',
+        camposPendentes:
+          registro.resultado === 'sem-mudanca'
+            ? []
+            : Object.keys(registro.diff),
+      };
     });
   }
 

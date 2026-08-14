@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -16,12 +17,17 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { USUARIO_CREATE_EXAMPLE, USUARIO_EXAMPLE } from '@plataforma/contracts';
+import {
+  USUARIO_CREATE_EXAMPLE,
+  USUARIO_EXAMPLE,
+  USUARIO_HORARIOS_EXAMPLE,
+} from '@plataforma/contracts';
 import { UsuariosService } from './usuarios.service';
 import {
   ResetPasswordDto,
   UsuarioCreateDto,
   UsuarioEmpresaCreateDto,
+  UsuarioHorariosUpdateDto,
   UsuarioQueryDto,
   UsuarioUpdateDto,
 } from './dto/usuario.dto';
@@ -118,6 +124,41 @@ export class UsuariosController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.resetSenha(id, dto, user.id);
+  }
+
+  @ApiOperation({
+    summary: 'Consultar o horário de trabalho do usuário',
+    description:
+      'Faixas de expediente por dia da semana e o flag que liga a restrição. ' +
+      'Requer usuarios.visualizar.',
+  })
+  @ApiParam({ name: 'id', example: USUARIO_ID_EXAMPLE })
+  @ApiResponse({ status: 200, schema: { example: USUARIO_HORARIOS_EXAMPLE } })
+  @RequirePermission('usuarios', 'visualizar')
+  @Get(':id/horarios')
+  horarios(@Param('id') id: string) {
+    return this.service.obterHorarios(id);
+  }
+
+  @ApiOperation({
+    summary: 'Definir o horário de trabalho do usuário',
+    description:
+      'Substitui o conjunto de faixas (uma por dia da semana, no máximo). Com ' +
+      'restringirHorario = true, o usuário só consegue autenticar e usar o sistema dentro ' +
+      'dessas faixas, no fuso da operação (America/Campo_Grande); dia sem faixa é dia sem ' +
+      'acesso. Requer usuarios.editar.',
+  })
+  @ApiParam({ name: 'id', example: USUARIO_ID_EXAMPLE })
+  @ApiBodyExample(USUARIO_HORARIOS_EXAMPLE)
+  @ApiResponse({ status: 200, schema: { example: USUARIO_HORARIOS_EXAMPLE } })
+  @RequirePermission('usuarios', 'editar')
+  @Put(':id/horarios')
+  salvarHorarios(
+    @Param('id') id: string,
+    @Body() dto: UsuarioHorariosUpdateDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.salvarHorarios(id, dto, user.id);
   }
 
   @ApiOperation({

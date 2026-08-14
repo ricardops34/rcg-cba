@@ -82,6 +82,95 @@ temporário a partir do dump); ele **não** é necessariamente o fluxo em uso na
 
 ---
 
+## Sync das referências públicas (IBGE) **[verificado em 2026-08-14]**
+
+`prisma/sync-ibge.ts` popula **CNAEs** (subclasses) e completa estados/municípios a
+partir das APIs abertas do IBGE. Idempotente e reexecutável; roda com a **role dona**
+(faz DDL nenhum, mas escreve em tabelas de referência).
+
+```bash
+docker exec \
+  -e DATABASE_URL="postgresql://plataforma:plataforma@postgres:5432/plataforma_comercial?schema=public" \
+  plataforma-comercial-dev-api-1 \
+  sh -c "cd /app/apps/api && pnpm exec ts-node prisma/sync-ibge.ts"
+```
+
+Saída esperada na primeira execução (base vinda do legado):
+
+```
+Estados: 27 sincronizados.
+Municípios: 5210 atualizados, 361 com código IBGE corrigido, 0 criados.
+CNAEs: 1332 subclasses sincronizadas.
+```
+
+Numa reexecução, "código IBGE corrigido" e "criados" vão a zero — se não forem, algo
+mudou na fonte.
+
+> **Por que existe "código IBGE corrigido":** o `codigo_ibge` que veio do ERP é
+> inconfiável (os municípios de SP estavam gravados como `34xxxxx` quando o oficial
+> começa em `35`). O script casa por código **e** por nome+UF; casar só por código
+> duplicaria 361 cidades já referenciadas por CEPs e clientes.
+
+É pré-requisito do CNAE do cliente (`cliente_cnaes`) e, portanto, da consulta de CNPJ:
+sem a referência carregada, os CNAEs voltam da Receita sem `cnaeId` e não podem ser
+vinculados.
+
+### Quando rodar
+
+Como **passo de deploy**, uma vez após publicar a imagem — **não** no boot do
+container. Dois motivos concretos:
+
+- Leva **~39 s** (medido em 2026-08-14: 5.571 municípios + 1.332 CNAEs). Isso
+  entraria no tempo de subida de todo container.
+- O `CMD` da imagem encadeia com `&&` (`migrate deploy && node dist/main.js`).
+  Um IBGE fora do ar derrubaria a subida da API inteira por causa de uma tabela
+  de referência que muda de anos em anos.
+
+Se um dia fizer sentido automatizar no boot, tem de ser tolerante a falha —
+algo como `(node prisma/dist/sync-ibge.js || echo 'sync falhou, seguindo')` —
+nunca no encadeamento rígido.
+
+Na imagem buildada o script já está compilado: `node prisma/dist/sync-ibge.js`
+(a partir de `/app/apps/api`).
+
+### VPS **[a confirmar]**
+
+> **PENDENTE:** registrar o comando exato na VPS (container e `DATABASE_URL`).
+> Enquanto isso, **pergunte** em vez de montar um comando novo.
+
+---
+
+## Carga do CNAE dos clientes (MinhaReceita) **[verificado em 2026-08-14]**
+
+`prisma/enrich-cnae.ts` consulta o CNPJ de cada cliente na base pública da
+Receita e grava **apenas os CNAEs** (`cliente_cnaes`).
+
+```bash
+docker exec \
+  -e DATABASE_URL="postgresql://plataforma:plataforma@postgres:5432/plataforma_comercial?schema=public" \
+  plataforma-comercial-dev-api-1 \
+  sh -c "cd /app/apps/api && pnpm exec ts-node prisma/enrich-cnae.ts --intervalo=900"
+```
+
+Opções: `--empresa=rcg` (padrão), `--todos` (inclui inativos), `--refazer`
+(reconsulta quem já tem CNAE), `--limite=N` (amostra), `--intervalo=ms`
+(cortesia com o serviço público, padrão 1000).
+
+**Não altera nenhum campo do cadastro** — de propósito. A fila de aprovação
+(`cliente_alteracoes`) cobre os campos do cliente, então um lote que mexesse
+neles abriria centenas de solicitações de uma vez. Divergência de endereço/razão
+social continua sendo tratada cliente a cliente pelo botão "Consultar CNPJ".
+
+É **retomável**: quem já tem CNAE é pulado, então uma interrupção no meio não
+obriga a refazer tudo (nem a bater de novo no serviço público). Pré-requisito:
+`sync:ibge` rodado — sem a referência não há a que vincular, e o script recusa
+começar.
+
+Escala da base atual: 6.626 clientes, dos quais **817** são jurídica + ativa +
+CNPJ válido (o alvo padrão). A ~1 req/s, cerca de 15 minutos.
+
+---
+
 ## Migrations em produção
 
 A imagem de produção da API aplica as migrations pendentes no boot:

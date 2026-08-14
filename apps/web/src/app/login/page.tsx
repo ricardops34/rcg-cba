@@ -76,6 +76,16 @@ function LoginForm() {
     if (accessToken) router.replace("/");
   }, [accessToken, router]);
 
+  // Motivo deixado pelo api-client quando a sessão foi cortada por horário de
+  // trabalho — sem isso o usuário só veria a tela de login de volta, sem
+  // entender que o expediente dele acabou.
+  useEffect(() => {
+    const motivo = sessionStorage.getItem("plataforma-auth-motivo");
+    if (!motivo) return;
+    sessionStorage.removeItem("plataforma-auth-motivo");
+    toast.warning(motivo);
+  }, []);
+
   // Busca o branding sempre que o alias muda (com debounce), e reflete na URL.
   useEffect(() => {
     const value = alias.trim().toLowerCase();

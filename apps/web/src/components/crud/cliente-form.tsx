@@ -13,7 +13,10 @@ import {
   type ClienteCamposConfig,
   type ClienteCreate,
   type ClienteUpdate,
+  type ClienteUpdateResultado,
   type CondicaoPagamento,
+  type ConsultaCepResultado,
+  type ConsultaCnpjResultado,
   type TabelaPreco,
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
@@ -37,7 +40,9 @@ import { Sheet, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ResizableSheetContent } from "@/components/ui/resizable-sheet-content";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft } from "lucide-react";
+import { ClienteCnaeSection } from "@/components/crud/cliente-cnae-section";
+import { ClienteHistoricoSection } from "@/components/crud/cliente-historico-section";
+import { ArrowLeft, Search } from "lucide-react";
 
 const LIST_ROUTE = "/cadastros/clientes";
 
@@ -231,6 +236,107 @@ export function ClienteFormContent({
     }
   }, [cliente, restrito, vendedorPadraoAplicado, meuVendedorId, form]);
 
+  const queryClient = useQueryClient();
+
+  /**
+   * Preenche o formulário com o que a Receita Federal tem sobre o CNPJ. Só
+   * escreve em campo vazio ou que o usuário ainda não editou? Não: sobrescreve
+   * mesmo — a fonte oficial é mais confiável que o cadastro herdado, e o
+   * usuário revisa antes de salvar. Campo travado em Admin > Campos do Cliente
+   * é respeitado.
+   */
+  const [consultandoCnpj, setConsultandoCnpj] = useState(false);
+  // CNAEs consultados antes de o cliente existir: ficam retidos aqui e são
+  // vinculados assim que o cadastro é criado (ver onSubmit). Sem isso o usuário
+  // teria de salvar e consultar o CNPJ de novo só para trazer o ramo.
+  const [cnaesRetidos, setCnaesRetidos] = useState<ConsultaCnpjResultado["cnaes"]>([]);
+  const consultarCnpj = async () => {
+    const cnpj = (form.getValues("cnpjCpf") ?? "").replace(/\D/g, "");
+    if (cnpj.length !== 14) {
+      toast.error("Informe um CNPJ com 14 dígitos para consultar");
+      return;
+    }
+    setConsultandoCnpj(true);
+    try {
+      const dados = await apiFetch<ConsultaCnpjResultado>(`/clientes/consulta-cnpj/${cnpj}`);
+      const preencher = (campo: keyof ClienteCreate, valor: string | null) => {
+        if (valor == null || desabilitado(campo as string)) return;
+        form.setValue(campo, valor as never, { shouldDirty: true });
+      };
+      preencher("razaoSocial", dados.razaoSocial);
+      preencher("nomeFantasia", dados.nomeFantasia);
+      preencher("endereco", dados.endereco);
+      preencher("complemento", dados.complemento);
+      preencher("bairro", dados.bairro);
+      preencher("municipio", dados.municipio);
+      preencher("uf", dados.uf);
+      preencher("cep", dados.cep);
+      preencher("telefone", dados.telefone);
+      preencher("telefone2", dados.telefone2);
+      preencher("email", dados.email);
+
+      // CNAEs são coleção filha: só dá para vincular em cliente já salvo.
+      if (cliente && dados.cnaes.length > 0) {
+        const vinculaveis = dados.cnaes.filter((c) => c.cnaeId);
+        for (const c of vinculaveis) {
+          try {
+            await apiFetch(`/clientes/${cliente.id}/cnaes`, {
+              method: "POST",
+              body: { cnaeId: c.cnaeId, principal: c.principal },
+            });
+          } catch {
+            // Já vinculado (409) é resultado esperado ao reconsultar — segue.
+          }
+        }
+        void queryClient.invalidateQueries({
+          queryKey: ["clientes", cliente.id, "cnaes"],
+        });
+        const semReferencia = dados.cnaes.length - vinculaveis.length;
+        toast.success(
+          `Dados da Receita preenchidos. ${vinculaveis.length} CNAE(s) vinculado(s)` +
+            (semReferencia
+              ? ` — ${semReferencia} não estão na referência local (rode o sync do IBGE).`
+              : "."),
+        );
+      } else {
+        // Cadastro novo: retém para vincular logo após a criação.
+        setCnaesRetidos(dados.cnaes.filter((c) => c.cnaeId));
+        toast.success(
+          dados.cnaes.length > 0 && !cliente
+            ? `Dados preenchidos. ${dados.cnaes.length} CNAE(s) serão vinculados ao salvar.`
+            : "Dados da Receita preenchidos. Revise antes de salvar.",
+        );
+      }
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Erro ao consultar o CNPJ");
+    } finally {
+      setConsultandoCnpj(false);
+    }
+  };
+
+  /** Autopreenche endereço ao sair do campo CEP (cache local, ViaCEP no miss). */
+  const consultarCep = async () => {
+    const cep = (form.getValues("cep") ?? "").replace(/\D/g, "");
+    if (cep.length !== 8) return;
+    // Endereço já preenchido não é sobrescrito: quem digitou o número e o
+    // complemento perderia o trabalho a cada saída do campo.
+    if (form.getValues("endereco")) return;
+    try {
+      const dados = await apiFetch<ConsultaCepResultado>(`/ceps/consulta/${cep}`);
+      const preencher = (campo: keyof ClienteCreate, valor: string | null) => {
+        if (valor == null || desabilitado(campo as string)) return;
+        form.setValue(campo, valor as never, { shouldDirty: true });
+      };
+      preencher("endereco", dados.endereco);
+      preencher("bairro", dados.bairro);
+      preencher("municipio", dados.municipio);
+      preencher("uf", dados.uf);
+    } catch {
+      // CEP não encontrado ou fonte fora do ar não é erro do formulário — o
+      // usuário digita o endereço à mão.
+    }
+  };
+
   const onSubmit = async (values: ClienteCreate) => {
     const payload: ClienteCreate = {
       ...values,
@@ -240,11 +346,43 @@ export function ClienteFormContent({
     };
     try {
       if (cliente) {
-        await update.mutateAsync({ id: cliente.id, input: payload });
-        toast.success("Cliente atualizado");
+        // Editar cliente passa pela fila de aprovação: quem não tem
+        // `clientes.aprovar` sai daqui com a solicitação registrada, e o
+        // cadastro segue como estava até alguém liberar.
+        const resultado = (await update.mutateAsync({
+          id: cliente.id,
+          input: payload,
+        })) as unknown as ClienteUpdateResultado;
+        if (resultado?.aplicado === false) {
+          toast.success(
+            "Alteração enviada para aprovação — o cadastro só muda depois de liberada.",
+          );
+        } else {
+          toast.success("Cliente atualizado");
+        }
       } else {
-        await create.mutateAsync(payload);
-        toast.success("Cliente cadastrado");
+        const criado = (await create.mutateAsync(payload)) as { id: string };
+        // Vincula os CNAEs trazidos da Receita antes de salvar — agora que há
+        // um cliente a que pendurá-los. Falha aqui não invalida o cadastro, que
+        // já está gravado.
+        let vinculados = 0;
+        for (const c of cnaesRetidos) {
+          try {
+            await apiFetch(`/clientes/${criado.id}/cnaes`, {
+              method: "POST",
+              body: { cnaeId: c.cnaeId, principal: c.principal },
+            });
+            vinculados += 1;
+          } catch {
+            // Segue: o CNAE pode ser vinculado depois pela aba do cadastro.
+          }
+        }
+        setCnaesRetidos([]);
+        toast.success(
+          vinculados
+            ? `Cliente cadastrado com ${vinculados} CNAE(s).`
+            : "Cliente cadastrado",
+        );
       }
       onClose();
     } catch (err) {
@@ -277,7 +415,22 @@ export function ClienteFormContent({
         </Field>
         <Field data-invalid={!!form.formState.errors.cnpjCpf}>
           <FieldLabel htmlFor="cnpjCpf">{tipoPessoa === "fisica" ? "CPF" : "CNPJ"}</FieldLabel>
-          <Input id="cnpjCpf" {...form.register("cnpjCpf")} disabled={desabilitado("cnpjCpf")} />
+          <div className="flex gap-2">
+            <Input id="cnpjCpf" {...form.register("cnpjCpf")} disabled={desabilitado("cnpjCpf")} />
+            {/* Só para jurídica: a consulta é de CNPJ na base da Receita. */}
+            {tipoPessoa === "juridica" && !readOnly && (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                title="Consultar CNPJ na Receita Federal"
+                onClick={consultarCnpj}
+                disabled={consultandoCnpj}
+              >
+                <Search className="size-4" />
+              </Button>
+            )}
+          </div>
           <FieldError errors={[form.formState.errors.cnpjCpf]} />
         </Field>
       </div>
@@ -442,7 +595,11 @@ export function ClienteFormContent({
         </Field>
         <Field>
           <FieldLabel htmlFor="cep">CEP</FieldLabel>
-          <Input id="cep" {...form.register("cep")} disabled={desabilitado("cep")} />
+          <Input
+            id="cep"
+            {...form.register("cep", { onBlur: consultarCep })}
+            disabled={desabilitado("cep")}
+          />
         </Field>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -642,6 +799,15 @@ export function ClienteFormContent({
     </FieldGroup>
   );
 
+  // Coleção filha: grava por conta própria e só existe com cliente salvo.
+  const camposCnae = cliente && (
+    <ClienteCnaeSection clienteId={cliente.id} readOnly={readOnly} />
+  );
+
+  const camposAlteracoes = cliente && (
+    <ClienteHistoricoSection clienteId={cliente.id} />
+  );
+
   const camposHistorico = cliente && (
     // Preenchido pelo import do legado — somente leitura.
     <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
@@ -673,15 +839,19 @@ export function ClienteFormContent({
                 <TabsTrigger value="contato">Contato</TabsTrigger>
                 <TabsTrigger value="endereco">Endereço</TabsTrigger>
                 <TabsTrigger value="comercial">Comercial</TabsTrigger>
+                {cliente && <TabsTrigger value="cnae">CNAE</TabsTrigger>}
                 {cliente && <TabsTrigger value="bloqueio">Bloqueio</TabsTrigger>}
                 {cliente && <TabsTrigger value="historico">Histórico</TabsTrigger>}
+                {cliente && <TabsTrigger value="alteracoes">Alterações</TabsTrigger>}
               </TabsList>
               <TabsContent value="identificacao">{camposIdentificacao}</TabsContent>
               <TabsContent value="contato">{camposContato}</TabsContent>
               <TabsContent value="endereco">{camposEndereco}</TabsContent>
               <TabsContent value="comercial">{camposComercial}</TabsContent>
+              {cliente && <TabsContent value="cnae">{camposCnae}</TabsContent>}
               {cliente && <TabsContent value="bloqueio">{camposBloqueio}</TabsContent>}
               {cliente && <TabsContent value="historico">{camposHistorico}</TabsContent>}
+              {cliente && <TabsContent value="alteracoes">{camposAlteracoes}</TabsContent>}
             </Tabs>
           ) : (
             <FieldGroup>
@@ -703,6 +873,12 @@ export function ClienteFormContent({
               </FieldSet>
               {cliente && (
                 <FieldSet>
+                  <FieldLegend>Ramo de atividade</FieldLegend>
+                  {camposCnae}
+                </FieldSet>
+              )}
+              {cliente && (
+                <FieldSet>
                   <FieldLegend>Bloqueio</FieldLegend>
                   {camposBloqueio}
                 </FieldSet>
@@ -711,6 +887,12 @@ export function ClienteFormContent({
                 <FieldSet>
                   <FieldLegend>Histórico comercial</FieldLegend>
                   {camposHistorico}
+                </FieldSet>
+              )}
+              {cliente && (
+                <FieldSet>
+                  <FieldLegend>Alterações do cadastro</FieldLegend>
+                  {camposAlteracoes}
                 </FieldSet>
               )}
             </FieldGroup>

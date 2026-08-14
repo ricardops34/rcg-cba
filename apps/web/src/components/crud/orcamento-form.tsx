@@ -38,7 +38,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Sheet, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -578,42 +584,6 @@ export function OrcamentoFormContent({
   const bloqueado = registro?.status === "aprovado" || registro?.status === "expirado";
 
   // Ao criar vindo de "Incluir Orçamento" (Posição de Cliente ou ?clienteId=
-  // na URL), busca o cliente pré-selecionado pra ler o vendedor cadastrado
-  // nele (mesma queryKey do ClienteCombobox, reaproveita o cache).
-  const clienteIdPadraoQuery = useQuery({
-    queryKey: ["clientes", clienteIdPadrao],
-    queryFn: () => apiFetch<Cliente>(`/clientes/${clienteIdPadrao}`),
-    enabled: !orcamento && !!clienteIdPadrao,
-  });
-
-  // Ao criar (não editar), pré-seleciona o vendedor cadastrado no cliente
-  // informado (clienteIdPadrao); sem cliente pré-selecionado, cai pro
-  // próprio vendedor do usuário logado, se houver vínculo — só na primeira
-  // carga.
-  const [vendedorPadraoAplicado, setVendedorPadraoAplicado] = useState(false);
-  const meuVendedorId = vendedoresEscopoQuery.data?.meuVendedorId;
-  const vendedorDoClientePadrao = clienteIdPadraoQuery.data?.vendedorId;
-  useEffect(() => {
-    if (orcamento || vendedorPadraoAplicado) return;
-    // Aguarda o cliente carregar antes de decidir — exceto se a busca falhou
-    // (ex.: sem permissão clientes.visualizar), aí cai direto pro fallback.
-    if (clienteIdPadrao && clienteIdPadraoQuery.isPending) return;
-    const vendedorPadrao = vendedorDoClientePadrao || meuVendedorId;
-    if (vendedorPadrao) {
-      form.setValue("vendedorId", vendedorPadrao);
-      setVendedorPadraoAplicado(true);
-    }
-  }, [
-    orcamento,
-    vendedorPadraoAplicado,
-    clienteIdPadrao,
-    clienteIdPadraoQuery.isPending,
-    vendedorDoClientePadrao,
-    meuVendedorId,
-    form,
-  ]);
-
-  // Ao criar vindo de "Incluir Orçamento" (Posição de Cliente ou ?clienteId=
   // na URL), pré-seleciona o cliente informado — só na primeira carga.
   const [clientePadraoAplicado, setClientePadraoAplicado] = useState(false);
   useEffect(() => {
@@ -655,6 +625,42 @@ export function OrcamentoFormContent({
     queryFn: () => apiFetch<Cliente>(`/clientes/${clienteId}`),
     enabled: !!clienteId,
   });
+
+  /**
+   * O vendedor do orçamento é o vendedor cadastrado no cliente — não é uma
+   * escolha do usuário. O campo fica somente leitura na tela e o servidor
+   * reimpõe a mesma regra ao gravar (ver OrcamentosService.create/update).
+   * Trocar o cliente traz o vendedor do novo cadastro junto; na edição, o
+   * vendedor já gravado só é substituído se o cliente mudar — assim reabrir
+   * um orçamento antigo não o transfere caso a carteira tenha mudado desde
+   * então.
+   *
+   * Cliente sem vendedor cadastrado é a única exceção: aí o campo é liberado
+   * (e cai no vendedor do usuário logado, abaixo), senão não haveria como
+   * orçar.
+   */
+  const vendedorDoCliente = clienteSelecionadoQuery.data?.vendedorId ?? null;
+  useEffect(() => {
+    if (!vendedorDoCliente) return;
+    // Cópia grava um orçamento novo, então segue a regra da criação.
+    if (orcamento && !copiando && clienteId === orcamento.clienteId) return;
+    if (form.getValues("vendedorId") === vendedorDoCliente) return;
+    form.setValue("vendedorId", vendedorDoCliente);
+    // A oportunidade é filtrada por vendedor — a anterior não vale mais.
+    form.setValue("oportunidadeId", null);
+  }, [vendedorDoCliente, orcamento, copiando, clienteId, form]);
+
+  // Enquanto não houver cliente escolhido (criação pelo menu, sem
+  // ?clienteId=), sugere o próprio vendedor do usuário logado, se houver
+  // vínculo — só na primeira carga; o vendedor do cliente assume depois.
+  const [vendedorPadraoAplicado, setVendedorPadraoAplicado] = useState(false);
+  const meuVendedorId = vendedoresEscopoQuery.data?.meuVendedorId;
+  useEffect(() => {
+    if (orcamento || vendedorPadraoAplicado || clienteIdPadrao) return;
+    if (!meuVendedorId) return;
+    form.setValue("vendedorId", meuVendedorId);
+    setVendedorPadraoAplicado(true);
+  }, [orcamento, vendedorPadraoAplicado, clienteIdPadrao, meuVendedorId, form]);
 
   // Ao criar, sugere "Título" = "Orçamento Cliente <nome fantasia>", acompanhando
   // o cliente escolhido enquanto o vendedor não mexer manualmente no título.
@@ -1251,6 +1257,8 @@ export function OrcamentoFormContent({
                 />
                 <FieldError errors={[form.formState.errors.clienteId]} />
               </Field>
+              {/* Vendedor vem do cadastro do cliente e não se troca aqui —
+                  só fica liberado quando o cliente não tem vendedor. */}
               <Field data-invalid={!!form.formState.errors.vendedorId}>
                 <FieldLabel htmlFor="vendedorId">Vendedor</FieldLabel>
                 <Select
@@ -1259,9 +1267,12 @@ export function OrcamentoFormContent({
                     form.setValue("vendedorId", v);
                     form.setValue("oportunidadeId", null);
                   }}
+                  disabled={!!vendedorDoCliente}
                 >
                   <SelectTrigger id="vendedorId" className="w-full">
-                    <SelectValue placeholder="Selecione o vendedor" />
+                    <SelectValue
+                      placeholder={clienteId ? "Selecione o vendedor" : "Escolha um cliente primeiro"}
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {opcoesVendedor.map((v) => (
@@ -1271,6 +1282,11 @@ export function OrcamentoFormContent({
                     ))}
                   </SelectContent>
                 </Select>
+                <FieldDescription>
+                  {vendedorDoCliente
+                    ? "Definido pelo cadastro do cliente."
+                    : "Cliente sem vendedor cadastrado — selecione o responsável."}
+                </FieldDescription>
                 <FieldError errors={[form.formState.errors.vendedorId]} />
               </Field>
             </div>

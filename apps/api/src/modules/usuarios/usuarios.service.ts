@@ -10,10 +10,12 @@ import {
   buildPaginatedResult,
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
+import { HorarioTrabalhoService } from '../acessos/horario-trabalho.service';
 import type {
   ResetPasswordInput,
   UsuarioCreate,
   UsuarioEmpresaCreate,
+  UsuarioHorariosUpdate,
   UsuarioQuery,
   UsuarioUpdate,
 } from '@plataforma/contracts';
@@ -26,6 +28,7 @@ export class UsuariosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly politicaSenhaService: PoliticaSenhaService,
+    private readonly horarioTrabalho: HorarioTrabalhoService,
   ) {}
 
   /**
@@ -301,6 +304,55 @@ export class UsuariosService {
         },
       }),
     );
+  }
+
+  /** Expediente cadastrado do usuário (ver UsuarioHorario). */
+  async obterHorarios(id: string) {
+    await this.findOne(id);
+    return this.horarioTrabalho.obter(id);
+  }
+
+  /**
+   * Substitui o conjunto de faixas do usuário e liga/desliga a restrição.
+   *
+   * Troca em bloco (apaga e recria) em vez de diferenciar linha a linha: são
+   * no máximo sete registros e o formulário sempre manda a semana inteira —
+   * mesmo padrão dos itens de orçamento. Tudo numa transação, senão uma falha
+   * no meio deixaria o usuário com meia semana cadastrada e restrição ligada,
+   * o que o trancaria fora do sistema.
+   */
+  async salvarHorarios(
+    id: string,
+    input: UsuarioHorariosUpdate,
+    actorId: string,
+  ) {
+    await this.findOne(id);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.usuarioHorario.deleteMany({ where: { usuarioId: id } });
+      if (input.horarios.length > 0) {
+        await tx.usuarioHorario.createMany({
+          data: input.horarios.map((h) => ({
+            usuarioId: id,
+            diaSemana: h.diaSemana,
+            horaInicio: h.horaInicio,
+            horaFim: h.horaFim,
+            createdBy: actorId,
+            updatedBy: actorId,
+          })),
+        });
+      }
+      await tx.usuario.update({
+        where: { id },
+        data: { restringirHorario: input.restringirHorario, updatedBy: actorId },
+      });
+    });
+
+    // O guard lê essa configuração de um cache de um minuto — sem isso, a
+    // mudança só valeria no próximo ciclo, e quem acabou de ser liberado
+    // continuaria barrado.
+    this.horarioTrabalho.invalidar(id);
+    return this.horarioTrabalho.obter(id);
   }
 
   async desvincularEmpresa(usuarioId: string, empresaId: string, actorId: string) {

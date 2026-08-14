@@ -26,6 +26,7 @@ import {
   inicioDoDia,
 } from '../titulos-receber/titulo-receber-status';
 import { ClienteCampoConfigService } from '../cliente-campo-config/cliente-campo-config.service';
+import { ClienteAlteracoesService } from './cliente-alteracoes.service';
 import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
 
 /**
@@ -126,6 +127,7 @@ export class ClientesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly campoConfig: ClienteCampoConfigService,
+    private readonly alteracoes: ClienteAlteracoesService,
   ) {}
 
   private limpar<T extends Record<string, unknown>>(input: T) {
@@ -220,6 +222,15 @@ export class ClientesService {
     });
   }
 
+  /**
+   * Editar cliente não grava direto: passa pela fila de aprovação
+   * (ClienteAlteracoesService). Quem tem `clientes.aprovar` aplica na hora, mas
+   * ainda deixa a solicitação registrada como autoaprovada — assim o histórico
+   * cobre toda alteração, sem exceção silenciosa.
+   *
+   * Por isso a resposta é discriminada: `{ aplicado: true, cliente }` ou
+   * `{ aplicado: false, solicitacao }`.
+   */
   async update(empresaId: string, user: AuthenticatedUser, id: string, input: ClienteUpdate) {
     // Reforço server-side da config de campos editáveis (apps/api/src/modules/
     // cliente-campo-config/) — mesmo que alguém tente forçar via API direto,
@@ -228,6 +239,8 @@ export class ClientesService {
     const inputPermitido = Object.fromEntries(
       Object.entries(input).filter(([campo]) => config[campo] !== false),
     ) as ClienteUpdate;
+
+    const aplicarDireto = this.alteracoes.usuarioAprova(user);
 
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
@@ -241,11 +254,34 @@ export class ClientesService {
       });
       if (!cliente) throw new NotFoundException('Cliente não encontrado');
       this.validarVendedorNoEscopo(escopo, inputPermitido.vendedorId);
-      return tx.cliente.update({
+
+      const registro = await this.alteracoes.registrar(tx, {
+        empresaId,
+        clienteId: id,
+        atual: cliente,
+        input: this.limpar(inputPermitido),
+        origem: 'manual',
+        autorId: user.id,
+        aplicarDireto,
+      });
+
+      if (registro.resultado === 'pendente') {
+        const solicitacao = await tx.clienteAlteracao.findUniqueOrThrow({
+          where: { id: registro.solicitacaoId },
+          include: {
+            cliente: { select: { razaoSocial: true, codigoErp: true } },
+          },
+        });
+        return { aplicado: false as const, solicitacao };
+      }
+
+      // 'aplicado' e 'sem-mudanca' devolvem o cliente — no segundo caso, o
+      // payload não mudava nada e nada foi gravado.
+      const atualizado = await tx.cliente.findUniqueOrThrow({
         where: { id },
-        data: { ...(this.limpar(inputPermitido) as object), updatedBy: user.id } as never,
         include: DETALHE_INCLUDE,
       });
+      return { aplicado: true as const, cliente: atualizado };
     });
   }
 

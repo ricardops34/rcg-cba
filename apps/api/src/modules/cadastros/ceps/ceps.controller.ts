@@ -9,7 +9,13 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { CONSULTA_CEP_EXAMPLE } from '@plataforma/contracts';
 import { CepsService } from './ceps.service';
 import { CepCreateDto, CepQueryDto, CepUpdateDto } from './dto/cep.dto';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
@@ -39,6 +45,22 @@ export class CepsController {
   @Get()
   findAll(@Query() query: CepQueryDto) {
     return this.service.findAll(query);
+  }
+
+  // Declarado antes de GET :id, senão o Nest casa "consulta" como :id.
+  @ApiOperation({
+    summary: 'Resolver endereço por CEP (ViaCEP, cache-first)',
+    description:
+      'Devolve o endereço do CEP para autopreencher formulário. Busca primeiro no cache local ' +
+      '(tabela de CEPs) e só chama o ViaCEP no miss, persistindo o resultado — `origem` diz de ' +
+      'onde veio. Estado e município são resolvidos na referência local (município pelo código ' +
+      'IBGE). 404 para CEP inexistente, 502 se o ViaCEP estiver fora. Utilitário de formulário: ' +
+      'só exige login, sem permissão de módulo.',
+  })
+  @ApiResponse({ status: 200, schema: { example: CONSULTA_CEP_EXAMPLE } })
+  @Get('consulta/:cep')
+  consultar(@Param('cep') cep: string) {
+    return this.service.consultar(cep);
   }
 
   @ApiOperation({ summary: 'Detalhar CEP', description: 'Requer ceps.visualizar.' })

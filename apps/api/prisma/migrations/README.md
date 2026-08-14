@@ -63,6 +63,17 @@ usuários).
   (ver `docs/planos/api-integracao-erp.md`) antes de existir `empresaId` de
   contexto: é essa consulta que descobre o tenant da requisição. Mesmo
   raciocínio de `refresh_tokens`.
+- **`acessos_log`** e **`sessoes`** — escritas no fluxo de login (auditoria de
+  acesso, ver `AcessosService`), antes de existir empresa ativa; no caso de uma
+  tentativa sem sucesso, o e-mail digitado pode nem corresponder a um usuário.
+  `empresaId` é nullable e informativo. O corte por empresa acontece na
+  **consulta**: `AcessosService` restringe as três rotas de `/acessos` aos
+  usuários com vínculo ativo na empresa da sessão, e só o perfil de sistema
+  (`isAdmin`) enxerga tentativas de e-mail não cadastrado. Mexeu nessas
+  consultas, mantenha esse filtro — aqui o Postgres não está segurando.
+- **`usuario_horarios`** — horário de trabalho por usuário (restrição de
+  expediente). Não tem `empresaId`: a trava é da conta, não do vínculo com uma
+  empresa, como a política de senha.
 
 ## Pré-requisitos operacionais
 
@@ -84,10 +95,11 @@ Com RLS: `usuario_empresas`, `produtos`, `vendedores`, `clientes`,
 `tabela_preco_itens`, `notas_saida`, `notas_saida_itens`, `titulos_receber`,
 `objetivos_vendedor_mes`, `objetivos_vendedor_categoria`, `oportunidades`,
 `atividades`, `orcamentos`, `orcamento_itens`, `cliente_campo_config`,
-`orcamento_config`.
+`orcamento_config`, `cliente_cnaes`.
 
-`integracao_api_keys` tem `empresaId` mas está na lista de exceções acima
-(não recebe RLS, pelo mesmo motivo de `refresh_tokens`).
+`integracao_api_keys`, `acessos_log` e `sessoes` têm `empresaId` mas estão na
+lista de exceções acima (não recebem RLS, pelo mesmo motivo de
+`refresh_tokens`).
 
 Sem RLS por serem referência global (sem coluna `empresaId`): `paises`,
 `estados`, `municipios`, `ceps`, `cnaes` (além das tabelas de sistema

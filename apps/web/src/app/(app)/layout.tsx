@@ -8,6 +8,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { AppSidebar, MobileSidebar } from "@/components/layout/app-sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
 import { ForcedPasswordChangeGate } from "@/components/auth/forced-password-change-gate";
+import { AgenteFab } from "@/components/agente/agente-fab";
 
 const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   "/": { title: "Dashboard", subtitle: "Visão comercial" },
@@ -23,6 +24,22 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   "/admin/orcamento-config": {
     title: "Validade de Orçamento",
     subtitle: "Dias de validade sugeridos ao criar um orçamento",
+  },
+  "/admin/acessos": {
+    title: "Acessos",
+    subtitle: "Entradas, tempo de uso e tentativas sem sucesso",
+  },
+  "/cadastros/clientes-alteracoes": {
+    title: "Alterações de Cliente",
+    subtitle: "Aprove ou recuse mudanças no cadastro",
+  },
+  "/admin/agente": {
+    title: "Agente IA",
+    subtitle: "Chave de API, personalidade e ajustes do assistente",
+  },
+  "/consultas/sugestao-compra": {
+    title: "Sugestão de Compra",
+    subtitle: "O que clientes parecidos compram e este ainda não",
   },
   "/perfil": { title: "Meu perfil", subtitle: "Dados da conta" },
   "/comercial/produtos": { title: "Produtos", subtitle: "Catálogo de produtos" },
@@ -68,6 +85,10 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
           <main className="flex-1 overflow-y-auto bg-muted/30 p-6">{children}</main>
         </div>
       </div>
+
+      {/* Montado uma vez no shell: fica disponível em toda tela do app e não
+          existe no login. */}
+      <AgenteFab />
     </div>
   );
 }

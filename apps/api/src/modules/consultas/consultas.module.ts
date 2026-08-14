@@ -7,5 +7,7 @@ import { ConsultasService } from './consultas.service';
   imports: [ParametrosModule],
   controllers: [ConsultasController],
   providers: [ConsultasService],
+  // Exportado para o agente consumir como ferramenta.
+  exports: [ConsultasService],
 })
 export class ConsultasModule {}

@@ -116,6 +116,11 @@ export class OrcamentosService {
     }
   }
 
+  /**
+   * Valida o cliente e devolve o vendedor cadastrado nele — que é também o
+   * vendedor do orçamento (ver create/update), e não uma escolha de quem
+   * está lançando.
+   */
   private async garantirClienteNoEscopo(
     tx: TenantTx,
     empresaId: string,
@@ -133,6 +138,7 @@ export class OrcamentosService {
     ) {
       throw new NotFoundException('Cliente fora do seu escopo');
     }
+    return cliente.vendedorId;
   }
 
   private async garantirOportunidadeNoEscopo(
@@ -307,13 +313,16 @@ export class OrcamentosService {
   create(empresaId: string, user: AuthenticatedUser, input: OrcamentoCreate) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
-      this.garantirVendedorNoEscopo(escopo, input.vendedorId);
-      await this.garantirClienteNoEscopo(
+      const vendedorDoCliente = await this.garantirClienteNoEscopo(
         tx,
         empresaId,
         escopo,
         input.clienteId,
       );
+      // O vendedor do orçamento é o do cadastro do cliente — o que vier no
+      // payload só vale se o cliente não tiver vendedor vinculado.
+      const vendedorId = vendedorDoCliente ?? input.vendedorId;
+      this.garantirVendedorNoEscopo(escopo, vendedorId);
       if (input.oportunidadeId) {
         await this.garantirOportunidadeNoEscopo(
           tx,
@@ -323,13 +332,13 @@ export class OrcamentosService {
         );
       }
 
-      const { itens, ...header } = input;
+      const { itens, ...header } = { ...input, vendedorId };
       const { data: itensData, vlrTotal } = await calcularItensOrcamento(
         tx,
         empresaId,
         input.clienteId,
         itens,
-        input.vendedorId,
+        vendedorId,
         await this.parametros.obterBoolean(
           empresaId,
           'DESCONTO_ACIMA_LIMITE_BLOQUEIA',
@@ -418,10 +427,9 @@ export class OrcamentosService {
         );
       }
 
-      if (input.vendedorId)
-        this.garantirVendedorNoEscopo(escopo, input.vendedorId);
+      let vendedorDoCliente: string | null = null;
       if (input.clienteId)
-        await this.garantirClienteNoEscopo(
+        vendedorDoCliente = await this.garantirClienteNoEscopo(
           tx,
           empresaId,
           escopo,
@@ -436,7 +444,18 @@ export class OrcamentosService {
         );
       }
 
-      const { itens, ...header } = input;
+      // O vendedor não se troca por edição: ele acompanha o cliente. Trocar o
+      // cliente traz junto o vendedor do novo cadastro; sem troca de cliente,
+      // fica o que já estava gravado, mesmo que o payload traga outro.
+      const clienteTrocado =
+        !!input.clienteId && input.clienteId !== orcamento.clienteId;
+      const vendedorId =
+        clienteTrocado && vendedorDoCliente
+          ? vendedorDoCliente
+          : orcamento.vendedorId;
+      this.garantirVendedorNoEscopo(escopo, vendedorId);
+
+      const { itens, ...header } = { ...input, vendedorId };
       let itensUpdate: Record<string, unknown> = {};
       if (itens) {
         await tx.orcamentoItem.deleteMany({ where: { orcamentoId: id } });
@@ -446,7 +465,7 @@ export class OrcamentosService {
           empresaId,
           clienteId,
           itens,
-          input.vendedorId ?? orcamento.vendedorId,
+          vendedorId,
           await this.parametros.obterBoolean(
             empresaId,
             'DESCONTO_ACIMA_LIMITE_BLOQUEIA',

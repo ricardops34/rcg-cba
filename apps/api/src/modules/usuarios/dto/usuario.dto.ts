@@ -3,6 +3,7 @@ import {
   resetPasswordSchema,
   usuarioCreateSchema,
   usuarioEmpresaCreateSchema,
+  usuarioHorariosUpdateSchema,
   usuarioQuerySchema,
   usuarioUpdateSchema,
 } from '@plataforma/contracts';
@@ -14,3 +15,6 @@ export class UsuarioEmpresaCreateDto extends createZodDto(
   usuarioEmpresaCreateSchema,
 ) {}
 export class ResetPasswordDto extends createZodDto(resetPasswordSchema) {}
+export class UsuarioHorariosUpdateDto extends createZodDto(
+  usuarioHorariosUpdateSchema,
+) {}

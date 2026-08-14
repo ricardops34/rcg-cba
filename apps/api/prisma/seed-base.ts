@@ -194,18 +194,32 @@ const ROTINAS_ADMIN_ONLY = new Set([
   'orcamento-config',
   // Parâmetros do sistema por empresa: config, não dado comercial.
   'parametros',
+  // Auditoria de acesso (quem entrou, quando, tentativas sem sucesso):
+  // segurança/sistema, não dado comercial.
+  'acessos',
 ]);
 
 async function limparDados() {
   // Ordem respeita as FKs. usuarioEmpresa e vendedor têm auto-referência
   // (superiorId; supervisorId/gerenteId): zera antes de apagar para não
   // violar a constraint.
+  // Filhas de Cliente e resultados derivados: apagadas antes de `cliente` e de
+  // `produto`, que elas referenciam.
+  await prisma.sugestaoCompraGerada.deleteMany();
+  await prisma.clienteHistorico.deleteMany();
+  await prisma.clienteAlteracao.deleteMany();
+  await prisma.clienteCnae.deleteMany();
+  // Conversas do agente e a configuração dele (referenciam empresa).
+  await prisma.agenteMensagem.deleteMany();
+  await prisma.agenteConversa.deleteMany();
+  await prisma.agenteConfig.deleteMany();
   await prisma.notaSaidaItem.deleteMany();
   await prisma.notaSaida.deleteMany();
   await prisma.tituloReceber.deleteMany();
   await prisma.estoque.deleteMany();
   await prisma.tabelaPrecoItem.deleteMany();
   await prisma.tabelaPreco.deleteMany();
+  await prisma.objetivoVendedorCategoria.deleteMany();
   await prisma.objetivoVendedorMes.deleteMany();
   await prisma.atividade.deleteMany();
   await prisma.orcamentoItem.deleteMany();
@@ -217,6 +231,9 @@ async function limparDados() {
   });
   await prisma.vendedor.deleteMany();
   await prisma.produto.deleteMany();
+  // Depois de produtos e itens, que apontam para a regra.
+  await prisma.regraDescontoFaixa.deleteMany();
+  await prisma.regraDesconto.deleteMany();
   // Auxiliares por empresa (categoria tem auto-referência categoriaPaiId).
   // Os auxiliares globais (estados, municípios, ceps, países, cnaes) não são
   // limpos: não referenciam empresa e sobrevivem ao re-seed, como menus.
@@ -226,6 +243,14 @@ async function limparDados() {
   await prisma.armazem.deleteMany();
   await prisma.refreshToken.deleteMany();
   await prisma.senhaHistorico.deleteMany();
+  // Auditoria de acesso e horário de trabalho referenciam `usuarios` — sem
+  // limpar aqui, o `usuario.deleteMany()` lá embaixo viola
+  // `sessoes_usuarioId_fkey` e o seed morre no MEIO da limpeza, deixando a
+  // base sem perfis, sem vínculos e sem dado de negócio.
+  await prisma.refreshToken.deleteMany({ where: { sessaoId: { not: null } } });
+  await prisma.sessao.deleteMany();
+  await prisma.acessoLog.deleteMany();
+  await prisma.usuarioHorario.deleteMany();
   await prisma.usuarioEmpresa.updateMany({ data: { superiorId: null } });
   await prisma.usuarioEmpresa.deleteMany();
   await prisma.perfilPermissao.deleteMany();
@@ -239,6 +264,8 @@ async function limparDados() {
   await prisma.clienteCampoConfig.deleteMany();
   await prisma.orcamentoConfig.deleteMany();
   await prisma.parametroEmpresa.deleteMany();
+  // Chaves da API de integração também apontam para empresa.
+  await prisma.integracaoApiKey.deleteMany();
   await prisma.empresa.deleteMany();
 }
 
@@ -378,6 +405,14 @@ async function bootstrapMenu() {
       moduloId: moduloAdministracao.id,
     },
     {
+      id: 'seed-menu-acessos',
+      nome: 'Acessos',
+      rota: '/admin/acessos',
+      icone: 'history',
+      codigo: 'acessos',
+      moduloId: moduloAdministracao.id,
+    },
+    {
       id: 'seed-menu-dashboard-comercial',
       nome: 'Dashboard',
       rota: '/comercial/dashboard',
@@ -401,6 +436,17 @@ async function bootstrapMenu() {
       codigo: 'clientes',
       // Cadastro de Clientes mora em Cadastros (junto de Tabelas de Preço,
       // Condições de Pagamento etc.), não em Comercial, que é operação.
+      moduloId: moduloCadastros.id,
+    },
+    // Fila de aprovação do cadastro: rotina própria porque aprovar é papel
+    // distinto de editar (a permissão que decide se a edição grava ou entra na
+    // fila é `clientes.aprovar`).
+    {
+      id: 'seed-menu-clientes-alteracoes',
+      nome: 'Alterações de Cliente',
+      rota: '/cadastros/clientes-alteracoes',
+      icone: 'file-clock',
+      codigo: 'clientes-alteracoes',
       moduloId: moduloCadastros.id,
     },
     {
