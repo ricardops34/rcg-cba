@@ -483,6 +483,32 @@ async function bootstrapMenu() {
       codigo: 'titulos-receber',
       moduloId: moduloComercial.id,
     },
+    // Atendimento por WhatsApp: a tela de conversa do vendedor. A conexão do
+    // aparelho é um botão dentro desta própria tela — é o vendedor que conecta
+    // o WhatsApp dele, e um menu separado só para parear seria um item a mais
+    // para ele nunca encontrar. O que é decisão da empresa (transporte,
+    // retenção) fica no módulo Configurações.
+    //
+    // As ações da rotina, para o RBAC:
+    //   visualizar → ver as próprias conversas
+    //   cadastrar  → enviar mensagem
+    //   editar     → conectar/desconectar o aparelho e vincular contato a cliente
+    {
+      id: 'seed-menu-whatsapp',
+      nome: 'Atendimento',
+      rota: '/comercial/atendimento',
+      icone: 'message-circle',
+      codigo: 'whatsapp-conversas',
+      moduloId: moduloComercial.id,
+    },
+    {
+      id: 'seed-menu-configuracoes-whatsapp',
+      nome: 'WhatsApp',
+      rota: '/admin/whatsapp',
+      icone: 'message-circle',
+      codigo: 'whatsapp-config',
+      moduloId: moduloAdministracao.id,
+    },
     {
       id: 'seed-menu-oportunidades',
       nome: 'Oportunidades',
@@ -710,6 +736,21 @@ async function bootstrapMenu() {
       menuId: 'seed-menu-orcamentos',
       nome: 'Comissão (valores)',
       codigo: 'comissao',
+    },
+    update: {},
+  });
+
+  // Rotina sem tela própria: ler a conversa de WhatsApp **de outro vendedor**.
+  // Separada de `whatsapp-conversas` (que é "as minhas") de propósito — ler o
+  // atendimento alheio é uma concessão consciente, não um efeito colateral de
+  // dar acesso à tela. Ver privacidade em docs/planos/whatsapp-vendedor.md.
+  await prisma.rotina.upsert({
+    where: { codigo: 'whatsapp-equipe' },
+    create: {
+      id: 'seed-rotina-whatsapp-equipe',
+      menuId: 'seed-menu-whatsapp',
+      nome: 'WhatsApp da equipe',
+      codigo: 'whatsapp-equipe',
     },
     update: {},
   });

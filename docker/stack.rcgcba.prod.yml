@@ -18,6 +18,9 @@ services:
       JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN}
       PORT: "3001"
       CORS_ORIGIN: ${CORS_ORIGIN}
+      AGENTE_IA_CRYPTO_KEY: ${AGENTE_IA_CRYPTO_KEY}
+      # Segredo compartilhado com o whatsapp-worker (mesmo valor nos dois).
+      WHATSAPP_WORKER_TOKEN: ${WHATSAPP_WORKER_TOKEN}
     volumes:
       # Uploads (logos de empresa) persistem fora do container.
       - uploads:/app/apps/api/uploads
@@ -35,6 +38,32 @@ services:
         - "traefik.http.routers.rcgcba-api.tls=true"
         - "traefik.http.routers.rcgcba-api.tls.certresolver=letsencryptresolver"
         - "traefik.http.services.rcgcba-api.loadbalancer.server.port=3001"
+
+  # Sessões de WhatsApp dos vendedores. Mesmo stack, mesma rede, mesmo deploy —
+  # é um serviço à parte, não uma stack à parte.
+  #
+  # Por que não roda dentro da API: cada sessão é um WebSocket vivo e com
+  # estado. A API reinicia a cada atualização e pode escalar em réplicas; duas
+  # réplicas com a mesma sessão fazem o WhatsApp derrubar uma delas.
+  #
+  # **replicas: 1 não é ajuste de capacidade, é requisito.** Subir para 2
+  # duplica as conexões e derruba o atendimento.
+  #
+  # Sem labels do Traefik de propósito: este serviço fala pelo WhatsApp dos
+  # vendedores e só deve ser alcançável de dentro da rede, pela API.
+  whatsapp-worker:
+    image: bjsoftware/rcgcba-whatsapp-worker:latest
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      WHATSAPP_WORKER_TOKEN: ${WHATSAPP_WORKER_TOKEN}
+      API_URL: http://rcgcba-api:3001
+      PORT: "3100"
+    networks:
+      network_public:
+        aliases:
+          - rcgcba-whatsapp-worker
+    deploy:
+      replicas: 1
 
   web:
     image: bjsoftware/rcgcba-web:latest

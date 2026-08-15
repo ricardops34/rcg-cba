@@ -1,0 +1,14 @@
+# Imagem de DESENVOLVIMENTO do worker de WhatsApp (bind mount + watch).
+#
+# **Node 22, não 20.** A `zapo-js` declara `engines: node >=20.9.0`, mas na
+# prática usa o `WebSocket` global, que só existe a partir do Node 22 — no 20
+# a conexão falha com "global WebSocket is not available in this runtime".
+# Manter a API e o web no Node 20 e subir só este serviço é justamente o que a
+# separação em worker permite.
+FROM node:22-alpine
+
+RUN npm install -g pnpm@10.0.0
+
+WORKDIR /app
+
+CMD ["sh", "-c", "pnpm --filter @plataforma/whatsapp-worker start:dev"]

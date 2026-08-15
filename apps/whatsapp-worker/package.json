@@ -1,0 +1,22 @@
+{
+  "name": "@plataforma/whatsapp-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "start:dev": "tsc -p tsconfig.json && { tsc -p tsconfig.json --watch --preserveWatchOutput & node --watch dist/main.js; }"
+  },
+  "dependencies": {
+    "@zapo-js/store-postgres": "^1.1.0",
+    "zapo-js": "^1.7.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.3"
+  }
+}

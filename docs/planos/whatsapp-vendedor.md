@@ -2,6 +2,11 @@
 
 > Plano de implementação registrado em 2026-08-14. Ainda não implementado — serve
 > como referência para quando a implementação começar.
+>
+> **Atualizado em 2026-08-14** após análise aprofundada do Zapo (issues, cadência de
+> commits, contribuidores, README). **Biblioteca escolhida: Zapo.** Duas decisões
+> técnicas mudaram por causa dessa análise — estado de sessão em **Postgres** (não
+> Redis) e **Redis sai do escopo da Fatia 1**. Ver "Sobre o Zapo" e Fase 1.
 
 ## Contexto
 
@@ -58,22 +63,70 @@ uma implementação de interface, não uma reescrita.
 Colocar o número pessoal de 69 vendedores nisso é o cenário que eu não recomendaria:
 o número que some é a agenda de clientes deles.
 
-### Sobre o Zapo especificamente
+### Sobre o Zapo — análise de 2026-08-14
 
-Analisado em 2026-08-14 (`github.com/vinikjkkj/zapo`):
+Biblioteca escolhida (`github.com/vinikjkkj/zapo`). Duas leituras foram feitas: uma
+superficial (página do repositório) e uma segunda, mais funda, sobre issues, cadência
+de commits e contribuidores. **A segunda corrigiu conclusões da primeira** — ficam as
+duas registradas para quem revisar a decisão depois.
 
-- Implementação própria do protocolo WhatsApp Web em TypeScript, **sem depender de
-  Baileys ou whatsapp-web.js**. Licença MIT.
-- Pareamento por **QR code** (`auth_qr` → `auth_paired`), multi-sessão, stores
-  plugáveis (SQLite, Redis, Postgres, MongoDB), zero dependências obrigatórias em
-  runtime, acelerador cripto em Rust opcional, e um servidor MCP para agentes LLM.
-- **Ponto de atenção:** criado em **março de 2026** (5 meses), **181 estrelas, 58
-  forks, 3 watchers**. Comparação: o Baileys tem ~9,9 mil estrelas e anos de estrada.
-  É um projeto jovem, de mantenedor essencialmente único.
+**O que é.** Implementação própria do protocolo WhatsApp Web em TypeScript, **sem
+depender de Baileys ou whatsapp-web.js**. MIT. Estável desde a **v1.0.0**, seguindo
+SemVer declarado. Requer **Node >= 20.9.0** — nossos containers são todos
+`node:20-alpine`, compatível sem mexer em nada.
 
-O risco aqui é somado, não alternativo: além do banimento (que vale para qualquer
-biblioteca não oficial), há o risco de o projeto parar. O protocolo do WhatsApp muda
-sem aviso; biblioteca sem manutenção quebra e não volta. A camada de transporte da
+A API é pequena, o que é bom sinal para a camada de transporte da Fase 2:
+
+```ts
+const client = new WaClient({ store, sessionId: 'default' }, new ConsoleLogger('info'))
+client.on('auth_qr',    ({ qr }) => …)          // QR para a tela do vendedor
+client.on('auth_paired',({ credentials }) => …) // credencial a persistir cifrada
+client.on('message',    async (event) => …)     // recebimento
+await client.message.send(jid, 'pong')
+await client.connect()
+```
+
+`sessionId` é parâmetro de construtor: **multi-sessão é uma instância por vendedor**,
+sem gambiarra. O store é plugável por backend — incluindo **Postgres**, o que permite
+guardar o estado Signal no banco que já temos (ver Fase 1).
+
+**Manutenção — a primeira leitura estava errada.** Não é projeto de mantenedor único:
+são **4 contribuidores** ativos (`vini`/`vinikjkkj`, `digaovaa`, `jlucaso1`), com
+commits nos últimos dias. A atividade é **contínua desde a criação** (março/2026),
+com pico de 47 commits numa semana e as últimas cinco em 15, 10, 13 e 9 — as "semanas
+sem atividade" que aparecem na estatística do GitHub são apenas as semanas em que o
+repositório ainda não existia. Dos ~19 issues mais recentes, **17 fechados**, a
+maioria em um ou dois dias; só dois abertos (um pedido de feature e um bug de `ws` no
+Node v26.7.0, que não nos afeta).
+
+**O achado que mais importa.** Nos dez dias anteriores à análise foram corrigidos
+**sete bugs de protocolo**: pareamento e payload Noise desalinhados com o WhatsApp
+Web, dispositivos hospedados não reconhecidos como próprios, votos de enquete
+indecifráveis entre os formatos PN e LID, versão errada de protocolo em enquetes,
+`native_flow` incorreto para PIX, newsletter devolvendo 400.
+
+Isso não indica instabilidade do projeto — indica **a natureza da categoria**: o
+WhatsApp muda o protocolo por baixo, continuamente, e a biblioteca corre atrás. A
+qualidade do Zapo está em correr rápido. Mas a consequência operacional é dura e
+precisa estar no orçamento da feature:
+
+> **Esta não é uma dependência que se instala e esquece.** Ficar dois meses sem
+> atualizar significa quebrar. Alguém precisa acompanhar releases — é **custo
+> recorrente**, não custo de implantação.
+
+**O disclaimer.** O README diz apenas: *"This project is an independent implementation
+for engineering and interoperability research. It is not affiliated with or endorsed
+by WhatsApp."* — a formulação que dá cobertura ao autor. **Não há uma palavra sobre
+risco de banimento**: o projeto não assume, e não poderia assumir, o risco que recai
+sobre o número do vendedor. Isso reforça a recomendação de chip dedicado acima.
+
+**Ponto de atenção de infraestrutura.** O issue #235 relatou **9 GB de RAM** com o
+store em Redis, onde se esperavam 500 MB. Foi corrigido, mas é justamente o backend
+que a versão anterior deste plano pretendia introduzir — motivo direto da mudança
+para Postgres na Fase 1.
+
+O risco continua somado, não alternativo: além do banimento (que vale para qualquer
+biblioteca não oficial), há o risco de o projeto parar. A camada de transporte da
 Fase 2 é o que protege disso — trocar Zapo por Baileys deve custar um arquivo.
 
 ---
@@ -95,12 +148,30 @@ Então: **`apps/whatsapp-worker`**, serviço Node próprio na mesma stack.
 
 - **Uma réplica só** (as sessões são *stateful*; não dá para balancear entre réplicas
   sem sharding por sessão — fica registrado como limite conhecido).
-- Conversa com a API por **fila/pub-sub no Redis**. Atenção: o `docker-compose.dev.yml`
-  já define `REDIS_URL` e sobe um Redis, **mas nenhum código usa** e **o stack de
-  produção (`stack.rcgcba.prod.yml`) não tem Redis nenhum** — precisa ser adicionado.
-- Estado de sessão persistido **cifrado** (AES-256-GCM, mesma `AGENTE_IA_CRYPTO_KEY`
-  ou chave irmã): a credencial de sessão dá acesso ao WhatsApp do vendedor, é segredo
-  de verdade.
+- **Sem Redis** (decisão revista em 2026-08-14). A versão anterior deste plano previa
+  fila/pub-sub no Redis e o store de sessão nele. Dois motivos derrubaram isso: o
+  Zapo oferece **store em Postgres**, e o issue #235 mostrou consumo de memória
+  patológico justamente no backend Redis. Como o `stack.rcgcba.prod.yml` **não tem
+  Redis nenhum** hoje (o `docker-compose.dev.yml` sobe um, mas nenhum código usa),
+  evitar Redis **remove um componente inteiro de infraestrutura da Fatia 1** — menos
+  coisa nova em produção, menos coisa para operar.
+  - Estado de sessão: **store Postgres do Zapo**, no banco que já existe.
+  - Eventos worker ↔ API: **`LISTEN`/`NOTIFY` do Postgres** para o que é assíncrono
+    (mensagem recebida, sessão caiu) e **HTTP direto** para o que é comando com
+    resposta (enviar mensagem, parear, desconectar). Com **uma réplica** do worker,
+    isso basta — fila durável só passa a ser necessária se houver sharding.
+- **A cifra precisa de desenho próprio.** A credencial de sessão dá acesso ao WhatsApp
+  do vendedor — é segredo de verdade, e o requisito de guardá-la cifrada
+  (AES-256-GCM, mesma `AGENTE_IA_CRYPTO_KEY` ou chave irmã) **continua valendo**. Mas
+  o store do Zapo grava no formato dele, em tabelas dele, sem cifra nossa e sem
+  `empresaId`/RLS. Duas saídas, a decidir na implementação:
+  1. **Store customizado** implementando a interface do Zapo por cima do nosso Prisma
+     — cifrando na escrita e decifrando na leitura. Mais trabalho, mas mantém a regra
+     de RLS e cifra do resto do sistema.
+  2. Store Postgres nativo do Zapo num **schema separado**, com `GRANT` restrito, e a
+     cifra ficando por conta do isolamento do schema.
+  A opção 1 é a coerente com o restante da plataforma; fica registrada como a
+  preferida, com o custo reconhecido.
 - Reconexão com backoff, e o evento de "sessão caiu" precisa chegar à tela do vendedor
   para ele reparear.
 
@@ -122,6 +193,21 @@ export interface WhatsappTransport {
 
 Duas implementações: `ZapoTransport` e `CloudApiTransport`. A escolha vem de um
 parâmetro por empresa (`WHATSAPP_TRANSPORTE`), reusando `ParametrosService`.
+
+O mapeamento para a API real do Zapo é quase um para um — foi o que confirmou que
+esta interface é adequada e não uma abstração inventada:
+
+| Interface | Zapo |
+|---|---|
+| `parear(sessaoId)` | `new WaClient({ store, sessionId })` + eventos `auth_qr` / `auth_paired` |
+| `enviarTexto(...)` | `client.message.send(jid, texto)` |
+| `aoReceber(handler)` | `client.on('message', …)` |
+| `desconectar(...)` | encerramento do `WaClient` da sessão |
+
+A assimetria a tratar está no `CloudApiTransport`: lá não existe `parear` por QR (o
+número é provisionado na WABA) e o recebimento é **webhook**, não evento de socket.
+A interface aguenta os dois, mas a tela de conexão precisa saber que o passo de QR
+some — é a única parte do front que não é agnóstica ao transporte.
 
 Todo o resto do sistema fala **só com essa interface**. É o que transforma "trocar de
 biblioteca" ou "migrar para a API oficial" num trabalho de dias em vez de meses — e,
@@ -274,6 +360,15 @@ supervisor/gerente, com o filtro de vendedor.
 8. Fora do expediente, o acesso à tela cai no mesmo 403 `FORA_HORARIO`.
 9. Trocar `WHATSAPP_TRANSPORTE` de `zapo` para `cloud-api` não exige mudança fora da
    camada de transporte.
+10. Credencial de sessão gravada no banco está **cifrada** — conferir lendo a tabela
+    direto, como se faz com `agente_credenciais`.
+
+### Rotina de manutenção (não é verificação de entrega, é de operação)
+
+Pela cadência de correções de protocolo do Zapo (ver análise acima), a feature só
+segue funcionando se alguém **acompanhar os releases da biblioteca** e atualizar com
+regularidade. Definir o responsável e a periodicidade **antes** do piloto ir ao ar —
+descobrir isso depois do primeiro atendimento quebrado é caro.
 
 ---
 
@@ -293,6 +388,61 @@ Sugestão de fatiamento, cada fatia com valor próprio:
 A Fatia 3 não é opcional nem "depois se der": se a Fatia 1 for para produção sem ela,
 já haverá conversa de cliente gravada sem regra de acesso nem de descarte.
 
+---
+
+## Estado real em 2026-08-15 (fim da primeira sessão de implementação)
+
+**Funciona ponta a ponta:** pareamento por QR (sessão real, credenciais
+persistidas), a API fala com o worker autenticada, e mensagem recebida percorre
+worker → API → regra de vínculo → banco.
+
+**Requisito adicional do usuário, ainda não implementado:** a tela de Atendimento
+precisa das *funções padrão do WhatsApp* — **histórico de conversas e agenda de
+contatos** —, para que o vendedor possa **vincular contatos a clientes** a partir
+do que já existe no aparelho, sem depender de alguém escrever primeiro.
+
+### Os quatro itens em aberto, na ordem recomendada
+
+1. **Restaurar sessões no boot do worker.** O endpoint já existe
+   (`GET /api/v1/whatsapp/interno/sessoes-ativas`, autenticado pelo token); falta
+   o worker chamá-lo ao subir e reabrir cada sessão. Sem isso **todo deploy
+   derruba o atendimento de todos os vendedores** até cada um reconectar na mão.
+2. **Trazer agenda e conversas para a tela.** O store agora grava `contacts` e
+   `threads` no schema `whatsapp` — mas **nada lê de lá**. Falta: `GRANT` de
+   leitura para o role da API (numa migration, explícito), o serviço que lê essas
+   tabelas e as apresenta como contatos vinculáveis, e a UI.
+3. **Botão de iniciar conversa**, buscando por cliente da carteira **e** por
+   contato da agenda.
+4. **Feed de notificações** no sino (hoje é placeholder): não lidas do WhatsApp +
+   atividades pendentes/agendadas, com link. O backend já tem `totalNaoLidas`.
+
+### A linha de privacidade, depois da revisão do usuário
+
+| Domínio | Situação | Por quê |
+|---|---|---|
+| `contacts`, `threads` | **gravados** | é o que permite ver e vincular a clientes |
+| `messages` | **`'none'`** | guardar o texto de conversa não vinculada arquivaria a conversa pessoal do vendedor |
+
+Conteúdo de mensagem de contato **vinculado** é gravado pela API em
+`whatsapp_mensagens`, no instante em que chega. Gravação retroativa continua não
+acontecendo.
+
+### Armadilhas descobertas executando (nenhuma aparece em build)
+
+- **A biblioteca faz DDL a cada conexão**, não só na primeira. Por isso existe o
+  role `whatsapp_store`, dono do schema `whatsapp` (migration
+  `20260815024500`), sem acesso nenhum às tabelas de negócio. Não tente resolver
+  com `GRANT` nas tabelas — não basta.
+- **`search_path` no role** (migration `20260815025500`): o `?schema=` da URL é
+  convenção do Prisma, o driver `pg` ignora.
+- **Node 22 obrigatório** no worker: a `zapo-js` declara `>=20.9.0` mas usa o
+  `WebSocket` global, que só existe no 22. API e web seguem no 20.
+- **Rotas da API são versionadas** (`/api/v1/...`): o worker entregava em
+  `/api/whatsapp/interno/mensagem` e morria num 404 silencioso.
+- **Dev não recarrega de forma confiável** — nem o `tsc --watch` do worker, nem o
+  Turbopack do web (rota nova/movida exige reiniciar o container). Confirme que a
+  mudança está no `dist` em execução antes de concluir que ela não funcionou.
+
 ## Fora de escopo (registrado)
 
 - Emissão de boleto e DANFE (dependem de integração bancária/ERP inexistente).
@@ -308,11 +458,15 @@ já haverá conversa de cliente gravada sem regra de acesso nem de descarte.
 - `apps/api/prisma/schema.prisma` (5 models + migration com RLS)
 - `packages/contracts/src/whatsapp.ts`
 - `apps/web/src/app/(app)/comercial/whatsapp/**`
-- `docker/stack.rcgcba.prod.yml` (Redis + serviço do worker)
+- `docker/stack.rcgcba.prod.yml` (serviço do worker — **sem Redis**, ver Fase 1)
 
 ## Fontes consultadas (2026-08-14)
 
 - [Zapo — repositório](https://github.com/vinikjkkj/zapo)
+- Zapo — [README](https://github.com/vinikjkkj/zapo/blob/master/README.md),
+  [issues](https://github.com/vinikjkkj/zapo/issues?q=is%3Aissue),
+  histórico de commits e estatística de participação (via API do GitHub), consultados
+  em 2026-08-14 para a análise de manutenção acima
 - [WhatsApp Cloud API vs Unofficial Libraries Compared](https://whatsapp.checkleaked.cc/blog/whatsapp-cloud-api-vs-unofficial)
 - [WhatsApp Multi-Device Protocol: A 2026 Dev Guide](https://whatsapp.checkleaked.cc/blog/whatsapp-multi-device-protocol)
 - [WhatsApp Automation Ban Risk 2026 — Kraya AI](https://blog.kraya-ai.com/whatsapp-automation-ban-risk)

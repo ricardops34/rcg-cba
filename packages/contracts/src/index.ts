@@ -44,3 +44,4 @@ export * from "./auth";
 export * from "./politica-senha";
 export * from "./usuario-horario";
 export * from "./acesso";
+export * from "./whatsapp";

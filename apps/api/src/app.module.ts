@@ -35,6 +35,7 @@ import { ParametrosModule } from './modules/parametros/parametros.module';
 import { ConsultasModule } from './modules/consultas/consultas.module';
 import { SugestaoCompraModule } from './modules/sugestao-compra/sugestao-compra.module';
 import { AgenteModule } from './modules/agente/agente.module';
+import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { AcessosModule } from './modules/acessos/acessos.module';
 
 @Module({
@@ -80,6 +81,7 @@ import { AcessosModule } from './modules/acessos/acessos.module';
     ConsultasModule,
     SugestaoCompraModule,
     AgenteModule,
+    WhatsappModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

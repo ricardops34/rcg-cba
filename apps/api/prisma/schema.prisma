@@ -75,6 +75,12 @@ model Empresa {
   agenteCredenciais          AgenteCredencial[]
   agenteConversas            AgenteConversa[]
   agenteMensagens            AgenteMensagem[]
+  whatsappConfig             WhatsappConfig?
+  whatsappSessoes            WhatsappSessao[]
+  whatsappContatos           WhatsappContato[]
+  whatsappConversas          WhatsappConversa[]
+  whatsappMensagens          WhatsappMensagem[]
+  whatsappAcoes              WhatsappAcaoRegistro[]
 
   @@map("empresas")
 }
@@ -462,7 +468,6 @@ model Produto {
   // a resolução de qual regra vale ainda não existe — por ora é só o vínculo.
   regraDescontoId String?
 
-
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -473,8 +478,8 @@ model Produto {
   empresa       Empresa        @relation(fields: [empresaId], references: [id])
   regraDesconto RegraDesconto? @relation(fields: [regraDescontoId], references: [id])
   categoria     Categoria?     @relation("ProdutoCategoria", fields: [categoriaId], references: [id])
-  subCategoria Categoria? @relation("ProdutoSubCategoria", fields: [subCategoriaId], references: [id])
-  armazem      Armazem?   @relation(fields: [armazemId], references: [id])
+  subCategoria  Categoria?     @relation("ProdutoSubCategoria", fields: [subCategoriaId], references: [id])
+  armazem       Armazem?       @relation(fields: [armazemId], references: [id])
 
   estoques          Estoque[]
   tabelasPrecoItens TabelaPrecoItem[]
@@ -512,14 +517,14 @@ model Vendedor {
   // Papel na hierarquia comercial — exatamente um. Antes eram três booleanos
   // independentes (vendedor/supervisor/gerente), que aceitavam combinações
   // sem sentido; o enum torna o estado inválido impossível.
-  tipo TipoVendedor @default(vendedor)
+  tipo         TipoVendedor     @default(vendedor)
   // Como o vendedor se liga à empresa. `sistema` são os cadastros que não são
   // pessoas de venda (ESCRITORIO, E-COMMERCE...), mantidos porque o ERP
   // credita notas a eles.
-  vinculo VinculoVendedor?
+  vinculo      VinculoVendedor?
   // Aparece nas telas gerenciais (dashboard/objetivos). Cadastro de sistema e
   // vendedor sem carteira normalmente ficam de fora.
-  usaDashboard Boolean @default(true)
+  usaDashboard Boolean          @default(true)
 
   supervisorId String?
   gerenteId    String?
@@ -552,6 +557,7 @@ model Vendedor {
   atividades           Atividade[]
   objetivosVendedorMes ObjetivoVendedorMes[]
   orcamentos           Orcamento[]
+  whatsappSessoes      WhatsappSessao[]
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, nome])
@@ -651,16 +657,18 @@ model Cliente {
   tabelaPreco       TabelaPreco?       @relation(fields: [tabelaPrecoId], references: [id])
   condicaoPagamento CondicaoPagamento? @relation(fields: [condicaoPagamentoId], references: [id])
 
-  notasSaida      NotaSaida[]
-  notasSaidaItens NotaSaidaItem[]
-  titulosReceber  TituloReceber[]
-  oportunidades   Oportunidade[]
-  atividades      Atividade[]
-  orcamentos      Orcamento[]
-  cnaes           ClienteCnae[]
-  alteracoes      ClienteAlteracao[]
-  historico       ClienteHistorico[]
-  sugestoesCompra SugestaoCompraGerada[]
+  notasSaida        NotaSaida[]
+  notasSaidaItens   NotaSaidaItem[]
+  titulosReceber    TituloReceber[]
+  oportunidades     Oportunidade[]
+  atividades        Atividade[]
+  orcamentos        Orcamento[]
+  cnaes             ClienteCnae[]
+  alteracoes        ClienteAlteracao[]
+  historico         ClienteHistorico[]
+  sugestoesCompra   SugestaoCompraGerada[]
+  whatsappContatos  WhatsappContato[]
+  whatsappConversas WhatsappConversa[]
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, razaoSocial])
@@ -733,11 +741,11 @@ model ClienteAlteracao {
  * para mudanças vindas do ERP.
  */
 model ClienteHistorico {
-  id          String                 @id @default(uuid())
-  empresaId   String
-  clienteId   String
-  alteracaoId String?
-  campo       String
+  id            String                 @id @default(uuid())
+  empresaId     String
+  clienteId     String
+  alteracaoId   String?
+  campo         String
   // Texto porque o histórico é para leitura humana; o valor tipado vive no
   // cliente, não aqui.
   valorAnterior String?
@@ -805,8 +813,8 @@ model AgenteConfig {
   maxIteracoesFerramentas Int @default(5)
   historicoMensagens      Int @default(20)
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   createdBy String?
   updatedBy String?
 
@@ -877,8 +885,8 @@ model AgenteMensagem {
   argumentos Json?
   resultado  Json?
 
-  pendente     Boolean   @default(false)
-  confirmadaEm DateTime?
+  pendente      Boolean   @default(false)
+  confirmadaEm  DateTime?
   confirmadaPor String?
 
   tokensEntrada Int?
@@ -1197,7 +1205,6 @@ model Categoria {
   // a resolução de qual regra vale ainda não existe — por ora é só o vínculo.
   regraDescontoId String?
 
-
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -1208,7 +1215,7 @@ model Categoria {
   empresa       Empresa        @relation(fields: [empresaId], references: [id])
   regraDesconto RegraDesconto? @relation(fields: [regraDescontoId], references: [id])
   categoriaPai  Categoria?     @relation("CategoriaSubcategoria", fields: [categoriaPaiId], references: [id])
-  subcategorias Categoria[] @relation("CategoriaSubcategoria")
+  subcategorias Categoria[]    @relation("CategoriaSubcategoria")
 
   produtos                   Produto[]                   @relation("ProdutoCategoria")
   produtosSub                Produto[]                   @relation("ProdutoSubCategoria")
@@ -1311,7 +1318,6 @@ model TabelaPrecoItem {
   // a resolução de qual regra vale ainda não existe — por ora é só o vínculo.
   regraDescontoId String?
 
-
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -1322,7 +1328,7 @@ model TabelaPrecoItem {
   empresa       Empresa        @relation(fields: [empresaId], references: [id])
   regraDesconto RegraDesconto? @relation(fields: [regraDescontoId], references: [id])
   tabelaPreco   TabelaPreco    @relation(fields: [tabelaPrecoId], references: [id], onDelete: Cascade)
-  produto     Produto     @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  produto       Produto        @relation(fields: [produtoId], references: [id], onDelete: Restrict)
 
   @@unique([empresaId, codigoLegado])
   @@index([tabelaPrecoId, produtoId])
@@ -1347,14 +1353,14 @@ model RegraDesconto {
   descricao String
 
   // Z0_DESCAUT ("% Desc. Aut"): percentual de desconto autorizado.
-  percDescontoAutorizado Float @default(0)
+  percDescontoAutorizado Float   @default(0)
   // Z0_PERMAX ("% Desc Max"): percentual de desconto máximo da regra.
-  percDescontoMaximo Float @default(0)
+  percDescontoMaximo     Float   @default(0)
   // Z0_COMIS: comissão cheia da regra, sobre a qual as faixas aplicam a base.
-  percComissao Float @default(0)
+  percComissao           Float   @default(0)
   // Z0_PADRAO: regra usada quando nenhuma outra se aplica.
-  padrao Boolean @default(false)
-  ativo  Boolean @default(true)
+  padrao                 Boolean @default(false)
+  ativo                  Boolean @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1368,11 +1374,11 @@ model RegraDesconto {
 
   // Quem aponta pra esta regra. A precedência entre eles (item > tabela de
   // preço > produto > categoria) ainda não está implementada.
-  categorias        Categoria[]
-  produtos          Produto[]
-  tabelaPrecoItens  TabelaPrecoItem[]
-  notasSaidaItens   NotaSaidaItem[]
-  orcamentoItens    OrcamentoItem[]
+  categorias       Categoria[]
+  produtos         Produto[]
+  tabelaPrecoItens TabelaPrecoItem[]
+  notasSaidaItens  NotaSaidaItem[]
+  orcamentoItens   OrcamentoItem[]
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, descricao])
@@ -1535,11 +1541,9 @@ model NotaSaidaItem {
   // aplicada). Nulo enquanto não houver cálculo — nada preenche ainda.
   percComissao Float?
 
-
   // Regra de desconto aplicável (SZ0 do ERP). Nulo = sem regra própria;
   // a resolução de qual regra vale ainda não existe — por ora é só o vínculo.
   regraDescontoId String?
-
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1551,9 +1555,9 @@ model NotaSaidaItem {
   empresa       Empresa        @relation(fields: [empresaId], references: [id])
   regraDesconto RegraDesconto? @relation(fields: [regraDescontoId], references: [id])
   notaSaida     NotaSaida      @relation(fields: [notaSaidaId], references: [id], onDelete: Cascade)
-  cliente   Cliente?  @relation(fields: [clienteId], references: [id])
-  vendedor  Vendedor? @relation(fields: [vendedorId], references: [id])
-  produto   Produto?  @relation(fields: [produtoId], references: [id])
+  cliente       Cliente?       @relation(fields: [clienteId], references: [id])
+  vendedor      Vendedor?      @relation(fields: [vendedorId], references: [id])
+  produto       Produto?       @relation(fields: [produtoId], references: [id])
 
   @@unique([empresaId, codigoLegado])
   @@index([notaSaidaId])
@@ -1800,7 +1804,7 @@ model OrcamentoItem {
   regraDescontoId String?
   // Percentual de comissão apurado na linha (resultado da regra de desconto
   // aplicada). Nulo enquanto não houver cálculo — nada preenche ainda.
-  percComissao Float?
+  percComissao    Float?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1938,4 +1942,253 @@ model SenhaHistorico {
 
   @@index([usuarioId, createdAt])
   @@map("senha_historico")
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp do vendedor — ver docs/planos/whatsapp-vendedor.md
+// ---------------------------------------------------------------------------
+
+enum WhatsappTransporte {
+  zapo
+  cloud_api
+}
+
+enum WhatsappSessaoStatus {
+  desconectada
+  pareando
+  conectada
+  banida
+}
+
+enum WhatsappDirecao {
+  entrada
+  saida
+}
+
+enum WhatsappTipoMensagem {
+  texto
+  imagem
+  documento
+  audio
+  video
+  localizacao
+  contato
+  outro
+}
+
+enum WhatsappStatusEntrega {
+  pendente
+  enviada
+  entregue
+  lida
+  erro
+}
+
+/**
+ * Sessão de WhatsApp de um vendedor — uma conexão viva no worker.
+ * `credencialCifrada` é o estado de autenticação devolvido pelo pareamento
+ * (AES-256-GCM, como `AgenteCredencial.apiKeyCifrada`). É segredo de verdade:
+ * quem tem essa credencial fala pelo WhatsApp do vendedor. Nunca sai da API.
+ * `transporte` fica na linha, e não só no parâmetro da empresa, porque a
+ * migração para a Cloud API será gradual — sessões antigas continuam no Zapo
+ * enquanto as novas já nascem oficiais.
+ * `aceiteEm`/`aceiteVersao` registram que o vendedor foi informado de que a
+ * conversa com clientes é gravada e visível ao supervisor. A trava que exige o
+ * aceite é da Fatia 3 (governança); as colunas nascem aqui porque o aceite
+ * acontece no pareamento, que é Fatia 1.
+ */
+model WhatsappSessao {
+  id         String @id @default(uuid())
+  empresaId  String
+  vendedorId String
+
+  numero     String?
+  jid        String?
+  status     WhatsappSessaoStatus @default(desconectada)
+  transporte WhatsappTransporte   @default(zapo)
+
+  credencialCifrada String?   @db.Text
+  ultimaConexao     DateTime?
+  ultimoErro        String?
+
+  aceiteEm     DateTime?
+  aceiteVersao String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  empresa   Empresa            @relation(fields: [empresaId], references: [id])
+  vendedor  Vendedor           @relation(fields: [vendedorId], references: [id])
+  conversas WhatsappConversa[]
+
+  @@unique([empresaId, vendedorId])
+  @@index([empresaId, status])
+  @@map("whatsapp_sessoes")
+}
+
+/**
+ * Contato do WhatsApp, identificado pelo `jid` (ex.: `5567999998888@s.whatsapp.net`).
+ * `clienteId` é o que separa atendimento de conversa pessoal: sem vínculo, as
+ * mensagens **não são persistidas** (ver privacidade no plano). `ignorado`
+ * marca o contato que o vendedor declarou como não-cliente, para a tela parar
+ * de perguntar.
+ */
+model WhatsappContato {
+  id        String @id @default(uuid())
+  empresaId String
+
+  jid                 String
+  nomeExibicao        String?
+  telefoneNormalizado String?
+
+  clienteId    String?
+  vinculadoPor String?
+  vinculadoEm  DateTime?
+  ignorado     Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa   Empresa            @relation(fields: [empresaId], references: [id])
+  cliente   Cliente?           @relation(fields: [clienteId], references: [id])
+  conversas WhatsappConversa[]
+
+  @@unique([empresaId, jid])
+  @@index([empresaId, telefoneNormalizado])
+  @@index([empresaId, clienteId])
+  @@map("whatsapp_contatos")
+}
+
+/**
+ * Conversa entre uma sessão (vendedor) e um contato. `clienteId` é
+ * desnormalizado do contato para permitir "todas as conversas deste cliente"
+ * sem passar por contato — é a consulta do supervisor.
+ */
+model WhatsappConversa {
+  id        String  @id @default(uuid())
+  empresaId String
+  sessaoId  String
+  contatoId String
+  clienteId String?
+
+  ultimaMensagemEm DateTime?
+  naoLidas         Int       @default(0)
+  arquivada        Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa   Empresa                @relation(fields: [empresaId], references: [id])
+  // Restrict, não Cascade: a conversa com o cliente é da empresa, não do
+  // aparelho. Vendedor desligado, troca de celular ou limpeza de sessão não
+  // podem levar o histórico junto — e com Cascade isso aconteceria em
+  // silêncio, num DELETE que ninguém associaria a perder atendimento.
+  sessao    WhatsappSessao         @relation(fields: [sessaoId], references: [id], onDelete: Restrict)
+  contato   WhatsappContato        @relation(fields: [contatoId], references: [id], onDelete: Restrict)
+  cliente   Cliente?               @relation(fields: [clienteId], references: [id])
+  mensagens WhatsappMensagem[]
+  acoes     WhatsappAcaoRegistro[]
+
+  @@unique([empresaId, sessaoId, contatoId])
+  @@index([empresaId, clienteId])
+  @@index([empresaId, sessaoId, ultimaMensagemEm])
+  @@map("whatsapp_conversas")
+}
+
+/**
+ * Mensagem trocada. `externoId` é o id do WhatsApp, e a unicidade por conversa
+ * é o que torna o recebimento **idempotente**: na reconexão o provedor reenvia
+ * o que já foi entregue, e o mesmo id não pode virar duas linhas.
+ * A unicidade é por conversa (e não global) porque o id do WhatsApp só é único
+ * dentro do par remetente/destinatário.
+ */
+model WhatsappMensagem {
+  id         String @id @default(uuid())
+  empresaId  String
+  conversaId String
+
+  externoId String
+  direcao   WhatsappDirecao
+  tipo      WhatsappTipoMensagem @default(texto)
+
+  conteudo    String? @db.Text
+  arquivoUrl  String?
+  arquivoNome String?
+  arquivoMime String?
+
+  // Preenchido só na saída: qual usuário do sistema mandou.
+  enviadaPor    String?
+  statusEntrega WhatsappStatusEntrega @default(pendente)
+  respondeuA    String?
+
+  criadaEm DateTime @default(now())
+
+  empresa  Empresa          @relation(fields: [empresaId], references: [id])
+  conversa WhatsappConversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, conversaId, externoId])
+  @@index([empresaId, conversaId, criadaEm])
+  @@map("whatsapp_mensagens")
+}
+
+/**
+ * O que foi disparado de dentro da conversa (orçamento gerado, visita
+ * agendada, boleto reenviado). É o que permite medir se a ferramenta vende.
+ * Os ids de destino são colunas simples, **sem relação Prisma**, de propósito:
+ * isto é registro de auditoria e precisa sobreviver à remoção do orçamento ou
+ * da atividade que originou.
+ */
+model WhatsappAcaoRegistro {
+  id         String @id @default(uuid())
+  empresaId  String
+  conversaId String
+
+  acao            String
+  orcamentoId     String?
+  atividadeId     String?
+  tituloReceberId String?
+  detalhe         Json?
+
+  executadaPor String?
+  criadaEm     DateTime @default(now())
+
+  empresa  Empresa          @relation(fields: [empresaId], references: [id])
+  conversa WhatsappConversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId, conversaId, criadaEm])
+  @@map("whatsapp_acoes")
+}
+
+/**
+ * Configuração do WhatsApp por empresa (singleton, padrão do AgenteConfig).
+ *
+ * Separada da sessão de propósito: a sessão é do vendedor e é volátil (cai,
+ * repareia, é banida); isto aqui é decisão da empresa e vale para todas elas.
+ *
+ * `workerUrl` aponta para o serviço que mantém as conexões de pé
+ * (`apps/whatsapp-worker`). Fica em configuração e não em env por causa da
+ * troca de transporte: a Cloud API não tem worker, e a migração é gradual.
+ */
+model WhatsappConfig {
+  id        String  @id @default(uuid())
+  empresaId String  @unique
+  ativo     Boolean @default(false)
+
+  transporte WhatsappTransporte @default(zapo)
+  workerUrl  String?
+
+  // 0 = sem expurgo. A rotina que apaga é da Fatia 3 (governança); a decisão
+  // de por quanto tempo guardar é da empresa e nasce aqui.
+  retencaoDias Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@map("whatsapp_config")
 }
