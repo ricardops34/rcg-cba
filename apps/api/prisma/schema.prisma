@@ -2179,6 +2179,12 @@ model WhatsappConfig {
   transporte WhatsappTransporte @default(zapo)
   workerUrl  String?
 
+  // DDD a usar quando o telefone do cadastro vem sem ele — o que é a regra,
+  // não a exceção, nesta base (8 ou 9 dígitos na maioria das linhas). Fica
+  // nulo de propósito até alguém configurar: completar número de telefone por
+  // dedução manda mensagem para a pessoa errada.
+  dddPadrao String?
+
   // 0 = sem expurgo. A rotina que apaga é da Fatia 3 (governança); a decisão
   // de por quanto tempo guardar é da empresa e nasce aqui.
   retencaoDias Int @default(0)

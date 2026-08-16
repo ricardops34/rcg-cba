@@ -1,20 +1,23 @@
 "use client";
 
-import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { MessageCircle, Plug, Send } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { MessageCircle, MessageSquarePlus, Plug } from "lucide-react";
 import type {
   WhatsappConversa,
   WhatsappMensagem,
   WhatsappSessao,
 } from "@plataforma/contracts";
-import { ApiError, apiFetch } from "@/lib/api-client";
+import { apiFetch } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConexaoSheet } from "@/components/whatsapp/conexao-sheet";
+import { NovaConversaDialog } from "@/components/whatsapp/nova-conversa-dialog";
+import { Composer } from "@/components/whatsapp/composer";
+import { MensagemBolha } from "@/components/whatsapp/mensagem-bolha";
+import { AcoesCliente } from "@/components/whatsapp/acoes-cliente";
 
 type ListaConversas = {
   total: number;
@@ -27,6 +30,7 @@ type ListaConversas = {
  */
 export default function AtendimentoPage() {
   const [conexaoAberta, setConexaoAberta] = useState(false);
+  const [novaConversaAberta, setNovaConversaAberta] = useState(false);
   const [conversaId, setConversaId] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
 
@@ -46,6 +50,9 @@ export default function AtendimentoPage() {
       ),
     refetchInterval: 15000,
   });
+
+  const conversaSelecionada =
+    conversas?.itens.find((c) => c.id === conversaId) ?? null;
 
   if (carregandoSessao) {
     return <Skeleton className="h-96 w-full" />;
@@ -87,10 +94,16 @@ export default function AtendimentoPage() {
           onChange={(e) => setBusca(e.target.value)}
           className="max-w-80"
         />
-        <Button variant="outline" onClick={() => setConexaoAberta(true)}>
-          <Plug className="size-4" />
-          {sessao.numero ?? "Conexão"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setNovaConversaAberta(true)}>
+            <MessageSquarePlus className="size-4" />
+            Nova conversa
+          </Button>
+          <Button variant="outline" onClick={() => setConexaoAberta(true)}>
+            <Plug className="size-4" />
+            {sessao.numero ?? "Conexão"}
+          </Button>
+        </div>
       </div>
 
       <div className="grid h-[calc(100vh-14rem)] grid-cols-1 gap-3 md:grid-cols-[20rem_1fr] xl:grid-cols-[20rem_1fr_18rem]">
@@ -100,16 +113,22 @@ export default function AtendimentoPage() {
           selecionada={conversaId}
           onSelecionar={setConversaId}
         />
-        <Conversa conversaId={conversaId} />
-        <PainelCliente
-          conversa={conversas?.itens.find((c) => c.id === conversaId) ?? null}
+        <Conversa
+          conversaId={conversaId}
+          temCliente={Boolean(conversaSelecionada?.clienteId)}
         />
+        <PainelCliente conversa={conversaSelecionada ?? null} />
       </div>
 
       <ConexaoSheet
         aberto={conexaoAberta}
         onOpenChange={setConexaoAberta}
         sessao={sessao}
+      />
+      <NovaConversaDialog
+        aberto={novaConversaAberta}
+        onOpenChange={setNovaConversaAberta}
+        onAbrirConversa={setConversaId}
       />
     </>
   );
@@ -157,12 +176,6 @@ function ListaDeConversas({
             <span className="truncate text-xs text-muted-foreground">
               {c.ultimaMensagemPrevia ?? "—"}
             </span>
-            {!c.clienteId ? (
-              // A conversa aparece, mas o conteúdo não é gravado até vincular.
-              <span className="text-[11px] text-amber-600">
-                Sem cliente vinculado — não está sendo gravada
-              </span>
-            ) : null}
           </button>
         ))
       )}
@@ -170,9 +183,16 @@ function ListaDeConversas({
   );
 }
 
-function Conversa({ conversaId }: { conversaId: string | null }) {
+function Conversa({
+  conversaId,
+  temCliente,
+}: {
+  conversaId: string | null;
+  temCliente: boolean;
+}) {
   const queryClient = useQueryClient();
-  const [texto, setTexto] = useState("");
+  const [respondendo, setRespondendo] = useState<WhatsappMensagem | null>(null);
+  const fimDoRolo = useRef<HTMLDivElement>(null);
 
   const { data: mensagens } = useQuery({
     queryKey: ["whatsapp-mensagens", conversaId],
@@ -182,21 +202,25 @@ function Conversa({ conversaId }: { conversaId: string | null }) {
     refetchInterval: 8000,
   });
 
-  const enviar = useMutation({
-    mutationFn: () =>
-      apiFetch<WhatsappMensagem>(`/whatsapp/conversas/${conversaId}/mensagens`, {
-        method: "POST",
-        body: { texto },
-      }),
-    onSuccess: () => {
-      setTexto("");
-      void queryClient.invalidateQueries({
-        queryKey: ["whatsapp-mensagens", conversaId],
-      });
-    },
-    onError: (err) =>
-      toast.error(err instanceof ApiError ? err.message : "Falha ao enviar"),
-  });
+  // Conversa abre no fim, como em qualquer mensageiro — e desce a cada
+  // mensagem nova em vez de deixar o vendedor rolando atrás dela.
+  useEffect(() => {
+    fimDoRolo.current?.scrollIntoView({ block: "end" });
+  }, [mensagens?.length, conversaId]);
+
+  // Trocar de conversa não pode manter a citação da anterior pendurada.
+  useEffect(() => setRespondendo(null), [conversaId]);
+
+  // Abrir a conversa é o que a marca como lida — aqui e no celular do
+  // vendedor, que recebe o recibo de leitura.
+  useEffect(() => {
+    if (!conversaId) return;
+    void apiFetch(`/whatsapp/conversas/${conversaId}/lida`, { method: "POST" })
+      .then(() =>
+        queryClient.invalidateQueries({ queryKey: ["whatsapp-conversas"] }),
+      )
+      .catch(() => undefined);
+  }, [conversaId, queryClient]);
 
   if (!conversaId) {
     return (
@@ -206,42 +230,38 @@ function Conversa({ conversaId }: { conversaId: string | null }) {
     );
   }
 
+  const porExternoId = new Map(
+    (mensagens ?? []).map((m) => [m.externoId, m] as const),
+  );
+
   return (
-    <div className="flex flex-col rounded-lg border">
+    <div className="flex flex-col overflow-hidden rounded-lg border">
       <div className="flex-1 space-y-2 overflow-y-auto p-4">
         {(mensagens ?? []).map((m) => (
-          <div
+          <MensagemBolha
             key={m.id}
-            className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${
-              m.direcao === "saida"
-                ? "ml-auto bg-primary text-primary-foreground"
-                : "bg-muted"
-            }`}
-          >
-            {m.conteudo ?? `[${m.tipo}]`}
-            <div className="pt-1 text-[10px] opacity-70">
-              {new Date(m.criadaEm).toLocaleString("pt-BR")}
-            </div>
-          </div>
+            mensagem={m}
+            citada={m.respondeuA ? (porExternoId.get(m.respondeuA) ?? null) : null}
+            onResponder={setRespondendo}
+          />
         ))}
+        <div ref={fimDoRolo} />
       </div>
 
-      <form
-        className="flex gap-2 border-t p-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (texto.trim()) enviar.mutate();
-        }}
-      >
-        <Input
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          placeholder="Escreva a mensagem"
-        />
-        <Button type="submit" disabled={enviar.isPending || !texto.trim()}>
-          <Send className="size-4" />
-        </Button>
-      </form>
+      <div className="flex items-end">
+        {temCliente ? (
+          <div className="pb-3 pl-2">
+            <AcoesCliente conversaId={conversaId} />
+          </div>
+        ) : null}
+        <div className="flex-1">
+          <Composer
+            conversaId={conversaId}
+            respondendo={respondendo}
+            onCancelarResposta={() => setRespondendo(null)}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -266,12 +286,7 @@ function PainelCliente({ conversa }: { conversa: WhatsappConversa | null }) {
             Código {conversa.contato.clienteCodigoErp ?? "—"}
           </p>
         </div>
-      ) : (
-        <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-700 dark:bg-amber-950/40">
-          Este contato não está vinculado a um cliente, então a conversa não é
-          gravada. Vincule para começar a registrar o atendimento.
-        </p>
-      )}
+      ) : null}
       <div>
         <p className="text-xs text-muted-foreground">Atendente</p>
         <p>{conversa.vendedorNome}</p>

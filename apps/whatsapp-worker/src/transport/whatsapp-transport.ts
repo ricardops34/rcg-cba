@@ -20,10 +20,35 @@ export interface MensagemRecebida {
   empresaId: string;
   externoId: string;
   jid: string;
+  /**
+   * Só dígitos, resolvido pelo transporte.
+   *
+   * Existe porque o jid **não** contém o número no formato novo do WhatsApp
+   * (`253368761077916@lid` é opaco). Sem isto, o casamento automático com o
+   * cadastro de clientes nunca acontece para esses contatos.
+   */
+  telefone: string | null;
   nomeExibicao: string | null;
   texto: string | null;
   tipo: 'texto' | 'imagem' | 'documento' | 'audio' | 'video' | 'localizacao' | 'contato' | 'outro';
+  /** Preenchidos quando a mensagem carrega mídia — o arquivo vem depois. */
+  arquivoNome: string | null;
+  arquivoMime: string | null;
+  /** Id da mensagem citada, quando é resposta a outra. */
+  respondeuA: string | null;
   criadaEm: Date;
+}
+
+/** Arquivo a enviar, já em memória (o limite do WhatsApp é da ordem de 16 MB). */
+export interface ArquivoParaEnviar {
+  conteudo: Buffer;
+  nome: string;
+  mime: string;
+  /** Como o WhatsApp deve apresentá-lo — muda o que o celular mostra. */
+  tipo: 'imagem' | 'video' | 'audio' | 'documento';
+  legenda?: string | null;
+  /** Áudio gravado na hora (aparece como mensagem de voz, não como arquivo). */
+  ptt?: boolean;
 }
 
 export interface EstadoPareamento {
@@ -45,6 +70,23 @@ export interface EstadoSessao extends EstadoPareamento {
   empresaId: string;
 }
 
+/**
+ * Contato como o aparelho o conhece — antes de existir qualquer vínculo com o
+ * cadastro de cliente. É o que permite ao vendedor vincular a partir de quem
+ * ele já tem na agenda, sem depender de a pessoa escrever primeiro.
+ */
+export interface ContatoAgenda {
+  jid: string;
+  nome: string | null;
+  /** Só dígitos — é assim que o casamento com `clientes` compara. */
+  telefone: string | null;
+}
+
+/** Conversa que já existe no celular, com ou sem histórico do nosso lado. */
+export interface ConversaAparelho extends ContatoAgenda {
+  naoLidas: number;
+}
+
 export interface WhatsappTransport {
   /**
    * Sobe a sessão. Se já houver credencial gravada, reconecta sem QR.
@@ -62,9 +104,39 @@ export interface WhatsappTransport {
     sessaoId: string,
     jid: string,
     texto: string,
+    respondeuA?: string | null,
   ): Promise<{ externoId: string }>;
-  /** Registrado uma vez, na subida — vale para todas as sessões. */
-  aoReceber(handler: (msg: MensagemRecebida) => Promise<void>): void;
+  enviarArquivo(
+    sessaoId: string,
+    jid: string,
+    arquivo: ArquivoParaEnviar,
+  ): Promise<{ externoId: string }>;
+  /** Marca como lida no celular do vendedor — some o "não lido" de lá também. */
+  marcarLida(sessaoId: string, jid: string, externoId: string): Promise<void>;
+  /** Agenda do aparelho, para o vendedor escolher quem vincular a cliente. */
+  listarContatos(sessaoId: string, busca?: string): Promise<ContatoAgenda[]>;
+  /** Conversas que já existem no celular. */
+  listarConversas(sessaoId: string, limite?: number): Promise<ConversaAparelho[]>;
+  /**
+   * Refaz agenda e conversas do zero. Existe porque o provedor manda apenas o
+   * que mudou desde a última sincronização — quando o histórico se perde, só
+   * um pedido explícito o traz de volta.
+   */
+  ressincronizarAgenda(sessaoId: string): Promise<void>;
+  /**
+   * Registrado uma vez, na subida — vale para todas as sessões.
+   *
+   * O `baixarMidia` vem separado de propósito: **a mídia só é baixada se a
+   * API disser que a mensagem foi gravada.** Conversa de contato não
+   * vinculado a cliente não é registrada, e baixar o arquivo dela seria
+   * guardar no servidor justamente o que a regra manda não guardar.
+   */
+  aoReceber(
+    handler: (
+      msg: MensagemRecebida,
+      baixarMidia: () => Promise<Buffer>,
+    ) => Promise<void>,
+  ): void;
   /**
    * Avisado a cada mudança de estado — inclusive as que ninguém pediu: queda
    * de conexão, reconexão, aparelho desvinculado no celular, banimento.

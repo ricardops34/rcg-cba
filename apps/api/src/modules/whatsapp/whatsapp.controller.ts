@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -7,8 +8,12 @@ import {
   Post,
   Put,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { whatsappUploadOptions } from '../../common/uploads/uploads.config';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -19,11 +24,16 @@ import { WHATSAPP_SESSAO_EXAMPLE } from '@plataforma/contracts';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappSessaoService } from './whatsapp-sessao.service';
 import { WhatsappConversasService } from './whatsapp-conversas.service';
+import { WhatsappAgendaService } from './whatsapp-agenda.service';
+import { WhatsappAcoesService } from './whatsapp-acoes.service';
 import {
   WhatsappConectarDto,
   WhatsappConfigUpdateDto,
   WhatsappConversaQueryDto,
+  WhatsappAgendarVisitaDto,
+  WhatsappEnviarArquivoDto,
   WhatsappEnviarDto,
+  WhatsappIniciarConversaDto,
   WhatsappMensagemQueryDto,
   WhatsappVincularDto,
 } from './dto/whatsapp.dto';
@@ -44,6 +54,8 @@ export class WhatsappController {
     private readonly config: WhatsappConfigService,
     private readonly sessao: WhatsappSessaoService,
     private readonly conversas: WhatsappConversasService,
+    private readonly agenda: WhatsappAgendaService,
+    private readonly acoes: WhatsappAcoesService,
   ) {}
 
   // ---------------- configuração da empresa ----------------
@@ -190,6 +202,37 @@ export class WhatsappController {
   }
 
   @ApiOperation({
+    summary: 'Enviar arquivo (documento, imagem, vídeo ou áudio)',
+    description:
+      'Multipart com o campo `arquivo`. O tipo mostrado no WhatsApp vem do ' +
+      'MIME; `ptt=true` faz o áudio virar mensagem de voz. Máximo 16 MB, que ' +
+      'é o teto do próprio WhatsApp. Requer whatsapp-conversas.cadastrar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Post('conversas/:id/arquivos')
+  @UseInterceptors(FileInterceptor('arquivo', whatsappUploadOptions))
+  enviarArquivo(
+    @Param('id') id: string,
+    @UploadedFile() arquivo: Express.Multer.File | undefined,
+    @Body() dto: WhatsappEnviarArquivoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    if (!arquivo) throw new BadRequestException('Nenhum arquivo enviado.');
+    return this.conversas.enviarArquivo(
+      user.empresaAtivaId,
+      user,
+      id,
+      {
+        caminhoDisco: arquivo.path,
+        nome: arquivo.originalname,
+        mime: arquivo.mimetype,
+        tamanho: arquivo.size,
+      },
+      dto,
+    );
+  }
+
+  @ApiOperation({
     summary: 'Vincular o contato a um cliente',
     description:
       'É o vínculo que autoriza a gravação da conversa. O cliente precisa estar ' +
@@ -203,6 +246,107 @@ export class WhatsappController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.conversas.vincular(user.empresaAtivaId, user, id, dto);
+  }
+
+  // ---------------- agenda do aparelho ----------------
+
+  @ApiOperation({
+    summary: 'Contatos da agenda do celular do vendedor',
+    description:
+      'Lidos do aparelho e cruzados com a carteira na hora — não são gravados. ' +
+      'Sempre da própria sessão: a agenda de um vendedor não é visível ao ' +
+      'supervisor, ao contrário das conversas.',
+  })
+  @RequirePermission('whatsapp-conversas', 'visualizar')
+  @Get('agenda/contatos')
+  contatosDaAgenda(
+    @Query('busca') busca: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.agenda.contatos(user.empresaAtivaId, user, busca);
+  }
+
+  @ApiOperation({
+    summary: 'Conversas que já existem no celular',
+    description:
+      'O histórico do aparelho, para o vendedor retomar um atendimento sem ' +
+      'esperar o cliente escrever primeiro.',
+  })
+  @RequirePermission('whatsapp-conversas', 'visualizar')
+  @Get('agenda/conversas')
+  conversasDoAparelho(@CurrentUser() user: AuthenticatedUser) {
+    return this.agenda.conversasDoAparelho(user.empresaAtivaId, user);
+  }
+
+  @ApiOperation({
+    summary: 'Atualizar agenda e conversas a partir do celular',
+    description:
+      'O provedor manda só o que mudou desde a última sincronização; este ' +
+      'pedido refaz a lista do zero. Requer whatsapp-conversas.editar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'editar')
+  @Post('agenda/sincronizar')
+  sincronizarAgenda(@CurrentUser() user: AuthenticatedUser) {
+    return this.agenda.sincronizar(user.empresaAtivaId, user);
+  }
+
+  @ApiOperation({
+    summary: 'Iniciar conversa com um cliente ou contato',
+    description:
+      'Abre a conversa sem esperar o cliente escrever primeiro. Aceita ' +
+      'clienteId (usa o telefone do cadastro), jid da agenda ou número ' +
+      'digitado. Requer whatsapp-conversas.cadastrar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Post('conversas')
+  iniciarConversa(
+    @Body() dto: WhatsappIniciarConversaDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversas.iniciarConversa(user.empresaAtivaId, user, dto);
+  }
+
+  // ---------------- ações do sistema dentro da conversa ----------------
+
+  @ApiOperation({
+    summary: 'Enviar os títulos em aberto do cliente pela conversa',
+    description:
+      'Manda os dados dos títulos (número, vencimento, valor) como mensagem. ' +
+      'Não manda o boleto: a plataforma não emite nem guarda o PDF. Exige ' +
+      'contato vinculado a cliente e titulos-receber.visualizar.',
+  })
+  @RequirePermission('titulos-receber', 'visualizar')
+  @Post('conversas/:id/acoes/titulos')
+  enviarTitulos(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.acoes.enviarTitulos(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Enviar as últimas notas fiscais do cliente pela conversa',
+    description:
+      'Número, data e valor. O DANFE não é enviado — a plataforma guarda a ' +
+      'chave da NF-e, não o arquivo. Requer notas-saida.visualizar.',
+  })
+  @RequirePermission('notas-saida', 'visualizar')
+  @Post('conversas/:id/acoes/notas')
+  enviarNotas(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.acoes.enviarNotas(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Agendar visita/retorno para o cliente da conversa',
+    description:
+      'Cria a atividade para o vendedor dono da sessão. Não manda mensagem ' +
+      'para o cliente: é compromisso do vendedor. Requer atividades.cadastrar.',
+  })
+  @RequirePermission('atividades', 'cadastrar')
+  @Post('conversas/:id/acoes/agendar')
+  agendarVisita(
+    @Param('id') id: string,
+    @Body() dto: WhatsappAgendarVisitaDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.acoes.agendarVisita(user.empresaAtivaId, user, id, dto);
   }
 
   @ApiOperation({ summary: 'Marcar a conversa como lida' })

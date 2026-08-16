@@ -390,7 +390,134 @@ já haverá conversa de cliente gravada sem regra de acesso nem de descarte.
 
 ---
 
-## Estado real em 2026-08-15 (fim da primeira sessão de implementação)
+## Estado real em 2026-08-15 (fim da segunda sessão de implementação)
+
+Os quatro itens que estavam em aberto (ver seção seguinte, mantida como
+histórico): **1, 2 e 3 entregues**; o **4 (feed do sino) continua pendente**.
+Além deles, o usuário pediu na mesma sessão os **recursos de uma conversa
+normal de WhatsApp** e as **ações do sistema para contato vinculado a
+cliente** — ambos entregues.
+
+### O que passou a funcionar
+
+- **A sessão sobrevive a deploy.** O worker chama
+  `GET /whatsapp/interno/sessoes-ativas` ao subir e reabre cada sessão
+  `conectada` — sem QR, porque a credencial já está persistida. O retry **não
+  desiste**: satura em 5 min e continua, porque desistir deixaria todos os
+  vendedores fora do ar num deploy em que a API demora a subir.
+- **A sessão sobrevive à queda de conexão.** A biblioteca **não reconecta
+  sozinha** (`connection` com `status: 'close'` é responsabilidade nossa);
+  agora há reconexão com backoff, distinguindo queda de rede (reconecta) de
+  credencial morta ou banimento (não insiste e avisa o vendedor).
+- **O banco reflete a realidade da conexão.** Rota interna
+  `POST /whatsapp/interno/sessao-estado`: o worker avisa por conta própria
+  quando cai, quando volta e quando o aparelho é removido pelo celular. Antes
+  o banco guardava a última intenção da tela, e a tela dizia "conectado"
+  enquanto nada chegava.
+- **Agenda do celular na tela** (`/whatsapp/agenda/contatos`), com busca,
+  cruzada com a carteira: mostra quem já é cliente e sugere o cliente quando o
+  telefone aponta para **um** só. Nada disso é gravado — a lista é lida do
+  aparelho e cruzada em memória.
+- **Iniciar conversa** (`POST /whatsapp/conversas`) por contato da agenda, por
+  cliente da carteira ou por número digitado.
+- **Conversa com os recursos que se espera de um WhatsApp:** anexo de
+  documento e de foto/vídeo, **áudio gravado na tela** (vai como mensagem de
+  voz, `ptt`), mídia recebida exibida no lugar certo (imagem aparece, áudio
+  toca, documento vira link), **responder citando** uma mensagem, indicadores
+  de entrega e recibo de leitura (some o "não lido" do celular do vendedor).
+- **Ações do sistema dentro da conversa**, só para contato vinculado a
+  cliente e cada uma com a permissão da rotina dona do dado: enviar títulos em
+  aberto, enviar últimas notas, agendar visita/retorno. Nenhuma consulta
+  própria — todas delegam ao service que a tela já usa, como no catálogo do
+  agente.
+
+### Decisões tomadas ao implementar (e o motivo)
+
+- **A API não lê as tabelas da biblioteca.** O plano previa `GRANT` de leitura
+  no schema `whatsapp` para o role da API. Foi descartado: dar `SELECT` ali
+  significaria dar acesso à tabela de credenciais, e **quem lê essa tabela
+  fala pelo WhatsApp do vendedor**. Agenda e conversas passam pelo worker, que
+  é a camada que já conhece o Zapo — a Fase 2 continua valendo inteira.
+- **`dddPadrao` na configuração da empresa** (migration
+  `20260815131000_whatsapp_ddd_padrao`). Descoberto na base real: **a maioria
+  dos telefones de cliente está sem DDD** (8 ou 9 dígitos). Completar por
+  dedução manda mensagem para um desconhecido em outro estado, então o DDD é
+  configuração explícita — em branco, o sistema recusa e pede o número.
+- **Mídia recebida é baixada em dois passos.** O worker manda os metadados,
+  a API responde `arquivoNecessario` e só então o arquivo é baixado. É o que
+  impede guardar no servidor a mídia de conversa que a regra de privacidade
+  manda **não** gravar.
+- **Contato é resolvido por telefone, não só por jid.** O WhatsApp entrega o
+  mesmo contato ora como `...@lid` (opaco), ora como `...@s.whatsapp.net`;
+  sem isso a mesma pessoa viraria duas conversas, e o vínculo com o cliente
+  ficaria em só uma delas.
+- **`status@broadcast` e `@newsletter` são ignorados** — chegam como mensagem
+  mas não são atendimento; sem o filtro viravam conversa na tela.
+
+### Armadilhas novas (nenhuma aparece em build)
+
+- **O app-state sync não roda ao conectar.** É preciso chamar
+  `client.chat.sync()` explicitamente — sem isso a agenda nunca chega e a tela
+  fica sem contato para vincular. Foi o que fez a primeira versão parecer que
+  "a biblioteca não traz contatos".
+- **O provedor manda só o delta** desde a versão guardada. Como as tabelas de
+  agenda só passaram a existir depois do primeiro pareamento, o que já tinha
+  sido sincronizado não voltava. Daí o botão **"atualizar agenda"**, que zera
+  as versões de app-state e força o snapshot completo (776 contatos vieram
+  assim, no teste real).
+- **As conversas do aparelho (`threads`) só chegam no history sync**, que o
+  WhatsApp envia no **primeiro** connect após o pareamento. Numa sessão
+  pareada antes disso a lista fica vazia — e só um novo pareamento a traz. Os
+  contatos, esses vêm pelo app-state a qualquer momento.
+- **O `connect()` da biblioteca fica pendente até o QR ser lido.** Esperar por
+  ele seguraria a resposta HTTP por minutos; `iniciar` agora dispara a conexão
+  e devolve na hora, e o QR chega por evento.
+- **O corpo JSON padrão do Express (100 kB) não serve**: a mídia chega do
+  worker em base64. Está em 24 MB (`useBodyParser` em `main.ts`), que cobre o
+  teto de 16 MB do próprio WhatsApp.
+- **Erro de injeção derruba o `--watch` da API para valer** — o container fica
+  de pé com o processo morto, e o worker acumula falha de restauração. Foi o
+  caso de `NotasSaidaService`, que não estava exportado no módulo.
+
+### Ao retomar: por onde continuar
+
+Na ordem, do mais barato ao mais caro:
+
+1. **Feed do sino** (`apps/web/src/components/layout/app-topbar.tsx`, hoje com
+   o texto fixo "Nenhuma notificação por enquanto"). O backend já entrega o
+   que falta: `WhatsappConversasService.totalNaoLidas` devolve total e as 10
+   conversas mais recentes com nome do contato e do cliente. Falta expor numa
+   rota (não existe ainda) e somar as atividades pendentes/agendadas.
+2. **Duas decisões do usuário, pendentes** (ver seção anterior): definir o
+   `dddPadrao` em Administração > WhatsApp, e decidir se vale reparear o
+   aparelho para trazer o histórico de conversas do celular.
+3. **Orçamento pela conversa** — depende de migrar a geração do PDF de
+   `apps/web/src/lib/orcamento-pdf.ts` (jsPDF, no navegador) para o servidor.
+   É o maior item restante da Fatia 2.
+4. **Fatia 3 (governança), que não é opcional antes de produção:** expurgo por
+   retenção (`retencaoDias` já é configurável, a rotina que apaga não existe)
+   e registro de leitura de conversa alheia.
+
+Para validar qualquer coisa ponta a ponta: os três containers (`api`, `web`,
+`whatsapp-worker`) precisam de **restart**, não de watch — e um erro de
+injeção do Nest mata o `--watch` da API de vez, deixando o container de pé com
+o processo morto. Ver `docs/runbook-operacao.md`.
+
+### O que ficou de fora, e por quê
+
+- **Feed de notificações no sino** (item 4 da lista original): não foi feito.
+  O backend já tem `totalNaoLidas`.
+- **Boleto e DANFE em PDF** continuam fora: a plataforma não emite nem guarda
+  esses arquivos. As ações mandam os **dados** (número, vencimento, valor).
+- **Orçamento pela conversa**: depende de migrar a geração do PDF do navegador
+  para o servidor (ver Fase 5) — trabalho próprio, ainda não feito.
+- **Expurgo por retenção** (`retencaoDias` já é configurável, mas a rotina que
+  apaga não existe) e o **registro de leitura de conversa alheia** seguem
+  pendentes — são da Fatia 3.
+
+---
+
+## Estado em 2026-08-15 (fim da primeira sessão de implementação)
 
 **Funciona ponta a ponta:** pareamento por QR (sessão real, credenciais
 persistidas), a API fala com o worker autenticada, e mensagem recebida percorre
@@ -401,7 +528,7 @@ precisa das *funções padrão do WhatsApp* — **histórico de conversas e agen
 contatos** —, para que o vendedor possa **vincular contatos a clientes** a partir
 do que já existe no aparelho, sem depender de alguém escrever primeiro.
 
-### Os quatro itens em aberto, na ordem recomendada
+### Os quatro itens em aberto, na ordem recomendada (histórico — ver seção acima)
 
 1. **Restaurar sessões no boot do worker.** O endpoint já existe
    (`GET /api/v1/whatsapp/interno/sessoes-ativas`, autenticado pelo token); falta

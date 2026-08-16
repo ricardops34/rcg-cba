@@ -88,10 +88,37 @@ export class WhatsappInternoController {
       nomeExibicao: string | null;
       texto: string | null;
       tipo: string;
+      arquivoNome?: string | null;
+      arquivoMime?: string | null;
+      respondeuA?: string | null;
     },
     @Headers('authorization') authorization?: string,
   ) {
     this.conferirToken(authorization);
     return this.conversas.receber(corpo);
+  }
+
+  /**
+   * Segundo passo do recebimento de mídia.
+   *
+   * O worker só chega aqui quando `mensagem` respondeu `arquivoNecessario` —
+   * é isso que impede o download de mídia de conversa que a plataforma
+   * decidiu não gravar.
+   */
+  @Post('mensagem-arquivo')
+  arquivo(
+    @Body()
+    corpo: {
+      sessaoId: string;
+      empresaId: string;
+      externoId: string;
+      nome: string | null;
+      mime: string | null;
+      conteudoBase64: string;
+    },
+    @Headers('authorization') authorization?: string,
+  ) {
+    this.conferirToken(authorization);
+    return this.conversas.gravarArquivoRecebido(corpo);
   }
 }

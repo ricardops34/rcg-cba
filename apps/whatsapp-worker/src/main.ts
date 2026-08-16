@@ -66,9 +66,30 @@ async function chamarApi<T>(
  * Entrega a mensagem recebida para a API, que decide se grava — a regra de
  * "só conversa de contato vinculado a cliente" vive lá, junto do cadastro.
  */
-transporte.aoReceber(async (msg: MensagemRecebida) => {
+transporte.aoReceber(async (msg: MensagemRecebida, baixarMidia) => {
   try {
-    await chamarApi('/mensagem', { metodo: 'POST', corpo: msg });
+    const resposta = await chamarApi<{ gravada: boolean; arquivoNecessario?: boolean }>(
+      '/mensagem',
+      { metodo: 'POST', corpo: msg },
+    );
+
+    // A mídia só é baixada quando a API confirma que gravou a mensagem —
+    // conversa de contato sem cliente vinculado não é registrada, e baixar o
+    // arquivo dela guardaria no servidor justamente o que a regra proíbe.
+    if (!resposta?.arquivoNecessario) return;
+
+    const conteudo = await baixarMidia();
+    await chamarApi('/mensagem-arquivo', {
+      metodo: 'POST',
+      corpo: {
+        sessaoId: msg.sessaoId,
+        empresaId: msg.empresaId,
+        externoId: msg.externoId,
+        nome: msg.arquivoNome,
+        mime: msg.arquivoMime,
+        conteudoBase64: conteudo.toString('base64'),
+      },
+    });
   } catch (erro) {
     console.error('Falha ao entregar mensagem para a API', erro);
   }
@@ -112,7 +133,6 @@ transporte.aoMudarEstado(async (estado: EstadoSessao) => {
  * a API costuma ainda estar aplicando migration.
  */
 async function restaurarSessoes(tentativa = 1): Promise<void> {
-  const MAX_TENTATIVAS = 10;
   try {
     const sessoes = await chamarApi<{ sessaoId: string; empresaId: string }[]>(
       '/sessoes-ativas',
@@ -128,16 +148,15 @@ async function restaurarSessoes(tentativa = 1): Promise<void> {
         );
     }
   } catch (erro) {
-    if (tentativa >= MAX_TENTATIVAS) {
-      console.error(
-        'Desisti de restaurar as sessões — os vendedores terão de reconectar na mão.',
-        erro,
-      );
-      return;
-    }
-    const espera = Math.min(2000 * 2 ** (tentativa - 1), 60_000);
+    // Sem limite de tentativas, de propósito: desistir deixaria **todos** os
+    // vendedores sem atendimento até alguém perceber e reconectar na mão. Um
+    // deploy em que a API demora a subir é justamente quando isso acontece.
+    // O intervalo satura em 5 minutos, que é barato de manter indefinidamente.
+    const espera = Math.min(2000 * 2 ** (tentativa - 1), 5 * 60_000);
     console.warn(
-      `API indisponível para restaurar sessões (tentativa ${tentativa}); nova tentativa em ${Math.round(espera / 1000)}s`,
+      `API indisponível para restaurar sessões (tentativa ${tentativa}): ` +
+        `${erro instanceof Error ? erro.message : String(erro)}. ` +
+        `Nova tentativa em ${Math.round(espera / 1000)}s`,
     );
     setTimeout(() => void restaurarSessoes(tentativa + 1), espera).unref?.();
   }
@@ -213,8 +232,84 @@ const servidor = createServer(async (req, res) => {
         partes[1],
         String(corpo.jid),
         String(corpo.texto),
+        corpo.respondeuA ? String(corpo.respondeuA) : null,
       );
       return json(res, 200, enviado);
+    }
+
+    // POST /sessoes/:id/arquivos  { jid, tipo, nome, mime, conteudoBase64 }
+    if (
+      req.method === 'POST' &&
+      partes.length === 3 &&
+      partes[0] === 'sessoes' &&
+      partes[2] === 'arquivos'
+    ) {
+      const corpo = await lerCorpo(req);
+      if (!corpo.jid || !corpo.conteudoBase64 || !corpo.mime) {
+        return json(res, 400, { erro: 'jid, mime e conteudoBase64 obrigatórios' });
+      }
+      const enviado = await transporte.enviarArquivo(partes[1], String(corpo.jid), {
+        conteudo: Buffer.from(String(corpo.conteudoBase64), 'base64'),
+        nome: String(corpo.nome ?? 'arquivo'),
+        mime: String(corpo.mime),
+        tipo: corpo.tipo ?? 'documento',
+        legenda: corpo.legenda ?? null,
+        ptt: Boolean(corpo.ptt),
+      });
+      return json(res, 200, enviado);
+    }
+
+    // POST /sessoes/:id/lida  { jid, externoId }
+    if (
+      req.method === 'POST' &&
+      partes.length === 3 &&
+      partes[0] === 'sessoes' &&
+      partes[2] === 'lida'
+    ) {
+      const corpo = await lerCorpo(req);
+      if (!corpo.jid || !corpo.externoId) {
+        return json(res, 400, { erro: 'jid e externoId obrigatórios' });
+      }
+      await transporte.marcarLida(
+        partes[1],
+        String(corpo.jid),
+        String(corpo.externoId),
+      );
+      return json(res, 200, { ok: true });
+    }
+
+    // GET /sessoes/:id/contatos?busca=
+    if (
+      req.method === 'GET' &&
+      partes.length === 3 &&
+      partes[0] === 'sessoes' &&
+      partes[2] === 'contatos'
+    ) {
+      const busca = url.searchParams.get('busca') ?? undefined;
+      return json(res, 200, await transporte.listarContatos(partes[1], busca));
+    }
+
+    // GET /sessoes/:id/conversas — as que já existem no celular
+    if (
+      req.method === 'GET' &&
+      partes.length === 3 &&
+      partes[0] === 'sessoes' &&
+      partes[2] === 'conversas'
+    ) {
+      const limite = Number(url.searchParams.get('limite') ?? 100);
+      return json(res, 200, await transporte.listarConversas(partes[1], limite));
+    }
+
+    // POST /sessoes/:id/agenda/sincronizar — refaz agenda e conversas do zero
+    if (
+      req.method === 'POST' &&
+      partes.length === 4 &&
+      partes[0] === 'sessoes' &&
+      partes[2] === 'agenda' &&
+      partes[3] === 'sincronizar'
+    ) {
+      await transporte.ressincronizarAgenda(partes[1]);
+      return json(res, 200, { ok: true });
     }
 
     if (req.method === 'GET' && url.pathname === '/saude') {

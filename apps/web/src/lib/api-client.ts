@@ -158,13 +158,28 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   return res.json() as Promise<T>;
 }
 
-/** Envia um arquivo (multipart/form-data) com autenticação e refresh de token. */
-export async function apiUpload<T>(path: string, file: File, field = "file"): Promise<T> {
+/**
+ * Envia um arquivo (multipart/form-data) com autenticação e refresh de token.
+ *
+ * Aceita um `File` (caso simples, campo único) ou um `FormData` já montado,
+ * para quando o upload leva outros campos junto — o anexo de WhatsApp manda
+ * legenda e o indicador de mensagem de voz no mesmo envio.
+ */
+export async function apiUpload<T>(
+  path: string,
+  arquivo: File | FormData,
+  field = "file",
+): Promise<T> {
   const url = `${API_URL}${path}`;
 
   const doRequest = async (token: string | null) => {
-    const formData = new FormData();
-    formData.append(field, file);
+    let formData: FormData;
+    if (arquivo instanceof FormData) {
+      formData = arquivo;
+    } else {
+      formData = new FormData();
+      formData.append(field, arquivo);
+    }
     return fetch(url, {
       method: "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : {},

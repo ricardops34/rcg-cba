@@ -4,6 +4,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { basename, join } from 'node:path';
+import {
+  extensaoPorMime,
+  whatsappPublicPath,
+  WHATSAPP_DIR,
+} from '../../common/uploads/uploads.config';
 import { PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappSessaoService } from './whatsapp-sessao.service';
@@ -15,12 +23,16 @@ import {
 import type {
   WhatsappConversaQuery,
   WhatsappEnviar,
+  WhatsappIniciarConversa,
   WhatsappMensagemQuery,
   WhatsappVincular,
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
 const PREVIA_TAMANHO = 120;
+
+/** Tipos cuja mensagem carrega arquivo a baixar. */
+const MIDIA = ['imagem', 'video', 'audio', 'documento'];
 
 /**
  * Conversas e mensagens do atendimento.
@@ -233,27 +245,18 @@ export class WhatsappConversasService {
 
       // Supervisor lê, mas não fala pelo aparelho do subordinado: quem envia é
       // o dono da sessão.
-      const vendedor = await tx.vendedor.findFirst({
-        where: { usuarioId: user.id, empresaId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!vendedor || vendedor.id !== conversa.sessao.vendedorId) {
-        throw new ForbiddenException(
-          'Só o vendedor dono da sessão pode responder por ela.',
-        );
-      }
-      if (conversa.sessao.status !== 'conectada') {
-        throw new BadRequestException(
-          'O WhatsApp não está conectado. Conecte pelo botão da tela de Atendimento.',
-        );
-      }
+      await this.garantirDono(tx, empresaId, user, conversa);
 
       const enviada = await this.worker.chamar<{ externoId: string }>(
         config.workerUrl,
         `/sessoes/${conversa.sessaoId}/mensagens`,
         {
           metodo: 'POST',
-          corpo: { jid: conversa.contato.jid, texto: input.texto },
+          corpo: {
+            jid: conversa.contato.jid,
+            texto: input.texto,
+            respondeuA: input.respondeuA ?? null,
+          },
         },
       );
 
@@ -265,6 +268,7 @@ export class WhatsappConversasService {
           direcao: 'saida',
           tipo: 'texto',
           conteudo: input.texto,
+          respondeuA: input.respondeuA ?? null,
           enviadaPor: user.id,
           statusEntrega: 'enviada',
         },
@@ -277,6 +281,140 @@ export class WhatsappConversasService {
 
       return mensagem;
     });
+  }
+
+  /**
+   * Envia um arquivo já salvo em disco pelo upload.
+   *
+   * A gravação da mensagem acontece **depois** da confirmação do provedor,
+   * como no texto: um anexo que o cliente nunca recebeu não pode aparecer no
+   * histórico como enviado.
+   */
+  async enviarArquivo(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    arquivo: { caminhoDisco: string; nome: string; mime: string; tamanho: number },
+    input: { legenda?: string; ptt?: boolean },
+  ) {
+    const config = await this.config.obter(empresaId);
+    const conteudo = await readFile(arquivo.caminhoDisco);
+
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const conversa = await this.conversaNoEscopo(tx, empresaId, user, conversaId);
+      await this.garantirDono(tx, empresaId, user, conversa);
+
+      const tipo = this.tipoPorMime(arquivo.mime);
+      const enviada = await this.worker.chamar<{ externoId: string }>(
+        config.workerUrl,
+        `/sessoes/${conversa.sessaoId}/arquivos`,
+        {
+          metodo: 'POST',
+          corpo: {
+            jid: conversa.contato.jid,
+            tipo,
+            nome: arquivo.nome,
+            mime: arquivo.mime,
+            legenda: input.legenda ?? null,
+            ptt: input.ptt ?? false,
+            conteudoBase64: conteudo.toString('base64'),
+          },
+        },
+      );
+
+      const mensagem = await tx.whatsappMensagem.create({
+        data: {
+          empresaId,
+          conversaId,
+          externoId: enviada.externoId,
+          direcao: 'saida',
+          tipo,
+          conteudo: input.legenda ?? null,
+          arquivoUrl: whatsappPublicPath(basename(arquivo.caminhoDisco)),
+          arquivoNome: arquivo.nome,
+          enviadaPor: user.id,
+          statusEntrega: 'enviada',
+        },
+      });
+
+      await tx.whatsappConversa.update({
+        where: { id: conversaId },
+        data: { ultimaMensagemEm: mensagem.criadaEm },
+      });
+
+      return mensagem;
+    });
+  }
+
+  /**
+   * Grava o arquivo de uma mensagem recebida — segundo passo do recebimento.
+   *
+   * O worker só chega aqui quando a API confirmou que a mensagem foi gravada;
+   * mídia de conversa não vinculada a cliente nunca é baixada.
+   */
+  async gravarArquivoRecebido(entrada: {
+    empresaId: string;
+    sessaoId: string;
+    externoId: string;
+    nome: string | null;
+    mime: string | null;
+    conteudoBase64: string;
+  }) {
+    const conteudo = Buffer.from(entrada.conteudoBase64, 'base64');
+    const mime = entrada.mime ?? 'application/octet-stream';
+    // Nome opaco em disco; o nome que o cliente deu fica só na coluna.
+    const arquivo = `${randomUUID()}${extensaoPorMime(mime)}`;
+
+    await mkdir(WHATSAPP_DIR, { recursive: true });
+    await writeFile(join(WHATSAPP_DIR, arquivo), conteudo);
+
+    return this.prisma.withTenant(entrada.empresaId, async (tx) => {
+      const mensagem = await tx.whatsappMensagem.findFirst({
+        where: { externoId: entrada.externoId },
+        select: { id: true },
+      });
+      if (!mensagem) return { gravado: false };
+
+      await tx.whatsappMensagem.update({
+        where: { id: mensagem.id },
+        data: {
+          arquivoUrl: whatsappPublicPath(arquivo),
+          arquivoNome: entrada.nome,
+        },
+      });
+      return { gravado: true };
+    });
+  }
+
+  /** Só o dono da sessão fala pelo aparelho — o supervisor lê, não responde. */
+  private async garantirDono(
+    tx: TenantTx,
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversa: { sessao: { vendedorId: string; status: string } },
+  ) {
+    const vendedor = await tx.vendedor.findFirst({
+      where: { usuarioId: user.id, empresaId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!vendedor || vendedor.id !== conversa.sessao.vendedorId) {
+      throw new ForbiddenException(
+        'Só o vendedor dono da sessão pode responder por ela.',
+      );
+    }
+    if (conversa.sessao.status !== 'conectada') {
+      throw new BadRequestException(
+        'O WhatsApp não está conectado. Conecte o aparelho pelo botão da tela de Atendimento.',
+      );
+    }
+  }
+
+  /** O WhatsApp mostra a mídia conforme o tipo, não conforme a extensão. */
+  private tipoPorMime(mime: string): 'imagem' | 'video' | 'audio' | 'documento' {
+    if (mime.startsWith('image/')) return 'imagem';
+    if (mime.startsWith('video/')) return 'video';
+    if (mime.startsWith('audio/')) return 'audio';
+    return 'documento';
   }
 
   /**
@@ -337,14 +475,203 @@ export class WhatsappConversasService {
     });
   }
 
-  /** Zera o contador de não lidas — a tela chama ao abrir a conversa. */
+  /**
+   * Abre (ou reabre) a conversa com um contato — o "começar conversa" da tela.
+   *
+   * Sem isto o vendedor só conseguia responder quem escrevesse primeiro, que
+   * é o oposto de como ele trabalha: o cliente está na agenda dele há anos.
+   *
+   * Aceita dois caminhos, e nenhum dos dois cria conversa às cegas:
+   * - **por cliente da carteira**, usando o telefone do cadastro;
+   * - **por jid da agenda**, para contato que ainda não é cliente.
+   *
+   * Note que abrir conversa **não** grava mensagem nenhuma: continua valendo
+   * que só conversa de contato vinculado a cliente é registrada.
+   */
+  async iniciarConversa(
+    empresaId: string,
+    user: AuthenticatedUser,
+    input: WhatsappIniciarConversa,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const vendedor = await tx.vendedor.findFirst({
+        where: { usuarioId: user.id, empresaId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!vendedor) {
+        throw new BadRequestException(
+          'Seu usuário não está vinculado a um cadastro de vendedor.',
+        );
+      }
+
+      const sessao = await tx.whatsappSessao.findUnique({
+        where: { empresaId_vendedorId: { empresaId, vendedorId: vendedor.id } },
+        select: { id: true, status: true },
+      });
+      if (!sessao || sessao.status !== 'conectada') {
+        throw new BadRequestException(
+          'Seu WhatsApp não está conectado. Conecte o aparelho para iniciar uma conversa.',
+        );
+      }
+
+      let jid = input.jid ?? null;
+      let telefone = input.telefone ? input.telefone.replace(/\D/g, '') : null;
+      let clienteId = input.clienteId ?? null;
+      let nome = input.nome ?? null;
+
+      if (clienteId) {
+        const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+        const cliente = await tx.cliente.findFirst({
+          where: {
+            id: clienteId,
+            deletedAt: null,
+            ...combinarFiltroVendedor(escopo),
+          },
+          select: {
+            razaoSocial: true,
+            celular: true,
+            telefone: true,
+            telefone2: true,
+          },
+        });
+        if (!cliente) {
+          throw new NotFoundException('Cliente não encontrado na sua carteira.');
+        }
+        nome = nome ?? cliente.razaoSocial;
+        // Celular primeiro: é o que costuma ter WhatsApp.
+        telefone =
+          telefone ??
+          this.primeiroTelefoneValido([
+            cliente.celular,
+            cliente.telefone,
+            cliente.telefone2,
+          ]);
+        if (!telefone) {
+          throw new BadRequestException(
+            `${cliente.razaoSocial} não tem telefone no cadastro. Informe o número para iniciar a conversa.`,
+          );
+        }
+      }
+
+      if (!jid) {
+        if (!telefone) {
+          throw new BadRequestException('Informe o cliente ou o número.');
+        }
+        jid = `${await this.numeroCompleto(empresaId, telefone)}@s.whatsapp.net`;
+      }
+
+      const contato = await tx.whatsappContato.upsert({
+        where: { empresaId_jid: { empresaId, jid } },
+        create: {
+          empresaId,
+          jid,
+          nomeExibicao: nome,
+          telefoneNormalizado: telefone,
+          clienteId,
+          ...(clienteId ? { vinculadoPor: user.id, vinculadoEm: new Date() } : {}),
+        },
+        update: {
+          // Vínculo existente não é sobrescrito por um "iniciar conversa":
+          // desvincular é decisão explícita, feita na tela de vínculo.
+          ...(clienteId ? { clienteId, vinculadoPor: user.id, vinculadoEm: new Date() } : {}),
+          ...(nome ? { nomeExibicao: nome } : {}),
+          ...(telefone ? { telefoneNormalizado: telefone } : {}),
+        },
+      });
+
+      const conversa = await tx.whatsappConversa.upsert({
+        where: {
+          empresaId_sessaoId_contatoId: {
+            empresaId,
+            sessaoId: sessao.id,
+            contatoId: contato.id,
+          },
+        },
+        create: {
+          empresaId,
+          sessaoId: sessao.id,
+          contatoId: contato.id,
+          clienteId: contato.clienteId,
+        },
+        // Reabrir uma conversa arquivada é justamente o que o vendedor quer
+        // ao procurá-la de novo.
+        update: { clienteId: contato.clienteId, arquivada: false },
+      });
+
+      return conversa;
+    });
+  }
+
+  private primeiroTelefoneValido(candidatos: (string | null)[]): string | null {
+    for (const bruto of candidatos) {
+      const digitos = (bruto ?? '').replace(/\D/g, '');
+      // 8 dígitos é o mínimo de um número local — nesta base a maioria dos
+      // telefones está gravada sem DDD (ver `numeroCompleto`).
+      if (digitos.length >= 8) return digitos;
+    }
+    return null;
+  }
+
+  /**
+   * Monta o número no formato que o provedor exige (DDI + DDD + número).
+   *
+   * O ponto delicado: **a maioria dos telefones desta base está sem DDD**
+   * (8 ou 9 dígitos). Completar por dedução — pelo estado do cliente, pela
+   * cidade da empresa — manda mensagem para um desconhecido em outro DDD.
+   * Por isso o DDD padrão é configuração explícita da empresa, e sem ela o
+   * sistema recusa em vez de chutar.
+   */
+  private async numeroCompleto(empresaId: string, telefone: string) {
+    const digitos = telefone.replace(/\D/g, '');
+    // Já veio com DDI (55 + DDD + 8/9 dígitos).
+    if (digitos.length >= 12) return digitos;
+    // DDD presente, DDI ausente.
+    if (digitos.length >= 10) return `55${digitos}`;
+
+    const config = await this.config.obter(empresaId);
+    if (!config.dddPadrao) {
+      throw new BadRequestException(
+        `O telefone ${telefone} está cadastrado sem DDD, e não há DDD padrão ` +
+          'configurado em Administração > WhatsApp. Informe o número completo ' +
+          'com DDD para iniciar a conversa.',
+      );
+    }
+    return `55${config.dddPadrao}${digitos}`;
+  }
+
+  /**
+   * Zera o contador de não lidas — a tela chama ao abrir a conversa.
+   *
+   * Também manda o recibo de leitura pelo provedor: sem isso a conversa
+   * continua marcada como não lida no celular do vendedor, e ele acaba
+   * respondendo duas vezes a mesma mensagem.
+   */
   async marcarLida(
     empresaId: string,
     user: AuthenticatedUser,
     conversaId: string,
   ) {
+    const config = await this.config.obter(empresaId);
+
     return this.prisma.withTenant(empresaId, async (tx) => {
-      await this.conversaNoEscopo(tx, empresaId, user, conversaId);
+      const conversa = await this.conversaNoEscopo(tx, empresaId, user, conversaId);
+
+      const ultima = await tx.whatsappMensagem.findFirst({
+        where: { conversaId, direcao: 'entrada' },
+        orderBy: { criadaEm: 'desc' },
+        select: { externoId: true },
+      });
+
+      if (ultima && conversa.sessao.status === 'conectada') {
+        // Cortesia com o cliente, não pode derrubar a abertura da conversa.
+        await this.worker
+          .chamar(config.workerUrl, `/sessoes/${conversa.sessaoId}/lida`, {
+            metodo: 'POST',
+            corpo: { jid: conversa.contato.jid, externoId: ultima.externoId },
+          })
+          .catch(() => undefined);
+      }
+
       return tx.whatsappConversa.update({
         where: { id: conversaId },
         data: { naoLidas: 0 },
@@ -369,9 +696,13 @@ export class WhatsappConversasService {
     empresaId: string;
     externoId: string;
     jid: string;
+    telefone?: string | null;
     nomeExibicao: string | null;
     texto: string | null;
     tipo: string;
+    arquivoNome?: string | null;
+    arquivoMime?: string | null;
+    respondeuA?: string | null;
   }) {
     const { empresaId } = entrada;
 
@@ -382,22 +713,54 @@ export class WhatsappConversasService {
       });
       if (!sessao) return { gravada: false, motivo: 'sessao-desconhecida' };
 
-      const telefone = entrada.jid.split(/[:@]/)[0].replace(/\D/g, '');
+      // O jid nem sempre contém o número: no formato novo do WhatsApp
+      // (`253368761077916@lid`) ele é um identificador opaco, e extrair
+      // dígitos dali produziria um "telefone" que nunca casa com cliente
+      // nenhum. O telefone de verdade vem resolvido pelo worker.
+      const telefone =
+        (entrada.telefone ?? '').replace(/\D/g, '') ||
+        (entrada.jid.includes('@lid')
+          ? ''
+          : entrada.jid.split(/[:@]/)[0].replace(/\D/g, ''));
 
-      const contato = await tx.whatsappContato.upsert({
-        where: { empresaId_jid: { empresaId, jid: entrada.jid } },
-        create: {
-          empresaId,
-          jid: entrada.jid,
-          nomeExibicao: entrada.nomeExibicao,
-          telefoneNormalizado: telefone,
-          // Casamento automático pelo telefone, restrito à carteira do
-          // vendedor dono da sessão. Ambiguidade não adivinha: dois clientes
-          // com o mesmo telefone deixam o vínculo em branco (ver abaixo).
-          clienteId: await this.casarCliente(tx, empresaId, sessao.vendedorId, telefone),
-        },
-        update: { nomeExibicao: entrada.nomeExibicao ?? undefined },
-      });
+      // Mesmo contato pode chegar com dois jids diferentes (o formato novo
+      // `@lid` e o clássico `@s.whatsapp.net`). Procurar pelo telefone antes
+      // de criar é o que evita duas conversas com a mesma pessoa — e o
+      // vínculo com cliente que ficaria só em uma delas.
+      const existente = telefone
+        ? await tx.whatsappContato.findFirst({
+            where: { telefoneNormalizado: telefone },
+            select: { id: true, jid: true },
+          })
+        : null;
+
+      const contato = existente
+        ? await tx.whatsappContato.update({
+            where: { id: existente.id },
+            data: { nomeExibicao: entrada.nomeExibicao ?? undefined },
+          })
+        : await tx.whatsappContato.upsert({
+            where: { empresaId_jid: { empresaId, jid: entrada.jid } },
+            create: {
+              empresaId,
+              jid: entrada.jid,
+              nomeExibicao: entrada.nomeExibicao,
+              telefoneNormalizado: telefone || null,
+              // Casamento automático pelo telefone, restrito à carteira do
+              // vendedor dono da sessão. Ambiguidade não adivinha: dois
+              // clientes com o mesmo telefone deixam o vínculo em branco.
+              clienteId: await this.casarCliente(
+                tx,
+                empresaId,
+                sessao.vendedorId,
+                telefone,
+              ),
+            },
+            update: {
+              nomeExibicao: entrada.nomeExibicao ?? undefined,
+              ...(telefone ? { telefoneNormalizado: telefone } : {}),
+            },
+          });
 
       const conversa = await tx.whatsappConversa.upsert({
         where: {
@@ -427,7 +790,7 @@ export class WhatsappConversasService {
         return { gravada: false, motivo: 'sem-vinculo', conversaId: conversa.id };
       }
 
-      await tx.whatsappMensagem.upsert({
+      const mensagem = await tx.whatsappMensagem.upsert({
         // Idempotência da reconexão: o provedor reenvia o que já entregou.
         where: {
           empresaId_conversaId_externoId: {
@@ -443,12 +806,23 @@ export class WhatsappConversasService {
           direcao: 'entrada',
           tipo: (entrada.tipo as 'texto') ?? 'texto',
           conteudo: entrada.texto,
+          arquivoNome: entrada.arquivoNome ?? null,
+          respondeuA: entrada.respondeuA ?? null,
           statusEntrega: 'entregue',
         },
         update: {},
+        select: { id: true, arquivoUrl: true },
       });
 
-      return { gravada: true, conversaId: conversa.id };
+      return {
+        gravada: true,
+        conversaId: conversa.id,
+        // Pedir o arquivo é um segundo passo: só depois de decidir que a
+        // mensagem fica é que faz sentido baixar a mídia dela. Reenvio de
+        // mensagem já baixada não pede de novo.
+        arquivoNecessario:
+          MIDIA.includes(entrada.tipo) && !mensagem.arquivoUrl,
+      };
     });
   }
 

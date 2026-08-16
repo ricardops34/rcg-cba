@@ -60,6 +60,7 @@ function WhatsappConfigForm({ config }: { config: WhatsappConfig }) {
     transporte: config.transporte,
     workerUrl: config.workerUrl ?? "",
     retencaoDias: config.retencaoDias,
+    dddPadrao: config.dddPadrao ?? "",
   });
 
   const salvar = useMutation({
@@ -71,6 +72,7 @@ function WhatsappConfigForm({ config }: { config: WhatsappConfig }) {
           transporte: form.transporte,
           workerUrl: form.workerUrl.trim() || null,
           retencaoDias: form.retencaoDias,
+          dddPadrao: form.dddPadrao.trim() || null,
         },
       }),
     onSuccess: () => {
@@ -150,6 +152,31 @@ function WhatsappConfigForm({ config }: { config: WhatsappConfig }) {
                   </FieldDescription>
                 </Field>
               ) : null}
+
+              <Field>
+                <FieldLabel htmlFor="dddPadrao">DDD padrão</FieldLabel>
+                <Input
+                  id="dddPadrao"
+                  inputMode="numeric"
+                  maxLength={2}
+                  className="max-w-24"
+                  placeholder="67"
+                  value={form.dddPadrao}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      dddPadrao: e.target.value.replace(/\D/g, ""),
+                    }))
+                  }
+                />
+                <FieldDescription>
+                  A maioria dos telefones do cadastro de clientes está gravada
+                  sem DDD. Este é o DDD usado para completar o número ao
+                  iniciar uma conversa a partir do cadastro. Em branco, o
+                  sistema pede o número completo em vez de adivinhar — um DDD
+                  errado manda a mensagem para um desconhecido.
+                </FieldDescription>
+              </Field>
             </FieldGroup>
           </FieldSet>
 

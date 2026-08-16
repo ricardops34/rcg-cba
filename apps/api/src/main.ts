@@ -2,13 +2,14 @@ import helmet from 'helmet';
 import { NestFactory } from '@nestjs/core';
 import { VersioningType } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ZodValidationPipe, cleanupOpenApiDoc } from 'nestjs-zod';
 import { AppModule } from './app.module';
 import { IntegracaoModule } from './modules/integracao/integracao.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // A API é consumida por outra origem (web) e serve assets embutidos via <img>
   // (logos em /uploads). O CORP padrão "same-origin" bloquearia esse embed
@@ -19,6 +20,12 @@ async function bootstrap() {
     origin: process.env.CORS_ORIGIN?.split(',') ?? 'http://localhost:3000',
     credentials: true,
   });
+  // O padrão do Express é 100 kB, e a mídia de WhatsApp chega do worker em
+  // base64 pela rota interna — um áudio de meio minuto já estoura esse teto.
+  // 24 MB cobre o limite de 16 MB do próprio WhatsApp mais o inchaço do
+  // base64. Vale só para JSON; upload de arquivo continua indo por multipart.
+  app.useBodyParser('json', { limit: '24mb' });
+
   app.setGlobalPrefix('api');
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
   app.useGlobalFilters(new AllExceptionsFilter());

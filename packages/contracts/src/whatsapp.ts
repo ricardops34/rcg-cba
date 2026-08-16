@@ -72,6 +72,12 @@ export const whatsappConfigSchema = z.object({
   transporte: whatsappTransporteSchema,
   workerUrl: z.string().nullable(),
   retencaoDias: z.number().int(),
+  dddPadrao: z
+    .string()
+    .nullable()
+    .describe(
+      "DDD usado quando o telefone do cadastro vem sem ele. Nulo = não completar",
+    ),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -93,6 +99,12 @@ export const whatsappConfigUpdateSchema = z.object({
     .max(3650)
     .optional()
     .describe("0 = guardar indefinidamente"),
+  dddPadrao: z
+    .string()
+    .trim()
+    .regex(/^\d{2}$/, "O DDD tem dois dígitos (ex.: 67)")
+    .nullable()
+    .optional(),
 });
 export type WhatsappConfigUpdate = z.infer<typeof whatsappConfigUpdateSchema>;
 
@@ -189,6 +201,59 @@ export const whatsappConversaQuerySchema = z.object({
 });
 export type WhatsappConversaQuery = z.infer<typeof whatsappConversaQuerySchema>;
 
+// --------------------------------------------------------------------------
+// Agenda do aparelho
+// --------------------------------------------------------------------------
+
+/**
+ * Contato como o **celular** do vendedor o conhece.
+ *
+ * Nada disto é gravado na plataforma: a lista é lida do aparelho e cruzada com
+ * o cadastro na hora. O que entra no banco é só o que o vendedor vincular —
+ * copiar a agenda pessoal dele para dentro do sistema seria o oposto do que a
+ * regra de privacidade do módulo decidiu.
+ */
+export const whatsappContatoAgendaSchema = z.object({
+  jid: z.string(),
+  nome: z.string().nullable(),
+  telefone: z.string().nullable().describe("Só dígitos"),
+  naoLidas: z.number().int().default(0),
+  /** Vínculo já existente na plataforma. */
+  clienteId: z.string().uuid().nullable(),
+  clienteRazaoSocial: z.string().nullable(),
+  clienteCodigoErp: z.string().nullable(),
+  ignorado: z.boolean(),
+  /** Conversa já aberta por aqui, quando houver. */
+  conversaId: z.string().uuid().nullable(),
+  /**
+   * Cliente que o telefone sugere, quando aponta para **um** só. Sugestão,
+   * não vínculo: quem confirma é o vendedor.
+   */
+  sugestaoClienteId: z.string().uuid().nullable(),
+  sugestaoClienteNome: z.string().nullable(),
+});
+export type WhatsappContatoAgenda = z.infer<typeof whatsappContatoAgendaSchema>;
+
+/**
+ * Início de conversa a partir da carteira ou da agenda.
+ *
+ * Um dos três identificadores basta: `clienteId` (pega o telefone do
+ * cadastro), `jid` (contato da agenda) ou `telefone` digitado.
+ */
+export const whatsappIniciarConversaSchema = z
+  .object({
+    clienteId: z.string().uuid().optional(),
+    jid: z.string().optional(),
+    telefone: z.string().trim().optional(),
+    nome: z.string().trim().optional(),
+  })
+  .refine((v) => v.clienteId || v.jid || v.telefone, {
+    message: "Informe o cliente, o contato da agenda ou o número",
+  });
+export type WhatsappIniciarConversa = z.infer<
+  typeof whatsappIniciarConversaSchema
+>;
+
 /** Vínculo manual do contato a um cliente — é o que autoriza a gravação. */
 export const whatsappVincularSchema = z.object({
   clienteId: z.string().uuid().nullable().describe("null desfaz o vínculo"),
@@ -215,6 +280,8 @@ export const whatsappMensagemSchema = z.object({
   enviadaPor: z.string().uuid().nullable(),
   enviadaPorNome: z.string().nullable(),
   statusEntrega: whatsappStatusEntregaSchema,
+  /** Id externo da mensagem citada — o "responder" do WhatsApp. */
+  respondeuA: z.string().nullable(),
   criadaEm: z.string().datetime(),
 });
 export type WhatsappMensagem = z.infer<typeof whatsappMensagemSchema>;
@@ -229,8 +296,42 @@ export type WhatsappMensagemQuery = z.infer<typeof whatsappMensagemQuerySchema>;
 
 export const whatsappEnviarSchema = z.object({
   texto: z.string().trim().min(1, "Mensagem vazia").max(4096),
+  /** Id externo da mensagem citada — é o "responder" do WhatsApp. */
+  respondeuA: z.string().optional(),
 });
 export type WhatsappEnviar = z.infer<typeof whatsappEnviarSchema>;
+
+/** Anexo de conversa. O arquivo vai no multipart; isto é o resto do corpo. */
+export const whatsappEnviarArquivoSchema = z.object({
+  legenda: z.string().trim().max(1024).optional(),
+  ptt: z.coerce
+    .boolean()
+    .default(false)
+    .describe("Áudio gravado na hora — vira mensagem de voz, não anexo"),
+});
+export type WhatsappEnviarArquivo = z.infer<typeof whatsappEnviarArquivoSchema>;
+
+/** Teto do WhatsApp para anexo; a tela avisa antes de subir o arquivo. */
+export const WHATSAPP_ARQUIVO_MAX_BYTES = 16 * 1024 * 1024;
+
+// --------------------------------------------------------------------------
+// Ações do sistema dentro da conversa
+// --------------------------------------------------------------------------
+
+/**
+ * Agendamento feito de dentro da conversa. Cliente e vendedor não vêm no
+ * corpo: são os da própria conversa — deixar escolher aqui abriria caminho
+ * para agendar visita no nome de outro vendedor.
+ */
+export const whatsappAgendarVisitaSchema = z.object({
+  tipo: z
+    .enum(["visita", "ligacao", "reuniao", "tarefa", "email"])
+    .default("visita"),
+  titulo: z.string().trim().min(1, "Informe o que será feito").max(150),
+  descricao: z.string().trim().max(1000).optional(),
+  dataVencimento: z.coerce.date().nullable().optional(),
+});
+export type WhatsappAgendarVisita = z.infer<typeof whatsappAgendarVisitaSchema>;
 
 // --------------------------------------------------------------------------
 // Exemplos para o Swagger
@@ -263,5 +364,6 @@ export const WHATSAPP_MENSAGEM_EXAMPLE: WhatsappMensagem = {
   enviadaPor: null,
   enviadaPorNome: null,
   statusEntrega: "entregue",
+  respondeuA: null,
   criadaEm: "2026-08-14T18:31:00.000Z",
 };
