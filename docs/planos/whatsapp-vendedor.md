@@ -479,6 +479,31 @@ cliente** — ambos entregues.
   de pé com o processo morto, e o worker acumula falha de restauração. Foi o
   caso de `NotasSaidaService`, que não estava exportado no módulo.
 
+### Bloqueios de deploy em produção (descobertos em 2026-08-17, não corrigidos)
+
+O worker **não sobe em produção hoje**, por três motivos independentes. Nada
+disso aparece em dev, onde o `docker-compose.dev.yml` já traz a configuração
+certa:
+
+1. **A imagem não é publicada.** `publish.ps1` builda e envia só `api` e
+   `web`; o `stack.rcgcba.prod.yml` referencia
+   `bjsoftware/rcgcba-whatsapp-worker:latest`, que não existe no Docker Hub. O
+   Dockerfile de produção existe (`docker/whatsapp-worker.Dockerfile`, Node 22)
+   e nunca foi buildado.
+2. **A `DATABASE_URL` do worker está errada no stack.** Ele recebe a mesma
+   `${DATABASE_URL}` da API, que é o role `plataforma_app` — sem DDL e sem
+   acesso ao schema `whatsapp`. O worker precisa do role `whatsapp_store` com
+   `search_path=whatsapp` (ver dev, linha do serviço `whatsapp-worker`). Com a
+   URL da API, a biblioteca falha ao rodar as migrations dela na conexão.
+3. **A senha do role é placeholder de desenvolvimento**
+   (`whatsapp_store_dev_only`, definida na migration
+   `20260815024500_whatsapp_store_schema`). Precisa ser trocada em produção —
+   mesmo tratamento que o `plataforma_app` recebeu. Quem tem essa senha **fala
+   pelo WhatsApp dos vendedores**.
+
+Nada disso está no `docs/runbook-operacao.md`, que não menciona WhatsApp em
+nenhum ponto. Ao corrigir, registrar lá — é a fonte única.
+
 ### Ao retomar: por onde continuar
 
 Na ordem, do mais barato ao mais caro:
