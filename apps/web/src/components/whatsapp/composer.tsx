@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  Clock,
   FileText,
   Image as ImageIcon,
   Mic,
@@ -16,16 +17,26 @@ import {
 import {
   WHATSAPP_ARQUIVO_MAX_BYTES,
   type WhatsappMensagem,
+  type WhatsappMensagemAgendada,
 } from "@plataforma/contracts";
 import { ApiError, apiFetch, apiUpload } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 /**
  * Barra de composição da conversa — o que o vendedor espera de um WhatsApp:
@@ -47,6 +58,7 @@ export function Composer({
 }) {
   const queryClient = useQueryClient();
   const [texto, setTexto] = useState("");
+  const [agendando, setAgendando] = useState(false);
   const arquivoRef = useRef<HTMLInputElement>(null);
   const midiaRef = useRef<HTMLInputElement>(null);
 
@@ -155,6 +167,14 @@ export function Composer({
               <ImageIcon className="size-4" />
               Fotos e vídeos
             </DropdownMenuItem>
+            <DropdownMenuItem
+              // Agendar leva o texto já digitado: quem escreveu e percebeu que
+              // é melhor mandar amanhã não deve ter que reescrever.
+              onClick={() => setAgendando(true)}
+            >
+              <Clock className="size-4" />
+              Agendar mensagem
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -236,7 +256,156 @@ export function Composer({
           Enviando arquivo…
         </p>
       ) : null}
+
+      <AgendarMensagemDialog
+        conversaId={conversaId}
+        textoInicial={texto}
+        aberto={agendando}
+        onOpenChange={setAgendando}
+        onAgendada={() => setTexto("")}
+      />
     </div>
+  );
+}
+
+/**
+ * Agendar uma mensagem e ver as que já estão na fila.
+ *
+ * As duas coisas no mesmo lugar de propósito: agendar sem enxergar o que já
+ * está agendado leva a mandar a mesma cobrança duas vezes.
+ */
+function AgendarMensagemDialog({
+  conversaId,
+  textoInicial,
+  aberto,
+  onOpenChange,
+  onAgendada,
+}: {
+  conversaId: string;
+  textoInicial: string;
+  aberto: boolean;
+  onOpenChange: (v: boolean) => void;
+  onAgendada: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [texto, setTexto] = useState(textoInicial);
+  const [quando, setQuando] = useState("");
+
+  const chave = ["whatsapp-agendamentos", conversaId];
+  const agendadasQuery = useQuery({
+    queryKey: chave,
+    queryFn: () =>
+      apiFetch<WhatsappMensagemAgendada[]>(
+        `/whatsapp/conversas/${conversaId}/agendamentos`,
+      ),
+    enabled: aberto,
+  });
+
+  const agendar = useMutation({
+    mutationFn: () =>
+      apiFetch(`/whatsapp/conversas/${conversaId}/agendamentos`, {
+        method: "POST",
+        // `datetime-local` não tem fuso: o navegador monta a data na hora
+        // local de quem digitou, que é o que o vendedor quis dizer.
+        body: { texto, enviarEm: new Date(quando).toISOString() },
+      }),
+    onSuccess: () => {
+      toast.success("Mensagem agendada");
+      setQuando("");
+      setTexto("");
+      onAgendada();
+      void queryClient.invalidateQueries({ queryKey: chave });
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Falha ao agendar"),
+  });
+
+  const cancelar = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/whatsapp/conversas/${conversaId}/agendamentos/${id}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      toast.success("Agendamento cancelado");
+      void queryClient.invalidateQueries({ queryKey: chave });
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Falha ao cancelar"),
+  });
+
+  const agendadas = agendadasQuery.data ?? [];
+
+  return (
+    <Dialog open={aberto} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Agendar mensagem</DialogTitle>
+          <DialogDescription>
+            O texto sai sozinho na hora marcada. Se o seu WhatsApp estiver
+            desconectado nesse momento, o envio falha e o aviso aparece aqui.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <Textarea
+            autoFocus
+            placeholder="Mensagem"
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+          />
+          <Input
+            type="datetime-local"
+            value={quando}
+            onChange={(e) => setQuando(e.target.value)}
+          />
+
+          {agendadas.length > 0 ? (
+            <div className="space-y-1 rounded-md border p-2">
+              <p className="text-xs font-medium text-muted-foreground">
+                Já agendadas
+              </p>
+              {agendadas.map((a) => (
+                <div
+                  key={a.id}
+                  className="flex items-start justify-between gap-2 text-sm"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate">{a.texto}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(a.enviarEm).toLocaleString("pt-BR")}
+                      {a.status === "erro" ? (
+                        <span className="text-destructive">
+                          {" "}
+                          — falhou: {a.erro}
+                        </span>
+                      ) : null}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    title="Cancelar"
+                    disabled={cancelar.isPending}
+                    onClick={() => cancelar.mutate(a.id)}
+                    className="shrink-0 text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <DialogFooter>
+          <Button
+            onClick={() => agendar.mutate()}
+            disabled={!texto.trim() || !quando || agendar.isPending}
+          >
+            {agendar.isPending ? "Agendando…" : "Agendar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

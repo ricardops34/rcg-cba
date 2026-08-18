@@ -4,7 +4,9 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  BarChart3,
   CalendarPlus,
+  FilePlus2,
   FileSpreadsheet,
   FileText,
   Receipt,
@@ -43,7 +45,20 @@ import {
  * da rotina dona do dado — o botão some para quem não pode ver aquilo no
  * sistema, e a rota recusa de qualquer forma se for chamada direto.
  */
-export function AcoesCliente({ conversaId }: { conversaId: string }) {
+export function AcoesCliente({
+  conversaId,
+  onAbrirPosicao,
+  onAbrirOrcamento,
+}: {
+  conversaId: string;
+  /**
+   * Posição e orçamento não abrem daqui: viram o painel da direita, que
+   * empurra a conversa em vez de cobri-la. Quem controla essa coluna é a
+   * tela, então a decisão sobe — este componente só avisa.
+   */
+  onAbrirPosicao: () => void;
+  onAbrirOrcamento: () => void;
+}) {
   const queryClient = useQueryClient();
   const [agendando, setAgendando] = useState(false);
   const [enviandoOrcamento, setEnviandoOrcamento] = useState(false);
@@ -73,7 +88,18 @@ export function AcoesCliente({ conversaId }: { conversaId: string }) {
   const podeNotas = pode("notas-saida.visualizar");
   const podeAgendar = pode("atividades.cadastrar");
   const podeOrcamento = pode("orcamentos.visualizar");
-  if (!podeTitulos && !podeNotas && !podeAgendar && !podeOrcamento) return null;
+  const podeCriarOrcamento = pode("orcamentos.cadastrar");
+  const podePosicao = pode("posicao-cliente.visualizar");
+  if (
+    !podeTitulos &&
+    !podeNotas &&
+    !podeAgendar &&
+    !podeOrcamento &&
+    !podeCriarOrcamento &&
+    !podePosicao
+  ) {
+    return null;
+  }
 
   return (
     <>
@@ -102,6 +128,18 @@ export function AcoesCliente({ conversaId }: { conversaId: string }) {
             >
               <FileSpreadsheet className="size-4" />
               Enviar últimas notas
+            </DropdownMenuItem>
+          ) : null}
+          {podePosicao ? (
+            <DropdownMenuItem onClick={onAbrirPosicao}>
+              <BarChart3 className="size-4" />
+              Ver posição do cliente
+            </DropdownMenuItem>
+          ) : null}
+          {podeCriarOrcamento ? (
+            <DropdownMenuItem onClick={onAbrirOrcamento}>
+              <FilePlus2 className="size-4" />
+              Montar orçamento
             </DropdownMenuItem>
           ) : null}
           {podeOrcamento ? (
@@ -258,6 +296,14 @@ function OrcamentoDialog({
   );
 }
 
+/**
+ * Posição do cliente sem sair da conversa.
+ *
+ * Consulta, não mensagem: **nada disso vai para o cliente**. É o que o
+ * vendedor precisa ter na frente enquanto conversa — quanto o cliente já
+ * comprou, o que está vencido, o que ele costuma levar. Os dados são os
+ * mesmos da tela de Posição de Cliente, pela mesma rota.
+ */
 function AgendarDialog({
   conversaId,
   aberto,

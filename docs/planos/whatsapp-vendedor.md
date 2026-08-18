@@ -547,6 +547,43 @@ restart do worker.
 nível em que ela registra falha de decifrar addon. Em `info` isso some — e foi
 o que manteve o problema invisível. Ruidoso: só ao investigar.
 
+### Tela de atendimento e agendamento (2026-08-18)
+
+Rodada de ajustes pedidos usando a tela de verdade:
+
+- **Laterais recolhíveis**, com a preferência lembrada. Numa tela de 14" três
+  colunas fixas deixam o rolo estreito demais.
+- **Altura amarrada à viewport, rolagem por coluna.** O que faltava era
+  `min-h-0`: em flex, o filho não encolhe abaixo do próprio conteúdo, então o
+  rolo empurrava a página inteira. O auto-scroll passou a `block: "nearest"`,
+  senão o navegador ajustava os ancestrais e a página se mexia a cada mensagem.
+- **Painéis encaixados na coluna da direita** (dados do contato, posição do
+  cliente, novo orçamento), alternando no mesmo espaço e empurrando a conversa
+  em vez de cobri-la — o comportamento do "Dados do contato" do WhatsApp. O
+  orçamento é o **`OrcamentoFormContent` da tela de Orçamentos**, não um
+  formulário próprio: um segundo jeito de orçar teria outras regras de preço.
+- **Sinais do cliente na lista de conversas:** dias desde a última compra
+  (positivação) e um cifrão colorido pela cobrança — vermelho vencido, azul
+  vencendo em 7 dias, verde em dia. Duas consultas **agregadas por página**, não
+  uma por conversa: a lista atualiza a cada 15 s, e o N+1 seriam 60 idas ao
+  banco por atualização. Cada indicador respeita a permissão da rotina dona do
+  dado; sem ela, vem nulo.
+- **Aviso de contato atendido por outro vendedor.** A consulta atravessa as
+  sessões alheias de propósito, mas devolve **só o nome de quem atende** — a
+  conversa do outro continua invisível para quem não tem escopo.
+- **Mensagens agendadas** (`whatsapp_mensagens_agendadas`, migration
+  `20260818032908`, com RLS). Rotina a cada minuto na API. Dois cuidados que
+  moldaram o desenho:
+  - **Idempotência entre réplicas:** só envia quem conseguir mudar `pendente`
+    → `enviando` na atualização condicional. Sem isso, cada réplica da API
+    mandaria a mesma mensagem.
+  - **A varredura percorre empresa por empresa** porque as tabelas têm RLS —
+    sem `withTenant` a consulta volta vazia. `empresas` não tem RLS, e é por
+    ela que a rotina começa.
+  - Falha (WhatsApp desconectado na hora) vira `erro` visível na conversa, com
+    o motivo. Agendamento que some em silêncio é pior do que um que não saiu.
+  - Só texto: anexo agendado exigiria segurar o arquivo até a hora do envio.
+
 **Ainda em aberto (decisão pendente):** mensagem que o **vendedor manda pelo
 próprio celular** é descartada (`if (chave.fromMe) return`, em
 `zapo.transport.ts`) — o comentário ali diz que ela "é registrada como saída",

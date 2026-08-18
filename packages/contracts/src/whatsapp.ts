@@ -167,6 +167,22 @@ export const whatsappContatoSchema = z.object({
 });
 export type WhatsappContato = z.infer<typeof whatsappContatoSchema>;
 
+/**
+ * Situação da cobrança do cliente, resumida no pior caso em aberto — é o que
+ * cabe num ícone: o título mais crítico é o que muda a conversa.
+ *
+ * `vencendo` é o que vence nos próximos 7 dias, a janela em que ainda dá para
+ * lembrar o cliente antes de virar cobrança.
+ */
+export const whatsappSituacaoTitulosSchema = z.enum([
+  "vencido",
+  "vencendo",
+  "em_dia",
+]);
+export type WhatsappSituacaoTitulos = z.infer<
+  typeof whatsappSituacaoTitulosSchema
+>;
+
 export const whatsappConversaSchema = z.object({
   id: z.string().uuid(),
   empresaId: z.string().uuid(),
@@ -183,6 +199,25 @@ export const whatsappConversaSchema = z.object({
   // Identifica de quem é a conversa quando o supervisor lista as da equipe.
   vendedorId: z.string().uuid(),
   vendedorNome: z.string(),
+  /**
+   * Sinais do cliente para a lista de conversas — o que o vendedor precisa
+   * saber **antes** de abrir o atendimento. Nulos quando o contato não tem
+   * cliente vinculado ou quando falta a permissão da rotina dona do dado.
+   */
+  diasSemComprar: z
+    .number()
+    .int()
+    .nullable()
+    .describe("Dias desde a última nota (positivação). Null = nunca comprou"),
+  situacaoTitulos: whatsappSituacaoTitulosSchema.nullable(),
+  /**
+   * Outros vendedores que também têm conversa aberta com este mesmo contato.
+   *
+   * O número do cliente não é exclusivo de um atendimento: dois vendedores
+   * podem estar falando com a mesma pessoa sem saber. Aqui vai só o nome, para
+   * a tela sinalizar e o vendedor poder conferir antes de prometer algo.
+   */
+  outrosAtendentes: z.array(z.string()).default([]),
 });
 export type WhatsappConversa = z.infer<typeof whatsappConversaSchema>;
 
@@ -345,6 +380,54 @@ export const whatsappEnviarArquivoSchema = z.object({
 });
 export type WhatsappEnviarArquivo = z.infer<typeof whatsappEnviarArquivoSchema>;
 
+// --------------------------------------------------------------------------
+// Mensagens agendadas
+// --------------------------------------------------------------------------
+
+export const whatsappAgendamentoStatusSchema = z.enum([
+  "pendente",
+  "enviando",
+  "enviada",
+  "erro",
+  "cancelada",
+]);
+export type WhatsappAgendamentoStatus = z.infer<
+  typeof whatsappAgendamentoStatusSchema
+>;
+
+/**
+ * Mensagem escrita agora para sair depois — a cobrança de segunda de manhã, o
+ * retorno combinado para a semana que vem.
+ *
+ * Só texto: anexo agendado exigiria segurar o arquivo no servidor até a hora,
+ * e a regra de retenção do módulo trata do que já foi enviado, não do que
+ * ainda vai. Fica registrado como limite consciente.
+ */
+export const whatsappAgendarMensagemSchema = z.object({
+  texto: z.string().trim().min(1, "Mensagem vazia").max(4096),
+  enviarEm: z.coerce.date().refine((d) => d.getTime() > Date.now(), {
+    message: "Escolha uma data e hora no futuro",
+  }),
+});
+export type WhatsappAgendarMensagem = z.infer<
+  typeof whatsappAgendarMensagemSchema
+>;
+
+export const whatsappMensagemAgendadaSchema = z.object({
+  id: z.string().uuid(),
+  conversaId: z.string().uuid(),
+  texto: z.string(),
+  enviarEm: z.string().datetime(),
+  status: whatsappAgendamentoStatusSchema,
+  erro: z.string().nullable(),
+  criadaPor: z.string().uuid(),
+  criadaPorNome: z.string().nullable(),
+  criadaEm: z.string().datetime(),
+});
+export type WhatsappMensagemAgendada = z.infer<
+  typeof whatsappMensagemAgendadaSchema
+>;
+
 /** Teto do WhatsApp para anexo; a tela avisa antes de subir o arquivo. */
 export const WHATSAPP_ARQUIVO_MAX_BYTES = 16 * 1024 * 1024;
 
@@ -379,6 +462,36 @@ export const whatsappEnviarOrcamentoSchema = z.object({
 export type WhatsappEnviarOrcamento = z.infer<
   typeof whatsappEnviarOrcamentoSchema
 >;
+
+/**
+ * Orçamento montado de dentro da conversa.
+ *
+ * Cliente e vendedor **não** vêm no corpo: são os da conversa. É a mesma
+ * regra do agendamento — deixar escolher aqui abriria caminho para orçar no
+ * nome de outro vendedor, ou para outro cliente que não o do atendimento.
+ *
+ * Só o essencial da proposta: o cadastro completo (oportunidade, comissão,
+ * regra de desconto por item) continua na tela de Orçamentos, que é onde ele
+ * cabe. Aqui é o que o vendedor consegue montar no meio de uma conversa.
+ */
+export const whatsappNovoOrcamentoSchema = z.object({
+  titulo: z.string().trim().min(1, "Informe um título").max(150),
+  condicaoPagamentoId: z.string().uuid().nullable().optional(),
+  dataValidade: z.coerce.date().nullable().optional(),
+  observacao: z.string().trim().max(1000).optional(),
+  itens: z
+    .array(
+      z.object({
+        produtoId: z.string().uuid(),
+        quantidade: z.coerce.number().int().positive("Informe a quantidade"),
+        vlrUnitario: z.coerce.number().min(0, "Informe o preço unitário"),
+      }),
+    )
+    .min(1, "Inclua ao menos um produto"),
+  /** Manda a proposta em PDF logo depois de criar — o caminho mais comum. */
+  enviar: z.boolean().default(true),
+});
+export type WhatsappNovoOrcamento = z.infer<typeof whatsappNovoOrcamentoSchema>;
 
 // --------------------------------------------------------------------------
 // Exemplos para o Swagger

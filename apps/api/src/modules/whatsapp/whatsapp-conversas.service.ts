@@ -21,8 +21,10 @@ import {
   combinarFiltroVendedor,
   resolverEscopoVendedores,
 } from '../../common/escopo/escopo-vendedores';
+import { inicioDoDia } from '../titulos-receber/titulo-receber-status';
 import type {
   WhatsappConversaQuery,
+  WhatsappSituacaoTitulos,
   WhatsappEnviar,
   WhatsappIniciarConversa,
   WhatsappMensagemQuery,
@@ -153,6 +155,13 @@ export class WhatsappConversasService {
         }),
       ]);
 
+      const sinais = await this.sinaisDoCliente(
+        tx,
+        user,
+        linhas.map((c) => c.clienteId).filter((id): id is string => !!id),
+      );
+      const outrosAtendentes = await this.outrosAtendentes(tx, linhas);
+
       return {
         total,
         pagina: query.pagina,
@@ -178,9 +187,149 @@ export class WhatsappConversasService {
           arquivada: c.arquivada,
           vendedorId: c.sessao.vendedorId,
           vendedorNome: c.sessao.vendedor.nome,
+          diasSemComprar: c.clienteId
+            ? (sinais.diasSemComprar.get(c.clienteId) ?? null)
+            : null,
+          situacaoTitulos: c.clienteId
+            ? (sinais.situacaoTitulos.get(c.clienteId) ?? null)
+            : null,
+          outrosAtendentes: outrosAtendentes.get(c.id) ?? [],
         })),
       };
     });
+  }
+
+  /**
+   * Quem mais está falando com estes mesmos contatos.
+   *
+   * O telefone do cliente não pertence a um atendimento: a mesma pessoa pode
+   * estar em conversa com dois vendedores ao mesmo tempo, e nenhum dos dois
+   * enxerga o outro — cada um só vê a própria sessão. Sem este aviso, dois
+   * orçamentos concorrentes para o mesmo cliente saem sem ninguém perceber.
+   *
+   * Deliberadamente **fora** do escopo de leitura: a consulta atravessa as
+   * sessões de outros vendedores de propósito. O que sai daqui é só o **nome
+   * de quem atende** — nunca a conversa dele, que continua invisível para
+   * quem não tem escopo sobre ela.
+   */
+  private async outrosAtendentes(
+    tx: TenantTx,
+    conversas: { id: string; contatoId: string; sessaoId: string }[],
+  ) {
+    const porConversa = new Map<string, string[]>();
+    const contatoIds = [...new Set(conversas.map((c) => c.contatoId))];
+    if (contatoIds.length === 0) return porConversa;
+
+    const todas = await tx.whatsappConversa.findMany({
+      where: { contatoId: { in: contatoIds } },
+      select: {
+        contatoId: true,
+        sessaoId: true,
+        sessao: { select: { vendedor: { select: { nome: true } } } },
+      },
+    });
+
+    for (const conversa of conversas) {
+      const nomes = todas
+        .filter(
+          (outra) =>
+            outra.contatoId === conversa.contatoId &&
+            outra.sessaoId !== conversa.sessaoId,
+        )
+        .map((outra) => outra.sessao.vendedor.nome);
+      if (nomes.length) porConversa.set(conversa.id, [...new Set(nomes)]);
+    }
+    return porConversa;
+  }
+
+  /**
+   * Positivação e cobrança dos clientes da página, para os ícones da lista.
+   *
+   * **Duas consultas agregadas para a página inteira**, não uma por conversa:
+   * com 30 linhas e dois indicadores, o N+1 seriam 60 idas ao banco a cada
+   * atualização da lista — que roda a cada 15 s.
+   *
+   * Cada indicador respeita a permissão da rotina dona do dado: quem não pode
+   * ver título no sistema não descobre a situação da cobrança por um ícone
+   * colorido. Sem permissão, o campo vem nulo e a tela não mostra nada.
+   */
+  private async sinaisDoCliente(
+    tx: TenantTx,
+    user: AuthenticatedUser,
+    clienteIds: string[],
+  ) {
+    const diasSemComprar = new Map<string, number | null>();
+    const situacaoTitulos = new Map<string, WhatsappSituacaoTitulos>();
+    const ids = [...new Set(clienteIds)];
+    if (ids.length === 0) return { diasSemComprar, situacaoTitulos };
+
+    const pode = (permissao: string) =>
+      user.isAdmin || user.permissoes.includes(permissao);
+    const hoje = inicioDoDia();
+
+    if (pode('notas-saida.visualizar')) {
+      // Comodato não é venda: contar a remessa como compra faria um cliente
+      // que só recebeu equipamento aparecer como positivado.
+      const compras = await tx.notaSaida.groupBy({
+        by: ['clienteId'],
+        where: {
+          clienteId: { in: ids },
+          deletedAt: null,
+          ativo: true,
+          comodato: false,
+        },
+        _max: { dtEmissao: true },
+      });
+      for (const linha of compras) {
+        if (!linha.clienteId) continue;
+        const ultima = linha._max.dtEmissao;
+        diasSemComprar.set(
+          linha.clienteId,
+          ultima
+            ? Math.max(
+                0,
+                Math.floor(
+                  (hoje.getTime() - inicioDoDia(ultima).getTime()) / 86_400_000,
+                ),
+              )
+            : null,
+        );
+      }
+    }
+
+    if (pode('titulos-receber.visualizar')) {
+      // O vencimento mais antigo entre os títulos em aberto decide a cor: é o
+      // pior caso, que é o que o vendedor precisa ver antes de abrir a
+      // conversa. `_min` ignora nulos, então título sem vencimento não
+      // inventa atraso.
+      const cobranca = await tx.tituloReceber.groupBy({
+        by: ['clienteId'],
+        where: {
+          clienteId: { in: ids },
+          deletedAt: null,
+          ativo: true,
+          dtBaixa: null,
+        },
+        _min: { vencimento: true },
+      });
+      const emSeteDias = new Date(hoje.getTime() + 7 * 86_400_000);
+      for (const linha of cobranca) {
+        if (!linha.clienteId) continue;
+        const vence = linha._min.vencimento;
+        situacaoTitulos.set(
+          linha.clienteId,
+          !vence
+            ? 'em_dia'
+            : vence.getTime() < hoje.getTime()
+              ? 'vencido'
+              : vence.getTime() <= emSeteDias.getTime()
+                ? 'vencendo'
+                : 'em_dia',
+        );
+      }
+    }
+
+    return { diasSemComprar, situacaoTitulos };
   }
 
   private previa(ultima?: { conteudo: string | null; tipo: string }) {
@@ -209,6 +358,40 @@ export class WhatsappConversasService {
     });
     // 404 e não 403: fora do escopo, a conversa não deve nem revelar que existe.
     if (!conversa) throw new NotFoundException('Conversa não encontrada');
+    return conversa;
+  }
+
+  /**
+   * A conversa, se o usuário puder lê-la. Exposto para o agendamento aplicar
+   * o mesmo corte de escopo sem reimplementá-lo.
+   */
+  conversaNoEscopoPublica(
+    tx: TenantTx,
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+  ) {
+    return this.conversaNoEscopo(tx, empresaId, user, conversaId);
+  }
+
+  /**
+   * A conversa, se o usuário puder **falar** nela — leitura mais a regra de
+   * que só o dono da sessão envia. É a porta única de quem manda mensagem,
+   * agendada ou não: agendar não pode ser um contorno da permissão.
+   */
+  async conversaParaEnvio(
+    tx: TenantTx,
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+  ) {
+    const conversa = await this.conversaNoEscopo(
+      tx,
+      empresaId,
+      user,
+      conversaId,
+    );
+    await this.garantirDono(tx, empresaId, user, conversa);
     return conversa;
   }
 

@@ -1,5 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import {
+  whatsappAgendarMensagemSchema,
   whatsappAgendarVisitaSchema,
   whatsappConectarSchema,
   whatsappConfigUpdateSchema,
@@ -9,6 +10,7 @@ import {
   whatsappEnviarSchema,
   whatsappIniciarConversaSchema,
   whatsappMensagemQuerySchema,
+  whatsappNovoOrcamentoSchema,
   whatsappReagirSchema,
   whatsappVincularSchema,
 } from '@plataforma/contracts';
@@ -27,11 +29,17 @@ export class WhatsappEnviarDto extends createZodDto(whatsappEnviarSchema) {}
 export class WhatsappEnviarArquivoDto extends createZodDto(
   whatsappEnviarArquivoSchema,
 ) {}
+export class WhatsappAgendarMensagemDto extends createZodDto(
+  whatsappAgendarMensagemSchema,
+) {}
 export class WhatsappAgendarVisitaDto extends createZodDto(
   whatsappAgendarVisitaSchema,
 ) {}
 export class WhatsappEnviarOrcamentoDto extends createZodDto(
   whatsappEnviarOrcamentoSchema,
+) {}
+export class WhatsappNovoOrcamentoDto extends createZodDto(
+  whatsappNovoOrcamentoSchema,
 ) {}
 export class WhatsappReagirDto extends createZodDto(whatsappReagirSchema) {}
 export class WhatsappVincularDto extends createZodDto(whatsappVincularSchema) {}

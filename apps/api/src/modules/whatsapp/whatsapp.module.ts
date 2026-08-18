@@ -6,6 +6,7 @@ import { WhatsappSessaoService } from './whatsapp-sessao.service';
 import { WhatsappConversasService } from './whatsapp-conversas.service';
 import { WhatsappAgendaService } from './whatsapp-agenda.service';
 import { WhatsappAcoesService } from './whatsapp-acoes.service';
+import { WhatsappAgendamentoService } from './whatsapp-agendamento.service';
 import { WhatsappWorkerClient } from './whatsapp-worker.client';
 import { TitulosReceberModule } from '../titulos-receber/titulos-receber.module';
 import { NotasSaidaModule } from '../notas-saida/notas-saida.module';
@@ -29,6 +30,7 @@ import { OrcamentosModule } from '../orcamentos/orcamentos.module';
     WhatsappConversasService,
     WhatsappAgendaService,
     WhatsappAcoesService,
+    WhatsappAgendamentoService,
     WhatsappWorkerClient,
   ],
   // Exportado para o feed de notificações somar as não lidas.

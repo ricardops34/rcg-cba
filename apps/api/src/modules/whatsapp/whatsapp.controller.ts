@@ -26,16 +26,19 @@ import { WhatsappSessaoService } from './whatsapp-sessao.service';
 import { WhatsappConversasService } from './whatsapp-conversas.service';
 import { WhatsappAgendaService } from './whatsapp-agenda.service';
 import { WhatsappAcoesService } from './whatsapp-acoes.service';
+import { WhatsappAgendamentoService } from './whatsapp-agendamento.service';
 import {
   WhatsappConectarDto,
   WhatsappConfigUpdateDto,
   WhatsappConversaQueryDto,
+  WhatsappAgendarMensagemDto,
   WhatsappAgendarVisitaDto,
   WhatsappEnviarArquivoDto,
   WhatsappEnviarDto,
   WhatsappEnviarOrcamentoDto,
   WhatsappIniciarConversaDto,
   WhatsappMensagemQueryDto,
+  WhatsappNovoOrcamentoDto,
   WhatsappReagirDto,
   WhatsappVincularDto,
 } from './dto/whatsapp.dto';
@@ -58,6 +61,7 @@ export class WhatsappController {
     private readonly conversas: WhatsappConversasService,
     private readonly agenda: WhatsappAgendaService,
     private readonly acoes: WhatsappAcoesService,
+    private readonly agendamento: WhatsappAgendamentoService,
   ) {}
 
   // ---------------- configuração da empresa ----------------
@@ -385,6 +389,24 @@ export class WhatsappController {
   }
 
   @ApiOperation({
+    summary: 'Montar um orçamento para o cliente da conversa',
+    description:
+      'Cria o orçamento pelo mesmo service da tela de Orçamentos (preço da ' +
+      'tabela do cliente, desconto por regra, numeração) e, por padrão, já ' +
+      'envia a proposta em PDF. Cliente e vendedor são os da conversa. Se o ' +
+      'envio falhar, o orçamento permanece criado. Requer orcamentos.cadastrar.',
+  })
+  @RequirePermission('orcamentos', 'cadastrar')
+  @Post('conversas/:id/acoes/orcamento/novo')
+  novoOrcamento(
+    @Param('id') id: string,
+    @Body() dto: WhatsappNovoOrcamentoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.acoes.novoOrcamento(user.empresaAtivaId, user, id, dto);
+  }
+
+  @ApiOperation({
     summary: 'Reagir a uma mensagem da conversa',
     description:
       'Emoji vazio remove a reação — é a convenção do próprio WhatsApp. Cada ' +
@@ -406,6 +428,62 @@ export class WhatsappController {
       id,
       mensagemId,
       dto.emoji,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Agendar uma mensagem',
+    description:
+      'Texto escrito agora para sair na data e hora informadas. Passa pelas ' +
+      'mesmas travas do envio imediato: conversa no escopo e só o dono da ' +
+      'sessão. A rotina envia a cada minuto; se o WhatsApp estiver ' +
+      'desconectado na hora, o agendamento fica com erro visível na conversa ' +
+      '— não some. Requer whatsapp-conversas.cadastrar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Post('conversas/:id/agendamentos')
+  agendarMensagem(
+    @Param('id') id: string,
+    @Body() dto: WhatsappAgendarMensagemDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.agendamento.agendar(user.empresaAtivaId, user, id, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Mensagens agendadas da conversa',
+    description:
+      'As pendentes e as que falharam — o que já saiu está no rolo da ' +
+      'conversa. Requer whatsapp-conversas.visualizar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'visualizar')
+  @Get('conversas/:id/agendamentos')
+  listarAgendamentos(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.agendamento.listar(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Cancelar uma mensagem agendada',
+    description:
+      'Recusa com 404 quando a rotina já pegou a mensagem para enviar — a ' +
+      'essa altura, cancelar mentiria para o vendedor. Requer ' +
+      'whatsapp-conversas.cadastrar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Delete('conversas/:id/agendamentos/:agendamentoId')
+  cancelarAgendamento(
+    @Param('id') id: string,
+    @Param('agendamentoId') agendamentoId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.agendamento.cancelar(
+      user.empresaAtivaId,
+      user,
+      id,
+      agendamentoId,
     );
   }
 

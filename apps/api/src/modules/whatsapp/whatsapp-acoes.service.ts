@@ -9,6 +9,7 @@ import { registrarAtividadeOrcamento } from '../orcamentos/registrar-atividade-o
 import type {
   WhatsappAgendarVisita,
   WhatsappEnviarOrcamento,
+  WhatsappNovoOrcamento,
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
@@ -180,6 +181,58 @@ export class WhatsappAcoesService {
       sortOrder: 'desc',
       clienteId,
     } as never);
+  }
+
+  /**
+   * Monta um orçamento para o cliente da conversa e, por padrão, já manda a
+   * proposta em PDF.
+   *
+   * O vendedor é o **dono da sessão** e o cliente é o da conversa — nenhum dos
+   * dois vem do corpo. A criação delega ao `OrcamentosService`, então o
+   * recálculo de preço pela tabela do cliente, o desconto por regra e a
+   * numeração continuam sendo os mesmos da tela de Orçamentos; aqui não há
+   * uma segunda maneira de orçar.
+   *
+   * Se o envio falhar, o orçamento **continua criado**: ele já é um registro
+   * de negócio, e desfazer por causa da mensagem seria perder o trabalho do
+   * vendedor. A tela avisa para reenviar.
+   */
+  async novoOrcamento(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    input: WhatsappNovoOrcamento,
+  ) {
+    const { clienteId, vendedorId } = await this.contexto(
+      empresaId,
+      user,
+      conversaId,
+    );
+
+    const orcamento = (await this.orcamentos.create(empresaId, user, {
+      clienteId,
+      vendedorId,
+      titulo: input.titulo,
+      status: 'rascunho',
+      condicaoPagamentoId: input.condicaoPagamentoId ?? null,
+      dataValidade: input.dataValidade ?? null,
+      ...(input.observacao ? { observacao: input.observacao } : {}),
+      ativo: true,
+      itens: input.itens,
+    } as never)) as { id: string; numero: number };
+
+    if (!input.enviar) return { orcamento, enviado: false as const };
+
+    try {
+      await this.enviarOrcamento(empresaId, user, conversaId, {
+        orcamentoId: orcamento.id,
+      });
+      return { orcamento, enviado: true as const };
+    } catch (erro) {
+      const motivo =
+        erro instanceof Error ? erro.message : 'Falha ao enviar a proposta';
+      return { orcamento, enviado: false as const, motivo };
+    }
   }
 
   /**

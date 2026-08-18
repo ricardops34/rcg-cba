@@ -81,6 +81,7 @@ model Empresa {
   whatsappConversas          WhatsappConversa[]
   whatsappMensagens          WhatsappMensagem[]
   whatsappReacoes            WhatsappReacao[]
+  whatsappAgendadas          WhatsappMensagemAgendada[]
   whatsappAcoes              WhatsappAcaoRegistro[]
 
   @@map("empresas")
@@ -2091,6 +2092,7 @@ model WhatsappConversa {
   cliente   Cliente?               @relation(fields: [clienteId], references: [id])
   mensagens WhatsappMensagem[]
   acoes     WhatsappAcaoRegistro[]
+  agendadas WhatsappMensagemAgendada[]
 
   @@unique([empresaId, sessaoId, contatoId])
   @@index([empresaId, clienteId])
@@ -2174,6 +2176,53 @@ model WhatsappReacao {
 enum WhatsappLadoReacao {
   nos
   contato
+}
+
+/**
+ * Mensagem escrita agora para sair depois.
+ *
+ * O vendedor prepara a cobrança da manhã seguinte, o retorno combinado para a
+ * semana que vem, e a plataforma envia na hora — sem ele precisar lembrar.
+ *
+ * `status` existe para o envio ser **idempotente entre réplicas da API**: a
+ * rotina só processa quem conseguir mudar `pendente` → `enviando` na própria
+ * atualização condicional. Sem isso, duas réplicas mandariam a mesma mensagem
+ * duas vezes para o cliente.
+ */
+model WhatsappMensagemAgendada {
+  id         String @id @default(uuid())
+  empresaId  String
+  conversaId String
+
+  texto    String   @db.Text
+  enviarEm DateTime
+
+  status WhatsappAgendamentoStatus @default(pendente)
+  /** Preenchido quando o envio falha — é o que a tela mostra ao vendedor. */
+  erro String?
+  /** Mensagem criada no envio, para ligar o agendamento ao que saiu. */
+  mensagemId String?
+
+  criadaPor    String
+  criadaEm     DateTime @default(now())
+  atualizadaEm DateTime @updatedAt
+
+  empresa  Empresa          @relation(fields: [empresaId], references: [id])
+  conversa WhatsappConversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+
+  // A rotina varre por (status, enviarEm) a cada minuto: sem este índice, é
+  // uma varredura na tabela inteira a cada passagem.
+  @@index([status, enviarEm])
+  @@index([empresaId, conversaId, enviarEm])
+  @@map("whatsapp_mensagens_agendadas")
+}
+
+enum WhatsappAgendamentoStatus {
+  pendente
+  enviando
+  enviada
+  erro
+  cancelada
 }
 
 /**
