@@ -11,8 +11,10 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
+  Pencil,
   Plug,
   ShoppingCart,
+  Unlink,
   Users,
   X,
 } from "lucide-react";
@@ -26,11 +28,20 @@ import { ApiError, apiFetch } from "@/lib/api-client";
 import { avatarColorClass, initials } from "@/lib/avatar-color";
 import { ClienteCombobox } from "@/components/crud/cliente-combobox";
 import { OrcamentoFormContent } from "@/components/crud/orcamento-form";
-import { PainelPosicao } from "@/components/whatsapp/painel-posicao";
+import { PosicaoClienteConteudo } from "@/components/comercial/posicao-cliente-conteudo";
+import { ColunaRedimensionavel } from "@/components/ui/coluna-redimensionavel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ConexaoSheet } from "@/components/whatsapp/conexao-sheet";
 import { NovaConversaDialog } from "@/components/whatsapp/nova-conversa-dialog";
 import { Composer } from "@/components/whatsapp/composer";
@@ -209,18 +220,21 @@ export default function AtendimentoPage() {
           cada coluna, não a página. `svh` em vez de `vh` porque no celular a
           barra do navegador entra na conta de `vh` e corta o compositor. */}
       <div className="flex h-[calc(100svh-14rem)] flex-col gap-3 overflow-hidden md:flex-row">
-        <div
-          className={`h-full min-h-0 shrink-0 overflow-hidden transition-[width] duration-200 ${
-            listaAberta ? "md:w-80" : "md:w-0"
-          }`}
-        >
-          <ListaDeConversas
-            carregando={carregandoConversas}
-            conversas={conversas?.itens ?? []}
-            selecionada={conversaId}
-            onSelecionar={setConversaId}
-          />
-        </div>
+        {listaAberta ? (
+          <ColunaRedimensionavel
+            larguraPadrao={320}
+            chaveArmazenamento="atendimento-largura-lista"
+            lado="esquerda"
+            className="hidden md:block"
+          >
+            <ListaDeConversas
+              carregando={carregandoConversas}
+              conversas={conversas?.itens ?? []}
+              selecionada={conversaId}
+              onSelecionar={setConversaId}
+            />
+          </ColunaRedimensionavel>
+        ) : null}
 
         {/* min-w-0: sem isso o conteúdo do rolo empurra a coluna e o flex
             estoura a largura da tela. */}
@@ -233,25 +247,29 @@ export default function AtendimentoPage() {
           />
         </div>
 
-        {/* Largura por conteúdo: o formulário de orçamento não cabe na coluna
-            de dados do contato, e a de contato ficaria vazia se fosse larga. */}
-        <div
-          className={`hidden h-full min-h-0 shrink-0 overflow-hidden transition-[width] duration-200 xl:block ${
-            !painelAberto
-              ? "xl:w-0"
-              : painelDireito === "orcamento"
-                ? "xl:w-[46rem]"
+        {/* Largura padrão por conteúdo — o formulário de orçamento não cabe na
+            coluna de dados do contato — e ajustável no arraste, com cada
+            painel lembrando a sua. */}
+        {painelAberto ? (
+          <ColunaRedimensionavel
+            key={painelDireito}
+            larguraPadrao={
+              painelDireito === "orcamento"
+                ? 736
                 : painelDireito === "posicao"
-                  ? "xl:w-96"
-                  : "xl:w-72"
-          }`}
-        >
-          <PainelDireito
-            conversa={conversaSelecionada ?? null}
-            modo={painelDireito}
-            onFechar={() => setPainelDireito("contato")}
-          />
-        </div>
+                  ? 384
+                  : 288
+            }
+            chaveArmazenamento={`atendimento-largura-${painelDireito}`}
+            className="hidden xl:block"
+          >
+            <PainelDireito
+              conversa={conversaSelecionada ?? null}
+              modo={painelDireito}
+              onFechar={() => setPainelDireito("contato")}
+            />
+          </ColunaRedimensionavel>
+        ) : null}
       </div>
 
       <ConexaoSheet
@@ -282,7 +300,7 @@ function ListaDeConversas({
   if (carregando) return <Skeleton className="h-full w-full" />;
 
   return (
-    <div className="h-full w-80 overflow-y-auto rounded-lg border">
+    <div className="h-full w-full overflow-y-auto rounded-lg border">
       {conversas.length === 0 ? (
         <p className="p-4 text-sm text-muted-foreground">
           Nenhuma conversa ainda. Elas aparecem aqui quando um cliente escrever.
@@ -542,7 +560,9 @@ function PainelDireito({
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {modo === "posicao" ? (
-          <PainelPosicao clienteId={clienteId} />
+          // A mesma tela da rotina de Posição de Cliente, com as mesmas abas
+          // e filtros — sem o botão de voltar, que aqui não tem para onde ir.
+          <PosicaoClienteConteudo clienteId={clienteId} mostrarVoltar={false} />
         ) : (
           // O formulário completo de Orçamentos, com o cliente já escolhido —
           // o mesmo que a cortina da Posição de Cliente usa.
@@ -564,8 +584,13 @@ function PainelDireito({
  * está a cobrança e quem mais o atende.
  */
 function PainelCliente({ conversa }: { conversa: WhatsappConversa | null }) {
+  // Trocar o vínculo é raro e tem consequência (muda de quem é a conversa
+  // daqui em diante), então fica atrás de um lápis em vez de ocupar o painel.
+  const [trocandoVinculo, setTrocandoVinculo] = useState(false);
+  const [removendoVinculo, setRemovendoVinculo] = useState(false);
+
   if (!conversa) {
-    return <div className="hidden h-full w-72 rounded-lg border xl:block" />;
+    return <div className="hidden h-full w-full rounded-lg border xl:block" />;
   }
 
   const nome =
@@ -576,7 +601,7 @@ function PainelCliente({ conversa }: { conversa: WhatsappConversa | null }) {
   const telefone = telefoneBonito(conversa.contato.telefoneNormalizado);
 
   return (
-    <div className="hidden h-full w-72 space-y-4 overflow-y-auto rounded-lg border p-4 text-sm xl:block">
+    <div className="hidden h-full w-full space-y-4 overflow-y-auto rounded-lg border p-4 text-sm xl:block">
       <div className="flex flex-col items-center gap-2 pt-2 text-center">
         <div
           className={`flex size-20 items-center justify-center rounded-full text-2xl font-medium ${avatarColorClass(nome)}`}
@@ -594,11 +619,46 @@ function PainelCliente({ conversa }: { conversa: WhatsappConversa | null }) {
       {conversa.contato.clienteRazaoSocial ? (
         <>
           <div className="border-t pt-3">
-            <p className="text-xs text-muted-foreground">Cliente</p>
-            <p className="font-medium">{conversa.contato.clienteRazaoSocial}</p>
-            <p className="text-xs text-muted-foreground">
-              Código {conversa.contato.clienteCodigoErp ?? "—"}
-            </p>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">Cliente</p>
+                <p className="font-medium">
+                  {conversa.contato.clienteRazaoSocial}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Código {conversa.contato.clienteCodigoErp ?? "—"}
+                </p>
+              </div>
+              {/* Duas ações distintas e visíveis: trocar por outro cliente e
+                  remover o vínculo. Remover estava só dentro da troca, e
+                  quem queria desvincular não achava. */}
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  title="Trocar cliente vinculado"
+                  onClick={() => setTrocandoVinculo((v) => !v)}
+                  className="text-muted-foreground transition hover:text-foreground"
+                >
+                  <Pencil className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  title="Remover vínculo com o cliente"
+                  onClick={() => setRemovendoVinculo(true)}
+                  className="text-muted-foreground transition hover:text-destructive"
+                >
+                  <Unlink className="size-4" />
+                </button>
+              </div>
+            </div>
+            {trocandoVinculo ? (
+              <div className="pt-2">
+                <VincularCliente
+                  conversa={conversa}
+                  aoConcluir={() => setTrocandoVinculo(false)}
+                />
+              </div>
+            ) : null}
           </div>
 
           {conversa.diasSemComprar != null || conversa.situacaoTitulos ? (
@@ -659,7 +719,80 @@ function PainelCliente({ conversa }: { conversa: WhatsappConversa | null }) {
         <p className="text-xs text-muted-foreground">Atendente</p>
         <p>{conversa.vendedorNome}</p>
       </div>
+
+      <RemoverVinculoDialog
+        conversa={conversa}
+        aberto={removendoVinculo}
+        onOpenChange={setRemovendoVinculo}
+      />
     </div>
+  );
+}
+
+/**
+ * Confirmação para remover o vínculo com o cliente.
+ *
+ * Pede confirmação porque a consequência não é óbvia na hora: sem vínculo, a
+ * plataforma **para de gravar** o que for dito daqui em diante (regra de
+ * privacidade do módulo) e as ações do sistema somem da conversa. O que já
+ * está gravado permanece — desvincular não apaga histórico.
+ */
+function RemoverVinculoDialog({
+  conversa,
+  aberto,
+  onOpenChange,
+}: {
+  conversa: WhatsappConversa;
+  aberto: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+
+  const remover = useMutation({
+    mutationFn: () =>
+      apiFetch(`/whatsapp/conversas/${conversa.id}/vinculo`, {
+        method: "PUT",
+        body: { clienteId: null, ignorar: false },
+      }),
+    onSuccess: async () => {
+      toast.success("Vínculo removido — as próximas mensagens não serão gravadas");
+      onOpenChange(false);
+      // Espera os dados novos: sem cliente, os indicadores do contato somem, e
+      // deixá-los na tela diria que a conversa ainda está vinculada.
+      await queryClient.refetchQueries({ queryKey: ["whatsapp-conversas"] });
+      void queryClient.invalidateQueries({ queryKey: ["clientes"] });
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Falha ao remover o vínculo"),
+  });
+
+  return (
+    <Dialog open={aberto} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Remover o vínculo com o cliente?</DialogTitle>
+          <DialogDescription>
+            A conversa deixa de ser ligada a{" "}
+            <strong>{conversa.contato.clienteRazaoSocial}</strong>. As mensagens
+            já gravadas continuam no histórico, mas as próximas{" "}
+            <strong>não serão gravadas</strong> e as ações do sistema saem da
+            conversa. Dá para vincular de novo depois.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={remover.isPending}
+            onClick={() => remover.mutate()}
+          >
+            {remover.isPending ? "Removendo…" : "Remover vínculo"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -676,20 +809,40 @@ function PainelCliente({ conversa }: { conversa: WhatsappConversa | null }) {
  * Gravação retroativa não acontece: o que passou antes do vínculo não volta —
  * daí o aviso na tela, para o vendedor não esperar o histórico aparecer.
  */
-function VincularCliente({ conversa }: { conversa: WhatsappConversa }) {
+function VincularCliente({
+  conversa,
+  aoConcluir,
+}: {
+  conversa: WhatsappConversa;
+  /** Fecha a edição quando o vínculo já existia e foi trocado. */
+  aoConcluir?: () => void;
+}) {
   const queryClient = useQueryClient();
-  const [clienteId, setClienteId] = useState<string | null>(null);
+  const [clienteId, setClienteId] = useState<string | null>(
+    conversa.clienteId ?? null,
+  );
+  const jaVinculado = Boolean(conversa.clienteId);
 
   const vincular = useMutation({
-    mutationFn: () =>
+    mutationFn: (destino: string | null) =>
       apiFetch(`/whatsapp/conversas/${conversa.id}/vinculo`, {
         method: "PUT",
-        body: { clienteId, ignorar: false },
+        body: { clienteId: destino, ignorar: false },
       }),
-    onSuccess: () => {
-      toast.success("Contato vinculado — as próximas mensagens ficam gravadas");
-      setClienteId(null);
-      void queryClient.invalidateQueries({ queryKey: ["whatsapp-conversas"] });
+    onSuccess: async (_dados, destino) => {
+      toast.success(
+        destino
+          ? "Contato vinculado — as próximas mensagens ficam gravadas"
+          : "Vínculo desfeito — as próximas mensagens não serão gravadas",
+      );
+      // `refetch` e não `invalidate`: os indicadores do contato (positivação,
+      // cobrança) e o painel inteiro saem da lista de conversas, e invalidar
+      // sem esperar deixaria os números do cliente **anterior** na tela até o
+      // próximo ciclo de 15 s.
+      await queryClient.refetchQueries({ queryKey: ["whatsapp-conversas"] });
+      // A posição em cache é a do cliente que saiu.
+      void queryClient.invalidateQueries({ queryKey: ["clientes"] });
+      aoConcluir?.();
     },
     onError: (err) =>
       toast.error(err instanceof ApiError ? err.message : "Falha ao vincular"),
@@ -698,23 +851,52 @@ function VincularCliente({ conversa }: { conversa: WhatsappConversa }) {
   return (
     <div className="space-y-2 rounded-md border border-dashed p-3">
       <div>
-        <p className="text-xs font-medium">Sem cliente vinculado</p>
+        <p className="text-xs font-medium">
+          {jaVinculado ? "Trocar o cliente vinculado" : "Sem cliente vinculado"}
+        </p>
         <p className="text-xs text-muted-foreground">
-          Enquanto não houver vínculo, as mensagens deste contato não são
-          gravadas e as ações do sistema ficam indisponíveis. O que já passou
-          não volta.
+          {jaVinculado
+            ? "A troca vale daqui em diante: as mensagens já gravadas continuam onde estão."
+            : "Enquanto não houver vínculo, as mensagens deste contato não são gravadas e as ações do sistema ficam indisponíveis. O que já passou não volta."}
         </p>
       </div>
-      <ClienteCombobox value={clienteId} onChange={setClienteId} />
+
+      {/* Só a carteira do vendedor desta conversa: é a mesma regra que o
+          servidor aplica, e oferecer na busca o que a rota vai recusar seria
+          convidar ao erro. */}
+      <ClienteCombobox
+        value={clienteId}
+        onChange={setClienteId}
+        vendedorId={conversa.vendedorId}
+      />
+
       <Button
         size="sm"
         className="w-full"
-        disabled={!clienteId || vincular.isPending}
-        onClick={() => vincular.mutate()}
+        disabled={
+          !clienteId || clienteId === conversa.clienteId || vincular.isPending
+        }
+        onClick={() => vincular.mutate(clienteId)}
       >
         <Link2 className="size-4" />
-        {vincular.isPending ? "Vinculando…" : "Vincular ao cliente"}
+        {vincular.isPending
+          ? "Salvando…"
+          : jaVinculado
+            ? "Trocar vínculo"
+            : "Vincular ao cliente"}
       </Button>
+
+      {jaVinculado ? (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="w-full text-muted-foreground"
+          disabled={vincular.isPending}
+          onClick={() => vincular.mutate(null)}
+        >
+          Desfazer vínculo
+        </Button>
+      ) : null}
     </div>
   );
 }

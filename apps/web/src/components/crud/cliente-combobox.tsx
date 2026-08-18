@@ -26,20 +26,35 @@ export function ClienteCombobox({
   onChange,
   placeholder = "Selecionar cliente",
   disabled = false,
+  vendedorId,
 }: {
   value: string | null;
   onChange: (id: string | null) => void;
   placeholder?: string;
   disabled?: boolean;
+  /**
+   * Restringe a busca à carteira de um vendedor.
+   *
+   * O escopo do usuário já limita a lista, mas nem sempre o bastante: um
+   * supervisor enxerga a equipe inteira, e há casos (vincular contato de
+   * WhatsApp a cliente) em que a carteira que vale é a do **vendedor da
+   * conversa**, não a de quem está mexendo.
+   */
+  vendedorId?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
   const { data } = useQuery({
-    queryKey: ["clientes", "combobox", search],
+    queryKey: ["clientes", "combobox", search, vendedorId],
     queryFn: () =>
       apiFetch<{ data: Cliente[] }>("/clientes", {
-        query: { pageSize: 50, search: search || undefined, ativo: true },
+        query: {
+          pageSize: 50,
+          search: search || undefined,
+          ativo: true,
+          ...(vendedorId ? { vendedorId } : {}),
+        },
       }),
     enabled: open,
   });

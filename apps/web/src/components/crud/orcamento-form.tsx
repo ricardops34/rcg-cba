@@ -660,17 +660,17 @@ export function OrcamentoFormContent({
     setVendedorPadraoAplicado(true);
   }, [orcamento, vendedorPadraoAplicado, clienteIdPadrao, meuVendedorId, form]);
 
-  // Ao criar, sugere "Título" = "Orçamento Cliente <nome fantasia>", acompanhando
-  // o cliente escolhido enquanto o vendedor não mexer manualmente no título.
-  const [tituloTocado, setTituloTocado] = useState(false);
+  // O título é montado a partir do cliente e **não aparece na tela**: ele
+  // serve para nomear o orçamento na Agenda e no histórico do cliente, não
+  // para o vendedor escrever. Na edição, o título já gravado é mantido — um
+  // orçamento antigo não deve ser renomeado por ser reaberto.
   const nomeClienteSelecionado =
     clienteSelecionadoQuery.data?.nomeFantasia || clienteSelecionadoQuery.data?.razaoSocial;
   useEffect(() => {
-    if (!orcamento && !tituloTocado && nomeClienteSelecionado) {
+    if (!orcamento && nomeClienteSelecionado) {
       form.setValue("titulo", `Orçamento Cliente ${nomeClienteSelecionado}`);
     }
-  }, [orcamento, tituloTocado, nomeClienteSelecionado, form]);
-  const tituloReg = form.register("titulo");
+  }, [orcamento, nomeClienteSelecionado, form]);
 
   // Ao criar, sugere "Condição de pagamento" = a cadastrada no cliente,
   // acompanhando o cliente escolhido enquanto o vendedor não mexer
@@ -1212,18 +1212,15 @@ export function OrcamentoFormContent({
 
             <TabsContent value="orcamento" className="space-y-4 pt-3">
             <FieldGroup>
-            <Field data-invalid={!!form.formState.errors.titulo}>
-              <FieldLabel htmlFor="titulo">Título</FieldLabel>
-              <Input
-                id="titulo"
-                {...tituloReg}
-                onChange={(e) => {
-                  setTituloTocado(true);
-                  tituloReg.onChange(e);
-                }}
-              />
+            {/* O título não é campo de tela: ele existe para nomear o
+                orçamento na Agenda e no histórico do cliente, e é montado a
+                partir do cliente escolhido (ver o efeito que o preenche).
+                Pedir para o vendedor digitá-lo só criava um rótulo a mais
+                para preencher. O erro continua visível caso o servidor recuse
+                — sem o campo, ninguém entenderia a recusa. */}
+            {form.formState.errors.titulo ? (
               <FieldError errors={[form.formState.errors.titulo]} />
-            </Field>
+            ) : null}
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field data-invalid={!!form.formState.errors.clienteId}>
@@ -1247,36 +1244,58 @@ export function OrcamentoFormContent({
                 />
                 <FieldError errors={[form.formState.errors.clienteId]} />
               </Field>
-              {/* Vendedor vem do cadastro do cliente e não se troca aqui —
-                  só fica liberado quando o cliente não tem vendedor. */}
+              {/* Vendedor é o do cadastro do cliente, e **não se escolhe
+                  aqui**: o servidor sobrescreve de qualquer forma
+                  (OrcamentosService.create/update), então um seletor só
+                  prometeria uma troca que não acontece. Vira campo de leitura.
+
+                  O seletor sobrevive num caso só: cliente sem vendedor
+                  cadastrado, em que não há o que herdar e sem escolher não
+                  haveria como orçar. */}
               <Field data-invalid={!!form.formState.errors.vendedorId}>
                 <FieldLabel htmlFor="vendedorId">Vendedor</FieldLabel>
-                <Select
-                  value={vendedorId || undefined}
-                  onValueChange={(v) => {
-                    form.setValue("vendedorId", v);
-                    form.setValue("oportunidadeId", null);
-                  }}
-                  disabled={!!vendedorDoCliente}
-                >
-                  <SelectTrigger id="vendedorId" className="w-full">
-                    <SelectValue
-                      placeholder={clienteId ? "Selecione o vendedor" : "Escolha um cliente primeiro"}
+                {vendedorDoCliente ? (
+                  <>
+                    <Input
+                      id="vendedorId"
+                      readOnly
+                      tabIndex={-1}
+                      className="cursor-default bg-muted/50"
+                      value={
+                        opcoesVendedor.find((v) => v.id === vendedorId)?.nomeReduzido ||
+                        opcoesVendedor.find((v) => v.id === vendedorId)?.nome ||
+                        "—"
+                      }
                     />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {opcoesVendedor.map((v) => (
-                      <SelectItem key={v.id} value={v.id}>
-                        {v.nomeReduzido || v.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FieldDescription>
-                  {vendedorDoCliente
-                    ? "Definido pelo cadastro do cliente."
-                    : "Cliente sem vendedor cadastrado — selecione o responsável."}
-                </FieldDescription>
+                    <FieldDescription>Definido pelo cadastro do cliente.</FieldDescription>
+                  </>
+                ) : (
+                  <>
+                    <Select
+                      value={vendedorId || undefined}
+                      onValueChange={(v) => {
+                        form.setValue("vendedorId", v);
+                        form.setValue("oportunidadeId", null);
+                      }}
+                    >
+                      <SelectTrigger id="vendedorId" className="w-full">
+                        <SelectValue
+                          placeholder={clienteId ? "Selecione o vendedor" : "Escolha um cliente primeiro"}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {opcoesVendedor.map((v) => (
+                          <SelectItem key={v.id} value={v.id}>
+                            {v.nomeReduzido || v.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FieldDescription>
+                      Cliente sem vendedor cadastrado — selecione o responsável.
+                    </FieldDescription>
+                  </>
+                )}
                 <FieldError errors={[form.formState.errors.vendedorId]} />
               </Field>
             </div>

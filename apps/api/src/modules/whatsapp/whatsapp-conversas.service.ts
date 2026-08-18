@@ -822,18 +822,22 @@ export class WhatsappConversasService {
       );
 
       if (input.clienteId) {
-        const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+        // A carteira que vale é a do **vendedor dono da conversa**, não a do
+        // escopo de quem está mexendo: um supervisor enxerga a equipe inteira,
+        // e vincular ali um cliente de outro vendedor criaria atendimento
+        // cruzado — o dono da conversa passaria a ver posição, títulos e
+        // orçamentos de um cliente que não é dele.
         const cliente = await tx.cliente.findFirst({
           where: {
             id: input.clienteId,
             deletedAt: null,
-            ...combinarFiltroVendedor(escopo),
+            vendedorId: conversa.sessao.vendedorId,
           },
           select: { id: true },
         });
         if (!cliente) {
           throw new NotFoundException(
-            'Cliente não encontrado na sua carteira.',
+            'Só é possível vincular um cliente da carteira do vendedor desta conversa.',
           );
         }
       }
