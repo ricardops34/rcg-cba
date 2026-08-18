@@ -4,7 +4,12 @@ import { WhatsappConversasService } from './whatsapp-conversas.service';
 import { TitulosReceberService } from '../titulos-receber/titulos-receber.service';
 import { NotasSaidaService } from '../notas-saida/notas-saida.service';
 import { AtividadesService } from '../atividades/atividades.service';
-import type { WhatsappAgendarVisita } from '@plataforma/contracts';
+import { OrcamentosService } from '../orcamentos/orcamentos.service';
+import { registrarAtividadeOrcamento } from '../orcamentos/registrar-atividade-orcamento';
+import type {
+  WhatsappAgendarVisita,
+  WhatsappEnviarOrcamento,
+} from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
 /**
@@ -36,6 +41,7 @@ export class WhatsappAcoesService {
     private readonly titulos: TitulosReceberService,
     private readonly notas: NotasSaidaService,
     private readonly atividades: AtividadesService,
+    private readonly orcamentos: OrcamentosService,
   ) {}
 
   /** Cliente e vendedor da conversa, garantindo que ela é visível ao usuário. */
@@ -152,6 +158,103 @@ export class WhatsappAcoesService {
     ].join('\n');
 
     return this.conversas.enviar(empresaId, user, conversaId, { texto });
+  }
+
+  /**
+   * Orçamentos do cliente da conversa, para o vendedor escolher qual mandar.
+   *
+   * Delega ao `OrcamentosService` com o usuário logado: o escopo de carteira e
+   * o RLS continuam sendo os do módulo de orçamentos. O filtro por cliente é o
+   * que impede a lista de virar um seletor de orçamento de outro cliente.
+   */
+  async listarOrcamentos(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+  ) {
+    const { clienteId } = await this.contexto(empresaId, user, conversaId);
+    return this.orcamentos.findAll(empresaId, user, {
+      page: 1,
+      pageSize: 20,
+      sortBy: 'createdAt',
+      sortOrder: 'desc',
+      clienteId,
+    } as never);
+  }
+
+  /**
+   * Manda a proposta comercial em PDF pela conversa.
+   *
+   * O arquivo é o mesmo que a tela de orçamento baixa — gerado pelo
+   * `OrcamentosService`, que aplica a trava de desconto sem autorização (409)
+   * e o escopo do vendedor. Aqui só se confere que o orçamento é **do cliente
+   * desta conversa**: sem isso, um id válido de outro cliente da carteira
+   * mandaria a proposta errada para a pessoa errada.
+   *
+   * O evento no histórico é "proposta enviada pelo WhatsApp", e não "PDF
+   * gerado" — quem lê o histórico do cliente precisa saber que o documento
+   * saiu para ele.
+   */
+  async enviarOrcamento(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    input: WhatsappEnviarOrcamento,
+  ) {
+    const { clienteId, clienteNome } = await this.contexto(
+      empresaId,
+      user,
+      conversaId,
+    );
+
+    const orcamento = await this.orcamentos.findOne(
+      empresaId,
+      user,
+      input.orcamentoId,
+    );
+    if (orcamento.clienteId !== clienteId) {
+      throw new BadRequestException(
+        `Este orçamento não é do cliente ${clienteNome}.`,
+      );
+    }
+
+    const { conteudo, nomeArquivo, numero } = await this.orcamentos.gerarPdf(
+      empresaId,
+      user,
+      input.orcamentoId,
+      // O rastro deste envio é registrado abaixo; dois eventos para a mesma
+      // ação só poluiriam o histórico.
+      { registrarEvento: false },
+    );
+
+    const mensagem = await this.conversas.enviarConteudo(
+      empresaId,
+      user,
+      conversaId,
+      { conteudo, nome: nomeArquivo, mime: 'application/pdf' },
+      { legenda: input.legenda?.trim() || `Orçamento nº ${numero}` },
+    );
+
+    await this.prisma.withTenant(empresaId, async (tx) => {
+      await tx.whatsappAcaoRegistro.create({
+        data: {
+          empresaId,
+          conversaId,
+          acao: 'orcamento',
+          orcamentoId: input.orcamentoId,
+          executadaPor: user.id,
+        },
+      });
+      await registrarAtividadeOrcamento(
+        tx,
+        empresaId,
+        user.id,
+        'envio_whatsapp',
+        orcamento,
+      );
+    });
+
+    return mensagem;
   }
 
   /**

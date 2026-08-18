@@ -279,10 +279,13 @@ não pode fazer no sistema, não aparece no botão da conversa.
 | Ver posição do cliente | `ClientesService.posicao` | `posicao-cliente.visualizar` |
 | Sugestão de compra | `SugestaoCompraService` | `sugestao-compra.visualizar` |
 
-**O PDF do orçamento é gerado no navegador hoje** (`apps/web/src/lib/orcamento-pdf.ts`,
+**O PDF do orçamento era gerado no navegador** (`apps/web/src/lib/orcamento-pdf.ts`,
 jsPDF). Para anexar no WhatsApp o arquivo precisa existir no servidor — ou o front
 envia o PDF gerado como upload, ou a geração migra para o backend. A segunda é mais
-correta e é trabalho próprio, que precisa entrar na conta.
+correta e é trabalho próprio, que precisa entrar na conta. **Feito em 2026-08-17**
+(ver o estado dessa data): o gerador virou
+`apps/api/src/modules/orcamentos/orcamento-pdf.ts`, a tela passou a baixar de
+`GET /orcamentos/:id/pdf`, e o arquivo do navegador foi removido.
 
 **Boleto/NF-e:** hoje a plataforma **não emite** nem guarda o PDF de nenhum dos dois —
 `TituloReceber` tem os dados do título, não o boleto renderizado, e `NotaSaida` tem a
@@ -387,6 +390,170 @@ Sugestão de fatiamento, cada fatia com valor próprio:
 
 A Fatia 3 não é opcional nem "depois se der": se a Fatia 1 for para produção sem ela,
 já haverá conversa de cliente gravada sem regra de acesso nem de descarte.
+
+---
+
+## Estado em 2026-08-17 (terceira sessão) — orçamento pela conversa
+
+Entregue o maior item que faltava da Fatia 2: **a proposta comercial em PDF sai
+pela conversa**. Nada de boleto/DANFE mudou (continuam fora, sem integração).
+
+### O que passou a funcionar
+
+- **O PDF é montado no servidor.** `apps/api/src/modules/orcamentos/orcamento-pdf.ts`
+  é o porte de `apps/web/src/lib/orcamento-pdf.ts` (removido). Mesmo layout,
+  mesmas regras de formatação — o arquivo do navegador deixou de existir para
+  não haver duas propostas possíveis.
+- **`GET /orcamentos/:id/pdf`** devolve o arquivo e registra a emissão no
+  histórico do orçamento/cliente. `POST :id/registrar-pdf` foi removida: existia
+  só porque o arquivo nascia no navegador e o servidor precisava ser avisado.
+- **A tela de orçamento baixa dessa rota** (`apiDownload` no `api-client.ts` —
+  a rota exige Bearer, então `<a href>` não serve: busca como blob e dispara o
+  download).
+- **Ação "Enviar orçamento (PDF)" na conversa**, para contato vinculado a
+  cliente: `GET /whatsapp/conversas/:id/acoes/orcamentos` lista os 20 mais
+  recentes **do cliente da conversa**, e `POST .../acoes/orcamento` gera e
+  anexa. Permissão `orcamentos.visualizar`, como as demais ações.
+- **O rastro do envio** fica em dois lugares: `whatsapp_acoes` (tabela que
+  existia no schema e não era gravada por ninguém) com `acao: 'orcamento'` e o
+  `orcamentoId`, e uma atividade nova no histórico — `envio_whatsapp`,
+  "Proposta enviada pelo WhatsApp", separada de "PDF gerado".
+
+### Decisões tomadas ao implementar
+
+- **O PDF é gerado no instante do envio**, não guardado. O cliente recebe o
+  orçamento como ele está agora; um arquivo arquivado envelheceria em silêncio.
+- **A trava de desconto vale igual nos dois caminhos** (409 sem autorização):
+  é o `OrcamentosService` que decide, e a conversa só delega — o WhatsApp não
+  vira a porta dos fundos para mandar proposta não autorizada.
+- **Orçamento de outro cliente é recusado (400)**, mesmo estando na carteira do
+  vendedor: sem essa conferência, um id válido mandaria a proposta certa para a
+  pessoa errada.
+- **Sem canvas no servidor**, o logo só entra em PNG/JPEG. O upload de logo
+  aceita WEBP e SVG, que a versão do navegador rasterizava num `<canvas>`; aqui
+  esses formatos saem sem imagem. Se virar problema, a saída é converter no
+  upload — não no gerador.
+- **`enviarConteudo`** é a variante de `enviarArquivo` para conteúdo que a
+  plataforma produz: grava em `WHATSAPP_DIR` só **depois** da confirmação do
+  provedor, mesma regra que já valia para não exibir anexo que o cliente nunca
+  recebeu.
+
+### O que foi verificado, e o que não foi
+
+Verificado em dev: PDF gerado pela rota (7,9 kB, `%PDF-1.3`, cabeçalho/cliente/
+condições/itens/total/rodapé conferidos no conteúdo, acentuação correta), logo
+PNG embutido (XObject de imagem no arquivo), emissão registrada no histórico, e
+as duas rotas novas recusando com 400 em conversa sem cliente vinculado.
+
+**Não verificado: o envio real pela conversa.** Exige sessão pareada e mandaria
+mensagem para um cliente de verdade — precisa ser feito por quem tem o aparelho.
+O que falta confirmar nesse teste: o anexo chegando como documento no celular do
+cliente e a mensagem aparecendo no rolo com o link do arquivo.
+
+### Dois problemas de operação encontrados no mesmo dia (corrigidos)
+
+Vieram juntos no relato "o envio não funciona e não temos as opções", mas são
+independentes um do outro e nenhum tem relação com o orçamento.
+
+**1. `status@broadcast` virava conversa, e envio para ela sempre falha.** O
+filtro que descarta feed de status e canais existia **só no recebimento**
+(`zapo.transport.ts`, evento `message`); a **agenda e a lista de conversas do
+aparelho** filtravam apenas grupos (`@g.us`). O feed de status aparecia como um
+contato normal — "Ricardo" —, o vendedor abria conversa por ali, e o envio
+morria no provedor com `direct fanout missing signal sessions for all targets`,
+depois de 20 s de timeout buscando chaves Signal de um destinatário que não
+existe. Corrigido em três camadas, porque esconder da lista não é recusar:
+
+- as consultas de agenda/conversas do worker excluem `@broadcast`,
+  `@newsletter` e `@g.us`;
+- `iniciarConversa` recusa jid que não seja de pessoa (`jidDePessoa`);
+- a listagem de conversas esconde as que já foram criadas assim — o registro
+  antigo continua no banco e não some sozinho.
+
+**2. A tela ficava sem lista, sem composer e sem ações** — é o estado "Seu
+WhatsApp não está conectado", que substitui a tela inteira. A causa foi o socket
+do WhatsApp caindo repetidamente (`code 1006`) ao longo do dia, com a
+reconexão falhando por alguns segundos a cada vez; enquanto isso o worker avisa
+a API e a sessão vai a `desconectada`. No fim ficou **zumbi**: socket aberto,
+mas nenhuma query respondida (daí os timeouts de 20 s). **Restart do worker
+resolve** — ele restaura a sessão do banco, sem QR. Vale suspeitar da rede do
+host (máquina que hiberna derruba o socket de dentro do container).
+
+Registrado porque nenhum dos dois aparece em build ou em teste: só executando.
+
+**3. Não havia como vincular um contato a um cliente pela tela.** Descoberto ao
+investigar "mandei mensagem e não chegou no sistema": a mensagem **chegava**
+(`naoLidas` incrementava, `ultimaMensagemEm` atualizava), mas o conteúdo não era
+gravado — regra da Fase 6, contato sem `clienteId` não tem conversa persistida.
+O problema é que a rota de vínculo (`PUT /whatsapp/conversas/:id/vinculo`)
+**existia desde o início e nenhuma tela a chamava**: só dava para vincular ao
+*iniciar* a conversa escolhendo um cliente, e conversa que chegou pelo aparelho
+ficava sem saída — nunca gravava, nunca mostrava as ações do sistema. O painel
+direito da conversa agora traz o combobox de cliente e o botão de vincular,
+avisando que a gravação vale só dali em diante.
+
+Vale como lição de revisão: uma rota sem chamador no front não aparece em
+nenhum teste de tipo nem de build, e some do radar até alguém tentar usar o
+recurso pela tela.
+
+### Reações com emoji (2026-08-17)
+
+Pedido do usuário: reagir às mensagens como no WhatsApp. Entregue ponta a ponta.
+
+- **Tabela `whatsapp_reacoes`** (migration `20260818013003`, com RLS): reação é
+  substituição, não acumulação — unicidade por `(empresaId, mensagemId, deQuem)`,
+  e `deQuem` só tem `nos`/`contato` porque o atendimento é 1:1. Fica em tabela
+  própria, não numa coluna da mensagem, porque reação chega e sai **depois** da
+  mensagem existir; gravar por cima do registro dela faria a atualização
+  competir com o recebimento.
+- **Emoji vazio remove** — a convenção do próprio WhatsApp, mantida do provedor
+  até a rota da tela, para não existir uma segunda rota só para desfazer.
+- **Barra de emojis na bolha** (os seis do WhatsApp), com a reação aparecendo
+  meio fora da bolha. Seletor completo de emoji ficou de fora.
+- **Só o dono da sessão reage**: supervisor lê a conversa, mas não fala pelo
+  aparelho de quem supervisiona — nem com emoji.
+
+**Bug corrigido de tabela:** reação recebida caía no `outro` do `interpretar` e
+era gravada como **mensagem vazia** no histórico — uma bolha em branco no rolo
+do vendedor a cada emoji que o cliente mandasse. Agora é desviada antes, em
+`reacaoDe`.
+
+#### Armadilha: a reação recebida chega pelo evento `message`, não por `message_addon`
+
+O sentido app → WhatsApp funcionou de primeira; o inverso levou várias rodadas.
+**Verificado executando, com log:** a reação do contato chega no evento
+`message` comum, com `reactionMessage` **já decifrado** — no log,
+`campos=messageContextInfo,reactionMessage`. O evento `message_addon`, que a
+documentação da biblioteca descreve para addons (reação, voto de enquete,
+edição), **não dispara** neste caminho.
+
+O erro que custou as idas e vindas foi meu: a primeira versão lia
+`reactionMessage` dentro do `message` — o caminho certo —, e eu a **troquei**
+por um descarte, confiando no `message_addon` que a documentação indicava, sem
+antes provar que o evento novo recebia alguma coisa. Como o descarte era mudo,
+o sintoma virou "a reação simplesmente não chega": sem erro, sem bolha vazia,
+sem registro. Hoje os dois caminhos estão ligados (a gravação é idempotente por
+`(mensagem, lado)`, então receber pelos dois não duplica) e **cada desfecho
+tem log**: recebida, ilegível, ou ignorada pela API.
+
+Sobre o segredo das mensagens: `addons: { persistAllSecrets: true }` com
+`cacheProviders: { messageSecret: 'pg' }` continua valendo e está ativo. Guarda
+o segredo de 32 bytes de cada mensagem **sem** guardar o conteúdo — o que
+preserva a regra de `messages: 'none'` — e é o que permite abrir um addon que
+venha cifrado. O padrão da biblioteca é memória, que perderia tudo a cada
+restart do worker.
+
+`WHATSAPP_LOG_NIVEL=debug` (env do worker) sobe o log da biblioteca para o
+nível em que ela registra falha de decifrar addon. Em `info` isso some — e foi
+o que manteve o problema invisível. Ruidoso: só ao investigar.
+
+**Ainda em aberto (decisão pendente):** mensagem que o **vendedor manda pelo
+próprio celular** é descartada (`if (chave.fromMe) return`, em
+`zapo.transport.ts`) — o comentário ali diz que ela "é registrada como saída",
+mas o código só ignora. Se o vendedor responder pelo aparelho, o histórico da
+plataforma fica pela metade. Gravar exige decidir o que fazer com as mensagens
+que ele manda para contatos **não** vinculados (a regra de privacidade vale nos
+dois sentidos).
 
 ---
 
@@ -516,12 +683,14 @@ Na ordem, do mais barato ao mais caro:
 2. **Duas decisões do usuário, pendentes** (ver seção anterior): definir o
    `dddPadrao` em Administração > WhatsApp, e decidir se vale reparear o
    aparelho para trazer o histórico de conversas do celular.
-3. **Orçamento pela conversa** — depende de migrar a geração do PDF de
-   `apps/web/src/lib/orcamento-pdf.ts` (jsPDF, no navegador) para o servidor.
-   É o maior item restante da Fatia 2.
+3. ~~**Orçamento pela conversa**~~ — **feito em 2026-08-17** (ver a seção
+   daquela data). Falta só o teste de envio real, com aparelho pareado.
 4. **Fatia 3 (governança), que não é opcional antes de produção:** expurgo por
    retenção (`retencaoDias` já é configurável, a rotina que apaga não existe)
    e registro de leitura de conversa alheia.
+5. **Os três bloqueios de deploy em produção** (seção acima): imagem do worker
+   não publicada, `DATABASE_URL` errada no stack e senha placeholder do role
+   `whatsapp_store`.
 
 Para validar qualquer coisa ponta a ponta: os três containers (`api`, `web`,
 `whatsapp-worker`) precisam de **restart**, não de watch — e um erro de
@@ -534,8 +703,6 @@ o processo morto. Ver `docs/runbook-operacao.md`.
   O backend já tem `totalNaoLidas`.
 - **Boleto e DANFE em PDF** continuam fora: a plataforma não emite nem guarda
   esses arquivos. As ações mandam os **dados** (número, vencimento, valor).
-- **Orçamento pela conversa**: depende de migrar a geração do PDF do navegador
-  para o servidor (ver Fase 5) — trabalho próprio, ainda não feito.
 - **Expurgo por retenção** (`retencaoDias` já é configurável, mas a rotina que
   apaga não existe) e o **registro de leitura de conversa alheia** seguem
   pendentes — são da Fatia 3.

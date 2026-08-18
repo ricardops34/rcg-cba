@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { MessageCircle, MessageSquarePlus, Plug } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link2, MessageCircle, MessageSquarePlus, Plug } from "lucide-react";
+import { toast } from "sonner";
 import type {
   WhatsappConversa,
   WhatsappMensagem,
   WhatsappSessao,
 } from "@plataforma/contracts";
-import { apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch } from "@/lib/api-client";
+import { ClienteCombobox } from "@/components/crud/cliente-combobox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -241,6 +243,7 @@ function Conversa({
           <MensagemBolha
             key={m.id}
             mensagem={m}
+            conversaId={conversaId}
             citada={m.respondeuA ? (porExternoId.get(m.respondeuA) ?? null) : null}
             onResponder={setRespondendo}
           />
@@ -286,11 +289,69 @@ function PainelCliente({ conversa }: { conversa: WhatsappConversa | null }) {
             Código {conversa.contato.clienteCodigoErp ?? "—"}
           </p>
         </div>
-      ) : null}
+      ) : (
+        <VincularCliente conversa={conversa} />
+      )}
       <div>
         <p className="text-xs text-muted-foreground">Atendente</p>
         <p>{conversa.vendedorNome}</p>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Vínculo do contato com um cliente da carteira.
+ *
+ * É o que **autoriza a gravação**: sem cliente vinculado, o que o contato
+ * escreve não é guardado (a conversa aparece na lista, o conteúdo não fica) e
+ * as ações do sistema não têm com quem trabalhar. Até aqui a rota existia
+ * (`PUT /whatsapp/conversas/:id/vinculo`), mas nenhuma tela a chamava: só dava
+ * para vincular ao **iniciar** a conversa por um cliente, e conversa que chegou
+ * pelo aparelho ficava sem saída.
+ *
+ * Gravação retroativa não acontece: o que passou antes do vínculo não volta —
+ * daí o aviso na tela, para o vendedor não esperar o histórico aparecer.
+ */
+function VincularCliente({ conversa }: { conversa: WhatsappConversa }) {
+  const queryClient = useQueryClient();
+  const [clienteId, setClienteId] = useState<string | null>(null);
+
+  const vincular = useMutation({
+    mutationFn: () =>
+      apiFetch(`/whatsapp/conversas/${conversa.id}/vinculo`, {
+        method: "PUT",
+        body: { clienteId, ignorar: false },
+      }),
+    onSuccess: () => {
+      toast.success("Contato vinculado — as próximas mensagens ficam gravadas");
+      setClienteId(null);
+      void queryClient.invalidateQueries({ queryKey: ["whatsapp-conversas"] });
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Falha ao vincular"),
+  });
+
+  return (
+    <div className="space-y-2 rounded-md border border-dashed p-3">
+      <div>
+        <p className="text-xs font-medium">Sem cliente vinculado</p>
+        <p className="text-xs text-muted-foreground">
+          Enquanto não houver vínculo, as mensagens deste contato não são
+          gravadas e as ações do sistema ficam indisponíveis. O que já passou
+          não volta.
+        </p>
+      </div>
+      <ClienteCombobox value={clienteId} onChange={setClienteId} />
+      <Button
+        size="sm"
+        className="w-full"
+        disabled={!clienteId || vincular.isPending}
+        onClick={() => vincular.mutate()}
+      >
+        <Link2 className="size-4" />
+        {vincular.isPending ? "Vinculando…" : "Vincular ao cliente"}
+      </Button>
     </div>
   );
 }

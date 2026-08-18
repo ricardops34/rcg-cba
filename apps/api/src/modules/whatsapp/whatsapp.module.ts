@@ -10,12 +10,18 @@ import { WhatsappWorkerClient } from './whatsapp-worker.client';
 import { TitulosReceberModule } from '../titulos-receber/titulos-receber.module';
 import { NotasSaidaModule } from '../notas-saida/notas-saida.module';
 import { AtividadesModule } from '../atividades/atividades.module';
+import { OrcamentosModule } from '../orcamentos/orcamentos.module';
 
 @Module({
   // As ações de dentro da conversa delegam aos services que as telas já usam
   // — nada de consulta própria, para o escopo de carteira e o RLS não serem
   // reimplementados aqui.
-  imports: [TitulosReceberModule, NotasSaidaModule, AtividadesModule],
+  imports: [
+    TitulosReceberModule,
+    NotasSaidaModule,
+    AtividadesModule,
+    OrcamentosModule,
+  ],
   controllers: [WhatsappController, WhatsappInternoController],
   providers: [
     WhatsappConfigService,

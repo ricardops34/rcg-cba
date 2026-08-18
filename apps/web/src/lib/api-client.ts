@@ -207,3 +207,56 @@ export async function apiUpload<T>(
 
   return res.json() as Promise<T>;
 }
+
+/**
+ * Baixa um arquivo gerado pela API (hoje a proposta de orçamento em PDF) e
+ * dispara o download no navegador.
+ *
+ * Não dá para usar um `<a href>` simples: a rota exige o Bearer token, que só
+ * existe aqui — daí buscar como blob, com o mesmo refresh e o mesmo tratamento
+ * de erro do `apiFetch`. O nome do arquivo vem do Content-Disposition, com o
+ * `nomePadrao` como reserva.
+ */
+export async function apiDownload(path: string, nomePadrao: string): Promise<void> {
+  const url = `${API_URL}${path}`;
+
+  const doRequest = async (token: string | null) =>
+    fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+
+  let token = useAuthStore.getState().accessToken;
+  let res = await doRequest(token);
+
+  if (res.status === 401 && useAuthStore.getState().refreshToken) {
+    refreshPromise ??= refreshAccessToken().finally(() => {
+      refreshPromise = null;
+    });
+    token = await refreshPromise;
+    if (token) res = await doRequest(token);
+  }
+
+  if (!res.ok) {
+    // O corpo do erro continua sendo JSON (filtro de exceção do Nest), mesmo
+    // com a rota produzindo PDF no caminho feliz.
+    const payload = await res.json().catch(() => ({}));
+    const erro = new ApiError(payload.message ?? res.statusText, res.status, payload.details);
+    if (ehForaDoExpediente(erro)) encerrarPorHorario(erro.message);
+    throw erro;
+  }
+
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const nome = /filename="?([^"]+)"?/.exec(disposition)?.[1] ?? nomePadrao;
+
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = nome;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } finally {
+    // Revogar na hora cancelaria o download em alguns navegadores.
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+  }
+}

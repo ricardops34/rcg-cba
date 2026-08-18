@@ -28,6 +28,7 @@ import {
   registrarAtividadeOrcamento,
 } from './registrar-atividade-orcamento';
 import { calcularItensOrcamento } from './calcular-itens-orcamento';
+import { montarOrcamentoPdf } from './orcamento-pdf';
 import { proximoNumeroOrcamento } from './proximo-numero-orcamento';
 import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
 import { resolverRegrasDescontoDosItens } from '../../common/precos/resolver-regra-desconto-item';
@@ -728,16 +729,29 @@ export class OrcamentosService {
   }
 
   /**
-   * Registra no histórico que a proposta em PDF foi emitida. O arquivo é
-   * montado no navegador (ver gerarOrcamentoPdf), então é a tela que avisa o
-   * servidor — a rota existe para o rastro ficar no mesmo lugar dos demais
-   * eventos do orçamento.
+   * Monta a proposta comercial em PDF e devolve os bytes do arquivo.
+   *
+   * Era gerada no navegador; veio para cá porque o envio pelo WhatsApp precisa
+   * do arquivo existindo no servidor (ver `montarOrcamentoPdf`). A tela de
+   * orçamento baixa desta mesma rota, então a proposta que o cliente recebe
+   * pela conversa é a mesma que o vendedor imprime.
+   *
+   * A emissão fica registrada no histórico do orçamento/cliente, como antes —
+   * `registrarPdf` existia só para isso e deixou de fazer sentido separada.
+   *
+   * `registrarEvento: false` é para quem já vai registrar a própria ação (o
+   * envio pelo WhatsApp registra "proposta enviada", não "PDF gerado").
    */
-  async registrarPdf(empresaId: string, user: AuthenticatedUser, id: string) {
-    return this.prisma.withTenant(empresaId, async (tx) => {
-      const orcamento = await this.buscarParaAcao(tx, empresaId, user, id);
+  async gerarPdf(
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+    opcoes: { registrarEvento?: boolean } = {},
+  ): Promise<{ conteudo: Buffer; nomeArquivo: string; numero: number }> {
+    const dados = await this.prisma.withTenant(empresaId, async (tx) => {
+      const basico = await this.buscarParaAcao(tx, empresaId, user, id);
       if (
-        !orcamento.descontoAutorizadoEm &&
+        !basico.descontoAutorizadoEm &&
         (await orcamentoExigeAutorizacao(tx, id))
       ) {
         throw new ConflictException(
@@ -745,14 +759,84 @@ export class OrcamentosService {
             'solicite a autorização de desconto antes de gerar o PDF',
         );
       }
-      await registrarAtividadeOrcamento(
-        tx,
-        empresaId,
-        user.id,
-        'pdf',
-        orcamento,
-      );
-      return { registrado: true };
+
+      const orcamento = await tx.orcamento.findFirstOrThrow({
+        where: { id },
+        include: INCLUDE,
+      });
+      // O orçamento traz só o resumo do cliente (razão social/fantasia); o
+      // cabeçalho da proposta precisa do cadastro completo — documento,
+      // endereço e contato.
+      const cliente = await tx.cliente.findFirst({
+        where: { id: orcamento.clienteId },
+      });
+
+      if (opcoes.registrarEvento !== false) {
+        await registrarAtividadeOrcamento(
+          tx,
+          empresaId,
+          user.id,
+          'pdf',
+          orcamento,
+        );
+      }
+      return { orcamento, cliente };
     });
+
+    // A empresa emitente não é tabela de tenant (não tem empresaId); é lida
+    // fora da transação, com o mesmo critério da rota /empresas/ativa.
+    const empresa = await this.prisma.empresa.findFirst({
+      where: { id: empresaId, deletedAt: null },
+    });
+
+    const { orcamento, cliente } = dados;
+    const conteudo = await montarOrcamentoPdf({
+      numero: orcamento.numero,
+      status: orcamento.status,
+      createdAt: orcamento.createdAt,
+      dataValidade: orcamento.dataValidade,
+      dataRetorno: orcamento.dataRetorno,
+      observacao: orcamento.observacao,
+      // Decimal do Prisma não é number, e o gerador só formata número.
+      vlrTotal: this.numeroOuNulo(orcamento.vlrTotal),
+      cliente: {
+        razaoSocial: cliente?.razaoSocial ?? orcamento.cliente.razaoSocial,
+        nomeFantasia: cliente?.nomeFantasia ?? orcamento.cliente.nomeFantasia,
+        cnpjCpf: cliente?.cnpjCpf,
+        inscricaoEstadual: cliente?.inscricaoEstadual,
+        endereco: cliente?.endereco,
+        complemento: cliente?.complemento,
+        bairro: cliente?.bairro,
+        municipio: cliente?.municipio,
+        uf: cliente?.uf,
+        cep: cliente?.cep,
+        contato: cliente?.contato,
+        telefone: cliente?.telefone,
+        celular: cliente?.celular,
+        email: cliente?.email,
+      },
+      vendedor: orcamento.vendedor,
+      condicaoPagamento: orcamento.condicaoPagamento,
+      itens: orcamento.itens.map((i) => ({
+        produto: i.produto,
+        quantidade: this.numeroOuNulo(i.quantidade),
+        vlrUnitario: this.numeroOuNulo(i.vlrUnitario),
+        vlrTotal: this.numeroOuNulo(i.vlrTotal),
+      })),
+      empresa,
+    });
+
+    return {
+      conteudo,
+      nomeArquivo: `orcamento-${orcamento.numero}.pdf`,
+      numero: orcamento.numero,
+    };
+  }
+
+  /** Decimal/number/null do Prisma no formato que o gerador de PDF espera. */
+  private numeroOuNulo(valor: unknown): number | null {
+    if (valor == null) return null;
+    const n = Number(valor);
+    return Number.isFinite(n) ? n : null;
   }
 }

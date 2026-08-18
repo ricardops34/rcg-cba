@@ -80,6 +80,7 @@ model Empresa {
   whatsappContatos           WhatsappContato[]
   whatsappConversas          WhatsappConversa[]
   whatsappMensagens          WhatsappMensagem[]
+  whatsappReacoes            WhatsappReacao[]
   whatsappAcoes              WhatsappAcaoRegistro[]
 
   @@map("empresas")
@@ -2127,10 +2128,52 @@ model WhatsappMensagem {
 
   empresa  Empresa          @relation(fields: [empresaId], references: [id])
   conversa WhatsappConversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+  reacoes  WhatsappReacao[]
 
   @@unique([empresaId, conversaId, externoId])
   @@index([empresaId, conversaId, criadaEm])
   @@map("whatsapp_mensagens")
+}
+
+/**
+ * Reação (emoji) a uma mensagem.
+ *
+ * O WhatsApp trata reação como **substituição**, não acumulação: cada lado tem
+ * no máximo uma por mensagem, trocar o emoji sobrescreve e reagir com string
+ * vazia remove. Como o atendimento é 1:1, `deQuem` só tem dois valores — daí a
+ * unicidade por (mensagem, lado), que é o que faz o upsert funcionar sem
+ * duplicar.
+ *
+ * Fica em tabela própria, e não numa coluna da mensagem, porque reação chega
+ * e sai depois da mensagem existir: gravar por cima do registro dela faria a
+ * atualização competir com o recebimento.
+ */
+model WhatsappReacao {
+  id         String @id @default(uuid())
+  empresaId  String
+  mensagemId String
+
+  emoji  String
+  deQuem WhatsappLadoReacao
+
+  // Só na saída: qual usuário do sistema reagiu.
+  reagiuPor String?
+
+  criadaEm    DateTime @default(now())
+  atualizadaEm DateTime @updatedAt
+
+  empresa  Empresa           @relation(fields: [empresaId], references: [id])
+  mensagem WhatsappMensagem  @relation(fields: [mensagemId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, mensagemId, deQuem])
+  @@index([empresaId, mensagemId])
+  @@map("whatsapp_reacoes")
+}
+
+/** De que lado veio a reação — a conversa é 1:1, então são só dois. */
+enum WhatsappLadoReacao {
+  nos
+  contato
 }
 
 /**

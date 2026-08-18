@@ -99,6 +99,29 @@ export class WhatsappInternoController {
   }
 
   /**
+   * Reação vinda do celular — emoji vazio é remoção.
+   *
+   * Rota própria porque reação não é mensagem: ela não entra no rolo, gruda na
+   * mensagem que aponta. Reação a mensagem que a plataforma não gravou é
+   * ignorada lá no service.
+   */
+  @Post('reacao')
+  reacao(
+    @Body()
+    corpo: {
+      sessaoId: string;
+      empresaId: string;
+      jid: string;
+      alvoExternoId: string;
+      emoji: string;
+    },
+    @Headers('authorization') authorization?: string,
+  ) {
+    this.conferirToken(authorization);
+    return this.conversas.receberReacao(corpo);
+  }
+
+  /**
    * Segundo passo do recebimento de mídia.
    *
    * O worker só chega aqui quando `mensagem` respondeu `arquivoNecessario` —

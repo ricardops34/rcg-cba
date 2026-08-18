@@ -7,6 +7,7 @@ import type {
   EstadoPareamento,
   EstadoSessao,
   MensagemRecebida,
+  ReacaoRecebida,
   WhatsappTransport,
 } from './whatsapp-transport';
 
@@ -91,6 +92,8 @@ export class ZapoTransport implements WhatsappTransport {
     | ((msg: MensagemRecebida, baixarMidia: () => Promise<Buffer>) => Promise<void>)
     | null = null;
   private observador: ((estado: EstadoSessao) => Promise<void>) | null = null;
+  private handlerReacao: ((reacao: ReacaoRecebida) => Promise<void>) | null =
+    null;
 
   constructor(private readonly databaseUrl: string) {}
 
@@ -101,6 +104,83 @@ export class ZapoTransport implements WhatsappTransport {
     ) => Promise<void>,
   ) {
     this.handler = handler;
+  }
+
+  aoReceberReacao(handler: (reacao: ReacaoRecebida) => Promise<void>) {
+    this.handlerReacao = handler;
+  }
+
+  /**
+   * A mensagem recebida é uma reação? Devolve o alvo e o emoji, ou `null`.
+   *
+   * O alvo vem como uma chave de mensagem (`key`): `id` é o `externoId` que a
+   * plataforma guarda, e `fromMe` diz se a mensagem reagida saiu daqui — sem
+   * isso não dá para saber se o cliente reagiu ao que o vendedor mandou ou ao
+   * que ele mesmo escreveu.
+   *
+   * Emoji vazio é remoção, e não ausência de reação: é assim que o WhatsApp
+   * desfaz.
+   */
+  /**
+   * A mensagem é, na verdade, uma reação — decifrada ou não?
+   *
+   * A cifrada chega em `encReactionMessage`, e é assim que ela aparece quando
+   * o segredo da mensagem pai não está disponível (mensagem anterior a
+   * `persistAllSecrets`, por exemplo). Sem cobrir esse caso, a reação volta a
+   * cair no `outro` do `interpretar` e vira **bolha vazia** no rolo — que foi
+   * exatamente o que aconteceu antes desta verificação existir.
+   */
+  /**
+   * Extrai a reação de uma mensagem, quando ela vem decifrada.
+   *
+   * **É por aqui que a reação do contato chega de verdade** — no evento
+   * `message`, com `reactionMessage` preenchido (`messageContextInfo,
+   * reactionMessage` no log). O evento `message_addon`, que a documentação da
+   * biblioteca descreve para addons, não dispara neste caminho; o listener
+   * dele existe como rede, e a gravação é idempotente por (mensagem, lado),
+   * então receber pelos dois não duplica nada.
+   *
+   * `key.id` é o `externoId` da mensagem reagida e `key.fromMe` diz se ela
+   * saiu daqui. Texto vazio é remoção da reação.
+   */
+  private reacaoDe(
+    mensagem: any,
+  ): { alvoExternoId: string; alvoNosso: boolean; emoji: string } | null {
+    const conteudo =
+      mensagem?.ephemeralMessage?.message ??
+      mensagem?.viewOnceMessage?.message ??
+      mensagem ??
+      {};
+    const reacao = conteudo?.reactionMessage;
+    const alvo = reacao?.key?.id;
+    if (!reacao || !alvo) return null;
+    return {
+      alvoExternoId: String(alvo),
+      alvoNosso: Boolean(reacao.key?.fromMe),
+      emoji: String(reacao.text ?? ''),
+    };
+  }
+
+  /** Nomes dos campos preenchidos numa mensagem — só para diagnóstico. */
+  private camposDe(mensagem: any): string {
+    const conteudo =
+      mensagem?.ephemeralMessage?.message ??
+      mensagem?.viewOnceMessage?.message ??
+      mensagem ??
+      {};
+    const campos = Object.keys(conteudo ?? {}).filter(
+      (chave) => (conteudo as any)[chave] != null,
+    );
+    return campos.length ? campos.join(',') : '(nenhum)';
+  }
+
+  private ehReacao(mensagem: any): boolean {
+    const conteudo =
+      mensagem?.ephemeralMessage?.message ??
+      mensagem?.viewOnceMessage?.message ??
+      mensagem ??
+      {};
+    return Boolean(conteudo?.reactionMessage || conteudo?.encReactionMessage);
   }
 
   /**
@@ -300,11 +380,31 @@ export class ZapoTransport implements WhatsappTransport {
         // `whatsapp_mensagens`, no instante em que chega.
         messages: 'none',
       },
+      // O segredo de 32 bytes de cada mensagem vai para o Postgres — **não** o
+      // conteúdo dela. Reação é um "addon" cifrado com o segredo da mensagem
+      // que ela aponta, e a biblioteca busca esse segredo neste cache ou no
+      // arquivo de mensagens. Como o arquivo é `'none'` por privacidade, sem
+      // isto a reação que chega do celular nunca é decifrada — e o padrão
+      // (memória) ainda perderia tudo a cada restart do worker.
+      cacheProviders: { messageSecret: 'pg' },
     });
 
     const cliente = new WaClient(
-      { store, sessionId: sessaoId },
-      new ConsoleLogger('info'),
+      {
+        store,
+        sessionId: sessaoId,
+        // Guarda o segredo de **toda** mensagem, não só das que a biblioteca
+        // sabe de antemão que terão continuação (enquete, evento). Reação pode
+        // cair em qualquer mensagem, e sem o segredo do pai ela chega cifrada
+        // e é descartada em silêncio.
+        addons: { persistAllSecrets: true },
+      },
+      // A falha de decifrar um addon (reação, voto de enquete) é registrada
+      // pela biblioteca em `debug` — em `info` ela some, e o sintoma vira
+      // "a reação simplesmente não chega". Daí o nível ser configurável.
+      new ConsoleLogger(
+        process.env.WHATSAPP_LOG_NIVEL === 'debug' ? 'debug' : 'info',
+      ),
     );
 
     // Sem isto as tabelas de cache do store crescem indefinidamente — a
@@ -371,7 +471,41 @@ export class ZapoTransport implements WhatsappTransport {
       // como mensagem, mas não são atendimento — sem este filtro viram
       // conversa na tela do vendedor.
       if (jid === 'status@broadcast' || jid.endsWith('@newsletter')) return;
+
+      // Reação não chega por aqui (ver o listener de `message_addon`), mas
+      // aparece embrulhada em mensagem quando a biblioteca não consegue
+      // decifrar o addon — o caso das mensagens anteriores a
+      // `persistAllSecrets`. Descartar é melhor do que gravar: sem este
+      // desvio ela cai no `outro` do `interpretar` e vira bolha vazia no rolo.
+      if (this.ehReacao(evento?.message ?? {})) {
+        const reacao = this.reacaoDe(evento?.message ?? {});
+        if (!reacao) {
+          // Cifrada e sem o segredo do pai para abrir: nada a gravar, mas
+          // também não pode virar mensagem (era a bolha vazia no rolo).
+          console.log(
+            `Reação ilegível descartada: campos=${this.camposDe(evento?.message)}`,
+          );
+          return;
+        }
+        if (this.handlerReacao) {
+          await this.handlerReacao({
+            sessaoId,
+            empresaId: this.empresas.get(sessaoId) ?? '',
+            jid,
+            alvoExternoId: reacao.alvoExternoId,
+            alvoNosso: reacao.alvoNosso,
+            emoji: reacao.emoji,
+          });
+        }
+        return;
+      }
+
       const conteudo = this.interpretar(evento?.message ?? {});
+      // Tipo que a plataforma não sabe nomear: sem isto, descobrir o que
+      // chegou exige adivinhação (foi o caso das reações).
+      if (conteudo.tipo === 'outro') {
+        console.log(`Mensagem de tipo desconhecido: campos=${this.camposDe(evento?.message)}`);
+      }
 
       await this.handler(
         {
@@ -391,6 +525,52 @@ export class ZapoTransport implements WhatsappTransport {
         // Só é chamado se a API responder que gravou a mensagem.
         async () => Buffer.from(await (cliente as any).message.downloadBytes(evento)),
       );
+    });
+
+    /**
+     * Reação vinda do celular.
+     *
+     * Vem por um evento **próprio** (`message_addon`) e não pelo `message`:
+     * reação é um "addon" cifrado com o segredo da mensagem que ela aponta —
+     * foi o que fez a primeira versão nunca receber nada. O mesmo evento
+     * carrega enquete, edição e comentário; só `reaction` interessa aqui.
+     *
+     * `targetMessageId` é o id da mensagem reagida (o `externoId` que a
+     * plataforma guarda), e `key.fromMe` diz se ela saiu daqui.
+     */
+    cliente.on('message_addon', async (evento: any) => {
+      if (evento?.kind !== 'reaction') return;
+
+      const chave = evento?.key ?? {};
+      const jid = String(chave.remoteJid ?? '');
+      const alvo = String(evento?.targetMessageId ?? '');
+      // Todo addon de reação que chega fica no log. Este caminho já se provou
+      // difícil de enxergar: a versão anterior escutava o evento errado e o
+      // sintoma era simplesmente "nada acontece".
+      console.log(
+        `Reação recebida: jid=${jid} alvo=${alvo} fromMe=${Boolean(chave.fromMe)} emoji=${
+          evento?.decrypted?.reaction?.text ?? '(vazio)'
+        }`,
+      );
+
+      if (!this.handlerReacao) return;
+      if (!jid || jid === 'status@broadcast' || jid.endsWith('@newsletter')) {
+        return;
+      }
+      // Reação do próprio vendedor, feita no celular dele: já chega pela tela
+      // quando parte daqui, e registrar as duas duplicaria o emoji.
+      if (chave.fromMe) return;
+      if (!alvo) return;
+
+      await this.handlerReacao({
+        sessaoId,
+        empresaId: this.empresas.get(sessaoId) ?? '',
+        jid,
+        alvoExternoId: alvo,
+        alvoNosso: Boolean(evento?.decrypted?.reaction?.key?.fromMe),
+        // Vazio é remoção — o cliente desfez a reação.
+        emoji: String(evento?.decrypted?.reaction?.text ?? ''),
+      });
     });
 
     this.clientes.set(sessaoId, cliente);
@@ -459,7 +639,8 @@ export class ZapoTransport implements WhatsappTransport {
    * aqui, que é a camada que já depende do Zapo.
    *
    * Grupos ficam de fora (`@g.us`): a lista serve para vincular contato a
-   * cliente, e grupo não é cliente.
+   * cliente, e grupo não é cliente. Pelo mesmo motivo saem o feed de status,
+   * as listas de transmissão e os canais — ver `JID_NAO_ATENDIMENTO`.
    */
   async listarContatos(sessaoId: string, busca?: string): Promise<ContatoAgenda[]> {
     const termo = (busca ?? '').trim();
@@ -471,6 +652,8 @@ export class ZapoTransport implements WhatsappTransport {
          FROM ${this.tabela('mailbox_contacts')}
         WHERE session_id = $1
           AND jid NOT LIKE '%@g.us'
+          AND jid NOT LIKE '%@broadcast'
+          AND jid NOT LIKE '%@newsletter'
           ${filtro}
         ORDER BY coalesce(display_name, push_name, phone_number, jid)
         LIMIT 500`,
@@ -498,6 +681,8 @@ export class ZapoTransport implements WhatsappTransport {
                 ON c.session_id = t.session_id AND c.jid = t.jid
         WHERE t.session_id = $1
           AND t.jid NOT LIKE '%@g.us'
+          AND t.jid NOT LIKE '%@broadcast'
+          AND t.jid NOT LIKE '%@newsletter'
           AND coalesce(t.archived, false) = false
         ORDER BY coalesce(t.pinned, 0) DESC, nome
         LIMIT $2`,
@@ -719,6 +904,31 @@ export class ZapoTransport implements WhatsappTransport {
     await (cliente as any).message
       .sendReceipt(jid, externoId, { type: 'read' })
       .catch(() => undefined);
+  }
+
+  /**
+   * Reage a uma mensagem (ou desfaz, com `emoji` vazio).
+   *
+   * Diferente do envio de texto, aqui **não** há um id novo a devolver: a
+   * reação não é uma mensagem no rolo, e o provedor a trata como alteração da
+   * mensagem alvo.
+   */
+  async reagir(
+    sessaoId: string,
+    jid: string,
+    alvo: { externoId: string; nosso: boolean },
+    emoji: string,
+  ) {
+    const cliente = this.clienteConectado(sessaoId);
+    await (cliente as any).message.send(jid, {
+      type: 'reaction',
+      emoji,
+      target: {
+        remoteJid: jid,
+        id: alvo.externoId,
+        fromMe: alvo.nosso,
+      },
+    });
   }
 
   private clienteConectado(sessaoId: string): WaClient {

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -45,6 +46,8 @@ const MIDIA = ['imagem', 'video', 'audio', 'documento'];
  */
 @Injectable()
 export class WhatsappConversasService {
+  private readonly logger = new Logger(WhatsappConversasService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: WhatsappConfigService,
@@ -89,6 +92,17 @@ export class WhatsappConversasService {
       const where = {
         ...filtro,
         arquivada: query.arquivadas,
+        // Conversa que não é com uma pessoa não é atendimento e não tem como
+        // receber mensagem (ver `jidDePessoa`). O filtro existe porque a
+        // listagem da agenda deixou passar `status@broadcast` antes de ser
+        // corrigida, e a conversa criada naquela época continua no banco.
+        contato: {
+          NOT: [
+            { jid: { endsWith: '@broadcast' } },
+            { jid: { endsWith: '@newsletter' } },
+            { jid: { endsWith: '@g.us' } },
+          ],
+        },
         ...(query.semVinculo ? { clienteId: null } : {}),
         ...(query.busca
           ? {
@@ -212,6 +226,11 @@ export class WhatsappConversasService {
           conversaId,
           ...(query.antesDe ? { criadaEm: { lt: new Date(query.antesDe) } } : {}),
         },
+        // No máximo duas por mensagem (uma de cada lado), então vêm juntas em
+        // vez de numa segunda consulta.
+        include: {
+          reacoes: { select: { emoji: true, deQuem: true } },
+        },
         orderBy: { criadaEm: 'desc' },
         take: query.tamanho,
       });
@@ -297,8 +316,44 @@ export class WhatsappConversasService {
     arquivo: { caminhoDisco: string; nome: string; mime: string; tamanho: number },
     input: { legenda?: string; ptt?: boolean },
   ) {
-    const config = await this.config.obter(empresaId);
     const conteudo = await readFile(arquivo.caminhoDisco);
+    return this.enviarConteudo(
+      empresaId,
+      user,
+      conversaId,
+      {
+        conteudo,
+        nome: arquivo.nome,
+        mime: arquivo.mime,
+        // O multer já gravou o arquivo em WHATSAPP_DIR; não há o que gravar
+        // de novo, só apontar a mensagem para ele.
+        arquivoEmDisco: basename(arquivo.caminhoDisco),
+      },
+      input,
+    );
+  }
+
+  /**
+   * Envia conteúdo que a própria plataforma produziu — hoje a proposta de
+   * orçamento em PDF (ver `WhatsappAcoesService.enviarOrcamento`).
+   *
+   * Sem `arquivoEmDisco`, o arquivo é gravado em `WHATSAPP_DIR` **depois** da
+   * confirmação do provedor, com nome opaco: se o envio falhar não fica lixo
+   * no disco, e a conversa não exibe anexo que o cliente nunca recebeu.
+   */
+  async enviarConteudo(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    arquivo: {
+      conteudo: Buffer;
+      nome: string;
+      mime: string;
+      arquivoEmDisco?: string;
+    },
+    input: { legenda?: string; ptt?: boolean },
+  ) {
+    const config = await this.config.obter(empresaId);
 
     return this.prisma.withTenant(empresaId, async (tx) => {
       const conversa = await this.conversaNoEscopo(tx, empresaId, user, conversaId);
@@ -317,10 +372,17 @@ export class WhatsappConversasService {
             mime: arquivo.mime,
             legenda: input.legenda ?? null,
             ptt: input.ptt ?? false,
-            conteudoBase64: conteudo.toString('base64'),
+            conteudoBase64: arquivo.conteudo.toString('base64'),
           },
         },
       );
+
+      let emDisco = arquivo.arquivoEmDisco;
+      if (!emDisco) {
+        emDisco = `${randomUUID()}${extensaoPorMime(arquivo.mime)}`;
+        await mkdir(WHATSAPP_DIR, { recursive: true });
+        await writeFile(join(WHATSAPP_DIR, emDisco), arquivo.conteudo);
+      }
 
       const mensagem = await tx.whatsappMensagem.create({
         data: {
@@ -330,7 +392,7 @@ export class WhatsappConversasService {
           direcao: 'saida',
           tipo,
           conteudo: input.legenda ?? null,
-          arquivoUrl: whatsappPublicPath(basename(arquivo.caminhoDisco)),
+          arquivoUrl: whatsappPublicPath(emDisco),
           arquivoNome: arquivo.nome,
           enviadaPor: user.id,
           statusEntrega: 'enviada',
@@ -343,6 +405,141 @@ export class WhatsappConversasService {
       });
 
       return mensagem;
+    });
+  }
+
+  /**
+   * Reage a uma mensagem da conversa (emoji vazio remove).
+   *
+   * A reação vai ao provedor **antes** de ser gravada, como o envio de
+   * mensagem: emoji que o cliente não viu não pode aparecer na tela do
+   * vendedor como se tivesse ido.
+   *
+   * Só o dono da sessão reage — supervisor lê a conversa, mas não fala pelo
+   * aparelho de quem ele supervisiona, nem com emoji.
+   */
+  async reagir(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    mensagemId: string,
+    emoji: string,
+  ) {
+    const config = await this.config.obter(empresaId);
+
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const conversa = await this.conversaNoEscopo(
+        tx,
+        empresaId,
+        user,
+        conversaId,
+      );
+      await this.garantirDono(tx, empresaId, user, conversa);
+
+      const mensagem = await tx.whatsappMensagem.findFirst({
+        where: { id: mensagemId, conversaId },
+        select: { id: true, externoId: true, direcao: true },
+      });
+      if (!mensagem) throw new NotFoundException('Mensagem não encontrada');
+
+      await this.worker.chamar(
+        config.workerUrl,
+        `/sessoes/${conversa.sessaoId}/reacoes`,
+        {
+          metodo: 'POST',
+          corpo: {
+            jid: conversa.contato.jid,
+            alvoExternoId: mensagem.externoId,
+            // O provedor precisa saber se a mensagem reagida saiu daqui para
+            // localizá-la — é o `fromMe` da chave dela.
+            alvoNosso: mensagem.direcao === 'saida',
+            emoji,
+          },
+        },
+      );
+
+      if (!emoji) {
+        await tx.whatsappReacao.deleteMany({
+          where: { mensagemId: mensagem.id, deQuem: 'nos' },
+        });
+        return { emoji: null };
+      }
+
+      await tx.whatsappReacao.upsert({
+        where: {
+          empresaId_mensagemId_deQuem: {
+            empresaId,
+            mensagemId: mensagem.id,
+            deQuem: 'nos',
+          },
+        },
+        create: {
+          empresaId,
+          mensagemId: mensagem.id,
+          emoji,
+          deQuem: 'nos',
+          reagiuPor: user.id,
+        },
+        // Reagir de novo troca o emoji: o WhatsApp não acumula reações do
+        // mesmo autor na mesma mensagem.
+        update: { emoji, reagiuPor: user.id },
+      });
+      return { emoji };
+    });
+  }
+
+  /**
+   * Reação que chegou do celular.
+   *
+   * Encontrada pelo `externoId` da mensagem alvo. Reação a mensagem que a
+   * plataforma **não gravou** (conversa sem cliente vinculado à época) é
+   * silenciosamente ignorada: não há em que pendurar o emoji, e criar a
+   * mensagem agora seria gravação retroativa — justamente o que a regra de
+   * privacidade proíbe.
+   */
+  async receberReacao(entrada: {
+    sessaoId: string;
+    empresaId: string;
+    jid: string;
+    alvoExternoId: string;
+    emoji: string;
+  }) {
+    const { empresaId } = entrada;
+
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const mensagem = await tx.whatsappMensagem.findFirst({
+        where: {
+          externoId: entrada.alvoExternoId,
+          conversa: { sessaoId: entrada.sessaoId },
+        },
+        select: { id: true },
+      });
+      if (!mensagem) return { gravada: false, motivo: 'mensagem-desconhecida' };
+
+      if (!entrada.emoji) {
+        await tx.whatsappReacao.deleteMany({
+          where: { mensagemId: mensagem.id, deQuem: 'contato' },
+        });
+        return { gravada: true, removida: true };
+      }
+
+      await tx.whatsappReacao.upsert({
+        where: {
+          empresaId_mensagemId_deQuem: {
+            empresaId,
+            mensagemId: mensagem.id,
+            deQuem: 'contato',
+          },
+        },
+        create: {
+          empresaId,
+          mensagemId: mensagem.id,
+          emoji: entrada.emoji,
+          deQuem: 'contato',
+        },
+        update: { emoji: entrada.emoji },
+      });
+      return { gravada: true, removida: false };
     });
   }
 
@@ -560,6 +757,17 @@ export class WhatsappConversasService {
         jid = `${await this.numeroCompleto(empresaId, telefone)}@s.whatsapp.net`;
       }
 
+      // Feed de status, lista de transmissão, canal e grupo não são
+      // atendimento — e o envio para eles falha lá no provedor, sem sessão
+      // Signal, depois da conversa já existir na tela. A lista da agenda já
+      // os esconde; esconder não é recusar, e foi por aqui que um
+      // `status@broadcast` virou conversa.
+      if (!this.jidDePessoa(jid)) {
+        throw new BadRequestException(
+          'Só é possível conversar com um contato — status, canais, listas de transmissão e grupos não são atendimento.',
+        );
+      }
+
       const contato = await tx.whatsappContato.upsert({
         where: { empresaId_jid: { empresaId, jid } },
         create: {
@@ -600,6 +808,27 @@ export class WhatsappConversasService {
 
       return conversa;
     });
+  }
+
+  /**
+   * O jid é de uma pessoa (contato individual), e não de status, canal, lista
+   * de transmissão ou grupo?
+   *
+   * Vale para os dois formatos que o WhatsApp entrega — `@s.whatsapp.net` e o
+   * `@lid` opaco (ver `contatoPorTelefone`).
+   */
+  private jidDePessoa(jid: string): boolean {
+    const destino = jid.trim().toLowerCase();
+    if (!destino) return false;
+    if (
+      destino === 'status@broadcast' ||
+      destino.endsWith('@broadcast') ||
+      destino.endsWith('@newsletter') ||
+      destino.endsWith('@g.us')
+    ) {
+      return false;
+    }
+    return destino.endsWith('@s.whatsapp.net') || destino.endsWith('@lid');
   }
 
   private primeiroTelefoneValido(candidatos: (string | null)[]): string | null {
@@ -787,6 +1016,14 @@ export class WhatsappConversasService {
 
       if (!contato.clienteId) {
         // A conversa existe para o vendedor poder vinculá-la; o conteúdo, não.
+        //
+        // O log existe porque este descarte é indistinguível, de fora, de uma
+        // mensagem que se perdeu: a conversa sobe na lista, o texto não
+        // aparece, e nada em lugar nenhum dizia o motivo. Custou uma
+        // investigação inteira (ver docs/planos/whatsapp-vendedor.md).
+        this.logger.log(
+          `Mensagem descartada por falta de vínculo: conversa ${conversa.id}, contato ${contato.jid}`,
+        );
         return { gravada: false, motivo: 'sem-vinculo', conversaId: conversa.id };
       }
 

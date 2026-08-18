@@ -1,8 +1,26 @@
 "use client";
 
-import { Check, CheckCheck, Download, FileText, Reply } from "lucide-react";
-import type { WhatsappMensagem } from "@plataforma/contracts";
-import { API_ORIGIN } from "@/lib/api-client";
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import {
+  Check,
+  CheckCheck,
+  Download,
+  FileText,
+  Reply,
+  SmilePlus,
+} from "lucide-react";
+import {
+  WHATSAPP_REACOES_RAPIDAS,
+  type WhatsappMensagem,
+} from "@plataforma/contracts";
+import { API_ORIGIN, ApiError, apiFetch } from "@/lib/api-client";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 /**
  * Uma mensagem no rolo da conversa.
@@ -16,18 +34,29 @@ export function MensagemBolha({
   mensagem,
   citada,
   onResponder,
+  conversaId,
 }: {
   mensagem: WhatsappMensagem;
   citada: WhatsappMensagem | null;
   onResponder: (m: WhatsappMensagem) => void;
+  conversaId: string;
 }) {
   const minha = mensagem.direcao === "saida";
   // Os arquivos são servidos pela API, que está em outra origem que o front.
   const url = mensagem.arquivoUrl ? `${API_ORIGIN}${mensagem.arquivoUrl}` : null;
+  const reacoes = mensagem.reacoes ?? [];
+  const minhaReacao = reacoes.find((r) => r.deQuem === "nos")?.emoji ?? null;
 
   return (
     <div className={`group flex items-end gap-1 ${minha ? "justify-end" : ""}`}>
-      {minha ? <BotaoResponder mensagem={mensagem} onResponder={onResponder} /> : null}
+      {minha ? (
+        <BarraDeAcoes
+          mensagem={mensagem}
+          conversaId={conversaId}
+          minhaReacao={minhaReacao}
+          onResponder={onResponder}
+        />
+      ) : null}
 
       <div
         className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${
@@ -59,9 +88,32 @@ export function MensagemBolha({
           })}
           {minha ? <Recibo status={mensagem.statusEntrega} /> : null}
         </div>
+
+        {reacoes.length ? (
+          // Meio fora da bolha, como no WhatsApp: a reação pertence à mensagem
+          // mas não é conteúdo dela.
+          <div
+            className={`-mb-4 -mt-1 flex w-fit gap-0.5 rounded-full border bg-background px-1.5 py-0.5 text-xs shadow-sm ${
+              minha ? "ml-auto" : ""
+            }`}
+          >
+            {reacoes.map((r) => (
+              <span key={r.deQuem} title={r.deQuem === "nos" ? "Você" : "Cliente"}>
+                {r.emoji}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
 
-      {!minha ? <BotaoResponder mensagem={mensagem} onResponder={onResponder} /> : null}
+      {!minha ? (
+        <BarraDeAcoes
+          mensagem={mensagem}
+          conversaId={conversaId}
+          minhaReacao={minhaReacao}
+          onResponder={onResponder}
+        />
+      ) : null}
     </div>
   );
 }
@@ -138,21 +190,83 @@ function Recibo({ status }: { status: WhatsappMensagem["statusEntrega"] }) {
   return <Check className="size-3" />;
 }
 
-function BotaoResponder({
+/**
+ * Responder e reagir — aparecem ao passar o mouse na mensagem, como no
+ * WhatsApp. Ficam do lado de fora da bolha para não competir com o conteúdo.
+ */
+function BarraDeAcoes({
   mensagem,
+  conversaId,
+  minhaReacao,
   onResponder,
 }: {
   mensagem: WhatsappMensagem;
+  conversaId: string;
+  minhaReacao: string | null;
   onResponder: (m: WhatsappMensagem) => void;
 }) {
+  const queryClient = useQueryClient();
+  const [aberto, setAberto] = useState(false);
+
+  const reagir = useMutation({
+    mutationFn: (emoji: string) =>
+      apiFetch(
+        `/whatsapp/conversas/${conversaId}/mensagens/${mensagem.id}/reacao`,
+        { method: "POST", body: { emoji } },
+      ),
+    onSuccess: () => {
+      setAberto(false);
+      void queryClient.invalidateQueries({
+        queryKey: ["whatsapp-mensagens", conversaId],
+      });
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Falha ao reagir"),
+  });
+
   return (
-    <button
-      type="button"
-      onClick={() => onResponder(mensagem)}
-      title="Responder"
-      className="opacity-0 transition group-hover:opacity-60 hover:!opacity-100"
-    >
-      <Reply className="size-4" />
-    </button>
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={() => onResponder(mensagem)}
+        title="Responder"
+        className="opacity-0 transition group-hover:opacity-60 hover:!opacity-100"
+      >
+        <Reply className="size-4" />
+      </button>
+
+      <Popover open={aberto} onOpenChange={setAberto}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            title="Reagir"
+            className={`transition ${
+              minhaReacao
+                ? "opacity-60 hover:opacity-100"
+                : "opacity-0 group-hover:opacity-60 hover:!opacity-100"
+            }`}
+          >
+            <SmilePlus className="size-4" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="flex w-auto gap-1 p-1" align="center">
+          {WHATSAPP_REACOES_RAPIDAS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              disabled={reagir.isPending}
+              // Clicar no emoji que já está posto desfaz a reação: string
+              // vazia é como o WhatsApp remove.
+              onClick={() => reagir.mutate(emoji === minhaReacao ? "" : emoji)}
+              className={`rounded p-1 text-lg transition hover:bg-muted ${
+                emoji === minhaReacao ? "bg-muted" : ""
+              }`}
+            >
+              {emoji}
+            </button>
+          ))}
+        </PopoverContent>
+      </Popover>
+    </div>
   );
 }

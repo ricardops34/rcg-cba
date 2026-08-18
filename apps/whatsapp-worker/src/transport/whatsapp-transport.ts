@@ -39,6 +39,26 @@ export interface MensagemRecebida {
   criadaEm: Date;
 }
 
+/**
+ * Reação (emoji) que chegou do celular.
+ *
+ * Não é mensagem: não entra no rolo da conversa, e sim gruda na mensagem que
+ * ela aponta. Chega pelo mesmo evento `message` do provedor, e sem este
+ * caminho separado ela virava uma bolha vazia (`tipo: 'outro'`, sem texto) no
+ * histórico do vendedor.
+ */
+export interface ReacaoRecebida {
+  sessaoId: string;
+  empresaId: string;
+  jid: string;
+  /** Id da mensagem reagida — é por ele que a API a encontra. */
+  alvoExternoId: string;
+  /** A mensagem reagida é nossa (saída)? Determina de que lado veio. */
+  alvoNosso: boolean;
+  /** Emoji, ou vazio quando o contato **removeu** a reação. */
+  emoji: string;
+}
+
 /** Arquivo a enviar, já em memória (o limite do WhatsApp é da ordem de 16 MB). */
 export interface ArquivoParaEnviar {
   conteudo: Buffer;
@@ -113,6 +133,20 @@ export interface WhatsappTransport {
   ): Promise<{ externoId: string }>;
   /** Marca como lida no celular do vendedor — some o "não lido" de lá também. */
   marcarLida(sessaoId: string, jid: string, externoId: string): Promise<void>;
+  /**
+   * Reage a uma mensagem da conversa.
+   *
+   * `emoji` vazio remove a reação — é assim que o próprio WhatsApp modela, e
+   * manter a mesma convenção evita uma segunda rota só para desfazer.
+   * `alvoNosso` diz se a mensagem reagida saiu daqui (`fromMe`), o que o
+   * provedor exige para localizá-la.
+   */
+  reagir(
+    sessaoId: string,
+    jid: string,
+    alvo: { externoId: string; nosso: boolean },
+    emoji: string,
+  ): Promise<void>;
   /** Agenda do aparelho, para o vendedor escolher quem vincular a cliente. */
   listarContatos(sessaoId: string, busca?: string): Promise<ContatoAgenda[]>;
   /** Conversas que já existem no celular. */
@@ -137,6 +171,8 @@ export interface WhatsappTransport {
       baixarMidia: () => Promise<Buffer>,
     ) => Promise<void>,
   ): void;
+  /** Registrado uma vez, como `aoReceber` — reação não é mensagem. */
+  aoReceberReacao(handler: (reacao: ReacaoRecebida) => Promise<void>): void;
   /**
    * Avisado a cada mudança de estado — inclusive as que ninguém pediu: queda
    * de conexão, reconexão, aparelho desvinculado no celular, banimento.

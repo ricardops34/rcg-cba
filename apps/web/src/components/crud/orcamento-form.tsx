@@ -13,7 +13,6 @@ import {
   orcamentoUpdateSchema,
   type Cliente,
   type CondicaoPagamento,
-  type Empresa,
   type Oportunidade,
   type Orcamento,
   type OrcamentoConfig,
@@ -26,8 +25,7 @@ import {
   type StatusOrcamento,
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
-import { apiFetch, ApiError, assetUrl } from "@/lib/api-client";
-import { gerarOrcamentoPdf } from "@/lib/orcamento-pdf";
+import { apiDownload, apiFetch, ApiError } from "@/lib/api-client";
 import { regraDescontoLabel } from "@/lib/regra-desconto";
 import { useAuthStore } from "@/stores/auth-store";
 import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
@@ -876,8 +874,6 @@ export function OrcamentoFormContent({
 
   // Proposta em PDF — só pra orçamento já salvo: os itens só carregam produto
   // (código/descrição/unidade) e total consolidado depois de gravados.
-  const usuario = useAuthStore((s) => s.user);
-  const empresaAtiva = usuario?.empresas.find((e) => e.empresaId === usuario.empresaAtivaId);
   const [gerandoPdf, setGerandoPdf] = useState(false);
   const baixarPdf = async () => {
     if (!registro) return;
@@ -889,26 +885,20 @@ export function OrcamentoFormContent({
     }
     setGerandoPdf(true);
     try {
-      // Cadastro da empresa emitente pro cabeçalho (CNPJ, IE, endereço,
-      // contato) — buscado na hora, e não mantido em cache de query, porque
-      // só o PDF usa. A rota é liberada a qualquer usuário autenticado; se
-      // falhar, o PDF ainda sai com o nome fantasia da sessão.
-      const empresa = await apiFetch<Empresa>("/empresas/ativa").catch(() => null);
-      await gerarOrcamentoPdf({
-        orcamento: registro,
-        cliente: clienteSelecionadoQuery.data,
-        empresa,
-        empresaNome: empresaAtiva?.nomeFantasia,
-        empresaLogoUrl: assetUrl(empresaAtiva?.logoUrl),
-      });
-      // O arquivo é montado aqui no navegador; o servidor só registra que a
-      // proposta foi emitida, para o evento entrar no histórico do cliente
-      // junto dos demais. Falhar o registro não invalida o PDF já baixado.
-      await apiFetch(`/orcamentos/${registro.id}/registrar-pdf`, { method: "POST" })
-        .then(() => queryClient.invalidateQueries({ queryKey: ["atividades"] }))
-        .catch(() => undefined);
-    } catch {
-      toast.error("Não foi possível gerar o PDF do orçamento");
+      // O arquivo é montado no servidor (era no navegador, com jsPDF): é o
+      // mesmo PDF que a conversa do WhatsApp anexa, e a rota já registra a
+      // emissão no histórico do orçamento/cliente.
+      await apiDownload(
+        `/orcamentos/${registro.id}/pdf`,
+        `orcamento-${registro.numero}.pdf`,
+      );
+      void queryClient.invalidateQueries({ queryKey: ["atividades"] });
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : "Não foi possível gerar o PDF do orçamento",
+      );
     } finally {
       setGerandoPdf(false);
     }

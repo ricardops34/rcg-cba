@@ -103,6 +103,10 @@ services:
       WHATSAPP_WORKER_TOKEN: ${WHATSAPP_WORKER_TOKEN:-desenvolvimento-local-worker}
       API_URL: http://api:3001
       PORT: 3100
+      # `debug` mostra as falhas de decifrar addon (reação, voto de enquete),
+      # que a biblioteca registra só nesse nível — em `info` o sintoma é a
+      # reação sumir sem deixar rastro. Ruidoso: use só ao investigar.
+      WHATSAPP_LOG_NIVEL: ${WHATSAPP_LOG_NIVEL:-info}
     command: pnpm --filter @plataforma/whatsapp-worker start:dev
     ports:
       - "3100:3100"

@@ -268,6 +268,16 @@ export type WhatsappVincular = z.infer<typeof whatsappVincularSchema>;
 // Mensagens
 // --------------------------------------------------------------------------
 
+/**
+ * Reação a uma mensagem. `deQuem` só tem dois valores porque o atendimento é
+ * 1:1 — e é o que a tela usa para posicionar o emoji do lado certo da bolha.
+ */
+export const whatsappReacaoSchema = z.object({
+  emoji: z.string(),
+  deQuem: z.enum(["nos", "contato"]),
+});
+export type WhatsappReacao = z.infer<typeof whatsappReacaoSchema>;
+
 export const whatsappMensagemSchema = z.object({
   id: z.string().uuid(),
   conversaId: z.string().uuid(),
@@ -282,9 +292,33 @@ export const whatsappMensagemSchema = z.object({
   statusEntrega: whatsappStatusEntregaSchema,
   /** Id externo da mensagem citada — o "responder" do WhatsApp. */
   respondeuA: z.string().nullable(),
+  /** No máximo duas (uma de cada lado): reagir de novo substitui. */
+  reacoes: z.array(whatsappReacaoSchema).default([]),
   criadaEm: z.string().datetime(),
 });
 export type WhatsappMensagem = z.infer<typeof whatsappMensagemSchema>;
+
+/**
+ * Reagir a uma mensagem. **Emoji vazio remove** — é como o WhatsApp desfaz, e
+ * manter a convenção evita uma segunda rota só para isso.
+ */
+export const whatsappReagirSchema = z.object({
+  emoji: z.string().trim().max(16),
+});
+export type WhatsappReagir = z.infer<typeof whatsappReagirSchema>;
+
+/**
+ * Os emojis que a tela oferece — os mesmos seis do WhatsApp, na mesma ordem.
+ * Um seletor completo de emoji é outra conversa; estes cobrem o uso real.
+ */
+export const WHATSAPP_REACOES_RAPIDAS = [
+  "👍",
+  "❤️",
+  "😂",
+  "😮",
+  "😢",
+  "🙏",
+] as const;
 
 export const whatsappMensagemQuerySchema = z.object({
   // Paginação por cursor: o rolo carrega para trás, e offset numa lista que
@@ -333,6 +367,19 @@ export const whatsappAgendarVisitaSchema = z.object({
 });
 export type WhatsappAgendarVisita = z.infer<typeof whatsappAgendarVisitaSchema>;
 
+/**
+ * Envio da proposta comercial em PDF pela conversa. Só o orçamento é
+ * escolhido: o cliente é o da conversa, e o servidor recusa orçamento de
+ * outro cliente. Sem legenda, a mensagem sai com "Orçamento nº N".
+ */
+export const whatsappEnviarOrcamentoSchema = z.object({
+  orcamentoId: z.string().uuid("Escolha o orçamento a enviar"),
+  legenda: z.string().trim().max(1000).optional(),
+});
+export type WhatsappEnviarOrcamento = z.infer<
+  typeof whatsappEnviarOrcamentoSchema
+>;
+
 // --------------------------------------------------------------------------
 // Exemplos para o Swagger
 // --------------------------------------------------------------------------
@@ -361,6 +408,7 @@ export const WHATSAPP_MENSAGEM_EXAMPLE: WhatsappMensagem = {
   conteudo: "Bom dia, consegue me mandar o orçamento daquele item?",
   arquivoUrl: null,
   arquivoNome: null,
+  reacoes: [{ emoji: "👍", deQuem: "nos" }],
   enviadaPor: null,
   enviadaPorNome: null,
   statusEntrega: "entregue",

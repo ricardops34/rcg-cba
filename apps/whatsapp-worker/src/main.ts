@@ -3,6 +3,7 @@ import { ZapoTransport } from './transport/zapo.transport';
 import type {
   EstadoSessao,
   MensagemRecebida,
+  ReacaoRecebida,
   WhatsappTransport,
 } from './transport/whatsapp-transport';
 
@@ -92,6 +93,32 @@ transporte.aoReceber(async (msg: MensagemRecebida, baixarMidia) => {
     });
   } catch (erro) {
     console.error('Falha ao entregar mensagem para a API', erro);
+  }
+});
+
+/**
+ * Repassa a reação recebida.
+ *
+ * Vai por uma rota própria porque não é mensagem: a API precisa **achar a
+ * mensagem já gravada** e pendurar o emoji nela. Se a mensagem alvo não existe
+ * (conversa que não era gravada quando ela chegou), a API ignora — e é por
+ * isso que aqui não há tratamento de "não encontrada".
+ */
+transporte.aoReceberReacao(async (reacao: ReacaoRecebida) => {
+  try {
+    const resposta = await chamarApi<{ gravada: boolean; motivo?: string }>(
+      '/reacao',
+      { metodo: 'POST', corpo: reacao },
+    );
+    // Vale o log: reação silenciosamente ignorada (mensagem alvo que a
+    // plataforma não gravou) é indistinguível de reação que não chegou.
+    if (!resposta?.gravada) {
+      console.log(
+        `Reação ignorada (${resposta?.motivo ?? 'sem motivo'}): alvo ${reacao.alvoExternoId}`,
+      );
+    }
+  } catch (erro) {
+    console.error('Falha ao entregar reação para a API', erro);
   }
 });
 
@@ -274,6 +301,30 @@ const servidor = createServer(async (req, res) => {
         partes[1],
         String(corpo.jid),
         String(corpo.externoId),
+      );
+      return json(res, 200, { ok: true });
+    }
+
+    // POST /sessoes/:id/reacoes  { jid, alvoExternoId, alvoNosso, emoji }
+    // `emoji` vazio remove a reação — mesma convenção do WhatsApp.
+    if (
+      req.method === 'POST' &&
+      partes.length === 3 &&
+      partes[0] === 'sessoes' &&
+      partes[2] === 'reacoes'
+    ) {
+      const corpo = await lerCorpo(req);
+      if (!corpo.jid || !corpo.alvoExternoId) {
+        return json(res, 400, { erro: 'jid e alvoExternoId obrigatórios' });
+      }
+      await transporte.reagir(
+        partes[1],
+        String(corpo.jid),
+        {
+          externoId: String(corpo.alvoExternoId),
+          nosso: Boolean(corpo.alvoNosso),
+        },
+        String(corpo.emoji ?? ''),
       );
       return json(res, 200, { ok: true });
     }

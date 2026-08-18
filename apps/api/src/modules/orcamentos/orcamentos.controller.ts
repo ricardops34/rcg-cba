@@ -7,9 +7,12 @@ import {
   Patch,
   Post,
   Query,
+  Res,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
-import { ApiQuery } from '@nestjs/swagger';
+import type { Response } from 'express';
+import { ApiProduces, ApiQuery } from '@nestjs/swagger';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { OrcamentosService } from './orcamentos.service';
 import {
@@ -151,18 +154,31 @@ export class OrcamentosController {
   }
 
   @ApiOperation({
-    summary: 'Registrar a emissão da proposta em PDF',
+    summary: 'Baixar a proposta comercial em PDF',
     description:
-      'O PDF é montado no navegador; esta rota grava o evento no histórico do orçamento/cliente. ' +
+      'Monta o arquivo no servidor e registra a emissão no histórico do orçamento/cliente. ' +
       'Recusa com 409 quando há desconto igual ou acima do máximo da regra sem autorização — a ' +
-      'mesma trava que a tela aplica no botão. Requer orcamentos.visualizar.',
+      'mesma trava que a tela aplica no botão. É a mesma proposta que o envio pelo WhatsApp ' +
+      'anexa na conversa. Requer orcamentos.visualizar.',
   })
+  @ApiProduces('application/pdf')
   @RequirePermission('orcamentos', 'visualizar')
-  @Post(':id/registrar-pdf')
-  registrarPdf(
+  @Get(':id/pdf')
+  async pdf(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) res: Response,
   ) {
-    return this.service.registrarPdf(user.empresaAtivaId, user, id);
+    const { conteudo, nomeArquivo } = await this.service.gerarPdf(
+      user.empresaAtivaId,
+      user,
+      id,
+    );
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${nomeArquivo}"`,
+      'Content-Length': String(conteudo.length),
+    });
+    return new StreamableFile(conteudo);
   }
 }

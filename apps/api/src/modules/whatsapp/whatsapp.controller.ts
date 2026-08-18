@@ -33,8 +33,10 @@ import {
   WhatsappAgendarVisitaDto,
   WhatsappEnviarArquivoDto,
   WhatsappEnviarDto,
+  WhatsappEnviarOrcamentoDto,
   WhatsappIniciarConversaDto,
   WhatsappMensagemQueryDto,
+  WhatsappReagirDto,
   WhatsappVincularDto,
 } from './dto/whatsapp.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -347,6 +349,64 @@ export class WhatsappController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.acoes.agendarVisita(user.empresaAtivaId, user, id, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Orçamentos do cliente da conversa',
+    description:
+      'Os 20 mais recentes, para escolher qual proposta enviar. Mesma lista ' +
+      'do módulo de orçamentos, filtrada pelo cliente da conversa e restrita ' +
+      'ao escopo do vendedor. Requer orcamentos.visualizar.',
+  })
+  @RequirePermission('orcamentos', 'visualizar')
+  @Get('conversas/:id/acoes/orcamentos')
+  listarOrcamentos(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.acoes.listarOrcamentos(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Enviar a proposta em PDF pela conversa',
+    description:
+      'Anexa o mesmo PDF que a tela de orçamento baixa. Recusa orçamento de ' +
+      'outro cliente (400) e orçamento com desconto acima do máximo da regra ' +
+      'sem autorização (409). Requer orcamentos.visualizar.',
+  })
+  @RequirePermission('orcamentos', 'visualizar')
+  @Post('conversas/:id/acoes/orcamento')
+  enviarOrcamento(
+    @Param('id') id: string,
+    @Body() dto: WhatsappEnviarOrcamentoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.acoes.enviarOrcamento(user.empresaAtivaId, user, id, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Reagir a uma mensagem da conversa',
+    description:
+      'Emoji vazio remove a reação — é a convenção do próprio WhatsApp. Cada ' +
+      'lado tem no máximo uma reação por mensagem: reagir de novo substitui. ' +
+      'Só o dono da sessão reage (supervisor lê, não fala pelo aparelho). ' +
+      'Requer whatsapp-conversas.cadastrar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Post('conversas/:id/mensagens/:mensagemId/reacao')
+  reagir(
+    @Param('id') id: string,
+    @Param('mensagemId') mensagemId: string,
+    @Body() dto: WhatsappReagirDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversas.reagir(
+      user.empresaAtivaId,
+      user,
+      id,
+      mensagemId,
+      dto.emoji,
+    );
   }
 
   @ApiOperation({ summary: 'Marcar a conversa como lida' })

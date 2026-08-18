@@ -5,9 +5,11 @@ import {
   whatsappConfigUpdateSchema,
   whatsappConversaQuerySchema,
   whatsappEnviarArquivoSchema,
+  whatsappEnviarOrcamentoSchema,
   whatsappEnviarSchema,
   whatsappIniciarConversaSchema,
   whatsappMensagemQuerySchema,
+  whatsappReagirSchema,
   whatsappVincularSchema,
 } from '@plataforma/contracts';
 
@@ -28,6 +30,10 @@ export class WhatsappEnviarArquivoDto extends createZodDto(
 export class WhatsappAgendarVisitaDto extends createZodDto(
   whatsappAgendarVisitaSchema,
 ) {}
+export class WhatsappEnviarOrcamentoDto extends createZodDto(
+  whatsappEnviarOrcamentoSchema,
+) {}
+export class WhatsappReagirDto extends createZodDto(whatsappReagirSchema) {}
 export class WhatsappVincularDto extends createZodDto(whatsappVincularSchema) {}
 export class WhatsappIniciarConversaDto extends createZodDto(
   whatsappIniciarConversaSchema,

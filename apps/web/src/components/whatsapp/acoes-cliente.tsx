@@ -1,15 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   CalendarPlus,
   FileSpreadsheet,
+  FileText,
   Receipt,
   Wrench,
 } from "lucide-react";
+import type { Orcamento } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
+import { STATUS_ORCAMENTO_LABEL } from "@/components/crud/orcamento-status";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +46,7 @@ import {
 export function AcoesCliente({ conversaId }: { conversaId: string }) {
   const queryClient = useQueryClient();
   const [agendando, setAgendando] = useState(false);
+  const [enviandoOrcamento, setEnviandoOrcamento] = useState(false);
   const permissoes = useAuthStore((s) => s.user?.permissoes);
 
   // Mesma leitura do menu lateral: a lista já vem resolvida pelo perfil, e o
@@ -67,7 +72,8 @@ export function AcoesCliente({ conversaId }: { conversaId: string }) {
   const podeTitulos = pode("titulos-receber.visualizar");
   const podeNotas = pode("notas-saida.visualizar");
   const podeAgendar = pode("atividades.cadastrar");
-  if (!podeTitulos && !podeNotas && !podeAgendar) return null;
+  const podeOrcamento = pode("orcamentos.visualizar");
+  if (!podeTitulos && !podeNotas && !podeAgendar && !podeOrcamento) return null;
 
   return (
     <>
@@ -98,6 +104,12 @@ export function AcoesCliente({ conversaId }: { conversaId: string }) {
               Enviar últimas notas
             </DropdownMenuItem>
           ) : null}
+          {podeOrcamento ? (
+            <DropdownMenuItem onClick={() => setEnviandoOrcamento(true)}>
+              <FileText className="size-4" />
+              Enviar orçamento (PDF)
+            </DropdownMenuItem>
+          ) : null}
           {podeAgendar ? (
             <DropdownMenuItem onClick={() => setAgendando(true)}>
               <CalendarPlus className="size-4" />
@@ -112,7 +124,137 @@ export function AcoesCliente({ conversaId }: { conversaId: string }) {
         aberto={agendando}
         onOpenChange={setAgendando}
       />
+
+      <OrcamentoDialog
+        conversaId={conversaId}
+        aberto={enviandoOrcamento}
+        onOpenChange={setEnviandoOrcamento}
+      />
     </>
+  );
+}
+
+const moeda = (v: number | null | undefined) =>
+  v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
+const dataBr = (v: string | null | undefined) =>
+  v ? new Date(v).toLocaleDateString("pt-BR") : "—";
+
+/**
+ * Escolha do orçamento a mandar para o cliente.
+ *
+ * A lista é a do próprio módulo de orçamentos, já filtrada pelo cliente da
+ * conversa — o vendedor não digita id nem escolhe cliente aqui. O PDF é montado
+ * no servidor no momento do envio (o mesmo arquivo que a tela de orçamento
+ * baixa), então a proposta que chega ao cliente reflete o orçamento como está
+ * agora, não uma cópia velha.
+ */
+function OrcamentoDialog({
+  conversaId,
+  aberto,
+  onOpenChange,
+}: {
+  conversaId: string;
+  aberto: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [escolhido, setEscolhido] = useState<string | null>(null);
+  const [legenda, setLegenda] = useState("");
+
+  const orcamentosQuery = useQuery({
+    queryKey: ["whatsapp-orcamentos", conversaId],
+    queryFn: () =>
+      apiFetch<{ data: Orcamento[] }>(
+        `/whatsapp/conversas/${conversaId}/acoes/orcamentos`,
+      ),
+    enabled: aberto,
+  });
+  const orcamentos = orcamentosQuery.data?.data ?? [];
+
+  const enviar = useMutation({
+    mutationFn: () =>
+      apiFetch(`/whatsapp/conversas/${conversaId}/acoes/orcamento`, {
+        method: "POST",
+        body: { orcamentoId: escolhido, legenda: legenda.trim() || undefined },
+      }),
+    onSuccess: () => {
+      toast.success("Proposta enviada para o cliente");
+      setEscolhido(null);
+      setLegenda("");
+      onOpenChange(false);
+      void queryClient.invalidateQueries({
+        queryKey: ["whatsapp-mensagens", conversaId],
+      });
+      // A emissão entra no histórico do orçamento/cliente como atividade.
+      void queryClient.invalidateQueries({ queryKey: ["atividades"] });
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Falha ao enviar a proposta"),
+  });
+
+  return (
+    <Dialog open={aberto} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Enviar orçamento em PDF</DialogTitle>
+          <DialogDescription>
+            A proposta é gerada agora e vai como anexo na conversa. Orçamento
+            com desconto acima do máximo da regra precisa estar autorizado.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          {orcamentosQuery.isPending ? (
+            <p className="text-sm text-muted-foreground">Carregando orçamentos…</p>
+          ) : orcamentos.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Este cliente não tem orçamento cadastrado.
+            </p>
+          ) : (
+            <div className="max-h-64 space-y-1 overflow-y-auto">
+              {orcamentos.map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  onClick={() => setEscolhido(o.id)}
+                  className={cn(
+                    "w-full rounded-md border px-3 py-2 text-left text-sm transition-colors",
+                    escolhido === o.id
+                      ? "border-primary bg-primary/5"
+                      : "hover:bg-muted/50",
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">
+                      Nº {o.numero} — {o.titulo}
+                    </span>
+                    <span className="shrink-0 tabular-nums">{moeda(o.vlrTotal)}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {dataBr(o.createdAt)} · {STATUS_ORCAMENTO_LABEL[o.status]}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <Textarea
+            placeholder="Mensagem que acompanha o arquivo (opcional)"
+            value={legenda}
+            onChange={(e) => setLegenda(e.target.value)}
+          />
+        </div>
+
+        <DialogFooter>
+          <Button
+            onClick={() => enviar.mutate()}
+            disabled={!escolhido || enviar.isPending}
+          >
+            {enviar.isPending ? "Enviando…" : "Enviar proposta"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
