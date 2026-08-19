@@ -18,6 +18,11 @@ import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappSessaoService } from './whatsapp-sessao.service';
 import { WhatsappWorkerClient } from './whatsapp-worker.client';
 import {
+  marcarNotificacoesDaOrigem,
+  registrarNotificacao,
+  usuarioDoVendedor,
+} from '../notificacoes/registrar-notificacao';
+import {
   combinarFiltroVendedor,
   resolverEscopoVendedores,
 } from '../../common/escopo/escopo-vendedores';
@@ -25,6 +30,7 @@ import { inicioDoDia } from '../titulos-receber/titulo-receber-status';
 import type {
   WhatsappConversaQuery,
   WhatsappSituacaoTitulos,
+  WhatsappStatusEntrega,
   WhatsappEnviar,
   WhatsappIniciarConversa,
   WhatsappMensagemQuery,
@@ -727,6 +733,44 @@ export class WhatsappConversasService {
   }
 
   /**
+   * Recibo de entrega/leitura vindo do celular do cliente.
+   *
+   * `updateMany` por `externoId`, e não um por id: o WhatsApp confirma em
+   * lote — abrir a conversa gera **um** recibo para tudo que estava por ler.
+   *
+   * O filtro `direcao: 'saida'` é a trava: recibo só fala de mensagem que
+   * saiu daqui. E o `in` de status impede o retrocesso — uma mensagem já
+   * `lida` não volta para `entregue` quando um recibo atrasado chega fora de
+   * ordem, o que faria o visto azul piscar de volta para cinza.
+   */
+  async receberRecibo(entrada: {
+    sessaoId: string;
+    empresaId: string;
+    externoIds: string[];
+    status: 'entregue' | 'lida';
+  }) {
+    const { empresaId, status } = entrada;
+    const ids = [...new Set(entrada.externoIds)].filter(Boolean);
+    if (ids.length === 0) return { atualizadas: 0 };
+
+    const anteriores: WhatsappStatusEntrega[] =
+      status === 'lida' ? ['enviada', 'entregue'] : ['enviada'];
+
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const { count } = await tx.whatsappMensagem.updateMany({
+        where: {
+          externoId: { in: ids },
+          direcao: 'saida',
+          statusEntrega: { in: anteriores },
+          conversa: { sessaoId: entrada.sessaoId },
+        },
+        data: { statusEntrega: status },
+      });
+      return { atualizadas: count };
+    });
+  }
+
+  /**
    * Grava o arquivo de uma mensagem recebida — segundo passo do recebimento.
    *
    * O worker só chega aqui quando a API confirmou que a mensagem foi gravada;
@@ -1088,6 +1132,16 @@ export class WhatsappConversasService {
           .catch(() => undefined);
       }
 
+      // A tabela de notificações é fonte única do sino, então zerar as não
+      // lidas aqui e deixar a linha pendente lá faria o badge insistir numa
+      // conversa que o vendedor acabou de ler.
+      await marcarNotificacoesDaOrigem(tx, {
+        empresaId,
+        tipos: ['whatsapp_mensagem'],
+        referenciaId: conversaId,
+      });
+
+
       return tx.whatsappConversa.update({
         where: { id: conversaId },
         data: { naoLidas: 0 },
@@ -1119,8 +1173,11 @@ export class WhatsappConversasService {
     arquivoNome?: string | null;
     arquivoMime?: string | null;
     respondeuA?: string | null;
+    /** Saiu do aparelho do vendedor (celular), não do cliente. */
+    minha?: boolean;
   }) {
     const { empresaId } = entrada;
+    const minha = Boolean(entrada.minha);
 
     return this.prisma.withTenant(empresaId, async (tx) => {
       const sessao = await tx.whatsappSessao.findFirst({
@@ -1192,14 +1249,29 @@ export class WhatsappConversasService {
           contatoId: contato.id,
           clienteId: contato.clienteId,
           ultimaMensagemEm: new Date(),
-          naoLidas: 1,
+          // A que o próprio vendedor mandou não conta como não lida: ele
+          // acabou de escrevê-la. Contar faria o badge subir pela resposta
+          // dele mesmo, e a conversa pedir atenção que já teve.
+          naoLidas: minha ? 0 : 1,
         },
         update: {
           clienteId: contato.clienteId,
           ultimaMensagemEm: new Date(),
-          naoLidas: { increment: 1 },
+          ...(minha ? {} : { naoLidas: { increment: 1 } }),
         },
       });
+
+      // Quem é avisado pelo sino: o usuário do vendedor dono da sessão. Sem
+      // login vinculado não há destinatário, e a mensagem só fica na tela.
+      const destinatario = await usuarioDoVendedor(
+        tx,
+        empresaId,
+        sessao.vendedorId,
+      );
+      const nomeNoAviso =
+        contato.nomeExibicao ??
+        contato.telefoneNormalizado ??
+        contato.jid.split('@')[0];
 
       if (!contato.clienteId) {
         // A conversa existe para o vendedor poder vinculá-la; o conteúdo, não.
@@ -1211,8 +1283,38 @@ export class WhatsappConversasService {
         this.logger.log(
           `Mensagem descartada por falta de vínculo: conversa ${conversa.id}, contato ${contato.jid}`,
         );
+        // Notifica mesmo assim: o **fato** de o contato ter escrito não é
+        // conteúdo, e é o que faz o vendedor abrir a conversa e vinculá-la ao
+        // cliente. Sem aviso, mensagem de contato não vinculado não chega a
+        // lugar nenhum — foi exatamente o relato de "mandei e não chegou".
+        // Nada a avisar quando a mensagem é do próprio vendedor.
+        if (destinatario && !minha) {
+          await registrarNotificacao(tx, {
+            empresaId,
+            usuarioId: destinatario,
+            tipo: 'whatsapp_mensagem',
+            titulo: nomeNoAviso,
+            rota: `/comercial/atendimento?conversa=${conversa.id}`,
+            referenciaId: conversa.id,
+            acumular: true,
+          });
+        }
         return { gravada: false, motivo: 'sem-vinculo', conversaId: conversa.id };
       }
+
+      // Se esta mensagem já tinha sido gravada, é reenvio da reconexão: o
+      // upsert abaixo é idempotente e o aviso também precisa ser, senão o
+      // contador do sino sobe sozinho a cada reconexão do aparelho.
+      const jaGravada = await tx.whatsappMensagem.findUnique({
+        where: {
+          empresaId_conversaId_externoId: {
+            empresaId,
+            conversaId: conversa.id,
+            externoId: entrada.externoId,
+          },
+        },
+        select: { id: true },
+      });
 
       const mensagem = await tx.whatsappMensagem.upsert({
         // Idempotência da reconexão: o provedor reenvia o que já entregou.
@@ -1227,16 +1329,35 @@ export class WhatsappConversasService {
           empresaId,
           conversaId: conversa.id,
           externoId: entrada.externoId,
-          direcao: 'entrada',
+          direcao: minha ? 'saida' : 'entrada',
           tipo: (entrada.tipo as 'texto') ?? 'texto',
           conteudo: entrada.texto,
           arquivoNome: entrada.arquivoNome ?? null,
           respondeuA: entrada.respondeuA ?? null,
-          statusEntrega: 'entregue',
+          // A do celular já saiu do aparelho, mas o recibo do destinatário
+          // ainda não passou por aqui: entra como `enviada`, e o evento
+          // `receipt` a leva a entregue/lida como qualquer outra.
+          statusEntrega: minha ? 'enviada' : 'entregue',
         },
         update: {},
         select: { id: true, arquivoUrl: true },
       });
+
+      // Mensagem do próprio vendedor não vira aviso para ele mesmo.
+      if (destinatario && !jaGravada && !minha) {
+        await registrarNotificacao(tx, {
+          empresaId,
+          usuarioId: destinatario,
+          tipo: 'whatsapp_mensagem',
+          titulo: nomeNoAviso,
+          // Sem prévia do texto: o sino aparece na tela inteira do sistema, e
+          // a conversa com o cliente não precisa ficar legível por cima do
+          // ombro de quem passa. Quem quer ler abre a conversa.
+          rota: `/comercial/atendimento?conversa=${conversa.id}`,
+          referenciaId: conversa.id,
+          acumular: true,
+        });
+      }
 
       return {
         gravada: true,
@@ -1306,26 +1427,67 @@ export class WhatsappConversasService {
     return restaurar;
   }
 
-  /** Total de não lidas do usuário — alimenta o sino de notificações. */
-  async totalNaoLidas(empresaId: string, user: AuthenticatedUser) {
+  /**
+   * O que o WhatsApp tem a dizer ao sino: conversas não lidas e agendamentos
+   * que falharam.
+   *
+   * As duas consultas ficam **no mesmo `withTenant`** porque o feed roda em
+   * intervalo curto para cada usuário logado — abrir duas transações por
+   * passagem dobraria o custo sem necessidade.
+   *
+   * O escopo é o mesmo da tela (`filtroSessao`): quem não pode ler a conversa
+   * do colega também não é notificado por ela.
+   */
+  async resumoParaNotificacoes(empresaId: string, user: AuthenticatedUser) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const filtro = await this.filtroSessao(tx, empresaId, user);
-      const linhas = await tx.whatsappConversa.findMany({
-        where: { ...filtro, naoLidas: { gt: 0 }, arquivada: false },
-        select: {
-          id: true,
-          naoLidas: true,
-          ultimaMensagemEm: true,
-          contato: { select: { nomeExibicao: true, telefoneNormalizado: true } },
-          cliente: { select: { razaoSocial: true } },
-        },
-        orderBy: { ultimaMensagemEm: 'desc' },
-        take: 10,
-      });
-      return {
-        total: linhas.reduce((soma, l) => soma + l.naoLidas, 0),
-        conversas: linhas,
-      };
+      const [naoLidas, agendamentos] = await Promise.all([
+        tx.whatsappConversa.findMany({
+          where: { ...filtro, naoLidas: { gt: 0 }, arquivada: false },
+          select: {
+            id: true,
+            naoLidas: true,
+            ultimaMensagemEm: true,
+            contato: {
+              select: {
+                jid: true,
+                nomeExibicao: true,
+                telefoneNormalizado: true,
+              },
+            },
+            cliente: { select: { razaoSocial: true } },
+          },
+          orderBy: { ultimaMensagemEm: 'desc' },
+          take: 10,
+        }),
+        // Agendamento que falhou já aparece como erro dentro da conversa, mas
+        // só para quem a abre. No sino é o único aviso de que a mensagem
+        // combinada com o cliente **não saiu**.
+        tx.whatsappMensagemAgendada.findMany({
+          where: { status: 'erro', conversa: filtro },
+          select: {
+            id: true,
+            conversaId: true,
+            texto: true,
+            enviarEm: true,
+            erro: true,
+            conversa: {
+              select: {
+                contato: {
+                  select: {
+                    jid: true,
+                    nomeExibicao: true,
+                    telefoneNormalizado: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { enviarEm: 'desc' },
+          take: 10,
+        }),
+      ]);
+      return { naoLidas, agendamentos };
     });
   }
 }

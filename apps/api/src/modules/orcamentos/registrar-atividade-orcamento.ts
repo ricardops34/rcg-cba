@@ -1,4 +1,8 @@
 import type { TenantTx } from '../../common/prisma/prisma.service';
+import {
+  registrarNotificacao,
+  usuarioDoVendedor,
+} from '../notificacoes/registrar-notificacao';
 
 /**
  * Rastro do orçamento na Agenda/Atividades. Cada passo relevante do
@@ -84,6 +88,34 @@ export async function registrarAtividadeOrcamento(
       updatedBy: autor,
     },
   });
+
+  // A resposta do cliente também vai para o sino do vendedor dono. Fica aqui,
+  // e não em quem chama, porque este é o funil por onde os dois caminhos
+  // passam — a tela de orçamentos e as ações de dentro da conversa.
+  const tipo =
+    evento === 'aprovacao_cliente'
+      ? ('orcamento_aprovado' as const)
+      : evento === 'recusa_cliente'
+        ? ('orcamento_recusado' as const)
+        : null;
+  const usuarioId = tipo
+    ? await usuarioDoVendedor(tx, empresaId, orcamento.vendedorId)
+    : null;
+  if (tipo && usuarioId) {
+    await registrarNotificacao(tx, {
+      empresaId,
+      usuarioId,
+      tipo,
+      titulo: TITULO[evento](orcamento.numero),
+      descricao: orcamento.titulo,
+      rota: `/crm/orcamentos/${orcamento.id}`,
+      referenciaId: orcamento.id,
+      // Quem registrou a resposta do cliente não precisa ser avisado dela;
+      // o aviso existe para quando **outra pessoa** (supervisor, integração)
+      // mexe no orçamento de um vendedor.
+      autorUsuarioId: autor,
+    });
+  }
 }
 
 /**

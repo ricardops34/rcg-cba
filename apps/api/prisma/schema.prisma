@@ -83,6 +83,7 @@ model Empresa {
   whatsappReacoes            WhatsappReacao[]
   whatsappAgendadas          WhatsappMensagemAgendada[]
   whatsappAcoes              WhatsappAcaoRegistro[]
+  notificacoes               Notificacao[]
 
   @@map("empresas")
 }
@@ -127,6 +128,7 @@ model Usuario {
   horarios        UsuarioHorario[]
   acessos         AcessoLog[]
   sessoes         Sessao[]
+  notificacoes    Notificacao[]
 
   @@map("usuarios")
 }
@@ -2289,4 +2291,69 @@ model WhatsappConfig {
   empresa Empresa @relation(fields: [empresaId], references: [id])
 
   @@map("whatsapp_config")
+}
+
+/**
+ * Notificação do sino, uma linha por destinatário.
+ *
+ * O feed é lido **só desta tabela** (fonte única): o que antes era derivado do
+ * dado vivo — conversa não lida, atividade vencida — agora é registrado aqui
+ * por quem provoca o fato. É o que permite ter "lido" de verdade, histórico e
+ * uma consulta única no sino, no lugar de uma varredura por origem a cada
+ * passagem.
+ *
+ * O preço é a coerência: quem marca a conversa como lida precisa marcar as
+ * notificações dela junto, senão o sino insiste em algo que o vendedor já viu.
+ * Ver `NotificacoesService`.
+ */
+model Notificacao {
+  id        String @id @default(uuid())
+  empresaId String
+  /** Destinatário. Vendedor sem usuário vinculado não gera notificação. */
+  usuarioId String
+
+  tipo      NotificacaoTipo
+  titulo    String
+  descricao String?
+  /** Para onde a linha do sino leva. Nulo = notificação sem destino. */
+  rota      String?
+
+  /**
+   * Entidade que originou (conversa, atividade, título…). É por ela que a
+   * notificação é deduplicada enquanto não lida e marcada em lote quando a
+   * origem é resolvida — ver o índice parcial único na migration.
+   */
+  referenciaId String?
+  /** Ocorrências agrupadas nesta linha: as mensagens novas da conversa. */
+  contador     Int     @default(1)
+
+  /**
+   * Quando o fato aconteceu — ordena o feed. Pode ser anterior a `criadaEm`:
+   * a varredura de vencimento roda depois da data que ela anuncia.
+   */
+  ocorridaEm DateTime
+  lidaEm     DateTime?
+
+  criadaEm     DateTime @default(now())
+  atualizadaEm DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  // O sino pergunta sempre a mesma coisa: as não lidas deste usuário, mais
+  // recentes primeiro.
+  @@index([empresaId, usuarioId, lidaEm, ocorridaEm])
+  // Marcar em lote ao resolver a origem (conversa lida, atividade concluída).
+  @@index([empresaId, tipo, referenciaId])
+  @@map("notificacoes")
+}
+
+enum NotificacaoTipo {
+  whatsapp_mensagem
+  whatsapp_agendamento_erro
+  atividade_vencimento
+  orcamento_aprovado
+  orcamento_recusado
+  cliente_atribuido
+  titulo_vencido
 }

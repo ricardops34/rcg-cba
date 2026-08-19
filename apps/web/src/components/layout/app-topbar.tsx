@@ -4,13 +4,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
-import { Bell, Building2, Check, HelpCircle, LogOut, Menu, Moon, Search, Sun, UserCog } from "lucide-react";
+import { Building2, Check, HelpCircle, LogOut, Menu, Moon, Search, Sun, UserCog } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import type { CurrentUser } from "@plataforma/contracts";
 import { avatarColorClass, initials } from "@/lib/avatar-color";
 import { Button } from "@/components/ui/button";
 import { GlobalSearch } from "@/components/layout/global-search";
+import { NotificacoesSino } from "@/components/layout/notificacoes-sino";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -98,20 +99,7 @@ export function AppTopbar({
       <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
 
       <div className="ml-auto flex items-center gap-1">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Notificações">
-              <Bell className="size-4.5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64">
-            <DropdownMenuLabel>Notificações</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <p className="px-2 py-6 text-center text-sm text-muted-foreground">
-              Nenhuma notificação por enquanto.
-            </p>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <NotificacoesSino />
 
         <Tooltip>
           <TooltipTrigger asChild>

@@ -4,6 +4,7 @@ import type {
   EstadoSessao,
   MensagemRecebida,
   ReacaoRecebida,
+  ReciboRecebido,
   WhatsappTransport,
 } from './transport/whatsapp-transport';
 
@@ -119,6 +120,21 @@ transporte.aoReceberReacao(async (reacao: ReacaoRecebida) => {
     }
   } catch (erro) {
     console.error('Falha ao entregar reação para a API', erro);
+  }
+});
+
+/**
+ * Repassa recibo de entrega/leitura das mensagens que saíram daqui.
+ *
+ * Sem falha visível de propósito: recibo é informação de conforto, e derrubar
+ * o processamento por causa dele seria pior do que a bolha ficar um passo
+ * atrás — o próximo recibo da mesma conversa corrige.
+ */
+transporte.aoReceberRecibo(async (recibo: ReciboRecebido) => {
+  try {
+    await chamarApi('/recibo', { metodo: 'POST', corpo: recibo });
+  } catch (erro) {
+    console.error('Falha ao entregar recibo para a API', erro);
   }
 });
 

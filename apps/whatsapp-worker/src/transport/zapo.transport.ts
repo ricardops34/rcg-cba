@@ -8,6 +8,7 @@ import type {
   EstadoSessao,
   MensagemRecebida,
   ReacaoRecebida,
+  ReciboRecebido,
   WhatsappTransport,
 } from './whatsapp-transport';
 
@@ -94,6 +95,8 @@ export class ZapoTransport implements WhatsappTransport {
   private observador: ((estado: EstadoSessao) => Promise<void>) | null = null;
   private handlerReacao: ((reacao: ReacaoRecebida) => Promise<void>) | null =
     null;
+  private handlerRecibo: ((recibo: ReciboRecebido) => Promise<void>) | null =
+    null;
 
   constructor(private readonly databaseUrl: string) {}
 
@@ -108,6 +111,10 @@ export class ZapoTransport implements WhatsappTransport {
 
   aoReceberReacao(handler: (reacao: ReacaoRecebida) => Promise<void>) {
     this.handlerReacao = handler;
+  }
+
+  aoReceberRecibo(handler: (recibo: ReciboRecebido) => Promise<void>) {
+    this.handlerRecibo = handler;
   }
 
   /**
@@ -463,9 +470,13 @@ export class ZapoTransport implements WhatsappTransport {
     cliente.on('message', async (evento: any) => {
       if (!this.handler) return;
       const chave = evento?.key ?? {};
-      // Mensagem que o próprio vendedor mandou pelo celular volta como evento;
-      // ela é registrada como saída, não como entrada do cliente.
-      if (chave.fromMe) return;
+      // Mensagem que o próprio vendedor mandou **pelo celular** entra como
+      // saída, em vez de ser descartada: sem ela o histórico da plataforma
+      // fica pela metade, com a pergunta do cliente e sem a resposta.
+      //
+      // O eco das que a plataforma enviou chega por aqui também, com o mesmo
+      // `externoId` que ela já gravou — o upsert da API absorve.
+      const minha = Boolean(chave.fromMe);
       const jid = String(chave.remoteJid ?? '');
       // `status@broadcast` são os stories, e `@newsletter` são canais: chegam
       // como mensagem, mas não são atendimento — sem este filtro viram
@@ -514,7 +525,10 @@ export class ZapoTransport implements WhatsappTransport {
           externoId: String(chave.id ?? ''),
           jid,
           telefone: await this.telefoneDoJid(sessaoId, jid),
-          nomeExibicao: evento?.pushName ?? null,
+          // Na mensagem própria o `pushName` é o nome do **vendedor**: usá-lo
+          // aqui renomearia o contato para o nome de quem atende.
+          nomeExibicao: minha ? null : (evento?.pushName ?? null),
+          minha,
           texto: conteudo.texto,
           tipo: conteudo.tipo,
           arquivoNome: conteudo.arquivoNome,
@@ -570,6 +584,51 @@ export class ZapoTransport implements WhatsappTransport {
         alvoNosso: Boolean(evento?.decrypted?.reaction?.key?.fromMe),
         // Vazio é remoção — o cliente desfez a reação.
         emoji: String(evento?.decrypted?.reaction?.text ?? ''),
+      });
+    });
+
+    /**
+     * Recibo de mensagem nossa: o aparelho do cliente recebeu, ou ele abriu a
+     * conversa e leu.
+     *
+     * Vem por evento próprio (`receipt`), não pelo `message`. Sem escutá-lo, o
+     * `statusEntrega` fica em `enviada` desde o envio e a bolha mostra um
+     * risco só para sempre — o vendedor nunca sabe se a mensagem chegou.
+     *
+     * `messageIds` é uma **lista**: quando o cliente abre a conversa, o
+     * WhatsApp confirma num recibo só tudo o que estava por ler.
+     */
+    cliente.on('receipt', async (evento: any) => {
+      // `fromSelfDevice` é o próprio vendedor lendo no celular dele — fala das
+      // mensagens que ele **recebeu**, não das que mandou. Marcar a conversa
+      // como lida por aqui é outro assunto (ver o plano); confundir os dois
+      // faria a mensagem do vendedor virar "lida pelo cliente" sozinha.
+      if (evento?.fromSelfDevice) return;
+
+      const status =
+        evento?.status === 'read' || evento?.status === 'played'
+          ? ('lida' as const)
+          : evento?.status === 'delivered'
+            ? ('entregue' as const)
+            : null;
+      // `inactive` e o que a lib venha a acrescentar não dizem nada sobre
+      // entrega — ignorar é melhor do que adivinhar.
+      if (!status) return;
+
+      const jid = String(evento?.chatJid ?? '');
+      const ids = (evento?.messageIds ?? [])
+        .map((id: unknown) => String(id))
+        .filter(Boolean);
+      if (!jid || ids.length === 0) return;
+      if (jid === 'status@broadcast' || jid.endsWith('@newsletter')) return;
+
+      if (!this.handlerRecibo) return;
+      await this.handlerRecibo({
+        sessaoId,
+        empresaId: this.empresas.get(sessaoId) ?? '',
+        jid,
+        externoIds: ids,
+        status,
       });
     });
 

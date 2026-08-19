@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DollarSign,
@@ -100,7 +107,21 @@ function usePainelAberto(chave: string): [boolean, () => void] {
 export default function AtendimentoPage() {
   const [conexaoAberta, setConexaoAberta] = useState(false);
   const [novaConversaAberta, setNovaConversaAberta] = useState(false);
-  const [conversaId, setConversaId] = useState<string | null>(null);
+  // A conversa aberta mora na URL (`?conversa=<id>`), não em estado local: é
+  // o que faz o link do sino de notificações abrir a conversa certa mesmo
+  // para quem já está nesta tela — sem remontar o componente, um estado
+  // interno ficaria na conversa anterior. `replace` e não `push` porque
+  // trocar de conversa não é navegar: encheria o histórico do navegador.
+  const router = useRouter();
+  const pathname = usePathname();
+  const conversaId = useSearchParams().get("conversa");
+  const abrirConversa = useCallback(
+    (id: string | null) =>
+      router.replace(id ? `${pathname}?conversa=${id}` : pathname, {
+        scroll: false,
+      }),
+    [router, pathname],
+  );
   const [busca, setBusca] = useState("");
   const [listaAberta, alternarLista] = usePainelAberto(PREF_LISTA);
   const [painelAberto, alternarPainel] = usePainelAberto(PREF_PAINEL);
@@ -110,7 +131,6 @@ export default function AtendimentoPage() {
   const [painelDireito, setPainelDireito] = useState<
     "contato" | "posicao" | "orcamento"
   >("contato");
-
   const { data: sessao, isLoading: carregandoSessao } = useQuery({
     queryKey: ["whatsapp-sessao"],
     queryFn: () => apiFetch<WhatsappSessao | null>("/whatsapp/sessao"),
@@ -231,7 +251,7 @@ export default function AtendimentoPage() {
               carregando={carregandoConversas}
               conversas={conversas?.itens ?? []}
               selecionada={conversaId}
-              onSelecionar={setConversaId}
+              onSelecionar={abrirConversa}
             />
           </ColunaRedimensionavel>
         ) : null}
@@ -280,7 +300,7 @@ export default function AtendimentoPage() {
       <NovaConversaDialog
         aberto={novaConversaAberta}
         onOpenChange={setNovaConversaAberta}
-        onAbrirConversa={setConversaId}
+        onAbrirConversa={abrirConversa}
       />
     </>
   );
@@ -325,8 +345,17 @@ function ListaDeConversas({
                 <Badge className="shrink-0">{c.naoLidas}</Badge>
               ) : null}
             </div>
+            {/*
+              O nome que veio do WhatsApp, e não a prévia da última mensagem.
+              Quando o contato está vinculado, a primeira linha mostra a razão
+              social e o nome pelo qual o vendedor conhece a pessoa se perdia —
+              e é ele que aparece no celular. Sem vínculo a primeira linha já é
+              esse nome, então aqui fica o telefone.
+            */}
             <span className="truncate text-xs text-muted-foreground">
-              {c.ultimaMensagemPrevia ?? "—"}
+              {(c.contato.clienteRazaoSocial ? c.contato.nomeExibicao : null) ??
+                telefoneBonito(c.contato.telefoneNormalizado) ??
+                "—"}
             </span>
             <SinaisDoCliente conversa={c} />
           </button>
@@ -341,7 +370,7 @@ function ListaDeConversas({
  * está a cobrança e se outro vendedor também fala com este contato.
  *
  * São ícones, e não texto, porque a linha da lista tem espaço para uma frase
- * só — a prévia da mensagem. O `title` de cada um diz o número por extenso,
+ * só — o nome do contato. O `title` de cada um diz o número por extenso,
  * que é o que o vendedor confere antes de agir.
  *
  * Só aparecem para contato vinculado a cliente: sem vínculo, o servidor manda
@@ -449,9 +478,12 @@ function Conversa({
   useEffect(() => {
     if (!conversaId) return;
     void apiFetch(`/whatsapp/conversas/${conversaId}/lida`, { method: "POST" })
-      .then(() =>
-        queryClient.invalidateQueries({ queryKey: ["whatsapp-conversas"] }),
-      )
+      .then(() => {
+        void queryClient.invalidateQueries({ queryKey: ["whatsapp-conversas"] });
+        // O sino conta as mesmas não lidas: sem isto o badge só cairia na
+        // próxima passagem dele, até um minuto depois de a conversa ser lida.
+        void queryClient.invalidateQueries({ queryKey: ["notificacoes"] });
+      })
       .catch(() => undefined);
   }, [conversaId, queryClient]);
 

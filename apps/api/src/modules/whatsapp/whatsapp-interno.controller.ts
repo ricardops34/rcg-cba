@@ -91,6 +91,8 @@ export class WhatsappInternoController {
       arquivoNome?: string | null;
       arquivoMime?: string | null;
       respondeuA?: string | null;
+      /** Saiu do aparelho do vendedor (celular), não do cliente. */
+      minha?: boolean;
     },
     @Headers('authorization') authorization?: string,
   ) {
@@ -119,6 +121,29 @@ export class WhatsappInternoController {
   ) {
     this.conferirToken(authorization);
     return this.conversas.receberReacao(corpo);
+  }
+
+  /**
+   * Recibo de entrega/leitura de uma mensagem que saiu daqui.
+   *
+   * É o que faz a bolha sair de um risco (enviada) para dois (entregue) e
+   * dois azuis (lida). Sem esta rota o status ficava no que foi gravado no
+   * envio e nunca mais mudava.
+   */
+  @Post('recibo')
+  recibo(
+    @Body()
+    corpo: {
+      sessaoId: string;
+      empresaId: string;
+      jid: string;
+      externoIds: string[];
+      status: 'entregue' | 'lida';
+    },
+    @Headers('authorization') authorization?: string,
+  ) {
+    this.conferirToken(authorization);
+    return this.conversas.receberRecibo(corpo);
   }
 
   /**

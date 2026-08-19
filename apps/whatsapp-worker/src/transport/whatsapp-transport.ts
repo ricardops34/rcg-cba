@@ -28,6 +28,14 @@ export interface MensagemRecebida {
    * cadastro de clientes nunca acontece para esses contatos.
    */
   telefone: string | null;
+  /**
+   * Saiu do aparelho do **vendedor**, não do cliente.
+   *
+   * Vale para o que ele escreveu no celular com a plataforma aberta ou não, e
+   * também para o eco das que a própria plataforma mandou — nesse caso a
+   * mensagem já está gravada e o `externoId` faz o upsert não duplicar.
+   */
+  minha: boolean;
   nomeExibicao: string | null;
   texto: string | null;
   tipo: 'texto' | 'imagem' | 'documento' | 'audio' | 'video' | 'localizacao' | 'contato' | 'outro';
@@ -57,6 +65,24 @@ export interface ReacaoRecebida {
   alvoNosso: boolean;
   /** Emoji, ou vazio quando o contato **removeu** a reação. */
   emoji: string;
+}
+
+/**
+ * Recibo de uma mensagem que **saiu daqui**: o destinatário recebeu no
+ * aparelho, ou abriu a conversa e leu.
+ *
+ * É o que move o `statusEntrega` de `enviada` para `entregue` e `lida` — sem
+ * este caminho a bolha fica com um risco só para sempre, e o vendedor não sabe
+ * se a mensagem chegou.
+ */
+export interface ReciboRecebido {
+  sessaoId: string;
+  empresaId: string;
+  jid: string;
+  /** Ids das mensagens que este recibo confirma (o WhatsApp manda em lote). */
+  externoIds: string[];
+  /** `entregue` = chegou no aparelho; `lida` = a conversa foi aberta. */
+  status: 'entregue' | 'lida';
 }
 
 /** Arquivo a enviar, já em memória (o limite do WhatsApp é da ordem de 16 MB). */
@@ -173,6 +199,8 @@ export interface WhatsappTransport {
   ): void;
   /** Registrado uma vez, como `aoReceber` — reação não é mensagem. */
   aoReceberReacao(handler: (reacao: ReacaoRecebida) => Promise<void>): void;
+  /** Registrado uma vez, como `aoReceber` — recibo de mensagem nossa. */
+  aoReceberRecibo(handler: (recibo: ReciboRecebido) => Promise<void>): void;
   /**
    * Avisado a cada mudança de estado — inclusive as que ninguém pediu: queda
    * de conexão, reconexão, aparelho desvinculado no celular, banimento.

@@ -584,13 +584,178 @@ Rodada de ajustes pedidos usando a tela de verdade:
     o motivo. Agendamento que some em silêncio é pior do que um que não saiu.
   - Só texto: anexo agendado exigiria segurar o arquivo até a hora do envio.
 
-**Ainda em aberto (decisão pendente):** mensagem que o **vendedor manda pelo
-próprio celular** é descartada (`if (chave.fromMe) return`, em
-`zapo.transport.ts`) — o comentário ali diz que ela "é registrada como saída",
-mas o código só ignora. Se o vendedor responder pelo aparelho, o histórico da
-plataforma fica pela metade. Gravar exige decidir o que fazer com as mensagens
-que ele manda para contatos **não** vinculados (a regra de privacidade vale nos
-dois sentidos).
+~~**Ainda em aberto (decisão pendente):**~~ **resolvido em 2026-08-18** — ver
+"Mensagem enviada pelo celular do vendedor", abaixo.
+
+### Feed do sino, com tabela de notificação (2026-08-18)
+
+O sino da topbar mostrava texto fixo desde o começo. Agora é `GET
+/notificacoes` (`apps/api/src/modules/notificacoes/`), consumido por
+`apps/web/src/components/layout/notificacoes-sino.tsx`.
+
+A primeira versão **derivava** o feed do dado vivo (conversa com `naoLidas > 0`,
+atividade vencida). Foi substituída por uma **tabela**, `notificacoes`
+(migration `20260818145615`, com RLS), que é a **fonte única** do sino. O que a
+troca comprou:
+
+- **"Lido" de verdade**, por notificação, com "marcar todas". No modelo
+  derivado não havia onde guardar isso sem duplicar estado.
+- **Eventos que não têm dado vivo para consultar** — orçamento aprovado ou
+  recusado, cliente que entrou na carteira. Não existe "consulta de coisas que
+  aconteceram"; ou alguém registra na hora, ou o fato se perde.
+- **Uma consulta no lugar de uma varredura por origem** a cada passagem do
+  sino, para cada usuário logado.
+
+**Quem grava é quem provoca o fato**, dentro da própria transação
+(`registrarNotificacao`, no formato de `registrarAtividadeOrcamento` — função,
+não service, para o produtor não injetar mais uma dependência):
+
+| Evento | Onde é gravado |
+| --- | --- |
+| Mensagem recebida | `WhatsappConversasService.registrarMensagemRecebida` |
+| Agendamento que falhou | `WhatsappAgendamentoService.enviarUma` (catch) |
+| Orçamento aprovado/recusado | `registrarAtividadeOrcamento` (funil dos dois caminhos) |
+| Cliente que mudou de carteira | `ClienteAlteracoesService.aplicarNoCliente` |
+| Atividade vencida, título vencido | `NotificacoesVarreduraService` (30 min) |
+
+Decisões que moldaram o desenho:
+
+- **Vencimento não é evento.** Ninguém "faz" um prazo estourar, então essas
+  duas origens precisam de varredura — é a única parte que pergunta ao banco
+  em vez de ser avisada. Roda a cada 30 min, e não uma vez ao dia: prazo que
+  vence às 8h precisa aparecer de manhã.
+- **A varredura pula quem já foi avisado, lido ou não** — e as duas metades
+  disso custaram um bug cada, encontrados testando:
+  - Contando só os **pendentes**, "marcar todas como lidas" durava meia hora:
+    o título continua vencido, e a passagem seguinte ressuscitava tudo. Prazo
+    vencido avisa **uma vez**; insistir é trabalho do relatório de cobrança.
+  - Sem excluir os já avisados, a janela de `LOTE` **nunca anda**: a consulta
+    traz sempre os mesmos vencidos mais antigos e o que está atrás jamais
+    notifica. Pela mesma razão o filtro "vendedor tem login" está na consulta,
+    e não num `continue` no laço — a primeira versão enchia a janela de
+    vendedores sem usuário e não gravava nada.
+- **Deduplicação por índice parcial único** (`lidaEm IS NULL AND referenciaId
+  IS NOT NULL`): a segunda mensagem da mesma conversa soma no contador da
+  linha pendente em vez de empilhar uma linha por mensagem; depois de lida, a
+  linha sai do índice e um fato novo pode criar outra. Sem o `WHERE`, a
+  conversa notificaria uma vez na vida.
+- **`INSERT ... ON CONFLICT`, não "procura e então grava".** Duas mensagens
+  chegando juntas passariam as duas pela busca, e a segunda esbarraria no
+  índice único — dentro de uma transação esse erro não se recupera e
+  **derrubaria a gravação da mensagem junto**. Por isso o registro é SQL bruto
+  (o `upsert` do Prisma exige um unique que ele conheça, e o parcial não é).
+- **Reenvio da reconexão não conta.** O provedor reentrega o que já mandou; o
+  aviso confere se a mensagem já estava gravada antes de somar no contador.
+- **Quem faz não é avisado do que fez** (`autorUsuarioId`): o aviso de
+  orçamento respondido existe para quando **outra pessoa** — supervisor,
+  integração do ERP — mexe no orçamento de um vendedor.
+- **Sem prévia do texto da mensagem.** O sino aparece em toda tela do sistema;
+  a conversa com o cliente não precisa ficar legível por cima do ombro de quem
+  passa. E contato **sem vínculo com cliente** notifica assim mesmo: o fato de
+  ele ter escrito não é conteúdo, e é o que leva o vendedor a abrir e vincular.
+- **O texto "N mensagens novas" é montado na tela**, a partir do contador —
+  gravado, ele envelheceria na mensagem seguinte.
+- **A rota não exige permissão**: a notificação foi endereçada a um usuário na
+  origem, onde o escopo era conhecido. Filtrar de novo na leitura esconderia o
+  que já foi decidido, e mal — a permissão pode ter mudado depois do fato.
+- **Coerência é o preço da fonte única:** marcar a conversa como lida marca as
+  notificações dela (`marcarNotificacoesDaOrigem`), e a varredura fecha as de
+  atividade concluída e título baixado. Sem isso o sino insiste no que já foi
+  resolvido.
+- **A conversa aberta passou a morar na URL** (`?conversa=<id>` na tela de
+  atendimento), no lugar do `useState`: clicar numa notificação estando **já
+  na tela** não remonta o componente, só muda a URL.
+- A migration traz um **backfill** das conversas que já estão com mensagem não
+  lida — sem ele o badge de quem tem pendência zeraria no deploy.
+
+**Verificado em dev, ponta a ponta:** varredura gravando os 79 títulos
+vencidos do vendedor; três mensagens pelo endpoint interno do worker virando
+**uma** linha com contador 3, e o reenvio da mesma não somando; marcar a
+conversa como lida limpando a notificação dela; cliente que muda de carteira
+avisando o novo vendedor e **não** avisando quem fez a troca; orçamento
+recusado avisando o vendedor dono; marcar uma, clique repetido (idempotente),
+404 em id de outro usuário e "marcar todas". Falta a conferência visual do
+sino na tela.
+
+**Não coberto:** leitura feita pelo **celular** do vendedor não chega à
+plataforma (o worker não informa), então a notificação continua pendente até
+ele abrir a conversa por aqui — a mesma limitação que `naoLidas` já tinha.
+
+
+### Recibos de entrega e leitura (2026-08-18)
+
+O visto duplo nunca aparecia: `statusEntrega` era gravado no envio como
+`enviada` e **nunca mais mudava**. A bolha do componente já sabia desenhar os
+três estados; o que faltava era o dado — nada no worker escutava recibo, então
+toda mensagem do vendedor ficava com um risco só para sempre.
+
+O evento é o **`receipt`** da `zapo-js` (*"inbound `<receipt>` for an outgoing
+message – delivery, read, played"*), irmão do `message` e do `message_addon`.
+O caminho novo: worker escuta → `POST /whatsapp/interno/recibo` →
+`WhatsappConversasService.receberRecibo`.
+
+- **`messageIds` é uma lista.** Quando o cliente abre a conversa, o WhatsApp
+  confirma num recibo só tudo o que estava por ler — daí `updateMany` por
+  `externoId`, não um update por mensagem.
+- **O status não retrocede.** O `in` de status anteriores no filtro
+  (`lida` só aceita vir de `enviada`/`entregue`) impede que um recibo de
+  entrega atrasado, chegando fora de ordem, faça o visto azul voltar a cinza.
+- **`fromSelfDevice` é ignorado.** Esse recibo é o **próprio vendedor** lendo
+  no celular dele, e fala das mensagens que ele *recebeu* — tratá-lo aqui
+  marcaria a mensagem dele como "lida pelo cliente" sozinha. É, por outro
+  lado, o caminho que resolveria a limitação de "leitura pelo celular não
+  chega à plataforma" (ver a seção do sino): mesmo evento, outro uso.
+- `played` (áudio ouvido) entra como `lida`, que é o que o WhatsApp mostra.
+  `inactive` é ignorado — não diz nada sobre entrega.
+
+**Mensagem antiga não ganha recibo retroativo:** o WhatsApp não reenvia
+recibos de mensagens já confirmadas, então o que está no histórico continua
+com um risco. Vale para as novas.
+
+Verificado em dev pela rota interna: lote de duas viradas para `entregue`,
+leitura de uma delas para `lida`, e o recibo de entrega atrasado na já lida
+devolvendo `0 atualizadas`. Os status usados no teste foram revertidos — não
+vieram do WhatsApp.
+
+### Mensagem enviada pelo celular do vendedor (2026-08-18)
+
+Era a decisão que estava em aberto desde o começo, e o relato que a fechou foi
+direto: o vendedor respondeu quatro mensagens pelo WhatsApp e **nenhuma**
+apareceu na plataforma. `if (chave.fromMe) return` no handler `message` —
+o comentário ao lado dizia que ela "é registrada como saída", mas o código só
+descartava.
+
+Agora entra como **saída**, com o mesmo tratamento das demais:
+
+- **Não conta como não lida** e **não vira notificação**: ele acabou de
+  escrevê-la. Contar faria o badge subir pela resposta dele mesmo.
+- **`pushName` é ignorado quando a mensagem é própria** — ali ele traz o nome
+  do **vendedor**, e usá-lo renomearia o contato para o nome de quem atende.
+- **A regra de privacidade vale nos dois sentidos**: contato sem vínculo com
+  cliente continua sem conteúdo gravado, tenha o cliente escrito ou o vendedor.
+  Conversa pessoal dele no mesmo aparelho não entra na plataforma.
+- **O eco do que a plataforma mandou chega por aqui também**, com o mesmo
+  `externoId` que ela já gravou — o upsert por
+  `(empresaId, conversaId, externoId)` absorve, sem linha duplicada. Foi o que
+  tornou a mudança segura.
+- Entra como `enviada`: o recibo do destinatário ainda não passou pela
+  plataforma, e o evento `receipt` a leva a entregue/lida como qualquer outra.
+
+**Continua de fora:** a **reação** que o vendedor faz pelo celular
+(`if (chave.fromMe) return` no `message_addon`) — mesma lacuna, um andar
+abaixo.
+
+### Lista de conversas: nome do WhatsApp na segunda linha (2026-08-18)
+
+A segunda linha mostrava a prévia da última mensagem. Passou a mostrar **o
+nome que veio do WhatsApp**: com o contato vinculado, a primeira linha é a
+razão social do cliente, e o nome pelo qual o vendedor conhece a pessoa — o
+que aparece no celular dele — não estava em lugar nenhum da lista. Sem
+vínculo, a primeira linha já é esse nome, então a segunda mostra o telefone
+formatado.
+
+`ultimaMensagemPrevia` continua no contrato e na resposta da API; só deixou de
+ser exibido.
 
 ---
 
@@ -712,11 +877,8 @@ nenhum ponto. Ao corrigir, registrar lá — é a fonte única.
 
 Na ordem, do mais barato ao mais caro:
 
-1. **Feed do sino** (`apps/web/src/components/layout/app-topbar.tsx`, hoje com
-   o texto fixo "Nenhuma notificação por enquanto"). O backend já entrega o
-   que falta: `WhatsappConversasService.totalNaoLidas` devolve total e as 10
-   conversas mais recentes com nome do contato e do cliente. Falta expor numa
-   rota (não existe ainda) e somar as atividades pendentes/agendadas.
+1. ~~**Feed do sino**~~ — **feito em 2026-08-18** (ver a seção daquela data).
+   Falta a conferência visual na tela.
 2. **Duas decisões do usuário, pendentes** (ver seção anterior): definir o
    `dddPadrao` em Administração > WhatsApp, e decidir se vale reparear o
    aparelho para trazer o histórico de conversas do celular.
@@ -736,8 +898,8 @@ o processo morto. Ver `docs/runbook-operacao.md`.
 
 ### O que ficou de fora, e por quê
 
-- **Feed de notificações no sino** (item 4 da lista original): não foi feito.
-  O backend já tem `totalNaoLidas`.
+- **Feed de notificações no sino** (item 4 da lista original): não foi feito
+  nesta sessão — ficou pronto em 2026-08-18, ver a seção daquela data.
 - **Boleto e DANFE em PDF** continuam fora: a plataforma não emite nem guarda
   esses arquivos. As ações mandam os **dados** (número, vencimento, valor).
 - **Expurgo por retenção** (`retencaoDias` já é configurável, mas a rotina que

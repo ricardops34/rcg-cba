@@ -8,6 +8,10 @@ import {
   type TenantTx,
 } from '../../common/prisma/prisma.service';
 import {
+  registrarNotificacao,
+  usuarioDoVendedor,
+} from '../notificacoes/registrar-notificacao';
+import {
   buildPaginatedResult,
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
@@ -176,7 +180,7 @@ export class ClienteAlteracoesService {
           analisadoEm: new Date(),
         },
       });
-      await this.aplicarNoCliente(tx, clienteId, diff, autorId);
+      await this.aplicarNoCliente(tx, empresaId, clienteId, diff, autorId);
       await this.gravarHistorico(tx, {
         empresaId,
         clienteId,
@@ -240,6 +244,7 @@ export class ClienteAlteracoesService {
    */
   private async aplicarNoCliente(
     tx: TenantTx,
+    empresaId: string,
     clienteId: string,
     diff: DiffAlteracao,
     autorId: string | null,
@@ -252,6 +257,31 @@ export class ClienteAlteracoesService {
       where: { id: clienteId },
       data: { ...(dados as object), updatedBy: autorId } as never,
     });
+
+    // Carteira que muda de dono é notícia para quem recebeu: o cliente
+    // aparece na lista dele sem nenhum aviso, e passar a atender alguém sem
+    // saber é como perder o cliente. Fica aqui, no ponto onde o cadastro muda
+    // de verdade, e por isso vale para os três caminhos — tela, ERP e
+    // aprovação de solicitação pendente.
+    const vendedorNovo = diff.vendedorId?.para;
+    if (typeof vendedorNovo === 'string' && vendedorNovo) {
+      const usuarioId = await usuarioDoVendedor(tx, empresaId, vendedorNovo);
+      if (usuarioId) {
+        const cliente = await tx.cliente.findUnique({
+          where: { id: clienteId },
+          select: { razaoSocial: true },
+        });
+        await registrarNotificacao(tx, {
+          empresaId,
+          usuarioId,
+          tipo: 'cliente_atribuido',
+          titulo: `${cliente?.razaoSocial ?? 'Cliente'} entrou na sua carteira`,
+          rota: `/cadastros/clientes/${clienteId}`,
+          referenciaId: clienteId,
+          autorUsuarioId: autorId,
+        });
+      }
+    }
   }
 
   private async gravarHistorico(
@@ -370,7 +400,13 @@ export class ClienteAlteracoesService {
         );
       }
 
-      await this.aplicarNoCliente(tx, solicitacao.clienteId, diff, user.id);
+      await this.aplicarNoCliente(
+        tx,
+        empresaId,
+        solicitacao.clienteId,
+        diff,
+        user.id,
+      );
       await this.gravarHistorico(tx, {
         empresaId,
         clienteId: solicitacao.clienteId,

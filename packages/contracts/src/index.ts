@@ -35,6 +35,7 @@ export * from "./objetivo-dashboard";
 export * from "./dashboard-gerencial";
 export * from "./oportunidade";
 export * from "./atividade";
+export * from "./notificacao";
 export * from "./orcamento";
 export * from "./orcamento-config";
 export * from "./parametro-empresa";

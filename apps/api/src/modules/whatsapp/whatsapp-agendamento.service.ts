@@ -9,6 +9,10 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappWorkerClient } from './whatsapp-worker.client';
 import { WhatsappConversasService } from './whatsapp-conversas.service';
+import {
+  registrarNotificacao,
+  usuarioDoVendedor,
+} from '../notificacoes/registrar-notificacao';
 import type { WhatsappAgendarMensagem } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
@@ -262,12 +266,52 @@ export class WhatsappAgendamentoService
       this.logger.error(`Agendamento ${id} falhou: ${motivo}`);
       // Volta para um estado visível na tela em vez de ficar preso em
       // `enviando`, que ninguém entenderia.
-      await this.prisma.withTenant(empresaId, (tx) =>
-        tx.whatsappMensagemAgendada.update({
+      await this.prisma.withTenant(empresaId, async (tx) => {
+        const agendada = await tx.whatsappMensagemAgendada.update({
           where: { id },
           data: { status: 'erro', erro: motivo.slice(0, 500) },
-        }),
-      );
+          select: {
+            conversaId: true,
+            enviarEm: true,
+            conversa: {
+              select: {
+                contato: {
+                  select: {
+                    jid: true,
+                    nomeExibicao: true,
+                    telefoneNormalizado: true,
+                  },
+                },
+                sessao: { select: { vendedorId: true } },
+              },
+            },
+          },
+        });
+
+        // O erro na conversa só é visto por quem a abre. Combinou-se um envio
+        // com o cliente e ele não saiu: isso precisa alcançar o vendedor onde
+        // ele estiver no sistema.
+        const usuarioId = await usuarioDoVendedor(
+          tx,
+          empresaId,
+          agendada.conversa.sessao.vendedorId,
+        );
+        if (!usuarioId) return;
+        const nome =
+          agendada.conversa.contato.nomeExibicao ??
+          agendada.conversa.contato.telefoneNormalizado ??
+          agendada.conversa.contato.jid.split('@')[0];
+        await registrarNotificacao(tx, {
+          empresaId,
+          usuarioId,
+          tipo: 'whatsapp_agendamento_erro',
+          titulo: `Mensagem agendada não enviada — ${nome}`,
+          descricao: motivo.slice(0, 300),
+          rota: `/comercial/atendimento?conversa=${agendada.conversaId}`,
+          referenciaId: id,
+          ocorridaEm: agendada.enviarEm,
+        });
+      });
     }
   }
 }

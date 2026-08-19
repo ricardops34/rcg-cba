@@ -96,7 +96,7 @@ Com RLS: `usuario_empresas`, `produtos`, `vendedores`, `clientes`,
 `objetivos_vendedor_mes`, `objetivos_vendedor_categoria`, `oportunidades`,
 `atividades`, `orcamentos`, `orcamento_itens`, `cliente_campo_config`,
 `orcamento_config`, `cliente_cnaes`, `whatsapp_sessoes`, `whatsapp_contatos`,
-`whatsapp_conversas`, `whatsapp_mensagens`, `whatsapp_acoes`.
+`whatsapp_conversas`, `whatsapp_mensagens`, `whatsapp_acoes`, `notificacoes`.
 
 `integracao_api_keys`, `acessos_log` e `sessoes` têm `empresaId` mas estão na
 lista de exceções acima (não recebem RLS, pelo mesmo motivo de
