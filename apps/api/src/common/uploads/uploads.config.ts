@@ -40,6 +40,21 @@ export function whatsappPublicPath(filename: string) {
 }
 
 /**
+ * XML autorizado da NF-e, empurrado pelo ERP (ver
+ * `docs/planos/segunda-via-danfe-boleto.md`).
+ *
+ * Diferente de `logos` e `whatsapp`, **nada aqui é servido estaticamente**: o
+ * XML é documento fiscal de um cliente específico e sai só pela rota
+ * autenticada, com o escopo de carteira do usuário. Fosse servido em
+ * `/uploads`, bastaria adivinhar o nome do arquivo para ler nota de outra
+ * empresa — o RLS não alcança o sistema de arquivos.
+ */
+export const NFE_DIR = join(UPLOADS_DIR, 'nfe');
+
+/** Teto do XML de uma NF-e. Nota com 990 itens não passa de ~2 MB. */
+export const NFE_XML_MAX_BYTES = 5 * 1024 * 1024;
+
+/**
  * Extensão a partir do MIME.
  *
  * Nunca derivada do nome enviado pelo cliente: `file.originalname` pode

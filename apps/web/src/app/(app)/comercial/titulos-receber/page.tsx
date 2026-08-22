@@ -10,6 +10,7 @@ import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { TituloStatusBadge } from "@/components/comercial/titulo-status-badge";
+import { SegundaViaTitulo } from "@/components/comercial/segunda-via";
 import { FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -98,6 +99,18 @@ export default function TitulosReceberPage() {
     { header: "Saldo", sortKey: "saldo", cell: (t) => moeda(t.saldo) },
     { header: "Status", cell: (t) => <TituloStatusBadge status={t.status} /> },
     { header: "Data de baixa", sortKey: "dtBaixa", cell: (t) => dataBr(t.dtBaixa) },
+    {
+      header: "Boleto",
+      className: "w-16 text-right",
+      cell: (t) => (
+        <SegundaViaTitulo
+          tituloId={t.id}
+          numero={t.numero}
+          temBoleto={t.temBoleto}
+          status={t.status}
+        />
+      ),
+    },
   ];
 
   return (

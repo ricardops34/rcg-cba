@@ -1,4 +1,8 @@
 import { createZodDto } from 'nestjs-zod';
-import { categoriaQuerySchema } from '@plataforma/contracts';
+import {
+  categoriaQuerySchema,
+  categoriaUpdateSchema,
+} from '@plataforma/contracts';
 
 export class CategoriaQueryDto extends createZodDto(categoriaQuerySchema) {}
+export class CategoriaUpdateDto extends createZodDto(categoriaUpdateSchema) {}

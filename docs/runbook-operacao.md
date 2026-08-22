@@ -216,16 +216,60 @@ Tabela nova com `empresaId` **precisa** de RLS na mesma migration — ver
 
 ## Publicar imagens
 
-`publish.ps1` (raiz) builda e **publica no Docker Hub** (`bjsoftware/rcgcba-api` e
-`-web`, tag `latest`), depois é preciso redeploy no Portainer.
+`publish.ps1` (raiz) builda e **publica no Docker Hub** as **três** imagens
+(`bjsoftware/rcgcba-api`, `-web` e `-whatsapp-worker`, tag `latest`), depois é
+preciso redeploy no Portainer.
 
-O script publica a API **antes** de buildar o web — um erro no web deixa o par
-desalinhado em produção. Rode os builds antes para pegar erros:
+O script publica cada imagem **antes** de buildar a próxima — um erro no meio
+deixa o conjunto desalinhado em produção. Rode os builds antes para pegar erros:
 
 ```bash
 docker exec plataforma-comercial-dev-web-1 sh -c "cd /app/apps/web && pnpm exec next build"
 docker exec plataforma-comercial-dev-api-1 sh -c "cd /app/apps/api && pnpm exec nest build"
+docker exec plataforma-comercial-dev-whatsapp-worker-1 sh -c "cd /app/apps/whatsapp-worker && pnpm exec tsc -p tsconfig.json"
 ```
+
+---
+
+## WhatsApp em produção (primeiro deploy do worker) **[a confirmar na VPS]**
+
+O `whatsapp-worker` nunca subiu em produção. Três coisas precisam acontecer, na
+ordem — as duas primeiras já estão no repositório, a terceira é manual.
+
+**1. Publicar a imagem.** `publish.ps1` agora builda e publica
+`bjsoftware/rcgcba-whatsapp-worker:latest` junto com a API e o web. O
+`docker build` da imagem de produção foi verificado em 2026-08-21 (Node 22 —
+a `zapo-js` usa o `WebSocket` global, que não existe no 20).
+
+**2. Definir `WHATSAPP_STORE_DATABASE_URL` e `WHATSAPP_WORKER_TOKEN`** no
+Portainer (Stacks → rcgcba → Env), conforme `docker/.env.prod.example`.
+
+A `DATABASE_URL` do worker **não é a da API**. A da API é o `plataforma_app`,
+sem DDL e sem acesso ao schema `whatsapp`; a biblioteca de sessão roda as
+migrations dela **a cada conexão**, então com a URL da API o worker não sobe.
+O role certo é o `whatsapp_store`.
+
+**3. Trocar a senha do role `whatsapp_store`.** A migration
+`20260815024500_whatsapp_store_schema` cria o role com a senha de placeholder
+`whatsapp_store_dev_only` — mesmo tratamento que o `plataforma_app` recebeu.
+Quem tem essa senha alcança as sessões pareadas, ou seja, **fala pelo WhatsApp
+dos vendedores**. Rode com a role dona, depois do `migrate deploy`:
+
+```bash
+docker exec -e PGPASSWORD="SENHA_DA_ROLE_PLATAFORMA" <container-postgres> \
+  psql -U plataforma -d plataforma_comercial \
+  -c "ALTER ROLE whatsapp_store WITH PASSWORD 'SENHA_FORTE_AQUI';"
+```
+
+A mesma senha vai na `WHATSAPP_STORE_DATABASE_URL` do passo 2 — trocar uma sem
+a outra derruba o worker no boot seguinte.
+
+**O que ainda não foi verificado:** nada disso rodou na VPS. Ao executar pela
+primeira vez, confirmar aqui e trocar a marca `[a confirmar na VPS]`.
+
+**Depois do deploy:** cada vendedor pareia o próprio aparelho pela tela (QR),
+com o aceite registrado. `replicas: 1` no worker **é requisito, não
+capacidade** — duas réplicas com a mesma sessão fazem o WhatsApp derrubar uma.
 
 ## Armadilha: cache do Turbopack corrompido derruba o web em dev **[verificado em 2026-08-11]**
 
@@ -288,3 +332,38 @@ docker exec plataforma-comercial-dev-api-1 sh -c "cd /app/apps/api && pnpm exec 
 ```
 
 Sempre confira `git diff --stat` depois de qualquer `--fix`.
+
+## 2ª via de DANFE e boleto — o que a operação precisa saber **[a confirmar na VPS]**
+
+Ver [`docs/planos/segunda-via-danfe-boleto.md`](planos/segunda-via-danfe-boleto.md)
+para o desenho; aqui só o que muda na operação.
+
+**1. Migrations.** Duas, aplicadas pelo procedimento normal desta página
+(`Migrations em produção`), com o role dono (`plataforma`):
+
+- `20260821180000_segunda_via_danfe_boleto` — tabela `contas_bancarias` (com
+  RLS) e colunas novas em `titulos_receber` e `notas_saida`.
+- `20260821180500_rotina_contas_bancarias` — menu/rotina e permissão do
+  Administrador.
+
+**2. Cadastrar o convênio.** Sem uma conta marcada como **padrão** em
+Administração › Contas Bancárias, nenhum boleto sai — os títulos importados do
+legado não apontam conta nenhuma. Agência, conta e carteira entram no código de
+barras: confira com o extrato antes de salvar, porque erro aqui não aparece na
+tela, aparece no caixa do banco.
+
+**3. Volume de uploads.** O XML da NF-e é gravado em
+`apps/api/uploads/nfe`, dentro do volume `uploads` que o stack já monta em
+`/app/apps/api/uploads`. Nada novo a criar — mas o diretório **não** é servido
+estaticamente: o XML sai só pela rota autenticada, com escopo de carteira.
+
+**4. O ERP precisa passar a enviar** (senão a 2ª via nunca fica disponível):
+
+- `POST /integracao/notas-saida/{codigoLegado}/xml` com `{"xml": "..."}` ou
+  `{"xmlBase64": "..."}` — o XML autorizado (`nfeProc`). Reenviar substitui.
+- No upsert de títulos, os campos `nossoNumero` (obrigatório para haver
+  boleto), `carteira`, `contaBancariaDescricao` e, se existirem,
+  `codigoBarras` / `linhaDigitavel` já registrados no banco.
+
+Para uma carga retroativa de XMLs, o limite do endpoint é de 120 requisições
+por minuto por chave.

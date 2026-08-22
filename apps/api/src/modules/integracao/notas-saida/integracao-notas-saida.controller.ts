@@ -19,11 +19,14 @@ import {
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import {
+  INTEGRACAO_NFE_XML_EXAMPLE,
+  INTEGRACAO_NFE_XML_RESULTADO_EXAMPLE,
   INTEGRACAO_NOTA_SAIDA_CREATE_EXAMPLE,
   INTEGRACAO_NOTA_SAIDA_EXAMPLE,
 } from '@plataforma/contracts';
 import { IntegracaoNotasSaidaService } from './integracao-notas-saida.service';
 import {
+  IntegracaoNfeXmlDto,
   IntegracaoNotaSaidaCreateDto,
   IntegracaoNotaSaidaQueryDto,
   IntegracaoNotaSaidaUpdateDto,
@@ -141,6 +144,43 @@ export class IntegracaoNotasSaidaController {
       integracao.empresaId,
       integracao.apiKeyId,
       codigo,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Enviar o XML autorizado da NF-e',
+    description:
+      'Guarda o XML (nfeProc) da nota para a 2ª via do DANFE. Envie "xml" em texto ou ' +
+      '"xmlBase64" — exatamente um dos dois. A plataforma extrai chave, protocolo e situação ' +
+      'do próprio arquivo, e recusa (409) XML que não seja NF-e ou cuja chave não confira com ' +
+      'a da nota. Reenviar substitui o XML anterior.',
+  })
+  @ApiParam({ name: 'codigo', description: 'codigoLegado (id da linha no ERP)' })
+  @ApiBodyExample(INTEGRACAO_NFE_XML_EXAMPLE)
+  @ApiResponse({
+    status: 201,
+    schema: { example: INTEGRACAO_NFE_XML_RESULTADO_EXAMPLE },
+  })
+  @ApiResponse({ status: 404, description: 'Nota de saída não encontrada' })
+  @ApiResponse({
+    status: 409,
+    description: 'XML inválido, acima do limite, ou com chave divergente da nota',
+  })
+  // Limite próprio: o XML é bem maior que um payload de nota, e uma carga
+  // retroativa de milhares de arquivos não pode competir com o cadastro no
+  // mesmo balde do throttler.
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  @Post(':codigo/xml')
+  enviarXml(
+    @Param('codigo', ParseIntPipe) codigo: number,
+    @Body() dto: IntegracaoNfeXmlDto,
+    @CurrentIntegracao() integracao: IntegracaoContext,
+  ) {
+    return this.service.salvarXml(
+      integracao.empresaId,
+      integracao.apiKeyId,
+      codigo,
+      dto,
     );
   }
 }

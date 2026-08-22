@@ -9,6 +9,7 @@ import { apiFetch } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
+import { SegundaViaNota } from "@/components/comercial/segunda-via";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { Badge } from "@/components/ui/badge";
 import { FieldLabel } from "@/components/ui/field";
@@ -103,6 +104,11 @@ export default function NotasSaidaPage() {
     { header: "Vlr. itens", sortKey: "vlrItens", cell: (n) => moeda(n.vlrItens) },
     { header: "Vlr. bruto", sortKey: "vlrBruto", cell: (n) => moeda(n.vlrBruto) },
     { header: "Status", sortKey: "ativo", cell: (n) => <StatusDot active={n.ativo} /> },
+    {
+      header: "2ª via",
+      className: "w-20 text-right",
+      cell: (n) => <SegundaViaNota notaId={n.id} numero={n.numero} temXml={n.temXml} />,
+    },
   ];
 
   return (

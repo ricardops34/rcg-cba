@@ -123,8 +123,31 @@ export default function AtendimentoPage() {
     [router, pathname],
   );
   const [busca, setBusca] = useState("");
-  const [listaAberta, alternarLista] = usePainelAberto(PREF_LISTA);
+  const [listaPreferida, alternarPreferenciaLista] = usePainelAberto(PREF_LISTA);
   const [painelAberto, alternarPainel] = usePainelAberto(PREF_PAINEL);
+
+  // Quem chega com a conversa já escolhida na URL — o "Atendimento" do menu da
+  // Posição de Cliente, o link do sino — não precisa da lista de contatos à
+  // vista: já sabe com quem vai falar, e a conversa começa ocupando a tela.
+  //
+  // Vale só para ESTA entrada, e por isso não grava no `localStorage`: a
+  // preferência de quem abre a tela pelo menu continua valendo. Só a primeira
+  // renderização conta (`useState` com inicializador), senão trocar de conversa
+  // pela lista tornaria a recolher.
+  const [ignorandoPreferencia, setIgnorandoPreferencia] = useState(
+    () => !!conversaId,
+  );
+  const listaAberta = listaPreferida && !ignorandoPreferencia;
+  const alternarLista = () => {
+    if (ignorandoPreferencia) {
+      setIgnorandoPreferencia(false);
+      // A preferência guardada era "fechada": abrir agora precisa mudá-la, ou
+      // o clique não faria nada visível.
+      if (!listaPreferida) alternarPreferenciaLista();
+      return;
+    }
+    alternarPreferenciaLista();
+  };
   // O que a coluna da direita mostra. Posição e orçamento entram no lugar dos
   // dados do contato e voltam ao fechar — um espaço só, como o "Dados do
   // contato" do WhatsApp, que empurra a conversa em vez de cobri-la.

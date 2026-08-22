@@ -4,8 +4,11 @@
 # Contexto de build: a RAIZ do repositório.
 #   docker build -f docker/whatsapp-worker.Dockerfile -t rcgcba-whatsapp-worker .
 #
-# Não roda migrations: as tabelas de negócio são da API. O schema do store de
-# sessão é criado pela própria biblioteca na primeira conexão.
+# Não roda migrations do Prisma: as tabelas de negócio são da API. O schema
+# `whatsapp` e o role `whatsapp_store` vêm da migration 20260815024500, aplicada
+# pela API; dentro desse schema é a biblioteca de sessão que faz o DDL, a cada
+# conexão — por isso o worker conecta com `whatsapp_store`, e não com o
+# DATABASE_URL da API. Ver docs/runbook-operacao.md.
 
 FROM node:22-alpine AS base
 RUN npm install -g pnpm@10.0.0

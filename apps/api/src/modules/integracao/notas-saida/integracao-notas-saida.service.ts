@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { basename, join } from 'node:path';
 import {
   ConflictException,
   Injectable,
@@ -13,6 +16,8 @@ import {
   paginationToSkipTake,
 } from '../../../common/pagination/paginate';
 import type {
+  IntegracaoNfeXml,
+  IntegracaoNfeXmlResultado,
   IntegracaoNotaSaida,
   IntegracaoNotaSaidaCreate,
   IntegracaoNotaSaidaItem,
@@ -21,6 +26,11 @@ import type {
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
+import {
+  NFE_DIR,
+  NFE_XML_MAX_BYTES,
+} from '../../../common/uploads/uploads.config';
+import { extrairNfe, NfeXmlInvalidoError } from '../../notas-saida/nfe-xml';
 
 const INCLUDE = {
   cliente: { select: { codigoErp: true } },
@@ -428,5 +438,108 @@ export class IntegracaoNotasSaidaService {
         data: { deletedAt: new Date(), deletedBy: autor, ativo: false },
       });
     });
+  }
+
+  /**
+   * Recebe o XML autorizado da NF-e e o guarda para a 2ª via do DANFE
+   * (ver `docs/planos/segunda-via-danfe-boleto.md`).
+   *
+   * O arquivo é lido **antes** de tocar o banco: XML que não é NF-e, ou sem
+   * chave de 44 dígitos, é recusado na hora — guardar primeiro e descobrir na
+   * hora da 2ª via jogaria o erro para o vendedor, na frente do cliente.
+   *
+   * A chave também é conferida contra a que a nota já tem. Divergência aqui
+   * quase sempre é `codigoLegado` trocado no ERP, e aceitar significaria
+   * pendurar o XML de uma nota em outra — o cliente receberia a nota de
+   * outra pessoa.
+   */
+  async salvarXml(
+    empresaId: string,
+    apiKeyId: string,
+    codigoLegado: number,
+    input: IntegracaoNfeXml,
+  ): Promise<IntegracaoNfeXmlResultado> {
+    const autor = autorIntegracao(apiKeyId);
+
+    const conteudo = input.xml ?? Buffer.from(input.xmlBase64 ?? '', 'base64').toString('utf8');
+    if (Buffer.byteLength(conteudo, 'utf8') > NFE_XML_MAX_BYTES) {
+      throw new ConflictException(
+        `XML acima do limite de ${Math.round(NFE_XML_MAX_BYTES / 1024 / 1024)} MB`,
+      );
+    }
+
+    let dados;
+    try {
+      dados = extrairNfe(conteudo);
+    } catch (erro) {
+      throw new ConflictException(
+        erro instanceof NfeXmlInvalidoError
+          ? erro.message
+          : 'Não foi possível ler o XML enviado',
+      );
+    }
+
+    const nota = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.notaSaida.findFirst({
+        where: { empresaId, codigoLegado, deletedAt: null },
+        select: { id: true, chaveNfe: true, xmlArquivo: true },
+      }),
+    );
+    if (!nota) throw new NotFoundException('Nota de saída não encontrada');
+
+    const chaveAtual = (nota.chaveNfe ?? '').replace(/\D/g, '');
+    if (chaveAtual && chaveAtual !== dados.chave) {
+      throw new ConflictException(
+        `A chave do XML (${dados.chave}) não confere com a da nota ${codigoLegado} (${chaveAtual})`,
+      );
+    }
+
+    // Nome opaco em disco: nunca derivado de dado do payload, pelo mesmo
+    // motivo dos demais uploads (ver uploads.config.ts).
+    const arquivo = `${randomUUID()}.xml`;
+    await mkdir(NFE_DIR, { recursive: true });
+    await writeFile(join(NFE_DIR, arquivo), conteudo, 'utf8');
+
+    const situacao = dados.cancelada
+      ? 'cancelada'
+      : dados.protocolo
+        ? 'autorizada'
+        : 'sem_protocolo';
+    const recebidoEm = new Date();
+
+    await this.prisma.withTenant(empresaId, (tx) =>
+      tx.notaSaida.update({
+        where: { id: nota.id },
+        data: {
+          xmlArquivo: arquivo,
+          xmlRecebidoEm: recebidoEm,
+          protocoloNfe: dados.protocolo,
+          situacaoNfe: situacao,
+          // A chave só é gravada quando faltava: nota importada do legado
+          // costuma vir sem ela, e é o XML que a traz.
+          ...(chaveAtual ? {} : { chaveNfe: dados.chave }),
+          updatedBy: autor,
+        },
+      }),
+    );
+
+    // O XML anterior sai do disco só depois que o novo está gravado e a nota
+    // aponta para ele — nessa ordem, uma falha no meio deixa o arquivo antigo
+    // órfão, e não a nota apontando para arquivo que não existe.
+    if (nota.xmlArquivo && nota.xmlArquivo !== arquivo) {
+      await rm(join(NFE_DIR, basename(nota.xmlArquivo)), { force: true }).catch(
+        () => undefined,
+      );
+    }
+
+    return {
+      codigoLegado,
+      chaveNfe: dados.chave,
+      numero: dados.numero,
+      serie: dados.serie,
+      protocolo: dados.protocolo,
+      situacao,
+      recebidoEm: recebidoEm.toISOString(),
+    };
   }
 }

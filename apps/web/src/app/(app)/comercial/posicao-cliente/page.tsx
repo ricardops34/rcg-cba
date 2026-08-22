@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { PosicaoClienteListRow } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
 import { apiFetch } from "@/lib/api-client";
+import { useAuthStore } from "@/stores/auth-store";
 import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
 import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
 import { CrudHeader } from "@/components/crud/crud-header";
@@ -31,6 +32,7 @@ import {
   Eye,
   FilePlus2,
   Lock,
+  MessageCircle,
   MoreHorizontal,
   Pencil,
 } from "lucide-react";
@@ -80,6 +82,16 @@ export default function PosicaoClientePage() {
     null,
   );
   const [orcamentoClienteId, setOrcamentoClienteId] = useState<string | null>(null);
+
+  // Esconder o que o perfil não permite. Mesma leitura do menu lateral: a
+  // lista de permissões já vem resolvida pelo perfil e o administrador chega
+  // com todas. Esconder não é autorizar — a rota confere de novo; isto é para
+  // não oferecer uma ação que vai voltar 403.
+  const permissoes = useAuthStore((s) => s.user?.permissoes);
+  const podeEditarCliente = Boolean(permissoes?.includes("clientes.editar"));
+  const podeVerAtendimento = Boolean(
+    permissoes?.includes("whatsapp-conversas.visualizar"),
+  );
 
   // Opções de vendedor já restritas ao escopo do usuário logado — não usa
   // /vendedores direto (aquele endpoint não tem restrição de carteira).
@@ -248,15 +260,30 @@ export default function PosicaoClientePage() {
             <DropdownMenuItem onClick={() => setClienteSheet({ id: c.id, modo: "visualizar" })}>
               <Eye className="size-4" /> Visualizar Cliente
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setClienteSheet({ id: c.id, modo: "alterar" })}>
-              <Pencil className="size-4" /> Alterar Cliente
-            </DropdownMenuItem>
+            {podeEditarCliente && (
+              <DropdownMenuItem onClick={() => setClienteSheet({ id: c.id, modo: "alterar" })}>
+                <Pencil className="size-4" /> Alterar Cliente
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => router.push(`/comercial/posicao-cliente/${c.id}`)}>
               <ClipboardList className="size-4" /> Posição do Cliente
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setOrcamentoClienteId(c.id)}>
               <FilePlus2 className="size-4" /> Incluir Orçamento
             </DropdownMenuItem>
+            {/* Só para quem já tem contato de WhatsApp vinculado: sem conversa
+                não há atendimento para abrir, e a ação levaria a uma tela
+                vazia. O backend só devolve a conversa que este usuário pode
+                ler (ver whatsappConversaId). */}
+            {podeVerAtendimento && c.whatsappConversaId && (
+              <DropdownMenuItem
+                onClick={() =>
+                  router.push(`/comercial/atendimento?conversa=${c.whatsappConversaId}`)
+                }
+              >
+                <MessageCircle className="size-4" /> Atendimento
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       ),

@@ -34,6 +34,13 @@ export const posicaoClienteListRowSchema = z.object({
   temTituloNaoVencido: z
     .boolean()
     .describe("Tem título a receber em aberto (sem baixa) vencendo em mais de 7 dias, ou sem vencimento"),
+  whatsappConversaId: z
+    .string()
+    .uuid()
+    .nullable()
+    .describe(
+      "Conversa de WhatsApp deste cliente que o usuário logado pode abrir — null quando o cliente não tem contato vinculado, ou quando a conversa é de um vendedor fora do escopo de leitura dele. Alimenta a ação Atendimento da listagem.",
+    ),
 });
 export type PosicaoClienteListRow = z.infer<typeof posicaoClienteListRowSchema>;
 
@@ -70,4 +77,5 @@ export const POSICAO_CLIENTE_LIST_ROW_EXAMPLE: PosicaoClienteListRow = {
   temTituloVencido: false,
   temTituloVencendo: false,
   temTituloNaoVencido: true,
+  whatsappConversaId: null,
 };

@@ -34,6 +34,8 @@ import {
   WhatsappAgendarMensagemDto,
   WhatsappAgendarVisitaDto,
   WhatsappEnviarArquivoDto,
+  WhatsappEnviarBoletoDto,
+  WhatsappEnviarDanfeDto,
   WhatsappEnviarDto,
   WhatsappEnviarOrcamentoDto,
   WhatsappIniciarConversaDto,
@@ -317,8 +319,8 @@ export class WhatsappController {
   @ApiOperation({
     summary: 'Enviar os títulos em aberto do cliente pela conversa',
     description:
-      'Manda os dados dos títulos (número, vencimento, valor) como mensagem. ' +
-      'Não manda o boleto: a plataforma não emite nem guarda o PDF. Exige ' +
+      'Manda os dados dos títulos (número, vencimento, valor) como mensagem — a lista do que ' +
+      'está em aberto. Para mandar o boleto de um título, use a rota /acoes/boleto. Exige ' +
       'contato vinculado a cliente e titulos-receber.visualizar.',
   })
   @RequirePermission('titulos-receber', 'visualizar')
@@ -330,13 +332,73 @@ export class WhatsappController {
   @ApiOperation({
     summary: 'Enviar as últimas notas fiscais do cliente pela conversa',
     description:
-      'Número, data e valor. O DANFE não é enviado — a plataforma guarda a ' +
-      'chave da NF-e, não o arquivo. Requer notas-saida.visualizar.',
+      'Número, data e valor como mensagem. Para mandar o DANFE de uma nota, use a rota ' +
+      '/acoes/danfe. Requer notas-saida.visualizar.',
   })
   @RequirePermission('notas-saida', 'visualizar')
   @Post('conversas/:id/acoes/notas')
   enviarNotas(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.acoes.enviarNotas(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Títulos do cliente da conversa (seletor da 2ª via)',
+    description:
+      'Títulos em aberto do cliente, cada um com `temBoleto` indicando se a 2ª via pode ser ' +
+      'emitida (nosso número registrado, convênio cadastrado e até 30 dias de atraso). ' +
+      'Requer titulos-receber.visualizar.',
+  })
+  @RequirePermission('titulos-receber', 'visualizar')
+  @Get('conversas/:id/acoes/titulos')
+  listarTitulos(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.acoes.listarTitulos(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Notas fiscais do cliente da conversa (seletor da 2ª via)',
+    description:
+      'As 30 mais recentes, cada uma com `temXml` indicando se o DANFE pode ser gerado. ' +
+      'Requer notas-saida.visualizar.',
+  })
+  @RequirePermission('notas-saida', 'visualizar')
+  @Get('conversas/:id/acoes/notas')
+  listarNotas(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.acoes.listarNotas(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Enviar a 2ª via do DANFE pela conversa',
+    description:
+      'Anexa o mesmo PDF que a tela de Notas de Saída baixa, renderizado do XML autorizado. ' +
+      'Com `incluirXml`, manda também o arquivo XML numa segunda mensagem. Recusa nota de outro ' +
+      'cliente (400) e nota sem XML na plataforma (409). Requer notas-saida.visualizar.',
+  })
+  @RequirePermission('notas-saida', 'visualizar')
+  @Post('conversas/:id/acoes/danfe')
+  enviarDanfe(
+    @Param('id') id: string,
+    @Body() dto: WhatsappEnviarDanfeDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.acoes.enviarDanfe(user.empresaAtivaId, user, id, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Enviar a 2ª via do boleto pela conversa',
+    description:
+      'Anexa o boleto em PDF e põe a linha digitável na legenda — quem paga pelo aplicativo do ' +
+      'banco copia dali. Título vencido sai com valor atualizado (multa e juros do convênio); ' +
+      'vencido há mais de 30 dias é recusado (409), assim como título sem nosso número ou de ' +
+      'outro cliente (400). Requer titulos-receber.visualizar.',
+  })
+  @RequirePermission('titulos-receber', 'visualizar')
+  @Post('conversas/:id/acoes/boleto')
+  enviarBoleto(
+    @Param('id') id: string,
+    @Body() dto: WhatsappEnviarBoletoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.acoes.enviarBoleto(user.empresaAtivaId, user, id, dto);
   }
 
   @ApiOperation({

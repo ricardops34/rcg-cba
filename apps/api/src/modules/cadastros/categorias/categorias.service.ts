@@ -4,7 +4,8 @@ import {
   buildPaginatedResult,
   paginationToSkipTake,
 } from '../../../common/pagination/paginate';
-import type { CategoriaQuery } from '@plataforma/contracts';
+import type { CategoriaQuery, CategoriaUpdate } from '@plataforma/contracts';
+import type { AuthenticatedUser } from '../../../common/decorators/current-user.decorator';
 
 const SORT_FIELDS = new Set([
   'descricao',
@@ -34,7 +35,11 @@ export class CategoriasService {
         deletedAt: null,
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
         ...(query.usado !== undefined ? { usado: query.usado } : {}),
-        ...(query.raiz ? { categoriaPaiId: null } : {}),
+        // `raiz` é tri-estado: true = só categoria (sem pai), false = só
+        // subcategoria, omitido = as duas. Antes o `false` era ignorado, e o
+        // filtro da tela só conseguia oferecer duas das três opções.
+        ...(query.raiz === true ? { categoriaPaiId: null } : {}),
+        ...(query.raiz === false ? { categoriaPaiId: { not: null } } : {}),
         ...(query.categoriaPaiId
           ? { categoriaPaiId: query.categoriaPaiId }
           : {}),
@@ -88,6 +93,35 @@ export class CategoriasService {
       });
       if (!categoria) throw new NotFoundException('Categoria não encontrada');
       return categoria;
+    });
+  }
+
+  /**
+   * Marca (ou desmarca) a categoria como "usada".
+   *
+   * É o único campo que esta API grava: o resto do cadastro vem do import. E é
+   * por isso que o import **deixou de sobrescrever `usado`** ao atualizar (ver
+   * `prisma/import-auxiliares.ts`) — sem essa mudança, a marcação feita aqui
+   * seria desfeita na próxima carga da base legada.
+   *
+   * `null` é estado legítimo, e não "sem valor": é como nasce a subcategoria.
+   */
+  async update(empresaId: string, user: AuthenticatedUser, id: string, dto: CategoriaUpdate) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const existe = await tx.categoria.findFirst({
+        where: { id, empresaId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!existe) throw new NotFoundException('Categoria não encontrada');
+
+      return tx.categoria.update({
+        where: { id },
+        data: { usado: dto.usado, updatedBy: user.id },
+        include: {
+          categoriaPai: PAI_SELECT,
+          regraDesconto: REGRA_DESCONTO_SELECT,
+        },
+      });
     });
   }
 }

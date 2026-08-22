@@ -57,6 +57,7 @@ model Empresa {
   notasSaida                 NotaSaida[]
   notasSaidaItens            NotaSaidaItem[]
   titulosReceber             TituloReceber[]
+  contasBancarias            ContaBancaria[]
   oportunidades              Oportunidade[]
   atividades                 Atividade[]
   objetivosVendedorMes       ObjetivoVendedorMes[]
@@ -84,6 +85,8 @@ model Empresa {
   whatsappAgendadas          WhatsappMensagemAgendada[]
   whatsappAcoes              WhatsappAcaoRegistro[]
   notificacoes               Notificacao[]
+  comunicados                Comunicado[]
+  comunicadoPerfis           ComunicadoPerfil[]
 
   @@map("empresas")
 }
@@ -218,6 +221,7 @@ model Perfil {
 
   usuarioEmpresas UsuarioEmpresa[]
   permissoes      PerfilPermissao[]
+  comunicados     ComunicadoPerfil[]
 
   @@unique([nome])
   @@map("perfis")
@@ -1488,6 +1492,23 @@ model NotaSaida {
   comodato Boolean   @default(false)
   ativo    Boolean   @default(true)
 
+  // ---- 2ª via de DANFE (ver docs/planos/segunda-via-danfe-boleto.md) ----
+  // O XML autorizado empurrado pelo ERP, gravado em `uploads/nfe`. Só o nome
+  // do arquivo: o diretório é do servidor, e guardar caminho absoluto no
+  // banco quebraria na primeira mudança de volume.
+  //
+  // O DANFE **não** é guardado — é renderizado sob demanda a partir do XML.
+  // Cachear o PDF de algo barato de refazer só criaria arquivo velho com
+  // layout antigo.
+  xmlArquivo   String?
+  xmlRecebidoEm DateTime?
+  // Protocolo de autorização (infProt/nProt) e situação da nota na SEFAZ:
+  // "autorizada", "cancelada" ou "denegada". A ficha impressa avisa quando a
+  // nota não está mais válida — mandar DANFE de nota cancelada para o cliente
+  // é o tipo de erro que ninguém percebe até a fiscalização.
+  protocoloNfe String?
+  situacaoNfe  String?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -1574,6 +1595,71 @@ model NotaSaidaItem {
   @@map("notas_saida_itens")
 }
 
+/**
+ * Convênio de cobrança da empresa — o que o boleto precisa saber sobre o
+ * beneficiário e que não muda de título para título.
+ *
+ * Existe como cadastro (e não como parâmetro ou campo repetido no payload do
+ * ERP) por dois motivos: a empresa pode ter mais de uma conta de cobrança, e
+ * instrução/multa/juros são texto que se corrige numa tela, não numa carga.
+ *
+ * A plataforma **não registra boleto em banco**: quem registrou foi o ERP, e é
+ * dele que vem o nosso número (ver `TituloReceber.nossoNumero`). Aqui só se
+ * guarda o que é preciso para *reimprimir* a mesma ficha de compensação.
+ */
+model ContaBancaria {
+  id        String @id @default(uuid())
+  empresaId String
+
+  descricao String
+  // Código de compensação do banco ("237" = Bradesco). É string porque o
+  // zero à esquerda ("001", "104") faz parte do código.
+  banco     String
+  agencia   String
+  agenciaDv String?
+  conta     String
+  contaDv   String?
+  // Carteira da cobrança ("09" no Bradesco). Entra no campo livre do código
+  // de barras e é impressa na ficha.
+  carteira  String
+
+  // Beneficiário do boleto. Nulo = usa o cadastro da empresa — o caso normal;
+  // preencher só quando a conta é de outra razão social (filial, factoring).
+  beneficiarioNome      String?
+  beneficiarioDocumento String?
+  beneficiarioEndereco  String?
+
+  localPagamento   String  @default("Pagável em qualquer banco até o vencimento")
+  aceite           String  @default("N")
+  especieDocumento String  @default("DM")
+  instrucoes       String?
+  demonstrativo    String?
+
+  // Encargos impressos nas instruções. Não entram no valor do documento: o
+  // que se cobra depois do vencimento é decisão do banco/ERP, aqui é texto.
+  jurosMesPerc Float?
+  multaPerc    Float?
+  diasProtesto Int?
+
+  // Conta usada quando o título não aponta nenhuma — que é o caso de todo
+  // título já importado. Só uma por empresa (garantido no service).
+  padrao Boolean @default(false)
+  ativo  Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa Empresa         @relation(fields: [empresaId], references: [id])
+  titulos TituloReceber[]
+
+  @@index([empresaId, ativo])
+  @@map("contas_bancarias")
+}
+
 model TituloReceber {
   id           String  @id @default(uuid())
   empresaId    String
@@ -1598,6 +1684,25 @@ model TituloReceber {
   historico      String?
   ativo          Boolean   @default(true)
 
+  // ---- 2ª via de boleto (ver docs/planos/segunda-via-danfe-boleto.md) ----
+  // Tudo opcional: título importado antes desta migration continua válido, e
+  // título de outra forma de pagamento (depósito, dinheiro) nunca terá isso.
+
+  // Conta de cobrança usada no registro. Nulo = a conta padrão da empresa.
+  contaBancariaId String?
+  // Identificação do boleto no banco, gerada pelo ERP no registro. Sem ela
+  // não há 2ª via: um boleto com nosso número inventado não é pagável.
+  nossoNumero     String?
+  // Carteira do título, quando diverge da carteira da conta (ERP que registra
+  // em mais de uma). Nulo = a da conta.
+  carteira        String?
+
+  // Código de barras / linha digitável **como o banco registrou**. Quando o
+  // ERP manda, prevalecem sobre o cálculo local: divergir do que está
+  // registrado é pior do que não imprimir.
+  codigoBarras   String?
+  linhaDigitavel String?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -1605,9 +1710,10 @@ model TituloReceber {
   updatedBy String?
   deletedBy String?
 
-  empresa  Empresa   @relation(fields: [empresaId], references: [id])
-  cliente  Cliente?  @relation(fields: [clienteId], references: [id])
-  vendedor Vendedor? @relation(fields: [vendedorId], references: [id])
+  empresa       Empresa        @relation(fields: [empresaId], references: [id])
+  cliente       Cliente?       @relation(fields: [clienteId], references: [id])
+  vendedor      Vendedor?      @relation(fields: [vendedorId], references: [id])
+  contaBancaria ContaBancaria? @relation(fields: [contaBancariaId], references: [id])
 
   @@unique([empresaId, codigoLegado])
   @@index([empresaId, clienteId])
@@ -2356,4 +2462,65 @@ enum NotificacaoTipo {
   orcamento_recusado
   cliente_atribuido
   titulo_vencido
+}
+
+/// Comunicado interno exibido na tela inicial (Início).
+///
+/// É o "mural" da empresa: quem tem `comunicados.cadastrar` publica, e todo
+/// usuário logado vê na entrada do sistema o que estiver **vigente** e
+/// endereçado ao perfil dele. Não é notificação: não tem destinatário
+/// individual, não tem "lido" e não some quando alguém abre — some quando o
+/// prazo acaba.
+model Comunicado {
+  id        String @id @default(uuid())
+  empresaId String
+
+  titulo String
+  texto  String @db.Text
+
+  /// Aparece a partir daqui. Publicar com data futura é o jeito de deixar
+  /// pronto e agendado.
+  inicioEm DateTime  @default(now())
+  /// Some depois daqui. Nulo = fica até alguém desativar — comunicado sem
+  /// prazo é o caso comum (regra interna, aviso permanente).
+  fimEm    DateTime?
+
+  /// Sobe ao topo do mural, com destaque visual. Um por vez, na prática.
+  fixado Boolean @default(false)
+  ativo  Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa Empresa            @relation(fields: [empresaId], references: [id])
+  /// Perfis que enxergam. **Lista vazia = todo mundo** — é o caso comum, e
+  /// exigir marcar todos os perfis para "todos" faria o cadastro errar por
+  /// omissão (perfil novo não veria nada).
+  perfis  ComunicadoPerfil[]
+
+  // A consulta do mural é sempre a mesma: vigentes desta empresa, fixado
+  // primeiro.
+  @@index([empresaId, ativo, inicioEm])
+  @@map("comunicados")
+}
+
+/// Destino do comunicado, por perfil. Tem `empresaId` (e RLS) mesmo sendo
+/// tabela de junção: sem ele a linha seria legível de qualquer tenant por uma
+/// consulta direta, e o Postgres deixaria passar.
+model ComunicadoPerfil {
+  empresaId    String
+  comunicadoId String
+  perfilId     String
+
+  comunicado Comunicado @relation(fields: [comunicadoId], references: [id], onDelete: Cascade)
+  perfil     Perfil     @relation(fields: [perfilId], references: [id])
+  empresa    Empresa    @relation(fields: [empresaId], references: [id])
+
+  @@id([comunicadoId, perfilId])
+  @@index([empresaId, perfilId])
+  @@map("comunicado_perfis")
 }

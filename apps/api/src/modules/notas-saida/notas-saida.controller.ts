@@ -1,5 +1,20 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  Res,
+  StreamableFile,
+  UseGuards,
+} from '@nestjs/common';
+import type { Response } from 'express';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiProduces,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { NotasSaidaService } from './notas-saida.service';
 import { NotaSaidaQueryDto } from './dto/nota-saida.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -45,5 +60,68 @@ export class NotasSaidaController {
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.findOne(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: '2ª via do DANFE (PDF)',
+    description:
+      'Renderiza o DANFE a partir do XML autorizado que o ERP enviou. Recusa com 409 quando a ' +
+      'nota ainda não tem XML na plataforma. É o mesmo arquivo que o atendimento por WhatsApp ' +
+      'anexa na conversa. Requer notas-saida.visualizar ou posicao-cliente.visualizar.',
+  })
+  @ApiProduces('application/pdf')
+  @ApiResponse({ status: 409, description: 'Nota sem XML autorizado na plataforma' })
+  @RequirePermission('notas-saida', 'visualizar', [
+    'posicao-cliente',
+    'visualizar',
+  ])
+  @Get(':id/danfe')
+  async danfe(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { conteudo, nomeArquivo } = await this.service.gerarDanfe(
+      user.empresaAtivaId,
+      user,
+      id,
+    );
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${nomeArquivo}"`,
+      'Content-Length': String(conteudo.length),
+    });
+    return new StreamableFile(conteudo);
+  }
+
+  @ApiOperation({
+    summary: 'XML autorizado da NF-e',
+    description:
+      'O arquivo como veio do ERP — para escrituração e para o contador do cliente. ' +
+      'Requer notas-saida.visualizar ou posicao-cliente.visualizar.',
+  })
+  @ApiProduces('application/xml')
+  @ApiResponse({ status: 409, description: 'Nota sem XML autorizado na plataforma' })
+  @RequirePermission('notas-saida', 'visualizar', [
+    'posicao-cliente',
+    'visualizar',
+  ])
+  @Get(':id/xml')
+  async xml(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { conteudo, nomeArquivo } = await this.service.obterXml(
+      user.empresaAtivaId,
+      user,
+      id,
+    );
+    res.set({
+      'Content-Type': 'application/xml',
+      'Content-Disposition': `attachment; filename="${nomeArquivo}"`,
+      'Content-Length': String(conteudo.length),
+    });
+    return new StreamableFile(conteudo);
   }
 }

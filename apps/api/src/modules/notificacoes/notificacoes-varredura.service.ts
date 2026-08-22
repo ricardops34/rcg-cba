@@ -173,68 +173,162 @@ export class NotificacoesVarreduraService
   }
 
   /**
-   * Título vencido de cliente da carteira.
+   * Títulos vencidos: **uma linha por cliente**, não por título.
    *
-   * Mesmo critério da cor de cobrança da lista de conversas: em aberto
-   * (`dtBaixa` nula) e vencimento no passado.
+   * Um cliente com doze parcelas atrasadas enchia o sino sozinho e empurrava
+   * todo o resto para fora das vinte linhas do feed. O que o vendedor precisa
+   * saber é *quem* está devendo; parcela a parcela é a tela de posição do
+   * cliente, que é para onde a linha leva.
+   *
+   * Critério do que é vencido: o mesmo da cor de cobrança da lista de
+   * conversas — em aberto (`dtBaixa` nula) e vencimento no passado.
+   *
+   * **Só vendedor recebe.** Supervisor e gerente também têm cadastro em
+   * `vendedores` e podem ter título creditado a eles, mas cobrança de carteira
+   * é do vendedor; o acompanhamento da equipe tem tela própria. Cadastro de
+   * sistema (ESCRITORIO, E-COMMERCE) fica de fora pelo mesmo motivo do
+   * `usuarioId` nulo: não há pessoa para avisar.
    */
   private async titulosVencidos(empresaId: string) {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
 
     await this.prisma.withTenant(empresaId, async (tx) => {
-      const avisados = await this.jaAvisados(tx, empresaId, 'titulo_vencido');
-      const titulos = await tx.tituloReceber.findMany({
-        where: {
-          empresaId,
-          deletedAt: null,
-          ativo: true,
-          dtBaixa: null,
-          vencimento: { not: null, lt: hoje },
-          id: { notIn: avisados },
-          vendedor: { usuarioId: { not: null } },
-        },
-        select: {
-          id: true,
-          numero: true,
-          parcela: true,
-          valor: true,
-          vencimento: true,
-          clienteId: true,
-          vendedor: { select: { usuarioId: true } },
-          cliente: { select: { razaoSocial: true } },
-        },
-        orderBy: { vencimento: 'asc' },
-        take: LOTE,
-      });
+      // Agregação no banco, e não `findMany` + soma em memória: o `LOTE` aqui
+      // precisa limitar **clientes**, não títulos. Contando títulos, um único
+      // cliente com centenas de parcelas consumiria a janela inteira e os
+      // outros nunca apareceriam.
+      const grupos = await tx.$queryRaw<
+        Array<{
+          clienteId: string;
+          usuarioId: string;
+          razaoSocial: string | null;
+          quantidade: number;
+          total: number;
+          maisAntigo: Date;
+          novidadeEm: Date;
+        }>
+      >`
+        SELECT
+          t."clienteId"                                AS "clienteId",
+          v."usuarioId"                                AS "usuarioId",
+          c."razaoSocial"                              AS "razaoSocial",
+          COUNT(*)::int                                AS "quantidade",
+          SUM(t."valor")::float8                       AS "total",
+          MIN(t."vencimento")                          AS "maisAntigo",
+          MAX(GREATEST(t."vencimento", t."createdAt")) AS "novidadeEm"
+        FROM "titulos_receber" t
+        JOIN "vendedores" v
+          ON v."id" = t."vendedorId" AND v."empresaId" = t."empresaId"
+        LEFT JOIN "clientes" c
+          ON c."id" = t."clienteId" AND c."empresaId" = t."empresaId"
+        WHERE t."empresaId" = ${empresaId}
+          AND t."deletedAt" IS NULL
+          AND t."ativo" = true
+          AND t."dtBaixa" IS NULL
+          AND t."vencimento" IS NOT NULL
+          AND t."vencimento" < ${hoje}
+          AND t."clienteId" IS NOT NULL
+          AND v."usuarioId" IS NOT NULL
+          AND v."tipo" = 'vendedor'
+          AND v."ativo" = true
+          AND v."desligado" = false
+          AND v."deletedAt" IS NULL
+        GROUP BY t."clienteId", v."usuarioId", c."razaoSocial"
+        ORDER BY MIN(t."vencimento") ASC
+        LIMIT ${LOTE}
+      `;
 
-      for (const titulo of titulos) {
-        const numero = titulo.parcela
-          ? `${titulo.numero}/${titulo.parcela}`
-          : titulo.numero;
+      // O que já foi avisado de cada cliente. Diferente do `jaAvisados` dos
+      // outros tipos, que só pergunta "existe?": aqui a linha pendente **deve**
+      // ser reprocessada, porque é assim que a contagem e o total acompanham a
+      // parcela que venceu depois (o `ON CONFLICT` de `registrarNotificacao`
+      // reescreve título e descrição da pendente).
+      const historico = await tx.$queryRaw<
+        Array<{
+          referenciaId: string;
+          usuarioId: string;
+          pendente: boolean;
+          ultimaLeitura: Date | null;
+        }>
+      >`
+        SELECT
+          "referenciaId"            AS "referenciaId",
+          "usuarioId"               AS "usuarioId",
+          bool_or("lidaEm" IS NULL) AS "pendente",
+          MAX("lidaEm")             AS "ultimaLeitura"
+        FROM "notificacoes"
+        WHERE "empresaId" = ${empresaId}
+          AND "tipo" = 'titulo_vencido'
+          AND "referenciaId" IS NOT NULL
+        GROUP BY "referenciaId", "usuarioId"
+      `;
+      const porCliente = new Map(
+        historico.map((h) => [`${h.usuarioId}:${h.referenciaId}`, h]),
+      );
+
+      for (const grupo of grupos) {
+        const visto = porCliente.get(`${grupo.usuarioId}:${grupo.clienteId}`);
+        // Já leu e nada venceu (nem entrou) depois: não insiste. Prazo vencido
+        // avisa uma vez — repetir a cada meia hora é trabalho do relatório de
+        // cobrança, não do sino. O `novidadeEm` é o maior entre vencimento e
+        // criação do título justamente porque o import do ERP traz parcela já
+        // vencida: pelo vencimento ela seria velha e nunca avisaria.
+        if (
+          visto &&
+          !visto.pendente &&
+          visto.ultimaLeitura &&
+          visto.ultimaLeitura >= grupo.novidadeEm
+        ) {
+          continue;
+        }
+
+        const quantos =
+          grupo.quantidade === 1
+            ? '1 título vencido'
+            : `${grupo.quantidade} títulos vencidos`;
+
         await registrarNotificacao(tx, {
           empresaId,
-          usuarioId: titulo.vendedor!.usuarioId!,
+          usuarioId: grupo.usuarioId,
           tipo: 'titulo_vencido',
-          titulo: `Título ${numero} vencido — ${titulo.cliente?.razaoSocial ?? 'cliente sem cadastro'}`,
-          descricao: valorEmReais(titulo.valor),
-          rota: titulo.clienteId
-            ? `/comercial/posicao-cliente/${titulo.clienteId}`
-            : '/comercial/titulos-receber',
-          referenciaId: titulo.id,
-          ocorridaEm: titulo.vencimento ?? new Date(),
+          titulo: grupo.razaoSocial ?? 'Cliente sem cadastro',
+          descricao: `${quantos} · ${valorEmReais(grupo.total)}`,
+          rota: `/comercial/posicao-cliente/${grupo.clienteId}`,
+          // O cliente é a origem, não o título: é o que faz a parcela seguinte
+          // somar na linha existente em vez de abrir outra.
+          referenciaId: grupo.clienteId,
+          // O vencimento mais antigo, e não o da varredura: ordena o feed por
+          // quem está atrasado há mais tempo.
+          ocorridaEm: grupo.maisAntigo,
         });
       }
 
-      // Baixado (pago) para de avisar.
+      // Cliente que não tem mais nenhum título vencido em aberto para de
+      // avisar — pagou, ou o título saiu da carteira deste vendedor.
+      //
+      // Este UPDATE também é o que aposenta as notificações do desenho antigo,
+      // uma por título: o `referenciaId` delas é um id de título, que nunca
+      // casa com `clienteId`, então o `NOT EXISTS` é verdadeiro e a linha sai.
       await tx.$executeRaw`
         UPDATE "notificacoes" n SET "lidaEm" = NOW()
-        FROM "titulos_receber" t
-        WHERE n."referenciaId" = t."id"
-          AND n."empresaId" = ${empresaId}
+        WHERE n."empresaId" = ${empresaId}
           AND n."tipo" = 'titulo_vencido'
           AND n."lidaEm" IS NULL
-          AND (t."dtBaixa" IS NOT NULL OR t."ativo" = false OR t."deletedAt" IS NOT NULL)
+          AND n."referenciaId" IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM "titulos_receber" t
+            JOIN "vendedores" v ON v."id" = t."vendedorId"
+            WHERE t."empresaId" = n."empresaId"
+              AND t."clienteId" = n."referenciaId"
+              AND v."usuarioId" = n."usuarioId"
+              AND t."deletedAt" IS NULL
+              AND t."ativo" = true
+              AND t."dtBaixa" IS NULL
+              AND t."vencimento" IS NOT NULL
+              AND t."vencimento" < ${hoje}
+          )
       `;
     });
   }

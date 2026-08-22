@@ -1,5 +1,20 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  Res,
+  StreamableFile,
+  UseGuards,
+} from '@nestjs/common';
+import type { Response } from 'express';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiProduces,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { TitulosReceberService } from './titulos-receber.service';
 import { TituloReceberQueryDto } from './dto/titulo-receber.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -45,5 +60,38 @@ export class TitulosReceberController {
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.findOne(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: '2ª via do boleto (PDF)',
+    description:
+      'Reimprime a ficha de compensação do título, a partir do nosso número registrado pelo ERP ' +
+      'e do convênio cadastrado em Contas Bancárias. Recusa com 409 quando falta nosso número, ' +
+      'conta de cobrança, ou o título já está baixado. É o mesmo arquivo que o atendimento por ' +
+      'WhatsApp anexa na conversa. Requer titulos-receber.visualizar ou posicao-cliente.visualizar.',
+  })
+  @ApiProduces('application/pdf')
+  @ApiResponse({ status: 409, description: 'Título sem dados para emitir o boleto' })
+  @RequirePermission('titulos-receber', 'visualizar', [
+    'posicao-cliente',
+    'visualizar',
+  ])
+  @Get(':id/boleto')
+  async boleto(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { conteudo, nomeArquivo } = await this.service.gerarBoleto(
+      user.empresaAtivaId,
+      user,
+      id,
+    );
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${nomeArquivo}"`,
+      'Content-Length': String(conteudo.length),
+    });
+    return new StreamableFile(conteudo);
   }
 }

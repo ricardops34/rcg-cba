@@ -406,9 +406,15 @@ export class ObjetivosService {
       }
 
       const categoriaIds = new Set([...objetivoPorCategoria.keys(), ...realizadoPorCategoria.keys()]);
+      // Só as categorias marcadas como **usadas** entram na tabela (a marcação
+      // é de Cadastros > Categorias). São 21 das 29 raízes: o resto é
+      // categoria que o ERP carrega mas a empresa não acompanha, e listá-las
+      // afundava as que importam. É por isso que o total da tabela não bate
+      // com o KPI "Realizado" — aquele é a venda inteira, este é a venda do
+      // que se acompanha.
       const categoriasInfo = categoriaIds.size
         ? await tx.categoria.findMany({
-            where: { id: { in: [...categoriaIds] } },
+            where: { id: { in: [...categoriaIds] }, usado: true },
             select: { id: true, codigoErp: true, descricao: true },
           })
         : [];

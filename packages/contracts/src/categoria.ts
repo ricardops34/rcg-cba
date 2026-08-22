@@ -2,8 +2,9 @@ import { z } from "zod";
 import { auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
 import { regraDescontoVinculoFields } from "./regra-desconto";
 
-// Somente consulta: categorias/subcategorias entram pelo import (e no futuro
-// pela API externa de manutenção), não por esta API.
+// Cadastro vem do import (e no futuro da API externa de manutenção): esta API
+// não cria nem exclui categoria. A exceção é `usado`, que é marcação da
+// plataforma e se edita por aqui — ver `categoriaUpdateSchema`.
 export const categoriaSchema = z.object({
   id: z.string().uuid(),
   empresaId: z.string().uuid(),
@@ -17,7 +18,8 @@ export const categoriaSchema = z.object({
 });
 export type Categoria = z.infer<typeof categoriaSchema>;
 
-// raiz=true filtra só categorias de nível raiz (sem categoria pai).
+// raiz=true traz só categoria (nível raiz); raiz=false, só subcategoria;
+// omitido, as duas.
 export const categoriaQuerySchema = paginationQuerySchema.extend({
   ativo: booleanQueryParam,
   usado: booleanQueryParam,
@@ -25,6 +27,19 @@ export const categoriaQuerySchema = paginationQuerySchema.extend({
   categoriaPaiId: z.string().uuid().optional(),
 });
 export type CategoriaQuery = z.infer<typeof categoriaQuerySchema>;
+
+/**
+ * O único campo editável por esta API.
+ *
+ * `usado` marca as categorias que a empresa acompanha — é o que o Dashboard
+ * Comercial usa para escolher o que entra na tabela de Vendas por Categoria.
+ * Vale só para categoria raiz: subcategoria não tem a marcação (nasce nula no
+ * import) e não aparece no dashboard.
+ */
+export const categoriaUpdateSchema = z.object({
+  usado: z.boolean().nullable(),
+});
+export type CategoriaUpdate = z.infer<typeof categoriaUpdateSchema>;
 
 export const CATEGORIA_EXAMPLE: Categoria = {
   id: "9e8d7c6b-5a49-4382-b1c0-d9e8f7a6b5c4",

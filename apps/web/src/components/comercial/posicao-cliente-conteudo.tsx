@@ -15,10 +15,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusDot } from "@/components/crud/status-dot";
 import { TituloStatusBadge } from "@/components/comercial/titulo-status-badge";
 import { SortableTableHead } from "@/components/crud/sortable-table-head";
-import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { NotaSaidaSheet } from "@/components/comercial/nota-saida-detalhe";
 import { TituloReceberSheet } from "@/components/comercial/titulo-receber-detalhe";
 import { ProdutoSheet } from "@/components/comercial/produto-detalhe";
+import { SegundaViaNota, SegundaViaTitulo } from "@/components/comercial/segunda-via";
 import { ArrowLeft, Search } from "lucide-react";
 
 const LIST_ROUTE = "/comercial/posicao-cliente";
@@ -165,6 +166,7 @@ function TabelaNotas({
                     order={sortOrder}
                     onClick={() => onToggleSort("vlrBruto")}
                   />
+                  <TableHead className="w-20 text-right">2ª via</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -183,6 +185,9 @@ function TabelaNotas({
                       {n.vendedor ? n.vendedor.nomeReduzido || n.vendedor.nome : "—"}
                     </TableCell>
                     <TableCell className="text-right">{moeda(n.vlrBruto)}</TableCell>
+                    <TableCell className="text-right">
+                      <SegundaViaNota notaId={n.id} numero={n.numero} temXml={n.temXml} />
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -519,6 +524,7 @@ export function PosicaoClienteConteudo({
                             toggleSort("dtBaixa", tituloSortBy, setTituloSortBy, setTituloSortOrder)
                           }
                         />
+                        <TableHead className="w-16 text-right">Boleto</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -540,6 +546,14 @@ export function PosicaoClienteConteudo({
                             <TituloStatusBadge status={t.status} />
                           </TableCell>
                           <TableCell>{dataBr(t.dtBaixa)}</TableCell>
+                          <TableCell className="text-right">
+                            <SegundaViaTitulo
+                              tituloId={t.id}
+                              numero={t.numero}
+                              temBoleto={t.temBoleto}
+                              status={t.status}
+                            />
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

@@ -509,6 +509,28 @@ async function bootstrapMenu() {
       codigo: 'whatsapp-config',
       moduloId: moduloAdministracao.id,
     },
+    // Mural da tela inicial. A rotina controla **administrar** o cadastro; ler
+    // o mural não exige permissão nenhuma (ver InicioController) — um aviso
+    // que só quem publica pudesse ler não avisaria ninguém.
+    {
+      id: 'seed-menu-comunicados',
+      nome: 'Comunicados',
+      rota: '/admin/comunicados',
+      icone: 'megaphone',
+      codigo: 'comunicados',
+      moduloId: moduloAdministracao.id,
+    },
+    // Convênio de cobrança usado na 2ª via de boleto. Fica em Administração e
+    // não em Cadastros de propósito: agência, conta e carteira erradas geram
+    // boleto que o cliente não paga — não é dado que vendedor mantém.
+    {
+      id: 'seed-menu-contas-bancarias',
+      nome: 'Contas Bancárias',
+      rota: '/admin/contas-bancarias',
+      icone: 'landmark',
+      codigo: 'contas-bancarias',
+      moduloId: moduloAdministracao.id,
+    },
     {
       id: 'seed-menu-oportunidades',
       nome: 'Oportunidades',

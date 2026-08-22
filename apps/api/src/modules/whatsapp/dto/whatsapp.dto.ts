@@ -6,6 +6,8 @@ import {
   whatsappConfigUpdateSchema,
   whatsappConversaQuerySchema,
   whatsappEnviarArquivoSchema,
+  whatsappEnviarBoletoSchema,
+  whatsappEnviarDanfeSchema,
   whatsappEnviarOrcamentoSchema,
   whatsappEnviarSchema,
   whatsappIniciarConversaSchema,
@@ -37,6 +39,12 @@ export class WhatsappAgendarVisitaDto extends createZodDto(
 ) {}
 export class WhatsappEnviarOrcamentoDto extends createZodDto(
   whatsappEnviarOrcamentoSchema,
+) {}
+export class WhatsappEnviarDanfeDto extends createZodDto(
+  whatsappEnviarDanfeSchema,
+) {}
+export class WhatsappEnviarBoletoDto extends createZodDto(
+  whatsappEnviarBoletoSchema,
 ) {}
 export class WhatsappNovoOrcamentoDto extends createZodDto(
   whatsappNovoOrcamentoSchema,

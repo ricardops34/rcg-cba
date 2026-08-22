@@ -7,7 +7,7 @@ import {
 import { PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappWorkerClient } from './whatsapp-worker.client';
-import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
+import { escopoLeituraWhatsapp } from './escopo-whatsapp';
 import {
   WHATSAPP_ACEITE_VERSAO,
   WHATSAPP_SESSAO_STATUS,
@@ -67,34 +67,16 @@ export class WhatsappSessaoService {
   /**
    * Quais vendedores este usuário pode **ler**.
    *
-   * A hierarquia (`resolverEscopoVendedores`) diz quem está no time; a
-   * permissão `whatsapp-equipe.visualizar` diz se ler o time é permitido. As
-   * duas coisas são necessárias: um supervisor sem essa permissão continua
-   * vendo só o próprio atendimento.
-   *
-   * Note a diferença para o resto do sistema: aqui, usuário sem cadastro de
-   * vendedor e sem a permissão de equipe não vê **nada**, em vez de ver tudo.
-   * Conversa de cliente é dado pessoal — o default é não enxergar.
+   * A regra mora em `escopoLeituraWhatsapp`, fora do service, porque a
+   * listagem de Posição de Cliente também precisa dela — ver o comentário lá.
+   * Este método continua existindo para quem já o chama pelo service.
    */
   async escopoLeitura(
     tx: TenantTx,
     empresaId: string,
     user: AuthenticatedUser,
   ): Promise<string[] | null> {
-    const podeVerEquipe =
-      user.isAdmin || user.permissoes.includes('whatsapp-equipe.visualizar');
-
-    if (podeVerEquipe) {
-      // null = sem restrição (admin). Para supervisor/gerente vem a lista do
-      // time, que é exatamente "quem eu supervisiono" + eu mesmo.
-      return resolverEscopoVendedores(tx, empresaId, user);
-    }
-
-    const vendedor = await tx.vendedor.findFirst({
-      where: { usuarioId: user.id, empresaId, deletedAt: null },
-      select: { id: true },
-    });
-    return vendedor ? [vendedor.id] : [];
+    return escopoLeituraWhatsapp(tx, empresaId, user);
   }
 
   /** Sessão do próprio usuário. Devolve null quando ele nunca conectou. */

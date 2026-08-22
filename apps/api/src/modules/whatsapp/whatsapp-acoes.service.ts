@@ -6,8 +6,11 @@ import { NotasSaidaService } from '../notas-saida/notas-saida.service';
 import { AtividadesService } from '../atividades/atividades.service';
 import { OrcamentosService } from '../orcamentos/orcamentos.service';
 import { registrarAtividadeOrcamento } from '../orcamentos/registrar-atividade-orcamento';
+import { registrarAtividadeDocumento } from '../../common/atividades/registrar-atividade-documento';
 import type {
   WhatsappAgendarVisita,
+  WhatsappEnviarBoleto,
+  WhatsappEnviarDanfe,
   WhatsappEnviarOrcamento,
   WhatsappNovoOrcamento,
 } from '@plataforma/contracts';
@@ -76,12 +79,11 @@ export class WhatsappAcoesService {
   }
 
   /**
-   * Títulos em aberto do cliente — o "manda os boletos" do dia a dia.
+   * Resumo em texto dos títulos em aberto do cliente.
    *
-   * Manda os **dados** do título, não o boleto renderizado: a plataforma não
-   * emite nem guarda PDF de boleto (isso depende de integração bancária que
-   * não existe). Com número, vencimento e valor o cliente identifica o que
-   * está em aberto, que é o que ele pergunta.
+   * Continua existindo ao lado do envio do boleto (`enviarBoleto`) porque
+   * responde a outra pergunta: "o que eu tenho em aberto?" é uma lista, não um
+   * documento. O boleto é de um título por vez.
    */
   async enviarTitulos(
     empresaId: string,
@@ -121,7 +123,289 @@ export class WhatsappAcoesService {
     return this.conversas.enviar(empresaId, user, conversaId, { texto });
   }
 
-  /** Últimas notas do cliente: número, data e valor — sem o DANFE, que a plataforma não guarda. */
+  /**
+   * Títulos do cliente com a informação de quem tem 2ª via de boleto — o
+   * seletor da tela de atendimento.
+   *
+   * Delega ao `TitulosReceberService`, então `temBoleto` já vem calculado com
+   * a mesma regra da rota de download (nosso número, convênio, e a janela de
+   * 30 dias após o vencimento).
+   */
+  async listarTitulos(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+  ) {
+    const { clienteId } = await this.contexto(empresaId, user, conversaId);
+    return this.titulos.findAll(empresaId, user, {
+      page: 1,
+      pageSize: 30,
+      sortBy: 'vencimento',
+      sortOrder: 'asc',
+      status: 'aberto',
+      clienteId,
+    } as never);
+  }
+
+  /** Notas do cliente com a informação de quais têm XML — o seletor do DANFE. */
+  async listarNotas(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+  ) {
+    const { clienteId } = await this.contexto(empresaId, user, conversaId);
+    return this.notas.findAll(empresaId, user, {
+      page: 1,
+      pageSize: 30,
+      sortBy: 'dtEmissao',
+      sortOrder: 'desc',
+      clienteId,
+    } as never);
+  }
+
+  /**
+   * Manda a 2ª via do DANFE em PDF pela conversa.
+   *
+   * O arquivo é o mesmo que a tela baixa — renderizado do XML autorizado pelo
+   * `NotasSaidaService`, com o escopo de carteira dele. Aqui só se confere que
+   * a nota é **do cliente desta conversa**: sem isso, um id válido de outro
+   * cliente da carteira mandaria a nota fiscal errada para a pessoa errada.
+   *
+   * Nota cancelada continua podendo ser enviada — o cliente às vezes precisa
+   * dela justamente para conferir o cancelamento —, mas o PDF sai carimbado, e
+   * a legenda padrão avisa.
+   */
+  async enviarDanfe(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    input: WhatsappEnviarDanfe,
+  ) {
+    const { clienteId, clienteNome } = await this.contexto(
+      empresaId,
+      user,
+      conversaId,
+    );
+
+    const nota = (await this.notas.findOne(
+      empresaId,
+      user,
+      input.notaSaidaId,
+    )) as { clienteId: string | null; numero: string };
+    if (nota.clienteId !== clienteId) {
+      throw new BadRequestException(
+        `Esta nota fiscal não é do cliente ${clienteNome}.`,
+      );
+    }
+
+    // O rastro deste envio é registrado abaixo como "DANFE enviado pelo
+    // WhatsApp"; deixar o service registrar "gerada" também poria dois
+    // eventos no histórico do cliente para a mesma ação.
+    const danfe = await this.notas.gerarDanfe(
+      empresaId,
+      user,
+      input.notaSaidaId,
+      { registrarEvento: false },
+    );
+
+    const legenda =
+      input.legenda?.trim() ||
+      (danfe.cancelada
+        ? `DANFE da NF ${danfe.numero} — nota CANCELADA`
+        : `NF ${danfe.numero} — 2ª via do DANFE`);
+
+    const mensagem = await this.conversas.enviarConteudo(
+      empresaId,
+      user,
+      conversaId,
+      { conteudo: danfe.conteudo, nome: danfe.nomeArquivo, mime: 'application/pdf' },
+      { legenda },
+    );
+
+    // O XML vai como segunda mensagem, e não anexado ao PDF: são dois
+    // arquivos distintos para quem recebe, e o contador do cliente costuma
+    // pedir só o XML.
+    //
+    // Falhar aqui **não** derruba a ação: o DANFE já chegou ao cliente, e
+    // deixar a exceção subir apagaria o registro de um envio que aconteceu. A
+    // tela avisa que o XML não foi.
+    let xmlEnviado = false;
+    let motivoXml: string | null = null;
+    if (input.incluirXml) {
+      try {
+        const xml = await this.notas.obterXml(
+          empresaId,
+          user,
+          input.notaSaidaId,
+          // O XML vai junto do DANFE, no mesmo envio: uma linha no histórico
+          // do cliente, não duas.
+          { registrarEvento: false },
+        );
+        await this.conversas.enviarConteudo(
+          empresaId,
+          user,
+          conversaId,
+          { conteudo: xml.conteudo, nome: xml.nomeArquivo, mime: 'application/xml' },
+          { legenda: `XML da NF ${danfe.numero}` },
+        );
+        xmlEnviado = true;
+      } catch (erro) {
+        motivoXml =
+          erro instanceof Error ? erro.message : 'Falha ao enviar o arquivo XML';
+      }
+    }
+
+    await this.registrarAcao(empresaId, user, conversaId, 'danfe', {
+      notaSaidaId: input.notaSaidaId,
+      chave: danfe.chave,
+      cancelada: danfe.cancelada,
+      xmlEnviado,
+    });
+
+    // Histórico de atendimento do cliente — a mesma agenda em que o envio de
+    // proposta já aparece. O registro da conversa (`whatsapp_acoes`) é
+    // auditoria do módulo; este é o que o comercial lê no cliente.
+    await this.prisma.withTenant(empresaId, (tx) =>
+      registrarAtividadeDocumento(tx, {
+        empresaId,
+        autor: user.id,
+        evento: 'danfe_whatsapp',
+        clienteId: danfe.clienteId,
+        vendedorId: danfe.vendedorId,
+        numero: danfe.numero,
+        descricao: [
+          `Enviado para ${clienteNome} pelo WhatsApp`,
+          xmlEnviado ? 'com o XML' : null,
+          danfe.cancelada ? 'NOTA CANCELADA' : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      }),
+    );
+
+    return { ...mensagem, xmlEnviado, motivoXml };
+  }
+
+  /**
+   * Manda a 2ª via do boleto em PDF pela conversa — o "manda o boleto" do dia
+   * a dia, agora com o arquivo e não só com os dados.
+   *
+   * Toda a regra fica no `TitulosReceberService`: valor atualizado quando
+   * vencido, recusa depois de 30 dias de atraso, recusa sem nosso número. O
+   * que se acrescenta aqui é a legenda com a linha digitável — o cliente que
+   * paga pelo aplicativo do banco copia dali e nem abre o PDF.
+   */
+  async enviarBoleto(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    input: WhatsappEnviarBoleto,
+  ) {
+    const { clienteId, clienteNome } = await this.contexto(
+      empresaId,
+      user,
+      conversaId,
+    );
+
+    const titulo = (await this.titulos.findOne(
+      empresaId,
+      user,
+      input.tituloReceberId,
+    )) as { clienteId: string | null };
+    if (titulo.clienteId !== clienteId) {
+      throw new BadRequestException(
+        `Este título não é do cliente ${clienteNome}.`,
+      );
+    }
+
+    // Como no DANFE: o histórico do cliente recebe "boleto enviado", não
+    // "boleto gerado" — é a mesma ação, e dois eventos só poluiriam a agenda.
+    const boleto = await this.titulos.gerarBoleto(
+      empresaId,
+      user,
+      input.tituloReceberId,
+      { registrarEvento: false },
+    );
+
+    const cabecalho =
+      boleto.encargos.diasAtraso > 0
+        ? `Boleto do título ${boleto.numero} — valor atualizado até ${this.data(
+            boleto.encargos.atualizadoAte,
+          )}: ${this.moeda(boleto.valor)}`
+        : `Boleto do título ${boleto.numero} — venc. ${this.data(
+            boleto.vencimento,
+          )} — ${this.moeda(boleto.valor)}`;
+
+    const mensagem = await this.conversas.enviarConteudo(
+      empresaId,
+      user,
+      conversaId,
+      { conteudo: boleto.conteudo, nome: boleto.nomeArquivo, mime: 'application/pdf' },
+      {
+        legenda:
+          input.legenda?.trim() ||
+          `${cabecalho}\n\nLinha digitável:\n${boleto.linhaDigitavelFormatada}`,
+      },
+    );
+
+    await this.registrarAcao(empresaId, user, conversaId, 'boleto', {
+      tituloReceberId: input.tituloReceberId,
+      valor: boleto.valor,
+      diasAtraso: boleto.encargos.diasAtraso,
+    });
+
+    await this.prisma.withTenant(empresaId, (tx) =>
+      registrarAtividadeDocumento(tx, {
+        empresaId,
+        autor: user.id,
+        evento: 'boleto_whatsapp',
+        clienteId: boleto.clienteId,
+        vendedorId: boleto.vendedorId,
+        numero: boleto.numeroDocumento,
+        descricao: `Enviado para ${clienteNome} pelo WhatsApp · ${this.titulos.descreverBoleto(
+          boleto.vencimento,
+          boleto.encargos,
+        )}`,
+      }),
+    );
+
+    return mensagem;
+  }
+
+  /**
+   * Rastro do que saiu pela conversa.
+   *
+   * É o que permite responder "este cliente já recebeu a 2ª via?" sem abrir a
+   * conversa — e sobrevive à remoção do título ou da nota, porque os ids são
+   * colunas simples, sem relação (ver `WhatsappAcaoRegistro`).
+   */
+  private registrarAcao(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    acao: string,
+    detalhe: Record<string, unknown> & {
+      tituloReceberId?: string;
+      notaSaidaId?: string;
+    },
+  ) {
+    return this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappAcaoRegistro.create({
+        data: {
+          empresaId,
+          conversaId,
+          acao,
+          ...(detalhe.tituloReceberId
+            ? { tituloReceberId: detalhe.tituloReceberId }
+            : {}),
+          detalhe,
+          executadaPor: user.id,
+        },
+      }),
+    );
+  }
+
+  /** Últimas notas do cliente: número, data e valor — o resumo em texto. */
   async enviarNotas(
     empresaId: string,
     user: AuthenticatedUser,

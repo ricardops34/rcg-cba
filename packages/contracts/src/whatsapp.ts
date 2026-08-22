@@ -493,6 +493,34 @@ export const whatsappNovoOrcamentoSchema = z.object({
 });
 export type WhatsappNovoOrcamento = z.infer<typeof whatsappNovoOrcamentoSchema>;
 
+/**
+ * 2ª via de DANFE anexada na conversa (ver
+ * `docs/planos/segunda-via-danfe-boleto.md`).
+ *
+ * Como no orçamento, só o documento é escolhido: o cliente é o da conversa, e
+ * o servidor recusa nota que não seja dele — um id válido de outro cliente da
+ * carteira mandaria a nota fiscal errada para a pessoa errada.
+ */
+export const whatsappEnviarDanfeSchema = z.object({
+  notaSaidaId: z.string().uuid("Escolha a nota fiscal a enviar"),
+  legenda: z.string().trim().max(1000).optional(),
+  /** Manda também o XML — o que o contador do cliente costuma pedir. */
+  incluirXml: z.boolean().default(false),
+});
+export type WhatsappEnviarDanfe = z.infer<typeof whatsappEnviarDanfeSchema>;
+
+/**
+ * 2ª via de boleto anexada na conversa.
+ *
+ * Vencido, sai com valor atualizado; passados 30 dias do vencimento, o
+ * servidor recusa (409) — a mesma regra da rota de download.
+ */
+export const whatsappEnviarBoletoSchema = z.object({
+  tituloReceberId: z.string().uuid("Escolha o título a enviar"),
+  legenda: z.string().trim().max(1000).optional(),
+});
+export type WhatsappEnviarBoleto = z.infer<typeof whatsappEnviarBoletoSchema>;
+
 // --------------------------------------------------------------------------
 // Exemplos para o Swagger
 // --------------------------------------------------------------------------

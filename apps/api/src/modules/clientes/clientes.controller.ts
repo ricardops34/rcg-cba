@@ -53,10 +53,15 @@ export class ClientesController {
     description:
       'Carteira de clientes da empresa ativa, restrita ao escopo hierárquico do usuário logado ' +
       '(vendedor vê a própria carteira; supervisor/gerente veem o time; admin vê tudo). ' +
-      'Busca por razão social, nome fantasia, código ERP ou CNPJ/CPF. Requer clientes.visualizar.',
+      'Busca por razão social, nome fantasia, código ERP ou CNPJ/CPF. Requer clientes.visualizar ' +
+      'ou posicao-cliente.visualizar — mesmo par de GET /clientes/:id, pelo mesmo motivo: é esta ' +
+      'rota que alimenta o combobox de cliente (vincular contato de WhatsApp, Orçamento, ' +
+      'Atividade, Oportunidade), e o perfil Vendedor tem posicao-cliente sem ter clientes. Não ' +
+      'amplia acesso: a Posição de Cliente já mostra os mesmos clientes, com mais informação, e ' +
+      'o escopo hierárquico continua valendo aqui.',
   })
   @ApiPaginationQuery()
-  @RequirePermission('clientes', 'visualizar')
+  @RequirePermission('clientes', 'visualizar', ['posicao-cliente', 'visualizar'])
   @Get()
   findAll(
     @Query() query: ClienteQueryDto,

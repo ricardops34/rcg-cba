@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   BarChart3,
+  Barcode,
   CalendarPlus,
   FilePlus2,
   FileSpreadsheet,
@@ -16,6 +17,7 @@ import type { Orcamento } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { STATUS_ORCAMENTO_LABEL } from "@/components/crud/orcamento-status";
+import { BoletoDialog, DanfeDialog } from "@/components/whatsapp/dialogos-segunda-via";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,6 +64,8 @@ export function AcoesCliente({
   const queryClient = useQueryClient();
   const [agendando, setAgendando] = useState(false);
   const [enviandoOrcamento, setEnviandoOrcamento] = useState(false);
+  const [enviandoBoleto, setEnviandoBoleto] = useState(false);
+  const [enviandoDanfe, setEnviandoDanfe] = useState(false);
   const permissoes = useAuthStore((s) => s.user?.permissoes);
 
   // Mesma leitura do menu lateral: a lista já vem resolvida pelo perfil, e o
@@ -121,6 +125,15 @@ export function AcoesCliente({
               Enviar títulos em aberto
             </DropdownMenuItem>
           ) : null}
+          {/* Boleto e DANFE mandam o **arquivo**, um documento por vez; os
+              dois itens acima mandam a lista em texto. São perguntas
+              diferentes do cliente ("o que eu devo?" × "me manda o boleto"). */}
+          {podeTitulos ? (
+            <DropdownMenuItem onClick={() => setEnviandoBoleto(true)}>
+              <Barcode className="size-4" />
+              Enviar boleto (2ª via)
+            </DropdownMenuItem>
+          ) : null}
           {podeNotas ? (
             <DropdownMenuItem
               disabled={executar.isPending}
@@ -128,6 +141,12 @@ export function AcoesCliente({
             >
               <FileSpreadsheet className="size-4" />
               Enviar últimas notas
+            </DropdownMenuItem>
+          ) : null}
+          {podeNotas ? (
+            <DropdownMenuItem onClick={() => setEnviandoDanfe(true)}>
+              <FileText className="size-4" />
+              Enviar DANFE (2ª via)
             </DropdownMenuItem>
           ) : null}
           {podePosicao ? (
@@ -167,6 +186,18 @@ export function AcoesCliente({
         conversaId={conversaId}
         aberto={enviandoOrcamento}
         onOpenChange={setEnviandoOrcamento}
+      />
+
+      <BoletoDialog
+        conversaId={conversaId}
+        aberto={enviandoBoleto}
+        onOpenChange={setEnviandoBoleto}
+      />
+
+      <DanfeDialog
+        conversaId={conversaId}
+        aberto={enviandoDanfe}
+        onOpenChange={setEnviandoDanfe}
       />
     </>
   );

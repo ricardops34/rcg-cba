@@ -773,6 +773,58 @@ export const INTEGRACAO_NOTA_SAIDA_EXAMPLE: IntegracaoNotaSaida = {
 };
 
 // ------------------------------------------------------------------
+// XML autorizado da NF-e (insumo do DANFE — 2ª via).
+// ------------------------------------------------------------------
+// Ver docs/planos/segunda-via-danfe-boleto.md. A plataforma guarda o XML e
+// renderiza o DANFE sob demanda; não guarda o PDF.
+
+export const integracaoNfeXmlSchema = z
+  .object({
+    xml: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Conteúdo do XML autorizado (nfeProc), em texto"),
+    xmlBase64: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("O mesmo XML em base64 — alternativa para ERP que não escapa texto em JSON"),
+  })
+  // Um dos dois, nunca os dois: com ambos preenchidos não há como saber qual é
+  // o arquivo verdadeiro, e gravar o errado só apareceria na hora da 2ª via.
+  .refine((v) => !!v.xml !== !!v.xmlBase64, {
+    message: "Envie xml OU xmlBase64 (exatamente um dos dois)",
+  });
+export type IntegracaoNfeXml = z.infer<typeof integracaoNfeXmlSchema>;
+
+export const INTEGRACAO_NFE_XML_EXAMPLE: IntegracaoNfeXml = {
+  xml: '<?xml version="1.0" encoding="UTF-8"?><nfeProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/nfe">...</nfeProc>',
+};
+
+/** Resposta do envio do XML: o que a plataforma extraiu e guardou. */
+export const integracaoNfeXmlResultadoSchema = z.object({
+  codigoLegado: z.number().int(),
+  chaveNfe: z.string(),
+  numero: z.string().nullable(),
+  serie: z.string().nullable(),
+  protocolo: z.string().nullable(),
+  situacao: z.string(),
+  recebidoEm: z.string().datetime(),
+});
+export type IntegracaoNfeXmlResultado = z.infer<typeof integracaoNfeXmlResultadoSchema>;
+
+export const INTEGRACAO_NFE_XML_RESULTADO_EXAMPLE: IntegracaoNfeXmlResultado = {
+  codigoLegado: 45012,
+  chaveNfe: "50260600000000000191550010001160671000116060",
+  numero: "116067",
+  serie: "1",
+  protocolo: "150260000123456",
+  situacao: "autorizada",
+  recebidoEm: "2026-08-21T18:12:00.000Z",
+};
+
+// ------------------------------------------------------------------
 // Títulos a receber — chave: codigoLegado.
 // ------------------------------------------------------------------
 
@@ -795,6 +847,51 @@ export const integracaoTituloReceberCreateSchema = z.object({
   formaPgto: z.string().trim().max(5).nullable().optional(),
   historico: z.string().trim().max(500).nullable().optional(),
   ativo: z.boolean().default(true),
+
+  // ---- Cobrança bancária: o que a 2ª via de boleto precisa saber ----
+  // (ver docs/planos/segunda-via-danfe-boleto.md). Todos opcionais: título de
+  // outra forma de pagamento (dinheiro, depósito, PIX) não tem boleto.
+  nossoNumero: z
+    .string()
+    .trim()
+    .max(20)
+    .nullable()
+    .optional()
+    .describe(
+      "Identificação do boleto no banco, gerada pelo ERP no registro. Sem ela a plataforma não emite 2ª via.",
+    ),
+  carteira: z
+    .string()
+    .trim()
+    .max(2)
+    .nullable()
+    .optional()
+    .describe("Carteira do título, quando difere da carteira da conta de cobrança"),
+  contaBancariaDescricao: z
+    .string()
+    .trim()
+    .max(80)
+    .nullable()
+    .optional()
+    .describe(
+      "Conta de cobrança usada no registro, pela descrição cadastrada na plataforma. Omitido = conta padrão da empresa.",
+    ),
+  codigoBarras: z
+    .string()
+    .trim()
+    .max(44)
+    .nullable()
+    .optional()
+    .describe(
+      "Código de barras como o banco registrou (44 dígitos). Quando enviado, prevalece sobre o cálculo da plataforma.",
+    ),
+  linhaDigitavel: z
+    .string()
+    .trim()
+    .max(60)
+    .nullable()
+    .optional()
+    .describe("Linha digitável registrada (47 dígitos). Derivada do código de barras quando omitida."),
 });
 export type IntegracaoTituloReceberCreate = z.infer<typeof integracaoTituloReceberCreateSchema>;
 
@@ -833,6 +930,11 @@ export const INTEGRACAO_TITULO_RECEBER_CREATE_EXAMPLE: IntegracaoTituloReceberCr
   formaPgto: "B",
   historico: null,
   ativo: true,
+  nossoNumero: "00000001160",
+  carteira: "09",
+  contaBancariaDescricao: "Bradesco 237 — carteira 09",
+  codigoBarras: null,
+  linhaDigitavel: null,
 };
 
 export const INTEGRACAO_TITULO_RECEBER_EXAMPLE: IntegracaoTituloReceber = {

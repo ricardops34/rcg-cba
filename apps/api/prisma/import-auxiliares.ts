@@ -217,12 +217,17 @@ async function main() {
         const dados = {
           descricao: c.descricao.trim(),
           ativo: c.status !== 'B',
-          usado: c.usado === 'S' ? true : c.usado === 'N' ? false : null,
           categoriaPaiId: null as string | null,
         };
+        // `usado` só entra na CRIAÇÃO: o legado dá o valor inicial, e daí em
+        // diante quem manda é a plataforma (Cadastros > Categorias marca quais
+        // entram no Dashboard Comercial). Estava no `update` também, e assim
+        // toda carga desfazia a marcação feita na tela — sem erro nenhum, o
+        // dashboard só voltava ao que era.
+        const usadoInicial = c.usado === 'S' ? true : c.usado === 'N' ? false : null;
         const nova = await tx.categoria.upsert({
           where: { empresaId_codigoErp: { empresaId, codigoErp } },
-          create: { ...dados, empresaId, codigoErp },
+          create: { ...dados, empresaId, codigoErp, usado: usadoInicial },
           update: dados,
         });
         categoriaLegadoParaNovo.set(c.id, nova.id);
@@ -236,12 +241,13 @@ async function main() {
         const dados = {
           descricao: s.descricao.trim(),
           ativo: s.status !== 'B',
-          usado: null,
           categoriaPaiId: pai,
         };
+        // Mesmo tratamento das raízes: subcategoria nasce sem marcação e o
+        // import não mexe nela depois. O legado não tem o campo aqui.
         await tx.categoria.upsert({
           where: { empresaId_codigoErp: { empresaId, codigoErp } },
-          create: { ...dados, empresaId, codigoErp },
+          create: { ...dados, empresaId, codigoErp, usado: null },
           update: dados,
         });
       }

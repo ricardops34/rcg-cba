@@ -287,12 +287,11 @@ correta e é trabalho próprio, que precisa entrar na conta. **Feito em 2026-08-
 `apps/api/src/modules/orcamentos/orcamento-pdf.ts`, a tela passou a baixar de
 `GET /orcamentos/:id/pdf`, e o arquivo do navegador foi removido.
 
-**Boleto/NF-e:** hoje a plataforma **não emite** nem guarda o PDF de nenhum dos dois —
-`TituloReceber` tem os dados do título, não o boleto renderizado, e `NotaSaida` tem a
-chave da NF-e, não o DANFE. Enviar "o boleto" exige integração com o banco/ERP que
-**não existe ainda**. Registrado como dependência externa, fora deste plano: na v1, a
-ação manda os *dados* (linha digitável, vencimento, valor; número e chave da NF-e),
-não o arquivo.
+**Boleto/NF-e:** era dependência externa quando este plano foi escrito — a v1 mandava
+só os *dados* (número, vencimento, valor). **Resolvido em 2026-08-21** por
+[`segunda-via-danfe-boleto.md`](./segunda-via-danfe-boleto.md): o ERP passou a empurrar
+o XML autorizado da NF-e (a plataforma renderiza o DANFE) e o nosso número do boleto
+(a plataforma monta a ficha de compensação). A conversa anexa os dois arquivos.
 
 ---
 
@@ -318,8 +317,11 @@ texto) — não é burocracia, é o que separa a ferramenta de um grampo.
   separada para ler as dos outros — a segunda deve ser concedida conscientemente.
 - Toda leitura de conversa alheia é registrada (mesma ideia do `acessos_log`).
 
-**Retenção** por parâmetro (`WHATSAPP_RETENCAO_DIAS`), com expurgo de mensagens e
-mídia. Sem isso a base cresce sem limite e o passivo de dado pessoal cresce junto.
+~~**Retenção** por parâmetro, com expurgo de mensagens e mídia.~~ **Descartado
+pelo usuário em 2026-08-21.** Era recomendação deste plano, não requisito do
+negócio; não implementar. O campo "retenção (dias)" continua na tela de
+Administração > WhatsApp e continua sem efeito — se incomodar, tirar o campo,
+não escrever a rotina.
 
 **LGPD:** são dados pessoais de terceiros (os clientes) numa base da empresa. Vale
 definir antes: finalidade declarada, prazo, e como responder a um pedido de exclusão.
@@ -384,12 +386,12 @@ Sugestão de fatiamento, cada fatia com valor próprio:
    receber/enviar texto, vínculo com cliente, tela de três colunas. É o piloto.
 2. **Fatia 2 — Ferramentas.** Agendamento, orçamento (com o PDF migrado para o
    servidor), posição do cliente, dados de NF-e e título.
-3. **Fatia 3 — Governança.** Acesso do supervisor, registro de leitura, retenção,
-   aceite do vendedor, tela da equipe.
+3. **Fatia 3 — Governança.** Acesso do supervisor, registro de leitura, aceite do
+   vendedor, tela da equipe. (Retenção/expurgo saiu do escopo em 2026-08-21.)
 4. **Fatia 4 — Mídia e o resto.** Imagem, documento, áudio; indicadores de entrega.
 
 A Fatia 3 não é opcional nem "depois se der": se a Fatia 1 for para produção sem ela,
-já haverá conversa de cliente gravada sem regra de acesso nem de descarte.
+já haverá conversa de cliente gravada sem regra de acesso.
 
 ---
 
@@ -681,6 +683,107 @@ sino na tela.
 plataforma (o worker não informa), então a notificação continua pendente até
 ele abrir a conversa por aqui — a mesma limitação que `naoLidas` já tinha.
 
+### Título vencido: uma linha por cliente, e só para vendedor (2026-08-21)
+
+Dois ajustes pedidos ao ver o sino cheio na tela real.
+
+**Uma notificação por cliente, não por título.** O feed mostrava uma linha por
+parcela atrasada — um cliente com doze parcelas ocupava as doze primeiras
+posições e escondia todo o resto. Agora a varredura agrega por cliente:
+título = razão social, descrição = `3 títulos vencidos · R$ 1.645,00`, e a
+linha leva para `/comercial/posicao-cliente/{clienteId}`, onde as parcelas
+estão detalhadas. Em dev, 78 linhas viraram 48 — cobrindo os mesmos 79 títulos.
+
+O que mudou por dentro:
+
+- `referenciaId` passa a ser o **cliente**. É o que faz a parcela seguinte
+  somar na linha existente (o `ON CONFLICT` reescreve título e descrição da
+  pendente) em vez de abrir outra.
+- A agregação virou `$queryRaw` com `GROUP BY`, porque o `LOTE` precisa
+  limitar **clientes**: contando títulos, um cliente com centenas de parcelas
+  consumiria a janela inteira e os outros nunca apareceriam.
+- O `jaAvisados` dos outros tipos não serve aqui: a linha **pendente** precisa
+  ser reprocessada para a contagem acompanhar. A regra virou "já leu **e** nada
+  venceu (nem entrou) depois" — e é `GREATEST(vencimento, createdAt)` porque o
+  import do ERP traz parcela já vencida, que pelo vencimento seria velha e
+  nunca avisaria.
+- O "para de avisar" deixou de olhar o título pago e passa a olhar o cliente:
+  sai do feed quando **nenhuma** parcela dele está vencida em aberto. De quebra,
+  é o que aposenta as linhas do desenho antigo — `referenciaId` de título nunca
+  casa com `clienteId`.
+- Migration `20260821161725_notificacoes_titulo_vencido_por_cliente` apaga as
+  linhas antigas. Apaga, não marca como lida: ninguém as leu, e "lida" é um
+  fato do usuário, não um jeito de esconder registro.
+
+**Só vendedor recebe.** Supervisor e gerente também têm cadastro em
+`vendedores` e podem ter título creditado a eles, mas cobrança de carteira é do
+vendedor — o acompanhamento da equipe tem tela própria. O filtro é
+`tipo = 'vendedor'`, mais ativo/não desligado. Em dev isso tirou os 62 títulos
+de supervisor que antes viravam aviso.
+
+Verificado em dev depois de reiniciar a API: 48 linhas, um único destinatário,
+todos do tipo `vendedor`, com o texto e a rota certos. **Falta a conferência
+visual no sino** — a mesma que já estava pendente do feed.
+
+### Vincular contato a cliente não listava nenhum cliente (2026-08-21)
+
+Sintoma: no painel "Sem cliente vinculado", o combobox abria só com a opção
+"Sem cliente". Não era o WhatsApp — era permissão, e não a que a tela sugeria.
+
+O `ClienteCombobox` busca em `GET /clientes`, que exigia **só**
+`clientes.visualizar`. O perfil **Vendedor** não tem essa permissão: tem
+`posicao-cliente.visualizar`. A chamada voltava 403 e o `useQuery` deixava a
+lista vazia, sem mensagem — o combobox não distingue "não achei" de "não
+posso".
+
+O buraco era maior que o vínculo: o mesmo combobox alimenta **Orçamento,
+Atividade, Oportunidade e Sugestão de Compra**. Para o perfil Vendedor, nenhum
+deles listava cliente.
+
+Correção: `GET /clientes` passou a aceitar `clientes.visualizar` **ou**
+`posicao-cliente.visualizar` — exatamente o par que `GET /clientes/:id` e
+`GET /clientes/:id/mix` já usavam, e pelo mesmo motivo. Não amplia acesso: a
+Posição de Cliente já mostra os mesmos clientes com muito mais informação
+(vendas, títulos), e o escopo hierárquico continua valendo na listagem.
+
+A alternativa seria marcar `clientes.visualizar` no perfil Vendedor, mas isso
+também abriria a tela de Clientes no menu — a rotina controla as duas coisas.
+
+**Não testado logado como Vendedor** (sem credenciais em dev): o que foi
+verificado é que o `PermissionsGuard` trata a lista como OR, que a API sobe e
+que o perfil Vendedor tem `posicao-cliente.visualizar` no banco.
+
+### "Atendimento" no menu da Posição de Cliente (2026-08-21)
+
+A listagem de Posição de Cliente ganhou a ação **Atendimento**, que abre a
+conversa daquele cliente (`/comercial/atendimento?conversa=<id>`). Aparece
+**só para cliente com contato de WhatsApp já vinculado** — sem conversa não há
+o que abrir.
+
+A linha da listagem passou a trazer `whatsappConversaId`, resolvido por
+subselect no SQL de `listagemPosicao`. Duas decisões:
+
+- **O escopo é o do WhatsApp, não o da carteira.** Ler conversa da equipe
+  exige `whatsapp-equipe.visualizar`, e quem não tem cadastro de vendedor não
+  lê nenhuma. O campo sai nulo quando a conversa é de vendedor fora desse
+  escopo: oferecer o atalho já contaria que a conversa existe, e conversa de
+  cliente é dado pessoal.
+- `escopoLeitura` saiu de `WhatsappSessaoService` para a função
+  `escopoLeituraWhatsapp` (`modules/whatsapp/escopo-whatsapp.ts`), porque
+  injetar o service no `ClientesService` fecharia um ciclo de módulos —
+  WhatsApp já depende de Orçamentos, que depende de Clientes. O método do
+  service continua existindo e delega.
+
+No mesmo menu, **"Alterar Cliente" passou a depender de `clientes.editar`**:
+quem não pode editar não vê mais a opção. Esconder não autoriza — a rota
+continua conferindo; é para não oferecer o que volta 403. "Visualizar Cliente"
+e "Incluir Orçamento" seguem sem essa checagem no menu.
+
+Verificado: build da API e typecheck do web limpos; o subselect testado no
+banco com um vínculo simulado em transação com `ROLLBACK` — devolve a conversa
+dentro do escopo e nulo fora dele. **Em dev nenhuma das 4 conversas está
+vinculada a cliente**, então a opção só vai aparecer na tela depois de
+vincular um contato pela tela de Atendimento.
 
 ### Recibos de entrega e leitura (2026-08-18)
 
@@ -848,30 +951,37 @@ cliente** — ambos entregues.
   de pé com o processo morto, e o worker acumula falha de restauração. Foi o
   caso de `NotasSaidaService`, que não estava exportado no módulo.
 
-### Bloqueios de deploy em produção (descobertos em 2026-08-17, não corrigidos)
+### Bloqueios de deploy em produção **(corrigidos no repositório em 2026-08-21)**
 
-O worker **não sobe em produção hoje**, por três motivos independentes. Nada
-disso aparece em dev, onde o `docker-compose.dev.yml` já traz a configuração
-certa:
+Descobertos em 2026-08-17. Os três eram de configuração, não de código, e
+**estão resolvidos no repositório** — falta executar na VPS. O procedimento
+completo virou a seção "WhatsApp em produção" do `docs/runbook-operacao.md`,
+que é a fonte única; o que segue é só o registro do que era e do que mudou.
 
-1. **A imagem não é publicada.** `publish.ps1` builda e envia só `api` e
-   `web`; o `stack.rcgcba.prod.yml` referencia
-   `bjsoftware/rcgcba-whatsapp-worker:latest`, que não existe no Docker Hub. O
-   Dockerfile de produção existe (`docker/whatsapp-worker.Dockerfile`, Node 22)
-   e nunca foi buildado.
-2. **A `DATABASE_URL` do worker está errada no stack.** Ele recebe a mesma
-   `${DATABASE_URL}` da API, que é o role `plataforma_app` — sem DDL e sem
-   acesso ao schema `whatsapp`. O worker precisa do role `whatsapp_store` com
-   `search_path=whatsapp` (ver dev, linha do serviço `whatsapp-worker`). Com a
-   URL da API, a biblioteca falha ao rodar as migrations dela na conexão.
+1. ~~**A imagem não é publicada.**~~ `publish.ps1` passou a buildar e publicar
+   `bjsoftware/rcgcba-whatsapp-worker:latest` como item `[3/3]`, junto com API e
+   web. O `docker build` de produção **foi executado em 2026-08-21 e passa** —
+   era a primeira vez que o `docker/whatsapp-worker.Dockerfile` rodava. Sem
+   push: publicar é decisão de deploy.
+2. ~~**A `DATABASE_URL` do worker está errada no stack.**~~ O worker passou a
+   receber `${WHATSAPP_STORE_DATABASE_URL}`, variável própria, em vez do
+   `${DATABASE_URL}` da API — que é o `plataforma_app`, sem DDL e sem acesso ao
+   schema `whatsapp`. Documentada em `docker/.env.prod.example`, com o motivo.
+   **Precisa ser preenchida no Portainer antes do redeploy**, senão o worker
+   sobe sem `DATABASE_URL` nenhuma.
 3. **A senha do role é placeholder de desenvolvimento**
-   (`whatsapp_store_dev_only`, definida na migration
-   `20260815024500_whatsapp_store_schema`). Precisa ser trocada em produção —
-   mesmo tratamento que o `plataforma_app` recebeu. Quem tem essa senha **fala
-   pelo WhatsApp dos vendedores**.
+   (`whatsapp_store_dev_only`, migration `20260815024500`). Esta continua
+   **pendente e é manual** — o `ALTER ROLE` roda no banco da VPS, não sai do
+   repositório. Comando no runbook. Quem tem essa senha **fala pelo WhatsApp
+   dos vendedores**.
 
-Nada disso está no `docs/runbook-operacao.md`, que não menciona WhatsApp em
-nenhum ponto. Ao corrigir, registrar lá — é a fonte única.
+Um quarto item apareceu ao revisar: `WHATSAPP_WORKER_TOKEN` **não estava** no
+`.env.prod.example`, embora o stack o exija nos dois serviços e o worker recuse
+subir sem ele. Adicionado.
+
+~~Nada disso está no `docs/runbook-operacao.md`~~ — registrado lá em 2026-08-21,
+na seção "WhatsApp em produção", marcada `[a confirmar na VPS]` até alguém
+executar.
 
 ### Ao retomar: por onde continuar
 
@@ -884,12 +994,15 @@ Na ordem, do mais barato ao mais caro:
    aparelho para trazer o histórico de conversas do celular.
 3. ~~**Orçamento pela conversa**~~ — **feito em 2026-08-17** (ver a seção
    daquela data). Falta só o teste de envio real, com aparelho pareado.
-4. **Fatia 3 (governança), que não é opcional antes de produção:** expurgo por
-   retenção (`retencaoDias` já é configurável, a rotina que apaga não existe)
-   e registro de leitura de conversa alheia.
-5. **Os três bloqueios de deploy em produção** (seção acima): imagem do worker
-   não publicada, `DATABASE_URL` errada no stack e senha placeholder do role
-   `whatsapp_store`.
+4. **Fatia 3 (governança):** registro de leitura de conversa alheia — e antes
+   disso, conferir se o supervisor hoje consegue abrir conversa de outro
+   vendedor; se não consegue, não há o que registrar ainda. (Expurgo por
+   retenção foi descartado pelo usuário em 2026-08-21.)
+5. **Deploy do worker em produção** (seção acima): a parte de repositório foi
+   feita em 2026-08-21 — falta **executar na VPS**, seguindo a seção "WhatsApp
+   em produção" do runbook. Preencher `WHATSAPP_STORE_DATABASE_URL` e
+   `WHATSAPP_WORKER_TOKEN` no Portainer e **trocar a senha do role
+   `whatsapp_store`** antes do redeploy.
 
 Para validar qualquer coisa ponta a ponta: os três containers (`api`, `web`,
 `whatsapp-worker`) precisam de **restart**, não de watch — e um erro de
@@ -900,11 +1013,14 @@ o processo morto. Ver `docs/runbook-operacao.md`.
 
 - **Feed de notificações no sino** (item 4 da lista original): não foi feito
   nesta sessão — ficou pronto em 2026-08-18, ver a seção daquela data.
-- **Boleto e DANFE em PDF** continuam fora: a plataforma não emite nem guarda
-  esses arquivos. As ações mandam os **dados** (número, vencimento, valor).
-- **Expurgo por retenção** (`retencaoDias` já é configurável, mas a rotina que
-  apaga não existe) e o **registro de leitura de conversa alheia** seguem
-  pendentes — são da Fatia 3.
+- **Boleto e DANFE em PDF** ficaram fora **daquela sessão**. Deixaram de estar
+  fora em 2026-08-21: a conversa passou a anexar os dois arquivos — ver
+  [`segunda-via-danfe-boleto.md`](./segunda-via-danfe-boleto.md). As ações de
+  texto (`/acoes/titulos` e `/acoes/notas`) continuam existindo, para a
+  pergunta "o que eu tenho em aberto?", que é lista e não documento.
+- **Expurgo por retenção**: descartado pelo usuário em 2026-08-21 — não é
+  para implementar. O **registro de leitura de conversa alheia** segue
+  pendente — é da Fatia 3.
 
 ---
 
@@ -963,7 +1079,9 @@ acontecendo.
 
 ## Fora de escopo (registrado)
 
-- Emissão de boleto e DANFE (dependem de integração bancária/ERP inexistente).
+- Emissão de boleto e DANFE — **saiu do fora-de-escopo em 2026-08-21** (2ª via de
+  documento já registrado; ver `segunda-via-danfe-boleto.md`). Continua fora: *emitir*
+  NF-e e *registrar* cobrança no banco, que são atos do ERP.
 - Chatbot automático respondendo cliente sem vendedor — o agente Grok pode **sugerir**
   resposta, mas responder sozinho no nome do vendedor é outra decisão, com outro risco.
 - Multi-atendimento (vários vendedores no mesmo número) e fila de atendimento.

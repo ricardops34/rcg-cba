@@ -22,6 +22,7 @@ import { EscopoModule } from './modules/escopo/escopo.module';
 import { EstoqueModule } from './modules/estoque/estoque.module';
 import { NotasSaidaModule } from './modules/notas-saida/notas-saida.module';
 import { TitulosReceberModule } from './modules/titulos-receber/titulos-receber.module';
+import { ContasBancariasModule } from './modules/contas-bancarias/contas-bancarias.module';
 import { PoliticaSenhaModule } from './modules/politica-senha/politica-senha.module';
 import { ObjetivosModule } from './modules/objetivos/objetivos.module';
 import { OportunidadesModule } from './modules/oportunidades/oportunidades.module';
@@ -37,6 +38,7 @@ import { SugestaoCompraModule } from './modules/sugestao-compra/sugestao-compra.
 import { AgenteModule } from './modules/agente/agente.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { NotificacoesModule } from './modules/notificacoes/notificacoes.module';
+import { InicioModule } from './modules/inicio/inicio.module';
 import { AcessosModule } from './modules/acessos/acessos.module';
 
 @Module({
@@ -69,6 +71,7 @@ import { AcessosModule } from './modules/acessos/acessos.module';
     EstoqueModule,
     NotasSaidaModule,
     TitulosReceberModule,
+    ContasBancariasModule,
     PoliticaSenhaModule,
     ObjetivosModule,
     OportunidadesModule,
@@ -84,6 +87,7 @@ import { AcessosModule } from './modules/acessos/acessos.module';
     AgenteModule,
     WhatsappModule,
     NotificacoesModule,
+    InicioModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

@@ -32,6 +32,17 @@ export const notaSaidaSchema = z.object({
   mensagem: z.string().nullable(),
   comodato: z.boolean(),
   ativo: z.boolean(),
+
+  // 2ª via de DANFE (ver docs/planos/segunda-via-danfe-boleto.md).
+  // "autorizada" | "cancelada" | "denegada", como veio do ERP.
+  situacaoNfe: z.string().nullable(),
+  protocoloNfe: z.string().nullable(),
+  xmlRecebidoEm: z.string().datetime().nullable(),
+  // O XML autorizado chegou e está em disco — é o que habilita DANFE e o
+  // download do próprio XML. O nome do arquivo não sai da API: é detalhe do
+  // servidor, e expor caminho de arquivo só dá superfície para adivinhação.
+  temXml: z.boolean(),
+
   ...auditFieldsSchema.shape,
 });
 export type NotaSaida = z.infer<typeof notaSaidaSchema>;
@@ -107,6 +118,10 @@ export const NOTA_SAIDA_EXAMPLE: NotaSaida = {
   mensagem: null,
   comodato: false,
   ativo: true,
+  situacaoNfe: "autorizada",
+  protocoloNfe: "150260000123456",
+  xmlRecebidoEm: "2026-06-30T18:12:00.000Z",
+  temXml: true,
   createdAt: "2026-07-24T12:00:00.000Z",
   updatedAt: "2026-07-24T12:00:00.000Z",
   createdBy: null,

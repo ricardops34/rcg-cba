@@ -25,9 +25,12 @@ import {
   calcularStatusTituloReceber,
   inicioDoDia,
 } from '../titulos-receber/titulo-receber-status';
+import { podeEmitirBoleto } from '../titulos-receber/boleto-atualizacao';
+import { comFlagXml } from '../notas-saida/nota-flags';
 import { ClienteCampoConfigService } from '../cliente-campo-config/cliente-campo-config.service';
 import { ClienteAlteracoesService } from './cliente-alteracoes.service';
 import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
+import { escopoLeituraWhatsapp } from '../whatsapp/escopo-whatsapp';
 
 /**
  * O que conta como venda na Posição de Cliente — a mesma definição das
@@ -81,6 +84,7 @@ interface ListagemPosicaoRawRow {
   temTituloVencido: boolean;
   temTituloVencendo: boolean;
   temTituloNaoVencido: boolean;
+  whatsappConversaId: string | null;
 }
 
 // Campos que a listagem aceita ordenar por — whitelist pra não repassar
@@ -512,12 +516,21 @@ export class ClientesService {
         ),
       ]);
 
+      // Conta de cobrança padrão: decide se o título sem conta própria pode
+      // oferecer 2ª via de boleto. Uma consulta para a página toda, não uma
+      // por título (ver `podeEmitirBoleto`).
+      const temContaPadrao = !!(await tx.contaBancaria.findFirst({
+        where: { empresaId, deletedAt: null, ativo: true, padrao: true },
+        select: { id: true },
+      }));
+
       // Corte na meia-noite: "Títulos vencidos" soma só quem venceu antes de
       // hoje — quem vence hoje ainda conta como em aberto.
       const hoje = inicioDoDia();
       const titulosComStatus = titulos.map((titulo) => ({
         ...titulo,
         status: calcularStatusTituloReceber(titulo, hoje),
+        temBoleto: podeEmitirBoleto(titulo, temContaPadrao, hoje),
       }));
       const titulosAbertos = titulosComStatus.filter(
         (t) => t.status !== 'baixado',
@@ -534,8 +547,10 @@ export class ClientesService {
       return {
         cliente,
         resumo,
-        notas,
-        comodatos,
+        // A flag de XML vem do mesmo helper das rotinas de Notas de Saída — a
+        // tela de posição oferece o mesmo botão de 2ª via e não pode divergir.
+        notas: notas.map(comFlagXml),
+        comodatos: comodatos.map(comFlagXml),
         titulos: titulosComStatus,
         mix,
       };
@@ -600,6 +615,18 @@ export class ClientesService {
 
       const where = Prisma.join(condicoes, ' AND ');
 
+      // Escopo de leitura do WhatsApp, que **não** é o mesmo da carteira: ler
+      // conversa da equipe exige `whatsapp-equipe.visualizar`, e quem não tem
+      // cadastro de vendedor não vê nenhuma (ver `escopoLeituraWhatsapp`).
+      // Resolvido aqui, uma vez, e não por linha.
+      const escopoWa = await escopoLeituraWhatsapp(tx, empresaId, user);
+      const escopoWhatsapp =
+        escopoWa === null
+          ? Prisma.sql`true`
+          : escopoWa.length > 0
+            ? Prisma.sql`ws."vendedorId" IN (${Prisma.join(escopoWa)})`
+            : Prisma.sql`false`;
+
       const sortField =
         query.sortBy && LISTAGEM_POSICAO_SORT_EXPR[query.sortBy] ? query.sortBy : 'ultimaCompra';
       const sortDir = query.sortOrder === 'desc' ? 'DESC' : 'ASC';
@@ -652,7 +679,25 @@ export class ClientesService {
             WHERE ta."clienteId" = c.id AND ta."empresaId" = c."empresaId"
               AND ta."deletedAt" IS NULL AND ta."dtBaixa" IS NULL
               AND (ta."vencimento" IS NULL OR ta."vencimento" >= CURRENT_DATE + interval '7 days')
-          ) AS "temTituloNaoVencido"
+          ) AS "temTituloNaoVencido",
+          -- Conversa de WhatsApp que ESTE usuário pode abrir, para a ação
+          -- "Atendimento" do menu da linha. Sai nulo quando o cliente não tem
+          -- contato vinculado — e também quando a conversa existe mas é de um
+          -- vendedor fora do escopo de leitura dele: oferecer o atalho já
+          -- contaria que a conversa existe, e conversa de cliente é dado
+          -- pessoal (mesma regra do filtro da tela de Atendimento).
+          --
+          -- Não arquivada primeiro: a arquivada abre, mas o cabeçalho da tela
+          -- se apoia na listagem padrão, que não a traz.
+          (
+            SELECT wc."id" FROM whatsapp_conversas wc
+            JOIN whatsapp_sessoes ws ON ws."id" = wc."sessaoId"
+            WHERE wc."clienteId" = c.id
+              AND wc."empresaId" = c."empresaId"
+              AND ${escopoWhatsapp}
+            ORDER BY wc."arquivada" ASC, wc."ultimaMensagemEm" DESC NULLS LAST
+            LIMIT 1
+          ) AS "whatsappConversaId"
         FROM clientes c
         -- Venda dos últimos 30/90 dias conta só nota de venda, igual à aba de
         -- notas do detalhe e às Consultas (ver NOTA_DE_VENDA_SQL).
@@ -699,6 +744,7 @@ export class ClientesService {
         temTituloVencido: r.temTituloVencido,
         temTituloVencendo: r.temTituloVencendo,
         temTituloNaoVencido: r.temTituloNaoVencido,
+        whatsappConversaId: r.whatsappConversaId,
       }));
 
       return buildPaginatedResult(data, countRows[0]?.count ?? 0, query);

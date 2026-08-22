@@ -31,6 +31,18 @@ export const tituloReceberSchema = z.object({
   formaPgto: z.string().nullable(),
   historico: z.string().nullable(),
   ativo: z.boolean(),
+
+  // 2ª via de boleto (ver docs/planos/segunda-via-danfe-boleto.md).
+  contaBancariaId: z.string().uuid().nullable(),
+  nossoNumero: z.string().nullable(),
+  carteira: z.string().nullable(),
+  linhaDigitavel: z.string().nullable(),
+  // Decidido pelo backend: tem nosso número, tem conta de cobrança resolvida e
+  // o título não está baixado. A tela usa isto em vez de recalcular a regra —
+  // duas versões da mesma condição divergiriam, e o botão prometeria um
+  // download que a rota recusa com 409.
+  temBoleto: z.boolean(),
+
   ...auditFieldsSchema.shape,
 });
 export type TituloReceber = z.infer<typeof tituloReceberSchema>;
@@ -65,6 +77,11 @@ export const TITULO_RECEBER_EXAMPLE: TituloReceber = {
   formaPgto: "B",
   historico: null,
   ativo: true,
+  contaBancariaId: "0f2c9c1a-7b3d-4e5f-8a91-b2c3d4e5f607",
+  nossoNumero: "09000001160670",
+  carteira: "09",
+  linhaDigitavel: null,
+  temBoleto: true,
   createdAt: "2026-07-24T12:00:00.000Z",
   updatedAt: "2026-07-24T12:00:00.000Z",
   createdBy: null,
