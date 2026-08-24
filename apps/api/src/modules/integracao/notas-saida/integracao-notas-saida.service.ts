@@ -1,6 +1,3 @@
-import { randomUUID } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
 import {
   ConflictException,
   Injectable,
@@ -18,6 +15,7 @@ import {
 import type {
   IntegracaoNfeXml,
   IntegracaoNfeXmlResultado,
+  IntegracaoNfeXmlStatus,
   IntegracaoNotaSaida,
   IntegracaoNotaSaidaCreate,
   IntegracaoNotaSaidaItem,
@@ -25,12 +23,16 @@ import type {
   IntegracaoNotaSaidaUpdate,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
+import {
+  deveReativar,
+  LIMPAR_EXCLUSAO,
+} from '../common/reativar-excluido';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 import {
-  NFE_DIR,
+  extrairNfe,
   NFE_XML_MAX_BYTES,
-} from '../../../common/uploads/uploads.config';
-import { extrairNfe, NfeXmlInvalidoError } from '../../notas-saida/nfe-xml';
+  NfeXmlInvalidoError,
+} from '../../notas-saida/nfe-xml';
 
 const INCLUDE = {
   cliente: { select: { codigoErp: true } },
@@ -107,6 +109,11 @@ export class IntegracaoNotasSaidaService {
         empresaId,
         deletedAt: null,
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
+        // O filtro olha `xmlRecebidoEm`, e não a existência da linha em
+        // `nota_saida_xml`: é uma coluna da própria tabela, então a varredura
+        // de "o que falta enviar" não vira um join na tabela dos XMLs.
+        ...(query.semXml === true ? { xmlRecebidoEm: null } : {}),
+        ...(query.semXml === false ? { xmlRecebidoEm: { not: null } } : {}),
         ...(query.search
           ? { numero: { contains: query.search, mode: 'insensitive' as const } }
           : {}),
@@ -262,11 +269,10 @@ export class IntegracaoNotasSaidaService {
       const existente = await tx.notaSaida.findFirst({
         where: { empresaId, codigoLegado: input.codigoLegado },
       });
-      if (existente) {
-        throw new ConflictException(
-          `Já existe nota de saída com codigoLegado '${input.codigoLegado}'`,
-        );
-      }
+      const reativar = deveReativar(
+        existente,
+        `Já existe nota de saída com codigoLegado '${input.codigoLegado}'`,
+      );
 
       const { clienteId, vendedorId, condicaoPagamentoId } =
         await this.resolverRefs(
@@ -286,9 +292,7 @@ export class IntegracaoNotasSaidaService {
         dtEmissao,
       );
 
-      const criada = await tx.notaSaida.create({
-        data: {
-          empresaId,
+      const dados = {
           codigoLegado: input.codigoLegado,
           clienteId,
           vendedorId,
@@ -313,8 +317,31 @@ export class IntegracaoNotasSaidaService {
           mensagem: input.mensagem ?? null,
           comodato: input.comodato,
           ativo: input.ativo,
-          createdBy: autor,
           updatedBy: autor,
+      };
+
+      if (reativar) {
+        // Os itens do payload substituem os que estavam na nota excluída —
+        // mesma regra do `update`: o ERP manda a nota inteira, e item que não
+        // veio mais não existe mais.
+        await tx.notaSaidaItem.deleteMany({ where: { notaSaidaId: existente!.id } });
+        const reativada = await tx.notaSaida.update({
+          where: { id: existente!.id },
+          data: {
+            ...dados,
+            ...LIMPAR_EXCLUSAO,
+            itens: { create: itensData },
+          },
+          include: INCLUDE,
+        });
+        return this.paraLeitura(reativada);
+      }
+
+      const criada = await tx.notaSaida.create({
+        data: {
+          ...dados,
+          empresaId,
+          createdBy: autor,
           itens: { create: itensData },
         },
         include: INCLUDE,
@@ -461,8 +488,10 @@ export class IntegracaoNotasSaidaService {
   ): Promise<IntegracaoNfeXmlResultado> {
     const autor = autorIntegracao(apiKeyId);
 
-    const conteudo = input.xml ?? Buffer.from(input.xmlBase64 ?? '', 'base64').toString('utf8');
-    if (Buffer.byteLength(conteudo, 'utf8') > NFE_XML_MAX_BYTES) {
+    const conteudo =
+      input.xml ?? Buffer.from(input.xmlBase64 ?? '', 'base64').toString('utf8');
+    const tamanho = Buffer.byteLength(conteudo, 'utf8');
+    if (tamanho > NFE_XML_MAX_BYTES) {
       throw new ConflictException(
         `XML acima do limite de ${Math.round(NFE_XML_MAX_BYTES / 1024 / 1024)} MB`,
       );
@@ -482,7 +511,7 @@ export class IntegracaoNotasSaidaService {
     const nota = await this.prisma.withTenant(empresaId, (tx) =>
       tx.notaSaida.findFirst({
         where: { empresaId, codigoLegado, deletedAt: null },
-        select: { id: true, chaveNfe: true, xmlArquivo: true },
+        select: { id: true, chaveNfe: true },
       }),
     );
     if (!nota) throw new NotFoundException('Nota de saída não encontrada');
@@ -494,12 +523,6 @@ export class IntegracaoNotasSaidaService {
       );
     }
 
-    // Nome opaco em disco: nunca derivado de dado do payload, pelo mesmo
-    // motivo dos demais uploads (ver uploads.config.ts).
-    const arquivo = `${randomUUID()}.xml`;
-    await mkdir(NFE_DIR, { recursive: true });
-    await writeFile(join(NFE_DIR, arquivo), conteudo, 'utf8');
-
     const situacao = dados.cancelada
       ? 'cancelada'
       : dados.protocolo
@@ -507,11 +530,33 @@ export class IntegracaoNotasSaidaService {
         : 'sem_protocolo';
     const recebidoEm = new Date();
 
-    await this.prisma.withTenant(empresaId, (tx) =>
-      tx.notaSaida.update({
+    // Numa transação só: o XML e os metadados da nota que dizem que ele
+    // existe (`xmlRecebidoEm`, situação, protocolo) não podem divergir. Era
+    // exatamente essa janela que a versão em disco deixava aberta.
+    await this.prisma.withTenant(empresaId, async (tx) => {
+      await tx.notaSaidaXml.upsert({
+        where: { notaSaidaId: nota.id },
+        // Reenvio substitui: a nota autorizada é uma só, e guardar versões
+        // antigas de um documento fiscal corrigido só cria dúvida.
+        update: {
+          conteudo,
+          tamanhoBytes: tamanho,
+          recebidoEm,
+          recebidoPor: autor,
+        },
+        create: {
+          empresaId,
+          notaSaidaId: nota.id,
+          conteudo,
+          tamanhoBytes: tamanho,
+          recebidoEm,
+          recebidoPor: autor,
+        },
+      });
+
+      await tx.notaSaida.update({
         where: { id: nota.id },
         data: {
-          xmlArquivo: arquivo,
           xmlRecebidoEm: recebidoEm,
           protocoloNfe: dados.protocolo,
           situacaoNfe: situacao,
@@ -520,17 +565,8 @@ export class IntegracaoNotasSaidaService {
           ...(chaveAtual ? {} : { chaveNfe: dados.chave }),
           updatedBy: autor,
         },
-      }),
-    );
-
-    // O XML anterior sai do disco só depois que o novo está gravado e a nota
-    // aponta para ele — nessa ordem, uma falha no meio deixa o arquivo antigo
-    // órfão, e não a nota apontando para arquivo que não existe.
-    if (nota.xmlArquivo && nota.xmlArquivo !== arquivo) {
-      await rm(join(NFE_DIR, basename(nota.xmlArquivo)), { force: true }).catch(
-        () => undefined,
-      );
-    }
+      });
+    });
 
     return {
       codigoLegado,
@@ -541,5 +577,97 @@ export class IntegracaoNotasSaidaService {
       situacao,
       recebidoEm: recebidoEm.toISOString(),
     };
+  }
+
+  /**
+   * O que a plataforma tem do XML desta nota.
+   *
+   * É como o ERP confere se a entrega chegou — inclusive depois de uma carga
+   * que falhou no meio. `comConteudo` devolve o arquivo; sem ele, só os
+   * metadados, porque numa varredura de milhares de notas o conteúdo seria o
+   * maior tráfego da integração sem que ninguém precise dele.
+   */
+  async statusXml(
+    empresaId: string,
+    codigoLegado: number,
+    comConteudo = false,
+  ): Promise<IntegracaoNfeXmlStatus> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const nota = await tx.notaSaida.findFirst({
+        where: { empresaId, codigoLegado, deletedAt: null },
+        select: {
+          id: true,
+          chaveNfe: true,
+          protocoloNfe: true,
+          situacaoNfe: true,
+          xmlRecebidoEm: true,
+        },
+      });
+      if (!nota) throw new NotFoundException('Nota de saída não encontrada');
+
+      const xml = await tx.notaSaidaXml.findUnique({
+        where: { notaSaidaId: nota.id },
+        select: {
+          tamanhoBytes: true,
+          recebidoEm: true,
+          ...(comConteudo ? { conteudo: true } : {}),
+        },
+      });
+
+      return {
+        codigoLegado,
+        temXml: !!xml,
+        chaveNfe: nota.chaveNfe,
+        protocolo: nota.protocoloNfe,
+        situacao: nota.situacaoNfe,
+        recebidoEm: (xml?.recebidoEm ?? nota.xmlRecebidoEm)?.toISOString() ?? null,
+        tamanhoBytes: xml?.tamanhoBytes ?? null,
+        ...(comConteudo
+          ? { conteudo: (xml as { conteudo?: string } | null)?.conteudo ?? null }
+          : {}),
+      };
+    });
+  }
+
+  /**
+   * Remove o XML de uma nota.
+   *
+   * Existe para o caso real: o ERP mandou o arquivo no `codigoLegado` errado e
+   * a nota ficou com o XML de outra. Sem isto, o único jeito de corrigir seria
+   * no banco, à mão.
+   *
+   * Os metadados da nota voltam a zero junto — deixar `situacaoNfe` preenchida
+   * sem XML faria a tela oferecer uma 2ª via que não existe.
+   */
+  async removerXml(
+    empresaId: string,
+    apiKeyId: string,
+    codigoLegado: number,
+  ): Promise<void> {
+    const autor = autorIntegracao(apiKeyId);
+    await this.prisma.withTenant(empresaId, async (tx) => {
+      const nota = await tx.notaSaida.findFirst({
+        where: { empresaId, codigoLegado, deletedAt: null },
+        select: { id: true },
+      });
+      if (!nota) throw new NotFoundException('Nota de saída não encontrada');
+
+      const removidos = await tx.notaSaidaXml.deleteMany({
+        where: { notaSaidaId: nota.id },
+      });
+      if (removidos.count === 0) {
+        throw new NotFoundException('Esta nota não tem XML na plataforma');
+      }
+
+      await tx.notaSaida.update({
+        where: { id: nota.id },
+        data: {
+          xmlRecebidoEm: null,
+          protocoloNfe: null,
+          situacaoNfe: null,
+          updatedBy: autor,
+        },
+      });
+    });
   }
 }

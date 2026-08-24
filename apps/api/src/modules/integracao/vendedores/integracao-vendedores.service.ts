@@ -15,6 +15,10 @@ import type {
   IntegracaoVendedorUpdate,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
+import {
+  deveReativar,
+  LIMPAR_EXCLUSAO,
+} from '../common/reativar-excluido';
 
 const INCLUDE = {
   supervisorVendedor: { select: { codigoErp: true } },
@@ -103,10 +107,10 @@ export class IntegracaoVendedoresService {
       const existente = await tx.vendedor.findFirst({
         where: { empresaId, codigoErp: input.codigoErp },
       });
-      if (existente)
-        throw new ConflictException(
-          `Já existe vendedor com codigoErp '${input.codigoErp}'`,
-        );
+      const reativar = deveReativar(
+        existente,
+        `Já existe vendedor com codigoErp '${input.codigoErp}'`,
+      );
 
       let supervisorId: string | null = null;
       if (input.supervisorCodigo) {
@@ -127,25 +131,36 @@ export class IntegracaoVendedoresService {
       }
 
       // gerente/gerenteId/usuarioId nunca são tocados pelo ERP — vínculos
-      // mantidos manualmente na tela (mesmo critério dos imports).
+      // mantidos manualmente na tela (mesmo critério dos imports). Isso vale
+      // também na reativação: um vendedor que volta mantém o vínculo com o
+      // usuário que tinha.
+      const dados = {
+        codigoErp: input.codigoErp,
+        nome: input.nome,
+        nomeReduzido: input.nomeReduzido ?? null,
+        telefone: input.telefone ?? null,
+        email: input.email ?? null,
+        dataNascimento: input.dataNascimento ?? null,
+        tipo: input.supervisor ? ('supervisor' as const) : ('vendedor' as const),
+        supervisorId,
+        percComissao: input.percComissao ?? null,
+        // Desligado manda no ativo, como na tela.
+        ativo: input.desligado ? false : input.ativo,
+        desligado: input.desligado,
+        updatedBy: autor,
+      };
+
+      if (reativar) {
+        const reativado = await tx.vendedor.update({
+          where: { id: existente!.id },
+          data: { ...dados, ...LIMPAR_EXCLUSAO },
+          include: INCLUDE,
+        });
+        return this.paraLeitura(reativado);
+      }
+
       const criado = await tx.vendedor.create({
-        data: {
-          empresaId,
-          codigoErp: input.codigoErp,
-          nome: input.nome,
-          nomeReduzido: input.nomeReduzido ?? null,
-          telefone: input.telefone ?? null,
-          email: input.email ?? null,
-          dataNascimento: input.dataNascimento ?? null,
-          tipo: input.supervisor ? 'supervisor' : 'vendedor',
-          supervisorId,
-          percComissao: input.percComissao ?? null,
-          // Desligado manda no ativo, como na tela.
-          ativo: input.desligado ? false : input.ativo,
-          desligado: input.desligado,
-          createdBy: autor,
-          updatedBy: autor,
-        },
+        data: { ...dados, empresaId, createdBy: autor },
         include: INCLUDE,
       });
       return this.paraLeitura(criado);

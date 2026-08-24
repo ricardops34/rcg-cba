@@ -1,12 +1,9 @@
-import { readFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
 import {
   ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { NFE_DIR } from '../../common/uploads/uploads.config';
 import { extrairNfe, NfeXmlInvalidoError } from './nfe-xml';
 import { montarDanfePdf } from './danfe-pdf';
 import { comFlagXml } from './nota-flags';
@@ -250,17 +247,17 @@ export class NotasSaidaService {
   }
 
   /**
-   * Lê do disco o XML da nota, respeitando o escopo do usuário.
+   * Lê o XML da nota, respeitando o escopo do usuário.
    *
-   * `basename` no nome guardado não é paranoia: a coluna é preenchida pela
-   * rota de integração, e um valor com `../` transformaria esta leitura num
-   * path traversal — o diretório `uploads/nfe` guarda XML de todas as
-   * empresas.
+   * O `select` é explícito e **não** inclui `xml.conteudo` na consulta da
+   * nota: o conteúdo é buscado à parte, só depois de o escopo ser conferido.
+   * É o mesmo cuidado que motivou a tabela acessória — XML só trafega quando
+   * alguém pede a 2ª via.
    */
   private async lerXml(empresaId: string, user: AuthenticatedUser, id: string) {
-    const nota = await this.prisma.withTenant(empresaId, async (tx) => {
+    return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
-      const encontrada = await tx.notaSaida.findFirst({
+      const nota = await tx.notaSaida.findFirst({
         where: {
           id,
           empresaId,
@@ -271,33 +268,26 @@ export class NotasSaidaService {
           id: true,
           numero: true,
           chaveNfe: true,
-          xmlArquivo: true,
+          xmlRecebidoEm: true,
           // Para o rastro no histórico do cliente (ver `registrarEvento`).
           clienteId: true,
           vendedorId: true,
         },
       });
-      if (!encontrada) throw new NotFoundException('Nota de saída não encontrada');
-      return encontrada;
+      if (!nota) throw new NotFoundException('Nota de saída não encontrada');
+
+      const xml = await tx.notaSaidaXml.findUnique({
+        where: { notaSaidaId: nota.id },
+        select: { conteudo: true },
+      });
+      if (!xml) {
+        throw new ConflictException(
+          `A NF ${nota.numero} ainda não tem o XML autorizado na plataforma — ` +
+            'o ERP precisa enviá-lo antes da 2ª via.',
+        );
+      }
+
+      return { nota, conteudo: Buffer.from(xml.conteudo, 'utf8') };
     });
-
-    if (!nota.xmlArquivo) {
-      throw new ConflictException(
-        `A NF ${nota.numero} ainda não tem o XML autorizado na plataforma — ` +
-          'o ERP precisa enviá-lo antes da 2ª via.',
-      );
-    }
-
-    try {
-      return {
-        nota,
-        conteudo: await readFile(join(NFE_DIR, basename(nota.xmlArquivo))),
-      };
-    } catch {
-      throw new ConflictException(
-        `O arquivo XML da NF ${nota.numero} não foi encontrado no servidor. ` +
-          'Peça ao ERP para reenviá-lo.',
-      );
-    }
   }
 }

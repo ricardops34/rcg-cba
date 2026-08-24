@@ -20,6 +20,10 @@ import type {
   IntegracaoClienteUpdateResultado,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
+import {
+  deveReativar,
+  LIMPAR_EXCLUSAO,
+} from '../common/reativar-excluido';
 import { ClienteAlteracoesService } from '../../clientes/cliente-alteracoes.service';
 
 const INCLUDE = {
@@ -143,10 +147,10 @@ export class IntegracaoClientesService {
       const existente = await tx.cliente.findFirst({
         where: { empresaId, codigoErp: input.codigoErp },
       });
-      if (existente)
-        throw new ConflictException(
-          `Já existe cliente com codigoErp '${input.codigoErp}'`,
-        );
+      const reativar = deveReativar(
+        existente,
+        `Já existe cliente com codigoErp '${input.codigoErp}'`,
+      );
 
       const vendedorId = await this.resolverVendedor(
         tx,
@@ -164,9 +168,7 @@ export class IntegracaoClientesService {
         input.condicaoPagamentoCodigo,
       );
 
-      const criado = await tx.cliente.create({
-        data: {
-          empresaId,
+      const dados = {
           codigoErp: input.codigoErp,
           tipoPessoa: input.tipoPessoa,
           razaoSocial: input.razaoSocial,
@@ -208,9 +210,20 @@ export class IntegracaoClientesService {
           ultimaCompra: input.ultimaCompra ?? null,
           ultimoAtendimento: input.ultimoAtendimento ?? null,
           dataConsultaRfb: input.dataConsultaRfb ?? null,
-          createdBy: autor,
           updatedBy: autor,
-        },
+      };
+
+      if (reativar) {
+        const reativado = await tx.cliente.update({
+          where: { id: existente!.id },
+          data: { ...dados, ...LIMPAR_EXCLUSAO },
+          include: INCLUDE,
+        });
+        return this.paraLeitura(reativado);
+      }
+
+      const criado = await tx.cliente.create({
+        data: { ...dados, empresaId, createdBy: autor },
         include: INCLUDE,
       });
       return this.paraLeitura(criado);

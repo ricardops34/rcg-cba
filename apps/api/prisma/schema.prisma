@@ -56,6 +56,7 @@ model Empresa {
   tabelasPrecoItens          TabelaPrecoItem[]
   notasSaida                 NotaSaida[]
   notasSaidaItens            NotaSaidaItem[]
+  notasSaidaXml              NotaSaidaXml[]
   titulosReceber             TituloReceber[]
   contasBancarias            ContaBancaria[]
   oportunidades              Oportunidade[]
@@ -1493,14 +1494,18 @@ model NotaSaida {
   ativo    Boolean   @default(true)
 
   // ---- 2ª via de DANFE (ver docs/planos/segunda-via-danfe-boleto.md) ----
-  // O XML autorizado empurrado pelo ERP, gravado em `uploads/nfe`. Só o nome
-  // do arquivo: o diretório é do servidor, e guardar caminho absoluto no
-  // banco quebraria na primeira mudança de volume.
+  // O XML autorizado vive na tabela acessória `nota_saida_xml`, e não numa
+  // coluna daqui: o Prisma seleciona todas as colunas quando não há `select`
+  // explícito, e tanto a listagem de notas quanto a Posição de Cliente (que
+  // carrega o histórico inteiro do cliente, sem paginar) passariam a arrastar
+  // megabytes de XML que ninguém pediu.
+  //
+  // Estes três metadados ficam aqui porque são curtos e a **tela** usa:
+  // `xmlRecebidoEm` não-nulo é o que responde "tem 2ª via?" sem tocar no XML.
   //
   // O DANFE **não** é guardado — é renderizado sob demanda a partir do XML.
   // Cachear o PDF de algo barato de refazer só criaria arquivo velho com
   // layout antigo.
-  xmlArquivo   String?
   xmlRecebidoEm DateTime?
   // Protocolo de autorização (infProt/nProt) e situação da nota na SEFAZ:
   // "autorizada", "cancelada" ou "denegada". A ficha impressa avisa quando a
@@ -1521,6 +1526,7 @@ model NotaSaida {
   vendedor          Vendedor?          @relation(fields: [vendedorId], references: [id])
   condicaoPagamento CondicaoPagamento? @relation(fields: [condicaoPagamentoId], references: [id])
   itens             NotaSaidaItem[]
+  xml               NotaSaidaXml?
 
   @@unique([empresaId, codigoLegado])
   @@index([empresaId, numero])
@@ -1528,6 +1534,46 @@ model NotaSaida {
   @@index([empresaId, clienteId])
   @@index([empresaId, dtEmissao])
   @@map("notas_saida")
+}
+
+/**
+ * O XML autorizado da NF-e, de onde o DANFE é renderizado
+ * (ver `docs/planos/segunda-via-danfe-boleto.md`).
+ *
+ * Tabela acessória, e não coluna em `notas_saida`, por uma razão medida: o
+ * Prisma traz todas as colunas quando não há `select` explícito, e as duas
+ * consultas de nota do sistema não têm — a listagem paginada e a Posição de
+ * Cliente, que carrega o histórico inteiro do cliente de uma vez. Uma coluna
+ * de XML ali faria toda abertura de tela puxar megabytes que ninguém pediu, e
+ * a armadilha ficaria armada para o próximo `findMany` que alguém escrevesse.
+ *
+ * Aqui o XML só é lido por quem pede a 2ª via. `conteudo` é TEXT: o TOAST do
+ * Postgres tira o valor de dentro da linha e comprime sozinho (~5 a 8x em
+ * XML), então não há compressão em código para manter.
+ *
+ * Um XML por nota (`notaSaidaId` único). Reenvio do ERP substitui o anterior:
+ * a nota autorizada é uma só, e guardar versões antigas de um documento
+ * fiscal que foi corrigido só cria dúvida sobre qual vale.
+ */
+model NotaSaidaXml {
+  id          String @id @default(uuid())
+  empresaId   String
+  notaSaidaId String @unique
+
+  conteudo String
+  // Tamanho em bytes do que foi recebido — a tela de operação responde
+  // "o ERP mandou mesmo?" sem precisar ler o XML inteiro do banco.
+  tamanhoBytes Int
+
+  recebidoEm DateTime @default(now())
+  // Chave de API da integração que enviou (ver `autorIntegracao`).
+  recebidoPor String?
+
+  empresa   Empresa   @relation(fields: [empresaId], references: [id])
+  notaSaida NotaSaida @relation(fields: [notaSaidaId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId, recebidoEm])
+  @@map("nota_saida_xml")
 }
 
 // Item de nota com empresaId/clienteId/vendedorId/dtEmissao denormalizados

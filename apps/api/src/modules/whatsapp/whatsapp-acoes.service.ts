@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../common/prisma/prisma.service';
+import { Prisma, PrismaService } from '../../common/prisma/prisma.service';
 import { WhatsappConversasService } from './whatsapp-conversas.service';
 import { TitulosReceberService } from '../titulos-receber/titulos-receber.service';
 import { NotasSaidaService } from '../notas-saida/notas-saida.service';
@@ -384,11 +384,18 @@ export class WhatsappAcoesService {
     user: AuthenticatedUser,
     conversaId: string,
     acao: string,
-    detalhe: Record<string, unknown> & {
+    detalhe: {
       tituloReceberId?: string;
       notaSaidaId?: string;
+      [chave: string]: string | number | boolean | null | undefined;
     },
   ) {
+    // `undefined` não é JSON e o Prisma recusa a coluna Json com ele dentro;
+    // sair da chave é o mesmo que não ter valor, e mantém o registro legível.
+    const conteudo = Object.fromEntries(
+      Object.entries(detalhe).filter(([, valor]) => valor !== undefined),
+    ) as Prisma.InputJsonObject;
+
     return this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappAcaoRegistro.create({
         data: {
@@ -398,7 +405,7 @@ export class WhatsappAcoesService {
           ...(detalhe.tituloReceberId
             ? { tituloReceberId: detalhe.tituloReceberId }
             : {}),
-          detalhe,
+          detalhe: conteudo,
           executadaPor: user.id,
         },
       }),

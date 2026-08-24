@@ -17,6 +17,13 @@
 
 export class NfeXmlInvalidoError extends Error {}
 
+/**
+ * Teto do XML aceito na ingestão. Uma NF-e de 990 itens (o máximo do layout)
+ * não passa de ~2 MB; o dobro disso é folga contra XML formatado com indentação
+ * generosa, e barra payload que só engordaria a tabela.
+ */
+export const NFE_XML_MAX_BYTES = 5 * 1024 * 1024;
+
 export type NoXml = {
   nome: string;
   atributos: Record<string, string>;

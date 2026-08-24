@@ -19,6 +19,10 @@ import type {
   IntegracaoCategoriaUpdate,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
+import {
+  deveReativar,
+  LIMPAR_EXCLUSAO,
+} from '../common/reativar-excluido';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 
 const INCLUDE = {
@@ -102,11 +106,10 @@ export class IntegracaoCategoriasService {
       const existente = await tx.categoria.findFirst({
         where: { empresaId, codigoErp: input.codigoErp },
       });
-      if (existente) {
-        throw new ConflictException(
-          `Já existe categoria com codigoErp '${input.codigoErp}'`,
-        );
-      }
+      const reativar = deveReativar(
+        existente,
+        `Já existe categoria com codigoErp '${input.codigoErp}'`,
+      );
 
       const categoriaPaiId = await this.resolverCategoriaPai(
         tx,
@@ -120,17 +123,26 @@ export class IntegracaoCategoriasService {
         input.regraDescontoCodigo,
       );
 
+      const dados = {
+        codigoErp: input.codigoErp,
+        descricao: input.descricao,
+        categoriaPaiId,
+        regraDescontoId: regraDescontoId ?? null,
+        ativo: input.ativo,
+        updatedBy: autor,
+      };
+
+      if (reativar) {
+        const reativada = await tx.categoria.update({
+          where: { id: existente!.id },
+          data: { ...dados, ...LIMPAR_EXCLUSAO },
+          include: INCLUDE,
+        });
+        return this.paraLeitura(reativada);
+      }
+
       const criada = await tx.categoria.create({
-        data: {
-          empresaId,
-          codigoErp: input.codigoErp,
-          descricao: input.descricao,
-          categoriaPaiId,
-          regraDescontoId: regraDescontoId ?? null,
-          ativo: input.ativo,
-          createdBy: autor,
-          updatedBy: autor,
-        },
+        data: { ...dados, empresaId, createdBy: autor },
         include: INCLUDE,
       });
       return this.paraLeitura(criada);

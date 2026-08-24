@@ -282,3 +282,54 @@ escopo hierárquico de usuário, que não se aplicam aqui); helpers de conversã
 - `packages/contracts/src/integracao.ts` (schemas de lote com referências por código)
 - `apps/api/src/modules/integracao-keys/**` + `apps/web/src/app/(app)/admin/integracao/**` (gestão de chaves)
 - `apps/api/prisma/seed-base.ts` (menu/rotina `integracao`)
+
+---
+
+## Auditoria de 2026-08-24 — o que existe e o que falta
+
+O que foi implementado até aqui **não é o desenho desta página**: em vez do
+upsert em lote (`PUT /integracao/<entidade>` com envelope de registros), a API
+nasceu com CRUD individual REST (`POST` / `PATCH` / `DELETE` por código), em 13
+entidades — as 9 previstas mais orçamentos, objetivos, regras de desconto e
+tabelas de preço. Autenticação, RLS, resolução de referências por código e
+auditoria `integracao:<apiKeyId>` estão como o plano previa.
+
+### Corrigido nesta data: reativação de registro excluído
+
+Era um beco sem saída. Depois de um `DELETE`, aquele `codigoErp`/`codigoLegado`
+ficava inutilizável para sempre: `POST` respondia 409 (a checagem de
+duplicidade não filtrava `deletedAt`) e `PATCH` respondia 404 (a busca filtra
+`deletedAt: null`).
+
+Agora vale a regra desta página — **o ERP é a fonte da verdade**: reenviar por
+`POST` um registro excluído o **ressuscita** com os dados do payload
+(`deletedAt`/`deletedBy` limpos). Registro **ativo** continua devolvendo 409,
+como antes. A decisão está centralizada em
+`apps/api/src/modules/integracao/common/reativar-excluido.ts`, aplicada nas 13
+entidades; nas que têm filhos (notas, orçamentos, objetivos, regras de
+desconto, tabelas de preço) a reativação substitui a coleção pela do payload,
+mesma regra do `update`. Orçamento reativado **mantém o número** que já tinha.
+
+Verificado contra a API em execução: criar → excluir → reenviar devolve 201 com
+o mesmo `id` e `createdAt`, dados atualizados; e o 409 do registro ativo segue
+de pé.
+
+### Pendências conhecidas (não implementadas)
+
+1. **Upsert em lote.** É a decisão nº 2 desta página e nunca foi feita. Custo
+   medido na base real: 119.439 registros (67.151 notas, 37.682 títulos, 7.980
+   produtos, 6.626 clientes) a 60 req/min = **~33 horas** de carga, mais ~9,3 h
+   dos XMLs de NF-e. Com lotes de 1.000, seriam ~120 chamadas. No fluxo diário
+   (~470 notas/mês) o CRUD individual dá conta; o problema é carga inicial e
+   ressincronização.
+2. **Idempotência.** `POST` → 409 se existe, `PATCH` → 404 se não existe: o ERP
+   precisa saber o estado antes de escolher o verbo. O `PUT` do plano existia
+   para isso — mesmo payload, mesmo resultado, quantas vezes for. (A reativação
+   corrigida acima remove a pior consequência disso, mas não a assimetria.)
+3. **Flag `excluido: true`** no próprio registro: hoje a exclusão é um `DELETE`
+   à parte, o que impede excluir dentro de um lote.
+4. **Coleções filhas de cliente** (CNAEs, contatos, sócios): fora, por
+   dependerem de models que ainda não existem.
+5. **Throttle fixo** em 60 req/min no código; esta página previa ajustável por
+   env.
+6. Sem rota de *ping* para o ERP validar a chave sem escrever nada.

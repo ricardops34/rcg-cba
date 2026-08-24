@@ -19,6 +19,10 @@ import type {
   IntegracaoTituloReceberUpdate,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
+import {
+  deveReativar,
+  LIMPAR_EXCLUSAO,
+} from '../common/reativar-excluido';
 
 const INCLUDE = {
   cliente: { select: { codigoErp: true } },
@@ -119,11 +123,10 @@ export class IntegracaoTitulosReceberService {
       const existente = await tx.tituloReceber.findFirst({
         where: { empresaId, codigoLegado: input.codigoLegado },
       });
-      if (existente) {
-        throw new ConflictException(
-          `Já existe título com codigoLegado '${input.codigoLegado}'`,
-        );
-      }
+      const reativar = deveReativar(
+        existente,
+        `Já existe título com codigoLegado '${input.codigoLegado}'`,
+      );
 
       const clienteId = await this.resolverCliente(
         tx,
@@ -141,9 +144,7 @@ export class IntegracaoTitulosReceberService {
         input.contaBancariaDescricao,
       );
 
-      const criado = await tx.tituloReceber.create({
-        data: {
-          empresaId,
+      const dados = {
           codigoLegado: input.codigoLegado,
           clienteId,
           vendedorId,
@@ -167,9 +168,20 @@ export class IntegracaoTitulosReceberService {
           carteira: this.soDigitos(input.carteira),
           codigoBarras: this.validarCodigoBarras(input.codigoBarras),
           linhaDigitavel: this.soDigitos(input.linhaDigitavel),
-          createdBy: autor,
           updatedBy: autor,
-        },
+      };
+
+      if (reativar) {
+        const reativado = await tx.tituloReceber.update({
+          where: { id: existente!.id },
+          data: { ...dados, ...LIMPAR_EXCLUSAO },
+          include: INCLUDE,
+        });
+        return this.paraLeitura(reativado);
+      }
+
+      const criado = await tx.tituloReceber.create({
+        data: { ...dados, empresaId, createdBy: autor },
         include: INCLUDE,
       });
       return this.paraLeitura(criado);

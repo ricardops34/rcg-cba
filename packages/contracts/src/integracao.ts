@@ -715,6 +715,12 @@ export type IntegracaoNotaSaida = z.infer<typeof integracaoNotaSaidaSchema>;
 
 export const integracaoNotaSaidaQuerySchema = paginationQuerySchema.extend({
   ativo: booleanQueryParam,
+  /**
+   * `semXml=true` lista o que ainda não tem XML autorizado na plataforma —
+   * é como o ERP descobre o que falta enviar numa carga retroativa, sem
+   * precisar perguntar nota a nota. `semXml=false` traz só as que já têm.
+   */
+  semXml: booleanQueryParam,
 });
 export type IntegracaoNotaSaidaQuery = z.infer<typeof integracaoNotaSaidaQuerySchema>;
 
@@ -822,6 +828,35 @@ export const INTEGRACAO_NFE_XML_RESULTADO_EXAMPLE: IntegracaoNfeXmlResultado = {
   protocolo: "150260000123456",
   situacao: "autorizada",
   recebidoEm: "2026-08-21T18:12:00.000Z",
+};
+
+/**
+ * Situação do XML de uma nota, para o ERP conferir o que já entregou.
+ *
+ * `conteudo` só vem quando pedido explicitamente (`?conteudo=true`): numa
+ * varredura de milhares de notas, devolver o arquivo inteiro a cada consulta
+ * transformaria a conferência no maior tráfego da integração.
+ */
+export const integracaoNfeXmlStatusSchema = z.object({
+  codigoLegado: z.number().int(),
+  temXml: z.boolean(),
+  chaveNfe: z.string().nullable(),
+  protocolo: z.string().nullable(),
+  situacao: z.string().nullable(),
+  recebidoEm: z.string().datetime().nullable(),
+  tamanhoBytes: z.number().int().nullable(),
+  conteudo: z.string().nullable().optional(),
+});
+export type IntegracaoNfeXmlStatus = z.infer<typeof integracaoNfeXmlStatusSchema>;
+
+export const INTEGRACAO_NFE_XML_STATUS_EXAMPLE: IntegracaoNfeXmlStatus = {
+  codigoLegado: 45012,
+  temXml: true,
+  chaveNfe: "50260600000000000191550010001160671000116060",
+  protocolo: "150260000123456",
+  situacao: "autorizada",
+  recebidoEm: "2026-08-21T18:12:00.000Z",
+  tamanhoBytes: 7412,
 };
 
 // ------------------------------------------------------------------

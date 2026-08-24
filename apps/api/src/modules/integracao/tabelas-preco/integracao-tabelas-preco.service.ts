@@ -15,6 +15,10 @@ import type {
   IntegracaoTabelaPrecoUpdate,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
+import {
+  deveReativar,
+  LIMPAR_EXCLUSAO,
+} from '../common/reativar-excluido';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 
 const INCLUDE = {
@@ -109,11 +113,10 @@ export class IntegracaoTabelasPrecoService {
       const existente = await tx.tabelaPreco.findFirst({
         where: { empresaId, codigoErp: input.codigoErp },
       });
-      if (existente) {
-        throw new ConflictException(
-          `Já existe tabela de preço com codigoErp '${input.codigoErp}'`,
-        );
-      }
+      const reativar = deveReativar(
+        existente,
+        `Já existe tabela de preço com codigoErp '${input.codigoErp}'`,
+      );
 
       const itensData = await Promise.all(
         input.itens.map(async (item) => {
@@ -144,16 +147,34 @@ export class IntegracaoTabelasPrecoService {
         }),
       );
 
+      const dados = {
+        codigoErp: input.codigoErp,
+        descricao: input.descricao,
+        dtInicio: input.dtInicio ?? null,
+        dtFim: input.dtFim ?? null,
+        ativo: input.ativo,
+        updatedBy: autor,
+      };
+
+      if (reativar) {
+        // Os itens do payload substituem os da tabela excluída — mesma regra
+        // do `update`.
+        await tx.tabelaPrecoItem.deleteMany({
+          where: { tabelaPrecoId: existente!.id },
+        });
+        const reativada = await tx.tabelaPreco.update({
+          where: { id: existente!.id },
+          data: { ...dados, ...LIMPAR_EXCLUSAO, itens: { create: itensData } },
+          include: INCLUDE,
+        });
+        return this.paraLeitura(reativada);
+      }
+
       const criada = await tx.tabelaPreco.create({
         data: {
+          ...dados,
           empresaId,
-          codigoErp: input.codigoErp,
-          descricao: input.descricao,
-          dtInicio: input.dtInicio ?? null,
-          dtFim: input.dtFim ?? null,
-          ativo: input.ativo,
           createdBy: autor,
-          updatedBy: autor,
           itens: { create: itensData },
         },
         include: INCLUDE,

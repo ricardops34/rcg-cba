@@ -13,6 +13,7 @@ import {
 import {
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiSecurity,
   ApiTags,
@@ -21,6 +22,7 @@ import { Throttle } from '@nestjs/throttler';
 import {
   INTEGRACAO_NFE_XML_EXAMPLE,
   INTEGRACAO_NFE_XML_RESULTADO_EXAMPLE,
+  INTEGRACAO_NFE_XML_STATUS_EXAMPLE,
   INTEGRACAO_NOTA_SAIDA_CREATE_EXAMPLE,
   INTEGRACAO_NOTA_SAIDA_EXAMPLE,
 } from '@plataforma/contracts';
@@ -181,6 +183,63 @@ export class IntegracaoNotasSaidaController {
       integracao.apiKeyId,
       codigo,
       dto,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Situação do XML de uma nota',
+    description:
+      'Confere o que a plataforma já tem: se o XML chegou, quando, com que tamanho, e o ' +
+      'protocolo/situação extraídos dele. Por padrão **não** devolve o arquivo — passe ' +
+      '`conteudo=true` para recebê-lo. Para descobrir em lote o que falta enviar, use ' +
+      '`GET /integracao/notas-saida?semXml=true`.',
+  })
+  @ApiParam({ name: 'codigo', description: 'codigoLegado (id da linha no ERP)' })
+  @ApiQuery({
+    name: 'conteudo',
+    required: false,
+    description: 'true para devolver também o XML completo',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: { example: INTEGRACAO_NFE_XML_STATUS_EXAMPLE },
+  })
+  @ApiResponse({ status: 404, description: 'Nota de saída não encontrada' })
+  @Get(':codigo/xml')
+  statusXml(
+    @Param('codigo', ParseIntPipe) codigo: number,
+    @Query('conteudo') conteudo: string | undefined,
+    @CurrentIntegracao() integracao: IntegracaoContext,
+  ) {
+    return this.service.statusXml(
+      integracao.empresaId,
+      codigo,
+      conteudo === 'true',
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Remover o XML de uma nota',
+    description:
+      'Para o caso de o arquivo ter sido enviado no codigoLegado errado. Limpa junto o ' +
+      'protocolo e a situação da nota — sem XML, a 2ª via deixa de ser oferecida. A nota em ' +
+      'si não é tocada.',
+  })
+  @ApiParam({ name: 'codigo', description: 'codigoLegado (id da linha no ERP)' })
+  @ApiResponse({ status: 200, description: 'XML removido' })
+  @ApiResponse({
+    status: 404,
+    description: 'Nota de saída não encontrada, ou nota sem XML na plataforma',
+  })
+  @Delete(':codigo/xml')
+  removerXml(
+    @Param('codigo', ParseIntPipe) codigo: number,
+    @CurrentIntegracao() integracao: IntegracaoContext,
+  ) {
+    return this.service.removerXml(
+      integracao.empresaId,
+      integracao.apiKeyId,
+      codigo,
     );
   }
 }

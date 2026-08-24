@@ -21,6 +21,10 @@ import type {
   IntegracaoRegraDescontoUpdate,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
+import {
+  deveReativar,
+  LIMPAR_EXCLUSAO,
+} from '../common/reativar-excluido';
 
 const INCLUDE = {
   faixas: { orderBy: { sequencia: 'asc' } },
@@ -151,34 +155,47 @@ export class IntegracaoRegrasDescontoService {
       const existente = await tx.regraDesconto.findFirst({
         where: { empresaId, codigoErp: input.codigoErp },
       });
-      if (existente) {
-        throw new ConflictException(
-          `Já existe regra de desconto com codigoErp '${input.codigoErp}'`,
-        );
-      }
+      const reativar = deveReativar(
+        existente,
+        `Já existe regra de desconto com codigoErp '${input.codigoErp}'`,
+      );
       if (input.padrao) await this.garantirPadraoUnico(tx, empresaId);
 
-      const criada = await tx.regraDesconto.create({
-        data: {
+      const dados = {
+        codigoErp: input.codigoErp,
+        descricao: input.descricao,
+        percDescontoAutorizado: input.percDescontoAutorizado,
+        percDescontoMaximo: input.percDescontoMaximo,
+        percComissao: input.percComissao,
+        padrao: input.padrao,
+        ativo: input.ativo,
+        updatedBy: autor,
+      };
+      const faixas = {
+        create: input.faixas.map((f) => ({
+          ...f,
           empresaId,
-          codigoErp: input.codigoErp,
-          descricao: input.descricao,
-          percDescontoAutorizado: input.percDescontoAutorizado,
-          percDescontoMaximo: input.percDescontoMaximo,
-          percComissao: input.percComissao,
-          padrao: input.padrao,
-          ativo: input.ativo,
           createdBy: autor,
           updatedBy: autor,
-          faixas: {
-            create: input.faixas.map((f) => ({
-              ...f,
-              empresaId,
-              createdBy: autor,
-              updatedBy: autor,
-            })),
-          },
-        },
+        })),
+      };
+
+      if (reativar) {
+        // As faixas do payload substituem as da regra excluída — mesma regra
+        // do `update`.
+        await tx.regraDescontoFaixa.deleteMany({
+          where: { regraDescontoId: existente!.id, empresaId },
+        });
+        const reativada = await tx.regraDesconto.update({
+          where: { id: existente!.id },
+          data: { ...dados, ...LIMPAR_EXCLUSAO, faixas },
+          include: INCLUDE,
+        });
+        return this.paraLeitura(reativada);
+      }
+
+      const criada = await tx.regraDesconto.create({
+        data: { ...dados, empresaId, createdBy: autor, faixas },
         include: INCLUDE,
       });
       return this.paraLeitura(criada);

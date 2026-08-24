@@ -15,6 +15,10 @@ import type {
   IntegracaoArmazemUpdate,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
+import {
+  deveReativar,
+  LIMPAR_EXCLUSAO,
+} from '../common/reativar-excluido';
 
 @Injectable()
 export class IntegracaoArmazensService {
@@ -96,20 +100,28 @@ export class IntegracaoArmazensService {
       const existente = await tx.armazem.findFirst({
         where: { empresaId, codigoErp: input.codigoErp },
       });
-      if (existente) {
-        throw new ConflictException(
-          `Já existe armazém com codigoErp '${input.codigoErp}'`,
-        );
+      const reativar = deveReativar(
+        existente,
+        `Já existe armazém com codigoErp '${input.codigoErp}'`,
+      );
+
+      const dados = {
+        codigoErp: input.codigoErp,
+        descricao: input.descricao,
+        ativo: input.ativo,
+        updatedBy: autor,
+      };
+
+      if (reativar) {
+        const reativado = await tx.armazem.update({
+          where: { id: existente!.id },
+          data: { ...dados, ...LIMPAR_EXCLUSAO },
+        });
+        return this.paraLeitura(reativado);
       }
+
       const criado = await tx.armazem.create({
-        data: {
-          empresaId,
-          codigoErp: input.codigoErp,
-          descricao: input.descricao,
-          ativo: input.ativo,
-          createdBy: autor,
-          updatedBy: autor,
-        },
+        data: { ...dados, empresaId, createdBy: autor },
       });
       return this.paraLeitura(criado);
     });

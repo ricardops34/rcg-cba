@@ -19,6 +19,10 @@ import type {
   IntegracaoProdutoUpdate,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
+import {
+  deveReativar,
+  LIMPAR_EXCLUSAO,
+} from '../common/reativar-excluido';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 
 const INCLUDE = {
@@ -114,10 +118,10 @@ export class IntegracaoProdutosService {
       const existente = await tx.produto.findFirst({
         where: { empresaId, codigoErp: input.codigoErp },
       });
-      if (existente)
-        throw new ConflictException(
-          `Já existe produto com codigoErp '${input.codigoErp}'`,
-        );
+      const reativar = deveReativar(
+        existente,
+        `Já existe produto com codigoErp '${input.codigoErp}'`,
+      );
 
       const categoriaId = await this.resolverCategoria(
         tx,
@@ -142,27 +146,36 @@ export class IntegracaoProdutosService {
         input.regraDescontoCodigo,
       );
 
+      const dados = {
+        codigoErp: input.codigoErp,
+        descricao: input.descricao,
+        unidade: input.unidade ?? null,
+        categoriaId,
+        subCategoriaId,
+        armazemId,
+        marca: input.marca ?? null,
+        codigoBarras: input.codigoBarras ?? null,
+        ncm: input.ncm ?? null,
+        qtdEmbalagem: input.qtdEmbalagem ?? null,
+        peso: input.peso ?? null,
+        ultimoPreco: input.ultimoPreco ?? null,
+        observacao: input.observacao ?? null,
+        regraDescontoId: regraDescontoId ?? null,
+        ativo: input.ativo,
+        updatedBy: autor,
+      };
+
+      if (reativar) {
+        const reativado = await tx.produto.update({
+          where: { id: existente!.id },
+          data: { ...dados, ...LIMPAR_EXCLUSAO },
+          include: INCLUDE,
+        });
+        return this.paraLeitura(reativado);
+      }
+
       const criado = await tx.produto.create({
-        data: {
-          empresaId,
-          codigoErp: input.codigoErp,
-          descricao: input.descricao,
-          unidade: input.unidade ?? null,
-          categoriaId,
-          subCategoriaId,
-          armazemId,
-          marca: input.marca ?? null,
-          codigoBarras: input.codigoBarras ?? null,
-          ncm: input.ncm ?? null,
-          qtdEmbalagem: input.qtdEmbalagem ?? null,
-          peso: input.peso ?? null,
-          ultimoPreco: input.ultimoPreco ?? null,
-          observacao: input.observacao ?? null,
-          regraDescontoId: regraDescontoId ?? null,
-          ativo: input.ativo,
-          createdBy: autor,
-          updatedBy: autor,
-        },
+        data: { ...dados, empresaId, createdBy: autor },
         include: INCLUDE,
       });
       return this.paraLeitura(criado);

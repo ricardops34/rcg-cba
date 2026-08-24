@@ -15,6 +15,10 @@ import type {
   IntegracaoCondicaoPagamentoUpdate,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
+import {
+  deveReativar,
+  LIMPAR_EXCLUSAO,
+} from '../common/reativar-excluido';
 
 @Injectable()
 export class IntegracaoCondicoesPagamentoService {
@@ -99,21 +103,29 @@ export class IntegracaoCondicoesPagamentoService {
       const existente = await tx.condicaoPagamento.findFirst({
         where: { empresaId, codigoErp: input.codigoErp },
       });
-      if (existente) {
-        throw new ConflictException(
-          `Já existe condição de pagamento com codigoErp '${input.codigoErp}'`,
-        );
+      const reativar = deveReativar(
+        existente,
+        `Já existe condição de pagamento com codigoErp '${input.codigoErp}'`,
+      );
+
+      const dados = {
+        codigoErp: input.codigoErp,
+        descricao: input.descricao,
+        forma: input.forma ?? null,
+        ativo: input.ativo,
+        updatedBy: autor,
+      };
+
+      if (reativar) {
+        const reativada = await tx.condicaoPagamento.update({
+          where: { id: existente!.id },
+          data: { ...dados, ...LIMPAR_EXCLUSAO },
+        });
+        return this.paraLeitura(reativada);
       }
+
       const criada = await tx.condicaoPagamento.create({
-        data: {
-          empresaId,
-          codigoErp: input.codigoErp,
-          descricao: input.descricao,
-          forma: input.forma ?? null,
-          ativo: input.ativo,
-          createdBy: autor,
-          updatedBy: autor,
-        },
+        data: { ...dados, empresaId, createdBy: autor },
       });
       return this.paraLeitura(criada);
     });

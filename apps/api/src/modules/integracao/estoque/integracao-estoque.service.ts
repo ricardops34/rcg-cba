@@ -15,6 +15,10 @@ import type {
   IntegracaoEstoqueUpdate,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
+import {
+  deveReativar,
+  LIMPAR_EXCLUSAO,
+} from '../common/reativar-excluido';
 
 const INCLUDE = {
   produto: { select: { codigoErp: true } },
@@ -118,25 +122,33 @@ export class IntegracaoEstoqueService {
       const existente = await tx.estoque.findFirst({
         where: { empresaId, produtoId: produto.id, armazemId: armazem.id },
       });
-      if (existente) {
-        throw new ConflictException(
-          `Já existe saldo de estoque para produtoCodigo '${input.produtoCodigo}' + armazemCodigo '${input.armazemCodigo}'`,
-        );
+      const reativar = deveReativar(
+        existente,
+        `Já existe saldo de estoque para produtoCodigo '${input.produtoCodigo}' + armazemCodigo '${input.armazemCodigo}'`,
+      );
+
+      const dados = {
+        produtoId: produto.id,
+        armazemId: armazem.id,
+        saldo: input.saldo,
+        reserva: input.reserva ?? null,
+        custo: input.custo ?? null,
+        ultimoPreco: input.ultimoPreco ?? null,
+        ultimaCompra: input.ultimaCompra ?? null,
+        updatedBy: autor,
+      };
+
+      if (reativar) {
+        const reativado = await tx.estoque.update({
+          where: { id: existente!.id },
+          data: { ...dados, ...LIMPAR_EXCLUSAO },
+          include: INCLUDE,
+        });
+        return this.paraLeitura(reativado);
       }
 
       const criado = await tx.estoque.create({
-        data: {
-          empresaId,
-          produtoId: produto.id,
-          armazemId: armazem.id,
-          saldo: input.saldo,
-          reserva: input.reserva ?? null,
-          custo: input.custo ?? null,
-          ultimoPreco: input.ultimoPreco ?? null,
-          ultimaCompra: input.ultimaCompra ?? null,
-          createdBy: autor,
-          updatedBy: autor,
-        },
+        data: { ...dados, empresaId, createdBy: autor },
         include: INCLUDE,
       });
       return this.paraLeitura(criado);

@@ -25,7 +25,7 @@ O que o vendedor precisa é sempre o mesmo pedido do cliente: *"me manda a nota"
 | Boleto | A plataforma **gera** a ficha de compensação — **Bradesco (237)** na v1. |
 | Nosso número | **Vem do ERP** no título. A plataforma **reimprime** boleto já registrado; não numera nem registra no banco. |
 | Convênio bancário | **Cadastro próprio por empresa** (`contas_bancarias`), não parâmetro nem payload repetido. |
-| Armazenamento | **Disco**, em `uploads/nfe` — mesmo padrão de logo e mídia de WhatsApp. Exige volume persistente. |
+| Armazenamento | **Banco**, na tabela acessória `nota_saida_xml` (revisto em 2026-08-24 — ver a seção abaixo). A primeira versão gravava em `uploads/nfe`. |
 
 Consequências que valem registrar:
 
@@ -113,3 +113,50 @@ data de emissão, o valor e o aviso de nota cancelada.
 O registro de `whatsapp_acoes` continua existindo em paralelo: aquilo é
 auditoria do módulo de WhatsApp (o que saiu por qual conversa); isto é o
 histórico que o comercial lê no cliente.
+
+## Onde o XML mora: tabela acessória, não disco nem coluna (2026-08-24)
+
+A primeira versão gravava o XML em `uploads/nfe` e guardava o nome do arquivo
+em `notas_saida.xmlArquivo`. Revisto: o XML passou para a tabela
+**`nota_saida_xml`** (1-1 com a nota, `conteudo` TEXT, com RLS).
+
+**Por que não uma coluna na própria nota.** O Prisma traz todas as colunas
+quando não há `select` explícito, e as duas consultas de nota do sistema não
+têm: a listagem paginada (`NotasSaidaService.findAll`) e a Posição de Cliente
+(`ClientesService.posicao`), que carrega o histórico inteiro do cliente **sem
+paginar**. Uma coluna de XML ali faria cada abertura de tela arrastar
+megabytes que ninguém pediu — e a armadilha ficaria armada para o próximo
+`findMany` que alguém escrevesse. Com a tabela acessória, o XML só trafega
+para quem pede a 2ª via.
+
+**Por que TEXT e não bytea comprimido.** O TOAST do Postgres já tira o valor
+de dentro da linha e comprime (~5 a 8x em XML). Compressão em código seria
+manutenção sem ganho.
+
+**Por que banco e não disco.** Backup único: o XML entra no dump junto com a
+nota, em vez de depender de o volume Docker sobreviver. E a gravação virou
+transacional — o XML e os metadados que dizem que ele existe (`xmlRecebidoEm`,
+`protocoloNfe`, `situacaoNfe`) não têm mais como divergir, janela que a versão
+em disco deixava aberta.
+
+**Custo medido** na base real (67.151 notas, média de 3 itens, ~470 notas/mês):
+uma carga retroativa completa fica em torno de 60–100 MB depois da compressão
+do TOAST, e o crescimento é ~40 MB/ano. A base inteira tinha 318 MB.
+
+`temXml` continua sendo respondido por `notas_saida.xmlRecebidoEm` — metadado
+curto na própria nota, para a listagem não precisar de join só para saber se o
+botão aparece.
+
+### API para operar os XMLs
+
+| Rota | Para quê |
+|---|---|
+| `POST /integracao/notas-saida/{codigo}/xml` | O ERP envia o XML autorizado. Reenviar substitui. |
+| `GET /integracao/notas-saida/{codigo}/xml` | Confere o que a plataforma tem (recebido em, tamanho, protocolo, situação). `?conteudo=true` devolve o arquivo. |
+| `DELETE /integracao/notas-saida/{codigo}/xml` | Desfaz envio no `codigoLegado` errado; limpa protocolo e situação junto. |
+| `GET /integracao/notas-saida?semXml=true` | Lista o que **falta** enviar — é assim que o ERP conduz a carga retroativa sem perguntar nota a nota. |
+| `GET /notas-saida/{id}/xml` | Download pelo usuário logado (escopo de carteira), para o contador do cliente. |
+
+O status não devolve o conteúdo por padrão de propósito: numa varredura de
+milhares de notas, o arquivo seria o maior tráfego da integração sem que
+ninguém precisasse dele.

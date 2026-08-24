@@ -24,6 +24,10 @@ import { calcularItensOrcamento } from '../../orcamentos/calcular-itens-orcament
 import { criarAtividadeRetorno } from '../../orcamentos/criar-atividade-retorno';
 import { proximoNumeroOrcamento } from '../../orcamentos/proximo-numero-orcamento';
 import { autorIntegracao } from '../common/autor-integracao';
+import {
+  deveReativar,
+  LIMPAR_EXCLUSAO,
+} from '../common/reativar-excluido';
 import { ParametrosService } from '../../parametros/parametros.service';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 
@@ -291,11 +295,10 @@ export class IntegracaoOrcamentosService {
       const existente = await tx.orcamento.findFirst({
         where: { empresaId, codigoLegado: input.codigoLegado },
       });
-      if (existente) {
-        throw new ConflictException(
-          `Já existe orçamento com codigoLegado '${input.codigoLegado}'`,
-        );
-      }
+      const reativar = deveReativar(
+        existente,
+        `Já existe orçamento com codigoLegado '${input.codigoLegado}'`,
+      );
 
       const clienteId = await this.resolverCliente(
         tx,
@@ -320,27 +323,49 @@ export class IntegracaoOrcamentosService {
         vendedorId,
       );
 
-      const criado = await tx.orcamento.create({
-        data: {
-          empresaId,
-          codigoLegado: input.codigoLegado,
-          numero: await proximoNumeroOrcamento(tx, empresaId),
-          clienteId,
-          vendedorId,
-          condicaoPagamentoId,
-          titulo: input.titulo,
-          status: input.status,
-          dataValidade: input.dataValidade ?? null,
-          dataRetorno: input.dataRetorno ?? null,
-          observacao: input.observacao ?? null,
-          vlrTotal,
-          ativo: input.ativo,
-          createdBy: autor,
-          updatedBy: autor,
-          itens: { create: itensData },
-        } as never,
-        include: INCLUDE,
-      });
+      const dados = {
+        codigoLegado: input.codigoLegado,
+        clienteId,
+        vendedorId,
+        condicaoPagamentoId,
+        titulo: input.titulo,
+        status: input.status,
+        dataValidade: input.dataValidade ?? null,
+        dataRetorno: input.dataRetorno ?? null,
+        observacao: input.observacao ?? null,
+        vlrTotal,
+        ativo: input.ativo,
+        updatedBy: autor,
+      };
+
+      // Na reativação o orçamento **mantém o número que já tinha**: numerar de
+      // novo criaria uma segunda proposta com o mesmo codigoLegado do ponto de
+      // vista do ERP, e o cliente já viu o número antigo.
+      const criado = reativar
+        ? await (async () => {
+            await tx.orcamentoItem.deleteMany({
+              where: { orcamentoId: existente!.id },
+            });
+            return tx.orcamento.update({
+              where: { id: existente!.id },
+              data: {
+                ...dados,
+                ...LIMPAR_EXCLUSAO,
+                itens: { create: itensData },
+              } as never,
+              include: INCLUDE,
+            });
+          })()
+        : await tx.orcamento.create({
+            data: {
+              ...dados,
+              empresaId,
+              numero: await proximoNumeroOrcamento(tx, empresaId),
+              createdBy: autor,
+              itens: { create: itensData },
+            } as never,
+            include: INCLUDE,
+          });
 
       if (input.dataRetorno) {
         await criarAtividadeRetorno(tx, empresaId, autor, {

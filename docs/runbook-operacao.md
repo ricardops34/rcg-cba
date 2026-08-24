@@ -352,10 +352,12 @@ legado não apontam conta nenhuma. Agência, conta e carteira entram no código 
 barras: confira com o extrato antes de salvar, porque erro aqui não aparece na
 tela, aparece no caixa do banco.
 
-**3. Volume de uploads.** O XML da NF-e é gravado em
-`apps/api/uploads/nfe`, dentro do volume `uploads` que o stack já monta em
-`/app/apps/api/uploads`. Nada novo a criar — mas o diretório **não** é servido
-estaticamente: o XML sai só pela rota autenticada, com escopo de carteira.
+**3. Onde o XML fica.** Na tabela `nota_saida_xml` (migration
+`20260824180000`), **não** em disco — a versão anterior gravava em
+`uploads/nfe` e foi revista em 2026-08-24. Nada a criar em volume; o XML entra
+no dump do banco junto com a nota. Cresce ~40 MB/ano no volume atual de notas,
+e uma carga retroativa completa fica em torno de 60–100 MB (o TOAST do
+Postgres comprime o TEXT sozinho).
 
 **4. O ERP precisa passar a enviar** (senão a 2ª via nunca fica disponível):
 
@@ -365,5 +367,9 @@ estaticamente: o XML sai só pela rota autenticada, com escopo de carteira.
   boleto), `carteira`, `contaBancariaDescricao` e, se existirem,
   `codigoBarras` / `linhaDigitavel` já registrados no banco.
 
-Para uma carga retroativa de XMLs, o limite do endpoint é de 120 requisições
-por minuto por chave.
+**5. Conduzindo a carga retroativa dos XMLs.** O limite do endpoint de envio é
+de 120 requisições por minuto por chave. O ERP descobre o que falta com
+`GET /integracao/notas-saida?semXml=true` (paginado) e confere o que já
+entregou com `GET /integracao/notas-saida/{codigo}/xml`, que devolve
+recebimento, tamanho e situação sem trazer o arquivo. Envio no `codigoLegado`
+errado se desfaz com `DELETE /integracao/notas-saida/{codigo}/xml`.

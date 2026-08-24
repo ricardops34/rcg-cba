@@ -15,6 +15,10 @@ import type {
   IntegracaoObjetivoUpdate,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
+import {
+  deveReativar,
+  LIMPAR_EXCLUSAO,
+} from '../common/reativar-excluido';
 
 const INCLUDE = {
   vendedor: { select: { codigoErp: true } },
@@ -104,11 +108,10 @@ export class IntegracaoObjetivosService {
       const existente = await tx.objetivoVendedorMes.findFirst({
         where: { empresaId, codigoLegado: input.codigoLegado },
       });
-      if (existente) {
-        throw new ConflictException(
-          `Já existe objetivo com codigoLegado '${input.codigoLegado}'`,
-        );
-      }
+      const reativar = deveReativar(
+        existente,
+        `Já existe objetivo com codigoLegado '${input.codigoLegado}'`,
+      );
 
       const vendedor = await tx.vendedor.findFirst({
         where: { empresaId, codigoErp: input.vendedorCodigo, deletedAt: null },
@@ -138,20 +141,42 @@ export class IntegracaoObjetivosService {
         }),
       );
 
+      const dados = {
+        codigoLegado: input.codigoLegado,
+        vendedorId: vendedor.id,
+        mes: input.mes,
+        ano: input.ano,
+        valor: input.valor,
+        numeroCliente: input.numeroCliente ?? null,
+        novoCliente: input.novoCliente ?? null,
+        tipo: input.tipo ?? null,
+        ativo: input.ativo,
+        updatedBy: autor,
+      };
+
+      if (reativar) {
+        // As categorias do payload substituem as do objetivo excluído —
+        // mesma regra do `update`.
+        await tx.objetivoVendedorCategoria.deleteMany({
+          where: { objetivoVendedorMesId: existente!.id },
+        });
+        const reativado = await tx.objetivoVendedorMes.update({
+          where: { id: existente!.id },
+          data: {
+            ...dados,
+            ...LIMPAR_EXCLUSAO,
+            categorias: { create: categoriasData },
+          },
+          include: INCLUDE,
+        });
+        return this.paraLeitura(reativado);
+      }
+
       const criado = await tx.objetivoVendedorMes.create({
         data: {
+          ...dados,
           empresaId,
-          codigoLegado: input.codigoLegado,
-          vendedorId: vendedor.id,
-          mes: input.mes,
-          ano: input.ano,
-          valor: input.valor,
-          numeroCliente: input.numeroCliente ?? null,
-          novoCliente: input.novoCliente ?? null,
-          tipo: input.tipo ?? null,
-          ativo: input.ativo,
           createdBy: autor,
-          updatedBy: autor,
           categorias: { create: categoriasData },
         },
         include: INCLUDE,
