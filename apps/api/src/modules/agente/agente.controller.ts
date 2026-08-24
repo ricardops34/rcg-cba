@@ -23,6 +23,8 @@ import { AgenteChatService } from './agente-chat.service';
 import {
   AgenteConfigUpdateDto,
   AgenteEnvioDto,
+  AgenteOauthConcluirDto,
+  AgenteOauthImportarDto,
   AgenteTestarConexaoDto,
 } from './dto/agente.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -65,7 +67,7 @@ export class AgenteController {
       'Personalidade (system prompt), temperatura, modelo e chave de API. Chave em branco ' +
       'mantém a atual. Requer agente-config.editar.',
   })
-  @ApiBodyExample({ ativo: true, temperatura: 0.3, modelo: 'grok-4-fast' })
+  @ApiBodyExample({ ativo: true, temperatura: 0.3, modelo: 'gpt-5.6-sol' })
   @RequirePermission('agente-config', 'editar')
   @Put('config')
   atualizarConfig(
@@ -93,6 +95,67 @@ export class AgenteController {
       dto.apiKey,
       dto.provedor,
     );
+  }
+
+  // ---------------- conexão OAuth (Codex) ----------------
+
+  @ApiOperation({
+    summary: 'Iniciar a conexão com a conta ChatGPT',
+    description:
+      'Devolve a URL de autorização para o administrador abrir no navegador. O redirect vai ' +
+      'para localhost:1455 (cliente OAuth do Codex CLI, que não pode ser trocado), então a ' +
+      'página **vai falhar** — é o esperado. O que vale é a URL da barra de endereço, que ' +
+      'volta em `POST config/oauth/concluir`. Requer agente-config.editar.',
+  })
+  @RequirePermission('agente-config', 'editar')
+  @Post('config/oauth/iniciar')
+  iniciarOauth(@CurrentUser() user: AuthenticatedUser) {
+    return this.config.iniciarOauth(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Concluir a conexão com a URL de retorno',
+    description:
+      'Recebe a URL de retorno colada (ou só o código) e grava a conexão. O código vale uma ' +
+      'única vez e expira em minutos. Requer agente-config.editar.',
+  })
+  @ApiBodyExample({
+    retorno: 'http://localhost:1455/auth/callback?code=ac_123&state=abc',
+  })
+  @RequirePermission('agente-config', 'editar')
+  @Post('config/oauth/concluir')
+  concluirOauth(
+    @Body() dto: AgenteOauthConcluirDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.config.concluirOauth(user.empresaAtivaId, user, dto.retorno);
+  }
+
+  @ApiOperation({
+    summary: 'Importar a sessão de um Codex CLI já logado',
+    description:
+      'Atalho para quem já usa o `codex` na própria máquina: cola o conteúdo de ' +
+      '`~/.codex/auth.json`. O access token do arquivo é ignorado e renovado na hora, o que ' +
+      'de quebra valida o refresh token. Requer agente-config.editar.',
+  })
+  @RequirePermission('agente-config', 'editar')
+  @Post('config/oauth/importar')
+  importarOauth(
+    @Body() dto: AgenteOauthImportarDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.config.importarOauth(user.empresaAtivaId, user, dto.conteudo);
+  }
+
+  @ApiOperation({
+    summary: 'Desconectar a conta ChatGPT',
+    description:
+      'Apaga os tokens gravados. Requer agente-config.editar.',
+  })
+  @RequirePermission('agente-config', 'editar')
+  @Post('config/oauth/desconectar')
+  desconectarOauth(@CurrentUser() user: AuthenticatedUser) {
+    return this.config.desconectarOauth(user.empresaAtivaId, user);
   }
 
   // ---------------- conversa ----------------

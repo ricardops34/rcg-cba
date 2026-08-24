@@ -81,6 +81,44 @@ export const agenteTestarConexaoSchema = z.object({
 });
 export type AgenteTestarConexao = z.infer<typeof agenteTestarConexaoSchema>;
 
+/**
+ * Início do fluxo OAuth do Codex.
+ *
+ * O `redirect_uri` do cliente OAuth do Codex é fixo em `localhost:1455` e não
+ * pode ser trocado — é o cliente público do CLI oficial. Um servidor não
+ * consegue receber o callback, então o fluxo é em duas etapas: a API devolve a
+ * URL de autorização, o administrador abre no próprio navegador, o redirect
+ * falha (nada escutando em localhost) e ele **cola a URL da barra de endereço**
+ * de volta na tela. O `code` está nela, e o `code_verifier` nunca saiu daqui.
+ */
+export const agenteOauthInicioSchema = z.object({
+  url: z.string().url(),
+  /** Eco do state, só para a tela poder conferir antes de enviar. */
+  state: z.string(),
+  expiraEm: z.string().datetime(),
+});
+export type AgenteOauthInicio = z.infer<typeof agenteOauthInicioSchema>;
+
+export const agenteOauthConcluirSchema = z.object({
+  /**
+   * A URL inteira do callback (`http://localhost:1455/auth/callback?code=...`)
+   * ou apenas o `code`. Aceitar as duas evita a etapa mais fácil de errar:
+   * pedir para o usuário recortar um parâmetro no meio de uma URL longa.
+   */
+  retorno: z.string().trim().min(1).max(4000),
+});
+export type AgenteOauthConcluir = z.infer<typeof agenteOauthConcluirSchema>;
+
+/**
+ * Caminho alternativo: importar a sessão de um Codex CLI já logado, colando o
+ * conteúdo de `~/.codex/auth.json`. Evita todo o vaivém de URL para quem já
+ * usa o CLI na própria máquina.
+ */
+export const agenteOauthImportarSchema = z.object({
+  conteudo: z.string().trim().min(1).max(20000),
+});
+export type AgenteOauthImportar = z.infer<typeof agenteOauthImportarSchema>;
+
 export const agenteEnvioSchema = z.object({
   conversaId: z.string().uuid().optional(),
   texto: z.string().trim().min(1).max(4000),
@@ -140,6 +178,10 @@ export const AGENTE_CONFIG_EXAMPLE: AgenteConfig = {
       apiKeyUltimos4: "9f2c",
       apiKeyPreenchida: true,
       modelo: "claude-opus-5",
+      contaId: null,
+      contaEmail: null,
+      tokenExpiraEm: null,
+      conectado: false,
     },
   ],
   baseUrl: "https://api.anthropic.com",

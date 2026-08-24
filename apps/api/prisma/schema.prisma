@@ -844,9 +844,22 @@ model AgenteCredencial {
   empresaId String
   provedor  String
 
-  apiKeyCifrada  String
-  apiKeyUltimos4 String
+  // Nulos quando o provedor autentica por OAuth (Codex): lá não existe chave,
+  // existe um par de tokens que expira.
+  apiKeyCifrada  String?
+  apiKeyUltimos4 String?
   modelo         String?
+
+  // --- OAuth (provedor `codex`) ---
+  // Os dois tokens são cifrados com a mesma AGENTE_IA_CRYPTO_KEY da chave de
+  // API: são credenciais reutilizáveis, então hash não serve.
+  accessTokenCifrado  String?
+  refreshTokenCifrado String?
+  /** Vai no header ChatGPT-Account-ID; sem ele o backend responde 401/403. */
+  contaId             String?
+  contaEmail          String?
+  /** Expiração do access token — a renovação dispara antes disso. */
+  tokenExpiraEm       DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

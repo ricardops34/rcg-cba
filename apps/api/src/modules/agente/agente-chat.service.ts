@@ -144,6 +144,7 @@ export class AgenteChatService {
       const resposta = await this.provedores.para(cfg.provedor).conversar({
         baseUrl: cfg.baseUrl,
         apiKey: cfg.apiKey,
+        contaId: cfg.contaId,
         modelo: cfg.modelo,
         temperatura: cfg.temperatura,
         maxTokens: cfg.maxTokens,
@@ -172,6 +173,9 @@ export class AgenteChatService {
         papel: 'assistant',
         conteudo: resposta.texto,
         chamadas: resposta.chamadas,
+        // Formato nativo do provedor, quando ele exige os itens de volta na
+        // próxima volta — ver `MensagemChat.bruto`. Vazio nos demais.
+        bruto: resposta.bruto,
       });
 
       for (const chamada of resposta.chamadas) {

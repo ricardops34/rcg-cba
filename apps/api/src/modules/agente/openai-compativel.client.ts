@@ -9,11 +9,11 @@ import type {
 
 /**
  * Cliente dos provedores que falam o **formato da OpenAI**
- * (`POST {baseUrl}/chat/completions`): xAI (Grok), Groq e a própria OpenAI.
+ * (`POST {baseUrl}/chat/completions`).
  *
- * Uma implementação serve os três — o que muda entre eles é endpoint, modelo e
- * chave, não o formato. A Anthropic tem formato próprio e fica em
- * `anthropic.client.ts`.
+ * Uma implementação serve todos eles — o que muda é endpoint, modelo e chave,
+ * não o formato. A Anthropic tem o seu (`anthropic.client.ts`) e o Codex o
+ * dele (`codex.client.ts`).
  */
 
 interface CorpoResposta {

@@ -5,6 +5,8 @@ import { AgenteChatService } from './agente-chat.service';
 import { AgenteToolsService } from './agente-tools.service';
 import { OpenAiCompativelClient } from './openai-compativel.client';
 import { AnthropicClient } from './anthropic.client';
+import { CodexClient } from './codex.client';
+import { CodexOAuthService } from './codex-oauth.service';
 import { ProvedorFactory } from './provedor.factory';
 import { ConsultasModule } from '../consultas/consultas.module';
 import { ClientesModule } from '../clientes/clientes.module';
@@ -34,6 +36,8 @@ import { SugestaoCompraModule } from '../sugestao-compra/sugestao-compra.module'
     AgenteToolsService,
     OpenAiCompativelClient,
     AnthropicClient,
+    CodexClient,
+    CodexOAuthService,
     ProvedorFactory,
   ],
 })
