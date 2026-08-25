@@ -90,9 +90,7 @@ export class CodexOAuthService {
     this.limparVencidos();
 
     const verifier = randomBytes(64).toString('base64url');
-    const challenge = createHash('sha256')
-      .update(verifier)
-      .digest('base64url');
+    const challenge = createHash('sha256').update(verifier).digest('base64url');
     const state = randomBytes(32).toString('base64url');
 
     this.pendentes.set(state, { verifier, empresaId, criadoEm: Date.now() });
@@ -231,7 +229,8 @@ export class CodexOAuthService {
     }
 
     const claims = this.claimsDoIdToken(dados.id_token);
-    const segundos = typeof dados.expires_in === 'number' ? dados.expires_in : 0;
+    const segundos =
+      typeof dados.expires_in === 'number' ? dados.expires_in : 0;
 
     return {
       accessToken: dados.access_token as string,
@@ -263,8 +262,7 @@ export class CodexOAuthService {
       ) as Record<string, unknown>;
 
       const auth = json['https://api.openai.com/auth'] as
-        | Record<string, unknown>
-        | undefined;
+        Record<string, unknown> | undefined;
       const contaId = auth?.chatgpt_account_id;
       const email = json.email;
 

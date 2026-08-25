@@ -287,10 +287,15 @@ export class CodexClient implements ProvedorClient {
       clearTimeout(timer);
     }
 
-    this.logger.log(`IA (codex): ${resposta.status} em ${Date.now() - inicio}ms`);
+    this.logger.log(
+      `IA (codex): ${resposta.status} em ${Date.now() - inicio}ms`,
+    );
 
     if (!resposta.ok) {
-      throw this.traduzirErro(resposta.status, await resposta.text().catch(() => ''));
+      throw this.traduzirErro(
+        resposta.status,
+        await resposta.text().catch(() => ''),
+      );
     }
 
     return this.lerEventos(resposta);
@@ -382,7 +387,9 @@ export class CodexClient implements ProvedorClient {
     // Ver ponto 1 no comentário do método: os itens acumulados são a resposta
     // de verdade. O `output` do evento final só é usado se algum dia vier
     // preenchido.
-    return concluida.output?.length ? concluida : { ...concluida, output: itens };
+    return concluida.output?.length
+      ? concluida
+      : { ...concluida, output: itens };
   }
 
   /** Traduzido para o administrador na tela, não para o console. */
@@ -399,7 +406,8 @@ export class CodexClient implements ProvedorClient {
       return new BadGatewayException(
         'O ChatGPT recusou a requisição (403). Isso costuma ser conta sem plano ' +
           'com Codex, workspace com restrição de residência de dados, ou o backend ' +
-          'passando a recusar este tipo de cliente.' + (mensagem ? ` ${mensagem}` : ''),
+          'passando a recusar este tipo de cliente.' +
+          (mensagem ? ` ${mensagem}` : ''),
       );
     }
     if (status === 404) {

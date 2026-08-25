@@ -373,3 +373,70 @@ de 120 requisições por minuto por chave. O ERP descobre o que falta com
 entregou com `GET /integracao/notas-saida/{codigo}/xml`, que devolve
 recebimento, tamanho e situação sem trazer o arquivo. Envio no `codigoLegado`
 errado se desfaz com `DELETE /integracao/notas-saida/{codigo}/xml`.
+
+---
+
+## Agente IA com a assinatura ChatGPT (provedor Codex) **[verificado em 2026-08-24]**
+
+O provedor **Codex** não usa chave de API: ele autentica com o login OAuth da
+assinatura ChatGPT, o mesmo do `codex login`. Isso muda o procedimento de
+configuração, e traz limitações que não existem nos outros provedores.
+
+> **Antes de habilitar, saiba o risco.** O endpoint
+> (`https://chatgpt.com/backend-api/codex/responses`) é privado e **não
+> documentado** pela OpenAI — existe para os aplicativos oficiais do Codex (CLI,
+> extensão de IDE). Não há contrato de estabilidade: formato, headers e a
+> whitelist de `originator` podem mudar sem aviso e derrubar o agente em
+> produção. E usar a assinatura fora daqueles aplicativos pode contrariar os
+> termos de uso, com risco de **suspensão da conta**. Para uso comercial
+> contínuo, o provedor `openai` com chave de API é o caminho suportado.
+
+### Por que conectar é em duas etapas
+
+O cliente OAuth é o do CLI oficial e tem `redirect_uri` fixo em
+`http://localhost:1455/auth/callback`. Não dá para trocar, e uma API numa VPS
+não tem como receber esse callback. Então, em **Administração > Agente IA**, com
+o provedor Codex selecionado:
+
+1. **Abrir autorização** — abre o login da OpenAI numa aba nova.
+2. Depois de autorizar, o navegador tenta ir para `localhost:1455` e **mostra
+   erro de conexão. Isso é o esperado, não é falha.**
+3. Copiar a URL inteira da barra de endereço e colar no campo **URL de retorno**
+   → **Conectar**.
+
+O `code_verifier` do PKCE nunca sai da API, e o pedido expira em 10 minutos.
+
+> A página `/success?id_token=...` **não serve**: ela é a tela final do CLI, e
+> nela o código já foi consumido. Quem chegou nela tem o CLI instalado e deve
+> usar a aba "Importar do Codex CLI".
+
+### Atalho: importar de um Codex CLI já logado
+
+Na aba **Importar do Codex CLI**, cole o conteúdo de `~/.codex/auth.json`
+(Windows: `%USERPROFILE%\.codex\auth.json`). Só o `refresh_token` importa — o
+access token do arquivo é ignorado e renovado na hora, o que de quebra valida a
+sessão na mesma requisição.
+
+> **Efeito colateral:** o refresh token **rotaciona** a cada renovação e a
+> OpenAI invalida o anterior. A partir da importação, a API e o CLI disputam a
+> mesma sessão — quando um renova, o outro pode precisar de um novo
+> `codex login`. Se o CLI for usado no dia a dia, prefira o fluxo pelo
+> navegador, que cria uma sessão separada.
+
+### Limitações do provedor Codex
+
+| Campo da tela | O que acontece |
+|---|---|
+| Chave de API / Endpoint | Não aparecem — a credencial é a conta conectada. |
+| Modelo | Lista **fixa** (o backend não tem `/models`). Os nomes da API pública (`gpt-5`, `gpt-5.1-codex`, `o4-mini`…) são **recusados**; valem só `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`. A referência do CLI fica em `~/.codex/models_cache.json`. |
+| Temperatura | Escondida — modelos de reasoning não aceitam o parâmetro. |
+| Tamanho máximo da resposta | Ignorado: o backend recusa `max_output_tokens` (400 "Unsupported parameter"). O teto é o da assinatura. |
+| Máximo de iterações de ferramentas | **Suba para 8–10.** Os modelos do Codex são agênticos e encadeiam várias consultas antes de responder; com o padrão de 5 a conversa termina em "não consegui concluir o raciocínio dentro do limite de passos". |
+
+O erro **429** aqui não é throttle passageiro: é o limite de uso da assinatura,
+por janela de horas/semana. Tentar de novo em seguida não resolve.
+
+### Pré-requisito
+
+`AGENTE_IA_CRYPTO_KEY` precisa estar configurada (32 bytes em base64) — os dois
+tokens são gravados cifrados em `agente_credenciais`, como a chave de API.

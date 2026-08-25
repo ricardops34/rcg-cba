@@ -54,22 +54,54 @@ export default function AgenteConfigPage() {
   return <AgenteConfigForm config={data} />;
 }
 
+/**
+ * Provedor gravado que não existe mais no catálogo (foi o caso de `xai` e
+ * `groq`, removidos) cai para o padrão em vez de derrubar a tela.
+ *
+ * Sem isso, `PROVEDORES[provedor]` volta `undefined` e a página inteira quebra
+ * num TypeError — logo a página que serviria para corrigir a configuração. O
+ * endpoint e o modelo vêm junto, porque os que estavam gravados eram do
+ * provedor antigo e não funcionariam no novo.
+ */
+const PROVEDOR_PADRAO: ProvedorIa = "anthropic";
+
+function normalizarProvedor(config: AgenteConfig) {
+  if (config.provedor in PROVEDORES) {
+    return {
+      provedor: config.provedor,
+      modelo: config.modelo,
+      baseUrl: config.baseUrl,
+    };
+  }
+  const padrao = PROVEDORES[PROVEDOR_PADRAO];
+  return {
+    provedor: PROVEDOR_PADRAO,
+    modelo: padrao.modeloPadrao,
+    baseUrl: padrao.baseUrl,
+  };
+}
+
 function AgenteConfigForm({ config }: { config: AgenteConfig }) {
   const queryClient = useQueryClient();
+  const inicial = normalizarProvedor(config);
 
   const [form, setForm] = useState({
     ativo: config.ativo,
-    provedor: config.provedor,
-    modelo: config.modelo,
-    baseUrl: config.baseUrl,
+    provedor: inicial.provedor,
+    modelo: inicial.modelo,
+    baseUrl: inicial.baseUrl,
     apiKey: "",
     systemPrompt: config.systemPrompt ?? "",
     temperatura: config.temperatura,
     maxTokens: config.maxTokens,
+    maxIteracoesFerramentas: config.maxIteracoesFerramentas,
   });
   const [modelos, setModelos] = useState<string[]>([]);
 
+  // Sempre definido: `normalizarProvedor` garante que o estado só carrega
+  // provedor existente no catálogo.
   const info = PROVEDORES[form.provedor];
+  const provedorInvalido = !(config.provedor in PROVEDORES);
   /** Chave já gravada para o provedor selecionado — a base da troca em um clique. */
   const credencial = config.credenciais.find((c) => c.provedor === form.provedor);
 
@@ -105,6 +137,7 @@ function AgenteConfigForm({ config }: { config: AgenteConfig }) {
           systemPrompt: form.systemPrompt || null,
           temperatura: form.temperatura,
           maxTokens: form.maxTokens,
+          maxIteracoesFerramentas: form.maxIteracoesFerramentas,
         },
       }),
     onSuccess: () => {
@@ -205,6 +238,19 @@ function AgenteConfigForm({ config }: { config: AgenteConfig }) {
                   </a>
                 </FieldDescription>
               </Field>
+
+              {provedorInvalido ? (
+                <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                  <p>
+                    A configuração estava usando o provedor{" "}
+                    <code>{config.provedor}</code>, que não existe mais. A tela
+                    já mostra {PROVEDORES[PROVEDOR_PADRAO].rotulo} como
+                    substituto — <strong>clique em Salvar</strong> para gravar a
+                    troca.
+                  </p>
+                </div>
+              ) : null}
 
               {info.advertencia ? (
                 <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400">
@@ -391,6 +437,40 @@ function AgenteConfigForm({ config }: { config: AgenteConfig }) {
                   />
                 </Field>
               )}
+              <Field>
+                <FieldLabel htmlFor="maxIteracoes">
+                  Máximo de consultas por pergunta
+                </FieldLabel>
+                <Input
+                  id="maxIteracoes"
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={form.maxIteracoesFerramentas}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      maxIteracoesFerramentas: Number(e.target.value),
+                    }))
+                  }
+                />
+                <FieldDescription>
+                  {/* Medido: com 5, uma pergunta que encadeia clientes e
+                      títulos morre no limite antes de o Codex escrever a
+                      resposta. */}
+                  {form.provedor === "codex" &&
+                  form.maxIteracoesFerramentas < 8 ? (
+                    <span className="text-amber-600">
+                      Os modelos do Codex encadeiam várias consultas antes de
+                      responder. Com menos de 8, a resposta costuma sair como
+                      &quot;não consegui concluir dentro do limite de
+                      passos&quot;.
+                    </span>
+                  ) : (
+                    "Quantas ferramentas o agente pode consultar em sequência antes de ter que responder."
+                  )}
+                </FieldDescription>
+              </Field>
             </div>
           </FieldSet>
         </FieldGroup>

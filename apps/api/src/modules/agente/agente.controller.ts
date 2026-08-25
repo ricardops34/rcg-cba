@@ -149,8 +149,7 @@ export class AgenteController {
 
   @ApiOperation({
     summary: 'Desconectar a conta ChatGPT',
-    description:
-      'Apaga os tokens gravados. Requer agente-config.editar.',
+    description: 'Apaga os tokens gravados. Requer agente-config.editar.',
   })
   @RequirePermission('agente-config', 'editar')
   @Post('config/oauth/desconectar')
