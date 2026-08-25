@@ -56,6 +56,25 @@ export type WhatsappStatusEntrega = z.infer<typeof whatsappStatusEntregaSchema>;
  * na sessão: mudou o texto, o aceite antigo não vale mais para o novo teor.
  */
 export const WHATSAPP_ACEITE_VERSAO = "2026-08-14";
+/**
+ * O que o transporte `zapo` é de fato — e por que isso importa para quem
+ * conecta o próprio número.
+ *
+ * Não é a API oficial da Meta: é o WhatsApp Web pareado ao aparelho do
+ * vendedor. Funciona, e é o que permite usar o número que o cliente já conhece
+ * sem custo por conversa — mas o WhatsApp pode bloquear o número, e quem perde
+ * o número é o vendedor, não a plataforma. O aviso fica na tela de conexão
+ * porque é ali que a pessoa decide, e não escondido num manual.
+ *
+ * Texto único, usado na conexão do vendedor e na central de instâncias.
+ */
+export const WHATSAPP_AVISO_NAO_OFICIAL =
+  "Esta é uma conexão NÃO OFICIAL: a plataforma pareia o WhatsApp Web ao seu " +
+  "aparelho, como um computador conectado, e não usa a API oficial da Meta. " +
+  "O WhatsApp pode bloquear números que considere abusivos — evite disparo em " +
+  "massa, mensagem não solicitada e lista de transmissão. Use como você usaria " +
+  "o aplicativo: uma conversa de cada vez, com quem espera seu contato.";
+
 export const WHATSAPP_ACEITE_TEXTO =
   "Ao conectar, as conversas com contatos vinculados a clientes serão gravadas " +
   "na plataforma e poderão ser consultadas pelo seu supervisor e pelo gerente. " +

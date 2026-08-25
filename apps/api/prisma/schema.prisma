@@ -828,6 +828,10 @@ model AgenteConfig {
   // pode trocar o nome pelo qual a equipe conhece o assistente nem as regras
   // de resposta.
   nomeAgente   String  @default("Assistente")
+  // Primeira fala de toda conversa nova. Não vai ao modelo: é texto da
+  // empresa, escrito por gente, e o que ele faz é dizer ao vendedor o que
+  // pedir — a tela em branco não ensina isso.
+  mensagemBoasVindas String? @db.Text
   systemPrompt String? @db.Text
   temperatura  Float   @default(0.3)
   maxTokens    Int     @default(2048)

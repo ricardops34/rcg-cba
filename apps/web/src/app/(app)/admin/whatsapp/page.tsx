@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cable, CheckCircle2, Cloud, ExternalLink, MoreHorizontal, PlugZap, RefreshCw, ServerCog, Smartphone, Trash2, TriangleAlert } from "lucide-react";
+import { Cable, CheckCircle2, Cloud, ExternalLink, MoreHorizontal, RefreshCw, ServerCog, Smartphone, Trash2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
-import type { WhatsappConfig, WhatsappSessao } from "@plataforma/contracts";
+import { WHATSAPP_AVISO_NAO_OFICIAL, type WhatsappConfig, type WhatsappSessao } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,14 +38,14 @@ export default function WhatsappConfigPage() {
     <div className="space-y-5">
       <ChannelHeader config={config} />
       <Tabs value={aba} onValueChange={(value) => setAba(value as Aba)}>
-        <TabsList variant="line" className="w-full justify-start gap-5 overflow-x-auto border-b px-1 pb-1">
-          <TabsTrigger value="zapo"><PlugZap /> zapo-js</TabsTrigger>
-          <TabsTrigger value="evolution-go"><ServerCog /> Evolution GO</TabsTrigger>
-          <TabsTrigger value="cloud-api"><Cloud /> API Oficial</TabsTrigger>
-          <TabsTrigger value="instancias"><Smartphone /> Instâncias</TabsTrigger>
+        <TabsList>
+          <TabsTrigger value="zapo">zapo-js</TabsTrigger>
+          <TabsTrigger value="evolution-go">Evolution GO</TabsTrigger>
+          <TabsTrigger value="cloud-api">API Oficial</TabsTrigger>
+          <TabsTrigger value="instancias">Instâncias</TabsTrigger>
         </TabsList>
-        <TabsContent value="zapo" className="pt-3"><ZapoConfig config={config} /></TabsContent>
-        <TabsContent value="evolution-go" className="pt-3">
+        <TabsContent value="zapo" className="pt-4"><ZapoConfig config={config} /></TabsContent>
+        <TabsContent value="evolution-go" className="pt-4">
           <ProviderEmPreparacao
             icon={ServerCog}
             titulo="Evolution GO"
@@ -54,7 +54,7 @@ export default function WhatsappConfigPage() {
             href="https://github.com/evolution-foundation/evolution-go"
           />
         </TabsContent>
-        <TabsContent value="cloud-api" className="pt-3">
+        <TabsContent value="cloud-api" className="pt-4">
           <ProviderEmPreparacao
             icon={Cloud}
             titulo="API Oficial da Meta"
@@ -62,7 +62,7 @@ export default function WhatsappConfigPage() {
             detalhes="Ainda faltam o Phone Number ID, token permanente, webhook e fluxo de templates. A opção permanece indisponível para não interromper o atendimento atual."
           />
         </TabsContent>
-        <TabsContent value="instancias" className="pt-3"><Instancias /></TabsContent>
+        <TabsContent value="instancias" className="pt-4"><Instancias /></TabsContent>
       </Tabs>
     </div>
   );
@@ -127,7 +127,9 @@ function ZapoConfig({ config }: { config: WhatsappConfig }) {
           </Field>
           <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 text-sm text-amber-900 dark:text-amber-200">
             <div className="flex gap-2 font-medium"><TriangleAlert className="mt-0.5 size-4 shrink-0" /> Integração não oficial</div>
-            <p className="mt-1 pl-6 text-xs opacity-85">Use um chip dedicado. Alterações do WhatsApp podem interromper sessões ou bloquear o número.</p>
+            {/* Mesmo texto que o vendedor lê ao conectar o aparelho — dois
+                avisos divergentes sobre o mesmo risco é pior do que um. */}
+            <p className="mt-1 pl-6 text-xs opacity-85">{WHATSAPP_AVISO_NAO_OFICIAL} Use um chip dedicado: alterações do WhatsApp podem interromper as sessões.</p>
           </div>
         </FieldGroup>
       </CardContent>
@@ -165,8 +167,24 @@ function Instancias() {
     onError: (error) => toast.error(mensagemErro(error, "Falha ao remover")),
   });
 
+  // Vale para as instâncias em `zapo` — o transporte de cada uma aparece na
+  // coluna Provedor. Some quando a empresa inteira estiver na API oficial.
+  const alguemNaoOficial = data.some((s) => s.transporte !== "cloud_api");
+
   return (
     <>
+      {alguemNaoOficial ? (
+        <div className="mb-4 flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
+          <TriangleAlert className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="space-y-1 text-xs">
+            <p className="font-medium text-amber-700 dark:text-amber-400">
+              API não oficial (zapo-js)
+            </p>
+            <p className="text-muted-foreground">{WHATSAPP_AVISO_NAO_OFICIAL}</p>
+          </div>
+        </div>
+      ) : null}
+
       <Card>
         <CardHeader className="border-b"><div className="flex items-center justify-between gap-3"><div><CardTitle>Instâncias dos vendedores</CardTitle><p className="mt-1 text-sm text-muted-foreground">Estado atualizado a cada 10 segundos. A primeira conexão é iniciada pelo vendedor em Atendimento.</p></div><Badge variant="outline">{data.length} {data.length === 1 ? "instância" : "instâncias"}</Badge></div></CardHeader>
         <CardContent className="p-0">

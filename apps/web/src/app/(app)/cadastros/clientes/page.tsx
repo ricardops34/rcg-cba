@@ -13,7 +13,9 @@ import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
 import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
 import { FiltersPopover } from "@/components/crud/filters-popover";
+import { useFiltrosUrl } from "@/hooks/use-filtros-url";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -34,15 +36,30 @@ type ClienteRow = Cliente & {
 
 export default function ClientesPage() {
   const router = useRouter();
-  const [search, setSearch] = useState("");
+  // Filtros que podem vir prontos na URL — é assim que o botão do assistente
+  // ("ver os 42 clientes ativos em Campo Grande") abre a tela já no recorte de
+  // que se falou, em vez de despejar a base inteira. Ver `useFiltrosUrl`.
+  const urlFiltros = useFiltrosUrl();
+  const [search, setSearch] = useState(() => urlFiltros.texto("search") ?? "");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [sortBy, setSortBy] = useState("razaoSocial");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
-  const [status, setStatus] = useState<StatusFilterValue>("todos");
+  const [status, setStatus] = useState<StatusFilterValue>(() => {
+    const ativo = urlFiltros.booleano("ativo");
+    return ativo === undefined ? "todos" : ativo ? "ativos" : "inativos";
+  });
   const [tipoPessoa, setTipoPessoa] = useState<TipoPessoaFiltro>("todos");
-  const [uf, setUf] = useState<string | undefined>(undefined);
-  const [vendedorId, setVendedorId] = useState<string | undefined>(undefined);
+  const [uf, setUf] = useState<string | undefined>(() => urlFiltros.texto("uf"));
+  const [municipio, setMunicipio] = useState<string | undefined>(() =>
+    urlFiltros.texto("municipio"),
+  );
+  const [cnae, setCnae] = useState<string | undefined>(() =>
+    urlFiltros.texto("cnae"),
+  );
+  const [vendedorId, setVendedorId] = useState<string | undefined>(() =>
+    urlFiltros.texto("vendedorId"),
+  );
   const [carteira, setCarteira] = useState<SimNaoTodos>("todos");
 
   // Opções de vendedor já restritas ao escopo do usuário logado — não usa
@@ -75,6 +92,8 @@ export default function ClientesPage() {
     ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
     ...(tipoPessoa !== "todos" ? { tipoPessoa } : {}),
     ...(uf ? { uf } : {}),
+    ...(municipio ? { municipio } : {}),
+    ...(cnae ? { cnae } : {}),
     ...(vendedorId ? { vendedorId } : {}),
     ...(carteira !== "todos" ? { carteira: carteira === "sim" } : {}),
   });
@@ -93,11 +112,19 @@ export default function ClientesPage() {
     }
   };
 
-  const filtrosAtivos = tipoPessoa !== "todos" || !!uf || !!vendedorId || carteira !== "todos";
+  const filtrosAtivos =
+    tipoPessoa !== "todos" ||
+    !!uf ||
+    !!municipio ||
+    !!cnae ||
+    !!vendedorId ||
+    carteira !== "todos";
 
   const limparFiltros = () => {
     setTipoPessoa("todos");
     setUf(undefined);
+    setMunicipio(undefined);
+    setCnae(undefined);
     setVendedorId(undefined);
     setCarteira("todos");
     setPage(1);
@@ -238,6 +265,36 @@ export default function ClientesPage() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Município e CNAE entram como texto: são muitas opções para um
+              select, e o caso de uso é o link que já vem com o valor pronto
+              (do assistente ou de um favorito). Digitados à mão funcionam
+              igual — município é o nome inteiro, CNAE é prefixo do código. */}
+          <div className="space-y-2">
+            <FieldLabel>Município</FieldLabel>
+            <Input
+              value={municipio ?? ""}
+              placeholder="Nome do município"
+              onChange={(e) => {
+                setMunicipio(e.target.value || undefined);
+                setPage(1);
+              }}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <FieldLabel>Ramo (CNAE)</FieldLabel>
+            <Input
+              value={cnae ?? ""}
+              placeholder="2 a 7 dígitos, ex.: 5611"
+              inputMode="numeric"
+              onChange={(e) => {
+                const so = e.target.value.replace(/\D/g, "").slice(0, 7);
+                setCnae(so || undefined);
+                setPage(1);
+              }}
+            />
           </div>
 
           {mostrarFiltroVendedor && (

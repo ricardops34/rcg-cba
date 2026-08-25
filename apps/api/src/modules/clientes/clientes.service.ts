@@ -232,7 +232,9 @@ export class ClientesService {
         : {
             ...doCadastro,
             // União: a fila nunca propõe remover ramo que já está no cadastro.
-            cnaes: [...new Set([...codigosAtuais, ...sugeridos.map((c) => c.codigo)])],
+            cnaes: [
+              ...new Set([...codigosAtuais, ...sugeridos.map((c) => c.codigo)]),
+            ],
           };
 
     const registro = await this.prisma.withTenant(empresaId, (tx) =>

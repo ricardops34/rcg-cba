@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type {
-  AgenteConfig,
+  AgenteApresentacao,
   AgenteConfirmacao,
   AgenteDestino,
   AgentePendencia,
@@ -20,6 +20,7 @@ import {
   Check,
   Eraser,
   ExternalLink,
+  HelpCircle,
   Minus,
   Send,
   Sparkles,
@@ -123,16 +124,24 @@ export function AgenteFab() {
   const fim = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
-  // Só consulta a configuração se o usuário puder usar — evita 403 no console
-  // de quem não tem a permissão.
+  /**
+   * Nome do agente, mensagem de abertura e se ele está ligado.
+   *
+   * Endpoint próprio (`/agente/apresentacao`), e não `/agente/config`: a
+   * configuração inteira exige permissão de administrador, então o vendedor
+   * tomava 403 e via "Assistente" genérico — mesmo com a empresa tendo batizado
+   * o agente. Aqui a permissão é a de usar (`agente.visualizar`).
+   */
   const { data: config } = useQuery({
-    queryKey: ["agente-config", "disponibilidade"],
-    queryFn: () => apiFetch<AgenteConfig>("/agente/config"),
+    queryKey: ["agente-apresentacao"],
+    queryFn: () => apiFetch<AgenteApresentacao>("/agente/apresentacao"),
     enabled: podeUsar,
-    // A tela de config exige outra permissão; se falhar, tratamos como ativo e
-    // deixamos o envio dar a mensagem correta.
     retry: false,
   });
+  const nomeAgente = config?.nomeAgente || "Assistente";
+  const boasVindas =
+    config?.mensagemBoasVindas?.trim() ||
+    `Olá! Sou o ${nomeAgente}. Posso consultar a sua carteira, montar orçamentos e preparar o seu dia. O que você precisa?`;
 
   /**
    * Posição e tamanho só existem no cliente (dependem da viewport) e ficam
@@ -393,9 +402,23 @@ export function AgenteFab() {
             style={{ height: ALTURA_TITULO }}
           >
             <Sparkles className="size-4 shrink-0" />
+            {/* O nome que a empresa deu ao agente, não um rótulo fixo. */}
             <span className="flex-1 truncate text-sm font-medium">
-              Assistente
+              {nomeAgente}
             </span>
+            <Button
+              asChild
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              title="Como usar — o que dá para pedir"
+              aria-label="Ajuda do assistente"
+            >
+              <Link href="/assistente/ajuda">
+                <HelpCircle className="size-4" />
+              </Link>
+            </Button>
             <Button
               type="button"
               variant="ghost"
@@ -437,18 +460,33 @@ export function AgenteFab() {
           </div>
 
           <div className="flex-1 space-y-3 overflow-y-auto p-4">
+            {/* Conversa nova abre com a saudação da empresa, como um balão do
+                próprio agente — a tela em branco não diz o que dá para pedir.
+                Volta a aparecer depois de encerrar a conversa. */}
             {baloes.length === 0 && (
-              <div className="space-y-2 text-sm text-muted-foreground">
-                <p>Pergunte sobre a sua carteira. Alguns exemplos:</p>
-                <ul className="list-disc space-y-1 pl-4">
-                  <li>Quanto o cliente X comprou nos últimos 6 meses?</li>
-                  <li>O que eu posso oferecer para o cliente Y?</li>
-                  <li>Quais clientes meus têm título vencido?</li>
-                </ul>
-                <p className="pt-2">
-                  Eu só enxergo o que você já pode ver no sistema, e peço
-                  confirmação antes de gravar qualquer coisa.
-                </p>
+              <div className="space-y-3">
+                <div className="mr-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-sm whitespace-pre-wrap">
+                  {boasVindas}
+                </div>
+                <div className="space-y-2 text-sm text-muted-foreground">
+                  <p>Alguns exemplos:</p>
+                  <ul className="list-disc space-y-1 pl-4">
+                    <li>Quanto o cliente X comprou nos últimos 6 meses?</li>
+                    <li>O que eu posso oferecer para o cliente Y?</li>
+                    <li>Quais clientes meus têm título vencido?</li>
+                  </ul>
+                  <p className="pt-1">
+                    Eu só enxergo o que você já pode ver no sistema, e peço
+                    confirmação antes de gravar qualquer coisa.{" "}
+                    <Link
+                      href="/assistente/ajuda"
+                      className="underline underline-offset-2"
+                    >
+                      Ver tudo o que eu sei fazer
+                    </Link>
+                    .
+                  </p>
+                </div>
               </div>
             )}
 

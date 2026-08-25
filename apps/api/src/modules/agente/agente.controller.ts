@@ -53,6 +53,42 @@ export class AgenteController {
   // ---------------- configuração ----------------
 
   @ApiOperation({
+    summary: 'Apresentação do agente para quem vai usá-lo',
+    description:
+      'Se está ativo, o nome que a empresa deu ao agente e a mensagem de boas-vindas — ' +
+      'o que a janela do chat precisa antes da primeira pergunta. Recorte de ' +
+      'agente/config para quem tem agente.visualizar e não é administrador do agente.',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      example: {
+        ativo: true,
+        nomeAgente: 'Assistente',
+        mensagemBoasVindas: null,
+      },
+    },
+  })
+  @RequirePermission('agente', 'visualizar')
+  @Get('apresentacao')
+  apresentacao(@CurrentUser() user: AuthenticatedUser) {
+    return this.config.apresentacao(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Ferramentas que ESTE usuário pode usar',
+    description:
+      'O que o agente consegue fazer para quem está perguntando: o catálogo já filtrado ' +
+      'pela permissão do usuário e pela configuração da empresa, com os exemplos de uso. ' +
+      'Alimenta a página de ajuda do assistente. Requer agente.visualizar.',
+  })
+  @RequirePermission('agente', 'visualizar')
+  @Get('ferramentas-disponiveis')
+  ferramentasDisponiveis(@CurrentUser() user: AuthenticatedUser) {
+    return this.ferramentas.disponiveisParaAjuda(user.empresaAtivaId, user);
+  }
+
+  @ApiOperation({
     summary: 'Configuração do agente na empresa ativa',
     description:
       'Singleton por empresa, criado no primeiro acesso. A chave de API nunca é devolvida — ' +

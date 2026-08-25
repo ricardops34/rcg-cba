@@ -177,6 +177,32 @@ export class AgenteConfigService {
     });
   }
 
+  /**
+   * O mínimo que a janela do chat precisa antes da primeira pergunta.
+   *
+   * Separado de `obter` porque a permissão é outra: a configuração inteira é
+   * de administrador e traz provedor, chave e prompt; isto aqui é para quem
+   * **usa** o assistente. Sem este recorte, o vendedor tomava 403 ao abrir o
+   * chat e via "Assistente" genérico, mesmo com a empresa tendo dado um nome
+   * ao agente.
+   *
+   * Empresa sem configuração ainda não ativou o agente — responde desligado,
+   * em vez de estourar.
+   */
+  async apresentacao(empresaId: string) {
+    const linha = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.agenteConfig.findUnique({
+        where: { empresaId },
+        select: { ativo: true, nomeAgente: true, mensagemBoasVindas: true },
+      }),
+    );
+    return {
+      ativo: linha?.ativo ?? false,
+      nomeAgente: linha?.nomeAgente ?? 'Assistente',
+      mensagemBoasVindas: linha?.mensagemBoasVindas ?? null,
+    };
+  }
+
   /** Uso interno pelo chat. Recusa cedo e com motivo legível. */
   async paraUso(empresaId: string): Promise<ConfigParaUso> {
     const linha = await this.prisma.withTenant(empresaId, (tx) =>
@@ -474,6 +500,7 @@ export class AgenteConfigService {
       empresaId: string;
       ativo: boolean;
       nomeAgente: string;
+      mensagemBoasVindas: string | null;
       provedor: string;
       baseUrl: string;
       modelo: string;
@@ -501,6 +528,7 @@ export class AgenteConfigService {
       empresaId: linha.empresaId,
       ativo: linha.ativo,
       nomeAgente: linha.nomeAgente,
+      mensagemBoasVindas: linha.mensagemBoasVindas,
       provedor: linha.provedor,
       baseUrl: linha.baseUrl,
       modelo: linha.modelo,

@@ -45,6 +45,7 @@ export const agenteConfigUpdateSchema = z.object({
   ativo: z.boolean().optional(),
   // Identidade do agente, independente do provedor.
   nomeAgente: z.string().trim().min(1).max(40).optional(),
+  mensagemBoasVindas: z.string().max(1000).nullable().optional(),
   baseUrl: z.string().trim().url().max(200).optional(),
   modelo: z.string().trim().min(1).max(80).optional(),
   // Vazio = manter a chave atual. Nunca é devolvida para ser redigitada.
@@ -63,6 +64,7 @@ export const agenteConfigSchema = z.object({
   empresaId: z.string().uuid(),
   ativo: z.boolean(),
   nomeAgente: z.string(),
+  mensagemBoasVindas: z.string().nullable(),
   provedor: provedorIaSchema,
   credenciais: z.array(agenteCredencialSchema).default([]),
   baseUrl: z.string(),
@@ -137,6 +139,23 @@ export const agentePendenciaSchema = z.object({
 export type AgentePendencia = z.infer<typeof agentePendenciaSchema>;
 
 /**
+ * O que o **chat** precisa saber antes da primeira pergunta: se o agente está
+ * ligado, como ele se chama e o que dizer ao abrir.
+ *
+ * Existe separado de `AgenteConfig` por causa da permissão. A configuração
+ * inteira é de administrador (`agente-config.visualizar`) e carrega provedor,
+ * modelo e prompt; quem só usa o assistente (`agente.visualizar`) recebia 403
+ * ao pedi-la e ficava sem saber nem o nome do agente — que a empresa
+ * configurou justamente para aparecer.
+ */
+export const agenteApresentacaoSchema = z.object({
+  ativo: z.boolean(),
+  nomeAgente: z.string(),
+  mensagemBoasVindas: z.string().nullable(),
+});
+export type AgenteApresentacao = z.infer<typeof agenteApresentacaoSchema>;
+
+/**
  * Onde ver, na tela, o que a ferramenta consultou ou gravou.
  *
  * O chat mostra um resumo — e é só isso que ele consegue mostrar: o resultado
@@ -203,6 +222,7 @@ export const AGENTE_CONFIG_EXAMPLE: AgenteConfig = {
   empresaId: "7b2f2f64-9b1c-4a86-9d3e-1f4a5b6c7d8e",
   ativo: true,
   nomeAgente: "Assistente",
+  mensagemBoasVindas: null,
   provedor: "anthropic",
   credenciais: [
     {

@@ -42,6 +42,15 @@ export interface Ferramenta {
   /** Resumo legível da ação, para o card de confirmação. */
   resumir?: (args: Record<string, unknown>) => string;
   /**
+   * Perguntas que esta ferramenta responde, na língua de quem pergunta.
+   *
+   * Vão para a **página de ajuda**, não para o modelo: quem abre o assistente
+   * pela primeira vez não sabe o que dá para pedir, e uma lista de nomes de
+   * ferramenta (`vendas_por_cliente`) não ensina isso. Escreva a frase que o
+   * vendedor diria.
+   */
+  exemplos?: string[];
+  /**
    * Quantos itens de lista o modelo pode ver neste resultado (padrão em
    * `resumirResultado`). Só faz sentido subir quando a ferramenta já devolve
    * um payload enxuto: a lista maior tem de caber no teto de caracteres, ou o
@@ -111,6 +120,9 @@ function resumirClientes(p: ClientePaginado) {
     total: p.total,
     mostrando: p.data.length,
     clientes: p.data.map((c) => ({
+      // O id segue porque é o que as outras ferramentas pedem — e é dele que
+      // sai o link "Abrir o cliente".
+      id: c.id,
       codigoErp: c.codigoErp,
       razaoSocial: c.razaoSocial,
       municipio: c.municipio,
@@ -122,9 +134,35 @@ function resumirClientes(p: ClientePaginado) {
   };
 }
 
-/** Primeiro id de uma lista paginada — o `data[0].id` do resultado. */
-const primeiroId = (resultado: unknown): string | null => {
-  const dados = (resultado as { data?: unknown })?.data;
+/**
+ * Rota da tela **com os mesmos filtros** que a ferramenta usou.
+ *
+ * É o que fecha o ciclo: o agente responde "42 clientes ativos em Campo
+ * Grande" e o botão abre a listagem já naquele recorte, em vez da base inteira
+ * — refazer o filtro à mão depois de pedi-lo em português é o pior dos dois
+ * mundos. Do outro lado, a tela lê estes parâmetros na entrada (ver
+ * `useFiltrosUrl`, no web); parâmetro que a tela não conhece é ignorado, então
+ * acrescentar um aqui nunca quebra a navegação.
+ */
+const rotaComFiltros = (
+  rota: string,
+  filtros: Record<string, string | number | boolean | null | undefined>,
+): string => {
+  const params = new URLSearchParams();
+  for (const [chave, valor] of Object.entries(filtros)) {
+    if (valor === null || valor === undefined || valor === '') continue;
+    params.set(chave, String(valor));
+  }
+  const qs = params.toString();
+  return qs ? `${rota}?${qs}` : rota;
+};
+
+/**
+ * O id quando a consulta achou **um** registro só — é o que decide entre
+ * mandar o botão para o cadastro específico ou para a lista.
+ */
+const primeiroId = (resultado: unknown, chave = 'data'): string | null => {
+  const dados = (resultado as Record<string, unknown> | null)?.[chave];
   if (!Array.isArray(dados) || dados.length !== 1) return null;
   const id = (dados[0] as { id?: unknown })?.id;
   return typeof id === 'string' ? id : null;
@@ -263,10 +301,19 @@ export class AgenteToolsService {
       {
         nome: 'buscar_cliente',
         descricao:
-          'Busca clientes da carteira do usuário por nome, razão social, código ' +
-          'ou ramo de atividade (CNAE). Use para descobrir o id de um cliente ' +
-          'antes de outras ferramentas, ou para listar os clientes de um ramo.',
+          'Busca e CONTA clientes da carteira do usuário. Filtra por nome/código, ' +
+          'ramo de atividade (CNAE), situação (ativo/inativo), município e UF. ' +
+          'Devolve `total` — a contagem da consulta inteira, não da página —, ' +
+          'então use esta ferramenta para responder "quantos clientes eu tenho", ' +
+          '"quantos ativos" ou "quantos em tal cidade", combinando os filtros. ' +
+          'A lista traz só os primeiros; o total vale sempre.',
         permissao: 'clientes.visualizar',
+        exemplos: [
+          'Quantos clientes ativos eu tenho?',
+          'Quais clientes meus ficam em Campo Grande?',
+          'Liste meus clientes do ramo de restaurantes',
+        ],
+        limiteItens: 25,
         parametros: {
           type: 'object',
           properties: {
@@ -274,6 +321,17 @@ export class AgenteToolsService {
               type: 'string',
               description: 'Nome, razão social ou código',
             },
+            ativo: {
+              type: 'boolean',
+              description:
+                'true = só ativos, false = só inativos. Omitido = os dois.',
+            },
+            municipio: {
+              type: 'string',
+              description:
+                'Nome do município, inteiro (ex.: "Campo Grande"). Não aceita parte do nome.',
+            },
+            uf: { type: 'string', description: 'Sigla de 2 letras (ex.: MS)' },
             cnae: {
               type: 'string',
               description:
@@ -284,23 +342,41 @@ export class AgenteToolsService {
             },
           },
         },
-        executar: (a, user) =>
-          this.clientes.findAll(user.empresaAtivaId, user, {
-            page: 1,
-            // Filtro de ramo costuma ser "liste meus clientes do tipo X", e 10
-            // linhas cortariam a resposta cedo demais.
-            pageSize: texto(a.cnae) ? 25 : 10,
-            search: texto(a.busca),
-            ...(texto(a.cnae) ? { cnae: texto(a.cnae) } : {}),
-            sortOrder: 'asc',
-          } as never),
+        executar: async (a, user) =>
+          resumirClientes(
+            (await this.clientes.findAll(user.empresaAtivaId, user, {
+              page: 1,
+              // Filtro de ramo costuma ser "liste meus clientes do tipo X", e 10
+              // linhas cortariam a resposta cedo demais.
+              pageSize: texto(a.cnae) ? 25 : 10,
+              search: texto(a.busca),
+              ...(texto(a.cnae) ? { cnae: texto(a.cnae) } : {}),
+              ...(typeof a.ativo === 'boolean' ? { ativo: a.ativo } : {}),
+              ...(texto(a.municipio) ? { municipio: texto(a.municipio) } : {}),
+              ...(texto(a.uf) ? { uf: texto(a.uf).toUpperCase() } : {}),
+              sortOrder: 'asc',
+            } as never)) as unknown as ClientePaginado,
+          ),
         // Um resultado só abre o cadastro dele; vários abrem a lista, porque
         // apontar para um dos dez seria escolher por quem perguntou.
-        destino: (_a, r) => {
-          const id = primeiroId(r);
-          return id
-            ? { rotulo: 'Abrir o cliente', rota: `/cadastros/clientes/${id}` }
-            : { rotulo: 'Abrir Clientes', rota: '/cadastros/clientes' };
+        destino: (a, r) => {
+          const id = primeiroId(r, 'clientes');
+          if (id) {
+            return {
+              rotulo: 'Abrir o cliente',
+              rota: `/cadastros/clientes/${id}`,
+            };
+          }
+          return {
+            rotulo: 'Ver na lista de Clientes',
+            rota: rotaComFiltros('/cadastros/clientes', {
+              search: texto(a.busca),
+              cnae: texto(a.cnae),
+              municipio: texto(a.municipio),
+              uf: texto(a.uf).toUpperCase(),
+              ativo: typeof a.ativo === 'boolean' ? a.ativo : undefined,
+            }),
+          };
         },
       },
       {
@@ -313,6 +389,7 @@ export class AgenteToolsService {
           'nada de valores, títulos ou histórico de quem está fora da carteira. ' +
           'Para consultar dados do cliente, use buscar_cliente.',
         permissao: 'clientes.visualizar',
+        exemplos: ['A empresa X já é cliente da casa? De quem ela é?'],
         parametros: {
           type: 'object',
           properties: {
@@ -334,6 +411,7 @@ export class AgenteToolsService {
         nome: 'buscar_produto',
         descricao: 'Busca produtos do catálogo por descrição ou código.',
         permissao: 'produtos.visualizar',
+        exemplos: ['Tem detergente no catálogo? Qual o código?'],
         parametros: {
           type: 'object',
           properties: { busca: { type: 'string' } },
@@ -361,6 +439,10 @@ export class AgenteToolsService {
           'títulos em aberto e vencidos, últimas notas e comodatos. Use para ' +
           'responder "o que este cliente compra" e "como ele está".',
         permissao: 'posicao-cliente.visualizar',
+        exemplos: [
+          'O que o cliente X compra?',
+          'Como está o cliente X — comprou quanto, deve alguma coisa?',
+        ],
         limiteItens: POSICAO_LIMITE_ITENS,
         parametros: {
           type: 'object',
@@ -389,6 +471,7 @@ export class AgenteToolsService {
           '(mesmo ramo/CNAE e cesta de compras parecida) compram e ele não. ' +
           'Devolve a evidência: quantos semelhantes compram e o ticket médio.',
         permissao: 'sugestao-compra.visualizar',
+        exemplos: ['O que eu posso oferecer para o cliente X?'],
         parametros: {
           type: 'object',
           properties: {
@@ -423,6 +506,7 @@ export class AgenteToolsService {
         descricao:
           'Títulos a receber em aberto, com vencidos e a vencer. Aceita filtro por cliente.',
         permissao: 'titulos-receber.visualizar',
+        exemplos: ['Quais clientes meus têm título vencido?'],
         parametros: {
           type: 'object',
           properties: { clienteId: { type: 'string' } },
@@ -444,6 +528,7 @@ export class AgenteToolsService {
         descricao:
           'Lista orçamentos da carteira, com filtro opcional por cliente.',
         permissao: 'orcamentos.visualizar',
+        exemplos: ['Quais orçamentos eu tenho em aberto?'],
         parametros: {
           type: 'object',
           properties: { clienteId: { type: 'string' } },
@@ -466,6 +551,7 @@ export class AgenteToolsService {
           'Vendas do período somadas mês a mês por cliente. Informe ano/mês inicial e final ' +
           '(máximo 12 meses).',
         permissao: 'consulta-vendas-cliente.visualizar',
+        exemplos: ['Quanto o cliente X comprou nos últimos 6 meses?'],
         parametros: {
           type: 'object',
           properties: {
@@ -493,6 +579,7 @@ export class AgenteToolsService {
         descricao:
           'Vendas do período somadas mês a mês por produto (máximo 12 meses).',
         permissao: 'consulta-vendas-produto.visualizar',
+        exemplos: ['Quais produtos mais venderam de janeiro a junho?'],
         parametros: {
           type: 'object',
           properties: {
@@ -523,6 +610,10 @@ export class AgenteToolsService {
           'a quebra por categoria de produto. Sem vendedorId, agrega todo o escopo ' +
           'do usuário. Use para "como foi a execução de objetivos de MM/AAAA".',
         permissao: 'dashboard-comercial.visualizar',
+        exemplos: [
+          'Como foi a execução de objetivos de julho?',
+          'Bati a meta do mês passado?',
+        ],
         limiteItens: 25,
         parametros: {
           type: 'object',
@@ -561,6 +652,7 @@ export class AgenteToolsService {
           'devolve razão social nem contato — para saber se o CNPJ já é cliente, ' +
           'use verificar_cliente_na_base.',
         permissao: 'clientes.visualizar',
+        exemplos: ['Qual o ramo da empresa do CNPJ 12.345.678/0001-99?'],
         parametros: {
           type: 'object',
           properties: {
@@ -603,6 +695,10 @@ export class AgenteToolsService {
           'CNAE, cujo ramo é preenchido na hora. Para vários clientes, chame uma ' +
           'vez por cliente.',
         permissao: 'clientes.editar',
+        exemplos: [
+          'Atualize o cadastro do cliente X pela Receita Federal',
+          'Traga o ramo (CNAE) do cliente X',
+        ],
         escrita: true,
         resumir: () =>
           'Consultar a Receita Federal e enviar o cadastro do cliente para aprovação',
@@ -644,6 +740,9 @@ export class AgenteToolsService {
           'precisa confirmar na tela. Informe clienteId, título e os itens ' +
           '(produtoId e quantidade).',
         permissao: 'orcamentos.cadastrar',
+        exemplos: [
+          'Monte um orçamento para o cliente X com 10 caixas do produto Y',
+        ],
         escrita: true,
         resumir: (a) => {
           const itens = Array.isArray(a.itens) ? a.itens : [];

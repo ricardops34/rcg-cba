@@ -6,6 +6,7 @@ import QRCode from "qrcode";
 import { toast } from "sonner";
 import {
   WHATSAPP_ACEITE_TEXTO,
+  WHATSAPP_AVISO_NAO_OFICIAL,
   type WhatsappPareamento,
   type WhatsappSessao,
 } from "@plataforma/contracts";
@@ -20,6 +21,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AlertTriangle } from "lucide-react";
 
 /**
  * Conexão do WhatsApp do vendedor — um painel dentro do Atendimento, não uma
@@ -36,6 +38,8 @@ export function ConexaoSheet({
 }) {
   const queryClient = useQueryClient();
   const pareando = sessao?.status === "pareando";
+  // Sem sessão gravada ainda, o transporte é o padrão do módulo (`zapo`).
+  const naoOficial = (sessao?.transporte ?? "zapo") !== "cloud_api";
 
   // Só consulta o QR enquanto está pareando: o código expira em segundos e é
   // renovado pelo provedor, então a tela repinta em vez de guardar o primeiro.
@@ -104,6 +108,25 @@ export function ConexaoSheet({
         </SheetHeader>
 
         <div className="space-y-4 px-4 pb-6">
+          {/* Fica no topo, e não junto do botão: é a informação que muda a
+              decisão de conectar o próprio número, e quem já está conectado
+              precisa continuar vendo. Só some no transporte oficial da Meta —
+              sem sessão ainda, trata como não oficial, que é o padrão do
+              módulo (`zapo`). */}
+          {naoOficial ? (
+            <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
+              <AlertTriangle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="space-y-1 text-xs">
+                <p className="font-medium text-amber-700 dark:text-amber-400">
+                  API não oficial
+                </p>
+                <p className="text-muted-foreground">
+                  {WHATSAPP_AVISO_NAO_OFICIAL}
+                </p>
+              </div>
+            </div>
+          ) : null}
+
           <div className="flex items-center gap-2 text-sm">
             <span className="text-muted-foreground">Situação:</span>
             <Badge variant={conectada ? "default" : "secondary"}>

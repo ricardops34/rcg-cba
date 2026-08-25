@@ -179,6 +179,29 @@ export class AgenteFerramentasService {
    * uma versão nova apague silenciosamente uma capacidade que ninguém pediu
    * para desligar.
    */
+  /**
+   * O que o agente consegue fazer **para quem está perguntando**.
+   *
+   * É a mesma lista que vai para o modelo (permissão do usuário ∩ configuração
+   * da empresa), e é essa a graça: a página de ajuda não pode prometer uma
+   * capacidade que o vendedor não tem, nem esconder uma que ele tem. Devolve a
+   * descrição já com a reescrita da empresa, porque é o vocabulário que a
+   * equipe usa.
+   */
+  async disponiveisParaAjuda(empresaId: string, user: AuthenticatedUser) {
+    const filtro = await this.filtroPara(empresaId, user);
+    return this.tools.disponiveisPara(user, filtro).map((f) => {
+      const cfg = filtro.config.get(f.nome);
+      return {
+        chave: f.nome,
+        nome: cfg?.nome || f.nome,
+        descricao: cfg?.descricao || f.descricao,
+        escrita: !!f.escrita,
+        exemplos: f.exemplos ?? [],
+      };
+    });
+  }
+
   private async sincronizar(
     tx: TenantTx,
     empresaId: string,

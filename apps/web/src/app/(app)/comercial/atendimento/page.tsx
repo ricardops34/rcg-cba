@@ -130,9 +130,16 @@ export default function AtendimentoPage() {
     [router, pathname],
   );
   const [busca, setBusca] = useState("");
-  // Vazio = todas as conexões que o usuário enxerga. Guarda o `vendedorId`
-  // porque é o que o servidor filtra, e cada vendedor tem uma conexão só.
-  const [conexaoFiltrada, setConexaoFiltrada] = useState("");
+  /**
+   * Conexão que a lista mostra, pelo `vendedorId` (dono da conexão). `null` =
+   * a do próprio usuário, que é como a tela abre.
+   *
+   * Trocar para a de um colega é **consulta**: o servidor deixa supervisor e
+   * gerente lerem as conversas do time, mas quem responde é o dono do aparelho
+   * (`garantirDono`, na API). A tela avisa isso em vez de deixar digitar para
+   * tomar erro no envio.
+   */
+  const [conexaoEscolhida, setConexaoEscolhida] = useState<string | null>(null);
   const [listaPreferida, alternarPreferenciaLista] = usePainelAberto(PREF_LISTA);
   const [painelAberto, alternarPainel] = usePainelAberto(PREF_PAINEL);
 
@@ -173,29 +180,39 @@ export default function AtendimentoPage() {
   });
 
   /**
-   * As conexões que este usuário enxerga — a própria e, para quem lê as da
-   * equipe, as dos vendedores no seu escopo. Uma conexão por vendedor, então
-   * esta lista é também a lista de atendentes.
+   * As conexões que este usuário alcança. O servidor já as limita
+   * (`escopoLeituraWhatsapp`): o vendedor recebe só a própria, e quem tem
+   * `whatsapp-equipe.visualizar` — supervisor e gerente — recebe as do seu
+   * time. Por isso o seletor abaixo só existe para eles: para o vendedor a
+   * lista tem uma opção, e um select de uma opção é ruído.
    */
   const { data: conexoes = [] } = useQuery({
     queryKey: ["whatsapp-sessoes"],
     queryFn: () => apiFetch<WhatsappSessao[]>("/whatsapp/sessoes"),
   });
-  const variasConexoes = conexoes.length > 1;
+  const podeTrocarConexao = conexoes.length > 1;
+
+  // `null` = ainda não escolheu, e aí vale a conexão do próprio usuário —
+  // atendimento é conversa de um número só, e abrir com as dos colegas
+  // misturadas confunde quem responde. "todas" é escolha explícita.
+  const conexaoAtual = conexaoEscolhida ?? sessao?.vendedorId ?? null;
 
   const { data: conversas, isLoading: carregandoConversas } = useQuery({
-    queryKey: ["whatsapp-conversas", busca, conexaoFiltrada],
+    queryKey: ["whatsapp-conversas", busca, conexaoAtual],
     queryFn: () => {
       const params = new URLSearchParams();
       if (busca) params.set("busca", busca);
-      // O servidor filtra por vendedor, que é o dono da conexão — e continua
-      // aplicando o escopo por cima: o filtro restringe, nunca amplia.
-      if (conexaoFiltrada) params.set("vendedorId", conexaoFiltrada);
+      // O servidor filtra por vendedor, dono da conexão — e continua aplicando
+      // o escopo por cima: o filtro restringe, nunca amplia.
+      if (conexaoAtual) params.set("vendedorId", conexaoAtual);
       const qs = params.toString();
       return apiFetch<ListaConversas>(
         `/whatsapp/conversas${qs ? `?${qs}` : ""}`,
       );
     },
+    // Sem saber qual é a conexão do usuário, buscar traria a lista da equipe
+    // por um instante — que é justamente o que este filtro evita.
+    enabled: !!conexaoAtual,
     refetchInterval: 15000,
   });
 
@@ -256,21 +273,23 @@ export default function AtendimentoPage() {
             onChange={(e) => setBusca(e.target.value)}
             className="max-w-80"
           />
-          {/* Só com mais de uma conexão à vista: para o vendedor, que tem a
-              própria e mais nada, o seletor teria uma opção só. */}
-          {variasConexoes ? (
+          {/* Só para quem alcança mais de uma conexão — supervisor e gerente.
+              Uma conexão por vez, sem opção "todas": atendimento é conversa de
+              um número, e a lista misturada não diz por onde responder. */}
+          {podeTrocarConexao ? (
             <Select
-              value={conexaoFiltrada || "todas"}
-              onValueChange={(v) => setConexaoFiltrada(v === "todas" ? "" : v)}
+              value={conexaoAtual ?? ""}
+              onValueChange={setConexaoEscolhida}
             >
               <SelectTrigger className="w-64">
-                <SelectValue placeholder="Todas as conexões" />
+                <SelectValue placeholder="Minha conexão" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todas">Todas as conexões</SelectItem>
                 {conexoes.map((c) => (
                   <SelectItem key={c.id} value={c.vendedorId}>
-                    {c.vendedorNome}
+                    {c.vendedorId === sessao.vendedorId
+                      ? "Minha conexão"
+                      : c.vendedorNome}
                     {c.numero ? ` · ${telefoneBonito(c.numero)}` : ""}
                   </SelectItem>
                 ))}
@@ -324,7 +343,6 @@ export default function AtendimentoPage() {
               conversas={conversas?.itens ?? []}
               selecionada={conversaId}
               onSelecionar={abrirConversa}
-              mostrarConexao={variasConexoes}
             />
           </ColunaRedimensionavel>
         ) : null}
@@ -335,6 +353,12 @@ export default function AtendimentoPage() {
           <Conversa
             conversaId={conversaId}
             clienteId={conversaSelecionada?.clienteId ?? null}
+            somenteConsulta={
+              conversaSelecionada &&
+              conversaSelecionada.vendedorId !== sessao.vendedorId
+                ? { vendedorNome: conversaSelecionada.vendedorNome }
+                : null
+            }
             onAbrirPosicao={() => setPainelDireito("posicao")}
             onAbrirOrcamento={() => setPainelDireito("orcamento")}
           />
@@ -384,14 +408,11 @@ function ListaDeConversas({
   conversas,
   selecionada,
   onSelecionar,
-  mostrarConexao,
 }: {
   carregando: boolean;
   conversas: WhatsappConversa[];
   selecionada: string | null;
   onSelecionar: (id: string) => void;
-  /** Ver `EtiquetaConexao` — some quando só há uma conexão à vista. */
-  mostrarConexao: boolean;
 }) {
   if (carregando) return <Skeleton className="h-full w-full" />;
 
@@ -433,35 +454,11 @@ function ListaDeConversas({
                 telefoneBonito(c.contato.telefoneNormalizado) ??
                 "—"}
             </span>
-            {mostrarConexao ? <EtiquetaConexao conversa={c} /> : null}
             <SinaisDoCliente conversa={c} />
           </button>
         ))
       )}
     </div>
-  );
-}
-
-/**
- * Por qual conexão a conversa entrou.
- *
- * Só aparece para quem enxerga mais de uma: quando o supervisor lista as
- * conversas da equipe, a lista junta atendimentos de números diferentes e nada
- * dizia de qual era cada um — nem por qual número a resposta ia sair. Para o
- * vendedor, que só tem a própria conexão, a etiqueta seria a mesma em toda
- * linha, e some.
- */
-function EtiquetaConexao({ conversa }: { conversa: WhatsappConversa }) {
-  const numero = telefoneBonito(conversa.sessaoNumero);
-  return (
-    <span
-      className="flex items-center gap-1 truncate text-xs text-muted-foreground"
-      title={`Atendido por ${conversa.vendedorNome}${numero ? ` pelo número ${numero}` : ""}`}
-    >
-      <Plug className="size-3 shrink-0" />
-      <span className="truncate">{conversa.vendedorNome}</span>
-      {numero ? <span className="shrink-0">· {numero}</span> : null}
-    </span>
   );
 }
 
@@ -539,12 +536,20 @@ function SinaisDoCliente({ conversa }: { conversa: WhatsappConversa }) {
 function Conversa({
   conversaId,
   clienteId,
+  somenteConsulta,
   onAbrirPosicao,
   onAbrirOrcamento,
 }: {
   conversaId: string | null;
   /** Null = contato sem vínculo: as ferramentas do sistema não aparecem. */
   clienteId: string | null;
+  /**
+   * Conversa de outra conexão — supervisor ou gerente olhando a do time.
+   * Quem responde é o dono do aparelho: a API recusa o envio
+   * (`garantirDono`), e aqui o campo de mensagem sai de cena em vez de deixar
+   * digitar para tomar erro depois.
+   */
+  somenteConsulta: { vendedorNome: string } | null;
   onAbrirPosicao: () => void;
   onAbrirOrcamento: () => void;
 }) {
@@ -619,24 +624,37 @@ function Conversa({
 
       {/* shrink-0: o compositor tem altura própria e não deve ser espremido
           quando o rolo cresce. */}
-      <div className="flex shrink-0 items-end">
-        {clienteId ? (
-          <div className="pb-3 pl-2">
-            <AcoesCliente
+      {somenteConsulta ? (
+        <div className="shrink-0 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+          <p className="font-medium text-amber-700 dark:text-amber-400">
+            Somente consulta
+          </p>
+          <p className="text-muted-foreground">
+            Esta conversa é da conexão de {somenteConsulta.vendedorNome}. Quem
+            responde é o dono do aparelho — volte para a sua conexão para
+            atender.
+          </p>
+        </div>
+      ) : (
+        <div className="flex shrink-0 items-end">
+          {clienteId ? (
+            <div className="pb-3 pl-2">
+              <AcoesCliente
+                conversaId={conversaId}
+                onAbrirPosicao={onAbrirPosicao}
+                onAbrirOrcamento={onAbrirOrcamento}
+              />
+            </div>
+          ) : null}
+          <div className="flex-1">
+            <Composer
               conversaId={conversaId}
-              onAbrirPosicao={onAbrirPosicao}
-              onAbrirOrcamento={onAbrirOrcamento}
+              respondendo={respondendo}
+              onCancelarResposta={() => setRespondendo(null)}
             />
           </div>
-        ) : null}
-        <div className="flex-1">
-          <Composer
-            conversaId={conversaId}
-            respondendo={respondendo}
-            onCancelarResposta={() => setRespondendo(null)}
-          />
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -850,6 +868,15 @@ function PainelCliente({ conversa }: { conversa: WhatsappConversa | null }) {
       <div className="border-t pt-3">
         <p className="text-xs text-muted-foreground">Atendente</p>
         <p>{conversa.vendedorNome}</p>
+        {/* Por qual número a conversa entrou — e por onde a resposta sai.
+            Importa para o supervisor, que pode estar olhando a conexão de
+            outro vendedor. */}
+        {conversa.sessaoNumero ? (
+          <p className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Plug className="size-3 shrink-0" />
+            {telefoneBonito(conversa.sessaoNumero)}
+          </p>
+        ) : null}
       </div>
 
       <RemoverVinculoDialog

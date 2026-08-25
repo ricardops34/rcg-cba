@@ -87,6 +87,7 @@ function normalizarProvedor(config: AgenteConfig) {
 interface FormAgente {
   ativo: boolean;
   nomeAgente: string;
+  mensagemBoasVindas: string;
   provedor: ProvedorIa;
   modelo: string;
   baseUrl: string;
@@ -104,6 +105,7 @@ function AgenteConfigForm({ config }: { config: AgenteConfig }) {
   const [form, setForm] = useState<FormAgente>({
     ativo: config.ativo,
     nomeAgente: config.nomeAgente,
+    mensagemBoasVindas: config.mensagemBoasVindas ?? "",
     provedor: inicial.provedor,
     modelo: inicial.modelo,
     baseUrl: inicial.baseUrl,
@@ -142,6 +144,7 @@ function AgenteConfigForm({ config }: { config: AgenteConfig }) {
         body: {
           ativo: form.ativo,
           nomeAgente: form.nomeAgente,
+          mensagemBoasVindas: form.mensagemBoasVindas.trim() || null,
           provedor: form.provedor,
           modelo: form.modelo,
           baseUrl: form.baseUrl,
@@ -249,6 +252,31 @@ function AgenteConfigForm({ config }: { config: AgenteConfig }) {
                     <FieldDescription>
                       Como o assistente se apresenta à equipe. Trocar de LLM não
                       troca o nome pelo qual o time o conhece.
+                    </FieldDescription>
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="mensagemBoasVindas">
+                      Mensagem de boas-vindas
+                    </FieldLabel>
+                    <Textarea
+                      id="mensagemBoasVindas"
+                      rows={3}
+                      maxLength={1000}
+                      value={form.mensagemBoasVindas}
+                      placeholder={`Olá! Sou o ${form.nomeAgente || "Assistente"}. Posso consultar a sua carteira, montar orçamentos e preparar o seu dia. O que você precisa?`}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          mensagemBoasVindas: e.target.value,
+                        }))
+                      }
+                    />
+                    <FieldDescription>
+                      Abre toda conversa nova, no lugar da tela em branco — é
+                      onde a equipe descobre o que dá para pedir. Não vai para o
+                      modelo: é texto seu, para quem vai perguntar. Em branco,
+                      usa o exemplo acima.
                     </FieldDescription>
                   </Field>
 
