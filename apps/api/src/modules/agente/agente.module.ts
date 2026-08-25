@@ -3,6 +3,8 @@ import { AgenteController } from './agente.controller';
 import { AgenteConfigService } from './agente-config.service';
 import { AgenteChatService } from './agente-chat.service';
 import { AgenteToolsService } from './agente-tools.service';
+import { AgenteReferenciasService } from './agente-referencias.service';
+import { AgenteFerramentasService } from './agente-ferramentas.service';
 import { OpenAiCompativelClient } from './openai-compativel.client';
 import { AnthropicClient } from './anthropic.client';
 import { CodexClient } from './codex.client';
@@ -14,6 +16,7 @@ import { ProdutosModule } from '../produtos/produtos.module';
 import { OrcamentosModule } from '../orcamentos/orcamentos.module';
 import { TitulosReceberModule } from '../titulos-receber/titulos-receber.module';
 import { SugestaoCompraModule } from '../sugestao-compra/sugestao-compra.module';
+import { ObjetivosModule } from '../objetivos/objetivos.module';
 
 /**
  * O agente não reimplementa nada: importa os módulos das telas e chama os
@@ -28,12 +31,15 @@ import { SugestaoCompraModule } from '../sugestao-compra/sugestao-compra.module'
     OrcamentosModule,
     TitulosReceberModule,
     SugestaoCompraModule,
+    ObjetivosModule,
   ],
   controllers: [AgenteController],
   providers: [
     AgenteConfigService,
     AgenteChatService,
     AgenteToolsService,
+    AgenteReferenciasService,
+    AgenteFerramentasService,
     OpenAiCompativelClient,
     AnthropicClient,
     CodexClient,

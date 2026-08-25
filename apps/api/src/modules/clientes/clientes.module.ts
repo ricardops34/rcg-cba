@@ -25,6 +25,13 @@ import { ClienteCampoConfigModule } from '../cliente-campo-config/cliente-campo-
   ],
   // ClienteAlteracoesService sai do módulo porque a integração do ERP também
   // enfileira alteração de cliente (ver IntegracaoClientesService).
-  exports: [ClientesService, ClienteCnaesService, ClienteAlteracoesService],
+  exports: [
+    ClientesService,
+    ClienteCnaesService,
+    ClienteAlteracoesService,
+    // O agente consulta CNPJ para atualizar o ramo do cliente (ver
+    // agente-tools.service).
+    EnriquecimentoService,
+  ],
 })
 export class ClientesModule {}

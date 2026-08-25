@@ -242,6 +242,37 @@ export class ClientesController {
   }
 
   @ApiOperation({
+    summary: 'Atualizar o cadastro pela Receita Federal',
+    description:
+      'Consulta o CNPJ do cliente na base pública e propõe o que a Receita tem de ' +
+      'diferente: ramo (CNAEs), razão social, endereço e contato. Não grava no cadastro — ' +
+      'abre uma solicitação na fila, onde quem tem clientes.aprovar escolhe campo a campo. ' +
+      'A exceção é o cliente sem nenhum CNAE: aí o ramo é preenchido na hora, porque ' +
+      'preencher vazio não sobrescreve nada. Requer clientes.editar.',
+  })
+  @ApiResponse({
+    status: 201,
+    schema: {
+      example: {
+        atualizado: true,
+        situacaoCadastral: 'ATIVA',
+        cnaesAplicados: ['4639701'],
+        cnaesSemReferencia: [],
+        solicitacaoId: '3d4e5f60-7182-4930-a4b5-c6d7e8f90112',
+        camposPendentes: ['razaoSocial', 'endereco'],
+      },
+    },
+  })
+  @RequirePermission('clientes', 'editar')
+  @Post(':id/atualizar-receita')
+  atualizarPelaReceita(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.atualizarPelaReceita(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
     summary: 'Histórico de alterações do cliente',
     description:
       'O que já mudou no cadastro, campo a campo, com origem e autor — inclusive alterações ' +

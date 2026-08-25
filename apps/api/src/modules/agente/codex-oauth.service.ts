@@ -66,8 +66,8 @@ interface RespostaToken {
   refresh_token?: string;
   id_token?: string;
   expires_in?: number;
-  error?: string;
-  error_description?: string;
+  error?: string | Record<string, unknown>;
+  error_description?: string | Record<string, unknown>;
 }
 
 @Injectable()
@@ -196,9 +196,18 @@ export class CodexOAuthService {
     const dados = (await resposta.json().catch(() => ({}))) as RespostaToken;
 
     if (!resposta.ok || !dados.access_token) {
-      const motivo = dados.error_description ?? dados.error ?? '';
+      // `error_description` nem sempre é string — a OpenAI às vezes devolve um
+      // objeto ali, e concatenar direto produzia "([object Object])" na tela,
+      // escondendo o motivo real do erro.
+      const bruto = dados.error_description ?? dados.error;
+      const motivo =
+        typeof bruto === 'string'
+          ? bruto
+          : bruto
+            ? JSON.stringify(bruto).slice(0, 200)
+            : '';
       // Nem o code nem o token entram no log.
-      this.logger.warn(`OAuth Codex: ${resposta.status} ${dados.error ?? ''}`);
+      this.logger.warn(`OAuth Codex: ${resposta.status} ${motivo}`);
 
       if (corpo.grant_type === 'refresh_token') {
         throw new BadGatewayException(

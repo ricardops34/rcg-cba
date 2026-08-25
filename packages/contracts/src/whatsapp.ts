@@ -196,9 +196,21 @@ export const whatsappConversaSchema = z.object({
     .describe("Primeiros caracteres da última mensagem, para a lista"),
   naoLidas: z.number().int(),
   arquivada: z.boolean(),
-  // Identifica de quem é a conversa quando o supervisor lista as da equipe.
+  /**
+   * De quem é a conversa — e, como cada vendedor tem uma conexão só
+   * (`@@unique(empresaId, vendedorId)` em `whatsapp_sessoes`), também **por
+   * qual número** ela entrou.
+   *
+   * Importa quando o supervisor lista as da equipe: a lista junta atendimentos
+   * de conexões diferentes, e sem isso não dá para saber por qual número o
+   * cliente falou — nem, ao responder, de qual número a resposta vai sair.
+   */
   vendedorId: z.string().uuid(),
   vendedorNome: z.string(),
+  sessaoNumero: z
+    .string()
+    .nullable()
+    .describe("Número da conexão que recebeu a conversa. Null enquanto não pareou"),
   /**
    * Sinais do cliente para a lista de conversas — o que o vendedor precisa
    * saber **antes** de abrir o atendimento. Nulos quando o contato não tem

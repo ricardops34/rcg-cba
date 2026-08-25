@@ -6,6 +6,7 @@ import {
 } from '../../common/prisma/prisma.service';
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
 import { ParametrosService } from '../parametros/parametros.service';
+import { PESO_NIVEL_CNAE } from '@plataforma/contracts';
 import type {
   ClienteSemelhante,
   ProdutoSugerido,
@@ -21,6 +22,29 @@ import type { AuthenticatedUser } from '../../common/decorators/current-user.dec
  */
 const NOTA_DE_VENDA = Prisma.sql`n."deletedAt" IS NULL AND n."ativo" = true AND n."comodato" = false AND n."tipo" = 'N'`;
 
+/**
+ * Tradução do nível numérico que a query devolve (`MAX(nivel)`, do mais
+ * próximo ao mais distante) para o nome do parentesco. Precisa ser número no
+ * SQL para o `MAX()` escolher o mais próximo; vira nome aqui, onde é lido.
+ */
+const NIVEL_CNAE: Record<number, keyof typeof PESO_NIVEL_CNAE | undefined> = {
+  4: 'subclasse',
+  3: 'classe',
+  2: 'grupo',
+  1: 'divisao',
+};
+
+/**
+ * Teto do sinal de "ramo vizinho", multiplicando o peso do nível.
+ *
+ * 0,2 não é arbitrário: o menor score possível por CNAE idêntico é 0,217 (um
+ * único CNAE em comum, sem ser o principal → 0,65/3). Com este teto, o vizinho
+ * mais próximo — mesma classe — chega a 0,14, ficando garantidamente abaixo.
+ * Mexer nisto sem refazer a conta inverte a ordem entre "mesmo ramo" e "ramo
+ * parecido".
+ */
+const TETO_VIZINHO = 0.2;
+
 interface LinhaSemelhante {
   clienteId: string;
   razaoSocial: string;
@@ -30,6 +54,8 @@ interface LinhaSemelhante {
   produtosEmComum: number;
   tamanhoCesta: number;
   cnaesEmComum: number;
+  nivelMaximo: number;
+  naCarteira: boolean;
   mesmoCnaePrincipal: boolean;
   mesmaRegiao: boolean;
 }
@@ -41,7 +67,8 @@ interface LinhaProduto {
   clientes: number;
   valorTotal: number;
   ultimaCompra: Date | null;
-  evidencia: string[];
+  evidencia: string[] | null;
+  outrosClientes: number;
 }
 
 /**
@@ -51,9 +78,20 @@ interface LinhaProduto {
  * que ele não compra?"* — que é a conversa de cross-sell que o vendedor já tenta
  * fazer de cabeça, só que sobre 800 clientes e milhares de produtos.
  *
- * Tudo roda dentro do escopo de carteira do usuário: um vendedor nunca recebe
- * sugestão embasada em cliente de outra equipe, nem descobre por tabela que
- * eles existem.
+ * ## Escopo: compara com a base inteira, identifica só a carteira
+ *
+ * O **alvo** precisa estar na carteira do usuário — consultar cliente alheio
+ * continua vedado. Os **comparáveis**, não: a semelhança por ramo diz muito
+ * mais com 800 clientes do que com os 60 de uma carteira, e o que se entrega
+ * aqui são produtos, não clientes.
+ *
+ * O que fecha a porta é a saída, não a entrada. Comparável de outra carteira
+ * volta sem identificação (`naCarteira: false`, sem razão social, sem id, sem
+ * município) e não pode ser nomeado na evidência — vira contagem. Ele
+ * contribuiu para o padrão sem nunca ter sido revelado.
+ *
+ * Ao acrescentar campo ao retorno de `clientesSemelhantes`, lembre que parte
+ * deles é de carteira alheia: todo campo novo precisa passar pelo mesmo corte.
  */
 @Injectable()
 export class SugestaoCompraService {
@@ -143,11 +181,12 @@ export class SugestaoCompraService {
           municipio: alvo.municipio,
           uf: alvo.uf,
           query,
+          hierarquico: query.afinidadeCnae === 'hierarquica',
         });
 
         if (semelhantes.length === 0) {
           return vazio(
-            'Nenhum cliente semelhante encontrado na sua carteira dentro do período.',
+            'Nenhum cliente semelhante encontrado na base dentro do período.',
           );
         }
 
@@ -155,6 +194,9 @@ export class SugestaoCompraService {
           empresaId,
           desde,
           semelhantes: semelhantes.map((s) => s.clienteId),
+          daCarteira: semelhantes
+            .filter((s) => s.naCarteira)
+            .map((s) => s.clienteId),
           cestaAlvo,
           limite: query.limite,
         });
@@ -187,7 +229,17 @@ export class SugestaoCompraService {
               Math.round((p.valorTotal / Math.max(p.clientes, 1)) * 100) / 100,
             ultimaCompraNoGrupo: p.ultimaCompra ?? null,
             precoTabelaCliente: precos.get(p.produtoId) ?? null,
-            evidencia: p.evidencia,
+            // Sem nomes a mostrar (todos os compradores são de outras
+            // carteiras), a evidência vira o número — que continua sendo
+            // argumento, sem identificar ninguém.
+            evidencia: [
+              ...(p.evidencia ?? []),
+              ...(p.outrosClientes > 0
+                ? [
+                    `+${p.outrosClientes} cliente(s) do mesmo perfil em outras carteiras`,
+                  ]
+                : []),
+            ],
           };
         }) as ProdutoSugerido[];
 
@@ -198,7 +250,21 @@ export class SugestaoCompraService {
           cnaes: cnaesAlvo.map(
             (c) => `${c.cnae.codigoErp ?? '—'} — ${c.cnae.descricao}`,
           ),
-          clientesSemelhantes: semelhantes,
+          // Anonimização acontece **aqui**, na saída: o cálculo acima precisou
+          // dos ids reais para agregar os produtos. Quem está fora da carteira
+          // contribuiu para o padrão e volta sem identificação.
+          clientesSemelhantes: semelhantes.map((s) =>
+            s.naCarteira
+              ? s
+              : {
+                  ...s,
+                  clienteId: '',
+                  razaoSocial: 'Cliente de outra carteira',
+                  codigoErp: null,
+                  municipio: null,
+                  uf: null,
+                },
+          ),
           sugestoes,
           aviso: null,
         };
@@ -246,14 +312,22 @@ export class SugestaoCompraService {
       municipio: string | null;
       uf: string | null;
       query: SugestaoCompraQuery;
+      hierarquico: boolean;
     },
   ): Promise<ClienteSemelhante[]> {
-    const filtroEscopo =
+    // O universo de comparação é a **base inteira**, de propósito: a semelhança
+    // por ramo fica muito melhor com 800 clientes do que com os 60 de uma
+    // carteira, e o resultado entregue são produtos, não clientes.
+    //
+    // O escopo não sumiu — mudou de papel. Deixou de filtrar *quem entra no
+    // cálculo* e passou a decidir *quem pode ser nomeado na saída*: cliente de
+    // outra carteira contribui para o padrão, mas volta sem identificação.
+    const naCarteira =
       p.escopo === null
-        ? Prisma.sql``
+        ? Prisma.sql`true`
         : p.escopo.length > 0
-          ? Prisma.sql`AND c."vendedorId" IN (${Prisma.join(p.escopo)})`
-          : Prisma.sql`AND false`;
+          ? Prisma.sql`c."vendedorId" IN (${Prisma.join(p.escopo)})`
+          : Prisma.sql`false`;
 
     const linhas = await tx.$queryRaw<LinhaSemelhante[]>(Prisma.sql`
       WITH cestas AS (
@@ -269,7 +343,6 @@ export class SugestaoCompraService {
           AND i."ativo" = true
           AND i."dtEmissao" >= ${p.desde}
           AND ${NOTA_DE_VENDA}
-          ${filtroEscopo}
         GROUP BY i."clienteId", i."produtoId"
       ),
       medidas AS (
@@ -283,20 +356,57 @@ export class SugestaoCompraService {
         GROUP BY ct."clienteId"
       ),
       cnae_alvo AS (
-        SELECT "cnaeId", "principal"
-        FROM "cliente_cnaes"
-        WHERE "empresaId" = ${p.empresaId} AND "clienteId" = ${p.clienteId}
-          AND "deletedAt" IS NULL
+        SELECT cc."cnaeId", cc."principal",
+               c."subclasse", c."classe", c."grupo", c."divisao"
+        FROM "cliente_cnaes" cc
+        JOIN "cnaes" c ON c."id" = cc."cnaeId"
+        WHERE cc."empresaId" = ${p.empresaId} AND cc."clienteId" = ${p.clienteId}
+          AND cc."deletedAt" IS NULL
+      ),
+      -- Parentesco entre cada CNAE do candidato e cada CNAE do alvo. O JOIN
+      -- deixou de ser por id: agora casa em qualquer nível da hierarquia, e o
+      -- nível mais próximo é escolhido depois com MAX() sobre a escala.
+      cnae_pares AS (
+        SELECT
+          cc."clienteId",
+          cc."cnaeId",
+          -- Exige a subclasse idêntica: "mesmo CNAE principal" significa o
+          -- mesmo ramo, não um ramo vizinho. Sem comparar os ids, o bônus de
+          -- 0,35 passaria a valer para parentesco de classe e inflaria o score
+          -- de quem a regra exata já pontuava.
+          (cc."principal" AND ca."principal" AND c."id" = ca."cnaeId") AS "principalCasado",
+          (c."id" = ca."cnaeId") AS "mesmoCnae",
+          CASE
+            WHEN c."subclasse" IS NOT DISTINCT FROM ca."subclasse" THEN 4
+            WHEN ${p.hierarquico}::boolean IS NOT TRUE THEN 0
+            WHEN c."classe"  IS NOT DISTINCT FROM ca."classe"  THEN 3
+            WHEN c."grupo"   IS NOT DISTINCT FROM ca."grupo"   THEN 2
+            WHEN c."divisao" IS NOT DISTINCT FROM ca."divisao" THEN 1
+            ELSE 0
+          END AS "nivel"
+        FROM "cliente_cnaes" cc
+        JOIN "cnaes" c ON c."id" = cc."cnaeId"
+        JOIN cnae_alvo ca ON (
+          c."subclasse" IS NOT DISTINCT FROM ca."subclasse"
+          OR (${p.hierarquico}::boolean AND (
+                c."classe"  IS NOT DISTINCT FROM ca."classe"
+             OR c."grupo"   IS NOT DISTINCT FROM ca."grupo"
+             OR c."divisao" IS NOT DISTINCT FROM ca."divisao"))
+        )
+        WHERE cc."empresaId" = ${p.empresaId} AND cc."deletedAt" IS NULL
       ),
       cnae_medidas AS (
         SELECT
-          cc."clienteId",
-          COUNT(*)::int AS "cnaesEmComum",
-          BOOL_OR(cc."principal" AND ca."principal") AS "mesmoCnaePrincipal"
-        FROM "cliente_cnaes" cc
-        JOIN cnae_alvo ca ON ca."cnaeId" = cc."cnaeId"
-        WHERE cc."empresaId" = ${p.empresaId} AND cc."deletedAt" IS NULL
-        GROUP BY cc."clienteId"
+          "clienteId",
+          -- Continua contando só a subclasse idêntica: é o número que a tela
+          -- já mostra como "CNAEs em comum", e mudar seu significado
+          -- confundiria quem usa a consulta hoje.
+          COUNT(DISTINCT CASE WHEN "mesmoCnae" THEN "cnaeId" END)::int AS "cnaesEmComum",
+          MAX("nivel")::int AS "nivelMaximo",
+          BOOL_OR("principalCasado") AS "mesmoCnaePrincipal"
+        FROM cnae_pares
+        WHERE "nivel" > 0
+        GROUP BY "clienteId"
       )
       SELECT
         m."clienteId",
@@ -307,7 +417,9 @@ export class SugestaoCompraService {
         m."produtosEmComum",
         m."tamanhoCesta",
         COALESCE(cm."cnaesEmComum", 0) AS "cnaesEmComum",
+        COALESCE(cm."nivelMaximo", 0) AS "nivelMaximo",
         COALESCE(cm."mesmoCnaePrincipal", false) AS "mesmoCnaePrincipal",
+        ${naCarteira} AS "naCarteira",
         (c."uf" IS NOT DISTINCT FROM ${p.uf}
          AND c."municipio" IS NOT DISTINCT FROM ${p.municipio}) AS "mesmaRegiao"
       FROM medidas m
@@ -315,7 +427,7 @@ export class SugestaoCompraService {
       LEFT JOIN cnae_medidas cm ON cm."clienteId" = m."clienteId"
       -- Descarta quem não tem nenhuma afinidade: sem produto em comum e sem
       -- CNAE em comum não é "pouco parecido", é outro negócio.
-      WHERE m."produtosEmComum" > 0 OR COALESCE(cm."cnaesEmComum", 0) > 0
+      WHERE m."produtosEmComum" > 0 OR COALESCE(cm."nivelMaximo", 0) > 0
     `);
 
     const tamanhoAlvo = p.cestaAlvo.length;
@@ -333,7 +445,24 @@ export class SugestaoCompraService {
         // nada sobre o ramo.
         const afinidadeCnae = Math.min(l.cnaesEmComum, 3) / 3;
         const bonusPrincipal = l.mesmoCnaePrincipal ? 0.35 : 0;
-        const scoreCnae = Math.min(afinidadeCnae * 0.65 + bonusPrincipal, 1);
+
+        const nivel = NIVEL_CNAE[l.nivelMaximo] ?? null;
+
+        // Quem divide a subclasse mantém **exatamente** a fórmula anterior: a
+        // regra hierárquica não pode remexer no score de quem a regra antiga
+        // já reconhecia, senão a comparação entre as duas não diz nada.
+        //
+        // O ramo vizinho entra como sinal fraco, tabelado por `TETO_VIZINHO`
+        // para ficar sempre **abaixo do piso do exato** (0,217 = um único CNAE
+        // idêntico, sem ser o principal). Assim um vizinho de classe nunca
+        // ultrapassa quem de fato divide a subclasse — ele só deixa de valer
+        // zero, que é o ponto da mudança.
+        const scoreCnae =
+          nivel === 'subclasse'
+            ? Math.min(afinidadeCnae * 0.65 + bonusPrincipal, 1)
+            : nivel
+              ? PESO_NIVEL_CNAE[nivel] * TETO_VIZINHO
+              : 0;
 
         const score =
           (usaCesta ? indiceCesta * 0.6 : 0) +
@@ -347,9 +476,11 @@ export class SugestaoCompraService {
           codigoErp: l.codigoErp,
           municipio: l.municipio,
           uf: l.uf,
+          naCarteira: l.naCarteira,
           score: Math.round(score * 100) / 100,
           indiceCesta: Math.round(indiceCesta * 100) / 100,
           cnaesEmComum: l.cnaesEmComum,
+          nivelCnae: nivel,
           mesmoCnaePrincipal: l.mesmoCnaePrincipal,
           mesmaRegiao: l.mesmaRegiao,
           produtosEmComum: l.produtosEmComum,
@@ -367,6 +498,8 @@ export class SugestaoCompraService {
       empresaId: string;
       desde: Date;
       semelhantes: string[];
+      /** Subconjunto que pode ser nomeado na evidência. */
+      daCarteira: string[];
       cestaAlvo: string[];
       limite: number;
     },
@@ -379,9 +512,13 @@ export class SugestaoCompraService {
         COUNT(DISTINCT i."clienteId")::int AS "clientes",
         SUM(i."vlrTotal")::float8          AS "valorTotal",
         MAX(i."dtEmissao")                 AS "ultimaCompra",
-        -- Os três primeiros nomes bastam como argumento de venda; a lista
-        -- inteira só polui a tela.
-        (ARRAY_AGG(DISTINCT c."razaoSocial"))[1:3] AS "evidencia"
+        -- Nomeia apenas clientes da carteira do usuário: são os únicos que ele
+        -- já poderia ver, e os únicos que servem de argumento de venda ("o
+        -- Fulano aqui do lado compra"). Os de fora entram na contagem abaixo.
+        (ARRAY_AGG(DISTINCT c."razaoSocial") FILTER (WHERE c."id" = ANY(${p.daCarteira}::text[])))[1:3] AS "evidencia",
+        COUNT(DISTINCT i."clienteId") FILTER (
+          WHERE NOT (c."id" = ANY(${p.daCarteira}::text[]))
+        )::int AS "outrosClientes"
       FROM "notas_saida_itens" i
       JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
       JOIN "produtos" pr ON pr."id" = i."produtoId"

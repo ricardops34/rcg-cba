@@ -17,6 +17,8 @@ import type { AuthenticatedUser } from '../../common/decorators/current-user.dec
 /** Config já resolvida para uso interno — com a credencial em claro. */
 export interface ConfigParaUso {
   provedor: ProvedorIa;
+  /** Identidade do agente — vale para qualquer provedor. */
+  nomeAgente: string;
   baseUrl: string;
   /** Chave de API, ou o access token OAuth já renovado (Codex). */
   apiKey: string;
@@ -189,6 +191,7 @@ export class AgenteConfigService {
     const provedor = linha.provedor as ProvedorIa;
     const comum = {
       provedor,
+      nomeAgente: linha.nomeAgente,
       baseUrl: linha.baseUrl,
       modelo: linha.modelo,
       temperatura: linha.temperatura,
@@ -470,6 +473,7 @@ export class AgenteConfigService {
       id: string;
       empresaId: string;
       ativo: boolean;
+      nomeAgente: string;
       provedor: string;
       baseUrl: string;
       modelo: string;
@@ -496,6 +500,7 @@ export class AgenteConfigService {
       id: linha.id,
       empresaId: linha.empresaId,
       ativo: linha.ativo,
+      nomeAgente: linha.nomeAgente,
       provedor: linha.provedor,
       baseUrl: linha.baseUrl,
       modelo: linha.modelo,

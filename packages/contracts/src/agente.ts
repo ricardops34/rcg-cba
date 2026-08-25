@@ -43,6 +43,8 @@ Se o pedido for ambíguo de um jeito que mude o resultado (qual cliente entre do
 
 export const agenteConfigUpdateSchema = z.object({
   ativo: z.boolean().optional(),
+  // Identidade do agente, independente do provedor.
+  nomeAgente: z.string().trim().min(1).max(40).optional(),
   baseUrl: z.string().trim().url().max(200).optional(),
   modelo: z.string().trim().min(1).max(80).optional(),
   // Vazio = manter a chave atual. Nunca é devolvida para ser redigitada.
@@ -60,6 +62,7 @@ export const agenteConfigSchema = z.object({
   id: z.string().uuid(),
   empresaId: z.string().uuid(),
   ativo: z.boolean(),
+  nomeAgente: z.string(),
   provedor: provedorIaSchema,
   credenciais: z.array(agenteCredencialSchema).default([]),
   baseUrl: z.string(),
@@ -133,13 +136,41 @@ export const agentePendenciaSchema = z.object({
 });
 export type AgentePendencia = z.infer<typeof agentePendenciaSchema>;
 
+/**
+ * Onde ver, na tela, o que a ferramenta consultou ou gravou.
+ *
+ * O chat mostra um resumo — e é só isso que ele consegue mostrar: o resultado
+ * de uma ferramenta é cortado antes de chegar ao modelo, e o que o agente
+ * escreve é prosa, não a tela. O destino fecha esse vão: a resposta vem com o
+ * botão que abre a Posição do Cliente, a fila de aprovação ou o orçamento
+ * recém-criado, no registro exato de que se falou.
+ *
+ * A rota é montada **no servidor**, a partir dos ids reais do resultado. O
+ * modelo nunca a escreve — ele sequer enxerga os ids (ver
+ * `anonimizar-agente.ts`), então não há como ele inventar um link.
+ */
+export const agenteDestinoSchema = z.object({
+  rotulo: z.string().describe('Texto do botão, ex.: "Abrir a fila de aprovação"'),
+  rota: z.string().describe("Caminho no app, ex.: /cadastros/clientes/<id>"),
+});
+export type AgenteDestino = z.infer<typeof agenteDestinoSchema>;
+
 export const agenteRespostaSchema = z.object({
   conversaId: z.string().uuid(),
   texto: z.string().nullable(),
   // Ações que gravam, aguardando o Confirmar do usuário. Nada foi gravado.
   pendencias: z.array(agentePendenciaSchema),
+  // Telas correspondentes ao que foi consultado neste turno.
+  destinos: z.array(agenteDestinoSchema),
 });
 export type AgenteResposta = z.infer<typeof agenteRespostaSchema>;
+
+/** Resposta do Confirmar de uma pendência: o que foi gravado e onde vê-lo. */
+export const agenteConfirmacaoSchema = z.object({
+  executado: z.boolean(),
+  destinos: z.array(agenteDestinoSchema),
+});
+export type AgenteConfirmacao = z.infer<typeof agenteConfirmacaoSchema>;
 
 export const agentePapelSchema = z.enum([
   "usuario",
@@ -171,6 +202,7 @@ export const AGENTE_CONFIG_EXAMPLE: AgenteConfig = {
   id: "6e7f8091-a2b3-4c4d-8e5f-6a7b8c9d0e1f",
   empresaId: "7b2f2f64-9b1c-4a86-9d3e-1f4a5b6c7d8e",
   ativo: true,
+  nomeAgente: "Assistente",
   provedor: "anthropic",
   credenciais: [
     {
@@ -208,4 +240,63 @@ export const AGENTE_RESPOSTA_EXAMPLE: AgenteResposta = {
       argumentos: {},
     },
   ],
+  destinos: [
+    {
+      rotulo: "Abrir o cliente",
+      rota: "/cadastros/clientes/9c8d7e6f-5a4b-4c3d-2e1f-0a9b8c7d6e5f",
+    },
+  ],
+};
+
+/**
+ * Governança de uma ferramenta do agente, por empresa.
+ *
+ * A implementação vive no código; o que a empresa configura é como ela se
+ * apresenta e quem pode usá-la. Por isso vêm os dois textos: o `*Padrao` é o
+ * que o código traz, e o outro é a sobrescrita gravada — a tela mostra o
+ * padrão como placeholder para deixar claro o que se está trocando.
+ */
+export const agenteFerramentaSchema = z.object({
+  chave: z.string(),
+  ativa: z.boolean(),
+  /** Texto em uso (sobrescrita, ou o padrão do código). */
+  nome: z.string(),
+  descricao: z.string(),
+  nomePadrao: z.string(),
+  descricaoPadrao: z.string(),
+  /** `rotina.acao` exigida pelo código. Restringe sempre, e não é editável. */
+  permissao: z.string(),
+  /** Ferramenta que grava não executa direto: vira pendência de confirmação. */
+  escrita: z.boolean(),
+  /**
+   * Perfis liberados. Vazio = todos os que passarem na `permissao`, que é o
+   * comportamento anterior a esta configuração existir.
+   */
+  perfilIds: z.array(z.string().uuid()).default([]),
+});
+export type AgenteFerramenta = z.infer<typeof agenteFerramentaSchema>;
+
+export const agenteFerramentaUpdateSchema = z.object({
+  ativa: z.boolean().optional(),
+  // String vazia limpa a sobrescrita e volta ao texto do código.
+  nome: z.string().trim().max(80).optional(),
+  descricao: z.string().trim().max(2000).optional(),
+  perfilIds: z.array(z.string().uuid()).optional(),
+});
+export type AgenteFerramentaUpdate = z.infer<
+  typeof agenteFerramentaUpdateSchema
+>;
+
+export const AGENTE_FERRAMENTA_EXAMPLE: AgenteFerramenta = {
+  chave: "buscar_cliente",
+  ativa: true,
+  nome: "buscar_cliente",
+  descricao:
+    "Busca clientes da carteira do usuário por nome, razão social, código ou ramo (CNAE).",
+  nomePadrao: "buscar_cliente",
+  descricaoPadrao:
+    "Busca clientes da carteira do usuário por nome, razão social, código ou ramo (CNAE).",
+  permissao: "clientes.visualizar",
+  escrita: false,
+  perfilIds: [],
 };

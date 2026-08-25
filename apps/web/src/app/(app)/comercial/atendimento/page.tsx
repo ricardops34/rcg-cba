@@ -49,6 +49,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ConexaoSheet } from "@/components/whatsapp/conexao-sheet";
 import { NovaConversaDialog } from "@/components/whatsapp/nova-conversa-dialog";
 import { Composer } from "@/components/whatsapp/composer";
@@ -123,6 +130,9 @@ export default function AtendimentoPage() {
     [router, pathname],
   );
   const [busca, setBusca] = useState("");
+  // Vazio = todas as conexões que o usuário enxerga. Guarda o `vendedorId`
+  // porque é o que o servidor filtra, e cada vendedor tem uma conexão só.
+  const [conexaoFiltrada, setConexaoFiltrada] = useState("");
   const [listaPreferida, alternarPreferenciaLista] = usePainelAberto(PREF_LISTA);
   const [painelAberto, alternarPainel] = usePainelAberto(PREF_PAINEL);
 
@@ -162,12 +172,30 @@ export default function AtendimentoPage() {
       q.state.data?.status === "pareando" ? 3000 : false,
   });
 
+  /**
+   * As conexões que este usuário enxerga — a própria e, para quem lê as da
+   * equipe, as dos vendedores no seu escopo. Uma conexão por vendedor, então
+   * esta lista é também a lista de atendentes.
+   */
+  const { data: conexoes = [] } = useQuery({
+    queryKey: ["whatsapp-sessoes"],
+    queryFn: () => apiFetch<WhatsappSessao[]>("/whatsapp/sessoes"),
+  });
+  const variasConexoes = conexoes.length > 1;
+
   const { data: conversas, isLoading: carregandoConversas } = useQuery({
-    queryKey: ["whatsapp-conversas", busca],
-    queryFn: () =>
-      apiFetch<ListaConversas>(
-        `/whatsapp/conversas${busca ? `?busca=${encodeURIComponent(busca)}` : ""}`,
-      ),
+    queryKey: ["whatsapp-conversas", busca, conexaoFiltrada],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (busca) params.set("busca", busca);
+      // O servidor filtra por vendedor, que é o dono da conexão — e continua
+      // aplicando o escopo por cima: o filtro restringe, nunca amplia.
+      if (conexaoFiltrada) params.set("vendedorId", conexaoFiltrada);
+      const qs = params.toString();
+      return apiFetch<ListaConversas>(
+        `/whatsapp/conversas${qs ? `?${qs}` : ""}`,
+      );
+    },
     refetchInterval: 15000,
   });
 
@@ -228,6 +256,27 @@ export default function AtendimentoPage() {
             onChange={(e) => setBusca(e.target.value)}
             className="max-w-80"
           />
+          {/* Só com mais de uma conexão à vista: para o vendedor, que tem a
+              própria e mais nada, o seletor teria uma opção só. */}
+          {variasConexoes ? (
+            <Select
+              value={conexaoFiltrada || "todas"}
+              onValueChange={(v) => setConexaoFiltrada(v === "todas" ? "" : v)}
+            >
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Todas as conexões" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas as conexões</SelectItem>
+                {conexoes.map((c) => (
+                  <SelectItem key={c.id} value={c.vendedorId}>
+                    {c.vendedorNome}
+                    {c.numero ? ` · ${telefoneBonito(c.numero)}` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           <Button onClick={() => setNovaConversaAberta(true)}>
@@ -275,6 +324,7 @@ export default function AtendimentoPage() {
               conversas={conversas?.itens ?? []}
               selecionada={conversaId}
               onSelecionar={abrirConversa}
+              mostrarConexao={variasConexoes}
             />
           </ColunaRedimensionavel>
         ) : null}
@@ -334,11 +384,14 @@ function ListaDeConversas({
   conversas,
   selecionada,
   onSelecionar,
+  mostrarConexao,
 }: {
   carregando: boolean;
   conversas: WhatsappConversa[];
   selecionada: string | null;
   onSelecionar: (id: string) => void;
+  /** Ver `EtiquetaConexao` — some quando só há uma conexão à vista. */
+  mostrarConexao: boolean;
 }) {
   if (carregando) return <Skeleton className="h-full w-full" />;
 
@@ -380,11 +433,35 @@ function ListaDeConversas({
                 telefoneBonito(c.contato.telefoneNormalizado) ??
                 "—"}
             </span>
+            {mostrarConexao ? <EtiquetaConexao conversa={c} /> : null}
             <SinaisDoCliente conversa={c} />
           </button>
         ))
       )}
     </div>
+  );
+}
+
+/**
+ * Por qual conexão a conversa entrou.
+ *
+ * Só aparece para quem enxerga mais de uma: quando o supervisor lista as
+ * conversas da equipe, a lista junta atendimentos de números diferentes e nada
+ * dizia de qual era cada um — nem por qual número a resposta ia sair. Para o
+ * vendedor, que só tem a própria conexão, a etiqueta seria a mesma em toda
+ * linha, e some.
+ */
+function EtiquetaConexao({ conversa }: { conversa: WhatsappConversa }) {
+  const numero = telefoneBonito(conversa.sessaoNumero);
+  return (
+    <span
+      className="flex items-center gap-1 truncate text-xs text-muted-foreground"
+      title={`Atendido por ${conversa.vendedorNome}${numero ? ` pelo número ${numero}` : ""}`}
+    >
+      <Plug className="size-3 shrink-0" />
+      <span className="truncate">{conversa.vendedorNome}</span>
+      {numero ? <span className="shrink-0">· {numero}</span> : null}
+    </span>
   );
 }
 

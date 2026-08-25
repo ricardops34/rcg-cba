@@ -160,6 +160,40 @@ export class WhatsappController {
     return this.sessao.listarEquipe(user.empresaAtivaId, user);
   }
 
+  @ApiOperation({
+    summary: 'Conectar ou reconectar uma instância pela administração',
+    description:
+      'Reabre no worker uma sessão já criada pelo vendedor. Não cria o aceite ' +
+      'inicial em nome dele. Requer whatsapp-config.editar.',
+  })
+  @RequirePermission('whatsapp-config', 'editar')
+  @Post('config/sessoes/:id/reconectar')
+  reconectarInstancia(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.sessao.reconectarAdministracao(
+      user.empresaAtivaId,
+      user,
+      id,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Remover uma instância pela administração',
+    description:
+      'Encerra a conexão no worker e marca a instância como desconectada, ' +
+      'preservando conversas e auditoria. Requer whatsapp-config.editar.',
+  })
+  @RequirePermission('whatsapp-config', 'editar')
+  @Delete('config/sessoes/:id')
+  removerInstancia(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.sessao.removerAdministracao(user.empresaAtivaId, user, id);
+  }
+
   // ---------------- atendimento ----------------
 
   @ApiOperation({

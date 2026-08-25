@@ -4,10 +4,14 @@ import { clienteCreateSchema } from "./cliente";
 // Lista canônica derivada do schema de criação/edição de Cliente — evita
 // duplicar os nomes de campo à mão e ficar fora de sincronia se um campo
 // novo for adicionado lá.
-export const CAMPOS_CLIENTE_CONFIGURAVEIS = Object.keys(clienteCreateSchema.shape) as [
-  string,
-  ...string[],
-];
+export const CAMPOS_CLIENTE_CONFIGURAVEIS = [
+  ...(Object.keys(clienteCreateSchema.shape) as [string, ...string[]]),
+  // `cnaes` não é coluna do cliente — é a coleção de ramos de atividade, que
+  // grava por conta própria (`cliente_cnaes`). Entra aqui porque a pergunta
+  // "quem pode mexer nisso?" é a mesma dos outros campos, e a seção de CNAE do
+  // formulário respeita esta chave como respeita as demais.
+  "cnaes",
+] as [string, ...string[]];
 
 export const clienteCampoConfigItemSchema = z.object({
   campo: z.enum(CAMPOS_CLIENTE_CONFIGURAVEIS),

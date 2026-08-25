@@ -145,7 +145,13 @@ export class WhatsappConversasService {
             contato: true,
             cliente: { select: { razaoSocial: true, codigoErp: true } },
             sessao: {
-              select: { vendedorId: true, vendedor: { select: { nome: true } } },
+              select: {
+                vendedorId: true,
+                // Por qual número a conversa entrou — a lista da equipe mistura
+                // conexões, e a resposta sai pela mesma conexão que recebeu.
+                numero: true,
+                vendedor: { select: { nome: true } },
+              },
             },
             // Só a última mensagem, para a prévia da lista — trazer o rolo
             // inteiro de cada conversa aqui derrubaria a tela.
@@ -193,6 +199,7 @@ export class WhatsappConversasService {
           arquivada: c.arquivada,
           vendedorId: c.sessao.vendedorId,
           vendedorNome: c.sessao.vendedor.nome,
+          sessaoNumero: c.sessao.numero,
           diasSemComprar: c.clienteId
             ? (sinais.diasSemComprar.get(c.clienteId) ?? null)
             : null,

@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -9,6 +10,8 @@ import {
 } from '../../common/prisma/prisma.service';
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
 import type { ClienteCnaeCreate } from '@plataforma/contracts';
+import { ClienteCampoConfigService } from '../cliente-campo-config/cliente-campo-config.service';
+import { CAMPO_CNAES } from './cliente-alteracoes.service';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
 type LinhaComCnae = {
@@ -32,7 +35,25 @@ type LinhaComCnae = {
  */
 @Injectable()
 export class ClienteCnaesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly campoConfig: ClienteCampoConfigService,
+  ) {}
+
+  /**
+   * Reforço server-side da configuração de campos editáveis, igual ao que
+   * `ClientesService.update` faz com as colunas do cadastro: `cnaes` travado na
+   * configuração da empresa vale para a API, não só para o formulário — a tela
+   * desabilitar o botão não é controle de acesso.
+   */
+  private async garantirCampoEditavel(empresaId: string) {
+    const config = await this.campoConfig.obterConfig(empresaId);
+    if (config[CAMPO_CNAES] === false) {
+      throw new ForbiddenException(
+        'O ramo de atividade (CNAE) está bloqueado para edição nesta empresa.',
+      );
+    }
+  }
 
   private paraLeitura(linha: LinhaComCnae) {
     const { cnae, ...resto } = linha;
@@ -83,6 +104,7 @@ export class ClienteCnaesService {
     clienteId: string,
     input: ClienteCnaeCreate,
   ) {
+    await this.garantirCampoEditavel(empresaId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       await this.garantirClienteNoEscopo(tx, empresaId, user, clienteId);
 
@@ -140,6 +162,7 @@ export class ClienteCnaesService {
     clienteId: string,
     id: string,
   ) {
+    await this.garantirCampoEditavel(empresaId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       await this.garantirClienteNoEscopo(tx, empresaId, user, clienteId);
       const atual = await tx.clienteCnae.findFirst({
@@ -164,6 +187,7 @@ export class ClienteCnaesService {
     clienteId: string,
     id: string,
   ) {
+    await this.garantirCampoEditavel(empresaId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       await this.garantirClienteNoEscopo(tx, empresaId, user, clienteId);
       const atual = await tx.clienteCnae.findFirst({

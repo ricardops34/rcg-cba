@@ -15,6 +15,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -60,26 +61,63 @@ function StatusBadge({ status }: { status: StatusAlteracaoCliente }) {
   );
 }
 
-/** O "de → para" de uma solicitação, que é o que a decisão precisa mostrar. */
-function DiffCampos({ alteracoes }: { alteracoes: ClienteAlteracao["alteracoes"] }) {
+/**
+ * O "de → para" de uma solicitação, que é o que a decisão precisa mostrar.
+ *
+ * Com `marcados`, cada campo vira uma escolha: a Receita costuma trazer o
+ * endereço certo junto de um nome fantasia velho, e antes o jeito de aceitar
+ * metade era recusar tudo e reeditar à mão. O que ficar desmarcado vai para o
+ * histórico do cliente como reprovado — não some.
+ */
+function DiffCampos({
+  alteracoes,
+  marcados,
+  onAlternar,
+}: {
+  alteracoes: ClienteAlteracao["alteracoes"];
+  marcados?: string[];
+  onAlternar?: (campo: string) => void;
+}) {
   const entradas = Object.entries(alteracoes ?? {});
   if (entradas.length === 0) {
     return <span className="text-sm text-muted-foreground">Sem diferenças</span>;
   }
+  const selecionavel = !!marcados && !!onAlternar;
   return (
     <div className="space-y-1">
-      {entradas.map(([campo, { de, para }]) => (
-        <div key={campo} className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="min-w-40 font-medium">
-            {CAMPO_CLIENTE_LABEL[campo] ?? campo}
-          </span>
-          <span className="text-muted-foreground line-through">
-            {valorLegivel(de)}
-          </span>
-          <ArrowRight className="size-3 shrink-0 text-muted-foreground" />
-          <span className="font-medium">{valorLegivel(para)}</span>
-        </div>
-      ))}
+      {entradas.map(([campo, { de, para }]) => {
+        const linha = (
+          <>
+            <span className="min-w-40 font-medium">
+              {CAMPO_CLIENTE_LABEL[campo] ?? campo}
+            </span>
+            <span className="text-muted-foreground line-through">
+              {valorLegivel(de)}
+            </span>
+            <ArrowRight className="size-3 shrink-0 text-muted-foreground" />
+            <span className="font-medium">{valorLegivel(para)}</span>
+          </>
+        );
+        if (!selecionavel) {
+          return (
+            <div key={campo} className="flex flex-wrap items-center gap-2 text-sm">
+              {linha}
+            </div>
+          );
+        }
+        return (
+          <label
+            key={campo}
+            className="flex cursor-pointer flex-wrap items-center gap-2 rounded-md px-1 py-0.5 text-sm hover:bg-muted/50"
+          >
+            <Checkbox
+              checked={marcados.includes(campo)}
+              onCheckedChange={() => onAlternar(campo)}
+            />
+            {linha}
+          </label>
+        );
+      })}
     </div>
   );
 }
@@ -99,6 +137,24 @@ export default function ClientesAlteracoesPage() {
   const [busca, setBusca] = useState("");
   const [recusando, setRecusando] = useState<ClienteAlteracao | null>(null);
   const [motivo, setMotivo] = useState("");
+  // Campos marcados por solicitação. Sem entrada = tudo marcado, que é o caso
+  // comum: quem abre a fila costuma aprovar a solicitação inteira.
+  const [selecao, setSelecao] = useState<Record<string, string[]>>({});
+
+  const camposDe = (linha: ClienteAlteracao) =>
+    Object.keys(linha.alteracoes ?? {});
+  const marcadosDe = (linha: ClienteAlteracao) =>
+    selecao[linha.id] ?? camposDe(linha);
+  const alternarCampo = (linha: ClienteAlteracao, campo: string) =>
+    setSelecao((s) => {
+      const atual = s[linha.id] ?? camposDe(linha);
+      return {
+        ...s,
+        [linha.id]: atual.includes(campo)
+          ? atual.filter((c) => c !== campo)
+          : [...atual, campo],
+      };
+    });
 
   const chave = ["clientes-alteracoes", status, busca];
   const { data, isLoading } = useQuery({
@@ -117,10 +173,17 @@ export default function ClientesAlteracoesPage() {
   };
 
   const aprovar = useMutation({
-    mutationFn: (id: string) =>
-      apiFetch(`/clientes-alteracoes/${id}/aprovar`, { method: "POST" }),
-    onSuccess: () => {
+    mutationFn: ({ id, campos }: { id: string; campos: string[] }) =>
+      apiFetch(`/clientes-alteracoes/${id}/aprovar`, {
+        method: "POST",
+        body: { campos },
+      }),
+    onSuccess: (_, { id }) => {
       invalidar();
+      setSelecao((s) => {
+        const { [id]: _removida, ...resto } = s;
+        return resto;
+      });
       toast.success("Alteração aprovada e aplicada no cadastro");
     },
     onError: (err) =>
@@ -193,7 +256,16 @@ export default function ClientesAlteracoesPage() {
                   </Badge>
                 </div>
 
-                <DiffCampos alteracoes={linha.alteracoes} />
+                <DiffCampos
+                  alteracoes={linha.alteracoes}
+                  {...(linha.status === "pendente" && podeAprovar
+                    ? {
+                        marcados: marcadosDe(linha),
+                        onAlternar: (campo: string) =>
+                          alternarCampo(linha, campo),
+                      }
+                    : {})}
+                />
 
                 <p className="text-xs text-muted-foreground">
                   Solicitado por {linha.solicitadoPorNome ?? "—"} em{" "}
@@ -213,7 +285,13 @@ export default function ClientesAlteracoesPage() {
                 )}
 
                 {linha.status === "pendente" && podeAprovar && (
-                  <div className="flex justify-end gap-2">
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    {marcadosDe(linha).length < camposDe(linha).length && (
+                      <span className="mr-auto text-xs text-muted-foreground">
+                        {camposDe(linha).length - marcadosDe(linha).length} campo(s)
+                        desmarcado(s) — vão para o histórico como reprovados.
+                      </span>
+                    )}
                     <Button
                       type="button"
                       variant="outline"
@@ -226,11 +304,20 @@ export default function ClientesAlteracoesPage() {
                     <Button
                       type="button"
                       size="sm"
-                      onClick={() => aprovar.mutate(linha.id)}
-                      disabled={aprovar.isPending}
+                      onClick={() =>
+                        aprovar.mutate({
+                          id: linha.id,
+                          campos: marcadosDe(linha),
+                        })
+                      }
+                      // Sem nada marcado não é aprovação: é recusa, e recusa
+                      // exige motivo.
+                      disabled={aprovar.isPending || marcadosDe(linha).length === 0}
                     >
                       <Check className="size-4" />
-                      Aprovar
+                      {marcadosDe(linha).length < camposDe(linha).length
+                        ? `Aprovar ${marcadosDe(linha).length} campo(s)`
+                        : "Aprovar"}
                     </Button>
                   </div>
                 )}

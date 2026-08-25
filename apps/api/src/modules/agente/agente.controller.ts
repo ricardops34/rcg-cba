@@ -16,13 +16,16 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import {
   AGENTE_CONFIG_EXAMPLE,
+  AGENTE_FERRAMENTA_EXAMPLE,
   AGENTE_RESPOSTA_EXAMPLE,
 } from '@plataforma/contracts';
 import { AgenteConfigService } from './agente-config.service';
 import { AgenteChatService } from './agente-chat.service';
+import { AgenteFerramentasService } from './agente-ferramentas.service';
 import {
   AgenteConfigUpdateDto,
   AgenteEnvioDto,
+  AgenteFerramentaUpdateDto,
   AgenteOauthConcluirDto,
   AgenteOauthImportarDto,
   AgenteTestarConexaoDto,
@@ -44,6 +47,7 @@ export class AgenteController {
   constructor(
     private readonly config: AgenteConfigService,
     private readonly chat: AgenteChatService,
+    private readonly ferramentas: AgenteFerramentasService,
   ) {}
 
   // ---------------- configuração ----------------
@@ -95,6 +99,43 @@ export class AgenteController {
       dto.apiKey,
       dto.provedor,
     );
+  }
+
+  // ---------------- ferramentas ----------------
+
+  @ApiOperation({
+    summary: 'Ferramentas do agente e sua configuração',
+    description:
+      'Catálogo do código cruzado com o que a empresa configurou: ligada/desligada, textos ' +
+      'reescritos e perfis liberados. A `permissao` de cada ferramenta é do código e não é ' +
+      'editável — a configuração restringe, nunca amplia. Requer agente-config.visualizar.',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: { example: [AGENTE_FERRAMENTA_EXAMPLE] },
+  })
+  @RequirePermission('agente-config', 'visualizar')
+  @Get('ferramentas')
+  listarFerramentas(@CurrentUser() user: AuthenticatedUser) {
+    return this.ferramentas.listar(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Configurar uma ferramenta',
+    description:
+      'Liga/desliga, reescreve nome e descrição (vazio volta ao texto do código) e define ' +
+      'os perfis com direito de uso (lista vazia = todos os que tiverem a permissão). ' +
+      'Requer agente-config.editar.',
+  })
+  @ApiBodyExample({ ativa: true, descricao: 'Use para...', perfilIds: [] })
+  @RequirePermission('agente-config', 'editar')
+  @Put('ferramentas/:chave')
+  atualizarFerramenta(
+    @Param('chave') chave: string,
+    @Body() dto: AgenteFerramentaUpdateDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.ferramentas.atualizar(user.empresaAtivaId, user, chave, dto);
   }
 
   // ---------------- conexão OAuth (Codex) ----------------

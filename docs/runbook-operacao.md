@@ -436,7 +436,84 @@ sessão na mesma requisição.
 O erro **429** aqui não é throttle passageiro: é o limite de uso da assinatura,
 por janela de horas/semana. Tentar de novo em seguida não resolve.
 
-### Pré-requisito
+### Pré-requisito: `AGENTE_IA_CRYPTO_KEY` **[verificado em 2026-08-25]**
 
-`AGENTE_IA_CRYPTO_KEY` precisa estar configurada (32 bytes em base64) — os dois
-tokens são gravados cifrados em `agente_credenciais`, como a chave de API.
+Toda credencial do agente — chave de API e os dois tokens OAuth — é gravada
+cifrada (AES-256-GCM) em `agente_credenciais`. Sem a variável, gravar falha com:
+
+```
+AGENTE_IA_CRYPTO_KEY não configurada — não é possível gravar a chave de API do
+agente. Gere 32 bytes em base64 e defina a variável de ambiente.
+```
+
+Isso é recusa deliberada, não bug: gravar segredo de terceiro em claro no banco
+é o tipo de coisa que ninguém descobre até vazar (ver `agente-cripto.ts`).
+
+**Gerar a chave** (qualquer máquina com Node ou OpenSSL):
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+# ou
+openssl rand -base64 32
+```
+
+**Definir em produção:** Portainer → Stacks → `rcgcba` → Environment variables →
+`AGENTE_IA_CRYPTO_KEY` → redeploy. O `stack.rcgcba.prod.yml` já repassa a
+variável; ela **não** é lida de arquivo (`.env.prod.example` é só referência).
+
+Em dev não é preciso fazer nada: o `docker-compose.dev.yml` tem um valor padrão,
+que **não** deve ser usado em produção.
+
+> **Guarde a chave.** Trocá-la torna ilegível tudo o que já foi cifrado com a
+> anterior — as credenciais gravadas param de funcionar e precisam ser
+> regravadas pela tela (a conexão OAuth do Codex precisa ser refeita). O erro,
+> nesse caso, é "Não foi possível decifrar a chave de API do agente".
+
+---
+
+## Armadilha: variável do Portainer que não chega ao container **[verificado em 2026-08-25]**
+
+Sintoma: a variável está cadastrada em **Stacks → rcgcba → Environment
+variables**, o redeploy rodou, e a aplicação continua dizendo que ela não
+existe. Foi o que aconteceu com `AGENTE_IA_CRYPTO_KEY`:
+
+```
+AGENTE_IA_CRYPTO_KEY não configurada — não é possível gravar a chave de API do
+agente.
+```
+
+**Causa:** a aba de variáveis do Portainer **não injeta nada no container**.
+Ela só substitui `${VAR}` onde o YML referenciar. Se o `environment:` do
+serviço não menciona a variável, ela fica no stack e a aplicação nunca a vê.
+
+**Correção:** acrescentar a linha no serviço, e só então dar update:
+
+```yaml
+    environment:
+      AGENTE_IA_CRYPTO_KEY: ${AGENTE_IA_CRYPTO_KEY}
+```
+
+**Diagnóstico em um comando** — dentro do container, não no host:
+
+```bash
+docker exec <container-da-api> printenv AGENTE_IA_CRYPTO_KEY
+```
+
+Vazio = falta a linha no YML (ou o serviço não foi recriado). Imprimindo o
+valor = o problema é outro (valor inválido dá outra mensagem: "deve ter 32
+bytes em base64").
+
+### A causa de fundo: o YML do Portainer diverge do repo
+
+O stack que roda na VPS foi editado pelo Portainer e **não** é atualizado
+quando `docker/stack.rcgcba.prod.yml` muda. Toda variável nova que entra no
+arquivo do repo reproduz o sintoma acima até alguém acrescentar a linha lá.
+
+> Ao atualizar o stack, **cole o `docker/stack.rcgcba.prod.yml` inteiro** no
+> editor do Portainer, em vez de editar linha a linha. O arquivo do repo passa
+> a ser a fonte, e as variáveis novas vão junto.
+
+Divergências já encontradas (2026-08-25), do repo para o que rodava na VPS:
+`AGENTE_IA_CRYPTO_KEY`, `WHATSAPP_WORKER_TOKEN` e o serviço
+`whatsapp-worker` inteiro (este último ainda não implantado — ver a seção do
+WhatsApp em produção).

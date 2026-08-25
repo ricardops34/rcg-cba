@@ -9,8 +9,14 @@ import {
   type TenantTx,
 } from '../../common/prisma/prisma.service';
 import { AgenteConfigService } from './agente-config.service';
+import { AgenteFerramentasService } from './agente-ferramentas.service';
+import { AgenteReferenciasService } from './agente-referencias.service';
 import { AgenteToolsService } from './agente-tools.service';
+import { garantirMascarado, mascarar } from './anonimizar-agente';
 import { ProvedorFactory } from './provedor.factory';
+import type { FiltroFerramentas } from './agente-ferramentas.service';
+import type { Ferramenta } from './agente-tools.service';
+import type { AgenteDestino } from '@plataforma/contracts';
 import type { MensagemChat } from './provedor-ia';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
@@ -38,6 +44,8 @@ export class AgenteChatService {
     private readonly config: AgenteConfigService,
     private readonly tools: AgenteToolsService,
     private readonly provedores: ProvedorFactory,
+    private readonly referencias: AgenteReferenciasService,
+    private readonly governanca: AgenteFerramentasService,
   ) {}
 
   async listarConversas(empresaId: string, user: AuthenticatedUser) {
@@ -52,26 +60,37 @@ export class AgenteChatService {
   }
 
   async detalhar(empresaId: string, user: AuthenticatedUser, id: string) {
-    return this.prisma.withTenant(empresaId, async (tx) => {
-      const conversa = await this.minhaConversa(tx, empresaId, user, id);
-      const mensagens = await tx.agenteMensagem.findMany({
-        where: { empresaId, conversaId: conversa.id },
-        orderBy: { criadaEm: 'asc' },
-      });
-      return {
-        id: conversa.id,
-        titulo: conversa.titulo,
-        mensagens: mensagens.map((m) => ({
-          id: m.id,
-          papel: m.papel,
-          conteudo: m.conteudo,
-          ferramenta: m.ferramenta,
-          pendente: m.pendente,
-          confirmadaEm: m.confirmadaEm,
-          criadaEm: m.criadaEm,
-        })),
-      };
-    });
+    const { conversa, mensagens } = await this.prisma.withTenant(
+      empresaId,
+      async (tx) => ({
+        conversa: await this.minhaConversa(tx, empresaId, user, id),
+        mensagens: await tx.agenteMensagem.findMany({
+          where: { empresaId, conversaId: id },
+          orderBy: { criadaEm: 'asc' },
+        }),
+      }),
+    );
+
+    // As respostas do assistente estão gravadas com as referências opacas
+    // (ver `enviar`). Remonta todas numa rodada só de consultas.
+    const conteudos = await this.referencias.remontarVarios(
+      empresaId,
+      mensagens.map((m) => m.conteudo),
+    );
+
+    return {
+      id: conversa.id,
+      titulo: conversa.titulo,
+      mensagens: mensagens.map((m, i) => ({
+        id: m.id,
+        papel: m.papel,
+        conteudo: conteudos[i],
+        ferramenta: m.ferramenta,
+        pendente: m.pendente,
+        confirmadaEm: m.confirmadaEm,
+        criadaEm: m.criadaEm,
+      })),
+    };
   }
 
   /** Uma conversa é do usuário que a criou — nem o admin lê a dos outros. */
@@ -128,16 +147,28 @@ export class AgenteChatService {
       }),
     );
 
+    // Configuração da empresa (ferramenta ligada/desligada, descrição
+    // reescrita, perfis liberados). Restringe o catálogo; nunca o amplia.
+    // Precisa vir antes do contexto: é ele que lista ao modelo o que está
+    // liberado, e a lista tem de bater com o catálogo enviado.
+    const filtro = await this.governanca.filtroPara(empresaId, user);
+
     const mensagens = await this.montarContexto(
       empresaId,
       user,
       conversaId,
       cfg.historicoMensagens,
       cfg.systemPrompt,
+      filtro,
+      cfg.nomeAgente,
     );
 
-    const ferramentas = this.tools.paraProvedor(user);
+    const ferramentas = this.tools.paraProvedor(user, filtro);
     const pendencias: Pendencia[] = [];
+    // Telas que o turno tocou. Acumula ao longo das voltas: uma pergunta pode
+    // encadear buscar_cliente e posicao_cliente, e o botão que interessa é o
+    // da última — mas os dois são legítimos.
+    const destinos: AgenteDestino[] = [];
     let textoFinal: string | null = null;
 
     for (let volta = 0; volta < cfg.maxIteracoesFerramentas; volta++) {
@@ -192,8 +223,15 @@ export class AgenteChatService {
 
         // Trava de execução: a filtragem do catálogo já deveria impedir, mas
         // o tool_call é texto gerado por um modelo e não vale como permissão.
+        // Vale a permissão E a configuração: uma ferramenta desligada não
+        // está no catálogo enviado, mas o modelo pode inventá-la a partir do
+        // histórico, e a checagem de permissão sozinha a deixaria passar.
+        const liberadas = this.tools.disponiveisPara(user, filtro);
         try {
           this.tools.garantirPermissao(ferramenta, user);
+          if (!liberadas.some((l) => l.nome === ferramenta.nome)) {
+            throw new Error('desligada para esta empresa');
+          }
         } catch {
           mensagens.push({
             papel: 'tool',
@@ -204,11 +242,18 @@ export class AgenteChatService {
           continue;
         }
 
+        // O modelo enxerga o cliente como `«CLI:1234»`, então é natural que ele
+        // devolva a referência onde a ferramenta espera um id. Traduz antes de
+        // executar — inclusive na escrita, para a pendência gravar o id real.
+        const argumentos = await this.referencias.resolverIds(
+          empresaId,
+          chamada.argumentos,
+        );
+
         if (ferramenta.escrita) {
           // Não executa. Grava a pendência e conta ao modelo o que aconteceu,
           // para ele redigir a resposta pedindo a confirmação.
-          const resumo =
-            ferramenta.resumir?.(chamada.argumentos) ?? ferramenta.nome;
+          const resumo = ferramenta.resumir?.(argumentos) ?? ferramenta.nome;
           const pendente = await this.prisma.withTenant(empresaId, (tx) =>
             tx.agenteMensagem.create({
               data: {
@@ -216,7 +261,7 @@ export class AgenteChatService {
                 conversaId,
                 papel: 'ferramenta',
                 ferramenta: ferramenta.nome,
-                argumentos: chamada.argumentos as never,
+                argumentos: argumentos as never,
                 conteudo: resumo,
                 pendente: true,
               },
@@ -226,7 +271,7 @@ export class AgenteChatService {
             id: pendente.id,
             ferramenta: ferramenta.nome,
             resumo,
-            argumentos: chamada.argumentos,
+            argumentos,
           });
           mensagens.push({
             papel: 'tool',
@@ -242,9 +287,10 @@ export class AgenteChatService {
           empresaId,
           conversaId,
           ferramenta.nome,
-          chamada.argumentos,
+          argumentos,
           user,
         );
+        destinos.push(...this.destinosDe(ferramenta, argumentos, resultado));
         mensagens.push({
           papel: 'tool',
           chamadaId: chamada.id,
@@ -253,7 +299,7 @@ export class AgenteChatService {
           // com limite de tamanho por requisição responde 413 (aconteceu com
           // 12k por resultado). O modelo precisa do suficiente para resumir,
           // não do payload inteiro da tela.
-          conteudo: this.resumirResultado(resultado),
+          conteudo: this.resumirResultado(resultado, ferramenta.limiteItens),
         });
       }
     }
@@ -281,7 +327,42 @@ export class AgenteChatService {
       }),
     );
 
-    return { conversaId, texto: textoFinal, pendencias };
+    // A mensagem fica gravada **mascarada**, e é assim que ela volta ao modelo
+    // no próximo turno (`montarContexto`) — gravar o nome real aqui vazaria
+    // pela porta dos fundos, no histórico. Quem lê é que recebe remontado.
+    return {
+      conversaId,
+      texto: await this.referencias.remontarTexto(empresaId, textoFinal),
+      pendencias,
+      destinos: this.semRepetir(destinos),
+    };
+  }
+
+  /**
+   * Os botões "abrir na tela" de uma execução de ferramenta.
+   *
+   * Erro aqui não pode derrubar a conversa: o destino é conveniência, e uma
+   * ferramenta cujo resultado veio em formato inesperado ainda respondeu a
+   * pergunta. Falhou, fica sem botão.
+   */
+  private destinosDe(
+    ferramenta: Ferramenta,
+    args: Record<string, unknown>,
+    resultado: unknown,
+  ): AgenteDestino[] {
+    try {
+      const d = ferramenta.destino?.(args, resultado);
+      if (!d) return [];
+      return Array.isArray(d) ? d : [d];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Mesma rota citada duas vezes no turno vira um botão só. */
+  private semRepetir(destinos: AgenteDestino[]): AgenteDestino[] {
+    const porRota = new Map(destinos.map((d) => [d.rota, d]));
+    return [...porRota.values()];
   }
 
   /**
@@ -295,15 +376,19 @@ export class AgenteChatService {
    * O resultado **completo** vai para `agente_mensagens.resultado`, então a
    * auditoria não perde nada com este corte.
    */
-  private resumirResultado(resultado: unknown): string {
+  private resumirResultado(resultado: unknown, limiteItens = 8): string {
     const TETO = 4_000;
+    // A mascaração vem **antes** da poda e do corte: cortar primeiro poderia
+    // partir uma referência ao meio (`«CLI:12`), e o modelo passaria a citar
+    // um código que a remontagem não reconhece.
+    const mascarado = mascarar(resultado);
     const podarListas = (v: unknown, profundidade = 0): unknown => {
       if (Array.isArray(v)) {
         const cortada = v
-          .slice(0, 8)
+          .slice(0, limiteItens)
           .map((i) => podarListas(i, profundidade + 1));
-        return v.length > 8
-          ? [...cortada, `…mais ${v.length - 8} item(ns) omitidos`]
+        return v.length > limiteItens
+          ? [...cortada, `…mais ${v.length - limiteItens} item(ns) omitidos`]
           : cortada;
       }
       if (v && typeof v === 'object' && profundidade < 4) {
@@ -317,7 +402,11 @@ export class AgenteChatService {
       return v;
     };
 
-    const texto = JSON.stringify(podarListas(resultado));
+    const texto = JSON.stringify(podarListas(mascarado));
+    // Cinto e suspensório: se um campo de identificação escapou da mascaração,
+    // falha a resposta em vez de mandá-lo ao provedor.
+    garantirMascarado(texto);
+
     return texto.length > TETO
       ? `${texto.slice(0, TETO)}…(resultado truncado)`
       : texto;
@@ -357,7 +446,12 @@ export class AgenteChatService {
           // com quais argumentos, e o que embasou a resposta) não precisa da
           // lista inteira de notas para responder à pergunta que ela existe
           // para responder.
-          resultado: { resumo: this.resumirResultado(resultado) } as never,
+          resultado: {
+            resumo: this.resumirResultado(
+              resultado,
+              this.tools.buscar(nome)?.limiteItens,
+            ),
+          } as never,
         },
       }),
     );
@@ -410,7 +504,13 @@ export class AgenteChatService {
       }),
     );
 
-    return { executado: true, resultado };
+    // O que acabou de ser gravado tem tela: o orçamento novo, ou a fila de
+    // aprovação onde a alteração de cadastro foi parar.
+    return {
+      executado: true,
+      resultado,
+      destinos: this.destinosDe(ferramenta, argumentos, resultado),
+    };
   }
 
   /** Cancelar apenas fecha a pendência — nada foi gravado até aqui. */
@@ -445,6 +545,8 @@ export class AgenteChatService {
     conversaId: string,
     limite: number,
     systemPrompt: string | null,
+    filtro: FiltroFerramentas,
+    nomeAgente: string,
   ): Promise<MensagemChat[]> {
     const historico = await this.prisma.withTenant(empresaId, (tx) =>
       tx.agenteMensagem.findMany({
@@ -464,11 +566,12 @@ export class AgenteChatService {
       timeZone: 'America/Campo_Grande',
     });
     const ferramentas = this.tools
-      .disponiveisPara(user)
+      .disponiveisPara(user, filtro)
       .map((f) => f.nome)
       .join(', ');
 
     const contexto = [
+      `Seu nome é ${nomeAgente}.`,
       systemPrompt?.trim() ||
         'Você é o assistente interno de um sistema comercial. Responda em português do Brasil, ' +
           'de forma direta e objetiva.',
@@ -479,6 +582,13 @@ export class AgenteChatService {
       `Ferramentas liberadas para este usuário: ${ferramentas || 'nenhuma'}.`,
       'Você só enxerga dados da carteira de clientes que este usuário alcança — ' +
         'se uma busca não retorna nada, diga que não encontrou, não suponha que o dado não existe.',
+      '',
+      'Nomes de cliente, de produto e de vendedor NÃO são enviados a você. No lugar deles ' +
+        'vêm referências no formato «CLI:código», «PRD:código» e «VND:código». Escreva essas ' +
+        'referências na sua resposta exatamente como as recebeu, incluindo as aspas angulares: ' +
+        'o sistema troca cada uma pelo nome real antes de o usuário ler. Nunca invente uma ' +
+        'referência, nunca traduza para um nome que você imagina, e nunca explique ao usuário ' +
+        'que está usando códigos — para ele, a resposta sai com os nomes normalmente.',
       'Ações que gravam exigem confirmação do usuário na tela; nunca afirme que gravou algo ' +
         'antes de receber a confirmação.',
       'Nunca invente número, valor ou código: se não veio de uma ferramenta, diga que não sabe.',

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -65,6 +66,30 @@ const CAMPOS_ACOMPANHADOS = [
   'observacaoReativacao',
 ] as const;
 
+/**
+ * Campo virtual: não é coluna do cliente, é a coleção `cliente_cnaes`.
+ *
+ * Entra na fila porque a pergunta que ela responde — "quem autoriza mexer no
+ * cadastro deste cliente?" — vale igual para o ramo de atividade, que é o eixo
+ * da sugestão de compra. No diff ele trafega como a lista de códigos ordenada
+ * e separada por vírgula, para caber no mesmo `de → para` dos outros campos e
+ * ser legível na tela de aprovação sem tratamento especial.
+ */
+export const CAMPO_CNAES = 'cnaes';
+
+/** Lista de códigos CNAE como o diff a representa: ordenada, sem repetição. */
+function serializarCnaes(valor: unknown): string | null {
+  if (!Array.isArray(valor)) return null;
+  const codigos = [
+    ...new Set(
+      valor
+        .map((v) => (typeof v === 'string' ? v.trim() : ''))
+        .filter((v) => v.length > 0),
+    ),
+  ].sort();
+  return codigos.length > 0 ? codigos.join(', ') : null;
+}
+
 type ValorSerializado = string | number | boolean | null;
 
 /**
@@ -105,6 +130,14 @@ export function calcularDiff(
     if (de === para) continue;
     diff[campo] = { de, para };
   }
+
+  // Coleção, não coluna: comparada como lista de códigos (ver CAMPO_CNAES).
+  if (CAMPO_CNAES in input) {
+    const de = serializarCnaes(atual[CAMPO_CNAES]);
+    const para = serializarCnaes(input[CAMPO_CNAES]);
+    if (de !== para && para !== null) diff[CAMPO_CNAES] = { de, para };
+  }
+
   return diff;
 }
 
@@ -250,13 +283,30 @@ export class ClienteAlteracoesService {
     autorId: string | null,
   ) {
     const bruto: Record<string, unknown> = {};
-    for (const [campo, { para }] of Object.entries(diff)) bruto[campo] = para;
+    for (const [campo, { para }] of Object.entries(diff)) {
+      if (campo === CAMPO_CNAES) continue;
+      bruto[campo] = para;
+    }
 
-    const dados = clienteUpdateSchema.parse(bruto);
-    await tx.cliente.update({
-      where: { id: clienteId },
-      data: { ...(dados as object), updatedBy: autorId } as never,
-    });
+    // Um diff só de CNAE não tem o que atualizar no cliente — e um
+    // `update` com data vazia só carimbaria o `updatedAt`.
+    if (Object.keys(bruto).length > 0) {
+      const dados = clienteUpdateSchema.parse(bruto);
+      await tx.cliente.update({
+        where: { id: clienteId },
+        data: { ...(dados as object), updatedBy: autorId } as never,
+      });
+    }
+
+    if (diff[CAMPO_CNAES]) {
+      await this.aplicarCnaes(
+        tx,
+        empresaId,
+        clienteId,
+        String(diff[CAMPO_CNAES].para ?? ''),
+        autorId,
+      );
+    }
 
     // Carteira que muda de dono é notícia para quem recebeu: o cliente
     // aparece na lista dele sem nenhum aviso, e passar a atender alguém sem
@@ -284,6 +334,72 @@ export class ClienteAlteracoesService {
     }
   }
 
+  /**
+   * Vincula ao cliente os CNAEs da lista aprovada.
+   *
+   * **Só acrescenta.** O `para` do diff é sempre a união do que o cliente já
+   * tem com o que a origem propôs, então sincronizar (apagando o que ficou de
+   * fora) daria no mesmo — e apagar seria a operação perigosa: um ramo
+   * cadastrado à mão que a Receita não conhece sumiria numa aprovação de
+   * rotina. Pelo mesmo motivo o `principal` não é tocado aqui: quando o
+   * cliente já tem um, quem escolheu foi gente.
+   */
+  private async aplicarCnaes(
+    tx: TenantTx,
+    empresaId: string,
+    clienteId: string,
+    lista: string,
+    autorId: string | null,
+  ) {
+    const codigos = lista
+      .split(',')
+      .map((c) => c.trim())
+      .filter(Boolean);
+    if (codigos.length === 0) return;
+
+    const referencia = await tx.cnae.findMany({
+      where: { codigoErp: { in: codigos }, deletedAt: null },
+      select: { id: true },
+    });
+    if (referencia.length === 0) return;
+
+    const jaTem = await tx.clienteCnae.findMany({
+      where: { empresaId, clienteId },
+      select: { id: true, cnaeId: true, deletedAt: true },
+    });
+    const porCnae = new Map(jaTem.map((l) => [l.cnaeId, l]));
+    const temPrincipal = await tx.clienteCnae.findFirst({
+      where: { empresaId, clienteId, principal: true, deletedAt: null },
+      select: { id: true },
+    });
+
+    for (const cnae of referencia) {
+      const linha = porCnae.get(cnae.id);
+      if (linha && !linha.deletedAt) continue;
+      if (linha) {
+        // Vínculo removido antes: a unique é (clienteId, cnaeId) e ignora o
+        // soft delete, então recriar daria erro de chave — reaproveita a linha.
+        await tx.clienteCnae.update({
+          where: { id: linha.id },
+          data: { deletedAt: null, deletedBy: null, updatedBy: autorId },
+        });
+        continue;
+      }
+      await tx.clienteCnae.create({
+        data: {
+          empresaId,
+          clienteId,
+          cnaeId: cnae.id,
+          // Cliente sem principal nenhum ganha o primeiro da lista; com
+          // principal definido, nada muda.
+          principal: !temPrincipal && cnae.id === referencia[0].id,
+          createdBy: autorId,
+          updatedBy: autorId,
+        },
+      });
+    }
+  }
+
   private async gravarHistorico(
     tx: TenantTx,
     params: {
@@ -293,9 +409,12 @@ export class ClienteAlteracoesService {
       diff: DiffAlteracao;
       origem: OrigemAlteracaoCliente;
       autor: string | null;
+      /** `reprovado` = proposto e negado na aprovação campo a campo. */
+      status?: 'aplicado' | 'reprovado';
     },
   ) {
     const { empresaId, clienteId, alteracaoId, diff, origem, autor } = params;
+    if (Object.keys(diff).length === 0) return;
     await tx.clienteHistorico.createMany({
       data: Object.entries(diff).map(([campo, { de, para }]) => ({
         empresaId,
@@ -304,6 +423,7 @@ export class ClienteAlteracoesService {
         campo,
         valorAnterior: de == null ? null : String(de),
         valorNovo: para == null ? null : String(para),
+        status: params.status ?? 'aplicado',
         origem,
         autor,
       })),
@@ -370,7 +490,21 @@ export class ClienteAlteracoesService {
     });
   }
 
-  async aprovar(empresaId: string, user: AuthenticatedUser, id: string) {
+  /**
+   * Aprova a solicitação, inteira ou **campo a campo**.
+   *
+   * `campos` recorta o que entra no cadastro; omitido, aprova tudo (o
+   * comportamento de sempre). O que ficar de fora não é descartado em
+   * silêncio: vai para o histórico do cliente como `reprovado`, com quem
+   * analisou — quem olhar o cadastro daqui a seis meses precisa ver que aquele
+   * endereço foi proposto e negado, não que nunca chegou.
+   */
+  async aprovar(
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+    campos?: string[],
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const solicitacao = await this.buscarPendenteNoEscopo(
         tx,
@@ -378,7 +512,22 @@ export class ClienteAlteracoesService {
         user,
         id,
       );
-      const diff = solicitacao.alteracoes as DiffAlteracao;
+      const proposto = solicitacao.alteracoes as DiffAlteracao;
+
+      const escolhidos = campos
+        ? campos.filter((campo) => campo in proposto)
+        : Object.keys(proposto);
+      if (escolhidos.length === 0) {
+        throw new BadRequestException(
+          'Nenhum dos campos informados está nesta solicitação. Para negar tudo, use Recusar.',
+        );
+      }
+      const diff = Object.fromEntries(
+        escolhidos.map((campo) => [campo, proposto[campo]]),
+      ) as DiffAlteracao;
+      const reprovado = Object.fromEntries(
+        Object.entries(proposto).filter(([campo]) => !escolhidos.includes(campo)),
+      ) as DiffAlteracao;
 
       // O cliente pode ter mudado entre a solicitação e a aprovação (outra
       // solicitação aprovada antes, por exemplo). Aprovar às cegas sobrescreveria
@@ -388,9 +537,13 @@ export class ClienteAlteracoesService {
       });
       if (!cliente) throw new NotFoundException('Cliente não encontrado');
 
-      const conflitos = Object.entries(diff).filter(
-        ([campo, { de }]) =>
-          serializar((cliente as Record<string, unknown>)[campo]) !== de,
+      // Só o que vai ser aplicado precisa estar em dia: campo reprovado não
+      // toca o cadastro, e travar a aprovação por causa dele seria pedir para
+      // refazer uma solicitação que já foi analisada.
+      const conflitos = Object.entries(diff).filter(([campo, { de }]) =>
+        campo === CAMPO_CNAES
+          ? false
+          : serializar((cliente as Record<string, unknown>)[campo]) !== de,
       );
       if (conflitos.length > 0) {
         throw new ConflictException(
@@ -414,6 +567,15 @@ export class ClienteAlteracoesService {
         diff,
         origem: solicitacao.origem,
         autor: user.id,
+      });
+      await this.gravarHistorico(tx, {
+        empresaId,
+        clienteId: solicitacao.clienteId,
+        alteracaoId: solicitacao.id,
+        diff: reprovado,
+        origem: solicitacao.origem,
+        autor: user.id,
+        status: 'reprovado',
       });
 
       const atualizada = await tx.clienteAlteracao.update({
@@ -498,6 +660,7 @@ export class ClienteAlteracoesService {
         campo: l.campo,
         valorAnterior: l.valorAnterior,
         valorNovo: l.valorNovo,
+        status: l.status,
         origem: l.origem,
         autor: l.autor,
         autorNome: l.autor ? (nomes.get(l.autor) ?? null) : null,

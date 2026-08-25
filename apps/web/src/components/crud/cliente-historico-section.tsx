@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   CAMPO_CLIENTE_LABEL,
   ORIGEM_ALTERACAO_CLIENTE_LABEL,
+  STATUS_HISTORICO_CLIENTE_LABEL,
   type ClienteHistorico,
 } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
@@ -44,8 +45,9 @@ export function ClienteHistoricoSection({ clienteId }: { clienteId: string }) {
   return (
     <div className="space-y-2">
       <FieldDescription>
-        Alterações já aplicadas, da mais recente para a mais antiga. &quot;Por&quot; é
-        quem aprovou a mudança.
+        Alterações analisadas, da mais recente para a mais antiga. &quot;Por&quot; é
+        quem aprovou — ou reprovou — a mudança. A linha reprovada mostra o que foi
+        proposto e negado: o cadastro não mudou.
       </FieldDescription>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -55,6 +57,7 @@ export function ClienteHistoricoSection({ clienteId }: { clienteId: string }) {
               <th className="py-1.5 pr-3 font-medium">Campo</th>
               <th className="py-1.5 pr-3 font-medium">De</th>
               <th className="py-1.5 pr-3 font-medium">Para</th>
+              <th className="py-1.5 pr-3 font-medium">Resultado</th>
               <th className="py-1.5 pr-3 font-medium">Origem</th>
               <th className="py-1.5 font-medium">Por</th>
             </tr>
@@ -71,7 +74,27 @@ export function ClienteHistoricoSection({ clienteId }: { clienteId: string }) {
                 <td className="py-1.5 pr-3 text-muted-foreground">
                   {l.valorAnterior ?? "—"}
                 </td>
-                <td className="py-1.5 pr-3">{l.valorNovo ?? "—"}</td>
+                <td
+                  className={`py-1.5 pr-3 ${
+                    l.status === "reprovado"
+                      ? "text-muted-foreground line-through"
+                      : ""
+                  }`}
+                >
+                  {l.valorNovo ?? "—"}
+                </td>
+                <td className="py-1.5 pr-3">
+                  <Badge
+                    variant={l.status === "reprovado" ? "outline" : "secondary"}
+                    className={
+                      l.status === "reprovado"
+                        ? "border-destructive/40 text-destructive"
+                        : ""
+                    }
+                  >
+                    {STATUS_HISTORICO_CLIENTE_LABEL[l.status]}
+                  </Badge>
+                </td>
                 <td className="py-1.5 pr-3">
                   <Badge variant="outline">
                     {ORIGEM_ALTERACAO_CLIENTE_LABEL[l.origem]}

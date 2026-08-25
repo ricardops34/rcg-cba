@@ -18,6 +18,40 @@ import { z } from "zod";
 export const baseSemelhancaSchema = z.enum(["ambos", "cesta", "cnae"]);
 export type BaseSemelhanca = z.infer<typeof baseSemelhancaSchema>;
 
+/**
+ * Como comparar o CNAE de dois clientes.
+ *
+ * - **exata** — só conta quando a subclasse é idêntica. Era a regra única até
+ *   2026-08-25, e continua disponível para comparar resultados.
+ * - **hierarquica** — usa os níveis do código (classe, grupo, divisão), que já
+ *   estão decompostos na tabela `cnaes`.
+ *
+ * A diferença não é acadêmica. `5611201` (restaurantes) e `5611203`
+ * (lanchonetes) são o mesmo comprador e, na regra exata, contavam como zero
+ * afinidade. Medido na base da RCG: 68.876 pares de clientes compartilham
+ * subclasse, mas 159.357 compartilham classe — 90 mil pares de mesmo ramo que
+ * o motor simplesmente não enxergava.
+ */
+export const afinidadeCnaeSchema = z.enum(["hierarquica", "exata"]);
+export type AfinidadeCnae = z.infer<typeof afinidadeCnaeSchema>;
+
+/**
+ * Peso de cada nível de parentesco entre CNAEs, do mais próximo ao mais
+ * distante. Subclasse igual continua valendo 1, então a regra hierárquica
+ * **não rebaixa** nenhum par que a regra exata já reconhecia: ela só acrescenta
+ * sinal onde antes havia zero.
+ *
+ * A divisão para em 0,2 de propósito — dois clientes na mesma divisão
+ * ("alimentação") podem ser um restaurante e uma fábrica de sorvete, que não
+ * compram a mesma coisa. Abaixo disso (seção) não entra: seria quase todo mundo.
+ */
+export const PESO_NIVEL_CNAE = {
+  subclasse: 1,
+  classe: 0.7,
+  grupo: 0.4,
+  divisao: 0.2,
+} as const;
+
 export const sugestaoCompraQuerySchema = z.object({
   meses: z.coerce
     .number()
@@ -43,18 +77,43 @@ export const sugestaoCompraQuerySchema = z.object({
   baseSemelhanca: baseSemelhancaSchema
     .default("ambos")
     .describe("Eixo da semelhança: cesta de compras, CNAE ou os dois"),
+  afinidadeCnae: afinidadeCnaeSchema
+    .default("hierarquica")
+    .describe(
+      "Como comparar CNAE: só o código idêntico, ou também ramos vizinhos",
+    ),
 });
 export type SugestaoCompraQuery = z.infer<typeof sugestaoCompraQuerySchema>;
 
 export const clienteSemelhanteSchema = z.object({
-  clienteId: z.string().uuid(),
+  // Vazio quando o comparável está fora da carteira: ele entrou no cálculo,
+  // mas não pode ser identificado nem aberto. Por isso não é uuid().
+  clienteId: z.string(),
   razaoSocial: z.string(),
   codigoErp: z.string().nullable(),
   municipio: z.string().nullable(),
   uf: z.string().nullable(),
   score: z.number().describe("Semelhança combinada, 0 a 1"),
   indiceCesta: z.number().describe("Jaccard entre as cestas de produtos"),
-  cnaesEmComum: z.number().int(),
+  cnaesEmComum: z.number().int().describe("CNAEs com subclasse idêntica"),
+  /**
+   * Parentesco mais próximo encontrado entre os CNAEs dos dois clientes. Vai
+   * junto na evidência porque "mesmo ramo" e "ramo vizinho" mudam o quanto o
+   * vendedor confia na sugestão.
+   */
+  nivelCnae: z
+    .enum(["subclasse", "classe", "grupo", "divisao"])
+    .nullable()
+    .default(null),
+  /**
+   * O comparável está na carteira que este usuário alcança?
+   *
+   * A comparação roda sobre a **base inteira** — o ramo diz muito mais com 800
+   * clientes do que com os 60 de uma carteira, e o que se entrega são produtos,
+   * não clientes. Quem está fora volta sem identificação: contribuiu para o
+   * padrão, mas não pode ser nomeado.
+   */
+  naCarteira: z.boolean().default(true),
   mesmoCnaePrincipal: z.boolean(),
   mesmaRegiao: z.boolean(),
   produtosEmComum: z.number().int(),
@@ -108,6 +167,8 @@ export const SUGESTAO_COMPRA_EXAMPLE: SugestaoCompraResultado = {
       score: 0.62,
       indiceCesta: 0.48,
       cnaesEmComum: 1,
+      nivelCnae: "subclasse",
+      naCarteira: true,
       mesmoCnaePrincipal: true,
       mesmaRegiao: true,
       produtosEmComum: 27,

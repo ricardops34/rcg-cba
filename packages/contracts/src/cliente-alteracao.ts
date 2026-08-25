@@ -83,6 +83,30 @@ export const clienteAlteracaoQuerySchema = paginationQuerySchema.extend({
 });
 export type ClienteAlteracaoQuery = z.infer<typeof clienteAlteracaoQuerySchema>;
 
+/**
+ * Aprovação **campo a campo**: o responsável escolhe o que entra no cadastro.
+ *
+ * Existe porque uma solicitação raramente é toda certa ou toda errada — a
+ * consulta de CNPJ, por exemplo, traz o endereço da Receita junto com um nome
+ * fantasia desatualizado. Antes só havia "aprovar tudo" ou "recusar tudo", e o
+ * jeito de aceitar metade era recusar e reeditar à mão.
+ *
+ * Omitir `campos` aprova a solicitação inteira — é o comportamento anterior, e
+ * o que a tela envia quando tudo está marcado. O que ficar de fora entra no
+ * histórico do cliente como **reprovado**, com quem reprovou: o rastro tem de
+ * mostrar que a mudança foi proposta e negada, não que nunca existiu.
+ */
+export const clienteAlteracaoAprovacaoSchema = z.object({
+  campos: z
+    .array(z.string())
+    .min(1, "Marque ao menos um campo para aprovar")
+    .optional()
+    .describe("Campos a aplicar. Omitido = aprova a solicitação inteira."),
+});
+export type ClienteAlteracaoAprovacao = z.infer<
+  typeof clienteAlteracaoAprovacaoSchema
+>;
+
 export const clienteAlteracaoRecusaSchema = z.object({
   // Obrigatório: recusa sem motivo deixa quem solicitou sem saber o que corrigir.
   motivo: z.string().trim().min(3, "Informe o motivo da recusa").max(500),
@@ -99,6 +123,23 @@ export const clienteUpdateResultadoSchema = z.discriminatedUnion("aplicado", [
 ]);
 export type ClienteUpdateResultado = z.infer<typeof clienteUpdateResultadoSchema>;
 
+/**
+ * O que aconteceu com o campo na análise. `reprovado` é uma linha de histórico
+ * que **não** mudou o cadastro: registra que aquele valor foi proposto e negado
+ * — sem isso, um campo recusado na aprovação parcial simplesmente sumiria, e
+ * ninguém saberia que a Receita já tentou mudar aquele endereço.
+ */
+export const statusHistoricoClienteSchema = z.enum(["aplicado", "reprovado"]);
+export type StatusHistoricoCliente = z.infer<typeof statusHistoricoClienteSchema>;
+
+export const STATUS_HISTORICO_CLIENTE_LABEL: Record<
+  StatusHistoricoCliente,
+  string
+> = {
+  aplicado: "Aplicado",
+  reprovado: "Reprovado",
+};
+
 export const clienteHistoricoSchema = z.object({
   id: z.string().uuid(),
   clienteId: z.string().uuid(),
@@ -106,6 +147,7 @@ export const clienteHistoricoSchema = z.object({
   campo: z.string(),
   valorAnterior: z.string().nullable(),
   valorNovo: z.string().nullable(),
+  status: statusHistoricoClienteSchema,
   origem: origemAlteracaoClienteSchema,
   autor: z.string().nullable(),
   autorNome: z.string().nullable(),
@@ -115,6 +157,9 @@ export type ClienteHistorico = z.infer<typeof clienteHistoricoSchema>;
 
 /** Rótulo dos campos do cliente na fila e no histórico. */
 export const CAMPO_CLIENTE_LABEL: Record<string, string> = {
+  // Não é coluna do cliente: é a coleção `cliente_cnaes`, que entra no diff
+  // como a lista de códigos separada por vírgula (ver `calcularDiff`).
+  cnaes: "Ramo de atividade (CNAE)",
   codigoErp: "Código ERP",
   tipoPessoa: "Tipo de pessoa",
   razaoSocial: "Razão social",

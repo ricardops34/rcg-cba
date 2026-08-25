@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   Prisma,
   PrismaService,
@@ -29,7 +34,13 @@ import { podeEmitirBoleto } from '../titulos-receber/boleto-atualizacao';
 import { comFlagXml } from '../notas-saida/nota-flags';
 import { ClienteCampoConfigService } from '../cliente-campo-config/cliente-campo-config.service';
 import { ClienteAlteracoesService } from './cliente-alteracoes.service';
+import { EnriquecimentoService } from './enriquecimento.service';
+import { ClienteCnaesService } from './cliente-cnaes.service';
 import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
+import {
+  condicaoBuscaTermosSql,
+  filtroBuscaTermos,
+} from '../../common/busca/termos-busca';
 import { escopoLeituraWhatsapp } from '../whatsapp/escopo-whatsapp';
 
 /**
@@ -132,7 +143,126 @@ export class ClientesService {
     private readonly prisma: PrismaService,
     private readonly campoConfig: ClienteCampoConfigService,
     private readonly alteracoes: ClienteAlteracoesService,
+    private readonly enriquecimento: EnriquecimentoService,
+    private readonly clienteCnaes: ClienteCnaesService,
   ) {}
+
+  /**
+   * Atualiza o cadastro a partir do CNPJ na base pública da Receita Federal.
+   *
+   * Uma rotina, dois desfechos deliberadamente diferentes:
+   *
+   * - **CNAE vazio** (cliente sem nenhum ramo) é preenchimento, não alteração:
+   *   não há o que revisar, e exigir aprovação para sair do zero só deixaria o
+   *   cadastro vazio por mais tempo. Aplica na hora, com o principal fiscal
+   *   que a Receita informou.
+   * - **Todo o resto** — razão social, endereço, contato, e o CNAE quando já
+   *   existe algum — vai para a fila como solicitação. Quem tem
+   *   `clientes.aprovar` escolhe campo a campo o que entra; o que ele não
+   *   marcar fica no histórico como reprovado.
+   *
+   * Campo que a Receita devolve vazio **não** é proposto: a base dela ter um
+   * telefone a menos não é motivo para apagar o telefone que o vendedor
+   * conseguiu.
+   *
+   * O retorno é de propósito só nomes de campo e códigos, sem valores — é o
+   * que o agente pode repetir ao modelo sem furar a fronteira de dados
+   * (`anonimizar-agente.ts`).
+   */
+  async atualizarPelaReceita(
+    empresaId: string,
+    user: AuthenticatedUser,
+    clienteId: string,
+  ) {
+    const cliente = await this.findOne(empresaId, user, clienteId);
+    const cnpj = (cliente.cnpjCpf ?? '').replace(/\D/g, '');
+    if (cnpj.length !== 14) {
+      return {
+        atualizado: false,
+        motivo:
+          'O cadastro não tem CNPJ de 14 dígitos (pessoa física ou cadastro ' +
+          'incompleto). A consulta à Receita Federal só existe para CNPJ.',
+      };
+    }
+
+    const consulta = await this.enriquecimento.consultarCnpj(cnpj);
+    const atuais = await this.clienteCnaes.findAll(empresaId, user, clienteId);
+    const codigosAtuais = atuais
+      .map((c) => c.codigo)
+      .filter((c): c is string => !!c);
+
+    // Código que a referência local do IBGE não conhece não vira vínculo —
+    // volta como aviso em vez de sumir (na prática, sync do IBGE atrasado).
+    const sugeridos = consulta.cnaes.filter((c) => !!c.cnaeId);
+    const semReferencia = consulta.cnaes
+      .filter((c) => !c.cnaeId)
+      .map((c) => c.codigo);
+
+    const cnaesAplicados: string[] = [];
+    if (atuais.length === 0) {
+      for (const sugerido of sugeridos) {
+        await this.clienteCnaes.create(empresaId, user, clienteId, {
+          cnaeId: sugerido.cnaeId as string,
+          principal: sugerido.principal,
+        });
+        cnaesAplicados.push(sugerido.codigo);
+      }
+    }
+
+    // Só o que a Receita realmente respondeu, e só o que ainda falta.
+    const doCadastro: Record<string, unknown> = {};
+    const propor = (campo: string, valor: string | null) => {
+      if (valor) doCadastro[campo] = valor;
+    };
+    propor('razaoSocial', consulta.razaoSocial);
+    propor('nomeFantasia', consulta.nomeFantasia);
+    propor('endereco', consulta.endereco);
+    propor('complemento', consulta.complemento);
+    propor('bairro', consulta.bairro);
+    propor('municipio', consulta.municipio);
+    propor('uf', consulta.uf);
+    propor('cep', consulta.cep);
+    propor('telefone', consulta.telefone);
+    propor('telefone2', consulta.telefone2);
+    propor('email', consulta.email);
+
+    const input: Record<string, unknown> =
+      atuais.length === 0
+        ? doCadastro
+        : {
+            ...doCadastro,
+            // União: a fila nunca propõe remover ramo que já está no cadastro.
+            cnaes: [...new Set([...codigosAtuais, ...sugeridos.map((c) => c.codigo)])],
+          };
+
+    const registro = await this.prisma.withTenant(empresaId, (tx) =>
+      this.alteracoes.registrar(tx, {
+        empresaId,
+        clienteId,
+        atual: { ...cliente, cnaes: codigosAtuais },
+        input,
+        origem: 'enriquecimento',
+        autorId: user.id,
+        // Sempre para a fila, inclusive para quem aprova: a Receita traz o
+        // cadastro inteiro de uma vez, e o ponto desta rotina é alguém olhar
+        // campo a campo antes de sobrescrever o que a equipe cadastrou.
+        aplicarDireto: false,
+      }),
+    );
+
+    const camposPendentes =
+      registro.resultado === 'sem-mudanca' ? [] : Object.keys(registro.diff);
+
+    return {
+      atualizado: cnaesAplicados.length > 0,
+      situacaoCadastral: consulta.situacaoCadastral,
+      cnaesAplicados,
+      cnaesSemReferencia: semReferencia,
+      solicitacaoId:
+        registro.resultado === 'pendente' ? registro.solicitacaoId : null,
+      camposPendentes,
+    };
+  }
 
   private limpar<T extends Record<string, unknown>>(input: T) {
     // Campos string vazios do formulário viram null no banco.
@@ -167,17 +297,37 @@ export class ClientesService {
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
         ...(query.tipoPessoa ? { tipoPessoa: query.tipoPessoa } : {}),
         ...(query.uf ? { uf: query.uf } : {}),
-        ...(query.carteira !== undefined ? { carteira: query.carteira } : {}),
-        ...(query.search
+        ...(query.municipio
           ? {
-              OR: [
-                { razaoSocial: { contains: query.search, mode: 'insensitive' as const } },
-                { nomeFantasia: { contains: query.search, mode: 'insensitive' as const } },
-                { codigoErp: { contains: query.search, mode: 'insensitive' as const } },
-                { cnpjCpf: { contains: query.search, mode: 'insensitive' as const } },
-              ],
+              municipio: {
+                equals: query.municipio,
+                mode: 'insensitive' as const,
+              },
             }
           : {}),
+        ...(query.carteira !== undefined ? { carteira: query.carteira } : {}),
+        // Prefixo do código: `some` porque o cliente tem N CNAEs e basta um
+        // bater. O vínculo excluído não conta — um ramo removido do cadastro
+        // não deve continuar trazendo o cliente na busca.
+        ...(query.cnae
+          ? {
+              cnaes: {
+                some: {
+                  deletedAt: null,
+                  cnae: { codigoErp: { startsWith: query.cnae } },
+                },
+              },
+            }
+          : {}),
+        // Termo a termo (ver `filtroBuscaTermos`): "ricard patay" encontra
+        // "RICARDO PATAY SOTOMAYOR", que o `contains` da frase inteira não
+        // encontrava. Usa a chave `AND` — não acrescente outro `AND` aqui.
+        ...filtroBuscaTermos(query.search, [
+          'razaoSocial',
+          'nomeFantasia',
+          'codigoErp',
+          'cnpjCpf',
+        ]),
       };
       const sortField =
         query.sortBy && SORT_FIELDS.has(query.sortBy) ? query.sortBy : 'razaoSocial';
@@ -191,6 +341,98 @@ export class ClientesService {
         tx.cliente.count({ where }),
       ]);
       return buildPaginatedResult(data, total, query);
+    });
+  }
+
+  /**
+   * Responde **uma única pergunta**: este cliente já existe na base, e de quem
+   * é a carteira?
+   *
+   * É a **exceção deliberada** ao escopo de carteira, e existe por um problema
+   * real: sem ela, o vendedor que prospecta uma empresa que já é cliente de um
+   * colega não tem como descobrir isso — a busca normal simplesmente não
+   * retorna nada, e ele gasta a visita. Ver `buscar_cliente` (com escopo) para
+   * o caminho normal.
+   *
+   * O que a torna segura é o que ela **não** devolve. Só identificação e
+   * titularidade: nada de valores, limite, condição de pagamento, contato,
+   * histórico ou id utilizável nas outras ferramentas. Quem está fora da
+   * carteira aparece como "existe e é do fulano", e para por aí.
+   *
+   * Ao ampliar o retorno daqui, lembre que este método **ignora o escopo de
+   * propósito** — todo campo novo vira dado de carteira alheia visível para o
+   * vendedor.
+   */
+  async verificarTitularidade(
+    empresaId: string,
+    user: AuthenticatedUser,
+    busca: string,
+  ) {
+    const termo = busca.trim();
+    // Busca curta viraria varredura da base inteira, que é justamente o que
+    // esta exceção não pode virar.
+    if (termo.length < 3) {
+      throw new BadRequestException(
+        'Informe ao menos 3 caracteres do nome, CNPJ ou código do cliente.',
+      );
+    }
+
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+
+      const clientes = await tx.cliente.findMany({
+        // Sem filtro de vendedor: é o ponto do método.
+        where: {
+          empresaId,
+          deletedAt: null,
+          ...filtroBuscaTermos(termo, [
+            'razaoSocial',
+            'nomeFantasia',
+            'codigoErp',
+            'cnpjCpf',
+          ]),
+        },
+        select: {
+          id: true,
+          razaoSocial: true,
+          nomeFantasia: true,
+          codigoErp: true,
+          municipio: true,
+          uf: true,
+          ativo: true,
+          vendedorId: true,
+          vendedor: { select: { nome: true, codigoErp: true } },
+        },
+        orderBy: { razaoSocial: 'asc' },
+        // Teto baixo: serve para conferir um cliente, não para listar a base.
+        take: 5,
+      });
+
+      return {
+        encontrados: clientes.length,
+        clientes: clientes.map((c) => {
+          const meu =
+            escopo === null ||
+            (!!c.vendedorId && escopo.includes(c.vendedorId));
+          return {
+            razaoSocial: c.razaoSocial,
+            nomeFantasia: c.nomeFantasia,
+            codigoErp: c.codigoErp,
+            municipio: c.municipio,
+            uf: c.uf,
+            ativo: c.ativo,
+            // Objeto, não string: é o formato que a fronteira de dados do
+            // agente reconhece para trocar o nome pela referência opaca
+            // (ver `anonimizar-agente.ts`).
+            vendedor: c.vendedor,
+            naSuaCarteira: meu,
+            // O id só sai quando o cliente é da carteira: ele é a chave das
+            // outras ferramentas, e devolvê-lo aqui abriria por tabela o
+            // acesso que este método existe para não dar.
+            clienteId: meu ? c.id : null,
+          };
+        }),
+      };
     });
   }
 
@@ -597,12 +839,13 @@ export class ClientesService {
       if (query.municipio) condicoes.push(Prisma.sql`c."municipio" = ${query.municipio}`);
       if (query.carteira !== undefined)
         condicoes.push(Prisma.sql`c."carteira" = ${query.carteira}`);
-      if (query.search) {
-        const termo = `%${query.search}%`;
-        condicoes.push(
-          Prisma.sql`(c."razaoSocial" ILIKE ${termo} OR c."nomeFantasia" ILIKE ${termo} OR c."codigoErp" ILIKE ${termo} OR c."cnpjCpf" ILIKE ${termo})`,
-        );
-      }
+      const buscaSql = condicaoBuscaTermosSql(query.search, [
+        Prisma.sql`c."razaoSocial"`,
+        Prisma.sql`c."nomeFantasia"`,
+        Prisma.sql`c."codigoErp"`,
+        Prisma.sql`c."cnpjCpf"`,
+      ]);
+      if (buscaSql) condicoes.push(buscaSql);
       if (query.diasSemComprar !== undefined) {
         condicoes.push(
           Prisma.sql`(c."ultimaCompra" IS NULL OR c."ultimaCompra" <= now() - (${query.diasSemComprar} * interval '1 day'))`,

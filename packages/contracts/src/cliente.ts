@@ -91,8 +91,26 @@ export const clienteQuerySchema = paginationQuerySchema.extend({
   ativo: booleanQueryParam,
   tipoPessoa: tipoPessoaSchema.optional(),
   uf: z.string().trim().length(2).optional(),
+  /**
+   * Município do cadastro, comparado inteiro e sem diferenciar maiúsculas —
+   * o legado grava em caixa alta e o usuário digita como fala.
+   */
+  municipio: z.string().trim().max(60).optional(),
   vendedorId: z.string().uuid().optional(),
   carteira: booleanQueryParam,
+  /**
+   * Ramo de atividade, por **prefixo** do código CNAE.
+   *
+   * O prefixo não é preguiça: o código é hierárquico, então `56` pega
+   * alimentação inteira, `5611` todo o food service e `5611201` só
+   * restaurantes. Um campo só cobre "clientes do ramo X" em qualquer
+   * granularidade, sem precisar escolher o nível antes.
+   */
+  cnae: z
+    .string()
+    .trim()
+    .regex(/^\d{2,7}$/, "Informe de 2 a 7 dígitos do código CNAE")
+    .optional(),
 });
 export type ClienteQuery = z.infer<typeof clienteQuerySchema>;
 

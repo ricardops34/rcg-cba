@@ -284,6 +284,104 @@ export class WhatsappSessaoService {
     });
   }
 
+  /**
+   * Reabre uma instância existente pela central administrativa.
+   *
+   * A primeira conexão continua pertencendo ao vendedor porque inclui o aceite
+   * de gravação. Aqui só entram sessões que já passaram por esse fluxo.
+   */
+  async reconectarAdministracao(
+    empresaId: string,
+    user: AuthenticatedUser,
+    sessaoId: string,
+  ) {
+    const config = await this.config.obter(empresaId);
+    if (!config.ativo) {
+      throw new BadRequestException(
+        'Ative o atendimento por WhatsApp antes de conectar uma instância.',
+      );
+    }
+    if (config.transporte !== 'zapo') {
+      throw new BadRequestException(
+        'O adaptador selecionado ainda não permite gerenciar instâncias.',
+      );
+    }
+
+    const sessao = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappSessao.findFirst({
+        where: { id: sessaoId },
+        include: { vendedor: { select: { nome: true } } },
+      }),
+    );
+    if (!sessao) throw new NotFoundException('Instância não encontrada');
+    if (!sessao.aceiteEm) {
+      throw new BadRequestException(
+        'O vendedor precisa iniciar a primeira conexão pela tela de Atendimento.',
+      );
+    }
+
+    await this.worker.chamar(config.workerUrl, '/sessoes', {
+      metodo: 'POST',
+      corpo: { sessaoId: sessao.id, empresaId, transporte: 'zapo' },
+    });
+
+    const atualizada = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappSessao.update({
+        where: { id: sessao.id },
+        data: {
+          status: 'pareando',
+          ultimoErro: null,
+          updatedBy: user.id,
+        },
+      }),
+    );
+    return this.paraLeitura(atualizada, sessao.vendedor.nome);
+  }
+
+  /**
+   * Remove a conexão sem apagar a linha: conversas referenciam a sessão e são
+   * histórico da empresa. O cliente é encerrado e o estado volta ao zero.
+   * O store técnico do zapo-js não expõe aqui uma operação de expurgo; portanto
+   * não se afirma que o material Signal persistido foi apagado.
+   */
+  async removerAdministracao(
+    empresaId: string,
+    user: AuthenticatedUser,
+    sessaoId: string,
+  ) {
+    const config = await this.config.obter(empresaId);
+    const sessao = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappSessao.findFirst({
+        where: { id: sessaoId },
+        include: { vendedor: { select: { nome: true } } },
+      }),
+    );
+    if (!sessao) throw new NotFoundException('Instância não encontrada');
+
+    if (config.workerUrl) {
+      await this.worker
+        .chamar(config.workerUrl, `/sessoes/${sessao.id}`, {
+          metodo: 'DELETE',
+        })
+        .catch(() => undefined);
+    }
+
+    const atualizada = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappSessao.update({
+        where: { id: sessao.id },
+        data: {
+          status: 'desconectada',
+          numero: null,
+          jid: null,
+          credencialCifrada: null,
+          ultimoErro: null,
+          updatedBy: user.id,
+        },
+      }),
+    );
+    return this.paraLeitura(atualizada, sessao.vendedor.nome);
+  }
+
   /** A credencial cifrada nunca sai da API — nem para o supervisor. */
   private paraLeitura(
     sessao: {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -8,6 +8,7 @@ import {
   SYSTEM_PROMPT_PADRAO,
   type AgenteConfig,
   type AgenteCredencial,
+  type AgenteFerramenta,
   type AgenteOauthInicio,
   type ProvedorIa,
 } from "@plataforma/contracts";
@@ -26,6 +27,7 @@ import {
   FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -81,12 +83,27 @@ function normalizarProvedor(config: AgenteConfig) {
   };
 }
 
+/** Estado do formulário — compartilhado com a aba de cada provedor. */
+interface FormAgente {
+  ativo: boolean;
+  nomeAgente: string;
+  provedor: ProvedorIa;
+  modelo: string;
+  baseUrl: string;
+  apiKey: string;
+  systemPrompt: string;
+  temperatura: number;
+  maxTokens: number;
+  maxIteracoesFerramentas: number;
+}
+
 function AgenteConfigForm({ config }: { config: AgenteConfig }) {
   const queryClient = useQueryClient();
   const inicial = normalizarProvedor(config);
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<FormAgente>({
     ativo: config.ativo,
+    nomeAgente: config.nomeAgente,
     provedor: inicial.provedor,
     modelo: inicial.modelo,
     baseUrl: inicial.baseUrl,
@@ -98,19 +115,14 @@ function AgenteConfigForm({ config }: { config: AgenteConfig }) {
   });
   const [modelos, setModelos] = useState<string[]>([]);
 
-  // Sempre definido: `normalizarProvedor` garante que o estado só carrega
-  // provedor existente no catálogo.
-  const info = PROVEDORES[form.provedor];
   const provedorInvalido = !(config.provedor in PROVEDORES);
-  /** Chave já gravada para o provedor selecionado — a base da troca em um clique. */
-  const credencial = config.credenciais.find((c) => c.provedor === form.provedor);
 
   /**
    * Trocar de provedor troca endpoint e modelo junto: manter a baseUrl da
    * OpenAI apontando para um modelo Claude seria uma configuração que nunca
    * funciona. Se já houve uso daquele provedor, volta o modelo de antes.
    */
-  const trocarProvedor = (novo: ProvedorIa) => {
+  const usarProvedor = (novo: ProvedorIa) => {
     const alvo = PROVEDORES[novo];
     const anterior = config.credenciais.find((c) => c.provedor === novo);
     setForm((f) => ({
@@ -129,6 +141,7 @@ function AgenteConfigForm({ config }: { config: AgenteConfig }) {
         method: "PUT",
         body: {
           ativo: form.ativo,
+          nomeAgente: form.nomeAgente,
           provedor: form.provedor,
           modelo: form.modelo,
           baseUrl: form.baseUrl,
@@ -150,11 +163,11 @@ function AgenteConfigForm({ config }: { config: AgenteConfig }) {
   });
 
   const testar = useMutation({
-    mutationFn: () =>
+    mutationFn: (provedor: ProvedorIa) =>
       apiFetch<{ ok: boolean; modelos: string[] }>("/agente/config/testar", {
         method: "POST",
         body: {
-          provedor: form.provedor,
+          provedor,
           ...(form.apiKey ? { apiKey: form.apiKey } : {}),
         },
       }),
@@ -171,321 +184,181 @@ function AgenteConfigForm({ config }: { config: AgenteConfig }) {
   return (
     <Card>
       <CardContent className="pt-6">
-        <FieldGroup>
-          <FieldSet>
-            <FieldLegend>Conexão</FieldLegend>
+        {/* Uma aba geral e uma por LLM.
+            A separação não é estética: o que está em "Configurações gerais"
+            define o que o agente **é** — nome, regras, ferramentas — e
+            sobrevive à troca de modelo. Cada aba de LLM guarda credencial e
+            ajustes daquele provedor, que são descartáveis. Antes tudo dividia
+            a mesma tela, e trocar de provedor parecia reconfigurar o agente
+            inteiro. */}
+        <Tabs defaultValue="geral">
+          <TabsList>
+            <TabsTrigger value="geral">Configurações gerais</TabsTrigger>
+            <TabsTrigger value="ferramentas">Ferramentas</TabsTrigger>
+            {(Object.keys(PROVEDORES) as ProvedorIa[]).map((p) => (
+              <TabsTrigger key={p} value={p}>
+                {PROVEDORES[p].rotulo}
+                {form.provedor === p ? " ✓" : ""}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          {/* ---------------- geral ---------------- */}
+          <TabsContent value="geral" className="pt-4">
             <FieldGroup>
-              <label className="flex cursor-pointer items-center gap-2 text-sm">
-                <Switch
-                  checked={form.ativo}
-                  onCheckedChange={(v) => setForm((f) => ({ ...f, ativo: v }))}
-                />
-                Agente ativo
-              </label>
-              <FieldDescription>
-                Desligado, o ícone do assistente não aparece para ninguém e as
-                chamadas ao provedor são recusadas.
-              </FieldDescription>
+              <FieldSet>
+                <FieldLegend>Identidade</FieldLegend>
+                <FieldGroup>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm">
+                    <Switch
+                      checked={form.ativo}
+                      onCheckedChange={(v) =>
+                        setForm((f) => ({ ...f, ativo: v }))
+                      }
+                    />
+                    Agente ativo
+                  </label>
+                  <FieldDescription>
+                    Desligado, o ícone do assistente não aparece para ninguém e
+                    as chamadas ao provedor são recusadas.
+                  </FieldDescription>
 
-              <Field>
-                <FieldLabel>Provedor</FieldLabel>
-                {/* Botões em vez de select: trocar de provedor é a ação mais
-                    frequente desta tela, e cada botão já mostra o estado da
-                    credencial daquele provedor — chave gravada, ou conta
-                    conectada no caso do OAuth. */}
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {(Object.keys(PROVEDORES) as ProvedorIa[]).map((p) => {
-                    const cred = config.credenciais.find((c) => c.provedor === p);
-                    const ativo = form.provedor === p;
-                    const oauth = PROVEDORES[p].autenticacao === "oauth";
-                    return (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => trocarProvedor(p)}
-                        className={`rounded-lg border p-2 text-left text-sm transition ${
-                          ativo
-                            ? "border-primary bg-primary/5 ring-1 ring-primary"
-                            : "hover:bg-muted/50"
-                        }`}
-                      >
-                        <div className="font-medium">{PROVEDORES[p].rotulo}</div>
-                        <div className="pt-0.5 text-xs text-muted-foreground">
-                          {oauth
-                            ? cred?.conectado
-                              ? `conectado${cred.contaEmail ? ` — ${cred.contaEmail}` : ""}`
-                              : "não conectado"
-                            : cred?.apiKeyPreenchida
-                              ? `chave •••• ${cred.apiKeyUltimos4}`
-                              : "sem chave"}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-                <FieldDescription>
-                  A credencial de cada provedor fica gravada separadamente —
-                  trocar de provedor não apaga a do outro.{" "}
-                  <a
-                    href={info.urlChave}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline"
-                  >
-                    {info.autenticacao === "oauth"
-                      ? `Sobre o ${info.rotulo}`
-                      : `Obter chave da ${info.rotulo}`}
-                  </a>
-                </FieldDescription>
-              </Field>
+                  {provedorInvalido ? (
+                    <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400">
+                      <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                      <p>
+                        A configuração estava usando o provedor{" "}
+                        <code>{config.provedor}</code>, que não existe mais. Já
+                        está selecionado {PROVEDORES[PROVEDOR_PADRAO].rotulo}{" "}
+                        como substituto — <strong>clique em Salvar</strong> para
+                        gravar a troca.
+                      </p>
+                    </div>
+                  ) : null}
 
-              {provedorInvalido ? (
-                <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                  <p>
-                    A configuração estava usando o provedor{" "}
-                    <code>{config.provedor}</code>, que não existe mais. A tela
-                    já mostra {PROVEDORES[PROVEDOR_PADRAO].rotulo} como
-                    substituto — <strong>clique em Salvar</strong> para gravar a
-                    troca.
-                  </p>
-                </div>
-              ) : null}
+                  <Field>
+                    <FieldLabel htmlFor="nomeAgente">Nome do agente</FieldLabel>
+                    <Input
+                      id="nomeAgente"
+                      value={form.nomeAgente}
+                      maxLength={40}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, nomeAgente: e.target.value }))
+                      }
+                    />
+                    <FieldDescription>
+                      Como o assistente se apresenta à equipe. Trocar de LLM não
+                      troca o nome pelo qual o time o conhece.
+                    </FieldDescription>
+                  </Field>
 
-              {info.advertencia ? (
-                <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                  <p>{info.advertencia}</p>
-                </div>
-              ) : null}
+                  <Field>
+                    <FieldLabel>Modelo em uso</FieldLabel>
+                    <FieldDescription>
+                      {PROVEDORES[form.provedor].rotulo} —{" "}
+                      <code>{form.modelo}</code>. Para trocar, abra a aba do
+                      provedor desejado.
+                    </FieldDescription>
+                  </Field>
+                </FieldGroup>
+              </FieldSet>
 
-              {info.autenticacao === "oauth" ? (
-                <ConexaoOauth
-                  credencial={credencial}
-                  rotulo={info.rotulo}
-                  onMudou={() =>
-                    void queryClient.invalidateQueries({
-                      queryKey: ["agente-config"],
-                    })
-                  }
-                />
-              ) : (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <FieldSet>
+                <FieldLegend>Prompt base</FieldLegend>
                 <Field>
-                  <FieldLabel htmlFor="apiKey">Chave de API</FieldLabel>
-                  <PasswordInput
-                    id="apiKey"
-                    value={form.apiKey}
-                    placeholder={
-                      credencial
-                        ? `•••• ${credencial.apiKeyUltimos4} (gravada)`
-                        : `Cole a chave da ${info.rotulo}`
-                    }
+                  <FieldLabel htmlFor="systemPrompt">
+                    Instruções do agente
+                  </FieldLabel>
+                  <Textarea
+                    id="systemPrompt"
+                    rows={10}
+                    value={form.systemPrompt}
+                    placeholder={SYSTEM_PROMPT_PADRAO}
                     onChange={(e) =>
-                      setForm((f) => ({ ...f, apiKey: e.target.value }))
+                      setForm((f) => ({ ...f, systemPrompt: e.target.value }))
                     }
                   />
                   <FieldDescription>
-                    {/* Aviso de chave trocada: colar a chave `sk-ant-` da
-                        Anthropic no campo da OpenAI (e vice-versa) é o erro
-                        mais provável aqui. */}
-                    {form.apiKey &&
-                    info.prefixoChave &&
-                    !form.apiKey.startsWith(info.prefixoChave) ? (
+                    Define o tom e as regras de resposta, e vale para qualquer
+                    provedor. O sistema acrescenta automaticamente o contexto da
+                    sessão (usuário, data e quais ferramentas ele pode usar) —
+                    não é preciso repetir isso aqui.
+                  </FieldDescription>
+                </Field>
+              </FieldSet>
+
+
+              <FieldSet>
+                <FieldLegend>Limites</FieldLegend>
+                <Field>
+                  <FieldLabel htmlFor="maxIteracoes">
+                    Máximo de consultas por pergunta
+                  </FieldLabel>
+                  <Input
+                    id="maxIteracoes"
+                    type="number"
+                    min={1}
+                    max={10}
+                    className="sm:max-w-40"
+                    value={form.maxIteracoesFerramentas}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        maxIteracoesFerramentas: Number(e.target.value),
+                      }))
+                    }
+                  />
+                  <FieldDescription>
+                    {/* Medido: com 5, uma pergunta que encadeia clientes e
+                        títulos morre no limite antes de o Codex escrever a
+                        resposta. */}
+                    {form.provedor === "codex" &&
+                    form.maxIteracoesFerramentas < 8 ? (
                       <span className="text-amber-600">
-                        Esta chave não começa com{" "}
-                        <code>{info.prefixoChave}</code> — confira se ela é
-                        mesmo da {info.rotulo}.
+                        Os modelos do Codex encadeiam várias consultas antes de
+                        responder. Com menos de 8, a resposta costuma sair como
+                        &quot;não consegui concluir dentro do limite de
+                        passos&quot;.
                       </span>
                     ) : (
-                      "Em branco mantém a chave atual. Ela nunca é exibida de volta."
+                      "Quantas ferramentas o agente pode consultar em sequência antes de ter que responder."
                     )}
                   </FieldDescription>
                 </Field>
-                <Field>
-                  <FieldLabel htmlFor="baseUrl">Endpoint</FieldLabel>
-                  <Input
-                    id="baseUrl"
-                    value={form.baseUrl}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, baseUrl: e.target.value }))
-                    }
-                  />
-                </Field>
-              </div>
-              )}
-
-              <Field>
-                <FieldLabel htmlFor="modelo">Modelo</FieldLabel>
-                <Input
-                  id="modelo"
-                  list="modelos-disponiveis"
-                  value={form.modelo}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, modelo: e.target.value }))
-                  }
-                />
-                <datalist id="modelos-disponiveis">
-                  {/* O Codex não expõe endpoint de modelos: a lista dele vem
-                      fixa dos contratos, conferida contra o backend. */}
-                  {(modelos.length ? modelos : (info.modelos ?? [])).map((m) => (
-                    <option key={m} value={m} />
-                  ))}
-                </datalist>
-                <FieldDescription>
-                  {info.modelos
-                    ? "Estes são os modelos que a assinatura ChatGPT aceita neste endpoint — os nomes da API pública (gpt-5, o4-mini…) são recusados aqui."
-                    : 'Use "Testar conexão" para listar os modelos que a sua conta realmente tem.'}
-                </FieldDescription>
-              </Field>
+              </FieldSet>
             </FieldGroup>
-          </FieldSet>
+          </TabsContent>
 
-          <FieldSet>
-            <FieldLegend>Personalidade</FieldLegend>
-            <Field>
-              <FieldLabel htmlFor="systemPrompt">Instruções do agente</FieldLabel>
-              <Textarea
-                id="systemPrompt"
-                rows={8}
-                value={form.systemPrompt}
-                placeholder={SYSTEM_PROMPT_PADRAO}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, systemPrompt: e.target.value }))
+          {/* ---------------- ferramentas ---------------- */}
+          <TabsContent value="ferramentas" className="pt-4">
+            <FerramentasSection />
+          </TabsContent>
+
+          {/* ---------------- uma aba por LLM ---------------- */}
+          {(Object.keys(PROVEDORES) as ProvedorIa[]).map((p) => (
+            <TabsContent key={p} value={p} className="pt-4">
+              <ProvedorTab
+                provedor={p}
+                emUso={form.provedor === p}
+                config={config}
+                form={form}
+                setForm={setForm}
+                modelos={modelos}
+                onUsar={() => usarProvedor(p)}
+                onTestar={() => testar.mutate(p)}
+                testando={testar.isPending}
+                onMudou={() =>
+                  void queryClient.invalidateQueries({
+                    queryKey: ["agente-config"],
+                  })
                 }
               />
-              <FieldDescription>
-                Define o tom e as regras de resposta. O sistema acrescenta
-                automaticamente o contexto da sessão (usuário, data e quais
-                ferramentas ele pode usar) — não é preciso repetir isso aqui.
-              </FieldDescription>
-            </Field>
-          </FieldSet>
-
-          <FieldSet>
-            <FieldLegend>Ajustes</FieldLegend>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {/* A Anthropic removeu `temperature` nos modelos atuais — enviá-lo
-                  devolve 400. Esconder o controle é melhor que deixar o
-                  usuário ajustar algo que quebraria a chamada. */}
-              {info.aceitaTemperatura ? (
-                <Field>
-                  <FieldLabel htmlFor="temperatura">
-                    Temperatura: {form.temperatura.toFixed(2)}
-                  </FieldLabel>
-                  <input
-                    id="temperatura"
-                    type="range"
-                    min={0}
-                    max={2}
-                    step={0.05}
-                    value={form.temperatura}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        temperatura: Number(e.target.value),
-                      }))
-                    }
-                    className="w-full"
-                  />
-                  <FieldDescription>
-                    Baixa (0–0,4) para respostas previsíveis sobre dados; alta
-                    para texto mais criativo. Para consulta de números, mantenha
-                    baixa.
-                  </FieldDescription>
-                </Field>
-              ) : (
-                <Field>
-                  <FieldLabel>Temperatura</FieldLabel>
-                  <FieldDescription>
-                    Os modelos atuais da {info.rotulo} não aceitam o parâmetro de
-                    temperatura — o controle de profundidade da resposta é feito
-                    pelo próprio modelo. Ajuste o comportamento pelas instruções
-                    acima.
-                  </FieldDescription>
-                </Field>
-              )}
-              {/* O backend do Codex recusa `max_output_tokens` (400
-                  "Unsupported parameter") — quem limita o tamanho lá é a
-                  própria assinatura. Mostrar o campo prometeria um controle
-                  que não existe. */}
-              {form.provedor === "codex" ? (
-                <Field>
-                  <FieldLabel>Tamanho máximo da resposta</FieldLabel>
-                  <FieldDescription>
-                    O Codex não aceita limite de tokens por requisição — o teto
-                    é o da sua assinatura ChatGPT.
-                  </FieldDescription>
-                </Field>
-              ) : (
-                <Field>
-                  <FieldLabel htmlFor="maxTokens">
-                    Tamanho máximo da resposta
-                  </FieldLabel>
-                  <Input
-                    id="maxTokens"
-                    type="number"
-                    min={256}
-                    max={32000}
-                    value={form.maxTokens}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        maxTokens: Number(e.target.value),
-                      }))
-                    }
-                  />
-                </Field>
-              )}
-              <Field>
-                <FieldLabel htmlFor="maxIteracoes">
-                  Máximo de consultas por pergunta
-                </FieldLabel>
-                <Input
-                  id="maxIteracoes"
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={form.maxIteracoesFerramentas}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      maxIteracoesFerramentas: Number(e.target.value),
-                    }))
-                  }
-                />
-                <FieldDescription>
-                  {/* Medido: com 5, uma pergunta que encadeia clientes e
-                      títulos morre no limite antes de o Codex escrever a
-                      resposta. */}
-                  {form.provedor === "codex" &&
-                  form.maxIteracoesFerramentas < 8 ? (
-                    <span className="text-amber-600">
-                      Os modelos do Codex encadeiam várias consultas antes de
-                      responder. Com menos de 8, a resposta costuma sair como
-                      &quot;não consegui concluir dentro do limite de
-                      passos&quot;.
-                    </span>
-                  ) : (
-                    "Quantas ferramentas o agente pode consultar em sequência antes de ter que responder."
-                  )}
-                </FieldDescription>
-              </Field>
-            </div>
-          </FieldSet>
-        </FieldGroup>
+            </TabsContent>
+          ))}
+        </Tabs>
       </CardContent>
 
       <CardFooter className="justify-end gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => testar.mutate()}
-          disabled={testar.isPending}
-        >
-          <Plug className="size-4" />
-          Testar conexão
-        </Button>
         <Button
           type="button"
           onClick={() => salvar.mutate()}
@@ -495,6 +368,272 @@ function AgenteConfigForm({ config }: { config: AgenteConfig }) {
         </Button>
       </CardFooter>
     </Card>
+  );
+}
+
+/**
+ * Aba de um provedor.
+ *
+ * A **credencial** é sempre editável, mesmo quando o provedor não está em uso:
+ * ela é gravada por provedor (`AgenteCredencial`), então dá para deixar a
+ * chave do Claude pronta enquanto se usa o Codex, e a troca depois é um clique.
+ *
+ * Já **modelo, endpoint e ajustes** pertencem à configuração ativa — o banco
+ * guarda um só de cada. Editá-los num provedor que não está em uso não teria
+ * onde gravar, então aparecem desabilitados com o motivo, em vez de aceitarem
+ * um valor que se perderia ao salvar.
+ */
+function ProvedorTab({
+  provedor,
+  emUso,
+  config,
+  form,
+  setForm,
+  modelos,
+  onUsar,
+  onTestar,
+  testando,
+  onMudou,
+}: {
+  provedor: ProvedorIa;
+  emUso: boolean;
+  config: AgenteConfig;
+  form: FormAgente;
+  setForm: Dispatch<SetStateAction<FormAgente>>;
+  modelos: string[];
+  onUsar: () => void;
+  onTestar: () => void;
+  testando: boolean;
+  onMudou: () => void;
+}) {
+  const info = PROVEDORES[provedor];
+  const credencial = config.credenciais.find((c) => c.provedor === provedor);
+
+  return (
+    <FieldGroup>
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
+        <div className="text-sm">
+          <p className="font-medium">{info.rotulo}</p>
+          <p className="pt-0.5 text-xs text-muted-foreground">
+            {emUso
+              ? "Este é o provedor em uso pelo agente."
+              : "Configurado, mas não é o provedor em uso."}
+          </p>
+        </div>
+        {emUso ? (
+          <span className="flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+            <CheckCircle2 className="size-3.5" />
+            Em uso
+          </span>
+        ) : (
+          <Button type="button" variant="outline" size="sm" onClick={onUsar}>
+            Usar este provedor
+          </Button>
+        )}
+      </div>
+
+      {info.advertencia ? (
+        <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <p>{info.advertencia}</p>
+        </div>
+      ) : null}
+
+      <FieldSet>
+        <FieldLegend>Credencial</FieldLegend>
+        {info.autenticacao === "oauth" ? (
+          <ConexaoOauth
+            credencial={credencial}
+            rotulo={info.rotulo}
+            onMudou={onMudou}
+          />
+        ) : (
+          <Field>
+            <FieldLabel htmlFor={`apiKey-${provedor}`}>Chave de API</FieldLabel>
+            <PasswordInput
+              id={`apiKey-${provedor}`}
+              value={emUso ? form.apiKey : ""}
+              disabled={!emUso}
+              placeholder={
+                credencial?.apiKeyPreenchida
+                  ? `•••• ${credencial.apiKeyUltimos4} (gravada)`
+                  : `Cole a chave da ${info.rotulo}`
+              }
+              onChange={(e) =>
+                setForm((f) => ({ ...f, apiKey: e.target.value }))
+              }
+            />
+            <FieldDescription>
+              {!emUso ? (
+                <>
+                  Ative este provedor acima para gravar a chave dele.{" "}
+                  <a
+                    href={info.urlChave}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline"
+                  >
+                    Obter chave
+                  </a>
+                </>
+              ) : form.apiKey &&
+                info.prefixoChave &&
+                !form.apiKey.startsWith(info.prefixoChave) ? (
+                <span className="text-amber-600">
+                  {/* Colar a chave `sk-ant-` da Anthropic no campo da OpenAI
+                      (e vice-versa) é o erro mais provável aqui. */}
+                  Esta chave não começa com <code>{info.prefixoChave}</code> —
+                  confira se ela é mesmo da {info.rotulo}.
+                </span>
+              ) : (
+                <>
+                  Em branco mantém a chave atual. Ela nunca é exibida de volta.{" "}
+                  <a
+                    href={info.urlChave}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline"
+                  >
+                    Obter chave
+                  </a>
+                </>
+              )}
+            </FieldDescription>
+          </Field>
+        )}
+      </FieldSet>
+
+      <FieldSet>
+        <FieldLegend>Modelo</FieldLegend>
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor={`modelo-${provedor}`}>Modelo</FieldLabel>
+            <Input
+              id={`modelo-${provedor}`}
+              list={`modelos-${provedor}`}
+              disabled={!emUso}
+              value={emUso ? form.modelo : (credencial?.modelo ?? info.modeloPadrao)}
+              onChange={(e) => setForm((f) => ({ ...f, modelo: e.target.value }))}
+            />
+            <datalist id={`modelos-${provedor}`}>
+              {/* O Codex não expõe endpoint de modelos: a lista dele vem fixa
+                  dos contratos, conferida contra o backend. */}
+              {(modelos.length && emUso ? modelos : (info.modelos ?? [])).map(
+                (m) => (
+                  <option key={m} value={m} />
+                ),
+              )}
+            </datalist>
+            <FieldDescription>
+              {!emUso
+                ? "Disponível quando este for o provedor em uso."
+                : info.modelos
+                  ? "Estes são os modelos que a assinatura ChatGPT aceita neste endpoint — os nomes da API pública (gpt-5, o4-mini…) são recusados aqui."
+                  : 'Use "Testar conexão" para listar os modelos que a sua conta realmente tem.'}
+            </FieldDescription>
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor={`baseUrl-${provedor}`}>Endpoint</FieldLabel>
+            <Input
+              id={`baseUrl-${provedor}`}
+              disabled={!emUso}
+              value={emUso ? form.baseUrl : info.baseUrl}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, baseUrl: e.target.value }))
+              }
+            />
+          </Field>
+        </FieldGroup>
+      </FieldSet>
+
+      <FieldSet>
+        <FieldLegend>Ajustes deste modelo</FieldLegend>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {/* A Anthropic removeu `temperature` nos modelos atuais e o Codex
+              também não aceita — enviá-lo devolve 400. Esconder o controle é
+              melhor que deixar o usuário ajustar algo que quebraria a chamada. */}
+          {info.aceitaTemperatura ? (
+            <Field>
+              <FieldLabel htmlFor={`temperatura-${provedor}`}>
+                Temperatura: {form.temperatura.toFixed(2)}
+              </FieldLabel>
+              <input
+                id={`temperatura-${provedor}`}
+                type="range"
+                min={0}
+                max={2}
+                step={0.05}
+                disabled={!emUso}
+                value={form.temperatura}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    temperatura: Number(e.target.value),
+                  }))
+                }
+                className="w-full"
+              />
+              <FieldDescription>
+                Baixa (0–0,4) para respostas previsíveis sobre dados; alta para
+                texto mais criativo. Para consulta de números, mantenha baixa.
+              </FieldDescription>
+            </Field>
+          ) : (
+            <Field>
+              <FieldLabel>Temperatura</FieldLabel>
+              <FieldDescription>
+                Os modelos atuais da {info.rotulo} não aceitam o parâmetro de
+                temperatura — a profundidade da resposta é decidida pelo próprio
+                modelo. Ajuste o comportamento pelo prompt base.
+              </FieldDescription>
+            </Field>
+          )}
+
+          {/* O backend do Codex recusa `max_output_tokens` (400 "Unsupported
+              parameter") — quem limita o tamanho lá é a própria assinatura. */}
+          {provedor === "codex" ? (
+            <Field>
+              <FieldLabel>Tamanho máximo da resposta</FieldLabel>
+              <FieldDescription>
+                O Codex não aceita limite de tokens por requisição — o teto é o
+                da sua assinatura ChatGPT.
+              </FieldDescription>
+            </Field>
+          ) : (
+            <Field>
+              <FieldLabel htmlFor={`maxTokens-${provedor}`}>
+                Tamanho máximo da resposta
+              </FieldLabel>
+              <Input
+                id={`maxTokens-${provedor}`}
+                type="number"
+                min={256}
+                max={32000}
+                disabled={!emUso}
+                value={form.maxTokens}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, maxTokens: Number(e.target.value) }))
+                }
+              />
+            </Field>
+          )}
+        </div>
+      </FieldSet>
+
+      <div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onTestar}
+          disabled={testando}
+        >
+          <Plug className="size-4" />
+          Testar conexão
+        </Button>
+      </div>
+    </FieldGroup>
   );
 }
 
@@ -721,6 +860,186 @@ function ConexaoOauth({
           </div>
         </Field>
       )}
+    </div>
+  );
+}
+
+/**
+ * Governança das ferramentas, em aba própria.
+ *
+ * Tudo fica aberto de propósito. A versão anterior recolhia cada ferramenta
+ * num accordion e escondia justamente o que mais se mexe aqui — a atribuição
+ * por perfil —, transformando "liberar uma ferramenta para o Gerente" numa
+ * caçada a cliques. São dez linhas; a rolagem custa menos que o clique extra.
+ *
+ * O que está aqui é decisão da empresa, não do código: quais ferramentas o
+ * agente pode usar, como cada uma se apresenta ao modelo e quem tem direito de
+ * usá-la. A implementação continua no servidor — esta tela não cria ferramenta,
+ * configura as que existem.
+ *
+ * A permissão aparece como texto fixo de propósito: ela vem do código e é o
+ * piso de segurança. A configuração daqui **restringe**; nada nela devolve um
+ * acesso que o perfil do usuário já não tivesse.
+ */
+function FerramentasSection() {
+  const queryClient = useQueryClient();
+
+  const { data: ferramentas } = useQuery({
+    queryKey: ["agente-ferramentas"],
+    queryFn: () => apiFetch<AgenteFerramenta[]>("/agente/ferramentas"),
+  });
+  const { data: perfis } = useQuery({
+    queryKey: ["perfis", "lista"],
+    queryFn: () =>
+      apiFetch<{ data: { id: string; nome: string; sistemaBase: boolean }[] }>("/perfis", {
+        query: { pageSize: 100 },
+      }),
+  });
+
+  const salvar = useMutation({
+    mutationFn: ({
+      chave,
+      body,
+    }: {
+      chave: string;
+      body: Record<string, unknown>;
+    }) =>
+      apiFetch<AgenteFerramenta[]>(`/agente/ferramentas/${chave}`, {
+        method: "PUT",
+        body,
+      }),
+    onSuccess: (lista) => {
+      queryClient.setQueryData(["agente-ferramentas"], lista);
+      toast.success("Ferramenta atualizada");
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Erro ao salvar"),
+  });
+
+  if (!ferramentas) {
+    return <p className="text-sm text-muted-foreground">Carregando...</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">
+        O que o agente pode consultar e fazer. Desligar uma ferramenta a tira do
+        catálogo enviado ao modelo — ele deixa de saber que ela existe, em vez
+        de tentar e falhar.
+      </p>
+
+      {ferramentas.map((f) => (
+        <div
+          key={f.chave}
+          className={`rounded-lg border p-3 ${f.ativa ? "" : "opacity-60"}`}
+        >
+          <div className="flex items-start gap-3">
+            <Switch
+              checked={f.ativa}
+              onCheckedChange={(v) =>
+                salvar.mutate({ chave: f.chave, body: { ativa: v } })
+              }
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <code className="text-sm font-medium">{f.chave}</code>
+                {f.escrita ? (
+                  <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                    grava (exige confirmação)
+                  </span>
+                ) : null}
+                <span className="text-[10px] text-muted-foreground">
+                  exige <code>{f.permissao}</code>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Só faz sentido configurar o que está ligado; desligada, a
+              ferramenta nem chega ao modelo. */}
+          {f.ativa ? (
+            <div className="grid grid-cols-1 gap-3 pt-3 lg:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor={`desc-${f.chave}`}>
+                  Descrição para o modelo
+                </FieldLabel>
+                <Textarea
+                  id={`desc-${f.chave}`}
+                  rows={3}
+                  defaultValue={f.descricao}
+                  placeholder={f.descricaoPadrao}
+                  onBlur={(e) => {
+                    const novo = e.target.value.trim();
+                    if (novo !== f.descricao) {
+                      salvar.mutate({
+                        chave: f.chave,
+                        body: { descricao: novo },
+                      });
+                    }
+                  }}
+                />
+                <FieldDescription>
+                  É este texto que ensina o modelo <strong>quando</strong> usar
+                  a ferramenta. Apagar tudo volta ao padrão.
+                </FieldDescription>
+              </Field>
+
+              <Field>
+                <FieldLabel>Perfis com direito de uso</FieldLabel>
+                <div className="flex flex-wrap gap-2">
+                  {(perfis?.data ?? []).map((p) => {
+                    // O Administrador não entra na restrição: o servidor libera
+                    // todas as ferramentas para ele, sempre. Um botão alternável
+                    // aqui prometeria um controle que não existe.
+                    if (p.sistemaBase) {
+                      return (
+                        <span
+                          key={p.id}
+                          title="O Administrador sempre tem acesso a todas as ferramentas"
+                          className="cursor-default rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-700 dark:text-emerald-400"
+                        >
+                          {p.nome} · sempre
+                        </span>
+                      );
+                    }
+                    const marcado = f.perfilIds.includes(p.id);
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() =>
+                          salvar.mutate({
+                            chave: f.chave,
+                            body: {
+                              perfilIds: marcado
+                                ? f.perfilIds.filter((x) => x !== p.id)
+                                : [...f.perfilIds, p.id],
+                            },
+                          })
+                        }
+                        className={`rounded-md border px-2 py-1 text-xs transition ${
+                          marcado
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "hover:bg-muted"
+                        }`}
+                      >
+                        {p.nome}
+                      </button>
+                    );
+                  })}
+                </div>
+                <FieldDescription>
+                  {f.perfilIds.length === 0
+                    ? `Nenhum marcado: vale para todos os perfis que já tenham ${f.permissao}.`
+                    : "Marcar restringe ainda mais — nunca amplia: quem não tem a permissão continua sem acesso."}{" "}
+                  O Administrador tem acesso a todas as ferramentas ativas,
+                  sempre.
+                </FieldDescription>
+              </Field>
+            </div>
+          ) : null}
+        </div>
+      ))}
     </div>
   );
 }

@@ -16,6 +16,7 @@ import {
 import { CLIENTE_ALTERACAO_EXAMPLE } from '@plataforma/contracts';
 import { ClienteAlteracoesService } from './cliente-alteracoes.service';
 import {
+  ClienteAlteracaoAprovacaoDto,
   ClienteAlteracaoQueryDto,
   ClienteAlteracaoRecusaDto,
 } from './dto/cliente-alteracao.dto';
@@ -66,15 +67,22 @@ export class ClienteAlteracoesController {
     summary: 'Aprovar solicitação de alteração',
     description:
       'Aplica o "de → para" no cliente e grava o histórico, tudo na mesma transação. ' +
+      'O corpo é opcional: informe `campos` para aprovar só parte da solicitação — o que ' +
+      'ficar de fora entra no histórico do cliente como reprovado. Sem corpo, aprova tudo. ' +
       'Responde 409 se o cadastro mudou depois da solicitação (o valor "de" não confere mais) ' +
       'ou se ela já foi analisada. Requer clientes.aprovar.',
   })
+  @ApiBodyExample({ campos: ['razaoSocial', 'cnaes'] })
   @ApiResponse({ status: 200, schema: { example: CLIENTE_ALTERACAO_EXAMPLE } })
   @ApiResponse({ status: 409, description: 'Cadastro mudou ou já analisada' })
   @RequirePermission('clientes', 'aprovar')
   @Post(':id/aprovar')
-  aprovar(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.aprovar(user.empresaAtivaId, user, id);
+  aprovar(
+    @Param('id') id: string,
+    @Body() dto: ClienteAlteracaoAprovacaoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.aprovar(user.empresaAtivaId, user, id, dto?.campos);
   }
 
   @ApiOperation({

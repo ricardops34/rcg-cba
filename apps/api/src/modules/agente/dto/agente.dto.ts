@@ -2,6 +2,7 @@ import { createZodDto } from 'nestjs-zod';
 import {
   agenteConfigUpdateSchema,
   agenteEnvioSchema,
+  agenteFerramentaUpdateSchema,
   agenteOauthConcluirSchema,
   agenteOauthImportarSchema,
   agenteTestarConexaoSchema,
@@ -19,4 +20,7 @@ export class AgenteOauthConcluirDto extends createZodDto(
 ) {}
 export class AgenteOauthImportarDto extends createZodDto(
   agenteOauthImportarSchema,
+) {}
+export class AgenteFerramentaUpdateDto extends createZodDto(
+  agenteFerramentaUpdateSchema,
 ) {}

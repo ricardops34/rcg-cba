@@ -75,6 +75,7 @@ model Empresa {
   sugestoesCompra            SugestaoCompraGerada[]
   agenteConfig               AgenteConfig?
   agenteCredenciais          AgenteCredencial[]
+  agenteFerramentas          AgenteFerramenta[]
   agenteConversas            AgenteConversa[]
   agenteMensagens            AgenteMensagem[]
   whatsappConfig             WhatsappConfig?
@@ -222,6 +223,7 @@ model Perfil {
 
   usuarioEmpresas UsuarioEmpresa[]
   permissoes      PerfilPermissao[]
+  agenteFerramentas AgenteFerramentaPerfil[]
   comunicados     ComunicadoPerfil[]
 
   @@unique([nome])
@@ -703,6 +705,11 @@ enum StatusAlteracaoCliente {
   rejeitada
 }
 
+enum StatusHistoricoCliente {
+  aplicado
+  reprovado
+}
+
 /**
  * Solicitação de alteração de cliente: o "de → para" aguardando aprovação.
  *
@@ -765,6 +772,10 @@ model ClienteHistorico {
   // por `alteracaoId`.
   origem        OrigemAlteracaoCliente
   autor         String?
+  // `reprovado` é linha de histórico que **não** mudou o cadastro: o campo foi
+  // proposto e negado na aprovação campo a campo. Some do cadastro, fica no
+  // rastro — senão ninguém saberia que a mudança chegou a ser pedida.
+  status        StatusHistoricoCliente @default(aplicado)
 
   criadoEm DateTime @default(now())
 
@@ -813,6 +824,10 @@ model AgenteConfig {
   apiKeyCifrada  String?
   apiKeyUltimos4 String?
 
+  // Identidade e prompt base valem para qualquer provedor: trocar de LLM não
+  // pode trocar o nome pelo qual a equipe conhece o assistente nem as regras
+  // de resposta.
+  nomeAgente   String  @default("Assistente")
   systemPrompt String? @db.Text
   temperatura  Float   @default(0.3)
   maxTokens    Int     @default(2048)
@@ -839,6 +854,67 @@ model AgenteConfig {
  * `modelo` guarda o último modelo usado naquele provedor, para a volta trazer
  * a configuração de antes em vez do padrão.
  */
+/**
+ * Governança das ferramentas do agente, por empresa.
+ *
+ * A **implementação** de cada ferramenta continua no código
+ * (`AgenteToolsService`) — o banco não executa nada. O que mora aqui é o que a
+ * empresa decide sobre ela: se está ligada, como ela se apresenta ao modelo, e
+ * quais perfis podem usá-la.
+ *
+ * A linha é criada por sincronização a partir do catálogo do código, então
+ * ferramenta nova aparece desligada/ligada conforme o padrão dela e ferramenta
+ * removida do código simplesmente deixa de ser sincronizada.
+ */
+model AgenteFerramenta {
+  id        String @id @default(uuid())
+  empresaId String
+  /** Chave estável, igual ao `nome` no catálogo do código (ex.: buscar_cliente). */
+  chave     String
+
+  ativa Boolean @default(true)
+
+  // Sobrescritas opcionais do texto que vai ao modelo. Nulo = usa o do código.
+  // Existem porque a descrição é o que ensina o modelo *quando* usar a
+  // ferramenta, e isso muda com o vocabulário de cada operação.
+  nome      String?
+  descricao String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  empresa Empresa                  @relation(fields: [empresaId], references: [id])
+  perfis  AgenteFerramentaPerfil[]
+
+  @@unique([empresaId, chave])
+  @@map("agente_ferramentas")
+}
+
+/**
+ * Perfis liberados para uma ferramenta.
+ *
+ * **Restringe, nunca amplia.** A permissão declarada no código
+ * (`Ferramenta.permissao`, ex.: `clientes.visualizar`) continua sendo checada
+ * de qualquer forma — esta tabela é um filtro adicional. Sem nenhuma linha, a
+ * ferramenta vale para todos os perfis que passem naquela permissão, que é o
+ * comportamento que existia antes desta tabela.
+ */
+model AgenteFerramentaPerfil {
+  id           String @id @default(uuid())
+  empresaId    String
+  ferramentaId String
+  perfilId     String
+
+  createdAt DateTime @default(now())
+
+  ferramenta AgenteFerramenta @relation(fields: [ferramentaId], references: [id], onDelete: Cascade)
+  perfil     Perfil           @relation(fields: [perfilId], references: [id])
+
+  @@unique([ferramentaId, perfilId])
+  @@map("agente_ferramenta_perfis")
+}
+
 model AgenteCredencial {
   id        String @id @default(uuid())
   empresaId String

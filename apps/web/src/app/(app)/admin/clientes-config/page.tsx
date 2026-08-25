@@ -28,6 +28,10 @@ const GRUPOS: { legenda: string; campos: { campo: string; label: string }[] }[] 
       { campo: "contribuinteIcms", label: "Contribuinte ICMS" },
       { campo: "rg", label: "RG" },
       { campo: "dataNascimento", label: "Data de nascimento" },
+      // Coleção, não coluna (`cliente_cnaes`), mas a pergunta é a mesma: quem
+      // pode mexer? Travado aqui, a seção de CNAE do formulário fica só de
+      // leitura e a API recusa vincular/remover.
+      { campo: "cnaes", label: "Ramo de atividade (CNAE)" },
     ],
   },
   {

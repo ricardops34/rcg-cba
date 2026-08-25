@@ -800,8 +800,13 @@ export function ClienteFormContent({
   );
 
   // Coleção filha: grava por conta própria e só existe com cliente salvo.
+  // `cnaes` é campo configurável como os outros (a API recusa igual, não só a
+  // tela) — ver CAMPOS_CLIENTE_CONFIGURAVEIS.
   const camposCnae = cliente && (
-    <ClienteCnaeSection clienteId={cliente.id} readOnly={readOnly} />
+    <ClienteCnaeSection
+      clienteId={cliente.id}
+      readOnly={readOnly || desabilitado("cnaes")}
+    />
   );
 
   const camposAlteracoes = cliente && (
