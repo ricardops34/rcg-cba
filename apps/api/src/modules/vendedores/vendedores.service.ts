@@ -47,6 +47,26 @@ export class VendedoresService {
     return out;
   }
 
+  /**
+   * O vendedor que **este usuário é** — não a lista que ele enxerga.
+   *
+   * Diferente de `resolverEscopoVendedores`, que responde "o que ele pode
+   * ver": supervisor recebe a equipe, e admin recebe a empresa inteira. Aqui a
+   * resposta é sempre uma pessoa só, e é isso que o agente de IA usa para se
+   * limitar à carteira de quem pergunta (ver `agente-tools.service.ts`).
+   *
+   * Devolve `null` quando não há vínculo — usuário administrativo, financeiro
+   * ou um administrador que não vende. Quem chama decide o que fazer com isso.
+   */
+  vendedorDoUsuario(empresaId: string, user: AuthenticatedUser) {
+    return this.prisma.withTenant(empresaId, (tx) =>
+      tx.vendedor.findFirst({
+        where: { usuarioId: user.id, empresaId, deletedAt: null },
+        select: { id: true, nome: true, nomeReduzido: true, tipo: true },
+      }),
+    );
+  }
+
   findAll(empresaId: string, query: VendedorQuery) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const where = {

@@ -213,6 +213,57 @@ export class WhatsappConversasService {
   }
 
   /**
+   * Onde parou o atendimento por WhatsApp com um cliente.
+   *
+   * Parte do `clienteId`, o que o resto deste serviço evita — e por isso o
+   * corte de sessão vem **antes**, no `where`: sem ele, um vendedor com o
+   * cliente na carteira leria a conversa que outro teve com a mesma pessoa,
+   * que é exatamente o que a regra do módulo proíbe. Com o filtro, quem não
+   * alcança a sessão recebe zero conversas, mesmo alcançando o cliente.
+   *
+   * Devolve o suficiente para decidir se liga ou espera: quantas conversas,
+   * quando foi o último contato e a prévia da última mensagem — a mesma que a
+   * lista de atendimento já mostra. O rolo inteiro fica na tela.
+   */
+  async historicoDoCliente(
+    empresaId: string,
+    user: AuthenticatedUser,
+    clienteId: string,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const filtro = await this.filtroSessao(tx, empresaId, user);
+      const conversas = await tx.whatsappConversa.findMany({
+        where: { ...filtro, empresaId, clienteId },
+        include: {
+          sessao: { select: { vendedor: { select: { nome: true } } } },
+          mensagens: {
+            orderBy: { criadaEm: 'desc' },
+            take: 1,
+            select: { conteudo: true, tipo: true, direcao: true },
+          },
+        },
+        orderBy: { ultimaMensagemEm: 'desc' },
+        take: 5,
+      });
+
+      return {
+        conversas: conversas.length,
+        ultimoContato: conversas[0]?.ultimaMensagemEm ?? null,
+        itens: conversas.map((c) => ({
+          atendente: c.sessao.vendedor,
+          ultimaMensagemEm: c.ultimaMensagemEm,
+          // `saida` = fomos nós que falamos por último — quem está devendo
+          // resposta é a informação que decide o próximo passo.
+          ultimaDe: c.mensagens[0]?.direcao ?? null,
+          previa: this.previa(c.mensagens[0]),
+          naoLidas: c.naoLidas,
+          arquivada: c.arquivada,
+        })),
+      };
+    });
+  }
+
+  /**
    * Quem mais está falando com estes mesmos contatos.
    *
    * O telefone do cliente não pertence a um atendimento: a mesma pessoa pode
@@ -817,6 +868,26 @@ export class WhatsappConversasService {
     });
   }
 
+  /**
+   * Este usuário é o vendedor dono da sessão?
+   *
+   * Existe separado de `garantirDono` porque nem todo caminho quer o 403: a
+   * tela chama `marcarLida` sozinha ao abrir a conversa, e o supervisor que
+   * está apenas lendo não pode receber erro — nem disparar os efeitos.
+   */
+  private async ehDono(
+    tx: TenantTx,
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversa: { sessao: { vendedorId: string } },
+  ) {
+    const vendedor = await tx.vendedor.findFirst({
+      where: { usuarioId: user.id, empresaId, deletedAt: null },
+      select: { id: true },
+    });
+    return !!vendedor && vendedor.id === conversa.sessao.vendedorId;
+  }
+
   /** Só o dono da sessão fala pelo aparelho — o supervisor lê, não responde. */
   private async garantirDono(
     tx: TenantTx,
@@ -824,11 +895,7 @@ export class WhatsappConversasService {
     user: AuthenticatedUser,
     conversa: { sessao: { vendedorId: string; status: string } },
   ) {
-    const vendedor = await tx.vendedor.findFirst({
-      where: { usuarioId: user.id, empresaId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!vendedor || vendedor.id !== conversa.sessao.vendedorId) {
+    if (!(await this.ehDono(tx, empresaId, user, conversa))) {
       throw new ForbiddenException(
         'Só o vendedor dono da sessão pode responder por ela.',
       );
@@ -871,6 +938,16 @@ export class WhatsappConversasService {
         user,
         conversaId,
       );
+
+      // Supervisor e gerente acompanham o atendimento alheio para monitorar, e
+      // só isso. Vincular não é detalhe de cadastro: é o vínculo que autoriza a
+      // **gravação** da conversa, então deixá-lo aberto ao supervisor seria
+      // ligar a gravação do atendimento de outra pessoa.
+      if (!(await this.ehDono(tx, empresaId, user, conversa))) {
+        throw new ForbiddenException(
+          'Só o vendedor dono da conversa pode vincular o contato a um cliente.',
+        );
+      }
 
       if (input.clienteId) {
         // A carteira que vale é a do **vendedor dono da conversa**, não a do
@@ -1112,6 +1189,14 @@ export class WhatsappConversasService {
    * Também manda o recibo de leitura pelo provedor: sem isso a conversa
    * continua marcada como não lida no celular do vendedor, e ele acaba
    * respondendo duas vezes a mesma mensagem.
+   *
+   * **Só tem efeito para o dono da sessão.** Gerente e supervisor leem o
+   * atendimento alheio sem tocar nele: marcar lida zeraria o contador do
+   * vendedor, apagaria o item do sino dele e — o pior — mandaria o visto azul
+   * ao cliente pelo aparelho dele, que é interferência visível de fora. Quem
+   * não é dono sai daqui sem efeito nenhum, e não com 403: a tela chama este
+   * endpoint sozinha ao abrir a conversa, e o erro apareceria para quem não
+   * fez nada.
    */
   async marcarLida(
     empresaId: string,
@@ -1122,6 +1207,7 @@ export class WhatsappConversasService {
 
     return this.prisma.withTenant(empresaId, async (tx) => {
       const conversa = await this.conversaNoEscopo(tx, empresaId, user, conversaId);
+      if (!(await this.ehDono(tx, empresaId, user, conversa))) return conversa;
 
       const ultima = await tx.whatsappMensagem.findFirst({
         where: { conversaId, direcao: 'entrada' },
@@ -1154,6 +1240,40 @@ export class WhatsappConversasService {
         data: { naoLidas: 0 },
       });
     });
+  }
+
+  /**
+   * As mensagens de uma conversa da **própria** conexão.
+   *
+   * O agente de IA lê por aqui, e não por `mensagens`, porque o corte é outro.
+   * `mensagens` usa o escopo da tela, onde gerente e supervisor alcançam o
+   * atendimento da equipe para monitorar — e monitorar é olhar, na tela, o que
+   * já está gravado. Perguntar ao assistente é diferente: o texto da conversa
+   * viaja para o provedor de IA. Decisão do usuário em 2026-08-25: pelo
+   * agente, cada um lê só o que ele mesmo atendeu.
+   *
+   * 404, e não 403, pela mesma razão de `conversaNoEscopo`: a conversa de
+   * outro vendedor não deve nem revelar que existe.
+   */
+  async mensagensDaPropriaConexao(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    query: WhatsappMensagemQuery,
+  ) {
+    await this.prisma.withTenant(empresaId, async (tx) => {
+      const conversa = await this.conversaNoEscopo(
+        tx,
+        empresaId,
+        user,
+        conversaId,
+      );
+      if (!(await this.ehDono(tx, empresaId, user, conversa))) {
+        throw new NotFoundException('Conversa não encontrada');
+      }
+    });
+
+    return this.mensagens(empresaId, user, conversaId, query);
   }
 
   /**

@@ -7,6 +7,12 @@ import { TitulosReceberService } from '../titulos-receber/titulos-receber.servic
 import { SugestaoCompraService } from '../sugestao-compra/sugestao-compra.service';
 import { ObjetivosService } from '../objetivos/objetivos.service';
 import { EnriquecimentoService } from '../clientes/enriquecimento.service';
+import { AtividadesService } from '../atividades/atividades.service';
+import { OportunidadesService } from '../oportunidades/oportunidades.service';
+import { WhatsappConversasService } from '../whatsapp/whatsapp-conversas.service';
+import { WhatsappAcoesService } from '../whatsapp/whatsapp-acoes.service';
+import { WhatsappAgendamentoService } from '../whatsapp/whatsapp-agendamento.service';
+import { VendedoresService } from '../vendedores/vendedores.service';
 import type { AgenteDestino } from '@plataforma/contracts';
 import type { FerramentaChat } from './provedor-ia';
 // Só o tipo: `import type` some no build, então não há ciclo em runtime com
@@ -39,6 +45,14 @@ export interface Ferramenta {
   permissao: string;
   /** Ferramenta que grava não executa direto — vira pendência de confirmação. */
   escrita?: boolean;
+  /**
+   * Só existe para quem tem WhatsApp pareado (ver `FiltroFerramentas`).
+   *
+   * Não substitui a `permissao`: soma-se a ela. A permissão diz que o usuário
+   * *pode* atender por WhatsApp; isto diz que ele *tem* aparelho vinculado —
+   * sem o qual a ferramenta não tem de onde ler nem por onde falar.
+   */
+  exigeWhatsapp?: boolean;
   /** Resumo legível da ação, para o card de confirmação. */
   resumir?: (args: Record<string, unknown>) => string;
   /**
@@ -83,6 +97,21 @@ export interface Ferramenta {
 
 /** Ver `Ferramenta.destino`. */
 type Destino = AgenteDestino;
+
+/** O que a projeção do histórico usa de cada fonte — os payloads trazem mais. */
+interface AtividadeResumo {
+  titulo: string;
+  tipo: string;
+  dataVencimento: Date | null;
+  concluida: boolean;
+}
+interface OportunidadeResumo {
+  id: string;
+  titulo: string;
+  estagio: string;
+  valorPrevisto: number | null;
+  dataPrevisao: Date | null;
+}
 
 /** Formato mínimo que a projeção da busca de clientes consome. */
 interface ClientePaginado {
@@ -167,6 +196,27 @@ const primeiroId = (resultado: unknown, chave = 'data'): string | null => {
   const id = (dados[0] as { id?: unknown })?.id;
   return typeof id === 'string' ? id : null;
 };
+
+/**
+ * Valores que o modelo pode mandar nos campos de enum. Fora da lista, cai no
+ * padrão em vez de estourar validação: um "tipo: chamada" (em vez de
+ * "ligacao") não deve impedir o compromisso de existir.
+ */
+const TIPOS_ATIVIDADE = new Set([
+  'ligacao',
+  'reuniao',
+  'email',
+  'visita',
+  'tarefa',
+]);
+const ESTAGIOS = new Set([
+  'prospeccao',
+  'qualificacao',
+  'proposta',
+  'negociacao',
+  'ganha',
+  'perdida',
+]);
 
 const texto = (v: unknown): string => (typeof v === 'string' ? v : '');
 const numero = (v: unknown, padrao: number): number =>
@@ -294,7 +344,144 @@ export class AgenteToolsService {
     private readonly sugestao: SugestaoCompraService,
     private readonly objetivos: ObjetivosService,
     private readonly enriquecimento: EnriquecimentoService,
+    private readonly atividades: AtividadesService,
+    private readonly oportunidades: OportunidadesService,
+    private readonly conversas: WhatsappConversasService,
+    private readonly vendedores: VendedoresService,
+    private readonly whatsappAcoes: WhatsappAcoesService,
+    private readonly agendamento: WhatsappAgendamentoService,
   ) {}
+
+  /**
+   * Até onde o agente enxerga — e é **por perfil**, não pela permissão da tela.
+   *
+   * | Quem | Alcance no chat |
+   * |---|---|
+   * | Vendedor, supervisor | só a própria carteira |
+   * | Gerente, diretor, administrador | a empresa ativa inteira |
+   *
+   * O corte existe porque a pergunta no chat costuma vir sem sujeito ("como
+   * estão as vendas?", "bati a meta?"). Para quem vende, a resposta certa é
+   * sobre o que é dele: agregar a equipe ali seria devolver número de colega
+   * numa conversa que ninguém revisou. Já gerente, diretor e administrador
+   * respondem pela operação — para eles, o número da empresa **é** o número
+   * deles, e limitá-los tornaria o agente inútil justamente para quem decide.
+   *
+   * O supervisor fica com a própria carteira de propósito: o que ele enxerga
+   * da equipe continua nas telas, onde tem contexto e filtro à vista.
+   *
+   * Devolve `{}` quando não há recorte a aplicar — e aí vale o escopo normal do
+   * service, que já limita à empresa ativa via RLS. O filtro **restringe**,
+   * nunca amplia.
+   */
+  private async filtroCarteira(
+    user: AuthenticatedUser,
+  ): Promise<{ vendedorId?: string }> {
+    // `isAdmin` cobre Administrador e Diretor — ver `resolverEscopoVendedores`.
+    if (user.isAdmin) return {};
+    const vendedor = await this.vendedores.vendedorDoUsuario(
+      user.empresaAtivaId,
+      user,
+    );
+    // Sem cadastro de vendedor (administrativo, financeiro) o alcance é o
+    // mesmo das telas dele: a empresa ativa.
+    if (!vendedor || vendedor.tipo === 'gerente') return {};
+    return { vendedorId: vendedor.id };
+  }
+
+  /** Mesmo recorte, no formato que as Consultas de venda aceitam. */
+  private async filtroCarteiraConsulta(
+    user: AuthenticatedUser,
+  ): Promise<{ vendedorIds?: string[] }> {
+    const { vendedorId } = await this.filtroCarteira(user);
+    return vendedorId ? { vendedorIds: [vendedorId] } : {};
+  }
+
+  /**
+   * O cliente está no alcance de quem perguntou?
+   *
+   * `findOne` já barra o que está fora do escopo do service, mas o escopo do
+   * supervisor inclui a equipe — e para ele o agente responde só pela própria
+   * carteira. Para gerente, diretor e administrador não há o que comparar: o
+   * alcance é a empresa.
+   */
+  private async garantirClienteNoAlcance(
+    user: AuthenticatedUser,
+    clienteId: string,
+  ) {
+    const { vendedorId } = await this.filtroCarteira(user);
+    const cliente = (await this.clientes.findOne(
+      user.empresaAtivaId,
+      user,
+      clienteId,
+    )) as { vendedorId: string | null };
+    if (vendedorId && cliente.vendedorId !== vendedorId) {
+      throw new ForbiddenException(
+        'Este cliente é de outra carteira. O assistente responde sobre os ' +
+          'clientes que são seus.',
+      );
+    }
+  }
+
+  /**
+   * Onde a conversa com este cliente parou — CRM e WhatsApp no mesmo lugar.
+   *
+   * As três fontes têm regras de acesso **diferentes**, e é por isso que cada
+   * uma vem do seu próprio service em vez de uma consulta só: atividades e
+   * oportunidades seguem o escopo de carteira; o WhatsApp segue o escopo de
+   * **sessão** (ver `WhatsappConversasService`) — ter o cliente na carteira não
+   * dá direito de ler a conversa que outro vendedor teve com ele.
+   *
+   * Do WhatsApp sai o mínimo que responde "onde paramos": quantas conversas,
+   * quando foi a última mensagem e a prévia dela — a mesma prévia que já
+   * aparece na lista de atendimento. O rolo completo fica na tela, que é para
+   * onde o botão da resposta leva.
+   */
+  private async historicoAtendimento(
+    user: AuthenticatedUser,
+    clienteId: string,
+  ) {
+    const empresaId = user.empresaAtivaId;
+    const [agenda, funil, whatsapp] = await Promise.all([
+      this.atividades.findAll(empresaId, user, {
+        page: 1,
+        pageSize: 10,
+        clienteId,
+        sortBy: 'dataVencimento',
+        sortOrder: 'desc',
+      } as never) as Promise<{ data: AtividadeResumo[]; total: number }>,
+      this.oportunidades.findAll(empresaId, user, {
+        page: 1,
+        pageSize: 10,
+        clienteId,
+        sortOrder: 'desc',
+      } as never) as Promise<{ data: OportunidadeResumo[]; total: number }>,
+      this.conversas.historicoDoCliente(empresaId, user, clienteId),
+    ]);
+
+    return {
+      whatsapp,
+      agenda: {
+        total: agenda.total,
+        itens: agenda.data.map((a) => ({
+          titulo: a.titulo,
+          tipo: a.tipo,
+          quando: dia(a.dataVencimento),
+          concluida: a.concluida,
+        })),
+      },
+      funil: {
+        total: funil.total,
+        itens: funil.data.map((o) => ({
+          id: o.id,
+          titulo: o.titulo,
+          estagio: o.estagio,
+          valorPrevisto: o.valorPrevisto,
+          previsao: dia(o.dataPrevisao),
+        })),
+      },
+    };
+  }
 
   private todas(): Ferramenta[] {
     return [
@@ -345,6 +532,8 @@ export class AgenteToolsService {
         executar: async (a, user) =>
           resumirClientes(
             (await this.clientes.findAll(user.empresaAtivaId, user, {
+              // Trava na carteira de quem pergunta — ver .
+              ...(await this.filtroCarteira(user)),
               page: 1,
               // Filtro de ramo costuma ser "liste meus clientes do tipo X", e 10
               // linhas cortariam a resposta cedo demais.
@@ -449,14 +638,16 @@ export class AgenteToolsService {
           properties: { clienteId: { type: 'string' } },
           required: ['clienteId'],
         },
-        executar: async (a, user) =>
-          resumirPosicao(
+        executar: async (a, user) => {
+          await this.garantirClienteNoAlcance(user, texto(a.clienteId));
+          return resumirPosicao(
             (await this.clientes.posicao(
               user.empresaAtivaId,
               user,
               texto(a.clienteId),
             )) as unknown as PosicaoBruta,
-          ),
+          );
+        },
         // O resumo do chat mostra 20 produtos do mix e 5 notas; a tela mostra
         // o histórico inteiro, que é justamente o que não coube.
         destino: (a) => ({
@@ -483,8 +674,9 @@ export class AgenteToolsService {
           },
           required: ['clienteId'],
         },
-        executar: (a, user) =>
-          this.sugestao.paraCliente(
+        executar: async (a, user) => {
+          await this.garantirClienteNoAlcance(user, texto(a.clienteId));
+          return this.sugestao.paraCliente(
             user.empresaAtivaId,
             user,
             texto(a.clienteId),
@@ -495,7 +687,8 @@ export class AgenteToolsService {
               baseSemelhanca: 'ambos',
               afinidadeCnae: 'hierarquica',
             },
-          ),
+          );
+        },
         destino: () => ({
           rotulo: 'Abrir Sugestão de compra',
           rota: '/consultas/sugestao-compra',
@@ -511,16 +704,23 @@ export class AgenteToolsService {
           type: 'object',
           properties: { clienteId: { type: 'string' } },
         },
-        executar: (a, user) =>
+        executar: async (a, user) =>
           this.titulos.findAll(user.empresaAtivaId, user, {
+            // Recorte por perfil — ver `filtroCarteira`.
+            ...(await this.filtroCarteira(user)),
             page: 1,
             pageSize: 20,
             sortOrder: 'asc',
             ...(texto(a.clienteId) ? { clienteId: texto(a.clienteId) } : {}),
           } as never),
-        destino: () => ({
+        destino: (a) => ({
           rotulo: 'Abrir Títulos a receber',
-          rota: '/comercial/titulos-receber',
+          rota: rotaComFiltros('/comercial/titulos-receber', {
+            clienteId: texto(a.clienteId),
+            // A ferramenta lista o que está em aberto; a tela abre no mesmo
+            // recorte em vez de mostrar tudo, inclusive o já baixado.
+            status: 'aberto',
+          }),
         }),
       },
       {
@@ -533,16 +733,20 @@ export class AgenteToolsService {
           type: 'object',
           properties: { clienteId: { type: 'string' } },
         },
-        executar: (a, user) =>
+        executar: async (a, user) =>
           this.orcamentos.findAll(user.empresaAtivaId, user, {
+            // Recorte por perfil — ver `filtroCarteira`.
+            ...(await this.filtroCarteira(user)),
             page: 1,
             pageSize: 20,
             sortOrder: 'desc',
             ...(texto(a.clienteId) ? { clienteId: texto(a.clienteId) } : {}),
           } as never),
-        destino: () => ({
+        destino: (a) => ({
           rotulo: 'Abrir Orçamentos',
-          rota: '/crm/orcamentos',
+          rota: rotaComFiltros('/crm/orcamentos', {
+            clienteId: texto(a.clienteId),
+          }),
         }),
       },
       {
@@ -562,16 +766,24 @@ export class AgenteToolsService {
           },
           required: ['anoInicial', 'mesInicial', 'anoFinal', 'mesFinal'],
         },
-        executar: (a, user) =>
+        executar: async (a, user) =>
           this.consultas.vendasPorCliente(user.empresaAtivaId, user, {
+            // O total do período é o **meu** total: sem isto, a mesma pergunta
+            // devolveria o agregado da equipe para o supervisor.
+            ...(await this.filtroCarteiraConsulta(user)),
             anoInicial: numero(a.anoInicial, new Date().getFullYear()),
             mesInicial: numero(a.mesInicial, 1),
             anoFinal: numero(a.anoFinal, new Date().getFullYear()),
             mesFinal: numero(a.mesFinal, 12),
           }),
-        destino: () => ({
+        destino: (a) => ({
           rotulo: 'Abrir Vendas por cliente',
-          rota: '/consultas/vendas-cliente',
+          rota: rotaComFiltros('/consultas/vendas-cliente', {
+            anoInicial: numero(a.anoInicial, 0) || undefined,
+            mesInicial: numero(a.mesInicial, 0) || undefined,
+            anoFinal: numero(a.anoFinal, 0) || undefined,
+            mesFinal: numero(a.mesFinal, 0) || undefined,
+          }),
         }),
       },
       {
@@ -590,29 +802,36 @@ export class AgenteToolsService {
           },
           required: ['anoInicial', 'mesInicial', 'anoFinal', 'mesFinal'],
         },
-        executar: (a, user) =>
+        executar: async (a, user) =>
           this.consultas.vendasPorProduto(user.empresaAtivaId, user, {
+            ...(await this.filtroCarteiraConsulta(user)),
             anoInicial: numero(a.anoInicial, new Date().getFullYear()),
             mesInicial: numero(a.mesInicial, 1),
             anoFinal: numero(a.anoFinal, new Date().getFullYear()),
             mesFinal: numero(a.mesFinal, 12),
           }),
-        destino: () => ({
+        destino: (a) => ({
           rotulo: 'Abrir Vendas por produto',
-          rota: '/consultas/vendas-produto',
+          rota: rotaComFiltros('/consultas/vendas-produto', {
+            anoInicial: numero(a.anoInicial, 0) || undefined,
+            mesInicial: numero(a.mesInicial, 0) || undefined,
+            anoFinal: numero(a.anoFinal, 0) || undefined,
+            mesFinal: numero(a.mesFinal, 0) || undefined,
+          }),
         }),
       },
       {
         nome: 'execucao_objetivos',
         descricao:
-          'Execução das metas de um mês (Dashboard Comercial): objetivo x realizado ' +
-          'em valor e em número de clientes positivados, percentuais, devoluções e ' +
-          'a quebra por categoria de produto. Sem vendedorId, agrega todo o escopo ' +
-          'do usuário. Use para "como foi a execução de objetivos de MM/AAAA".',
+          'A SUA execução de metas em um mês: objetivo x realizado em valor e em ' +
+          'clientes positivados, percentuais, devoluções e a quebra por categoria. ' +
+          'Responde sempre pela carteira de quem está perguntando — não existe ' +
+          'consulta de meta de outro vendedor, da equipe ou da empresa por aqui; ' +
+          'isso é o Dashboard Comercial, na tela.',
         permissao: 'dashboard-comercial.visualizar',
         exemplos: [
-          'Como foi a execução de objetivos de julho?',
-          'Bati a meta do mês passado?',
+          'Como foi a minha execução de objetivos em julho?',
+          'Bati a minha meta do mês passado?',
         ],
         limiteItens: 25,
         parametros: {
@@ -620,10 +839,6 @@ export class AgenteToolsService {
           properties: {
             mes: { type: 'number', description: '1 a 12' },
             ano: { type: 'number' },
-            vendedorId: {
-              type: 'string',
-              description: 'Opcional. Omitido = todo o escopo do usuário.',
-            },
             municipio: {
               type: 'string',
               description:
@@ -632,11 +847,13 @@ export class AgenteToolsService {
           },
           required: ['mes', 'ano'],
         },
-        executar: (a, user) =>
+        executar: async (a, user) =>
           this.objetivos.dashboard(user.empresaAtivaId, user, {
             mes: numero(a.mes, new Date().getMonth() + 1),
             ano: numero(a.ano, new Date().getFullYear()),
-            ...(texto(a.vendedorId) ? { vendedorId: texto(a.vendedorId) } : {}),
+            // Sempre o próprio vendedor: omitir agregaria o escopo — a equipe,
+            // para o supervisor, e a empresa, para o administrador.
+            ...(await this.filtroCarteira(user)),
             ...(texto(a.municipio) ? { municipio: texto(a.municipio) } : {}),
           }),
         destino: () => ({
@@ -683,7 +900,336 @@ export class AgenteToolsService {
           };
         },
       },
+      {
+        nome: 'minha_agenda',
+        descricao:
+          'Compromissos e tarefas do CRM: o que está pendente, o que venceu e o ' +
+          'que está marcado para um período. Aceita filtro por cliente. Use para ' +
+          '"o que eu tenho para hoje", "o que está atrasado" e "quando eu falo com ' +
+          'o cliente X".',
+        permissao: 'atividades.visualizar',
+        limiteItens: 25,
+        exemplos: [
+          'O que eu tenho para hoje?',
+          'Tenho algum retorno atrasado?',
+          'Quando eu marquei de falar com o cliente X?',
+        ],
+        parametros: {
+          type: 'object',
+          properties: {
+            clienteId: { type: 'string' },
+            vencidas: {
+              type: 'boolean',
+              description: 'Só o que passou do prazo e não foi concluído',
+            },
+            pendentes: {
+              type: 'boolean',
+              description: 'Só o que ainda não foi concluído (padrão: true)',
+            },
+            dataInicio: {
+              type: 'string',
+              description: 'Início do período, AAAA-MM-DD',
+            },
+            dataFim: {
+              type: 'string',
+              description: 'Fim do período, AAAA-MM-DD',
+            },
+          },
+        },
+        executar: async (a, user) =>
+          this.atividades.findAll(user.empresaAtivaId, user, {
+            // Recorte por perfil — ver `filtroCarteira`.
+            ...(await this.filtroCarteira(user)),
+            page: 1,
+            pageSize: 25,
+            sortBy: 'dataVencimento',
+            sortOrder: 'asc',
+            ...(texto(a.clienteId) ? { clienteId: texto(a.clienteId) } : {}),
+            ...(a.vencidas === true ? { vencidas: true } : {}),
+            // O padrão é o que interessa a quem pergunta: o que falta fazer.
+            ...(a.pendentes === false ? {} : { concluida: false }),
+            ...(texto(a.dataInicio)
+              ? { dataInicio: new Date(texto(a.dataInicio)) }
+              : {}),
+            ...(texto(a.dataFim)
+              ? { dataFim: new Date(texto(a.dataFim)) }
+              : {}),
+          } as never),
+        destino: (a) => ({
+          rotulo: 'Abrir a agenda',
+          rota: rotaComFiltros('/crm/agenda', {
+            clienteId: texto(a.clienteId),
+          }),
+        }),
+      },
+      {
+        nome: 'listar_oportunidades',
+        descricao:
+          'Oportunidades do CRM (funil de vendas): título, estágio, valor previsto ' +
+          'e data de previsão. Aceita filtro por cliente e por estágio ' +
+          '(prospeccao, qualificacao, proposta, negociacao, ganha, perdida).',
+        permissao: 'oportunidades.visualizar',
+        limiteItens: 25,
+        exemplos: [
+          'Quais oportunidades eu tenho em negociação?',
+          'O que está no funil do cliente X?',
+        ],
+        parametros: {
+          type: 'object',
+          properties: {
+            clienteId: { type: 'string' },
+            estagio: {
+              type: 'string',
+              description:
+                'prospeccao, qualificacao, proposta, negociacao, ganha ou perdida',
+            },
+          },
+        },
+        executar: async (a, user) =>
+          this.oportunidades.findAll(user.empresaAtivaId, user, {
+            ...(await this.filtroCarteira(user)),
+            page: 1,
+            pageSize: 25,
+            sortOrder: 'desc',
+            ...(texto(a.clienteId) ? { clienteId: texto(a.clienteId) } : {}),
+            ...(texto(a.estagio) ? { estagio: texto(a.estagio) } : {}),
+          } as never),
+        destino: (a) => ({
+          rotulo: 'Abrir o funil',
+          rota: rotaComFiltros('/crm/oportunidades', {
+            clienteId: texto(a.clienteId),
+            estagio: texto(a.estagio),
+          }),
+        }),
+      },
+      {
+        nome: 'historico_atendimento_cliente',
+        descricao:
+          'O que já aconteceu com um cliente: compromissos do CRM (feitos e a ' +
+          'fazer), oportunidades no funil e o atendimento por WhatsApp (quantas ' +
+          'conversas, quando foi o último contato e o começo da última mensagem). ' +
+          'Use antes de ligar para o cliente, para saber onde a conversa parou.',
+        permissao: 'clientes.visualizar',
+        limiteItens: 15,
+        exemplos: [
+          'O que já foi conversado com o cliente X?',
+          'Quando foi o último contato com o cliente X?',
+        ],
+        parametros: {
+          type: 'object',
+          properties: { clienteId: { type: 'string' } },
+          required: ['clienteId'],
+        },
+        executar: async (a, user) => {
+          await this.garantirClienteNoAlcance(user, texto(a.clienteId));
+          return this.historicoAtendimento(user, texto(a.clienteId));
+        },
+        destino: (a) => [
+          {
+            rotulo: 'Abrir a agenda do cliente',
+            rota: rotaComFiltros('/crm/agenda', {
+              clienteId: texto(a.clienteId),
+            }),
+          },
+          {
+            rotulo: 'Abrir a posição do cliente',
+            rota: `/comercial/posicao-cliente/${texto(a.clienteId)}`,
+          },
+        ],
+      },
       // ---- escrita: não executa direto, vira pendência de confirmação ----
+      {
+        nome: 'agendar_atividade',
+        descricao:
+          'Marca um compromisso na agenda do CRM: retorno de contato, ligação, ' +
+          'visita, reunião ou tarefa. NÃO grava imediatamente — o usuário confirma ' +
+          'na tela. Informe o título, quando (data e hora) e, quando for sobre um ' +
+          'cliente, o clienteId. Vai para a agenda de quem está pedindo.',
+        permissao: 'atividades.cadastrar',
+        escrita: true,
+        exemplos: [
+          'Me lembre de retornar para o cliente X na sexta de manhã',
+          'Agende uma visita ao cliente Y na terça às 14h',
+        ],
+        resumir: (a) => {
+          const quando = texto(a.quando);
+          return `${texto(a.titulo) || 'Compromisso'}${quando ? ` em ${quando.replace('T', ' ').slice(0, 16)}` : ''}`;
+        },
+        parametros: {
+          type: 'object',
+          properties: {
+            titulo: {
+              type: 'string',
+              description:
+                'O que fazer, ex.: "Retornar contato sobre o orçamento"',
+            },
+            quando: {
+              type: 'string',
+              description:
+                'Data e hora no formato AAAA-MM-DDTHH:mm. Sem hora, use 09:00.',
+            },
+            tipo: {
+              type: 'string',
+              description: 'ligacao, reuniao, email, visita ou tarefa (padrão)',
+            },
+            clienteId: { type: 'string' },
+            descricao: { type: 'string' },
+          },
+          required: ['titulo', 'quando'],
+        },
+        executar: async (a, user) => {
+          const vendedor = await this.atividades.vendedorDoUsuario(
+            user.empresaAtivaId,
+            user,
+          );
+          return this.atividades.create(user.empresaAtivaId, user, {
+            vendedorId: vendedor.id,
+            titulo: texto(a.titulo),
+            tipo: TIPOS_ATIVIDADE.has(texto(a.tipo))
+              ? (texto(a.tipo) as 'tarefa')
+              : 'tarefa',
+            dataVencimento: texto(a.quando) ? new Date(texto(a.quando)) : null,
+            ...(texto(a.clienteId) ? { clienteId: texto(a.clienteId) } : {}),
+            ...(texto(a.descricao) ? { descricao: texto(a.descricao) } : {}),
+            concluida: false,
+            ativo: true,
+          });
+        },
+        destino: () => ({ rotulo: 'Abrir a agenda', rota: '/crm/agenda' }),
+      },
+      {
+        nome: 'registrar_oportunidade',
+        descricao:
+          'Cria uma oportunidade no funil do CRM para um cliente. NÃO grava ' +
+          'imediatamente — o usuário confirma na tela. Informe clienteId, título e, ' +
+          'se souber, valor previsto e estágio.',
+        permissao: 'oportunidades.cadastrar',
+        escrita: true,
+        exemplos: [
+          'Registre uma oportunidade de R$ 5.000 para o cliente X',
+          'Abra uma oportunidade de reposição mensal para o cliente Y',
+        ],
+        resumir: (a) =>
+          `Oportunidade "${texto(a.titulo) || 'sem título'}"${
+            typeof a.valorPrevisto === 'number'
+              ? ` — R$ ${a.valorPrevisto.toFixed(2)}`
+              : ''
+          }`,
+        parametros: {
+          type: 'object',
+          properties: {
+            clienteId: { type: 'string' },
+            titulo: { type: 'string' },
+            valorPrevisto: { type: 'number' },
+            estagio: {
+              type: 'string',
+              description:
+                'prospeccao (padrão), qualificacao, proposta, negociacao, ganha ou perdida',
+            },
+            dataPrevisao: {
+              type: 'string',
+              description: 'Previsão de fechamento, AAAA-MM-DD',
+            },
+            observacao: { type: 'string' },
+          },
+          required: ['clienteId', 'titulo'],
+        },
+        executar: async (a, user) => {
+          const vendedor = await this.atividades.vendedorDoUsuario(
+            user.empresaAtivaId,
+            user,
+          );
+          return this.oportunidades.create(user.empresaAtivaId, user, {
+            clienteId: texto(a.clienteId),
+            vendedorId: vendedor.id,
+            titulo: texto(a.titulo),
+            estagio: ESTAGIOS.has(texto(a.estagio))
+              ? (texto(a.estagio) as 'prospeccao')
+              : 'prospeccao',
+            ...(typeof a.valorPrevisto === 'number'
+              ? { valorPrevisto: a.valorPrevisto }
+              : {}),
+            ...(texto(a.dataPrevisao)
+              ? { dataPrevisao: new Date(texto(a.dataPrevisao)) }
+              : {}),
+            ...(texto(a.observacao) ? { observacao: texto(a.observacao) } : {}),
+            ativo: true,
+          });
+        },
+        destino: (_a, r) => {
+          const id = (r as { id?: unknown })?.id;
+          return typeof id === 'string'
+            ? {
+                rotulo: 'Abrir a oportunidade',
+                rota: `/crm/oportunidades/${id}`,
+              }
+            : { rotulo: 'Abrir o funil', rota: '/crm/oportunidades' };
+        },
+      },
+      {
+        nome: 'mover_oportunidade',
+        descricao:
+          'Atualiza uma oportunidade que já existe: muda o estágio no funil, o ' +
+          'valor previsto, a previsão de fechamento ou a observação. Para marcar ' +
+          'como perdida, informe também o motivo. NÃO grava imediatamente — o ' +
+          'usuário confirma na tela. Use listar_oportunidades antes, para pegar o id.',
+        permissao: 'oportunidades.editar',
+        escrita: true,
+        exemplos: [
+          'Passe a oportunidade do cliente X para negociação',
+          'Marque como ganha a oportunidade de reposição do cliente Y',
+        ],
+        resumir: (a) =>
+          `Oportunidade → ${texto(a.estagio) || 'atualizar'}${
+            texto(a.motivoPerda) ? ` (${texto(a.motivoPerda)})` : ''
+          }`,
+        parametros: {
+          type: 'object',
+          properties: {
+            oportunidadeId: { type: 'string' },
+            estagio: {
+              type: 'string',
+              description:
+                'prospeccao, qualificacao, proposta, negociacao, ganha ou perdida',
+            },
+            valorPrevisto: { type: 'number' },
+            dataPrevisao: { type: 'string', description: 'AAAA-MM-DD' },
+            motivoPerda: {
+              type: 'string',
+              description: 'Obrigatório ao marcar como perdida',
+            },
+            observacao: { type: 'string' },
+          },
+          required: ['oportunidadeId'],
+        },
+        executar: (a, user) =>
+          this.oportunidades.update(
+            user.empresaAtivaId,
+            user,
+            texto(a.oportunidadeId),
+            {
+              ...(ESTAGIOS.has(texto(a.estagio))
+                ? { estagio: texto(a.estagio) as 'prospeccao' }
+                : {}),
+              ...(typeof a.valorPrevisto === 'number'
+                ? { valorPrevisto: a.valorPrevisto }
+                : {}),
+              ...(texto(a.dataPrevisao)
+                ? { dataPrevisao: new Date(texto(a.dataPrevisao)) }
+                : {}),
+              ...(texto(a.motivoPerda)
+                ? { motivoPerda: texto(a.motivoPerda) }
+                : {}),
+              ...(texto(a.observacao)
+                ? { observacao: texto(a.observacao) }
+                : {}),
+            },
+          ),
+        destino: (a) => ({
+          rotulo: 'Abrir a oportunidade',
+          rota: `/crm/oportunidades/${texto(a.oportunidadeId)}`,
+        }),
+      },
       {
         nome: 'atualizar_cadastro_pela_receita',
         descricao:
@@ -776,6 +1322,284 @@ export class AgenteToolsService {
             : { rotulo: 'Abrir Orçamentos', rota: '/crm/orcamentos' };
         },
       },
+      // ----------------------------------------------------------------------
+      // WhatsApp do próprio vendedor.
+      //
+      // Todas marcadas `exigeWhatsapp`: sem aparelho pareado não há de onde ler
+      // nem por onde falar. E todas enxergam **só a própria conexão**, mesmo
+      // para quem tem `whatsapp-equipe` — gerente e supervisor monitoram o time
+      // na tela de Atendimento, onde o texto fica; pelo agente ele viajaria
+      // para o provedor de IA. Decisão do usuário em 2026-08-25.
+      // ----------------------------------------------------------------------
+      {
+        nome: 'conversas_whatsapp',
+        descricao:
+          'Os atendimentos por WhatsApp deste vendedor: com quem falou, quando foi ' +
+          'o último contato, quem falou por último e quantas mensagens não lidas ' +
+          'ficaram. Use `busca` para um contato específico (nome ou telefone) e ' +
+          'sem `busca` para os últimos atendimentos. Devolve o `conversaId` que as ' +
+          'outras ferramentas de WhatsApp pedem.',
+        permissao: 'whatsapp-conversas.visualizar',
+        exigeWhatsapp: true,
+        limiteItens: 15,
+        exemplos: [
+          'Quando foi a última vez que falei com o 11 98765-4321?',
+          'Quais foram meus últimos atendimentos no WhatsApp?',
+          'Tem alguma conversa esperando resposta minha?',
+        ],
+        parametros: {
+          type: 'object',
+          properties: {
+            busca: {
+              type: 'string',
+              description:
+                'Nome ou telefone do contato. Pode ser parcial; sem isto vêm os mais recentes.',
+            },
+          },
+        },
+        executar: async (a, user) => {
+          const vendedor = await this.vendedores.vendedorDoUsuario(
+            user.empresaAtivaId,
+            user,
+          );
+          // Sem cadastro de vendedor não existe conexão, e a ferramenta nem
+          // deveria estar visível — mas `exigeWhatsapp` filtra o catálogo, e um
+          // `tool_call` é texto gerado por um modelo, não autorização.
+          if (!vendedor) {
+            throw new ForbiddenException(
+              'Seu usuário não tem WhatsApp vinculado.',
+            );
+          }
+          return this.conversas.listar(user.empresaAtivaId, user, {
+            // O corte que prende a busca à própria conexão: `filtroSessao`
+            // intersecta este vendedorId com o escopo de leitura, então pedir o
+            // próprio nunca amplia — nem para quem alcança a equipe.
+            vendedorId: vendedor.id,
+            ...(texto(a.busca) ? { busca: texto(a.busca) } : {}),
+            arquivadas: false,
+            semVinculo: false,
+            pagina: 1,
+            tamanho: 15,
+          });
+        },
+        destino: () => ({
+          rotulo: 'Abrir o Atendimento',
+          rota: '/comercial/atendimento',
+        }),
+      },
+      {
+        nome: 'mensagens_whatsapp',
+        descricao:
+          'O que foi dito numa conversa de WhatsApp — as mensagens mais recentes, ' +
+          'na ordem. Use para resumir um atendimento, conferir o que o cliente ' +
+          'pediu e se já foi respondido. Pegue o `conversaId` em conversas_whatsapp.',
+        permissao: 'whatsapp-conversas.visualizar',
+        exigeWhatsapp: true,
+        limiteItens: 30,
+        exemplos: [
+          'Faça um resumo do meu último atendimento com o cliente X',
+          'Na última conversa com o cliente Y, atendi o que ele pediu?',
+          'O que ficou pendente na conversa com o 11 98765-4321?',
+        ],
+        parametros: {
+          type: 'object',
+          properties: {
+            conversaId: {
+              type: 'string',
+              description: 'Vem de conversas_whatsapp',
+            },
+          },
+          required: ['conversaId'],
+        },
+        executar: (a, user) =>
+          this.conversas.mensagensDaPropriaConexao(
+            user.empresaAtivaId,
+            user,
+            texto(a.conversaId),
+            { tamanho: 30 },
+          ),
+        destino: () => ({
+          rotulo: 'Abrir o Atendimento',
+          rota: '/comercial/atendimento',
+        }),
+      },
+      {
+        nome: 'agendar_mensagem_whatsapp',
+        descricao:
+          'Deixa uma mensagem programada para sair no WhatsApp numa data e hora ' +
+          'futuras. NÃO envia nem grava imediatamente — o usuário confirma na tela. ' +
+          'Pegue o `conversaId` em conversas_whatsapp.',
+        permissao: 'whatsapp-conversas.cadastrar',
+        exigeWhatsapp: true,
+        escrita: true,
+        exemplos: [
+          'Agende uma mensagem para o cliente X na segunda de manhã avisando da entrega',
+          'Programe um lembrete de pagamento para o cliente Y amanhã às 9h',
+        ],
+        resumir: (a) => {
+          const quando = texto(a.quando).replace('T', ' ').slice(0, 16);
+          const msg = texto(a.texto);
+          const trecho = msg.length > 80 ? `${msg.slice(0, 80)}…` : msg;
+          return `Mensagem no WhatsApp${quando ? ` em ${quando}` : ''}: "${trecho}"`;
+        },
+        parametros: {
+          type: 'object',
+          properties: {
+            conversaId: {
+              type: 'string',
+              description: 'Vem de conversas_whatsapp',
+            },
+            texto: {
+              type: 'string',
+              description: 'A mensagem, como o cliente vai lê-la',
+            },
+            quando: {
+              type: 'string',
+              description:
+                'Data e hora no formato AAAA-MM-DDTHH:mm. Precisa ser no futuro.',
+            },
+          },
+          required: ['conversaId', 'texto', 'quando'],
+        },
+        executar: (a, user) =>
+          this.agendamento.agendar(
+            user.empresaAtivaId,
+            user,
+            texto(a.conversaId),
+            {
+              texto: texto(a.texto),
+              enviarEm: new Date(texto(a.quando)),
+            },
+          ),
+        destino: () => ({
+          rotulo: 'Abrir o Atendimento',
+          rota: '/comercial/atendimento',
+        }),
+      },
+      {
+        nome: 'enviar_documento_whatsapp',
+        descricao:
+          'Manda para o cliente, pela conversa de WhatsApp, um documento que a ' +
+          'plataforma já tem: `titulos` (o que está em aberto), `notas` (as últimas ' +
+          'notas fiscais), `boleto` (2ª via de um título), `danfe` (PDF de uma nota) ' +
+          'ou `orcamento` (a proposta em PDF). NÃO envia imediatamente — o usuário ' +
+          'confirma na tela. `boleto`, `danfe` e `orcamento` exigem o id do registro: ' +
+          'pegue em titulos_em_aberto, listar_orcamentos ou vendas_por_cliente. Só ' +
+          'funciona em conversa de contato já vinculado a um cliente.',
+        permissao: 'whatsapp-conversas.cadastrar',
+        exigeWhatsapp: true,
+        escrita: true,
+        exemplos: [
+          'Reenvie os títulos em aberto para o cliente X no WhatsApp',
+          'Manda a 2ª via do boleto vencido para o cliente Y',
+          'Envie o orçamento que acabei de fazer pelo WhatsApp',
+        ],
+        resumir: (a) => {
+          const rotulos: Record<string, string> = {
+            titulos: 'Títulos em aberto',
+            notas: 'Últimas notas fiscais',
+            boleto: '2ª via de boleto',
+            danfe: 'DANFE em PDF',
+            orcamento: 'Orçamento em PDF',
+          };
+          return `${rotulos[texto(a.tipo)] ?? 'Documento'} pelo WhatsApp`;
+        },
+        parametros: {
+          type: 'object',
+          properties: {
+            conversaId: {
+              type: 'string',
+              description: 'Vem de conversas_whatsapp',
+            },
+            tipo: {
+              type: 'string',
+              description: 'titulos, notas, boleto, danfe ou orcamento',
+            },
+            documentoId: {
+              type: 'string',
+              description:
+                'O título (boleto), a nota (danfe) ou o orçamento a enviar. ' +
+                'Obrigatório nesses três tipos; ignorado em titulos e notas.',
+            },
+            legenda: {
+              type: 'string',
+              description: 'Texto que acompanha o anexo (opcional)',
+            },
+          },
+          required: ['conversaId', 'tipo'],
+        },
+        executar: (a, user) => {
+          const empresaId = user.empresaAtivaId;
+          const conversaId = texto(a.conversaId);
+          const documentoId = texto(a.documentoId);
+          const legenda = texto(a.legenda);
+          // O id é cobrado aqui, e não só na validação do service, para o
+          // modelo receber de volta uma frase que o ensina a se corrigir no
+          // mesmo turno — em vez de um erro de campo obrigatório.
+          const exigirId = (rotulo: string) => {
+            if (!documentoId) {
+              throw new ForbiddenException(
+                `Para enviar ${rotulo} é preciso o id do registro. Consulte antes a ferramenta de listagem correspondente.`,
+              );
+            }
+            return documentoId;
+          };
+
+          switch (texto(a.tipo)) {
+            case 'titulos':
+              return this.whatsappAcoes.enviarTitulos(
+                empresaId,
+                user,
+                conversaId,
+              );
+            case 'notas':
+              return this.whatsappAcoes.enviarNotas(
+                empresaId,
+                user,
+                conversaId,
+              );
+            case 'boleto':
+              return this.whatsappAcoes.enviarBoleto(
+                empresaId,
+                user,
+                conversaId,
+                {
+                  tituloReceberId: exigirId('boleto'),
+                  ...(legenda ? { legenda } : {}),
+                },
+              );
+            case 'danfe':
+              return this.whatsappAcoes.enviarDanfe(
+                empresaId,
+                user,
+                conversaId,
+                {
+                  notaSaidaId: exigirId('DANFE'),
+                  incluirXml: false,
+                  ...(legenda ? { legenda } : {}),
+                },
+              );
+            case 'orcamento':
+              return this.whatsappAcoes.enviarOrcamento(
+                empresaId,
+                user,
+                conversaId,
+                {
+                  orcamentoId: exigirId('orçamento'),
+                  ...(legenda ? { legenda } : {}),
+                },
+              );
+            default:
+              throw new ForbiddenException(
+                `Tipo de documento desconhecido: ${texto(a.tipo)}. Use titulos, notas, boleto, danfe ou orcamento.`,
+              );
+          }
+        },
+        destino: () => ({
+          rotulo: 'Abrir o Atendimento',
+          rota: '/comercial/atendimento',
+        }),
+      },
     ];
   }
 
@@ -836,7 +1660,12 @@ export class AgenteToolsService {
   ): Ferramenta[] {
     return this.todas().filter(
       (f) =>
-        this.permitida(f, user) && this.liberadaPelaConfig(f, filtro, user),
+        this.permitida(f, user) &&
+        this.liberadaPelaConfig(f, filtro, user) &&
+        // Sem filtro, `exigeWhatsapp` fecha. É o mesmo default do módulo de
+        // WhatsApp: conversa de cliente é dado pessoal, e quem não provou ter
+        // aparelho vinculado não enxerga.
+        (!f.exigeWhatsapp || !!filtro?.whatsappVinculado),
     );
   }
 

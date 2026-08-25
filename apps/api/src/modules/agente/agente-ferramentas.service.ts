@@ -22,6 +22,15 @@ export interface ConfigFerramenta {
 export interface FiltroFerramentas {
   config: Map<string, ConfigFerramenta>;
   perfilId: string | null;
+  /**
+   * O usuário tem WhatsApp pareado (uma sessão em nome do vendedor dele).
+   *
+   * Guarda das ferramentas marcadas `exigeWhatsapp`: sem aparelho vinculado
+   * elas não são só inúteis, são confusas — o modelo prometeria agendar uma
+   * mensagem ou reenviar um boleto por um WhatsApp que não existe. Quem não
+   * tem cadastro de vendedor (financeiro, administrativo) também cai aqui.
+   */
+  whatsappVinculado: boolean;
 }
 
 /**
@@ -139,7 +148,7 @@ export class AgenteFerramentasService {
     empresaId: string,
     user: AuthenticatedUser,
   ): Promise<FiltroFerramentas> {
-    const { linhas, vinculo } = await this.prisma.withTenant(
+    const { linhas, vinculo, sessaoWhatsapp } = await this.prisma.withTenant(
       empresaId,
       async (tx) => ({
         linhas: await tx.agenteFerramenta.findMany({
@@ -151,6 +160,17 @@ export class AgenteFerramentasService {
         vinculo: await tx.usuarioEmpresa.findFirst({
           where: { empresaId, usuarioId: user.id, ativo: true },
           select: { perfilId: true },
+        }),
+        // O aparelho pareado deste usuário. Basta a sessão existir: se estiver
+        // desconectada no momento, o envio falha com a mensagem que manda
+        // conectar pela tela de Atendimento — melhor do que sumir com a
+        // ferramenta e deixar o vendedor sem entender por quê.
+        sessaoWhatsapp: await tx.whatsappSessao.findFirst({
+          where: {
+            empresaId,
+            vendedor: { usuarioId: user.id, empresaId, deletedAt: null },
+          },
+          select: { id: true },
         }),
       }),
     );
@@ -168,6 +188,7 @@ export class AgenteFerramentasService {
         ]),
       ),
       perfilId: vinculo?.perfilId ?? null,
+      whatsappVinculado: !!sessaoWhatsapp,
     };
   }
 

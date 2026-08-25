@@ -24,6 +24,7 @@ import {
 } from "@/lib/consulta-export";
 import { useAuthStore } from "@/stores/auth-store";
 import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
+import { useFiltrosUrl } from "@/hooks/use-filtros-url";
 import { VendedoresMultiSelect } from "@/components/crud/vendedores-multi-select";
 import { SortableTableHead } from "@/components/crud/sortable-table-head";
 import { Button } from "@/components/ui/button";
@@ -119,15 +120,33 @@ export function ConsultaVendasView({
   filtroExtra?: FiltroExtra;
 }) {
   const anos = useMemo(() => anosDisponiveis(), []);
-  const filtrosIniciais: Filtros = useMemo(
-    () => ({
-      ...periodoPadrao(),
+  // O período pode vir pronto na URL — é assim que o botão do assistente abre
+  // a consulta no mesmo intervalo de que ele acabou de falar, em vez de no
+  // padrão. Ver `useFiltrosUrl`; valor ausente ou inválido cai no padrão.
+  const urlFiltros = useFiltrosUrl();
+  const filtrosIniciais: Filtros = useMemo(() => {
+    const padrao = periodoPadrao();
+    const mes = (chave: string, atual: string) => {
+      const v = urlFiltros.numero(chave);
+      return v && v >= 1 && v <= 12 ? String(v) : atual;
+    };
+    const ano = (chave: string, atual: string) => {
+      const v = urlFiltros.numero(chave);
+      return v && v >= 2000 && v <= 2100 ? String(v) : atual;
+    };
+    return {
+      anoInicial: ano("anoInicial", padrao.anoInicial),
+      mesInicial: mes("mesInicial", padrao.mesInicial),
+      anoFinal: ano("anoFinal", padrao.anoFinal),
+      mesFinal: mes("mesFinal", padrao.mesFinal),
       vendedorIds: [],
       baseVendedor: PADRAO_EMPRESA,
       extra: TODOS,
-    }),
-    [],
-  );
+    };
+    // Só a primeira montagem conta: daí em diante quem manda é a cortina de
+    // filtros, não a URL.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // `filtros` é o que está valendo na consulta; `rascunho` é o que a cortina
   // está editando. Sem essa separação, cada clique dentro da cortina dispara
   // uma consulta de ano inteiro no banco.

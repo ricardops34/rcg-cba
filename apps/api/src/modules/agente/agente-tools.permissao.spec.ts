@@ -13,16 +13,24 @@ import type { AuthenticatedUser } from '../../common/decorators/current-user.dec
  */
 describe('AgenteToolsService — permissão × configuração', () => {
   // Os services injetados não são exercidos: o filtro só lê metadados do
-  // catálogo, e instanciar as dependências reais traria o Prisma junto.
+  // catálogo, e instanciar as dependências reais traria o Prisma junto. Um
+  // `as never` por dependência do construtor — se o número divergir, o
+  // TypeScript acusa aqui antes de o Nest acusar na subida.
   const tools = new AgenteToolsService(
-    {} as never,
-    {} as never,
-    {} as never,
-    {} as never,
-    {} as never,
-    {} as never,
-    {} as never,
-    {} as never,
+    {} as never, // consultas
+    {} as never, // clientes
+    {} as never, // produtos
+    {} as never, // orcamentos
+    {} as never, // titulos
+    {} as never, // sugestao
+    {} as never, // objetivos
+    {} as never, // enriquecimento
+    {} as never, // atividades
+    {} as never, // oportunidades
+    {} as never, // conversas
+    {} as never, // vendedores
+    {} as never, // whatsappAcoes
+    {} as never, // agendamento
   );
 
   const admin: AuthenticatedUser = {
@@ -49,7 +57,9 @@ describe('AgenteToolsService — permissão × configuração', () => {
   const filtro = (
     cfg: Partial<{ ativa: boolean; perfilIds: string[] }>,
     perfilId: string | null,
+    whatsappVinculado = false,
   ): FiltroFerramentas => ({
+    whatsappVinculado,
     config: new Map([
       [
         'buscar_cliente',
@@ -129,6 +139,55 @@ describe('AgenteToolsService — permissão × configuração', () => {
         )
         .some((x) => x.nome === 'titulos_em_aberto');
       expect(semTitulos).toBe(false);
+    });
+  });
+
+  describe('ferramentas de WhatsApp', () => {
+    // Exigem, além da permissão, que o usuário tenha aparelho pareado. São as
+    // duas condições somadas: `whatsapp-conversas.visualizar` diz que ele pode
+    // atender por WhatsApp; o vínculo diz que ele tem por onde.
+    const comWhatsapp: AuthenticatedUser = {
+      ...vendedor,
+      permissoes: ['clientes.visualizar', 'whatsapp-conversas.visualizar'],
+    };
+
+    const temConversas = (user: AuthenticatedUser, f?: FiltroFerramentas) =>
+      tools.disponiveisPara(user, f).some((x) => x.nome === 'conversas_whatsapp');
+
+    it('aparece para quem tem a permissão e o aparelho vinculado', () => {
+      expect(temConversas(comWhatsapp, filtro({}, PERFIL_VENDEDOR, true))).toBe(
+        true,
+      );
+    });
+
+    it('NÃO aparece para quem tem a permissão mas nenhum aparelho vinculado', () => {
+      // O caso do vendedor que ainda não pareou o celular. Sem isto o modelo
+      // prometeria agendar uma mensagem por um WhatsApp que não existe.
+      expect(temConversas(comWhatsapp, filtro({}, PERFIL_VENDEDOR, false))).toBe(
+        false,
+      );
+    });
+
+    it('NÃO aparece sem filtro carregado — o default fecha', () => {
+      // Ao contrário da configuração da empresa, que sem filtro vale o catálogo
+      // puro, aqui o default é negar: conversa de cliente é dado pessoal, e a
+      // ausência de informação não pode virar acesso.
+      expect(temConversas(comWhatsapp, undefined)).toBe(false);
+    });
+
+    it('NÃO aparece para quem tem aparelho mas não tem a permissão', () => {
+      // O vínculo não substitui o RBAC. Este usuário tem só `clientes.visualizar`.
+      expect(temConversas(vendedor, filtro({}, PERFIL_VENDEDOR, true))).toBe(
+        false,
+      );
+    });
+
+    it('o administrador também precisa de aparelho vinculado', () => {
+      // Diferente da restrição por perfil, que o admin ignora: aqui não é
+      // política de acesso, é fato material. Sem conexão não há conversa dele
+      // para ler nem aparelho por onde falar.
+      expect(temConversas(admin, filtro({}, null, false))).toBe(false);
+      expect(temConversas(admin, filtro({}, null, true))).toBe(true);
     });
   });
 

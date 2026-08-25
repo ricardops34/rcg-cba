@@ -14,6 +14,7 @@ import { FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useFiltrosUrl } from "@/hooks/use-filtros-url";
 import { AlertTriangle, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
 type TipoFiltro = "todos" | TipoAtividade;
@@ -45,7 +46,14 @@ const estaVencida = (a: Atividade) =>
 export default function AgendaPage() {
   const router = useRouter();
   const [mesAtual, setMesAtual] = useState(() => startOfMonth(new Date()));
-  const [vendedorId, setVendedorId] = useState<string | undefined>(undefined);
+  // Filtros que podem vir do link do assistente — ver `useFiltrosUrl`. O
+  // cliente é só leitura: quem chegou por "a agenda do cliente X" tira o
+  // recorte saindo da tela, não mexendo num controle.
+  const urlFiltros = useFiltrosUrl();
+  const [clienteId] = useState(() => urlFiltros.texto("clienteId"));
+  const [vendedorId, setVendedorId] = useState<string | undefined>(() =>
+    urlFiltros.texto("vendedorId"),
+  );
   const [tipo, setTipo] = useState<TipoFiltro>("todos");
   const [somentePendentes, setSomentePendentes] = useState(false);
 
@@ -70,6 +78,7 @@ export default function AgendaPage() {
     sortBy: "dataVencimento",
     sortOrder: "asc",
     ...(vendedorId ? { vendedorId } : {}),
+    ...(clienteId ? { clienteId } : {}),
     ...(tipo !== "todos" ? { tipo } : {}),
     ...(somentePendentes ? { concluida: false } : {}),
   });

@@ -89,6 +89,29 @@ const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
   // rotas/CRUD dela mesma, então só precisa de 'visualizar' (o cadastro/edição
   // passa pela permissão de 'atividades' de qualquer forma).
   agenda: ['visualizar'],
+  // Atendimento por WhatsApp, as **próprias** conversas. Ler a conversa de
+  // outro vendedor é a rotina `whatsapp-equipe`, que não está aqui de
+  // propósito — ver SUPERVISAO_PERMISSOES.
+  'whatsapp-conversas': ['visualizar', 'cadastrar', 'editar'],
+};
+
+/**
+ * O que Supervisor e Gerente têm **além** do Vendedor.
+ *
+ * Hoje é só a leitura do atendimento da equipe. Ler a conversa de outro
+ * vendedor é uma concessão consciente — e é leitura pura: gerente e supervisor
+ * acompanham para monitorar, sem responder, reagir, agendar, vincular contato
+ * a cliente ou sequer marcar como lida (marcar lida zeraria o contador do
+ * vendedor e mandaria o visto azul ao cliente pelo aparelho dele). Por isso só
+ * `visualizar`: as demais ações a API recusa de qualquer forma.
+ *
+ * O perfil Vendedor não recebe — é o atendimento dos colegas. O Diretor
+ * também não: sem cadastro de vendedor, `resolverEscopoVendedores` devolve
+ * "sem restrição", e a permissão abriria a empresa inteira em vez de uma equipe.
+ */
+const SUPERVISAO_PERMISSOES: Record<string, Acao[]> = {
+  ...VENDEDOR_PERMISSOES,
+  'whatsapp-equipe': ['visualizar'],
 };
 
 /**
@@ -838,11 +861,16 @@ async function bootstrapPerfis(rotinas: { id: string; codigo: string }[]) {
     skipDuplicates: true,
   });
 
-  // Supervisor e Gerente: as mesmas telas do Vendedor (VENDEDOR_PERMISSOES).
+  // Supervisor e Gerente: as telas do Vendedor mais a leitura do atendimento
+  // da equipe (SUPERVISAO_PERMISSOES).
+  //
   // O que muda entre eles não é o RBAC, e sim o alcance da carteira, que vem
   // do cadastro de Vendedor (flags supervisor/gerente + supervisorId/
-  // gerenteId) e é resolvido por resolverEscopoVendedores — por isso os três
-  // perfis compartilham a mesma lista de permissões.
+  // gerenteId) e é resolvido por resolverEscopoVendedores — por isso os dois
+  // compartilham a mesma lista. A única diferença para o Vendedor é
+  // `whatsapp-equipe`, que a hierarquia sozinha não concede: ler conversa
+  // alheia exige a permissão **e** o vendedor estar no time
+  // (ver escopoLeituraWhatsapp).
   for (const [nome, descricao] of [
     ['Supervisor', 'Mesmas telas do Vendedor; a carteira alcançada vem da hierarquia do cadastro de Vendedores'],
     ['Gerente', 'Mesmas telas do Vendedor; a carteira alcançada vem da hierarquia do cadastro de Vendedores'],
@@ -852,9 +880,9 @@ async function bootstrapPerfis(rotinas: { id: string; codigo: string }[]) {
     });
     await prisma.perfilPermissao.createMany({
       data: rotinas
-        .filter((rotina) => rotina.codigo in VENDEDOR_PERMISSOES)
+        .filter((rotina) => rotina.codigo in SUPERVISAO_PERMISSOES)
         .flatMap((rotina) =>
-          VENDEDOR_PERMISSOES[rotina.codigo].map((acao) => ({
+          SUPERVISAO_PERMISSOES[rotina.codigo].map((acao) => ({
             perfilId: perfil.id,
             rotinaId: rotina.id,
             acao,

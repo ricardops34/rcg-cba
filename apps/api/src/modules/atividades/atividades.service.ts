@@ -175,6 +175,33 @@ export class AtividadesService {
     });
   }
 
+  /**
+   * O vendedor que **este usuário é** — não a lista que ele enxerga.
+   *
+   * A tela pede o vendedor num select; o agente não tem select, e "agende um
+   * retorno para sexta" quer dizer na agenda de quem pediu. Supervisor que
+   * queira agendar para um subordinado informa o vendedor explicitamente, e aí
+   * o `garantirVendedorNoEscopo` do `create` continua valendo.
+   *
+   * Usuário sem cadastro de vendedor (financeiro, administrativo) não tem
+   * agenda: melhor dizer isso do que criar a atividade órfã de alguém.
+   */
+  async vendedorDoUsuario(empresaId: string, user: AuthenticatedUser) {
+    const vendedor = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.vendedor.findFirst({
+        where: { usuarioId: user.id, empresaId, deletedAt: null },
+        select: { id: true, nome: true },
+      }),
+    );
+    if (!vendedor) {
+      throw new NotFoundException(
+        'Seu usuário não está vinculado a um vendedor, então não há agenda para lançar. ' +
+          'Peça ao administrador para fazer o vínculo em Cadastros > Vendedores.',
+      );
+    }
+    return vendedor;
+  }
+
   create(empresaId: string, user: AuthenticatedUser, input: AtividadeCreate) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);

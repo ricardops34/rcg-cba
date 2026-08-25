@@ -34,6 +34,13 @@ import { OrcamentosModule } from '../orcamentos/orcamentos.module';
     WhatsappWorkerClient,
   ],
   // Exportado para o feed de notificações somar as não lidas.
-  exports: [WhatsappConfigService, WhatsappSessaoService, WhatsappConversasService],
+  exports: [
+    WhatsappConfigService,
+    WhatsappSessaoService,
+    WhatsappConversasService,
+    // Para o catálogo do agente de IA, que fala pela conversa do próprio vendedor.
+    WhatsappAcoesService,
+    WhatsappAgendamentoService,
+  ],
 })
 export class WhatsappModule {}

@@ -15,6 +15,7 @@ import { FiltersPopover } from "@/components/crud/filters-popover";
 import { QuickFilterButton, QuickFilterGroup } from "@/components/crud/quick-filter-group";
 import { OportunidadesKanban } from "@/components/crud/oportunidades-kanban";
 import { ESTAGIOS, ESTAGIO_LABEL, ESTAGIO_VARIANT } from "@/components/crud/oportunidade-estagio";
+import { useFiltrosUrl } from "@/hooks/use-filtros-url";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field";
@@ -40,14 +41,25 @@ const dataBr = (v: string | null) => {
 
 export default function OportunidadesPage() {
   const router = useRouter();
-  const [search, setSearch] = useState("");
+  // Filtros que podem vir do link do assistente — ver `useFiltrosUrl`.
+  const urlFiltros = useFiltrosUrl();
+  const [search, setSearch] = useState(() => urlFiltros.texto("search") ?? "");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [sortBy, setSortBy] = useState("createdAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [status, setStatus] = useState<StatusFilterValue>("ativos");
-  const [estagio, setEstagio] = useState<EstagioFiltro>("todos");
-  const [vendedorId, setVendedorId] = useState<string | undefined>(undefined);
+  const [estagio, setEstagio] = useState<EstagioFiltro>(
+    () =>
+      urlFiltros.opcao(
+        "estagio",
+        ESTAGIOS.map((e) => e.value),
+      ) ?? "todos",
+  );
+  const [clienteId] = useState(() => urlFiltros.texto("clienteId"));
+  const [vendedorId, setVendedorId] = useState<string | undefined>(() =>
+    urlFiltros.texto("vendedorId"),
+  );
   const [visao, setVisao] = useState<Visao>("kanban");
 
   const vendedoresEscopoQuery = useVendedoresEscopo();
@@ -62,6 +74,7 @@ export default function OportunidadesPage() {
     sortOrder,
     ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
     ...(estagio !== "todos" ? { estagio } : {}),
+    ...(clienteId ? { clienteId } : {}),
     ...(vendedorId ? { vendedorId } : {}),
   });
 

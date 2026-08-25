@@ -12,6 +12,7 @@ import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
 import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
 import { FiltersPopover } from "@/components/crud/filters-popover";
+import { useFiltrosUrl } from "@/hooks/use-filtros-url";
 import {
   STATUS_ORCAMENTO,
   STATUS_ORCAMENTO_LABEL,
@@ -60,14 +61,19 @@ function integracaoIndicador(o: Orcamento) {
 
 export default function OrcamentosPage() {
   const router = useRouter();
-  const [search, setSearch] = useState("");
+  // Filtros que podem vir do link do assistente — ver `useFiltrosUrl`.
+  const urlFiltros = useFiltrosUrl();
+  const [search, setSearch] = useState(() => urlFiltros.texto("search") ?? "");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [sortBy, setSortBy] = useState("createdAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [status_, setStatus] = useState<StatusFilterValue>("ativos");
   const [statusOrcamento, setStatusOrcamento] = useState<StatusFiltro>("todos");
-  const [vendedorId, setVendedorId] = useState<string | undefined>(undefined);
+  const [clienteId] = useState(() => urlFiltros.texto("clienteId"));
+  const [vendedorId, setVendedorId] = useState<string | undefined>(() =>
+    urlFiltros.texto("vendedorId"),
+  );
 
   const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
@@ -81,6 +87,7 @@ export default function OrcamentosPage() {
     sortOrder,
     ...(status_ !== "todos" ? { ativo: status_ === "ativos" } : {}),
     ...(statusOrcamento !== "todos" ? { status: statusOrcamento } : {}),
+    ...(clienteId ? { clienteId } : {}),
     ...(vendedorId ? { vendedorId } : {}),
   });
 

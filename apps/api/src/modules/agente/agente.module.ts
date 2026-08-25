@@ -17,6 +17,10 @@ import { OrcamentosModule } from '../orcamentos/orcamentos.module';
 import { TitulosReceberModule } from '../titulos-receber/titulos-receber.module';
 import { SugestaoCompraModule } from '../sugestao-compra/sugestao-compra.module';
 import { ObjetivosModule } from '../objetivos/objetivos.module';
+import { AtividadesModule } from '../atividades/atividades.module';
+import { OportunidadesModule } from '../oportunidades/oportunidades.module';
+import { WhatsappModule } from '../whatsapp/whatsapp.module';
+import { VendedoresModule } from '../vendedores/vendedores.module';
 
 /**
  * O agente não reimplementa nada: importa os módulos das telas e chama os
@@ -32,6 +36,10 @@ import { ObjetivosModule } from '../objetivos/objetivos.module';
     TitulosReceberModule,
     SugestaoCompraModule,
     ObjetivosModule,
+    AtividadesModule,
+    OportunidadesModule,
+    WhatsappModule,
+    VendedoresModule,
   ],
   controllers: [AgenteController],
   providers: [

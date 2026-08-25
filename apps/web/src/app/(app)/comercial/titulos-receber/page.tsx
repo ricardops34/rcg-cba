@@ -9,6 +9,7 @@ import { apiFetch } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { FiltersPopover } from "@/components/crud/filters-popover";
+import { useFiltrosUrl } from "@/hooks/use-filtros-url";
 import { TituloStatusBadge } from "@/components/comercial/titulo-status-badge";
 import { SegundaViaTitulo } from "@/components/comercial/segunda-via";
 import { FieldLabel } from "@/components/ui/field";
@@ -36,13 +37,22 @@ const dataBr = (v: string | null | undefined) => {
 // Consulta read-only, com o mesmo escopo hierárquico de Clientes.
 export default function TitulosReceberPage() {
   const router = useRouter();
-  const [search, setSearch] = useState("");
+  // Filtros que podem vir do link do assistente — ver `useFiltrosUrl`. O
+  // cliente é só leitura: quem chega por "os títulos vencidos do cliente X"
+  // sai do recorte trocando de tela, não mexendo num controle.
+  const urlFiltros = useFiltrosUrl();
+  const [search, setSearch] = useState(() => urlFiltros.texto("search") ?? "");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [sortBy, setSortBy] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
-  const [vendedorId, setVendedorId] = useState<string | undefined>(undefined);
-  const [status, setStatus] = useState<"todos" | "aberto" | "vencido" | "baixado">("todos");
+  const [clienteId] = useState(() => urlFiltros.texto("clienteId"));
+  const [vendedorId, setVendedorId] = useState<string | undefined>(() =>
+    urlFiltros.texto("vendedorId"),
+  );
+  const [status, setStatus] = useState<"todos" | "aberto" | "vencido" | "baixado">(
+    () => urlFiltros.opcao("status", ["aberto", "vencido", "baixado"] as const) ?? "todos",
+  );
 
   const escopoQuery = useQuery({
     queryKey: ["escopo", "vendedores"],
@@ -59,6 +69,7 @@ export default function TitulosReceberPage() {
     pageSize,
     ...(sortBy ? { sortBy, sortOrder } : {}),
     ...(vendedorId ? { vendedorId } : {}),
+    ...(clienteId ? { clienteId } : {}),
     ...(status !== "todos" ? { status } : {}),
   });
 
