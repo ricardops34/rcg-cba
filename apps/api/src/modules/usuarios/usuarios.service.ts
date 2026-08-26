@@ -160,7 +160,10 @@ export class UsuariosService {
     });
     if (existente) throw new ConflictException('E-mail já cadastrado');
 
-    await this.politicaSenhaService.validarSenha(input.senha);
+    await this.politicaSenhaService.validarSenhaDaEmpresa(
+      empresaId,
+      input.senha,
+    );
     const senhaHash = await bcrypt.hash(input.senha, SALT_ROUNDS);
 
     return this.prisma.$transaction(async (tx) => {
@@ -234,7 +237,7 @@ export class UsuariosService {
     });
     if (!usuario) throw new NotFoundException('Usuário não encontrado');
 
-    await this.politicaSenhaService.validarSenha(input.novaSenha);
+    await this.politicaSenhaService.validarSenhaDoUsuario(id, input.novaSenha);
     await this.politicaSenhaService.validarReuso(id, input.novaSenha, usuario.senhaHash);
 
     const novoHash = await bcrypt.hash(input.novaSenha, SALT_ROUNDS);

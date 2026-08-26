@@ -103,7 +103,7 @@ model Usuario {
   avatarUrl   String?
   mfaEnabled  Boolean   @default(false)
 
-  // Política de senha (ver PoliticaSenha, singleton global): senhaAlteradaEm
+  // Política de senha (parâmetros SENHA_* por empresa): senhaAlteradaEm
   // marca a "idade" da senha atual para cálculo de expiração; tentativasFalhas
   // e bloqueadoAte implementam o lockout de login; deveTrocarSenha força a
   // troca no próximo login após um reset feito por admin.
@@ -1064,10 +1064,9 @@ model ClienteCampoConfig {
   @@map("cliente_campo_config")
 }
 
-// Parâmetro comercial (por empresa) usado pra sugerir a "Válido até" na
-// criação de um Orçamento. Singleton por empresa, mesmo padrão de
-// PoliticaSenha (upsert idempotente no primeiro GET), só que aqui escopado
-// por empresaId (RLS) porque cada tenant pode ter um prazo diferente.
+// Parâmetros do sistema por empresa. A validade do orçamento e a política de
+// senha moram aqui (ORCAMENTO_DIAS_VALIDADE, SENHA_*): as duas tiveram tela
+// própria e foram centralizadas em Administração > Parâmetros.
 enum TipoParametro {
   texto
   numero
@@ -2152,34 +2151,8 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-// Parâmetros de política de senha da plataforma — singleton global (id
-// sempre "singleton", nunca gerado), sem empresaId/RLS: login e senha são
-// globais (um mesmo Usuario acessa várias empresas com a mesma senha), então
-// a regra é única para todo o sistema, no mesmo espírito de Modulo/Menu.
-model PoliticaSenha {
-  id String @id
-
-  tamanhoMinimo   Int     @default(8)
-  tamanhoMaximo   Int? // null = sem limite
-  exigirMaiuscula Boolean @default(true)
-  exigirMinuscula Boolean @default(false)
-  exigirNumero    Boolean @default(true)
-  exigirEspecial  Boolean @default(false)
-
-  diasParaExpirar         Int? // null/0 = senha nunca expira
-  historicoQuantidade     Int  @default(0) // 0 = não valida reuso de senha
-  tentativasAntesBloqueio Int  @default(5)
-  minutosBloqueio         Int  @default(15)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  updatedBy String?
-
-  @@map("politica_senha")
-}
-
 // Histórico de hashes de senha já usados por cada usuário, só para checar
-// reuso (PoliticaSenha.historicoQuantidade). Global, sem RLS, mesmo
+// reuso (parâmetro SENHA_HISTORICO_QUANTIDADE). Global, sem RLS, mesmo
 // precedente de RefreshToken.
 model SenhaHistorico {
   id        String   @id @default(uuid())

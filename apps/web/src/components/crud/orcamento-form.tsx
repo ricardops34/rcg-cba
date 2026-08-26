@@ -592,7 +592,7 @@ export function OrcamentoFormContent({
   }, [orcamento, clientePadraoAplicado, clienteIdPadrao, form]);
 
   // Ao criar, sugere "Válido até" = hoje + diasValidade do parâmetro de
-  // sistema (admin/orcamento-config) — só na primeira carga, o vendedor pode
+  // sistema (Administração > Parâmetros) — só na primeira carga, o vendedor pode
   // ajustar a data livremente depois.
   const [validadePadraoAplicada, setValidadePadraoAplicada] = useState(false);
   const diasValidade = orcamentoConfigQuery.data?.diasValidade;

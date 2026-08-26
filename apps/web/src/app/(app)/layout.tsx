@@ -15,15 +15,10 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   "/admin/empresas": { title: "Empresas", subtitle: "Cadastro base" },
   "/admin/usuarios": { title: "Usuários", subtitle: "Cadastro e permissões" },
   "/admin/perfis": { title: "Perfis", subtitle: "Papéis e permissões (RBAC)" },
-  "/admin/politica-senha": { title: "Política de Senha", subtitle: "Regras de senha e bloqueio" },
   "/admin/estrutura": { title: "Estrutura de menu", subtitle: "Módulos, menus e rotinas" },
   "/admin/clientes-config": {
     title: "Campos do Cliente",
     subtitle: "Defina quais campos podem ser alterados",
-  },
-  "/admin/orcamento-config": {
-    title: "Validade de Orçamento",
-    subtitle: "Dias de validade sugeridos ao criar um orçamento",
   },
   "/admin/acessos": {
     title: "Acessos",
@@ -82,7 +77,11 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
         <MobileSidebar open={mobileOpen} onOpenChange={setMobileOpen} />
         <div className="flex min-w-0 flex-1 flex-col">
           <AppTopbar onToggleSidebar={handleToggleSidebar} title={page?.title} subtitle={page?.subtitle} />
-          <main className="flex-1 overflow-y-auto bg-muted/30 p-6">{children}</main>
+          {/* `pb-24`: o assistente é um botão flutuante fixo no canto inferior
+              direito (ver AgenteFab). Sem esta folga ele pousa exatamente sobre a
+              coluna de ações da última linha das listagens — o menu "…" fica
+              embaixo dele e não dá para clicar. */}
+          <main className="flex-1 overflow-y-auto bg-muted/30 p-6 pb-24">{children}</main>
         </div>
       </div>
 

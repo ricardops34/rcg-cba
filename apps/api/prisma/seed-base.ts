@@ -15,6 +15,14 @@
  * Use apenas em desenvolvimento ou numa base que pode ser recriada.
  */
 import { Acao, PrismaClient } from '@prisma/client';
+import {
+  MODULO,
+  SUPERVISAO_PERMISSOES,
+  ROTINAS_DE_USO_EM_ADMINISTRACAO,
+  ROTINAS_FORA_DO_DIRETOR,
+  sincronizarEstrutura,
+  VENDEDOR_PERMISSOES,
+} from './catalogo-sistema';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -67,52 +75,6 @@ const ACOES: Acao[] = [
   'bloquear',
 ];
 
-// Perfil Vendedor: acesso à própria carteira de clientes (visualizar/cadastrar/
-// editar) e consulta às demais telas comerciais. titulos-receber e notas-saida
-// só têm rota de visualização na API (mirror read-only do ERP legado), então
-// não faz sentido conceder outras ações a elas.
-const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
-  clientes: ['visualizar', 'cadastrar', 'editar'],
-  'posicao-cliente': ['visualizar'],
-  'titulos-receber': ['visualizar'],
-  'notas-saida': ['visualizar'],
-  produtos: ['visualizar'],
-  'tabelas-preco': ['visualizar'],
-  objetivos: ['visualizar'],
-  'dashboard-comercial': ['visualizar'],
-  // CRM: o vendedor administra o próprio funil/agenda, mas não exclui
-  // registros (mesmo critério de clientes — só Admin/Diretor excluem).
-  oportunidades: ['visualizar', 'cadastrar', 'editar'],
-  atividades: ['visualizar', 'cadastrar', 'editar'],
-  orcamentos: ['visualizar', 'cadastrar', 'editar'],
-  // Agenda é só uma visão em calendário das próprias atividades — não tem
-  // rotas/CRUD dela mesma, então só precisa de 'visualizar' (o cadastro/edição
-  // passa pela permissão de 'atividades' de qualquer forma).
-  agenda: ['visualizar'],
-  // Atendimento por WhatsApp, as **próprias** conversas. Ler a conversa de
-  // outro vendedor é a rotina `whatsapp-equipe`, que não está aqui de
-  // propósito — ver SUPERVISAO_PERMISSOES.
-  'whatsapp-conversas': ['visualizar', 'cadastrar', 'editar'],
-};
-
-/**
- * O que Supervisor e Gerente têm **além** do Vendedor.
- *
- * Hoje é só a leitura do atendimento da equipe. Ler a conversa de outro
- * vendedor é uma concessão consciente — e é leitura pura: gerente e supervisor
- * acompanham para monitorar, sem responder, reagir, agendar, vincular contato
- * a cliente ou sequer marcar como lida (marcar lida zeraria o contador do
- * vendedor e mandaria o visto azul ao cliente pelo aparelho dele). Por isso só
- * `visualizar`: as demais ações a API recusa de qualquer forma.
- *
- * O perfil Vendedor não recebe — é o atendimento dos colegas. O Diretor
- * também não: sem cadastro de vendedor, `resolverEscopoVendedores` devolve
- * "sem restrição", e a permissão abriria a empresa inteira em vez de uma equipe.
- */
-const SUPERVISAO_PERMISSOES: Record<string, Acao[]> = {
-  ...VENDEDOR_PERMISSOES,
-  'whatsapp-equipe': ['visualizar'],
-};
 
 /**
  * Parâmetros que toda empresa nasce tendo (Administração > Parâmetros). Os
@@ -194,33 +156,103 @@ const PARAMETROS_PADRAO = [
     conteudo: null,
     descricao: 'Endereço exibido como remetente dos e-mails',
   },
+  // Política de senha, por empresa. Era uma tabela singleton **global** com
+  // tela própria; virou parâmetro em 2026-08-26, por decisão do usuário. Quem
+  // lê é o PoliticaSenhaService, e para um usuário em mais de uma empresa vale
+  // a combinação **mais restritiva** das políticas dele — a conta é uma só.
+  //
+  // Zero quer dizer "sem limite" em tamanho máximo, expiração e histórico: a
+  // tela de Parâmetros não tem campo vazio, só número.
+  {
+    parametro: 'SENHA_TAMANHO_MINIMO',
+    tipo: 'numero' as const,
+    tamanho: 2,
+    conteudo: '8',
+    descricao: 'Mínimo de caracteres da senha',
+  },
+  {
+    parametro: 'SENHA_TAMANHO_MAXIMO',
+    tipo: 'numero' as const,
+    tamanho: 3,
+    conteudo: '0',
+    descricao: 'Máximo de caracteres da senha; 0 = sem limite',
+  },
+  {
+    parametro: 'SENHA_EXIGIR_MAIUSCULA',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'true',
+    descricao: 'Exige ao menos uma letra maiúscula na senha',
+  },
+  {
+    parametro: 'SENHA_EXIGIR_MINUSCULA',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'false',
+    descricao: 'Exige ao menos uma letra minúscula na senha',
+  },
+  {
+    parametro: 'SENHA_EXIGIR_NUMERO',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'true',
+    descricao: 'Exige ao menos um número na senha',
+  },
+  {
+    parametro: 'SENHA_EXIGIR_ESPECIAL',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'false',
+    descricao: 'Exige ao menos um caractere especial na senha',
+  },
+  {
+    parametro: 'SENHA_DIAS_PARA_EXPIRAR',
+    tipo: 'numero' as const,
+    tamanho: 4,
+    conteudo: '0',
+    descricao: 'Dias até a senha expirar e exigir troca; 0 = nunca expira',
+  },
+  {
+    parametro: 'SENHA_HISTORICO_QUANTIDADE',
+    tipo: 'numero' as const,
+    tamanho: 2,
+    conteudo: '0',
+    descricao: 'Quantas senhas anteriores não podem ser reutilizadas; 0 = não valida',
+  },
+  {
+    parametro: 'SENHA_TENTATIVAS_ANTES_BLOQUEIO',
+    tipo: 'numero' as const,
+    tamanho: 2,
+    conteudo: '5',
+    descricao: 'Tentativas de login sem sucesso antes de bloquear a conta',
+  },
+  {
+    parametro: 'SENHA_MINUTOS_BLOQUEIO',
+    tipo: 'numero' as const,
+    tamanho: 4,
+    conteudo: '15',
+    descricao: 'Minutos que a conta fica bloqueada após exceder as tentativas',
+  },
 ];
 
-// Rotinas de administração do sistema — o perfil Diretor tem acesso irrestrito
-// aos dados comerciais, mas não a estas (ver bootstrapPerfilDiretor).
-const ROTINAS_ADMIN_ONLY = new Set([
-  'empresas',
-  'usuarios',
-  'perfis',
-  'politica-senha',
-  'menus',
-  'modulos',
-  'rotinas',
-  // Gestão de chaves da API de integração ERP: capacidade de segurança/
-  // sistema, não dado comercial — fora do "acesso irrestrito" do Diretor.
-  'integracao',
-  // Define quais campos do cadastro de Cliente podem ser alterados: config
-  // de sistema, não dado comercial.
-  'clientes-config',
-  // Define os dias de validade padrão do Orçamento: config de sistema, não
-  // dado comercial.
-  'orcamento-config',
-  // Parâmetros do sistema por empresa: config, não dado comercial.
-  'parametros',
-  // Auditoria de acesso (quem entrou, quando, tentativas sem sucesso):
-  // segurança/sistema, não dado comercial.
-  'acessos',
-]);
+
+/**
+ * Rotinas que o Diretor **não** recebe.
+ *
+ * O Diretor tem acesso irrestrito ao dado comercial, mas não à administração
+ * do sistema. Isso era uma lista de códigos escrita à mão, e o problema dela
+ * não era o conteúdo: era a direção. Toda rotina de Administração criada
+ * depois nascia **liberada** para o Diretor até alguém lembrar de vir aqui —
+ * e quatro já haviam escapado (`agente-config`, que guarda a chave da API de
+ * IA; `whatsapp-config`; `contas-bancarias`; `comunicados`).
+ *
+ * Agora a regra se deduz do lugar da rotina: **está sob o módulo
+ * Administração, o Diretor não tem**. Rotina nova de administração nasce
+ * fechada, sem depender de memória.
+ *
+ * Esta lista ficou só para o que é sensível **fora** daquele módulo, onde a
+ * dedução não alcança.
+ */
 
 async function limparDados() {
   // Ordem respeita as FKs. usuarioEmpresa e vendedor têm auto-referência
@@ -292,527 +324,23 @@ async function limparDados() {
   await prisma.empresa.deleteMany();
 }
 
+/**
+ * Módulos, menus e rotinas saem de `catalogo-sistema.ts`, que é a definição
+ * única — o mesmo arquivo que o `sincronizar-catalogo.ts` aplica numa base já
+ * existente. Este seed **não repete a lista**: repetir foi o que fez as duas
+ * versões divergirem, e é o que a auditoria de 2026-08-25 encontrou três vezes.
+ */
 async function bootstrapMenu() {
-  const moduloAdministracao = await prisma.modulo.upsert({
-    where: { id: 'seed-modulo-administracao' },
-    create: {
-      id: 'seed-modulo-administracao',
-      nome: 'Administração',
-      icone: 'settings',
-      ordem: 1,
-    },
-    update: { nome: 'Administração', icone: 'settings', ordem: 1 },
-  });
-  const moduloComercial = await prisma.modulo.upsert({
-    where: { id: 'seed-modulo-comercial' },
-    create: {
-      id: 'seed-modulo-comercial',
-      nome: 'Comercial',
-      icone: 'briefcase',
-      ordem: 2,
-    },
-    update: { nome: 'Comercial', icone: 'briefcase', ordem: 2 },
-  });
-  const moduloCrm = await prisma.modulo.upsert({
-    where: { id: 'seed-modulo-crm' },
-    create: {
-      id: 'seed-modulo-crm',
-      nome: 'CRM',
-      icone: 'handshake',
-      ordem: 3,
-    },
-    update: { nome: 'CRM', icone: 'handshake', ordem: 3 },
-  });
-  const moduloGerencial = await prisma.modulo.upsert({
-    where: { id: 'seed-modulo-gerencial' },
-    create: {
-      id: 'seed-modulo-gerencial',
-      nome: 'Gerencial',
-      icone: 'users-round',
-      ordem: 4,
-    },
-    update: { nome: 'Gerencial', icone: 'users-round', ordem: 4 },
-  });
-  const moduloCadastros = await prisma.modulo.upsert({
-    where: { id: 'seed-modulo-cadastros' },
-    create: {
-      id: 'seed-modulo-cadastros',
-      nome: 'Cadastros',
-      icone: 'database',
-      ordem: 5,
-    },
-    update: { nome: 'Cadastros', icone: 'database', ordem: 5 },
-  });
-  const moduloConsultas = await prisma.modulo.upsert({
-    where: { id: 'seed-modulo-consultas' },
-    create: {
-      id: 'seed-modulo-consultas',
-      nome: 'Consultas',
-      icone: 'chart-column',
-      ordem: 4,
-    },
-    update: { nome: 'Consultas', icone: 'chart-column', ordem: 4 },
-  });
+  await sincronizarEstrutura(prisma);
 
-  const menuDefs = [
-    {
-      id: 'seed-menu-empresas',
-      nome: 'Empresas',
-      rota: '/admin/empresas',
-      icone: 'building',
-      codigo: 'empresas',
-      moduloId: moduloAdministracao.id,
-    },
-    {
-      id: 'seed-menu-usuarios',
-      nome: 'Usuários',
-      rota: '/admin/usuarios',
-      icone: 'users',
-      codigo: 'usuarios',
-      moduloId: moduloAdministracao.id,
-    },
-    {
-      id: 'seed-menu-perfis',
-      nome: 'Perfis',
-      rota: '/admin/perfis',
-      icone: 'shield',
-      codigo: 'perfis',
-      moduloId: moduloAdministracao.id,
-    },
-    {
-      id: 'seed-menu-politica-senha',
-      nome: 'Política de Senha',
-      rota: '/admin/politica-senha',
-      icone: 'lock',
-      codigo: 'politica-senha',
-      moduloId: moduloAdministracao.id,
-    },
-    {
-      id: 'seed-menu-estrutura',
-      nome: 'Estrutura de Menu',
-      rota: '/admin/estrutura',
-      icone: 'layout-grid',
-      codigo: 'menus',
-      moduloId: moduloAdministracao.id,
-    },
-    {
-      id: 'seed-menu-integracao',
-      nome: 'Integração',
-      rota: '/admin/integracao',
-      icone: 'plug',
-      codigo: 'integracao',
-      moduloId: moduloAdministracao.id,
-    },
-    {
-      id: 'seed-menu-clientes-config',
-      nome: 'Campos do Cliente',
-      rota: '/admin/clientes-config',
-      icone: 'list-checks',
-      codigo: 'clientes-config',
-      moduloId: moduloAdministracao.id,
-    },
-    {
-      id: 'seed-menu-parametros',
-      nome: 'Parâmetros',
-      rota: '/admin/parametros',
-      icone: 'sliders-horizontal',
-      codigo: 'parametros',
-      moduloId: moduloAdministracao.id,
-    },
-    {
-      id: 'seed-menu-orcamento-config',
-      nome: 'Validade de Orçamento',
-      rota: '/admin/orcamento-config',
-      icone: 'calendar-clock',
-      codigo: 'orcamento-config',
-      moduloId: moduloAdministracao.id,
-    },
-    {
-      id: 'seed-menu-acessos',
-      nome: 'Acessos',
-      rota: '/admin/acessos',
-      icone: 'history',
-      codigo: 'acessos',
-      moduloId: moduloAdministracao.id,
-    },
-    {
-      id: 'seed-menu-dashboard-comercial',
-      nome: 'Dashboard',
-      rota: '/comercial/dashboard',
-      icone: 'gauge',
-      codigo: 'dashboard-comercial',
-      moduloId: moduloComercial.id,
-    },
-    {
-      id: 'seed-menu-produtos',
-      nome: 'Produtos',
-      rota: '/comercial/produtos',
-      icone: 'package',
-      codigo: 'produtos',
-      moduloId: moduloComercial.id,
-    },
-    {
-      id: 'seed-menu-clientes',
-      nome: 'Clientes',
-      rota: '/cadastros/clientes',
-      icone: 'users',
-      codigo: 'clientes',
-      // Cadastro de Clientes mora em Cadastros (junto de Tabelas de Preço,
-      // Condições de Pagamento etc.), não em Comercial, que é operação.
-      moduloId: moduloCadastros.id,
-    },
-    // Fila de aprovação do cadastro: rotina própria porque aprovar é papel
-    // distinto de editar (a permissão que decide se a edição grava ou entra na
-    // fila é `clientes.aprovar`).
-    {
-      id: 'seed-menu-clientes-alteracoes',
-      nome: 'Alterações de Cliente',
-      rota: '/cadastros/clientes-alteracoes',
-      icone: 'file-clock',
-      codigo: 'clientes-alteracoes',
-      moduloId: moduloCadastros.id,
-    },
-    {
-      id: 'seed-menu-posicao-cliente',
-      nome: 'Posição de Cliente',
-      rota: '/comercial/posicao-cliente',
-      icone: 'user-search',
-      codigo: 'posicao-cliente',
-      moduloId: moduloComercial.id,
-    },
-    {
-      id: 'seed-menu-estoque',
-      nome: 'Estoque',
-      rota: '/comercial/estoque',
-      icone: 'boxes',
-      codigo: 'estoque',
-      moduloId: moduloComercial.id,
-    },
-    // Notas de Saída é um cadastro mestre-detalhe: os itens vêm embutidos no
-    // detalhe da nota (GET /notas-saida/:id), sem menu/rotina própria.
-    {
-      id: 'seed-menu-notas-saida',
-      nome: 'Notas de Saída',
-      rota: '/comercial/notas-saida',
-      icone: 'file-text',
-      codigo: 'notas-saida',
-      moduloId: moduloComercial.id,
-    },
-    {
-      id: 'seed-menu-titulos-receber',
-      nome: 'Títulos a Receber',
-      rota: '/comercial/titulos-receber',
-      icone: 'receipt',
-      codigo: 'titulos-receber',
-      moduloId: moduloComercial.id,
-    },
-    // Atendimento por WhatsApp: a tela de conversa do vendedor. A conexão do
-    // aparelho é um botão dentro desta própria tela — é o vendedor que conecta
-    // o WhatsApp dele, e um menu separado só para parear seria um item a mais
-    // para ele nunca encontrar. O que é decisão da empresa (transporte,
-    // retenção) fica no módulo Configurações.
-    //
-    // As ações da rotina, para o RBAC:
-    //   visualizar → ver as próprias conversas
-    //   cadastrar  → enviar mensagem
-    //   editar     → conectar/desconectar o aparelho e vincular contato a cliente
-    {
-      id: 'seed-menu-whatsapp',
-      nome: 'Atendimento',
-      rota: '/comercial/atendimento',
-      icone: 'message-circle',
-      codigo: 'whatsapp-conversas',
-      moduloId: moduloComercial.id,
-    },
-    {
-      id: 'seed-menu-configuracoes-whatsapp',
-      nome: 'WhatsApp',
-      rota: '/admin/whatsapp',
-      icone: 'message-circle',
-      codigo: 'whatsapp-config',
-      moduloId: moduloAdministracao.id,
-    },
-    // Mural da tela inicial. A rotina controla **administrar** o cadastro; ler
-    // o mural não exige permissão nenhuma (ver InicioController) — um aviso
-    // que só quem publica pudesse ler não avisaria ninguém.
-    {
-      id: 'seed-menu-comunicados',
-      nome: 'Comunicados',
-      rota: '/admin/comunicados',
-      icone: 'megaphone',
-      codigo: 'comunicados',
-      moduloId: moduloAdministracao.id,
-    },
-    // Convênio de cobrança usado na 2ª via de boleto. Fica em Administração e
-    // não em Cadastros de propósito: agência, conta e carteira erradas geram
-    // boleto que o cliente não paga — não é dado que vendedor mantém.
-    {
-      id: 'seed-menu-contas-bancarias',
-      nome: 'Contas Bancárias',
-      rota: '/admin/contas-bancarias',
-      icone: 'landmark',
-      codigo: 'contas-bancarias',
-      moduloId: moduloAdministracao.id,
-    },
-    {
-      id: 'seed-menu-oportunidades',
-      nome: 'Oportunidades',
-      rota: '/crm/oportunidades',
-      icone: 'trending-up',
-      codigo: 'oportunidades',
-      moduloId: moduloCrm.id,
-    },
-    {
-      id: 'seed-menu-atividades',
-      nome: 'Atividades',
-      rota: '/crm/atividades',
-      icone: 'list-checks',
-      codigo: 'atividades',
-      moduloId: moduloCrm.id,
-    },
-    {
-      id: 'seed-menu-agenda',
-      nome: 'Agenda',
-      rota: '/crm/agenda',
-      icone: 'calendar-days',
-      codigo: 'agenda',
-      moduloId: moduloCrm.id,
-    },
-    {
-      id: 'seed-menu-orcamentos',
-      nome: 'Orçamentos',
-      rota: '/crm/orcamentos',
-      icone: 'clipboard-list',
-      codigo: 'orcamentos',
-      moduloId: moduloCrm.id,
-    },
-    {
-      id: 'seed-menu-vendedores',
-      nome: 'Vendedores',
-      rota: '/gerencial/vendedores',
-      icone: 'user-round',
-      codigo: 'vendedores',
-      moduloId: moduloGerencial.id,
-    },
-    {
-      id: 'seed-menu-objetivos',
-      nome: 'Objetivos',
-      rota: '/gerencial/objetivos',
-      icone: 'target',
-      codigo: 'objetivos',
-      moduloId: moduloGerencial.id,
-    },
-    {
-      id: 'seed-menu-categorias',
-      nome: 'Categorias',
-      rota: '/cadastros/categorias',
-      icone: 'tags',
-      codigo: 'categorias',
-      moduloId: moduloCadastros.id,
-    },
-    {
-      id: 'seed-menu-condicoes-pagamento',
-      nome: 'Condições de Pagamento',
-      rota: '/cadastros/condicoes-pagamento',
-      icone: 'credit-card',
-      codigo: 'condicoes-pagamento',
-      moduloId: moduloCadastros.id,
-    },
-    {
-      id: 'seed-menu-armazens',
-      nome: 'Armazéns',
-      rota: '/cadastros/armazens',
-      icone: 'warehouse',
-      codigo: 'armazens',
-      moduloId: moduloCadastros.id,
-    },
-    // Itens da tabela de preço vêm embutidos no detalhe (GET /tabelas-preco/:id/itens), sem menu/rotina própria — mesmo racional de Notas de Saída.
-    {
-      id: 'seed-menu-tabelas-preco',
-      nome: 'Tabelas de Preço',
-      rota: '/cadastros/tabelas-preco',
-      icone: 'tag',
-      codigo: 'tabelas-preco',
-      moduloId: moduloCadastros.id,
-    },
-    {
-      id: 'seed-menu-estados',
-      nome: 'Estados',
-      rota: '/cadastros/estados',
-      icone: 'map',
-      codigo: 'estados',
-      moduloId: moduloCadastros.id,
-    },
-    {
-      id: 'seed-menu-municipios',
-      nome: 'Municípios',
-      rota: '/cadastros/municipios',
-      icone: 'map-pin',
-      codigo: 'municipios',
-      moduloId: moduloCadastros.id,
-    },
-    {
-      id: 'seed-menu-ceps',
-      nome: 'CEPs',
-      rota: '/cadastros/ceps',
-      icone: 'map-pinned',
-      codigo: 'ceps',
-      moduloId: moduloCadastros.id,
-    },
-    {
-      id: 'seed-menu-paises',
-      nome: 'Países',
-      rota: '/cadastros/paises',
-      icone: 'globe',
-      codigo: 'paises',
-      moduloId: moduloCadastros.id,
-    },
-    {
-      id: 'seed-menu-cnaes',
-      nome: 'CNAEs',
-      rota: '/cadastros/cnaes',
-      icone: 'file-badge',
-      codigo: 'cnaes',
-      moduloId: moduloCadastros.id,
-    },
-    {
-      id: 'seed-menu-regras-desconto',
-      nome: 'Regras de Desconto',
-      rota: '/cadastros/regras-desconto',
-      icone: 'percent',
-      codigo: 'regras-desconto',
-      moduloId: moduloCadastros.id,
-    },
-    // Consultas gerenciais: uma rotina por tela, para que a permissão de
-    // exportar possa ser dada em uma e não na outra.
-    {
-      id: 'seed-menu-consulta-vendas-cliente',
-      nome: 'Vendas por Cliente',
-      rota: '/consultas/vendas-cliente',
-      icone: 'users-round',
-      codigo: 'consulta-vendas-cliente',
-      moduloId: moduloConsultas.id,
-    },
-    {
-      id: 'seed-menu-consulta-vendas-produto',
-      nome: 'Vendas por Produto',
-      rota: '/consultas/vendas-produto',
-      icone: 'package-search',
-      codigo: 'consulta-vendas-produto',
-      moduloId: moduloConsultas.id,
-    },
-    {
-      id: 'seed-menu-consulta-vendas-vendedor',
-      nome: 'Vendas por Vendedor',
-      rota: '/consultas/vendas-vendedor',
-      icone: 'user-round',
-      codigo: 'consulta-vendas-vendedor',
-      moduloId: moduloConsultas.id,
-    },
-    {
-      id: 'seed-menu-dashboard-gerencial',
-      nome: 'Dashboard Gerencial',
-      rota: '/gerencial/dashboard',
-      icone: 'gauge',
-      codigo: 'dashboard-gerencial',
-      moduloId: moduloGerencial.id,
-    },
-    {
-      id: 'seed-menu-consulta-evolucao',
-      nome: 'Evolução Mensal',
-      rota: '/consultas/evolucao',
-      icone: 'trending-up',
-      codigo: 'consulta-evolucao',
-      moduloId: moduloConsultas.id,
-    },
-  ];
-
-  for (const [i, m] of menuDefs.entries()) {
-    const menu = await prisma.menu.upsert({
-      where: { id: m.id },
-      create: {
-        id: m.id,
-        moduloId: m.moduloId,
-        nome: m.nome,
-        rota: m.rota,
-        icone: m.icone,
-        ordem: i + 1,
-      },
-      update: {
-        moduloId: m.moduloId,
-        nome: m.nome,
-        rota: m.rota,
-        icone: m.icone,
-      },
-    });
-    await prisma.rotina.upsert({
-      where: { codigo: m.codigo },
-      create: {
-        id: `seed-rotina-${m.codigo}`,
-        menuId: menu.id,
-        nome: m.nome,
-        codigo: m.codigo,
-      },
-      update: {},
-    });
-  }
-
-  for (const codigo of ['modulos', 'rotinas']) {
-    await prisma.rotina.upsert({
-      where: { codigo },
-      create: {
-        id: `seed-rotina-${codigo}`,
-        menuId: 'seed-menu-estrutura',
-        nome: codigo === 'modulos' ? 'Módulos' : 'Rotinas',
-        codigo,
-      },
-      update: {},
-    });
-  }
-
-  // Rotina sem tela própria: controla quem enxerga os valores de comissão nos
-  // itens de orçamento e de nota de saída. Fica sob o menu de Orçamentos, que
-  // é onde a comissão aparece primeiro, e é configurada como qualquer outra
-  // permissão na tela de Perfis.
-  await prisma.rotina.upsert({
-    where: { codigo: 'comissao' },
-    create: {
-      id: 'seed-rotina-comissao',
-      menuId: 'seed-menu-orcamentos',
-      nome: 'Comissão (valores)',
-      codigo: 'comissao',
-    },
-    update: {},
+  // O módulo do menu vem junto: é dele que se deduz o que o Diretor não recebe
+  // (ver bootstrapPerfilDiretor).
+  return prisma.rotina.findMany({
+    where: { deletedAt: null },
+    include: { menu: { select: { moduloId: true } } },
   });
-
-  // Rotina sem tela própria: ler a conversa de WhatsApp **de outro vendedor**.
-  // Separada de `whatsapp-conversas` (que é "as minhas") de propósito — ler o
-  // atendimento alheio é uma concessão consciente, não um efeito colateral de
-  // dar acesso à tela. Ver privacidade em docs/planos/whatsapp-vendedor.md.
-  await prisma.rotina.upsert({
-    where: { codigo: 'whatsapp-equipe' },
-    create: {
-      id: 'seed-rotina-whatsapp-equipe',
-      menuId: 'seed-menu-whatsapp',
-      nome: 'WhatsApp da equipe',
-      codigo: 'whatsapp-equipe',
-    },
-    update: {},
-  });
-
-  return prisma.rotina.findMany({ where: { deletedAt: null } });
 }
 
-// Garante a linha singleton de PoliticaSenha (também é criada sob demanda,
-// via upsert lazy, por PoliticaSenhaService.getVigente() — replicado aqui só
-// por completude do estado esperado em dev).
-async function bootstrapPoliticaSenha() {
-  await prisma.politicaSenha.upsert({
-    where: { id: 'singleton' },
-    update: {},
-    create: { id: 'singleton' },
-  });
-}
 
 // Perfil é global (ver migration perfil_global) — Administrador e Vendedor
 // são criados uma única vez, compartilhados por todas as empresas.
@@ -902,13 +430,15 @@ async function bootstrapPerfis(rotinas: { id: string; codigo: string }[]) {
  * Estrutura de Menu). Importante: NÃO usa sistemaBase=true — isso ligaria
  * `isAdmin` no JWT, e `PermissionsGuard` bypassa toda checagem de permissão
  * pra isAdmin=true (inclusive as rotinas de administração). Em vez disso,
- * Diretor recebe permissão explícita em tudo exceto ROTINAS_ADMIN_ONLY; o
- * acesso irrestrito aos *dados* (escopo de vendedor) vem de
- * resolverEscopoVendedores retornar null quando o usuário não tem nenhum
- * Vendedor vinculado — por isso um usuário Diretor nunca deve ganhar um
- * registro de Vendedor.
+ * Diretor recebe permissão explícita em tudo que **não** é do módulo
+ * Administração (ver ROTINAS_FORA_DO_DIRETOR); o acesso irrestrito aos *dados*
+ * (escopo de vendedor) vem de resolverEscopoVendedores retornar null quando o
+ * usuário não tem nenhum Vendedor vinculado — por isso um usuário Diretor
+ * nunca deve ganhar um registro de Vendedor.
  */
-async function bootstrapPerfilDiretor(rotinas: { id: string; codigo: string }[]) {
+async function bootstrapPerfilDiretor(
+  rotinas: { id: string; codigo: string; menu: { moduloId: string } }[],
+) {
   const perfilDiretor = await prisma.perfil.create({
     data: {
       nome: 'Diretor',
@@ -918,7 +448,12 @@ async function bootstrapPerfilDiretor(rotinas: { id: string; codigo: string }[])
   });
   await prisma.perfilPermissao.createMany({
     data: rotinas
-      .filter((rotina) => !ROTINAS_ADMIN_ONLY.has(rotina.codigo))
+      .filter(
+        (rotina) =>
+          (rotina.menu.moduloId !== MODULO.administracao ||
+            ROTINAS_DE_USO_EM_ADMINISTRACAO.has(rotina.codigo)) &&
+          !ROTINAS_FORA_DO_DIRETOR.has(rotina.codigo),
+      )
       .flatMap((rotina) =>
         ACOES.map((acao) => ({
           perfilId: perfilDiretor.id,
@@ -938,7 +473,6 @@ async function main() {
 
   console.log('Reconstruindo estrutura de menu/rotinas...');
   const rotinas = await bootstrapMenu();
-  await bootstrapPoliticaSenha();
   const { perfilAdmin } = await bootstrapPerfis(rotinas);
   await bootstrapPerfilDiretor(rotinas);
 

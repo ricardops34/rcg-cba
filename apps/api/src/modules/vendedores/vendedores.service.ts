@@ -232,7 +232,7 @@ export class VendedoresService {
           );
         }
 
-        const senha = await this.politicaSenhaService.gerarSenhaProvisoria();
+        const senha = await this.politicaSenhaService.gerarSenhaProvisoria(empresaId);
         const senhaHash = await bcrypt.hash(senha, SALT_ROUNDS);
 
         const usuario = await tx.usuario.create({
@@ -368,7 +368,7 @@ export class VendedoresService {
           );
         }
 
-        const senha = await this.politicaSenhaService.gerarSenhaProvisoria();
+        const senha = await this.politicaSenhaService.gerarSenhaProvisoria(empresaId);
         const senhaHash = await bcrypt.hash(senha, SALT_ROUNDS);
 
         await this.politicaSenhaService.registrarHistorico(usuario.id, usuario.senhaHash, tx);

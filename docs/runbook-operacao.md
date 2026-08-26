@@ -212,6 +212,40 @@ docker exec -e DATABASE_URL="postgresql://plataforma:plataforma@postgres:5432/pl
 Tabela nova com `empresaId` **precisa** de RLS na mesma migration — ver
 `apps/api/prisma/migrations/README.md`.
 
+### Menu, rotina ou módulo novo: `sincronizar-catalogo` **[verificado em dev, 2026-08-26]**
+
+Estrutura de navegação **não** entra por migration: ela mora em
+`apps/api/prisma/catalogo-sistema.ts`, que é a definição única — o mesmo arquivo
+que o `seed-base.ts` aplica ao criar uma base do zero. Editou o catálogo, rode:
+
+```bash
+docker exec -e DATABASE_URL="postgresql://plataforma:plataforma@postgres:5432/plataforma_comercial?schema=public" \
+  plataforma-comercial-dev-api-1 sh -c "cd /app/apps/api && pnpm exec ts-node prisma/sincronizar-catalogo.ts"
+```
+
+Saída esperada quando não há nada a fazer: `Nada a fazer: a base já estava em dia
+com o catálogo.`
+
+Precisa da role dona (`plataforma`), como as migrations. É idempotente e **não
+apaga nada**: cria o que falta e atualiza nome/rota/ícone/ordem do menu. Em
+produção, roda **depois** do `migrate deploy`.
+
+Por que existia divergência antes: isto vivia duas vezes — nos arrays do seed e
+em `INSERT` espalhados por 17 migrations. Como o seed é destrutivo e nunca roda
+contra dado real, só as migrations chegavam em produção, e as duas listas
+divergiram três vezes (auditoria de 2026-08-25).
+
+**O que ele não faz:** conceder permissão a perfil. Permissão gravada é
+configuração do cliente — o administrador pode ter desmarcado algo de propósito,
+e recolocá-la a cada deploy desfaria a decisão dele. Conceder acesso numa base
+existente continua sendo uma migration escrita para aquela decisão (modelo:
+`20260825220000_perm_whatsapp_supervisor_gerente`). A única permissão que o
+script **retira** é a do perfil Diretor sobre rotinas de Administração, que é
+correção de segurança — ver o cabeçalho do catálogo.
+
+A ordem dos itens no menu é a **posição no array** `MENUS`: mover uma entrada ali
+move o item na tela.
+
 ---
 
 ## Publicar imagens

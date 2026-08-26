@@ -99,10 +99,13 @@ export class AuthService {
    * sessão, pra pegar uma expiração que ocorreu no meio de uma sessão longa).
    */
   private async computeMustChangePassword(usuario: {
+    id: string;
     deveTrocarSenha: boolean;
     senhaAlteradaEm: Date | null;
   }): Promise<boolean> {
-    const politica = await this.politicaSenhaService.getVigente();
+    const politica = await this.politicaSenhaService.getVigenteParaUsuario(
+      usuario.id,
+    );
     const senhaExpirada =
       !!politica.diasParaExpirar &&
       !!usuario.senhaAlteradaEm &&
@@ -142,7 +145,9 @@ export class AuthService {
 
     const senhaValida = await bcrypt.compare(input.senha, usuario.senhaHash);
     if (!senhaValida) {
-      const politica = await this.politicaSenhaService.getVigente();
+      const politica = await this.politicaSenhaService.getVigenteParaUsuario(
+        usuario.id,
+      );
       const tentativas = usuario.tentativasFalhas + 1;
       const bloqueou = tentativas >= politica.tentativasAntesBloqueio;
       await this.prisma.usuario.update({
@@ -516,7 +521,10 @@ export class AuthService {
       throw new UnauthorizedException('Senha atual incorreta');
     }
 
-    await this.politicaSenhaService.validarSenha(input.novaSenha);
+    await this.politicaSenhaService.validarSenhaDoUsuario(
+      usuarioId,
+      input.novaSenha,
+    );
     await this.politicaSenhaService.validarReuso(usuarioId, input.novaSenha, usuario.senhaHash);
 
     const novoHash = await bcrypt.hash(input.novaSenha, SALT_ROUNDS);

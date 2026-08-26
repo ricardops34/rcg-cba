@@ -10,8 +10,9 @@ export const usuarioCreateSchema = z.object({
     .toLowerCase()
     .describe("E-mail de login, único no sistema"),
   // A força real da senha é validada dinamicamente pelo backend
-  // (PoliticaSenhaService.validarSenha) contra os parâmetros vigentes em
-  // PoliticaSenha — este schema só garante que o campo não chegue vazio.
+  // (PoliticaSenhaService.validarSenhaDaEmpresa) contra os parâmetros de senha
+  // da empresa, em Administração > Parâmetros — este schema só garante que o
+  // campo não chegue vazio.
   senha: z
     .string()
     .min(1, "Informe a senha")
