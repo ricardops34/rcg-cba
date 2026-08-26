@@ -1,7 +1,13 @@
 # API de Integração ERP — recebimento contínuo de dados do legado
 
-> Plano de implementação registrado em 2026-07-24. Ainda não implementado — serve
-> como referência para quando a implementação começar.
+> **Plano histórico, registrado em 2026-07-24 — não é a documentação da API.**
+> A integração foi implementada, mas com desenho diferente do descrito aqui: REST
+> por recurso (`GET/POST/PATCH/DELETE /integracao/<entidade>/{codigo}`), um
+> registro por chamada, em vez do `PUT` em lote com relatório por item que este
+> plano propunha. Este arquivo fica como registro das decisões e do contexto.
+>
+> **A documentação vigente está em [`../integração/`](../integração/README.md)**
+> (conceitos, referência de endpoints e guia do Swagger).
 
 ## Contexto
 
