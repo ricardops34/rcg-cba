@@ -9,6 +9,7 @@ import { AppSidebar, MobileSidebar } from "@/components/layout/app-sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
 import { ForcedPasswordChangeGate } from "@/components/auth/forced-password-change-gate";
 import { AgenteFab } from "@/components/agente/agente-fab";
+import { useAgenteUiStore } from "@/stores/agente-ui-store";
 
 const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   "/": { title: "Dashboard", subtitle: "Visão comercial" },
@@ -46,6 +47,7 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
   const isMobile = useIsMobile();
   const [collapsed, setCollapsed] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const agenteFlutuante = useAgenteUiStore((s) => s.flutuante);
 
   if (!isReady) {
     return <div className="flex min-h-svh items-center justify-center text-muted-foreground">Carregando...</div>;
@@ -77,11 +79,19 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
         <MobileSidebar open={mobileOpen} onOpenChange={setMobileOpen} />
         <div className="flex min-w-0 flex-1 flex-col">
           <AppTopbar onToggleSidebar={handleToggleSidebar} title={page?.title} subtitle={page?.subtitle} />
-          {/* `pb-24`: o assistente é um botão flutuante fixo no canto inferior
+          {/* `pb-24`: o botão flutuante do assistente é fixo no canto inferior
               direito (ver AgenteFab). Sem esta folga ele pousa exatamente sobre a
               coluna de ações da última linha das listagens — o menu "…" fica
-              embaixo dele e não dá para clicar. */}
-          <main className="flex-1 overflow-y-auto bg-muted/30 p-6 pb-24">{children}</main>
+              embaixo dele e não dá para clicar. Com o flutuante desligado não há
+              o que desviar, e a folga só desperdiçaria tela. */}
+          <main
+            className={
+              "flex-1 overflow-y-auto bg-muted/30 p-6 " +
+              (agenteFlutuante ? "pb-24" : "pb-6")
+            }
+          >
+            {children}
+          </main>
         </div>
       </div>
 

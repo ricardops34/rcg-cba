@@ -17,9 +17,12 @@ import { ChevronDown, KeyRound } from "lucide-react";
 
 export function UsuarioResetSenhaSection({ usuarioId }: { usuarioId: string }) {
   const [open, setOpen] = useState(false);
+  // A política do usuário **alvo**, não a de quem faz o reset: ele pode estar
+  // em empresas mais exigentes, e é contra elas que o backend valida.
   const { data: politica } = useQuery({
-    queryKey: ["politica-senha"],
-    queryFn: () => apiFetch<PoliticaSenha>("/politica-senha"),
+    queryKey: ["politica-senha", "usuario", usuarioId],
+    queryFn: () =>
+      apiFetch<PoliticaSenha>(`/politica-senha/usuario/${usuarioId}`),
   });
 
   const schema = politica

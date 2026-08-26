@@ -5,6 +5,7 @@ import {
   PrismaService,
   type TenantTx,
 } from '../../common/prisma/prisma.service';
+import type { PoliticaSenha } from '@plataforma/contracts';
 import { ParametrosService } from '../parametros/parametros.service';
 
 /**
@@ -25,21 +26,13 @@ export const PARAMETRO = {
   minutosBloqueio: 'SENHA_MINUTOS_BLOQUEIO',
 } as const;
 
-export interface PoliticaSenha {
-  tamanhoMinimo: number;
-  /** 0 = sem limite (a tela de Parâmetros não tem "vazio", só número). */
-  tamanhoMaximo: number;
-  exigirMaiuscula: boolean;
-  exigirMinuscula: boolean;
-  exigirNumero: boolean;
-  exigirEspecial: boolean;
-  /** 0 = senha nunca expira. */
-  diasParaExpirar: number;
-  /** 0 = não valida reuso. */
-  historicoQuantidade: number;
-  tentativasAntesBloqueio: number;
-  minutosBloqueio: number;
-}
+/**
+ * O formato vive em `@plataforma/contracts` porque as telas de senha leem a
+ * política vigente por `GET /politica-senha` para montar os requisitos — o
+ * tipo tem de ser o mesmo dos dois lados. Reexportado aqui porque auth,
+ * usuários e vendedores já o importam deste módulo.
+ */
+export type { PoliticaSenha };
 
 export const POLITICA_PADRAO: PoliticaSenha = {
   tamanhoMinimo: 8,

@@ -37,9 +37,11 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
     queryKey: ["perfis", "select"],
     queryFn: () => apiFetch<{ data: Perfil[] }>("/perfis", { query: { pageSize: 100 } }),
   });
+  // Usuário novo ainda não tem vínculo, então a política que vale é a da
+  // empresa ativa — a mesma que o backend cobra na criação.
   const { data: politica } = useQuery({
-    queryKey: ["politica-senha"],
-    queryFn: () => apiFetch<PoliticaSenha>("/politica-senha"),
+    queryKey: ["politica-senha", "empresa-ativa"],
+    queryFn: () => apiFetch<PoliticaSenha>("/politica-senha/empresa-ativa"),
     enabled: !usuario,
   });
 

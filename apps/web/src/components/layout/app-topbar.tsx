@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
-import { Building2, Check, HelpCircle, LogOut, Menu, Moon, Search, Sun, UserCog } from "lucide-react";
+import { Bot, Building2, Check, HelpCircle, LogOut, Menu, Moon, Search, Sun, UserCog } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import type { CurrentUser } from "@plataforma/contracts";
@@ -12,8 +12,12 @@ import { avatarColorClass, initials } from "@/lib/avatar-color";
 import { Button } from "@/components/ui/button";
 import { GlobalSearch } from "@/components/layout/global-search";
 import { NotificacoesSino } from "@/components/layout/notificacoes-sino";
+import { AgenteBotaoTopbar } from "@/components/agente/agente-botao-topbar";
+import { useAgente } from "@/components/agente/use-agente";
+import { useAgenteUiStore } from "@/stores/agente-ui-store";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -40,6 +44,9 @@ export function AppTopbar({
   const { user, logout, setTokens, setUser } = useAuthStore();
   const [searchOpen, setSearchOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const { disponivel: temAgente } = useAgente();
+  const flutuante = useAgenteUiStore((s) => s.flutuante);
+  const setFlutuante = useAgenteUiStore((s) => s.setFlutuante);
 
   const handleLogout = () => {
     logout();
@@ -100,6 +107,7 @@ export function AppTopbar({
 
       <div className="ml-auto flex items-center gap-1">
         <NotificacoesSino />
+        <AgenteBotaoTopbar />
 
         <Tooltip>
           <TooltipTrigger asChild>
@@ -158,6 +166,20 @@ export function AppTopbar({
                     </DropdownMenuItem>
                   );
                 })}
+              </>
+            )}
+            {/* O assistente tem dois botões: este ícone na barra, sempre, e o
+                flutuante no canto da tela, que quem quiser desliga aqui. */}
+            {temAgente && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuCheckboxItem
+                  checked={flutuante}
+                  onCheckedChange={(v) => setFlutuante(v === true)}
+                >
+                  <Bot className="size-4" />
+                  Botão flutuante do assistente
+                </DropdownMenuCheckboxItem>
               </>
             )}
             <DropdownMenuSeparator />

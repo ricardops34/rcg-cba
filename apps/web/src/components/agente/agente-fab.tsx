@@ -1,17 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type {
-  AgenteApresentacao,
   AgenteConfirmacao,
   AgenteDestino,
   AgentePendencia,
   AgenteResposta,
 } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
-import { useAuthStore } from "@/stores/auth-store";
+import { useAgenteUiStore } from "@/stores/agente-ui-store";
+import { useAgente } from "@/components/agente/use-agente";
+import {
+  AgenteIndicador,
+  rotuloAgente,
+} from "@/components/agente/agente-indicador";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import Link from "next/link";
@@ -89,7 +93,12 @@ function acomodar(g: Geometria): Geometria {
 }
 
 /**
- * Assistente interno: ícone flutuante em qualquer tela do sistema.
+ * Assistente interno: a janela, disponível em qualquer tela do sistema.
+ *
+ * Abre por dois caminhos, e os dois mexem no mesmo `agente-ui-store`: o botão
+ * flutuante daqui e o ícone da topbar (`AgenteBotaoTopbar`). O flutuante pode
+ * ser desligado por quem prefere a tela limpa; o da topbar é fixo, para o
+ * assistente nunca ficar sem porta de entrada.
  *
  * A janela **não é modal de propósito**. Antes era um `Sheet`, que cobre a tela
  * com um overlay e captura o clique: consultar o agente obrigava a fechá-lo
@@ -109,14 +118,18 @@ function acomodar(g: Geometria): Geometria {
  * e o usuário confirma no card. Até clicar em Confirmar, nada foi gravado.
  */
 export function AgenteFab() {
-  const podeUsar = useAuthStore((s) => s.hasPermission("agente", "visualizar"));
-  const [aberto, setAberto] = useState(false);
+  const { disponivel, nomeAgente, boasVindas } = useAgente();
+  // Abrir, minimizar e os avisos moram no store: o ícone da topbar mexe nos
+  // mesmos estados, e a janela é uma só.
+  const aberto = useAgenteUiStore((s) => s.aberto);
+  const flutuante = useAgenteUiStore((s) => s.flutuante);
+  const novidade = useAgenteUiStore((s) => s.novidade);
+  const pendente = useAgenteUiStore((s) => s.pendente);
+  const abrir = useAgenteUiStore((s) => s.abrir);
+  const minimizar = useAgenteUiStore((s) => s.minimizar);
+  const setNovidade = useAgenteUiStore((s) => s.setNovidade);
+  const setPendente = useAgenteUiStore((s) => s.setPendente);
   const [geometria, setGeometria] = useState<Geometria | null>(null);
-  // Resposta que chegou com a janela escondida. O `ref` acompanha o `aberto`
-  // porque quem decide isso é o callback da mutation, que roda depois — e a
-  // pergunta certa é "estava minimizado quando a resposta voltou?".
-  const [novidade, setNovidade] = useState(false);
-  const abertoRef = useRef(false);
   const [texto, setTexto] = useState("");
   const [conversaId, setConversaId] = useState<string | undefined>();
   const [baloes, setBaloes] = useState<Balao[]>([]);
@@ -125,59 +138,31 @@ export function AgenteFab() {
   const queryClient = useQueryClient();
 
   /**
-   * Nome do agente, mensagem de abertura e se ele está ligado.
-   *
-   * Endpoint próprio (`/agente/apresentacao`), e não `/agente/config`: a
-   * configuração inteira exige permissão de administrador, então o vendedor
-   * tomava 403 e via "Assistente" genérico — mesmo com a empresa tendo batizado
-   * o agente. Aqui a permissão é a de usar (`agente.visualizar`).
-   */
-  const { data: config } = useQuery({
-    queryKey: ["agente-apresentacao"],
-    queryFn: () => apiFetch<AgenteApresentacao>("/agente/apresentacao"),
-    enabled: podeUsar,
-    retry: false,
-  });
-  const nomeAgente = config?.nomeAgente || "Assistente";
-  const boasVindas =
-    config?.mensagemBoasVindas?.trim() ||
-    `Olá! Sou o ${nomeAgente}. Posso consultar a sua carteira, montar orçamentos e preparar o seu dia. O que você precisa?`;
-
-  /**
    * Posição e tamanho só existem no cliente (dependem da viewport) e ficam
    * guardados entre sessões: quem arrumou a janela onde queria não quer
    * arrumá-la de novo a cada login.
    *
-   * Calculado ao abrir, e não num efeito, porque depende de `window` — no
-   * efeito viraria um render a mais e um aviso do `react-hooks`.
+   * Resolvido aqui, num efeito, e não no clique que abre: quem abre pode ser o
+   * botão flutuante **ou** o ícone da topbar, e a topbar não tem por que
+   * conhecer a geometria da janela. Depende de `window`, então só no cliente.
    */
-  const abrir = () => {
-    setGeometria((g) => {
-      if (g) return g;
-      let salva: Geometria | null = null;
-      try {
-        const bruto = localStorage.getItem(CHAVE_GEOMETRIA);
-        if (bruto) salva = JSON.parse(bruto) as Geometria;
-      } catch {
-        // Storage bloqueado ou JSON corrompido: cai no padrão, sem quebrar.
-      }
-      return acomodar(salva ?? geometriaPadrao());
-    });
-    abertoRef.current = true;
-    setAberto(true);
-    setNovidade(false);
-  };
+  useEffect(() => {
+    if (!aberto || geometria) return;
+    let salva: Geometria | null = null;
+    try {
+      const bruto = localStorage.getItem(CHAVE_GEOMETRIA);
+      if (bruto) salva = JSON.parse(bruto) as Geometria;
+    } catch {
+      // Storage bloqueado ou JSON corrompido: cai no padrão, sem quebrar.
+    }
+    setGeometria(acomodar(salva ?? geometriaPadrao()));
+  }, [aberto, geometria]);
 
-  /**
-   * Minimizar é **voltar para o ícone**, não virar uma barra na tela: o ponto
-   * do assistente flutuante é não ocupar espaço enquanto não está em uso. A
-   * conversa continua viva — reabrir traz tudo de volta, e o que chegar
-   * enquanto ele está escondido acende o indicador no ícone.
-   */
-  const minimizar = () => {
-    abertoRef.current = false;
-    setAberto(false);
-  };
+  // Pendência é ação parada esperando gente. Quem mostra o "!" é o ícone —
+  // flutuante ou da topbar —, então o estado tem de chegar até ele.
+  useEffect(() => {
+    setPendente(pendencias.length > 0);
+  }, [pendencias, setPendente]);
 
   useEffect(() => {
     if (!geometria) return;
@@ -265,7 +250,7 @@ export function AgenteFab() {
       }
       setPendencias(r.pendencias);
       // Perguntou e foi cuidar da vida: o ícone avisa que a resposta chegou.
-      if (!abertoRef.current) setNovidade(true);
+      if (!useAgenteUiStore.getState().aberto) setNovidade(true);
     },
     onError: (err) => {
       const msg =
@@ -273,7 +258,7 @@ export function AgenteFab() {
           ? err.message
           : "Não consegui falar com o agente";
       setBaloes((b) => [...b, { papel: "assistente", texto: msg }]);
-      if (!abertoRef.current) setNovidade(true);
+      if (!useAgenteUiStore.getState().aberto) setNovidade(true);
     },
   });
 
@@ -340,46 +325,22 @@ export function AgenteFab() {
     toast.success("Conversa encerrada");
   };
 
-  // Pendência é ação parada esperando gente: enquanto ela existe, o ícone tem
-  // de dizer isso, e não só "tem coisa nova".
-  const precisaInteracao = !aberto && pendencias.length > 0;
-
-  if (!podeUsar) return null;
-  if (config && !config.ativo) return null;
+  if (!disponivel) return null;
 
   return (
     <>
-      {!aberto && (
+      {/* O botão flutuante é **opcional**: quem acha que ele atrapalha a tela
+          desliga no menu da conta (avatar da topbar) e passa a abrir o assistente
+          pelo ícone da topbar, que está sempre lá. */}
+      {!aberto && flutuante && (
         <Button
           type="button"
           onClick={abrir}
-          aria-label={
-            precisaInteracao
-              ? "Abrir assistente — ação aguardando sua confirmação"
-              : novidade
-                ? "Abrir assistente — resposta nova"
-                : "Abrir assistente"
-          }
+          aria-label={rotuloAgente(pendente, novidade)}
           className="fixed bottom-5 right-5 z-40 size-12 rounded-full shadow-lg"
         >
           <Bot className="size-5" />
-          {/* Indicador do que aconteceu enquanto o assistente estava
-              minimizado. Âmbar com "!" quando ele **espera uma decisão** (uma
-              gravação parada até o Confirmar); ponto simples quando é só
-              resposta nova. A diferença importa: uma some sozinha ao ler, a
-              outra trava a ação até alguém agir. */}
-          {(precisaInteracao || novidade) && (
-            <span
-              aria-hidden
-              className={
-                precisaInteracao
-                  ? "absolute -right-0.5 -top-0.5 flex size-5 items-center justify-center rounded-full border-2 border-background bg-amber-500 text-[10px] font-bold text-white"
-                  : "absolute right-0.5 top-0.5 size-3 rounded-full border-2 border-background bg-emerald-500"
-              }
-            >
-              {precisaInteracao ? "!" : null}
-            </span>
-          )}
+          {(pendente || novidade) && <AgenteIndicador pendente={pendente} />}
         </Button>
       )}
 

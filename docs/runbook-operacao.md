@@ -263,6 +263,20 @@ docker exec plataforma-comercial-dev-api-1 sh -c "cd /app/apps/api && pnpm exec 
 docker exec plataforma-comercial-dev-whatsapp-worker-1 sh -c "cd /app/apps/whatsapp-worker && pnpm exec tsc -p tsconfig.json"
 ```
 
+Com os containers de dev **parados** (só a infra de pé), o mesmo type-check sai
+do build da imagem, sem publicar nada **[verificado em 2026-08-26]**:
+
+```bash
+docker build -f docker/web.Dockerfile -t rcgcba-web:check .
+docker build -f docker/api.Dockerfile -t rcgcba-api:check .
+```
+
+O estágio de build roda `next build` / `nest build` (e compila
+`@plataforma/contracts` antes), então um erro de tipo derruba o `docker build`
+com o mesmo log. Não existe toolchain Node utilizável no Windows fora dos
+containers: os `node_modules/` do repositório são links para `/app/...` de
+dentro da imagem, e `pnpm` não está no PATH do host.
+
 ---
 
 ## WhatsApp em produção (primeiro deploy do worker) **[a confirmar na VPS]**
