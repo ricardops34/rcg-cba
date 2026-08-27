@@ -32,11 +32,13 @@ import {
  */
 export function MensagemBolha({
   mensagem,
+  autorNome,
   citada,
   onResponder,
   conversaId,
 }: {
   mensagem: WhatsappMensagem;
+  autorNome?: string | null;
   citada: WhatsappMensagem | null;
   onResponder: (m: WhatsappMensagem) => void;
   conversaId: string;
@@ -75,6 +77,16 @@ export function MensagemBolha({
               {citada.conteudo ?? `[${citada.tipo}]`}
             </p>
           </div>
+        ) : null}
+
+        {autorNome ? (
+          <p
+            className={`mb-0.5 text-xs font-semibold ${
+              minha ? "text-primary-foreground/85" : "text-primary"
+            }`}
+          >
+            {autorNome}:
+          </p>
         ) : null}
 
         <Conteudo mensagem={mensagem} url={url} />
@@ -125,6 +137,15 @@ function Conteudo({
   mensagem: WhatsappMensagem;
   url: string | null;
 }) {
+  if (
+    mensagem.tipo === "texto" &&
+    mensagem.conteudo &&
+    (mensagem.conteudo.startsWith("*Últimas notas fiscais*") ||
+      mensagem.conteudo.startsWith("*Títulos em aberto*"))
+  ) {
+    return <ResumoComercial texto={mensagem.conteudo} />;
+  }
+
   // Mídia ainda baixando: a mensagem chega antes do arquivo, que vem num
   // segundo passo (só é baixado depois de a plataforma decidir que grava).
   if (!url && mensagem.tipo !== "texto") {
@@ -180,6 +201,40 @@ function Conteudo({
   }
 
   return <p className="whitespace-pre-wrap">{mensagem.conteudo ?? `[${mensagem.tipo}]`}</p>;
+}
+
+function ResumoComercial({ texto }: { texto: string }) {
+  const linhas = texto.split("\n").map((linha) => linha.trim()).filter(Boolean);
+  const titulo = linhas[0]?.replaceAll("*", "") ?? "Resumo comercial";
+  const itens = linhas.filter((linha) => linha.startsWith("•"));
+  const total = linhas.find((linha) => linha.startsWith("Total:"));
+
+  return (
+    <div className="min-w-56 space-y-2">
+      <div className="flex items-center gap-2">
+        <FileText className="size-4 shrink-0" />
+        <div>
+          <p className="font-semibold">{titulo}</p>
+          <p className="text-xs opacity-75">
+            {itens.length} {itens.length === 1 ? "registro" : "registros"}
+            {total ? ` · ${total}` : ""}
+          </p>
+        </div>
+      </div>
+      <details className="group rounded-md bg-black/5 px-2 py-1 dark:bg-white/10">
+        <summary className="cursor-pointer text-xs font-medium">
+          Ver detalhes
+        </summary>
+        <div className="mt-2 space-y-1 border-t border-current/15 pt-2 text-xs">
+          {itens.map((item, indice) => (
+            <p key={`${indice}-${item}`} className="whitespace-pre-wrap">
+              {item.replace(/^•\s*/, "")}
+            </p>
+          ))}
+        </div>
+      </details>
+    </div>
+  );
 }
 
 /** ✓ enviada, ✓✓ entregue, ✓✓ azul lida — a convenção que todo mundo já lê. */

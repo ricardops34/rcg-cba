@@ -13,7 +13,10 @@ import {
   whatsappPublicPath,
   WHATSAPP_DIR,
 } from '../../common/uploads/uploads.config';
-import { PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
+import {
+  PrismaService,
+  type TenantTx,
+} from '../../common/prisma/prisma.service';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappSessaoService } from './whatsapp-sessao.service';
 import { WhatsappWorkerClient } from './whatsapp-worker.client';
@@ -37,6 +40,7 @@ import type {
   WhatsappVincular,
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { mensagemComAutor } from './mensagem-com-autor';
 
 const PREVIA_TAMANHO = 120;
 
@@ -72,9 +76,7 @@ export class WhatsappConversasService {
   ) {
     const escopo = await this.sessoes.escopoLeitura(tx, empresaId, user);
     if (escopo === null) {
-      return vendedorIdQuery
-        ? { sessao: { vendedorId: vendedorIdQuery } }
-        : {};
+      return vendedorIdQuery ? { sessao: { vendedorId: vendedorIdQuery } } : {};
     }
     const permitidos = vendedorIdQuery
       ? escopo.includes(vendedorIdQuery)
@@ -143,7 +145,15 @@ export class WhatsappConversasService {
           where,
           include: {
             contato: true,
-            cliente: { select: { razaoSocial: true, codigoErp: true } },
+            cliente: {
+              select: {
+                razaoSocial: true,
+                codigoErp: true,
+                telefone: true,
+                telefone2: true,
+                celular: true,
+              },
+            },
             sessao: {
               select: {
                 vendedorId: true,
@@ -187,9 +197,20 @@ export class WhatsappConversasService {
             jid: c.contato.jid,
             nomeExibicao: c.contato.nomeExibicao,
             telefoneNormalizado: c.contato.telefoneNormalizado,
+            tipo: c.contato.tipo,
+            email: c.contato.email,
             clienteId: c.contato.clienteId,
             clienteRazaoSocial: c.cliente?.razaoSocial ?? null,
             clienteCodigoErp: c.cliente?.codigoErp ?? null,
+            clienteTelefones: [
+              ...new Set(
+                [
+                  c.cliente?.telefone,
+                  c.cliente?.telefone2,
+                  c.cliente?.celular,
+                ].filter((telefone): telefone is string => !!telefone),
+              ),
+            ],
             ignorado: c.contato.ignorado,
           },
           clienteId: c.clienteId,
@@ -206,6 +227,12 @@ export class WhatsappConversasService {
           situacaoTitulos: c.clienteId
             ? (sinais.situacaoTitulos.get(c.clienteId) ?? null)
             : null,
+          proximoRetornoEm: c.clienteId
+            ? (sinais.proximoRetornoEm.get(c.clienteId) ?? null)
+            : null,
+          orcamentoAguardandoAprovacao: c.clienteId
+            ? sinais.aprovacaoPendente.has(c.clienteId)
+            : false,
           outrosAtendentes: outrosAtendentes.get(c.id) ?? [],
         })),
       };
@@ -324,8 +351,17 @@ export class WhatsappConversasService {
   ) {
     const diasSemComprar = new Map<string, number | null>();
     const situacaoTitulos = new Map<string, WhatsappSituacaoTitulos>();
+    const proximoRetornoEm = new Map<string, Date>();
+    const aprovacaoPendente = new Set<string>();
     const ids = [...new Set(clienteIds)];
-    if (ids.length === 0) return { diasSemComprar, situacaoTitulos };
+    if (ids.length === 0) {
+      return {
+        diasSemComprar,
+        situacaoTitulos,
+        proximoRetornoEm,
+        aprovacaoPendente,
+      };
+    }
 
     const pode = (permissao: string) =>
       user.isAdmin || user.permissoes.includes(permissao);
@@ -393,7 +429,52 @@ export class WhatsappConversasService {
       }
     }
 
-    return { diasSemComprar, situacaoTitulos };
+    if (pode('atividades.visualizar')) {
+      const retornos = await tx.atividade.findMany({
+        where: {
+          clienteId: { in: ids },
+          concluida: false,
+          ativo: true,
+          deletedAt: null,
+          dataVencimento: { not: null },
+        },
+        select: { clienteId: true, dataVencimento: true },
+        orderBy: { dataVencimento: 'asc' },
+      });
+      for (const retorno of retornos) {
+        if (
+          retorno.clienteId &&
+          retorno.dataVencimento &&
+          !proximoRetornoEm.has(retorno.clienteId)
+        ) {
+          proximoRetornoEm.set(retorno.clienteId, retorno.dataVencimento);
+        }
+      }
+    }
+
+    if (pode('orcamentos.visualizar')) {
+      const pendentes = await tx.orcamento.findMany({
+        where: {
+          clienteId: { in: ids },
+          ativo: true,
+          deletedAt: null,
+          descontoSolicitadoEm: { not: null },
+          descontoAutorizadoEm: null,
+        },
+        select: { clienteId: true },
+        distinct: ['clienteId'],
+      });
+      pendentes.forEach((orcamento) =>
+        aprovacaoPendente.add(orcamento.clienteId),
+      );
+    }
+
+    return {
+      diasSemComprar,
+      situacaoTitulos,
+      proximoRetornoEm,
+      aprovacaoPendente,
+    };
   }
 
   private previa(ultima?: { conteudo: string | null; tipo: string }) {
@@ -466,12 +547,14 @@ export class WhatsappConversasService {
     query: WhatsappMensagemQuery,
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      await this.conversaNoEscopo(tx, empresaId, user, conversaId);
+      const conversa = await this.conversaNoEscopo(tx, empresaId, user, conversaId);
 
       const linhas = await tx.whatsappMensagem.findMany({
         where: {
           conversaId,
-          ...(query.antesDe ? { criadaEm: { lt: new Date(query.antesDe) } } : {}),
+          ...(query.antesDe
+            ? { criadaEm: { lt: new Date(query.antesDe) } }
+            : {}),
         },
         // No máximo duas por mensagem (uma de cada lado), então vêm juntas em
         // vez de numa segunda consulta.
@@ -483,7 +566,88 @@ export class WhatsappConversasService {
       });
       // Devolve em ordem cronológica: a paginação é para trás, a leitura é para
       // frente.
-      return linhas.reverse();
+      const usuarioIds = [
+        ...new Set(
+          linhas
+            .map((mensagem) => mensagem.enviadaPor)
+            .filter((id): id is string => !!id),
+        ),
+      ];
+      const usuarios = usuarioIds.length
+        ? await tx.usuario.findMany({
+            where: { id: { in: usuarioIds } },
+            select: { id: true, nome: true },
+          })
+        : [];
+      const nomeUsuario = new Map(
+        usuarios.map((usuario) => [usuario.id, usuario.nome]),
+      );
+      const nomeContato =
+        conversa.contato.nomeExibicao ??
+        conversa.contato.telefoneNormalizado ??
+        'Contato';
+
+      return linhas.reverse().map((mensagem) => ({
+        ...mensagem,
+        enviadaPorNome: mensagem.enviadaPor
+          ? nomeUsuario.get(mensagem.enviadaPor) ?? null
+          : null,
+        autorNome:
+          mensagem.direcao === 'entrada'
+            ? nomeContato
+            : mensagem.enviadaPor
+              ? nomeUsuario.get(mensagem.enviadaPor) ?? 'Atendente'
+              : 'Atendente',
+      }));
+    });
+  }
+
+  /** Eventos comerciais internos, separados das mensagens enviadas ao cliente. */
+  async eventos(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      await this.conversaNoEscopo(tx, empresaId, user, conversaId);
+      const eventos = await tx.whatsappAcaoRegistro.findMany({
+        where: { conversaId },
+        orderBy: { criadaEm: 'asc' },
+      });
+      const usuarioIds = [
+        ...new Set(
+          eventos
+            .map((evento) => evento.executadaPor)
+            .filter((id): id is string => !!id),
+        ),
+      ];
+      const usuarios = usuarioIds.length
+        ? await tx.usuario.findMany({
+            where: { id: { in: usuarioIds } },
+            select: { id: true, nome: true },
+          })
+        : [];
+      const nomePorId = new Map(
+        usuarios.map((usuario) => [usuario.id, usuario.nome]),
+      );
+
+      return eventos.map((evento) => ({
+        id: evento.id,
+        acao: evento.acao,
+        orcamentoId: evento.orcamentoId,
+        atividadeId: evento.atividadeId,
+        tituloReceberId: evento.tituloReceberId,
+        detalhe:
+          evento.detalhe &&
+          typeof evento.detalhe === 'object' &&
+          !Array.isArray(evento.detalhe)
+            ? evento.detalhe
+            : null,
+        executadaPorNome: evento.executadaPor
+          ? (nomePorId.get(evento.executadaPor) ?? null)
+          : null,
+        criadaEm: evento.criadaEm,
+      }));
     });
   }
 
@@ -520,7 +684,7 @@ export class WhatsappConversasService {
           metodo: 'POST',
           corpo: {
             jid: conversa.contato.jid,
-            texto: input.texto,
+            texto: mensagemComAutor(user.nome, input.texto),
             respondeuA: input.respondeuA ?? null,
           },
         },
@@ -560,7 +724,12 @@ export class WhatsappConversasService {
     empresaId: string,
     user: AuthenticatedUser,
     conversaId: string,
-    arquivo: { caminhoDisco: string; nome: string; mime: string; tamanho: number },
+    arquivo: {
+      caminhoDisco: string;
+      nome: string;
+      mime: string;
+      tamanho: number;
+    },
     input: { legenda?: string; ptt?: boolean },
   ) {
     const conteudo = await readFile(arquivo.caminhoDisco);
@@ -603,7 +772,12 @@ export class WhatsappConversasService {
     const config = await this.config.obter(empresaId);
 
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const conversa = await this.conversaNoEscopo(tx, empresaId, user, conversaId);
+      const conversa = await this.conversaNoEscopo(
+        tx,
+        empresaId,
+        user,
+        conversaId,
+      );
       await this.garantirDono(tx, empresaId, user, conversa);
 
       const tipo = this.tipoPorMime(arquivo.mime);
@@ -617,7 +791,9 @@ export class WhatsappConversasService {
             tipo,
             nome: arquivo.nome,
             mime: arquivo.mime,
-            legenda: input.legenda ?? null,
+            legenda: input.legenda
+              ? mensagemComAutor(user.nome, input.legenda)
+              : mensagemComAutor(user.nome, ''),
             ptt: input.ptt ?? false,
             conteudoBase64: arquivo.conteudo.toString('base64'),
           },
@@ -908,7 +1084,9 @@ export class WhatsappConversasService {
   }
 
   /** O WhatsApp mostra a mídia conforme o tipo, não conforme a extensão. */
-  private tipoPorMime(mime: string): 'imagem' | 'video' | 'audio' | 'documento' {
+  private tipoPorMime(
+    mime: string,
+  ): 'imagem' | 'video' | 'audio' | 'documento' {
     if (mime.startsWith('image/')) return 'imagem';
     if (mime.startsWith('video/')) return 'video';
     if (mime.startsWith('audio/')) return 'audio';
@@ -975,6 +1153,9 @@ export class WhatsappConversasService {
         data: {
           clienteId: input.clienteId,
           ignorado: input.ignorar,
+          tipo: input.tipo,
+          nomeExibicao: input.nome ?? undefined,
+          email: input.email ?? undefined,
           vinculadoPor: user.id,
           vinculadoEm: input.clienteId ? new Date() : null,
         },
@@ -1028,7 +1209,7 @@ export class WhatsappConversasService {
 
       let jid = input.jid ?? null;
       let telefone = input.telefone ? input.telefone.replace(/\D/g, '') : null;
-      let clienteId = input.clienteId ?? null;
+      const clienteId = input.clienteId ?? null;
       let nome = input.nome ?? null;
 
       if (clienteId) {
@@ -1047,7 +1228,9 @@ export class WhatsappConversasService {
           },
         });
         if (!cliente) {
-          throw new NotFoundException('Cliente não encontrado na sua carteira.');
+          throw new NotFoundException(
+            'Cliente não encontrado na sua carteira.',
+          );
         }
         nome = nome ?? cliente.razaoSocial;
         // Celular primeiro: é o que costuma ter WhatsApp.
@@ -1091,12 +1274,16 @@ export class WhatsappConversasService {
           nomeExibicao: nome,
           telefoneNormalizado: telefone,
           clienteId,
-          ...(clienteId ? { vinculadoPor: user.id, vinculadoEm: new Date() } : {}),
+          ...(clienteId
+            ? { vinculadoPor: user.id, vinculadoEm: new Date() }
+            : {}),
         },
         update: {
           // Vínculo existente não é sobrescrito por um "iniciar conversa":
           // desvincular é decisão explícita, feita na tela de vínculo.
-          ...(clienteId ? { clienteId, vinculadoPor: user.id, vinculadoEm: new Date() } : {}),
+          ...(clienteId
+            ? { clienteId, vinculadoPor: user.id, vinculadoEm: new Date() }
+            : {}),
           ...(nome ? { nomeExibicao: nome } : {}),
           ...(telefone ? { telefoneNormalizado: telefone } : {}),
         },
@@ -1206,7 +1393,12 @@ export class WhatsappConversasService {
     const config = await this.config.obter(empresaId);
 
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const conversa = await this.conversaNoEscopo(tx, empresaId, user, conversaId);
+      const conversa = await this.conversaNoEscopo(
+        tx,
+        empresaId,
+        user,
+        conversaId,
+      );
       if (!(await this.ehDono(tx, empresaId, user, conversa))) return conversa;
 
       const ultima = await tx.whatsappMensagem.findFirst({
@@ -1233,7 +1425,6 @@ export class WhatsappConversasService {
         tipos: ['whatsapp_mensagem'],
         referenciaId: conversaId,
       });
-
 
       return tx.whatsappConversa.update({
         where: { id: conversaId },
@@ -1426,7 +1617,11 @@ export class WhatsappConversasService {
             acumular: true,
           });
         }
-        return { gravada: false, motivo: 'sem-vinculo', conversaId: conversa.id };
+        return {
+          gravada: false,
+          motivo: 'sem-vinculo',
+          conversaId: conversa.id,
+        };
       }
 
       // Se esta mensagem já tinha sido gravada, é reenvio da reconexão: o
@@ -1492,8 +1687,7 @@ export class WhatsappConversasService {
         // Pedir o arquivo é um segundo passo: só depois de decidir que a
         // mensagem fica é que faz sentido baixar a mídia dela. Reenvio de
         // mensagem já baixada não pede de novo.
-        arquivoNecessario:
-          MIDIA.includes(entrada.tipo) && !mensagem.arquivoUrl,
+        arquivoNecessario: MIDIA.includes(entrada.tipo) && !mensagem.arquivoUrl,
       };
     });
   }

@@ -179,9 +179,12 @@ export const whatsappContatoSchema = z.object({
   jid: z.string(),
   nomeExibicao: z.string().nullable(),
   telefoneNormalizado: z.string().nullable(),
+  tipo: z.enum(["geral", "financeiro", "compras", "contabilidade_fiscal", "outros"]),
+  email: z.string().nullable(),
   clienteId: z.string().uuid().nullable(),
   clienteRazaoSocial: z.string().nullable(),
   clienteCodigoErp: z.string().nullable(),
+  clienteTelefones: z.array(z.string()).default([]),
   ignorado: z.boolean(),
 });
 export type WhatsappContato = z.infer<typeof whatsappContatoSchema>;
@@ -241,6 +244,8 @@ export const whatsappConversaSchema = z.object({
     .nullable()
     .describe("Dias desde a última nota (positivação). Null = nunca comprou"),
   situacaoTitulos: whatsappSituacaoTitulosSchema.nullable(),
+  proximoRetornoEm: z.string().datetime().nullable(),
+  orcamentoAguardandoAprovacao: z.boolean(),
   /**
    * Outros vendedores que também têm conversa aberta com este mesmo contato.
    *
@@ -251,6 +256,20 @@ export const whatsappConversaSchema = z.object({
   outrosAtendentes: z.array(z.string()).default([]),
 });
 export type WhatsappConversa = z.infer<typeof whatsappConversaSchema>;
+
+export const whatsappEventoAtendimentoSchema = z.object({
+  id: z.string().uuid(),
+  acao: z.string(),
+  orcamentoId: z.string().uuid().nullable(),
+  atividadeId: z.string().uuid().nullable(),
+  tituloReceberId: z.string().uuid().nullable(),
+  detalhe: z.record(z.string(), z.unknown()).nullable(),
+  executadaPorNome: z.string().nullable(),
+  criadaEm: z.string().datetime(),
+});
+export type WhatsappEventoAtendimento = z.infer<
+  typeof whatsappEventoAtendimentoSchema
+>;
 
 export const whatsappConversaQuerySchema = z.object({
   busca: z.string().trim().optional(),
@@ -323,6 +342,11 @@ export type WhatsappIniciarConversa = z.infer<
 /** Vínculo manual do contato a um cliente — é o que autoriza a gravação. */
 export const whatsappVincularSchema = z.object({
   clienteId: z.string().uuid().nullable().describe("null desfaz o vínculo"),
+  tipo: z
+    .enum(["geral", "financeiro", "compras", "contabilidade_fiscal", "outros"])
+    .default("geral"),
+  nome: z.string().trim().max(120).nullable().optional(),
+  email: z.string().trim().email().nullable().optional(),
   ignorar: z
     .boolean()
     .default(false)
@@ -355,6 +379,10 @@ export const whatsappMensagemSchema = z.object({
   arquivoNome: z.string().nullable(),
   enviadaPor: z.string().uuid().nullable(),
   enviadaPorNome: z.string().nullable(),
+  autorNome: z
+    .string()
+    .nullable()
+    .describe("Nome do perfil que enviou a mensagem, contato ou atendente"),
   statusEntrega: whatsappStatusEntregaSchema,
   /** Id externo da mensagem citada — o "responder" do WhatsApp. */
   respondeuA: z.string().nullable(),
@@ -583,6 +611,7 @@ export const WHATSAPP_MENSAGEM_EXAMPLE: WhatsappMensagem = {
   reacoes: [{ emoji: "👍", deQuem: "nos" }],
   enviadaPor: null,
   enviadaPorNome: null,
+  autorNome: "Cliente Demonstração",
   statusEntrega: "entregue",
   respondeuA: null,
   criadaEm: "2026-08-14T18:31:00.000Z",

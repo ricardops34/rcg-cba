@@ -61,6 +61,7 @@ Corpo de configuração, com todos os campos opcionais:
 | GET | `/whatsapp/conversas` | `whatsapp-conversas.visualizar` | Lista paginada; aceita busca, arquivadas, sem vínculo e vendedor |
 | POST | `/whatsapp/conversas` | `whatsapp-conversas.cadastrar` | Inicia conversa por cliente, JID ou telefone |
 | GET | `/whatsapp/conversas/:id/mensagens` | `whatsapp-conversas.visualizar` | Histórico por cursor |
+| GET | `/whatsapp/conversas/:id/eventos` | `whatsapp-conversas.visualizar` | Eventos comerciais internos, separados das mensagens enviadas ao cliente |
 | POST | `/whatsapp/conversas/:id/mensagens` | `whatsapp-conversas.cadastrar` | Envia texto e, opcionalmente, responde outra mensagem |
 | POST | `/whatsapp/conversas/:id/arquivos` | `whatsapp-conversas.cadastrar` | Envia multipart no campo `arquivo`, máximo 16 MiB |
 | PUT | `/whatsapp/conversas/:id/vinculo` | `whatsapp-conversas.editar` | Vincula, desvincula ou ignora contato |

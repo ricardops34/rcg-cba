@@ -172,11 +172,7 @@ export class WhatsappController {
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.sessao.reconectarAdministracao(
-      user.empresaAtivaId,
-      user,
-      id,
-    );
+    return this.sessao.reconectarAdministracao(user.empresaAtivaId, user, id);
   }
 
   @ApiOperation({
@@ -225,6 +221,18 @@ export class WhatsappController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.conversas.mensagens(user.empresaAtivaId, user, id, query);
+  }
+
+  @ApiOperation({
+    summary: 'Eventos comerciais internos de uma conversa',
+    description:
+      'Ações executadas pela central, como orçamento, documento e retorno. ' +
+      'Não são mensagens enviadas ao cliente.',
+  })
+  @RequirePermission('whatsapp-conversas', 'visualizar')
+  @Get('conversas/:id/eventos')
+  eventos(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.conversas.eventos(user.empresaAtivaId, user, id);
   }
 
   @ApiOperation({
@@ -359,7 +367,10 @@ export class WhatsappController {
   })
   @RequirePermission('titulos-receber', 'visualizar')
   @Post('conversas/:id/acoes/titulos')
-  enviarTitulos(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+  enviarTitulos(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.acoes.enviarTitulos(user.empresaAtivaId, user, id);
   }
 
@@ -384,7 +395,10 @@ export class WhatsappController {
   })
   @RequirePermission('titulos-receber', 'visualizar')
   @Get('conversas/:id/acoes/titulos')
-  listarTitulos(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+  listarTitulos(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.acoes.listarTitulos(user.empresaAtivaId, user, id);
   }
 

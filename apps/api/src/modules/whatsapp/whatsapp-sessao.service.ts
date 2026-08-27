@@ -274,9 +274,35 @@ export class WhatsappSessaoService {
    */
   async listarEquipe(empresaId: string, user: AuthenticatedUser) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await this.escopoLeitura(tx, empresaId, user);
+      // Este endpoint alimenta o seletor operacional da Central, portanto
+      // nunca transforma acesso administrativo em "toda a empresa". A lista
+      // é sempre formada pelo vendedor do usuário + sua equipe direta.
+      const vendedor = await tx.vendedor.findFirst({
+        where: { usuarioId: user.id, empresaId, deletedAt: null },
+        select: { id: true, tipo: true },
+      });
+      if (!vendedor) return [];
+
+      let vendedorIds = [vendedor.id];
+      if (
+        user.permissoes.includes('whatsapp-equipe.visualizar') &&
+        (vendedor.tipo === 'gerente' || vendedor.tipo === 'supervisor')
+      ) {
+        const equipe = await tx.vendedor.findMany({
+          where: {
+            empresaId,
+            deletedAt: null,
+            ...(vendedor.tipo === 'gerente'
+              ? { gerenteId: vendedor.id }
+              : { supervisorId: vendedor.id }),
+          },
+          select: { id: true },
+        });
+        vendedorIds = [vendedor.id, ...equipe.map((integrante) => integrante.id)];
+      }
+
       const sessoes = await tx.whatsappSessao.findMany({
-        where: escopo === null ? {} : { vendedorId: { in: escopo } },
+        where: { vendedorId: { in: vendedorIds } },
         include: { vendedor: { select: { nome: true } } },
         orderBy: { updatedAt: 'desc' },
       });

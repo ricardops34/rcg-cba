@@ -7,11 +7,11 @@ const LARGURA_MINIMA = 240;
 const PROPORCAO_MAXIMA = 0.7;
 
 /** Largura salva para este painel, ou o padrão (inclusive no servidor). */
-function larguraGuardada(chave: string, padrao: number) {
+function larguraGuardada(chave: string, padrao: number, minima: number) {
   if (typeof window === "undefined") return padrao;
   const guardada = Number(window.localStorage.getItem(chave));
-  return Number.isFinite(guardada) && guardada >= LARGURA_MINIMA
-    ? guardada
+  return Number.isFinite(guardada)
+    ? Math.max(minima, guardada)
     : padrao;
 }
 
@@ -29,12 +29,15 @@ function larguraGuardada(chave: string, padrao: number) {
  */
 export function ColunaRedimensionavel({
   larguraPadrao,
+  larguraMinima = LARGURA_MINIMA,
   chaveArmazenamento,
   lado = "direita",
   className,
   children,
 }: {
   larguraPadrao: number;
+  /** Evita que conteúdo estrutural seja salvo numa largura em que deixa de ser utilizável. */
+  larguraMinima?: number;
   chaveArmazenamento: string;
   /** De que lado a coluna está — decide para onde o arraste aumenta. */
   lado?: "esquerda" | "direita";
@@ -44,7 +47,7 @@ export function ColunaRedimensionavel({
   // Inicializador preguiçoso, como no `ResizableSheetContent`: a largura
   // guardada entra já na primeira renderização, sem um segundo desenho.
   const [largura, setLargura] = useState(() =>
-    larguraGuardada(chaveArmazenamento, larguraPadrao),
+    larguraGuardada(chaveArmazenamento, larguraPadrao, larguraMinima),
   );
   const larguraRef = useRef(largura);
 
@@ -61,7 +64,7 @@ export function ColunaRedimensionavel({
           lado === "direita" ? xInicial - ev.clientX : ev.clientX - xInicial;
         const proxima = Math.min(
           maxima,
-          Math.max(LARGURA_MINIMA, larguraInicial + delta),
+          Math.max(larguraMinima, larguraInicial + delta),
         );
         larguraRef.current = proxima;
         setLargura(proxima);
@@ -77,7 +80,7 @@ export function ColunaRedimensionavel({
       window.addEventListener("pointermove", mover);
       window.addEventListener("pointerup", soltar);
     },
-    [chaveArmazenamento, lado],
+    [chaveArmazenamento, lado, larguraMinima],
   );
 
   return (

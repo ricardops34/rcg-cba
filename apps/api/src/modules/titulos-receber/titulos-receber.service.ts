@@ -55,6 +55,8 @@ export class TitulosReceberService {
       const condicoesStatus: Prisma.TituloReceberWhereInput[] = [];
       if (query.status === 'baixado') {
         condicoesStatus.push({ dtBaixa: { not: null } });
+      } else if (query.status === 'em_aberto') {
+        condicoesStatus.push({ dtBaixa: null });
       } else if (query.status === 'aberto') {
         condicoesStatus.push(
           { dtBaixa: null },
@@ -212,6 +214,10 @@ export class TitulosReceberService {
       vencimento: titulo.vencimento,
       multaPerc: conta.multaPerc,
       jurosMesPerc: conta.jurosMesPerc,
+      // O que o ERP calculou e imprimiu no boleto original vence o percentual
+      // do convênio — senão o papel do cliente e a 2ª via divergem.
+      multaValor: titulo.multaValor,
+      jurosValorDia: titulo.jurosValorDia,
     });
     const valor = encargos.valor;
     // Número como sai impresso na ficha e no histórico do cliente — uma
@@ -221,18 +227,36 @@ export class TitulosReceberService {
       .join('/');
 
     try {
+      // Precedência em todo campo abaixo: **título, depois conta, depois
+      // empresa**. Quem registrou o boleto no banco foi o ERP, e o papel na mão
+      // do cliente foi impresso com os dados dele. A conta de cobrança segue
+      // valendo para título antigo, que não traz o desenho completo.
       const boleto = montarBoletoPdf({
-        banco: { codigo: conta.banco, nome: nomeBanco(conta.banco) },
+        banco: {
+          codigo: titulo.banco ?? conta.banco,
+          // O código de compensação com dígito ("237-2") é o que vai impresso
+          // ao lado do logo; sem ele, o nome do banco.
+          nome:
+            titulo.bancoCodigoCompensacao ??
+            titulo.bancoNome ??
+            nomeBanco(titulo.banco ?? conta.banco),
+        },
         beneficiario: {
-          nome: conta.beneficiarioNome ?? empresa?.razaoSocial ?? '',
-          documento: conta.beneficiarioDocumento ?? empresa?.cnpj ?? null,
+          nome:
+            titulo.beneficiarioNome ?? conta.beneficiarioNome ?? empresa?.razaoSocial ?? '',
+          documento:
+            titulo.beneficiarioDocumento ??
+            conta.beneficiarioDocumento ??
+            empresa?.cnpj ??
+            null,
           endereco:
+            titulo.beneficiarioEndereco ||
             conta.beneficiarioEndereco ||
             [empresa?.endereco, empresa?.bairro, empresa?.municipio, empresa?.uf]
               .filter(Boolean)
               .join(', ') ||
             null,
-          agenciaConta: formatarAgenciaConta(conta),
+          agenciaConta: formatarAgenciaConta(titulo, conta),
         },
         pagador: {
           nome: titulo.cliente?.razaoSocial ?? 'Cliente não identificado',
@@ -252,16 +276,16 @@ export class TitulosReceberService {
           emissao: titulo.emissao,
           valor,
           carteira: titulo.carteira ?? conta.carteira,
-          especieDocumento: conta.especieDocumento,
-          aceite: conta.aceite,
+          especieDocumento: titulo.especieDocumento ?? conta.especieDocumento,
+          aceite: titulo.aceite ?? conta.aceite,
         },
-        localPagamento: conta.localPagamento,
-        instrucoes: montarInstrucoes(conta, encargos),
+        localPagamento: titulo.localPagamento ?? conta.localPagamento,
+        instrucoes: montarInstrucoes(titulo, conta, encargos),
         demonstrativo: conta.demonstrativo,
         codigo: {
-          banco: conta.banco,
-          agencia: conta.agencia,
-          conta: conta.conta,
+          banco: titulo.banco ?? conta.banco,
+          agencia: titulo.agencia ?? conta.agencia,
+          conta: titulo.conta ?? conta.conta,
           carteira: titulo.carteira ?? conta.carteira,
           nossoNumero: titulo.nossoNumero ?? '',
           vencimento: titulo.vencimento,
@@ -340,15 +364,39 @@ function nomeBanco(codigo: string): string {
   return codigo === '237' ? 'BRADESCO' : codigo;
 }
 
-/** "1234-5 / 0567890-1" — como o banco imprime na ficha. */
-function formatarAgenciaConta(conta: {
-  agencia: string;
-  agenciaDv: string | null;
-  conta: string;
-  contaDv: string | null;
-}) {
-  const agencia = conta.agenciaDv ? `${conta.agencia}-${conta.agenciaDv}` : conta.agencia;
-  const numero = conta.contaDv ? `${conta.conta}-${conta.contaDv}` : conta.conta;
+/**
+ * "1234-5 / 0567890-1" — como o banco imprime na ficha.
+ *
+ * A agência e a conta vêm do título quando o ERP as manda, e do cadastro quando
+ * não. Os dois lados são resolvidos **em bloco**: misturar a agência do título
+ * com a conta do cadastro produziria um par que não existe em banco nenhum.
+ */
+function formatarAgenciaConta(
+  titulo: {
+    agencia: string | null;
+    agenciaDv: string | null;
+    conta: string | null;
+    contaDv: string | null;
+  },
+  conta: {
+    agencia: string;
+    agenciaDv: string | null;
+    conta: string;
+    contaDv: string | null;
+  },
+) {
+  const origem =
+    titulo.agencia && titulo.conta
+      ? {
+          agencia: titulo.agencia,
+          agenciaDv: titulo.agenciaDv,
+          conta: titulo.conta,
+          contaDv: titulo.contaDv,
+        }
+      : conta;
+
+  const agencia = origem.agenciaDv ? `${origem.agencia}-${origem.agenciaDv}` : origem.agencia;
+  const numero = origem.contaDv ? `${origem.conta}-${origem.contaDv}` : origem.conta;
   return `${agencia} / ${numero}`;
 }
 
@@ -359,8 +407,18 @@ function formatarAgenciaConta(conta: {
  * Os encargos entram como **instrução**, não somados ao valor do documento: o
  * que se cobra depois do vencimento é calculado pelo banco na liquidação, e
  * embutir no valor mudaria o código de barras já registrado.
+ *
+ * As instruções do título **somam** às da conta, e não as substituem: as do
+ * cadastro são a política da empresa ("protestar após 15 dias"), as do título
+ * são os valores que o ERP calculou para aquele boleto. As duas coisas cabem
+ * no papel, e nenhuma torna a outra falsa.
  */
 function montarInstrucoes(
+  titulo: {
+    instrucoes: string | null;
+    multaValor: number | null;
+    jurosValorDia: number | null;
+  },
   conta: {
     instrucoes: string | null;
     multaPerc: number | null;
@@ -371,6 +429,7 @@ function montarInstrucoes(
 ): string[] {
   const linhas: string[] = [];
   if (conta.instrucoes) linhas.push(...conta.instrucoes.split(/\r?\n/));
+  if (titulo.instrucoes) linhas.push(...titulo.instrucoes.split(/\r?\n/));
 
   // Título em atraso: o papel precisa mostrar como o valor foi composto. Sem
   // isso o cliente vê um valor diferente do que combinou e liga para o
@@ -381,13 +440,20 @@ function montarInstrucoes(
         `(${encargos.diasAtraso} dia(s) de atraso).`,
     );
     linhas.push(`Valor original: ${real(encargos.saldo)}.`);
+
+    // O percentual só aparece quando foi ele que produziu o número. Vindo o
+    // valor pronto do ERP, imprimir "(2%)" ao lado seria uma conta que não
+    // fecha para quem conferir no papel.
     if (encargos.multa > 0) {
-      linhas.push(`Multa (${conta.multaPerc}%): ${real(encargos.multa)}.`);
+      const criterio = titulo.multaValor != null ? '' : ` (${conta.multaPerc}%)`;
+      linhas.push(`Multa${criterio}: ${real(encargos.multa)}.`);
     }
     if (encargos.juros > 0) {
-      linhas.push(
-        `Juros (${conta.jurosMesPerc}% ao mês, pro rata): ${real(encargos.juros)}.`,
-      );
+      const criterio =
+        titulo.jurosValorDia != null
+          ? ` (${real(titulo.jurosValorDia)} por dia)`
+          : ` (${conta.jurosMesPerc}% ao mês, pro rata)`;
+      linhas.push(`Juros${criterio}: ${real(encargos.juros)}.`);
     }
     linhas.push(`Total a pagar: ${real(encargos.valor)}.`);
   } else {

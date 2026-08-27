@@ -451,6 +451,7 @@ export class ClientesService {
         include: DETALHE_INCLUDE,
       });
       if (!cliente) throw new NotFoundException('Cliente não encontrado');
+
       return cliente;
     });
   }
@@ -720,6 +721,38 @@ export class ClientesService {
       });
       if (!cliente) throw new NotFoundException('Cliente não encontrado');
 
+      // A posição informa o vínculo com o WhatsApp somente quando o usuário
+      // pode abrir a conversa. É o mesmo escopo da Central de Atendimento.
+      const podeVerWhatsapp =
+        user.isAdmin || user.permissoes.includes('whatsapp-conversas.visualizar');
+      const escopoWa = podeVerWhatsapp
+        ? await escopoLeituraWhatsapp(tx, empresaId, user)
+        : [];
+      const conversasWhatsapp = podeVerWhatsapp
+        ? await tx.whatsappConversa.findMany({
+            where: {
+              clienteId,
+              empresaId,
+              ...(escopoWa === null
+                ? {}
+                : { sessao: { vendedorId: { in: escopoWa } } }),
+            },
+            orderBy: [{ arquivada: 'asc' }, { ultimaMensagemEm: 'desc' }],
+            select: {
+              id: true,
+              contato: {
+                select: {
+                  id: true,
+                  nomeExibicao: true,
+                  tipo: true,
+                  telefoneNormalizado: true,
+                  email: true,
+                },
+              },
+            },
+          })
+        : [];
+
       // Escopo já foi verificado acima via cliente.vendedorId — não reaplicar
       // filtroEscopo nas notas/títulos, pois o vendedorId de cada um deles é
       // "quem executou aquele registro" (pode divergir do vendedor titular
@@ -750,7 +783,9 @@ export class ClientesService {
           orderBy: { dtEmissao: 'desc' },
         }),
         tx.tituloReceber.findMany({
-          where: { clienteId, empresaId, deletedAt: null },
+          // Título inativo no ERP é cancelado/estornado e não representa
+          // cobrança. Não pode aparecer na aba nem compor saldo em aberto.
+          where: { clienteId, empresaId, deletedAt: null, ativo: true },
           orderBy: { vencimento: 'desc' },
         }),
         // Preço de tabela do mix segue a mesma regra do orçamento: tabela do
@@ -790,6 +825,20 @@ export class ClientesService {
 
       return {
         cliente,
+        whatsapp: Array.from(
+          new Map(
+            conversasWhatsapp.map((conversa) => [
+              conversa.contato.id,
+              {
+                conversaId: conversa.id,
+                nome: conversa.contato.nomeExibicao,
+                tipo: conversa.contato.tipo,
+                telefone: conversa.contato.telefoneNormalizado,
+                email: conversa.contato.email,
+              },
+            ]),
+          ).values(),
+        ),
         resumo,
         // A flag de XML vem do mesmo helper das rotinas de Notas de Saída — a
         // tela de posição oferece o mesmo botão de 2ª via e não pode divergir.

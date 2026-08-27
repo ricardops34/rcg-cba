@@ -51,6 +51,15 @@ export type PosicaoClienteResumo = z.infer<typeof posicaoClienteResumoSchema>;
 
 export const posicaoClienteSchema = z.object({
   cliente: clienteSchema.extend({ vendedor: vendedorRefSchema, tabelaPreco: tabelaPrecoRefSchema }),
+  whatsapp: z.array(
+    z.object({
+      conversaId: z.string().uuid(),
+      nome: z.string().nullable(),
+      tipo: z.enum(["geral", "financeiro", "compras", "contabilidade_fiscal", "outros"]),
+      telefone: z.string().nullable(),
+      email: z.string().nullable(),
+    }),
+  ),
   resumo: posicaoClienteResumoSchema,
   // `notas` é a venda efetiva: só nota ativa e não-comodato. As remessas de
   // comodato (também só as ativas) vêm à parte, em `comodatos`, para a aba

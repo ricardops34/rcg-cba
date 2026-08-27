@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, PrismaService } from '../../common/prisma/prisma.service';
 import { WhatsappConversasService } from './whatsapp-conversas.service';
 import { TitulosReceberService } from '../titulos-receber/titulos-receber.service';
@@ -97,7 +101,8 @@ export class WhatsappAcoesService {
       pageSize: 20,
       sortBy: 'vencimento',
       sortOrder: 'asc',
-      status: 'aberto',
+      status: 'em_aberto',
+      ativo: true,
       clienteId,
     } as never)) as { data: TituloLinha[] };
 
@@ -120,7 +125,14 @@ export class WhatsappAcoesService {
       `Total: ${this.moeda(total)}`,
     ].join('\n');
 
-    return this.conversas.enviar(empresaId, user, conversaId, { texto });
+    const mensagem = await this.conversas.enviar(empresaId, user, conversaId, {
+      texto,
+    });
+    await this.registrarAcao(empresaId, user, conversaId, 'titulos_resumo', {
+      quantidade: linhas.length,
+      total,
+    });
+    return mensagem;
   }
 
   /**
@@ -142,7 +154,8 @@ export class WhatsappAcoesService {
       pageSize: 30,
       sortBy: 'vencimento',
       sortOrder: 'asc',
-      status: 'aberto',
+      status: 'em_aberto',
+      ativo: true,
       clienteId,
     } as never);
   }
@@ -218,7 +231,11 @@ export class WhatsappAcoesService {
       empresaId,
       user,
       conversaId,
-      { conteudo: danfe.conteudo, nome: danfe.nomeArquivo, mime: 'application/pdf' },
+      {
+        conteudo: danfe.conteudo,
+        nome: danfe.nomeArquivo,
+        mime: 'application/pdf',
+      },
       { legenda },
     );
 
@@ -245,20 +262,26 @@ export class WhatsappAcoesService {
           empresaId,
           user,
           conversaId,
-          { conteudo: xml.conteudo, nome: xml.nomeArquivo, mime: 'application/xml' },
+          {
+            conteudo: xml.conteudo,
+            nome: xml.nomeArquivo,
+            mime: 'application/xml',
+          },
           { legenda: `XML da NF ${danfe.numero}` },
         );
         xmlEnviado = true;
       } catch (erro) {
         motivoXml =
-          erro instanceof Error ? erro.message : 'Falha ao enviar o arquivo XML';
+          erro instanceof Error
+            ? erro.message
+            : 'Falha ao enviar o arquivo XML';
       }
     }
 
     await this.registrarAcao(empresaId, user, conversaId, 'danfe', {
       notaSaidaId: input.notaSaidaId,
-      chave: danfe.chave,
-      cancelada: danfe.cancelada,
+      chave: String(danfe.chave),
+      cancelada: Boolean(danfe.cancelada),
       xmlEnviado,
     });
 
@@ -272,7 +295,7 @@ export class WhatsappAcoesService {
         evento: 'danfe_whatsapp',
         clienteId: danfe.clienteId,
         vendedorId: danfe.vendedorId,
-        numero: danfe.numero,
+        numero: String(danfe.numero),
         descricao: [
           `Enviado para ${clienteNome} pelo WhatsApp`,
           xmlEnviado ? 'com o XML' : null,
@@ -340,7 +363,11 @@ export class WhatsappAcoesService {
       empresaId,
       user,
       conversaId,
-      { conteudo: boleto.conteudo, nome: boleto.nomeArquivo, mime: 'application/pdf' },
+      {
+        conteudo: boleto.conteudo,
+        nome: boleto.nomeArquivo,
+        mime: 'application/pdf',
+      },
       {
         legenda:
           input.legenda?.trim() ||
@@ -449,7 +476,13 @@ export class WhatsappAcoesService {
       ),
     ].join('\n');
 
-    return this.conversas.enviar(empresaId, user, conversaId, { texto });
+    const mensagem = await this.conversas.enviar(empresaId, user, conversaId, {
+      texto,
+    });
+    await this.registrarAcao(empresaId, user, conversaId, 'notas_resumo', {
+      quantidade: linhas.length,
+    });
+    return mensagem;
   }
 
   /**
@@ -619,7 +652,7 @@ export class WhatsappAcoesService {
       conversaId,
     );
 
-    return this.atividades.create(empresaId, user, {
+    const atividade = await this.atividades.create(empresaId, user, {
       tipo: input.tipo,
       titulo: input.titulo,
       ...(input.descricao ? { descricao: input.descricao } : {}),
@@ -628,7 +661,26 @@ export class WhatsappAcoesService {
       vendedorId,
       concluida: false,
       ativo: true,
-    } as never);
+    });
+
+    await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappAcaoRegistro.create({
+        data: {
+          empresaId,
+          conversaId,
+          acao: 'agendamento',
+          atividadeId: atividade.id,
+          executadaPor: user.id,
+          detalhe: {
+            tipo: input.tipo,
+            titulo: input.titulo,
+            dataVencimento: input.dataVencimento?.toISOString() ?? null,
+          },
+        },
+      }),
+    );
+
+    return atividade;
   }
 
   private moeda(valor: number) {

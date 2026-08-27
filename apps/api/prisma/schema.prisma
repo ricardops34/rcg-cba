@@ -142,11 +142,9 @@ model Usuario {
  * Faixa de expediente de um usuário, uma por dia da semana (0 = domingo …
  * 6 = sábado). Dia sem linha = sem acesso naquele dia, quando
  * `Usuario.restringirHorario` está ligado.
- *
  * Horas ficam como texto "HH:MM" de propósito: é hora de parede no fuso da
  * operação (America/Campo_Grande), não um instante — guardar em DateTime
  * traria fuso e data junto, que não têm significado aqui.
- *
  * Sem `empresaId`: a trava é da conta (login é global, como a política de
  * senha), não do vínculo com uma empresa. Por isso não tem RLS.
  */
@@ -221,10 +219,10 @@ model Perfil {
   updatedBy String?
   deletedBy String?
 
-  usuarioEmpresas UsuarioEmpresa[]
-  permissoes      PerfilPermissao[]
+  usuarioEmpresas   UsuarioEmpresa[]
+  permissoes        PerfilPermissao[]
   agenteFerramentas AgenteFerramentaPerfil[]
-  comunicados     ComunicadoPerfil[]
+  comunicados       ComunicadoPerfil[]
 
   @@unique([nome])
   @@map("perfis")
@@ -352,11 +350,9 @@ model RefreshToken {
  * Uso do sistema por sessão: do login até o logout (ou até a última renovação
  * de token, quando o usuário simplesmente fecha o navegador). Alimenta o
  * "tempo de uso" da tela Administração > Acessos.
- *
  * `ultimaAtividadeEm` avança a cada renovação de token (~15 min) e na troca de
  * empresa — não a cada requisição, que custaria uma escrita por chamada de
  * API. A precisão do tempo de uso é, portanto, da ordem de um ciclo de token.
- *
  * Sem RLS pelo mesmo motivo de `refresh_tokens`: é escrita no login, antes de
  * haver empresa ativa no contexto. `empresaId` fica como informação de qual
  * empresa a sessão abriu, e é o que a consulta filtra.
@@ -394,7 +390,6 @@ enum AcessoEvento {
  * Rastro de cada tentativa de autenticação e seu desfecho — inclusive as que
  * falharam, que são justamente as que interessam investigar. Alimenta a tela
  * Administração > Acessos.
- *
  * `usuarioId` é nulo quando o e-mail digitado não existe no cadastro (a
  * tentativa é registrada mesmo assim, com o e-mail em `email`). Sem RLS pelo
  * mesmo motivo de `refresh_tokens`: é escrito no login, antes de existir
@@ -712,12 +707,10 @@ enum StatusHistoricoCliente {
 
 /**
  * Solicitação de alteração de cliente: o "de → para" aguardando aprovação.
- *
  * `alteracoes` é um JSON `{ campo: { de, para } }` calculado sempre contra o
  * estado atual do cliente — é o que torna a fila idempotente perante o ERP,
  * que reenvia o mesmo payload a cada sincronização: payload igual ao gravado
  * gera diff vazio e nenhuma solicitação.
- *
  * Tabela volátil (a solicitação se resolve); o rastro permanente é
  * ClienteHistorico.
  */
@@ -802,7 +795,6 @@ enum AgentePapel {
  * Configuração do agente de IA por empresa (singleton, padrão do
  * OrcamentoConfig). A personalidade e a temperatura são editáveis em tela para
  * ajustar o comportamento sem redeploy.
- *
  * `apiKeyCifrada` é AES-256-GCM (ver `agente-cripto.ts`) — precisa ser
  * reversível, porque a chave é usada para chamar o provedor; não é hash. A
  * chave em claro **nunca** sai da API: a leitura devolve só os últimos 4
@@ -827,14 +819,14 @@ model AgenteConfig {
   // Identidade e prompt base valem para qualquer provedor: trocar de LLM não
   // pode trocar o nome pelo qual a equipe conhece o assistente nem as regras
   // de resposta.
-  nomeAgente   String  @default("Assistente")
+  nomeAgente         String  @default("Assistente")
   // Primeira fala de toda conversa nova. Não vai ao modelo: é texto da
   // empresa, escrito por gente, e o que ele faz é dizer ao vendedor o que
   // pedir — a tela em branco não ensina isso.
   mensagemBoasVindas String? @db.Text
-  systemPrompt String? @db.Text
-  temperatura  Float   @default(0.3)
-  maxTokens    Int     @default(2048)
+  systemPrompt       String? @db.Text
+  temperatura        Float   @default(0.3)
+  maxTokens          Int     @default(2048)
 
   // Teto de voltas do laço de ferramentas: sem ele, um modelo em loop de
   // tool_calls consome tokens (pagos) indefinidamente.
@@ -854,18 +846,15 @@ model AgenteConfig {
 /**
  * Chave de API por provedor. Existe para tornar a troca de provedor um clique:
  * alternar entre Claude e Groq não pode exigir recolar a chave do outro.
- *
  * `modelo` guarda o último modelo usado naquele provedor, para a volta trazer
  * a configuração de antes em vez do padrão.
  */
 /**
  * Governança das ferramentas do agente, por empresa.
- *
  * A **implementação** de cada ferramenta continua no código
  * (`AgenteToolsService`) — o banco não executa nada. O que mora aqui é o que a
  * empresa decide sobre ela: se está ligada, como ela se apresenta ao modelo, e
  * quais perfis podem usá-la.
- *
  * A linha é criada por sincronização a partir do catálogo do código, então
  * ferramenta nova aparece desligada/ligada conforme o padrão dela e ferramenta
  * removida do código simplesmente deixa de ser sincronizada.
@@ -873,7 +862,9 @@ model AgenteConfig {
 model AgenteFerramenta {
   id        String @id @default(uuid())
   empresaId String
-  /** Chave estável, igual ao `nome` no catálogo do código (ex.: buscar_cliente). */
+  /**
+   * Chave estável, igual ao `nome` no catálogo do código (ex.: buscar_cliente).
+   */
   chave     String
 
   ativa Boolean @default(true)
@@ -897,7 +888,6 @@ model AgenteFerramenta {
 
 /**
  * Perfis liberados para uma ferramenta.
- *
  * **Restringe, nunca amplia.** A permissão declarada no código
  * (`Ferramenta.permissao`, ex.: `clientes.visualizar`) continua sendo checada
  * de qualquer forma — esta tabela é um filtro adicional. Sem nenhuma linha, a
@@ -935,10 +925,14 @@ model AgenteCredencial {
   // API: são credenciais reutilizáveis, então hash não serve.
   accessTokenCifrado  String?
   refreshTokenCifrado String?
-  /** Vai no header ChatGPT-Account-ID; sem ele o backend responde 401/403. */
+  /**
+   * Vai no header ChatGPT-Account-ID; sem ele o backend responde 401/403.
+   */
   contaId             String?
   contaEmail          String?
-  /** Expiração do access token — a renovação dispara antes disso. */
+  /**
+   * Expiração do access token — a renovação dispara antes disso.
+   */
   tokenExpiraEm       DateTime?
 
   createdAt DateTime @default(now())
@@ -972,7 +966,6 @@ model AgenteConversa {
  * Cada passo da conversa, inclusive as chamadas de ferramenta — é aqui que
  * mora a auditoria: qual ferramenta o agente quis executar, com que argumentos
  * exatos, e quem confirmou.
- *
  * `pendente` marca a ação de escrita que ainda não foi confirmada pelo
  * usuário; até `confirmadaEm` ser preenchida, nada foi gravado no sistema.
  */
@@ -1006,16 +999,13 @@ model AgenteMensagem {
 /**
  * Sugestão de compra gerada para um cliente: produto que clientes semelhantes
  * compram e ele não.
- *
  * Guardar o resultado não é cache por preguiça — é requisito. A geração por IA
  * é paga e lenta demais para rodar a cada abertura de tela, e a linha gravada é
  * o que permite auditar **o que a IA sugeriu** depois.
- *
  * `origem` distingue o motor determinístico (`local`, SQL sobre a cesta de
  * compras e o CNAE) da recomendação do modelo (`ia`). `loteId` agrupa o que
  * saiu de uma mesma execução, para substituir um lote inteiro sem apagar o
  * outro motor.
- *
  * Nada de valor ou nome de cliente vai para a IA — ver `anonimizar.ts`. Aqui
  * só voltam códigos de produto, que são reenriquecidos na leitura.
  */
@@ -1603,8 +1593,8 @@ model NotaSaida {
   // "autorizada", "cancelada" ou "denegada". A ficha impressa avisa quando a
   // nota não está mais válida — mandar DANFE de nota cancelada para o cliente
   // é o tipo de erro que ninguém percebe até a fiscalização.
-  protocoloNfe String?
-  situacaoNfe  String?
+  protocoloNfe  String?
+  situacaoNfe   String?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1631,18 +1621,15 @@ model NotaSaida {
 /**
  * O XML autorizado da NF-e, de onde o DANFE é renderizado
  * (ver `docs/planos/segunda-via-danfe-boleto.md`).
- *
  * Tabela acessória, e não coluna em `notas_saida`, por uma razão medida: o
  * Prisma traz todas as colunas quando não há `select` explícito, e as duas
  * consultas de nota do sistema não têm — a listagem paginada e a Posição de
  * Cliente, que carrega o histórico inteiro do cliente de uma vez. Uma coluna
  * de XML ali faria toda abertura de tela puxar megabytes que ninguém pediu, e
  * a armadilha ficaria armada para o próximo `findMany` que alguém escrevesse.
- *
  * Aqui o XML só é lido por quem pede a 2ª via. `conteudo` é TEXT: o TOAST do
  * Postgres tira o valor de dentro da linha e comprime sozinho (~5 a 8x em
  * XML), então não há compressão em código para manter.
- *
  * Um XML por nota (`notaSaidaId` único). Reenvio do ERP substitui o anterior:
  * a nota autorizada é uma só, e guardar versões antigas de um documento
  * fiscal que foi corrigido só cria dúvida sobre qual vale.
@@ -1652,12 +1639,12 @@ model NotaSaidaXml {
   empresaId   String
   notaSaidaId String @unique
 
-  conteudo String
+  conteudo     String
   // Tamanho em bytes do que foi recebido — a tela de operação responde
   // "o ERP mandou mesmo?" sem precisar ler o XML inteiro do banco.
   tamanhoBytes Int
 
-  recebidoEm DateTime @default(now())
+  recebidoEm  DateTime @default(now())
   // Chave de API da integração que enviou (ver `autorIntegracao`).
   recebidoPor String?
 
@@ -1736,11 +1723,9 @@ model NotaSaidaItem {
 /**
  * Convênio de cobrança da empresa — o que o boleto precisa saber sobre o
  * beneficiário e que não muda de título para título.
- *
  * Existe como cadastro (e não como parâmetro ou campo repetido no payload do
  * ERP) por dois motivos: a empresa pode ter mais de uma conta de cobrança, e
  * instrução/multa/juros são texto que se corrige numa tela, não numa carga.
- *
  * A plataforma **não registra boleto em banco**: quem registrou foi o ERP, e é
  * dele que vem o nosso número (ver `TituloReceber.nossoNumero`). Aqui só se
  * guarda o que é preciso para *reimprimir* a mesma ficha de compensação.
@@ -1840,6 +1825,35 @@ model TituloReceber {
   // registrado é pior do que não imprimir.
   codigoBarras   String?
   linhaDigitavel String?
+
+  // ---- Boleto autossuficiente: o ERP manda o desenho junto com o título ----
+  // Quem registra o boleto no banco é o ERP, então é a informação dele que
+  // vale. Todos opcionais, e todos com o mesmo contrato de precedência que o
+  // `carteira` acima já tinha: preenchido, vence a conta de cobrança; nulo,
+  // cai nela. Título importado antes desta migration continua sendo emitido
+  // pelo cadastro, sem mudança nenhuma.
+  nossoNumeroDac         String?
+  banco                  String?
+  bancoNome              String?
+  bancoCodigoCompensacao String?
+  agencia                String?
+  agenciaDv              String?
+  conta                  String?
+  contaDv                String?
+  beneficiarioNome       String?
+  beneficiarioDocumento  String?
+  beneficiarioEndereco   String?
+  localPagamento         String?
+  aceite                 String?
+  especieDocumento       String?
+
+  // Encargos em reais, calculados pelo ERP sobre o saldo. Substituem o cálculo
+  // por percentual quando presentes: o valor impresso no boleto que está com o
+  // cliente é este, e divergir dele gera contestação no caixa.
+  jurosValorDia Float?
+  multaValor    Float?
+  descontoValor Float?
+  instrucoes    String?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -2206,6 +2220,14 @@ enum WhatsappStatusEntrega {
   erro
 }
 
+enum WhatsappTipoContato {
+  geral
+  financeiro
+  compras
+  contabilidade_fiscal
+  outros
+}
+
 /**
  * Sessão de WhatsApp de um vendedor — uma conexão viva no worker.
  * `credencialCifrada` é o estado de autenticação devolvido pelo pareamento
@@ -2264,6 +2286,8 @@ model WhatsappContato {
   jid                 String
   nomeExibicao        String?
   telefoneNormalizado String?
+  tipo                WhatsappTipoContato @default(geral)
+  email               String?
 
   clienteId    String?
   vinculadoPor String?
@@ -2302,14 +2326,14 @@ model WhatsappConversa {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  empresa   Empresa                @relation(fields: [empresaId], references: [id])
+  empresa   Empresa                    @relation(fields: [empresaId], references: [id])
   // Restrict, não Cascade: a conversa com o cliente é da empresa, não do
   // aparelho. Vendedor desligado, troca de celular ou limpeza de sessão não
   // podem levar o histórico junto — e com Cascade isso aconteceria em
   // silêncio, num DELETE que ninguém associaria a perder atendimento.
-  sessao    WhatsappSessao         @relation(fields: [sessaoId], references: [id], onDelete: Restrict)
-  contato   WhatsappContato        @relation(fields: [contatoId], references: [id], onDelete: Restrict)
-  cliente   Cliente?               @relation(fields: [clienteId], references: [id])
+  sessao    WhatsappSessao             @relation(fields: [sessaoId], references: [id], onDelete: Restrict)
+  contato   WhatsappContato            @relation(fields: [contatoId], references: [id], onDelete: Restrict)
+  cliente   Cliente?                   @relation(fields: [clienteId], references: [id])
   mensagens WhatsappMensagem[]
   acoes     WhatsappAcaoRegistro[]
   agendadas WhatsappMensagemAgendada[]
@@ -2359,13 +2383,11 @@ model WhatsappMensagem {
 
 /**
  * Reação (emoji) a uma mensagem.
- *
  * O WhatsApp trata reação como **substituição**, não acumulação: cada lado tem
  * no máximo uma por mensagem, trocar o emoji sobrescreve e reagir com string
  * vazia remove. Como o atendimento é 1:1, `deQuem` só tem dois valores — daí a
  * unicidade por (mensagem, lado), que é o que faz o upsert funcionar sem
  * duplicar.
- *
  * Fica em tabela própria, e não numa coluna da mensagem, porque reação chega
  * e sai depois da mensagem existir: gravar por cima do registro dela faria a
  * atualização competir com o recebimento.
@@ -2381,18 +2403,20 @@ model WhatsappReacao {
   // Só na saída: qual usuário do sistema reagiu.
   reagiuPor String?
 
-  criadaEm    DateTime @default(now())
+  criadaEm     DateTime @default(now())
   atualizadaEm DateTime @updatedAt
 
-  empresa  Empresa           @relation(fields: [empresaId], references: [id])
-  mensagem WhatsappMensagem  @relation(fields: [mensagemId], references: [id], onDelete: Cascade)
+  empresa  Empresa          @relation(fields: [empresaId], references: [id])
+  mensagem WhatsappMensagem @relation(fields: [mensagemId], references: [id], onDelete: Cascade)
 
   @@unique([empresaId, mensagemId, deQuem])
   @@index([empresaId, mensagemId])
   @@map("whatsapp_reacoes")
 }
 
-/** De que lado veio a reação — a conversa é 1:1, então são só dois. */
+/**
+ * De que lado veio a reação — a conversa é 1:1, então são só dois.
+ */
 enum WhatsappLadoReacao {
   nos
   contato
@@ -2400,10 +2424,8 @@ enum WhatsappLadoReacao {
 
 /**
  * Mensagem escrita agora para sair depois.
- *
  * O vendedor prepara a cobrança da manhã seguinte, o retorno combinado para a
  * semana que vem, e a plataforma envia na hora — sem ele precisar lembrar.
- *
  * `status` existe para o envio ser **idempotente entre réplicas da API**: a
  * rotina só processa quem conseguir mudar `pendente` → `enviando` na própria
  * atualização condicional. Sem isso, duas réplicas mandariam a mesma mensagem
@@ -2417,10 +2439,14 @@ model WhatsappMensagemAgendada {
   texto    String   @db.Text
   enviarEm DateTime
 
-  status WhatsappAgendamentoStatus @default(pendente)
-  /** Preenchido quando o envio falha — é o que a tela mostra ao vendedor. */
-  erro String?
-  /** Mensagem criada no envio, para ligar o agendamento ao que saiu. */
+  status     WhatsappAgendamentoStatus @default(pendente)
+  /**
+   * Preenchido quando o envio falha — é o que a tela mostra ao vendedor.
+   */
+  erro       String?
+  /**
+   * Mensagem criada no envio, para ligar o agendamento ao que saiu.
+   */
   mensagemId String?
 
   criadaPor    String
@@ -2475,10 +2501,8 @@ model WhatsappAcaoRegistro {
 
 /**
  * Configuração do WhatsApp por empresa (singleton, padrão do AgenteConfig).
- *
  * Separada da sessão de propósito: a sessão é do vendedor e é volátil (cai,
  * repareia, é banida); isto aqui é decisão da empresa e vale para todas elas.
- *
  * `workerUrl` aponta para o serviço que mantém as conexões de pé
  * (`apps/whatsapp-worker`). Fica em configuração e não em env por causa da
  * troca de transporte: a Cloud API não tem worker, e a migração é gradual.
@@ -2513,13 +2537,11 @@ model WhatsappConfig {
 
 /**
  * Notificação do sino, uma linha por destinatário.
- *
  * O feed é lido **só desta tabela** (fonte única): o que antes era derivado do
  * dado vivo — conversa não lida, atividade vencida — agora é registrado aqui
  * por quem provoca o fato. É o que permite ter "lido" de verdade, histórico e
  * uma consulta única no sino, no lugar de uma varredura por origem a cada
  * passagem.
- *
  * O preço é a coerência: quem marca a conversa como lida precisa marcar as
  * notificações dela junto, senão o sino insiste em algo que o vendedor já viu.
  * Ver `NotificacoesService`.
@@ -2527,13 +2549,17 @@ model WhatsappConfig {
 model Notificacao {
   id        String @id @default(uuid())
   empresaId String
-  /** Destinatário. Vendedor sem usuário vinculado não gera notificação. */
+  /**
+   * Destinatário. Vendedor sem usuário vinculado não gera notificação.
+   */
   usuarioId String
 
   tipo      NotificacaoTipo
   titulo    String
   descricao String?
-  /** Para onde a linha do sino leva. Nulo = notificação sem destino. */
+  /**
+   * Para onde a linha do sino leva. Nulo = notificação sem destino.
+   */
   rota      String?
 
   /**
@@ -2542,7 +2568,9 @@ model Notificacao {
    * origem é resolvida — ver o índice parcial único na migration.
    */
   referenciaId String?
-  /** Ocorrências agrupadas nesta linha: as mensagens novas da conversa. */
+  /**
+   * Ocorrências agrupadas nesta linha: as mensagens novas da conversa.
+   */
   contador     Int     @default(1)
 
   /**

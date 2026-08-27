@@ -51,7 +51,9 @@ export const tituloReceberQuerySchema = paginationQuerySchema.extend({
   ativo: booleanQueryParam,
   clienteId: z.string().uuid().optional(),
   vendedorId: z.string().uuid().optional(),
-  status: tituloReceberStatusSchema.optional(),
+  // `em_aberto` é um filtro agregado: todo título ainda não baixado, vencido
+  // ou não. O status devolvido nas linhas continua sendo o trio acima.
+  status: tituloReceberStatusSchema.or(z.literal("em_aberto")).optional(),
 });
 export type TituloReceberQuery = z.infer<typeof tituloReceberQuerySchema>;
 

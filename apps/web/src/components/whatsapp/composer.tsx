@@ -129,7 +129,9 @@ export function Composer({
         <div className="flex items-start gap-2 border-b bg-muted/40 px-3 py-2 text-xs">
           <div className="min-w-0 flex-1 border-l-2 border-primary pl-2">
             <p className="font-medium">
-              {respondendo.direcao === "saida" ? "Você" : "Cliente"}
+              {respondendo.autorNome ??
+                respondendo.enviadaPorNome ??
+                (respondendo.direcao === "saida" ? "Atendente" : "Contato")}
             </p>
             <p className="truncate text-muted-foreground">
               {respondendo.conteudo ?? `[${respondendo.tipo}]`}
@@ -154,7 +156,14 @@ export function Composer({
       >
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button type="button" variant="ghost" size="icon" disabled={ocupado}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              disabled={ocupado}
+              aria-label="Anexar arquivo ou agendar mensagem"
+              title="Anexar ou agendar"
+            >
               <Plus className="size-5" />
             </Button>
           </DropdownMenuTrigger>
@@ -209,11 +218,7 @@ export function Composer({
           disabled={gravacao.gravando || ocupado}
         />
 
-        {texto.trim() ? (
-          <Button type="submit" size="icon" disabled={ocupado}>
-            <Send className="size-4" />
-          </Button>
-        ) : gravacao.gravando ? (
+        {gravacao.gravando ? (
           <>
             <span className="text-xs tabular-nums text-destructive">
               {gravacao.duracao}s
@@ -237,16 +242,26 @@ export function Composer({
             </Button>
           </>
         ) : (
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            onClick={gravacao.iniciar}
-            disabled={ocupado}
-            title="Gravar áudio"
-          >
-            <Mic className="size-5" />
-          </Button>
+          <>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              onClick={gravacao.iniciar}
+              disabled={ocupado}
+              title="Gravar áudio"
+            >
+              <Mic className="size-5" />
+            </Button>
+            <Button
+              type="submit"
+              size="icon"
+              disabled={!texto.trim() || ocupado}
+              title="Enviar mensagem"
+            >
+              <Send className="size-4" />
+            </Button>
+          </>
         )}
       </form>
 

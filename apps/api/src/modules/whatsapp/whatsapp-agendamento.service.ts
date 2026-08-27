@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappWorkerClient } from './whatsapp-worker.client';
+import { mensagemComAutor } from './mensagem-com-autor';
 import { WhatsappConversasService } from './whatsapp-conversas.service';
 import {
   registrarNotificacao,
@@ -205,8 +206,8 @@ export class WhatsappAgendamentoService
     if (reservada.count === 0) return;
 
     try {
-      const agendada = await this.prisma.withTenant(empresaId, (tx) =>
-        tx.whatsappMensagemAgendada.findFirstOrThrow({
+      const agendada = await this.prisma.withTenant(empresaId, async (tx) => {
+        const mensagem = await tx.whatsappMensagemAgendada.findFirstOrThrow({
           where: { id },
           include: {
             conversa: {
@@ -216,8 +217,13 @@ export class WhatsappAgendamentoService
               },
             },
           },
-        }),
-      );
+        });
+        const autor = await tx.usuario.findFirst({
+          where: { id: mensagem.criadaPor },
+          select: { nome: true },
+        });
+        return { ...mensagem, autorNome: autor?.nome ?? 'Atendente' };
+      });
 
       if (agendada.conversa.sessao.status !== 'conectada') {
         throw new Error(
@@ -232,7 +238,7 @@ export class WhatsappAgendamentoService
           metodo: 'POST',
           corpo: {
             jid: agendada.conversa.contato.jid,
-            texto: agendada.texto,
+            texto: mensagemComAutor(agendada.autorNome, agendada.texto),
             respondeuA: null,
           },
         },

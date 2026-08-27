@@ -66,6 +66,12 @@ export type EncargosCalculados = {
  * próprio saldo. Isso é deliberado: inventar multa padrão cobraria do cliente
  * um valor que a empresa nunca combinou.
  *
+ * **Valor do ERP vence percentual do convênio.** Quando o título traz
+ * `multaValor` ou `jurosValorDia` — o que o ERP calculou e imprimiu no boleto
+ * original —, é esse número que entra. Recalcular pelo percentual daria outro
+ * resultado se alguém tiver mexido no cadastro depois da emissão, e aí o papel
+ * na mão do cliente e a 2ª via diriam valores diferentes.
+ *
  * Tudo é arredondado ao centavo no fim, e não a cada parcela, para o total
  * impresso bater com a soma das linhas do demonstrativo.
  */
@@ -74,6 +80,10 @@ export function calcularEncargos(entrada: {
   vencimento: Date | null;
   multaPerc: number | null;
   jurosMesPerc: number | null;
+  /** Multa em reais, como o ERP calculou. Vence `multaPerc`. */
+  multaValor?: number | null;
+  /** Juros por dia de atraso, em reais, como o ERP calculou. Vence `jurosMesPerc`. */
+  jurosValorDia?: number | null;
   hoje?: Date;
 }): EncargosCalculados {
   const hoje = inicioDoDia(entrada.hoje ?? new Date());
@@ -84,9 +94,15 @@ export function calcularEncargos(entrada: {
     return { valor: saldo, saldo, multa: 0, juros: 0, diasAtraso: 0, atualizadoAte: hoje };
   }
 
-  const multa = centavos((saldo * (entrada.multaPerc ?? 0)) / 100);
-  const jurosDia = (entrada.jurosMesPerc ?? 0) / 30 / 100;
-  const juros = centavos(saldo * jurosDia * diasAtraso);
+  const multa =
+    entrada.multaValor != null
+      ? centavos(entrada.multaValor)
+      : centavos((saldo * (entrada.multaPerc ?? 0)) / 100);
+
+  const juros =
+    entrada.jurosValorDia != null
+      ? centavos(entrada.jurosValorDia * diasAtraso)
+      : centavos(saldo * ((entrada.jurosMesPerc ?? 0) / 30 / 100) * diasAtraso);
 
   return {
     valor: centavos(saldo + multa + juros),

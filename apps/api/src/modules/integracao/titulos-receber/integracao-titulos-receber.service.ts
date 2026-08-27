@@ -35,6 +35,36 @@ type TituloComRelacoes = Prisma.TituloReceberGetPayload<{
   include: typeof INCLUDE;
 }>;
 
+/**
+ * Desenho do boleto que o ERP manda junto com o título.
+ *
+ * Vão para o banco como chegaram — sem `soDigitos`, ao contrário de nosso
+ * número e código de barras. Aqui há texto de propósito: nome do beneficiário,
+ * endereço, local de pagamento, instruções. E os que são numéricos (agência,
+ * conta, dígitos) já vêm normalizados do ERP, que os leu do cadastro de bancos
+ * dele.
+ */
+const CAMPOS_BOLETO = [
+  'nossoNumeroDac',
+  'banco',
+  'bancoNome',
+  'bancoCodigoCompensacao',
+  'agencia',
+  'agenciaDv',
+  'conta',
+  'contaDv',
+  'beneficiarioNome',
+  'beneficiarioDocumento',
+  'beneficiarioEndereco',
+  'localPagamento',
+  'aceite',
+  'especieDocumento',
+  'jurosValorDia',
+  'multaValor',
+  'descontoValor',
+  'instrucoes',
+] as const;
+
 @Injectable()
 export class IntegracaoTitulosReceberService {
   constructor(private readonly prisma: PrismaService) {}
@@ -65,6 +95,24 @@ export class IntegracaoTitulosReceberService {
       contaBancariaDescricao: row.contaBancaria?.descricao ?? null,
       codigoBarras: row.codigoBarras,
       linhaDigitavel: row.linhaDigitavel,
+      nossoNumeroDac: row.nossoNumeroDac,
+      banco: row.banco,
+      bancoNome: row.bancoNome,
+      bancoCodigoCompensacao: row.bancoCodigoCompensacao,
+      agencia: row.agencia,
+      agenciaDv: row.agenciaDv,
+      conta: row.conta,
+      contaDv: row.contaDv,
+      beneficiarioNome: row.beneficiarioNome,
+      beneficiarioDocumento: row.beneficiarioDocumento,
+      beneficiarioEndereco: row.beneficiarioEndereco,
+      localPagamento: row.localPagamento,
+      aceite: row.aceite,
+      especieDocumento: row.especieDocumento,
+      jurosValorDia: row.jurosValorDia,
+      multaValor: row.multaValor,
+      descontoValor: row.descontoValor,
+      instrucoes: row.instrucoes,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       createdBy: row.createdBy,
@@ -168,6 +216,7 @@ export class IntegracaoTitulosReceberService {
           carteira: this.soDigitos(input.carteira),
           codigoBarras: this.validarCodigoBarras(input.codigoBarras),
           linhaDigitavel: this.soDigitos(input.linhaDigitavel),
+          ...this.dadosDoBoleto(input),
           updatedBy: autor,
       };
 
@@ -257,6 +306,13 @@ export class IntegracaoTitulosReceberService {
       if (input.linhaDigitavel !== undefined)
         data.linhaDigitavel = this.soDigitos(input.linhaDigitavel);
 
+      // Desenho do boleto: só o que veio no PATCH é tocado. Diferente do
+      // create, aqui `undefined` significa "não mexe" e `null` significa
+      // "apaga" — mandar tudo apagaria o boleto de quem enviou só o saldo.
+      for (const campo of CAMPOS_BOLETO) {
+        if (input[campo] !== undefined) data[campo] = input[campo] ?? null;
+      }
+
       const atualizado = await tx.tituloReceber.update({
         where: { id: existente.id },
         data: data as never,
@@ -338,6 +394,39 @@ export class IntegracaoTitulosReceberService {
       );
     }
     return conta.id;
+  }
+
+  /**
+   * Recolhe o desenho do boleto do payload, normalizando ausência em `null`.
+   *
+   * No create todo campo é gravado: o que o ERP não mandou fica nulo, e nulo
+   * quer dizer "usa a conta de cobrança". No update é diferente — lá `undefined`
+   * significa "não mexe" —, por isso aquele caminho não usa este helper.
+   */
+  private dadosDoBoleto(input: IntegracaoTituloReceberCreate) {
+    // Escrito campo a campo, e não por laço sobre CAMPOS_BOLETO, porque o
+    // retorno precisa ser um tipo concreto: um Record<string, unknown> espalhado
+    // no `data` do Prisma quebra a checagem de tipo do create.
+    return {
+      nossoNumeroDac: input.nossoNumeroDac ?? null,
+      banco: input.banco ?? null,
+      bancoNome: input.bancoNome ?? null,
+      bancoCodigoCompensacao: input.bancoCodigoCompensacao ?? null,
+      agencia: input.agencia ?? null,
+      agenciaDv: input.agenciaDv ?? null,
+      conta: input.conta ?? null,
+      contaDv: input.contaDv ?? null,
+      beneficiarioNome: input.beneficiarioNome ?? null,
+      beneficiarioDocumento: input.beneficiarioDocumento ?? null,
+      beneficiarioEndereco: input.beneficiarioEndereco ?? null,
+      localPagamento: input.localPagamento ?? null,
+      aceite: input.aceite ?? null,
+      especieDocumento: input.especieDocumento ?? null,
+      jurosValorDia: input.jurosValorDia ?? null,
+      multaValor: input.multaValor ?? null,
+      descontoValor: input.descontoValor ?? null,
+      instrucoes: input.instrucoes ?? null,
+    };
   }
 
   /** Máscara do ERP não entra no banco: o boleto consome dígito puro. */

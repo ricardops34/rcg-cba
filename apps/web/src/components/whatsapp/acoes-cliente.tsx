@@ -83,6 +83,9 @@ export function AcoesCliente({
       void queryClient.invalidateQueries({
         queryKey: ["whatsapp-mensagens", conversaId],
       });
+      void queryClient.invalidateQueries({
+        queryKey: ["whatsapp-eventos", conversaId],
+      });
     },
     onError: (err) =>
       toast.error(err instanceof ApiError ? err.message : "Falha ao enviar"),
@@ -109,12 +112,13 @@ export function AcoesCliente({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button type="button" variant="ghost" size="icon" title="Ações do sistema">
+          <Button type="button" variant="ghost" size="sm" title="Ferramentas comerciais">
             <Wrench className="size-5" />
+            <span className="hidden 2xl:inline">Ferramentas</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" side="top" className="w-60">
-          <DropdownMenuLabel>Ações do sistema</DropdownMenuLabel>
+        <DropdownMenuContent align="start" side="top" className="w-64">
+          <DropdownMenuLabel>Financeiro</DropdownMenuLabel>
           <DropdownMenuSeparator />
           {podeTitulos ? (
             <DropdownMenuItem
@@ -135,6 +139,12 @@ export function AcoesCliente({
             </DropdownMenuItem>
           ) : null}
           {podeNotas ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Fiscal</DropdownMenuLabel>
+            </>
+          ) : null}
+          {podeNotas ? (
             <DropdownMenuItem
               disabled={executar.isPending}
               onClick={() => executar.mutate("notas")}
@@ -148,6 +158,12 @@ export function AcoesCliente({
               <FileText className="size-4" />
               Enviar DANFE (2ª via)
             </DropdownMenuItem>
+          ) : null}
+          {podePosicao || podeCriarOrcamento || podeOrcamento ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Comercial</DropdownMenuLabel>
+            </>
           ) : null}
           {podePosicao ? (
             <DropdownMenuItem onClick={onAbrirPosicao}>
@@ -168,10 +184,14 @@ export function AcoesCliente({
             </DropdownMenuItem>
           ) : null}
           {podeAgendar ? (
-            <DropdownMenuItem onClick={() => setAgendando(true)}>
-              <CalendarPlus className="size-4" />
-              Agendar visita/retorno
-            </DropdownMenuItem>
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Relacionamento</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => setAgendando(true)}>
+                <CalendarPlus className="size-4" />
+                Agendar visita/retorno
+              </DropdownMenuItem>
+            </>
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
@@ -253,6 +273,9 @@ function OrcamentoDialog({
       onOpenChange(false);
       void queryClient.invalidateQueries({
         queryKey: ["whatsapp-mensagens", conversaId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["whatsapp-eventos", conversaId],
       });
       // A emissão entra no histórico do orçamento/cliente como atividade.
       void queryClient.invalidateQueries({ queryKey: ["atividades"] });
@@ -344,6 +367,7 @@ function AgendarDialog({
   aberto: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const queryClient = useQueryClient();
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
   const [quando, setQuando] = useState("");
@@ -365,6 +389,10 @@ function AgendarDialog({
       setDescricao("");
       setQuando("");
       onOpenChange(false);
+      void queryClient.invalidateQueries({
+        queryKey: ["whatsapp-eventos", conversaId],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["whatsapp-conversas"] });
     },
     onError: (err) =>
       toast.error(err instanceof ApiError ? err.message : "Falha ao agendar"),

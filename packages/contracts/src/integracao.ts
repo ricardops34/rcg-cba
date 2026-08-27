@@ -927,6 +927,152 @@ export const integracaoTituloReceberCreateSchema = z.object({
     .nullable()
     .optional()
     .describe("Linha digitável registrada (47 dígitos). Derivada do código de barras quando omitida."),
+
+  // ---- Boleto: o título carrega tudo que o PDF precisa ----
+  // O ERP manda o desenho inteiro do boleto junto com o título, e a plataforma
+  // renderiza sem depender de cadastro de conta de cobrança. É mais campo
+  // repetido em cada título, e em troca não existe a classe de erro em que o
+  // boleto sai com a conta errada porque um cadastro na plataforma ficou
+  // desatualizado em relação ao ERP — quem registra o boleto no banco é o ERP,
+  // e é a informação dele que vale.
+  //
+  // `contaBancariaDescricao` continua servindo para agrupar e exibir; a emissão
+  // não depende mais dela.
+  //
+  // Todos opcionais: título de outra forma de pagamento (dinheiro, depósito,
+  // PIX) não tem boleto e não traz nenhum deles.
+  banco: z
+    .string()
+    .trim()
+    .max(3)
+    .nullable()
+    .optional()
+    .describe("Código de compensação do banco cobrador (E1_PORTADO no Protheus). 237 = Bradesco."),
+  bancoNome: z
+    .string()
+    .trim()
+    .max(60)
+    .nullable()
+    .optional()
+    .describe("Nome do banco, como sai no cabeçalho do boleto."),
+  bancoCodigoCompensacao: z
+    .string()
+    .trim()
+    .max(5)
+    .nullable()
+    .optional()
+    .describe(
+      'Código de compensação com o dígito, impresso ao lado do logo ("237-2"). Vem pronto do ERP para a plataforma não precisar manter a tabela de dígitos da FEBRABAN.',
+    ),
+  agencia: z
+    .string()
+    .trim()
+    .max(6)
+    .nullable()
+    .optional()
+    .describe("Agência sem o dígito verificador."),
+  agenciaDv: z
+    .string()
+    .trim()
+    .max(1)
+    .nullable()
+    .optional()
+    .describe("Dígito verificador da agência."),
+  conta: z
+    .string()
+    .trim()
+    .max(12)
+    .nullable()
+    .optional()
+    .describe("Conta corrente sem o dígito verificador."),
+  contaDv: z
+    .string()
+    .trim()
+    .max(1)
+    .nullable()
+    .optional()
+    .describe("Dígito verificador da conta."),
+  beneficiarioNome: z
+    .string()
+    .trim()
+    .max(120)
+    .nullable()
+    .optional()
+    .describe("Cedente: razão social da empresa emissora, como aparece no boleto."),
+  beneficiarioDocumento: z
+    .string()
+    .trim()
+    .max(20)
+    .nullable()
+    .optional()
+    .describe("CNPJ do beneficiário, já formatado."),
+  beneficiarioEndereco: z
+    .string()
+    .trim()
+    .max(200)
+    .nullable()
+    .optional()
+    .describe("Endereço do beneficiário em uma linha."),
+  localPagamento: z
+    .string()
+    .trim()
+    .max(120)
+    .nullable()
+    .optional()
+    .describe('Instrução de onde pagar (ex.: "Pagável preferencialmente em qualquer Agência Bradesco").'),
+  aceite: z
+    .string()
+    .trim()
+    .max(3)
+    .nullable()
+    .optional()
+    .describe('Aceite do sacado ("Sim" ou "Não").'),
+  especieDocumento: z
+    .string()
+    .trim()
+    .max(5)
+    .nullable()
+    .optional()
+    .describe('Espécie do documento ("DM" = duplicata mercantil).'),
+  // Juros, multa e desconto vão em **reais**, não em percentual: quem calcula é
+  // o ERP, sobre o saldo e os parâmetros dele. Se os dois lados calculassem,
+  // divergiriam — e divergência no valor cobrado vira contestação no caixa.
+  nossoNumeroDac: z
+    .string()
+    .trim()
+    .max(2)
+    .nullable()
+    .optional()
+    .describe(
+      "Dígito verificador do nosso número, como o ERP o calculou. O Bradesco imprime carteira/nossoNumero-DAC (09/00000001160-8). Omitido, a plataforma recalcula.",
+    ),
+  jurosValorDia: z.coerce
+    .number()
+    .min(0)
+    .nullable()
+    .optional()
+    .describe("Juros de mora por dia de atraso, em reais, calculado pelo ERP sobre o saldo."),
+  multaValor: z.coerce
+    .number()
+    .min(0)
+    .nullable()
+    .optional()
+    .describe("Multa por atraso, em reais, calculada pelo ERP sobre o saldo."),
+  descontoValor: z.coerce
+    .number()
+    .min(0)
+    .nullable()
+    .optional()
+    .describe("Desconto concedido até o vencimento, em reais. Diferente de decrescimo, que é do título."),
+  instrucoes: z
+    .string()
+    .trim()
+    .max(1000)
+    .nullable()
+    .optional()
+    .describe(
+      "Instruções ao caixa, uma por linha, já com os valores calculados sobre o saldo deste título.",
+    ),
 });
 export type IntegracaoTituloReceberCreate = z.infer<typeof integracaoTituloReceberCreateSchema>;
 
@@ -970,6 +1116,24 @@ export const INTEGRACAO_TITULO_RECEBER_CREATE_EXAMPLE: IntegracaoTituloReceberCr
   contaBancariaDescricao: "Bradesco 237 — carteira 09",
   codigoBarras: null,
   linhaDigitavel: null,
+  banco: "237",
+  bancoNome: "BRADESCO",
+  bancoCodigoCompensacao: "237-2",
+  agencia: "1108",
+  agenciaDv: "6",
+  conta: "0630524",
+  contaDv: "5",
+  beneficiarioNome: "RCG COMERCIO LTDA - 01",
+  beneficiarioDocumento: "19.654.062/0001-45",
+  beneficiarioEndereco: "Rua Capital, 1256 - Centro - Chapadao do Sul/MS - CEP 79560-000",
+  localPagamento: "Pagável preferencialmente em qualquer Agência Bradesco",
+  aceite: "Sim",
+  especieDocumento: "DM",
+  nossoNumeroDac: "8",
+  jurosValorDia: 0.42,
+  multaValor: 25.21,
+  descontoValor: null,
+  instrucoes: null,
 };
 
 export const INTEGRACAO_TITULO_RECEBER_EXAMPLE: IntegracaoTituloReceber = {

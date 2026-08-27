@@ -20,7 +20,7 @@ import { NotaSaidaSheet } from "@/components/comercial/nota-saida-detalhe";
 import { TituloReceberSheet } from "@/components/comercial/titulo-receber-detalhe";
 import { ProdutoSheet } from "@/components/comercial/produto-detalhe";
 import { SegundaViaNota, SegundaViaTitulo } from "@/components/comercial/segunda-via";
-import { ArrowLeft, Search } from "lucide-react";
+import { ArrowLeft, MessageCircle, Search } from "lucide-react";
 
 const LIST_ROUTE = "/comercial/posicao-cliente";
 
@@ -54,11 +54,29 @@ const dataBr = (v: string | null | undefined) => {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
 };
 
+const telefoneBr = (v: string | null | undefined) => {
+  if (!v) return "Número não informado";
+  const digits = v.replace(/\D/g, "").replace(/^55(?=\d{10,11}$)/, "");
+  if (digits.length === 11)
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  if (digits.length === 10)
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return v;
+};
+
+const TIPO_CONTATO_LABEL = {
+  geral: "Geral",
+  financeiro: "Financeiro",
+  compras: "Compras",
+  contabilidade_fiscal: "Contabilidade/Fiscal",
+  outros: "Outros",
+} as const;
+
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div>
+    <div className="min-w-0">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-sm">{value ?? "—"}</p>
+      <p className="break-words text-sm">{value ?? "—"}</p>
     </div>
   );
 }
@@ -207,10 +225,13 @@ function TabelaNotas({
 export function PosicaoClienteConteudo({
   clienteId,
   mostrarVoltar = true,
+  compacto = false,
 }: {
   clienteId: string;
   /** No painel do atendimento não há para onde voltar — a lista fica ao lado. */
   mostrarVoltar?: boolean;
+  /** Usa duas colunas nos blocos que ficam encaixados na lateral da conversa. */
+  compacto?: boolean;
 }) {
   const id = clienteId;
   const router = useRouter();
@@ -362,19 +383,23 @@ export function PosicaoClienteConteudo({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         {mostrarVoltar ? (
           <Button variant="ghost" size="icon" onClick={() => router.push(LIST_ROUTE)}>
             <ArrowLeft className="size-4" />
           </Button>
         ) : null}
-        <h1 className="text-xl font-semibold tracking-tight">{cliente.razaoSocial}</h1>
+        <h1 className="min-w-0 truncate text-xl font-semibold tracking-tight">
+          {cliente.razaoSocial}
+        </h1>
         <StatusDot active={cliente.ativo} />
         {!cliente.ativo && <Badge variant="destructive">Inativo</Badge>}
       </div>
 
       <Card>
-        <CardContent className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <CardContent
+          className={`grid grid-cols-2 gap-4 ${compacto ? "" : "sm:grid-cols-4"}`}
+        >
           <Info label="Código ERP" value={cliente.codigoErp || "—"} />
           <Info label="Nome fantasia" value={cliente.nomeFantasia || "—"} />
           <Info label="CNPJ/CPF" value={cliente.cnpjCpf || "—"} />
@@ -387,15 +412,68 @@ export function PosicaoClienteConteudo({
             label="Município/UF"
             value={[cliente.municipio, cliente.uf].filter(Boolean).join("/") || "—"}
           />
-          <Info label="Contato" value={cliente.contato || "—"} />
-          <Info label="Telefone" value={cliente.telefone || "—"} />
-          <Info label="E-mail" value={cliente.email || "—"} />
+          <div className={compacto ? "col-span-2" : "col-span-2 sm:col-span-4"}>
+            <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              Contatos
+            </p>
+            <div className="overflow-hidden rounded-lg border">
+              <div className="hidden grid-cols-[1.2fr_1fr_1fr_1.4fr_auto] gap-3 bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground md:grid">
+                <span>Nome</span>
+                <span>Tipo</span>
+                <span>Número</span>
+                <span>E-mail</span>
+                <span className="sr-only">Ação</span>
+              </div>
+              {posicao.whatsapp.length > 0 ? (
+                posicao.whatsapp.map((contato) => (
+                  <div
+                    key={contato.conversaId}
+                    className="grid gap-1 border-t px-3 py-2 first:border-t-0 md:grid-cols-[1.2fr_1fr_1fr_1.4fr_auto] md:items-center md:gap-3"
+                  >
+                    <span className="text-sm font-medium">{contato.nome || "—"}</span>
+                    <Badge variant="secondary" className="w-fit">
+                      {TIPO_CONTATO_LABEL[contato.tipo]}
+                    </Badge>
+                    <span className="text-sm">{telefoneBr(contato.telefone)}</span>
+                    <span className="break-all text-sm text-muted-foreground">
+                      {contato.email || "—"}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="w-fit gap-1.5"
+                      onClick={() =>
+                        router.push(`/comercial/atendimento?conversa=${contato.conversaId}`)
+                      }
+                    >
+                      <MessageCircle className="size-4" />
+                      Abrir
+                    </Button>
+                  </div>
+                ))
+              ) : (
+                <p className="px-3 py-3 text-sm text-muted-foreground">
+                  Nenhum WhatsApp vinculado.
+                </p>
+              )}
+            </div>
+            {(cliente.contato || cliente.telefone || cliente.email) && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Cadastro legado: {[cliente.contato, cliente.telefone, cliente.email]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            )}
+          </div>
           <Info label="Primeira compra" value={dataBr(cliente.primeiraCompra)} />
           <Info label="Última compra" value={dataBr(cliente.ultimaCompra)} />
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div
+        className={`grid grid-cols-2 gap-4 ${compacto ? "" : "lg:grid-cols-4"}`}
+      >
         <Metrica label="Notas fiscais" value={resumo.totalNotas.toLocaleString("pt-BR")} />
         <Metrica label="Total comprado" value={moeda(resumo.totalComprado)} />
         <Metrica label="Títulos em aberto" value={moeda(resumo.totalTitulosAberto)} />
@@ -403,12 +481,14 @@ export function PosicaoClienteConteudo({
       </div>
 
       <Tabs defaultValue="notas">
-        <TabsList>
-          <TabsTrigger value="notas">Notas fiscais ({notas.length})</TabsTrigger>
-          <TabsTrigger value="comodato">Comodato ({comodatos.length})</TabsTrigger>
-          <TabsTrigger value="titulos">Títulos a receber ({titulos.length})</TabsTrigger>
-          <TabsTrigger value="mix">Mix de produtos ({mix.length})</TabsTrigger>
-        </TabsList>
+        <div className="-mx-1 overflow-x-auto px-1 pb-1">
+          <TabsList>
+            <TabsTrigger value="notas">Notas fiscais ({notas.length})</TabsTrigger>
+            <TabsTrigger value="comodato">Comodato ({comodatos.length})</TabsTrigger>
+            <TabsTrigger value="titulos">Títulos a receber ({titulos.length})</TabsTrigger>
+            <TabsTrigger value="mix">Mix de produtos ({mix.length})</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="notas">
           <TabelaNotas
