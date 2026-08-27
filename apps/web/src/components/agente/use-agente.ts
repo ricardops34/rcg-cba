@@ -13,8 +13,8 @@ import { useAuthStore } from "@/stores/auth-store";
  * tomava 403 e via "Assistente" genérico — mesmo com a empresa tendo batizado
  * o agente. Aqui a permissão é a de usar (`agente.visualizar`).
  *
- * Compartilhado entre a janela, o botão flutuante e o ícone da topbar: mesma
- * `queryKey`, então o React Query busca uma vez só.
+ * Compartilhado entre a janela e o ícone da topbar: mesma `queryKey`, então o
+ * React Query busca uma vez só.
  */
 export function useAgente() {
   const podeUsar = useAuthStore((s) => s.hasPermission("agente", "visualizar"));

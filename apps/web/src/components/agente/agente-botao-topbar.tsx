@@ -17,12 +17,13 @@ import {
 /**
  * O assistente na barra de ferramentas, ao lado do sino.
  *
- * Existe porque o botão flutuante pode ser desligado — e porque, para quem
- * usa o sistema o dia inteiro, procurar o assistente onde já estão o sino e a
- * busca é mais natural do que no canto da tela. A janela é a mesma
- * (`AgenteFab`); daqui só se manda abrir.
+ * É a única porta de entrada do assistente: para quem usa o sistema o dia
+ * inteiro, procurar o assistente onde já estão o sino e a busca é mais natural
+ * do que num botão solto no canto da tela — que ainda pousava sobre a coluna de
+ * ações das listagens. A janela é a mesma (`AgenteFab`); daqui só se manda
+ * abrir.
  *
- * Mostra o mesmo aviso do flutuante: âmbar com "!" quando há ação parada
+ * Mostra o aviso do que chegou escondido: âmbar com "!" quando há ação parada
  * esperando o Confirmar, ponto verde quando é só resposta nova.
  */
 export function AgenteBotaoTopbar() {
@@ -50,7 +51,7 @@ export function AgenteBotaoTopbar() {
         >
           <Bot className="size-4.5" />
           {!aberto && (pendente || novidade) && (
-            <AgenteIndicador pendente={pendente} compacto />
+            <AgenteIndicador pendente={pendente} />
           )}
         </Button>
       </TooltipTrigger>

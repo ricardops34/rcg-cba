@@ -478,7 +478,7 @@ export const ROTINAS_SEM_TELA: {
     nome: 'WhatsApp da equipe',
     menuId: 'seed-menu-whatsapp',
   },
-  // Usar o assistente — o ícone flutuante, em qualquer tela. Divide o menu com
+  // Usar o assistente — o ícone da topbar, em qualquer tela. Divide o menu com
   // `agente-config` (a tela da chave de API), que é rotina de menu e fica em
   // MENUS. São coisas diferentes: usar não é configurar.
   {
@@ -535,7 +535,7 @@ export const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
   // outro vendedor é a rotina `whatsapp-equipe`, que não está aqui de
   // propósito — ver SUPERVISAO_PERMISSOES.
   'whatsapp-conversas': ['visualizar', 'cadastrar', 'editar'],
-  // Assistente de IA. `agente` é obrigatória: sem ela o ícone flutuante não
+  // Assistente de IA. `agente` é obrigatória: sem ela o ícone do assistente não
   // aparece para ninguém. As três seguintes não são detalhe — o catálogo de
   // ferramentas enviado ao modelo é filtrado pela permissão do usuário
   // (`AgenteToolsService.disponiveisPara`), então sem elas o agente responde
