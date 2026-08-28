@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutDashboard } from "lucide-react";
 import { useMenu } from "@/hooks/use-menu";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { DynamicIcon } from "@/lib/dynamic-icon";
 import {
   CommandDialog,
@@ -17,6 +18,7 @@ import {
 export function GlobalSearch({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const router = useRouter();
   const { data: modulos } = useMenu();
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -47,12 +49,14 @@ export function GlobalSearch({ open, onOpenChange }: { open: boolean; onOpenChan
         </CommandGroup>
         {modulos?.map((modulo) => (
           <CommandGroup key={modulo.id} heading={modulo.nome}>
-            {modulo.menus.map((menu) => (
+            {modulo.menus
+              .filter((menu) => !isMobile || menu.disponivelTelaPequena)
+              .map((menu) => (
               <CommandItem key={menu.id} onSelect={() => go(menu.rota ?? "#")}>
                 <DynamicIcon name={menu.icone} />
                 {menu.nome}
               </CommandItem>
-            ))}
+              ))}
           </CommandGroup>
         ))}
       </CommandList>

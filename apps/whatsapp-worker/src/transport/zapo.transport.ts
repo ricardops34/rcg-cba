@@ -1,4 +1,4 @@
-import { ConsoleLogger, createStore, WaClient } from 'zapo-js';
+import { ConsoleLogger, createStore, proto, WaClient } from 'zapo-js';
 import { createPostgresStore } from '@zapo-js/store-postgres';
 import type {
   ArquivoParaEnviar,
@@ -24,6 +24,16 @@ import type {
  */
 /** Prefixo das tabelas do store, dentro do schema `whatsapp`. */
 const PREFIXO_TABELAS = process.env.WHATSAPP_STORE_PREFIX ?? 'wa_';
+
+/**
+ * Teto de mensagens por importação de histórico.
+ *
+ * Cada uma vira uma chamada à API, e o botão que dispara isso é de
+ * administração: sem teto, um aparelho com anos de conversa manteria o worker
+ * ocupado por horas. Rodar de novo continua de onde parou, porque a gravação é
+ * upsert e o que já entrou não conta como trabalho novo.
+ */
+const LIMITE_IMPORTACAO = 5_000;
 
 const RECONEXAO_ESPERA_INICIAL_MS = 5_000;
 const RECONEXAO_ESPERA_MAXIMA_MS = 5 * 60_000;
@@ -72,6 +82,15 @@ export class ZapoTransport implements WhatsappTransport {
   private readonly estados = new Map<string, EstadoPareamento>();
   /** sessaoId → empresaId, para devolver o tenant junto da mensagem recebida. */
   private readonly empresas = new Map<string, string>();
+  /**
+   * Sessões que arquivam o conteúdo das mensagens no store.
+   *
+   * Existe porque isso é **decisão da empresa**, não do worker: só quem
+   * configurou dias de histórico paga o preço de ter as conversas do aparelho
+   * gravadas aqui (ver o provider `messages` em `iniciar`). Quem está em zero
+   * segue como antes, sem conteúdo nenhum no banco do worker.
+   */
+  private readonly arquivam = new Set<string>();
   private readonly limpezas = new Map<string, { stop: () => void }>();
   /** Reconexões agendadas, para poder cancelá-las ao desconectar. */
   private readonly reconexoes = new Map<string, NodeJS.Timeout>();
@@ -116,6 +135,30 @@ export class ZapoTransport implements WhatsappTransport {
 
   aoReceberRecibo(handler: (recibo: ReciboRecebido) => Promise<void>) {
     this.handlerRecibo = handler;
+  }
+
+  /**
+   * Quando a mensagem foi enviada, segundo o WhatsApp.
+   *
+   * `messageTimestamp` vem em **segundos**, e pode chegar como número, string
+   * ou o objeto Long do protobuf — daí o `Number(...)` sobre o valor bruto em
+   * vez de confiar no tipo. Sem carimbo (ou com carimbo absurdo, que já se viu
+   * em mensagem de sistema), vale a hora da recepção: uma data errada no rolo
+   * é pior do que uma data aproximada.
+   */
+  private momentoDa(evento: any): Date {
+    const bruto = evento?.messageTimestamp;
+    const segundos = Number(
+      typeof bruto === 'object' && bruto !== null
+        ? (bruto.toNumber?.() ?? bruto.low ?? NaN)
+        : bruto,
+    );
+    if (!Number.isFinite(segundos) || segundos <= 0) return new Date();
+    const data = new Date(segundos * 1000);
+    // Nada do futuro e nada anterior ao WhatsApp existir.
+    if (data.getTime() > Date.now() + 60_000) return new Date();
+    if (data.getFullYear() < 2009) return new Date();
+    return data;
   }
 
   /**
@@ -341,8 +384,14 @@ export class ZapoTransport implements WhatsappTransport {
     });
   }
 
-  async iniciar(sessaoId: string, empresaId: string): Promise<void> {
+  async iniciar(
+    sessaoId: string,
+    empresaId: string,
+    arquivarMensagens = false,
+  ): Promise<void> {
     this.empresas.set(sessaoId, empresaId);
+    if (arquivarMensagens) this.arquivam.add(sessaoId);
+    else this.arquivam.delete(sessaoId);
     // Reentrante de propósito: a tela pode chamar "conectar" duas vezes, e
     // subir um segundo socket para a mesma sessão faz o WhatsApp derrubar o
     // primeiro.
@@ -379,14 +428,21 @@ export class ZapoTransport implements WhatsappTransport {
         // depender de alguém escrever primeiro para o contato aparecer.
         contacts: 'pg',
         threads: 'pg',
-        // O **conteúdo** das mensagens continua fora. É a linha que separa
-        // "saber que existe uma conversa" de "guardar o que foi dito": sem
-        // isto, a conversa do vendedor com a família dele ficaria arquivada
-        // aqui, por baixo da regra de só gravar contato vinculado a cliente.
+        // O **conteúdo** das mensagens fica fora por padrão. É a linha que
+        // separa "saber que existe uma conversa" de "guardar o que foi dito":
+        // sem isto, a conversa do vendedor com a família dele ficaria
+        // arquivada aqui, por baixo da regra de só gravar contato vinculado a
+        // cliente.
         //
         // Mensagem de contato já vinculado é gravada pela API em
         // `whatsapp_mensagens`, no instante em que chega.
-        messages: 'none',
+        //
+        // A exceção é a empresa que configurou dias de histórico: o lote que o
+        // WhatsApp despeja no pareamento só existe aqui dentro, e sem
+        // arquivá-lo não há o que importar depois. Quem liga isso aceita
+        // guardar no worker o que o aparelho já tinha — inclusive o que nunca
+        // vai virar conversa na plataforma, porque o contato não é cliente.
+        messages: arquivarMensagens ? 'pg' : 'none',
       },
       // O segredo de 32 bytes de cada mensagem vai para o Postgres — **não** o
       // conteúdo dela. Reação é um "addon" cifrado com o segredo da mensagem
@@ -535,7 +591,10 @@ export class ZapoTransport implements WhatsappTransport {
           arquivoNome: conteudo.arquivoNome,
           arquivoMime: conteudo.arquivoMime,
           respondeuA: conteudo.respondeuA,
-          criadaEm: new Date(),
+          // A hora que o **WhatsApp** carimbou, não a da recepção aqui: no
+          // pareamento chega um lote do que já aconteceu, e datar tudo como
+          // "agora" empilharia meses de conversa no dia de hoje.
+          criadaEm: this.momentoDa(evento),
         },
         // Só é chamado se a API responder que gravou a mensagem.
         async () => Buffer.from(await (cliente as any).message.downloadBytes(evento)),
@@ -684,6 +743,125 @@ export class ZapoTransport implements WhatsappTransport {
       [sessaoId],
     );
     await this.sincronizarAgenda(sessaoId);
+  }
+
+  /**
+   * Entrega à API o que o aparelho já tinha, dentro da janela de dias.
+   *
+   * De onde sai o material: o lote que o WhatsApp despeja no pareamento
+   * (history sync) fica no arquivo de mensagens do store — que só existe para
+   * a sessão iniciada com `arquivarMensagens`. Não há chamada ao servidor do
+   * WhatsApp aqui; é releitura do que já chegou.
+   *
+   * **Responde antes de terminar.** Importar meses de conversa leva minutos, e
+   * a API espera dez segundos por uma resposta do worker: o que volta é o
+   * tamanho do trabalho, e o resultado aparece nas conversas da tela conforme
+   * cada mensagem é aceita. Quem decide o que vira registro é a API, com a
+   * mesma regra do tempo real — contato sem cliente vinculado não é gravado.
+   *
+   * Reprocessar é seguro: a gravação é upsert pelo `externoId`, então rodar de
+   * novo não duplica nada.
+   */
+  async importarHistorico(
+    sessaoId: string,
+    dias: number,
+  ): Promise<{ encontradas: number; conversas: number }> {
+    if (!this.handler) throw new Error('Sem handler de mensagem registrado');
+    if (!this.arquivam.has(sessaoId)) {
+      throw new Error(
+        'Esta sessão não arquiva mensagens. Configure os dias de histórico e reconecte a instância.',
+      );
+    }
+    const corte = Date.now() - dias * 24 * 60 * 60 * 1000;
+
+    const { rows } = await this.pgStore().pool.query(
+      `SELECT message_id, thread_jid, from_me, timestamp_ms, message_bytes
+         FROM ${this.tabela('mailbox_messages')}
+        WHERE session_id = $1
+          AND timestamp_ms >= $2
+          AND thread_jid NOT LIKE '%@g.us'
+          AND thread_jid NOT LIKE '%@broadcast'
+          AND thread_jid NOT LIKE '%@newsletter'
+        ORDER BY timestamp_ms ASC
+        LIMIT ${LIMITE_IMPORTACAO}`,
+      [sessaoId, corte],
+    );
+
+    const conversas = new Set(rows.map((linha: any) => String(linha.thread_jid)));
+
+    // Sem `await`: ver o comentário acima sobre responder antes de terminar.
+    void this.entregarHistorico(sessaoId, rows).catch((erro: unknown) =>
+      console.error(`Falha ao importar histórico da sessão ${sessaoId}`, erro),
+    );
+
+    return { encontradas: rows.length, conversas: conversas.size };
+  }
+
+  /**
+   * O laço da importação, um a um e em ordem cronológica.
+   *
+   * Sequencial de propósito: cada mensagem vira uma chamada HTTP para a API,
+   * que grava e pode baixar mídia. Disparar milhares em paralelo derrubaria a
+   * API por conta de um botão de administração.
+   */
+  private async entregarHistorico(sessaoId: string, linhas: any[]) {
+    const cliente = this.clientes.get(sessaoId) as any;
+    let entregues = 0;
+
+    for (const linha of linhas) {
+      try {
+        const bytes = linha.message_bytes;
+        if (!bytes) continue;
+        const mensagem = proto.Message.decode(new Uint8Array(bytes));
+        // Reação e afins voltam por outro caminho no tempo real; no histórico
+        // não há como pendurá-las com segurança, então ficam de fora.
+        if (this.ehReacao(mensagem)) continue;
+
+        const conteudo = this.interpretar(mensagem);
+        if (conteudo.tipo === 'outro' && !conteudo.texto) continue;
+
+        const jid = String(linha.thread_jid);
+        const minha = Boolean(linha.from_me);
+        // O evento que a biblioteca espera para baixar mídia. Link de mídia
+        // antiga costuma ter expirado no servidor do WhatsApp — quando expira,
+        // a mensagem entra sem o arquivo, que é melhor do que não entrar.
+        const evento = {
+          key: { id: String(linha.message_id), remoteJid: jid, fromMe: minha },
+          message: mensagem,
+        };
+
+        await this.handler!(
+          {
+            sessaoId,
+            empresaId: this.empresas.get(sessaoId) ?? '',
+            externoId: String(linha.message_id),
+            jid,
+            telefone: await this.telefoneDoJid(sessaoId, jid),
+            nomeExibicao: null,
+            minha,
+            texto: conteudo.texto,
+            tipo: conteudo.tipo,
+            arquivoNome: conteudo.arquivoNome,
+            arquivoMime: conteudo.arquivoMime,
+            respondeuA: conteudo.respondeuA,
+            criadaEm: new Date(Number(linha.timestamp_ms)),
+          },
+          async () =>
+            Buffer.from(await cliente.message.downloadBytes(evento)),
+        );
+        entregues += 1;
+      } catch (erro) {
+        // Uma mensagem ilegível não pode parar a importação das outras.
+        console.error(
+          `Histórico: mensagem ${linha?.message_id} descartada`,
+          erro,
+        );
+      }
+    }
+
+    console.log(
+      `Histórico da sessão ${sessaoId}: ${entregues} de ${linhas.length} mensagens entregues à API`,
+    );
   }
 
   /** Nome da tabela do store, com o prefixo configurado. */

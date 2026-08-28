@@ -177,15 +177,19 @@ transporte.aoMudarEstado(async (estado: EstadoSessao) => {
  */
 async function restaurarSessoes(tentativa = 1): Promise<void> {
   try {
-    const sessoes = await chamarApi<{ sessaoId: string; empresaId: string }[]>(
-      '/sessoes-ativas',
-    );
+    const sessoes = await chamarApi<
+      { sessaoId: string; empresaId: string; arquivarMensagens?: boolean }[]
+    >('/sessoes-ativas');
     console.log(`Restaurando ${sessoes.length} sessão(ões) de WhatsApp`);
     for (const sessao of sessoes) {
       // Em paralelo e sem `await`: uma sessão cuja credencial não vale mais
       // fica presa pedindo QR, e não pode segurar as outras.
       void transporte
-        .iniciar(sessao.sessaoId, sessao.empresaId)
+        .iniciar(
+          sessao.sessaoId,
+          sessao.empresaId,
+          Boolean(sessao.arquivarMensagens),
+        )
         .catch((erro: unknown) =>
           console.error(`Falha ao restaurar a sessão ${sessao.sessaoId}`, erro),
         );
@@ -240,7 +244,11 @@ const servidor = createServer(async (req, res) => {
       if (!corpo.sessaoId || !corpo.empresaId) {
         return json(res, 400, { erro: 'sessaoId e empresaId obrigatórios' });
       }
-      await transporte.iniciar(String(corpo.sessaoId), String(corpo.empresaId));
+      await transporte.iniciar(
+        String(corpo.sessaoId),
+        String(corpo.empresaId),
+        Boolean(corpo.arquivarMensagens),
+      );
       return json(res, 200, transporte.estado(String(corpo.sessaoId)));
     }
 
@@ -378,6 +386,24 @@ const servidor = createServer(async (req, res) => {
     ) {
       const limite = Number(url.searchParams.get('limite') ?? 100);
       return json(res, 200, await transporte.listarConversas(partes[1], limite));
+    }
+
+    // POST /sessoes/:id/historico/importar  { dias }
+    // Entrega à API o histórico que o aparelho já tinha. Responde com o
+    // tamanho do trabalho; a entrega segue em segundo plano.
+    if (
+      req.method === 'POST' &&
+      partes.length === 4 &&
+      partes[0] === 'sessoes' &&
+      partes[2] === 'historico' &&
+      partes[3] === 'importar'
+    ) {
+      const corpo = await lerCorpo(req);
+      const dias = Number(corpo?.dias);
+      if (!Number.isFinite(dias) || dias <= 0) {
+        return json(res, 400, { erro: 'dias deve ser um número maior que zero' });
+      }
+      return json(res, 200, await transporte.importarHistorico(partes[1], dias));
     }
 
     // POST /sessoes/:id/agenda/sincronizar — refaz agenda e conversas do zero

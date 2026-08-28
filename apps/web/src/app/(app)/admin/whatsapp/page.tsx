@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cable, CheckCircle2, Cloud, ExternalLink, MoreHorizontal, RefreshCw, ServerCog, Smartphone, Trash2, TriangleAlert } from "lucide-react";
+import { Cable, CheckCircle2, Cloud, Eraser, ExternalLink, History, MoreHorizontal, RefreshCw, ServerCog, Smartphone, Trash2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { WHATSAPP_AVISO_NAO_OFICIAL, type WhatsappConfig, type WhatsappSessao } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
@@ -62,7 +62,7 @@ export default function WhatsappConfigPage() {
             detalhes="Ainda faltam o Phone Number ID, token permanente, webhook e fluxo de templates. A opção permanece indisponível para não interromper o atendimento atual."
           />
         </TabsContent>
-        <TabsContent value="instancias" className="pt-4"><Instancias /></TabsContent>
+        <TabsContent value="instancias" className="pt-4"><Instancias config={config} /></TabsContent>
       </Tabs>
     </div>
   );
@@ -88,7 +88,7 @@ function ChannelHeader({ config }: { config: WhatsappConfig }) {
 
 function ZapoConfig({ config }: { config: WhatsappConfig }) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({ ativo: config.ativo, workerUrl: config.workerUrl ?? "", retencaoDias: config.retencaoDias, dddPadrao: config.dddPadrao ?? "" });
+  const [form, setForm] = useState({ ativo: config.ativo, workerUrl: config.workerUrl ?? "", retencaoDias: config.retencaoDias, historicoDias: config.historicoDias, dddPadrao: config.dddPadrao ?? "" });
   const salvar = useMutation({
     mutationFn: () => apiFetch<WhatsappConfig>("/whatsapp/config", {
       method: "PUT",
@@ -101,7 +101,7 @@ function ZapoConfig({ config }: { config: WhatsappConfig }) {
   return (
     <Card>
       <CardHeader className="border-b">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div><CardTitle>Conexão local por QR Code</CardTitle><p className="mt-1 text-sm text-muted-foreground">Transporte atual pelo worker interno e pela biblioteca zapo-js.</p></div>
           <label className="flex items-center gap-2 text-sm font-medium"><Switch checked={form.ativo} onCheckedChange={(ativo) => setForm((f) => ({ ...f, ativo }))} />Ativo</label>
         </div>
@@ -124,6 +124,21 @@ function ZapoConfig({ config }: { config: WhatsappConfig }) {
             <FieldLabel htmlFor="retencaoDias">Retenção das conversas</FieldLabel>
             <div className="flex items-center gap-2"><Input id="retencaoDias" type="number" min={0} max={3650} className="max-w-32" value={form.retencaoDias} onChange={(event) => setForm((f) => ({ ...f, retencaoDias: Number(event.target.value) }))} /><span className="text-sm text-muted-foreground">dias</span></div>
             <FieldDescription>Zero mantém indefinidamente. O expurgo automático ainda não foi implementado.</FieldDescription>
+          </Field>
+          {/* Retenção olha para a frente (por quanto tempo guardar o que
+              entrou); esta olha para trás (o quanto buscar do que o celular já
+              tinha). Ficam lado a lado porque é justamente aí que se confunde
+              uma com a outra. */}
+          <Field>
+            <FieldLabel htmlFor="historicoDias">Dias de histórico a importar</FieldLabel>
+            <div className="flex items-center gap-2"><Input id="historicoDias" type="number" min={0} max={365} className="max-w-32" value={form.historicoDias} onChange={(event) => setForm((f) => ({ ...f, historicoDias: Number(event.target.value) }))} /><span className="text-sm text-muted-foreground">dias</span></div>
+            <FieldDescription>
+              Zero (padrão) não importa nada — só entra o que chega ao vivo. Acima de zero, o worker passa a
+              arquivar as mensagens do aparelho para poder importá-las, o que inclui as conversas pessoais do
+              vendedor. A instância precisa reconectar para a mudança valer, e a importação é disparada por
+              instância, na aba Instâncias. Continua valendo a regra de sempre: só vira conversa o contato
+              vinculado a um cliente.
+            </FieldDescription>
           </Field>
           <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 text-sm text-amber-900 dark:text-amber-200">
             <div className="flex gap-2 font-medium"><TriangleAlert className="mt-0.5 size-4 shrink-0" /> Integração não oficial</div>
@@ -151,9 +166,11 @@ function ProviderEmPreparacao({ icon: Icon, titulo, descricao, detalhes, href }:
   );
 }
 
-function Instancias() {
+function Instancias({ config }: { config: WhatsappConfig }) {
   const queryClient = useQueryClient();
   const [remover, setRemover] = useState<WhatsappSessao | null>(null);
+  const [limpar, setLimpar] = useState<WhatsappSessao | null>(null);
+  const [apagar, setApagar] = useState<WhatsappSessao | null>(null);
   const { data = [], isLoading } = useQuery({ queryKey: ["whatsapp-sessoes"], queryFn: () => apiFetch<WhatsappSessao[]>("/whatsapp/sessoes"), refetchInterval: 10_000 });
   const atualizar = () => { void queryClient.invalidateQueries({ queryKey: ["whatsapp-sessoes"] }); void queryClient.invalidateQueries({ queryKey: ["whatsapp-sessao"] }); };
   const reconectar = useMutation({
@@ -165,6 +182,32 @@ function Instancias() {
     mutationFn: (id: string) => apiFetch(`/whatsapp/config/sessoes/${id}`, { method: "DELETE" }),
     onSuccess: () => { setRemover(null); atualizar(); toast.success("Conexão removida"); },
     onError: (error) => toast.error(mensagemErro(error, "Falha ao remover")),
+  });
+  const limparConversas = useMutation({
+    mutationFn: (id: string) => apiFetch<{ conversas: number; mensagens: number }>(`/whatsapp/config/sessoes/${id}/conversas`, { method: "DELETE" }),
+    onSuccess: (resultado) => {
+      setLimpar(null);
+      atualizar();
+      // Também some do Atendimento: o vendedor pode estar com a tela aberta.
+      void queryClient.invalidateQueries({ queryKey: ["whatsapp-conversas"] });
+      toast.success(resultado.conversas === 0 ? "Esta instância já não tinha conversas" : `${resultado.conversas} conversa(s) e ${resultado.mensagens} mensagem(ns) apagadas`);
+    },
+    onError: (error) => toast.error(mensagemErro(error, "Falha ao limpar conversas")),
+  });
+  const apagarInstancia = useMutation({
+    mutationFn: (id: string) => apiFetch(`/whatsapp/config/sessoes/${id}/instancia`, { method: "DELETE" }),
+    onSuccess: () => { setApagar(null); atualizar(); toast.success("Instância excluída"); },
+    // A recusa por histórico existente vem da API com o número de conversas —
+    // é a mensagem que diz o que fazer, então não pode virar texto genérico.
+    onError: (error) => toast.error(mensagemErro(error, "Falha ao excluir")),
+  });
+  const importar = useMutation({
+    mutationFn: (id: string) => apiFetch<{ dias: number; encontradas: number; conversas: number }>(`/whatsapp/config/sessoes/${id}/historico`, { method: "POST" }),
+    onSuccess: (r) => {
+      atualizar();
+      toast.success(r.encontradas === 0 ? `Nada encontrado nos últimos ${r.dias} dias no aparelho` : `Importando ${r.encontradas} mensagem(ns) de ${r.conversas} conversa(s). Elas aparecem no Atendimento conforme entram.`);
+    },
+    onError: (error) => toast.error(mensagemErro(error, "Falha ao importar histórico")),
   });
 
   // Vale para as instâncias em `zapo` — o transporte de cada uma aparece na
@@ -186,7 +229,7 @@ function Instancias() {
       ) : null}
 
       <Card>
-        <CardHeader className="border-b"><div className="flex items-center justify-between gap-3"><div><CardTitle>Instâncias dos vendedores</CardTitle><p className="mt-1 text-sm text-muted-foreground">Estado atualizado a cada 10 segundos. A primeira conexão é iniciada pelo vendedor em Atendimento.</p></div><Badge variant="outline">{data.length} {data.length === 1 ? "instância" : "instâncias"}</Badge></div></CardHeader>
+        <CardHeader className="border-b"><div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"><div><CardTitle>Instâncias dos vendedores</CardTitle><p className="mt-1 text-sm text-muted-foreground">Estado atualizado a cada 10 segundos. A primeira conexão é iniciada pelo vendedor em Atendimento.</p></div><Badge variant="outline">{data.length} {data.length === 1 ? "instância" : "instâncias"}</Badge></div></CardHeader>
         <CardContent className="p-0">
           {isLoading ? <p className="p-6 text-sm text-muted-foreground">Carregando instâncias...</p> : null}
           {!isLoading && data.length === 0 ? <div className="flex min-h-52 flex-col items-center justify-center p-6 text-center"><Smartphone className="size-8 text-muted-foreground" /><p className="mt-3 font-medium">Nenhuma instância criada</p><p className="mt-1 text-sm text-muted-foreground">O vendedor deve abrir Comercial → Atendimento e iniciar o pareamento.</p></div> : null}
@@ -197,7 +240,27 @@ function Instancias() {
                 <TableRow key={sessao.id}>
                   <TableCell className="font-medium">{sessao.vendedorNome}</TableCell><TableCell>{sessao.numero ?? "—"}</TableCell><TableCell>{sessao.transporte === "cloud_api" ? "API Oficial" : "zapo-js"}</TableCell>
                   <TableCell><Badge variant={STATUS[sessao.status].variant}>{STATUS[sessao.status].rotulo}</Badge></TableCell><TableCell>{formatarData(sessao.ultimaConexao)}</TableCell>
-                  <TableCell><DropdownMenu><DropdownMenuTrigger asChild><Button size="icon-sm" variant="ghost" aria-label={`Ações de ${sessao.vendedorNome}`}><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => reconectar.mutate(sessao.id)} disabled={reconectar.isPending}><RefreshCw /> {sessao.status === "desconectada" ? "Conectar" : "Reconectar"}</DropdownMenuItem><DropdownMenuItem variant="destructive" onSelect={() => setRemover(sessao)}><Trash2 /> Remover conexão</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild><Button size="icon-sm" variant="ghost" aria-label={`Ações de ${sessao.vendedorNome}`}><MoreHorizontal /></Button></DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => reconectar.mutate(sessao.id)} disabled={reconectar.isPending}><RefreshCw /> {sessao.status === "desconectada" ? "Conectar" : "Reconectar"}</DropdownMenuItem>
+                        {/* Importar exige aparelho ligado (o material vem de
+                            lá) e dias configurados — sem os dois o item fica
+                            fora, em vez de oferecer algo que responde erro. */}
+                        {config.historicoDias > 0 && sessao.status === "conectada" ? (
+                          <DropdownMenuItem onSelect={() => importar.mutate(sessao.id)} disabled={importar.isPending}><History /> Importar histórico ({config.historicoDias} dias)</DropdownMenuItem>
+                        ) : null}
+                        <DropdownMenuItem variant="destructive" onSelect={() => setRemover(sessao)}><Trash2 /> Remover conexão</DropdownMenuItem>
+                        <DropdownMenuItem variant="destructive" onSelect={() => setLimpar(sessao)}><Eraser /> Limpar conversas</DropdownMenuItem>
+                        {/* Excluir só a desconectada: é a regra da API, e um
+                            item que sempre responde 400 é pior que nenhum. */}
+                        {sessao.status === "desconectada" ? (
+                          <DropdownMenuItem variant="destructive" onSelect={() => setApagar(sessao)}><Trash2 /> Excluir instância</DropdownMenuItem>
+                        ) : null}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
                 </TableRow>
               ))}</TableBody>
             </Table>
@@ -206,6 +269,40 @@ function Instancias() {
       </Card>
       <Dialog open={Boolean(remover)} onOpenChange={(open) => { if (!open) setRemover(null); }}>
         <DialogContent><DialogHeader><DialogTitle>Remover conexão?</DialogTitle><DialogDescription>A sessão de {remover?.vendedorNome} será encerrada e marcada como desconectada. O histórico de conversas será preservado.</DialogDescription></DialogHeader><DialogFooter><DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose><Button variant="destructive" disabled={excluir.isPending} onClick={() => remover && excluir.mutate(remover.id)}>{excluir.isPending ? "Removendo..." : "Remover conexão"}</Button></DialogFooter></DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(limpar)} onOpenChange={(open) => { if (!open) setLimpar(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Limpar as conversas de {limpar?.vendedorNome}?</DialogTitle>
+            <DialogDescription>
+              Apaga as conversas, mensagens, reações, agendamentos e ações registradas desta instância, e as
+              notificações do sino que apontavam para elas. Os contatos e o vínculo com o cadastro de clientes
+              continuam — ninguém precisa revincular nada depois. <strong>Não tem volta.</strong>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
+            <Button variant="destructive" disabled={limparConversas.isPending} onClick={() => limpar && limparConversas.mutate(limpar.id)}>{limparConversas.isPending ? "Limpando..." : "Limpar conversas"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(apagar)} onOpenChange={(open) => { if (!open) setApagar(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir a instância de {apagar?.vendedorNome}?</DialogTitle>
+            <DialogDescription>
+              A linha some da lista. Só é possível com a instância desconectada e sem conversas no histórico —
+              se ainda houver conversas, limpe-as antes. O vendedor pode parear de novo depois, pela tela de
+              Atendimento.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
+            <Button variant="destructive" disabled={apagarInstancia.isPending} onClick={() => apagar && apagarInstancia.mutate(apagar.id)}>{apagarInstancia.isPending ? "Excluindo..." : "Excluir instância"}</Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
     </>
   );

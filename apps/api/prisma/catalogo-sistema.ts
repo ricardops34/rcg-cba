@@ -67,6 +67,7 @@ export interface DefinicaoMenu {
   icone?: string;
   codigo: string;
   moduloId: string;
+  disponivelTelaPequena?: boolean;
 }
 
 export const MENUS: DefinicaoMenu[] = [
@@ -104,6 +105,7 @@ export const MENUS: DefinicaoMenu[] = [
     // tela de Perfis, multiplicadas por nove ações, para uma decisão só.
     codigo: 'estrutura',
     moduloId: MODULO.administracao,
+    disponivelTelaPequena: false,
   },
   {
     id: 'seed-menu-integracao',
@@ -605,6 +607,7 @@ export async function sincronizarEstrutura(prisma: PrismaClient) {
       rota: m.rota,
       icone: m.icone,
       ordem: i + 1,
+      disponivelTelaPequena: m.disponivelTelaPequena ?? true,
     };
     await prisma.menu.upsert({
       where: { id: m.id },

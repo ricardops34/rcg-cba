@@ -147,7 +147,18 @@ export interface WhatsappTransport {
    * seguraria a resposta HTTP por minutos, e o QR chega por evento de todo
    * jeito. O resultado da conexão aparece em `estado()`.
    */
-  iniciar(sessaoId: string, empresaId: string): Promise<void>;
+  iniciar(
+    sessaoId: string,
+    empresaId: string,
+    /**
+     * Arquivar o conteúdo das mensagens no store do worker.
+     *
+     * Só quem vai importar histórico precisa disso, e é a empresa que decide
+     * (o campo "Dias de histórico" da configuração). Falso mantém o padrão:
+     * o worker sabe que a conversa existe, não o que foi dito nela.
+     */
+    arquivarMensagens?: boolean,
+  ): Promise<void>;
   /** Estado corrente — o QR expira em segundos, então é sempre lido na hora. */
   estado(sessaoId: string): EstadoPareamento;
   desconectar(sessaoId: string): Promise<void>;
@@ -189,6 +200,21 @@ export interface WhatsappTransport {
    * um pedido explícito o traz de volta.
    */
   ressincronizarAgenda(sessaoId: string): Promise<void>;
+  /**
+   * Entrega à API o histórico que o aparelho já tem, limitado aos últimos
+   * `dias`.
+   *
+   * Só existe material a entregar se a sessão tiver subido com
+   * `arquivarMensagens` — é o que faz o store guardar o conteúdo do que o
+   * WhatsApp despeja no pareamento.
+   *
+   * Devolve o **tamanho do trabalho**, não o resultado: a entrega leva minutos
+   * e segue em segundo plano. Quantas viram registro é decisão da API.
+   */
+  importarHistorico(
+    sessaoId: string,
+    dias: number,
+  ): Promise<{ encontradas: number; conversas: number }>;
   /**
    * Registrado uma vez, na subida — vale para todas as sessões.
    *

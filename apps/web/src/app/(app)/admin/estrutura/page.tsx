@@ -39,6 +39,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import {
   Collapsible,
   CollapsibleContent,
@@ -483,6 +484,11 @@ function MenuRow({
         </CollapsibleTrigger>
 
         <div className="flex shrink-0 items-center gap-2">
+          {!menu.disponivelTelaPequena && (
+            <Badge variant="secondary" className="hidden sm:inline-flex">
+              Somente tela maior
+            </Badge>
+          )}
           <Badge variant="outline">
             {rotinas.length} {rotinas.length === 1 ? "rotina" : "rotinas"}
           </Badge>
@@ -664,6 +670,7 @@ function MenuFormDialog({
       rota: editing?.rota ?? "",
       ordem: editing?.ordem ?? 0,
       ativo: editing?.ativo ?? true,
+      disponivelTelaPequena: editing?.disponivelTelaPequena ?? true,
     },
   });
   const moduloSelecionado = form.watch("moduloId");
@@ -743,6 +750,22 @@ function MenuFormDialog({
                 value={form.watch("icone")}
                 onChange={(v) => form.setValue("icone", v)}
               />
+            </Field>
+            <Field>
+              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border p-3">
+                <span>
+                  <span className="block text-sm font-medium">Disponível em telas pequenas</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Permite abrir esta rotina em celulares e telas menores que 768 px.
+                  </span>
+                </span>
+                <Switch
+                  checked={form.watch("disponivelTelaPequena")}
+                  onCheckedChange={(value) =>
+                    form.setValue("disponivelTelaPequena", value, { shouldDirty: true })
+                  }
+                />
+              </label>
             </Field>
           </FieldGroup>
           <DialogFooter>

@@ -32,15 +32,15 @@ export function CrudHeader({
           className="pl-8"
         />
       </div>
-      <div className="flex gap-2">
+      <div className="flex w-full gap-2 sm:w-auto">
         {onRefresh && (
-          <Button variant="outline" onClick={onRefresh} disabled={isRefreshing}>
+          <Button className="flex-1 sm:flex-none" variant="outline" onClick={onRefresh} disabled={isRefreshing}>
             <RefreshCw className={isRefreshing ? "size-4 animate-spin" : "size-4"} />
             Atualizar
           </Button>
         )}
         {onCreate && (
-          <Button onClick={onCreate}>
+          <Button className="flex-1 sm:flex-none" onClick={onCreate}>
             <Plus className="size-4" />
             {createLabel}
           </Button>

@@ -131,7 +131,7 @@ export default function AgendaPage() {
         <h1 className="text-xl font-semibold capitalize tracking-tight">
           {MESES[mesAtual.getMonth()]} de {mesAtual.getFullYear()}
         </h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
             size="icon"
@@ -206,7 +206,11 @@ export default function AgendaPage() {
         </FiltersPopover>
       </div>
 
-      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg border bg-border">
+      <p className="text-xs text-muted-foreground sm:hidden">
+        Deslize o calendário para consultar todos os dias da semana.
+      </p>
+      <div className="overflow-x-auto rounded-lg border">
+      <div className="grid min-w-[700px] grid-cols-7 gap-px overflow-hidden bg-border">
         {DIAS_SEMANA.map((d) => (
           <div
             key={d}
@@ -227,6 +231,7 @@ export default function AgendaPage() {
             onSelectItem={onSelectItem}
           />
         ))}
+      </div>
       </div>
     </div>
   );

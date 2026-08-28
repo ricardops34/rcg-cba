@@ -91,6 +91,12 @@ export const whatsappConfigSchema = z.object({
   transporte: whatsappTransporteSchema,
   workerUrl: z.string().nullable(),
   retencaoDias: z.number().int(),
+  historicoDias: z
+    .number()
+    .int()
+    .describe(
+      "Dias de histórico do celular importados quando a instância conecta. 0 = nenhum",
+    ),
   dddPadrao: z
     .string()
     .nullable()
@@ -118,6 +124,16 @@ export const whatsappConfigUpdateSchema = z.object({
     .max(3650)
     .optional()
     .describe("0 = guardar indefinidamente"),
+  // O teto de 365 dias não é técnico: acima disso a importação deixa de ser
+  // "trazer o atendimento recente" e vira arquivo morto de conversa pessoal no
+  // servidor da empresa.
+  historicoDias: z
+    .number()
+    .int()
+    .min(0)
+    .max(365)
+    .optional()
+    .describe("0 = não importar histórico; só o que chegar ao vivo"),
   dddPadrao: z
     .string()
     .trim()

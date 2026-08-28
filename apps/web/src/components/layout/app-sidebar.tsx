@@ -56,6 +56,14 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
   const empresaAtiva = user?.empresas.find((empresa) => empresa.empresaId === user.empresaAtivaId);
   const logo = assetUrl(empresaAtiva?.logoUrl);
   const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
+  const modulosVisiveis = modulos
+    ?.map((modulo) => ({
+      ...modulo,
+      menus: onNavigate
+        ? modulo.menus.filter((menu) => menu.disponivelTelaPequena)
+        : modulo.menus,
+    }))
+    .filter((modulo) => modulo.menus.length > 0);
 
   const toggleGroup = (id: string) =>
     setClosedGroups((prev) => {
@@ -102,7 +110,7 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
             <Skeleton key={i} className="h-8 w-full rounded-md" />
           ))}
 
-        {modulos?.map((modulo) =>
+        {modulosVisiveis?.map((modulo) =>
           collapsed ? (
             <DropdownMenu key={modulo.id}>
               <Tooltip>

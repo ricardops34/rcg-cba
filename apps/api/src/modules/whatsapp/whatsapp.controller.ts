@@ -190,6 +190,56 @@ export class WhatsappController {
     return this.sessao.removerAdministracao(user.empresaAtivaId, user, id);
   }
 
+  @ApiOperation({
+    summary: 'Limpar o histórico de conversas de uma instância',
+    description:
+      'Apaga conversas, mensagens, reações, agendamentos e ações da instância, ' +
+      'além das notificações do sino que apontavam para elas. Os contatos e o ' +
+      'vínculo com o cadastro de clientes são preservados. Não tem volta. ' +
+      'Requer whatsapp-config.editar.',
+  })
+  @RequirePermission('whatsapp-config', 'editar')
+  @Delete('config/sessoes/:id/conversas')
+  limparConversas(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.sessao.limparConversas(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Excluir a instância',
+    description:
+      'Apaga a linha da instância, e não só a conexão. Só aceita instância ' +
+      'desconectada e sem conversas no histórico — com conversas, responde 400 ' +
+      'pedindo que sejam limpas antes. Requer whatsapp-config.editar.',
+  })
+  @RequirePermission('whatsapp-config', 'editar')
+  @Delete('config/sessoes/:id/instancia')
+  excluirInstancia(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.sessao.excluirInstancia(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Importar o histórico do celular para esta instância',
+    description:
+      'Pede ao worker as mensagens dos últimos N dias que o aparelho já tem, ' +
+      'onde N é o "Dias de histórico" da configuração da empresa (0 não ' +
+      'importa nada). Vale a mesma regra de sempre: só entra conversa de ' +
+      'contato vinculado a cliente. Requer whatsapp-config.editar.',
+  })
+  @RequirePermission('whatsapp-config', 'editar')
+  @Post('config/sessoes/:id/historico')
+  importarHistorico(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.sessao.importarHistorico(user.empresaAtivaId, user, id);
+  }
+
   // ---------------- atendimento ----------------
 
   @ApiOperation({

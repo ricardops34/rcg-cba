@@ -1752,16 +1752,34 @@ export class WhatsappConversasService {
       select: { id: true },
     });
 
-    const restaurar: { sessaoId: string; empresaId: string }[] = [];
+    const restaurar: {
+      sessaoId: string;
+      empresaId: string;
+      arquivarMensagens: boolean;
+    }[] = [];
     for (const empresa of empresas) {
-      const sessoes = await this.prisma.withTenant(empresa.id, (tx) =>
-        tx.whatsappSessao.findMany({
-          where: { status: 'conectada' },
-          select: { id: true },
+      const { sessoes, config } = await this.prisma.withTenant(
+        empresa.id,
+        async (tx) => ({
+          sessoes: await tx.whatsappSessao.findMany({
+            where: { status: 'conectada' },
+            select: { id: true },
+          }),
+          config: await tx.whatsappConfig.findUnique({
+            where: { empresaId: empresa.id },
+            select: { historicoDias: true },
+          }),
         }),
       );
       for (const s of sessoes) {
-        restaurar.push({ sessaoId: s.id, empresaId: empresa.id });
+        restaurar.push({
+          sessaoId: s.id,
+          empresaId: empresa.id,
+          // A sessão restaurada precisa subir com a mesma política de arquivo
+          // com que foi conectada — senão o worker reinicia e para de guardar
+          // o que a empresa pediu para guardar.
+          arquivarMensagens: (config?.historicoDias ?? 0) > 0,
+        });
       }
     }
     return restaurar;

@@ -146,7 +146,15 @@ export class WhatsappSessaoService {
         // empresaId vai junto porque o worker precisa devolvê-lo na mensagem
         // recebida: as tabelas têm RLS, e sem tenant no contexto a API não
         // conseguiria nem localizar a própria sessão.
-        corpo: { sessaoId: sessao.id, empresaId, transporte: config.transporte },
+        // `arquivarMensagens` liga o arquivo de mensagens no store do worker,
+        // que é de onde sai o histórico importado depois. Só quem configurou
+        // dias de histórico guarda esse material.
+        corpo: {
+          sessaoId: sessao.id,
+          empresaId,
+          transporte: config.transporte,
+          arquivarMensagens: config.historicoDias > 0,
+        },
       });
 
       return this.paraLeitura(sessao, vendedor.nome);
@@ -348,7 +356,12 @@ export class WhatsappSessaoService {
 
     await this.worker.chamar(config.workerUrl, '/sessoes', {
       metodo: 'POST',
-      corpo: { sessaoId: sessao.id, empresaId, transporte: 'zapo' },
+      corpo: {
+        sessaoId: sessao.id,
+        empresaId,
+        transporte: 'zapo',
+        arquivarMensagens: config.historicoDias > 0,
+      },
     });
 
     const atualizada = await this.prisma.withTenant(empresaId, (tx) =>
@@ -406,6 +419,186 @@ export class WhatsappSessaoService {
       }),
     );
     return this.paraLeitura(atualizada, sessao.vendedor.nome);
+  }
+
+  /**
+   * Apaga o histórico de conversas de uma instância.
+   *
+   * Uma conversa apagada leva junto mensagens, reações, agendamentos e as
+   * ações registradas (`ON DELETE CASCADE` no banco) — e as notificações do
+   * sino que apontavam para ela, que não têm FK e ficariam levando o vendedor
+   * a uma conversa inexistente.
+   *
+   * O contato **fica**: ele é o vínculo com o cadastro de cliente, custou
+   * trabalho de alguém e não é conteúdo de conversa. Apagá-lo obrigaria a
+   * revincular tudo à mão depois.
+   *
+   * Não há volta e não há exportação antes: quem chama já confirmou na tela.
+   */
+  async limparConversas(
+    empresaId: string,
+    user: AuthenticatedUser,
+    sessaoId: string,
+  ) {
+    const sessao = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappSessao.findFirst({
+        where: { id: sessaoId },
+        include: { vendedor: { select: { nome: true } } },
+      }),
+    );
+    if (!sessao) throw new NotFoundException('Instância não encontrada');
+
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const conversas = await tx.whatsappConversa.findMany({
+        where: { sessaoId: sessao.id },
+        select: { id: true },
+      });
+      if (conversas.length === 0) {
+        return { conversas: 0, mensagens: 0, vendedor: sessao.vendedor.nome };
+      }
+      const ids = conversas.map((c) => c.id);
+
+      // Contado antes de apagar: depois do delete não há o que contar, e o
+      // número é o que a tela mostra de volta para quem confirmou.
+      const mensagens = await tx.whatsappMensagem.count({
+        where: { conversaId: { in: ids } },
+      });
+
+      // `referenciaId` guarda o id da conversa; sem FK, o cascade não alcança.
+      await tx.notificacao.deleteMany({ where: { referenciaId: { in: ids } } });
+      await tx.whatsappConversa.deleteMany({ where: { id: { in: ids } } });
+
+      await tx.whatsappSessao.update({
+        where: { id: sessao.id },
+        data: { updatedBy: user.id },
+      });
+
+      return {
+        conversas: conversas.length,
+        mensagens,
+        vendedor: sessao.vendedor.nome,
+      };
+    });
+  }
+
+  /**
+   * Apaga a instância de vez — a linha, não só a conexão.
+   *
+   * Só a desconectada: apagar uma sessão viva deixaria o worker com um cliente
+   * pendurado sem dono deste lado. E só a que não tem histórico: conversa é
+   * registro da empresa, e o banco protege isso com `ON DELETE RESTRICT`. Em
+   * vez de deixar o erro do Postgres chegar cru na tela, o caminho é explícito
+   * — limpe as conversas primeiro, decidindo isso de propósito.
+   *
+   * O que fica no worker: o material técnico da sessão no store do zapo-js
+   * (chaves Signal, agenda). O `DELETE` no worker encerra o cliente; o expurgo
+   * do store não é exposto pela biblioteca, e não se afirma aqui o que não se
+   * fez.
+   */
+  async excluirInstancia(
+    empresaId: string,
+    user: AuthenticatedUser,
+    sessaoId: string,
+  ) {
+    const config = await this.config.obter(empresaId);
+    const sessao = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappSessao.findFirst({
+        where: { id: sessaoId },
+        include: { vendedor: { select: { nome: true } } },
+      }),
+    );
+    if (!sessao) throw new NotFoundException('Instância não encontrada');
+
+    if (sessao.status !== 'desconectada') {
+      throw new BadRequestException(
+        'Só é possível excluir instância desconectada. Remova a conexão antes.',
+      );
+    }
+
+    const conversas = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappConversa.count({ where: { sessaoId: sessao.id } }),
+    );
+    if (conversas > 0) {
+      throw new BadRequestException(
+        `Esta instância tem ${conversas} ${conversas === 1 ? 'conversa' : 'conversas'} no histórico. ` +
+          'Limpe as conversas antes de excluir.',
+      );
+    }
+
+    // O worker pode já não conhecer esta sessão (reiniciou, nunca conectou):
+    // o encerramento é melhor-esforço, e a linha some de qualquer forma.
+    if (config.workerUrl) {
+      await this.worker
+        .chamar(config.workerUrl, `/sessoes/${sessao.id}`, { metodo: 'DELETE' })
+        .catch(() => undefined);
+    }
+
+    await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappSessao.delete({ where: { id: sessao.id } }),
+    );
+    return { excluida: true, vendedor: sessao.vendedor.nome, por: user.id };
+  }
+
+  /**
+   * Manda o worker despejar aqui o histórico que o celular já tem.
+   *
+   * Quem decide o alcance é a empresa, em `historicoDias` — e o padrão é zero,
+   * que não importa nada. O worker devolve quantas mensagens entregou; quantas
+   * viram registro é decisão da rota de ingestão, que aplica a regra de
+   * sempre: conversa de contato sem cliente vinculado não é gravada.
+   *
+   * Só faz sentido com a instância conectada: o material vem do aparelho, por
+   * uma sessão viva.
+   */
+  async importarHistorico(
+    empresaId: string,
+    user: AuthenticatedUser,
+    sessaoId: string,
+  ) {
+    const config = await this.config.obter(empresaId);
+    const sessao = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappSessao.findFirst({
+        where: { id: sessaoId },
+        include: { vendedor: { select: { nome: true } } },
+      }),
+    );
+    if (!sessao) throw new NotFoundException('Instância não encontrada');
+
+    if (config.historicoDias <= 0) {
+      throw new BadRequestException(
+        'Os dias de histórico estão em zero. Configure em Administração > WhatsApp antes de importar.',
+      );
+    }
+    if (sessao.status !== 'conectada') {
+      throw new BadRequestException(
+        'A instância precisa estar conectada para importar o histórico do aparelho.',
+      );
+    }
+
+    // O worker responde com o tamanho do trabalho e segue entregando em
+    // segundo plano: importar meses de conversa não cabe no timeout de uma
+    // requisição. As conversas vão aparecendo na tela de Atendimento.
+    const resultado = await this.worker.chamar<{
+      encontradas: number;
+      conversas: number;
+    }>(config.workerUrl, `/sessoes/${sessao.id}/historico/importar`, {
+      metodo: 'POST',
+      corpo: { dias: config.historicoDias },
+    });
+
+    await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappSessao.update({
+        where: { id: sessao.id },
+        data: { updatedBy: user.id },
+      }),
+    );
+
+    return {
+      dias: config.historicoDias,
+      encontradas: resultado.encontradas,
+      conversas: resultado.conversas,
+      vendedor: sessao.vendedor.nome,
+    };
   }
 
   /** A credencial cifrada nunca sai da API — nem para o supervisor. */

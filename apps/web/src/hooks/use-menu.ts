@@ -11,6 +11,7 @@ export interface MenuItem {
   icone?: string | null;
   rota?: string | null;
   ordem: number;
+  disponivelTelaPequena: boolean;
   rotinas: { id: string; codigo: string; nome: string }[];
 }
 

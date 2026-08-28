@@ -248,14 +248,15 @@ model Modulo {
 }
 
 model Menu {
-  id        String  @id @default(uuid())
-  moduloId  String
-  menuPaiId String?
-  nome      String
-  icone     String?
-  rota      String?
-  ordem     Int     @default(0)
-  ativo     Boolean @default(true)
+  id                    String  @id @default(uuid())
+  moduloId              String
+  menuPaiId             String?
+  nome                  String
+  icone                 String?
+  rota                  String?
+  ordem                 Int     @default(0)
+  ativo                 Boolean @default(true)
+  disponivelTelaPequena Boolean @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -2525,6 +2526,14 @@ model WhatsappConfig {
   // 0 = sem expurgo. A rotina que apaga é da Fatia 3 (governança); a decisão
   // de por quanto tempo guardar é da empresa e nasce aqui.
   retencaoDias Int @default(0)
+
+  // Quantos dias de histórico do celular importar quando a instância conecta.
+  // 0 = nenhum, só o que chega ao vivo — é o padrão, porque puxar conversa
+  // antiga traz para o servidor o que ninguém pediu para trazer.
+  //
+  // Não confundir com `retencaoDias`: aquele diz por quanto tempo se guarda o
+  // que já entrou; este, o quanto se vai buscar para trás.
+  historicoDias Int @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

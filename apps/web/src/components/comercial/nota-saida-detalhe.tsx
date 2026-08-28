@@ -57,7 +57,7 @@ export function NotaSaidaDetalheContent({ nota }: { nota: NotaSaidaDetalhe }) {
   return (
     <div className="space-y-4">
       <Card>
-        <CardContent className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Info label="Emissão" value={dataBr(nota.dtEmissao)} />
           <Info label="Espécie" value={nota.especieFiscal || "—"} />
           <Info label="Cliente" value={nota.cliente?.razaoSocial ?? "—"} />

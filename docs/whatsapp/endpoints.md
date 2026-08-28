@@ -24,7 +24,7 @@ módulos, não apenas a permissão do WhatsApp.
 | Método | Caminho | Permissão | Descrição |
 |---|---|---|---|
 | GET | `/whatsapp/config` | `whatsapp-config.visualizar` | Obtém ou cria a configuração singleton |
-| PUT | `/whatsapp/config` | `whatsapp-config.editar` | Atualiza ativo, transporte, worker, DDD e retenção |
+| PUT | `/whatsapp/config` | `whatsapp-config.editar` | Atualiza ativo, transporte, worker, DDD, retenção e dias de histórico |
 | GET | `/whatsapp/sessao` | `whatsapp-conversas.visualizar` | Sessão do vendedor logado |
 | POST | `/whatsapp/sessao/conectar` | `whatsapp-conversas.editar` | Inicia pareamento com aceite obrigatório |
 | GET | `/whatsapp/sessao/pareamento` | `whatsapp-conversas.visualizar` | Estado e QR atual |
@@ -32,6 +32,9 @@ módulos, não apenas a permissão do WhatsApp.
 | GET | `/whatsapp/sessoes` | `whatsapp-conversas.visualizar` | Lista sessões dentro do escopo de equipe |
 | POST | `/whatsapp/config/sessoes/:id/reconectar` | `whatsapp-config.editar` | Reabre instância existente no worker |
 | DELETE | `/whatsapp/config/sessoes/:id` | `whatsapp-config.editar` | Encerra e marca como desconectada, preservando histórico |
+| DELETE | `/whatsapp/config/sessoes/:id/conversas` | `whatsapp-config.editar` | Apaga o histórico da instância: conversas, mensagens, reações, agendamentos, ações e as notificações que apontavam para elas. Os contatos ficam |
+| DELETE | `/whatsapp/config/sessoes/:id/instancia` | `whatsapp-config.editar` | Apaga a linha da instância. Recusa com 400 se ela não estiver desconectada ou se ainda houver conversas |
+| POST | `/whatsapp/config/sessoes/:id/historico` | `whatsapp-config.editar` | Importa o histórico do aparelho dentro de `historicoDias`. Exige instância conectada e o parâmetro acima de zero |
 
 Corpo de conexão:
 
@@ -140,7 +143,7 @@ navegador.
 
 | Método | Caminho | Corpo/resultado |
 |---|---|---|
-| POST | `/sessoes` | `{ sessaoId, empresaId, transporte }`; inicia ou restaura |
+| POST | `/sessoes` | `{ sessaoId, empresaId, transporte, arquivarMensagens? }`; inicia ou restaura |
 | GET | `/sessoes/:id/pareamento` | Estado, QR, número e erro |
 | DELETE | `/sessoes/:id` | Desconecta e limpa o cliente em memória |
 | POST | `/sessoes/:id/mensagens` | `{ jid, texto, respondeuA? }` |
@@ -150,6 +153,7 @@ navegador.
 | GET | `/sessoes/:id/contatos?busca=` | Contatos do store |
 | GET | `/sessoes/:id/conversas?limite=` | Conversas do store |
 | POST | `/sessoes/:id/agenda/sincronizar` | Solicita sincronização completa |
+| POST | `/sessoes/:id/historico/importar` | `{ dias }`; devolve `{ encontradas, conversas }` e segue entregando em segundo plano |
 | GET | `/saude` | `{ "ok": true }` |
 
 Erros do worker usam JSON `{ "erro": "..." }`. A API converte indisponibilidade,

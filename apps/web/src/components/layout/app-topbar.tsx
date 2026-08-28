@@ -70,7 +70,7 @@ export function AppTopbar({
   };
 
   return (
-    <header className="flex h-14 items-center gap-3 border-b border-border/70 bg-background px-4">
+    <header className="flex h-14 min-w-0 items-center gap-1 border-b border-border/70 bg-background px-2 sm:gap-3 sm:px-4">
       <Tooltip>
         <TooltipTrigger asChild>
           <Button variant="ghost" size="icon" onClick={onToggleSidebar} aria-label="Recolher menu">
@@ -89,10 +89,11 @@ export function AppTopbar({
 
       <button
         onClick={() => setSearchOpen(true)}
-        className="ml-2 flex h-8 flex-1 items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted sm:max-w-xs"
+        aria-label="Buscar no sistema"
+        className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/50 text-sm text-muted-foreground transition-colors hover:bg-muted sm:ml-2 sm:h-8 sm:w-auto sm:max-w-xs sm:flex-1 sm:justify-start sm:gap-2 sm:px-3"
       >
         <Search className="size-3.5" />
-        <span className="flex-1 text-left">Buscar no sistema...</span>
+        <span className="hidden flex-1 text-left sm:inline">Buscar no sistema...</span>
         <kbd className="hidden rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[0.65rem] sm:inline">
           ⌘K
         </kbd>
@@ -105,7 +106,7 @@ export function AppTopbar({
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Ajuda">
+            <Button className="hidden sm:inline-flex" variant="ghost" size="icon" aria-label="Ajuda">
               <HelpCircle className="size-4.5" />
             </Button>
           </TooltipTrigger>

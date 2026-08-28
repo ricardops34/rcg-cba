@@ -39,6 +39,10 @@ export const menuCreateSchema = z.object({
     .describe("Rota do front-end associada a este menu, ex.: /admin/empresas"),
   ordem: z.coerce.number().int().min(0).default(0).describe("Posição de exibição dentro do módulo"),
   ativo: z.boolean().default(true).describe("Menus inativos ficam ocultos"),
+  disponivelTelaPequena: z
+    .boolean()
+    .default(true)
+    .describe("Permite acessar esta tela em dispositivos com largura menor que 768 px"),
 });
 export type MenuCreate = z.infer<typeof menuCreateSchema>;
 export const menuUpdateSchema = menuCreateSchema.partial();
@@ -87,6 +91,7 @@ export const MENU_CREATE_EXAMPLE: MenuCreate = {
   rota: "/comercial/produtos",
   ordem: 1,
   ativo: true,
+  disponivelTelaPequena: true,
 };
 
 export const ROTINA_CREATE_EXAMPLE: RotinaCreate = {

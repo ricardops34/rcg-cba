@@ -33,7 +33,7 @@ function Info({ label, value }: { label: string; value: React.ReactNode }) {
 export function ProdutoDetalheContent({ produto }: { produto: ProdutoDetalhe }) {
   return (
     <Card>
-      <CardContent className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Info label="Código ERP" value={produto.codigoErp} />
         <Info label="Unidade" value={produto.unidade || "—"} />
         <Info label="Marca" value={produto.marca || "—"} />

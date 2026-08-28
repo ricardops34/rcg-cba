@@ -9,6 +9,7 @@ import { AppSidebar, MobileSidebar } from "@/components/layout/app-sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
 import { ForcedPasswordChangeGate } from "@/components/auth/forced-password-change-gate";
 import { AgenteFab } from "@/components/agente/agente-fab";
+import { ResponsiveRouteGuard } from "@/components/layout/responsive-route-guard";
 
 const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   "/": { title: "Dashboard", subtitle: "Visão comercial" },
@@ -78,7 +79,7 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
         <div className="flex min-w-0 flex-1 flex-col">
           <AppTopbar onToggleSidebar={handleToggleSidebar} title={page?.title} subtitle={page?.subtitle} />
           <main className="flex-1 overflow-y-auto overflow-x-hidden bg-muted/30 p-3 sm:p-4 lg:p-6">
-            {children}
+            <ResponsiveRouteGuard>{children}</ResponsiveRouteGuard>
           </main>
         </div>
       </div>
