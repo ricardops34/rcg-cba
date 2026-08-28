@@ -24,9 +24,10 @@ import type {
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
 import {
-  deveReativar,
-  LIMPAR_EXCLUSAO,
-} from '../common/reativar-excluido';
+  camposDaDecisao,
+  decidirUpsert,
+} from '../common/decidir-upsert';
+import { sincronizarFilhos } from '../common/sincronizar-filhos';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 import {
   extrairNfe,
@@ -54,7 +55,7 @@ export class IntegracaoNotasSaidaService {
   private paraLeitura(row: NotaComRelacoes): IntegracaoNotaSaida {
     return {
       id: row.id,
-      codigoLegado: row.codigoLegado ?? 0,
+      codigoErp: row.codigoErp ?? '',
       clienteCodigo: row.cliente?.codigoErp ?? null,
       vendedorCodigo: row.vendedor?.codigoErp ?? null,
       condicaoCodigo: row.condicaoPagamento?.codigoErp ?? null,
@@ -77,7 +78,7 @@ export class IntegracaoNotasSaidaService {
       comodato: row.comodato,
       ativo: row.ativo,
       itens: row.itens.map((item) => ({
-        codigoLegado: item.codigoLegado ?? 0,
+        codigoErp: item.codigoErp ?? '',
         produtoCodigo: item.produto?.codigoErp ?? null,
         item: item.item,
         cfop: item.cfop,
@@ -123,7 +124,7 @@ export class IntegracaoNotasSaidaService {
           where,
           include: INCLUDE,
           ...paginationToSkipTake(query),
-          orderBy: { codigoLegado: 'asc' },
+          orderBy: { codigoErp: 'asc' },
         }),
         tx.notaSaida.count({ where }),
       ]);
@@ -137,11 +138,11 @@ export class IntegracaoNotasSaidaService {
 
   async findOne(
     empresaId: string,
-    codigoLegado: number,
+    codigoErp: string,
   ): Promise<IntegracaoNotaSaida> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const row = await tx.notaSaida.findFirst({
-        where: { empresaId, codigoLegado, deletedAt: null },
+        where: { empresaId, codigoErp, deletedAt: null },
         include: INCLUDE,
       });
       if (!row) throw new NotFoundException('Nota de saída não encontrada');
@@ -178,7 +179,7 @@ export class IntegracaoNotasSaidaService {
         }
         return {
           empresaId,
-          codigoLegado: item.codigoLegado,
+          codigoErp: item.codigoErp,
           clienteId,
           vendedorId,
           produtoId,
@@ -267,12 +268,9 @@ export class IntegracaoNotasSaidaService {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.notaSaida.findFirst({
-        where: { empresaId, codigoLegado: input.codigoLegado },
+        where: { empresaId, codigoErp: input.codigoErp },
       });
-      const reativar = deveReativar(
-        existente,
-        `Já existe nota de saída com codigoLegado '${input.codigoLegado}'`,
-      );
+      const decisao = decidirUpsert(existente);
 
       const { clienteId, vendedorId, condicaoPagamentoId } =
         await this.resolverRefs(
@@ -293,7 +291,7 @@ export class IntegracaoNotasSaidaService {
       );
 
       const dados = {
-          codigoLegado: input.codigoLegado,
+          codigoErp: input.codigoErp,
           clienteId,
           vendedorId,
           condicaoPagamentoId,
@@ -320,21 +318,19 @@ export class IntegracaoNotasSaidaService {
           updatedBy: autor,
       };
 
-      if (reativar) {
-        // Os itens do payload substituem os que estavam na nota excluída —
-        // mesma regra do `update`: o ERP manda a nota inteira, e item que não
-        // veio mais não existe mais.
-        await tx.notaSaidaItem.deleteMany({ where: { notaSaidaId: existente!.id } });
-        const reativada = await tx.notaSaida.update({
+      if (decisao !== 'criar') {
+        // O ERP manda a nota inteira: item que não veio mais não existe mais,
+        // e o que veio é casado pelo codigoErp em vez de recriado.
+        const atualizadoUpsert = await tx.notaSaida.update({
           where: { id: existente!.id },
           data: {
             ...dados,
-            ...LIMPAR_EXCLUSAO,
-            itens: { create: itensData },
+            ...camposDaDecisao(decisao),
+            itens: sincronizarFilhos(empresaId, itensData),
           },
           include: INCLUDE,
         });
-        return this.paraLeitura(reativada);
+        return this.paraLeitura(atualizadoUpsert);
       }
 
       const criada = await tx.notaSaida.create({
@@ -353,13 +349,13 @@ export class IntegracaoNotasSaidaService {
   async update(
     empresaId: string,
     apiKeyId: string,
-    codigoLegado: number,
+    codigoErp: string,
     input: IntegracaoNotaSaidaUpdate,
   ): Promise<IntegracaoNotaSaida> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.notaSaida.findFirst({
-        where: { empresaId, codigoLegado, deletedAt: null },
+        where: { empresaId, codigoErp, deletedAt: null },
       });
       if (!existente)
         throw new NotFoundException('Nota de saída não encontrada');
@@ -393,10 +389,7 @@ export class IntegracaoNotasSaidaService {
           vendedorIdFinal,
           dtEmissaoFinal,
         );
-        await tx.notaSaidaItem.deleteMany({
-          where: { notaSaidaId: existente.id },
-        });
-        itensUpdate = { itens: { create: itensData } };
+        itensUpdate = { itens: sincronizarFilhos(empresaId, itensData) };
       }
 
       const atualizada = await tx.notaSaida.update({
@@ -451,12 +444,12 @@ export class IntegracaoNotasSaidaService {
   async remove(
     empresaId: string,
     apiKeyId: string,
-    codigoLegado: number,
+    codigoErp: string,
   ): Promise<void> {
     const autor = autorIntegracao(apiKeyId);
     await this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.notaSaida.findFirst({
-        where: { empresaId, codigoLegado, deletedAt: null },
+        where: { empresaId, codigoErp, deletedAt: null },
       });
       if (!existente)
         throw new NotFoundException('Nota de saída não encontrada');
@@ -476,14 +469,14 @@ export class IntegracaoNotasSaidaService {
    * hora da 2ª via jogaria o erro para o vendedor, na frente do cliente.
    *
    * A chave também é conferida contra a que a nota já tem. Divergência aqui
-   * quase sempre é `codigoLegado` trocado no ERP, e aceitar significaria
+   * quase sempre é `codigoErp` trocado no ERP, e aceitar significaria
    * pendurar o XML de uma nota em outra — o cliente receberia a nota de
    * outra pessoa.
    */
   async salvarXml(
     empresaId: string,
     apiKeyId: string,
-    codigoLegado: number,
+    codigoErp: string,
     input: IntegracaoNfeXml,
   ): Promise<IntegracaoNfeXmlResultado> {
     const autor = autorIntegracao(apiKeyId);
@@ -510,7 +503,7 @@ export class IntegracaoNotasSaidaService {
 
     const nota = await this.prisma.withTenant(empresaId, (tx) =>
       tx.notaSaida.findFirst({
-        where: { empresaId, codigoLegado, deletedAt: null },
+        where: { empresaId, codigoErp, deletedAt: null },
         select: { id: true, chaveNfe: true },
       }),
     );
@@ -519,7 +512,7 @@ export class IntegracaoNotasSaidaService {
     const chaveAtual = (nota.chaveNfe ?? '').replace(/\D/g, '');
     if (chaveAtual && chaveAtual !== dados.chave) {
       throw new ConflictException(
-        `A chave do XML (${dados.chave}) não confere com a da nota ${codigoLegado} (${chaveAtual})`,
+        `A chave do XML (${dados.chave}) não confere com a da nota ${codigoErp} (${chaveAtual})`,
       );
     }
 
@@ -569,7 +562,7 @@ export class IntegracaoNotasSaidaService {
     });
 
     return {
-      codigoLegado,
+      codigoErp,
       chaveNfe: dados.chave,
       numero: dados.numero,
       serie: dados.serie,
@@ -589,12 +582,12 @@ export class IntegracaoNotasSaidaService {
    */
   async statusXml(
     empresaId: string,
-    codigoLegado: number,
+    codigoErp: string,
     comConteudo = false,
   ): Promise<IntegracaoNfeXmlStatus> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const nota = await tx.notaSaida.findFirst({
-        where: { empresaId, codigoLegado, deletedAt: null },
+        where: { empresaId, codigoErp, deletedAt: null },
         select: {
           id: true,
           chaveNfe: true,
@@ -615,7 +608,7 @@ export class IntegracaoNotasSaidaService {
       });
 
       return {
-        codigoLegado,
+        codigoErp,
         temXml: !!xml,
         chaveNfe: nota.chaveNfe,
         protocolo: nota.protocoloNfe,
@@ -632,7 +625,7 @@ export class IntegracaoNotasSaidaService {
   /**
    * Remove o XML de uma nota.
    *
-   * Existe para o caso real: o ERP mandou o arquivo no `codigoLegado` errado e
+   * Existe para o caso real: o ERP mandou o arquivo no `codigoErp` errado e
    * a nota ficou com o XML de outra. Sem isto, o único jeito de corrigir seria
    * no banco, à mão.
    *
@@ -642,12 +635,12 @@ export class IntegracaoNotasSaidaService {
   async removerXml(
     empresaId: string,
     apiKeyId: string,
-    codigoLegado: number,
+    codigoErp: string,
   ): Promise<void> {
     const autor = autorIntegracao(apiKeyId);
     await this.prisma.withTenant(empresaId, async (tx) => {
       const nota = await tx.notaSaida.findFirst({
-        where: { empresaId, codigoLegado, deletedAt: null },
+        where: { empresaId, codigoErp, deletedAt: null },
         select: { id: true },
       });
       if (!nota) throw new NotFoundException('Nota de saída não encontrada');

@@ -12,7 +12,7 @@ export type TituloReceberStatus = z.infer<typeof tituloReceberStatusSchema>;
 export const tituloReceberSchema = z.object({
   id: z.string().uuid(),
   empresaId: z.string().uuid(),
-  codigoLegado: z.number().int().nullable(),
+  codigoErp: z.string().nullable(),
   clienteId: z.string().uuid().nullable(),
   vendedorId: z.string().uuid().nullable(),
   numero: z.string(),
@@ -60,7 +60,7 @@ export type TituloReceberQuery = z.infer<typeof tituloReceberQuerySchema>;
 export const TITULO_RECEBER_EXAMPLE: TituloReceber = {
   id: "1e2f3a4b-5c6d-4e7f-8091-a2b3c4d5e6f7",
   empresaId: "7b2f2f64-9b1c-4a86-9d3e-1f4a5b6c7d8e",
-  codigoLegado: 88214,
+  codigoErp: "NF-000116067-A-NF",
   clienteId: "d4e5f6a7-8b9c-4d0e-9f1a-2b3c4d5e6f70",
   vendedorId: "b7c2c1de-4a45-4b8a-9f2e-6a1d6c1e9f10",
   numero: "000116067",

@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { ArrowLeft, ImageIcon, Upload } from "lucide-react";
 
 const LIST_ROUTE = "/admin/empresas";
@@ -29,6 +30,8 @@ export function EmpresaForm({ empresa }: { empresa?: Empresa }) {
   const [current, setCurrent] = useState<Empresa | undefined>(empresa);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<EmpresaCreate>({
     resolver: zodResolver(empresaCreateSchema),
@@ -50,8 +53,19 @@ export function EmpresaForm({ empresa }: { empresa?: Empresa }) {
           telefone: empresa.telefone ?? "",
           email: empresa.email ?? "",
           site: empresa.site ?? "",
+          bannerAtivo: empresa.bannerAtivo,
+          bannerCor: empresa.bannerCor ?? "",
+          bannerImagemUrl: empresa.bannerImagemUrl ?? null,
         }
-      : { razaoSocial: "", nomeFantasia: "", cnpj: "", alias: null, ativo: true },
+      : {
+          razaoSocial: "",
+          nomeFantasia: "",
+          cnpj: "",
+          alias: null,
+          ativo: true,
+          bannerAtivo: false,
+          bannerCor: "",
+        },
   });
 
   const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -69,6 +83,26 @@ export function EmpresaForm({ empresa }: { empresa?: Empresa }) {
       toast.error(err instanceof ApiError ? err.message : "Erro ao enviar logo");
     } finally {
       setUploadingLogo(false);
+    }
+  };
+
+  const handleBannerUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !current) return;
+    setUploadingBanner(true);
+    try {
+      const updated = await apiUpload<Empresa>(`/empresas/${current.id}/banner`, file);
+      setCurrent(updated);
+      // O `me()` carrega a faixa da empresa ativa: sem recarregar, a barra do
+      // topo continuaria mostrando a arte antiga até o próximo login.
+      const me = await apiFetch<CurrentUser>("/auth/me");
+      setUser(me);
+      toast.success("Imagem da faixa atualizada");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Erro ao enviar a imagem");
+    } finally {
+      setUploadingBanner(false);
     }
   };
 
@@ -265,6 +299,100 @@ export function EmpresaForm({ empresa }: { empresa?: Empresa }) {
                         {uploadingLogo ? "Enviando..." : "Enviar logo"}
                       </Button>
                       <p className="text-xs text-muted-foreground">PNG, JPEG, WEBP ou SVG (até 2 MB).</p>
+                    </div>
+                  </div>
+                </Field>
+              )}
+
+              {/* Faixa institucional — a barra do topo do sistema (selo de
+                  associação, certificação, grupo). Só aparece dentro do
+                  sistema: no login ainda não se sabe a empresa. */}
+              {current && (
+                <Field>
+                  <FieldLabel>Faixa institucional</FieldLabel>
+                  <p className="text-xs text-muted-foreground">
+                    Barra exibida no topo do sistema para quem está logado nesta empresa. Precisa da
+                    imagem enviada para aparecer.
+                  </p>
+
+                  <label className="mt-1 flex w-fit cursor-pointer items-center gap-2 text-sm">
+                    <Switch
+                      checked={!!form.watch("bannerAtivo")}
+                      onCheckedChange={(v) =>
+                        form.setValue("bannerAtivo", v, { shouldDirty: true })
+                      }
+                    />
+                    Exibir a faixa
+                  </label>
+
+                  <div className="mt-2 flex flex-wrap items-end gap-4">
+                    <div className="space-y-1">
+                      <FieldLabel htmlFor="bannerCor" className="text-xs">
+                        Cor de fundo
+                      </FieldLabel>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id="bannerCor"
+                          type="color"
+                          className="h-9 w-14 p-1"
+                          value={form.watch("bannerCor") || "#bd1e7d"}
+                          onChange={(e) =>
+                            form.setValue("bannerCor", e.target.value, { shouldDirty: true })
+                          }
+                        />
+                        <Input
+                          aria-label="Cor em hexadecimal"
+                          className="w-28 font-mono"
+                          maxLength={7}
+                          placeholder="#bd1e7d"
+                          {...form.register("bannerCor")}
+                        />
+                      </div>
+                      <FieldError errors={[form.formState.errors.bannerCor]} />
+                    </div>
+
+                    <div className="space-y-1">
+                      <FieldLabel className="text-xs">Imagem</FieldLabel>
+                      <input
+                        ref={bannerInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        className="hidden"
+                        onChange={handleBannerUpload}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={uploadingBanner}
+                        onClick={() => bannerInputRef.current?.click()}
+                      >
+                        <Upload className="size-4" />
+                        {uploadingBanner ? "Enviando..." : "Enviar imagem"}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Prévia com a cor e a arte reais, do tamanho que sai no
+                      topo — escolher cor às cegas dá tarja ilegível. */}
+                  <div className="mt-2 space-y-1">
+                    <span className="text-xs text-muted-foreground">Prévia</span>
+                    <div
+                      className="flex h-10 items-center justify-center rounded-md"
+                      style={{ backgroundColor: form.watch("bannerCor") || "#bd1e7d" }}
+                    >
+                      {current.bannerImagemUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={assetUrl(current.bannerImagemUrl) ?? ""}
+                          alt="Faixa institucional"
+                          className="h-6 w-auto"
+                        />
+                      ) : (
+                        <span className="text-xs text-white/80">
+                          Envie a imagem para ver a faixa
+                        </span>
+                      )}
                     </div>
                   </div>
                 </Field>

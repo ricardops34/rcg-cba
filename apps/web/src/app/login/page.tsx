@@ -168,21 +168,11 @@ function LoginForm() {
     }
   };
 
+  // A faixa institucional não aparece aqui: ela é configurada por empresa
+  // (Administração > Empresas) e, no login, ainda não se sabe em qual o
+  // usuário vai entrar. Quem a desenha é o shell, em app/(app)/layout.tsx.
   return (
-    <div className="flex h-svh flex-col overflow-hidden">
-      {/* Faixa magenta da marca allia — full-width no topo */}
-      <div className="flex h-9 shrink-0 items-center justify-center bg-[#bd1e7d] sm:h-11">
-        <Image
-          src="/allia.png"
-          alt="allia — Empresa associada"
-          width={240}
-          height={44}
-          priority
-          className="h-[22px] w-auto brightness-0 invert sm:h-7"
-        />
-      </div>
-
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[1.1fr_1fr]">
+      <div className="grid h-svh overflow-hidden lg:grid-cols-[1.1fr_1fr]">
       {/* Painel de marca — imagem de fundo RCG em azul-marinho */}
       <div className="relative hidden flex-col justify-center gap-10 overflow-hidden bg-sidebar p-10 text-sidebar-foreground lg:flex">
         <Image
@@ -348,7 +338,6 @@ function LoginForm() {
         </div>
       </div>
       </div>
-    </div>
   );
 }
 

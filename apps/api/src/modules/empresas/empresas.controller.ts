@@ -31,7 +31,10 @@ import { RequirePermission } from '../../common/decorators/require-permission.de
 import { ApiBodyExample } from '../../common/decorators/api-body-example.decorator';
 import { CurrentUser, type AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ApiPaginationQuery } from '../../common/decorators/api-pagination-query.decorator';
-import { logoUploadOptions } from '../../common/uploads/uploads.config';
+import {
+  bannerUploadOptions,
+  logoUploadOptions,
+} from '../../common/uploads/uploads.config';
 
 const EMPRESA_ID_EXAMPLE = EMPRESA_EXAMPLE.id;
 
@@ -137,6 +140,35 @@ export class EmpresasController {
   ) {
     if (!file) throw new BadRequestException('Nenhum arquivo enviado');
     return this.service.setLogo(id, file.filename, user.id);
+  }
+
+  @ApiOperation({
+    summary: 'Enviar a imagem da faixa institucional',
+    description:
+      'Faz upload da imagem exibida na faixa do topo do sistema (PNG, JPEG, WEBP ou SVG, ' +
+      'até 2 MB) e grava o caminho em bannerImagemUrl. Não liga a faixa — isso é o campo ' +
+      'bannerAtivo, no PATCH da empresa. Requer a permissão empresas.editar.',
+  })
+  @ApiParam({ name: 'id', example: EMPRESA_ID_EXAMPLE })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiResponse({ status: 201, schema: { example: EMPRESA_EXAMPLE } })
+  @ApiResponse({ status: 400, description: 'Arquivo ausente ou formato inválido' })
+  @RequirePermission('empresas', 'editar')
+  @Post(':id/banner')
+  @UseInterceptors(FileInterceptor('file', bannerUploadOptions))
+  uploadBanner(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    if (!file) throw new BadRequestException('Nenhum arquivo enviado');
+    return this.service.setBanner(id, file.filename, user.id);
   }
 
   @ApiOperation({

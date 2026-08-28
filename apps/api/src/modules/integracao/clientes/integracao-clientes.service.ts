@@ -21,9 +21,9 @@ import type {
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
 import {
-  deveReativar,
-  LIMPAR_EXCLUSAO,
-} from '../common/reativar-excluido';
+  camposDaDecisao,
+  decidirUpsert,
+} from '../common/decidir-upsert';
 import { ClienteAlteracoesService } from '../../clientes/cliente-alteracoes.service';
 
 const INCLUDE = {
@@ -147,10 +147,7 @@ export class IntegracaoClientesService {
       const existente = await tx.cliente.findFirst({
         where: { empresaId, codigoErp: input.codigoErp },
       });
-      const reativar = deveReativar(
-        existente,
-        `Já existe cliente com codigoErp '${input.codigoErp}'`,
-      );
+      const decisao = decidirUpsert(existente);
 
       const vendedorId = await this.resolverVendedor(
         tx,
@@ -213,13 +210,13 @@ export class IntegracaoClientesService {
           updatedBy: autor,
       };
 
-      if (reativar) {
-        const reativado = await tx.cliente.update({
+      if (decisao !== 'criar') {
+        const atualizadoUpsert = await tx.cliente.update({
           where: { id: existente!.id },
-          data: { ...dados, ...LIMPAR_EXCLUSAO },
+          data: { ...dados, ...camposDaDecisao(decisao) },
           include: INCLUDE,
         });
-        return this.paraLeitura(reativado);
+        return this.paraLeitura(atualizadoUpsert);
       }
 
       const criado = await tx.cliente.create({

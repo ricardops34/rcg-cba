@@ -1,5 +1,16 @@
 # Convenção de migrations — Row-Level Security (multi-tenant)
 
+> **A história começa em `20260828220000_baseline`.** As 73 migrations
+> incrementais de 24/07 a 28/08/2026 foram consolidadas nela quando a base
+> passou a ser criada do zero — o import do MySQL do portal antigo foi
+> aposentado, e com ele a razão de preservar o caminho até o schema atual. A
+> baseline tem três blocos: estrutura, role `plataforma_app` e RLS. Conteúdo
+> (menus, rotinas, perfis, parâmetros, empresa inicial) continua sendo do
+> `seed-base.ts`, nunca de migration.
+>
+> Quem já tinha o banco antigo aplicado precisa recriá-lo: o Prisma guarda o
+> checksum de cada migration, e a história mudou.
+
 Este projeto é multi-tenant por empresa. O isolamento **não** depende apenas do
 `WHERE empresaId = ...` da aplicação: o Postgres reforça o corte por tenant com
 **Row-Level Security (RLS)**, para que um bug de query ou um SQL manual não vaze
@@ -81,8 +92,8 @@ usuários).
   também pelo **dono da tabela** (mesmo sem `BYPASSRLS`), a menos que a tabela
   tenha `FORCE ROW LEVEL SECURITY`. A API deve sempre conectar com um role de
   aplicação distinto do role que roda as migrations/dono das tabelas.
-- Esse role (`plataforma_app`) é criado pela migration
-  `20260715221500_app_role_least_privilege`: `LOGIN`, `NOSUPERUSER`,
+- Esse role (`plataforma_app`) é criado no bloco 2 da baseline
+  `20260828220000_baseline`: `LOGIN`, `NOSUPERUSER`,
   `NOBYPASSRLS`, sem privilégio de DDL. `docker-compose.dev.yml` já usa esse
   role na `DATABASE_URL` do serviço `api` (migrations/seed continuam com o
   role dono, via serviço `db-init`). Em produção, troque a senha placeholder
@@ -105,7 +116,7 @@ lista de exceções acima (não recebem RLS, pelo mesmo motivo de
 Sem RLS por serem referência global (sem coluna `empresaId`): `paises`,
 `estados`, `municipios`, `ceps`, `cnaes` (além das tabelas de sistema
 `modulos`/`menus`/`rotinas`, de `politica_senha`/`senha_historico` — login e
-senha são globais — e de `perfis`, desde a migration `perfil_global`: um
+senha são globais — e de `perfis`: um
 mesmo papel/RBAC, ex. "Administrador"/"Vendedor", é compartilhado por todas
 as empresas; cada vínculo usuário×empresa continua escolhendo seu próprio
 perfil dessa lista global).

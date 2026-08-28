@@ -30,10 +30,10 @@ além do CRUD.
 | `/integracao/clientes` | `codigoErp` | `ativo` | **`PATCH` vai para fila de aprovação** |
 | `/integracao/tabelas-preco` | `codigoErp` | `ativo` | mestre-detalhe (`itens`) |
 | `/integracao/estoque` | `produtoCodigo` + `armazemCodigo` | `produtoCodigo`, `armazemCodigo` | chave composta na URL |
-| `/integracao/objetivos` | `codigoLegado` | `ativo`, `ano`, `mes` | mestre-detalhe (`categorias`) |
-| `/integracao/notas-saida` | `codigoLegado` | `ativo`, `semXml` | mestre-detalhe (`itens`) + rotas de XML |
-| `/integracao/titulos-receber` | `codigoLegado` | `ativo` | campos de cobrança bancária |
-| `/integracao/orcamentos` | `codigoLegado` | `ativo`, `status` | mestre-detalhe (`itens`) + fila de pendentes |
+| `/integracao/objetivos` | `codigoErp` | `ativo`, `ano`, `mes` | mestre-detalhe (`categorias`) |
+| `/integracao/notas-saida` | `codigoErp` | `ativo`, `semXml` | mestre-detalhe (`itens`) + rotas de XML |
+| `/integracao/titulos-receber` | `codigoErp` | `ativo` | campos de cobrança bancária |
+| `/integracao/orcamentos` | `codigoErp` | `ativo`, `status` | mestre-detalhe (`itens`) + fila de pendentes |
 
 Todos os `GET` de lista aceitam ainda `page`, `pageSize`, `search`, `sortBy` e
 `sortOrder`.
@@ -117,9 +117,9 @@ Mestre-detalhe. `GET /{codigo}` devolve a tabela **com os itens**.
 }
 ```
 
-> **`itens` substitui o conjunto inteiro a cada `PATCH`.** Não é uma lista
-> incremental: o que não vier no array é removido. Para mexer em um preço,
-> reenvie a tabela completa.
+> **`itens` substitui o conjunto inteiro.** Não é uma lista incremental: o que
+> não vier no array é removido, e o que vier é casado pelo `codigoErp` do item.
+> Para mexer em um preço, reenvie a tabela completa.
 
 ### Estoque — `/integracao/estoque`
 
@@ -186,12 +186,12 @@ mandar tudo sempre, sem inundar a fila.
 
 ### Objetivos — `/integracao/objetivos`
 
-Metas por vendedor/mês/ano. Chave `codigoLegado` (id da linha no ERP — vendedor,
-mês e ano juntos não são únicos o bastante). Filtros extras: `ano`, `mes`.
+Metas por vendedor/mês/ano. Chave `codigoErp` — o valor que o ERP escolheu
+para identificar a meta. Filtros extras: `ano`, `mes`.
 
 ```json
 {
-  "codigoLegado": 5821,
+  "codigoErp": "000234-2026-08",
   "vendedorCodigo": "000234",
   "mes": 8,
   "ano": 2026,
@@ -201,16 +201,17 @@ mês e ano juntos não são únicos o bastante). Filtros extras: `ano`, `mes`.
 ```
 
 `categorias` (metas por categoria) segue a mesma regra dos outros
-mestre-detalhe: **substitui o conjunto inteiro a cada `PATCH`**.
+mestre-detalhe: **substitui o conjunto inteiro**, casando cada linha pelo
+`codigoErp` dela.
 
 ### Notas de saída — `/integracao/notas-saida`
 
-Chave `codigoLegado`. Cabeçalho + `itens` (cada item com o próprio
-`codigoLegado`, o id da linha no ERP). `clienteId`, `vendedorId` e `dtEmissao`
+Chave `codigoErp`. Cabeçalho + `itens` (cada item com o próprio
+`codigoErp`). `clienteId`, `vendedorId` e `dtEmissao`
 dos itens são preenchidos pelo service a partir do cabeçalho — não vêm no
 payload do item.
 
-`itens` **substitui o conjunto inteiro a cada `PATCH`**.
+`itens` **substitui o conjunto inteiro**, casando cada item pelo `codigoErp`.
 
 Filtro `semXml=true` lista as notas que ainda não têm XML autorizado na
 plataforma — é assim que o ERP descobre o que falta enviar numa carga
@@ -219,9 +220,9 @@ retroativa, sem perguntar nota a nota.
 #### XML da NF-e (2ª via do DANFE)
 
 ```
-POST   /integracao/notas-saida/{codigoLegado}/xml
-GET    /integracao/notas-saida/{codigoLegado}/xml[?conteudo=true]
-DELETE /integracao/notas-saida/{codigoLegado}/xml
+POST   /integracao/notas-saida/{codigoErp}/xml
+GET    /integracao/notas-saida/{codigoErp}/xml[?conteudo=true]
+DELETE /integracao/notas-saida/{codigoErp}/xml
 ```
 
 No `POST`, envie **`xml`** (texto) **ou** `xmlBase64` — exatamente um dos dois
@@ -234,7 +235,7 @@ com a da nota. Reenviar substitui o XML anterior.
 
 ```json
 {
-  "codigoLegado": 45012,
+  "codigoErp": "000116067-1",
   "chaveNfe": "50260600000000000191550010001160671000116060",
   "numero": "116067",
   "serie": "1",
@@ -246,7 +247,7 @@ com a da nota. Reenviar substitui o XML anterior.
 
 O `GET` por padrão devolve só a situação (chegou? quando? que tamanho?);
 `?conteudo=true` traz o arquivo. O `DELETE` existe para o caso de o arquivo ter
-ido no `codigoLegado` errado: limpa protocolo e situação, e a 2ª via deixa de
+ido no `codigoErp` errado: limpa protocolo e situação, e a 2ª via deixa de
 ser oferecida. A nota em si não é tocada.
 
 Limite próprio de 120 req/min nesta rota — uma carga retroativa de milhares de
@@ -254,7 +255,7 @@ arquivos não divide o balde com o cadastro.
 
 ### Títulos a receber — `/integracao/titulos-receber`
 
-Chave `codigoLegado`. Além do financeiro básico (`numero`, `parcela`,
+Chave `codigoErp`. Além do financeiro básico (`numero`, `parcela`,
 `prefixo`, `emissao`, `vencimento`, `vencimentoReal`, `valor`, `saldo`,
 `acrescimo`, `decrescimo`, `dtBaixa`, `formaPgto`, `historico`), carrega os
 campos de **cobrança bancária** que a 2ª via de boleto usa (`nossoNumero` e
@@ -265,8 +266,8 @@ não tem boleto.
 
 ## Orçamentos — `/integracao/orcamentos`
 
-Chave `codigoLegado`. `status`: `rascunho`, `enviado`, `aprovado`, `recusado`,
-`expirado`. `itens` **substitui o conjunto inteiro a cada `PATCH`**.
+Chave `codigoErp`. `status`: `rascunho`, `enviado`, `aprovado`, `recusado`,
+`expirado`. `itens` **substitui o conjunto inteiro**, casando cada item pelo `codigoErp`.
 
 O orçamento é a única entidade que anda **nos dois sentidos**: o ERP empurra os
 dele, e a plataforma produz orçamentos próprios (feitos pelo vendedor na tela)
@@ -280,12 +281,12 @@ PATCH /integracao/orcamentos/pendentes/{id}
 ```
 
 1. `GET .../pendentes` lista os orçamentos **aprovados** criados na plataforma
-   que ainda não têm `codigoLegado` — prontos para o ERP importar.
+   que ainda não têm `codigoErp` — prontos para o ERP importar.
 2. O ERP importa e gera o número dele.
 3. `PATCH .../pendentes/{id}` grava esse número:
 
    ```json
-   { "codigoLegado": 90231 }
+   { "codigoErp": "004512" }
    ```
 
    Aqui — e só aqui — o `{id}` é o **id interno da plataforma** (UUID), o mesmo
@@ -295,10 +296,10 @@ PATCH /integracao/orcamentos/pendentes/{id}
    normal, como qualquer outro.
 
 O vínculo só pode ser feito **uma vez**. Retorna `409` se o orçamento já estiver
-vinculado, se ainda não estiver aprovado, ou se o `codigoLegado` colidir com o de
+vinculado, se ainda não estiver aprovado, ou se o `codigoErp` colidir com o de
 outro orçamento.
 
-> `GET /integracao/orcamentos` lista **só** os que já têm `codigoLegado`. Quem
+> `GET /integracao/orcamentos` lista **só** os que já têm `codigoErp`. Quem
 > procura orçamento da plataforma ali não acha nada: eles estão em
 > `.../pendentes` até serem vinculados.
 
@@ -353,5 +354,5 @@ curl -X POST "$API/integracao/notas-saida/45012/xml" \
 curl "$API/integracao/orcamentos/pendentes" -H "x-api-key: $KEY"
 curl -X PATCH "$API/integracao/orcamentos/pendentes/8b9c0d1e-2f3a-4b4c-5d6e-7f8091a2b3c4" \
   -H "x-api-key: $KEY" -H "Content-Type: application/json" \
-  -d '{"codigoLegado":90231}'
+  -d '{"codigoErp":"004512"}'
 ```

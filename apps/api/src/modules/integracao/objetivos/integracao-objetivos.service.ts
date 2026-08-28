@@ -16,9 +16,10 @@ import type {
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
 import {
-  deveReativar,
-  LIMPAR_EXCLUSAO,
-} from '../common/reativar-excluido';
+  camposDaDecisao,
+  decidirUpsert,
+} from '../common/decidir-upsert';
+import { sincronizarFilhos } from '../common/sincronizar-filhos';
 
 const INCLUDE = {
   vendedor: { select: { codigoErp: true } },
@@ -38,7 +39,7 @@ export class IntegracaoObjetivosService {
   private paraLeitura(row: ObjetivoComRelacoes): IntegracaoObjetivo {
     return {
       id: row.id,
-      codigoLegado: row.codigoLegado ?? 0,
+      codigoErp: row.codigoErp ?? '',
       vendedorCodigo: row.vendedor.codigoErp ?? '',
       mes: row.mes,
       ano: row.ano,
@@ -48,6 +49,7 @@ export class IntegracaoObjetivosService {
       tipo: row.tipo,
       ativo: row.ativo,
       categorias: row.categorias.map((c) => ({
+        codigoErp: c.codigoErp ?? '',
         categoriaCodigo: c.categoria.codigoErp,
         valor: c.valor,
       })),
@@ -72,7 +74,7 @@ export class IntegracaoObjetivosService {
           where,
           include: INCLUDE,
           ...paginationToSkipTake(query),
-          orderBy: { codigoLegado: 'asc' },
+          orderBy: { codigoErp: 'asc' },
         }),
         tx.objetivoVendedorMes.count({ where }),
       ]);
@@ -86,11 +88,11 @@ export class IntegracaoObjetivosService {
 
   async findOne(
     empresaId: string,
-    codigoLegado: number,
+    codigoErp: string,
   ): Promise<IntegracaoObjetivo> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const row = await tx.objetivoVendedorMes.findFirst({
-        where: { empresaId, codigoLegado, deletedAt: null },
+        where: { empresaId, codigoErp, deletedAt: null },
         include: INCLUDE,
       });
       if (!row) throw new NotFoundException('Objetivo não encontrado');
@@ -106,12 +108,9 @@ export class IntegracaoObjetivosService {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.objetivoVendedorMes.findFirst({
-        where: { empresaId, codigoLegado: input.codigoLegado },
+        where: { empresaId, codigoErp: input.codigoErp },
       });
-      const reativar = deveReativar(
-        existente,
-        `Já existe objetivo com codigoLegado '${input.codigoLegado}'`,
-      );
+      const decisao = decidirUpsert(existente);
 
       const vendedor = await tx.vendedor.findFirst({
         where: { empresaId, codigoErp: input.vendedorCodigo, deletedAt: null },
@@ -137,12 +136,17 @@ export class IntegracaoObjetivosService {
               `categoriaCodigo '${linha.categoriaCodigo}' não encontrado`,
             );
           }
-          return { empresaId, categoriaId: categoria.id, valor: linha.valor };
+          return {
+            empresaId,
+            codigoErp: linha.codigoErp,
+            categoriaId: categoria.id,
+            valor: linha.valor,
+          };
         }),
       );
 
       const dados = {
-        codigoLegado: input.codigoLegado,
+        codigoErp: input.codigoErp,
         vendedorId: vendedor.id,
         mes: input.mes,
         ano: input.ano,
@@ -154,22 +158,19 @@ export class IntegracaoObjetivosService {
         updatedBy: autor,
       };
 
-      if (reativar) {
-        // As categorias do payload substituem as do objetivo excluído —
-        // mesma regra do `update`.
-        await tx.objetivoVendedorCategoria.deleteMany({
-          where: { objetivoVendedorMesId: existente!.id },
-        });
-        const reativado = await tx.objetivoVendedorMes.update({
+      if (decisao !== 'criar') {
+        // O ERP manda o objetivo inteiro: categoria que não veio mais não
+        // existe mais, e a que veio é casada pelo codigoErp.
+        const atualizadoUpsert = await tx.objetivoVendedorMes.update({
           where: { id: existente!.id },
           data: {
             ...dados,
-            ...LIMPAR_EXCLUSAO,
-            categorias: { create: categoriasData },
+            ...camposDaDecisao(decisao),
+            categorias: sincronizarFilhos(empresaId, categoriasData),
           },
           include: INCLUDE,
         });
-        return this.paraLeitura(reativado);
+        return this.paraLeitura(atualizadoUpsert);
       }
 
       const criado = await tx.objetivoVendedorMes.create({
@@ -188,13 +189,13 @@ export class IntegracaoObjetivosService {
   async update(
     empresaId: string,
     apiKeyId: string,
-    codigoLegado: number,
+    codigoErp: string,
     input: IntegracaoObjetivoUpdate,
   ): Promise<IntegracaoObjetivo> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.objetivoVendedorMes.findFirst({
-        where: { empresaId, codigoLegado, deletedAt: null },
+        where: { empresaId, codigoErp, deletedAt: null },
       });
       if (!existente) throw new NotFoundException('Objetivo não encontrado');
 
@@ -232,13 +233,17 @@ export class IntegracaoObjetivosService {
                 `categoriaCodigo '${linha.categoriaCodigo}' não encontrado`,
               );
             }
-            return { empresaId, categoriaId: categoria.id, valor: linha.valor };
+            return {
+            empresaId,
+            codigoErp: linha.codigoErp,
+            categoriaId: categoria.id,
+            valor: linha.valor,
+          };
           }),
         );
-        await tx.objetivoVendedorCategoria.deleteMany({
-          where: { objetivoVendedorMesId: existente.id },
-        });
-        categoriasUpdate = { categorias: { create: categoriasData } };
+        categoriasUpdate = {
+          categorias: sincronizarFilhos(empresaId, categoriasData),
+        };
       }
 
       const atualizado = await tx.objetivoVendedorMes.update({
@@ -268,12 +273,12 @@ export class IntegracaoObjetivosService {
   async remove(
     empresaId: string,
     apiKeyId: string,
-    codigoLegado: number,
+    codigoErp: string,
   ): Promise<void> {
     const autor = autorIntegracao(apiKeyId);
     await this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.objetivoVendedorMes.findFirst({
-        where: { empresaId, codigoLegado, deletedAt: null },
+        where: { empresaId, codigoErp, deletedAt: null },
       });
       if (!existente) throw new NotFoundException('Objetivo não encontrado');
       await tx.objetivoVendedorMes.update({

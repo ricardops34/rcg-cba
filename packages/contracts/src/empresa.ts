@@ -39,6 +39,28 @@ export const empresaCreateSchema = z.object({
     .nullable()
     .optional()
     .describe("Caminho relativo do logo da empresa (definido via upload)"),
+
+  // Faixa institucional no topo do sistema (associação, certificação, grupo).
+  // Só aparece dentro do sistema, nunca no login — lá ainda não há empresa.
+  bannerAtivo: z
+    .boolean()
+    .default(false)
+    .describe("Exibe a faixa institucional no topo do sistema"),
+  bannerCor: z
+    .string()
+    .trim()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Informe a cor no formato #rrggbb")
+    .nullable()
+    .optional()
+    .or(z.literal(""))
+    .describe("Cor de fundo da faixa, em hexadecimal; vazio usa a cor do tema"),
+  bannerImagemUrl: z
+    .string()
+    .trim()
+    .max(500)
+    .nullable()
+    .optional()
+    .describe("Caminho relativo da imagem da faixa (definido via upload)"),
   ativo: z
     .boolean()
     .default(true)
@@ -88,6 +110,9 @@ export const EMPRESA_CREATE_EXAMPLE: EmpresaCreate = {
   cnpj: "12345678000199",
   alias: "andrade",
   logoUrl: null,
+  bannerAtivo: true,
+  bannerCor: "#bd1e7d",
+  bannerImagemUrl: "/uploads/banners/andrade-associada.png",
   ativo: true,
   inscricaoEstadual: "283456789",
   inscricaoMunicipal: "",

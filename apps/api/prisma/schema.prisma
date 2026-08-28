@@ -20,6 +20,21 @@ model Empresa {
   logoUrl      String?
   ativo        Boolean @default(true)
 
+  // Faixa institucional no topo do sistema (associação, certificação, grupo).
+  // Era fixa no código — magenta e a imagem da allia, iguais para todo mundo,
+  // na tela de login e dentro do sistema. Virou configuração por empresa
+  // porque é marca de terceiro: a empresa que não é associada não deve exibir,
+  // e quem é associada a outra coisa exibe a sua.
+  //
+  // Fica só **dentro** do sistema. Na tela de login não há empresa definida
+  // até o usuário entrar, e mostrar a faixa de uma empresa para quem vai
+  // logar em outra seria pior do que não mostrar nada.
+  bannerAtivo     Boolean @default(false)
+  // Cor de fundo em hexadecimal (#rrggbb). Nula usa a cor da marca do tema.
+  bannerCor       String?
+  // Caminho relativo da imagem, como logoUrl — gravado pelo upload.
+  bannerImagemUrl String?
+
   // Identificação fiscal e contato — o que sai no cabeçalho de documentos
   // emitidos pro cliente (hoje a proposta em PDF do orçamento). Todos
   // opcionais: empresa cadastrada antes destes campos continua válida.
@@ -1605,8 +1620,8 @@ model TabelaPreco {
 
 // Item (produto + preço) de uma tabela de preço. empresaId denormalizado
 // (mesmo padrão de NotaSaidaItem) para RLS/consulta sem join na tabela mãe.
-// codigoLegado é a chave de idempotência do import (linhas criadas
-// manualmente ficam com codigoLegado = null).
+// codigoErp é a chave de upsert da integração (linhas criadas manualmente
+// ficam com codigoErp = null).
 model TabelaPrecoItem {
   id            String  @id @default(uuid())
   empresaId     String
@@ -1614,7 +1629,6 @@ model TabelaPrecoItem {
   produtoId     String
   // Chave de identidade do item no ERP — ver NotaSaida.codigoErp.
   codigoErp     String?
-  codigoLegado  Int?
   preco         Float
   ativo         Boolean @default(true)
 
@@ -1634,7 +1648,7 @@ model TabelaPrecoItem {
   tabelaPreco   TabelaPreco    @relation(fields: [tabelaPrecoId], references: [id], onDelete: Cascade)
   produto       Produto        @relation(fields: [produtoId], references: [id], onDelete: Restrict)
 
-  @@unique([empresaId, codigoLegado])
+  @@unique([empresaId, codigoErp])
   @@index([tabelaPrecoId, produtoId])
   @@index([empresaId, produtoId])
   @@index([empresaId, regraDescontoId])
@@ -1652,7 +1666,7 @@ model RegraDesconto {
   id        String  @id @default(uuid())
   empresaId String
   // Z0_CODIGO — chave de upsert da API de integração; null quando a regra
-  // nasce na tela do CRM (mesmo padrão de Orcamento.codigoLegado).
+  // nasce na tela do CRM (mesmo padrão de Orcamento.codigoErp).
   codigoErp String?
   descricao String
 
@@ -1721,13 +1735,13 @@ model RegraDescontoFaixa {
 // ------------------------------------------------------------------
 // Movimento comercial (consulta)
 // ------------------------------------------------------------------
-// Espelhos read-only do ERP legado (estoque, notas fiscais de saída e
-// títulos a receber): a API só expõe listagem/detalhe — os dados entram
-// exclusivamente pelos scripts de import (e no futuro pela API externa de
-// manutenção). codigoLegado guarda o id da linha no MySQL e é a chave de
-// upsert idempotente dos imports (as chaves "naturais" do legado têm
-// duplicata/nulos). Notas, itens e títulos carregam vendedorId para o mesmo
-// escopo hierárquico de Clientes.
+// Espelhos do ERP (estoque, notas fiscais de saída e títulos a receber): a
+// API de tela só expõe listagem/detalhe — os dados entram pela API de
+// integração, que o Protheus alimenta. codigoErp guarda a chave de identidade
+// que o ERP escolheu para o registro e é a chave de upsert idempotente: a
+// plataforma não interpreta o valor, só o usa para reconhecer o que já
+// recebeu. Notas, itens e títulos carregam vendedorId para o mesmo escopo
+// hierárquico de Clientes.
 
 model Estoque {
   id        String @id @default(uuid())
@@ -1764,7 +1778,6 @@ model NotaSaida {
   // dizer "esta é a mesma nota que já mandei antes". A plataforma não
   // interpreta o conteúdo — guarda, indexa e usa no upsert do POST.
   codigoErp           String?
-  codigoLegado        Int?
   clienteId           String?
   vendedorId          String?
   condicaoPagamentoId String?
@@ -1828,7 +1841,6 @@ model NotaSaida {
   xml               NotaSaidaXml?
 
   @@unique([empresaId, codigoErp])
-  @@unique([empresaId, codigoLegado])
   @@index([empresaId, numero])
   @@index([empresaId, vendedorId, ano, mes])
   @@index([empresaId, clienteId])
@@ -1884,7 +1896,6 @@ model NotaSaidaItem {
   // cabeçalho casa item a item por ela, em vez de apagar e recriar o conjunto
   // — o uuid do item sobrevive à alteração de uma linha da nota.
   codigoErp    String?
-  codigoLegado Int?
   clienteId    String?
   vendedorId   String?
   produtoId    String?
@@ -1931,7 +1942,7 @@ model NotaSaidaItem {
   vendedor      Vendedor?      @relation(fields: [vendedorId], references: [id])
   produto       Produto?       @relation(fields: [produtoId], references: [id])
 
-  @@unique([empresaId, codigoLegado])
+  @@unique([empresaId, codigoErp])
   @@index([notaSaidaId])
   @@index([empresaId, produtoId])
   @@index([empresaId, vendedorId, dtEmissao])
@@ -2010,7 +2021,6 @@ model TituloReceber {
   empresaId    String
   // Chave de identidade do título no ERP — ver NotaSaida.codigoErp.
   codigoErp    String?
-  codigoLegado Int?
   clienteId    String?
   vendedorId   String?
 
@@ -2091,7 +2101,7 @@ model TituloReceber {
   vendedor      Vendedor?      @relation(fields: [vendedorId], references: [id])
   contaBancaria ContaBancaria? @relation(fields: [contaBancariaId], references: [id])
 
-  @@unique([empresaId, codigoLegado])
+  @@unique([empresaId, codigoErp])
   @@index([empresaId, clienteId])
   @@index([empresaId, vendedorId, vencimento])
   @@index([empresaId, vencimento])
@@ -2211,14 +2221,15 @@ enum StatusOrcamento {
 model Orcamento {
   id                  String          @id @default(uuid())
   empresaId           String
-  // Chave de upsert idempotente da API de integração ERP — null pra
-  // orçamentos criados manualmente na tela do CRM (mesmo padrão de
-  // NotaSaida/ObjetivoVendedorMes: os dois caminhos de escrita coexistem).
-  codigoLegado        Int?
+  // Chave de identidade do orçamento no ERP: recebe o número do Pedido de
+  // Venda gerado a partir dele. É o que tira o orçamento da fila de
+  // /integracao/orcamentos/pendentes — nulo enquanto o ERP não o importou,
+  // e nulo para sempre no orçamento que morre na tela sem virar pedido.
+  codigoErp           String?
   // Número do orçamento pro cliente (é o que sai na proposta em PDF):
   // sequencial por empresa, atribuído na criação a partir do contador
   // OrcamentoConfig.ultimoNumero. Existe desde o rascunho — diferente do
-  // codigoLegado, que só aparece quando o ERP integra.
+  // codigoErp, que só aparece quando o ERP integra.
   numero              Int
   clienteId           String
   vendedorId          String
@@ -2269,7 +2280,7 @@ model Orcamento {
   atividades         Atividade[]
   clienteDecididoPor ClienteContato?    @relation("OrcamentoDecisaoContato", fields: [clienteDecididoPorContatoId], references: [id])
 
-  @@unique([empresaId, codigoLegado])
+  @@unique([empresaId, codigoErp])
   @@unique([empresaId, numero])
   @@index([empresaId, vendedorId])
   @@index([empresaId, clienteId])
@@ -2283,6 +2294,9 @@ model OrcamentoItem {
   empresaId   String
   orcamentoId String
   produtoId   String
+  // Chave de identidade do item no ERP — nula no item criado na tela, que é
+  // o caso normal aqui: o orçamento nasce na plataforma.
+  codigoErp   String?
 
   quantidade   Float  @default(1)
   vlrTabela    Float?
@@ -2326,7 +2340,6 @@ model ObjetivoVendedorMes {
   vendedorId   String
   // Chave de identidade do objetivo no ERP — ver NotaSaida.codigoErp.
   codigoErp    String?
-  codigoLegado Int?
 
   mes           Int
   ano           Int
@@ -2348,7 +2361,7 @@ model ObjetivoVendedorMes {
   categorias ObjetivoVendedorCategoria[]
 
   @@unique([empresaId, vendedorId, mes, ano])
-  @@unique([empresaId, codigoLegado])
+  @@unique([empresaId, codigoErp])
   @@index([empresaId, ano, mes])
   @@map("objetivos_vendedor_mes")
 }
@@ -2360,7 +2373,6 @@ model ObjetivoVendedorCategoria {
   categoriaId           String
   // Chave de identidade da meta por categoria no ERP — ver NotaSaida.codigoErp.
   codigoErp             String?
-  codigoLegado          Int?
   valor                 Float  @default(0)
 
   createdAt DateTime  @default(now())
@@ -2375,7 +2387,7 @@ model ObjetivoVendedorCategoria {
   categoria Categoria           @relation(fields: [categoriaId], references: [id])
 
   @@unique([objetivoVendedorMesId, categoriaId])
-  @@unique([empresaId, codigoLegado])
+  @@unique([empresaId, codigoErp])
   @@map("objetivos_vendedor_categoria")
 }
 

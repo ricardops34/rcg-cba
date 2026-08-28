@@ -44,8 +44,8 @@ As rotas públicas (`/api/v1/integracao/...`, autenticadas por `x-api-key`) e o
 Swagger em `/api/docs` são documentados em [`docs/integração/`](docs/integração/README.md):
 
 - [`README.md`](docs/integração/README.md) — autenticação, tenant por chave,
-  chave natural (`codigoErp`/`codigoLegado`), soft delete com reativação por
-  POST, paginação, erros, limites e ordem de carga.
+  chave natural (`codigoErp` em toda entidade), POST como upsert, soft delete
+  com reativação por POST, paginação, erros, limites e ordem de carga.
 - [`endpoints.md`](docs/integração/endpoints.md) — referência por entidade e os
   fluxos que fogem do CRUD: cliente (fila de aprovação), orçamento (pendentes de
   vínculo) e XML de NF-e.

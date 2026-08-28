@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuthGuard } from "@/hooks/use-auth-guard";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -10,6 +9,7 @@ import { AppTopbar } from "@/components/layout/app-topbar";
 import { ForcedPasswordChangeGate } from "@/components/auth/forced-password-change-gate";
 import { AgenteFab } from "@/components/agente/agente-fab";
 import { ResponsiveRouteGuard } from "@/components/layout/responsive-route-guard";
+import { FaixaInstitucional } from "@/components/layout/faixa-institucional";
 
 const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   "/": { title: "Dashboard", subtitle: "Visão comercial" },
@@ -61,17 +61,7 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
   return (
     <div className="flex min-h-svh flex-col">
       <ForcedPasswordChangeGate />
-      {/* Faixa magenta da marca allia — full-width no topo da tela */}
-      <div className="flex h-10 shrink-0 items-center justify-center bg-[#bd1e7d]">
-        <Image
-          src="/allia.png"
-          alt="allia — Empresa associada"
-          width={208}
-          height={38}
-          priority
-          className="h-6 w-auto brightness-0 invert"
-        />
-      </div>
+      <FaixaInstitucional />
 
       <div className="flex min-h-0 flex-1">
         <AppSidebar collapsed={collapsed} />

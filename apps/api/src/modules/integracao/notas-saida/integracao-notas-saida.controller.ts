@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   Param,
-  ParseIntPipe,
   Patch,
   Post,
   Query,
@@ -61,10 +60,10 @@ export class IntegracaoNotasSaidaController {
     return this.service.findAll(integracao.empresaId, query);
   }
 
-  @ApiOperation({ summary: 'Detalhar nota de saída por codigoLegado' })
+  @ApiOperation({ summary: 'Detalhar nota de saída por codigoErp' })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoLegado (id da linha no ERP)',
+    description: 'codigoErp — a chave de identidade do registro no ERP',
   })
   @ApiResponse({
     status: 200,
@@ -73,7 +72,7 @@ export class IntegracaoNotasSaidaController {
   @ApiResponse({ status: 404, description: 'Nota de saída não encontrada' })
   @Get(':codigo')
   findOne(
-    @Param('codigo', ParseIntPipe) codigo: number,
+    @Param('codigo') codigo: string,
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
     return this.service.findOne(integracao.empresaId, codigo);
@@ -92,7 +91,7 @@ export class IntegracaoNotasSaidaController {
   })
   @ApiResponse({
     status: 409,
-    description: 'Já existe nota de saída com esse codigoLegado',
+    description: 'Já existe nota de saída com esse codigoErp',
   })
   @Post()
   create(
@@ -109,7 +108,7 @@ export class IntegracaoNotasSaidaController {
   })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoLegado (id da linha no ERP)',
+    description: 'codigoErp — a chave de identidade do registro no ERP',
   })
   @ApiResponse({
     status: 200,
@@ -118,7 +117,7 @@ export class IntegracaoNotasSaidaController {
   @ApiResponse({ status: 404, description: 'Nota de saída não encontrada' })
   @Patch(':codigo')
   update(
-    @Param('codigo', ParseIntPipe) codigo: number,
+    @Param('codigo') codigo: string,
     @Body() dto: IntegracaoNotaSaidaUpdateDto,
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
@@ -133,13 +132,13 @@ export class IntegracaoNotasSaidaController {
   @ApiOperation({ summary: 'Excluir nota de saída (soft delete)' })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoLegado (id da linha no ERP)',
+    description: 'codigoErp — a chave de identidade do registro no ERP',
   })
   @ApiResponse({ status: 200, description: 'Excluída' })
   @ApiResponse({ status: 404, description: 'Nota de saída não encontrada' })
   @Delete(':codigo')
   remove(
-    @Param('codigo', ParseIntPipe) codigo: number,
+    @Param('codigo') codigo: string,
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
     return this.service.remove(
@@ -157,7 +156,7 @@ export class IntegracaoNotasSaidaController {
       'do próprio arquivo, e recusa (409) XML que não seja NF-e ou cuja chave não confira com ' +
       'a da nota. Reenviar substitui o XML anterior.',
   })
-  @ApiParam({ name: 'codigo', description: 'codigoLegado (id da linha no ERP)' })
+  @ApiParam({ name: 'codigo', description: 'codigoErp (id da linha no ERP)' })
   @ApiBodyExample(INTEGRACAO_NFE_XML_EXAMPLE)
   @ApiResponse({
     status: 201,
@@ -174,7 +173,7 @@ export class IntegracaoNotasSaidaController {
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
   @Post(':codigo/xml')
   enviarXml(
-    @Param('codigo', ParseIntPipe) codigo: number,
+    @Param('codigo') codigo: string,
     @Body() dto: IntegracaoNfeXmlDto,
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
@@ -194,7 +193,7 @@ export class IntegracaoNotasSaidaController {
       '`conteudo=true` para recebê-lo. Para descobrir em lote o que falta enviar, use ' +
       '`GET /integracao/notas-saida?semXml=true`.',
   })
-  @ApiParam({ name: 'codigo', description: 'codigoLegado (id da linha no ERP)' })
+  @ApiParam({ name: 'codigo', description: 'codigoErp (id da linha no ERP)' })
   @ApiQuery({
     name: 'conteudo',
     required: false,
@@ -207,7 +206,7 @@ export class IntegracaoNotasSaidaController {
   @ApiResponse({ status: 404, description: 'Nota de saída não encontrada' })
   @Get(':codigo/xml')
   statusXml(
-    @Param('codigo', ParseIntPipe) codigo: number,
+    @Param('codigo') codigo: string,
     @Query('conteudo') conteudo: string | undefined,
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
@@ -221,11 +220,11 @@ export class IntegracaoNotasSaidaController {
   @ApiOperation({
     summary: 'Remover o XML de uma nota',
     description:
-      'Para o caso de o arquivo ter sido enviado no codigoLegado errado. Limpa junto o ' +
+      'Para o caso de o arquivo ter sido enviado no codigoErp errado. Limpa junto o ' +
       'protocolo e a situação da nota — sem XML, a 2ª via deixa de ser oferecida. A nota em ' +
       'si não é tocada.',
   })
-  @ApiParam({ name: 'codigo', description: 'codigoLegado (id da linha no ERP)' })
+  @ApiParam({ name: 'codigo', description: 'codigoErp (id da linha no ERP)' })
   @ApiResponse({ status: 200, description: 'XML removido' })
   @ApiResponse({
     status: 404,
@@ -233,7 +232,7 @@ export class IntegracaoNotasSaidaController {
   })
   @Delete(':codigo/xml')
   removerXml(
-    @Param('codigo', ParseIntPipe) codigo: number,
+    @Param('codigo') codigo: string,
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
     return this.service.removerXml(

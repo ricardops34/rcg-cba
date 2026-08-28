@@ -20,9 +20,9 @@ import type {
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
 import {
-  deveReativar,
-  LIMPAR_EXCLUSAO,
-} from '../common/reativar-excluido';
+  camposDaDecisao,
+  decidirUpsert,
+} from '../common/decidir-upsert';
 
 const INCLUDE = {
   cliente: { select: { codigoErp: true } },
@@ -72,7 +72,7 @@ export class IntegracaoTitulosReceberService {
   private paraLeitura(row: TituloComRelacoes): IntegracaoTituloReceber {
     return {
       id: row.id,
-      codigoLegado: row.codigoLegado ?? 0,
+      codigoErp: row.codigoErp ?? '',
       clienteCodigo: row.cliente?.codigoErp ?? null,
       vendedorCodigo: row.vendedor?.codigoErp ?? null,
       numero: row.numero,
@@ -135,7 +135,7 @@ export class IntegracaoTitulosReceberService {
           where,
           include: INCLUDE,
           ...paginationToSkipTake(query),
-          orderBy: { codigoLegado: 'asc' },
+          orderBy: { codigoErp: 'asc' },
         }),
         tx.tituloReceber.count({ where }),
       ]);
@@ -149,11 +149,11 @@ export class IntegracaoTitulosReceberService {
 
   async findOne(
     empresaId: string,
-    codigoLegado: number,
+    codigoErp: string,
   ): Promise<IntegracaoTituloReceber> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const row = await tx.tituloReceber.findFirst({
-        where: { empresaId, codigoLegado, deletedAt: null },
+        where: { empresaId, codigoErp, deletedAt: null },
         include: INCLUDE,
       });
       if (!row) throw new NotFoundException('Título a receber não encontrado');
@@ -169,12 +169,9 @@ export class IntegracaoTitulosReceberService {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.tituloReceber.findFirst({
-        where: { empresaId, codigoLegado: input.codigoLegado },
+        where: { empresaId, codigoErp: input.codigoErp },
       });
-      const reativar = deveReativar(
-        existente,
-        `Já existe título com codigoLegado '${input.codigoLegado}'`,
-      );
+      const decisao = decidirUpsert(existente);
 
       const clienteId = await this.resolverCliente(
         tx,
@@ -193,7 +190,7 @@ export class IntegracaoTitulosReceberService {
       );
 
       const dados = {
-          codigoLegado: input.codigoLegado,
+          codigoErp: input.codigoErp,
           clienteId,
           vendedorId,
           numero: input.numero,
@@ -220,13 +217,13 @@ export class IntegracaoTitulosReceberService {
           updatedBy: autor,
       };
 
-      if (reativar) {
-        const reativado = await tx.tituloReceber.update({
+      if (decisao !== 'criar') {
+        const atualizadoUpsert = await tx.tituloReceber.update({
           where: { id: existente!.id },
-          data: { ...dados, ...LIMPAR_EXCLUSAO },
+          data: { ...dados, ...camposDaDecisao(decisao) },
           include: INCLUDE,
         });
-        return this.paraLeitura(reativado);
+        return this.paraLeitura(atualizadoUpsert);
       }
 
       const criado = await tx.tituloReceber.create({
@@ -240,13 +237,13 @@ export class IntegracaoTitulosReceberService {
   async update(
     empresaId: string,
     apiKeyId: string,
-    codigoLegado: number,
+    codigoErp: string,
     input: IntegracaoTituloReceberUpdate,
   ): Promise<IntegracaoTituloReceber> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.tituloReceber.findFirst({
-        where: { empresaId, codigoLegado, deletedAt: null },
+        where: { empresaId, codigoErp, deletedAt: null },
       });
       if (!existente)
         throw new NotFoundException('Título a receber não encontrado');
@@ -325,12 +322,12 @@ export class IntegracaoTitulosReceberService {
   async remove(
     empresaId: string,
     apiKeyId: string,
-    codigoLegado: number,
+    codigoErp: string,
   ): Promise<void> {
     const autor = autorIntegracao(apiKeyId);
     await this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.tituloReceber.findFirst({
-        where: { empresaId, codigoLegado, deletedAt: null },
+        where: { empresaId, codigoErp, deletedAt: null },
       });
       if (!existente)
         throw new NotFoundException('Título a receber não encontrado');

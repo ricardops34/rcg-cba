@@ -38,6 +38,8 @@ export const orcamentoItemLinhaSchema = z.object({
 export type OrcamentoItemLinha = z.infer<typeof orcamentoItemLinhaSchema> & {
   regraDescontoId?: string | null;
   percComissao?: number | null;
+  /// Chave de identidade do item no ERP; nula no item que nasce na tela.
+  codigoErp?: string | null;
 };
 
 export const orcamentoCreateSchema = z.object({
@@ -98,13 +100,13 @@ export const orcamentoSchema = z.object({
   empresaId: z.string().uuid(),
   // Código do orçamento no ERP — null enquanto não for vinculado (ver
   // POST /integracao/orcamentos/pendentes/{id} da API de integração).
-  // Aprovado + codigoLegado null = aguardando integração; codigoLegado
+  // Aprovado + codigoErp null = aguardando integração; codigoErp
   // preenchido = já integrado. Alimenta o ícone de acompanhamento na
   // listagem de Orçamentos.
-  codigoLegado: z.number().int().nullable(),
+  codigoErp: z.string().nullable(),
   // Numeração própria do CRM, sequencial por empresa e atribuída na criação —
   // é o "Nº" que o cliente vê na proposta em PDF. Não confundir com
-  // codigoLegado (chave do ERP, preenchida só na integração).
+  // codigoErp (chave do ERP, preenchida só na integração).
   numero: z.number().int(),
   clienteId: z.string().uuid(),
   vendedorId: z.string().uuid(),
@@ -196,7 +198,7 @@ export type OrcamentoQuery = z.infer<typeof orcamentoQuerySchema>;
 export const ORCAMENTO_EXAMPLE: Orcamento = {
   id: "0d1e2f3a-4b5c-4d6e-7f80-91a2b3c4d5e6",
   empresaId: "7b2f2f64-9b1c-4a86-9d3e-1f4a5b6c7d8e",
-  codigoLegado: null,
+  codigoErp: null,
   numero: 128,
   clienteId: "d4e5f6a7-8b9c-4d0e-9f1a-2b3c4d5e6f70",
   vendedorId: "b7c2c1de-4a45-4b8a-9f2e-6a1d6c1e9f10",

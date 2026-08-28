@@ -16,7 +16,7 @@ com a data) ou **[a confirmar]** (ainda não validado neste ambiente).
 | Contexto | Fonte | Como executar |
 |---|---|---|
 | Repo/dev (bind mount) | `apps/api/prisma/*.ts` | `ts-node` — ver `scripts` do `apps/api/package.json` |
-| Imagem buildada (`rcgcba-api`, `rcgcba-importer`) | `apps/api/prisma/dist/*.js` | `node prisma/dist/<script>.js` |
+| Imagem buildada (`rcgcba-api`, `rcgcba-scripts`) | `apps/api/prisma/dist/*.js` | `node prisma/dist/<script>.js` |
 
 O `outDir` de `prisma/tsconfig.scripts.json` é `./dist` **relativo a
 `apps/api/prisma/`** — ou seja, `apps/api/prisma/dist/`, nunca `apps/api/dist/`
@@ -34,58 +34,48 @@ com RLS sem erro nenhum). Ver `apps/api/prisma/migrations/README.md`.
 
 ---
 
-## Import da base legada (MySQL → Postgres)
+## Criar uma base do zero **[verificado em 2026-08-28]**
 
-Os scripts leem o MySQL legado (`rcgdistc_portal`) e fazem **upsert** por chave
-natural — são idempotentes e reexecutáveis.
-
-> **Atenção:** `import-clientes` sobrescreve o cadastro inteiro do cliente com os
-> valores do legado. Edições feitas pela tela (telefone, contato, observação,
-> vendedor…) voltam ao valor do MySQL. `seed-base` é **destrutivo** — nunca rode
-> contra banco com dado real.
-
-### Ordem de dependência
-
-`import-auxiliares` → `import-legado` (vendedores) → `import-tabela-preco` →
-`import-clientes` → `import-negocio` → `import-objetivos`
-
-### Dev local **[verificado em 2026-08-07]**
-
-Roda dentro do container de dev, com a role dona e o MySQL do compose de dev:
+Três passos, nesta ordem. O import do MySQL legado **não existe mais** — a base
+nasce vazia e é populada por migration, seed e APIs públicas.
 
 ```bash
-docker exec \
-  -e DATABASE_URL="postgresql://plataforma:plataforma@postgres:5432/plataforma_comercial?schema=public" \
-  -e MYSQL_HOST=mysql -e MYSQL_PORT=3306 \
-  plataforma-comercial-dev-api-1 \
-  sh -c "cd /app/apps/api && pnpm exec ts-node prisma/import-clientes.ts"
+# 1. Estrutura: a baseline única (tabelas + role plataforma_app + RLS)
+pnpm --filter @plataforma/api prisma:deploy
+
+# 2. Conteúdo: menus, rotinas, perfis, parâmetros, empresa inicial, admin —
+#    e, no fim, as referências públicas (países, UFs, municípios, CNAEs)
+pnpm --filter @plataforma/api prisma:seed
 ```
 
-Saída esperada: `Legado: 6626 clientes, 69 vendedores.` / `— rcg: 6626 clientes
-gravados (upsert)`.
+O seed é **destrutivo**: apaga os dados de negócio antes de popular. Nunca rode
+contra banco com dado real.
 
-Sem `MYSQL_HOST`/`MYSQL_PORT` o script cai nos defaults `localhost:3307` (mapeamento
-do host, não da rede Docker) e falha com `ECONNREFUSED` — dentro do container
-`localhost` é o próprio container.
+A carga das referências é a última etapa do seed **de propósito**: ela depende de
+rede (APIs do IBGE), e uma falha ali não pode impedir o admin e a empresa de
+existirem. Se cair, o seed avisa no console e o `sync:ibge` completa depois.
 
-### VPS **[a confirmar]**
+Números esperados numa base nova: 1 empresa, 1 admin, 5 perfis, 46 rotinas,
+20 parâmetros, 193 países, 27 UFs, 5.571 municípios, 1.332 CNAEs.
 
-A VPS já tem o MySQL legado rodando com o backup restaurado, e os imports anteriores
-já foram executados com sucesso lá.
+`ceps` nasce vazia por desenho — os CEPs entram sob demanda, pelo ViaCEP, quando
+um cliente é consultado.
 
-> **PENDENTE:** registrar aqui o comando exato usado na VPS — de qual container/serviço
-> ele roda e quais valores de `MYSQL_HOST`/`MYSQL_PORT`/`DATABASE_URL`. Enquanto isso
-> não estiver preenchido, **pergunte** em vez de montar um comando novo.
-
-O `docker/mysql-import.compose.yml` descreve um fluxo alternativo (sobe um MySQL
-temporário a partir do dump); ele **não** é necessariamente o fluxo em uso na VPS.
+> **Produção:** o histórico de migrations foi consolidado numa baseline única em
+> 2026-08-28. Um banco que já rodou as migrations antigas **recusa** o
+> `migrate deploy` (o Prisma confere o checksum de cada uma) — precisa ser
+> recriado do zero. Ver `apps/api/prisma/migrations/README.md`.
 
 ---
 
 ## Sync das referências públicas (IBGE) **[verificado em 2026-08-14]**
 
-`prisma/sync-ibge.ts` popula **CNAEs** (subclasses) e completa estados/municípios a
-partir das APIs abertas do IBGE. Idempotente e reexecutável; roda com a **role dona**
+O seed já faz esta carga (ver acima). Este script existe para **ressincronizar**
+uma base que já roda — quando o IBGE publica município novo, ou para completar
+uma base cujo seed rodou sem rede.
+
+`prisma/sync-ibge.ts` popula países, estados, municípios e **CNAEs** (subclasses)
+a partir das APIs abertas do IBGE. Idempotente e reexecutável; roda com a **role dona**
 (faz DDL nenhum, mas escreve em tabelas de referência).
 
 ```bash

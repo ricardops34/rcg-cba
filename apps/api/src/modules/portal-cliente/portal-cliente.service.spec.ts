@@ -19,7 +19,7 @@ describe('PortalClienteService', () => {
       id: 'orcamento-1',
       numero: 42,
       status: 'enviado',
-      codigoLegado: null,
+      codigoErp: null,
       dataValidade: new Date(Date.now() + 86_400_000),
       vendedorId: 'vendedor-1',
     };
@@ -36,7 +36,7 @@ describe('PortalClienteService', () => {
     const result = await service.decidirOrcamento(user, atual.id, 'aprovado');
 
     expect(result.status).toBe('aprovado');
-    expect(result.codigoLegado).toBeNull();
+    expect(result.codigoErp).toBeNull();
     expect(tx.orcamento.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: atual.id },

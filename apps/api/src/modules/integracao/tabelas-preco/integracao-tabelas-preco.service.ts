@@ -16,9 +16,10 @@ import type {
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
 import {
-  deveReativar,
-  LIMPAR_EXCLUSAO,
-} from '../common/reativar-excluido';
+  camposDaDecisao,
+  decidirUpsert,
+} from '../common/decidir-upsert';
+import { sincronizarFilhos } from '../common/sincronizar-filhos';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 
 const INCLUDE = {
@@ -45,6 +46,7 @@ export class IntegracaoTabelasPrecoService {
       dtFim: row.dtFim,
       ativo: row.ativo,
       itens: row.itens.map((item) => ({
+        codigoErp: item.codigoErp ?? '',
         produtoCodigo: item.produto.codigoErp,
         preco: item.preco,
         regraDescontoCodigo: item.regraDesconto?.codigoErp ?? null,
@@ -113,10 +115,7 @@ export class IntegracaoTabelasPrecoService {
       const existente = await tx.tabelaPreco.findFirst({
         where: { empresaId, codigoErp: input.codigoErp },
       });
-      const reativar = deveReativar(
-        existente,
-        `Já existe tabela de preço com codigoErp '${input.codigoErp}'`,
-      );
+      const decisao = decidirUpsert(existente);
 
       const itensData = await Promise.all(
         input.itens.map(async (item) => {
@@ -134,6 +133,7 @@ export class IntegracaoTabelasPrecoService {
             );
           return {
             empresaId,
+            codigoErp: item.codigoErp,
             produtoId: produto.id,
             preco: item.preco,
             regraDescontoId:
@@ -156,18 +156,19 @@ export class IntegracaoTabelasPrecoService {
         updatedBy: autor,
       };
 
-      if (reativar) {
-        // Os itens do payload substituem os da tabela excluída — mesma regra
-        // do `update`.
-        await tx.tabelaPrecoItem.deleteMany({
-          where: { tabelaPrecoId: existente!.id },
-        });
-        const reativada = await tx.tabelaPreco.update({
+      if (decisao !== 'criar') {
+        // O ERP manda a tabela inteira: linha que não veio mais não existe
+        // mais, e a que veio é casada pelo codigoErp.
+        const atualizadoUpsert = await tx.tabelaPreco.update({
           where: { id: existente!.id },
-          data: { ...dados, ...LIMPAR_EXCLUSAO, itens: { create: itensData } },
+          data: {
+            ...dados,
+            ...camposDaDecisao(decisao),
+            itens: sincronizarFilhos(empresaId, itensData),
+          },
           include: INCLUDE,
         });
-        return this.paraLeitura(reativada);
+        return this.paraLeitura(atualizadoUpsert);
       }
 
       const criada = await tx.tabelaPreco.create({
@@ -216,6 +217,7 @@ export class IntegracaoTabelasPrecoService {
             }
             return {
               empresaId,
+              codigoErp: item.codigoErp,
               produtoId: produto.id,
               preco: item.preco,
               regraDescontoId:
@@ -228,10 +230,7 @@ export class IntegracaoTabelasPrecoService {
             };
           }),
         );
-        await tx.tabelaPrecoItem.deleteMany({
-          where: { tabelaPrecoId: existente.id },
-        });
-        itensUpdate = { itens: { create: itensData } };
+        itensUpdate = { itens: sincronizarFilhos(empresaId, itensData) };
       }
 
       const atualizada = await tx.tabelaPreco.update({

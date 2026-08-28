@@ -1,7 +1,8 @@
 /**
  * Seed base — limpa os dados e popula uma base mínima:
- *   - 3 empresas: BJSoftware, RCG Distribuidora, CBA Distribuidora
- *   - 1 usuário Admin com acesso (perfil Administrador) às 3 empresas
+ *   - 1 empresa: BJSoftware
+ *   - referências públicas do IBGE: países, UFs, municípios e CNAEs
+ *   - 1 usuário Admin com acesso (perfil Administrador) a ela
  *
  * Idempotente: pode rodar várias vezes. LIMPA os dados de negócio/tenant antes
  * de popular (empresas, perfis, usuários, vínculos, produtos, refresh
@@ -24,6 +25,7 @@ import {
   VENDEDOR_PERMISSOES,
 } from './catalogo-sistema';
 import * as bcrypt from 'bcryptjs';
+import { sincronizarReferenciasIbge } from './sync-ibge';
 
 const prisma = new PrismaClient();
 
@@ -48,18 +50,6 @@ const EMPRESAS: EmpresaSeed[] = [
     nomeFantasia: 'BJSoftware',
     cnpj: '11222333000181',
     alias: 'bjs',
-  },
-  {
-    razaoSocial: 'RCG Distribuidora LTDA',
-    nomeFantasia: 'RCG Distribuidora',
-    cnpj: '22333444000172',
-    alias: 'rcg',
-  },
-  {
-    razaoSocial: 'CBA Distribuidora LTDA',
-    nomeFantasia: 'CBA Distribuidora',
-    cnpj: '33444555000163',
-    alias: 'cba',
   },
 ];
 
@@ -478,7 +468,7 @@ async function main() {
 
   const senhaHash = await bcrypt.hash(SENHA_ADMIN, 12);
 
-  // Um único usuário Admin, vinculado como Administrador nas 3 empresas.
+  // Um único usuário Admin, vinculado como Administrador na empresa criada.
   const admin = await prisma.usuario.create({
     data: {
       nome: ADMIN.nome,
@@ -515,6 +505,28 @@ async function main() {
     });
 
     console.log(`— ${cfg.nomeFantasia}  (alias: ${cfg.alias})`);
+  }
+
+  // Referências públicas (países, UFs, municípios, CNAEs). Entram no seed
+  // porque uma base nova sem elas não cadastra um cliente: endereço e CNAE não
+  // têm em que se apoiar. Vinham do import do MySQL até ele ser aposentado.
+  //
+  // É upsert por chave natural, então reexecutar não duplica — e roda depois
+  // do resto para que uma falha de rede não impeça o admin e a empresa de
+  // serem criados. Sem internet, o console avisa e o `sync:ibge` completa
+  // depois.
+  console.log('\nCarregando referências públicas do IBGE...');
+  try {
+    await sincronizarReferenciasIbge();
+  } catch (erro) {
+    console.warn(
+      `\n[aviso] Referências do IBGE não carregadas: ${
+        erro instanceof Error ? erro.message : String(erro)
+      }`,
+    );
+    console.warn(
+      '[aviso] Rode `pnpm --filter @plataforma/api sync:ibge` quando houver rede.',
+    );
   }
 
   console.log('\nSeed base concluído.');

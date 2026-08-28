@@ -125,7 +125,7 @@ Um método, com tudo o que se espera dele:
 })
 @ApiBodyExample(INTEGRACAO_PRODUTO_CREATE_EXAMPLE)
 @ApiResponse({ status: 201, schema: { example: INTEGRACAO_PRODUTO_EXAMPLE } })
-@ApiResponse({ status: 409, description: 'Já existe produto com esse codigoErp' })
+@ApiResponse({ status: 201, description: 'Criado ou atualizado (upsert por codigoErp)' })
 @Post()
 create(
   @Body() dto: IntegracaoProdutoCreateDto,
@@ -135,8 +135,8 @@ create(
 }
 ```
 
-Em rota com parâmetro, documente o que o parâmetro **é** — `codigoErp`,
-`codigoLegado`, id interno? — porque isso muda de entidade para entidade:
+Em rota com parâmetro, documente o que o parâmetro **é** — `codigoErp` na quase
+totalidade das rotas, id interno na fila de orçamentos pendentes:
 
 ```ts
 @ApiParam({ name: 'codigo', description: 'codigoErp do produto' })

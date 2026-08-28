@@ -16,9 +16,9 @@ import type {
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
 import {
-  deveReativar,
-  LIMPAR_EXCLUSAO,
-} from '../common/reativar-excluido';
+  camposDaDecisao,
+  decidirUpsert,
+} from '../common/decidir-upsert';
 
 @Injectable()
 export class IntegracaoCondicoesPagamentoService {
@@ -103,10 +103,7 @@ export class IntegracaoCondicoesPagamentoService {
       const existente = await tx.condicaoPagamento.findFirst({
         where: { empresaId, codigoErp: input.codigoErp },
       });
-      const reativar = deveReativar(
-        existente,
-        `Já existe condição de pagamento com codigoErp '${input.codigoErp}'`,
-      );
+      const decisao = decidirUpsert(existente);
 
       const dados = {
         codigoErp: input.codigoErp,
@@ -116,12 +113,12 @@ export class IntegracaoCondicoesPagamentoService {
         updatedBy: autor,
       };
 
-      if (reativar) {
-        const reativada = await tx.condicaoPagamento.update({
+      if (decisao !== 'criar') {
+        const atualizadoUpsert = await tx.condicaoPagamento.update({
           where: { id: existente!.id },
-          data: { ...dados, ...LIMPAR_EXCLUSAO },
+          data: { ...dados, ...camposDaDecisao(decisao) },
         });
-        return this.paraLeitura(reativada);
+        return this.paraLeitura(atualizadoUpsert);
       }
 
       const criada = await tx.condicaoPagamento.create({

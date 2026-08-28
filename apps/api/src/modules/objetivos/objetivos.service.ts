@@ -283,7 +283,7 @@ export class ObjetivosService {
             novoCliente: objetivo.novoCliente,
             tipo: objetivo.tipo,
             ativo: objetivo.ativo,
-            // codigoLegado fica nulo: a cópia nasce aqui, não veio do ERP.
+            // codigoErp fica nulo: a cópia nasce aqui, não veio do ERP.
             createdBy: user.id,
             updatedBy: user.id,
             categorias: {

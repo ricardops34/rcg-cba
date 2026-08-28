@@ -22,9 +22,9 @@ import type {
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
 import {
-  deveReativar,
-  LIMPAR_EXCLUSAO,
-} from '../common/reativar-excluido';
+  camposDaDecisao,
+  decidirUpsert,
+} from '../common/decidir-upsert';
 
 const INCLUDE = {
   faixas: { orderBy: { sequencia: 'asc' } },
@@ -155,10 +155,7 @@ export class IntegracaoRegrasDescontoService {
       const existente = await tx.regraDesconto.findFirst({
         where: { empresaId, codigoErp: input.codigoErp },
       });
-      const reativar = deveReativar(
-        existente,
-        `Já existe regra de desconto com codigoErp '${input.codigoErp}'`,
-      );
+      const decisao = decidirUpsert(existente);
       if (input.padrao) await this.garantirPadraoUnico(tx, empresaId);
 
       const dados = {
@@ -180,18 +177,18 @@ export class IntegracaoRegrasDescontoService {
         })),
       };
 
-      if (reativar) {
+      if (decisao !== 'criar') {
         // As faixas do payload substituem as da regra excluída — mesma regra
         // do `update`.
         await tx.regraDescontoFaixa.deleteMany({
           where: { regraDescontoId: existente!.id, empresaId },
         });
-        const reativada = await tx.regraDesconto.update({
+        const atualizadoUpsert = await tx.regraDesconto.update({
           where: { id: existente!.id },
-          data: { ...dados, ...LIMPAR_EXCLUSAO, faixas },
+          data: { ...dados, ...camposDaDecisao(decisao), faixas },
           include: INCLUDE,
         });
-        return this.paraLeitura(reativada);
+        return this.paraLeitura(atualizadoUpsert);
       }
 
       const criada = await tx.regraDesconto.create({

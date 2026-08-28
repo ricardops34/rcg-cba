@@ -1,20 +1,24 @@
-# Imagem enxuta só com os scripts de seed/importação (apps/api/prisma/*.ts),
+# Imagem enxuta só com os scripts de manutenção da base (apps/api/prisma/*.ts),
 # compilados pra JS puro e rodando com "node" direto — sem NestJS, sem
 # ts-node, sem as devDependencies do app inteiro (esses scripts só usam
-# @prisma/client, mysql2 e bcryptjs). Feita pra deploy via Portainer Stack em
+# @prisma/client e bcryptjs). Feita pra deploy via Portainer Stack em
 # Swarm, onde não dá pra usar `build:`/bind-mount do repo.
 #
 # Contexto de build: a RAIZ do repositório.
-#   docker build -f docker/api-importer.Dockerfile -t bjsoftware/rcgcba-importer:latest .
+#   docker build -f docker/api-scripts.Dockerfile -t bjsoftware/rcgcba-scripts:latest .
 #
 # Uso (Portainer Stack/serviço avulso) — comando do container. O WORKDIR é
 # /app/apps/api e os scripts compilados ficam em prisma/dist (outDir de
 # prisma/tsconfig.scripts.json), não em dist:
-#   node prisma/dist/seed-base.js
-#   node prisma/dist/import-auxiliares.js && node prisma/dist/import-legado.js && node prisma/dist/import-tabela-preco.js && node prisma/dist/import-clientes.js && node prisma/dist/import-negocio.js && node prisma/dist/import-objetivos.js
+#   node prisma/dist/seed-base.js     # base nova: estrutura + admin + referências IBGE
+#   node prisma/dist/sync-ibge.js     # ressincronizar países/UFs/municípios/CNAEs
+#   node prisma/dist/enrich-cnae.js   # CNAE dos clientes, via MinhaReceita
+#
+# Os importadores do MySQL legado foram removidos em 2026-08-28 junto com o
+# resto daquele caminho — a base nasce do seed e das APIs públicas.
+#
 # Variáveis de ambiente: DATABASE_URL (role DONO, não plataforma_app — os
-# scripts bypassam RLS/fazem DDL do zero se rodando prisma migrate à parte),
-# MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE.
+# scripts bypassam RLS).
 # Sem restart policy — é um job de rodar uma vez e sair.
 
 FROM node:20-alpine AS base

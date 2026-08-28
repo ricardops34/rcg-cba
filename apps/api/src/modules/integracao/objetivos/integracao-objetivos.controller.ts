@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   Param,
-  ParseIntPipe,
   Patch,
   Post,
   Query,
@@ -57,10 +56,10 @@ export class IntegracaoObjetivosController {
     return this.service.findAll(integracao.empresaId, query);
   }
 
-  @ApiOperation({ summary: 'Detalhar objetivo por codigoLegado' })
+  @ApiOperation({ summary: 'Detalhar objetivo por codigoErp' })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoLegado (id da linha no ERP)',
+    description: 'codigoErp — a chave de identidade do registro no ERP',
   })
   @ApiResponse({
     status: 200,
@@ -69,7 +68,7 @@ export class IntegracaoObjetivosController {
   @ApiResponse({ status: 404, description: 'Objetivo não encontrado' })
   @Get(':codigo')
   findOne(
-    @Param('codigo', ParseIntPipe) codigo: number,
+    @Param('codigo') codigo: string,
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
     return this.service.findOne(integracao.empresaId, codigo);
@@ -88,7 +87,7 @@ export class IntegracaoObjetivosController {
   })
   @ApiResponse({
     status: 409,
-    description: 'Já existe objetivo com esse codigoLegado',
+    description: 'Já existe objetivo com esse codigoErp',
   })
   @Post()
   create(
@@ -106,7 +105,7 @@ export class IntegracaoObjetivosController {
   })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoLegado (id da linha no ERP)',
+    description: 'codigoErp — a chave de identidade do registro no ERP',
   })
   @ApiResponse({
     status: 200,
@@ -115,7 +114,7 @@ export class IntegracaoObjetivosController {
   @ApiResponse({ status: 404, description: 'Objetivo não encontrado' })
   @Patch(':codigo')
   update(
-    @Param('codigo', ParseIntPipe) codigo: number,
+    @Param('codigo') codigo: string,
     @Body() dto: IntegracaoObjetivoUpdateDto,
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
@@ -130,13 +129,13 @@ export class IntegracaoObjetivosController {
   @ApiOperation({ summary: 'Excluir objetivo (soft delete)' })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoLegado (id da linha no ERP)',
+    description: 'codigoErp — a chave de identidade do registro no ERP',
   })
   @ApiResponse({ status: 200, description: 'Excluído' })
   @ApiResponse({ status: 404, description: 'Objetivo não encontrado' })
   @Delete(':codigo')
   remove(
-    @Param('codigo', ParseIntPipe) codigo: number,
+    @Param('codigo') codigo: string,
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
     return this.service.remove(

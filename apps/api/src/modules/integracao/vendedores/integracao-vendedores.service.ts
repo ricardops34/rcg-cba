@@ -16,9 +16,9 @@ import type {
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
 import {
-  deveReativar,
-  LIMPAR_EXCLUSAO,
-} from '../common/reativar-excluido';
+  camposDaDecisao,
+  decidirUpsert,
+} from '../common/decidir-upsert';
 
 const INCLUDE = {
   supervisorVendedor: { select: { codigoErp: true } },
@@ -107,10 +107,7 @@ export class IntegracaoVendedoresService {
       const existente = await tx.vendedor.findFirst({
         where: { empresaId, codigoErp: input.codigoErp },
       });
-      const reativar = deveReativar(
-        existente,
-        `Já existe vendedor com codigoErp '${input.codigoErp}'`,
-      );
+      const decisao = decidirUpsert(existente);
 
       let supervisorId: string | null = null;
       if (input.supervisorCodigo) {
@@ -150,13 +147,13 @@ export class IntegracaoVendedoresService {
         updatedBy: autor,
       };
 
-      if (reativar) {
-        const reativado = await tx.vendedor.update({
+      if (decisao !== 'criar') {
+        const atualizadoUpsert = await tx.vendedor.update({
           where: { id: existente!.id },
-          data: { ...dados, ...LIMPAR_EXCLUSAO },
+          data: { ...dados, ...camposDaDecisao(decisao) },
           include: INCLUDE,
         });
-        return this.paraLeitura(reativado);
+        return this.paraLeitura(atualizadoUpsert);
       }
 
       const criado = await tx.vendedor.create({

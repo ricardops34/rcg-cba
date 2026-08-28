@@ -98,3 +98,25 @@ quem manda pela conversa grava "enviado pelo WhatsApp" — nunca os dois para a
 mesma ação. A descrição guarda o que importa depois: no boleto, a composição do
 valor quando houve atraso; no DANFE, a data de emissão e o aviso de nota
 cancelada.
+
+## Faixa institucional é por empresa
+
+Decidido em 2026-08-28.
+
+A barra do topo (selo de associação, certificação, marca de grupo) era **fixa no
+código**: cor magenta e a arte da allia, iguais para todas as empresas, na tela
+de login e dentro do sistema. Virou configuração da empresa, em Administração ›
+Empresas: ligar/desligar, cor de fundo e imagem.
+
+O motivo é que a faixa é **marca de terceiro**. A empresa que não é associada não
+deve exibir o selo, e a associada a outra entidade exibe o dela. Um valor fixo no
+código só estava certo enquanto havia uma empresa.
+
+**Ela não aparece no login.** Ali ainda não se sabe em qual empresa o usuário vai
+entrar — mostrar o selo de uma para quem vai logar em outra seria pior do que não
+mostrar nada. A tela de login continua com o branding que já tinha (logo e nome
+fantasia por `?empresa=<alias>`).
+
+**Sem imagem, não há faixa.** A cor sozinha renderiza uma tarja vazia no topo,
+que parece defeito. O `bannerAtivo` liga a exibição, mas quem decide se há o que
+exibir é o `bannerImagemUrl`.

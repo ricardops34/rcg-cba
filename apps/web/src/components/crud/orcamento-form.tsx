@@ -109,7 +109,7 @@ const dataHoraBr = (v: string | null | undefined) => {
 /**
  * Situação do orçamento perante o ERP, pra aba "Aprovação e integração" —
  * mesmos três estados do ícone da listagem de Orçamentos: só aprovado fica
- * disponível pro ERP puxar; codigoLegado preenchido = já vinculado lá.
+ * disponível pro ERP puxar; codigoErp preenchido = já vinculado lá.
  */
 function situacaoIntegracao(orcamento: Orcamento) {
   if (orcamento.status !== "aprovado") {
@@ -120,13 +120,13 @@ function situacaoIntegracao(orcamento: Orcamento) {
       descricao: "O orçamento só é enviado ao ERP depois de aprovado.",
     };
   }
-  if (orcamento.codigoLegado != null) {
+  if (orcamento.codigoErp != null) {
     return {
       icone: CheckCircle2,
       classe:
         "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
       titulo: "Integrado ao ERP",
-      descricao: `Importado pelo ERP com o código ${orcamento.codigoLegado}.`,
+      descricao: `Importado pelo ERP com o código ${orcamento.codigoErp}.`,
     };
   }
   return {
@@ -1204,7 +1204,7 @@ export function OrcamentoFormContent({
                 </span>
               </TabsTrigger>
               {/* O histórico é do cliente, então já vale antes de gravar. Já
-                  aprovação/integração só existe depois (status, codigoLegado e
+                  aprovação/integração só existe depois (status, codigoErp e
                   auditoria vêm do servidor). */}
               {clienteId && <TabsTrigger value="historico">Histórico</TabsTrigger>}
               {registro && <TabsTrigger value="integracao">Aprovação e integração</TabsTrigger>}
@@ -1889,7 +1889,7 @@ export function OrcamentoFormContent({
                   <Field>
                     <FieldLabel>Código no ERP</FieldLabel>
                     <div className="text-sm">
-                      {registro.codigoLegado ?? "— (ainda não integrado)"}
+                      {registro.codigoErp ?? "— (ainda não integrado)"}
                     </div>
                   </Field>
                   <Field>

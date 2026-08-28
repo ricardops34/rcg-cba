@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   Param,
-  ParseIntPipe,
   Patch,
   Post,
   Query,
@@ -56,10 +55,10 @@ export class IntegracaoTitulosReceberController {
     return this.service.findAll(integracao.empresaId, query);
   }
 
-  @ApiOperation({ summary: 'Detalhar título a receber por codigoLegado' })
+  @ApiOperation({ summary: 'Detalhar título a receber por codigoErp' })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoLegado (id da linha no ERP)',
+    description: 'codigoErp — a chave de identidade do registro no ERP',
   })
   @ApiResponse({
     status: 200,
@@ -68,7 +67,7 @@ export class IntegracaoTitulosReceberController {
   @ApiResponse({ status: 404, description: 'Título a receber não encontrado' })
   @Get(':codigo')
   findOne(
-    @Param('codigo', ParseIntPipe) codigo: number,
+    @Param('codigo') codigo: string,
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
     return this.service.findOne(integracao.empresaId, codigo);
@@ -86,7 +85,7 @@ export class IntegracaoTitulosReceberController {
   })
   @ApiResponse({
     status: 409,
-    description: 'Já existe título com esse codigoLegado',
+    description: 'Já existe título com esse codigoErp',
   })
   @Post()
   create(
@@ -102,7 +101,7 @@ export class IntegracaoTitulosReceberController {
   })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoLegado (id da linha no ERP)',
+    description: 'codigoErp — a chave de identidade do registro no ERP',
   })
   @ApiResponse({
     status: 200,
@@ -111,7 +110,7 @@ export class IntegracaoTitulosReceberController {
   @ApiResponse({ status: 404, description: 'Título a receber não encontrado' })
   @Patch(':codigo')
   update(
-    @Param('codigo', ParseIntPipe) codigo: number,
+    @Param('codigo') codigo: string,
     @Body() dto: IntegracaoTituloReceberUpdateDto,
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
@@ -126,13 +125,13 @@ export class IntegracaoTitulosReceberController {
   @ApiOperation({ summary: 'Excluir título a receber (soft delete)' })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoLegado (id da linha no ERP)',
+    description: 'codigoErp — a chave de identidade do registro no ERP',
   })
   @ApiResponse({ status: 200, description: 'Excluído' })
   @ApiResponse({ status: 404, description: 'Título a receber não encontrado' })
   @Delete(':codigo')
   remove(
-    @Param('codigo', ParseIntPipe) codigo: number,
+    @Param('codigo') codigo: string,
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
     return this.service.remove(

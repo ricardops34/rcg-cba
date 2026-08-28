@@ -15,7 +15,10 @@ import type {
   IntegracaoProdutoUpdate,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
-import { deveReativar, LIMPAR_EXCLUSAO } from '../common/reativar-excluido';
+import {
+  camposDaDecisao,
+  decidirUpsert,
+} from '../common/decidir-upsert';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 
 const INCLUDE = {
@@ -112,10 +115,7 @@ export class IntegracaoProdutosService {
       const existente = await tx.produto.findFirst({
         where: { empresaId, codigoErp: input.codigoErp },
       });
-      const reativar = deveReativar(
-        existente,
-        `Já existe produto com codigoErp '${input.codigoErp}'`,
-      );
+      const decisao = decidirUpsert(existente);
 
       const categoriaId = await this.resolverCategoria(
         tx,
@@ -160,13 +160,13 @@ export class IntegracaoProdutosService {
         updatedBy: autor,
       };
 
-      if (reativar) {
-        const reativado = await tx.produto.update({
+      if (decisao !== 'criar') {
+        const atualizadoUpsert = await tx.produto.update({
           where: { id: existente!.id },
-          data: { ...dados, ...LIMPAR_EXCLUSAO },
+          data: { ...dados, ...camposDaDecisao(decisao) },
           include: INCLUDE,
         });
-        return this.paraLeitura(reativado);
+        return this.paraLeitura(atualizadoUpsert);
       }
 
       const criado = await tx.produto.create({

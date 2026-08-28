@@ -74,6 +74,17 @@ export const currentUserSchema = z.object({
         empresaId: z.string().uuid().describe("Identificador da empresa"),
         nomeFantasia: z.string().describe("Nome fantasia da empresa"),
         logoUrl: z.string().nullable().describe("Caminho do logo da empresa, quando cadastrado"),
+        // Faixa institucional do topo: vem junto com o vínculo para o shell
+        // desenhar a barra sem uma segunda requisição ao trocar de empresa.
+        bannerAtivo: z.boolean().describe("Exibe a faixa institucional no topo do sistema"),
+        bannerCor: z
+          .string()
+          .nullable()
+          .describe("Cor de fundo da faixa (#rrggbb), ou null para a cor do tema"),
+        bannerImagemUrl: z
+          .string()
+          .nullable()
+          .describe("Caminho da imagem da faixa, quando cadastrada"),
         perfilId: z.string().uuid().describe("Perfil do usuário nesta empresa"),
         perfilNome: z.string().describe("Nome do perfil, para exibição"),
       }),
@@ -111,6 +122,9 @@ export const CURRENT_USER_EXAMPLE: CurrentUser = {
       empresaId: "2113ce67-5cf9-40e6-b1ed-fa88281c2a92",
       nomeFantasia: "Empresa Demo",
       logoUrl: null,
+      bannerAtivo: false,
+      bannerCor: null,
+      bannerImagemUrl: null,
       perfilId: "06b281c4-c6d6-454c-82c6-75106224bbfc",
       perfilNome: "Administrador",
     },

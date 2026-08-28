@@ -219,19 +219,81 @@ async function sincronizarCnaes() {
   console.log(`CNAEs: ${gravados} subclasses sincronizadas.`);
 }
 
-async function main() {
+interface IbgePais {
+  id: {
+    M49: number;
+    'ISO-ALPHA-2'?: string;
+    'ISO-ALPHA-3'?: string;
+  };
+  nome: string;
+}
+
+/**
+ * Países, da mesma API de localidades.
+ *
+ * `codigoErp` recebe o **M49** (código numérico da ONU, que o IBGE usa),
+ * seguindo a convenção das outras tabelas de referência pública daqui:
+ * município guarda o código IBGE e CNAE guarda a subclasse. `sigla` recebe o
+ * ISO alfa-2.
+ *
+ * `comexId` fica de fora de propósito: é o código SISCOMEX (105 para o
+ * Brasil), que não vem do IBGE e é de quem cuida de comércio exterior.
+ */
+async function sincronizarPaises() {
+  const paises = await buscar<IbgePais[]>('/api/v1/localidades/paises');
+  let gravados = 0;
+
+  for (const p of paises) {
+    const codigo = texto(p.id?.M49);
+    if (!codigo) continue;
+
+    const dados = {
+      nome: p.nome.trim(),
+      sigla: texto(p.id['ISO-ALPHA-2']),
+      ativo: true,
+    };
+
+    await prisma.pais.upsert({
+      where: { codigoErp: codigo },
+      create: { ...dados, codigoErp: codigo },
+      update: dados,
+    });
+    gravados += 1;
+  }
+
+  console.log(`Países: ${gravados} sincronizados.`);
+}
+
+/**
+ * Carga completa das referências públicas.
+ *
+ * Exportada porque o `seed-base` chama isto ao criar uma base nova: sem
+ * estados, municípios, países e CNAEs, o cadastro de cliente nasce sem em que
+ * se apoiar. O script continua existindo por si para ressincronizar uma base
+ * que já roda.
+ */
+export async function sincronizarReferenciasIbge() {
   console.log(`Sync IBGE — fonte: ${IBGE_BASE_URL}`);
+  await sincronizarPaises();
   const siglaParaId = await sincronizarEstados();
   await sincronizarMunicipios(siglaParaId);
   await sincronizarCnaes();
   console.log('Sync do IBGE concluído.');
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+async function main() {
+  await sincronizarReferenciasIbge();
+}
+
+// Só executa quando chamado direto (`ts-node prisma/sync-ibge.ts`); importado
+// pelo seed, apenas exporta.
+if (require.main === module) {
+  main()
+    .catch((e) => {
+      console.error(e);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}

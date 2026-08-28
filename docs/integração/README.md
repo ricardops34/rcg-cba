@@ -93,8 +93,12 @@ ERP, único por empresa:
 | Tipo de entidade | Chave | Formato |
 |---|---|---|
 | Cadastros (produto, cliente, vendedor, categoria, armazém, condição de pagamento, tabela de preço, regra de desconto) | `codigoErp` | string, até 30 chars |
-| Transacionais (nota de saída, título a receber, objetivo, orçamento) | `codigoLegado` | inteiro (id da linha no ERP) |
+| Transacionais (nota de saída, título a receber, objetivo, orçamento) e os filhos deles (item de nota, item de orçamento, item de tabela de preço, meta por categoria) | `codigoErp` | string, até 60 chars |
 | Estoque | `produtoCodigo` + `armazemCodigo` | par de strings |
+
+O `codigoErp` é **opaco para a plataforma**: quem escolhe o que vai nele é o
+ERP, endpoint por endpoint. A API não interpreta, não monta e não valida
+formato — guarda, indexa e compara. A validação é só tamanho e não-vazio.
 
 Referências entre entidades também são por código, nunca por UUID:
 `categoriaCodigo`, `vendedorCodigo`, `clienteCodigo`, `produtoCodigo`… O
@@ -106,28 +110,48 @@ registro referenciado **precisa já existir** — daí a [ordem de carga](#ordem
 |---|---|---|
 | `GET` | `/integracao/<entidade>` | Lista paginada |
 | `GET` | `/integracao/<entidade>/{codigo}` | Detalhe; **404** se não existir |
-| `POST` | `/integracao/<entidade>` | Cria; **409** se o código já existir ativo |
+| `POST` | `/integracao/<entidade>` | **Upsert** por `codigoErp`: cria ou atualiza, `201` nos dois casos |
 | `PATCH` | `/integracao/<entidade>/{codigo}` | Atualização **parcial**; **404** se não existir |
 | `DELETE` | `/integracao/<entidade>/{codigo}` | **Soft delete** (marca `deletedAt`) |
 
 Não há `PUT`, e não há endpoint de lote: uma chamada, um registro.
 
-### Exclusão é soft, e POST ressuscita
+### POST é upsert
+
+O ERP não tem como saber se um registro já subiu — ele manda o que mudou, e é a
+plataforma que reconhece. Todo `POST` procura o `codigoErp` na empresa da chave,
+**inclusive entre os excluídos**, e decide (ver
+[`decidir-upsert.ts`](../../apps/api/src/modules/integracao/common/decidir-upsert.ts)):
+
+- código não existe → **cria**;
+- código existe e está **ativo** → **atualiza** com o payload inteiro;
+- código existe e está **excluído** → atualiza **e** limpa `deletedAt`.
+
+Nos três casos a resposta é `201` com o registro gravado — o ERP não precisa
+distinguir criação de atualização, e o corpo devolve o estado final de qualquer
+jeito. Reenviar o mesmo payload duas vezes dá o mesmo resultado e nenhuma linha
+nova.
+
+Não existe `409` por duplicidade. A versão anterior recusava o `POST` de um
+código ativo e mandava usar `PATCH` — o que custava duas requisições para cada
+registro alterado, contra um teto de 60 req/min por IP, e deixava o código de um
+registro excluído num beco sem saída: o `POST` recusava contando o soft-deletado
+e o `PATCH` não achava nada, porque filtra `deletedAt: null`.
 
 `DELETE` nunca apaga a linha — grava `deletedAt`/`deletedBy`. A partir daí o
 registro some das listagens e dos detalhes (todo `WHERE` filtra
-`deletedAt: null`).
+`deletedAt: null`), até que o ERP o reenvie.
 
-Se o ERP reenviar por `POST` um código que está excluído, o registro **volta**,
-com os dados do payload novo (ver
-[`reativar-excluido.ts`](../../apps/api/src/modules/integracao/common/reativar-excluido.ts)):
+### Mestre-detalhe casa filho a filho
 
-- código não existe → cria (`201`);
-- código existe e está **ativo** → **409** (use `PATCH`);
-- código existe e está **excluído** → reativa, gravando os dados enviados agora.
+Nas entidades com coleção aninhada — itens da nota, itens do orçamento, itens da
+tabela de preço, metas por categoria —, o ERP manda **o documento inteiro** a
+cada envio. Filho que não veio no payload é removido; o que veio é casado pelo
+`codigoErp` dele e criado ou atualizado no lugar (ver
+[`sincronizar-filhos.ts`](../../apps/api/src/modules/integracao/common/sincronizar-filhos.ts)).
 
-Sem isso, o código de um registro excluído viraria um beco sem saída: o `POST`
-recusaria por duplicidade e o `PATCH` não encontraria nada.
+Apagar e recriar o conjunto daria o mesmo conteúdo final, mas trocaria o uuid de
+todos os itens a cada envio, mesmo quando só um preço mudou.
 
 ### Auditoria
 
@@ -198,7 +222,7 @@ Erro de validação (Zod) vem com o detalhamento campo a campo:
 | `400` | Payload inválido (`VALIDATION_ERROR`) |
 | `401` | Chave ausente, inválida, revogada ou expirada |
 | `404` | Código não encontrado (ou já excluído) — **inclusive um código referenciado no payload**: `produtoCodigo 'X' não encontrado` |
-| `409` | Código já existe ativo, ou regra de negócio violada (orçamento já vinculado, XML com chave divergente da nota) |
+| `409` | Regra de negócio violada: orçamento já vinculado, XML com chave divergente da nota. **Não** é mais devolvido por código duplicado — `POST` é upsert |
 | `429` | Limite de requisições excedido |
 | `500` | Erro interno (`INTERNAL_ERROR`) — o detalhe fica no log do servidor |
 

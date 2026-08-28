@@ -17,6 +17,8 @@ export const UPLOADS_DIR = join(process.cwd(), 'uploads');
 
 export const LOGOS_DIR = join(UPLOADS_DIR, 'logos');
 export const PRODUTOS_DIR = join(UPLOADS_DIR, 'produtos');
+/** Imagem da faixa institucional do topo do sistema, por empresa. */
+export const BANNERS_DIR = join(UPLOADS_DIR, 'banners');
 
 /** Tamanho máximo aceito para o logo de uma empresa (2 MB). */
 export const LOGO_MAX_BYTES = 2 * 1024 * 1024;
@@ -36,6 +38,11 @@ export function logoPublicPath(filename: string) {
 
 export function produtoFotoPublicPath(filename: string) {
   return `/uploads/produtos/${filename}`;
+}
+
+/** Caminho público (servido em /uploads) de um arquivo salvo em BANNERS_DIR. */
+export function bannerPublicPath(filename: string) {
+  return `/uploads/banners/${filename}`;
 }
 
 export const produtoFotoUploadOptions = {
@@ -157,6 +164,40 @@ const EXT_POR_MIME: Record<string, string> = {
  * nome final é sempre um UUID gerado no servidor + extensão fixa por MIME
  * (validado por fileFilter antes deste callback rodar).
  */
+/**
+ * Upload da imagem da faixa institucional. Mesmas regras do logo (2 MB, PNG /
+ * JPEG / WEBP / SVG, nome gerado no servidor) — muda só o diretório, para que
+ * a troca de um não apague o outro.
+ */
+export const bannerUploadOptions = {
+  storage: diskStorage({
+    destination: (_req, _file, cb) => {
+      if (!existsSync(BANNERS_DIR)) mkdirSync(BANNERS_DIR, { recursive: true });
+      cb(null, BANNERS_DIR);
+    },
+    filename: (_req: Request, file, cb) => {
+      const ext = EXT_POR_MIME[file.mimetype] ?? '.png';
+      cb(null, `${randomUUID()}${ext}`);
+    },
+  }),
+  limits: { fileSize: LOGO_MAX_BYTES },
+  fileFilter: (
+    _req: Request,
+    file: Express.Multer.File,
+    cb: (error: Error | null, acceptFile: boolean) => void,
+  ) => {
+    if (!LOGO_MIME_TYPES.includes(file.mimetype)) {
+      return cb(
+        new BadRequestException(
+          'Formato inválido. Envie PNG, JPEG, WEBP ou SVG.',
+        ),
+        false,
+      );
+    }
+    cb(null, true);
+  },
+};
+
 export const logoUploadOptions = {
   storage: diskStorage({
     destination: (_req, _file, cb) => {

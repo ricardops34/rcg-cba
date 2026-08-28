@@ -23,12 +23,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "ts-node prisma/seed-base.ts",
     "sync:ibge": "ts-node prisma/sync-ibge.ts",
-    "enrich:cnae": "ts-node prisma/enrich-cnae.ts",
-    "import:legado": "ts-node prisma/import-legado.ts",
-    "import:clientes": "ts-node prisma/import-clientes.ts",
-    "import:auxiliares": "ts-node prisma/import-auxiliares.ts",
-    "import:negocio": "ts-node prisma/import-negocio.ts",
-    "import:tabela-preco": "ts-node prisma/import-tabela-preco.ts"
+    "enrich:cnae": "ts-node prisma/enrich-cnae.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",
@@ -50,7 +45,6 @@
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "multer": "^2.2.0",
-    "mysql2": "^3.11.0",
     "nestjs-zod": "^5.4.0",
     "nodemailer": "^9.0.3",
     "passport": "^0.7.0",

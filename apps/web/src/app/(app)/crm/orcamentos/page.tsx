@@ -41,15 +41,15 @@ const dataBr = (v: string | null) => {
 };
 
 // Acompanhamento da integração com o ERP: só faz sentido depois de aprovado
-// (é quando o orçamento fica disponível pro ERP puxar via API). codigoLegado
+// (é quando o orçamento fica disponível pro ERP puxar via API). codigoErp
 // preenchido = o ERP já vinculou o registro; null = ainda aguardando.
 function integracaoIndicador(o: Orcamento) {
   if (o.status !== "aprovado") return null;
-  if (o.codigoLegado != null) {
+  if (o.codigoErp != null) {
     return {
       icone: CheckCircle2,
       cor: "text-emerald-600",
-      legenda: `Integrado ao ERP (código ${o.codigoLegado})`,
+      legenda: `Integrado ao ERP (código ${o.codigoErp})`,
     };
   }
   return {

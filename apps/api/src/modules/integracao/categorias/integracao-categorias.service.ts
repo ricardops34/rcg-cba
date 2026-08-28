@@ -20,9 +20,9 @@ import type {
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
 import {
-  deveReativar,
-  LIMPAR_EXCLUSAO,
-} from '../common/reativar-excluido';
+  camposDaDecisao,
+  decidirUpsert,
+} from '../common/decidir-upsert';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 
 const INCLUDE = {
@@ -106,10 +106,7 @@ export class IntegracaoCategoriasService {
       const existente = await tx.categoria.findFirst({
         where: { empresaId, codigoErp: input.codigoErp },
       });
-      const reativar = deveReativar(
-        existente,
-        `Já existe categoria com codigoErp '${input.codigoErp}'`,
-      );
+      const decisao = decidirUpsert(existente);
 
       const categoriaPaiId = await this.resolverCategoriaPai(
         tx,
@@ -132,13 +129,13 @@ export class IntegracaoCategoriasService {
         updatedBy: autor,
       };
 
-      if (reativar) {
-        const reativada = await tx.categoria.update({
+      if (decisao !== 'criar') {
+        const atualizadoUpsert = await tx.categoria.update({
           where: { id: existente!.id },
-          data: { ...dados, ...LIMPAR_EXCLUSAO },
+          data: { ...dados, ...camposDaDecisao(decisao) },
           include: INCLUDE,
         });
-        return this.paraLeitura(reativada);
+        return this.paraLeitura(atualizadoUpsert);
       }
 
       const criada = await tx.categoria.create({

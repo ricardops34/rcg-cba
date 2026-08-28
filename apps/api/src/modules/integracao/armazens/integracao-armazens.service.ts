@@ -16,9 +16,9 @@ import type {
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
 import {
-  deveReativar,
-  LIMPAR_EXCLUSAO,
-} from '../common/reativar-excluido';
+  camposDaDecisao,
+  decidirUpsert,
+} from '../common/decidir-upsert';
 
 @Injectable()
 export class IntegracaoArmazensService {
@@ -100,10 +100,7 @@ export class IntegracaoArmazensService {
       const existente = await tx.armazem.findFirst({
         where: { empresaId, codigoErp: input.codigoErp },
       });
-      const reativar = deveReativar(
-        existente,
-        `Já existe armazém com codigoErp '${input.codigoErp}'`,
-      );
+      const decisao = decidirUpsert(existente);
 
       const dados = {
         codigoErp: input.codigoErp,
@@ -112,12 +109,12 @@ export class IntegracaoArmazensService {
         updatedBy: autor,
       };
 
-      if (reativar) {
-        const reativado = await tx.armazem.update({
+      if (decisao !== 'criar') {
+        const atualizadoUpsert = await tx.armazem.update({
           where: { id: existente!.id },
-          data: { ...dados, ...LIMPAR_EXCLUSAO },
+          data: { ...dados, ...camposDaDecisao(decisao) },
         });
-        return this.paraLeitura(reativado);
+        return this.paraLeitura(atualizadoUpsert);
       }
 
       const criado = await tx.armazem.create({

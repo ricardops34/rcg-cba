@@ -34,7 +34,7 @@ export async function calcularItensOrcamento(
   bloquearAcimaDoLimite = false,
 ) {
   if (itens.length === 0)
-    return { data: [] as Record<string, unknown>[], vlrTotal: 0 };
+    return { data: [], vlrTotal: 0 };
 
   const produtoIds = itens.map((i) => i.produtoId);
   const tabelaPrecoId = await resolverTabelaPrecoCliente(
@@ -97,6 +97,7 @@ export async function calcularItensOrcamento(
 
     return {
       empresaId,
+      codigoErp: item.codigoErp ?? null,
       produtoId: item.produtoId,
       quantidade: item.quantidade,
       vlrTabela,

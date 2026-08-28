@@ -3,7 +3,12 @@ import { basename, join } from 'node:path';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPaginatedResult, paginationToSkipTake } from '../../common/pagination/paginate';
-import { LOGOS_DIR, logoPublicPath } from '../../common/uploads/uploads.config';
+import {
+  BANNERS_DIR,
+  bannerPublicPath,
+  LOGOS_DIR,
+  logoPublicPath,
+} from '../../common/uploads/uploads.config';
 import type { EmpresaCreate, EmpresaQuery, EmpresaUpdate } from '@plataforma/contracts';
 
 const SORT_FIELDS = new Set(['razaoSocial', 'nomeFantasia', 'cnpj', 'ativo', 'createdAt']);
@@ -107,6 +112,26 @@ export class EmpresasService {
     return this.prisma.empresa.update({
       where: { id },
       data: { logoUrl: logoPublicPath(filename), updatedBy: userId },
+    });
+  }
+
+  /**
+   * Define a imagem da faixa institucional a partir do arquivo já gravado.
+   *
+   * Não liga a faixa sozinha: enviar a imagem e decidir exibir são ações
+   * diferentes, e o admin costuma subir a arte antes de publicar.
+   */
+  async setBanner(id: string, filename: string, userId: string) {
+    const empresa = await this.findOne(id);
+
+    if (empresa.bannerImagemUrl) {
+      const anterior = join(BANNERS_DIR, basename(empresa.bannerImagemUrl));
+      if (existsSync(anterior)) unlink(anterior, () => undefined);
+    }
+
+    return this.prisma.empresa.update({
+      where: { id },
+      data: { bannerImagemUrl: bannerPublicPath(filename), updatedBy: userId },
     });
   }
 

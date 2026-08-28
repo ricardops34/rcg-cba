@@ -16,9 +16,9 @@ import type {
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
 import {
-  deveReativar,
-  LIMPAR_EXCLUSAO,
-} from '../common/reativar-excluido';
+  camposDaDecisao,
+  decidirUpsert,
+} from '../common/decidir-upsert';
 
 const INCLUDE = {
   produto: { select: { codigoErp: true } },
@@ -122,10 +122,7 @@ export class IntegracaoEstoqueService {
       const existente = await tx.estoque.findFirst({
         where: { empresaId, produtoId: produto.id, armazemId: armazem.id },
       });
-      const reativar = deveReativar(
-        existente,
-        `Já existe saldo de estoque para produtoCodigo '${input.produtoCodigo}' + armazemCodigo '${input.armazemCodigo}'`,
-      );
+      const decisao = decidirUpsert(existente);
 
       const dados = {
         produtoId: produto.id,
@@ -138,13 +135,13 @@ export class IntegracaoEstoqueService {
         updatedBy: autor,
       };
 
-      if (reativar) {
-        const reativado = await tx.estoque.update({
+      if (decisao !== 'criar') {
+        const atualizadoUpsert = await tx.estoque.update({
           where: { id: existente!.id },
-          data: { ...dados, ...LIMPAR_EXCLUSAO },
+          data: { ...dados, ...camposDaDecisao(decisao) },
           include: INCLUDE,
         });
-        return this.paraLeitura(reativado);
+        return this.paraLeitura(atualizadoUpsert);
       }
 
       const criado = await tx.estoque.create({
