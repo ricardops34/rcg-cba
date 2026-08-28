@@ -3,6 +3,7 @@ import { createPostgresStore } from '@zapo-js/store-postgres';
 import type {
   ArquivoParaEnviar,
   ContatoAgenda,
+  FotoContato,
   ConversaAparelho,
   EstadoPareamento,
   EstadoSessao,
@@ -725,6 +726,26 @@ export class ZapoTransport implements WhatsappTransport {
       // e o casamento com o cadastro querem só os dígitos.
       telefone: this.somenteDigitos(linha.phone_number ?? linha.jid),
     }));
+  }
+
+  async obterFotoContato(sessaoId: string, jid: string): Promise<FotoContato | null> {
+    const cliente = this.clientes.get(sessaoId);
+    if (!cliente) throw new Error('Sessão não iniciada');
+    try {
+      const perfil = await cliente.profile.getProfilePicture(jid, 'image');
+      if (!perfil.url) return null;
+      const resposta = await fetch(perfil.url, { signal: AbortSignal.timeout(10_000) });
+      if (!resposta.ok) return null;
+      const conteudo = Buffer.from(await resposta.arrayBuffer());
+      if (conteudo.length === 0 || conteudo.length > 5 * 1024 * 1024) return null;
+      return {
+        conteudoBase64: conteudo.toString('base64'),
+        mime: resposta.headers.get('content-type')?.split(';')[0] ?? 'image/jpeg',
+      };
+    } catch {
+      // Privacidade, bloqueio ou ausência de foto são estados normais.
+      return null;
+    }
   }
 
   /** Conversas que já existem no aparelho, mesmo sem mensagem nova por aqui. */

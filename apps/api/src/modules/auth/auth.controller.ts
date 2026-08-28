@@ -14,7 +14,7 @@ import {
   LOGIN_EXAMPLE,
 } from '@plataforma/contracts';
 import { AuthService } from './auth.service';
-import { ChangePasswordDto, LoginDto, RefreshDto, SwitchEmpresaDto } from './dto/auth.dto';
+import { ChangePasswordDto, LoginDto, RefreshDto, SwitchEmpresaDto, UpdateOwnProfileDto } from './dto/auth.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ApiBodyExample } from '../../common/decorators/api-body-example.decorator';
 import {
@@ -147,5 +147,13 @@ export class AuthController {
   @Patch('change-password')
   changePassword(@Body() dto: ChangePasswordDto, @CurrentUser() user: AuthenticatedUser) {
     return this.authService.changePassword(user.id, dto);
+  }
+
+  @ApiOperation({ summary: 'Alterar o nome do próprio usuário' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Patch('me')
+  updateMe(@Body() dto: UpdateOwnProfileDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.authService.updateOwnProfile(user.id, user.empresaAtivaId, dto.nome);
   }
 }

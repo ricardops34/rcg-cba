@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import type { PosicaoCliente } from "@plataforma/contracts";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, assetUrl } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -430,7 +430,17 @@ export function PosicaoClienteConteudo({
                     key={contato.conversaId}
                     className="grid gap-1 border-t px-3 py-2 first:border-t-0 md:grid-cols-[1.2fr_1fr_1fr_1.4fr_auto] md:items-center md:gap-3"
                   >
-                    <span className="text-sm font-medium">{contato.nome || "—"}</span>
+                    <span className="flex items-center gap-2 text-sm font-medium">
+                      {contato.fotoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={assetUrl(contato.fotoUrl) ?? undefined}
+                          alt=""
+                          className="size-7 rounded-full object-cover"
+                        />
+                      ) : null}
+                      {contato.nome || "—"}
+                    </span>
                     <Badge variant="secondary" className="w-fit">
                       {TIPO_CONTATO_LABEL[contato.tipo]}
                     </Badge>

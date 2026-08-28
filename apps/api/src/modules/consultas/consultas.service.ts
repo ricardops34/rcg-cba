@@ -5,6 +5,11 @@ import {
   type TenantTx,
 } from '../../common/prisma/prisma.service';
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
+import {
+  CONDICOES_ITEM_DE_VENDA_SQL,
+  CONDICOES_NOTA_DE_VENDA_SQL,
+  JOIN_CATEGORIA_DO_ITEM_SQL,
+} from '../../common/vendas/venda-analitica';
 import type {
   BaseVendedor,
   ConsultaEvolucaoQuery,
@@ -49,8 +54,9 @@ interface Periodo {
  * agregação por mês (o query builder não pivota) e o fato de o campo do
  * vendedor variar conforme o parâmetro da empresa.
  *
- * Base: nota ATIVA e não-comodato, a mesma regra da Posição de Cliente —
- * comodato é remessa, e nota inativa é cancelamento no ERP.
+ * Base: o que `common/vendas/venda-analitica` define como venda — nota ativa,
+ * fora de comodato, do tipo Normal e com financeiro —, somada pelos itens de
+ * categoria acompanhada. A mesma base do Dashboard e dos Objetivos.
  */
 @Injectable()
 export class ConsultasService {
@@ -117,23 +123,11 @@ export class ConsultasService {
   }
 
   /**
-   * O que conta como venda, em todas as consultas:
-   *
-   * - `ativo` — nota cancelada no ERP fica de fora;
-   * - `comodato = false` — remessa de comodato não é venda;
-   * - `tipo = 'N'` (Normal) — exclui devolução e as remessas/retornos, que no
-   *   ERP vêm como tipo 'D' (CFOP 5915/5916/6202/6909…), além de 'B'
-   *   (beneficiamento), 'C' (complemento) e 'I'.
-   *
-   * `n` é sempre o alias do cabeçalho da nota, mesmo quando a consulta
-   * agrega itens: é o cabeçalho que diz o que o documento é.
+   * O que conta como venda, aqui e no Dashboard/Objetivos — a definição mora
+   * em `common/vendas/venda-analitica`, para as três telas responderem a
+   * mesma coisa.
    */
-  private readonly condicoesNotaDeVenda: Prisma.Sql[] = [
-    Prisma.sql`n."deletedAt" IS NULL`,
-    Prisma.sql`n."ativo" = true`,
-    Prisma.sql`n."comodato" = false`,
-    Prisma.sql`n."tipo" = 'N'`,
-  ];
+  private readonly condicoesNotaDeVenda = CONDICOES_NOTA_DE_VENDA_SQL;
 
   /** Recorte do período em meses corridos, sobre as colunas ano/mes do ERP. */
   private condicaoPeriodo(prefixo: Prisma.Sql, periodo: Periodo): Prisma.Sql[] {
@@ -244,8 +238,16 @@ export class ConsultasService {
   }
 
   /**
-   * Vendas do período por cliente, mês a mês. Valor = vlrBruto da nota (mesmo
-   * número do "Total comprado" da Posição de Cliente).
+   * Vendas do período por cliente, mês a mês. Valor = soma do `vlrTotal` dos
+   * itens que entram na análise.
+   *
+   * Era o `vlrBruto` do cabeçalho, que é mais simples e batia com o "Total
+   * comprado" da Posição de Cliente — mas no cabeçalho não há como descartar
+   * o item de categoria que a empresa não acompanha: ou entra a nota inteira,
+   * ou nenhuma. Somando item a item, o recorte de categoria vale aqui como
+   * vale no Dashboard, ao preço de o total deixar de incluir o que só existe
+   * no cabeçalho (IPI/ST e frete). A Posição de Cliente segue no vlrBruto:
+   * lá o assunto é o documento, não a análise.
    */
   async vendasPorCliente(
     empresaId: string,
@@ -263,6 +265,7 @@ export class ConsultasService {
       const condicoes: Prisma.Sql[] = [
         Prisma.sql`n."empresaId" = ${empresaId}`,
         ...this.condicoesNotaDeVenda,
+        ...CONDICOES_ITEM_DE_VENDA_SQL,
         ...this.condicaoPeriodo(Prisma.sql`n`, query),
         ...this.condicaoEscopoClientes(escopo),
         ...this.condicaoFiltroVendedor(
@@ -279,9 +282,11 @@ export class ConsultasService {
           c."razaoSocial" AS "descricao",
           n."ano"         AS "ano",
           n."mes"         AS "mes",
-          SUM(n."vlrBruto")::float8 AS "valor"
+          SUM(i."vlrTotal")::float8 AS "valor"
         FROM "notas_saida" n
         JOIN "clientes" c ON c."id" = n."clienteId" AND c."deletedAt" IS NULL
+        JOIN "notas_saida_itens" i ON i."notaSaidaId" = n."id"
+        ${JOIN_CATEGORIA_DO_ITEM_SQL}
         WHERE ${Prisma.join(condicoes, ' AND ')}
         GROUP BY c."id", c."codigoErp", c."razaoSocial", n."ano", n."mes"
       `);
@@ -298,7 +303,7 @@ export class ConsultasService {
 
   /**
    * Vendas do período por vendedor, mês a mês. Mesma base da consulta por
-   * cliente (vlrBruto da nota) — aqui o vendedor deixa de ser filtro e passa
+   * cliente (soma dos itens) — aqui o vendedor deixa de ser filtro e passa
    * a ser a linha, mas continua sendo o campo que o parâmetro da empresa
    * define: com base `cliente`, a venda é creditada ao titular da carteira,
    * e não a quem emitiu a nota.
@@ -319,6 +324,7 @@ export class ConsultasService {
       const condicoes: Prisma.Sql[] = [
         Prisma.sql`n."empresaId" = ${empresaId}`,
         ...this.condicoesNotaDeVenda,
+        ...CONDICOES_ITEM_DE_VENDA_SQL,
         ...this.condicaoPeriodo(Prisma.sql`n`, query),
         ...this.condicaoEscopoClientes(escopo),
         ...this.condicaoFiltroVendedor(
@@ -335,10 +341,12 @@ export class ConsultasService {
           COALESCE(v."nomeReduzido", v."nome") AS "descricao",
           n."ano"       AS "ano",
           n."mes"       AS "mes",
-          SUM(n."vlrBruto")::float8 AS "valor"
+          SUM(i."vlrTotal")::float8 AS "valor"
         FROM "notas_saida" n
         JOIN "clientes" c ON c."id" = n."clienteId" AND c."deletedAt" IS NULL
         JOIN "vendedores" v ON v."id" = ${colunaVendedor} AND v."deletedAt" IS NULL
+        JOIN "notas_saida_itens" i ON i."notaSaidaId" = n."id"
+        ${JOIN_CATEGORIA_DO_ITEM_SQL}
         WHERE ${Prisma.join(condicoes, ' AND ')}
         GROUP BY v."id", v."codigoErp", v."nomeReduzido", v."nome", n."ano", n."mes"
       `);
@@ -372,11 +380,12 @@ export class ConsultasService {
 
       const condicoes: Prisma.Sql[] = [
         Prisma.sql`i."empresaId" = ${empresaId}`,
-        Prisma.sql`i."deletedAt" IS NULL`,
-        Prisma.sql`i."ativo" = true`,
+        // Aqui a categoria vem do produto que a consulta já traz (alias `p`),
+        // então não é preciso o join extra de `JOIN_CATEGORIA_DO_ITEM_SQL`.
+        ...CONDICOES_ITEM_DE_VENDA_SQL,
         ...this.condicaoPeriodo(Prisma.sql`i`, query),
         // O cabeçalho manda no que é venda: item de nota cancelada, de
-        // devolução ou de remessa de comodato não entra.
+        // devolução, de remessa de comodato ou sem financeiro não entra.
         ...this.condicoesNotaDeVenda,
         ...this.condicaoEscopoClientes(escopo),
         ...this.condicaoFiltroVendedor(
@@ -401,6 +410,7 @@ export class ConsultasService {
         JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
         JOIN "clientes" c ON c."id" = n."clienteId" AND c."deletedAt" IS NULL
         JOIN "produtos" p ON p."id" = i."produtoId" AND p."deletedAt" IS NULL
+        LEFT JOIN "categorias" cat ON cat."id" = p."categoriaId"
         WHERE ${Prisma.join(condicoes, ' AND ')}
         GROUP BY p."id", p."codigoErp", p."descricao", i."ano", i."mes"
       `);
@@ -484,7 +494,14 @@ export class ConsultasService {
     COALESCE(v."nomeReduzido", v."nome") AS "descricao"`;
   private readonly agrupamentoVendedor = Prisma.sql`v."id", v."codigoErp", v."nomeReduzido", v."nome"`;
 
-  /** `vendas` (soma do vlrBruto) e `positivados` (clientes distintos no mês). */
+  /**
+   * `vendas` (soma dos itens) e `positivados` (clientes distintos no mês).
+   *
+   * Os dois partem dos itens, e não do cabeçalho: além de o valor precisar
+   * disso para respeitar a categoria, positivado é quem comprou **algo que a
+   * empresa acompanha** — nota só de item descartado não positiva cliente.
+   * O `DISTINCT` já cuida de a nota virar várias linhas no join.
+   */
   private evolucaoSobreNotas(
     tx: TenantTx,
     empresaId: string,
@@ -499,6 +516,7 @@ export class ConsultasService {
     const condicoes: Prisma.Sql[] = [
       Prisma.sql`n."empresaId" = ${empresaId}`,
       ...this.condicoesNotaDeVenda,
+      ...CONDICOES_ITEM_DE_VENDA_SQL,
       ...this.condicaoPeriodo(Prisma.sql`n`, query),
       ...this.condicaoEscopoClientes(escopo),
       ...this.condicaoFiltroVendedor(colunaVendedor, escopo, query.vendedorIds),
@@ -506,7 +524,7 @@ export class ConsultasService {
     const medida =
       query.indicador === 'positivados'
         ? Prisma.sql`COUNT(DISTINCT n."clienteId")::float8`
-        : Prisma.sql`SUM(n."vlrBruto")::float8`;
+        : Prisma.sql`SUM(i."vlrTotal")::float8`;
 
     return tx.$queryRaw<LinhaAgregada[]>(Prisma.sql`
       SELECT
@@ -517,6 +535,8 @@ export class ConsultasService {
       FROM "notas_saida" n
       JOIN "clientes" c ON c."id" = n."clienteId" AND c."deletedAt" IS NULL
       JOIN "vendedores" v ON v."id" = ${colunaVendedor} AND v."deletedAt" IS NULL
+      JOIN "notas_saida_itens" i ON i."notaSaidaId" = n."id"
+      ${JOIN_CATEGORIA_DO_ITEM_SQL}
       WHERE ${Prisma.join(condicoes, ' AND ')}
       GROUP BY ${this.agrupamentoVendedor}, n."ano", n."mes"
     `);
@@ -527,6 +547,10 @@ export class ConsultasService {
    * histórico (DISTINCT ON pelo cliente, ordenado por ano/mês/emissão), e só
    * depois o período recorta quem estreou dentro dele. Com a base em `nota`, o
    * crédito vai para quem emitiu essa primeira nota.
+   *
+   * A estreia também é medida pelo item: a primeira nota que valeu é a
+   * primeira que trouxe algo que a empresa acompanha — senão o cliente
+   * "estreava" numa remessa de brinde e nunca mais aparecia como novo.
    */
   private evolucaoNovos(
     tx: TenantTx,
@@ -542,6 +566,7 @@ export class ConsultasService {
     const condicoesPrimeira: Prisma.Sql[] = [
       Prisma.sql`n."empresaId" = ${empresaId}`,
       ...this.condicoesNotaDeVenda,
+      ...CONDICOES_ITEM_DE_VENDA_SQL,
       Prisma.sql`n."clienteId" IS NOT NULL`,
       Prisma.sql`n."ano" IS NOT NULL`,
       Prisma.sql`n."mes" IS NOT NULL`,
@@ -560,6 +585,8 @@ export class ConsultasService {
           n."mes"        AS "mes",
           n."vendedorId" AS "vendedorId"
         FROM "notas_saida" n
+        JOIN "notas_saida_itens" i ON i."notaSaidaId" = n."id"
+        ${JOIN_CATEGORIA_DO_ITEM_SQL}
         WHERE ${Prisma.join(condicoesPrimeira, ' AND ')}
         ORDER BY n."clienteId", n."ano", n."mes", n."dtEmissao"
       )

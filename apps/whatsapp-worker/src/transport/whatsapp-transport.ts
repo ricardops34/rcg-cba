@@ -128,6 +128,11 @@ export interface ContatoAgenda {
   telefone: string | null;
 }
 
+export interface FotoContato {
+  conteudoBase64: string;
+  mime: string;
+}
+
 /** Conversa que já existe no celular, com ou sem histórico do nosso lado. */
 export interface ConversaAparelho extends ContatoAgenda {
   naoLidas: number;
@@ -175,6 +180,7 @@ export interface WhatsappTransport {
   ): Promise<void>;
   /** Agenda do aparelho, para o vendedor escolher quem vincular a cliente. */
   listarContatos(sessaoId: string, busca?: string): Promise<ContatoAgenda[]>;
+  obterFotoContato(sessaoId: string, jid: string): Promise<FotoContato | null>;
   /** Conversas que já existem no celular. */
   listarConversas(sessaoId: string, limite?: number): Promise<ConversaAparelho[]>;
   /**

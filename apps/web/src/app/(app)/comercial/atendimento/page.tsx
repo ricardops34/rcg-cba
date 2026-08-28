@@ -19,15 +19,12 @@ import {
   MessageSquarePlus,
   PanelLeftClose,
   PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
   Pencil,
   Plug,
   ShoppingCart,
   UserRound,
   Unlink,
   Users,
-  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import type {
@@ -36,7 +33,7 @@ import type {
   WhatsappMensagem,
   WhatsappSessao,
 } from "@plataforma/contracts";
-import { ApiError, apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch, assetUrl } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { avatarColorClass, initials } from "@/lib/avatar-color";
 import { ClienteCombobox } from "@/components/crud/cliente-combobox";
@@ -64,11 +61,11 @@ import {
 } from "@/components/ui/select";
 import {
   Sheet,
-  SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { ResizableSheetContent } from "@/components/ui/resizable-sheet-content";
 import { ConexaoSheet } from "@/components/whatsapp/conexao-sheet";
 import { NovaConversaDialog } from "@/components/whatsapp/nova-conversa-dialog";
 import { Composer } from "@/components/whatsapp/composer";
@@ -89,7 +86,6 @@ type FiltroConversas =
 
 /** Onde a preferência de painel aberto/fechado é lembrada entre sessões. */
 const PREF_LISTA = "atendimento-lista-aberta";
-const PREF_PAINEL = "atendimento-painel-aberto";
 
 /** Quem redesenha quando uma preferência muda (o localStorage não avisa). */
 const ouvintesDePreferencia = new Set<() => void>();
@@ -167,7 +163,6 @@ export default function AtendimentoPage() {
    */
   const [conexaoEscolhida, setConexaoEscolhida] = useState<string | null>(null);
   const [listaPreferida, alternarPreferenciaLista] = usePainelAberto(PREF_LISTA);
-  const [painelAberto, alternarPainel] = usePainelAberto(PREF_PAINEL);
 
   // Quem chega com a conversa já escolhida na URL — o "Atendimento" do menu da
   // Posição de Cliente, o link do sino — não precisa da lista de contatos à
@@ -191,9 +186,8 @@ export default function AtendimentoPage() {
     }
     alternarPreferenciaLista();
   };
-  // O que a coluna da direita mostra. Posição e orçamento entram no lugar dos
-  // dados do contato e voltam ao fechar — um espaço só, como o "Dados do
-  // contato" do WhatsApp, que empurra a conversa em vez de cobri-la.
+  // As ferramentas comerciais abrem em uma cortina sobreposta. A conversa
+  // mantém largura e posição enquanto o vendedor consulta ou edita dados.
   const [painelDireito, setPainelDireito] = useState<
     "contato" | "posicao" | "orcamento"
   >("contato");
@@ -202,16 +196,9 @@ export default function AtendimentoPage() {
   const abrirPainel = useCallback(
     (modo: "contato" | "posicao" | "orcamento") => {
       setPainelDireito(modo);
-      if (window.innerWidth < 1280) {
-        setPainelMovelAberto(true);
-        return;
-      }
-
-      // O usuário pode ter recolhido a coluna direita anteriormente. O atalho
-      // precisa abrir a ferramenta, não apenas trocar um conteúdo invisível.
-      if (!painelAberto) alternarPainel();
+      setPainelMovelAberto(true);
     },
-    [painelAberto, alternarPainel],
+    [],
   );
 
   const fecharFerramenta = useCallback(() => {
@@ -368,19 +355,6 @@ export default function AtendimentoPage() {
             <Plug className="size-4" />
             {sessao.numero ?? "Conexão"}
           </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            title={painelAberto ? "Ocultar dados do cliente" : "Mostrar dados do cliente"}
-            onClick={alternarPainel}
-            className="hidden xl:inline-flex"
-          >
-            {painelAberto ? (
-              <PanelRightClose className="size-4" />
-            ) : (
-              <PanelRightOpen className="size-4" />
-            )}
-          </Button>
         </div>
       </div>
 
@@ -435,40 +409,22 @@ export default function AtendimentoPage() {
           />
         </div>
 
-        {/* Largura padrão por conteúdo — o formulário de orçamento não cabe na
-            coluna de dados do contato — e ajustável no arraste, com cada
-            painel lembrando a sua. */}
-        {painelAberto ? (
-          <ColunaRedimensionavel
-            key={painelDireito}
-            larguraPadrao={
-              painelDireito === "orcamento"
-                ? 820
-                : painelDireito === "posicao"
-                  ? 680
-                  : 320
-            }
-            larguraMinima={
-              painelDireito === "orcamento"
-                ? 680
-                : painelDireito === "posicao"
-                  ? 560
-                  : 288
-            }
-            chaveArmazenamento={`atendimento-largura-${painelDireito}`}
-            className="hidden xl:block"
-          >
-            <PainelDireito
-              conversa={conversaSelecionada ?? null}
-              modo={painelDireito}
-              onFechar={fecharFerramenta}
-            />
-          </ColunaRedimensionavel>
-        ) : null}
       </div>
 
       <Sheet open={painelMovelAberto} onOpenChange={setPainelMovelAberto}>
-        <SheetContent className="w-full gap-0 p-0 sm:max-w-[min(92vw,820px)] xl:hidden">
+        <ResizableSheetContent
+          defaultWidth={
+            painelDireito === "contato"
+              ? 440
+              : painelDireito === "posicao"
+                ? 1040
+                : 1180
+          }
+          storageKey="atendimento-largura-cortina"
+          minWidth={420}
+          maxWidthRatio={0.96}
+          className="p-0"
+        >
           <SheetHeader className="shrink-0 border-b pr-14">
             <SheetTitle>{tituloDoPainel(painelDireito)}</SheetTitle>
             <SheetDescription>
@@ -486,7 +442,7 @@ export default function AtendimentoPage() {
               />
             ) : null}
           </div>
-        </SheetContent>
+        </ResizableSheetContent>
       </Sheet>
 
       <ConexaoSheet
@@ -849,7 +805,17 @@ function Conversa({
             title="Abrir dados do contato"
             className={`flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${avatarColorClass(conversa ? nomeDaConversa(conversa) : "Contato")}`}
           >
-            {initials(conversa ? nomeDaConversa(conversa) : "Contato")}
+            {conversa?.contato.fotoUrl ? (
+              // Foto vem do perfil do WhatsApp e é copiada para o storage local.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={assetUrl(conversa.contato.fotoUrl) ?? undefined}
+                alt=""
+                className="size-full rounded-full object-cover"
+              />
+            ) : (
+              initials(conversa ? nomeDaConversa(conversa) : "Contato")
+            )}
           </button>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">
@@ -1040,60 +1006,6 @@ function ConteudoFerramenta({
           onClose={onFechar}
         />
       )}
-    </div>
-  );
-}
-
-/**
- * A coluna da direita, que troca de conteúdo sem sair do lugar.
- *
- * Posição e orçamento **encaixam** aqui em vez de abrirem por cima: assim o
- * vendedor consulta e monta a proposta lendo a conversa ao lado, que é o
- * ponto da tela existir. É o comportamento do "Dados do contato" do WhatsApp,
- * que empurra o rolo em vez de cobri-lo.
- */
-function PainelDireito({
-  conversa,
-  modo,
-  onFechar,
-}: {
-  conversa: WhatsappConversa | null;
-  modo: "contato" | "posicao" | "orcamento";
-  onFechar: () => void;
-}) {
-  // Sem cliente vinculado não há posição nem orçamento: cai nos dados do
-  // contato, onde fica o vínculo a fazer.
-  const clienteId = conversa?.clienteId ?? null;
-  if (modo === "contato" || !clienteId) {
-    return <PainelCliente conversa={conversa} />;
-  }
-
-  return (
-    <div className="hidden h-full w-full flex-col overflow-hidden border-l bg-background xl:flex">
-      <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b px-4">
-        <div>
-          <p className="text-sm font-semibold">{tituloDoPainel(modo)}</p>
-          <p className="text-xs text-muted-foreground">
-            A conversa continua disponível ao lado
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onFechar}
-          title="Fechar"
-          className="text-muted-foreground transition hover:text-foreground"
-        >
-          <X className="size-4" />
-        </button>
-      </div>
-
-      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
-        <ConteudoFerramenta
-          clienteId={clienteId}
-          modo={modo}
-          onFechar={onFechar}
-        />
-      </div>
     </div>
   );
 }

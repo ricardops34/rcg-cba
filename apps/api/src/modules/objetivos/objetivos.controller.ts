@@ -43,7 +43,9 @@ export class ObjetivosController {
     summary: 'Dashboard Comercial',
     description:
       'Objetivo (meta) vs realizado calculado ao vivo a partir das notas de saída, para o ' +
-      'mês/ano informados. vendedorId omitido agrega todo o escopo hierárquico do usuário. ' +
+      'mês/ano informados. O realizado é a mesma base das Consultas: itens de nota ativa, ' +
+      'não-comodato, tipo Normal e com financeiro, sem os de categoria marcada como não usada ' +
+      'nas análises. vendedorId omitido agrega todo o escopo hierárquico do usuário. ' +
       'Requer dashboard-comercial.visualizar.',
   })
   @RequirePermission('dashboard-comercial', 'visualizar')
@@ -72,7 +74,9 @@ export class ObjetivosController {
   @ApiOperation({
     summary: 'Dashboard Gerencial',
     description:
-      'Acompanhamento do mês por vendedor: objetivo, realizado (líquido de devolução), ' +
+      'Acompanhamento do mês por vendedor: objetivo, realizado (líquido de devolução, na mesma ' +
+      'base das Consultas — sem comodato, devolução, nota sem financeiro nem categoria ' +
+      'recusada), ' +
       'positivação (meta e realizada) e o percentual de cada um, mais os indicadores de topo ' +
       '(base de clientes, clientes sem vendedor, ticket médio e devolução). vendedorId omitido ' +
       'agrega todo o escopo hierárquico do usuário. Requer dashboard-gerencial.visualizar.',

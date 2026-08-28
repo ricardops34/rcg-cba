@@ -187,6 +187,10 @@ aprovação. Uma ação feita na central deve produzir o mesmo resultado da tela
 - [x] Adicionar botão de envio explícito sem remover os atalhos existentes.
 - [x] Preservar resposta, anexos, áudio e mensagens agendadas.
 - [x] Manter a cortina montada e a conversa utilizável durante orçamento/consulta.
+- [x] Substituir a coluna contextual direita por cortina sobreposta para contato,
+  posição e orçamento, removendo o controle de recolhimento defeituoso.
+- [x] Tornar a cortina redimensionável no desktop, persistir sua largura e usar
+  largura total responsiva em celular, sem alça de redimensionamento por toque.
 
 ### Etapa 6 — responsividade e validação
 
@@ -263,6 +267,10 @@ histórico da retomada após o reinício.
 - [x] Múltiplos contatos de WhatsApp por cliente exibidos na Posição do Cliente,
   com nome, número, e-mail e finalidade: Geral, Financeiro, Compras,
   Contabilidade/Fiscal ou Outros. Cada contato abre sua própria conversa.
+- [x] Foto do perfil do WhatsApp copiada para o contato no vínculo, com fallback
+  para iniciais quando indisponível por privacidade.
+- [x] Nome do próprio usuário editável em Meu perfil e usado como assinatura
+  das mensagens enviadas ao cliente.
 - [x] Eventos comerciais integrados à linha do tempo e resumos extensos exibidos
   em cartões compactos expansíveis.
 - [x] Contratos compartilhados, endpoint de eventos e documentação atualizados.

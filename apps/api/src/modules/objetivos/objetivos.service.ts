@@ -8,6 +8,10 @@ import {
   buildPaginatedResult,
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
+import {
+  ITEM_DE_VENDA_WHERE,
+  NOTA_DE_VENDA_WHERE,
+} from '../../common/vendas/venda-analitica';
 import type {
   DashboardGerencial,
   DashboardGerencialClientesSemVendedor,
@@ -313,6 +317,11 @@ export class ObjetivosService {
    * Realizado por item = vlrTotal − vlrDev (aproximação do vlr_liquido do
    * legado: o campo item-level vlr_bruto do legado não foi importado, só
    * vlr_total, que já é o valor líquido de desconto).
+   *
+   * O que entra vem de `ITEM_DE_VENDA_WHERE`: até então o realizado somava
+   * item de qualquer nota — comodato, devolução e nota sem financeiro
+   * inclusive —, o que dava um realizado maior do que o das Consultas para o
+   * mesmo mês.
    */
   async dashboard(empresaId: string, user: AuthenticatedUser, query: ObjetivoDashboardQuery) {
     return this.prisma.withTenant(empresaId, async (tx) => {
@@ -350,8 +359,7 @@ export class ObjetivosService {
         : {};
       const itensWhere = {
         empresaId,
-        deletedAt: null,
-        ativo: true,
+        ...ITEM_DE_VENDA_WHERE,
         ano: query.ano,
         mes: query.mes,
         ...filtroVendedor,
@@ -409,9 +417,12 @@ export class ObjetivosService {
       // Só as categorias marcadas como **usadas** entram na tabela (a marcação
       // é de Cadastros > Categorias). São 21 das 29 raízes: o resto é
       // categoria que o ERP carrega mas a empresa não acompanha, e listá-las
-      // afundava as que importam. É por isso que o total da tabela não bate
-      // com o KPI "Realizado" — aquele é a venda inteira, este é a venda do
-      // que se acompanha.
+      // afundava as que importam.
+      //
+      // O KPI "Realizado" agora exclui as mesmas categorias recusadas, então
+      // os dois números partem da mesma venda. O que ainda pode separá-los é
+      // a categoria em branco (nem sim, nem não): ela entra no KPI, porque
+      // ninguém disse que não serve, mas não tem linha própria aqui.
       const categoriasInfo = categoriaIds.size
         ? await tx.categoria.findMany({
             where: { id: { in: [...categoriaIds] }, usado: true },
@@ -466,8 +477,7 @@ export class ObjetivosService {
         by: ['clienteId'],
         where: {
           empresaId,
-          deletedAt: null,
-          ativo: true,
+          ...ITEM_DE_VENDA_WHERE,
           ano: query.ano,
           mes: query.mes,
           clienteId: { not: null },
@@ -514,8 +524,7 @@ export class ObjetivosService {
 
       const itensWhere = {
         empresaId,
-        deletedAt: null,
-        ativo: true,
+        ...ITEM_DE_VENDA_WHERE,
         ano: query.ano,
         mes: query.mes,
         ...filtroVendedor,
@@ -567,10 +576,7 @@ export class ObjetivosService {
         tx.notaSaida.count({
           where: {
             empresaId,
-            deletedAt: null,
-            ativo: true,
-            comodato: false,
-            tipo: 'N',
+            ...NOTA_DE_VENDA_WHERE,
             ano: query.ano,
             mes: query.mes,
             ...filtroVendedor,
@@ -739,8 +745,7 @@ export class ObjetivosService {
           by: ['produtoId'],
           where: {
             empresaId,
-            deletedAt: null,
-            ativo: true,
+            ...ITEM_DE_VENDA_WHERE,
             ano: query.ano,
             mes: query.mes,
             ...filtroVendedor,
@@ -890,9 +895,7 @@ export class ObjetivosService {
             by: ['clienteId'],
             where: {
               empresaId,
-              deletedAt: null,
-              ativo: true,
-              tipo: 'N',
+              ...NOTA_DE_VENDA_WHERE,
               clienteId: { in: clientes.map((c) => c.id) },
             },
             _max: { dtEmissao: true },

@@ -348,6 +348,19 @@ const servidor = createServer(async (req, res) => {
     // GET /sessoes/:id/contatos?busca=
     if (
       req.method === 'GET' &&
+      partes.length === 4 &&
+      partes[0] === 'sessoes' &&
+      partes[2] === 'contatos' &&
+      partes[3] === 'foto'
+    ) {
+      const jid = url.searchParams.get('jid');
+      if (!jid) return json(res, 400, { erro: 'jid obrigatório' });
+      return json(res, 200, await transporte.obterFotoContato(partes[1], jid));
+    }
+
+    // GET /sessoes/:id/contatos?busca=
+    if (
+      req.method === 'GET' &&
       partes.length === 3 &&
       partes[0] === 'sessoes' &&
       partes[2] === 'contatos'

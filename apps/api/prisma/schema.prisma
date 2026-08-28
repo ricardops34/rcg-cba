@@ -2288,6 +2288,7 @@ model WhatsappContato {
   telefoneNormalizado String?
   tipo                WhatsappTipoContato @default(geral)
   email               String?
+  fotoUrl             String?
 
   clienteId    String?
   vinculadoPor String?

@@ -510,6 +510,14 @@ export class AuthService {
     };
   }
 
+  async updateOwnProfile(usuarioId: string, empresaAtivaId: string, nome: string) {
+    await this.prisma.usuario.update({
+      where: { id: usuarioId },
+      data: { nome: nome.trim(), updatedBy: usuarioId },
+    });
+    return this.me(usuarioId, empresaAtivaId);
+  }
+
   /** Troca a senha do próprio usuário logado, exigindo a senha atual. */
   async changePassword(usuarioId: string, input: ChangePasswordInput) {
     const usuario = await this.prisma.usuario.findUniqueOrThrow({

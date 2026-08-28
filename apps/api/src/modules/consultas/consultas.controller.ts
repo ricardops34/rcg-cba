@@ -39,9 +39,10 @@ export class ConsultasController {
     summary: 'Vendas do período somadas mês a mês por cliente',
     description:
       'Uma linha por cliente com uma coluna por mês do período (mês/ano inicial a mês/ano ' +
-      'final, no máximo 12 meses) e o total, ordenada pelo total (maior primeiro). Considera ' +
-      'apenas nota de venda: ativa, não-comodato e do tipo Normal (devolução e remessa ficam ' +
-      'de fora). O vendedor creditado (quem vendeu ou o titular da carteira) ' +
+      'final, no máximo 12 meses) e o total, ordenada pelo total (maior primeiro). Soma o ' +
+      'vlrTotal dos itens de nota de venda: nota ativa, não-comodato, do tipo Normal e com ' +
+      'financeiro (devolução, remessa e nota sem título ficam de fora), descartando o item de ' +
+      'categoria marcada como não usada nas análises. O vendedor creditado (quem vendeu ou o titular da carteira) ' +
       'vem do parâmetro CONSULTA_VENDAS_BASE_VENDEDOR, e pode ser sobrescrito por ' +
       '?baseVendedor=. A visibilidade é sempre a carteira de clientes que o usuário alcança ' +
       '(escopo hierárquico), independente dessa escolha. Requer ' +
@@ -64,8 +65,8 @@ export class ConsultasController {
     summary: 'Vendas do período somadas mês a mês por vendedor',
     description:
       'Uma linha por vendedor com uma coluna por mês do período (máximo 12 meses) e o total, ' +
-      'ordenada pelo total (maior primeiro). Mesma base da consulta por cliente (nota de venda ' +
-      'ativa, não-comodato e do tipo Normal, vlrBruto). Com a base em `cliente`, a venda é ' +
+      'ordenada pelo total (maior primeiro). Mesma base da consulta por cliente (itens de nota ' +
+      'de venda, sem categoria recusada). Com a base em `cliente`, a venda é ' +
       'creditada ao titular da ' +
       'carteira em vez de a quem emitiu a nota. Restrita à carteira de clientes que o usuário ' +
       'alcança. Requer consulta-vendas-vendedor.visualizar.',
@@ -88,7 +89,8 @@ export class ConsultasController {
     description:
       'Uma linha por produto com uma coluna por mês do período (máximo 12 meses) e o total, ' +
       'ordenada pelo total (maior primeiro), com filtro opcional de categoria. Soma o vlrTotal ' +
-      'dos itens de notas de venda (ativas, não-comodato, tipo Normal). Restrita à carteira de ' +
+      'dos itens de notas de venda (ativas, não-comodato, tipo Normal, com financeiro), sem os ' +
+      'itens de categoria marcada como não usada nas análises. Restrita à carteira de ' +
       'clientes que o usuário ' +
       'alcança. Requer consulta-vendas-produto.visualizar.',
   })
@@ -113,8 +115,9 @@ export class ConsultasController {
       'parâmetro `indicador` escolhe o que é medido: `vendas` (faturamento do mês), ' +
       '`positivados` (clientes distintos que compraram no mês), `novos` (clientes cuja primeira ' +
       'compra de todo o histórico caiu no mês) ou `inativados` (clientes com data de bloqueio no ' +
-      'mês). Os três primeiros usam a mesma base de nota de venda das outras consultas (ativa, ' +
-      'não-comodato, tipo Normal) e respeitam `baseVendedor`; `inativados` parte do cadastro do ' +
+      'mês). Os três primeiros usam a mesma base das outras consultas (itens de nota de venda, ' +
+      'sem categoria recusada — quem só comprou item descartado não positiva nem estreia) e ' +
+      'respeitam `baseVendedor`; `inativados` parte do cadastro do ' +
       'cliente e credita sempre o vendedor titular. Restrita à carteira de clientes que o ' +
       'usuário alcança. Requer consulta-evolucao.visualizar.',
   })

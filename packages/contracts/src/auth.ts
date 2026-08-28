@@ -58,6 +58,11 @@ export const changePasswordSchema = z
   });
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
+export const updateOwnProfileSchema = z.object({
+  nome: z.string().trim().min(2, "Informe o nome").max(120),
+});
+export type UpdateOwnProfileInput = z.infer<typeof updateOwnProfileSchema>;
+
 export const currentUserSchema = z.object({
   id: z.string().uuid().describe("Identificador do usuário autenticado"),
   nome: z.string().describe("Nome completo do usuário"),

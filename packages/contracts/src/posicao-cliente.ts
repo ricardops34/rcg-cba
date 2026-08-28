@@ -58,6 +58,7 @@ export const posicaoClienteSchema = z.object({
       tipo: z.enum(["geral", "financeiro", "compras", "contabilidade_fiscal", "outros"]),
       telefone: z.string().nullable(),
       email: z.string().nullable(),
+      fotoUrl: z.string().nullable(),
     }),
   ),
   resumo: posicaoClienteResumoSchema,

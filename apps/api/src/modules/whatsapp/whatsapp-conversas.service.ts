@@ -199,6 +199,7 @@ export class WhatsappConversasService {
             telefoneNormalizado: c.contato.telefoneNormalizado,
             tipo: c.contato.tipo,
             email: c.contato.email,
+            fotoUrl: c.contato.fotoUrl,
             clienteId: c.contato.clienteId,
             clienteRazaoSocial: c.cliente?.razaoSocial ?? null,
             clienteCodigoErp: c.cliente?.codigoErp ?? null,
@@ -1148,6 +1149,23 @@ export class WhatsappConversasService {
         }
       }
 
+      let fotoUrl = conversa.contato.fotoUrl;
+      if (input.clienteId) {
+        const config = await this.config.obter(empresaId);
+        const foto = await this.worker
+          .chamar<{ conteudoBase64: string; mime: string } | null>(
+            config.workerUrl,
+            `/sessoes/${conversa.sessaoId}/contatos/foto?jid=${encodeURIComponent(conversa.contato.jid)}`,
+          )
+          .catch(() => null);
+        if (foto?.conteudoBase64 && foto.mime.startsWith('image/')) {
+          const arquivo = `${randomUUID()}${extensaoPorMime(foto.mime)}`;
+          await mkdir(WHATSAPP_DIR, { recursive: true });
+          await writeFile(join(WHATSAPP_DIR, arquivo), Buffer.from(foto.conteudoBase64, 'base64'));
+          fotoUrl = whatsappPublicPath(arquivo);
+        }
+      }
+
       await tx.whatsappContato.update({
         where: { id: conversa.contatoId },
         data: {
@@ -1156,6 +1174,7 @@ export class WhatsappConversasService {
           tipo: input.tipo,
           nomeExibicao: input.nome ?? undefined,
           email: input.email ?? undefined,
+          fotoUrl,
           vinculadoPor: user.id,
           vinculadoEm: input.clienteId ? new Date() : null,
         },

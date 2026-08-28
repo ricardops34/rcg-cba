@@ -181,6 +181,7 @@ export const whatsappContatoSchema = z.object({
   telefoneNormalizado: z.string().nullable(),
   tipo: z.enum(["geral", "financeiro", "compras", "contabilidade_fiscal", "outros"]),
   email: z.string().nullable(),
+  fotoUrl: z.string().nullable(),
   clienteId: z.string().uuid().nullable(),
   clienteRazaoSocial: z.string().nullable(),
   clienteCodigoErp: z.string().nullable(),
