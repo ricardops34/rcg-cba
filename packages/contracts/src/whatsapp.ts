@@ -14,9 +14,42 @@ import { z } from "zod";
  *    não vinculada"; mensagem sem vínculo não é gravada.
  */
 
-export const WHATSAPP_TRANSPORTES = ["zapo", "cloud_api"] as const;
+export const WHATSAPP_TRANSPORTES = [
+  "zapo",
+  "evolution_go",
+  "cloud_api",
+] as const;
 export const whatsappTransporteSchema = z.enum(WHATSAPP_TRANSPORTES);
 export type WhatsappTransporte = z.infer<typeof whatsappTransporteSchema>;
+
+/**
+ * Transportes que a plataforma sabe de fato operar.
+ *
+ * `cloud_api` continua no enum porque as linhas já gravadas o aceitam, mas não
+ * existe adaptador: selecioná-lo é recusado na configuração, em vez de deixar
+ * o vendedor descobrir na tela de pareamento que nada acontece.
+ */
+export const WHATSAPP_TRANSPORTES_IMPLEMENTADOS = [
+  "zapo",
+  "evolution_go",
+] as const;
+export type WhatsappTransporteImplementado =
+  (typeof WHATSAPP_TRANSPORTES_IMPLEMENTADOS)[number];
+
+export function whatsappTransporteImplementado(
+  transporte: string,
+): transporte is WhatsappTransporteImplementado {
+  return (WHATSAPP_TRANSPORTES_IMPLEMENTADOS as readonly string[]).includes(
+    transporte,
+  );
+}
+
+/** Rótulo do provedor para telas e mensagens de erro. */
+export const WHATSAPP_TRANSPORTE_ROTULO: Record<WhatsappTransporte, string> = {
+  zapo: "zapo-js",
+  evolution_go: "Evolution GO",
+  cloud_api: "API Oficial da Meta",
+};
 
 export const WHATSAPP_SESSAO_STATUS = [
   "desconectada",
@@ -90,6 +123,21 @@ export const whatsappConfigSchema = z.object({
   ativo: z.boolean(),
   transporte: whatsappTransporteSchema,
   workerUrl: z.string().nullable(),
+  /** Endereço interno da Evolution GO. Usado só quando o transporte é dela. */
+  evolutionUrl: z.string().nullable(),
+  /**
+   * A chave administrativa **nunca** é devolvida: só o rastro de que existe.
+   * Mesmo tratamento da chave do agente de IA — quem tem a `GLOBAL_API_KEY`
+   * cria e apaga instância de qualquer vendedor.
+   */
+  evolutionApiKeyDefinida: z.boolean(),
+  evolutionApiKeyUltimos4: z.string().nullable(),
+  /**
+   * Versão da imagem homologada, registrada por quem implantou. Serve para o
+   * diagnóstico: divergência de payload entre versões é a causa mais provável
+   * de um evento que parou de chegar.
+   */
+  evolutionVersao: z.string().nullable(),
   retencaoDias: z.number().int(),
   historicoDias: z
     .number()
@@ -117,6 +165,19 @@ export const whatsappConfigUpdateSchema = z.object({
     .url("Informe uma URL válida (ex.: http://whatsapp-worker:3100)")
     .nullable()
     .optional(),
+  evolutionUrl: z
+    .string()
+    .trim()
+    .url("Informe uma URL válida (ex.: http://rcgcba-evolution-go:8080)")
+    .nullable()
+    .optional(),
+  /**
+   * Chave administrativa da Evolution GO. Só de escrita: a API cifra antes de
+   * gravar e nunca devolve o valor. String vazia apaga a chave gravada —
+   * é como a tela "limpa" o campo sem precisar de uma rota só para isso.
+   */
+  evolutionApiKey: z.string().trim().max(500).nullable().optional(),
+  evolutionVersao: z.string().trim().max(40).nullable().optional(),
   retencaoDias: z
     .number()
     .int()

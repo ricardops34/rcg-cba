@@ -233,6 +233,11 @@ export default function EstruturaPage() {
                 onDragEndMenus={handleMenuDragEnd(modulo)}
                 sensors={sensors}
                 onEditModulo={() => setModuloDialog({ editing: modulo })}
+                onToggleTelaPequenaModulo={(value) =>
+                  updateModulo.mutateAsync({ id: modulo.id, input: { disponivelTelaPequena: value } })
+                    .then(() => { invalidate(); toast.success(value ? "Módulo liberado no celular" : "Módulo bloqueado no celular"); })
+                    .catch((err) => toast.error(err instanceof ApiError ? err.message : "Erro ao alterar módulo"))
+                }
                 onDeleteModulo={async () => {
                   if (!confirm(`Excluir o módulo "${modulo.nome}"?`)) return;
                   try {
@@ -244,6 +249,11 @@ export default function EstruturaPage() {
                 }}
                 onCreateMenu={() => setMenuDialog({ moduloId: modulo.id, editing: null })}
                 onEditMenu={(menu) => setMenuDialog({ moduloId: modulo.id, editing: menu })}
+                onToggleTelaPequenaMenu={(menu, value) =>
+                  updateMenu.mutateAsync({ id: menu.id, input: { disponivelTelaPequena: value } })
+                    .then(() => { invalidate(); toast.success(value ? "Tela liberada no celular" : "Tela bloqueada no celular"); })
+                    .catch((err) => toast.error(err instanceof ApiError ? err.message : "Erro ao alterar menu"))
+                }
                 onDeleteMenu={async (menu) => {
                   if (!confirm(`Excluir o menu "${menu.nome}"?`)) return;
                   try {
@@ -255,6 +265,11 @@ export default function EstruturaPage() {
                 }}
                 onCreateRotina={(menu) => setRotinaDialog({ menuId: menu.id, editing: null })}
                 onEditRotina={(menu, rotina) => setRotinaDialog({ menuId: menu.id, editing: rotina })}
+                onToggleTelaPequenaRotina={(rotina, value) =>
+                  updateRotina.mutateAsync({ id: rotina.id, input: { disponivelTelaPequena: value } })
+                    .then(() => { invalidate(); toast.success(value ? "Rotina liberada no celular" : "Rotina bloqueada no celular"); })
+                    .catch((err) => toast.error(err instanceof ApiError ? err.message : "Erro ao alterar rotina"))
+                }
                 onDeleteRotina={async (rotina) => {
                   if (!confirm(`Excluir a rotina "${rotina.nome}"?`)) return;
                   try {
@@ -320,12 +335,15 @@ function ModuloRow({
   onDragEndMenus,
   sensors,
   onEditModulo,
+  onToggleTelaPequenaModulo,
   onDeleteModulo,
   onCreateMenu,
   onEditMenu,
+  onToggleTelaPequenaMenu,
   onDeleteMenu,
   onCreateRotina,
   onEditRotina,
+  onToggleTelaPequenaRotina,
   onDeleteRotina,
 }: {
   modulo: ModuloComMenus;
@@ -333,12 +351,15 @@ function ModuloRow({
   onDragEndMenus: (event: DragEndEvent) => void;
   sensors: ReturnType<typeof useSensors>;
   onEditModulo: () => void;
+  onToggleTelaPequenaModulo: (value: boolean) => void;
   onDeleteModulo: () => void;
   onCreateMenu: () => void;
   onEditMenu: (menu: Menu) => void;
+  onToggleTelaPequenaMenu: (menu: Menu, value: boolean) => void;
   onDeleteMenu: (menu: Menu) => void;
   onCreateRotina: (menu: Menu) => void;
   onEditRotina: (menu: Menu, rotina: Rotina) => void;
+  onToggleTelaPequenaRotina: (rotina: Rotina, value: boolean) => void;
   onDeleteRotina: (rotina: Rotina) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -379,6 +400,11 @@ function ModuloRow({
         </CollapsibleTrigger>
 
         <div className="flex shrink-0 items-center gap-2">
+          <MobileAvailabilitySwitch
+            checked={modulo.disponivelTelaPequena}
+            label={`Disponibilidade de ${modulo.nome} em telas pequenas`}
+            onCheckedChange={onToggleTelaPequenaModulo}
+          />
           {!modulo.ativo && <Badge variant="secondary">Inativo</Badge>}
           <Button variant="outline" size="sm" onClick={onCreateMenu}>
             <Plus className="size-3.5" />
@@ -418,9 +444,11 @@ function ModuloRow({
                   menu={menu}
                   rotinas={rotinasPorMenu.get(menu.id) ?? []}
                   onEdit={() => onEditMenu(menu)}
+                  onToggleTelaPequena={(value) => onToggleTelaPequenaMenu(menu, value)}
                   onDelete={() => onDeleteMenu(menu)}
                   onCreateRotina={() => onCreateRotina(menu)}
                   onEditRotina={(rotina) => onEditRotina(menu, rotina)}
+                  onToggleTelaPequenaRotina={onToggleTelaPequenaRotina}
                   onDeleteRotina={onDeleteRotina}
                 />
               ))}
@@ -436,17 +464,21 @@ function MenuRow({
   menu,
   rotinas,
   onEdit,
+  onToggleTelaPequena,
   onDelete,
   onCreateRotina,
   onEditRotina,
+  onToggleTelaPequenaRotina,
   onDeleteRotina,
 }: {
   menu: Menu;
   rotinas: Rotina[];
   onEdit: () => void;
+  onToggleTelaPequena: (value: boolean) => void;
   onDelete: () => void;
   onCreateRotina: () => void;
   onEditRotina: (rotina: Rotina) => void;
+  onToggleTelaPequenaRotina: (rotina: Rotina, value: boolean) => void;
   onDeleteRotina: (rotina: Rotina) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -484,6 +516,11 @@ function MenuRow({
         </CollapsibleTrigger>
 
         <div className="flex shrink-0 items-center gap-2">
+          <MobileAvailabilitySwitch
+            checked={menu.disponivelTelaPequena}
+            label={`Disponibilidade de ${menu.nome} em telas pequenas`}
+            onCheckedChange={onToggleTelaPequena}
+          />
           {!menu.disponivelTelaPequena && (
             <Badge variant="secondary" className="hidden sm:inline-flex">
               Somente tela maior
@@ -525,6 +562,7 @@ function MenuRow({
               key={rotina.id}
               rotina={rotina}
               onEdit={() => onEditRotina(rotina)}
+              onToggleTelaPequena={(value) => onToggleTelaPequenaRotina(rotina, value)}
               onDelete={() => onDeleteRotina(rotina)}
             />
           ))}
@@ -537,10 +575,12 @@ function MenuRow({
 function RotinaRow({
   rotina,
   onEdit,
+  onToggleTelaPequena,
   onDelete,
 }: {
   rotina: Rotina;
   onEdit: () => void;
+  onToggleTelaPequena: (value: boolean) => void;
   onDelete: () => void;
 }) {
   return (
@@ -553,7 +593,13 @@ function RotinaRow({
         </code>
         {!rotina.ativo && <Badge variant="secondary">Inativo</Badge>}
       </div>
-      <DropdownMenu>
+      <div className="flex shrink-0 items-center gap-2">
+        <MobileAvailabilitySwitch
+          checked={rotina.disponivelTelaPequena}
+          label={`Disponibilidade de ${rotina.nome} em telas pequenas`}
+          onCheckedChange={onToggleTelaPequena}
+        />
+        <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" className="size-7">
             <MoreHorizontal className="size-3.5" />
@@ -567,8 +613,30 @@ function RotinaRow({
             <Trash2 className="size-4" /> Excluir
           </DropdownMenuItem>
         </DropdownMenuContent>
-      </DropdownMenu>
+        </DropdownMenu>
+      </div>
     </div>
+  );
+}
+
+function MobileAvailabilitySwitch({
+  checked,
+  label,
+  onCheckedChange,
+}: {
+  checked: boolean;
+  label: string;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <label
+      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+      title={label}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <span className="hidden lg:inline">Tela pequena</span>
+      <Switch checked={checked} onCheckedChange={onCheckedChange} aria-label={label} />
+    </label>
   );
 }
 
@@ -594,6 +662,7 @@ function ModuloFormDialog({
       icone: editing?.icone ?? "",
       ordem: editing?.ordem ?? 0,
       ativo: editing?.ativo ?? true,
+      disponivelTelaPequena: editing?.disponivelTelaPequena ?? true,
     },
   });
 
@@ -799,6 +868,7 @@ function RotinaFormDialog({
       nome: editing?.nome ?? "",
       codigo: editing?.codigo ?? "",
       ativo: editing?.ativo ?? true,
+      disponivelTelaPequena: editing?.disponivelTelaPequena ?? true,
     },
   });
 

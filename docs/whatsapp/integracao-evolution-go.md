@@ -2,13 +2,55 @@
 
 ## 1. Objetivo e situação atual
 
-Este documento avalia como a
-[Evolution GO](https://github.com/evolution-foundation/evolution-go) pode atender
-às funções atualmente fornecidas pelo `zapo-js` no Atendimento por WhatsApp.
+Este documento descreve a integração com a
+[Evolution GO](https://github.com/evolution-foundation/evolution-go) como
+transporte alternativo ao `zapo-js` no Atendimento por WhatsApp.
 
-> A Evolution GO ainda não está implementada neste projeto. Esta é uma proposta
-> de arquitetura e um levantamento de compatibilidade. O transporte operacional
-> atual continua sendo `zapo`/`zapo-js`.
+> **Implementada, e bloqueada por licença do fornecedor.** O provedor, o
+> webhook, a configuração e a tela existem no código (2026-08-27), e as rotas
+> foram conferidas contra o gateway em execução. Mas a versão 0.7.2 **exige
+> licença ativada**: sem ela, toda a API responde `503 LICENSE_REQUIRED`. O
+> transporte em produção continua sendo `zapo`/`zapo-js`. Ver a seção 1.1.
+
+### 1.1. A licença é um bloqueio, não um detalhe
+
+Ao subir `evoapicloud/evolution-go:0.7.2` num ambiente isolado (2026-08-27), o
+serviço inicia normalmente e imprime:
+
+```text
+╔══════════════════════════════════════════════════════════╗
+║              License Registration Required               ║
+╚══════════════════════════════════════════════════════════╝
+Server starting without license.
+API endpoints will return 503 until license is activated.
+```
+
+E qualquer chamada, mesmo com a `GLOBAL_API_KEY` correta, responde:
+
+```json
+{
+  "code": "LICENSE_REQUIRED",
+  "error": "service not activated",
+  "message": "License required. Open the manager to activate your license.",
+  "register_url": "http://<host>/manager/login"
+}
+```
+
+`GET /license/register` devolve uma URL de registro em
+`license.evolutionfoundation.com.br`. Ou seja: **usar a Evolution GO depende de
+uma decisão comercial com o fornecedor**, não de configuração. Enquanto a
+licença não for ativada, o transporte não funciona, por mais correto que o
+código esteja.
+
+Três rotas ficam disponíveis sem licença: `GET /server/ok`, `/license/*` e
+`/swagger/*` — foi pelo Swagger que o contrato real desta integração foi
+levantado.
+
+**Consequência para o plano:** a prova de conceito da seção 10 não pode ser
+executada antes dessa decisão. O que foi possível verificar sem licença (rotas,
+corpos de requisição, variáveis de ambiente) já está aplicado no código; o que
+depende de tráfego real (formato das respostas, payload dos eventos do webhook,
+`data:` URI no envio de mídia) continua sem confirmação.
 
 A Evolution GO é uma API não oficial baseada em sessão pareada do WhatsApp. Ela
 assume responsabilidades hoje mantidas pelo `whatsapp-worker`: conexão ao
@@ -17,6 +59,57 @@ WhatsApp, credenciais da sessão, QR Code, reconexão e emissão de eventos.
 Ela não elimina os riscos próprios de integrações não oficiais. Mudanças no
 protocolo podem interromper sessões, e o número conectado pode sofrer restrição
 ou bloqueio.
+
+### O que existe no código
+
+| Peça | Onde |
+|---|---|
+| Contrato de provedor | `apps/api/src/modules/whatsapp/providers/whatsapp-provider.ts` |
+| Roteador por sessão | `providers/whatsapp-provider.service.ts` |
+| Cliente HTTP do gateway | `providers/evolution-go.client.ts` |
+| Provedor | `providers/evolution-go.provider.ts` |
+| Webhook | `whatsapp-evolution.controller.ts` |
+| Cifragem dos segredos | `whatsapp-cripto.ts` (`WHATSAPP_CRYPTO_KEY`) |
+| Colunas | migration `20260828120000_whatsapp_evolution_go` |
+| Serviço no stack | `docker/stack.rcgcba.prod.yml`, `docker/docker-compose.dev.yml` |
+
+### O que foi verificado contra o serviço real (2026-08-27)
+
+Imagem `evoapicloud/evolution-go:0.7.2` subida em ambiente isolado. Sem licença
+não há tráfego de WhatsApp, mas Swagger e tabela de rotas são acessíveis, e foi
+delas que saíram as correções abaixo — todas já aplicadas no código:
+
+| A documentação dizia | O serviço faz |
+|---|---|
+| `DATABASE_URL` / `DATABASE_URI` | `POSTGRES_DB` recebe a **DSN inteira**; sem `POSTGRES_AUTH_DB` e `POSTGRES_USERS_DB` o processo morre em panic |
+| `instanceId` no corpo/query das operações | Nenhuma rota de operação o recebe: identifica pela credencial no cabeçalho |
+| `events` no connect | `subscribe` |
+| `webhook` no connect | `webhookUrl` |
+| `phone`/`jid`/`message` no envio | `number` e `text` |
+| `quotedMessageId` | `quoted: { messageId }` |
+| `emoji` na reação | `reaction`, com `id` e `fromMe` |
+| `messageId` em markread | `id`, e é **lista** |
+| `GET /user/avatar` | `POST /user/avatar` com `{number, preview}` |
+| Mídia em base64 no envio | Campo `url` — a plataforma manda `data:` URI |
+| Uma rota de download por tipo | Uma só: `/message/downloadmedia` |
+| Dias no history-sync | `count` (número de mensagens) |
+| Listar conversas do aparelho | **Não existe** rota para isso |
+
+### Decisões tomadas na implementação
+
+- **Um transporte por empresa**, escolhido em Administração → WhatsApp; a linha
+  de cada sessão guarda com qual provedor ela foi conectada, e é esse o que
+  atende as operações dela.
+- **Dois segredos por instância**: o token que a API usa para falar com o
+  gateway e o segredo que o gateway usa para chamar a API de volta. Separados
+  porque vazar um não deve entregar o outro, e o do webhook pode ser trocado sem
+  repareamento. Os dois vão cifrados (AES-256-GCM).
+- **A leitura tolerante do corpo é intencional**: os nomes de campo mudaram
+  entre versões, e o cliente procura o valor em vários caminhos em vez de
+  quebrar. O Swagger da imagem em execução continua sendo o contrato final.
+- **Reparear em outro provedor faz logout no anterior** — sem isso a instância
+  antiga continuaria pareada ao celular do vendedor, recebendo mensagens que a
+  API já não escuta.
 
 ## 2. Compatibilidade com o contrato atual
 
@@ -79,67 +172,79 @@ A Evolution GO deve ser implantada como serviço separado. Ela não deve ser
 incorporada ao processo atual do `whatsapp-worker`, porque já exerce a função de
 gerenciador das conexões e sessões.
 
-A API deve possuir uma abstração de provedor no lado do domínio:
+A abstração de provedor foi implementada em
+`apps/api/src/modules/whatsapp/providers/whatsapp-provider.ts`:
 
 ```ts
 interface WhatsappProvider {
-  conectar(...): Promise<...>;
-  obterPareamento(...): Promise<...>;
-  consultarEstado(...): Promise<...>;
-  desconectar(...): Promise<void>;
-  reconectar(...): Promise<void>;
-  remover(...): Promise<void>;
-  enviarTexto(...): Promise<...>;
-  enviarArquivo(...): Promise<...>;
-  marcarComoLida(...): Promise<void>;
-  reagir(...): Promise<void>;
-  listarContatos(...): Promise<...>;
+  iniciar(ctx, { arquivarMensagens }): Promise<DadosInstancia | null>;
+  pareamento(ctx): Promise<EstadoPareamento>;
+  desconectar(ctx): Promise<void>;      // pausa, preserva credencial
+  sairDoWhatsapp(ctx): Promise<void>;   // logout, exige novo QR
+  removerInstancia(ctx): Promise<void>; // logout + delete
+  enviarTexto(ctx, dados): Promise<{ externoId }>;
+  enviarArquivo(ctx, dados): Promise<{ externoId }>;
+  marcarLida(ctx, dados): Promise<void>;
+  reagir(ctx, dados): Promise<void>;
+  listarContatos(ctx, busca?): Promise<ContatoAparelho[]>;
+  listarConversas(ctx): Promise<ContatoAparelho[]>;
+  obterFotoContato(ctx, jid): Promise<FotoContato | null>;
+  sincronizarAgenda(ctx): Promise<void>;
+  importarHistorico(ctx, dias): Promise<{ encontradas; conversas }>;
 }
 ```
 
-Implementações previstas:
+Implementações:
 
-- `ZapoJsProvider`, adaptando o worker atual;
+- `ZapoProvider`, casca fina sobre o worker atual — o protocolo do worker não
+  mudou nesta migração;
 - `EvolutionGoProvider`, chamando a API da Evolution GO;
-- `MetaCloudApiProvider`, para a API Oficial quando implementada.
+- a API Oficial continua sem implementação.
 
-O provedor seria escolhido pela configuração `transporte` da empresa. As regras
-de atendimento, agendamento, ações comerciais, RBAC e persistência comercial
-continuariam na API e não seriam delegadas à Evolution GO.
+`desconectar`, `sairDoWhatsapp` e `removerInstancia` são três operações
+distintas porque na Evolution GO elas de fato diferem. No zapo as três colapsam
+numa só — a `zapo-js` não separa pausar de deslogar —, e isso é limitação do
+transporte, não escolha de desenho.
+
+O provedor é escolhido pelo `transporte` da **sessão**, com o da empresa como
+padrão no momento do pareamento. As regras de atendimento, agendamento, ações
+comerciais, RBAC e persistência comercial continuam na API e não são delegadas
+à Evolution GO.
 
 ## 4. Dados necessários
 
-### Configuração administrativa
+### Configuração administrativa (`whatsapp_config`)
 
-Uma configuração Evolution GO precisa, no mínimo, de:
-
-| Campo | Finalidade |
+| Coluna | Finalidade |
 |---|---|
-| `baseUrl` | Endereço interno da Evolution GO |
-| `globalApiKey` | Chave administrativa, armazenada cifrada |
-| `webhookUrl` | Callback interno da API |
-| `versaoEsperada` | Versão da imagem homologada |
-| `ativo` | Libera ou bloqueia novas operações |
+| `transporte` | `evolution_go` quando a empresa está neste provedor |
+| `evolutionUrl` | Endereço interno da Evolution GO |
+| `evolutionApiKeyCifrada` | Chave administrativa, AES-256-GCM; nenhuma rota de leitura a devolve |
+| `evolutionVersao` | Versão da imagem homologada, registrada por quem implantou |
+| `ativo` | Libera ou bloqueia novas conexões e o atendimento |
 
-### Sessão do vendedor
+O `webhookUrl` **não** é configurável: ele é derivado de
+`WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL` e carrega empresa, sessão e o segredo da
+instância. Deixá-lo editável abriria caminho para apontar o callback de um
+tenant para outro endereço.
 
-Cada `whatsapp_sessoes` deve associar:
+### Sessão do vendedor (`whatsapp_sessoes`)
 
-- empresa e vendedor;
-- provedor `evolution_go`;
-- ID externo da instância;
-- nome técnico da instância;
-- token exclusivo da instância, cifrado;
-- estado local e último erro;
-- número conectado e datas operacionais.
+| Coluna | Finalidade |
+|---|---|
+| `transporte` | Provedor com que **esta** sessão foi conectada |
+| `instanciaExterna` | Nome técnico determinístico (`rcg-<sessaoId>`) |
+| `instanciaId` | Identificador devolvido pelo gateway |
+| `instanciaTokenCifrado` | Token exclusivo da instância |
+| `webhookSegredoCifrado` | Segredo que autentica o gateway chamando a API |
 
-Qualquer migration que adicione `empresaId` ou crie tabela de negócio deve
-habilitar RLS e criar a policy de isolamento na mesma migration, conforme o
-`AGENTS.md` e o guia de migrations do projeto.
+Ambas as tabelas já tinham RLS por empresa; a migration só acrescenta colunas,
+então não há policy nova a criar — ver
+`apps/api/prisma/migrations/README.md`.
 
 ## 5. Criação e conexão de uma instância
 
-Fluxo proposto para o botão **Conectar vendedor**:
+Fluxo implementado no botão **Conectar** do vendedor:
 
 1. Validar empresa, vendedor, permissão e aceite de privacidade.
 2. Gerar nome técnico determinístico e token aleatório exclusivo.
@@ -150,68 +255,103 @@ Fluxo proposto para o botão **Conectar vendedor**:
 6. Consultar e apresentar QR Code ou código de pareamento.
 7. Processar `PairSuccess`/`Connected` e atualizar a sessão local.
 
-As operações administrativas devem manter significados distintos:
+As operações administrativas mantêm significados distintos:
 
 - **Desconectar:** interrompe temporariamente e preserva credenciais;
 - **Reconectar:** solicita nova conexão usando a sessão persistida;
 - **Sair do WhatsApp:** executa `logout` e exige novo pareamento;
 - **Remover instância:** executa `logout`, quando aplicável, e depois `delete`.
 
+Onde cada uma aparece hoje: "Remover conexão" (`DELETE /whatsapp/sessao` e
+`DELETE /whatsapp/config/sessoes/:id`) faz logout; "Excluir instância"
+(`DELETE /whatsapp/config/sessoes/:id/instancia`) faz logout e delete;
+"Reconectar" chama o mesmo caminho de `iniciar`, que também **re-registra o
+webhook** — uma instância que voltou do restart do gateway sem webhook fica
+conectada e muda, que é o pior estado possível.
+
 ## 6. Eventos e idempotência
 
 Para a primeira versão, webhook é suficiente. RabbitMQ pode ser avaliado se o
 volume ou a garantia de entrega exigir fila persistente.
 
-O receptor na API deve:
+Como o receptor (`WhatsappEvolutionController`) resolve cada ponto:
 
-1. identificar empresa, vendedor e sessão pelo `instanceId`;
-2. rejeitar instâncias desconhecidas ou removidas;
-3. deduplicar mensagens e recibos pelos identificadores externos;
-4. aceitar repetição e eventos fora de ordem;
-5. enfileirar o processamento e responder HTTP rapidamente;
-6. não registrar tokens ou conteúdo sensível em logs;
-7. manter as escritas comerciais dentro de `withTenant(empresaId, ...)`.
+1. **empresa e sessão vêm na URL**, não do `instanceId` do corpo: o webhook
+   chega sem tenant no contexto e as tabelas têm RLS — sem a empresa, a API não
+   localizaria nem a própria sessão para descobrir de quem é o evento;
+2. sessão inexistente, de outro transporte ou com segredo divergente responde
+   **401**, nunca 404: o callback não é lugar de informar a um chamador não
+   autenticado o que existe deste lado;
+3. a deduplicação é a mesma do worker — chave única
+   `(empresaId, conversaId, externoId)` e `upsert`;
+4. recibo atrasado não retrocede status (`lida` não volta para `entregue`), e
+   mensagem repetida não gera nova notificação;
+5. o processamento é **inline**, sem fila: falha de uma mensagem do lote é
+   registrada e não derruba as outras. Se o volume exigir, é aqui que uma fila
+   entra;
+6. o cliente HTTP registra só método e caminho — nunca corpo nem credencial;
+7. todas as escritas passam pelos services existentes, que já usam
+   `withTenant(empresaId, ...)`.
 
 A documentação informa retentativas para webhooks, mas não apresenta uma
-assinatura HMAC claramente definida. A URL deve permanecer na rede interna do
-Docker. Se o serviço for externo, o callback precisará de proteção adicional,
-como mTLS, proxy autenticado ou segredo dedicado, além da validação da instância.
+assinatura HMAC claramente definida. Daí o **segredo por instância**, gerado no
+pareamento, gravado cifrado e comparado em tempo constante. Ele viaja na query
+da URL porque a documentação não garante cabeçalho customizado no webhook — um
+segredo que o gateway não sabe enviar não protege nada; o controller aceita
+também `Authorization: Bearer` para quando a versão suportar.
+
+A URL deve permanecer na rede interna do Docker. Se o serviço for externo, o
+callback precisará de proteção adicional, como mTLS ou proxy autenticado, além
+do segredo por instância.
 
 Não se deve habilitar webhook global e webhook por instância simultaneamente
-sem uma estratégia explícita de deduplicação.
+sem uma estratégia explícita de deduplicação — a plataforma registra sempre o
+webhook por instância.
 
 ## 7. Privacidade e mídia sob demanda
 
-Para preservar a regra atual de só armazenar conteúdo de contatos vinculados a
-clientes, a configuração inicial recomendada é:
+Para preservar a regra de só armazenar conteúdo de contatos vinculados a
+clientes, os dois serviços do stack já sobem com:
 
 ```env
 WEBHOOK_FILES=false
 DATABASE_SAVE_MESSAGES=false
 ```
 
-Fluxo da mídia:
+E a criação de cada instância repete o pedido no corpo (`webhookFiles: false`,
+`saveMessages: false`), porque a configuração do serviço pode mudar sem que o
+módulo saiba.
 
-1. receber o evento e persistir somente os metadados permitidos;
-2. confirmar o vínculo do telefone com um cliente da empresa;
-3. recuperar a mídia por `POST /message/downloadimage`;
-4. validar tamanho e MIME, armazenar no mecanismo privado da aplicação;
-5. eliminar o envelope técnico temporário.
+Fluxo da mídia, como está implementado:
 
-O endpoint de download exige o objeto original da mensagem recebido no evento.
-Esse envelope pode ficar em cache cifrado com TTL curto ou em uma fila privada,
-mas não deve se transformar em armazenamento permanente paralelo.
+1. o webhook entrega **só os metadados** e a API decide se grava;
+2. mensagem de contato sem cliente vinculado não é gravada — e aí a mídia nunca
+   é buscada;
+3. gravada, a resposta traz `arquivoNecessario` e só então
+   `POST /message/download*` é chamado;
+4. o arquivo vai para o diretório privado da aplicação, com nome opaco;
+5. falha no download não derruba o recebimento: a mensagem já está gravada e a
+   conversa precisa aparecer, mesmo sem o anexo.
+
+O endpoint de download exige o objeto original da mensagem, e ele vem **do
+próprio webhook**, na mesma requisição. Não há cache de envelope: guardá-lo
+criaria justamente o armazenamento paralelo que a regra evita.
 
 ## 8. Contatos, conversas e histórico
 
-`GET /user/contacts` pode substituir a leitura transitória da agenda. A API
-continua responsável por normalizar o telefone, cruzá-lo com clientes e limitar
-o resultado à empresa ativa.
+`GET /user/contacts` substitui a leitura transitória da agenda. A API continua
+responsável por normalizar o telefone, cruzá-lo com clientes e limitar o
+resultado à empresa ativa. O filtro de busca é aplicado **na API**: a rota não
+documenta parâmetro de busca, e uma busca ignorada pelo servidor devolveria a
+agenda inteira como se fosse o resultado.
 
-Para conversas, `POST /chat/history-sync` e os eventos `HISTORY_SYNC` não são um
-substituto confirmado para `listarConversas()`. A lista exibida ao vendedor deve
-continuar sendo construída a partir de `whatsapp_conversas` e
-`whatsapp_mensagens`.
+Para conversas do aparelho, `POST /chat/history-sync` e os eventos
+`HISTORY_SYNC` não são um substituto confirmado para `listarConversas()`. O
+provedor tenta as rotas prováveis (`/chat/list`, `/chats`, `/user/chats`) e, se
+nenhuma existir na versão instalada, devolve **lista vazia** — nunca a agenda de
+contatos disfarçada de conversas, que encheria a tela de gente com quem o
+vendedor nunca falou. A lista de atendimento não depende disso: ela vem de
+`whatsapp_conversas` e `whatsapp_mensagens`, como sempre.
 
 Não é recomendável habilitar `DATABASE_SAVE_MESSAGES` apenas para montar essa
 lista, pois isso duplicaria conteúdo fora das regras comerciais e de retenção da
@@ -219,15 +359,27 @@ aplicação.
 
 ## 9. Segurança
 
-- Nunca expor `GLOBAL_API_KEY` ou token de instância ao navegador.
-- Cifrar credenciais armazenadas pela aplicação.
-- Não publicar a porta da Evolution GO diretamente na Internet.
-- Fixar timeouts, limites de resposta e tamanho de upload no cliente HTTP.
-- Restringir `baseUrl` a destinos administrativos permitidos para evitar SSRF.
-- Remover ou mascarar segredos, QR Codes e objetos de mensagem dos logs.
-- Usar um token diferente para cada instância.
-- Manter os bancos técnicos da Evolution GO separados das tabelas comerciais.
-- Fixar uma versão Docker; não utilizar `latest` em produção.
+O que já está garantido no código:
+
+- a `GLOBAL_API_KEY` e o token de instância **nunca** vão para o navegador: a
+  rota de leitura da configuração devolve só `evolutionApiKeyDefinida` e os
+  últimos 4 caracteres;
+- credenciais gravadas vão cifradas (AES-256-GCM, `WHATSAPP_CRYPTO_KEY`);
+- timeout (`WHATSAPP_EVOLUTION_TIMEOUT_MS`, 15 s) e teto de resposta
+  (`WHATSAPP_EVOLUTION_MAX_RESPOSTA_BYTES`, 32 MB) no cliente HTTP — o teto
+  existe porque uma das rotas devolve mídia em Base64;
+- o log do cliente registra só método, caminho e status;
+- token diferente por instância, e um segundo segredo, também por instância,
+  para o webhook;
+- foto de contato só é aproveitada quando vem embutida: buscar uma URL
+  arbitrária devolvida por um serviço é o desenho que vira SSRF, e foto de
+  contato não vale esse risco.
+
+O que depende da implantação, e por isso está no runbook:
+
+- não publicar a porta da Evolution GO na Internet (sem labels do Traefik);
+- manter o banco técnico do gateway separado das tabelas comerciais;
+- fixar uma versão Docker; não utilizar `latest` em produção.
 
 ## 10. Pontos que exigem prova de conceito
 
@@ -259,23 +411,34 @@ nomes de endpoint, headers e payloads diferem entre páginas da documentação.
 
 ## 11. Estratégia de adoção
 
-1. Fixar uma versão Docker e registrar seu checksum.
-2. Subir Evolution GO e PostgreSQL técnico somente na rede interna.
-3. Executar a prova de conceito e congelar exemplos reais de payloads.
-4. Implementar `EvolutionGoProvider` e o receptor idempotente de eventos.
-5. Adicionar `evolution_go` à configuração, às migrations e à tela por abas.
+Feito (2026-08-27):
+
+1. ~~Implementar `EvolutionGoProvider` e o receptor idempotente de eventos.~~
+2. ~~Adicionar `evolution_go` à configuração, às migrations e à tela por abas.~~
+3. ~~Subir Evolution GO e PostgreSQL técnico somente na rede interna~~ — os
+   serviços estão no `docker/stack.rcgcba.prod.yml` e no compose de dev.
+
+Falta, e é o que separa isto de um transporte utilizável em produção:
+
+4. Fixar a versão Docker em produção. A imagem é `evoapicloud/evolution-go`
+   (Docker Hub) e a última estável verificada em 2026-08-27 é a **0.7.2**;
+   `EVOLUTION_GO_IMAGE` não tem valor padrão no stack de propósito.
+5. Executar a prova de conceito da seção 10 e congelar exemplos reais de
+   payloads — ajustando aqui o que divergir.
 6. Habilitar uma empresa e um vendedor piloto.
-7. Manter `zapo-js` disponível como fallback durante a homologação.
+7. Manter `zapo-js` como fallback durante a homologação: voltar é trocar o
+   transporte na tela e reparear.
 8. Comparar estabilidade, latência, reconexão e completude funcional.
 9. Somente depois decidir se o worker `zapo-js` poderá ser descontinuado.
 
 ## 12. Conclusão
 
 A Evolution GO cobre a maior parte do atendimento atual e simplifica a gestão
-externa de instâncias, QR Codes e credenciais. Ela não deve ser considerada uma
-substituição direta até que respostas citadas, reações recebidas, mídia tardia,
-histórico e recuperação de sessões sejam comprovados na versão homologada.
+externa de instâncias, QR Codes e credenciais. Ela **ainda não** deve ser
+considerada substituta do `zapo-js`: o código existe, mas respostas citadas,
+reações recebidas, mídia tardia, histórico e recuperação de sessões não foram
+observados contra um gateway em execução — foram implementados a partir de uma
+documentação que diverge entre versões.
 
-A adoção recomendada é incremental, por provedor e por vendedor, preservando as
-regras comerciais e de privacidade na API e mantendo `zapo-js` como fallback no
-período de validação.
+A adoção continua sendo incremental, preservando as regras comerciais e de
+privacidade na API e mantendo `zapo-js` disponível no período de validação.

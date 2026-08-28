@@ -1,13 +1,12 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
-import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappSessaoService } from './whatsapp-sessao.service';
-import { WhatsappWorkerClient } from './whatsapp-worker.client';
+import { WhatsappProviderService } from './providers/whatsapp-provider.service';
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
-/** O que o worker devolve, antes de cruzar com o cadastro. */
+/** O que o provedor devolve, antes de cruzar com o cadastro. */
 type ContatoDoAparelho = {
   jid: string;
   nome: string | null;
@@ -38,9 +37,8 @@ type ContatoDoAparelho = {
 export class WhatsappAgendaService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly config: WhatsappConfigService,
     private readonly sessoes: WhatsappSessaoService,
-    private readonly worker: WhatsappWorkerClient,
+    private readonly provedores: WhatsappProviderService,
   ) {}
 
   /** Sessão conectada do usuário — sem ela não há agenda a consultar. */
@@ -57,12 +55,9 @@ export class WhatsappAgendaService {
   /** Contatos da agenda do celular, já cruzados com a carteira do vendedor. */
   async contatos(empresaId: string, user: AuthenticatedUser, busca?: string) {
     const sessao = await this.sessaoConectada(empresaId, user);
-    const config = await this.config.obter(empresaId);
 
-    const doAparelho = await this.worker.chamar<ContatoDoAparelho[]>(
-      config.workerUrl,
-      `/sessoes/${sessao.id}/contatos${busca ? `?busca=${encodeURIComponent(busca)}` : ''}`,
-    );
+    const doAparelho: ContatoDoAparelho[] =
+      await this.provedores.listarContatos(empresaId, sessao.id, busca);
 
     return this.cruzarComCadastro(empresaId, user, sessao.id, doAparelho);
   }
@@ -70,12 +65,12 @@ export class WhatsappAgendaService {
   /** Conversas que já existem no celular, mesmo sem mensagem nova por aqui. */
   async conversasDoAparelho(empresaId: string, user: AuthenticatedUser) {
     const sessao = await this.sessaoConectada(empresaId, user);
-    const config = await this.config.obter(empresaId);
 
-    const doAparelho = await this.worker.chamar<ContatoDoAparelho[]>(
-      config.workerUrl,
-      `/sessoes/${sessao.id}/conversas`,
-    );
+    // Nem todo provedor expõe esta lista: a Evolution GO devolve vazio quando
+    // a versão instalada não tem a rota. A lista de atendimento não depende
+    // disto — ela vem de `whatsapp_conversas`, como sempre.
+    const doAparelho: ContatoDoAparelho[] =
+      await this.provedores.listarConversas(empresaId, sessao.id);
 
     return this.cruzarComCadastro(empresaId, user, sessao.id, doAparelho);
   }
@@ -90,12 +85,7 @@ export class WhatsappAgendaService {
    */
   async sincronizar(empresaId: string, user: AuthenticatedUser) {
     const sessao = await this.sessaoConectada(empresaId, user);
-    const config = await this.config.obter(empresaId);
-    await this.worker.chamar(
-      config.workerUrl,
-      `/sessoes/${sessao.id}/agenda/sincronizar`,
-      { metodo: 'POST' },
-    );
+    await this.provedores.sincronizarAgenda(empresaId, sessao.id);
     return { ok: true };
   }
 

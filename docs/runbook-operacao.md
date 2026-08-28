@@ -319,6 +319,87 @@ primeira vez, confirmar aqui e trocar a marca `[a confirmar na VPS]`.
 com o aceite registrado. `replicas: 1` no worker **é requisito, não
 capacidade** — duas réplicas com a mesma sessão fazem o WhatsApp derrubar uma.
 
+## WhatsApp com Evolution GO (transporte alternativo) **[a confirmar na VPS]**
+
+Alternativa ao `whatsapp-worker`: um gateway de terceiro que mantém as sessões
+no banco dele. A empresa usa **um transporte de cada vez** — a escolha está em
+Administração → WhatsApp, e trocá-la exige que cada vendedor pareie de novo.
+
+Nada disto foi executado na VPS ainda. Ao rodar pela primeira vez, confirme
+cada passo aqui e troque a marca `[a confirmar na VPS]`.
+
+**1. Fixar a tag da imagem.** O stack lê `${EVOLUTION_GO_IMAGE}` e não tem valor
+padrão de propósito: `latest` troca o contrato do webhook sem aviso, e nomes de
+rota já divergiram entre versões da Evolution GO.
+
+A imagem é `evoapicloud/evolution-go`, no Docker Hub. Última estável verificada
+em 2026-08-27: **0.7.2** (publicada em 2026-07-03). Há tags `-beta` publicadas
+junto das estáveis — não use em produção. Registre a mesma versão no campo
+"Versão homologada" da tela: é por ela que se investiga evento que parou de
+chegar.
+
+```bash
+docker manifest inspect evoapicloud/evolution-go:0.7.2   # confirma que a tag existe
+```
+
+**1.1. Ativar a licença — pré-requisito, não detalhe.** Verificado em
+2026-08-27: a 0.7.2 responde **503 `LICENSE_REQUIRED`** em toda a API até a
+licença ser ativada, mesmo com a `GLOBAL_API_KEY` correta. Só `GET /server/ok`,
+`/license/*` e `/swagger/*` funcionam sem ela. A ativação é pelo manager do
+próprio serviço (`/manager/login`), que registra em
+`license.evolutionfoundation.com.br` — ou seja, **depende de acordo com o
+fornecedor**. Sem isso, não adianta seguir para os passos abaixo.
+
+```bash
+curl http://rcgcba-evolution-go:8080/license/status   # {"status":"inactive"} = bloqueado
+```
+
+**2. Criar o banco técnico.** Separado do `plataforma_comercial`: o gateway roda
+as próprias migrations (precisa de DDL) e guarda credenciais de sessão. Com a
+role dona:
+
+```bash
+docker exec -e PGPASSWORD="SENHA_DA_ROLE_PLATAFORMA" <container-postgres> \
+  psql -U plataforma -d postgres \
+  -c "CREATE ROLE evolution WITH LOGIN PASSWORD 'SENHA_FORTE_AQUI';" \
+  -c "CREATE DATABASE evolution OWNER evolution;"
+```
+
+A mesma senha vai na `EVOLUTION_DATABASE_URL` do passo seguinte.
+
+**3. Definir as variáveis** no Portainer (Stacks → rcgcba → Env), conforme
+`docker/.env.prod.example`:
+
+- `EVOLUTION_GO_IMAGE` — a tag fixa do passo 1;
+- `EVOLUTION_DATABASE_URL` — o banco do passo 2. O stack a injeta em
+  `POSTGRES_DB`, `POSTGRES_AUTH_DB` e `POSTGRES_USERS_DB`: **não existe**
+  `DATABASE_URL` neste serviço, e sem as duas últimas ele sobe e morre em panic
+  no auto-migration (verificado em 2026-08-27);
+- `EVOLUTION_GLOBAL_API_KEY` — chave administrativa do gateway;
+- `WHATSAPP_CRYPTO_KEY` — 32 bytes em base64, **na API**, para cifrar a chave
+  acima, o token de cada instância e o segredo do webhook. Sem ela, gravar a
+  chave pela tela é recusado.
+
+**4. Gravar a chave pela tela.** Administração → WhatsApp → Evolution GO:
+endereço interno (`http://rcgcba-evolution-go:8080`), a **mesma**
+`EVOLUTION_GLOBAL_API_KEY` do passo 3 e a versão homologada. Salvar nessa aba é
+o que passa a empresa para o transporte `evolution_go`.
+
+**5. Parear.** Cada vendedor reconecta pela tela de Atendimento. A instância é
+criada no gateway no primeiro "Conectar", com webhook e token próprios — não há
+passo manual de criação de instância.
+
+**Conferência rápida**, de dentro da rede Docker:
+
+```bash
+curl -H "apikey: $EVOLUTION_GLOBAL_API_KEY" \
+  http://rcgcba-evolution-go:8080/instance/status?instanceId=rcg-<sessaoId>
+```
+
+**O que não pode acontecer:** publicar o gateway no Traefik. Quem o alcança
+fala pelo WhatsApp dos vendedores, e o webhook trafega só na rede interna.
+`replicas: 1` também aqui é requisito.
+
 ## Armadilha: cache do Turbopack corrompido derruba o web em dev **[verificado em 2026-08-11]**
 
 Sintoma: **todas** as rotas do web passam a responder **404** em dev — inclusive `/` e

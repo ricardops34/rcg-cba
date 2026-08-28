@@ -19,7 +19,7 @@ import {
 } from '../../common/prisma/prisma.service';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappSessaoService } from './whatsapp-sessao.service';
-import { WhatsappWorkerClient } from './whatsapp-worker.client';
+import { WhatsappProviderService } from './providers/whatsapp-provider.service';
 import {
   marcarNotificacoesDaOrigem,
   registrarNotificacao,
@@ -64,7 +64,7 @@ export class WhatsappConversasService {
     private readonly prisma: PrismaService,
     private readonly config: WhatsappConfigService,
     private readonly sessoes: WhatsappSessaoService,
-    private readonly worker: WhatsappWorkerClient,
+    private readonly provedores: WhatsappProviderService,
   ) {}
 
   /** Filtro de sessão a partir do escopo de leitura. `[]` = não vê nada. */
@@ -664,8 +664,6 @@ export class WhatsappConversasService {
     conversaId: string,
     input: WhatsappEnviar,
   ) {
-    const config = await this.config.obter(empresaId);
-
     return this.prisma.withTenant(empresaId, async (tx) => {
       const conversa = await this.conversaNoEscopo(
         tx,
@@ -678,17 +676,15 @@ export class WhatsappConversasService {
       // o dono da sessão.
       await this.garantirDono(tx, empresaId, user, conversa);
 
-      const enviada = await this.worker.chamar<{ externoId: string }>(
-        config.workerUrl,
-        `/sessoes/${conversa.sessaoId}/mensagens`,
+      const enviada = await this.provedores.enviarTexto(
+        empresaId,
+        conversa.sessaoId,
         {
-          metodo: 'POST',
-          corpo: {
-            jid: conversa.contato.jid,
-            texto: mensagemComAutor(user.nome, input.texto),
-            respondeuA: input.respondeuA ?? null,
-          },
+          jid: conversa.contato.jid,
+          texto: mensagemComAutor(user.nome, input.texto),
+          respondeuA: input.respondeuA ?? null,
         },
+        tx,
       );
 
       const mensagem = await tx.whatsappMensagem.create({
@@ -770,8 +766,6 @@ export class WhatsappConversasService {
     },
     input: { legenda?: string; ptt?: boolean },
   ) {
-    const config = await this.config.obter(empresaId);
-
     return this.prisma.withTenant(empresaId, async (tx) => {
       const conversa = await this.conversaNoEscopo(
         tx,
@@ -782,13 +776,12 @@ export class WhatsappConversasService {
       await this.garantirDono(tx, empresaId, user, conversa);
 
       const tipo = this.tipoPorMime(arquivo.mime);
-      const enviada = await this.worker.chamar<{ externoId: string }>(
-        config.workerUrl,
-        `/sessoes/${conversa.sessaoId}/arquivos`,
+      const enviada = await this.provedores.enviarArquivo(
+        empresaId,
+        conversa.sessaoId,
         {
-          metodo: 'POST',
-          corpo: {
-            jid: conversa.contato.jid,
+          jid: conversa.contato.jid,
+          arquivo: {
             tipo,
             nome: arquivo.nome,
             mime: arquivo.mime,
@@ -799,6 +792,7 @@ export class WhatsappConversasService {
             conteudoBase64: arquivo.conteudo.toString('base64'),
           },
         },
+        tx,
       );
 
       let emDisco = arquivo.arquivoEmDisco;
@@ -849,8 +843,6 @@ export class WhatsappConversasService {
     mensagemId: string,
     emoji: string,
   ) {
-    const config = await this.config.obter(empresaId);
-
     return this.prisma.withTenant(empresaId, async (tx) => {
       const conversa = await this.conversaNoEscopo(
         tx,
@@ -866,20 +858,18 @@ export class WhatsappConversasService {
       });
       if (!mensagem) throw new NotFoundException('Mensagem não encontrada');
 
-      await this.worker.chamar(
-        config.workerUrl,
-        `/sessoes/${conversa.sessaoId}/reacoes`,
+      await this.provedores.reagir(
+        empresaId,
+        conversa.sessaoId,
         {
-          metodo: 'POST',
-          corpo: {
-            jid: conversa.contato.jid,
-            alvoExternoId: mensagem.externoId,
-            // O provedor precisa saber se a mensagem reagida saiu daqui para
-            // localizá-la — é o `fromMe` da chave dela.
-            alvoNosso: mensagem.direcao === 'saida',
-            emoji,
-          },
+          jid: conversa.contato.jid,
+          alvoExternoId: mensagem.externoId,
+          // O provedor precisa saber se a mensagem reagida saiu daqui para
+          // localizá-la — é o `fromMe` da chave dela.
+          alvoNosso: mensagem.direcao === 'saida',
+          emoji,
         },
+        tx,
       );
 
       if (!emoji) {
@@ -1151,11 +1141,14 @@ export class WhatsappConversasService {
 
       let fotoUrl = conversa.contato.fotoUrl;
       if (input.clienteId) {
-        const config = await this.config.obter(empresaId);
-        const foto = await this.worker
-          .chamar<{ conteudoBase64: string; mime: string } | null>(
-            config.workerUrl,
-            `/sessoes/${conversa.sessaoId}/contatos/foto?jid=${encodeURIComponent(conversa.contato.jid)}`,
+        // Cosmético e melhor-esforço: provedor que não expõe a foto (ou não
+        // responde) não pode impedir o vínculo, que é o que a tela pediu.
+        const foto = await this.provedores
+          .obterFotoContato(
+            empresaId,
+            conversa.sessaoId,
+            conversa.contato.jid,
+            tx,
           )
           .catch(() => null);
         if (foto?.conteudoBase64 && foto.mime.startsWith('image/')) {
@@ -1409,8 +1402,6 @@ export class WhatsappConversasService {
     user: AuthenticatedUser,
     conversaId: string,
   ) {
-    const config = await this.config.obter(empresaId);
-
     return this.prisma.withTenant(empresaId, async (tx) => {
       const conversa = await this.conversaNoEscopo(
         tx,
@@ -1428,11 +1419,13 @@ export class WhatsappConversasService {
 
       if (ultima && conversa.sessao.status === 'conectada') {
         // Cortesia com o cliente, não pode derrubar a abertura da conversa.
-        await this.worker
-          .chamar(config.workerUrl, `/sessoes/${conversa.sessaoId}/lida`, {
-            metodo: 'POST',
-            corpo: { jid: conversa.contato.jid, externoId: ultima.externoId },
-          })
+        await this.provedores
+          .marcarLida(
+            empresaId,
+            conversa.sessaoId,
+            { jid: conversa.contato.jid, externoId: ultima.externoId },
+            tx,
+          )
           .catch(() => undefined);
       }
 
@@ -1745,6 +1738,13 @@ export class WhatsappConversasService {
    * Só as `conectada`: quem estava em `pareando` não chegou a ler o QR, e
    * reabrir essa sessão faria o worker manter um socket aberto gerando QR que
    * ninguém está olhando.
+   *
+   * E **só as do transporte `zapo`**: quem chama esta rota é o worker, e ele
+   * só sabe abrir as sessões dele. Uma sessão da Evolution GO devolvida aqui
+   * faria o worker tentar parear pela `zapo-js` um número que já está de pé no
+   * gateway — dois clientes na mesma conta, que é justamente o que derruba a
+   * sessão. As da Evolution são restauradas pelo próprio gateway, que persiste
+   * as credenciais no banco dele.
    */
   async sessoesParaRestaurar() {
     const empresas = await this.prisma.empresa.findMany({
@@ -1762,7 +1762,7 @@ export class WhatsappConversasService {
         empresa.id,
         async (tx) => ({
           sessoes: await tx.whatsappSessao.findMany({
-            where: { status: 'conectada' },
+            where: { status: 'conectada', transporte: 'zapo' },
             select: { id: true },
           }),
           config: await tx.whatsappConfig.findUnique({

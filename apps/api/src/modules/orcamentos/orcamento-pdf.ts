@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { LOGOS_DIR } from '../../common/uploads/uploads.config';
+import { LOGOS_DIR, PRODUTOS_DIR } from '../../common/uploads/uploads.config';
 
 /**
  * Proposta comercial em PDF, montada no servidor.
@@ -115,7 +115,13 @@ export interface OrcamentoPdfDados {
   };
   condicaoPagamento: { descricao: string } | null;
   itens: {
-    produto: { codigoErp: string; descricao: string; unidade: string | null };
+    produto: {
+      codigoErp: string;
+      descricao: string;
+      unidade: string | null;
+      fotos: { url: string; principal: boolean }[];
+      exibirFotoOrcamento: boolean;
+    };
     quantidade: number | null;
     vlrUnitario: number | null;
     vlrTotal: number | null;
@@ -186,6 +192,31 @@ export async function montarOrcamentoPdf(
   const { empresa, cliente } = dados;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const larguraPagina = doc.internal.pageSize.getWidth();
+  const fotos = await Promise.all(
+    dados.itens.map(async (item) => {
+      const fotoPrincipal = item.produto.fotos.find((foto) => foto.principal);
+      if (!item.produto.exibirFotoOrcamento || !fotoPrincipal) return null;
+      try {
+        const arquivo = basename(fotoPrincipal.url);
+        const ext = arquivo.slice(arquivo.lastIndexOf('.')).toLowerCase();
+        const formato =
+          ext === '.png'
+            ? 'PNG'
+            : ext === '.jpg' || ext === '.jpeg'
+              ? 'JPEG'
+              : null;
+        if (!formato) return null;
+        const conteudo = await readFile(join(PRODUTOS_DIR, arquivo));
+        return {
+          dados: `data:${formato === 'PNG' ? 'image/png' : 'image/jpeg'};base64,${conteudo.toString('base64')}`,
+          formato,
+        } as const;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  const incluirFotos = fotos.some(Boolean);
   let y = MARGEM;
 
   // --- Cabeçalho: logo + cadastro da empresa à esquerda, identificação do
@@ -317,8 +348,19 @@ export async function montarOrcamentoPdf(
     margin: { left: MARGEM, right: MARGEM },
     // vlrUnitario já é o preço praticado (líquido) — o desconto sobre a tabela
     // de preço é só um derivado interno, que não vai pra proposta do cliente.
-    head: [['Código', 'Produto', 'Un.', 'Qtd.', 'Preço unit.', 'Total']],
+    head: [
+      [
+        ...(incluirFotos ? ['Foto'] : []),
+        'Código',
+        'Produto',
+        'Un.',
+        'Qtd.',
+        'Preço unit.',
+        'Total',
+      ],
+    ],
     body: dados.itens.map((i) => [
+      ...(incluirFotos ? [''] : []),
       i.produto.codigoErp,
       i.produto.descricao,
       i.produto.unidade ?? '—',
@@ -326,17 +368,47 @@ export async function montarOrcamentoPdf(
       moeda(i.vlrUnitario),
       moeda(i.vlrTotal),
     ]),
-    styles: { fontSize: 8, cellPadding: 1.6 },
+    styles: {
+      fontSize: 8,
+      cellPadding: 1.6,
+      ...(incluirFotos ? { minCellHeight: 14 } : {}),
+    },
     headStyles: {
       fillColor: [241, 245, 249],
       textColor: 20,
       fontStyle: 'bold',
     },
-    columnStyles: {
-      2: { halign: 'center' },
-      3: { halign: 'right' },
-      4: { halign: 'right' },
-      5: { halign: 'right' },
+    columnStyles: incluirFotos
+      ? {
+          0: { cellWidth: 16 },
+          3: { halign: 'center' },
+          4: { halign: 'right' },
+          5: { halign: 'right' },
+          6: { halign: 'right' },
+        }
+      : {
+          2: { halign: 'center' },
+          3: { halign: 'right' },
+          4: { halign: 'right' },
+          5: { halign: 'right' },
+        },
+    didDrawCell: (celula) => {
+      if (
+        !incluirFotos ||
+        celula.section !== 'body' ||
+        celula.column.index !== 0
+      )
+        return;
+      const foto = fotos[celula.row.index];
+      if (foto)
+        doc.addImage(
+          foto.dados,
+          foto.formato,
+          celula.cell.x + 1,
+          celula.cell.y + 1,
+          12,
+          12,
+        );
     },
   });
   // O autoTable grava onde a tabela terminou — daí seguimos com total/observação.

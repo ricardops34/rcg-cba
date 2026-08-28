@@ -8,6 +8,11 @@ import { WhatsappAgendaService } from './whatsapp-agenda.service';
 import { WhatsappAcoesService } from './whatsapp-acoes.service';
 import { WhatsappAgendamentoService } from './whatsapp-agendamento.service';
 import { WhatsappWorkerClient } from './whatsapp-worker.client';
+import { WhatsappEvolutionController } from './whatsapp-evolution.controller';
+import { WhatsappProviderService } from './providers/whatsapp-provider.service';
+import { ZapoProvider } from './providers/zapo.provider';
+import { EvolutionGoProvider } from './providers/evolution-go.provider';
+import { EvolutionGoClient } from './providers/evolution-go.client';
 import { TitulosReceberModule } from '../titulos-receber/titulos-receber.module';
 import { NotasSaidaModule } from '../notas-saida/notas-saida.module';
 import { AtividadesModule } from '../atividades/atividades.module';
@@ -23,7 +28,14 @@ import { OrcamentosModule } from '../orcamentos/orcamentos.module';
     AtividadesModule,
     OrcamentosModule,
   ],
-  controllers: [WhatsappController, WhatsappInternoController],
+  controllers: [
+    WhatsappController,
+    WhatsappInternoController,
+    // Callback da Evolution GO. Fica separado do interno do worker porque a
+    // autenticação é outra: aqui o segredo é por instância, não um token único
+    // compartilhado por todo o serviço.
+    WhatsappEvolutionController,
+  ],
   providers: [
     WhatsappConfigService,
     WhatsappSessaoService,
@@ -31,7 +43,13 @@ import { OrcamentosModule } from '../orcamentos/orcamentos.module';
     WhatsappAgendaService,
     WhatsappAcoesService,
     WhatsappAgendamentoService,
+    // Transporte: o roteador e as duas implementações. Nada fora de
+    // `providers/` conhece worker ou gateway — ver `whatsapp-provider.ts`.
+    WhatsappProviderService,
+    ZapoProvider,
+    EvolutionGoProvider,
     WhatsappWorkerClient,
+    EvolutionGoClient,
   ],
   // Exportado para o feed de notificações somar as não lidas.
   exports: [

@@ -16,17 +16,57 @@ import type { Request } from 'express';
 export const UPLOADS_DIR = join(process.cwd(), 'uploads');
 
 export const LOGOS_DIR = join(UPLOADS_DIR, 'logos');
+export const PRODUTOS_DIR = join(UPLOADS_DIR, 'produtos');
 
 /** Tamanho máximo aceito para o logo de uma empresa (2 MB). */
 export const LOGO_MAX_BYTES = 2 * 1024 * 1024;
 
 /** Tipos de imagem aceitos no upload de logo. */
-export const LOGO_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+export const LOGO_MIME_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/svg+xml',
+];
 
 /** Caminho público (servido em /uploads) de um arquivo salvo em LOGOS_DIR. */
 export function logoPublicPath(filename: string) {
   return `/uploads/logos/${filename}`;
 }
+
+export function produtoFotoPublicPath(filename: string) {
+  return `/uploads/produtos/${filename}`;
+}
+
+export const produtoFotoUploadOptions = {
+  storage: diskStorage({
+    destination: (_req, _file, cb) => {
+      if (!existsSync(PRODUTOS_DIR))
+        mkdirSync(PRODUTOS_DIR, { recursive: true });
+      cb(null, PRODUTOS_DIR);
+    },
+    filename: (_req: Request, file, cb) => {
+      cb(
+        null,
+        `${randomUUID()}${file.mimetype === 'image/png' ? '.png' : '.jpg'}`,
+      );
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (
+    _req: Request,
+    file: Express.Multer.File,
+    cb: (error: Error | null, acceptFile: boolean) => void,
+  ) => {
+    if (!['image/png', 'image/jpeg'].includes(file.mimetype)) {
+      return cb(
+        new BadRequestException('Formato inválido. Envie PNG ou JPEG.'),
+        false,
+      );
+    }
+    cb(null, true);
+  },
+};
 
 /** Mídia de conversa de WhatsApp (enviada e recebida). */
 export const WHATSAPP_DIR = join(UPLOADS_DIR, 'whatsapp');
@@ -64,9 +104,11 @@ export function extensaoPorMime(mime: string): string {
     'audio/webm': '.webm',
     'application/pdf': '.pdf',
     'application/msword': '.doc',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+      '.docx',
     'application/vnd.ms-excel': '.xls',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+      '.xlsx',
     'text/plain': '.txt',
     'text/csv': '.csv',
     'application/zip': '.zip',
@@ -85,7 +127,8 @@ export function extensaoPorMime(mime: string): string {
 export const whatsappUploadOptions = {
   storage: diskStorage({
     destination: (_req, _file, cb) => {
-      if (!existsSync(WHATSAPP_DIR)) mkdirSync(WHATSAPP_DIR, { recursive: true });
+      if (!existsSync(WHATSAPP_DIR))
+        mkdirSync(WHATSAPP_DIR, { recursive: true });
       cb(null, WHATSAPP_DIR);
     },
     filename: (_req: Request, file, cb) => {
@@ -133,7 +176,9 @@ export const logoUploadOptions = {
   ) => {
     if (!LOGO_MIME_TYPES.includes(file.mimetype)) {
       return cb(
-        new BadRequestException('Formato inválido. Envie PNG, JPEG, WEBP ou SVG.'),
+        new BadRequestException(
+          'Formato inválido. Envie PNG, JPEG, WEBP ou SVG.',
+        ),
         false,
       );
     }

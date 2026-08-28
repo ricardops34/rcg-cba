@@ -27,10 +27,13 @@ RUN pnpm --filter @plataforma/contracts build \
 
 FROM base AS runtime
 ENV NODE_ENV=production
-RUN pnpm install --frozen-lockfile --prod --filter @plataforma/api...
+COPY apps/api/prisma apps/api/prisma
+RUN pnpm install --frozen-lockfile --prod --filter @plataforma/api... \
+  && pnpm --filter @plataforma/api exec prisma generate \
+  && pnpm store prune \
+  && rm -rf /root/.local/share/pnpm/store /root/.cache /root/.npm
 COPY --from=build /app/packages/contracts/dist packages/contracts/dist
 COPY --from=build /app/apps/api/dist apps/api/dist
-COPY apps/api/prisma apps/api/prisma
 # Scripts de seed/importação (apps/api/prisma/*.ts) já compilados pra JS puro
 # — dá pra rodar com "node prisma/dist/seed-base.js" num serviço avulso na
 # mesma stack, sem precisar de imagem/stack separada. Os import-*.js também
@@ -38,9 +41,6 @@ COPY apps/api/prisma apps/api/prisma
 # DATABASE_URL com a role DONA (não plataforma_app): os scripts rodam fora do
 # Nest e setam o tenant na mão, então precisam contornar a RLS.
 COPY --from=build /app/apps/api/prisma/dist apps/api/prisma/dist
-# Gera o Prisma Client dentro do node_modules de produção.
-RUN pnpm --filter @plataforma/api exec prisma generate
-
 WORKDIR /app/apps/api
 EXPOSE 3001
 CMD ["sh", "-c", "pnpm exec prisma migrate deploy && node dist/main.js"]

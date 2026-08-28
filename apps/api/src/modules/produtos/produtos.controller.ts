@@ -1,5 +1,6 @@
 import {
   Body,
+  BadRequestException,
   Controller,
   Delete,
   Get,
@@ -8,10 +9,25 @@ import {
   Post,
   Query,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { produtoFotoUploadOptions } from '../../common/uploads/uploads.config';
 import { ProdutosService } from './produtos.service';
-import { ProdutoCreateDto, ProdutoQueryDto, ProdutoUpdateDto } from './dto/produto.dto';
+import {
+  ProdutoCreateDto,
+  ProdutoQueryDto,
+  ProdutoUpdateDto,
+} from './dto/produto.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -36,7 +52,10 @@ export class ProdutosController {
   @ApiPaginationQuery()
   @RequirePermission('produtos', 'visualizar')
   @Get()
-  findAll(@Query() query: ProdutoQueryDto, @CurrentUser() user: AuthenticatedUser) {
+  findAll(
+    @Query() query: ProdutoQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.service.findAll(user.empresaAtivaId, query);
   }
 
@@ -55,14 +74,23 @@ export class ProdutosController {
     return this.service.findOne(user.empresaAtivaId, id);
   }
 
-  @ApiOperation({ summary: 'Cadastrar produto', description: 'Requer produtos.cadastrar.' })
+  @ApiOperation({
+    summary: 'Cadastrar produto',
+    description: 'Requer produtos.cadastrar.',
+  })
   @RequirePermission('produtos', 'cadastrar')
   @Post()
-  create(@Body() dto: ProdutoCreateDto, @CurrentUser() user: AuthenticatedUser) {
+  create(
+    @Body() dto: ProdutoCreateDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.service.create(user.empresaAtivaId, user, dto);
   }
 
-  @ApiOperation({ summary: 'Editar produto', description: 'Requer produtos.editar.' })
+  @ApiOperation({
+    summary: 'Editar produto',
+    description: 'Requer produtos.editar.',
+  })
   @RequirePermission('produtos', 'editar')
   @Patch(':id')
   update(
@@ -73,7 +101,64 @@ export class ProdutosController {
     return this.service.update(user.empresaAtivaId, user, id, dto);
   }
 
-  @ApiOperation({ summary: 'Excluir produto (soft delete)', description: 'Requer produtos.excluir.' })
+  @ApiOperation({ summary: 'Enviar foto do produto' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Foto gravada no produto' })
+  @RequirePermission('produtos', 'editar')
+  @Post(':id/foto')
+  @UseInterceptors(FileInterceptor('file', produtoFotoUploadOptions))
+  uploadFoto(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    if (!file) throw new BadRequestException('Nenhum arquivo enviado');
+    return this.service.setFoto(
+      user.empresaAtivaId,
+      user,
+      id,
+      file.filename,
+      file.originalname,
+    );
+  }
+
+  @ApiOperation({ summary: 'Definir a foto principal do produto' })
+  @RequirePermission('produtos', 'editar')
+  @Patch(':id/fotos/:fotoId/principal')
+  definirFotoPrincipal(
+    @Param('id') id: string,
+    @Param('fotoId') fotoId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.definirFotoPrincipal(
+      user.empresaAtivaId,
+      user,
+      id,
+      fotoId,
+    );
+  }
+
+  @ApiOperation({ summary: 'Remover uma foto do produto' })
+  @RequirePermission('produtos', 'editar')
+  @Delete(':id/fotos/:fotoId')
+  removerFoto(
+    @Param('id') id: string,
+    @Param('fotoId') fotoId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.removerFoto(user.empresaAtivaId, user, id, fotoId);
+  }
+
+  @ApiOperation({
+    summary: 'Excluir produto (soft delete)',
+    description: 'Requer produtos.excluir.',
+  })
   @RequirePermission('produtos', 'excluir')
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {

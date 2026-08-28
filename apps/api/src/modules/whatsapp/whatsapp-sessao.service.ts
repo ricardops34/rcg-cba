@@ -6,7 +6,9 @@ import {
 } from '@nestjs/common';
 import { PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
 import { WhatsappConfigService } from './whatsapp-config.service';
-import { WhatsappWorkerClient } from './whatsapp-worker.client';
+import { WhatsappProviderService } from './providers/whatsapp-provider.service';
+import { cifrarSegredo } from './whatsapp-cripto';
+import type { DadosInstancia } from './providers/whatsapp-provider';
 import { escopoLeituraWhatsapp } from './escopo-whatsapp';
 import {
   WHATSAPP_ACEITE_VERSAO,
@@ -38,8 +40,42 @@ export class WhatsappSessaoService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: WhatsappConfigService,
-    private readonly worker: WhatsappWorkerClient,
+    private readonly provedores: WhatsappProviderService,
   ) {}
+
+  /**
+   * Guarda os dados da instância que o provedor acabou de criar.
+   *
+   * Só a Evolution GO devolve algo aqui — o worker do zapo identifica a sessão
+   * pelo próprio id e não tem instância externa. Os dois segredos são cifrados
+   * antes de encostar no banco: quem os tem fala pelo WhatsApp do vendedor.
+   *
+   * Escrita separada da criação da sessão de propósito: a instância só existe
+   * depois que o provedor responde, e a linha precisa existir antes para o
+   * provedor ter um `sessaoId` com que nomear a instância.
+   */
+  private async gravarInstancia(
+    empresaId: string,
+    sessaoId: string,
+    dados: DadosInstancia | null,
+  ) {
+    if (!dados) return;
+    await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappSessao.update({
+        where: { id: sessaoId },
+        data: {
+          instanciaExterna: dados.nome,
+          instanciaId: dados.id,
+          ...(dados.token
+            ? { instanciaTokenCifrado: cifrarSegredo(dados.token) }
+            : {}),
+          ...(dados.webhookSegredo
+            ? { webhookSegredoCifrado: cifrarSegredo(dados.webhookSegredo) }
+            : {}),
+        },
+      }),
+    );
+  }
 
   /**
    * Vendedor do usuário logado. Sem cadastro de Vendedor não há WhatsApp a
@@ -105,11 +141,16 @@ export class WhatsappSessaoService {
         'O WhatsApp está desativado para esta empresa. Ative em Administração > WhatsApp.',
       );
     }
+    // Antes de criar a linha: o que falta é sempre um campo de configuração, e
+    // o sintoma sem esta conferência é um 502 na tela do vendedor que não diz
+    // qual campo ficou vazio.
+    this.provedores.exigirConfiguracao(config.transporte, config);
 
-    return this.prisma.withTenant(empresaId, async (tx) => {
+    const anterior = await this.prisma.withTenant(empresaId, async (tx) => {
       const vendedor = await this.vendedorDoUsuario(tx, empresaId, user);
       const atual = await tx.whatsappSessao.findUnique({
         where: { empresaId_vendedorId: { empresaId, vendedorId: vendedor.id } },
+        select: { id: true, status: true, numero: true, transporte: true },
       });
 
       // Regra 1: um número por vendedor. Já conectado, o caminho é desconectar
@@ -119,12 +160,49 @@ export class WhatsappSessaoService {
           `Você já tem o número ${atual.numero ?? ''} conectado. Desconecte antes de parear outro.`.trim(),
         );
       }
+      return { vendedorId: vendedor.id, vendedorNome: vendedor.nome, atual };
+    });
 
-      const sessao = await tx.whatsappSessao.upsert({
-        where: { empresaId_vendedorId: { empresaId, vendedorId: vendedor.id } },
+    // Troca de provedor: a sessão do provedor **anterior** precisa morrer
+    // antes.
+    //
+    // Sem isto, uma instância da Evolution GO continuaria pareada ao celular
+    // do vendedor depois que a empresa passou para o zapo — recebendo as
+    // mensagens dele num gateway que a API já não escuta (o webhook passa a
+    // ser recusado). O sintoma seria o pior possível: conversa que acontece no
+    // aparelho e não aparece em lugar nenhum.
+    //
+    // Melhor-esforço: provedor fora do ar não pode impedir o vendedor de
+    // parear no novo. Os campos de instância são limpos junto, para o
+    // pareamento seguinte nascer sem herança do provedor antigo.
+    if (anterior.atual && anterior.atual.transporte !== config.transporte) {
+      await this.provedores
+        .sairDoWhatsapp(empresaId, anterior.atual.id)
+        .catch(() => undefined);
+      await this.prisma.withTenant(empresaId, (tx) =>
+        tx.whatsappSessao.update({
+          where: { id: anterior.atual!.id },
+          data: {
+            instanciaExterna: null,
+            instanciaId: null,
+            instanciaTokenCifrado: null,
+            webhookSegredoCifrado: null,
+            numero: null,
+            jid: null,
+            credencialCifrada: null,
+          },
+        }),
+      );
+    }
+
+    const sessao = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappSessao.upsert({
+        where: {
+          empresaId_vendedorId: { empresaId, vendedorId: anterior.vendedorId },
+        },
         create: {
           empresaId,
-          vendedorId: vendedor.id,
+          vendedorId: anterior.vendedorId,
           status: 'pareando',
           transporte: config.transporte,
           aceiteEm: new Date(),
@@ -139,63 +217,56 @@ export class WhatsappSessaoService {
           aceiteVersao: input.aceiteVersao ?? WHATSAPP_ACEITE_VERSAO,
           updatedBy: user.id,
         },
-      });
+      }),
+    );
 
-      await this.worker.chamar(config.workerUrl, '/sessoes', {
-        metodo: 'POST',
-        // empresaId vai junto porque o worker precisa devolvê-lo na mensagem
-        // recebida: as tabelas têm RLS, e sem tenant no contexto a API não
-        // conseguiria nem localizar a própria sessão.
-        // `arquivarMensagens` liga o arquivo de mensagens no store do worker,
-        // que é de onde sai o histórico importado depois. Só quem configurou
-        // dias de histórico guarda esse material.
-        corpo: {
-          sessaoId: sessao.id,
-          empresaId,
-          transporte: config.transporte,
-          arquivarMensagens: config.historicoDias > 0,
-        },
-      });
-
-      return this.paraLeitura(sessao, vendedor.nome);
+    // Fora da transação de propósito: o provedor é uma chamada de rede que
+    // pode demorar (criar instância, registrar webhook), e segurar a transação
+    // aberta durante ela ocuparia uma conexão do pool por todo esse tempo.
+    //
+    // `arquivarMensagens` liga o arquivo de mensagens do lado do provedor, que
+    // é de onde sai o histórico importado depois. Só quem configurou dias de
+    // histórico guarda esse material.
+    const instancia = await this.provedores.iniciar(empresaId, sessao.id, {
+      arquivarMensagens: config.historicoDias > 0,
     });
+    await this.gravarInstancia(empresaId, sessao.id, instancia);
+
+    return this.paraLeitura(sessao, anterior.vendedorNome);
   }
 
   /**
    * Estado do pareamento — é o que a tela consulta enquanto o QR não é lido.
-   * O QR vem do worker (expira em segundos e é renovado), não do banco.
+   * O QR vem do provedor (expira em segundos e é renovado), não do banco.
    */
   async pareamento(empresaId: string, user: AuthenticatedUser) {
-    const config = await this.config.obter(empresaId);
     const sessao = await this.minha(empresaId, user);
     if (!sessao) {
       return { status: 'desconectada' as const, qr: null, numero: null, erro: null };
     }
 
-    const doWorker = await this.worker.chamar<{
-      status: string;
-      qr: string | null;
-      numero: string | null;
-      erro: string | null;
-    }>(config.workerUrl, `/sessoes/${sessao.id}/pareamento`);
+    const doProvedor = await this.provedores.pareamento(empresaId, sessao.id);
 
-    // O worker é a fonte da verdade do estado da conexão — quem pareia é o
+    // O provedor é a fonte da verdade do estado da conexão — quem pareia é o
     // celular, fora do nosso fluxo. Sem gravar de volta, o banco fica preso em
     // `pareando` para sempre e a tela nunca sai do "aguardando leitura do QR",
     // mesmo com a sessão já ativa.
-    if (doWorker.status !== sessao.status || doWorker.numero !== sessao.numero) {
+    if (
+      doProvedor.status !== sessao.status ||
+      doProvedor.numero !== sessao.numero
+    ) {
       await this.registrarEstado(empresaId, sessao.id, {
-        status: doWorker.status,
-        numero: doWorker.numero,
-        erro: doWorker.erro,
+        status: doProvedor.status,
+        numero: doProvedor.numero,
+        erro: doProvedor.erro,
       });
     }
 
     return {
-      status: doWorker.status as typeof sessao.status,
-      qr: doWorker.qr,
-      numero: doWorker.numero ?? sessao.numero,
-      erro: doWorker.erro,
+      status: doProvedor.status as typeof sessao.status,
+      qr: doProvedor.qr,
+      numero: doProvedor.numero ?? sessao.numero,
+      erro: doProvedor.erro,
     };
   }
 
@@ -249,31 +320,35 @@ export class WhatsappSessaoService {
 
   /** Desconecta o próprio aparelho. Não aceita id de fora — ver regra 2. */
   async desconectar(empresaId: string, user: AuthenticatedUser) {
-    const config = await this.config.obter(empresaId);
-
-    return this.prisma.withTenant(empresaId, async (tx) => {
+    const alvo = await this.prisma.withTenant(empresaId, async (tx) => {
       const vendedor = await this.vendedorDoUsuario(tx, empresaId, user);
       const sessao = await tx.whatsappSessao.findUnique({
         where: { empresaId_vendedorId: { empresaId, vendedorId: vendedor.id } },
+        select: { id: true },
       });
       if (!sessao) throw new NotFoundException('Nenhuma sessão para desconectar');
+      return { sessaoId: sessao.id, vendedorNome: vendedor.nome };
+    });
 
-      await this.worker
-        .chamar(config.workerUrl, `/sessoes/${sessao.id}`, { metodo: 'DELETE' })
-        // Worker fora do ar não pode impedir o vendedor de marcar o aparelho
-        // como desconectado do lado de cá.
-        .catch(() => undefined);
+    // O vendedor pediu para sair, e sair é sair: o aparelho deve deixar de
+    // aparecer em "Aparelhos conectados" no celular dele. Provedor fora do ar
+    // não pode impedir a marcação deste lado — a alternativa seria a tela
+    // continuar dizendo "conectado" para uma sessão que ele já abandonou.
+    await this.provedores
+      .sairDoWhatsapp(empresaId, alvo.sessaoId)
+      .catch(() => undefined);
 
-      const atualizada = await tx.whatsappSessao.update({
-        where: { id: sessao.id },
+    const atualizada = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappSessao.update({
+        where: { id: alvo.sessaoId },
         data: {
           status: 'desconectada',
           credencialCifrada: null,
           updatedBy: user.id,
         },
-      });
-      return this.paraLeitura(atualizada, vendedor.nome);
-    });
+      }),
+    );
+    return this.paraLeitura(atualizada, alvo.vendedorNome);
   }
 
   /**
@@ -335,11 +410,7 @@ export class WhatsappSessaoService {
         'Ative o atendimento por WhatsApp antes de conectar uma instância.',
       );
     }
-    if (config.transporte !== 'zapo') {
-      throw new BadRequestException(
-        'O adaptador selecionado ainda não permite gerenciar instâncias.',
-      );
-    }
+    this.provedores.exigirConfiguracao(config.transporte, config);
 
     const sessao = await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappSessao.findFirst({
@@ -354,15 +425,10 @@ export class WhatsappSessaoService {
       );
     }
 
-    await this.worker.chamar(config.workerUrl, '/sessoes', {
-      metodo: 'POST',
-      corpo: {
-        sessaoId: sessao.id,
-        empresaId,
-        transporte: 'zapo',
-        arquivarMensagens: config.historicoDias > 0,
-      },
+    const instancia = await this.provedores.iniciar(empresaId, sessao.id, {
+      arquivarMensagens: config.historicoDias > 0,
     });
+    await this.gravarInstancia(empresaId, sessao.id, instancia);
 
     const atualizada = await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappSessao.update({
@@ -379,16 +445,19 @@ export class WhatsappSessaoService {
 
   /**
    * Remove a conexão sem apagar a linha: conversas referenciam a sessão e são
-   * histórico da empresa. O cliente é encerrado e o estado volta ao zero.
-   * O store técnico do zapo-js não expõe aqui uma operação de expurgo; portanto
-   * não se afirma que o material Signal persistido foi apagado.
+   * histórico da empresa. A sessão sai do WhatsApp e o estado volta ao zero.
+   *
+   * O que sobra do lado do provedor difere por transporte, e o texto abaixo
+   * vale a leitura antes de tratar isto como exclusão de credencial: no zapo, o
+   * store técnico não expõe expurgo, então **não** se afirma que o material
+   * Signal foi apagado; na Evolution GO, o logout invalida o pareamento, mas a
+   * instância continua existindo no gateway (é a exclusão que a descarta).
    */
   async removerAdministracao(
     empresaId: string,
     user: AuthenticatedUser,
     sessaoId: string,
   ) {
-    const config = await this.config.obter(empresaId);
     const sessao = await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappSessao.findFirst({
         where: { id: sessaoId },
@@ -397,13 +466,11 @@ export class WhatsappSessaoService {
     );
     if (!sessao) throw new NotFoundException('Instância não encontrada');
 
-    if (config.workerUrl) {
-      await this.worker
-        .chamar(config.workerUrl, `/sessoes/${sessao.id}`, {
-          metodo: 'DELETE',
-        })
-        .catch(() => undefined);
-    }
+    // Melhor-esforço: provedor fora do ar não pode impedir a administração de
+    // marcar a instância como desconectada deste lado.
+    await this.provedores
+      .sairDoWhatsapp(empresaId, sessao.id)
+      .catch(() => undefined);
 
     const atualizada = await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappSessao.update({
@@ -490,17 +557,17 @@ export class WhatsappSessaoService {
    * vez de deixar o erro do Postgres chegar cru na tela, o caminho é explícito
    * — limpe as conversas primeiro, decidindo isso de propósito.
    *
-   * O que fica no worker: o material técnico da sessão no store do zapo-js
-   * (chaves Signal, agenda). O `DELETE` no worker encerra o cliente; o expurgo
-   * do store não é exposto pela biblioteca, e não se afirma aqui o que não se
-   * fez.
+   * O que fica do lado do provedor depende do transporte: no zapo, o material
+   * técnico da sessão no store (chaves Signal, agenda) — o `DELETE` encerra o
+   * cliente, mas a biblioteca não expõe expurgo, e não se afirma aqui o que
+   * não se fez. Na Evolution GO, a instância é deslogada e apagada no gateway,
+   * o que aqui sim descarta a credencial.
    */
   async excluirInstancia(
     empresaId: string,
     user: AuthenticatedUser,
     sessaoId: string,
   ) {
-    const config = await this.config.obter(empresaId);
     const sessao = await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappSessao.findFirst({
         where: { id: sessaoId },
@@ -525,13 +592,12 @@ export class WhatsappSessaoService {
       );
     }
 
-    // O worker pode já não conhecer esta sessão (reiniciou, nunca conectou):
-    // o encerramento é melhor-esforço, e a linha some de qualquer forma.
-    if (config.workerUrl) {
-      await this.worker
-        .chamar(config.workerUrl, `/sessoes/${sessao.id}`, { metodo: 'DELETE' })
-        .catch(() => undefined);
-    }
+    // O provedor pode já não conhecer esta sessão (worker reiniciado,
+    // instância nunca criada): o encerramento é melhor-esforço, e a linha some
+    // deste lado de qualquer forma.
+    await this.provedores
+      .removerInstancia(empresaId, sessao.id)
+      .catch(() => undefined);
 
     await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappSessao.delete({ where: { id: sessao.id } }),
@@ -540,12 +606,17 @@ export class WhatsappSessaoService {
   }
 
   /**
-   * Manda o worker despejar aqui o histórico que o celular já tem.
+   * Manda o provedor despejar aqui o histórico que o celular já tem.
    *
    * Quem decide o alcance é a empresa, em `historicoDias` — e o padrão é zero,
-   * que não importa nada. O worker devolve quantas mensagens entregou; quantas
-   * viram registro é decisão da rota de ingestão, que aplica a regra de
-   * sempre: conversa de contato sem cliente vinculado não é gravada.
+   * que não importa nada. Quantas mensagens viram registro é decisão da rota de
+   * ingestão, que aplica a regra de sempre: conversa de contato sem cliente
+   * vinculado não é gravada.
+   *
+   * O número devolvido significa coisas diferentes por transporte: o worker do
+   * zapo sabe quantas encontrou antes de começar; a Evolution GO só dispara a
+   * sincronização e devolve zero, porque o material chega depois, por evento.
+   * Zero aqui não quer dizer "não veio nada".
    *
    * Só faz sentido com a instância conectada: o material vem do aparelho, por
    * uma sessão viva.
@@ -575,16 +646,14 @@ export class WhatsappSessaoService {
       );
     }
 
-    // O worker responde com o tamanho do trabalho e segue entregando em
+    // O provedor responde com o tamanho do trabalho e segue entregando em
     // segundo plano: importar meses de conversa não cabe no timeout de uma
     // requisição. As conversas vão aparecendo na tela de Atendimento.
-    const resultado = await this.worker.chamar<{
-      encontradas: number;
-      conversas: number;
-    }>(config.workerUrl, `/sessoes/${sessao.id}/historico/importar`, {
-      metodo: 'POST',
-      corpo: { dias: config.historicoDias },
-    });
+    const resultado = await this.provedores.importarHistorico(
+      empresaId,
+      sessao.id,
+      config.historicoDias,
+    );
 
     await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappSessao.update({

@@ -71,7 +71,17 @@ const VENDEDOR_SELECT = {
 const OPORTUNIDADE_SELECT = { select: { id: true, titulo: true } };
 const CONDICAO_PAGAMENTO_SELECT = { select: { id: true, descricao: true } };
 const PRODUTO_SELECT = {
-  select: { id: true, codigoErp: true, descricao: true, unidade: true },
+  select: {
+    id: true,
+    codigoErp: true,
+    descricao: true,
+    unidade: true,
+    fotos: {
+      select: { url: true, principal: true },
+      orderBy: { principal: 'desc' as const },
+    },
+    exibirFotoOrcamento: true,
+  },
 };
 const INCLUDE = {
   cliente: CLIENTE_SELECT,

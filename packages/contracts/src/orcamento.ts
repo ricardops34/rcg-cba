@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { regraDescontoVinculoFields } from "./regra-desconto";
-import { auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
+import {
+  auditFieldsSchema,
+  booleanQueryParam,
+  paginationQuerySchema,
+} from "./common";
 
 export const statusOrcamentoSchema = z.enum([
   "rascunho",
@@ -67,6 +71,8 @@ const orcamentoItemProdutoSchema = z.object({
   codigoErp: z.string(),
   descricao: z.string(),
   unidade: z.string().nullable(),
+  fotos: z.array(z.object({ url: z.string(), principal: z.boolean() })),
+  exibirFotoOrcamento: z.boolean(),
 });
 
 export const orcamentoItemSchema = z.object({
@@ -159,9 +165,7 @@ export type Orcamento = z.infer<typeof orcamentoSchema>;
  * update), senão daria para autorizar 15% e gravar 40% depois.
  */
 export type AutorizacaoDescontoSituacao =
-  | "nao_solicitada"
-  | "pendente"
-  | "autorizada";
+  "nao_solicitada" | "pendente" | "autorizada";
 
 export function autorizacaoDescontoSituacao(o: {
   descontoSolicitadoEm: string | Date | null;
@@ -178,8 +182,14 @@ export const orcamentoQuerySchema = paginationQuerySchema.extend({
   vendedorId: z.string().uuid().optional(),
   clienteId: z.string().uuid().optional(),
   oportunidadeId: z.string().uuid().optional(),
-  dataInicio: z.coerce.date().optional().describe("Filtra createdAt >= dataInicio (uso: agenda)"),
-  dataFim: z.coerce.date().optional().describe("Filtra createdAt <= dataFim (uso: agenda)"),
+  dataInicio: z.coerce
+    .date()
+    .optional()
+    .describe("Filtra createdAt >= dataInicio (uso: agenda)"),
+  dataFim: z.coerce
+    .date()
+    .optional()
+    .describe("Filtra createdAt <= dataFim (uso: agenda)"),
 });
 export type OrcamentoQuery = z.infer<typeof orcamentoQuerySchema>;
 
@@ -219,7 +229,10 @@ export const ORCAMENTO_EXAMPLE: Orcamento = {
     id: "a1b2c3d4-5e6f-4708-9a0b-1c2d3e4f5a6b",
     titulo: "Reposição de estoque — linha de limpeza",
   },
-  condicaoPagamento: { id: "e1f2a3b4-5c6d-4e7f-8091-a2b3c4d5e6f7", descricao: "30/60/90 DIAS" },
+  condicaoPagamento: {
+    id: "e1f2a3b4-5c6d-4e7f-8091-a2b3c4d5e6f7",
+    descricao: "30/60/90 DIAS",
+  },
   itens: [
     {
       id: "c1d2e3f4-5a6b-4c7d-8e9f-0a1b2c3d4e5f",
@@ -236,6 +249,8 @@ export const ORCAMENTO_EXAMPLE: Orcamento = {
         codigoErp: "11400443",
         descricao: "DETERGENTE NEUTRO 5L",
         unidade: "GL",
+        fotos: [],
+        exibirFotoOrcamento: false,
       },
     },
   ],
@@ -256,5 +271,11 @@ export const ORCAMENTO_CREATE_EXAMPLE: OrcamentoCreate = {
   dataRetorno: new Date("2026-08-11T00:00:00.000Z"),
   observacao: "",
   ativo: true,
-  itens: [{ produtoId: "9e8d7c6b-5a49-4382-b1c0-d9e8f7a6b5c4", quantidade: 5, vlrUnitario: 735.3 }],
+  itens: [
+    {
+      produtoId: "9e8d7c6b-5a49-4382-b1c0-d9e8f7a6b5c4",
+      quantidade: 5,
+      vlrUnitario: 735.3,
+    },
+  ],
 };

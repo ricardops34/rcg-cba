@@ -12,7 +12,7 @@ export interface MenuItem {
   rota?: string | null;
   ordem: number;
   disponivelTelaPequena: boolean;
-  rotinas: { id: string; codigo: string; nome: string }[];
+  rotinas: { id: string; codigo: string; nome: string; disponivelTelaPequena: boolean }[];
 }
 
 export interface ModuloComMenus {
@@ -20,6 +20,7 @@ export interface ModuloComMenus {
   nome: string;
   icone?: string | null;
   ordem: number;
+  disponivelTelaPequena: boolean;
   menus: MenuItem[];
 }
 
@@ -48,7 +49,12 @@ export function useMenu() {
     return query.data
       .map((modulo) => ({
         ...modulo,
-        menus: modulo.menus.filter((menu) => (menu.rotinas ?? []).some((r) => podeVer(r.codigo))),
+        menus: modulo.menus
+          .map((menu) => ({
+            ...menu,
+            rotinas: (menu.rotinas ?? []).filter((rotina) => podeVer(rotina.codigo)),
+          }))
+          .filter((menu) => menu.rotinas.length > 0),
       }))
       .filter((modulo) => modulo.menus.length > 0);
   }, [query.data, permissoes]);

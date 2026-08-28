@@ -12,15 +12,19 @@ export function ResponsiveRouteGuard({ children }: { children: React.ReactNode }
   const pathname = usePathname();
   const isMobile = useIsMobile();
   const { data: modulos } = useMenu();
-  const menuAtual = modulos
-    ?.flatMap((modulo) => modulo.menus)
-    .find(
-      (menu) =>
-        menu.rota &&
-        (pathname === menu.rota || pathname.startsWith(`${menu.rota}/`)),
+  const entradaAtual = modulos
+    ?.flatMap((modulo) => modulo.menus.map((menu) => ({ modulo, menu })))
+    .find(({ menu }) =>
+      menu.rota && (pathname === menu.rota || pathname.startsWith(`${menu.rota}/`)),
     );
+  const menuAtual = entradaAtual?.menu;
+  const disponivelTelaPequena = Boolean(
+    entradaAtual?.modulo.disponivelTelaPequena &&
+      menuAtual?.disponivelTelaPequena &&
+      menuAtual.rotinas.some((rotina) => rotina.disponivelTelaPequena),
+  );
 
-  if (!isMobile || menuAtual?.disponivelTelaPequena !== false) return children;
+  if (!isMobile || !menuAtual || disponivelTelaPequena) return children;
 
   return (
     <div className="flex min-h-[50svh] items-center justify-center">

@@ -71,18 +71,21 @@ export class WhatsappController {
   @ApiOperation({
     summary: 'Configuração de WhatsApp da empresa ativa',
     description:
-      'Singleton por empresa, criado no primeiro acesso. Requer whatsapp-config.visualizar.',
+      'Singleton por empresa, criado no primeiro acesso. A chave de API da ' +
+      'Evolution GO nunca é devolvida — só os últimos 4 caracteres. ' +
+      'Requer whatsapp-config.visualizar.',
   })
   @RequirePermission('whatsapp-config', 'visualizar')
   @Get('config')
   obterConfig(@CurrentUser() user: AuthenticatedUser) {
-    return this.config.obter(user.empresaAtivaId);
+    return this.config.paraLeitura(user.empresaAtivaId);
   }
 
   @ApiOperation({
     summary: 'Editar a configuração de WhatsApp da empresa',
     description:
-      'Transporte, endereço do worker e retenção. Requer whatsapp-config.editar.',
+      'Transporte, endereços dos provedores, credencial da Evolution GO e ' +
+      'retenção. Requer whatsapp-config.editar.',
   })
   @RequirePermission('whatsapp-config', 'editar')
   @Put('config')

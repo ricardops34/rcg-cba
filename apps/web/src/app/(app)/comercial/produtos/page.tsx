@@ -9,10 +9,22 @@ import { apiFetch } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
-import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
+import {
+  StatusQuickFilter,
+  type StatusFilterValue,
+} from "@/components/crud/status-quick-filter";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { FieldLabel } from "@/components/ui/field";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Images } from "lucide-react";
+import { useAuthStore } from "@/stores/auth-store";
 
 type ProdutoRow = Produto & {
   categoria?: { id: string; descricao: string } | null;
@@ -22,6 +34,9 @@ type ProdutoRow = Produto & {
 
 export default function ProdutosPage() {
   const router = useRouter();
+  const podeImportarFotos = useAuthStore((state) =>
+    state.hasPermission("produtos", "importar"),
+  );
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -33,18 +48,21 @@ export default function ProdutosPage() {
   const categoriasQuery = useQuery({
     queryKey: ["categorias", "select", "raizes"],
     queryFn: () =>
-      apiFetch<{ data: Categoria[] }>("/categorias", { query: { pageSize: 100, raiz: true } }),
+      apiFetch<{ data: Categoria[] }>("/categorias", {
+        query: { pageSize: 100, raiz: true },
+      }),
   });
 
-  const { data, isLoading, isFetching, refetch, error } = useResourceList<ProdutoRow>("produtos", {
-    search,
-    page,
-    pageSize,
-    sortBy,
-    sortOrder,
-    ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
-    ...(categoriaId ? { categoriaId } : {}),
-  });
+  const { data, isLoading, isFetching, refetch, error } =
+    useResourceList<ProdutoRow>("produtos", {
+      search,
+      page,
+      pageSize,
+      sortBy,
+      sortOrder,
+      ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
+      ...(categoriaId ? { categoriaId } : {}),
+    });
 
   const filtrosAtivos = !!categoriaId;
   const limparFiltros = () => {
@@ -53,14 +71,20 @@ export default function ProdutosPage() {
   };
 
   const columns: ColumnDef<ProdutoRow>[] = [
-    { header: "Código", sortKey: "codigoErp", cell: (p) => <span className="font-mono text-xs">{p.codigoErp}</span> },
+    {
+      header: "Código",
+      sortKey: "codigoErp",
+      cell: (p) => <span className="font-mono text-xs">{p.codigoErp}</span>,
+    },
     {
       header: "Produto",
       sortKey: "descricao",
       cell: (p) => (
         <div>
           <p className="font-medium">{p.descricao}</p>
-          {p.marca && <p className="text-xs text-muted-foreground">{p.marca}</p>}
+          {p.marca && (
+            <p className="text-xs text-muted-foreground">{p.marca}</p>
+          )}
         </div>
       ),
     },
@@ -71,7 +95,10 @@ export default function ProdutosPage() {
           <span>
             {p.categoria.descricao}
             {p.subCategoria && (
-              <span className="text-muted-foreground"> · {p.subCategoria.descricao}</span>
+              <span className="text-muted-foreground">
+                {" "}
+                · {p.subCategoria.descricao}
+              </span>
             )}
           </span>
         ) : (
@@ -84,10 +111,17 @@ export default function ProdutosPage() {
       sortKey: "ultimoPreco",
       cell: (p) =>
         p.ultimoPreco != null
-          ? p.ultimoPreco.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+          ? p.ultimoPreco.toLocaleString("pt-BR", {
+              style: "currency",
+              currency: "BRL",
+            })
           : "—",
     },
-    { header: "Status", sortKey: "ativo", cell: (p) => <StatusDot active={p.ativo} /> },
+    {
+      header: "Status",
+      sortKey: "ativo",
+      cell: (p) => <StatusDot active={p.ativo} />,
+    },
   ];
 
   return (
@@ -134,6 +168,14 @@ export default function ProdutosPage() {
             </Select>
           </div>
         </FiltersPopover>
+        {podeImportarFotos ? (
+          <Button
+            variant="outline"
+            onClick={() => router.push("/comercial/produtos/fotos")}
+          >
+            <Images className="size-4" /> Importar fotos
+          </Button>
+        ) : null}
       </div>
 
       <EntityTable

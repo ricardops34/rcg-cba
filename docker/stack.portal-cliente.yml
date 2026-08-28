@@ -1,0 +1,27 @@
+services:
+  portal-cliente:
+    image: ${PORTAL_CLIENTE_IMAGE:-rcgcba-portal-cliente:latest}
+    environment:
+      PORT: "3002"
+    networks:
+      network_public:
+        aliases:
+          - rcgcba-portal-cliente
+    deploy:
+      replicas: 1
+      update_config:
+        order: start-first
+      rollback_config:
+        order: stop-first
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=network_public"
+        - "traefik.http.routers.rcgcba-portal.rule=Host(`${PORTAL_CLIENTE_HOST}`)"
+        - "traefik.http.routers.rcgcba-portal.entrypoints=websecure"
+        - "traefik.http.routers.rcgcba-portal.tls=true"
+        - "traefik.http.routers.rcgcba-portal.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.rcgcba-portal.loadbalancer.server.port=3002"
+
+networks:
+  network_public:
+    external: true

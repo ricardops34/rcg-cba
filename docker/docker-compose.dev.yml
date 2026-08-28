@@ -55,6 +55,7 @@ services:
       # Trocar esta chave invalida o que já está gravado (é preciso regravar).
       AGENTE_IA_CRYPTO_KEY: ${AGENTE_IA_CRYPTO_KEY:-ZGV2LW9ubHktbmFvLXVzZS1lbS1wcm9kdWNhby0zMmI=}
       JWT_ACCESS_SECRET: desenvolvimento-local-access
+      PORTAL_JWT_ACCESS_SECRET: desenvolvimento-local-portal-access
       JWT_ACCESS_EXPIRES_IN: 15m
       JWT_REFRESH_SECRET: desenvolvimento-local-refresh
       JWT_REFRESH_EXPIRES_IN: 7d
@@ -70,6 +71,14 @@ services:
       # serviços). Sem ele, o worker recusa subir — de propósito: quem alcança
       # o worker fala pelo WhatsApp dos vendedores.
       WHATSAPP_WORKER_TOKEN: ${WHATSAPP_WORKER_TOKEN:-desenvolvimento-local-worker}
+      # Cifra os segredos do WhatsApp (chave da Evolution GO, token de cada
+      # instância, segredo do webhook). 32 bytes em base64, chave própria — a
+      # do agente de IA tem outro dono e outro ciclo de rotação.
+      WHATSAPP_CRYPTO_KEY: ${WHATSAPP_CRYPTO_KEY:-ZGV2LW9ubHktd2hhdHNhcHAtY3J5cHRvLWtleS0zMmI=}
+      # Endereço que a Evolution GO usa para chamar a API de volta. É o nome do
+      # serviço na rede do compose: `localhost` aqui apontaria para dentro do
+      # container do gateway, e nenhum evento chegaria.
+      WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL: ${WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL:-http://api:3001}
     command: pnpm --filter @plataforma/api start:dev
     ports:
       - "3001:3001"
@@ -116,6 +125,73 @@ services:
       - whatsapp_worker_node_modules:/app/apps/whatsapp-worker/node_modules
     depends_on:
       db-init:
+        condition: service_completed_successfully
+
+  # Cria o banco técnico da Evolution GO.
+  #
+  # Separado do `plataforma_comercial` de propósito: o gateway roda as próprias
+  # migrations e guarda credenciais de sessão. Misturá-lo às tabelas de negócio
+  # daria a um serviço de terceiro o mesmo banco onde vivem os dados da
+  # empresa — e o RLS por empresa não protege de quem tem DDL.
+  #
+  # O gateway cria o banco sozinho se ele não existir, mas só quando o role da
+  # DSN tem permissão para isso. Criar aqui torna o pré-requisito explícito e
+  # não depende desse privilégio.
+  evolution-db-init:
+    image: postgres:16-alpine
+    environment:
+      PGPASSWORD: plataforma
+    # `|| true`: o banco já existir é o caso normal a partir da segunda subida.
+    command: >-
+      sh -c "psql -h postgres -U plataforma -d postgres -tc \"SELECT 1 FROM pg_database WHERE datname='evolution'\"
+      | grep -q 1 || psql -h postgres -U plataforma -d postgres -c 'CREATE DATABASE evolution'"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Gateway Evolution GO — o segundo transporte de WhatsApp.
+  #
+  # Ao contrário do `whatsapp-worker`, ele **não** é código deste repositório:
+  # é um serviço de terceiro que mantém as sessões, o QR e a reconexão no banco
+  # dele. A API fala com ele por HTTP e recebe os eventos por webhook.
+  #
+  # Imagem `evoapicloud/evolution-go` (Docker Hub), tag fixa mesmo em dev: o
+  # contrato do webhook e os nomes de rota mudam entre versões, e um dev que
+  # segue `latest` deixa de reproduzir o que roda em produção. 0.7.2 é a última
+  # estável publicada (2026-07-03); as `-beta` existem e não devem ser usadas.
+  evolution-go:
+    image: ${EVOLUTION_GO_IMAGE:-evoapicloud/evolution-go:0.7.2}
+    restart: unless-stopped
+    environment:
+      # Verificado contra a imagem 0.7.2 em 2026-08-27: **não** existe
+      # `DATABASE_URL`. As três variáveis abaixo recebem a DSN inteira (o nome
+      # `POSTGRES_DB` engana — o serviço a interpreta como DSN, não como nome
+      # de banco), e sem `POSTGRES_AUTH_DB`/`POSTGRES_USERS_DB` o processo sobe
+      # e morre em panic no auto-migration.
+      POSTGRES_DB: postgresql://plataforma:plataforma@postgres:5432/evolution?sslmode=disable
+      POSTGRES_AUTH_DB: postgresql://plataforma:plataforma@postgres:5432/evolution?sslmode=disable
+      POSTGRES_USERS_DB: postgresql://plataforma:plataforma@postgres:5432/evolution?sslmode=disable
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: plataforma
+      POSTGRES_PASSWORD: plataforma
+      # Chave administrativa: cria, conecta e apaga instância de qualquer
+      # vendedor. Em dev é fixa; em produção é gerada e guardada cifrada pela
+      # tela de Administração > WhatsApp > Evolution GO.
+      GLOBAL_API_KEY: ${EVOLUTION_GLOBAL_API_KEY:-desenvolvimento-local-evolution}
+      SERVER_PORT: "8080"
+      # As duas mantêm o conteúdo fora do banco do gateway. Quem decide o que é
+      # gravado é a API, pela regra de vínculo com cliente; ligar qualquer uma
+      # criaria um segundo arquivo de conversas fora das regras de privacidade
+      # e retenção da plataforma.
+      WEBHOOK_FILES: "false"
+      DATABASE_SAVE_MESSAGES: "false"
+    ports:
+      # Publicada só em dev, para inspecionar o Swagger do gateway. Em produção
+      # ele fica exclusivamente na rede interna.
+      - "8081:8080"
+    depends_on:
+      evolution-db-init:
         condition: service_completed_successfully
 
   web:

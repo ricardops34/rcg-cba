@@ -60,7 +60,13 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
     ?.map((modulo) => ({
       ...modulo,
       menus: onNavigate
-        ? modulo.menus.filter((menu) => menu.disponivelTelaPequena)
+        ? modulo.disponivelTelaPequena
+          ? modulo.menus.filter(
+              (menu) =>
+                menu.disponivelTelaPequena &&
+                menu.rotinas.some((rotina) => rotina.disponivelTelaPequena),
+            )
+          : []
         : modulo.menus,
     }))
     .filter((modulo) => modulo.menus.length > 0);

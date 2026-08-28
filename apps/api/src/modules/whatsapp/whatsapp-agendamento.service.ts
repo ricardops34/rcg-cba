@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { WhatsappConfigService } from './whatsapp-config.service';
-import { WhatsappWorkerClient } from './whatsapp-worker.client';
+import { WhatsappProviderService } from './providers/whatsapp-provider.service';
 import { mensagemComAutor } from './mensagem-com-autor';
 import { WhatsappConversasService } from './whatsapp-conversas.service';
 import {
@@ -43,7 +43,7 @@ export class WhatsappAgendamentoService
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: WhatsappConfigService,
-    private readonly worker: WhatsappWorkerClient,
+    private readonly provedores: WhatsappProviderService,
     private readonly conversas: WhatsappConversasService,
   ) {}
 
@@ -176,15 +176,24 @@ export class WhatsappAgendamentoService
     );
     if (vencidas.length === 0) return;
 
+    // O aviso vale a consulta: mensagem agendada que vence sem provedor
+    // configurado fica em `erro` uma a uma, e sem esta linha o log não diria
+    // que a causa é a mesma para todas.
     const config = await this.config.obter(empresaId);
-    if (!config.workerUrl) {
+    if (config.transporte === 'zapo' && !config.workerUrl) {
       this.logger.warn(
         `Empresa ${empresaId} tem mensagem agendada vencida, mas nenhum worker configurado.`,
       );
       return;
     }
+    if (config.transporte === 'evolution_go' && !config.evolutionUrl) {
+      this.logger.warn(
+        `Empresa ${empresaId} tem mensagem agendada vencida, mas a Evolution GO não está configurada.`,
+      );
+      return;
+    }
     for (const { id } of vencidas) {
-      await this.enviarUma(empresaId, id, config.workerUrl);
+      await this.enviarUma(empresaId, id);
     }
   }
 
@@ -196,7 +205,7 @@ export class WhatsappAgendamentoService
    * réplica vê `count: 0` e segue adiante — sem isso, o cliente receberia a
    * mesma mensagem uma vez por réplica.
    */
-  private async enviarUma(empresaId: string, id: string, workerUrl: string) {
+  private async enviarUma(empresaId: string, id: string) {
     const reservada = await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappMensagemAgendada.updateMany({
         where: { id, status: 'pendente' },
@@ -231,16 +240,13 @@ export class WhatsappAgendamentoService
         );
       }
 
-      const enviada = await this.worker.chamar<{ externoId: string }>(
-        workerUrl,
-        `/sessoes/${agendada.conversa.sessaoId}/mensagens`,
+      const enviada = await this.provedores.enviarTexto(
+        empresaId,
+        agendada.conversa.sessaoId,
         {
-          metodo: 'POST',
-          corpo: {
-            jid: agendada.conversa.contato.jid,
-            texto: mensagemComAutor(agendada.autorNome, agendada.texto),
-            respondeuA: null,
-          },
+          jid: agendada.conversa.contato.jid,
+          texto: mensagemComAutor(agendada.autorNome, agendada.texto),
+          respondeuA: null,
         },
       );
 

@@ -47,10 +47,15 @@ export function GlobalSearch({ open, onOpenChange }: { open: boolean; onOpenChan
             Dashboard
           </CommandItem>
         </CommandGroup>
-        {modulos?.map((modulo) => (
+        {modulos?.filter((modulo) => !isMobile || modulo.disponivelTelaPequena).map((modulo) => (
           <CommandGroup key={modulo.id} heading={modulo.nome}>
             {modulo.menus
-              .filter((menu) => !isMobile || menu.disponivelTelaPequena)
+              .filter(
+                (menu) =>
+                  !isMobile ||
+                  (menu.disponivelTelaPequena &&
+                    menu.rotinas.some((rotina) => rotina.disponivelTelaPequena)),
+              )
               .map((menu) => (
               <CommandItem key={menu.id} onSelect={() => go(menu.rota ?? "#")}>
                 <DynamicIcon name={menu.icone} />

@@ -1,8 +1,4 @@
-import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   PrismaService,
   Prisma,
@@ -19,10 +15,7 @@ import type {
   IntegracaoProdutoUpdate,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
-import {
-  deveReativar,
-  LIMPAR_EXCLUSAO,
-} from '../common/reativar-excluido';
+import { deveReativar, LIMPAR_EXCLUSAO } from '../common/reativar-excluido';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 
 const INCLUDE = {
@@ -48,6 +41,7 @@ export class IntegracaoProdutosService {
       armazemCodigo: row.armazem?.codigoErp ?? null,
       marca: row.marca,
       codigoBarras: row.codigoBarras,
+      codigoFornecedor: row.codigoFornecedor,
       ncm: row.ncm,
       qtdEmbalagem: row.qtdEmbalagem,
       peso: row.peso,
@@ -155,6 +149,7 @@ export class IntegracaoProdutosService {
         armazemId,
         marca: input.marca ?? null,
         codigoBarras: input.codigoBarras ?? null,
+        codigoFornecedor: input.codigoFornecedor ?? null,
         ncm: input.ncm ?? null,
         qtdEmbalagem: input.qtdEmbalagem ?? null,
         peso: input.peso ?? null,
@@ -237,6 +232,9 @@ export class IntegracaoProdutosService {
           ...(input.marca !== undefined ? { marca: input.marca } : {}),
           ...(input.codigoBarras !== undefined
             ? { codigoBarras: input.codigoBarras }
+            : {}),
+          ...(input.codigoFornecedor !== undefined
+            ? { codigoFornecedor: input.codigoFornecedor }
             : {}),
           ...(input.ncm !== undefined ? { ncm: input.ncm } : {}),
           ...(input.qtdEmbalagem !== undefined

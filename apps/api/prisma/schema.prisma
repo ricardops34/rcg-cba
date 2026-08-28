@@ -44,6 +44,7 @@ model Empresa {
 
   usuarioEmpresas            UsuarioEmpresa[]
   produtos                   Produto[]
+  produtoFotos               ProdutoFoto[]
   vendedores                 Vendedor[]
   clientes                   Cliente[]
   categorias                 Categoria[]
@@ -89,6 +90,11 @@ model Empresa {
   notificacoes               Notificacao[]
   comunicados                Comunicado[]
   comunicadoPerfis           ComunicadoPerfil[]
+  portalClienteConfig        PortalClienteConfig?
+  portalClientePerfis        PortalClientePerfil[]
+  portalClientePermissoes    PortalClientePerfilPermissao[]
+  portalClienteHabilitacoes  PortalClienteHabilitacao[]
+  clienteContatos            ClienteContato[]
 
   @@map("empresas")
 }
@@ -229,11 +235,12 @@ model Perfil {
 }
 
 model Modulo {
-  id    String  @id @default(uuid())
-  nome  String
-  icone String?
-  ordem Int     @default(0)
-  ativo Boolean @default(true)
+  id                    String  @id @default(uuid())
+  nome                  String
+  icone                 String?
+  ordem                 Int     @default(0)
+  ativo                 Boolean @default(true)
+  disponivelTelaPequena Boolean @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -274,11 +281,12 @@ model Menu {
 }
 
 model Rotina {
-  id     String  @id @default(uuid())
-  menuId String
-  nome   String
-  codigo String
-  ativo  Boolean @default(true)
+  id                    String  @id @default(uuid())
+  menuId                String
+  nome                  String
+  codigo                String
+  ativo                 Boolean @default(true)
+  disponivelTelaPequena Boolean @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -454,22 +462,24 @@ model IntegracaoApiKey {
 // versão inicial usava texto achatado; virou FK quando os auxiliares foram
 // implementados).
 model Produto {
-  id             String  @id @default(uuid())
-  empresaId      String
-  codigoErp      String
-  descricao      String
-  unidade        String?
-  categoriaId    String?
-  subCategoriaId String?
-  armazemId      String?
-  marca          String?
-  codigoBarras   String?
-  ncm            String?
-  qtdEmbalagem   Float?
-  peso           Float?
-  ultimoPreco    Float?
-  observacao     String?
-  ativo          Boolean @default(true)
+  id                  String  @id @default(uuid())
+  empresaId           String
+  codigoErp           String
+  descricao           String
+  unidade             String?
+  categoriaId         String?
+  subCategoriaId      String?
+  armazemId           String?
+  marca               String?
+  codigoBarras        String?
+  codigoFornecedor    String?
+  ncm                 String?
+  qtdEmbalagem        Float?
+  peso                Float?
+  ultimoPreco         Float?
+  observacao          String?
+  exibirFotoOrcamento Boolean @default(false)
+  ativo               Boolean @default(true)
 
   // Regra de desconto aplicável (SZ0 do ERP). Nulo = sem regra própria;
   // a resolução de qual regra vale ainda não existe — por ora é só o vínculo.
@@ -493,12 +503,34 @@ model Produto {
   notasSaidaItens   NotaSaidaItem[]
   orcamentoItens    OrcamentoItem[]
   sugestoesCompra   SugestaoCompraGerada[]
+  fotos             ProdutoFoto[]
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, descricao])
   @@index([empresaId, categoriaId])
   @@index([empresaId, regraDescontoId])
+  @@index([empresaId, codigoFornecedor])
   @@map("produtos")
+}
+
+model ProdutoFoto {
+  id          String  @id @default(uuid())
+  empresaId   String
+  produtoId   String?
+  url         String
+  nomeArquivo String
+  principal   Boolean @default(false)
+  ordem       Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  empresa Empresa  @relation(fields: [empresaId], references: [id])
+  produto Produto? @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId, produtoId, ordem])
+  @@map("produto_fotos")
 }
 
 // Cadastro de vendedores, supervisores e gerentes (mesma tabela, com flags
@@ -676,6 +708,8 @@ model Cliente {
   sugestoesCompra   SugestaoCompraGerada[]
   whatsappContatos  WhatsappContato[]
   whatsappConversas WhatsappConversa[]
+  contatosPortal    ClienteContato[]
+  portalHabilitacao PortalClienteHabilitacao?
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, razaoSocial])
@@ -683,6 +717,182 @@ model Cliente {
   @@index([empresaId, tabelaPrecoId])
   @@index([empresaId, condicaoPagamentoId])
   @@map("clientes")
+}
+
+model ClienteContato {
+  id        String  @id @default(uuid())
+  empresaId String
+  clienteId String
+  perfilId  String?
+  nome      String
+  email     String
+  telefone  String?
+  celular   String?
+  cargo     String?
+  principal Boolean @default(false)
+  ativo     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  empresa             Empresa                  @relation(fields: [empresaId], references: [id])
+  cliente             Cliente                  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  perfil              PortalClientePerfil?     @relation(fields: [perfilId], references: [id])
+  credencial          PortalClienteCredencial?
+  orcamentosDecididos Orcamento[]              @relation("OrcamentoDecisaoContato")
+
+  @@unique([empresaId, clienteId, email])
+  @@index([empresaId, clienteId, ativo])
+  @@map("cliente_contatos")
+}
+
+model PortalClienteConfig {
+  id                        String  @id @default(uuid())
+  empresaId                 String  @unique
+  ativo                     Boolean @default(false)
+  permitirAtualizarCadastro Boolean @default(false)
+  permitirManterContatos    Boolean @default(false)
+  exibirDesconto            Boolean @default(false)
+  permitirSolicitarDesconto Boolean @default(false)
+  descontoMaximoSolicitavel Float   @default(0)
+  exibirEstoque             Boolean @default(false)
+  permitirProdutoForaMix    Boolean @default(true)
+  diasValidadeCarrinho      Int     @default(7)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@map("portal_cliente_configs")
+}
+
+model PortalClientePerfil {
+  id          String  @id @default(uuid())
+  empresaId   String
+  nome        String
+  descricao   String?
+  sistemaBase Boolean @default(false)
+  ativo       Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  empresa    Empresa                        @relation(fields: [empresaId], references: [id])
+  contatos   ClienteContato[]
+  permissoes PortalClientePerfilPermissao[]
+
+  @@unique([empresaId, nome])
+  @@map("portal_cliente_perfis")
+}
+
+model PortalClienteRotina {
+  id     String  @id
+  codigo String  @unique
+  nome   String
+  ordem  Int     @default(0)
+  ativo  Boolean @default(true)
+
+  permissoes PortalClientePerfilPermissao[]
+
+  @@map("portal_cliente_rotinas")
+}
+
+model PortalClientePerfilPermissao {
+  id        String  @id @default(uuid())
+  empresaId String
+  perfilId  String
+  rotinaId  String
+  acao      String
+  permitido Boolean @default(false)
+
+  empresa Empresa             @relation(fields: [empresaId], references: [id])
+  perfil  PortalClientePerfil @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+  rotina  PortalClienteRotina @relation(fields: [rotinaId], references: [id])
+
+  @@unique([perfilId, rotinaId, acao])
+  @@index([empresaId, perfilId])
+  @@map("portal_cliente_perfil_permissoes")
+}
+
+model PortalClienteHabilitacao {
+  id        String  @id @default(uuid())
+  empresaId String
+  clienteId String  @unique
+  ativo     Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId, ativo])
+  @@map("portal_cliente_habilitacoes")
+}
+
+// Exceção sem RLS: consultada no login antes de haver tenant ativo. Guarda
+// somente autenticação e referências; dados de negócio ficam no contato com RLS.
+model PortalClienteCredencial {
+  id               String    @id @default(uuid())
+  empresaId        String
+  contatoId        String    @unique
+  empresaAlias     String
+  emailNormalizado String
+  senhaHash        String
+  tentativasFalhas Int       @default(0)
+  bloqueadoAte     DateTime?
+  ultimoLogin      DateTime?
+  ativo            Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contato ClienteContato        @relation(fields: [contatoId], references: [id], onDelete: Cascade)
+  sessoes PortalClienteSessao[]
+
+  @@unique([empresaAlias, emailNormalizado])
+  @@index([empresaId])
+  @@map("portal_cliente_credenciais")
+}
+
+// Sem RLS: refresh acontece antes de reconstruir o contexto do tenant.
+model PortalClienteSessao {
+  id           String    @id @default(uuid())
+  credencialId String
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  revogadoEm   DateTime?
+  ip           String?
+  userAgent    String?
+  createdAt    DateTime  @default(now())
+
+  credencial PortalClienteCredencial @relation(fields: [credencialId], references: [id], onDelete: Cascade)
+
+  @@index([credencialId, expiresAt])
+  @@map("portal_cliente_sessoes")
+}
+
+// Sem RLS: registra inclusive tentativas com empresa/e-mail inválidos.
+model PortalClienteAcessoLog {
+  id        String   @id @default(uuid())
+  empresaId String?
+  contatoId String?
+  email     String
+  evento    String
+  detalhe   String?
+  ip        String?
+  userAgent String?
+  criadoEm  DateTime @default(now())
+
+  @@index([empresaId, criadoEm])
+  @@map("portal_cliente_acessos_log")
 }
 
 // De onde partiu a alteração do cadastro de cliente. Todas passam pela mesma
@@ -1402,6 +1612,8 @@ model TabelaPrecoItem {
   empresaId     String
   tabelaPrecoId String
   produtoId     String
+  // Chave de identidade do item no ERP — ver NotaSaida.codigoErp.
+  codigoErp     String?
   codigoLegado  Int?
   preco         Float
   ativo         Boolean @default(true)
@@ -1548,6 +1760,10 @@ model Estoque {
 model NotaSaida {
   id                  String  @id @default(uuid())
   empresaId           String
+  // Chave de identidade do registro no ERP: o valor que o Protheus manda para
+  // dizer "esta é a mesma nota que já mandei antes". A plataforma não
+  // interpreta o conteúdo — guarda, indexa e usa no upsert do POST.
+  codigoErp           String?
   codigoLegado        Int?
   clienteId           String?
   vendedorId          String?
@@ -1611,6 +1827,7 @@ model NotaSaida {
   itens             NotaSaidaItem[]
   xml               NotaSaidaXml?
 
+  @@unique([empresaId, codigoErp])
   @@unique([empresaId, codigoLegado])
   @@index([empresaId, numero])
   @@index([empresaId, vendedorId, ano, mes])
@@ -1663,6 +1880,10 @@ model NotaSaidaItem {
   id           String  @id @default(uuid())
   empresaId    String
   notaSaidaId  String
+  // Chave de identidade do item no ERP. Tem a sua própria porque o upsert do
+  // cabeçalho casa item a item por ela, em vez de apagar e recriar o conjunto
+  // — o uuid do item sobrevive à alteração de uma linha da nota.
+  codigoErp    String?
   codigoLegado Int?
   clienteId    String?
   vendedorId   String?
@@ -1787,6 +2008,8 @@ model ContaBancaria {
 model TituloReceber {
   id           String  @id @default(uuid())
   empresaId    String
+  // Chave de identidade do título no ERP — ver NotaSaida.codigoErp.
+  codigoErp    String?
   codigoLegado Int?
   clienteId    String?
   vendedorId   String?
@@ -2021,10 +2244,14 @@ model Orcamento {
   // e o autorizador libera (autorizadoEm/Por). Autorizado vale para o
   // orçamento como está: mexer nos itens ou nos preços derruba a autorização,
   // senão daria para autorizar 15% e gravar 40% depois.
-  descontoSolicitadoEm  DateTime?
-  descontoSolicitadoPor String?
-  descontoAutorizadoEm  DateTime?
-  descontoAutorizadoPor String?
+  descontoSolicitadoEm        DateTime?
+  descontoSolicitadoPor       String?
+  descontoAutorizadoEm        DateTime?
+  descontoAutorizadoPor       String?
+  clienteDecididoEm           DateTime?
+  clienteDecididoPorContatoId String?
+  clienteDecisao              String?
+  clienteDecisaoObservacao    String?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -2033,19 +2260,21 @@ model Orcamento {
   updatedBy String?
   deletedBy String?
 
-  empresa           Empresa            @relation(fields: [empresaId], references: [id])
-  cliente           Cliente            @relation(fields: [clienteId], references: [id])
-  vendedor          Vendedor           @relation(fields: [vendedorId], references: [id])
-  oportunidade      Oportunidade?      @relation(fields: [oportunidadeId], references: [id])
-  condicaoPagamento CondicaoPagamento? @relation(fields: [condicaoPagamentoId], references: [id])
-  itens             OrcamentoItem[]
-  atividades        Atividade[]
+  empresa            Empresa            @relation(fields: [empresaId], references: [id])
+  cliente            Cliente            @relation(fields: [clienteId], references: [id])
+  vendedor           Vendedor           @relation(fields: [vendedorId], references: [id])
+  oportunidade       Oportunidade?      @relation(fields: [oportunidadeId], references: [id])
+  condicaoPagamento  CondicaoPagamento? @relation(fields: [condicaoPagamentoId], references: [id])
+  itens              OrcamentoItem[]
+  atividades         Atividade[]
+  clienteDecididoPor ClienteContato?    @relation("OrcamentoDecisaoContato", fields: [clienteDecididoPorContatoId], references: [id])
 
   @@unique([empresaId, codigoLegado])
   @@unique([empresaId, numero])
   @@index([empresaId, vendedorId])
   @@index([empresaId, clienteId])
   @@index([empresaId, status])
+  @@index([empresaId, clienteDecididoPorContatoId])
   @@map("orcamentos")
 }
 
@@ -2095,6 +2324,8 @@ model ObjetivoVendedorMes {
   id           String @id @default(uuid())
   empresaId    String
   vendedorId   String
+  // Chave de identidade do objetivo no ERP — ver NotaSaida.codigoErp.
+  codigoErp    String?
   codigoLegado Int?
 
   mes           Int
@@ -2127,6 +2358,8 @@ model ObjetivoVendedorCategoria {
   empresaId             String
   objetivoVendedorMesId String
   categoriaId           String
+  // Chave de identidade da meta por categoria no ERP — ver NotaSaida.codigoErp.
+  codigoErp             String?
   codigoLegado          Int?
   valor                 Float  @default(0)
 
@@ -2187,6 +2420,7 @@ model SenhaHistorico {
 
 enum WhatsappTransporte {
   zapo
+  evolution_go
   cloud_api
 }
 
@@ -2256,6 +2490,21 @@ model WhatsappSessao {
   ultimaConexao     DateTime?
   ultimoErro        String?
 
+  // Instância na Evolution GO (nulos nas sessões `zapo`).
+  //
+  // `instanciaExterna` é o nome técnico determinístico com que a instância foi
+  // criada lá; `instanciaId` é o identificador que o serviço devolveu — os dois
+  // porque as rotas da Evolution divergem entre versões sobre qual aceitam.
+  //
+  // `instanciaTokenCifrado` é o token exclusivo daquela instância e
+  // `webhookSegredoCifrado` é o que autentica o caminho contrário (a Evolution
+  // chamando a API). São segredos distintos de propósito: vazar um não entrega
+  // o outro, e o do webhook pode ser trocado sem repareamento.
+  instanciaExterna      String?
+  instanciaId           String?
+  instanciaTokenCifrado String? @db.Text
+  webhookSegredoCifrado String? @db.Text
+
   aceiteEm     DateTime?
   aceiteVersao String?
 
@@ -2270,6 +2519,9 @@ model WhatsappSessao {
 
   @@unique([empresaId, vendedorId])
   @@index([empresaId, status])
+  // O webhook da Evolution GO identifica a origem pela instância, não pela
+  // sessão: sem este índice, cada mensagem recebida varre a tabela.
+  @@index([empresaId, instanciaExterna])
   @@map("whatsapp_sessoes")
 }
 
@@ -2516,6 +2768,18 @@ model WhatsappConfig {
 
   transporte WhatsappTransporte @default(zapo)
   workerUrl  String?
+
+  // Evolution GO — usados só quando `transporte = evolution_go`.
+  //
+  // A chave é administrativa (a `GLOBAL_API_KEY` do serviço): quem a tem cria,
+  // conecta e apaga instância de qualquer vendedor. Por isso vai cifrada, com
+  // o mesmo AES-256-GCM da chave do agente de IA, e nunca é devolvida por
+  // nenhuma rota de leitura.
+  evolutionUrl           String?
+  evolutionApiKeyCifrada String? @db.Text
+  // Registrada por quem implantou. Diferença de versão é a primeira hipótese
+  // quando um evento (resposta citada, reação) para de chegar.
+  evolutionVersao        String?
 
   // DDD a usar quando o telefone do cadastro vem sem ele — o que é a regra,
   // não a exceção, nesta base (8 ou 9 dígitos na maioria das linhas). Fica

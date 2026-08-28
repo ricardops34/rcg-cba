@@ -11,6 +11,10 @@ export const moduloCreateSchema = z.object({
     .describe("Nome do ícone (lucide-react) exibido junto ao módulo"),
   ordem: z.coerce.number().int().min(0).default(0).describe("Posição de exibição no menu (crescente)"),
   ativo: z.boolean().default(true).describe("Módulos inativos ficam ocultos do menu"),
+  disponivelTelaPequena: z
+    .boolean()
+    .default(true)
+    .describe("Permite exibir as telas deste módulo em dispositivos com largura menor que 768 px"),
 });
 export type ModuloCreate = z.infer<typeof moduloCreateSchema>;
 export const moduloUpdateSchema = moduloCreateSchema.partial();
@@ -66,6 +70,10 @@ export const rotinaCreateSchema = z.object({
       "Código único usado nas permissões e no decorator @RequirePermission (ex.: 'empresas', 'clientes')",
     ),
   ativo: z.boolean().default(true).describe("Rotinas inativas não podem receber permissões"),
+  disponivelTelaPequena: z
+    .boolean()
+    .default(true)
+    .describe("Permite usar esta rotina em dispositivos com largura menor que 768 px"),
 });
 export type RotinaCreate = z.infer<typeof rotinaCreateSchema>;
 export const rotinaUpdateSchema = rotinaCreateSchema.partial();
@@ -81,6 +89,7 @@ export const MODULO_CREATE_EXAMPLE: ModuloCreate = {
   icone: "briefcase",
   ordem: 2,
   ativo: true,
+  disponivelTelaPequena: true,
 };
 
 export const MENU_CREATE_EXAMPLE: MenuCreate = {
@@ -99,4 +108,5 @@ export const ROTINA_CREATE_EXAMPLE: RotinaCreate = {
   nome: "Produtos",
   codigo: "produtos",
   ativo: true,
+  disponivelTelaPequena: true,
 };

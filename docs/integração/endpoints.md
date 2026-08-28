@@ -93,7 +93,7 @@ estoque.
 `categoriaCodigo`, `subCategoriaCodigo`, `armazemCodigo` e
 `regraDescontoCodigo` apontam para o `codigoErp` do respectivo cadastro, que
 precisa já existir. Demais campos: `marca`, `codigoBarras`, `ncm`,
-`qtdEmbalagem`, `peso`, `ultimoPreco`, `observacao`.
+`codigoFornecedor`, `qtdEmbalagem`, `peso`, `ultimoPreco`, `observacao`.
 
 ### Vendedores — `/integracao/vendedores`
 

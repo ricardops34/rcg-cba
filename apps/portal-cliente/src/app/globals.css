@@ -1,0 +1,88 @@
+:root {
+  --ink: #102d33;
+  --petrol: #0d5961;
+  --petrol-dark: #083d43;
+  --copper: #b7663d;
+  --paper: #eef5f4;
+  --surface: #ffffff;
+  --line: #c9d9d6;
+  --muted: #60777a;
+  --danger: #a33c3c;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--paper); color: var(--ink); }
+body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; }
+button, input { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: wait; opacity: .62; }
+button:focus-visible, input:focus-visible { outline: 3px solid color-mix(in srgb, var(--copper), transparent 45%); outline-offset: 2px; }
+
+.login-shell { min-height: 100svh; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(380px, .85fr); }
+.login-story { padding: clamp(3rem, 8vw, 8rem); display: flex; flex-direction: column; justify-content: center; background: var(--petrol-dark); color: #f5fbfa; position: relative; overflow: hidden; }
+.login-story::after { content: ""; position: absolute; width: 430px; height: 430px; border: 1px solid #4b8588; border-radius: 50%; right: -180px; top: -150px; box-shadow: 0 0 0 65px #ffffff08, 0 0 0 130px #ffffff06; }
+.eyebrow, .sequence { margin: 0 0 1.1rem; font: 700 .72rem/1 "Segoe UI", sans-serif; letter-spacing: .15em; text-transform: uppercase; }
+.eyebrow { color: #9bc7c5; }
+.login-story h1 { max-width: 740px; margin: 0; font: 500 clamp(3.2rem, 7vw, 7.5rem)/.92 Georgia, serif; letter-spacing: -.055em; }
+.login-story > p:not(.eyebrow) { max-width: 620px; margin: 2rem 0; color: #c4d9d7; font-size: 1.1rem; line-height: 1.7; }
+.trust-line { display: flex; align-items: center; gap: .65rem; color: #d8e8e6; font-size: .9rem; }
+.login-panel { padding: clamp(2rem, 7vw, 7rem); display: flex; flex-direction: column; justify-content: center; background: var(--surface); }
+.sequence { color: var(--copper); }
+.login-panel h2, .section-title h2 { margin: 0 0 2rem; font: 500 clamp(2rem, 4vw, 3.2rem)/1.05 Georgia, serif; letter-spacing: -.035em; }
+form { display: grid; gap: 1.2rem; }
+label { display: grid; gap: .5rem; color: var(--muted); font-size: .82rem; font-weight: 700; }
+input { width: 100%; border: 1px solid var(--line); border-radius: 5px; padding: .95rem 1rem; color: var(--ink); background: #fbfdfd; }
+input::placeholder { color: #8ba09f; font-weight: 400; }
+button { border: 0; border-radius: 5px; padding: .9rem 1.1rem; background: var(--petrol); color: white; display: inline-flex; justify-content: center; align-items: center; gap: .55rem; font-weight: 700; }
+form button { margin-top: .5rem; }
+.error { padding: .8rem 1rem; border-left: 3px solid var(--danger); color: var(--danger); background: #fff4f3; font-size: .9rem; }
+
+.portal-shell { min-height: 100svh; }
+header { height: 78px; padding: 0 clamp(1.2rem, 5vw, 5rem); display: flex; align-items: center; justify-content: space-between; background: var(--surface); border-bottom: 1px solid var(--line); }
+header .eyebrow { color: var(--copper); margin: 0 0 .3rem; }
+header strong { font-family: Georgia, serif; font-size: 1.2rem; }
+.quiet { background: transparent; color: var(--muted); padding-inline: .4rem; }
+.account-band { display: grid; grid-template-columns: 1.6fr 1fr .45fr; gap: 2rem; padding: 2rem clamp(1.2rem, 5vw, 5rem); background: var(--petrol-dark); color: white; }
+.account-band > div + div { border-left: 1px solid #ffffff26; padding-left: 2rem; }
+.account-band span { color: #9bc7c5; font-size: .72rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.account-band h1 { margin: .45rem 0 0; font: 500 clamp(1.8rem, 4vw, 3.5rem)/1 Georgia, serif; }
+.account-band p { margin: .5rem 0 .2rem; font-weight: 700; }
+.account-band small { color: #b9d2d0; }
+.account-band .big-number { margin: .25rem 0 0; font: 500 3.2rem/1 Georgia, serif; color: #f1c5ad; }
+.content { max-width: 1240px; margin: 0 auto; padding: 3rem clamp(1.2rem, 5vw, 3rem) 5rem; }
+.section-title { display: flex; justify-content: space-between; align-items: start; color: var(--ink); }
+.section-title .sequence { margin-bottom: .75rem; }
+.proposals { display: grid; gap: 1rem; }
+.proposal { background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 1.4rem; content-visibility: auto; contain-intrinsic-size: 240px; }
+.proposal-head, .proposal-value, .actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.proposal-head small { color: var(--copper); font-weight: 800; letter-spacing: .08em; }
+.proposal h3 { margin: .35rem 0; font: 500 1.45rem/1.2 Georgia, serif; }
+.proposal-head p { margin: 0; color: var(--muted); font-size: .9rem; }
+.status { padding: .35rem .65rem; border-radius: 999px; font-size: .72rem; font-weight: 800; text-transform: uppercase; }
+.status.enviado { background: #e6f1f0; color: var(--petrol); }
+.status.aprovado { background: #e5f3e9; color: #39734b; }
+.status.recusado, .status.expirado { background: #f2e8e6; color: #8b4c43; }
+.proposal-value { margin: 1.3rem 0 0; padding-top: 1.15rem; border-top: 1px solid var(--line); }
+.proposal-value strong { font: 500 1.8rem Georgia, serif; }
+.proposal-value span { display: flex; gap: .4rem; color: var(--muted); font-size: .85rem; }
+.actions { justify-content: flex-end; margin-top: 1.2rem; }
+.actions .decline { background: transparent; color: var(--danger); border: 1px solid #e4c5c0; }
+.empty { text-align: center; padding: 4rem 1rem; border: 1px dashed var(--line); color: var(--muted); }
+.empty h3 { color: var(--ink); font-family: Georgia, serif; }
+
+@media (max-width: 800px) {
+  .login-shell { grid-template-columns: 1fr; }
+  .login-story { min-height: 42svh; padding: 2.5rem 1.5rem; }
+  .login-story h1 { font-size: clamp(2.7rem, 13vw, 4.5rem); }
+  .login-panel { padding: 2.5rem 1.5rem; }
+  .account-band { grid-template-columns: 1fr; gap: 1.2rem; }
+  .account-band > div + div { border-left: 0; border-top: 1px solid #ffffff26; padding: 1.2rem 0 0; }
+  .proposal-head, .proposal-value { align-items: flex-start; flex-direction: column; }
+  .actions button { flex: 1; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .login-panel { animation: reveal .45s ease-out both; }
+  .proposal { animation: reveal .35s ease-out both; }
+  @keyframes reveal { from { opacity: 0; transform: translateY(8px); } }
+}

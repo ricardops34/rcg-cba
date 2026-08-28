@@ -13,6 +13,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      PORTAL_JWT_ACCESS_SECRET: ${PORTAL_JWT_ACCESS_SECRET}
       JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN}
@@ -21,6 +22,15 @@ services:
       AGENTE_IA_CRYPTO_KEY: ${AGENTE_IA_CRYPTO_KEY}
       # Segredo compartilhado com o whatsapp-worker (mesmo valor nos dois).
       WHATSAPP_WORKER_TOKEN: ${WHATSAPP_WORKER_TOKEN}
+      # Cifra os segredos do WhatsApp gravados no banco: a chave da Evolution
+      # GO, o token de cada instância e o segredo do webhook. Chave própria, e
+      # não a do agente de IA — donos e ciclos de rotação diferentes.
+      # Trocá-la exige regravar a chave pela tela e reconectar as instâncias.
+      WHATSAPP_CRYPTO_KEY: ${WHATSAPP_CRYPTO_KEY}
+      # Endereço com que a Evolution GO chama a API de volta. Precisa ser o
+      # alias interno: o webhook trafega dentro da rede Docker e não deve sair
+      # para a internet só para voltar.
+      WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL: http://rcgcba-api:3001
     volumes:
       # Uploads (logos de empresa) persistem fora do container.
       - uploads:/app/apps/api/uploads
@@ -67,6 +77,53 @@ services:
       network_public:
         aliases:
           - rcgcba-whatsapp-worker
+    deploy:
+      replicas: 1
+
+  # Gateway Evolution GO — transporte alternativo ao whatsapp-worker.
+  #
+  # Não é código deste repositório: é um serviço de terceiro que mantém as
+  # sessões, o QR e a reconexão no banco dele. A API fala com ele por HTTP e
+  # recebe os eventos por webhook, pelo alias interno abaixo.
+  #
+  # Sem labels do Traefik, pelo mesmo motivo do worker: quem alcança este
+  # serviço fala pelo WhatsApp dos vendedores.
+  #
+  # **replicas: 1 também aqui é requisito**, não capacidade — duas instâncias
+  # do gateway com as mesmas sessões disputam a conexão.
+  #
+  # A imagem vem de variável e **precisa ser uma tag fixa**: `latest` troca o
+  # contrato do webhook sem aviso, e nomes de rota já divergiram entre versões.
+  # Confirme a tag no registro oficial antes do primeiro deploy — ver
+  # docs/whatsapp/integracao-evolution-go.md.
+  evolution-go:
+    image: ${EVOLUTION_GO_IMAGE}
+    environment:
+      # Banco técnico **separado** do plataforma_comercial: o gateway roda as
+      # próprias migrations e guarda credenciais de sessão. Ver o runbook para
+      # o comando de criação do banco e do role.
+      #
+      # Verificado contra a imagem 0.7.2 em 2026-08-27: **não** existe
+      # `DATABASE_URL`. `POSTGRES_DB` recebe a DSN inteira, apesar do nome, e
+      # sem `POSTGRES_AUTH_DB`/`POSTGRES_USERS_DB` o processo morre em panic no
+      # auto-migration. As três recebem a mesma DSN.
+      POSTGRES_DB: ${EVOLUTION_DATABASE_URL}
+      POSTGRES_AUTH_DB: ${EVOLUTION_DATABASE_URL}
+      POSTGRES_USERS_DB: ${EVOLUTION_DATABASE_URL}
+      # A mesma chave que o administrador grava (cifrada) em Administração >
+      # WhatsApp > Evolution GO. Os dois lados precisam do mesmo valor.
+      GLOBAL_API_KEY: ${EVOLUTION_GLOBAL_API_KEY}
+      SERVER_PORT: "8080"
+      # Mantêm o conteúdo das conversas fora do banco do gateway: quem decide o
+      # que é gravado é a API, pela regra de vínculo com cliente. Ligar
+      # qualquer uma criaria um segundo arquivo de conversas fora das regras de
+      # privacidade e retenção da plataforma.
+      WEBHOOK_FILES: "false"
+      DATABASE_SAVE_MESSAGES: "false"
+    networks:
+      network_public:
+        aliases:
+          - rcgcba-evolution-go
     deploy:
       replicas: 1
 

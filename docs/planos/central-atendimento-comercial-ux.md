@@ -284,3 +284,12 @@ resoluções, vínculo de cliente, conversa, posição e orçamento usando o cli
 00434801. As capturas confirmaram a conversa preservada ao lado das ferramentas.
 Durante o aceite foram corrigidos o empilhamento da barra móvel, a grade compacta
 da posição, a repetição de telefones e o estado de erro para usuário sem vendedor.
+
+## Atualização de responsividade — 2026-08-28
+
+- [x] Cadastro de disponibilidade em telas pequenas nos níveis módulo, menu e rotina.
+- [x] Interruptor visível diretamente em cada linha da Estrutura de Menu, sem abrir a edição.
+- [x] Regra hierárquica: módulo bloqueado prevalece sobre menus e rotinas; menu só aparece
+  no celular quando ele, seu módulo e ao menos uma rotina permitida estiverem liberados.
+- [x] Menu lateral móvel, busca global e proteção de acesso direto usam a mesma regra.
+- [x] Migration aplicada e validações de contratos, TypeScript do frontend e lint concluídas.

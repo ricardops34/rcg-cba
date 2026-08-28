@@ -40,6 +40,7 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { NotificacoesModule } from './modules/notificacoes/notificacoes.module';
 import { InicioModule } from './modules/inicio/inicio.module';
 import { AcessosModule } from './modules/acessos/acessos.module';
+import { PortalClienteModule } from './modules/portal-cliente/portal-cliente.module';
 
 @Module({
   imports: [
@@ -88,6 +89,7 @@ import { AcessosModule } from './modules/acessos/acessos.module';
     WhatsappModule,
     NotificacoesModule,
     InicioModule,
+    PortalClienteModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

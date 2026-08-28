@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cable, CheckCircle2, Cloud, Eraser, ExternalLink, History, MoreHorizontal, RefreshCw, ServerCog, Smartphone, Trash2, TriangleAlert } from "lucide-react";
+import { Cable, CheckCircle2, Cloud, Eraser, ExternalLink, History, MoreHorizontal, RefreshCw, Smartphone, Trash2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
-import { WHATSAPP_AVISO_NAO_OFICIAL, type WhatsappConfig, type WhatsappSessao } from "@plataforma/contracts";
+import { WHATSAPP_AVISO_NAO_OFICIAL, WHATSAPP_TRANSPORTE_ROTULO, type WhatsappConfig, type WhatsappSessao } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,17 +27,20 @@ const STATUS: Record<WhatsappSessao["status"], { rotulo: string; variant: "succe
 };
 
 export default function WhatsappConfigPage() {
-  const [aba, setAba] = useState<Aba>("zapo");
   const { data: config, isLoading } = useQuery({
     queryKey: ["whatsapp-config"],
     queryFn: () => apiFetch<WhatsappConfig>("/whatsapp/config"),
   });
+  // A aba abre no provedor que a empresa usa hoje — quem entra aqui quase
+  // sempre vem mexer no que está no ar, não no que ainda não foi escolhido.
+  const [aba, setAba] = useState<Aba | null>(null);
   if (isLoading || !config) return <p className="text-sm text-muted-foreground">Carregando central de WhatsApp...</p>;
+  const abaAtual = aba ?? (config.transporte === "evolution_go" ? "evolution-go" : config.transporte === "cloud_api" ? "cloud-api" : "zapo");
 
   return (
     <div className="space-y-5">
       <ChannelHeader config={config} />
-      <Tabs value={aba} onValueChange={(value) => setAba(value as Aba)}>
+      <Tabs value={abaAtual} onValueChange={(value) => setAba(value as Aba)}>
         <TabsList>
           <TabsTrigger value="zapo">zapo-js</TabsTrigger>
           <TabsTrigger value="evolution-go">Evolution GO</TabsTrigger>
@@ -45,15 +48,7 @@ export default function WhatsappConfigPage() {
           <TabsTrigger value="instancias">Instâncias</TabsTrigger>
         </TabsList>
         <TabsContent value="zapo" className="pt-4"><ZapoConfig config={config} /></TabsContent>
-        <TabsContent value="evolution-go" className="pt-4">
-          <ProviderEmPreparacao
-            icon={ServerCog}
-            titulo="Evolution GO"
-            descricao="Gateway REST em Go para instâncias pareadas por QR Code."
-            detalhes="O cliente REST, os webhooks de mensagens e o armazenamento seguro da GLOBAL_API_KEY ainda precisam ser conectados ao módulo antes da ativação."
-            href="https://github.com/evolution-foundation/evolution-go"
-          />
-        </TabsContent>
+        <TabsContent value="evolution-go" className="pt-4"><EvolutionConfig config={config} /></TabsContent>
         <TabsContent value="cloud-api" className="pt-4">
           <ProviderEmPreparacao
             icon={Cloud}
@@ -78,10 +73,40 @@ function ChannelHeader({ config }: { config: WhatsappConfig }) {
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Escolha o provedor, defina as regras da empresa e acompanhe cada aparelho conectado.</p>
         </div>
       </div>
-      <Badge variant={config.ativo ? "success" : "secondary"}>
-        {config.ativo ? <CheckCircle2 /> : <TriangleAlert />}
-        {config.ativo ? "Atendimento ativo" : "Atendimento desativado"}
-      </Badge>
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Qual provedor está no ar é a informação que muda o diagnóstico de
+            tudo o mais nesta tela — fica ao lado do estado, não escondida na
+            aba selecionada. */}
+        <Badge variant="outline">Provedor: {WHATSAPP_TRANSPORTE_ROTULO[config.transporte]}</Badge>
+        <Badge variant={config.ativo ? "success" : "secondary"}>
+          {config.ativo ? <CheckCircle2 /> : <TriangleAlert />}
+          {config.ativo ? "Atendimento ativo" : "Atendimento desativado"}
+        </Badge>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Aviso de que salvar esta aba troca o provedor da empresa inteira.
+ *
+ * A empresa opera um transporte de cada vez, e a troca não é retroativa: as
+ * instâncias já pareadas continuam no provedor com que foram conectadas até
+ * serem reconectadas. Sem este aviso, o administrador salva a aba achando que
+ * mudou tudo e fica com metade do time em cada lado sem saber.
+ */
+function AvisoTroca({ config, alvo }: { config: WhatsappConfig; alvo: WhatsappConfig["transporte"] }) {
+  if (config.transporte === alvo) {
+    return <Badge variant="success"><CheckCircle2 /> Provedor em uso</Badge>;
+  }
+  return (
+    <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 text-xs text-amber-900 dark:text-amber-200">
+      <div className="flex gap-2 font-medium"><TriangleAlert className="mt-0.5 size-4 shrink-0" /> Hoje a empresa usa {WHATSAPP_TRANSPORTE_ROTULO[config.transporte]}</div>
+      <p className="mt-1 pl-6 opacity-85">
+        Salvar aqui passa a empresa para {WHATSAPP_TRANSPORTE_ROTULO[alvo]}. As instâncias já pareadas continuam no
+        provedor anterior até serem reconectadas — o vendedor precisa parear de novo para migrar, e o histórico
+        de conversas fica onde está.
+      </p>
     </div>
   );
 }
@@ -148,7 +173,113 @@ function ZapoConfig({ config }: { config: WhatsappConfig }) {
           </div>
         </FieldGroup>
       </CardContent>
-      <CardFooter className="justify-end border-t"><Button onClick={() => salvar.mutate()} disabled={salvar.isPending}>{salvar.isPending ? "Salvando..." : "Salvar zapo-js"}</Button></CardFooter>
+      <CardFooter className="justify-between gap-3 border-t"><AvisoTroca config={config} alvo="zapo" /><Button onClick={() => salvar.mutate()} disabled={salvar.isPending}>{salvar.isPending ? "Salvando..." : config.transporte === "zapo" ? "Salvar zapo-js" : "Salvar e usar zapo-js"}</Button></CardFooter>
+    </Card>
+  );
+}
+
+function EvolutionConfig({ config }: { config: WhatsappConfig }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({
+    ativo: config.ativo,
+    evolutionUrl: config.evolutionUrl ?? "",
+    evolutionVersao: config.evolutionVersao ?? "",
+    retencaoDias: config.retencaoDias,
+    historicoDias: config.historicoDias,
+    dddPadrao: config.dddPadrao ?? "",
+  });
+  // A chave fica fora do `form` de propósito: ela nunca vem da API, então o
+  // campo nasce vazio mesmo com uma chave gravada. Vazio significa "não
+  // mexi" — e é por isso que apagar precisa de um botão próprio.
+  const [chave, setChave] = useState("");
+
+  const salvar = useMutation({
+    mutationFn: (opcoes: { apagarChave?: boolean } = {}) => apiFetch<WhatsappConfig>("/whatsapp/config", {
+      method: "PUT",
+      body: {
+        ...form,
+        transporte: "evolution_go",
+        evolutionUrl: form.evolutionUrl.trim() || null,
+        evolutionVersao: form.evolutionVersao.trim() || null,
+        dddPadrao: form.dddPadrao.trim() || null,
+        // String vazia apaga do lado da API; ausente mantém a que está lá.
+        ...(opcoes.apagarChave ? { evolutionApiKey: "" } : chave.trim() ? { evolutionApiKey: chave.trim() } : {}),
+      },
+    }),
+    onSuccess: (_dados, variaveis) => {
+      setChave("");
+      void queryClient.invalidateQueries({ queryKey: ["whatsapp-config"] });
+      toast.success(variaveis?.apagarChave ? "Chave da Evolution GO removida" : "Configuração da Evolution GO salva");
+    },
+    onError: (error) => toast.error(mensagemErro(error, "Erro ao salvar")),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="border-b">
+        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div><CardTitle>Gateway Evolution GO</CardTitle><p className="mt-1 text-sm text-muted-foreground">Serviço externo que mantém as instâncias pareadas e devolve os eventos por webhook.</p></div>
+          <label className="flex items-center gap-2 text-sm font-medium"><Switch checked={form.ativo} onCheckedChange={(ativo) => setForm((f) => ({ ...f, ativo }))} />Ativo</label>
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-6 pt-6 lg:grid-cols-2">
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="evolutionUrl">Endereço da Evolution GO</FieldLabel>
+            <Input id="evolutionUrl" value={form.evolutionUrl} placeholder="http://rcgcba-evolution-go:8080" onChange={(event) => setForm((f) => ({ ...f, evolutionUrl: event.target.value }))} />
+            <FieldDescription>Endereço interno da rede Docker. O gateway não deve ser publicado no Traefik — quem o alcança fala pelo WhatsApp dos vendedores.</FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="evolutionApiKey">Chave de API (GLOBAL_API_KEY)</FieldLabel>
+            <Input id="evolutionApiKey" type="password" autoComplete="off" value={chave} placeholder={config.evolutionApiKeyDefinida ? `Chave gravada${config.evolutionApiKeyUltimos4 ? ` (final ${config.evolutionApiKeyUltimos4})` : ""} — preencha só para trocar` : "Cole a chave administrativa do gateway"} onChange={(event) => setChave(event.target.value)} />
+            <FieldDescription>
+              Guardada cifrada e nunca devolvida pela API. Deixe em branco para manter a atual.
+              {config.evolutionApiKeyDefinida ? <> <button type="button" className="underline underline-offset-2" onClick={() => salvar.mutate({ apagarChave: true })}>Remover chave gravada</button>.</> : null}
+            </FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="evolutionVersao">Versão homologada</FieldLabel>
+            <Input id="evolutionVersao" className="max-w-40" placeholder="0.7.2" value={form.evolutionVersao} onChange={(event) => setForm((f) => ({ ...f, evolutionVersao: event.target.value }))} />
+            <FieldDescription>Registro de qual imagem está no ar. Diferença de versão é a primeira hipótese quando um evento para de chegar.</FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="dddPadraoEvolution">DDD padrão</FieldLabel>
+            <Input id="dddPadraoEvolution" inputMode="numeric" maxLength={2} className="max-w-24" placeholder="67" value={form.dddPadrao} onChange={(event) => setForm((f) => ({ ...f, dddPadrao: event.target.value.replace(/\D/g, "") }))} />
+            <FieldDescription>Usado somente quando o telefone do cliente não possui DDD. É o mesmo campo da aba zapo-js — a configuração é uma só.</FieldDescription>
+          </Field>
+        </FieldGroup>
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="retencaoDiasEvolution">Retenção das conversas</FieldLabel>
+            <div className="flex items-center gap-2"><Input id="retencaoDiasEvolution" type="number" min={0} max={3650} className="max-w-32" value={form.retencaoDias} onChange={(event) => setForm((f) => ({ ...f, retencaoDias: Number(event.target.value) }))} /><span className="text-sm text-muted-foreground">dias</span></div>
+            <FieldDescription>Zero mantém indefinidamente. O expurgo automático ainda não foi implementado.</FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="historicoDiasEvolution">Dias de histórico a importar</FieldLabel>
+            <div className="flex items-center gap-2"><Input id="historicoDiasEvolution" type="number" min={0} max={365} className="max-w-32" value={form.historicoDias} onChange={(event) => setForm((f) => ({ ...f, historicoDias: Number(event.target.value) }))} /><span className="text-sm text-muted-foreground">dias</span></div>
+            <FieldDescription>
+              Acima de zero, a importação é pedida por instância na aba Instâncias e o gateway entrega o histórico
+              aos poucos, por evento — a contagem não aparece na hora, as conversas vão surgindo no Atendimento.
+              Continua valendo a regra de sempre: só vira conversa o contato vinculado a um cliente.
+            </FieldDescription>
+          </Field>
+          <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 text-sm text-amber-900 dark:text-amber-200">
+            <div className="flex gap-2 font-medium"><TriangleAlert className="mt-0.5 size-4 shrink-0" /> Integração não oficial</div>
+            {/* O gateway muda quem mantém a sessão, não o fato de o pareamento
+                ser o mesmo do WhatsApp Web. O risco para o número é idêntico. */}
+            <p className="mt-1 pl-6 text-xs opacity-85">{WHATSAPP_AVISO_NAO_OFICIAL} Trocar o worker pelo gateway não muda esse risco: o pareamento continua sendo o do WhatsApp Web.</p>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Fixe uma versão da imagem em produção, mantenha o gateway e o banco técnico dele só na rede interna e
+            confira o Swagger da versão instalada — nomes de rota mudam entre versões. Ver{" "}
+            <code className="rounded bg-muted px-1">docs/whatsapp/integracao-evolution-go.md</code>.
+          </p>
+        </FieldGroup>
+      </CardContent>
+      <CardFooter className="justify-between gap-3 border-t">
+        <AvisoTroca config={config} alvo="evolution_go" />
+        <Button onClick={() => salvar.mutate({})} disabled={salvar.isPending}>{salvar.isPending ? "Salvando..." : config.transporte === "evolution_go" ? "Salvar Evolution GO" : "Salvar e usar Evolution GO"}</Button>
+      </CardFooter>
     </Card>
   );
 }
@@ -202,16 +333,25 @@ function Instancias({ config }: { config: WhatsappConfig }) {
     onError: (error) => toast.error(mensagemErro(error, "Falha ao excluir")),
   });
   const importar = useMutation({
-    mutationFn: (id: string) => apiFetch<{ dias: number; encontradas: number; conversas: number }>(`/whatsapp/config/sessoes/${id}/historico`, { method: "POST" }),
-    onSuccess: (r) => {
+    mutationFn: (sessao: WhatsappSessao) => apiFetch<{ dias: number; encontradas: number; conversas: number }>(`/whatsapp/config/sessoes/${sessao.id}/historico`, { method: "POST" }),
+    onSuccess: (r, sessao) => {
       atualizar();
+      // A Evolution GO só dispara a sincronização e não sabe o tamanho do
+      // trabalho — o material chega depois, por evento. Zero ali não é "nada
+      // encontrado", e dizer isso seria mentir para quem acabou de pedir.
+      if (sessao.transporte === "evolution_go") {
+        toast.success(`Sincronização dos últimos ${r.dias} dias pedida ao gateway. As conversas aparecem no Atendimento conforme chegam.`);
+        return;
+      }
       toast.success(r.encontradas === 0 ? `Nada encontrado nos últimos ${r.dias} dias no aparelho` : `Importando ${r.encontradas} mensagem(ns) de ${r.conversas} conversa(s). Elas aparecem no Atendimento conforme entram.`);
     },
     onError: (error) => toast.error(mensagemErro(error, "Falha ao importar histórico")),
   });
 
-  // Vale para as instâncias em `zapo` — o transporte de cada uma aparece na
-  // coluna Provedor. Some quando a empresa inteira estiver na API oficial.
+  // Vale para `zapo` e `evolution_go`: os dois pareiam o WhatsApp Web ao
+  // aparelho do vendedor, e o risco para o número é o mesmo. O transporte de
+  // cada instância aparece na coluna Provedor. Some quando a empresa inteira
+  // estiver na API oficial.
   const alguemNaoOficial = data.some((s) => s.transporte !== "cloud_api");
 
   return (
@@ -221,7 +361,7 @@ function Instancias({ config }: { config: WhatsappConfig }) {
           <TriangleAlert className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
           <div className="space-y-1 text-xs">
             <p className="font-medium text-amber-700 dark:text-amber-400">
-              API não oficial (zapo-js)
+              API não oficial ({WHATSAPP_TRANSPORTE_ROTULO[config.transporte]})
             </p>
             <p className="text-muted-foreground">{WHATSAPP_AVISO_NAO_OFICIAL}</p>
           </div>
@@ -238,7 +378,7 @@ function Instancias({ config }: { config: WhatsappConfig }) {
               <TableHeader><TableRow><TableHead>Vendedor</TableHead><TableHead>Número</TableHead><TableHead>Provedor</TableHead><TableHead>Estado</TableHead><TableHead>Última conexão</TableHead><TableHead className="w-12" /></TableRow></TableHeader>
               <TableBody>{data.map((sessao) => (
                 <TableRow key={sessao.id}>
-                  <TableCell className="font-medium">{sessao.vendedorNome}</TableCell><TableCell>{sessao.numero ?? "—"}</TableCell><TableCell>{sessao.transporte === "cloud_api" ? "API Oficial" : "zapo-js"}</TableCell>
+                  <TableCell className="font-medium">{sessao.vendedorNome}</TableCell><TableCell>{sessao.numero ?? "—"}</TableCell><TableCell>{WHATSAPP_TRANSPORTE_ROTULO[sessao.transporte]}</TableCell>
                   <TableCell><Badge variant={STATUS[sessao.status].variant}>{STATUS[sessao.status].rotulo}</Badge></TableCell><TableCell>{formatarData(sessao.ultimaConexao)}</TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -249,7 +389,7 @@ function Instancias({ config }: { config: WhatsappConfig }) {
                             lá) e dias configurados — sem os dois o item fica
                             fora, em vez de oferecer algo que responde erro. */}
                         {config.historicoDias > 0 && sessao.status === "conectada" ? (
-                          <DropdownMenuItem onSelect={() => importar.mutate(sessao.id)} disabled={importar.isPending}><History /> Importar histórico ({config.historicoDias} dias)</DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => importar.mutate(sessao)} disabled={importar.isPending}><History /> Importar histórico ({config.historicoDias} dias)</DropdownMenuItem>
                         ) : null}
                         <DropdownMenuItem variant="destructive" onSelect={() => setRemover(sessao)}><Trash2 /> Remover conexão</DropdownMenuItem>
                         <DropdownMenuItem variant="destructive" onSelect={() => setLimpar(sessao)}><Eraser /> Limpar conversas</DropdownMenuItem>

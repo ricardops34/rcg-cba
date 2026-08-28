@@ -10,12 +10,28 @@ import type {
   ProdutoUpdate,
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { basename, join } from 'node:path';
+import { existsSync, unlink } from 'node:fs';
+import {
+  PRODUTOS_DIR,
+  produtoFotoPublicPath,
+} from '../../common/uploads/uploads.config';
 
-const SORT_FIELDS = new Set(['descricao', 'codigoErp', 'marca', 'ultimoPreco', 'ativo']);
+const SORT_FIELDS = new Set([
+  'descricao',
+  'codigoErp',
+  'marca',
+  'ultimoPreco',
+  'ativo',
+]);
 
 // Cadastros auxiliares anexados às respostas (colunas da listagem/form).
-const CATEGORIA_SELECT = { select: { id: true, codigoErp: true, descricao: true } };
-const ARMAZEM_SELECT = { select: { id: true, codigoErp: true, descricao: true } };
+const CATEGORIA_SELECT = {
+  select: { id: true, codigoErp: true, descricao: true },
+};
+const ARMAZEM_SELECT = {
+  select: { id: true, codigoErp: true, descricao: true },
+};
 // Regra de desconto vinculada (SZ0): acompanha a leitura pra tela exibir sem
 // um segundo fetch.
 const REGRA_DESCONTO_SELECT = {
@@ -26,6 +42,9 @@ const PRODUTO_INCLUDE = {
   subCategoria: CATEGORIA_SELECT,
   armazem: ARMAZEM_SELECT,
   regraDesconto: REGRA_DESCONTO_SELECT,
+  fotos: {
+    orderBy: [{ principal: 'desc' as const }, { ordem: 'asc' as const }],
+  },
 };
 
 @Injectable()
@@ -46,26 +65,56 @@ export class ProdutosService {
         deletedAt: null,
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
         ...(query.categoriaId ? { categoriaId: query.categoriaId } : {}),
-        ...(query.regraDescontoId ? { regraDescontoId: query.regraDescontoId } : {}),
-        ...(query.subCategoriaId ? { subCategoriaId: query.subCategoriaId } : {}),
+        ...(query.regraDescontoId
+          ? { regraDescontoId: query.regraDescontoId }
+          : {}),
+        ...(query.subCategoriaId
+          ? { subCategoriaId: query.subCategoriaId }
+          : {}),
         ...(query.armazemId ? { armazemId: query.armazemId } : {}),
         ...(query.search
           ? {
               OR: [
-                { descricao: { contains: query.search, mode: 'insensitive' as const } },
-                { codigoErp: { contains: query.search, mode: 'insensitive' as const } },
-                { marca: { contains: query.search, mode: 'insensitive' as const } },
                 {
-                  categoria: {
-                    descricao: { contains: query.search, mode: 'insensitive' as const },
+                  descricao: {
+                    contains: query.search,
+                    mode: 'insensitive' as const,
                   },
                 },
-                { codigoBarras: { contains: query.search, mode: 'insensitive' as const } },
+                {
+                  codigoErp: {
+                    contains: query.search,
+                    mode: 'insensitive' as const,
+                  },
+                },
+                {
+                  marca: {
+                    contains: query.search,
+                    mode: 'insensitive' as const,
+                  },
+                },
+                {
+                  categoria: {
+                    descricao: {
+                      contains: query.search,
+                      mode: 'insensitive' as const,
+                    },
+                  },
+                },
+                {
+                  codigoBarras: {
+                    contains: query.search,
+                    mode: 'insensitive' as const,
+                  },
+                },
               ],
             }
           : {}),
       };
-      const sortField = query.sortBy && SORT_FIELDS.has(query.sortBy) ? query.sortBy : 'descricao';
+      const sortField =
+        query.sortBy && SORT_FIELDS.has(query.sortBy)
+          ? query.sortBy
+          : 'descricao';
       const [data, total] = await Promise.all([
         tx.produto.findMany({
           where,
@@ -104,13 +153,23 @@ export class ProdutosService {
     });
   }
 
-  async update(empresaId: string, user: AuthenticatedUser, id: string, input: ProdutoUpdate) {
+  async update(
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+    input: ProdutoUpdate,
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const produto = await tx.produto.findFirst({ where: { id, empresaId, deletedAt: null } });
+      const produto = await tx.produto.findFirst({
+        where: { id, empresaId, deletedAt: null },
+      });
       if (!produto) throw new NotFoundException('Produto não encontrado');
       return tx.produto.update({
         where: { id },
-        data: { ...(this.limpar(input) as object), updatedBy: user.id } as never,
+        data: {
+          ...(this.limpar(input) as object),
+          updatedBy: user.id,
+        } as never,
         include: PRODUTO_INCLUDE,
       });
     });
@@ -118,12 +177,117 @@ export class ProdutosService {
 
   async remove(empresaId: string, user: AuthenticatedUser, id: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const produto = await tx.produto.findFirst({ where: { id, empresaId, deletedAt: null } });
+      const produto = await tx.produto.findFirst({
+        where: { id, empresaId, deletedAt: null },
+      });
       if (!produto) throw new NotFoundException('Produto não encontrado');
       return tx.produto.update({
         where: { id },
         data: { deletedAt: new Date(), deletedBy: user.id, ativo: false },
       });
     });
+  }
+
+  async setFoto(
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+    filename: string,
+    originalname: string,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const produto = await tx.produto.findFirst({
+        where: { id, empresaId, deletedAt: null },
+      });
+      if (!produto) {
+        unlink(join(PRODUTOS_DIR, filename), () => undefined);
+        throw new NotFoundException('Produto não encontrado');
+      }
+      const ultima = await tx.produtoFoto.findFirst({
+        where: { produtoId: id, empresaId },
+        orderBy: { ordem: 'desc' },
+      });
+      await tx.produtoFoto.create({
+        data: {
+          empresaId,
+          produtoId: id,
+          url: produtoFotoPublicPath(filename),
+          nomeArquivo: basename(originalname.replaceAll('\\', '/')).slice(
+            0,
+            255,
+          ),
+          principal: !ultima,
+          ordem: (ultima?.ordem ?? -1) + 1,
+          createdBy: user.id,
+        },
+      });
+      return tx.produto.findUniqueOrThrow({
+        where: { id },
+        include: PRODUTO_INCLUDE,
+      });
+    });
+  }
+
+  async definirFotoPrincipal(
+    empresaId: string,
+    user: AuthenticatedUser,
+    produtoId: string,
+    fotoId: string,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const foto = await tx.produtoFoto.findFirst({
+        where: { id: fotoId, produtoId, empresaId },
+      });
+      if (!foto) throw new NotFoundException('Foto não encontrada');
+      await tx.produtoFoto.updateMany({
+        where: { produtoId, empresaId, principal: true },
+        data: { principal: false },
+      });
+      await tx.produtoFoto.update({
+        where: { id: fotoId },
+        data: { principal: true },
+      });
+      return tx.produto.update({
+        where: { id: produtoId },
+        data: { updatedBy: user.id },
+        include: PRODUTO_INCLUDE,
+      });
+    });
+  }
+
+  async removerFoto(
+    empresaId: string,
+    user: AuthenticatedUser,
+    produtoId: string,
+    fotoId: string,
+  ) {
+    const removida = await this.prisma.withTenant(empresaId, async (tx) => {
+      const foto = await tx.produtoFoto.findFirst({
+        where: { id: fotoId, produtoId, empresaId },
+      });
+      if (!foto) throw new NotFoundException('Foto não encontrada');
+      await tx.produtoFoto.delete({ where: { id: fotoId } });
+      if (foto.principal) {
+        const proxima = await tx.produtoFoto.findFirst({
+          where: { produtoId, empresaId },
+          orderBy: { ordem: 'asc' },
+        });
+        if (proxima) {
+          await tx.produtoFoto.update({
+            where: { id: proxima.id },
+            data: { principal: true },
+          });
+        }
+      }
+      const produto = await tx.produto.update({
+        where: { id: produtoId },
+        data: { updatedBy: user.id },
+        include: PRODUTO_INCLUDE,
+      });
+      return { produto, url: foto.url };
+    });
+    const arquivo = join(PRODUTOS_DIR, basename(removida.url));
+    if (existsSync(arquivo)) unlink(arquivo, () => undefined);
+    return removida.produto;
   }
 }
