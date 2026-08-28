@@ -77,7 +77,7 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
         <MobileSidebar open={mobileOpen} onOpenChange={setMobileOpen} />
         <div className="flex min-w-0 flex-1 flex-col">
           <AppTopbar onToggleSidebar={handleToggleSidebar} title={page?.title} subtitle={page?.subtitle} />
-          <main className="flex-1 overflow-y-auto bg-muted/30 p-6">
+          <main className="flex-1 overflow-y-auto overflow-x-hidden bg-muted/30 p-3 sm:p-4 lg:p-6">
             {children}
           </main>
         </div>

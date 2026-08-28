@@ -235,7 +235,7 @@ export function GraficoEvolucao({
   /** Quantos rótulos de mês cabem sem se sobrepor (cada um pede ~52px). */
   const passoRotuloMes = Math.max(1, Math.ceil((meses.length * 52) / Math.max(larguraPlot, 1)));
 
-  const aoMover = (e: React.MouseEvent<SVGRectElement>) => {
+  const aoMover = (e: React.PointerEvent<SVGRectElement>) => {
     if (meses.length === 0) return;
     const caixa = e.currentTarget.getBoundingClientRect();
     const posicao = e.clientX - caixa.left;
@@ -471,19 +471,23 @@ export function GraficoEvolucao({
               width={larguraPlot}
               height={alturaPlot}
               fill="transparent"
-              onMouseMove={aoMover}
-              onMouseLeave={() => setMesAtivo(null)}
+              onPointerDown={aoMover}
+              onPointerMove={aoMover}
+              onPointerLeave={() => setMesAtivo(null)}
             />
           </svg>
         )}
 
         {mesAtivo != null && (
           <div
-            className="pointer-events-none absolute top-2 z-10 min-w-40 rounded-lg border bg-popover px-3 py-2 shadow-md"
+            className="pointer-events-none absolute top-2 z-10 min-w-40 overflow-hidden rounded-lg border bg-popover px-3 py-2 shadow-md"
             style={
               tooltipADireita
-                ? { right: `${Math.max(largura - x(mesAtivo) + 12, 8)}px` }
-                : { left: `${x(mesAtivo) + 12}px` }
+                ? {
+                    right: `${Math.max(largura - x(mesAtivo) + 12, 8)}px`,
+                    left: "8px",
+                  }
+                : { left: `${x(mesAtivo) + 12}px`, right: "8px" }
             }
           >
             <p className="mb-1 text-xs font-medium">{meses[mesAtivo]}</p>

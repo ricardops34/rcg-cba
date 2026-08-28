@@ -228,7 +228,7 @@ export function ConsultaEvolucaoView() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-tight">Evolução Mensal</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => abrirCortina(true)}>
             <SlidersHorizontal className="size-4" />
             Parâmetros
@@ -264,13 +264,15 @@ export function ConsultaEvolucaoView() {
       </div>
 
       <Tabs value={indicador} onValueChange={(v) => setIndicador(v as IndicadorEvolucao)}>
-        <TabsList>
-          {INDICADORES_EVOLUCAO.map((i) => (
-            <TabsTrigger key={i.valor} value={i.valor}>
-              {i.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+        <div className="-mx-1 overflow-x-auto px-1 pb-1">
+          <TabsList>
+            {INDICADORES_EVOLUCAO.map((i) => (
+              <TabsTrigger key={i.valor} value={i.valor}>
+                {i.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
       </Tabs>
 
       {/* Resumo do recorte: com os filtros na cortina, a tela precisa dizer
@@ -505,8 +507,16 @@ export function ConsultaEvolucaoView() {
                   ? "o total do período é a soma dos meses"
                   : "cada cliente conta uma única vez no período"}
               </p>
-              <div className="max-h-[60vh] overflow-x-hidden overflow-y-auto rounded-lg border">
-                <Table className="w-full table-fixed">
+              <p className="text-xs text-muted-foreground sm:hidden">
+                Deslize a tabela para comparar todos os meses.
+              </p>
+              <div className="max-h-[60vh] overflow-y-auto rounded-lg border">
+                <Table
+                  className="w-full table-fixed"
+                  style={{
+                    minWidth: Math.max(720, 220 + data.colunas.length * 88),
+                  }}
+                >
                   <TableHeader className="sticky top-0 z-10 bg-card">
                     <TableRow>
                       <TableHead className="w-[18%] px-2">Vendedor</TableHead>

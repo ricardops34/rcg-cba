@@ -285,7 +285,7 @@ export function ConsultaVendasView({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-tight">{titulo}</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => abrirCortina(true)}>
             <SlidersHorizontal className="size-4" />
             Parâmetros
@@ -536,13 +536,16 @@ export function ConsultaVendasView({
                 ? "vendedor titular do cliente"
                 : "vendedor da nota"}
             </p>
-            {/* Sem rolagem horizontal: a tabela é `table-fixed`, a coluna de
-                identificação leva 18% e quebra em várias linhas, e as colunas
-                de valor dividem o resto — quanto menor o período, mais larga
-                cada uma. Em tela estreita o texto quebra em mais linhas, e
-                nunca aparece barra horizontal. */}
-            <div className="max-h-[70vh] overflow-x-hidden overflow-y-auto rounded-lg border">
-              <Table className="w-full table-fixed">
+            <p className="text-xs text-muted-foreground sm:hidden">
+              Deslize a tabela para comparar todos os meses.
+            </p>
+            <div className="max-h-[70vh] overflow-y-auto rounded-lg border">
+              <Table
+                className="w-full table-fixed"
+                style={{
+                  minWidth: Math.max(720, 220 + data.colunas.length * 88),
+                }}
+              >
                 <TableHeader className="sticky top-0 z-10 bg-card">
                   <TableRow>
                     <SortableTableHead

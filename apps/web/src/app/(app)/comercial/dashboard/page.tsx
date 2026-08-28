@@ -59,7 +59,7 @@ function StatCard({
           <Icon className="size-4.5" />
         </span>
       </div>
-      <p className="mt-1 text-2xl font-bold tracking-tight">{value}</p>
+      <p className="mt-1 min-w-0 break-words text-xl font-bold tracking-tight sm:text-2xl">{value}</p>
       <p className="mt-0.5 text-xs opacity-80">{suffix}</p>
     </div>
   );
@@ -122,7 +122,7 @@ export default function DashboardComercialPage() {
 
       <Card>
         <CardContent className="flex flex-wrap items-end gap-3">
-          <div className="w-40 space-y-1.5">
+          <div className="w-full space-y-1.5 sm:w-40">
             <FieldLabel>Mês</FieldLabel>
             <Select value={String(mes)} onValueChange={(v) => setMes(Number(v))}>
               <SelectTrigger className="w-full">
@@ -138,7 +138,7 @@ export default function DashboardComercialPage() {
             </Select>
           </div>
 
-          <div className="w-28 space-y-1.5">
+          <div className="w-full space-y-1.5 sm:w-28">
             <FieldLabel>Ano</FieldLabel>
             <Select value={String(ano)} onValueChange={(v) => setAno(Number(v))}>
               <SelectTrigger className="w-full">
@@ -154,7 +154,7 @@ export default function DashboardComercialPage() {
             </Select>
           </div>
 
-          <div className="w-56 space-y-1.5">
+          <div className="w-full space-y-1.5 sm:w-56">
             <FieldLabel>Vendedor</FieldLabel>
             <Select
               value={vendedorId ?? "none"}
@@ -178,7 +178,7 @@ export default function DashboardComercialPage() {
               quando há um): oferecer a carteira inteira encheria o select de
               cidades que deixariam a tela zerada. A lista acompanha os selects
               acima, mesmo antes de clicar em Buscar. */}
-          <div className="w-56 space-y-1.5">
+          <div className="w-full space-y-1.5 sm:w-56">
             <FieldLabel>Município</FieldLabel>
             <Select
               value={municipioValido ?? "none"}
@@ -199,7 +199,7 @@ export default function DashboardComercialPage() {
             </Select>
           </div>
 
-          <Button onClick={buscar} disabled={isFetching}>
+          <Button className="w-full sm:w-auto" onClick={buscar} disabled={isFetching}>
             <Search className="size-4" />
             Buscar
           </Button>

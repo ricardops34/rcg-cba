@@ -84,7 +84,7 @@ function StatCard({
   return (
     <Elemento
       {...(onClick ? { type: "button" as const, onClick } : {})}
-      className={`relative overflow-hidden rounded-xl bg-linear-to-br p-4 text-left text-white shadow-md ${gradient} ${
+      className={`relative min-w-0 overflow-hidden rounded-xl bg-linear-to-br p-4 text-left text-white shadow-md ${gradient} ${
         onClick
           ? "cursor-pointer transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           : ""
@@ -100,7 +100,7 @@ function StatCard({
           <Icon className="size-4.5" />
         </span>
       </div>
-      <p className="mt-1 text-2xl font-bold tracking-tight">{value}</p>
+      <p className="mt-1 min-w-0 break-words text-xl font-bold tracking-tight sm:text-2xl">{value}</p>
       <p className="mt-0.5 text-xs opacity-80">{suffix}</p>
     </Elemento>
   );
