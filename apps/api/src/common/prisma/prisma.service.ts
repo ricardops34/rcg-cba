@@ -63,6 +63,35 @@ export class PrismaService
       return fn(tx);
     });
   }
+
+  /**
+   * Contexto mÃ­nimo para localizar uma credencial do portal antes de o tenant
+   * estar autenticado. A policy aceita somente a credencial exata informada.
+   */
+  async withPortalCredential<T>(
+    alvo: { id: string } | { empresaAlias: string; email: string },
+    fn: (tx: TenantTx) => Promise<T>,
+  ): Promise<T> {
+    return this.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_portal_credential_id', ${'id' in alvo ? alvo.id : ''}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.current_portal_empresa_alias', ${'empresaAlias' in alvo ? alvo.empresaAlias : ''}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.current_portal_email', ${'email' in alvo ? alvo.email : ''}, true)`;
+      return fn(tx);
+    });
+  }
+
+  /** Permite inserir apenas o evento de auditoria que estÃ¡ sendo registrado. */
+  async withPortalAudit<T>(
+    email: string,
+    empresaId: string | undefined,
+    fn: (tx: TenantTx) => Promise<T>,
+  ): Promise<T> {
+    return this.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_portal_audit_email', ${email}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.current_portal_audit_empresa_id', ${empresaId ?? ''}, true)`;
+      return fn(tx);
+    });
+  }
 }
 
 export type { TenantTx };

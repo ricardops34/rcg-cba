@@ -14,7 +14,11 @@ import { PoliticaSenhaService } from '../politica-senha/politica-senha.service';
 import { AcessosService } from '../acessos/acessos.service';
 import { HorarioTrabalhoService } from '../acessos/horario-trabalho.service';
 import { ForaDoExpedienteException } from '../../common/horario/horario-trabalho';
-import type { ChangePasswordInput, LoginInput, RefreshInput } from '@plataforma/contracts';
+import type {
+  ChangePasswordInput,
+  LoginInput,
+  RefreshInput,
+} from '@plataforma/contracts';
 
 interface RequestMeta {
   ip?: string;
@@ -67,6 +71,7 @@ export class AuthService {
       email: vinculo.usuario.email,
       empresaAtivaId: vinculo.empresaId,
       isAdmin: vinculo.perfil.sistemaBase,
+      administradorPlataforma: vinculo.usuario.administradorPlataforma,
       permissoes,
     };
 
@@ -155,7 +160,9 @@ export class AuthService {
         data: bloqueou
           ? {
               tentativasFalhas: 0,
-              bloqueadoAte: new Date(Date.now() + politica.minutosBloqueio * 60_000),
+              bloqueadoAte: new Date(
+                Date.now() + politica.minutosBloqueio * 60_000,
+              ),
             }
           : { tentativasFalhas: tentativas },
       });
@@ -218,7 +225,10 @@ export class AuthService {
         : new UnauthorizedException('Usuário sem empresa ativa vinculada');
     }
 
-    const { accessToken } = await this.buildAccessToken(vinculo.id, vinculo.empresaId);
+    const { accessToken } = await this.buildAccessToken(
+      vinculo.id,
+      vinculo.empresaId,
+    );
     // A sessão nasce aqui e acompanha as renovações de token pelo sessaoId —
     // é ela que mede o tempo de uso na tela de Acessos.
     const sessaoId = await this.acessos.abrirSessao({
@@ -238,7 +248,11 @@ export class AuthService {
 
     await this.prisma.usuario.update({
       where: { id: usuario.id },
-      data: { ultimoLogin: new Date(), tentativasFalhas: 0, bloqueadoAte: null },
+      data: {
+        ultimoLogin: new Date(),
+        tentativasFalhas: 0,
+        bloqueadoAte: null,
+      },
     });
 
     await this.acessos.registrar({
@@ -338,7 +352,10 @@ export class AuthService {
       throw new UnauthorizedException('Usuário sem empresa ativa vinculada');
     }
 
-    const { accessToken } = await this.buildAccessToken(vinculo.id, vinculo.empresaId);
+    const { accessToken } = await this.buildAccessToken(
+      vinculo.id,
+      vinculo.empresaId,
+    );
     const refreshToken = await this.issueRefreshToken(
       stored.usuarioId,
       vinculo.empresaId,
@@ -410,12 +427,13 @@ export class AuthService {
   async switchEmpresa(usuarioId: string, empresaId: string, meta: RequestMeta) {
     const vinculo = await this.findVinculoAtivo(usuarioId, empresaId);
     if (!vinculo) {
-      throw new ForbiddenException(
-        'Usuário não tem acesso a esta empresa',
-      );
+      throw new ForbiddenException('Usuário não tem acesso a esta empresa');
     }
 
-    const { accessToken } = await this.buildAccessToken(vinculo.id, vinculo.empresaId);
+    const { accessToken } = await this.buildAccessToken(
+      vinculo.id,
+      vinculo.empresaId,
+    );
     // Trocar de empresa não é uma sessão nova — é a mesma pessoa, seguindo o
     // trabalho. Reaproveita a sessão aberta (o corpo da requisição não traz o
     // refresh token, então ela é localizada pelo usuário) e só abre outra se
@@ -497,6 +515,7 @@ export class AuthService {
       id: usuario.id,
       nome: usuario.nome,
       email: usuario.email,
+      administradorPlataforma: usuario.administradorPlataforma,
       empresaAtivaId,
       empresas: vinculos.map((v, i) => ({
         empresaId: v.empresaId,
@@ -513,7 +532,11 @@ export class AuthService {
     };
   }
 
-  async updateOwnProfile(usuarioId: string, empresaAtivaId: string, nome: string) {
+  async updateOwnProfile(
+    usuarioId: string,
+    empresaAtivaId: string,
+    nome: string,
+  ) {
     await this.prisma.usuario.update({
       where: { id: usuarioId },
       data: { nome: nome.trim(), updatedBy: usuarioId },
@@ -527,7 +550,10 @@ export class AuthService {
       where: { id: usuarioId },
     });
 
-    const senhaAtualValida = await bcrypt.compare(input.senhaAtual, usuario.senhaHash);
+    const senhaAtualValida = await bcrypt.compare(
+      input.senhaAtual,
+      usuario.senhaHash,
+    );
     if (!senhaAtualValida) {
       throw new UnauthorizedException('Senha atual incorreta');
     }
@@ -536,11 +562,19 @@ export class AuthService {
       usuarioId,
       input.novaSenha,
     );
-    await this.politicaSenhaService.validarReuso(usuarioId, input.novaSenha, usuario.senhaHash);
+    await this.politicaSenhaService.validarReuso(
+      usuarioId,
+      input.novaSenha,
+      usuario.senhaHash,
+    );
 
     const novoHash = await bcrypt.hash(input.novaSenha, SALT_ROUNDS);
     await this.prisma.$transaction(async (tx) => {
-      await this.politicaSenhaService.registrarHistorico(usuarioId, usuario.senhaHash, tx);
+      await this.politicaSenhaService.registrarHistorico(
+        usuarioId,
+        usuario.senhaHash,
+        tx,
+      );
       await tx.usuario.update({
         where: { id: usuarioId },
         data: {

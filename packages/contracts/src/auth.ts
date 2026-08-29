@@ -2,24 +2,33 @@ import { z } from "zod";
 
 export const loginSchema = z.object({
   email: z.string().trim().email().describe("E-mail cadastrado do usuário"),
-  senha: z.string().min(1, "Informe a senha").describe("Senha em texto plano (validada via bcrypt no servidor)"),
+  senha: z
+    .string()
+    .min(1, "Informe a senha")
+    .describe("Senha em texto plano (validada via bcrypt no servidor)"),
   empresaAlias: z
     .string()
     .trim()
     .toLowerCase()
     .min(1)
     .optional()
-    .describe("Alias da empresa em que o usuário quer entrar; se omitido, entra na primeira empresa ativa"),
+    .describe(
+      "Alias da empresa em que o usuário quer entrar; se omitido, entra na primeira empresa ativa",
+    ),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
 export const authTokensSchema = z.object({
   accessToken: z
     .string()
-    .describe("JWT de curta duração (15 min) enviado no header Authorization: Bearer"),
+    .describe(
+      "JWT de curta duração (15 min) enviado no header Authorization: Bearer",
+    ),
   refreshToken: z
     .string()
-    .describe("Token opaco de longa duração (7 dias), rotativo a cada uso, usado só em /auth/refresh"),
+    .describe(
+      "Token opaco de longa duração (7 dias), rotativo a cada uso, usado só em /auth/refresh",
+    ),
   expiresIn: z.number().int().describe("Validade do accessToken em segundos"),
 });
 export type AuthTokens = z.infer<typeof authTokensSchema>;
@@ -34,7 +43,9 @@ export const loginResultSchema = authTokensSchema.extend({
 export type LoginResult = z.infer<typeof loginResultSchema>;
 
 export const refreshInputSchema = z.object({
-  refreshToken: z.string().describe("Refresh token obtido no login ou no refresh anterior"),
+  refreshToken: z
+    .string()
+    .describe("Refresh token obtido no login ou no refresh anterior"),
 });
 export type RefreshInput = z.infer<typeof refreshInputSchema>;
 
@@ -42,7 +53,9 @@ export const switchEmpresaInputSchema = z.object({
   empresaId: z
     .string()
     .uuid()
-    .describe("Empresa para a qual a sessão deve trocar (o usuário precisa ter vínculo ativo com ela)"),
+    .describe(
+      "Empresa para a qual a sessão deve trocar (o usuário precisa ter vínculo ativo com ela)",
+    ),
 });
 export type SwitchEmpresaInput = z.infer<typeof switchEmpresaInputSchema>;
 
@@ -67,20 +80,35 @@ export const currentUserSchema = z.object({
   id: z.string().uuid().describe("Identificador do usuário autenticado"),
   nome: z.string().describe("Nome completo do usuário"),
   email: z.string().email().describe("E-mail do usuário"),
-  empresaAtivaId: z.string().uuid().describe("Empresa atualmente ativa na sessão"),
+  administradorPlataforma: z
+    .boolean()
+    .describe(
+      "Autoriza administrar o catálogo global, independentemente do perfil da empresa",
+    ),
+  empresaAtivaId: z
+    .string()
+    .uuid()
+    .describe("Empresa atualmente ativa na sessão"),
   empresas: z
     .array(
       z.object({
         empresaId: z.string().uuid().describe("Identificador da empresa"),
         nomeFantasia: z.string().describe("Nome fantasia da empresa"),
-        logoUrl: z.string().nullable().describe("Caminho do logo da empresa, quando cadastrado"),
+        logoUrl: z
+          .string()
+          .nullable()
+          .describe("Caminho do logo da empresa, quando cadastrado"),
         // Faixa institucional do topo: vem junto com o vínculo para o shell
         // desenhar a barra sem uma segunda requisição ao trocar de empresa.
-        bannerAtivo: z.boolean().describe("Exibe a faixa institucional no topo do sistema"),
+        bannerAtivo: z
+          .boolean()
+          .describe("Exibe a faixa institucional no topo do sistema"),
         bannerCor: z
           .string()
           .nullable()
-          .describe("Cor de fundo da faixa (#rrggbb), ou null para a cor do tema"),
+          .describe(
+            "Cor de fundo da faixa (#rrggbb), ou null para a cor do tema",
+          ),
         bannerImagemUrl: z
           .string()
           .nullable()
@@ -92,7 +120,9 @@ export const currentUserSchema = z.object({
     .describe("Todas as empresas às quais o usuário está vinculado"),
   permissoes: z
     .array(z.string())
-    .describe("Permissões da empresa ativa, no formato 'rotinaCodigo.acao' (ex.: 'empresas.editar')"),
+    .describe(
+      "Permissões da empresa ativa, no formato 'rotinaCodigo.acao' (ex.: 'empresas.editar')",
+    ),
   mustChangePassword: z
     .boolean()
     .describe(
@@ -108,7 +138,8 @@ export const LOGIN_EXAMPLE: LoginInput = {
 
 export const AUTH_TOKENS_EXAMPLE: AuthTokens = {
   accessToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  refreshToken: "e143916e8210830c2fd02dfdc1fc27b6119fc73a9dfaf9132daca18487c129f",
+  refreshToken:
+    "e143916e8210830c2fd02dfdc1fc27b6119fc73a9dfaf9132daca18487c129f",
   expiresIn: 900,
 };
 
@@ -116,6 +147,7 @@ export const CURRENT_USER_EXAMPLE: CurrentUser = {
   id: "827167a9-93f9-4fd8-9cc5-dcd8077c600d",
   nome: "Administrador do Sistema",
   email: "admin@demo.com",
+  administradorPlataforma: true,
   empresaAtivaId: "2113ce67-5cf9-40e6-b1ed-fa88281c2a92",
   empresas: [
     {

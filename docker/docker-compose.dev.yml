@@ -43,6 +43,7 @@ services:
       dockerfile: docker/api.Dockerfile.dev
     working_dir: /app
     environment:
+      NODE_ENV: development
       # Role de app (sem BYPASSRLS/superuser) — ver migration
       # 20260724000000_baseline. Migrations/seed (serviço db-init) continuam
       # rodando com o role "plataforma", dono das tabelas.
@@ -81,7 +82,7 @@ services:
       WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL: ${WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL:-http://api:3001}
     command: pnpm --filter @plataforma/api start:dev
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"
     volumes:
       - ..:/app
       - node_modules:/app/node_modules
@@ -118,7 +119,7 @@ services:
       WHATSAPP_LOG_NIVEL: ${WHATSAPP_LOG_NIVEL:-info}
     command: pnpm --filter @plataforma/whatsapp-worker start:dev
     ports:
-      - "3100:3100"
+      - "127.0.0.1:3100:3100"
     volumes:
       - ..:/app
       - node_modules:/app/node_modules
@@ -189,7 +190,7 @@ services:
     ports:
       # Publicada só em dev, para inspecionar o Swagger do gateway. Em produção
       # ele fica exclusivamente na rede interna.
-      - "8081:8080"
+      - "127.0.0.1:8081:8080"
     depends_on:
       evolution-db-init:
         condition: service_completed_successfully
@@ -203,7 +204,7 @@ services:
       NEXT_PUBLIC_API_URL: http://localhost:3001/api/v1
     command: pnpm --filter web exec next dev -H 0.0.0.0 -p 3000
     ports:
-      - "3002:3000"
+      - "127.0.0.1:3002:3000"
     volumes:
       - ..:/app
       - node_modules:/app/node_modules
@@ -223,7 +224,7 @@ services:
       POSTGRES_PASSWORD: plataforma
       POSTGRES_DB: plataforma_comercial
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -236,7 +237,7 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -249,8 +250,8 @@ services:
     image: mailhog/mailhog
     restart: unless-stopped
     ports:
-      - "8025:8025"
-      - "1025:1025"
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
 
 volumes:
   postgres_data:

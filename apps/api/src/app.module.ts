@@ -41,10 +41,17 @@ import { NotificacoesModule } from './modules/notificacoes/notificacoes.module';
 import { InicioModule } from './modules/inicio/inicio.module';
 import { AcessosModule } from './modules/acessos/acessos.module';
 import { PortalClienteModule } from './modules/portal-cliente/portal-cliente.module';
+import { validarSegredosDoAmbiente } from './common/config/validar-segredos';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      validate: (config) => {
+        validarSegredosDoAmbiente(config);
+        return config;
+      },
+    }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 200 }]),
     // Serve os arquivos enviados (logos das empresas) em /uploads/*.
     // Fica fora do prefixo /api — o front monta a URL a partir da origem da API.

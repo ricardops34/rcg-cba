@@ -295,10 +295,10 @@ Como o receptor (`WhatsappEvolutionController`) resolve cada ponto:
 
 A documentação informa retentativas para webhooks, mas não apresenta uma
 assinatura HMAC claramente definida. Daí o **segredo por instância**, gerado no
-pareamento, gravado cifrado e comparado em tempo constante. Ele viaja na query
-da URL porque a documentação não garante cabeçalho customizado no webhook — um
-segredo que o gateway não sabe enviar não protege nada; o controller aceita
-também `Authorization: Bearer` para quando a versão suportar.
+pareamento, gravado cifrado e comparado em tempo constante. Ele é configurado
+como credencial HTTP no `userinfo` da URL; o cliente converte isso em
+`Authorization: Basic`, sem expor o segredo na query ou no request-target. O
+controller também aceita `Authorization: Bearer`.
 
 A URL deve permanecer na rede interna do Docker. Se o serviço for externo, o
 callback precisará de proteção adicional, como mTLS ou proxy autenticado, além

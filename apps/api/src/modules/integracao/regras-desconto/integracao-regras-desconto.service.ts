@@ -48,6 +48,7 @@ export class IntegracaoRegrasDescontoService {
       padrao: row.padrao,
       ativo: row.ativo,
       faixas: row.faixas.map((f) => ({
+        delete: false,
         sequencia: f.sequencia,
         percInicial: f.percInicial,
         percFinal: f.percFinal,
@@ -62,6 +63,7 @@ export class IntegracaoRegrasDescontoService {
 
   /** Mesma regra da tela: sequência única e faixas que não se sobrepõem. */
   private validarFaixas(faixas: IntegracaoRegraDescontoFaixa[]) {
+    faixas = faixas.filter((f) => !f.delete);
     if (new Set(faixas.map((f) => f.sequencia)).size !== faixas.length) {
       throw new BadRequestException('Há faixas com a mesma sequência');
     }
@@ -78,6 +80,46 @@ export class IntegracaoRegrasDescontoService {
         );
       }
     }
+  }
+
+  private async sincronizarFaixas(
+    tx: TenantTx,
+    empresaId: string,
+    regraDescontoId: string,
+    faixas: IntegracaoRegraDescontoFaixa[],
+    autor: string,
+  ) {
+    const excluidas = faixas.filter((f) => f.delete).map((f) => f.sequencia);
+    if (excluidas.length > 0) {
+      await tx.regraDescontoFaixa.deleteMany({
+        where: { empresaId, regraDescontoId, sequencia: { in: excluidas } },
+      });
+    }
+    await Promise.all(
+      faixas.filter((f) => !f.delete).map((f) =>
+        tx.regraDescontoFaixa.upsert({
+          where: {
+            regraDescontoId_sequencia: { regraDescontoId, sequencia: f.sequencia },
+          },
+          create: {
+            empresaId,
+            regraDescontoId,
+            sequencia: f.sequencia,
+            percInicial: f.percInicial,
+            percFinal: f.percFinal,
+            percBaseComissao: f.percBaseComissao,
+            createdBy: autor,
+            updatedBy: autor,
+          },
+          update: {
+            percInicial: f.percInicial,
+            percFinal: f.percFinal,
+            percBaseComissao: f.percBaseComissao,
+            updatedBy: autor,
+          },
+        }),
+      ),
+    );
   }
 
   /** Só uma regra padrão por empresa. */
@@ -169,8 +211,11 @@ export class IntegracaoRegrasDescontoService {
         updatedBy: autor,
       };
       const faixas = {
-        create: input.faixas.map((f) => ({
-          ...f,
+        create: input.faixas.filter((f) => !f.delete).map((f) => ({
+          sequencia: f.sequencia,
+          percInicial: f.percInicial,
+          percFinal: f.percFinal,
+          percBaseComissao: f.percBaseComissao,
           empresaId,
           createdBy: autor,
           updatedBy: autor,
@@ -178,14 +223,18 @@ export class IntegracaoRegrasDescontoService {
       };
 
       if (decisao !== 'criar') {
-        // As faixas do payload substituem as da regra excluída — mesma regra
-        // do `update`.
-        await tx.regraDescontoFaixa.deleteMany({
-          where: { regraDescontoId: existente!.id, empresaId },
-        });
+        // Cada faixa é tratada pela sequência; delete=true remove somente a
+        // faixa indicada.
+        await this.sincronizarFaixas(
+          tx,
+          empresaId,
+          existente!.id,
+          input.faixas,
+          autor,
+        );
         const atualizadoUpsert = await tx.regraDesconto.update({
           where: { id: existente!.id },
-          data: { ...dados, ...camposDaDecisao(decisao), faixas },
+          data: { ...dados, ...camposDaDecisao(decisao) },
           include: INCLUDE,
         });
         return this.paraLeitura(atualizadoUpsert);
@@ -220,9 +269,13 @@ export class IntegracaoRegrasDescontoService {
       }
 
       if (input.faixas) {
-        await tx.regraDescontoFaixa.deleteMany({
-          where: { regraDescontoId: existente.id, empresaId },
-        });
+        await this.sincronizarFaixas(
+          tx,
+          empresaId,
+          existente.id,
+          input.faixas,
+          autor,
+        );
       }
 
       const atualizada = await tx.regraDesconto.update({
@@ -243,18 +296,6 @@ export class IntegracaoRegrasDescontoService {
           ...(input.padrao !== undefined ? { padrao: input.padrao } : {}),
           ...(input.ativo !== undefined ? { ativo: input.ativo } : {}),
           updatedBy: autor,
-          ...(input.faixas
-            ? {
-                faixas: {
-                  create: input.faixas.map((f) => ({
-                    ...f,
-                    empresaId,
-                    createdBy: autor,
-                    updatedBy: autor,
-                  })),
-                },
-              }
-            : {}),
         },
         include: INCLUDE,
       });

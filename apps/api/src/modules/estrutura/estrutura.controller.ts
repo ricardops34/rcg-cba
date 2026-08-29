@@ -33,6 +33,7 @@ import {
 } from './dto/estrutura.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { ApiBodyExample } from '../../common/decorators/api-body-example.decorator';
 import {
@@ -64,17 +65,28 @@ export class EstruturaController {
     return this.service.listModulos();
   }
 
-  @ApiOperation({ summary: 'Cadastrar módulo', description: 'Requer modulos.cadastrar.' })
+  @ApiOperation({
+    summary: 'Cadastrar módulo',
+    description: 'Requer modulos.cadastrar.',
+  })
   @ApiBodyExample(MODULO_CREATE_EXAMPLE)
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('estrutura', 'cadastrar')
   @Post('modulos')
-  createModulo(@Body() dto: ModuloCreateDto, @CurrentUser() user: AuthenticatedUser) {
+  createModulo(
+    @Body() dto: ModuloCreateDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.service.createModulo(dto, user.id);
   }
 
-  @ApiOperation({ summary: 'Editar módulo', description: 'Requer modulos.editar.' })
+  @ApiOperation({
+    summary: 'Editar módulo',
+    description: 'Requer modulos.editar.',
+  })
   @ApiParam({ name: 'id', example: MODULO_ID_EXAMPLE })
   @ApiBodyExample({ ordem: 3 })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('estrutura', 'editar')
   @Patch('modulos/:id')
   updateModulo(
@@ -85,19 +97,27 @@ export class EstruturaController {
     return this.service.updateModulo(id, dto, user.id);
   }
 
-  @ApiOperation({ summary: 'Excluir módulo (soft delete)', description: 'Requer modulos.excluir.' })
+  @ApiOperation({
+    summary: 'Excluir módulo (soft delete)',
+    description: 'Requer modulos.excluir.',
+  })
   @ApiParam({ name: 'id', example: MODULO_ID_EXAMPLE })
   @ApiResponse({ status: 200, schema: { example: { success: true } } })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('estrutura', 'excluir')
   @Delete('modulos/:id')
-  removeModulo(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+  removeModulo(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.service.removeModulo(id, user.id);
   }
 
   // Menus
   @ApiOperation({
     summary: 'Listar menus',
-    description: 'Opcionalmente filtrado por moduloId. Inclui as rotinas de cada menu. Requer menus.visualizar.',
+    description:
+      'Opcionalmente filtrado por moduloId. Inclui as rotinas de cada menu. Requer menus.visualizar.',
   })
   @ApiQuery({ name: 'moduloId', required: false, example: MODULO_ID_EXAMPLE })
   @RequirePermission('estrutura', 'visualizar')
@@ -111,15 +131,20 @@ export class EstruturaController {
     description: 'Use menuPaiId para criar um submenu. Requer menus.cadastrar.',
   })
   @ApiBodyExample(MENU_CREATE_EXAMPLE)
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('estrutura', 'cadastrar')
   @Post('menus')
-  createMenu(@Body() dto: MenuCreateDto, @CurrentUser() user: AuthenticatedUser) {
+  createMenu(
+    @Body() dto: MenuCreateDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.service.createMenu(dto, user.id);
   }
 
   @ApiOperation({ summary: 'Editar menu', description: 'Requer menus.editar.' })
   @ApiParam({ name: 'id', example: MENU_ID_EXAMPLE })
   @ApiBodyExample({ rota: '/comercial/produtos' })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('estrutura', 'editar')
   @Patch('menus/:id')
   updateMenu(
@@ -130,9 +155,13 @@ export class EstruturaController {
     return this.service.updateMenu(id, dto, user.id);
   }
 
-  @ApiOperation({ summary: 'Excluir menu (soft delete)', description: 'Requer menus.excluir.' })
+  @ApiOperation({
+    summary: 'Excluir menu (soft delete)',
+    description: 'Requer menus.excluir.',
+  })
   @ApiParam({ name: 'id', example: MENU_ID_EXAMPLE })
   @ApiResponse({ status: 200, schema: { example: { success: true } } })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('estrutura', 'excluir')
   @Delete('menus/:id')
   removeMenu(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
@@ -142,7 +171,8 @@ export class EstruturaController {
   // Rotinas
   @ApiOperation({
     summary: 'Listar rotinas',
-    description: 'Opcionalmente filtrado por menuId. O campo "codigo" é o identificador usado no RBAC. Requer rotinas.visualizar.',
+    description:
+      'Opcionalmente filtrado por menuId. O campo "codigo" é o identificador usado no RBAC. Requer rotinas.visualizar.',
   })
   @ApiQuery({ name: 'menuId', required: false, example: MENU_ID_EXAMPLE })
   @RequirePermission('estrutura', 'visualizar')
@@ -157,15 +187,23 @@ export class EstruturaController {
       'Cria uma rotina (funcionalidade permissionável). O "codigo" é o que aparece nas permissões, ex.: clientes.editar. Requer rotinas.cadastrar.',
   })
   @ApiBodyExample(ROTINA_CREATE_EXAMPLE)
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('estrutura', 'cadastrar')
   @Post('rotinas')
-  createRotina(@Body() dto: RotinaCreateDto, @CurrentUser() user: AuthenticatedUser) {
+  createRotina(
+    @Body() dto: RotinaCreateDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.service.createRotina(dto, user.id);
   }
 
-  @ApiOperation({ summary: 'Editar rotina', description: 'Requer rotinas.editar.' })
+  @ApiOperation({
+    summary: 'Editar rotina',
+    description: 'Requer rotinas.editar.',
+  })
   @ApiParam({ name: 'id', example: ROTINA_ID_EXAMPLE })
   @ApiBodyExample({ nome: 'Produtos' })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('estrutura', 'editar')
   @Patch('rotinas/:id')
   updateRotina(
@@ -176,12 +214,19 @@ export class EstruturaController {
     return this.service.updateRotina(id, dto, user.id);
   }
 
-  @ApiOperation({ summary: 'Excluir rotina (soft delete)', description: 'Requer rotinas.excluir.' })
+  @ApiOperation({
+    summary: 'Excluir rotina (soft delete)',
+    description: 'Requer rotinas.excluir.',
+  })
   @ApiParam({ name: 'id', example: ROTINA_ID_EXAMPLE })
   @ApiResponse({ status: 200, schema: { example: { success: true } } })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('estrutura', 'excluir')
   @Delete('rotinas/:id')
-  removeRotina(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+  removeRotina(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.service.removeRotina(id, user.id);
   }
 }

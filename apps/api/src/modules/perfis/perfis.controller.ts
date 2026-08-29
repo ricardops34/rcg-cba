@@ -17,7 +17,10 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { PERFIL_CREATE_EXAMPLE, PERFIL_PERMISSOES_UPDATE_EXAMPLE } from '@plataforma/contracts';
+import {
+  PERFIL_CREATE_EXAMPLE,
+  PERFIL_PERMISSOES_UPDATE_EXAMPLE,
+} from '@plataforma/contracts';
 import { PerfisService } from './perfis.service';
 import {
   PerfilCreateDto,
@@ -27,6 +30,7 @@ import {
 } from './dto/perfil.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { ApiBodyExample } from '../../common/decorators/api-body-example.decorator';
 import {
@@ -56,7 +60,9 @@ export class PerfisController {
     return this.service.findAll(query);
   }
 
-  @ApiOperation({ summary: 'Detalhar perfil, incluindo suas permissões por rotina/ação' })
+  @ApiOperation({
+    summary: 'Detalhar perfil, incluindo suas permissões por rotina/ação',
+  })
   @ApiParam({ name: 'id', example: PERFIL_ID_EXAMPLE })
   @ApiResponse({ status: 404, description: 'Perfil não encontrado' })
   @RequirePermission('perfis', 'visualizar')
@@ -72,6 +78,7 @@ export class PerfisController {
       'Atenção: como o perfil é global, essa permissão concedida em qualquer empresa afeta todas as demais.',
   })
   @ApiBodyExample(PERFIL_CREATE_EXAMPLE)
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('perfis', 'cadastrar')
   @Post()
   create(@Body() dto: PerfilCreateDto, @CurrentUser() user: AuthenticatedUser) {
@@ -85,6 +92,7 @@ export class PerfisController {
   })
   @ApiParam({ name: 'id', example: PERFIL_ID_EXAMPLE })
   @ApiBodyExample({ descricao: 'Acesso comercial padrão' })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('perfis', 'editar')
   @Patch(':id')
   update(
@@ -97,10 +105,12 @@ export class PerfisController {
 
   @ApiOperation({
     summary: 'Excluir perfil (soft delete)',
-    description: 'Perfis marcados como sistemaBase (ex.: Administrador) não podem ser excluídos. Requer perfis.excluir.',
+    description:
+      'Perfis marcados como sistemaBase (ex.: Administrador) não podem ser excluídos. Requer perfis.excluir.',
   })
   @ApiParam({ name: 'id', example: PERFIL_ID_EXAMPLE })
   @ApiResponse({ status: 200, schema: { example: { success: true } } })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('perfis', 'excluir')
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
@@ -115,6 +125,7 @@ export class PerfisController {
   })
   @ApiParam({ name: 'id', example: PERFIL_ID_EXAMPLE })
   @ApiBodyExample(PERFIL_PERMISSOES_UPDATE_EXAMPLE)
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('perfis', 'editar')
   @Put(':id/permissoes')
   updatePermissoes(

@@ -97,8 +97,8 @@ export class IntegracaoRegrasDescontoController {
   @ApiOperation({
     summary: 'Atualizar regra de desconto',
     description:
-      'Atualização parcial — envie só os campos a mudar. Enviar "faixas" substitui o conjunto ' +
-      'inteiro; omitir mantém as atuais.',
+      'Atualização parcial — faixa com delete=true exclui somente a sequência indicada; ' +
+      'as demais são incluídas ou atualizadas.',
   })
   @ApiParam({ name: 'codigo', description: 'codigoErp da regra (Z0_CODIGO)' })
   @ApiResponse({

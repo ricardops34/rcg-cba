@@ -1580,10 +1580,14 @@ export const INTEGRACAO_ORCAMENTO_VINCULAR_EXAMPLE: IntegracaoOrcamentoVincular 
 // ------------------------------------------------------------------
 // Regras de desconto (mestre-detalhe) — chave: codigoErp (Z0_CODIGO da SZ0).
 // ------------------------------------------------------------------
-// As faixas vêm no mesmo corpo e substituem o conjunto inteiro a cada PATCH,
-// como os itens de orçamento — o ERP é dono da regra completa.
+// As faixas vêm no mesmo corpo. delete=true remove somente a sequência
+// informada; as demais são incluídas ou atualizadas.
 
 export const integracaoRegraDescontoFaixaSchema = z.object({
+  delete: z
+    .boolean()
+    .default(false)
+    .describe("Quando true, exclui somente esta faixa pela sequencia"),
   sequencia: z.coerce.number().int().min(1).describe("Z0_SEQ"),
   percInicial: z.coerce
     .number()
@@ -1639,7 +1643,7 @@ export const integracaoRegraDescontoCreateSchema = z.object({
   faixas: z
     .array(integracaoRegraDescontoFaixaSchema)
     .default([])
-    .describe("Substitui o conjunto inteiro de faixas a cada PATCH"),
+    .describe("Sincroniza faixas; delete=true exclui somente a sequência informada"),
 });
 export type IntegracaoRegraDescontoCreate = z.infer<
   typeof integracaoRegraDescontoCreateSchema
@@ -1677,8 +1681,8 @@ export const INTEGRACAO_REGRA_DESCONTO_CREATE_EXAMPLE: IntegracaoRegraDescontoCr
     padrao: true,
     ativo: true,
     faixas: [
-      { sequencia: 1, percInicial: 0, percFinal: 10, percBaseComissao: 100 },
-      { sequencia: 2, percInicial: 10.01, percFinal: 15, percBaseComissao: 90 },
+      { delete: false, sequencia: 1, percInicial: 0, percFinal: 10, percBaseComissao: 100 },
+      { delete: false, sequencia: 2, percInicial: 10.01, percFinal: 15, percBaseComissao: 90 },
     ],
   };
 

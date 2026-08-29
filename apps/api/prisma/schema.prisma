@@ -123,6 +123,9 @@ model Usuario {
   ultimoLogin DateTime?
   avatarUrl   String?
   mfaEnabled  Boolean   @default(false)
+  // Autoriza mutaÃ§Ãµes no catÃ¡logo global. NÃ£o deriva do perfil da empresa:
+  // administrador de tenant nÃ£o Ã© administrador da plataforma.
+  administradorPlataforma Boolean @default(false)
 
   // Política de senha (parâmetros SENHA_* por empresa): senhaAlteradaEm
   // marca a "idade" da senha atual para cálculo de expiração; tentativasFalhas

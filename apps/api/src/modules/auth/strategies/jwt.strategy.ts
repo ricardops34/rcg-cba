@@ -9,6 +9,7 @@ export interface JwtPayload {
   email: string;
   empresaAtivaId: string;
   isAdmin: boolean;
+  administradorPlataforma?: boolean;
   permissoes: string[];
 }
 
@@ -37,6 +38,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       email: payload.email,
       empresaAtivaId: payload.empresaAtivaId,
       isAdmin: payload.isAdmin,
+      administradorPlataforma: payload.administradorPlataforma === true,
       permissoes: payload.permissoes,
     };
   }

@@ -80,18 +80,20 @@ export class EvolutionGoProvider implements WhatsappProvider {
    * contexto** e as tabelas têm RLS: sem a empresa, a API não conseguiria nem
    * localizar a própria sessão para descobrir de quem é o evento.
    *
-   * A `chave` é o que autentica — ids são internos, mas não são segredo. Ela
-   * vai na query porque a documentação não garante cabeçalho customizado no
-   * webhook, e um segredo que o gateway não sabe enviar não protege nada.
+   * A credencial vai no `userinfo` da URL. O cliente HTTP a transforma em
+   * `Authorization: Basic`; o request-target enviado ao proxy não carrega o
+   * segredo, ao contrário de uma query string.
    */
   private urlWebhook(ctx: ContextoSessao, segredo: string): string {
     const base = (
       process.env.WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL ?? 'http://api:3001'
     ).replace(/\/+$/, '');
-    return (
-      `${base}/api/v1/whatsapp/evolution/webhook/${ctx.empresaId}/${ctx.sessaoId}` +
-      `?chave=${encodeURIComponent(segredo)}`
+    const url = new URL(
+      `${base}/api/v1/whatsapp/evolution/webhook/${ctx.empresaId}/${ctx.sessaoId}`,
     );
+    url.username = 'webhook';
+    url.password = segredo;
+    return url.toString();
   }
 
   /** Credencial administrativa: cria, conecta e apaga instância. */

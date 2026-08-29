@@ -475,6 +475,7 @@ async function main() {
       email: ADMIN.email,
       senhaHash,
       ativo: true,
+      administradorPlataforma: true,
       senhaAlteradaEm: new Date(),
     },
   });

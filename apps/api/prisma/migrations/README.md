@@ -107,7 +107,10 @@ Com RLS: `usuario_empresas`, `produtos`, `vendedores`, `clientes`,
 `objetivos_vendedor_mes`, `objetivos_vendedor_categoria`, `oportunidades`,
 `atividades`, `orcamentos`, `orcamento_itens`, `cliente_campo_config`,
 `orcamento_config`, `cliente_cnaes`, `whatsapp_sessoes`, `whatsapp_contatos`,
-`whatsapp_conversas`, `whatsapp_mensagens`, `whatsapp_acoes`, `notificacoes`.
+`whatsapp_conversas`, `whatsapp_mensagens`, `whatsapp_acoes`, `notificacoes`,
+`portal_cliente_credenciais` e `portal_cliente_acessos_log`. As duas últimas
+usam policies pré-tenant estreitas, configuradas por `withPortalCredential` e
+`withPortalAudit`, além da policy normal de tenant.
 
 `integracao_api_keys`, `acessos_log` e `sessoes` têm `empresaId` mas estão na
 lista de exceções acima (não recebem RLS, pelo mesmo motivo de

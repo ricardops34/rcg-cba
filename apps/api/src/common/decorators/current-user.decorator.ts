@@ -6,6 +6,7 @@ export interface AuthenticatedUser {
   email: string;
   empresaAtivaId: string;
   isAdmin: boolean;
+  administradorPlataforma?: boolean;
   permissoes: string[];
 }
 

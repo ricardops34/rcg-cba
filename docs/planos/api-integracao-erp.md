@@ -154,7 +154,8 @@ Regras transversais:
   (`deletedAt`/`deletedBy`). Reenvio posterior sem a flag **reativa** o
   registro (limpa `deletedAt`) — o ERP é a fonte da verdade.
 - **Itens aninhados do ERP** (`notas-saida.itens[]`,
-  `tabelas-preco.itens[]` e `orcamentos.itens[]`): permanecem no payload do
+  `tabelas-preco.itens[]`, `orcamentos.itens[]` e
+  `regras-desconto.faixas[]`): permanecem no payload do
   cabeçalho. `delete: true` exclui somente o item identificado por seu
   `codigoErp`; a ausência do item no lote não o exclui. Não há endpoints
   separados para itens.
@@ -315,7 +316,8 @@ Agora vale a regra desta página — **o ERP é a fonte da verdade**: reenviar p
 como antes. A decisão está centralizada em
 `apps/api/src/modules/integracao/common/reativar-excluido.ts`, aplicada nas 13
 entidades; nas que têm filhos (notas, orçamentos, objetivos, regras de
-desconto, tabelas de preço) a reativação substitui a coleção pela do payload,
+desconto, tabelas de preço) os filhos ativos são atualizados e os marcados com
+`delete: true` são removidos,
 mesma regra do `update`. Orçamento reativado **mantém o número** que já tinha.
 
 Verificado contra a API em execução: criar → excluir → reenviar devolve 201 com

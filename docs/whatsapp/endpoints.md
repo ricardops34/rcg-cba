@@ -150,7 +150,8 @@ Base: `/api/v1/whatsapp/interno`. Exige
 ## Webhook: Evolution GO para API (transporte `evolution_go`)
 
 ```text
-POST /api/v1/whatsapp/evolution/webhook/:empresaId/:sessaoId?chave=<segredo>
+POST /api/v1/whatsapp/evolution/webhook/:empresaId/:sessaoId
+Authorization: Basic base64(webhook:<segredo>)
 ```
 
 Uma única rota, registrada por instância no momento do pareamento. Também fica
@@ -158,10 +159,10 @@ fora do Swagger e não passa pelo `JwtAuthGuard`.
 
 - **Empresa e sessão vão no caminho** porque o webhook chega sem tenant no
   contexto e as tabelas têm RLS.
-- **A `chave` é o segredo daquela instância**, gerado no pareamento e gravado
-  cifrado. Vai na query porque a documentação do gateway não garante cabeçalho
-  customizado; `Authorization: Bearer <segredo>` também é aceito. A comparação
-  é em tempo constante.
+- **A credencial é o segredo daquela instância**, gerado no pareamento e
+  gravado cifrado. O `userinfo` da URL é convertido pelo cliente HTTP em
+  `Authorization: Basic`; a query e o request-target não carregam o segredo.
+  `Authorization: Bearer <segredo>` também é aceito. A comparação é constante.
 - Sessão inexistente, de outro transporte ou segredo divergente respondem
   **401** — nunca 404.
 

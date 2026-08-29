@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
+import { escapeHtml } from '../../common/html/escape-html';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { PoliticaSenhaService } from '../politica-senha/politica-senha.service';
 import {
@@ -26,7 +27,13 @@ import type { AuthenticatedUser } from '../../common/decorators/current-user.dec
 
 // Campos que a listagem aceita ordenar por — whitelist pra não repassar
 // direto pro Prisma um sortBy arbitrário vindo da query string.
-const SORT_FIELDS = new Set(['nome', 'codigoErp', 'email', 'ativo', 'createdAt']);
+const SORT_FIELDS = new Set([
+  'nome',
+  'codigoErp',
+  'email',
+  'ativo',
+  'createdAt',
+]);
 const SALT_ROUNDS = 12;
 
 @Injectable()
@@ -78,19 +85,37 @@ export class VendedoresService {
         ...(query.usaDashboard !== undefined
           ? { usaDashboard: query.usaDashboard }
           : {}),
-        ...(query.desligado !== undefined ? { desligado: query.desligado } : {}),
+        ...(query.desligado !== undefined
+          ? { desligado: query.desligado }
+          : {}),
         ...(query.supervisorId ? { supervisorId: query.supervisorId } : {}),
         ...(query.search
           ? {
               OR: [
-                { nome: { contains: query.search, mode: 'insensitive' as const } },
-                { codigoErp: { contains: query.search, mode: 'insensitive' as const } },
-                { email: { contains: query.search, mode: 'insensitive' as const } },
+                {
+                  nome: {
+                    contains: query.search,
+                    mode: 'insensitive' as const,
+                  },
+                },
+                {
+                  codigoErp: {
+                    contains: query.search,
+                    mode: 'insensitive' as const,
+                  },
+                },
+                {
+                  email: {
+                    contains: query.search,
+                    mode: 'insensitive' as const,
+                  },
+                },
               ],
             }
           : {}),
       };
-      const sortField = query.sortBy && SORT_FIELDS.has(query.sortBy) ? query.sortBy : 'nome';
+      const sortField =
+        query.sortBy && SORT_FIELDS.has(query.sortBy) ? query.sortBy : 'nome';
       const [data, total] = await Promise.all([
         tx.vendedor.findMany({
           where,
@@ -140,7 +165,9 @@ export class VendedoresService {
 
   async findOne(empresaId: string, id: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const vendedor = await tx.vendedor.findFirst({ where: { id, empresaId, deletedAt: null } });
+      const vendedor = await tx.vendedor.findFirst({
+        where: { id, empresaId, deletedAt: null },
+      });
       if (!vendedor) throw new NotFoundException('Vendedor não encontrado');
       return vendedor;
     });
@@ -172,9 +199,16 @@ export class VendedoresService {
     );
   }
 
-  async update(empresaId: string, user: AuthenticatedUser, id: string, input: VendedorUpdate) {
+  async update(
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+    input: VendedorUpdate,
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const vendedor = await tx.vendedor.findFirst({ where: { id, empresaId, deletedAt: null } });
+      const vendedor = await tx.vendedor.findFirst({
+        where: { id, empresaId, deletedAt: null },
+      });
       if (!vendedor) throw new NotFoundException('Vendedor não encontrado');
       return tx.vendedor.update({
         where: { id },
@@ -188,7 +222,9 @@ export class VendedoresService {
 
   async remove(empresaId: string, user: AuthenticatedUser, id: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const vendedor = await tx.vendedor.findFirst({ where: { id, empresaId, deletedAt: null } });
+      const vendedor = await tx.vendedor.findFirst({
+        where: { id, empresaId, deletedAt: null },
+      });
       if (!vendedor) throw new NotFoundException('Vendedor não encontrado');
       return tx.vendedor.update({
         where: { id },
@@ -207,7 +243,9 @@ export class VendedoresService {
     const criado = await this.prisma.withTenant(
       empresaId,
       async (tx) => {
-        const vendedor = await tx.vendedor.findFirst({ where: { id, empresaId, deletedAt: null } });
+        const vendedor = await tx.vendedor.findFirst({
+          where: { id, empresaId, deletedAt: null },
+        });
         if (!vendedor) throw new NotFoundException('Vendedor não encontrado');
         if (vendedor.usuarioId) {
           throw new ConflictException('Vendedor já possui usuário vinculado');
@@ -218,9 +256,13 @@ export class VendedoresService {
           );
         }
 
-        const existente = await tx.usuario.findUnique({ where: { email: vendedor.email } });
+        const existente = await tx.usuario.findUnique({
+          where: { email: vendedor.email },
+        });
         if (existente) {
-          throw new ConflictException('Já existe um usuário cadastrado com este e-mail');
+          throw new ConflictException(
+            'Já existe um usuário cadastrado com este e-mail',
+          );
         }
 
         const perfilVendedor = await tx.perfil.findFirst({
@@ -232,7 +274,8 @@ export class VendedoresService {
           );
         }
 
-        const senha = await this.politicaSenhaService.gerarSenhaProvisoria(empresaId);
+        const senha =
+          await this.politicaSenhaService.gerarSenhaProvisoria(empresaId);
         const senhaHash = await bcrypt.hash(senha, SALT_ROUNDS);
 
         const usuario = await tx.usuario.create({
@@ -246,7 +289,12 @@ export class VendedoresService {
             createdBy: actorId,
             updatedBy: actorId,
             usuarioEmpresas: {
-              create: { empresaId, perfilId: perfilVendedor.id, createdBy: actorId, updatedBy: actorId },
+              create: {
+                empresaId,
+                perfilId: perfilVendedor.id,
+                createdBy: actorId,
+                updatedBy: actorId,
+              },
             },
           },
         });
@@ -331,13 +379,20 @@ export class VendedoresService {
     }
   }
 
-  private buildSenhaProvisoriaEmailHtml(nome: string, email: string, senha: string): string {
+  private buildSenhaProvisoriaEmailHtml(
+    nome: string,
+    email: string,
+    senha: string,
+  ): string {
+    const [nomeSeguro, emailSeguro, senhaSegura] = [nome, email, senha].map(
+      escapeHtml,
+    );
     return `
-      <p>Olá, ${nome}!</p>
+      <p>Olá, ${nomeSeguro}!</p>
       <p>Foi criado um acesso para você na Plataforma Comercial:</p>
       <ul>
-        <li><strong>Login:</strong> ${email}</li>
-        <li><strong>Senha provisória:</strong> ${senha}</li>
+        <li><strong>Login:</strong> ${emailSeguro}</li>
+        <li><strong>Senha provisória:</strong> ${senhaSegura}</li>
       </ul>
       <p>Por segurança, você precisará trocar essa senha no primeiro acesso.</p>
     `;
@@ -352,26 +407,36 @@ export class VendedoresService {
     const redefinida = await this.prisma.withTenant(
       empresaId,
       async (tx) => {
-        const vendedor = await tx.vendedor.findFirst({ where: { id, empresaId, deletedAt: null } });
+        const vendedor = await tx.vendedor.findFirst({
+          where: { id, empresaId, deletedAt: null },
+        });
         if (!vendedor) throw new NotFoundException('Vendedor não encontrado');
         if (!vendedor.usuarioId) {
-          throw new BadRequestException('Vendedor não possui usuário de acesso associado');
+          throw new BadRequestException(
+            'Vendedor não possui usuário de acesso associado',
+          );
         }
 
         const usuario = await tx.usuario.findFirst({
           where: { id: vendedor.usuarioId, deletedAt: null },
         });
-        if (!usuario) throw new NotFoundException('Usuário do vendedor não encontrado');
+        if (!usuario)
+          throw new NotFoundException('Usuário do vendedor não encontrado');
         if (!vendedor.email) {
           throw new BadRequestException(
             'Cadastre um e-mail para o vendedor antes de reenviar a senha',
           );
         }
 
-        const senha = await this.politicaSenhaService.gerarSenhaProvisoria(empresaId);
+        const senha =
+          await this.politicaSenhaService.gerarSenhaProvisoria(empresaId);
         const senhaHash = await bcrypt.hash(senha, SALT_ROUNDS);
 
-        await this.politicaSenhaService.registrarHistorico(usuario.id, usuario.senhaHash, tx);
+        await this.politicaSenhaService.registrarHistorico(
+          usuario.id,
+          usuario.senhaHash,
+          tx,
+        );
         await tx.usuario.update({
           where: { id: usuario.id },
           data: {
@@ -410,13 +475,20 @@ export class VendedoresService {
     };
   }
 
-  private buildSenhaReenviadaEmailHtml(nome: string, email: string, senha: string): string {
+  private buildSenhaReenviadaEmailHtml(
+    nome: string,
+    email: string,
+    senha: string,
+  ): string {
+    const [nomeSeguro, emailSeguro, senhaSegura] = [nome, email, senha].map(
+      escapeHtml,
+    );
     return `
-      <p>Olá, ${nome}!</p>
+      <p>Olá, ${nomeSeguro}!</p>
       <p>Sua senha de acesso à Plataforma Comercial foi redefinida:</p>
       <ul>
-        <li><strong>Login:</strong> ${email}</li>
-        <li><strong>Nova senha provisória:</strong> ${senha}</li>
+        <li><strong>Login:</strong> ${emailSeguro}</li>
+        <li><strong>Nova senha provisória:</strong> ${senhaSegura}</li>
       </ul>
       <p>Por segurança, você precisará trocar essa senha no primeiro acesso.</p>
     `;
@@ -429,7 +501,9 @@ export class VendedoresService {
    */
   async bloquear(empresaId: string, actorId: string, id: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const vendedor = await tx.vendedor.findFirst({ where: { id, empresaId, deletedAt: null } });
+      const vendedor = await tx.vendedor.findFirst({
+        where: { id, empresaId, deletedAt: null },
+      });
       if (!vendedor) throw new NotFoundException('Vendedor não encontrado');
 
       const atualizado = await tx.vendedor.update({
@@ -451,7 +525,9 @@ export class VendedoresService {
   /** Reverte o bloqueio: reativa o vendedor e, se houver, o usuário vinculado. */
   async desbloquear(empresaId: string, actorId: string, id: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const vendedor = await tx.vendedor.findFirst({ where: { id, empresaId, deletedAt: null } });
+      const vendedor = await tx.vendedor.findFirst({
+        where: { id, empresaId, deletedAt: null },
+      });
       if (!vendedor) throw new NotFoundException('Vendedor não encontrado');
 
       const atualizado = await tx.vendedor.update({

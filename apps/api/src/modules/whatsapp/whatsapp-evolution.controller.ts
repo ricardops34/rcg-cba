@@ -5,7 +5,6 @@ import {
   Logger,
   Param,
   Post,
-  Query,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
@@ -63,15 +62,9 @@ export class WhatsappEvolutionController {
     @Param('empresaId') empresaId: string,
     @Param('sessaoId') sessaoId: string,
     @Body() corpo: unknown,
-    @Query('chave') chaveQuery?: string,
     @Headers('authorization') authorization?: string,
   ) {
-    const ctx = await this.autenticar(
-      empresaId,
-      sessaoId,
-      chaveQuery,
-      authorization,
-    );
+    const ctx = await this.autenticar(empresaId, sessaoId, authorization);
 
     const evento = this.nomeDoEvento(corpo);
     switch (evento) {
@@ -99,7 +92,6 @@ export class WhatsappEvolutionController {
   private async autenticar(
     empresaId: string,
     sessaoId: string,
-    chaveQuery?: string,
     authorization?: string,
   ): Promise<ContextoSessao> {
     const ctx = await this.provedores
@@ -116,13 +108,27 @@ export class WhatsappEvolutionController {
     }
 
     const esperado = ctx.instancia.webhookSegredo;
-    const recebido =
-      chaveQuery ?? authorization?.replace(/^Bearer\s+/i, '') ?? '';
+    const recebido = this.segredoDaAutorizacao(authorization);
     if (!esperado || !this.conferirSegredo(esperado, recebido)) {
       throw new UnauthorizedException();
     }
 
     return ctx;
+  }
+
+  private segredoDaAutorizacao(authorization?: string): string {
+    if (!authorization) return '';
+    const bearer = authorization.match(/^Bearer\s+(.+)$/i);
+    if (bearer) return bearer[1];
+    const basic = authorization.match(/^Basic\s+(.+)$/i);
+    if (!basic) return '';
+    try {
+      const credencial = Buffer.from(basic[1], 'base64').toString('utf8');
+      const separador = credencial.indexOf(':');
+      return separador >= 0 ? credencial.slice(separador + 1) : '';
+    } catch {
+      return '';
+    }
   }
 
   /** Comparação em tempo constante, tolerante a tamanhos diferentes. */
