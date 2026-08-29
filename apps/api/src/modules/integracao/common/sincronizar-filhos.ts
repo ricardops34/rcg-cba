@@ -2,9 +2,9 @@
  * Casa a coleção de filhos que veio no payload com a que está no banco,
  * usando o `codigoErp` de cada filho como chave.
  *
- * O ERP manda sempre o documento inteiro — a nota com todos os itens, a tabela
- * de preço com todas as linhas —, então filho que não veio no payload não
- * existe mais e é removido. O que veio é criado ou atualizado no lugar.
+ * O ERP manda o cabeçalho com os itens alterados. Filho com `delete: true` é
+ * removido; filho ativo é criado ou atualizado. A ausência de um filho não o
+ * exclui, evitando apagar linhas que não participaram do lote incremental.
  *
  * A alternativa óbvia (apagar tudo e recriar) dá o mesmo conteúdo final, mas
  * troca o uuid de **todos** os itens a cada envio, mesmo quando só um preço
@@ -18,7 +18,7 @@
  * então não há como um envio alcançar o item de outro documento.
  */
 export function sincronizarFilhos<
-  T extends { empresaId: string; codigoErp?: string | null },
+  T extends { empresaId: string; codigoErp?: string | null; delete?: boolean },
 >(empresaId: string, filhos: T[]) {
   const semChave = filhos.findIndex((filho) => !filho.codigoErp);
   if (semChave >= 0) {
@@ -29,10 +29,14 @@ export function sincronizarFilhos<
       `Filho ${semChave} chegou sem codigoErp — a sincronização precisa da chave`,
     );
   }
-  const codigos = filhos.map((filho) => filho.codigoErp as string);
+  const excluidos = filhos
+    .filter((filho) => filho.delete)
+    .map((filho) => filho.codigoErp as string);
+  const ativos = filhos.filter((filho) => !filho.delete);
+  const semControle = ativos.map(({ delete: _delete, ...filho }) => filho);
   return {
-    deleteMany: { codigoErp: { notIn: codigos } },
-    upsert: filhos.map((filho) => ({
+    deleteMany: { codigoErp: { in: excluidos } },
+    upsert: semControle.map((filho) => ({
       where: {
         empresaId_codigoErp: { empresaId, codigoErp: filho.codigoErp as string },
       },
@@ -40,4 +44,13 @@ export function sincronizarFilhos<
       update: filho,
     })),
   };
+}
+
+export function criarFilhos<T extends object>(filhos: T[]) {
+  return filhos
+    .filter((filho) => !(filho as { delete?: boolean }).delete)
+    .map((filho) => {
+      const { delete: _delete, ...dados } = filho as T & { delete?: boolean };
+      return dados;
+    });
 }

@@ -1746,6 +1746,7 @@ model RegraDescontoFaixa {
 model Estoque {
   id        String @id @default(uuid())
   empresaId String
+  codigoErp String
   produtoId String
   armazemId String
 
@@ -1767,6 +1768,7 @@ model Estoque {
   armazem Armazem @relation(fields: [armazemId], references: [id])
 
   @@unique([empresaId, produtoId, armazemId])
+  @@unique([empresaId, codigoErp])
   @@index([empresaId, armazemId])
   @@map("estoques")
 }
@@ -2022,7 +2024,7 @@ model TituloReceber {
   // Chave de identidade do título no ERP — ver NotaSaida.codigoErp.
   codigoErp    String?
   clienteId    String?
-  vendedorId   String?
+  vendedorId  String?
 
   numero  String
   parcela String?

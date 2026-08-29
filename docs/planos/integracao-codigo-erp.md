@@ -71,15 +71,15 @@ usa para achar o item da nota.
 
 | Endpoint | Origem | `codigoErp` |
 |---|---|---|
-| regras-desconto | SZ0 | `Z0_CODIGO` |
-| categorias | SBM | `BM_GRUPO` |
-| condicoes-pagamento | SE4 | `E4_CODIGO` |
-| armazens | NNR | `NNR_CODIGO` |
-| produtos | SB1 | `B1_COD` |
-| vendedores | SA3 | `A3_COD` |
-| clientes | SA1 | `A1_COD` + `A1_LOJA` (concatenado, sem separador) |
-| tabelas-preco | DA0 | `DA0_CODTAB` |
-| estoque | SB2 | *sem chave própria* — `B2_COD` + `B2_LOCAL` na URL |
+| regras-desconto | SZ0 | `Z0_FILIAL`-`Z0_CODIGO` |
+| categorias | SBM | `BM_FILIAL`-`BM_GRUPO` |
+| condicoes-pagamento | SE4 | `E4_FILIAL`-`E4_CODIGO` |
+| armazens | NNR | `NNR_FILIAL`-`NNR_CODIGO` |
+| produtos | SB1 | `B1_FILIAL`-`B1_COD` |
+| vendedores | SA3 | `A3_FILIAL`-`A3_COD` |
+| clientes | SA1 | `A1_FILIAL`-`A1_COD`-`A1_LOJA` |
+| tabelas-preco | DA0 | `DA0_FILIAL`-`DA0_CODTAB` |
+| estoque | SB2 | `B2_FILIAL`-`B2_COD`-`B2_LOCAL` |
 
 **Transacionais — definidas em 2026-08-28, uma a uma:**
 
@@ -117,10 +117,14 @@ e o pedido faturado continua existindo como pedido. A plataforma não deduz um d
 outro — quem os relaciona é o ERP, e por ora esse vínculo só existe no sentido
 orçamento → pedido, via `PATCH /integracao/orcamentos/pendentes/{id}`.
 
-**A filial sai de `FWxFilial()`, nunca da coluna.** É ela que respeita o modo de
-compartilhamento do dicionário: em tabela compartilhada devolve vazio, e a chave
-nasce sem a dimensão de filial — o correto, porque ali o registro é um só para a
-empresa inteira. Ler `F2_FILIAL` direto ignoraria essa regra.
+**A filial da chave sai da coluna `*_FILIAL`.** `FWxFilial()` é usado apenas no
+filtro SQL da tabela corrente. O `codigoErp` preserva o conteúdo dos campos que
+compõem a chave, sem `AllTrim()`, e POST/DELETE montam exatamente a mesma string.
+
+**Inclusões, alterações e exclusões percorrem a mesma varredura.** `S_T_A_M_P_`
+seleciona o que mudou sem filtrar `D_E_L_E_T_`; o próprio mapeador devolve POST
+quando `D_E_L_E_T_ = ' '` e DELETE quando `D_E_L_E_T_ = '*'`. Não existe uma
+segunda detecção ou varredura exclusiva de registros apagados.
 
 **O XML da NF-e vai nota a nota, logo após o envio.** Não dá para mandá-lo junto
 com a nota: ele vai numa rota filha (`POST /integracao/notas-saida/{codigo}/xml`)
@@ -138,7 +142,8 @@ segunda passada que a alcança depois.
 `LEFT JOIN` e quebra por documento, em vez de uma consulta para o cabeçalho mais
 uma por nota para os itens. O filtro de alteração fica num `EXISTS`, no nível da
 nota — se fosse na linha do JOIN, uma nota cujo item mudou voltaria com **só
-aquele item**, e a plataforma, que substitui o conjunto, apagaria os demais.
+aquele item**. Itens excluídos também entram no array com `delete: true`; a
+plataforma apaga somente a linha identificada pelo `codigoErp` do item.
 
 **Por que a nota leva filial, tipo e espécie.** A filial entra porque a chave de
 API é por **empresa**, e uma empresa do Protheus tem várias filiais: duas

@@ -33,6 +33,7 @@ export class IntegracaoEstoqueService {
   private paraLeitura(row: EstoqueComRelacoes): IntegracaoEstoque {
     return {
       id: row.id,
+      codigoErp: row.codigoErp,
       produtoCodigo: row.produto.codigoErp,
       armazemCodigo: row.armazem.codigoErp,
       saldo: row.saldo,
@@ -52,6 +53,7 @@ export class IntegracaoEstoqueService {
       const where = {
         empresaId,
         deletedAt: null,
+        ...(query.codigoErp ? { codigoErp: query.codigoErp } : {}),
         ...(query.produtoCodigo
           ? { produto: { codigoErp: query.produtoCodigo } }
           : {}),
@@ -77,16 +79,14 @@ export class IntegracaoEstoqueService {
 
   async findOne(
     empresaId: string,
-    produtoCodigo: string,
-    armazemCodigo: string,
+    codigoErp: string,
   ): Promise<IntegracaoEstoque> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const row = await tx.estoque.findFirst({
         where: {
           empresaId,
           deletedAt: null,
-          produto: { codigoErp: produtoCodigo },
-          armazem: { codigoErp: armazemCodigo },
+          codigoErp,
         },
         include: INCLUDE,
       });
@@ -120,11 +120,18 @@ export class IntegracaoEstoqueService {
         );
 
       const existente = await tx.estoque.findFirst({
-        where: { empresaId, produtoId: produto.id, armazemId: armazem.id },
+        where: {
+          empresaId,
+          OR: [
+            { codigoErp: input.codigoErp },
+            { produtoId: produto.id, armazemId: armazem.id },
+          ],
+        },
       });
       const decisao = decidirUpsert(existente);
 
       const dados = {
+        codigoErp: input.codigoErp,
         produtoId: produto.id,
         armazemId: armazem.id,
         saldo: input.saldo,
@@ -155,8 +162,7 @@ export class IntegracaoEstoqueService {
   async update(
     empresaId: string,
     apiKeyId: string,
-    produtoCodigo: string,
-    armazemCodigo: string,
+    codigoErp: string,
     input: IntegracaoEstoqueUpdate,
   ): Promise<IntegracaoEstoque> {
     const autor = autorIntegracao(apiKeyId);
@@ -165,8 +171,7 @@ export class IntegracaoEstoqueService {
         where: {
           empresaId,
           deletedAt: null,
-          produto: { codigoErp: produtoCodigo },
-          armazem: { codigoErp: armazemCodigo },
+          codigoErp,
         },
       });
       if (!existente)
@@ -195,8 +200,7 @@ export class IntegracaoEstoqueService {
   async remove(
     empresaId: string,
     apiKeyId: string,
-    produtoCodigo: string,
-    armazemCodigo: string,
+    codigoErp: string,
   ): Promise<void> {
     const autor = autorIntegracao(apiKeyId);
     await this.prisma.withTenant(empresaId, async (tx) => {
@@ -204,8 +208,7 @@ export class IntegracaoEstoqueService {
         where: {
           empresaId,
           deletedAt: null,
-          produto: { codigoErp: produtoCodigo },
-          armazem: { codigoErp: armazemCodigo },
+          codigoErp,
         },
       });
       if (!existente)

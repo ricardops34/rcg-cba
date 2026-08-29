@@ -104,7 +104,7 @@ export class IntegracaoNotasSaidaController {
   @ApiOperation({
     summary: 'Atualizar nota de saída',
     description:
-      'Atualização parcial. Se "itens" for enviado, substitui o conjunto inteiro de itens.',
+      'Atualização parcial. Itens com delete=true são excluídos; os demais são incluídos ou atualizados.',
   })
   @ApiParam({
     name: 'codigo',

@@ -97,8 +97,7 @@ export class IntegracaoTabelasPrecoController {
   @ApiOperation({
     summary: 'Atualizar tabela de preço',
     description:
-      'Atualização parcial. Se "itens" for enviado, substitui o conjunto inteiro de preços da ' +
-      'tabela — itens que não vierem mais somem.',
+      'Atualização parcial. Itens com delete=true são excluídos; os demais são incluídos ou atualizados.',
   })
   @ApiParam({ name: 'codigo', description: 'codigoErp da tabela' })
   @ApiResponse({

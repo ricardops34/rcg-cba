@@ -162,7 +162,7 @@ export class IntegracaoOrcamentosController {
   @ApiOperation({
     summary: 'Atualizar orçamento',
     description:
-      'Atualização parcial. Se "itens" for enviado, substitui o conjunto inteiro de itens. dataRetorno ' +
+      'Atualização parcial. Itens com delete=true são excluídos; os demais são incluídos ou atualizados. dataRetorno ' +
       'alterada gera automaticamente uma nova Atividade de acompanhamento. Orçamento com status ' +
       '"aprovado" não pode mais ser alterado (409).',
   })

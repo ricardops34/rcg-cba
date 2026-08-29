@@ -56,37 +56,26 @@ export class IntegracaoEstoqueController {
   }
 
   @ApiOperation({
-    summary: 'Detalhar saldo de estoque por produtoCodigo + armazemCodigo',
+    summary: 'Detalhar saldo de estoque por codigoErp',
   })
-  @ApiParam({ name: 'produtoCodigo', description: 'codigoErp do produto' })
-  @ApiParam({ name: 'armazemCodigo', description: 'codigoErp do armazém' })
+  @ApiParam({ name: 'codigo', description: 'codigoErp do estoque' })
   @ApiResponse({ status: 200, schema: { example: INTEGRACAO_ESTOQUE_EXAMPLE } })
   @ApiResponse({ status: 404, description: 'Saldo de estoque não encontrado' })
-  @Get(':produtoCodigo/:armazemCodigo')
+  @Get(':codigo')
   findOne(
-    @Param('produtoCodigo') produtoCodigo: string,
-    @Param('armazemCodigo') armazemCodigo: string,
+    @Param('codigo') codigoErp: string,
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
-    return this.service.findOne(
-      integracao.empresaId,
-      produtoCodigo,
-      armazemCodigo,
-    );
+    return this.service.findOne(integracao.empresaId, codigoErp);
   }
 
   @ApiOperation({
-    summary: 'Criar saldo de estoque',
+    summary: 'Criar ou atualizar saldo de estoque por codigoErp',
     description:
-      'Chave é a combinação produtoCodigo + armazemCodigo (ambos precisam já existir) — sem ' +
-      'código próprio.',
+      'POST faz upsert por codigoErp; produtoCodigo e armazemCodigo precisam existir.',
   })
   @ApiBodyExample(INTEGRACAO_ESTOQUE_CREATE_EXAMPLE)
   @ApiResponse({ status: 201, schema: { example: INTEGRACAO_ESTOQUE_EXAMPLE } })
-  @ApiResponse({
-    status: 409,
-    description: 'Já existe saldo para essa combinação produto + armazém',
-  })
   @Post()
   create(
     @Body() dto: IntegracaoEstoqueCreateDto,
@@ -99,42 +88,36 @@ export class IntegracaoEstoqueController {
     summary: 'Atualizar saldo de estoque',
     description: 'Atualização parcial.',
   })
-  @ApiParam({ name: 'produtoCodigo', description: 'codigoErp do produto' })
-  @ApiParam({ name: 'armazemCodigo', description: 'codigoErp do armazém' })
+  @ApiParam({ name: 'codigo', description: 'codigoErp do estoque' })
   @ApiResponse({ status: 200, schema: { example: INTEGRACAO_ESTOQUE_EXAMPLE } })
   @ApiResponse({ status: 404, description: 'Saldo de estoque não encontrado' })
-  @Patch(':produtoCodigo/:armazemCodigo')
+  @Patch(':codigo')
   update(
-    @Param('produtoCodigo') produtoCodigo: string,
-    @Param('armazemCodigo') armazemCodigo: string,
+    @Param('codigo') codigoErp: string,
     @Body() dto: IntegracaoEstoqueUpdateDto,
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
     return this.service.update(
       integracao.empresaId,
       integracao.apiKeyId,
-      produtoCodigo,
-      armazemCodigo,
+      codigoErp,
       dto,
     );
   }
 
   @ApiOperation({ summary: 'Excluir saldo de estoque (soft delete)' })
-  @ApiParam({ name: 'produtoCodigo', description: 'codigoErp do produto' })
-  @ApiParam({ name: 'armazemCodigo', description: 'codigoErp do armazém' })
+  @ApiParam({ name: 'codigo', description: 'codigoErp do estoque' })
   @ApiResponse({ status: 200, description: 'Excluído' })
   @ApiResponse({ status: 404, description: 'Saldo de estoque não encontrado' })
-  @Delete(':produtoCodigo/:armazemCodigo')
+  @Delete(':codigo')
   remove(
-    @Param('produtoCodigo') produtoCodigo: string,
-    @Param('armazemCodigo') armazemCodigo: string,
+    @Param('codigo') codigoErp: string,
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
     return this.service.remove(
       integracao.empresaId,
       integracao.apiKeyId,
-      produtoCodigo,
-      armazemCodigo,
+      codigoErp,
     );
   }
 }

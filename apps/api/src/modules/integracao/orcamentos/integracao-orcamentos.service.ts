@@ -28,7 +28,7 @@ import {
   camposDaDecisao,
   decidirUpsert,
 } from '../common/decidir-upsert';
-import { sincronizarFilhos } from '../common/sincronizar-filhos';
+import { criarFilhos, sincronizarFilhos } from '../common/sincronizar-filhos';
 import { ParametrosService } from '../../parametros/parametros.service';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 
@@ -68,6 +68,7 @@ export class IntegracaoOrcamentosService {
       observacao: row.observacao,
       ativo: row.ativo,
       itens: row.itens.map((item) => ({
+        delete: false,
         codigoErp: item.codigoErp ?? '',
         produtoCodigo: item.produto?.codigoErp ?? '',
         quantidade: item.quantidade,
@@ -250,8 +251,9 @@ export class IntegracaoOrcamentosService {
     itens: IntegracaoOrcamentoItem[],
     vendedorId: string,
   ) {
+    const itensExcluidos = itens.filter((item) => item.delete);
     const itensParaCalculo = await Promise.all(
-      itens.map(async (item) => {
+      itens.filter((item) => !item.delete).map(async (item) => {
         const produto = await tx.produto.findFirst({
           where: { empresaId, codigoErp: item.produtoCodigo, deletedAt: null },
           select: { id: true },
@@ -274,7 +276,7 @@ export class IntegracaoOrcamentosService {
         };
       }),
     );
-    return calcularItensOrcamento(
+    const calculados = await calcularItensOrcamento(
       tx,
       empresaId,
       clienteId,
@@ -286,6 +288,17 @@ export class IntegracaoOrcamentosService {
         false,
       ),
     );
+    return {
+      ...calculados,
+      data: [
+        ...calculados.data,
+        ...itensExcluidos.map((item) => ({
+          empresaId,
+          codigoErp: item.codigoErp,
+          delete: true,
+        })),
+      ],
+    };
   }
 
   async create(
@@ -359,7 +372,7 @@ export class IntegracaoOrcamentosService {
               empresaId,
               numero: await proximoNumeroOrcamento(tx, empresaId),
               createdBy: autor,
-              itens: { create: itensData },
+              itens: { create: criarFilhos(itensData) },
             } as never,
             include: INCLUDE,
           });

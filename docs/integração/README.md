@@ -94,7 +94,7 @@ ERP, único por empresa:
 |---|---|---|
 | Cadastros (produto, cliente, vendedor, categoria, armazém, condição de pagamento, tabela de preço, regra de desconto) | `codigoErp` | string, até 30 chars |
 | Transacionais (nota de saída, título a receber, objetivo, orçamento) e os filhos deles (item de nota, item de orçamento, item de tabela de preço, meta por categoria) | `codigoErp` | string, até 60 chars |
-| Estoque | `produtoCodigo` + `armazemCodigo` | par de strings |
+| Estoque | `codigoErp` | `B2_FILIAL-B2_COD-B2_LOCAL` |
 
 O `codigoErp` é **opaco para a plataforma**: quem escolhe o que vai nele é o
 ERP, endpoint por endpoint. A API não interpreta, não monta e não valida
@@ -112,7 +112,7 @@ registro referenciado **precisa já existir** — daí a [ordem de carga](#ordem
 | `GET` | `/integracao/<entidade>/{codigo}` | Detalhe; **404** se não existir |
 | `POST` | `/integracao/<entidade>` | **Upsert** por `codigoErp`: cria ou atualiza, `201` nos dois casos |
 | `PATCH` | `/integracao/<entidade>/{codigo}` | Atualização **parcial**; **404** se não existir |
-| `DELETE` | `/integracao/<entidade>/{codigo}` | **Soft delete** (marca `deletedAt`) |
+| `DELETE` | `/integracao/<entidade>/{codigo}` | **Soft delete** por `codigoErp` (marca `deletedAt`) |
 
 Não há `PUT`, e não há endpoint de lote: uma chamada, um registro.
 

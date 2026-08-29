@@ -573,6 +573,10 @@ export const INTEGRACAO_CLIENTE_EXAMPLE: IntegracaoCliente = {
 // ------------------------------------------------------------------
 
 export const integracaoTabelaPrecoItemSchema = z.object({
+  delete: z
+    .boolean()
+    .default(false)
+    .describe("Quando true, exclui somente este item pelo codigoErp"),
   codigoErp: z
     .string()
     .trim()
@@ -613,7 +617,7 @@ export const integracaoTabelaPrecoCreateSchema = z.object({
   itens: z
     .array(integracaoTabelaPrecoItemSchema)
     .default([])
-    .describe("Substitui o conjunto inteiro de itens a cada PATCH"),
+    .describe("Sincroniza itens; delete=true exclui somente a linha informada"),
 });
 export type IntegracaoTabelaPrecoCreate = z.infer<
   typeof integracaoTabelaPrecoCreateSchema
@@ -648,6 +652,7 @@ export const INTEGRACAO_TABELA_PRECO_CREATE_EXAMPLE: IntegracaoTabelaPrecoCreate
     ativo: true,
     itens: [
       {
+        delete: false,
         codigoErp: "001-11400443",
         produtoCodigo: "11400443",
         preco: 735.3,
@@ -672,6 +677,11 @@ export const INTEGRACAO_TABELA_PRECO_EXAMPLE: IntegracaoTabelaPreco = {
 // ------------------------------------------------------------------
 
 export const integracaoEstoqueCreateSchema = z.object({
+  codigoErp: z
+    .string()
+    .min(1)
+    .max(60)
+    .describe("Chave opaca do estoque no ERP: B2_FILIAL-B2_COD-B2_LOCAL"),
   produtoCodigo: z
     .string()
     .trim()
@@ -695,7 +705,7 @@ export type IntegracaoEstoqueCreate = z.infer<
 >;
 
 export const integracaoEstoqueUpdateSchema = integracaoEstoqueCreateSchema
-  .omit({ produtoCodigo: true, armazemCodigo: true })
+  .omit({ codigoErp: true, produtoCodigo: true, armazemCodigo: true })
   .partial();
 export type IntegracaoEstoqueUpdate = z.infer<
   typeof integracaoEstoqueUpdateSchema
@@ -708,6 +718,7 @@ export const integracaoEstoqueSchema = integracaoEstoqueCreateSchema.extend({
 export type IntegracaoEstoque = z.infer<typeof integracaoEstoqueSchema>;
 
 export const integracaoEstoqueQuerySchema = paginationQuerySchema.extend({
+  codigoErp: z.string().optional(),
   produtoCodigo: z.string().trim().optional(),
   armazemCodigo: z.string().trim().optional(),
 });
@@ -716,8 +727,9 @@ export type IntegracaoEstoqueQuery = z.infer<
 >;
 
 export const INTEGRACAO_ESTOQUE_CREATE_EXAMPLE: IntegracaoEstoqueCreate = {
-  produtoCodigo: "11400443",
-  armazemCodigo: "001",
+  codigoErp: "01-11400443-001",
+  produtoCodigo: "01-11400443",
+  armazemCodigo: "01-001",
   saldo: 128,
   reserva: 12,
   custo: 21.4,
@@ -840,6 +852,10 @@ export const INTEGRACAO_OBJETIVO_EXAMPLE: IntegracaoObjetivo = {
 // cabeçalho pelo próprio service — não fazem parte do payload do item.
 
 export const integracaoNotaSaidaItemSchema = z.object({
+  delete: z
+    .boolean()
+    .default(false)
+    .describe("Quando true, exclui somente este item pelo codigoErp"),
   codigoErp: z
     .string()
     .trim()
@@ -920,7 +936,7 @@ export const integracaoNotaSaidaCreateSchema = z.object({
   itens: z
     .array(integracaoNotaSaidaItemSchema)
     .default([])
-    .describe("Substitui o conjunto inteiro de itens a cada PATCH"),
+    .describe("Sincroniza itens; delete=true exclui somente a linha informada"),
 });
 export type IntegracaoNotaSaidaCreate = z.infer<
   typeof integracaoNotaSaidaCreateSchema
@@ -979,6 +995,7 @@ export const INTEGRACAO_NOTA_SAIDA_CREATE_EXAMPLE: IntegracaoNotaSaidaCreate = {
   ativo: true,
   itens: [
     {
+      delete: false,
       codigoErp: "000116067-1-0001",
       produtoCodigo: "11400443",
       item: 1,
@@ -1420,6 +1437,10 @@ export const INTEGRACAO_TITULO_RECEBER_EXAMPLE: IntegracaoTituloReceber = {
 // é criado pela tela.
 
 export const integracaoOrcamentoItemSchema = z.object({
+  delete: z
+    .boolean()
+    .default(false)
+    .describe("Quando true, exclui somente este item pelo codigoErp"),
   codigoErp: z
     .string()
     .trim()
@@ -1472,7 +1493,7 @@ export const integracaoOrcamentoCreateSchema = z.object({
   itens: z
     .array(integracaoOrcamentoItemSchema)
     .default([])
-    .describe("Substitui o conjunto inteiro de itens a cada PATCH"),
+    .describe("Sincroniza itens; delete=true exclui somente a linha informada"),
 });
 export type IntegracaoOrcamentoCreate = z.infer<
   typeof integracaoOrcamentoCreateSchema
@@ -1532,6 +1553,7 @@ export const INTEGRACAO_ORCAMENTO_CREATE_EXAMPLE: IntegracaoOrcamentoCreate = {
   ativo: true,
   itens: [
     {
+      delete: false,
       codigoErp: "000123-01",
       produtoCodigo: "11400443",
       quantidade: 5,

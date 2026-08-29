@@ -153,11 +153,13 @@ Regras transversais:
 - **Exclusão**: qualquer registro pode vir com `"excluido": true` → soft delete
   (`deletedAt`/`deletedBy`). Reenvio posterior sem a flag **reativa** o
   registro (limpa `deletedAt`) — o ERP é a fonte da verdade.
-- **Coleções aninhadas** (`notas-saida.itens[]` e
-  `clientes.cnaes[]`/`contatos[]`/`socios[]`): o upsert do pai substitui o
-  conjunto de filhos (filhos que não vierem mais são soft-deletados) — mantém
-  pai+filhos atômicos e evita órfãos; por isso **não** há endpoints separados
-  para eles. Os cadastros filhos de cliente também podem ser preenchidos por
+- **Itens aninhados do ERP** (`notas-saida.itens[]`,
+  `tabelas-preco.itens[]` e `orcamentos.itens[]`): permanecem no payload do
+  cabeçalho. `delete: true` exclui somente o item identificado por seu
+  `codigoErp`; a ausência do item no lote não o exclui. Não há endpoints
+  separados para itens.
+- **Cadastros filhos de cliente** (`clientes.cnaes[]`/`contatos[]`/`socios[]`):
+  podem ser preenchidos por
   MinhaReceita (ver plano de enriquecimento); ERP e enriquecimento convivem —
   ambos são upsert idempotente sobre a mesma chave.
 - **Empresa da chave**: todo registro grava na empresa dona da API key, via

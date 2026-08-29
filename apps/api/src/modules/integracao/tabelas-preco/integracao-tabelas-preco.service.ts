@@ -19,7 +19,7 @@ import {
   camposDaDecisao,
   decidirUpsert,
 } from '../common/decidir-upsert';
-import { sincronizarFilhos } from '../common/sincronizar-filhos';
+import { criarFilhos, sincronizarFilhos } from '../common/sincronizar-filhos';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 
 const INCLUDE = {
@@ -46,6 +46,7 @@ export class IntegracaoTabelasPrecoService {
       dtFim: row.dtFim,
       ativo: row.ativo,
       itens: row.itens.map((item) => ({
+        delete: false,
         codigoErp: item.codigoErp ?? '',
         produtoCodigo: item.produto.codigoErp,
         preco: item.preco,
@@ -132,6 +133,7 @@ export class IntegracaoTabelasPrecoService {
               `produtoCodigo '${item.produtoCodigo}' não encontrado`,
             );
           return {
+            delete: item.delete,
             empresaId,
             codigoErp: item.codigoErp,
             produtoId: produto.id,
@@ -176,7 +178,7 @@ export class IntegracaoTabelasPrecoService {
           ...dados,
           empresaId,
           createdBy: autor,
-          itens: { create: itensData },
+          itens: { create: criarFilhos(itensData) },
         },
         include: INCLUDE,
       });
@@ -216,6 +218,7 @@ export class IntegracaoTabelasPrecoService {
               );
             }
             return {
+              delete: item.delete,
               empresaId,
               codigoErp: item.codigoErp,
               produtoId: produto.id,

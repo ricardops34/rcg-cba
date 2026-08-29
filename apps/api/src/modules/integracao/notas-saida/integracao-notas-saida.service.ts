@@ -27,7 +27,7 @@ import {
   camposDaDecisao,
   decidirUpsert,
 } from '../common/decidir-upsert';
-import { sincronizarFilhos } from '../common/sincronizar-filhos';
+import { criarFilhos, sincronizarFilhos } from '../common/sincronizar-filhos';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 import {
   extrairNfe,
@@ -78,6 +78,7 @@ export class IntegracaoNotasSaidaService {
       comodato: row.comodato,
       ativo: row.ativo,
       itens: row.itens.map((item) => ({
+        delete: false,
         codigoErp: item.codigoErp ?? '',
         produtoCodigo: item.produto?.codigoErp ?? null,
         item: item.item,
@@ -178,6 +179,7 @@ export class IntegracaoNotasSaidaService {
           produtoId = produto.id;
         }
         return {
+          delete: item.delete,
           empresaId,
           codigoErp: item.codigoErp,
           clienteId,
@@ -338,7 +340,7 @@ export class IntegracaoNotasSaidaService {
           ...dados,
           empresaId,
           createdBy: autor,
-          itens: { create: itensData },
+          itens: { create: criarFilhos(itensData) },
         },
         include: INCLUDE,
       });

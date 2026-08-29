@@ -29,7 +29,7 @@ além do CRUD.
 | `/integracao/vendedores` | `codigoErp` | `ativo` | — |
 | `/integracao/clientes` | `codigoErp` | `ativo` | **`PATCH` vai para fila de aprovação** |
 | `/integracao/tabelas-preco` | `codigoErp` | `ativo` | mestre-detalhe (`itens`) |
-| `/integracao/estoque` | `produtoCodigo` + `armazemCodigo` | `produtoCodigo`, `armazemCodigo` | chave composta na URL |
+| `/integracao/estoque` | `codigoErp` | `codigoErp`, `produtoCodigo`, `armazemCodigo` | `B2_FILIAL-B2_COD-B2_LOCAL` |
 | `/integracao/objetivos` | `codigoErp` | `ativo`, `ano`, `mes` | mestre-detalhe (`categorias`) |
 | `/integracao/notas-saida` | `codigoErp` | `ativo`, `semXml` | mestre-detalhe (`itens`) + rotas de XML |
 | `/integracao/titulos-receber` | `codigoErp` | `ativo` | campos de cobrança bancária |
@@ -126,9 +126,9 @@ Mestre-detalhe. `GET /{codigo}` devolve a tabela **com os itens**.
 Chave composta, refletida na URL:
 
 ```
-GET    /integracao/estoque/{produtoCodigo}/{armazemCodigo}
-PATCH  /integracao/estoque/{produtoCodigo}/{armazemCodigo}
-DELETE /integracao/estoque/{produtoCodigo}/{armazemCodigo}
+GET    /integracao/estoque/{codigoErp}
+PATCH  /integracao/estoque/{codigoErp}
+DELETE /integracao/estoque/{codigoErp}
 ```
 
 A listagem filtra por `produtoCodigo` e/ou `armazemCodigo`
@@ -136,7 +136,7 @@ A listagem filtra por `produtoCodigo` e/ou `armazemCodigo`
 existir.
 
 ```json
-{ "produtoCodigo": "11400443", "armazemCodigo": "001", "saldo": 128 }
+{ "codigoErp": "01-11400443-001", "produtoCodigo": "01-11400443", "armazemCodigo": "01-001", "saldo": 128 }
 ```
 
 ---
