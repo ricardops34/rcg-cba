@@ -13,6 +13,7 @@ import { WhatsappConversasService } from '../whatsapp/whatsapp-conversas.service
 import { WhatsappAcoesService } from '../whatsapp/whatsapp-acoes.service';
 import { WhatsappAgendamentoService } from '../whatsapp/whatsapp-agendamento.service';
 import { VendedoresService } from '../vendedores/vendedores.service';
+import { MeusAtendimentosService } from '../meus-atendimentos/meus-atendimentos.service';
 import type { AgenteDestino } from '@plataforma/contracts';
 import type { FerramentaChat } from './provedor-ia';
 // Só o tipo: `import type` some no build, então não há ciclo em runtime com
@@ -350,29 +351,35 @@ export class AgenteToolsService {
     private readonly vendedores: VendedoresService,
     private readonly whatsappAcoes: WhatsappAcoesService,
     private readonly agendamento: WhatsappAgendamentoService,
+    private readonly meusAtendimentos: MeusAtendimentosService,
   ) {}
 
   /**
-   * Até onde o agente enxerga — e é **por perfil**, não pela permissão da tela.
+   * Até onde o agente enxerga: **o mesmo que as telas daquele usuário**.
    *
    * | Quem | Alcance no chat |
    * |---|---|
-   * | Vendedor, supervisor | só a própria carteira |
-   * | Gerente, diretor, administrador | a empresa ativa inteira |
+   * | Vendedor | só a própria carteira |
+   * | Supervisor, gerente | a própria e a dos subordinados |
+   * | Diretor, administrador, usuário sem cadastro de vendedor | a empresa |
    *
-   * O corte existe porque a pergunta no chat costuma vir sem sujeito ("como
-   * estão as vendas?", "bati a meta?"). Para quem vende, a resposta certa é
-   * sobre o que é dele: agregar a equipe ali seria devolver número de colega
-   * numa conversa que ninguém revisou. Já gerente, diretor e administrador
-   * respondem pela operação — para eles, o número da empresa **é** o número
-   * deles, e limitá-los tornaria o agente inútil justamente para quem decide.
+   * Foi mais estreito até 2026-09-02: supervisor também respondia só pela
+   * carteira própria. A regra caiu quando ficou claro que supervisor e gerente
+   * **trabalham na carteira dos subordinados** — atendem, orçam e cobram por
+   * eles. Com o corte antigo, o agente respondia "você não tem clientes" a
+   * quem atende a equipe inteira, e recusava agendar visita ao cliente que ele
+   * acabara de visitar.
    *
-   * O supervisor fica com a própria carteira de propósito: o que ele enxerga
-   * da equipe continua nas telas, onde tem contexto e filtro à vista.
+   * Só o vendedor "puro" ganha filtro explícito aqui, e mesmo esse é defesa em
+   * profundidade: `resolverEscopoVendedores`, dentro de cada service, já
+   * aplica o mesmo recorte. Para os demais devolve `{}` — sem recorte extra,
+   * valendo o escopo do service e a RLS da empresa ativa. O filtro
+   * **restringe**, nunca amplia.
    *
-   * Devolve `{}` quando não há recorte a aplicar — e aí vale o escopo normal do
-   * service, que já limita à empresa ativa via RLS. O filtro **restringe**,
-   * nunca amplia.
+   * **O WhatsApp não segue esta regra**: conversa e mensagem continuam
+   * limitadas à própria conexão para todo mundo (ver `conversas_whatsapp` e
+   * `historicoDoClienteNaPropriaConexao`). Ler o atendimento da equipe na tela
+   * é uma coisa; mandar o texto dele para o provedor de IA é outra.
    */
   private async filtroCarteira(
     user: AuthenticatedUser,
@@ -385,7 +392,7 @@ export class AgenteToolsService {
     );
     // Sem cadastro de vendedor (administrativo, financeiro) o alcance é o
     // mesmo das telas dele: a empresa ativa.
-    if (!vendedor || vendedor.tipo === 'gerente') return {};
+    if (!vendedor || vendedor.tipo !== 'vendedor') return {};
     return { vendedorId: vendedor.id };
   }
 
@@ -400,10 +407,11 @@ export class AgenteToolsService {
   /**
    * O cliente está no alcance de quem perguntou?
    *
-   * `findOne` já barra o que está fora do escopo do service, mas o escopo do
-   * supervisor inclui a equipe — e para ele o agente responde só pela própria
-   * carteira. Para gerente, diretor e administrador não há o que comparar: o
-   * alcance é a empresa.
+   * `findOne` já barra o que está fora do escopo do service, e desde
+   * 2026-09-02 o agente usa esse mesmo escopo (ver `filtroCarteira`) — então
+   * para supervisor, gerente, diretor e administrador não há o que comparar
+   * aqui. Sobra o vendedor "puro": a checagem é a rede que impede o modelo de
+   * agir sobre um id de cliente que ele pescou numa listagem alheia.
    */
   private async garantirClienteNoAlcance(
     user: AuthenticatedUser,
@@ -419,6 +427,33 @@ export class AgenteToolsService {
       throw new ForbiddenException(
         'Este cliente é de outra carteira. O assistente responde sobre os ' +
           'clientes que são seus.',
+      );
+    }
+  }
+
+  /**
+   * A oportunidade é de quem está pedindo para mexer nela?
+   *
+   * `update` já barra o que está fora do escopo do service, e o agente usa o
+   * mesmo escopo desde 2026-09-02 — supervisor e gerente mexem no funil da
+   * equipe aqui como mexem na tela. A checagem sobra para o vendedor "puro":
+   * escrever no atendimento do colega é pior do que lê-lo.
+   */
+  private async garantirOportunidadeNoAlcance(
+    user: AuthenticatedUser,
+    oportunidadeId: string,
+  ) {
+    const { vendedorId } = await this.filtroCarteira(user);
+    if (!vendedorId) return;
+    const oportunidade = (await this.oportunidades.findOne(
+      user.empresaAtivaId,
+      user,
+      oportunidadeId,
+    )) as { vendedorId: string | null };
+    if (oportunidade.vendedorId !== vendedorId) {
+      throw new ForbiddenException(
+        'Esta oportunidade é de outro vendedor. O assistente mexe apenas no ' +
+          'que é seu.',
       );
     }
   }
@@ -442,8 +477,12 @@ export class AgenteToolsService {
     clienteId: string,
   ) {
     const empresaId = user.empresaAtivaId;
+    // O cliente estar no alcance não faz da agenda do colega assunto de quem
+    // pergunta: para vendedor e supervisor, só o que é da própria carteira.
+    const carteira = await this.filtroCarteira(user);
     const [agenda, funil, whatsapp] = await Promise.all([
       this.atividades.findAll(empresaId, user, {
+        ...carteira,
         page: 1,
         pageSize: 10,
         clienteId,
@@ -451,12 +490,17 @@ export class AgenteToolsService {
         sortOrder: 'desc',
       } as never) as Promise<{ data: AtividadeResumo[]; total: number }>,
       this.oportunidades.findAll(empresaId, user, {
+        ...carteira,
         page: 1,
         pageSize: 10,
         clienteId,
         sortOrder: 'desc',
       } as never) as Promise<{ data: OportunidadeResumo[]; total: number }>,
-      this.conversas.historicoDoCliente(empresaId, user, clienteId),
+      this.conversas.historicoDoClienteNaPropriaConexao(
+        empresaId,
+        user,
+        clienteId,
+      ),
     ]);
 
     return {
@@ -901,6 +945,70 @@ export class AgenteToolsService {
         },
       },
       {
+        nome: 'resumo_atendimentos',
+        descricao:
+          'O que o usuário fez no período: conversas de WhatsApp, 2ª via de ' +
+          'boleto e DANFE, títulos e notas enviados, orçamentos e compromissos ' +
+          'da agenda — tudo em ordem, com o cliente de cada um. Aceita de 1 a 7 ' +
+          'dias (1 = hoje) e filtro por cliente. Use para "o que eu fiz hoje", ' +
+          '"resuma minha semana" e "o que eu já fiz para o cliente X". Com ' +
+          '`escopo: "equipe"`, traz o que os subordinados fizeram — só responde ' +
+          'assim para quem tem equipe; para os demais volta o próprio.',
+        permissao: 'meus-atendimentos.visualizar',
+        limiteItens: 30,
+        exemplos: [
+          'O que eu fiz hoje?',
+          'Faça um resumo dos meus atendimentos dos últimos 7 dias',
+          'O que eu já fiz para o cliente X esta semana?',
+          'O que a minha equipe fez esta semana?',
+        ],
+        parametros: {
+          type: 'object',
+          properties: {
+            dias: {
+              type: 'number',
+              description: 'De 1 (hoje) a 7. Padrão: 1.',
+            },
+            clienteId: {
+              type: 'string',
+              description: 'Só o que foi feito para este cliente',
+            },
+            escopo: {
+              type: 'string',
+              description:
+                '"proprio" (padrão) ou "equipe" — o atendimento dos subordinados',
+            },
+          },
+        },
+        executar: async (a, user) => {
+          if (texto(a.clienteId)) {
+            await this.garantirClienteNoAlcance(user, texto(a.clienteId));
+          }
+          return this.meusAtendimentos.resumo(user.empresaAtivaId, user, {
+            // O teto de 7 dias é do contrato, e o modelo erra o número: pedir
+            // "o mês" viraria 400 em vez de resposta.
+            dias: Math.min(Math.max(Math.round(numero(a.dias, 1)), 1), 7),
+            // Quem não tem equipe recebe o próprio de volta — o service decide,
+            // então "equipe" nunca vira alcance que a hierarquia não dá.
+            escopo: texto(a.escopo) === 'equipe' ? 'equipe' : 'proprio',
+            // O chat resume; a lista inteira fica na tela. 40 registros é o que
+            // o modelo consegue sintetizar sem a resposta virar inventário.
+            limite: 40,
+            ...(texto(a.clienteId) ? { clienteId: texto(a.clienteId) } : {}),
+          });
+        },
+        // A timeline inteira fica na tela: o chat resume, e o resumo de uma
+        // semana não cabe numa resposta de chat sem virar lista.
+        destino: (a) => ({
+          rotulo: 'Abrir Meus Atendimentos',
+          rota: rotaComFiltros('/comercial/meus-atendimentos', {
+            dias: numero(a.dias, 1),
+            clienteId: texto(a.clienteId),
+            escopo: texto(a.escopo) === 'equipe' ? 'equipe' : undefined,
+          }),
+        }),
+      },
+      {
         nome: 'minha_agenda',
         descricao:
           'Compromissos e tarefas do CRM: o que está pendente, o que venceu e o ' +
@@ -1008,7 +1116,9 @@ export class AgenteToolsService {
           'O que já aconteceu com um cliente: compromissos do CRM (feitos e a ' +
           'fazer), oportunidades no funil e o atendimento por WhatsApp (quantas ' +
           'conversas, quando foi o último contato e o começo da última mensagem). ' +
-          'Use antes de ligar para o cliente, para saber onde a conversa parou.',
+          'Use antes de ligar para o cliente, para saber onde a conversa parou. ' +
+          'Não tem recorte de período: para "o que eu fiz nos últimos dias", com ' +
+          'ou sem cliente, use resumo_atendimentos.',
         permissao: 'clientes.visualizar',
         limiteItens: 15,
         exemplos: [
@@ -1078,6 +1188,11 @@ export class AgenteToolsService {
           required: ['titulo', 'quando'],
         },
         executar: async (a, user) => {
+          // O compromisso é de quem pede, mas o cliente citado tem de ser dele:
+          // sem isto o agente agenda na carteira do colega.
+          if (texto(a.clienteId)) {
+            await this.garantirClienteNoAlcance(user, texto(a.clienteId));
+          }
           const vendedor = await this.atividades.vendedorDoUsuario(
             user.empresaAtivaId,
             user,
@@ -1135,6 +1250,7 @@ export class AgenteToolsService {
           required: ['clienteId', 'titulo'],
         },
         executar: async (a, user) => {
+          await this.garantirClienteNoAlcance(user, texto(a.clienteId));
           const vendedor = await this.atividades.vendedorDoUsuario(
             user.empresaAtivaId,
             user,
@@ -1202,8 +1318,12 @@ export class AgenteToolsService {
           },
           required: ['oportunidadeId'],
         },
-        executar: (a, user) =>
-          this.oportunidades.update(
+        executar: async (a, user) => {
+          await this.garantirOportunidadeNoAlcance(
+            user,
+            texto(a.oportunidadeId),
+          );
+          return this.oportunidades.update(
             user.empresaAtivaId,
             user,
             texto(a.oportunidadeId),
@@ -1224,7 +1344,8 @@ export class AgenteToolsService {
                 ? { observacao: texto(a.observacao) }
                 : {}),
             },
-          ),
+          );
+        },
         destino: (a) => ({
           rotulo: 'Abrir a oportunidade',
           rota: `/crm/oportunidades/${texto(a.oportunidadeId)}`,
@@ -1313,8 +1434,10 @@ export class AgenteToolsService {
           },
           required: ['clienteId', 'titulo', 'itens'],
         },
-        executar: (a, user) =>
-          this.orcamentos.create(user.empresaAtivaId, user, a as never),
+        executar: async (a, user) => {
+          await this.garantirClienteNoAlcance(user, texto(a.clienteId));
+          return this.orcamentos.create(user.empresaAtivaId, user, a as never);
+        },
         destino: (_a, r) => {
           const id = (r as { id?: unknown })?.id;
           return typeof id === 'string'
@@ -1383,7 +1506,7 @@ export class AgenteToolsService {
           });
         },
         destino: () => ({
-          rotulo: 'Abrir o Atendimento',
+          rotulo: 'Abrir as Conversas',
           rota: '/comercial/atendimento',
         }),
       },
@@ -1419,7 +1542,7 @@ export class AgenteToolsService {
             { tamanho: 30 },
           ),
         destino: () => ({
-          rotulo: 'Abrir o Atendimento',
+          rotulo: 'Abrir as Conversas',
           rota: '/comercial/atendimento',
         }),
       },
@@ -1472,7 +1595,7 @@ export class AgenteToolsService {
             },
           ),
         destino: () => ({
-          rotulo: 'Abrir o Atendimento',
+          rotulo: 'Abrir as Conversas',
           rota: '/comercial/atendimento',
         }),
       },
@@ -1596,7 +1719,7 @@ export class AgenteToolsService {
           }
         },
         destino: () => ({
-          rotulo: 'Abrir o Atendimento',
+          rotulo: 'Abrir as Conversas',
           rota: '/comercial/atendimento',
         }),
       },

@@ -16,6 +16,7 @@ import {
   buildPaginatedResult,
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
+import type { OrigemVenda } from '@prisma/client';
 import type {
   OrcamentoCreate,
   OrcamentoQuery,
@@ -128,9 +129,41 @@ export class OrcamentosService {
   }
 
   /**
+   * Quem originou a venda — o **executor**, não o dono da carteira.
+   *
+   * A venda continua sempre vinculada ao vendedor do cadastro do cliente (ver
+   * `create`). Esta coluna responde a outra pergunta: quem de fato montou o
+   * orçamento. Supervisor, gerente e administrador vendem na carteira do
+   * subordinado, e sem o registro disso a comissão e a leitura de desempenho
+   * tratam "o vendedor fez" e "o supervisor fez pelo vendedor" como iguais.
+   *
+   * A ordem da decisão importa: **ser o dono da carteira ganha do cargo**. Um
+   * gerente com carteira própria, vendendo para cliente dele, é `vendedor` —
+   * ali ele está atendendo, não cobrindo alguém.
+   */
+  private async origemDaVenda(
+    tx: TenantTx,
+    empresaId: string,
+    user: AuthenticatedUser,
+    vendedorDoCliente: string | null,
+  ): Promise<OrigemVenda> {
+    const vendedor = await tx.vendedor.findFirst({
+      where: { usuarioId: user.id, empresaId, deletedAt: null },
+      select: { id: true, tipo: true },
+    });
+    if (vendedor && vendedor.id === vendedorDoCliente) return 'vendedor';
+    if (vendedor?.tipo === 'supervisor') return 'supervisor';
+    if (vendedor?.tipo === 'gerente') return 'gerente';
+    // Sem cadastro de vendedor (administrador, diretor, administrativo) ou
+    // vendedor mexendo em carteira que não é dele — o que só acontece com
+    // escopo que permita, e aí quem responde é a administração.
+    return 'administrador';
+  }
+
+  /**
    * Valida o cliente e devolve o vendedor cadastrado nele — que é também o
-   * vendedor do orçamento (ver create/update), e não uma escolha de quem
-   * está lançando.
+   * vendedor do orçamento (ver create/update), e não uma escolha de quem está
+   * lançando.
    */
   private async garantirClienteNoEscopo(
     tx: TenantTx,
@@ -253,6 +286,7 @@ export class OrcamentosService {
           ? { oportunidadeId: query.oportunidadeId }
           : {}),
         ...(query.status ? { status: query.status } : {}),
+        ...(query.origem ? { origem: query.origem } : {}),
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
         ...(query.search
           ? {
@@ -343,7 +377,13 @@ export class OrcamentosService {
         );
       }
 
-      const { itens, ...header } = { ...input, vendedorId };
+      const origem = await this.origemDaVenda(
+        tx,
+        empresaId,
+        user,
+        vendedorDoCliente,
+      );
+      const { itens, ...header } = { ...input, vendedorId, origem };
       const { data: itensData, vlrTotal } = await calcularItensOrcamento(
         tx,
         empresaId,

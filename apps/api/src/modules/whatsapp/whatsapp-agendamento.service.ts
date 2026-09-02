@@ -9,6 +9,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappProviderService } from './providers/whatsapp-provider.service';
 import { mensagemComAutor } from './mensagem-com-autor';
+import { registrarAtendimentoWhatsapp } from '../../common/atividades/registrar-atendimento-whatsapp';
 import { WhatsappConversasService } from './whatsapp-conversas.service';
 import {
   registrarNotificacao,
@@ -222,7 +223,9 @@ export class WhatsappAgendamentoService
             conversa: {
               include: {
                 contato: { select: { jid: true } },
-                sessao: { select: { id: true, status: true } },
+                sessao: {
+                  select: { id: true, status: true, vendedorId: true },
+                },
               },
             },
           },
@@ -271,6 +274,17 @@ export class WhatsappAgendamentoService
         await tx.whatsappMensagemAgendada.update({
           where: { id },
           data: { status: 'enviada', mensagemId: mensagem.id, erro: null },
+        });
+        // A programada é atendimento como qualquer outra mensagem: entra no
+        // histórico do cliente pelo mesmo registro diário. Este envio não passa
+        // por `WhatsappConversasService.enviar` — ele grava a mensagem aqui,
+        // para poder assinar com quem agendou — então o registro é explícito.
+        await registrarAtendimentoWhatsapp(tx, {
+          empresaId,
+          autor: agendada.criadaPor,
+          clienteId: agendada.conversa.clienteId,
+          vendedorId: agendada.conversa.sessao.vendedorId,
+          quando: mensagem.criadaEm,
         });
       });
     } catch (erro) {

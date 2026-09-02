@@ -39,6 +39,7 @@ import { AgenteModule } from './modules/agente/agente.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { NotificacoesModule } from './modules/notificacoes/notificacoes.module';
 import { InicioModule } from './modules/inicio/inicio.module';
+import { MeusAtendimentosModule } from './modules/meus-atendimentos/meus-atendimentos.module';
 import { AcessosModule } from './modules/acessos/acessos.module';
 import { PortalClienteModule } from './modules/portal-cliente/portal-cliente.module';
 import { validarSegredosDoAmbiente } from './common/config/validar-segredos';
@@ -96,6 +97,7 @@ import { validarSegredosDoAmbiente } from './common/config/validar-segredos';
     WhatsappModule,
     NotificacoesModule,
     InicioModule,
+    MeusAtendimentosModule,
     PortalClienteModule,
   ],
   controllers: [AppController],

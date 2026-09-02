@@ -80,7 +80,7 @@ function ChannelHeader({ config }: { config: WhatsappConfig }) {
         <Badge variant="outline">Provedor: {WHATSAPP_TRANSPORTE_ROTULO[config.transporte]}</Badge>
         <Badge variant={config.ativo ? "success" : "secondary"}>
           {config.ativo ? <CheckCircle2 /> : <TriangleAlert />}
-          {config.ativo ? "Atendimento ativo" : "Atendimento desativado"}
+          {config.ativo ? "WhatsApp ativo" : "WhatsApp desativado"}
         </Badge>
       </div>
     </div>
@@ -119,7 +119,9 @@ function ZapoConfig({ config }: { config: WhatsappConfig }) {
       method: "PUT",
       body: { ...form, transporte: "zapo", workerUrl: form.workerUrl.trim() || null, dddPadrao: form.dddPadrao.trim() || null },
     }),
-    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["whatsapp-config"] }); toast.success("Configuração do zapo-js salva"); },
+    // A chave ["whatsapp", "integracao"] é a que o menu e a tela inicial leem
+    // para mostrar o Atendimento: ligar aqui tem de refletir sem recarregar.
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["whatsapp-config"] }); void queryClient.invalidateQueries({ queryKey: ["whatsapp", "integracao"] }); toast.success("Configuração do zapo-js salva"); },
     onError: (error) => toast.error(mensagemErro(error, "Erro ao salvar")),
   });
 
@@ -208,7 +210,7 @@ function EvolutionConfig({ config }: { config: WhatsappConfig }) {
     }),
     onSuccess: (_dados, variaveis) => {
       setChave("");
-      void queryClient.invalidateQueries({ queryKey: ["whatsapp-config"] });
+      void queryClient.invalidateQueries({ queryKey: ["whatsapp-config"] }); void queryClient.invalidateQueries({ queryKey: ["whatsapp", "integracao"] });
       toast.success(variaveis?.apagarChave ? "Chave da Evolution GO removida" : "Configuração da Evolution GO salva");
     },
     onError: (error) => toast.error(mensagemErro(error, "Erro ao salvar")),
@@ -259,7 +261,7 @@ function EvolutionConfig({ config }: { config: WhatsappConfig }) {
             <div className="flex items-center gap-2"><Input id="historicoDiasEvolution" type="number" min={0} max={365} className="max-w-32" value={form.historicoDias} onChange={(event) => setForm((f) => ({ ...f, historicoDias: Number(event.target.value) }))} /><span className="text-sm text-muted-foreground">dias</span></div>
             <FieldDescription>
               Acima de zero, a importação é pedida por instância na aba Instâncias e o gateway entrega o histórico
-              aos poucos, por evento — a contagem não aparece na hora, as conversas vão surgindo no Atendimento.
+              aos poucos, por evento — a contagem não aparece na hora, as conversas vão surgindo em Conversas.
               Continua valendo a regra de sempre: só vira conversa o contato vinculado a um cliente.
             </FieldDescription>
           </Field>
@@ -340,10 +342,10 @@ function Instancias({ config }: { config: WhatsappConfig }) {
       // trabalho — o material chega depois, por evento. Zero ali não é "nada
       // encontrado", e dizer isso seria mentir para quem acabou de pedir.
       if (sessao.transporte === "evolution_go") {
-        toast.success(`Sincronização dos últimos ${r.dias} dias pedida ao gateway. As conversas aparecem no Atendimento conforme chegam.`);
+        toast.success(`Sincronização dos últimos ${r.dias} dias pedida ao gateway. As conversas aparecem em Conversas conforme chegam.`);
         return;
       }
-      toast.success(r.encontradas === 0 ? `Nada encontrado nos últimos ${r.dias} dias no aparelho` : `Importando ${r.encontradas} mensagem(ns) de ${r.conversas} conversa(s). Elas aparecem no Atendimento conforme entram.`);
+      toast.success(r.encontradas === 0 ? `Nada encontrado nos últimos ${r.dias} dias no aparelho` : `Importando ${r.encontradas} mensagem(ns) de ${r.conversas} conversa(s). Elas aparecem em Conversas conforme entram.`);
     },
     onError: (error) => toast.error(mensagemErro(error, "Falha ao importar histórico")),
   });
@@ -369,10 +371,10 @@ function Instancias({ config }: { config: WhatsappConfig }) {
       ) : null}
 
       <Card>
-        <CardHeader className="border-b"><div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"><div><CardTitle>Instâncias dos vendedores</CardTitle><p className="mt-1 text-sm text-muted-foreground">Estado atualizado a cada 10 segundos. A primeira conexão é iniciada pelo vendedor em Atendimento.</p></div><Badge variant="outline">{data.length} {data.length === 1 ? "instância" : "instâncias"}</Badge></div></CardHeader>
+        <CardHeader className="border-b"><div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"><div><CardTitle>Instâncias dos vendedores</CardTitle><p className="mt-1 text-sm text-muted-foreground">Estado atualizado a cada 10 segundos. A primeira conexão é iniciada pelo vendedor em Conversas.</p></div><Badge variant="outline">{data.length} {data.length === 1 ? "instância" : "instâncias"}</Badge></div></CardHeader>
         <CardContent className="p-0">
           {isLoading ? <p className="p-6 text-sm text-muted-foreground">Carregando instâncias...</p> : null}
-          {!isLoading && data.length === 0 ? <div className="flex min-h-52 flex-col items-center justify-center p-6 text-center"><Smartphone className="size-8 text-muted-foreground" /><p className="mt-3 font-medium">Nenhuma instância criada</p><p className="mt-1 text-sm text-muted-foreground">O vendedor deve abrir Comercial → Atendimento e iniciar o pareamento.</p></div> : null}
+          {!isLoading && data.length === 0 ? <div className="flex min-h-52 flex-col items-center justify-center p-6 text-center"><Smartphone className="size-8 text-muted-foreground" /><p className="mt-3 font-medium">Nenhuma instância criada</p><p className="mt-1 text-sm text-muted-foreground">O vendedor deve abrir Comercial → Conversas e iniciar o pareamento.</p></div> : null}
           {data.length > 0 ? (
             <Table>
               <TableHeader><TableRow><TableHead>Vendedor</TableHead><TableHead>Número</TableHead><TableHead>Provedor</TableHead><TableHead>Estado</TableHead><TableHead>Última conexão</TableHead><TableHead className="w-12" /></TableRow></TableHeader>

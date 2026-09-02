@@ -2215,6 +2215,24 @@ model Atividade {
 // convenção de NotaSaidaItem.vlrTabela); vlrUnitario é o preço praticado,
 // que o vendedor pode ajustar manualmente. Não gera Nota de Saída — é só
 // registro comercial nesta primeira versão.
+/// Quem originou a venda — o **executor**, não o dono da carteira.
+///
+/// A venda fica sempre com o vendedor do cadastro do cliente (é ele quem
+/// atende, e é na carteira dele que o histórico é consultado). Mas quem monta
+/// o orçamento nem sempre é ele: supervisor, gerente e administrador vendem na
+/// carteira do subordinado, e o cliente pode pedir sozinho. Sem esta coluna,
+/// a comissão e a leitura de desempenho tratam as duas coisas como iguais.
+///
+/// Preenchida pelo servidor a partir de quem cria, comparando com o vendedor
+/// do cliente — nunca vem do payload.
+enum OrigemVenda {
+  vendedor
+  supervisor
+  gerente
+  administrador
+  cliente
+}
+
 enum StatusOrcamento {
   rascunho
   enviado
@@ -2242,6 +2260,9 @@ model Orcamento {
   condicaoPagamentoId String?
   titulo              String
   status              StatusOrcamento @default(rascunho)
+  // Quem originou — ver `OrigemVenda`. O histórico anterior a 2026-09-02 fica
+  // como `vendedor`: não há como saber, depois, quem digitou o que.
+  origem              OrigemVenda     @default(vendedor)
   dataValidade        DateTime?
   // Data de retorno/follow-up: ao ser definida (na criação ou numa edição
   // que muda o valor), o backend gera automaticamente uma Atividade de

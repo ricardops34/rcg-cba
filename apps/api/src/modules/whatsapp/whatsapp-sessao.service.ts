@@ -421,7 +421,7 @@ export class WhatsappSessaoService {
     if (!sessao) throw new NotFoundException('Instância não encontrada');
     if (!sessao.aceiteEm) {
       throw new BadRequestException(
-        'O vendedor precisa iniciar a primeira conexão pela tela de Atendimento.',
+        'O vendedor precisa iniciar a primeira conexão pela tela de Conversas.',
       );
     }
 

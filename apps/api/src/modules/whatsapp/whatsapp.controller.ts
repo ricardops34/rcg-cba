@@ -96,6 +96,20 @@ export class WhatsappController {
     return this.config.atualizar(user.empresaAtivaId, user, dto);
   }
 
+  @ApiOperation({
+    summary: 'Se o WhatsApp está ativo para a empresa',
+    description:
+      'Só o booleano `ativo` da configuração. Disponível para qualquer usuário ' +
+      'autenticado (sem whatsapp-config.visualizar): é o que o menu e a tela ' +
+      'inicial consultam para esconder o Atendimento quando a integração está ' +
+      'desligada.',
+  })
+  @ApiResponse({ status: 200, schema: { example: { ativo: true } } })
+  @Get('integracao')
+  statusIntegracao(@CurrentUser() user: AuthenticatedUser) {
+    return this.config.statusIntegracao(user.empresaAtivaId);
+  }
+
   // ---------------- sessão do vendedor ----------------
 
   @ApiOperation({

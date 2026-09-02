@@ -192,26 +192,13 @@ export const MENUS: DefinicaoMenu[] = [
     codigo: 'estoque',
     moduloId: MODULO.comercial,
   },
-  // Notas de Saída é um cadastro mestre-detalhe: os itens vêm embutidos no
-  // detalhe da nota (GET /notas-saida/:id), sem menu/rotina própria.
-  {
-    id: 'seed-menu-notas-saida',
-    nome: 'Notas de Saída',
-    rota: '/comercial/notas-saida',
-    icone: 'file-text',
-    codigo: 'notas-saida',
-    moduloId: MODULO.comercial,
-  },
-  {
-    id: 'seed-menu-titulos-receber',
-    nome: 'Títulos a Receber',
-    rota: '/comercial/titulos-receber',
-    icone: 'receipt',
-    codigo: 'titulos-receber',
-    moduloId: MODULO.comercial,
-  },
-  // Atendimento por WhatsApp: a tela de conversa do vendedor. A conexão do
-  // aparelho é um botão dentro desta própria tela — é o vendedor que conecta
+  // Conversas de WhatsApp: a tela de atendimento ao vivo do vendedor. Chamava-se
+  // "Atendimento" até 2026-09-02, quando "Meus Atendimentos" (o registro do que
+  // já foi feito) entrou no mesmo módulo e os dois nomes passaram a competir:
+  // aqui é o **canal**, lá é o histórico. A rota continua `/comercial/atendimento`
+  // de propósito — as notificações do sino gravadas no banco apontam para ela.
+  //
+  // A conexão do aparelho é um botão dentro desta própria tela — quem conecta
   // o WhatsApp dele, e um menu separado só para parear seria um item a mais
   // para ele nunca encontrar. O que é decisão da empresa (transporte,
   // retenção) fica no módulo Configurações.
@@ -222,10 +209,22 @@ export const MENUS: DefinicaoMenu[] = [
   //   editar     → conectar/desconectar o aparelho e vincular contato a cliente
   {
     id: 'seed-menu-whatsapp',
-    nome: 'Atendimento',
+    nome: 'Conversas',
     rota: '/comercial/atendimento',
     icone: 'message-circle',
     codigo: 'whatsapp-conversas',
+    moduloId: MODULO.comercial,
+  },
+  // Linha do tempo do que o vendedor fez — o histórico de atendimento do
+  // cliente visto pelo lado de quem atende. Só leitura: o conteúdo é gravado
+  // pelas rotinas que fazem o atendimento (WhatsApp, documentos, orçamentos,
+  // agenda), e não há inclusão aqui.
+  {
+    id: 'seed-menu-meus-atendimentos',
+    nome: 'Meus Atendimentos',
+    rota: '/comercial/meus-atendimentos',
+    icone: 'history',
+    codigo: 'meus-atendimentos',
     moduloId: MODULO.comercial,
   },
   {
@@ -387,6 +386,31 @@ export const MENUS: DefinicaoMenu[] = [
     codigo: 'regras-desconto',
     moduloId: MODULO.cadastros,
   },
+  // Notas de Saída e Títulos a Receber são espelho do ERP: leitura do que o
+  // Protheus mandou, sem CRUD próprio. Ficavam no módulo Comercial e mudaram
+  // para Cadastros em 2026-09-02, a pedido do usuário — o Comercial é o que o
+  // vendedor **faz** (atender, orçar, cobrar), e estes dois são o registro do
+  // que já foi faturado. A rota continua `/comercial/...`: notificações e
+  // links já emitidos apontam para ela.
+  //
+  // Notas de Saída é um cadastro mestre-detalhe: os itens vêm embutidos no
+  // detalhe da nota (GET /notas-saida/:id), sem menu/rotina própria.
+  {
+    id: 'seed-menu-notas-saida',
+    nome: 'Notas de Saída',
+    rota: '/comercial/notas-saida',
+    icone: 'file-text',
+    codigo: 'notas-saida',
+    moduloId: MODULO.cadastros,
+  },
+  {
+    id: 'seed-menu-titulos-receber',
+    nome: 'Títulos a Receber',
+    rota: '/comercial/titulos-receber',
+    icone: 'receipt',
+    codigo: 'titulos-receber',
+    moduloId: MODULO.cadastros,
+  },
   // Consultas gerenciais: uma rotina por tela, para que a permissão de
   // exportar possa ser dada em uma e não na outra.
   {
@@ -537,6 +561,9 @@ export const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
   // outro vendedor é a rotina `whatsapp-equipe`, que não está aqui de
   // propósito — ver SUPERVISAO_PERMISSOES.
   'whatsapp-conversas': ['visualizar', 'cadastrar', 'editar'],
+  // A linha do tempo do próprio atendimento. Só 'visualizar' porque não há o
+  // que cadastrar: a tela lê as Atividades que os outros módulos gravam.
+  'meus-atendimentos': ['visualizar'],
   // Assistente de IA. `agente` é obrigatória: sem ela o ícone do assistente não
   // aparece para ninguém. As três seguintes não são detalhe — o catálogo de
   // ferramentas enviado ao modelo é filtrado pela permissão do usuário

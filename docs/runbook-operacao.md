@@ -236,6 +236,14 @@ correção de segurança — ver o cabeçalho do catálogo.
 A ordem dos itens no menu é a **posição no array** `MENUS`: mover uma entrada ali
 move o item na tela.
 
+**Rotina nova que precisa nascer permitida** (o caso de `meus-atendimentos`, em
+2026-09-02): a permissão continua sendo de migration, mas ela roda **antes** do
+`sincronizar-catalogo` — e não acharia a rotina, que ainda não existe. Nesse
+caso a migration cria o menu e a rotina (mesmos ids e código do catálogo,
+`ON CONFLICT DO NOTHING`) e só então concede. Os dois lados são idempotentes,
+então o script depois não encontra nada a fazer. Modelo:
+`20260902120000_perm_meus_atendimentos`.
+
 ---
 
 ## Publicar imagens

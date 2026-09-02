@@ -8,6 +8,7 @@ import {
   CalendarDays,
   ClipboardList,
   FileText,
+  History,
   LayoutDashboard,
   Megaphone,
   MessageCircle,
@@ -22,6 +23,7 @@ import {
 } from "lucide-react";
 import type { Aniversariante, ComunicadoMural } from "@plataforma/contracts";
 import { useAuthStore } from "@/stores/auth-store";
+import { useWhatsappIntegracao } from "@/hooks/use-whatsapp-integracao";
 import { apiFetch } from "@/lib/api-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -34,6 +36,11 @@ interface Atalho {
   icone: LucideIcon;
   /** `rotina.acao` — a mesma string do RBAC. */
   permissao: string;
+  /**
+   * Some quando o WhatsApp da empresa está desligado, mesmo para quem tem a
+   * permissão: o cartão levaria a uma tela sem conversa nenhuma.
+   */
+  exigeWhatsapp?: boolean;
 }
 
 /**
@@ -47,10 +54,18 @@ interface Atalho {
 const ATALHOS: Atalho[] = [
   {
     href: "/comercial/atendimento",
-    titulo: "Atendimento",
-    descricao: "Conversas de WhatsApp",
+    titulo: "Conversas",
+    descricao: "Atendimento por WhatsApp",
     icone: MessageCircle,
     permissao: "whatsapp-conversas.visualizar",
+    exigeWhatsapp: true,
+  },
+  {
+    href: "/comercial/meus-atendimentos",
+    titulo: "Meus Atendimentos",
+    descricao: "O que você fez nos últimos dias",
+    icone: History,
+    permissao: "meus-atendimentos.visualizar",
   },
   {
     href: "/comercial/posicao-cliente",
@@ -143,9 +158,12 @@ function saudacao(hora: number) {
 export default function InicioPage() {
   const user = useAuthStore((s) => s.user);
   const permissoes = user?.permissoes;
+  const { ativo: whatsappAtivo } = useWhatsappIntegracao();
 
-  const visiveis = ATALHOS.filter((a) =>
-    permissoes?.includes(a.permissao),
+  const visiveis = ATALHOS.filter(
+    (a) =>
+      permissoes?.includes(a.permissao) &&
+      (!a.exigeWhatsapp || whatsappAtivo === true),
   ).slice(0, MAX_ATALHOS);
 
   const muralQuery = useQuery({

@@ -272,7 +272,7 @@ export default function PosicaoClientePage() {
               <FilePlus2 className="size-4" /> Incluir Orçamento
             </DropdownMenuItem>
             {/* Só para quem já tem contato de WhatsApp vinculado: sem conversa
-                não há atendimento para abrir, e a ação levaria a uma tela
+                não há conversa para abrir, e a ação levaria a uma tela
                 vazia. O backend só devolve a conversa que este usuário pode
                 ler (ver whatsappConversaId). */}
             {podeVerAtendimento && c.whatsappConversaId && (
@@ -281,7 +281,7 @@ export default function PosicaoClientePage() {
                   router.push(`/comercial/atendimento?conversa=${c.whatsappConversaId}`)
                 }
               >
-                <MessageCircle className="size-4" /> Atendimento
+                <MessageCircle className="size-4" /> Conversa
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>

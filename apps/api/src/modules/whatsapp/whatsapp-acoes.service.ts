@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma, PrismaService } from '../../common/prisma/prisma.service';
 import { WhatsappConversasService } from './whatsapp-conversas.service';
 import { TitulosReceberService } from '../titulos-receber/titulos-receber.service';
@@ -52,32 +48,39 @@ export class WhatsappAcoesService {
     private readonly orcamentos: OrcamentosService,
   ) {}
 
-  /** Cliente e vendedor da conversa, garantindo que ela é visível ao usuário. */
+  /**
+   * Cliente e vendedor da conversa — e o dono dela é quem está pedindo.
+   *
+   * Passa pelo `conversaParaEnvio` do serviço de conversas em vez de ler a
+   * linha direto: aquela é a porta única de quem fala pela sessão, e checa as
+   * duas coisas que faltavam aqui — a conversa estar no escopo de leitura e o
+   * usuário ser o **dono** dela. Sem isso, um `conversaId` de outro vendedor
+   * devolvia o nome do cliente e alimentava os seletores de título, nota e
+   * orçamento do atendimento alheio; o envio em si já era barrado adiante, mas
+   * tarde demais para o que já tinha sido lido.
+   */
   private async contexto(
     empresaId: string,
     user: AuthenticatedUser,
     conversaId: string,
   ) {
     const conversa = await this.prisma.withTenant(empresaId, (tx) =>
-      tx.whatsappConversa.findFirst({
-        where: { id: conversaId },
-        select: {
-          id: true,
-          clienteId: true,
-          sessao: { select: { vendedorId: true } },
-          cliente: { select: { razaoSocial: true } },
-        },
-      }),
+      this.conversas.conversaParaEnvio(tx, empresaId, user, conversaId),
     );
-    if (!conversa) throw new NotFoundException('Conversa não encontrada');
     if (!conversa.clienteId) {
       throw new BadRequestException(
         'Vincule o contato a um cliente para usar as ações do sistema.',
       );
     }
+    const cliente = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.cliente.findFirst({
+        where: { id: conversa.clienteId as string, empresaId },
+        select: { razaoSocial: true },
+      }),
+    );
     return {
       clienteId: conversa.clienteId,
-      clienteNome: conversa.cliente?.razaoSocial ?? 'cliente',
+      clienteNome: cliente?.razaoSocial ?? 'cliente',
       vendedorId: conversa.sessao.vendedorId,
     };
   }
@@ -94,7 +97,11 @@ export class WhatsappAcoesService {
     user: AuthenticatedUser,
     conversaId: string,
   ) {
-    const { clienteId } = await this.contexto(empresaId, user, conversaId);
+    const { clienteId, vendedorId } = await this.contexto(
+      empresaId,
+      user,
+      conversaId,
+    );
 
     const resultado = (await this.titulos.findAll(empresaId, user, {
       page: 1,
@@ -132,6 +139,20 @@ export class WhatsappAcoesService {
       quantidade: linhas.length,
       total,
     });
+    // O registro da conversa responde "o que saiu por aqui"; o histórico do
+    // cliente responde "o que fizemos por ele". Mandar a lista de títulos é
+    // atendimento, e a rotina de Atividades é onde o vendedor o revê.
+    await this.prisma.withTenant(empresaId, (tx) =>
+      registrarAtividadeDocumento(tx, {
+        empresaId,
+        autor: user.id,
+        evento: 'titulos_whatsapp',
+        clienteId,
+        vendedorId,
+        numero: '',
+        descricao: `${linhas.length} título(s) · ${this.moeda(total)}`,
+      }),
+    );
     return mensagem;
   }
 
@@ -445,7 +466,11 @@ export class WhatsappAcoesService {
     user: AuthenticatedUser,
     conversaId: string,
   ) {
-    const { clienteId } = await this.contexto(empresaId, user, conversaId);
+    const { clienteId, vendedorId } = await this.contexto(
+      empresaId,
+      user,
+      conversaId,
+    );
 
     const resultado = (await this.notas.findAll(empresaId, user, {
       // Pede mais do que vai mandar porque a base legada tem notas com valor
@@ -482,6 +507,19 @@ export class WhatsappAcoesService {
     await this.registrarAcao(empresaId, user, conversaId, 'notas_resumo', {
       quantidade: linhas.length,
     });
+    // Mesma razão do resumo de títulos: o que foi entregue ao cliente aparece
+    // no histórico dele, não só no registro da conversa.
+    await this.prisma.withTenant(empresaId, (tx) =>
+      registrarAtividadeDocumento(tx, {
+        empresaId,
+        autor: user.id,
+        evento: 'notas_whatsapp',
+        clienteId,
+        vendedorId,
+        numero: '',
+        descricao: `${linhas.length} nota(s) fiscal(is)`,
+      }),
+    );
     return mensagem;
   }
 

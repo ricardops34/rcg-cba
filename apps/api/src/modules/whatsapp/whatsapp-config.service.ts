@@ -33,6 +33,24 @@ export class WhatsappConfigService {
     );
   }
 
+  /**
+   * Só se a integração está ligada — leitura pública a qualquer usuário
+   * autenticado, porque é o que decide se o Atendimento aparece no menu e na
+   * tela inicial do vendedor.
+   *
+   * Diferente de `obter`, não faz upsert: uma consulta de menu não pode
+   * escrever, e empresa sem linha é exatamente o caso de integração desligada.
+   */
+  async statusIntegracao(empresaId: string) {
+    const config = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappConfig.findUnique({
+        where: { empresaId },
+        select: { ativo: true },
+      }),
+    );
+    return { ativo: config?.ativo ?? false };
+  }
+
   /** O que a tela recebe: sem a chave da Evolution GO. */
   async paraLeitura(empresaId: string) {
     return this.sanitizar(await this.obter(empresaId));

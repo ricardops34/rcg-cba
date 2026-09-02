@@ -20,6 +20,15 @@ import type { AgenteDestino } from '@plataforma/contracts';
 import type { MensagemChat } from './provedor-ia';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
+/**
+ * Quantos botões "abrir na tela" uma resposta pode carregar.
+ *
+ * Dois. O terceiro já não é atalho: vira uma fileira de opções que quem
+ * perguntou tem de ler e escolher, logo abaixo de um texto que ele ainda está
+ * lendo — e a resposta some atrás dos botões na janela estreita do assistente.
+ */
+const MAX_DESTINOS = 2;
+
 /** Ação de escrita preparada e aguardando o Confirmar do usuário. */
 export interface Pendencia {
   id: string;
@@ -359,10 +368,24 @@ export class AgenteChatService {
     }
   }
 
-  /** Mesma rota citada duas vezes no turno vira um botão só. */
+  /**
+   * Os botões que sobram no fim do turno.
+   *
+   * Três cortes, nesta ordem, porque o turno acumula um destino por ferramenta
+   * executada e uma pergunta encadeia três ou quatro:
+   *
+   * 1. mesma rota citada duas vezes vira um botão só;
+   * 2. mesmo **rótulo** em rotas diferentes também — `minha_agenda` com e sem
+   *    `clienteId` produzia dois "Abrir a agenda" lado a lado, e quem lê não
+   *    tem como saber qual é qual;
+   * 3. sobra o teto de dois botões, ficando com os **últimos**: a ordem é a da
+   *    execução, e a última ferramenta é a que respondeu a pergunta — o
+   *    `buscar_cliente` que veio antes só serviu para achar o id.
+   */
   private semRepetir(destinos: AgenteDestino[]): AgenteDestino[] {
     const porRota = new Map(destinos.map((d) => [d.rota, d]));
-    return [...porRota.values()];
+    const porRotulo = new Map([...porRota.values()].map((d) => [d.rotulo, d]));
+    return [...porRotulo.values()].slice(-MAX_DESTINOS);
   }
 
   /**
@@ -509,7 +532,9 @@ export class AgenteChatService {
     return {
       executado: true,
       resultado,
-      destinos: this.destinosDe(ferramenta, argumentos, resultado),
+      destinos: this.semRepetir(
+        this.destinosDe(ferramenta, argumentos, resultado),
+      ),
     };
   }
 

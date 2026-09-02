@@ -21,6 +21,7 @@ import { AtividadesModule } from '../atividades/atividades.module';
 import { OportunidadesModule } from '../oportunidades/oportunidades.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { VendedoresModule } from '../vendedores/vendedores.module';
+import { MeusAtendimentosModule } from '../meus-atendimentos/meus-atendimentos.module';
 
 /**
  * O agente não reimplementa nada: importa os módulos das telas e chama os
@@ -40,6 +41,7 @@ import { VendedoresModule } from '../vendedores/vendedores.module';
     OportunidadesModule,
     WhatsappModule,
     VendedoresModule,
+    MeusAtendimentosModule,
   ],
   controllers: [AgenteController],
   providers: [

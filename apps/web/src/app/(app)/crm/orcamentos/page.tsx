@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { Orcamento, StatusOrcamento } from "@plataforma/contracts";
+import { ORIGEM_VENDA_ROTULO } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError } from "@/lib/api-client";
 import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
@@ -126,7 +127,20 @@ export default function OrcamentosPage() {
     },
     {
       header: "Vendedor",
-      cell: (o) => <span className="text-xs">{o.vendedor.nomeReduzido || o.vendedor.nome}</span>,
+      cell: (o) => (
+        <span className="text-xs">
+          {o.vendedor.nomeReduzido || o.vendedor.nome}
+          {/* A venda é sempre do vendedor do cliente; quando quem a montou foi
+              outra pessoa (supervisor, gerente, administração ou o próprio
+              cliente), a origem aparece ao lado do nome — senão a leitura de
+              desempenho confunde "o vendedor fez" com "fizeram por ele". */}
+          {o.origem !== "vendedor" && (
+            <span className="ml-1 text-muted-foreground">
+              · via {ORIGEM_VENDA_ROTULO[o.origem]}
+            </span>
+          )}
+        </span>
+      ),
     },
     {
       header: "Status",

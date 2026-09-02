@@ -18,6 +18,8 @@ import type { TenantTx } from '../prisma/prisma.service';
  * ruim, mas negar ao vendedor o boleto que o cliente está esperando é pior.
  */
 export type EventoDocumento =
+  | 'titulos_whatsapp'
+  | 'notas_whatsapp'
   | 'danfe_gerado'
   | 'danfe_whatsapp'
   | 'xml_baixado'
@@ -25,6 +27,10 @@ export type EventoDocumento =
   | 'boleto_whatsapp';
 
 const TITULO: Record<EventoDocumento, (numero: string) => string> = {
+  // Os dois relatórios não têm número de documento: o que sai é a lista do
+  // cliente inteira, e o que ela tinha vai na descrição.
+  titulos_whatsapp: () => 'Títulos em aberto enviados pelo WhatsApp',
+  notas_whatsapp: () => 'Últimas notas fiscais enviadas pelo WhatsApp',
   danfe_gerado: (n) => `2ª via do DANFE gerada — NF ${n}`,
   danfe_whatsapp: (n) => `DANFE enviado pelo WhatsApp — NF ${n}`,
   xml_baixado: (n) => `XML da NF ${n} baixado`,
@@ -44,7 +50,10 @@ export interface DocumentoParaAtividade {
    * consultado, não na de quem por acaso clicou.
    */
   vendedorId: string | null;
-  /** Número visível do documento — NF ou título, como sai impresso. */
+  /**
+   * Número visível do documento — NF ou título, como sai impresso. Os eventos
+   * de relatório (`titulos_whatsapp`, `notas_whatsapp`) não usam.
+   */
   numero: string;
   /** Uma linha com o que importa: valor, vencimento, encargo aplicado. */
   descricao?: string;

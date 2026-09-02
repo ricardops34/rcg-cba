@@ -204,6 +204,19 @@ export const whatsappConfigUpdateSchema = z.object({
 });
 export type WhatsappConfigUpdate = z.infer<typeof whatsappConfigUpdateSchema>;
 
+/**
+ * Se o WhatsApp está ligado para a empresa ativa — o mesmo `ativo` da
+ * configuração, exposto sem a configuração inteira.
+ *
+ * Existe porque quem precisa da resposta é o vendedor (o menu e o atalho de
+ * Atendimento só aparecem com a integração no ar), e ele não tem — nem deve
+ * ter — `whatsapp-config.visualizar` para ler `GET /whatsapp/config`.
+ */
+export const whatsappIntegracaoSchema = z.object({
+  ativo: z.boolean(),
+});
+export type WhatsappIntegracao = z.infer<typeof whatsappIntegracaoSchema>;
+
 // --------------------------------------------------------------------------
 // Sessão
 // --------------------------------------------------------------------------

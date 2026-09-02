@@ -41,6 +41,7 @@ import type {
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { mensagemComAutor } from './mensagem-com-autor';
+import { registrarAtendimentoWhatsapp } from '../../common/atividades/registrar-atendimento-whatsapp';
 
 const PREVIA_TAMANHO = 120;
 
@@ -241,29 +242,43 @@ export class WhatsappConversasService {
   }
 
   /**
-   * Onde parou o atendimento por WhatsApp com um cliente.
+   * Onde parou o atendimento por WhatsApp com um cliente, **na conexão de
+   * quem pergunta**.
    *
    * Parte do `clienteId`, o que o resto deste serviço evita — e por isso o
    * corte de sessão vem **antes**, no `where`: sem ele, um vendedor com o
    * cliente na carteira leria a conversa que outro teve com a mesma pessoa,
-   * que é exatamente o que a regra do módulo proíbe. Com o filtro, quem não
-   * alcança a sessão recebe zero conversas, mesmo alcançando o cliente.
+   * que é exatamente o que a regra do módulo proíbe.
+   *
+   * O corte aqui é o da **própria** sessão, e não o `filtroSessao` da tela.
+   * Quem lê por aqui é o agente de IA, e vale a mesma decisão de
+   * `mensagensDaPropriaConexao`: monitorar o time é olhar a tela; perguntar ao
+   * assistente manda o texto para o provedor de IA. Com `filtroSessao`, um
+   * supervisor recebia no chat a prévia da conversa e o nome do atendente do
+   * subordinado.
    *
    * Devolve o suficiente para decidir se liga ou espera: quantas conversas,
    * quando foi o último contato e a prévia da última mensagem — a mesma que a
    * lista de atendimento já mostra. O rolo inteiro fica na tela.
    */
-  async historicoDoCliente(
+  async historicoDoClienteNaPropriaConexao(
     empresaId: string,
     user: AuthenticatedUser,
     clienteId: string,
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const filtro = await this.filtroSessao(tx, empresaId, user);
+      const vendedor = await tx.vendedor.findFirst({
+        where: { usuarioId: user.id, empresaId, deletedAt: null },
+        select: { id: true },
+      });
+      // Sem cadastro de vendedor não há conexão — e, portanto, nenhum
+      // atendimento próprio a relatar. Zero conversas, não "todas".
+      if (!vendedor) {
+        return { conversas: 0, ultimoContato: null, itens: [] };
+      }
       const conversas = await tx.whatsappConversa.findMany({
-        where: { ...filtro, empresaId, clienteId },
+        where: { sessao: { vendedorId: vendedor.id }, empresaId, clienteId },
         include: {
-          sessao: { select: { vendedor: { select: { nome: true } } } },
           mensagens: {
             orderBy: { criadaEm: 'desc' },
             take: 1,
@@ -278,7 +293,6 @@ export class WhatsappConversasService {
         conversas: conversas.length,
         ultimoContato: conversas[0]?.ultimaMensagemEm ?? null,
         itens: conversas.map((c) => ({
-          atendente: c.sessao.vendedor,
           ultimaMensagemEm: c.ultimaMensagemEm,
           // `saida` = fomos nós que falamos por último — quem está devendo
           // resposta é a informação que decide o próximo passo.
@@ -706,6 +720,16 @@ export class WhatsappConversasService {
         data: { ultimaMensagemEm: mensagem.criadaEm },
       });
 
+      // O atendimento entra no histórico do cliente — um registro por dia,
+      // atualizado a cada mensagem (ver `registrarAtendimentoWhatsapp`).
+      await registrarAtendimentoWhatsapp(tx, {
+        empresaId,
+        autor: user.id,
+        clienteId: conversa.clienteId,
+        vendedorId: conversa.sessao.vendedorId,
+        quando: mensagem.criadaEm,
+      });
+
       return mensagem;
     });
   }
@@ -820,6 +844,16 @@ export class WhatsappConversasService {
       await tx.whatsappConversa.update({
         where: { id: conversaId },
         data: { ultimaMensagemEm: mensagem.criadaEm },
+      });
+
+      // O atendimento entra no histórico do cliente — um registro por dia,
+      // atualizado a cada mensagem (ver `registrarAtendimentoWhatsapp`).
+      await registrarAtendimentoWhatsapp(tx, {
+        empresaId,
+        autor: user.id,
+        clienteId: conversa.clienteId,
+        vendedorId: conversa.sessao.vendedorId,
+        quando: mensagem.criadaEm,
       });
 
       return mensagem;
@@ -1069,7 +1103,7 @@ export class WhatsappConversasService {
     }
     if (conversa.sessao.status !== 'conectada') {
       throw new BadRequestException(
-        'O WhatsApp não está conectado. Conecte o aparelho pelo botão da tela de Atendimento.',
+        'O WhatsApp não está conectado. Conecte o aparelho pelo botão da tela de Conversas.',
       );
     }
   }
@@ -1676,6 +1710,21 @@ export class WhatsappConversasService {
         update: {},
         select: { id: true, arquivoUrl: true },
       });
+
+      // Receber também é atender: o histórico do cliente registra o dia em que
+      // houve conversa, não só o que o vendedor mandou. Reenvio da reconexão
+      // não conta duas vezes — a contagem é lida do banco.
+      if (!jaGravada) {
+        await registrarAtendimentoWhatsapp(tx, {
+          empresaId,
+          // Sem usuário: quem trouxe a mensagem foi o worker. O vendedor dono
+          // da sessão é quem responde por ela, e é o que a atividade registra.
+          autor: null,
+          clienteId: contato.clienteId,
+          vendedorId: sessao.vendedorId,
+          quando: new Date(),
+        });
+      }
 
       // Mensagem do próprio vendedor não vira aviso para ele mesmo.
       if (destinatario && !jaGravada && !minha) {

@@ -15,6 +15,33 @@ export const statusOrcamentoSchema = z.enum([
 ]);
 export type StatusOrcamento = z.infer<typeof statusOrcamentoSchema>;
 
+/**
+ * Quem originou a venda — o executor, não o dono da carteira.
+ *
+ * A venda fica sempre com o vendedor que atende o cliente; supervisor,
+ * gerente e administrador vendem **na carteira dele**, e o cliente pode pedir
+ * sozinho pelo portal. Este campo é o que separa as quatro situações, para a
+ * comissão e a leitura de desempenho não tratarem todas como iguais.
+ *
+ * Preenchido pelo servidor a partir de quem cria — nunca vem do formulário.
+ */
+export const origemVendaSchema = z.enum([
+  "vendedor",
+  "supervisor",
+  "gerente",
+  "administrador",
+  "cliente",
+]);
+export type OrigemVenda = z.infer<typeof origemVendaSchema>;
+
+export const ORIGEM_VENDA_ROTULO: Record<OrigemVenda, string> = {
+  vendedor: "Vendedor",
+  supervisor: "Supervisor",
+  gerente: "Gerente",
+  administrador: "Administração",
+  cliente: "Cliente",
+};
+
 // Linha de item — input de create/update (o server substitui o conjunto
 // inteiro de itens a cada save, sem endpoint por linha, mesmo padrão de
 // ObjetivoVendedorMes/categorias). vlrTabela/percDesconto/vlrDesconto/
@@ -114,6 +141,7 @@ export const orcamentoSchema = z.object({
   condicaoPagamentoId: z.string().uuid().nullable(),
   titulo: z.string(),
   status: statusOrcamentoSchema,
+  origem: origemVendaSchema,
   dataValidade: z.string().datetime().nullable(),
   dataRetorno: z.string().datetime().nullable(),
   observacao: z.string().nullable(),
@@ -181,6 +209,8 @@ export function autorizacaoDescontoSituacao(o: {
 export const orcamentoQuerySchema = paginationQuerySchema.extend({
   ativo: booleanQueryParam,
   status: statusOrcamentoSchema.optional(),
+  /** Filtra por quem originou: "só o que o supervisor vendeu". */
+  origem: origemVendaSchema.optional(),
   vendedorId: z.string().uuid().optional(),
   clienteId: z.string().uuid().optional(),
   oportunidadeId: z.string().uuid().optional(),
@@ -206,6 +236,7 @@ export const ORCAMENTO_EXAMPLE: Orcamento = {
   condicaoPagamentoId: "e1f2a3b4-5c6d-4e7f-8091-a2b3c4d5e6f7",
   titulo: "Proposta — reposição de estoque linha de limpeza",
   status: "enviado",
+  origem: "vendedor",
   dataValidade: "2026-08-20T00:00:00.000Z",
   dataRetorno: "2026-08-11T00:00:00.000Z",
   observacao: "",
