@@ -13,3 +13,4 @@ coverage/
 # Arquivos enviados por usuários (logos de empresa); não versionados.
 apps/api/uploads/
 
+docs/integração/testes-swagger.json
