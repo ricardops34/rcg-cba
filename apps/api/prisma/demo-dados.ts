@@ -1048,6 +1048,17 @@ async function main() {
     numeroOrcamento += 1;
   }
 
+  // O contador de numeração precisa saber que estes números já existem: ele é
+  // a fonte do "Nº" do orçamento, e o par (empresa, número) é único. Sem isto,
+  // o primeiro orçamento criado pela tela depois da demonstração tentava o
+  // número 1 e morria em unique constraint — a tela de Orçamentos ficava
+  // quebrada até alguém passar de 45.
+  await prisma.orcamentoConfig.upsert({
+    where: { empresaId },
+    create: { empresaId, ultimoNumero: numeroOrcamento - 1 },
+    update: { ultimoNumero: numeroOrcamento - 1 },
+  });
+
   // ---- funil de oportunidades ----------------------------------------------
   const ESTAGIOS = [
     'prospeccao',
