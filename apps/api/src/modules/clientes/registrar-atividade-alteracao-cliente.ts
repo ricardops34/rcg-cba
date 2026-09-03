@@ -37,10 +37,10 @@ export async function registrarAtividadeAlteracaoCliente(
 
   const vendedor = await tx.vendedor.findFirst({
     where: { id: cliente.vendedorId, empresaId },
-    select: { supervisorId: true, gerenteId: true },
+    select: { superiorId: true },
   });
-  const vendedorDestino =
-    vendedor?.supervisorId ?? vendedor?.gerenteId ?? cliente.vendedorId;
+  // Sobe um degrau: quem responde pelo vendedor do cliente.
+  const vendedorDestino = vendedor?.superiorId ?? cliente.vendedorId;
 
   const rotulos = campos.map((c) => CAMPO_CLIENTE_LABEL[c] ?? c);
   // Lista longa vira "e mais N" — o título da agenda não comporta 20 campos.

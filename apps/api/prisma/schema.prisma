@@ -551,11 +551,21 @@ model ProdutoFoto {
   @@map("produto_fotos")
 }
 
-// Cadastro de vendedores, supervisores e gerentes (mesma tabela, com flags
-// de papel — uma pessoa pode acumular mais de um papel). supervisorId e
-// gerenteId são dois vínculos hierárquicos independentes, ambos
-// autorreferenciando esta tabela, análogos a UsuarioEmpresa.superiorId mas
-// sem checagem de ciclo (mesma limitação já aceita lá).
+// Cadastro de vendedores, supervisores e gerentes — mesma tabela, com `tipo`
+// dizendo o papel.
+//
+// A hierarquia é **um ponteiro só**: `superiorId`, autorreferenciando esta
+// tabela. Cada um aponta a quem responde — o vendedor ao supervisor, o
+// supervisor ao gerente, e assim por diante, sem teto de níveis.
+//
+// Eram dois campos independentes (`supervisorId` e `gerenteId`) até
+// 2026-09-03, e a independência era o problema: dava para gravar um vendedor
+// sob o supervisor S e, ao mesmo tempo, sob o gerente G1, enquanto S respondia
+// a G2. As duas leituras do sistema discordavam (o escopo de acesso punha o
+// vendedor no time de G1; o Dashboard Gerencial o mostrava sob S). Com um
+// ponteiro só, a contradição deixa de ser representável.
+//
+// Ciclo (A responde a B, B responde a A) é barrado no service, não no banco.
 model Vendedor {
   id             String    @id @default(uuid())
   empresaId      String
@@ -583,8 +593,8 @@ model Vendedor {
   // vendedor sem carteira normalmente ficam de fora.
   usaDashboard Boolean          @default(true)
 
-  supervisorId String?
-  gerenteId    String?
+  /// A quem este cadastro responde. Nulo no topo da hierarquia.
+  superiorId String?
 
   // `desligado` é o controle de saída do vendedor, e é ele que a tela exibe;
   // o serviço mantém `ativo` como seu espelho (desligado = não ativo), porque
@@ -602,10 +612,8 @@ model Vendedor {
   empresa Empresa  @relation(fields: [empresaId], references: [id])
   usuario Usuario? @relation(fields: [usuarioId], references: [id])
 
-  supervisorVendedor   Vendedor?             @relation("VendedorSupervisor", fields: [supervisorId], references: [id])
-  supervisionados      Vendedor[]            @relation("VendedorSupervisor")
-  gerenteVendedor      Vendedor?             @relation("VendedorGerente", fields: [gerenteId], references: [id])
-  gerenciados          Vendedor[]            @relation("VendedorGerente")
+  superior             Vendedor?             @relation("VendedorHierarquia", fields: [superiorId], references: [id])
+  subordinados         Vendedor[]            @relation("VendedorHierarquia")
   clientes             Cliente[]
   notasSaida           NotaSaida[]
   notasSaidaItens      NotaSaidaItem[]
@@ -618,6 +626,8 @@ model Vendedor {
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, nome])
+  // Subir e descer a hierarquia é consulta recursiva (ver resolverEscopoVendedores).
+  @@index([empresaId, superiorId])
   @@map("vendedores")
 }
 
@@ -629,10 +639,19 @@ enum TipoPessoa {
 /// Papel do vendedor na hierarquia comercial — um só por cadastro. `gerente`
 /// enxerga o time inteiro, `supervisor` os vendedores abaixo dele e `vendedor`
 /// só a própria carteira (ver escopo-vendedores.ts).
+/// O papel do cadastro na hierarquia comercial.
+///
+/// Dois valores, e não um por degrau (supervisor, gerente, diretor...): o
+/// **nível** já é dado pela cadeia `superiorId`, que não tem teto. Nomear cada
+/// degrau obrigava a inventar um valor novo no enum a cada camada de
+/// organograma, e permitia contradição entre o rótulo e a posição real.
+///
+/// `vendedor` atende cliente e tem carteira; `superior` responde por outros —
+/// é quem aparece como agrupador no Dashboard Gerencial. Decisão do usuário em
+/// 2026-09-03.
 enum TipoVendedor {
   vendedor
-  supervisor
-  gerente
+  superior
 }
 
 /// Vínculo do vendedor com a empresa. `sistema` marca os cadastros que não são
@@ -2227,8 +2246,7 @@ model Atividade {
 /// do cliente — nunca vem do payload.
 enum OrigemVenda {
   vendedor
-  supervisor
-  gerente
+  superior
   administrador
   cliente
 }

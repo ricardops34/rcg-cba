@@ -157,8 +157,7 @@ export class OrcamentosService {
     // é o caso de quem acumula as duas funções —, e nesse caso a venda que ele
     // faz na carteira alheia é da administração, não da gerência comercial.
     if (user.isAdmin) return 'administrador';
-    if (vendedor?.tipo === 'supervisor') return 'supervisor';
-    if (vendedor?.tipo === 'gerente') return 'gerente';
+    if (vendedor?.tipo === 'superior') return 'superior';
     // Sem cadastro de vendedor (administrativo, financeiro) ou vendedor
     // mexendo em carteira que não é dele — o que só acontece com escopo que
     // permita, e aí quem responde é a administração.

@@ -65,10 +65,12 @@ export async function registrarAtividadeOrcamento(
   if (pendencia) {
     const vendedor = await tx.vendedor.findFirst({
       where: { id: orcamento.vendedorId, empresaId },
-      select: { supervisorId: true, gerenteId: true },
+      select: { superiorId: true },
     });
-    vendedorDestino =
-      vendedor?.supervisorId ?? vendedor?.gerenteId ?? orcamento.vendedorId;
+    // Sobe um degrau na hierarquia: quem responde pelo vendedor. Sem superior
+    // cadastrado, a pendência fica com ele mesmo — melhor visível na agenda
+    // dele do que órfã.
+    vendedorDestino = vendedor?.superiorId ?? orcamento.vendedorId;
   }
 
   await tx.atividade.create({

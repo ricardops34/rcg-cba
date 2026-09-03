@@ -10,6 +10,7 @@ import { WhatsappProviderService } from './providers/whatsapp-provider.service';
 import { cifrarSegredo } from './whatsapp-cripto';
 import type { DadosInstancia } from './providers/whatsapp-provider';
 import { escopoLeituraWhatsapp } from './escopo-whatsapp';
+import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
 import {
   WHATSAPP_ACEITE_VERSAO,
   WHATSAPP_SESSAO_STATUS,
@@ -369,19 +370,19 @@ export class WhatsappSessaoService {
       let vendedorIds = [vendedor.id];
       if (
         user.permissoes.includes('whatsapp-equipe.visualizar') &&
-        (vendedor.tipo === 'gerente' || vendedor.tipo === 'supervisor')
+        vendedor.tipo === 'superior'
       ) {
-        const equipe = await tx.vendedor.findMany({
-          where: {
-            empresaId,
-            deletedAt: null,
-            ...(vendedor.tipo === 'gerente'
-              ? { gerenteId: vendedor.id }
-              : { supervisorId: vendedor.id }),
-          },
-          select: { id: true },
-        });
-        vendedorIds = [vendedor.id, ...equipe.map((integrante) => integrante.id)];
+        // A **árvore inteira** abaixo dele, não só quem responde direto: com a
+        // hierarquia em cadeia (`superiorId`, sem teto de níveis), o gerente
+        // que só enxergasse os filhos perderia os vendedores pendurados nos
+        // supervisores dele. `resolverEscopoVendedores` é a mesma função que
+        // recorta o resto do sistema — uma definição só de "meu time".
+        const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+        // `null` = alcance irrestrito (administrador). Aqui isso **não** vira
+        // "a empresa toda": este endpoint alimenta o seletor operacional da
+        // Central, e acesso administrativo não é motivo para aparecer o
+        // aparelho de todo mundo.
+        vendedorIds = escopo ?? [vendedor.id];
       }
 
       const sessoes = await tx.whatsappSessao.findMany({

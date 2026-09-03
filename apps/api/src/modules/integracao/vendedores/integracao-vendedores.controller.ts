@@ -74,7 +74,7 @@ export class IntegracaoVendedoresController {
     summary: 'Criar vendedor',
     description:
       'supervisorCodigo referencia outro vendedor pelo codigoErp (precisa já existir). gerente/' +
-      'gerenteId e usuarioId nunca são alterados por esta API — vínculos mantidos manualmente na tela.',
+      'usuarioId nunca é alterado por esta API — vínculo mantido manualmente na tela.',
   })
   @ApiBodyExample(INTEGRACAO_VENDEDOR_CREATE_EXAMPLE)
   @ApiResponse({

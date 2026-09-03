@@ -27,8 +27,7 @@ export type StatusOrcamento = z.infer<typeof statusOrcamentoSchema>;
  */
 export const origemVendaSchema = z.enum([
   "vendedor",
-  "supervisor",
-  "gerente",
+  "superior",
   "administrador",
   "cliente",
 ]);
@@ -36,8 +35,7 @@ export type OrigemVenda = z.infer<typeof origemVendaSchema>;
 
 export const ORIGEM_VENDA_ROTULO: Record<OrigemVenda, string> = {
   vendedor: "Vendedor",
-  supervisor: "Supervisor",
-  gerente: "Gerente",
+  superior: "Superior",
   administrador: "Administração",
   cliente: "Cliente",
 };

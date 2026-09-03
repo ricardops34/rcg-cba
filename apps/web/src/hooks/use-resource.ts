@@ -30,7 +30,19 @@ export function useResourceList<T>(
 
 export function useResourceMutations<TCreate, TUpdate>(resource: string) {
   const queryClient = useQueryClient();
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: [resource, "list"] });
+  /**
+   * Invalida **tudo** do recurso, não só a listagem.
+   *
+   * Era `[resource, "list"]`, e a consequência aparecia como "não salvou": as
+   * telas de edição buscam o registro por `[resource, id]`, que ficava de fora
+   * da invalidação. Com o `staleTime` de 30 s do QueryClient, reabrir o mesmo
+   * cadastro logo depois de gravar devolvia o cache **anterior** — o valor
+   * novo estava no banco, mas a tela mostrava o antigo.
+   *
+   * A chave-prefixo cobre lista, detalhe e os selects que o mesmo recurso
+   * alimenta em outras telas.
+   */
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: [resource] });
 
   const create = useMutation({
     mutationFn: (input: TCreate) => apiFetch(`/${resource}`, { method: "POST", body: input }),

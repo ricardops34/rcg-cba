@@ -97,6 +97,14 @@ const PARAMETROS_PADRAO = [
       'Vendedor considerado nas Consultas de venda: nota (quem vendeu) ou cliente (titular da carteira)',
   },
   {
+    parametro: 'DASHBOARD_GERENCIAL_HIERARQUIA',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'true',
+    descricao:
+      'Agrupa o Dashboard Gerencial pela hierarquia comercial (gerente, supervisor e seus vendedores); falso mostra a lista plana',
+  },
+  {
     parametro: 'COMISSAO_OCULTA_PARA_TODOS',
     tipo: 'booleano' as const,
     tamanho: null,
@@ -246,7 +254,7 @@ const PARAMETROS_PADRAO = [
 
 async function limparDados() {
   // Ordem respeita as FKs. usuarioEmpresa e vendedor têm auto-referência
-  // (superiorId; supervisorId/gerenteId): zera antes de apagar para não
+  // (superiorId): zera antes de apagar para não
   // violar a constraint.
   // Filhas de Cliente e resultados derivados: apagadas antes de `cliente` e de
   // `produto`, que elas referenciam.
@@ -272,7 +280,7 @@ async function limparDados() {
   await prisma.oportunidade.deleteMany();
   await prisma.cliente.deleteMany();
   await prisma.vendedor.updateMany({
-    data: { supervisorId: null, gerenteId: null },
+    data: { superiorId: null },
   });
   await prisma.vendedor.deleteMany();
   await prisma.produto.deleteMany();
@@ -383,8 +391,8 @@ async function bootstrapPerfis(rotinas: { id: string; codigo: string }[]) {
   // da equipe (SUPERVISAO_PERMISSOES).
   //
   // O que muda entre eles não é o RBAC, e sim o alcance da carteira, que vem
-  // do cadastro de Vendedor (flags supervisor/gerente + supervisorId/
-  // gerenteId) e é resolvido por resolverEscopoVendedores — por isso os dois
+  // do cadastro de Vendedor (`tipo` + a cadeia `superiorId`) e é resolvido por
+  // resolverEscopoVendedores — por isso os dois
   // compartilham a mesma lista. A única diferença para o Vendedor é
   // `whatsapp-equipe`, que a hierarquia sozinha não concede: ler conversa
   // alheia exige a permissão **e** o vendedor estar no time

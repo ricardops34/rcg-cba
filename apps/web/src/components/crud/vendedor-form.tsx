@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -89,15 +89,13 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
   // atualmente salvo na lista mesmo que o papel tenha sido desmarcado ou o
   // vendedor bloqueado depois, senão o Select mostra um valor "fantasma" ao
   // editar.
-  const opcoesSupervisor = (vendedoresSelectQuery.data?.data ?? []).filter(
+  // Só quem é "superior" pode chefiar — e o valor já gravado continua na
+  // lista mesmo que a pessoa tenha sido rebaixada ou bloqueada depois, senão
+  // o Select mostra vazio ao editar.
+  const opcoesSuperior = (vendedoresSelectQuery.data?.data ?? []).filter(
     (v) =>
       v.id !== vendedor?.id &&
-      (v.id === vendedor?.supervisorId || (v.tipo === "supervisor" && v.ativo)),
-  );
-  const opcoesGerente = (vendedoresSelectQuery.data?.data ?? []).filter(
-    (v) =>
-      v.id !== vendedor?.id &&
-      (v.id === vendedor?.gerenteId || (v.tipo === "gerente" && v.ativo)),
+      (v.id === vendedor?.superiorId || (v.tipo === "superior" && v.ativo)),
   );
   const opcoesUsuario = usuariosSelectQuery.data?.data ?? [];
 
@@ -113,8 +111,7 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
     tipo: "vendedor",
     vinculo: null,
     usaDashboard: true,
-    supervisorId: null,
-    gerenteId: null,
+    superiorId: null,
     ativo: true,
     desligado: false,
   };
@@ -132,13 +129,28 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
           tipo: vendedor.tipo,
           vinculo: vendedor.vinculo ?? null,
           usaDashboard: vendedor.usaDashboard,
-          supervisorId: vendedor.supervisorId ?? null,
-          gerenteId: vendedor.gerenteId ?? null,
+          superiorId: vendedor.superiorId ?? null,
           ativo: vendedor.ativo,
           desligado: vendedor.desligado,
         }
       : empty,
   });
+
+  /**
+   * Validação reprovada: o `handleSubmit` do react-hook-form simplesmente não
+   * chama o `onSubmit`, e sem isto a tela não dizia nada — clicar em Salvar
+   * parecia não fazer efeito, que é indistinguível de "não salvou". O aviso
+   * nomeia o primeiro campo com problema, porque ele pode estar fora da parte
+   * visível do formulário.
+   */
+  const onInvalid = (erros: FieldErrors<VendedorCreate>) => {
+    const primeiro = Object.values(erros).find((e) => e?.message)?.message;
+    toast.error(
+      primeiro
+        ? `Confira os campos: ${String(primeiro)}`
+        : "Há campos inválidos no formulário.",
+    );
+  };
 
   const onSubmit = async (values: VendedorCreate) => {
     try {
@@ -167,7 +179,7 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
       </div>
 
       <Card>
-        <form id="vendedor-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
+        <form id="vendedor-form" onSubmit={form.handleSubmit(onSubmit, onInvalid)} noValidate>
           <CardContent>
             <FieldGroup>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -271,44 +283,31 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field>
-                  <FieldLabel htmlFor="supervisorId">Supervisor</FieldLabel>
+                  <FieldLabel htmlFor="superiorId">Superior</FieldLabel>
                   <Select
-                    value={form.watch("supervisorId") ?? "none"}
-                    onValueChange={(val) => form.setValue("supervisorId", val === "none" ? null : val)}
+                    value={form.watch("superiorId") ?? "none"}
+                    onValueChange={(val) => form.setValue("superiorId", val === "none" ? null : val)}
                   >
-                    <SelectTrigger id="supervisorId" className="w-full">
-                      <SelectValue placeholder="Sem supervisor" />
+                    <SelectTrigger id="superiorId" className="w-full">
+                      <SelectValue placeholder="Sem superior" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Sem supervisor</SelectItem>
-                      {opcoesSupervisor.map((v) => (
+                      <SelectItem value="none">Sem superior</SelectItem>
+                      {opcoesSuperior.map((v) => (
                         <SelectItem key={v.id} value={v.id}>
                           {v.nomeReduzido || v.nome}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="gerenteId">Gerente</FieldLabel>
-                  <Select
-                    value={form.watch("gerenteId") ?? "none"}
-                    onValueChange={(val) => form.setValue("gerenteId", val === "none" ? null : val)}
-                  >
-                    <SelectTrigger id="gerenteId" className="w-full">
-                      <SelectValue placeholder="Sem gerente" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Sem gerente</SelectItem>
-                      {opcoesGerente.map((v) => (
-                        <SelectItem key={v.id} value={v.id}>
-                          {v.nomeReduzido || v.nome}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <FieldDescription>
+                    A quem esta pessoa responde. A hierarquia sobe sozinha a
+                    partir daqui: o vendedor aponta o supervisor, o supervisor
+                    aponta o gerente, e assim por diante.
+                  </FieldDescription>
                 </Field>
               </div>
+
 
               {/* Tipo e vínculo são escolhas únicas: o cadastro é de um papel
                   só (era possível marcar vendedor+supervisor+gerente ao mesmo

@@ -20,10 +20,14 @@ import {
   decidirUpsert,
 } from '../common/decidir-upsert';
 
+// O ERP fala em "código do supervisor"; internamente a hierarquia é um
+// ponteiro só (`superiorId`), que aponta para quem responde — supervisor,
+// gerente ou o que a empresa tiver acima. Para o contrato de integração, o
+// superior imediato **é** o supervisor.
 const INCLUDE = {
-  supervisorVendedor: { select: { codigoErp: true } },
+  superior: { select: { codigoErp: true } },
 } satisfies Prisma.VendedorInclude;
-type VendedorComSupervisor = Prisma.VendedorGetPayload<{
+type VendedorComSuperior = Prisma.VendedorGetPayload<{
   include: typeof INCLUDE;
 }>;
 
@@ -31,7 +35,7 @@ type VendedorComSupervisor = Prisma.VendedorGetPayload<{
 export class IntegracaoVendedoresService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private paraLeitura(row: VendedorComSupervisor): IntegracaoVendedor {
+  private paraLeitura(row: VendedorComSuperior): IntegracaoVendedor {
     return {
       id: row.id,
       codigoErp: row.codigoErp ?? '',
@@ -44,8 +48,8 @@ export class IntegracaoVendedoresService {
       // o papel virou um campo só (Vendedor.tipo). A conversão fica aqui para
       // não quebrar quem já integra.
       vendedor: row.tipo === 'vendedor',
-      supervisorCodigo: row.supervisorVendedor?.codigoErp ?? null,
-      supervisor: row.tipo === 'supervisor',
+      supervisorCodigo: row.superior?.codigoErp ?? null,
+      supervisor: row.tipo === 'superior',
       percComissao: row.percComissao,
       ativo: row.ativo,
       desligado: row.desligado,
@@ -127,7 +131,7 @@ export class IntegracaoVendedoresService {
         supervisorId = supervisor.id;
       }
 
-      // gerente/gerenteId/usuarioId nunca são tocados pelo ERP — vínculos
+      // usuarioId nunca é tocado pelo ERP — vínculo
       // mantidos manualmente na tela (mesmo critério dos imports). Isso vale
       // também na reativação: um vendedor que volta mantém o vínculo com o
       // usuário que tinha.
@@ -138,8 +142,8 @@ export class IntegracaoVendedoresService {
         telefone: input.telefone ?? null,
         email: input.email ?? null,
         dataNascimento: input.dataNascimento ?? null,
-        tipo: input.supervisor ? ('supervisor' as const) : ('vendedor' as const),
-        supervisorId,
+        tipo: input.supervisor ? ('superior' as const) : ('vendedor' as const),
+        superiorId: supervisorId,
         percComissao: input.percComissao ?? null,
         // Desligado manda no ativo, como na tela.
         ativo: input.desligado ? false : input.ativo,
@@ -199,15 +203,15 @@ export class IntegracaoVendedoresService {
         }
       }
 
-      // `gerente` é papel mantido na tela: o ERP não o conhece e não deve
-      // rebaixar quem foi promovido aqui. Fora esse caso, os dois booleanos do
-      // contrato definem o tipo.
+      // Os dois booleanos do contrato do ERP definem o tipo; sem nenhum deles,
+      // o papel gravado aqui é preservado. O ERP só conhece "vendedor" e
+      // "supervisor" — internamente qualquer degrau acima do vendedor é
+      // `superior`, e a posição real vem da cadeia `superiorId`.
       const tipo =
-        existente.tipo === 'gerente' ||
-        (input.supervisor === undefined && input.vendedor === undefined)
+        input.supervisor === undefined && input.vendedor === undefined
           ? undefined
-          : (input.supervisor ?? existente.tipo === 'supervisor')
-            ? ('supervisor' as const)
+          : (input.supervisor ?? existente.tipo === 'superior')
+            ? ('superior' as const)
             : ('vendedor' as const);
 
       const atualizado = await tx.vendedor.update({
@@ -223,7 +227,7 @@ export class IntegracaoVendedoresService {
           ...(input.dataNascimento !== undefined
             ? { dataNascimento: input.dataNascimento }
             : {}),
-          ...(supervisorId !== undefined ? { supervisorId } : {}),
+          ...(supervisorId !== undefined ? { superiorId: supervisorId } : {}),
           ...(input.percComissao !== undefined
             ? { percComissao: input.percComissao }
             : {}),

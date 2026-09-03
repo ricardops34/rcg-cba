@@ -97,7 +97,7 @@ interface PessoaDemo {
   vendedorId: string;
   nome: string;
   chave: string;
-  tipo: 'vendedor' | 'supervisor' | 'gerente';
+  tipo: 'vendedor' | 'superior';
 }
 
 const PREFIXO = 'DEMO-';
@@ -275,10 +275,10 @@ const ORIGENS_VENDA = [
   'vendedor',
   'vendedor',
   'vendedor',
-  'supervisor',
+  'superior',
   'vendedor',
   'vendedor',
-  'gerente',
+  'superior',
   'vendedor',
   'cliente',
   'vendedor',
@@ -473,9 +473,11 @@ async function main() {
   // Um gerente, dois supervisores e seis vendedores, com a hierarquia montada
   // — é o que faz o escopo (carteira própria × equipe) ter o que mostrar.
   const equipe = [
-    { nome: 'Marina Prado', chave: 'gerente.demo', tipo: 'gerente' as const, perfil: 'Gerente' },
-    { nome: 'Sérgio Almeida', chave: 'supervisor1.demo', tipo: 'supervisor' as const, perfil: 'Supervisor' },
-    { nome: 'Regina Matos', chave: 'supervisor2.demo', tipo: 'supervisor' as const, perfil: 'Supervisor' },
+    // `tipo` diz só se atende cliente ou responde por outros; o degrau vem da
+    // cadeia `superiorId` montada logo abaixo.
+    { nome: 'Marina Prado', chave: 'gerente.demo', tipo: 'superior' as const, perfil: 'Gerente' },
+    { nome: 'Sérgio Almeida', chave: 'supervisor1.demo', tipo: 'superior' as const, perfil: 'Supervisor' },
+    { nome: 'Regina Matos', chave: 'supervisor2.demo', tipo: 'superior' as const, perfil: 'Supervisor' },
     { nome: 'Paulo Vieira', chave: 'vendedor1.demo', tipo: 'vendedor' as const, perfil: 'Vendedor' },
     { nome: 'Carla Nunes', chave: 'vendedor2.demo', tipo: 'vendedor' as const, perfil: 'Vendedor' },
     { nome: 'Diego Ramos', chave: 'vendedor3.demo', tipo: 'vendedor' as const, perfil: 'Vendedor' },
@@ -557,9 +559,15 @@ async function main() {
         codigoErp: `${PREFIXO}V00`,
         nome: admin.nome,
         nomeReduzido: admin.nome.split(' ')[0],
-        tipo: 'gerente',
+        tipo: 'superior',
         vinculo: 'clt',
-        usaDashboard: true,
+        // **Fora das telas gerenciais.** Ele tem cadastro de vendedor para as
+        // telas que dependem de carteira (Meus Atendimentos, Conversas)
+        // funcionarem para quem demonstra o sistema — mas não é time de
+        // venda, e aparecer no Dashboard Gerencial como um vendedor sem meta
+        // e sem equipe só sujava a leitura. É exatamente o caso de uso do
+        // campo `usaDashboard`.
+        usaDashboard: false,
         dataNascimento: new Date(1979, hoje.getMonth(), Math.min(hoje.getDate() + 4, 28)),
         ativo: true,
       },
@@ -569,7 +577,7 @@ async function main() {
       vendedorId: vendedorAdmin.id,
       nome: admin.nome,
       chave: 'admin',
-      tipo: 'gerente',
+      tipo: 'superior',
     };
   }
 
@@ -579,29 +587,27 @@ async function main() {
   const supervisores = [pessoas['supervisor1.demo'], pessoas['supervisor2.demo']];
   const gerente = pessoas['gerente.demo'];
 
-  // Metade dos vendedores para cada supervisor; supervisores sob a gerente; e
-  // a gerente sob o administrador, para ele enxergar o time inteiro.
+  // A cadeia: vendedor → supervisor → gerente. Cada um aponta só a quem
+  // responde, e o escopo de acesso sobe a árvore sozinho.
   for (const [i, v] of vendedores.entries()) {
     await prisma.vendedor.update({
       where: { id: v.vendedorId },
       data: {
-        supervisorId: supervisores[i % 2].vendedorId,
-        gerenteId: gerente.vendedorId,
+        superiorId: supervisores[i % 2].vendedorId,
       },
     });
   }
   for (const s of supervisores) {
     await prisma.vendedor.update({
       where: { id: s.vendedorId },
-      data: { gerenteId: gerente.vendedorId },
+      data: { superiorId: gerente.vendedorId },
     });
   }
-  if (pessoas['admin']) {
-    await prisma.vendedor.update({
-      where: { id: gerente.vendedorId },
-      data: { gerenteId: pessoas['admin'].vendedorId },
-    });
-  }
+  // A gerente é o topo da hierarquia comercial. O administrador **não** entra
+  // como gerente dela: administrar o sistema não é comandar a operação, e
+  // pendurá-la nele criava um grupo de time no Dashboard Gerencial para quem
+  // não tem time.
+
 
   // ---- clientes, por ramo ---------------------------------------------------
   const cnaes = await prisma.cnae.findMany({
@@ -619,12 +625,12 @@ async function main() {
       const nomeFantasia = `${ramo.prefixos[n % ramo.prefixos.length]} ${SOBRENOMES_EMPRESA[i % SOBRENOMES_EMPRESA.length]}`;
       const razaoSocial = `${nomeFantasia.toUpperCase()} LTDA`;
       const cnpj = `${entre(10000000, 99999999)}0001${entre(10, 99)}`;
-      // A carteira gira entre os seis vendedores; um punhado fica com o
-      // administrador, para a tela dele não abrir vazia.
-      const dono =
-        i % 17 === 0 && pessoas['admin']
-          ? pessoas['admin']
-          : vendedores[i % vendedores.length];
+      // A carteira gira entre os seis vendedores — e **só** entre eles. O
+      // administrador não tem clientes: ele tem cadastro de vendedor para as
+      // telas que dependem de carteira funcionarem, mas dar-lhe clientes
+      // punha faturamento em nome de quem não vende e criava uma linha órfã
+      // no Dashboard Gerencial ("Sem hierarquia definida").
+      const dono = vendedores[i % vendedores.length];
       const ativo = i % 12 !== 7;
 
       const cliente = await prisma.cliente.create({
@@ -979,7 +985,11 @@ async function main() {
   ] as const;
 
   for (const [i, cliente] of clientes.entries()) {
-    if (i % 2 === 1) continue;
+    // Sorteio, e não `i % 2`: a carteira gira entre seis vendedores, então
+    // pegar um cliente sim, um não punha **todos** os orçamentos nos três
+    // vendedores de índice par — que por acaso são os do mesmo supervisor. O
+    // outro time abria a tela zerada, e parecia falha de escopo.
+    if (aleatorio() < 0.5) continue;
     const m = MESES[i % MESES.length];
     const criadoEm = diaDoMes(m, entre(8, 18));
     const status = STATUS_ORCAMENTO[i % STATUS_ORCAMENTO.length];
@@ -1069,7 +1079,7 @@ async function main() {
     'perdida',
   ] as const;
   for (const [i, cliente] of clientes.entries()) {
-    if (i % 3 !== 0) continue;
+    if (aleatorio() < 0.66) continue;
     const estagio = ESTAGIOS[i % ESTAGIOS.length];
     const fechada = estagio === 'ganha' || estagio === 'perdida';
     await prisma.oportunidade.create({
@@ -1215,7 +1225,7 @@ async function main() {
     // A cada seis conversas, quem atende é o supervisor: ele trabalha na
     // carteira do subordinado, e a conversa é da conexão **dele**.
     const dono =
-      indice % 6 === 5
+      aleatorio() < 0.18
         ? supervisores[indice % 2].vendedorId
         : cliente.vendedorId;
     const sessaoId = sessoes.get(dono);
@@ -1408,8 +1418,8 @@ async function main() {
   // Agenda: o que o vendedor marcou. Parte concluída (nos últimos dias) e
   // parte pendente — inclusive no mês que vem, para o calendário ter futuro.
   for (const [i, cliente] of clientes.entries()) {
-    if (i % 2 === 1) continue;
-    const pendente = i % 3 !== 0;
+    if (aleatorio() < 0.5) continue;
+    const pendente = aleatorio() > 0.35;
     atividades.push({
       clienteId: cliente.id,
       vendedorId: cliente.vendedorId,
@@ -1428,7 +1438,7 @@ async function main() {
   // tempo de quem o executou (ver Meus Atendimentos).
   const chefes = [...supervisores, gerente, ...(pessoas['admin'] ? [pessoas['admin']] : [])];
   for (const [i, chefe] of chefes.entries()) {
-    for (const cliente of clientes.filter((_, c) => c % 11 === i % 11).slice(0, 6)) {
+    for (const cliente of clientes.filter(() => aleatorio() < 0.08).slice(0, 6)) {
       atividades.push({
         clienteId: cliente.id,
         vendedorId: cliente.vendedorId,
@@ -1550,11 +1560,15 @@ async function apagarDemo(empresaId: string) {
   await prisma.comunicado.deleteMany({
     where: { empresaId, createdBy: { in: usuarioIds } },
   });
+  // Orçamento criado **pela tela** sobre um cliente de demonstração não tem
+  // `codigoErp`, mas prende o cliente pela FK: o critério aqui é o vendedor,
+  // que cobre os dois casos. Sem isto, a segunda rodada do script morria em
+  // violação de chave estrangeira ao apagar os clientes.
   await prisma.orcamentoItem.deleteMany({
-    where: { orcamento: { codigoErp: { startsWith: PREFIXO } } },
+    where: { orcamento: { vendedorId: { in: vendedorIds } } },
   });
   await prisma.orcamento.deleteMany({
-    where: { empresaId, codigoErp: { startsWith: PREFIXO } },
+    where: { empresaId, vendedorId: { in: vendedorIds } },
   });
   await prisma.tituloReceber.deleteMany({
     where: { empresaId, codigoErp: { startsWith: PREFIXO } },

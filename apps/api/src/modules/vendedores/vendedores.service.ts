@@ -7,7 +7,10 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { escapeHtml } from '../../common/html/escape-html';
-import { PrismaService } from '../../common/prisma/prisma.service';
+import {
+  PrismaService,
+  type TenantTx,
+} from '../../common/prisma/prisma.service';
 import { PoliticaSenhaService } from '../politica-senha/politica-senha.service';
 import {
   MailService,
@@ -88,7 +91,7 @@ export class VendedoresService {
         ...(query.desligado !== undefined
           ? { desligado: query.desligado }
           : {}),
-        ...(query.supervisorId ? { supervisorId: query.supervisorId } : {}),
+        ...(query.superiorId ? { superiorId: query.superiorId } : {}),
         ...(query.search
           ? {
               OR: [
@@ -186,7 +189,50 @@ export class VendedoresService {
     return { ...dados, ativo: dados.desligado !== true };
   }
 
-  create(empresaId: string, user: AuthenticatedUser, input: VendedorCreate) {
+  /**
+   * Impede ciclo na hierarquia: A responde a B, B responde a A.
+   *
+   * A hierarquia é um ponteiro só (`superiorId`) e sem teto de níveis, então o
+   * risco real não é o óbvio (apontar para si mesmo), e sim o de três ou
+   * quatro degraus que se fecham — e um ciclo trava, por definição, quem sobe
+   * a cadeia. A consulta recursiva do escopo sobrevive (usa `UNION`, que não
+   * reexpande nó repetido), mas o organograma fica sem topo e ninguém entende
+   * por quê. Barrar na gravação é onde dá para explicar o que houve.
+   *
+   * Sobe do superior escolhido até o topo; se encontrar o próprio cadastro no
+   * caminho, recusa.
+   */
+  private async garantirHierarquiaSemCiclo(
+    tx: TenantTx,
+    empresaId: string,
+    id: string,
+    superiorId: string | null | undefined,
+  ) {
+    if (!superiorId) return;
+    if (superiorId === id) {
+      throw new BadRequestException('O vendedor não pode ser superior de si mesmo.');
+    }
+
+    let atual: string | null = superiorId;
+    // O teto existe para o caso de já haver ciclo gravado (dado antigo): sem
+    // ele, esta subida seria o laço infinito que ela veio evitar.
+    for (let degrau = 0; atual && degrau < 50; degrau++) {
+      const acima: { superiorId: string | null } | null =
+        await tx.vendedor.findFirst({
+          where: { id: atual, empresaId, deletedAt: null },
+          select: { superiorId: true },
+        });
+      if (!acima) return;
+      if (acima.superiorId === id) {
+        throw new BadRequestException(
+          'Hierarquia circular: o superior escolhido responde, direta ou indiretamente, a este vendedor.',
+        );
+      }
+      atual = acima.superiorId;
+    }
+  }
+
+  async create(empresaId: string, user: AuthenticatedUser, input: VendedorCreate) {
     return this.prisma.withTenant(empresaId, (tx) =>
       tx.vendedor.create({
         data: {
@@ -210,6 +256,9 @@ export class VendedoresService {
         where: { id, empresaId, deletedAt: null },
       });
       if (!vendedor) throw new NotFoundException('Vendedor não encontrado');
+      if (input.superiorId !== undefined) {
+        await this.garantirHierarquiaSemCiclo(tx, empresaId, id, input.superiorId);
+      }
       return tx.vendedor.update({
         where: { id },
         data: {

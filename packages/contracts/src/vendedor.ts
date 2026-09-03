@@ -9,13 +9,19 @@ const opt = (max: number) => z.string().trim().max(max).optional().or(z.literal(
  * Define o alcance no escopo: gerente vê o time todo, supervisor vê os
  * vendedores abaixo dele, vendedor vê a própria carteira.
  */
-export const tipoVendedorSchema = z.enum(["vendedor", "supervisor", "gerente"]);
+/**
+ * O papel do cadastro na hierarquia comercial.
+ *
+ * Dois valores, e não um por degrau: o **nível** vem da cadeia `superiorId`,
+ * que não tem teto. `vendedor` atende cliente e tem carteira; `superior`
+ * responde por outros e aparece como agrupador no Dashboard Gerencial.
+ */
+export const tipoVendedorSchema = z.enum(["vendedor", "superior"]);
 export type TipoVendedor = z.infer<typeof tipoVendedorSchema>;
 
 export const TIPO_VENDEDOR_LABEL: Record<TipoVendedor, string> = {
   vendedor: "Vendedor",
-  supervisor: "Supervisor",
-  gerente: "Gerente",
+  superior: "Superior",
 };
 
 /**
@@ -44,8 +50,8 @@ export const vendedorCreateSchema = z.object({
   vinculo: vinculoVendedorSchema.nullable().optional(),
   /** Aparece nas telas gerenciais (dashboard, objetivos). */
   usaDashboard: z.boolean().default(true),
-  supervisorId: z.string().uuid().nullable().optional(),
-  gerenteId: z.string().uuid().nullable().optional(),
+  /** A quem este cadastro responde. Nulo no topo da hierarquia. */
+  superiorId: z.string().uuid().nullable().optional(),
   // `desligado` é o controle de saída do vendedor e o que a tela mostra; o
   // servidor mantém `ativo` como espelho dele (desligado = não ativo), porque
   // `ativo` é o que os selects e filtros do sistema consultam.
@@ -80,7 +86,8 @@ export const vendedorQuerySchema = paginationQuerySchema.extend({
   vinculo: vinculoVendedorSchema.optional(),
   usaDashboard: booleanQueryParam,
   desligado: booleanQueryParam,
-  supervisorId: z.string().uuid().optional(),
+  /** Filtra o time direto de alguém. */
+  superiorId: z.string().uuid().optional(),
 });
 export type VendedorQuery = z.infer<typeof vendedorQuerySchema>;
 
@@ -97,8 +104,7 @@ export const VENDEDOR_EXAMPLE: Vendedor = {
   tipo: "vendedor",
   vinculo: "clt",
   usaDashboard: true,
-  supervisorId: null,
-  gerenteId: null,
+  superiorId: null,
   ativo: true,
   desligado: false,
   clientesAtivos: 128,
@@ -121,8 +127,7 @@ export const VENDEDOR_CREATE_EXAMPLE: VendedorCreate = {
   tipo: "vendedor",
   vinculo: "clt",
   usaDashboard: true,
-  supervisorId: null,
-  gerenteId: null,
+  superiorId: null,
   ativo: true,
   desligado: false,
 };

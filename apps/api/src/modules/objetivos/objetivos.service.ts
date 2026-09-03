@@ -26,6 +26,7 @@ import type {
   ObjetivoVendedorMesUpdate,
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { ParametrosService } from '../parametros/parametros.service';
 
 const SORT_FIELDS = new Set(['ano', 'mes', 'valor', 'ativo', 'createdAt']);
 
@@ -57,7 +58,10 @@ const CATEGORIA_LINHA_INCLUDE = {
 
 @Injectable()
 export class ObjetivosService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly parametros: ParametrosService,
+  ) {}
 
   findAll(empresaId: string, user: AuthenticatedUser, query: ObjetivoVendedorMesQuery) {
     return this.prisma.withTenant(empresaId, async (tx) => {
@@ -632,9 +636,68 @@ export class ObjetivosService {
       ];
       const vendedores = vendedorIds.length
         ? await tx.vendedor.findMany({
-            where: { id: { in: vendedorIds }, empresaId, deletedAt: null },
-            select: { id: true, nome: true, nomeReduzido: true },
+            where: {
+              id: { in: vendedorIds },
+              empresaId,
+              deletedAt: null,
+              // **Linha aqui é vendedor, e só.** A venda fica sempre com o
+              // vendedor que atende o cliente (regra do negócio): supervisor e
+              // gerente não têm venda própria — eles aparecem nesta tela como
+              // o **agrupador** do time, não como uma linha de faturamento.
+              // Sem este corte, quem vendia na carteira do subordinado surgia
+              // como um vendedor a mais, dobrando a leitura do mesmo número.
+              tipo: 'vendedor',
+              // `usaDashboard` é a resposta do cadastro para "este vendedor
+              // participa do acompanhamento gerencial?". O campo existe desde
+              // sempre e está documentado no schema como "aparece nas telas
+              // gerenciais (dashboard/objetivos)" — mas **nenhuma tela o
+              // respeitava**: era só um filtro opcional da lista de
+              // vendedores. Por isso os cadastros de sistema (ESCRITÓRIO,
+              // E-COMMERCE) e quem não tem carteira apareciam aqui como se
+              // fossem time de venda.
+              //
+              // Isto tira a **linha** deles da tabela, que é o que o campo
+              // promete. Os cartões do topo continuam somando a operação
+              // inteira: são o resultado da empresa, e escondê-lo aqui faria
+              // o Dashboard Gerencial divergir do Comercial e das Consultas
+              // para a mesma pergunta.
+              usaDashboard: true,
+            },
+            select: {
+              id: true,
+              nome: true,
+              nomeReduzido: true,
+              // O lugar na hierarquia acompanha cada linha: é o que permite a
+              // tela agrupar por supervisor e gerente sem uma segunda
+              // consulta, e sai de graça nesta mesma leitura.
+              tipo: true,
+              superiorId: true,
+            },
           })
+        : [];
+
+      // Quem chefia os vendedores desta tela — é o que dá nome aos grupos. Não
+      // vira linha: supervisor e gerente não têm venda própria (a venda é
+      // sempre do supervisionado que atende o cliente).
+      const responsavelIds = [
+        ...new Set(
+          vendedores
+            .map((v) => v.superiorId)
+            .filter((id): id is string => !!id),
+        ),
+      ];
+      const responsaveis = responsavelIds.length
+        ? (
+            await tx.vendedor.findMany({
+              where: { id: { in: responsavelIds }, empresaId, deletedAt: null },
+              select: { id: true, nome: true, nomeReduzido: true, tipo: true },
+            })
+          )
+            .map((r) => ({
+              id: r.id,
+              nome: r.nomeReduzido || r.nome,
+              tipo: 'superior' as const,
+            }))
         : [];
 
       const perc = (num: number, den: number) =>
@@ -650,6 +713,8 @@ export class ObjetivosService {
           return {
             vendedorId: v.id,
             nome: v.nomeReduzido || v.nome,
+            tipo: v.tipo,
+            superiorId: v.superiorId,
             positivacaoObjetivo,
             positivacaoRealizado,
             percPositivacao: perc(positivacaoRealizado, positivacaoObjetivo),
@@ -698,6 +763,12 @@ export class ObjetivosService {
               : 0,
         },
         linhas,
+        responsaveis,
+        agruparPorHierarquia: await this.parametros.obterBoolean(
+          empresaId,
+          'DASHBOARD_GERENCIAL_HIERARQUIA',
+          true,
+        ),
       };
     });
   }

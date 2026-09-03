@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type {
   DashboardGerencial,
@@ -8,6 +8,7 @@ import type {
   DashboardGerencialVendedor,
 } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
 import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ import {
 } from "@/components/ui/table";
 import {
   Banknote,
+  ChevronRight,
   SlidersHorizontal,
   Ticket,
   Undo2,
@@ -227,6 +229,20 @@ export default function DashboardGerencialPage() {
   ].filter(Boolean).length;
 
   const linhas = data?.linhas ?? [];
+  const grupos = agruparPorHierarquia(
+    linhas,
+    data?.responsaveis ?? [],
+    data?.agruparPorHierarquia ?? false,
+  );
+  const [gruposFechados, setGruposFechados] = useState<Set<string>>(new Set());
+  const alternarGrupo = (chave: string) =>
+    setGruposFechados((atual) => {
+      const proximo = new Set(atual);
+      if (proximo.has(chave)) proximo.delete(chave);
+      else proximo.add(chave);
+      return proximo;
+    });
+
   const soma = {
     positivacaoObjetivo: linhas.reduce((acc, l) => acc + l.positivacaoObjetivo, 0),
     positivacaoRealizado: linhas.reduce((acc, l) => acc + l.positivacaoRealizado, 0),
@@ -434,7 +450,70 @@ export default function DashboardGerencialPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {linhas.map((l) => (
+                  {grupos.map((grupo) => {
+                    const fechado = gruposFechados.has(grupo.chave);
+                    return (
+                      <Fragment key={grupo.chave}>
+                        {/* Cabeçalho do time: só existe quando a empresa liga o
+                            agrupamento (parâmetro DASHBOARD_GERENCIAL_HIERARQUIA)
+                            e há hierarquia cadastrada. Recolhe para o gerente
+                            comparar times sem rolar a lista inteira. */}
+                        {grupo.titulo && (
+                          <TableRow
+                            className="cursor-pointer bg-muted/40 hover:bg-muted/60"
+                            onClick={() => alternarGrupo(grupo.chave)}
+                          >
+                            <TableCell className="font-semibold">
+                              <span className="flex items-center gap-1.5">
+                                <ChevronRight
+                                  className={cn(
+                                    "size-3.5 transition-transform",
+                                    !fechado && "rotate-90",
+                                  )}
+                                />
+                                {grupo.titulo}
+                                <span className="font-normal text-muted-foreground">
+                                  · {grupo.linhas.length}
+                                  {grupo.linhas.length === 1
+                                    ? " vendedor"
+                                    : " vendedores"}
+                                </span>
+                              </span>
+                            </TableCell>
+                            {mostrarValores && (
+                              <TableCell className="text-right font-medium tabular-nums">
+                                {inteiro(grupo.soma.positivacaoObjetivo)}
+                              </TableCell>
+                            )}
+                            {mostrarValores && (
+                              <TableCell className="text-right font-medium tabular-nums">
+                                {inteiro(grupo.soma.positivacaoRealizado)}
+                              </TableCell>
+                            )}
+                            <TableCell>
+                              {grupo.soma.positivacaoObjetivo > 0 && (
+                                <BarraMeta perc={grupo.percPositivacao} />
+                              )}
+                            </TableCell>
+                            {mostrarValores && (
+                              <TableCell className="text-right font-medium tabular-nums">
+                                {moeda(grupo.soma.objetivo)}
+                              </TableCell>
+                            )}
+                            {mostrarValores && (
+                              <TableCell className="text-right font-medium tabular-nums">
+                                {moeda(grupo.soma.realizado)}
+                              </TableCell>
+                            )}
+                            <TableCell>
+                              {grupo.soma.objetivo > 0 && (
+                                <BarraMeta perc={grupo.percRealizado} />
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        {!fechado &&
+                          grupo.linhas.map((l) => (
                     <TableRow
                       key={l.vendedorId}
                       className="cursor-pointer"
@@ -476,7 +555,10 @@ export default function DashboardGerencialPage() {
                         )}
                       </TableCell>
                     </TableRow>
-                  ))}
+                          ))}
+                      </Fragment>
+                    );
+                  })}
                 </TableBody>
                 <TableFooter>
                   <TableRow>
@@ -701,4 +783,75 @@ export default function DashboardGerencialPage() {
       </Sheet>
     </div>
   );
+}
+
+/**
+ * Agrupa as linhas pela hierarquia comercial: cada supervisor com os
+ * vendedores dele, cada gerente com quem responde direto a ele.
+ *
+ * Dois níveis, e não três, de propósito: gerente › supervisor › vendedor numa
+ * tabela vira três recuos e uma leitura pior do que a lista plana. O grupo é o
+ * **responsável imediato** — supervisor quando há, gerente quando o vendedor
+ * responde direto a ele —, e o nome do gerente entra no título do grupo do
+ * supervisor, que é onde a informação faltaria.
+ *
+ * O subtotal é a soma dos membros, e o percentual é a razão entre as somas —
+ * nunca a média dos percentuais de cada um, que daria peso igual a quem tem
+ * meta de mil e a quem tem meta de cem mil.
+ *
+ * Com o agrupamento desligado (ou sem hierarquia cadastrada), devolve um único
+ * grupo sem título: a tabela sai exatamente como era antes.
+ */
+function agruparPorHierarquia(
+  linhas: DashboardGerencial["linhas"],
+  responsaveis: DashboardGerencial["responsaveis"],
+  agrupar: boolean,
+) {
+  const soma = (itens: DashboardGerencial["linhas"]) => ({
+    positivacaoObjetivo: itens.reduce((a, l) => a + l.positivacaoObjetivo, 0),
+    positivacaoRealizado: itens.reduce((a, l) => a + l.positivacaoRealizado, 0),
+    objetivo: itens.reduce((a, l) => a + l.objetivo, 0),
+    realizado: itens.reduce((a, l) => a + l.realizado, 0),
+  });
+  const grupo = (chave: string, titulo: string | null, itens: typeof linhas) => {
+    const s = soma(itens);
+    return {
+      chave,
+      titulo,
+      linhas: itens,
+      soma: s,
+      percPositivacao:
+        s.positivacaoObjetivo > 0
+          ? (s.positivacaoRealizado / s.positivacaoObjetivo) * 100
+          : 0,
+      percRealizado: s.objetivo > 0 ? (s.realizado / s.objetivo) * 100 : 0,
+    };
+  };
+
+  if (!agrupar) return [grupo("todos", null, linhas)];
+
+  const porResponsavel = new Map<string, typeof linhas>();
+  for (const linha of linhas) {
+    // O responsável imediato. Quem não tem vínculo cai num grupo próprio, em
+    // vez de sumir — hierarquia incompleta é comum, e esconder o vendedor
+    // seria pior do que mostrá-lo sem time.
+    const chave = linha.superiorId ?? "sem-superior";
+    porResponsavel.set(chave, [...(porResponsavel.get(chave) ?? []), linha]);
+  }
+
+  // Nome e papel de quem chefia — supervisor e gerente **não** têm linha nesta
+  // tela (a venda é sempre do supervisionado que atende o cliente), então os
+  // nomes vêm à parte, em `responsaveis`.
+  const chefePor = new Map(responsaveis.map((r) => [r.id, r]));
+
+  const titulo = (chave: string) => {
+    if (chave === "sem-superior") return "Sem superior definido";
+    return chefePor.get(chave)?.nome ?? "Equipe";
+  };
+
+
+  return [...porResponsavel.entries()]
+    .map(([chave, membros]) => grupo(chave, titulo(chave), membros))
+    // O time maior primeiro: é o que a diretoria olha antes.
+    .sort((a, b) => b.soma.realizado - a.soma.realizado);
 }

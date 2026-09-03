@@ -65,13 +65,13 @@ export default function VendedoresPage() {
   const [vinculo, setVinculo] = useState<VinculoVendedor | "todos">("todos");
   const [desligado, setDesligado] = useState<SimNaoTodos>("todos");
   const [usaDashboard, setUsaDashboard] = useState<SimNaoTodos>("todos");
-  const [supervisorId, setSupervisorId] = useState<string | undefined>(undefined);
+  const [superiorId, setSuperiorId] = useState<string | undefined>(undefined);
 
-  const supervisoresQuery = useQuery({
-    queryKey: ["vendedores", "select", "supervisores"],
+  const superioresQuery = useQuery({
+    queryKey: ["vendedores", "select", "superiores"],
     queryFn: () =>
       apiFetch<{ data: Vendedor[] }>("/vendedores", {
-        query: { pageSize: 100, tipo: "supervisor" },
+        query: { pageSize: 100, tipo: "superior" },
       }),
   });
 
@@ -86,7 +86,7 @@ export default function VendedoresPage() {
     ...(vinculo !== "todos" ? { vinculo } : {}),
     ...(usaDashboard !== "todos" ? { usaDashboard: usaDashboard === "sim" } : {}),
     ...(desligado !== "todos" ? { desligado: desligado === "sim" } : {}),
-    ...(supervisorId ? { supervisorId } : {}),
+    ...(superiorId ? { superiorId } : {}),
   });
 
   const { remove } = useResourceMutations("vendedores");
@@ -156,13 +156,13 @@ export default function VendedoresPage() {
     vinculo !== "todos" ||
     usaDashboard !== "todos" ||
     desligado !== "todos" ||
-    !!supervisorId;
+    !!superiorId;
 
   const limparFiltros = () => {
     setVinculo("todos");
     setUsaDashboard("todos");
     setDesligado("todos");
-    setSupervisorId(undefined);
+    setSuperiorId(undefined);
     setPage(1);
   };
 
@@ -383,11 +383,11 @@ export default function VendedoresPage() {
           </div>
 
           <div className="space-y-2">
-            <FieldLabel>Supervisor</FieldLabel>
+            <FieldLabel>Superior</FieldLabel>
             <Select
-              value={supervisorId ?? "none"}
+              value={superiorId ?? "none"}
               onValueChange={(v) => {
-                setSupervisorId(v === "none" ? undefined : v);
+                setSuperiorId(v === "none" ? undefined : v);
                 setPage(1);
               }}
             >
@@ -396,7 +396,7 @@ export default function VendedoresPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Qualquer</SelectItem>
-                {(supervisoresQuery.data?.data ?? []).map((s) => (
+                {(superioresQuery.data?.data ?? []).map((s) => (
                   <SelectItem key={s.id} value={s.id}>
                     {s.nomeReduzido || s.nome}
                   </SelectItem>

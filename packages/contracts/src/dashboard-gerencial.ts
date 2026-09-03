@@ -32,6 +32,13 @@ export type DashboardGerencialQuery = z.infer<
 export const dashboardGerencialLinhaSchema = z.object({
   vendedorId: z.string().uuid(),
   nome: z.string(),
+  /**
+   * O lugar do vendedor na hierarquia comercial. Vem em toda linha, mesmo
+   * com o agrupamento desligado: é barato, e é o que permite a tela montar a
+   * árvore sem uma segunda consulta.
+   */
+  tipo: z.enum(["vendedor", "superior"]),
+  superiorId: z.string().uuid().nullable(),
   positivacaoObjetivo: z
     .number()
     .int()
@@ -81,6 +88,30 @@ export const dashboardGerencialSchema = z.object({
     ticketMedio: z.number().describe("realizado / totalNotas"),
   }),
   linhas: z.array(dashboardGerencialLinhaSchema),
+  /**
+   * Supervisores e gerentes citados pelas linhas — só id, nome e papel.
+   *
+   * Eles **não** têm linha própria: a venda é sempre do vendedor que atende o
+   * cliente, e supervisor e gerente aparecem nesta tela como o agrupador do
+   * time. Mas o grupo precisa de nome, e sem esta lista a tela só teria o id
+   * do responsável para mostrar.
+   */
+  responsaveis: z.array(
+    z.object({
+      id: z.string().uuid(),
+      nome: z.string(),
+      tipo: z.literal("superior"),
+    }),
+  ),
+  /**
+   * Se a tela deve agrupar as linhas pela hierarquia (parâmetro da empresa
+   * `DASHBOARD_GERENCIAL_HIERARQUIA`).
+   *
+   * A decisão vem do servidor, e não do navegador, porque é configuração da
+   * empresa — e porque a tela não tem como saber sozinha se a hierarquia está
+   * cadastrada a ponto de o agrupamento fazer sentido.
+   */
+  agruparPorHierarquia: z.boolean(),
 });
 export type DashboardGerencial = z.infer<typeof dashboardGerencialSchema>;
 
@@ -104,6 +135,8 @@ export const DASHBOARD_GERENCIAL_EXAMPLE: DashboardGerencial = {
     {
       vendedorId: "b7c2c1de-4a45-4b8a-9f2e-6a1d6c1e9f10",
       nome: "CARLOS",
+      tipo: "vendedor",
+      superiorId: null,
       positivacaoObjetivo: 95,
       positivacaoRealizado: 33,
       percPositivacao: 34.74,
@@ -112,6 +145,10 @@ export const DASHBOARD_GERENCIAL_EXAMPLE: DashboardGerencial = {
       percRealizado: 36.93,
     },
   ],
+  responsaveis: [
+    { id: "c8d9e0f1-2a3b-4c5d-8e9f-0a1b2c3d4e5f", nome: "REGINA", tipo: "superior" },
+  ],
+  agruparPorHierarquia: true,
 };
 
 /**
