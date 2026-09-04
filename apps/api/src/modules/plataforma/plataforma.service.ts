@@ -101,23 +101,48 @@ export class PlataformaService {
           testeExpiraEm: true,
           limiteUsuarios: true,
           createdAt: true,
-          // Os vínculos ativos vêm na mesma consulta e servem a duas coisas:
-          // o contador do limite e o último acesso. Um `_count` separado
-          // pediria ao banco o que estas linhas já respondem.
-          usuarioEmpresas: {
-            where: { ativo: true },
-            select: { usuario: { select: { ultimoLogin: true } } },
-          },
         },
       }),
       this.prisma.empresa.count({ where }),
     ]);
 
+    // Uma consulta por empresa, e **não** um include na consulta acima.
+    //
+    // `usuario_empresas` tem RLS: fora de `withTenant` a policy compara
+    // `empresaId` com um `app.current_empresa_id` vazio, não bate em nada e
+    // devolve zero linhas — sem erro. Foi o que aconteceu na primeira versão
+    // disto: a tela mostrava "0 usuários" para uma empresa com dez, e o tipo
+    // do campo estava certo, então só apareceu ao rodar contra uma base com
+    // dados de verdade.
+    //
+    // O N+1 é consciente: são tantas consultas quanto a página tem linhas
+    // (20 por padrão), curtas e indexadas, numa tela de administração usada
+    // por poucas pessoas. Um número errado sai mais caro do que 20 queries.
+    const usoPorEmpresa = new Map<
+      string,
+      { usuariosAtivos: number; ultimoAcesso: Date | null }
+    >();
+    await Promise.all(
+      linhas.map((e) =>
+        this.prisma.withTenant(e.id, async (tx) => {
+          const vinculos = await tx.usuarioEmpresa.findMany({
+            where: { empresaId: e.id, ativo: true },
+            select: { usuario: { select: { ultimoLogin: true } } },
+          });
+          const ultimos = vinculos
+            .map((v) => v.usuario.ultimoLogin)
+            .filter((d): d is Date => d !== null)
+            .sort((a, b) => b.getTime() - a.getTime());
+          usoPorEmpresa.set(e.id, {
+            usuariosAtivos: vinculos.length,
+            ultimoAcesso: ultimos[0] ?? null,
+          });
+        }),
+      ),
+    );
+
     const data: PlataformaEmpresa[] = linhas.map((e) => {
-      const ultimos = e.usuarioEmpresas
-        .map((v) => v.usuario.ultimoLogin)
-        .filter((d): d is Date => d !== null)
-        .sort((a, b) => b.getTime() - a.getTime());
+      const uso = usoPorEmpresa.get(e.id);
 
       return {
         id: e.id,
@@ -128,7 +153,7 @@ export class PlataformaService {
         situacao: e.situacao,
         testeExpiraEm: e.testeExpiraEm?.toISOString() ?? null,
         limiteUsuarios: e.limiteUsuarios,
-        usuariosAtivos: e.usuarioEmpresas.length,
+        usuariosAtivos: uso?.usuariosAtivos ?? 0,
         // Mesma comparação que decide o login, feita aqui e não na tela: duas
         // implementações discordariam no fuso do navegador.
         testeExpirado:
@@ -137,7 +162,7 @@ export class PlataformaService {
             { situacao: e.situacao, testeExpiraEm: e.testeExpiraEm },
             agora,
           ),
-        ultimoAcesso: ultimos[0]?.toISOString() ?? null,
+        ultimoAcesso: uso?.ultimoAcesso?.toISOString() ?? null,
         createdAt: e.createdAt.toISOString(),
       };
     });
