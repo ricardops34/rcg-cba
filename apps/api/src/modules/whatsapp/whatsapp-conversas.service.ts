@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -69,7 +70,23 @@ export class WhatsappConversasService {
     private readonly provedores: WhatsappProviderService,
   ) {}
 
-  /** Filtro de sessão a partir do escopo de leitura. `[]` = não vê nada. */
+  /**
+   * O que este usuário enxerga na lista de conversas. `[]` = não vê nada.
+   *
+   * São duas origens, e elas não se somam por acaso:
+   *
+   * - **Aparelho de vendedor**: a conversa é de quem é dono da sessão, como
+   *   sempre foi. O escopo de leitura decide se é só a própria ou a do time.
+   * - **Número institucional**: a sessão não tem dono, então o corte é a quem
+   *   a IA direcionou. Enquanto a triagem está em curso (`bot`) a conversa não
+   *   aparece para ninguém — é o que impede o número geral de encher a caixa
+   *   de todo mundo com "oi" de desconhecido.
+   *
+   * A fila **sem dono** (direcionada, mas sem vendedor escolhido: o cliente
+   * não soube dizer com quem fala, ou o assunto é administrativo) aparece para
+   * todos que atendem. É o desenho pedido — "direcionar a um vendedor ativo,
+   * para que atenda e associe" —, e o primeiro que assumir leva.
+   */
   private async filtroSessao(
     tx: TenantTx,
     empresaId: string,
@@ -77,15 +94,47 @@ export class WhatsappConversasService {
     vendedorIdQuery?: string,
   ) {
     const escopo = await this.sessoes.escopoLeitura(tx, empresaId, user);
+
+    // Conversa do institucional ainda em triagem não é de ninguém.
+    const institucional = {
+      sessao: { tipo: 'empresa' as const },
+      atendimento: { not: 'bot' as const },
+      ...(vendedorIdQuery ? { atendenteVendedorId: vendedorIdQuery } : {}),
+    };
+
     if (escopo === null) {
-      return vendedorIdQuery ? { sessao: { vendedorId: vendedorIdQuery } } : {};
+      // Sem restrição (admin): vê o aparelho de todos e o institucional
+      // inteiro, menos o que está com a IA.
+      return vendedorIdQuery
+        ? {
+            OR: [
+              { sessao: { vendedorId: vendedorIdQuery } },
+              institucional,
+            ],
+          }
+        : { OR: [{ sessao: { vendedorId: { not: null } } }, institucional] };
     }
+
     const permitidos = vendedorIdQuery
       ? escopo.includes(vendedorIdQuery)
         ? [vendedorIdQuery]
         : []
       : escopo;
-    return { sessao: { vendedorId: { in: permitidos } } };
+
+    return {
+      OR: [
+        { sessao: { vendedorId: { in: permitidos } } },
+        {
+          ...institucional,
+          OR: [
+            // Direcionada a mim (ou a alguém do meu time).
+            { atendenteVendedorId: { in: permitidos } },
+            // Fila sem dono: quem atende enxerga, e o primeiro assume.
+            ...(permitidos.length > 0 ? [{ atendenteVendedorId: null }] : []),
+          ],
+        },
+      ],
+    };
   }
 
   async listar(
@@ -514,12 +563,110 @@ export class WhatsappConversasService {
       where: { id: conversaId, ...filtro },
       include: {
         contato: true,
-        sessao: { select: { id: true, vendedorId: true, status: true } },
+        sessao: {
+          select: { id: true, vendedorId: true, status: true, tipo: true },
+        },
       },
     });
     // 404 e não 403: fora do escopo, a conversa não deve nem revelar que existe.
     if (!conversa) throw new NotFoundException('Conversa não encontrada');
     return conversa;
+  }
+
+  /**
+   * Assume uma conversa do número institucional.
+   *
+   * É o passo que a IA não dá: ela direciona, mas quem vira dono é quem clica.
+   * Sem isso, "direcionado para o time" ficaria sem responsável, e a conversa
+   * seria de todos e de ninguém.
+   *
+   * Assumir o que já é de outro é recusado — não porque a leitura seja
+   * proibida (supervisor lê o time), mas porque tomar o atendimento de alguém
+   * que está no meio de uma conversa é diferente de pegar o que está na fila.
+   */
+  async assumirAtendimento(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const conversa = await this.conversaNoEscopo(tx, empresaId, user, conversaId);
+
+      if (conversa.sessao.tipo !== 'empresa') {
+        throw new BadRequestException(
+          'Só conversa do número da empresa é assumida — a do aparelho já é do vendedor dono.',
+        );
+      }
+      if (conversa.atendimento === 'bot') {
+        throw new BadRequestException(
+          'O atendimento automático ainda está com esta conversa.',
+        );
+      }
+
+      const vendedor = await tx.vendedor.findFirst({
+        where: { usuarioId: user.id, empresaId, deletedAt: null, ativo: true },
+        select: { id: true },
+      });
+      if (!vendedor) {
+        throw new BadRequestException(
+          'Seu usuário não tem cadastro de vendedor ativo para assumir atendimentos.',
+        );
+      }
+
+      if (
+        conversa.atendenteVendedorId &&
+        conversa.atendenteVendedorId !== vendedor.id &&
+        conversa.atendimento === 'humano'
+      ) {
+        throw new ConflictException(
+          'Esta conversa já está sendo atendida por outra pessoa.',
+        );
+      }
+
+      return tx.whatsappConversa.update({
+        where: { id: conversaId },
+        data: {
+          atendimento: 'humano',
+          atendenteVendedorId: vendedor.id,
+        },
+        select: { id: true, atendimento: true, atendenteVendedorId: true },
+      });
+    });
+  }
+
+  /**
+   * Encerra o atendimento humano e devolve a conversa ao atendimento
+   * automático.
+   *
+   * Não apaga nada nem arquiva: a próxima mensagem do cliente é um assunto
+   * novo, e a triagem recomeça — que é o que faz o número institucional
+   * funcionar sem alguém de plantão.
+   */
+  async encerrarAtendimento(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const conversa = await this.conversaNoEscopo(tx, empresaId, user, conversaId);
+
+      if (conversa.sessao.tipo !== 'empresa') {
+        throw new BadRequestException(
+          'Só conversa do número da empresa passa pelo atendimento automático.',
+        );
+      }
+
+      return tx.whatsappConversa.update({
+        where: { id: conversaId },
+        data: {
+          atendimento: 'bot',
+          atendenteVendedorId: null,
+          assunto: null,
+          direcionadaEm: null,
+        },
+        select: { id: true, atendimento: true },
+      });
+    });
   }
 
   /**

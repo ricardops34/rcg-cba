@@ -7,6 +7,7 @@ import type { MensagemChat } from '../../agente/provedor-ia';
 import { ferramentasDaTriagem } from './triagem-ferramentas';
 import { montarPromptTriagem } from './triagem-prompt';
 import { WhatsappProviderService } from '../providers/whatsapp-provider.service';
+import { dentroDoExpediente } from '../../../common/horario/horario-trabalho';
 
 /** Quantas voltas de ferramenta uma resposta pode dar antes de desistir. */
 const MAX_VOLTAS = 4;
@@ -22,6 +23,12 @@ const HISTORICO = 12;
  * faria a mensagem da IA parecer do sistema no histórico.
  */
 const AUTOR_TRIAGEM = 'triagem-ia';
+
+/**
+ * Minutos de inatividade a partir dos quais a sessao deixa de contar como
+ * presenca. Quem fechou o navegador ha uma hora nao vai ver a conversa chegar.
+ */
+const PRESENCA_MIN = 30;
 
 /**
  * Triagem do número institucional.
@@ -109,6 +116,7 @@ export class WhatsappTriagemService {
               }
             : null,
           informacoes: contexto.informacoes,
+          vendedoresPresentes: contexto.presentes,
         }),
       },
       ...contexto.historico,
@@ -230,6 +238,7 @@ export class WhatsappTriagemService {
         vendedorDaCarteiraNome: conversa.cliente?.vendedor?.nome ?? null,
         nomeEmpresa: empresa?.nomeFantasia ?? 'nossa empresa',
         informacoes: config?.atendimentoInformacoes ?? null,
+        presentes: await this.vendedoresPresentes(tx, empresaId),
         historico,
       };
     });
@@ -428,6 +437,87 @@ export class WhatsappTriagemService {
         ? { id: cliente.vendedor.id, nome: cliente.vendedor.nome }
         : null,
     };
+  }
+
+  /**
+   * Quem está de fato atendendo agora.
+   *
+   * Duas condições, e as duas são necessárias:
+   *
+   * 1. **Em expediente** — o horário cadastrado do usuário (`UsuarioHorario`,
+   *    o mesmo que barra o login fora de hora). Quem não restringe horário
+   *    conta como em expediente sempre: é o padrão do cadastro, e tratá-lo
+   *    como fechado faria a empresa que nunca configurou parecer fechada o
+   *    tempo todo.
+   * 2. **Presente no sistema** — sessão aberta com atividade recente. Estar no
+   *    horário não é estar trabalhando: quem não entrou hoje não vai ver a
+   *    conversa chegar, e direcionar para ele é o mesmo que não direcionar.
+   *
+   * Serve para a IA **avisar** o cliente, não para recusar atendimento: a
+   * conversa é direcionada de qualquer forma e espera na fila. O que se evita
+   * é prometer resposta imediata às 23h de um sábado.
+   */
+  private async vendedoresPresentes(
+    tx: TenantTx,
+    empresaId: string,
+    agora = new Date(),
+  ): Promise<{ vendedorId: string; nome: string }[]> {
+    const vendedores = await tx.vendedor.findMany({
+      where: {
+        empresaId,
+        deletedAt: null,
+        ativo: true,
+        usuarioId: { not: null },
+      },
+      select: { id: true, nome: true, usuarioId: true },
+    });
+    const usuarioIds = vendedores
+      .map((v) => v.usuarioId)
+      .filter((id): id is string => id !== null);
+    if (usuarioIds.length === 0) return [];
+
+    const desde = new Date(agora.getTime() - PRESENCA_MIN * 60_000);
+    const [usuarios, sessoes] = await Promise.all([
+      tx.usuario.findMany({
+        where: { id: { in: usuarioIds }, ativo: true, deletedAt: null },
+        select: {
+          id: true,
+          restringirHorario: true,
+          horarios: {
+            select: { diaSemana: true, horaInicio: true, horaFim: true },
+          },
+        },
+      }),
+      // `sessoes` não tem RLS (ver o README de migrations): é escrita no login,
+      // antes de existir empresa ativa. O corte por empresa vem do `where`.
+      tx.sessao.findMany({
+        where: {
+          usuarioId: { in: usuarioIds },
+          empresaId,
+          encerradaEm: null,
+          ultimaAtividadeEm: { gte: desde },
+        },
+        select: { usuarioId: true },
+      }),
+    ]);
+
+    const presentes = new Set(sessoes.map((s) => s.usuarioId));
+    const emExpediente = new Set(
+      usuarios
+        .filter(
+          (u) => dentroDoExpediente(u.restringirHorario, u.horarios, agora).dentro,
+        )
+        .map((u) => u.id),
+    );
+
+    return vendedores
+      .filter(
+        (v) =>
+          v.usuarioId !== null &&
+          presentes.has(v.usuarioId) &&
+          emExpediente.has(v.usuarioId),
+      )
+      .map((v) => ({ vendedorId: v.id, nome: v.nome }));
   }
 
   private async procurarVendedor(tx: TenantTx, empresaId: string, nome: string) {

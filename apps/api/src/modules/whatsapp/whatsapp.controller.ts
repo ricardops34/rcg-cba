@@ -670,4 +670,32 @@ export class WhatsappController {
   marcarLida(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.conversas.marcarLida(user.empresaAtivaId, user, id);
   }
+
+  @ApiOperation({
+    summary: 'Assumir uma conversa do número da empresa',
+    description:
+      'Torna você o responsável por uma conversa que a triagem automática ' +
+      'direcionou. Enquanto ninguém assume, ela é do time e de ninguém — é ' +
+      'este passo que dá dono a ela. Recusa assumir o que outra pessoa já está ' +
+      'atendendo.',
+  })
+  @ApiResponse({ status: 409, description: 'Já está sendo atendida por outra pessoa' })
+  @RequirePermission('whatsapp-conversas', 'editar')
+  @Post('conversas/:id/assumir')
+  assumir(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.conversas.assumirAtendimento(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Encerrar o atendimento e devolver à triagem automática',
+    description:
+      'Não apaga nem arquiva: a próxima mensagem do cliente é assunto novo, e ' +
+      'a IA recomeça a triagem. É o que faz o número institucional funcionar ' +
+      'sem alguém de plantão.',
+  })
+  @RequirePermission('whatsapp-conversas', 'editar')
+  @Post('conversas/:id/encerrar')
+  encerrar(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.conversas.encerrarAtendimento(user.empresaAtivaId, user, id);
+  }
 }

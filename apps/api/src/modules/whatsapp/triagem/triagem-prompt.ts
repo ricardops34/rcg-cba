@@ -12,6 +12,12 @@ export interface ContextoTriagem {
   cliente: { nome: string; vendedor: string | null } | null;
   /** Texto livre que a empresa configurou (horário, endereço, prazos). */
   informacoes: string | null;
+  /**
+   * Quem está de fato atendendo agora: em expediente **e** com sessão aberta
+   * no sistema. Vazio fora do horário comercial, no fim de semana, ou quando
+   * ninguém entrou ainda.
+   */
+  vendedoresPresentes: { vendedorId: string; nome: string }[];
 }
 
 export function montarPromptTriagem(ctx: ContextoTriagem): string {
@@ -73,9 +79,24 @@ export function montarPromptTriagem(ctx: ContextoTriagem): string {
     '',
     'QUANDO DIRECIONAR',
     '- Assim que souber a quem entregar, chame direcionar_para_vendedor ou direcionar_para_administrativo.',
-    '- Antes de chamar, avise a pessoa em uma frase que ela será atendida em seguida.',
     '- Não fique fazendo perguntas para adiar: duas ou três trocas bastam.',
   );
+
+  // O que a IA promete depende de haver alguém para cumprir. Sem isto ela diz
+  // "já vou te transferir" às 23h de um sábado, e ninguém aparece.
+  if (ctx.vendedoresPresentes.length > 0) {
+    const nomes = ctx.vendedoresPresentes.map((v) => v.nome).join(', ');
+    linhas.push(
+      '- Há atendentes trabalhando agora. Antes de direcionar, avise em uma frase que a pessoa será atendida em seguida.',
+      `- Quem está disponível neste momento: ${nomes}. Se a pessoa não indicar ninguém e não houver vendedor de carteira, direcione sem informar vendedorId — quem estiver livre assume.`,
+    );
+  } else {
+    linhas.push(
+      '- NINGUÉM está atendendo agora (fora do horário, fim de semana, ou ninguém conectado).',
+      '- Direcione mesmo assim, mas seja honesto: diga que fora do horário de atendimento o retorno acontece no próximo dia útil. NÃO diga "vou transferir agora" nem "aguarde um momento".',
+      '- Se der para resolver com o que você tem (informações da empresa, títulos, notas), resolva antes de direcionar — pode ser tudo o que a pessoa precisava.',
+    );
+  }
 
   return linhas.join('\n');
 }
