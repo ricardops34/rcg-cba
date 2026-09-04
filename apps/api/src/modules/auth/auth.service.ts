@@ -551,6 +551,8 @@ export class AuthService {
         bannerAtivo: v.empresa.bannerAtivo,
         bannerCor: v.empresa.bannerCor,
         bannerImagemUrl: v.empresa.bannerImagemUrl,
+        situacao: v.empresa.situacao,
+        testeExpiraEm: v.empresa.testeExpiraEm?.toISOString() ?? null,
         perfilId: v.perfilId,
         perfilNome: perfis[i].nome,
       })),

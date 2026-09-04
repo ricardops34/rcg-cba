@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { situacaoEmpresaSchema } from "./empresa";
 
 export const loginSchema = z.object({
   email: z.string().trim().email().describe("E-mail cadastrado do usuário"),
@@ -113,6 +114,17 @@ export const currentUserSchema = z.object({
           .string()
           .nullable()
           .describe("Caminho da imagem da faixa, quando cadastrada"),
+        // Situação da assinatura, pelo mesmo motivo do banner: o shell precisa
+        // avisar que a empresa está em avaliação sem uma segunda requisição, e
+        // trocar de empresa tem de trocar o aviso junto.
+        situacao: situacaoEmpresaSchema.describe(
+          "Situação da assinatura desta empresa",
+        ),
+        testeExpiraEm: z
+          .string()
+          .datetime()
+          .nullable()
+          .describe("Fim da avaliação, quando a empresa está em teste"),
         perfilId: z.string().uuid().describe("Perfil do usuário nesta empresa"),
         perfilNome: z.string().describe("Nome do perfil, para exibição"),
       }),
@@ -157,6 +169,8 @@ export const CURRENT_USER_EXAMPLE: CurrentUser = {
       bannerAtivo: false,
       bannerCor: null,
       bannerImagemUrl: null,
+      situacao: "ativa",
+      testeExpiraEm: null,
       perfilId: "06b281c4-c6d6-454c-82c6-75106224bbfc",
       perfilNome: "Administrador",
     },

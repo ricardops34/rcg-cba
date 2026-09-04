@@ -10,6 +10,7 @@ import { ForcedPasswordChangeGate } from "@/components/auth/forced-password-chan
 import { AgenteFab } from "@/components/agente/agente-fab";
 import { ResponsiveRouteGuard } from "@/components/layout/responsive-route-guard";
 import { FaixaInstitucional } from "@/components/layout/faixa-institucional";
+import { AvisoAvaliacao } from "@/components/layout/aviso-avaliacao";
 
 const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   "/": { title: "Dashboard", subtitle: "Visão comercial" },
@@ -62,6 +63,7 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
     <div className="flex min-h-svh flex-col">
       <ForcedPasswordChangeGate />
       <FaixaInstitucional />
+      <AvisoAvaliacao />
 
       <div className="flex min-h-0 flex-1">
         <AppSidebar collapsed={collapsed} />
