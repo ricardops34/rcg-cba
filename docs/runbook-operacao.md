@@ -322,7 +322,12 @@ openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 40; echo
 A migration acima restaura o que a baseline de 28/08 perdeu ao consolidar as 73
 migrations incrementais: numa base criada do zero, o role e o schema `whatsapp`
 não existiam e o worker não subia. Base que já rodou a baseline precisa deste
-`migrate deploy` antes do passo 3.
+`migrate deploy` antes do passo 3. **[verificado em dev, 2026-09-03]** — o
+`migrate deploy` aplicou a migration e o `whatsapp-worker` subiu conectando ao
+store sem erro. Ressalva: no dev o role já existia de antes (roles são objetos
+do cluster, não do banco, e o cluster local nunca foi recriado), então ali a
+migration é no-op. A prova de que ela resolve o caso da VPS veio de um
+`postgres:16-alpine` descartável: baseline sozinha deixa 0 role e 0 schema.
 
 **O que ainda não foi verificado:** nada disso rodou na VPS. Ao executar pela
 primeira vez, confirmar aqui e trocar a marca `[a confirmar na VPS]`.
