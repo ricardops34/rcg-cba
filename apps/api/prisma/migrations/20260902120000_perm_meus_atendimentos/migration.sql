@@ -16,8 +16,18 @@
 -- Base nova não passa por aqui: o `seed-base.ts` aplica o catálogo e as
 -- permissões de `VENDEDOR_PERMISSOES`, onde a rotina também está.
 
+-- O `WHERE EXISTS` não é zelo excessivo: sem ele esta migration **derruba a
+-- criação de uma base do zero**. Ali a ordem é `migrate deploy` e só depois o
+-- seed, então `modulos` ainda está vazia quando isto roda, e o INSERT morre na
+-- chave estrangeira (`menus_moduloId_fkey`) levando o deploy inteiro junto. O
+-- `ON CONFLICT` abaixo não cobre esse caso — ele trata chave duplicada, não
+-- referência ausente.
+--
+-- Numa base nova não há nada a fazer aqui mesmo: o `seed-base.ts` cria módulo,
+-- menu, rotina e as permissões a partir do catálogo. Esta migration existe
+-- para a base que **já roda** e não passaria pelo seed de novo.
 INSERT INTO "menus" ("id", "moduloId", "nome", "icone", "rota", "ordem", "ativo", "createdAt", "updatedAt")
-VALUES (
+SELECT
   'seed-menu-meus-atendimentos',
   'seed-modulo-comercial',
   'Meus Atendimentos',
@@ -27,11 +37,11 @@ VALUES (
   true,
   now(),
   now()
-)
+WHERE EXISTS (SELECT 1 FROM "modulos" WHERE "id" = 'seed-modulo-comercial')
 ON CONFLICT ("id") DO NOTHING;
 
 INSERT INTO "rotinas" ("id", "menuId", "nome", "codigo", "ativo", "createdAt", "updatedAt")
-VALUES (
+SELECT
   'seed-rotina-meus-atendimentos',
   'seed-menu-meus-atendimentos',
   'Meus Atendimentos',
@@ -39,7 +49,7 @@ VALUES (
   true,
   now(),
   now()
-)
+WHERE EXISTS (SELECT 1 FROM "menus" WHERE "id" = 'seed-menu-meus-atendimentos')
 ON CONFLICT ("codigo") DO NOTHING;
 
 -- Quem recebe: os perfis que atendem cliente. A tela é sempre do **próprio**

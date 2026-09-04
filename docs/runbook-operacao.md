@@ -55,11 +55,28 @@ A carga das referências é a última etapa do seed **de propósito**: ela depen
 rede (APIs do IBGE), e uma falha ali não pode impedir o admin e a empresa de
 existirem. Se cair, o seed avisa no console e o `sync:ibge` completa depois.
 
-Números esperados numa base nova: 1 empresa, 1 admin, 5 perfis, 46 rotinas,
-20 parâmetros, 193 países, 27 UFs, 5.571 municípios, 1.332 CNAEs.
+Números esperados numa base nova **[conferidos em 2026-09-03, cluster limpo]**:
+1 empresa (situação `ativa`), 1 admin, 5 perfis, 47 rotinas, 21 parâmetros,
+193 países, 27 UFs, 5.571 municípios, 1.332 CNAEs. Mais o role `whatsapp_store`
+e o schema `whatsapp`, criados pela migration.
+
+O admin do seed nasce com `administradorPlataforma = true`, então a
+administração do SaaS (menu Plataforma) funciona sem nenhum `UPDATE` manual —
+isso vale para base **nova**; numa base que já existia, a promoção continua
+sendo manual.
 
 `ceps` nasce vazia por desenho — os CEPs entram sob demanda, pelo ViaCEP, quando
 um cliente é consultado.
+
+> **Migration que insere menu, rotina ou permissão precisa de `WHERE EXISTS`.**
+> A ordem aqui é `migrate deploy` e **depois** o seed, então quando as
+> migrations rodam a tabela `modulos` ainda está vazia. Um `INSERT INTO "menus"`
+> direto morre na chave estrangeira e **derruba a criação da base inteira** —
+> aconteceu com `20260902120000_perm_meus_atendimentos`, descoberto ao ensaiar
+> este procedimento num cluster limpo. `ON CONFLICT` não cobre: ele trata chave
+> duplicada, não referência ausente. Guarde o insert com
+> `WHERE EXISTS (SELECT 1 FROM "modulos" WHERE "id" = '...')`; na base nova não
+> há mesmo o que fazer, porque o seed monta tudo a partir do catálogo.
 
 > **Produção:** o histórico de migrations foi consolidado numa baseline única em
 > 2026-08-28. Um banco que já rodou as migrations antigas **recusa** o
