@@ -95,19 +95,41 @@ export class WhatsappTriagemService {
       );
       // Sai do bot e cai na fila: melhor uma pessoa atendendo do que uma
       // conversa presa num robô que não responde.
-      await this.prisma
-        .withTenant(entrada.empresaId, (tx) =>
-          tx.whatsappConversa.update({
-            where: { id: entrada.conversaId },
-            data: {
-              atendimento: 'aguardando',
-              assunto: 'Triagem automática indisponível',
-              direcionadaEm: new Date(),
-            },
-          }),
-        )
-        .catch(() => undefined);
+      await this.paraFila(
+        entrada.empresaId,
+        entrada.conversaId,
+        'Triagem automática indisponível',
+      ).catch(() => undefined);
     }
+  }
+
+  /**
+   * Tira a conversa do bot e deixa na fila, sem dono.
+   *
+   * O caminho de saída de tudo que impede a IA de atender: triagem desligada,
+   * agente sem configuração, falha do provedor. Em todos, o resultado tem de
+   * ser o mesmo — a conversa **não pode ficar em `bot`**, porque ali ela não
+   * aparece para ninguém e o cliente espera sem que exista fila.
+   *
+   * Avisa a equipe pelo mesmo caminho de um direcionamento normal: quem está
+   * trabalhando precisa saber que chegou alguém, ainda mais quando não houve
+   * triagem para explicar o assunto.
+   */
+  private async paraFila(empresaId: string, conversaId: string, motivo: string) {
+    await this.prisma.withTenant(empresaId, async (tx) => {
+      await tx.whatsappConversa.update({
+        where: { id: conversaId },
+        data: {
+          atendimento: 'aguardando',
+          assunto: motivo,
+          direcionadaEm: new Date(),
+        },
+      });
+      await this.avisarAguardando(tx, empresaId, conversaId, {
+        vendedorId: null,
+        assunto: motivo,
+      });
+    });
   }
 
   private async executar(entrada: {
@@ -120,7 +142,33 @@ export class WhatsappTriagemService {
     const contexto = await this.carregarContexto(empresaId, conversaId);
     if (!contexto) return;
 
-    const cfg = await this.agenteConfig.paraUso(empresaId);
+    // Triagem desligada em Administração > WhatsApp: a mensagem entra e vai
+    // direto para a fila, sem bot no meio. É o interruptor da empresa que não
+    // quer atendimento automático, e desligá-lo não pode deixar a conversa
+    // presa em `bot` — ali ela não aparece para ninguém.
+    if (!contexto.iaAtiva) {
+      await this.paraFila(empresaId, conversaId, 'Atendimento automático desligado');
+      return;
+    }
+
+    // O agente de IA é o mesmo da empresa (Administração > Agente IA):
+    // provedor, chave e modelo saem dali. Desligado, a triagem não tem com o
+    // que pensar — e a conversa vai para uma pessoa, com o motivo dito em vez
+    // de virar uma exceção genérica no log.
+    let cfg;
+    try {
+      cfg = await this.agenteConfig.paraUso(empresaId);
+    } catch {
+      this.logger.warn(
+        `Triagem sem agente de IA configurado na empresa ${empresaId}; conversa ${conversaId} foi para a fila.`,
+      );
+      await this.paraFila(
+        empresaId,
+        conversaId,
+        'Atendimento automático indisponível (agente de IA desativado)',
+      );
+      return;
+    }
     const ferramentas = ferramentasDaTriagem(contexto.clienteId !== null);
 
     const mensagens: MensagemChat[] = [
@@ -236,7 +284,7 @@ export class WhatsappTriagemService {
         }),
         tx.whatsappConfig.findUnique({
           where: { empresaId },
-          select: { atendimentoInformacoes: true },
+          select: { atendimentoInformacoes: true, atendimentoIaAtivo: true },
         }),
       ]);
 
@@ -257,6 +305,7 @@ export class WhatsappTriagemService {
         vendedorDaCarteiraNome: conversa.cliente?.vendedor?.nome ?? null,
         nomeEmpresa: empresa?.nomeFantasia ?? 'nossa empresa',
         informacoes: config?.atendimentoInformacoes ?? null,
+        iaAtiva: config?.atendimentoIaAtivo === true,
         presentes: await this.vendedoresPresentes(tx, empresaId),
         historico,
       };
