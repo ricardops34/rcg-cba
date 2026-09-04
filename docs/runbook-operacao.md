@@ -310,6 +310,15 @@ docker exec -e PGPASSWORD="SENHA_DA_ROLE_PLATAFORMA" <container-postgres> \
 A mesma senha vai na `WHATSAPP_STORE_DATABASE_URL` do passo 2 — trocar uma sem
 a outra derruba o worker no boot seguinte.
 
+A senha vai dentro de uma URL (`postgresql://whatsapp_store:SENHA@postgres:...`),
+então **use só letras e números**: `@`, `:`, `/`, `?`, `#` e `%` são separadores
+de URL e quebram a conexão do worker de um jeito que não parece erro de senha.
+Gerar uma sem esses caracteres:
+
+```bash
+openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 40; echo
+```
+
 A migration acima restaura o que a baseline de 28/08 perdeu ao consolidar as 73
 migrations incrementais: numa base criada do zero, o role e o schema `whatsapp`
 não existiam e o worker não subia. Base que já rodou a baseline precisa deste
