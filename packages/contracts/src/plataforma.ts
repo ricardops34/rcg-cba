@@ -177,3 +177,11 @@ export const PLATAFORMA_EMPRESA_EXAMPLE: PlataformaEmpresa = {
   ultimoAcesso: "2026-09-03T18:22:00.000Z",
   createdAt: "2026-09-03T12:00:00.000Z",
 };
+
+/** Promoção pelo e-mail — ver `promoverPorEmail` no service. */
+export const plataformaAdminPromoverSchema = z.object({
+  email: z.string().trim().email().max(120),
+});
+export type PlataformaAdminPromover = z.infer<
+  typeof plataformaAdminPromoverSchema
+>;

@@ -39,9 +39,65 @@ export interface ModuloComMenus {
  * `ROTINAS_DEPENDENTES_WHATSAPP`) somem enquanto a integração está desligada,
  * mesmo para quem tem a permissão: o item levaria a uma tela sem serventia.
  */
+/**
+ * Módulo da administração do SaaS, montado no cliente em vez de vir de
+ * `/modulos`.
+ *
+ * Não dá para ele nascer do catálogo como os outros: lá a visibilidade sai de
+ * `<rotina>.visualizar`, permissão vive em perfil, e **perfis são globais** —
+ * compartilhados por todas as empresas. Conceder a rotina ao Administrador a
+ * daria a todo administrador de tenant, que é exatamente quem este módulo
+ * precisa manter de fora. O corte aqui é o atributo `administradorPlataforma`
+ * do usuário, o mesmo que a API confere no `PlatformAdminGuard`.
+ *
+ * Isto é conveniência de navegação, não controle de acesso: quem digitar a URL
+ * à mão continua batendo no 403 da API.
+ */
+const MODULO_PLATAFORMA: ModuloComMenus = {
+  id: "plataforma",
+  nome: "Plataforma",
+  icone: "shield",
+  // Depois de Administração (1) e antes de Comercial (2), porque quem
+  // administra o SaaS entra por aqui.
+  ordem: 0,
+  disponivelTelaPequena: false,
+  menus: [
+    {
+      id: "plataforma-empresas",
+      nome: "Empresas",
+      icone: "building-2",
+      rota: "/plataforma/empresas",
+      ordem: 1,
+      disponivelTelaPequena: false,
+      rotinas: [],
+    },
+    {
+      id: "plataforma-admins",
+      nome: "Administradores",
+      icone: "user-cog",
+      rota: "/plataforma/admins",
+      ordem: 2,
+      disponivelTelaPequena: false,
+      rotinas: [],
+    },
+    {
+      id: "plataforma-auditoria",
+      nome: "Registro de alterações",
+      icone: "scroll-text",
+      rota: "/plataforma/auditoria",
+      ordem: 3,
+      disponivelTelaPequena: false,
+      rotinas: [],
+    },
+  ],
+};
+
 export function useMenu() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const permissoes = useAuthStore((s) => s.user?.permissoes);
+  const administradorPlataforma = useAuthStore(
+    (s) => s.user?.administradorPlataforma,
+  );
   const { ativo: whatsappAtivo } = useWhatsappIntegracao();
 
   const query = useQuery({
@@ -58,7 +114,7 @@ export function useMenu() {
       (whatsappAtivo === true ||
         !ROTINAS_DEPENDENTES_WHATSAPP.includes(codigo));
 
-    return query.data
+    const doCatalogo = query.data
       .map((modulo) => ({
         ...modulo,
         menus: modulo.menus
@@ -69,7 +125,13 @@ export function useMenu() {
           .filter((menu) => menu.rotinas.length > 0),
       }))
       .filter((modulo) => modulo.menus.length > 0);
-  }, [query.data, permissoes, whatsappAtivo]);
+
+    // O módulo da plataforma não passa pelo filtro de permissão acima porque
+    // não tem rotinas — ver o comentário em MODULO_PLATAFORMA.
+    return administradorPlataforma
+      ? [MODULO_PLATAFORMA, ...doCatalogo]
+      : doCatalogo;
+  }, [query.data, permissoes, whatsappAtivo, administradorPlataforma]);
 
   return { ...query, data };
 }

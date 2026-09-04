@@ -333,6 +333,27 @@ export class PlataformaService {
   }
 
   /**
+   * Promove pelo e-mail, procurando o usuário em toda a base.
+   *
+   * A alternativa era a tela buscar em `GET /usuarios` e mandar o id, mas
+   * aquela rota é do tenant: exige `usuarios.visualizar` e enxerga só a
+   * empresa da sessão. Quem administra a plataforma promove gente de qualquer
+   * empresa, e pode não ter permissão de usuários em lugar nenhum.
+   */
+  async promoverPorEmail(email: string, ator: Ator) {
+    const usuario = await this.prisma.usuario.findFirst({
+      where: { email: email.toLowerCase(), deletedAt: null },
+      select: { id: true },
+    });
+    if (!usuario) {
+      throw new NotFoundException(
+        'Nenhum usuário com este e-mail. A conta precisa existir antes de ser promovida.',
+      );
+    }
+    return this.definirAdmin(usuario.id, true, ator);
+  }
+
+  /**
    * Promove ou revoga um administrador da plataforma.
    *
    * Recusa revogar o último: sem nenhum administrador, o módulo fica

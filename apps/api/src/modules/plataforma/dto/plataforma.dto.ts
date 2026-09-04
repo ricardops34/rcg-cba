@@ -1,5 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import {
+  plataformaAdminPromoverSchema,
   plataformaAdminUpdateSchema,
   plataformaAuditoriaQuerySchema,
   plataformaEmpresaCreateSchema,
@@ -18,6 +19,9 @@ export class PlataformaSituacaoUpdateDto extends createZodDto(
 ) {}
 export class PlataformaAdminUpdateDto extends createZodDto(
   plataformaAdminUpdateSchema,
+) {}
+export class PlataformaAdminPromoverDto extends createZodDto(
+  plataformaAdminPromoverSchema,
 ) {}
 export class PlataformaAuditoriaQueryDto extends createZodDto(
   plataformaAuditoriaQuerySchema,

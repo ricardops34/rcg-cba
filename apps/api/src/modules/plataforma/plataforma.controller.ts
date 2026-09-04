@@ -18,6 +18,7 @@ import {
 import { PLATAFORMA_EMPRESA_EXAMPLE } from '@plataforma/contracts';
 import { PlataformaService } from './plataforma.service';
 import {
+  PlataformaAdminPromoverDto,
   PlataformaAdminUpdateDto,
   PlataformaAuditoriaQueryDto,
   PlataformaEmpresaCreateDto,
@@ -119,6 +120,23 @@ export class PlataformaController {
   @Get('admins')
   listarAdmins() {
     return this.service.listarAdmins();
+  }
+
+  @ApiOperation({
+    summary: 'Promover administrador da plataforma pelo e-mail',
+    description:
+      'Procura o usuário em toda a base — a rota /usuarios é do tenant e só ' +
+      'enxerga a empresa da sessão, o que não serve a quem administra o SaaS. ' +
+      'A conta precisa existir.',
+  })
+  @ApiResponse({ status: 201, description: 'Usuário promovido' })
+  @ApiResponse({ status: 404, description: 'Nenhum usuário com este e-mail' })
+  @Post('admins')
+  promoverPorEmail(
+    @Body() dto: PlataformaAdminPromoverDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.promoverPorEmail(dto.email, this.ator(user));
   }
 
   @ApiOperation({
