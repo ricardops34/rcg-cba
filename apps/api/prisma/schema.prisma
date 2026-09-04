@@ -36,6 +36,14 @@ model Empresa {
   // empresas, e quem consome a licença é o vínculo.
   limiteUsuarios Int?
 
+  /// Fuso em que a empresa opera, no formato IANA (ex.: America/Campo_Grande).
+  ///
+  /// Era uma constante no código, e isso só funcionava porque havia uma
+  /// empresa. Com várias, "18:00" não quer dizer o mesmo instante em Campo
+  /// Grande e em Belém — e o atendimento fecharia na hora errada para quem
+  /// estivesse fora do fuso do servidor.
+  fusoHorario String @default("America/Campo_Grande")
+
   // Faixa institucional no topo do sistema (associação, certificação, grupo).
   // Era fixa no código — magenta e a imagem da allia, iguais para todo mundo,
   // na tela de login e dentro do sistema. Virou configuração por empresa
@@ -126,6 +134,8 @@ model Empresa {
   portalClientePermissoes    PortalClientePerfilPermissao[]
   portalClienteHabilitacoes  PortalClienteHabilitacao[]
   clienteContatos            ClienteContato[]
+  empresaHorarioAtendimentos EmpresaHorarioAtendimento[]
+  feriados                   Feriado[]
 
   @@map("empresas")
 }
@@ -3154,4 +3164,74 @@ model ComunicadoPerfil {
   @@id([comunicadoId, perfilId])
   @@index([empresaId, perfilId])
   @@map("comunicado_perfis")
+}
+
+/// Horário em que a **empresa** atende, por dia da semana.
+///
+/// Não confundir com `UsuarioHorario`, que é o expediente de uma pessoa e serve
+/// para barrar login fora de hora. Este aqui é o horário comercial da empresa:
+/// é o que decide se o WhatsApp institucional responde "já te atendo" ou "seu
+/// retorno é na terça", e o que a triagem usa para marcar retorno.
+///
+/// Um dia pode ter mais de uma faixa (manhã e tarde, com intervalo de almoço).
+model EmpresaHorarioAtendimento {
+  id        String @id @default(uuid())
+  empresaId String
+
+  /// 0 = domingo … 6 = sábado.
+  diaSemana  Int
+  /// "HH:MM", no fuso da empresa.
+  horaInicio String
+  horaFim    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@unique([empresaId, diaSemana, horaInicio])
+  @@index([empresaId, diaSemana])
+  @@map("empresa_horarios_atendimento")
+}
+
+/// Dia em que a empresa não atende.
+///
+/// Guardado como data cheia, e não como dia/mês, mesmo para os fixos: feriado
+/// móvel (Carnaval, Sexta-feira Santa, Corpus Christi) não tem dia fixo, e
+/// misturar dois formatos na mesma tabela obrigaria toda consulta a tratar os
+/// dois casos. O sistema gera os do ano; quem quiser acrescenta os locais.
+model Feriado {
+  id        String @id @default(uuid())
+  empresaId String
+
+  data DateTime @db.Date
+  nome String
+
+  /// De onde veio, e é o que autoriza o sistema a regerar sem apagar o que
+  /// alguém cadastrou à mão.
+  origem OrigemFeriado @default(manual)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@unique([empresaId, data])
+  @@index([empresaId, data])
+  @@map("feriados")
+}
+
+/// Quem cadastrou o feriado.
+enum OrigemFeriado {
+  /// Data fixa no calendário nacional (Natal, Tiradentes…). Gerado pelo sistema.
+  nacional_fixo
+  /// Depende da Páscoa (Carnaval, Sexta-feira Santa, Corpus Christi). Calculado.
+  nacional_movel
+  /// Cadastrado por alguém da empresa: feriado municipal, aniversário da
+  /// cidade, ponto facultativo que a empresa decidiu emendar.
+  manual
 }
