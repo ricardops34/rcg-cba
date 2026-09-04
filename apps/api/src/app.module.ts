@@ -11,6 +11,7 @@ import { MailModule } from './common/mail/mail.module';
 import { ExternalHttpModule } from './common/external-http/external-http.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { EmpresasModule } from './modules/empresas/empresas.module';
+import { PlataformaModule } from './modules/plataforma/plataforma.module';
 import { UsuariosModule } from './modules/usuarios/usuarios.module';
 import { PerfisModule } from './modules/perfis/perfis.module';
 import { EstruturaModule } from './modules/estrutura/estrutura.module';
@@ -69,6 +70,7 @@ import { validarSegredosDoAmbiente } from './common/config/validar-segredos';
     AcessosModule,
     AuthModule,
     EmpresasModule,
+    PlataformaModule,
     UsuariosModule,
     PerfisModule,
     EstruturaModule,

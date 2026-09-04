@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { garantirVagaDeUsuario } from '../../common/empresa/limite-usuarios';
 import { PoliticaSenhaService } from '../politica-senha/politica-senha.service';
 import {
   buildPaginatedResult,
@@ -168,6 +169,9 @@ export class UsuariosService {
 
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${empresaId}, true)`;
+      // Dentro da transação de propósito: conferir a vaga fora dela deixaria
+      // dois cadastros simultâneos passarem pelo mesmo último lugar.
+      await garantirVagaDeUsuario(tx, empresaId);
       const usuario = await tx.usuario.create({
         data: {
           nome: input.nome,
@@ -278,8 +282,18 @@ export class UsuariosService {
     input: UsuarioEmpresaCreate,
     actorId: string,
   ) {
-    return this.prisma.withTenant(empresaId, (tx) =>
-      tx.usuarioEmpresa.upsert({
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      // Só o vínculo novo consome vaga; a edição de um que já existe, não —
+      // daí o `ignorarUsuarioId`, que tira a própria linha da contagem.
+      const jaVinculado = await tx.usuarioEmpresa.findUnique({
+        where: { usuarioId_empresaId: { usuarioId, empresaId } },
+        select: { ativo: true },
+      });
+      if (!jaVinculado || !jaVinculado.ativo) {
+        await garantirVagaDeUsuario(tx, empresaId, usuarioId);
+      }
+
+      return tx.usuarioEmpresa.upsert({
         where: { usuarioId_empresaId: { usuarioId, empresaId } },
         create: {
           usuarioId,
@@ -305,8 +319,8 @@ export class UsuariosService {
           ativo: true,
           updatedBy: actorId,
         },
-      }),
-    );
+      });
+    });
   }
 
   /** Expediente cadastrado do usuário (ver UsuarioHorario). */
