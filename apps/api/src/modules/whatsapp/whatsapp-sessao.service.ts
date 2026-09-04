@@ -390,7 +390,7 @@ export class WhatsappSessaoService {
         include: { vendedor: { select: { nome: true } } },
         orderBy: { updatedAt: 'desc' },
       });
-      return sessoes.map((s) => this.paraLeitura(s, s.vendedor.nome));
+      return sessoes.map((s) => this.paraLeitura(s, s.vendedor?.nome ?? 'Empresa'));
     });
   }
 
@@ -441,7 +441,7 @@ export class WhatsappSessaoService {
         },
       }),
     );
-    return this.paraLeitura(atualizada, sessao.vendedor.nome);
+    return this.paraLeitura(atualizada, sessao.vendedor?.nome ?? 'Empresa');
   }
 
   /**
@@ -486,7 +486,7 @@ export class WhatsappSessaoService {
         },
       }),
     );
-    return this.paraLeitura(atualizada, sessao.vendedor.nome);
+    return this.paraLeitura(atualizada, sessao.vendedor?.nome ?? 'Empresa');
   }
 
   /**
@@ -522,7 +522,7 @@ export class WhatsappSessaoService {
         select: { id: true },
       });
       if (conversas.length === 0) {
-        return { conversas: 0, mensagens: 0, vendedor: sessao.vendedor.nome };
+        return { conversas: 0, mensagens: 0, vendedor: sessao.vendedor?.nome ?? "Empresa" };
       }
       const ids = conversas.map((c) => c.id);
 
@@ -544,7 +544,7 @@ export class WhatsappSessaoService {
       return {
         conversas: conversas.length,
         mensagens,
-        vendedor: sessao.vendedor.nome,
+        vendedor: sessao.vendedor?.nome ?? 'Empresa',
       };
     });
   }
@@ -603,7 +603,7 @@ export class WhatsappSessaoService {
     await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappSessao.delete({ where: { id: sessao.id } }),
     );
-    return { excluida: true, vendedor: sessao.vendedor.nome, por: user.id };
+    return { excluida: true, vendedor: sessao.vendedor?.nome ?? "Empresa", por: user.id };
   }
 
   /**
@@ -667,7 +667,7 @@ export class WhatsappSessaoService {
       dias: config.historicoDias,
       encontradas: resultado.encontradas,
       conversas: resultado.conversas,
-      vendedor: sessao.vendedor.nome,
+      vendedor: sessao.vendedor?.nome ?? "Empresa",
     };
   }
 
@@ -676,7 +676,8 @@ export class WhatsappSessaoService {
     sessao: {
       id: string;
       empresaId: string;
-      vendedorId: string;
+      vendedorId: string | null;
+      tipo?: string;
       numero: string | null;
       status: string;
       transporte: string;

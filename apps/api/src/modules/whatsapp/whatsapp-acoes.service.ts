@@ -75,13 +75,28 @@ export class WhatsappAcoesService {
     const cliente = await this.prisma.withTenant(empresaId, (tx) =>
       tx.cliente.findFirst({
         where: { id: conversa.clienteId as string, empresaId },
-        select: { razaoSocial: true },
+        select: { razaoSocial: true, vendedorId: true },
       }),
     );
+
+    // De quem é a ação, quando ela precisa de um vendedor (a visita agendada
+    // vira atividade dele).
+    //
+    // No aparelho do vendedor a resposta é imediata: a sessão é dele. No número
+    // institucional não há dono, e a pergunta passa a ter ordem: quem assumiu a
+    // conversa, e na falta dele o vendedor da carteira do cliente. Se nem isso
+    // existir, a ação não tem a quem pertencer — e atribuí-la a alguém
+    // arbitrário criaria tarefa na agenda de quem não a combinou.
+    const vendedorId =
+      conversa.sessao.vendedorId ??
+      conversa.atendenteVendedorId ??
+      cliente?.vendedorId ??
+      null;
+
     return {
       clienteId: conversa.clienteId,
       clienteNome: cliente?.razaoSocial ?? 'cliente',
-      vendedorId: conversa.sessao.vendedorId,
+      vendedorId,
     };
   }
 
@@ -689,6 +704,13 @@ export class WhatsappAcoesService {
       user,
       conversaId,
     );
+
+    if (!vendedorId) {
+      throw new BadRequestException(
+        'Esta conversa ainda não tem vendedor responsável. Assuma o atendimento ' +
+          'ou vincule o cliente a um vendedor antes de agendar.',
+      );
+    }
 
     const atividade = await this.atividades.create(empresaId, user, {
       tipo: input.tipo,

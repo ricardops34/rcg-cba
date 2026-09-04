@@ -30,7 +30,14 @@ export interface AtendimentoParaAtividade {
   /** Usuário que atendeu. Nulo quando a mensagem chegou pelo worker. */
   autor: string | null;
   clienteId: string | null;
-  vendedorId: string;
+  /**
+   * Vendedor a quem o atendimento pertence.
+   *
+   * Nulo quando a conversa é do número institucional e ainda não foi
+   * direcionada — a triagem por IA não é atendimento de ninguém, e registrá-la
+   * na agenda de um vendedor arbitrário inventaria trabalho que ele não fez.
+   */
+  vendedorId: string | null;
   /** Quando a mensagem aconteceu — decide a qual dia o registro pertence. */
   quando: Date;
 }
@@ -41,6 +48,8 @@ export async function registrarAtendimentoWhatsapp(
 ): Promise<boolean> {
   const { empresaId, autor, clienteId, vendedorId } = atendimento;
   if (!clienteId) return false;
+  // Sem vendedor não há em cuja agenda registrar — ver o comentário do campo.
+  if (!vendedorId) return false;
 
   const inicio = new Date(atendimento.quando);
   inicio.setHours(0, 0, 0, 0);

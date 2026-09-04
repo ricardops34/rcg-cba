@@ -29,7 +29,13 @@ import type { WhatsappTransporte } from '@plataforma/contracts';
 export interface ContextoSessao {
   empresaId: string;
   sessaoId: string;
-  vendedorId: string;
+  /**
+   * Nulo na sessão institucional, que não pertence a vendedor nenhum. Quem lê
+   * este campo para atribuir autoria precisa tratar o nulo — no número da
+   * empresa, o autor de uma mensagem de saída é quem a enviou, não o dono do
+   * aparelho, porque não há dono.
+   */
+  vendedorId: string | null;
   /**
    * O transporte da **sessão**, não o da empresa.
    *

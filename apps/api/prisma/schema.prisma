@@ -2544,6 +2544,29 @@ enum WhatsappTransporte {
   cloud_api
 }
 
+/// Que papel um número cumpre na empresa.
+enum WhatsappSessaoTipo {
+  /// Aparelho de uma pessoa. É o que sempre existiu.
+  vendedor
+  /// Número institucional: porta de entrada, atendida pela IA antes de chegar
+  /// a alguém. Um por empresa.
+  empresa
+}
+
+/// Em que ponto do atendimento uma conversa do número institucional está.
+enum WhatsappAtendimentoStatus {
+  /// A IA está atendendo. Não aparece para vendedor nenhum.
+  bot
+  /// A IA já direcionou, mas ninguém abriu ainda. Aparece para o vendedor
+  /// escolhido.
+  aguardando
+  /// Alguém assumiu e está conduzindo.
+  humano
+  /// Encerrada. Mensagem nova do cliente devolve para `bot`, porque é um
+  /// assunto novo e a triagem recomeça.
+  encerrada
+}
+
 enum WhatsappSessaoStatus {
   desconectada
   pareando
@@ -2597,9 +2620,22 @@ enum WhatsappTipoContato {
  * acontece no pareamento, que é Fatia 1.
  */
 model WhatsappSessao {
-  id         String @id @default(uuid())
-  empresaId  String
-  vendedorId String
+  id        String @id @default(uuid())
+  empresaId String
+
+  /// Que papel este número cumpre.
+  ///
+  /// `vendedor` é o aparelho de uma pessoa, como sempre foi. `empresa` é o
+  /// número institucional: a porta de entrada, atendida primeiro pela IA e só
+  /// depois direcionada a alguém. Os dois convivem — o cliente que já fala com
+  /// o vendedor dele continua falando.
+  tipo WhatsappSessaoTipo @default(vendedor)
+
+  /// Nulo na sessão da empresa: ela não pertence a vendedor nenhum. A unicidade
+  /// de "uma sessão institucional por empresa" é um índice parcial, criado na
+  /// migration — o `@@unique` abaixo não a cobre, porque no Postgres vários
+  /// NULL não colidem entre si.
+  vendedorId String?
 
   numero     String?
   jid        String?
@@ -2634,7 +2670,7 @@ model WhatsappSessao {
   updatedBy String?
 
   empresa   Empresa            @relation(fields: [empresaId], references: [id])
-  vendedor  Vendedor           @relation(fields: [vendedorId], references: [id])
+  vendedor  Vendedor?          @relation(fields: [vendedorId], references: [id])
   conversas WhatsappConversa[]
 
   @@unique([empresaId, vendedorId])
@@ -2696,6 +2732,26 @@ model WhatsappConversa {
   ultimaMensagemEm DateTime?
   naoLidas         Int       @default(0)
   arquivada        Boolean   @default(false)
+
+  /// Em que ponto do atendimento esta conversa está.
+  ///
+  /// Só a conversa do número institucional passa por aqui. A do aparelho do
+  /// vendedor nasce e morre em `humano`: ela já é dele.
+  atendimento WhatsappAtendimentoStatus @default(humano)
+
+  /// Vendedor para quem a IA direcionou, ou que assumiu a conversa.
+  ///
+  /// Enquanto é nulo e o status é `bot` ou `aguardando`, a conversa **não
+  /// aparece na tela de Atendimento de ninguém** — é isso que impede o número
+  /// institucional de encher a caixa de todo mundo com triagem em andamento.
+  atendenteVendedorId String?
+
+  /// O que a IA entendeu que a pessoa quer, em uma linha. Serve para quem
+  /// recebe o direcionamento chegar sabendo do que se trata.
+  assunto String?
+
+  /// Quando saiu da IA para uma pessoa. Nulo enquanto o bot atende.
+  direcionadaEm DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2910,6 +2966,35 @@ model WhatsappConfig {
   // 0 = sem expurgo. A rotina que apaga é da Fatia 3 (governança); a decisão
   // de por quanto tempo guardar é da empresa e nasce aqui.
   retencaoDias Int @default(0)
+
+  // ---------------------------------------------------------------
+  // Atendimento pela IA no número institucional
+  // ---------------------------------------------------------------
+
+  /// Liga a triagem por IA no número da empresa. Desligada, o institucional se
+  /// comporta como qualquer outro número: a mensagem entra e fica aguardando
+  /// alguém — sem bot no meio.
+  atendimentoIaAtivo Boolean @default(false)
+
+  /// Primeira fala do atendimento, escrita pela empresa. Não vai ao modelo: é
+  /// o texto que a empresa quer que o cliente leia, e deixar o modelo compor a
+  /// saudação faz a mesma empresa soar diferente a cada conversa.
+  atendimentoSaudacao String? @db.Text
+
+  /// O que a IA pode responder sobre a empresa — horário, endereço, formas de
+  /// pagamento, prazos. Vai no prompt como contexto.
+  ///
+  /// Vazio não é problema: sem isto a IA identifica e direciona, que é o
+  /// mínimo. O que ela **não** faz é inventar — o prompt manda dizer que vai
+  /// verificar com alguém.
+  atendimentoInformacoes String? @db.Text
+
+  /// Minutos de silêncio do cliente antes de a conversa em `bot` ser
+  /// encerrada. 0 desliga o encerramento automático.
+  ///
+  /// Existe porque conversa parada no meio da triagem não chega a ninguém: ela
+  /// não está com a IA nem com uma pessoa, e some da vista de todos.
+  atendimentoInatividadeMin Int @default(30)
 
   // Quantos dias de histórico do celular importar quando a instância conecta.
   // 0 = nenhum, só o que chega ao vivo — é o padrão, porque puxar conversa

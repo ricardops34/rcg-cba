@@ -224,8 +224,9 @@ export type WhatsappIntegracao = z.infer<typeof whatsappIntegracaoSchema>;
 export const whatsappSessaoSchema = z.object({
   id: z.string().uuid(),
   empresaId: z.string().uuid(),
-  vendedorId: z.string().uuid(),
-  vendedorNome: z.string().describe("Desnormalizado para a tela da equipe"),
+  /** Nulo na sessão institucional: ela não pertence a vendedor nenhum. */
+  vendedorId: z.string().uuid().nullable(),
+  vendedorNome: z.string().describe("Desnormalizado para a tela da equipe; 'Empresa' na institucional"),
   numero: z.string().nullable().describe("Número conectado, quando pareado"),
   status: whatsappSessaoStatusSchema,
   transporte: whatsappTransporteSchema,

@@ -222,7 +222,7 @@ export class WhatsappConversasService {
           naoLidas: c.naoLidas,
           arquivada: c.arquivada,
           vendedorId: c.sessao.vendedorId,
-          vendedorNome: c.sessao.vendedor.nome,
+          vendedorNome: c.sessao.vendedor?.nome ?? "Empresa",
           sessaoNumero: c.sessao.numero,
           diasSemComprar: c.clienteId
             ? (sinais.diasSemComprar.get(c.clienteId) ?? null)
@@ -343,7 +343,7 @@ export class WhatsappConversasService {
             outra.contatoId === conversa.contatoId &&
             outra.sessaoId !== conversa.sessaoId,
         )
-        .map((outra) => outra.sessao.vendedor.nome);
+        .map((outra) => outra.sessao.vendedor?.nome ?? "Empresa");
       if (nomes.length) porConversa.set(conversa.id, [...new Set(nomes)]);
     }
     return porConversa;
@@ -1081,13 +1081,30 @@ export class WhatsappConversasService {
     tx: TenantTx,
     empresaId: string,
     user: AuthenticatedUser,
-    conversa: { sessao: { vendedorId: string } },
+    conversa: {
+      sessao: { vendedorId: string | null };
+      atendenteVendedorId?: string | null;
+    },
   ) {
     const vendedor = await tx.vendedor.findFirst({
       where: { usuarioId: user.id, empresaId, deletedAt: null },
       select: { id: true },
     });
-    return !!vendedor && vendedor.id === conversa.sessao.vendedorId;
+    if (!vendedor) return false;
+
+    // No aparelho do vendedor, dono é o dono da sessão — como sempre foi.
+    if (conversa.sessao.vendedorId) {
+      return vendedor.id === conversa.sessao.vendedorId;
+    }
+
+    // No número institucional não há dono de aparelho: quem fala é quem
+    // assumiu a conversa. Enquanto ninguém assumiu (`atendenteVendedorId`
+    // nulo), ninguém responde por ela — a triagem é da IA, e deixar qualquer
+    // vendedor escrever ali faria dois atendentes falarem por cima um do outro.
+    return (
+      !!conversa.atendenteVendedorId &&
+      vendedor.id === conversa.atendenteVendedorId
+    );
   }
 
   /** Só o dono da sessão fala pelo aparelho — o supervisor lê, não responde. */
@@ -1095,11 +1112,16 @@ export class WhatsappConversasService {
     tx: TenantTx,
     empresaId: string,
     user: AuthenticatedUser,
-    conversa: { sessao: { vendedorId: string; status: string } },
+    conversa: {
+      sessao: { vendedorId: string | null; status: string };
+      atendenteVendedorId?: string | null;
+    },
   ) {
     if (!(await this.ehDono(tx, empresaId, user, conversa))) {
       throw new ForbiddenException(
-        'Só o vendedor dono da sessão pode responder por ela.',
+        conversa.sessao.vendedorId
+          ? 'Só o vendedor dono da sessão pode responder por ela.'
+          : 'Assuma o atendimento antes de responder por esta conversa.',
       );
     }
     if (conversa.sessao.status !== 'conectada') {
@@ -1758,7 +1780,13 @@ export class WhatsappConversasService {
   private async casarCliente(
     tx: TenantTx,
     empresaId: string,
-    vendedorId: string,
+    /**
+     * Carteira em que procurar. Nulo no número institucional, que atende
+     * qualquer cliente da empresa — ali o recorte por vendedor não existe, e
+     * aplicá-lo faria a triagem não reconhecer justamente quem ligou para o
+     * número geral porque não sabe com quem falar.
+     */
+    vendedorId: string | null,
     telefone: string,
   ): Promise<string | null> {
     if (telefone.length < 8) return null;
@@ -1768,7 +1796,7 @@ export class WhatsappConversasService {
     const candidatos = await tx.$queryRaw<{ id: string }[]>`
       SELECT id FROM clientes
       WHERE "empresaId" = ${empresaId}
-        AND "vendedorId" = ${vendedorId}
+        AND (${vendedorId}::text IS NULL OR "vendedorId" = ${vendedorId})
         AND "deletedAt" IS NULL
         AND (
           right(regexp_replace(coalesce(telefone,  ''), '\D', '', 'g'), 8) = ${sufixo} OR
@@ -1776,6 +1804,9 @@ export class WhatsappConversasService {
           right(regexp_replace(coalesce(celular,   ''), '\D', '', 'g'), 8) = ${sufixo}
         )
       LIMIT 2`;
+    // Ambiguidade não adivinha, e no institucional isso pesa mais: dois
+    // clientes com o mesmo telefone na base inteira deixam o vínculo em
+    // branco, e a triagem pergunta em vez de supor.
     return candidatos.length === 1 ? candidatos[0].id : null;
   }
 
