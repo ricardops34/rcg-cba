@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -20,10 +21,12 @@ import { Throttle } from '@nestjs/throttler';
 import {
   INTEGRACAO_ESTOQUE_CREATE_EXAMPLE,
   INTEGRACAO_ESTOQUE_EXAMPLE,
+  INTEGRACAO_LOTE_RESULTADO_EXAMPLE,
 } from '@plataforma/contracts';
 import { IntegracaoEstoqueService } from './integracao-estoque.service';
 import {
   IntegracaoEstoqueCreateDto,
+  IntegracaoEstoqueLoteDto,
   IntegracaoEstoqueQueryDto,
   IntegracaoEstoqueUpdateDto,
 } from './dto/integracao-estoque.dto';
@@ -82,6 +85,35 @@ export class IntegracaoEstoqueController {
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
     return this.service.create(integracao.empresaId, integracao.apiKeyId, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Enviar lote de estoque',
+    description:
+      'Upsert em lote por codigoErp (máx. 1.000 por chamada). Um registro com ' +
+      '"excluido": true é excluído (soft delete) e dispensa os demais campos. ' +
+      'Responde 200 com o relatório: um item inválido não desfaz os que já ' +
+      'passaram, e vem listado em "erros" com o índice no array enviado.',
+  })
+  @ApiBodyExample({ registros: [INTEGRACAO_ESTOQUE_CREATE_EXAMPLE] })
+  @ApiResponse({
+    status: 200,
+    schema: { example: INTEGRACAO_LOTE_RESULTADO_EXAMPLE },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Lote vazio ou acima de 1.000 registros',
+  })
+  @Put()
+  upsertLote(
+    @Body() dto: IntegracaoEstoqueLoteDto,
+    @CurrentIntegracao() integracao: IntegracaoContext,
+  ) {
+    return this.service.upsertLote(
+      integracao.empresaId,
+      integracao.apiKeyId,
+      dto.registros,
+    );
   }
 
   @ApiOperation({

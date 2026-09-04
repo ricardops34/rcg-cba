@@ -1,6 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import {
   integracaoOrcamentoCreateSchema,
+  integracaoOrcamentoLoteSchema,
   integracaoOrcamentoQuerySchema,
   integracaoOrcamentoUpdateSchema,
   integracaoOrcamentoVincularSchema,
@@ -17,4 +18,8 @@ export class IntegracaoOrcamentoQueryDto extends createZodDto(
 ) {}
 export class IntegracaoOrcamentoVincularDto extends createZodDto(
   integracaoOrcamentoVincularSchema,
+) {}
+
+export class IntegracaoOrcamentoLoteDto extends createZodDto(
+  integracaoOrcamentoLoteSchema,
 ) {}

@@ -1,6 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import {
   integracaoTabelaPrecoCreateSchema,
+  integracaoTabelaPrecoLoteSchema,
   integracaoTabelaPrecoQuerySchema,
   integracaoTabelaPrecoUpdateSchema,
 } from '@plataforma/contracts';
@@ -13,4 +14,8 @@ export class IntegracaoTabelaPrecoUpdateDto extends createZodDto(
 ) {}
 export class IntegracaoTabelaPrecoQueryDto extends createZodDto(
   integracaoTabelaPrecoQuerySchema,
+) {}
+
+export class IntegracaoTabelaPrecoLoteDto extends createZodDto(
+  integracaoTabelaPrecoLoteSchema,
 ) {}

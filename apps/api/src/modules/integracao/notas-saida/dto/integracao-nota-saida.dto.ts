@@ -2,6 +2,7 @@ import { createZodDto } from 'nestjs-zod';
 import {
   integracaoNfeXmlSchema,
   integracaoNotaSaidaCreateSchema,
+  integracaoNotaSaidaLoteSchema,
   integracaoNotaSaidaQuerySchema,
   integracaoNotaSaidaUpdateSchema,
 } from '@plataforma/contracts';
@@ -18,3 +19,7 @@ export class IntegracaoNotaSaidaQueryDto extends createZodDto(
 
 /** XML autorizado da NF-e — insumo da 2ª via do DANFE. */
 export class IntegracaoNfeXmlDto extends createZodDto(integracaoNfeXmlSchema) {}
+
+export class IntegracaoNotaSaidaLoteDto extends createZodDto(
+  integracaoNotaSaidaLoteSchema,
+) {}

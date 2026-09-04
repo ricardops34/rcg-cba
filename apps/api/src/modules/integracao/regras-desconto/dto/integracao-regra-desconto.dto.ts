@@ -1,6 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import {
   integracaoRegraDescontoCreateSchema,
+  integracaoRegraDescontoLoteSchema,
   integracaoRegraDescontoQuerySchema,
   integracaoRegraDescontoUpdateSchema,
 } from '@plataforma/contracts';
@@ -13,4 +14,8 @@ export class IntegracaoRegraDescontoUpdateDto extends createZodDto(
 ) {}
 export class IntegracaoRegraDescontoQueryDto extends createZodDto(
   integracaoRegraDescontoQuerySchema,
+) {}
+
+export class IntegracaoRegraDescontoLoteDto extends createZodDto(
+  integracaoRegraDescontoLoteSchema,
 ) {}

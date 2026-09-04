@@ -1,10 +1,11 @@
 # API de Integração ERP — recebimento contínuo de dados do legado
 
 > **Plano histórico, registrado em 2026-07-24 — não é a documentação da API.**
-> A integração foi implementada, mas com desenho diferente do descrito aqui: REST
+> A integração foi implementada com desenho diferente do descrito aqui: REST
 > por recurso (`GET/POST/PATCH/DELETE /integracao/<entidade>/{codigo}`), um
-> registro por chamada, em vez do `PUT` em lote com relatório por item que este
-> plano propunha. Este arquivo fica como registro das decisões e do contexto.
+> registro por chamada. O `PUT` em lote com relatório por item que esta página
+> propunha foi acrescentado depois, em 2026-09-03, e hoje convive com o CRUD
+> individual — ver "Implementado em 2026-09-03" mais abaixo.
 >
 > **A documentação vigente está em [`../integração/`](../integração/README.md)**
 > (conceitos, referência de endpoints e guia do Swagger).
@@ -324,20 +325,46 @@ Verificado contra a API em execução: criar → excluir → reenviar devolve 20
 o mesmo `id` e `createdAt`, dados atualizados; e o 409 do registro ativo segue
 de pé.
 
+### Implementado em 2026-09-03 — lote, idempotência e exclusão no registro
+
+As pendências 1, 2 e 3 abaixo saíram juntas, porque eram a mesma peça vista de
+três ângulos: `PUT /integracao/<entidade>` com `{ registros: [...] }`, até
+1.000 por chamada, e `"excluido": true` no próprio registro.
+
+Medido em dev com 1.000 categorias: **6,9 ms por registro**, 1.000 em 6,9 s. A
+carga inicial de 119.439 registros cai de **~33 h para ~14 min** em 120
+chamadas. O reenvio do mesmo lote devolve `atualizados: 1000` — idempotente,
+sem o 409 que obrigava o ERP a saber o estado antes de escolher o verbo.
+
+Duas decisões de desenho que valem registro:
+
+- **O lote não é tudo-ou-nada.** Cada registro roda na própria transação e o
+  relatório aponta o índice do que falhou. Numa carga de 1.000 notas, um item
+  com `vendedorCodigo` inexistente não pode obrigar a reenviar os outros 999.
+- **Sequencial, na ordem recebida.** Paralelizar quebraria a dependência dentro
+  do próprio lote (categoria pai antes da filha) e criaria deadlock quando a
+  mesma chave aparece duas vezes no mesmo envio, que é comum em
+  ressincronização. O ganho já vem de eliminar 119 mil requisições HTTP, não de
+  concorrência no banco.
+
+Nenhuma regra de negócio foi reescrita: o lote chama o mesmo `upsert` e o mesmo
+`remove` do REST individual, então resolução de referência por código, RLS,
+fila de aprovação de cliente e auditoria `integracao:<apiKeyId>` são os mesmos.
+Verificado contra a API em execução (11 cenários, incluindo lote misto, erro
+parcial, reativação, teto de 1.000 e 401 sem chave); dados de teste apagados
+depois.
+
+Segue pendente do plano original: **relatório por item no `GET`** não existe —
+o relatório é a resposta da própria chamada, não fica gravado.
+
 ### Pendências conhecidas (não implementadas)
 
-1. **Upsert em lote.** É a decisão nº 2 desta página e nunca foi feita. Custo
-   medido na base real: 119.439 registros (67.151 notas, 37.682 títulos, 7.980
-   produtos, 6.626 clientes) a 60 req/min = **~33 horas** de carga, mais ~9,3 h
-   dos XMLs de NF-e. Com lotes de 1.000, seriam ~120 chamadas. No fluxo diário
-   (~470 notas/mês) o CRUD individual dá conta; o problema é carga inicial e
-   ressincronização.
-2. **Idempotência.** `POST` → 409 se existe, `PATCH` → 404 se não existe: o ERP
-   precisa saber o estado antes de escolher o verbo. O `PUT` do plano existia
-   para isso — mesmo payload, mesmo resultado, quantas vezes for. (A reativação
-   corrigida acima remove a pior consequência disso, mas não a assimetria.)
-3. **Flag `excluido: true`** no próprio registro: hoje a exclusão é um `DELETE`
-   à parte, o que impede excluir dentro de um lote.
+1. ~~**Upsert em lote.**~~ Feito em 2026-09-03, ver acima.
+2. ~~**Idempotência.**~~ Resolvida pelo `PUT` em lote. O `POST` individual
+   segue como está (já era upsert desde 2026-08-24); a assimetria some para
+   quem usa o lote.
+3. ~~**Flag `excluido: true`**~~ no próprio registro: existe no lote. O
+   `DELETE` individual continua para quem trabalha registro a registro.
 4. **Coleções filhas de cliente** (CNAEs, contatos, sócios): fora, por
    dependerem de models que ainda não existem.
 5. **Throttle fixo** em 60 req/min no código; esta página previa ajustável por

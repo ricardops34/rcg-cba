@@ -18,12 +18,16 @@ import type {
   IntegracaoClienteQuery,
   IntegracaoClienteUpdate,
   IntegracaoClienteUpdateResultado,
+  IntegracaoClienteLoteItem,
+  IntegracaoLoteResultado,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
 import {
   camposDaDecisao,
   decidirUpsert,
+  type DecisaoUpsert,
 } from '../common/decidir-upsert';
+import { processarLote } from '../common/processar-lote';
 import { ClienteAlteracoesService } from '../../clientes/cliente-alteracoes.service';
 
 const INCLUDE = {
@@ -142,6 +146,23 @@ export class IntegracaoClientesService {
     apiKeyId: string,
     input: IntegracaoClienteCreate,
   ): Promise<IntegracaoCliente> {
+    const { registro } = await this.upsert(empresaId, apiKeyId, input);
+    return registro;
+  }
+
+  /**
+   * O mesmo upsert do `create`, devolvendo também **o que aconteceu**.
+   *
+   * Só o lote precisa dessa informação — é o que separa `criados` de
+   * `atualizados` no relatório. O `create` continua devolvendo apenas o
+   * registro, porque o REST individual responde a entidade e a decisão não
+   * cabe no corpo dela.
+   */
+  async upsert(
+    empresaId: string,
+    apiKeyId: string,
+    input: IntegracaoClienteCreate,
+  ): Promise<{ registro: IntegracaoCliente; decisao: DecisaoUpsert }> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.cliente.findFirst({
@@ -216,14 +237,41 @@ export class IntegracaoClientesService {
           data: { ...dados, ...camposDaDecisao(decisao) },
           include: INCLUDE,
         });
-        return this.paraLeitura(atualizadoUpsert);
+        return { registro: this.paraLeitura(atualizadoUpsert), decisao };
       }
 
       const criado = await tx.cliente.create({
         data: { ...dados, empresaId, createdBy: autor },
         include: INCLUDE,
       });
-      return this.paraLeitura(criado);
+      return { registro: this.paraLeitura(criado), decisao };
+    });
+  }
+
+  /**
+   * Aplica um lote. Ver `processarLote` para a ordem e o tratamento de erro;
+   * aqui fica só o que é da entidade.
+   *
+   * A reativação conta como `atualizado`: a linha já existia e mantém o mesmo
+   * uuid — quem lê o relatório está conferindo quantos registros novos
+   * entraram, e um código que volta do soft delete não é um deles.
+   */
+  upsertLote(
+    empresaId: string,
+    apiKeyId: string,
+    registros: IntegracaoClienteLoteItem[],
+  ): Promise<IntegracaoLoteResultado> {
+    return processarLote(registros, async (item) => {
+      if (item.excluido) {
+        await this.remove(empresaId, apiKeyId, item.codigoErp);
+        return 'excluido';
+      }
+      const { decisao } = await this.upsert(
+        empresaId,
+        apiKeyId,
+        item as IntegracaoClienteCreate,
+      );
+      return decisao === 'criar' ? 'criado' : 'atualizado';
     });
   }
 

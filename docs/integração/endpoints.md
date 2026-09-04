@@ -17,7 +17,8 @@ que o geram estão em
 Todas seguem o mesmo CRUD — `GET` lista, `GET /{codigo}`, `POST`,
 `PATCH /{codigo}`, `DELETE /{codigo}`. Estoque troca `{codigo}` por
 `{produtoCodigo}/{armazemCodigo}`; notas de saída e orçamentos têm rotas extras
-além do CRUD.
+além do CRUD. Todas aceitam também `PUT` na raiz do recurso, que aplica
+até 1.000 registros de uma vez — ver [Lote](#lote--put-integracaoentidade).
 
 | Recurso | Chave | Filtros próprios | Particularidade |
 |---|---|---|---|
@@ -302,6 +303,79 @@ outro orçamento.
 > `GET /integracao/orcamentos` lista **só** os que já têm `codigoErp`. Quem
 > procura orçamento da plataforma ali não acha nada: eles estão em
 > `.../pendentes` até serem vinculados.
+
+
+---
+
+## Lote — `PUT /integracao/<entidade>`
+
+Todas as 13 entidades aceitam, além do CRUD individual, um `PUT` na raiz do
+recurso que aplica até **1.000 registros por chamada**. É o caminho da carga
+inicial e da ressincronização; para o fluxo diário o `POST` individual continua
+valendo e não muda.
+
+```jsonc
+// PUT /api/v1/integracao/categorias
+{
+  "registros": [
+    { "codigoErp": "000001", "descricao": "MATERIAL ELETRICO", "ativo": true },
+    { "codigoErp": "000002", "descricao": "HIDRAULICA", "ativo": true },
+    { "codigoErp": "000009", "excluido": true }
+  ]
+}
+```
+
+O payload de cada registro é **o mesmo do `POST`** daquela entidade — o lote não
+é um segundo contrato. Duas diferenças, só:
+
+- `"excluido": true` marca o registro para soft delete e **dispensa os demais
+  campos**: para apagar basta a chave.
+- Sem `excluido`, o registro exige tudo o que o `POST` exigiria, e um campo que
+  falte é apontado pelo nome.
+
+### Resposta — sempre 200, com relatório
+
+```jsonc
+{
+  "processados": 1000,
+  "criados": 120,
+  "atualizados": 875,
+  "excluidos": 4,
+  "erros": [
+    { "indice": 37, "codigoErp": "004417", "mensagem": "vendedorCodigo '000999' não encontrado" }
+  ]
+}
+```
+
+**O lote não é tudo-ou-nada.** Cada registro é aplicado na sua própria
+transação: um item inválido não desfaz os que já passaram, e vem listado em
+`erros` com o `indice` dele no array enviado — é por esse índice que o ERP sabe
+o que reenviar. `erros` vazio significa que tudo entrou.
+
+Os registros são aplicados **na ordem em que foram enviados**. Isso importa
+quando um depende do outro dentro do mesmo lote (a categoria pai antes da
+filha, o cliente antes da nota): mande o pai primeiro e ele estará lá.
+
+### Erros do envelope (400)
+
+- lote vazio (`registros: []`);
+- acima de 1.000 registros;
+- registro sem `codigoErp`.
+
+Nesses casos nada é gravado — a validação é do envelope, antes de qualquer
+escrita.
+
+### Por que existe
+
+Medido na base real: 119.439 registros (67.151 notas, 37.682 títulos, 7.980
+produtos, 6.626 clientes). Uma requisição por registro, contra o teto de
+60 req/min, dava **~33 horas** de carga inicial. Em lotes de 1.000 são 120
+chamadas — **~14 minutos** medidos em dev (6,9 ms por registro, 1.000
+categorias em 6,9 s).
+
+O `PUT` também é idempotente por natureza, o que resolve a assimetria que
+obrigava o ERP a saber o estado antes de escolher o verbo: mesmo payload,
+mesmo resultado, quantas vezes for.
 
 ---
 

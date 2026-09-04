@@ -13,12 +13,16 @@ import type {
   IntegracaoVendedorCreate,
   IntegracaoVendedorQuery,
   IntegracaoVendedorUpdate,
+  IntegracaoVendedorLoteItem,
+  IntegracaoLoteResultado,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
 import {
   camposDaDecisao,
   decidirUpsert,
+  type DecisaoUpsert,
 } from '../common/decidir-upsert';
+import { processarLote } from '../common/processar-lote';
 
 // O ERP fala em "código do supervisor"; internamente a hierarquia é um
 // ponteiro só (`superiorId`), que aponta para quem responde — supervisor,
@@ -106,6 +110,23 @@ export class IntegracaoVendedoresService {
     apiKeyId: string,
     input: IntegracaoVendedorCreate,
   ): Promise<IntegracaoVendedor> {
+    const { registro } = await this.upsert(empresaId, apiKeyId, input);
+    return registro;
+  }
+
+  /**
+   * O mesmo upsert do `create`, devolvendo também **o que aconteceu**.
+   *
+   * Só o lote precisa dessa informação — é o que separa `criados` de
+   * `atualizados` no relatório. O `create` continua devolvendo apenas o
+   * registro, porque o REST individual responde a entidade e a decisão não
+   * cabe no corpo dela.
+   */
+  async upsert(
+    empresaId: string,
+    apiKeyId: string,
+    input: IntegracaoVendedorCreate,
+  ): Promise<{ registro: IntegracaoVendedor; decisao: DecisaoUpsert }> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.vendedor.findFirst({
@@ -157,14 +178,41 @@ export class IntegracaoVendedoresService {
           data: { ...dados, ...camposDaDecisao(decisao) },
           include: INCLUDE,
         });
-        return this.paraLeitura(atualizadoUpsert);
+        return { registro: this.paraLeitura(atualizadoUpsert), decisao };
       }
 
       const criado = await tx.vendedor.create({
         data: { ...dados, empresaId, createdBy: autor },
         include: INCLUDE,
       });
-      return this.paraLeitura(criado);
+      return { registro: this.paraLeitura(criado), decisao };
+    });
+  }
+
+  /**
+   * Aplica um lote. Ver `processarLote` para a ordem e o tratamento de erro;
+   * aqui fica só o que é da entidade.
+   *
+   * A reativação conta como `atualizado`: a linha já existia e mantém o mesmo
+   * uuid — quem lê o relatório está conferindo quantos registros novos
+   * entraram, e um código que volta do soft delete não é um deles.
+   */
+  upsertLote(
+    empresaId: string,
+    apiKeyId: string,
+    registros: IntegracaoVendedorLoteItem[],
+  ): Promise<IntegracaoLoteResultado> {
+    return processarLote(registros, async (item) => {
+      if (item.excluido) {
+        await this.remove(empresaId, apiKeyId, item.codigoErp);
+        return 'excluido';
+      }
+      const { decisao } = await this.upsert(
+        empresaId,
+        apiKeyId,
+        item as IntegracaoVendedorCreate,
+      );
+      return decisao === 'criar' ? 'criado' : 'atualizado';
     });
   }
 

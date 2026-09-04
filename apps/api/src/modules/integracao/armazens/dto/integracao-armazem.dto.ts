@@ -1,6 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import {
   integracaoArmazemCreateSchema,
+  integracaoArmazemLoteSchema,
   integracaoArmazemQuerySchema,
   integracaoArmazemUpdateSchema,
 } from '@plataforma/contracts';
@@ -13,4 +14,8 @@ export class IntegracaoArmazemUpdateDto extends createZodDto(
 ) {}
 export class IntegracaoArmazemQueryDto extends createZodDto(
   integracaoArmazemQuerySchema,
+) {}
+
+export class IntegracaoArmazemLoteDto extends createZodDto(
+  integracaoArmazemLoteSchema,
 ) {}
