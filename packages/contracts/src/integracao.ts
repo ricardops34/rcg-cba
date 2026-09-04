@@ -1694,3 +1694,256 @@ export const INTEGRACAO_REGRA_DESCONTO_EXAMPLE: IntegracaoRegraDesconto = {
   createdBy: null,
   updatedBy: null,
 };
+
+// ------------------------------------------------------------------
+// Lote (PUT /integracao/<entidade>)
+// ------------------------------------------------------------------
+
+/**
+ * Teto de registros por chamada. Acima disso a API responde 400.
+ *
+ * O número sai da carga inicial medida na base real: 119.439 registros. Em
+ * lotes de 1.000 são ~120 chamadas, folgadas dentro do teto de 60 req/min —
+ * contra ~33 horas no CRUD individual, que gastava uma requisição por
+ * registro.
+ */
+export const INTEGRACAO_LOTE_MAX = 1000;
+
+/**
+ * Item que falhou, com a posição no array enviado.
+ *
+ * O ERP precisa do índice para saber **qual** registro reenviar: o
+ * `codigoErp` pode vir nulo justamente quando o payload está malformado, que é
+ * um dos casos que caem aqui.
+ */
+export const integracaoLoteErroSchema = z.object({
+  indice: z.number().int().min(0),
+  codigoErp: z.string().nullable(),
+  mensagem: z.string(),
+});
+export type IntegracaoLoteErro = z.infer<typeof integracaoLoteErroSchema>;
+
+/**
+ * Relatório do lote. O lote **não** é tudo-ou-nada: cada registro é aplicado
+ * na sua própria transação, e um item inválido não desfaz os que já passaram.
+ *
+ * É decisão de desenho, não limitação: numa carga de 1.000 notas, um item com
+ * `vendedorCodigo` inexistente não pode obrigar a reenviar os outros 999. Por
+ * isso a resposta é sempre 200 com o relatório — quem chama decide o que fazer
+ * lendo `erros`, que vem vazio quando tudo passou.
+ */
+export const integracaoLoteResultadoSchema = z.object({
+  processados: z.number().int().min(0),
+  criados: z.number().int().min(0),
+  atualizados: z.number().int().min(0),
+  excluidos: z.number().int().min(0),
+  erros: z.array(integracaoLoteErroSchema),
+});
+export type IntegracaoLoteResultado = z.infer<
+  typeof integracaoLoteResultadoSchema
+>;
+
+/**
+ * Envelope de entrada: `{ registros: [...] }` para qualquer entidade.
+ *
+ * O campo `excluido: true` num registro é o `DELETE` dentro do lote — era a
+ * pendência nº 3 do plano da API. Sem ele, uma carga com inclusões e exclusões
+ * misturadas (o caso normal de uma ressincronização) precisaria de duas
+ * passadas, e a ordem entre elas mudaria o resultado.
+ */
+export function integracaoLoteSchema<T extends z.ZodTypeAny>(item: T) {
+  return z.object({
+    registros: z.array(item).min(1).max(INTEGRACAO_LOTE_MAX),
+  });
+}
+
+/**
+ * Acrescenta `excluido` ao schema de criação da entidade.
+ *
+ * Excluir exige **só a chave**: obrigar o ERP a remontar o registro inteiro
+ * para apagá-lo seria pedir dado que ele já não tem — na origem a linha está
+ * marcada como excluída, não preenchida. Já um registro de upsert continua
+ * exigindo tudo o que o `create` exige.
+ *
+ * Por isso a validação é condicional, e não um `partial()` seco: `partial()`
+ * deixaria passar uma inclusão sem `descricao`, que só explodiria lá no
+ * service. E não é `union` porque a mensagem de erro de union ("nenhuma opção
+ * casou") não diz ao ERP qual campo faltou — aqui os `issues` vêm do próprio
+ * schema da entidade, com o caminho do campo.
+ */
+export type IntegracaoLoteItem<C> = Partial<C> & {
+  codigoErp: string;
+  excluido?: boolean;
+};
+
+export function integracaoLoteItemSchema<T extends z.AnyZodObject>(
+  create: T,
+): z.ZodType<IntegracaoLoteItem<z.infer<T>>> {
+  const schema = create
+    .partial()
+    .extend({
+      codigoErp: z.string().min(1),
+      excluido: z.boolean().optional(),
+    })
+    .superRefine((valor, ctx) => {
+      if (valor.excluido) return;
+      const conferido = create.safeParse(valor);
+      if (!conferido.success) {
+        for (const issue of conferido.error.issues) ctx.addIssue(issue);
+      }
+    });
+
+  // O tipo inferido de um `.partial().extend()` sobre um genérico é
+  // `{ [x: string]: any }` — o TS não carrega o shape concreto por essa
+  // cadeia. A anotação acima devolve a precisão. É um `as` honesto: o tipo
+  // declarado descreve o que o schema aceita, com os campos da entidade
+  // opcionais no tipo porque no runtime eles só são exigidos quando
+  // `excluido` não é true, e isso o sistema de tipos não expressa.
+  return schema as unknown as z.ZodType<IntegracaoLoteItem<z.infer<T>>>;
+}
+
+export const INTEGRACAO_LOTE_RESULTADO_EXAMPLE: IntegracaoLoteResultado = {
+  processados: 1000,
+  criados: 120,
+  atualizados: 875,
+  excluidos: 4,
+  erros: [
+    {
+      indice: 37,
+      codigoErp: "004417",
+      mensagem: "vendedorCodigo '000999' não encontrado",
+    },
+  ],
+};
+
+// Um par por entidade: o item (payload da entidade + `excluido`) e o envelope.
+// A repetição é intencional — cada nome exportado é o que o DTO do Nest
+// consome, e um mapa genérico esconderia o schema de quem lê o controller.
+export const integracaoCategoriaLoteItemSchema = integracaoLoteItemSchema(
+  integracaoCategoriaCreateSchema,
+);
+export type IntegracaoCategoriaLoteItem = z.infer<
+  typeof integracaoCategoriaLoteItemSchema
+>;
+export const integracaoCategoriaLoteSchema = integracaoLoteSchema(
+  integracaoCategoriaLoteItemSchema,
+);
+
+export const integracaoCondicaoPagamentoLoteItemSchema =
+  integracaoLoteItemSchema(integracaoCondicaoPagamentoCreateSchema);
+export type IntegracaoCondicaoPagamentoLoteItem = z.infer<
+  typeof integracaoCondicaoPagamentoLoteItemSchema
+>;
+export const integracaoCondicaoPagamentoLoteSchema = integracaoLoteSchema(
+  integracaoCondicaoPagamentoLoteItemSchema,
+);
+
+export const integracaoArmazemLoteItemSchema = integracaoLoteItemSchema(
+  integracaoArmazemCreateSchema,
+);
+export type IntegracaoArmazemLoteItem = z.infer<
+  typeof integracaoArmazemLoteItemSchema
+>;
+export const integracaoArmazemLoteSchema = integracaoLoteSchema(
+  integracaoArmazemLoteItemSchema,
+);
+
+export const integracaoProdutoLoteItemSchema = integracaoLoteItemSchema(
+  integracaoProdutoCreateSchema,
+);
+export type IntegracaoProdutoLoteItem = z.infer<
+  typeof integracaoProdutoLoteItemSchema
+>;
+export const integracaoProdutoLoteSchema = integracaoLoteSchema(
+  integracaoProdutoLoteItemSchema,
+);
+
+export const integracaoVendedorLoteItemSchema = integracaoLoteItemSchema(
+  integracaoVendedorCreateSchema,
+);
+export type IntegracaoVendedorLoteItem = z.infer<
+  typeof integracaoVendedorLoteItemSchema
+>;
+export const integracaoVendedorLoteSchema = integracaoLoteSchema(
+  integracaoVendedorLoteItemSchema,
+);
+
+export const integracaoClienteLoteItemSchema = integracaoLoteItemSchema(
+  integracaoClienteCreateSchema,
+);
+export type IntegracaoClienteLoteItem = z.infer<
+  typeof integracaoClienteLoteItemSchema
+>;
+export const integracaoClienteLoteSchema = integracaoLoteSchema(
+  integracaoClienteLoteItemSchema,
+);
+
+export const integracaoTabelaPrecoLoteItemSchema = integracaoLoteItemSchema(
+  integracaoTabelaPrecoCreateSchema,
+);
+export type IntegracaoTabelaPrecoLoteItem = z.infer<
+  typeof integracaoTabelaPrecoLoteItemSchema
+>;
+export const integracaoTabelaPrecoLoteSchema = integracaoLoteSchema(
+  integracaoTabelaPrecoLoteItemSchema,
+);
+
+export const integracaoEstoqueLoteItemSchema = integracaoLoteItemSchema(
+  integracaoEstoqueCreateSchema,
+);
+export type IntegracaoEstoqueLoteItem = z.infer<
+  typeof integracaoEstoqueLoteItemSchema
+>;
+export const integracaoEstoqueLoteSchema = integracaoLoteSchema(
+  integracaoEstoqueLoteItemSchema,
+);
+
+export const integracaoObjetivoLoteItemSchema = integracaoLoteItemSchema(
+  integracaoObjetivoCreateSchema,
+);
+export type IntegracaoObjetivoLoteItem = z.infer<
+  typeof integracaoObjetivoLoteItemSchema
+>;
+export const integracaoObjetivoLoteSchema = integracaoLoteSchema(
+  integracaoObjetivoLoteItemSchema,
+);
+
+export const integracaoNotaSaidaLoteItemSchema = integracaoLoteItemSchema(
+  integracaoNotaSaidaCreateSchema,
+);
+export type IntegracaoNotaSaidaLoteItem = z.infer<
+  typeof integracaoNotaSaidaLoteItemSchema
+>;
+export const integracaoNotaSaidaLoteSchema = integracaoLoteSchema(
+  integracaoNotaSaidaLoteItemSchema,
+);
+
+export const integracaoTituloReceberLoteItemSchema = integracaoLoteItemSchema(
+  integracaoTituloReceberCreateSchema,
+);
+export type IntegracaoTituloReceberLoteItem = z.infer<
+  typeof integracaoTituloReceberLoteItemSchema
+>;
+export const integracaoTituloReceberLoteSchema = integracaoLoteSchema(
+  integracaoTituloReceberLoteItemSchema,
+);
+
+export const integracaoOrcamentoLoteItemSchema = integracaoLoteItemSchema(
+  integracaoOrcamentoCreateSchema,
+);
+export type IntegracaoOrcamentoLoteItem = z.infer<
+  typeof integracaoOrcamentoLoteItemSchema
+>;
+export const integracaoOrcamentoLoteSchema = integracaoLoteSchema(
+  integracaoOrcamentoLoteItemSchema,
+);
+
+export const integracaoRegraDescontoLoteItemSchema = integracaoLoteItemSchema(
+  integracaoRegraDescontoCreateSchema,
+);
+export type IntegracaoRegraDescontoLoteItem = z.infer<
+  typeof integracaoRegraDescontoLoteItemSchema
+>;
+export const integracaoRegraDescontoLoteSchema = integracaoLoteSchema(
+  integracaoRegraDescontoLoteItemSchema,
+);
