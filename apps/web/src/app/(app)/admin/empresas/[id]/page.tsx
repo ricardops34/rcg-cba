@@ -5,10 +5,13 @@ import { useQuery } from "@tanstack/react-query";
 import type { Empresa } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
 import { EmpresaForm } from "@/components/crud/empresa-form";
+import { EmpresaWhatsappSection } from "@/components/crud/empresa-whatsapp-section";
+import { useAuthStore } from "@/stores/auth-store";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function EditarEmpresaPage() {
   const { id } = useParams<{ id: string }>();
+  const empresaAtivaId = useAuthStore((s) => s.user?.empresaAtivaId);
 
   const { data: empresa, isLoading, isError } = useQuery({
     queryKey: ["empresas", id],
@@ -28,5 +31,15 @@ export default function EditarEmpresaPage() {
     return <p className="text-sm text-muted-foreground">Empresa não encontrada.</p>;
   }
 
-  return <EmpresaForm empresa={empresa} />;
+  // O pareamento e da empresa **da sessao**: parear o WhatsApp de outra
+  // empresa nao faz sentido (o celular esta com ela), e a API so alcanca a
+  // sessao do proprio tenant de qualquer forma.
+  const daSessao = empresa.id === empresaAtivaId;
+
+  return (
+    <div className="space-y-4">
+      <EmpresaForm empresa={empresa} />
+      {daSessao && <EmpresaWhatsappSection empresaId={empresa.id} />}
+    </div>
+  );
 }

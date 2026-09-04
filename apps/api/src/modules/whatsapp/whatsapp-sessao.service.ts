@@ -236,6 +236,150 @@ export class WhatsappSessaoService {
     return this.paraLeitura(sessao, anterior.vendedorNome);
   }
 
+  /** A sessão institucional da empresa, ou null se ela nunca foi pareada. */
+  async daEmpresa(empresaId: string) {
+    return this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappSessao.findFirst({
+        where: { empresaId, tipo: 'empresa' },
+        include: { vendedor: { select: { nome: true } } },
+      }),
+    );
+  }
+
+  /**
+   * Conecta o número **da empresa** — a porta de entrada atendida pela IA.
+   *
+   * Separado de `conectar` porque a pergunta central daquele método não existe
+   * aqui: lá tudo gira em torno de "qual é o vendedor deste usuário", e a
+   * sessão institucional não tem vendedor nenhum. Tentar reaproveitar aquele
+   * fluxo exigiria um vendedor de mentira só para satisfazer a chave.
+   *
+   * Quem chama é a administração (Administração > WhatsApp), não o vendedor: o
+   * número é da empresa, e quem o pareia responde por ele.
+   */
+  async conectarEmpresa(
+    empresaId: string,
+    user: AuthenticatedUser,
+    input?: { aceiteVersao?: string },
+  ) {
+    const config = await this.config.obter(empresaId);
+    if (!config.ativo) {
+      throw new BadRequestException(
+        'O WhatsApp está desativado para esta empresa. Ative em Administração > WhatsApp.',
+      );
+    }
+    this.provedores.exigirConfiguracao(config.transporte, config);
+
+    const atual = await this.daEmpresa(empresaId);
+
+    // Mesma regra do vendedor: já conectado, o caminho é desconectar antes.
+    // Trocar por baixo derrubaria os atendimentos em andamento — e aqui isso
+    // vale para a empresa inteira, não para uma pessoa.
+    if (atual?.status === 'conectada') {
+      throw new BadRequestException(
+        `A empresa já tem o número ${atual.numero ?? ''} conectado. Desconecte antes de parear outro.`.trim(),
+      );
+    }
+
+    // Troca de provedor: a instância anterior morre antes, pelo mesmo motivo
+    // documentado em `conectar`.
+    if (atual && atual.transporte !== config.transporte) {
+      await this.provedores
+        .sairDoWhatsapp(empresaId, atual.id)
+        .catch(() => undefined);
+      await this.prisma.withTenant(empresaId, (tx) =>
+        tx.whatsappSessao.update({
+          where: { id: atual.id },
+          data: {
+            instanciaExterna: null,
+            instanciaId: null,
+            instanciaTokenCifrado: null,
+            webhookSegredoCifrado: null,
+            numero: null,
+            jid: null,
+            credencialCifrada: null,
+          },
+        }),
+      );
+    }
+
+    const sessao = await this.prisma.withTenant(empresaId, async (tx) =>
+      atual
+        ? tx.whatsappSessao.update({
+            where: { id: atual.id },
+            data: {
+              status: 'pareando',
+              transporte: config.transporte,
+              ultimoErro: null,
+              aceiteEm: new Date(),
+              aceiteVersao: input?.aceiteVersao ?? WHATSAPP_ACEITE_VERSAO,
+              updatedBy: user.id,
+            },
+          })
+        : tx.whatsappSessao.create({
+            data: {
+              empresaId,
+              // Sem vendedor: é o que define a sessão institucional. A
+              // unicidade "uma por empresa" é o índice parcial da migration
+              // 20260904020000 — o @@unique não a cobre, porque vários NULL
+              // não colidem no Postgres.
+              vendedorId: null,
+              tipo: 'empresa',
+              status: 'pareando',
+              transporte: config.transporte,
+              aceiteEm: new Date(),
+              aceiteVersao: input?.aceiteVersao ?? WHATSAPP_ACEITE_VERSAO,
+              createdBy: user.id,
+            },
+          }),
+    );
+
+    const instancia = await this.provedores.iniciar(empresaId, sessao.id, {
+      arquivarMensagens: config.historicoDias > 0,
+    });
+    await this.gravarInstancia(empresaId, sessao.id, instancia);
+
+    return this.paraLeitura(sessao, 'Empresa');
+  }
+
+  /** Estado do pareamento do número da empresa — o QR vem do provedor. */
+  async pareamentoEmpresa(empresaId: string) {
+    const sessao = await this.daEmpresa(empresaId);
+    if (!sessao) {
+      throw new NotFoundException('O número da empresa ainda não foi pareado.');
+    }
+    return this.provedores.pareamento(empresaId, sessao.id);
+  }
+
+  /**
+   * Desconecta o número da empresa.
+   *
+   * As conversas ficam: elas são da empresa, não do aparelho — o mesmo
+   * raciocínio do `onDelete: Restrict` na conversa.
+   */
+  async desconectarEmpresa(empresaId: string, user: AuthenticatedUser) {
+    const sessao = await this.daEmpresa(empresaId);
+    if (!sessao) {
+      throw new NotFoundException('O número da empresa não está pareado.');
+    }
+    await this.provedores
+      .sairDoWhatsapp(empresaId, sessao.id)
+      .catch(() => undefined);
+    const atualizada = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappSessao.update({
+        where: { id: sessao.id },
+        data: {
+          status: 'desconectada',
+          numero: null,
+          jid: null,
+          credencialCifrada: null,
+          updatedBy: user.id,
+        },
+      }),
+    );
+    return this.paraLeitura(atualizada, 'Empresa');
+  }
+
   /**
    * Estado do pareamento — é o que a tela consulta enquanto o QR não é lido.
    * O QR vem do provedor (expira em segundos e é renovado), não do banco.

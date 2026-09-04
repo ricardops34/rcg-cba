@@ -178,6 +178,54 @@ export class WhatsappController {
   }
 
   @ApiOperation({
+    summary: 'Situação do número institucional da empresa',
+    description:
+      'A porta de entrada atendida pela IA. Devolve null quando nunca foi ' +
+      'pareado. A opção só aparece no cadastro da empresa com o WhatsApp ativo.',
+  })
+  @RequirePermission('whatsapp-config', 'visualizar')
+  @Get('config/sessao-empresa')
+  sessaoDaEmpresa(@CurrentUser() user: AuthenticatedUser) {
+    return this.sessao.daEmpresa(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Parear o número institucional da empresa',
+    description:
+      'Cria (ou reabre) a sessão do número da empresa e devolve o estado para ' +
+      'a tela buscar o QR. Um por empresa: já conectado, desconecte antes.',
+  })
+  @RequirePermission('whatsapp-config', 'editar')
+  @Post('config/sessao-empresa/conectar')
+  conectarEmpresa(
+    @Body() body: { aceiteVersao?: string },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.sessao.conectarEmpresa(user.empresaAtivaId, user, body);
+  }
+
+  @ApiOperation({
+    summary: 'QR do pareamento do número institucional',
+    description: 'O código vem do provedor e expira em segundos — a tela repete a chamada.',
+  })
+  @RequirePermission('whatsapp-config', 'editar')
+  @Get('config/sessao-empresa/pareamento')
+  pareamentoEmpresa(@CurrentUser() user: AuthenticatedUser) {
+    return this.sessao.pareamentoEmpresa(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Desconectar o número institucional',
+    description:
+      'Encerra a conexão. As conversas ficam: são da empresa, não do aparelho.',
+  })
+  @RequirePermission('whatsapp-config', 'editar')
+  @Delete('config/sessao-empresa')
+  desconectarEmpresa(@CurrentUser() user: AuthenticatedUser) {
+    return this.sessao.desconectarEmpresa(user.empresaAtivaId, user);
+  }
+
+  @ApiOperation({
     summary: 'Conectar ou reconectar uma instância pela administração',
     description:
       'Reabre no worker uma sessão já criada pelo vendedor. Não cria o aceite ' +
