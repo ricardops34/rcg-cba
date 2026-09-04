@@ -103,3 +103,84 @@ describe('listarEmpresas — contagem de usuários sob RLS', () => {
     expect(r.data[0].ultimoAcesso).toBeNull();
   });
 });
+
+/**
+ * A contagem de "quantas empresas esta conta administra" atravessa empresas, e
+ * `usuario_empresas` tem RLS. Um `groupBy` solto devolve zero — foi o que a
+ * primeira versão fez, escondido por um fallback `?? 1` que fazia o zero passar
+ * por "administra uma".
+ *
+ * O caminho certo é a segunda policy da tabela (`self_usuario_empresas`), que
+ * libera as linhas do próprio usuário: `withUsuario`. Este teste exige que a
+ * contagem passe por ele, com o id de cada administrador.
+ */
+describe('listarAdministradoresDaEmpresa — contagem entre empresas', () => {
+  const EMPRESA = 'emp-1';
+  const PERFIL_ADMIN = 'perfil-admin';
+
+  function prismaFalso(empresasPorUsuario: Record<string, number>) {
+    const usuarios = Object.keys(empresasPorUsuario);
+    const viaWithUsuario: string[] = [];
+
+    return {
+      viaWithUsuario,
+      prisma: {
+        empresa: { findFirst: () => Promise.resolve({ id: EMPRESA }) },
+        perfil: { findFirst: () => Promise.resolve({ id: PERFIL_ADMIN }) },
+        withTenant: <T>(_id: string, fn: (tx: unknown) => Promise<T>) =>
+          fn({
+            usuarioEmpresa: {
+              findMany: () =>
+                Promise.resolve(
+                  usuarios.map((id) => ({
+                    usuarioId: id,
+                    usuario: {
+                      nome: `Nome ${id}`,
+                      email: `${id}@exemplo.com`,
+                      ativo: true,
+                      ultimoLogin: null,
+                    },
+                  })),
+                ),
+            },
+          }),
+        // Só conta certo quem entrou pelo withUsuario do próprio id — é o que
+        // a policy `self` faz.
+        withUsuario: <T>(usuarioId: string, fn: (tx: unknown) => Promise<T>) => {
+          viaWithUsuario.push(usuarioId);
+          return fn({
+            usuarioEmpresa: {
+              count: ({ where }: { where: { usuarioId: string } }) =>
+                Promise.resolve(
+                  where.usuarioId === usuarioId
+                    ? empresasPorUsuario[usuarioId]
+                    : 0,
+                ),
+            },
+          });
+        },
+        // Se alguém voltar ao groupBy fora de contexto, ele responde vazio,
+        // como a policy responderia.
+        usuarioEmpresa: { groupBy: () => Promise.resolve([]) },
+      },
+    };
+  }
+
+  it('conta as empresas de cada administrador, e nao assume 1', async () => {
+    const { prisma } = prismaFalso({ 'user-a': 3, 'user-b': 1 });
+    const service = new PlataformaService(prisma as never);
+
+    const r = await service.listarAdministradoresDaEmpresa(EMPRESA);
+
+    expect(r.map((a) => a.empresasQueAdministra)).toEqual([3, 1]);
+  });
+
+  it('passa por withUsuario com o id de cada um', async () => {
+    const { prisma, viaWithUsuario } = prismaFalso({ 'user-a': 2, 'user-b': 5 });
+    const service = new PlataformaService(prisma as never);
+
+    await service.listarAdministradoresDaEmpresa(EMPRESA);
+
+    expect(viaWithUsuario.sort()).toEqual(['user-a', 'user-b']);
+  });
+});

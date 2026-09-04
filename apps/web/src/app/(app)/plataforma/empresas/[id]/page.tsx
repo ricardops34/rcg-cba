@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api-client";
 import { EmpresaForm } from "@/components/crud/empresa-form";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PlataformaGuard } from "../../plataforma-guard";
+import { AdministradoresSection } from "./administradores-section";
 
 /**
  * Cadastro completo de **qualquer** empresa, pela administração do SaaS.
@@ -42,7 +43,10 @@ export default function EditarEmpresaPlataformaPage() {
       ) : isError || !empresa ? (
         <p className="text-sm text-muted-foreground">Empresa não encontrada.</p>
       ) : (
-        <EmpresaForm empresa={empresa} listRoute="/plataforma/empresas" />
+        <div className="space-y-4">
+          <EmpresaForm empresa={empresa} listRoute="/plataforma/empresas" />
+          <AdministradoresSection empresaId={empresa.id} />
+        </div>
       )}
     </PlataformaGuard>
   );

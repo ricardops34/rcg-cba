@@ -6,6 +6,7 @@ import {
   plataformaEmpresaCreateSchema,
   plataformaEmpresaQuerySchema,
   plataformaSituacaoUpdateSchema,
+  plataformaVincularAdminSchema,
 } from '@plataforma/contracts';
 
 export class PlataformaEmpresaQueryDto extends createZodDto(
@@ -25,4 +26,7 @@ export class PlataformaAdminPromoverDto extends createZodDto(
 ) {}
 export class PlataformaAuditoriaQueryDto extends createZodDto(
   plataformaAuditoriaQuerySchema,
+) {}
+export class PlataformaVincularAdminDto extends createZodDto(
+  plataformaVincularAdminSchema,
 ) {}

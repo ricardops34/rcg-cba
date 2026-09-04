@@ -97,11 +97,20 @@ export const plataformaEmpresaCreateSchema = z.object({
   testeExpiraEm: z.string().datetime().nullable().optional(),
   limiteUsuarios: z.number().int().min(1).nullable().optional(),
 
+  /**
+   * O administrador desta empresa. Se o e-mail já pertence a alguém, essa
+   * pessoa é **vinculada** à empresa nova como Administrador, e `nome` e
+   * `senha` são ignorados — a conta é a mesma, com a senha que ela já usa.
+   *
+   * É a regra do negócio: um administrador de empresa pode administrar várias,
+   * com uma conta só. Antes, o e-mail repetido era recusado com um conselho
+   * ("vincule-o à nova empresa") para um caminho que não existia.
+   */
   admin: z.object({
-    nome: z.string().trim().min(2).max(120),
+    nome: z.string().trim().min(2).max(120).optional(),
     email: z.string().trim().email().max(120),
-    /** Provisória: o primeiro login exige troca. */
-    senha: z.string().min(8).max(72),
+    /** Provisória, e só para conta nova: o primeiro login exige troca. */
+    senha: z.string().min(8).max(72).optional(),
   }),
 });
 export type PlataformaEmpresaCreate = z.infer<
@@ -159,6 +168,8 @@ export const PLATAFORMA_ACAO_LABEL: Record<string, string> = {
   "empresa.situacao_alterada": "Situação alterada",
   "empresa.teste_alterado": "Prazo de teste alterado",
   "empresa.limite_alterado": "Limite de usuários alterado",
+  "empresa.admin_vinculado": "Administrador vinculado",
+  "empresa.admin_desvinculado": "Administrador removido",
   "admin.promovido": "Promovido a admin da plataforma",
   "admin.revogado": "Removido de admin da plataforma",
 };
@@ -184,4 +195,36 @@ export const plataformaAdminPromoverSchema = z.object({
 });
 export type PlataformaAdminPromover = z.infer<
   typeof plataformaAdminPromoverSchema
+>;
+
+// ------------------------------------------------------------------
+// Administradores de uma empresa
+// ------------------------------------------------------------------
+
+/**
+ * Vincula uma conta que já existe a uma empresa, como Administrador dela.
+ *
+ * O mesmo administrador pode responder por várias empresas com uma conta só —
+ * e em cada uma ele **conta como um dos usuários**, porque a vaga é do vínculo,
+ * não da pessoa: cada empresa paga a sua.
+ */
+export const plataformaVincularAdminSchema = z.object({
+  email: z.string().trim().email().max(120),
+});
+export type PlataformaVincularAdmin = z.infer<
+  typeof plataformaVincularAdminSchema
+>;
+
+/** Um administrador de determinada empresa, na tela de cadastro dela. */
+export const plataformaEmpresaAdminSchema = z.object({
+  usuarioId: z.string().uuid(),
+  nome: z.string(),
+  email: z.string(),
+  ativo: z.boolean(),
+  /** Quantas empresas esta conta administra — inclusive esta. */
+  empresasQueAdministra: z.number().int(),
+  ultimoLogin: z.string().datetime().nullable(),
+});
+export type PlataformaEmpresaAdmin = z.infer<
+  typeof plataformaEmpresaAdminSchema
 >;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -54,14 +54,51 @@ export default function NovaEmpresaPage() {
   const [adminEmail, setAdminEmail] = useState("");
   const [adminSenha, setAdminSenha] = useState("");
 
+  /**
+   * `null` enquanto não se sabe (e-mail incompleto ou consulta em voo).
+   * A tela pede nome e senha só quando a resposta é `false`.
+   */
+  const [contaExistente, setContaExistente] = useState<boolean | null>(null);
+
+  const emailValido = /.+@.+\..+/.test(adminEmail);
+
+  // Consulta com atraso: sem isso, cada tecla do e-mail viraria uma requisição.
+  useEffect(() => {
+    if (!emailValido) {
+      setContaExistente(null);
+      return;
+    }
+    let cancelado = false;
+    const timer = setTimeout(async () => {
+      try {
+        const r = await apiFetch<{ existe: boolean; nome?: string }>(
+          "/plataforma/contas",
+          { query: { email: adminEmail.trim().toLowerCase() } },
+        );
+        if (cancelado) return;
+        setContaExistente(r.existe);
+        // Preenche o nome só para exibição; o servidor ignora nome de conta
+        // que já existe.
+        if (r.existe && r.nome) setAdminNome(r.nome);
+      } catch {
+        if (!cancelado) setContaExistente(null);
+      }
+    }, 400);
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+    };
+  }, [adminEmail, emailValido]);
+
   const cnpjValido = cnpj.length === 14;
   const podeSalvar =
     razaoSocial.trim().length >= 2 &&
     nomeFantasia.trim().length >= 2 &&
     cnpjValido &&
-    adminNome.trim().length >= 2 &&
-    /.+@.+\..+/.test(adminEmail) &&
-    adminSenha.length >= 8;
+    emailValido &&
+    // Conta que já existe dispensa nome e senha — é vinculada, não criada.
+    (contaExistente === true ||
+      (adminNome.trim().length >= 2 && adminSenha.length >= 8));
 
   const salvar = async () => {
     if (!podeSalvar) return;
@@ -79,13 +116,20 @@ export default function NovaEmpresaPage() {
           limiteUsuarios:
             limiteUsuarios.trim() === "" ? null : Number(limiteUsuarios),
           admin: {
-            nome: adminNome.trim(),
             email: adminEmail.trim().toLowerCase(),
-            senha: adminSenha,
+            // Conta que ja existe e vinculada: mandar nome e senha aqui daria a
+            // entender que a conta dela seria alterada, e o servidor ignora.
+            ...(contaExistente
+              ? {}
+              : { nome: adminNome.trim(), senha: adminSenha }),
           },
         },
       });
-      toast.success("Empresa criada com o administrador dela");
+      toast.success(
+        contaExistente
+          ? "Empresa criada e vinculada ao administrador existente"
+          : "Empresa criada com o administrador dela",
+      );
       router.push("/plataforma/empresas");
     } catch (err) {
       toast.error(
@@ -244,18 +288,9 @@ export default function NovaEmpresaPage() {
               <CardContent className="space-y-4">
                 <p className="text-xs text-muted-foreground">
                   Criado junto com a empresa: sem ele, ninguém consegue entrar.
-                  Recebe o perfil Administrador e troca a senha no primeiro
-                  acesso.
+                  Recebe o perfil Administrador e conta como um dos usuários
+                  desta empresa.
                 </p>
-
-                <div className="space-y-2">
-                  <Label htmlFor="adminNome">Nome</Label>
-                  <Input
-                    id="adminNome"
-                    value={adminNome}
-                    onChange={(e) => setAdminNome(e.target.value)}
-                  />
-                </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="adminEmail">E-mail</Label>
@@ -267,19 +302,44 @@ export default function NovaEmpresaPage() {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="adminSenha">Senha provisória</Label>
-                  <PasswordInput
-                    id="adminSenha"
-                    value={adminSenha}
-                    onChange={(e) => setAdminSenha(e.target.value)}
-                  />
-                  {adminSenha.length > 0 && adminSenha.length < 8 && (
-                    <p className="text-xs text-destructive">
-                      Mínimo de 8 caracteres.
+                {/* Se a conta já existe, ela é reaproveitada: a mesma pessoa
+                    pode administrar várias empresas, e pedir nome e senha de
+                    novo sugeriria (errado) que uma segunda conta nasceria. */}
+                {contaExistente === true ? (
+                  <div className="rounded-md bg-sky-50 p-3 text-xs text-sky-900 dark:bg-sky-950 dark:text-sky-100">
+                    <p className="font-medium">Esta conta já existe.</p>
+                    <p className="mt-1">
+                      Ela será vinculada a esta empresa como Administradora,
+                      mantendo a senha que já usa. Nome e senha não são pedidos —
+                      é a mesma pessoa, administrando mais uma empresa.
                     </p>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="adminNome">Nome</Label>
+                      <Input
+                        id="adminNome"
+                        value={adminNome}
+                        onChange={(e) => setAdminNome(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="adminSenha">Senha provisória</Label>
+                      <PasswordInput
+                        id="adminSenha"
+                        value={adminSenha}
+                        onChange={(e) => setAdminSenha(e.target.value)}
+                      />
+                      {adminSenha.length > 0 && adminSenha.length < 8 && (
+                        <p className="text-xs text-destructive">
+                          Mínimo de 8 caracteres.
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </div>

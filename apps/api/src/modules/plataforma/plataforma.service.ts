@@ -10,9 +10,11 @@ import {
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
 import { podeAcessar } from '../../common/empresa/situacao-empresa';
+import { garantirVagaDeUsuario } from '../../common/empresa/limite-usuarios';
 import type {
   PlataformaAuditoriaQuery,
   PlataformaEmpresa,
+  PlataformaEmpresaAdmin,
   PlataformaEmpresaCreate,
   PlataformaEmpresaQuery,
   PlataformaSituacaoUpdate,
@@ -178,15 +180,26 @@ export class PlataformaService {
    * descobrir e consertar depois.
    */
   async criarEmpresa(input: PlataformaEmpresaCreate, ator: Ator) {
-    const [cnpjEmUso, emailEmUso] = await Promise.all([
+    const email = input.admin.email.toLowerCase();
+    const [cnpjEmUso, contaExistente] = await Promise.all([
       this.prisma.empresa.findUnique({ where: { cnpj: input.cnpj } }),
-      this.prisma.usuario.findUnique({ where: { email: input.admin.email } }),
+      this.prisma.usuario.findFirst({
+        where: { email, deletedAt: null },
+        select: { id: true, nome: true },
+      }),
     ]);
     if (cnpjEmUso) throw new ConflictException('CNPJ já cadastrado');
-    if (emailEmUso) {
-      throw new ConflictException(
-        'Já existe usuário com este e-mail. Vincule-o à nova empresa em vez de criar outro.',
-      );
+
+    // Conta que já existe é **vinculada**, não recusada: um administrador de
+    // empresa pode administrar várias com uma conta só. Nome e senha do payload
+    // são ignorados nesse caso — a pessoa entra com o que já usa, e trocar a
+    // senha dela ao cadastrar outra empresa a deixaria de fora da primeira.
+    if (!contaExistente) {
+      if (!input.admin.nome || !input.admin.senha) {
+        throw new ConflictException(
+          'Não existe conta com este e-mail. Informe nome e senha provisória para criá-la.',
+        );
+      }
     }
     if (input.alias) {
       const aliasEmUso = await this.prisma.empresa.findFirst({
@@ -196,7 +209,9 @@ export class PlataformaService {
       if (aliasEmUso) throw new ConflictException('Alias já em uso');
     }
 
-    const senhaHash = await bcrypt.hash(input.admin.senha, SALT_ROUNDS);
+    const senhaHash = contaExistente
+      ? null
+      : await bcrypt.hash(input.admin.senha as string, SALT_ROUNDS);
 
     return this.prisma.$transaction(async (tx) => {
       const empresa = await tx.empresa.create({
@@ -230,35 +245,290 @@ export class PlataformaService {
       // `usuario_empresas` tem RLS: o tenant precisa estar setado na mesma
       // transação para o insert passar no WITH CHECK.
       await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${empresa.id}, true)`;
-      await tx.usuario.create({
-        data: {
-          nome: input.admin.nome,
-          email: input.admin.email,
-          senhaHash,
-          senhaAlteradaEm: new Date(),
-          // Provisória: quem recebe a senha por fora troca no primeiro acesso.
-          deveTrocarSenha: true,
-          createdBy: ator.id,
-          updatedBy: ator.id,
-          usuarioEmpresas: {
-            create: {
-              empresaId: empresa.id,
-              perfilId: perfilAdmin.id,
-              createdBy: ator.id,
-              updatedBy: ator.id,
+
+      if (contaExistente) {
+        // Conta que já administra outra empresa: ganha o vínculo aqui também,
+        // com o mesmo perfil Administrador. A senha dela não é tocada.
+        await tx.usuarioEmpresa.create({
+          data: {
+            usuarioId: contaExistente.id,
+            empresaId: empresa.id,
+            perfilId: perfilAdmin.id,
+            createdBy: ator.id,
+            updatedBy: ator.id,
+          },
+        });
+      } else {
+        await tx.usuario.create({
+          data: {
+            nome: input.admin.nome as string,
+            email,
+            senhaHash: senhaHash as string,
+            senhaAlteradaEm: new Date(),
+            // Provisória: quem recebe a senha por fora troca no primeiro acesso.
+            deveTrocarSenha: true,
+            createdBy: ator.id,
+            updatedBy: ator.id,
+            usuarioEmpresas: {
+              create: {
+                empresaId: empresa.id,
+                perfilId: perfilAdmin.id,
+                createdBy: ator.id,
+                updatedBy: ator.id,
+              },
             },
           },
-        },
-      });
+        });
+      }
 
       await this.registrar(tx, ator, {
         acao: 'empresa.criada',
         empresaId: empresa.id,
         empresaRazaoSocial: empresa.razaoSocial,
-        valorNovo: `situacao=${empresa.situacao}, admin=${input.admin.email}`,
+        valorNovo:
+          `situacao=${empresa.situacao}, admin=${email}` +
+          (contaExistente ? ' (conta existente, vinculada)' : ' (conta nova)'),
       });
 
       return empresa;
+    });
+  }
+
+  /**
+   * Existe conta com este e-mail? Serve à tela de empresa nova, que muda o que
+   * pede conforme a resposta: conta existente é vinculada (não pede nome nem
+   * senha), conta nova é criada.
+   *
+   * Só a administração da plataforma alcança esta rota, e ela já enxerga todas
+   * as contas — não há revelação nova aqui.
+   */
+  async procurarConta(email: string) {
+    const usuario = await this.prisma.usuario.findFirst({
+      where: { email: email.toLowerCase(), deletedAt: null },
+      select: { id: true, nome: true, email: true, ativo: true },
+    });
+    if (!usuario) return { existe: false as const };
+    return {
+      existe: true as const,
+      nome: usuario.nome,
+      email: usuario.email,
+      ativo: usuario.ativo,
+    };
+  }
+
+  /** Quem administra determinada empresa, e quantas outras cada um administra. */
+  async listarAdministradoresDaEmpresa(
+    empresaId: string,
+  ): Promise<PlataformaEmpresaAdmin[]> {
+    const empresa = await this.prisma.empresa.findFirst({
+      where: { id: empresaId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!empresa) throw new NotFoundException('Empresa não encontrada');
+
+    const perfilAdmin = await this.prisma.perfil.findFirst({
+      where: { nome: 'Administrador', deletedAt: null },
+      select: { id: true },
+    });
+    if (!perfilAdmin) return [];
+
+    // `usuario_empresas` tem RLS — sem `withTenant` a leitura volta vazia.
+    const vinculos = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.usuarioEmpresa.findMany({
+        where: { empresaId, perfilId: perfilAdmin.id, ativo: true },
+        select: {
+          usuarioId: true,
+          usuario: {
+            select: {
+              nome: true,
+              email: true,
+              ativo: true,
+              ultimoLogin: true,
+            },
+          },
+        },
+      }),
+    );
+
+    // Quantas empresas cada um administra: é o que diz a quem olha que aquela
+    // conta não é exclusiva desta empresa, e que removê-la aqui não a apaga.
+    //
+    // A contagem atravessa empresas, então **não** pode sair de um `groupBy`
+    // solto: `usuario_empresas` tem RLS, e fora de um contexto a policy filtra
+    // tudo. O caminho é a segunda policy da tabela, `self_usuario_empresas`,
+    // que libera as linhas do próprio usuário — é para isso que `withUsuario`
+    // existe, e é como o `me()` monta o seletor de empresas.
+    //
+    // (A primeira versão disto usava `groupBy` fora de contexto e caía num
+    // fallback `?? 1`, que fazia o zero devolvido pela policy passar por
+    // "administra uma empresa". Aqui não há fallback: se a contagem falhar,
+    // aparece como zero e alguém percebe.)
+    const contagens = await Promise.all(
+      vinculos.map((v) =>
+        this.prisma.withUsuario(v.usuarioId, (tx) =>
+          tx.usuarioEmpresa.count({
+            where: {
+              usuarioId: v.usuarioId,
+              perfilId: perfilAdmin.id,
+              ativo: true,
+            },
+          }),
+        ),
+      ),
+    );
+
+    return vinculos.map((v, i) => ({
+      usuarioId: v.usuarioId,
+      nome: v.usuario.nome,
+      email: v.usuario.email,
+      ativo: v.usuario.ativo,
+      empresasQueAdministra: contagens[i],
+      ultimoLogin: v.usuario.ultimoLogin?.toISOString() ?? null,
+    }));
+  }
+
+  /**
+   * Vincula uma conta existente a uma empresa, como Administrador dela.
+   *
+   * É o caminho que faltava: a criação de empresa recusava e-mail repetido
+   * aconselhando "vincule-o à nova empresa", para algo que não existia. A rota
+   * de vínculo do módulo de usuários não serve aqui — é do tenant, exige
+   * permissão **naquela** empresa, e quem administra o SaaS não a tem.
+   *
+   * Consome vaga do limite, como qualquer vínculo: a mesma pessoa administrando
+   * duas empresas ocupa um lugar em cada, porque cada uma paga a sua.
+   */
+  async vincularAdministrador(empresaId: string, email: string, ator: Ator) {
+    const [empresa, usuario, perfilAdmin] = await Promise.all([
+      this.prisma.empresa.findFirst({
+        where: { id: empresaId, deletedAt: null },
+        select: { id: true, razaoSocial: true },
+      }),
+      this.prisma.usuario.findFirst({
+        where: { email: email.toLowerCase(), deletedAt: null },
+        select: { id: true, email: true },
+      }),
+      this.prisma.perfil.findFirst({
+        where: { nome: 'Administrador', deletedAt: null },
+        select: { id: true },
+      }),
+    ]);
+    if (!empresa) throw new NotFoundException('Empresa não encontrada');
+    if (!usuario) {
+      throw new NotFoundException(
+        'Nenhuma conta com este e-mail. Ela precisa existir antes de ser vinculada.',
+      );
+    }
+    if (!perfilAdmin) {
+      throw new NotFoundException('Perfil Administrador não encontrado');
+    }
+
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const jaVinculado = await tx.usuarioEmpresa.findUnique({
+        where: {
+          usuarioId_empresaId: { usuarioId: usuario.id, empresaId },
+        },
+        select: { ativo: true, perfilId: true },
+      });
+
+      if (jaVinculado?.ativo && jaVinculado.perfilId === perfilAdmin.id) {
+        throw new ConflictException(
+          'Esta conta já administra esta empresa.',
+        );
+      }
+
+      // Vaga só é consumida por vínculo que não estava ativo — promover alguém
+      // que já trabalha aqui de Vendedor para Administrador não ocupa um lugar
+      // a mais.
+      if (!jaVinculado?.ativo) {
+        await garantirVagaDeUsuario(tx, empresaId, usuario.id);
+      }
+
+      await tx.usuarioEmpresa.upsert({
+        where: {
+          usuarioId_empresaId: { usuarioId: usuario.id, empresaId },
+        },
+        create: {
+          usuarioId: usuario.id,
+          empresaId,
+          perfilId: perfilAdmin.id,
+          createdBy: ator.id,
+          updatedBy: ator.id,
+        },
+        update: {
+          perfilId: perfilAdmin.id,
+          ativo: true,
+          updatedBy: ator.id,
+        },
+      });
+
+      await this.registrar(tx, ator, {
+        acao: 'empresa.admin_vinculado',
+        empresaId: empresa.id,
+        empresaRazaoSocial: empresa.razaoSocial,
+        valorNovo: usuario.email,
+      });
+
+      return { success: true };
+    });
+  }
+
+  /**
+   * Tira o vínculo de administrador de uma empresa (desativa, não apaga).
+   *
+   * Recusa o último: uma empresa sem administrador nenhum não tem quem cadastre
+   * usuário ou mexa em configuração, e a saída seria a plataforma vincular
+   * alguém de fora. A conta em si continua existindo e administrando as outras
+   * empresas dela.
+   */
+  async desvincularAdministrador(
+    empresaId: string,
+    usuarioId: string,
+    ator: Ator,
+  ) {
+    const empresa = await this.prisma.empresa.findFirst({
+      where: { id: empresaId, deletedAt: null },
+      select: { id: true, razaoSocial: true },
+    });
+    if (!empresa) throw new NotFoundException('Empresa não encontrada');
+
+    const perfilAdmin = await this.prisma.perfil.findFirst({
+      where: { nome: 'Administrador', deletedAt: null },
+      select: { id: true },
+    });
+    if (!perfilAdmin) throw new NotFoundException('Perfil Administrador não encontrado');
+
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const admins = await tx.usuarioEmpresa.count({
+        where: { empresaId, perfilId: perfilAdmin.id, ativo: true },
+      });
+      if (admins <= 1) {
+        throw new ConflictException(
+          'Esta é a única conta que administra a empresa. Vincule outra antes de remover esta.',
+        );
+      }
+
+      const vinculo = await tx.usuarioEmpresa.findUnique({
+        where: { usuarioId_empresaId: { usuarioId, empresaId } },
+        select: { ativo: true, usuario: { select: { email: true } } },
+      });
+      if (!vinculo?.ativo) {
+        throw new NotFoundException('Esta conta não administra esta empresa');
+      }
+
+      await tx.usuarioEmpresa.update({
+        where: { usuarioId_empresaId: { usuarioId, empresaId } },
+        data: { ativo: false, updatedBy: ator.id },
+      });
+
+      await this.registrar(tx, ator, {
+        acao: 'empresa.admin_desvinculado',
+        empresaId: empresa.id,
+        empresaRazaoSocial: empresa.razaoSocial,
+        valorAnterior: vinculo.usuario.email,
+      });
+
+      return { success: true };
     });
   }
 
