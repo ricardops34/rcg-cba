@@ -16,6 +16,8 @@ export const NOTIFICACAO_TIPOS = [
   "orcamento_recusado",
   "cliente_atribuido",
   "titulo_vencido",
+  // Cliente esperando alguem assumir no numero institucional da empresa.
+  "whatsapp_aguardando",
 ] as const;
 export const notificacaoTipoSchema = z.enum(NOTIFICACAO_TIPOS);
 export type NotificacaoTipo = z.infer<typeof notificacaoTipoSchema>;

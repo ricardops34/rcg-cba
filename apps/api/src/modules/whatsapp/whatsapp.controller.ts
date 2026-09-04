@@ -672,6 +672,26 @@ export class WhatsappController {
   }
 
   @ApiOperation({
+    summary: 'Indicadores de espera do atendimento da empresa',
+    description:
+      'Quem está aguardando agora e há quanto tempo, mais o tempo médio até ' +
+      'ser atendido e até o número ser associado a um cliente. Respeita o mesmo ' +
+      'escopo da lista de conversas.',
+  })
+  @RequirePermission('whatsapp-conversas', 'visualizar')
+  @Get('atendimento/indicadores')
+  indicadores(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('dias') dias?: string,
+  ) {
+    return this.conversas.indicadoresAtendimento(
+      user.empresaAtivaId,
+      user,
+      Number(dias) || 30,
+    );
+  }
+
+  @ApiOperation({
     summary: 'Assumir uma conversa do número da empresa',
     description:
       'Torna você o responsável por uma conversa que a triagem automática ' +

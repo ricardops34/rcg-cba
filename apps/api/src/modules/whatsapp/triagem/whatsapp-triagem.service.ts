@@ -8,6 +8,10 @@ import { ferramentasDaTriagem } from './triagem-ferramentas';
 import { montarPromptTriagem } from './triagem-prompt';
 import { WhatsappProviderService } from '../providers/whatsapp-provider.service';
 import { dentroDoExpediente } from '../../../common/horario/horario-trabalho';
+import {
+  registrarNotificacao,
+  usuarioDoVendedor,
+} from '../../notificacoes/registrar-notificacao';
 
 /** Quantas voltas de ferramenta uma resposta pode dar antes de desistir. */
 const MAX_VOLTAS = 4;
@@ -579,6 +583,11 @@ export class WhatsappTriagemService {
       },
     });
 
+    await this.avisarAguardando(tx, empresaId, conversaId, {
+      vendedorId,
+      assunto: destino.assunto,
+    });
+
     return {
       direcionado: true,
       para: destino.administrativo
@@ -587,6 +596,57 @@ export class WhatsappTriagemService {
           ? 'vendedor'
           : 'fila',
     };
+  }
+
+  /**
+   * Avisa quem precisa saber que há cliente esperando.
+   *
+   * Dois casos, e o destinatário muda:
+   *
+   * - **Direcionada a alguém**: avisa essa pessoa, e mais ninguém. É a caixa
+   *   dela, e o supervisor não precisa de um sino por atendimento de cada
+   *   vendedor do time.
+   * - **Fila sem dono**: avisa quem está trabalhando agora — em expediente e
+   *   com sessão aberta. Avisar quem não está no sistema é encher a caixa de
+   *   quem não vai ver, e some com o sinal de quem vê.
+   *
+   * Supervisor e gerente entram na lista da fila sem dono porque também
+   * atendem e porque a fila parada é problema deles. Já a conversa com dono
+   * não os notifica: eles a enxergam na tela, que é onde acompanhar faz
+   * sentido.
+   */
+  private async avisarAguardando(
+    tx: TenantTx,
+    empresaId: string,
+    conversaId: string,
+    destino: { vendedorId: string | null; assunto: string },
+  ) {
+    const alvos: string[] = [];
+
+    if (destino.vendedorId) {
+      const usuarioId = await usuarioDoVendedor(tx, empresaId, destino.vendedorId);
+      if (usuarioId) alvos.push(usuarioId);
+    } else {
+      const presentes = await this.vendedoresPresentes(tx, empresaId);
+      const usuarios = await Promise.all(
+        presentes.map((p) => usuarioDoVendedor(tx, empresaId, p.vendedorId)),
+      );
+      alvos.push(...usuarios.filter((u): u is string => u !== null));
+    }
+
+    for (const usuarioId of alvos) {
+      await registrarNotificacao(tx, {
+        empresaId,
+        usuarioId,
+        tipo: 'whatsapp_aguardando',
+        titulo: destino.assunto.slice(0, 120),
+        rota: `/comercial/atendimento?conversa=${conversaId}`,
+        referenciaId: conversaId,
+        // Não acumula: cada direcionamento é um cliente esperando, e agrupar
+        // faria "3 mensagens" no lugar de três pessoas na fila.
+        acumular: false,
+      });
+    }
   }
 
   /**

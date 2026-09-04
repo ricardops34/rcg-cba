@@ -2753,6 +2753,16 @@ model WhatsappConversa {
   /// Quando saiu da IA para uma pessoa. Nulo enquanto o bot atende.
   direcionadaEm DateTime?
 
+  /// Quando alguém assumiu o atendimento. Com `direcionadaEm`, dá o tempo que
+  /// o cliente esperou depois de a IA entregar; com `createdAt`, o tempo total
+  /// desde que ele escreveu pela primeira vez.
+  assumidaEm DateTime?
+
+  /// Quando o contato foi associado a um cliente. É o outro indicador pedido:
+  /// número que chega desconhecido só vira cadastro quando alguém o vincula, e
+  /// quanto tempo isso leva diz se a fila está sendo trabalhada.
+  clienteVinculadoEm DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -3081,6 +3091,8 @@ enum NotificacaoTipo {
   orcamento_recusado
   cliente_atribuido
   titulo_vencido
+  /// Cliente esperando alguem assumir no numero institucional.
+  whatsapp_aguardando
 }
 
 /// Comunicado interno exibido na tela inicial (Início).

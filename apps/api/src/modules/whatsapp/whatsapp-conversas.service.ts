@@ -628,9 +628,115 @@ export class WhatsappConversasService {
         data: {
           atendimento: 'humano',
           atendenteVendedorId: vendedor.id,
+          // Só na primeira vez: reassumir depois de devolver ao bot nao pode
+          // reescrever o marco e apagar a espera que houve.
+          ...(conversa.assumidaEm ? {} : { assumidaEm: new Date() }),
         },
         select: { id: true, atendimento: true, atendenteVendedorId: true },
       });
+    });
+  }
+
+  /**
+   * Indicadores de espera do número institucional.
+   *
+   * Responde três perguntas, e cada uma pede um recorte diferente:
+   *
+   * - **quantos estão esperando agora**, e há quanto tempo o mais antigo —
+   *   é o número que pede ação, e sai do estado atual, não de média;
+   * - **quanto se espera até ser atendido** — de `direcionadaEm` a
+   *   `assumidaEm`, nas que já foram assumidas;
+   * - **quanto se leva até associar o cliente** — da primeira mensagem
+   *   (`createdAt`) a `clienteVinculadoEm`.
+   *
+   * Conversa sem os dois marcos fica de fora de cada média, em vez de entrar
+   * como zero: as que já estavam em andamento antes desta medição existir têm
+   * o marco nulo, e contá-las como espera zero puxaria a média para baixo
+   * exatamente onde o indicador precisa ser confiável.
+   */
+  async indicadoresAtendimento(
+    empresaId: string,
+    user: AuthenticatedUser,
+    dias = 30,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const filtro = await this.filtroSessao(tx, empresaId, user);
+      const desde = new Date();
+      desde.setDate(desde.getDate() - dias);
+
+      const [aguardando, concluidas] = await Promise.all([
+        tx.whatsappConversa.findMany({
+          where: {
+            ...filtro,
+            sessao: { tipo: 'empresa' },
+            atendimento: 'aguardando',
+          },
+          select: {
+            id: true,
+            assunto: true,
+            direcionadaEm: true,
+            clienteId: true,
+            atendenteVendedorId: true,
+          },
+          orderBy: { direcionadaEm: 'asc' },
+        }),
+        tx.whatsappConversa.findMany({
+          where: {
+            ...filtro,
+            sessao: { tipo: 'empresa' },
+            createdAt: { gte: desde },
+          },
+          select: {
+            createdAt: true,
+            direcionadaEm: true,
+            assumidaEm: true,
+            clienteVinculadoEm: true,
+          },
+        }),
+      ]);
+
+      const agora = Date.now();
+      const minutos = (de: Date, ate: Date) =>
+        Math.max(0, Math.round((ate.getTime() - de.getTime()) / 60_000));
+
+      const esperasAteAtender = concluidas
+        .filter((c) => c.direcionadaEm && c.assumidaEm)
+        .map((c) => minutos(c.direcionadaEm!, c.assumidaEm!));
+      const esperasAteAssociar = concluidas
+        .filter((c) => c.clienteVinculadoEm)
+        .map((c) => minutos(c.createdAt, c.clienteVinculadoEm!));
+
+      const media = (xs: number[]) =>
+        xs.length === 0
+          ? null
+          : Math.round(xs.reduce((a, b) => a + b, 0) / xs.length);
+
+      return {
+        aguardando: {
+          total: aguardando.length,
+          semDono: aguardando.filter((c) => !c.atendenteVendedorId).length,
+          semCliente: aguardando.filter((c) => !c.clienteId).length,
+          esperaMaiorMin: aguardando[0]?.direcionadaEm
+            ? Math.round(
+                (agora - aguardando[0].direcionadaEm.getTime()) / 60_000,
+              )
+            : null,
+          conversas: aguardando.slice(0, 20).map((c) => ({
+            conversaId: c.id,
+            assunto: c.assunto,
+            esperandoHaMin: c.direcionadaEm
+              ? Math.round((agora - c.direcionadaEm.getTime()) / 60_000)
+              : null,
+            semDono: !c.atendenteVendedorId,
+            semCliente: !c.clienteId,
+          })),
+        },
+        periodoDias: dias,
+        tempoAteAtenderMin: media(esperasAteAtender),
+        tempoAteAssociarMin: media(esperasAteAssociar),
+        amostraAtendimentos: esperasAteAtender.length,
+        amostraAssociacoes: esperasAteAssociar.length,
+      };
     });
   }
 
@@ -1379,7 +1485,16 @@ export class WhatsappConversasService {
 
       return tx.whatsappConversa.update({
         where: { id: conversaId },
-        data: { clienteId: input.clienteId },
+        data: {
+          clienteId: input.clienteId,
+          // Marco do "quanto tempo até o número virar um cliente identificado".
+          // Só na primeira associação: trocar o cliente vinculado depois não
+          // reabre a contagem, senão o indicador mediria a correção, e não a
+          // espera que houve.
+          ...(input.clienteId && !conversa.clienteVinculadoEm
+            ? { clienteVinculadoEm: new Date() }
+            : {}),
+        },
       });
     });
   }
