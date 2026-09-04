@@ -26,28 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-/** ISO → "yyyy-MM-dd" que o input[type=date] entende, no fuso local. */
-function paraCampoData(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const mes = String(d.getMonth() + 1).padStart(2, "0");
-  const dia = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${mes}-${dia}`;
-}
-
-/**
- * "yyyy-MM-dd" → ISO no **fim** do dia escolhido.
- *
- * Quem digita 30/09 quer o teste valendo o dia 30 inteiro; converter para
- * meia-noite cortaria o acesso na virada do dia 29 para o 30, um dia antes do
- * que a tela prometeu.
- */
-function paraIso(valor: string): string | null {
-  if (!valor) return null;
-  const [ano, mes, dia] = valor.split("-").map(Number);
-  return new Date(ano, mes - 1, dia, 23, 59, 59, 999).toISOString();
-}
+import { paraCampoData, paraIsoFimDoDia } from "@/lib/data-avaliacao";
 
 const SITUACOES: SituacaoEmpresa[] = ["teste", "ativa", "suspensa", "cancelada"];
 
@@ -94,7 +73,7 @@ export function SituacaoDialog({
         method: "PATCH",
         body: {
           situacao,
-          testeExpiraEm: situacao === "teste" ? paraIso(testeExpiraEm) : null,
+          testeExpiraEm: situacao === "teste" ? paraIsoFimDoDia(testeExpiraEm) : null,
           limiteUsuarios: limiteNumero,
           ...(motivo.trim() ? { motivo: motivo.trim() } : {}),
         },

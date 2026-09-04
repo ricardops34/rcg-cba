@@ -7,12 +7,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import {
   empresaCreateSchema,
+  SITUACAO_EMPRESA_LABEL,
   type CurrentUser,
   type Empresa,
   type EmpresaCreate,
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
 import { ApiError, apiFetch, apiUpload, assetUrl } from "@/lib/api-client";
+import { paraCampoData, paraIsoFimDoDia } from "@/lib/data-avaliacao";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,9 +25,30 @@ import { ArrowLeft, ImageIcon, Upload } from "lucide-react";
 
 const LIST_ROUTE = "/admin/empresas";
 
-export function EmpresaForm({ empresa }: { empresa?: Empresa }) {
+/**
+ * Cadastro da empresa, usado por dois módulos.
+ *
+ * Em Administração, o admin do tenant edita a **própria** empresa. Em
+ * Plataforma, quem administra o SaaS edita **qualquer** uma — mesma tela, mesmo
+ * endpoint, mesmas validações; o que muda é a lista para onde o botão voltar
+ * leva e uma seção a mais, de assinatura.
+ *
+ * Duplicar o formulário para o módulo novo custaria manter dois cadastros da
+ * mesma entidade em sincronia — e o primeiro campo fiscal acrescentado só num
+ * deles já criaria a divergência.
+ */
+export function EmpresaForm({
+  empresa,
+  listRoute = LIST_ROUTE,
+}: {
+  empresa?: Empresa;
+  listRoute?: string;
+}) {
   const router = useRouter();
   const setUser = useAuthStore((state) => state.setUser);
+  const administradorPlataforma = useAuthStore(
+    (state) => state.user?.administradorPlataforma,
+  );
   const { create, update } = useResourceMutations<EmpresaCreate, Partial<EmpresaCreate>>("empresas");
   const [current, setCurrent] = useState<Empresa | undefined>(empresa);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -117,7 +140,7 @@ export function EmpresaForm({ empresa }: { empresa?: Empresa }) {
         await create.mutateAsync(values);
         toast.success("Empresa cadastrada");
       }
-      router.push(LIST_ROUTE);
+      router.push(listRoute);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Erro ao salvar empresa");
     }
@@ -126,7 +149,7 @@ export function EmpresaForm({ empresa }: { empresa?: Empresa }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => router.push(LIST_ROUTE)}>
+        <Button variant="ghost" size="icon" onClick={() => router.push(listRoute)}>
           <ArrowLeft className="size-4" />
         </Button>
         <h1 className="text-xl font-semibold tracking-tight">
@@ -138,6 +161,81 @@ export function EmpresaForm({ empresa }: { empresa?: Empresa }) {
         <form id="empresa-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
           <CardContent>
             <FieldGroup>
+              {/* Assinatura: só quem administra o SaaS enxerga e altera. O
+                  servidor remove estes campos do payload de quem não é
+                  administrador da plataforma (ver `semCamposDaPlataforma`),
+                  então esconder aqui é conveniência de tela, não a trava. */}
+              {administradorPlataforma && (
+                <div className="rounded-lg border border-dashed p-3">
+                  <p className="mb-3 text-sm font-medium">Assinatura</p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <Field>
+                      <FieldLabel htmlFor="situacao">Situação</FieldLabel>
+                      <select
+                        id="situacao"
+                        className="h-9 rounded-md border bg-transparent px-3 text-sm shadow-xs"
+                        value={form.watch("situacao") ?? "ativa"}
+                        onChange={(e) =>
+                          form.setValue(
+                            "situacao",
+                            e.target.value as EmpresaCreate["situacao"],
+                            { shouldDirty: true },
+                          )
+                        }
+                      >
+                        {(
+                          ["teste", "ativa", "suspensa", "cancelada"] as const
+                        ).map((s) => (
+                          <option key={s} value={s}>
+                            {SITUACAO_EMPRESA_LABEL[s]}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+
+                    <Field>
+                      <FieldLabel htmlFor="testeExpiraEm">Teste até</FieldLabel>
+                      <Input
+                        id="testeExpiraEm"
+                        type="date"
+                        disabled={form.watch("situacao") !== "teste"}
+                        value={paraCampoData(form.watch("testeExpiraEm"))}
+                        onChange={(e) =>
+                          form.setValue("testeExpiraEm", paraIsoFimDoDia(e.target.value), {
+                            shouldDirty: true,
+                          })
+                        }
+                      />
+                    </Field>
+
+                    <Field>
+                      <FieldLabel htmlFor="limiteUsuarios">
+                        Limite de usuários
+                      </FieldLabel>
+                      <Input
+                        id="limiteUsuarios"
+                        type="number"
+                        min={1}
+                        placeholder="sem limite"
+                        value={form.watch("limiteUsuarios") ?? ""}
+                        onChange={(e) =>
+                          form.setValue(
+                            "limiteUsuarios",
+                            e.target.value === "" ? null : Number(e.target.value),
+                            { shouldDirty: true },
+                          )
+                        }
+                      />
+                    </Field>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Situação decide o acesso: teste e ativa entram, suspensa e
+                    cancelada não. Prazo em branco, em teste, é avaliação sem
+                    data. Limite em branco, sem teto.
+                  </p>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field data-invalid={!!form.formState.errors.razaoSocial}>
                   <FieldLabel htmlFor="razaoSocial">Razão social</FieldLabel>
@@ -403,7 +501,7 @@ export function EmpresaForm({ empresa }: { empresa?: Empresa }) {
           </CardContent>
 
           <CardFooter className="justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => router.push(LIST_ROUTE)}>
+            <Button type="button" variant="outline" onClick={() => router.push(listRoute)}>
               Cancelar
             </Button>
             <Button type="submit" disabled={form.formState.isSubmitting}>

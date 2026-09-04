@@ -22,21 +22,8 @@ import {
 } from "@/components/ui/select";
 import { ArrowLeft } from "lucide-react";
 import { PlataformaGuard } from "../../plataforma-guard";
+import { dataEmDias, paraIsoFimDoDia } from "@/lib/data-avaliacao";
 
-/** Dias somados a hoje para o fim do teste, com o dia inteiro contando. */
-function dataEmDias(dias: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + dias);
-  const mes = String(d.getMonth() + 1).padStart(2, "0");
-  const dia = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${mes}-${dia}`;
-}
-
-function paraIso(valor: string): string | null {
-  if (!valor) return null;
-  const [ano, mes, dia] = valor.split("-").map(Number);
-  return new Date(ano, mes - 1, dia, 23, 59, 59, 999).toISOString();
-}
 
 const somenteDigitos = (v: string) => v.replace(/\D/g, "");
 
@@ -88,7 +75,7 @@ export default function NovaEmpresaPage() {
           cnpj,
           alias: alias.trim() || null,
           situacao,
-          testeExpiraEm: situacao === "teste" ? paraIso(testeExpiraEm) : null,
+          testeExpiraEm: situacao === "teste" ? paraIsoFimDoDia(testeExpiraEm) : null,
           limiteUsuarios:
             limiteUsuarios.trim() === "" ? null : Number(limiteUsuarios),
           admin: {

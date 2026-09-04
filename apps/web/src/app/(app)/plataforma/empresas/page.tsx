@@ -22,7 +22,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Settings2 } from "lucide-react";
+import { MoreHorizontal, Pencil, Settings2 } from "lucide-react";
 import { SituacaoDialog } from "./situacao-dialog";
 import { PlataformaGuard } from "../plataforma-guard";
 
@@ -146,6 +146,14 @@ export default function PlataformaEmpresasPage() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={() => router.push(`/plataforma/empresas/${e.id}`)}
+            >
+              <Pencil className="size-4" /> Editar cadastro
+            </DropdownMenuItem>
+            {/* Atalho para o que mais se mexe nesta tela: dá para ajustar sem
+                abrir o cadastro inteiro. Grava pelo endpoint da plataforma, que
+                registra cada alteração no log. */}
             <DropdownMenuItem onClick={() => setEmEdicao(e)}>
               <Settings2 className="size-4" /> Situação, teste e limite
             </DropdownMenuItem>
@@ -209,7 +217,7 @@ export default function PlataformaEmpresasPage() {
             setPageSize(n);
             setPage(1);
           }}
-          onRowClick={(e) => setEmEdicao(e)}
+          onRowClick={(e) => router.push(`/plataforma/empresas/${e.id}`)}
           sortBy={sortBy}
           sortOrder={sortOrder}
           onSortChange={(key, order) => {
