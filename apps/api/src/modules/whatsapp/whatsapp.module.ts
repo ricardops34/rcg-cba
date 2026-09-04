@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { WhatsappController } from './whatsapp.controller';
 import { WhatsappInternoController } from './whatsapp-interno.controller';
 import { WhatsappConfigService } from './whatsapp-config.service';
+import { WhatsappTriagemService } from './triagem/whatsapp-triagem.service';
+import { ProvedorIaModule } from '../agente/provedor-ia.module';
 import { WhatsappSessaoService } from './whatsapp-sessao.service';
 import { WhatsappConversasService } from './whatsapp-conversas.service';
 import { WhatsappAgendaService } from './whatsapp-agenda.service';
@@ -27,6 +29,10 @@ import { OrcamentosModule } from '../orcamentos/orcamentos.module';
     NotasSaidaModule,
     AtividadesModule,
     OrcamentosModule,
+    // A triagem usa o provedor de IA e a credencial da empresa — a mesma
+    // camada do agente interno, que é onde de fato não há diferença entre os
+    // dois. O prompt e as ferramentas são de cada um.
+    ProvedorIaModule,
   ],
   controllers: [
     WhatsappController,
@@ -43,6 +49,7 @@ import { OrcamentosModule } from '../orcamentos/orcamentos.module';
     WhatsappAgendaService,
     WhatsappAcoesService,
     WhatsappAgendamentoService,
+    WhatsappTriagemService,
     // Transporte: o roteador e as duas implementações. Nada fora de
     // `providers/` conhece worker ou gateway — ver `whatsapp-provider.ts`.
     WhatsappProviderService,

@@ -6,12 +6,22 @@ import { ProvedorFactory } from '../../agente/provedor.factory';
 import type { MensagemChat } from '../../agente/provedor-ia';
 import { ferramentasDaTriagem } from './triagem-ferramentas';
 import { montarPromptTriagem } from './triagem-prompt';
+import { WhatsappProviderService } from '../providers/whatsapp-provider.service';
 
 /** Quantas voltas de ferramenta uma resposta pode dar antes de desistir. */
 const MAX_VOLTAS = 4;
 
 /** Quantas mensagens da conversa vão como histórico ao modelo. */
 const HISTORICO = 12;
+
+/**
+ * Assinatura das mensagens que a IA escreve.
+ *
+ * Vai no `enviadaPor`, que nas mensagens de gente guarda o id do usuário. Um
+ * marcador em vez de um uuid porque não há usuário nenhum aqui — e deixar nulo
+ * faria a mensagem da IA parecer do sistema no histórico.
+ */
+const AUTOR_TRIAGEM = 'triagem-ia';
 
 /**
  * Triagem do número institucional.
@@ -33,6 +43,7 @@ export class WhatsappTriagemService {
     private readonly prisma: PrismaService,
     private readonly agenteConfig: AgenteConfigService,
     private readonly provedores: ProvedorFactory,
+    private readonly provider: WhatsappProviderService,
   ) {}
 
   /**
@@ -489,27 +500,51 @@ export class WhatsappTriagemService {
   }
 
   /**
-   * Manda a resposta do bot pelo mesmo caminho de uma mensagem enviada por
-   * gente — a gravação e o envio ficam a cargo de quem já sabe fazer isso.
+   * Manda a resposta do bot pelo WhatsApp.
    *
-   * Injetado por `WhatsappModule` para não fechar ciclo: o serviço de conversas
-   * é quem chama a triagem.
+   * Não passa por `WhatsappConversasService.enviar`: aquele exige um
+   * `AuthenticatedUser` e confere o dono da sessão — as duas coisas que o bot
+   * não tem e não é. Aqui o caminho é o transporte direto, e a autoria fica
+   * registrada como do próprio atendimento automático.
    */
-  private responderFn:
-    | ((empresaId: string, conversaId: string, texto: string) => Promise<void>)
-    | null = null;
-
-  registrarEnvio(
-    fn: (empresaId: string, conversaId: string, texto: string) => Promise<void>,
-  ) {
-    this.responderFn = fn;
-  }
-
   private async responder(empresaId: string, conversaId: string, texto: string) {
-    if (!this.responderFn) {
-      this.logger.warn('Triagem sem canal de envio configurado');
-      return;
-    }
-    await this.responderFn(empresaId, conversaId, texto);
+    await this.prisma.withTenant(empresaId, async (tx) => {
+      const conversa = await tx.whatsappConversa.findFirst({
+        where: { id: conversaId },
+        select: {
+          sessaoId: true,
+          contato: { select: { jid: true } },
+        },
+      });
+      if (!conversa) return;
+
+      const enviada = await this.provider.enviarTexto(
+        empresaId,
+        conversa.sessaoId,
+        { jid: conversa.contato.jid, texto },
+        tx,
+      );
+
+      await tx.whatsappMensagem.create({
+        data: {
+          empresaId,
+          conversaId,
+          externoId: enviada.externoId,
+          direcao: 'saida',
+          tipo: 'texto',
+          conteudo: texto,
+          // Autoria explícita: quem lê o histórico precisa distinguir o que a
+          // IA respondeu do que a pessoa escreveu, e "sem autor" seria lido
+          // como mensagem do sistema.
+          enviadaPor: AUTOR_TRIAGEM,
+          statusEntrega: 'enviada',
+        },
+      });
+
+      await tx.whatsappConversa.update({
+        where: { id: conversaId },
+        data: { ultimaMensagemEm: new Date() },
+      });
+    });
   }
 }

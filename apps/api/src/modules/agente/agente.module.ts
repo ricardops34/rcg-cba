@@ -1,15 +1,10 @@
 import { Module } from '@nestjs/common';
 import { AgenteController } from './agente.controller';
-import { AgenteConfigService } from './agente-config.service';
 import { AgenteChatService } from './agente-chat.service';
 import { AgenteToolsService } from './agente-tools.service';
 import { AgenteReferenciasService } from './agente-referencias.service';
 import { AgenteFerramentasService } from './agente-ferramentas.service';
-import { OpenAiCompativelClient } from './openai-compativel.client';
-import { AnthropicClient } from './anthropic.client';
-import { CodexClient } from './codex.client';
-import { CodexOAuthService } from './codex-oauth.service';
-import { ProvedorFactory } from './provedor.factory';
+import { ProvedorIaModule } from './provedor-ia.module';
 import { ConsultasModule } from '../consultas/consultas.module';
 import { ClientesModule } from '../clientes/clientes.module';
 import { ProdutosModule } from '../produtos/produtos.module';
@@ -42,19 +37,14 @@ import { MeusAtendimentosModule } from '../meus-atendimentos/meus-atendimentos.m
     WhatsappModule,
     VendedoresModule,
     MeusAtendimentosModule,
+    ProvedorIaModule,
   ],
   controllers: [AgenteController],
   providers: [
-    AgenteConfigService,
     AgenteChatService,
     AgenteToolsService,
     AgenteReferenciasService,
     AgenteFerramentasService,
-    OpenAiCompativelClient,
-    AnthropicClient,
-    CodexClient,
-    CodexOAuthService,
-    ProvedorFactory,
   ],
 })
 export class AgenteModule {}

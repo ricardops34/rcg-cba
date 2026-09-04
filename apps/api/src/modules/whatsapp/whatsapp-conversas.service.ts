@@ -1569,7 +1569,7 @@ export class WhatsappConversasService {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const sessao = await tx.whatsappSessao.findFirst({
         where: { id: entrada.sessaoId },
-        select: { id: true, vendedorId: true },
+        select: { id: true, vendedorId: true, tipo: true },
       });
       if (!sessao) return { gravada: false, motivo: 'sessao-desconhecida' };
 
@@ -1640,27 +1640,47 @@ export class WhatsappConversasService {
           // acabou de escrevê-la. Contar faria o badge subir pela resposta
           // dele mesmo, e a conversa pedir atenção que já teve.
           naoLidas: minha ? 0 : 1,
+          // Conversa nova no número institucional começa com a IA; no aparelho
+          // do vendedor, já é dele.
+          atendimento: sessao.tipo === 'empresa' ? 'bot' : 'humano',
         },
         update: {
           clienteId: contato.clienteId,
           ultimaMensagemEm: new Date(),
           ...(minha ? {} : { naoLidas: { increment: 1 } }),
         },
+        select: {
+          id: true,
+          atendimento: true,
+          atendenteVendedorId: true,
+        },
       });
 
-      // Quem é avisado pelo sino: o usuário do vendedor dono da sessão. Sem
-      // login vinculado não há destinatário, e a mensagem só fica na tela.
+      // Quem é avisado pelo sino.
+      //
+      // No aparelho, o dono da sessão. No institucional, quem a IA direcionou —
+      // e ninguém, enquanto a triagem está em curso. Sem login vinculado não há
+      // destinatário, e a mensagem só fica na tela.
       const destinatario = await usuarioDoVendedor(
         tx,
         empresaId,
-        sessao.vendedorId,
+        sessao.vendedorId ?? conversa.atendenteVendedorId,
       );
       const nomeNoAviso =
         contato.nomeExibicao ??
         contato.telefoneNormalizado ??
         contato.jid.split('@')[0];
 
-      if (!contato.clienteId) {
+      // O descarte por falta de vínculo é do **aparelho do vendedor**, e só
+      // dele. Ali chega mensagem de quem quiser — família, amigo, engano — e
+      // guardar esse texto no servidor da empresa seria ler conversa alheia.
+      //
+      // No número institucional a situação se inverte: quem escreve procurou
+      // deliberadamente o WhatsApp de atendimento da empresa, e o desconhecido
+      // é justamente o caso principal — é ele que a triagem precisa entender
+      // para saber a quem entregar. Descartar ali deixaria a IA com um "alguém
+      // escreveu algo" e nada mais.
+      if (!contato.clienteId && sessao.tipo !== 'empresa') {
         // A conversa existe para o vendedor poder vinculá-la; o conteúdo, não.
         //
         // O log existe porque este descarte é indistinguível, de fora, de uma
@@ -1749,8 +1769,15 @@ export class WhatsappConversasService {
         });
       }
 
+      // Conversa do número institucional em modo bot não avisa ninguém: a
+      // triagem é da IA, e o sino de todo vendedor tocando a cada "oi" de
+      // desconhecido é justamente o que este número existe para evitar. O
+      // aviso volta quando a IA direcionar, para quem ela escolher.
+      const emTriagem =
+        sessao.tipo === 'empresa' && conversa.atendimento === 'bot';
+
       // Mensagem do próprio vendedor não vira aviso para ele mesmo.
-      if (destinatario && !jaGravada && !minha) {
+      if (destinatario && !jaGravada && !minha && !emTriagem) {
         await registrarNotificacao(tx, {
           empresaId,
           usuarioId: destinatario,
@@ -1772,6 +1799,11 @@ export class WhatsappConversasService {
         // mensagem fica é que faz sentido baixar a mídia dela. Reenvio de
         // mensagem já baixada não pede de novo.
         arquivoNecessario: MIDIA.includes(entrada.tipo) && !mensagem.arquivoUrl,
+        // Sinaliza a quem chamou que esta mensagem pede triagem. A triagem em
+        // si roda **fora** desta transação: ela conversa com um provedor de IA
+        // pela rede, e segurar a transação do banco durante essa chamada
+        // prenderia conexão do pool por segundos a cada mensagem recebida.
+        triagem: emTriagem && !jaGravada && !minha,
       };
     });
   }

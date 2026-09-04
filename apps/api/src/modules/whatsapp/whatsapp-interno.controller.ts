@@ -9,6 +9,7 @@ import {
 import { ApiExcludeController } from '@nestjs/swagger';
 import { WhatsappConversasService } from './whatsapp-conversas.service';
 import { WhatsappSessaoService } from './whatsapp-sessao.service';
+import { WhatsappTriagemService } from './triagem/whatsapp-triagem.service';
 
 /**
  * Rota interna, falada **só pelo worker** — não por navegador.
@@ -26,6 +27,7 @@ export class WhatsappInternoController {
   constructor(
     private readonly conversas: WhatsappConversasService,
     private readonly sessoes: WhatsappSessaoService,
+    private readonly triagem: WhatsappTriagemService,
   ) {}
 
   private conferirToken(authorization?: string) {
@@ -97,7 +99,30 @@ export class WhatsappInternoController {
     @Headers('authorization') authorization?: string,
   ) {
     this.conferirToken(authorization);
-    return this.conversas.receber(corpo);
+    return this.receberEtriar(corpo);
+  }
+
+  /**
+   * Grava a mensagem e, se for do número institucional em triagem, chama a IA.
+   *
+   * A triagem roda **depois** da transação de gravação, e não dentro: ela fala
+   * com um provedor de IA pela rede, e segurar a transação durante essa chamada
+   * prenderia uma conexão do pool por segundos a cada mensagem que chega.
+   *
+   * O `await` fica: o worker espera a resposta desta rota, e responder antes de
+   * a IA falar faria a mensagem dela sair fora de ordem quando o cliente manda
+   * duas seguidas.
+   */
+  private async receberEtriar(corpo: Parameters<WhatsappConversasService['receber']>[0]) {
+    const resultado = await this.conversas.receber(corpo);
+    if ('triagem' in resultado && resultado.triagem && resultado.conversaId) {
+      await this.triagem.processar({
+        empresaId: corpo.empresaId,
+        conversaId: resultado.conversaId,
+        texto: corpo.texto,
+      });
+    }
+    return resultado;
   }
 
   /**
