@@ -1,5 +1,27 @@
 import { z } from "zod";
-import { auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
+import { auditFieldsSchema, paginationQuerySchema } from "./common";
+
+/**
+ * Situação da assinatura de uma empresa no SaaS. Substituiu o booleano `ativo`:
+ * ele dizia "pode entrar", isto diz isso e o porquê, num campo só.
+ *
+ * `teste` e `ativa` entram; `suspensa` e `cancelada` não.
+ */
+export const situacaoEmpresaSchema = z.enum([
+  "teste",
+  "ativa",
+  "suspensa",
+  "cancelada",
+]);
+export type SituacaoEmpresa = z.infer<typeof situacaoEmpresaSchema>;
+
+/** Rótulos das situações, para tela e relatório não os reinventarem cada um. */
+export const SITUACAO_EMPRESA_LABEL: Record<SituacaoEmpresa, string> = {
+  teste: "Em teste",
+  ativa: "Ativa",
+  suspensa: "Suspensa",
+  cancelada: "Cancelada",
+};
 
 /** Campo de texto opcional que também aceita "" vindo do formulário. */
 const opt = (max: number) => z.string().trim().max(max).optional().or(z.literal(""));
@@ -61,10 +83,24 @@ export const empresaCreateSchema = z.object({
     .nullable()
     .optional()
     .describe("Caminho relativo da imagem da faixa (definido via upload)"),
-  ativo: z
-    .boolean()
-    .default(true)
-    .describe("Empresas inativas não permitem novos logins de usuários vinculados"),
+  situacao: situacaoEmpresaSchema
+    .default("ativa")
+    .describe(
+      "Situação da assinatura. Fonte única do acesso: teste e ativa entram, suspensa e cancelada não",
+    ),
+  testeExpiraEm: z
+    .string()
+    .datetime()
+    .nullable()
+    .optional()
+    .describe("Fim do período de avaliação; só se aplica a situacao = teste"),
+  limiteUsuarios: z
+    .number()
+    .int()
+    .min(1)
+    .nullable()
+    .optional()
+    .describe("Teto de usuários com vínculo ativo; nulo = sem limite"),
 
   // Identificação fiscal, endereço e contato — é o que sai no cabeçalho dos
   // documentos emitidos pro cliente (proposta de orçamento em PDF). Todos
@@ -100,7 +136,7 @@ export const empresaSchema = empresaCreateSchema.extend({
 export type Empresa = z.infer<typeof empresaSchema>;
 
 export const empresaQuerySchema = paginationQuerySchema.extend({
-  ativo: booleanQueryParam,
+  situacao: situacaoEmpresaSchema.optional(),
 });
 export type EmpresaQuery = z.infer<typeof empresaQuerySchema>;
 
@@ -113,7 +149,9 @@ export const EMPRESA_CREATE_EXAMPLE: EmpresaCreate = {
   bannerAtivo: true,
   bannerCor: "#bd1e7d",
   bannerImagemUrl: "/uploads/banners/andrade-associada.png",
-  ativo: true,
+  situacao: "ativa",
+  testeExpiraEm: null,
+  limiteUsuarios: 25,
   inscricaoEstadual: "283456789",
   inscricaoMunicipal: "",
   endereco: "AV. AFONSO PENA 1234",

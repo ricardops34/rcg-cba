@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import * as bcrypt from 'bcryptjs';
 import type { PortalClienteConfig, PortalClienteContatoCreate } from '@plataforma/contracts';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { whereEmpresaAcessivel } from '../../common/empresa/situacao-empresa';
 
 const ACOES: Record<string, string[]> = {
   cadastro: ['visualizar', 'editar'],
@@ -37,7 +38,9 @@ export class PortalClienteAdminService {
   async criarAcesso(empresaId: string, input: PortalClienteContatoCreate, usuarioId: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const [empresa, cliente] = await Promise.all([
-        tx.empresa.findFirst({ where: { id: empresaId, ativo: true, deletedAt: null } }),
+        tx.empresa.findFirst({
+          where: { id: empresaId, deletedAt: null, ...whereEmpresaAcessivel() },
+        }),
         tx.cliente.findFirst({ where: { id: input.clienteId, empresaId, ativo: true, deletedAt: null } }),
       ]);
       if (!empresa?.alias) throw new ConflictException('Defina o alias da empresa antes de liberar o portal');

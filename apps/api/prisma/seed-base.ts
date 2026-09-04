@@ -495,7 +495,6 @@ async function main() {
         nomeFantasia: cfg.nomeFantasia,
         cnpj: cfg.cnpj,
         alias: cfg.alias,
-        ativo: true,
       },
     });
 

@@ -8,6 +8,7 @@ import {
   PrismaService,
   type TenantTx,
 } from '../../common/prisma/prisma.service';
+import { whereEmpresaAcessivel } from '../../common/empresa/situacao-empresa';
 import type { NotificacaoTipo } from '@prisma/client';
 import { registrarNotificacao } from './registrar-notificacao';
 
@@ -67,7 +68,7 @@ export class NotificacoesVarreduraService
       // Empresa por empresa porque as tabelas têm RLS: sem `withTenant` a
       // consulta volta vazia. `empresas` não tem RLS, e é por ela que começa.
       const empresas = await this.prisma.empresa.findMany({
-        where: { deletedAt: null, ativo: true },
+        where: { deletedAt: null, ...whereEmpresaAcessivel() },
         select: { id: true },
       });
       for (const { id } of empresas) {

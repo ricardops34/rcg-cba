@@ -1,6 +1,11 @@
 import { existsSync, unlink } from 'node:fs';
 import { basename, join } from 'node:path';
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPaginatedResult, paginationToSkipTake } from '../../common/pagination/paginate';
 import {
@@ -11,11 +16,66 @@ import {
 } from '../../common/uploads/uploads.config';
 import type { EmpresaCreate, EmpresaQuery, EmpresaUpdate } from '@plataforma/contracts';
 
-const SORT_FIELDS = new Set(['razaoSocial', 'nomeFantasia', 'cnpj', 'ativo', 'createdAt']);
+const SORT_FIELDS = new Set([
+  'razaoSocial',
+  'nomeFantasia',
+  'cnpj',
+  'situacao',
+  'createdAt',
+]);
+
+/**
+ * Campos que só a administração da plataforma governa. Um administrador de
+ * empresa que os alcançasse se liberaria sozinho — estenderia o próprio teste,
+ * sairia de suspenso, apagaria o teto de usuários. Por isso a lista é
+ * removida do payload antes do `update`, em vez de apenas escondida da tela.
+ */
+const CAMPOS_DA_PLATAFORMA = [
+  'situacao',
+  'testeExpiraEm',
+  'limiteUsuarios',
+] as const;
+
+/** Quem está executando a ação: id, empresa da sessão e se administra a plataforma. */
+export type AtorEmpresa = {
+  id: string;
+  empresaAtivaId?: string;
+  administradorPlataforma?: boolean;
+};
 
 @Injectable()
 export class EmpresasService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Recusa quem tenta alcançar empresa que não é a sua.
+   *
+   * O administrador da plataforma passa por qualquer uma; o administrador de
+   * empresa, só pela empresa ativa da sessão dele. Antes disto, a permissão
+   * `empresas.editar` — que o perfil Administrador tem — valia para **todas**
+   * as empresas da base, porque o service nunca comparou o id recebido com o
+   * da sessão.
+   */
+  private garantirEscopo(
+    user: { empresaAtivaId?: string; administradorPlataforma?: boolean },
+    empresaId: string,
+  ) {
+    if (user.administradorPlataforma) return;
+    if (user.empresaAtivaId !== empresaId) {
+      throw new ForbiddenException('Esta empresa não é a da sua sessão');
+    }
+  }
+
+  /** Tira do payload o que só a plataforma pode mudar. */
+  private semCamposDaPlataforma<T extends Record<string, unknown>>(
+    input: T,
+    administradorPlataforma: boolean,
+  ) {
+    if (administradorPlataforma) return input;
+    const out = { ...input };
+    for (const campo of CAMPOS_DA_PLATAFORMA) delete out[campo];
+    return out;
+  }
 
   /** Campo vazio do formulário vira null no banco (mesmo padrão dos demais cadastros). */
   private limpar<T extends Record<string, unknown>>(input: T) {
@@ -27,7 +87,7 @@ export class EmpresasService {
   async findAll(query: EmpresaQuery) {
     const where = {
       deletedAt: null,
-      ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
+      ...(query.situacao !== undefined ? { situacao: query.situacao } : {}),
       ...(query.search
         ? {
             OR: [
@@ -60,6 +120,16 @@ export class EmpresasService {
     return empresa;
   }
 
+  /**
+   * Detalhe de uma empresa, conferindo antes que ela seja alcançável por quem
+   * pediu. É o que a rota `GET /empresas/:id` usa — a versão sem conferência
+   * fica para uso interno, onde o id já veio da própria sessão.
+   */
+  async findOneDoAtor(id: string, user: AtorEmpresa) {
+    this.garantirEscopo(user, id);
+    return this.findOne(id);
+  }
+
   async create(input: EmpresaCreate, userId: string) {
     const existente = await this.prisma.empresa.findUnique({
       where: { cnpj: input.cnpj },
@@ -77,12 +147,17 @@ export class EmpresasService {
     });
   }
 
-  async update(id: string, input: EmpresaUpdate, userId: string) {
+  async update(id: string, input: EmpresaUpdate, user: AtorEmpresa) {
+    this.garantirEscopo(user, id);
     await this.findOne(id);
     if (input.alias) await this.ensureAliasDisponivel(input.alias, id);
+    const dados = this.semCamposDaPlataforma(
+      this.limpar(input),
+      user.administradorPlataforma === true,
+    );
     return this.prisma.empresa.update({
       where: { id },
-      data: { ...(this.limpar(input) as object), updatedBy: userId } as never,
+      data: { ...(dados as object), updatedBy: user.id } as never,
     });
   }
 
@@ -100,7 +175,8 @@ export class EmpresasService {
   }
 
   /** Define o logo da empresa a partir do arquivo já gravado em disco. */
-  async setLogo(id: string, filename: string, userId: string) {
+  async setLogo(id: string, filename: string, user: AtorEmpresa) {
+    this.garantirEscopo(user, id);
     const empresa = await this.findOne(id);
 
     // Remove o logo anterior (best-effort) para não acumular órfãos em disco.
@@ -111,7 +187,7 @@ export class EmpresasService {
 
     return this.prisma.empresa.update({
       where: { id },
-      data: { logoUrl: logoPublicPath(filename), updatedBy: userId },
+      data: { logoUrl: logoPublicPath(filename), updatedBy: user.id },
     });
   }
 
@@ -121,7 +197,8 @@ export class EmpresasService {
    * Não liga a faixa sozinha: enviar a imagem e decidir exibir são ações
    * diferentes, e o admin costuma subir a arte antes de publicar.
    */
-  async setBanner(id: string, filename: string, userId: string) {
+  async setBanner(id: string, filename: string, user: AtorEmpresa) {
+    this.garantirEscopo(user, id);
     const empresa = await this.findOne(id);
 
     if (empresa.bannerImagemUrl) {
@@ -131,7 +208,7 @@ export class EmpresasService {
 
     return this.prisma.empresa.update({
       where: { id },
-      data: { bannerImagemUrl: bannerPublicPath(filename), updatedBy: userId },
+      data: { bannerImagemUrl: bannerPublicPath(filename), updatedBy: user.id },
     });
   }
 
@@ -139,7 +216,7 @@ export class EmpresasService {
     await this.findOne(id);
     await this.prisma.empresa.update({
       where: { id },
-      data: { deletedAt: new Date(), deletedBy: userId, ativo: false },
+      data: { deletedAt: new Date(), deletedBy: userId, situacao: 'cancelada' },
     });
     return { success: true };
   }

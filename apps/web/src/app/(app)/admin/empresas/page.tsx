@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import type { Empresa } from "@plataforma/contracts";
+import { SITUACAO_EMPRESA_LABEL, type Empresa } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
@@ -34,7 +34,7 @@ export default function EmpresasPage() {
     pageSize,
     sortBy,
     sortOrder,
-    ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
+    ...(status !== "todos" ? { situacao: status === "ativos" ? "ativa" : "suspensa" } : {}),
   });
   const { remove } = useResourceMutations("empresas");
 
@@ -63,8 +63,14 @@ export default function EmpresasPage() {
     { header: "CNPJ", sortKey: "cnpj", cell: (e) => <span className="font-mono text-xs">{formatCnpj(e.cnpj)}</span> },
     {
       header: "Status",
-      sortKey: "ativo",
-      cell: (e) => <StatusDot active={e.ativo} labelOn="Ativa" labelOff="Inativa" />,
+      sortKey: "situacao",
+      cell: (e) => (
+        <StatusDot
+          active={e.situacao === "ativa" || e.situacao === "teste"}
+          labelOn={SITUACAO_EMPRESA_LABEL[e.situacao]}
+          labelOff={SITUACAO_EMPRESA_LABEL[e.situacao]}
+        />
+      ),
     },
     {
       header: "",

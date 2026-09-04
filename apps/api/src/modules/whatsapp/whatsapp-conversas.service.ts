@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { whereEmpresaAcessivel } from '../../common/empresa/situacao-empresa';
 import { basename, join } from 'node:path';
 import {
   extensaoPorMime,
@@ -1797,7 +1798,7 @@ export class WhatsappConversasService {
    */
   async sessoesParaRestaurar() {
     const empresas = await this.prisma.empresa.findMany({
-      where: { ativo: true, deletedAt: null },
+      where: { deletedAt: null, ...whereEmpresaAcessivel() },
       select: { id: true },
     });
 

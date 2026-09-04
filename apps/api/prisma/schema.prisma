@@ -18,7 +18,23 @@ model Empresa {
   cnpj         String  @unique
   alias        String? @unique
   logoUrl      String?
-  ativo        Boolean @default(true)
+
+  // Situação da assinatura — **fonte única do "pode entrar"**. Substituiu o
+  // `ativo` booleano: manter os dois obrigaria a mantê-los coerentes, e dois
+  // campos que precisam concordar já se provaram um defeito neste schema
+  // (ver a migration 20260903120000_vendedor_superior). Quem decide o acesso
+  // é `podeAcessar()`, em situacao-empresa.ts, e ninguém mais.
+  situacao SituacaoEmpresa @default(ativa)
+
+  // Fim do período de avaliação. Só faz sentido com `situacao = teste`; a
+  // varredura diária expira quem passou da data. Nulo em teste significa
+  // avaliação sem prazo definido — liberada até alguém encerrar na mão.
+  testeExpiraEm DateTime?
+
+  // Teto de usuários com vínculo ativo. Nulo = sem limite. Conferido na
+  // criação do vínculo, não do usuário: a mesma pessoa pode atender duas
+  // empresas, e quem consome a licença é o vínculo.
+  limiteUsuarios Int?
 
   // Faixa institucional no topo do sistema (associação, certificação, grupo).
   // Era fixa no código — magenta e a imagem da allia, iguais para todo mundo,
@@ -115,17 +131,17 @@ model Empresa {
 }
 
 model Usuario {
-  id          String    @id @default(uuid())
-  nome        String
-  email       String    @unique
-  senhaHash   String
-  ativo       Boolean   @default(true)
-  ultimoLogin DateTime?
-  avatarUrl   String?
-  mfaEnabled  Boolean   @default(false)
+  id                      String    @id @default(uuid())
+  nome                    String
+  email                   String    @unique
+  senhaHash               String
+  ativo                   Boolean   @default(true)
+  ultimoLogin             DateTime?
+  avatarUrl               String?
+  mfaEnabled              Boolean   @default(false)
   // Autoriza mutaÃ§Ãµes no catÃ¡logo global. NÃ£o deriva do perfil da empresa:
   // administrador de tenant nÃ£o Ã© administrador da plataforma.
-  administradorPlataforma Boolean @default(false)
+  administradorPlataforma Boolean   @default(false)
 
   // Política de senha (parâmetros SENHA_* por empresa): senhaAlteradaEm
   // marca a "idade" da senha atual para cálculo de expiração; tentativasFalhas
@@ -1302,6 +1318,54 @@ model ClienteCampoConfig {
   @@map("cliente_campo_config")
 }
 
+/// Situação da assinatura de uma empresa no SaaS.
+///
+/// `teste` e `ativa` entram no sistema; `suspensa` e `cancelada` não. A
+/// diferença entre as duas últimas é de intenção, não de efeito: suspensa é
+/// reversível (inadimplência, pedido do cliente), cancelada encerra a relação
+/// — e as duas aparecem diferente para quem administra a plataforma.
+enum SituacaoEmpresa {
+  teste
+  ativa
+  suspensa
+  cancelada
+}
+
+/// O que o administrador da plataforma fez. Log global do SaaS: não tem
+/// `empresaId` no sentido de RLS — a empresa aqui é o **alvo** da ação, não a
+/// dona do registro. Por isso a tabela fica fora do isolamento por empresa e
+/// só o administrador da plataforma a lê.
+model PlataformaAuditoria {
+  id String @id @default(uuid())
+
+  /// Quem executou. Sem FK: o log tem de sobreviver à exclusão do usuário,
+  /// senão perde justamente o registro de quem saiu.
+  usuarioId    String
+  usuarioEmail String
+
+  /// Empresa afetada, quando a ação tem uma. Nulo em ação sobre usuário. O
+  /// nome vai junto porque o log precisa continuar legível se a empresa for
+  /// excluída.
+  empresaId          String?
+  empresaRazaoSocial String?
+
+  /// Verbo do domínio: `empresa.criada`, `empresa.situacao_alterada`,
+  /// `empresa.limite_alterado`, `admin.promovido`, `admin.revogado`.
+  acao String
+
+  /// O antes e o depois, quando fazem sentido. Guardados como texto para o
+  /// log não depender do formato de nenhuma entidade — ele precisa continuar
+  /// legível depois que o schema mudar.
+  valorAnterior String?
+  valorNovo     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([empresaId, createdAt])
+  @@index([createdAt])
+  @@map("plataforma_auditoria")
+}
+
 // Parâmetros do sistema por empresa. A validade do orçamento e a política de
 // senha moram aqui (ORCAMENTO_DIAS_VALIDADE, SENHA_*): as duas tiveram tela
 // própria e foram centralizadas em Administração > Parâmetros.
@@ -1913,16 +1977,16 @@ model NotaSaidaXml {
 // (como no legado) — viabiliza a tela própria de itens com RLS e escopo sem
 // join na nota.
 model NotaSaidaItem {
-  id           String  @id @default(uuid())
-  empresaId    String
-  notaSaidaId  String
+  id          String  @id @default(uuid())
+  empresaId   String
+  notaSaidaId String
   // Chave de identidade do item no ERP. Tem a sua própria porque o upsert do
   // cabeçalho casa item a item por ela, em vez de apagar e recriar o conjunto
   // — o uuid do item sobrevive à alteração de uma linha da nota.
-  codigoErp    String?
-  clienteId    String?
-  vendedorId   String?
-  produtoId    String?
+  codigoErp   String?
+  clienteId   String?
+  vendedorId  String?
+  produtoId   String?
 
   item      Int?
   dtEmissao DateTime?
@@ -2041,12 +2105,12 @@ model ContaBancaria {
 }
 
 model TituloReceber {
-  id           String  @id @default(uuid())
-  empresaId    String
+  id         String  @id @default(uuid())
+  empresaId  String
   // Chave de identidade do título no ERP — ver NotaSaida.codigoErp.
-  codigoErp    String?
-  clienteId    String?
-  vendedorId  String?
+  codigoErp  String?
+  clienteId  String?
+  vendedorId String?
 
   numero  String
   parcela String?
@@ -2334,7 +2398,7 @@ model Orcamento {
 }
 
 model OrcamentoItem {
-  id          String @id @default(uuid())
+  id          String  @id @default(uuid())
   empresaId   String
   orcamentoId String
   produtoId   String
@@ -2379,11 +2443,11 @@ model OrcamentoItem {
 // read-only como NotaSaida/Item), com o mesmo escopo hierárquico de
 // vendedor das demais telas comerciais.
 model ObjetivoVendedorMes {
-  id           String @id @default(uuid())
-  empresaId    String
-  vendedorId   String
+  id         String  @id @default(uuid())
+  empresaId  String
+  vendedorId String
   // Chave de identidade do objetivo no ERP — ver NotaSaida.codigoErp.
-  codigoErp    String?
+  codigoErp  String?
 
   mes           Int
   ano           Int
@@ -2411,13 +2475,13 @@ model ObjetivoVendedorMes {
 }
 
 model ObjetivoVendedorCategoria {
-  id                    String @id @default(uuid())
+  id                    String  @id @default(uuid())
   empresaId             String
   objetivoVendedorMesId String
   categoriaId           String
   // Chave de identidade da meta por categoria no ERP — ver NotaSaida.codigoErp.
   codigoErp             String?
-  valor                 Float  @default(0)
+  valor                 Float   @default(0)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

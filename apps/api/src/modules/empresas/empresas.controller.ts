@@ -26,6 +26,7 @@ import { EMPRESA_CREATE_EXAMPLE, EMPRESA_EXAMPLE } from '@plataforma/contracts';
 import { EmpresasService } from './empresas.service';
 import { EmpresaCreateDto, EmpresaQueryDto, EmpresaUpdateDto } from './dto/empresa.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { ApiBodyExample } from '../../common/decorators/api-body-example.decorator';
@@ -57,6 +58,7 @@ export class EmpresasController {
   })
   @ApiPaginationQuery()
   @RequirePermission('empresas', 'visualizar')
+  @UseGuards(PlatformAdminGuard)
   @Get()
   findAll(@Query() query: EmpresaQueryDto) {
     return this.service.findAll(query);
@@ -83,8 +85,8 @@ export class EmpresasController {
   @ApiResponse({ status: 404, description: 'Empresa não encontrada' })
   @RequirePermission('empresas', 'visualizar')
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.findOneDoAtor(id, user);
   }
 
   @ApiOperation({
@@ -95,6 +97,7 @@ export class EmpresasController {
   @ApiResponse({ status: 201, schema: { example: EMPRESA_EXAMPLE } })
   @ApiResponse({ status: 409, description: 'CNPJ já cadastrado' })
   @RequirePermission('empresas', 'cadastrar')
+  @UseGuards(PlatformAdminGuard)
   @Post()
   create(@Body() dto: EmpresaCreateDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.create(dto, user.id);
@@ -111,7 +114,7 @@ export class EmpresasController {
     @Body() dto: EmpresaUpdateDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.update(id, dto, user.id);
+    return this.service.update(id, dto, user);
   }
 
   @ApiOperation({
@@ -139,7 +142,7 @@ export class EmpresasController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     if (!file) throw new BadRequestException('Nenhum arquivo enviado');
-    return this.service.setLogo(id, file.filename, user.id);
+    return this.service.setLogo(id, file.filename, user);
   }
 
   @ApiOperation({
@@ -168,7 +171,7 @@ export class EmpresasController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     if (!file) throw new BadRequestException('Nenhum arquivo enviado');
-    return this.service.setBanner(id, file.filename, user.id);
+    return this.service.setBanner(id, file.filename, user);
   }
 
   @ApiOperation({
@@ -179,6 +182,7 @@ export class EmpresasController {
   @ApiParam({ name: 'id', example: EMPRESA_ID_EXAMPLE })
   @ApiResponse({ status: 200, schema: { example: { success: true } } })
   @RequirePermission('empresas', 'excluir')
+  @UseGuards(PlatformAdminGuard)
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.remove(id, user.id);

@@ -6,6 +6,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { whereEmpresaAcessivel } from '../../common/empresa/situacao-empresa';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappProviderService } from './providers/whatsapp-provider.service';
 import { mensagemComAutor } from './mensagem-com-autor';
@@ -156,7 +157,7 @@ export class WhatsappAgendamentoService
   private async processarVencidas() {
     try {
       const empresas = await this.prisma.empresa.findMany({
-        where: { deletedAt: null, ativo: true },
+        where: { deletedAt: null, ...whereEmpresaAcessivel() },
         select: { id: true },
       });
       for (const empresa of empresas) {

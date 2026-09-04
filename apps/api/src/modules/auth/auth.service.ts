@@ -14,6 +14,10 @@ import { PoliticaSenhaService } from '../politica-senha/politica-senha.service';
 import { AcessosService } from '../acessos/acessos.service';
 import { HorarioTrabalhoService } from '../acessos/horario-trabalho.service';
 import { ForaDoExpedienteException } from '../../common/horario/horario-trabalho';
+import {
+  motivoBloqueio,
+  whereEmpresaAcessivel,
+} from '../../common/empresa/situacao-empresa';
 import type {
   ChangePasswordInput,
   LoginInput,
@@ -89,7 +93,7 @@ export class AuthService {
         where: {
           usuarioId,
           ativo: true,
-          empresa: { ativo: true },
+          empresa: whereEmpresaAcessivel(),
           ...(empresaId ? { empresaId } : {}),
         },
         orderBy: { createdAt: 'asc' },
@@ -199,12 +203,28 @@ export class AuthService {
     // tenha vínculo ativo com ela. Sem alias, cai na primeira empresa ativa.
     let empresaId: string | undefined;
     if (input.empresaAlias) {
+      // A empresa é buscada **sem** filtrar situação, e só então recusada.
+      // Filtrar aqui devolveria "você não tem acesso a esta empresa" para o
+      // usuário de uma empresa suspensa, mandando ele procurar o problema no
+      // vínculo dele — que está perfeito. O motivo certo vem de
+      // `motivoBloqueio`, a mesma fonte que decide o acesso.
       const empresa = await this.prisma.empresa.findFirst({
-        where: { alias: input.empresaAlias, ativo: true, deletedAt: null },
-        select: { id: true },
+        where: { alias: input.empresaAlias, deletedAt: null },
+        select: { id: true, situacao: true, testeExpiraEm: true },
       });
       if (!empresa) {
         throw new ForbiddenException('Você não tem acesso a esta empresa');
+      }
+      const bloqueio = motivoBloqueio(empresa);
+      if (bloqueio) {
+        await this.acessos.registrar({
+          evento: 'login_falha',
+          email,
+          usuarioId: usuario.id,
+          detalhe: `Empresa sem acesso liberado (${empresa.situacao})`,
+          ...meta,
+        });
+        throw new ForbiddenException(bloqueio);
       }
       empresaId = empresa.id;
     }
@@ -277,7 +297,14 @@ export class AuthService {
    */
   async empresaBranding(alias: string) {
     const empresa = await this.prisma.empresa.findFirst({
-      where: { alias: alias.toLowerCase(), ativo: true, deletedAt: null },
+      // Branding segue o mesmo recorte do acesso: empresa suspensa não tem por
+      // que emprestar a marca dela a uma tela de login que não vai deixar
+      // ninguém entrar.
+      where: {
+        alias: alias.toLowerCase(),
+        deletedAt: null,
+        ...whereEmpresaAcessivel(),
+      },
       select: { alias: true, nomeFantasia: true, logoUrl: true },
     });
     if (!empresa || !empresa.alias) {
