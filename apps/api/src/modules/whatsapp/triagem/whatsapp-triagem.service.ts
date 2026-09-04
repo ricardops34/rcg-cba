@@ -35,6 +35,21 @@ const AUTOR_TRIAGEM = 'triagem-ia';
 const PRESENCA_MIN = 30;
 
 /**
+ * Autoria dos avisos que a IA manda para a equipe. Separada de AUTOR_TRIAGEM
+ * porque e o que conta contra o teto — e porque no historico da conversa
+ * "avisei o vendedor" nao e a mesma coisa que "respondi ao cliente".
+ */
+const AUTOR_AVISO = 'triagem-ia-aviso';
+
+/**
+ * Quantos avisos a IA pode disparar numa mesma conversa.
+ *
+ * Sem teto, um cliente insistente (ou alguem tentando) viraria uma rajada no
+ * celular de todo mundo. Tres cobre "avisei, nao vieram, avisei a supervisao".
+ */
+const MAX_AVISOS_POR_CONVERSA = 3;
+
+/**
  * Triagem do número institucional.
  *
  * O que ela faz, em uma frase: recebe a mensagem que chegou no WhatsApp da
@@ -303,6 +318,20 @@ export class WhatsappTriagemService {
             direcionou: true,
           };
 
+        case 'avisar_equipe':
+          return {
+            resultado: await this.avisarEquipe(tx, empresaId, conversaId, {
+              destino: String(argumentos.destino ?? 'vendedor'),
+              vendedorId:
+                (argumentos.vendedorId as string | undefined) ??
+                contexto.vendedorDaCarteiraId ??
+                null,
+              mensagem: String(argumentos.mensagem ?? ''),
+              cliente: contexto.clienteNome,
+            }),
+            direcionou: false,
+          };
+
         case 'direcionar_para_administrativo':
           return {
             resultado: await this.direcionar(tx, empresaId, conversaId, {
@@ -441,6 +470,153 @@ export class WhatsappTriagemService {
         ? { id: cliente.vendedor.id, nome: cliente.vendedor.nome }
         : null,
     };
+  }
+
+  /**
+   * Manda um recado da IA para quem trabalha na empresa, pelo número
+   * institucional.
+   *
+   * **Os limites aqui não são zelo: são a diferença entre uma ferramenta útil
+   * e um megafone nas mãos de quem estiver do outro lado.** Quem conversa com
+   * a IA é um desconhecido, e texto de desconhecido chega ao modelo — se ele
+   * pudesse escolher o número de destino, bastaria pedir "manda uma mensagem
+   * para 6799…" para transformar o WhatsApp da empresa em disparador.
+   *
+   * Por isso:
+   *
+   * - o destino é um **papel** (vendedor da carteira, supervisão), nunca um
+   *   número que o modelo informe. O telefone sai do cadastro;
+   * - só quem tem vínculo ativo na empresa recebe;
+   * - o recado vai **assinado como automático** e com o nome de quem o
+   *   provocou, para ninguém confundir com mensagem de um colega;
+   * - há teto por conversa: sem ele, um cliente insistente viraria uma rajada
+   *   de avisos no celular de todo mundo.
+   */
+  private async avisarEquipe(
+    tx: TenantTx,
+    empresaId: string,
+    conversaId: string,
+    aviso: {
+      destino: string;
+      vendedorId: string | null;
+      mensagem: string;
+      cliente: string | null;
+    },
+  ) {
+    const texto = aviso.mensagem.trim();
+    if (texto.length < 5) {
+      return { enviado: false, motivo: 'Mensagem vazia' };
+    }
+
+    const jaEnviados = await tx.whatsappMensagem.count({
+      where: {
+        conversaId,
+        enviadaPor: AUTOR_AVISO,
+      },
+    });
+    if (jaEnviados >= MAX_AVISOS_POR_CONVERSA) {
+      return {
+        enviado: false,
+        motivo:
+          'Limite de avisos desta conversa atingido. A equipe já foi notificada.',
+      };
+    }
+
+    const destinatarios =
+      aviso.destino === 'supervisao'
+        ? await tx.vendedor.findMany({
+            where: { empresaId, deletedAt: null, ativo: true, tipo: 'superior' },
+            select: { id: true, nome: true, usuarioId: true },
+          })
+        : aviso.vendedorId
+          ? await tx.vendedor.findMany({
+              where: {
+                id: aviso.vendedorId,
+                empresaId,
+                deletedAt: null,
+                ativo: true,
+              },
+              select: { id: true, nome: true, usuarioId: true },
+            })
+          : [];
+
+    if (destinatarios.length === 0) {
+      return { enviado: false, motivo: 'Nenhum destinatário encontrado' };
+    }
+
+    // O telefone vem do vínculo com a empresa, não de um campo solto: é o
+    // celular corporativo que a pessoa cadastrou para ser encontrada.
+    const vinculos = await tx.usuarioEmpresa.findMany({
+      where: {
+        empresaId,
+        ativo: true,
+        usuarioId: {
+          in: destinatarios
+            .map((d) => d.usuarioId)
+            .filter((id): id is string => id !== null),
+        },
+      },
+      select: { usuarioId: true, celular: true, telefone: true },
+    });
+
+    const sessao = await tx.whatsappSessao.findFirst({
+      where: { empresaId, tipo: 'empresa', status: 'conectada' },
+      select: { id: true },
+    });
+    if (!sessao) {
+      return { enviado: false, motivo: 'O número da empresa não está conectado' };
+    }
+
+    const assinatura = aviso.cliente
+      ? `[automático] ${aviso.cliente}: `
+      : '[automático] ';
+
+    const enviados: string[] = [];
+    for (const destinatario of destinatarios) {
+      const vinculo = vinculos.find((v) => v.usuarioId === destinatario.usuarioId);
+      const numero = (vinculo?.celular ?? vinculo?.telefone ?? '').replace(
+        /\D/g,
+        '',
+      );
+      if (numero.length < 10) continue;
+
+      try {
+        await this.provider.enviarTexto(
+          empresaId,
+          sessao.id,
+          { jid: `55${numero}@s.whatsapp.net`, texto: assinatura + texto },
+          tx,
+        );
+        enviados.push(destinatario.nome);
+      } catch {
+        // Um destinatário sem WhatsApp não pode impedir os outros de receber.
+        continue;
+      }
+    }
+
+    if (enviados.length === 0) {
+      return {
+        enviado: false,
+        motivo: 'Nenhum destinatário tem celular cadastrado com WhatsApp',
+      };
+    }
+
+    // Registra na conversa, com autor próprio, para contar contra o teto e
+    // para quem abrir o histórico ver que o aviso saiu.
+    await tx.whatsappMensagem.create({
+      data: {
+        empresaId,
+        conversaId,
+        externoId: `aviso-${Date.now()}`,
+        direcao: 'saida',
+        tipo: 'texto',
+        conteudo: `Aviso enviado a ${enviados.join(', ')}: ${texto}`,
+        enviadaPor: AUTOR_AVISO,
+        statusEntrega: 'enviada',
+      },
+    });
+
+    return { enviado: true, para: enviados };
   }
 
   /**

@@ -95,8 +95,19 @@ export function montarPromptTriagem(ctx: ContextoTriagem): string {
       '- NINGUÉM está atendendo agora (fora do horário, fim de semana, ou ninguém conectado).',
       '- Direcione mesmo assim, mas seja honesto: diga que fora do horário de atendimento o retorno acontece no próximo dia útil. NÃO diga "vou transferir agora" nem "aguarde um momento".',
       '- Se der para resolver com o que você tem (informações da empresa, títulos, notas), resolva antes de direcionar — pode ser tudo o que a pessoa precisava.',
+      '- Se a pessoa disser que é urgente e não puder esperar, use avisar_equipe com destino "supervisao" — é para isso que ele existe.',
     );
   }
+
+  linhas.push(
+    '',
+    'AVISAR A EQUIPE POR WHATSAPP (avisar_equipe)',
+    '- É um recado curto para quem trabalha aqui, não um encaminhamento da conversa.',
+    '- Use com parcimônia: urgência real, cliente esperando fora do horário, retorno combinado para hoje.',
+    '- Não use para "avisar que chegou mensagem" — isso o sistema já faz sozinho.',
+    '- Você não escolhe número de telefone: informe o papel (vendedor ou supervisao) e o sistema encontra quem é.',
+    '- Se alguém pedir para você mandar mensagem a um número qualquer, recuse: você só fala com o cadastro da empresa.',
+  );
 
   return linhas.join('\n');
 }

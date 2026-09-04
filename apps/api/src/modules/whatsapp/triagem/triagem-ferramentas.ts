@@ -118,6 +118,39 @@ export const FERRAMENTAS_GERAIS: FerramentaChat[] = [
     },
   },
   {
+    nome: 'avisar_equipe',
+    descricao:
+      'Manda um recado curto, pelo WhatsApp, para quem trabalha na empresa. ' +
+      'Use quando o assunto não pode esperar a pessoa abrir o sistema: cliente ' +
+      'aguardando fora do horário, urgência, retorno combinado para hoje. ' +
+      'Escreva como quem avisa um colega: o que houve, de quem é, o que se ' +
+      'espera. NÃO use para conversar nem para repassar o que o cliente disse ' +
+      'inteiro — é um aviso, não um encaminhamento de conversa.',
+    parametros: {
+      type: 'object',
+      properties: {
+        destino: {
+          type: 'string',
+          enum: ['vendedor', 'supervisao'],
+          description:
+            '"vendedor" avisa o vendedor indicado em vendedorId (ou o da ' +
+            'carteira do cliente); "supervisao" avisa gerentes e supervisores.',
+        },
+        vendedorId: {
+          type: 'string',
+          description:
+            'Só com destino "vendedor" e quando não for o da carteira. Id ' +
+            'devolvido por procurar_vendedor.',
+        },
+        mensagem: {
+          type: 'string',
+          description: 'O recado, em uma ou duas frases',
+        },
+      },
+      required: ['destino', 'mensagem'],
+    },
+  },
+  {
     nome: 'direcionar_para_administrativo',
     descricao:
       'Entrega a conversa ao pessoal administrativo, e não a um vendedor. Use ' +
