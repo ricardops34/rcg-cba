@@ -106,7 +106,7 @@ services:
     working_dir: /app
     environment:
       # Role e schema próprios do store de sessão (migration
-      # 20260815024500_whatsapp_store_schema). A biblioteca roda as migrations
+      # 20260903150000_whatsapp_store_role). A biblioteca roda as migrations
       # dela a cada conexão, então precisa de DDL — mas só dentro do schema
       # `whatsapp`. Este role não tem acesso nenhum às tabelas de negócio.
       DATABASE_URL: postgresql://whatsapp_store:whatsapp_store_dev_only@postgres:5432/plataforma_comercial?schema=whatsapp

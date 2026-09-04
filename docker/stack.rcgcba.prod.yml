@@ -67,7 +67,7 @@ services:
       # NÃO é o ${DATABASE_URL} da API. Aquele é o role `plataforma_app`, que
       # não tem DDL nem acesso ao schema `whatsapp` — e a biblioteca de sessão
       # roda as migrations dela a cada conexão. O worker usa o role
-      # `whatsapp_store` (migrations 20260815024500 e 20260815025500), dono do
+      # `whatsapp_store` (migration 20260903150000_whatsapp_store_role), dono do
       # schema `whatsapp` e sem acesso nenhum às tabelas de negócio.
       DATABASE_URL: ${WHATSAPP_STORE_DATABASE_URL}
       WHATSAPP_WORKER_TOKEN: ${WHATSAPP_WORKER_TOKEN}

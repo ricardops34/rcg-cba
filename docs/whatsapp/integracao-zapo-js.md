@@ -39,7 +39,8 @@ schema `whatsapp`. O role `whatsapp_store`:
 
 - é dono apenas desse schema;
 - possui `USAGE` e `CREATE` nele porque a biblioteca executa DDL;
-- não possui acesso ao schema comercial `public`;
+- não possui GRANT nas tabelas comerciais do schema `public` (o USAGE no schema
+  vem de `PUBLIC` e não é revogável sem derrubar o `plataforma_app`);
 - não é superuser e não possui `BYPASSRLS`.
 
 O parâmetro `?schema=whatsapp` na URL não é interpretado pelo driver `pg` da

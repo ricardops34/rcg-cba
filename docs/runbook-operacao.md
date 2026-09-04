@@ -296,7 +296,7 @@ migrations dela **a cada conexão**, então com a URL da API o worker não sobe.
 O role certo é o `whatsapp_store`.
 
 **3. Trocar a senha do role `whatsapp_store`.** A migration
-`20260815024500_whatsapp_store_schema` cria o role com a senha de placeholder
+`20260903150000_whatsapp_store_role` cria o role com a senha de placeholder
 `whatsapp_store_dev_only` — mesmo tratamento que o `plataforma_app` recebeu.
 Quem tem essa senha alcança as sessões pareadas, ou seja, **fala pelo WhatsApp
 dos vendedores**. Rode com a role dona, depois do `migrate deploy`:
@@ -309,6 +309,11 @@ docker exec -e PGPASSWORD="SENHA_DA_ROLE_PLATAFORMA" <container-postgres> \
 
 A mesma senha vai na `WHATSAPP_STORE_DATABASE_URL` do passo 2 — trocar uma sem
 a outra derruba o worker no boot seguinte.
+
+A migration acima restaura o que a baseline de 28/08 perdeu ao consolidar as 73
+migrations incrementais: numa base criada do zero, o role e o schema `whatsapp`
+não existiam e o worker não subia. Base que já rodou a baseline precisa deste
+`migrate deploy` antes do passo 3.
 
 **O que ainda não foi verificado:** nada disso rodou na VPS. Ao executar pela
 primeira vez, confirmar aqui e trocar a marca `[a confirmar na VPS]`.
