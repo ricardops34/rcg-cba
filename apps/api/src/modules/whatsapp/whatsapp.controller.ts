@@ -42,9 +42,11 @@ import {
   WhatsappMensagemQueryDto,
   WhatsappNovoOrcamentoDto,
   WhatsappReagirDto,
+  WhatsappRecadoCriarDto,
   WhatsappVincularDto,
 } from './dto/whatsapp.dto';
 import { WhatsappFuncionarioService } from './triagem/whatsapp-funcionario.service';
+import { WhatsappRecadoService } from './whatsapp-recado.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -66,6 +68,7 @@ export class WhatsappController {
     private readonly acoes: WhatsappAcoesService,
     private readonly agendamento: WhatsappAgendamentoService,
     private readonly funcionarios: WhatsappFuncionarioService,
+    private readonly recados: WhatsappRecadoService,
   ) {}
 
   // ---------------- configuração da empresa ----------------
@@ -138,6 +141,62 @@ export class WhatsappController {
   @Get('meu-numero')
   meuNumero(@CurrentUser() user: AuthenticatedUser) {
     return this.funcionarios.codigoPendente(user.empresaAtivaId, user.id);
+  }
+
+  // ---------------- recado interno para a equipe ----------------
+
+  @ApiOperation({
+    summary: 'Quem posso alcançar com um recado interno',
+    description:
+      'A equipe que o usuário logado alcança, pelo mesmo escopo hierárquico do ' +
+      'resto do sistema. Quem não tem telefone no cadastro de vendedores vem ' +
+      'com `alcancavel: false` — aparece na lista, mas não recebe. ' +
+      'Requer whatsapp-conversas.visualizar.',
+  })
+  @RequirePermission('whatsapp-recados', 'visualizar')
+  @Get('recados/destinatarios')
+  destinatariosRecado(@CurrentUser() user: AuthenticatedUser) {
+    return this.recados.destinatarios(user.empresaAtivaId, user);
+  }
+
+  @ApiOperation({
+    summary: 'Recados internos que eu escrevi',
+    description: 'Os últimos 50, com o resultado por pessoa.',
+  })
+  @RequirePermission('whatsapp-recados', 'visualizar')
+  @Get('recados')
+  listarRecados(@CurrentUser() user: AuthenticatedUser) {
+    return this.recados.listar(user.empresaAtivaId, user);
+  }
+
+  @ApiOperation({
+    summary: 'Mandar (ou agendar) um recado para a equipe',
+    description:
+      'Alcança **apenas** quem tem cadastro de vendedor — não existe envio em ' +
+      'massa para cliente nesta plataforma. Sem `enviarEm`, sai na hora; com ' +
+      'data, a rotina de minuto em minuto despacha. Ids fora da equipe de quem ' +
+      'envia são descartados no servidor. Requer whatsapp-conversas.cadastrar.',
+  })
+  @RequirePermission('whatsapp-recados', 'cadastrar')
+  @Post('recados')
+  criarRecado(
+    @Body() dto: WhatsappRecadoCriarDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.recados.criar(user.empresaAtivaId, user, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Cancelar um recado agendado',
+    description: 'Só antes de sair, e só o que o próprio usuário escreveu.',
+  })
+  @RequirePermission('whatsapp-recados', 'cadastrar')
+  @Delete('recados/:id')
+  cancelarRecado(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.recados.cancelar(user.empresaAtivaId, user, id);
   }
 
   // ---------------- sessão do vendedor ----------------

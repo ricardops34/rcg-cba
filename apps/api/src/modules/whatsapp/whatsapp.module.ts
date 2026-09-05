@@ -12,6 +12,7 @@ import { WhatsappConversasService } from './whatsapp-conversas.service';
 import { WhatsappAgendaService } from './whatsapp-agenda.service';
 import { WhatsappAcoesService } from './whatsapp-acoes.service';
 import { WhatsappAgendamentoService } from './whatsapp-agendamento.service';
+import { WhatsappRecadoService } from './whatsapp-recado.service';
 import { WhatsappWorkerClient } from './whatsapp-worker.client';
 import { WhatsappEvolutionController } from './whatsapp-evolution.controller';
 import { WhatsappProviderService } from './providers/whatsapp-provider.service';
@@ -52,6 +53,9 @@ import { OrcamentosModule } from '../orcamentos/orcamentos.module';
     WhatsappAgendaService,
     WhatsappAcoesService,
     WhatsappAgendamentoService,
+    // Recado interno para a equipe, com agendamento proprio: o agendamento de
+    // conversa exige conversaId, e recado interno nao tem conversa.
+    WhatsappRecadoService,
     WhatsappTriagemService,
     // Encerra a conversa que parou no meio da triagem — sem ela, `bot` é um
     // limbo do qual nada sai sozinho.

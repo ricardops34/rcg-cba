@@ -15,6 +15,7 @@ import {
   whatsappNovoOrcamentoSchema,
   whatsappReagirSchema,
   whatsappVincularSchema,
+  whatsappRecadoCriarSchema,
 } from '@plataforma/contracts';
 
 export class WhatsappConfigUpdateDto extends createZodDto(
@@ -53,4 +54,8 @@ export class WhatsappReagirDto extends createZodDto(whatsappReagirSchema) {}
 export class WhatsappVincularDto extends createZodDto(whatsappVincularSchema) {}
 export class WhatsappIniciarConversaDto extends createZodDto(
   whatsappIniciarConversaSchema,
+) {}
+
+export class WhatsappRecadoCriarDto extends createZodDto(
+  whatsappRecadoCriarSchema,
 ) {}

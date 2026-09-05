@@ -126,13 +126,32 @@ mesmo caminho que `avisar_equipe` já percorre.
 
 ## Ordem de implementação
 
-Cada passo é utilizável sozinho:
+Todas as fatias abaixo estão **implementadas** (2026-09-04/05). Cada uma é
+utilizável sozinha, e foi assim que entraram.
 
 0. **Config do atendimento na tela** — os quatro campos `atendimento*` no
-   contrato, na rota e em Administração > WhatsApp. Sem isto nada do
-   institucional liga.
-1. **Saudação e encerramento por inatividade** — usar os dois campos que hoje
-   são letra morta.
-2. **Identidade e pareamento do funcionário** — tabela, código, Meu perfil.
-3. **Ferramentas do funcionário** — catálogo e execução, escopo compartilhado.
-4. **Recado interno pela tela**, com agendamento.
+   contrato, na rota e numa aba própria em Administração > WhatsApp. Sem isto
+   nada do institucional ligava.
+1. **Saudação e encerramento por inatividade** — os dois campos que eram letra
+   morta. Encerrar exigiu implementar a volta: o status `encerrada` existia no
+   enum e não era usado por ninguém, então mensagem nova do cliente agora
+   reabre a conversa.
+2. **Identidade e pareamento do funcionário** — tabela, código de 6 dígitos e
+   o cartão em Meu perfil, o único lugar onde o código aparece.
+3. **Ferramentas do funcionário** — catálogo de consulta e execução, com o
+   escopo vindo de `resolverEscopoDoUsuario`.
+4. **Recado interno pela tela**, com agendamento e cancelamento. Rotina própria
+   `whatsapp-recados`, concedida a Administrador, Diretor, Gerente e Supervisor
+   — **não ao Vendedor**: o alcance é a hierarquia abaixo de quem envia, e quem
+   não tem ninguém abaixo só mandaria recado para si mesmo.
+
+## O que ainda não foi observado em execução
+
+Dev não tem agente de IA configurado nem worker de WhatsApp conectado. Foram
+exercitados o reconhecimento, o pareamento, os escopos, o agendamento e todos
+os caminhos de falha — mas **a conversa real com o modelo e o envio efetivo**
+não. O que falta ver com um número conectado:
+
+- a IA respondendo ao funcionário e chamando as quatro consultas;
+- a saudação chegando ao cliente;
+- o recado interno saindo de fato para os celulares da equipe.

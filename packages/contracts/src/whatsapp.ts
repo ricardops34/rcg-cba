@@ -801,3 +801,67 @@ export const whatsappMeuNumeroSchema = z.object({
   validoAte: z.string().datetime().nullable(),
 });
 export type WhatsappMeuNumero = z.infer<typeof whatsappMeuNumeroSchema>;
+
+/**
+ * Recado interno pelo número da empresa
+ * (ver docs/planos/whatsapp-institucional-funcionarios.md).
+ *
+ * **Só alcança a equipe.** Não há envio em massa para cliente nesta
+ * plataforma: cliente recebe na conversa individual, onde alguém escreve para
+ * alguém. Quem dispara aqui é uma pessoa, vendo a lista de quem vai receber —
+ * a IA ajuda a redigir, mas não aperta o botão.
+ */
+
+/** Alguém que pode receber um recado, e se ele tem como chegar. */
+export const whatsappDestinatarioSchema = z.object({
+  vendedorId: z.string().uuid(),
+  nome: z.string(),
+  /** Telefone do cadastro de vendedores, formatado para leitura. */
+  telefone: z.string().nullable(),
+  /**
+   * Falso quando o cadastro não tem telefone utilizável. A tela mostra a
+   * pessoa mesmo assim, desmarcada e com o motivo: some-la faria "mandei para
+   * a equipe" esconder quem ficou de fora.
+   */
+  alcancavel: z.boolean(),
+  /** `superior` = tem gente abaixo na hierarquia. */
+  superior: z.boolean(),
+});
+export type WhatsappDestinatario = z.infer<typeof whatsappDestinatarioSchema>;
+
+export const whatsappRecadoCriarSchema = z.object({
+  texto: z.string().trim().min(3, "Escreva o recado").max(1000),
+  vendedorIds: z
+    .array(z.string().uuid())
+    .min(1, "Escolha pelo menos uma pessoa")
+    .max(200),
+  /**
+   * Nulo/ausente = enviar agora. Com data, a varredura despacha na hora
+   * marcada — a mesma rotina de minuto em minuto do agendamento de conversa.
+   */
+  enviarEm: z.coerce.date().nullable().optional(),
+});
+export type WhatsappRecadoCriar = z.infer<typeof whatsappRecadoCriarSchema>;
+
+export const whatsappRecadoDestinoSchema = z.object({
+  nome: z.string(),
+  telefone: z.string().nullable(),
+  status: whatsappAgendamentoStatusSchema,
+  erro: z.string().nullable(),
+  enviadoEm: z.string().datetime().nullable(),
+});
+export type WhatsappRecadoDestino = z.infer<typeof whatsappRecadoDestinoSchema>;
+
+export const whatsappRecadoSchema = z.object({
+  id: z.string().uuid(),
+  texto: z.string(),
+  enviarEm: z.string().datetime().nullable(),
+  status: whatsappAgendamentoStatusSchema,
+  criadoPorNome: z.string(),
+  criadoEm: z.string().datetime(),
+  destinatarios: z.array(whatsappRecadoDestinoSchema),
+  /** Contagens prontas para a tela não somar no cliente. */
+  enviados: z.number().int(),
+  falhas: z.number().int(),
+});
+export type WhatsappRecado = z.infer<typeof whatsappRecadoSchema>;

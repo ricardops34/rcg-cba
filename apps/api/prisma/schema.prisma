@@ -127,6 +127,8 @@ model Empresa {
   whatsappAgendadas          WhatsappMensagemAgendada[]
   whatsappAcoes              WhatsappAcaoRegistro[]
   whatsappVinculos           WhatsappVinculoFuncionario[]
+  whatsappRecados            WhatsappRecadoInterno[]
+  whatsappRecadoDestinos     WhatsappRecadoDestinatario[]
   notificacoes               Notificacao[]
   comunicados                Comunicado[]
   comunicadoPerfis           ComunicadoPerfil[]
@@ -3075,6 +3077,72 @@ enum WhatsappAgendamentoStatus {
   enviada
   erro
   cancelada
+}
+
+/// Recado que a empresa manda para a **própria equipe** pelo número
+/// institucional (ver docs/planos/whatsapp-institucional-funcionarios.md).
+///
+/// **Não alcança cliente**, e isso é decisão de negócio, não limitação: não há
+/// envio em massa nesta plataforma. Cliente continua recebendo apenas na
+/// conversa individual, onde alguém escreve para alguém.
+///
+/// Quem dispara é uma pessoa, na tela, vendo a lista de quem vai receber — a
+/// IA ajuda a redigir, mas não aperta o botão. Errar por WhatsApp não tem
+/// desfazer.
+model WhatsappRecadoInterno {
+  id        String @id @default(uuid())
+  empresaId String
+
+  texto String @db.Text
+
+  /// Nulo = sair agora. Preenchido = a varredura despacha na hora marcada.
+  enviarEm DateTime?
+
+  status WhatsappAgendamentoStatus @default(pendente)
+
+  /// Quem escreveu. O nome vai junto porque o recado precisa continuar
+  /// legível depois que a pessoa sair da empresa.
+  criadoPor     String
+  criadoPorNome String
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa       Empresa                      @relation(fields: [empresaId], references: [id])
+  destinatarios WhatsappRecadoDestinatario[]
+
+  // A varredura procura por (status, enviarEm) a cada minuto.
+  @@index([status, enviarEm])
+  @@index([empresaId, criadoEm])
+  @@map("whatsapp_recados_internos")
+}
+
+/// Uma linha por pessoa que deveria receber o recado.
+///
+/// Existe em vez de uma lista de ids no recado porque o resultado é **por
+/// pessoa**: quem não tem telefone no cadastro não recebe, e quem escreveu
+/// precisa ver isso na tela. Um status único no recado esconderia justamente
+/// o caso que importa — "mandei para a equipe" com metade da equipe de fora.
+model WhatsappRecadoDestinatario {
+  id        String @id @default(uuid())
+  empresaId String
+  recadoId  String
+
+  vendedorId String
+  /// Nome e telefone no momento do envio, não por join: é o registro do que
+  /// de fato aconteceu, e o cadastro muda depois.
+  nome       String
+  telefone   String?
+
+  status    WhatsappAgendamentoStatus @default(pendente)
+  erro      String?
+  enviadoEm DateTime?
+
+  empresa Empresa               @relation(fields: [empresaId], references: [id])
+  recado  WhatsappRecadoInterno @relation(fields: [recadoId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId, recadoId])
+  @@map("whatsapp_recados_destinatarios")
 }
 
 /**

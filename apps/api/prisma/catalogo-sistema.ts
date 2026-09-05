@@ -227,6 +227,23 @@ export const MENUS: DefinicaoMenu[] = [
     codigo: 'meus-atendimentos',
     moduloId: MODULO.comercial,
   },
+  // Recado pelo WhatsApp da empresa **para a equipe** — nunca para cliente.
+  //
+  // Rotina própria, e não uma ação de `whatsapp-conversas`, pelo mesmo
+  // raciocínio de `whatsapp-equipe`: escrever no celular de todo o time é
+  // concessão consciente, não efeito colateral de dar acesso ao Atendimento.
+  //
+  // Fica com Supervisor e Gerente por padrão, não com o Vendedor: o alcance é
+  // a hierarquia abaixo de quem envia, e quem não tem ninguém abaixo só
+  // conseguiria mandar recado para si mesmo.
+  {
+    id: 'seed-menu-recados',
+    nome: 'Recado para a equipe',
+    rota: '/comercial/recados',
+    icone: 'send',
+    codigo: 'whatsapp-recados',
+    moduloId: MODULO.comercial,
+  },
   {
     id: 'seed-menu-configuracoes-whatsapp',
     nome: 'WhatsApp',
@@ -598,6 +615,11 @@ export const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
 export const SUPERVISAO_PERMISSOES: Record<string, Acao[]> = {
   ...VENDEDOR_PERMISSOES,
   'whatsapp-equipe': ['visualizar'],
+  // Recado para a equipe: 'visualizar' abre a tela e o histórico do que já foi
+  // mandado; 'cadastrar' é o que de fato dispara. Fora de
+  // VENDEDOR_PERMISSOES de propósito — o alcance é a hierarquia abaixo, e
+  // quem não tem ninguém abaixo só mandaria recado para si mesmo.
+  'whatsapp-recados': ['visualizar', 'cadastrar'],
 };
 
 /**
