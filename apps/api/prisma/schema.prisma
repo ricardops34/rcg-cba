@@ -133,6 +133,8 @@ model Empresa {
   orcamentoItens             OrcamentoItem[]
   integracaoApiKeys          IntegracaoApiKey[]
   clienteCampoConfigs        ClienteCampoConfig[]
+  produtoCampos              ProdutoCampo[]
+  produtoCampoValores        ProdutoCampoValor[]
   orcamentoConfig            OrcamentoConfig?
   parametros                 ParametroEmpresa[]
   clienteCnaes               ClienteCnae[]
@@ -580,6 +582,7 @@ model Produto {
   orcamentoItens    OrcamentoItem[]
   sugestoesCompra   SugestaoCompraGerada[]
   fotos             ProdutoFoto[]
+  camposValores     ProdutoCampoValor[]
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, descricao])
@@ -607,6 +610,110 @@ model ProdutoFoto {
 
   @@index([empresaId, produtoId, ordem])
   @@map("produto_fotos")
+}
+
+/// Tipo de um campo complementar de produto. Decide **como o valor é validado
+/// e exibido** — o valor em si é sempre texto (ver ProdutoCampoValor).
+enum ProdutoCampoTipo {
+  texto
+  texto_longo
+  numero
+  booleano
+  data
+  lista
+}
+
+/// Campo complementar de produto: o **cadastro** de quais dados extras a
+/// empresa quer guardar (dimensões, peso bruto, regra de diluição, validade,
+/// tensão…).
+///
+/// Por que não colunas novas em `produtos`: cada empresa quer os seus. Uma
+/// distribuidora de químicos precisa de diluição e pictograma de risco; uma de
+/// autopeças, de aplicação e medida. Ou o cadastro nasceria com dezenas de
+/// colunas vazias, ou cada cliente pediria uma migration.
+///
+/// A definição é um cadastro de verdade — nome, tipo, unidade, ordem — e não
+/// um par chave/valor solto: é ela que permite validar o que se digita e
+/// montar a tela sozinha.
+///
+/// O import do ERP **não passa por aqui**. Ele faz upsert em `produtos` por
+/// `codigoErp`, e estes valores vivem em tabela própria: o que a empresa
+/// digitou sobrevive à próxima carga.
+model ProdutoCampo {
+  id        String @id @default(uuid())
+  empresaId String
+
+  /// Identificador estável, em minúsculas com hífen (`peso-bruto`). É por ele
+  /// que a IA e as integrações referenciam o campo — renomear o rótulo não
+  /// pode quebrar quem já lê.
+  chave String
+  nome  String
+  tipo  ProdutoCampoTipo @default(texto)
+
+  /// Unidade exibida ao lado do valor ("mm", "kg", "L"). Só rótulo: não há
+  /// conversão nenhuma, e misturar unidades no mesmo campo é problema de quem
+  /// cadastrou.
+  unidade String?
+
+  /// Valores aceitos quando `tipo = lista`. Vazio nos outros tipos.
+  opcoes String[] @default([])
+
+  /// Agrupamento na tela ("Dimensões", "Uso e diluição"). Nulo cai num grupo
+  /// geral.
+  grupo String?
+
+  /// Texto de ajuda mostrado a quem preenche.
+  ajuda String?
+
+  ordem         Int     @default(0)
+  obrigatorio   Boolean @default(false)
+  /// Se a IA pode citar este campo ao falar do produto. Serve para a empresa
+  /// guardar aqui algo que é de uso interno (custo de embalagem, margem) sem
+  /// que ele chegue a quem pergunta pelo WhatsApp.
+  visivelAgente Boolean @default(true)
+  ativo         Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa Empresa             @relation(fields: [empresaId], references: [id])
+  valores ProdutoCampoValor[]
+
+  @@unique([empresaId, chave])
+  @@index([empresaId, ativo, ordem])
+  @@map("produto_campos")
+}
+
+/// O valor de um campo complementar em um produto.
+///
+/// Guardado sempre como **texto**, em formato canônico gravado pelo service:
+/// número com ponto decimal (`12.5`), booleano `true`/`false`, data em
+/// `AAAA-MM-DD`. Uma coluna por tipo deixaria quatro nulas em toda linha, e
+/// mudar o tipo de um campo já cadastrado obrigaria a migrar valores de coluna.
+/// Quem converte para exibir é quem lê, a partir do `tipo` da definição.
+model ProdutoCampoValor {
+  id        String @id @default(uuid())
+  empresaId String
+  produtoId String
+  campoId   String
+  valor     String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  empresa Empresa      @relation(fields: [empresaId], references: [id])
+  produto Produto      @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  campo   ProdutoCampo @relation(fields: [campoId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, produtoId, campoId])
+  @@index([empresaId, campoId, valor])
+  @@map("produto_campo_valores")
 }
 
 // Cadastro de vendedores, supervisores e gerentes — mesma tabela, com `tipo`

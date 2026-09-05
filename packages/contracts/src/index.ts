@@ -53,3 +53,4 @@ export * from "./inicio";
 export * from "./plataforma";
 export * from "./erro-log";
 export * from "./lead";
+export * from "./produto-campo";

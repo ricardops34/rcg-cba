@@ -11,6 +11,7 @@ import {
   ProdutoDetalheContent,
   type ProdutoDetalhe,
 } from "@/components/comercial/produto-detalhe";
+import { ProdutoCamposCard } from "@/components/comercial/produto-campos-card";
 import { ArrowLeft } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -20,7 +21,9 @@ const LIST_ROUTE = "/comercial/produtos";
 export default function ProdutoDetalhePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const podeEditarFoto = useAuthStore((state) =>
+  // A mesma permissão vale para a foto e para os dados complementares: são as
+  // duas coisas do produto que não vêm do ERP.
+  const podeEditar = useAuthStore((state) =>
     state.hasPermission("produtos", "editar"),
   );
 
@@ -65,10 +68,9 @@ export default function ProdutoDetalhePage() {
         {!produto.ativo && <Badge variant="destructive">Inativo</Badge>}
       </div>
 
-      <ProdutoDetalheContent
-        produto={produto}
-        permitirEdicaoFoto={podeEditarFoto}
-      />
+      <ProdutoDetalheContent produto={produto} permitirEdicaoFoto={podeEditar} />
+
+      <ProdutoCamposCard produtoId={produto.id} permitirEdicao={podeEditar} />
     </div>
   );
 }

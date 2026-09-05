@@ -123,6 +123,20 @@ export const MENUS: DefinicaoMenu[] = [
     codigo: 'clientes-config',
     moduloId: MODULO.administracao,
   },
+  // Campos complementares do produto. Vizinho de "Campos do Cliente" e com o
+  // mesmo espírito, mas não a mesma coisa: lá se escolhe quais campos **já
+  // existentes** podem ser editados; aqui se **cria** o campo, porque cada
+  // empresa guarda dados diferentes do produto (diluição, dimensões, tensão).
+  //
+  // Preencher o valor num produto não passa por esta rotina: é `produtos.editar`.
+  {
+    id: 'seed-menu-produtos-campos',
+    nome: 'Campos do Produto',
+    rota: '/admin/produtos-campos',
+    icone: 'ruler',
+    codigo: 'produtos-campos',
+    moduloId: MODULO.administracao,
+  },
   {
     id: 'seed-menu-parametros',
     nome: 'Parâmetros',

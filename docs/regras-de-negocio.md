@@ -56,6 +56,44 @@ Se um dia o ERP voltar a ser a fonte da verdade disso, é esse `update` que
 precisa mudar de volta — e a edição na tela deve sair junto, senão as duas
 pontas brigam.
 
+## Campos complementares do produto — o que é da empresa, não do ERP
+
+O cadastro de produto é read-only por natureza: os dados entram pelo import e
+são reescritos na próxima carga. As **duas** exceções são a foto e os campos
+complementares, e as duas vivem fora da tabela `produtos` justamente por isso.
+
+A empresa define quais campos quer em Administração > Campos do Produto
+(`produto_campos`) e preenche o valor em cada produto (`produto_campo_valores`,
+com `produtos.editar`). São dados que o ERP não tem: diluição de um químico,
+aplicação de uma autopeça, tensão de um elétrico, validade, dimensões.
+
+Por que não colunas novas em `produtos`: cada empresa quer as suas. Ou o
+cadastro nasceria com dezenas de colunas vazias, ou cada cliente pediria uma
+migration.
+
+Três decisões que não são óbvias:
+
+- **A chave não muda.** `peso-bruto` é o identificador estável pelo qual a IA e
+  as integrações referenciam o campo; renomear o rótulo na tela não pode
+  quebrar quem já lê.
+- **O tipo trava assim que alguém preenche.** Mudar de "texto" para "número" um
+  campo já usado deixaria valores que não conversam com o tipo. O caminho é
+  criar outro campo e desativar o antigo.
+- **Desativar não é excluir, e excluir não apaga valor.** O campo some do
+  formulário, mas o que os produtos têm gravado continua lá — restaurar o campo
+  traz o cadastro inteiro de volta.
+
+O valor é gravado como **texto**, em formato canônico (número com ponto
+decimal, booleano `true`/`false`, data `AAAA-MM-DD`). Quem converte a entrada
+é `normalizarValorDoCampo` (`modules/produto-campos/normalizar-valor.ts`), que
+aceita o jeito de digitar em português e recusa o resto — é a única defesa
+entre o que se digita e o que a tela, os relatórios e a IA vão ler.
+
+`visivelAgente` é o que a empresa usa para guardar aqui algo interno (custo de
+embalagem, margem) sem que chegue a quem pergunta pelo WhatsApp. O recorte é
+feito na consulta (`valoresDoProduto({ apenasAgente: true })`), não numa
+instrução de prompt.
+
 ## 2ª via de DANFE e boleto
 
 Decidido em 2026-08-21. Detalhe de implementação em
