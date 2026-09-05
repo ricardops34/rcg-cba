@@ -40,8 +40,15 @@ const TITULO: Record<EventoDocumento, (numero: string) => string> = {
 
 export interface DocumentoParaAtividade {
   empresaId: string;
-  /** Usuário que executou — responde pela ação (vai em createdBy). */
-  autor: string;
+  /**
+   * Usuário que executou — responde pela ação (vai em createdBy).
+   *
+   * Nulo quando não há usuário: é o caso do documento que o **cliente** pede
+   * pelo WhatsApp institucional, onde quem age é o atendimento automático. A
+   * coluna sempre aceitou nulo; o tipo é que era mais estreito que ela, e
+   * inventar um autor poria o nome de alguém numa ação que a pessoa não fez.
+   */
+  autor: string | null;
   evento: EventoDocumento;
   clienteId: string | null;
   /**

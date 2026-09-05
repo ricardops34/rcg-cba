@@ -16,6 +16,11 @@ import {
   resolverEscopoVendedores,
 } from '../../common/escopo/escopo-vendedores';
 import {
+  autorDoEvento,
+  recorteDoSolicitante,
+  type QuemPede,
+} from '../../common/escopo/quem-pede';
+import {
   buildPaginatedResult,
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
@@ -146,11 +151,11 @@ export class NotasSaidaService {
    */
   async gerarDanfe(
     empresaId: string,
-    user: AuthenticatedUser,
+    quem: QuemPede,
     id: string,
     opcoes: { registrarEvento?: boolean } = {},
   ) {
-    const { conteudo, nota } = await this.lerXml(empresaId, user, id);
+    const { conteudo, nota } = await this.lerXml(empresaId, quem, id);
 
     let dados;
     try {
@@ -170,18 +175,25 @@ export class NotasSaidaService {
     // Registrado depois de o PDF existir: XML ilegível vira 409, e o histórico
     // não pode registrar uma 2ª via que ninguém recebeu.
     if (opcoes.registrarEvento !== false) {
-      await this.registrarEvento(empresaId, user, nota, 'danfe_gerado', numero, [
-        dados.cancelada ? 'NOTA CANCELADA' : null,
-        dados.dataEmissao
-          ? `emitida em ${new Date(dados.dataEmissao).toLocaleDateString('pt-BR')}`
-          : null,
-        dados.totais.valorTotal != null
-          ? dados.totais.valorTotal.toLocaleString('pt-BR', {
-              style: 'currency',
-              currency: 'BRL',
-            })
-          : null,
-      ]);
+      await this.registrarEvento(
+        empresaId,
+        autorDoEvento(quem),
+        nota,
+        'danfe_gerado',
+        numero,
+        [
+          dados.cancelada ? 'NOTA CANCELADA' : null,
+          dados.dataEmissao
+            ? `emitida em ${new Date(dados.dataEmissao).toLocaleDateString('pt-BR')}`
+            : null,
+          dados.totais.valorTotal != null
+            ? dados.totais.valorTotal.toLocaleString('pt-BR', {
+                style: 'currency',
+                currency: 'BRL',
+              })
+            : null,
+        ],
+      );
     }
 
     return {
@@ -208,12 +220,17 @@ export class NotasSaidaService {
     id: string,
     opcoes: { registrarEvento?: boolean } = {},
   ) {
-    const { conteudo, nota } = await this.lerXml(empresaId, user, id);
+    const { conteudo, nota } = await this.lerXml(
+      empresaId,
+      { tipo: 'usuario', user },
+      id,
+    );
 
     if (opcoes.registrarEvento !== false) {
-      await this.registrarEvento(empresaId, user, nota, 'xml_baixado', nota.numero, [
+      await this.registrarEvento(empresaId, user.id, nota, 'xml_baixado', nota.numero, [
         nota.chaveNfe ? `chave ${nota.chaveNfe}` : null,
-      ]);
+        ],
+      );
     }
 
     return {
@@ -227,7 +244,7 @@ export class NotasSaidaService {
   /** Grava o rastro da 2ª via na agenda do cliente (ver o módulo compartilhado). */
   private registrarEvento(
     empresaId: string,
-    user: AuthenticatedUser,
+    autorId: string | null,
     nota: { clienteId: string | null; vendedorId: string | null },
     evento: EventoDocumento,
     numero: string,
@@ -236,7 +253,7 @@ export class NotasSaidaService {
     return this.prisma.withTenant(empresaId, (tx) =>
       registrarAtividadeDocumento(tx, {
         empresaId,
-        autor: user.id,
+        autor: autorId,
         evento,
         clienteId: nota.clienteId,
         vendedorId: nota.vendedorId,
@@ -254,15 +271,20 @@ export class NotasSaidaService {
    * É o mesmo cuidado que motivou a tabela acessória — XML só trafega quando
    * alguém pede a 2ª via.
    */
-  private async lerXml(empresaId: string, user: AuthenticatedUser, id: string) {
+  private async lerXml(empresaId: string, quem: QuemPede, id: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      // Usuário alcança a carteira dele; o cliente no WhatsApp alcança só as
+      // notas dele. As regras do DANFE valem igual nos dois caminhos.
+      const recorte = await recorteDoSolicitante(tx, empresaId, quem);
       const nota = await tx.notaSaida.findFirst({
         where: {
           id,
           empresaId,
           deletedAt: null,
-          ...(escopo ? { cliente: { vendedorId: { in: escopo } } } : {}),
+          ...(recorte.escopoVendedores
+            ? { cliente: { vendedorId: { in: recorte.escopoVendedores } } }
+            : {}),
+          ...(recorte.clienteId ? { clienteId: recorte.clienteId } : {}),
         },
         select: {
           id: true,

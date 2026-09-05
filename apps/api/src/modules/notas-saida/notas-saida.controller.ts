@@ -83,7 +83,7 @@ export class NotasSaidaController {
   ) {
     const { conteudo, nomeArquivo } = await this.service.gerarDanfe(
       user.empresaAtivaId,
-      user,
+      { tipo: 'usuario', user },
       id,
     );
     res.set({

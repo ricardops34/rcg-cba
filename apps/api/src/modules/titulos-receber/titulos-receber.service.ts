@@ -20,6 +20,11 @@ import {
   resolverEscopoVendedores,
 } from '../../common/escopo/escopo-vendedores';
 import {
+  autorDoEvento,
+  recorteDoSolicitante,
+  type QuemPede,
+} from '../../common/escopo/quem-pede';
+import {
   buildPaginatedResult,
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
@@ -155,18 +160,24 @@ export class TitulosReceberService {
    */
   async gerarBoleto(
     empresaId: string,
-    user: AuthenticatedUser,
+    quem: QuemPede,
     id: string,
     opcoes: { registrarEvento?: boolean } = {},
   ) {
     const titulo = await this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      // O recorte muda com quem pede: o usuário alcança a carteira dele; o
+      // cliente no WhatsApp alcança só os títulos dele. As regras abaixo
+      // (baixado, janela de reemissão, encargos) valem igual nos dois.
+      const recorte = await recorteDoSolicitante(tx, empresaId, quem);
       const encontrado = await tx.tituloReceber.findFirst({
         where: {
           id,
           empresaId,
           deletedAt: null,
-          ...(escopo ? { vendedorId: { in: escopo } } : {}),
+          ...(recorte.escopoVendedores
+            ? { vendedorId: { in: recorte.escopoVendedores } }
+            : {}),
+          ...(recorte.clienteId ? { clienteId: recorte.clienteId } : {}),
         },
         include: { cliente: true, contaBancaria: true },
       });
@@ -306,7 +317,7 @@ export class TitulosReceberService {
         await this.prisma.withTenant(empresaId, (tx) =>
           registrarAtividadeDocumento(tx, {
             empresaId,
-            autor: user.id,
+            autor: autorDoEvento(quem),
             evento: 'boleto_gerado',
             clienteId: titulo.clienteId,
             vendedorId: titulo.vendedorId,

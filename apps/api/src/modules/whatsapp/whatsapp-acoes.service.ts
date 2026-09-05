@@ -252,7 +252,7 @@ export class WhatsappAcoesService {
     // eventos no histórico do cliente para a mesma ação.
     const danfe = await this.notas.gerarDanfe(
       empresaId,
-      user,
+      { tipo: 'usuario', user },
       input.notaSaidaId,
       { registrarEvento: false },
     );
@@ -381,7 +381,7 @@ export class WhatsappAcoesService {
     // "boleto gerado" — é a mesma ação, e dois eventos só poluiriam a agenda.
     const boleto = await this.titulos.gerarBoleto(
       empresaId,
-      user,
+      { tipo: 'usuario', user },
       input.tituloReceberId,
       { registrarEvento: false },
     );

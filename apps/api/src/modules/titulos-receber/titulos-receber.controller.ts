@@ -84,7 +84,7 @@ export class TitulosReceberController {
   ) {
     const { conteudo, nomeArquivo } = await this.service.gerarBoleto(
       user.empresaAtivaId,
-      user,
+      { tipo: 'usuario', user },
       id,
     );
     res.set({
