@@ -621,7 +621,7 @@ export class WhatsappTriagemService {
       };
     }
 
-    const achados = await this.produtosAgente.procurar(empresaId, busca);
+    const achados = await this.produtosAgente.procurarHibrido(empresaId, busca);
     if (achados.length === 0) {
       return {
         encontrados: 0,

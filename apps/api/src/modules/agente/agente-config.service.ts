@@ -83,7 +83,7 @@ export class AgenteConfigService {
     user: AuthenticatedUser,
     input: AgenteConfigUpdate,
   ) {
-    const { apiKey, provedor, ...resto } = input;
+    const { apiKey, provedor, embeddingApiKey, ...resto } = input;
 
     return this.prisma.withTenant(empresaId, async (tx) => {
       const atual = await tx.agenteConfig.upsert({
@@ -136,6 +136,16 @@ export class AgenteConfigService {
       const dados: Record<string, unknown> = {
         ...resto,
         updatedBy: user.id,
+        // A chave de embeddings mora na própria linha de configuração, e não em
+        // `agente_credenciais`: aquela tabela é indexada por provedor de chat, e
+        // o gerador de vetor pode ser de um provedor que nem está na lista.
+        // Vazio mantém a atual — a chave nunca volta para ser redigitada.
+        ...(embeddingApiKey
+          ? {
+              embeddingApiKeyCifrada: cifrar(embeddingApiKey),
+              embeddingApiKeyUltimos4: ultimos4(embeddingApiKey),
+            }
+          : {}),
         ...(provedor ? { provedor } : {}),
         ...(trocouProvedor
           ? {
@@ -506,6 +516,9 @@ export class AgenteConfigService {
       modelo: string;
       apiKeyUltimos4: string | null;
       apiKeyCifrada: string | null;
+      embeddingBaseUrl: string | null;
+      embeddingModelo: string | null;
+      embeddingApiKeyUltimos4: string | null;
       systemPrompt: string | null;
       temperatura: number;
       maxTokens: number;
@@ -534,6 +547,10 @@ export class AgenteConfigService {
       modelo: linha.modelo,
       apiKeyUltimos4: doProvedor?.apiKeyUltimos4 ?? null,
       apiKeyPreenchida: !!doProvedor?.apiKeyUltimos4,
+      embeddingBaseUrl: linha.embeddingBaseUrl,
+      embeddingModelo: linha.embeddingModelo,
+      embeddingApiKeyUltimos4: linha.embeddingApiKeyUltimos4,
+      embeddingApiKeyPreenchida: !!linha.embeddingApiKeyUltimos4,
       systemPrompt: linha.systemPrompt,
       temperatura: linha.temperatura,
       maxTokens: linha.maxTokens,

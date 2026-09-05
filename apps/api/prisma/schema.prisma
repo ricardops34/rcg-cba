@@ -139,6 +139,7 @@ model Empresa {
   produtoFichas              ProdutoFicha[]
   agenteAnexos               AgenteAnexo[]
   fichaImportacoes           ProdutoFichaImportacao[]
+  fichaTrechos               ProdutoFichaTrecho[]
   orcamentoConfig            OrcamentoConfig?
   parametros                 ParametroEmpresa[]
   clienteCnaes               ClienteCnae[]
@@ -664,11 +665,70 @@ model ProdutoFicha {
   updatedBy String?
   deletedBy String?
 
-  empresa Empresa @relation(fields: [empresaId], references: [id])
-  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  empresa Empresa              @relation(fields: [empresaId], references: [id])
+  produto Produto              @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  trechos ProdutoFichaTrecho[]
 
   @@index([empresaId, produtoId])
   @@map("produto_fichas")
+}
+
+/// Um pedaço de ficha técnica, com o vetor que o representa.
+///
+/// ## Por que pedaços, e não a ficha inteira
+///
+/// Duas razões, e as duas importam.
+///
+/// **Custo.** Mandar a ficha inteira ao modelo a cada pergunta é o gasto que não
+/// para de crescer: 10 KB de Markdown são ~2.500 tokens, vezes três produtos,
+/// vezes toda pergunta de todo cliente. Um trecho de 800 caracteres responde a
+/// pergunta e custa uma fração disso.
+///
+/// **Precisão da busca.** Um vetor do documento inteiro é a média de tudo que
+/// ele diz — dilui o que é específico. O vetor de "preserva as fibras do algodão
+/// e não amarela" aponta para onde a pergunta sobre desgaste de lençol aponta;
+/// o vetor da ficha inteira, não.
+///
+/// ## A dimensão é fixa, e isso é uma decisão
+///
+/// 1536 é a dimensão do `text-embedding-3-small` da OpenAI e de vários outros.
+/// pgvector exige dimensão declarada para indexar, então trocar de modelo para
+/// um de outra dimensão obriga a recriar a coluna **e** reindexar tudo. O
+/// serviço recusa vetor de tamanho diferente em vez de gravar algo que a busca
+/// depois compararia com lixo.
+///
+/// O tipo é `Unsupported` porque o Prisma não conhece `vector`: a coluna existe
+/// e é migrada por ele, mas quem lê e escreve é SQL cru (ver
+/// `FichaEmbeddingService`).
+model ProdutoFichaTrecho {
+  id        String @id @default(uuid())
+  empresaId String
+
+  fichaId   String
+  /// Desnormalizado da ficha: a busca devolve produto, e sem isto toda consulta
+  /// precisaria de mais um join só para chegar nele.
+  produtoId String
+
+  /// Posição do trecho dentro da ficha, para remontar a ordem na leitura.
+  ordem Int
+  texto String
+
+  /// O vetor. Nulo enquanto a indexação não rodou — o trecho existe antes de o
+  /// embedding chegar, e a busca lexical já funciona sem ele.
+  embedding Unsupported("vector(1536)")?
+
+  /// Que modelo gerou o vetor. É o que permite reindexar só o que ficou para
+  /// trás quando o modelo muda, em vez de refazer o catálogo inteiro.
+  modelo String?
+
+  createdAt DateTime @default(now())
+
+  empresa Empresa      @relation(fields: [empresaId], references: [id])
+  ficha   ProdutoFicha @relation(fields: [fichaId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId, produtoId])
+  @@index([empresaId, fichaId, ordem])
+  @@map("produto_ficha_trechos")
 }
 
 /// Em que pé está um PDF na fila de importação de fichas.
@@ -1442,6 +1502,18 @@ model AgenteConfig {
   // credenciais existir; a leitura prefere AgenteCredencial.
   apiKeyCifrada  String?
   apiKeyUltimos4 String?
+
+  /// Embeddings — a busca semântica das fichas técnicas.
+  ///
+  /// Configuração **separada** da do chat, e não por capricho: o provedor de
+  /// conversa pode não gerar vetor (o Codex por OAuth não gera, a Anthropic não
+  /// tem o serviço), e o modelo de embedding é escolhido por dimensão e preço,
+  /// não por qualidade de escrita. Vazio = sem busca semântica, e a busca
+  /// lexical continua atendendo sozinha.
+  embeddingBaseUrl        String?
+  embeddingModelo         String?
+  embeddingApiKeyCifrada  String?
+  embeddingApiKeyUltimos4 String?
 
   // Identidade e prompt base valem para qualquer provedor: trocar de LLM não
   // pode trocar o nome pelo qual a equipe conhece o assistente nem as regras

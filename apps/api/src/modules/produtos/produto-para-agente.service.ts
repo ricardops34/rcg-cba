@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { ProdutoFichasService } from './produto-fichas.service';
 import { ProdutoRelacionadosService } from './produto-relacionados.service';
+import { EmbeddingsService } from '../agente/embeddings.service';
 import { semPreco } from './sem-preco';
 
 /**
@@ -35,7 +36,103 @@ export class ProdutoParaAgenteService {
     private readonly prisma: PrismaService,
     private readonly fichas: ProdutoFichasService,
     private readonly relacionados: ProdutoRelacionadosService,
+    private readonly embeddings: EmbeddingsService,
   ) {}
+
+  /**
+   * A busca do pré-atendimento: semântica **somada** à lexical.
+   *
+   * As duas erram de formas diferentes, e é por isso que as duas ficam. A
+   * lexical não sabe que "rouparia" tem a ver com "lençol", mas acerta em cheio
+   * código de produto, marca e nome exato — coisas em que o vetor é ruim,
+   * porque "DEMO-P015" não tem semântica. A semântica acha o produto cuja ficha
+   * fala do problema com outras palavras.
+   *
+   * A soma é por posição (o `peso` cai conforme o item desce na lista de cada
+   * lado), e não pela distância bruta: escore de cosseno e contagem de palavras
+   * não são comparáveis, e normalizá-los daria uma precisão inventada.
+   *
+   * Sem provedor de embeddings configurado, `gerarUm` devolve `null` e sobra a
+   * lexical — a busca fica pior, não quebra.
+   */
+  async procurarHibrido(empresaId: string, busca: string, limite = 5) {
+    const [lexical, vetor] = await Promise.all([
+      this.procurar(empresaId, busca, limite * 2),
+      this.embeddings.gerarUm(empresaId, busca),
+    ]);
+
+    const semantica = vetor
+      ? await this.procurarPorVetor(empresaId, vetor, limite * 2)
+      : [];
+
+    const peso = new Map<string, number>();
+    const dados = new Map<
+      string,
+      { id: string; codigoErp: string; descricao: string }
+    >();
+    const somar = (
+      lista: { id: string; codigoErp: string; descricao: string }[],
+      fator: number,
+    ) => {
+      lista.forEach((p, i) => {
+        dados.set(p.id, p);
+        // 1/(posição+1): o primeiro vale 1, o segundo 0,5, o terceiro 0,33.
+        // Um item bem colocado nos dois lados ganha de um primeiro colocado
+        // que só aparece em um.
+        peso.set(p.id, (peso.get(p.id) ?? 0) + fator / (i + 1));
+      });
+    };
+
+    // A semântica pesa um pouco mais quando existe: ela é a que entende a
+    // pergunta descrita em outras palavras, que é o caso do pré-atendimento.
+    somar(lexical, 1);
+    somar(semantica, 1.3);
+
+    return [...peso.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limite)
+      .map(([id]) => dados.get(id)!)
+      .filter(Boolean);
+  }
+
+  /**
+   * Os produtos cujos trechos de ficha mais se aproximam da pergunta.
+   *
+   * `<=>` é a distância de cosseno do pgvector, e usa o índice HNSW. O
+   * `DISTINCT ON` é o que impede uma ficha longa de ocupar a lista inteira com
+   * cinco trechos do mesmo produto.
+   */
+  private async procurarPorVetor(
+    empresaId: string,
+    vetor: number[],
+    limite: number,
+  ) {
+    // O literal do pgvector é '[1,2,3]'; vai como texto e é convertido no banco.
+    const literal = `[${vetor.join(',')}]`;
+
+    return this.prisma.withTenant(
+      empresaId,
+      (tx) =>
+        tx.$queryRaw<{ id: string; codigoErp: string; descricao: string }[]>`
+        SELECT p."id", p."codigoErp", p."descricao"
+        FROM (
+          SELECT DISTINCT ON (t."produtoId")
+                 t."produtoId", t."embedding" <=> ${literal}::vector AS distancia
+          FROM "produto_ficha_trechos" t
+          JOIN "produto_fichas" f ON f."id" = t."fichaId"
+          WHERE t."empresaId" = ${empresaId}
+            AND t."embedding" IS NOT NULL
+            AND f."deletedAt" IS NULL
+            AND f."visivelAgente" = true
+          ORDER BY t."produtoId", distancia
+        ) melhores
+        JOIN "produtos" p ON p."id" = melhores."produtoId"
+        WHERE p."deletedAt" IS NULL AND p."ativo" = true
+        ORDER BY melhores.distancia
+        LIMIT ${limite}
+      `,
+    );
+  }
 
   /**
    * Procura produtos ativos — por nome, e também **pelo que eles resolvem**.

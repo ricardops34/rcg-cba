@@ -5,6 +5,7 @@ import { AnthropicClient } from './anthropic.client';
 import { CodexClient } from './codex.client';
 import { CodexOAuthService } from './codex-oauth.service';
 import { ProvedorFactory } from './provedor.factory';
+import { EmbeddingsService } from './embeddings.service';
 
 /**
  * A camada de IA, sem o agente.
@@ -28,7 +29,8 @@ import { ProvedorFactory } from './provedor.factory';
     CodexClient,
     CodexOAuthService,
     ProvedorFactory,
+    EmbeddingsService,
   ],
-  exports: [AgenteConfigService, ProvedorFactory],
+  exports: [AgenteConfigService, ProvedorFactory, EmbeddingsService],
 })
 export class ProvedorIaModule {}

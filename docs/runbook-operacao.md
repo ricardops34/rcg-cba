@@ -178,6 +178,45 @@ CNPJ válido (o alvo padrão). A ~1 req/s, cerca de 15 minutos.
 
 ---
 
+## pgvector: exigência do servidor de banco **[verificado em dev, 2026-09-05]**
+
+A busca de produto do pré-atendimento guarda os trechos das fichas técnicas
+como vetores, e isso exige a extensão **`vector` (pgvector) disponível no
+servidor de banco** — não basta a aplicação querer.
+
+**Antes de rodar as migrations em produção**, confira:
+
+```bash
+psql -U plataforma -d plataforma_comercial -c "select name, default_version from pg_available_extensions where name='vector';"
+```
+
+Sem retorno, a migration `20260906010000_pgvector_fichas` **falha** ao chamar
+`CREATE EXTENSION vector` — e falhar ali é melhor do que subir com a busca
+semântica silenciosamente inexistente. O que fazer depende do servidor:
+
+| Situação | Caminho |
+|---|---|
+| Banco em container que você controla | trocar a imagem por `pgvector/pgvector:pg16` (mesma major, o volume continua servindo) |
+| Banco gerenciado (RDS, DigitalOcean, Supabase) | pgvector costuma estar na lista de extensões; habilitar pelo painel |
+| Postgres do sistema, compilado | instalar o pacote (`postgresql-16-pgvector` no Debian/Ubuntu) e reiniciar |
+
+Em **dev** isso já está resolvido: o `docker-compose.dev.yml` usa
+`pgvector/pgvector:pg16`. A troca da imagem oficial para essa foi feita com o
+volume existente e **não** recriou o banco — mesma major version. O Postgres
+pode avisar de versão de collation na primeira subida (a imagem é Debian, a
+anterior era Alpine); é aviso, não erro.
+
+### O gerador de embeddings é outra configuração
+
+A extensão guarda o vetor; quem **gera** o vetor é um provedor externo,
+configurado em Administração > Agente IA, separado do provedor de chat — o
+Codex por OAuth não gera embeddings e a Anthropic não tem o serviço.
+
+Sem ele configurado nada quebra: os trechos são gravados sem vetor e a busca
+lexical atende sozinha. Ao configurar depois, `POST
+/produto-fichas-importacao/vetorizar` preenche o que faltou, 200 por chamada,
+sem reler PDF nenhum — o texto já está gravado.
+
 ## Migrations em produção
 
 A imagem de produção da API aplica as migrations pendentes no boot:

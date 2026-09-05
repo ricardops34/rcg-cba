@@ -4,6 +4,7 @@ import { ProdutosService } from './produtos.service';
 import { ProdutoRelacionadosService } from './produto-relacionados.service';
 import { ProdutoFichasService } from './produto-fichas.service';
 import { ProdutoParaAgenteService } from './produto-para-agente.service';
+import { FichaEmbeddingService } from './ficha-embedding.service';
 import { FichaImportacaoController } from './ficha-importacao.controller';
 import { FichaImportacaoService } from './ficha-importacao.service';
 import { ProvedorIaModule } from '../agente/provedor-ia.module';
@@ -28,6 +29,7 @@ import { ProdutoFotosImportacaoService } from './produto-fotos-importacao.servic
     ProdutoRelacionadosService,
     ProdutoFichasService,
     ProdutoParaAgenteService,
+    FichaEmbeddingService,
     FichaImportacaoService,
     ProdutoFotosImportacaoService,
   ],
@@ -38,6 +40,7 @@ import { ProdutoFotosImportacaoService } from './produto-fotos-importacao.servic
     ProdutoRelacionadosService,
     ProdutoFichasService,
     ProdutoParaAgenteService,
+    FichaEmbeddingService,
   ],
 })
 export class ProdutosModule {}

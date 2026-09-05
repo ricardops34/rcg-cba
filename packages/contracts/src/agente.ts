@@ -56,6 +56,18 @@ export const agenteConfigUpdateSchema = z.object({
   maxTokens: z.coerce.number().int().min(256).max(32000).optional(),
   maxIteracoesFerramentas: z.coerce.number().int().min(1).max(10).optional(),
   historicoMensagens: z.coerce.number().int().min(2).max(100).optional(),
+
+  /**
+   * Gerador de embeddings — a busca semântica das fichas técnicas.
+   *
+   * Separado do chat porque o provedor costuma ser outro: o Codex por OAuth não
+   * gera vetor e a Anthropic não tem o serviço. Vazio = sem busca semântica, e
+   * a busca lexical atende sozinha.
+   */
+  embeddingBaseUrl: z.string().trim().url().max(200).nullable().optional(),
+  embeddingModelo: z.string().trim().max(80).nullable().optional(),
+  /** Vazio = manter a atual. Nunca é devolvida para ser redigitada. */
+  embeddingApiKey: z.string().trim().max(200).optional(),
 });
 export type AgenteConfigUpdate = z.infer<typeof agenteConfigUpdateSchema>;
 
@@ -71,6 +83,10 @@ export const agenteConfigSchema = z.object({
   modelo: z.string(),
   apiKeyUltimos4: z.string().nullable(),
   apiKeyPreenchida: z.boolean(),
+  embeddingBaseUrl: z.string().nullable(),
+  embeddingModelo: z.string().nullable(),
+  embeddingApiKeyUltimos4: z.string().nullable(),
+  embeddingApiKeyPreenchida: z.boolean(),
   systemPrompt: z.string().nullable(),
   temperatura: z.number(),
   maxTokens: z.number().int(),
@@ -271,6 +287,10 @@ export const AGENTE_CONFIG_EXAMPLE: AgenteConfig = {
   maxTokens: 2048,
   maxIteracoesFerramentas: 5,
   historicoMensagens: 20,
+  embeddingBaseUrl: null,
+  embeddingModelo: null,
+  embeddingApiKeyUltimos4: null,
+  embeddingApiKeyPreenchida: false,
 };
 
 export const AGENTE_RESPOSTA_EXAMPLE: AgenteResposta = {

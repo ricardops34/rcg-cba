@@ -12,6 +12,7 @@ import {
   extensaoPorMime,
   fichaPublicPath,
 } from '../../common/uploads/uploads.config';
+import { FichaEmbeddingService } from './ficha-embedding.service';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
 /**
@@ -23,7 +24,10 @@ import type { AuthenticatedUser } from '../../common/decorators/current-user.dec
  */
 @Injectable()
 export class ProdutoFichasService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly indice: FichaEmbeddingService,
+  ) {}
 
   private readonly SELECAO = {
     id: true,
@@ -126,7 +130,16 @@ export class ProdutoFichasService {
         },
         select: this.SELECAO,
       });
-      return this.paraLeitura(criada);
+      const ficha = this.paraLeitura(criada);
+      // Fora da transação seria melhor, mas o `withTenant` a envolve toda; o
+      // `indexar` não lança, então uma falha de provedor não desfaz o anexo.
+      await this.indice.indexar(empresaId, {
+        id: ficha.id,
+        produtoId,
+        titulo: ficha.titulo,
+        markdown: ficha.markdown,
+      });
+      return ficha;
     });
   }
 
@@ -161,7 +174,18 @@ export class ProdutoFichasService {
         },
         select: this.SELECAO,
       });
-      return this.paraLeitura(alterada);
+      const atualizada = this.paraLeitura(alterada);
+      // Editar o Markdown é justamente onde o índice velho faz mal: o texto que
+      // a pessoa acabou de tirar continuaria sendo encontrado.
+      if (input.markdown !== undefined || input.titulo !== undefined) {
+        await this.indice.indexar(empresaId, {
+          id: atualizada.id,
+          produtoId,
+          titulo: atualizada.titulo,
+          markdown: atualizada.markdown,
+        });
+      }
+      return atualizada;
     });
   }
 
@@ -189,6 +213,7 @@ export class ProdutoFichasService {
         data: { deletedAt: new Date(), deletedBy: user.id },
       });
       await unlink(join(FICHAS_DIR, ficha.arquivo)).catch(() => undefined);
+      await this.indice.remover(empresaId, id);
       return { ok: true };
     });
   }

@@ -216,8 +216,20 @@ services:
       api:
         condition: service_started
 
+  # `pgvector/pgvector`, e não `postgres` puro: a busca de produto do
+  # pré-atendimento guarda os trechos das fichas técnicas como vetores, e a
+  # extensão `vector` não vem na imagem oficial.
+  #
+  # É a mesma major (16), então o volume de dados existente continua servindo —
+  # trocar a imagem não recria o banco. Muda a base do sistema (Debian, e não
+  # Alpine), o que pode fazer o Postgres avisar de versão de collation na
+  # primeira subida; é aviso, não erro.
+  #
+  # **Produção não usa este arquivo** e recebe a `DATABASE_URL` de um banco
+  # externo: lá a extensão precisa existir no servidor, e é isso que a
+  # migration `20260906..._pgvector` verifica ao subir. Ver o runbook.
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_USER: plataforma

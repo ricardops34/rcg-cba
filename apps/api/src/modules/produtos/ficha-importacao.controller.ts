@@ -20,6 +20,7 @@ import {
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { fichaImportacaoUploadOptions } from '../../common/uploads/uploads.config';
 import { FichaImportacaoService } from './ficha-importacao.service';
+import { FichaEmbeddingService } from './ficha-embedding.service';
 import { FichaImportacaoVincularDto } from './dto/produto.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -44,7 +45,25 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('produto-fichas-importacao')
 export class FichaImportacaoController {
-  constructor(private readonly service: FichaImportacaoService) {}
+  constructor(
+    private readonly service: FichaImportacaoService,
+    private readonly indice: FichaEmbeddingService,
+  ) {}
+
+  @ApiOperation({
+    summary: 'Gerar os vetores que ainda faltam',
+    description:
+      'Vetoriza os trechos de ficha que estão sem embedding — o caminho de ' +
+      'quem configurou o gerador depois de já ter fichas cadastradas, e o de ' +
+      'completar o que falhou. Não relê PDF nenhum: o texto já está gravado. ' +
+      'Processa até 200 por chamada; chame de novo enquanto devolver o teto. ' +
+      'Requer produtos.importar.',
+  })
+  @RequirePermission('produtos', 'importar')
+  @Post('vetorizar')
+  vetorizar(@CurrentUser() user: AuthenticatedUser) {
+    return this.indice.vetorizarPendentes(user.empresaAtivaId);
+  }
 
   @ApiOperation({
     summary: 'Enviar PDFs de ficha técnica para processamento',
