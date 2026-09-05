@@ -88,8 +88,23 @@ um erro de API que não diz nada a quem anexou o arquivo.
 | `withTenant` | `AgenteAnexosService` | anexo de outra empresa |
 | `usuarioId` | `AgenteAnexosService.meu` | usar o arquivo de outra pessoa |
 | `consumidoEm` | `AgenteAnexosService.consumir` | gravar o mesmo upload duas vezes |
-| `usaAnexo` | `AgenteToolsService.disponiveisPara` | a ferramenta existir num turno sem arquivo |
+| `usaAnexo` | `AgenteToolsService.disponiveisPara` | a ferramenta existir numa conversa sem arquivo |
 | lista branca de MIME | `agenteAnexoUploadOptions` | subir o que o provedor não lê |
+
+### O anexo vale para a conversa, não para o turno
+
+O arquivo fica pendurado na conversa (`agente_anexos.conversaId`) até virar
+ficha ou foto. Isso não é conveniência: sem isso o fluxo natural quebra, e foi
+o que aconteceu no primeiro teste com um PDF real — o modelo leu o documento,
+perguntou "confirma que é este produto?" e, na resposta seguinte, respondeu
+"não tenho acesso ao conteúdo do PDF nesta conversa". Consumido, ele para de
+aparecer: ficha gravada não deve voltar como anexo da pergunta seguinte.
+
+Pela mesma razão, a lista de ferramentas **do prompt** é montada com o mesmo
+recorte que vai ao provedor. Elas divergiram na primeira versão: o catálogo
+enviado trazia `anexar_ficha_tecnica` e o texto do prompt não, e o modelo
+acreditou no texto — leu o PDF, achou o produto e respondeu que não tinha
+permissão para anexar.
 
 **O modelo nunca escolhe o anexo.** O `anexoId` não é parâmetro declarado: ele
 chega ao provedor porque a mensagem o carrega, e à ferramenta porque o servidor

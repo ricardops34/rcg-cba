@@ -60,6 +60,53 @@ export class AgenteAnexosService {
     );
   }
 
+  /**
+   * O anexo que vale para este turno: o que foi enviado agora, ou o que ainda
+   * está pendurado na conversa.
+   *
+   * A segunda metade existe porque o arquivo não vale por um turno só. O
+   * modelo lê a ficha, pergunta "confirma que é este produto?" e a resposta
+   * vem na mensagem seguinte — sem o anexo, ele responde que não tem acesso ao
+   * documento, e o usuário teria de subir tudo de novo. Foi o que aconteceu no
+   * primeiro teste com um PDF real, em 2026-09-05.
+   *
+   * Só o que ainda **não** foi consumido: uma ficha já gravada não deve
+   * reaparecer como anexo de uma pergunta seguinte.
+   */
+  async doTurno(
+    empresaId: string,
+    user: AuthenticatedUser,
+    params: { anexoId?: string; conversaId?: string },
+  ) {
+    if (params.anexoId) {
+      const anexo = await this.meu(empresaId, user, params.anexoId);
+      // Prende o arquivo à conversa no primeiro envio, para os turnos
+      // seguintes o encontrarem.
+      if (params.conversaId && anexo.conversaId !== params.conversaId) {
+        await this.prisma.withTenant(empresaId, (tx) =>
+          tx.agenteAnexo.update({
+            where: { id: anexo.id },
+            data: { conversaId: params.conversaId },
+          }),
+        );
+      }
+      return anexo;
+    }
+
+    if (!params.conversaId) return null;
+    return this.prisma.withTenant(empresaId, (tx) =>
+      tx.agenteAnexo.findFirst({
+        where: {
+          empresaId,
+          usuarioId: user.id,
+          conversaId: params.conversaId,
+          consumidoEm: null,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+  }
+
   /** O anexo de quem está falando, ou erro. Nunca o de outra pessoa. */
   async meu(empresaId: string, user: AuthenticatedUser, id: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
@@ -78,12 +125,11 @@ export class AgenteAnexosService {
    * inteiro no corpo da requisição ao provedor — não há o que economizar
    * transmitindo em pedaços.
    */
-  async paraProvedor(
-    empresaId: string,
-    user: AuthenticatedUser,
-    id: string,
-  ): Promise<AnexoChat> {
-    const anexo = await this.meu(empresaId, user, id);
+  async paraProvedor(anexo: {
+    arquivo: string;
+    arquivoNome: string;
+    mime: string;
+  }): Promise<AnexoChat> {
     const conteudo = await readFile(join(AGENTE_DIR, anexo.arquivo));
     return {
       nome: anexo.arquivoNome,

@@ -690,6 +690,14 @@ model AgenteAnexo {
   mime        String
   tamanho     Int
 
+  /// A conversa em que o arquivo entrou, gravada no primeiro envio.
+  ///
+  /// Sem isto o anexo valeria por **um turno**, e o fluxo natural quebrava:
+  /// verificado com um PDF real em 2026-09-05, o modelo lê o documento, pede
+  /// a confirmação do produto e, na resposta seguinte, já não tem o arquivo —
+  /// respondeu "não tenho acesso ao conteúdo do PDF nesta conversa".
+  conversaId String?
+
   /// Quando virou ficha técnica ou foto de produto. Nulo = ainda não usado.
   consumidoEm DateTime?
 
@@ -698,6 +706,7 @@ model AgenteAnexo {
   empresa Empresa @relation(fields: [empresaId], references: [id])
 
   @@index([empresaId, usuarioId, createdAt])
+  @@index([empresaId, conversaId, consumidoEm])
   @@map("agente_anexos")
 }
 

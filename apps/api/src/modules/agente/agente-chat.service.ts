@@ -294,12 +294,11 @@ export class AgenteChatService {
   ) {
     const cfg = await this.config.paraUso(empresaId);
 
-    // O anexo do turno. Carregado **antes** de qualquer coisa porque um id
-    // inválido, ou de outra pessoa, tem de derrubar o envio aqui — não depois
-    // de já ter gravado a mensagem e pago uma chamada ao provedor.
-    const anexo = params.anexoId
-      ? await this.anexos.paraProvedor(empresaId, user, params.anexoId)
-      : null;
+    // Um anexo inválido, ou de outra pessoa, derruba o envio antes de a
+    // conversa ser criada — não depois de já ter pago uma chamada ao provedor.
+    if (params.anexoId) {
+      await this.anexos.meu(empresaId, user, params.anexoId);
+    }
 
     const conversaId = await this.prisma.withTenant(empresaId, async (tx) => {
       if (params.conversaId) {
@@ -334,6 +333,14 @@ export class AgenteChatService {
       }),
     );
 
+    // O anexo deste turno: o que subiu agora, ou o que ficou pendurado na
+    // conversa e ainda não virou ficha nem foto (ver `doTurno`).
+    const anexado = await this.anexos.doTurno(empresaId, user, {
+      anexoId: params.anexoId,
+      conversaId,
+    });
+    const anexo = anexado ? await this.anexos.paraProvedor(anexado) : null;
+
     // Configuração da empresa (ferramenta ligada/desligada, descrição
     // reescrita, perfis liberados). Restringe o catálogo; nunca o amplia.
     // Precisa vir antes do contexto: é ele que lista ao modelo o que está
@@ -348,6 +355,7 @@ export class AgenteChatService {
       cfg.systemPrompt,
       filtro,
       cfg.nomeAgente,
+      !!anexo,
     );
 
     // O arquivo entra na última mensagem do usuário — a que o contexto acabou
@@ -452,8 +460,8 @@ export class AgenteChatService {
         // declarado, e o que o modelo por acaso tenha inventado nesse nome é
         // sobrescrito aqui. Vai junto dos argumentos para sobreviver à
         // pendência — a gravação só acontece na confirmação, num outro pedido.
-        if (ferramenta.usaAnexo && params.anexoId) {
-          argumentos.anexoId = params.anexoId;
+        if (ferramenta.usaAnexo && anexado) {
+          argumentos.anexoId = anexado.id;
         }
 
         if (ferramenta.escrita) {
@@ -769,6 +777,7 @@ export class AgenteChatService {
     systemPrompt: string | null,
     filtro: FiltroFerramentas,
     nomeAgente: string,
+    temAnexo = false,
   ): Promise<MensagemChat[]> {
     const historico = await this.prisma.withTenant(empresaId, (tx) =>
       tx.agenteMensagem.findMany({
@@ -787,7 +796,12 @@ export class AgenteChatService {
       dateStyle: 'full',
       timeZone: 'America/Campo_Grande',
     });
-    const disponiveis = this.tools.disponiveisPara(user, filtro);
+    // O mesmo recorte que vai ao provedor, **inclusive o anexo**. Verificado
+    // com um PDF real em 2026-09-05: o catálogo enviado trazia
+    // `anexar_ficha_tecnica`, mas esta lista não, e o modelo acreditou nela —
+    // leu o documento, achou o produto e respondeu "não tenho permissão para
+    // anexar". O prompt e o catálogo têm de descrever a mesma sessão.
+    const disponiveis = this.tools.disponiveisPara(user, filtro, { temAnexo });
     const ferramentas = disponiveis.map((f) => f.nome).join(', ');
 
     // O comportamento de cada ferramenta, já com a reescrita da empresa.

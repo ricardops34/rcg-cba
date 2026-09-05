@@ -1492,8 +1492,12 @@ export class AgenteToolsService {
           'Transcreva o que está no documento, não resuma nem invente. ' +
           '**Não inclua preço, tabela de preços nem condição comercial** no ' +
           'markdown: este texto é lido pela IA ao falar do produto, e preço só ' +
-          'sai em orçamento feito por gente. Confirme com o usuário qual é o ' +
-          'produto antes de anexar.',
+          'sai em orçamento feito por gente. ' +
+          'Com o produto identificado, chame a ferramenta direto — o usuário ' +
+          'confirma no cartão que aparece na tela, e pedir confirmação em ' +
+          'texto antes só repete esse passo. Pergunte apenas quando a busca ' +
+          'devolver mais de um candidato. Se a ficha parecer ser de outro ' +
+          'produto, diga isso na resposta em vez de anexar em silêncio.',
         permissao: 'produtos.editar',
         exemplos: [
           'Anexei a ficha técnica em PDF — cadastre no produto DEMO-P015',
@@ -1556,8 +1560,10 @@ export class AgenteToolsService {
           'o `produtoId`. Use buscar_produto antes para descobri-lo, e ' +
           'pergunte qual é o produto se houver mais de um candidato.',
         instrucoes:
-          'Confirme com o usuário de que produto é a foto antes de anexar — ' +
-          'uma imagem no produto errado é vista depois por quem vende.',
+          'Com o produto identificado, chame a ferramenta direto: o usuário ' +
+          'confirma no cartão que aparece na tela. Pergunte apenas quando a ' +
+          'busca devolver mais de um candidato — uma imagem no produto errado ' +
+          'é vista depois por quem vende.',
         permissao: 'produtos.editar',
         exemplos: ['Essa foto é do produto DEMO-P015, pode cadastrar'],
         escrita: true,
