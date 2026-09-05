@@ -78,12 +78,19 @@ describe('Atendimento institucional — garantias de segurança', () => {
     it('o que sobra para o desconhecido é só triagem, nunca consulta', () => {
       // Se alguém acrescentar uma consulta às gerais, este teste cai — que é o
       // ponto: dado de cliente exige cliente associado.
+      //
+      // `registrar_lead` é a única que **escreve**, e entrou aqui de propósito
+      // em 2026-09-05: ela grava o que o próprio desconhecido acabou de dizer,
+      // numa tabela só de lead, no máximo uma vez por conversa. Não lê nada e
+      // não confirma nada — o pior caso é um lead falso na fila da supervisão,
+      // que é o mesmo que um trote por telefone já produz.
       expect(semCliente.sort()).toEqual(
         [
           'avisar_equipe',
           'direcionar_para_administrativo',
           'direcionar_para_vendedor',
           'identificar_cliente',
+          'registrar_lead',
         ].sort(),
       );
     });

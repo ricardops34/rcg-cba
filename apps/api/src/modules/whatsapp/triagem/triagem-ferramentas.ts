@@ -228,6 +228,54 @@ export const FERRAMENTAS_GERAIS: FerramentaChat[] = [
       required: ['destino', 'mensagem'],
     },
   },
+  // Captação de lead — a única ferramenta geral que **escreve**.
+  //
+  // Fica entre as gerais porque é justamente quem ainda não é cliente que
+  // interessa captar. O risco de dar escrita a um número desconhecido é real, e
+  // está contido em três pontos: um lead por conversa (índice único), nenhum
+  // dado é verificado — tudo é "o que a pessoa disse" —, e o registro não toca
+  // cadastro nenhum: vive numa tabela própria até alguém decidir o que fazer.
+  {
+    nome: 'registrar_lead',
+    descricao:
+      'Anota quem procurou a empresa e o que quer, para a supervisão dar ' +
+      'sequência. Use quando a pessoa NÃO é cliente e demonstrou interesse — ' +
+      'perguntou preço, prazo, se atendem a região dela, como comprar. Pode ' +
+      'chamar de novo na mesma conversa para completar o que descobriu depois: ' +
+      'o registro é atualizado, não duplicado.',
+    parametros: {
+      type: 'object',
+      properties: {
+        nome: { type: 'string', description: 'Nome de quem está falando' },
+        empresa: {
+          type: 'string',
+          description: 'Empresa que ela disse representar',
+        },
+        documento: {
+          type: 'string',
+          description: 'CNPJ ou CPF, só dígitos, se ela informar',
+        },
+        interesse: {
+          type: 'string',
+          description:
+            'O que ela procura, em uma linha. Escreva o que ela disse, não o que você supõe.',
+        },
+        temperatura: {
+          type: 'string',
+          enum: ['quente', 'morno', 'frio'],
+          description:
+            '"quente" = quer comprar agora e disse o quê; "morno" = interesse real sem urgência; ' +
+            '"frio" = só perguntou, sem sinal de compra. Na dúvida, "morno".',
+        },
+        motivo: {
+          type: 'string',
+          description:
+            'Por que você classificou assim, em uma frase. Quem receber o lead precisa poder discordar.',
+        },
+      },
+      required: ['interesse'],
+    },
+  },
   {
     nome: 'direcionar_para_administrativo',
     descricao:

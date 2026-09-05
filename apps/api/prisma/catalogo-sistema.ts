@@ -244,6 +244,20 @@ export const MENUS: DefinicaoMenu[] = [
     codigo: 'whatsapp-recados',
     moduloId: MODULO.comercial,
   },
+  // Leads captados pela IA no número institucional.
+  //
+  // `visualizar` vai também para o Vendedor, porque ele precisa ver o que lhe
+  // foi entregue — o recorte de quem enxerga o quê é do service, não da
+  // permissão: quem tem equipe vê a fila inteira, quem não tem vê só o seu.
+  // `editar` (distribuir, descartar) fica com quem distribui.
+  {
+    id: 'seed-menu-leads',
+    nome: 'Leads',
+    rota: '/comercial/leads',
+    icone: 'user-search',
+    codigo: 'leads',
+    moduloId: MODULO.comercial,
+  },
   {
     id: 'seed-menu-configuracoes-whatsapp',
     nome: 'WhatsApp',
@@ -581,6 +595,9 @@ export const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
   // A linha do tempo do próprio atendimento. Só 'visualizar' porque não há o
   // que cadastrar: a tela lê as Atividades que os outros módulos gravam.
   'meus-atendimentos': ['visualizar'],
+  // O vendedor ve os leads que lhe foram entregues; distribuir e da supervisao
+  // (ver SUPERVISAO_PERMISSOES).
+  leads: ['visualizar'],
   // Assistente de IA. `agente` é obrigatória: sem ela o ícone do assistente não
   // aparece para ninguém. As três seguintes não são detalhe — o catálogo de
   // ferramentas enviado ao modelo é filtrado pela permissão do usuário
@@ -620,6 +637,8 @@ export const SUPERVISAO_PERMISSOES: Record<string, Acao[]> = {
   // VENDEDOR_PERMISSOES de propósito — o alcance é a hierarquia abaixo, e
   // quem não tem ninguém abaixo só mandaria recado para si mesmo.
   'whatsapp-recados': ['visualizar', 'cadastrar'],
+  // Distribuir, descartar e anotar o lead.
+  leads: ['visualizar', 'editar'],
 };
 
 /**

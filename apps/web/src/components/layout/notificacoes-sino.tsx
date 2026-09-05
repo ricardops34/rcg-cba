@@ -38,6 +38,10 @@ const ICONE: Record<NotificacaoTipo, typeof Bell> = {
   orcamento_recusado: CircleX,
   cliente_atribuido: UserPlus,
   titulo_vencido: Receipt,
+  // Faltavam desde que os dois tipos entraram no enum: o Record exige todas as
+  // chaves, e o TypeScript vinha acusando sem ninguem ver.
+  whatsapp_aguardando: MessageCircle,
+  lead_novo: UserPlus,
 };
 
 /** O que aparece em vermelho: prazo estourado ou algo que falhou. */
@@ -48,6 +52,10 @@ const URGENTE: Record<NotificacaoTipo, boolean> = {
   orcamento_aprovado: false,
   orcamento_recusado: true,
   cliente_atribuido: false,
+  // Cliente esperando e lead novo sao oportunidade, nao falha: aparecem sem
+  // vermelho, que fica reservado para prazo estourado.
+  whatsapp_aguardando: false,
+  lead_novo: false,
   titulo_vencido: true,
 };
 

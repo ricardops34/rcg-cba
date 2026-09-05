@@ -53,6 +53,35 @@ Acrescentar algo aqui é uma decisão de segurança, não de produto.
 | `direcionar_para_vendedor` | encerra a triagem e entrega a conversa | — |
 | `direcionar_para_administrativo` | entrega ao administrativo | — |
 | `avisar_equipe` | recado curto no WhatsApp de quem trabalha aqui | teto de 3 por conversa |
+| `registrar_lead` | anota quem procurou a empresa e o que quer | **a única que grava** — ver abaixo |
+
+#### Por que `registrar_lead` grava, se nenhuma outra geral grava
+
+É a exceção, e ela foi pesada. O que a ferramenta escreve é **o que a própria
+pessoa acabou de dizer**, numa tabela que só guarda lead, no máximo **uma linha
+por conversa** (`@@unique(empresaId, conversaId)` — a segunda chamada atualiza a
+mesma). Ela não lê nada, não confirma nada e não devolve nada além de "anotado".
+
+O pior caso de um número mal-intencionado é um lead falso na fila da supervisão
+— o mesmo que um trote por telefone já produz, e que a tela resolve com o botão
+de descartar. Em troca, quem procura a empresa pela primeira vez para de se
+perder: antes disso, a conversa acabava e não sobrava registro nenhum.
+
+O sino toca **uma vez**, na criação, e só para quem tem equipe (gerente e
+supervisor). Vendedor não é avisado: o lead ainda não tem dono, e tocar o sino
+de todo mundo a cada curioso é o que este número existe para evitar.
+
+Detalhe que já mordeu, verificado em dev: um argumento **ausente** não é o
+mesmo que o valor padrão. A segunda chamada, que costuma vir só com o nome da
+empresa, chegava a rebaixar a temperatura de "quente" para "morno" porque o
+`temperatura` ausente virava o padrão e sobrescrevia a classificação. Hoje o
+padrão só vale no nascimento do lead.
+
+**Do lead para frente é tela, não IA.** A distribuição está em
+`modules/leads/` (`/comercial/leads`): quem tem equipe abaixo vê a fila
+inteira porque distribuir é o trabalho dele; quem não tem vê só o que lhe foi
+entregue. Entregar a alguém move o lead para "em atendimento" e avisa quem
+recebeu; devolvê-lo à fila desfaz as duas coisas.
 
 ## As travas dos documentos
 

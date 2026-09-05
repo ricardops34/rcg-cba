@@ -154,6 +154,7 @@ model Empresa {
   whatsappAgendadas          WhatsappMensagemAgendada[]
   whatsappAcoes              WhatsappAcaoRegistro[]
   whatsappVinculos           WhatsappVinculoFuncionario[]
+  leads                      Lead[]
   whatsappRecados            WhatsappRecadoInterno[]
   whatsappRecadoDestinos     WhatsappRecadoDestinatario[]
   notificacoes               Notificacao[]
@@ -3441,6 +3442,80 @@ enum NotificacaoTipo {
   titulo_vencido
   /// Cliente esperando alguem assumir no numero institucional.
   whatsapp_aguardando
+  /// Lead captado pela IA no numero institucional, aguardando alguem.
+  lead_novo
+}
+
+/// Em que ponto o lead está. Deliberadamente curto: um funil de lead com sete
+/// estágios vira campo que ninguém atualiza, e o funil de verdade é o de
+/// Oportunidade, que começa depois de o lead virar cliente.
+enum LeadSituacao {
+  novo
+  em_atendimento
+  convertido
+  descartado
+}
+
+/// O quanto o lead parece pronto para comprar.
+///
+/// Três níveis, e não uma nota de 0 a 100: a IA está inferindo de uma conversa
+/// curta, e uma escala fina daria à estimativa uma precisão que ela não tem.
+enum LeadTemperatura {
+  quente
+  morno
+  frio
+}
+
+/// Alguém que procurou a empresa e ainda não é cliente.
+///
+/// **Não é `Oportunidade`**, e a diferença não é de nome: aquela exige
+/// `clienteId` e `vendedorId` — ela é o funil de quem já é cliente e já tem
+/// dono. Um lead é anterior aos dois, e forçá-lo naquele modelo obrigaria a
+/// inventar um cliente para cada curioso que manda mensagem.
+model Lead {
+  id        String @id @default(uuid())
+  empresaId String
+
+  /// Como a pessoa se identificou. **Nada aqui é verificado** — é o que ela
+  /// disse na conversa, e a IA anotou.
+  nome             String?
+  empresaInformada String?
+  documento        String?
+
+  /// De onde veio. É o único dado que não depende do que ela diz.
+  telefone String
+
+  /// O que procura, em uma linha, escrito pela IA a partir da conversa.
+  interesse String @db.Text
+
+  temperatura LeadTemperatura @default(morno)
+
+  /// Por que a IA classificou assim. Sem isto, a temperatura é um palpite que
+  /// ninguém consegue conferir — e quem recebe o lead precisa decidir se
+  /// concorda antes de investir tempo nele.
+  motivoClassificacao String? @db.Text
+
+  situacao LeadSituacao @default(novo)
+
+  /// Preenchidos quando alguém assume ou direciona.
+  vendedorId  String?
+  assumidoPor String?
+  assumidoEm  DateTime?
+
+  /// A conversa que o originou. Um lead por conversa: a IA reescreve o mesmo
+  /// registro conforme descobre mais, em vez de criar um por mensagem.
+  conversaId String?
+
+  observacao String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@unique([empresaId, conversaId])
+  @@index([empresaId, situacao, createdAt])
+  @@map("leads")
 }
 
 /// Comunicado interno exibido na tela inicial (Início).

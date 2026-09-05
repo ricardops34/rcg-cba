@@ -525,6 +525,20 @@ export class WhatsappTriagemService {
             direcionou: false,
           };
 
+        case 'registrar_lead':
+          return {
+            resultado: await this.registrarLead(
+              tx,
+              empresaId,
+              conversaId,
+              contexto.telefoneContato ?? '',
+              argumentos,
+            ),
+            // Registrar o lead não encerra a triagem: a IA continua a conversa
+            // e direciona depois, quando souber a quem entregar.
+            direcionou: false,
+          };
+
         case 'direcionar_para_administrativo':
           return {
             resultado: await this.direcionar(tx, empresaId, conversaId, {
@@ -1711,5 +1725,138 @@ export class WhatsappTriagemService {
 
   private dia(data: Date | null) {
     return data ? data.toLocaleDateString('pt-BR') : 'sem vencimento';
+  }
+
+  /**
+   * Anota o lead e avisa a supervisão.
+   *
+   * **Um por conversa.** A IA chama de novo conforme descobre mais (o nome
+   * primeiro, a empresa depois), e cada chamada completa o mesmo registro em
+   * vez de criar outro — sem isso, uma conversa de cinco trocas deixaria cinco
+   * leads iguais para alguém limpar.
+   *
+   * Nada aqui é verificado: nome, empresa e documento são o que a pessoa disse.
+   * O único dado que não depende dela é o telefone, que veio do WhatsApp.
+   */
+  private async registrarLead(
+    tx: TenantTx,
+    empresaId: string,
+    conversaId: string,
+    telefone: string,
+    argumentos: Record<string, unknown>,
+  ) {
+    const interesse = texto(argumentos.interesse);
+    if (interesse.length < 5) {
+      return { erro: 'Descreva em uma linha o que a pessoa procura' };
+    }
+
+    const temperaturas = ['quente', 'morno', 'frio'] as const;
+    const bruta = texto(argumentos.temperatura);
+    // `undefined` quando o modelo não classificou — não é a mesma coisa que
+    // "morno". A diferença aparece na segunda chamada: verificado em dev
+    // (2026-09-05), refinar o lead com só o nome da empresa rebaixava de
+    // "quente" para "morno", porque o argumento ausente virava o padrão e
+    // sobrescrevia a classificação anterior.
+    const temperatura = temperaturas.includes(
+      bruta as (typeof temperaturas)[number],
+    )
+      ? (bruta as (typeof temperaturas)[number])
+      : undefined;
+
+    // Só sobrescreve o que veio preenchido: a segunda chamada costuma trazer o
+    // nome sem repetir a empresa, e apagar o que já se sabia seria perder
+    // informação a cada refinamento.
+    const preencher = (valor: string) => (valor ? valor : undefined);
+
+    const dados = {
+      nome: preencher(texto(argumentos.nome)),
+      empresaInformada: preencher(texto(argumentos.empresa)),
+      documento: preencher(texto(argumentos.documento).replace(/\D/g, '')),
+      interesse,
+      temperatura,
+      motivoClassificacao: preencher(texto(argumentos.motivo)),
+    };
+
+    const existente = await tx.lead.findUnique({
+      where: { empresaId_conversaId: { empresaId, conversaId } },
+      select: { id: true, situacao: true, temperatura: true },
+    });
+
+    const lead = existente
+      ? await tx.lead.update({
+          where: { id: existente.id },
+          data: dados,
+          select: { id: true, nome: true, empresaInformada: true },
+        })
+      : await tx.lead.create({
+          // No nascimento o padrão vale: um lead sem temperatura não teria
+          // como entrar na fila, que é ordenada por ela.
+          data: {
+            empresaId,
+            conversaId,
+            telefone,
+            ...dados,
+            temperatura: temperatura ?? 'morno',
+          },
+          select: { id: true, nome: true, empresaInformada: true },
+        });
+
+    // O sino toca uma vez, na criação. Refinar o lead não é fato novo para
+    // quem já foi avisado — e um aviso por chamada de ferramenta faria a
+    // supervisão desligar o sino.
+    if (!existente) {
+      await this.avisarSupervisaoDoLead(tx, empresaId, lead.id, {
+        quem: lead.empresaInformada ?? lead.nome ?? telefone,
+        interesse,
+        temperatura: temperatura ?? 'morno',
+      });
+    }
+
+    return {
+      registrado: true,
+      // O modelo precisa saber que já anotou, senão pergunta os mesmos dados de
+      // novo achando que não guardou.
+      aviso: existente
+        ? 'Registro atualizado. Não precisa repetir as perguntas que já respondeu.'
+        : 'Lead registrado e supervisão avisada.',
+    };
+  }
+
+  /**
+   * Avisa quem tem equipe — gerente e supervisor.
+   *
+   * Não avisa vendedor: o lead ainda não tem dono, e tocar o sino de todo mundo
+   * a cada curioso é o que este número existe para evitar. Quem distribui é a
+   * supervisão, na tela de Leads.
+   */
+  private async avisarSupervisaoDoLead(
+    tx: TenantTx,
+    empresaId: string,
+    leadId: string,
+    lead: { quem: string; interesse: string; temperatura: string },
+  ) {
+    const superiores = await tx.vendedor.findMany({
+      where: {
+        empresaId,
+        deletedAt: null,
+        ativo: true,
+        tipo: 'superior',
+        usuarioId: { not: null },
+      },
+      select: { usuarioId: true },
+    });
+
+    for (const s of superiores) {
+      if (!s.usuarioId) continue;
+      await registrarNotificacao(tx, {
+        empresaId,
+        usuarioId: s.usuarioId,
+        tipo: 'lead_novo',
+        titulo: `Lead ${lead.temperatura}: ${lead.quem}`,
+        descricao: lead.interesse,
+        rota: `/comercial/leads?lead=${leadId}`,
+        referenciaId: leadId,
+      });
+    }
   }
 }

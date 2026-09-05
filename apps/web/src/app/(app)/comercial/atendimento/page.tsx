@@ -334,14 +334,22 @@ export default function AtendimentoPage() {
                 <SelectValue placeholder="Minha conexão" />
               </SelectTrigger>
               <SelectContent>
-                {conexoes.map((c) => (
-                  <SelectItem key={c.id} value={c.vendedorId}>
-                    {c.vendedorId === sessao.vendedorId
-                      ? "Minha conexão"
-                      : c.vendedorNome}
-                    {c.numero ? ` · ${telefoneBonito(c.numero)}` : ""}
-                  </SelectItem>
-                ))}
+                {/* A sessão institucional tem `vendedorId` nulo — ela não é de
+                    vendedor nenhum, e o `/whatsapp/sessoes` já não a devolve.
+                    O filtro é o que prova isso ao tipo: um `SelectItem` sem
+                    valor quebraria o select em tempo de execução. */}
+                {conexoes
+                  .filter((c): c is typeof c & { vendedorId: string } =>
+                    Boolean(c.vendedorId),
+                  )
+                  .map((c) => (
+                    <SelectItem key={c.id} value={c.vendedorId}>
+                      {c.vendedorId === sessao.vendedorId
+                        ? "Minha conexão"
+                        : c.vendedorNome}
+                      {c.numero ? ` · ${telefoneBonito(c.numero)}` : ""}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
           ) : null}
