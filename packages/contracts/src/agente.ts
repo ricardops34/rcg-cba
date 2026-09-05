@@ -291,6 +291,29 @@ export const agenteFerramentaSchema = z.object({
    */
   instrucoes: z.string(),
   instrucoesPadrao: z.string(),
+  /**
+   * Versão de prompt do sistema escolhida. Nula = acompanha a mais recente,
+   * que é o que a maioria espera de uma atualização.
+   */
+  versaoPrompt: z.string().nullable(),
+  /** A que está de fato valendo — a escolhida, ou a mais recente. */
+  versaoEmUso: z.string(),
+  /**
+   * As versões que o sistema oferece para esta ferramenta, da mais antiga para
+   * a mais nova. `resumo` e `exemplos` existem para a escolha não ser no
+   * escuro.
+   */
+  versoes: z
+    .array(
+      z.object({
+        versao: z.string(),
+        resumo: z.string(),
+        exemplos: z.array(z.string()),
+        descricao: z.string(),
+        instrucoes: z.string().optional(),
+      }),
+    )
+    .default([]),
   /** `rotina.acao` exigida pelo código. Restringe sempre, e não é editável. */
   permissao: z.string(),
   /** Ferramenta que grava não executa direto: vira pendência de confirmação. */
@@ -309,11 +332,35 @@ export const agenteFerramentaUpdateSchema = z.object({
   nome: z.string().trim().max(80).optional(),
   descricao: z.string().trim().max(2000).optional(),
   instrucoes: z.string().trim().max(2000).optional(),
+  /**
+   * Versão do sistema a seguir. String vazia volta a acompanhar a mais recente
+   * — mesma convenção dos textos, em que vazio devolve o padrão.
+   */
+  versaoPrompt: z.string().trim().max(40).optional(),
   perfilIds: z.array(z.string().uuid()).optional(),
 });
 export type AgenteFerramentaUpdate = z.infer<
   typeof agenteFerramentaUpdateSchema
 >;
+
+/**
+ * Versões a aplicar só na montagem — chave da ferramenta → versão.
+ *
+ * Existe para pré-visualizar e testar uma versão **antes** de adotá-la: sem
+ * isso, decidir exigiria adotar primeiro, que é a ordem inversa da que se quer.
+ */
+const versoesEmTeste = z.record(z.string(), z.string()).optional();
+
+export const agentePromptPreviaSchema = z.object({
+  versoes: versoesEmTeste,
+});
+export type AgentePromptPrevia = z.infer<typeof agentePromptPreviaSchema>;
+
+export const agentePromptTesteSchema = z.object({
+  pergunta: z.string().trim().min(3).max(500),
+  versoes: versoesEmTeste,
+});
+export type AgentePromptTeste = z.infer<typeof agentePromptTesteSchema>;
 
 export const AGENTE_FERRAMENTA_EXAMPLE: AgenteFerramenta = {
   chave: "buscar_cliente",
@@ -323,6 +370,9 @@ export const AGENTE_FERRAMENTA_EXAMPLE: AgenteFerramenta = {
     "Busca clientes da carteira do usuário por nome, razão social, código ou ramo (CNAE).",
   instrucoes: "",
   instrucoesPadrao: "",
+  versaoPrompt: null,
+  versaoEmUso: "v1",
+  versoes: [],
   nomePadrao: "buscar_cliente",
   descricaoPadrao:
     "Busca clientes da carteira do usuário por nome, razão social, código ou ramo (CNAE).",

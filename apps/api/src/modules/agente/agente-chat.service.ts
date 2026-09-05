@@ -103,6 +103,174 @@ export class AgenteChatService {
     };
   }
 
+  /**
+   * O prompt de sistema **exatamente como o modelo o recebe**.
+   *
+   * Custa zero: não chama o provedor. Serve para conferir a ordem das partes —
+   * personalidade, comportamento das ferramentas, e as regras fixas por último
+   * — e para ver o efeito de uma versão antes de escolhê-la.
+   *
+   * `versoes` sobrescreve a configuração gravada só para esta montagem, sem
+   * tocar no banco: é o que permite pré-visualizar uma versão que ainda não foi
+   * adotada.
+   */
+  async previaDoPrompt(
+    empresaId: string,
+    user: AuthenticatedUser,
+    versoes?: Record<string, string>,
+  ) {
+    // `obter`, e não `paraUso`: a prévia não chama o provedor, então não exige
+    // agente ligado nem chave gravada. Exigir seria negar a tela justamente a
+    // quem está configurando o agente pela primeira vez.
+    const cfg = await this.config.obter(empresaId);
+    const filtro = await this.aplicarVersoes(empresaId, user, versoes);
+
+    const mensagens = await this.montarContexto(
+      empresaId,
+      user,
+      // Conversa inexistente com limite zero: o histórico volta vazio e sobra
+      // só a mensagem de sistema, que é o que se quer ver.
+      'previa',
+      0,
+      cfg.systemPrompt,
+      filtro,
+      cfg.nomeAgente,
+    );
+
+    return {
+      prompt: mensagens[0]?.conteudo ?? '',
+      ferramentas: this.tools.disponiveisPara(user, filtro).map((f) => f.nome),
+    };
+  }
+
+  /**
+   * Uma pergunta de verdade ao modelo, com o prompt montado.
+   *
+   * **Gasta tokens da conta da empresa** e a resposta varia entre execuções —
+   * é o preço de responder "essa versão ficou melhor?", que a pré-visualização
+   * não responde.
+   *
+   * Nada é gravado: nem a conversa, nem a resposta. E ferramentas de escrita
+   * não executam — testar um prompt não pode criar orçamento.
+   */
+  async testarPrompt(
+    empresaId: string,
+    user: AuthenticatedUser,
+    params: { pergunta: string; versoes?: Record<string, string> },
+  ) {
+    const cfg = await this.config.paraUso(empresaId);
+    const filtro = await this.aplicarVersoes(empresaId, user, params.versoes);
+
+    const mensagens = await this.montarContexto(
+      empresaId,
+      user,
+      'teste',
+      0,
+      cfg.systemPrompt,
+      filtro,
+      cfg.nomeAgente,
+    );
+    mensagens.push({ papel: 'user', conteudo: params.pergunta });
+
+    const ferramentas = this.tools.paraProvedor(user, filtro);
+    const chamadas: string[] = [];
+    let texto: string | null = null;
+
+    // Duas voltas: o suficiente para o modelo consultar e responder. Mais do
+    // que isso vira um teste caro por acidente.
+    for (let volta = 0; volta < 2; volta++) {
+      const resposta = await this.provedores.para(cfg.provedor).conversar({
+        baseUrl: cfg.baseUrl,
+        apiKey: cfg.apiKey,
+        contaId: cfg.contaId,
+        modelo: cfg.modelo,
+        temperatura: cfg.temperatura,
+        maxTokens: cfg.maxTokens,
+        mensagens,
+        ferramentas,
+      });
+
+      if (resposta.chamadas.length === 0) {
+        texto = resposta.texto;
+        break;
+      }
+
+      mensagens.push({
+        papel: 'assistant',
+        conteudo: resposta.texto,
+        chamadas: resposta.chamadas,
+        bruto: resposta.bruto,
+      });
+
+      for (const chamada of resposta.chamadas) {
+        chamadas.push(chamada.nome);
+        const ferramenta = this.tools.buscar(chamada.nome);
+        let resultado: unknown;
+
+        if (!ferramenta) {
+          resultado = { erro: `Ferramenta desconhecida: ${chamada.nome}` };
+        } else if (ferramenta.escrita) {
+          // O modelo precisa saber que não gravou, senão a resposta do teste
+          // afirma que criou algo que não existe.
+          resultado = {
+            aviso:
+              'Modo de teste: esta ação grava e não foi executada. Diga o que faria.',
+          };
+        } else {
+          resultado = await this.tools.executar(
+            chamada.nome,
+            chamada.argumentos,
+            user,
+          );
+        }
+
+        mensagens.push({
+          papel: 'tool',
+          chamadaId: chamada.id,
+          conteudo: JSON.stringify(resultado),
+        });
+      }
+    }
+
+    return {
+      // A resposta sai com os nomes reais: as referências opacas são detalhe
+      // interno, e quem está testando quer ler o que o cliente leria.
+      resposta: await this.referencias.remontarTexto(empresaId, texto ?? ''),
+      ferramentasChamadas: chamadas,
+    };
+  }
+
+  /**
+   * O filtro da empresa com as versões pedidas por cima, só em memória.
+   *
+   * Sem isto, pré-visualizar ou testar uma versão exigiria adotá-la antes —
+   * e a adoção é justamente o que se quer decidir depois do teste.
+   */
+  private async aplicarVersoes(
+    empresaId: string,
+    user: AuthenticatedUser,
+    versoes?: Record<string, string>,
+  ): Promise<FiltroFerramentas> {
+    const filtro = await this.governanca.filtroPara(empresaId, user);
+    if (!versoes) return filtro;
+
+    for (const [chave, versao] of Object.entries(versoes)) {
+      const escolhida = this.governanca.textoDaVersao(chave, versao);
+      if (!escolhida) continue;
+      const atual = filtro.config.get(chave);
+      filtro.config.set(chave, {
+        ativa: atual?.ativa ?? true,
+        nome: atual?.nome ?? null,
+        perfilIds: atual?.perfilIds ?? [],
+        // A versão pedida vence a reescrita da empresa **nesta montagem**: o
+        // ponto do teste é ver a versão, não o que já está gravado.
+        descricao: escolhida.descricao,
+        instrucoes: escolhida.instrucoes ?? null,
+      });
+    }
+    return filtro;
+  }
+
   /** Uma conversa é do usuário que a criou — nem o admin lê a dos outros. */
   private async minhaConversa(
     tx: TenantTx,

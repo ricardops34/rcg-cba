@@ -97,6 +97,51 @@ prompt em toda mensagem para isso.
 > um dado: quem alcança o quê é decidido no servidor, e o modelo não contorna
 > por mais que o texto peça. A tela diz isso a quem edita.
 
+### Editar exige aceite, e tudo fica registrado
+
+Alterar **texto** exige aceitar os termos uma vez; ligar/desligar e escolher
+perfis, não. A distinção é entre configuração e redação: desligar uma ferramenta
+é reversível e visível na própria tela; reescrever o prompt muda como o
+assistente fala com cliente, e o efeito só aparece numa conversa, depois.
+
+Toda alteração vai para `agente_ferramenta_auditoria` com o **antes e o
+depois**, por campo, dentro da mesma transação da gravação — inclusive a troca
+de versão e o "restaurar padrão".
+
+### Versões de prompt
+
+`agente-prompt-versoes.ts` guarda as versões que acompanham o sistema. A **v1 é
+sempre o texto do próprio catálogo** e não é repetida lá: duplicá-la criaria
+duas fontes para o mesmo texto.
+
+Quando uma atualização melhora o texto de uma ferramenta, ela **oferece** a
+versão nova em vez de impor. Cada versão traz `resumo` (o que muda) e
+`exemplos` (perguntas em que ela se comporta diferente) — sem isso, escolher
+entre "v1" e "v2" é escolher no escuro.
+
+| Estado | Significado |
+|---|---|
+| `versaoPrompt` nulo | acompanha a **mais recente**; atualização futura vale |
+| `versaoPrompt` preenchido | travado naquela versão |
+| `descricao`/`instrucoes` preenchidos | reescrita da empresa, **vence a versão** |
+
+`restaurar padrão` apaga a reescrita e devolve a ferramenta a seguir a versão —
+apaga, não reescreve com o texto de hoje, que congelaria a cópia de novo.
+
+### Ver antes de decidir
+
+| Ação | Custo | Responde |
+|---|---|---|
+| `POST /agente/prompt/previa` | zero, não chama o provedor | "o que o modelo está lendo?" — mostra o texto montado, na ordem real |
+| `POST /agente/prompt/testar` | **tokens da conta da empresa** | "essa versão ficou melhor?" |
+
+Os dois aceitam `versoes` para aplicar uma versão **só naquela montagem**, sem
+gravar: dá para ver o efeito antes de adotar, que é a ordem certa da decisão.
+
+O teste não grava nada — nem conversa, nem resposta — e ferramentas de escrita
+não executam: o assistente diz o que faria. A pré-visualização funciona mesmo
+com o agente desligado, porque é o que se olha enquanto se configura.
+
 ## O que está em prompt, e portanto não é garantia
 
 Montado em `agente-chat.service.ts` → `montarContexto()`:

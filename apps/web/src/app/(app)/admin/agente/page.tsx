@@ -1034,6 +1034,8 @@ function FerramentasSection() {
         </div>
       )}
 
+      <PromptPreviaETeste />
+
       {ferramentas.map((f) => (
         <div
           key={f.chave}
@@ -1177,9 +1179,67 @@ function FerramentasSection() {
               </Field>
 
               {/*
+                Versões só aparecem quando há mais de uma: uma lista com uma
+                opção só é ruído, e a v1 é o texto do próprio código.
+              */}
+              {f.versoes.length > 1 && (
+                <Field className="lg:col-span-2">
+                  <FieldLabel>Versão do prompt do sistema</FieldLabel>
+                  <div className="space-y-2">
+                    {f.versoes.map((v) => {
+                      const emUso = v.versao === f.versaoEmUso;
+                      const escolhida = v.versao === f.versaoPrompt;
+                      return (
+                        <label
+                          key={v.versao}
+                          className={`flex cursor-pointer gap-2 rounded-md border p-2 text-sm ${
+                            emUso ? "border-primary bg-primary/5" : ""
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            className="mt-1"
+                            name={`versao-${f.chave}`}
+                            checked={emUso}
+                            onChange={() =>
+                              salvar.mutate({
+                                chave: f.chave,
+                                body: { versaoPrompt: v.versao },
+                              })
+                            }
+                          />
+                          <span className="flex-1">
+                            <span className="font-medium">{v.versao}</span>
+                            {emUso && !escolhida && (
+                              <span className="ml-2 text-xs text-muted-foreground">
+                                (em uso por ser a mais recente)
+                              </span>
+                            )}
+                            <span className="block text-xs text-muted-foreground">
+                              {v.resumo}
+                            </span>
+                            {v.exemplos.length > 0 && (
+                              <span className="mt-1 block text-xs text-muted-foreground">
+                                Teste com: {v.exemplos.join(" · ")}
+                              </span>
+                            )}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <FieldDescription>
+                    Sem escolher, a ferramenta acompanha a versão mais recente —
+                    é o que a maioria espera de uma atualização. Escolher trava
+                    nesta versão, e a próxima atualização não a substitui.
+                  </FieldDescription>
+                </Field>
+              )}
+
+              {/*
                 Restaurar apaga os textos reescritos e faz a ferramenta voltar a
-                **seguir** o código — inclusive melhorias futuras. Reescrever com
-                o texto de hoje deixaria a cópia congelada de novo.
+                **seguir** a versão do sistema — inclusive melhorias futuras.
+                Reescrever com o texto de hoje congelaria a cópia de novo.
               */}
               <div className="lg:col-span-2">
                 <Button
@@ -1195,6 +1255,116 @@ function FerramentasSection() {
           ) : null}
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Pré-visualizar e testar o prompt.
+ *
+ * As duas coisas respondem a perguntas diferentes, e por isso convivem:
+ *
+ * - **Pré-visualização** mostra o texto montado, na ordem em que o modelo o
+ *   recebe. Custo zero, resultado sempre igual. Responde "o que ele está
+ *   lendo?" — e é onde se vê que as regras fixas vão por último.
+ * - **Teste** faz uma pergunta de verdade. Gasta tokens da conta da empresa e a
+ *   resposta varia entre execuções. Responde "ficou melhor?", que a
+ *   pré-visualização não responde.
+ */
+function PromptPreviaETeste() {
+  const [previa, setPrevia] = useState<string | null>(null);
+  const [pergunta, setPergunta] = useState("");
+  const [resposta, setResposta] = useState<{
+    texto: string;
+    ferramentas: string[];
+  } | null>(null);
+
+  const verPrevia = useMutation({
+    mutationFn: () =>
+      apiFetch<{ prompt: string; ferramentas: string[] }>(
+        "/agente/prompt/previa",
+        { method: "POST", body: {} },
+      ),
+    onSuccess: (r) => setPrevia(r.prompt),
+    onError: (err) =>
+      toast.error(
+        err instanceof ApiError ? err.message : "Erro ao montar o prompt",
+      ),
+  });
+
+  const testar = useMutation({
+    mutationFn: () =>
+      apiFetch<{ resposta: string; ferramentasChamadas: string[] }>(
+        "/agente/prompt/testar",
+        { method: "POST", body: { pergunta: pergunta.trim() } },
+      ),
+    onSuccess: (r) =>
+      setResposta({ texto: r.resposta, ferramentas: r.ferramentasChamadas }),
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Erro ao testar"),
+  });
+
+  return (
+    <div className="rounded-lg border p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={verPrevia.isPending}
+          onClick={() => verPrevia.mutate()}
+        >
+          Ver o prompt montado
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          Sem custo: mostra o texto como o modelo recebe, sem perguntar nada a
+          ele.
+        </span>
+      </div>
+
+      {previa && (
+        <pre className="mt-3 max-h-72 overflow-auto rounded bg-muted p-2 text-[11px] leading-relaxed whitespace-pre-wrap">
+          {previa}
+        </pre>
+      )}
+
+      <div className="mt-4 space-y-2 border-t pt-3">
+        <FieldLabel htmlFor="teste-pergunta">
+          Testar com uma pergunta real
+        </FieldLabel>
+        <div className="flex flex-wrap gap-2">
+          <Input
+            id="teste-pergunta"
+            className="min-w-64 flex-1"
+            placeholder="Quanto o Mercado Silva está devendo?"
+            value={pergunta}
+            onChange={(e) => setPergunta(e.target.value)}
+          />
+          <Button
+            size="sm"
+            disabled={testar.isPending || pergunta.trim().length < 3}
+            onClick={() => testar.mutate()}
+          >
+            {testar.isPending ? "Perguntando..." : "Testar"}
+          </Button>
+        </div>
+        <FieldDescription>
+          Pergunta de verdade ao modelo:{" "}
+          <strong>gasta tokens da conta da empresa</strong> e a resposta pode
+          variar a cada execução. Nada é gravado, e ações que gravam não são
+          executadas — o assistente diz o que faria.
+        </FieldDescription>
+
+        {resposta && (
+          <div className="rounded-md border bg-muted/40 p-2">
+            <p className="text-sm whitespace-pre-wrap">{resposta.texto}</p>
+            {resposta.ferramentas.length > 0 && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Ferramentas usadas: {resposta.ferramentas.join(", ")}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

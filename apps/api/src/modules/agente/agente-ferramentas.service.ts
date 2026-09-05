@@ -8,6 +8,7 @@ import {
   type TenantTx,
 } from '../../common/prisma/prisma.service';
 import { AgenteToolsService } from './agente-tools.service';
+import { versaoEmUso, versoesDaFerramenta } from './agente-prompt-versoes';
 import type { AgenteFerramentaUpdate } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
@@ -85,15 +86,26 @@ export class AgenteFerramentasService {
     // ferramenta removida numa versão anterior) não aparece na tela.
     return catalogo.map((c) => {
       const linha = porChave.get(c.chave);
+      const versoes = versoesDaFerramenta(c.chave, c);
+      const versao = versaoEmUso(versoes, linha?.versaoPrompt ?? null);
+
       return {
         chave: c.chave,
         ativa: linha?.ativa ?? true,
         nome: linha?.nome || c.nome,
-        descricao: linha?.descricao || c.descricao,
-        instrucoes: linha?.instrucoes || c.instrucoes || '',
-        instrucoesPadrao: c.instrucoes ?? '',
+        // A reescrita da empresa vence a versão; sem reescrita, vale o texto da
+        // versão em uso. É por isso que a linha nasce vazia — ver `sincronizar`.
+        descricao: linha?.descricao || versao.descricao,
+        instrucoes: linha?.instrucoes || versao.instrucoes || '',
+        // "Padrão" aqui é o da **versão em uso**, e não o da v1: é contra ele
+        // que a tela compara para saber se houve reescrita, e é ele que o
+        // "restaurar padrão" devolve.
         nomePadrao: c.nome,
-        descricaoPadrao: c.descricao,
+        descricaoPadrao: versao.descricao,
+        instrucoesPadrao: versao.instrucoes ?? '',
+        versaoPrompt: linha?.versaoPrompt ?? null,
+        versaoEmUso: versao.versao,
+        versoes,
         permissao: c.permissao,
         escrita: c.escrita,
         perfilIds: linha?.perfis.map((p) => p.perfilId) ?? [],
@@ -136,6 +148,9 @@ export class AgenteFerramentasService {
             : {}),
           ...(input.descricao !== undefined
             ? { descricao: input.descricao || null }
+            : {}),
+          ...(input.versaoPrompt !== undefined
+            ? { versaoPrompt: input.versaoPrompt || null }
             : {}),
           updatedBy: user.id,
         },
@@ -185,6 +200,7 @@ export class AgenteFerramentasService {
       nome: string | null;
       descricao: string | null;
       instrucoes: string | null;
+      versaoPrompt: string | null;
       perfis: { perfilId: string }[];
     } | null,
     input: AgenteFerramentaUpdate,
@@ -225,6 +241,16 @@ export class AgenteFerramentasService {
         'instrucoes',
         antes?.instrucoes ?? null,
         input.instrucoes || null,
+      );
+    }
+    if (input.versaoPrompt !== undefined) {
+      // Trocar de versão muda o que vai ao modelo tanto quanto reescrever o
+      // texto — e some da tela assim que a próxima versão sair. Sem a trilha,
+      // "por que ele responde diferente" ficaria sem resposta.
+      comparar(
+        'versaoPrompt',
+        antes?.versaoPrompt ?? null,
+        input.versaoPrompt || null,
       );
     }
     if (input.perfilIds) {
@@ -284,17 +310,32 @@ export class AgenteFerramentasService {
     );
 
     return {
+      // O que vai ao modelo já sai **resolvido**: reescrita da empresa, ou o
+      // texto da versão em uso. Resolver aqui, e não no laço da conversa, é o
+      // que garante que a tela e o prompt mostrem o mesmo texto — foi o que
+      // levou `listar` e `filtroPara` a compartilharem `versaoEmUso`.
       config: new Map(
-        linhas.map((l) => [
-          l.chave,
-          {
-            ativa: l.ativa,
-            nome: l.nome,
-            descricao: l.descricao,
-            instrucoes: l.instrucoes,
-            perfilIds: l.perfis.map((p) => p.perfilId),
-          },
-        ]),
+        linhas.map((l) => {
+          const doCatalogo = this.tools
+            .catalogo()
+            .find((c) => c.chave === l.chave);
+          const versao = doCatalogo
+            ? versaoEmUso(
+                versoesDaFerramenta(l.chave, doCatalogo),
+                l.versaoPrompt,
+              )
+            : null;
+          return [
+            l.chave,
+            {
+              ativa: l.ativa,
+              nome: l.nome,
+              descricao: l.descricao || versao?.descricao || null,
+              instrucoes: l.instrucoes || versao?.instrucoes || null,
+              perfilIds: l.perfis.map((p) => p.perfilId),
+            },
+          ] as const;
+        }),
       ),
       perfilId: vinculo?.perfilId ?? null,
       whatsappVinculado: !!sessaoWhatsapp,
@@ -346,26 +387,17 @@ export class AgenteFerramentasService {
     );
     if (faltando.length === 0) return;
 
-    // A linha nasce **com o texto do código já gravado**, e não vazia.
+    // A linha nasce **vazia**, e é assim que tem de ser desde que existem
+    // versões de prompt.
     //
-    // Assim quem abre a tela lê o prompt que está de fato em uso, em vez de um
-    // campo em branco com o texto real escondido num placeholder — e edita a
-    // partir dele, que é como se ajusta um texto.
+    // Nulo em `descricao`/`instrucoes` significa "segue a versão do sistema".
+    // Gravar uma cópia do texto no momento da criação congelaria a empresa na
+    // versão daquele dia — e a escolha de versão, que é o ponto, nunca valeria.
     //
-    // O custo é conhecido e tem saída: gravada a cópia, uma melhoria futura do
-    // texto no código não alcança quem já a tem. Por isso existe o "restaurar
-    // padrão", que apaga a cópia e devolve a linha a seguir o código.
-    const catalogo = new Map(
-      this.tools.catalogo().map((c) => [c.chave, c] as const),
-    );
-
+    // A tela continua mostrando o texto em uso: `listar` resolve a versão e
+    // devolve o texto efetivo, então o campo aparece preenchido do mesmo jeito.
     await tx.agenteFerramenta.createMany({
-      data: faltando.map((chave) => ({
-        empresaId,
-        chave,
-        descricao: catalogo.get(chave)?.descricao ?? null,
-        instrucoes: catalogo.get(chave)?.instrucoes ?? null,
-      })),
+      data: faltando.map((chave) => ({ empresaId, chave })),
       skipDuplicates: true,
     });
   }
@@ -433,6 +465,21 @@ export class AgenteFerramentasService {
           criadoEm: true,
         },
       }),
+    );
+  }
+
+  /**
+   * Os textos de uma versão específica, para a pré-visualização e o teste.
+   *
+   * Devolve `null` quando a versão não existe — quem chama ignora e segue com
+   * o que está gravado, em vez de mandar prompt vazio ao modelo.
+   */
+  textoDaVersao(chave: string, versao: string) {
+    const doCatalogo = this.tools.catalogo().find((c) => c.chave === chave);
+    if (!doCatalogo) return null;
+    return (
+      versoesDaFerramenta(chave, doCatalogo).find((v) => v.versao === versao) ??
+      null
     );
   }
 

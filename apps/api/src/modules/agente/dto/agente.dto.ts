@@ -6,6 +6,8 @@ import {
   agenteOauthConcluirSchema,
   agenteOauthImportarSchema,
   agenteTestarConexaoSchema,
+  agentePromptPreviaSchema,
+  agentePromptTesteSchema,
 } from '@plataforma/contracts';
 
 export class AgenteConfigUpdateDto extends createZodDto(
@@ -23,4 +25,11 @@ export class AgenteOauthImportarDto extends createZodDto(
 ) {}
 export class AgenteFerramentaUpdateDto extends createZodDto(
   agenteFerramentaUpdateSchema,
+) {}
+
+export class AgentePromptPreviaDto extends createZodDto(
+  agentePromptPreviaSchema,
+) {}
+export class AgentePromptTesteDto extends createZodDto(
+  agentePromptTesteSchema,
 ) {}

@@ -29,6 +29,8 @@ import {
   AgenteOauthConcluirDto,
   AgenteOauthImportarDto,
   AgenteTestarConexaoDto,
+  AgentePromptPreviaDto,
+  AgentePromptTesteDto,
 } from './dto/agente.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -223,6 +225,43 @@ export class AgenteController {
   @Get('ferramentas/auditoria')
   auditoriaFerramentas(@CurrentUser() user: AuthenticatedUser) {
     return this.ferramentas.auditoria(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Pré-visualizar o prompt montado',
+    description:
+      'O texto de sistema exatamente como o modelo o recebe, e a lista de ' +
+      'ferramentas liberadas. **Não chama o provedor** — custo zero. `versoes` ' +
+      'aplica uma versão só nesta montagem, para ver o efeito antes de adotá-la. ' +
+      'Requer agente-config.visualizar.',
+  })
+  @RequirePermission('agente-config', 'visualizar')
+  @Post('prompt/previa')
+  previaDoPrompt(
+    @Body() dto: AgentePromptPreviaDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.chat.previaDoPrompt(user.empresaAtivaId, user, dto.versoes);
+  }
+
+  @ApiOperation({
+    summary: 'Testar o prompt com uma pergunta real',
+    description:
+      'Faz uma pergunta ao modelo com o prompt montado e devolve a resposta. ' +
+      '**Gasta tokens da conta da empresa** e a resposta varia entre execuções. ' +
+      'Nada é gravado, e ferramentas de escrita não executam. ' +
+      'Requer agente-config.editar.',
+  })
+  @RequirePermission('agente-config', 'editar')
+  @Post('prompt/testar')
+  testarPrompt(
+    @Body() dto: AgentePromptTesteDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.chat.testarPrompt(user.empresaAtivaId, user, {
+      pergunta: dto.pergunta,
+      versoes: dto.versoes,
+    });
   }
 
   // ---------------- conexão OAuth (Codex) ----------------

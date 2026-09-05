@@ -1208,6 +1208,17 @@ model AgenteFerramenta {
   /// está no recorte, no catálogo e nas guardas de código.
   instrucoes String? @db.Text
 
+  /// Versão de prompt do sistema que esta empresa segue.
+  ///
+  /// Nulo = acompanha a mais recente, que e o que a maioria espera de uma
+  /// atualizacao. Escolher trava numa versao: a empresa que testou e preferiu
+  /// a anterior nao e arrastada pela proxima.
+  ///
+  /// Não confundir com `descricao`/`instrucoes`: aquilo é texto reescrito pela
+  /// empresa e vence a versão. Isto é qual texto **do sistema** seguir quando
+  /// não há reescrita.
+  versaoPrompt String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   updatedBy String?
