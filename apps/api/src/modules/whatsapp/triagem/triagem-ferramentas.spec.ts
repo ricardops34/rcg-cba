@@ -33,7 +33,8 @@ describe('ferramentas da triagem', () => {
     // convencida) para vazar o financeiro de outro cliente.
     for (const f of ferramentasDaTriagem(true)) {
       const props = Object.keys(
-        (f.parametros as { properties?: Record<string, unknown> }).properties ?? {},
+        (f.parametros as { properties?: Record<string, unknown> }).properties ??
+          {},
       );
       expect(props).not.toContain('clienteId');
       expect(props).not.toContain('empresaId');
@@ -46,7 +47,8 @@ describe('ferramentas da triagem', () => {
     const avisar = FERRAMENTAS_GERAIS.find((f) => f.nome === 'avisar_equipe');
     expect(avisar).toBeDefined();
     const props = Object.keys(
-      (avisar!.parametros as { properties: Record<string, unknown> }).properties,
+      (avisar!.parametros as { properties: Record<string, unknown> })
+        .properties,
     );
     expect(props).toEqual(expect.arrayContaining(['destino', 'mensagem']));
     for (const proibido of ['telefone', 'numero', 'jid', 'celular', 'para']) {

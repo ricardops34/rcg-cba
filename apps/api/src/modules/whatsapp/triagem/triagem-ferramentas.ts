@@ -164,7 +164,8 @@ export const FERRAMENTAS_GERAIS: FerramentaChat[] = [
         },
         nome: {
           type: 'string',
-          description: 'Nome ou razão social, se ela informar em vez do documento',
+          description:
+            'Nome ou razão social, se ela informar em vez do documento',
         },
       },
       required: [],
@@ -291,6 +292,51 @@ export const FERRAMENTAS_GERAIS: FerramentaChat[] = [
         },
       },
       required: ['assunto'],
+    },
+  },
+  // Produto: fala das características, nunca do preço.
+  //
+  // A regra é do usuário, e é **código**: `ProdutoParaAgenteService` não lê a
+  // coluna de preço, e o texto das fichas passa por `semPreco`. O modelo não
+  // recebe preço, então não há o que ele possa deixar escapar. Uma instrução de
+  // prompt aqui seria exatamente o tipo de garantia que este projeto não aceita.
+  //
+  // Fica entre as **gerais**, e isso foi decidido: o agente é o
+  // pré-atendimento do número institucional, e pré-atendimento atende quem
+  // chega — cliente ou não. Quem pergunta "vocês têm produto para limpar
+  // piso?" quase nunca já é cliente; é justamente o lead que a conversa
+  // seguinte registra.
+  //
+  // O que se aceita ao liberar: quem tem o número passa a poder consultar o
+  // catálogo, e um concorrente é um deles. É material comercial — o mesmo que
+  // um vendedor conta ao telefone — e nada aqui é dado de pessoa: sem preço,
+  // sem estoque, sem cliente. O que **não** se aceita continua fechado, e é o
+  // que o `seguranca.spec.ts` prende.
+  {
+    nome: 'sobre_produto',
+    descricao:
+      'Características de produtos do catálogo: descrição, marca, embalagem, ' +
+      'dados técnicos (diluição, dimensões, validade), o que está na ficha ' +
+      'técnica, similares e produtos usados na aplicação. ' +
+      'Use de dois jeitos: quando perguntarem sobre um produto ("o que é o X", ' +
+      '"qual a diluição", "tem substituto") e quando descreverem uma ' +
+      'necessidade ("preciso de algo para limpar piso de cozinha") — neste ' +
+      'caso a busca procura também nas características e nas fichas, e você ' +
+      'recebe os candidatos detalhados para comparar e indicar. ' +
+      'NÃO devolve preço, e não existe outro jeito de obtê-lo: se perguntarem ' +
+      'preço, explique que o orçamento é feito por um vendedor e ofereça ' +
+      'direcionar a conversa.',
+    parametros: {
+      type: 'object',
+      properties: {
+        busca: {
+          type: 'string',
+          description:
+            'Nome, marca, código — ou a necessidade que a pessoa descreveu, ' +
+            'com as palavras dela',
+        },
+      },
+      required: ['busca'],
     },
   },
 ];

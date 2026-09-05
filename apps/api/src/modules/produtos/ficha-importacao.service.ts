@@ -490,7 +490,8 @@ export class FichaImportacaoService implements OnModuleInit, OnModuleDestroy {
       }
 
       if (lido.nome && lido.nome.length >= 4) {
-        // `unaccent` dos dois lados, e não o `contains` do Prisma: o
+        // `sem_acento` (invólucro IMMUTABLE de `unaccent`) dos dois lados, e não
+        // o `contains` do Prisma: o
         // `mode: 'insensitive'` ignora maiúsculas, **não** acentos. Uma ficha
         // de "Cafe torrado 500g" não encontrava o "Café torrado 500g" do
         // catálogo — visto em dev em 2026-09-05, e é o caso comum, porque o
@@ -502,7 +503,7 @@ export class FichaImportacaoService implements OnModuleInit, OnModuleDestroy {
           FROM "produtos"
           WHERE "empresaId" = ${empresaId}
             AND "deletedAt" IS NULL
-            AND unaccent("descricao") ILIKE unaccent(${'%' + lido.nome + '%'})
+            AND sem_acento("descricao") ILIKE sem_acento(${'%' + lido.nome + '%'})
           LIMIT 2
         `;
         return achados;

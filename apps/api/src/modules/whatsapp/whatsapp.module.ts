@@ -23,6 +23,7 @@ import { TitulosReceberModule } from '../titulos-receber/titulos-receber.module'
 import { NotasSaidaModule } from '../notas-saida/notas-saida.module';
 import { AtividadesModule } from '../atividades/atividades.module';
 import { OrcamentosModule } from '../orcamentos/orcamentos.module';
+import { ProdutosModule } from '../produtos/produtos.module';
 
 @Module({
   // As ações de dentro da conversa delegam aos services que as telas já usam
@@ -33,6 +34,9 @@ import { OrcamentosModule } from '../orcamentos/orcamentos.module';
     NotasSaidaModule,
     AtividadesModule,
     OrcamentosModule,
+    // O dossiê de produto que a triagem conta ao cliente — sem preço, e a
+    // ausência é do serviço, não deste import (ProdutoParaAgenteService).
+    ProdutosModule,
     // A triagem usa o provedor de IA e a credencial da empresa — a mesma
     // camada do agente interno, que é onde de fato não há diferença entre os
     // dois. O prompt e as ferramentas são de cada um.

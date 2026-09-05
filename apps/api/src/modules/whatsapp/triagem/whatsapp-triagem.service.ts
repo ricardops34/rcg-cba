@@ -20,6 +20,7 @@ import { WhatsappProviderService } from '../providers/whatsapp-provider.service'
 import { TitulosReceberService } from '../../titulos-receber/titulos-receber.service';
 import { NotasSaidaService } from '../../notas-saida/notas-saida.service';
 import { OrcamentosService } from '../../orcamentos/orcamentos.service';
+import { ProdutoParaAgenteService } from '../../produtos/produto-para-agente.service';
 import { registrarAtividadeDocumento } from '../../../common/atividades/registrar-atividade-documento';
 import { dentroDoExpediente } from '../../../common/horario/horario-trabalho';
 import {
@@ -112,6 +113,10 @@ export class WhatsappTriagemService {
     private readonly titulos: TitulosReceberService,
     private readonly notas: NotasSaidaService,
     private readonly orcamentos: OrcamentosService,
+    // O dossiê de produto sem preço. Serviço próprio de propósito: a seleção
+    // lá é positiva (não lê a coluna de preço), então a garantia não depende
+    // de ninguém lembrar de podar o resultado aqui.
+    private readonly produtosAgente: ProdutoParaAgenteService,
   ) {}
 
   /**
@@ -157,7 +162,11 @@ export class WhatsappTriagemService {
    * trabalhando precisa saber que chegou alguém, ainda mais quando não houve
    * triagem para explicar o assunto.
    */
-  private async paraFila(empresaId: string, conversaId: string, motivo: string) {
+  private async paraFila(
+    empresaId: string,
+    conversaId: string,
+    motivo: string,
+  ) {
     await this.prisma.withTenant(empresaId, async (tx) => {
       await tx.whatsappConversa.update({
         where: { id: conversaId },
@@ -189,7 +198,11 @@ export class WhatsappTriagemService {
     // quer atendimento automático, e desligá-lo não pode deixar a conversa
     // presa em `bot` — ali ela não aparece para ninguém.
     if (!contexto.iaAtiva) {
-      await this.paraFila(empresaId, conversaId, 'Atendimento automático desligado');
+      await this.paraFila(
+        empresaId,
+        conversaId,
+        'Atendimento automático desligado',
+      );
       return;
     }
 
@@ -416,18 +429,28 @@ export class WhatsappTriagemService {
         .reverse()
         .filter((m) => (m.conteudo ?? '').trim().length > 0)
         .map((m) => ({
-          papel: m.direcao === 'entrada' ? ('user' as const) : ('assistant' as const),
+          papel:
+            m.direcao === 'entrada'
+              ? ('user' as const)
+              : ('assistant' as const),
           conteudo: m.conteudo,
         }));
 
       return {
         clienteId: conversa.clienteId,
         clienteNome:
-          conversa.cliente?.nomeFantasia ?? conversa.cliente?.razaoSocial ?? null,
+          conversa.cliente?.nomeFantasia ??
+          conversa.cliente?.razaoSocial ??
+          null,
         vendedorDaCarteiraId: conversa.cliente?.vendedor?.id ?? null,
         vendedorDaCarteiraNome: conversa.cliente?.vendedor?.nome ?? null,
         nomeEmpresa: empresa?.nomeFantasia ?? 'nossa empresa',
-        ficha: empresa ? fichaDaEmpresa({ ...empresa, horarios: empresa.empresaHorarioAtendimentos }) : null,
+        ficha: empresa
+          ? fichaDaEmpresa({
+              ...empresa,
+              horarios: empresa.empresaHorarioAtendimentos,
+            })
+          : null,
         informacoes: config?.atendimentoInformacoes ?? null,
         iaAtiva: config?.atendimentoIaAtivo === true,
         saudacao: config?.atendimentoSaudacao?.trim() || null,
@@ -443,7 +466,9 @@ export class WhatsappTriagemService {
   private async executarFerramenta(
     empresaId: string,
     conversaId: string,
-    contexto: NonNullable<Awaited<ReturnType<WhatsappTriagemService['carregarContexto']>>>,
+    contexto: NonNullable<
+      Awaited<ReturnType<WhatsappTriagemService['carregarContexto']>>
+    >,
     nome: string,
     argumentos: Record<string, unknown>,
   ): Promise<{ resultado: unknown; direcionou: boolean }> {
@@ -467,7 +492,11 @@ export class WhatsappTriagemService {
       switch (nome) {
         case 'titulos_em_aberto':
           return {
-            resultado: await this.titulosEmAberto(tx, empresaId, contexto.clienteId),
+            resultado: await this.titulosEmAberto(
+              tx,
+              empresaId,
+              contexto.clienteId,
+            ),
             direcionou: false,
           };
 
@@ -539,6 +568,15 @@ export class WhatsappTriagemService {
             direcionou: false,
           };
 
+        case 'sobre_produto':
+          return {
+            resultado: await this.sobreProduto(
+              empresaId,
+              texto(argumentos.busca),
+            ),
+            direcionou: false,
+          };
+
         case 'direcionar_para_administrativo':
           return {
             resultado: await this.direcionar(tx, empresaId, conversaId, {
@@ -556,6 +594,62 @@ export class WhatsappTriagemService {
           };
       }
     });
+  }
+
+  /**
+   * O que a IA pode contar sobre um produto — **sem preço**, por construção.
+   *
+   * A regra é do usuário: o cliente só vê preço em orçamento feito por
+   * vendedor, supervisor ou gerente. Ela é cumprida no
+   * `ProdutoParaAgenteService`, que não lê a coluna de preço e passa o texto
+   * das fichas por `semPreco` — o modelo não recebe preço, então não há o que
+   * ele possa deixar escapar.
+   *
+   * Até três achados vêm **detalhados**, e é isso que permite indicar produto
+   * a partir da necessidade que o cliente descreveu: com as características de
+   * cada candidato à vista, o modelo compara e recomenda. Devolver só a lista
+   * de nomes o obrigaria a perguntar "qual deles?" para quem acabou de dizer
+   * que não sabe qual quer.
+   *
+   * Acima disso, só a lista: cinco fichas inteiras estouram o contexto, e a
+   * busca larga demais é sinal de que falta uma pergunta antes.
+   */
+  private async sobreProduto(empresaId: string, busca: string) {
+    if (busca.length < 2) {
+      return {
+        erro: 'Diga o nome, o código ou para que você precisa do produto',
+      };
+    }
+
+    const achados = await this.produtosAgente.procurar(empresaId, busca);
+    if (achados.length === 0) {
+      return {
+        encontrados: 0,
+        aviso:
+          'Nada no catálogo com esse termo. Ofereça falar com um vendedor em ' +
+          'vez de sugerir produto que você não viu aqui.',
+      };
+    }
+
+    if (achados.length > 3) {
+      return {
+        encontrados: achados.length,
+        opcoes: achados.map((p) => ({
+          codigo: p.codigoErp,
+          descricao: p.descricao,
+        })),
+        aviso:
+          'Muitos resultados. Pergunte o que ela procura antes de detalhar.',
+      };
+    }
+
+    const detalhes = await Promise.all(
+      achados.map((p) => this.produtosAgente.detalhar(empresaId, p.id)),
+    );
+    return {
+      encontrados: achados.length,
+      produtos: detalhes.filter((d) => d !== null),
+    };
   }
 
   /**
@@ -739,7 +833,12 @@ export class WhatsappTriagemService {
     const destinatarios =
       aviso.destino === 'supervisao'
         ? await tx.vendedor.findMany({
-            where: { empresaId, deletedAt: null, ativo: true, tipo: 'superior' },
+            where: {
+              empresaId,
+              deletedAt: null,
+              ativo: true,
+              tipo: 'superior',
+            },
             select: { id: true, nome: true, telefone: true },
           })
         : aviso.vendedorId
@@ -763,7 +862,10 @@ export class WhatsappTriagemService {
       select: { id: true },
     });
     if (!sessao) {
-      return { enviado: false, motivo: 'O número da empresa não está conectado' };
+      return {
+        enviado: false,
+        motivo: 'O número da empresa não está conectado',
+      };
     }
 
     const assinatura = aviso.cliente
@@ -888,7 +990,8 @@ export class WhatsappTriagemService {
     const emExpediente = new Set(
       usuarios
         .filter(
-          (u) => dentroDoExpediente(u.restringirHorario, u.horarios, agora).dentro,
+          (u) =>
+            dentroDoExpediente(u.restringirHorario, u.horarios, agora).dentro,
         )
         .map((u) => u.id),
     );
@@ -903,7 +1006,11 @@ export class WhatsappTriagemService {
       .map((v) => ({ vendedorId: v.id, nome: v.nome }));
   }
 
-  private async procurarVendedor(tx: TenantTx, empresaId: string, nome: string) {
+  private async procurarVendedor(
+    tx: TenantTx,
+    empresaId: string,
+    nome: string,
+  ) {
     if (nome.trim().length < 2) return { encontrados: [] };
     const linhas = await tx.vendedor.findMany({
       where: {
@@ -1003,7 +1110,11 @@ export class WhatsappTriagemService {
     const alvos: string[] = [];
 
     if (destino.vendedorId) {
-      const usuarioId = await usuarioDoVendedor(tx, empresaId, destino.vendedorId);
+      const usuarioId = await usuarioDoVendedor(
+        tx,
+        empresaId,
+        destino.vendedorId,
+      );
       if (usuarioId) alvos.push(usuarioId);
     } else {
       const presentes = await this.vendedoresPresentes(tx, empresaId);
@@ -1343,7 +1454,11 @@ export class WhatsappTriagemService {
    * não tem e não é. Aqui o caminho é o transporte direto, e a autoria fica
    * registrada como do próprio atendimento automático.
    */
-  private async responder(empresaId: string, conversaId: string, texto: string) {
+  private async responder(
+    empresaId: string,
+    conversaId: string,
+    texto: string,
+  ) {
     // Última barreira antes de a mensagem sair. O prompt já manda não pedir
     // senha, mas prompt não é barreira: quem recebe não tem como saber que a
     // mensagem veio de um modelo convencido — para ele é a empresa pedindo a

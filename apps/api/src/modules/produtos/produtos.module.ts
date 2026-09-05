@@ -3,6 +3,7 @@ import { ProdutosController } from './produtos.controller';
 import { ProdutosService } from './produtos.service';
 import { ProdutoRelacionadosService } from './produto-relacionados.service';
 import { ProdutoFichasService } from './produto-fichas.service';
+import { ProdutoParaAgenteService } from './produto-para-agente.service';
 import { FichaImportacaoController } from './ficha-importacao.controller';
 import { FichaImportacaoService } from './ficha-importacao.service';
 import { ProvedorIaModule } from '../agente/provedor-ia.module';
@@ -26,11 +27,17 @@ import { ProdutoFotosImportacaoService } from './produto-fotos-importacao.servic
     ProdutosService,
     ProdutoRelacionadosService,
     ProdutoFichasService,
+    ProdutoParaAgenteService,
     FichaImportacaoService,
     ProdutoFotosImportacaoService,
   ],
   // O service dos relacionados é exportado porque a ferramenta de produtos
   // da IA vai ler similares e aplicação pelo mesmo caminho.
-  exports: [ProdutosService, ProdutoRelacionadosService, ProdutoFichasService],
+  exports: [
+    ProdutosService,
+    ProdutoRelacionadosService,
+    ProdutoFichasService,
+    ProdutoParaAgenteService,
+  ],
 })
 export class ProdutosModule {}

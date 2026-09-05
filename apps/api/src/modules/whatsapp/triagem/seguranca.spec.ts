@@ -84,6 +84,11 @@ describe('Atendimento institucional — garantias de segurança', () => {
       // numa tabela só de lead, no máximo uma vez por conversa. Não lê nada e
       // não confirma nada — o pior caso é um lead falso na fila da supervisão,
       // que é o mesmo que um trote por telefone já produz.
+      // `sobre_produto` entrou em 2026-09-05, com a decisão de que o agente é
+      // o **pré-atendimento** do número institucional: quem pergunta "vocês
+      // têm produto para limpar piso?" quase nunca já é cliente. O que ela
+      // devolve é material comercial — sem preço, sem estoque, sem dado de
+      // pessoa — e a ausência do preço é do service, não desta lista.
       expect(semCliente.sort()).toEqual(
         [
           'avisar_equipe',
@@ -91,8 +96,49 @@ describe('Atendimento institucional — garantias de segurança', () => {
           'direcionar_para_vendedor',
           'identificar_cliente',
           'registrar_lead',
+          'sobre_produto',
         ].sort(),
       );
+    });
+  });
+
+  /**
+   * "O cliente só vê preço em orçamento feito por vendedor, supervisor ou
+   * gerente" — regra do usuário, e ela é código, não prompt.
+   */
+  describe('preço não sai pela IA', () => {
+    it('a ferramenta de produto não aceita nada que peça preço', () => {
+      const produto = FERRAMENTAS_GERAIS.find(
+        (f) => f.nome === 'sobre_produto',
+      );
+      expect(produto).toBeDefined();
+      const props = Object.keys(
+        (produto!.parametros as { properties?: Record<string, unknown> })
+          .properties ?? {},
+      );
+      // Só a busca. Um parâmetro do tipo "incluirPreco" tornaria a regra uma
+      // decisão do modelo.
+      expect(props).toEqual(['busca']);
+    });
+
+    it('nenhuma ferramenta do catálogo do cliente promete preço de produto', () => {
+      // A descrição é o que o modelo lê para decidir quando chamar. Prometer
+      // preço aqui o faria tentar — e depois improvisar ao não receber.
+      for (const f of [...FERRAMENTAS_DO_CLIENTE, ...FERRAMENTAS_GERAIS]) {
+        if (f.nome === 'sobre_produto') continue;
+        expect(f.descricao.toLowerCase()).not.toMatch(
+          /pre[çc]o (do|de) produto|tabela de pre/,
+        );
+      }
+    });
+
+    it('a de produto avisa o modelo de que preço não vem por ali', () => {
+      // Não é a garantia — a garantia é o service não ler a coluna. É para o
+      // modelo saber o que responder em vez de inventar um valor.
+      const produto = FERRAMENTAS_GERAIS.find(
+        (f) => f.nome === 'sobre_produto',
+      );
+      expect(produto!.descricao).toMatch(/NÃO devolve preço/);
     });
   });
 

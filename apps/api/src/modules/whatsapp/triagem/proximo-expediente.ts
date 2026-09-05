@@ -122,7 +122,11 @@ function instanteLocal(
 }
 
 /** "AAAA-MM-DD" do dia local, `adianteDias` à frente — a chave do feriado. */
-function dataLocalIso(referencia: Date, adianteDias: number, tz: string): string {
+function dataLocalIso(
+  referencia: Date,
+  adianteDias: number,
+  tz: string,
+): string {
   const off = offsetMinutos(referencia, tz);
   const local = new Date(referencia.getTime() + off * 60_000);
   const d = new Date(

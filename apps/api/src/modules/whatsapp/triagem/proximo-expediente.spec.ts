@@ -32,7 +32,9 @@ const domTarde = utc(13, 19); // domingo 13/09, 15:00 local
 
 describe('proximoAtendimento', () => {
   it('no meio do expediente, atende hoje mesmo', () => {
-    expect(proximoAtendimento(agenda(EXPEDIENTE_PADRAO), segManha).emDias).toBe(0);
+    expect(proximoAtendimento(agenda(EXPEDIENTE_PADRAO), segManha).emDias).toBe(
+      0,
+    );
   });
 
   it('antes de abrir, atende hoje ainda', () => {
