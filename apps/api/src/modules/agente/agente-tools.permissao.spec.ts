@@ -31,6 +31,7 @@ describe('AgenteToolsService — permissão × configuração', () => {
     {} as never, // vendedores
     {} as never, // whatsappAcoes
     {} as never, // agendamento
+    {} as never, // referencias
   );
 
   const admin: AuthenticatedUser = {
@@ -66,6 +67,7 @@ describe('AgenteToolsService — permissão × configuração', () => {
         {
           ativa: cfg.ativa ?? true,
           nome: null,
+          instrucoes: null,
           descricao: null,
           perfilIds: cfg.perfilIds ?? [],
         },

@@ -77,6 +77,26 @@ o texto para fora.
 o catálogo por empresa. Ele **só restringe, nunca amplia**: uma empresa não
 consegue habilitar o que a permissão do usuário não dá.
 
+## O comportamento fica no cadastro, não no código
+
+Em Administração > Agente IA, cada ferramenta tem dois textos editáveis, e eles
+respondem a perguntas diferentes:
+
+| Campo | Responde | Vai ao modelo |
+|---|---|---|
+| **Descrição** | *quando* chamar a ferramenta | no catálogo |
+| **Como se portar ao usar** (`instrucoes`) | *como* se portar ao usar | no bloco "COMO USAR CADA FERRAMENTA" do prompt |
+
+Vazio nos dois casos volta ao texto do código. Só as instruções das ferramentas
+**disponíveis** entram no prompt — mandar a de uma ferramenta que o usuário não
+tem seria ensinar o modelo a se portar com algo que ele nem enxerga, e gastar
+prompt em toda mensagem para isso.
+
+> **O limite disto é o de sempre.** Comportamento é prompt, e prompt não é
+> barreira. Nada que dependa desse texto pode ser a única coisa entre alguém e
+> um dado: quem alcança o quê é decidido no servidor, e o modelo não contorna
+> por mais que o texto peça. A tela diz isso a quem edita.
+
 ## O que está em prompt, e portanto não é garantia
 
 Montado em `agente-chat.service.ts` → `montarContexto()`:

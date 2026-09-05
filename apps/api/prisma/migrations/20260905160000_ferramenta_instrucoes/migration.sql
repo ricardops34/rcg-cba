@@ -1,0 +1,12 @@
+-- Comportamento da ferramenta no cadastro, editável pela empresa.
+--
+-- A `descricao` já era editável, e ensina o modelo *quando* chamar a
+-- ferramenta. `instrucoes` responde outra pergunta — *como se portar* ao usar
+-- ("confirme qual antes de mandar", "não prometa antes de a ferramenta
+-- responder") — e até agora esse texto só existia fixo no código.
+--
+-- Nulo = usa o do código, como nos outros dois campos de sobrescrita.
+--
+-- Vale registrar o limite: comportamento é prompt, e prompt não é barreira.
+-- Nada que dependa deste texto pode ser a única coisa entre alguém e um dado.
+ALTER TABLE "agente_ferramentas" ADD COLUMN "instrucoes" TEXT;

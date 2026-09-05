@@ -1179,6 +1179,21 @@ model AgenteFerramenta {
   nome      String?
   descricao String? @db.Text
 
+  /// **Como a ferramenta deve se comportar** — o pedaço de prompt que vai ao
+  /// modelo junto do catálogo, quando esta ferramenta está disponível.
+  ///
+  /// Separado da `descricao` porque respondem a perguntas diferentes: a
+  /// descrição ensina *quando* chamar, isto ensina *como se portar* ao usar
+  /// ("confirme qual antes de mandar", "não prometa antes de a ferramenta
+  /// responder").
+  ///
+  /// Fica no cadastro, e não no código, para a empresa poder ajustar sem
+  /// deploy — decisão do usuário em 2026-09-05. Vale insistir no limite disso:
+  /// **comportamento é prompt, e prompt não é barreira**. Nada que dependa
+  /// deste texto pode ser a única coisa entre alguém e um dado; o que protege
+  /// está no recorte, no catálogo e nas guardas de código.
+  instrucoes String? @db.Text
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   updatedBy String?

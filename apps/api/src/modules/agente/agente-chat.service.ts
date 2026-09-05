@@ -590,10 +590,20 @@ export class AgenteChatService {
       dateStyle: 'full',
       timeZone: 'America/Campo_Grande',
     });
-    const ferramentas = this.tools
-      .disponiveisPara(user, filtro)
-      .map((f) => f.nome)
-      .join(', ');
+    const disponiveis = this.tools.disponiveisPara(user, filtro);
+    const ferramentas = disponiveis.map((f) => f.nome).join(', ');
+
+    // O comportamento de cada ferramenta, já com a reescrita da empresa.
+    //
+    // Só das que estão disponíveis: mandar a instrução de uma ferramenta que o
+    // usuário não tem seria ensinar o modelo a se portar com algo que ele nem
+    // enxerga — e gastar prompt em toda mensagem para isso.
+    const instrucoes = disponiveis
+      .map((f) => {
+        const texto = filtro.config.get(f.nome)?.instrucoes || f.instrucoes;
+        return texto?.trim() ? `- ${f.nome}: ${texto.trim()}` : null;
+      })
+      .filter(Boolean);
 
     const contexto = [
       `Seu nome é ${nomeAgente}.`,
@@ -617,6 +627,9 @@ export class AgenteChatService {
       'Ações que gravam exigem confirmação do usuário na tela; nunca afirme que gravou algo ' +
         'antes de receber a confirmação.',
       'Nunca invente número, valor ou código: se não veio de uma ferramenta, diga que não sabe.',
+      ...(instrucoes.length
+        ? ['', 'COMO USAR CADA FERRAMENTA', ...instrucoes]
+        : []),
     ].join('\n');
 
     return [

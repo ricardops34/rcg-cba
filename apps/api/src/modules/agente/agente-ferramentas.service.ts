@@ -12,6 +12,7 @@ export interface ConfigFerramenta {
   ativa: boolean;
   nome: string | null;
   descricao: string | null;
+  instrucoes: string | null;
   perfilIds: string[];
 }
 
@@ -85,6 +86,8 @@ export class AgenteFerramentasService {
         ativa: linha?.ativa ?? true,
         nome: linha?.nome || c.nome,
         descricao: linha?.descricao || c.descricao,
+        instrucoes: linha?.instrucoes || c.instrucoes || '',
+        instrucoesPadrao: c.instrucoes ?? '',
         nomePadrao: c.nome,
         descricaoPadrao: c.descricao,
         permissao: c.permissao,
@@ -114,6 +117,9 @@ export class AgenteFerramentasService {
           // Texto vazio limpa a sobrescrita e devolve o padrão do código —
           // é como a tela oferece o "voltar ao original" sem um botão extra.
           ...(input.nome !== undefined ? { nome: input.nome || null } : {}),
+          ...(input.instrucoes !== undefined
+            ? { instrucoes: input.instrucoes || null }
+            : {}),
           ...(input.descricao !== undefined
             ? { descricao: input.descricao || null }
             : {}),
@@ -183,6 +189,7 @@ export class AgenteFerramentasService {
             ativa: l.ativa,
             nome: l.nome,
             descricao: l.descricao,
+            instrucoes: l.instrucoes,
             perfilIds: l.perfis.map((p) => p.perfilId),
           },
         ]),

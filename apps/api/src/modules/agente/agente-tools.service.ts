@@ -44,6 +44,14 @@ export interface Ferramenta {
   parametros: Record<string, unknown>;
   /** `rotina.acao`, mesma semântica do @RequirePermission. */
   permissao: string;
+  /**
+   * Como a ferramenta deve se portar ao ser usada. Vai ao prompt junto do
+   * catálogo, e a empresa pode reescrever em Administração > Agente IA.
+   *
+   * Diferente da , que ensina *quando* chamar. Aqui é o cuidado ao
+   * usar: confirmar antes, não prometer antes de a ferramenta responder.
+   */
+  instrucoes?: string;
   /** Ferramenta que grava não executa direto — vira pendência de confirmação. */
   escrita?: boolean;
   /**
@@ -1739,6 +1747,7 @@ export class AgenteToolsService {
       chave: f.nome,
       nome: f.nome,
       descricao: f.descricao,
+      instrucoes: f.instrucoes ?? null,
       permissao: f.permissao,
       escrita: !!f.escrita,
     }));

@@ -284,6 +284,13 @@ export const agenteFerramentaSchema = z.object({
   descricao: z.string(),
   nomePadrao: z.string(),
   descricaoPadrao: z.string(),
+  /**
+   * Como a ferramenta deve se comportar. Vai ao modelo junto do catálogo.
+   * Responde outra pergunta que a descrição: ela ensina *quando* chamar, isto
+   * ensina *como se portar* ao usar.
+   */
+  instrucoes: z.string(),
+  instrucoesPadrao: z.string(),
   /** `rotina.acao` exigida pelo código. Restringe sempre, e não é editável. */
   permissao: z.string(),
   /** Ferramenta que grava não executa direto: vira pendência de confirmação. */
@@ -301,6 +308,7 @@ export const agenteFerramentaUpdateSchema = z.object({
   // String vazia limpa a sobrescrita e volta ao texto do código.
   nome: z.string().trim().max(80).optional(),
   descricao: z.string().trim().max(2000).optional(),
+  instrucoes: z.string().trim().max(2000).optional(),
   perfilIds: z.array(z.string().uuid()).optional(),
 });
 export type AgenteFerramentaUpdate = z.infer<
@@ -313,6 +321,8 @@ export const AGENTE_FERRAMENTA_EXAMPLE: AgenteFerramenta = {
   nome: "buscar_cliente",
   descricao:
     "Busca clientes da carteira do usuário por nome, razão social, código ou ramo (CNAE).",
+  instrucoes: "",
+  instrucoesPadrao: "",
   nomePadrao: "buscar_cliente",
   descricaoPadrao:
     "Busca clientes da carteira do usuário por nome, razão social, código ou ramo (CNAE).",

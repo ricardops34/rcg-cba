@@ -1013,6 +1013,37 @@ function FerramentasSection() {
               </Field>
 
               <Field>
+                <FieldLabel htmlFor={`instr-${f.chave}`}>
+                  Como se portar ao usar
+                </FieldLabel>
+                <Textarea
+                  id={`instr-${f.chave}`}
+                  rows={3}
+                  defaultValue={f.instrucoes}
+                  placeholder={
+                    f.instrucoesPadrao ||
+                    "Ex.: confirme qual documento antes de mandar; não prometa antes de a ferramenta responder."
+                  }
+                  onBlur={(e) => {
+                    const novo = e.target.value.trim();
+                    if (novo !== f.instrucoes) {
+                      salvar.mutate({
+                        chave: f.chave,
+                        body: { instrucoes: novo },
+                      });
+                    }
+                  }}
+                />
+                <FieldDescription>
+                  Responde outra pergunta: a descrição diz <em>quando</em>{" "}
+                  chamar, isto diz <strong>como se portar</strong> ao usar.
+                  Serve para tom e cuidado — <strong>não</strong> para controlar
+                  acesso: quem alcança qual dado é decidido no servidor, e o
+                  modelo não consegue contornar por mais que o texto peça.
+                </FieldDescription>
+              </Field>
+
+              <Field>
                 <FieldLabel>Perfis com direito de uso</FieldLabel>
                 <div className="flex flex-wrap gap-2">
                   {(perfis?.data ?? []).map((p) => {
