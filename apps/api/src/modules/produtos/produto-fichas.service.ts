@@ -65,10 +65,19 @@ export class ProdutoFichasService {
       orderBy: { createdAt: 'asc' },
       select: this.SELECAO,
     });
-    return linhas.map(({ arquivo, ...f }) => ({
-      ...f,
-      url: fichaPublicPath(arquivo),
-    }));
+    return linhas.map((l) => this.paraLeitura(l));
+  }
+
+  /**
+   * O que sai daqui é sempre a **url pública**, nunca o nome em disco.
+   *
+   * As três gravações passam por isto de propósito: sem um lugar só, `criar` e
+   * `atualizar` devolviam `arquivo` enquanto `listar` devolvia `url`, e o
+   * contrato só descreve o segundo — quem consumisse a resposta da gravação
+   * receberia um campo que não existe no tipo.
+   */
+  private paraLeitura<T extends { arquivo: string }>({ arquivo, ...f }: T) {
+    return { ...f, url: fichaPublicPath(arquivo) };
   }
 
   /**
@@ -102,7 +111,7 @@ export class ProdutoFichasService {
       const arquivo = `${randomUUID()}${extensaoPorMime(origem.mime)}`;
       await copyFile(origem.caminho, join(FICHAS_DIR, arquivo));
 
-      return tx.produtoFicha.create({
+      const criada = await tx.produtoFicha.create({
         data: {
           empresaId,
           produtoId,
@@ -117,6 +126,7 @@ export class ProdutoFichasService {
         },
         select: this.SELECAO,
       });
+      return this.paraLeitura(criada);
     });
   }
 
@@ -139,7 +149,7 @@ export class ProdutoFichasService {
       });
       if (!ficha) throw new NotFoundException('Ficha não encontrada');
 
-      return tx.produtoFicha.update({
+      const alterada = await tx.produtoFicha.update({
         where: { id },
         data: {
           ...(input.titulo !== undefined ? { titulo: input.titulo } : {}),
@@ -151,6 +161,7 @@ export class ProdutoFichasService {
         },
         select: this.SELECAO,
       });
+      return this.paraLeitura(alterada);
     });
   }
 
