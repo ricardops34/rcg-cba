@@ -1,0 +1,106 @@
+# Agente interno — 24 ferramentas
+
+O assistente que o funcionário **logado** usa pelo ícone da topbar, em qualquer
+tela. Ver [o mapa](README.md) para as outras duas famílias.
+
+- **Catálogo e execução:** `apps/api/src/modules/agente/agente-tools.service.ts`
+- **Conversa e prompt:** `agente-chat.service.ts`
+- **Governança por empresa:** `agente-ferramentas.service.ts`
+
+## As duas regras estruturais
+
+**Nenhuma ferramenta toca o Prisma direto.** Cada uma delega ao service que a
+tela já usa, passando o mesmo `AuthenticatedUser` da requisição. É isso que faz
+o `withTenant`/RLS, o escopo hierárquico de carteira e as regras de comissão
+continuarem valendo sem serem reimplementados — e sem poderem ser esquecidos.
+
+**A permissão é checada duas vezes**, de propósito:
+
+1. na montagem do prompt, filtrando o catálogo — o modelo nem enxerga o que o
+   usuário não pode fazer, então não promete o que não vai entregar;
+2. na execução, antes de chamar o service — porque um `tool_call` é texto
+   gerado por um modelo e não vale como autorização.
+
+## Escrita nunca executa direto
+
+Ferramenta marcada `escrita: true` **não grava**: ela prepara a ação e vira uma
+pendência que o usuário confirma na tela. Na confirmação tudo é revalidado — a
+permissão pode ter mudado entre uma coisa e outra.
+
+Por isso o prompt diz "nunca afirme que gravou algo antes de receber a
+confirmação": é o modelo alinhado com o que o código já garante, não a garantia
+em si.
+
+## O catálogo
+
+| Ferramenta | Permissão | Tipo | Delega a |
+|---|---|---|---|
+| `buscar_cliente` | `clientes.visualizar` | leitura | `clientes.findAll` |
+| `verificar_cliente_na_base` | `clientes.visualizar` | leitura | `clientes.verificarTitularidade` |
+| `buscar_produto` | `produtos.visualizar` | leitura | `produtos.findAll` |
+| `posicao_cliente` | `posicao-cliente.visualizar` | leitura | `clientes.posicao` |
+| `sugerir_compras` | `sugestao-compra.visualizar` | leitura | `sugestao.paraCliente` |
+| `titulos_em_aberto` | `titulos-receber.visualizar` | leitura | `titulos.findAll` |
+| `listar_orcamentos` | `orcamentos.visualizar` | leitura | `orcamentos.findAll` |
+| `vendas_por_cliente` | `consulta-vendas-cliente.visualizar` | leitura | `consultas.vendasPorCliente` |
+| `vendas_por_produto` | `consulta-vendas-produto.visualizar` | leitura | `consultas.vendasPorProduto` |
+| `execucao_objetivos` | `dashboard-comercial.visualizar` | leitura | `objetivos.dashboard` |
+| `consultar_cnpj` | `clientes.visualizar` | leitura | `enriquecimento.consultarCnpj` |
+| `resumo_atendimentos` | `meus-atendimentos.visualizar` | leitura | `meusAtendimentos.resumo` |
+| `minha_agenda` | `atividades.visualizar` | leitura | `atividades.findAll` |
+| `listar_oportunidades` | `oportunidades.visualizar` | leitura | `oportunidades.findAll` |
+| `historico_atendimento_cliente` | `clientes.visualizar` | leitura | `historicoAtendimento` (monta de várias fontes) |
+| `agendar_atividade` | `atividades.cadastrar` | **escrita** | `atividades.create` |
+| `registrar_oportunidade` | `oportunidades.cadastrar` | **escrita** | `oportunidades.create` |
+| `mover_oportunidade` | `oportunidades.editar` | **escrita** | `oportunidades.update` |
+| `atualizar_cadastro_pela_receita` | `clientes.editar` | **escrita** | `clientes.atualizarPelaReceita` |
+| `criar_orcamento` | `orcamentos.cadastrar` | **escrita** | `orcamentos.create` |
+| `conversas_whatsapp` | `whatsapp-conversas.visualizar` | leitura + WhatsApp pareado | `conversas.listar` |
+| `mensagens_whatsapp` | `whatsapp-conversas.visualizar` | leitura + WhatsApp pareado | `conversas.mensagensDaPropriaConexao` |
+| `agendar_mensagem_whatsapp` | `whatsapp-conversas.cadastrar` | **escrita** + WhatsApp pareado | `agendamento.agendar` |
+| `enviar_documento_whatsapp` | `whatsapp-conversas.cadastrar` | **escrita** + WhatsApp pareado | `whatsappAcoes.enviar{Titulos,Notas,Boleto,Danfe,Orcamento}` |
+
+## As guardas além da permissão
+
+**`exigeWhatsapp`** — as quatro últimas só aparecem para quem tem aparelho
+pareado. Não substitui a permissão, **soma-se** a ela: a permissão diz que o
+usuário *pode* atender por WhatsApp; isto diz que ele *tem* por onde falar.
+É **fail-closed**: sem o filtro carregado, a ferramenta não aparece.
+
+**Pelo agente, cada um lê só a própria conexão.** Nem supervisor nem gerente
+alcançam a equipe por aqui, embora alcancem na tela de Atendimento. Daí
+`mensagensDaPropriaConexao` em vez de `mensagens`. O raciocínio, decidido em
+2026-08-25: monitorar é olhar o que está gravado; perguntar ao assistente manda
+o texto para fora.
+
+**Governança por empresa** — `agente-ferramentas.service.ts` permite restringir
+o catálogo por empresa. Ele **só restringe, nunca amplia**: uma empresa não
+consegue habilitar o que a permissão do usuário não dá.
+
+## O que está em prompt, e portanto não é garantia
+
+Montado em `agente-chat.service.ts` → `montarContexto()`:
+
+- o nome do agente e a personalidade (configuráveis por empresa);
+- "só enxerga dados da carteira que este usuário alcança — se uma busca não
+  retorna nada, diga que não encontrou, não suponha que o dado não existe";
+- a instrução de escrever as referências `«CLI:código»` exatamente como
+  recebidas;
+- "ações que gravam exigem confirmação; nunca afirme que gravou antes";
+- "nunca invente número, valor ou código".
+
+Todas são **alinhamento**, não barreira. O recorte de carteira, a confirmação de
+escrita e a substituição das referências acontecem no código, independente do
+que o modelo faça com a instrução.
+
+## Mexendo aqui
+
+- **Nova ferramenta:** siga o checklist do [mapa](README.md). `permissao` é
+  obrigatória; sem ela a ferramenta fica disponível a todo mundo.
+- **Mudar quando o modelo chama:** a `descricao` é o que ele lê. `perguntas`
+  ajuda o roteamento.
+- **Mudar o que ela alcança:** no service delegado, nunca aqui.
+- **Teste:** `agente-tools.permissao.spec.ts` cobre a interação entre permissão
+  do RBAC e configuração da empresa — que é onde o erro passa despercebido, nos
+  dois sentidos (liberar o que devia estar fechado, ou fechar o que o
+  administrador acabou de configurar).
