@@ -98,3 +98,70 @@ export const produtoFichaAtualizarSchema = z.object({
   visivelAgente: z.boolean().optional(),
 });
 export type ProdutoFichaAtualizar = z.infer<typeof produtoFichaAtualizarSchema>;
+
+/**
+ * Importação em lote de fichas técnicas.
+ *
+ * O vínculo é pelo **conteúdo** do PDF, não pelo nome do arquivo: o modelo lê
+ * o documento e devolve o que está escrito nele; quem procura no catálogo é o
+ * servidor.
+ */
+export const fichaImportacaoSituacaoSchema = z.enum([
+  "pendente",
+  "processando",
+  "vinculada",
+  "sem_correspondencia",
+  "ambiguo",
+  "erro",
+]);
+export type FichaImportacaoSituacao = z.infer<
+  typeof fichaImportacaoSituacaoSchema
+>;
+
+export const FICHA_IMPORTACAO_LABEL: Record<FichaImportacaoSituacao, string> = {
+  pendente: "Na fila",
+  processando: "Lendo o PDF",
+  vinculada: "Vinculada",
+  sem_correspondencia: "Produto não encontrado",
+  ambiguo: "Mais de um produto",
+  erro: "Falhou",
+};
+
+export const fichaImportacaoSchema = z.object({
+  id: z.string().uuid(),
+  arquivoNome: z.string(),
+  tamanho: z.number().int(),
+  situacao: fichaImportacaoSituacaoSchema,
+  /** O que o modelo leu no documento — é o que explica por que ficou pendente. */
+  codigoDetectado: z.string().nullable(),
+  nomeDetectado: z.string().nullable(),
+  titulo: z.string().nullable(),
+  markdown: z.string().nullable(),
+  produtoId: z.string().uuid().nullable(),
+  produtoDescricao: z.string().nullable(),
+  produtoCodigoErp: z.string().nullable(),
+  fichaId: z.string().uuid().nullable(),
+  erro: z.string().nullable(),
+  createdAt: z.string().datetime(),
+  processadoEm: z.string().datetime().nullable(),
+});
+export type FichaImportacao = z.infer<typeof fichaImportacaoSchema>;
+
+/** Quantos ainda faltam, para a tela saber se continua acompanhando. */
+export const fichaImportacaoResumoSchema = z.object({
+  pendentes: z.number().int(),
+  processando: z.number().int(),
+  vinculadas: z.number().int(),
+  precisamDecisao: z.number().int(),
+  erros: z.number().int(),
+});
+export type FichaImportacaoResumo = z.infer<
+  typeof fichaImportacaoResumoSchema
+>;
+
+export const fichaImportacaoVincularSchema = z.object({
+  produtoId: z.string().uuid(),
+});
+export type FichaImportacaoVincular = z.infer<
+  typeof fichaImportacaoVincularSchema
+>;

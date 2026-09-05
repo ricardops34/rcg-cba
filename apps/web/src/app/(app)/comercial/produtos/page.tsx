@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Images } from "lucide-react";
+import { FileText, Images } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 
 type ProdutoRow = Produto & {
@@ -169,12 +169,20 @@ export default function ProdutosPage() {
           </div>
         </FiltersPopover>
         {podeImportarFotos ? (
-          <Button
-            variant="outline"
-            onClick={() => router.push("/comercial/produtos/fotos")}
-          >
-            <Images className="size-4" /> Importar fotos
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              onClick={() => router.push("/comercial/produtos/fotos")}
+            >
+              <Images className="size-4" /> Importar fotos
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => router.push("/comercial/produtos/fichas")}
+            >
+              <FileText className="size-4" /> Importar fichas
+            </Button>
+          </>
         ) : null}
       </div>
 

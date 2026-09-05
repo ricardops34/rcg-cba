@@ -1,0 +1,14 @@
+-- `unaccent`, para casar "Cafe torrado" com "Café torrado".
+--
+-- Vem da importação de fichas técnicas: o PDF do fabricante costuma escrever o
+-- nome do produto sem acento, e o `contains` do Postgres — mesmo com
+-- `mode: insensitive`, que só ignora maiúsculas — não casa "Cafe" com "Café".
+-- Visto em dev em 2026-09-05, com uma ficha de "Cafe torrado 500g" que não
+-- encontrou o "Café torrado 500g" do catálogo.
+--
+-- A extensão é global do banco, não do schema: quem roda esta migration é a
+-- role dona (`plataforma`), e criar extensão exige superusuário **ou** que ela
+-- esteja na lista de extensões confiáveis do Postgres (unaccent é, desde a 13).
+-- Se o deploy falhar aqui, é este o motivo, e o comando precisa ser rodado uma
+-- vez pelo administrador do banco.
+CREATE EXTENSION IF NOT EXISTS unaccent;

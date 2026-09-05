@@ -20,6 +20,15 @@ export const PRODUTOS_DIR = join(UPLOADS_DIR, 'produtos');
 /** Fichas técnicas em PDF, anexadas ao produto. */
 export const FICHAS_DIR = join(UPLOADS_DIR, 'fichas');
 /**
+ * PDFs esperando na fila de importação em lote.
+ *
+ * Diretório separado do das fichas porque o ciclo de vida é outro: aqui o
+ * arquivo pode ser descartado sem dono, e ao virar ficha ele é **copiado**
+ * para o outro diretório — descartar o item da fila depois não pode apagar o
+ * PDF que um produto já usa.
+ */
+export const FICHAS_IMPORTACAO_DIR = join(UPLOADS_DIR, 'fichas-importacao');
+/**
  * Arquivos anexados a uma mensagem do assistente interno.
  *
  * Diretório próprio porque o ciclo de vida é outro: o anexo é material de
@@ -77,6 +86,43 @@ export const AGENTE_ANEXO_MIME_TYPES = [
  * nenhum aceita um documento de 16 MB numa chamada de chat.
  */
 export const AGENTE_ANEXO_MAX_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Upload em lote de fichas técnicas: só PDF.
+ *
+ * A leitura é do modelo, e imagem solta não é ficha técnica — quem tem a foto
+ * do produto usa a importação de fotos, que é outra tela e não custa uma
+ * chamada de IA por arquivo.
+ */
+export const fichaImportacaoUploadOptions = {
+  storage: diskStorage({
+    destination: (_req, _file, cb) => {
+      if (!existsSync(FICHAS_IMPORTACAO_DIR)) {
+        mkdirSync(FICHAS_IMPORTACAO_DIR, { recursive: true });
+      }
+      cb(null, FICHAS_IMPORTACAO_DIR);
+    },
+    filename: (_req: Request, file, cb) => {
+      cb(null, `${randomUUID()}${extensaoPorMime(file.mimetype)}`);
+    },
+  }),
+  limits: { fileSize: AGENTE_ANEXO_MAX_BYTES },
+  fileFilter: (
+    _req: Request,
+    file: Express.Multer.File,
+    cb: (error: Error | null, acceptFile: boolean) => void,
+  ) => {
+    if (file.mimetype !== 'application/pdf') {
+      return cb(
+        new BadRequestException(
+          `${file.originalname}: só PDF nesta importação.`,
+        ),
+        false,
+      );
+    }
+    cb(null, true);
+  },
+};
 
 export const agenteAnexoUploadOptions = {
   storage: diskStorage({

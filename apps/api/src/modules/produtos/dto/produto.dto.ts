@@ -3,6 +3,7 @@ import {
   produtoCreateSchema,
   produtoFotoVincularSchema,
   produtoQuerySchema,
+  fichaImportacaoVincularSchema,
   produtoFichaAtualizarSchema,
   produtoRelacionadoCriarSchema,
   produtoUpdateSchema,
@@ -19,4 +20,7 @@ export class ProdutoRelacionadoCriarDto extends createZodDto(
 ) {}
 export class ProdutoFichaAtualizarDto extends createZodDto(
   produtoFichaAtualizarSchema,
+) {}
+export class FichaImportacaoVincularDto extends createZodDto(
+  fichaImportacaoVincularSchema,
 ) {}

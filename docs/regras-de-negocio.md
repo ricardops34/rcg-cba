@@ -94,6 +94,40 @@ embalagem, margem) sem que chegue a quem pergunta pelo WhatsApp. O recorte é
 feito na consulta (`valoresDoProduto({ apenasAgente: true })`), não numa
 instrução de prompt.
 
+## Fichas técnicas: importação em lote
+
+Duas portas para a mesma ficha, e elas resolvem problemas diferentes:
+
+- **uma a uma**, pelo assistente (anexo na conversa) — quando alguém tem um
+  PDF na mão e sabe de que produto é;
+- **em lote**, em `/comercial/produtos/fichas` (`produtos.importar`) — quando
+  chega a pasta inteira do fabricante.
+
+No lote, o **vínculo é pelo conteúdo do PDF**, não pelo nome do arquivo. É a
+diferença para a importação de fotos, que casa pelo nome: o fabricante nomeia
+a ficha pelo catálogo dele, e o código que interessa está impresso na página.
+
+Quem lê é o modelo; quem **procura no catálogo é o servidor**. O modelo
+devolve o que está escrito no documento (código do fabricante, nome do
+produto) e o servidor consulta — primeiro por código (`codigoFornecedor`,
+`codigoErp`, `codigoBarras`), e só depois pelo nome. Se o modelo devolvesse um
+id, bastaria alucinar um para pendurar a ficha no produto errado, e ninguém
+perceberia até um vendedor mandar a ficha errada a um cliente.
+
+Achou **um** produto: vincula e grava. Achou nenhum ou mais de um: para, e a
+tela pede a decisão de uma pessoa — com o que foi lido do documento à vista. O
+texto já extraído é reaproveitado no vínculo manual; o PDF não é lido de novo.
+
+A busca por nome usa `unaccent` dos dois lados, e não o `contains` do Prisma:
+o `mode: insensitive` ignora maiúsculas, **não** acentos, e ficha de
+fabricante costuma vir sem acentuação — "Cafe torrado 500g" não encontrava o
+"Café torrado 500g" do catálogo.
+
+**A fila roda empresa por empresa.** A tabela tem RLS, então uma varredura que
+consultasse sem `withTenant` voltaria vazia e a fila ficaria parada sem erro
+nenhum — foi o que aconteceu no primeiro teste. O caminho é o mesmo da
+varredura de notificações: começa por `empresas`, que não tem RLS.
+
 ## Produtos relacionados: similar e aplicação
 
 Uma tabela só (`produto_relacionados`) para dois usos, porque a pergunta é a

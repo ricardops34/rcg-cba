@@ -138,6 +138,7 @@ model Empresa {
   produtoRelacionados        ProdutoRelacionado[]
   produtoFichas              ProdutoFicha[]
   agenteAnexos               AgenteAnexo[]
+  fichaImportacoes           ProdutoFichaImportacao[]
   orcamentoConfig            OrcamentoConfig?
   parametros                 ParametroEmpresa[]
   clienteCnaes               ClienteCnae[]
@@ -668,6 +669,69 @@ model ProdutoFicha {
 
   @@index([empresaId, produtoId])
   @@map("produto_fichas")
+}
+
+/// Em que pé está um PDF na fila de importação de fichas.
+enum FichaImportacaoSituacao {
+  pendente
+  processando
+  vinculada
+  sem_correspondencia
+  ambiguo
+  erro
+}
+
+/// Um PDF de ficha técnica esperando (ou tendo terminado) o processamento em
+/// lote.
+///
+/// **O vínculo é pelo conteúdo, não pelo nome do arquivo.** É a diferença para
+/// a importação de fotos (`produto_fotos` com `produtoId` nulo), que casa pelo
+/// nome: fabricante manda ficha com nome de catálogo interno dele, e o código
+/// que interessa está impresso na página.
+///
+/// Quem lê é o modelo; quem **procura no catálogo** é o servidor. O modelo
+/// devolve o que está escrito no documento (código do fabricante, nome do
+/// produto) e o servidor busca — se ele devolvesse um id, bastaria alucinar um
+/// para pendurar a ficha no produto errado.
+///
+/// A fila vive em tabela porque o processamento é lento e pago: cada PDF é uma
+/// chamada ao provedor de IA. Um lote de 80 arquivos não cabe numa requisição
+/// HTTP, e um reinício no meio não pode perder o que já foi feito.
+model ProdutoFichaImportacao {
+  id        String @id @default(uuid())
+  empresaId String
+
+  arquivo     String
+  arquivoNome String
+  mime        String
+  tamanho     Int
+
+  situacao FichaImportacaoSituacao @default(pendente)
+
+  /// O que o modelo leu no documento — guardado mesmo quando não casa com
+  /// nada, porque é o que explica à pessoa por que ficou pendente.
+  codigoDetectado String?
+  nomeDetectado   String?
+  titulo          String?
+  markdown        String?
+
+  /// Preenchidos quando a importação achou o produto e gravou a ficha.
+  produtoId String?
+  fichaId   String?
+
+  /// Mensagem do erro, quando `situacao = erro`. É o que a tela mostra em vez
+  /// de um "falhou" que não ajuda ninguém.
+  erro       String?
+  tentativas Int     @default(0)
+
+  processadoEm DateTime?
+  createdAt    DateTime  @default(now())
+  createdBy    String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@index([empresaId, situacao, createdAt])
+  @@map("produto_ficha_importacoes")
 }
 
 /// Arquivo que alguém anexou a uma mensagem do assistente interno.
