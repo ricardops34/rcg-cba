@@ -22,6 +22,9 @@ describe('Ferramentas de consulta do funcionário — recorte de carteira', () =
       atividade: [],
       cliente: [],
       whatsappConversa: [],
+      objetivoVendedorMes: [],
+      notaSaidaItem: [],
+      sugestaoCompraGerada: [],
     };
     const registrar = (modelo: string) => (args: { where?: unknown }) => {
       wheres[modelo].push(args.where);
@@ -36,10 +39,25 @@ describe('Ferramentas de consulta do funcionário — recorte de carteira', () =
           return Promise.resolve({ _sum: { saldo: 0 }, _count: { _all: 0 } });
         }),
       },
-      atividade: { findMany: jest.fn(registrar('atividade')) },
+      atividade: {
+        findMany: jest.fn(registrar('atividade')),
+        count: jest.fn((args: { where?: unknown }) => {
+          wheres.atividade.push(args.where);
+          return Promise.resolve(0);
+        }),
+        groupBy: jest.fn(registrar('atividade')),
+      },
       cliente: { findMany: jest.fn(registrar('cliente')) },
       whatsappConversa: { findMany: jest.fn(registrar('whatsappConversa')) },
+      objetivoVendedorMes: {
+        findMany: jest.fn(registrar('objetivoVendedorMes')),
+      },
+      notaSaidaItem: { groupBy: jest.fn(registrar('notaSaidaItem')) },
+      sugestaoCompraGerada: {
+        findMany: jest.fn(registrar('sugestaoCompraGerada')),
+      },
       vendedor: { findMany: jest.fn(() => Promise.resolve([])) },
+      $queryRaw: jest.fn(() => Promise.resolve([])),
     } as unknown as TenantTx;
 
     return { tx, wheres };
@@ -91,6 +109,55 @@ describe('Ferramentas de consulta do funcionário — recorte de carteira', () =
     const { tx, wheres } = montarTx();
     await tools.agenda(tx, EMPRESA, null, 7);
     expect(wheres.atividade[0]).not.toHaveProperty('vendedorId');
+  });
+
+  it('acompanhamento de objetivos sai filtrado, meta e realizado', async () => {
+    const { tx, wheres } = montarTx();
+    await tools.objetivos(tx, EMPRESA, ESCOPO, {});
+
+    // Os dois lados da conta precisam do mesmo recorte. Filtrar só a meta
+    // daria um percentual absurdo — realizado da empresa inteira sobre a meta
+    // da equipe.
+    expect(wheres.objetivoVendedorMes[0]).toMatchObject({
+      vendedorId: { in: ESCOPO },
+    });
+    expect(wheres.notaSaidaItem.length).toBeGreaterThanOrEqual(2);
+    for (const where of wheres.notaSaidaItem) {
+      expect(where).toMatchObject({ vendedorId: { in: ESCOPO } });
+    }
+  });
+
+  it('pedir objetivo de alguém de fora da equipe não alcança ninguém', async () => {
+    const { tx, wheres } = montarTx();
+    // O `vendedor.findMany` devolve vazio: o nome não existe dentro do escopo.
+    const r = await tools.objetivos(tx, EMPRESA, ESCOPO, {
+      vendedor: 'Fulano',
+    });
+
+    expect(r).toHaveProperty('erro');
+    // E não chegou a consultar meta nem venda de ninguém.
+    expect(wheres.objetivoVendedorMes).toHaveLength(0);
+    expect(wheres.notaSaidaItem).toHaveLength(0);
+  });
+
+  it('resumo de atividades sai filtrado em todas as contagens', async () => {
+    const { tx, wheres } = montarTx();
+    await tools.resumoAtividades(tx, EMPRESA, ESCOPO, 30);
+
+    expect(wheres.atividade.length).toBeGreaterThanOrEqual(4);
+    for (const where of wheres.atividade) {
+      expect(where).toMatchObject({ vendedorId: { in: ESCOPO } });
+    }
+  });
+
+  it('clientes sem compra: positivados e carteira, os dois filtrados', async () => {
+    const { tx, wheres } = montarTx();
+    await tools.clientesSemCompraNoMes(tx, EMPRESA, ESCOPO, 10);
+
+    expect(wheres.notaSaidaItem[0]).toMatchObject({
+      vendedorId: { in: ESCOPO },
+    });
+    expect(wheres.cliente[0]).toMatchObject({ vendedorId: { in: ESCOPO } });
   });
 
   it('nome curto demais não vira busca aberta no cadastro', async () => {

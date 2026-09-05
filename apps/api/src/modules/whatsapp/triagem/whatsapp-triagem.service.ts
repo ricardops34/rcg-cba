@@ -1104,6 +1104,38 @@ export class WhatsappTriagemService {
       case 'clientes_aguardando':
         return this.funcionarioTools.clientesAguardando(tx, empresaId, escopo);
 
+      case 'acompanhar_objetivos':
+        return this.funcionarioTools.objetivos(tx, empresaId, escopo, {
+          vendedor:
+            typeof argumentos.vendedor === 'string'
+              ? argumentos.vendedor
+              : undefined,
+          mes: Number(argumentos.mes) || undefined,
+          ano: Number(argumentos.ano) || undefined,
+        });
+
+      case 'resumo_de_atividades':
+        return this.funcionarioTools.resumoAtividades(
+          tx,
+          empresaId,
+          escopo,
+          Number(argumentos.dias) || 30,
+        );
+
+      case 'aniversariantes':
+        return this.funcionarioTools.aniversariantes(tx, empresaId, escopo, {
+          de: argumentos.de === 'equipe' ? 'equipe' : 'clientes',
+          dias: Number(argumentos.dias) || 7,
+        });
+
+      case 'clientes_sem_compra_no_mes':
+        return this.funcionarioTools.clientesSemCompraNoMes(
+          tx,
+          empresaId,
+          escopo,
+          Number(argumentos.quantidade) || 10,
+        );
+
       default:
         return { erro: `Ferramenta desconhecida: ${nome}` };
     }

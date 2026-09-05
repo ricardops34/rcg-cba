@@ -141,9 +141,11 @@ export function montarPromptFuncionario(ctx: ContextoFuncionario): string {
     '',
     'O QUE VOCÊ PODE FAZER',
     '- Consultar: títulos vencidos, agenda, situação de cliente e a fila de espera.',
+    '- Acompanhar: objetivo x realizado do mês, resumo das atividades, aniversariantes e quem ainda não comprou no mês.',
     ctx.superior
-      ? '- As consultas cobrem VOCÊ E SUA EQUIPE — ele tem gente abaixo na hierarquia.'
+      ? '- As consultas cobrem VOCÊ E SUA EQUIPE — ele tem gente abaixo na hierarquia. Pode pedir o acompanhamento de uma pessoa pelo nome.'
       : '- As consultas cobrem apenas a CARTEIRA DELE.',
+    '- Os números vêm das mesmas contas do sistema. Não recalcule nem arredonde por conta própria: repita o que a ferramenta devolveu.',
     '',
     'O QUE VOCÊ NÃO FAZ, E É IMPORTANTE',
     '- Você só CONSULTA. Não cria, não altera, não apaga nada — nem orçamento, nem atividade, nem cadastro.',

@@ -139,7 +139,23 @@ utilizável sozinha, e foi assim que entraram.
 2. **Identidade e pareamento do funcionário** — tabela, código de 6 dígitos e
    o cartão em Meu perfil, o único lugar onde o código aparece.
 3. **Ferramentas do funcionário** — catálogo de consulta e execução, com o
-   escopo vindo de `resolverEscopoDoUsuario`.
+   escopo vindo de `resolverEscopoDoUsuario`. São oito: títulos vencidos,
+   agenda, situação de cliente, fila de espera, acompanhamento de objetivos
+   (equipe ou individual), resumo de atividades, aniversariantes (clientes ou
+   equipe) e clientes sem compra no mês com sugestão do que oferecer.
+
+   **O realizado sai de `ITEM_DE_VENDA_WHERE`**, a mesma regra do Dashboard,
+   dos Objetivos e das Consultas — conferido contra `GET /objetivos/dashboard`
+   em 09/2026 para um supervisor: R$ 100.923,00 de meta e R$ 80.836,23
+   realizados nos dois lados, ao centavo. Reimplementar "o que conta como
+   venda" daria um segundo número para a mesma pergunta.
+
+   **`clientes.ultimaCompra` não é usada, e não deve ser.** A coluna existe mas
+   não é mantida: nesta base, 83 de 83 clientes têm nota e **nenhum** tem o
+   campo preenchido (só `primeiraCompra`). A última compra é derivada de
+   `notaSaidaItem.dtEmissao`, como `ClientesService` e o agente interno já
+   fazem. Vale conferir se o import do legado e a API de integração deveriam
+   estar mantendo essa coluna — se alguma tela ainda a lê, mostra "sem compra".
 4. **Recado interno pela tela**, com agendamento e cancelamento. Rotina própria
    `whatsapp-recados`, concedida a Administrador, Diretor, Gerente e Supervisor
    — **não ao Vendedor**: o alcance é a hierarquia abaixo de quem envia, e quem
