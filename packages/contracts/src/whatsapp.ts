@@ -151,6 +151,40 @@ export const whatsappConfigSchema = z.object({
     .describe(
       "DDD usado quando o telefone do cadastro vem sem ele. Nulo = não completar",
     ),
+
+  // ---------------------------------------------------------------
+  // Atendimento pela IA no número institucional
+  // ---------------------------------------------------------------
+  // Estes quatro existiam só no banco: a migration os criou, a triagem lia dois
+  // deles, e não havia caminho de escrita nenhum — nem contrato, nem rota, nem
+  // tela. Com `atendimentoIaAtivo` nascendo `false` e ninguém podendo ligá-lo,
+  // a triagem inteira era inalcançável — ver
+  // docs/planos/whatsapp-institucional-funcionarios.md, "Fatia 0".
+
+  atendimentoIaAtivo: z
+    .boolean()
+    .describe(
+      "Liga a triagem por IA no número da empresa. Desligada, o institucional se comporta como qualquer outro número: a mensagem entra e fica aguardando alguém",
+    ),
+  atendimentoSaudacao: z
+    .string()
+    .nullable()
+    .describe(
+      "Primeira fala do atendimento, escrita pela empresa. Não vai ao modelo — é texto literal",
+    ),
+  atendimentoInformacoes: z
+    .string()
+    .nullable()
+    .describe(
+      "O que a IA pode responder sobre a empresa (horário, endereço, pagamento, prazos). Vai no prompt como contexto",
+    ),
+  atendimentoInatividadeMin: z
+    .number()
+    .int()
+    .describe(
+      "Minutos de silêncio do cliente antes de a conversa em triagem ser encerrada. 0 desliga",
+    ),
+
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -201,6 +235,39 @@ export const whatsappConfigUpdateSchema = z.object({
     .regex(/^\d{2}$/, "O DDD tem dois dígitos (ex.: 67)")
     .nullable()
     .optional(),
+
+  atendimentoIaAtivo: z.boolean().optional(),
+  /**
+   * Texto literal, não prompt: é o que a empresa quer que o cliente leia. Vazio
+   * vira nulo (a tela limpa o campo apagando o conteúdo), e sem saudação a IA
+   * simplesmente começa respondendo.
+   */
+  atendimentoSaudacao: z
+    .string()
+    .trim()
+    .max(500)
+    .nullable()
+    .optional()
+    .transform((v) => (v === "" ? null : v)),
+  /**
+   * Vai ao modelo como contexto da empresa. O teto é generoso porque aqui cabe
+   * horário, endereço, formas de pagamento e prazos — mas não é ilimitado: o
+   * texto entra em **toda** conversa, e prompt grande custa em cada mensagem.
+   */
+  atendimentoInformacoes: z
+    .string()
+    .trim()
+    .max(4000)
+    .nullable()
+    .optional()
+    .transform((v) => (v === "" ? null : v)),
+  atendimentoInatividadeMin: z
+    .number()
+    .int()
+    .min(0)
+    .max(1440)
+    .optional()
+    .describe("0 = não encerrar por silêncio"),
 });
 export type WhatsappConfigUpdate = z.infer<typeof whatsappConfigUpdateSchema>;
 

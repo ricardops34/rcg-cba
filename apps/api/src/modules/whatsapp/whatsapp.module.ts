@@ -3,6 +3,7 @@ import { WhatsappController } from './whatsapp.controller';
 import { WhatsappInternoController } from './whatsapp-interno.controller';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappTriagemService } from './triagem/whatsapp-triagem.service';
+import { WhatsappInatividadeService } from './triagem/whatsapp-inatividade.service';
 import { ProvedorIaModule } from '../agente/provedor-ia.module';
 import { WhatsappSessaoService } from './whatsapp-sessao.service';
 import { WhatsappConversasService } from './whatsapp-conversas.service';
@@ -50,6 +51,9 @@ import { OrcamentosModule } from '../orcamentos/orcamentos.module';
     WhatsappAcoesService,
     WhatsappAgendamentoService,
     WhatsappTriagemService,
+    // Encerra a conversa que parou no meio da triagem — sem ela, `bot` é um
+    // limbo do qual nada sai sozinho.
+    WhatsappInatividadeService,
     // Transporte: o roteador e as duas implementações. Nada fora de
     // `providers/` conhece worker ou gateway — ver `whatsapp-provider.ts`.
     WhatsappProviderService,

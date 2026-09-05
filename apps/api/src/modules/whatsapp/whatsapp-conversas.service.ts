@@ -769,6 +769,9 @@ export class WhatsappConversasService {
           atendenteVendedorId: null,
           assunto: null,
           direcionadaEm: null,
+          // Assunto novo começa do começo: a saudação da empresa volta a
+          // valer para a próxima mensagem.
+          saudadoEm: null,
         },
         select: { id: true, atendimento: true },
       });
@@ -2031,12 +2034,37 @@ export class WhatsappConversasService {
         });
       }
 
+      // Conversa encerrada que recebe mensagem nova do cliente é **assunto
+      // novo**: volta para a triagem, como diz o próprio enum. Sem isto o
+      // encerramento (por inatividade ou pela mão de alguém) seria definitivo —
+      // o cliente escreveria de novo e ninguém veria, porque conversa
+      // `encerrada` não aparece em fila nenhuma.
+      //
+      // O `saudadoEm` é zerado junto: assunto novo começa do começo.
+      const reabriu =
+        sessao.tipo === 'empresa' &&
+        !minha &&
+        conversa.atendimento === 'encerrada';
+      if (reabriu) {
+        await tx.whatsappConversa.update({
+          where: { id: conversa.id },
+          data: {
+            atendimento: 'bot',
+            atendenteVendedorId: null,
+            assunto: null,
+            direcionadaEm: null,
+            saudadoEm: null,
+          },
+        });
+      }
+
       // Conversa do número institucional em modo bot não avisa ninguém: a
       // triagem é da IA, e o sino de todo vendedor tocando a cada "oi" de
       // desconhecido é justamente o que este número existe para evitar. O
       // aviso volta quando a IA direcionar, para quem ela escolher.
       const emTriagem =
-        sessao.tipo === 'empresa' && conversa.atendimento === 'bot';
+        sessao.tipo === 'empresa' &&
+        (conversa.atendimento === 'bot' || reabriu);
 
       // Mensagem do próprio vendedor não vira aviso para ele mesmo.
       if (destinatario && !jaGravada && !minha && !emTriagem) {

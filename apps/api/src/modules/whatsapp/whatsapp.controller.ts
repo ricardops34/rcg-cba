@@ -84,8 +84,10 @@ export class WhatsappController {
   @ApiOperation({
     summary: 'Editar a configuração de WhatsApp da empresa',
     description:
-      'Transporte, endereços dos provedores, credencial da Evolution GO e ' +
-      'retenção. Requer whatsapp-config.editar.',
+      'Transporte, endereços dos provedores, credencial da Evolution GO, ' +
+      'retenção e o atendimento por IA do número institucional (interruptor, ' +
+      'saudação, informações da empresa e encerramento por inatividade). ' +
+      'Requer whatsapp-config.editar.',
   })
   @RequirePermission('whatsapp-config', 'editar')
   @Put('config')

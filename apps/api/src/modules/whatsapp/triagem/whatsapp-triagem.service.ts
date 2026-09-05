@@ -155,6 +155,17 @@ export class WhatsappTriagemService {
     // provedor, chave e modelo saem dali. Desligado, a triagem não tem com o
     // que pensar — e a conversa vai para uma pessoa, com o motivo dito em vez
     // de virar uma exceção genérica no log.
+    // A saudação sai **antes** de a IA pensar, e sai mesmo que a IA falhe
+    // logo depois: quem escreveu para a empresa merece uma resposta imediata,
+    // e essa resposta é a única que não depende de provedor nenhum estar no ar.
+    //
+    // Não passa pelo modelo de propósito: é o texto que a empresa quer que o
+    // cliente leia. Deixar a IA compô-la faria a mesma empresa soar diferente
+    // a cada conversa.
+    if (contexto.saudacao && !contexto.jaSaudou) {
+      await this.saudar(empresaId, conversaId, contexto.saudacao);
+    }
+
     let cfg;
     try {
       cfg = await this.agenteConfig.paraUso(empresaId);
@@ -255,6 +266,7 @@ export class WhatsappTriagemService {
           id: true,
           clienteId: true,
           atendimento: true,
+          saudadoEm: true,
           sessao: { select: { tipo: true } },
           cliente: {
             select: {
@@ -284,7 +296,11 @@ export class WhatsappTriagemService {
         }),
         tx.whatsappConfig.findUnique({
           where: { empresaId },
-          select: { atendimentoInformacoes: true, atendimentoIaAtivo: true },
+          select: {
+            atendimentoInformacoes: true,
+            atendimentoIaAtivo: true,
+            atendimentoSaudacao: true,
+          },
         }),
       ]);
 
@@ -306,6 +322,8 @@ export class WhatsappTriagemService {
         nomeEmpresa: empresa?.nomeFantasia ?? 'nossa empresa',
         informacoes: config?.atendimentoInformacoes ?? null,
         iaAtiva: config?.atendimentoIaAtivo === true,
+        saudacao: config?.atendimentoSaudacao?.trim() || null,
+        jaSaudou: conversa.saudadoEm !== null,
         presentes: await this.vendedoresPresentes(tx, empresaId),
         historico,
       };
@@ -871,6 +889,31 @@ export class WhatsappTriagemService {
         // faria "3 mensagens" no lugar de três pessoas na fila.
         acumular: false,
       });
+    }
+  }
+
+  /**
+   * A saudação da empresa, uma vez por rodada de triagem.
+   *
+   * O marcador é gravado **antes** do envio, e não depois: falha de transporte
+   * repetiria a saudação a cada mensagem seguinte, e o cliente receberia "Olá!
+   * Como posso ajudar?" três vezes seguidas. Perder uma saudação é menos ruim
+   * do que repeti-la.
+   */
+  private async saudar(empresaId: string, conversaId: string, texto: string) {
+    try {
+      await this.prisma.withTenant(empresaId, (tx) =>
+        tx.whatsappConversa.update({
+          where: { id: conversaId },
+          data: { saudadoEm: new Date() },
+        }),
+      );
+      await this.responder(empresaId, conversaId, texto);
+    } catch (erro) {
+      // Saudação não é o atendimento: se ela falhar, a triagem continua.
+      this.logger.warn(
+        `Falha ao enviar saudação da conversa ${conversaId}: ${erro}`,
+      );
     }
   }
 

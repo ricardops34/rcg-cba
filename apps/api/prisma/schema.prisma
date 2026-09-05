@@ -2842,6 +2842,15 @@ model WhatsappConversa {
   /// vendedor nasce e morre em `humano`: ela já é dele.
   atendimento WhatsappAtendimentoStatus @default(humano)
 
+  /// Quando a saudação da empresa foi enviada **nesta rodada** de triagem.
+  ///
+  /// Precisa existir porque a conversa institucional é reaproveitada, não
+  /// recriada: encerrar o atendimento devolve a mesma linha para `bot`. Sem
+  /// este marcador, contar mensagens enviadas faria a saudação sair uma única
+  /// vez na vida da conversa — e o assunto seguinte, meses depois, começaria
+  /// no meio. É zerado sempre que a conversa volta para `bot`.
+  saudadoEm DateTime?
+
   /// Vendedor para quem a IA direcionou, ou que assumiu a conversa.
   ///
   /// Enquanto é nulo e o status é `bot` ou `aguardando`, a conversa **não

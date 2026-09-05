@@ -14,10 +14,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-type Aba = "zapo" | "evolution-go" | "cloud-api" | "instancias";
+type Aba = "zapo" | "evolution-go" | "cloud-api" | "instancias" | "atendimento";
 
 const STATUS: Record<WhatsappSessao["status"], { rotulo: string; variant: "success" | "warning" | "destructive" | "secondary" }> = {
   conectada: { rotulo: "Conectada", variant: "success" },
@@ -46,6 +47,7 @@ export default function WhatsappConfigPage() {
           <TabsTrigger value="evolution-go">Evolution GO</TabsTrigger>
           <TabsTrigger value="cloud-api">API Oficial</TabsTrigger>
           <TabsTrigger value="instancias">Instâncias</TabsTrigger>
+          <TabsTrigger value="atendimento">Atendimento IA</TabsTrigger>
         </TabsList>
         <TabsContent value="zapo" className="pt-4"><ZapoConfig config={config} /></TabsContent>
         <TabsContent value="evolution-go" className="pt-4"><EvolutionConfig config={config} /></TabsContent>
@@ -58,8 +60,168 @@ export default function WhatsappConfigPage() {
           />
         </TabsContent>
         <TabsContent value="instancias" className="pt-4"><Instancias config={config} /></TabsContent>
+        <TabsContent value="atendimento" className="pt-4"><AtendimentoIaConfig config={config} /></TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+/**
+ * Atendimento por IA no número institucional.
+ *
+ * Fica em aba própria, e não dentro de zapo-js/Evolution GO, porque não é
+ * configuração de transporte: vale para o número da empresa qualquer que seja
+ * o provedor que o mantém conectado.
+ *
+ * Estes quatro campos existiam só no banco — a migration os criou, a triagem
+ * lia dois deles, e não havia nada que os escrevesse. Enquanto isso, o
+ * interruptor nascia desligado e a triagem inteira era inalcançável.
+ */
+function AtendimentoIaConfig({ config }: { config: WhatsappConfig }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({
+    atendimentoIaAtivo: config.atendimentoIaAtivo,
+    atendimentoSaudacao: config.atendimentoSaudacao ?? "",
+    atendimentoInformacoes: config.atendimentoInformacoes ?? "",
+    atendimentoInatividadeMin: config.atendimentoInatividadeMin,
+  });
+
+  const salvar = useMutation({
+    mutationFn: () =>
+      apiFetch("/whatsapp/config", {
+        method: "PUT",
+        body: {
+          ...form,
+          atendimentoSaudacao: form.atendimentoSaudacao.trim() || null,
+          atendimentoInformacoes: form.atendimentoInformacoes.trim() || null,
+        },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["whatsapp-config"] });
+      toast.success("Atendimento por IA atualizado.");
+    },
+    onError: (error) => toast.error(mensagemErro(error, "Erro ao salvar")),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="border-b">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <CardTitle>Atendimento por IA</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              A triagem que atende quem escreve para o número da empresa:
+              identifica, responde o que consegue e entrega a conversa a uma
+              pessoa. Vale para qualquer transporte.
+            </p>
+          </div>
+          <label className="flex shrink-0 items-center gap-2 text-sm font-medium">
+            <Switch
+              checked={form.atendimentoIaAtivo}
+              onCheckedChange={(atendimentoIaAtivo) =>
+                setForm((f) => ({ ...f, atendimentoIaAtivo }))
+              }
+            />
+            Ativo
+          </label>
+        </div>
+      </CardHeader>
+
+      <CardContent className="pt-6">
+        <FieldGroup className="gap-6">
+          {!config.ativo && (
+            <p className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+              A integração de WhatsApp está desativada. Ligar a triagem aqui não
+              tem efeito enquanto o número da empresa não estiver conectado.
+            </p>
+          )}
+
+          <Field>
+            <FieldLabel htmlFor="atendimentoSaudacao">Saudação</FieldLabel>
+            <Textarea
+              id="atendimentoSaudacao"
+              rows={2}
+              maxLength={500}
+              placeholder="Olá! Aqui é o atendimento da Empresa. Como posso ajudar?"
+              value={form.atendimentoSaudacao}
+              onChange={(event) =>
+                setForm((f) => ({ ...f, atendimentoSaudacao: event.target.value }))
+              }
+            />
+            <FieldDescription>
+              Primeira fala da conversa, enviada como você escreveu. Não passa
+              pela IA de propósito — deixar o modelo compor a saudação faz a
+              mesma empresa soar diferente a cada conversa. Em branco, a IA já
+              começa respondendo.
+            </FieldDescription>
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="atendimentoInformacoes">
+              O que a IA pode dizer sobre a empresa
+            </FieldLabel>
+            <Textarea
+              id="atendimentoInformacoes"
+              rows={6}
+              maxLength={4000}
+              placeholder={
+                "Horário: seg a sex, 8h às 18h.\n" +
+                "Endereço: Rua X, 100 — Campo Grande/MS.\n" +
+                "Pagamento: boleto, PIX e cartão em até 3x.\n" +
+                "Prazo de entrega na capital: 2 dias úteis."
+              }
+              value={form.atendimentoInformacoes}
+              onChange={(event) =>
+                setForm((f) => ({
+                  ...f,
+                  atendimentoInformacoes: event.target.value,
+                }))
+              }
+            />
+            <FieldDescription>
+              Vai ao modelo como contexto, em toda conversa. Vazio não quebra
+              nada: sem isto a IA identifica e direciona, que é o mínimo — o que
+              ela não faz é inventar. Escreva só o que pode ser dito a qualquer
+              um que mande mensagem.
+            </FieldDescription>
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="atendimentoInatividadeMin">
+              Encerrar por silêncio
+            </FieldLabel>
+            <div className="flex items-center gap-2">
+              <Input
+                id="atendimentoInatividadeMin"
+                type="number"
+                min={0}
+                max={1440}
+                className="max-w-32"
+                value={form.atendimentoInatividadeMin}
+                onChange={(event) =>
+                  setForm((f) => ({
+                    ...f,
+                    atendimentoInatividadeMin: Number(event.target.value),
+                  }))
+                }
+              />
+              <span className="text-sm text-muted-foreground">minutos</span>
+            </div>
+            <FieldDescription>
+              Conversa parada no meio da triagem não está com a IA nem com uma
+              pessoa — some da vista de todos. Passado este tempo sem resposta do
+              cliente, ela é encerrada e sai do limbo. 0 desliga.
+            </FieldDescription>
+          </Field>
+        </FieldGroup>
+      </CardContent>
+
+      <CardFooter className="justify-end border-t">
+        <Button onClick={() => salvar.mutate()} disabled={salvar.isPending}>
+          {salvar.isPending ? "Salvando..." : "Salvar atendimento"}
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }
 
