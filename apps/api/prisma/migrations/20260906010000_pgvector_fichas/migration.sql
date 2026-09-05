@@ -50,10 +50,11 @@ CREATE TABLE "produto_ficha_trechos" (
 -- consulta o catálogo para saber (`EmbeddingsService.bancoSuportaVetor`) e
 -- desliga a metade semântica quando ela não está aqui.
 --
--- 1536 = `text-embedding-3-small`. pgvector exige a dimensão declarada para
--- indexar, então trocar para um modelo de outra dimensão obriga a recriar a
--- coluna e reindexar tudo — o serviço recusa vetor de tamanho diferente em vez
--- de gravar algo que a busca compararia com lixo.
+-- 768 = `nomic-embed-text`, o modelo que roda no Ollama local (ver
+-- docker-compose.dev.yml). pgvector exige a dimensão declarada para indexar,
+-- então trocar para um modelo de outra dimensão obriga a recriar a coluna e
+-- reindexar tudo — o serviço recusa vetor de tamanho diferente em vez de gravar
+-- algo que a busca compararia com lixo.
 --
 -- HNSW com distância de cosseno: cosseno porque o que importa é a direção do
 -- vetor (o assunto), não a magnitude; HNSW porque não precisa de treino prévio,
@@ -62,7 +63,7 @@ CREATE TABLE "produto_ficha_trechos" (
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') THEN
-    ALTER TABLE "produto_ficha_trechos" ADD COLUMN "embedding" vector(1536);
+    ALTER TABLE "produto_ficha_trechos" ADD COLUMN "embedding" vector(768);
 
     CREATE INDEX "produto_ficha_trechos_embedding_idx"
       ON "produto_ficha_trechos" USING hnsw ("embedding" vector_cosine_ops);

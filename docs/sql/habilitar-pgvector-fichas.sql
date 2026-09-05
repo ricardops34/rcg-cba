@@ -28,7 +28,7 @@ BEGIN
     SELECT 1 FROM information_schema.columns
     WHERE table_name = 'produto_ficha_trechos' AND column_name = 'embedding'
   ) THEN
-    ALTER TABLE "produto_ficha_trechos" ADD COLUMN "embedding" vector(1536);
+    ALTER TABLE "produto_ficha_trechos" ADD COLUMN "embedding" vector(768);
 
     CREATE INDEX "produto_ficha_trechos_embedding_idx"
       ON "produto_ficha_trechos" USING hnsw ("embedding" vector_cosine_ops);

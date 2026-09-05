@@ -30,13 +30,13 @@ export class EmbeddingsService {
   private readonly logger = new Logger(EmbeddingsService.name);
 
   /**
-   * A dimensão que a coluna `vector(1536)` aceita.
+   * A dimensão que a coluna `vector(768)` aceita.
    *
    * Vetor de outro tamanho é **recusado**, não truncado: comparar vetores de
    * modelos diferentes não dá erro, dá resultado sem sentido — e um resultado
    * sem sentido numa busca é muito mais difícil de perceber do que uma falha.
    */
-  static readonly DIMENSOES = 1536;
+  static readonly DIMENSOES = 768;
 
   /**
    * Se a coluna de vetor existe neste banco. `null` = ainda não perguntei.

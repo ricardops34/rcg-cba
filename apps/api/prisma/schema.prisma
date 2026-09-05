@@ -691,7 +691,7 @@ model ProdutoFicha {
 ///
 /// ## A dimensão é fixa, e isso é uma decisão
 ///
-/// 1536 é a dimensão do `text-embedding-3-small` da OpenAI e de vários outros.
+/// 768 é a dimensão do `nomic-embed-text`, que roda no Ollama local.
 /// pgvector exige dimensão declarada para indexar, então trocar de modelo para
 /// um de outra dimensão obriga a recriar a coluna **e** reindexar tudo. O
 /// serviço recusa vetor de tamanho diferente em vez de gravar algo que a busca
@@ -715,7 +715,7 @@ model ProdutoFichaTrecho {
 
   /// O vetor. Nulo enquanto a indexação não rodou — o trecho existe antes de o
   /// embedding chegar, e a busca lexical já funciona sem ele.
-  embedding Unsupported("vector(1536)")?
+  embedding Unsupported("vector(768)")?
 
   /// Que modelo gerou o vetor. É o que permite reindexar só o que ficou para
   /// trás quando o modelo muda, em vez de refazer o catálogo inteiro.

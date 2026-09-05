@@ -224,16 +224,43 @@ volume existente e **não** recriou o banco — mesma major version. O Postgres
 pode avisar de versão de collation na primeira subida (a imagem é Debian, a
 anterior era Alpine); é aviso, não erro.
 
-### O gerador de embeddings é outra configuração
+### O gerador de embeddings: Ollama local **[verificado em dev, 2026-09-05]**
 
-A extensão guarda o vetor; quem **gera** o vetor é um provedor externo,
-configurado em Administração > Agente IA, separado do provedor de chat — o
-Codex por OAuth não gera embeddings e a Anthropic não tem o serviço.
+A extensão guarda o vetor; quem **gera** o vetor é um serviço à parte. A escolha
+foi **Ollama rodando na própria VPS** com `nomic-embed-text`: sem chave, sem
+custo por chamada, sem limite de taxa na carga das fichas, e o texto não sai da
+infra. Custa memória — reserve ~1,5 GB para o container.
 
-Sem ele configurado nada quebra: os trechos são gravados sem vetor e a busca
+O serviço está no stack de produção como **opcional**: não subi-lo apenas deixa
+a busca semântica desligada.
+
+**O modelo não vem na imagem.** Depois do primeiro deploy do serviço:
+
+```bash
+docker exec <container-ollama> ollama pull nomic-embed-text
+```
+
+São ~275 MB, e o volume `ollama_models` os preserva entre redeploys. Sem esse
+passo o serviço sobe e responde erro a cada pedido de embedding.
+
+Depois, em **Administração > Agente IA**, os campos de embedding:
+
+| Campo | Valor |
+|---|---|
+| URL | `http://rcgcba-ollama:11434/v1` (o alias do stack) |
+| Modelo | `nomic-embed-text` |
+| Chave | vazio — o Ollama local não pede autenticação |
+
+> **A dimensão é casada com o modelo.** A coluna é `vector(768)`, que é a do
+> `nomic-embed-text`. Trocar para um modelo de outra dimensão (o
+> `text-embedding-3-small` da OpenAI tem 1536) exige recriar a coluna, o índice
+> e **reprocessar todos os vetores** — a API recusa gravar vetor de tamanho
+> diferente em vez de misturar o que não se compara.
+
+Sem nada disso configurado nada quebra: os trechos ficam sem vetor e a busca
 lexical atende sozinha. Ao configurar depois, `POST
 /produto-fichas-importacao/vetorizar` preenche o que faltou, 200 por chamada,
-sem reler PDF nenhum — o texto já está gravado.
+sem reler PDF nenhum — o texto já está gravado desde a importação.
 
 ## Migrations em produção
 

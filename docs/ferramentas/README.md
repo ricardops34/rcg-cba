@@ -34,7 +34,7 @@ catálogo — e a separação é deliberada.
 | Família | Quem está do outro lado | Autenticação | Pode gravar? | Documento |
 |---|---|---|---|---|
 | [Agente interno](agente-interno.md) | funcionário **logado** | sessão + RBAC | sim, com confirmação | 26 ferramentas |
-| [WhatsApp — cliente](whatsapp-cliente.md) | cliente ou desconhecido | vínculo número↔cadastro | só `registrar_lead` | 12 ferramentas |
+| [WhatsApp — cliente](whatsapp-cliente.md) | cliente ou desconhecido | vínculo número↔cadastro | só `registrar_lead` | 13 ferramentas |
 | [WhatsApp — funcionário](whatsapp-funcionario.md) | vendedor/gerente/supervisor | telefone + código confirmado | **não** | 8 ferramentas |
 
 A diferença entre a primeira e a terceira é o ponto que mais confunde quem

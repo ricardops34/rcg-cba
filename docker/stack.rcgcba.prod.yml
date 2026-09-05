@@ -127,6 +127,36 @@ services:
     deploy:
       replicas: 1
 
+  # Gerador de embeddings da busca de fichas técnicas (Ollama, local).
+  #
+  # **Opcional.** Sem ele a busca de produto funciona pela via lexical; o que
+  # some é a metade semântica — achar "lençol" numa ficha que diz "rouparia".
+  # Se não for subir, basta deixar em branco os campos de embedding em
+  # Administração > Agente IA (é o que a API consulta para decidir).
+  #
+  # Local, e não uma API paga: o texto das fichas não sai da infra, não há
+  # chave para gerenciar e não há limite de taxa na carga inicial das fichas.
+  # Em troca consome memória — reserve ~1,5 GB para o container.
+  #
+  # **O modelo não vem na imagem.** Depois do primeiro deploy, rode uma vez:
+  #   docker exec <container-ollama> ollama pull nomic-embed-text
+  # Ver docs/runbook-operacao.md.
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      # Sem o volume, cada redeploy baixa o modelo de novo (~275 MB).
+      - ollama_models:/root/.ollama
+    networks:
+      network_public:
+        aliases:
+          - rcgcba-ollama
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          # Teto para o Ollama não competir por memória com a API na mesma VPS.
+          memory: 2G
+
   web:
     image: bjsoftware/rcgcba-web:latest
     networks:
@@ -146,6 +176,7 @@ services:
 
 volumes:
   uploads:
+  ollama_models:
 
 networks:
   network_public:

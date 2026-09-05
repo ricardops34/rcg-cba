@@ -245,6 +245,43 @@ services:
       timeout: 5s
       retries: 10
 
+  # Gerador de embeddings da busca de fichas técnicas.
+  #
+  # Local, e não uma API paga: o texto das fichas não sai da infra, não há
+  # chave para gerenciar, não há limite de taxa na carga inicial e o custo por
+  # chamada é zero. Em troca, consome memória — `nomic-embed-text` ocupa algo
+  # em torno de 1 GB com o modelo carregado.
+  #
+  # Expõe `/v1/embeddings` no formato OpenAI, que é o que `EmbeddingsService`
+  # fala: trocar por um provedor pago depois é mudar a URL na configuração, sem
+  # tocar em código.
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    # Só a rede interna: nada aqui precisa ser alcançável de fora.
+    expose:
+      - "11434"
+    volumes:
+      # O modelo tem centenas de MB. Sem volume, cada recriação do container o
+      # baixa de novo.
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # Baixa o modelo na primeira subida. Sai depois de terminar — não é serviço.
+  ollama-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["sh", "-c", "ollama pull nomic-embed-text"]
+    restart: "no"
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -267,6 +304,7 @@ services:
 
 volumes:
   postgres_data:
+  ollama_models:
   node_modules:
   api_node_modules:
   web_node_modules:
