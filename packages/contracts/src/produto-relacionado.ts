@@ -66,3 +66,35 @@ export const PRODUTO_RELACIONADO_EXAMPLE: ProdutoRelacionado = {
   unidade: "GL",
   ativo: true,
 };
+
+/**
+ * Ficha técnica: o PDF do fabricante e o Markdown extraído dele.
+ *
+ * Os dois existem porque têm leitores diferentes — o PDF é para o vendedor
+ * abrir e mandar ao cliente, o Markdown é o que a IA lê ao falar do produto.
+ */
+export const produtoFichaSchema = z.object({
+  id: z.string().uuid(),
+  produtoId: z.string().uuid(),
+  titulo: z.string(),
+  markdown: z.string(),
+  /** Caminho público do PDF, para baixar. */
+  url: z.string(),
+  arquivoNome: z.string(),
+  mime: z.string(),
+  tamanho: z.number().int(),
+  visivelAgente: z.boolean(),
+  createdAt: z.string().datetime(),
+});
+export type ProdutoFicha = z.infer<typeof produtoFichaSchema>;
+
+export const produtoFichaAtualizarSchema = z.object({
+  titulo: z.string().trim().min(1).max(200).optional(),
+  /**
+   * Editável de propósito: é aqui que se retira do texto o que não deve chegar
+   * ao modelo — tabela de preço do fabricante, por exemplo.
+   */
+  markdown: z.string().max(200_000).optional(),
+  visivelAgente: z.boolean().optional(),
+});
+export type ProdutoFichaAtualizar = z.infer<typeof produtoFichaAtualizarSchema>;

@@ -127,8 +127,33 @@ export type AgenteOauthImportar = z.infer<typeof agenteOauthImportarSchema>;
 export const agenteEnvioSchema = z.object({
   conversaId: z.string().uuid().optional(),
   texto: z.string().trim().min(1).max(4000),
+  /**
+   * Arquivo anexado a este turno (`POST /agente/anexos`).
+   *
+   * Vale **para uma mensagem só**: o assistente lê o documento uma vez e o
+   * que fica gravado é o resultado — a ficha em Markdown, a foto no produto.
+   */
+  anexoId: z.string().uuid().optional(),
 });
 export type AgenteEnvio = z.infer<typeof agenteEnvioSchema>;
+
+/** O que o upload de anexo devolve, para a tela mostrar o que foi anexado. */
+export const agenteAnexoSchema = z.object({
+  id: z.string().uuid(),
+  arquivoNome: z.string(),
+  mime: z.string(),
+  tamanho: z.number().int(),
+  createdAt: z.string().datetime(),
+});
+export type AgenteAnexo = z.infer<typeof agenteAnexoSchema>;
+
+export const AGENTE_ANEXO_EXAMPLE: AgenteAnexo = {
+  id: "4c9d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f",
+  arquivoNome: "ficha-tecnica-detergente.pdf",
+  mime: "application/pdf",
+  tamanho: 284_113,
+  createdAt: "2026-09-05T18:40:00.000Z",
+};
 
 export const agentePendenciaSchema = z.object({
   id: z.string().uuid(),

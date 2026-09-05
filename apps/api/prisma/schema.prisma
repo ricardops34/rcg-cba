@@ -136,6 +136,8 @@ model Empresa {
   produtoCampos              ProdutoCampo[]
   produtoCampoValores        ProdutoCampoValor[]
   produtoRelacionados        ProdutoRelacionado[]
+  produtoFichas              ProdutoFicha[]
+  agenteAnexos               AgenteAnexo[]
   orcamentoConfig            OrcamentoConfig?
   parametros                 ParametroEmpresa[]
   clienteCnaes               ClienteCnae[]
@@ -590,6 +592,7 @@ model Produto {
   /// ProdutoRelacionado.
   relacionados  ProdutoRelacionado[] @relation("ProdutoRelacaoOrigem")
   relacionadoDe ProdutoRelacionado[] @relation("ProdutoRelacaoDestino")
+  fichas        ProdutoFicha[]
 
   @@unique([empresaId, codigoErp])
   @@index([empresaId, descricao])
@@ -617,6 +620,85 @@ model ProdutoFoto {
 
   @@index([empresaId, produtoId, ordem])
   @@map("produto_fotos")
+}
+
+/// Ficha técnica de um produto: o PDF que o fabricante manda e o Markdown que
+/// o agente extraiu dele.
+///
+/// **Os dois têm leitores diferentes, e é por isso que os dois existem.** O PDF
+/// é para o vendedor abrir e mandar ao cliente; o Markdown é o que a IA lê ao
+/// falar do produto. Modelo nenhum recebe o PDF de novo a cada pergunta: ele é
+/// lido **uma vez**, no anexo, e o que fica é o texto.
+///
+/// O Markdown é editável na tela de propósito. É ali que a regra "a IA nunca
+/// passa preço" continua verificável: se a ficha do fabricante trouxer tabela
+/// de preço, ela aparece para ser retirada, em vez de entrar no contexto do
+/// modelo sem ninguém saber.
+///
+/// Vários documentos por produto (ficha, FISPQ, certificado): um campo único
+/// no produto seria sobrescrito pelo segundo PDF.
+model ProdutoFicha {
+  id        String @id @default(uuid())
+  empresaId String
+  produtoId String
+
+  /// Nome em disco (UUID + extensão) e o nome que a pessoa enviou. O segundo
+  /// nunca toca o disco — ver `extensaoPorMime`.
+  arquivo     String
+  arquivoNome String
+  mime        String
+  tamanho     Int
+
+  titulo   String
+  markdown String
+
+  /// Se a IA pode usar este texto ao falar do produto. Mesmo sentido do
+  /// `visivelAgente` dos campos complementares.
+  visivelAgente Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId, produtoId])
+  @@map("produto_fichas")
+}
+
+/// Arquivo que alguém anexou a uma mensagem do assistente interno.
+///
+/// Vive em tabela própria, e não solto em disco, por três razões: o RLS o
+/// prende à empresa, o `usuarioId` impede que uma conversa use o anexo de
+/// outra pessoa, e o `consumidoEm` registra que ele já virou ficha ou foto —
+/// o que evita reaproveitar o mesmo upload em duas gravações.
+///
+/// **O modelo nunca escolhe o anexo.** Ele vai ao provedor porque a mensagem o
+/// carrega, e a ferramenta o recebe do servidor; se o id fosse um argumento,
+/// bastaria convencer o modelo a informar outro.
+model AgenteAnexo {
+  id        String @id @default(uuid())
+  empresaId String
+  usuarioId String
+
+  arquivo     String
+  arquivoNome String
+  mime        String
+  tamanho     Int
+
+  /// Quando virou ficha técnica ou foto de produto. Nulo = ainda não usado.
+  consumidoEm DateTime?
+
+  createdAt DateTime @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@index([empresaId, usuarioId, createdAt])
+  @@map("agente_anexos")
 }
 
 /// Como dois produtos se relacionam.

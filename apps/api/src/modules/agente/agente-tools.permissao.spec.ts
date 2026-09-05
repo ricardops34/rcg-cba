@@ -32,6 +32,8 @@ describe('AgenteToolsService — permissão × configuração', () => {
     {} as never, // whatsappAcoes
     {} as never, // agendamento
     {} as never, // referencias
+    {} as never, // fichas
+    {} as never, // anexos
   );
 
   const admin: AuthenticatedUser = {
@@ -154,7 +156,9 @@ describe('AgenteToolsService — permissão × configuração', () => {
     };
 
     const temConversas = (user: AuthenticatedUser, f?: FiltroFerramentas) =>
-      tools.disponiveisPara(user, f).some((x) => x.nome === 'conversas_whatsapp');
+      tools
+        .disponiveisPara(user, f)
+        .some((x) => x.nome === 'conversas_whatsapp');
 
     it('aparece para quem tem a permissão e o aparelho vinculado', () => {
       expect(temConversas(comWhatsapp, filtro({}, PERFIL_VENDEDOR, true))).toBe(
@@ -165,9 +169,9 @@ describe('AgenteToolsService — permissão × configuração', () => {
     it('NÃO aparece para quem tem a permissão mas nenhum aparelho vinculado', () => {
       // O caso do vendedor que ainda não pareou o celular. Sem isto o modelo
       // prometeria agendar uma mensagem por um WhatsApp que não existe.
-      expect(temConversas(comWhatsapp, filtro({}, PERFIL_VENDEDOR, false))).toBe(
-        false,
-      );
+      expect(
+        temConversas(comWhatsapp, filtro({}, PERFIL_VENDEDOR, false)),
+      ).toBe(false);
     });
 
     it('NÃO aparece sem filtro carregado — o default fecha', () => {
@@ -190,6 +194,58 @@ describe('AgenteToolsService — permissão × configuração', () => {
       // para ler nem aparelho por onde falar.
       expect(temConversas(admin, filtro({}, null, false))).toBe(false);
       expect(temConversas(admin, filtro({}, null, true))).toBe(true);
+    });
+  });
+
+  describe('ferramentas de anexo', () => {
+    // Só existem no turno que trouxe arquivo. Fora dele, o modelo prometeria
+    // anexar o que não recebeu — e o usuário ficaria esperando uma ficha que
+    // nunca foi gravada.
+    const comProdutos: AuthenticatedUser = {
+      ...admin,
+      permissoes: ['produtos.editar', 'produtos.visualizar'],
+    };
+
+    const temFicha = (user: AuthenticatedUser, temAnexo: boolean) =>
+      tools
+        .disponiveisPara(user, filtro({}, null, false), { temAnexo })
+        .some((x) => x.nome === 'anexar_ficha_tecnica');
+
+    it('aparece no turno com arquivo, para quem pode editar produto', () => {
+      expect(temFicha(comProdutos, true)).toBe(true);
+    });
+
+    it('NÃO aparece sem arquivo no turno', () => {
+      expect(temFicha(comProdutos, false)).toBe(false);
+    });
+
+    it('NÃO aparece por omissão do parâmetro — o default fecha', () => {
+      expect(
+        tools
+          .disponiveisPara(comProdutos, filtro({}, null, false))
+          .some((x) => x.nome === 'anexar_ficha_tecnica'),
+      ).toBe(false);
+    });
+
+    it('o arquivo não substitui a permissão', () => {
+      // `vendedor` tem só `clientes.visualizar`: anexar ficha técnica altera o
+      // cadastro de produto, e ter mandado um PDF não muda isso.
+      expect(temFicha(vendedor, true)).toBe(false);
+    });
+
+    it('o id do anexo não é parâmetro declarado de nenhuma ferramenta', () => {
+      // Ele é injetado pelo servidor a partir da mensagem que carregou o
+      // arquivo. Declarado, bastaria convencer o modelo a informar o anexo de
+      // outra pessoa.
+      // O catálogo cru, não o filtrado: a garantia vale para toda ferramenta
+      // que exista, inclusive as que este usuário não alcança.
+      for (const f of tools['todas']()) {
+        const props = Object.keys(
+          (f.parametros as { properties?: Record<string, unknown> })
+            .properties ?? {},
+        );
+        expect(props).not.toContain('anexoId');
+      }
     });
   });
 

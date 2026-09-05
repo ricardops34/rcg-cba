@@ -180,6 +180,26 @@ export class CodexClient implements ProvedorClient {
       return itens;
     }
 
+    // Anexo: a Responses API lê PDF como `input_file` e imagem como
+    // `input_image`, os dois por data URI. O arquivo vem antes do texto — o
+    // texto costuma ser a instrução sobre ele.
+    if (m.anexos?.length) {
+      const partes: unknown[] = m.anexos.map((a) =>
+        a.mime === 'application/pdf'
+          ? {
+              type: 'input_file',
+              filename: a.nome,
+              file_data: `data:${a.mime};base64,${a.base64}`,
+            }
+          : {
+              type: 'input_image',
+              image_url: `data:${a.mime};base64,${a.base64}`,
+            },
+      );
+      partes.push({ type: 'input_text', text: m.conteudo ?? '' });
+      return [{ type: 'message', role: 'user', content: partes }];
+    }
+
     return [
       {
         type: 'message',

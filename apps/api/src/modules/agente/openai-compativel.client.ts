@@ -160,6 +160,26 @@ export class OpenAiCompativelClient implements ProvedorClient {
         })),
       };
     }
+    // Anexo: `chat/completions` aceita imagem como `image_url` com data URI, e
+    // **não** aceita PDF (isso é da Responses API). Recusar aqui, com o motivo,
+    // é melhor do que mandar e receber de volta um erro do provedor que não
+    // diz nada a quem anexou o arquivo.
+    if (m.papel === 'user' && m.anexos?.length) {
+      const pdf = m.anexos.find((a) => a.mime === 'application/pdf');
+      if (pdf) {
+        throw new BadGatewayException(
+          'Este provedor não lê PDF pelo chat. Configure Anthropic ou Codex ' +
+            'em Administração > Agente IA, ou anexe uma imagem.',
+        );
+      }
+      const partes: unknown[] = m.anexos.map((a) => ({
+        type: 'image_url',
+        image_url: { url: `data:${a.mime};base64,${a.base64}` },
+      }));
+      if (m.conteudo) partes.push({ type: 'text', text: m.conteudo });
+      return { role: 'user', content: partes };
+    }
+
     return { role: m.papel, content: m.conteudo ?? '' };
   }
 

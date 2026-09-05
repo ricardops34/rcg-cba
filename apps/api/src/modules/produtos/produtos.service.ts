@@ -11,9 +11,12 @@ import type {
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { basename, join } from 'node:path';
-import { existsSync, unlink } from 'node:fs';
+import { existsSync, mkdirSync, unlink } from 'node:fs';
+import { copyFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import {
   PRODUTOS_DIR,
+  extensaoPorMime,
   produtoFotoPublicPath,
 } from '../../common/uploads/uploads.config';
 
@@ -226,6 +229,34 @@ export class ProdutosService {
         include: PRODUTO_INCLUDE,
       });
     });
+  }
+
+  /**
+   * Mesma gravação do upload da tela, mas a partir de um arquivo que já está
+   * em disco — é o caminho do anexo do assistente.
+   *
+   * Copia em vez de mover: o anexo tem ciclo de vida próprio e pode ser lido
+   * de novo se a gravação for refeita (ver `AgenteAnexosService`).
+   */
+  async setFotoDeArquivo(
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+    origem: { caminho: string; nomeOriginal: string; mime: string },
+  ) {
+    const produto = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.produto.findFirst({
+        where: { id, empresaId, deletedAt: null },
+        select: { id: true },
+      }),
+    );
+    if (!produto) throw new NotFoundException('Produto não encontrado');
+
+    if (!existsSync(PRODUTOS_DIR)) mkdirSync(PRODUTOS_DIR, { recursive: true });
+    const filename = `${randomUUID()}${extensaoPorMime(origem.mime)}`;
+    await copyFile(origem.caminho, join(PRODUTOS_DIR, filename));
+
+    return this.setFoto(empresaId, user, id, filename, origem.nomeOriginal);
   }
 
   async definirFotoPrincipal(

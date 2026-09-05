@@ -17,6 +17,16 @@ export const UPLOADS_DIR = join(process.cwd(), 'uploads');
 
 export const LOGOS_DIR = join(UPLOADS_DIR, 'logos');
 export const PRODUTOS_DIR = join(UPLOADS_DIR, 'produtos');
+/** Fichas técnicas em PDF, anexadas ao produto. */
+export const FICHAS_DIR = join(UPLOADS_DIR, 'fichas');
+/**
+ * Arquivos anexados a uma mensagem do assistente interno.
+ *
+ * Diretório próprio porque o ciclo de vida é outro: o anexo é material de
+ * passagem — vira ficha ou foto, e o que fica guardado de verdade é a cópia no
+ * diretório de destino.
+ */
+export const AGENTE_DIR = join(UPLOADS_DIR, 'agente');
 /** Imagem da faixa institucional do topo do sistema, por empresa. */
 export const BANNERS_DIR = join(UPLOADS_DIR, 'banners');
 
@@ -39,6 +49,62 @@ export function logoPublicPath(filename: string) {
 export function produtoFotoPublicPath(filename: string) {
   return `/uploads/produtos/${filename}`;
 }
+
+export function fichaPublicPath(filename: string) {
+  return `/uploads/fichas/${filename}`;
+}
+
+/**
+ * O que o assistente aceita como anexo: PDF (ficha técnica) e imagem (foto do
+ * produto).
+ *
+ * A lista é branca, ao contrário do anexo de WhatsApp: aqui o arquivo é
+ * **enviado a um provedor externo de IA**, e só faz sentido mandar o que ele
+ * sabe ler. Um .docx viraria uma cobrança e um erro do provedor.
+ */
+export const AGENTE_ANEXO_MIME_TYPES = [
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+];
+
+/**
+ * Teto do anexo do assistente (10 MB).
+ *
+ * Menor que o do WhatsApp de propósito: o arquivo vai em base64 dentro do
+ * corpo da requisição ao provedor, o que já o infla em um terço, e provedor
+ * nenhum aceita um documento de 16 MB numa chamada de chat.
+ */
+export const AGENTE_ANEXO_MAX_BYTES = 10 * 1024 * 1024;
+
+export const agenteAnexoUploadOptions = {
+  storage: diskStorage({
+    destination: (_req, _file, cb) => {
+      if (!existsSync(AGENTE_DIR)) mkdirSync(AGENTE_DIR, { recursive: true });
+      cb(null, AGENTE_DIR);
+    },
+    filename: (_req: Request, file, cb) => {
+      cb(null, `${randomUUID()}${extensaoPorMime(file.mimetype)}`);
+    },
+  }),
+  limits: { fileSize: AGENTE_ANEXO_MAX_BYTES },
+  fileFilter: (
+    _req: Request,
+    file: Express.Multer.File,
+    cb: (error: Error | null, acceptFile: boolean) => void,
+  ) => {
+    if (!AGENTE_ANEXO_MIME_TYPES.includes(file.mimetype)) {
+      return cb(
+        new BadRequestException(
+          'Formato inválido. Envie PDF, PNG, JPEG ou WEBP.',
+        ),
+        false,
+      );
+    }
+    cb(null, true);
+  },
+};
 
 /** Caminho público (servido em /uploads) de um arquivo salvo em BANNERS_DIR. */
 export function bannerPublicPath(filename: string) {

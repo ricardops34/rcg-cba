@@ -14,6 +14,8 @@ import { WhatsappAcoesService } from '../whatsapp/whatsapp-acoes.service';
 import { WhatsappAgendamentoService } from '../whatsapp/whatsapp-agendamento.service';
 import { VendedoresService } from '../vendedores/vendedores.service';
 import { MeusAtendimentosService } from '../meus-atendimentos/meus-atendimentos.service';
+import { ProdutoFichasService } from '../produtos/produto-fichas.service';
+import { AgenteAnexosService } from './agente-anexos.service';
 import type { AgenteDestino } from '@plataforma/contracts';
 import type { FerramentaChat } from './provedor-ia';
 // Só o tipo: `import type` some no build, então não há ciclo em runtime com
@@ -54,6 +56,18 @@ export interface Ferramenta {
   instrucoes?: string;
   /** Ferramenta que grava não executa direto — vira pendência de confirmação. */
   escrita?: boolean;
+  /**
+   * Ferramenta que trabalha sobre o **arquivo anexado ao turno**.
+   *
+   * O id do anexo não é parâmetro declarado e o modelo não o informa: quem o
+   * injeta nos argumentos é o servidor, a partir da mensagem que o carregou
+   * (ver `AgenteChatService.enviar`). Declarado como parâmetro, bastaria
+   * convencer o modelo a informar o anexo de outra pessoa.
+   *
+   * Sem anexo no turno, a ferramenta some do catálogo — o modelo não deve
+   * prometer anexar o que não recebeu.
+   */
+  usaAnexo?: boolean;
   /**
    * Só existe para quem tem WhatsApp pareado (ver `FiltroFerramentas`).
    *
@@ -360,6 +374,8 @@ export class AgenteToolsService {
     private readonly whatsappAcoes: WhatsappAcoesService,
     private readonly agendamento: WhatsappAgendamentoService,
     private readonly meusAtendimentos: MeusAtendimentosService,
+    private readonly fichas: ProdutoFichasService,
+    private readonly anexos: AgenteAnexosService,
   ) {}
 
   /**
@@ -1454,6 +1470,132 @@ export class AgenteToolsService {
         },
       },
       // ----------------------------------------------------------------------
+      // Anexo: ficha técnica e foto de produto.
+      //
+      // As duas só existem quando há arquivo no turno (`usaAnexo`) e o id do
+      // anexo é injetado pelo servidor, nunca informado pelo modelo.
+      //
+      // A ficha é o caso que justifica mandar o arquivo ao provedor: o modelo
+      // lê o PDF **uma vez**, aqui, e o que fica gravado é o Markdown. Nenhuma
+      // pergunta futura sobre o produto reenvia o documento.
+      // ----------------------------------------------------------------------
+      {
+        nome: 'anexar_ficha_tecnica',
+        descricao:
+          'Anexa a um produto o PDF de ficha técnica que o usuário acabou de ' +
+          'enviar, junto do texto dele em Markdown. Leia o PDF anexado, ' +
+          'transcreva o conteúdo técnico em Markdown (títulos, listas, tabelas ' +
+          'de propriedades) e informe `produtoId`, `titulo` e `markdown`. ' +
+          'Use buscar_produto antes, para descobrir o produtoId — e se a busca ' +
+          'devolver mais de um candidato, pergunte qual antes de chamar isto.',
+        instrucoes:
+          'Transcreva o que está no documento, não resuma nem invente. ' +
+          '**Não inclua preço, tabela de preços nem condição comercial** no ' +
+          'markdown: este texto é lido pela IA ao falar do produto, e preço só ' +
+          'sai em orçamento feito por gente. Confirme com o usuário qual é o ' +
+          'produto antes de anexar.',
+        permissao: 'produtos.editar',
+        exemplos: [
+          'Anexei a ficha técnica em PDF — cadastre no produto DEMO-P015',
+        ],
+        escrita: true,
+        usaAnexo: true,
+        resumir: (a) =>
+          `Anexar a ficha "${texto(a.titulo) || 'ficha técnica'}" ao produto`,
+        parametros: {
+          type: 'object',
+          properties: {
+            produtoId: { type: 'string' },
+            titulo: {
+              type: 'string',
+              description:
+                'Nome do documento, ex.: "Ficha técnica — Detergente 5 L"',
+            },
+            markdown: {
+              type: 'string',
+              description: 'O conteúdo do PDF transcrito em Markdown',
+            },
+          },
+          required: ['produtoId', 'titulo', 'markdown'],
+        },
+        executar: async (a, user) => {
+          const anexoId = texto(a.anexoId);
+          const origem = await this.anexos.consumir(
+            user.empresaAtivaId,
+            user,
+            anexoId,
+            'pdf',
+          );
+          try {
+            return await this.fichas.criar(
+              user.empresaAtivaId,
+              user,
+              texto(a.produtoId),
+              origem,
+              { titulo: texto(a.titulo), markdown: texto(a.markdown) },
+            );
+          } catch (erro) {
+            // Produto inexistente derruba a gravação **depois** de o anexo ter
+            // sido marcado como usado. Sem devolver, o usuário teria de subir
+            // o arquivo de novo por um erro que não é dele.
+            await this.anexos.devolver(user.empresaAtivaId, anexoId);
+            throw erro;
+          }
+        },
+        destino: (a) => {
+          const id = texto(a.produtoId);
+          return id
+            ? { rotulo: 'Abrir o produto', rota: `/comercial/produtos/${id}` }
+            : null;
+        },
+      },
+      {
+        nome: 'anexar_foto_produto',
+        descricao:
+          'Anexa ao produto a imagem que o usuário acabou de enviar. Informe ' +
+          'o `produtoId`. Use buscar_produto antes para descobri-lo, e ' +
+          'pergunte qual é o produto se houver mais de um candidato.',
+        instrucoes:
+          'Confirme com o usuário de que produto é a foto antes de anexar — ' +
+          'uma imagem no produto errado é vista depois por quem vende.',
+        permissao: 'produtos.editar',
+        exemplos: ['Essa foto é do produto DEMO-P015, pode cadastrar'],
+        escrita: true,
+        usaAnexo: true,
+        resumir: () => 'Anexar a imagem enviada como foto do produto',
+        parametros: {
+          type: 'object',
+          properties: { produtoId: { type: 'string' } },
+          required: ['produtoId'],
+        },
+        executar: async (a, user) => {
+          const anexoId = texto(a.anexoId);
+          const origem = await this.anexos.consumir(
+            user.empresaAtivaId,
+            user,
+            anexoId,
+            'imagem',
+          );
+          try {
+            return await this.produtos.setFotoDeArquivo(
+              user.empresaAtivaId,
+              user,
+              texto(a.produtoId),
+              origem,
+            );
+          } catch (erro) {
+            await this.anexos.devolver(user.empresaAtivaId, anexoId);
+            throw erro;
+          }
+        },
+        destino: (a) => {
+          const id = texto(a.produtoId);
+          return id
+            ? { rotulo: 'Abrir o produto', rota: `/comercial/produtos/${id}` }
+            : null;
+        },
+      },
+      // ----------------------------------------------------------------------
       // WhatsApp do próprio vendedor.
       //
       // Todas marcadas `exigeWhatsapp`: sem aparelho pareado não há de onde ler
@@ -1789,6 +1931,7 @@ export class AgenteToolsService {
   disponiveisPara(
     user: AuthenticatedUser,
     filtro?: FiltroFerramentas,
+    opcoes: { temAnexo?: boolean } = {},
   ): Ferramenta[] {
     return this.todas().filter(
       (f) =>
@@ -1797,15 +1940,19 @@ export class AgenteToolsService {
         // Sem filtro, `exigeWhatsapp` fecha. É o mesmo default do módulo de
         // WhatsApp: conversa de cliente é dado pessoal, e quem não provou ter
         // aparelho vinculado não enxerga.
-        (!f.exigeWhatsapp || !!filtro?.whatsappVinculado),
+        (!f.exigeWhatsapp || !!filtro?.whatsappVinculado) &&
+        // Ferramenta de anexo só existe no turno que trouxe arquivo. Fora
+        // dele, o modelo prometeria anexar o que não recebeu.
+        (!f.usaAnexo || !!opcoes.temAnexo),
     );
   }
 
   paraProvedor(
     user: AuthenticatedUser,
     filtro?: FiltroFerramentas,
+    opcoes: { temAnexo?: boolean } = {},
   ): FerramentaChat[] {
-    return this.disponiveisPara(user, filtro).map((f) => {
+    return this.disponiveisPara(user, filtro, opcoes).map((f) => {
       const cfg = filtro?.config.get(f.nome);
       return {
         // O nome continua sendo a chave: renomeá-lo mudaria o `tool_call` que

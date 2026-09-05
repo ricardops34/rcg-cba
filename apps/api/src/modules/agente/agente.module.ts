@@ -4,6 +4,7 @@ import { AgenteChatService } from './agente-chat.service';
 import { AgenteToolsService } from './agente-tools.service';
 import { AgenteReferenciasService } from './agente-referencias.service';
 import { AgenteFerramentasService } from './agente-ferramentas.service';
+import { AgenteAnexosService } from './agente-anexos.service';
 import { ProvedorIaModule } from './provedor-ia.module';
 import { ConsultasModule } from '../consultas/consultas.module';
 import { ClientesModule } from '../clientes/clientes.module';
@@ -45,6 +46,7 @@ import { MeusAtendimentosModule } from '../meus-atendimentos/meus-atendimentos.m
     AgenteToolsService,
     AgenteReferenciasService,
     AgenteFerramentasService,
+    AgenteAnexosService,
   ],
 })
 export class AgenteModule {}

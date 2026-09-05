@@ -165,6 +165,30 @@ export class AnthropicClient implements ProvedorClient {
       return { role: 'assistant', content: blocos };
     }
 
+    // Anexo: a Messages API lê PDF como bloco `document` e imagem como
+    // `image`, os dois em base64. O arquivo vem **antes** do texto de
+    // propósito — é a ordem que a Anthropic recomenda, e o texto costuma ser
+    // a instrução sobre o documento ("faça a ficha deste PDF").
+    if (m.papel === 'user' && m.anexos?.length) {
+      const blocos: unknown[] = m.anexos.map((a) =>
+        a.mime === 'application/pdf'
+          ? {
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: 'application/pdf',
+                data: a.base64,
+              },
+            }
+          : {
+              type: 'image',
+              source: { type: 'base64', media_type: a.mime, data: a.base64 },
+            },
+      );
+      if (m.conteudo) blocos.push({ type: 'text', text: m.conteudo });
+      return { role: 'user', content: blocos };
+    }
+
     return { role: m.papel, content: m.conteudo ?? '' };
   }
 

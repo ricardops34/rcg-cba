@@ -30,9 +30,32 @@ export interface ChamadaFerramenta {
   argumentos: Record<string, unknown>;
 }
 
+/**
+ * Arquivo que acompanha uma mensagem do usuário.
+ *
+ * Existe porque a ficha técnica chega como PDF e a foto do produto como
+ * imagem: quem transforma o documento em texto é o próprio modelo, uma vez, no
+ * momento do anexo — depois disso o que fica gravado é o Markdown, e nenhum
+ * modelo recebe o arquivo de novo.
+ *
+ * Nem todo provedor lê todo tipo. A OpenAI-compatível (`chat/completions`) lê
+ * imagem e **não** lê PDF; quem não suporta recusa com uma mensagem que diz
+ * isso, em vez de mandar a requisição e receber um erro de API sem sentido
+ * para quem está do outro lado.
+ */
+export interface AnexoChat {
+  /** Nome original, só para o modelo ter contexto do que está lendo. */
+  nome: string;
+  mime: string;
+  /** Conteúdo em base64, sem o prefixo `data:`. */
+  base64: string;
+}
+
 export interface MensagemChat {
   papel: 'system' | 'user' | 'assistant' | 'tool';
   conteudo: string | null;
+  /** Arquivos anexados a este turno. Só faz sentido em `papel: 'user'`. */
+  anexos?: AnexoChat[];
   /** Preenchido quando papel = 'tool'. */
   chamadaId?: string;
   /** Preenchido quando o assistente pede ferramentas. */

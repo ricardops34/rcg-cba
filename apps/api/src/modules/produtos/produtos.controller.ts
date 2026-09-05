@@ -25,9 +25,11 @@ import { PRODUTO_RELACIONADO_EXAMPLE } from '@plataforma/contracts';
 import { produtoFotoUploadOptions } from '../../common/uploads/uploads.config';
 import { ProdutosService } from './produtos.service';
 import { ProdutoRelacionadosService } from './produto-relacionados.service';
+import { ProdutoFichasService } from './produto-fichas.service';
 import {
   ProdutoCreateDto,
   ProdutoQueryDto,
+  ProdutoFichaAtualizarDto,
   ProdutoRelacionadoCriarDto,
   ProdutoUpdateDto,
 } from './dto/produto.dto';
@@ -48,6 +50,7 @@ export class ProdutosController {
   constructor(
     private readonly service: ProdutosService,
     private readonly relacionados: ProdutoRelacionadosService,
+    private readonly fichas: ProdutoFichasService,
   ) {}
 
   @ApiOperation({
@@ -218,6 +221,60 @@ export class ProdutosController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.relacionados.remover(user.empresaAtivaId, id, relacaoId);
+  }
+
+  // ---------------- fichas técnicas ----------------
+
+  @ApiOperation({
+    summary: 'Fichas técnicas do produto',
+    description:
+      'Cada ficha traz o PDF (para baixar e mandar ao cliente) e o Markdown ' +
+      'que o assistente extraiu dele (que é o que a IA lê). Requer ' +
+      'produtos.visualizar.',
+  })
+  @RequirePermission('produtos', 'visualizar', [
+    'posicao-cliente',
+    'visualizar',
+  ])
+  @Get(':id/fichas')
+  listarFichas(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.fichas.listar(user.empresaAtivaId, id);
+  }
+
+  @ApiOperation({
+    summary: 'Editar uma ficha técnica',
+    description:
+      'O Markdown é editável de propósito: é aqui que se retira do texto o que ' +
+      'não deve chegar ao modelo, como a tabela de preço do fabricante. ' +
+      '`visivelAgente: false` tira a ficha do alcance da IA sem apagá-la. ' +
+      'Requer produtos.editar.',
+  })
+  @RequirePermission('produtos', 'editar')
+  @Patch(':id/fichas/:fichaId')
+  atualizarFicha(
+    @Param('id') id: string,
+    @Param('fichaId') fichaId: string,
+    @Body() dto: ProdutoFichaAtualizarDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.fichas.atualizar(user.empresaAtivaId, user, id, fichaId, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Excluir uma ficha técnica',
+    description: 'O PDF sai do disco junto. Requer produtos.editar.',
+  })
+  @RequirePermission('produtos', 'editar')
+  @Delete(':id/fichas/:fichaId')
+  removerFicha(
+    @Param('id') id: string,
+    @Param('fichaId') fichaId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.fichas.remover(user.empresaAtivaId, user, id, fichaId);
   }
 
   @ApiOperation({

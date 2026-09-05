@@ -33,7 +33,7 @@ catálogo — e a separação é deliberada.
 
 | Família | Quem está do outro lado | Autenticação | Pode gravar? | Documento |
 |---|---|---|---|---|
-| [Agente interno](agente-interno.md) | funcionário **logado** | sessão + RBAC | sim, com confirmação | 24 ferramentas |
+| [Agente interno](agente-interno.md) | funcionário **logado** | sessão + RBAC | sim, com confirmação | 26 ferramentas |
 | [WhatsApp — cliente](whatsapp-cliente.md) | cliente ou desconhecido | vínculo número↔cadastro | só `registrar_lead` | 12 ferramentas |
 | [WhatsApp — funcionário](whatsapp-funcionario.md) | vendedor/gerente/supervisor | telefone + código confirmado | **não** | 8 ferramentas |
 
@@ -75,6 +75,9 @@ O checklist que evita os erros que já aconteceram aqui:
       obrigatória — sem ela a ferramenta fica disponível a todos.
 - [ ] **Ela grava?** Marque `escrita: true`. Ação de escrita nunca executa
       direto: vira pendência que o usuário confirma na tela.
+- [ ] **Ela trabalha sobre um arquivo anexado?** Marque `usaAnexo: true` — a
+      ferramenta some do catálogo nos turnos sem arquivo, e o `anexoId` é
+      injetado pelo servidor. Nunca o declare como parâmetro.
 - [ ] **Ela recebe "de quem é o dado"?** Não deve. O escopo é resolvido pelo
       servidor a partir de quem está falando. Se o modelo pudesse informar o
       cliente ou a carteira, bastaria convencê-lo.

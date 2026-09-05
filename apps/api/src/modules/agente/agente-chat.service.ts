@@ -10,6 +10,7 @@ import {
 } from '../../common/prisma/prisma.service';
 import { AgenteConfigService } from './agente-config.service';
 import { AgenteFerramentasService } from './agente-ferramentas.service';
+import { AgenteAnexosService } from './agente-anexos.service';
 import { AgenteReferenciasService } from './agente-referencias.service';
 import { AgenteToolsService } from './agente-tools.service';
 import { garantirMascarado, mascarar } from './anonimizar-agente';
@@ -56,6 +57,7 @@ export class AgenteChatService {
     private readonly provedores: ProvedorFactory,
     private readonly referencias: AgenteReferenciasService,
     private readonly governanca: AgenteFerramentasService,
+    private readonly anexos: AgenteAnexosService,
   ) {}
 
   async listarConversas(empresaId: string, user: AuthenticatedUser) {
@@ -288,9 +290,16 @@ export class AgenteChatService {
   async enviar(
     empresaId: string,
     user: AuthenticatedUser,
-    params: { conversaId?: string; texto: string },
+    params: { conversaId?: string; texto: string; anexoId?: string },
   ) {
     const cfg = await this.config.paraUso(empresaId);
+
+    // O anexo do turno. Carregado **antes** de qualquer coisa porque um id
+    // inválido, ou de outra pessoa, tem de derrubar o envio aqui — não depois
+    // de já ter gravado a mensagem e pago uma chamada ao provedor.
+    const anexo = params.anexoId
+      ? await this.anexos.paraProvedor(empresaId, user, params.anexoId)
+      : null;
 
     const conversaId = await this.prisma.withTenant(empresaId, async (tx) => {
       if (params.conversaId) {
@@ -341,7 +350,16 @@ export class AgenteChatService {
       cfg.nomeAgente,
     );
 
-    const ferramentas = this.tools.paraProvedor(user, filtro);
+    // O arquivo entra na última mensagem do usuário — a que o contexto acabou
+    // de montar a partir do que foi gravado.
+    if (anexo) {
+      const ultima = [...mensagens].reverse().find((m) => m.papel === 'user');
+      if (ultima) ultima.anexos = [anexo];
+    }
+
+    const ferramentas = this.tools.paraProvedor(user, filtro, {
+      temAnexo: !!anexo,
+    });
     const pendencias: Pendencia[] = [];
     // Telas que o turno tocou. Acumula ao longo das voltas: uma pergunta pode
     // encadear buscar_cliente e posicao_cliente, e o botão que interessa é o
@@ -404,7 +422,9 @@ export class AgenteChatService {
         // Vale a permissão E a configuração: uma ferramenta desligada não
         // está no catálogo enviado, mas o modelo pode inventá-la a partir do
         // histórico, e a checagem de permissão sozinha a deixaria passar.
-        const liberadas = this.tools.disponiveisPara(user, filtro);
+        const liberadas = this.tools.disponiveisPara(user, filtro, {
+          temAnexo: !!anexo,
+        });
         try {
           this.tools.garantirPermissao(ferramenta, user);
           if (!liberadas.some((l) => l.nome === ferramenta.nome)) {
@@ -427,6 +447,14 @@ export class AgenteChatService {
           empresaId,
           chamada.argumentos,
         );
+
+        // O id do anexo é do **servidor**, não do modelo: ele não é parâmetro
+        // declarado, e o que o modelo por acaso tenha inventado nesse nome é
+        // sobrescrito aqui. Vai junto dos argumentos para sobreviver à
+        // pendência — a gravação só acontece na confirmação, num outro pedido.
+        if (ferramenta.usaAnexo && params.anexoId) {
+          argumentos.anexoId = params.anexoId;
+        }
 
         if (ferramenta.escrita) {
           // Não executa. Grava a pendência e conta ao modelo o que aconteceu,

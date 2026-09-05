@@ -1,20 +1,28 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
   Param,
   Post,
   Put,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { agenteAnexoUploadOptions } from '../../common/uploads/uploads.config';
 import { Throttle } from '@nestjs/throttler';
 import {
+  AGENTE_ANEXO_EXAMPLE,
   AGENTE_CONFIG_EXAMPLE,
   AGENTE_FERRAMENTA_EXAMPLE,
   AGENTE_RESPOSTA_EXAMPLE,
@@ -22,6 +30,7 @@ import {
 import { AgenteConfigService } from './agente-config.service';
 import { AgenteChatService } from './agente-chat.service';
 import { AgenteFerramentasService } from './agente-ferramentas.service';
+import { AgenteAnexosService } from './agente-anexos.service';
 import {
   AgenteConfigUpdateDto,
   AgenteEnvioDto,
@@ -50,6 +59,7 @@ export class AgenteController {
     private readonly config: AgenteConfigService,
     private readonly chat: AgenteChatService,
     private readonly ferramentas: AgenteFerramentasService,
+    private readonly anexos: AgenteAnexosService,
   ) {}
 
   // ---------------- configuração ----------------
@@ -366,6 +376,33 @@ export class AgenteController {
   @Post('conversas/mensagens')
   enviar(@Body() dto: AgenteEnvioDto, @CurrentUser() user: AuthenticatedUser) {
     return this.chat.enviar(user.empresaAtivaId, user, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Anexar um arquivo a uma mensagem do assistente',
+    description:
+      'Sobe o PDF da ficha técnica ou a imagem do produto e devolve o id, que ' +
+      'vai em `anexoId` na mensagem seguinte. O arquivo é lido pelo modelo ' +
+      'uma vez; o que fica gravado é o resultado (a ficha em Markdown, a foto ' +
+      'no produto). PDF, PNG, JPEG ou WEBP, até 10 MB. Requer agente.visualizar.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiResponse({ status: 201, schema: { example: AGENTE_ANEXO_EXAMPLE } })
+  @RequirePermission('agente', 'visualizar')
+  @Post('anexos')
+  @UseInterceptors(FileInterceptor('file', agenteAnexoUploadOptions))
+  anexar(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    if (!file) throw new BadRequestException('Nenhum arquivo enviado');
+    return this.anexos.registrar(user.empresaAtivaId, user, file);
   }
 
   @ApiOperation({

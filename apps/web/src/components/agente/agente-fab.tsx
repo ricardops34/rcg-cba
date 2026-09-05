@@ -4,12 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type {
+  AgenteAnexo,
   AgenteConfirmacao,
   AgenteDestino,
   AgentePendencia,
   AgenteResposta,
 } from "@plataforma/contracts";
-import { ApiError, apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch, apiUpload } from "@/lib/api-client";
 import { useAgenteUiStore } from "@/stores/agente-ui-store";
 import { useAgente } from "@/components/agente/use-agente";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import {
   ExternalLink,
   HelpCircle,
   Minus,
+  Paperclip,
   Send,
   Sparkles,
   X,
@@ -121,6 +123,16 @@ export function AgenteFab() {
   const setPendente = useAgenteUiStore((s) => s.setPendente);
   const [geometria, setGeometria] = useState<Geometria | null>(null);
   const [texto, setTexto] = useState("");
+  /**
+   * O arquivo anexado ao **próximo** envio.
+   *
+   * Vale para uma mensagem só: o assistente lê o documento uma vez e o que
+   * fica gravado é o resultado — a ficha em Markdown, a foto no produto. Por
+   * isso ele é limpo depois de enviar, e não fica pendurado na conversa.
+   */
+  const [anexo, setAnexo] = useState<AgenteAnexo | null>(null);
+  const [subindo, setSubindo] = useState(false);
+  const inputArquivo = useRef<HTMLInputElement>(null);
   const [conversaId, setConversaId] = useState<string | undefined>();
   const [baloes, setBaloes] = useState<Balao[]>([]);
   const [pendencias, setPendencias] = useState<AgentePendencia[]>([]);
@@ -225,10 +237,10 @@ export function AgenteFab() {
   );
 
   const enviar = useMutation({
-    mutationFn: (pergunta: string) =>
+    mutationFn: ({ pergunta, anexoId }: { pergunta: string; anexoId?: string }) =>
       apiFetch<AgenteResposta>("/agente/conversas/mensagens", {
         method: "POST",
-        body: { conversaId, texto: pergunta },
+        body: { conversaId, texto: pergunta, anexoId },
       }),
     onSuccess: (r) => {
       setConversaId(r.conversaId);
@@ -295,9 +307,36 @@ export function AgenteFab() {
   const onEnviar = () => {
     const pergunta = texto.trim();
     if (!pergunta || enviar.isPending) return;
-    setBaloes((b) => [...b, { papel: "usuario", texto: pergunta }]);
+    setBaloes((b) => [
+      ...b,
+      {
+        papel: "usuario",
+        texto: anexo ? `${pergunta}
+
+📎 ${anexo.arquivoNome}` : pergunta,
+      },
+    ]);
     setTexto("");
-    enviar.mutate(pergunta);
+    enviar.mutate({ pergunta, anexoId: anexo?.id });
+    setAnexo(null);
+  };
+
+  /** Sobe o arquivo antes do envio: a mensagem só carrega o id. */
+  const onAnexar = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const arquivo = event.target.files?.[0];
+    // Limpa já, senão escolher o mesmo arquivo duas vezes não dispara o evento.
+    event.target.value = "";
+    if (!arquivo) return;
+    setSubindo(true);
+    try {
+      setAnexo(await apiUpload<AgenteAnexo>("/agente/anexos", arquivo));
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "Não consegui subir o arquivo",
+      );
+    } finally {
+      setSubindo(false);
+    }
   };
 
   /**
@@ -503,6 +542,19 @@ export function AgenteFab() {
       </div>
 
       <div className="border-t p-3">
+        {anexo && (
+          <div className="mb-2 flex items-center gap-2 rounded-md bg-muted px-2 py-1.5 text-xs">
+            <Paperclip className="size-3.5 shrink-0" />
+            <span className="truncate">{anexo.arquivoNome}</span>
+            <button
+              type="button"
+              className="ml-auto text-muted-foreground hover:text-foreground"
+              onClick={() => setAnexo(null)}
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+        )}
         <div className="flex gap-2">
           <Textarea
             rows={2}
@@ -518,6 +570,22 @@ export function AgenteFab() {
               }
             }}
           />
+          <input
+            ref={inputArquivo}
+            type="file"
+            accept="application/pdf,image/png,image/jpeg,image/webp"
+            className="hidden"
+            onChange={(e) => void onAnexar(e)}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            title="Anexar PDF ou imagem"
+            disabled={subindo || enviar.isPending}
+            onClick={() => inputArquivo.current?.click()}
+          >
+            <Paperclip className="size-4" />
+          </Button>
           <Button
             type="button"
             onClick={onEnviar}

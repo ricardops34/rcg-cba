@@ -1,4 +1,4 @@
-# Agente interno — 24 ferramentas
+# Agente interno — 26 ferramentas
 
 O assistente que o funcionário **logado** usa pelo ícone da topbar, em qualquer
 tela. Ver [o mapa](README.md) para as outras duas famílias.
@@ -59,6 +59,53 @@ em si.
 | `mensagens_whatsapp` | `whatsapp-conversas.visualizar` | leitura + WhatsApp pareado | `conversas.mensagensDaPropriaConexao` |
 | `agendar_mensagem_whatsapp` | `whatsapp-conversas.cadastrar` | **escrita** + WhatsApp pareado | `agendamento.agendar` |
 | `enviar_documento_whatsapp` | `whatsapp-conversas.cadastrar` | **escrita** + WhatsApp pareado | `whatsappAcoes.enviar{Titulos,Notas,Boleto,Danfe,Orcamento}` |
+| `anexar_ficha_tecnica` | `produtos.editar` | **escrita** + arquivo anexado | `fichas.criar` |
+| `anexar_foto_produto` | `produtos.editar` | **escrita** + arquivo anexado | `produtos.setFotoDeArquivo` |
+
+## Ferramentas de anexo
+
+As duas últimas são diferentes de todas as outras: elas trabalham sobre um
+**arquivo que o usuário anexou à mensagem** (`POST /agente/anexos`, depois
+`anexoId` no envio). São o único ponto do sistema em que um arquivo do
+usuário sobe para o provedor de IA.
+
+### Por que o arquivo vai ao provedor
+
+Porque quem transcreve a ficha técnica é o modelo. Ele lê o PDF **uma vez**,
+no anexo, e devolve o Markdown como argumento da ferramenta; o que fica
+gravado é o texto. Nenhuma pergunta futura sobre o produto reenvia o
+documento.
+
+Nem todo provedor lê todo tipo, e isso é tratado em código: Anthropic e Codex
+leem PDF e imagem; a OpenAI-compatível (`chat/completions`) lê imagem e **não**
+lê PDF — o cliente recusa com o motivo em vez de mandar a requisição e receber
+um erro de API que não diz nada a quem anexou o arquivo.
+
+### As travas, todas em código
+
+| Trava | Onde | O que impede |
+|---|---|---|
+| `withTenant` | `AgenteAnexosService` | anexo de outra empresa |
+| `usuarioId` | `AgenteAnexosService.meu` | usar o arquivo de outra pessoa |
+| `consumidoEm` | `AgenteAnexosService.consumir` | gravar o mesmo upload duas vezes |
+| `usaAnexo` | `AgenteToolsService.disponiveisPara` | a ferramenta existir num turno sem arquivo |
+| lista branca de MIME | `agenteAnexoUploadOptions` | subir o que o provedor não lê |
+
+**O modelo nunca escolhe o anexo.** O `anexoId` não é parâmetro declarado: ele
+chega ao provedor porque a mensagem o carrega, e à ferramenta porque o servidor
+o injeta nos argumentos antes de gravar a pendência. Declarado, bastaria
+convencer o modelo a informar o anexo de outra pessoa — e há um teste que
+reprova qualquer ferramenta que passe a declará-lo
+(`agente-tools.permissao.spec.ts`).
+
+### E o preço
+
+A instrução da ferramenta pede que o Markdown não traga preço, mas isso é
+prompt, e prompt não é barreira. A garantia de verdade é a tela: o Markdown é
+um **campo editável** do cadastro (detalhe do produto → Fichas técnicas), então
+quem administra vê exatamente o que a IA vai ler e retira o que não deve estar
+lá. `visivelAgente: false` tira a ficha inteira do alcance do modelo sem
+apagá-la.
 
 ## As guardas além da permissão
 
