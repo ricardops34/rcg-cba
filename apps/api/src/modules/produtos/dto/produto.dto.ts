@@ -3,6 +3,7 @@ import {
   produtoCreateSchema,
   produtoFotoVincularSchema,
   produtoQuerySchema,
+  produtoRelacionadoCriarSchema,
   produtoUpdateSchema,
 } from '@plataforma/contracts';
 
@@ -11,4 +12,7 @@ export class ProdutoUpdateDto extends createZodDto(produtoUpdateSchema) {}
 export class ProdutoQueryDto extends createZodDto(produtoQuerySchema) {}
 export class ProdutoFotoVincularDto extends createZodDto(
   produtoFotoVincularSchema,
+) {}
+export class ProdutoRelacionadoCriarDto extends createZodDto(
+  produtoRelacionadoCriarSchema,
 ) {}

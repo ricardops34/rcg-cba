@@ -135,6 +135,7 @@ model Empresa {
   clienteCampoConfigs        ClienteCampoConfig[]
   produtoCampos              ProdutoCampo[]
   produtoCampoValores        ProdutoCampoValor[]
+  produtoRelacionados        ProdutoRelacionado[]
   orcamentoConfig            OrcamentoConfig?
   parametros                 ParametroEmpresa[]
   clienteCnaes               ClienteCnae[]
@@ -584,6 +585,12 @@ model Produto {
   fotos             ProdutoFoto[]
   camposValores     ProdutoCampoValor[]
 
+  /// Relações que **partem** deste produto e as que **chegam** nele. As duas
+  /// pontas existem porque toda consulta olha os dois lados — ver
+  /// ProdutoRelacionado.
+  relacionados  ProdutoRelacionado[] @relation("ProdutoRelacaoOrigem")
+  relacionadoDe ProdutoRelacionado[] @relation("ProdutoRelacaoDestino")
+
   @@unique([empresaId, codigoErp])
   @@index([empresaId, descricao])
   @@index([empresaId, categoriaId])
@@ -610,6 +617,58 @@ model ProdutoFoto {
 
   @@index([empresaId, produtoId, ordem])
   @@map("produto_fotos")
+}
+
+/// Como dois produtos se relacionam.
+///
+/// - `similar` — um substitui o outro. **Simétrica**: se A substitui B, B
+///   substitui A. Guardada uma vez só e lida dos dois lados (ver
+///   ProdutoRelacionado); duas linhas para o mesmo fato divergiriam na primeira
+///   vez que alguém apagasse uma.
+/// - `aplicacao` — o produto **usa** o outro. É o caso do comodato: a dosadora
+///   emprestada ao cliente e os químicos que ela dilui. **Direcional**, e por
+///   isso lida com rótulos diferentes em cada ponta ("usa" de um lado, "usado
+///   em" do outro).
+enum ProdutoRelacaoTipo {
+  similar
+  aplicacao
+}
+
+/// Produto relacionado a outro: similar ou aplicação.
+///
+/// Uma tabela só para os dois casos, porque a pergunta é a mesma ("que outros
+/// produtos têm a ver com este?") e o que muda é o `tipo`. Separá-las daria
+/// duas tabelas idênticas e duas telas iguais.
+///
+/// **Nada aqui é do ERP.** É conhecimento de quem vende: qual produto
+/// substitui qual, e o que entra na aplicação do equipamento em comodato.
+model ProdutoRelacionado {
+  id        String @id @default(uuid())
+  empresaId String
+
+  produtoId     String
+  relacionadoId String
+  tipo          ProdutoRelacaoTipo
+
+  /// Por que estão relacionados ("substitui só até 40 °C", "dose de 20 ml").
+  /// É o que evita a lista de códigos que ninguém sabe interpretar.
+  observacao String?
+  ordem      Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  empresa     Empresa @relation(fields: [empresaId], references: [id])
+  produto     Produto @relation("ProdutoRelacaoOrigem", fields: [produtoId], references: [id], onDelete: Cascade)
+  relacionado Produto @relation("ProdutoRelacaoDestino", fields: [relacionadoId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, produtoId, relacionadoId, tipo])
+  /// A consulta pela ponta de destino é tão comum quanto pela de origem: é ela
+  /// que responde "em que equipamentos este químico é usado".
+  @@index([empresaId, relacionadoId, tipo])
+  @@map("produto_relacionados")
 }
 
 /// Tipo de um campo complementar de produto. Decide **como o valor é validado

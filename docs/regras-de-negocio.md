@@ -94,6 +94,32 @@ embalagem, margem) sem que chegue a quem pergunta pelo WhatsApp. O recorte é
 feito na consulta (`valoresDoProduto({ apenasAgente: true })`), não numa
 instrução de prompt.
 
+## Produtos relacionados: similar e aplicação
+
+Uma tabela só (`produto_relacionados`) para dois usos, porque a pergunta é a
+mesma — "que outros produtos têm a ver com este?" — e o que muda é o `tipo`.
+Como os campos complementares e as fotos, nada aqui vem do ERP: é
+conhecimento de quem vende.
+
+**`similar`** é **simétrico**: se A substitui B, B substitui A. A relação é
+gravada **uma vez** e lida dos dois lados. Cadastrar os dois sentidos daria
+duas linhas para o mesmo fato, que divergiriam na primeira vez que alguém
+apagasse uma — por isso o service recusa o inverso com 409.
+
+**`aplicacao`** é **direcional**, e é o caso do comodato: a dosadora
+emprestada ao cliente e os químicos que ela dilui. Cadastra-se no
+equipamento; do lado do consumível a mesma linha é lida como "usado em".
+Cada linha devolvida traz `origem`, que é o que decide o rótulo.
+
+Não há flag de "produto de comodato" no cadastro. Ter aplicação **é** o
+sinal, e o flag existente (`notas_saida.comodato`, `notas_saida_itens.comodato`)
+é do ERP e diz outra coisa: que aquela **remessa** foi empréstimo, não venda
+(ver `common/vendas/venda-analitica.ts`).
+
+A relação pode ser desfeita **pela ponta que estiver aberta na tela**. Quem vê
+"usado em" está vendo algo cadastrado do outro lado; obrigá-lo a navegar até o
+outro produto para corrigir seria uma pegadinha.
+
 ## 2ª via de DANFE e boleto
 
 Decidido em 2026-08-21. Detalhe de implementação em

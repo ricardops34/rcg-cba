@@ -21,11 +21,14 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { PRODUTO_RELACIONADO_EXAMPLE } from '@plataforma/contracts';
 import { produtoFotoUploadOptions } from '../../common/uploads/uploads.config';
 import { ProdutosService } from './produtos.service';
+import { ProdutoRelacionadosService } from './produto-relacionados.service';
 import {
   ProdutoCreateDto,
   ProdutoQueryDto,
+  ProdutoRelacionadoCriarDto,
   ProdutoUpdateDto,
 } from './dto/produto.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -42,7 +45,10 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('produtos')
 export class ProdutosController {
-  constructor(private readonly service: ProdutosService) {}
+  constructor(
+    private readonly service: ProdutosService,
+    private readonly relacionados: ProdutoRelacionadosService,
+  ) {}
 
   @ApiOperation({
     summary: 'Listar produtos',
@@ -153,6 +159,65 @@ export class ProdutosController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.removerFoto(user.empresaAtivaId, user, id, fotoId);
+  }
+
+  // ---------------- similares e aplicação ----------------
+
+  @ApiOperation({
+    summary: 'Produtos relacionados a este',
+    description:
+      'Similares e aplicação, **dos dois lados**: as relações cadastradas ' +
+      'aqui e as que apontam para cá. Cada linha diz em `origem` de que lado ' +
+      'foi cadastrada — é o que muda o rótulo de "usa" para "usado em". ' +
+      'Requer produtos.visualizar.',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: { example: [PRODUTO_RELACIONADO_EXAMPLE] },
+  })
+  @RequirePermission('produtos', 'visualizar', [
+    'posicao-cliente',
+    'visualizar',
+  ])
+  @Get(':id/relacionados')
+  listarRelacionados(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.relacionados.listar(user.empresaAtivaId, id);
+  }
+
+  @ApiOperation({
+    summary: 'Relacionar outro produto a este',
+    description:
+      'O similar é simétrico e basta cadastrar de um lado. A aplicação é ' +
+      'direcional: cadastre no equipamento os produtos que ele usa. Requer ' +
+      'produtos.editar.',
+  })
+  @RequirePermission('produtos', 'editar')
+  @Post(':id/relacionados')
+  criarRelacionado(
+    @Param('id') id: string,
+    @Body() dto: ProdutoRelacionadoCriarDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.relacionados.criar(user.empresaAtivaId, user.id, id, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Desfazer uma relação',
+    description:
+      'Aceita remover pela ponta que estiver aberta na tela — quem vê ' +
+      '"usado em" não precisa ir até o outro produto. Requer produtos.editar.',
+  })
+  @RequirePermission('produtos', 'editar')
+  @Delete(':id/relacionados/:relacaoId')
+  removerRelacionado(
+    @Param('id') id: string,
+    @Param('relacaoId') relacaoId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.relacionados.remover(user.empresaAtivaId, id, relacaoId);
   }
 
   @ApiOperation({

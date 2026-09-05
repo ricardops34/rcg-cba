@@ -12,6 +12,7 @@ import {
   type ProdutoDetalhe,
 } from "@/components/comercial/produto-detalhe";
 import { ProdutoCamposCard } from "@/components/comercial/produto-campos-card";
+import { ProdutoRelacionadosCard } from "@/components/comercial/produto-relacionados-card";
 import { ArrowLeft } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -71,6 +72,11 @@ export default function ProdutoDetalhePage() {
       <ProdutoDetalheContent produto={produto} permitirEdicaoFoto={podeEditar} />
 
       <ProdutoCamposCard produtoId={produto.id} permitirEdicao={podeEditar} />
+
+      <ProdutoRelacionadosCard
+        produtoId={produto.id}
+        permitirEdicao={podeEditar}
+      />
     </div>
   );
 }
