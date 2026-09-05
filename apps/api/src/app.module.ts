@@ -42,6 +42,7 @@ import { NotificacoesModule } from './modules/notificacoes/notificacoes.module';
 import { InicioModule } from './modules/inicio/inicio.module';
 import { MeusAtendimentosModule } from './modules/meus-atendimentos/meus-atendimentos.module';
 import { AcessosModule } from './modules/acessos/acessos.module';
+import { ErrosModule } from './modules/erros/erros.module';
 import { PortalClienteModule } from './modules/portal-cliente/portal-cliente.module';
 import { validarSegredosDoAmbiente } from './common/config/validar-segredos';
 
@@ -101,6 +102,7 @@ import { validarSegredosDoAmbiente } from './common/config/validar-segredos';
     InicioModule,
     MeusAtendimentosModule,
     PortalClienteModule,
+    ErrosModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

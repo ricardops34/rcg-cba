@@ -51,3 +51,4 @@ export * from "./acesso";
 export * from "./whatsapp";
 export * from "./inicio";
 export * from "./plataforma";
+export * from "./erro-log";

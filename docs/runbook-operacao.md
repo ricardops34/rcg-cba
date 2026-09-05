@@ -680,3 +680,51 @@ Divergências já encontradas (2026-08-25), do repo para o que rodava na VPS:
 `AGENTE_IA_CRYPTO_KEY`, `WHATSAPP_WORKER_TOKEN` e o serviço
 `whatsapp-worker` inteiro (este último ainda não implantado — ver a seção do
 WhatsApp em produção).
+
+---
+
+## Log de erros (Plataforma > Erros) **[verificado em dev, 2026-09-04]**
+
+Onde alguém olha quando algo falha, sem abrir o log do container. Plano e
+decisões em [`docs/planos/log-de-erros.md`](planos/log-de-erros.md).
+
+**Quem vê:** só usuário com `administradorPlataforma`. Não é permissão de
+perfil — o menu aparece pelo mesmo atributo que abre as demais telas de
+Plataforma. Mensagem e stack ficam íntegros na base, e é por isso que a leitura
+é fechada: um 500 numa consulta traz dado real de cliente no stack.
+
+**Deploy:** nada além do `migrate deploy` de sempre. A migration
+`20260904140000_log_de_erros` **ocupa a tabela `audit_logs`**, que existia no
+schema e nunca foi escrita (0 linhas em toda base). Ela troca as colunas
+antigas, então:
+
+> Se em alguma base alguém tiver escrito em `audit_logs` fora deste repo, esse
+> conteúdo se perde na migration. Confira antes com
+> `SELECT count(*) FROM audit_logs;` — o esperado é 0.
+
+A migration também cria `erros_log_config` já com a linha única. Nenhuma das
+duas tabelas tem RLS, de propósito (ver `apps/api/prisma/migrations/README.md`).
+Nenhum `GRANT` manual é necessário: o `ALTER DEFAULT PRIVILEGES` da baseline
+cobre tabela nova para `plataforma_app` — conferido nesta migration.
+
+**Governança (na própria tela, botão "Governança"):**
+
+| Campo | Padrão | O que faz |
+|---|---|---|
+| Retenção (dias) | 30 | 0 = sem expurgo por tempo |
+| Teto por empresa | 5000 | 0 = sem teto; corta as mais antigas |
+| Registrar 4xx | desligado | liga erro de preenchimento junto |
+
+O expurgo roda a cada 30 min dentro da API (`ErrosVarreduraService`), com uma
+passagem no boot — não há cron externo.
+
+**"Registrar 4xx" é interruptor de investigação**, não configuração
+permanente: ligue para reproduzir um caso, desligue depois. Ligado, o log enche
+de "campo obrigatório" e esconde o 500 que importa. A mudança leva até **30
+segundos** para valer: a configuração fica em cache no processo, porque é lida a
+cada erro gravado.
+
+**Se a tela estiver vazia num incidente**, isso agora é informação — antes da
+captura no navegador não era. O que continua fora do alcance dela: erro na tela
+de login (a rota de report exige sessão) e queda do próprio Postgres (o log
+grava nele). Nesses dois casos, o rastro é o console do container.

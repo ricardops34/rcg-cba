@@ -89,6 +89,15 @@ const MODULO_PLATAFORMA: ModuloComMenus = {
       disponivelTelaPequena: false,
       rotinas: [],
     },
+    {
+      id: "plataforma-erros",
+      nome: "Erros",
+      icone: "bug",
+      rota: "/plataforma/erros",
+      ordem: 4,
+      disponivelTelaPequena: false,
+      rotinas: [],
+    },
   ],
 };
 

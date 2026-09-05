@@ -7,6 +7,7 @@ import { ZodValidationPipe, cleanupOpenApiDoc } from 'nestjs-zod';
 import { AppModule } from './app.module';
 import { IntegracaoModule } from './modules/integracao/integracao.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
+import { ErrosLogService } from './modules/erros/erros-log.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -28,7 +29,11 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
-  app.useGlobalFilters(new AllExceptionsFilter());
+  // O filtro é `@Catch()` global e captura tudo num ponto só — é por ele que o
+  // log de erros recebe o lado servidor (ver docs/planos/log-de-erros.md). O
+  // serviço vem do container em vez de o filtro ser registrado por
+  // `APP_FILTER`, para não mexer na ordem de registro já estabelecida aqui.
+  app.useGlobalFilters(new AllExceptionsFilter(app.get(ErrosLogService)));
   app.useGlobalPipes(new ZodValidationPipe());
 
   const config = new DocumentBuilder()

@@ -2513,20 +2513,113 @@ model ObjetivoVendedorCategoria {
 // Sistema
 // ------------------------------------------------------------------
 
-model AuditLog {
-  id            String   @id @default(uuid())
-  entidade      String
-  entidadeId    String
-  acao          String
-  usuarioId     String?
-  valorAnterior Json?
-  valorNovo     Json?
-  ip            String?
-  userAgent     String?
-  criadoEm      DateTime @default(now())
+enum ErroOrigem {
+  servidor
+  cliente
+}
 
-  @@index([entidade, entidadeId])
+enum ErroTipo {
+  excecao
+  http
+  rede
+  resposta
+  javascript
+  promessa
+}
+
+/// Log de erros (Plataforma > Erros). Ver `docs/planos/log-de-erros.md`.
+///
+/// **Ocupa a tabela `audit_logs`**, que existia no schema desde cedo e nunca
+/// foi usada — nenhuma referência no código, zero linhas. As colunas antigas
+/// (entidade/ação/valorAnterior) eram de auditoria de alteração e não servem a
+/// um erro, então a migration as troca. Quem procurar auditoria de alteração
+/// encontra `plataforma_auditoria` e `acessos_log`.
+///
+/// **Sem RLS, de propósito** — mesma razão de `plataforma_auditoria`: só a
+/// administração da plataforma lê, e ela lê **todas** as empresas. Uma policy
+/// de tenant devolveria vazio para exatamente quem precisa enxergar. O
+/// `empresaId` aqui é informativo (e nulo quando o erro acontece antes de
+/// haver empresa ativa, no login).
+model ErroLog {
+  id String @id @default(uuid())
+
+  origem ErroOrigem
+  tipo   ErroTipo
+
+  /// Quando aconteceu. Em erro de cliente é o relógio do navegador: o report
+  /// espera em buffer local e pode chegar minutos depois, quando a conexão
+  /// voltar — a hora de chegada não serve como hora do fato.
+  ocorridoEm DateTime
+  criadoEm   DateTime @default(now())
+
+  /// A última repetição absorvida por esta linha, e o campo por onde a tela
+  /// ordena. Igual a `ocorridoEm` enquanto `ocorrencias` for 1.
+  ultimaEm DateTime
+
+  /// Repetições colapsadas nesta linha. Um bug em laço gera milhares de
+  /// eventos em minutos; o serviço junta os que caem na mesma janela curta
+  /// num contador em vez de em linhas — é o que impede a rajada de ser a
+  /// própria falha de disponibilidade.
+  ocorrencias Int @default(1)
+
+  /// Caminho como veio, com os ids reais — é o que permite reproduzir.
+  rota String
+  /// O mesmo caminho com uuid/número trocados por `:id`. Sem isto, o mesmo
+  /// erro em dez clientes vira dez grupos.
+  rotaPadrao String
+  metodo     String?
+  /// Nulo em erro de JavaScript e quando a requisição nem recebeu resposta.
+  status     Int?
+  /// Endereço da tela onde o usuário estava (só nos erros de cliente).
+  pagina     String?
+
+  mensagem String  @db.Text
+  /// Mensagem normalizada (ids, números e trechos entre aspas removidos). É o
+  /// texto que agrupa, e o que a listagem mostra.
+  resumo   String
+  stack    String? @db.Text
+
+  /// origem + tipo + rotaPadrao + método + status + resumo, em hash curto.
+  assinatura String
+
+  /// Sem FK em nenhum dos dois: o log tem de sobreviver à exclusão do usuário
+  /// e da empresa, senão perde justamente o registro do que saiu. O nome vai
+  /// junto pelo mesmo motivo.
+  usuarioId          String?
+  usuarioEmail       String?
+  empresaId          String?
+  empresaRazaoSocial String?
+
+  ip        String?
+  userAgent String?
+
+  @@index([assinatura, ultimaEm])
+  @@index([ultimaEm])
+  @@index([empresaId, ultimaEm])
   @@map("audit_logs")
+}
+
+/// Governança do log de erros. Singleton (uma linha, id fixo `unico`): a
+/// configuração é da plataforma inteira, não de uma empresa — quem a lê e
+/// quem a ajusta é o administrador do SaaS.
+model ErroLogConfig {
+  id String @id @default("unico")
+
+  /// 0 = sem expurgo por tempo.
+  retencaoDias Int @default(30)
+  /// Máximo de linhas por empresa; 0 = sem teto. A varredura corta as mais
+  /// antigas. O prazo em dias sozinho não segura um bug em laço dentro da
+  /// janela — daí o teto.
+  tetoPorEmpresa Int @default(5000)
+  /// Grava também os 4xx. Desligado por padrão: 400 de validação é erro de
+  /// quem preencheu, e registrar tudo esconde o 500 que importa. É
+  /// interruptor de investigação pontual.
+  registrar4xx Boolean @default(false)
+
+  atualizadoEm  DateTime @updatedAt
+  atualizadoPor String?
+
+  @@map("erros_log_config")
 }
 
 // Histórico de hashes de senha já usados por cada usuário, só para checar

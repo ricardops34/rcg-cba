@@ -1,7 +1,8 @@
-# Log de erros em Administração — plano
+# Log de erros em Plataforma > Erros — plano
 
-> Registrado em 2026-09-04. **Ainda não implementado**: as quatro decisões da
-> seção final são do usuário e precisam ser fechadas antes de escrever código.
+> Registrado em 2026-09-04. **Implementado em 2026-09-04** e verificado em dev
+> (ver "Como ficou" e "O que foi verificado"). As quatro decisões que estavam
+> pendentes foram fechadas pelo usuário e viraram a seção "Decisões".
 
 ## O que motivou
 
@@ -13,39 +14,35 @@ A causa era prosaica: a API estava reiniciando naquele instante (recompilação 
 dev), a requisição não chegou ao servidor e o front caiu no texto genérico.
 
 A pergunta que ficou é boa e maior que o incidente: **onde alguém olha quando
-algo falha?** Hoje, em lugar nenhum — o erro de servidor vai para o console do
-container, e o de navegador não vai a lugar algum.
+algo falha?** Antes disto, em lugar nenhum — o erro de servidor ia para o
+console do container, e o de navegador não ia a lugar algum.
 
-## O que já existe (e é mais do que parece)
+## O que já existia (e era mais do que parecia)
 
 - **`AllExceptionsFilter`** (`apps/api/src/common/filters/http-exception.filter.ts`)
-  é `@Catch()` **global**: todo erro do servidor já passa por um ponto único, e
-  já separa três casos — validação Zod (400), `HttpException` (o status dela) e
-  o resto (500, com `logger.error`). É o gancho natural, e não é preciso
-  instrumentar controller nenhum.
-- **`/admin/acessos`** já é uma tela de log dentro de Administração, com o
-  padrão de listagem, filtro e paginação que a nova reaproveitaria.
-- Existem quatro tabelas de log no schema: `acessos_log`,
-  `portal_cliente_acessos_log`, `plataforma_auditoria` e `audit_logs`.
+  é `@Catch()` **global**: todo erro do servidor já passava por um ponto único.
+  Foi o gancho, e nenhum controller precisou ser instrumentado.
+- **`/admin/acessos`** e **`/plataforma/auditoria`** já davam o padrão de tela
+  de log (listagem, filtro, paginação) que a nova reaproveitou.
+- Quatro tabelas de log no schema: `acessos_log`, `portal_cliente_acessos_log`,
+  `plataforma_auditoria` e `audit_logs`.
 
-> **`audit_logs` está órfã.** O model existe no `schema.prisma`, tem índice por
-> entidade, e **nunca foi usado**: nenhuma referência no código, 0 linhas na
-> base. Alguém já previu isto e a peça ficou pelo caminho. Decidir se a nova
-> ferramenta ocupa essa tabela ou se ela sai do schema é parte deste plano —
-> deixá-la ali sem uso é convite para alguém escrever nela achando que é o log
-> oficial.
+> **`audit_logs` estava órfã.** O model existia no `schema.prisma`, tinha
+> índice, e **nunca foi usado**: nenhuma referência no código, 0 linhas na base
+> (conferido antes da migration). Alguém previu isto e a peça ficou pelo
+> caminho.
 
-## A ressalva que muda o desenho
+## A ressalva que mudou o desenho
 
 **O erro que motivou este plano não apareceria num log de servidor.**
 
 A requisição nunca chegou à API. Um log server-side registra o que o servidor
 processou; o que morre antes não deixa rastro nenhum lá.
 
-Se implementarmos só a captura no `AllExceptionsFilter`, o resultado será pior
-do que não ter: no próximo "Erro ao salvar" alguém abrirá a tela, encontrará
-**vazio**, e concluirá que não houve erro. A ferramenta teria dado uma resposta
-errada com ar de autoridade.
+Implementar só a captura no `AllExceptionsFilter` daria algo pior do que não
+ter: no próximo "Erro ao salvar" alguém abriria a tela, encontraria **vazio**, e
+concluiria que não houve erro. A ferramenta teria dado uma resposta errada com
+ar de autoridade.
 
 São duas famílias, e elas pedem mecanismos diferentes:
 
@@ -55,52 +52,113 @@ São duas famílias, e elas pedem mecanismos diferentes:
 | **Cliente** | rede caiu, API fora, timeout, erro de JS | o front precisa reportar | médio |
 
 O caso do cliente tem uma dobra: quando a causa é "a API está fora", o próprio
-report falha. Cobrir de verdade exige **buffer local** (localStorage) e reenvio
-quando a conexão voltar — senão registra tudo, menos justamente a queda.
+report falha. Cobrir de verdade exigiu **buffer local** (`localStorage`) e
+reenvio quando a conexão volta — senão registraria tudo, menos justamente a
+queda.
 
-## Decisões pendentes (do usuário)
+## Decisões (fechadas pelo usuário em 2026-09-04)
 
-1. **Escopo.** Só erros do servidor — barato, cobre a maioria, mas *não cobre o
-   caso que motivou o pedido*. Ou os dois lados, com o buffer no cliente.
+1. **Escopo: os dois lados.** Servidor pelo filtro e cliente pelo `apiFetch`,
+   com buffer local. É o único desenho que cobre o incidente que motivou o
+   pedido.
 
-2. **Quem vê.** Administrador do tenant, restrito à empresa dele? Ou só a
-   administração da plataforma? Pesa contra o primeiro: mensagem de erro
-   costuma carregar dado — um 500 numa consulta pode trazer nome de cliente no
-   stack trace. Se for do tenant, o conteúdo precisa ser filtrado antes de
-   gravar, não na exibição.
+2. **Quem vê: só a administração da plataforma.** Ninguém do tenant lê o log.
+   A consequência boa é que o conteúdo **não precisa ser sanitizado antes de
+   gravar** — mensagem e stack ficam íntegros para diagnóstico, que é o que
+   torna a ferramenta útil. A consequência ruim, aceita: o administrador da
+   empresa não consegue se ajudar sozinho.
 
-3. **Retenção.** Log de erro cresce rápido e de forma imprevisível (um bug em
-   laço gera milhares de linhas em minutos). Sem prazo de expurgo, esta vira a
-   maior tabela da base. Sugestão: dias configuráveis, como `retencaoDias` do
-   WhatsApp, e um teto por empresa.
+3. **Retenção: dias configuráveis + teto por empresa.** Os dois, porque cada um
+   cobre o que o outro não cobre — o prazo não segura um bug em laço, que enche
+   a tabela **dentro** da janela; o teto sozinho deixa erro antigo ocupando
+   espaço para sempre numa empresa quieta.
 
-4. **Ruído.** 400 de validação é erro de quem preencheu, não do sistema.
-   Registrar tudo faz o log encher de "campo obrigatório" e esconder o 500 que
-   importa. Sugestão: gravar 500 e erros de cliente por padrão; 4xx só com um
-   interruptor ligado, para investigação pontual.
+4. **Ruído: 500 e erros de cliente por padrão; 4xx só com o interruptor.**
+   400 de validação é erro de quem preencheu. O interruptor é de investigação
+   pontual: liga, reproduz, desliga.
 
-## Esboço de implementação (depois das decisões)
+5. **A tabela: `audit_logs` é ocupada pelo log de erros** (decisão do usuário —
+   uma tabela a menos, em vez de uma quinta ao lado de uma órfã). As colunas
+   antigas eram de auditoria de alteração (`entidade`, `acao`, `valorAnterior`)
+   e não descrevem um erro, então a migration as trocou pelas de erro. A tabela
+   mantém o nome; quem procurar auditoria de alteração encontra
+   `plataforma_auditoria`.
 
-Nesta ordem, cada passo utilizável sozinho:
+## Como ficou
 
-1. **Tabela e captura no servidor.** Model novo (ou `audit_logs`, se for a
-   decisão), gravação no ramo de 500 do `AllExceptionsFilter`. Guardar: momento,
-   rota, método, status, mensagem, stack, usuário, empresa, IP e agente. RLS por
-   empresa, com a policy na mesma migration.
-   - Cuidado: a gravação **não pode lançar**. Um log que derruba a resposta
-     transforma um erro em dois.
-2. **Tela em Administração.** Listagem com filtro por período, rota e status;
-   detalhe com o stack. Reaproveita `EntityTable` e o padrão de `/admin/acessos`.
-3. **Agrupamento.** Mesma rota + mesma mensagem viram uma linha com contador.
-   Sem isso, um erro repetido empurra todos os outros para fora da primeira
-   página — que é onde alguém olha.
-4. **Captura no cliente.** `apiFetch` reporta falha de rede e resposta não-JSON;
-   buffer em `localStorage` com reenvio ao voltar. É o passo que cobre o
-   incidente original.
-5. **Expurgo.** Rotina de retenção, junto da varredura que já existe.
+**Banco** (migration `20260904140000_log_de_erros`):
 
-## O que este plano não é
+- `audit_logs` reaproveitada, com `origem`, `tipo`, `ocorridoEm`, `ultimaEm`,
+  `ocorrencias`, `rota`/`rotaPadrao`, `metodo`, `status`, `pagina`, `mensagem`,
+  `resumo`, `stack`, `assinatura`, usuário, empresa (com a razão social junto),
+  IP e agente.
+- `erros_log_config`: linha única (`id = 'unico'`) com `retencaoDias` (30),
+  `tetoPorEmpresa` (5000) e `registrar4xx` (false).
+- **Nenhuma das duas tem RLS, de propósito** — mesma exceção de
+  `plataforma_auditoria`: quem lê é a administração da plataforma, e ela lê
+  *todas* as empresas; uma policy de tenant devolveria vazio justamente para
+  quem precisa enxergar. Registrado no `migrations/README.md`.
 
-Não é monitoramento (APM, alertas, métricas de latência). É a pergunta "o que
-deu errado agora?" respondida de dentro do sistema, sem abrir log de container
-— que é o que hoje só quem tem acesso à VPS consegue fazer.
+**API** (`apps/api/src/modules/erros/`):
+
+- `ErrosLogService` grava e consulta. Duas regras valem no caminho de escrita:
+  **nunca lançar** (um log que derruba a resposta transforma um erro em dois) e
+  **nunca chamar a si mesmo** (a falha ao gravar sai pelo logger do Nest).
+- `AllExceptionsFilter` recebe o serviço por construtor, resolvido em
+  `main.ts`. Opcional de propósito, para o filtro continuar funcionando em
+  teste, sem container.
+- `POST /erros/cliente` (só exige login) recebe o lote do navegador;
+  `/plataforma/erros` (`PlatformAdminGuard`) lista, resume, detalha, configura
+  e apaga grupo.
+- `ErrosVarreduraService` roda o expurgo a cada 30 min, como a varredura do
+  sino.
+
+**Agrupamento.** Uma linha na tela por **assinatura** = origem + tipo + rota
+normalizada + método + status + mensagem normalizada. `rotaPadrao` troca uuid e
+número por `:id`; a mensagem perde ids, números e trechos entre aspas. Sem isso,
+o mesmo erro em dez clientes vira dez grupos e empurra todo o resto para fora da
+primeira página — que é a única que alguém olha.
+
+**Colapso de rajada.** Repetição da mesma assinatura dentro de **1 minuto** vira
+contador na linha que já existe, não linha nova. É a defesa contra o bug em
+laço: sem ela, um erro viraria uma falha de disponibilidade. O teto por empresa
+e o expurgo cuidam do resto, mas eles rodam a cada 30 min — tarde demais para
+uma rajada.
+
+**Cliente** (`apps/web/src/lib/erro-report.ts`): o erro vai primeiro para o
+`localStorage` e só depois tenta sair, em lote, com backoff. O que não conseguir
+sair fica lá, inclusive entre recarregamentos. `api-client.ts` reporta falha de
+rede e resposta não-JSON; `providers.tsx` liga `window.onerror` e
+`unhandledrejection`.
+
+De quebra, o texto que motivou tudo melhorou: falha de rede agora vira
+`ApiError` com status 0 e a mensagem "Não foi possível falar com o servidor" —
+não mais o "Failed to fetch" cru do navegador.
+
+## O que foi verificado (dev, 2026-09-04)
+
+- Report do navegador: `POST /erros/cliente` → 204, linha na tela, com empresa,
+  usuário, IP e agente.
+- Colapso: 4 envios idênticos → **1 linha, contador 4**.
+- 4xx com o interruptor **desligado**: 404 e 400 disparados, **nada gravado**.
+- 4xx com o interruptor **ligado**: o 404 aparece, e a rota agrupou como
+  `GET /api/v1/clientes/:id` (a normalização funcionou).
+- 500 real: `SELECT` revogado de `plataforma_app` sobre `produtos`, `GET
+  /produtos` → 500 gravado com o stack do Prisma; grant restaurado em seguida.
+- Rota de leitura sem token → 401. Apagar grupo → `{"removidos":1}`.
+- 11 testes novos em `erros-log.service.spec.ts`, todos passando.
+
+**Ainda não verificado:** a tela em uso real (foi carregada, não operada), e o
+expurgo/teto em volume — a varredura roda, mas nunca teve o que cortar.
+
+## Limitações conhecidas
+
+- **Erro na tela de login não é reportado.** A rota de report exige
+  autenticação; a alternativa seria uma rota de escrita aberta na internet. O
+  incidente que motivou a ferramenta aconteceu com o usuário já logado.
+- **Se o banco cair, o log cai junto.** Ele grava no mesmo Postgres. Para esse
+  caso o rastro continua sendo o console do container.
+- **O log não é monitoramento.** Não há alerta, métrica de latência nem APM. É
+  a pergunta "o que deu errado agora?" respondida de dentro do sistema, sem
+  abrir log de container — que antes só quem tinha acesso à VPS conseguia
+  fazer.

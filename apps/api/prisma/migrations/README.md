@@ -85,6 +85,17 @@ usuários).
 - **`usuario_horarios`** — horário de trabalho por usuário (restrição de
   expediente). Não tem `empresaId`: a trava é da conta, não do vínculo com uma
   empresa, como a política de senha.
+- **`audit_logs`** (log de erros, ver `docs/planos/log-de-erros.md`) — quem lê
+  é a administração da plataforma, e ela lê **todas** as empresas. Uma policy de
+  tenant devolveria vazio justamente para quem precisa enxergar. Mesmo
+  raciocínio de `plataforma_auditoria`, que também fica fora do isolamento. O
+  `empresaId` é informativo e nulo quando o erro acontece antes de haver empresa
+  ativa (login, refresh). O corte aqui é o `PlatformAdminGuard`, não o Postgres
+  — mexeu na consulta, mantenha isso em mente.
+  A tabela era órfã (model no schema, nenhuma escrita, 0 linhas) e foi ocupada
+  pelo log de erros na migration `20260904140000_log_de_erros`; as colunas de
+  auditoria de alteração que ela tinha saíram ali. `erros_log_config`, criada na
+  mesma migration, é configuração da plataforma e nem sequer tem `empresaId`.
 
 ## Pré-requisitos operacionais
 
@@ -112,9 +123,10 @@ Com RLS: `usuario_empresas`, `produtos`, `vendedores`, `clientes`,
 usam policies pré-tenant estreitas, configuradas por `withPortalCredential` e
 `withPortalAudit`, além da policy normal de tenant.
 
-`integracao_api_keys`, `acessos_log` e `sessoes` têm `empresaId` mas estão na
-lista de exceções acima (não recebem RLS, pelo mesmo motivo de
-`refresh_tokens`).
+`integracao_api_keys`, `acessos_log`, `sessoes` e `audit_logs` têm `empresaId`
+mas estão na lista de exceções acima (não recebem RLS — as três primeiras pelo
+mesmo motivo de `refresh_tokens`, `audit_logs` porque quem a lê lê todas as
+empresas).
 
 Sem RLS por serem referência global (sem coluna `empresaId`): `paises`,
 `estados`, `municipios`, `ceps`, `cnaes` (além das tabelas de sistema

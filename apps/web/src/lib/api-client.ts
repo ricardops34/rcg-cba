@@ -1,4 +1,5 @@
 import { useAuthStore } from "@/stores/auth-store";
+import { reportarErroCliente } from "./erro-report";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api/v1";
 
@@ -54,6 +55,54 @@ function encerrarPorHorario(mensagem: string) {
   }
 }
 
+/**
+ * Caminho em que a requisição nem chegou ao servidor: API fora, DNS, conexão
+ * recusada, timeout. É o buraco que o log de erros existe para tapar — nada
+ * disso aparece num log de servidor, porque o servidor não viu.
+ *
+ * Além de registrar, troca a mensagem: o "Failed to fetch" do navegador é
+ * exatamente o texto inútil que motivou a ferramenta.
+ */
+function erroDeRede(
+  erro: unknown,
+  contexto: { rota: string; metodo?: string },
+): ApiError {
+  reportarErroCliente({
+    tipo: "rede",
+    rota: contexto.rota,
+    metodo: contexto.metodo,
+    pagina: typeof window !== "undefined" ? window.location.pathname : undefined,
+    mensagem: erro instanceof Error ? erro.message : String(erro),
+    stack: erro instanceof Error ? erro.stack : undefined,
+  });
+  return new ApiError(
+    "Não foi possível falar com o servidor. Verifique a conexão e tente de novo.",
+    // 0 = a requisição não recebeu resposta. Não é um status HTTP, e é assim
+    // que a tela distingue "o servidor recusou" de "o servidor não respondeu".
+    0,
+  );
+}
+
+/** Respondeu, mas o corpo não era o combinado (HTML de proxy, JSON quebrado). */
+function erroDeResposta(
+  erro: unknown,
+  contexto: { rota: string; metodo?: string; status: number },
+): ApiError {
+  reportarErroCliente({
+    tipo: "resposta",
+    rota: contexto.rota,
+    metodo: contexto.metodo,
+    status: contexto.status,
+    pagina: typeof window !== "undefined" ? window.location.pathname : undefined,
+    mensagem: erro instanceof Error ? erro.message : String(erro),
+    stack: erro instanceof Error ? erro.stack : undefined,
+  });
+  return new ApiError(
+    "O servidor respondeu em um formato inesperado.",
+    contexto.status,
+  );
+}
+
 let refreshPromise: Promise<string | null> | null = null;
 
 /** Lê a claim empresaAtivaId de um access token sem validar assinatura — só pra
@@ -71,11 +120,20 @@ async function refreshAccessToken(): Promise<string | null> {
   const { refreshToken, user, setTokens, setUser, logout } = useAuthStore.getState();
   if (!refreshToken) return null;
 
-  const res = await fetch(`${API_URL}/auth/refresh`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refreshToken }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    });
+  } catch (erro) {
+    // API fora no meio de uma renovação. Registra e devolve null: quem chamou
+    // segue com a resposta 401 que já tinha, em vez de estourar um
+    // "Failed to fetch" cru no meio da tela.
+    erroDeRede(erro, { rota: "/auth/refresh", metodo: "POST" });
+    return null;
+  }
 
   if (!res.ok) {
     // Renovar fora do expediente é recusado com o mesmo 403 das demais rotas
@@ -126,14 +184,18 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   }
 
   const doRequest = async (token: string | null) => {
-    return fetch(url.toString(), {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    try {
+      return await fetch(url.toString(), {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch (erro) {
+      throw erroDeRede(erro, { rota: url.pathname, metodo: method });
+    }
   };
 
   let token = useAuthStore.getState().accessToken;
@@ -155,7 +217,15 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   }
 
   if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+  try {
+    return (await res.json()) as T;
+  } catch (erro) {
+    throw erroDeResposta(erro, {
+      rota: url.pathname,
+      metodo: method,
+      status: res.status,
+    });
+  }
 }
 
 /**
@@ -180,11 +250,15 @@ export async function apiUpload<T>(
       formData = new FormData();
       formData.append(field, arquivo);
     }
-    return fetch(url, {
-      method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: formData,
-    });
+    try {
+      return await fetch(url, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+    } catch (erro) {
+      throw erroDeRede(erro, { rota: path, metodo: "POST" });
+    }
   };
 
   let token = useAuthStore.getState().accessToken;
@@ -220,8 +294,15 @@ export async function apiUpload<T>(
 export async function apiDownload(path: string, nomePadrao: string): Promise<void> {
   const url = `${API_URL}${path}`;
 
-  const doRequest = async (token: string | null) =>
-    fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  const doRequest = async (token: string | null) => {
+    try {
+      return await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+    } catch (erro) {
+      throw erroDeRede(erro, { rota: path, metodo: "GET" });
+    }
+  };
 
   let token = useAuthStore.getState().accessToken;
   let res = await doRequest(token);
