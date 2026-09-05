@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useAuthStore } from "@/stores/auth-store";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import { ChangePasswordForm } from "@/components/perfil/change-password-form";
+import { WhatsappPareamentoCard } from "@/components/perfil/whatsapp-pareamento-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -77,6 +78,8 @@ export default function PerfilPage() {
       </Card>
 
       <ChangePasswordForm />
+
+      <WhatsappPareamentoCard />
     </div>
   );
 }

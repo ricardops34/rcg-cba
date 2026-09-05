@@ -44,6 +44,7 @@ import {
   WhatsappReagirDto,
   WhatsappVincularDto,
 } from './dto/whatsapp.dto';
+import { WhatsappFuncionarioService } from './triagem/whatsapp-funcionario.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -64,6 +65,7 @@ export class WhatsappController {
     private readonly agenda: WhatsappAgendaService,
     private readonly acoes: WhatsappAcoesService,
     private readonly agendamento: WhatsappAgendamentoService,
+    private readonly funcionarios: WhatsappFuncionarioService,
   ) {}
 
   // ---------------- configuração da empresa ----------------
@@ -110,6 +112,32 @@ export class WhatsappController {
   @Get('integracao')
   statusIntegracao(@CurrentUser() user: AuthenticatedUser) {
     return this.config.statusIntegracao(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Meu pareamento com o WhatsApp da empresa',
+    description:
+      'O código de 6 dígitos que confirma, no WhatsApp institucional, que ' +
+      'aquele número é seu — e a situação do pareamento. Sem permissão de ' +
+      'perfil, de propósito: é sobre a própria conta, e **este é o único lugar ' +
+      'onde o código aparece**. É o que faz a posse do celular não bastar para ' +
+      'consultar a carteira por WhatsApp: quem lê aqui já entrou com senha.',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      example: {
+        codigo: '481920',
+        expiraEm: '2026-09-04T18:40:00.000Z',
+        telefone: '5567998699444',
+        confirmado: false,
+        validoAte: null,
+      },
+    },
+  })
+  @Get('meu-numero')
+  meuNumero(@CurrentUser() user: AuthenticatedUser) {
+    return this.funcionarios.codigoPendente(user.empresaAtivaId, user.id);
   }
 
   // ---------------- sessão do vendedor ----------------

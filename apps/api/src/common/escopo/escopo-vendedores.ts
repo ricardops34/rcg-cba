@@ -37,10 +37,35 @@ export async function resolverEscopoVendedores(
   empresaId: string,
   user: AuthenticatedUser,
 ): Promise<EscopoVendedores> {
-  if (user.isAdmin) return null; // acesso total (cobre Administrador; "Diretor" tratado igual)
+  return resolverEscopoDoUsuario(tx, empresaId, {
+    usuarioId: user.id,
+    isAdmin: user.isAdmin,
+  });
+}
+
+/**
+ * O mesmo escopo, a partir do **usuário** em vez da sessão autenticada.
+ *
+ * Existe para o atendimento institucional: o funcionário que escreve pelo
+ * WhatsApp é reconhecido pelo telefone e pelo código que confirmou, não por um
+ * login — não há `AuthenticatedUser` nenhum ali. Fabricar um sintético para
+ * atravessar esta porta poria um ator de escopo indefinido circulando por
+ * serviços que assumem uma pessoa com carteira, que é exatamente o que o
+ * módulo já se recusou a fazer uma vez (ver o comentário da 2ª via de boleto
+ * em `triagem-ferramentas.ts`).
+ *
+ * Separar assim garante que o WhatsApp use **a mesma regra** do sistema: se o
+ * recorte mudar, muda para os dois.
+ */
+export async function resolverEscopoDoUsuario(
+  tx: TenantTx,
+  empresaId: string,
+  quem: { usuarioId: string; isAdmin: boolean },
+): Promise<EscopoVendedores> {
+  if (quem.isAdmin) return null; // acesso total (cobre Administrador; "Diretor" tratado igual)
 
   const vendedor = await tx.vendedor.findFirst({
-    where: { usuarioId: user.id, empresaId, deletedAt: null },
+    where: { usuarioId: quem.usuarioId, empresaId, deletedAt: null },
     select: { id: true },
   });
   if (!vendedor) return null; // sem Vendedor vinculado (ex.: Administrativo) = acesso total

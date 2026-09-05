@@ -31,12 +31,21 @@ conversa parada em `bot` — o limbo que o próprio comentário do schema descre
 
 ## Decisões (do usuário, 2026-09-04)
 
-1. **Identidade do funcionário: telefone cadastrado + código na 1ª vez.** O
-   número é reconhecido em `usuario_empresas.celular/telefone` — a mesma fonte
-   que o `avisar_equipe` já usa para mandar recado. Mas antes de liberar
-   ferramenta, a pessoa confirma um código que só aparece **dentro do sistema**,
-   onde ela entrou com senha. Posse do celular sozinha não basta; o número vira
-   credencial deliberada. Revalida periodicamente.
+1. **Identidade do funcionário: telefone cadastrado + código na 1ª vez.** Antes
+   de liberar ferramenta, a pessoa confirma um código que só aparece **dentro do
+   sistema**, onde ela entrou com senha. Posse do celular sozinha não basta; o
+   número vira credencial deliberada. Revalida periodicamente.
+
+   **O telefone é o do cadastro de vendedores** (`vendedores.telefone`) —
+   correção do usuário em 2026-09-04. Vendedor, gerente e supervisor têm
+   cadastro ali.
+
+   Isto revelou um defeito silencioso: o `avisar_equipe` lia de
+   `usuario_empresas.celular/telefone`, colunas que **ninguém preenche** (0 de
+   10 vínculos na base de dev, contra 9 de 10 vendedores com telefone). Todo
+   destinatário era pulado por número curto, e a ferramenta devolvia "ninguém
+   tem celular cadastrado com WhatsApp" — a IA acreditava e o aviso nunca saía.
+   Corrigido junto, na mesma fonte.
 
 2. **Poder do funcionário: só consulta.** Nada é criado nem alterado pelo
    WhatsApp. É o que dá valor sem transformar um celular perdido em acesso de
@@ -65,10 +74,15 @@ conversa parada em `bot` — o limbo que o próprio comentário do schema descre
 
 A triagem passa a resolver a identidade em duas etapas, nesta ordem:
 
-1. O telefone bate com o de um vínculo ativo em `usuario_empresas`? → candidato
-   a **funcionário**.
+1. O telefone bate com o de um vendedor ativo (`vendedores.telefone`)? →
+   candidato a **funcionário**.
 2. Senão, o caminho de hoje: contato → `clienteId` → **cliente**, ou
    desconhecido.
+
+A comparação é pelos **últimos 8 dígitos**, a convenção que `casarCliente` já
+usa: cobre com/sem DDI 55 e com/sem o 9º dígito sem normalizar a base inteira.
+Dois vendedores com o mesmo sufixo **não** resolvem para nenhum — ambiguidade
+não adivinha, aqui menos ainda do que no cadastro de cliente.
 
 Funcionário e cliente não se misturam: quem é reconhecido como funcionário não
 recebe as ferramentas de cliente, e vice-versa. Um número que sirva às duas

@@ -126,6 +126,7 @@ model Empresa {
   whatsappReacoes            WhatsappReacao[]
   whatsappAgendadas          WhatsappMensagemAgendada[]
   whatsappAcoes              WhatsappAcaoRegistro[]
+  whatsappVinculos           WhatsappVinculoFuncionario[]
   notificacoes               Notificacao[]
   comunicados                Comunicado[]
   comunicadoPerfis           ComunicadoPerfil[]
@@ -176,14 +177,15 @@ model Usuario {
   updatedBy String?
   deletedBy String?
 
-  usuarioEmpresas UsuarioEmpresa[]
-  refreshTokens   RefreshToken[]
-  vendedores      Vendedor[]
-  senhaHistorico  SenhaHistorico[]
-  horarios        UsuarioHorario[]
-  acessos         AcessoLog[]
-  sessoes         Sessao[]
-  notificacoes    Notificacao[]
+  usuarioEmpresas  UsuarioEmpresa[]
+  refreshTokens    RefreshToken[]
+  vendedores       Vendedor[]
+  senhaHistorico   SenhaHistorico[]
+  horarios         UsuarioHorario[]
+  acessos          AcessoLog[]
+  sessoes          Sessao[]
+  notificacoes     Notificacao[]
+  whatsappVinculos WhatsappVinculoFuncionario[]
 
   @@map("usuarios")
 }
@@ -2563,7 +2565,7 @@ model ErroLog {
   ocorrencias Int @default(1)
 
   /// Caminho como veio, com os ids reais — é o que permite reproduzir.
-  rota String
+  rota       String
   /// O mesmo caminho com uuid/número trocados por `:id`. Sem isto, o mesmo
   /// erro em dez clientes vira dez grupos.
   rotaPadrao String
@@ -2606,15 +2608,15 @@ model ErroLogConfig {
   id String @id @default("unico")
 
   /// 0 = sem expurgo por tempo.
-  retencaoDias Int @default(30)
+  retencaoDias   Int     @default(30)
   /// Máximo de linhas por empresa; 0 = sem teto. A varredura corta as mais
   /// antigas. O prazo em dias sozinho não segura um bug em laço dentro da
   /// janela — daí o teto.
-  tetoPorEmpresa Int @default(5000)
+  tetoPorEmpresa Int     @default(5000)
   /// Grava também os 4xx. Desligado por padrão: 400 de validação é erro de
   /// quem preencheu, e registrar tudo esconde o 500 que importa. É
   /// interruptor de investigação pontual.
-  registrar4xx Boolean @default(false)
+  registrar4xx   Boolean @default(false)
 
   atualizadoEm  DateTime @updatedAt
   atualizadoPor String?
@@ -2699,6 +2701,58 @@ enum WhatsappStatusEntrega {
   entregue
   lida
   erro
+}
+
+/// Número de WhatsApp que o institucional reconhece como sendo de um
+/// funcionário (ver docs/planos/whatsapp-institucional-funcionarios.md).
+///
+/// **O telefone sozinho não autoriza nada.** Ele é reconhecido em
+/// `usuario_empresas.celular/telefone` — a mesma fonte que o `avisar_equipe`
+/// usa para mandar recado —, mas antes de qualquer ferramenta ser oferecida a
+/// pessoa confirma um código que só aparece **dentro do sistema**, onde ela
+/// entrou com senha. É isso que impede um celular emprestado, perdido ou
+/// clonado de falar com a voz do dono.
+model WhatsappVinculoFuncionario {
+  id        String @id @default(uuid())
+  empresaId String
+  usuarioId String
+
+  /// Dígitos do número como o WhatsApp entregou (com DDI, sem formatação).
+  /// Guardado inteiro para quem investiga saber qual aparelho foi pareado.
+  telefone String
+
+  /// Últimos 8 dígitos — a chave de comparação. Mesma convenção de
+  /// `casarCliente`: cobre com/sem DDI 55 e com/sem o 9º dígito sem precisar
+  /// normalizar a base inteira.
+  sufixo String
+
+  /// Código pendente e sua validade. Curto de propósito: ele trafega por
+  /// WhatsApp, e um código que vale o dia todo vale para quem estiver com o
+  /// aparelho depois.
+  codigo         String?
+  codigoExpiraEm DateTime?
+
+  /// Erros seguidos no código. Estourado o teto, o código morre e é preciso
+  /// escrever de novo para gerar outro — senão o WhatsApp vira um campo de
+  /// tentativa e erro de seis dígitos.
+  tentativas Int @default(0)
+
+  confirmadoEm DateTime?
+
+  /// Até quando o pareamento vale. Vencido, pede o código de novo: um número
+  /// confirmado uma vez não pode valer para sempre, porque pessoas trocam de
+  /// telefone e saem da empresa.
+  validoAte DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@unique([empresaId, sufixo])
+  @@index([empresaId, usuarioId])
+  @@map("whatsapp_vinculos_funcionario")
 }
 
 enum WhatsappTipoContato {

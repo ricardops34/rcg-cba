@@ -5,7 +5,15 @@ import { AgenteConfigService } from '../../agente/agente-config.service';
 import { ProvedorFactory } from '../../agente/provedor.factory';
 import type { MensagemChat } from '../../agente/provedor-ia';
 import { ferramentasDaTriagem } from './triagem-ferramentas';
-import { montarPromptTriagem } from './triagem-prompt';
+import { montarPromptTriagem, montarPromptFuncionario } from './triagem-prompt';
+import { FERRAMENTAS_DO_FUNCIONARIO } from './triagem-ferramentas-funcionario';
+import { WhatsappFuncionarioService } from './whatsapp-funcionario.service';
+import { TriagemFuncionarioToolsService } from './triagem-funcionario-tools.service';
+import {
+  resolverEscopoDoUsuario,
+  type EscopoVendedores,
+} from '../../../common/escopo/escopo-vendedores';
+import { jidBrasileiro, sufixoTelefone } from './telefone-equipe';
 import { WhatsappProviderService } from '../providers/whatsapp-provider.service';
 import { dentroDoExpediente } from '../../../common/horario/horario-trabalho';
 import {
@@ -55,11 +63,17 @@ const MAX_AVISOS_POR_CONVERSA = 3;
  * O que ela faz, em uma frase: recebe a mensagem que chegou no WhatsApp da
  * empresa, responde o que dá para responder, e entrega a conversa a uma pessoa.
  *
+ * Do outro lado pode estar um **cliente** ou um **funcionário**, e a diferença
+ * decide tudo o que vem depois: o prompt, o catálogo de ferramentas e o recorte
+ * dos dados. Cliente é reconhecido pelo vínculo do número com o cadastro;
+ * funcionário, pelo telefone no cadastro de vendedores **mais** um código que
+ * ele confirmou (ver `WhatsappFuncionarioService`). Os dois nunca se misturam.
+ *
  * **O que ela não é:** o agente interno (`AgenteChatService`). Aquele conversa
- * com um funcionário logado e recorta ferramentas por perfil RBAC. Aqui do
- * outro lado está o **cliente**, e o recorte é o cliente associado ao número —
- * outro interlocutor, outro corte, outro prompt. Compartilham só a camada de
- * provedor de IA, que é onde de fato não há diferença.
+ * com um funcionário **logado** e recorta ferramentas por perfil RBAC, o que
+ * permite criar e alterar. Aqui não há login — só um número confirmado —, e por
+ * isso o funcionário só consulta. Compartilham a camada de provedor de IA, que
+ * é onde de fato não há diferença.
  */
 @Injectable()
 export class WhatsappTriagemService {
@@ -70,6 +84,8 @@ export class WhatsappTriagemService {
     private readonly agenteConfig: AgenteConfigService,
     private readonly provedores: ProvedorFactory,
     private readonly provider: WhatsappProviderService,
+    private readonly funcionarios: WhatsappFuncionarioService,
+    private readonly funcionarioTools: TriagemFuncionarioToolsService,
   ) {}
 
   /**
@@ -151,10 +167,42 @@ export class WhatsappTriagemService {
       return;
     }
 
-    // O agente de IA é o mesmo da empresa (Administração > Agente IA):
-    // provedor, chave e modelo saem dali. Desligado, a triagem não tem com o
-    // que pensar — e a conversa vai para uma pessoa, com o motivo dito em vez
-    // de virar uma exceção genérica no log.
+    // Funcionário e cliente não se misturam. Quem é reconhecido no cadastro de
+    // vendedores não recebe as ferramentas de cliente nem a saudação de
+    // atendimento — ele não está comprando, está trabalhando.
+    const identidade = await this.prisma.withTenant(empresaId, (tx) =>
+      this.funcionarios.identificar(tx, empresaId, contexto.telefoneContato),
+    );
+
+    if (identidade.tipo !== 'desconhecido') {
+      // Falha no atendimento a funcionário **não** vai para a fila.
+      //
+      // A fila é de cliente esperando. Um vendedor perguntando quanto tem
+      // vencido, ou confirmando o número dele, não é alguém para outra pessoa
+      // atender — mandar isso para lá cria trabalho falso e faz alguém abrir a
+      // conversa para descobrir que não havia nada a fazer. A conversa fica em
+      // `bot`, e a próxima mensagem tenta de novo.
+      try {
+        if (identidade.tipo === 'funcionario_pendente') {
+          await this.parear(empresaId, conversaId, identidade, entrada.texto);
+        } else {
+          await this.atenderFuncionario(
+            empresaId,
+            conversaId,
+            contexto,
+            identidade,
+          );
+        }
+      } catch (erro) {
+        this.logger.error(
+          `Atendimento a funcionário falhou na conversa ${conversaId}: ${
+            erro instanceof Error ? erro.message : String(erro)
+          }`,
+        );
+      }
+      return;
+    }
+
     // A saudação sai **antes** de a IA pensar, e sai mesmo que a IA falhe
     // logo depois: quem escreveu para a empresa merece uma resposta imediata,
     // e essa resposta é a única que não depende de provedor nenhum estar no ar.
@@ -166,6 +214,10 @@ export class WhatsappTriagemService {
       await this.saudar(empresaId, conversaId, contexto.saudacao);
     }
 
+    // O agente de IA é o mesmo da empresa (Administração > Agente IA):
+    // provedor, chave e modelo saem dali. Desligado, a triagem não tem com o
+    // que pensar — e a conversa vai para uma pessoa, com o motivo dito em vez
+    // de virar uma exceção genérica no log.
     let cfg;
     try {
       cfg = await this.agenteConfig.paraUso(empresaId);
@@ -268,6 +320,10 @@ export class WhatsappTriagemService {
           atendimento: true,
           saudadoEm: true,
           sessao: { select: { tipo: true } },
+          // O telefone é o que reconhece um funcionário. `telefoneNormalizado`
+          // pode vir nulo em contato antigo, então o jid entra como reserva —
+          // é dele que o número sai, afinal.
+          contato: { select: { telefoneNormalizado: true, jid: true } },
           cliente: {
             select: {
               nomeFantasia: true,
@@ -324,6 +380,8 @@ export class WhatsappTriagemService {
         iaAtiva: config?.atendimentoIaAtivo === true,
         saudacao: config?.atendimentoSaudacao?.trim() || null,
         jaSaudou: conversa.saudadoEm !== null,
+        telefoneContato:
+          conversa.contato.telefoneNormalizado ?? conversa.contato.jid,
         presentes: await this.vendedoresPresentes(tx, empresaId),
         historico,
       };
@@ -593,7 +651,7 @@ export class WhatsappTriagemService {
       aviso.destino === 'supervisao'
         ? await tx.vendedor.findMany({
             where: { empresaId, deletedAt: null, ativo: true, tipo: 'superior' },
-            select: { id: true, nome: true, usuarioId: true },
+            select: { id: true, nome: true, telefone: true },
           })
         : aviso.vendedorId
           ? await tx.vendedor.findMany({
@@ -603,28 +661,13 @@ export class WhatsappTriagemService {
                 deletedAt: null,
                 ativo: true,
               },
-              select: { id: true, nome: true, usuarioId: true },
+              select: { id: true, nome: true, telefone: true },
             })
           : [];
 
     if (destinatarios.length === 0) {
       return { enviado: false, motivo: 'Nenhum destinatário encontrado' };
     }
-
-    // O telefone vem do vínculo com a empresa, não de um campo solto: é o
-    // celular corporativo que a pessoa cadastrou para ser encontrada.
-    const vinculos = await tx.usuarioEmpresa.findMany({
-      where: {
-        empresaId,
-        ativo: true,
-        usuarioId: {
-          in: destinatarios
-            .map((d) => d.usuarioId)
-            .filter((id): id is string => id !== null),
-        },
-      },
-      select: { usuarioId: true, celular: true, telefone: true },
-    });
 
     const sessao = await tx.whatsappSessao.findFirst({
       where: { empresaId, tipo: 'empresa', status: 'conectada' },
@@ -640,18 +683,22 @@ export class WhatsappTriagemService {
 
     const enviados: string[] = [];
     for (const destinatario of destinatarios) {
-      const vinculo = vinculos.find((v) => v.usuarioId === destinatario.usuarioId);
-      const numero = (vinculo?.celular ?? vinculo?.telefone ?? '').replace(
-        /\D/g,
-        '',
-      );
-      if (numero.length < 10) continue;
+      // O telefone da equipe é o do **cadastro de vendedores**, e não o do
+      // vínculo com a empresa.
+      //
+      // Era lido de `usuario_empresas.celular/telefone` até 2026-09-04, e o
+      // efeito era silencioso: aquelas colunas estão vazias (0 de 10 vínculos
+      // na base de dev, contra 9 de 10 vendedores com telefone), então todo
+      // destinatário era pulado e o aviso nunca saía — a ferramenta devolvia
+      // "ninguém tem celular cadastrado" e a IA acreditava.
+      const jid = jidBrasileiro(destinatario.telefone);
+      if (!jid) continue;
 
       try {
         await this.provider.enviarTexto(
           empresaId,
           sessao.id,
-          { jid: `55${numero}@s.whatsapp.net`, texto: assinatura + texto },
+          { jid, texto: assinatura + texto },
           tx,
         );
         enviados.push(destinatario.nome);
@@ -889,6 +936,176 @@ export class WhatsappTriagemService {
         // faria "3 mensagens" no lugar de três pessoas na fila.
         acumular: false,
       });
+    }
+  }
+
+  /**
+   * Pareamento do número de um funcionário reconhecido mas não confirmado.
+   *
+   * A conversa **não vai para a fila** enquanto isso: ela fica em `bot`, que é
+   * onde deve estar — não há cliente esperando, há um colega confirmando o
+   * telefone dele. Mandar isso para a fila faria alguém abrir a conversa para
+   * descobrir que era um pareamento em andamento.
+   */
+  private async parear(
+    empresaId: string,
+    conversaId: string,
+    identidade: { vinculoId: string; nome: string },
+    texto: string | null,
+  ) {
+    const confirmacao = await this.funcionarios.tentarConfirmar(
+      empresaId,
+      identidade.vinculoId,
+      texto,
+    );
+    if (confirmacao) {
+      await this.responder(empresaId, conversaId, confirmacao.mensagem);
+      return;
+    }
+
+    const pedido = await this.funcionarios.pedirCodigo(
+      empresaId,
+      identidade.vinculoId,
+      identidade.nome,
+    );
+    await this.responder(empresaId, conversaId, pedido);
+  }
+
+  /**
+   * Atende o funcionário com número já confirmado.
+   *
+   * O escopo sai de `resolverEscopoDoUsuario` — **a mesma função do sistema**,
+   * chamada com o usuarioId em vez de uma sessão. É o que garante que o
+   * WhatsApp não tenha uma segunda definição de "o que eu posso ver", e o que
+   * evita fabricar um `AuthenticatedUser` sintético para atravessar serviços
+   * que assumem uma pessoa logada.
+   */
+  private async atenderFuncionario(
+    empresaId: string,
+    conversaId: string,
+    contexto: { nomeEmpresa: string; historico: MensagemChat[] },
+    identidade: { usuarioId: string; nome: string; superior: boolean },
+  ) {
+    let cfg;
+    try {
+      cfg = await this.agenteConfig.paraUso(empresaId);
+    } catch {
+      await this.responder(
+        empresaId,
+        conversaId,
+        'O assistente não está configurado nesta empresa. Fale com quem administra o sistema.',
+      );
+      return;
+    }
+
+    const escopo = await this.prisma.withTenant(empresaId, (tx) =>
+      resolverEscopoDoUsuario(tx, empresaId, {
+        usuarioId: identidade.usuarioId,
+        // Pelo WhatsApp ninguém é admin de plataforma: o corte é sempre o do
+        // cadastro de vendedor. Admin que quiser ver a empresa inteira usa o
+        // sistema, onde entrou com senha.
+        isAdmin: false,
+      }),
+    );
+
+    const mensagens: MensagemChat[] = [
+      {
+        papel: 'system',
+        conteudo: montarPromptFuncionario({
+          nomeEmpresa: contexto.nomeEmpresa,
+          nome: identidade.nome.trim().split(/\s+/)[0],
+          superior: identidade.superior,
+        }),
+      },
+      ...contexto.historico,
+    ];
+
+    let resposta: string | null = null;
+
+    for (let volta = 0; volta < MAX_VOLTAS; volta++) {
+      const r = await this.provedores.para(cfg.provedor).conversar({
+        baseUrl: cfg.baseUrl,
+        apiKey: cfg.apiKey,
+        contaId: cfg.contaId,
+        modelo: cfg.modelo,
+        temperatura: cfg.temperatura,
+        maxTokens: cfg.maxTokens,
+        mensagens,
+        ferramentas: FERRAMENTAS_DO_FUNCIONARIO,
+      });
+
+      if (r.chamadas.length === 0) {
+        resposta = r.texto;
+        break;
+      }
+
+      mensagens.push({
+        papel: 'assistant',
+        conteudo: r.texto,
+        chamadas: r.chamadas,
+        bruto: r.bruto,
+      });
+
+      for (const chamada of r.chamadas) {
+        const resultado = await this.prisma.withTenant(empresaId, (tx) =>
+          this.executarFerramentaFuncionario(
+            tx,
+            empresaId,
+            escopo,
+            chamada.nome,
+            chamada.argumentos,
+          ),
+        );
+        mensagens.push({
+          papel: 'tool',
+          chamadaId: chamada.id,
+          conteudo: JSON.stringify(resultado),
+        });
+      }
+    }
+
+    if (resposta?.trim()) {
+      await this.responder(empresaId, conversaId, resposta.trim());
+    }
+  }
+
+  private async executarFerramentaFuncionario(
+    tx: TenantTx,
+    empresaId: string,
+    escopo: EscopoVendedores,
+    nome: string,
+    argumentos: Record<string, unknown>,
+  ): Promise<unknown> {
+    switch (nome) {
+      case 'meus_titulos_vencidos':
+        return this.funcionarioTools.titulosVencidos(
+          tx,
+          empresaId,
+          escopo,
+          Number(argumentos.quantidade) || 10,
+        );
+
+      case 'minha_agenda':
+        return this.funcionarioTools.agenda(
+          tx,
+          empresaId,
+          escopo,
+          Number(argumentos.dias ?? 7),
+        );
+
+      case 'situacao_do_cliente':
+        return this.funcionarioTools.situacaoDoCliente(
+          tx,
+          empresaId,
+          escopo,
+          String(argumentos.nome ?? ''),
+        );
+
+      case 'clientes_aguardando':
+        return this.funcionarioTools.clientesAguardando(tx, empresaId, escopo);
+
+      default:
+        return { erro: `Ferramenta desconhecida: ${nome}` };
     }
   }
 

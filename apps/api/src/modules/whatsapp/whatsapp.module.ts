@@ -4,6 +4,8 @@ import { WhatsappInternoController } from './whatsapp-interno.controller';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappTriagemService } from './triagem/whatsapp-triagem.service';
 import { WhatsappInatividadeService } from './triagem/whatsapp-inatividade.service';
+import { WhatsappFuncionarioService } from './triagem/whatsapp-funcionario.service';
+import { TriagemFuncionarioToolsService } from './triagem/triagem-funcionario-tools.service';
 import { ProvedorIaModule } from '../agente/provedor-ia.module';
 import { WhatsappSessaoService } from './whatsapp-sessao.service';
 import { WhatsappConversasService } from './whatsapp-conversas.service';
@@ -54,6 +56,11 @@ import { OrcamentosModule } from '../orcamentos/orcamentos.module';
     // Encerra a conversa que parou no meio da triagem — sem ela, `bot` é um
     // limbo do qual nada sai sozinho.
     WhatsappInatividadeService,
+    // Reconhece o funcionario que escreve para o institucional e executa as
+    // consultas dele. Exportado porque a tela de Meu perfil mostra o codigo
+    // de pareamento.
+    WhatsappFuncionarioService,
+    TriagemFuncionarioToolsService,
     // Transporte: o roteador e as duas implementações. Nada fora de
     // `providers/` conhece worker ou gateway — ver `whatsapp-provider.ts`.
     WhatsappProviderService,
@@ -70,6 +77,8 @@ import { OrcamentosModule } from '../orcamentos/orcamentos.module';
     // Para o catálogo do agente de IA, que fala pela conversa do próprio vendedor.
     WhatsappAcoesService,
     WhatsappAgendamentoService,
+    // Meu perfil mostra o código de pareamento do WhatsApp do funcionário.
+    WhatsappFuncionarioService,
   ],
 })
 export class WhatsappModule {}

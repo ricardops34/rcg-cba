@@ -775,3 +775,29 @@ export const WHATSAPP_MENSAGEM_EXAMPLE: WhatsappMensagem = {
   respondeuA: null,
   criadaEm: "2026-08-14T18:31:00.000Z",
 };
+
+/**
+ * Pareamento do número pessoal do funcionário com o WhatsApp institucional
+ * (ver docs/planos/whatsapp-institucional-funcionarios.md).
+ *
+ * O telefone é reconhecido no cadastro de vendedores, mas reconhecer não
+ * autoriza: o acesso às consultas por WhatsApp só abre depois que a pessoa
+ * confirma, na conversa, o código que aparece **aqui** — dentro do sistema,
+ * onde ela entrou com senha. É isso que impede um celular emprestado, perdido
+ * ou clonado de falar com a voz do dono.
+ */
+export const whatsappMeuNumeroSchema = z.object({
+  /**
+   * Código de 6 dígitos a ser respondido no WhatsApp. Nulo quando não há
+   * nenhum pendente — ou quando o que havia já venceu, porque exibir um código
+   * vencido levaria a pessoa a digitar algo que vai ser recusado.
+   */
+  codigo: z.string().nullable(),
+  expiraEm: z.string().datetime().nullable(),
+  /** O número que escreveu, como o WhatsApp entregou. Nulo antes da 1ª vez. */
+  telefone: z.string().nullable(),
+  confirmado: z.boolean(),
+  /** Até quando o pareamento vale. Vencido, o código é pedido de novo. */
+  validoAte: z.string().datetime().nullable(),
+});
+export type WhatsappMeuNumero = z.infer<typeof whatsappMeuNumeroSchema>;

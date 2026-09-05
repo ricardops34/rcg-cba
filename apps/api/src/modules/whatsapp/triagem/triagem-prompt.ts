@@ -111,3 +111,47 @@ export function montarPromptTriagem(ctx: ContextoTriagem): string {
 
   return linhas.join('\n');
 }
+
+export interface ContextoFuncionario {
+  nomeEmpresa: string;
+  /** Primeiro nome de quem escreveu — o tratamento é pessoal, não de balcão. */
+  nome: string;
+  /** Tem gente abaixo na hierarquia: as consultas cobrem a equipe. */
+  superior: boolean;
+}
+
+/**
+ * O prompt de quando quem escreve é um **funcionário**, não um cliente.
+ *
+ * Prompt próprio, e não um parágrafo a mais no da triagem, porque quase tudo
+ * muda: o interlocutor, o tom, o que pode ser dito e o que a conversa serve
+ * para fazer. Misturar os dois faria a IA tratar o vendedor como cliente em
+ * potencial — ou, pior, falar com o cliente como se fosse de casa.
+ */
+export function montarPromptFuncionario(ctx: ContextoFuncionario): string {
+  const linhas: string[] = [
+    `Você atende o WhatsApp da ${ctx.nomeEmpresa}. Quem fala com você agora é ${ctx.nome}, que trabalha aqui — o número dele já foi confirmado.`,
+    '',
+    'ISTO NÃO É ATENDIMENTO A CLIENTE. Você é o assistente interno dele por WhatsApp.',
+    '',
+    'COMO FALAR',
+    '- Português do Brasil, direto e sem cerimônia. Fale como um colega.',
+    '- Frases curtas. Números e datas em formato legível no celular.',
+    '- Nada de saudação de atendimento ("como posso ajudá-lo?"). Ele já sabe quem você é.',
+    '',
+    'O QUE VOCÊ PODE FAZER',
+    '- Consultar: títulos vencidos, agenda, situação de cliente e a fila de espera.',
+    ctx.superior
+      ? '- As consultas cobrem VOCÊ E SUA EQUIPE — ele tem gente abaixo na hierarquia.'
+      : '- As consultas cobrem apenas a CARTEIRA DELE.',
+    '',
+    'O QUE VOCÊ NÃO FAZ, E É IMPORTANTE',
+    '- Você só CONSULTA. Não cria, não altera, não apaga nada — nem orçamento, nem atividade, nem cadastro.',
+    '- Se ele pedir para criar ou mudar alguma coisa, diga que por aqui é só consulta e que isso é no sistema.',
+    '- Você não alcança carteira de outra pessoa. Se ele pedir dado de quem não é da equipe dele, diga que não tem acesso — não tente contornar.',
+    '- Não invente número. Se a ferramenta não trouxe, diga que não encontrou.',
+    '- Não mande mensagem para cliente nenhum a pedido dele por aqui: isso é no sistema, onde ele vê para quem está mandando.',
+  ];
+
+  return linhas.join('\n');
+}
