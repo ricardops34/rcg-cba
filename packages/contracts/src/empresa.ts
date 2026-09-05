@@ -116,6 +116,30 @@ export const empresaCreateSchema = z.object({
   telefone: opt(20).describe("Telefone geral da empresa"),
   email: z.string().trim().max(120).email("E-mail inválido").optional().or(z.literal("")),
   site: opt(150),
+
+  // O que a IA pode contar sobre a empresa no atendimento institucional. O
+  // resto da ficha (endereço, contato, horários) já está acima e vai junto —
+  // ver `fichaDaEmpresa`, na triagem. Antes disto, o cadastro não chegava à IA:
+  // era preciso redigitar tudo no texto livre de Administração > WhatsApp.
+  telefone2: opt(20).describe("Segundo telefone, para quem atende em mais de um número"),
+  email2: z
+    .string()
+    .trim()
+    .max(120)
+    .email("E-mail inválido")
+    .optional()
+    .or(z.literal("")),
+  // ISO, e não `z.coerce.date()`, pelo mesmo motivo de `testeExpiraEm`: o
+  // formulário guarda o valor como string e converte na hora de exibir no
+  // `input[type=date]` (ver `paraCampoData`).
+  fundadaEm: z
+    .string()
+    .datetime()
+    .nullable()
+    .optional()
+    .describe("Data de fundação; vira 'no mercado desde' na resposta da IA"),
+  historia: opt(4000).describe("A história da empresa, escrita por ela"),
+  segmentos: opt(300).describe("Em que a empresa atua, em uma linha"),
 });
 export type EmpresaCreate = z.infer<typeof empresaCreateSchema>;
 

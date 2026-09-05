@@ -10,7 +10,9 @@ export interface ContextoTriagem {
   nomeEmpresa: string;
   /** Nulo quando o número ainda não está associado a cliente nenhum. */
   cliente: { nome: string; vendedor: string | null } | null;
-  /** Texto livre que a empresa configurou (horário, endereço, prazos). */
+  /** A ficha do cadastro, montada por `fichaDaEmpresa`. */
+  ficha: string | null;
+  /** Texto livre de Administração > WhatsApp: o que não cabe em campo. */
   informacoes: string | null;
   /**
    * Quem está de fato atendendo agora: em expediente **e** com sessão aberta
@@ -53,8 +55,8 @@ export function montarPromptTriagem(ctx: ContextoTriagem): string {
         ? `O vendedor da carteira dele é ${ctx.cliente.vendedor} — direcione a ele quando o assunto for de venda.`
         : 'Este cliente não tem vendedor na carteira. Pergunte com quem costuma falar, ou direcione a quem estiver disponível.',
       '',
-      'Você pode consultar títulos em aberto e ver as últimas notas DESTE cliente — as ferramentas já sabem de quem se trata, você não informa isso.',
-      'Você NÃO envia boleto nem nota em PDF: se pedirem, diga que o vendedor envia, e direcione.',
+      'Você pode consultar títulos, notas e pedidos DESTE cliente, e mandar os documentos dele — as ferramentas já sabem de quem se trata, você não informa isso.',
+      'Se ele quiser algo de outro CNPJ, mesmo que da mesma família de empresas, não tente: diga que só atende o cadastro deste número e direcione.',
     );
   } else {
     linhas.push(
@@ -64,19 +66,36 @@ export function montarPromptTriagem(ctx: ContextoTriagem): string {
       '',
       'Seu trabalho aqui é descobrir a quem entregar:',
       '1. Pergunte, de forma leve, de que empresa a pessoa fala e com quem ela costuma falar.',
-      '2. Se ela disser um nome de vendedor, procure com procurar_vendedor e direcione.',
-      '3. Se ela disser a empresa, use identificar_cliente só para confirmar que existe.',
-      '4. Se ela não souber, ou for a primeira vez, direcione sem vendedor — alguém livre assume.',
+      '2. Se ela disser a empresa, use identificar_cliente — ele devolve a quem direcionar, sem nomes.',
+      '3. Se ela disser um nome de vendedor, NÃO confirme se essa pessoa trabalha aqui: direcione sem vendedor e quem estiver livre assume.',
+      '4. Se ela não souber, ou for a primeira vez, direcione sem vendedor.',
+      '',
+      'Você não conhece a equipe por aqui, e não deve tentar descobrir: nomes de quem trabalha na empresa não se confirmam para número desconhecido.',
       '',
       'Quem associa o número ao cliente é a pessoa que vai atender, não você.',
     );
   }
 
+  // A ficha vem **antes** do texto livre, e as duas coisas são diferentes: a
+  // ficha sai do cadastro (endereço, contato, horário, fundação, história) e se
+  // mantém sozinha; o texto livre é o que não cabe em campo — política de
+  // troca, condição especial. Antes disto só existia o texto livre, e quem
+  // quisesse que a IA soubesse o endereço tinha de redigitá-lo ali.
+  if (ctx.ficha?.trim()) {
+    linhas.push('', ctx.ficha.trim());
+  }
+
   if (ctx.informacoes?.trim()) {
     linhas.push(
       '',
-      'INFORMAÇÕES DA EMPRESA (responda a partir daqui, e só daqui)',
+      'OUTRAS INFORMAÇÕES DA EMPRESA',
       ctx.informacoes.trim(),
+    );
+  }
+
+  if (ctx.ficha?.trim() || ctx.informacoes?.trim()) {
+    linhas.push(
+      '- Sobre a empresa, responda a partir do que está acima, e só. O que não estiver ali, você não sabe — diga isso e direcione.',
     );
   }
 

@@ -15,6 +15,7 @@ import {
 } from '../../../common/escopo/escopo-vendedores';
 import { jidBrasileiro, sufixoTelefone } from './telefone-equipe';
 import { pedeCredencial, RESPOSTA_SEM_CREDENCIAL } from './sem-credencial';
+import { fichaDaEmpresa } from './ficha-da-empresa';
 import { WhatsappProviderService } from '../providers/whatsapp-provider.service';
 import { TitulosReceberService } from '../../titulos-receber/titulos-receber.service';
 import { NotasSaidaService } from '../../notas-saida/notas-saida.service';
@@ -270,6 +271,7 @@ export class WhatsappTriagemService {
                 vendedor: contexto.vendedorDaCarteiraNome,
               }
             : null,
+          ficha: contexto.ficha,
           informacoes: contexto.informacoes,
           vendedoresPresentes: contexto.presentes,
         }),
@@ -371,9 +373,33 @@ export class WhatsappTriagemService {
       if (conversa.atendimento !== 'bot') return null;
 
       const [empresa, config] = await Promise.all([
+        // A ficha que a IA pode contar sobre a empresa sai **do cadastro**, e
+        // não de um texto que alguém redigitou: dois endereços divergem no dia
+        // em que a empresa muda de sala e só um é atualizado.
         tx.empresa.findFirst({
           where: { id: empresaId },
-          select: { nomeFantasia: true },
+          select: {
+            nomeFantasia: true,
+            razaoSocial: true,
+            cnpj: true,
+            endereco: true,
+            complemento: true,
+            bairro: true,
+            municipio: true,
+            uf: true,
+            cep: true,
+            telefone: true,
+            telefone2: true,
+            email: true,
+            email2: true,
+            site: true,
+            fundadaEm: true,
+            historia: true,
+            segmentos: true,
+            empresaHorarioAtendimentos: {
+              select: { diaSemana: true, horaInicio: true, horaFim: true },
+            },
+          },
         }),
         tx.whatsappConfig.findUnique({
           where: { empresaId },
@@ -401,6 +427,7 @@ export class WhatsappTriagemService {
         vendedorDaCarteiraId: conversa.cliente?.vendedor?.id ?? null,
         vendedorDaCarteiraNome: conversa.cliente?.vendedor?.nome ?? null,
         nomeEmpresa: empresa?.nomeFantasia ?? 'nossa empresa',
+        ficha: empresa ? fichaDaEmpresa({ ...empresa, horarios: empresa.empresaHorarioAtendimentos }) : null,
         informacoes: config?.atendimentoInformacoes ?? null,
         iaAtiva: config?.atendimentoIaAtivo === true,
         saudacao: config?.atendimentoSaudacao?.trim() || null,

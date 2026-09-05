@@ -93,10 +93,23 @@ sair e encaminha a conversa para uma pessoa. Ver
 
 | Dado | De onde vem | Quem vê |
 |---|---|---|
-| Informações da empresa | `whatsapp_config.atendimentoInformacoes` | todos |
+| **Ficha da empresa** | cadastro de Empresa + horários (`fichaDaEmpresa`) | todos |
+| Outras informações | `whatsapp_config.atendimentoInformacoes` | todos |
 | Saudação | `whatsapp_config.atendimentoSaudacao` | todos (texto literal, não passa pelo modelo) |
 | Nome do cliente e do vendedor da carteira | cadastro | só quem já é cliente |
 | **Nomes de quem está de plantão** | sessão + expediente | **só quem já é cliente** |
+
+A **ficha** sai do cadastro e se mantém sozinha: razão social, CNPJ, segmentos,
+ano de fundação, endereço, telefones, e-mails, site, horário de atendimento e a
+história. Até 2026-09-05 nada disso chegava à IA — quem quisesse que ela
+soubesse o endereço tinha de redigitá-lo no texto livre, e então havia dois
+endereços, que divergiam no dia em que a empresa mudasse de sala.
+
+Campo vazio **não aparece** na ficha. Uma linha "Telefone: não informado"
+ensinaria a IA a afirmar que a empresa não tem telefone.
+
+O texto livre continua existindo para o que não cabe em campo — política de
+troca, condição especial — e vai depois da ficha.
 
 A última linha é uma correção de 2026-09-05: a escala da equipe ia no prompt de
 qualquer desconhecido. A IA não precisa dos nomes para direcionar — ela

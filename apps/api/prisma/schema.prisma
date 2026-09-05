@@ -74,6 +74,32 @@ model Empresa {
   email              String?
   site               String?
 
+  // ---------------------------------------------------------------
+  // O que a IA pode contar sobre a empresa
+  // ---------------------------------------------------------------
+  // Estes entram no prompt do atendimento institucional. O resto da ficha
+  // (endereço, telefone, e-mail, site, horários) já existia acima e passou a
+  // ir junto — antes era preciso redigitar tudo no campo de texto livre de
+  // Administração > WhatsApp, e o que estava no cadastro nunca chegava à IA.
+
+  /// Telefone e e-mail alternativos, para quem atende em mais de um número.
+  telefone2 String?
+  email2    String?
+
+  /// Data de fundação. Vira "no mercado desde 1998" na resposta da IA — e é o
+  /// tipo de pergunta que um cliente novo faz antes de comprar.
+  fundadaEm DateTime?
+
+  /// A história da empresa, escrita por ela. Texto livre porque é narrativa:
+  /// campo estruturado transformaria isso em formulário e a resposta sairia
+  /// picotada.
+  historia String? @db.Text
+
+  /// Em que a empresa atua ("distribuição de bebidas, food service"). Uma
+  /// linha, não uma taxonomia: serve para a IA saber se o que a pessoa procura
+  /// é com a empresa, e taxonomia exigiria um cadastro que ninguém pediu.
+  segmentos String?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?

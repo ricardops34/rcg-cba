@@ -18,7 +18,14 @@ import { paraCampoData, paraIsoFimDoDia } from "@/lib/data-avaliacao";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { ArrowLeft, ImageIcon, Upload } from "lucide-react";
@@ -78,6 +85,11 @@ export function EmpresaForm({
           telefone: empresa.telefone ?? "",
           email: empresa.email ?? "",
           site: empresa.site ?? "",
+          telefone2: empresa.telefone2 ?? "",
+          email2: empresa.email2 ?? "",
+          fundadaEm: empresa.fundadaEm ?? null,
+          segmentos: empresa.segmentos ?? "",
+          historia: empresa.historia ?? "",
           bannerAtivo: empresa.bannerAtivo,
           bannerCor: empresa.bannerCor ?? "",
           bannerImagemUrl: empresa.bannerImagemUrl ?? null,
@@ -363,6 +375,77 @@ export function EmpresaForm({
                   <FieldError errors={[form.formState.errors.site]} />
                 </Field>
               </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <Field data-invalid={!!form.formState.errors.telefone2}>
+                  <FieldLabel htmlFor="telefone2">Segundo telefone</FieldLabel>
+                  <Input id="telefone2" maxLength={20} {...form.register("telefone2")} />
+                  <FieldError errors={[form.formState.errors.telefone2]} />
+                </Field>
+
+                <Field data-invalid={!!form.formState.errors.email2}>
+                  <FieldLabel htmlFor="email2">Segundo e-mail</FieldLabel>
+                  <Input id="email2" type="email" maxLength={120} {...form.register("email2")} />
+                  <FieldError errors={[form.formState.errors.email2]} />
+                </Field>
+
+                <Field data-invalid={!!form.formState.errors.fundadaEm}>
+                  <FieldLabel htmlFor="fundadaEm">Fundada em</FieldLabel>
+                  <Input
+                    id="fundadaEm"
+                    type="date"
+                    value={paraCampoData(form.watch("fundadaEm"))}
+                    onChange={(e) =>
+                      form.setValue(
+                        "fundadaEm",
+                        e.target.value
+                          ? new Date(e.target.value + "T12:00:00").toISOString()
+                          : null,
+                        { shouldDirty: true },
+                      )
+                    }
+                  />
+                  <FieldError errors={[form.formState.errors.fundadaEm]} />
+                </Field>
+              </div>
+
+              {/*
+                O que a IA pode contar sobre a empresa. Fica junto do cadastro,
+                e não em Administração > WhatsApp, porque é dado da empresa —
+                deixá-lo lá faria alguém redigitar o endereço que já está três
+                campos acima, e os dois divergiriam na primeira mudança.
+              */}
+              <Field data-invalid={!!form.formState.errors.segmentos}>
+                <FieldLabel htmlFor="segmentos">Segmentos de atuação</FieldLabel>
+                <Input
+                  id="segmentos"
+                  maxLength={300}
+                  placeholder="Distribuição de bebidas, food service"
+                  {...form.register("segmentos")}
+                />
+                <FieldDescription>
+                  Uma linha. Serve para o atendimento por IA saber se o que a
+                  pessoa procura é com a empresa.
+                </FieldDescription>
+                <FieldError errors={[form.formState.errors.segmentos]} />
+              </Field>
+
+              <Field data-invalid={!!form.formState.errors.historia}>
+                <FieldLabel htmlFor="historia">História da empresa</FieldLabel>
+                <Textarea
+                  id="historia"
+                  rows={5}
+                  maxLength={4000}
+                  placeholder="Fundada em 1998 em Campo Grande, começou distribuindo…"
+                  {...form.register("historia")}
+                />
+                <FieldDescription>
+                  O atendimento por IA responde a partir daqui quando perguntarem
+                  sobre a empresa. Endereço, telefone, e-mail e horário já vão
+                  automaticamente — não precisa repeti-los.
+                </FieldDescription>
+                <FieldError errors={[form.formState.errors.historia]} />
+              </Field>
 
               {current && (
                 <Field>
