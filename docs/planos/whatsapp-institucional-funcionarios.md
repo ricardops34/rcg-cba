@@ -161,6 +161,32 @@ utilizável sozinha, e foi assim que entraram.
    — **não ao Vendedor**: o alcance é a hierarquia abaixo de quem envia, e quem
    não tem ninguém abaixo só mandaria recado para si mesmo.
 
+## Documentos do cliente (2026-09-05)
+
+O cliente com número vinculado pede pela conversa: **2ª via de boleto**,
+**cópia da nota** (DANFE) e **cópia de pedido** (PDF do orçamento), além das
+listas que já existiam — últimas notas, títulos em aberto e agora os pedidos.
+A transferência para o vendedor já existia.
+
+A ressalva que estava escrita em `triagem-ferramentas.ts` foi resolvida, não
+contornada: o bot **não** fabrica um `AuthenticatedUser` sintético. `QuemPede`
+(`common/escopo/quem-pede.ts`) nomeia os dois solicitantes — usuário logado, que
+alcança a carteira dele, e cliente, que alcança o que é dele — e os três
+geradores passaram a receber esse recorte. Um gerador, dois recortes: as regras
+do documento (título pago, janela de 30 dias, encargos do vencido, XML ausente)
+ficam num caminho só, e não em duas cópias que divergem na primeira mudança.
+
+Duas travas em série, e a segunda é a que o modelo não atravessa:
+
+1. O modelo nunca vê id interno — ele pede pelo **número** que a listagem
+   devolveu, e a resolução número → id já é recortada pelo cliente da conversa.
+2. O próprio gerador recorta de novo, por cliente.
+
+Verificado em dev: o cliente dono gera o boleto dele (PDF de 25 KB); outro
+cliente pedindo o mesmo título recebe "Título não encontrado", e o mesmo vale
+para a nota. As três rotas de usuário (boleto, DANFE, PDF de orçamento) seguem
+em 200.
+
 ## O que ainda não foi observado em execução
 
 Dev não tem agente de IA configurado nem worker de WhatsApp conectado. Foram

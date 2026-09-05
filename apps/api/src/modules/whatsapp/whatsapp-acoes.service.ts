@@ -650,7 +650,7 @@ export class WhatsappAcoesService {
 
     const { conteudo, nomeArquivo, numero } = await this.orcamentos.gerarPdf(
       empresaId,
-      user,
+      { tipo: 'usuario', user },
       input.orcamentoId,
       // O rastro deste envio é registrado abaixo; dois eventos para a mesma
       // ação só poluiriam o histórico.

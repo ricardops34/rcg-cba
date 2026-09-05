@@ -13,6 +13,11 @@ import {
   type EscopoVendedores,
 } from '../../common/escopo/escopo-vendedores';
 import {
+  autorDoEvento,
+  recorteDoSolicitante,
+  type QuemPede,
+} from '../../common/escopo/quem-pede';
+import {
   buildPaginatedResult,
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
@@ -653,16 +658,22 @@ export class OrcamentosService {
   private async buscarParaAcao(
     tx: TenantTx,
     empresaId: string,
-    user: AuthenticatedUser,
+    quem: QuemPede,
     id: string,
   ) {
-    const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+    // Usuário alcança a carteira dele; o cliente no WhatsApp alcança só os
+    // orçamentos dele. As travas da ação (autorização de desconto pendente,
+    // por exemplo) valem igual nos dois caminhos.
+    const recorte = await recorteDoSolicitante(tx, empresaId, quem);
     const orcamento = await tx.orcamento.findFirst({
       where: {
         id,
         empresaId,
         deletedAt: null,
-        ...(escopo ? { vendedorId: { in: escopo } } : {}),
+        ...(recorte.escopoVendedores
+          ? { vendedorId: { in: recorte.escopoVendedores } }
+          : {}),
+        ...(recorte.clienteId ? { clienteId: recorte.clienteId } : {}),
       },
     });
     if (!orcamento) throw new NotFoundException('Orçamento não encontrado');
@@ -682,7 +693,12 @@ export class OrcamentosService {
     id: string,
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const orcamento = await this.buscarParaAcao(tx, empresaId, user, id);
+      const orcamento = await this.buscarParaAcao(
+        tx,
+        empresaId,
+        { tipo: 'usuario', user },
+        id,
+      );
       if (orcamento.descontoAutorizadoEm) {
         throw new ConflictException(
           'O desconto deste orçamento já está autorizado',
@@ -730,7 +746,12 @@ export class OrcamentosService {
     id: string,
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const orcamento = await this.buscarParaAcao(tx, empresaId, user, id);
+      const orcamento = await this.buscarParaAcao(
+        tx,
+        empresaId,
+        { tipo: 'usuario', user },
+        id,
+      );
       if (orcamento.descontoAutorizadoEm) {
         throw new ConflictException(
           'O desconto deste orçamento já está autorizado',
@@ -798,12 +819,12 @@ export class OrcamentosService {
    */
   async gerarPdf(
     empresaId: string,
-    user: AuthenticatedUser,
+    quem: QuemPede,
     id: string,
     opcoes: { registrarEvento?: boolean } = {},
   ): Promise<{ conteudo: Buffer; nomeArquivo: string; numero: number }> {
     const dados = await this.prisma.withTenant(empresaId, async (tx) => {
-      const basico = await this.buscarParaAcao(tx, empresaId, user, id);
+      const basico = await this.buscarParaAcao(tx, empresaId, quem, id);
       if (
         !basico.descontoAutorizadoEm &&
         (await orcamentoExigeAutorizacao(tx, id))
@@ -829,7 +850,7 @@ export class OrcamentosService {
         await registrarAtividadeOrcamento(
           tx,
           empresaId,
-          user.id,
+          autorDoEvento(quem),
           'pdf',
           orcamento,
         );

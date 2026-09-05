@@ -64,12 +64,43 @@ describe('ferramentas da triagem', () => {
     expect(destino.enum).toEqual(['vendedor', 'supervisao']);
   });
 
-  it('nao existe ferramenta de envio de arquivo ou boleto', () => {
-    // A 2a via depende de um recorte por cliente que ainda nao existe; oferece-la
-    // faria a IA prometer o boleto antes do erro.
-    const nomes = ferramentasDaTriagem(true).map((f) => f.nome);
-    expect(nomes).not.toContain('segunda_via_boleto');
-    expect(nomes.filter((n) => /enviar|documento|arquivo|pdf/.test(n))).toEqual([]);
+  /**
+   * Este teste substituiu, em 2026-09-05, um que fixava a **ausência** da 2ª
+   * via de boleto — ela dependia de um recorte por cliente que não existia.
+   * Agora existe (`QuemPede`), e o que precisa ficar preso é outra coisa:
+   * documento só é oferecido quando há cliente associado.
+   *
+   * Sem isso, a IA descreveria "mando seu boleto" a um desconhecido e falharia
+   * na execução — prometendo antes do erro, que é exatamente o que o desenho
+   * fail-closed do catálogo evita.
+   */
+  it('documento do cliente so e oferecido quando ha cliente associado', () => {
+    const comCliente = ferramentasDaTriagem(true).map((f) => f.nome);
+    const semCliente = ferramentasDaTriagem(false).map((f) => f.nome);
+
+    for (const ferramenta of [
+      'segunda_via_boleto',
+      'copia_da_nota',
+      'meus_pedidos',
+      'copia_do_pedido',
+    ]) {
+      expect(comCliente).toContain(ferramenta);
+      expect(semCliente).not.toContain(ferramenta);
+    }
+  });
+
+  it('nenhuma ferramenta de documento recebe de quem e o documento', () => {
+    // O cliente sai do vínculo do número, resolvido pelo servidor. Se o modelo
+    // pudesse informar o cliente, bastaria ele se enganar (ou ser convencido)
+    // para mandar o boleto de uma empresa para outra.
+    for (const f of ferramentasDaTriagem(true)) {
+      const props = Object.keys(
+        (f.parametros as { properties?: Record<string, unknown> }).properties ??
+          {},
+      );
+      expect(props).not.toContain('clienteId');
+      expect(props).not.toContain('cliente');
+    }
   });
 
   it('toda ferramenta descreve para que serve, em portugues', () => {

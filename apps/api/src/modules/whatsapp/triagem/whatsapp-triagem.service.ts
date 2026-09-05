@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import type { TenantTx } from '../../../common/prisma/prisma.service';
 import { AgenteConfigService } from '../../agente/agente-config.service';
@@ -15,6 +15,10 @@ import {
 } from '../../../common/escopo/escopo-vendedores';
 import { jidBrasileiro, sufixoTelefone } from './telefone-equipe';
 import { WhatsappProviderService } from '../providers/whatsapp-provider.service';
+import { TitulosReceberService } from '../../titulos-receber/titulos-receber.service';
+import { NotasSaidaService } from '../../notas-saida/notas-saida.service';
+import { OrcamentosService } from '../../orcamentos/orcamentos.service';
+import { registrarAtividadeDocumento } from '../../../common/atividades/registrar-atividade-documento';
 import { dentroDoExpediente } from '../../../common/horario/horario-trabalho';
 import {
   registrarNotificacao,
@@ -58,6 +62,21 @@ const AUTOR_AVISO = 'triagem-ia-aviso';
 const MAX_AVISOS_POR_CONVERSA = 3;
 
 /**
+ * O argumento do modelo como texto utilizável.
+ *
+ * O que chega numa chamada de ferramenta é `unknown`: o modelo pode mandar
+ * número onde se pediu string ("123" ou 123), e `String()` cru em objeto
+ * produziria "[object Object]" — um número de título que não existe, procurado
+ * a sério no banco. Aqui só texto e número viram texto; o resto vira vazio, e
+ * quem chama trata como "não informado".
+ */
+function texto(valor: unknown): string {
+  if (typeof valor === 'string') return valor.trim();
+  if (typeof valor === 'number') return String(valor);
+  return '';
+}
+
+/**
  * Triagem do número institucional.
  *
  * O que ela faz, em uma frase: recebe a mensagem que chegou no WhatsApp da
@@ -86,6 +105,11 @@ export class WhatsappTriagemService {
     private readonly provider: WhatsappProviderService,
     private readonly funcionarios: WhatsappFuncionarioService,
     private readonly funcionarioTools: TriagemFuncionarioToolsService,
+    // Os geradores de documento. O bot os alcança pelo recorte de cliente
+    // (`QuemPede`), sem usuário sintético — ver common/escopo/quem-pede.ts.
+    private readonly titulos: TitulosReceberService,
+    private readonly notas: NotasSaidaService,
+    private readonly orcamentos: OrcamentosService,
   ) {}
 
   /**
@@ -395,6 +419,22 @@ export class WhatsappTriagemService {
     nome: string,
     argumentos: Record<string, unknown>,
   ): Promise<{ resultado: unknown; direcionou: boolean }> {
+    // Documento e lista de pedidos ficam **fora** da transação: cada gerador
+    // abre a própria, e montar um PDF e subi-lo ao WhatsApp com uma transação
+    // aberta prenderia uma conexão do pool por segundos a cada pedido.
+    if (contexto.clienteId) {
+      const doDocumento = await this.ferramentaDeDocumento(
+        empresaId,
+        conversaId,
+        contexto.clienteId,
+        nome,
+        argumentos,
+      );
+      if (doDocumento.tratou) {
+        return { resultado: doDocumento.resultado, direcionou: false };
+      }
+    }
+
     return this.prisma.withTenant(empresaId, async (tx) => {
       switch (nome) {
         case 'titulos_em_aberto':
@@ -1167,6 +1207,66 @@ export class WhatsappTriagemService {
   }
 
   /**
+   * Manda um documento (PDF) pelo WhatsApp, em nome do atendimento automático.
+   *
+   * Irmã de `responder`, pelo mesmo motivo: `WhatsappConversasService.
+   * enviarConteudo` exige um `AuthenticatedUser` e confere o dono da sessão, e
+   * o bot não é nem tem nenhum dos dois.
+   *
+   * A mensagem entra no histórico com a legenda como conteúdo — quem abrir a
+   * conversa meses depois precisa saber **o que** foi enviado sem ter de abrir
+   * o anexo, e um registro com conteúdo vazio parece mensagem perdida.
+   */
+  private async responderComArquivo(
+    empresaId: string,
+    conversaId: string,
+    arquivo: { nome: string; conteudo: Buffer; legenda: string },
+  ) {
+    await this.prisma.withTenant(empresaId, async (tx) => {
+      const conversa = await tx.whatsappConversa.findFirst({
+        where: { id: conversaId },
+        select: { sessaoId: true, contato: { select: { jid: true } } },
+      });
+      if (!conversa) return;
+
+      const enviada = await this.provider.enviarArquivo(
+        empresaId,
+        conversa.sessaoId,
+        {
+          jid: conversa.contato.jid,
+          arquivo: {
+            nome: arquivo.nome,
+            mime: 'application/pdf',
+            tipo: 'documento',
+            conteudoBase64: arquivo.conteudo.toString('base64'),
+            legenda: arquivo.legenda,
+          },
+        },
+        tx,
+      );
+
+      await tx.whatsappMensagem.create({
+        data: {
+          empresaId,
+          conversaId,
+          externoId: enviada.externoId,
+          direcao: 'saida',
+          tipo: 'documento',
+          conteudo: arquivo.legenda,
+          arquivoNome: arquivo.nome,
+          enviadaPor: AUTOR_TRIAGEM,
+          statusEntrega: 'enviada',
+        },
+      });
+
+      await tx.whatsappConversa.update({
+        where: { id: conversaId },
+        data: { ultimaMensagemEm: new Date() },
+      });
+    });
+  }
+
+  /**
    * Manda a resposta do bot pelo WhatsApp.
    *
    * Não passa por `WhatsappConversasService.enviar`: aquele exige um
@@ -1213,5 +1313,330 @@ export class WhatsappTriagemService {
         data: { ultimaMensagemEm: new Date() },
       });
     });
+  }
+
+  /**
+   * Ferramentas que produzem um **documento** para o cliente.
+   *
+   * Ficam fora do `withTenant` de `executarFerramenta` de propósito: cada
+   * gerador abre a própria transação, e montar um PDF e subi-lo ao WhatsApp
+   * dentro de uma transação aberta prenderia uma conexão do pool por segundos
+   * a cada pedido.
+   *
+   * O modelo nunca vê id interno: ele pede pelo **número** que a listagem
+   * devolveu, e a resolução número → id acontece aqui, já recortada pelo
+   * cliente da conversa. É a segunda trava, depois do recorte do próprio
+   * gerador — o modelo não consegue pedir documento de outro cliente nem
+   * inventando um identificador.
+   */
+  private async ferramentaDeDocumento(
+    empresaId: string,
+    conversaId: string,
+    clienteId: string,
+    nome: string,
+    argumentos: Record<string, unknown>,
+  ): Promise<{ tratou: true; resultado: unknown } | { tratou: false }> {
+    const feito = (resultado: unknown) => ({
+      tratou: true as const,
+      resultado,
+    });
+    switch (nome) {
+      case 'segunda_via_boleto':
+        return feito(
+          await this.enviarBoletoAoCliente(
+            empresaId,
+            conversaId,
+            clienteId,
+            texto(argumentos.numeroTitulo),
+          ),
+        );
+
+      case 'copia_da_nota':
+        return feito(
+          await this.enviarDanfeAoCliente(
+            empresaId,
+            conversaId,
+            clienteId,
+            texto(argumentos.numeroNota),
+          ),
+        );
+
+      case 'meus_pedidos':
+        return feito(
+          await this.listarPedidosDoCliente(
+            empresaId,
+            clienteId,
+            Number(argumentos.quantidade) || 5,
+          ),
+        );
+
+      case 'copia_do_pedido':
+        return feito(
+          await this.enviarPedidoAoCliente(
+            empresaId,
+            conversaId,
+            clienteId,
+            texto(argumentos.numeroPedido),
+          ),
+        );
+
+      default:
+        return { tratou: false };
+    }
+  }
+
+  private async enviarBoletoAoCliente(
+    empresaId: string,
+    conversaId: string,
+    clienteId: string,
+    numeroTitulo: string,
+  ) {
+    const numero = numeroTitulo.trim();
+    if (!numero) return { erro: 'Informe o número do título' };
+
+    const titulo = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.tituloReceber.findFirst({
+        where: {
+          empresaId,
+          clienteId,
+          deletedAt: null,
+          ativo: true,
+          dtBaixa: null,
+          // O número pode vir com a parcela ("123/2"): o cliente lê assim na
+          // listagem, e é assim que ele pede.
+          numero: numero.split('/')[0],
+          ...(numero.includes('/') ? { parcela: numero.split('/')[1] } : {}),
+        },
+        select: { id: true },
+      }),
+    );
+    if (!titulo) {
+      return {
+        erro: `Não encontrei o título ${numero} em aberto neste cadastro.`,
+      };
+    }
+
+    try {
+      const boleto = await this.titulos.gerarBoleto(
+        empresaId,
+        { tipo: 'cliente', clienteId },
+        titulo.id,
+        // "boleto enviado" e não "boleto gerado": é a mesma ação, e dois
+        // eventos poluiriam o histórico do cliente. Mesma convenção do envio
+        // pelo vendedor.
+        { registrarEvento: false },
+      );
+
+      const legenda =
+        boleto.encargos.diasAtraso > 0
+          ? `Boleto do título ${boleto.numeroDocumento} — valor atualizado: ${this.moeda(boleto.valor)}`
+          : `Boleto do título ${boleto.numeroDocumento} — venc. ${this.dia(boleto.vencimento)} — ${this.moeda(boleto.valor)}`;
+
+      await this.responderComArquivo(empresaId, conversaId, {
+        nome: boleto.nomeArquivo,
+        conteudo: boleto.conteudo,
+        legenda,
+      });
+
+      await this.registrarDocumentoEnviado(empresaId, {
+        evento: 'boleto_whatsapp',
+        clienteId,
+        vendedorId: boleto.vendedorId,
+        numero: boleto.numeroDocumento,
+      });
+
+      return { enviado: true, resumo: legenda };
+    } catch (erro) {
+      // As recusas do gerador são de negócio e explicam o motivo (título pago,
+      // vencido há mais de 30 dias, sem convênio de cobrança). Repassar o texto
+      // ao modelo é melhor do que um "não deu": ele consegue dizer ao cliente o
+      // que houve e direcionar ao administrativo.
+      return { enviado: false, motivo: this.motivo(erro) };
+    }
+  }
+
+  private async enviarDanfeAoCliente(
+    empresaId: string,
+    conversaId: string,
+    clienteId: string,
+    numeroNota: string,
+  ) {
+    const numero = numeroNota.trim();
+    if (!numero) return { erro: 'Informe o número da nota' };
+
+    const nota = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.notaSaida.findFirst({
+        where: { empresaId, clienteId, deletedAt: null, numero },
+        select: { id: true, numero: true, vendedorId: true },
+      }),
+    );
+    if (!nota) {
+      return { erro: `Não encontrei a nota ${numero} neste cadastro.` };
+    }
+
+    try {
+      const danfe = await this.notas.gerarDanfe(
+        empresaId,
+        { tipo: 'cliente', clienteId },
+        nota.id,
+        { registrarEvento: false },
+      );
+
+      const legenda = danfe.cancelada
+        ? `DANFE da NF ${danfe.numero} — nota CANCELADA`
+        : `NF ${danfe.numero} — 2ª via do DANFE`;
+
+      await this.responderComArquivo(empresaId, conversaId, {
+        nome: danfe.nomeArquivo,
+        conteudo: danfe.conteudo,
+        legenda,
+      });
+
+      await this.registrarDocumentoEnviado(empresaId, {
+        evento: 'danfe_whatsapp',
+        clienteId,
+        vendedorId: nota.vendedorId,
+        numero: texto(danfe.numero),
+      });
+
+      return { enviado: true, resumo: legenda };
+    } catch (erro) {
+      // O caso mais comum aqui é o XML ainda não ter chegado do ERP — sem ele
+      // não há DANFE para renderizar, e o modelo precisa dizer isso em vez de
+      // prometer o arquivo.
+      return { enviado: false, motivo: this.motivo(erro) };
+    }
+  }
+
+  private async listarPedidosDoCliente(
+    empresaId: string,
+    clienteId: string,
+    quantidade: number,
+  ) {
+    const take = Math.min(Math.max(quantidade, 1), 10);
+    const pedidos = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.orcamento.findMany({
+        where: { empresaId, clienteId, deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+        take,
+        select: {
+          numero: true,
+          status: true,
+          vlrTotal: true,
+          createdAt: true,
+        },
+      }),
+    );
+
+    return {
+      total: pedidos.length,
+      pedidos: pedidos.map((p) => ({
+        numero: String(p.numero),
+        data: p.createdAt.toLocaleDateString('pt-BR'),
+        situacao: p.status,
+        valor: this.moeda(p.vlrTotal),
+      })),
+    };
+  }
+
+  private async enviarPedidoAoCliente(
+    empresaId: string,
+    conversaId: string,
+    clienteId: string,
+    numeroPedido: string,
+  ) {
+    const numero = Number(String(numeroPedido).replace(/\D/g, ''));
+    if (!numero) return { erro: 'Informe o número do pedido' };
+
+    const pedido = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.orcamento.findFirst({
+        where: { empresaId, clienteId, deletedAt: null, numero },
+        select: { id: true },
+      }),
+    );
+    if (!pedido) {
+      return { erro: `Não encontrei o pedido ${numero} neste cadastro.` };
+    }
+
+    try {
+      const pdf = await this.orcamentos.gerarPdf(
+        empresaId,
+        { tipo: 'cliente', clienteId },
+        pedido.id,
+        { registrarEvento: false },
+      );
+
+      const legenda = `Pedido ${pdf.numero}`;
+      await this.responderComArquivo(empresaId, conversaId, {
+        nome: pdf.nomeArquivo,
+        conteudo: pdf.conteudo,
+        legenda,
+      });
+
+      return { enviado: true, resumo: legenda };
+    } catch (erro) {
+      return { enviado: false, motivo: this.motivo(erro) };
+    }
+  }
+
+  /**
+   * O rastro do documento no histórico do cliente, com autor nulo: quem agiu
+   * foi o atendimento automático, e pôr o nome de uma pessoa numa ação que ela
+   * não fez é pior do que não ter nome.
+   */
+  private async registrarDocumentoEnviado(
+    empresaId: string,
+    dados: {
+      evento: 'boleto_whatsapp' | 'danfe_whatsapp';
+      clienteId: string;
+      vendedorId: string | null;
+      numero: string;
+    },
+  ) {
+    await this.prisma
+      .withTenant(empresaId, (tx) =>
+        registrarAtividadeDocumento(tx, {
+          empresaId,
+          autor: null,
+          evento: dados.evento,
+          clienteId: dados.clienteId,
+          vendedorId: dados.vendedorId,
+          numero: dados.numero,
+          descricao: 'Pedido pelo cliente no WhatsApp',
+        }),
+      )
+      .catch((erro) => {
+        // O rastro não pode derrubar o envio: o cliente já recebeu o arquivo.
+        this.logger.warn(`Falha ao registrar documento enviado: ${erro}`);
+      });
+  }
+
+  /** A mensagem de uma recusa de negócio, para o modelo repassar ao cliente. */
+  private motivo(erro: unknown): string {
+    if (erro instanceof HttpException) {
+      const corpo = erro.getResponse();
+      const mensagem =
+        typeof corpo === 'string'
+          ? corpo
+          : (corpo as { message?: unknown }).message;
+      return texto(mensagem) || erro.message;
+    }
+    this.logger.error(
+      `Falha ao gerar documento para o cliente: ${
+        erro instanceof Error ? erro.message : String(erro)
+      }`,
+    );
+    return 'Não consegui gerar o documento agora.';
+  }
+
+  private moeda(valor: number) {
+    return valor.toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    });
+  }
+
+  private dia(data: Date | null) {
+    return data ? data.toLocaleDateString('pt-BR') : 'sem vencimento';
   }
 }

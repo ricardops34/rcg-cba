@@ -171,7 +171,7 @@ export class OrcamentosController {
   ) {
     const { conteudo, nomeArquivo } = await this.service.gerarPdf(
       user.empresaAtivaId,
-      user,
+      { tipo: 'usuario', user },
       id,
     );
     res.set({

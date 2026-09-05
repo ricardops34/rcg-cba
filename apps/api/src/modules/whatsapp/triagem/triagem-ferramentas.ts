@@ -25,18 +25,85 @@ export const FERRAMENTAS_DO_CLIENTE: FerramentaChat[] = [
       'vence. Devolve vencimento, valor e situação.',
     parametros: { type: 'object', properties: {}, required: [] },
   },
-  // A 2ª via de boleto **ainda não está aqui**, e é decisão, não esquecimento.
+  // A 2ª via de boleto entrou em 2026-09-05, quando o recorte por cliente
+  // passou a existir (`QuemPede`, em common/escopo/quem-pede.ts).
   //
-  // `TitulosReceberService.gerarBoleto` recorta por carteira de vendedor
-  // (`resolverEscopoVendedores`) e exige um usuário autenticado. O bot não tem
-  // usuário, e o recorte certo para ele é outro: o cliente desta conversa.
-  // Fabricar um `AuthenticatedUser` sintético para atravessar essa porta poria
-  // um ator de escopo indefinido circulando por serviços que assumem uma
-  // pessoa com carteira — é assim que nasce vazamento entre clientes.
-  //
-  // O caminho é extrair do gerador um recorte por cliente. Enquanto não
-  // existir, a ferramenta não é oferecida ao modelo: descrevê-la e falhar na
-  // execução faria a IA prometer o boleto antes do erro.
+  // A ressalva que estava escrita aqui continua valendo como regra: o bot não
+  // fabrica um `AuthenticatedUser` sintético para atravessar o gerador. Ele
+  // diz de qual cliente está falando, e o serviço recorta por isso — mesmo
+  // gerador, mesmas travas (título baixado, janela de 30 dias, encargos do
+  // vencido), outro recorte.
+  {
+    nome: 'segunda_via_boleto',
+    descricao:
+      'Manda o boleto de um título em aberto do cliente, em PDF. Use depois de ' +
+      'titulos_em_aberto, quando a pessoa disser qual quer ("me manda o boleto ' +
+      'do que vence dia 10"). Vencido sai com o valor já atualizado. Não há 2ª ' +
+      'via de título pago, nem de vencido há mais de 30 dias — nesse caso ' +
+      'direcione para o administrativo.',
+    parametros: {
+      type: 'object',
+      properties: {
+        numeroTitulo: {
+          type: 'string',
+          description:
+            'O número do título, exatamente como titulos_em_aberto devolveu.',
+        },
+      },
+      required: ['numeroTitulo'],
+    },
+  },
+  {
+    nome: 'copia_da_nota',
+    descricao:
+      'Manda a 2ª via do DANFE de uma nota fiscal do cliente, em PDF. Use ' +
+      'depois de ultimas_notas, quando pedirem "a cópia da nota", "o DANFE", ' +
+      '"a nota do último pedido".',
+    parametros: {
+      type: 'object',
+      properties: {
+        numeroNota: {
+          type: 'string',
+          description: 'O número da nota, como ultimas_notas devolveu.',
+        },
+      },
+      required: ['numeroNota'],
+    },
+  },
+  {
+    nome: 'meus_pedidos',
+    descricao:
+      'Últimos pedidos (orçamentos) do cliente que está falando, com número, ' +
+      'data, situação e valor. Use para "quais foram meus últimos pedidos", ' +
+      '"o que eu pedi mês passado". Para a nota fiscal, use ultimas_notas.',
+    parametros: {
+      type: 'object',
+      properties: {
+        quantidade: {
+          type: 'integer',
+          description: 'Quantos trazer (1 a 10). Padrão 5.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    nome: 'copia_do_pedido',
+    descricao:
+      'Manda a cópia de um pedido (orçamento) do cliente em PDF, com itens, ' +
+      'quantidades e preços. Use depois de meus_pedidos, quando pedirem "a ' +
+      'cópia do pedido", "o que eu pedi mesmo".',
+    parametros: {
+      type: 'object',
+      properties: {
+        numeroPedido: {
+          type: 'string',
+          description: 'O número do pedido, como meus_pedidos devolveu.',
+        },
+      },
+      required: ['numeroPedido'],
+    },
+  },
   {
     nome: 'ultimas_notas',
     descricao:

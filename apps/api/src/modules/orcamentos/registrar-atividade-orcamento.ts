@@ -49,7 +49,12 @@ export interface OrcamentoParaAtividade {
 export async function registrarAtividadeOrcamento(
   tx: TenantTx,
   empresaId: string,
-  autor: string,
+  /**
+   * Quem executou (vai em createdBy). Nulo quando não há usuário — é o PDF
+   * que o **cliente** pede pelo WhatsApp institucional, onde quem age é o
+   * atendimento automático. A coluna sempre aceitou nulo.
+   */
+  autor: string | null,
   evento: EventoOrcamento,
   orcamento: OrcamentoParaAtividade,
   descricao?: string,
