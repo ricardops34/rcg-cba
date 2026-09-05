@@ -190,15 +190,33 @@ servidor de banco** — não basta a aplicação querer.
 psql -U plataforma -d plataforma_comercial -c "select name, default_version from pg_available_extensions where name='vector';"
 ```
 
-Sem retorno, a migration `20260906010000_pgvector_fichas` **falha** ao chamar
-`CREATE EXTENSION vector` — e falhar ali é melhor do que subir com a busca
-semântica silenciosamente inexistente. O que fazer depende do servidor:
+**Sem a extensão o deploy não quebra.** A migration tenta criar, avisa e segue:
+a tabela de trechos nasce sem a coluna de vetor, o corte das fichas em pedaços
+continua valendo e a busca fica só por texto. Impor a extensão derrubaria o
+deploy inteiro por uma funcionalidade que sabe degradar.
+
+Para ter a busca semântica, o que fazer depende do servidor:
 
 | Situação | Caminho |
 |---|---|
 | Banco em container que você controla | trocar a imagem por `pgvector/pgvector:pg16` (mesma major, o volume continua servindo) |
 | Banco gerenciado (RDS, DigitalOcean, Supabase) | pgvector costuma estar na lista de extensões; habilitar pelo painel |
 | Postgres do sistema, compilado | instalar o pacote (`postgresql-16-pgvector` no Debian/Ubuntu) e reiniciar |
+
+### Habilitar depois, num banco que já subiu sem a extensão
+
+Migration roda uma vez, então instalar a extensão mais tarde não faz a coluna
+aparecer sozinha. A sequência é:
+
+1. instalar a extensão no servidor (tabela acima);
+2. rodar `docs/sql/habilitar-pgvector-fichas.sql` **com a role dona**
+   (`plataforma`) — cria a coluna e o índice, e é idempotente;
+3. configurar o gerador de embeddings em Administração > Agente IA;
+4. `POST /produto-fichas-importacao/vetorizar` até devolver `0`.
+
+O passo 4 **não relê PDF nenhum**: o texto dos trechos já está gravado desde a
+importação. A API detecta a coluna sozinha — o resultado negativo fica em cache
+por cinco minutos, então não é preciso reiniciar.
 
 Em **dev** isso já está resolvido: o `docker-compose.dev.yml` usa
 `pgvector/pgvector:pg16`. A troca da imagem oficial para essa foi feita com o

@@ -56,9 +56,13 @@ export class ProdutoParaAgenteService {
    * lexical — a busca fica pior, não quebra.
    */
   async procurarHibrido(empresaId: string, busca: string, limite = 5) {
+    // `disponivel` cobre as duas metades: a coluna de vetor no banco e o
+    // provedor que gera. Faltando qualquer uma, nem se pede o embedding — a
+    // consulta abaixo mencionaria uma coluna que pode não existir.
+    const podeVetor = await this.embeddings.disponivel(empresaId);
     const [lexical, vetor] = await Promise.all([
       this.procurar(empresaId, busca, limite * 2),
-      this.embeddings.gerarUm(empresaId, busca),
+      podeVetor ? this.embeddings.gerarUm(empresaId, busca) : null,
     ]);
 
     const semantica = vetor

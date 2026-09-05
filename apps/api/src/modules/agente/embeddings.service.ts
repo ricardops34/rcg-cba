@@ -38,7 +38,56 @@ export class EmbeddingsService {
    */
   static readonly DIMENSOES = 1536;
 
+  /**
+   * Se a coluna de vetor existe neste banco. `null` = ainda não perguntei.
+   *
+   * Cacheado no processo porque a resposta só muda com uma migration, e a
+   * pergunta entra no caminho de toda busca de produto. Um resultado negativo
+   * expira, para o dia em que alguém habilitar a extensão não exigir reiniciar
+   * a API.
+   */
+  private suporte: { valor: boolean; em: number } | null = null;
+
+  /** Quanto tempo um "não" vale antes de perguntar de novo. */
+  private static readonly TTL_NEGATIVO_MS = 5 * 60_000;
+
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * O banco guarda vetores?
+   *
+   * A extensão `vector` pode não existir no servidor — e a migration não impõe
+   * que exista, justamente para não derrubar o deploy de quem não a tem (ver
+   * `20260906010000_pgvector_fichas`). Nesse caso a tabela de trechos existe
+   * sem a coluna `embedding`, e é a **ausência da coluna** que este método
+   * detecta: cobre tanto a extensão faltando quanto qualquer outro motivo de a
+   * coluna não estar lá.
+   */
+  async bancoSuportaVetor(): Promise<boolean> {
+    if (this.suporte?.valor) return true;
+    if (
+      this.suporte &&
+      Date.now() - this.suporte.em < EmbeddingsService.TTL_NEGATIVO_MS
+    ) {
+      return false;
+    }
+
+    const linhas = await this.prisma.$queryRaw<{ existe: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'produto_ficha_trechos' AND column_name = 'embedding'
+      ) AS existe
+    `;
+    const valor = linhas[0]?.existe === true;
+    this.suporte = { valor, em: Date.now() };
+    if (!valor) {
+      this.logger.warn(
+        'Sem coluna de vetor no banco: a busca das fichas usa só texto. ' +
+          'Ver docs/runbook-operacao.md (pgvector).',
+      );
+    }
+    return valor;
+  }
 
   /** A configuração de embeddings da empresa, ou `null` se não há. */
   async config(empresaId: string) {
@@ -65,7 +114,12 @@ export class EmbeddingsService {
     };
   }
 
+  /**
+   * Dá para vetorizar? Exige as **duas** metades: o banco que guarda e o
+   * provedor que gera. Faltando qualquer uma, sobra a busca por texto.
+   */
   async disponivel(empresaId: string) {
+    if (!(await this.bancoSuportaVetor())) return false;
     return (await this.config(empresaId)) !== null;
   }
 

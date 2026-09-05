@@ -100,6 +100,9 @@ export class FichaEmbeddingService {
     fichaId?: string,
     teto = 200,
   ): Promise<{ vetorizados: number }> {
+    // Sem coluna no banco ou sem provedor, os trechos ficam gravados só com o
+    // texto. Não é falha: a busca lexical atende, e o dia em que as duas
+    // metades existirem esta mesma varredura preenche o que faltou.
     if (!(await this.embeddings.disponivel(empresaId))) {
       return { vetorizados: 0 };
     }

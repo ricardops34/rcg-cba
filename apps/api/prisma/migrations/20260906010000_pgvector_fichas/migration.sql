@@ -1,14 +1,29 @@
 -- Busca vetorial nas fichas técnicas.
 --
--- ## O que exige do servidor
+-- ## Funciona com e sem pgvector
 --
--- A extensão `vector` (pgvector) precisa **existir no servidor de banco**. Em
--- dev ela vem da imagem `pgvector/pgvector:pg16` (ver docker-compose.dev.yml);
--- em produção o banco é externo, e é lá que ela precisa estar disponível. Se
--- não estiver, esta migration falha aqui, com a mensagem do Postgres dizendo
--- que a extensão não foi encontrada — que é melhor do que subir e a busca
--- semântica silenciosamente não existir.
-CREATE EXTENSION IF NOT EXISTS vector;
+-- A extensão `vector` precisa existir **no servidor de banco**, e nem todo
+-- servidor tem. Esta migration não impõe isso: ela tenta criar a extensão e,
+-- se não conseguir, segue em frente sem a coluna de vetor e sem o índice.
+--
+-- O resultado é que a tabela de trechos existe sempre. O corte das fichas em
+-- pedaços, que é metade do ganho (contexto menor no modelo, busca mais
+-- precisa), funciona em qualquer Postgres; a busca semântica é o que fica
+-- desligada até alguém instalar a extensão.
+--
+-- Impor a extensão derrubaria o deploy inteiro de quem não a tem, por uma
+-- funcionalidade que sabe degradar. Ver `docs/runbook-operacao.md` para
+-- habilitá-la depois — a coluna e o índice entram pela migration seguinte, e o
+-- texto dos trechos já estará gravado.
+DO $$
+BEGIN
+  CREATE EXTENSION IF NOT EXISTS vector;
+EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING
+    'pgvector indisponível neste servidor: a busca semântica das fichas fica desligada e a busca por texto continua valendo. Detalhe: %',
+    SQLERRM;
+END
+$$;
 
 -- ## Por que trechos, e não a ficha inteira
 --
@@ -25,34 +40,41 @@ CREATE TABLE "produto_ficha_trechos" (
     "produtoId" TEXT NOT NULL,
     "ordem" INTEGER NOT NULL,
     "texto" TEXT NOT NULL,
-    -- 1536 = `text-embedding-3-small`. pgvector exige a dimensão declarada para
-    -- indexar, então trocar para um modelo de outra dimensão obriga a recriar a
-    -- coluna e reindexar tudo — o serviço recusa vetor de tamanho diferente em
-    -- vez de gravar algo que a busca compararia com lixo.
-    "embedding" vector(1536),
     "modelo" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "produto_ficha_trechos_pkey" PRIMARY KEY ("id")
 );
 
+-- A coluna do vetor e o índice só existem onde a extensão existe. A aplicação
+-- consulta o catálogo para saber (`EmbeddingsService.bancoSuportaVetor`) e
+-- desliga a metade semântica quando ela não está aqui.
+--
+-- 1536 = `text-embedding-3-small`. pgvector exige a dimensão declarada para
+-- indexar, então trocar para um modelo de outra dimensão obriga a recriar a
+-- coluna e reindexar tudo — o serviço recusa vetor de tamanho diferente em vez
+-- de gravar algo que a busca compararia com lixo.
+--
+-- HNSW com distância de cosseno: cosseno porque o que importa é a direção do
+-- vetor (o assunto), não a magnitude; HNSW porque não precisa de treino prévio,
+-- e aqui o índice nasce com a tabela vazia e é preenchido conforme as fichas
+-- chegam.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') THEN
+    ALTER TABLE "produto_ficha_trechos" ADD COLUMN "embedding" vector(1536);
+
+    CREATE INDEX "produto_ficha_trechos_embedding_idx"
+      ON "produto_ficha_trechos" USING hnsw ("embedding" vector_cosine_ops);
+  END IF;
+END
+$$;
+
 -- CreateIndex
 CREATE INDEX "produto_ficha_trechos_empresaId_produtoId_idx" ON "produto_ficha_trechos"("empresaId", "produtoId");
 
 -- CreateIndex
 CREATE INDEX "produto_ficha_trechos_empresaId_fichaId_ordem_idx" ON "produto_ficha_trechos"("empresaId", "fichaId", "ordem");
-
--- HNSW com distância de cosseno.
---
--- Cosseno, e não L2, porque o que importa é a direção do vetor (o assunto), não
--- a magnitude. HNSW, e não IVFFlat, porque não precisa de treino prévio: o
--- IVFFlat exige uma amostra representativa já gravada para construir as listas,
--- e aqui o índice nasce com a tabela vazia e é preenchido aos poucos, conforme
--- as fichas são importadas.
---
--- CreateIndex
-CREATE INDEX "produto_ficha_trechos_embedding_idx"
-  ON "produto_ficha_trechos" USING hnsw ("embedding" vector_cosine_ops);
 
 -- AddForeignKey
 ALTER TABLE "produto_ficha_trechos" ADD CONSTRAINT "produto_ficha_trechos_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "empresas"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
