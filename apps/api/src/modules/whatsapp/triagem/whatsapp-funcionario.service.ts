@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { randomInt } from 'node:crypto';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import type { TenantTx } from '../../../common/prisma/prisma.service';
-import { digitos, sufixoTelefone } from './telefone-equipe';
+import { chaveTelefone, digitos, sufixoTelefone } from './telefone-equipe';
 
 /**
  * Validade do código enviado para confirmar o número.
@@ -63,9 +63,16 @@ export class WhatsappFuncionarioService {
   /**
    * Quem é o dono deste número, do ponto de vista da empresa.
    *
-   * A comparação é pelos últimos 8 dígitos, como `casarCliente` — e, como lá,
-   * **ambiguidade não adivinha**: dois vendedores com o mesmo sufixo devolvem
-   * `desconhecido`, e a conversa segue pelo caminho de cliente.
+   * Duas comparações diferentes, de propósito:
+   *
+   * - **Encontrar a pessoa** no cadastro usa os últimos 8 dígitos, como
+   *   `casarCliente` — tolerante porque o cadastro pode estar sem DDI ou sem o
+   *   9º dígito. Encontrar não autoriza nada: abre um pedido de código.
+   * - **O pareamento** usa a chave exata (DDD + 8), porque ali a tolerância
+   *   deixaria um número de outro DDD herdar a confirmação alheia.
+   *
+   * Como em `casarCliente`, **ambiguidade não adivinha**: dois vendedores com o
+   * mesmo sufixo devolvem `desconhecido`, e a conversa segue como cliente.
    */
   async identificar(
     tx: TenantTx,
@@ -73,23 +80,39 @@ export class WhatsappFuncionarioService {
     telefoneBruto: string | null,
   ): Promise<Identidade> {
     const sufixo = sufixoTelefone(telefoneBruto);
-    if (!sufixo) return { tipo: 'desconhecido' };
+    // Sem chave exata não há pareamento possível: número sem DDD não se
+    // distingue de um de outra região, e é essa distinção que impede alguém de
+    // herdar a confirmação alheia.
+    const chave = chaveTelefone(telefoneBruto);
+    if (!sufixo || !chave) return { tipo: 'desconhecido' };
 
+    // O vínculo com a empresa precisa estar **ativo**, e não só existir.
+    //
+    // Sem isso, desligar alguém exigiria lembrar de desativar o cadastro de
+    // vendedor: enquanto ele ficasse ativo, o ex-funcionário continuaria
+    // consultando a carteira pelo WhatsApp com o pareamento que já tinha. Aqui
+    // basta cortar o acesso ao sistema, que é o que se faz primeiro.
     const candidatos = await tx.$queryRaw<
       { id: string; nome: string; usuarioId: string | null }[]
     >`
-      SELECT id, nome, "usuarioId" FROM vendedores
-      WHERE "empresaId" = ${empresaId}
-        AND "deletedAt" IS NULL
-        AND ativo
-        AND right(regexp_replace(coalesce(telefone, ''), '\D', '', 'g'), 8) = ${sufixo}
+      SELECT v.id, v.nome, v."usuarioId"
+      FROM vendedores v
+      JOIN usuarios u ON u.id = v."usuarioId"
+      JOIN usuario_empresas ue
+        ON ue."usuarioId" = u.id AND ue."empresaId" = v."empresaId"
+      WHERE v."empresaId" = ${empresaId}
+        AND v."deletedAt" IS NULL
+        AND v.ativo
+        AND u."deletedAt" IS NULL
+        AND u.ativo
+        AND ue.ativo
+        AND right(regexp_replace(coalesce(v.telefone, ''), '\D', '', 'g'), 8) = ${sufixo}
       LIMIT 2`;
 
+    // Ambiguidade não adivinha: dois vendedores com o mesmo sufixo não
+    // resolvem para nenhum.
     if (candidatos.length !== 1) return { tipo: 'desconhecido' };
     const vendedor = candidatos[0];
-
-    // Vendedor sem login não tem onde ler o código, então não há pareamento
-    // possível — e sem pareamento não há ferramenta. Segue como desconhecido.
     if (!vendedor.usuarioId) return { tipo: 'desconhecido' };
 
     const vinculo = await this.vinculo(
@@ -98,6 +121,7 @@ export class WhatsappFuncionarioService {
       vendedor.usuarioId,
       telefoneBruto,
       sufixo,
+      chave,
     );
 
     const confirmado =
@@ -133,7 +157,7 @@ export class WhatsappFuncionarioService {
 
   /**
    * A linha de pareamento deste número, criada na primeira vez que ele
-   * escreve. Um número atende uma pessoa por empresa (índice único no sufixo);
+   * escreve. Um número atende uma pessoa por empresa (índice único na chave);
    * se o número mudou de dono no cadastro, o vínculo é reapontado e **perde a
    * confirmação** — quem herdou o número confirma por si.
    */
@@ -143,9 +167,13 @@ export class WhatsappFuncionarioService {
     usuarioId: string,
     telefoneBruto: string | null,
     sufixo: string,
+    chave: string,
   ) {
+    // A chave é o número **exato** (DDD + 8 dígitos). O sufixo serve para
+    // encontrar a pessoa no cadastro; chavear o pareamento nele deixava um
+    // número de outro DDD herdar a confirmação alheia.
     const existente = await tx.whatsappVinculoFuncionario.findUnique({
-      where: { empresaId_sufixo: { empresaId, sufixo } },
+      where: { empresaId_chave: { empresaId, chave } },
     });
 
     if (!existente) {
@@ -155,6 +183,7 @@ export class WhatsappFuncionarioService {
           usuarioId,
           telefone: digitos(telefoneBruto),
           sufixo,
+          chave,
         },
       });
     }

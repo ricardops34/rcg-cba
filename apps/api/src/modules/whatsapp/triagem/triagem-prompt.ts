@@ -90,11 +90,22 @@ export function montarPromptTriagem(ctx: ContextoTriagem): string {
   // O que a IA promete depende de haver alguém para cumprir. Sem isto ela diz
   // "já vou te transferir" às 23h de um sábado, e ninguém aparece.
   if (ctx.vendedoresPresentes.length > 0) {
-    const nomes = ctx.vendedoresPresentes.map((v) => v.nome).join(', ');
     linhas.push(
       '- Há atendentes trabalhando agora. Antes de direcionar, avise em uma frase que a pessoa será atendida em seguida.',
-      `- Quem está disponível neste momento: ${nomes}. Se a pessoa não indicar ninguém e não houver vendedor de carteira, direcione sem informar vendedorId — quem estiver livre assume.`,
+      '- Se a pessoa não indicar ninguém e não houver vendedor de carteira, direcione sem informar vendedorId — quem estiver livre assume.',
     );
+    // Os **nomes** de quem está trabalhando só vão ao modelo quando quem
+    // escreve já é cliente.
+    //
+    // Para um número desconhecido, essa lista é a escala da equipe de vendas
+    // entregue a quem só precisou descobrir o WhatsApp da empresa — quem
+    // trabalha aqui e em que horário. A IA não precisa dos nomes para
+    // direcionar: ela direciona sem `vendedorId` e a conversa cai para quem
+    // estiver livre.
+    if (ctx.cliente) {
+      const nomes = ctx.vendedoresPresentes.map((v) => v.nome).join(', ');
+      linhas.push(`- Quem está disponível neste momento: ${nomes}.`);
+    }
   } else {
     linhas.push(
       '- NINGUÉM está atendendo agora (fora do horário, fim de semana, ou ninguém conectado).',

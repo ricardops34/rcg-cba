@@ -2723,9 +2723,19 @@ model WhatsappVinculoFuncionario {
   /// Guardado inteiro para quem investiga saber qual aparelho foi pareado.
   telefone String
 
-  /// Últimos 8 dígitos — a chave de comparação. Mesma convenção de
-  /// `casarCliente`: cobre com/sem DDI 55 e com/sem o 9º dígito sem precisar
-  /// normalizar a base inteira.
+  /// **A chave do pareamento**: DDD + 8 dígitos, sem DDI e sem o 9º dígito
+  /// (ver `chaveTelefone`). Identifica o aparelho de forma exata.
+  ///
+  /// Era o `sufixo` de 8 dígitos até 2026-09-05, e isso era uma escalação de
+  /// privilégio: um número de **outro DDD** com os mesmos 8 dígitos finais caía
+  /// no mesmo vínculo e herdava a confirmação do vendedor. O DDD é justamente o
+  /// que separa os dois, e ele estava fora da chave.
+  chave String
+
+  /// Últimos 8 dígitos. Continua servindo para **encontrar** a pessoa no
+  /// cadastro (onde o telefone pode estar sem DDI ou sem o 9º dígito), onde a
+  /// tolerância é desejável — achar um candidato não autoriza nada, só abre um
+  /// pedido de código. Não é mais chave de nada.
   sufixo String
 
   /// Código pendente e sua validade. Curto de propósito: ele trafega por
@@ -2752,7 +2762,7 @@ model WhatsappVinculoFuncionario {
   empresa Empresa @relation(fields: [empresaId], references: [id])
   usuario Usuario @relation(fields: [usuarioId], references: [id])
 
-  @@unique([empresaId, sufixo])
+  @@unique([empresaId, chave])
   @@index([empresaId, usuarioId])
   @@map("whatsapp_vinculos_funcionario")
 }

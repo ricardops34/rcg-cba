@@ -120,6 +120,30 @@ export const FERRAMENTAS_DO_CLIENTE: FerramentaChat[] = [
       required: [],
     },
   },
+  // `procurar_vendedor` mudou de catálogo em 2026-09-05, por segurança.
+  //
+  // Estava entre as gerais, e ali qualquer número — inclusive o de um
+  // concorrente que descobriu o WhatsApp da empresa — podia sondar nomes e
+  // levantar a equipe de vendas inteira, um palpite por vez. Um cliente já
+  // associado dizendo "falo com o João" é outra conversa: ele já sabe com quem
+  // fala.
+  //
+  // Para quem não é cliente, direcionar sem nome continua funcionando: a IA usa
+  // `direcionar_para_vendedor` sem `vendedorId` e a conversa cai para quem
+  // estiver livre.
+  {
+    nome: 'procurar_vendedor',
+    descricao:
+      'Procura um vendedor ativo da empresa pelo nome, quando a pessoa disser ' +
+      'com quem costuma falar. Use antes de direcionar.',
+    parametros: {
+      type: 'object',
+      properties: {
+        nome: { type: 'string', description: 'Nome, ou parte dele' },
+      },
+      required: ['nome'],
+    },
+  },
 ];
 
 /** As que valem sempre, com ou sem cliente identificado. */
@@ -144,19 +168,6 @@ export const FERRAMENTAS_GERAIS: FerramentaChat[] = [
         },
       },
       required: [],
-    },
-  },
-  {
-    nome: 'procurar_vendedor',
-    descricao:
-      'Procura um vendedor ativo da empresa pelo nome, quando a pessoa disser ' +
-      'com quem costuma falar. Use antes de direcionar.',
-    parametros: {
-      type: 'object',
-      properties: {
-        nome: { type: 'string', description: 'Nome, ou parte dele' },
-      },
-      required: ['nome'],
     },
   },
   {

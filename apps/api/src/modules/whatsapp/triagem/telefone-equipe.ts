@@ -27,6 +27,37 @@ export function sufixoTelefone(bruto: string | null | undefined): string {
 }
 
 /**
+ * A identidade **exata** de um aparelho, para servir de chave de pareamento.
+ *
+ * Diferente de `sufixoTelefone`, que é tolerante de propósito para encontrar a
+ * pessoa no cadastro: aqui a tolerância é uma falha de segurança. O pareamento
+ * era chaveado pelo sufixo de 8 dígitos, e isso significava que **um número de
+ * outro DDD com os mesmos 8 dígitos finais herdava a confirmação do vendedor**
+ * — (67) 99869-9444 e (11) 99869-9444 caíam no mesmo vínculo, e o segundo
+ * entrava como funcionário com a carteira do primeiro.
+ *
+ * A chave preserva o DDD (é ele que separa os dois) e colapsa só o que é o
+ * mesmo aparelho: o DDI e o 9º dígito, que o WhatsApp entrega ora com, ora sem.
+ * Devolve string vazia quando não dá para identificar com segurança — e quem
+ * chama trata isso como "não parear".
+ */
+export function chaveTelefone(bruto: string | null | undefined): string {
+  let d = digitos(bruto);
+  // DDI 55 + DDD + 8 ou 9 dígitos.
+  if (d.startsWith('55') && (d.length === 12 || d.length === 13)) {
+    d = d.slice(2);
+  }
+  // Celular com o 9 na frente do número: vira a forma de 10 dígitos, para o
+  // mesmo aparelho não gerar dois pareamentos.
+  if (d.length === 11 && d[2] === '9') {
+    d = d.slice(0, 2) + d.slice(3);
+  }
+  // Sem DDD não há como distinguir de um número de outra região — e é
+  // exatamente essa distinção que a chave existe para fazer.
+  return d.length === 10 ? d : '';
+}
+
+/**
  * Monta o JID brasileiro a partir do telefone do cadastro.
  *
  * O DDI é acrescentado, mas só quando ainda não está lá: cadastro preenchido

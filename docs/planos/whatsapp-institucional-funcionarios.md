@@ -187,6 +187,75 @@ cliente pedindo o mesmo título recebe "Título não encontrado", e o mesmo vale
 para a nota. As três rotas de usuário (boleto, DANFE, PDF de orçamento) seguem
 em 200.
 
+## Garantias de segurança (auditoria de 2026-09-05)
+
+Cinco invariantes pedidos pelo usuário, e onde cada um é imposto. **Regra geral:
+acesso é código; comportamento é prompt.** Instrução de prompt não é barreira —
+descreve o comportamento desejado a um modelo que quem está do outro lado pode
+tentar levar a outro.
+
+| Garantia | Onde vive |
+|---|---|
+| Ninguém alcança dado de outra pessoa | Código: `QuemPede` recorta o gerador por cliente; escopo por carteira em toda consulta |
+| Número não associado não alcança dado nenhum | Código: catálogo fail-closed (`ferramentasDaTriagem`) |
+| Vendedor não alcança dado de outro vendedor | Código: `resolverEscopoDoUsuario`, a mesma função do sistema |
+| Vendedor desligado não alcança nada | Código: `identificar` exige `usuarios.ativo` **e** `usuario_empresas.ativo` |
+| Concorrente que descobre o número não alcança dado | Código: as quatro acima, mais o que foi fechado abaixo |
+
+### A falha que a auditoria encontrou
+
+**O pareamento do funcionário estava chaveado pelos últimos 8 dígitos** do
+telefone. Dois números de DDDs diferentes com os mesmos 8 dígitos finais —
+(67) 99724-1935 e (11) 99724-1935 — caíam no **mesmo** vínculo. Confirmado o
+código pelo vendedor legítimo, o outro número herdava a confirmação e entrava
+como funcionário, com a carteira dele. Escalação de privilégio, não teoria.
+
+Corrigido em `20260905120000_vinculo_funcionario_chave_exata`: a chave passou a
+ser DDD + 8 dígitos (`chaveTelefone`), que identifica o aparelho de forma exata
+sem quebrar com os formatos que o WhatsApp entrega. O sufixo continua sendo
+usado para **encontrar** a pessoa no cadastro, onde a tolerância é desejável —
+encontrar não autoriza nada, só abre um pedido de código. Os pareamentos
+existentes foram descartados, não convertidos: converter manteria confirmações
+possivelmente concedidas ao número errado.
+
+Reproduzido em dev antes e depois: os dois números geram vínculos separados, e
+o atacante continua não confirmado mesmo digitando o código do vendedor.
+
+### O que mais foi fechado
+
+- **`identificar_cliente` não devolve mais nome nenhum.** Devolvia a razão
+  social e o nome do vendedor a qualquer número — um concorrente com uma lista
+  de CNPJs mapearia a carteira inteira de fora, um CNPJ por vez. Agora devolve
+  só um `vendedorId` opaco, que serve para encaminhar: o modelo não vaza um nome
+  que não recebeu.
+- **`procurar_vendedor` saiu do catálogo geral** para o do cliente. Ali qualquer
+  número sondava a equipe de vendas pelo nome. Para quem não é cliente,
+  direcionar sem nome continua funcionando.
+- **Os nomes de quem está de plantão** só entram no prompt quando quem escreve
+  já é cliente. Para um desconhecido, era a escala da equipe entregue a quem só
+  precisou descobrir o número.
+- **Fail-closed no escopo do funcionário**: `null` significa "sem restrição" no
+  resto do sistema, e ali faz sentido (Administrativo, numa tela atrás de
+  senha). Aqui seria o contrário do que se quer — se o escopo não resolve, não
+  se atende.
+- **O bot não pede credencial** (`sem-credencial.ts`), e isso deixou de ser só
+  instrução de prompt. A checagem é por frase, para "nunca pedimos sua senha"
+  continuar podendo ser dito e o código de pareamento não ser bloqueado junto.
+  Bloqueado, o atendimento vai para uma pessoa: insistir daria ao atacante uma
+  segunda tentativa.
+
+### Limitações conhecidas
+
+- Um número que **compartilhe os 8 dígitos finais** com um vendedor recebe "Oi,
+  \<primeiro nome\>! Reconheci este número como seu" antes de pedir o código.
+  Vaza um primeiro nome a quem já precisou controlar um número quase igual ao
+  do vendedor. Não vaza mais que isso, e o pareamento não avança.
+- **O texto da conversa vai ao provedor de IA** — decisão registrada em
+  2026-08-25. A fronteira `anonimizar-agente.ts` mascara por nome de campo e não
+  lê texto livre: o que o cliente digitar sai sem máscara.
+- Se o cliente **enviar** uma senha por conta própria, ela é gravada e vai ao
+  provedor. O bloqueio impede pedir, não impede receber.
+
 ## O que ainda não foi observado em execução
 
 Dev não tem agente de IA configurado nem worker de WhatsApp conectado. Foram

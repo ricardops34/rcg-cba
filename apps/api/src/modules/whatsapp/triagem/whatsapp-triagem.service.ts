@@ -14,6 +14,7 @@ import {
   type EscopoVendedores,
 } from '../../../common/escopo/escopo-vendedores';
 import { jidBrasileiro, sufixoTelefone } from './telefone-equipe';
+import { pedeCredencial, RESPOSTA_SEM_CREDENCIAL } from './sem-credencial';
 import { WhatsappProviderService } from '../providers/whatsapp-provider.service';
 import { TitulosReceberService } from '../../titulos-receber/titulos-receber.service';
 import { NotasSaidaService } from '../../notas-saida/notas-saida.service';
@@ -628,12 +629,19 @@ export class WhatsappTriagemService {
     });
 
     if (!cliente) return { encontrado: false };
+
+    // **Nome nenhum volta para o modelo.**
+    //
+    // Quem chama esta ferramenta é, por definição, um número que ainda não é de
+    // cliente — pode ser um concorrente com uma lista de CNPJs. Devolver a razão
+    // social e o nome do vendedor confirmaria, um CNPJ por vez, quem é cliente
+    // da empresa e quem atende cada um: a carteira inteira, mapeada de fora.
+    //
+    // O `vendedorId` é opaco e serve só para `direcionar_para_vendedor`
+    // encaminhar; o modelo não consegue vazar um nome que não recebeu.
     return {
       encontrado: true,
-      nome: cliente.nomeFantasia ?? cliente.razaoSocial,
-      vendedor: cliente.vendedor
-        ? { id: cliente.vendedor.id, nome: cliente.vendedor.nome }
-        : null,
+      vendedorId: cliente.vendedor?.id ?? null,
     };
   }
 
@@ -1048,6 +1056,26 @@ export class WhatsappTriagemService {
       }),
     );
 
+    // **Fail-closed.** `null` significa "sem restrição de carteira" no resto do
+    // sistema, e ali faz sentido: é o Administrativo, que não tem cadastro de
+    // vendedor e trabalha com a empresa inteira numa tela atrás de senha.
+    //
+    // Aqui seria o contrário do que se quer. Um número reconhecido cujo
+    // vendedor sumiu entre a identificação e esta consulta passaria a enxergar
+    // a empresa toda pelo WhatsApp. Quem chegou até aqui é um vendedor
+    // confirmado — se o escopo não resolve, não se atende.
+    if (escopo === null || escopo.length === 0) {
+      this.logger.warn(
+        `Funcionário ${identidade.usuarioId} sem escopo resolvível; atendimento recusado.`,
+      );
+      await this.responder(
+        empresaId,
+        conversaId,
+        'Não consegui confirmar sua carteira agora. Fale com quem administra o sistema.',
+      );
+      return;
+    }
+
     const mensagens: MensagemChat[] = [
       {
         papel: 'system',
@@ -1275,6 +1303,24 @@ export class WhatsappTriagemService {
    * registrada como do próprio atendimento automático.
    */
   private async responder(empresaId: string, conversaId: string, texto: string) {
+    // Última barreira antes de a mensagem sair. O prompt já manda não pedir
+    // senha, mas prompt não é barreira: quem recebe não tem como saber que a
+    // mensagem veio de um modelo convencido — para ele é a empresa pedindo a
+    // senha dele, no número oficial dela.
+    if (pedeCredencial(texto)) {
+      this.logger.warn(
+        `Resposta bloqueada por pedir credencial na conversa ${conversaId}.`,
+      );
+      texto = RESPOSTA_SEM_CREDENCIAL;
+      // Não segue com o bot: o assunto que levou até aqui não se resolve com
+      // ele, e insistir daria ao atacante uma segunda tentativa.
+      await this.paraFila(
+        empresaId,
+        conversaId,
+        'Atendimento encaminhado por segurança',
+      ).catch(() => undefined);
+    }
+
     await this.prisma.withTenant(empresaId, async (tx) => {
       const conversa = await tx.whatsappConversa.findFirst({
         where: { id: conversaId },
