@@ -916,6 +916,16 @@ function FerramentasSection() {
     queryKey: ["agente-ferramentas"],
     queryFn: () => apiFetch<AgenteFerramenta[]>("/agente/ferramentas"),
   });
+  const { data: termos } = useQuery({
+    queryKey: ["agente-ferramentas", "termos"],
+    queryFn: () =>
+      apiFetch<{ aceitoEm: string | null; aceitoPor: string | null }>(
+        "/agente/ferramentas/termos",
+      ),
+  });
+  const [aceiteLocal, setAceiteLocal] = useState(false);
+  const termosAceitos = aceiteLocal || !!termos?.aceitoEm;
+
   const { data: perfis } = useQuery({
     queryKey: ["perfis", "lista"],
     queryFn: () =>
@@ -944,6 +954,33 @@ function FerramentasSection() {
       toast.error(err instanceof ApiError ? err.message : "Erro ao salvar"),
   });
 
+  const restaurar = useMutation({
+    mutationFn: (chave: string) =>
+      apiFetch<AgenteFerramenta[]>(`/agente/ferramentas/${chave}/restaurar`, {
+        method: "POST",
+      }),
+    onSuccess: (lista) => {
+      queryClient.setQueryData(["agente-ferramentas"], lista);
+      toast.success("Textos restaurados ao padrão do sistema");
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Erro ao restaurar"),
+  });
+
+  const aceitarTermos = useMutation({
+    mutationFn: () =>
+      apiFetch<{ aceitoEm: string; aceitoPor: string }>(
+        "/agente/ferramentas/termos",
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      setAceiteLocal(true);
+      toast.success("Termos aceitos. Os textos ficaram editáveis.");
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Erro ao aceitar"),
+  });
+
   if (!ferramentas) {
     return <p className="text-sm text-muted-foreground">Carregando...</p>;
   }
@@ -955,6 +992,47 @@ function FerramentasSection() {
         catálogo enviado ao modelo — ele deixa de saber que ela existe, em vez
         de tentar e falhar.
       </p>
+
+      {/*
+        Editar texto exige aceite; ligar/desligar e escolher perfis, não. A
+        distinção é entre configuração e redação: desligar é reversível e
+        visível aqui; reescrever o prompt muda como o assistente fala com
+        cliente, e o efeito só aparece numa conversa, depois.
+      */}
+      {!termosAceitos && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
+          <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+            Editar os textos exige aceitar os termos
+          </p>
+          <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+            <li>
+              • Reescrever a descrição ou o comportamento muda como o assistente
+              fala com clientes e com a equipe.
+            </li>
+            <li>
+              • O efeito não aparece nesta tela: aparece numa conversa, depois.
+              Teste antes de dar por certo.
+            </li>
+            <li>
+              • Estes textos servem para <strong>tom e cuidado</strong>. Não
+              controlam acesso: quem alcança qual dado é decidido no servidor, e
+              o modelo não contorna por mais que o texto peça.
+            </li>
+            <li>
+              • Toda alteração fica registrada, com autor, data, e o texto de
+              antes e o de depois.
+            </li>
+          </ul>
+          <Button
+            size="sm"
+            className="mt-3"
+            disabled={aceitarTermos.isPending}
+            onClick={() => aceitarTermos.mutate()}
+          >
+            Li e aceito
+          </Button>
+        </div>
+      )}
 
       {ferramentas.map((f) => (
         <div
@@ -994,6 +1072,7 @@ function FerramentasSection() {
                 <Textarea
                   id={`desc-${f.chave}`}
                   rows={3}
+                  disabled={!termosAceitos}
                   defaultValue={f.descricao}
                   placeholder={f.descricaoPadrao}
                   onBlur={(e) => {
@@ -1019,6 +1098,7 @@ function FerramentasSection() {
                 <Textarea
                   id={`instr-${f.chave}`}
                   rows={3}
+                  disabled={!termosAceitos}
                   defaultValue={f.instrucoes}
                   placeholder={
                     f.instrucoesPadrao ||
@@ -1095,6 +1175,22 @@ function FerramentasSection() {
                   sempre.
                 </FieldDescription>
               </Field>
+
+              {/*
+                Restaurar apaga os textos reescritos e faz a ferramenta voltar a
+                **seguir** o código — inclusive melhorias futuras. Reescrever com
+                o texto de hoje deixaria a cópia congelada de novo.
+              */}
+              <div className="lg:col-span-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={!termosAceitos || restaurar.isPending}
+                  onClick={() => restaurar.mutate(f.chave)}
+                >
+                  Restaurar textos do padrão do sistema
+                </Button>
+              </div>
             </div>
           ) : null}
         </div>

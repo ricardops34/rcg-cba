@@ -142,6 +142,7 @@ model Empresa {
   agenteConfig               AgenteConfig?
   agenteCredenciais          AgenteCredencial[]
   agenteFerramentas          AgenteFerramenta[]
+  agenteFerramentaAuditoria  AgenteFerramentaAuditoria[]
   agenteConversas            AgenteConversa[]
   agenteMensagens            AgenteMensagem[]
   whatsappConfig             WhatsappConfig?
@@ -1137,6 +1138,19 @@ model AgenteConfig {
   maxIteracoesFerramentas Int @default(5)
   historicoMensagens      Int @default(20)
 
+  /// Aceite dos termos para **editar o comportamento** das ferramentas.
+  ///
+  /// Reescrever o prompt de uma ferramenta muda como o assistente fala com
+  /// cliente e equipe, e o efeito não aparece numa tela — aparece numa conversa,
+  /// depois. O aceite é o momento em que alguém assume isso por escrito, e a
+  /// data diz desde quando.
+  ///
+  /// Nulo = ninguém aceitou ainda, e a API recusa a edição dos textos. Ligar ou
+  /// desligar uma ferramenta continua liberado: aquilo é configuração, não
+  /// redação.
+  termosPromptAceitosEm  DateTime?
+  termosPromptAceitosPor String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   createdBy String?
@@ -1213,6 +1227,44 @@ model AgenteFerramenta {
  * ferramenta vale para todos os perfis que passem naquela permissão, que é o
  * comportamento que existia antes desta tabela.
  */
+/// Trilha das alterações no cadastro de ferramentas.
+///
+/// Existe porque o comportamento do assistente virou campo editável: sem
+/// registro, "o assistente começou a responder diferente" seria impossível de
+/// investigar — ninguém saberia se alguém reescreveu o prompt, quando, nem o
+/// que estava lá antes.
+///
+/// Guarda o **antes e o depois**, e não só o depois: o valor anterior é o que
+/// permite desfazer e o que explica a mudança de comportamento.
+model AgenteFerramentaAuditoria {
+  id        String @id @default(uuid())
+  empresaId String
+
+  /// Chave da ferramenta, igual à do catálogo.
+  chave String
+  /// Qual campo mudou: `ativa`, `nome`, `descricao`, `instrucoes`, `perfis`.
+  campo String
+
+  /// Texto, mesmo para booleano e lista: o log precisa continuar legível
+  /// depois que o formato do campo mudar. Mesma escolha de
+  /// `plataforma_auditoria`.
+  valorAnterior String? @db.Text
+  valorNovo     String? @db.Text
+
+  /// Sem FK: a trilha tem de sobreviver à exclusão do usuário, senão perde
+  /// justamente o registro de quem saiu. O e-mail vai junto pelo mesmo motivo.
+  autorId    String?
+  autorEmail String?
+
+  criadoEm DateTime @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@index([empresaId, chave, criadoEm])
+  @@index([empresaId, criadoEm])
+  @@map("agente_ferramenta_auditoria")
+}
+
 model AgenteFerramentaPerfil {
   id           String @id @default(uuid())
   empresaId    String

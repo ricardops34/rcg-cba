@@ -15,6 +15,7 @@ import { AgenteToolsService } from './agente-tools.service';
 import { garantirMascarado, mascarar } from './anonimizar-agente';
 import { ProvedorFactory } from './provedor.factory';
 import type { FiltroFerramentas } from './agente-ferramentas.service';
+import { REGRAS_FIXAS_AGENTE_INTERNO } from '../../common/ia/regras-fixas';
 import type { Ferramenta } from './agente-tools.service';
 import type { AgenteDestino } from '@plataforma/contracts';
 import type { MensagemChat } from './provedor-ia';
@@ -630,6 +631,12 @@ export class AgenteChatService {
       ...(instrucoes.length
         ? ['', 'COMO USAR CADA FERRAMENTA', ...instrucoes]
         : []),
+      // Por último de propósito: instrução posterior é a que o modelo tende a
+      // seguir quando há conflito, e o conflito é previsível — tudo o que vem
+      // acima (personalidade e comportamento das ferramentas) é editável pela
+      // empresa, e isto não é.
+      '',
+      REGRAS_FIXAS_AGENTE_INTERNO,
     ].join('\n');
 
     return [

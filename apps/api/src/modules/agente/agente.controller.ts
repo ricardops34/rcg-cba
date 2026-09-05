@@ -174,6 +174,57 @@ export class AgenteController {
     return this.ferramentas.atualizar(user.empresaAtivaId, user, chave, dto);
   }
 
+  @ApiOperation({
+    summary: 'Aceitar os termos de edição de prompt',
+    description:
+      'Sem o aceite, a API recusa alterar nome, descrição e comportamento das ' +
+      'ferramentas — ligar/desligar e escolher perfis continuam liberados. ' +
+      'Fica registrado quem aceitou e quando. Requer agente-config.editar.',
+  })
+  @RequirePermission('agente-config', 'editar')
+  @Post('ferramentas/termos')
+  aceitarTermosPrompt(@CurrentUser() user: AuthenticatedUser) {
+    return this.ferramentas.aceitarTermos(user.empresaAtivaId, user);
+  }
+
+  @ApiOperation({
+    summary: 'Situação do aceite dos termos de edição',
+    description: 'Quem aceitou e quando; nulo quando ninguém aceitou ainda.',
+  })
+  @RequirePermission('agente-config', 'visualizar')
+  @Get('ferramentas/termos')
+  termosPrompt(@CurrentUser() user: AuthenticatedUser) {
+    return this.ferramentas.situacaoTermos(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Restaurar os textos padrão de uma ferramenta',
+    description:
+      'Apaga nome, descrição e comportamento reescritos, e a ferramenta volta a ' +
+      '**seguir** o texto do código — inclusive melhorias futuras dele. Entra na ' +
+      'trilha de auditoria como qualquer outra alteração. Requer agente-config.editar.',
+  })
+  @RequirePermission('agente-config', 'editar')
+  @Post('ferramentas/:chave/restaurar')
+  restaurarFerramenta(
+    @Param('chave') chave: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.ferramentas.restaurarPadrao(user.empresaAtivaId, user, chave);
+  }
+
+  @ApiOperation({
+    summary: 'Trilha de alterações das ferramentas',
+    description:
+      'Quem mudou o quê, quando, com o antes e o depois. Mais recentes primeiro. ' +
+      'Requer agente-config.visualizar.',
+  })
+  @RequirePermission('agente-config', 'visualizar')
+  @Get('ferramentas/auditoria')
+  auditoriaFerramentas(@CurrentUser() user: AuthenticatedUser) {
+    return this.ferramentas.auditoria(user.empresaAtivaId);
+  }
+
   // ---------------- conexão OAuth (Codex) ----------------
 
   @ApiOperation({

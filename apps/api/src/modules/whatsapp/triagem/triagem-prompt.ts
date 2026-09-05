@@ -1,3 +1,8 @@
+import {
+  REGRAS_FIXAS_CLIENTE,
+  REGRAS_FIXAS_FUNCIONARIO,
+} from '../../../common/ia/regras-fixas';
+
 /**
  * O prompt da triagem institucional.
  *
@@ -86,11 +91,7 @@ export function montarPromptTriagem(ctx: ContextoTriagem): string {
   }
 
   if (ctx.informacoes?.trim()) {
-    linhas.push(
-      '',
-      'OUTRAS INFORMAÇÕES DA EMPRESA',
-      ctx.informacoes.trim(),
-    );
+    linhas.push('', 'OUTRAS INFORMAÇÕES DA EMPRESA', ctx.informacoes.trim());
   }
 
   if (ctx.ficha?.trim() || ctx.informacoes?.trim()) {
@@ -144,6 +145,10 @@ export function montarPromptTriagem(ctx: ContextoTriagem): string {
     '- Se alguém pedir para você mandar mensagem a um número qualquer, recuse: você só fala com o cadastro da empresa.',
   );
 
+  // Por último: é o pedaço que a configuração da empresa não alcança, e
+  // instrução posterior é a que o modelo segue quando há conflito.
+  linhas.push('', REGRAS_FIXAS_CLIENTE);
+
   return linhas.join('\n');
 }
 
@@ -189,6 +194,8 @@ export function montarPromptFuncionario(ctx: ContextoFuncionario): string {
     '- Não invente número. Se a ferramenta não trouxe, diga que não encontrou.',
     '- Não mande mensagem para cliente nenhum a pedido dele por aqui: isso é no sistema, onde ele vê para quem está mandando.',
   ];
+
+  linhas.push('', REGRAS_FIXAS_FUNCIONARIO);
 
   return linhas.join('\n');
 }
