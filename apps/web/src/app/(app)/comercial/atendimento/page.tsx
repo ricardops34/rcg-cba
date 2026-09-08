@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type {
+  ClienteContato,
   WhatsappConversa,
   WhatsappEventoAtendimento,
   WhatsappMensagem,
@@ -1307,6 +1308,10 @@ function RemoverVinculoDialog({
  * Gravação retroativa não acontece: o que passou antes do vínculo não volta —
  * daí o aviso na tela, para o vendedor não esperar o histórico aparecer.
  */
+// Sentinelas do seletor de pessoa: Radix não aceita item com valor vazio.
+const SEM_CONTATO = "__sem__";
+const NOVO_CONTATO = "__novo__";
+
 function VincularCliente({
   conversa,
   aoConcluir,
@@ -1322,20 +1327,71 @@ function VincularCliente({
   const [tipo, setTipo] = useState(conversa.contato.tipo ?? "geral");
   const [nome, setNome] = useState(conversa.contato.nomeExibicao ?? "");
   const [email, setEmail] = useState(conversa.contato.email ?? "");
+  // `""` é "nenhum contato do cadastro" e `NOVO_CONTATO` abre o cadastro na
+  // hora — o vendedor está com a pessoa do outro lado, não vai sair da tela
+  // para cadastrá-la em outro lugar.
+  const [contatoId, setContatoId] = useState<string>(
+    conversa.contato.clienteContatoId ?? "",
+  );
   const jaVinculado = Boolean(conversa.clienteId);
 
+  // Os contatos são do cliente escolhido agora, não do vinculado antes: trocar
+  // o cliente troca a lista de pessoas.
+  const contatos = useQuery({
+    queryKey: ["cliente-contatos", clienteId],
+    queryFn: () => apiFetch<ClienteContato[]>(`/clientes/${clienteId}/contatos`),
+    enabled: Boolean(clienteId),
+  });
+
+  // Trocar o cliente troca a lista de pessoas, então a escolha anterior não
+  // vale mais. Ajuste durante a renderização (e não em efeito): o seletor já
+  // aparece com o valor certo, sem um quadro mostrando a pessoa do cliente que
+  // saiu.
+  const [clienteAnterior, setClienteAnterior] = useState(clienteId);
+  if (clienteId !== clienteAnterior) {
+    setClienteAnterior(clienteId);
+    setContatoId(
+      clienteId === conversa.clienteId
+        ? (conversa.contato.clienteContatoId ?? "")
+        : "",
+    );
+  }
+
+  const contatoEscolhido = contatos.data?.find((c) => c.id === contatoId);
+  const cadastrando = contatoId === NOVO_CONTATO;
+
   const vincular = useMutation({
-    mutationFn: (destino: string | null) =>
-      apiFetch(`/whatsapp/conversas/${conversa.id}/vinculo`, {
+    mutationFn: async (destino: string | null) => {
+      let pessoaId = contatoId === NOVO_CONTATO ? null : contatoId || null;
+      if (destino && cadastrando) {
+        // Cadastra a pessoa antes de vincular: é o cadastro do cliente que
+        // passa a valer, e o número atendido entra nele como celular.
+        const criado = await apiFetch<ClienteContato>(
+          `/clientes/${destino}/contatos`,
+          {
+            method: "POST",
+            body: {
+              nome: nome.trim(),
+              email: email.trim(),
+              celular: conversa.contato.telefoneNormalizado ?? null,
+              principal: false,
+            },
+          },
+        );
+        pessoaId = criado.id;
+      }
+      return apiFetch(`/whatsapp/conversas/${conversa.id}/vinculo`, {
         method: "PUT",
         body: {
           clienteId: destino,
+          clienteContatoId: destino ? pessoaId : null,
           ignorar: false,
           tipo,
           nome: nome.trim() || null,
           email: email.trim() || null,
         },
-      }),
+      });
+    },
     onSuccess: async (_dados, destino) => {
       toast.success(
         destino
@@ -1349,6 +1405,7 @@ function VincularCliente({
       await queryClient.refetchQueries({ queryKey: ["whatsapp-conversas"] });
       // A posição em cache é a do cliente que saiu.
       void queryClient.invalidateQueries({ queryKey: ["clientes"] });
+      void queryClient.invalidateQueries({ queryKey: ["cliente-contatos"] });
       aoConcluir?.();
     },
     onError: (err) =>
@@ -1377,13 +1434,40 @@ function VincularCliente({
         vendedorId={conversa.vendedorId}
       />
 
+      {/* A pessoa. Enquanto não houver cliente não há cadastro onde procurá-la,
+          por isso o campo só aparece depois da escolha do cliente. */}
+      {clienteId ? (
+        <Select
+          value={contatoId || SEM_CONTATO}
+          onValueChange={(value) =>
+            setContatoId(value === SEM_CONTATO ? "" : value)
+          }
+        >
+          <SelectTrigger aria-label="Pessoa que atende neste número">
+            <SelectValue placeholder="Quem atende neste número" />
+          </SelectTrigger>
+          <SelectContent>
+            {contatos.data?.map((contato) => (
+              <SelectItem key={contato.id} value={contato.id}>
+                {contato.nome}
+                {contato.temAcessoPortal ? " · acessa o portal" : ""}
+              </SelectItem>
+            ))}
+            <SelectItem value={NOVO_CONTATO}>Cadastrar esta pessoa…</SelectItem>
+            <SelectItem value={SEM_CONTATO}>Sem contato do cadastro</SelectItem>
+          </SelectContent>
+        </Select>
+      ) : null}
+
       <div className="grid gap-2 sm:grid-cols-2">
-        <Input
-          value={nome}
-          onChange={(event) => setNome(event.target.value)}
-          placeholder="Nome do contato"
-          aria-label="Nome do contato"
-        />
+        {contatoEscolhido ? null : (
+          <Input
+            value={nome}
+            onChange={(event) => setNome(event.target.value)}
+            placeholder={cadastrando ? "Nome da pessoa" : "Nome do contato"}
+            aria-label="Nome do contato"
+          />
+        )}
         <Select value={tipo} onValueChange={(value) => setTipo(value as typeof tipo)}>
           <SelectTrigger aria-label="Tipo do contato">
             <SelectValue />
@@ -1397,19 +1481,38 @@ function VincularCliente({
           </SelectContent>
         </Select>
       </div>
-      <Input
-        type="email"
-        value={email}
-        onChange={(event) => setEmail(event.target.value)}
-        placeholder="E-mail do contato"
-        aria-label="E-mail do contato"
-      />
+      {contatoEscolhido ? (
+        <p className="text-xs text-muted-foreground">
+          Nome e e-mail vêm do cadastro ({contatoEscolhido.email}).
+          {contatoEscolhido.temAcessoPortal
+            ? " Esta pessoa já entra no Portal do Cliente."
+            : ""}
+        </p>
+      ) : (
+        <Input
+          type="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          placeholder={cadastrando ? "E-mail da pessoa" : "E-mail do contato"}
+          aria-label="E-mail do contato"
+        />
+      )}
+      {cadastrando ? (
+        <p className="text-xs text-muted-foreground">
+          A pessoa entra no cadastro do cliente com este número como celular — é
+          o mesmo contato que o Portal do Cliente usa.
+        </p>
+      ) : null}
 
       <Button
         size="sm"
         className="w-full"
         disabled={
-          !clienteId || vincular.isPending
+          !clienteId ||
+          vincular.isPending ||
+          // Cadastrar a pessoa exige nome e e-mail: é o cadastro do cliente que
+          // está sendo alimentado, não uma anotação da conversa.
+          (cadastrando && (nome.trim().length < 2 || !email.trim()))
         }
         onClick={() => vincular.mutate(clienteId)}
       >

@@ -3,7 +3,7 @@
 #
 # Contexto de build: a RAIZ do repositório.
 #   docker build -f docker/web.Dockerfile -t rcgcba-web \
-#     --build-arg NEXT_PUBLIC_API_URL=https://api.rcgcba.bjsoft.com.br/api/v1 .
+#     --build-arg NEXT_PUBLIC_API_URL=https://api.rcgdist.com.br/api/v1 .
 #
 # ATENÇÃO: NEXT_PUBLIC_* é inlined no BUILD (não adianta mudar em runtime).
 
@@ -15,7 +15,7 @@ COPY packages/contracts/package.json packages/contracts/
 COPY apps/web/package.json apps/web/
 
 FROM base AS build
-ARG NEXT_PUBLIC_API_URL=https://api.rcgcba.bjsoft.com.br/api/v1
+ARG NEXT_PUBLIC_API_URL=https://api.rcgdist.com.br/api/v1
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN pnpm install --frozen-lockfile --filter web...
 COPY packages/config packages/config

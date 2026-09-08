@@ -20,6 +20,7 @@ import { ClientesService } from './clientes.service';
 import { EnriquecimentoService } from './enriquecimento.service';
 import { ClienteAlteracoesService } from './cliente-alteracoes.service';
 import {
+  ClienteContatoCreateDto,
   ClienteCreateDto,
   ClienteQueryDto,
   ClienteUpdateDto,
@@ -212,6 +213,32 @@ export class ClientesController {
   @Get(':id/mix')
   mix(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.mix(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Contatos do cliente',
+    description:
+      'As pessoas do cliente — o mesmo cadastro que dá acesso ao Portal do Cliente e que a ' +
+      'tela de atendimento vincula ao número do WhatsApp. Requer clientes.visualizar.',
+  })
+  @RequirePermission('clientes', 'visualizar')
+  @Get(':id/contatos')
+  contatos(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.listarContatos(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Cadastrar contato do cliente',
+    description: 'Requer clientes.editar.',
+  })
+  @RequirePermission('clientes', 'editar')
+  @Post(':id/contatos')
+  criarContato(
+    @Param('id') id: string,
+    @Body() dto: ClienteContatoCreateDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.criarContato(user.empresaAtivaId, user, id, dto);
   }
 
   @ApiOperation({

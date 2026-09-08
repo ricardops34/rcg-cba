@@ -19,6 +19,7 @@ import {
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
 import type {
+  ClienteContatoCreate,
   ClienteCreate,
   ClienteQuery,
   ClienteUpdate,
@@ -454,6 +455,97 @@ export class ClientesService {
 
       return cliente;
     });
+  }
+
+  /**
+   * Contatos do cliente — a pessoa, não o número nem o login. É o mesmo
+   * cadastro que o Portal do Cliente usa para dar acesso e que a tela de
+   * atendimento vincula ao número do WhatsApp.
+   */
+  listarContatos(
+    empresaId: string,
+    user: AuthenticatedUser,
+    clienteId: string,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      await this.exigirClienteNoEscopo(tx, empresaId, user, clienteId);
+      const contatos = await tx.clienteContato.findMany({
+        where: { empresaId, clienteId },
+        orderBy: [{ principal: 'desc' }, { nome: 'asc' }],
+        include: { credencial: { select: { id: true } } },
+      });
+      return contatos.map(({ credencial, ...contato }) => ({
+        ...contato,
+        temAcessoPortal: Boolean(credencial),
+      }));
+    });
+  }
+
+  criarContato(
+    empresaId: string,
+    user: AuthenticatedUser,
+    clienteId: string,
+    input: ClienteContatoCreate,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      await this.exigirClienteNoEscopo(tx, empresaId, user, clienteId);
+      const email = input.email.trim().toLowerCase();
+      const jaExiste = await tx.clienteContato.findFirst({
+        where: {
+          empresaId,
+          clienteId,
+          email: { equals: email, mode: 'insensitive' },
+        },
+      });
+      if (jaExiste) {
+        throw new BadRequestException(
+          'Este cliente já tem um contato com esse e-mail',
+        );
+      }
+      // Contato principal é um só: promover um rebaixa o anterior, senão a tela
+      // mostraria dois "principais" e o portal não saberia a quem escrever.
+      if (input.principal) {
+        await tx.clienteContato.updateMany({
+          where: { empresaId, clienteId, principal: true },
+          data: { principal: false, updatedBy: user.id },
+        });
+      }
+      const contato = await tx.clienteContato.create({
+        data: {
+          empresaId,
+          clienteId,
+          nome: input.nome,
+          email,
+          telefone: input.telefone,
+          celular: input.celular,
+          cargo: input.cargo,
+          principal: input.principal,
+          createdBy: user.id,
+          updatedBy: user.id,
+        },
+      });
+      return { ...contato, temAcessoPortal: false };
+    });
+  }
+
+  private async exigirClienteNoEscopo(
+    tx: TenantTx,
+    empresaId: string,
+    user: AuthenticatedUser,
+    clienteId: string,
+  ) {
+    const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+    const cliente = await tx.cliente.findFirst({
+      where: {
+        id: clienteId,
+        empresaId,
+        deletedAt: null,
+        ...(escopo ? { vendedorId: { in: escopo } } : {}),
+      },
+      select: { id: true },
+    });
+    if (!cliente) throw new NotFoundException('Cliente não encontrado');
+    return cliente;
   }
 
   create(empresaId: string, user: AuthenticatedUser, input: ClienteCreate) {

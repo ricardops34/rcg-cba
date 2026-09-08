@@ -1113,6 +1113,281 @@ export const INTEGRACAO_NFE_XML_STATUS_EXAMPLE: IntegracaoNfeXmlStatus = {
 };
 
 // ------------------------------------------------------------------
+// Fornecedores — chave: codigoErp.
+// ------------------------------------------------------------------
+// Carregue **antes** das notas de entrada: `fornecedorCodigo` da nota aponta
+// para cá e o registro precisa já existir.
+
+export const integracaoFornecedorCreateSchema = z.object({
+  codigoErp: z
+    .string()
+    .trim()
+    .min(1)
+    .max(30)
+    .describe("Chave natural do registro"),
+  tipoPessoa: tipoPessoaSchema.default("juridica"),
+  razaoSocial: z.string().trim().min(1).max(150),
+  nomeFantasia: z.string().trim().max(150).nullable().optional(),
+  cnpjCpf: z.string().trim().max(20).nullable().optional(),
+  inscricaoEstadual: z.string().trim().max(20).nullable().optional(),
+  inscricaoMunicipal: z.string().trim().max(20).nullable().optional(),
+  contato: z.string().trim().max(100).nullable().optional(),
+  email: z.string().trim().max(120).nullable().optional(),
+  telefone: z.string().trim().max(20).nullable().optional(),
+  celular: z.string().trim().max(20).nullable().optional(),
+  endereco: z.string().trim().max(150).nullable().optional(),
+  complemento: z.string().trim().max(100).nullable().optional(),
+  bairro: z.string().trim().max(100).nullable().optional(),
+  municipio: z.string().trim().max(100).nullable().optional(),
+  uf: z.string().trim().max(2).nullable().optional(),
+  cep: z.string().trim().max(10).nullable().optional(),
+  observacao: z.string().trim().max(1000).nullable().optional(),
+  ativo: z.boolean().default(true),
+});
+export type IntegracaoFornecedorCreate = z.infer<
+  typeof integracaoFornecedorCreateSchema
+>;
+
+export const integracaoFornecedorUpdateSchema =
+  integracaoFornecedorCreateSchema.omit({ codigoErp: true }).partial();
+export type IntegracaoFornecedorUpdate = z.infer<
+  typeof integracaoFornecedorUpdateSchema
+>;
+
+export const integracaoFornecedorSchema =
+  integracaoFornecedorCreateSchema.extend({
+    id: z.string().uuid(),
+    ...auditFieldsSchema.shape,
+  });
+export type IntegracaoFornecedor = z.infer<typeof integracaoFornecedorSchema>;
+
+export const integracaoFornecedorQuerySchema = paginationQuerySchema.extend({
+  ativo: booleanQueryParam,
+});
+export type IntegracaoFornecedorQuery = z.infer<
+  typeof integracaoFornecedorQuerySchema
+>;
+
+export const INTEGRACAO_FORNECEDOR_CREATE_EXAMPLE: IntegracaoFornecedorCreate =
+  {
+    codigoErp: "F00042",
+    tipoPessoa: "juridica",
+    razaoSocial: "Distribuidora Serra Azul Ltda",
+    nomeFantasia: "Serra Azul",
+    cnpjCpf: "04252011000110",
+    inscricaoEstadual: "283910457",
+    inscricaoMunicipal: null,
+    contato: "Marina Prado",
+    email: "compras@serraazul.com.br",
+    telefone: "6733214455",
+    celular: "67998877665",
+    endereco: "Rua das Palmeiras, 1240",
+    complemento: "Galpão 3",
+    bairro: "Distrito Industrial",
+    municipio: "Campo Grande",
+    uf: "MS",
+    cep: "79108250",
+    observacao: null,
+    ativo: true,
+  };
+
+export const INTEGRACAO_FORNECEDOR_EXAMPLE: IntegracaoFornecedor = {
+  ...INTEGRACAO_FORNECEDOR_CREATE_EXAMPLE,
+  id: "4f8a1b2c-3d4e-4f50-a617-28394a5b6c7d",
+  createdAt: "2026-09-08T12:00:00.000Z",
+  updatedAt: "2026-09-08T12:00:00.000Z",
+  createdBy: null,
+  updatedBy: null,
+};
+
+// ------------------------------------------------------------------
+// Notas de entrada (mestre-detalhe) — chave: codigoErp.
+// ------------------------------------------------------------------
+// Irmã da nota de saída, com as mesmas regras de item (`delete: true` exclui a
+// linha; item ausente do payload não é excluído). fornecedorId/dtEmissao/
+// ano/mes dos itens são denormalizados a partir do cabeçalho pelo próprio
+// service — não fazem parte do payload do item.
+//
+// Sem XML: a segunda via do documento de entrada é do fornecedor.
+
+export const integracaoNotaEntradaItemSchema = z.object({
+  delete: z
+    .boolean()
+    .default(false)
+    .describe("Quando true, exclui somente este item pelo codigoErp"),
+  codigoErp: z
+    .string()
+    .trim()
+    .min(1)
+    .max(60)
+    .describe("Chave de identidade do item no ERP"),
+  produtoCodigo: z.string().trim().max(30).nullable().optional(),
+  armazemCodigo: z
+    .string()
+    .trim()
+    .max(30)
+    .nullable()
+    .optional()
+    .describe("codigoErp do armazém em que a mercadoria entrou"),
+  item: z.coerce
+    .number()
+    .int()
+    .nullable()
+    .optional()
+    .describe("Número sequencial do item na nota"),
+  cfop: z.string().trim().max(10).nullable().optional(),
+  ncm: z.string().trim().max(10).nullable().optional(),
+  quantidade: z.coerce.number().default(0),
+  vlrUnitario: z.coerce.number().default(0),
+  vlrDesconto: z.coerce.number().default(0),
+  vlrTotal: z.coerce.number().default(0),
+  vlrIcms: z.coerce.number().default(0),
+  vlrIcmsSt: z.coerce.number().default(0),
+  vlrIpi: z.coerce.number().default(0),
+  peso: z.coerce.number().nullable().optional(),
+  ativo: z.boolean().default(true),
+});
+export type IntegracaoNotaEntradaItem = z.infer<
+  typeof integracaoNotaEntradaItemSchema
+>;
+
+export const integracaoNotaEntradaCreateSchema = z.object({
+  codigoErp: z
+    .string()
+    .trim()
+    .min(1)
+    .max(60)
+    .describe("Chave de identidade do registro no ERP"),
+  fornecedorCodigo: z
+    .string()
+    .trim()
+    .max(30)
+    .nullable()
+    .optional()
+    .describe("codigoErp do fornecedor"),
+  condicaoCodigo: z
+    .string()
+    .trim()
+    .max(30)
+    .nullable()
+    .optional()
+    .describe("codigoErp da condição de pagamento"),
+  numero: z.string().trim().min(1).max(20),
+  serie: z.string().trim().max(5).nullable().optional(),
+  especieFiscal: z.string().trim().max(10).nullable().optional(),
+  tipo: z.string().trim().max(1).nullable().optional(),
+  dtEmissao: z.coerce
+    .date()
+    .nullable()
+    .optional()
+    .describe("Data do documento do fornecedor; ano/mes são derivados dela"),
+  dtEntrada: z.coerce
+    .date()
+    .nullable()
+    .optional()
+    .describe("Quando a mercadoria foi recebida"),
+  vlrBruto: z.coerce.number().default(0),
+  vlrMercadoria: z.coerce.number().default(0),
+  vlrItens: z.coerce.number().default(0),
+  vlrDesconto: z.coerce.number().default(0),
+  vlrIcms: z.coerce.number().default(0),
+  vlrIcmsSt: z.coerce.number().default(0),
+  vlrIpi: z.coerce.number().default(0),
+  vlrFrete: z.coerce.number().default(0),
+  chaveNfe: z.string().trim().max(44).nullable().optional(),
+  dtNfe: z.coerce.date().nullable().optional(),
+  mensagem: z.string().trim().max(500).nullable().optional(),
+  ativo: z.boolean().default(true),
+  itens: z
+    .array(integracaoNotaEntradaItemSchema)
+    .default([])
+    .describe("Sincroniza itens; delete=true exclui somente a linha informada"),
+});
+export type IntegracaoNotaEntradaCreate = z.infer<
+  typeof integracaoNotaEntradaCreateSchema
+>;
+
+export const integracaoNotaEntradaUpdateSchema =
+  integracaoNotaEntradaCreateSchema.omit({ codigoErp: true }).partial();
+export type IntegracaoNotaEntradaUpdate = z.infer<
+  typeof integracaoNotaEntradaUpdateSchema
+>;
+
+export const integracaoNotaEntradaSchema =
+  integracaoNotaEntradaCreateSchema.extend({
+    id: z.string().uuid(),
+    ...auditFieldsSchema.shape,
+  });
+export type IntegracaoNotaEntrada = z.infer<typeof integracaoNotaEntradaSchema>;
+
+export const integracaoNotaEntradaQuerySchema = paginationQuerySchema.extend({
+  ativo: booleanQueryParam,
+  fornecedorCodigo: z
+    .string()
+    .trim()
+    .max(30)
+    .optional()
+    .describe("Filtra pelo codigoErp do fornecedor"),
+});
+export type IntegracaoNotaEntradaQuery = z.infer<
+  typeof integracaoNotaEntradaQuerySchema
+>;
+
+export const INTEGRACAO_NOTA_ENTRADA_CREATE_EXAMPLE: IntegracaoNotaEntradaCreate =
+  {
+    codigoErp: "NE-000042-1",
+    fornecedorCodigo: "F00042",
+    condicaoCodigo: "001",
+    numero: "000004212",
+    serie: "1",
+    especieFiscal: "SPED",
+    tipo: "N",
+    dtEmissao: new Date("2026-08-28T00:00:00.000Z"),
+    dtEntrada: new Date("2026-09-01T00:00:00.000Z"),
+    vlrBruto: 8420.75,
+    vlrMercadoria: 7900,
+    vlrItens: 7900,
+    vlrDesconto: 0,
+    vlrIcms: 1343,
+    vlrIcmsSt: 210.75,
+    vlrIpi: 0,
+    vlrFrete: 310,
+    chaveNfe: "50260800000000000191550010000042121000042120",
+    dtNfe: new Date("2026-08-28T00:00:00.000Z"),
+    mensagem: null,
+    ativo: true,
+    itens: [
+      {
+        delete: false,
+        codigoErp: "NE-000042-1-0001",
+        produtoCodigo: "11400443",
+        armazemCodigo: "01",
+        item: 1,
+        cfop: "1102",
+        ncm: "22029900",
+        quantidade: 200,
+        vlrUnitario: 39.5,
+        vlrDesconto: 0,
+        vlrTotal: 7900,
+        vlrIcms: 1343,
+        vlrIcmsSt: 210.75,
+        vlrIpi: 0,
+        peso: 1040,
+        ativo: true,
+      },
+    ],
+  };
+
+export const INTEGRACAO_NOTA_ENTRADA_EXAMPLE: IntegracaoNotaEntrada = {
+  ...INTEGRACAO_NOTA_ENTRADA_CREATE_EXAMPLE,
+  id: "5e6f7a8b-9c0d-4e1f-a203-4b5c6d7e8f90",
+  createdAt: "2026-09-08T12:00:00.000Z",
+  updatedAt: "2026-09-08T12:00:00.000Z",
+  createdBy: null,
+  updatedBy: null,
+};
+
+// ------------------------------------------------------------------
 // Títulos a receber — chave: codigoErp.
 // ------------------------------------------------------------------
 

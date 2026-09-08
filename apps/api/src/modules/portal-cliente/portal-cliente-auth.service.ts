@@ -34,8 +34,11 @@ export class PortalClienteAuthService {
     dados: { empresaId?: string; contatoId?: string; detalhe?: string } = {},
   ) {
     return this.prisma.withPortalAudit(email, dados.empresaId, (tx) =>
-      tx.portalClienteAcessoLog.create({
-        data: { email, evento, ...dados, ...meta },
+      // `createMany` e não `create`: a policy pré-tenant desta tabela é FOR INSERT
+      // e de propósito não concede SELECT — o RETURNING que o `create` sempre
+      // emite é recusado pelo Postgres e derrubava o login inteiro.
+      tx.portalClienteAcessoLog.createMany({
+        data: [{ email, evento, ...dados, ...meta }],
       }),
     );
   }
@@ -98,9 +101,10 @@ export class PortalClienteAuthService {
       permissoes,
       aud: 'portal-cliente',
     };
+    // O `aud` já vai no payload — o tipo o exige e a strategy o confere. Passar
+    // `audience` também faz o jsonwebtoken recusar a assinatura.
     const accessToken = await this.jwt.signAsync(payload, {
       secret: process.env.PORTAL_JWT_ACCESS_SECRET,
-      audience: 'portal-cliente',
       expiresIn: '15m',
     });
     const refreshToken = randomBytes(48).toString('base64url');

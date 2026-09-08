@@ -62,6 +62,11 @@ export class PortalClienteAdminService {
         });
         perfilId = perfil.id;
         const rotinas = await tx.portalClienteRotina.findMany({ where: { ativo: true } });
+        if (!rotinas.length) {
+          throw new ConflictException(
+            'Catálogo de rotinas do portal vazio — aplique as migrations antes de liberar o acesso',
+          );
+        }
         await tx.portalClientePerfilPermissao.createMany({
           data: rotinas.flatMap((rotina) =>
             (ACOES[rotina.codigo] ?? ['visualizar']).map((acao) => ({
@@ -70,8 +75,6 @@ export class PortalClienteAdminService {
               rotinaId: rotina.id,
               acao,
               permitido: true,
-              createdBy: usuarioId,
-              updatedBy: usuarioId,
             })),
           ),
           skipDuplicates: true,
@@ -81,23 +84,53 @@ export class PortalClienteAdminService {
         if (!perfil) throw new NotFoundException('Perfil do portal não encontrado');
       }
 
-      const emailNormalizado = input.email.toLowerCase();
-      const contato = await tx.clienteContato.create({
-        data: {
+      const emailNormalizado = input.email.trim().toLowerCase();
+      // O cadastro do cliente já tem os contatos: liberar acesso é dar perfil e
+      // credencial a quem já está lá, não cadastrar de novo — a unique
+      // (empresaId, clienteId, email) recusaria o segundo registro. O e-mail
+      // gravado no contato fica como está; quem normaliza é a credencial.
+      const existente = await tx.clienteContato.findFirst({
+        where: {
           empresaId,
           clienteId: input.clienteId,
-          perfilId,
-          nome: input.nome,
-          email: emailNormalizado,
-          telefone: input.telefone,
-          celular: input.celular,
-          cargo: input.cargo,
-          principal: input.principal,
-          ativo: input.ativo,
-          createdBy: usuarioId,
-          updatedBy: usuarioId,
+          email: { equals: emailNormalizado, mode: 'insensitive' },
         },
       });
+      const dados = {
+        perfilId,
+        nome: input.nome,
+        telefone: input.telefone,
+        celular: input.celular,
+        cargo: input.cargo,
+        principal: input.principal,
+        ativo: input.ativo,
+        updatedBy: usuarioId,
+      };
+      const contato = existente
+        ? await tx.clienteContato.update({
+            where: { id: existente.id },
+            data: dados,
+          })
+        : await tx.clienteContato.create({
+            data: {
+              empresaId,
+              clienteId: input.clienteId,
+              email: emailNormalizado,
+              createdBy: usuarioId,
+              ...dados,
+            },
+          });
+
+      const empresaAlias = empresa.alias.toLowerCase();
+      const credencialExistente = await tx.portalClienteCredencial.findFirst({
+        where: {
+          OR: [{ contatoId: contato.id }, { empresaAlias, emailNormalizado }],
+        },
+      });
+      if (credencialExistente) {
+        throw new ConflictException('Este contato já tem acesso ao portal');
+      }
+
       await tx.portalClienteHabilitacao.upsert({
         where: { clienteId: input.clienteId },
         create: { empresaId, clienteId: input.clienteId, ativo: true },
@@ -112,13 +145,20 @@ export class PortalClienteAdminService {
         data: {
           empresaId,
           contatoId: contato.id,
-          empresaAlias: empresa.alias.toLowerCase(),
+          empresaAlias,
           emailNormalizado,
           senhaHash: await bcrypt.hash(input.senhaInicial, 12),
           ativo: input.ativo,
         },
       });
-      return { id: contato.id, nome: contato.nome, email: contato.email, perfilId, ativo: contato.ativo };
+      return {
+        id: contato.id,
+        nome: contato.nome,
+        email: contato.email,
+        perfilId,
+        ativo: contato.ativo,
+        contatoExistente: Boolean(existente),
+      };
     });
   }
 }

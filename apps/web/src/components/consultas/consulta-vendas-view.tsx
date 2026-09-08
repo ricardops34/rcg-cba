@@ -3,20 +3,20 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import {
-  MAX_MESES_CONSULTA,
-  MESES_LABEL,
-  type ConsultaVendasLinha,
-  type ConsultaVendasResultado,
+import type {
+  ConsultaVendasLinha,
+  ConsultaVendasResultado,
 } from "@plataforma/contracts";
+import { TODOS } from "@/components/consultas/periodo-consulta";
 import {
-  PADRAO_EMPRESA,
-  TODOS,
-  anosDisponiveis,
-  erroDoPeriodo,
-  mesesDoPeriodo,
-  periodoPadrao,
-} from "@/components/consultas/periodo-consulta";
+  CortinaParametros,
+  Resumo,
+  celula,
+  moeda,
+  useFiltrosConsulta,
+  valorExtra,
+  type FiltroExtra,
+} from "@/components/consultas/filtros-consulta";
 import { apiFetch } from "@/lib/api-client";
 import {
   exportarConsultaExcel,
@@ -24,20 +24,11 @@ import {
 } from "@/lib/consulta-export";
 import { useAuthStore } from "@/stores/auth-store";
 import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
-import { useFiltrosUrl } from "@/hooks/use-filtros-url";
-import { VendedoresMultiSelect } from "@/components/crud/vendedores-multi-select";
 import { SortableTableHead } from "@/components/crud/sortable-table-head";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -47,19 +38,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Sheet, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { ResizableSheetContent } from "@/components/ui/resizable-sheet-content";
 import { FileSpreadsheet, FileText, Search, SlidersHorizontal } from "lucide-react";
 
-/** Item do resumo de parâmetros mostrado acima da tabela. */
-function Resumo({ label, valor }: { label: string; valor: string }) {
-  return (
-    <div>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-sm">{valor}</p>
-    </div>
-  );
-}
+export type { FiltroExtra };
 
 /**
  * Colunas ordenáveis: a identificação (nome/descrição), o total do período e a
@@ -68,41 +49,14 @@ function Resumo({ label, valor }: { label: string; valor: string }) {
  */
 type OrdenarPor = "descricao" | "total" | "media";
 
-const moeda = (v: number) =>
-  v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-/** Zero em coluna de mês vira "—": a tabela é quase toda numérica e o olho
- *  precisa achar onde houve venda. */
-const celula = (v: number) => (v === 0 ? "—" : moeda(v));
-
-/** Select adicional específico de uma consulta (hoje só Categoria). */
-export interface FiltroExtra {
-  /** Nome do parâmetro na API, ex.: "categoriaId". */
-  chave: string;
-  label: string;
-  /** Rótulo da opção "sem filtro", ex.: "Todas". */
-  rotuloTodos: string;
-  opcoes: { id: string; descricao: string }[];
-}
-
-/** Estado dos filtros da consulta — o que a cortina edita e o botão aplica. */
-interface Filtros {
-  anoInicial: string;
-  mesInicial: string;
-  anoFinal: string;
-  mesFinal: string;
-  /** Vazio = todos os vendedores do escopo. */
-  vendedorIds: string[];
-  baseVendedor: string;
-  extra: string;
-}
-
 /**
  * Tela das Consultas de venda: filtros numa cortina lateral, tabela pivô (uma
  * linha por cliente/produto/vendedor, 12 colunas de mês + total) e exportação.
  *
  * As consultas do módulo compartilham este componente — muda só a rota da
- * API, o rótulo da primeira coluna e o filtro extra de categoria.
+ * API, o rótulo da primeira coluna e o filtro extra de categoria. A consulta
+ * por categoria não passa por aqui: as linhas dela são uma árvore, não uma
+ * lista (ver `consulta-vendas-categoria-view`).
  */
 export function ConsultaVendasView({
   titulo,
@@ -119,40 +73,13 @@ export function ConsultaVendasView({
   rotina: string;
   filtroExtra?: FiltroExtra;
 }) {
-  const anos = useMemo(() => anosDisponiveis(), []);
-  // O período pode vir pronto na URL — é assim que o botão do assistente abre
-  // a consulta no mesmo intervalo de que ele acabou de falar, em vez de no
-  // padrão. Ver `useFiltrosUrl`; valor ausente ou inválido cai no padrão.
-  const urlFiltros = useFiltrosUrl();
-  const filtrosIniciais: Filtros = useMemo(() => {
-    const padrao = periodoPadrao();
-    const mes = (chave: string, atual: string) => {
-      const v = urlFiltros.numero(chave);
-      return v && v >= 1 && v <= 12 ? String(v) : atual;
-    };
-    const ano = (chave: string, atual: string) => {
-      const v = urlFiltros.numero(chave);
-      return v && v >= 2000 && v <= 2100 ? String(v) : atual;
-    };
-    return {
-      anoInicial: ano("anoInicial", padrao.anoInicial),
-      mesInicial: mes("mesInicial", padrao.mesInicial),
-      anoFinal: ano("anoFinal", padrao.anoFinal),
-      mesFinal: mes("mesFinal", padrao.mesFinal),
-      vendedorIds: [],
-      baseVendedor: PADRAO_EMPRESA,
-      extra: TODOS,
-    };
-    // Só a primeira montagem conta: daí em diante quem manda é a cortina de
-    // filtros, não a URL.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  // `filtros` é o que está valendo na consulta; `rascunho` é o que a cortina
-  // está editando. Sem essa separação, cada clique dentro da cortina dispara
-  // uma consulta de ano inteiro no banco.
-  const [filtros, setFiltros] = useState<Filtros>(filtrosIniciais);
-  const [rascunho, setRascunho] = useState<Filtros>(filtrosIniciais);
-  const [cortinaAberta, setCortinaAberta] = useState(false);
+  const chavesExtras = useMemo(
+    () => (filtroExtra ? [filtroExtra.chave] : []),
+    [filtroExtra],
+  );
+  const estado = useFiltrosConsulta(chavesExtras);
+  const { filtros, queryPadrao, quantidadeFiltros, abrirCortina } = estado;
+
   const [busca, setBusca] = useState("");
   // Ordenação client-side: o ano inteiro já está na mão, e o relatório tem
   // poucas centenas de linhas. Começa pelo maior total, como o back-end
@@ -168,40 +95,10 @@ export function ConsultaVendasView({
 
   const vendedores = useVendedoresEscopo();
 
-  const query = {
-    anoInicial: filtros.anoInicial,
-    mesInicial: filtros.mesInicial,
-    anoFinal: filtros.anoFinal,
-    mesFinal: filtros.mesFinal,
-    // CSV: o apiFetch serializa só escalares, e a API aceita as duas formas.
-    vendedorIds:
-      filtros.vendedorIds.length > 0 ? filtros.vendedorIds.join(",") : undefined,
-    baseVendedor:
-      filtros.baseVendedor === PADRAO_EMPRESA ? undefined : filtros.baseVendedor,
-    ...(filtroExtra && filtros.extra !== TODOS
-      ? { [filtroExtra.chave]: filtros.extra }
-      : {}),
-  };
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["consultas", rota, query],
-    queryFn: () => apiFetch<ConsultaVendasResultado>(rota, { query }),
+    queryKey: ["consultas", rota, queryPadrao],
+    queryFn: () => apiFetch<ConsultaVendasResultado>(rota, { query: queryPadrao }),
   });
-
-  const abrirCortina = (aberta: boolean) => {
-    // Reabrir a cortina depois de fechar sem aplicar precisa mostrar o que
-    // está valendo, não o rascunho abandonado.
-    if (aberta) setRascunho(filtros);
-    setCortinaAberta(aberta);
-  };
-
-  const erroPeriodo = erroDoPeriodo(rascunho);
-  const mesesDoRascunho = mesesDoPeriodo(rascunho);
-
-  const aplicarFiltros = () => {
-    if (erroPeriodo) return;
-    setFiltros(rascunho);
-    setCortinaAberta(false);
-  };
 
   // Um nome cabe no resumo; vários viram contagem, senão a linha estoura.
   const nomeVendedorFiltrado =
@@ -211,15 +108,11 @@ export function ConsultaVendasView({
         ? ((vendedores.data?.data ?? []).find((v) => v.id === filtros.vendedorIds[0])
             ?.nomeReduzido ?? null)
         : `${filtros.vendedorIds.length} vendedores`;
+  const valorDoExtra = filtroExtra ? valorExtra(filtros, filtroExtra.chave) : TODOS;
   const nomeExtraFiltrado =
-    filtroExtra && filtros.extra !== TODOS
-      ? filtroExtra.opcoes.find((o) => o.id === filtros.extra)?.descricao ?? null
+    filtroExtra && valorDoExtra !== TODOS
+      ? (filtroExtra.opcoes.find((o) => o.id === valorDoExtra)?.descricao ?? null)
       : null;
-  const quantidadeFiltros = [
-    filtros.vendedorIds.length > 0,
-    filtros.baseVendedor !== PADRAO_EMPRESA,
-    filtros.extra !== TODOS,
-  ].filter(Boolean).length;
 
   const ordenar = useCallback(
     (linhas: ConsultaVendasLinha[]) => {
@@ -354,163 +247,10 @@ export function ConsultaVendasView({
         </CardContent>
       </Card>
 
-      <Sheet open={cortinaAberta} onOpenChange={abrirCortina}>
-        <ResizableSheetContent defaultWidth={420}>
-          <SheetHeader>
-            <SheetTitle>Parâmetros da consulta</SheetTitle>
-          </SheetHeader>
-          <div className="space-y-4 px-4 pb-4">
-            <div className="space-y-1.5">
-              <p className="text-xs text-muted-foreground">Período inicial</p>
-              <div className="flex gap-2">
-                <Select
-                  value={rascunho.mesInicial}
-                  onValueChange={(v) => setRascunho((r) => ({ ...r, mesInicial: v }))}
-                >
-                  <SelectTrigger className="flex-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MESES_LABEL.map((m, i) => (
-                      <SelectItem key={m} value={String(i + 1)}>
-                        {m}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={rascunho.anoInicial}
-                  onValueChange={(v) => setRascunho((r) => ({ ...r, anoInicial: v }))}
-                >
-                  <SelectTrigger className="w-28">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {anos.map((a) => (
-                      <SelectItem key={a} value={String(a)}>
-                        {a}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <p className="text-xs text-muted-foreground">Período final</p>
-              <div className="flex gap-2">
-                <Select
-                  value={rascunho.mesFinal}
-                  onValueChange={(v) => setRascunho((r) => ({ ...r, mesFinal: v }))}
-                >
-                  <SelectTrigger className="flex-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MESES_LABEL.map((m, i) => (
-                      <SelectItem key={m} value={String(i + 1)}>
-                        {m}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={rascunho.anoFinal}
-                  onValueChange={(v) => setRascunho((r) => ({ ...r, anoFinal: v }))}
-                >
-                  <SelectTrigger className="w-28">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {anos.map((a) => (
-                      <SelectItem key={a} value={String(a)}>
-                        {a}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {erroPeriodo ? (
-                <p className="text-xs text-destructive">{erroPeriodo}</p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  {mesesDoRascunho} {mesesDoRascunho === 1 ? "mês" : "meses"} no
-                  período (máximo {MAX_MESES_CONSULTA}).
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <p className="text-xs text-muted-foreground">Vendedor</p>
-              <VendedoresMultiSelect
-                value={rascunho.vendedorIds}
-                onChange={(ids) => setRascunho((r) => ({ ...r, vendedorIds: ids }))}
-              />
-              {rascunho.vendedorIds.length > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  {rascunho.vendedorIds.length}{" "}
-                  {rascunho.vendedorIds.length === 1 ? "selecionado" : "selecionados"} —
-                  sem nenhum, a consulta traz todos do seu escopo.
-                </p>
-              )}
-            </div>
-
-            {filtroExtra && (
-              <div className="space-y-1.5">
-                <p className="text-xs text-muted-foreground">{filtroExtra.label}</p>
-                <Select
-                  value={rascunho.extra}
-                  onValueChange={(v) => setRascunho((r) => ({ ...r, extra: v }))}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={filtroExtra.rotuloTodos} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={TODOS}>{filtroExtra.rotuloTodos}</SelectItem>
-                    {filtroExtra.opcoes.map((o) => (
-                      <SelectItem key={o.id} value={o.id}>
-                        {o.descricao}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            <div className="space-y-1.5">
-              <p className="text-xs text-muted-foreground">Vendedor considerado</p>
-              <Select
-                value={rascunho.baseVendedor}
-                onValueChange={(v) => setRascunho((r) => ({ ...r, baseVendedor: v }))}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={PADRAO_EMPRESA}>Padrão da empresa</SelectItem>
-                  <SelectItem value="nota">Vendedor da nota</SelectItem>
-                  <SelectItem value="cliente">Vendedor do cadastro do cliente</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Quem leva o crédito da venda: quem emitiu a nota, ou o titular da
-                carteira do cliente. O padrão vem do parâmetro
-                CONSULTA_VENDAS_BASE_VENDEDOR (Administração &gt; Parâmetros) e
-                pode ser trocado só nesta consulta.
-              </p>
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              <Button onClick={aplicarFiltros} disabled={!!erroPeriodo}>
-                Aplicar
-              </Button>
-              <Button variant="ghost" onClick={() => setRascunho(filtrosIniciais)}>
-                Limpar
-              </Button>
-            </div>
-          </div>
-        </ResizableSheetContent>
-      </Sheet>
+      <CortinaParametros
+        estado={estado}
+        filtrosExtras={filtroExtra ? [filtroExtra] : []}
+      />
 
       {isLoading ? (
         <Skeleton className="h-96 w-full rounded-xl" />

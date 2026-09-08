@@ -388,3 +388,118 @@ export const CONSULTA_EVOLUCAO_RESULTADO_EXAMPLE: ConsultaEvolucaoResultado = {
   indicador: "vendas",
   formato: "moeda",
 };
+
+// ------------------------------------------------------------------
+// Vendas por categoria/subcategoria — a mesma tabela pivô das consultas
+// acima, com as linhas em árvore de três níveis.
+// ------------------------------------------------------------------
+
+/**
+ * Categoria e subcategoria do produto são opcionais no cadastro, e a venda de
+ * um produto sem elas não pode sumir do relatório. Esses produtos caem em
+ * linhas próprias, com estes ids sintéticos — não são uuid de nada, existem só
+ * para dar chave de agrupamento e `key` de React ao nó.
+ */
+export const SEM_CATEGORIA_ID = "sem-categoria";
+export const SEM_SUBCATEGORIA_ID = "sem-subcategoria";
+export const SEM_CATEGORIA_LABEL = "(Sem categoria)";
+export const SEM_SUBCATEGORIA_LABEL = "(Sem subcategoria)";
+
+export const consultaVendasCategoriaQuerySchema = z
+  .object({
+    ...periodoFields,
+    vendedorIds: vendedorIdsSchema,
+    baseVendedor: baseVendedorSchema.optional(),
+    /** Recorta uma categoria raiz; a árvore então nasce só com ela. */
+    categoriaId: z.string().uuid().optional(),
+    /** Recorta uma subcategoria (`produtos.subCategoriaId`). */
+    subCategoriaId: z.string().uuid().optional(),
+  })
+  .superRefine(validarPeriodo);
+export type ConsultaVendasCategoriaQuery = z.infer<
+  typeof consultaVendasCategoriaQuerySchema
+>;
+
+/**
+ * Um nó da árvore. São os mesmos campos de `ConsultaVendasLinha` — o `id`
+ * é que deixa de ser uuid, para caber SEM_CATEGORIA_ID/SEM_SUBCATEGORIA_ID.
+ */
+const noBaseSchema = consultaVendasLinhaSchema.extend({ id: z.string() });
+
+/** Nível 3: o produto. Folha, não expande. */
+export const consultaVendasNoProdutoSchema = noBaseSchema;
+export type ConsultaVendasNoProduto = z.infer<
+  typeof consultaVendasNoProdutoSchema
+>;
+
+/** Nível 2: a subcategoria, com os produtos dela. */
+export const consultaVendasNoSubcategoriaSchema = noBaseSchema.extend({
+  filhos: z.array(consultaVendasNoProdutoSchema),
+});
+export type ConsultaVendasNoSubcategoria = z.infer<
+  typeof consultaVendasNoSubcategoriaSchema
+>;
+
+/** Nível 1: a categoria raiz, com as subcategorias dela. */
+export const consultaVendasNoCategoriaSchema = noBaseSchema.extend({
+  filhos: z.array(consultaVendasNoSubcategoriaSchema),
+});
+export type ConsultaVendasNoCategoria = z.infer<
+  typeof consultaVendasNoCategoriaSchema
+>;
+
+/**
+ * Mesmo cabeçalho das outras consultas (período, colunas, base, totais) — só
+ * `linhas` muda de forma: em vez de uma lista plana, a árvore
+ * categoria → subcategoria → produto, cada nó já somado.
+ *
+ * A soma é feita de baixo para cima: o total de uma subcategoria é o dos seus
+ * produtos, e o da categoria o das suas subcategorias. Por isso o rodapé
+ * continua batendo com a consulta por produto do mesmo período.
+ */
+export const consultaVendasCategoriaResultadoSchema =
+  consultaVendasResultadoSchema.extend({
+    subCategoria: z
+      .object({ id: z.string().uuid(), descricao: z.string() })
+      .nullable(),
+    linhas: z.array(consultaVendasNoCategoriaSchema),
+  });
+export type ConsultaVendasCategoriaResultado = z.infer<
+  typeof consultaVendasCategoriaResultadoSchema
+>;
+
+export const CONSULTA_VENDAS_CATEGORIA_RESULTADO_EXAMPLE: ConsultaVendasCategoriaResultado =
+  {
+    ...CONSULTA_VENDAS_RESULTADO_EXAMPLE,
+    subCategoria: null,
+    linhas: [
+      {
+        id: "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+        codigo: "0001",
+        descricao: "MEDICAMENTOS",
+        valores: [1200.5, 0, 980, 4963.25],
+        total: 7143.75,
+        media: 2381.25,
+        filhos: [
+          {
+            id: "b2c3d4e5-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
+            codigo: "000101",
+            descricao: "ANTIBIÓTICOS",
+            valores: [1200.5, 0, 980, 4963.25],
+            total: 7143.75,
+            media: 2381.25,
+            filhos: [
+              {
+                id: "c3d4e5f6-7a8b-4c9d-0e1f-2a3b4c5d6e7f",
+                codigo: "PRD-0042",
+                descricao: "AMOXICILINA 500MG CX/21",
+                valores: [1200.5, 0, 980, 4963.25],
+                total: 7143.75,
+                media: 2381.25,
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };

@@ -23,7 +23,7 @@ Check-Error
 # 2. Web
 Write-Host "`n[2/3] Fazendo build do Web..." -ForegroundColor Green
 docker build -f docker/web.Dockerfile -t bjsoftware/rcgcba-web:latest `
-  --build-arg NEXT_PUBLIC_API_URL=https://api.rcgcba.bjsoft.com.br/api/v1 .
+  --build-arg NEXT_PUBLIC_API_URL=https://api.rcgdist.com.br/api/v1 .
 Check-Error
 
 Write-Host "Enviando Web para o Docker Hub..." -ForegroundColor Green

@@ -1,6 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import {
   clienteCreateSchema,
+  clienteContatoCreateSchema,
   clienteQuerySchema,
   clienteUpdateSchema,
   municipiosEscopoQuerySchema,
@@ -22,3 +23,6 @@ export class MunicipiosEscopoQueryDto extends createZodDto(
   municipiosEscopoQuerySchema,
 ) {}
 export class UfsEscopoQueryDto extends createZodDto(ufsEscopoQuerySchema) {}
+export class ClienteContatoCreateDto extends createZodDto(
+  clienteContatoCreateSchema,
+) {}

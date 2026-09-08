@@ -174,6 +174,9 @@ model Empresa {
   clienteContatos            ClienteContato[]
   empresaHorarioAtendimentos EmpresaHorarioAtendimento[]
   feriados                   Feriado[]
+  fornecedores               Fornecedor[]
+  notasEntrada               NotaEntrada[]
+  notasEntradaItens          NotaEntradaItem[]
 
   @@map("empresas")
 }
@@ -584,6 +587,7 @@ model Produto {
   estoques          Estoque[]
   tabelasPrecoItens TabelaPrecoItem[]
   notasSaidaItens   NotaSaidaItem[]
+  notasEntradaItens NotaEntradaItem[]
   orcamentoItens    OrcamentoItem[]
   sugestoesCompra   SugestaoCompraGerada[]
   fotos             ProdutoFoto[]
@@ -1218,6 +1222,7 @@ model ClienteContato {
   perfil              PortalClientePerfil?     @relation(fields: [perfilId], references: [id])
   credencial          PortalClienteCredencial?
   orcamentosDecididos Orcamento[]              @relation("OrcamentoDecisaoContato")
+  whatsappNumeros     WhatsappContato[]
 
   @@unique([empresaId, clienteId, email])
   @@index([empresaId, clienteId, ativo])
@@ -2157,10 +2162,11 @@ model CondicaoPagamento {
   updatedBy String?
   deletedBy String?
 
-  empresa    Empresa     @relation(fields: [empresaId], references: [id])
-  notasSaida NotaSaida[]
-  orcamentos Orcamento[]
-  clientes   Cliente[]
+  empresa      Empresa       @relation(fields: [empresaId], references: [id])
+  notasSaida   NotaSaida[]
+  notasEntrada NotaEntrada[]
+  orcamentos   Orcamento[]
+  clientes     Cliente[]
 
   @@unique([empresaId, codigoErp])
   @@map("condicoes_pagamento")
@@ -2180,9 +2186,10 @@ model Armazem {
   updatedBy String?
   deletedBy String?
 
-  empresa  Empresa   @relation(fields: [empresaId], references: [id])
-  produtos Produto[]
-  estoques Estoque[]
+  empresa           Empresa           @relation(fields: [empresaId], references: [id])
+  produtos          Produto[]
+  estoques          Estoque[]
+  notasEntradaItens NotaEntradaItem[]
 
   @@unique([empresaId, codigoErp])
   @@map("armazens")
@@ -2551,6 +2558,175 @@ model NotaSaidaItem {
   // cada cliente-alvo faz seq scan na maior tabela da base.
   @@index([empresaId, clienteId, produtoId])
   @@map("notas_saida_itens")
+}
+
+/**
+ * Fornecedor — a outra ponta do estoque, espelho do cadastro do ERP.
+ * Read-only na plataforma: entra e sai apenas por `/integracao/fornecedores`.
+ * Não é um `Cliente` com outro nome — não tem carteira, tabela de preço,
+ * limite de crédito nem histórico de atendimento, e misturar os dois faria
+ * toda consulta comercial precisar filtrar "só os que compram de nós".
+ * O `produtos.codigoFornecedor` (texto solto, código do item no catálogo do
+ * fornecedor) continua sendo outra coisa e **não** aponta para cá.
+ */
+model Fornecedor {
+  id        String  @id @default(uuid())
+  empresaId String
+  // Chave de identidade do registro no ERP — o que o upsert do POST casa.
+  codigoErp String?
+
+  tipoPessoa         TipoPessoa @default(juridica)
+  razaoSocial        String
+  nomeFantasia       String?
+  cnpjCpf            String?
+  inscricaoEstadual  String?
+  inscricaoMunicipal String?
+
+  contato  String?
+  email    String?
+  telefone String?
+  celular  String?
+
+  endereco    String?
+  complemento String?
+  bairro      String?
+  municipio   String?
+  uf          String?
+  cep         String?
+
+  observacao String?
+  ativo      Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa           Empresa           @relation(fields: [empresaId], references: [id])
+  notasEntrada      NotaEntrada[]
+  notasEntradaItens NotaEntradaItem[]
+
+  @@unique([empresaId, codigoErp])
+  @@index([empresaId, razaoSocial])
+  @@index([empresaId, cnpjCpf])
+  @@map("fornecedores")
+}
+
+/**
+ * Nota de entrada (compra) — espelho do que o ERP recebeu, irmã de
+ * `NotaSaida`.
+ * Sem XML nem DANFE, ao contrário da saída: o documento de entrada foi
+ * emitido pelo fornecedor, e a plataforma não reimprime segunda via de nota
+ * de terceiro. Se um dia precisar, o molde é `nota_saida_xml`.
+ */
+model NotaEntrada {
+  id                  String  @id @default(uuid())
+  empresaId           String
+  // Chave de identidade do registro no ERP — mesma semântica de NotaSaida.
+  codigoErp           String?
+  fornecedorId        String?
+  condicaoPagamentoId String?
+
+  numero        String
+  serie         String?
+  especieFiscal String?
+  tipo          String?
+  // `dtEmissao` é a data do documento do fornecedor; `dtEntrada` é quando a
+  // mercadoria foi recebida. As duas raramente coincidem, e é a de emissão
+  // que alimenta `ano`/`mes` — para que a apuração de compra case com a de
+  // venda, que também usa emissão.
+  dtEmissao     DateTime?
+  dtEntrada     DateTime?
+  ano           Int?
+  mes           Int?
+
+  vlrBruto      Float @default(0)
+  vlrMercadoria Float @default(0)
+  vlrItens      Float @default(0)
+  vlrDesconto   Float @default(0)
+  vlrIcms       Float @default(0)
+  vlrIcmsSt     Float @default(0)
+  vlrIpi        Float @default(0)
+  vlrFrete      Float @default(0)
+
+  chaveNfe String?
+  dtNfe    DateTime?
+  mensagem String?
+  ativo    Boolean   @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa           Empresa            @relation(fields: [empresaId], references: [id])
+  fornecedor        Fornecedor?        @relation(fields: [fornecedorId], references: [id])
+  condicaoPagamento CondicaoPagamento? @relation(fields: [condicaoPagamentoId], references: [id])
+  itens             NotaEntradaItem[]
+
+  @@unique([empresaId, codigoErp])
+  @@index([empresaId, numero])
+  @@index([empresaId, fornecedorId])
+  @@index([empresaId, dtEmissao])
+  @@index([empresaId, ano, mes])
+  @@map("notas_entrada")
+}
+
+// Item de nota de entrada com empresaId/fornecedorId/dtEmissao/ano/mes
+// denormalizados do cabeçalho — mesma decisão de `NotaSaidaItem`, e pelo mesmo
+// motivo: a apuração de compra por produto varre a tabela de itens, e um join
+// com o cabeçalho em cima da maior tabela do módulo custa caro à toa.
+model NotaEntradaItem {
+  id            String  @id @default(uuid())
+  empresaId     String
+  notaEntradaId String
+  // Chave própria do item no ERP: o upsert do cabeçalho casa item a item por
+  // ela, em vez de apagar e recriar o conjunto.
+  codigoErp     String?
+  fornecedorId  String?
+  produtoId     String?
+  armazemId     String?
+
+  item      Int?
+  dtEmissao DateTime?
+  ano       Int?
+  mes       Int?
+  cfop      String?
+  ncm       String?
+
+  quantidade  Float @default(0)
+  vlrUnitario Float @default(0)
+  vlrDesconto Float @default(0)
+  vlrTotal    Float @default(0)
+  vlrIcms     Float @default(0)
+  vlrIcmsSt   Float @default(0)
+  vlrIpi      Float @default(0)
+
+  peso  Float?
+  ativo Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa     Empresa     @relation(fields: [empresaId], references: [id])
+  notaEntrada NotaEntrada @relation(fields: [notaEntradaId], references: [id], onDelete: Cascade)
+  fornecedor  Fornecedor? @relation(fields: [fornecedorId], references: [id])
+  produto     Produto?    @relation(fields: [produtoId], references: [id])
+  armazem     Armazem?    @relation(fields: [armazemId], references: [id])
+
+  @@unique([empresaId, codigoErp])
+  @@index([notaEntradaId])
+  @@index([empresaId, produtoId])
+  @@index([empresaId, fornecedorId, dtEmissao])
+  @@map("notas_entrada_itens")
 }
 
 /**
@@ -3366,21 +3542,26 @@ model WhatsappContato {
   email               String?
   fotoUrl             String?
 
-  clienteId    String?
-  vinculadoPor String?
-  vinculadoEm  DateTime?
-  ignorado     Boolean   @default(false)
+  clienteId        String?
+  /// A pessoa. Quando o número é de alguém que está no cadastro do cliente, é
+  /// este contato que dá nome, e-mail e — se houver — acesso ao portal.
+  clienteContatoId String?
+  vinculadoPor     String?
+  vinculadoEm      DateTime?
+  ignorado         Boolean   @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  empresa   Empresa            @relation(fields: [empresaId], references: [id])
-  cliente   Cliente?           @relation(fields: [clienteId], references: [id])
-  conversas WhatsappConversa[]
+  empresa        Empresa            @relation(fields: [empresaId], references: [id])
+  cliente        Cliente?           @relation(fields: [clienteId], references: [id])
+  clienteContato ClienteContato?    @relation(fields: [clienteContatoId], references: [id])
+  conversas      WhatsappConversa[]
 
   @@unique([empresaId, jid])
   @@index([empresaId, telefoneNormalizado])
   @@index([empresaId, clienteId])
+  @@index([empresaId, clienteContatoId])
   @@map("whatsapp_contatos")
 }
 

@@ -456,6 +456,29 @@ export const MENUS: DefinicaoMenu[] = [
     codigo: 'titulos-receber',
     moduloId: MODULO.cadastros,
   },
+  // O outro lado do estoque, e espelho do ERP pelo mesmo motivo das duas
+  // acima. Notas de Entrada também é mestre-detalhe: os itens vêm no detalhe
+  // (GET /notas-entrada/:id), sem menu/rotina própria.
+  //
+  // Nenhuma das duas entra em VENDEDOR_PERMISSOES / SUPERVISAO_PERMISSOES, e
+  // isso é decisão, não esquecimento: a nota de entrada carrega o custo de
+  // compra, e quem enxerga custo enxerga a margem de tudo que vende.
+  {
+    id: 'seed-menu-fornecedores',
+    nome: 'Fornecedores',
+    rota: '/cadastros/fornecedores',
+    icone: 'truck',
+    codigo: 'fornecedores',
+    moduloId: MODULO.cadastros,
+  },
+  {
+    id: 'seed-menu-notas-entrada',
+    nome: 'Notas de Entrada',
+    rota: '/cadastros/notas-entrada',
+    icone: 'file-input',
+    codigo: 'notas-entrada',
+    moduloId: MODULO.cadastros,
+  },
   // Consultas gerenciais: uma rotina por tela, para que a permissão de
   // exportar possa ser dada em uma e não na outra.
   {
@@ -472,6 +495,17 @@ export const MENUS: DefinicaoMenu[] = [
     rota: '/consultas/vendas-produto',
     icone: 'package-search',
     codigo: 'consulta-vendas-produto',
+    moduloId: MODULO.consultas,
+  },
+  // A mesma apuração da consulta por produto, agrupada em árvore
+  // (categoria → subcategoria → produto). Rotina própria, e não uma aba da
+  // outra, porque a permissão de exportar é decidida por tela.
+  {
+    id: 'seed-menu-consulta-vendas-categoria',
+    nome: 'Vendas por Categoria',
+    rota: '/consultas/vendas-categoria',
+    icone: 'folder-tree',
+    codigo: 'consulta-vendas-categoria',
     moduloId: MODULO.consultas,
   },
   {
@@ -627,6 +661,7 @@ export const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
   'sugestao-compra': ['visualizar'],
   'consulta-vendas-cliente': ['visualizar'],
   'consulta-vendas-produto': ['visualizar'],
+  'consulta-vendas-categoria': ['visualizar'],
 };
 
 /**

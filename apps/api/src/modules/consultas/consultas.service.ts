@@ -14,9 +14,12 @@ import type {
   BaseVendedor,
   ConsultaEvolucaoQuery,
   ConsultaEvolucaoResultado,
+  ConsultaVendasCategoriaQuery,
+  ConsultaVendasCategoriaResultado,
   ConsultaVendasClienteQuery,
   ConsultaVendasColuna,
   ConsultaVendasLinha,
+  ConsultaVendasNoCategoria,
   ConsultaVendasProdutoQuery,
   ConsultaVendasResultado,
   ConsultaVendasVendedorQuery,
@@ -25,6 +28,10 @@ import type {
 import {
   INDICADORES_EVOLUCAO,
   PARAMETRO_BASE_VENDEDOR,
+  SEM_CATEGORIA_ID,
+  SEM_CATEGORIA_LABEL,
+  SEM_SUBCATEGORIA_ID,
+  SEM_SUBCATEGORIA_LABEL,
   colunasDoPeriodo,
   emMeses,
   rotuloMes,
@@ -40,6 +47,40 @@ interface LinhaAgregada {
   ano: number;
   mes: number;
   valor: number;
+}
+
+/**
+ * Linha crua da consulta em árvore: uma por (produto, ano, mês), já com os
+ * dois ancestrais ao lado. Categoria e subcategoria vêm de LEFT JOIN, então
+ * são nulas quando o produto não as tem no cadastro.
+ */
+interface LinhaArvore {
+  categoriaId: string | null;
+  categoriaCodigo: string | null;
+  categoriaDescricao: string | null;
+  subCategoriaId: string | null;
+  subCategoriaCodigo: string | null;
+  subCategoriaDescricao: string | null;
+  produtoId: string;
+  produtoCodigo: string | null;
+  produtoDescricao: string;
+  ano: number;
+  mes: number;
+  valor: number;
+}
+
+/**
+ * Nó da árvore enquanto ela é montada. Os filhos ficam em Map para o
+ * agrupamento ser feito em uma passada; `fecharNivel` os converte em lista
+ * ordenada no fim.
+ */
+interface NoEmMontagem {
+  id: string;
+  codigo: string | null;
+  descricao: string;
+  valores: number[];
+  total: number;
+  filhos: Map<string, NoEmMontagem>;
 }
 
 interface Periodo {
@@ -430,6 +471,224 @@ export class ConsultasService {
         ...this.pivotar(agregadas, cabecalho.colunas),
       };
     });
+  }
+
+  /**
+   * Vendas do período por categoria → subcategoria → produto.
+   *
+   * Mesma base e mesmos números da consulta por produto — o que muda é o
+   * agrupamento. O SQL desce ao produto (o nível mais fino) e a árvore é
+   * montada aqui somando de baixo para cima: o total de uma subcategoria é o
+   * dos seus produtos, e o da categoria o das suas subcategorias. Somar em SQL
+   * com GROUPING SETS traria três resultados que precisariam ser costurados de
+   * qualquer forma, e o custo da costura é linear no que já foi lido.
+   *
+   * Categoria e subcategoria são opcionais no cadastro do produto. Quem não
+   * tem cai em "(Sem categoria)"/"(Sem subcategoria)" em vez de sumir: o
+   * rodapé desta consulta tem de bater com o da consulta por produto no mesmo
+   * período, e um produto sem classificação vendido continua sendo venda.
+   */
+  async vendasPorCategoria(
+    empresaId: string,
+    user: AuthenticatedUser,
+    query: ConsultaVendasCategoriaQuery,
+  ): Promise<ConsultaVendasCategoriaResultado> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const base = await this.baseVendedor(empresaId, tx, query.baseVendedor);
+      const colunaVendedor =
+        base === 'cliente'
+          ? Prisma.sql`c."vendedorId"`
+          : Prisma.sql`i."vendedorId"`;
+
+      const condicoes: Prisma.Sql[] = [
+        Prisma.sql`i."empresaId" = ${empresaId}`,
+        // `cat` é a categoria do produto, já no join abaixo — o mesmo atalho
+        // da consulta por produto, que dispensa JOIN_CATEGORIA_DO_ITEM_SQL.
+        ...CONDICOES_ITEM_DE_VENDA_SQL,
+        ...this.condicaoPeriodo(Prisma.sql`i`, query),
+        ...this.condicoesNotaDeVenda,
+        ...this.condicaoEscopoClientes(escopo),
+        ...this.condicaoFiltroVendedor(
+          colunaVendedor,
+          escopo,
+          query.vendedorIds,
+        ),
+      ];
+      if (query.categoriaId) {
+        condicoes.push(Prisma.sql`p."categoriaId" = ${query.categoriaId}`);
+      }
+      if (query.subCategoriaId) {
+        condicoes.push(
+          Prisma.sql`p."subCategoriaId" = ${query.subCategoriaId}`,
+        );
+      }
+
+      const agregadas = await tx.$queryRaw<LinhaArvore[]>(Prisma.sql`
+        SELECT
+          cat."id"        AS "categoriaId",
+          cat."codigoErp" AS "categoriaCodigo",
+          cat."descricao" AS "categoriaDescricao",
+          sub."id"        AS "subCategoriaId",
+          sub."codigoErp" AS "subCategoriaCodigo",
+          sub."descricao" AS "subCategoriaDescricao",
+          p."id"          AS "produtoId",
+          p."codigoErp"   AS "produtoCodigo",
+          p."descricao"   AS "produtoDescricao",
+          i."ano"         AS "ano",
+          i."mes"         AS "mes",
+          SUM(i."vlrTotal")::float8 AS "valor"
+        FROM "notas_saida_itens" i
+        JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
+        JOIN "clientes" c ON c."id" = n."clienteId" AND c."deletedAt" IS NULL
+        JOIN "produtos" p ON p."id" = i."produtoId" AND p."deletedAt" IS NULL
+        LEFT JOIN "categorias" cat ON cat."id" = p."categoriaId"
+        LEFT JOIN "categorias" sub ON sub."id" = p."subCategoriaId"
+        WHERE ${Prisma.join(condicoes, ' AND ')}
+        GROUP BY
+          cat."id", cat."codigoErp", cat."descricao",
+          sub."id", sub."codigoErp", sub."descricao",
+          p."id", p."codigoErp", p."descricao",
+          i."ano", i."mes"
+      `);
+
+      const cabecalho = this.cabecalho(query, base);
+      const [categoria, subCategoria] = await Promise.all([
+        query.categoriaId
+          ? tx.categoria.findFirst({
+              where: { id: query.categoriaId, empresaId, deletedAt: null },
+              select: { id: true, descricao: true },
+            })
+          : null,
+        query.subCategoriaId
+          ? tx.categoria.findFirst({
+              where: { id: query.subCategoriaId, empresaId, deletedAt: null },
+              select: { id: true, descricao: true },
+            })
+          : null,
+      ]);
+
+      return {
+        ...cabecalho,
+        vendedores: await this.vendedoresRef(tx, empresaId, query.vendedorIds),
+        categoria,
+        subCategoria,
+        ...this.montarArvore(agregadas, cabecalho.colunas),
+      };
+    });
+  }
+
+  /**
+   * Pivota e aninha as linhas cruas em categoria → subcategoria → produto.
+   *
+   * Uma passada só: cada linha crua (produto, ano, mês) soma o valor no
+   * produto e, no mesmo movimento, nos dois ancestrais e no rodapé. Assim
+   * nenhum nível precisa ser recalculado depois, e os totais não podem
+   * divergir entre si.
+   */
+  private montarArvore(
+    agregadas: LinhaArvore[],
+    colunas: ConsultaVendasColuna[],
+  ): {
+    linhas: ConsultaVendasNoCategoria[];
+    totais: number[];
+    total: number;
+    media: number;
+  } {
+    const indicePorMes = new Map(
+      colunas.map((c, i) => [emMeses(c.ano, c.mes), i]),
+    );
+    const raiz = new Map<string, NoEmMontagem>();
+    const totais = Array<number>(colunas.length).fill(0);
+
+    const obter = (
+      onde: Map<string, NoEmMontagem>,
+      id: string,
+      codigo: string | null,
+      descricao: string,
+    ): NoEmMontagem => {
+      let no = onde.get(id);
+      if (!no) {
+        no = {
+          id,
+          codigo,
+          descricao,
+          valores: Array<number>(colunas.length).fill(0),
+          total: 0,
+          filhos: new Map(),
+        };
+        onde.set(id, no);
+      }
+      return no;
+    };
+
+    for (const linha of agregadas) {
+      const indice = indicePorMes.get(emMeses(linha.ano, linha.mes));
+      if (indice === undefined) continue;
+      const valor = Number(linha.valor);
+
+      const categoria = obter(
+        raiz,
+        linha.categoriaId ?? SEM_CATEGORIA_ID,
+        linha.categoriaCodigo,
+        linha.categoriaDescricao ?? SEM_CATEGORIA_LABEL,
+      );
+      const subcategoria = obter(
+        categoria.filhos,
+        linha.subCategoriaId ?? SEM_SUBCATEGORIA_ID,
+        linha.subCategoriaCodigo,
+        linha.subCategoriaDescricao ?? SEM_SUBCATEGORIA_LABEL,
+      );
+      const produto = obter(
+        subcategoria.filhos,
+        linha.produtoId,
+        linha.produtoCodigo,
+        linha.produtoDescricao,
+      );
+
+      for (const no of [categoria, subcategoria, produto]) {
+        no.valores[indice] += valor;
+        no.total += valor;
+      }
+      totais[indice] += valor;
+    }
+
+    const total = totais.reduce((acc, v) => acc + v, 0);
+    return {
+      linhas: this.fecharNivel(raiz).map((cat) => ({
+        ...this.folha(cat),
+        filhos: this.fecharNivel(cat.filhos).map((sub) => ({
+          ...this.folha(sub),
+          filhos: this.fecharNivel(sub.filhos).map((prod) => this.folha(prod)),
+        })),
+      })),
+      totais,
+      total,
+      media: this.mediaMesesComMovimento(totais, total),
+    };
+  }
+
+  /**
+   * Fecha um nível da montagem: vira lista, ordenada pelo maior total. Os
+   * `filhos` continuam em Map — quem chama decide se desce mais um nível.
+   */
+  private fecharNivel(nivel: Map<string, NoEmMontagem>): NoEmMontagem[] {
+    return [...nivel.values()].sort((a, b) => b.total - a.total);
+  }
+
+  /**
+   * O nó como sai na resposta: sem o Map de filhos e com a média calculada.
+   * Quem tem descendentes recoloca `filhos` por cima, já em lista.
+   */
+  private folha(no: NoEmMontagem): ConsultaVendasLinha {
+    return {
+      id: no.id,
+      codigo: no.codigo,
+      descricao: no.descricao,
+      valores: no.valores,
+      total: no.total,
+      media: this.mediaMesesComMovimento(no.valores, no.total),
+    };
   }
 
   /**

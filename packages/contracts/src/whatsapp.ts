@@ -341,6 +341,8 @@ export const whatsappContatoSchema = z.object({
   email: z.string().nullable(),
   fotoUrl: z.string().nullable(),
   clienteId: z.string().uuid().nullable(),
+  /// A pessoa do cadastro que atende neste número, quando já identificada.
+  clienteContatoId: z.string().uuid().nullable(),
   clienteRazaoSocial: z.string().nullable(),
   clienteCodigoErp: z.string().nullable(),
   clienteTelefones: z.array(z.string()).default([]),
@@ -501,6 +503,15 @@ export type WhatsappIniciarConversa = z.infer<
 /** Vínculo manual do contato a um cliente — é o que autoriza a gravação. */
 export const whatsappVincularSchema = z.object({
   clienteId: z.string().uuid().nullable().describe("null desfaz o vínculo"),
+  // A pessoa por trás do número. Quando vem preenchido, nome e e-mail saem do
+  // cadastro — os campos livres abaixo só valem para número que ainda não tem
+  // contato cadastrado.
+  clienteContatoId: z
+    .string()
+    .uuid()
+    .nullable()
+    .optional()
+    .describe("Contato do cadastro do cliente que atende neste número"),
   tipo: z
     .enum(["geral", "financeiro", "compras", "contabilidade_fiscal", "outros"])
     .default("geral"),

@@ -7,11 +7,13 @@ import {
 } from '@nestjs/swagger';
 import {
   CONSULTA_EVOLUCAO_RESULTADO_EXAMPLE,
+  CONSULTA_VENDAS_CATEGORIA_RESULTADO_EXAMPLE,
   CONSULTA_VENDAS_RESULTADO_EXAMPLE,
 } from '@plataforma/contracts';
 import { ConsultasService } from './consultas.service';
 import {
   ConsultaEvolucaoQueryDto,
+  ConsultaVendasCategoriaQueryDto,
   ConsultaVendasClienteQueryDto,
   ConsultaVendasProdutoQueryDto,
   ConsultaVendasVendedorQueryDto,
@@ -105,6 +107,30 @@ export class ConsultasController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.vendasPorProduto(user.empresaAtivaId, user, query);
+  }
+
+  @ApiOperation({
+    summary: 'Vendas do período por categoria, subcategoria e produto',
+    description:
+      'A mesma apuração da consulta por produto, com as linhas em árvore de três níveis: ' +
+      'categoria raiz, subcategoria e produto (o campo `filhos` de cada nó), cada nível já ' +
+      'somado e ordenado pelo total. Produto sem categoria ou sem subcategoria no cadastro ' +
+      'entra em nó próprio ("(Sem categoria)"/"(Sem subcategoria)") em vez de sair do ' +
+      'relatório — o total geral bate com o da consulta por produto no mesmo período. ' +
+      'Filtros opcionais de `categoriaId` (raiz) e `subCategoriaId`. Restrita à carteira de ' +
+      'clientes que o usuário alcança. Requer consulta-vendas-categoria.visualizar.',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: { example: CONSULTA_VENDAS_CATEGORIA_RESULTADO_EXAMPLE },
+  })
+  @RequirePermission('consulta-vendas-categoria', 'visualizar')
+  @Get('vendas-categoria')
+  vendasPorCategoria(
+    @Query() query: ConsultaVendasCategoriaQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.vendasPorCategoria(user.empresaAtivaId, user, query);
   }
 
   @ApiOperation({

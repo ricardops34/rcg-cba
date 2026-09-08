@@ -252,6 +252,7 @@ export class WhatsappConversasService {
             email: c.contato.email,
             fotoUrl: c.contato.fotoUrl,
             clienteId: c.contato.clienteId,
+            clienteContatoId: c.contato.clienteContatoId,
             clienteRazaoSocial: c.cliente?.razaoSocial ?? null,
             clienteCodigoErp: c.cliente?.codigoErp ?? null,
             clienteTelefones: [
@@ -1452,6 +1453,50 @@ export class WhatsappConversasService {
         }
       }
 
+      // A pessoa. `cliente_contatos` é o cadastro único: é dele que saem nome e
+      // e-mail daqui em diante, e é ele que o Portal do Cliente autentica — por
+      // isso o contato precisa ser do mesmo cliente que autoriza a gravação.
+      let contatoCadastro: {
+        id: string;
+        nome: string;
+        email: string;
+        celular: string | null;
+      } | null = null;
+      if (input.clienteContatoId) {
+        if (!input.clienteId) {
+          throw new BadRequestException(
+            'Escolha o cliente antes de indicar qual contato dele atende neste número.',
+          );
+        }
+        contatoCadastro = await tx.clienteContato.findFirst({
+          where: {
+            id: input.clienteContatoId,
+            empresaId,
+            clienteId: input.clienteId,
+            ativo: true,
+          },
+          select: { id: true, nome: true, email: true, celular: true },
+        });
+        if (!contatoCadastro) {
+          throw new NotFoundException(
+            'Contato não encontrado no cadastro deste cliente.',
+          );
+        }
+        // O número que o vendedor está atendendo passa a constar no cadastro
+        // quando lá não havia nenhum — é o que torna a unificação verdadeira em
+        // vez de só um ponteiro. Celular já preenchido não é sobrescrito: o
+        // cadastro é a fonte, e corrigi-lo é decisão de quem o mantém.
+        if (!contatoCadastro.celular && conversa.contato.telefoneNormalizado) {
+          await tx.clienteContato.update({
+            where: { id: contatoCadastro.id },
+            data: {
+              celular: conversa.contato.telefoneNormalizado,
+              updatedBy: user.id,
+            },
+          });
+        }
+      }
+
       let fotoUrl = conversa.contato.fotoUrl;
       if (input.clienteId) {
         // Cosmético e melhor-esforço: provedor que não expõe a foto (ou não
@@ -1476,10 +1521,14 @@ export class WhatsappConversasService {
         where: { id: conversa.contatoId },
         data: {
           clienteId: input.clienteId,
+          // Sem cliente não há pessoa do cadastro: desvincular limpa os dois.
+          clienteContatoId: input.clienteId
+            ? (contatoCadastro?.id ?? null)
+            : null,
           ignorado: input.ignorar,
           tipo: input.tipo,
-          nomeExibicao: input.nome ?? undefined,
-          email: input.email ?? undefined,
+          nomeExibicao: contatoCadastro?.nome ?? input.nome ?? undefined,
+          email: contatoCadastro?.email ?? input.email ?? undefined,
           fotoUrl,
           vinculadoPor: user.id,
           vinculadoEm: input.clienteId ? new Date() : null,

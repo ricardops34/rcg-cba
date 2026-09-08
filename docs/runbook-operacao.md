@@ -231,8 +231,28 @@ foi **Ollama rodando na própria VPS** com `nomic-embed-text`: sem chave, sem
 custo por chamada, sem limite de taxa na carga das fichas, e o texto não sai da
 infra. Custa memória — reserve ~1,5 GB para o container.
 
-O serviço está no stack de produção como **opcional**: não subi-lo apenas deixa
-a busca semântica desligada.
+O serviço está na stack auxiliar `docker/stack.servicos.prod.yml`, junto do
+Evolution GO, como **opcional**: não subi-lo apenas deixa a busca semântica
+desligada. A stack principal `docker/stack.rcgcba.prod.yml` contém API, web e
+whatsapp-worker. Ambas usam a rede externa `network_public`, mantendo os aliases
+`rcgcba-ollama`, `rcgcba-evolution-go` e `rcgcba-api` para comunicação.
+
+No Portainer, crie a stack auxiliar como `rcgcba-servicos`, usando
+`docker/.env.servicos.prod.example` como referência das variáveis.
+**[a confirmar na VPS]** Se esses serviços já estiverem na stack principal,
+remova-os dela antes de subir a auxiliar para evitar sessões e aliases duplicados.
+Preserve o banco e a chave do Evolution GO. Para reutilizar modelos já baixados,
+configure o volume da stack auxiliar como externo, com o nome real do volume
+existente (confira em Volumes no Portainer):
+
+```yaml
+volumes:
+  ollama_models:
+    external: true
+    name: NOME_REAL_DO_VOLUME_EXISTENTE
+```
+
+Em uma instalação nova, mantenha o volume padrão do YAML e baixe o modelo abaixo.
 
 **O modelo não vem na imagem.** Depois do primeiro deploy do serviço:
 
@@ -485,8 +505,8 @@ docker exec -e PGPASSWORD="SENHA_DA_ROLE_PLATAFORMA" <container-postgres> \
 
 A mesma senha vai na `EVOLUTION_DATABASE_URL` do passo seguinte.
 
-**3. Definir as variáveis** no Portainer (Stacks → rcgcba → Env), conforme
-`docker/.env.prod.example`:
+**3. Definir as variáveis** no Portainer (Stacks → rcgcba-servicos → Env), conforme
+`docker/.env.servicos.prod.example`, e usar `docker/stack.servicos.prod.yml`:
 
 - `EVOLUTION_GO_IMAGE` — a tag fixa do passo 1;
 - `EVOLUTION_DATABASE_URL` — o banco do passo 2. O stack a injeta em
@@ -494,9 +514,11 @@ A mesma senha vai na `EVOLUTION_DATABASE_URL` do passo seguinte.
   `DATABASE_URL` neste serviço, e sem as duas últimas ele sobe e morre em panic
   no auto-migration (verificado em 2026-08-27);
 - `EVOLUTION_GLOBAL_API_KEY` — chave administrativa do gateway;
-- `WHATSAPP_CRYPTO_KEY` — 32 bytes em base64, **na API**, para cifrar a chave
-  acima, o token de cada instância e o segredo do webhook. Sem ela, gravar a
-  chave pela tela é recusado.
+
+Na stack principal (Stacks → rcgcba → Env), mantenha `WHATSAPP_CRYPTO_KEY`
+conforme `docker/.env.prod.example`: 32 bytes em base64, **na API**, para cifrar
+a chave acima, o token de cada instância e o segredo do webhook. Sem ela,
+gravar a chave pela tela é recusado.
 
 **4. Gravar a chave pela tela.** Administração → WhatsApp → Evolution GO:
 endereço interno (`http://rcgcba-evolution-go:8080`), a **mesma**
@@ -517,6 +539,34 @@ curl -H "apikey: $EVOLUTION_GLOBAL_API_KEY" \
 **O que não pode acontecer:** publicar o gateway no Traefik. Quem o alcança
 fala pelo WhatsApp dos vendedores, e o webhook trafega só na rede interna.
 `replicas: 1` também aqui é requisito.
+
+## Armadilha: rota nova da API não aparece depois de um `docker restart` **[verificado em dev, 2026-09-08]**
+
+Sintoma: você criou um endpoint, reiniciou `plataforma-comercial-dev-api-1`, e o log de
+inicialização lista as rotas **sem** a nova — como se o arquivo não existisse. O código
+está lá dentro (`docker exec ... grep` no fonte encontra), e mesmo assim o Nest não a
+mapeou.
+
+Causa: o container roda `nest start --watch`, e o restart **apaga o `dist/` e recompila
+do zero**. A compilação leva de 50 s a 2 min; o processo sobe com o que existia antes de
+ela terminar. O `docker logs` mistura os dois streams, então o "successfully started"
+parece vir depois do "Found 0 errors" mesmo quando não veio.
+
+O caminho que funciona: reiniciar, **esperar a compilação terminar** e reiniciar de novo.
+
+```bash
+docker restart plataforma-comercial-dev-api-1
+# espera o dist ficar pronto (não confie no relógio dos logs)
+for i in $(seq 1 40); do
+  docker exec plataforma-comercial-dev-api-1 \
+    sh -c "test -f /app/apps/api/dist/main.js" && break
+done
+docker restart plataforma-comercial-dev-api-1
+docker logs plataforma-comercial-dev-api-1 2>&1 | grep "Mapped {/api/<sua-rota>"
+```
+
+Só a última linha prova que subiu: enquanto a rota não aparecer no `Mapped`, qualquer
+teste contra ela mede a versão antiga.
 
 ## Armadilha: cache do Turbopack corrompido derruba o web em dev **[verificado em 2026-08-11]**
 

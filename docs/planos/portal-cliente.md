@@ -387,6 +387,33 @@ nativo no primeiro ciclo.
 - testes E2E cobrem troca de tenant, troca de cliente, perfil sem permissão,
   sessão revogada e acesso direto por UUID.
 
+## Decisões de 2026-09-08
+
+1. **Não haverá base separada.** A base é a que já está em produção, com dados.
+   Conteúdo novo do portal entra por migration idempotente; `seed-base.ts` está
+   fora de questão porque apaga a base antes de popular.
+2. **A identidade do portal parte do cadastro de contatos que já existe**
+   (`cliente_contatos`) — o mesmo cadastro que a operação vincula ao WhatsApp.
+   Liberar acesso é dar perfil e credencial a um contato existente, nunca criar
+   contato novo. Isso responde a parte da questão 2 abaixo.
+
+   Pendência que essa decisão revela: hoje `whatsapp_contatos` aponta para
+   `clientes` (`clienteId`), não para `cliente_contatos`. O elo pessoa↔número
+   não existe no schema, e os formatos de telefone diferem entre os dois
+   cadastros (`5567…` no WhatsApp, `67…` no contato).
+
+3. **Contato é um só.** `cliente_contatos` é a pessoa; `whatsapp_contatos`
+   continua sendo o **número** e passa a apontar para ela
+   (`clienteContatoId`). Vincular uma conversa a um cliente agora pede também
+   quem atende naquele número — um contato do cadastro ou um cadastrado ali
+   mesmo, que entra com o número como celular. Nome e e-mail exibidos passam a
+   vir do cadastro; os campos livres só valem para número sem contato.
+
+   Consequência para o portal: quem conversa no WhatsApp e quem entra no portal
+   são o mesmo registro, então dá para ver na tela de atendimento se a pessoa já
+   tem acesso — e o convite pode sair pelo número que já está vinculado.
+
+
 ## Questões que precisam de decisão antes da Fase 1
 
 1. Um contato pode estar ligado a mais de um cliente da mesma empresa?
