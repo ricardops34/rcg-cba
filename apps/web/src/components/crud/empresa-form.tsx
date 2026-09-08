@@ -304,11 +304,13 @@ export function EmpresaForm({
                     <option value="fisica">Pessoa Física</option>
                   </select>
                   <FieldLabel htmlFor="cnpj">{tipoPessoa === 'fisica' ? 'CPF' : 'CNPJ'} (somente números)</FieldLabel>
-                  <Input id="cnpj" inputMode="numeric" maxLength={tipoPessoa === 'fisica' ? 11 : 14} {...form.register("cnpj", { onChange: (e) => form.setValue('cnpj', e.target.value.replace(/\D/g, '')) })} />
-                  {tipoPessoa === 'juridica' && <Button type="button" variant="outline" onClick={consultarCnpj}
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Input className="min-w-0 flex-1" id="cnpj" inputMode="numeric" maxLength={tipoPessoa === 'fisica' ? 11 : 14} {...form.register("cnpj", { onChange: (e) => form.setValue('cnpj', e.target.value.replace(/\D/g, '')) })} />
+                  {tipoPessoa === 'juridica' && <Button className="shrink-0" type="button" variant="default" onClick={consultarCnpj}
                     disabled={consultandoCnpj || !/^\d{14}$/.test(form.watch('cnpj'))}>
                     {consultandoCnpj ? 'Consultando...' : 'Consultar CNPJ'}
                   </Button>}
+                  </div>
                   <FieldError errors={[form.formState.errors.cnpj]} />
                 </Field>
 
