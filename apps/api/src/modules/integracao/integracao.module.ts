@@ -23,6 +23,10 @@ import { IntegracaoObjetivosController } from './objetivos/integracao-objetivos.
 import { IntegracaoObjetivosService } from './objetivos/integracao-objetivos.service';
 import { IntegracaoNotasSaidaController } from './notas-saida/integracao-notas-saida.controller';
 import { IntegracaoNotasSaidaService } from './notas-saida/integracao-notas-saida.service';
+import { IntegracaoFornecedoresController } from './fornecedores/integracao-fornecedores.controller';
+import { IntegracaoFornecedoresService } from './fornecedores/integracao-fornecedores.service';
+import { IntegracaoNotasEntradaController } from './notas-entrada/integracao-notas-entrada.controller';
+import { IntegracaoNotasEntradaService } from './notas-entrada/integracao-notas-entrada.service';
 import { IntegracaoTitulosReceberController } from './titulos-receber/integracao-titulos-receber.controller';
 import { IntegracaoTitulosReceberService } from './titulos-receber/integracao-titulos-receber.service';
 import { IntegracaoOrcamentosController } from './orcamentos/integracao-orcamentos.controller';
@@ -45,6 +49,8 @@ import { ApiKeyGuard } from './guards/api-key.guard';
     IntegracaoEstoqueController,
     IntegracaoObjetivosController,
     IntegracaoNotasSaidaController,
+    IntegracaoFornecedoresController,
+    IntegracaoNotasEntradaController,
     IntegracaoTitulosReceberController,
     IntegracaoOrcamentosController,
   ],
@@ -61,6 +67,8 @@ import { ApiKeyGuard } from './guards/api-key.guard';
     IntegracaoEstoqueService,
     IntegracaoObjetivosService,
     IntegracaoNotasSaidaService,
+    IntegracaoFornecedoresService,
+    IntegracaoNotasEntradaService,
     IntegracaoTitulosReceberService,
     IntegracaoOrcamentosService,
   ],

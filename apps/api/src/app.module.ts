@@ -22,6 +22,8 @@ import { CadastrosModule } from './modules/cadastros/cadastros.module';
 import { EscopoModule } from './modules/escopo/escopo.module';
 import { EstoqueModule } from './modules/estoque/estoque.module';
 import { NotasSaidaModule } from './modules/notas-saida/notas-saida.module';
+import { FornecedoresModule } from './modules/fornecedores/fornecedores.module';
+import { NotasEntradaModule } from './modules/notas-entrada/notas-entrada.module';
 import { TitulosReceberModule } from './modules/titulos-receber/titulos-receber.module';
 import { ContasBancariasModule } from './modules/contas-bancarias/contas-bancarias.module';
 import { PoliticaSenhaModule } from './modules/politica-senha/politica-senha.module';
@@ -84,6 +86,8 @@ import { validarSegredosDoAmbiente } from './common/config/validar-segredos';
     EscopoModule,
     EstoqueModule,
     NotasSaidaModule,
+    FornecedoresModule,
+    NotasEntradaModule,
     TitulosReceberModule,
     ContasBancariasModule,
     PoliticaSenhaModule,

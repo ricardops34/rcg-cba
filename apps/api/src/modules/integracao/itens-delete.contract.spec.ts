@@ -1,4 +1,5 @@
 import {
+  integracaoNotaEntradaItemSchema,
   integracaoNotaSaidaItemSchema,
   integracaoOrcamentoItemSchema,
   integracaoRegraDescontoFaixaSchema,
@@ -9,6 +10,7 @@ describe('contratos de exclusao de itens da integracao', () => {
   it.each([
     ['tabela de preco', integracaoTabelaPrecoItemSchema],
     ['nota de saida', integracaoNotaSaidaItemSchema],
+    ['nota de entrada', integracaoNotaEntradaItemSchema],
     ['orcamento', integracaoOrcamentoItemSchema],
     ['regra de desconto', integracaoRegraDescontoFaixaSchema],
   ])('aceita delete booleano nos itens de %s', (_nome, schema) => {
