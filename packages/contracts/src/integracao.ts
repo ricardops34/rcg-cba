@@ -2193,6 +2193,26 @@ export const integracaoNotaSaidaLoteSchema = integracaoLoteSchema(
   integracaoNotaSaidaLoteItemSchema,
 );
 
+export const integracaoFornecedorLoteItemSchema = integracaoLoteItemSchema(
+  integracaoFornecedorCreateSchema,
+);
+export type IntegracaoFornecedorLoteItem = z.infer<
+  typeof integracaoFornecedorLoteItemSchema
+>;
+export const integracaoFornecedorLoteSchema = integracaoLoteSchema(
+  integracaoFornecedorLoteItemSchema,
+);
+
+export const integracaoNotaEntradaLoteItemSchema = integracaoLoteItemSchema(
+  integracaoNotaEntradaCreateSchema,
+);
+export type IntegracaoNotaEntradaLoteItem = z.infer<
+  typeof integracaoNotaEntradaLoteItemSchema
+>;
+export const integracaoNotaEntradaLoteSchema = integracaoLoteSchema(
+  integracaoNotaEntradaLoteItemSchema,
+);
+
 export const integracaoTituloReceberLoteItemSchema = integracaoLoteItemSchema(
   integracaoTituloReceberCreateSchema,
 );

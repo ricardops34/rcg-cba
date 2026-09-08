@@ -1,3 +1,4 @@
+import { EnriquecimentoService } from '../clientes/enriquecimento.service';
 import {
   BadRequestException,
   Body,
@@ -44,7 +45,14 @@ const EMPRESA_ID_EXAMPLE = EMPRESA_EXAMPLE.id;
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('empresas')
 export class EmpresasController {
-  constructor(private readonly service: EmpresasService) {}
+  constructor(private readonly service: EmpresasService, private readonly enriquecimento: EnriquecimentoService) {}
+
+  @Get('consulta-cnpj/:cnpj')
+  @RequirePermission('empresas', 'visualizar')
+  @ApiOperation({ summary: 'Consultar CNPJ na Minha Receita para o cadastro de empresa' })
+  consultarCnpj(@Param('cnpj') cnpj: string) {
+    return this.enriquecimento.consultarCnpj(cnpj);
+  }
 
   @ApiOperation({
     summary: 'Listar empresas',

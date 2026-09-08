@@ -10,6 +10,8 @@ services:
   api:
     image: bjsoftware/rcgcba-api:latest
     environment:
+      # O JWT inclui permissões; perfis amplos precisam de mais espaço no Authorization.
+      NODE_OPTIONS: "--max-http-header-size=65536"
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
@@ -42,12 +44,13 @@ services:
       replicas: 1
       labels:
         - "traefik.enable=true"
-        - "traefik.docker.network=network_public"
-        - "traefik.http.routers.rcgcba-api.rule=Host(`api.rcgdist.com.br`)"
-        - "traefik.http.routers.rcgcba-api.entrypoints=websecure"
-        - "traefik.http.routers.rcgcba-api.tls=true"
-        - "traefik.http.routers.rcgcba-api.tls.certresolver=letsencryptresolver"
-        - "traefik.http.services.rcgcba-api.loadbalancer.server.port=3001"
+        - "traefik.swarm.network=network_public"
+        - "traefik.http.routers.plataforma-rcg-api.rule=Host(`api.rcgdist.com.br`)"
+        - "traefik.http.routers.plataforma-rcg-api.entrypoints=websecure"
+        - "traefik.http.routers.plataforma-rcg-api.tls=true"
+        - "traefik.http.routers.plataforma-rcg-api.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.plataforma-rcg-api.service=plataforma-rcg-api"
+        - "traefik.http.services.plataforma-rcg-api.loadbalancer.server.port=3001"
 
   # Sessões de WhatsApp dos vendedores. Mesmo stack, mesma rede, mesmo deploy —
   # é um serviço à parte, não uma stack à parte.
@@ -79,6 +82,8 @@ services:
           - rcgcba-whatsapp-worker
     deploy:
       replicas: 1
+      labels:
+        - "traefik.enable=false"
 
   web:
     image: bjsoftware/rcgcba-web:latest
@@ -90,12 +95,13 @@ services:
       replicas: 1
       labels:
         - "traefik.enable=true"
-        - "traefik.docker.network=network_public"
-        - "traefik.http.routers.rcgcba-web.rule=Host(`plataforma.rcgdist.com.br`)"
-        - "traefik.http.routers.rcgcba-web.entrypoints=websecure"
-        - "traefik.http.routers.rcgcba-web.tls=true"
-        - "traefik.http.routers.rcgcba-web.tls.certresolver=letsencryptresolver"
-        - "traefik.http.services.rcgcba-web.loadbalancer.server.port=3000"
+        - "traefik.swarm.network=network_public"
+        - "traefik.http.routers.plataforma-rcg-web.rule=Host(`plataforma.rcgdist.com.br`)"
+        - "traefik.http.routers.plataforma-rcg-web.entrypoints=websecure"
+        - "traefik.http.routers.plataforma-rcg-web.tls=true"
+        - "traefik.http.routers.plataforma-rcg-web.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.plataforma-rcg-web.service=plataforma-rcg-web"
+        - "traefik.http.services.plataforma-rcg-web.loadbalancer.server.port=3000"
 
 volumes:
   uploads:

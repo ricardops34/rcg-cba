@@ -12,6 +12,7 @@ datasource db {
 // ------------------------------------------------------------------
 
 model Empresa {
+  tipoPessoa   TipoPessoa @default(juridica)
   id           String  @id @default(uuid())
   razaoSocial  String
   nomeFantasia String

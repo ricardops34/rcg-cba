@@ -1,3 +1,4 @@
+import { EnriquecimentoService } from '../clientes/enriquecimento.service';
 import {
   Body,
   Controller,
@@ -50,7 +51,20 @@ import {
 @UseGuards(JwtAuthGuard, PlatformAdminGuard)
 @Controller('plataforma')
 export class PlataformaController {
-  constructor(private readonly service: PlataformaService) {}
+  constructor(
+    private readonly service: PlataformaService,
+    private readonly enriquecimento: EnriquecimentoService,
+  ) {}
+
+  @Get('consulta-cnpj/:cnpj')
+  @ApiOperation({
+    summary: 'Consultar CNPJ para preencher o cadastro de empresa',
+  })
+  @ApiParam({ name: 'cnpj', description: 'CNPJ com 14 dígitos' })
+  @ApiResponse({ status: 200, description: 'Dados cadastrais da Receita' })
+  consultarCnpj(@Param('cnpj') cnpj: string) {
+    return this.enriquecimento.consultarCnpj(cnpj);
+  }
 
   private ator(user: AuthenticatedUser) {
     return { id: user.id, email: user.email };
@@ -152,7 +166,10 @@ export class PlataformaController {
   @ApiResponse({ status: 201, description: 'Conta vinculada' })
   @ApiResponse({ status: 403, description: 'Limite de usuários atingido' })
   @ApiResponse({ status: 404, description: 'Empresa ou conta não encontrada' })
-  @ApiResponse({ status: 409, description: 'A conta já administra esta empresa' })
+  @ApiResponse({
+    status: 409,
+    description: 'A conta já administra esta empresa',
+  })
   @Post('empresas/:id/administradores')
   vincularAdministrador(
     @Param('id') id: string,

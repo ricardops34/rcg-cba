@@ -27,6 +27,7 @@ export const SITUACAO_EMPRESA_LABEL: Record<SituacaoEmpresa, string> = {
 const opt = (max: number) => z.string().trim().max(max).optional().or(z.literal(""));
 
 export const empresaCreateSchema = z.object({
+  tipoPessoa: z.enum(["fisica", "juridica"]).optional(),
   razaoSocial: z
     .string()
     .trim()
@@ -42,8 +43,8 @@ export const empresaCreateSchema = z.object({
   cnpj: z
     .string()
     .trim()
-    .regex(/^\d{14}$/, "CNPJ deve conter 14 dígitos numéricos")
-    .describe("CNPJ somente números, 14 dígitos, sem máscara"),
+    .regex(/^(\d{11}|\d{14})$/, "Informe CPF com 11 ou CNPJ com 14 dígitos")
+    .describe("CPF ou CNPJ somente números; nome do campo mantido por compatibilidade"),
   alias: z
     .string()
     .trim()

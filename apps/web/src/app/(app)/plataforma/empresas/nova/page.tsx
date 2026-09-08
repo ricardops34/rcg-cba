@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   SITUACAO_EMPRESA_LABEL,
+  plataformaEmpresaCreateSchema,
+  type ConsultaCnpjResultado,
   type SituacaoEmpresa,
 } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
@@ -12,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { PasswordInput } from "@/components/ui/password-input";
 import {
   Select,
@@ -24,6 +27,23 @@ import { ArrowLeft } from "lucide-react";
 import { PlataformaGuard } from "../../plataforma-guard";
 import { dataEmDias, paraIsoFimDoDia } from "@/lib/data-avaliacao";
 
+const CAMPOS_EMPRESA = [
+  ["inscricaoEstadual", "Inscrição estadual", 20],
+  ["inscricaoMunicipal", "Inscrição municipal", 20],
+  ["cep", "CEP", 10],
+  ["endereco", "Endereço e número", 150],
+  ["complemento", "Complemento", 100],
+  ["bairro", "Bairro", 100],
+  ["municipio", "Município", 100],
+  ["uf", "UF", 2],
+  ["telefone", "Telefone", 20],
+  ["telefone2", "Segundo telefone", 20],
+  ["email", "E-mail da empresa", 120],
+  ["email2", "Segundo e-mail", 120],
+  ["site", "Site", 150],
+  ["segmentos", "Segmentos de atuação", 300],
+] as const;
+type CampoEmpresa = (typeof CAMPOS_EMPRESA)[number][0];
 
 const somenteDigitos = (v: string) => v.replace(/\D/g, "");
 
@@ -40,9 +60,17 @@ const sugerirAlias = (nome: string) =>
 export default function NovaEmpresaPage() {
   const router = useRouter();
   const [salvando, setSalvando] = useState(false);
+  const [dadosEmpresa, setDadosEmpresa] = useState<
+    Partial<Record<CampoEmpresa, string>>
+  >({});
+  const [fundadaEm, setFundadaEm] = useState("");
+  const [historia, setHistoria] = useState("");
+  const [consultandoCnpj, setConsultandoCnpj] = useState(false);
+  const cnpjAtual = useRef("");
 
   const [razaoSocial, setRazaoSocial] = useState("");
   const [nomeFantasia, setNomeFantasia] = useState("");
+  const [tipoPessoa, setTipoPessoa] = useState<"fisica" | "juridica">("juridica");
   const [cnpj, setCnpj] = useState("");
   const [alias, setAlias] = useState("");
   const [aliasTocado, setAliasTocado] = useState(false);
@@ -65,7 +93,6 @@ export default function NovaEmpresaPage() {
   // Consulta com atraso: sem isso, cada tecla do e-mail viraria uma requisição.
   useEffect(() => {
     if (!emailValido) {
-      setContaExistente(null);
       return;
     }
     let cancelado = false;
@@ -90,7 +117,7 @@ export default function NovaEmpresaPage() {
     };
   }, [adminEmail, emailValido]);
 
-  const cnpjValido = cnpj.length === 14;
+  const cnpjValido = cnpj.length === (tipoPessoa === "fisica" ? 11 : 14);
   const podeSalvar =
     razaoSocial.trim().length >= 2 &&
     nomeFantasia.trim().length >= 2 &&
@@ -100,19 +127,71 @@ export default function NovaEmpresaPage() {
     (contaExistente === true ||
       (adminNome.trim().length >= 2 && adminSenha.length >= 8));
 
+  const consultarCnpj = async () => {
+    if (tipoPessoa !== "juridica" || !cnpjValido || consultandoCnpj) return;
+    const consultado = cnpj;
+    setConsultandoCnpj(true);
+    try {
+      const dados = await apiFetch<ConsultaCnpjResultado>(
+        "/plataforma/consulta-cnpj/" + consultado,
+      );
+      if (cnpjAtual.current !== consultado) return;
+      setRazaoSocial(dados.razaoSocial ?? "");
+      const fantasia = dados.nomeFantasia || dados.razaoSocial || "";
+      setNomeFantasia(fantasia);
+      if (!aliasTocado) setAlias(sugerirAlias(fantasia));
+      setDadosEmpresa((anterior) => ({
+        ...anterior,
+        ...Object.fromEntries(
+          (
+            [
+              "endereco",
+              "complemento",
+              "bairro",
+              "municipio",
+              "uf",
+              "cep",
+              "telefone",
+              "telefone2",
+              "email",
+            ] as const
+          )
+            .filter((campo) => dados[campo] != null)
+            .map((campo) => [campo, dados[campo]]),
+        ),
+      }));
+      toast.success("Dados do CNPJ preenchidos. Confira antes de salvar.");
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : "Não foi possível consultar o CNPJ",
+      );
+    } finally {
+      setConsultandoCnpj(false);
+    }
+  };
+
   const salvar = async () => {
     if (!podeSalvar) return;
     setSalvando(true);
     try {
       await apiFetch("/plataforma/empresas", {
         method: "POST",
-        body: {
+        body: plataformaEmpresaCreateSchema.parse({
+          ...dadosEmpresa,
+          fundadaEm: fundadaEm
+            ? new Date(fundadaEm + "T12:00:00Z").toISOString()
+            : null,
+          historia,
           razaoSocial: razaoSocial.trim(),
           nomeFantasia: nomeFantasia.trim(),
           cnpj,
+          tipoPessoa,
           alias: alias.trim() || null,
           situacao,
-          testeExpiraEm: situacao === "teste" ? paraIsoFimDoDia(testeExpiraEm) : null,
+          testeExpiraEm:
+            situacao === "teste" ? paraIsoFimDoDia(testeExpiraEm) : null,
           limiteUsuarios:
             limiteUsuarios.trim() === "" ? null : Number(limiteUsuarios),
           admin: {
@@ -123,7 +202,7 @@ export default function NovaEmpresaPage() {
               ? {}
               : { nome: adminNome.trim(), senha: adminSenha }),
           },
-        },
+        }),
       });
       toast.success(
         contaExistente
@@ -133,7 +212,9 @@ export default function NovaEmpresaPage() {
       router.push("/plataforma/empresas");
     } catch (err) {
       toast.error(
-        err instanceof ApiError ? err.message : "Erro ao criar a empresa",
+        err instanceof ApiError
+          ? err.message
+          : "Confira os dados informados: e-mails, alias, datas e limite de usuários",
       );
     } finally {
       setSalvando(false);
@@ -182,17 +263,35 @@ export default function NovaEmpresaPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="cnpj">CNPJ</Label>
+                <Label htmlFor="tipoPessoa">Tipo de pessoa</Label>
+                <select id="tipoPessoa" className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={tipoPessoa}
+                  onChange={(e) => { setTipoPessoa(e.target.value as "fisica" | "juridica"); setCnpj(""); cnpjAtual.current = ""; }}>
+                  <option value="juridica">Pessoa Jurídica</option>
+                  <option value="fisica">Pessoa Física</option>
+                </select>
+                <Label htmlFor="cnpj">{tipoPessoa === "fisica" ? "CPF" : "CNPJ"}</Label>
                 <Input
                   id="cnpj"
                   inputMode="numeric"
                   placeholder="somente números"
                   value={cnpj}
-                  onChange={(e) => setCnpj(somenteDigitos(e.target.value).slice(0, 14))}
+                  onChange={(e) => {
+                    const valor = somenteDigitos(e.target.value).slice(0, tipoPessoa === "fisica" ? 11 : 14);
+                    cnpjAtual.current = valor;
+                    setCnpj(valor);
+                  }}
                 />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={consultarCnpj}
+                  disabled={tipoPessoa !== "juridica" || !cnpjValido || consultandoCnpj || salvando}
+                >
+                  {consultandoCnpj ? "Consultando..." : "Consultar CNPJ"}
+                </Button>
                 {cnpj.length > 0 && !cnpjValido && (
                   <p className="text-xs text-destructive">
-                    O CNPJ tem 14 dígitos — faltam {14 - cnpj.length}.
+                    {tipoPessoa === "fisica" ? "CPF deve ter 11 dígitos." : "CNPJ deve ter 14 dígitos."}
                   </p>
                 )}
               </div>
@@ -208,9 +307,58 @@ export default function NovaEmpresaPage() {
                   }}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Identifica a empresa na tela de login (?empresa={alias || "..."}).
-                  Só letras minúsculas, números e hífen.
+                  Identifica a empresa na tela de login (?empresa=
+                  {alias || "..."}). Só letras minúsculas, números e hífen.
                 </p>
+              </div>
+              <div className="border-t pt-4">
+                <h2 className="mb-4 text-sm font-semibold">
+                  Dados fiscais, endereço e contato
+                </h2>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {CAMPOS_EMPRESA.map(([campo, label, maxLength]) => (
+                    <div key={campo} className="space-y-2">
+                      <Label htmlFor={campo}>{label}</Label>
+                      <Input
+                        id={campo}
+                        maxLength={maxLength}
+                        type={
+                          campo === "email" || campo === "email2"
+                            ? "email"
+                            : "text"
+                        }
+                        value={dadosEmpresa[campo] ?? ""}
+                        onChange={(e) =>
+                          setDadosEmpresa((dados) => ({
+                            ...dados,
+                            [campo]:
+                              campo === "uf"
+                                ? e.target.value.toUpperCase()
+                                : e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  ))}
+                  <div className="space-y-2">
+                    <Label htmlFor="fundadaEm">Data de fundação</Label>
+                    <Input
+                      id="fundadaEm"
+                      type="date"
+                      value={fundadaEm}
+                      onChange={(e) => setFundadaEm(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="mt-4 space-y-2">
+                  <Label htmlFor="historia">História da empresa</Label>
+                  <Textarea
+                    id="historia"
+                    maxLength={4000}
+                    value={historia}
+                    onChange={(e) => setHistoria(e.target.value)}
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -298,7 +446,10 @@ export default function NovaEmpresaPage() {
                     id="adminEmail"
                     type="email"
                     value={adminEmail}
-                    onChange={(e) => setAdminEmail(e.target.value)}
+                    onChange={(e) => {
+                      setContaExistente(null);
+                      setAdminEmail(e.target.value);
+                    }}
                   />
                 </div>
 
@@ -310,8 +461,8 @@ export default function NovaEmpresaPage() {
                     <p className="font-medium">Esta conta já existe.</p>
                     <p className="mt-1">
                       Ela será vinculada a esta empresa como Administradora,
-                      mantendo a senha que já usa. Nome e senha não são pedidos —
-                      é a mesma pessoa, administrando mais uma empresa.
+                      mantendo a senha que já usa. Nome e senha não são pedidos
+                      — é a mesma pessoa, administrando mais uma empresa.
                     </p>
                   </div>
                 ) : (
@@ -353,7 +504,10 @@ export default function NovaEmpresaPage() {
           >
             Cancelar
           </Button>
-          <Button onClick={salvar} disabled={!podeSalvar || salvando}>
+          <Button
+            onClick={salvar}
+            disabled={!podeSalvar || salvando || consultandoCnpj}
+          >
             {salvando ? "Criando..." : "Criar empresa"}
           </Button>
         </div>

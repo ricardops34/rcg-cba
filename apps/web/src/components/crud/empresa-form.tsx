@@ -11,6 +11,7 @@ import {
   type CurrentUser,
   type Empresa,
   type EmpresaCreate,
+  type ConsultaCnpjResultado,
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
 import { ApiError, apiFetch, apiUpload, assetUrl } from "@/lib/api-client";
@@ -59,6 +60,7 @@ export function EmpresaForm({
   const { create, update } = useResourceMutations<EmpresaCreate, Partial<EmpresaCreate>>("empresas");
   const [current, setCurrent] = useState<Empresa | undefined>(empresa);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [consultandoCnpj, setConsultandoCnpj] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const bannerInputRef = useRef<HTMLInputElement>(null);
@@ -70,6 +72,7 @@ export function EmpresaForm({
           razaoSocial: empresa.razaoSocial,
           nomeFantasia: empresa.nomeFantasia,
           cnpj: empresa.cnpj,
+          tipoPessoa: empresa.tipoPessoa ?? 'juridica',
           alias: empresa.alias ?? null,
           situacao: empresa.situacao,
           testeExpiraEm: empresa.testeExpiraEm ?? null,
@@ -98,12 +101,38 @@ export function EmpresaForm({
           razaoSocial: "",
           nomeFantasia: "",
           cnpj: "",
+          tipoPessoa: 'juridica',
           alias: null,
           situacao: "ativa",
           bannerAtivo: false,
           bannerCor: "",
         },
   });
+
+  const tipoPessoa = form.watch('tipoPessoa') ?? 'juridica';
+  const consultarCnpj = async () => {
+    const documento = form.getValues('cnpj');
+    if (tipoPessoa !== 'juridica' || !/^\d{14}$/.test(documento)) {
+      toast.error('Informe um CNPJ com 14 dígitos');
+      return;
+    }
+    setConsultandoCnpj(true);
+    try {
+      const dados = await apiFetch<ConsultaCnpjResultado>(
+        `${administradorPlataforma ? '/plataforma' : '/empresas'}/consulta-cnpj/${documento}`,
+      );
+      if (form.getValues('cnpj') !== documento || form.getValues('tipoPessoa') !== 'juridica') return;
+      for (const campo of ['razaoSocial', 'nomeFantasia', 'endereco', 'complemento', 'bairro', 'municipio', 'uf', 'cep', 'telefone', 'telefone2', 'email'] as const) {
+        const valor = dados[campo];
+        if (valor) form.setValue(campo, valor, { shouldDirty: true, shouldValidate: true });
+      }
+      toast.success('Dados do CNPJ preenchidos. Confira e salve o cadastro.');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Erro ao consultar CNPJ');
+    } finally {
+      setConsultandoCnpj(false);
+    }
+  };
 
   const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -144,6 +173,10 @@ export function EmpresaForm({
   };
 
   const onSubmit = async (values: EmpresaCreate) => {
+    if (values.cnpj.length !== (tipoPessoa === 'fisica' ? 11 : 14)) {
+      form.setError('cnpj', { message: tipoPessoa === 'fisica' ? 'CPF deve conter 11 dígitos' : 'CNPJ deve conter 14 dígitos' });
+      return;
+    }
     try {
       if (empresa) {
         await update.mutateAsync({ id: empresa.id, input: values });
@@ -264,8 +297,18 @@ export function EmpresaForm({
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field data-invalid={!!form.formState.errors.cnpj}>
-                  <FieldLabel htmlFor="cnpj">CNPJ (somente números)</FieldLabel>
-                  <Input id="cnpj" maxLength={14} {...form.register("cnpj")} />
+                  <FieldLabel htmlFor="tipoPessoa">Tipo de pessoa</FieldLabel>
+                  <select id="tipoPessoa" className="h-9 rounded-md border bg-background px-3 text-sm"
+                    {...form.register('tipoPessoa')}>
+                    <option value="juridica">Pessoa Jurídica</option>
+                    <option value="fisica">Pessoa Física</option>
+                  </select>
+                  <FieldLabel htmlFor="cnpj">{tipoPessoa === 'fisica' ? 'CPF' : 'CNPJ'} (somente números)</FieldLabel>
+                  <Input id="cnpj" inputMode="numeric" maxLength={tipoPessoa === 'fisica' ? 11 : 14} {...form.register("cnpj", { onChange: (e) => form.setValue('cnpj', e.target.value.replace(/\D/g, '')) })} />
+                  {tipoPessoa === 'juridica' && <Button type="button" variant="outline" onClick={consultarCnpj}
+                    disabled={consultandoCnpj || !/^\d{14}$/.test(form.watch('cnpj'))}>
+                    {consultandoCnpj ? 'Consultando...' : 'Consultar CNPJ'}
+                  </Button>}
                   <FieldError errors={[form.formState.errors.cnpj]} />
                 </Field>
 

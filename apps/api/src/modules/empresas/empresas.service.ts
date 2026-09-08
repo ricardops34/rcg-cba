@@ -1,4 +1,5 @@
 import { existsSync, unlink } from 'node:fs';
+import { validarDocumentoEmpresa } from '../../common/empresa/documento-empresa';
 import { basename, join } from 'node:path';
 import {
   ConflictException,
@@ -131,6 +132,7 @@ export class EmpresasService {
   }
 
   async create(input: EmpresaCreate, userId: string) {
+    validarDocumentoEmpresa(input.tipoPessoa, input.cnpj);
     const existente = await this.prisma.empresa.findUnique({
       where: { cnpj: input.cnpj },
     });
@@ -149,7 +151,10 @@ export class EmpresasService {
 
   async update(id: string, input: EmpresaUpdate, user: AtorEmpresa) {
     this.garantirEscopo(user, id);
-    await this.findOne(id);
+    const atual = await this.findOne(id);
+    if (input.tipoPessoa !== undefined || input.cnpj !== undefined) {
+      validarDocumentoEmpresa(input.tipoPessoa ?? atual.tipoPessoa, input.cnpj ?? atual.cnpj);
+    }
     if (input.alias) await this.ensureAliasDisponivel(input.alias, id);
     const dados = this.semCamposDaPlataforma(
       this.limpar(input),

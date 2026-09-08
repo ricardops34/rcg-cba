@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { paginationQuerySchema } from "./common";
-import { situacaoEmpresaSchema } from "./empresa";
+import { empresaCreateSchema, situacaoEmpresaSchema } from "./empresa";
 
 // ------------------------------------------------------------------
 // Empresas, na visão de quem administra o SaaS
@@ -80,39 +80,59 @@ export type PlataformaSituacaoUpdate = z.infer<
  * entrar não serve para nada, e criar em duas etapas deixa esse estado
  * inútil existindo no meio do caminho — inclusive se a segunda etapa falhar.
  */
-export const plataformaEmpresaCreateSchema = z.object({
-  razaoSocial: z.string().trim().min(2).max(150),
-  nomeFantasia: z.string().trim().min(2).max(150),
-  cnpj: z.string().trim().length(14, "CNPJ deve ter 14 dígitos"),
-  alias: z
-    .string()
-    .trim()
-    .min(2)
-    .max(40)
-    .regex(/^[a-z0-9-]+$/, "Use apenas letras minúsculas, números e hífen")
-    .nullable()
-    .optional(),
+export const plataformaEmpresaCreateSchema = empresaCreateSchema
+  .pick({
+    inscricaoEstadual: true,
+    inscricaoMunicipal: true,
+    endereco: true,
+    complemento: true,
+    bairro: true,
+    municipio: true,
+    uf: true,
+    cep: true,
+    telefone: true,
+    telefone2: true,
+    email: true,
+    email2: true,
+    site: true,
+    fundadaEm: true,
+    historia: true,
+    segmentos: true,
+  })
+  .extend({
+    razaoSocial: z.string().trim().min(2).max(150),
+    nomeFantasia: z.string().trim().min(2).max(150),
+    tipoPessoa: empresaCreateSchema.shape.tipoPessoa,
+    cnpj: empresaCreateSchema.shape.cnpj,
+    alias: z
+      .string()
+      .trim()
+      .min(2)
+      .max(40)
+      .regex(/^[a-z0-9-]+$/, "Use apenas letras minúsculas, números e hífen")
+      .nullable()
+      .optional(),
 
-  situacao: situacaoEmpresaSchema.default("teste"),
-  testeExpiraEm: z.string().datetime().nullable().optional(),
-  limiteUsuarios: z.number().int().min(1).nullable().optional(),
+    situacao: situacaoEmpresaSchema.default("teste"),
+    testeExpiraEm: z.string().datetime().nullable().optional(),
+    limiteUsuarios: z.number().int().min(1).nullable().optional(),
 
-  /**
-   * O administrador desta empresa. Se o e-mail já pertence a alguém, essa
-   * pessoa é **vinculada** à empresa nova como Administrador, e `nome` e
-   * `senha` são ignorados — a conta é a mesma, com a senha que ela já usa.
-   *
-   * É a regra do negócio: um administrador de empresa pode administrar várias,
-   * com uma conta só. Antes, o e-mail repetido era recusado com um conselho
-   * ("vincule-o à nova empresa") para um caminho que não existia.
-   */
-  admin: z.object({
-    nome: z.string().trim().min(2).max(120).optional(),
-    email: z.string().trim().email().max(120),
-    /** Provisória, e só para conta nova: o primeiro login exige troca. */
-    senha: z.string().min(8).max(72).optional(),
-  }),
-});
+    /**
+     * O administrador desta empresa. Se o e-mail já pertence a alguém, essa
+     * pessoa é **vinculada** à empresa nova como Administrador, e `nome` e
+     * `senha` são ignorados — a conta é a mesma, com a senha que ela já usa.
+     *
+     * É a regra do negócio: um administrador de empresa pode administrar várias,
+     * com uma conta só. Antes, o e-mail repetido era recusado com um conselho
+     * ("vincule-o à nova empresa") para um caminho que não existia.
+     */
+    admin: z.object({
+      nome: z.string().trim().min(2).max(120).optional(),
+      email: z.string().trim().email().max(120),
+      /** Provisória, e só para conta nova: o primeiro login exige troca. */
+      senha: z.string().min(8).max(72).optional(),
+    }),
+  });
 export type PlataformaEmpresaCreate = z.infer<
   typeof plataformaEmpresaCreateSchema
 >;
@@ -133,9 +153,7 @@ export type PlataformaAdmin = z.infer<typeof plataformaAdminSchema>;
 export const plataformaAdminUpdateSchema = z.object({
   administradorPlataforma: z.boolean(),
 });
-export type PlataformaAdminUpdate = z.infer<
-  typeof plataformaAdminUpdateSchema
->;
+export type PlataformaAdminUpdate = z.infer<typeof plataformaAdminUpdateSchema>;
 
 // ------------------------------------------------------------------
 // Log

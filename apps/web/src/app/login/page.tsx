@@ -61,7 +61,7 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const urlAlias = searchParams.get("empresa")?.trim().toLowerCase() ?? "";
 
-  const { accessToken, setTokens, setUser } = useAuthStore();
+  const { accessToken, user, setTokens, setUser, logout } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
 
@@ -73,8 +73,8 @@ function LoginForm() {
   const aliasInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (accessToken) router.replace("/");
-  }, [accessToken, router]);
+    if (accessToken && user) router.replace("/");
+  }, [accessToken, user, router]);
 
   // Motivo deixado pelo api-client quando a sessão foi cortada por horário de
   // trabalho — sem isso o usuário só veria a tela de login de volta, sem
@@ -132,6 +132,7 @@ function LoginForm() {
   });
 
   const onSubmit = async (values: LoginInput) => {
+    logout();
     try {
       const tokens = await apiFetch<LoginResult>("/auth/login", {
         method: "POST",
@@ -158,6 +159,7 @@ function LoginForm() {
       }
       router.replace("/");
     } catch (err) {
+      logout();
       const message =
         err instanceof ApiError
           ? err.status === 423

@@ -1,3 +1,4 @@
+import { validarDocumentoEmpresa } from '../../common/empresa/documento-empresa';
 import {
   ConflictException,
   Injectable,
@@ -180,6 +181,7 @@ export class PlataformaService {
    * descobrir e consertar depois.
    */
   async criarEmpresa(input: PlataformaEmpresaCreate, ator: Ator) {
+    validarDocumentoEmpresa(input.tipoPessoa, input.cnpj);
     const email = input.admin.email.toLowerCase();
     const [cnpjEmUso, contaExistente] = await Promise.all([
       this.prisma.empresa.findUnique({ where: { cnpj: input.cnpj } }),
@@ -216,7 +218,24 @@ export class PlataformaService {
     return this.prisma.$transaction(async (tx) => {
       const empresa = await tx.empresa.create({
         data: {
+          inscricaoEstadual: input.inscricaoEstadual,
+          inscricaoMunicipal: input.inscricaoMunicipal,
+          endereco: input.endereco,
+          complemento: input.complemento,
+          bairro: input.bairro,
+          municipio: input.municipio,
+          uf: input.uf,
+          cep: input.cep,
+          telefone: input.telefone,
+          telefone2: input.telefone2,
+          email: input.email,
+          email2: input.email2,
+          site: input.site,
+          fundadaEm: input.fundadaEm ? new Date(input.fundadaEm) : null,
+          historia: input.historia,
+          segmentos: input.segmentos,
           razaoSocial: input.razaoSocial,
+          tipoPessoa: input.tipoPessoa ?? 'juridica',
           nomeFantasia: input.nomeFantasia,
           cnpj: input.cnpj,
           alias: input.alias ?? null,
