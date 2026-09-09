@@ -1,8 +1,10 @@
 import {
+  BLOCO_PUBLICO,
   garantirMascarado,
   mascarar,
   referenciasEm,
   remontar,
+  semBlocoPublico,
 } from './anonimizar-agente';
 
 /**
@@ -128,6 +130,95 @@ describe('anonimizar-agente', () => {
     it('preserva valores primitivos e datas', () => {
       const saida = mascarar({ total: 1880.4, vencimento: '2026-09-10' });
       expect(saida).toEqual({ total: 1880.4, vencimento: '2026-09-10' });
+    });
+
+    it('deixa passar o bloco de dado público quando a ferramenta declara', () => {
+      const saida = mascarar(
+        {
+          [BLOCO_PUBLICO]: {
+            razaoSocial: 'PADARIA CENTRAL LTDA',
+            telefone: '6733210000',
+            email: 'contato@padaria.com.br',
+            cnaes: [{ codigo: '1091101', descricao: 'Padaria' }],
+          },
+        },
+        { permitirBlocoPublico: true },
+      ) as Record<string, Record<string, unknown>>;
+
+      // Base pública da Receita, um CNPJ por vez: sai inteiro (2026-09-09).
+      expect(saida[BLOCO_PUBLICO].razaoSocial).toBe('PADARIA CENTRAL LTDA');
+      expect(saida[BLOCO_PUBLICO].telefone).toBe('6733210000');
+    });
+
+    it('trata o mesmo bloco como qualquer outro quando a ferramenta NÃO declara', () => {
+      const bruto = {
+        [BLOCO_PUBLICO]: {
+          razaoSocial: 'PADARIA CENTRAL LTDA',
+          telefone: '67',
+        },
+      };
+      const saida = mascarar(bruto) as Record<string, Record<string, unknown>>;
+
+      // Fail-closed: a isenção é da ferramenta, não da chave. O contato some na
+      // mascaração; a razão social sem código não vira referência — e é a trava
+      // textual que derruba a resposta, como em qualquer outro payload.
+      expect(saida[BLOCO_PUBLICO]).not.toHaveProperty('telefone');
+      expect(() => garantirMascarado(JSON.stringify(saida))).toThrow(
+        /campo proibido/i,
+      );
+    });
+
+    it('a isenção não vaza para o nosso cadastro no mesmo resultado', () => {
+      const saida = mascarar(
+        {
+          [BLOCO_PUBLICO]: { razaoSocial: 'PADARIA CENTRAL LTDA' },
+          naBase: {
+            clientes: [
+              {
+                codigoErp: '1234',
+                razaoSocial: 'PADARIA CENTRAL LTDA',
+                ativo: true,
+                vendedor: { nome: 'JOÃO DA SILVA', codigoErp: 'V7' },
+              },
+            ],
+          },
+        },
+        { permitirBlocoPublico: true },
+      ) as {
+        naBase: { clientes: Record<string, unknown>[] };
+      };
+
+      const daBase = saida.naBase.clientes[0];
+      expect(daBase).not.toHaveProperty('razaoSocial');
+      expect(daBase.cliente).toBe('«CLI:1234»');
+      expect(daBase.vendedor).toBe('«VND:V7»');
+      expect(daBase.ativo).toBe(true);
+    });
+  });
+
+  describe('semBlocoPublico', () => {
+    it('tira só o bloco público, para a trava textual varrer o resto', () => {
+      const saida = semBlocoPublico({
+        [BLOCO_PUBLICO]: { razaoSocial: 'PADARIA CENTRAL LTDA' },
+        naBase: { encontrados: 1 },
+      }) as Record<string, unknown>;
+
+      expect(saida).not.toHaveProperty(BLOCO_PUBLICO);
+      expect(saida.naBase).toEqual({ encontrados: 1 });
+    });
+
+    it('sem ele, a trava derrubaria a consulta de CNPJ', () => {
+      const resultado = mascarar(
+        { [BLOCO_PUBLICO]: { razaoSocial: 'PADARIA CENTRAL LTDA' } },
+        { permitirBlocoPublico: true },
+      );
+
+      expect(() => garantirMascarado(JSON.stringify(resultado))).toThrow(
+        /campo proibido/i,
+      );
+      expect(() =>
+        garantirMascarado(JSON.stringify(semBlocoPublico(resultado))),
+      ).not.toThrow();
     });
   });
 

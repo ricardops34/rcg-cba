@@ -45,7 +45,7 @@ em si.
 | `vendas_por_cliente` | `consulta-vendas-cliente.visualizar` | leitura | `consultas.vendasPorCliente` |
 | `vendas_por_produto` | `consulta-vendas-produto.visualizar` | leitura | `consultas.vendasPorProduto` |
 | `execucao_objetivos` | `dashboard-comercial.visualizar` | leitura | `objetivos.dashboard` |
-| `consultar_cnpj` | `clientes.visualizar` | leitura | `enriquecimento.consultarCnpj` |
+| `consultar_cnpj` | `clientes.visualizar` | leitura | `enriquecimento.consultarCnpj` + `clientes.titularidadePorCnpj` |
 | `resumo_atendimentos` | `meus-atendimentos.visualizar` | leitura | `meusAtendimentos.resumo` |
 | `minha_agenda` | `atividades.visualizar` | leitura | `atividades.findAll` |
 | `listar_oportunidades` | `oportunidades.visualizar` | leitura | `oportunidades.findAll` |
@@ -121,6 +121,40 @@ um **campo editável** do cadastro (detalhe do produto → Fichas técnicas), en
 quem administra vê exatamente o que a IA vai ler e retira o que não deve estar
 lá. `visivelAgente: false` tira a ficha inteira do alcance do modelo sem
 apagá-la.
+
+## A consulta de CNPJ responde duas perguntas
+
+`consultar_cnpj` junta o que vinha separado, porque ninguém consulta um CNPJ
+sem querer saber as duas coisas:
+
+1. **quem é a empresa** — o cadastro da Receita Federal inteiro: razão social,
+   nome fantasia, situação cadastral com a data, endereço, telefones, e-mail e
+   os CNAEs;
+2. **se ela já é nossa** — se existe cadastro com aquele CNPJ, se está ativo e
+   qual vendedor atende, **inclusive fora da carteira de quem perguntou**.
+
+Os dois blocos são tratados de forma diferente na fronteira de dados: o da
+Receita vai ao provedor inteiro (é base pública); o nosso sai mascarado — código,
+situação e a referência do vendedor, que a plataforma remonta na resposta. Por
+isso o bloco da base **não repete a razão social**: a pergunta "quem é" já foi
+respondida pela fonte pública, e mandar o nosso cadastro junto seria vazar o que
+a máscara existe para proteger.
+
+O casamento é **por dígitos**, no banco (`regexp_replace`): o CNPJ chega do ERP
+como está lá, com ou sem máscara, e comparar a string crua erraria justamente o
+cadastro formatado — o falso "não é cliente" é o erro caro aqui, porque manda o
+vendedor prospectar quem já é de alguém.
+
+A Receita fora do ar não engole a outra metade: a base é consultada primeiro, e
+uma falha na fonte pública volta como `erroReceita` com o que já sabemos do
+cadastro.
+
+**Quem atualiza o cadastro é outra conversa.** `atualizar_cadastro_pela_receita`
+passa por `clientes.findOne`, que aplica o escopo hierárquico: o vendedor
+responsável, quem está acima dele e quem tem acesso total. Para os demais o
+cliente **nem é encontrado** — a regra é do service, não do prompt, e vale
+igual pela tela. Consultar o CNPJ, portanto, não é poder alterar o cliente de
+outro vendedor.
 
 ## As guardas além da permissão
 

@@ -16,25 +16,28 @@ describe('AgenteToolsService — permissão × configuração', () => {
   // catálogo, e instanciar as dependências reais traria o Prisma junto. Um
   // `as never` por dependência do construtor — se o número divergir, o
   // TypeScript acusa aqui antes de o Nest acusar na subida.
-  const tools = new AgenteToolsService(
-    {} as never, // consultas
-    {} as never, // clientes
-    {} as never, // produtos
-    {} as never, // orcamentos
-    {} as never, // titulos
-    {} as never, // sugestao
-    {} as never, // objetivos
-    {} as never, // enriquecimento
-    {} as never, // atividades
-    {} as never, // oportunidades
-    {} as never, // conversas
-    {} as never, // vendedores
-    {} as never, // whatsappAcoes
-    {} as never, // agendamento
-    {} as never, // referencias
-    {} as never, // fichas
-    {} as never, // anexos
-  );
+  const instanciar = (clientes: unknown = {}) =>
+    new AgenteToolsService(
+      {} as never, // consultas
+      clientes as never, // clientes
+      {} as never, // produtos
+      {} as never, // orcamentos
+      {} as never, // titulos
+      {} as never, // sugestao
+      {} as never, // objetivos
+      {} as never, // enriquecimento
+      {} as never, // atividades
+      {} as never, // oportunidades
+      {} as never, // conversas
+      {} as never, // vendedores
+      {} as never, // whatsappAcoes
+      {} as never, // agendamento
+      {} as never, // referencias
+      {} as never, // fichas
+      {} as never, // anexos
+    );
+
+  const tools = instanciar();
 
   const admin: AuthenticatedUser = {
     id: 'u-admin',
@@ -256,6 +259,62 @@ describe('AgenteToolsService — permissão × configuração', () => {
     const nomes = tools.disponiveisPara(vendedor).map((f) => f.nome);
     expect(nomes).toContain('buscar_cliente');
     expect(nomes).not.toContain('atualizar_cadastro_pela_receita');
+  });
+
+  describe('a exceção da fronteira de dados', () => {
+    it('só a consulta de CNPJ declara identificacaoPublica', () => {
+      // A isenção deixa um bloco do resultado ir ao provedor **sem máscara**.
+      // Ela vale para base pública (Receita Federal) e para mais nada: se este
+      // teste quebrar, alguém ligou a exceção numa ferramenta que lê a nossa
+      // base, e a decisão precisa ser consciente — não um campo a mais no
+      // catálogo. Ver `anonimizar-agente.ts`.
+      const comIsencao = tools['todas']()
+        .filter((f) => f.identificacaoPublica)
+        .map((f) => f.nome);
+      expect(comIsencao).toEqual(['consultar_cnpj']);
+    });
+  });
+
+  describe('atualizar_cadastro_pela_receita — quem alcança o cliente', () => {
+    // Quem pode atualizar é o vendedor responsável, quem está acima dele e
+    // quem tem acesso total. Isso **não** é decidido aqui: vem do escopo
+    // hierárquico que `clientes.atualizarPelaReceita` resolve a partir do
+    // usuário da sessão. O que esta suíte trava é o caminho — que a ferramenta
+    // continue delegando com o usuário real e sem deixar o modelo apontar
+    // carteira.
+    const editor: AuthenticatedUser = {
+      id: 'u-edit',
+      nome: 'Editor',
+      email: 'edit@x.com',
+      empresaAtivaId: 'e-1',
+      isAdmin: false,
+      permissoes: ['clientes.editar'],
+    };
+
+    it('delega ao service com o usuário da sessão', async () => {
+      const atualizarPelaReceita = jest.fn().mockResolvedValue({});
+      const comClientes = instanciar({ atualizarPelaReceita });
+
+      await comClientes.executar(
+        'atualizar_cadastro_pela_receita',
+        { clienteId: 'c-1' },
+        editor,
+      );
+
+      expect(atualizarPelaReceita).toHaveBeenCalledWith('e-1', editor, 'c-1');
+    });
+
+    it('não declara parâmetro de vendedor ou carteira', () => {
+      // Se o modelo pudesse informar de quem é o cliente, bastaria convencê-lo.
+      const f = tools['todas']().find(
+        (x) => x.nome === 'atualizar_cadastro_pela_receita',
+      );
+      const props = Object.keys(
+        (f?.parametros as { properties?: Record<string, unknown> })
+          .properties ?? {},
+      );
+      expect(props).toEqual(['clienteId']);
+    });
   });
 
   it('sem configuração carregada, vale o catálogo puro', () => {

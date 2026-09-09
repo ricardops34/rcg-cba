@@ -98,3 +98,25 @@ de enviar, e desfaz na volta — mas ele mascara **por nome de campo** e não l�
 texto livre. O que a pessoa digitar na conversa sai sem máscara.
 
 Decisão registrada em 2026-08-25, ao ligar as ferramentas de WhatsApp no agente.
+
+### A única exceção: dado de base pública
+
+Retorno de **API pública** pode passar pelo modelo inteiro; dado da **nossa
+base**, não. Decisão de 2026-09-09, ao abrir a consulta de CNPJ.
+
+Na prática, a ferramenta declara `identificacaoPublica: true` e devolve o que
+veio da fonte pública sob a chave `receitaFederal`. Só essa subárvore escapa:
+
+| No mesmo resultado | O que vai ao provedor |
+|---|---|
+| `receitaFederal` (Receita Federal) | tudo — razão social, endereço, telefone, e-mail, CNAEs |
+| `naBase` (nosso cadastro) | código, situação e o vendedor como `«VND:código»` |
+
+O que sustenta a exceção: é registro público, de **um** CNPJ por vez, e o número
+já viajou ao provedor dentro da pergunta de quem digitou. O que não muda: a
+carteira continua mascarada, inclusive na mesma resposta.
+
+Duas travas cuidam para que a exceção não se espalhe, e as duas têm teste:
+a isenção é **por bloco e por ferramenta** (sem a declaração, o bloco é
+mascarado como qualquer outro), e `agente-tools.permissao.spec.ts` reprova se
+qualquer ferramenta além de `consultar_cnpj` passar a declará-la.

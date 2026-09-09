@@ -13,7 +13,11 @@ import { AgenteFerramentasService } from './agente-ferramentas.service';
 import { AgenteAnexosService } from './agente-anexos.service';
 import { AgenteReferenciasService } from './agente-referencias.service';
 import { AgenteToolsService } from './agente-tools.service';
-import { garantirMascarado, mascarar } from './anonimizar-agente';
+import {
+  garantirMascarado,
+  mascarar,
+  semBlocoPublico,
+} from './anonimizar-agente';
 import { ProvedorFactory } from './provedor.factory';
 import type { FiltroFerramentas } from './agente-ferramentas.service';
 import { REGRAS_FIXAS_AGENTE_INTERNO } from '../../common/ia/regras-fixas';
@@ -513,7 +517,7 @@ export class AgenteChatService {
           // com limite de tamanho por requisição responde 413 (aconteceu com
           // 12k por resultado). O modelo precisa do suficiente para resumir,
           // não do payload inteiro da tela.
-          conteudo: this.resumirResultado(resultado, ferramenta.limiteItens),
+          conteudo: this.resumirResultado(resultado, ferramenta),
         });
       }
     }
@@ -604,12 +608,18 @@ export class AgenteChatService {
    * O resultado **completo** vai para `agente_mensagens.resultado`, então a
    * auditoria não perde nada com este corte.
    */
-  private resumirResultado(resultado: unknown, limiteItens = 8): string {
+  private resumirResultado(
+    resultado: unknown,
+    ferramenta?: Ferramenta,
+  ): string {
     const TETO = 4_000;
+    const limiteItens = ferramenta?.limiteItens ?? 8;
     // A mascaração vem **antes** da poda e do corte: cortar primeiro poderia
     // partir uma referência ao meio (`«CLI:12`), e o modelo passaria a citar
     // um código que a remontagem não reconhece.
-    const mascarado = mascarar(resultado);
+    const mascarado = mascarar(resultado, {
+      permitirBlocoPublico: !!ferramenta?.identificacaoPublica,
+    });
     const podarListas = (v: unknown, profundidade = 0): unknown => {
       if (Array.isArray(v)) {
         const cortada = v
@@ -630,10 +640,17 @@ export class AgenteChatService {
       return v;
     };
 
-    const texto = JSON.stringify(podarListas(mascarado));
+    const podado = podarListas(mascarado);
+    const texto = JSON.stringify(podado);
     // Cinto e suspensório: se um campo de identificação escapou da mascaração,
-    // falha a resposta em vez de mandá-lo ao provedor.
-    garantirMascarado(texto);
+    // falha a resposta em vez de mandá-lo ao provedor. O bloco de dado público
+    // sai da varredura — e só ele: o resto do mesmo payload, inclusive o que
+    // veio do nosso cadastro, continua sob a trava inteira.
+    garantirMascarado(
+      ferramenta?.identificacaoPublica
+        ? JSON.stringify(semBlocoPublico(podado))
+        : texto,
+    );
 
     return texto.length > TETO
       ? `${texto.slice(0, TETO)}…(resultado truncado)`
@@ -675,10 +692,7 @@ export class AgenteChatService {
           // lista inteira de notas para responder à pergunta que ela existe
           // para responder.
           resultado: {
-            resumo: this.resumirResultado(
-              resultado,
-              this.tools.buscar(nome)?.limiteItens,
-            ),
+            resumo: this.resumirResultado(resultado, this.tools.buscar(nome)),
           } as never,
         },
       }),

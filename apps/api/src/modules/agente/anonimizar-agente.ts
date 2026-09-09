@@ -37,6 +37,32 @@ export const RE_REFERENCIA = /«(CLI|PRD|VND):([^»]+)»/g;
 export type TipoReferencia = 'CLI' | 'PRD' | 'VND';
 
 /**
+ * A **única** exceção à fronteira: o bloco de dado público.
+ *
+ * Consulta de CNPJ na base da Receita Federal não é cadastro da casa — é
+ * registro público, de **um** CNPJ por vez, e o número já viajou ao provedor
+ * dentro da própria pergunta de quem digitou. Decisão de 2026-09-09: o retorno
+ * da API pública pode passar pelo modelo inteiro (razão social, endereço,
+ * contato); o que vem da **nossa base** continua mascarado como sempre.
+ *
+ * A isenção é **por bloco, não por campo**: só o que está sob esta chave
+ * escapa, e só quando a ferramenta declara `identificacaoPublica`. Um
+ * `razaoSocial` vindo do nosso cadastro no mesmo resultado continua virando
+ * referência — que é o caso de `consultar_cnpj`, que responde as duas coisas
+ * na mesma chamada.
+ */
+export const BLOCO_PUBLICO = 'receitaFederal';
+
+export interface OpcoesMascara {
+  /**
+   * Deixa passar intacta a subárvore sob `BLOCO_PUBLICO`. Só a ferramenta que
+   * devolve dado de base pública liga isto — o padrão é fail-closed: sem a
+   * opção, o bloco é mascarado como qualquer outro.
+   */
+  permitirBlocoPublico?: boolean;
+}
+
+/**
  * Campos **removidos** do payload, sem substituto.
  *
  * Não viram referência porque o agente não precisa deles para responder nada:
@@ -141,12 +167,21 @@ function tipoDoObjeto(
  * banco, com aninhamento imprevisível, e um cliente pode vir dentro de uma
  * nota, de um título ou de uma lista de semelhantes.
  */
-export function mascarar(
+export function mascarar(valor: unknown, opcoes: OpcoesMascara = {}): unknown {
+  return mascararNo(valor, null, opcoes);
+}
+
+function mascararNo(
   valor: unknown,
-  chavePai: string | null = null,
+  chavePai: string | null,
+  opcoes: OpcoesMascara,
 ): unknown {
+  // O bloco público sai inteiro, sem descer: mascarar campo a campo devolveria
+  // a Receita picotada, que é o que esta exceção existe para evitar.
+  if (opcoes.permitirBlocoPublico && chavePai === BLOCO_PUBLICO) return valor;
+
   if (Array.isArray(valor)) {
-    return valor.map((item) => mascarar(item, chavePai));
+    return valor.map((item) => mascararNo(item, chavePai, opcoes));
   }
   if (!ehObjeto(valor)) return valor;
 
@@ -180,10 +215,30 @@ export function mascarar(
       continue;
     }
 
-    saida[chave] = mascarar(v, chave);
+    saida[chave] = mascararNo(v, chave, opcoes);
   }
 
   return saida;
+}
+
+/**
+ * O resultado **sem** o bloco de dado público, que é o que a trava textual
+ * varre.
+ *
+ * A trava olha o JSON já serializado e não sabe de onde cada campo veio: com o
+ * bloco da Receita dentro, "razaoSocial" apareceria no texto e ela derrubaria a
+ * resposta (ou, se fosse relaxada por campo, deixaria de proteger a razão
+ * social do **nosso** cadastro no mesmo payload). Tirar o bloco antes de varrer
+ * mantém a trava inteira para todo o resto.
+ *
+ * O bloco vive na raiz do resultado da ferramenta, por construção — quem o
+ * monta é o executor, não o banco.
+ */
+export function semBlocoPublico(valor: unknown): unknown {
+  if (!ehObjeto(valor)) return valor;
+  const resto = { ...valor };
+  delete resto[BLOCO_PUBLICO];
+  return resto;
 }
 
 /**

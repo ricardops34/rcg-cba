@@ -439,6 +439,83 @@ export class ClientesService {
     });
   }
 
+  /**
+   * O mesmo recorte de `verificarTitularidade`, mas a partir do **CNPJ** e com
+   * projeção mínima.
+   *
+   * Existe para a consulta de CNPJ do agente: ali a identificação já vem da
+   * Receita Federal, e o que falta saber é se a casa já atende essa empresa,
+   * se o cadastro está ativo e de quem ele é. Por isso **não devolve razão
+   * social nem nome fantasia** — repetir o nosso cadastro seria mandar ao
+   * provedor um dado que a fonte pública já respondeu.
+   *
+   * Como em `verificarTitularidade`, a busca não filtra por carteira (é o
+   * ponto: descobrir que o cliente é de outro vendedor antes de prospectar),
+   * mas o `clienteId` — a chave das outras ferramentas — só sai quando o
+   * cliente está no alcance de quem perguntou.
+   */
+  async titularidadePorCnpj(
+    empresaId: string,
+    user: AuthenticatedUser,
+    cnpjBruto: string,
+  ) {
+    const cnpj = (cnpjBruto ?? '').replace(/D/g, '');
+    if (cnpj.length !== 14) {
+      throw new BadRequestException('Informe um CNPJ de 14 dígitos.');
+    }
+
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+
+      // Comparação por dígitos, no banco: o CNPJ chega do ERP como está lá —
+      // com ou sem máscara — e comparar a string crua erraria o cadastro
+      // formatado, que é o caso em que a resposta "não é cliente" seria mais
+      // cara (o vendedor prospecta quem já é de alguém).
+      const achados = await tx.$queryRaw<{ id: string }[]>`
+        SELECT c."id"
+        FROM "clientes" c
+        WHERE c."empresaId" = ${empresaId}
+          AND c."deletedAt" IS NULL
+          AND regexp_replace(COALESCE(c."cnpjCpf", ''), '[^0-9]', '', 'g') = ${cnpj}
+        LIMIT 5
+      `;
+      if (achados.length === 0) {
+        return { jaECliente: false, encontrados: 0, clientes: [] };
+      }
+
+      const clientes = await tx.cliente.findMany({
+        where: { id: { in: achados.map((a) => a.id) } },
+        select: {
+          id: true,
+          codigoErp: true,
+          ativo: true,
+          vendedorId: true,
+          vendedor: { select: { nome: true, codigoErp: true } },
+        },
+        orderBy: { codigoErp: 'asc' },
+      });
+
+      return {
+        jaECliente: true,
+        encontrados: clientes.length,
+        clientes: clientes.map((c) => {
+          const meu =
+            escopo === null ||
+            (!!c.vendedorId && escopo.includes(c.vendedorId));
+          return {
+            codigoErp: c.codigoErp,
+            ativo: c.ativo,
+            // Objeto, e não string: é o formato que a fronteira de dados do
+            // agente reconhece para trocar o nome pela referência opaca.
+            vendedor: c.vendedor,
+            naSuaCarteira: meu,
+            clienteId: meu ? c.id : null,
+          };
+        }),
+      };
+    });
+  }
+
   async findOne(empresaId: string, user: AuthenticatedUser, id: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);

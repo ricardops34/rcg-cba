@@ -76,6 +76,20 @@ export interface Ferramenta {
    * sem o qual a ferramenta não tem de onde ler nem por onde falar.
    */
   exigeWhatsapp?: boolean;
+  /**
+   * O resultado carrega um bloco de **dado público** (`receitaFederal`) que
+   * pode ir ao provedor sem máscara.
+   *
+   * A exceção existe para a consulta de CNPJ: base pública da Receita, um CNPJ
+   * por vez, e o número já viajou na pergunta de quem digitou. Vale **só** para
+   * a subárvore desse bloco — o que a mesma ferramenta trouxer do nosso
+   * cadastro continua virando referência opaca, e a trava textual continua
+   * valendo para todo o resto do payload (ver `anonimizar-agente.ts`).
+   *
+   * Não ligue isto em ferramenta que leia a nossa base: aqui não há o que
+   * conferir depois, e o dado sai da casa no mesmo instante.
+   */
+  identificacaoPublica?: boolean;
   /** Resumo legível da ação, para o card de confirmação. */
   resumir?: (args: Record<string, unknown>) => string;
   /**
@@ -932,12 +946,33 @@ export class AgenteToolsService {
       {
         nome: 'consultar_cnpj',
         descricao:
-          'Consulta um CNPJ na base pública da Receita Federal e devolve o ramo ' +
-          '(CNAEs), a situação cadastral e o município. Não grava nada e não ' +
-          'devolve razão social nem contato — para saber se o CNPJ já é cliente, ' +
-          'use verificar_cliente_na_base.',
+          'Consulta um CNPJ na base pública da Receita Federal e devolve o ' +
+          'cadastro completo dela: razão social, nome fantasia, situação ' +
+          'cadastral (com a data), endereço, telefones, e-mail e o ramo (CNAEs). ' +
+          'Junto, responde se esse CNPJ **já é cliente da casa**: se o cadastro ' +
+          'está ativo e qual vendedor atende, inclusive quando é de outra ' +
+          'carteira. Não grava nada — para levar esses dados ao cadastro, use ' +
+          'atualizar_cadastro_pela_receita.',
+        instrucoes:
+          'Mostre os dados da Receita como vieram, sem inventar o que faltar — ' +
+          'campo vazio na fonte é campo vazio na resposta. Quando o CNPJ já for ' +
+          'cliente, diga isso primeiro, com a situação (ativo ou inativo) e o ' +
+          'vendedor que atende; se estiver fora da carteira de quem perguntou, ' +
+          'avise que é de outro vendedor antes de sugerir prospecção.',
         permissao: 'clientes.visualizar',
-        exemplos: ['Qual o ramo da empresa do CNPJ 12.345.678/0001-99?'],
+        exemplos: [
+          'Consulte o CNPJ 12.345.678/0001-99',
+          'Qual o ramo da empresa do CNPJ 12.345.678/0001-99?',
+          'Esse CNPJ já é cliente nosso? De quem é?',
+        ],
+        // O bloco `receitaFederal` é base pública e vai ao modelo inteiro
+        // (decisão de 2026-09-09). O bloco `naBase` é o nosso cadastro e
+        // segue mascarado: dali só saem código, situação e a referência do
+        // vendedor, que a plataforma remonta na resposta ao usuário.
+        identificacaoPublica: true,
+        // A Receita devolve a principal mais as secundárias, e uma empresa com
+        // dez CNAEs é comum: no teto padrão de 8 o ramo real ficava de fora.
+        limiteItens: 20,
         parametros: {
           type: 'object',
           properties: {
@@ -949,23 +984,67 @@ export class AgenteToolsService {
           required: ['cnpj'],
         },
         executar: async (a, user) => {
-          void user;
-          const r = await this.enriquecimento.consultarCnpj(texto(a.cnpj));
-          // Recorte deliberado: nome, endereço, telefone e e-mail da empresa
-          // consultada não vão ao provedor, pela mesma razão que os do
-          // cadastro não vão (ver `anonimizar-agente.ts`). O que responde a
-          // pergunta é o ramo.
-          return {
-            situacaoCadastral: r.situacaoCadastral,
-            municipio: r.municipio,
-            uf: r.uf,
-            cnaes: r.cnaes.map((c) => ({
-              codigo: c.codigo,
-              descricao: c.descricao,
-              principal: c.principal,
-              naReferencia: !!c.cnaeId,
-            })),
+          const cnpj = texto(a.cnpj);
+          // A base é consultada primeiro e por fora do try: se a Receita
+          // estiver fora do ar, ainda respondemos a pergunta que mais importa
+          // antes de prospectar — "esse CNPJ já é de alguém aqui?".
+          const naBase = await this.clientes.titularidadePorCnpj(
+            user.empresaAtivaId,
+            user,
+            cnpj,
+          );
+          try {
+            const r = await this.enriquecimento.consultarCnpj(cnpj);
+            return {
+              naBase,
+              receitaFederal: {
+                cnpj: r.cnpj,
+                razaoSocial: r.razaoSocial,
+                nomeFantasia: r.nomeFantasia,
+                situacaoCadastral: r.situacaoCadastral,
+                dataSituacaoCadastral: r.dataSituacaoCadastral,
+                endereco: r.endereco,
+                complemento: r.complemento,
+                bairro: r.bairro,
+                municipio: r.municipio,
+                uf: r.uf,
+                cep: r.cep,
+                telefone: r.telefone,
+                telefone2: r.telefone2,
+                email: r.email,
+                cnaes: r.cnaes.map((c) => ({
+                  codigo: c.codigo,
+                  descricao: c.descricao,
+                  principal: c.principal,
+                  // Código que a nossa referência do IBGE não conhece não vira
+                  // vínculo de ramo — avisar é melhor do que sumir com ele.
+                  naReferencia: !!c.cnaeId,
+                })),
+              },
+            };
+          } catch (e) {
+            return {
+              naBase,
+              receitaFederal: null,
+              erroReceita:
+                e instanceof Error
+                  ? e.message
+                  : 'Falha ao consultar a Receita Federal',
+            };
+          }
+        },
+        destino: (_a, r) => {
+          // Só há tela para o cliente que este usuário alcança: fora da
+          // carteira, o `clienteId` nem sai do service.
+          const saida = r as {
+            naBase?: { clientes?: { clienteId?: string | null }[] };
           };
+          const id = saida?.naBase?.clientes?.find(
+            (c) => !!c.clienteId,
+          )?.clienteId;
+          return id
+            ? { rotulo: 'Abrir o cliente', rota: `/cadastros/clientes/${id}` }
+            : null;
         },
       },
       {
@@ -1380,11 +1459,17 @@ export class AgenteToolsService {
         descricao:
           'Atualiza o cadastro de UM cliente a partir do CNPJ dele na base da ' +
           'Receita Federal: ramo (CNAEs), razão social, endereço e contato. ' +
+          'Só funciona para cliente que o usuário alcança — o vendedor ' +
+          'responsável, quem está acima dele na hierarquia e quem tem acesso ' +
+          'total; para os demais o cliente nem é encontrado. ' +
           'Nada entra no cadastro sem passar por gente — o usuário confirma aqui ' +
           'e a alteração vai para a fila de aprovação, onde o responsável escolhe ' +
           'campo a campo o que aplicar. A única exceção é o cliente sem nenhum ' +
           'CNAE, cujo ramo é preenchido na hora. Para vários clientes, chame uma ' +
           'vez por cliente.',
+        instrucoes:
+          'Se o cliente for de outro vendedor, não tente atualizar: diga de quem ' +
+          'é e pare por aí. Quem atualiza cadastro é o responsável pela conta.',
         permissao: 'clientes.editar',
         exemplos: [
           'Atualize o cadastro do cliente X pela Receita Federal',
