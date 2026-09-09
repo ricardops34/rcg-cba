@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { clienteSchema } from "./cliente";
 import { notaSaidaSchema } from "./nota-saida";
+import { notaEntradaItemSchema, notaEntradaSchema } from "./nota-entrada";
 import { tituloReceberSchema } from "./titulo-receber";
 
 const vendedorRefSchema = z
@@ -22,6 +23,27 @@ export type PosicaoClienteNota = z.infer<typeof posicaoClienteNotaSchema>;
 
 export const posicaoClienteTituloSchema = tituloReceberSchema;
 export type PosicaoClienteTitulo = z.infer<typeof posicaoClienteTituloSchema>;
+
+// Devolução de venda: a nota que o cliente emitiu de volta, que no ERP entra
+// pela SF1 com `tipo = 'D'` (ver `nota-entrada.ts`). Vem com os itens, porque
+// a pergunta seguinte a "o cliente devolveu" é sempre "devolveu o quê".
+export const posicaoClienteDevolucaoSchema = notaEntradaSchema.extend({
+  itens: z.array(
+    notaEntradaItemSchema.extend({
+      produto: z
+        .object({
+          id: z.string().uuid(),
+          codigoErp: z.string(),
+          descricao: z.string(),
+          unidade: z.string().nullable(),
+        })
+        .nullable(),
+    }),
+  ),
+});
+export type PosicaoClienteDevolucao = z.infer<
+  typeof posicaoClienteDevolucaoSchema
+>;
 
 export const posicaoClienteMixSchema = z.object({
   produtoId: z.string().uuid(),
@@ -46,6 +68,11 @@ export const posicaoClienteResumoSchema = z.object({
   totalComprado: z.number(),
   totalTitulosAberto: z.number(),
   totalTitulosVencido: z.number(),
+  // Contadores da aba de devoluções. **Não** abatem `totalComprado`: quem
+  // responde por devolução nas apurações continua sendo `vlrDev` da própria
+  // nota de venda, e descontar aqui contaria a mesma devolução duas vezes.
+  totalDevolucoes: z.number().int(),
+  totalDevolvido: z.number(),
 });
 export type PosicaoClienteResumo = z.infer<typeof posicaoClienteResumoSchema>;
 
@@ -67,6 +94,9 @@ export const posicaoClienteSchema = z.object({
   // própria — misturá-las inflava o histórico e o total comprado.
   notas: z.array(posicaoClienteNotaSchema),
   comodatos: z.array(posicaoClienteNotaSchema),
+  // Notas de entrada tipo 'D'. Aba própria pelo mesmo motivo do comodato: não
+  // é venda, e somar no total distorceria o "total comprado".
+  devolucoes: z.array(posicaoClienteDevolucaoSchema),
   titulos: z.array(posicaoClienteTituloSchema),
   mix: z.array(posicaoClienteMixSchema),
 });

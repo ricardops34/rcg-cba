@@ -28,11 +28,13 @@ até 1.000 registros de uma vez — ver [Lote](#lote--put-integracaoentidade).
 | `/integracao/armazens` | `codigoErp` | `ativo` | — |
 | `/integracao/produtos` | `codigoErp` | `ativo` | — |
 | `/integracao/vendedores` | `codigoErp` | `ativo` | — |
+| `/integracao/fornecedores` | `codigoErp` | `ativo` | — |
 | `/integracao/clientes` | `codigoErp` | `ativo` | **`PATCH` vai para fila de aprovação** |
 | `/integracao/tabelas-preco` | `codigoErp` | `ativo` | mestre-detalhe (`itens`) |
 | `/integracao/estoque` | `codigoErp` | `codigoErp`, `produtoCodigo`, `armazemCodigo` | `B2_FILIAL-B2_COD-B2_LOCAL` |
 | `/integracao/objetivos` | `codigoErp` | `ativo`, `ano`, `mes` | mestre-detalhe (`categorias`) |
 | `/integracao/notas-saida` | `codigoErp` | `ativo`, `semXml` | mestre-detalhe (`itens`) + rotas de XML |
+| `/integracao/notas-entrada` | `codigoErp` | `ativo`, `tipo`, `fornecedorCodigo`, `clienteCodigo` | mestre-detalhe (`itens`) + `tipo` decide o participante |
 | `/integracao/titulos-receber` | `codigoErp` | `ativo` | campos de cobrança bancária |
 | `/integracao/orcamentos` | `codigoErp` | `ativo`, `status` | mestre-detalhe (`itens`) + fila de pendentes |
 
@@ -100,6 +102,19 @@ precisa já existir. Demais campos: `marca`, `codigoBarras`, `ncm`,
 
 Chave `codigoErp`. É o alvo de `vendedorCodigo` em clientes, notas, títulos,
 objetivos e orçamentos.
+
+### Fornecedores — `/integracao/fornecedores`
+
+Chave `codigoErp`. É o alvo de `fornecedorCodigo` nas notas de entrada —
+carregue **antes** delas.
+
+Cadastro enxuto, sem nada de carteira ou crédito: identificação (`tipoPessoa`,
+`razaoSocial`, `nomeFantasia`, `cnpjCpf`, inscrições), contato (`contato`,
+`email`, `telefone`, `celular`), endereço (`endereco`, `complemento`, `bairro`,
+`municipio`, `uf`, `cep`), `observacao` e `ativo`.
+
+Não confundir com `produtos.codigoFornecedor`, que é o código do item no
+catálogo do fornecedor e continua sendo texto solto — não aponta para cá.
 
 ### Tabelas de preço — `/integracao/tabelas-preco`
 
@@ -253,6 +268,62 @@ ser oferecida. A nota em si não é tocada.
 
 Limite próprio de 120 req/min nesta rota — uma carga retroativa de milhares de
 arquivos não divide o balde com o cadastro.
+
+### Notas de entrada — `/integracao/notas-entrada`
+
+Espelho da **SF1**. Chave `codigoErp`
+(`F1_FILIAL`-`F1_DOC`-`F1_SERIE`-`F1_FORNECE`-`F1_LOJA`-`F1_FORMUL`).
+Cabeçalho + `itens` (cada item com o próprio `codigoErp`, montado da SD1), nas
+mesmas regras da nota de saída: item com `delete: true` é removido, e item
+ausente do payload **não** é excluído. `fornecedorId`, `clienteId`, `dtEmissao`,
+`ano` e `mes` dos itens são preenchidos pelo service a partir do cabeçalho — não
+vêm no payload do item.
+
+#### A SF1 guarda dois documentos, e `tipo` diz qual
+
+| `tipo` | O que é | Mande |
+|---|---|---|
+| `'N'` | Compra | `fornecedorCodigo` |
+| `'D'` | Devolução de venda | `clienteCodigo` |
+
+No ERP os dois saem do mesmo par de campos (`F1_FORNECE`+`F1_LOJA`), mas apontam
+para cadastros diferentes — SA2 na compra, SA1 na devolução. Por isso o payload
+tem os dois campos, e o mapeador manda **um deles**. A plataforma aceita o que
+vier e não impõe a combinação; mas é o `clienteCodigo` que faz a devolução
+aparecer na aba "Devoluções" da Posição de Cliente, então mandar
+`fornecedorCodigo` numa nota `'D'` deixa a devolução invisível para quem atende
+o cliente.
+
+A devolução **não** entra nas apurações (Objetivos, Consultas, Dashboard): quem
+responde por ela ali continua sendo o `vlrDev` da própria nota de venda, enviado
+por `/integracao/notas-saida`. As duas fontes somadas contariam a mesma
+devolução duas vezes.
+
+#### Demais campos
+
+`condicaoCodigo` no cabeçalho, e `produtoCodigo` / `armazemCodigo` nos itens,
+referenciam os respectivos cadastros pelo `codigoErp`, que precisa já existir.
+
+Duas datas, e não uma: `dtEmissao` é a do documento emitido pelo terceiro e
+`dtEntrada` é a do recebimento da mercadoria. `ano`/`mes` derivam da **emissão**,
+para que a apuração de compra case com a de venda, que também usa emissão.
+
+Os valores acessórios vêm **separados**, como a SF1 os guarda — somá-los num
+"outras despesas" impediria conferir a nota contra o documento do fornecedor:
+
+| Campo | Origem na SF1 |
+|---|---|
+| `vlrBruto` | `F1_VALBRUT` |
+| `vlrIcmsSt` | `F1_ICMSRET` ("ICMS Solid.") |
+| `vlrFrete` | `F1_FRETE` |
+| `vlrSeguro` | `F1_SEGURO` |
+| `vlrDespesa` | `F1_DESPESA` |
+
+O item **não** tem `ncm`: o NCM é do produto (`B1_POSIPI` → `produtos.ncm`), e
+repeti-lo na linha da nota criaria duas versões do mesmo dado.
+
+Sem rotas de XML: a segunda via do documento de entrada é de quem o emitiu, e a
+plataforma não a reimprime.
 
 ### Títulos a receber — `/integracao/titulos-receber`
 

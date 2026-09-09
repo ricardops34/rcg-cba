@@ -241,23 +241,6 @@ export const MENUS: DefinicaoMenu[] = [
     codigo: 'meus-atendimentos',
     moduloId: MODULO.comercial,
   },
-  // Recado pelo WhatsApp da empresa **para a equipe** — nunca para cliente.
-  //
-  // Rotina própria, e não uma ação de `whatsapp-conversas`, pelo mesmo
-  // raciocínio de `whatsapp-equipe`: escrever no celular de todo o time é
-  // concessão consciente, não efeito colateral de dar acesso ao Atendimento.
-  //
-  // Fica com Supervisor e Gerente por padrão, não com o Vendedor: o alcance é
-  // a hierarquia abaixo de quem envia, e quem não tem ninguém abaixo só
-  // conseguiria mandar recado para si mesmo.
-  {
-    id: 'seed-menu-recados',
-    nome: 'Recado para a equipe',
-    rota: '/comercial/recados',
-    icone: 'send',
-    codigo: 'whatsapp-recados',
-    moduloId: MODULO.comercial,
-  },
   // Leads captados pela IA no número institucional.
   //
   // `visualizar` vai também para o Vendedor, porque ele precisa ver o que lhe
@@ -348,6 +331,24 @@ export const MENUS: DefinicaoMenu[] = [
     rota: '/gerencial/objetivos',
     icone: 'target',
     codigo: 'objetivos',
+    moduloId: MODULO.gerencial,
+  },
+  // Recado pelo WhatsApp da empresa **para a equipe** — nunca para cliente.
+  //
+  // Rotina própria, e não uma ação de `whatsapp-conversas`, pelo mesmo
+  // raciocínio de `whatsapp-equipe`: escrever no celular de todo o time é
+  // concessão consciente, não efeito colateral de dar acesso ao Atendimento.
+  //
+  // Fica no Gerencial e não no Comercial porque o alcance é a hierarquia
+  // abaixo de quem envia: é ferramenta de quem conduz equipe, ao lado de
+  // Vendedores e Objetivos. Pelo mesmo motivo não vai ao Vendedor por
+  // padrão — quem não tem ninguém abaixo só mandaria recado para si mesmo.
+  {
+    id: 'seed-menu-recados',
+    nome: 'Recado para a equipe',
+    rota: '/gerencial/recados',
+    icone: 'send',
+    codigo: 'whatsapp-recados',
     moduloId: MODULO.gerencial,
   },
   {

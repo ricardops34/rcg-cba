@@ -218,7 +218,7 @@ function LoginForm() {
               <img
                 src={assetUrl(branding.logoUrl) ?? ""}
                 alt={branding.nomeFantasia}
-                className="h-32 w-auto max-w-[360px] object-contain sm:h-36 sm:max-w-[420px]"
+                className="h-32 w-full max-w-[360px] object-contain sm:h-36 sm:max-w-[420px]"
               />
             ) : (
               <Image src="/logo_bj.png" alt="Plataforma Comercial" width={150} height={51} priority />

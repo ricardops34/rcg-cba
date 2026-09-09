@@ -84,13 +84,21 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
 
   return (
     <>
-      <div className="flex h-16 shrink-0 items-center justify-center px-3">
+      {/* Recolhida a barra tem 4.5rem: com px-3 sobrariam 48px e a logo (52.8px)
+          encostaria nas bordas — por isso o respiro menor só nesse estado. */}
+      <div className={cn("flex h-16 shrink-0 items-center justify-center", collapsed ? "px-2" : "px-3")}>
         {logo ? (
+          /*
+            Altura **fixa**, não `max-h`: com um teto, a logo cujo arquivo é
+            menor que ele fica no tamanho natural, e duas empresas apareciam
+            em tamanhos diferentes na mesma barra. Assim toda logo é escalada
+            para a mesma caixa, e `object-contain` cuida da proporção.
+          */
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={logo}
             alt={empresaAtiva?.nomeFantasia ?? "Empresa ativa"}
-            className={cn("max-h-11 object-contain", collapsed ? "max-w-11" : "max-w-[180px]")}
+            className={cn("h-[3.3rem] w-full object-contain", collapsed ? "max-w-[3.3rem]" : "max-w-[216px]")}
           />
         ) : (
           <span className={cn("truncate text-center font-semibold", collapsed ? "text-xs" : "text-sm")}>

@@ -44,7 +44,7 @@ export type FornecedorQuery = z.infer<typeof fornecedorQuerySchema>;
 export const FORNECEDOR_EXAMPLE: Fornecedor = {
   id: "4f8a1b2c-3d4e-4f50-a617-28394a5b6c7d",
   empresaId: "7b2f2f64-9b1c-4a86-9d3e-1f4a5b6c7d8e",
-  codigoErp: "F00042",
+  codigoErp: "01-000042-01",
   tipoPessoa: "juridica",
   razaoSocial: "Distribuidora Serra Azul Ltda",
   nomeFantasia: "Serra Azul",

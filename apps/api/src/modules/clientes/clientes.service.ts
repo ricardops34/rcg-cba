@@ -851,7 +851,7 @@ export class ClientesService {
       // "quem executou aquele registro" (pode divergir do vendedor titular
       // do cliente) e não deve restringir a visibilidade de dados de um
       // cliente que o usuário já está autorizado a ver.
-      const [notas, comodatos, titulos, mix] = await Promise.all([
+      const [notas, comodatos, devolucoes, titulos, mix] = await Promise.all([
         // Só o histórico de venda efetiva (ver NOTA_DE_VENDA): nota inativa
         // (cancelada no ERP), devolução/remessa e comodato não entram nem na
         // lista nem no resumo — o legado tem muita nota inativa zerada, que
@@ -873,6 +873,41 @@ export class ClientesService {
             comodato: true,
           },
           include: { vendedor: VENDEDOR_SELECT },
+          orderBy: { dtEmissao: 'desc' },
+        }),
+        // Devoluções: a nota que o cliente emitiu de volta, que no ERP entra
+        // pela SF1 com `tipo = 'D'` (ver NotaEntrada). Aba própria, como o
+        // comodato, e pelo mesmo motivo — não é venda, e somar no total da
+        // aba de notas distorceria o "total comprado".
+        //
+        // Aqui não se filtra por permissão de `notas-entrada`: quem já
+        // enxerga o histórico deste cliente enxerga o que ele devolveu. A
+        // devolução não carrega custo de compra — carrega o preço de venda
+        // que voltou, que quem atende o cliente já conhece.
+        tx.notaEntrada.findMany({
+          where: {
+            clienteId,
+            empresaId,
+            deletedAt: null,
+            ativo: true,
+            tipo: 'D',
+          },
+          include: {
+            itens: {
+              where: { deletedAt: null },
+              orderBy: { item: 'asc' },
+              include: {
+                produto: {
+                  select: {
+                    id: true,
+                    codigoErp: true,
+                    descricao: true,
+                    unidade: true,
+                  },
+                },
+              },
+            },
+          },
           orderBy: { dtEmissao: 'desc' },
         }),
         tx.tituloReceber.findMany({
@@ -914,6 +949,12 @@ export class ClientesService {
         totalTitulosVencido: titulosAbertos
           .filter((t) => t.status === 'vencido')
           .reduce((acc, t) => acc + t.saldo, 0),
+        // Contadores da aba de devoluções. **Não** abatem `totalComprado`: o
+        // que responde por devolução nas apurações continua sendo o `vlrDev`
+        // da própria nota de venda, e descontar aqui também contaria a mesma
+        // devolução duas vezes.
+        totalDevolucoes: devolucoes.length,
+        totalDevolvido: devolucoes.reduce((acc, n) => acc + n.vlrBruto, 0),
       };
 
       return {
@@ -938,6 +979,7 @@ export class ClientesService {
         // tela de posição oferece o mesmo botão de 2ª via e não pode divergir.
         notas: notas.map(comFlagXml),
         comodatos: comodatos.map(comFlagXml),
+        devolucoes,
         titulos: titulosComStatus,
         mix,
       };

@@ -1,5 +1,10 @@
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { NOTA_ENTRADA_EXAMPLE } from '@plataforma/contracts';
 import { NotasEntradaService } from './notas-entrada.service';
 import { NotaEntradaQueryDto } from './dto/nota-entrada.dto';

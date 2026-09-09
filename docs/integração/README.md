@@ -145,9 +145,12 @@ registro some das listagens e dos detalhes (todo `WHERE` filtra
 ### Mestre-detalhe casa filho a filho
 
 Nas entidades com coleção aninhada — itens da nota, itens do orçamento, itens da
-tabela de preço, metas por categoria —, o ERP manda **o documento inteiro** a
-cada envio. Filho que não veio no payload é removido; o que veio é casado pelo
-`codigoErp` dele e criado ou atualizado no lugar (ver
+tabela de preço, metas por categoria —, cada filho é casado pelo `codigoErp`
+dele e criado ou atualizado no lugar.
+
+**Filho ausente do payload não é excluído**, para não apagar linhas que
+simplesmente não participaram de um envio incremental. Para remover uma linha,
+mande-a com `"delete": true` — é o único jeito (ver
 [`sincronizar-filhos.ts`](../../apps/api/src/modules/integracao/common/sincronizar-filhos.ts)).
 
 Apagar e recriar o conjunto daria o mesmo conteúdo final, mas trocaria o uuid de
@@ -255,13 +258,19 @@ armazens
   └── produtos              (categoria, subcategoria, armazém)
 vendedores
   └── clientes              (vendedor, tabela de preço, condição de pagamento)
+fornecedores
 tabelas-preco               (itens referenciam produtos)
 estoque                     (produto + armazém)
 objetivos                   (vendedor)
 notas-saida                 (cliente, vendedor, condição; itens → produtos)
+notas-entrada               (fornecedor OU cliente, condição; itens → produtos, armazéns)
 titulos-receber             (cliente, vendedor)
 orcamentos                  (cliente, vendedor, condição; itens → produtos)
 ```
+
+`notas-entrada` depende de **fornecedores e clientes**: a SF1 guarda os dois
+documentos, e o participante muda com o tipo — compra (`'N'`) aponta para um
+fornecedor, devolução de venda (`'D'`) aponta para um cliente.
 
 Na sincronização do dia a dia a ordem só importa dentro de cada dependência —
 produto novo antes do saldo de estoque dele, por exemplo.

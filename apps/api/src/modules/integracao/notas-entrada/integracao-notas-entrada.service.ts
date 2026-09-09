@@ -28,6 +28,7 @@ import { criarFilhos, sincronizarFilhos } from '../common/sincronizar-filhos';
 
 const INCLUDE = {
   fornecedor: { select: { codigoErp: true } },
+  cliente: { select: { codigoErp: true } },
   condicaoPagamento: { select: { codigoErp: true } },
   itens: {
     include: {
@@ -49,6 +50,7 @@ export class IntegracaoNotasEntradaService {
       id: row.id,
       codigoErp: row.codigoErp ?? '',
       fornecedorCodigo: row.fornecedor?.codigoErp ?? null,
+      clienteCodigo: row.cliente?.codigoErp ?? null,
       condicaoCodigo: row.condicaoPagamento?.codigoErp ?? null,
       numero: row.numero,
       serie: row.serie,
@@ -64,6 +66,8 @@ export class IntegracaoNotasEntradaService {
       vlrIcmsSt: row.vlrIcmsSt,
       vlrIpi: row.vlrIpi,
       vlrFrete: row.vlrFrete,
+      vlrSeguro: row.vlrSeguro,
+      vlrDespesa: row.vlrDespesa,
       chaveNfe: row.chaveNfe,
       dtNfe: row.dtNfe,
       mensagem: row.mensagem,
@@ -75,7 +79,6 @@ export class IntegracaoNotasEntradaService {
         armazemCodigo: item.armazem?.codigoErp ?? null,
         item: item.item,
         cfop: item.cfop,
-        ncm: item.ncm,
         quantidade: item.quantidade,
         vlrUnitario: item.vlrUnitario,
         vlrDesconto: item.vlrDesconto,
@@ -102,6 +105,10 @@ export class IntegracaoNotasEntradaService {
         ...(query.fornecedorCodigo
           ? { fornecedor: { codigoErp: query.fornecedorCodigo } }
           : {}),
+        ...(query.clienteCodigo
+          ? { cliente: { codigoErp: query.clienteCodigo } }
+          : {}),
+        ...(query.tipo ? { tipo: query.tipo } : {}),
         ...(query.search
           ? { numero: { contains: query.search, mode: 'insensitive' as const } }
           : {}),
@@ -138,14 +145,15 @@ export class IntegracaoNotasEntradaService {
   }
 
   /**
-   * `fornecedorId`, `dtEmissao`, `ano` e `mes` são denormalizados do cabeçalho
-   * para dentro de cada item — o payload do item não os traz.
+   * `fornecedorId`, `clienteId`, `dtEmissao`, `ano` e `mes` são denormalizados
+   * do cabeçalho para dentro de cada item — o payload do item não os traz.
    */
   private async montarItens(
     tx: TenantTx,
     empresaId: string,
     itens: IntegracaoNotaEntradaItem[],
     fornecedorId: string | null,
+    clienteId: string | null,
     dtEmissao: Date | null,
   ) {
     return Promise.all(
@@ -189,6 +197,7 @@ export class IntegracaoNotasEntradaService {
           empresaId,
           codigoErp: item.codigoErp,
           fornecedorId,
+          clienteId,
           produtoId,
           armazemId,
           item: item.item ?? null,
@@ -196,7 +205,6 @@ export class IntegracaoNotasEntradaService {
           ano: dtEmissao?.getUTCFullYear() ?? null,
           mes: dtEmissao ? dtEmissao.getUTCMonth() + 1 : null,
           cfop: item.cfop ?? null,
-          ncm: item.ncm ?? null,
           quantidade: item.quantidade,
           vlrUnitario: item.vlrUnitario,
           vlrDesconto: item.vlrDesconto,
@@ -211,10 +219,17 @@ export class IntegracaoNotasEntradaService {
     );
   }
 
+  /**
+   * Resolve os códigos do ERP em uuid. `fornecedorCodigo` e `clienteCodigo`
+   * são excludentes na prática — compra manda um, devolução manda o outro —,
+   * mas nenhum dos dois é obrigatório: a plataforma resolve o que vier e não
+   * inventa regra sobre o que o mapeador deveria ter mandado.
+   */
   private async resolverRefs(
     tx: TenantTx,
     empresaId: string,
     fornecedorCodigo: string | null | undefined,
+    clienteCodigo: string | null | undefined,
     condicaoCodigo: string | null | undefined,
   ) {
     const resolver = async (
@@ -237,6 +252,15 @@ export class IntegracaoNotasEntradaService {
         }),
       'fornecedorCodigo',
     );
+    const clienteId = await resolver(
+      clienteCodigo,
+      () =>
+        tx.cliente.findFirst({
+          where: { empresaId, codigoErp: clienteCodigo!, deletedAt: null },
+          select: { id: true },
+        }),
+      'clienteCodigo',
+    );
     const condicaoPagamentoId = await resolver(
       condicaoCodigo,
       () =>
@@ -246,7 +270,7 @@ export class IntegracaoNotasEntradaService {
         }),
       'condicaoCodigo',
     );
-    return { fornecedorId, condicaoPagamentoId };
+    return { fornecedorId, clienteId, condicaoPagamentoId };
   }
 
   async create(
@@ -274,24 +298,28 @@ export class IntegracaoNotasEntradaService {
       });
       const decisao = decidirUpsert(existente);
 
-      const { fornecedorId, condicaoPagamentoId } = await this.resolverRefs(
-        tx,
-        empresaId,
-        input.fornecedorCodigo,
-        input.condicaoCodigo,
-      );
+      const { fornecedorId, clienteId, condicaoPagamentoId } =
+        await this.resolverRefs(
+          tx,
+          empresaId,
+          input.fornecedorCodigo,
+          input.clienteCodigo,
+          input.condicaoCodigo,
+        );
       const dtEmissao = input.dtEmissao ?? null;
       const itensData = await this.montarItens(
         tx,
         empresaId,
         input.itens,
         fornecedorId,
+        clienteId,
         dtEmissao,
       );
 
       const dados = {
         codigoErp: input.codigoErp,
         fornecedorId,
+        clienteId,
         condicaoPagamentoId,
         numero: input.numero,
         serie: input.serie ?? null,
@@ -309,6 +337,8 @@ export class IntegracaoNotasEntradaService {
         vlrIcmsSt: input.vlrIcmsSt,
         vlrIpi: input.vlrIpi,
         vlrFrete: input.vlrFrete,
+        vlrSeguro: input.vlrSeguro,
+        vlrDespesa: input.vlrDespesa,
         chaveNfe: input.chaveNfe ?? null,
         dtNfe: input.dtNfe ?? null,
         mensagem: input.mensagem ?? null,
@@ -384,12 +414,14 @@ export class IntegracaoNotasEntradaService {
       if (!existente)
         throw new NotFoundException('Nota de entrada não encontrada');
 
-      const { fornecedorId, condicaoPagamentoId } = await this.resolverRefs(
-        tx,
-        empresaId,
-        input.fornecedorCodigo,
-        input.condicaoCodigo,
-      );
+      const { fornecedorId, clienteId, condicaoPagamentoId } =
+        await this.resolverRefs(
+          tx,
+          empresaId,
+          input.fornecedorCodigo,
+          input.clienteCodigo,
+          input.condicaoCodigo,
+        );
       const dtEmissao =
         input.dtEmissao !== undefined ? input.dtEmissao : undefined;
 
@@ -401,6 +433,8 @@ export class IntegracaoNotasEntradaService {
           input.fornecedorCodigo !== undefined
             ? fornecedorId
             : existente.fornecedorId;
+        const clienteIdFinal =
+          input.clienteCodigo !== undefined ? clienteId : existente.clienteId;
         const dtEmissaoFinal =
           dtEmissao !== undefined ? dtEmissao : existente.dtEmissao;
         const itensData = await this.montarItens(
@@ -408,6 +442,7 @@ export class IntegracaoNotasEntradaService {
           empresaId,
           input.itens,
           fornecedorIdFinal,
+          clienteIdFinal,
           dtEmissaoFinal,
         );
         itensUpdate = { itens: sincronizarFilhos(empresaId, itensData) };
@@ -417,6 +452,7 @@ export class IntegracaoNotasEntradaService {
         where: { id: existente.id },
         data: {
           ...(input.fornecedorCodigo !== undefined ? { fornecedorId } : {}),
+          ...(input.clienteCodigo !== undefined ? { clienteId } : {}),
           ...(input.condicaoCodigo !== undefined
             ? { condicaoPagamentoId }
             : {}),
@@ -450,6 +486,12 @@ export class IntegracaoNotasEntradaService {
             : {}),
           ...(input.vlrIpi !== undefined ? { vlrIpi: input.vlrIpi } : {}),
           ...(input.vlrFrete !== undefined ? { vlrFrete: input.vlrFrete } : {}),
+          ...(input.vlrSeguro !== undefined
+            ? { vlrSeguro: input.vlrSeguro }
+            : {}),
+          ...(input.vlrDespesa !== undefined
+            ? { vlrDespesa: input.vlrDespesa }
+            : {}),
           ...(input.chaveNfe !== undefined ? { chaveNfe: input.chaveNfe } : {}),
           ...(input.dtNfe !== undefined ? { dtNfe: input.dtNfe } : {}),
           ...(input.mensagem !== undefined ? { mensagem: input.mensagem } : {}),

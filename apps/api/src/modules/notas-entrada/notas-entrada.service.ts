@@ -19,7 +19,12 @@ const SORT_FIELDS = new Set([
 const FORNECEDOR_SELECT = {
   select: { id: true, codigoErp: true, razaoSocial: true, nomeFantasia: true },
 };
-const CONDICAO_SELECT = { select: { id: true, codigoErp: true, descricao: true } };
+const CLIENTE_SELECT = {
+  select: { id: true, codigoErp: true, razaoSocial: true, nomeFantasia: true },
+};
+const CONDICAO_SELECT = {
+  select: { id: true, codigoErp: true, descricao: true },
+};
 
 // Consulta read-only das notas de compra, espelho do ERP. Sem escopo
 // hierárquico de vendedor — compra não tem carteira; quem enxerga a tela já é
@@ -37,6 +42,7 @@ export class NotasEntradaService {
         deletedAt: null,
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
         ...(query.fornecedorId ? { fornecedorId: query.fornecedorId } : {}),
+        ...(query.clienteId ? { clienteId: query.clienteId } : {}),
         ...(query.tipo ? { tipo: query.tipo } : {}),
         ...(query.ano !== undefined ? { ano: query.ano } : {}),
         ...(query.mes !== undefined ? { mes: query.mes } : {}),
@@ -63,6 +69,14 @@ export class NotasEntradaService {
                     },
                   },
                 },
+                {
+                  cliente: {
+                    razaoSocial: {
+                      contains: query.search,
+                      mode: 'insensitive' as const,
+                    },
+                  },
+                },
               ],
             }
           : {}),
@@ -75,7 +89,7 @@ export class NotasEntradaService {
       const [data, total] = await Promise.all([
         tx.notaEntrada.findMany({
           where,
-          include: { fornecedor: FORNECEDOR_SELECT },
+          include: { fornecedor: FORNECEDOR_SELECT, cliente: CLIENTE_SELECT },
           ...paginationToSkipTake(query),
           orderBy: { [sortField]: sortOrder },
         }),
@@ -91,6 +105,7 @@ export class NotasEntradaService {
         where: { id, empresaId, deletedAt: null },
         include: {
           fornecedor: FORNECEDOR_SELECT,
+          cliente: CLIENTE_SELECT,
           condicaoPagamento: CONDICAO_SELECT,
           itens: {
             where: { deletedAt: null },
@@ -104,7 +119,9 @@ export class NotasEntradaService {
                   unidade: true,
                 },
               },
-              armazem: { select: { id: true, codigoErp: true, descricao: true } },
+              armazem: {
+                select: { id: true, codigoErp: true, descricao: true },
+              },
             },
           },
         },

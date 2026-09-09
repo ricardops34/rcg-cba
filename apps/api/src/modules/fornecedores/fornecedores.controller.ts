@@ -1,5 +1,10 @@
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { FORNECEDOR_EXAMPLE } from '@plataforma/contracts';
 import { FornecedoresService } from './fornecedores.service';
 import { FornecedorQueryDto } from './dto/fornecedor.dto';

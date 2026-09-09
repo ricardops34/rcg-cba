@@ -218,3 +218,44 @@ fantasia por `?empresa=<alias>`).
 **Sem imagem, não há faixa.** A cor sozinha renderiza uma tarja vazia no topo,
 que parece defeito. O `bannerAtivo` liga a exibição, mas quem decide se há o que
 exibir é o `bannerImagemUrl`.
+
+## Custo de compra não é para a equipe de venda
+
+Decidido em 2026-09-08, quando entraram as notas de entrada.
+
+As duas rotinas novas de compras — **Fornecedores** e **Notas de Entrada** —
+nascem permitidas apenas para **Administrador e Diretor**. Vendedor, Supervisor
+e Gerente não veem o menu e levam 403 na API, mesmo tendo acesso a Notas de
+Saída.
+
+O motivo é o valor da linha. A nota de entrada registra por quanto a mercadoria
+foi comprada; cruzada com a nota de saída, que a equipe já enxerga, ela entrega
+a margem de tudo que se vende. Isso é decisão de quem administra liberar, caso a
+caso, e não algo que deva vir ligado por padrão.
+
+Por isso a ausência dessas duas rotinas em `VENDEDOR_PERMISSOES` e
+`SUPERVISAO_PERMISSOES` (em `apps/api/prisma/catalogo-sistema.ts`) **é a regra**,
+não um esquecimento — há um comentário no arquivo dizendo isso. Para liberar
+para outro perfil, o caminho é a tela de Perfis, ou uma migration escrita para
+aquela decisão.
+
+**A exceção é a devolução.** A SF1 do ERP guarda dois documentos: `tipo = 'N'` é
+compra, e `tipo = 'D'` é devolução de venda — nesta, o participante é o
+**cliente**, não um fornecedor. A devolução aparece em aba própria na Posição de
+Cliente, e ali vale a permissão **do histórico do cliente**, não a de
+`notas-entrada`: o vendedor da carteira precisa saber que o cliente devolveu, e
+a devolução não carrega custo de compra — carrega o preço de venda que voltou,
+que ele já conhece. A tela de Notas de Entrada continua fechada para ele.
+
+**A devolução não abate as apurações.** Objetivos, Consultas e Dashboard
+continuam apurando o realizado líquido por `NotaSaidaItem.vlrDev`, gravado na
+própria nota de venda pelo ERP. A nota de entrada `'D'` é registro visível, não
+uma segunda fonte do mesmo número — somar as duas contaria a mesma devolução
+duas vezes. Por isso `totalDevolvido` aparece no resumo da posição sem descontar
+`totalComprado`.
+
+**Fornecedor não é cliente com outro nome.** É tabela própria, sem carteira,
+tabela de preço, limite de crédito ou histórico de atendimento — reaproveitar
+`clientes` obrigaria toda consulta comercial a filtrar "só os que compram de
+nós". E `produtos.codigoFornecedor` continua sendo outra coisa: é o código do
+item no catálogo do fornecedor, texto solto, e não aponta para o cadastro.

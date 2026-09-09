@@ -13,11 +13,11 @@ datasource db {
 
 model Empresa {
   tipoPessoa   TipoPessoa @default(juridica)
-  id           String  @id @default(uuid())
+  id           String     @id @default(uuid())
   razaoSocial  String
   nomeFantasia String
-  cnpj         String  @unique
-  alias        String? @unique
+  cnpj         String     @unique
+  alias        String?    @unique
   logoUrl      String?
 
   // Situação da assinatura — **fonte única do "pode entrar"**. Substituiu o
@@ -1179,6 +1179,9 @@ model Cliente {
 
   notasSaida        NotaSaida[]
   notasSaidaItens   NotaSaidaItem[]
+  // Devoluções de venda (SF1 com tipo 'D') — ver NotaEntrada.
+  notasEntrada      NotaEntrada[]
+  notasEntradaItens NotaEntradaItem[]
   titulosReceber    TituloReceber[]
   oportunidades     Oportunidade[]
   atividades        Atividade[]
@@ -2616,11 +2619,22 @@ model Fornecedor {
 }
 
 /**
- * Nota de entrada (compra) — espelho do que o ERP recebeu, irmã de
- * `NotaSaida`.
+ * Nota de entrada — espelho da SF1, irmã de `NotaSaida`.
  * Sem XML nem DANFE, ao contrário da saída: o documento de entrada foi
- * emitido pelo fornecedor, e a plataforma não reimprime segunda via de nota
- * de terceiro. Se um dia precisar, o molde é `nota_saida_xml`.
+ * emitido por terceiro, e a plataforma não reimprime segunda via dele. Se um
+ * dia precisar, o molde é `nota_saida_xml`.
+ * **A SF1 guarda dois documentos diferentes**, separados por `tipo`:
+ * - `'N'` — compra. O participante é um **fornecedor** (`fornecedorId`).
+ * - `'D'` — devolução de venda. O participante é um **cliente**
+ * (`clienteId`), e é o que alimenta a aba "Devoluções" da Posição de
+ * Cliente.
+ * Por isso as duas chaves são nulas: numa compra vem `fornecedorId`, numa
+ * devolução vem `clienteId`. Um campo único ("participante") economizaria uma
+ * coluna e custaria a FK — não haveria como o banco garantir que o código
+ * aponta para o cadastro certo, e a consulta por cliente viraria texto.
+ * A devolução **não** entra nas apurações (Objetivos, Consultas, Dashboard):
+ * quem responde por ela ali continua sendo `NotaSaidaItem.vlrDev`, gravado na
+ * própria nota de venda. Contar as duas somaria a mesma devolução duas vezes.
  */
 model NotaEntrada {
   id                  String  @id @default(uuid())
@@ -2628,6 +2642,7 @@ model NotaEntrada {
   // Chave de identidade do registro no ERP — mesma semântica de NotaSaida.
   codigoErp           String?
   fornecedorId        String?
+  clienteId           String?
   condicaoPagamentoId String?
 
   numero        String
@@ -2643,6 +2658,10 @@ model NotaEntrada {
   ano           Int?
   mes           Int?
 
+  // `vlrIcmsSt` é o F1_ICMSRET ("ICMS Solid." no dicionário do ERP).
+  // Frete, seguro e despesas acessórias vêm separados porque é assim que a
+  // SF1 os guarda — somá-los num "outras despesas" só impediria conferir a
+  // nota contra o documento do fornecedor.
   vlrBruto      Float @default(0)
   vlrMercadoria Float @default(0)
   vlrItens      Float @default(0)
@@ -2651,6 +2670,8 @@ model NotaEntrada {
   vlrIcmsSt     Float @default(0)
   vlrIpi        Float @default(0)
   vlrFrete      Float @default(0)
+  vlrSeguro     Float @default(0)
+  vlrDespesa    Float @default(0)
 
   chaveNfe String?
   dtNfe    DateTime?
@@ -2666,6 +2687,7 @@ model NotaEntrada {
 
   empresa           Empresa            @relation(fields: [empresaId], references: [id])
   fornecedor        Fornecedor?        @relation(fields: [fornecedorId], references: [id])
+  cliente           Cliente?           @relation(fields: [clienteId], references: [id])
   condicaoPagamento CondicaoPagamento? @relation(fields: [condicaoPagamentoId], references: [id])
   itens             NotaEntradaItem[]
 
@@ -2674,13 +2696,19 @@ model NotaEntrada {
   @@index([empresaId, fornecedorId])
   @@index([empresaId, dtEmissao])
   @@index([empresaId, ano, mes])
+  // A aba "Devoluções" da Posição de Cliente entra por aqui: um cliente, as
+  // notas 'D' dele, mais recente primeiro.
+  @@index([empresaId, clienteId, dtEmissao])
   @@map("notas_entrada")
 }
 
-// Item de nota de entrada com empresaId/fornecedorId/dtEmissao/ano/mes
-// denormalizados do cabeçalho — mesma decisão de `NotaSaidaItem`, e pelo mesmo
-// motivo: a apuração de compra por produto varre a tabela de itens, e um join
+// Item de nota de entrada com empresaId/fornecedorId/clienteId/dtEmissao/
+// ano/mes denormalizados do cabeçalho — mesma decisão de `NotaSaidaItem`, e
+// pelo mesmo motivo: a apuração por produto varre a tabela de itens, e um join
 // com o cabeçalho em cima da maior tabela do módulo custa caro à toa.
+//
+// Não tem `ncm`: o NCM é do produto (`Produto.ncm`, vindo de `B1_POSIPI`), e
+// repeti-lo aqui criaria duas versões do mesmo dado, livres para divergir.
 model NotaEntradaItem {
   id            String  @id @default(uuid())
   empresaId     String
@@ -2688,7 +2716,10 @@ model NotaEntradaItem {
   // Chave própria do item no ERP: o upsert do cabeçalho casa item a item por
   // ela, em vez de apagar e recriar o conjunto.
   codigoErp     String?
+  // Espelham o participante do cabeçalho: fornecedor na compra, cliente na
+  // devolução (ver NotaEntrada).
   fornecedorId  String?
+  clienteId     String?
   produtoId     String?
   armazemId     String?
 
@@ -2697,7 +2728,6 @@ model NotaEntradaItem {
   ano       Int?
   mes       Int?
   cfop      String?
-  ncm       String?
 
   quantidade  Float @default(0)
   vlrUnitario Float @default(0)
@@ -2720,6 +2750,7 @@ model NotaEntradaItem {
   empresa     Empresa     @relation(fields: [empresaId], references: [id])
   notaEntrada NotaEntrada @relation(fields: [notaEntradaId], references: [id], onDelete: Cascade)
   fornecedor  Fornecedor? @relation(fields: [fornecedorId], references: [id])
+  cliente     Cliente?    @relation(fields: [clienteId], references: [id])
   produto     Produto?    @relation(fields: [produtoId], references: [id])
   armazem     Armazem?    @relation(fields: [armazemId], references: [id])
 
@@ -2727,6 +2758,7 @@ model NotaEntradaItem {
   @@index([notaEntradaId])
   @@index([empresaId, produtoId])
   @@index([empresaId, fornecedorId, dtEmissao])
+  @@index([empresaId, clienteId, produtoId])
   @@map("notas_entrada_itens")
 }
 

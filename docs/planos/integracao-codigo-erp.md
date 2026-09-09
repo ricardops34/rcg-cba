@@ -1,12 +1,36 @@
 # `codigoErp` como chave única da integração ERP ↔ plataforma
 
-> **Plano de execução vivo.** Marque as etapas conforme forem saindo. O
-> documento é auto-contido de propósito: dá para retomar o trabalho lendo só
-> ele, sem depender da conversa em que foi decidido.
+> ## ⚠️ DOCUMENTO HISTÓRICO — ABSORVIDO EM 08/09/2026
 >
-> Aberto em 2026-08-28. Dois repositórios envolvidos:
-> **plataforma** `C:\VPS\rcg` · **ERP** `C:\VPS\protheusrcg` (fontes em
-> `Portal/BJ/`).
+> **A definição das chaves virou a seção 3 do plano único da integração**, em
+> `C:\VPS\protheusrcg\Portal\BJ\PLANO.md`. É lá que ela é mantida daqui em
+> diante — este arquivo não é mais atualizado.
+>
+> Dois motivos para não seguir daqui:
+>
+> 1. **As etapas 11 a 15 apontam para fontes que não existem mais.**
+>    `BJIN120.prw`, `BJIN130.prw`, `BJIN210.prw` e `BJIN002.prw` foram
+>    substituídos pelos `BJPLA*` e movidos para `Portal/BJ/Remover/`. O conteúdo
+>    dessas etapas **já está implementado** nos fontes novos.
+> 2. **A parte do estoque está errada.** O texto afirma que o estoque é "a única
+>    entidade sem `codigoErp` próprio", com a chave "na URL" no formato
+>    `{produtoCodigo}/{armazemCodigo}` — contradizendo a própria tabela de
+>    cadastros deste arquivo. O contrato (`integracaoEstoqueCreateSchema`) tem
+>    `codigoErp`, e a rota é `@Patch(':codigo')`, de um segmento só. Essa frase
+>    produziu um bug real no mapeador do ERP e um exemplo errado no
+>    `endpoints.md`.
+>
+> **➡️ Vigente: `Portal/BJ/PLANO.md` (ERP) e [`../integração/`](../integração/README.md) (contrato da API).**
+>
+> Fica no lugar pelas decisões datadas que registra — a chave da SF1 sem o
+> `F1_TIPO`, o porquê de a nota levar filial, tipo e espécie, e o relatório do
+> smoke test de 03/09.
+>
+> ---
+>
+> **Plano de execução (histórico).** Aberto em 2026-08-28. Dois repositórios
+> envolvidos: **plataforma** `C:\VPS\rcg` · **ERP** `C:\VPS\protheusrcg`
+> (fontes em `Portal/BJ/`).
 
 ## A regra, fechada
 
@@ -78,6 +102,7 @@ usa para achar o item da nota.
 | produtos | SB1 | `B1_FILIAL`-`B1_COD` |
 | vendedores | SA3 | `A3_FILIAL`-`A3_COD` |
 | clientes | SA1 | `A1_FILIAL`-`A1_COD`-`A1_LOJA` |
+| fornecedores | SA2 | `A2_FILIAL`-`A2_COD`-`A2_LOJA` |
 | tabelas-preco | DA0 | `DA0_FILIAL`-`DA0_CODTAB` |
 | estoque | SB2 | `B2_FILIAL`-`B2_COD`-`B2_LOCAL` |
 
@@ -87,6 +112,8 @@ usa para achar o item da nota.
 |---|---|---|---|---|
 | 1 | notas-saida | SF2 | `F2_FILIAL`-`F2_DOC`-`F2_SERIE`-`F2_TIPO`-`F2_ESPECIE` | `01-000012345-1-N-SPED` |
 | 2 | notas-saida → itens | SD2 | `D2_FILIAL`-`D2_DOC`-`D2_SERIE`-`D2_ITEM` | `01-000012345-1-0001` |
+| 2a | notas-entrada | SF1 | `F1_FILIAL`-`F1_DOC`-`F1_SERIE`-`F1_FORNECE`-`F1_LOJA`-`F1_FORMUL` | `01-000004212-1-000042-01-N` |
+| 2b | notas-entrada → itens | SD1 | `D1_FILIAL`-`D1_DOC`-`D1_SERIE`-`D1_FORNECE`-`D1_LOJA`-`D1_ITEM` | `01-000004212-1-000042-01-0001` |
 | 3 | titulos-receber | SE1 | `E1_FILIAL`-`E1_PREFIXO`-`E1_NUM`-`E1_PARCELA`-`E1_TIPO` | `01-NF-000012345-A-NF` |
 | 4 | orcamentos | SCJ | `CJ_FILIAL`-`CJ_NUM` | `01-000123` |
 | 5 | orcamentos → itens | SCK | `CK_FILIAL`-`CK_NUM`-`CK_ITEM` | `01-000123-01` |
@@ -99,6 +126,20 @@ usa para achar o item da nota.
 > **A tabela de preço muda de chave.** Hoje o mapeador manda `DA0_CODTAB` sem
 > filial. Passa a levar a filial, como as demais — o `BJIN130` precisa mudar
 > junto, senão o `DELETE` procura uma chave que o envio nunca criou.
+
+> **A chave da SF1 não leva o `F1_TIPO`** (confirmado com o usuário em
+> 2026-09-08). Consequência a conhecer: se algum dia existir uma compra `'N'` e
+> uma devolução `'D'` com o mesmo `F1_DOC`+`F1_SERIE`+`F1_FORNECE`+`F1_LOJA`+
+> `F1_FORMUL`, as duas montariam a mesma string e a segunda sobrescreveria a
+> primeira no upsert. Na prática o participante difere — fornecedor na compra,
+> cliente na devolução —, então a colisão é improvável.
+>
+> **A SF1 sobe com dois participantes possíveis.** `F1_TIPO = 'N'` é compra e o
+> mapeador manda `fornecedorCodigo` (o `A2_FILIAL`-`A2_COD`-`A2_LOJA` da SA2);
+> `F1_TIPO = 'D'` é devolução de venda e manda `clienteCodigo` (o
+> `A1_FILIAL`-`A1_COD`-`A1_LOJA` da SA1) — mesmo o campo de origem sendo
+> `F1_FORNECE`+`F1_LOJA` nos dois casos. É o `clienteCodigo` que faz a
+> devolução aparecer na Posição de Cliente.
 
 > **Pedido não tem endpoint na plataforma.** Não existe model, tabela nem rota
 > para Pedido de Venda. Hoje o SC5 só aparece no `BJIN210`, que **cria** o

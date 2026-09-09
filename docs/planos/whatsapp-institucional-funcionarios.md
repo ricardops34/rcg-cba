@@ -160,6 +160,10 @@ utilizável sozinha, e foi assim que entraram.
    `whatsapp-recados`, concedida a Administrador, Diretor, Gerente e Supervisor
    — **não ao Vendedor**: o alcance é a hierarquia abaixo de quem envia, e quem
    não tem ninguém abaixo só mandaria recado para si mesmo.
+   A tela nasceu no módulo Comercial e **mudou para o Gerencial em 2026-09-08**
+   (`/gerencial/recados`), ao lado de Vendedores e Objetivos: pelo alcance ser a
+   hierarquia, é ferramenta de quem conduz equipe. A rotina e o código
+   (`whatsapp-recados`) não mudaram, então nenhuma permissão concedida se perdeu.
 
 ## Documentos do cliente (2026-09-05)
 

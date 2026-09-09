@@ -30,6 +30,7 @@ type SortOrder = "asc" | "desc";
 type NotaRow = PosicaoCliente["notas"][number];
 type TituloRow = PosicaoCliente["titulos"][number];
 type MixRow = PosicaoCliente["mix"][number];
+type DevolucaoRow = PosicaoCliente["devolucoes"][number];
 
 // Comparador genérico pra ordenação client-side: string usa localeCompare
 // pt-BR, número/booleano (já convertido em 0/1) usa subtração; null sempre
@@ -217,8 +218,110 @@ function TabelaNotas({
   );
 }
 
+/**
+ * Aba "Devoluções": as notas que voltaram do cliente (SF1 com `tipo = 'D'`).
+ *
+ * Tabela própria, e não a `TabelaNotas`: não tem vendedor nem 2ª via — o
+ * documento foi emitido pelo cliente, e a plataforma não o reimprime. Em
+ * compensação mostra o que voltou, que é a pergunta seguinte a "devolveu".
+ */
+function TabelaDevolucoes({
+  devolucoes,
+  busca,
+  onBuscaChange,
+  sortBy,
+  sortOrder,
+  onToggleSort,
+}: {
+  devolucoes: DevolucaoRow[];
+  busca: string;
+  onBuscaChange: (v: string) => void;
+  sortBy: string;
+  sortOrder: SortOrder;
+  onToggleSort: (key: string) => void;
+}) {
+  return (
+    <Card>
+      <CardContent className="space-y-3">
+        <div className="relative w-full sm:max-w-xs">
+          <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por número..."
+            className="pl-8"
+            value={busca}
+            onChange={(e) => onBuscaChange(e.target.value)}
+          />
+        </div>
+
+        {devolucoes.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Nenhuma devolução deste cliente.
+          </p>
+        ) : (
+          <div className="max-h-[440px] overflow-y-auto rounded-lg border">
+            <Table>
+              <TableHeader className="sticky top-0 z-10 bg-card">
+                <TableRow>
+                  <SortableTableHead
+                    label="Nota"
+                    active={sortBy === "numero"}
+                    order={sortOrder}
+                    onClick={() => onToggleSort("numero")}
+                  />
+                  <SortableTableHead
+                    label="Emissão"
+                    active={sortBy === "dtEmissao"}
+                    order={sortOrder}
+                    onClick={() => onToggleSort("dtEmissao")}
+                  />
+                  <TableHead>Itens devolvidos</TableHead>
+                  <SortableTableHead
+                    label="Vlr. bruto"
+                    className="text-right"
+                    active={sortBy === "vlrBruto"}
+                    order={sortOrder}
+                    onClick={() => onToggleSort("vlrBruto")}
+                  />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {devolucoes.map((d) => (
+                  <TableRow key={d.id}>
+                    <TableCell className="align-top font-mono font-medium">
+                      {d.numero}
+                      {d.serie && <span className="text-muted-foreground">/{d.serie}</span>}
+                    </TableCell>
+                    <TableCell className="align-top">{dataBr(d.dtEmissao)}</TableCell>
+                    <TableCell className="text-xs">
+                      {d.itens.length === 0 ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <ul className="space-y-0.5">
+                          {d.itens.map((it) => (
+                            <li key={it.id}>
+                              {it.quantidade.toLocaleString("pt-BR")}
+                              {it.produto?.unidade ? ` ${it.produto.unidade}` : ""}
+                              {" · "}
+                              {it.produto?.descricao ?? "Produto não identificado"}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </TableCell>
+                    <TableCell className="align-top text-right">{moeda(d.vlrBruto)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // Posição de Cliente: agrupa cliente + notas de saída + remessas de comodato
-// + títulos a receber + mix de produtos comprados. Cada aba tem seu próprio
+// + devoluções + títulos a receber + mix de produtos comprados. Cada aba tem seu próprio
 // filtro e barra de rolagem; o detalhe de nota/título abre numa cortina
 // lateral (não navega pra outra página), pra não perder a busca/scroll de
 // quem está consultando.
@@ -238,6 +341,7 @@ export function PosicaoClienteConteudo({
 
   const [notaSearch, setNotaSearch] = useState("");
   const [comodatoSearch, setComodatoSearch] = useState("");
+  const [devolucaoSearch, setDevolucaoSearch] = useState("");
   const [tituloSearch, setTituloSearch] = useState("");
   const [tituloSituacao, setTituloSituacao] = useState<TituloSituacaoFiltro>("todos");
   const [mixSearch, setMixSearch] = useState("");
@@ -252,6 +356,8 @@ export function PosicaoClienteConteudo({
   const [notaSortOrder, setNotaSortOrder] = useState<SortOrder>("desc");
   const [comodatoSortBy, setComodatoSortBy] = useState("dtEmissao");
   const [comodatoSortOrder, setComodatoSortOrder] = useState<SortOrder>("desc");
+  const [devolucaoSortBy, setDevolucaoSortBy] = useState("dtEmissao");
+  const [devolucaoSortOrder, setDevolucaoSortOrder] = useState<SortOrder>("desc");
   const [tituloSortBy, setTituloSortBy] = useState("vencimento");
   const [tituloSortOrder, setTituloSortOrder] = useState<SortOrder>("desc");
   const [mixSortBy, setMixSortBy] = useState("ultimaCompra");
@@ -280,6 +386,7 @@ export function PosicaoClienteConteudo({
   const comodatos = useMemo(() => posicao?.comodatos ?? [], [posicao]);
   const titulos = useMemo(() => posicao?.titulos ?? [], [posicao]);
   const mix = useMemo(() => posicao?.mix ?? [], [posicao]);
+  const devolucoes = useMemo(() => posicao?.devolucoes ?? [], [posicao]);
 
   const titulosFiltrados = useMemo(() => {
     const termo = tituloSearch.trim().toLowerCase();
@@ -316,6 +423,31 @@ export function PosicaoClienteConteudo({
       ),
     [comodatos, comodatoSearch, comodatoSortBy, comodatoSortOrder],
   );
+
+  const devolucoesOrdenadas = useMemo(() => {
+    const termo = devolucaoSearch.trim().toLowerCase();
+    const filtradas = termo
+      ? devolucoes.filter((d) =>
+          `${d.numero} ${d.serie ?? ""}`.toLowerCase().includes(termo),
+        )
+      : devolucoes;
+    const valor = (d: DevolucaoRow): string | number | null => {
+      switch (devolucaoSortBy) {
+        case "numero":
+          return d.numero;
+        case "dtEmissao":
+          return d.dtEmissao;
+        case "vlrBruto":
+          return d.vlrBruto;
+        default:
+          return null;
+      }
+    };
+    const ordenadas = [...filtradas].sort((a, b) =>
+      compareValores(valor(a), valor(b)),
+    );
+    return devolucaoSortOrder === "desc" ? ordenadas.reverse() : ordenadas;
+  }, [devolucoes, devolucaoSearch, devolucaoSortBy, devolucaoSortOrder]);
 
   const titulosOrdenados = useMemo(() => {
     const valor = (t: TituloRow): string | number | null => {
@@ -488,6 +620,11 @@ export function PosicaoClienteConteudo({
         <Metrica label="Total comprado" value={moeda(resumo.totalComprado)} />
         <Metrica label="Títulos em aberto" value={moeda(resumo.totalTitulosAberto)} />
         <Metrica label="Títulos vencidos" value={moeda(resumo.totalTitulosVencido)} />
+        {/* Só aparece quando há devolução: um "R$ 0,00" fixo ocuparia uma
+            célula da grade em todo cliente para dizer que nada aconteceu. */}
+        {resumo.totalDevolucoes > 0 && (
+          <Metrica label="Total devolvido" value={moeda(resumo.totalDevolvido)} />
+        )}
       </div>
 
       <Tabs defaultValue="notas">
@@ -495,6 +632,7 @@ export function PosicaoClienteConteudo({
           <TabsList>
             <TabsTrigger value="notas">Notas fiscais ({notas.length})</TabsTrigger>
             <TabsTrigger value="comodato">Comodato ({comodatos.length})</TabsTrigger>
+            <TabsTrigger value="devolucoes">Devoluções ({devolucoes.length})</TabsTrigger>
             <TabsTrigger value="titulos">Títulos a receber ({titulos.length})</TabsTrigger>
             <TabsTrigger value="mix">Mix de produtos ({mix.length})</TabsTrigger>
           </TabsList>
@@ -525,6 +663,19 @@ export function PosicaoClienteConteudo({
             }
             onSelecionar={setNotaSelecionadaId}
             mensagemVazio="Nenhuma nota de comodato encontrada."
+          />
+        </TabsContent>
+
+        <TabsContent value="devolucoes">
+          <TabelaDevolucoes
+            devolucoes={devolucoesOrdenadas}
+            busca={devolucaoSearch}
+            onBuscaChange={setDevolucaoSearch}
+            sortBy={devolucaoSortBy}
+            sortOrder={devolucaoSortOrder}
+            onToggleSort={(k) =>
+              toggleSort(k, devolucaoSortBy, setDevolucaoSortBy, setDevolucaoSortOrder)
+            }
           />
         </TabsContent>
 

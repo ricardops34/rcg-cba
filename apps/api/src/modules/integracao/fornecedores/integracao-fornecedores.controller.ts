@@ -47,7 +47,8 @@ export class IntegracaoFornecedoresController {
 
   @ApiOperation({
     summary: 'Listar fornecedores',
-    description: 'Paginado; filtra por ativo e busca por razão social ou CNPJ/CPF.',
+    description:
+      'Paginado; filtra por ativo e busca por razão social ou CNPJ/CPF.',
   })
   @ApiPaginationQuery()
   @Get()

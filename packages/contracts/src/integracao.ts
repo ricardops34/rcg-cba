@@ -1170,7 +1170,8 @@ export type IntegracaoFornecedorQuery = z.infer<
 
 export const INTEGRACAO_FORNECEDOR_CREATE_EXAMPLE: IntegracaoFornecedorCreate =
   {
-    codigoErp: "F00042",
+    // A2_FILIAL-A2_COD-A2_LOJA
+    codigoErp: "01-000042-01",
     tipoPessoa: "juridica",
     razaoSocial: "Distribuidora Serra Azul Ltda",
     nomeFantasia: "Serra Azul",
@@ -1203,12 +1204,19 @@ export const INTEGRACAO_FORNECEDOR_EXAMPLE: IntegracaoFornecedor = {
 // ------------------------------------------------------------------
 // Notas de entrada (mestre-detalhe) — chave: codigoErp.
 // ------------------------------------------------------------------
-// Irmã da nota de saída, com as mesmas regras de item (`delete: true` exclui a
-// linha; item ausente do payload não é excluído). fornecedorId/dtEmissao/
-// ano/mes dos itens são denormalizados a partir do cabeçalho pelo próprio
-// service — não fazem parte do payload do item.
+// Espelho da SF1, irmã da nota de saída, com as mesmas regras de item
+// (`delete: true` exclui a linha; item ausente do payload não é excluído).
+// fornecedorId/clienteId/dtEmissao/ano/mes dos itens são denormalizados a
+// partir do cabeçalho pelo próprio service — não fazem parte do payload do
+// item.
 //
-// Sem XML: a segunda via do documento de entrada é do fornecedor.
+// **A SF1 guarda dois documentos**, e `tipo` diz qual:
+//   'N' compra    → mande `fornecedorCodigo`
+//   'D' devolução → mande `clienteCodigo`
+// Mandar o outro não é erro (a plataforma resolve o que vier), mas a tela do
+// cliente só encontra a devolução pelo `clienteCodigo`.
+//
+// Sem XML: a segunda via do documento de entrada é de quem o emitiu.
 
 export const integracaoNotaEntradaItemSchema = z.object({
   delete: z
@@ -1236,7 +1244,8 @@ export const integracaoNotaEntradaItemSchema = z.object({
     .optional()
     .describe("Número sequencial do item na nota"),
   cfop: z.string().trim().max(10).nullable().optional(),
-  ncm: z.string().trim().max(10).nullable().optional(),
+  // Sem `ncm`: ele é do produto (`B1_POSIPI` → `produtos.ncm`), e repetido na
+  // linha da nota criaria duas versões do mesmo dado.
   quantidade: z.coerce.number().default(0),
   vlrUnitario: z.coerce.number().default(0),
   vlrDesconto: z.coerce.number().default(0),
@@ -1264,7 +1273,14 @@ export const integracaoNotaEntradaCreateSchema = z.object({
     .max(30)
     .nullable()
     .optional()
-    .describe("codigoErp do fornecedor"),
+    .describe("codigoErp do fornecedor — nas notas de compra (tipo 'N')"),
+  clienteCodigo: z
+    .string()
+    .trim()
+    .max(30)
+    .nullable()
+    .optional()
+    .describe("codigoErp do cliente — nas devoluções de venda (tipo 'D')"),
   condicaoCodigo: z
     .string()
     .trim()
@@ -1294,6 +1310,8 @@ export const integracaoNotaEntradaCreateSchema = z.object({
   vlrIcmsSt: z.coerce.number().default(0),
   vlrIpi: z.coerce.number().default(0),
   vlrFrete: z.coerce.number().default(0),
+  vlrSeguro: z.coerce.number().default(0),
+  vlrDespesa: z.coerce.number().default(0),
   chaveNfe: z.string().trim().max(44).nullable().optional(),
   dtNfe: z.coerce.date().nullable().optional(),
   mensagem: z.string().trim().max(500).nullable().optional(),
@@ -1328,6 +1346,18 @@ export const integracaoNotaEntradaQuerySchema = paginationQuerySchema.extend({
     .max(30)
     .optional()
     .describe("Filtra pelo codigoErp do fornecedor"),
+  clienteCodigo: z
+    .string()
+    .trim()
+    .max(30)
+    .optional()
+    .describe("Filtra pelo codigoErp do cliente (devoluções)"),
+  tipo: z
+    .string()
+    .trim()
+    .max(1)
+    .optional()
+    .describe("'N' compra, 'D' devolução de venda"),
 });
 export type IntegracaoNotaEntradaQuery = z.infer<
   typeof integracaoNotaEntradaQuerySchema
@@ -1335,9 +1365,11 @@ export type IntegracaoNotaEntradaQuery = z.infer<
 
 export const INTEGRACAO_NOTA_ENTRADA_CREATE_EXAMPLE: IntegracaoNotaEntradaCreate =
   {
-    codigoErp: "NE-000042-1",
-    fornecedorCodigo: "F00042",
-    condicaoCodigo: "001",
+    // F1_FILIAL-F1_DOC-F1_SERIE-F1_FORNECE-F1_LOJA-F1_FORMUL
+    codigoErp: "01-000004212-1-000042-01-N",
+    fornecedorCodigo: "01-000042-01",
+    clienteCodigo: null,
+    condicaoCodigo: "01-001",
     numero: "000004212",
     serie: "1",
     especieFiscal: "SPED",
@@ -1352,6 +1384,8 @@ export const INTEGRACAO_NOTA_ENTRADA_CREATE_EXAMPLE: IntegracaoNotaEntradaCreate
     vlrIcmsSt: 210.75,
     vlrIpi: 0,
     vlrFrete: 310,
+    vlrSeguro: 0,
+    vlrDespesa: 0,
     chaveNfe: "50260800000000000191550010000042121000042120",
     dtNfe: new Date("2026-08-28T00:00:00.000Z"),
     mensagem: null,
@@ -1359,12 +1393,12 @@ export const INTEGRACAO_NOTA_ENTRADA_CREATE_EXAMPLE: IntegracaoNotaEntradaCreate
     itens: [
       {
         delete: false,
-        codigoErp: "NE-000042-1-0001",
-        produtoCodigo: "11400443",
-        armazemCodigo: "01",
+        // D1_FILIAL-D1_DOC-D1_SERIE-D1_FORNECE-D1_LOJA-D1_ITEM
+        codigoErp: "01-000004212-1-000042-01-0001",
+        produtoCodigo: "01-11400443",
+        armazemCodigo: "01-01",
         item: 1,
         cfop: "1102",
-        ncm: "22029900",
         quantidade: 200,
         vlrUnitario: 39.5,
         vlrDesconto: 0,

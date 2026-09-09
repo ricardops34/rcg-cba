@@ -8,7 +8,9 @@
 > individual — ver "Implementado em 2026-09-03" mais abaixo.
 >
 > **A documentação vigente está em [`../integração/`](../integração/README.md)**
-> (conceitos, referência de endpoints e guia do Swagger).
+> (conceitos, referência de endpoints e guia do Swagger), e o plano da
+> integração inteira — os dois lados, do que já foi entregue ao que falta — em
+> `C:\VPS\protheusrcg\Portal\BJ\PLANO.md`.
 
 ## Contexto
 

@@ -338,7 +338,10 @@ Saída esperada quando não há nada a fazer: `Nada a fazer: a base já estava e
 com o catálogo.`
 
 Precisa da role dona (`plataforma`), como as migrations. É idempotente e **não
-apaga nada**: cria o que falta e atualiza nome/rota/ícone/ordem do menu. Em
+apaga nada**: cria o que falta e atualiza nome/rota/ícone/ordem e o
+**módulo** do menu — mover um item de módulo no catálogo (como o "Recado para a
+equipe", que saiu do Comercial para o Gerencial em 2026-09-08) é exatamente isto,
+sem migration. Em
 produção, roda **depois** do `migrate deploy`.
 
 Por que existia divergência antes: isto vivia duas vezes — nos arrays do seed e
