@@ -9,9 +9,22 @@ import { useAuthStore } from "@/stores/auth-store";
 import { DynamicIcon } from "@/lib/dynamic-icon";
 import { avatarColorClass, initials } from "@/lib/avatar-color";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,6 +39,7 @@ import { assetUrl } from "@/lib/api-client";
 export function AppSidebar({ collapsed }: { collapsed: boolean }) {
   return (
     <aside
+      data-tour="menu-lateral"
       className={cn(
         "hidden shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:flex",
         collapsed ? "w-[4.5rem]" : "w-64",
@@ -36,24 +50,44 @@ export function AppSidebar({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-export function MobileSidebar({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function MobileSidebar({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="left" className="w-72 flex-col bg-sidebar p-0 text-sidebar-foreground">
+      <SheetContent
+        side="left"
+        className="w-72 flex-col bg-sidebar p-0 text-sidebar-foreground"
+      >
         <SheetHeader className="sr-only">
           <SheetTitle>Menu</SheetTitle>
         </SheetHeader>
-        <SidebarContent collapsed={false} onNavigate={() => onOpenChange(false)} />
+        <SidebarContent
+          collapsed={false}
+          onNavigate={() => onOpenChange(false)}
+        />
       </SheetContent>
     </Sheet>
   );
 }
 
-function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
+function SidebarContent({
+  collapsed,
+  onNavigate,
+}: {
+  collapsed: boolean;
+  onNavigate?: () => void;
+}) {
   const { data: modulos, isLoading } = useMenu();
   const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
-  const empresaAtiva = user?.empresas.find((empresa) => empresa.empresaId === user.empresaAtivaId);
+  const empresaAtiva = user?.empresas.find(
+    (empresa) => empresa.empresaId === user.empresaAtivaId,
+  );
   const logo = assetUrl(empresaAtiva?.logoUrl);
   const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
   const modulosVisiveis = modulos
@@ -86,7 +120,12 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
     <>
       {/* Recolhida a barra tem 4.5rem: com px-3 sobrariam 48px e a logo (52.8px)
           encostaria nas bordas — por isso o respiro menor só nesse estado. */}
-      <div className={cn("flex h-16 shrink-0 items-center justify-center", collapsed ? "px-2" : "px-3")}>
+      <div
+        className={cn(
+          "flex h-16 shrink-0 items-center justify-center",
+          collapsed ? "px-2" : "px-3",
+        )}
+      >
         {logo ? (
           /*
             Altura **fixa**, não `max-h`: com um teto, a logo cujo arquivo é
@@ -98,18 +137,31 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
           <img
             src={logo}
             alt={empresaAtiva?.nomeFantasia ?? "Empresa ativa"}
-            className={cn("h-[3.3rem] w-full object-contain", collapsed ? "max-w-[3.3rem]" : "max-w-[216px]")}
+            className={cn(
+              "h-[3.3rem] w-full object-contain",
+              collapsed ? "max-w-[3.3rem]" : "max-w-[216px]",
+            )}
           />
         ) : (
-          <span className={cn("truncate text-center font-semibold", collapsed ? "text-xs" : "text-sm")}>
+          <span
+            className={cn(
+              "truncate text-center font-semibold",
+              collapsed ? "text-xs" : "text-sm",
+            )}
+          >
             {collapsed
               ? empresaAtiva?.nomeFantasia.slice(0, 2).toUpperCase()
-              : empresaAtiva?.nomeFantasia ?? "Plataforma Comercial"}
+              : (empresaAtiva?.nomeFantasia ?? "Plataforma Comercial")}
           </span>
         )}
       </div>
 
-      <nav className={cn("flex-1 space-y-5 overflow-y-auto px-3 pt-4 pb-4", collapsed && "px-2")}>
+      <nav
+        className={cn(
+          "flex-1 space-y-5 overflow-y-auto px-3 pt-4 pb-4",
+          collapsed && "px-2",
+        )}
+      >
         <NavLink
           href="/"
           icon={<LayoutDashboard className="size-4" />}
@@ -144,7 +196,11 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
                 </TooltipTrigger>
                 <TooltipContent side="right">{modulo.nome}</TooltipContent>
               </Tooltip>
-              <DropdownMenuContent side="right" align="start" className="min-w-48">
+              <DropdownMenuContent
+                side="right"
+                align="start"
+                className="min-w-48"
+              >
                 <DropdownMenuLabel>{modulo.nome}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {modulo.menus.map((menu) => (
@@ -153,7 +209,8 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
                       href={menu.rota ?? "#"}
                       className={cn(
                         "flex items-center gap-2",
-                        pathname === menu.rota && "bg-accent text-accent-foreground",
+                        pathname === menu.rota &&
+                          "bg-accent text-accent-foreground",
                       )}
                     >
                       <DynamicIcon name={menu.icone} className="size-4" />
@@ -164,7 +221,11 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <Collapsible key={modulo.id} open={!closedGroups.has(modulo.id)} onOpenChange={() => toggleGroup(modulo.id)}>
+            <Collapsible
+              key={modulo.id}
+              open={!closedGroups.has(modulo.id)}
+              onOpenChange={() => toggleGroup(modulo.id)}
+            >
               <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-1 text-left">
                 <span className="font-mono text-[0.68rem] font-medium tracking-widest text-sidebar-foreground/50 uppercase">
                   {modulo.nome}
@@ -190,8 +251,18 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
       </nav>
 
       {user && (
-        <div className={cn("shrink-0 border-t border-sidebar-border p-3", collapsed && "flex justify-center px-2")}>
-          <div className={cn("flex items-center gap-2.5", collapsed && "justify-center")}>
+        <div
+          className={cn(
+            "shrink-0 border-t border-sidebar-border p-3",
+            collapsed && "flex justify-center px-2",
+          )}
+        >
+          <div
+            className={cn(
+              "flex items-center gap-2.5",
+              collapsed && "justify-center",
+            )}
+          >
             <div
               className={cn(
                 "flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
@@ -203,7 +274,9 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
             {!collapsed && (
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{user.nome}</p>
-                <p className="truncate text-xs text-sidebar-foreground/50">{user.email}</p>
+                <p className="truncate text-xs text-sidebar-foreground/50">
+                  {user.email}
+                </p>
               </div>
             )}
           </div>

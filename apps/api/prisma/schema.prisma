@@ -178,19 +178,20 @@ model Empresa {
   fornecedores               Fornecedor[]
   notasEntrada               NotaEntrada[]
   notasEntradaItens          NotaEntradaItem[]
+  tourExecucoes              TourExecucao[]
 
   @@map("empresas")
 }
 
 model Usuario {
-  id                      String    @id @default(uuid())
-  nome                    String
-  email                   String    @unique
-  senhaHash               String
-  ativo                   Boolean   @default(true)
-  ultimoLogin             DateTime?
-  avatarUrl               String?
-  mfaEnabled              Boolean   @default(false)
+  id          String    @id @default(uuid())
+  nome        String
+  email       String    @unique
+  senhaHash   String
+  ativo       Boolean   @default(true)
+  ultimoLogin DateTime?
+  avatarUrl   String?
+  mfaEnabled  Boolean   @default(false)
 
   // Política de senha (parâmetros SENHA_* por empresa): senhaAlteradaEm
   // marca a "idade" da senha atual para cálculo de expiração; tentativasFalhas
@@ -225,6 +226,7 @@ model Usuario {
   notificacoes     Notificacao[]
   whatsappVinculos WhatsappVinculoFuncionario[]
   termosAceites    TermoAceite[]
+  tourExecucoes    TourExecucao[]
 
   @@map("usuarios")
 }
@@ -279,6 +281,39 @@ model TermoAceite {
   @@unique([termoId, usuarioId])
   @@index([usuarioId, aceitoEm])
   @@map("termo_aceites")
+}
+
+enum TourOrigem {
+  automatico
+  manual
+}
+
+enum TourStatus {
+  em_andamento
+  concluido
+  dispensado
+}
+
+/// Cada início (inclusive uma repetição manual) gera uma execução. O
+/// histórico permite saber qual versão foi apresentada e onde foi encerrada.
+model TourExecucao {
+  id           String     @id @default(uuid())
+  empresaId    String
+  usuarioId    String
+  tourCodigo   String
+  versao       Int
+  origem       TourOrigem
+  status       TourStatus @default(em_andamento)
+  passoAtual   Int        @default(0)
+  iniciadoEm   DateTime   @default(now())
+  finalizadoEm DateTime?
+  updatedAt    DateTime   @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@index([empresaId, usuarioId, tourCodigo, versao, iniciadoEm], map: "tour_execucoes_usuario_versao_idx")
+  @@map("tour_execucoes")
 }
 
 /**
@@ -349,10 +384,10 @@ model UsuarioEmpresa {
 // empresaId/RLS (mesmo precedente de Modulo/Menu/Rotina). Cada vínculo
 // usuário×empresa (UsuarioEmpresa) escolhe um perfil dessa lista global.
 model Perfil {
-  id          String  @id @default(uuid())
-  nome        String
-  descricao   String?
-  sistemaBase Boolean @default(false)
+  id                   String  @id @default(uuid())
+  nome                 String
+  descricao            String?
+  sistemaBase          Boolean @default(false)
   // Autoriza mutações no catálogo global e a área /plataforma (PlatformAdminGuard).
   // Independente de sistemaBase: sistemaBase é acesso total DENTRO da empresa
   // (liga isAdmin), administraPlataforma é acesso ACIMA de qualquer empresa.
@@ -363,7 +398,7 @@ model Perfil {
   // PerfilCreate/PerfilUpdate — só o seed e a migration concedem, para não
   // abrir escalonamento de privilégio pela tela de Perfis/Usuários.
   administraPlataforma Boolean @default(false)
-  ativo       Boolean @default(true)
+  ativo                Boolean @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

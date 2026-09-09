@@ -7,7 +7,7 @@ import {
   Post,
   Req,
   UseGuards,
-} from '@@nestjs/common';
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -27,7 +27,6 @@ import { TermosService } from './termos.service';
 @ApiTags('termos')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@PermitirTermoPendente()
 @Controller('termos')
 export class TermosController {
   constructor(private readonly termos: TermosService) {}
@@ -38,6 +37,7 @@ export class TermosController {
       'Lista documentos obrigatórios pendentes e o histórico de versões já aceitas.',
   })
   @ApiResponse({ status: 200, description: 'Situação atual dos termos' })
+  @PermitirTermoPendente()
   @Get('status')
   status(@CurrentUser() user: AuthenticatedUser) {
     return this.termos.status(user.id);
@@ -49,7 +49,11 @@ export class TermosController {
       'Registra usuário, empresa de contexto, data do servidor, IP, navegador e hash do conteúdo.',
   })
   @ApiResponse({ status: 201, description: 'Aceite registrado' })
-  @ApiResponse({ status: 409, description: 'O conteúdo exibido deixou de ser o vigente' })
+  @ApiResponse({
+    status: 409,
+    description: 'O conteúdo exibido deixou de ser o vigente',
+  })
+  @PermitirTermoPendente()
   @Post(':id/aceite')
   aceitar(
     @Param('id', ParseUUIDPipe) id: string,
@@ -63,4 +67,3 @@ export class TermosController {
     });
   }
 }
-

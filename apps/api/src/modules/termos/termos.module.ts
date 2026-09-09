@@ -9,4 +9,3 @@ import { TermosService } from './termos.service';
   exports: [TermosService],
 })
 export class TermosModule {}
-

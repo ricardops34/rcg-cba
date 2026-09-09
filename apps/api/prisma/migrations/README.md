@@ -134,4 +134,7 @@ Sem RLS por serem referência global (sem coluna `empresaId`): `paises`,
 senha são globais — e de `perfis`: um
 mesmo papel/RBAC, ex. "Administrador Empresa"/"Vendedor", é compartilhado por
 todas as empresas; cada vínculo usuário×empresa continua escolhendo seu
-próprio perfil dessa lista global).
+próprio perfil dessa lista global). `termo_documentos` e `termo_aceites`
+também são globais: o aceite acompanha a conta do usuário mesmo quando ela
+participa de várias empresas; `empresaContextoId` é somente evidência da
+sessão em que o evento ocorreu, não uma chave de isolamento tenant.

@@ -1,10 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
-import { Building2, Check, HelpCircle, LogOut, Menu, MessageCircle, Moon, Search, Sun, UserCog } from "lucide-react";
+import {
+  Building2,
+  Check,
+  CirclePlay,
+  HelpCircle,
+  Info,
+  LogOut,
+  Menu,
+  MessageCircle,
+  Moon,
+  Search,
+  Sun,
+  UserCog,
+} from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import type { CurrentUser } from "@plataforma/contracts";
@@ -26,6 +39,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { ajudaPorRota } from "@/lib/ajuda-rotinas";
+import { useTour } from "@/components/tour/tour-provider";
 
 export function AppTopbar({
   onToggleSidebar,
@@ -37,8 +52,10 @@ export function AppTopbar({
   subtitle?: string;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const { user, logout, setTokens, setUser } = useAuthStore();
+  const { iniciarTourInicio } = useTour();
   const [searchOpen, setSearchOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
 
@@ -47,24 +64,29 @@ export function AppTopbar({
     router.replace("/login");
   };
 
-  const empresaAtiva = user?.empresas.find((e) => e.empresaId === user.empresaAtivaId);
+  const empresaAtiva = user?.empresas.find(
+    (e) => e.empresaId === user.empresaAtivaId,
+  );
+  const ajudaAtual = ajudaPorRota(pathname);
 
   const handleSwitch = async (empresaId: string) => {
     if (empresaId === user?.empresaAtivaId || switching) return;
     setSwitching(true);
     try {
-      const tokens = await apiFetch<{ accessToken: string; refreshToken: string }>(
-        "/auth/switch-empresa",
-        { method: "POST", body: { empresaId } },
-      );
+      const tokens = await apiFetch<{
+        accessToken: string;
+        refreshToken: string;
+      }>("/auth/switch-empresa", { method: "POST", body: { empresaId } });
       setTokens(tokens.accessToken, tokens.refreshToken);
       const me = await apiFetch<CurrentUser>("/auth/me");
       setUser(me);
       // Recarrega a app inteira: garante que nenhum dado em cache da
       // empresa anterior fique visível na tela após a troca.
-      window.location.href = "/";
+      window.location.assign("/");
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Erro ao trocar de empresa");
+      toast.error(
+        err instanceof ApiError ? err.message : "Erro ao trocar de empresa",
+      );
       setSwitching(false);
     }
   };
@@ -73,7 +95,13 @@ export function AppTopbar({
     <header className="flex h-14 min-w-0 items-center gap-1 border-b border-border/70 bg-background px-2 sm:gap-3 sm:px-4">
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" onClick={onToggleSidebar} aria-label="Recolher menu">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggleSidebar}
+            aria-label="Recolher menu"
+            data-tour="alternar-menu"
+          >
             <Menu className="size-4.5" />
           </Button>
         </TooltipTrigger>
@@ -83,17 +111,24 @@ export function AppTopbar({
       {title && (
         <div className="hidden shrink-0 md:block">
           <p className="text-sm leading-tight font-semibold">{title}</p>
-          {subtitle && <p className="text-xs leading-tight text-muted-foreground">{subtitle}</p>}
+          {subtitle && (
+            <p className="text-xs leading-tight text-muted-foreground">
+              {subtitle}
+            </p>
+          )}
         </div>
       )}
 
       <button
+        data-tour="busca-global"
         onClick={() => setSearchOpen(true)}
         aria-label="Buscar no sistema"
         className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/50 text-sm text-muted-foreground transition-colors hover:bg-muted sm:ml-2 sm:h-8 sm:w-auto sm:max-w-xs sm:flex-1 sm:justify-start sm:gap-2 sm:px-3"
       >
         <Search className="size-3.5" />
-        <span className="hidden flex-1 text-left sm:inline">Buscar no sistema...</span>
+        <span className="hidden flex-1 text-left sm:inline">
+          Buscar no sistema...
+        </span>
         <kbd className="hidden rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[0.65rem] sm:inline">
           ⌘K
         </kbd>
@@ -101,19 +136,66 @@ export function AppTopbar({
       <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
 
       <div className="ml-auto flex items-center gap-1">
-        <NotificacoesSino />
-        <AgenteBotaoTopbar />
+        <div data-tour="notificacoes">
+          <NotificacoesSino />
+        </div>
+        <div data-tour="assistente">
+          <AgenteBotaoTopbar />
+        </div>
+
+        {pathname === "/" && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                className="hidden sm:inline-flex"
+                variant="ghost"
+                size="icon"
+                aria-label="Refazer tour desta tela"
+                onClick={iniciarTourInicio}
+                data-tour="refazer-tour"
+              >
+                <CirclePlay className="size-4.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Refazer tour</TooltipContent>
+          </Tooltip>
+        )}
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button className="hidden sm:inline-flex" variant="ghost" size="icon" aria-label="Ajuda">
+            <Button
+              className="hidden sm:inline-flex"
+              variant="ghost"
+              size="icon"
+              aria-label="Ajuda desta rotina"
+              onClick={() => router.push(ajudaAtual?.href ?? "/ajuda")}
+              data-tour="ajuda"
+            >
               <HelpCircle className="size-4.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Ajuda</TooltipContent>
+          <TooltipContent>
+            {ajudaAtual ? "Ajuda desta rotina" : "Central de ajuda"}
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              className="hidden sm:inline-flex"
+              variant="ghost"
+              size="icon"
+              aria-label="Sobre o sistema"
+              onClick={() => router.push("/ajuda/sobre")}
+            >
+              <Info className="size-4.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Sobre o sistema</TooltipContent>
         </Tooltip>
 
         <Button
+          data-tour="tema"
           variant="ghost"
           size="icon"
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -125,7 +207,13 @@ export function AppTopbar({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="rounded-full" aria-label="Conta">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full"
+              aria-label="Conta"
+              data-tour="conta"
+            >
               <div
                 className={
                   "flex size-7 items-center justify-center rounded-full text-xs font-semibold " +
@@ -139,7 +227,9 @@ export function AppTopbar({
           <DropdownMenuContent align="end" className="w-64">
             <DropdownMenuLabel className="space-y-0.5">
               <p>{user?.nome}</p>
-              <p className="text-xs font-normal text-muted-foreground">{user?.email}</p>
+              <p className="text-xs font-normal text-muted-foreground">
+                {user?.email}
+              </p>
             </DropdownMenuLabel>
             {empresaAtiva && (
               <>
@@ -157,7 +247,9 @@ export function AppTopbar({
                       onClick={() => handleSwitch(empresa.empresaId)}
                     >
                       <span className="truncate">{empresa.nomeFantasia}</span>
-                      {ativa && <Check className="ml-auto size-4 text-primary" />}
+                      {ativa && (
+                        <Check className="ml-auto size-4 text-primary" />
+                      )}
                     </DropdownMenuItem>
                   );
                 })}
@@ -169,7 +261,11 @@ export function AppTopbar({
                 {/* Atalho direto pro pareamento do número institucional — fica
                     sempre visível, mesmo com o WhatsApp desligado, porque é
                     exatamente aí que quem procura como ligá-lo precisa cair. */}
-                <DropdownMenuItem onClick={() => router.push("/admin/whatsapp?aba=institucional")}>
+                <DropdownMenuItem
+                  onClick={() =>
+                    router.push("/admin/whatsapp?aba=institucional")
+                  }
+                >
                   <MessageCircle className="size-4" />
                   Conectar WhatsApp
                 </DropdownMenuItem>
@@ -180,6 +276,29 @@ export function AppTopbar({
               <UserCog className="size-4" />
               Meu perfil
             </DropdownMenuItem>
+            <DropdownMenuItem
+              className="sm:hidden"
+              onClick={() => router.push(ajudaAtual?.href ?? "/ajuda")}
+            >
+              <HelpCircle className="size-4" />
+              Ajuda
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="sm:hidden"
+              onClick={() => router.push("/ajuda/sobre")}
+            >
+              <Info className="size-4" />
+              Sobre o sistema
+            </DropdownMenuItem>
+            {pathname === "/" && (
+              <DropdownMenuItem
+                className="sm:hidden"
+                onClick={iniciarTourInicio}
+              >
+                <CirclePlay className="size-4" />
+                Refazer tour
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout}>
               <LogOut className="size-4" />

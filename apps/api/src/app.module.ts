@@ -49,6 +49,8 @@ import { LeadsModule } from './modules/leads/leads.module';
 import { ProdutoCamposModule } from './modules/produto-campos/produto-campos.module';
 import { PortalClienteModule } from './modules/portal-cliente/portal-cliente.module';
 import { validarSegredosDoAmbiente } from './common/config/validar-segredos';
+import { TermosModule } from './modules/termos/termos.module';
+import { ToursModule } from './modules/tours/tours.module';
 
 @Module({
   imports: [
@@ -73,6 +75,10 @@ import { validarSegredosDoAmbiente } from './common/config/validar-segredos';
     // Antes do AuthModule: é global e fornece o registro de acessos e a
     // verificação de expediente que o login e o JwtAuthGuard consomem.
     AcessosModule,
+    // Global porque JwtAuthGuard é usado em módulos diferentes e consulta o
+    // aceite antes de liberar qualquer rota de negócio.
+    TermosModule,
+    ToursModule,
     AuthModule,
     EmpresasModule,
     PlataformaModule,

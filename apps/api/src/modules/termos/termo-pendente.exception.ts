@@ -10,4 +10,3 @@ export class TermoPendenteException extends ForbiddenException {
     });
   }
 }
-

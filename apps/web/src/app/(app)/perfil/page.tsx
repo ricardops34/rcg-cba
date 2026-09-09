@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { TermosAceitosCard } from "@/components/perfil/termos-aceitos-card";
 
 export default function PerfilPage() {
   const { user, setUser } = useAuthStore();
@@ -78,6 +79,8 @@ export default function PerfilPage() {
       </Card>
 
       <ChangePasswordForm />
+
+      <TermosAceitosCard />
 
       <WhatsappPareamentoCard />
     </div>

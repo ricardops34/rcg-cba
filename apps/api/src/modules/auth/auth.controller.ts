@@ -21,6 +21,7 @@ import {
   CurrentUser,
   type AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
+import { PermitirTermoPendente } from '../../common/decorators/permitir-termo-pendente.decorator';
 
 const REFRESH_EXAMPLE = { refreshToken: AUTH_TOKENS_EXAMPLE.refreshToken };
 
@@ -108,6 +109,7 @@ export class AuthController {
   @ApiResponse({ status: 200, schema: { example: CURRENT_USER_EXAMPLE } })
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
+  @PermitirTermoPendente()
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.me(user.id, user.empresaAtivaId);
@@ -124,6 +126,7 @@ export class AuthController {
   @ApiResponse({ status: 403, description: 'Usuário não tem acesso a esta empresa' })
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
+  @PermitirTermoPendente()
   @Post('switch-empresa')
   switchEmpresa(
     @Body() dto: SwitchEmpresaDto,
@@ -144,6 +147,7 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Nova senha não atende à política vigente' })
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
+  @PermitirTermoPendente()
   @Patch('change-password')
   changePassword(@Body() dto: ChangePasswordDto, @CurrentUser() user: AuthenticatedUser) {
     return this.authService.changePassword(user.id, dto);

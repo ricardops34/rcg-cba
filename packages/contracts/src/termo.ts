@@ -34,7 +34,7 @@ export type TermosStatus = z.infer<typeof termosStatusSchema>;
 
 export const termoAceiteInputSchema = z.object({
   aceite: z.literal(true, {
-    error: "É necessário confirmar a concordância com o documento",
+    invalid_type_error: "É necessário confirmar a concordância com o documento",
   }),
   conteudoHash: z.string().regex(/^[a-f0-9]{64}$/),
 });
@@ -46,4 +46,3 @@ export const termoAceiteResultSchema = z.object({
   aceitoEm: z.string().datetime(),
 });
 export type TermoAceiteResult = z.infer<typeof termoAceiteResultSchema>;
-

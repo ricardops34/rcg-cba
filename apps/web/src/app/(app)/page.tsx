@@ -193,7 +193,7 @@ export default function InicioPage() {
       </div>
 
       {visiveis.length > 0 && (
-        <section className="space-y-3">
+        <section className="space-y-3" data-tour="acesso-rapido">
           <h2 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase">
             Acesso rápido
           </h2>
@@ -242,7 +242,7 @@ function Mural({
   carregando: boolean;
 }) {
   return (
-    <Card className="lg:col-span-2">
+    <Card className="lg:col-span-2" data-tour="comunicados">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Megaphone className="size-4 text-muted-foreground" />
@@ -299,7 +299,7 @@ function Aniversarios({
   carregando: boolean;
 }) {
   return (
-    <Card>
+    <Card data-tour="aniversariantes">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Cake className="size-4 text-muted-foreground" />

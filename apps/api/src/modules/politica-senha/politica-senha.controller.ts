@@ -14,6 +14,7 @@ import {
   CurrentUser,
   type AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
+import { PermitirTermoPendente } from '../../common/decorators/permitir-termo-pendente.decorator';
 
 /**
  * Só leitura. A política deixou de ter tela própria em 2026-08-26 e virou
@@ -44,6 +45,7 @@ export class PoliticaSenhaController {
   })
   @ApiResponse({ status: 200, schema: { example: POLITICA_SENHA_EXAMPLE } })
   @UseGuards(JwtAuthGuard)
+  @PermitirTermoPendente()
   @Get()
   getDaPropriaConta(@CurrentUser() user: AuthenticatedUser) {
     return this.service.getVigenteParaUsuario(user.id);

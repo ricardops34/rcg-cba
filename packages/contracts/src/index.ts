@@ -59,3 +59,4 @@ export * from "./lead";
 export * from "./produto-campo";
 export * from "./produto-relacionado";
 export * from "./termo";
+export * from "./tour";
