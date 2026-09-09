@@ -21,6 +21,7 @@ recusado pela API.
 - [Arquitetura e fluxos do `zapo-js`](./integracao-zapo-js.md)
 - [Integração com Evolution GO](./integracao-evolution-go.md)
 - [Plano de integração unificada: Zapo e Evolution GO](../planos/whatsapp-integracao-unificada.md)
+- [Plano — terceiro provedor: API Oficial da Meta (não implementado ainda)](../planos/whatsapp-api-oficial.md)
 - [Referência de endpoints](./endpoints.md)
 - [Configuração, implantação e diagnóstico](./operacao.md)
 - [Plano funcional original](../planos/whatsapp-vendedor.md)
