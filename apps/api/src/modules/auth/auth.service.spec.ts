@@ -52,6 +52,7 @@ describe('AuthService', () => {
     empresa: { id: 'empresa-1', nomeFantasia: 'Empresa 1' },
     perfil: {
       sistemaBase: false,
+      administraPlataforma: false,
       permissoes: [
         { permitido: true, acao: 'visualizar', rotina: { codigo: 'clientes' } },
       ],

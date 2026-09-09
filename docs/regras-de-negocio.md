@@ -5,9 +5,13 @@ trabalhar no repo — isso fica em `AGENTS.md`).
 
 ## Perfil e hierarquia
 
-Não existe um campo separado de "cargo" — `Perfil` (RBAC, um por empresa,
-ex.: Administrador/Gerente/Supervisor) define **quais ações** o usuário pode
-fazer (permissões por rotina).
+Não existe um campo separado de "cargo" — `Perfil` (RBAC, global — compartilhado
+por todas as empresas, ex.: Administrador Empresa/Gerente/Supervisor) define
+**quais ações** o usuário pode fazer (permissões por rotina). Um perfil à
+parte, "Administrador da Plataforma" (`Perfil.administraPlataforma = true`),
+concede acesso à administração do SaaS — todas as empresas, catálogo global
+— e é o que `PlatformAdminGuard` confere; não é concedível pela API de
+Perfis/Usuários (ver `UsuariosService.garantirPodeAtribuirPerfil`).
 
 Não existe cadastro de "colaborador" separado — hierarquia (`superiorId`),
 nome reduzido, código ERP e contato são todos campos do próprio
@@ -224,9 +228,10 @@ exibir é o `bannerImagemUrl`.
 Decidido em 2026-09-08, quando entraram as notas de entrada.
 
 As duas rotinas novas de compras — **Fornecedores** e **Notas de Entrada** —
-nascem permitidas apenas para **Administrador e Diretor**. Vendedor, Supervisor
-e Gerente não veem o menu e levam 403 na API, mesmo tendo acesso a Notas de
-Saída.
+nascem permitidas apenas para **Administrador Empresa e Diretor** (e, por ter
+acesso total, Administrador da Plataforma), mais **Administrativo**
+(visualizar) — ver ADMINISTRATIVO_PERMISSOES. Vendedor, Supervisor e Gerente
+não veem o menu e levam 403 na API, mesmo tendo acesso a Notas de Saída.
 
 O motivo é o valor da linha. A nota de entrada registra por quanto a mercadoria
 foi comprada; cruzada com a nota de saída, que a equipe já enxerga, ela entrega

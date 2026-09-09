@@ -252,12 +252,12 @@ export class PlataformaService {
       // O perfil é global (compartilhado por todas as empresas), então o
       // Administrador que a empresa nova usa é o mesmo que já existe.
       const perfilAdmin = await tx.perfil.findFirst({
-        where: { nome: 'Administrador', deletedAt: null },
+        where: { nome: 'Administrador Empresa', deletedAt: null },
         select: { id: true },
       });
       if (!perfilAdmin) {
         throw new NotFoundException(
-          'Perfil Administrador não encontrado — rode o seed do catálogo antes de criar empresas.',
+          'Perfil Administrador Empresa não encontrado — rode o seed do catálogo antes de criar empresas.',
         );
       }
 
@@ -346,7 +346,7 @@ export class PlataformaService {
     if (!empresa) throw new NotFoundException('Empresa não encontrada');
 
     const perfilAdmin = await this.prisma.perfil.findFirst({
-      where: { nome: 'Administrador', deletedAt: null },
+      where: { nome: 'Administrador Empresa', deletedAt: null },
       select: { id: true },
     });
     if (!perfilAdmin) return [];
@@ -428,7 +428,7 @@ export class PlataformaService {
         select: { id: true, email: true },
       }),
       this.prisma.perfil.findFirst({
-        where: { nome: 'Administrador', deletedAt: null },
+        where: { nome: 'Administrador Empresa', deletedAt: null },
         select: { id: true },
       }),
     ]);
@@ -439,7 +439,7 @@ export class PlataformaService {
       );
     }
     if (!perfilAdmin) {
-      throw new NotFoundException('Perfil Administrador não encontrado');
+      throw new NotFoundException('Perfil Administrador Empresa não encontrado');
     }
 
     return this.prisma.withTenant(empresaId, async (tx) => {
@@ -512,10 +512,10 @@ export class PlataformaService {
     if (!empresa) throw new NotFoundException('Empresa não encontrada');
 
     const perfilAdmin = await this.prisma.perfil.findFirst({
-      where: { nome: 'Administrador', deletedAt: null },
+      where: { nome: 'Administrador Empresa', deletedAt: null },
       select: { id: true },
     });
-    if (!perfilAdmin) throw new NotFoundException('Perfil Administrador não encontrado');
+    if (!perfilAdmin) throw new NotFoundException('Perfil Administrador Empresa não encontrado');
 
     return this.prisma.withTenant(empresaId, async (tx) => {
       const admins = await tx.usuarioEmpresa.count({
@@ -628,9 +628,58 @@ export class PlataformaService {
     });
   }
 
+  /**
+   * O perfil "Administrador da Plataforma" — não hardcoded por id porque o
+   * seed/migration o cria com um uuid gerado; hardcoded por nome, que é
+   * `@@unique` em Perfil (mesmo padrão do resto deste service para
+   * "Administrador Empresa").
+   */
+  private async perfilPlataforma() {
+    const perfil = await this.prisma.perfil.findFirst({
+      where: { administraPlataforma: true, deletedAt: null },
+      select: { id: true },
+    });
+    if (!perfil) {
+      throw new NotFoundException(
+        'Perfil Administrador da Plataforma não encontrado — rode o seed do catálogo.',
+      );
+    }
+    return perfil;
+  }
+
+  /**
+   * Quem administra a plataforma hoje: usuários com vínculo ATIVO no perfil
+   * "Administrador da Plataforma", em qualquer empresa.
+   *
+   * `usuario_empresas` tem RLS e não há policy de visão global sobre ela —
+   * por isso o laço por empresa com `withTenant`, no mesmo espírito do laço
+   * de `listarAdministradoresDaEmpresa` mais abaixo. Se o número de empresas
+   * crescer a ponto de doer, a saída é uma policy nova + um `withPlataforma`
+   * no PrismaService, no molde de `withPortalCredential` — não vale a pena
+   * antes de doer.
+   */
   async listarAdmins() {
+    const perfil = await this.perfilPlataforma();
+    const empresas = await this.prisma.empresa.findMany({
+      where: { deletedAt: null },
+      select: { id: true },
+    });
+
+    const usuarioIds = new Set<string>();
+    for (const { id: empresaId } of empresas) {
+      const vinculos = await this.prisma.withTenant(empresaId, (tx) =>
+        tx.usuarioEmpresa.findMany({
+          where: { empresaId, perfilId: perfil.id, ativo: true },
+          select: { usuarioId: true },
+        }),
+      );
+      for (const v of vinculos) usuarioIds.add(v.usuarioId);
+    }
+
+    if (usuarioIds.size === 0) return [];
+
     const linhas = await this.prisma.usuario.findMany({
-      where: { administradorPlataforma: true, deletedAt: null },
+      where: { id: { in: [...usuarioIds] }, deletedAt: null },
       select: {
         id: true,
         nome: true,
@@ -668,12 +717,20 @@ export class PlataformaService {
   }
 
   /**
-   * Promove ou revoga um administrador da plataforma.
+   * Promove ou revoga um administrador da plataforma, trocando o perfil do
+   * vínculo (RBAC via perfil, não mais um atributo solto do usuário — ver o
+   * comentário de Perfil.administraPlataforma no schema).
    *
-   * Recusa revogar o último: sem nenhum administrador, o módulo fica
-   * inacessível e a saída volta a ser um UPDATE manual no banco. E recusa
-   * revogar a si mesmo — quem faz isso perde o acesso no clique seguinte, sem
-   * ter como desfazer.
+   * Promover: aplica o perfil no vínculo ATIVO mais antigo do usuário (mesmo
+   * desempate de AuthService.findVinculoAtivo). Precisa de pelo menos um
+   * vínculo — não há empresa nenhuma para "inventar" um.
+   *
+   * Revogar: devolve esse vínculo para "Administrador Empresa" (o perfil de
+   * acesso total dentro do próprio tenant — sem isso a pessoa ficaria com um
+   * perfil qualquer, ou nenhum). Recusa revogar o último administrador: sem
+   * nenhum, o módulo fica inacessível e a saída volta a ser um UPDATE manual
+   * no banco. E recusa revogar a si mesmo — quem faz isso perde o acesso no
+   * clique seguinte, sem ter como desfazer.
    */
   async definirAdmin(
     usuarioId: string,
@@ -682,47 +739,87 @@ export class PlataformaService {
   ) {
     const usuario = await this.prisma.usuario.findFirst({
       where: { id: usuarioId, deletedAt: null },
-      select: {
-        id: true,
-        nome: true,
-        email: true,
-        administradorPlataforma: true,
-      },
+      select: { id: true, nome: true, email: true },
     });
     if (!usuario) throw new NotFoundException('Usuário não encontrado');
 
+    const [perfilPlataforma, admins] = await Promise.all([
+      this.perfilPlataforma(),
+      this.listarAdmins(),
+    ]);
+    const jaEhAdmin = admins.some((a) => a.id === usuarioId);
+
     if (!administradorPlataforma) {
+      // Sem isto, revogar quem já NÃO é admin da plataforma sobrescreveria o
+      // perfil de verdade dele (o que quer que fosse) por "Administrador
+      // Empresa" — este método só troca perfil de quem de fato está na lista.
+      if (!jaEhAdmin) {
+        return { id: usuario.id, nome: usuario.nome, email: usuario.email, administradorPlataforma: false };
+      }
       if (usuario.id === ator.id) {
         throw new ConflictException(
           'Você não pode remover a si mesmo da administração da plataforma.',
         );
       }
-      const total = await this.prisma.usuario.count({
-        where: { administradorPlataforma: true, deletedAt: null, ativo: true },
-      });
-      if (total <= 1) {
+      if (admins.length <= 1) {
         throw new ConflictException(
           'Este é o único administrador da plataforma. Promova outro antes de remover este.',
         );
       }
+    } else if (jaEhAdmin) {
+      return { id: usuario.id, nome: usuario.nome, email: usuario.email, administradorPlataforma: true };
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const atualizado = await tx.usuario.update({
-        where: { id: usuarioId },
-        data: { administradorPlataforma, updatedBy: ator.id },
-        select: {
-          id: true,
-          nome: true,
-          email: true,
-          administradorPlataforma: true,
+    const perfilAlvo = administradorPlataforma
+      ? perfilPlataforma
+      : await this.prisma.perfil.findFirst({
+          where: { nome: 'Administrador Empresa', deletedAt: null },
+          select: { id: true },
+        });
+    if (!perfilAlvo) {
+      throw new NotFoundException('Perfil Administrador Empresa não encontrado');
+    }
+
+    // Promover: o vínculo ATIVO mais antigo — mesmo desempate do AuthService,
+    // para que qual empresa "carrega" o acesso de plataforma seja estável e
+    // previsível. Revogar: o vínculo que hoje CARREGA o perfil da plataforma
+    // (não necessariamente o mais antigo — um admin de plataforma consegue,
+    // via /usuarios, aplicar o perfil num vínculo específico), senão a
+    // revogação trocaria o vínculo errado e deixaria o de verdade intacto.
+    const vinculo = await this.prisma.withUsuario(usuarioId, (tx) =>
+      tx.usuarioEmpresa.findFirst({
+        where: {
+          usuarioId,
+          ativo: true,
+          deletedAt: null,
+          ...(administradorPlataforma ? {} : { perfilId: perfilPlataforma.id }),
         },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, empresaId: true },
+      }),
+    );
+    if (!vinculo) {
+      throw new ConflictException(
+        'Este usuário não tem vínculo ativo com nenhuma empresa — não há onde aplicar o perfil.',
+      );
+    }
+
+    return this.prisma.withTenant(vinculo.empresaId, async (tx) => {
+      await tx.usuarioEmpresa.update({
+        where: { id: vinculo.id },
+        data: { perfilId: perfilAlvo.id, updatedBy: ator.id },
       });
       await this.registrar(tx, ator, {
         acao: administradorPlataforma ? 'admin.promovido' : 'admin.revogado',
+        empresaId: vinculo.empresaId,
         valorNovo: usuario.email,
       });
-      return atualizado;
+      return {
+        id: usuario.id,
+        nome: usuario.nome,
+        email: usuario.email,
+        administradorPlataforma,
+      };
     });
   }
 

@@ -45,10 +45,11 @@ export interface ModuloComMenus {
  *
  * Não dá para ele nascer do catálogo como os outros: lá a visibilidade sai de
  * `<rotina>.visualizar`, permissão vive em perfil, e **perfis são globais** —
- * compartilhados por todas as empresas. Conceder a rotina ao Administrador a
- * daria a todo administrador de tenant, que é exatamente quem este módulo
- * precisa manter de fora. O corte aqui é o atributo `administradorPlataforma`
- * do usuário, o mesmo que a API confere no `PlatformAdminGuard`.
+ * compartilhados por todas as empresas. Conceder a rotina ao Administrador
+ * Empresa a daria a todo administrador de tenant, que é exatamente quem este
+ * módulo precisa manter de fora. O corte aqui é `administradorPlataforma` do
+ * usuário logado — vem do perfil do vínculo ATIVO (Perfil.administraPlataforma),
+ * o mesmo que a API confere no `PlatformAdminGuard`.
  *
  * Isto é conveniência de navegação, não controle de acesso: quem digitar a URL
  * à mão continua batendo no 403 da API.

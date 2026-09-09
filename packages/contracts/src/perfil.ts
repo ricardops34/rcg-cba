@@ -2,7 +2,7 @@ import { z } from "zod";
 import { acaoSchema, auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
 
 export const perfilCreateSchema = z.object({
-  nome: z.string().trim().min(2).max(80).describe("Nome do perfil (ex.: Administrador, Gerente)"),
+  nome: z.string().trim().min(2).max(80).describe("Nome do perfil (ex.: Administrador Empresa, Gerente)"),
   descricao: z
     .string()
     .trim()
@@ -16,11 +16,21 @@ export type PerfilCreate = z.infer<typeof perfilCreateSchema>;
 export const perfilUpdateSchema = perfilCreateSchema.partial();
 export type PerfilUpdate = z.infer<typeof perfilUpdateSchema>;
 
+// administraPlataforma fica de fora de perfilCreateSchema/perfilUpdateSchema
+// de propósito: só o seed e a migration concedem esse acesso. Deixar de fora
+// do que a API aceita ao criar/editar fecha, de um só lugar, o caminho de um
+// admin de empresa se auto-promover a admin da plataforma pela tela de
+// Perfis (que já é protegida por PlatformAdminGuard, mas é defesa em
+// profundidade — ver UsuariosService.garantirPodeAtribuirPerfil para a trava
+// que de fato importa: atribuir esse perfil a um vínculo).
 export const perfilSchema = perfilCreateSchema.extend({
   id: z.string().uuid().describe("Identificador único do perfil (UUID v4)"),
   sistemaBase: z
     .boolean()
     .describe("Perfis base do sistema têm acesso total e não podem ser excluídos"),
+  administraPlataforma: z
+    .boolean()
+    .describe("Perfil de administração da plataforma (todas as empresas) — não concedível pela API"),
   ...auditFieldsSchema.shape,
 });
 export type Perfil = z.infer<typeof perfilSchema>;

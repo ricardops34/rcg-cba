@@ -191,9 +191,6 @@ model Usuario {
   ultimoLogin             DateTime?
   avatarUrl               String?
   mfaEnabled              Boolean   @default(false)
-  // Autoriza mutaÃ§Ãµes no catÃ¡logo global. NÃ£o deriva do perfil da empresa:
-  // administrador de tenant nÃ£o Ã© administrador da plataforma.
-  administradorPlataforma Boolean   @default(false)
 
   // Política de senha (parâmetros SENHA_* por empresa): senhaAlteradaEm
   // marca a "idade" da senha atual para cálculo de expiração; tentativasFalhas
@@ -227,8 +224,61 @@ model Usuario {
   sessoes          Sessao[]
   notificacoes     Notificacao[]
   whatsappVinculos WhatsappVinculoFuncionario[]
+  termosAceites    TermoAceite[]
 
   @@map("usuarios")
+}
+
+// Documentos contratuais da plataforma são globais: a conta do usuário é uma
+// só mesmo quando participa de várias empresas. Uma versão publicada é
+// imutável; alteração de conteúdo nasce como outra linha/versão.
+model TermoDocumento {
+  id           String    @id @default(uuid())
+  codigo       String
+  versao       String
+  tipo         TermoTipo
+  titulo       String
+  resumo       String
+  conteudo     String
+  conteudoHash String
+  obrigatorio  Boolean   @default(true)
+  publicadoEm  DateTime
+  vigenteEm    DateTime
+  revogadoEm   DateTime?
+  createdAt    DateTime  @default(now())
+
+  aceites TermoAceite[]
+
+  @@unique([codigo, versao])
+  @@index([obrigatorio, vigenteEm])
+  @@map("termo_documentos")
+}
+
+enum TermoTipo {
+  termos_uso
+  aviso_privacidade
+}
+
+// Evidência imutável do aceite. `empresaContextoId` registra onde a sessão
+// estava no momento, mas não muda o escopo: o aceite continua sendo da conta,
+// sem empresaId de negócio e, portanto, sem RLS por tenant.
+model TermoAceite {
+  id                String   @id @default(uuid())
+  termoId           String
+  usuarioId         String
+  empresaContextoId String?
+  aceitoEm          DateTime @default(now())
+  ip                String?
+  userAgent         String?
+  conteudoHash      String
+  declaracao        String
+
+  termo   TermoDocumento @relation(fields: [termoId], references: [id])
+  usuario Usuario        @relation(fields: [usuarioId], references: [id])
+
+  @@unique([termoId, usuarioId])
+  @@index([usuarioId, aceitoEm])
+  @@map("termo_aceites")
 }
 
 /**
@@ -303,6 +353,16 @@ model Perfil {
   nome        String
   descricao   String?
   sistemaBase Boolean @default(false)
+  // Autoriza mutações no catálogo global e a área /plataforma (PlatformAdminGuard).
+  // Independente de sistemaBase: sistemaBase é acesso total DENTRO da empresa
+  // (liga isAdmin), administraPlataforma é acesso ACIMA de qualquer empresa.
+  // Veio do antigo Usuario.administradorPlataforma — um atributo do usuário
+  // não bate com "perfil escolhido por vínculo empresa a empresa" (o mesmo
+  // usuário podia ter perfis diferentes em cada empresa, mas era admin da
+  // plataforma em todas ao mesmo tempo, sem meio-termo). Não entra em
+  // PerfilCreate/PerfilUpdate — só o seed e a migration concedem, para não
+  // abrir escalonamento de privilégio pela tela de Perfis/Usuários.
+  administraPlataforma Boolean @default(false)
   ativo       Boolean @default(true)
 
   createdAt DateTime  @default(now())

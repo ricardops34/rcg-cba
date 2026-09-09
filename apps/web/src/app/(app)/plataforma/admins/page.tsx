@@ -91,8 +91,9 @@ export default function PlataformaAdminsPage() {
         <div>
           <h1 className="text-lg font-semibold">Administradores da plataforma</h1>
           <p className="text-sm text-muted-foreground">
-            Quem enxerga e opera este módulo. É um atributo da conta, não um
-            perfil — administrar uma empresa não dá este acesso.
+            Quem enxerga e opera este módulo. É o perfil "Administrador da
+            Plataforma", aplicado a um vínculo do usuário — administrar uma
+            empresa (perfil Administrador Empresa) não dá este acesso.
           </p>
         </div>
 
@@ -118,8 +119,9 @@ export default function PlataformaAdminsPage() {
               </Button>
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
-              A conta precisa existir. A busca é feita em toda a base, não só na
-              empresa da sua sessão.
+              A conta precisa existir e já ter vínculo ativo com alguma
+              empresa — é nesse vínculo que o perfil é aplicado. A busca é
+              feita em toda a base, não só na empresa da sua sessão.
             </p>
           </CardContent>
         </Card>

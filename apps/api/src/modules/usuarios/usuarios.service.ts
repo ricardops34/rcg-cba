@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -151,11 +152,52 @@ export class UsuariosService {
   }
 
   /**
+   * Recusa conceder OU retirar um perfil com `administraPlataforma` (hoje só
+   * "Administrador da Plataforma") a quem não é, ele mesmo, administrador da
+   * plataforma.
+   *
+   * Sem esta trava, `usuarios.editar` (que Administrador Empresa tem, via
+   * `isAdmin`) bastaria para um admin de tenant se auto-promover a admin do
+   * SaaS pelo vínculo — a tela de Perfis já é protegida por
+   * `PlatformAdminGuard`, mas atribuir um `perfilId` existente a um vínculo é
+   * outra rota, sem esse guard. `perfilIdAtual` cobre a retirada: alguém sem
+   * a mesma autoridade não pode tirar o perfil de quem já tem, o que travaria
+   * o dono da plataforma para fora do próprio tenant.
+   */
+  private async garantirPodeAtribuirPerfil(
+    perfilIdNovo: string,
+    perfilIdAtual: string | null,
+    atorEhAdminPlataforma: boolean,
+  ) {
+    if (atorEhAdminPlataforma) return;
+    const ids = [
+      perfilIdNovo,
+      ...(perfilIdAtual && perfilIdAtual !== perfilIdNovo ? [perfilIdAtual] : []),
+    ];
+    const restrito = await this.prisma.perfil.findFirst({
+      where: { id: { in: ids }, administraPlataforma: true },
+      select: { id: true },
+    });
+    if (restrito) {
+      throw new ForbiddenException(
+        'Apenas administradores da plataforma podem conceder ou retirar o perfil Administrador da Plataforma.',
+      );
+    }
+  }
+
+  /**
    * Cria o usuário e já vincula com a empresa ativa, com o perfil (RBAC)
    * informado. "usuario_empresas" tem RLS: precisa setar o tenant na mesma
    * transação, antes do create, pra passar no WITH CHECK do insert.
    */
-  async create(input: UsuarioCreate, empresaId: string, actorId: string) {
+  async create(
+    input: UsuarioCreate,
+    empresaId: string,
+    actorId: string,
+    atorEhAdminPlataforma: boolean,
+  ) {
+    await this.garantirPodeAtribuirPerfil(input.perfilId, null, atorEhAdminPlataforma);
+
     const existente = await this.prisma.usuario.findUnique({
       where: { email: input.email },
     });
@@ -281,14 +323,20 @@ export class UsuariosService {
     empresaId: string,
     input: UsuarioEmpresaCreate,
     actorId: string,
+    atorEhAdminPlataforma: boolean,
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       // Só o vínculo novo consome vaga; a edição de um que já existe, não —
       // daí o `ignorarUsuarioId`, que tira a própria linha da contagem.
       const jaVinculado = await tx.usuarioEmpresa.findUnique({
         where: { usuarioId_empresaId: { usuarioId, empresaId } },
-        select: { ativo: true },
+        select: { ativo: true, perfilId: true },
       });
+      await this.garantirPodeAtribuirPerfil(
+        input.perfilId,
+        jaVinculado?.perfilId ?? null,
+        atorEhAdminPlataforma,
+      );
       if (!jaVinculado || !jaVinculado.ativo) {
         await garantirVagaDeUsuario(tx, empresaId, usuarioId);
       }

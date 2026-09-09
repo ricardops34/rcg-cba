@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Cable, CheckCircle2, Cloud, Eraser, ExternalLink, History, MoreHorizontal, RefreshCw, Smartphone, Trash2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { WHATSAPP_AVISO_NAO_OFICIAL, WHATSAPP_TRANSPORTE_ROTULO, type WhatsappConfig, type WhatsappSessao } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
+import { InstitucionalConfig } from "@/components/whatsapp/institucional-config";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,7 +20,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-type Aba = "zapo" | "evolution-go" | "cloud-api" | "instancias" | "atendimento";
+type Aba = "zapo" | "evolution-go" | "cloud-api" | "instancias" | "atendimento" | "institucional";
+const ABAS_VALIDAS: Aba[] = ["zapo", "evolution-go", "cloud-api", "instancias", "atendimento", "institucional"];
 
 const STATUS: Record<WhatsappSessao["status"], { rotulo: string; variant: "success" | "warning" | "destructive" | "secondary" }> = {
   conectada: { rotulo: "Conectada", variant: "success" },
@@ -32,11 +35,23 @@ export default function WhatsappConfigPage() {
     queryKey: ["whatsapp-config"],
     queryFn: () => apiFetch<WhatsappConfig>("/whatsapp/config"),
   });
+  const searchParams = useSearchParams();
   // A aba abre no provedor que a empresa usa hoje — quem entra aqui quase
   // sempre vem mexer no que está no ar, não no que ainda não foi escolhido.
+  // Exceção: um link direto (`?aba=institucional`, do menu de conta) pede uma
+  // aba específica, e essa intenção vale mais que o provedor em uso.
   const [aba, setAba] = useState<Aba | null>(null);
   if (isLoading || !config) return <p className="text-sm text-muted-foreground">Carregando central de WhatsApp...</p>;
-  const abaAtual = aba ?? (config.transporte === "evolution_go" ? "evolution-go" : config.transporte === "cloud_api" ? "cloud-api" : "zapo");
+  const abaDoLink = searchParams.get("aba");
+  const abaAtual =
+    aba ??
+    (abaDoLink && ABAS_VALIDAS.includes(abaDoLink as Aba)
+      ? (abaDoLink as Aba)
+      : config.transporte === "evolution_go"
+        ? "evolution-go"
+        : config.transporte === "cloud_api"
+          ? "cloud-api"
+          : "zapo");
 
   return (
     <div className="space-y-5">
@@ -48,6 +63,7 @@ export default function WhatsappConfigPage() {
           <TabsTrigger value="cloud-api">API Oficial</TabsTrigger>
           <TabsTrigger value="instancias">Instâncias</TabsTrigger>
           <TabsTrigger value="atendimento">Atendimento IA</TabsTrigger>
+          <TabsTrigger value="institucional">Número institucional</TabsTrigger>
         </TabsList>
         <TabsContent value="zapo" className="pt-4"><ZapoConfig config={config} /></TabsContent>
         <TabsContent value="evolution-go" className="pt-4"><EvolutionConfig config={config} /></TabsContent>
@@ -61,6 +77,7 @@ export default function WhatsappConfigPage() {
         </TabsContent>
         <TabsContent value="instancias" className="pt-4"><Instancias config={config} /></TabsContent>
         <TabsContent value="atendimento" className="pt-4"><AtendimentoIaConfig config={config} /></TabsContent>
+        <TabsContent value="institucional" className="pt-4"><InstitucionalConfig config={config} /></TabsContent>
       </Tabs>
     </div>
   );

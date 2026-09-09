@@ -19,11 +19,19 @@ const SORT_FIELDS = new Set(['nome', 'ativo', 'sistemaBase', 'createdAt']);
 export class PerfisService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(query: PerfilQuery) {
+  /**
+   * `atorEhAdminPlataforma = false` esconde o(s) perfil(is) com
+   * `administraPlataforma` da listagem — não porque a leitura seja perigosa
+   * (atribuí-lo é que é barrado, em `UsuariosService.garantirPodeAtribuirPerfil`),
+   * mas para que ele nem apareça como opção no select de vínculo de quem não
+   * pode concedê-lo.
+   */
+  async findAll(query: PerfilQuery, atorEhAdminPlataforma: boolean) {
     const where = {
       deletedAt: null,
       ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
       ...(query.sistemaBase !== undefined ? { sistemaBase: query.sistemaBase } : {}),
+      ...(atorEhAdminPlataforma ? {} : { administraPlataforma: false }),
       ...(query.search
         ? { nome: { contains: query.search, mode: 'insensitive' as const } }
         : {}),

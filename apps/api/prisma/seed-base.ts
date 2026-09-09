@@ -17,6 +17,7 @@
  */
 import { Acao, PrismaClient } from '@prisma/client';
 import {
+  ADMINISTRATIVO_PERMISSOES,
   MODULO,
   SUPERVISAO_PERMISSOES,
   ROTINAS_DE_USO_EM_ADMINISTRACAO,
@@ -304,6 +305,9 @@ async function limparDados() {
   await prisma.sessao.deleteMany();
   await prisma.acessoLog.deleteMany();
   await prisma.usuarioHorario.deleteMany();
+  // O documento publicado é catálogo global e permanece; somente as
+  // evidências dos usuários recriados por este seed precisam ser removidas.
+  await prisma.termoAceite.deleteMany();
   await prisma.usuarioEmpresa.updateMany({ data: { superiorId: null } });
   await prisma.usuarioEmpresa.deleteMany();
   await prisma.perfilPermissao.deleteMany();
@@ -343,12 +347,39 @@ async function bootstrapMenu() {
 // Perfil é global (ver migration perfil_global) — Administrador e Vendedor
 // são criados uma única vez, compartilhados por todas as empresas.
 async function bootstrapPerfis(rotinas: { id: string; codigo: string }[]) {
-  // Administrador: acesso total (todas as ações em todas as rotinas).
-  // sistemaBase = perfil protegido/base do sistema.
+  // Administrador da Plataforma: acesso total (mesmas permissões do
+  // Administrador Empresa) + administraPlataforma, que libera o
+  // PlatformAdminGuard e a área /plataforma (empresas de qualquer tenant,
+  // catálogo global, promover outros admins). Veio do antigo
+  // Usuario.administradorPlataforma — ver o comentário da coluna no schema.
+  const perfilAdminPlataforma = await prisma.perfil.create({
+    data: {
+      nome: 'Administrador da Plataforma',
+      descricao: 'Acesso total ao sistema e à administração da plataforma (todas as empresas)',
+      sistemaBase: true,
+      administraPlataforma: true,
+    },
+  });
+  await prisma.perfilPermissao.createMany({
+    data: rotinas.flatMap((rotina) =>
+      ACOES.map((acao) => ({
+        perfilId: perfilAdminPlataforma.id,
+        rotinaId: rotina.id,
+        acao,
+        permitido: true,
+      })),
+    ),
+    skipDuplicates: true,
+  });
+
+  // Administrador Empresa: acesso total (todas as ações em todas as rotinas)
+  // dentro da própria empresa. sistemaBase = perfil protegido/base do
+  // sistema; não tem administraPlataforma — não alcança outras empresas nem
+  // o catálogo global (ver PlatformAdminGuard).
   const perfilAdmin = await prisma.perfil.create({
     data: {
-      nome: 'Administrador',
-      descricao: 'Perfil com acesso total ao sistema',
+      nome: 'Administrador Empresa',
+      descricao: 'Perfil com acesso total ao sistema, dentro da própria empresa',
       sistemaBase: true,
     },
   });
@@ -361,6 +392,31 @@ async function bootstrapPerfis(rotinas: { id: string; codigo: string }[]) {
         permitido: true,
       })),
     ),
+    skipDuplicates: true,
+  });
+
+  // Administrativo: retaguarda comercial — cadastros, financeiro, consultas
+  // gerenciais e aprovação de alterações de cliente (ver
+  // ADMINISTRATIVO_PERMISSOES). Sem cadastro de Vendedor, então
+  // resolverEscopoVendedores devolve "sem restrição" para ele.
+  const perfilAdministrativo = await prisma.perfil.create({
+    data: {
+      nome: 'Administrativo',
+      descricao: 'Cadastros, financeiro e consultas gerenciais, sem administração do sistema',
+      sistemaBase: false,
+    },
+  });
+  await prisma.perfilPermissao.createMany({
+    data: rotinas
+      .filter((rotina) => rotina.codigo in ADMINISTRATIVO_PERMISSOES)
+      .flatMap((rotina) =>
+        ADMINISTRATIVO_PERMISSOES[rotina.codigo].map((acao) => ({
+          perfilId: perfilAdministrativo.id,
+          rotinaId: rotina.id,
+          acao,
+          permitido: true,
+        })),
+      ),
     skipDuplicates: true,
   });
 
@@ -419,7 +475,7 @@ async function bootstrapPerfis(rotinas: { id: string; codigo: string }[]) {
     });
   }
 
-  return { perfilAdmin, perfilVendedor };
+  return { perfilAdminPlataforma, perfilAdmin, perfilVendedor };
 }
 
 /**
@@ -471,19 +527,21 @@ async function main() {
 
   console.log('Reconstruindo estrutura de menu/rotinas...');
   const rotinas = await bootstrapMenu();
-  const { perfilAdmin } = await bootstrapPerfis(rotinas);
+  const { perfilAdminPlataforma } = await bootstrapPerfis(rotinas);
   await bootstrapPerfilDiretor(rotinas);
 
   const senhaHash = await bcrypt.hash(SENHA_ADMIN, 12);
 
-  // Um único usuário Admin, vinculado como Administrador na empresa criada.
+  // Um único usuário Admin, vinculado como Administrador da Plataforma em
+  // cada empresa do seed — em dev não há "empresa matriz", e assim trocar de
+  // empresa não derruba o menu da plataforma (ver comentário da coluna
+  // Perfil.administraPlataforma no schema).
   const admin = await prisma.usuario.create({
     data: {
       nome: ADMIN.nome,
       email: ADMIN.email,
       senhaHash,
       ativo: true,
-      administradorPlataforma: true,
       senhaAlteradaEm: new Date(),
     },
   });
@@ -502,7 +560,7 @@ async function main() {
       data: {
         usuarioId: admin.id,
         empresaId: empresa.id,
-        perfilId: perfilAdmin.id,
+        perfilId: perfilAdminPlataforma.id,
         ativo: true,
       },
     });

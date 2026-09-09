@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
-import { Building2, Check, HelpCircle, LogOut, Menu, Moon, Search, Sun, UserCog } from "lucide-react";
+import { Building2, Check, HelpCircle, LogOut, Menu, MessageCircle, Moon, Search, Sun, UserCog } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import type { CurrentUser } from "@plataforma/contracts";
@@ -161,6 +161,18 @@ export function AppTopbar({
                     </DropdownMenuItem>
                   );
                 })}
+              </>
+            )}
+            {user?.permissoes.includes("whatsapp-config.visualizar") && (
+              <>
+                <DropdownMenuSeparator />
+                {/* Atalho direto pro pareamento do número institucional — fica
+                    sempre visível, mesmo com o WhatsApp desligado, porque é
+                    exatamente aí que quem procura como ligá-lo precisa cair. */}
+                <DropdownMenuItem onClick={() => router.push("/admin/whatsapp?aba=institucional")}>
+                  <MessageCircle className="size-4" />
+                  Conectar WhatsApp
+                </DropdownMenuItem>
               </>
             )}
             <DropdownMenuSeparator />

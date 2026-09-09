@@ -132,8 +132,6 @@ Sem RLS por serem referência global (sem coluna `empresaId`): `paises`,
 `estados`, `municipios`, `ceps`, `cnaes` (além das tabelas de sistema
 `modulos`/`menus`/`rotinas`, de `politica_senha`/`senha_historico` — login e
 senha são globais — e de `perfis`: um
-mesmo papel/RBAC, ex. "Administrador"/"Vendedor", é compartilhado por todas
-as empresas; cada vínculo usuário×empresa continua escolhendo seu próprio
-perfil dessa lista global).
-</content>
-</invoke>
+mesmo papel/RBAC, ex. "Administrador Empresa"/"Vendedor", é compartilhado por
+todas as empresas; cada vínculo usuário×empresa continua escolhendo seu
+próprio perfil dessa lista global).

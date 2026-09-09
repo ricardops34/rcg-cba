@@ -546,11 +546,17 @@ async function main() {
    * um cadastro de vendedor" — as duas telas dependem de carteira, não de
    * permissão. Entra como **gerente**, com a equipe inteira abaixo.
    */
-  const admin = await prisma.usuario.findFirst({
-    where: { administradorPlataforma: true, deletedAt: null },
+  const vinculoAdmin = await prisma.usuarioEmpresa.findFirst({
+    where: {
+      empresaId,
+      ativo: true,
+      perfil: { administraPlataforma: true },
+      usuario: { deletedAt: null },
+    },
     orderBy: { createdAt: 'asc' },
-    select: { id: true, nome: true },
+    select: { usuario: { select: { id: true, nome: true } } },
   });
+  const admin = vinculoAdmin?.usuario ?? null;
   if (admin) {
     const vendedorAdmin = await prisma.vendedor.create({
       data: {

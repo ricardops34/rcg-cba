@@ -213,10 +213,16 @@ export class PlataformaController {
     description:
       'Procura o usuário em toda a base — a rota /usuarios é do tenant e só ' +
       'enxerga a empresa da sessão, o que não serve a quem administra o SaaS. ' +
-      'A conta precisa existir.',
+      'A conta precisa existir e já ter vínculo ativo com alguma empresa: é ' +
+      'nesse vínculo (o mais antigo, se houver mais de um) que o perfil ' +
+      '"Administrador da Plataforma" é aplicado.',
   })
   @ApiResponse({ status: 201, description: 'Usuário promovido' })
   @ApiResponse({ status: 404, description: 'Nenhum usuário com este e-mail' })
+  @ApiResponse({
+    status: 409,
+    description: 'Usuário sem vínculo ativo com nenhuma empresa',
+  })
   @Post('admins')
   promoverPorEmail(
     @Body() dto: PlataformaAdminPromoverDto,
@@ -228,11 +234,13 @@ export class PlataformaController {
   @ApiOperation({
     summary: 'Promover ou revogar administrador da plataforma',
     description:
+      'Troca o perfil do vínculo do usuário: promove para "Administrador da ' +
+      'Plataforma", ou devolve para "Administrador Empresa" ao revogar. ' +
       'Recusa revogar o último administrador e recusa que alguém revogue a si ' +
       'mesmo — nos dois casos o acesso ao módulo se perderia sem volta pela tela.',
   })
   @ApiParam({ name: 'usuarioId', description: 'Id do usuário' })
-  @ApiResponse({ status: 200, description: 'Atributo atualizado' })
+  @ApiResponse({ status: 200, description: 'Perfil do vínculo atualizado' })
   @ApiResponse({
     status: 409,
     description: 'Último administrador, ou tentativa de revogar a si mesmo',

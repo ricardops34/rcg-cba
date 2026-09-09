@@ -3,12 +3,12 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
+import type { WhatsappConfig } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
-import { useWhatsappIntegracao } from "@/hooks/use-whatsapp-integracao";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, QrCode, Smartphone, Unplug } from "lucide-react";
+import { Loader2, QrCode, Smartphone, TriangleAlert, Unplug } from "lucide-react";
 
 interface SessaoEmpresa {
   id: string;
@@ -25,34 +25,55 @@ const ROTULO: Record<SessaoEmpresa["status"], string> = {
 };
 
 /**
- * O número institucional da empresa — a porta de entrada do atendimento.
+ * O número institucional da empresa — a porta de entrada do atendimento por
+ * IA (identifica quem escreve e direciona a um vendedor). Fica na mesma tela
+ * das demais configurações de WhatsApp, e não escondido no cadastro da
+ * empresa: é aqui que se liga o provedor, e é aqui que se espera achar o
+ * pareamento também.
  *
- * Fica no cadastro da empresa, e não na tela do vendedor, porque o número é da
- * empresa: quem o pareia responde por ele, e não há um dono individual. E só
- * aparece com o WhatsApp ativo — oferecer o pareamento antes de a integração
- * existir levaria a um erro que a tela não sabe explicar.
+ * Não é a mesma coisa que a conexão de Comercial → Conversas: lá cada
+ * vendedor pareia o próprio aparelho. Os dois convivem.
  *
- * Não é a mesma coisa que a conexão de Conversas: lá cada vendedor pareia o
- * próprio aparelho. Os dois convivem.
+ * Diferente das demais abas desta tela, não desaparece com o WhatsApp
+ * desligado — mostra o que falta em vez de sumir, para não repetir o
+ * problema de quem procurava o pareamento e não achava onde ligá-lo primeiro.
  */
-export function EmpresaWhatsappSection({ empresaId }: { empresaId: string }) {
-  const { ativo } = useWhatsappIntegracao();
+export function InstitucionalConfig({ config }: { config: WhatsappConfig }) {
   const [ocupado, setOcupado] = useState(false);
   const [qr, setQr] = useState<string | null>(null);
 
   const { data: sessao, refetch } = useQuery({
-    queryKey: ["whatsapp", "sessao-empresa", empresaId],
+    queryKey: ["whatsapp", "sessao-empresa"],
     queryFn: () => apiFetch<SessaoEmpresa | null>("/whatsapp/config/sessao-empresa"),
-    enabled: ativo === true,
+    enabled: config.ativo === true,
     // Enquanto pareia, o estado muda por fora (o worker avisa a API quando o
     // QR é lido): sem recarregar, a tela ficaria em "aguardando" para sempre.
     refetchInterval: (q) =>
       (q.state.data as SessaoEmpresa | null)?.status === "pareando" ? 3000 : false,
   });
 
-  // A integração desligada esconde a seção inteira, em vez de mostrá-la
-  // desabilitada: um botão morto no cadastro convida a clicar e não explica.
-  if (ativo !== true) return null;
+  if (config.ativo !== true) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Smartphone className="size-4" /> Número institucional
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <p>
+              O WhatsApp está desativado para esta empresa. Ligue-o na aba{" "}
+              <strong>zapo-js</strong> ou <strong>Evolution GO</strong> (o switch
+              &quot;Ativo&quot; e o botão de salvar) antes de parear o número
+              institucional.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const conectar = async () => {
     setOcupado(true);
@@ -111,15 +132,15 @@ export function EmpresaWhatsappSection({ empresaId }: { empresaId: string }) {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Smartphone className="size-4" /> WhatsApp da empresa
+          <Smartphone className="size-4" /> Número institucional
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-xs text-muted-foreground">
           O número institucional é a porta de entrada do atendimento: quem
           escreve fala primeiro com a IA, que identifica o cliente e direciona a
-          um vendedor. Não substitui o WhatsApp de cada vendedor — os dois
-          convivem.
+          um vendedor. Não substitui o WhatsApp de cada vendedor (pareado em
+          Comercial → Conversas) — os dois convivem.
         </p>
 
         <div className="flex flex-wrap items-center gap-2">

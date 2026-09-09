@@ -89,7 +89,12 @@ export class UsuariosController {
   @RequirePermission('usuarios', 'cadastrar')
   @Post()
   create(@Body() dto: UsuarioCreateDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.create(dto, user.empresaAtivaId, user.id);
+    return this.service.create(
+      dto,
+      user.empresaAtivaId,
+      user.id,
+      user.administradorPlataforma === true,
+    );
   }
 
   @ApiOperation({ summary: 'Editar dados do usuário (não altera senha nem vínculos)' })
@@ -192,7 +197,13 @@ export class UsuariosController {
     @Body() dto: UsuarioEmpresaCreateDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.vincularEmpresa(id, empresaId, dto, user.id);
+    return this.service.vincularEmpresa(
+      id,
+      empresaId,
+      dto,
+      user.id,
+      user.administradorPlataforma === true,
+    );
   }
 
   @ApiOperation({

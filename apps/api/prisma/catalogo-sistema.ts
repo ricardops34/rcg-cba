@@ -692,6 +692,47 @@ export const SUPERVISAO_PERMISSOES: Record<string, Acao[]> = {
 };
 
 /**
+ * Administrativo: retaguarda comercial — cadastros, financeiro e consultas
+ * gerenciais — sem ser vendedor e sem administrar o sistema.
+ *
+ * Não estende VENDEDOR_PERMISSOES: o Administrativo não tem carteira própria
+ * (não recebe cadastro de Vendedor — ver resolverEscopoVendedores, que por
+ * isso mesmo devolve "sem restrição" para ele, igual ao Diretor), então CRM
+ * (oportunidades/atividades/agenda/orçamentos) e WhatsApp não fazem sentido
+ * aqui: são ferramentas de quem atende cliente diretamente.
+ *
+ * `clientes.aprovar` é o que libera a fila de alterações de cadastro
+ * (ClienteAlteracoesService.podeAprovar); `clientes-alteracoes.visualizar` é
+ * só o que abre a tela. Sem `excluir` em nada — só Admin/Diretor excluem,
+ * mesmo critério do Vendedor. Sem `estados`/`municipios`/`ceps`: o formulário
+ * de cliente consulta `/ceps/consulta/:cep`, que não exige permissão.
+ */
+export const ADMINISTRATIVO_PERMISSOES: Record<string, Acao[]> = {
+  clientes: ['visualizar', 'cadastrar', 'editar', 'aprovar'],
+  'clientes-alteracoes': ['visualizar'],
+  produtos: ['visualizar', 'cadastrar', 'editar'],
+  'tabelas-preco': ['visualizar', 'cadastrar', 'editar'],
+  'condicoes-pagamento': ['visualizar', 'cadastrar', 'editar'],
+  'contas-bancarias': ['visualizar', 'cadastrar', 'editar'],
+  categorias: ['visualizar', 'cadastrar', 'editar'],
+  armazens: ['visualizar', 'cadastrar', 'editar'],
+  'regras-desconto': ['visualizar', 'cadastrar', 'editar'],
+  // Espelho read-only do ERP: só têm rota de visualização na API (mesmo
+  // motivo do titulos-receber/notas-saida em VENDEDOR_PERMISSOES).
+  fornecedores: ['visualizar'],
+  'notas-entrada': ['visualizar'],
+  'notas-saida': ['visualizar'],
+  'titulos-receber': ['visualizar'],
+  'dashboard-comercial': ['visualizar'],
+  'consulta-vendas-cliente': ['visualizar'],
+  'consulta-vendas-produto': ['visualizar'],
+  'consulta-vendas-categoria': ['visualizar'],
+  'consulta-vendas-vendedor': ['visualizar'],
+  'consulta-evolucao': ['visualizar'],
+  'sugestao-compra': ['visualizar'],
+};
+
+/**
  * Aplica a estrutura — módulos, menus e rotinas — sem apagar nada.
  *
  * Idempotente: roda quantas vezes precisar. Só cria o que falta e atualiza

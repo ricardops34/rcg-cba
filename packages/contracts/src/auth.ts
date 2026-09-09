@@ -84,7 +84,8 @@ export const currentUserSchema = z.object({
   administradorPlataforma: z
     .boolean()
     .describe(
-      "Autoriza administrar o catálogo global, independentemente do perfil da empresa",
+      "Autoriza administrar o catálogo global e a área /plataforma (todas as empresas). " +
+        "Vem do perfil do vínculo ATIVO — quem troca de empresa para uma onde tem outro perfil perde este acesso até voltar",
     ),
   empresaAtivaId: z
     .string()
@@ -172,7 +173,7 @@ export const CURRENT_USER_EXAMPLE: CurrentUser = {
       situacao: "ativa",
       testeExpiraEm: null,
       perfilId: "06b281c4-c6d6-454c-82c6-75106224bbfc",
-      perfilNome: "Administrador",
+      perfilNome: "Administrador da Plataforma",
     },
   ],
   permissoes: ["empresas.visualizar", "empresas.editar", "clientes.cadastrar"],

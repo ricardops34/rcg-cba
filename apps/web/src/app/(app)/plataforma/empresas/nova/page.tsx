@@ -436,8 +436,8 @@ export default function NovaEmpresaPage() {
               <CardContent className="space-y-4">
                 <p className="text-xs text-muted-foreground">
                   Criado junto com a empresa: sem ele, ninguém consegue entrar.
-                  Recebe o perfil Administrador e conta como um dos usuários
-                  desta empresa.
+                  Recebe o perfil Administrador Empresa e conta como um dos
+                  usuários desta empresa.
                 </p>
 
                 <div className="space-y-2">

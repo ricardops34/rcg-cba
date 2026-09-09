@@ -55,15 +55,20 @@ A carga das referências é a última etapa do seed **de propósito**: ela depen
 rede (APIs do IBGE), e uma falha ali não pode impedir o admin e a empresa de
 existirem. Se cair, o seed avisa no console e o `sync:ibge` completa depois.
 
-Números esperados numa base nova **[conferidos em 2026-09-03, cluster limpo]**:
-1 empresa (situação `ativa`), 1 admin, 5 perfis, 47 rotinas, 21 parâmetros,
+Números esperados numa base nova **[conferidos em 2026-09-03, cluster limpo;
+contagem de perfis atualizada em 2026-09-09 com a separação Administrador da
+Plataforma/Administrador Empresa/Administrativo]**:
+1 empresa (situação `ativa`), 1 admin, 7 perfis, 47 rotinas, 21 parâmetros,
 193 países, 27 UFs, 5.571 municípios, 1.332 CNAEs. Mais o role `whatsapp_store`
 e o schema `whatsapp`, criados pela migration.
 
-O admin do seed nasce com `administradorPlataforma = true`, então a
-administração do SaaS (menu Plataforma) funciona sem nenhum `UPDATE` manual —
-isso vale para base **nova**; numa base que já existia, a promoção continua
-sendo manual.
+O admin do seed nasce vinculado ao perfil "Administrador da Plataforma"
+(`Perfil.administraPlataforma = true`), então a administração do SaaS (menu
+Plataforma) funciona sem nenhum `UPDATE` manual — isso vale para base **nova**.
+Numa base que já existia antes da migration `20260909120000_perfis_admin_plataforma`,
+o backfill dela já promove quem tinha o antigo `Usuario.administradorPlataforma
+= true`; só precisa de intervenção manual se aquele usuário não tinha nenhum
+vínculo ativo com empresa nenhuma (a migration avisa via `RAISE NOTICE`).
 
 `ceps` nasce vazia por desenho — os CEPs entram sob demanda, pelo ViaCEP, quando
 um cliente é consultado.
@@ -825,10 +830,11 @@ WhatsApp em produção).
 Onde alguém olha quando algo falha, sem abrir o log do container. Plano e
 decisões em [`docs/planos/log-de-erros.md`](planos/log-de-erros.md).
 
-**Quem vê:** só usuário com `administradorPlataforma`. Não é permissão de
-perfil — o menu aparece pelo mesmo atributo que abre as demais telas de
-Plataforma. Mensagem e stack ficam íntegros na base, e é por isso que a leitura
-é fechada: um 500 numa consulta traz dado real de cliente no stack.
+**Quem vê:** só usuário com `administradorPlataforma` (vem do perfil
+"Administrador da Plataforma" do vínculo ativo, não de uma permissão de
+rotina comum) — o menu aparece pelo mesmo atributo que abre as demais telas
+de Plataforma. Mensagem e stack ficam íntegros na base, e é por isso que a
+leitura é fechada: um 500 numa consulta traz dado real de cliente no stack.
 
 **Deploy:** nada além do `migrate deploy` de sempre. A migration
 `20260904140000_log_de_erros` **ocupa a tabela `audit_logs`**, que existia no

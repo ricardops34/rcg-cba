@@ -14,3 +14,5 @@ coverage/
 apps/api/uploads/
 
 docs/integração/testes-swagger.json
+.vscode/.advpl/_binary_class.prw
+.vscode/.advpl/_binary_functions.prw

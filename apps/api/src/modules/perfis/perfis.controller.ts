@@ -56,8 +56,8 @@ export class PerfisController {
   @ApiPaginationQuery()
   @RequirePermission('perfis', 'visualizar')
   @Get()
-  findAll(@Query() query: PerfilQueryDto) {
-    return this.service.findAll(query);
+  findAll(@Query() query: PerfilQueryDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.findAll(query, user.administradorPlataforma === true);
   }
 
   @ApiOperation({
@@ -106,7 +106,7 @@ export class PerfisController {
   @ApiOperation({
     summary: 'Excluir perfil (soft delete)',
     description:
-      'Perfis marcados como sistemaBase (ex.: Administrador) não podem ser excluídos. Requer perfis.excluir.',
+      'Perfis marcados como sistemaBase (ex.: Administrador Empresa) não podem ser excluídos. Requer perfis.excluir.',
   })
   @ApiParam({ name: 'id', example: PERFIL_ID_EXAMPLE })
   @ApiResponse({ status: 200, schema: { example: { success: true } } })

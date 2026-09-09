@@ -82,6 +82,9 @@ export default function PerfisPage() {
           {p.sistemaBase && (
             <span className="text-xs text-muted-foreground">Base do sistema</span>
           )}
+          {p.administraPlataforma && (
+            <span className="text-xs text-muted-foreground">· Plataforma</span>
+          )}
         </div>
       ),
     },

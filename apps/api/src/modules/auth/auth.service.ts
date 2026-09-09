@@ -75,7 +75,10 @@ export class AuthService {
       email: vinculo.usuario.email,
       empresaAtivaId: vinculo.empresaId,
       isAdmin: vinculo.perfil.sistemaBase,
-      administradorPlataforma: vinculo.usuario.administradorPlataforma,
+      // Autoridade do PERFIL do vínculo ativo, não do usuário — quem troca de
+      // empresa passa a agir sob o perfil daquela empresa (ver comentário de
+      // Perfil.administraPlataforma no schema).
+      administradorPlataforma: vinculo.perfil.administraPlataforma,
       permissoes,
     };
 
@@ -520,13 +523,14 @@ export class AuthService {
         this.prisma.withTenant(v.empresaId, (tx) =>
           tx.perfil.findUniqueOrThrow({
             where: { id: v.perfilId },
-            select: { nome: true },
+            select: { nome: true, administraPlataforma: true },
           }),
         ),
       ),
     );
 
-    const ativo = vinculos.find((v) => v.empresaId === empresaAtivaId);
+    const ativoIndex = vinculos.findIndex((v) => v.empresaId === empresaAtivaId);
+    const ativo = ativoIndex === -1 ? undefined : vinculos[ativoIndex];
     const permissoes = ativo
       ? (
           await this.prisma.perfilPermissao.findMany({
@@ -542,7 +546,8 @@ export class AuthService {
       id: usuario.id,
       nome: usuario.nome,
       email: usuario.email,
-      administradorPlataforma: usuario.administradorPlataforma,
+      // Do perfil do vínculo ATIVO, não do usuário (ver buildAccessToken).
+      administradorPlataforma: ativoIndex === -1 ? false : perfis[ativoIndex].administraPlataforma,
       empresaAtivaId,
       empresas: vinculos.map((v, i) => ({
         empresaId: v.empresaId,
