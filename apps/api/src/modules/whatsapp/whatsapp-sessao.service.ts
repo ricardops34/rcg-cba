@@ -15,6 +15,7 @@ import {
   WHATSAPP_ACEITE_VERSAO,
   WHATSAPP_SESSAO_STATUS,
   type WhatsappConectar,
+  type WhatsappConectarEmpresa,
   type WhatsappSessaoStatus,
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
@@ -260,7 +261,7 @@ export class WhatsappSessaoService {
   async conectarEmpresa(
     empresaId: string,
     user: AuthenticatedUser,
-    input?: { aceiteVersao?: string },
+    input?: WhatsappConectarEmpresa,
   ) {
     const config = await this.config.obter(empresaId);
     if (!config.ativo) {
@@ -268,7 +269,11 @@ export class WhatsappSessaoService {
         'O WhatsApp está desativado para esta empresa. Ative em Administração > WhatsApp.',
       );
     }
-    this.provedores.exigirConfiguracao(config.transporte, config);
+    // Provedor desta conexão: o escolhido na tela, ou o padrão da empresa
+    // quando nada foi escolhido. Não grava de volta em `config.transporte` —
+    // é só o transporte desta sessão (ver comentário do campo no schema).
+    const transporteEscolhido = input?.transporte ?? config.transporte;
+    this.provedores.exigirConfiguracao(transporteEscolhido, config);
 
     const atual = await this.daEmpresa(empresaId);
 
@@ -283,7 +288,7 @@ export class WhatsappSessaoService {
 
     // Troca de provedor: a instância anterior morre antes, pelo mesmo motivo
     // documentado em `conectar`.
-    if (atual && atual.transporte !== config.transporte) {
+    if (atual && atual.transporte !== transporteEscolhido) {
       await this.provedores
         .sairDoWhatsapp(empresaId, atual.id)
         .catch(() => undefined);
@@ -309,7 +314,7 @@ export class WhatsappSessaoService {
             where: { id: atual.id },
             data: {
               status: 'pareando',
-              transporte: config.transporte,
+              transporte: transporteEscolhido,
               ultimoErro: null,
               aceiteEm: new Date(),
               aceiteVersao: input?.aceiteVersao ?? WHATSAPP_ACEITE_VERSAO,
@@ -326,7 +331,7 @@ export class WhatsappSessaoService {
               vendedorId: null,
               tipo: 'empresa',
               status: 'pareando',
-              transporte: config.transporte,
+              transporte: transporteEscolhido,
               aceiteEm: new Date(),
               aceiteVersao: input?.aceiteVersao ?? WHATSAPP_ACEITE_VERSAO,
               createdBy: user.id,

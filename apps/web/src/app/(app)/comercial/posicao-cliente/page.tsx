@@ -292,18 +292,23 @@ export default function PosicaoClientePage() {
 
   return (
     <div className="space-y-4">
-      <CrudHeader
-        search={search}
-        onSearchChange={(v) => {
-          setSearch(v);
-          setPage(1);
-        }}
-        onRefresh={() => refetch()}
-        isRefreshing={isFetching}
-      />
+      <div data-tour="posicao-cliente-busca">
+        <CrudHeader
+          search={search}
+          onSearchChange={(v) => {
+            setSearch(v);
+            setPage(1);
+          }}
+          onRefresh={() => refetch()}
+          isRefreshing={isFetching}
+        />
+      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
+        <div
+          className="flex flex-wrap items-center gap-2"
+          data-tour="posicao-cliente-filtros-rapidos"
+        >
           <StatusQuickFilter
             value={status}
             onChange={(v) => {
@@ -323,112 +328,117 @@ export default function PosicaoClientePage() {
             ))}
           </QuickFilterGroup>
         </div>
-        <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
-          <div className="space-y-2">
-            <FieldLabel>UF</FieldLabel>
-            <Select
-              value={uf ?? "todas"}
-              onValueChange={(v) => {
-                setUf(v === "todas" ? undefined : v);
-                // Um município de outra UF deixaria de existir na lista —
-                // evita ficar com um filtro de município inválido/invisível.
-                setMunicipio(undefined);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Todas" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todas">Todas</SelectItem>
-                {opcoesUf.map((o) => (
-                  <SelectItem key={o.uf} value={o.uf}>
-                    {o.uf} ({o.total})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <FieldLabel>Município</FieldLabel>
-            <Select
-              value={municipio ?? "todos"}
-              onValueChange={(v) => {
-                setMunicipio(v === "todos" ? undefined : v);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Todos" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                {opcoesMunicipio.map((o) => (
-                  <SelectItem key={o.municipio} value={o.municipio}>
-                    {o.municipio} ({o.total})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {mostrarFiltroVendedor && (
+        <div data-tour="posicao-cliente-filtros-avancados">
+          <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
             <div className="space-y-2">
-              <FieldLabel>Vendedor</FieldLabel>
+              <FieldLabel>UF</FieldLabel>
               <Select
-                value={vendedorId ?? "none"}
+                value={uf ?? "todas"}
                 onValueChange={(v) => {
-                  setVendedorId(v === "none" ? undefined : v);
+                  setUf(v === "todas" ? undefined : v);
+                  // Um município de outra UF deixaria de existir na lista —
+                  // evita ficar com um filtro de município inválido/invisível.
+                  setMunicipio(undefined);
                   setPage(1);
                 }}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Qualquer" />
+                  <SelectValue placeholder="Todas" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Qualquer</SelectItem>
-                  {opcoesVendedor.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      <span className="flex items-center gap-1.5">
-                        {vendedorFiltroLabel(v)}
-                        {!v.ativo && (
-                          <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
-                            <Lock className="size-3" />
-                            bloqueado
-                          </span>
-                        )}
-                      </span>
+                  <SelectItem value="todas">Todas</SelectItem>
+                  {opcoesUf.map((o) => (
+                    <SelectItem key={o.uf} value={o.uf}>
+                      {o.uf} ({o.total})
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-          )}
 
-          <div className="space-y-2">
-            <FieldLabel>Cliente de carteira</FieldLabel>
-            <Select
-              value={carteira}
-              onValueChange={(v) => {
-                setCarteira(v as SimNaoTodos);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="sim">Sim</SelectItem>
-                <SelectItem value="nao">Não</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </FiltersPopover>
+            <div className="space-y-2">
+              <FieldLabel>Município</FieldLabel>
+              <Select
+                value={municipio ?? "todos"}
+                onValueChange={(v) => {
+                  setMunicipio(v === "todos" ? undefined : v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  {opcoesMunicipio.map((o) => (
+                    <SelectItem key={o.municipio} value={o.municipio}>
+                      {o.municipio} ({o.total})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {mostrarFiltroVendedor && (
+              <div className="space-y-2">
+                <FieldLabel>Vendedor</FieldLabel>
+                <Select
+                  value={vendedorId ?? "none"}
+                  onValueChange={(v) => {
+                    setVendedorId(v === "none" ? undefined : v);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Qualquer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Qualquer</SelectItem>
+                    {opcoesVendedor.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        <span className="flex items-center gap-1.5">
+                          {vendedorFiltroLabel(v)}
+                          {!v.ativo && (
+                            <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
+                              <Lock className="size-3" />
+                              bloqueado
+                            </span>
+                          )}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <FieldLabel>Cliente de carteira</FieldLabel>
+              <Select
+                value={carteira}
+                onValueChange={(v) => {
+                  setCarteira(v as SimNaoTodos);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  <SelectItem value="sim">Sim</SelectItem>
+                  <SelectItem value="nao">Não</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </FiltersPopover>
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+      <div
+        className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground"
+        data-tour="posicao-cliente-legenda-titulos"
+      >
         <span className="font-medium">Títulos em aberto:</span>
         <span className="flex items-center gap-1">
           <span className="text-sm font-bold text-destructive">$</span> vencido
@@ -441,31 +451,33 @@ export default function PosicaoClientePage() {
         </span>
       </div>
 
-      <EntityTable
-        columns={columns}
-        rows={data?.data ?? []}
-        rowKey={(c) => c.id}
-        isLoading={isLoading}
-        error={error}
-        page={data?.page ?? page}
-        pageSize={data?.pageSize ?? pageSize}
-        total={data?.total ?? 0}
-        totalPages={data?.totalPages ?? 1}
-        onPageChange={setPage}
-        onPageSizeChange={(n) => {
-          setPageSize(n);
-          setPage(1);
-        }}
-        onRowClick={(c) => router.push(`/comercial/posicao-cliente/${c.id}`)}
-        emptyMessage="Nenhum cliente encontrado."
-        sortBy={sortBy}
-        sortOrder={sortOrder}
-        onSortChange={(key, order) => {
-          setSortBy(key);
-          setSortOrder(order);
-        }}
-        storageKey="posicao-cliente"
-      />
+      <div data-tour="posicao-cliente-lista">
+        <EntityTable
+          columns={columns}
+          rows={data?.data ?? []}
+          rowKey={(c) => c.id}
+          isLoading={isLoading}
+          error={error}
+          page={data?.page ?? page}
+          pageSize={data?.pageSize ?? pageSize}
+          total={data?.total ?? 0}
+          totalPages={data?.totalPages ?? 1}
+          onPageChange={setPage}
+          onPageSizeChange={(n) => {
+            setPageSize(n);
+            setPage(1);
+          }}
+          onRowClick={(c) => router.push(`/comercial/posicao-cliente/${c.id}`)}
+          emptyMessage="Nenhum cliente encontrado."
+          sortBy={sortBy}
+          sortOrder={sortOrder}
+          onSortChange={(key, order) => {
+            setSortBy(key);
+            setSortOrder(order);
+          }}
+          storageKey="posicao-cliente"
+        />
+      </div>
 
       <ClienteSheet
         id={clienteSheet?.id ?? null}

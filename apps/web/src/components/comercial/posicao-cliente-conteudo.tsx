@@ -515,7 +515,10 @@ export function PosicaoClienteConteudo({
 
   return (
     <div className="space-y-4">
-      <div className="flex min-w-0 items-center gap-3">
+      <div
+        className="flex min-w-0 items-center gap-3"
+        data-tour="posicao-cliente-detalhe-cabecalho"
+      >
         {mostrarVoltar ? (
           <Button variant="ghost" size="icon" onClick={() => router.push(LIST_ROUTE)}>
             <ArrowLeft className="size-4" />
@@ -528,7 +531,7 @@ export function PosicaoClienteConteudo({
         {!cliente.ativo && <Badge variant="destructive">Inativo</Badge>}
       </div>
 
-      <Card>
+      <Card data-tour="posicao-cliente-detalhe-cadastro">
         <CardContent
           className={`grid grid-cols-2 gap-4 ${compacto ? "" : "sm:grid-cols-4"}`}
         >
@@ -615,6 +618,7 @@ export function PosicaoClienteConteudo({
 
       <div
         className={`grid grid-cols-2 gap-4 ${compacto ? "" : "lg:grid-cols-4"}`}
+        data-tour="posicao-cliente-detalhe-resumo"
       >
         <Metrica label="Notas fiscais" value={resumo.totalNotas.toLocaleString("pt-BR")} />
         <Metrica label="Total comprado" value={moeda(resumo.totalComprado)} />
@@ -627,8 +631,11 @@ export function PosicaoClienteConteudo({
         )}
       </div>
 
-      <Tabs defaultValue="notas">
-        <div className="-mx-1 overflow-x-auto px-1 pb-1">
+      <Tabs defaultValue="notas" data-tour="posicao-cliente-detalhe-conteudo">
+        <div
+          className="-mx-1 overflow-x-auto px-1 pb-1"
+          data-tour="posicao-cliente-detalhe-abas"
+        >
           <TabsList>
             <TabsTrigger value="notas">Notas fiscais ({notas.length})</TabsTrigger>
             <TabsTrigger value="comodato">Comodato ({comodatos.length})</TabsTrigger>

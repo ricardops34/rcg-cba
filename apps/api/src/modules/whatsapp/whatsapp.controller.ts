@@ -29,6 +29,7 @@ import { WhatsappAcoesService } from './whatsapp-acoes.service';
 import { WhatsappAgendamentoService } from './whatsapp-agendamento.service';
 import {
   WhatsappConectarDto,
+  WhatsappConectarEmpresaDto,
   WhatsappConfigUpdateDto,
   WhatsappConversaQueryDto,
   WhatsappAgendarMensagemDto,
@@ -49,6 +50,7 @@ import { WhatsappFuncionarioService } from './triagem/whatsapp-funcionario.servi
 import { WhatsappRecadoService } from './whatsapp-recado.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import {
   CurrentUser,
@@ -287,7 +289,7 @@ export class WhatsappController {
   @RequirePermission('whatsapp-config', 'editar')
   @Post('config/sessao-empresa/conectar')
   conectarEmpresa(
-    @Body() body: { aceiteVersao?: string },
+    @Body() body: WhatsappConectarEmpresaDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.sessao.conectarEmpresa(user.empresaAtivaId, user, body);
@@ -312,6 +314,79 @@ export class WhatsappController {
   @Delete('config/sessao-empresa')
   desconectarEmpresa(@CurrentUser() user: AuthenticatedUser) {
     return this.sessao.desconectarEmpresa(user.empresaAtivaId, user);
+  }
+
+  // ---------------- número institucional de QUALQUER empresa ----------------
+  //
+  // Espelham as quatro rotas acima, mas por `:empresaId` em vez da empresa
+  // ativa da sessão — para o administrador da plataforma conectar o WhatsApp
+  // institucional de uma empresa sem precisar trocar de sessão para ela (ação
+  // "Conectar WhatsApp" na lista de Administração > Empresas). `PlatformAdminGuard`
+  // é a mesma trava de `GET /empresas` (a própria listagem): quem chega a essa
+  // tela já tem acesso a qualquer empresa.
+
+  @ApiOperation({
+    summary: 'Configuração de WhatsApp de uma empresa qualquer',
+    description:
+      'Mesma leitura de `GET /whatsapp/config`, mas por empresa informada — só ' +
+      'para administradores da plataforma.',
+  })
+  @RequirePermission('whatsapp-config', 'visualizar')
+  @UseGuards(PlatformAdminGuard)
+  @Get('config/empresas/:empresaId')
+  configDaEmpresa(@Param('empresaId') empresaId: string) {
+    return this.config.paraLeitura(empresaId);
+  }
+
+  @ApiOperation({
+    summary: 'Situação do número institucional de uma empresa qualquer',
+    description: 'Mesma leitura de `GET /whatsapp/config/sessao-empresa`, por empresa informada.',
+  })
+  @RequirePermission('whatsapp-config', 'visualizar')
+  @UseGuards(PlatformAdminGuard)
+  @Get('config/empresas/:empresaId/sessao-empresa')
+  sessaoDaEmpresaPlataforma(@Param('empresaId') empresaId: string) {
+    return this.sessao.daEmpresa(empresaId);
+  }
+
+  @ApiOperation({
+    summary: 'Parear o número institucional de uma empresa qualquer',
+    description: 'Mesmo pareamento de `POST /whatsapp/config/sessao-empresa/conectar`, por empresa informada.',
+  })
+  @RequirePermission('whatsapp-config', 'editar')
+  @UseGuards(PlatformAdminGuard)
+  @Post('config/empresas/:empresaId/sessao-empresa/conectar')
+  conectarEmpresaPlataforma(
+    @Param('empresaId') empresaId: string,
+    @Body() body: WhatsappConectarEmpresaDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.sessao.conectarEmpresa(empresaId, user, body);
+  }
+
+  @ApiOperation({
+    summary: 'QR do pareamento do número institucional de uma empresa qualquer',
+    description: 'Mesmo QR de `GET /whatsapp/config/sessao-empresa/pareamento`, por empresa informada.',
+  })
+  @RequirePermission('whatsapp-config', 'editar')
+  @UseGuards(PlatformAdminGuard)
+  @Get('config/empresas/:empresaId/sessao-empresa/pareamento')
+  pareamentoEmpresaPlataforma(@Param('empresaId') empresaId: string) {
+    return this.sessao.pareamentoEmpresa(empresaId);
+  }
+
+  @ApiOperation({
+    summary: 'Desconectar o número institucional de uma empresa qualquer',
+    description: 'Mesma desconexão de `DELETE /whatsapp/config/sessao-empresa`, por empresa informada.',
+  })
+  @RequirePermission('whatsapp-config', 'editar')
+  @UseGuards(PlatformAdminGuard)
+  @Delete('config/empresas/:empresaId/sessao-empresa')
+  desconectarEmpresaPlataforma(
+    @Param('empresaId') empresaId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.sessao.desconectarEmpresa(empresaId, user);
   }
 
   @ApiOperation({

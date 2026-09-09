@@ -315,6 +315,28 @@ export const whatsappConectarSchema = z.object({
 export type WhatsappConectar = z.infer<typeof whatsappConectarSchema>;
 
 /**
+ * Início do pareamento do número institucional (empresa, não vendedor). Sem
+ * `aceite` — quem responde pelo número institucional é a administração, não
+ * uma pessoa lendo o texto no próprio aparelho.
+ *
+ * `transporte` é opcional: quando informado, escolhe o provedor só para esta
+ * sessão (dentre os configurados — ver `WhatsappConfig.workerUrl` /
+ * `evolutionUrl`/`evolutionApiKeyDefinida`); quando omitido, usa o padrão da
+ * empresa (`WhatsappConfig.transporte`). Não altera esse padrão.
+ */
+export const whatsappConectarEmpresaSchema = z.object({
+  aceiteVersao: z.string().optional(),
+  transporte: whatsappTransporteSchema
+    .optional()
+    .describe(
+      "Provedor escolhido para este pareamento; se omitido, usa o padrão da empresa (config.transporte)",
+    ),
+});
+export type WhatsappConectarEmpresa = z.infer<
+  typeof whatsappConectarEmpresaSchema
+>;
+
+/**
  * Estado do pareamento, consultado pela tela enquanto o QR não é lido.
  *
  * O QR expira em segundos e é renovado pelo provedor; a tela repinta a cada

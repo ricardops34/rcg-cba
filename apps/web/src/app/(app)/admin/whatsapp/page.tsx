@@ -77,7 +77,7 @@ export default function WhatsappConfigPage() {
         </TabsContent>
         <TabsContent value="instancias" className="pt-4"><Instancias config={config} /></TabsContent>
         <TabsContent value="atendimento" className="pt-4"><AtendimentoIaConfig config={config} /></TabsContent>
-        <TabsContent value="institucional" className="pt-4"><InstitucionalConfig config={config} /></TabsContent>
+        <TabsContent value="institucional" className="pt-4"><InstitucionalConfig /></TabsContent>
       </Tabs>
     </div>
   );

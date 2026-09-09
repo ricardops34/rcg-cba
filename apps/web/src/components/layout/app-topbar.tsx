@@ -55,7 +55,7 @@ export function AppTopbar({
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const { user, logout, setTokens, setUser } = useAuthStore();
-  const { iniciarTourInicio } = useTour();
+  const { iniciarTourAtual, tourDisponivel } = useTour();
   const [searchOpen, setSearchOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
 
@@ -143,7 +143,7 @@ export function AppTopbar({
           <AgenteBotaoTopbar />
         </div>
 
-        {pathname === "/" && (
+        {tourDisponivel && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -151,7 +151,7 @@ export function AppTopbar({
                 variant="ghost"
                 size="icon"
                 aria-label="Refazer tour desta tela"
-                onClick={iniciarTourInicio}
+                onClick={iniciarTourAtual}
                 data-tour="refazer-tour"
               >
                 <CirclePlay className="size-4.5" />
@@ -290,10 +290,10 @@ export function AppTopbar({
               <Info className="size-4" />
               Sobre o sistema
             </DropdownMenuItem>
-            {pathname === "/" && (
+            {tourDisponivel && (
               <DropdownMenuItem
                 className="sm:hidden"
-                onClick={iniciarTourInicio}
+                onClick={iniciarTourAtual}
               >
                 <CirclePlay className="size-4" />
                 Refazer tour

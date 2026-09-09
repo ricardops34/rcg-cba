@@ -13,7 +13,7 @@ Antes da publicação, o texto inicial da migration deve ser revisado pela área
 
 ## Processo 2 — Ajuda e Sobre
 
-Status: implementado para a tela inicial.
+Status: implementado para a tela inicial, Dashboard Comercial e Posição do Cliente.
 
 - ícone de ajuda contextual no cabeçalho;
 - Central de ajuda e página detalhada da rotina inicial;
@@ -34,7 +34,12 @@ Status: implementado.
 
 ## Processo 4 — Expansão para outras rotinas
 
-Status: pendente.
+Status: em andamento.
+
+Rotinas concluídas:
+
+- Dashboard Comercial: filtros, indicadores de objetivo e realizado e vendas por categoria;
+- Posição do Cliente: busca, filtros rápidos e avançados, títulos, indicadores da listagem, ações e ficha completa do cliente.
 
 Para cada nova rotina:
 

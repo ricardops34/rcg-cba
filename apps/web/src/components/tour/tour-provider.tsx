@@ -18,32 +18,33 @@ import type {
 } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
 import {
-  INICIO_TOUR_CODIGO,
-  INICIO_TOUR_PASSOS,
-  INICIO_TOUR_VERSAO,
+  tourPorRota,
   type TourPasso,
-} from "@/lib/tours/inicio-tour";
+} from "@/lib/tours/tour-definicoes";
 import { GuidedTour } from "./guided-tour";
 
 interface TourContextValue {
-  iniciarTourInicio: () => void;
+  iniciarTourAtual: () => void;
+  tourDisponivel: boolean;
 }
 
 const TourContext = createContext<TourContextValue | null>(null);
 
 export function TourProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const tourAtual = tourPorRota(pathname);
   const [execucao, setExecucao] = useState<TourExecucao | null>(null);
   const [passoAtual, setPassoAtual] = useState(0);
-  const [passos, setPassos] = useState<TourPasso[]>(INICIO_TOUR_PASSOS);
-  const consultado = useRef(false);
+  const [passos, setPassos] = useState<TourPasso[]>([]);
+  const consultados = useRef(new Set<string>());
 
   const iniciar = useCallback(async (origem: TourOrigem) => {
+    if (!tourAtual) return;
     const nova = await apiFetch<TourExecucao>(
-      `/tours/${INICIO_TOUR_CODIGO}/execucoes`,
-      { method: "POST", body: { versao: INICIO_TOUR_VERSAO, origem } },
+      `/tours/${tourAtual.codigo}/execucoes`,
+      { method: "POST", body: { versao: tourAtual.versao, origem } },
     );
-    const visiveis = INICIO_TOUR_PASSOS.filter((passo) => {
+    const visiveis = tourAtual.passos.filter((passo) => {
       if (!passo.seletor) return true;
       const elemento = document.querySelector<HTMLElement>(passo.seletor);
       if (!elemento) return false;
@@ -53,25 +54,34 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     setPassos(visiveis);
     setPassoAtual(0);
     setExecucao(nova);
-  }, []);
+  }, [tourAtual]);
 
   useEffect(() => {
-    if (pathname !== "/" || consultado.current) return;
-    consultado.current = true;
+    setExecucao(null);
+    if (!tourAtual) return;
+    const chave = `${tourAtual.codigo}:${tourAtual.versao}`;
+    if (consultados.current.has(chave)) return;
+    consultados.current.add(chave);
+    let cancelado = false;
     const timer = window.setTimeout(async () => {
       try {
         const estado = await apiFetch<TourEstado>(
-          `/tours/${INICIO_TOUR_CODIGO}/estado`,
-          { query: { versao: INICIO_TOUR_VERSAO } },
+          `/tours/${tourAtual.codigo}/estado`,
+          { query: { versao: tourAtual.versao } },
         );
-        if (estado.deveIniciarAutomaticamente) await iniciar("automatico");
+        if (!cancelado && estado.deveIniciarAutomaticamente) {
+          await iniciar("automatico");
+        }
       } catch {
         // A indisponibilidade do recurso de apresentação nunca deve impedir
         // o uso normal da plataforma.
       }
     }, 650);
-    return () => window.clearTimeout(timer);
-  }, [iniciar, pathname]);
+    return () => {
+      cancelado = true;
+      window.clearTimeout(timer);
+    };
+  }, [iniciar, tourAtual]);
 
   const salvar = useCallback(
     async (passo: number, status: TourStatus) => {
@@ -92,15 +102,17 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     [execucao],
   );
 
-  const iniciarTourInicio = useCallback(() => {
-    if (pathname !== "/") return;
+  const iniciarTourAtual = useCallback(() => {
+    if (!tourAtual) return;
     void iniciar("manual").catch(() => {
       toast.error("Não foi possível iniciar o tour. Tente novamente.");
     });
-  }, [iniciar, pathname]);
+  }, [iniciar, tourAtual]);
 
   return (
-    <TourContext.Provider value={{ iniciarTourInicio }}>
+    <TourContext.Provider
+      value={{ iniciarTourAtual, tourDisponivel: tourAtual !== null }}
+    >
       {children}
       {execucao && (
         <GuidedTour

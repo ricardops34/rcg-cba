@@ -1,11 +1,9 @@
 export const INICIO_TOUR_CODIGO = "inicio";
 export const INICIO_TOUR_VERSAO = 1;
 
-export interface TourPasso {
-  seletor?: string;
-  titulo: string;
-  descricao: string;
-}
+import type { TourPasso } from "./tour-tipos";
+
+export type { TourPasso } from "./tour-tipos";
 
 export const INICIO_TOUR_PASSOS: TourPasso[] = [
   {

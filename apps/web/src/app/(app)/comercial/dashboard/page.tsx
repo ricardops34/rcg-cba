@@ -109,7 +109,7 @@ export default function DashboardComercialPage() {
 
   return (
     <div className="space-y-4">
-      <div>
+      <div data-tour="dashboard-comercial-cabecalho">
         <h1 className="text-xl font-semibold tracking-tight">Dashboard Comercial</h1>
         <p className="text-sm text-muted-foreground">
           Objetivo vs. realizado no período selecionado
@@ -120,7 +120,7 @@ export default function DashboardComercialPage() {
         </p>
       </div>
 
-      <Card>
+      <Card data-tour="dashboard-comercial-filtros">
         <CardContent className="flex flex-wrap items-end gap-3">
           <div className="w-full space-y-1.5 sm:w-40">
             <FieldLabel>Mês</FieldLabel>
@@ -206,15 +206,16 @@ export default function DashboardComercialPage() {
         </CardContent>
       </Card>
 
-      {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 w-full rounded-xl" />
-          ))}
-        </div>
-      ) : data ? (
-        <>
+      <div data-tour="dashboard-comercial-resultados">
+        {isLoading ? (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-28 w-full rounded-xl" />
+            ))}
+          </div>
+        ) : data ? (
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               icon={Banknote}
               label="Sugestão de Venda"
@@ -243,10 +244,10 @@ export default function DashboardComercialPage() {
               suffix={`${data.percBase}% de ${inteiro(data.baseTotal)}`}
               gradient="from-amber-500 to-orange-600"
             />
-          </div>
+            </div>
 
-          <Card>
-            <CardContent className="space-y-3">
+            <Card data-tour="dashboard-comercial-categorias">
+              <CardContent className="space-y-3">
               <p className="text-sm font-semibold">Vendas Categoria</p>
               {data.categorias.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhuma venda no período.</p>
@@ -278,10 +279,11 @@ export default function DashboardComercialPage() {
                   </TableFooter>
                 </Table>
               )}
-            </CardContent>
-          </Card>
-        </>
-      ) : null}
+              </CardContent>
+            </Card>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

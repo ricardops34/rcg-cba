@@ -3,7 +3,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { WhatsappConfig } from "@plataforma/contracts";
+import {
+  WHATSAPP_TRANSPORTE_ROTULO,
+  type WhatsappConfig,
+  type WhatsappTransporte,
+} from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +18,7 @@ interface SessaoEmpresa {
   id: string;
   numero: string | null;
   status: "desconectada" | "pareando" | "conectada" | "banida";
+  transporte: WhatsappTransporte;
   ultimoErro: string | null;
 }
 
@@ -24,33 +29,69 @@ const ROTULO: Record<SessaoEmpresa["status"], string> = {
   banida: "Número banido pelo WhatsApp",
 };
 
+/** Provedores que a plataforma sabe operar — mesma lista de WHATSAPP_TRANSPORTES_IMPLEMENTADOS. */
+const PROVEDORES_ESCOLHIVEIS: WhatsappTransporte[] = ["zapo", "evolution_go"];
+
 /**
  * O número institucional da empresa — a porta de entrada do atendimento por
- * IA (identifica quem escreve e direciona a um vendedor). Fica na mesma tela
- * das demais configurações de WhatsApp, e não escondido no cadastro da
- * empresa: é aqui que se liga o provedor, e é aqui que se espera achar o
- * pareamento também.
+ * IA (identifica quem escreve e direciona a um vendedor).
+ *
+ * `empresaId` ausente = a empresa ativa da sessão (usado na aba "Número
+ * institucional" de Administração > WhatsApp, endpoints de sessão própria).
+ * `empresaId` presente = qualquer empresa (usado no diálogo aberto a partir
+ * de Administração > Empresas, endpoints `.../config/empresas/:id/...`,
+ * só alcançáveis por administrador da plataforma).
  *
  * Não é a mesma coisa que a conexão de Comercial → Conversas: lá cada
  * vendedor pareia o próprio aparelho. Os dois convivem.
  *
- * Diferente das demais abas desta tela, não desaparece com o WhatsApp
- * desligado — mostra o que falta em vez de sumir, para não repetir o
- * problema de quem procurava o pareamento e não achava onde ligá-lo primeiro.
+ * Não desaparece com o WhatsApp desligado — mostra o que falta em vez de
+ * sumir, para não repetir o problema de quem procurava o pareamento e não
+ * achava onde ligá-lo primeiro.
  */
-export function InstitucionalConfig({ config }: { config: WhatsappConfig }) {
+export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
+  const base = empresaId
+    ? `/whatsapp/config/empresas/${empresaId}`
+    : "/whatsapp/config";
+  const sessaoUrl = `${base}/sessao-empresa`;
+  const chaveCache = empresaId ?? "ativa";
+
+  const { data: config, isLoading: carregandoConfig } = useQuery({
+    queryKey: ["whatsapp", "config", chaveCache],
+    queryFn: () => apiFetch<WhatsappConfig>(base),
+  });
+
   const [ocupado, setOcupado] = useState(false);
   const [qr, setQr] = useState<string | null>(null);
+  // null = ainda não mexeu no seletor; usa o padrão (sessão atual, ou da
+  // empresa) até o admin escolher outro provedor explicitamente.
+  const [transporteEscolhido, setTransporteEscolhido] =
+    useState<WhatsappTransporte | null>(null);
 
   const { data: sessao, refetch } = useQuery({
-    queryKey: ["whatsapp", "sessao-empresa"],
-    queryFn: () => apiFetch<SessaoEmpresa | null>("/whatsapp/config/sessao-empresa"),
-    enabled: config.ativo === true,
+    queryKey: ["whatsapp", "sessao-empresa", chaveCache],
+    queryFn: () => apiFetch<SessaoEmpresa | null>(sessaoUrl),
+    enabled: config?.ativo === true,
     // Enquanto pareia, o estado muda por fora (o worker avisa a API quando o
     // QR é lido): sem recarregar, a tela ficaria em "aguardando" para sempre.
     refetchInterval: (q) =>
       (q.state.data as SessaoEmpresa | null)?.status === "pareando" ? 3000 : false,
   });
+
+  if (carregandoConfig || !config) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Smartphone className="size-4" /> Número institucional
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">Carregando...</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (config.ativo !== true) {
     return (
@@ -75,12 +116,20 @@ export function InstitucionalConfig({ config }: { config: WhatsappConfig }) {
     );
   }
 
+  const disponibilidade: Record<WhatsappTransporte, boolean> = {
+    zapo: Boolean(config.workerUrl),
+    evolution_go: Boolean(config.evolutionUrl && config.evolutionApiKeyDefinida),
+    cloud_api: false,
+  };
+  const transporte =
+    transporteEscolhido ?? sessao?.transporte ?? config.transporte;
+
   const conectar = async () => {
     setOcupado(true);
     try {
-      await apiFetch("/whatsapp/config/sessao-empresa/conectar", {
+      await apiFetch(`${sessaoUrl}/conectar`, {
         method: "POST",
-        body: {},
+        body: { transporte },
       });
       await refetch();
       await buscarQr();
@@ -95,9 +144,7 @@ export function InstitucionalConfig({ config }: { config: WhatsappConfig }) {
 
   const buscarQr = async () => {
     try {
-      const r = await apiFetch<{ qrCode?: string | null }>(
-        "/whatsapp/config/sessao-empresa/pareamento",
-      );
+      const r = await apiFetch<{ qrCode?: string | null }>(`${sessaoUrl}/pareamento`);
       setQr(r.qrCode ?? null);
     } catch {
       setQr(null);
@@ -113,7 +160,7 @@ export function InstitucionalConfig({ config }: { config: WhatsappConfig }) {
       return;
     setOcupado(true);
     try {
-      await apiFetch("/whatsapp/config/sessao-empresa", { method: "DELETE" });
+      await apiFetch(sessaoUrl, { method: "DELETE" });
       setQr(null);
       await refetch();
       toast.success("Número desconectado");
@@ -140,7 +187,8 @@ export function InstitucionalConfig({ config }: { config: WhatsappConfig }) {
           O número institucional é a porta de entrada do atendimento: quem
           escreve fala primeiro com a IA, que identifica o cliente e direciona a
           um vendedor. Não substitui o WhatsApp de cada vendedor (pareado em
-          Comercial → Conversas) — os dois convivem.
+          Comercial → Conversas) — os dois convivem, inclusive em provedores
+          diferentes.
         </p>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -158,10 +206,48 @@ export function InstitucionalConfig({ config }: { config: WhatsappConfig }) {
           {sessao?.numero && (
             <span className="font-mono text-sm">{sessao.numero}</span>
           )}
+          {sessao && (
+            <Badge variant="outline">{WHATSAPP_TRANSPORTE_ROTULO[sessao.transporte]}</Badge>
+          )}
         </div>
 
         {sessao?.ultimoErro && (
           <p className="text-xs text-destructive">{sessao.ultimoErro}</p>
+        )}
+
+        {status !== "conectada" && (
+          <div className="space-y-2">
+            <p className="text-xs font-medium">Provedor para este pareamento</p>
+            <div className="flex flex-wrap gap-2">
+              {PROVEDORES_ESCOLHIVEIS.map((p) => {
+                const disponivel = disponibilidade[p];
+                const selecionado = transporte === p;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    disabled={!disponivel}
+                    onClick={() => setTransporteEscolhido(p)}
+                    title={
+                      disponivel
+                        ? undefined
+                        : `${WHATSAPP_TRANSPORTE_ROTULO[p]} não está configurado — preencha a aba correspondente antes`
+                    }
+                    className={`rounded-md border px-2 py-1 text-xs transition ${
+                      selecionado
+                        ? "border-primary bg-primary/10 text-primary"
+                        : disponivel
+                          ? "hover:bg-muted"
+                          : "cursor-not-allowed opacity-50"
+                    }`}
+                  >
+                    {WHATSAPP_TRANSPORTE_ROTULO[p]}
+                    {!disponivel && " · não configurado"}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {status === "pareando" && (
@@ -190,7 +276,7 @@ export function InstitucionalConfig({ config }: { config: WhatsappConfig }) {
 
         <div className="flex flex-wrap gap-2">
           {status !== "conectada" && (
-            <Button onClick={conectar} disabled={ocupado}>
+            <Button onClick={conectar} disabled={ocupado || !disponibilidade[transporte]}>
               <QrCode className="size-4" />
               {status === "pareando" ? "Recomeçar pareamento" : "Parear número"}
             </Button>

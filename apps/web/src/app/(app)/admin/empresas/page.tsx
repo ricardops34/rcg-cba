@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { SITUACAO_EMPRESA_LABEL, type Empresa } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
+import { useAuthStore } from "@/stores/auth-store";
 import { ApiError } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
 import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
+import { ConectarWhatsappDialog } from "@/components/whatsapp/conectar-whatsapp-dialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -17,16 +19,18 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { MessageCircle, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 export default function EmpresasPage() {
   const router = useRouter();
+  const administradorPlataforma = useAuthStore((s) => s.user?.administradorPlataforma);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [sortBy, setSortBy] = useState("razaoSocial");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [status, setStatus] = useState<StatusFilterValue>("todos");
+  const [whatsappAlvo, setWhatsappAlvo] = useState<Empresa | null>(null);
 
   const { data, isLoading, isFetching, refetch, error } = useResourceList<Empresa>("empresas", {
     search,
@@ -86,6 +90,11 @@ export default function EmpresasPage() {
             <DropdownMenuItem onClick={() => openEdit(e)}>
               <Pencil className="size-4" /> Editar
             </DropdownMenuItem>
+            {administradorPlataforma && (
+              <DropdownMenuItem onClick={() => setWhatsappAlvo(e)}>
+                <MessageCircle className="size-4" /> Conectar WhatsApp
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem variant="destructive" onClick={() => onDelete(e)}>
               <Trash2 className="size-4" /> Excluir
             </DropdownMenuItem>
@@ -142,6 +151,17 @@ export default function EmpresasPage() {
           setSortOrder(order);
         }}
       />
+
+      {whatsappAlvo && (
+        <ConectarWhatsappDialog
+          aberto={Boolean(whatsappAlvo)}
+          onOpenChange={(open) => {
+            if (!open) setWhatsappAlvo(null);
+          }}
+          empresaId={whatsappAlvo.id}
+          empresaNome={whatsappAlvo.nomeFantasia}
+        />
+      )}
     </div>
   );
 }
