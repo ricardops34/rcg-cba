@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # Imagem de PRODUÇÃO do worker de WhatsApp. Mesmo padrão de duas etapas da
 # api.Dockerfile: compila e o runtime fica só com deps de produção + dist.
 #
@@ -11,19 +12,27 @@
 # DATABASE_URL da API. Ver docs/runbook-operacao.md.
 
 FROM node:22-alpine AS base
-RUN npm install -g pnpm@10.0.0
+RUN --mount=type=secret,id=npm_ca,required=false \
+  if [ -f /run/secrets/npm_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/npm_ca; fi; \
+  npm install -g pnpm@10.0.0
 WORKDIR /app
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY apps/whatsapp-worker/package.json apps/whatsapp-worker/
 
 FROM base AS build
-RUN pnpm install --frozen-lockfile --filter @plataforma/whatsapp-worker...
+RUN --mount=type=secret,id=npm_ca,required=false \
+  --mount=type=cache,id=rcgcba-pnpm-store-node22,target=/root/.local/share/pnpm/store,sharing=locked \
+  if [ -f /run/secrets/npm_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/npm_ca; fi; \
+  pnpm install --frozen-lockfile --filter @plataforma/whatsapp-worker...
 COPY apps/whatsapp-worker apps/whatsapp-worker
 RUN pnpm --filter @plataforma/whatsapp-worker build
 
 FROM base AS runtime
 ENV NODE_ENV=production
-RUN pnpm install --frozen-lockfile --prod --filter @plataforma/whatsapp-worker...
+RUN --mount=type=secret,id=npm_ca,required=false \
+  --mount=type=cache,id=rcgcba-pnpm-store-node22,target=/root/.local/share/pnpm/store,sharing=locked \
+  if [ -f /run/secrets/npm_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/npm_ca; fi; \
+  pnpm install --frozen-lockfile --prod --filter @plataforma/whatsapp-worker...
 COPY --from=build /app/apps/whatsapp-worker/dist apps/whatsapp-worker/dist
 
 WORKDIR /app/apps/whatsapp-worker

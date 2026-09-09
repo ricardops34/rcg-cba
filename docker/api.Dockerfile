@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # Imagem de PRODUÇÃO da API (NestJS). Build em duas etapas: compila tudo e o
 # runtime fica só com deps de produção + dist. O código vai DENTRO da imagem
 # (diferente do api.Dockerfile.dev, que usa bind mount + hot reload).
@@ -9,18 +10,25 @@
 # antes de subir — por isso `prisma` é dependência de produção no package.json.
 
 FROM node:20-alpine AS base
-RUN npm install -g pnpm@10.0.0
+RUN --mount=type=secret,id=npm_ca,required=false \
+  if [ -f /run/secrets/npm_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/npm_ca; fi; \
+  npm install -g pnpm@10.0.0
 WORKDIR /app
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY packages/contracts/package.json packages/contracts/
 COPY apps/api/package.json apps/api/
 
 FROM base AS build
-RUN pnpm install --frozen-lockfile --filter @plataforma/api...
+RUN --mount=type=secret,id=npm_ca,required=false \
+  --mount=type=cache,id=rcgcba-pnpm-store-node20,target=/root/.local/share/pnpm/store,sharing=locked \
+  if [ -f /run/secrets/npm_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/npm_ca; fi; \
+  pnpm install --frozen-lockfile --filter @plataforma/api...
 COPY packages/config packages/config
 COPY packages/contracts packages/contracts
 COPY apps/api apps/api
-RUN pnpm --filter @plataforma/contracts build \
+RUN --mount=type=secret,id=npm_ca,required=false \
+  if [ -f /run/secrets/npm_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/npm_ca; fi; \
+  pnpm --filter @plataforma/contracts build \
   && pnpm --filter @plataforma/api prisma:generate \
   && pnpm --filter @plataforma/api build \
   && pnpm --filter @plataforma/api exec tsc -p prisma/tsconfig.scripts.json
@@ -28,10 +36,12 @@ RUN pnpm --filter @plataforma/contracts build \
 FROM base AS runtime
 ENV NODE_ENV=production
 COPY apps/api/prisma apps/api/prisma
-RUN pnpm install --frozen-lockfile --prod --filter @plataforma/api... \
+RUN --mount=type=secret,id=npm_ca,required=false \
+  --mount=type=cache,id=rcgcba-pnpm-store-node20,target=/root/.local/share/pnpm/store,sharing=locked \
+  if [ -f /run/secrets/npm_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/npm_ca; fi; \
+  pnpm install --frozen-lockfile --prod --filter @plataforma/api... \
   && pnpm --filter @plataforma/api exec prisma generate \
-  && pnpm store prune \
-  && rm -rf /root/.local/share/pnpm/store /root/.cache /root/.npm
+  && rm -rf /root/.cache /root/.npm
 COPY --from=build /app/packages/contracts/dist packages/contracts/dist
 COPY --from=build /app/apps/api/dist apps/api/dist
 # Scripts de seed/importação (apps/api/prisma/*.ts) já compilados pra JS puro
