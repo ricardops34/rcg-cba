@@ -66,10 +66,10 @@ varredura.
 As funções acompanham o fonte pelo prefixo: `U_BJMAPPRD` é o mapeador de
 produtos, em `BJPLA003`; `U_BJENFILA` põe na fila, em `BJPLA002`.
 
-> **`BJPLA006.prw` não está nesta pasta.** O plano o descreve como escrito
-> (FILE-006: criação da coluna `S_T_A_M_P_` nas tabelas lidas), e o arquivo não
-> existe aqui nem em outro ponto do repositório. Enquanto não aparecer, a
-> preparação da coluna é trabalho manual — ver *Instalação*.
+> **Não há sexto fonte.** O `BJPLA006` existiu e foi removido em 08/09/2026: as
+> colunas `S_T_A_M_P_` já estão no banco desta base, e criar coluna em tempo de
+> execução é proibido. A preparação de ambiente não tem rotina — é conferência, e
+> está em *Instalação*.
 
 > **`BJPLA.CH` também não existe.** O include comum foi previsto e não feito: cada
 > fonte repete os `#Define` de que precisa, porque diretiva de pré-processador não
@@ -217,12 +217,10 @@ feitos pelo Configurador.
 2. **Cadastre `MV_BJAPI01`, `MV_BJAPI02` e `MV_BJAPI03`** no Configurador ou por
    UPDDISTR. A chave de API sai de *Administração > Integração* na plataforma e
    carrega a empresa.
-3. **Garanta a coluna `S_T_A_M_P_`** nas tabelas do catálogo. É a preparação que o
-   `BJPLA006` faria; enquanto ele não existir nesta pasta, a criação é manual, em
-   ambiente exclusivo, na sequência que a TOTVS documenta:
-   `TCConfig('SETUSEROWSTAMP = ON')`, `TCConfig('SETAUTOSTAMP = ON')`, abrir a
-   tabela exclusiva, `TCRefresh()`, **desligar os dois** — deixados ligados, toda
-   tabela aberta pela thread dali em diante ganharia a coluna.
+3. **Confira a coluna `S_T_A_M_P_`** nas tabelas do catálogo — incluindo SZ1, SA2,
+   SF1 e SD1. Nesta base elas já existem, e é por isso que não há rotina de
+   preparação: alterar schema em tempo de execução é proibido. Faltando em alguma
+   tabela, quem resolve é o DBA, fora da integração.
 4. Compile os cinco fontes.
 5. Ligue `MV_BJAPI03` = `S`.
 6. Cadastre a rotina do monitor no menu, apontando para `U_BJPLA005`.
@@ -356,7 +354,6 @@ O monitor abre com a integração desligada (`MV_BJAPI03 = N`), perguntando ante
 | **Alteração de cliente** | `BJ_ROTA_ALTCLI` (`/integracao/clientes/alteracoes`) ainda não existe na API. O fonte registra o 404 e não quebra o ciclo (TASK-051) |
 | **Objetivos de venda** | Sem origem no ERP; entidade inativa e mapeador esqueleto |
 | **`regraDescontoCodigo` nos itens** | Sem campo confirmado na SB1, DA1, SD2 ou SCK deste dicionário. Vai `null` |
-| **`BJPLA006.prw`** | Citado no plano como escrito, ausente da pasta |
 | **XML da nota** | Manda `xmlBase64` seguindo o `endpoints.md`; **415** no primeiro envio significa que o caminho é multipart, que o `FWRest` não monta sozinho |
 | **Rota do estoque** | O envio usa `/estoque/{codigoErp}`, que é a rota real; a "Visão geral" do `endpoints.md` ainda mostra a de dois segmentos (TASK-050) |
 

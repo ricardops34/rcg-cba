@@ -31,9 +31,13 @@ e CA2010 (SX6). Não foram encontrados acessos diretos a SIX ou SX3 nessa remoç
 
 **Responsabilidade de implantação:** cadastrar e conferir a SZZ, seus campos,
 índices, numeração e os parâmetros no Configurador antes de executar a integração.
-`BJPLA006` prepara as colunas `S_T_A_M_P_`; seu retorno não certifica a
-estrutura da SZZ nem a existência dos parâmetros. A verificação automática
-desses cadastros foi removida, sem substituição por SQL direto.
+Nenhum fonte confere isso: a verificação automática foi removida, sem substituição
+por SQL direto.
+
+> As quatro remoções acima são de funções do `BJPLA006`, e depois delas **o fonte
+> inteiro saiu** (ver CON-003): as colunas `S_T_A_M_P_` já existem no banco desta
+> base, e alterar schema em tempo de execução é proibido. As linhas ficam como
+> registro do que foi retirado antes disso.
 
 **Comportamentos preservados:** leitura e numeração por APIs do framework
 (`GetMV`, `SuperGetMV`, `TamSX3`, `GetSxeNum` e correlatas), fila SZZ e
@@ -214,8 +218,11 @@ Juntos, uma carga grande bloqueia a próxima varredura.
 
 ### Diretrizes de legibilidade
 
-> **Plano de execução dos ajustes:** [BJPLA001 a BJPLA006](../../plan/refactor-bjpla-legibilidade-1.md).
-> Roteiro subordinado ao plano principal, com tarefas, dependências e critérios de aceite. Estado: planejado.
+> **Plano de execução dos ajustes: BJPLA001 a BJPLA005.** Roteiro subordinado a
+> este plano, com tarefas, dependências e critérios de aceite. Estado: planejado.
+> O arquivo `plan/refactor-bjpla-legibilidade-1.md`, apontado aqui até
+> 09/09/2026, **não existe no repositório** — o link foi retirado em vez de ficar
+> quebrado.
 
 
 
@@ -269,7 +276,7 @@ Antes de considerar uma alteração dos fontes BJ concluída, verificar:
 - [ ] Os comportamentos anteriores foram comparados com a alteração e nenhuma regra foi omitida.
 - [ ] A validação realizada e suas limitações foram registradas, sem apresentar revisão estática como compilação ou homologação.
 
-A adoção inicial deve revisar BJPLA001 a BJPLA006 por responsabilidade,
+A adoção inicial deve revisar BJPLA001 a BJPLA005 por responsabilidade,
 começando pelos auxiliares triviais, nomes opacos e mapeamentos fragmentados.
 Mudanças de nomes públicos exigem conferir chamadas, catálogo, menu e
 agendamentos. A adequação dos fontes permanece trabalho pendente; esta decisão
@@ -406,7 +413,7 @@ A API está no ar e validada. Absorvido das etapas 1-10 do
 
 ### 4.2 ERP — `Portal/BJ`
 
-Seis fontes escritos, **nenhum compilado ainda**.
+Cinco fontes escritos, **nenhum compilado ainda**.
 
 | Fonte | O que faz | Estado |
 |---|---|---|
@@ -415,7 +422,11 @@ Seis fontes escritos, **nenhum compilado ainda**.
 | `BJPLA003.prw` | Mapeadores, varredura que enfileira, drenagem que envia | ✅ escrito |
 | `BJPLA004.prw` | Orçamento da plataforma → SCJ por `MATA415`; alteração de cliente → SA1 | ⚠️ escrito, **não funciona** — TASK-043 |
 | `BJPLA005.prw` | Monitor: fila, payload, resposta, reenvio, marca d'água | ✅ escrito |
-| `BJPLA006.prw` | Preparação da coluna `S_T_A_M_P_`; dicionário conferido pelo Configurador | ✅ escrito |
+
+> **Não há sexto fonte.** O `BJPLA006` chegou a existir e foi removido em
+> 08/09/2026 — as colunas `S_T_A_M_P_` já estão no banco desta base, e criar
+> coluna em tempo de execução é proibido. A preparação de ambiente não tem fonte
+> próprio: é conferência no Configurador e no banco. Ver CON-003.
 
 **Conformidade verificada em 08/09/2026**: nenhum `IIF`, `ConOut`, `Function`
 pública, `cFilial`, `FwFreeObj` ou driver ISAM. `FWExecStatement` parametrizado
@@ -537,10 +548,10 @@ homologação.
 
 | Task | Descrição | ✅ | Data |
 |------|-----------|---|------|
-| TASK-032 | `BJPLA006`: criar a coluna `S_T_A_M_P_` nas tabelas lidas, **incluindo SZ1, SA2, SF1 e SD1**; conferir os parâmetros pelo Configurador, sem rotina de acesso direto ao dicionário | | |
-| TASK-033 | Compilar os seis fontes | | |
+| TASK-032 | Conferir no banco a coluna `S_T_A_M_P_` nas tabelas lidas, **incluindo SZ1, SA2, SF1 e SD1**, e os parâmetros no Configurador. Não há rotina: o fonte que fazia isso saiu, e a coluna já existe nesta base | | |
+| TASK-033 | Compilar os cinco fontes | | |
 | TASK-034 | Conferir os payloads contra `testes-swagger.json`, campo a campo | | |
-| TASK-035 | Cadastrar `MV_BJAPI01` a `MV_BJAPI03`, rodar `U_BJPLA006()` em ambiente exclusivo, cadastrar o menu do monitor e os quatro agendamentos | | |
+| TASK-035 | Cadastrar `MV_BJAPI01` a `MV_BJAPI03`, cadastrar o menu do monitor e os quatro agendamentos | | |
 | TASK-042 | **Ajustar o `MA415END.prw`**: desvio por `IsBlind()` no topo, para o EP não chamar `MsgYesNo`, `MostraErro` nem `MsgInfo` sem interface — e não efetivar por conta própria. Ver o apêndice B. **Bloqueia o primeiro retorno em produção** | | |
 | TASK-036 | Primeira carga, entidade por entidade, na ordem do catálogo | | |
 
@@ -552,7 +563,7 @@ homologação.
 |------|-----------|---|------|
 | TASK-037 | Apagar `Portal/BJ/Remover/` (os onze `BJIN*`) | ⏳ movidos em 08/09 | |
 | TASK-050 | Corrigir o estoque em `docs/integração/endpoints.md`: a "Visão geral" e as "Receitas rápidas" ainda mostram `/estoque/{produtoCodigo}/{armazemCodigo}`; a rota real é `/estoque/{codigoErp}` | | |
-| TASK-053 | Reescrever o `Portal/BJ/README.md` para a estrutura de seis fontes. Hoje descreve os `BJIN*` e tem 12 links quebrados | | |
+| TASK-053 | Reescrever o README dos fontes para a estrutura de cinco fontes — descrevia os `BJIN*`, com 12 links quebrados | ✅ | 09/09/2026 |
 | TASK-039 | Conferir se há objeto `BJIN*` no RPO e removê-lo. Nunca foram compilados segundo **RISK-003** — esta tarefa confirma ou desmente | | |
 
 ---
@@ -651,7 +662,7 @@ fornecedor antes de nota de entrada.
 - **ALT-003**: **Outbox com escrita no evento**, por Ponto de Entrada em cada rotina. Rejeitado: espalha a integração por Pontos de Entrada sobre rotinas padrão e ainda assim não detecta purge físico.
 - **ALT-004**: **Adaptar os fontes `BJIN*`** em vez de escrever novos. Rejeitado — e o tempo confirmou: eles nunca foram compilados, então não havia base instalada a preservar.
 - **ALT-005**: **Uma linha por chave** em vez de uma por mensagem. Tabela menor, mas perde o histórico de tentativas e o rastro de o que foi enviado quando.
-- **ALT-006**: **Reaproveitar o `BJIN999`** para a preparação de ambiente. Rejeitado: nasceu `BJPLA006`, e o `BJIN999` foi para `Remover/`.
+- **ALT-006**: **Reaproveitar o `BJIN999`** para a preparação de ambiente. Rejeitado: nasceu o `BJPLA006`, e o `BJIN999` foi para `Remover/`. O próprio `BJPLA006` saiu em seguida — a coluna `S_T_A_M_P_` já existe no banco, e a preparação virou conferência, não rotina.
 - **ALT-007**: **Só lote, sem CRUD individual.** Era o desenho do `api-integracao-erp.md`. Rejeitado dos dois lados: o lote é o caminho da carga inicial e da ressincronização, mas uma alteração isolada no dia a dia não deve esperar formar bloco. Os dois convivem — TASK-047.
 
 ---
@@ -675,7 +686,9 @@ Em `Portal/BJ/`:
 - **FILE-003**: `BJPLA003.prw` — **Coleta para envio.** Os mapeadores, a varredura que enfileira e a drenagem que envia.
 - **FILE-004**: `BJPLA004.prw` — **Gravação de recebidos.** Orçamento da plataforma → SCJ, e alteração de cliente → SA1.
 - **FILE-005**: `BJPLA005.prw` — **Monitor.** Lista da fila, leitura de uma mensagem, reenvio e ajuste da marca d'água.
-- **FILE-006**: `BJPLA006.prw` — **Ambiente.** Coluna `S_T_A_M_P_` nas tabelas lidas. SZZ e parâmetros devem ser conferidos pelo Configurador.
+~~**FILE-006**: `BJPLA006.prw` — **Ambiente.**~~ **Removido em 08/09/2026.** A
+coluna `S_T_A_M_P_` já existe nas tabelas desta base e alterar schema em tempo de
+execução é proibido; SZZ, numeração e parâmetros são conferidos no Configurador.
 
 Fora de `Portal/BJ/`, um único fonte é tocado: `Faturamento/Ponto de Entrada/MA415END.prw` (TASK-042, apêndice B).
 
@@ -697,7 +710,7 @@ em TASK-037.
 - **TEST-006**: Excluir um registro na origem e confirmar que a mensagem sai com `DELETE`, e que 404 é tratado como resolvido.
 - **TEST-007**: Rodar o expurgo e confirmar que pendentes e com erro nunca são apagadas, independente da idade.
 - **TEST-008**: Categorias — confirmar que a SZ1 sobe antes da SBM e que o produto referencia `B1_TPRCG` e `B1_GRUPO`, ambos já existentes na plataforma.
-- **TEST-009**: Compilar os seis fontes sem erro e sem aviso novo.
+- **TEST-009**: Compilar os cinco fontes sem erro e sem aviso novo.
 - **TEST-010**: Revisar cada função contra PAT-002: se apagar a função e colar o corpo em cada chamada deixasse o código igual ou mais claro, a função sobra e tem de sair.
 - **TEST-011**: **Ida e volta da chave** (TASK-043). Criar um orçamento na plataforma para um cliente e um produto que subiram daqui, rodar o retorno e confirmar que a SCJ recebeu o cliente, o produto, o vendedor e a condição certos — não a string prefixada.
 - **TEST-012**: **Reenvio dirigido.** Pelo monitor, reenviar uma chave de cada entidade e confirmar que o mapeador achou o registro. Hoje nenhum acha.
