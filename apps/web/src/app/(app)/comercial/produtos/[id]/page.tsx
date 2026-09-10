@@ -54,7 +54,7 @@ export default function ProdutoDetalhePage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div data-tour="rotina" className="space-y-4">
       <div className="flex items-center gap-3">
         <Button
           variant="ghost"

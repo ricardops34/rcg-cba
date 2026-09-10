@@ -132,7 +132,7 @@ export default function LeadsPage() {
   const totalPages = data?.totalPages ?? 1;
 
   return (
-    <div className="space-y-4">
+    <div data-tour="rotina" className="space-y-4">
       <CrudHeader
         search={search}
         onSearchChange={(v) => {

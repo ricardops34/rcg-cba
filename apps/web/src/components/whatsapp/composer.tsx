@@ -18,8 +18,17 @@ import {
   WHATSAPP_ARQUIVO_MAX_BYTES,
   type WhatsappMensagem,
   type WhatsappMensagemAgendada,
+  type WhatsappTemplate,
 } from "@plataforma/contracts";
-import { ApiError, apiFetch, apiUpload } from "@/lib/api-client";
+import { ApiError, apiFetch, apiUpload, ehJanelaWhatsappFechada } from "@/lib/api-client";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -59,8 +68,22 @@ export function Composer({
   const queryClient = useQueryClient();
   const [texto, setTexto] = useState("");
   const [agendando, setAgendando] = useState(false);
+  // Janela de 24h fechada (só a Cloud API tem essa regra — a própria Meta
+  // recusa o envio de texto livre). Reativo: só liga quando um envio de fato
+  // é recusado com o código específico, e volta a desligar ao trocar de
+  // conversa — não há como saber de antemão sem tentar.
+  const [janelaFechada, setJanelaFechada] = useState(false);
+  const [templateAberto, setTemplateAberto] = useState(false);
   const arquivoRef = useRef<HTMLInputElement>(null);
   const midiaRef = useRef<HTMLInputElement>(null);
+
+  // Ajuste de estado durante a renderização (não em efeito): troca de
+  // conversa é uma mudança de identidade, não um evento a sincronizar depois.
+  const [conversaAnterior, setConversaAnterior] = useState(conversaId);
+  if (conversaId !== conversaAnterior) {
+    setConversaAnterior(conversaId);
+    setJanelaFechada(false);
+  }
 
   const invalidar = () =>
     void queryClient.invalidateQueries({
@@ -78,11 +101,17 @@ export function Composer({
       }),
     onSuccess: () => {
       setTexto("");
+      setJanelaFechada(false);
       onCancelarResposta();
       invalidar();
     },
-    onError: (err) =>
-      toast.error(err instanceof ApiError ? err.message : "Falha ao enviar"),
+    onError: (err) => {
+      if (ehJanelaWhatsappFechada(err)) {
+        setJanelaFechada(true);
+        return;
+      }
+      toast.error(err instanceof ApiError ? err.message : "Falha ao enviar");
+    },
   });
 
   const enviarArquivo = useMutation({
@@ -144,6 +173,19 @@ export function Composer({
           >
             <X className="size-4 text-muted-foreground" />
           </button>
+        </div>
+      ) : null}
+
+      {janelaFechada ? (
+        <div className="flex items-center justify-between gap-3 border-b bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+          <span className="flex items-center gap-2">
+            <TriangleAlert className="size-4 shrink-0" />
+            A janela de 24h desta conversa expirou. Só um template aprovado
+            sai a partir de agora.
+          </span>
+          <Button size="sm" variant="outline" onClick={() => setTemplateAberto(true)}>
+            Enviar template
+          </Button>
         </div>
       ) : null}
 
@@ -279,7 +321,143 @@ export function Composer({
         onOpenChange={setAgendando}
         onAgendada={() => setTexto("")}
       />
+
+      <TemplateDialog
+        conversaId={conversaId}
+        aberto={templateAberto}
+        onOpenChange={setTemplateAberto}
+        onEnviado={() => {
+          setJanelaFechada(false);
+          invalidar();
+        }}
+      />
     </div>
+  );
+}
+
+/** Quantas variáveis (`{{1}}`, `{{2}}`...) o corpo do template pede. */
+function contarParametros(componentes: unknown): number {
+  const body = Array.isArray(componentes)
+    ? (componentes as { type?: string; text?: string }[]).find(
+        (c) => c.type?.toUpperCase() === "BODY",
+      )
+    : null;
+  const texto = body?.text ?? "";
+  const casadas = texto.match(/\{\{\d+\}\}/g) ?? [];
+  return new Set(casadas).size;
+}
+
+/**
+ * Seletor de template pré-aprovado — o único jeito de mandar mensagem quando
+ * a janela de 24h da Cloud API fechou (`WHATSAPP_JANELA_FECHADA`). Fora dela,
+ * a própria Meta recusa texto livre.
+ */
+function TemplateDialog({
+  conversaId,
+  aberto,
+  onOpenChange,
+  onEnviado,
+}: {
+  conversaId: string;
+  aberto: boolean;
+  onOpenChange: (v: boolean) => void;
+  onEnviado: () => void;
+}) {
+  const [templateId, setTemplateId] = useState<string>("");
+  const [parametros, setParametros] = useState<string[]>([]);
+
+  const { data: templates = [] } = useQuery({
+    queryKey: ["whatsapp-templates"],
+    queryFn: () => apiFetch<WhatsappTemplate[]>("/whatsapp/config/templates"),
+    enabled: aberto,
+  });
+  const aprovados = templates.filter((t) => t.status === "APPROVED");
+  const selecionado = aprovados.find((t) => t.id === templateId) ?? null;
+  const totalParametros = selecionado
+    ? contarParametros(selecionado.componentes)
+    : 0;
+
+  const enviar = useMutation({
+    mutationFn: () =>
+      apiFetch(`/whatsapp/conversas/${conversaId}/mensagens/template`, {
+        method: "POST",
+        body: { templateId, parametros },
+      }),
+    onSuccess: () => {
+      toast.success("Template enviado");
+      setTemplateId("");
+      setParametros([]);
+      onOpenChange(false);
+      onEnviado();
+    },
+    onError: (err) =>
+      toast.error(
+        err instanceof ApiError ? err.message : "Falha ao enviar o template",
+      ),
+  });
+
+  return (
+    <Dialog open={aberto} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Enviar template</DialogTitle>
+          <DialogDescription>
+            Fora da janela de 24h, a Meta só aceita mensagem por template
+            pré-aprovado. As variáveis do corpo entram na ordem abaixo.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <Select
+            value={templateId}
+            onValueChange={(v) => {
+              setTemplateId(v);
+              setParametros([]);
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Escolha um template" />
+            </SelectTrigger>
+            <SelectContent>
+              {aprovados.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.nome} ({t.idioma})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {aprovados.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Nenhum template aprovado sincronizado. Sincronize em
+              Administração &gt; WhatsApp &gt; API Oficial.
+            </p>
+          ) : null}
+
+          {Array.from({ length: totalParametros }).map((_, i) => (
+            <Input
+              key={i}
+              placeholder={`Variável {{${i + 1}}}`}
+              value={parametros[i] ?? ""}
+              onChange={(e) => {
+                const proximo = [...parametros];
+                proximo[i] = e.target.value;
+                setParametros(proximo);
+              }}
+            />
+          ))}
+        </div>
+
+        <DialogFooter>
+          <Button
+            onClick={() => enviar.mutate()}
+            disabled={!templateId || enviar.isPending}
+          >
+            {enviar.isPending ? "Enviando..." : "Enviar template"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

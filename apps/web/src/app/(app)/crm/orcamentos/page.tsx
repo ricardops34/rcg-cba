@@ -198,19 +198,21 @@ export default function OrcamentosPage() {
 
   return (
     <div className="space-y-4">
-      <CrudHeader
-        search={search}
-        onSearchChange={(v) => {
-          setSearch(v);
-          setPage(1);
-        }}
-        onRefresh={() => refetch()}
-        isRefreshing={isFetching}
-        onCreate={() => router.push("/crm/orcamentos/novo")}
-        createLabel="Novo orçamento"
-      />
+      <div data-tour="orcamentos-busca">
+        <CrudHeader
+          search={search}
+          onSearchChange={(v) => {
+            setSearch(v);
+            setPage(1);
+          }}
+          onRefresh={() => refetch()}
+          isRefreshing={isFetching}
+          onCreate={() => router.push("/crm/orcamentos/novo")}
+          createLabel="Novo orçamento"
+        />
+      </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div data-tour="orcamentos-filtros" className="flex flex-wrap items-center justify-between gap-2">
         <StatusQuickFilter
           value={status_}
           onChange={(v) => {
@@ -270,31 +272,33 @@ export default function OrcamentosPage() {
         </FiltersPopover>
       </div>
 
-      <EntityTable
-        columns={columns}
-        rows={data?.data ?? []}
-        rowKey={(o) => o.id}
-        isLoading={isLoading}
-        error={error}
-        page={data?.page ?? page}
-        pageSize={data?.pageSize ?? pageSize}
-        total={data?.total ?? 0}
-        totalPages={data?.totalPages ?? 1}
-        onPageChange={setPage}
-        onPageSizeChange={(n) => {
-          setPageSize(n);
-          setPage(1);
-        }}
-        onRowClick={abrirEdicao}
-        emptyMessage="Nenhum orçamento cadastrado."
-        sortBy={sortBy}
-        sortOrder={sortOrder}
-        onSortChange={(key, order) => {
-          setSortBy(key);
-          setSortOrder(order);
-        }}
-        storageKey="orcamentos"
-      />
+      <div data-tour="orcamentos-lista">
+        <EntityTable
+          columns={columns}
+          rows={data?.data ?? []}
+          rowKey={(o) => o.id}
+          isLoading={isLoading}
+          error={error}
+          page={data?.page ?? page}
+          pageSize={data?.pageSize ?? pageSize}
+          total={data?.total ?? 0}
+          totalPages={data?.totalPages ?? 1}
+          onPageChange={setPage}
+          onPageSizeChange={(n) => {
+            setPageSize(n);
+            setPage(1);
+          }}
+          onRowClick={abrirEdicao}
+          emptyMessage="Nenhum orçamento cadastrado."
+          sortBy={sortBy}
+          sortOrder={sortOrder}
+          onSortChange={(key, order) => {
+            setSortBy(key);
+            setSortOrder(order);
+          }}
+          storageKey="orcamentos"
+        />
+      </div>
     </div>
   );
 }

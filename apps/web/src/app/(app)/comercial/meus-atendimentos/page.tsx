@@ -149,7 +149,7 @@ export default function MeusAtendimentosPage() {
   );
 
   return (
-    <div className="space-y-5">
+    <div data-tour="rotina" className="space-y-5">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">
           Meus Atendimentos
@@ -159,7 +159,7 @@ export default function MeusAtendimentosPage() {
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div data-tour="atendimentos-filtros" className="flex flex-wrap items-center gap-2">
         <div className="flex rounded-md border p-0.5">
           {PERIODOS.map((p) => (
             <Button

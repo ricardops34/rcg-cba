@@ -132,7 +132,7 @@ export function OportunidadeForm({ oportunidade }: { oportunidade?: Oportunidade
       </div>
 
       <Card>
-        <form id="oportunidade-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
+        <form data-tour="oportunidade-form" id="oportunidade-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
           <CardContent>
             <FieldGroup>
               <Field data-invalid={!!form.formState.errors.titulo}>
@@ -247,7 +247,7 @@ export function OportunidadeForm({ oportunidade }: { oportunidade?: Oportunidade
             </FieldGroup>
           </CardContent>
 
-          <CardFooter className="justify-end gap-2">
+          <CardFooter data-tour="form-acoes" className="flex-wrap justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => router.push(LIST_ROUTE)}>
               Cancelar
             </Button>

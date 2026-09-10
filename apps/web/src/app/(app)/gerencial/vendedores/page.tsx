@@ -278,7 +278,7 @@ export default function VendedoresPage() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div data-tour="rotina" className="space-y-4">
       <CrudHeader
         search={search}
         onSearchChange={(v) => {

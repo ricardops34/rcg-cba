@@ -114,7 +114,7 @@ export default function RecadosPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div data-tour="rotina" className="space-y-4">
       <div>
         <h1 className="text-lg font-semibold">Recado para a equipe</h1>
         <p className="text-sm text-muted-foreground">
@@ -124,7 +124,7 @@ export default function RecadosPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+        <Card data-tour="recados-equipe">
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2">
               <Users className="size-4" />
@@ -189,7 +189,7 @@ export default function RecadosPage() {
 
         <Card>
           <CardHeader className="border-b">
-            <CardTitle>O recado</CardTitle>
+            <CardTitle data-tour="recados-mensagem">O recado</CardTitle>
           </CardHeader>
 
           <CardContent className="space-y-4 pt-4">
@@ -246,7 +246,7 @@ export default function RecadosPage() {
       {recados && recados.length > 0 && (
         <Card>
           <CardHeader className="border-b">
-            <CardTitle>Meus recados</CardTitle>
+            <CardTitle data-tour="recados-historico">Meus recados</CardTitle>
           </CardHeader>
           <CardContent className="divide-y pt-0">
             {recados.map((r) => (

@@ -32,18 +32,33 @@ const TourContext = createContext<TourContextValue | null>(null);
 
 export function TourProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [consultados] = useState(() => new Set<string>());
   const tourAtual = tourPorRota(pathname);
   const [execucao, setExecucao] = useState<TourExecucao | null>(null);
   const [passoAtual, setPassoAtual] = useState(0);
   const [passos, setPassos] = useState<TourPasso[]>([]);
-  const consultados = useRef(new Set<string>());
+  const controleRota = useRef<AbortController | null>(null);
+  const [rotaAnterior, setRotaAnterior] = useState(pathname);
+
+  // Descarta o tour antes de renderizar outra página, inclusive outro registro
+  // que compartilhe a mesma definição de tour.
+  if (rotaAnterior !== pathname) {
+    setRotaAnterior(pathname);
+    setExecucao(null);
+  }
 
   const iniciar = useCallback(async (origem: TourOrigem) => {
     if (!tourAtual) return;
+    const sinal = controleRota.current?.signal;
+    if (sinal?.aborted) return;
+    if (tourAtual.seletorPronto && !document.querySelector(tourAtual.seletorPronto)) {
+      throw new Error("A tela ainda não está pronta para o tour");
+    }
     const nova = await apiFetch<TourExecucao>(
       `/tours/${tourAtual.codigo}/execucoes`,
       { method: "POST", body: { versao: tourAtual.versao, origem } },
     );
+    if (sinal?.aborted) return;
     const visiveis = tourAtual.passos.filter((passo) => {
       if (!passo.seletor) return true;
       const elemento = document.querySelector<HTMLElement>(passo.seletor);
@@ -57,13 +72,16 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   }, [tourAtual]);
 
   useEffect(() => {
-    setExecucao(null);
-    if (!tourAtual) return;
+    const controle = new AbortController();
+    controleRota.current = controle;
+    if (!tourAtual) return () => controle.abort();
     const chave = `${tourAtual.codigo}:${tourAtual.versao}`;
-    if (consultados.current.has(chave)) return;
-    consultados.current.add(chave);
+    if (consultados.has(chave)) return () => controle.abort();
     let cancelado = false;
-    const timer = window.setTimeout(async () => {
+    let timer: number | undefined;
+    let observador: MutationObserver | undefined;
+    const consultar = async () => {
+      consultados.add(chave);
       try {
         const estado = await apiFetch<TourEstado>(
           `/tours/${tourAtual.codigo}/estado`,
@@ -73,15 +91,28 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
           await iniciar("automatico");
         }
       } catch {
+        consultados.delete(chave);
         // A indisponibilidade do recurso de apresentação nunca deve impedir
         // o uso normal da plataforma.
       }
-    }, 650);
+    };
+    const agendar = () => {
+      if (tourAtual.seletorPronto && !document.querySelector(tourAtual.seletorPronto)) return;
+      observador?.disconnect();
+      timer = window.setTimeout(() => void consultar(), 650);
+    };
+    if (tourAtual.seletorPronto) {
+      observador = new MutationObserver(agendar);
+      observador.observe(document.body, { childList: true, subtree: true });
+    }
+    agendar();
     return () => {
       cancelado = true;
+      controle.abort();
+      observador?.disconnect();
       window.clearTimeout(timer);
     };
-  }, [iniciar, tourAtual]);
+  }, [iniciar, tourAtual, consultados, pathname]);
 
   const salvar = useCallback(
     async (passo: number, status: TourStatus) => {

@@ -154,8 +154,22 @@ User Function BJVerMsg()
 
 	ACTIVATE MSDIALOG oDlg CENTERED
 
-	oFont:Destroy()
-	oFontTit:Destroy()
+	// Os controles GET/MEMO (oMemoEnv, oMemoRet) podem liberar a fonte que
+	// usam ao fechar o dialogo, junto com o proprio oDlg:End(). Quando isso
+	// acontece, o :Destroy() manual abaixo vira uma segunda liberacao do
+	// mesmo objeto, e a AdvPL reporta "Cannot find method TFONT:DESTROY" em
+	// vez de simplesmente ignorar. BEGIN SEQUENCE evita que essa falha
+	// aborte a rotina e deixe o RestArea (linha seguinte) sem executar.
+	BEGIN SEQUENCE
+		oFont:Destroy()
+	RECOVER
+	END SEQUENCE
+
+	BEGIN SEQUENCE
+		oFontTit:Destroy()
+	RECOVER
+	END SEQUENCE
+
 	RestArea(aArea)
 
 Return Nil
@@ -327,7 +341,12 @@ User Function BJResumo()
 
 	ACTIVATE MSDIALOG oDlg CENTERED
 
-	oFont:Destroy()
+	// Mesmo risco de BJVerMsg: o GET MEMO pode ja ter liberado a fonte junto
+	// com o oDlg:End(), e o :Destroy() manual viraria uma segunda liberacao.
+	BEGIN SEQUENCE
+		oFont:Destroy()
+	RECOVER
+	END SEQUENCE
 
 Return Nil
 

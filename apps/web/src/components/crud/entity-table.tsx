@@ -143,7 +143,7 @@ export function EntityTable<T>({
     : columns;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border/70 bg-card">
+    <div data-tour="crud-lista" className="overflow-hidden rounded-xl border border-border/70 bg-card">
       {seletorAtivo && (
         <div className="flex items-center justify-end border-b border-border/60 px-2 py-1">
           <DropdownMenu>

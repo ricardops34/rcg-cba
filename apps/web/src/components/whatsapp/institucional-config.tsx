@@ -30,7 +30,7 @@ const ROTULO: Record<SessaoEmpresa["status"], string> = {
 };
 
 /** Provedores que a plataforma sabe operar — mesma lista de WHATSAPP_TRANSPORTES_IMPLEMENTADOS. */
-const PROVEDORES_ESCOLHIVEIS: WhatsappTransporte[] = ["zapo", "evolution_go"];
+const PROVEDORES_ESCOLHIVEIS: WhatsappTransporte[] = ["zapo", "evolution_go", "cloud_api"];
 
 /**
  * O número institucional da empresa — a porta de entrada do atendimento por
@@ -119,7 +119,12 @@ export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
   const disponibilidade: Record<WhatsappTransporte, boolean> = {
     zapo: Boolean(config.workerUrl),
     evolution_go: Boolean(config.evolutionUrl && config.evolutionApiKeyDefinida),
-    cloud_api: false,
+    cloud_api: Boolean(
+      config.cloudApiPhoneNumberId &&
+        config.cloudApiBusinessAccountId &&
+        config.cloudApiAccessTokenDefinida &&
+        config.cloudApiAppSecretDefinida,
+    ),
   };
   const transporte =
     transporteEscolhido ?? sessao?.transporte ?? config.transporte;

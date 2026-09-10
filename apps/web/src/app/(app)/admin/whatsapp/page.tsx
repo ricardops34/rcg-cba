@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cable, CheckCircle2, Cloud, Eraser, ExternalLink, History, MoreHorizontal, RefreshCw, Smartphone, Trash2, TriangleAlert } from "lucide-react";
+import { Cable, CheckCircle2, Cloud, Eraser, History, MoreHorizontal, RefreshCw, Smartphone, Trash2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
-import { WHATSAPP_AVISO_NAO_OFICIAL, WHATSAPP_TRANSPORTE_ROTULO, type WhatsappConfig, type WhatsappSessao } from "@plataforma/contracts";
-import { ApiError, apiFetch } from "@/lib/api-client";
+import { WHATSAPP_AVISO_NAO_OFICIAL, WHATSAPP_TRANSPORTE_ROTULO, type WhatsappConfig, type WhatsappSessao, type WhatsappTemplate } from "@plataforma/contracts";
+import { API_ORIGIN, ApiError, apiFetch } from "@/lib/api-client";
 import { InstitucionalConfig } from "@/components/whatsapp/institucional-config";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useAuthStore } from "@/stores/auth-store";
 
 type Aba = "zapo" | "evolution-go" | "cloud-api" | "instancias" | "atendimento" | "institucional";
 const ABAS_VALIDAS: Aba[] = ["zapo", "evolution-go", "cloud-api", "instancias", "atendimento", "institucional"];
@@ -67,14 +68,7 @@ export default function WhatsappConfigPage() {
         </TabsList>
         <TabsContent value="zapo" className="pt-4"><ZapoConfig config={config} /></TabsContent>
         <TabsContent value="evolution-go" className="pt-4"><EvolutionConfig config={config} /></TabsContent>
-        <TabsContent value="cloud-api" className="pt-4">
-          <ProviderEmPreparacao
-            icon={Cloud}
-            titulo="API Oficial da Meta"
-            descricao="Canal oficial para números da WhatsApp Business Platform."
-            detalhes="Ainda faltam o Phone Number ID, token permanente, webhook e fluxo de templates. A opção permanece indisponível para não interromper o atendimento atual."
-          />
-        </TabsContent>
+        <TabsContent value="cloud-api" className="pt-4"><CloudApiConfig config={config} /></TabsContent>
         <TabsContent value="instancias" className="pt-4"><Instancias config={config} /></TabsContent>
         <TabsContent value="atendimento" className="pt-4"><AtendimentoIaConfig config={config} /></TabsContent>
         <TabsContent value="institucional" className="pt-4"><InstitucionalConfig /></TabsContent>
@@ -465,16 +459,189 @@ function EvolutionConfig({ config }: { config: WhatsappConfig }) {
   );
 }
 
-function ProviderEmPreparacao({ icon: Icon, titulo, descricao, detalhes, href }: { icon: typeof Cloud; titulo: string; descricao: string; detalhes: string; href?: string }) {
+/** Gera um token legível (sem caracteres que quebrem query string) para o handshake do webhook. */
+function gerarVerifyToken(): string {
+  return crypto.randomUUID().replace(/-/g, "");
+}
+
+function CloudApiConfig({ config }: { config: WhatsappConfig }) {
+  const queryClient = useQueryClient();
+  const { user } = useAuthStore();
+  const [form, setForm] = useState({
+    ativo: config.ativo,
+    cloudApiPhoneNumberId: config.cloudApiPhoneNumberId ?? "",
+    cloudApiBusinessAccountId: config.cloudApiBusinessAccountId ?? "",
+    cloudApiWebhookVerifyToken: config.cloudApiWebhookVerifyToken ?? "",
+    retencaoDias: config.retencaoDias,
+    dddPadrao: config.dddPadrao ?? "",
+  });
+  // Os dois nunca vêm da API — vazio significa "não mexi", igual à chave da
+  // Evolution GO.
+  const [accessToken, setAccessToken] = useState("");
+  const [appSecret, setAppSecret] = useState("");
+
+  const webhookUrl = user
+    ? `${API_ORIGIN}/api/v1/whatsapp/cloud-api/webhook/${user.empresaAtivaId}`
+    : "";
+
+  const salvar = useMutation({
+    mutationFn: (opcoes: { apagarAccessToken?: boolean; apagarAppSecret?: boolean } = {}) =>
+      apiFetch<WhatsappConfig>("/whatsapp/config", {
+        method: "PUT",
+        body: {
+          ...form,
+          transporte: "cloud_api",
+          cloudApiPhoneNumberId: form.cloudApiPhoneNumberId.trim() || null,
+          cloudApiBusinessAccountId: form.cloudApiBusinessAccountId.trim() || null,
+          cloudApiWebhookVerifyToken: form.cloudApiWebhookVerifyToken.trim() || null,
+          dddPadrao: form.dddPadrao.trim() || null,
+          ...(opcoes.apagarAccessToken
+            ? { cloudApiAccessToken: "" }
+            : accessToken.trim()
+              ? { cloudApiAccessToken: accessToken.trim() }
+              : {}),
+          ...(opcoes.apagarAppSecret
+            ? { cloudApiAppSecret: "" }
+            : appSecret.trim()
+              ? { cloudApiAppSecret: appSecret.trim() }
+              : {}),
+        },
+      }),
+    onSuccess: () => {
+      setAccessToken("");
+      setAppSecret("");
+      void queryClient.invalidateQueries({ queryKey: ["whatsapp-config"] });
+      void queryClient.invalidateQueries({ queryKey: ["whatsapp", "integracao"] });
+      toast.success("Configuração da API Oficial salva");
+    },
+    onError: (error) => toast.error(mensagemErro(error, "Erro ao salvar")),
+  });
+
+  const templatesQuery = useQuery({
+    queryKey: ["whatsapp-templates"],
+    queryFn: () => apiFetch<WhatsappTemplate[]>("/whatsapp/config/templates"),
+  });
+  const sincronizarTemplates = useMutation({
+    mutationFn: () =>
+      apiFetch<WhatsappTemplate[]>("/whatsapp/config/templates/sincronizar", {
+        method: "POST",
+      }),
+    onSuccess: (templates) => {
+      queryClient.setQueryData(["whatsapp-templates"], templates);
+      toast.success(`${templates.length} template(s) sincronizado(s)`);
+    },
+    onError: (error) => toast.error(mensagemErro(error, "Falha ao sincronizar templates")),
+  });
+
   return (
-    <Card><CardContent className="flex min-h-72 flex-col items-center justify-center p-8 text-center">
-      <div className="rounded-2xl border bg-muted/40 p-4"><Icon className="size-7" /></div>
-      <Badge variant="outline" className="mt-4">Adaptador em preparação</Badge>
-      <h3 className="mt-3 font-heading text-xl font-semibold">{titulo}</h3>
-      <p className="mt-2 max-w-xl text-sm text-muted-foreground">{descricao}</p>
-      <p className="mt-4 max-w-2xl rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">{detalhes}</p>
-      {href ? <Button variant="outline" className="mt-4" asChild><a href={href} target="_blank" rel="noreferrer">Ver projeto oficial <ExternalLink /></a></Button> : null}
-    </CardContent></Card>
+    <div className="space-y-5">
+      <Card>
+        <CardHeader className="border-b">
+          <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2"><Cloud className="size-4" /> WhatsApp Cloud API (Meta)</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">Canal oficial — sem pareamento por QR, sem risco de banimento por automação.</p>
+            </div>
+            <label className="flex items-center gap-2 text-sm font-medium"><Switch checked={form.ativo} onCheckedChange={(ativo) => setForm((f) => ({ ...f, ativo }))} />Ativo</label>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-6 pt-6 lg:grid-cols-2">
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="cloudApiPhoneNumberId">Phone Number ID</FieldLabel>
+              <Input id="cloudApiPhoneNumberId" value={form.cloudApiPhoneNumberId} onChange={(event) => setForm((f) => ({ ...f, cloudApiPhoneNumberId: event.target.value }))} />
+              <FieldDescription>Do painel do Business Manager — Configuração da API do WhatsApp.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="cloudApiBusinessAccountId">Business Account ID</FieldLabel>
+              <Input id="cloudApiBusinessAccountId" value={form.cloudApiBusinessAccountId} onChange={(event) => setForm((f) => ({ ...f, cloudApiBusinessAccountId: event.target.value }))} />
+              <FieldDescription>Usado para buscar os templates aprovados.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="cloudApiAccessToken">Token de acesso</FieldLabel>
+              <Input id="cloudApiAccessToken" type="password" autoComplete="off" value={accessToken} placeholder={config.cloudApiAccessTokenDefinida ? "Token gravado — preencha só para trocar" : "Token de acesso permanente"} onChange={(event) => setAccessToken(event.target.value)} />
+              <FieldDescription>
+                Guardado cifrado e nunca devolvido pela API. Deixe em branco para manter o atual.
+                {config.cloudApiAccessTokenDefinida ? <> <button type="button" className="underline underline-offset-2" onClick={() => salvar.mutate({ apagarAccessToken: true })}>Remover token gravado</button>.</> : null}
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="cloudApiAppSecret">App Secret</FieldLabel>
+              <Input id="cloudApiAppSecret" type="password" autoComplete="off" value={appSecret} placeholder={config.cloudApiAppSecretDefinida ? "App Secret gravado — preencha só para trocar" : "Assina o webhook"} onChange={(event) => setAppSecret(event.target.value)} />
+              <FieldDescription>
+                Assina os eventos do webhook (HMAC-SHA256). Nunca devolvido pela API.
+                {config.cloudApiAppSecretDefinida ? <> <button type="button" className="underline underline-offset-2" onClick={() => salvar.mutate({ apagarAppSecret: true })}>Remover App Secret gravado</button>.</> : null}
+              </FieldDescription>
+            </Field>
+          </FieldGroup>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="webhookUrl">URL do webhook</FieldLabel>
+              <div className="flex gap-2">
+                <Input id="webhookUrl" readOnly value={webhookUrl} className="font-mono text-xs" />
+                <Button type="button" variant="outline" size="sm" onClick={() => { void navigator.clipboard.writeText(webhookUrl); toast.success("URL copiada"); }}>Copiar</Button>
+              </div>
+              <FieldDescription>Cole no painel da Meta (Configuração do WhatsApp &gt; Webhooks).</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="cloudApiWebhookVerifyToken">Webhook Verify Token</FieldLabel>
+              <div className="flex gap-2">
+                <Input id="cloudApiWebhookVerifyToken" value={form.cloudApiWebhookVerifyToken} onChange={(event) => setForm((f) => ({ ...f, cloudApiWebhookVerifyToken: event.target.value }))} />
+                <Button type="button" variant="outline" size="sm" onClick={() => setForm((f) => ({ ...f, cloudApiWebhookVerifyToken: gerarVerifyToken() }))}>Gerar</Button>
+              </div>
+              <FieldDescription>Não é segredo de tráfego — só confere o handshake de verificação. Cole o mesmo valor no painel da Meta.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="dddPadraoCloudApi">DDD padrão</FieldLabel>
+              <Input id="dddPadraoCloudApi" inputMode="numeric" maxLength={2} className="max-w-24" placeholder="67" value={form.dddPadrao} onChange={(event) => setForm((f) => ({ ...f, dddPadrao: event.target.value.replace(/\D/g, "") }))} />
+              <FieldDescription>Mesmo campo das outras abas — a configuração é uma só.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="retencaoDiasCloudApi">Retenção das conversas</FieldLabel>
+              <div className="flex items-center gap-2"><Input id="retencaoDiasCloudApi" type="number" min={0} max={3650} className="max-w-32" value={form.retencaoDias} onChange={(event) => setForm((f) => ({ ...f, retencaoDias: Number(event.target.value) }))} /><span className="text-sm text-muted-foreground">dias</span></div>
+              <FieldDescription>Zero mantém indefinidamente.</FieldDescription>
+            </Field>
+          </FieldGroup>
+        </CardContent>
+        <CardFooter className="justify-between gap-3 border-t">
+          <AvisoTroca config={config} alvo="cloud_api" />
+          <Button onClick={() => salvar.mutate({})} disabled={salvar.isPending}>{salvar.isPending ? "Salvando..." : config.transporte === "cloud_api" ? "Salvar API Oficial" : "Salvar e usar API Oficial"}</Button>
+        </CardFooter>
+      </Card>
+
+      <Card>
+        <CardHeader className="border-b">
+          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div><CardTitle>Templates</CardTitle><p className="mt-1 text-sm text-muted-foreground">Mirror local dos templates aprovados no Business Manager — só um template <strong>Aprovado</strong> pode ser enviado.</p></div>
+            <Button variant="outline" onClick={() => sincronizarTemplates.mutate()} disabled={sincronizarTemplates.isPending}>{sincronizarTemplates.isPending ? "Sincronizando..." : "Sincronizar com a Meta"}</Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {templatesQuery.isLoading ? <p className="p-6 text-sm text-muted-foreground">Carregando templates...</p> : null}
+          {!templatesQuery.isLoading && (templatesQuery.data ?? []).length === 0 ? (
+            <div className="flex min-h-40 flex-col items-center justify-center p-6 text-center">
+              <p className="font-medium">Nenhum template sincronizado</p>
+              <p className="mt-1 text-sm text-muted-foreground">Conecte o número institucional e clique em &quot;Sincronizar com a Meta&quot;.</p>
+            </div>
+          ) : null}
+          {(templatesQuery.data ?? []).length > 0 ? (
+            <Table>
+              <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Idioma</TableHead><TableHead>Categoria</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {(templatesQuery.data ?? []).map((t) => (
+                  <TableRow key={t.id}>
+                    <TableCell className="font-medium">{t.nome}</TableCell>
+                    <TableCell>{t.idioma}</TableCell>
+                    <TableCell>{t.categoria}</TableCell>
+                    <TableCell><Badge variant={t.status === "APPROVED" ? "success" : t.status === "REJECTED" || t.status === "DISABLED" ? "destructive" : "secondary"}>{t.status}</Badge></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : null}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

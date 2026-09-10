@@ -89,7 +89,7 @@ export function OportunidadesKanban({ search, vendedorId, ativo, onEdit }: Kanba
   return (
     <>
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <div className="flex gap-3 overflow-x-auto pb-2">
+        <div data-tour="oportunidades-kanban" className="flex gap-3 overflow-x-auto pb-2">
           {ESTAGIOS.map((e) => (
             <KanbanColumn
               key={e.value}

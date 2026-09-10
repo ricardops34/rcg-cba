@@ -19,7 +19,7 @@ export function FiltersPopover({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" className="relative">
+        <Button data-tour="crud-filtros" variant="outline" className="relative">
           <Filter className="size-4" />
           Filtros
           {active && <span className="absolute -top-1 -right-1 size-2 rounded-full bg-primary" />}

@@ -50,8 +50,8 @@ export default function SugestaoCompraPage() {
   });
 
   return (
-    <div className="space-y-4">
-      <Card>
+    <div data-tour="rotina" className="space-y-4">
+      <Card data-tour="sugestao-parametros">
         <CardContent className="flex flex-wrap items-end gap-3 pt-6">
           <Field className="w-full sm:w-96">
             <FieldLabel>Cliente</FieldLabel>

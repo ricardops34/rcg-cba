@@ -274,7 +274,7 @@ export default function AtendimentoPage() {
         : "Conecte o aparelho para atender seus clientes por aqui. As conversas com clientes ficam gravadas na plataforma.";
     return (
       <>
-        <div className="flex flex-col items-center justify-center gap-4 rounded-lg border border-dashed p-12 text-center">
+        <div data-tour="atendimento-conexao" className="flex flex-col items-center justify-center gap-4 rounded-lg border border-dashed p-12 text-center">
           <MessageCircle className="size-10 text-muted-foreground" />
           <div>
             <p className="font-medium">
@@ -302,7 +302,7 @@ export default function AtendimentoPage() {
 
   return (
     <>
-      <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+      <div data-tour="atendimento-controles" className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center">
           <Button
             variant="outline"
@@ -493,7 +493,7 @@ function ListaDeConversas({
   });
 
   return (
-    <div className="flex h-full w-full flex-col border-r bg-muted/10">
+    <div data-tour="atendimento-conversas" className="flex h-full w-full flex-col border-r bg-muted/10">
       <div className="flex shrink-0 gap-1 overflow-x-auto border-b p-2">
         {(
           [
@@ -795,7 +795,7 @@ function Conversa({
   ].sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-muted/5">
+    <div data-tour="atendimento-mensagens" className="flex h-full min-h-0 flex-col overflow-hidden bg-muted/5">
       <div className="flex h-16 shrink-0 items-center justify-between gap-3 border-b bg-background px-4">
         <div className="flex min-w-0 items-center gap-3">
           <Button
@@ -839,7 +839,7 @@ function Conversa({
           </div>
         </div>
         {clienteId ? (
-          <div className="flex shrink-0 items-center gap-1">
+          <div data-tour="atendimento-acoes" className="flex shrink-0 items-center gap-1">
             <Button variant="ghost" size="sm" onClick={onAbrirPosicao}>
               <UserRound className="size-4" />
               Posição
@@ -899,7 +899,7 @@ function Conversa({
           </p>
         </div>
       ) : (
-        <div className="flex shrink-0 items-end">
+        <div data-tour="atendimento-composer" className="flex shrink-0 items-end">
           {clienteId ? (
             <div className="pb-3 pl-2">
               <AcoesCliente

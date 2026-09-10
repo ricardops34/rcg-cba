@@ -25,13 +25,14 @@ export type WhatsappTransporte = z.infer<typeof whatsappTransporteSchema>;
 /**
  * Transportes que a plataforma sabe de fato operar.
  *
- * `cloud_api` continua no enum porque as linhas já gravadas o aceitam, mas não
- * existe adaptador: selecioná-lo é recusado na configuração, em vez de deixar
- * o vendedor descobrir na tela de pareamento que nada acontece.
+ * Os três do enum têm adaptador. `cloud_api`, diferente dos outros dois, só
+ * entra na sessão institucional (`tipo: 'empresa'`) — não tem pareamento por
+ * QR, então não há o que oferecer na tela de conexão do vendedor.
  */
 export const WHATSAPP_TRANSPORTES_IMPLEMENTADOS = [
   "zapo",
   "evolution_go",
+  "cloud_api",
 ] as const;
 export type WhatsappTransporteImplementado =
   (typeof WHATSAPP_TRANSPORTES_IMPLEMENTADOS)[number];
@@ -138,6 +139,23 @@ export const whatsappConfigSchema = z.object({
    * de um evento que parou de chegar.
    */
   evolutionVersao: z.string().nullable(),
+
+  /** Endereço do número no Business Manager da Meta. Usado só na Cloud API. */
+  cloudApiPhoneNumberId: z.string().nullable(),
+  cloudApiBusinessAccountId: z.string().nullable(),
+  /**
+   * Token de acesso e App Secret **nunca** são devolvidos — só o rastro de
+   * que existem. Mesmo tratamento de `evolutionApiKeyDefinida`.
+   */
+  cloudApiAccessTokenDefinida: z.boolean(),
+  cloudApiAppSecretDefinida: z.boolean(),
+  /**
+   * Não é segredo de tráfego (só confere o handshake do webhook) — por isso,
+   * ao contrário dos dois campos acima, volta em claro: o administrador
+   * precisa relê-lo para colar no painel da Meta.
+   */
+  cloudApiWebhookVerifyToken: z.string().nullable(),
+
   retencaoDias: z.number().int(),
   historicoDias: z
     .number()
@@ -212,6 +230,25 @@ export const whatsappConfigUpdateSchema = z.object({
    */
   evolutionApiKey: z.string().trim().max(500).nullable().optional(),
   evolutionVersao: z.string().trim().max(40).nullable().optional(),
+
+  cloudApiPhoneNumberId: z.string().trim().max(60).nullable().optional(),
+  cloudApiBusinessAccountId: z.string().trim().max(60).nullable().optional(),
+  /**
+   * Token de acesso permanente da Cloud API. Só de escrita, mesmo padrão de
+   * `evolutionApiKey`: a API cifra antes de gravar e nunca devolve o valor.
+   * String vazia apaga o que está gravado.
+   */
+  cloudApiAccessToken: z.string().trim().max(2000).nullable().optional(),
+  /** App Secret — assina o webhook. Mesmo padrão de escrita do token acima. */
+  cloudApiAppSecret: z.string().trim().max(500).nullable().optional(),
+  /** Não é cifrado: só confere o handshake do webhook, não autentica tráfego. */
+  cloudApiWebhookVerifyToken: z
+    .string()
+    .trim()
+    .max(200)
+    .nullable()
+    .optional(),
+
   retencaoDias: z
     .number()
     .int()
@@ -630,6 +667,45 @@ export const whatsappEnviarArquivoSchema = z.object({
     .describe("Áudio gravado na hora — vira mensagem de voz, não anexo"),
 });
 export type WhatsappEnviarArquivo = z.infer<typeof whatsappEnviarArquivoSchema>;
+
+// --------------------------------------------------------------------------
+// Templates (Cloud API) — fora da janela de 24h, só template aprovado sai.
+// --------------------------------------------------------------------------
+
+export const WHATSAPP_TEMPLATE_STATUS = [
+  "APPROVED",
+  "PENDING_REVIEW",
+  "REJECTED",
+  "PAUSED",
+  "DISABLED",
+] as const;
+export const whatsappTemplateStatusSchema = z.enum(WHATSAPP_TEMPLATE_STATUS);
+export type WhatsappTemplateStatus = z.infer<typeof whatsappTemplateStatusSchema>;
+
+/** Mirror local de um template aprovado no Business Manager. Só leitura. */
+export const whatsappTemplateSchema = z.object({
+  id: z.string().uuid(),
+  empresaId: z.string().uuid(),
+  metaId: z.string(),
+  nome: z.string(),
+  idioma: z.string(),
+  categoria: z.string(),
+  status: z.string(),
+  componentes: z.unknown(),
+  sincronizadoEm: z.string().datetime(),
+});
+export type WhatsappTemplate = z.infer<typeof whatsappTemplateSchema>;
+
+/**
+ * Envio de template pela conversa. `parametros` preenche, em ordem, as
+ * variáveis (`{{1}}`, `{{2}}`...) do corpo do template — a mesma ordem que
+ * `componentes[].parameters` da Meta espera.
+ */
+export const whatsappEnviarTemplateSchema = z.object({
+  templateId: z.string().uuid(),
+  parametros: z.array(z.string().trim().max(500)).max(20).default([]),
+});
+export type WhatsappEnviarTemplate = z.infer<typeof whatsappEnviarTemplateSchema>;
 
 // --------------------------------------------------------------------------
 // Mensagens agendadas
