@@ -15,6 +15,7 @@ import {
 import { decifrarSeHouver } from '../whatsapp-cripto';
 import { EvolutionGoProvider } from './evolution-go.provider';
 import { ZapoProvider } from './zapo.provider';
+import { CloudApiProvider } from './cloud-api.provider';
 import type {
   ArquivoParaEnviar,
   ContatoAparelho,
@@ -46,6 +47,7 @@ export class WhatsappProviderService {
     private readonly prisma: PrismaService,
     private readonly zapo: ZapoProvider,
     private readonly evolution: EvolutionGoProvider,
+    private readonly cloudApi: CloudApiProvider,
   ) {}
 
   // ----------------------------------------------------------------------
@@ -88,6 +90,10 @@ export class WhatsappProviderService {
           evolutionUrl: true,
           evolutionApiKeyCifrada: true,
           historicoDias: true,
+          cloudApiPhoneNumberId: true,
+          cloudApiBusinessAccountId: true,
+          cloudApiAccessTokenCifrada: true,
+          cloudApiAppSecretCifrada: true,
         },
       });
 
@@ -112,6 +118,14 @@ export class WhatsappProviderService {
           config?.evolutionApiKeyCifrada ?? null,
         ),
         historicoDias: config?.historicoDias ?? 0,
+        cloudApiPhoneNumberId: config?.cloudApiPhoneNumberId ?? null,
+        cloudApiBusinessAccountId: config?.cloudApiBusinessAccountId ?? null,
+        cloudApiAccessToken: decifrarSeHouver(
+          config?.cloudApiAccessTokenCifrada ?? null,
+        ),
+        cloudApiAppSecret: decifrarSeHouver(
+          config?.cloudApiAppSecretCifrada ?? null,
+        ),
       },
       instancia: {
         nome: sessao.instanciaExterna,
@@ -122,13 +136,7 @@ export class WhatsappProviderService {
     };
   }
 
-  /**
-   * O provedor que atende esta sessão.
-   *
-   * `cloud_api` está no enum do banco desde a primeira versão, mas não tem
-   * adaptador. Recusar aqui, com o nome do provedor na mensagem, é melhor do
-   * que deixar o vendedor descobrir na tela de pareamento que nada acontece.
-   */
+  /** O provedor que atende esta sessão. */
   provedor(ctx: ContextoSessao): WhatsappProvider {
     if (!whatsappTransporteImplementado(ctx.transporte)) {
       throw new BadRequestException(
@@ -136,6 +144,7 @@ export class WhatsappProviderService {
           'ainda não está implementado nesta plataforma.',
       );
     }
+    if (ctx.transporte === 'cloud_api') return this.cloudApi;
     return ctx.transporte === 'evolution_go' ? this.evolution : this.zapo;
   }
 
@@ -161,6 +170,10 @@ export class WhatsappProviderService {
       workerUrl: string | null;
       evolutionUrl: string | null;
       evolutionApiKeyCifrada: string | null;
+      cloudApiPhoneNumberId?: string | null;
+      cloudApiBusinessAccountId?: string | null;
+      cloudApiAccessTokenCifrada?: string | null;
+      cloudApiAppSecretCifrada?: string | null;
     },
   ): void {
     // Primeiro o transporte, depois os campos dele. Na ordem inversa, escolher
@@ -186,6 +199,28 @@ export class WhatsappProviderService {
       if (!config.evolutionApiKeyCifrada) {
         throw new BadRequestException(
           'Informe a chave de API da Evolution GO em Administração > WhatsApp > Evolution GO antes de conectar.',
+        );
+      }
+    }
+    if (transporte === 'cloud_api') {
+      if (!config.cloudApiPhoneNumberId) {
+        throw new BadRequestException(
+          'Informe o Phone Number ID em Administração > WhatsApp > API Oficial antes de conectar.',
+        );
+      }
+      if (!config.cloudApiBusinessAccountId) {
+        throw new BadRequestException(
+          'Informe o Business Account ID em Administração > WhatsApp > API Oficial antes de conectar.',
+        );
+      }
+      if (!config.cloudApiAccessTokenCifrada) {
+        throw new BadRequestException(
+          'Informe o token de acesso em Administração > WhatsApp > API Oficial antes de conectar.',
+        );
+      }
+      if (!config.cloudApiAppSecretCifrada) {
+        throw new BadRequestException(
+          'Informe o App Secret em Administração > WhatsApp > API Oficial antes de conectar.',
         );
       }
     }
@@ -369,5 +404,42 @@ export class WhatsappProviderService {
   ): Promise<{ encontradas: number; conversas: number }> {
     const { ctx, provider } = await this.provedorDaSessao(empresaId, sessaoId);
     return provider.importarHistorico(ctx, dias);
+  }
+
+  /**
+   * Envio por template — só a Cloud API implementa. Recusar aqui, e não
+   * deixar o `undefined` estourar como erro genérico mais adiante, é o que dá
+   * uma mensagem que diz o que aconteceu.
+   */
+  async enviarTemplate(
+    empresaId: string,
+    sessaoId: string,
+    dados: { jid: string; nome: string; idioma: string; parametros?: string[] },
+    tx?: TenantTx,
+  ): Promise<{ externoId: string }> {
+    const { ctx, provider } = await this.provedorDaSessao(
+      empresaId,
+      sessaoId,
+      tx,
+    );
+    if (!provider.enviarTemplate) {
+      throw new BadRequestException(
+        `O transporte ${WHATSAPP_TRANSPORTE_ROTULO[ctx.transporte] ?? ctx.transporte} ` +
+          'não suporta envio por template.',
+      );
+    }
+    return provider.enviarTemplate(ctx, dados);
+  }
+
+  /** Mesma razão de recusa de `enviarTemplate` — só a Cloud API implementa. */
+  async sincronizarTemplates(empresaId: string, sessaoId: string) {
+    const { ctx, provider } = await this.provedorDaSessao(empresaId, sessaoId);
+    if (!provider.sincronizarTemplates) {
+      throw new BadRequestException(
+        `O transporte ${WHATSAPP_TRANSPORTE_ROTULO[ctx.transporte] ?? ctx.transporte} ` +
+          'não suporta templates.',
+      );
+    }
+    return provider.sincronizarTemplates(ctx);
   }
 }

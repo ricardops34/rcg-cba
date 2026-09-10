@@ -9,5 +9,7 @@ export interface TourDefinicao {
   versao: number;
   rota: string;
   modoRota?: "exata" | "descendente";
+  /** Elemento que confirma o carregamento da tela antes de iniciar o tour. */
+  seletorPronto?: string;
   passos: TourPasso[];
 }

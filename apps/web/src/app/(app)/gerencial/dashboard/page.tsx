@@ -259,7 +259,7 @@ export default function DashboardGerencialPage() {
       : 0;
 
   return (
-    <div className="space-y-4">
+    <div data-tour="rotina" className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Dashboard Gerencial</h1>
@@ -269,7 +269,7 @@ export default function DashboardGerencialPage() {
             {nomeVendedorFiltrado ? ` · ${nomeVendedorFiltrado}` : ""}.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => abrirCortina(true)}>
+        <Button data-tour="gerencial-parametros" variant="outline" size="sm" onClick={() => abrirCortina(true)}>
           <SlidersHorizontal className="size-4" />
           Parâmetros
           {quantidadeFiltros > 0 && (
@@ -372,7 +372,7 @@ export default function DashboardGerencialPage() {
       {isLoading || !resumo ? (
         <Skeleton className="h-32 w-full rounded-xl" />
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div data-tour="gerencial-indicadores" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <StatCard
             icon={Banknote}
             label="Realizado"
@@ -425,7 +425,7 @@ export default function DashboardGerencialPage() {
         </div>
       )}
 
-      <Card>
+      <Card data-tour="gerencial-equipe">
         <CardContent>
           {isLoading ? (
             <Skeleton className="h-64 w-full" />

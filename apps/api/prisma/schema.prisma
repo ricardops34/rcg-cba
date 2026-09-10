@@ -162,6 +162,7 @@ model Empresa {
   whatsappAgendadas          WhatsappMensagemAgendada[]
   whatsappAcoes              WhatsappAcaoRegistro[]
   whatsappVinculos           WhatsappVinculoFuncionario[]
+  whatsappTemplates          WhatsappTemplate[]
   leads                      Lead[]
   whatsappRecados            WhatsappRecadoInterno[]
   whatsappRecadoDestinos     WhatsappRecadoDestinatario[]
@@ -3706,6 +3707,11 @@ model WhatsappConversa {
   clienteId String?
 
   ultimaMensagemEm DateTime?
+  /// Última mensagem **de entrada** (do cliente) nesta conversa — distinto de
+  /// `ultimaMensagemEm`, que conta as duas direções. Existe só para a Cloud
+  /// API calcular a janela de 24h em que texto livre é aceito pela Meta; os
+  /// outros dois transportes não têm essa regra e não leem este campo.
+  ultimaMensagemClienteEm DateTime?
   naoLidas         Int       @default(0)
   arquivada        Boolean   @default(false)
 
@@ -4018,6 +4024,22 @@ model WhatsappConfig {
   // quando um evento (resposta citada, reação) para de chegar.
   evolutionVersao        String?
 
+  // Cloud API (Meta) — usados só quando `transporte = cloud_api`.
+  //
+  // Sem pareamento por QR: quem autentica é o Phone Number ID + o token de
+  // acesso, cadastrados no Business Manager da Meta. O App Secret assina o
+  // webhook (HMAC-SHA256 do corpo bruto) — segredo distinto do token, mesmo
+  // raciocínio da chave administrativa x token de instância na Evolution GO.
+  cloudApiPhoneNumberId     String?
+  cloudApiBusinessAccountId String?
+  cloudApiAccessTokenCifrada String? @db.Text
+  cloudApiAppSecretCifrada   String? @db.Text
+  // Não é segredo de tráfego (não autentica nada sozinho, só o handshake de
+  // verificação do webhook) — por isso fica em claro, ao contrário dos dois
+  // campos acima. O administrador precisa relê-lo para colar no painel da
+  // Meta.
+  cloudApiWebhookVerifyToken String?
+
   // DDD a usar quando o telefone do cadastro vem sem ele — o que é a regra,
   // não a exceção, nesta base (8 ou 9 dígitos na maioria das linhas). Fica
   // nulo de propósito até alguém configurar: completar número de telefone por
@@ -4073,6 +4095,41 @@ model WhatsappConfig {
   empresa Empresa @relation(fields: [empresaId], references: [id])
 
   @@map("whatsapp_config")
+}
+
+/**
+ * Mirror local dos templates aprovados no Business Manager da Meta — só a
+ * Cloud API os usa. Existe para a tela escolher um template sem chamar a
+ * Graph API a cada clique; `sincronizarTemplates` (Administração > WhatsApp >
+ * API Oficial) é quem mantém isto atualizado, puxando
+ * `GET /{businessAccountId}/message_templates`.
+ */
+model WhatsappTemplate {
+  id        String @id @default(uuid())
+  empresaId String
+
+  /// Id do template no lado da Meta — a chave de upsert da sincronização.
+  metaId String
+  nome   String
+  idioma String
+
+  /// MARKETING | UTILITY | AUTHENTICATION — como a Meta classifica.
+  categoria String
+  /// APPROVED | PENDING_REVIEW | REJECTED | PAUSED | DISABLED — só
+  /// `APPROVED` pode ser enviado; os demais aparecem na tela só para
+  /// acompanhamento.
+  status String
+
+  /// Estrutura de componentes (header/body/footer/buttons) como a Meta
+  /// devolveu — usada para montar o corpo do envio (`components[].parameters`).
+  componentes Json
+
+  sincronizadoEm DateTime @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@unique([empresaId, metaId])
+  @@map("whatsapp_templates")
 }
 
 /**

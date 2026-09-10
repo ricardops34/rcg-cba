@@ -1125,12 +1125,13 @@ export function OrcamentoFormContent({
     <Card>
       <form
         id="orcamento-form"
+        data-tour="orcamento-form"
         onSubmit={form.handleSubmit((v) => salvar(v, true), avisarInvalido)}
         noValidate
       >
         <CardContent>
           {bloqueado && (
-            <p className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+            <p data-tour="orcamento-bloqueio" className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
               {registro?.status === "expirado"
                 ? "Orçamento vencido — não pode ser alterado nem efetivado. Use “Copiar” para gerar um novo com a validade reiniciada."
                 : "Orçamento aprovado — não pode mais ser alterado."}
@@ -1141,6 +1142,7 @@ export function OrcamentoFormContent({
               mas PDF e efetivação só depois da autorização. */}
           {exigeAutorizacao && (
             <div
+              data-tour="orcamento-autorizacao"
               className={`mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border px-3 py-2 text-sm ${
                 situacaoAutorizacao === "autorizada"
                   ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
@@ -1185,11 +1187,11 @@ export function OrcamentoFormContent({
           )}
           <fieldset disabled={bloqueado} className="m-0 min-w-0 border-0 p-0">
           <Tabs defaultValue="orcamento">
-            <TabsList>
+            <TabsList data-tour="orcamento-abas">
               <TabsTrigger value="orcamento">Orçamento</TabsTrigger>
-              <TabsTrigger value="itens">Itens ({linhas.fields.length})</TabsTrigger>
-              <TabsTrigger value="mix">Mix de produtos ({mix.length})</TabsTrigger>
-              <TabsTrigger value="advertencias">
+              <TabsTrigger data-tour="orcamento-itens" value="itens">Itens ({linhas.fields.length})</TabsTrigger>
+              <TabsTrigger data-tour="orcamento-mix" value="mix">Mix de produtos ({mix.length})</TabsTrigger>
+              <TabsTrigger data-tour="orcamento-advertencias" value="advertencias">
                 <span className="flex items-center gap-1.5">
                   {totalAdvertencias > 0 && (
                     <TriangleAlert
@@ -1206,8 +1208,8 @@ export function OrcamentoFormContent({
               {/* O histórico é do cliente, então já vale antes de gravar. Já
                   aprovação/integração só existe depois (status, codigoErp e
                   auditoria vêm do servidor). */}
-              {clienteId && <TabsTrigger value="historico">Histórico</TabsTrigger>}
-              {registro && <TabsTrigger value="integracao">Aprovação e integração</TabsTrigger>}
+              {clienteId && <TabsTrigger data-tour="orcamento-historico" value="historico">Histórico</TabsTrigger>}
+              {registro && <TabsTrigger data-tour="orcamento-integracao" value="integracao">Aprovação e integração</TabsTrigger>}
             </TabsList>
 
             <TabsContent value="orcamento" className="space-y-4 pt-3">
@@ -1223,7 +1225,7 @@ export function OrcamentoFormContent({
             ) : null}
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field data-invalid={!!form.formState.errors.clienteId}>
+              <Field data-tour="orcamento-cliente" data-invalid={!!form.formState.errors.clienteId}>
                 <FieldLabel htmlFor="clienteId">
                   Cliente
                   {/* Mesmo sinalizador de título da Posição de Cliente — a cor
@@ -1252,7 +1254,7 @@ export function OrcamentoFormContent({
                   O seletor sobrevive num caso só: cliente sem vendedor
                   cadastrado, em que não há o que herdar e sem escolher não
                   haveria como orçar. */}
-              <Field data-invalid={!!form.formState.errors.vendedorId}>
+              <Field data-tour="orcamento-vendedor" data-invalid={!!form.formState.errors.vendedorId}>
                 <FieldLabel htmlFor="vendedorId">Vendedor</FieldLabel>
                 {vendedorDoCliente ? (
                   <>
@@ -1324,7 +1326,7 @@ export function OrcamentoFormContent({
                 </Select>
               </Field>
               <Field>
-                <FieldLabel htmlFor="condicaoPagamentoId">Condição de pagamento</FieldLabel>
+                <FieldLabel data-tour="orcamento-pagamento" htmlFor="condicaoPagamentoId">Condição de pagamento</FieldLabel>
                 <Select
                   value={form.watch("condicaoPagamentoId") ?? "none"}
                   onValueChange={(v) => {
@@ -1347,7 +1349,7 @@ export function OrcamentoFormContent({
               </Field>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div data-tour="orcamento-prazos" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <Field>
                 <FieldLabel htmlFor="status">Status</FieldLabel>
                 <Select
@@ -1912,7 +1914,7 @@ export function OrcamentoFormContent({
           </fieldset>
         </CardContent>
 
-        <CardFooter className="justify-end gap-2">
+        <CardFooter data-tour="orcamento-acoes" className="flex-wrap justify-end gap-2">
           {/* PDF só depois de salvo — precisa dos itens com produto e do total
               consolidado pelo servidor. */}
           {registro && (

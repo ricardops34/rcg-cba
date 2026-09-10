@@ -347,13 +347,51 @@ export class WhatsappSessaoService {
     return this.paraLeitura(sessao, 'Empresa');
   }
 
-  /** Estado do pareamento do número da empresa — o QR vem do provedor. */
+  /**
+   * Busca os templates aprovados no Business Manager e atualiza o mirror
+   * local. Só a Cloud API tem o conceito — daí exigir a sessão institucional
+   * já conectada, que é de onde vêm o Phone Number ID e o token a usar.
+   */
+  async sincronizarTemplatesEmpresa(empresaId: string) {
+    const sessao = await this.daEmpresa(empresaId);
+    if (!sessao) {
+      throw new BadRequestException(
+        'Conecte o número institucional na API Oficial antes de sincronizar os templates.',
+      );
+    }
+    const templates = await this.provedores.sincronizarTemplates(
+      empresaId,
+      sessao.id,
+    );
+    return this.config.upsertTemplates(empresaId, templates);
+  }
+
+  /**
+   * Estado do pareamento do número da empresa — o QR vem do provedor.
+   *
+   * Grava o estado de volta no banco, mesmo raciocínio de `pareamento()` (a
+   * versão do vendedor): sem isso, uma sessão que nunca tem evento de conexão
+   * — é o caso da Cloud API, que não pareia por QR e por isso nunca aparece
+   * no webhook de conexão da Evolution GO — ficaria presa em `pareando` para
+   * sempre, mesmo com a credencial já validada.
+   */
   async pareamentoEmpresa(empresaId: string) {
     const sessao = await this.daEmpresa(empresaId);
     if (!sessao) {
       throw new NotFoundException('O número da empresa ainda não foi pareado.');
     }
-    return this.provedores.pareamento(empresaId, sessao.id);
+    const doProvedor = await this.provedores.pareamento(empresaId, sessao.id);
+    if (
+      doProvedor.status !== sessao.status ||
+      doProvedor.numero !== sessao.numero
+    ) {
+      await this.registrarEstado(empresaId, sessao.id, {
+        status: doProvedor.status,
+        numero: doProvedor.numero,
+        erro: doProvedor.erro,
+      });
+    }
+    return doProvedor;
   }
 
   /**

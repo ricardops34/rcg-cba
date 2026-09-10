@@ -10,7 +10,13 @@ import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { ErrosLogService } from './modules/erros/erros-log.service';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // `rawBody: true` é o que faz `req.rawBody` existir — só passa a ser lido
+  // pelo webhook da WhatsApp Cloud API, que precisa do corpo bruto para
+  // conferir a assinatura HMAC-SHA256 da Meta. Não afeta as demais rotas: o
+  // corpo continua sendo parseado como JSON normalmente.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
 
   // A API é consumida por outra origem (web) e serve assets embutidos via <img>
   // (logos em /uploads). O CORP padrão "same-origin" bloquearia esse embed

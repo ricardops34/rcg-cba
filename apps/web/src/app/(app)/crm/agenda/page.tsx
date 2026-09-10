@@ -126,7 +126,7 @@ export default function AgendaPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div data-tour="rotina" className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold capitalize tracking-tight">
           {MESES[mesAtual.getMonth()]} de {mesAtual.getFullYear()}
@@ -209,7 +209,7 @@ export default function AgendaPage() {
       <p className="text-xs text-muted-foreground sm:hidden">
         Deslize o calendário para consultar todos os dias da semana.
       </p>
-      <div className="overflow-x-auto rounded-lg border">
+      <div data-tour="agenda-calendario" className="overflow-x-auto rounded-lg border">
       <div className="grid min-w-[700px] grid-cols-7 gap-px overflow-hidden bg-border">
         {DIAS_SEMANA.map((d) => (
           <div

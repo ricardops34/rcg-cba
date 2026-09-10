@@ -40,6 +40,23 @@ export function ehForaDoExpediente(erro: unknown): boolean {
 }
 
 /**
+ * Código que a API manda no 409 de `WhatsappConversasService.enviar()` quando
+ * a janela de 24h da Cloud API expirou — só template pré-aprovado sai depois
+ * disso, recusa da própria Meta. Composer usa isto para trocar o campo de
+ * texto por um seletor de template em vez de mostrar um erro genérico.
+ */
+const CODIGO_WHATSAPP_JANELA_FECHADA = "WHATSAPP_JANELA_FECHADA";
+
+export function ehJanelaWhatsappFechada(erro: unknown): boolean {
+  return (
+    erro instanceof ApiError &&
+    erro.status === 409 &&
+    (erro.details as { codigo?: string } | undefined)?.codigo ===
+      CODIGO_WHATSAPP_JANELA_FECHADA
+  );
+}
+
+/**
  * Fim de expediente durante o uso: os tokens já foram revogados no servidor,
  * então limpa a sessão local e manda para o login com o motivo — sem isso a
  * tela ficaria repetindo 403 em cada consulta.

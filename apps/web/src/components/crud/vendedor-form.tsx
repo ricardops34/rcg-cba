@@ -179,7 +179,7 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
       </div>
 
       <Card>
-        <form id="vendedor-form" onSubmit={form.handleSubmit(onSubmit, onInvalid)} noValidate>
+        <form data-tour="vendedor-form" id="vendedor-form" onSubmit={form.handleSubmit(onSubmit, onInvalid)} noValidate>
           <CardContent>
             <FieldGroup>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -387,7 +387,7 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
             </FieldGroup>
           </CardContent>
 
-          <CardFooter className="justify-end gap-2">
+          <CardFooter data-tour="form-acoes" className="flex-wrap justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => router.push(LIST_ROUTE)}>
               Cancelar
             </Button>

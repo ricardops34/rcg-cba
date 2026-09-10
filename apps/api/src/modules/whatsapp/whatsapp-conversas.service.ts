@@ -37,6 +37,7 @@ import type {
   WhatsappSituacaoTitulos,
   WhatsappStatusEntrega,
   WhatsappEnviar,
+  WhatsappEnviarTemplate,
   WhatsappIniciarConversa,
   WhatsappMensagemQuery,
   WhatsappVincular,
@@ -947,6 +948,7 @@ export class WhatsappConversasService {
       // Supervisor lê, mas não fala pelo aparelho do subordinado: quem envia é
       // o dono da sessão.
       await this.garantirDono(tx, empresaId, user, conversa);
+      await this.garantirJanelaAberta(empresaId, conversa, tx);
 
       const enviada = await this.provedores.enviarTexto(
         empresaId,
@@ -980,6 +982,88 @@ export class WhatsappConversasService {
 
       // O atendimento entra no histórico do cliente — um registro por dia,
       // atualizado a cada mensagem (ver `registrarAtendimentoWhatsapp`).
+      await registrarAtendimentoWhatsapp(tx, {
+        empresaId,
+        autor: user.id,
+        clienteId: conversa.clienteId,
+        vendedorId: conversa.sessao.vendedorId,
+        quando: mensagem.criadaEm,
+      });
+
+      return mensagem;
+    });
+  }
+
+  /**
+   * Envia um template pré-aprovado — o caminho que a Cloud API oferece
+   * quando `enviar()` recusa por janela fechada. Não passa por
+   * `garantirJanelaAberta`: a Meta aceita template a qualquer momento, é
+   * exatamente para isso que ele existe.
+   */
+  async enviarTemplate(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    input: WhatsappEnviarTemplate,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const conversa = await this.conversaNoEscopo(
+        tx,
+        empresaId,
+        user,
+        conversaId,
+      );
+      await this.garantirDono(tx, empresaId, user, conversa);
+
+      const template = await tx.whatsappTemplate.findFirst({
+        where: { id: input.templateId, empresaId },
+      });
+      if (!template) {
+        throw new NotFoundException('Template não encontrado');
+      }
+      if (template.status !== 'APPROVED') {
+        throw new BadRequestException(
+          'Só um template aprovado pela Meta pode ser enviado.',
+        );
+      }
+
+      const enviada = await this.provedores.enviarTemplate(
+        empresaId,
+        conversa.sessaoId,
+        {
+          jid: conversa.contato.jid,
+          nome: template.nome,
+          idioma: template.idioma,
+          parametros: input.parametros,
+        },
+        tx,
+      );
+
+      // Não há tipo "template" em `WhatsappTipoMensagem` — criar um só para
+      // isso não mudaria o que a tela precisa mostrar. O marcador no
+      // conteúdo é o que distingue esta linha de um texto livre no histórico.
+      const conteudo =
+        `[template: ${template.nome}]` +
+        (input.parametros.length ? ` ${input.parametros.join(' · ')}` : '');
+
+      const mensagem = await tx.whatsappMensagem.create({
+        data: {
+          empresaId,
+          conversaId,
+          externoId: enviada.externoId,
+          direcao: 'saida',
+          tipo: 'texto',
+          conteudo,
+          enviadaPor: user.id,
+          statusEntrega: 'enviada',
+        },
+      });
+
+      await tx.whatsappConversa.update({
+        where: { id: conversaId },
+        data: { ultimaMensagemEm: mensagem.criadaEm },
+      });
+
       await registrarAtendimentoWhatsapp(tx, {
         empresaId,
         autor: user.id,
@@ -1056,6 +1140,7 @@ export class WhatsappConversasService {
         conversaId,
       );
       await this.garantirDono(tx, empresaId, user, conversa);
+      await this.garantirJanelaAberta(empresaId, conversa, tx);
 
       const tipo = this.tipoPorMime(arquivo.mime);
       const enviada = await this.provedores.enviarArquivo(
@@ -1385,6 +1470,44 @@ export class WhatsappConversasService {
       throw new BadRequestException(
         'O WhatsApp não está conectado. Conecte o aparelho pelo botão da tela de Conversas.',
       );
+    }
+  }
+
+  /**
+   * Só a Cloud API tem janela de 24h — fora dela, a própria Meta recusa
+   * texto livre, só aceitando `type: "template"`. zapo e Evolution GO não
+   * têm essa regra (não é a API oficial), então a checagem não vale para eles.
+   *
+   * Fica aqui, e não dentro do provider: o provider transporta, não decide
+   * regra de negócio, e não tem acesso ao Prisma para saber quando foi a
+   * última mensagem do cliente — só quem monta a conversa (esta camada) sabe.
+   */
+  private async garantirJanelaAberta(
+    empresaId: string,
+    conversa: {
+      sessaoId: string;
+      ultimaMensagemClienteEm: Date | null;
+    },
+    tx: TenantTx,
+  ) {
+    const ctx = await this.provedores.contexto(
+      empresaId,
+      conversa.sessaoId,
+      tx,
+    );
+    if (ctx.transporte !== 'cloud_api') return;
+
+    const JANELA_MS = 24 * 60 * 60 * 1000;
+    const aberta =
+      conversa.ultimaMensagemClienteEm &&
+      Date.now() - conversa.ultimaMensagemClienteEm.getTime() < JANELA_MS;
+
+    if (!aberta) {
+      throw new ConflictException({
+        message:
+          'A janela de 24h desta conversa expirou. Envie um template aprovado.',
+        codigo: 'WHATSAPP_JANELA_FECHADA',
+      });
     }
   }
 
@@ -1950,6 +2073,9 @@ export class WhatsappConversasService {
           contatoId: contato.id,
           clienteId: contato.clienteId,
           ultimaMensagemEm: new Date(),
+          // Só conta como "mensagem do cliente" quando não saiu do próprio
+          // vendedor — é o que a Cloud API usa para calcular a janela de 24h.
+          ...(minha ? {} : { ultimaMensagemClienteEm: new Date() }),
           // A que o próprio vendedor mandou não conta como não lida: ele
           // acabou de escrevê-la. Contar faria o badge subir pela resposta
           // dele mesmo, e a conversa pedir atenção que já teve.
@@ -1961,7 +2087,12 @@ export class WhatsappConversasService {
         update: {
           clienteId: contato.clienteId,
           ultimaMensagemEm: new Date(),
-          ...(minha ? {} : { naoLidas: { increment: 1 } }),
+          ...(minha
+            ? {}
+            : {
+                naoLidas: { increment: 1 },
+                ultimaMensagemClienteEm: new Date(),
+              }),
         },
         select: {
           id: true,

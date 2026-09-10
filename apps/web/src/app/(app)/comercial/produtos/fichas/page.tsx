@@ -144,7 +144,7 @@ export default function ProdutoFichasImportacaoPage() {
   );
 
   return (
-    <div className="space-y-4">
+    <div data-tour="rotina" className="space-y-4">
       <div className="flex items-center gap-3">
         <Button
           variant="ghost"
@@ -164,7 +164,7 @@ export default function ProdutoFichasImportacaoPage() {
         </div>
       </div>
 
-      <Card>
+      <Card data-tour="fichas-importar">
         <CardContent className="space-y-3 p-4">
           <input
             ref={inputRef}
@@ -249,7 +249,7 @@ export default function ProdutoFichasImportacaoPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-2">
+        <div data-tour="fichas-resultados" className="space-y-2">
           {itens.map((item) => (
             <Card key={item.id}>
               <CardContent className="space-y-3 p-4">

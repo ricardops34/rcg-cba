@@ -102,7 +102,7 @@ export default function ProdutoFotosPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div data-tour="rotina" className="space-y-4">
       <div className="flex items-center gap-3">
         <Button
           variant="ghost"
@@ -121,7 +121,7 @@ export default function ProdutoFotosPage() {
         </div>
       </div>
 
-      <Card>
+      <Card data-tour="fotos-importar">
         <CardHeader>
           <CardTitle>Nova importação</CardTitle>
         </CardHeader>
@@ -187,7 +187,7 @@ export default function ProdutoFotosPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card data-tour="fotos-resultados">
         <CardHeader>
           <CardTitle>
             Fotos aguardando associação ({pendentes.data?.length ?? 0})

@@ -24,7 +24,10 @@
       "Bash(command -v node)",
       "Bash(command -v pnpm)",
       "Bash(command -v npm)",
-      "Bash(docker compose *)"
+      "Bash(docker compose *)",
+      "Bash(git diff --stat -- apps/web/src/lib/tours/tour-tipos.ts docs/planos/tour-termos-ajuda.md | cat *)",
+      "Read(//c/VPS/rcg/**)",
+      "Bash(wait)"
     ]
   }
 }

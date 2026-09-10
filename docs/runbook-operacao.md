@@ -548,6 +548,50 @@ curl -H "apikey: $EVOLUTION_GLOBAL_API_KEY" \
 fala pelo WhatsApp dos vendedores, e o webhook trafega só na rede interna.
 `replicas: 1` também aqui é requisito.
 
+## WhatsApp com a Cloud API oficial da Meta (terceiro transporte) **[a confirmar]**
+
+Terceiro provedor, ao lado de `zapo` e `evolution_go`. Diferente dos outros
+dois: **oficial** da Meta, sem pareamento por QR, só na sessão institucional
+(`tipo: 'empresa'`) — não aparece na conexão do vendedor. Desenho completo em
+`docs/planos/whatsapp-api-oficial.md`.
+
+**Migration.** `20260909150000_whatsapp_cloud_api` — campos novos em
+`whatsapp_config`, coluna `ultimaMensagemClienteEm` em `whatsapp_conversas` e
+a tabela `whatsapp_templates` (com RLS). Aplicada pelo procedimento normal
+desta página (`Migrations em produção`), role `plataforma`.
+
+**Diferente do Evolution GO, esta integração ainda não foi testada contra o
+serviço real da Meta** — só o handshake do webhook foi validado localmente
+(token certo devolve o `hub.challenge`, token errado dá 403). Antes de operar
+em produção:
+
+1. **Conta de desenvolvedor Meta + número de teste do Business Manager** —
+   passo manual, gera o Phone Number ID, o Business Account ID, o token de
+   acesso e o App Secret.
+2. **Gravar em Administração > WhatsApp > API Oficial**: os quatro campos
+   acima, mais o Webhook Verify Token (gerado na própria tela — não é
+   segredo de tráfego, só confere o handshake).
+3. **Colar a URL do webhook** (mostrada na mesma tela,
+   `.../api/v1/whatsapp/cloud-api/webhook/<empresaId>`) no painel da Meta —
+   ela chama o `GET` de handshake uma vez, depois só `POST` de eventos.
+4. **Sincronizar templates** (botão na tela) antes de esperar que o envio por
+   template funcione — sem isso a lista fica vazia mesmo com templates
+   aprovados no Business Manager.
+5. Confirmar o fluxo de verdade: mensagem recebida grava a conversa, texto
+   livre sai dentro da janela de 24h, janela fechada oferece o seletor de
+   template na tela de Atendimento (o composer troca sozinho ao receber o
+   409 com `codigo: WHATSAPP_JANELA_FECHADA`).
+
+**Corpo bruto do webhook.** `main.ts` passa `rawBody: true` ao
+`NestFactory.create` — é o que permite ao controller conferir a assinatura
+HMAC-SHA256 (`X-Hub-Signature-256`) contra o corpo exatamente como a Meta o
+mandou. Não afeta nenhuma outra rota da API.
+
+Ao validar pela primeira vez com uma conta real, troque a marca
+**[a confirmar]** acima e registre aqui o que divergiu — o mesmo cuidado já
+tomado com a Evolution GO, cuja documentação (`hub.mode`, nomes de campo do
+payload) pode não bater exatamente com o que a conta em uso devolve.
+
 ## Armadilha: rota nova da API não aparece depois de um `docker restart` **[verificado em dev, 2026-09-08]**
 
 Sintoma: você criou um endpoint, reiniciou `plataforma-comercial-dev-api-1`, e o log de

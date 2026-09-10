@@ -51,6 +51,13 @@ export interface ContextoSessao {
     /** Já decifrada. Nunca sai da API nem entra em log. */
     evolutionApiKey: string | null;
     historicoDias: number;
+    /** Preenchidos só quando a empresa configurou a Cloud API. */
+    cloudApiPhoneNumberId: string | null;
+    cloudApiBusinessAccountId: string | null;
+    /** Já decifrado. Nunca sai da API nem entra em log. */
+    cloudApiAccessToken: string | null;
+    /** Já decifrado — assina o webhook. Nunca sai da API nem entra em log. */
+    cloudApiAppSecret: string | null;
   };
   /** Preenchida só nas sessões da Evolution GO. */
   instancia: {
@@ -191,4 +198,35 @@ export interface WhatsappProvider {
     ctx: ContextoSessao,
     dias: number,
   ): Promise<{ encontradas: number; conversas: number }>;
+
+  /**
+   * Envio por template pré-aprovado — a única forma de mandar mensagem fora
+   * da janela de 24h que a Meta aceita para texto livre.
+   *
+   * **Opcional de propósito.** Só a Cloud API implementa; `zapo` e
+   * `evolution_go` nem precisam saber que este método existe — nenhum dos
+   * dois tem o conceito de template da Meta.
+   */
+  enviarTemplate?(
+    ctx: ContextoSessao,
+    dados: { jid: string; nome: string; idioma: string; parametros?: string[] },
+  ): Promise<{ externoId: string }>;
+
+  /**
+   * Busca os templates aprovados no Business Manager. **Opcional**, mesma
+   * razão de `enviarTemplate` — só a Cloud API tem o conceito.
+   *
+   * Só a chamada HTTP: quem grava em `WhatsappTemplate` é
+   * `WhatsappConfigService`, não o provider (ele não toca Prisma).
+   */
+  sincronizarTemplates?(ctx: ContextoSessao): Promise<TemplateSincronizado[]>;
+}
+
+export interface TemplateSincronizado {
+  metaId: string;
+  nome: string;
+  idioma: string;
+  categoria: string;
+  status: string;
+  componentes: unknown;
 }

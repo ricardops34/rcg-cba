@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../common/prisma/prisma.service';
+import { Prisma, PrismaService } from '../../common/prisma/prisma.service';
 import type { WhatsappConfigUpdate } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { cifrarSegredo, decifrarSeHouver, ultimos4 } from './whatsapp-cripto';
+import type { TemplateSincronizado } from './providers/whatsapp-provider';
 
 /**
  * Configuração do WhatsApp por empresa (singleton, padrão do AgenteConfig e
@@ -61,11 +62,17 @@ export class WhatsappConfigService {
     user: AuthenticatedUser,
     input: WhatsappConfigUpdate,
   ) {
-    // A chave não é gravada como veio: separada aqui, cifrada abaixo, e nunca
-    // devolvida. String vazia é o jeito de a tela apagar a chave existente sem
-    // precisar de uma rota só para isso — `undefined` (campo ausente) mantém a
-    // que já está lá, que é o caso de quem salvou o formulário sem tocá-la.
-    const { evolutionApiKey, ...resto } = input;
+    // As chaves não são gravadas como vieram: separadas aqui, cifradas abaixo,
+    // e nunca devolvidas. String vazia é o jeito de a tela apagar a chave
+    // existente sem precisar de uma rota só para isso — `undefined` (campo
+    // ausente) mantém a que já está lá, que é o caso de quem salvou o
+    // formulário sem tocá-la.
+    const {
+      evolutionApiKey,
+      cloudApiAccessToken,
+      cloudApiAppSecret,
+      ...resto
+    } = input;
 
     return this.prisma.withTenant(empresaId, async (tx) => {
       await tx.whatsappConfig.upsert({
@@ -84,10 +91,84 @@ export class WhatsappConfigService {
                   ? cifrarSegredo(evolutionApiKey)
                   : null,
               }),
+          ...(cloudApiAccessToken === undefined
+            ? {}
+            : {
+                cloudApiAccessTokenCifrada: cloudApiAccessToken
+                  ? cifrarSegredo(cloudApiAccessToken)
+                  : null,
+              }),
+          ...(cloudApiAppSecret === undefined
+            ? {}
+            : {
+                cloudApiAppSecretCifrada: cloudApiAppSecret
+                  ? cifrarSegredo(cloudApiAppSecret)
+                  : null,
+              }),
           updatedBy: user.id,
         },
       });
       return this.sanitizar(atualizada);
+    });
+  }
+
+  /** Só o verify token — leitura direta, sem upsert (webhook não autenticado). */
+  async webhookVerifyToken(empresaId: string): Promise<string | null> {
+    const config = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappConfig.findUnique({
+        where: { empresaId },
+        select: { cloudApiWebhookVerifyToken: true },
+      }),
+    );
+    return config?.cloudApiWebhookVerifyToken ?? null;
+  }
+
+  /** Templates sincronizados da empresa, para o seletor de envio. */
+  async listarTemplates(empresaId: string) {
+    return this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappTemplate.findMany({
+        where: { empresaId },
+        orderBy: { nome: 'asc' },
+      }),
+    );
+  }
+
+  /**
+   * Upsert por `metaId` — não apaga o que não veio na resposta da Meta:
+   * um template pausado ou desativado lá continua aparecendo aqui com o
+   * status atualizado, e é isso que a tela precisa mostrar (não sumir sem
+   * explicação).
+   */
+  async upsertTemplates(empresaId: string, templates: TemplateSincronizado[]) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      for (const template of templates) {
+        await tx.whatsappTemplate.upsert({
+          where: {
+            empresaId_metaId: { empresaId, metaId: template.metaId },
+          },
+          create: {
+            empresaId,
+            metaId: template.metaId,
+            nome: template.nome,
+            idioma: template.idioma,
+            categoria: template.categoria,
+            status: template.status,
+            componentes: template.componentes as Prisma.InputJsonValue,
+          },
+          update: {
+            nome: template.nome,
+            idioma: template.idioma,
+            categoria: template.categoria,
+            status: template.status,
+            componentes: template.componentes as Prisma.InputJsonValue,
+            sincronizadoEm: new Date(),
+          },
+        });
+      }
+      return tx.whatsappTemplate.findMany({
+        where: { empresaId },
+        orderBy: { nome: 'asc' },
+      });
     });
   }
 
@@ -99,15 +180,29 @@ export class WhatsappConfigService {
    * "definida" sem os dígitos — o que já é o sinal de que ela precisa ser
    * regravada.
    */
-  private sanitizar<T extends { evolutionApiKeyCifrada: string | null }>(
-    config: T,
-  ) {
-    const { evolutionApiKeyCifrada, ...visivel } = config;
+  private sanitizar<
+    T extends {
+      evolutionApiKeyCifrada: string | null;
+      cloudApiAccessTokenCifrada: string | null;
+      cloudApiAppSecretCifrada: string | null;
+    },
+  >(config: T) {
+    const {
+      evolutionApiKeyCifrada,
+      cloudApiAccessTokenCifrada,
+      cloudApiAppSecretCifrada,
+      ...visivel
+    } = config;
     const emClaro = decifrarSeHouver(evolutionApiKeyCifrada);
     return {
       ...visivel,
       evolutionApiKeyDefinida: Boolean(evolutionApiKeyCifrada),
       evolutionApiKeyUltimos4: emClaro ? ultimos4(emClaro) : null,
+      // Token e App Secret nunca voltam nem em rastro de últimos dígitos —
+      // diferente da Evolution GO, o Access Token da Cloud API sozinho já
+      // fala pelo número da empresa inteira, sem instância nenhuma no meio.
+      cloudApiAccessTokenDefinida: Boolean(cloudApiAccessTokenCifrada),
+      cloudApiAppSecretDefinida: Boolean(cloudApiAppSecretCifrada),
     };
   }
 }

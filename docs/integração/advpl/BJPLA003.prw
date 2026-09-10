@@ -724,7 +724,15 @@ Static Function BJCatGrupo(cMarca, cChave, aRet, cMarcaFim)
 
 	Default cMarcaFim := ""
 
-	cQuery := "SELECT BM_FILIAL, BM_GRUPO, BM_DESC, BM_YTIPO, BM_MSBLQL, SBM.D_E_L_E_T_ AS DELETADO "
+	DbSelectArea("SBM")
+	cQuery := "SELECT BM_FILIAL, BM_GRUPO, BM_DESC, BM_YTIPO, "
+	
+	If SBM->(FieldPos("BM_MSBLQL")) > 0
+		cQuery += " BM_MSBLQL, "
+	Else
+		cQuery += " '2' as BM_MSBLQL, "
+	EndIF
+	cQuery += " SBM.D_E_L_E_T_ AS DELETADO "
 	cQuery += "  FROM " + RetSQLName("SBM") + " SBM "
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND SBM.BM_FILIAL = ? "

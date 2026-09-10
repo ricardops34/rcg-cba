@@ -19,6 +19,9 @@ import { WhatsappProviderService } from './providers/whatsapp-provider.service';
 import { ZapoProvider } from './providers/zapo.provider';
 import { EvolutionGoProvider } from './providers/evolution-go.provider';
 import { EvolutionGoClient } from './providers/evolution-go.client';
+import { CloudApiProvider } from './providers/cloud-api.provider';
+import { CloudApiClient } from './providers/cloud-api.client';
+import { WhatsappCloudApiController } from './whatsapp-cloud-api.controller';
 import { TitulosReceberModule } from '../titulos-receber/titulos-receber.module';
 import { NotasSaidaModule } from '../notas-saida/notas-saida.module';
 import { AtividadesModule } from '../atividades/atividades.module';
@@ -49,6 +52,9 @@ import { ProdutosModule } from '../produtos/produtos.module';
     // autenticação é outra: aqui o segredo é por instância, não um token único
     // compartilhado por todo o serviço.
     WhatsappEvolutionController,
+    // Callback da WhatsApp Cloud API (Meta) — handshake de verificação +
+    // eventos assinados por HMAC com o App Secret da empresa.
+    WhatsappCloudApiController,
   ],
   providers: [
     WhatsappConfigService,
@@ -74,8 +80,10 @@ import { ProdutosModule } from '../produtos/produtos.module';
     WhatsappProviderService,
     ZapoProvider,
     EvolutionGoProvider,
+    CloudApiProvider,
     WhatsappWorkerClient,
     EvolutionGoClient,
+    CloudApiClient,
   ],
   // Exportado para o feed de notificações somar as não lidas.
   exports: [

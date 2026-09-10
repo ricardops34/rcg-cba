@@ -142,7 +142,7 @@ export function AtividadeForm({
       </div>
 
       <Card>
-        <form id="atividade-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
+        <form data-tour="atividade-form" id="atividade-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
           <CardContent>
             <FieldGroup>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -271,7 +271,7 @@ export function AtividadeForm({
             </FieldGroup>
           </CardContent>
 
-          <CardFooter className="justify-end gap-2">
+          <CardFooter data-tour="form-acoes" className="flex-wrap justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => router.push(LIST_ROUTE)}>
               Cancelar
             </Button>

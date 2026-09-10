@@ -109,7 +109,7 @@ export function ObjetivoForm({ objetivo }: { objetivo?: ObjetivoVendedorMes }) {
       </div>
 
       <Card>
-        <form id="objetivo-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
+        <form data-tour="objetivo-form" id="objetivo-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
           <CardContent>
             <FieldGroup>
               <Field data-invalid={!!form.formState.errors.vendedorId}>
@@ -257,7 +257,7 @@ export function ObjetivoForm({ objetivo }: { objetivo?: ObjetivoVendedorMes }) {
             </FieldGroup>
           </CardContent>
 
-          <CardFooter className="justify-end gap-2">
+          <CardFooter data-tour="form-acoes" className="flex-wrap justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => router.push(LIST_ROUTE)}>
               Cancelar
             </Button>

@@ -39,6 +39,7 @@ import {
   WhatsappEnviarDanfeDto,
   WhatsappEnviarDto,
   WhatsappEnviarOrcamentoDto,
+  WhatsappEnviarTemplateDto,
   WhatsappIniciarConversaDto,
   WhatsappMensagemQueryDto,
   WhatsappNovoOrcamentoDto,
@@ -103,6 +104,32 @@ export class WhatsappController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.config.atualizar(user.empresaAtivaId, user, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Templates aprovados (Cloud API)',
+    description:
+      'Mirror local dos templates do Business Manager — usado pelo seletor ' +
+      'de envio quando a janela de 24h de uma conversa está fechada. ' +
+      'Requer whatsapp-config.visualizar.',
+  })
+  @RequirePermission('whatsapp-config', 'visualizar')
+  @Get('config/templates')
+  listarTemplates(@CurrentUser() user: AuthenticatedUser) {
+    return this.config.listarTemplates(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Sincronizar templates com a Meta (Cloud API)',
+    description:
+      'Busca os templates aprovados no Business Manager e atualiza o mirror ' +
+      'local. Exige o número institucional já conectado na API Oficial. ' +
+      'Requer whatsapp-config.editar.',
+  })
+  @RequirePermission('whatsapp-config', 'editar')
+  @Post('config/templates/sincronizar')
+  sincronizarTemplates(@CurrentUser() user: AuthenticatedUser) {
+    return this.sessao.sincronizarTemplatesEmpresa(user.empresaAtivaId);
   }
 
   @ApiOperation({
@@ -559,6 +586,23 @@ export class WhatsappController {
       },
       dto,
     );
+  }
+
+  @ApiOperation({
+    summary: 'Enviar template pré-aprovado (Cloud API)',
+    description:
+      'Único jeito de mandar mensagem fora da janela de 24h que a Meta ' +
+      'aceita — a própria Meta recusa texto livre nesse caso. Recusa ' +
+      'template não aprovado (400). Requer whatsapp-conversas.cadastrar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Post('conversas/:id/mensagens/template')
+  enviarTemplate(
+    @Param('id') id: string,
+    @Body() dto: WhatsappEnviarTemplateDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversas.enviarTemplate(user.empresaAtivaId, user, id, dto);
   }
 
   @ApiOperation({

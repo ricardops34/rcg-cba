@@ -347,11 +347,11 @@ export function ConsultaVendasCategoriaView() {
   };
 
   return (
-    <div className="space-y-4">
+    <div data-tour="consulta" className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-tight">{TITULO}</h1>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => abrirCortina(true)}>
+          <Button data-tour="consulta-parametros" variant="outline" size="sm" onClick={() => abrirCortina(true)}>
             <SlidersHorizontal className="size-4" />
             Parâmetros
             {quantidadeFiltros > 0 && (
@@ -381,6 +381,7 @@ export function ConsultaVendasCategoriaView() {
                 variant="outline"
                 size="sm"
                 disabled={linhas.length === 0}
+                data-tour="consulta-exportar"
                 onClick={() => exportar("pdf")}
               >
                 <FileText className="size-4" />
@@ -402,7 +403,7 @@ export function ConsultaVendasCategoriaView() {
 
       {/* Resumo do que está valendo: com os filtros na cortina, a tela
           precisa dizer sozinha de que recorte é o número exibido. */}
-      <Card>
+      <Card data-tour="consulta-resumo">
         <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-2">
           <Resumo label="Período" valor={data?.periodo.label ?? "—"} />
           <Resumo label="Vendedor" valor={nomeVendedorFiltrado ?? "Todos"} />

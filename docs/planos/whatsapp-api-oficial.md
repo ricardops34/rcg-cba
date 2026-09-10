@@ -1,9 +1,36 @@
 # Plano — WhatsApp API Oficial da Meta (Cloud API), terceiro provedor
 
-> Plano registrado em 2026-09-09. Este documento não representa
-> funcionalidade já implementada — nada do que está aqui existe no código
-> ainda. Os dois transportes operacionais continuam `zapo`/`zapo-js` e
-> `evolution_go`. Retomar por aqui quando a implementação começar.
+> Plano registrado em 2026-09-09. **Implementado em 2026-09-09/10** — código
+> completo (schema, migration, provider, webhook, contratos, telas). **Não
+> verificado contra a Graph API de verdade**: falta conta de desenvolvedor
+> Meta, Phone Number ID e token de um número de teste do Business Manager —
+> passo manual do usuário, fora do que dá para automatizar aqui. Antes de
+> operar em produção, confira a seção 6 (o que mudou do plano original) e
+> valide o fluxo ponta a ponta com uma credencial real.
+
+## 0. Duas correções de desenho, descobertas na implementação
+
+O plano original (seções 1–5, abaixo) descrevia a Cloud API como "trivial" em
+dois pontos que a leitura do código existente mostrou que não eram:
+
+1. **`pareamentoEmpresa()` não gravava o estado de volta no banco.** Só
+   `pareamento()` (a rota do vendedor) e o webhook de conexão faziam esse
+   write-back. A Cloud API não pareia por QR e não tem evento de conexão, então
+   sem um ajuste em `WhatsappSessaoService.pareamentoEmpresa()` a tela ficaria
+   presa em "aguardando leitura do QR" para sempre, mesmo com a credencial já
+   validada. Corrigido: `pareamentoEmpresa()` agora grava o estado do provedor
+   de volta, igual a `pareamento()`.
+2. **A janela de 24h não podia ser checada dentro do provider.** A arquitetura
+   do módulo é deliberada — provider transporta, não decide regra de negócio,
+   e não tem acesso ao Prisma. A checagem entrou em
+   `WhatsappConversasService.enviar()`/`enviarArquivo()`, uma camada acima, e
+   exigiu um campo novo (`WhatsappConversa.ultimaMensagemClienteEm`) porque
+   `ultimaMensagemEm` já existente conta as duas direções.
+
+O restante desta seção (1–5) é o plano como foi registrado originalmente;
+manter para contexto histórico da decisão. Ver `git log` deste arquivo e do
+código de `apps/api/src/modules/whatsapp/providers/cloud-api.*` para o
+desenho final.
 
 ## 1. Objetivo
 
