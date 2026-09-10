@@ -659,7 +659,10 @@ export const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
   // duas precisam andar juntas: o seed apaga todas as permissões e as recria,
   // então o que estiver só na migration desaparece na primeira base nova.
   agente: ['visualizar'],
-  'sugestao-compra': ['visualizar'],
+  // 'cadastrar' é recalcular a sugestão (linha ou lote) — o escopo de quem
+  // pode ser recalculado continua sendo a carteira do vendedor, resolvido no
+  // service (resolverEscopoVendedores), não pela permissão em si.
+  'sugestao-compra': ['visualizar', 'cadastrar'],
   'consulta-vendas-cliente': ['visualizar'],
   'consulta-vendas-produto': ['visualizar'],
   'consulta-vendas-categoria': ['visualizar'],
@@ -729,7 +732,10 @@ export const ADMINISTRATIVO_PERMISSOES: Record<string, Acao[]> = {
   'consulta-vendas-categoria': ['visualizar'],
   'consulta-vendas-vendedor': ['visualizar'],
   'consulta-evolucao': ['visualizar'],
-  'sugestao-compra': ['visualizar'],
+  // Sem cadastro de Vendedor, o escopo do Administrativo já é "sem
+  // restrição" (ver resolverEscopoVendedores) — 'cadastrar' aqui alcança a
+  // empresa inteira pelo mesmo motivo que 'visualizar' já alcançava.
+  'sugestao-compra': ['visualizar', 'cadastrar'],
 };
 
 /**

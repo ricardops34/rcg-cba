@@ -3,8 +3,9 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import type { PosicaoCliente } from "@plataforma/contracts";
+import type { PosicaoCliente, SugestaoCompraCalculada } from "@plataforma/contracts";
 import { apiFetch, assetUrl } from "@/lib/api-client";
+import { SugestaoCompraCalculadaTabela } from "@/components/crud/sugestao-compra-calculada";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -382,6 +383,17 @@ export function PosicaoClienteConteudo({
     queryFn: () => apiFetch<PosicaoCliente>(`/clientes/${id}/posicao`),
   });
 
+  // Aba de Sugestão: mesma leitura que a listagem de Sugestão de Compra usa
+  // na ação "Visualizar" — o que já está gravado, sem recalcular nada aqui.
+  const {
+    data: sugestaoCalculada,
+    isLoading: sugestaoLoading,
+    isError: sugestaoError,
+  } = useQuery({
+    queryKey: ["sugestao-compra", "calculada", id],
+    queryFn: () => apiFetch<SugestaoCompraCalculada>(`/sugestao-compra/cliente/${id}/calculada`),
+  });
+
   const notas = useMemo(() => posicao?.notas ?? [], [posicao]);
   const comodatos = useMemo(() => posicao?.comodatos ?? [], [posicao]);
   const titulos = useMemo(() => posicao?.titulos ?? [], [posicao]);
@@ -642,6 +654,7 @@ export function PosicaoClienteConteudo({
             <TabsTrigger value="devolucoes">Devoluções ({devolucoes.length})</TabsTrigger>
             <TabsTrigger value="titulos">Títulos a receber ({titulos.length})</TabsTrigger>
             <TabsTrigger value="mix">Mix de produtos ({mix.length})</TabsTrigger>
+            <TabsTrigger value="sugestao">Sugestão ({sugestaoCalculada?.itens.length ?? 0})</TabsTrigger>
           </TabsList>
         </div>
 
@@ -912,6 +925,18 @@ export function PosicaoClienteConteudo({
                   </Table>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="sugestao">
+          <Card>
+            <CardContent>
+              <SugestaoCompraCalculadaTabela
+                data={sugestaoCalculada}
+                isLoading={sugestaoLoading}
+                isError={sugestaoError}
+              />
             </CardContent>
           </Card>
         </TabsContent>

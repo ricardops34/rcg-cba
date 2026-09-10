@@ -2,274 +2,377 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { SugestaoCompraResultado } from "@plataforma/contracts";
+import type { SugestaoCompraListRow } from "@plataforma/contracts";
+import { useResourceList } from "@/hooks/use-resource";
 import { apiFetch } from "@/lib/api-client";
-import { ClienteCombobox } from "@/components/crud/cliente-combobox";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { Field, FieldLabel } from "@/components/ui/field";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { useAuthStore } from "@/stores/auth-store";
+import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
+import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
+import { CrudHeader } from "@/components/crud/crud-header";
+import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
+import { StatusDot } from "@/components/crud/status-dot";
+import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
+import { FiltersPopover } from "@/components/crud/filters-popover";
+import { SugestaoCompraCalculadaSheet } from "@/components/crud/sugestao-compra-calculada";
+import { SugestaoCompraGerarDialog } from "@/components/crud/sugestao-compra-gerar-dialog";
+import { FieldLabel } from "@/components/ui/field";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Lightbulb, TriangleAlert, Users } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Calculator, Eye, Lightbulb, Lock, MoreHorizontal, RefreshCw } from "lucide-react";
 
-const moeda = (v: number | null) =>
-  v == null
-    ? "—"
-    : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+type SimNaoTodos = "todos" | "sim" | "nao";
 
-const dataBr = (v: string | null) => {
+const dataHoraBr = (v: string | null) => {
   if (!v) return "—";
   const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("pt-BR");
 };
 
 /**
- * Sugestão de compra: o que clientes parecidos compram e este não.
- *
- * A tela mostra a evidência junto da sugestão de propósito — sem saber *quem*
- * compra e *quanto*, a lista vira palpite e o vendedor não usa.
+ * Sugestão de compra: um cliente por linha, com quando a sugestão dele foi
+ * calculada pela última vez. Não calcula nada ao abrir — só lê o que já foi
+ * gravado (GET /sugestao-compra). Calcular é ação explícita, linha a linha
+ * ou em lote pela barra, porque a varredura é cara.
  */
 export default function SugestaoCompraPage() {
-  const [clienteId, setClienteId] = useState<string | null>(null);
-  const [meses, setMeses] = useState("12");
-  const [base, setBase] = useState("ambos");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [sortBy, setSortBy] = useState("razaoSocial");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [status, setStatus] = useState<StatusFilterValue>("ativos");
+  const [uf, setUf] = useState<string | undefined>(undefined);
+  const [municipio, setMunicipio] = useState<string | undefined>(undefined);
+  const [vendedorId, setVendedorId] = useState<string | undefined>(undefined);
+  const [bloqueado, setBloqueado] = useState<SimNaoTodos>("todos");
 
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["sugestao-compra", clienteId, meses, base],
+  const [visualizarCliente, setVisualizarCliente] = useState<{ id: string; razaoSocial: string } | null>(
+    null,
+  );
+  const [calcularCliente, setCalcularCliente] = useState<{ id: string; razaoSocial: string } | null>(
+    null,
+  );
+  const [calcularLote, setCalcularLote] = useState(false);
+
+  const permissoes = useAuthStore((s) => s.user?.permissoes);
+  const podeCalcular = Boolean(permissoes?.includes("sugestao-compra.cadastrar"));
+
+  const vendedoresEscopoQuery = useVendedoresEscopo({ apenasComCliente: true, uf, municipio });
+  const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
+  const ehVendedorPuro = vendedoresEscopoQuery.data?.ehVendedorPuro ?? false;
+  const mostrarFiltroVendedor = !ehVendedorPuro;
+  useVendedorPadrao(ehVendedorPuro ? vendedoresEscopoQuery.data?.meuVendedorId : null, setVendedorId);
+
+  // O cálculo em lote é gerencial: vendedor "de carteira" continua com o
+  // Calcular por linha (o cliente é dele), mas o botão da barra — que corre
+  // sobre uma faixa que pode ir além do que ele atende — some para ele. A
+  // mesma flag que já esconde o filtro Vendedor (supervisor/gerente,
+  // administrativo, diretor e admin têm `ehVendedorPuro: false`) resolve isso
+  // sem precisar de uma permissão nova.
+  const podeCalcularLote = podeCalcular && !ehVendedorPuro;
+
+  // Facetas irmãs: cada uma se restringe pelos demais filtros já
+  // selecionados — mesmo racional de Posição de Cliente.
+  const ufsEscopoQuery = useQuery({
+    queryKey: ["clientes", "ufs-escopo", municipio, vendedorId],
     queryFn: () =>
-      apiFetch<SugestaoCompraResultado>(`/sugestao-compra/cliente/${clienteId}`, {
-        query: { meses: Number(meses), baseSemelhanca: base },
+      apiFetch<{ data: { uf: string; total: number }[] }>("/clientes/ufs-escopo", {
+        query: { municipio, vendedorId },
       }),
-    enabled: !!clienteId,
   });
+  const opcoesUf = ufsEscopoQuery.data?.data ?? [];
+
+  const municipiosEscopoQuery = useQuery({
+    queryKey: ["clientes", "municipios-escopo", uf, vendedorId],
+    queryFn: () =>
+      apiFetch<{ data: { municipio: string; total: number }[] }>("/clientes/municipios-escopo", {
+        query: { uf, vendedorId },
+      }),
+  });
+  const opcoesMunicipio = municipiosEscopoQuery.data?.data ?? [];
+
+  const { data, isLoading, isFetching, refetch, error } = useResourceList<SugestaoCompraListRow>(
+    "sugestao-compra",
+    {
+      search,
+      page,
+      pageSize,
+      sortBy,
+      sortOrder,
+      ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
+      ...(uf ? { uf } : {}),
+      ...(municipio ? { municipio } : {}),
+      ...(vendedorId ? { vendedorId } : {}),
+      ...(bloqueado !== "todos" ? { bloqueado: bloqueado === "sim" } : {}),
+    },
+  );
+
+  const filtrosAtivos =
+    status !== "ativos" || !!uf || !!municipio || !!vendedorId || bloqueado !== "todos";
+
+  const limparFiltros = () => {
+    setStatus("ativos");
+    setUf(undefined);
+    setMunicipio(undefined);
+    setVendedorId(undefined);
+    setBloqueado("todos");
+    setPage(1);
+  };
+
+  const columns: ColumnDef<SugestaoCompraListRow>[] = [
+    { header: "Situação", sortKey: "ativo", cell: (c) => <StatusDot active={c.ativo} /> },
+    {
+      header: "Código",
+      sortKey: "codigoErp",
+      cell: (c) => <span className="font-mono text-xs">{c.codigoErp || "—"}</span>,
+    },
+    {
+      header: "Razão Social",
+      sortKey: "razaoSocial",
+      className: "whitespace-normal",
+      cell: (c) => (
+        <span className="flex items-center gap-1.5">
+          <span className="block max-w-56 font-medium">{c.razaoSocial}</span>
+          {c.bloqueado && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Lock className="size-3.5 shrink-0 text-muted-foreground" />
+              </TooltipTrigger>
+              <TooltipContent>Cliente bloqueado — não entra no cálculo</TooltipContent>
+            </Tooltip>
+          )}
+        </span>
+      ),
+    },
+    {
+      header: "Cidade",
+      sortKey: "municipio",
+      cell: (c) => (
+        <span className="block max-w-28 truncate" title={c.municipio ?? undefined}>
+          {c.municipio || "—"}
+        </span>
+      ),
+    },
+    {
+      header: "Sugestões",
+      className: "text-right",
+      cell: (c) =>
+        c.qtdSugestoes > 0 ? (
+          <span className="inline-flex items-center gap-1">
+            <Lightbulb className="size-3.5 text-amber-500" />
+            {c.qtdSugestoes}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+    {
+      header: "Último cálculo",
+      sortKey: "ultimoCalculo",
+      cell: (c) => dataHoraBr(c.ultimoCalculo),
+    },
+    {
+      header: "",
+      className: "w-10",
+      cell: (c) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="size-8" onClick={(ev) => ev.stopPropagation()}>
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" onClick={(ev) => ev.stopPropagation()}>
+            <DropdownMenuItem
+              onClick={() => setVisualizarCliente({ id: c.id, razaoSocial: c.razaoSocial })}
+            >
+              <Eye className="size-4" /> Visualizar
+            </DropdownMenuItem>
+            {podeCalcular && (
+              <DropdownMenuItem
+                disabled={c.bloqueado || !c.ativo}
+                onClick={() => setCalcularCliente({ id: c.id, razaoSocial: c.razaoSocial })}
+              >
+                <Calculator className="size-4" /> Calcular
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ];
 
   return (
-    <div data-tour="rotina" className="space-y-4">
-      <Card data-tour="sugestao-parametros">
-        <CardContent className="flex flex-wrap items-end gap-3 pt-6">
-          <Field className="w-full sm:w-96">
-            <FieldLabel>Cliente</FieldLabel>
-            <ClienteCombobox value={clienteId} onChange={setClienteId} />
-          </Field>
-          <Field className="w-full sm:w-40">
-            <FieldLabel>Histórico</FieldLabel>
-            <Select value={meses} onValueChange={setMeses}>
+    <div className="space-y-4" data-tour="rotina">
+      <CrudHeader
+        search={search}
+        onSearchChange={(v) => {
+          setSearch(v);
+          setPage(1);
+        }}
+        onRefresh={() => refetch()}
+        isRefreshing={isFetching}
+      />
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          {podeCalcularLote && (
+            <Button variant="outline" size="sm" onClick={() => setCalcularLote(true)}>
+              <RefreshCw className="size-4" /> Calcular
+            </Button>
+          )}
+          <StatusQuickFilter
+            value={status}
+            onChange={(v) => {
+              setStatus(v);
+              setPage(1);
+            }}
+          />
+        </div>
+        <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+          <div className="space-y-2">
+            <FieldLabel>UF</FieldLabel>
+            <Select
+              value={uf ?? "todas"}
+              onValueChange={(v) => {
+                setUf(v === "todas" ? undefined : v);
+                setMunicipio(undefined);
+                setPage(1);
+              }}
+            >
               <SelectTrigger className="w-full">
-                <SelectValue />
+                <SelectValue placeholder="Todas" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="6">6 meses</SelectItem>
-                <SelectItem value="12">12 meses</SelectItem>
-                <SelectItem value="24">24 meses</SelectItem>
+                <SelectItem value="todas">Todas</SelectItem>
+                {opcoesUf.map((o) => (
+                  <SelectItem key={o.uf} value={o.uf}>
+                    {o.uf} ({o.total})
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
-          </Field>
-          <Field className="w-full sm:w-56">
-            <FieldLabel>Base da semelhança</FieldLabel>
-            <Select value={base} onValueChange={setBase}>
+          </div>
+
+          <div className="space-y-2">
+            <FieldLabel>Município</FieldLabel>
+            <Select
+              value={municipio ?? "todos"}
+              onValueChange={(v) => {
+                setMunicipio(v === "todos" ? undefined : v);
+                setPage(1);
+              }}
+            >
               <SelectTrigger className="w-full">
-                <SelectValue />
+                <SelectValue placeholder="Todos" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ambos">Cesta + ramo (CNAE)</SelectItem>
-                <SelectItem value="cesta">Só cesta de compras</SelectItem>
-                <SelectItem value="cnae">Só ramo (CNAE)</SelectItem>
+                <SelectItem value="todos">Todos</SelectItem>
+                {opcoesMunicipio.map((o) => (
+                  <SelectItem key={o.municipio} value={o.municipio}>
+                    {o.municipio} ({o.total})
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
-          </Field>
-        </CardContent>
-      </Card>
+          </div>
 
-      {!clienteId && (
-        <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
-            Escolha um cliente para ver o que clientes parecidos com ele compram
-            e ele ainda não.
-          </CardContent>
-        </Card>
-      )}
-
-      {isLoading && clienteId && (
-        <p className="text-sm text-muted-foreground">Calculando...</p>
-      )}
-
-      {isError && (
-        <Card>
-          <CardContent className="pt-6 text-sm text-destructive">
-            {(error as Error)?.message ?? "Erro ao gerar a sugestão"}
-          </CardContent>
-        </Card>
-      )}
-
-      {data && (
-        <>
-          <Card>
-            <CardContent className="space-y-2 pt-6">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{data.razaoSocial}</span>
-                <Badge variant="outline">
-                  {data.produtosNaCesta} produto(s) na cesta
-                </Badge>
-                <Badge variant="outline">
-                  <Users className="mr-1 size-3" />
-                  {data.clientesSemelhantes.length} semelhantes
-                </Badge>
-              </div>
-              {data.cnaes.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {data.cnaes.map((c) => (
-                    <Badge key={c} variant="secondary" className="font-normal">
-                      {c}
-                    </Badge>
+          {mostrarFiltroVendedor && (
+            <div className="space-y-2">
+              <FieldLabel>Vendedor</FieldLabel>
+              <Select
+                value={vendedorId ?? "none"}
+                onValueChange={(v) => {
+                  setVendedorId(v === "none" ? undefined : v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Qualquer" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Qualquer</SelectItem>
+                  {opcoesVendedor.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {vendedorFiltroLabel(v)}
+                    </SelectItem>
                   ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {data.aviso && (
-            <Card>
-              <CardContent className="flex items-start gap-2 pt-6 text-sm">
-                <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
-                <span>{data.aviso}</span>
-              </CardContent>
-            </Card>
+                </SelectContent>
+              </Select>
+            </div>
           )}
 
-          {data.sugestoes.length > 0 && (
-            <Card>
-              <CardContent className="pt-6">
-                <p className="flex items-center gap-2 pb-3 text-sm font-medium">
-                  <Lightbulb className="size-4" />
-                  Produtos a oferecer
-                </p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-left text-xs text-muted-foreground">
-                        <th className="py-1.5 pr-3 font-medium">Produto</th>
-                        <th className="py-1.5 pr-3 font-medium">Quantos compram</th>
-                        <th className="py-1.5 pr-3 font-medium">Ticket médio</th>
-                        <th className="py-1.5 pr-3 font-medium">Preço p/ este cliente</th>
-                        <th className="py-1.5 font-medium">Última compra no grupo</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.sugestoes.map((p) => (
-                        <tr key={p.produtoId} className="border-b last:border-0">
-                          <td className="py-2 pr-3">
-                            <div className="font-mono text-xs text-muted-foreground">
-                              {p.codigoErp}
-                            </div>
-                            <div>{p.descricao}</div>
-                          </td>
-                          <td className="py-2 pr-3">
-                            {/* A evidência é o argumento de venda — quem compra. */}
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="cursor-help underline decoration-dotted">
-                                  {p.semelhantesQueCompram} de {p.totalSemelhantes}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {p.evidencia.length > 0
-                                  ? p.evidencia.join(", ")
-                                  : "Sem detalhe"}
-                              </TooltipContent>
-                            </Tooltip>
-                          </td>
-                          <td className="py-2 pr-3">{moeda(p.valorMedio)}</td>
-                          <td className="py-2 pr-3">
-                            {p.precoTabelaCliente == null ? (
-                              <span className="text-muted-foreground">
-                                sem preço na tabela
-                              </span>
-                            ) : (
-                              moeda(p.precoTabelaCliente)
-                            )}
-                          </td>
-                          <td className="py-2 text-muted-foreground">
-                            {dataBr(p.ultimaCompraNoGrupo)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          <div className="space-y-2">
+            <FieldLabel>Bloqueado</FieldLabel>
+            <Select
+              value={bloqueado}
+              onValueChange={(v) => {
+                setBloqueado(v as SimNaoTodos);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                <SelectItem value="sim">Sim</SelectItem>
+                <SelectItem value="nao">Não</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </FiltersPopover>
+      </div>
 
-          {data.clientesSemelhantes.length > 0 && (
-            <Card>
-              <CardContent className="pt-6">
-                <p className="pb-1 text-sm font-medium">Clientes semelhantes</p>
-                <p className="pb-3 text-xs text-muted-foreground">
-                  Por que são parecidos: &quot;cesta&quot; é a fatia de produtos em
-                  comum; &quot;ramo&quot; conta CNAEs compartilhados.
-                </p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-left text-xs text-muted-foreground">
-                        <th className="py-1.5 pr-3 font-medium">Cliente</th>
-                        <th className="py-1.5 pr-3 font-medium">Semelhança</th>
-                        <th className="py-1.5 pr-3 font-medium">Cesta</th>
-                        <th className="py-1.5 pr-3 font-medium">Ramo</th>
-                        <th className="py-1.5 font-medium">Região</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.clientesSemelhantes.map((s) => (
-                        <tr key={s.clienteId} className="border-b last:border-0">
-                          <td className="py-1.5 pr-3">
-                            {s.razaoSocial}
-                            {s.municipio && (
-                              <span className="text-xs text-muted-foreground">
-                                {" "}
-                                · {s.municipio}/{s.uf}
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-1.5 pr-3 font-medium">
-                            {(s.score * 100).toFixed(0)}%
-                          </td>
-                          <td className="py-1.5 pr-3 text-muted-foreground">
-                            {s.produtosEmComum} em comum ({(s.indiceCesta * 100).toFixed(0)}%)
-                          </td>
-                          <td className="py-1.5 pr-3">
-                            {s.cnaesEmComum > 0 ? (
-                              <span>
-                                {s.cnaesEmComum} CNAE(s)
-                                {s.mesmoCnaePrincipal && (
-                                  <Badge variant="secondary" className="ml-1">
-                                    mesmo ramo
-                                  </Badge>
-                                )}
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </td>
-                          <td className="py-1.5 text-muted-foreground">
-                            {s.mesmaRegiao ? "mesma cidade" : "—"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </>
-      )}
+      <EntityTable
+        columns={columns}
+        rows={data?.data ?? []}
+        rowKey={(c) => c.id}
+        isLoading={isLoading}
+        error={error}
+        page={data?.page ?? page}
+        pageSize={data?.pageSize ?? pageSize}
+        total={data?.total ?? 0}
+        totalPages={data?.totalPages ?? 1}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => {
+          setPageSize(n);
+          setPage(1);
+        }}
+        onRowClick={(c) => setVisualizarCliente({ id: c.id, razaoSocial: c.razaoSocial })}
+        emptyMessage="Nenhum cliente encontrado."
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSortChange={(key, order) => {
+          setSortBy(key);
+          setSortOrder(order);
+        }}
+        storageKey="sugestao-compra"
+      />
+
+      <SugestaoCompraCalculadaSheet
+        clienteId={visualizarCliente?.id ?? null}
+        razaoSocial={visualizarCliente?.razaoSocial}
+        onOpenChange={(open) => !open && setVisualizarCliente(null)}
+      />
+      <SugestaoCompraGerarDialog
+        open={!!calcularCliente}
+        onOpenChange={(open) => !open && setCalcularCliente(null)}
+        clienteId={calcularCliente?.id}
+        razaoSocial={calcularCliente?.razaoSocial}
+        onGerado={() => void refetch()}
+      />
+      <SugestaoCompraGerarDialog
+        open={calcularLote}
+        onOpenChange={setCalcularLote}
+        onGerado={() => void refetch()}
+      />
     </div>
   );
 }

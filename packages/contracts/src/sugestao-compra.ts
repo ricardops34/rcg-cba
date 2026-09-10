@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { booleanQueryParam, paginationQuerySchema } from "./common";
 
 /**
  * Sugestão de compra: produtos que clientes semelhantes compram e o alvo não.
@@ -191,3 +192,127 @@ export const SUGESTAO_COMPRA_EXAMPLE: SugestaoCompraResultado = {
   ],
   aviso: null,
 };
+
+/**
+ * Listagem administrativa: um cliente por linha, com quando a sugestão dele
+ * foi calculada pela última vez — em vez do resultado ao vivo de um cliente
+ * só (`paraCliente`, acima). Alimenta a tela de Sugestão de Compra e as ações
+ * de gerar/visualizar por cliente.
+ */
+export const sugestaoCompraListRowSchema = z.object({
+  id: z.string().uuid(),
+  codigoErp: z.string().nullable(),
+  razaoSocial: z.string(),
+  municipio: z.string().nullable(),
+  uf: z.string().nullable(),
+  ativo: z.boolean(),
+  bloqueado: z
+    .boolean()
+    .describe("dataBloqueio preenchida sem reativação posterior — mesma regra da Posição de Cliente"),
+  ultimoCalculo: z
+    .string()
+    .datetime()
+    .nullable()
+    .describe("Quando a sugestão deste cliente foi gravada pela última vez (qualquer origem); null se nunca foi calculada"),
+  qtdSugestoes: z.number().int().describe("Quantos produtos estão sugeridos hoje para este cliente"),
+});
+export type SugestaoCompraListRow = z.infer<typeof sugestaoCompraListRowSchema>;
+
+export const sugestaoCompraListQuerySchema = paginationQuerySchema.extend({
+  ativo: booleanQueryParam,
+  uf: z.string().trim().length(2).optional(),
+  municipio: z.string().trim().optional(),
+  vendedorId: z.string().uuid().optional(),
+  bloqueado: booleanQueryParam,
+});
+export type SugestaoCompraListQuery = z.infer<typeof sugestaoCompraListQuerySchema>;
+
+export const SUGESTAO_COMPRA_LIST_ROW_EXAMPLE: SugestaoCompraListRow = {
+  id: "9c8d7e6f-5a4b-4c3d-2e1f-0a9b8c7d6e5f",
+  codigoErp: "004417",
+  razaoSocial: "RESTAURANTE DO CENTRO LTDA",
+  municipio: "Campo Grande",
+  uf: "MS",
+  ativo: true,
+  bloqueado: false,
+  ultimoCalculo: "2026-09-08T03:00:00.000Z",
+  qtdSugestoes: 8,
+};
+
+/** Item já gravado em `sugestoes_compra` — o que a listagem/aba "Visualizar" mostra, não um cálculo ao vivo. */
+export const sugestaoCompraCalculadaItemSchema = z.object({
+  produtoId: z.string().uuid(),
+  codigoErp: z.string(),
+  descricao: z.string(),
+  ordem: z.number().int(),
+  score: z.number().nullable(),
+  motivo: z.string().nullable(),
+  origem: z.enum(["local", "ia"]),
+  geradaEm: z.string().datetime(),
+});
+export type SugestaoCompraCalculadaItem = z.infer<typeof sugestaoCompraCalculadaItemSchema>;
+
+export const sugestaoCompraCalculadaSchema = z.object({
+  clienteId: z.string().uuid(),
+  razaoSocial: z.string(),
+  ultimoCalculo: z.string().datetime().nullable(),
+  itens: z.array(sugestaoCompraCalculadaItemSchema),
+});
+export type SugestaoCompraCalculada = z.infer<typeof sugestaoCompraCalculadaSchema>;
+
+export const SUGESTAO_COMPRA_CALCULADA_EXAMPLE: SugestaoCompraCalculada = {
+  clienteId: "9c8d7e6f-5a4b-4c3d-2e1f-0a9b8c7d6e5f",
+  razaoSocial: "RESTAURANTE DO CENTRO LTDA",
+  ultimoCalculo: "2026-09-08T03:00:00.000Z",
+  itens: [
+    {
+      produtoId: "5f6a7b8c-9d0e-4f12-8a3b-4c5d6e7f8091",
+      codigoErp: "PROD-118",
+      descricao: "OLEO DE SOJA 900ML CX/20",
+      ordem: 1,
+      score: 0.8,
+      motivo: "24 de 30 clientes parecidos compram este produto",
+      origem: "local",
+      geradaEm: "2026-09-08T03:00:00.000Z",
+    },
+  ],
+};
+
+/** Corpo de `POST /sugestao-compra/cliente/:id/gerar` — recálculo de um único cliente. */
+export const sugestaoCompraGerarClienteBodySchema = z.object({
+  meses: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(60)
+    .optional()
+    .describe("Período de referência; sem informar, usa o parâmetro da empresa (padrão 12 meses)"),
+});
+export type SugestaoCompraGerarClienteBody = z.infer<typeof sugestaoCompraGerarClienteBodySchema>;
+
+/** Corpo de `POST /sugestao-compra/gerar` — lote sobre a base (ou uma faixa de código de cliente). */
+export const sugestaoCompraGerarLoteBodySchema = z.object({
+  meses: z.coerce.number().int().min(1).max(60).optional(),
+  clienteCodigoDe: z
+    .string()
+    .trim()
+    .optional()
+    .describe("Código ERP inicial da faixa (inclusive). Sem informar, não limita por baixo"),
+  clienteCodigoAte: z
+    .string()
+    .trim()
+    .optional()
+    .describe("Código ERP final da faixa (inclusive). Sem informar, não limita por cima"),
+});
+export type SugestaoCompraGerarLoteBody = z.infer<typeof sugestaoCompraGerarLoteBodySchema>;
+
+export const sugestaoCompraGerarResultadoSchema = z.object({
+  loteId: z.string().uuid(),
+  clientesProcessados: z
+    .number()
+    .int()
+    .describe("Clientes elegíveis (ativos, não bloqueados, dentro do escopo/faixa) considerados"),
+  clientesComSugestao: z.number().int().describe("Quantos, dentre os processados, ganharam ao menos uma sugestão"),
+  sugestoesGravadas: z.number().int().describe("Total de linhas gravadas em sugestoes_compra"),
+});
+export type SugestaoCompraGerarResultado = z.infer<typeof sugestaoCompraGerarResultadoSchema>;

@@ -1,15 +1,26 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   Prisma,
   PrismaService,
   type TenantTx,
 } from '../../common/prisma/prisma.service';
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
+import { condicaoBuscaTermosSql } from '../../common/busca/termos-busca';
+import {
+  paginationToSkipTake,
+  buildPaginatedResult,
+} from '../../common/pagination/paginate';
 import { ParametrosService } from '../parametros/parametros.service';
-import { PESO_NIVEL_CNAE } from '@plataforma/contracts';
+import { PESO_NIVEL_CNAE, sugestaoCompraQuerySchema } from '@plataforma/contracts';
 import type {
   ClienteSemelhante,
   ProdutoSugerido,
+  SugestaoCompraCalculada,
+  SugestaoCompraGerarLoteBody,
+  SugestaoCompraGerarResultado,
+  SugestaoCompraListQuery,
+  SugestaoCompraListRow,
   SugestaoCompraQuery,
   SugestaoCompraResultado,
 } from '@plataforma/contracts';
@@ -69,6 +80,18 @@ interface LinhaProduto {
   ultimaCompra: Date | null;
   evidencia: string[] | null;
   outrosClientes: number;
+}
+
+interface LinhaListagem {
+  id: string;
+  codigoErp: string | null;
+  razaoSocial: string;
+  municipio: string | null;
+  uf: string | null;
+  ativo: boolean;
+  bloqueado: boolean;
+  ultimoCalculo: Date | null;
+  qtdSugestoes: number;
 }
 
 /**
@@ -271,6 +294,446 @@ export class SugestaoCompraService {
       },
       // A varredura de cesta cruza a maior tabela da base; o default de 5s do
       // Prisma é curto para carteiras grandes.
+      { timeout: 30_000 },
+    );
+  }
+
+  /**
+   * Listagem administrativa: um cliente por linha, com quando a sugestão dele
+   * foi calculada pela última vez — mesmo escopo hierárquico de
+   * `listagemPosicao` (vendedor vê a própria carteira; supervisor/gerente, o
+   * time; quem não tem cadastro de Vendedor — Administrador Empresa,
+   * Administrativo, Diretor — vê tudo).
+   */
+  async listagem(
+    empresaId: string,
+    user: AuthenticatedUser,
+    query: SugestaoCompraListQuery,
+  ): Promise<{
+    data: SugestaoCompraListRow[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  }> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+
+      const condicoes: Prisma.Sql[] = [
+        Prisma.sql`c."empresaId" = ${empresaId}`,
+        Prisma.sql`c."deletedAt" IS NULL`,
+      ];
+      if (escopo !== null) {
+        condicoes.push(
+          escopo.length > 0
+            ? Prisma.sql`c."vendedorId" IN (${Prisma.join(escopo)})`
+            : Prisma.sql`false`,
+        );
+      }
+      if (query.vendedorId) {
+        condicoes.push(
+          escopo !== null && !escopo.includes(query.vendedorId)
+            ? Prisma.sql`false`
+            : Prisma.sql`c."vendedorId" = ${query.vendedorId}`,
+        );
+      }
+      if (query.ativo !== undefined) condicoes.push(Prisma.sql`c."ativo" = ${query.ativo}`);
+      if (query.uf) condicoes.push(Prisma.sql`c."uf" = ${query.uf}`);
+      if (query.municipio) condicoes.push(Prisma.sql`c."municipio" = ${query.municipio}`);
+      const buscaSql = condicaoBuscaTermosSql(query.search, [
+        Prisma.sql`c."razaoSocial"`,
+        Prisma.sql`c."nomeFantasia"`,
+        Prisma.sql`c."codigoErp"`,
+        Prisma.sql`c."cnpjCpf"`,
+      ]);
+      if (buscaSql) condicoes.push(buscaSql);
+      // Mesma expressão de ClientesService.listagemPosicao — não reinventada
+      // aqui, para as duas telas concordarem sobre quem está bloqueado.
+      const bloqueadoExpr = Prisma.sql`(c."dataBloqueio" IS NOT NULL AND (c."dataReativacao" IS NULL OR c."dataReativacao" < c."dataBloqueio"))`;
+      if (query.bloqueado !== undefined) {
+        condicoes.push(query.bloqueado ? bloqueadoExpr : Prisma.sql`NOT ${bloqueadoExpr}`);
+      }
+
+      const where = Prisma.join(condicoes, ' AND ');
+
+      const sortMap: Record<string, Prisma.Sql> = {
+        razaoSocial: Prisma.sql`c."razaoSocial"`,
+        codigoErp: Prisma.sql`c."codigoErp"`,
+        municipio: Prisma.sql`c."municipio"`,
+        ultimoCalculo: Prisma.sql`s."ultimoCalculo"`,
+        ativo: Prisma.sql`c."ativo"`,
+      };
+      const sortField = query.sortBy && sortMap[query.sortBy] ? query.sortBy : 'razaoSocial';
+      const sortDir = query.sortOrder === 'desc' ? Prisma.raw('DESC') : Prisma.raw('ASC');
+
+      const { skip, take } = paginationToSkipTake(query);
+
+      const select = Prisma.sql`
+        SELECT
+          c.id, c."codigoErp", c."razaoSocial", c."municipio", c."uf", c."ativo",
+          ${bloqueadoExpr} AS "bloqueado",
+          s."ultimoCalculo",
+          COALESCE(s.qtd, 0)::int AS "qtdSugestoes"
+        FROM clientes c
+        LEFT JOIN (
+          SELECT "clienteId", MAX("geradaEm") AS "ultimoCalculo", COUNT(*)::int AS qtd
+          FROM sugestoes_compra
+          WHERE "empresaId" = ${empresaId}
+          GROUP BY "clienteId"
+        ) s ON s."clienteId" = c.id
+        WHERE ${where}
+        ORDER BY ${sortMap[sortField]} ${sortDir} NULLS LAST
+        LIMIT ${take} OFFSET ${skip}
+      `;
+      const countSelect = Prisma.sql`SELECT COUNT(*)::int AS count FROM clientes c WHERE ${where}`;
+
+      const [rows, countRows] = await Promise.all([
+        tx.$queryRaw<LinhaListagem[]>(select),
+        tx.$queryRaw<{ count: number }[]>(countSelect),
+      ]);
+
+      const data: SugestaoCompraListRow[] = rows.map((r) => ({
+        id: r.id,
+        codigoErp: r.codigoErp,
+        razaoSocial: r.razaoSocial,
+        municipio: r.municipio,
+        uf: r.uf,
+        ativo: r.ativo,
+        bloqueado: r.bloqueado,
+        ultimoCalculo: r.ultimoCalculo ? r.ultimoCalculo.toISOString() : null,
+        qtdSugestoes: r.qtdSugestoes,
+      }));
+
+      return buildPaginatedResult(data, countRows[0]?.count ?? 0, query);
+    });
+  }
+
+  /**
+   * O que já está gravado para um cliente — não um cálculo ao vivo. Alimenta
+   * a ação "Visualizar" da listagem e a aba de Sugestão na Posição de
+   * Cliente, que precisam mostrar exatamente a mesma coisa.
+   */
+  async calculadaDoCliente(
+    empresaId: string,
+    user: AuthenticatedUser,
+    clienteId: string,
+  ): Promise<SugestaoCompraCalculada> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const cliente = await tx.cliente.findFirst({
+        where: {
+          id: clienteId,
+          empresaId,
+          deletedAt: null,
+          ...(escopo ? { vendedorId: { in: escopo } } : {}),
+        },
+        select: { id: true, razaoSocial: true },
+      });
+      if (!cliente) throw new NotFoundException('Cliente não encontrado');
+
+      const itens = await tx.sugestaoCompraGerada.findMany({
+        where: { empresaId, clienteId },
+        orderBy: { ordem: 'asc' },
+        select: {
+          produtoId: true,
+          ordem: true,
+          score: true,
+          motivo: true,
+          origem: true,
+          geradaEm: true,
+          produto: { select: { codigoErp: true, descricao: true } },
+        },
+      });
+
+      const ultimoCalculo = itens.reduce<Date | null>(
+        (max, it) => (!max || it.geradaEm > max ? it.geradaEm : max),
+        null,
+      );
+
+      return {
+        clienteId: cliente.id,
+        razaoSocial: cliente.razaoSocial,
+        ultimoCalculo: ultimoCalculo ? ultimoCalculo.toISOString() : null,
+        itens: itens.map((it) => ({
+          produtoId: it.produtoId,
+          codigoErp: it.produto.codigoErp,
+          descricao: it.produto.descricao,
+          ordem: it.ordem,
+          score: it.score,
+          motivo: it.motivo,
+          origem: it.origem,
+          geradaEm: it.geradaEm.toISOString(),
+        })),
+      };
+    });
+  }
+
+  /**
+   * Clientes que podem receber sugestão gerada: dentro do escopo, ativos e
+   * **não bloqueados** — mesma expressão de bloqueio de
+   * `ClientesService.listagemPosicao`, não reinventada aqui. `codigoDe`/
+   * `codigoAte` (inclusive nas duas pontas) implementam a faixa "Cliente de/
+   * até" do botão de lote; ausentes, não limitam aquela ponta.
+   */
+  private async clientesElegiveis(
+    tx: TenantTx,
+    empresaId: string,
+    escopo: string[] | null,
+    faixa: { codigoDe?: string; codigoAte?: string } = {},
+  ): Promise<{ id: string }[]> {
+    const condicoes: Prisma.Sql[] = [
+      Prisma.sql`"empresaId" = ${empresaId}`,
+      Prisma.sql`"deletedAt" IS NULL`,
+      Prisma.sql`"ativo" = true`,
+      Prisma.sql`NOT ("dataBloqueio" IS NOT NULL AND ("dataReativacao" IS NULL OR "dataReativacao" < "dataBloqueio"))`,
+    ];
+    if (escopo !== null) {
+      condicoes.push(
+        escopo.length > 0
+          ? Prisma.sql`"vendedorId" IN (${Prisma.join(escopo)})`
+          : Prisma.sql`false`,
+      );
+    }
+    if (faixa.codigoDe) condicoes.push(Prisma.sql`"codigoErp" >= ${faixa.codigoDe}`);
+    if (faixa.codigoAte) condicoes.push(Prisma.sql`"codigoErp" <= ${faixa.codigoAte}`);
+
+    return tx.$queryRaw<{ id: string }[]>(
+      Prisma.sql`SELECT "id" FROM "clientes" WHERE ${Prisma.join(condicoes, ' AND ')}`,
+    );
+  }
+
+  /**
+   * O motor de `paraCliente`, sem o lookup escopado (quem chama já sabe que o
+   * cliente é elegível) e sem evidência nomeada — devolve as linhas prontas
+   * para `createMany`, não grava nada. Compartilhado por `gerarLote` e
+   * `gerarParaCliente` para as duas rotas nunca divergirem no que calculam.
+   */
+  private async gerarLinhasParaCliente(
+    tx: TenantTx,
+    empresaId: string,
+    clienteId: string,
+    desde: Date,
+    queryPadrao: SugestaoCompraQuery,
+    loteId: string,
+  ): Promise<Prisma.SugestaoCompraGeradaCreateManyInput[]> {
+    const cestaAlvo = await this.cestaDoCliente(tx, empresaId, clienteId, desde);
+    if (cestaAlvo.length === 0) return [];
+
+    const semelhantes = await this.buscarSemelhantes(tx, {
+      empresaId,
+      clienteId,
+      escopo: null,
+      desde,
+      cestaAlvo,
+      municipio: null,
+      uf: null,
+      query: queryPadrao,
+      hierarquico: queryPadrao.afinidadeCnae === 'hierarquica',
+    });
+    if (semelhantes.length === 0) return [];
+
+    const produtos = await this.produtosDosSemelhantes(tx, {
+      empresaId,
+      desde,
+      semelhantes: semelhantes.map((s) => s.clienteId),
+      daCarteira: [],
+      cestaAlvo,
+      limite: queryPadrao.limite,
+    });
+    if (produtos.length === 0) return [];
+
+    const total = semelhantes.length;
+    return produtos.map((p, i) => ({
+      empresaId,
+      clienteId,
+      produtoId: p.produtoId,
+      origem: 'local' as const,
+      ordem: i + 1,
+      score: Math.round((p.clientes / total) * 100) / 100,
+      motivo: `${p.clientes} de ${total} clientes parecidos compram este produto`,
+      loteId,
+    }));
+  }
+
+  /**
+   * Roda o mesmo motor de `paraCliente` para os clientes elegíveis (escopo do
+   * usuário, ativos, não bloqueados, e a faixa de código quando informada) e
+   * grava o resultado em `sugestoes_compra` (`origem: 'local'`) — o que faz o
+   * catálogo de sugestões parar de depender de uma consulta síncrona cara a
+   * cada leitura. É o que `clientes_sem_compra_no_mes` (WhatsApp funcionário)
+   * espera encontrar já gravado.
+   *
+   * Disparo manual, de propósito: hoje não há scheduler no projeto, e um job
+   * automático traria uma decisão de cadência que ainda não foi tomada.
+   *
+   * A substituição do lote anterior é **por cliente processado**, não pela
+   * empresa inteira: rodar só a faixa "004000 a 004999" não pode apagar a
+   * sugestão de quem está fora dela.
+   */
+  async gerarLote(
+    empresaId: string,
+    user: AuthenticatedUser,
+    body: SugestaoCompraGerarLoteBody = {},
+  ): Promise<SugestaoCompraGerarResultado> {
+    const loteId = randomUUID();
+    const queryPadrao = {
+      ...sugestaoCompraQuerySchema.parse({}),
+      ...(body.meses ? { meses: body.meses } : {}),
+    };
+
+    return this.prisma.withTenant(
+      empresaId,
+      async (tx) => {
+        const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+
+        const meses = await this.parametros.obterNumero(
+          empresaId,
+          'SUGESTAO_COMPRA_MESES',
+          queryPadrao.meses,
+          tx,
+        );
+        const desde = new Date();
+        desde.setMonth(desde.getMonth() - meses);
+
+        const clientes = await this.clientesElegiveis(tx, empresaId, escopo, {
+          codigoDe: body.clienteCodigoDe,
+          codigoAte: body.clienteCodigoAte,
+        });
+
+        const linhas: Prisma.SugestaoCompraGeradaCreateManyInput[] = [];
+        let clientesComSugestao = 0;
+
+        // Sequencial, de propósito: cada cliente já dispara uma varredura
+        // pesada sobre a base inteira (a mesma de `paraCliente`, que usa 30s
+        // de timeout para um cliente só). Em paralelo isso satura o pool de
+        // conexões do Postgres sem acelerar nada — a base é a mesma para
+        // todo mundo.
+        for (const cliente of clientes) {
+          const geradas = await this.gerarLinhasParaCliente(
+            tx,
+            empresaId,
+            cliente.id,
+            desde,
+            queryPadrao,
+            loteId,
+          );
+          if (geradas.length > 0) {
+            linhas.push(...geradas);
+            clientesComSugestao += 1;
+          }
+        }
+
+        if (clientes.length > 0) {
+          await tx.sugestaoCompraGerada.deleteMany({
+            where: {
+              empresaId,
+              origem: 'local',
+              clienteId: { in: clientes.map((c) => c.id) },
+            },
+          });
+        }
+        if (linhas.length > 0) {
+          await tx.sugestaoCompraGerada.createMany({ data: linhas });
+        }
+
+        return {
+          loteId,
+          clientesProcessados: clientes.length,
+          clientesComSugestao,
+          sugestoesGravadas: linhas.length,
+        };
+      },
+      // Lote sobre (até) a base inteira: uma varredura pesada por cliente
+      // elegível, então o timeout da tela (30s, para um cliente só) não chega
+      // perto do necessário aqui.
+      { timeout: 15 * 60_000 },
+    );
+  }
+
+  /**
+   * Recalcula um único cliente — a ação "Calcular" do menu da linha.
+   * Escopo, ativo e não-bloqueado são exigidos aqui do mesmo jeito que no
+   * lote; a diferença é que aqui vira 404/400 em vez de "pular em silêncio",
+   * porque foi um pedido explícito sobre um cliente nomeado.
+   */
+  async gerarParaCliente(
+    empresaId: string,
+    user: AuthenticatedUser,
+    clienteId: string,
+    meses?: number,
+  ): Promise<SugestaoCompraGerarResultado> {
+    const loteId = randomUUID();
+
+    return this.prisma.withTenant(
+      empresaId,
+      async (tx) => {
+        const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+        const cliente = await tx.cliente.findFirst({
+          where: {
+            id: clienteId,
+            empresaId,
+            deletedAt: null,
+            ...(escopo ? { vendedorId: { in: escopo } } : {}),
+          },
+          select: {
+            id: true,
+            ativo: true,
+            dataBloqueio: true,
+            dataReativacao: true,
+          },
+        });
+        if (!cliente) throw new NotFoundException('Cliente não encontrado');
+        if (!cliente.ativo) {
+          throw new BadRequestException(
+            'Cliente inativo — não é possível gerar sugestão de compra',
+          );
+        }
+        const bloqueado =
+          cliente.dataBloqueio != null &&
+          (cliente.dataReativacao == null ||
+            cliente.dataReativacao < cliente.dataBloqueio);
+        if (bloqueado) {
+          throw new BadRequestException(
+            'Cliente bloqueado — não é possível gerar sugestão de compra',
+          );
+        }
+
+        const queryPadrao = {
+          ...sugestaoCompraQuerySchema.parse({}),
+          ...(meses ? { meses } : {}),
+        };
+        const mesesResolvido = await this.parametros.obterNumero(
+          empresaId,
+          'SUGESTAO_COMPRA_MESES',
+          queryPadrao.meses,
+          tx,
+        );
+        const desde = new Date();
+        desde.setMonth(desde.getMonth() - mesesResolvido);
+
+        const linhas = await this.gerarLinhasParaCliente(
+          tx,
+          empresaId,
+          clienteId,
+          desde,
+          queryPadrao,
+          loteId,
+        );
+
+        await tx.sugestaoCompraGerada.deleteMany({
+          where: { empresaId, clienteId, origem: 'local' },
+        });
+        if (linhas.length > 0) {
+          await tx.sugestaoCompraGerada.createMany({ data: linhas });
+        }
+
+        return {
+          loteId,
+          clientesProcessados: 1,
+          clientesComSugestao: linhas.length > 0 ? 1 : 0,
+          sugestoesGravadas: linhas.length,
+        };
+      },
       { timeout: 30_000 },
     );
   }

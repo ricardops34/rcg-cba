@@ -1009,23 +1009,28 @@ export const ROTINAS_GUIADAS: RotinaGuiada[] = [
     "codigo": "consulta-sugestao-compra",
     "rota": "/consultas/sugestao-compra",
     "titulo": "Sugestão de Compra",
-    "resumo": "Identifique produtos que clientes semelhantes compram e o cliente selecionado ainda não compra.",
-    "resultado": "Use as sugestões como apoio à abordagem comercial, conferindo a aderência dos produtos à necessidade do cliente.",
+    "resumo": "Acompanhe, por cliente, quando a sugestão de produtos foi calculada pela última vez.",
+    "resultado": "Visualize a sugestão já calculada de um cliente ou dispare um novo cálculo, linha a linha ou em lote.",
     "seletorPronto": "[data-tour=\"rotina\"]",
     "passos": [
       {
-        "seletor": "[data-tour=\"sugestao-parametros\"]",
-        "titulo": "Escolha o cliente e a base",
-        "descricao": "Selecione o cliente, o histórico de 6, 12 ou 24 meses e a base de semelhança: cesta de compras, ramo CNAE ou ambos."
+        "seletor": "[data-tour=\"crud-busca\"]",
+        "titulo": "Localize o cliente",
+        "descricao": "Busque por razão social, código ou CNPJ e atualize a lista."
       },
       {
-        "titulo": "Confira o contexto",
-        "descricao": "Aguarde o cálculo e leia o resumo e os avisos. A análise depende de histórico e de clientes semelhantes disponíveis."
+        "seletor": "[data-tour=\"crud-filtros\"]",
+        "titulo": "Refine a lista",
+        "descricao": "Filtre por vendedor, UF, município e clientes bloqueados — bloqueado não entra no cálculo."
       },
       {
-        "seletor": "[data-tour=\"rotina\"] table",
-        "titulo": "Leia as sugestões",
-        "descricao": "Compare produtos, quantos clientes semelhantes compram, ticket médio e preço para o cliente. A lista de clientes semelhantes ajuda a entender a origem da sugestão."
+        "seletor": "[data-tour=\"crud-lista\"]",
+        "titulo": "Leia o último cálculo",
+        "descricao": "A coluna \"Último cálculo\" mostra quando a sugestão de cada cliente foi gerada. Abra o menu da linha para visualizar o que já foi sugerido ou recalcular só aquele cliente."
+      },
+      {
+        "titulo": "Calcule em lote",
+        "descricao": "O botão Calcular na barra recalcula os clientes elegíveis do seu escopo, com período de referência e faixa de código opcionais. Confira o texto do diálogo: ele substitui a sugestão já gravada para cada cliente atingido."
       }
     ]
   }
