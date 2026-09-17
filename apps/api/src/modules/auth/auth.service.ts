@@ -65,9 +65,13 @@ export class AuthService {
       }),
     );
 
-    const permissoes = vinculo.perfil.permissoes.map(
-      (p) => `${p.rotina.codigo}.${p.acao}`,
-    );
+    // Para perfis admin do sistema (sistemaBase: true), PermissionsGuard
+    // libera o acesso direto (isAdmin = true) sem precisar checar array.
+    // Omitir as 470+ permissões do token reduz o JWT de 16 KB para ~400 bytes,
+    // evitando erro 431 Request Header Fields Too Large.
+    const permissoes = vinculo.perfil.sistemaBase
+      ? []
+      : vinculo.perfil.permissoes.map((p) => `${p.rotina.codigo}.${p.acao}`);
 
     const payload = {
       sub: vinculo.usuarioId,

@@ -22,9 +22,28 @@ async function bootstrap() {
   // (logos em /uploads). O CORP padrão "same-origin" bloquearia esse embed
   // cross-origin, então liberamos para "cross-origin" (o acesso já é controlado
   // por CORS + autenticação nas rotas de dados).
-  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      hsts: process.env.NODE_ENV === 'production',
+      contentSecurityPolicy: false,
+    }),
+  );
+  const allowedOrigins = (
+    process.env.CORS_ORIGIN?.split(',') ?? ['http://localhost:3000', 'http://localhost:3002']
+  ).map((s) => s.trim());
   app.enableCors({
-    origin: process.env.CORS_ORIGIN?.split(',') ?? 'http://localhost:3000',
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (
+        allowedOrigins.includes(origin) ||
+        (process.env.NODE_ENV !== 'production' &&
+          /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin))
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
     credentials: true,
   });
   // O padrão do Express é 100 kB, e a mídia de WhatsApp chega do worker em

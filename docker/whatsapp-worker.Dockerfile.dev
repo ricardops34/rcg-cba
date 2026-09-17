@@ -7,7 +7,9 @@
 # separação em worker permite.
 FROM node:22-alpine
 
-RUN npm install -g pnpm@10.0.0
+RUN npm config set strict-ssl false && \
+    npm install -g pnpm@10.0.0 && \
+    pnpm config set strict-ssl false
 
 WORKDIR /app
 

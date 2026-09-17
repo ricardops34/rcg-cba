@@ -39,7 +39,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       empresaAtivaId: payload.empresaAtivaId,
       isAdmin: payload.isAdmin,
       administradorPlataforma: payload.administradorPlataforma === true,
-      permissoes: payload.permissoes,
+      permissoes: payload.permissoes ?? [],
     };
   }
 }

@@ -1,16 +1,47 @@
 import { useAuthStore } from "@/stores/auth-store";
 import { reportarErroCliente } from "./erro-report";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api/v1";
+export function resolveApiUrl(): string {
+  if (typeof window !== "undefined") {
+    const configured = process.env.NEXT_PUBLIC_API_URL;
+    if (configured) {
+      if (configured.startsWith("/")) {
+        return `${window.location.origin}${configured.replace(/\/$/, "")}`;
+      }
+      return configured.replace(/\/$/, "");
+    }
+    return `${window.location.origin}/api/v1`;
+  }
+  return (
+    process.env.INTERNAL_API_URL ??
+    process.env.NEXT_PUBLIC_API_URL ??
+    "http://api:3001/api/v1"
+  );
+}
+
+export function getApiOrigin(): string {
+  if (typeof window !== "undefined") {
+    return window.location.origin;
+  }
+  try {
+    return new URL(resolveApiUrl()).origin;
+  } catch {
+    return "http://localhost:3001";
+  }
+}
 
 /** Origem da API (sem o prefixo /api/v1), usada para servir assets como logos. */
-export const API_ORIGIN = new URL(API_URL).origin;
+export const API_ORIGIN =
+  typeof window !== "undefined"
+    ? window.location.origin
+    : "http://localhost:3001";
 
 /** Monta a URL absoluta de um asset servido pela API (ex.: /uploads/logos/x.png). */
 export function assetUrl(path: string | null | undefined): string | null {
   if (!path) return null;
   if (/^https?:\/\//.test(path)) return path;
-  return `${API_ORIGIN}${path.startsWith("/") ? "" : "/"}${path}`;
+  const origin = getApiOrigin();
+  return `${origin}${path.startsWith("/") ? "" : "/"}${path}`;
 }
 
 export class ApiError extends Error {
@@ -139,7 +170,7 @@ async function refreshAccessToken(): Promise<string | null> {
 
   let res: Response;
   try {
-    res = await fetch(`${API_URL}/auth/refresh`, {
+    res = await fetch(`${resolveApiUrl()}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refreshToken }),
@@ -175,7 +206,7 @@ async function refreshAccessToken(): Promise<string | null> {
   // acontecer sem resincronizar `user`, a topbar mostra a empresa errada
   // (cache velho) enquanto as chamadas já usam o token da empresa nova.
   if (empresaAtivaIdDoToken(data.accessToken) !== user?.empresaAtivaId) {
-    const meRes = await fetch(`${API_URL}/auth/me`, {
+    const meRes = await fetch(`${resolveApiUrl()}/auth/me`, {
       headers: { Authorization: `Bearer ${data.accessToken}` },
     });
     if (meRes.ok) setUser(await meRes.json());
@@ -193,7 +224,7 @@ interface RequestOptions {
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = "GET", body, query } = options;
 
-  const url = new URL(`${API_URL}${path}`);
+  const url = new URL(`${resolveApiUrl()}${path}`);
   if (query) {
     for (const [key, value] of Object.entries(query)) {
       if (value !== undefined) url.searchParams.set(key, String(value));
@@ -257,7 +288,7 @@ export async function apiUpload<T>(
   arquivo: File | FormData,
   field = "file",
 ): Promise<T> {
-  const url = `${API_URL}${path}`;
+  const url = `${resolveApiUrl()}${path}`;
 
   const doRequest = async (token: string | null) => {
     let formData: FormData;
@@ -309,7 +340,7 @@ export async function apiUpload<T>(
  * `nomePadrao` como reserva.
  */
 export async function apiDownload(path: string, nomePadrao: string): Promise<void> {
-  const url = `${API_URL}${path}`;
+  const url = `${resolveApiUrl()}${path}`;
 
   const doRequest = async (token: string | null) => {
     try {

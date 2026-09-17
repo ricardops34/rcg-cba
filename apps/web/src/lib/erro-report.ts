@@ -26,8 +26,23 @@ const BACKOFF_MS = 30_000;
 /** Erro idêntico repetido dentro desta janela não entra de novo no buffer. */
 const JANELA_REPETICAO_MS = 60_000;
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api/v1";
+function getApiUrl(): string {
+  if (typeof window !== "undefined") {
+    const configured = process.env.NEXT_PUBLIC_API_URL;
+    if (configured) {
+      if (configured.startsWith("/")) {
+        return `${window.location.origin}${configured.replace(/\/$/, "")}`;
+      }
+      return configured.replace(/\/$/, "");
+    }
+    return `${window.location.origin}/api/v1`;
+  }
+  return (
+    process.env.INTERNAL_API_URL ??
+    process.env.NEXT_PUBLIC_API_URL ??
+    "http://api:3001/api/v1"
+  );
+}
 
 let timer: ReturnType<typeof setTimeout> | null = null;
 let bloqueadoAte = 0;
@@ -115,7 +130,7 @@ export async function enviarPendentes(): Promise<void> {
 
   enviando = true;
   try {
-    const res = await fetch(`${API_URL}/erros/cliente`, {
+    const res = await fetch(`${getApiUrl()}/erros/cliente`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -18,6 +18,19 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async rewrites() {
+    const apiTarget = process.env.INTERNAL_API_URL ?? "http://api:3001";
+    return [
+      {
+        source: "/api/v1/:path*",
+        destination: `${apiTarget}/api/v1/:path*`,
+      },
+      {
+        source: "/uploads/:path*",
+        destination: `${apiTarget}/uploads/:path*`,
+      },
+    ];
+  },
 };
 
 export default nextConfig;
