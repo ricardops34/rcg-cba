@@ -263,10 +263,15 @@ async function limparDados() {
   await prisma.clienteHistorico.deleteMany();
   await prisma.clienteAlteracao.deleteMany();
   await prisma.clienteCnae.deleteMany();
-  // Conversas do agente e a configuração dele (referenciam empresa).
-  await prisma.agenteMensagem.deleteMany();
-  await prisma.agenteConversa.deleteMany();
-  await prisma.agenteConfig.deleteMany();
+  // Conversas do agente, ferramentas e a configuração dele (referenciam empresa).
+  await prisma.$executeRawUnsafe('DELETE FROM "agente_ferramenta_auditoria"');
+  await prisma.$executeRawUnsafe('DELETE FROM "agente_ferramenta_perfis"');
+  await prisma.$executeRawUnsafe('DELETE FROM "agente_ferramentas"');
+  await prisma.$executeRawUnsafe('DELETE FROM "agente_credenciais"');
+  await prisma.$executeRawUnsafe('DELETE FROM "agente_anexos"');
+  await prisma.$executeRawUnsafe('DELETE FROM "agente_mensagens"');
+  await prisma.$executeRawUnsafe('DELETE FROM "agente_conversas"');
+  await prisma.$executeRawUnsafe('DELETE FROM "agente_config"');
   await prisma.notaSaidaItem.deleteMany();
   await prisma.notaSaida.deleteMany();
   await prisma.tituloReceber.deleteMany();
@@ -280,6 +285,11 @@ async function limparDados() {
   await prisma.orcamento.deleteMany();
   await prisma.oportunidade.deleteMany();
   await prisma.cliente.deleteMany();
+  await prisma.whatsappReacao.deleteMany();
+  await prisma.whatsappMensagemAgendada.deleteMany();
+  await prisma.whatsappMensagem.deleteMany();
+  await prisma.whatsappConversa.deleteMany();
+  await prisma.whatsappSessao.deleteMany();
   await prisma.vendedor.updateMany({
     data: { superiorId: null },
   });
@@ -305,6 +315,8 @@ async function limparDados() {
   await prisma.sessao.deleteMany();
   await prisma.acessoLog.deleteMany();
   await prisma.usuarioHorario.deleteMany();
+  await prisma.notificacao.deleteMany();
+  await prisma.tourExecucao.deleteMany();
   // O documento publicado é catálogo global e permanece; somente as
   // evidências dos usuários recriados por este seed precisam ser removidas.
   await prisma.termoAceite.deleteMany();
@@ -321,8 +333,34 @@ async function limparDados() {
   await prisma.clienteCampoConfig.deleteMany();
   await prisma.orcamentoConfig.deleteMany();
   await prisma.parametroEmpresa.deleteMany();
-  // Chaves da API de integração também apontam para empresa.
+  // Chaves da API de integração e configurações do portal/whatsapp também apontam para empresa.
   await prisma.integracaoApiKey.deleteMany();
+  await prisma.portalClienteConfig.deleteMany();
+  await prisma.portalClienteHabilitacao.deleteMany();
+  await prisma.portalClientePerfilPermissao.deleteMany();
+  await prisma.portalClientePerfil.deleteMany();
+  await prisma.whatsappConfig.deleteMany();
+  await prisma.comunicadoPerfil.deleteMany();
+  await prisma.comunicado.deleteMany();
+  await prisma.contaBancaria.deleteMany();
+  await prisma.produtoFoto.deleteMany();
+  await prisma.produtoCampoValor.deleteMany();
+  await prisma.produtoCampo.deleteMany();
+  await prisma.produtoRelacionado.deleteMany();
+  await prisma.produtoFichaImportacao.deleteMany();
+  await prisma.produtoFichaTrecho.deleteMany();
+  await prisma.produtoFicha.deleteMany();
+  await prisma.clienteContato.deleteMany();
+  await prisma.empresaHorarioAtendimento.deleteMany();
+  await prisma.feriado.deleteMany();
+  await prisma.notaEntrada.deleteMany();
+  await prisma.fornecedor.deleteMany();
+  await prisma.whatsappContato.deleteMany();
+  await prisma.whatsappTemplate.deleteMany();
+  await prisma.whatsappRecadoDestinatario.deleteMany();
+  await prisma.whatsappRecadoInterno.deleteMany();
+  await prisma.whatsappVinculoFuncionario.deleteMany();
+  await prisma.lead.deleteMany();
   await prisma.empresa.deleteMany();
 }
 
@@ -545,6 +583,22 @@ async function main() {
       senhaAlteradaEm: new Date(),
     },
   });
+
+  const termoVigente = await prisma.termoDocumento.findFirst({
+    where: { obrigatorio: true },
+    orderBy: { vigenteEm: 'desc' },
+  });
+  if (termoVigente) {
+    await prisma.termoAceite.create({
+      data: {
+        termoId: termoVigente.id,
+        usuarioId: admin.id,
+        conteudoHash: termoVigente.conteudoHash,
+        ip: '127.0.0.1',
+        userAgent: 'Seed Automático',
+      },
+    });
+  }
 
   for (const cfg of EMPRESAS) {
     const empresa = await prisma.empresa.create({

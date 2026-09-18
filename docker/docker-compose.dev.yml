@@ -263,6 +263,10 @@ services:
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
+    networks:
+      default:
+        aliases:
+          - rcgcba-ollama
     # Só a rede interna: nada aqui precisa ser alcançável de fora.
     expose:
       - "11434"

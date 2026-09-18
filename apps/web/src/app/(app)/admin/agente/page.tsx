@@ -31,8 +31,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
+  FlaskConical,
   Plug,
+  Settings2,
+  Shield,
   Unplug,
 } from "lucide-react";
 
@@ -158,6 +163,7 @@ function AgenteConfigForm({ config }: { config: AgenteConfig }) {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["agente-config"] });
+      void queryClient.invalidateQueries({ queryKey: ["agente-apresentacao"] });
       setForm((f) => ({ ...f, apiKey: "" }));
       toast.success("Configuração salva");
     },
@@ -185,34 +191,55 @@ function AgenteConfigForm({ config }: { config: AgenteConfig }) {
   });
 
   return (
-    <Card>
-      <CardContent className="pt-6">
-        {/* Uma aba geral e uma por LLM.
-            A separação não é estética: o que está em "Configurações gerais"
-            define o que o agente **é** — nome, regras, ferramentas — e
-            sobrevive à troca de modelo. Cada aba de LLM guarda credencial e
-            ajustes daquele provedor, que são descartáveis. Antes tudo dividia
-            a mesma tela, e trocar de provedor parecia reconfigurar o agente
-            inteiro. */}
-        <Tabs defaultValue="geral">
-          <TabsList>
-            <TabsTrigger value="geral">Configurações gerais</TabsTrigger>
-            <TabsTrigger value="ferramentas">Ferramentas</TabsTrigger>
-            {(Object.keys(PROVEDORES) as ProvedorIa[]).map((p) => (
-              <TabsTrigger key={p} value={p}>
-                {PROVEDORES[p].rotulo}
-                {form.provedor === p ? " ✓" : ""}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+    <div className="space-y-6">
+      {/* Cabeçalho da página no padrão do sistema */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b pb-4">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Agente IA</h1>
+          <p className="text-sm text-muted-foreground">
+            Configurações de identidade, provedor de inteligência artificial e ferramentas do assistente.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button
+            type="button"
+            onClick={() => salvar.mutate()}
+            disabled={salvar.isPending}
+          >
+            Salvar alterações
+          </Button>
+        </div>
+      </div>
 
-          {/* ---------------- geral ---------------- */}
-          <TabsContent value="geral" className="pt-4">
-            <FieldGroup>
+      {provedorInvalido ? (
+        <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <p>
+            A configuração estava usando o provedor{" "}
+            <code>{config.provedor}</code>, que não existe mais. Já
+            está selecionado {PROVEDORES[PROVEDOR_PADRAO].rotulo}{" "}
+            como substituto — <strong>clique em Salvar</strong> para
+            gravar a troca.
+          </p>
+        </div>
+      ) : null}
+
+      {/* 3 Abas Lógicas */}
+      <Tabs defaultValue="identidade" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-3 max-w-md">
+          <TabsTrigger value="identidade">Identidade & Prompt</TabsTrigger>
+          <TabsTrigger value="provedor">Provedor de IA</TabsTrigger>
+          <TabsTrigger value="ferramentas">Ferramentas & Limites</TabsTrigger>
+        </TabsList>
+
+        {/* ---------------- Aba 1: Identidade & Prompt ---------------- */}
+        <TabsContent value="identidade" className="space-y-6 pt-2">
+          <Card>
+            <CardContent className="pt-6">
               <FieldSet>
-                <FieldLegend>Identidade</FieldLegend>
+                <FieldLegend>Identidade e Apresentação</FieldLegend>
                 <FieldGroup>
-                  <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
                     <Switch
                       checked={form.ativo}
                       onCheckedChange={(v) =>
@@ -225,19 +252,6 @@ function AgenteConfigForm({ config }: { config: AgenteConfig }) {
                     Desligado, o ícone do assistente não aparece para ninguém e
                     as chamadas ao provedor são recusadas.
                   </FieldDescription>
-
-                  {provedorInvalido ? (
-                    <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400">
-                      <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                      <p>
-                        A configuração estava usando o provedor{" "}
-                        <code>{config.provedor}</code>, que não existe mais. Já
-                        está selecionado {PROVEDORES[PROVEDOR_PADRAO].rotulo}{" "}
-                        como substituto — <strong>clique em Salvar</strong> para
-                        gravar a troca.
-                      </p>
-                    </div>
-                  ) : null}
 
                   <Field>
                     <FieldLabel htmlFor="nomeAgente">Nome do agente</FieldLabel>
@@ -274,32 +288,27 @@ function AgenteConfigForm({ config }: { config: AgenteConfig }) {
                     />
                     <FieldDescription>
                       Abre toda conversa nova, no lugar da tela em branco — é
-                      onde a equipe descobre o que dá para pedir. Não vai para o
-                      modelo: é texto seu, para quem vai perguntar. Em branco,
+                      onde a equipe descobre o que dá para pedir. Em branco,
                       usa o exemplo acima.
-                    </FieldDescription>
-                  </Field>
-
-                  <Field>
-                    <FieldLabel>Modelo em uso</FieldLabel>
-                    <FieldDescription>
-                      {PROVEDORES[form.provedor].rotulo} —{" "}
-                      <code>{form.modelo}</code>. Para trocar, abra a aba do
-                      provedor desejado.
                     </FieldDescription>
                   </Field>
                 </FieldGroup>
               </FieldSet>
+            </CardContent>
+          </Card>
 
+          <Card>
+            <CardContent className="pt-6">
               <FieldSet>
-                <FieldLegend>Prompt base</FieldLegend>
+                <FieldLegend>Prompt Base / Instruções</FieldLegend>
                 <Field>
                   <FieldLabel htmlFor="systemPrompt">
                     Instruções do agente
                   </FieldLabel>
                   <Textarea
                     id="systemPrompt"
-                    rows={10}
+                    rows={8}
+                    className="font-mono text-xs leading-relaxed"
                     value={form.systemPrompt}
                     placeholder={SYSTEM_PROMPT_PADRAO}
                     onChange={(e) =>
@@ -309,15 +318,84 @@ function AgenteConfigForm({ config }: { config: AgenteConfig }) {
                   <FieldDescription>
                     Define o tom e as regras de resposta, e vale para qualquer
                     provedor. O sistema acrescenta automaticamente o contexto da
-                    sessão (usuário, data e quais ferramentas ele pode usar) —
-                    não é preciso repetir isso aqui.
+                    sessão (usuário, data e quais ferramentas ele pode usar).
                   </FieldDescription>
                 </Field>
               </FieldSet>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
+        {/* ---------------- Aba 2: Provedor de IA ---------------- */}
+        <TabsContent value="provedor" className="space-y-6 pt-2">
+          <div className="space-y-3">
+            <h2 className="text-sm font-medium text-muted-foreground">Selecione o Provedor de IA</h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {(Object.keys(PROVEDORES) as ProvedorIa[]).map((p) => {
+                const info = PROVEDORES[p];
+                const selecionado = form.provedor === p;
+                const emUsoNoBanco = config.provedor === p;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => usarProvedor(p)}
+                    className={`flex flex-col justify-between rounded-xl border p-4 text-left transition-all ${
+                      selecionado
+                        ? "border-primary bg-primary/5 ring-1 ring-primary shadow-sm"
+                        : "border-border bg-card hover:border-muted-foreground/40 hover:bg-muted/30"
+                    }`}
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-sm">{info.rotulo}</span>
+                        {emUsoNoBanco && (
+                          <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                            <CheckCircle2 className="size-3" /> Em uso
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground line-clamp-2">
+                        Modelo padrão: {info.modeloPadrao}
+                      </p>
+                    </div>
+                    <div className="pt-3 text-xs font-medium text-primary">
+                      {selecionado ? "✓ Selecionado" : "Clique para configurar →"}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
+          <Card>
+            <CardContent className="pt-6">
+              <ProvedorTab
+                provedor={form.provedor}
+                emUso={true}
+                config={config}
+                form={form}
+                setForm={setForm}
+                modelos={modelos}
+                onUsar={() => usarProvedor(form.provedor)}
+                onTestar={() => testar.mutate(form.provedor)}
+                testando={testar.isPending}
+                onMudou={() =>
+                  void queryClient.invalidateQueries({
+                    queryKey: ["agente-config"],
+                  })
+                }
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ---------------- Aba 3: Ferramentas & Limites ---------------- */}
+        <TabsContent value="ferramentas" className="space-y-6 pt-2">
+          <Card>
+            <CardContent className="pt-6">
               <FieldSet>
-                <FieldLegend>Limites</FieldLegend>
+                <FieldLegend>Limites de Execução</FieldLegend>
                 <Field>
                   <FieldLabel htmlFor="maxIteracoes">
                     Máximo de consultas por pergunta
@@ -337,9 +415,6 @@ function AgenteConfigForm({ config }: { config: AgenteConfig }) {
                     }
                   />
                   <FieldDescription>
-                    {/* Medido: com 5, uma pergunta que encadeia clientes e
-                        títulos morre no limite antes de o Codex escrever a
-                        resposta. */}
                     {form.provedor === "codex" &&
                     form.maxIteracoesFerramentas < 8 ? (
                       <span className="text-amber-600">
@@ -354,48 +429,27 @@ function AgenteConfigForm({ config }: { config: AgenteConfig }) {
                   </FieldDescription>
                 </Field>
               </FieldSet>
-            </FieldGroup>
-          </TabsContent>
+            </CardContent>
+          </Card>
 
-          {/* ---------------- ferramentas ---------------- */}
-          <TabsContent value="ferramentas" className="pt-4">
-            <FerramentasSection />
-          </TabsContent>
+          <Card>
+            <CardContent className="pt-6">
+              <FerramentasSection />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
-          {/* ---------------- uma aba por LLM ---------------- */}
-          {(Object.keys(PROVEDORES) as ProvedorIa[]).map((p) => (
-            <TabsContent key={p} value={p} className="pt-4">
-              <ProvedorTab
-                provedor={p}
-                emUso={form.provedor === p}
-                config={config}
-                form={form}
-                setForm={setForm}
-                modelos={modelos}
-                onUsar={() => usarProvedor(p)}
-                onTestar={() => testar.mutate(p)}
-                testando={testar.isPending}
-                onMudou={() =>
-                  void queryClient.invalidateQueries({
-                    queryKey: ["agente-config"],
-                  })
-                }
-              />
-            </TabsContent>
-          ))}
-        </Tabs>
-      </CardContent>
-
-      <CardFooter className="justify-end gap-2">
+      <div className="flex justify-end gap-2 border-t pt-4">
         <Button
           type="button"
           onClick={() => salvar.mutate()}
           disabled={salvar.isPending}
         >
-          Salvar
+          Salvar alterações
         </Button>
-      </CardFooter>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -483,16 +537,20 @@ function ProvedorTab({
               value={emUso ? form.apiKey : ""}
               disabled={!emUso}
               placeholder={
-                credencial?.apiKeyPreenchida
-                  ? `•••• ${credencial.apiKeyUltimos4} (gravada)`
-                  : `Cole a chave da ${info.rotulo}`
+                provedor === "ollama"
+                  ? "Opcional (instâncias locais do Ollama não exigem chave)"
+                  : credencial?.apiKeyPreenchida
+                    ? `•••• ${credencial.apiKeyUltimos4} (gravada)`
+                    : `Cole a chave da ${info.rotulo}`
               }
               onChange={(e) =>
                 setForm((f) => ({ ...f, apiKey: e.target.value }))
               }
             />
             <FieldDescription>
-              {!emUso ? (
+              {provedor === "ollama" ? (
+                <>Instâncias locais do Ollama funcionam sem chave de API. Preencha apenas se seu servidor exigir autenticação.</>
+              ) : !emUso ? (
                 <>
                   Ative este provedor acima para gravar a chave dele.{" "}
                   <a
@@ -926,6 +984,8 @@ function FerramentasSection() {
   const [aceiteLocal, setAceiteLocal] = useState(false);
   const termosAceitos = aceiteLocal || !!termos?.aceitoEm;
 
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+
   const { data: perfis } = useQuery({
     queryKey: ["perfis", "lista"],
     queryFn: () =>
@@ -986,42 +1046,25 @@ function FerramentasSection() {
   }
 
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">
-        O que o agente pode consultar e fazer. Desligar uma ferramenta a tira do
-        catálogo enviado ao modelo — ele deixa de saber que ela existe, em vez
-        de tentar e falhar.
-      </p>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold">Ferramentas de Negócio ({ferramentas.length})</h2>
+          <p className="text-xs text-muted-foreground">
+            Ligue/desligue individualmente as capacidades de consulta do agente.
+          </p>
+        </div>
+      </div>
 
-      {/*
-        Editar texto exige aceite; ligar/desligar e escolher perfis, não. A
-        distinção é entre configuração e redação: desligar é reversível e
-        visível aqui; reescrever o prompt muda como o assistente fala com
-        cliente, e o efeito só aparece numa conversa, depois.
-      */}
       {!termosAceitos && (
         <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
           <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
             Editar os textos exige aceitar os termos
           </p>
           <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-            <li>
-              • Reescrever a descrição ou o comportamento muda como o assistente
-              fala com clientes e com a equipe.
-            </li>
-            <li>
-              • O efeito não aparece nesta tela: aparece numa conversa, depois.
-              Teste antes de dar por certo.
-            </li>
-            <li>
-              • Estes textos servem para <strong>tom e cuidado</strong>. Não
-              controlam acesso: quem alcança qual dado é decidido no servidor, e
-              o modelo não contorna por mais que o texto peça.
-            </li>
-            <li>
-              • Toda alteração fica registrada, com autor, data, e o texto de
-              antes e o de depois.
-            </li>
+            <li>• Reescrever a descrição ou o comportamento muda como o assistente fala com clientes e com a equipe.</li>
+            <li>• O efeito não aparece nesta tela: aparece numa conversa, depois. Teste antes de dar por certo.</li>
+            <li>• Estes textos servem para <strong>tom e cuidado</strong>. Não controlam acesso: quem alcança qual dado é decidido no servidor.</li>
           </ul>
           <Button
             size="sm"
@@ -1036,242 +1079,235 @@ function FerramentasSection() {
 
       <PromptPreviaETeste />
 
-      {ferramentas.map((f) => (
-        <div
-          key={f.chave}
-          className={`rounded-lg border p-3 ${f.ativa ? "" : "opacity-60"}`}
-        >
-          <div className="flex items-start gap-3">
-            <Switch
-              checked={f.ativa}
-              onCheckedChange={(v) =>
-                salvar.mutate({ chave: f.chave, body: { ativa: v } })
-              }
-            />
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <code className="text-sm font-medium">{f.chave}</code>
-                {f.escrita ? (
-                  <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
-                    grava (exige confirmação)
-                  </span>
-                ) : null}
-                <span className="text-[10px] text-muted-foreground">
-                  exige <code>{f.permissao}</code>
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Só faz sentido configurar o que está ligado; desligada, a
-              ferramenta nem chega ao modelo. */}
-          {f.ativa ? (
-            <div className="grid grid-cols-1 gap-3 pt-3 lg:grid-cols-2">
-              <Field>
-                <FieldLabel htmlFor={`desc-${f.chave}`}>
-                  Descrição para o modelo
-                </FieldLabel>
-                <Textarea
-                  id={`desc-${f.chave}`}
-                  rows={3}
-                  disabled={!termosAceitos}
-                  defaultValue={f.descricao}
-                  placeholder={f.descricaoPadrao}
-                  onBlur={(e) => {
-                    const novo = e.target.value.trim();
-                    if (novo !== f.descricao) {
-                      salvar.mutate({
-                        chave: f.chave,
-                        body: { descricao: novo },
-                      });
+      <div className="space-y-2">
+        {ferramentas.map((f) => {
+          const isExpanded = expandedKey === f.chave;
+          return (
+            <div
+              key={f.chave}
+              className={`rounded-lg border transition-all ${
+                f.ativa ? "border-border bg-card" : "border-border/60 bg-muted/20 opacity-70"
+              }`}
+            >
+              {/* Linha Resumida (Cabeçalho da Ferramenta) */}
+              <div className="flex items-center justify-between p-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Switch
+                    checked={f.ativa}
+                    onCheckedChange={(v) =>
+                      salvar.mutate({ chave: f.chave, body: { ativa: v } })
                     }
-                  }}
-                />
-                <FieldDescription>
-                  É este texto que ensina o modelo <strong>quando</strong> usar
-                  a ferramenta. Apagar tudo volta ao padrão.
-                </FieldDescription>
-              </Field>
-
-              <Field>
-                <FieldLabel htmlFor={`instr-${f.chave}`}>
-                  Como se portar ao usar
-                </FieldLabel>
-                <Textarea
-                  id={`instr-${f.chave}`}
-                  rows={3}
-                  disabled={!termosAceitos}
-                  defaultValue={f.instrucoes}
-                  placeholder={
-                    f.instrucoesPadrao ||
-                    "Ex.: confirme qual documento antes de mandar; não prometa antes de a ferramenta responder."
-                  }
-                  onBlur={(e) => {
-                    const novo = e.target.value.trim();
-                    if (novo !== f.instrucoes) {
-                      salvar.mutate({
-                        chave: f.chave,
-                        body: { instrucoes: novo },
-                      });
-                    }
-                  }}
-                />
-                <FieldDescription>
-                  Responde outra pergunta: a descrição diz <em>quando</em>{" "}
-                  chamar, isto diz <strong>como se portar</strong> ao usar.
-                  Serve para tom e cuidado — <strong>não</strong> para controlar
-                  acesso: quem alcança qual dado é decidido no servidor, e o
-                  modelo não consegue contornar por mais que o texto peça.
-                </FieldDescription>
-              </Field>
-
-              <Field>
-                <FieldLabel>Perfis com direito de uso</FieldLabel>
-                <div className="flex flex-wrap gap-2">
-                  {(perfis?.data ?? []).map((p) => {
-                    // O Administrador não entra na restrição: o servidor libera
-                    // todas as ferramentas para ele, sempre. Um botão alternável
-                    // aqui prometeria um controle que não existe.
-                    if (p.sistemaBase) {
-                      return (
-                        <span
-                          key={p.id}
-                          title="O Administrador sempre tem acesso a todas as ferramentas"
-                          className="cursor-default rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-700 dark:text-emerald-400"
-                        >
-                          {p.nome} · sempre
+                  />
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <code className="text-xs font-semibold">{f.chave}</code>
+                      {f.escrita && (
+                        <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                          grava (confirmação)
                         </span>
-                      );
-                    }
-                    const marcado = f.perfilIds.includes(p.id);
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() =>
-                          salvar.mutate({
-                            chave: f.chave,
-                            body: {
-                              perfilIds: marcado
-                                ? f.perfilIds.filter((x) => x !== p.id)
-                                : [...f.perfilIds, p.id],
-                            },
-                          })
-                        }
-                        className={`rounded-md border px-2 py-1 text-xs transition ${
-                          marcado
-                            ? "border-primary bg-primary/10 text-primary"
-                            : "hover:bg-muted"
-                        }`}
-                      >
-                        {p.nome}
-                      </button>
-                    );
-                  })}
-                </div>
-                <FieldDescription>
-                  {f.perfilIds.length === 0
-                    ? `Nenhum marcado: vale para todos os perfis que já tenham ${f.permissao}.`
-                    : "Marcar restringe ainda mais — nunca amplia: quem não tem a permissão continua sem acesso."}{" "}
-                  O Administrador tem acesso a todas as ferramentas ativas,
-                  sempre.
-                </FieldDescription>
-              </Field>
-
-              {/*
-                Versões só aparecem quando há mais de uma: uma lista com uma
-                opção só é ruído, e a v1 é o texto do próprio código.
-              */}
-              {f.versoes.length > 1 && (
-                <Field className="lg:col-span-2">
-                  <FieldLabel>Versão do prompt do sistema</FieldLabel>
-                  <div className="space-y-2">
-                    {f.versoes.map((v) => {
-                      const emUso = v.versao === f.versaoEmUso;
-                      const escolhida = v.versao === f.versaoPrompt;
-                      return (
-                        <label
-                          key={v.versao}
-                          className={`flex cursor-pointer gap-2 rounded-md border p-2 text-sm ${
-                            emUso ? "border-primary bg-primary/5" : ""
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            className="mt-1"
-                            name={`versao-${f.chave}`}
-                            checked={emUso}
-                            onChange={() =>
-                              salvar.mutate({
-                                chave: f.chave,
-                                body: { versaoPrompt: v.versao },
-                              })
-                            }
-                          />
-                          <span className="flex-1">
-                            <span className="font-medium">{v.versao}</span>
-                            {emUso && !escolhida && (
-                              <span className="ml-2 text-xs text-muted-foreground">
-                                (em uso por ser a mais recente)
-                              </span>
-                            )}
-                            <span className="block text-xs text-muted-foreground">
-                              {v.resumo}
-                            </span>
-                            {v.exemplos.length > 0 && (
-                              <span className="mt-1 block text-xs text-muted-foreground">
-                                Teste com: {v.exemplos.join(" · ")}
-                              </span>
-                            )}
-                          </span>
-                        </label>
-                      );
-                    })}
+                      )}
+                      <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                        <Shield className="size-3" />
+                        <code>{f.permissao}</code>
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate max-w-xl">
+                      {f.descricao || f.descricaoPadrao}
+                    </p>
                   </div>
-                  <FieldDescription>
-                    Sem escolher, a ferramenta acompanha a versão mais recente —
-                    é o que a maioria espera de uma atualização. Escolher trava
-                    nesta versão, e a próxima atualização não a substitui.
-                  </FieldDescription>
-                </Field>
-              )}
+                </div>
 
-              {/*
-                Restaurar apaga os textos reescritos e faz a ferramenta voltar a
-                **seguir** a versão do sistema — inclusive melhorias futuras.
-                Reescrever com o texto de hoje congelaria a cópia de novo.
-              */}
-              <div className="lg:col-span-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={!termosAceitos || restaurar.isPending}
-                  onClick={() => restaurar.mutate(f.chave)}
-                >
-                  Restaurar textos do padrão do sistema
-                </Button>
+                {f.ativa && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 gap-1 text-xs"
+                    onClick={() => setExpandedKey(isExpanded ? null : f.chave)}
+                  >
+                    <Settings2 className="size-3.5" />
+                    {isExpanded ? "Ocultar" : "Configurar"}
+                    {isExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                  </Button>
+                )}
               </div>
+
+              {/* Conteúdo Detalhado (Accordion) */}
+              {f.ativa && isExpanded && (
+                <div className="border-t p-4 bg-muted/10 space-y-4">
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    <Field>
+                      <FieldLabel htmlFor={`desc-${f.chave}`}>
+                        Descrição para o modelo
+                      </FieldLabel>
+                      <Textarea
+                        id={`desc-${f.chave}`}
+                        rows={3}
+                        disabled={!termosAceitos}
+                        defaultValue={f.descricao}
+                        placeholder={f.descricaoPadrao}
+                        onBlur={(e) => {
+                          const novo = e.target.value.trim();
+                          if (novo !== f.descricao) {
+                            salvar.mutate({
+                              chave: f.chave,
+                              body: { descricao: novo },
+                            });
+                          }
+                        }}
+                      />
+                      <FieldDescription>
+                        Ensina ao modelo <strong>quando</strong> acionar esta ferramenta.
+                      </FieldDescription>
+                    </Field>
+
+                    <Field>
+                      <FieldLabel htmlFor={`instr-${f.chave}`}>
+                        Como se portar ao usar
+                      </FieldLabel>
+                      <Textarea
+                        id={`instr-${f.chave}`}
+                        rows={3}
+                        disabled={!termosAceitos}
+                        defaultValue={f.instrucoes}
+                        placeholder={
+                          f.instrucoesPadrao ||
+                          "Ex.: confirme qual documento antes de mandar; não prometa antes de a ferramenta responder."
+                        }
+                        onBlur={(e) => {
+                          const novo = e.target.value.trim();
+                          if (novo !== f.instrucoes) {
+                            salvar.mutate({
+                              chave: f.chave,
+                              body: { instrucoes: novo },
+                            });
+                          }
+                        }}
+                      />
+                      <FieldDescription>
+                        Define tom e cuidado ao utilizar esta ferramenta.
+                      </FieldDescription>
+                    </Field>
+
+                    <Field className="lg:col-span-2">
+                      <FieldLabel>Perfis com direito de uso</FieldLabel>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {(perfis?.data ?? []).map((p) => {
+                          if (p.sistemaBase) {
+                            return (
+                              <span
+                                key={p.id}
+                                title="O Administrador sempre tem acesso a todas as ferramentas"
+                                className="cursor-default rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-700 dark:text-emerald-400"
+                              >
+                                {p.nome} · sempre
+                              </span>
+                            );
+                          }
+                          const marcado = f.perfilIds.includes(p.id);
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() =>
+                                salvar.mutate({
+                                  chave: f.chave,
+                                  body: {
+                                    perfilIds: marcado
+                                      ? f.perfilIds.filter((x) => x !== p.id)
+                                      : [...f.perfilIds, p.id],
+                                  },
+                                })
+                              }
+                              className={`rounded-md border px-2 py-1 text-xs transition ${
+                                marcado
+                                  ? "border-primary bg-primary/10 text-primary font-medium"
+                                  : "hover:bg-muted"
+                              }`}
+                            >
+                              {p.nome}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <FieldDescription>
+                        {f.perfilIds.length === 0
+                          ? `Nenhum marcado: vale para todos os perfis que já tenham ${f.permissao}.`
+                          : "Marcar restringe o uso a estes perfis específicos."}
+                      </FieldDescription>
+                    </Field>
+
+                    {f.versoes.length > 1 && (
+                      <Field className="lg:col-span-2">
+                        <FieldLabel>Versão do prompt do sistema</FieldLabel>
+                        <div className="space-y-2 pt-1">
+                          {f.versoes.map((v) => {
+                            const emUso = v.versao === f.versaoEmUso;
+                            const escolhida = v.versao === f.versaoPrompt;
+                            return (
+                              <label
+                                key={v.versao}
+                                className={`flex cursor-pointer gap-2 rounded-md border p-2 text-xs ${
+                                  emUso ? "border-primary bg-primary/5" : ""
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  className="mt-0.5"
+                                  name={`versao-${f.chave}`}
+                                  checked={emUso}
+                                  onChange={() =>
+                                    salvar.mutate({
+                                      chave: f.chave,
+                                      body: { versaoPrompt: v.versao },
+                                    })
+                                  }
+                                />
+                                <span className="flex-1">
+                                  <span className="font-medium">{v.versao}</span>
+                                  {emUso && !escolhida && (
+                                    <span className="ml-2 text-muted-foreground">
+                                      (em uso por ser a mais recente)
+                                    </span>
+                                  )}
+                                  <span className="block text-muted-foreground">
+                                    {v.resumo}
+                                  </span>
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </Field>
+                    )}
+                  </div>
+
+                  <div className="pt-2 flex justify-end">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs text-muted-foreground"
+                      disabled={!termosAceitos || restaurar.isPending}
+                      onClick={() => restaurar.mutate(f.chave)}
+                    >
+                      Restaurar textos do padrão do sistema
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
-          ) : null}
-        </div>
-      ))}
+          );
+        })}
+      </div>
     </div>
   );
 }
 
 /**
- * Pré-visualizar e testar o prompt.
- *
- * As duas coisas respondem a perguntas diferentes, e por isso convivem:
- *
- * - **Pré-visualização** mostra o texto montado, na ordem em que o modelo o
- *   recebe. Custo zero, resultado sempre igual. Responde "o que ele está
- *   lendo?" — e é onde se vê que as regras fixas vão por último.
- * - **Teste** faz uma pergunta de verdade. Gasta tokens da conta da empresa e a
- *   resposta varia entre execuções. Responde "ficou melhor?", que a
- *   pré-visualização não responde.
+ * Pré-visualizar e testar o prompt (painel compacto colapsável).
  */
 function PromptPreviaETeste() {
+  const [aberto, setAberto] = useState(false);
   const [previa, setPrevia] = useState<string | null>(null);
   const [pergunta, setPergunta] = useState("");
   const [resposta, setResposta] = useState<{
@@ -1304,8 +1340,44 @@ function PromptPreviaETeste() {
       toast.error(err instanceof ApiError ? err.message : "Erro ao testar"),
   });
 
+  if (!aberto) {
+    return (
+      <div className="flex items-center justify-between rounded-lg border bg-card p-3">
+        <div className="flex items-center gap-2">
+          <FlaskConical className="size-4 text-primary" />
+          <span className="text-xs font-semibold">Diagnóstico & Teste de Prompts</span>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => setAberto(true)}
+        >
+          Abrir Painel de Testes
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <div className="rounded-lg border p-3">
+    <div className="rounded-lg border bg-card p-4 space-y-4">
+      <div className="flex items-center justify-between border-b pb-3">
+        <div className="flex items-center gap-2">
+          <FlaskConical className="size-4 text-primary" />
+          <h3 className="text-sm font-semibold">Diagnóstico & Teste de Prompts</h3>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => setAberto(false)}
+        >
+          Fechar
+        </Button>
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="outline"
@@ -1313,21 +1385,17 @@ function PromptPreviaETeste() {
           disabled={verPrevia.isPending}
           onClick={() => verPrevia.mutate()}
         >
-          Ver o prompt montado
+          Ver prompt montado (Sem custo)
         </Button>
-        <span className="text-xs text-muted-foreground">
-          Sem custo: mostra o texto como o modelo recebe, sem perguntar nada a
-          ele.
-        </span>
       </div>
 
       {previa && (
-        <pre className="mt-3 max-h-72 overflow-auto rounded bg-muted p-2 text-[11px] leading-relaxed whitespace-pre-wrap">
+        <pre className="max-h-60 overflow-auto rounded-md bg-muted p-3 text-[11px] font-mono leading-relaxed whitespace-pre-wrap border">
           {previa}
         </pre>
       )}
 
-      <div className="mt-4 space-y-2 border-t pt-3">
+      <div className="space-y-2 border-t pt-3">
         <FieldLabel htmlFor="teste-pergunta">
           Testar com uma pergunta real
         </FieldLabel>
@@ -1348,18 +1416,16 @@ function PromptPreviaETeste() {
           </Button>
         </div>
         <FieldDescription>
-          Pergunta de verdade ao modelo:{" "}
-          <strong>gasta tokens da conta da empresa</strong> e a resposta pode
-          variar a cada execução. Nada é gravado, e ações que gravam não são
-          executadas — o assistente diz o que faria.
+          Executa uma chamada real ao provedor para testar a resposta do assistente.
         </FieldDescription>
 
         {resposta && (
-          <div className="rounded-md border bg-muted/40 p-2">
-            <p className="text-sm whitespace-pre-wrap">{resposta.texto}</p>
+          <div className="rounded-md border bg-muted/40 p-3 space-y-2">
+            <p className="text-xs font-medium">Resposta gerada:</p>
+            <p className="text-xs whitespace-pre-wrap">{resposta.texto}</p>
             {resposta.ferramentas.length > 0 && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Ferramentas usadas: {resposta.ferramentas.join(", ")}
+              <p className="text-[11px] text-muted-foreground">
+                Ferramentas consultadas: <code>{resposta.ferramentas.join(", ")}</code>
               </p>
             )}
           </div>
@@ -1368,3 +1434,4 @@ function PromptPreviaETeste() {
     </div>
   );
 }
+

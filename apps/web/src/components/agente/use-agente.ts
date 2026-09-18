@@ -31,11 +31,9 @@ export function useAgente() {
   return {
     /**
      * Só oferece o assistente para quem tem `agente.visualizar` **e** com o
-     * agente ativo na empresa — não adianta um botão que vai responder erro.
-     * Enquanto a apresentação não chega, vale a permissão: o ícone não pisca
-     * na tela a cada carregamento.
+     * agente ativo na empresa (`config.ativo === true`).
      */
-    disponivel: podeUsar && config?.ativo !== false,
+    disponivel: podeUsar && config?.ativo === true,
     nomeAgente,
     boasVindas:
       config?.mensagemBoasVindas?.trim() ||

@@ -248,13 +248,13 @@ export class AgenteConfigService {
     const apiKey = await this.prisma.withTenant(empresaId, (tx) =>
       this.chaveDe(tx, empresaId, provedor),
     );
-    if (!apiKey) {
+    if (!apiKey && provedor !== 'ollama') {
       throw new BadRequestException(
         `A chave de API do provedor ${PROVEDORES[provedor]?.rotulo ?? provedor} não está configurada. ` +
           'Informe-a em Administração > Agente IA.',
       );
     }
-    return { ...comum, apiKey, contaId: null };
+    return { ...comum, apiKey: apiKey ?? 'ollama', contaId: null };
   }
 
   /**
@@ -492,14 +492,14 @@ export class AgenteConfigService {
         : linha
           ? await this.chaveDe(tx, empresaId, provedor)
           : null;
-      if (!apiKey) {
+      if (!apiKey && provedor !== 'ollama') {
         throw new BadRequestException(
           'Informe a chave de API para testar, ou grave-a primeiro.',
         );
       }
       const modelos = await this.provedores
         .para(provedor)
-        .listarModelos(baseUrl, apiKey);
+        .listarModelos(baseUrl, apiKey ?? 'ollama');
       return { ok: true, provedor, modelos };
     });
   }

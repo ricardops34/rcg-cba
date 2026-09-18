@@ -34,9 +34,11 @@ interface CorpoResposta {
 export class OpenAiCompativelClient implements ProvedorClient {
   private readonly logger = new Logger(OpenAiCompativelClient.name);
 
-  private get timeoutMs(): number {
+  private obterTimeoutMs(url?: string): number {
     const bruto = Number(process.env.AGENTE_IA_TIMEOUT_MS);
-    return Number.isFinite(bruto) && bruto > 0 ? bruto : 60_000;
+    if (Number.isFinite(bruto) && bruto > 0) return bruto;
+    // Local Docker / Ollama on CPU can take longer to generate
+    return url && url.includes('ollama') ? 180_000 : 60_000;
   }
 
   async conversar(params: ParametrosConversa): Promise<RespostaChat> {
@@ -45,6 +47,7 @@ export class OpenAiCompativelClient implements ProvedorClient {
       temperature: params.temperatura,
       max_tokens: params.maxTokens,
       messages: params.mensagens.map((m) => this.paraFormatoProvedor(m)),
+      ...(params.baseUrl.includes('ollama') ? { keep_alive: -1 } : {}),
       ...(params.ferramentas.length > 0
         ? {
             tools: params.ferramentas.map((f) => ({
@@ -189,7 +192,7 @@ export class OpenAiCompativelClient implements ProvedorClient {
     corpo: unknown,
   ): Promise<T> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), this.obterTimeoutMs(url));
     const inicio = Date.now();
 
     let resposta: Response;
@@ -204,10 +207,12 @@ export class OpenAiCompativelClient implements ProvedorClient {
         body: corpo === undefined ? undefined : JSON.stringify(corpo),
       });
     } catch (erro) {
+      const msg = erro instanceof Error ? erro.message : String(erro);
+      this.logger.error(`Erro ao conectar no provedor IA (${url}): ${msg}`);
       throw new BadGatewayException(
         erro instanceof Error && erro.name === 'AbortError'
           ? 'O provedor de IA não respondeu a tempo. Tente novamente.'
-          : 'Não foi possível falar com o provedor de IA no momento.',
+          : `Não foi possível falar com o provedor de IA no momento: ${msg}`,
       );
     } finally {
       clearTimeout(timer);

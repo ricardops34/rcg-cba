@@ -611,6 +611,7 @@ export function AgenteFab() {
             "linear-gradient(135deg, transparent 50%, currentColor 50%)",
         }}
       />
-    </div>
+    </div>,
+    document.body
   );
 }

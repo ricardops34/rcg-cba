@@ -18,7 +18,7 @@ import { z } from "zod";
  * que não é o `api.openai.com` do provedor `openai`. Ver as ressalvas em
  * `codex.client.ts` antes de habilitá-lo.
  */
-export const provedorIaSchema = z.enum(["openai", "anthropic", "codex"]);
+export const provedorIaSchema = z.enum(["openai", "anthropic", "codex", "ollama"]);
 export type ProvedorIa = z.infer<typeof provedorIaSchema>;
 
 /**
@@ -109,6 +109,17 @@ export const PROVEDORES: Record<ProvedorIa, ProvedorInfo> = {
       "fora dos aplicativos oficiais (CLI, IDE) pode contrariar os termos de uso e levar " +
       "à suspensão da conta. Para uso comercial contínuo, o provedor ChatGPT (OpenAI) com " +
       "chave de API é o caminho suportado.",
+  },
+  ollama: {
+    rotulo: "Ollama (Local / Docker)",
+    baseUrl: "http://ollama:11434/v1",
+    modeloPadrao: "llama3.2:1b",
+    urlChave: "https://ollama.com",
+    prefixoChave: null,
+    aceitaTemperatura: true,
+    autenticacao: "apikey",
+    advertencia:
+      "O Ollama deve estar rodando localmente ou em container Docker com o modelo desejado instalado (ex: 'docker exec plataforma-comercial-dev-ollama-1 ollama pull llama3.2:1b'). Por padrão, instâncias locais não exigem chave de API.",
   },
 };
 
