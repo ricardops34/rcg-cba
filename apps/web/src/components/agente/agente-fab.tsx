@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type {
@@ -47,20 +48,31 @@ const ALTURA_MIN = 320;
 const MARGEM = 8;
 /** Altura da barra de título — a faixa por onde a janela é arrastada. */
 const ALTURA_TITULO = 44;
-const CHAVE_GEOMETRIA = "agente-janela";
+
+function viewport() {
+  const visual = window.visualViewport;
+  return {
+    largura: visual?.width ?? window.innerWidth,
+    altura: visual?.height ?? window.innerHeight,
+    x: visual?.offsetLeft ?? 0,
+    y: visual?.offsetTop ?? 0,
+  };
+}
 
 const limitar = (v: number, min: number, max: number) =>
   Math.min(Math.max(v, min), Math.max(min, max));
 
 /** Encosta a janela no canto inferior direito, longe do ícone que a abre. */
 function geometriaPadrao(): Geometria {
-  const largura = Math.min(420, window.innerWidth - MARGEM * 2);
-  const altura = Math.min(560, window.innerHeight - MARGEM * 2);
+  const tela = viewport();
+  const compacta = tela.largura < 640;
+  const largura = Math.max(1, Math.min(compacta ? tela.largura : 420, tela.largura - MARGEM * 2));
+  const altura = Math.max(1, Math.min(compacta ? tela.altura : 560, tela.altura - MARGEM * 2));
   return {
     largura,
     altura,
-    x: window.innerWidth - largura - MARGEM,
-    y: window.innerHeight - altura - MARGEM,
+    x: tela.x + tela.largura - largura - MARGEM,
+    y: tela.y + tela.altura - altura - MARGEM,
   };
 }
 
@@ -73,19 +85,22 @@ function geometriaPadrao(): Geometria {
  * jeito de trazer a janela de volta.
  */
 function acomodar(g: Geometria): Geometria {
+  const tela = viewport();
+  if (tela.largura < 640) return geometriaPadrao();
+  const larguraDisponivel = Math.max(1, tela.largura - MARGEM * 2);
+  const alturaDisponivel = Math.max(1, tela.altura - MARGEM * 2);
   const largura = limitar(
     g.largura,
-    LARGURA_MIN,
-    window.innerWidth - MARGEM * 2,
+    Math.min(LARGURA_MIN, larguraDisponivel),
+    larguraDisponivel,
   );
-  const altura = limitar(g.altura, ALTURA_MIN, window.innerHeight - MARGEM * 2);
+  const altura = limitar(g.altura, Math.min(ALTURA_MIN, alturaDisponivel), alturaDisponivel);
   return {
     largura,
     altura,
-    x: limitar(g.x, MARGEM, window.innerWidth - largura - MARGEM),
-    // O rodapé pode encostar na borda de baixo; a barra de título, nunca sai
-    // da tela — é por ela que a janela é trazida de volta.
-    y: limitar(g.y, MARGEM, window.innerHeight - ALTURA_TITULO - MARGEM),
+    x: limitar(g.x, tela.x + MARGEM, tela.x + tela.largura - largura - MARGEM),
+    // Preserva também o rodapé com o campo de mensagem, não só o título.
+    y: limitar(g.y, tela.y + MARGEM, tela.y + tela.altura - altura - MARGEM),
   };
 }
 
@@ -139,26 +154,14 @@ export function AgenteFab() {
   const fim = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
-  /**
-   * Posição e tamanho só existem no cliente (dependem da viewport) e ficam
-   * guardados entre sessões: quem arrumou a janela onde queria não quer
-   * arrumá-la de novo a cada login.
-   *
-   * Resolvido aqui, num efeito, e não no clique que abre: quem abre é o ícone
-   * da topbar, e a topbar não tem por que conhecer a geometria da janela.
-   * Depende de `window`, então só no cliente.
-   */
+  // Cada abertura usa a tela atual, sem coordenadas salvas de outro monitor.
   useEffect(() => {
-    if (!aberto || geometria) return;
-    let salva: Geometria | null = null;
-    try {
-      const bruto = localStorage.getItem(CHAVE_GEOMETRIA);
-      if (bruto) salva = JSON.parse(bruto) as Geometria;
-    } catch {
-      // Storage bloqueado ou JSON corrompido: cai no padrão, sem quebrar.
-    }
-    setGeometria(acomodar(salva ?? geometriaPadrao()));
-  }, [aberto, geometria]);
+    if (!aberto) return;
+    const frame = window.requestAnimationFrame(() => {
+      setGeometria(geometriaPadrao());
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [aberto]);
 
   // Pendência é ação parada esperando gente. Quem mostra o "!" é o ícone da
   // topbar, então o estado tem de chegar até ele.
@@ -167,20 +170,17 @@ export function AgenteFab() {
   }, [pendencias, setPendente]);
 
   useEffect(() => {
-    if (!geometria) return;
-    try {
-      localStorage.setItem(CHAVE_GEOMETRIA, JSON.stringify(geometria));
-    } catch {
-      // Sem persistência é aceitável; sem assistente, não.
-    }
-  }, [geometria]);
-
-  useEffect(() => {
-    if (!aberto) return;
-    const aoRedimensionar = () => setGeometria((g) => (g ? acomodar(g) : g));
+    const aoRedimensionar = () => setGeometria((g) => (g ? geometriaPadrao() : g));
+    const visual = window.visualViewport;
     window.addEventListener("resize", aoRedimensionar);
-    return () => window.removeEventListener("resize", aoRedimensionar);
-  }, [aberto]);
+    visual?.addEventListener("resize", aoRedimensionar);
+    visual?.addEventListener("scroll", aoRedimensionar);
+    return () => {
+      window.removeEventListener("resize", aoRedimensionar);
+      visual?.removeEventListener("resize", aoRedimensionar);
+      visual?.removeEventListener("scroll", aoRedimensionar);
+    };
+  }, []);
 
   useEffect(() => {
     if (aberto) fim.current?.scrollIntoView({ behavior: "smooth" });
@@ -195,6 +195,7 @@ export function AgenteFab() {
     (modo: "mover" | "redimensionar") => (e: React.PointerEvent) => {
       // Só botão principal, e nunca a partir dos botões do cabeçalho.
       if (e.button !== 0) return;
+      if (viewport().largura < 640) return;
       if (
         modo === "mover" &&
         (e.target as HTMLElement).closest("button, input, textarea")
@@ -356,7 +357,7 @@ export function AgenteFab() {
 
   if (!disponivel || !aberto || !geometria) return null;
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-label="Assistente"
@@ -371,7 +372,7 @@ export function AgenteFab() {
       <div
         onPointerDown={iniciarGesto("mover")}
         onDoubleClick={minimizar}
-        className="flex cursor-move touch-none select-none items-center gap-2 border-b bg-muted/40 px-3"
+        className="flex shrink-0 touch-none select-none items-center gap-2 border-b bg-muted/40 px-3 sm:cursor-move"
         style={{ height: ALTURA_TITULO }}
       >
         <Sparkles className="size-4 shrink-0" />
@@ -432,7 +433,7 @@ export function AgenteFab() {
         </Button>
       </div>
 
-      <div className="flex-1 space-y-3 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
         {/* Conversa nova abre com a saudação da empresa, como um balão do
             próprio agente — a tela em branco não diz o que dá para pedir.
             Volta a aparecer depois de encerrar a conversa. */}

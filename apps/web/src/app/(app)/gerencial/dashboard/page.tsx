@@ -8,6 +8,7 @@ import type {
   DashboardGerencialVendedor,
 } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
+import { DashboardMetaEditor } from "@/components/crud/dashboard-meta-editor";
 import { cn } from "@/lib/utils";
 import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +61,7 @@ interface Filtros {
   ano: number;
   vendedorId: string;
   mostrarValores: boolean;
+  mostrarSupervisorGerente: boolean;
 }
 
 /**
@@ -153,6 +155,7 @@ export default function DashboardGerencialPage() {
     ano: hoje.getFullYear(),
     vendedorId: TODOS,
     mostrarValores: true,
+    mostrarSupervisorGerente: false,
   };
   // `filtros` é o que está valendo; `rascunho` é o que a cortina edita.
   const [filtros, setFiltros] = useState<Filtros>(filtrosIniciais);
@@ -226,13 +229,14 @@ export default function DashboardGerencialPage() {
   const quantidadeFiltros = [
     filtros.vendedorId !== TODOS,
     !filtros.mostrarValores,
+    filtros.mostrarSupervisorGerente,
   ].filter(Boolean).length;
 
   const linhas = data?.linhas ?? [];
   const grupos = agruparPorHierarquia(
     linhas,
     data?.responsaveis ?? [],
-    data?.agruparPorHierarquia ?? false,
+    filtros.mostrarSupervisorGerente,
   );
   const [gruposFechados, setGruposFechados] = useState<Set<string>>(new Set());
   const alternarGrupo = (chave: string) =>
@@ -359,6 +363,22 @@ export default function DashboardGerencialPage() {
               </p>
             </div>
 
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="mostrar-supervisor-gerente"
+                  checked={rascunho.mostrarSupervisorGerente}
+                  onCheckedChange={(v) => setRascunho((r) => ({ ...r, mostrarSupervisorGerente: v }))}
+                />
+                <Label htmlFor="mostrar-supervisor-gerente" className="cursor-pointer text-sm">
+                  Mostrar supervisor e gerente
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Agrupa os vendedores por supervisor ou gerente e mostra os totais de cada equipe.
+              </p>
+            </div>
+
             <div className="flex gap-2 pt-2">
               <Button onClick={aplicarFiltros}>Aplicar</Button>
               <Button variant="ghost" onClick={() => setRascunho(filtrosIniciais)}>
@@ -454,9 +474,8 @@ export default function DashboardGerencialPage() {
                     const fechado = gruposFechados.has(grupo.chave);
                     return (
                       <Fragment key={grupo.chave}>
-                        {/* Cabeçalho do time: só existe quando a empresa liga o
-                            agrupamento (parâmetro DASHBOARD_GERENCIAL_HIERARQUIA)
-                            e há hierarquia cadastrada. Recolhe para o gerente
+                        {/* Cabeçalho do time: exibido quando o usuário ativa
+                            Mostrar supervisor e gerente nos parâmetros. Recolhe para o gerente
                             comparar times sem rolar a lista inteira. */}
                         {grupo.titulo && (
                           <TableRow
@@ -522,7 +541,9 @@ export default function DashboardGerencialPage() {
                       <TableCell className="font-medium">{l.nome}</TableCell>
                       {mostrarValores && (
                         <TableCell className="text-right tabular-nums">
-                          {inteiro(l.positivacaoObjetivo)}
+                          <DashboardMetaEditor vendedorId={l.vendedorId} nome={l.nome} mes={filtros.mes} ano={filtros.ano} campo="numeroCliente">
+                            {inteiro(l.positivacaoObjetivo)}
+                          </DashboardMetaEditor>
                         </TableCell>
                       )}
                       {mostrarValores && (
@@ -539,7 +560,9 @@ export default function DashboardGerencialPage() {
                       </TableCell>
                       {mostrarValores && (
                         <TableCell className="text-right tabular-nums">
-                          {moeda(l.objetivo)}
+                          <DashboardMetaEditor vendedorId={l.vendedorId} nome={l.nome} mes={filtros.mes} ano={filtros.ano} campo="valor">
+                            {moeda(l.objetivo)}
+                          </DashboardMetaEditor>
                         </TableCell>
                       )}
                       {mostrarValores && (
