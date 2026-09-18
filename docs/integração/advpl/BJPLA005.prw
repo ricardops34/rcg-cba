@@ -1,519 +1,685 @@
 #Include "TOTVS.CH"
-#Include "FWMVCDef.ch"
+#Include "FWBrowse.CH"
 
-// Sentido e status da mensagem na SZZ
-#Define BJ_SAIDA          "S"
-#Define BJ_ENTRADA        "E"
-#Define BJ_PENDENTE       "0"
-#Define BJ_PENDENTE_ALT   "1"
-#Define BJ_EXECUTADA      "2"
-#Define BJ_ERRO           "3"
+// Sentido e status sao escritos como literal no ponto de uso, com o comentario
+// na frente - quem documenta os valores e o combo do campo no SX3:
+//
+//    ZZ_TIPO     "S" saida (ERP -> plataforma)   "E" entrada (plataforma -> ERP)
+//    ZZ_STATUS   "1" pendente         "2" executada    "3" erro
+//    ZY_STATUS   "1" nao processado   "2" processado   "3" erro
+//
+//    MV_BJAPI11  Retencao da mensagem executada, em dias
 
 /*/{Protheus.doc} BJPLA005
-Monitor interativo da fila de integracao da Plataforma BJ (Tabela SZZ).
-Construido em FWMBrowse para cadastro no Menu do Protheus (U_BJPLA005).
+Monitor da integracao com a Plataforma BJ - browse dos lotes (SZY).
+@type    function
+@author  Ricardo P Sotomayor
+@since   01/09/2026
+/*/
 
-Permite:
-- Visualizar a fila de mensagens com status por cores (Amarelo=Pendente, Vermelho=Erro, Verde=Concluida)
-- Filtrar por padrao as mensagens que exigem acao (Pendentes e com Erro)
-- Coleta manual com tela de parametros por entidade e chave
-- Envio manual com parametro de limite de mensagens
-- Retorno manual de orcamentos aprovados
-- Visualizacao detalhada do JSON enviado e da resposta/erro da API
-- Reprocessamento de mensagens com falha
-- Consulta e ajuste do horario de corte de cada entidade
-
+/*/{Protheus.doc} BJPLA005
+Abre o monitor: browse dos lotes (SZY).
 @type    User Function
 @author  Ricardo P Sotomayor
-@since   08/09/2026
+@since   01/09/2026
 @return  Nil
 @example U_BJPLA005()
 /*/
 User Function BJPLA005()
 
-	Local oBrowse   := Nil
-	Local cCadastro := "Monitor da Integracao - Plataforma BJ"
+	Local oBrowse  := Nil
+	Local oColumn  := Nil
+	Local oDlg     := Nil
+	Local cAliasBr := GetNextAlias()
+	Local cQuery   := ""
+
+	Private cCadastro := "Monitor da Integracao BJ"
 
 	If !AllTrim(Upper(SuperGetMV("MV_BJAPI03", .F., "N"))) == "S"
-		If !MsgYesNo("A integracao BJ esta desabilitada (MV_BJAPI03 = N)." + CRLF + CRLF + ;
-			"Deseja abrir o monitor mesmo assim?", cCadastro)
+		If !MsgYesNo("A integracao BJ esta desligada (MV_BJAPI03 = N)." + CRLF + CRLF + ;
+			"Abrir o monitor mesmo assim?", cCadastro)
 			Return Nil
 		EndIf
 	EndIf
 
-	oBrowse := FWMBrowse():New()
-	oBrowse:SetAlias("SZZ")
+	cQuery := "SELECT ZY_FILIAL, ZY_CODIGO, ZY_DTINI, ZY_HRINI, ZY_DTFIM, ZY_HRFIM, "
+	cQuery += "       ZY_STATUS, ZY_MARCA, ZY_QTDLIDO, ZY_QTDENV, ZY_QTDERR "
+	cQuery += "  FROM " + RetSqlName("SZY") + " SZY "
+	cQuery += " WHERE SZY.D_E_L_E_T_ = ' ' "
+	cQuery += "   AND SZY.ZY_FILIAL  = '" + xFilial("SZY") + "' "
+	cQuery += " ORDER BY SZY.ZY_CODIGO DESC "
+
+	DEFINE MSDIALOG oDlg TITLE cCadastro FROM 000, 000 TO 480, 900 PIXEL
+
+	oBrowse := FWFormBrowse():New()
 	oBrowse:SetDescription(cCadastro)
-	oBrowse:SetMenuDef("BJPLA005")
+	oBrowse:SetAlias(cAliasBr)
+	oBrowse:SetDataQuery()
+	oBrowse:SetQuery(cQuery)
+	oBrowse:SetOwner(oDlg)
 
-	// Filtro padrao: exibe pendentes e erros, ocultando registros internos de controle
-	oBrowse:SetFilterDefault("ZZ_CHVORI <> '*CONTROLE*' .AND. ZZ_STATUS $ '0|1|3'")
+	oColumn := FWBrwColumn():New()
+	oColumn:SetData({|| Alltrim((cAliasBr)->ZY_CODIGO)})
+	oColumn:SetTitle("Lote")
+	oColumn:SetAlign(CONTROL_ALIGN_LEFT)
+	oColumn:SetType("C")
+	oColumn:SetSize(TamSX3("ZY_CODIGO")[1])
+	oColumn:SetDecimal(0)
+	oColumn:SetAutoSize(.T.)
+	oBrowse:SetColumns({oColumn})
 
-	// Legenda de cores
-	oBrowse:AddLegend("ZZ_STATUS == '0' .Or. ZZ_STATUS == '1'", "YELLOW", "Pendente")
-	oBrowse:AddLegend("ZZ_STATUS == '2'", "GREEN" , "Concluida")
-	oBrowse:AddLegend("ZZ_STATUS == '3'", "RED"   , "Erro")
+	oColumn := FWBrwColumn():New()
+	oColumn:SetData({|| (cAliasBr)->ZY_STATUS})
+	oColumn:SetTitle("Status")
+	oColumn:SetAlign(CONTROL_ALIGN_LEFT)
+	oColumn:SetType("C")
+	oColumn:SetSize(20)
+	oColumn:SetDecimal(0)
+	oColumn:SetAutoSize(.T.)
+	oBrowse:SetColumns({oColumn})
+
+	oColumn := FWBrwColumn():New()
+	oColumn:SetData({|| DtoC((cAliasBr)->ZY_DTINI) + " " + Alltrim((cAliasBr)->ZY_HRINI)})
+	oColumn:SetTitle("Inicio")
+	oColumn:SetAlign(CONTROL_ALIGN_LEFT)
+	oColumn:SetType("C")
+	oColumn:SetSize(19)
+	oColumn:SetDecimal(0)
+	oColumn:SetAutoSize(.T.)
+	oBrowse:SetColumns({oColumn})
+
+	oColumn := FWBrwColumn():New()
+	oColumn:SetData({|| Iif(Empty((cAliasBr)->ZY_DTFIM), "", DtoC((cAliasBr)->ZY_DTFIM) + " " + Alltrim((cAliasBr)->ZY_HRFIM))})
+	oColumn:SetTitle("Fim")
+	oColumn:SetAlign(CONTROL_ALIGN_LEFT)
+	oColumn:SetType("C")
+	oColumn:SetSize(19)
+	oColumn:SetDecimal(0)
+	oColumn:SetAutoSize(.T.)
+	oBrowse:SetColumns({oColumn})
+
+	oColumn := FWBrwColumn():New()
+	oColumn:SetData({|| Alltrim((cAliasBr)->ZY_MARCA)})
+	oColumn:SetTitle("Marca d'agua (UTC)")
+	oColumn:SetAlign(CONTROL_ALIGN_LEFT)
+	oColumn:SetType("C")
+	oColumn:SetSize(TamSX3("ZY_MARCA")[1])
+	oColumn:SetDecimal(0)
+	oColumn:SetAutoSize(.T.)
+	oBrowse:SetColumns({oColumn})
+
+	oColumn := FWBrwColumn():New()
+	oColumn:SetData({|| (cAliasBr)->ZY_QTDLIDO})
+	oColumn:SetTitle("Lidos")
+	oColumn:SetAlign(CONTROL_ALIGN_RIGHT)
+	oColumn:SetType("N")
+	oColumn:SetSize(TamSX3("ZY_QTDLIDO")[1])
+	oColumn:SetDecimal(0)
+	oColumn:SetAutoSize(.T.)
+	oBrowse:SetColumns({oColumn})
+
+	oColumn := FWBrwColumn():New()
+	oColumn:SetData({|| (cAliasBr)->ZY_QTDENV})
+	oColumn:SetTitle("Enfileirados")
+	oColumn:SetAlign(CONTROL_ALIGN_RIGHT)
+	oColumn:SetType("N")
+	oColumn:SetSize(TamSX3("ZY_QTDENV")[1])
+	oColumn:SetDecimal(0)
+	oColumn:SetAutoSize(.T.)
+	oBrowse:SetColumns({oColumn})
+
+	oColumn := FWBrwColumn():New()
+	oColumn:SetData({|| (cAliasBr)->ZY_QTDERR})
+	oColumn:SetTitle("Erros")
+	oColumn:SetAlign(CONTROL_ALIGN_RIGHT)
+	oColumn:SetType("N")
+	oColumn:SetSize(TamSX3("ZY_QTDERR")[1])
+	oColumn:SetDecimal(0)
+	oColumn:SetAutoSize(.T.)
+	oBrowse:SetColumns({oColumn})
+
+	oBrowse:AddLegend("ZY_STATUS == '1'", "YELLOW", "1 - coletado, aguardando envio")
+	oBrowse:AddLegend("ZY_STATUS == '2'", "GREEN" , "2 - processado")
+	oBrowse:AddLegend("ZY_STATUS == '3'", "RED"   , "3 - erro")
+
+	oBrowse:SetDoubleClick({|| BJVeMsgLote(cAliasBr)})
+
+	oBrowse:AddButton("Gerar"         , {|| BJGeraLote()  , oBrowse:Refresh(.T.)})
+	oBrowse:AddButton("Enviar"        , {|| BJEnviaLote(cAliasBr), oBrowse:Refresh(.T.)})
+	oBrowse:AddButton("Receber"       , {|| BJRecebeLote(), oBrowse:Refresh(.T.)})
+	oBrowse:AddButton("Mensagens"     , {|| BJVeMsgLote(cAliasBr)})
+	oBrowse:AddButton("Enviar em Bloco", {|| BJRodaLote()  , oBrowse:Refresh(.T.)})
+	oBrowse:AddButton("Limpar"        , {|| BJRodaExpurg(), oBrowse:Refresh(.T.)})
+	oBrowse:AddButton("Ajuda"         , {|| BJAjuda()})
 
 	oBrowse:Activate()
-	oBrowse:Destroy()
+
+	ACTIVATE MSDIALOG oDlg CENTERED
 
 Return Nil
 
-/*/{Protheus.doc} MenuDef
-Operacoes disponiveis no menu da rotina.
+/*/{Protheus.doc} BJGeraLote
+Gera um lote: pede entidade, chave e intervalo de datas opcionais, e roda a
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   11/09/2026
+@return  Nil
 /*/
-Static Function MenuDef()
+Static Function BJGeraLote()
 
-	Local aRotina := {}
-
-	aAdd(aRotina, {"Coletar (Parametros)"    , "U_BJColePar"  , 0, 3, 0, Nil})
-	aAdd(aRotina, {"Visualizar Payload / Log", "U_BJVerMsg"   , 0, 2, 0, Nil})
-	aAdd(aRotina, {"Enviar (Parametros)"     , "U_BJEnviPar"  , 0, 3, 0, Nil})
-	aAdd(aRotina, {"Retorno (Orcamentos)"    , "U_BJRetoPar"  , 0, 3, 0, Nil})
-	aAdd(aRotina, {"Reprocessar Erro"        , "U_BJReproc"   , 0, 4, 0, Nil})
-	aAdd(aRotina, {"Painel de Resumo"        , "U_BJResumo"   , 0, 3, 0, Nil})
-	aAdd(aRotina, {"Horario de Corte"        , "U_BJMudaCorte", 0, 3, 0, Nil})
-
-Return aRotina
-
-/*/{Protheus.doc} BJVerMsg
-Visualizacao detalhada da mensagem selecionada (Payload enviado e Resposta da API).
-/*/
-User Function BJVerMsg()
-
-	Local aArea    := GetArea()
-	Local oDlg     := Nil
-	Local oFont    := Nil
-	Local oFontTit := Nil
-	Local oMemoEnv := Nil
-	Local oMemoRet := Nil
-	Local cTextoEnv:= ""
-	Local cTextoRet:= ""
-	Local cSeq     := ""
+	Local aCat     := U_BJCATALO()
+	Local aCombo   := {}
+	Local aPergs   := {}
+	Local aTotal   := {0, 0, 0, 0}
+	Local cChave   := Space(60)
+	Local dDataDe  := CToD("")
+	Local dDataAte := CToD("")
 	Local cEntid   := ""
-	Local cChave   := ""
-	Local cStatus  := ""
-	Local cHeader  := ""
+	Local nX       := 0
 
-	If Eof() .Or. SZZ->ZZ_CHVORI == "*CONTROLE*"
-		MsgInfo("Selecione uma mensagem valida na fila.", "Visualizar")
+	For nX := 1 To Len(aCat)
+		aAdd(aCombo, cValToChar(nX) + "=" + aCat[nX][1])
+	Next nX
+
+	// O combo tem 7 posicoes, e a quinta e o tamanho, numerico. O Get tem 9, com
+	// o tamanho na oitava - os dois layouts sao diferentes.
+	aAdd(aPergs, {2, "Entidade"          , 1       , aCombo, 200, ".T.", .T.})
+	aAdd(aPergs, {1, "Chave (opcional)"  , cChave  , "@!"  , ".T.", "", ".T.", 150, .F.})
+	aAdd(aPergs, {1, "Data de (opcional)", dDataDe , ""    , ".T.", "", ".T.", 080, .F.})
+	aAdd(aPergs, {1, "Data ate"          , dDataAte, ""    , ".T.", "", ".T.", 080, .F.})
+
+	If !ParamBox(aPergs, "Gerar lote - parametros da coleta")
+		Return Nil
+	EndIf
+
+	cEntid   := aCat[MV_PAR01][1]
+	cChave   := AllTrim(MV_PAR02)
+	dDataDe  := MV_PAR03
+	dDataAte := MV_PAR04
+
+	Processa({|| aTotal := U_BJVARRE(cEntid, cChave, dDataDe, dDataAte)}, "Gerando lote...")
+
+	MsgInfo("Lidos: "         + cValToChar(aTotal[1]) + CRLF + ;
+		"Enfileirados: "      + cValToChar(aTotal[2]) + CRLF + ;
+		"Erros: "             + cValToChar(aTotal[4]), cCadastro)
+
+Return Nil
+
+/*/{Protheus.doc} BJEnviaLote
+Drena so as mensagens do lote posicionado no browse (SZZ, por ZZ_CODIGO).
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   11/09/2026
+@param   cAliasBr, character, Alias do browse posicionado no lote
+@return  Nil
+/*/
+Static Function BJEnviaLote(cAliasBr)
+
+	Local aTotal  := {0, 0, 0}
+	Local cSeqMae := ""
+
+	If (cAliasBr)->(Eof())
+		MsgStop("Nao ha lote posicionado.", cCadastro)
+		Return Nil
+	EndIf
+
+	cSeqMae := Alltrim((cAliasBr)->ZY_CODIGO)
+
+	If !MsgYesNo("Enviar so as mensagens do lote " + cSeqMae + "?", cCadastro)
+		Return Nil
+	EndIf
+
+	Processa({|| aTotal := U_BJDRENA(0, cSeqMae)}, "Enviando o lote...")
+
+	MsgInfo("Lidas: "    + cValToChar(aTotal[1]) + CRLF + ;
+		"Enviadas: "     + cValToChar(aTotal[2]) + CRLF + ;
+		"Erros: "        + cValToChar(aTotal[3]), cCadastro)
+
+Return Nil
+
+/*/{Protheus.doc} BJRecebeLote
+Le as pendencias da plataforma (orcamentos aprovados, alteracoes de cliente),
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   11/09/2026
+@return  Nil
+/*/
+Static Function BJRecebeLote()
+
+	Local aTotal := {0, 0, 0, 0}
+
+	If !MsgYesNo("Perguntar na plataforma se ha dados para receber, gravar o lote e" + CRLF + ;
+		"aplicar no ERP agora?" + CRLF + CRLF + ;
+		"Orcamentos aprovados viram Orcamento no ERP e sao efetivados em Pedido de Venda.", cCadastro)
+		Return Nil
+	EndIf
+
+	Processa({|| aTotal := U_BJRETORNO()}, "Recebendo...")
+
+	MsgInfo("Lidos: "    + cValToChar(aTotal[1]) + CRLF + ;
+		"Aplicados: "    + cValToChar(aTotal[2]) + CRLF + ;
+		"Ignorados: "    + cValToChar(aTotal[3]) + CRLF + ;
+		"Erros: "        + cValToChar(aTotal[4]), cCadastro)
+
+Return Nil
+
+/*/{Protheus.doc} BJVeMsgLote
+Lista as mensagens do lote posicionado no browse (SZZ, por ZZ_CODIGO) e abre
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   11/09/2026
+@param   cAliasBr, character, Alias do browse posicionado no lote
+@return  Nil
+/*/
+Static Function BJVeMsgLote(cAliasBr)
+
+	Local aLista  := {}
+	Local aSeq    := {}
+	Local cQuery  := ""
+	Local cSeqMae := ""
+	Local cStat   := ""
+	Local cTmp    := ""
+	Local nOpc    := 0
+	Local oStmt   := Nil
+
+	If (cAliasBr)->(Eof())
+		MsgStop("Nao ha lote posicionado.", cCadastro)
+		Return Nil
+	EndIf
+
+	cSeqMae := Alltrim((cAliasBr)->ZY_CODIGO)
+
+	cQuery := "SELECT ZZ_SEQUEN, ZZ_TIPO, ZZ_ENTID, ZZ_CHVORI, ZZ_VERBO, ZZ_STATUS, "
+	cQuery += "       ZZ_HTTP, ZZ_DTCRIA, ZZ_HRCRIA "
+	cQuery += "  FROM " + RetSqlName("SZZ") + " SZZ "
+	cQuery += " WHERE SZZ.D_E_L_E_T_ = ? "
+	cQuery += "   AND SZZ.ZZ_FILIAL  = ? "
+	cQuery += "   AND SZZ.ZZ_CODIGO  = ? "
+	// A mesma ordem em que a drenagem processa: lote e, dentro dele, sequencia
+	cQuery += " ORDER BY ZZ_CODIGO, ZZ_SEQUEN "
+
+	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
+	oStmt:SetString(1, " ")
+	oStmt:SetString(2, xFilial("SZZ"))
+	oStmt:SetString(3, cSeqMae)
+
+	cTmp := oStmt:OpenAlias()
+
+	While (cTmp)->(!Eof()) .And. Len(aLista) < 500
+
+		Do Case
+			Case (cTmp)->ZZ_STATUS == "1"
+				cStat := "PENDENTE"
+			Case (cTmp)->ZZ_STATUS == "3"
+				cStat := "ERRO"
+			Case (cTmp)->ZZ_STATUS == "2"
+				cStat := "OK"
+			Otherwise
+				cStat := "?"
+		EndCase
+
+		aAdd(aLista, PadR((cTmp)->ZZ_SEQUEN, 10) + ;
+			PadR((cTmp)->ZZ_TIPO, 2) + ;
+			PadR(AllTrim((cTmp)->ZZ_ENTID), 18) + ;
+			PadR(AllTrim((cTmp)->ZZ_CHVORI), 26) + ;
+			PadR(AllTrim((cTmp)->ZZ_VERBO), 7) + ;
+			PadR(cStat, 9) + ;
+			PadL(cValToChar((cTmp)->ZZ_HTTP), 4) + "  " + ;
+			DtoC((cTmp)->ZZ_DTCRIA) + " " + AllTrim((cTmp)->ZZ_HRCRIA))
+
+		aAdd(aSeq, (cTmp)->ZZ_SEQUEN)
+
+		(cTmp)->(dbSkip())
+	End
+
+	(cTmp)->(dbCloseArea())
+	oStmt:Destroy()
+
+	If Len(aLista) == 0
+		MsgInfo("O lote " + cSeqMae + " nao tem mensagens.", cCadastro)
+		Return Nil
+	EndIf
+
+	nOpc := BJEscolhe(aLista, "Mensagens do lote " + cSeqMae + " - SEQ TP ENTIDADE CHAVE VERBO STATUS HTTP DATA")
+
+	If nOpc > 0 .And. nOpc <= Len(aSeq)
+		BJAbreMsg(cSeqMae, aSeq[nOpc])
+	EndIf
+
+Return Nil
+
+/*/{Protheus.doc} BJAbreMsg
+Abre uma mensagem: payload, resposta e a opcao de reenviar.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   01/09/2026
+@param   cSeq, character, Sequencia da mensagem
+@return  Nil
+/*/
+Static Function BJAbreMsg(cLote, cSeq)
+
+	Local aArea  := GetArea()
+	Local oDlg   := Nil
+	Local oFont  := Nil
+	Local oMemo  := Nil
+	Local cTexto := ""
+	Local cEntid := ""
+	Local cChave := ""
+	Local cSentid := ""
+	Local cStatMsg := ""
+	Local lPode  := .F.
+
+	dbSelectArea("SZZ")
+	SZZ->(dbSetOrder(1))   // ZZ_FILIAL + ZZ_CODIGO + ZZ_SEQUEN
+
+	If !SZZ->(dbSeek(xFilial("SZZ") + PadR(cLote, TamSX3("ZZ_CODIGO")[1]) + PadR(cSeq, TamSX3("ZZ_SEQUEN")[1])))
+		MsgStop("Mensagem " + cSeq + " nao encontrada.", cCadastro)
 		RestArea(aArea)
 		Return Nil
 	EndIf
 
-	cSeq   := AllTrim(SZZ->ZZ_SEQUEN)
 	cEntid := AllTrim(SZZ->ZZ_ENTID)
 	cChave := AllTrim(SZZ->ZZ_CHVORI)
 
+	// So mensagem de saida se reenvia por aqui. A de entrada e reprocessada pelo
+	// agendamento de retorno, que le a plataforma de novo.
+	lPode := (SZZ->ZZ_TIPO == "S")   // saida
+
+	cSentid := "?"
+
+	If SZZ->ZZ_TIPO == "S"
+		cSentid := "S - ERP para a plataforma"
+	ElseIf SZZ->ZZ_TIPO == "E"
+		cSentid := "E - plataforma para o ERP"
+	EndIf
+
+	cStatMsg := "?"
+
 	Do Case
-		Case SZZ->ZZ_STATUS == "0" .Or. SZZ->ZZ_STATUS == "1"
-			cStatus := "PENDENTE"
+		Case SZZ->ZZ_STATUS == "1"
+			cStatMsg := "1 - pendente, esperando envio"
 		Case SZZ->ZZ_STATUS == "2"
-			cStatus := "CONCLUIDA (SUCESSO)"
+			cStatMsg := "2 - executada"
 		Case SZZ->ZZ_STATUS == "3"
-			cStatus := "ERRO"
-		Otherwise
-			cStatus := SZZ->ZZ_STATUS
+			cStatMsg := "3 - erro, volta no proximo ciclo"
 	EndCase
 
-	cHeader := "Sequencia: " + cSeq + " | Entidade: " + cEntid + " | Chave: " + cChave + CRLF + ;
-		"Tipo: " + Iif(SZZ->ZZ_TIPO == "S", "Saida (ERP -> BJ)", "Entrada (BJ -> ERP)") + ;
-		" | Verbo: " + AllTrim(SZZ->ZZ_VERBO) + " | Status: " + cStatus + CRLF + ;
-		"HTTP Code: " + cValToChar(SZZ->ZZ_HTTP) + " | Tentativas: " + cValToChar(SZZ->ZZ_TENTAT) + ;
-		" | Criado em: " + DtoC(SZZ->ZZ_DTCRIA) + " " + AllTrim(SZZ->ZZ_HRCRIA) + ;
-		" | Executado: " + DtoC(SZZ->ZZ_DTEXEC) + " " + AllTrim(SZZ->ZZ_HREXEC)
+	cTexto := "MENSAGEM " + cSeq + CRLF
+	cTexto += Replicate("=", 100) + CRLF + CRLF
+	cTexto += "Lote       " + AllTrim(SZZ->ZZ_CODIGO) + CRLF
+	cTexto += "Entidade   " + cEntid + CRLF
+	cTexto += "Chave      " + cChave + CRLF
+	cTexto += "Sentido    " + cSentid + CRLF
+	cTexto += "Verbo      " + AllTrim(SZZ->ZZ_VERBO) + CRLF
+	cTexto += "Status     " + cStatMsg + CRLF
+	cTexto += "HTTP       " + cValToChar(SZZ->ZZ_HTTP) + CRLF
+	cTexto += "Criada em  " + DtoC(SZZ->ZZ_DTCRIA) + " " + AllTrim(SZZ->ZZ_HRCRIA) + CRLF
+	cTexto += "Executada  " + DtoC(SZZ->ZZ_DTEXEC) + " " + AllTrim(SZZ->ZZ_HREXEC) + CRLF
 
 	If !Empty(SZZ->ZZ_CHVDES)
-		cHeader += CRLF + "Documento gerado no ERP: " + AllTrim(SZZ->ZZ_CHVDES)
+		cTexto += "Doc no ERP " + AllTrim(SZZ->ZZ_CHVDES) + CRLF
 	EndIf
 
-	cTextoEnv := SZZ->ZZ_JSON
-	cTextoRet := SZZ->ZZ_RETORN
+	cTexto += CRLF + Replicate("-", 100) + CRLF
+	cTexto += "PAYLOAD ENVIADO" + CRLF
+	cTexto += Replicate("-", 100) + CRLF
+	cTexto += SZZ->ZZ_JSON + CRLF + CRLF
+	cTexto += Replicate("-", 100) + CRLF
+	cTexto += "RESPOSTA DA API" + CRLF
+	cTexto += Replicate("-", 100) + CRLF
+	cTexto += SZZ->ZZ_RETORN + CRLF
 
-	oFont    := TFont():New("Courier New", , -11, .F.)
-	oFontTit := TFont():New("Arial", , -12, .T.)
+	oFont := TFont():New("Courier New", , -12, .T.)
 
-	DEFINE MSDIALOG oDlg TITLE "Detalhes da Mensagem " + cSeq FROM 000, 000 TO 540, 850 PIXEL
+	DEFINE MSDIALOG oDlg TITLE "Mensagem " + cSeq FROM 000, 000 TO 420, 800 PIXEL
 
-	@ 006, 008 SAY cHeader SIZE 415, 035 OF oDlg PIXEL FONT oFontTit COLOR CLR_HBLUE
+	@ 008, 008 GET oMemo VAR cTexto MEMO SIZE 780, 350 OF oDlg PIXEL
+	oMemo:oFont := oFont
+	oMemo:bWhen := {|| .F.}
 
-	@ 045, 008 SAY "Payload JSON Enviado:" SIZE 200, 010 OF oDlg PIXEL FONT oFontTit
-	@ 058, 008 GET oMemoEnv VAR cTextoEnv MEMO SIZE 410, 095 OF oDlg PIXEL FONT oFont
-	oMemoEnv:bWhen := {|| .F.}
+	If lPode
+		@ 368, 008 BUTTON "Reenviar entidade" SIZE 090, 016 OF oDlg PIXEL ;
+			ACTION (BJReenvia(cEntid, ""), oDlg:End())
 
-	@ 160, 008 SAY "Resposta da API / Log de Retorno:" SIZE 200, 010 OF oDlg PIXEL FONT oFontTit
-	@ 173, 008 GET oMemoRet VAR cTextoRet MEMO SIZE 410, 070 OF oDlg PIXEL FONT oFont
-	oMemoRet:bWhen := {|| .F.}
-
-	If SZZ->ZZ_STATUS == "3"
-		@ 248, 008 BUTTON "Reprocessar Mensagem" SIZE 085, 016 OF oDlg PIXEL ;
-			ACTION (U_BJReproc(), oDlg:End())
+		@ 368, 108 BUTTON "Reenviar esta chave" SIZE 090, 016 OF oDlg PIXEL ;
+			ACTION (BJReenvia(cEntid, cChave), oDlg:End())
 	EndIf
 
-	@ 248, 333 BUTTON "Fechar" SIZE 085, 016 OF oDlg PIXEL ACTION oDlg:End()
+	@ 368, 713 BUTTON "Fechar" SIZE 075, 016 OF oDlg PIXEL ACTION oDlg:End()
 
 	ACTIVATE MSDIALOG oDlg CENTERED
-
-	// Os controles GET/MEMO (oMemoEnv, oMemoRet) podem liberar a fonte que
-	// usam ao fechar o dialogo, junto com o proprio oDlg:End(). Quando isso
-	// acontece, o :Destroy() manual abaixo vira uma segunda liberacao do
-	// mesmo objeto, e a AdvPL reporta "Cannot find method TFONT:DESTROY" em
-	// vez de simplesmente ignorar. BEGIN SEQUENCE evita que essa falha
-	// aborte a rotina e deixe o RestArea (linha seguinte) sem executar.
-	BEGIN SEQUENCE
-		oFont:Destroy()
-	RECOVER
-	END SEQUENCE
-
-	BEGIN SEQUENCE
-		oFontTit:Destroy()
-	RECOVER
-	END SEQUENCE
 
 	RestArea(aArea)
 
 Return Nil
 
-/*/{Protheus.doc} BJColePar
-Dispara a coleta com tela de parametros por entidade (Sim/Nao) e datas.
+/*/{Protheus.doc} BJReenvia
+Recoleta e reenfileira uma entidade, ou uma chave dela. Gera um lote novo.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   01/09/2026
+@param   cEntid, character, Id da entidade
+@param   cChave, character, Chave unica, ou vazio para a entidade inteira
+@return  Nil
 /*/
-User Function BJColePar()
+Static Function BJReenvia(cEntid, cChave)
 
-	Local aParam    := {}
-	Local aRet      := {}
-	Local aCat      := U_BJCATALO()
-	Local aSelEnt   := {}
-	Local aTotal    := {0, 0, 0, 0}
-	Local nX        := 0
-	Local nPosRet   := 0
-	Local dDataDe   := Date() - 30
-	Local dDataAte  := Date()
+	Local aTotal := {0, 0, 0, 0, ""}
+	Local aEnvio := {0, 0, 0}
+	Local cMsg   := ""
 
-	// ParamBox:
-	// 1. Data Inicial
-	// 2. Data Final
-	// 3..N. Sim/Nao para cada entidade do catalogo (semelhante ao SINCMAX)
-	aAdd(aParam, {1, "Data Inicial", dDataDe , "", ".T.", "", ".T.", 60, .T.})
-	aAdd(aParam, {1, "Data Final"  , dDataAte, "", ".T.", "", ".T.", 60, .T.})
-
-	For nX := 1 To Len(aCat)
-		// 1 = Sim, 2 = Nao. Por padrao, 1 se ativa no catalogo, 2 se inativa.
-		aAdd(aParam, {2, "Atu. " + aCat[nX][2] + "?", Iif(aCat[nX][5], 1, 2), {"1 - Sim", "2 - Nao"}, 80, ".T.", .F.})
-	Next nX
-
-	If !ParamBox(aParam, "Parametros para Coleta de Dados", @aRet)
+	If !MsgYesNo("Recoletar e reenviar " + ;
+		IfBJAlvo(cEntid, cChave) + "?" + CRLF + CRLF + ;
+		"A coleta le a origem de novo; o payload guardado na mensagem nao e reaproveitado.", cCadastro)
 		Return Nil
 	EndIf
 
-	dDataDe  := aRet[1]
-	dDataAte := aRet[2]
+	Processa({|| aTotal := U_BJVARRE(cEntid, cChave)}, "Coletando...")
 
-	If !Empty(dDataDe) .And. !Empty(dDataAte) .And. dDataDe > dDataAte
-		MsgStop("A data inicial nao pode ser maior que a data final.", "Parametros de Coleta")
-		Return Nil
-	EndIf
+	// Drena so o lote que esta recoleta abriu (aTotal[5]), nao a fila inteira
+	Processa({|| aEnvio := U_BJDRENA(0, aTotal[5])}, "Enviando...")
 
-	// Monta a lista de entidades selecionadas com "1 - Sim"
-	For nX := 1 To Len(aCat)
-		nPosRet := 2 + nX
-		If nPosRet <= Len(aRet) .And. aRet[nPosRet] == 1
-			aAdd(aSelEnt, aCat[nX][1])
-		EndIf
-	Next nX
+	cMsg := "Coleta: " + cValToChar(aTotal[2]) + " enfileiradas, " + cValToChar(aTotal[4]) + " erros." + CRLF + ;
+		"Envio: " + cValToChar(aEnvio[2]) + " enviadas, " + cValToChar(aEnvio[3]) + " erros."
 
-	If Len(aSelEnt) == 0
-		MsgInfo("Nenhuma entidade foi selecionada para atualizacao.", "Coleta de Dados")
-		Return Nil
-	EndIf
-
-	Processa({|| aTotal := U_BJCOLETA(.F., aSelEnt, "", dDataDe, dDataAte)}, "Coletando dados para a Plataforma BJ...")
-
-	MsgInfo("Coleta finalizada!" + CRLF + CRLF + ;
-		"Lidos da base   : " + cValToChar(aTotal[1]) + CRLF + ;
-		"Enfileirados    : " + cValToChar(aTotal[2]) + CRLF + ;
-		"Entidades       : " + cValToChar(aTotal[3]) + CRLF + ;
-		"Erros na leitura: " + cValToChar(aTotal[4]), "Coleta de Dados")
+	MsgInfo(cMsg, cCadastro)
 
 Return Nil
 
-/*/{Protheus.doc} BJEnviPar
-Dispara o envio/dreno de saida com tela de parametros (Limite).
+/*/{Protheus.doc} BJRodaLote
+Envia em bloco, por PUT, tudo que esta pendente na fila agora, pela tela.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   09/09/2026
+@return  Nil
 /*/
-User Function BJEnviPar()
+Static Function BJRodaLote()
 
-	Local aParam := {}
-	Local aRet   := {}
 	Local aTotal := {0, 0, 0}
-	Local nLimit := 0
 
-	aAdd(aParam, {1, "Limite de mensagens (0 = Todas)", 0, "99999", "", "", "", 60, .F.})
-
-	If !ParamBox(aParam, "Parametros para Envio a Plataforma", @aRet)
+	If !MsgYesNo("Enviar agora tudo que esta pendente na fila, em blocos de ate 1.000 registros por PUT?" + CRLF + CRLF + ;
+		"E o caminho da carga inicial. A rota de XML da nota fiscal nao entra no" + CRLF + ;
+		"bloco e continua exigindo o Enviar individual.", cCadastro)
 		Return Nil
 	EndIf
 
-	nLimit := aRet[1]
+	Processa({|| aTotal := U_BJLOTE(0)}, "Enviando em bloco...")
 
-	Processa({|| aTotal := U_BJDRENA(nLimit)}, "Enviando fila para a Plataforma BJ...")
-
-	MsgInfo("Envio finalizado!" + CRLF + CRLF + ;
-		"Lidas da fila : " + cValToChar(aTotal[1]) + CRLF + ;
-		"Enviadas (OK) : " + cValToChar(aTotal[2]) + CRLF + ;
-		"Com Erro      : " + cValToChar(aTotal[3]), "Dreno de Saida")
+	MsgInfo("Lidas: "    + cValToChar(aTotal[1]) + CRLF + ;
+		"Enviadas: "     + cValToChar(aTotal[2]) + CRLF + ;
+		"Erros: "        + cValToChar(aTotal[3]), cCadastro)
 
 Return Nil
 
-/*/{Protheus.doc} BJRetoPar
-Dispara o retorno de orcamentos aprovados da plataforma.
+/*/{Protheus.doc} BJRodaExpurg
+Roda o expurgo da fila agora, pela tela.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   09/09/2026
+@return  Nil
 /*/
-User Function BJRetoPar()
+Static Function BJRodaExpurg()
 
-	Local aTotal := {0, 0, 0, 0}
+	Local nApagadas := 0
 
-	If !MsgYesNo("Deseja buscar agora os orcamentos aprovados na Plataforma BJ para gerar no ERP?", "Retorno")
+	If !MsgYesNo("Apagar da fila as mensagens executadas ha mais de " + ;
+		cValToChar(SuperGetMV("MV_BJAPI11", .F., 90)) + " dias?" + CRLF + CRLF + ;
+		"Pendentes e com erro nao sao apagadas. A marca d'agua (SZY) nao e afetada.", cCadastro)
 		Return Nil
 	EndIf
 
-	Processa({|| aTotal := U_BJRETORNO()}, "Recebendo orcamentos da Plataforma BJ...")
+	Processa({|| nApagadas := U_BJEXPURG(0)}, "Limpando a fila...")
 
-	MsgInfo("Retorno concluido!" + CRLF + CRLF + ;
-		"Lidos da API       : " + cValToChar(aTotal[1]) + CRLF + ;
-		"Gerados no ERP     : " + cValToChar(aTotal[2]) + CRLF + ;
-		"Ja existentes      : " + cValToChar(aTotal[3]) + CRLF + ;
-		"Erros na gravacao  : " + cValToChar(aTotal[4]), "Retorno de Orcamentos")
+	MsgInfo("Apagadas: " + cValToChar(nApagadas), cCadastro)
 
 Return Nil
 
-/*/{Protheus.doc} BJReproc
-Coloca a mensagem selecionada com erro de volta em status pendente.
+/*/{Protheus.doc} BJEscolhe
+Mostra uma lista e devolve a posicao escolhida.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   01/09/2026
+@param   aLista, array    , Linhas a exibir
+@param   cTitulo, character, Titulo da janela
+@return  numeric, Posicao escolhida, ou zero quando o usuario desistiu
 /*/
-User Function BJReproc()
+Static Function BJEscolhe(aLista, cTitulo)
 
-	Local cSeq := ""
+	Local nRet := 0
+	Local oDlg := Nil
+	Local oLbx := Nil
+	Local oFont := Nil
+	Local nSel := 1
 
-	If Eof() .Or. SZZ->ZZ_CHVORI == "*CONTROLE*"
-		MsgInfo("Selecione um registro valido na fila.", "Reprocessar")
-		Return Nil
+	Default cTitulo := ""
+
+	If Len(aLista) == 0
+		Return 0
 	EndIf
 
-	If SZZ->ZZ_STATUS != BJ_ERRO
-		MsgInfo("Somente mensagens com status de ERRO podem ser reprocessadas.", "Reprocessar")
-		Return Nil
-	EndIf
+	oFont := TFont():New("Courier New", , -12, .T.)
 
-	cSeq := AllTrim(SZZ->ZZ_SEQUEN)
+	DEFINE MSDIALOG oDlg TITLE cTitulo FROM 000, 000 TO 400, 800 PIXEL
 
-	If !MsgYesNo("Deseja recolocar a mensagem " + cSeq + " (" + AllTrim(SZZ->ZZ_ENTID) + ;
-		" - " + AllTrim(SZZ->ZZ_CHVORI) + ") na fila como PENDENTE?", "Reprocessar")
-		Return Nil
-	EndIf
+	@ 008, 008 LISTBOX oLbx VAR nSel ITEMS aLista SIZE 780, 330 OF oDlg PIXEL
+	oLbx:oFont := oFont
 
-	RecLock("SZZ", .F.)
-	SZZ->ZZ_STATUS := BJ_PENDENTE
-	SZZ->ZZ_TENTAT := 0
-	SZZ->ZZ_HTTP   := 0
-	SZZ->ZZ_RETORN := "Mensagem recolocada em pendente para reprocessamento manual."
-	SZZ->(MsUnlock())
+	@ 348, 613 BUTTON "Abrir"    SIZE 075, 016 OF oDlg PIXEL ACTION (nRet := oLbx:nAt, oDlg:End())
+	@ 348, 713 BUTTON "Cancelar" SIZE 075, 016 OF oDlg PIXEL ACTION (nRet := 0, oDlg:End())
 
-	MsgInfo("Mensagem " + cSeq + " pronta para reenvio no proximo ciclo!", "Reprocessar")
+	ACTIVATE MSDIALOG oDlg CENTERED
 
-Return Nil
+Return nRet
 
-/*/{Protheus.doc} BJResumo
-Exibe o painel consolidado com a situacao da fila e o horario de corte por entidade.
+/*/{Protheus.doc} IfBJAlvo
+Descreve o alvo do reenvio para a pergunta de confirmacao.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   01/09/2026
+@param   cEntid, character, Id da entidade
+@param   cChave, character, Chave, ou vazio
+@return  character, Descricao
 /*/
-User Function BJResumo()
+Static Function IfBJAlvo(cEntid, cChave)
+
+	Local cRet := "a entidade " + cEntid + " inteira"
+
+	If !Empty(cChave)
+		cRet := "so a chave " + cChave + " de " + cEntid
+	EndIf
+
+Return cRet
+
+/*/{Protheus.doc} BJAjuda
+Explica como a integracao decide o que enviar.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   01/09/2026
+@return  Nil
+/*/
+Static Function BJAjuda()
 
 	Local oDlg   := Nil
 	Local oFont  := Nil
 	Local oMemo  := Nil
 	Local cTexto := ""
 
-	oFont  := TFont():New("Courier New", , -12, .T.)
-	cTexto := BJMontaResumo()
+	cTexto := "COMO A INTEGRACAO DECIDE O QUE ENVIAR" + CRLF
+	cTexto += Replicate("=", 90) + CRLF + CRLF
+	cTexto += "Cada linha do monitor e um LOTE: um registro da SZY, com inicio, fim," + CRLF
+	cTexto += "status e contadores de um processamento. O detalhe de um lote (as" + CRLF
+	cTexto += "mensagens que ele gerou, na SZZ) fica em Mensagens." + CRLF + CRLF
+	cTexto += "1. GERAR" + CRLF
+	cTexto += "   Pede a entidade e, opcionalmente, uma chave ou intervalo de datas." + CRLF
+	cTexto += "   Le a origem procurando o que mudou desde a marca d'agua da entidade," + CRLF
+	cTexto += "   monta o JSON e grava na fila (SZZ) - um lote novo por chamada. Nao" + CRLF
+	cTexto += "   envia nada. Sem chave nem intervalo de datas, terminando sem erro, a" + CRLF
+	cTexto += "   marca da entidade avanca para a proxima Gerar." + CRLF + CRLF
+	cTexto += "2. ENVIAR" + CRLF
+	cTexto += "   Drena so as mensagens do lote posicionado na lista, na ordem de" + CRLF
+	cTexto += "   chegada. Cada uma grava o resultado. A que falhar continua na fila e" + CRLF
+	cTexto += "   volta sozinha no proximo envio, sem arrastar as outras." + CRLF + CRLF
+	cTexto += "3. RECEBER" + CRLF
+	cTexto += "   Pergunta na plataforma se ha orcamentos aprovados ou alteracoes de" + CRLF
+	cTexto += "   cliente pendentes. Se houver, grava um lote (SZY/SZZ) e ja aplica no" + CRLF
+	cTexto += "   ERP, confirmando o status na plataforma - tudo na mesma chamada." + CRLF + CRLF
+	cTexto += "Gerar e caro e nao precisa ser frequente; Enviar e limitado pela API" + CRLF
+	cTexto += "(60 requisicoes por minuto, contadas por IP). Por isso sao agendamentos" + CRLF
+	cTexto += "diferentes (U_BJVARRE, U_BJDRENA, U_BJRETORNO)." + CRLF + CRLF
+	cTexto += Replicate("-", 90) + CRLF
+	cTexto += "A MARCA D'AGUA" + CRLF
+	cTexto += Replicate("-", 90) + CRLF + CRLF
+	cTexto += "Cada entidade tem a sua, guardada no lote mais recente concluido sem erro" + CRLF
+	cTexto += "(SZY). Por isso um erro em produtos nao trava a coleta de clientes." + CRLF + CRLF
+	cTexto += "A hora vem em UTC porque a coluna S_T_A_M_P_ e escrita pelo DBAccess em" + CRLF
+	cTexto += "UTC. Uma marca em horario de Brasilia ficaria tres horas adiantada, e" + CRLF
+	cTexto += "tudo que mudasse nesse intervalo sairia da varredura sem deixar rastro." + CRLF + CRLF
+	cTexto += "A hora e lida ANTES da coleta, nunca depois. Marcar a hora do fim" + CRLF
+	cTexto += "descartaria em silencio o que fosse alterado durante a leitura." + CRLF + CRLF
+	cTexto += Replicate("-", 90) + CRLF
+	cTexto += "PRIMEIRA CARGA E REPROCESSAMENTO" + CRLF
+	cTexto += Replicate("-", 90) + CRLF + CRLF
+	cTexto += "Entidade sem marca comeca 30 dias atras. Para carregar a base inteira, ou" + CRLF
+	cTexto += "reprocessar um periodo especifico, use Gerar informando o intervalo de" + CRLF
+	cTexto += "datas - isso nao mexe na marca automatica, so cobre o periodo pedido." + CRLF + CRLF
+	cTexto += "Respeite a ordem do catalogo: a API nao aceita referencia a registro" + CRLF
+	cTexto += "inexistente. Regra de desconto antes de categoria e produto, categoria" + CRLF
+	cTexto += "antes de produto, vendedor antes de cliente, produto antes de estoque." + CRLF + CRLF
+	cTexto += "Estimativa de tempo pelo Enviar individual, teto de 60 req/min:" + CRLF
+	cTexto += "   1.000 registros    ~17 minutos" + CRLF
+	cTexto += "   5.000 registros    ~1h25" + CRLF
+	cTexto += "  20.000 registros    ~5h40" + CRLF + CRLF
+	cTexto += "Use Enviar em Bloco em vez de Enviar para a carga inicial: agrupa as" + CRLF
+	cTexto += "pendentes por entidade e manda ate 1.000 por chamada PUT, contando como" + CRLF
+	cTexto += "uma so contra o teto de 60 req/min. 120 mil registros caem de ~33h para" + CRLF
+	cTexto += "~14 minutos. A rota de XML da nota nao entra no bloco." + CRLF + CRLF
+	cTexto += Replicate("-", 90) + CRLF
+	cTexto += "EXCLUSOES" + CRLF
+	cTexto += Replicate("-", 90) + CRLF + CRLF
+	cTexto += "A coleta le alteracoes sem filtrar D_E_L_E_T_. Registro ativo vira POST," + CRLF
+	cTexto += "que a API trata como upsert; registro excluido vira DELETE com a mesma" + CRLF
+	cTexto += "chave. Nao existe varredura separada de exclusoes." + CRLF + CRLF
+	cTexto += "Registro removido fisicamente do banco (reccar, purge) nao aparece em" + CRLF
+	cTexto += "varredura nenhuma - ai a exclusao tem de ser pedida por Gerar, com a" + CRLF
+	cTexto += "chave especifica." + CRLF + CRLF
+	cTexto += Replicate("-", 90) + CRLF
+	cTexto += "LIMPAR A FILA" + CRLF
+	cTexto += Replicate("-", 90) + CRLF + CRLF
+	cTexto += "Apaga so mensagens ja executadas com mais de " + cValToChar(SuperGetMV("MV_BJAPI11", .F., 90)) + " dias." + CRLF
+	cTexto += "Pendentes e com erro nunca sao apagadas - mesma regra do expurgo" + CRLF
+	cTexto += "automatico diario, so que na hora que voce pedir. Nao ha expurgo de" + CRLF
+	cTexto += "lotes (SZY) ainda." + CRLF
 
-	DEFINE MSDIALOG oDlg TITLE "Painel de Situacao da Fila BJ" FROM 000, 000 TO 450, 780 PIXEL
+	oFont := TFont():New("Courier New", , -12, .F.)
 
-	@ 008, 008 GET oMemo VAR cTexto MEMO SIZE 764, 385 OF oDlg PIXEL FONT oFont
+	DEFINE MSDIALOG oDlg TITLE "Ajuda - Integracao BJ" FROM 000, 000 TO 420, 700 PIXEL
+
+	@ 008, 008 GET oMemo VAR cTexto MEMO SIZE 680, 350 OF oDlg PIXEL
+	oMemo:oFont := oFont
 	oMemo:bWhen := {|| .F.}
 
-	@ 400, 345 BUTTON "Fechar" SIZE 080, 016 OF oDlg PIXEL ACTION oDlg:End()
+	@ 368, 613 BUTTON "Fechar" SIZE 075, 016 OF oDlg PIXEL ACTION oDlg:End()
 
 	ACTIVATE MSDIALOG oDlg CENTERED
-
-	// Mesmo risco de BJVerMsg: o GET MEMO pode ja ter liberado a fonte junto
-	// com o oDlg:End(), e o :Destroy() manual viraria uma segunda liberacao.
-	BEGIN SEQUENCE
-		oFont:Destroy()
-	RECOVER
-	END SEQUENCE
-
-Return Nil
-
-/*/{Protheus.doc} BJMontaResumo
-Monta o texto consolidado com os totalizadores da fila.
-/*/
-Static Function BJMontaResumo()
-
-	Local cRet      := ""
-	Local aCat      := U_BJCATALO()
-	Local cMarca    := ""
-	Local nX        := 0
-	Local nPen      := 0
-	Local nErr      := 0
-	Local nOk       := 0
-	Local nTotPen   := 0
-	Local nTotErr   := 0
-	Local nTotOk    := 0
-	Local cAliasQry := ""
-	Local cQuery    := ""
-
-	cRet := "RESUMO DA INTEGRACAO PLATAFORMA BJ - " + DtoC(Date()) + " " + Time() + CRLF
-	cRet += Replicate("=", 95) + CRLF + CRLF
-	cRet += "Empresa: " + cEmpAnt + " | Filial: " + cFilAnt + CRLF
-	cRet += "URL API: " + AllTrim(SuperGetMV("MV_BJAPI01", .F., "(nao cadastrada)")) + CRLF + CRLF
-	cRet += PadR("ENTIDADE", 22) + PadR("ULTIMA COLETA (UTC)", 24) + ;
-	        PadL("PENDENTES", 11) + PadL("ERROS", 9) + PadL("CONCLUIDAS", 13) + CRLF
-	cRet += Replicate("-", 95) + CRLF
-
-	dbSelectArea("SZZ")
-	SZZ->(dbSetOrder(3)) // ZZ_FILIAL + ZZ_ENTID + ZZ_CHVORI
-
-	For nX := 1 To Len(aCat)
-
-		cMarca := ""
-		If SZZ->(dbSeek(xFilial("SZZ") + PadR(aCat[nX][1], TamSX3("ZZ_ENTID")[1]) + PadR("*CONTROLE*", TamSX3("ZZ_CHVORI")[1])))
-			cMarca := AllTrim(SZZ->ZZ_MARCA)
-		EndIf
-		If Empty(cMarca)
-			cMarca := "(primeira carga)"
-		EndIf
-
-		nPen := 0
-		nErr := 0
-		nOk  := 0
-
-		cQuery := "SELECT ZZ_STATUS, COUNT(*) AS QTD "
-		cQuery += "  FROM " + RetSqlName("SZZ") + " SZZ "
-		cQuery += " WHERE SZZ.D_E_L_E_T_ = ' ' "
-		cQuery += "   AND SZZ.ZZ_FILIAL  = '" + xFilial("SZZ") + "' "
-		cQuery += "   AND SZZ.ZZ_ENTID   = '" + aCat[nX][1] + "' "
-		cQuery += "   AND SZZ.ZZ_CHVORI  <> '*CONTROLE*' "
-		cQuery += " GROUP BY ZZ_STATUS "
-
-		cAliasQry := MPSysOpenQuery(ChangeQuery(cQuery))
-
-		While (cAliasQry)->(!Eof())
-			Do Case
-				Case (cAliasQry)->ZZ_STATUS $ "0|1"
-					nPen += (cAliasQry)->QTD
-				Case (cAliasQry)->ZZ_STATUS == "3"
-					nErr += (cAliasQry)->QTD
-				Case (cAliasQry)->ZZ_STATUS == "2"
-					nOk  += (cAliasQry)->QTD
-			EndCase
-			(cAliasQry)->(dbSkip())
-		EndDo
-
-		(cAliasQry)->(dbCloseArea())
-
-		cRet += PadR(aCat[nX][1], 22) + PadR(cMarca, 24) + ;
-		        PadL(cValToChar(nPen), 11) + PadL(cValToChar(nErr), 9) + PadL(cValToChar(nOk), 13) + CRLF
-
-		nTotPen += nPen
-		nTotErr += nErr
-		nTotOk  += nOk
-
-	Next nX
-
-	cRet += Replicate("-", 95) + CRLF
-	cRet += PadR("TOTAL CONSOLIDADO", 46) + ;
-	        PadL(cValToChar(nTotPen), 11) + PadL(cValToChar(nTotErr), 9) + PadL(cValToChar(nTotOk), 13) + CRLF
-
-Return cRet
-
-/*/{Protheus.doc} BJMudaCorte
-Permite consultar e ajustar o horario de corte da entidade na SZZ.
-/*/
-User Function BJMudaCorte()
-
-	Local aCat      := U_BJCATALO()
-	Local aOpcoes   := {}
-	Local nX        := 0
-	Local aParam    := {}
-	Local aRet      := {}
-	Local cEntid    := ""
-	Local cMarca    := ""
-	Local cNova     := ""
-	Local cQrySeq   := ""
-	Local cAliasSeq := ""
-	Local cSeq      := ""
-	Local nTamSeq   := TamSX3("ZZ_SEQUEN")[1]
-
-	If nTamSeq <= 0
-		nTamSeq := 10
-	EndIf
-
-	For nX := 1 To Len(aCat)
-		aAdd(aOpcoes, aCat[nX][1] + " - " + aCat[nX][2])
-	Next nX
-
-	aAdd(aParam, {2, "Selecione a Entidade", 1, aOpcoes, 120, ".T.", .F.})
-	aAdd(aParam, {1, "Novo Horario de Corte (UTC)", Space(19), "", "", "", "", 120, .T.})
-
-	If !ParamBox(aParam, "Ajustar Data/Hora de Corte na SZZ", @aRet)
-		Return Nil
-	EndIf
-
-	cEntid := aCat[aRet[1]][1]
-	cNova  := AllTrim(aRet[2])
-
-	If Len(cNova) < 10
-		MsgStop("Informe a data e hora completa no formato AAAA-MM-DD HH:MM:SS.", "Horario de Corte")
-		Return Nil
-	EndIf
-
-	dbSelectArea("SZZ")
-	SZZ->(dbSetOrder(3)) // ZZ_FILIAL + ZZ_ENTID + ZZ_CHVORI
-
-	If SZZ->(dbSeek(xFilial("SZZ") + PadR(cEntid, TamSX3("ZZ_ENTID")[1]) + PadR("*CONTROLE*", TamSX3("ZZ_CHVORI")[1])))
-		cMarca := AllTrim(SZZ->ZZ_MARCA)
-		RecLock("SZZ", .F.)
-	Else
-		cMarca := "(nenhum)"
-		cQrySeq := "SELECT MAX(ZZ_SEQUEN) AS MAXSEQ FROM " + RetSqlName("SZZ") + " WHERE ZZ_FILIAL = '" + xFilial("SZZ") + "' AND D_E_L_E_T_ = ' '"
-		cAliasSeq := MPSysOpenQuery(ChangeQuery(cQrySeq))
-		If (cAliasSeq)->(!Eof()) .And. !Empty((cAliasSeq)->MAXSEQ)
-			cSeq := Soma1(PadL(AllTrim((cAliasSeq)->MAXSEQ), nTamSeq, "0"))
-		Else
-			cSeq := StrZero(1, nTamSeq)
-		EndIf
-		(cAliasSeq)->(dbCloseArea())
-
-		RecLock("SZZ", .T.)
-		SZZ->ZZ_FILIAL := xFilial("SZZ")
-		SZZ->ZZ_SEQUEN := cSeq
-		SZZ->ZZ_TIPO   := BJ_SAIDA
-		SZZ->ZZ_ENTID  := cEntid
-		SZZ->ZZ_CHVORI := "*CONTROLE*"
-		SZZ->ZZ_STATUS := BJ_EXECUTADA
-		SZZ->ZZ_DTCRIA := Date()
-		SZZ->ZZ_HRCRIA := Time()
-	EndIf
-
-	If !MsgYesNo("Confirma a alteracao da marca d'agua de " + cEntid + "?" + CRLF + CRLF + ;
-		"Horario anterior : " + cMarca + CRLF + ;
-		"Novo horario     : " + cNova + CRLF + CRLF + ;
-		"Recuar a data fara a proxima coleta reprocessar o intervalo.", "Confirmacao")
-		SZZ->(MsUnlock())
-		Return Nil
-	EndIf
-
-	SZZ->ZZ_MARCA  := cNova
-	SZZ->ZZ_DTEXEC := Date()
-	SZZ->ZZ_HREXEC := Time()
-	SZZ->(MsUnlock())
-
-	MsgInfo("Horario de corte de " + cEntid + " atualizado com sucesso!", "Horario de Corte")
 
 Return Nil
