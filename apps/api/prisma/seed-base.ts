@@ -593,6 +593,7 @@ async function main() {
       data: {
         termoId: termoVigente.id,
         usuarioId: admin.id,
+        declaracao: 'Li e concordo com os Termos de Uso.',
         conteudoHash: termoVigente.conteudoHash,
         ip: '127.0.0.1',
         userAgent: 'Seed Automático',
