@@ -542,7 +542,7 @@ export function AgenteFab() {
         <div ref={fim} />
       </div>
 
-      <div className="border-t p-3">
+      <div className="shrink-0 border-t p-3">
         {anexo && (
           <div className="mb-2 flex items-center gap-2 rounded-md bg-muted px-2 py-1.5 text-xs">
             <Paperclip className="size-3.5 shrink-0" />
@@ -558,6 +558,7 @@ export function AgenteFab() {
         )}
         <div className="flex gap-2">
           <Textarea
+            className="min-w-0 resize-none"
             rows={2}
             value={texto}
             placeholder="Pergunte alguma coisa..."
@@ -603,7 +604,7 @@ export function AgenteFab() {
         onPointerDown={iniciarGesto("redimensionar")}
         role="separator"
         aria-label="Redimensionar assistente"
-        className="absolute bottom-0 right-0 size-4 cursor-nwse-resize touch-none text-border"
+        className="absolute bottom-0 right-0 hidden size-4 cursor-nwse-resize touch-none text-border sm:block"
         style={{
           // `currentColor` para não depender do formato do token de
           // cor (hsl/oklch): a cor vem do `text-border` acima.

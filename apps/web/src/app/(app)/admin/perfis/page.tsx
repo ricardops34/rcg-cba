@@ -14,6 +14,7 @@ import { FiltersPopover } from "@/components/crud/filters-popover";
 import { roleColorClass } from "@/lib/role-color";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -22,7 +23,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Pencil, ShieldCheck, Trash2 } from "lucide-react";
+import {
+  ShieldCheck,
+  Shield,
+  Lock,
+  CheckCircle2,
+  Plus,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 
 type SimNaoTodos = "todos" | "sim" | "nao";
 
@@ -53,6 +63,12 @@ export default function PerfisPage() {
     setPage(1);
   };
 
+  const perfis = data?.data ?? [];
+  const totalPerfis = data?.total ?? perfis.length;
+  const totalBaseSistema = perfis.filter((p) => p.sistemaBase).length;
+  const totalPersonalizados = perfis.filter((p) => !p.sistemaBase).length;
+  const totalAtivos = perfis.filter((p) => p.ativo).length;
+
   const openEdit = (p: Perfil) => router.push(`/admin/perfis/${p.id}`);
   const openPermissoes = (p: Perfil) => router.push(`/admin/perfis/${p.id}?tab=permissoes`);
 
@@ -64,7 +80,7 @@ export default function PerfisPage() {
     if (!confirm(`Excluir o perfil "${perfil.nome}"?`)) return;
     try {
       await remove.mutateAsync(perfil.id);
-      toast.success("Perfil excluído");
+      toast.success("Perfil excluído com sucesso");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Erro ao excluir perfil");
     }
@@ -72,7 +88,7 @@ export default function PerfisPage() {
 
   const columns: ColumnDef<Perfil>[] = [
     {
-      header: "Nome",
+      header: "Perfil",
       sortKey: "nome",
       cell: (p) => (
         <div className="flex items-center gap-2">
@@ -80,15 +96,22 @@ export default function PerfisPage() {
             {p.nome}
           </Badge>
           {p.sistemaBase && (
-            <span className="text-xs text-muted-foreground">Base do sistema</span>
+            <Badge variant="secondary" className="text-[10px] gap-1">
+              <Lock className="size-2.5" /> Base do sistema
+            </Badge>
           )}
           {p.administraPlataforma && (
-            <span className="text-xs text-muted-foreground">· Plataforma</span>
+            <Badge variant="outline" className="text-[10px] border-purple-500/40 text-purple-600 dark:text-purple-400">
+              Plataforma
+            </Badge>
           )}
         </div>
       ),
     },
-    { header: "Descrição", cell: (p) => p.descricao ?? "—" },
+    {
+      header: "Descrição",
+      cell: (p) => <span className="text-xs text-muted-foreground">{p.descricao ?? "—"}</span>,
+    },
     { header: "Status", sortKey: "ativo", cell: (p) => <StatusDot active={p.ativo} /> },
     {
       header: "",
@@ -102,14 +125,16 @@ export default function PerfisPage() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => openPermissoes(p)}>
-              <ShieldCheck className="size-4" /> Permissões
+              <ShieldCheck className="size-4" /> Matriz de Permissões
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => openEdit(p)}>
-              <Pencil className="size-4" /> Editar
+              <Pencil className="size-4" /> Editar perfil
             </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={() => onDelete(p)}>
-              <Trash2 className="size-4" /> Excluir
-            </DropdownMenuItem>
+            {!p.sistemaBase && (
+              <DropdownMenuItem variant="destructive" onClick={() => onDelete(p)}>
+                <Trash2 className="size-4" /> Excluir perfil
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -117,7 +142,85 @@ export default function PerfisPage() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Superior Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-xs">
+            <ShieldCheck className="size-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold tracking-tight">Perfis de Acesso (RBAC)</h1>
+              <Badge variant="outline" className="text-xs">Segurança e Permissões</Badge>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Configure perfis de acesso, permissões granulares por rotina e regras de segurança da empresa.
+            </p>
+          </div>
+        </div>
+        <Button onClick={() => router.push("/admin/perfis/novo")} className="gap-2 shadow-xs">
+          <Plus className="size-4" /> Novo perfil
+        </Button>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="shadow-xs border-border/60">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Total de Perfis</p>
+              <p className="text-2xl font-bold tracking-tight mt-1">{totalPerfis}</p>
+            </div>
+            <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Shield className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-xs border-border/60">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Base do Sistema</p>
+              <p className="text-2xl font-bold tracking-tight mt-1 text-purple-600 dark:text-purple-400">
+                {totalBaseSistema}
+              </p>
+            </div>
+            <div className="flex size-9 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500">
+              <Lock className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-xs border-border/60">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Personalizados</p>
+              <p className="text-2xl font-bold tracking-tight mt-1 text-blue-600 dark:text-blue-400">
+                {totalPersonalizados}
+              </p>
+            </div>
+            <div className="flex size-9 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
+              <ShieldCheck className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-xs border-border/60">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Perfis Ativos</p>
+              <p className="text-2xl font-bold tracking-tight mt-1 text-emerald-600 dark:text-emerald-400">
+                {totalAtivos}
+              </p>
+            </div>
+            <div className="flex size-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+              <CheckCircle2 className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <CrudHeader
         search={search}
         onSearchChange={(v) => {
@@ -126,8 +229,7 @@ export default function PerfisPage() {
         }}
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
-        onCreate={() => router.push("/admin/perfis/novo")}
-        createLabel="Novo perfil"
+        placeholder="Buscar por nome do perfil..."
       />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -152,9 +254,9 @@ export default function PerfisPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="sim">Sim</SelectItem>
-                <SelectItem value="nao">Não</SelectItem>
+                <SelectItem value="todos">Todos os perfis</SelectItem>
+                <SelectItem value="sim">Somente base do sistema</SelectItem>
+                <SelectItem value="nao">Somente personalizados</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -167,6 +269,7 @@ export default function PerfisPage() {
         rowKey={(p) => p.id}
         isLoading={isLoading}
         error={error}
+        emptyMessage="Nenhum perfil encontrado com os filtros aplicados."
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}
@@ -187,3 +290,4 @@ export default function PerfisPage() {
     </div>
   );
 }
+

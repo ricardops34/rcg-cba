@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ajudaPorRota } from "@/lib/ajuda-rotinas";
 import { useTour } from "@/components/tour/tour-provider";
+import { useWhatsappIntegracao } from "@/hooks/use-whatsapp-integracao";
 
 export function AppTopbar({
   onToggleSidebar,
@@ -56,6 +57,7 @@ export function AppTopbar({
   const { theme, setTheme } = useTheme();
   const { user, logout, setTokens, setUser } = useAuthStore();
   const { iniciarTourAtual, tourDisponivel } = useTour();
+  const { ativo: whatsappAtivo } = useWhatsappIntegracao();
   const [searchOpen, setSearchOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
 
@@ -255,12 +257,9 @@ export function AppTopbar({
                 })}
               </>
             )}
-            {user?.permissoes.includes("whatsapp-config.visualizar") && (
+            {whatsappAtivo && user?.permissoes.includes("whatsapp-config.visualizar") && (
               <>
                 <DropdownMenuSeparator />
-                {/* Atalho direto pro pareamento do número institucional — fica
-                    sempre visível, mesmo com o WhatsApp desligado, porque é
-                    exatamente aí que quem procura como ligá-lo precisa cair. */}
                 <DropdownMenuItem
                   onClick={() =>
                     router.push("/admin/whatsapp?aba=institucional")

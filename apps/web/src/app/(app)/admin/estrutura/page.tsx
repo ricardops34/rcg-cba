@@ -65,6 +65,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   ChevronRight,
   FolderTree,
@@ -74,6 +75,8 @@ import {
   Pencil,
   Plus,
   Trash2,
+  Layers,
+  Menu as MenuIcon,
 } from "lucide-react";
 
 interface ModuloComMenus extends Modulo {
@@ -100,6 +103,11 @@ export default function EstruturaPage() {
     }
     return map;
   }, [rotinasQuery.data]);
+
+  const modulos = modulosQuery.data ?? [];
+  const totalModulos = modulos.length;
+  const totalMenus = modulos.reduce((acc, m) => acc + m.menus.length, 0);
+  const totalRotinas = rotinasQuery.data?.length ?? 0;
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["modulos"] });
@@ -147,9 +155,6 @@ export default function EstruturaPage() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
-  // Reordena localmente (feedback instantâneo) e persiste a nova "ordem"
-  // (índice sequencial) de cada item afetado. Usado pelos 3 níveis
-  // (módulos, menus de um módulo, rotinas de um menu).
   const handleModuloDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id || !modulosQuery.data) return;
@@ -184,32 +189,76 @@ export default function EstruturaPage() {
       });
   };
 
-  // Rotina não tem coluna "ordem" no schema (só Módulo e Menu têm — são os
-  // únicos níveis que aparecem em ordem visível, no menu lateral). Rotinas
-  // não são arrastáveis por isso.
-
-  // Dialogs -----------------------------------------------------------
   const [moduloDialog, setModuloDialog] = useState<{ editing: Modulo | null } | null>(null);
   const [menuDialog, setMenuDialog] = useState<{ moduloId: string; editing: Menu | null } | null>(null);
   const [rotinaDialog, setRotinaDialog] = useState<{ menuId: string; editing: Rotina | null } | null>(null);
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Estrutura de menu</h1>
-        <p className="text-sm text-muted-foreground">
-          Módulos agrupam menus, e cada menu agrupa as rotinas usadas para controlar permissões (RBAC). O
-          menu lateral do sistema é montado automaticamente a partir daqui, filtrado pelas permissões de
-          cada perfil. Arraste pela alça (⋮⋮) pra reordenar.
-        </p>
-      </div>
-
-      <div className="flex justify-end">
-        <Button onClick={() => setModuloDialog({ editing: null })}>
-          <Plus className="size-4" />
-          Novo módulo
+    <div className="space-y-6">
+      {/* Superior Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-xs">
+            <FolderTree className="size-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold tracking-tight">Estrutura de Menu e Rotinas</h1>
+              <Badge variant="outline" className="text-xs">Navegação & RBAC</Badge>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Módulos agrupam menus e rotinas de permissão do sistema. Arraste (⋮⋮) para reordenar a exibição.
+            </p>
+          </div>
+        </div>
+        <Button onClick={() => setModuloDialog({ editing: null })} className="gap-2 shadow-xs">
+          <Plus className="size-4" /> Novo módulo
         </Button>
       </div>
+
+      {/* KPI Cards */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card className="shadow-xs border-border/60">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Total de Módulos</p>
+              <p className="text-2xl font-bold tracking-tight mt-1">{totalModulos}</p>
+            </div>
+            <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Layers className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-xs border-border/60">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Total de Menus</p>
+              <p className="text-2xl font-bold tracking-tight mt-1 text-blue-600 dark:text-blue-400">
+                {totalMenus}
+              </p>
+            </div>
+            <div className="flex size-9 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
+              <MenuIcon className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-xs border-border/60">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Rotinas Mapeadas</p>
+              <p className="text-2xl font-bold tracking-tight mt-1 text-purple-600 dark:text-purple-400">
+                {totalRotinas}
+              </p>
+            </div>
+            <div className="flex size-9 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500">
+              <ListTree className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
 
       {modulosQuery.isLoading && (
         <div className="space-y-3">
