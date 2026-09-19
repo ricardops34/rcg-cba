@@ -1010,6 +1010,20 @@ function FerramentasSection() {
   const [aceiteLocal, setAceiteLocal] = useState(false);
   const termosAceitos = aceiteLocal || !!termos?.aceitoEm;
 
+  /**
+   * Quantas ferramentas têm texto reescrito pela empresa.
+   *
+   * É exatamente o conjunto que o "restaurar todos" toca no servidor — daí o
+   * número aparecer no botão: "restaurar todos" sem dizer quantos é um clique
+   * no escuro. Zero esconde o botão, porque não há o que restaurar.
+   */
+  const reescritas = (ferramentas ?? []).filter(
+    (f) =>
+      f.nome !== f.nomePadrao ||
+      f.descricao !== f.descricaoPadrao ||
+      f.instrucoes !== f.instrucoesPadrao,
+  ).length;
+
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   const { data: perfis } = useQuery({
@@ -1053,6 +1067,19 @@ function FerramentasSection() {
       toast.error(err instanceof ApiError ? err.message : "Erro ao restaurar"),
   });
 
+  const restaurarTodos = useMutation({
+    mutationFn: () =>
+      apiFetch<AgenteFerramenta[]>("/agente/ferramentas/restaurar-todos", {
+        method: "POST",
+      }),
+    onSuccess: (lista) => {
+      queryClient.setQueryData(["agente-ferramentas"], lista);
+      toast.success("Todos os textos voltaram ao padrão do sistema");
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Erro ao restaurar"),
+  });
+
   const aceitarTermos = useMutation({
     mutationFn: () =>
       apiFetch<{ aceitoEm: string; aceitoPor: string }>(
@@ -1080,6 +1107,29 @@ function FerramentasSection() {
             Ligue/desligue individualmente as capacidades de consulta do agente.
           </p>
         </div>
+        {reescritas > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs"
+            disabled={!termosAceitos || restaurarTodos.isPending}
+            onClick={() => {
+              if (
+                !confirm(
+                  `Restaurar os textos de ${reescritas} ferramenta(s) ao padrão do sistema? ` +
+                    "A reescrita da empresa é apagada e não há como desfazer — o que foi " +
+                    "escrito fica só na trilha de auditoria. Ligado/desligado, perfis e a " +
+                    "versão escolhida não mudam.",
+                )
+              ) {
+                return;
+              }
+              restaurarTodos.mutate();
+            }}
+          >
+            Restaurar todos os textos ({reescritas})
+          </Button>
+        )}
       </div>
 
       {!termosAceitos && (

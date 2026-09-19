@@ -949,8 +949,23 @@ export const whatsappRecadoCriarSchema = z.object({
    * marcada — a mesma rotina de minuto em minuto do agendamento de conversa.
    */
   enviarEm: z.coerce.date().nullable().optional(),
+  enviarPlataforma: z.boolean().default(true),
+  enviarWhatsapp: z.boolean().default(true),
 });
 export type WhatsappRecadoCriar = z.infer<typeof whatsappRecadoCriarSchema>;
+
+export const whatsappRecadoEditarSchema = z.object({
+  texto: z.string().trim().min(3, "Escreva o recado").max(1000).optional(),
+  vendedorIds: z
+    .array(z.string().uuid())
+    .min(1, "Escolha pelo menos uma pessoa")
+    .max(200)
+    .optional(),
+  enviarEm: z.coerce.date().nullable().optional(),
+  enviarPlataforma: z.boolean().optional(),
+  enviarWhatsapp: z.boolean().optional(),
+});
+export type WhatsappRecadoEditar = z.infer<typeof whatsappRecadoEditarSchema>;
 
 export const whatsappRecadoDestinoSchema = z.object({
   nome: z.string(),
@@ -958,6 +973,7 @@ export const whatsappRecadoDestinoSchema = z.object({
   status: whatsappAgendamentoStatusSchema,
   erro: z.string().nullable(),
   enviadoEm: z.string().datetime().nullable(),
+  lidoEm: z.string().datetime().nullable(),
 });
 export type WhatsappRecadoDestino = z.infer<typeof whatsappRecadoDestinoSchema>;
 
@@ -965,6 +981,8 @@ export const whatsappRecadoSchema = z.object({
   id: z.string().uuid(),
   texto: z.string(),
   enviarEm: z.string().datetime().nullable(),
+  enviarPlataforma: z.boolean(),
+  enviarWhatsapp: z.boolean(),
   status: whatsappAgendamentoStatusSchema,
   criadoPorNome: z.string(),
   criadoEm: z.string().datetime(),
@@ -974,3 +992,17 @@ export const whatsappRecadoSchema = z.object({
   falhas: z.number().int(),
 });
 export type WhatsappRecado = z.infer<typeof whatsappRecadoSchema>;
+
+export const whatsappRecadoRecebidoSchema = z.object({
+  id: z.string().uuid(),
+  recadoId: z.string().uuid(),
+  texto: z.string(),
+  criadoPorNome: z.string(),
+  criadoEm: z.string().datetime(),
+  enviarEm: z.string().datetime().nullable(),
+  lidoEm: z.string().datetime().nullable(),
+  enviadoEm: z.string().datetime().nullable(),
+  enviarPlataforma: z.boolean(),
+  enviarWhatsapp: z.boolean(),
+});
+export type WhatsappRecadoRecebido = z.infer<typeof whatsappRecadoRecebidoSchema>;

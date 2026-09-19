@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -45,6 +46,7 @@ import {
   WhatsappNovoOrcamentoDto,
   WhatsappReagirDto,
   WhatsappRecadoCriarDto,
+  WhatsappRecadoEditarDto,
   WhatsappVincularDto,
 } from './dto/whatsapp.dto';
 import { WhatsappFuncionarioService } from './triagem/whatsapp-funcionario.service';
@@ -199,6 +201,16 @@ export class WhatsappController {
   }
 
   @ApiOperation({
+    summary: 'Recados internos que recebi',
+    description: 'Os últimos 50 recados recebidos pelo usuário logado.',
+  })
+  @RequirePermission('whatsapp-recados', 'visualizar')
+  @Get('recados/recebidos')
+  listarRecadosRecebidos(@CurrentUser() user: AuthenticatedUser) {
+    return this.recados.listarRecebidos(user.empresaAtivaId, user);
+  }
+
+  @ApiOperation({
     summary: 'Mandar (ou agendar) um recado para a equipe',
     description:
       'Alcança **apenas** quem tem cadastro de vendedor — não existe envio em ' +
@@ -213,6 +225,33 @@ export class WhatsappController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.recados.criar(user.empresaAtivaId, user, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Editar um recado agendado',
+    description: 'Altera o texto, data/hora de envio, destinatários e canais de um recado pendente.',
+  })
+  @RequirePermission('whatsapp-recados', 'cadastrar')
+  @Put('recados/:id')
+  editarRecado(
+    @Param('id') id: string,
+    @Body() dto: WhatsappRecadoEditarDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.recados.editar(user.empresaAtivaId, user, id, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Marcar recado como lido',
+    description: 'Registra que o usuário visualizou o recado na plataforma.',
+  })
+  @RequirePermission('whatsapp-recados', 'visualizar')
+  @Patch('recados/:id/lido')
+  marcarRecadoLido(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.recados.marcarLido(user.empresaAtivaId, user, id);
   }
 
   @ApiOperation({

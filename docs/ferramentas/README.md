@@ -33,7 +33,7 @@ catálogo — e a separação é deliberada.
 
 | Família | Quem está do outro lado | Autenticação | Pode gravar? | Documento |
 |---|---|---|---|---|
-| [Agente interno](agente-interno.md) | funcionário **logado** | sessão + RBAC | sim, com confirmação | 26 ferramentas |
+| [Agente interno](agente-interno.md) | funcionário **logado** | sessão + RBAC | sim, com confirmação | 27 ferramentas |
 | [WhatsApp — cliente](whatsapp-cliente.md) | cliente ou desconhecido | vínculo número↔cadastro | só `registrar_lead` | 13 ferramentas |
 | [WhatsApp — funcionário](whatsapp-funcionario.md) | vendedor/gerente/supervisor | telefone + código confirmado | **não** | 8 ferramentas |
 
@@ -42,6 +42,63 @@ chega: o mesmo vendedor tem poderes diferentes conforme o canal. Logado, ele
 cria orçamento; pelo WhatsApp, só consulta. É deliberado — no WhatsApp não há
 senha, só um número confirmado, e um celular perdido não pode virar acesso de
 escrita.
+
+## Dois números, três conversas
+
+As famílias de WhatsApp confundem porque o recorte que importa não é o número —
+é **quem está do outro lado**. Há dois números e três conversas possíveis:
+
+```
+                    ┌─────────────────────────┐
+   cliente ────────▶│  NÚMERO INSTITUCIONAL   │   sessao.tipo = 'empresa'
+                    │  (um por empresa)       │   vendedorId = null
+   funcionário ────▶│  a IA atende os dois,   │
+   (do celular)     │  com catálogos distintos│
+                    └─────────────────────────┘
+
+   cliente ◀───────▶  APARELHO DO VENDEDOR      sessao.tipo = 'vendedor'
+                      sem IA nenhuma
+```
+
+| Conversa | Identidade | IA | Grava? |
+|---|---|---|---|
+| Cliente ↔ institucional | `whatsapp_contatos.clienteId`, vinculado por um vendedor na tela | triagem de cliente | só `registrar_lead` |
+| Funcionário ↔ institucional | telefone + código de 6 dígitos, válido 30 dias | triagem de funcionário | **não** |
+| Cliente ↔ aparelho do vendedor | é o aparelho dele, pareado | **nenhuma** | conversa humana |
+
+**O mesmo número institucional atende as duas primeiras.** O que escolhe a
+família é a identidade de quem escreveu, não o número que recebeu — ver
+`whatsapp-funcionario.md` para as duas etapas (encontrar ≠ autorizar).
+
+### A trava que separa o aparelho do institucional
+
+Uma linha, em `whatsapp-conversas.service.ts`:
+
+```ts
+const emTriagem =
+  sessao.tipo === 'empresa' &&
+  (conversa.atendimento === 'bot' || reabriu);
+```
+
+Sem `tipo === 'empresa'` não há triagem nenhuma. **No aparelho do vendedor a
+conversa é pessoa com pessoa**, e ele responde pela tela de Atendimento ou pelo
+próprio celular.
+
+### O descarte é invertido nos dois números, de propósito
+
+| | Contato sem cliente vinculado |
+|---|---|
+| Aparelho do vendedor | **conteúdo descartado** — ali chega família, amigo, engano, e guardar esse texto no servidor da empresa seria ler conversa alheia. A conversa fica só para ele poder vinculá-la |
+| Institucional | **guardado** — o desconhecido é o caso principal, e é ele que a triagem precisa entender para saber a quem entregar |
+
+### O ciclo da conversa institucional
+
+`bot` → `aguardando` → `humano` → `encerrada`. Mensagem nova depois de
+encerrada **volta para `bot`**: é assunto novo, e a triagem recomeça.
+
+O sino não toca enquanto está em `bot` — o de todo vendedor tocando a cada "oi"
+de desconhecido é justamente o que este número existe para evitar. O aviso volta
+quando a IA direcionar, e só para quem ela escolheu.
 
 ## Onde ficam os prompts
 

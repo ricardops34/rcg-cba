@@ -11,6 +11,8 @@ import {
 import { AgenteConfigService } from './agente-config.service';
 import { AgenteFerramentasService } from './agente-ferramentas.service';
 import { AgenteAnexosService } from './agente-anexos.service';
+import { AgenteMeuDiaService } from './agente-meu-dia.service';
+import { rotuloDe, type EventoProgresso } from './agente-progresso';
 import { AgenteReferenciasService } from './agente-referencias.service';
 import { AgenteToolsService } from './agente-tools.service';
 import {
@@ -62,7 +64,32 @@ export class AgenteChatService {
     private readonly referencias: AgenteReferenciasService,
     private readonly governanca: AgenteFerramentasService,
     private readonly anexos: AgenteAnexosService,
+    private readonly meuDia: AgenteMeuDiaService,
   ) {}
+
+  /**
+   * O bloco de abertura, pronto para entrar no prompt — ou `null`.
+   *
+   * Passa pelo **mesmo** `resumirResultado` de um resultado de ferramenta, e
+   * não é economia de código: injetar direto no texto do sistema desviaria da
+   * máscara de identificação e da trava `garantirMascarado`, que é justamente
+   * o caminho por onde um nome de cliente chegaria ao provedor sem ninguém
+   * notar. O que vale para o resultado de uma ferramenta vale para isto.
+   *
+   * Falhar aqui não pode derrubar a mensagem: sem o bloco o assistente dá um
+   * "bom dia" comum, que é infinitamente melhor do que não responder.
+   */
+  private async aberturaDoDia(
+    empresaId: string,
+    user: AuthenticatedUser,
+  ): Promise<string | null> {
+    try {
+      const dados = await this.meuDia.montar(empresaId, user);
+      return this.resumirResultado(dados, this.tools.buscar('meu_dia'));
+    } catch {
+      return null;
+    }
+  }
 
   async listarConversas(empresaId: string, user: AuthenticatedUser) {
     return this.prisma.withTenant(empresaId, (tx) =>
@@ -291,10 +318,16 @@ export class AgenteChatService {
     return conversa;
   }
 
+  /**
+   * @param onProgresso Chamado a cada passo, quando quem pediu está ouvindo.
+   *   Opcional de propósito: o `POST` comum continua existindo e não muda de
+   *   comportamento — o laço é o mesmo, com ou sem alguém escutando.
+   */
   async enviar(
     empresaId: string,
     user: AuthenticatedUser,
     params: { conversaId?: string; texto: string; anexoId?: string },
+    onProgresso?: (evento: EventoProgresso) => void,
   ) {
     const cfg = await this.config.paraUso(empresaId);
 
@@ -303,6 +336,11 @@ export class AgenteChatService {
     if (params.anexoId) {
       await this.anexos.meu(empresaId, user, params.anexoId);
     }
+
+    // Conversa nova = primeira mensagem, e é aí que a abertura entra. Depois
+    // dela o assunto já está posto, e repetir agenda e meta a cada pergunta
+    // gastaria prompt para dizer o que ninguém perguntou de novo.
+    const primeiraMensagem = !params.conversaId;
 
     const conversaId = await this.prisma.withTenant(empresaId, async (tx) => {
       if (params.conversaId) {
@@ -351,6 +389,10 @@ export class AgenteChatService {
     // liberado, e a lista tem de bater com o catálogo enviado.
     const filtro = await this.governanca.filtroPara(empresaId, user);
 
+    const abertura = primeiraMensagem
+      ? await this.aberturaDoDia(empresaId, user)
+      : null;
+
     const mensagens = await this.montarContexto(
       empresaId,
       user,
@@ -360,6 +402,7 @@ export class AgenteChatService {
       filtro,
       cfg.nomeAgente,
       !!anexo,
+      abertura,
     );
 
     // O arquivo entra na última mensagem do usuário — a que o contexto acabou
@@ -467,6 +510,14 @@ export class AgenteChatService {
         if (ferramenta.usaAnexo && anexado) {
           argumentos.anexoId = anexado.id;
         }
+
+        // Só aqui, depois da permissão: anunciar antes faria a tela mostrar
+        // "Consultando títulos em aberto…" para quem não pode consultá-los.
+        onProgresso?.({
+          tipo: 'ferramenta',
+          nome: ferramenta.nome,
+          rotulo: rotuloDe(ferramenta.nome),
+        });
 
         if (ferramenta.escrita) {
           // Não executa. Grava a pendência e conta ao modelo o que aconteceu,
@@ -792,6 +843,7 @@ export class AgenteChatService {
     filtro: FiltroFerramentas,
     nomeAgente: string,
     temAnexo = false,
+    abertura: string | null = null,
   ): Promise<MensagemChat[]> {
     const historico = await this.prisma.withTenant(empresaId, (tx) =>
       tx.agenteMensagem.findMany({
@@ -852,6 +904,19 @@ export class AgenteChatService {
       'Ações que gravam exigem confirmação do usuário na tela; nunca afirme que gravou algo ' +
         'antes de receber a confirmação.',
       'Nunca invente número, valor ou código: se não veio de uma ferramenta, diga que não sabe.',
+      // Depois da explicação das referências, de propósito: se o bloco trouxer
+      // uma «CLI:…», o modelo já leu a regra de como escrevê-la de volta.
+      ...(abertura
+        ? [
+            '',
+            'ABERTURA DESTA CONVERSA — o sistema já consultou o dia deste usuário e o ' +
+              'resultado está abaixo. NÃO chame meu_dia neste turno: já está aqui. ' +
+              'Use no cumprimento, seguindo o que "COMO USAR CADA FERRAMENTA" diz de ' +
+              'meu_dia; se a pessoa foi direto ao assunto, responda o que ela pediu e ' +
+              'guarde isto para quando couber.',
+            abertura,
+          ]
+        : []),
       ...(instrucoes.length
         ? ['', 'COMO USAR CADA FERRAMENTA', ...instrucoes]
         : []),

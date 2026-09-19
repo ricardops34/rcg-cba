@@ -23,6 +23,14 @@ O `outDir` de `prisma/tsconfig.scripts.json` é `./dist` **relativo a
 (esse último é o build do NestJS). `prisma/dist/` **não existe** no ambiente de dev:
 ele só é gerado durante o build da imagem Docker.
 
+> **Esse layout é frágil e há um `exclude` protegendo-o.** O `tsc` infere o
+> rootDir a partir de *todos* os arquivos do programa: basta **um** script
+> importar algo de `src/` para tudo sair em `prisma/dist/prisma/x.js` — inclusive
+> o `seed-base.js`, que é o `CMD` da imagem `rcgcba-scripts`. Foi o que aconteceu
+> ao compartilhar o gerador de demonstração, e por isso `demo-dados.ts` está no
+> `exclude` do `tsconfig.scripts.json`. Antes de fazer um script daqui importar
+> de fora de `prisma/`, confira onde `seed-base.js` foi parar.
+
 ## Papéis do banco (vale para todo import/migration)
 
 - **`plataforma`** — dona das tabelas. É quem roda migrations, seed e os scripts de
@@ -87,6 +95,140 @@ um cliente é consultado.
 > 2026-08-28. Um banco que já rodou as migrations antigas **recusa** o
 > `migrate deploy` (o Prisma confere o checksum de cada uma) — precisa ser
 > recriado do zero. Ver `apps/api/prisma/migrations/README.md`.
+
+---
+
+## Base de demonstração **[escrito em 2026-09-19, não rodado em ambiente]**
+
+Os botões ficam **no detalhe da empresa**, em Administração > Empresas
+(`/admin/empresas/<id>`), abaixo do formulário — a pergunta que antecede a ação
+é sempre "em qual empresa?", e ali ela já está respondida pela página em que se
+está.
+
+Não há tela própria nem item de menu: `demo-dados` é uma **rotina sem tela**
+(`ROTINAS_SEM_TELA` no catálogo), pendurada no menu de Empresas, que existe só
+para o RBAC. É rotina separada de `empresas` de propósito — editar o cadastro da
+empresa e apagar o movimento dela são estragos de ordem diferente, e quem monta
+um perfil precisa poder dar um sem dar o outro.
+
+| Operação | Permissão | Reversível? |
+|---|---|---|
+| Popular com dados fictícios | `demo-dados.cadastrar` | sim — roda de novo e refaz |
+| Remover só os dados `DEMO-` | `demo-dados.cadastrar` | sim |
+| **Limpar a base da empresa** | `demo-dados.excluir` | **não** |
+
+### Popular
+
+Oito meses de movimento: **seis meses fechados**, o corrente até hoje e o
+seguinte inteiro (esse último para quem navegar para a frente não achar tela
+vazia). Clientes com CNAE e cesta por ramo, produtos, notas com XML de NF-e,
+títulos com dados de boleto, orçamentos, metas, CRM e conversas de WhatsApp.
+
+Tudo leva o prefixo `DEMO-`. Rodar de novo apaga o conjunto anterior e cria
+outro — **cadastro feito à mão não é tocado**.
+
+### Limpar a base da empresa
+
+Apaga **todo** o dado de negócio da empresa, inclusive o que foi digitado de
+verdade. A fronteira está em `src/modules/demo/demo-limpeza.ts`, em duas listas
+explícitas, e um teste (`demo-limpeza.spec.ts`) falha se alguma tabela nova com
+`empresaId` ficar fora das duas.
+
+**Preserva**, por decisão de 2026-09-19: usuários e vínculos de acesso,
+parâmetros e configurações de tela, a chave de API do agente, o pareamento do
+WhatsApp e a trilha de auditoria. Sem isso a empresa ficaria inutilizável
+depois da limpeza — e uma operação destrutiva que apaga o próprio registro é o
+oposto do que a auditoria existe para fazer.
+
+**A confirmação é digitada, não clicada:** a API exige a razão social exata em
+`confirmacao` e recusa qualquer outra coisa. Um "tem certeza?" com dois botões é
+respondido no automático; o erro caro aqui é estar na empresa errada sem
+perceber.
+
+### Por que a tela pode fazer isso sem a role dona — e o que a RLS *não* garante
+
+O gerador e a limpeza rodam dentro de `withTenant`, então valem as policies de
+RLS. Elas são `USING ("empresaId" = current_setting('app.current_empresa_id',
+true))` e **não** declaram `WITH CHECK` — o Postgres então reaproveita o `USING`
+na checagem de INSERT, e o mesmo recorte passa a valer para ler, gravar e
+apagar. A role `plataforma_app` tem `SELECT, INSERT, UPDATE, DELETE` em todas as
+tabelas (bloco 2 da baseline) e nenhum privilégio que contorne RLS, então cada
+`deleteMany` alcança uma empresa só.
+
+> **Cuidado com a conclusão fácil aqui.** A RLS escopa para o `empresaId` que o
+> código define: ela protege contra **esquecer um filtro**, não contra **passar
+> o id errado de propósito**. Como estas rotas recebem a empresa pela URL
+> (`/empresas/:empresaId/demo/...`), quem decide o alcance é
+> `DemoService.garantirAlcance` — administrador da plataforma alcança todas, os
+> demais só as empresas a que estão vinculados, mesmo recorte de
+> `EmpresasService.findAll`. Sem essa checagem bastaria trocar o id na
+> requisição.
+
+O script de linha de comando é o outro extremo: roda com a role dona
+(`plataforma`), **fora** do `withTenant` e portanto sem RLS nenhuma — lá quem
+garante o recorte é só o `empresaId` que ele passa. Mesma geração, três
+garantias diferentes conforme o caminho.
+
+### Linha de comando (dev)
+
+```bash
+# a empresa mais antiga — numa base do seed-base.ts é a única que existe
+pnpm --filter @plataforma/api demo:dados
+
+# alvo explícito: aceita nome, CNPJ ou id
+pnpm --filter @plataforma/api demo:dados -- --empresa=BJSoftware
+
+# remove o conjunto DEMO- e não recria
+pnpm --filter @plataforma/api demo:dados -- --limpar
+```
+
+Com duas empresas casando com o `--empresa=`, o script **recusa** e lista as
+candidatas em vez de escolher: popular a empresa errada com dado fictício é um
+estrago que só aparece na frente do cliente.
+
+> **`demo-dados.ts` está fora do build da imagem** (`exclude` em
+> `prisma/tsconfig.scripts.json`), e isso não é descuido. Ele importa o gerador
+> de `src/` — o que basta para o `tsc` subir o rootDir inferido e mover **todos**
+> os scripts de `prisma/dist/x.js` para `prisma/dist/prisma/x.js`, inclusive o
+> `seed-base.js`, que é o `CMD` da imagem `rcgcba-scripts`. Em produção o
+> caminho é a tela; em dev, `ts-node`, que não depende deste build.
+
+### Para a tela aparecer numa base que já existe
+
+Três passos, nesta ordem — e nenhum deles é opcional:
+
+```bash
+# 1. rotina (sem menu) e a permissão para os perfis de administrador
+pnpm --filter @plataforma/api prisma:deploy   # migration 20260919120000_perm_demo_dados
+
+# 2. alinha o catálogo (idempotente: não deve achar nada a fazer, depois do passo 1)
+#    ver a seção "Menu, rotina ou módulo novo"
+
+# 3. reiniciar a API — a rota /demo é nova
+#    ver "Armadilha: rota nova da API não aparece depois de um docker restart"
+```
+
+**Por que a migration, se estrutura mora no catálogo:** `sincronizar-catalogo`
+cria a rotina, mas **não concede permissão a perfil** — permissão gravada é
+configuração do cliente. Sem a migration a rotina nasceria sem ninguém podendo
+usá-la, nem o administrador, até alguém marcá-la à mão em Perfis. Por isso a
+migration cria a rotina (mesmo id e código do catálogo,
+`ON CONFLICT DO NOTHING`) e só então concede — o modelo é
+`20260902120000_perm_meus_atendimentos`.
+
+Ela **não** cria menu: `demo-dados` é rotina sem tela, e o `WHERE EXISTS` guarda
+contra `seed-menu-empresas` em vez de contra o módulo. Numa base nova, `menus`
+ainda está vazia quando as migrations rodam, e sem esse guarda o INSERT morreria
+em `rotinas_menuId_fkey` levando o deploy inteiro junto.
+
+**Quem nasce com acesso:** só `Administrador da Plataforma` e
+`Administrador Empresa` (e o nome antigo `Administrador`, para bases anteriores
+à separação dos perfis). **Diretor fica de fora** — quem quiser dar a mais
+gente marca na tela de Perfis, e `demo-dados.excluir` apaga o cadastro real da
+empresa, então é decisão para se tomar olhando.
+
+Base nova não precisa de nada disso: o `seed-base.ts` aplica o catálogo e concede
+todas as ações aos dois perfis de administrador.
 
 ---
 

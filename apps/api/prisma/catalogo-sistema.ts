@@ -48,7 +48,12 @@ export const MODULO = {
 } as const;
 
 export const MODULOS = [
-  { id: MODULO.administracao, nome: 'Administração', icone: 'settings', ordem: 1 },
+  {
+    id: MODULO.administracao,
+    nome: 'Administração',
+    icone: 'settings',
+    ordem: 1,
+  },
   { id: MODULO.comercial, nome: 'Comercial', icone: 'briefcase', ordem: 2 },
   { id: MODULO.crm, nome: 'CRM', icone: 'handshake', ordem: 3 },
   { id: MODULO.gerencial, nome: 'Gerencial', icone: 'users-round', ordem: 4 },
@@ -592,6 +597,24 @@ export const ROTINAS_SEM_TELA: {
     nome: 'Agente IA (usar)',
     menuId: 'seed-menu-agente-config',
   },
+  // Base de demonstração: popular uma empresa com dado fictício de oito meses,
+  // e limpar o dado de negócio dela. Aparece como ação no **detalhe da
+  // empresa**, em Empresas — daí ficar pendurada naquele menu e não ter tela
+  // própria.
+  //
+  // Rotina separada de `empresas` de propósito: editar o cadastro da empresa e
+  // apagar o movimento dela são estragos de ordem completamente diferente, e
+  // quem monta um perfil precisa poder dar um sem dar o outro.
+  //
+  // As ações, para o RBAC:
+  //   visualizar → ver o bloco no detalhe da empresa
+  //   cadastrar  → popular/remover o conjunto DEMO- (reversível: roda de novo)
+  //   excluir    → APAGAR o dado de negócio da empresa (irreversível)
+  {
+    codigo: 'demo-dados',
+    nome: 'Base de Demonstração',
+    menuId: 'seed-menu-empresas',
+  },
 ];
 
 /** As nove ações do RBAC, na ordem em que a tela de Perfis as mostra. */
@@ -798,7 +821,9 @@ export async function sincronizarEstrutura(prisma: PrismaClient) {
   }
 
   for (const r of ROTINAS_SEM_TELA) {
-    const antes = await prisma.rotina.findUnique({ where: { codigo: r.codigo } });
+    const antes = await prisma.rotina.findUnique({
+      where: { codigo: r.codigo },
+    });
     await prisma.rotina.upsert({
       where: { codigo: r.codigo },
       create: {

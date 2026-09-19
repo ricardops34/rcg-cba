@@ -12,7 +12,10 @@ import { whereEmpresaAcessivel } from '../../common/empresa/situacao-empresa';
 import { WhatsappProviderService } from './providers/whatsapp-provider.service';
 import { jidBrasileiro } from './triagem/telefone-equipe';
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
-import type { WhatsappRecadoCriar } from '@plataforma/contracts';
+import type {
+  WhatsappRecadoCriar,
+  WhatsappRecadoEditar,
+} from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
 /** De quanto em quanto tempo a rotina procura recado vencido. */
@@ -22,18 +25,9 @@ const INTERVALO_MS = 60_000;
 const LOTE = 20;
 
 /**
- * Recado interno pelo número da empresa.
+ * Recado interno pelo número da empresa e/ou notificação na plataforma.
  *
- * **Não é envio em massa, e a diferença não é de tamanho.** Ele alcança
- * exclusivamente quem tem cadastro de vendedor — a equipe. Cliente continua
- * recebendo na conversa individual, onde alguém escreve para alguém. Foi
- * decisão do usuário: envio em massa não existe nesta plataforma.
- *
- * Como o agendamento de conversa, **é autorizado na criação**: o escopo de
- * quem envia é resolvido ali, com o usuário logado. Na hora do despacho não há
- * requisição nem sessão, e refazer a verificação significaria reconstruir
- * permissão a partir do nada — o envio confia no que já foi conferido e apenas
- * registra o resultado por pessoa.
+ * **Não é envio em massa para clientes.** Alcança exclusivamente a equipe de vendedores.
  */
 @Injectable()
 export class WhatsappRecadoService implements OnModuleInit, OnModuleDestroy {
@@ -47,7 +41,6 @@ export class WhatsappRecadoService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     this.timer = setInterval(() => void this.despacharVencidos(), INTERVALO_MS);
-    // `unref` para o timer não segurar o processo no encerramento.
     this.timer.unref();
   }
 
@@ -57,14 +50,6 @@ export class WhatsappRecadoService implements OnModuleInit, OnModuleDestroy {
 
   // ------------------------------------------------------------ audiência
 
-  /**
-   * Quem esta pessoa pode alcançar.
-   *
-   * É o mesmo escopo hierárquico do resto do sistema: vendedor alcança a si
-   * mesmo, quem tem gente abaixo alcança a equipe. Não existe "todo mundo"
-   * para quem não teria acesso a todo mundo nas outras telas — o WhatsApp não
-   * pode ser a porta larga ao lado da porta estreita.
-   */
   async destinatarios(empresaId: string, user: AuthenticatedUser) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
@@ -74,8 +59,6 @@ export class WhatsappRecadoService implements OnModuleInit, OnModuleDestroy {
           empresaId,
           deletedAt: null,
           ativo: true,
-          // `sistema` não é gente (ESCRITORIO, E-COMMERCE, balcão): tem
-          // cadastro para receber nota no ERP, não para receber recado.
           vinculo: { not: 'sistema' },
           ...(escopo === null ? {} : { id: { in: escopo } }),
         },
@@ -93,8 +76,6 @@ export class WhatsappRecadoService implements OnModuleInit, OnModuleDestroy {
         vendedorId: v.id,
         nome: v.nome,
         telefone: v.telefone,
-        // A tela mostra quem não tem telefone, desmarcado e com o motivo:
-        // esconder faria "mandei para a equipe" omitir quem ficou de fora.
         alcancavel: jidBrasileiro(v.telefone) !== null,
         superior: superiores.has(v.id),
       }));
@@ -117,9 +98,6 @@ export class WhatsappRecadoService implements OnModuleInit, OnModuleDestroy {
     const recadoId = await this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
 
-      // O escopo é conferido **aqui**, contra os ids que vieram da tela: sem
-      // isto, bastaria mandar outro id no corpo da requisição para escrever no
-      // WhatsApp de quem não é da equipe.
       const alvos = await tx.vendedor.findMany({
         where: {
           empresaId,
@@ -147,6 +125,8 @@ export class WhatsappRecadoService implements OnModuleInit, OnModuleDestroy {
           empresaId,
           texto: dto.texto.trim(),
           enviarEm: dto.enviarEm ?? null,
+          enviarPlataforma: dto.enviarPlataforma ?? true,
+          enviarWhatsapp: dto.enviarWhatsapp ?? true,
           criadoPor: user.id,
           criadoPorNome: user.nome,
           destinatarios: {
@@ -164,10 +144,99 @@ export class WhatsappRecadoService implements OnModuleInit, OnModuleDestroy {
       return recado.id;
     });
 
-    // Sem data marcada, sai agora — mas fora da transação: o envio fala com o
-    // provedor pela rede, e segurar a transação durante isso prenderia uma
-    // conexão do pool por segundos.
     if (!dto.enviarEm) await this.despachar(empresaId, recadoId);
+
+    return this.obter(empresaId, recadoId);
+  }
+
+  // --------------------------------------------------------------- edição
+
+  async editar(
+    empresaId: string,
+    user: AuthenticatedUser,
+    recadoId: string,
+    dto: WhatsappRecadoEditar,
+  ) {
+    if (dto.enviarEm && dto.enviarEm.getTime() < Date.now() - 60_000) {
+      throw new BadRequestException(
+        'A data de envio já passou. Escolha um horário à frente ou envie agora.',
+      );
+    }
+
+    await this.prisma.withTenant(empresaId, async (tx) => {
+      const recado = await tx.whatsappRecadoInterno.findFirst({
+        where: { id: recadoId, criadoPor: user.id },
+        select: { status: true },
+      });
+      if (!recado) throw new NotFoundException('Recado não encontrado');
+      if (recado.status !== 'pendente') {
+        throw new BadRequestException(
+          'Só dá para editar recado que ainda não saiu.',
+        );
+      }
+
+      let alvos: { id: string; nome: string; telefone: string | null }[] | undefined;
+      if (dto.vendedorIds) {
+        const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+        alvos = await tx.vendedor.findMany({
+          where: {
+            empresaId,
+            deletedAt: null,
+            ativo: true,
+            vinculo: { not: 'sistema' },
+            id: {
+              in:
+                escopo === null
+                  ? dto.vendedorIds
+                  : dto.vendedorIds.filter((id) => escopo.includes(id)),
+            },
+          },
+          select: { id: true, nome: true, telefone: true },
+        });
+
+        if (alvos.length === 0) {
+          throw new BadRequestException(
+            'Nenhum destinatário válido selecionado.',
+          );
+        }
+      }
+
+      await tx.whatsappRecadoInterno.update({
+        where: { id: recadoId },
+        data: {
+          ...(dto.texto !== undefined ? { texto: dto.texto.trim() } : {}),
+          ...(dto.enviarEm !== undefined ? { enviarEm: dto.enviarEm } : {}),
+          ...(dto.enviarPlataforma !== undefined
+            ? { enviarPlataforma: dto.enviarPlataforma }
+            : {}),
+          ...(dto.enviarWhatsapp !== undefined
+            ? { enviarWhatsapp: dto.enviarWhatsapp }
+            : {}),
+        },
+      });
+
+      if (alvos) {
+        await tx.whatsappRecadoDestinatario.deleteMany({
+          where: { recadoId },
+        });
+        await tx.whatsappRecadoDestinatario.createMany({
+          data: alvos.map((v) => ({
+            empresaId,
+            recadoId,
+            vendedorId: v.id,
+            nome: v.nome,
+            telefone: v.telefone,
+          })),
+        });
+      }
+    });
+
+    if (
+      dto.enviarEm === null ||
+      (dto.enviarEm && dto.enviarEm.getTime() <= Date.now())
+    ) {
+      await this.despachar(empresaId, recadoId);
+    }
 
     return this.obter(empresaId, recadoId);
   }
@@ -177,14 +246,49 @@ export class WhatsappRecadoService implements OnModuleInit, OnModuleDestroy {
   async listar(empresaId: string, user: AuthenticatedUser) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const recados = await tx.whatsappRecadoInterno.findMany({
-        // Cada um vê o que escreveu. O recado é do autor, e uma lista com o
-        // que todo mundo mandou seria outra tela, com outra permissão.
         where: { empresaId, criadoPor: user.id },
         orderBy: { criadoEm: 'desc' },
         take: 50,
         include: { destinatarios: { orderBy: { nome: 'asc' } } },
       });
       return recados.map((r) => this.formatar(r));
+    });
+  }
+
+  async listarRecebidos(empresaId: string, user: AuthenticatedUser) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const vendedor = await tx.vendedor.findFirst({
+        where: { empresaId, usuarioId: user.id, deletedAt: null },
+        select: { id: true },
+      });
+
+      const destinatarios = await tx.whatsappRecadoDestinatario.findMany({
+        where: {
+          empresaId,
+          ...(vendedor
+            ? { vendedorId: vendedor.id }
+            : { recado: { criadoPor: user.id } }),
+          status: { in: ['enviada', 'pendente'] },
+        },
+        orderBy: { recado: { criadoEm: 'desc' } },
+        take: 50,
+        include: {
+          recado: true,
+        },
+      });
+
+      return destinatarios.map((d) => ({
+        id: d.id,
+        recadoId: d.recado.id,
+        texto: d.recado.texto,
+        criadoPorNome: d.recado.criadoPorNome,
+        criadoEm: d.recado.criadoEm.toISOString(),
+        enviarEm: d.recado.enviarEm?.toISOString() ?? null,
+        lidoEm: d.lidoEm?.toISOString() ?? null,
+        enviadoEm: d.enviadoEm?.toISOString() ?? null,
+        enviarPlataforma: d.recado.enviarPlataforma,
+        enviarWhatsapp: d.recado.enviarWhatsapp,
+      }));
     });
   }
 
@@ -197,6 +301,43 @@ export class WhatsappRecadoService implements OnModuleInit, OnModuleDestroy {
     );
     if (!recado) throw new NotFoundException('Recado não encontrado');
     return this.formatar(recado);
+  }
+
+  async marcarLido(
+    empresaId: string,
+    user: AuthenticatedUser,
+    recadoId: string,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const vendedor = await tx.vendedor.findFirst({
+        where: { empresaId, usuarioId: user.id, deletedAt: null },
+        select: { id: true },
+      });
+
+      const agora = new Date();
+
+      await tx.whatsappRecadoDestinatario.updateMany({
+        where: {
+          recadoId,
+          ...(vendedor ? { vendedorId: vendedor.id } : {}),
+          lidoEm: null,
+        },
+        data: { lidoEm: agora },
+      });
+
+      await tx.notificacao.updateMany({
+        where: {
+          empresaId,
+          usuarioId: user.id,
+          referenciaId: recadoId,
+          tipo: 'recado_interno',
+          lidaEm: null,
+        },
+        data: { lidaEm: agora },
+      });
+
+      return { lido: true, lidoEm: agora.toISOString() };
+    });
   }
 
   async cancelar(empresaId: string, user: AuthenticatedUser, recadoId: string) {
@@ -227,6 +368,8 @@ export class WhatsappRecadoService implements OnModuleInit, OnModuleDestroy {
     id: string;
     texto: string;
     enviarEm: Date | null;
+    enviarPlataforma: boolean;
+    enviarWhatsapp: boolean;
     status: string;
     criadoPorNome: string;
     criadoEm: Date;
@@ -236,12 +379,15 @@ export class WhatsappRecadoService implements OnModuleInit, OnModuleDestroy {
       status: string;
       erro: string | null;
       enviadoEm: Date | null;
+      lidoEm: Date | null;
     }[];
   }) {
     return {
       id: recado.id,
       texto: recado.texto,
       enviarEm: recado.enviarEm?.toISOString() ?? null,
+      enviarPlataforma: recado.enviarPlataforma,
+      enviarWhatsapp: recado.enviarWhatsapp,
       status: recado.status,
       criadoPorNome: recado.criadoPorNome,
       criadoEm: recado.criadoEm.toISOString(),
@@ -251,6 +397,7 @@ export class WhatsappRecadoService implements OnModuleInit, OnModuleDestroy {
         status: d.status,
         erro: d.erro,
         enviadoEm: d.enviadoEm?.toISOString() ?? null,
+        lidoEm: d.lidoEm?.toISOString() ?? null,
       })),
       enviados: recado.destinatarios.filter((d) => d.status === 'enviada')
         .length,
@@ -260,12 +407,6 @@ export class WhatsappRecadoService implements OnModuleInit, OnModuleDestroy {
 
   // --------------------------------------------------------------- despacho
 
-  /**
-   * Recados agendados que já venceram.
-   *
-   * Percorre empresa a empresa porque as tabelas têm RLS: uma consulta sem
-   * tenant no contexto volta vazia, por desenho.
-   */
   private async despacharVencidos() {
     try {
       const empresas = await this.prisma.empresa.findMany({
@@ -294,19 +435,8 @@ export class WhatsappRecadoService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /**
-   * Manda o recado a cada destinatário.
-   *
-   * **Uma falha não impede as outras**: quem não tem telefone, ou cujo envio
-   * deu erro, fica marcado com o motivo e o resto segue. Um recado que não sai
-   * para ninguém porque a primeira pessoa não tinha celular seria o pior dos
-   * resultados — e o mais difícil de perceber.
-   */
   private async despachar(empresaId: string, recadoId: string) {
     try {
-      // `updateMany` com o status no filtro é o que evita dois despachos
-      // simultâneos (a varredura e o envio imediato) mandarem em duplicidade:
-      // só quem conseguir mudar de `pendente` para `enviando` segue.
       const assumido = await this.prisma.withTenant(empresaId, (tx) =>
         tx.whatsappRecadoInterno.updateMany({
           where: { id: recadoId, status: 'pendente' },
@@ -323,6 +453,48 @@ export class WhatsappRecadoService implements OnModuleInit, OnModuleDestroy {
       );
       if (!dados) return;
 
+      // Se a opção de Plataforma estiver marcada, gera as notificações no sino
+      if (dados.enviarPlataforma) {
+        await this.prisma.withTenant(empresaId, async (tx) => {
+          for (const destino of dados.destinatarios) {
+            const vendedor = await tx.vendedor.findUnique({
+              where: { id: destino.vendedorId },
+              select: { usuarioId: true },
+            });
+            if (vendedor?.usuarioId) {
+              await tx.notificacao.create({
+                data: {
+                  empresaId,
+                  usuarioId: vendedor.usuarioId,
+                  tipo: 'recado_interno',
+                  titulo: `Recado de ${dados.criadoPorNome}`,
+                  descricao:
+                    dados.texto.length > 120
+                      ? dados.texto.slice(0, 117) + '...'
+                      : dados.texto,
+                  referenciaId: recadoId,
+                  rota: '/gerencial/recados',
+                  ocorridaEm: new Date(),
+                },
+              });
+            }
+          }
+        });
+      }
+
+      // Se Enviar WhatsApp estiver desmarcado, encerra o despacho marcando destinatários como enviada
+      if (!dados.enviarWhatsapp) {
+        await this.prisma.withTenant(empresaId, (tx) =>
+          tx.whatsappRecadoDestinatario.updateMany({
+            where: { recadoId, status: 'pendente' },
+            data: { status: 'enviada', enviadoEm: new Date() },
+          }),
+        );
+        await this.encerrar(empresaId, recadoId, 'enviada');
+        return;
+      }
+
+      // Caso contrário, faz o envio via WhatsApp
       const sessao = await this.prisma.withTenant(empresaId, (tx) =>
         tx.whatsappSessao.findFirst({
           where: { empresaId, tipo: 'empresa', status: 'conectada' },
@@ -331,7 +503,12 @@ export class WhatsappRecadoService implements OnModuleInit, OnModuleDestroy {
       );
 
       if (!sessao) {
-        await this.encerrar(empresaId, recadoId, 'erro');
+        // Se também enviou pela plataforma, mantém o status do recado como enviada mas indica o erro do WhatsApp nos destinatários
+        await this.encerrar(
+          empresaId,
+          recadoId,
+          dados.enviarPlataforma ? 'enviada' : 'erro',
+        );
         await this.prisma.withTenant(empresaId, (tx) =>
           tx.whatsappRecadoDestinatario.updateMany({
             where: { recadoId, status: 'pendente' },
@@ -382,8 +559,6 @@ export class WhatsappRecadoService implements OnModuleInit, OnModuleDestroy {
       await this.encerrar(empresaId, recadoId, 'enviada');
     } catch (erro) {
       this.logger.error(`Falha ao despachar recado ${recadoId}: ${erro}`);
-      // Nada some em silêncio: o recado fica marcado como erro e visível na
-      // tela de quem o escreveu.
       await this.encerrar(empresaId, recadoId, 'erro').catch(() => undefined);
     }
   }

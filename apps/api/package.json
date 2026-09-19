@@ -23,7 +23,8 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "ts-node prisma/seed-base.ts",
     "sync:ibge": "ts-node prisma/sync-ibge.ts",
-    "enrich:cnae": "ts-node prisma/enrich-cnae.ts"
+    "enrich:cnae": "ts-node prisma/enrich-cnae.ts",
+    "demo:dados": "ts-node prisma/demo-dados.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",

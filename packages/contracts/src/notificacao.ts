@@ -20,6 +20,8 @@ export const NOTIFICACAO_TIPOS = [
   "whatsapp_aguardando",
   /** Lead captado pela IA no número institucional, aguardando a supervisão. */
   "lead_novo",
+  /** Recado interno da equipe enviado para o usuário. */
+  "recado_interno",
 ] as const;
 export const notificacaoTipoSchema = z.enum(NOTIFICACAO_TIPOS);
 export type NotificacaoTipo = z.infer<typeof notificacaoTipoSchema>;

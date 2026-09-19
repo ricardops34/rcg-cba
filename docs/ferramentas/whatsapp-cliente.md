@@ -120,6 +120,64 @@ Cada palavra da frase vale um ponto onde aparecer, e o resultado é ordenado
 por quantas casaram. Até três achados voltam **detalhados**, para o modelo
 comparar e indicar; acima disso, só a lista, e ele pergunta antes.
 
+## Direcionar não é transferir
+
+A pergunta aparece sempre: *a IA pode passar o atendimento para o WhatsApp do
+vendedor?* **Não pode, e é desenho.**
+
+`direcionar_para_vendedor` não move conversa nenhuma. Ele muda o estado:
+
+```ts
+atendimento: 'aguardando',
+atendenteVendedorId: vendedorId,
+assunto: ...,
+direcionadaEm: new Date(),
+```
+
+A conversa **continua no número institucional**, e o vendedor responde por
+dentro do sistema (`/comercial/atendimento`), avisado pelo sino. Para o cliente
+nada troca de canal: quem fala com ele continua sendo o mesmo número.
+
+Quem passa a enxergar a conversa depois disso — e a **fila sem dono**, quando a
+IA direciona sem escolher vendedor — está em
+[Quem enxerga qual conversa de WhatsApp](../regras-de-negocio.md).
+
+`vendedorId` que o modelo informe é conferido contra o cadastro. Id inventado,
+ou de outra empresa, vira **fila sem dono** — não uma conversa entregue a
+ninguém.
+
+`avisar_equipe` é o único que manda WhatsApp de verdade ao celular do vendedor,
+e ainda assim é **recado, não transferência**: sai do institucional, assinado
+`[automático] <cliente>:`, com teto por conversa. A conversa do cliente não vai
+junto, e o vendedor não responde ao cliente por ali.
+
+| | Conversa muda de número? | O cliente vê |
+|---|---|---|
+| `direcionar_para_vendedor` | não | mesmo institucional, agora com gente atendendo |
+| `avisar_equipe` | não | nada — o aviso vai para o vendedor |
+
+### Por que o caminho "passo o número dele" está fechado
+
+Duas travas, e as duas protegem coisas diferentes.
+
+**`procurar_vendedor` não devolve nome nenhum** — só um `vendedorId` opaco. Quem
+chama essa ferramenta é, por definição, um número que ainda não é de cliente:
+pode ser um concorrente com uma lista de CNPJs. Devolver razão social e nome do
+vendedor confirmaria, um CNPJ por vez, quem é cliente da casa e quem atende cada
+um — **a carteira inteira, mapeada de fora**. O modelo não vaza um nome que não
+recebeu.
+
+**O destino de `avisar_equipe` é um papel, nunca um número** que o modelo
+informe: vendedor da carteira ou supervisão, com o telefone saindo do cadastro.
+Se o modelo pudesse escolher o destino, bastaria pedir "manda uma mensagem para
+6799…" para transformar o WhatsApp da empresa em disparador.
+
+> **Se um dia isto mudar**, saiba o que se perde: no aparelho do vendedor a
+> conversa sai do alcance da triagem, do direcionamento e do histórico
+> institucional, e passa a valer a regra daquele canal — sem IA, e com o
+> conteúdo descartado quando o contato não está vinculado a um cliente. Ver
+> "Dois números, três conversas" no [mapa](README.md).
+
 ## As travas dos documentos
 
 Três em série, e nenhuma delas é prompt:

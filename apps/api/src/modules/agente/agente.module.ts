@@ -5,6 +5,7 @@ import { AgenteToolsService } from './agente-tools.service';
 import { AgenteReferenciasService } from './agente-referencias.service';
 import { AgenteFerramentasService } from './agente-ferramentas.service';
 import { AgenteAnexosService } from './agente-anexos.service';
+import { AgenteMeuDiaService } from './agente-meu-dia.service';
 import { ProvedorIaModule } from './provedor-ia.module';
 import { ConsultasModule } from '../consultas/consultas.module';
 import { ClientesModule } from '../clientes/clientes.module';
@@ -18,6 +19,7 @@ import { OportunidadesModule } from '../oportunidades/oportunidades.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { VendedoresModule } from '../vendedores/vendedores.module';
 import { MeusAtendimentosModule } from '../meus-atendimentos/meus-atendimentos.module';
+import { NotificacoesModule } from '../notificacoes/notificacoes.module';
 
 /**
  * O agente não reimplementa nada: importa os módulos das telas e chama os
@@ -38,6 +40,7 @@ import { MeusAtendimentosModule } from '../meus-atendimentos/meus-atendimentos.m
     WhatsappModule,
     VendedoresModule,
     MeusAtendimentosModule,
+    NotificacoesModule,
     ProvedorIaModule,
   ],
   controllers: [AgenteController],
@@ -47,6 +50,7 @@ import { MeusAtendimentosModule } from '../meus-atendimentos/meus-atendimentos.m
     AgenteReferenciasService,
     AgenteFerramentasService,
     AgenteAnexosService,
+    AgenteMeuDiaService,
   ],
 })
 export class AgenteModule {}

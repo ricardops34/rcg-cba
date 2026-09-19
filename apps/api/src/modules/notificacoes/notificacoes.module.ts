@@ -9,5 +9,9 @@ import { NotificacoesVarreduraService } from './notificacoes-varredura.service';
   // este módulo depender de todos os outros (e o inverso).
   controllers: [NotificacoesController],
   providers: [NotificacoesService, NotificacoesVarreduraService],
+  // O agente lê a contagem do sino para a saudação de abertura (ver
+  // `AgenteMeuDiaService`). Só o feed sai daqui: continua sem imports, e
+  // quem produz notificação segue chamando `registrarNotificacao`.
+  exports: [NotificacoesService],
 })
 export class NotificacoesModule {}

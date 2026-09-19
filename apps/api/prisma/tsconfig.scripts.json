@@ -5,5 +5,16 @@
     "declaration": false,
     "sourceMap": false
   },
-  "include": ["*.ts"]
+  "include": ["*.ts"],
+  // `demo-dados.ts` importa o gerador de `src/`, compartilhado com a tela de
+  // Administração. Bastaria isso para o `tsc` subir o rootDir inferido para
+  // `apps/api/`, e **todos** os scripts passariam de `prisma/dist/x.js` para
+  // `prisma/dist/prisma/x.js` — inclusive o `seed-base.js`, que é o CMD da
+  // imagem `rcgcba-scripts`. O deploy quebraria por causa de um script que a
+  // imagem nem usa.
+  //
+  // Ele fica de fora porque é de desenvolvimento: em produção a base de
+  // demonstração é gerada pela tela, não por linha de comando. Em dev roda por
+  // `ts-node`, que não depende deste build.
+  "exclude": ["demo-dados.ts"]
 }

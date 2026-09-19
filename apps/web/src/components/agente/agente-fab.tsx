@@ -2,16 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type {
   AgenteAnexo,
   AgenteConfirmacao,
+  AgenteConversa,
+  AgenteConversaResumo,
   AgenteDestino,
+  AgenteEvento,
   AgentePendencia,
   AgenteResposta,
 } from "@plataforma/contracts";
-import { ApiError, apiFetch, apiUpload } from "@/lib/api-client";
+import { ApiError, apiFetch, apiStream, apiUpload } from "@/lib/api-client";
 import { useAgenteUiStore } from "@/stores/agente-ui-store";
 import { useAgente } from "@/components/agente/use-agente";
 import { Button } from "@/components/ui/button";
@@ -22,6 +25,7 @@ import {
   Eraser,
   ExternalLink,
   HelpCircle,
+  History,
   Minus,
   Paperclip,
   Send,
@@ -151,6 +155,17 @@ export function AgenteFab() {
   const [conversaId, setConversaId] = useState<string | undefined>();
   const [baloes, setBaloes] = useState<Balao[]>([]);
   const [pendencias, setPendencias] = useState<AgentePendencia[]>([]);
+  /**
+   * O passo que o servidor está executando agora, em texto.
+   *
+   * Uma pergunta que encadeia três ferramentas leva dezenas de segundos, e
+   * até aqui a janela dizia só "Consultando..." o tempo todo — o que não
+   * distingue um turno vivo de um turno travado. Chega por evento (ver
+   * `apiStream`) e volta a nulo no fim do turno.
+   */
+  const [progresso, setProgresso] = useState<string | null>(null);
+  /** A lista de conversas anteriores está aberta. */
+  const [historicoAberto, setHistoricoAberto] = useState(false);
   const fim = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
@@ -238,11 +253,37 @@ export function AgenteFab() {
   );
 
   const enviar = useMutation({
-    mutationFn: ({ pergunta, anexoId }: { pergunta: string; anexoId?: string }) =>
-      apiFetch<AgenteResposta>("/agente/conversas/mensagens", {
-        method: "POST",
-        body: { conversaId, texto: pergunta, anexoId },
-      }),
+    mutationFn: async ({
+      pergunta,
+      anexoId,
+    }: {
+      pergunta: string;
+      anexoId?: string;
+    }) => {
+      // Um objeto, e não duas `let`: o TypeScript não acompanha atribuição
+      // feita dentro do callback, e a variável solta continuaria estreitada
+      // para `null` depois do laço.
+      const colhido: { resposta?: AgenteResposta; erro?: string } = {};
+
+      await apiStream<AgenteEvento>(
+        "/agente/conversas/mensagens/stream",
+        { conversaId, texto: pergunta, anexoId },
+        (e) => {
+          if (e.tipo === "ferramenta") setProgresso(e.rotulo);
+          else if (e.tipo === "fim") colhido.resposta = e.resposta;
+          else if (e.tipo === "erro") colhido.erro = e.mensagem;
+        },
+      );
+
+      if (colhido.erro) throw new ApiError(colhido.erro, 0);
+      if (!colhido.resposta) {
+        // Stream fechou sem o "fim": conexão caiu no meio. A pergunta já está
+        // gravada no servidor, mas a resposta não chegou aqui.
+        throw new ApiError("A resposta foi interrompida. Tente de novo.", 0);
+      }
+      return colhido.resposta;
+    },
+    onSettled: () => setProgresso(null),
     onSuccess: (r) => {
       setConversaId(r.conversaId);
       if (r.texto) {
@@ -252,6 +293,9 @@ export function AgenteFab() {
         ]);
       }
       setPendencias(r.pendencias);
+      // A conversa nova (ou a que acabou de receber mensagem) muda a ordem e o
+      // título da lista — sem isto o painel mostraria o estado de antes.
+      void queryClient.invalidateQueries({ queryKey: ["agente-conversas"] });
       // Perguntou e foi cuidar da vida: o ícone avisa que a resposta chegou.
       if (!useAgenteUiStore.getState().aberto) setNovidade(true);
     },
@@ -318,6 +362,8 @@ export function AgenteFab() {
       },
     ]);
     setTexto("");
+    // Perguntar é sair da lista: a resposta vem na conversa, atrás do painel.
+    setHistoricoAberto(false);
     enviar.mutate({ pergunta, anexoId: anexo?.id });
     setAnexo(null);
   };
@@ -352,8 +398,61 @@ export function AgenteFab() {
     setBaloes([]);
     setPendencias([]);
     setTexto("");
+    setHistoricoAberto(false);
     toast.success("Conversa encerrada");
   };
+
+  /**
+   * As conversas anteriores desta pessoa.
+   *
+   * Só busca com o painel aberto: a lista não é o caminho comum — quem abre o
+   * assistente quase sempre vem perguntar algo novo —, e uma consulta em toda
+   * abertura da janela seria paga por todo mundo para servir a poucos.
+   */
+  const { data: conversas } = useQuery({
+    queryKey: ["agente-conversas"],
+    queryFn: () => apiFetch<AgenteConversaResumo[]>("/agente/conversas"),
+    enabled: aberto && historicoAberto,
+  });
+
+  /**
+   * Reabre uma conversa: traz as mensagens gravadas e volta a apontar para ela.
+   *
+   * O `conversaId` é o que faz a próxima pergunta continuar de onde parou, em
+   * vez de abrir outra conversa — sem ele a tela mostraria o histórico e o
+   * modelo não o teria no contexto, que é a pior combinação possível.
+   *
+   * Pendências não são remontadas de propósito: uma ação preparada ontem e não
+   * confirmada não deve reaparecer como um botão "Confirmar" no meio de uma
+   * conversa retomada, fora do assunto que a originou.
+   */
+  const abrirConversa = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<AgenteConversa>(`/agente/conversas/${id}`),
+    onSuccess: (c) => {
+      setConversaId(c.id);
+      setPendencias([]);
+      setBaloes(
+        c.mensagens
+          // Só o que foi dito. As linhas de ferramenta são registro de
+          // auditoria — o que elas devolveram já está redigido na resposta ao
+          // lado, e mostrá-las aqui seria repetir em JSON o que a prosa diz.
+          .filter(
+            (m) =>
+              (m.papel === "usuario" || m.papel === "assistente") && m.conteudo,
+          )
+          .map((m) => ({
+            papel: m.papel as "usuario" | "assistente",
+            texto: m.conteudo as string,
+          })),
+      );
+      setHistoricoAberto(false);
+    },
+    onError: (err) =>
+      toast.error(
+        err instanceof ApiError ? err.message : "Não consegui abrir a conversa",
+      ),
+  });
 
   if (!disponivel || !aberto || !geometria) return null;
 
@@ -397,6 +496,18 @@ export function AgenteFab() {
           type="button"
           variant="ghost"
           size="icon"
+          className={`size-7${historicoAberto ? " bg-muted" : ""}`}
+          title="Conversas anteriores"
+          aria-label="Conversas anteriores"
+          aria-pressed={historicoAberto}
+          onClick={() => setHistoricoAberto((v) => !v)}
+        >
+          <History className="size-4" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
           className="size-7"
           title="Encerrar e limpar a conversa"
           aria-label="Encerrar e limpar a conversa"
@@ -433,7 +544,50 @@ export function AgenteFab() {
         </Button>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
+      {/* A lista cobre a conversa em vez de dividir a janela: ela já é
+          estreita, e partir a altura em duas deixaria as duas ilegíveis.
+          Escolher uma conversa fecha o painel e devolve a leitura inteira. */}
+      {historicoAberto && (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
+          {!conversas && (
+            <p className="p-2 text-sm text-muted-foreground">Carregando…</p>
+          )}
+          {conversas?.length === 0 && (
+            <p className="p-2 text-sm text-muted-foreground">
+              Nenhuma conversa anterior ainda.
+            </p>
+          )}
+          {conversas?.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              disabled={abrirConversa.isPending}
+              onClick={() => abrirConversa.mutate(c.id)}
+              className={`flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left hover:bg-muted disabled:opacity-50${
+                c.id === conversaId ? " bg-muted" : ""
+              }`}
+            >
+              {/* O título é a primeira pergunta cortada — é o que a pessoa
+                  reconhece, muito mais do que uma data sozinha. */}
+              <span className="line-clamp-2 text-sm">
+                {c.titulo || "Conversa sem título"}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {new Date(c.updatedAt).toLocaleString("pt-BR", {
+                  dateStyle: "short",
+                  timeStyle: "short",
+                })}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div
+        className={`min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4${
+          historicoAberto ? " hidden" : ""
+        }`}
+      >
         {/* Conversa nova abre com a saudação da empresa, como um balão do
             próprio agente — a tela em branco não diz o que dá para pedir.
             Volta a aparecer depois de encerrar a conversa. */}
@@ -501,8 +655,12 @@ export function AgenteFab() {
         ))}
 
         {enviar.isPending && (
-          <div className="mr-auto rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
-            Consultando...
+          <div className="mr-auto flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+            <span className="size-1.5 animate-pulse rounded-full bg-current" />
+            {/* O rótulo do passo, quando o servidor já contou qual é. Até a
+                primeira ferramenta responder, o modelo ainda está lendo a
+                pergunta — e aí "Pensando" é a verdade. */}
+            {progresso ?? "Pensando"}…
           </div>
         )}
 

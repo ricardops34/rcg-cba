@@ -223,6 +223,58 @@ fantasia por `?empresa=<alias>`).
 que parece defeito. O `bannerAtivo` liga a exibição, mas quem decide se há o que
 exibir é o `bannerImagemUrl`.
 
+## Quem enxerga qual conversa de WhatsApp
+
+Descrito em 2026-09-19 a partir de `WhatsappConversasService.filtroSessao` —
+até aqui a regra vivia só no comentário do código.
+
+A lista da tela de Atendimento (`/comercial/atendimento`) tem **duas origens**, e
+elas não se somam por acaso:
+
+| Origem | De quem é a conversa | O que recorta |
+|---|---|---|
+| Aparelho do vendedor | de quem é dono da sessão | o escopo de leitura: a própria, ou a do time |
+| Número institucional | a sessão **não tem dono** | a quem a IA direcionou |
+
+Para a diferença entre os dois números e os catálogos de IA de cada um, ver
+[o mapa das ferramentas](ferramentas/README.md) — aqui a pergunta é só quem vê.
+
+### Conversa em triagem não é de ninguém
+
+Enquanto o atendimento está em `bot`, a conversa do institucional **não aparece
+para vendedor nenhum**, e o sino não toca. É o que impede o número geral de
+encher a caixa de todo mundo com "oi" de desconhecido.
+
+Ela entra na lista quando a IA direciona (`aguardando`), e aí sim o sino toca —
+para quem a IA escolheu, e só.
+
+### A fila sem dono
+
+Direcionada **sem vendedor escolhido** — o cliente não soube dizer com quem fala,
+ou o assunto é administrativo — a conversa aparece para **todos que atendem**, e
+o primeiro que assumir leva.
+
+Isso também cobre o caso de erro: se o modelo informar um `vendedorId` inventado
+ou de outra empresa, a validação derruba para `null` e a conversa cai nessa fila.
+**Conversa entregue a ninguém é pior do que conversa na fila** — na fila alguém
+pega; entregue a um id inexistente, ela some.
+
+### Atender não muda o canal
+
+O vendedor responde de dentro da plataforma, e a resposta sai **pelo número
+institucional**. Para o cliente, quem fala com ele continua sendo a empresa — a
+conversa nunca migra para o WhatsApp pessoal do vendedor. Ver
+[Direcionar não é transferir](ferramentas/whatsapp-cliente.md).
+
+### O que o assistente interno alcança é menos
+
+Supervisor e gerente enxergam a equipe **nesta tela**, pelo escopo de leitura.
+Pelo agente de IA, não: ele usa `mensagensDaPropriaConexao`, e cada um lê só a
+própria conexão.
+
+A distinção é deliberada (2026-08-25): **monitorar é olhar o que está gravado;
+perguntar ao assistente manda o texto para fora.**
+
 ## Custo de compra não é para a equipe de venda
 
 Decidido em 2026-09-08, quando entraram as notas de entrada.

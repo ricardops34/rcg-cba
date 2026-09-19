@@ -3,9 +3,11 @@ import {
   Body,
   Controller,
   Get,
+  HttpException,
   Param,
   Post,
   Put,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -18,6 +20,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { agenteAnexoUploadOptions } from '../../common/uploads/uploads.config';
 import { Throttle } from '@nestjs/throttler';
@@ -26,6 +29,7 @@ import {
   AGENTE_CONFIG_EXAMPLE,
   AGENTE_FERRAMENTA_EXAMPLE,
   AGENTE_RESPOSTA_EXAMPLE,
+  type AgenteEvento,
 } from '@plataforma/contracts';
 import { AgenteConfigService } from './agente-config.service';
 import { AgenteChatService } from './agente-chat.service';
@@ -49,6 +53,23 @@ import {
   CurrentUser,
   type AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
+/**
+ * A mensagem que o usuário vai ler quando o turno falha no meio do stream.
+ *
+ * Erro de negócio do Nest (404, 403, 409) já carrega um texto escrito para
+ * gente; o resto não, e vazar `erro.message` cru mostraria stack e detalhe de
+ * infraestrutura na janela do assistente.
+ */
+function mensagemDeErro(erro: unknown): string {
+  if (erro instanceof HttpException) {
+    const corpo = erro.getResponse();
+    if (typeof corpo === 'string') return corpo;
+    const msg = (corpo as { message?: unknown }).message;
+    if (typeof msg === 'string') return msg;
+    if (Array.isArray(msg) && typeof msg[0] === 'string') return msg[0];
+  }
+  return 'Não consegui concluir a resposta. Tente de novo em instantes.';
+}
 
 @ApiTags('agente')
 @ApiBearerAuth()
@@ -207,6 +228,21 @@ export class AgenteController {
   @Get('ferramentas/termos')
   termosPrompt(@CurrentUser() user: AuthenticatedUser) {
     return this.ferramentas.situacaoTermos(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Restaurar os textos padrão de TODAS as ferramentas',
+    description:
+      'Apaga de uma vez nome, descrição e comportamento reescritos em todas as ferramentas, ' +
+      'e cada uma volta a **seguir** o texto do código. Não mexe em ligado/desligado, em ' +
+      'perfis nem na versão escolhida: isto restaura texto. Só as que tinham reescrita são ' +
+      'tocadas, e cada campo revertido entra na trilha de auditoria. ' +
+      'Requer agente-config.editar.',
+  })
+  @RequirePermission('agente-config', 'editar')
+  @Post('ferramentas/restaurar-todos')
+  restaurarTodasFerramentas(@CurrentUser() user: AuthenticatedUser) {
+    return this.ferramentas.restaurarTodosPadrao(user.empresaAtivaId, user);
   }
 
   @ApiOperation({
@@ -376,6 +412,53 @@ export class AgenteController {
   @Post('conversas/mensagens')
   enviar(@Body() dto: AgenteEnvioDto, @CurrentUser() user: AuthenticatedUser) {
     return this.chat.enviar(user.empresaAtivaId, user, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Enviar mensagem ao agente, com progresso em tempo real',
+    description:
+      'Mesmo laço do envio comum, mas em `text/event-stream`: cada passo sai como um evento ' +
+      '`{ tipo: "ferramenta", nome, rotulo }` **antes** de o passo acontecer, e o turno fecha ' +
+      'com `{ tipo: "fim", resposta }` — o mesmo payload do POST normal. Falha depois do ' +
+      'primeiro byte vira `{ tipo: "erro", mensagem }`, porque a essa altura não há mais ' +
+      'status HTTP para dar. Requer agente.visualizar.',
+  })
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @RequirePermission('agente', 'visualizar')
+  @Post('conversas/mensagens/stream')
+  async enviarComProgresso(
+    @Body() dto: AgenteEnvioDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() res: Response,
+  ) {
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    // Sem isto o Nginx segura tudo e entrega de uma vez no fim, que é
+    // exatamente o comportamento que este endpoint existe para evitar.
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    const evento = (e: AgenteEvento) => {
+      res.write(`data: ${JSON.stringify(e)}\n\n`);
+    };
+
+    try {
+      const resposta = await this.chat.enviar(
+        user.empresaAtivaId,
+        user,
+        dto,
+        evento,
+      );
+      evento({ tipo: 'fim', resposta });
+    } catch (erro) {
+      // O cabeçalho já foi enviado, então não há como devolver 400/500: o erro
+      // vira evento. Um stream que morre calado deixa a tela girando para
+      // sempre, que é pior do que a mensagem de falha.
+      evento({ tipo: 'erro', mensagem: mensagemDeErro(erro) });
+    } finally {
+      res.end();
+    }
   }
 
   @ApiOperation({
