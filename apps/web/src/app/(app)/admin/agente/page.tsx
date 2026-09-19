@@ -594,28 +594,54 @@ function ProvedorTab({
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor={`modelo-${provedor}`}>Modelo</FieldLabel>
-            <Input
-              id={`modelo-${provedor}`}
-              list={`modelos-${provedor}`}
-              disabled={!emUso}
-              value={emUso ? form.modelo : (credencial?.modelo ?? info.modeloPadrao)}
-              onChange={(e) => setForm((f) => ({ ...f, modelo: e.target.value }))}
-            />
-            <datalist id={`modelos-${provedor}`}>
-              {/* O Codex não expõe endpoint de modelos: a lista dele vem fixa
-                  dos contratos, conferida contra o backend. */}
-              {(modelos.length && emUso ? modelos : (info.modelos ?? [])).map(
-                (m) => (
-                  <option key={m} value={m} />
-                ),
-              )}
-            </datalist>
+            {emUso && (modelos.length > 0 || (info.modelos && info.modelos.length > 0)) ? (
+              <select
+                id={`modelo-${provedor}`}
+                disabled={!emUso}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-100"
+                value={form.modelo}
+                onChange={(e) => setForm((f) => ({ ...f, modelo: e.target.value }))}
+              >
+                {(() => {
+                  const opcoes = Array.from(
+                    new Set([
+                      ...(form.modelo ? [form.modelo] : []),
+                      ...(modelos.length ? modelos : (info.modelos ?? [])),
+                    ]),
+                  );
+                  return opcoes.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ));
+                })()}
+              </select>
+            ) : (
+              <>
+                <Input
+                  id={`modelo-${provedor}`}
+                  list={`modelos-${provedor}`}
+                  disabled={!emUso}
+                  value={emUso ? form.modelo : (credencial?.modelo ?? info.modeloPadrao)}
+                  onChange={(e) => setForm((f) => ({ ...f, modelo: e.target.value }))}
+                />
+                <datalist id={`modelos-${provedor}`}>
+                  {(modelos.length && emUso ? modelos : (info.modelos ?? [])).map(
+                    (m) => (
+                      <option key={m} value={m} />
+                    ),
+                  )}
+                </datalist>
+              </>
+            )}
             <FieldDescription>
               {!emUso
                 ? "Disponível quando este for o provedor em uso."
                 : info.modelos
-                  ? "Estes são os modelos que a assinatura ChatGPT aceita neste endpoint — os nomes da API pública (gpt-5, o4-mini…) são recusados aqui."
-                  : 'Use "Testar conexão" para listar os modelos que a sua conta realmente tem.'}
+                  ? "Estes são os modelos que a assinatura ChatGPT aceita neste endpoint."
+                  : modelos.length > 0
+                    ? `${modelos.length} modelo(s) detectado(s) no servidor Ollama/Docker.`
+                    : 'Clique em "Testar conexão" abaixo para carregar a lista de modelos disponíveis no Docker.'}
             </FieldDescription>
           </Field>
 

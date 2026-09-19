@@ -77,8 +77,25 @@ services:
       replicas: 1
       resources:
         limits:
-          # Teto para o Ollama não competir por memória com a API na mesma VPS.
-          memory: 2G
+          # Teto para o Ollama suportar embeddings + modelo leve de chat.
+          memory: 4G
+
+  # Baixa os modelos automaticamente na subida. Sai depois de terminar.
+  ollama-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      - ollama
+    networks:
+      network_public:
+        aliases:
+          - rcgcba-ollama-pull
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["sh", "-c", "ollama pull nomic-embed-text && ollama pull llama3.2:1b"]
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
 
 volumes:
   ollama_models:
