@@ -163,6 +163,7 @@ model Empresa {
   whatsappAcoes              WhatsappAcaoRegistro[]
   whatsappVinculos           WhatsappVinculoFuncionario[]
   whatsappTemplates          WhatsappTemplate[]
+  whatsappRespostasRapidas   WhatsappRespostaRapida[]
   leads                      Lead[]
   whatsappRecados            WhatsappRecadoInterno[]
   whatsappRecadoDestinos     WhatsappRecadoDestinatario[]
@@ -4136,6 +4137,31 @@ model WhatsappTemplate {
 
   @@unique([empresaId, metaId])
   @@map("whatsapp_templates")
+}
+
+/**
+ * Respostas rápidas / atalhos (/pix, /horario, /catalogo) cadastrados para uso
+ * no chat de atendimento por WhatsApp.
+ */
+model WhatsappRespostaRapida {
+  id        String @id @default(uuid())
+  empresaId String
+
+  /// O comando do atalho sem a barra (ex: "pix", "catalogo", "segundavia").
+  atalho String
+  titulo String
+  /// O texto completo da mensagem. Pode incluir variáveis como {nome_cliente}.
+  conteudo String @db.Text
+
+  criadoPor String?
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@unique([empresaId, atalho])
+  @@index([empresaId])
+  @@map("whatsapp_respostas_rapidas")
 }
 
 /**

@@ -12,8 +12,13 @@ import {
   Plus,
   Send,
   Square,
+  Sparkles,
+  Zap,
+  Loader2,
   X,
 } from "lucide-react";
+import { RespostasRapidasPopover } from "@/components/whatsapp/respostas-rapidas-popover";
+import { RespostasRapidasDialog } from "@/components/whatsapp/respostas-rapidas-dialog";
 import {
   WHATSAPP_ARQUIVO_MAX_BYTES,
   type WhatsappMensagem,
@@ -74,8 +79,22 @@ export function Composer({
   // conversa — não há como saber de antemão sem tentar.
   const [janelaFechada, setJanelaFechada] = useState(false);
   const [templateAberto, setTemplateAberto] = useState(false);
+  const [gerenciadorRespostasAberto, setGerenciadorRespostasAberto] = useState(false);
   const arquivoRef = useRef<HTMLInputElement>(null);
   const midiaRef = useRef<HTMLInputElement>(null);
+
+  const sugerirResposta = useMutation({
+    mutationFn: () =>
+      apiFetch<{ sugestao: string }>(`/whatsapp/conversas/${conversaId}/sugerir-resposta`, {
+        method: "POST",
+      }),
+    onSuccess: (data) => {
+      setTexto(data.sugestao);
+      toast.success("Sugestão de resposta gerada com sucesso pela IA!");
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Falha ao gerar sugestão com IA"),
+  });
 
   // Ajuste de estado durante a renderização (não em efeito): troca de
   // conversa é uma mudança de identidade, não um evento a sincronizar depois.
@@ -218,6 +237,10 @@ export function Composer({
               <ImageIcon className="size-4" />
               Fotos e vídeos
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setGerenciadorRespostasAberto(true)}>
+              <Zap className="size-4 text-amber-500" />
+              Respostas rápidas (/atalhos)
+            </DropdownMenuItem>
             <DropdownMenuItem
               // Agendar leva o texto já digitado: quem escreveu e percebeu que
               // é melhor mandar amanhã não deve ter que reescrever.
@@ -251,14 +274,39 @@ export function Composer({
           }}
         />
 
-        <Input
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          placeholder={
-            gravacao.gravando ? "Gravando áudio…" : "Escreva a mensagem"
-          }
-          disabled={gravacao.gravando || ocupado}
-        />
+        <div className="relative flex-1">
+          {texto.startsWith("/") ? (
+            <RespostasRapidasPopover
+              filtro={texto.slice(1)}
+              onSelecionar={(conteudo) => setTexto(conteudo)}
+              onAbrirGerenciador={() => setGerenciadorRespostasAberto(true)}
+            />
+          ) : null}
+          <Input
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            placeholder={
+              gravacao.gravando ? "Gravando áudio…" : "Escreva uma mensagem ou digite / para atalhos"
+            }
+            disabled={gravacao.gravando || ocupado}
+          />
+        </div>
+
+        <Button
+          type="button"
+          size="icon"
+          variant="outline"
+          disabled={ocupado || sugerirResposta.isPending}
+          onClick={() => sugerirResposta.mutate()}
+          title="Sugerir resposta com IA (Copilot)"
+          className="text-amber-600 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
+        >
+          {sugerirResposta.isPending ? (
+            <Loader2 className="size-4 animate-spin text-amber-500" />
+          ) : (
+            <Sparkles className="size-4" />
+          )}
+        </Button>
 
         {gravacao.gravando ? (
           <>
@@ -313,6 +361,11 @@ export function Composer({
           Enviando arquivo…
         </p>
       ) : null}
+
+      <RespostasRapidasDialog
+        aberto={gerenciadorRespostasAberto}
+        onOpenChange={setGerenciadorRespostasAberto}
+      />
 
       <AgendarMensagemDialog
         conversaId={conversaId}
