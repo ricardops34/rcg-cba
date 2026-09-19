@@ -31,13 +31,27 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Settings2, Trash2 } from "lucide-react";
+import {
+  AlertOctagon,
+  Settings2,
+  Trash2,
+  Clock,
+  Calendar,
+  Boxes,
+  Server,
+  Globe,
+  Building2,
+  Search,
+  Copy,
+  Check,
+  Code2,
+} from "lucide-react";
 import { PlataformaGuard } from "../plataforma-guard";
 
 const ORIGENS = [
-  ["", "Todas"],
-  ["servidor", "Servidor"],
-  ["cliente", "Navegador"],
+  ["", "Todas", Boxes],
+  ["servidor", "Servidor", Server],
+  ["cliente", "Navegador", Globe],
 ] as const;
 
 const formatarDataHora = (iso: string) =>
@@ -51,28 +65,44 @@ const formatarDataHora = (iso: string) =>
 
 /**
  * O status como cor. `null` é o caso que importa e não existe em log de
- * servidor: a requisição não recebeu resposta — foi por isso que a captura no
- * navegador entrou no escopo.
+ * servidor: a requisição não recebeu resposta.
  */
 function StatusBadge({ status }: { status: number | null }) {
   if (status === null) {
     return (
-      <Badge variant="outline" className="border-amber-500/50 text-amber-600">
+      <Badge variant="outline" className="border-amber-500/50 text-amber-600 dark:text-amber-400">
         sem resposta
       </Badge>
     );
   }
   return (
-    <Badge variant={status >= 500 ? "destructive" : "outline"}>{status}</Badge>
+    <Badge variant={status >= 500 ? "destructive" : "outline"} className="font-mono">
+      {status}
+    </Badge>
   );
 }
 
-function Cartao({ rotulo, valor }: { rotulo: string; valor: number | string }) {
+function Cartao({
+  rotulo,
+  valor,
+  icon: Icon,
+  colorClass,
+}: {
+  rotulo: string;
+  valor: number | string;
+  icon: any;
+  colorClass?: string;
+}) {
   return (
-    <Card className="flex-1">
-      <CardContent className="px-4 py-3">
-        <p className="text-xs text-muted-foreground">{rotulo}</p>
-        <p className="text-xl font-semibold tabular-nums">{valor}</p>
+    <Card className="flex-1 min-w-36 shadow-xs border-border/60">
+      <CardContent className="px-4 py-3 flex items-center justify-between">
+        <div>
+          <p className="text-xs text-muted-foreground">{rotulo}</p>
+          <p className="text-xl font-bold tracking-tight mt-0.5 tabular-nums">{valor}</p>
+        </div>
+        <div className={`flex size-8 items-center justify-center rounded-lg ${colorClass || "bg-primary/10 text-primary"}`}>
+          <Icon className="size-4" />
+        </div>
       </CardContent>
     </Card>
   );
@@ -86,6 +116,8 @@ function DetalheGrupo({
   grupo: ErroLogGrupo | null;
   onClose: () => void;
 }) {
+  const [copiado, setCopiado] = useState(false);
+
   const { data, isLoading } = useQuery({
     queryKey: ["plataforma/erros/ocorrencias", grupo?.assinatura],
     queryFn: () =>
@@ -95,12 +127,22 @@ function DetalheGrupo({
     enabled: !!grupo,
   });
 
+  const copiarStack = (stack: string) => {
+    navigator.clipboard.writeText(stack);
+    setCopiado(true);
+    toast.success("Stack trace copiado!");
+    setTimeout(() => setCopiado(false), 2000);
+  };
+
   return (
     <Dialog open={!!grupo} onOpenChange={(aberto) => !aberto && onClose()}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle className="text-base">{grupo?.resumo}</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-base flex items-center gap-2">
+            <AlertOctagon className="size-4 text-destructive" />
+            {grupo?.resumo}
+          </DialogTitle>
+          <DialogDescription className="font-mono text-xs">
             {grupo?.metodo ? `${grupo.metodo} ` : ""}
             {grupo?.rotaPadrao} — {grupo?.ocorrencias} ocorrência(s) em{" "}
             {grupo?.linhas} registro(s)
@@ -108,34 +150,52 @@ function DetalheGrupo({
         </DialogHeader>
 
         {isLoading && (
-          <p className="text-sm text-muted-foreground">Carregando…</p>
+          <p className="text-sm text-muted-foreground text-center py-4">Carregando ocorrências…</p>
         )}
 
         <div className="space-y-3">
           {data?.data.map((o) => (
-            <div key={o.id} className="rounded-md border p-3 text-sm">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{formatarDataHora(o.ultimaEm)}</span>
-                {o.ocorrencias > 1 && (
-                  <Badge variant="secondary">×{o.ocorrencias}</Badge>
-                )}
-                <StatusBadge status={o.status} />
-                <span className="text-muted-foreground">{o.rota}</span>
+            <div key={o.id} className="rounded-lg border bg-card p-3 text-sm space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-medium">{formatarDataHora(o.ultimaEm)}</span>
+                  {o.ocorrencias > 1 && (
+                    <Badge variant="secondary" className="text-[10px]">×{o.ocorrencias}</Badge>
+                  )}
+                  <StatusBadge status={o.status} />
+                </div>
+                <span className="text-xs font-mono text-muted-foreground">{o.rota}</span>
               </div>
 
-              <p className="mt-2">{o.mensagem}</p>
+              <p className="font-medium text-foreground">{o.mensagem}</p>
 
-              <p className="mt-2 text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {o.empresaRazaoSocial ?? "sem empresa"}
                 {o.usuarioEmail ? ` · ${o.usuarioEmail}` : ""}
                 {o.pagina ? ` · tela ${o.pagina}` : ""}
-                {o.ip ? ` · ${o.ip}` : ""}
+                {o.ip ? ` · IP: ${o.ip}` : ""}
               </p>
 
               {o.stack && (
-                <pre className="mt-2 max-h-56 overflow-auto rounded bg-muted p-2 text-[11px] leading-relaxed whitespace-pre-wrap">
-                  {o.stack}
-                </pre>
+                <div className="relative group mt-2">
+                  <div className="flex items-center justify-between rounded-t bg-muted/80 px-3 py-1 text-[11px] text-muted-foreground font-mono">
+                    <span className="flex items-center gap-1">
+                      <Code2 className="size-3" /> Stack Trace
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-[10px] gap-1"
+                      onClick={() => copiarStack(o.stack!)}
+                    >
+                      {copiado ? <Check className="size-3 text-emerald-500" /> : <Copy className="size-3" />}
+                      {copiado ? "Copiado" : "Copiar"}
+                    </Button>
+                  </div>
+                  <pre className="max-h-56 overflow-auto rounded-b bg-muted/40 p-2.5 text-[11px] leading-relaxed font-mono whitespace-pre-wrap border-t border-border/40">
+                    {o.stack}
+                  </pre>
+                </div>
               )}
             </div>
           ))}
@@ -146,8 +206,7 @@ function DetalheGrupo({
 }
 
 /**
- * Governança do log. Fica recolhida: é ajuste raro, e o interruptor de 4xx
- * em especial é para ligar durante uma investigação e desligar depois.
+ * Governança do log. Fica recolhida: é ajuste raro.
  */
 function PainelConfig() {
   const queryClient = useQueryClient();
@@ -176,7 +235,7 @@ function PainelConfig() {
   if (!data) return null;
 
   return (
-    <Card>
+    <Card className="shadow-xs border-border/60 bg-muted/30">
       <CardContent className="flex flex-wrap items-end gap-6 px-4 py-4">
         <div className="space-y-1.5">
           <Label htmlFor="retencao">Retenção (dias)</Label>
@@ -225,16 +284,16 @@ function PainelConfig() {
             />
           </div>
           <p className="max-w-64 text-xs text-muted-foreground">
-            Erro de preenchimento entra junto. Ligue para investigar, desligue
-            depois.
+            Erros de validação entram junto quando ativado.
           </p>
         </div>
 
         <Button
           onClick={() => salvar.mutate(rascunho)}
           disabled={Object.keys(rascunho).length === 0 || salvar.isPending}
+          className="shadow-xs"
         >
-          Salvar
+          Salvar governança
         </Button>
       </CardContent>
     </Card>
@@ -275,7 +334,7 @@ export default function PlataformaErrosPage() {
       apiFetch(`/plataforma/erros/${assinatura}`, { method: "DELETE" }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["plataforma/erros"] });
-      toast.success("Grupo removido. Se voltar a acontecer, aparece de novo.");
+      toast.success("Grupo de erro removido.");
     },
     onError: (erro: Error) => toast.error(erro.message),
   });
@@ -285,7 +344,7 @@ export default function PlataformaErrosPage() {
       header: "Última",
       className: "w-32",
       cell: (g) => (
-        <span className="text-sm whitespace-nowrap">
+        <span className="text-xs font-mono text-muted-foreground whitespace-nowrap">
           {formatarDataHora(g.ultimaEm)}
         </span>
       ),
@@ -294,7 +353,8 @@ export default function PlataformaErrosPage() {
       header: "Origem",
       className: "w-28",
       cell: (g) => (
-        <Badge variant={g.origem === "cliente" ? "secondary" : "outline"}>
+        <Badge variant={g.origem === "cliente" ? "secondary" : "outline"} className="gap-1 text-[11px]">
+          {g.origem === "cliente" ? <Globe className="size-3" /> : <Server className="size-3" />}
           {ERRO_ORIGEM_LABEL[g.origem]}
         </Badge>
       ),
@@ -303,7 +363,7 @@ export default function PlataformaErrosPage() {
       header: "Tipo",
       className: "w-32",
       cell: (g) => (
-        <span className="text-sm text-muted-foreground">
+        <span className="text-xs text-muted-foreground font-mono">
           {ERRO_TIPO_LABEL[g.tipo]}
         </span>
       ),
@@ -312,7 +372,7 @@ export default function PlataformaErrosPage() {
     {
       header: "Rota",
       cell: (g) => (
-        <span className="font-mono text-xs">
+        <span className="font-mono text-xs text-primary font-medium">
           {g.metodo ? `${g.metodo} ` : ""}
           {g.rotaPadrao}
         </span>
@@ -320,13 +380,13 @@ export default function PlataformaErrosPage() {
     },
     {
       header: "Mensagem",
-      cell: (g) => <span className="text-sm">{g.resumo}</span>,
+      cell: (g) => <span className="text-xs font-medium text-foreground">{g.resumo}</span>,
     },
     {
       header: "Vezes",
       className: "w-20 text-right",
       cell: (g) => (
-        <span className="tabular-nums">{g.ocorrencias}</span>
+        <span className="tabular-nums font-bold text-xs">{g.ocorrencias}</span>
       ),
     },
     {
@@ -343,7 +403,7 @@ export default function PlataformaErrosPage() {
             remover.mutate(g.assinatura);
           }}
         >
-          <Trash2 className="size-4" />
+          <Trash2 className="size-4 hover:text-destructive" />
         </Button>
       ),
     },
@@ -351,23 +411,32 @@ export default function PlataformaErrosPage() {
 
   return (
     <PlataformaGuard>
-      <div className="space-y-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-lg font-semibold">Erros</h1>
-            <p className="text-sm text-muted-foreground">
-              O que falhou, agrupado por rota e mensagem. Inclui o que o
-              navegador viu e a API nunca soube — rede fora, resposta inválida,
-              erro de JavaScript.
-            </p>
+      <div className="space-y-6">
+        {/* Superior Header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-destructive/10 text-destructive shadow-xs">
+              <AlertOctagon className="size-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold tracking-tight">Erros e Exceções do Sistema</h1>
+                <Badge variant="outline" className="text-xs">Error Tracking</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Captura e agrupamento automático de falhas do servidor, erros de navegação e exceções.
+              </p>
+            </div>
           </div>
+
           <Button
             variant="outline"
             size="sm"
             onClick={() => setMostrarConfig((v) => !v)}
+            className="gap-2 shadow-xs"
           >
             <Settings2 className="size-4" />
-            Governança
+            Governança de Logs
           </Button>
         </div>
 
@@ -375,18 +444,18 @@ export default function PlataformaErrosPage() {
 
         {resumo && (
           <div className="flex flex-wrap gap-3">
-            <Cartao rotulo="Últimas 24h" valor={resumo.ultimas24h} />
-            <Cartao rotulo="Últimos 7 dias" valor={resumo.ultimos7Dias} />
-            <Cartao rotulo="Grupos distintos" valor={resumo.gruposDistintos} />
-            <Cartao rotulo="Servidor" valor={resumo.doServidor} />
-            <Cartao rotulo="Navegador" valor={resumo.doCliente} />
-            <Cartao rotulo="Empresas afetadas" valor={resumo.empresasAfetadas} />
+            <Cartao rotulo="Últimas 24h" valor={resumo.ultimas24h} icon={Clock} colorClass="bg-rose-500/10 text-rose-500" />
+            <Cartao rotulo="Últimos 7 dias" valor={resumo.ultimos7Dias} icon={Calendar} colorClass="bg-amber-500/10 text-amber-500" />
+            <Cartao rotulo="Grupos distintos" valor={resumo.gruposDistintos} icon={Boxes} colorClass="bg-primary/10 text-primary" />
+            <Cartao rotulo="Servidor" valor={resumo.doServidor} icon={Server} colorClass="bg-blue-500/10 text-blue-500" />
+            <Cartao rotulo="Navegador" valor={resumo.doCliente} icon={Globe} colorClass="bg-purple-500/10 text-purple-500" />
+            <Cartao rotulo="Empresas Afetadas" valor={resumo.empresasAfetadas} icon={Building2} colorClass="bg-emerald-500/10 text-emerald-500" />
           </div>
         )}
 
         <div className="flex flex-wrap items-center gap-3">
           <QuickFilterGroup>
-            {ORIGENS.map(([valor, rotulo]) => (
+            {ORIGENS.map(([valor, rotulo, Icone]) => (
               <QuickFilterButton
                 key={valor || "todas"}
                 active={origem === valor}
@@ -394,21 +463,26 @@ export default function PlataformaErrosPage() {
                   setOrigem(valor);
                   setPage(1);
                 }}
+                className="gap-1.5"
               >
+                <Icone className="size-3.5" />
                 {rotulo}
               </QuickFilterButton>
             ))}
           </QuickFilterGroup>
 
-          <Input
-            placeholder="Buscar por rota ou mensagem"
-            className="w-72"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-          />
+          <div className="relative flex-1 min-w-64 max-w-sm">
+            <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por rota ou mensagem..."
+              className="pl-8"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+            />
+          </div>
         </div>
 
         <EntityTable
@@ -418,7 +492,7 @@ export default function PlataformaErrosPage() {
           isLoading={isLoading}
           error={error}
           onRowClick={(g) => setAberto(g)}
-          emptyMessage="Nenhum erro no período. Sem notícia é boa notícia."
+          emptyMessage="Nenhum erro registrado no período."
           page={data?.page ?? page}
           pageSize={data?.pageSize ?? pageSize}
           total={data?.total ?? 0}
@@ -435,3 +509,4 @@ export default function PlataformaErrosPage() {
     </PlataformaGuard>
   );
 }
+

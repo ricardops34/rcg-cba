@@ -23,7 +23,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft } from "lucide-react";
+import {
+  ArrowLeft,
+  Building2,
+  Building,
+  Search,
+  ShieldCheck,
+  UserCheck,
+  MapPin,
+} from "lucide-react";
 import { PlataformaGuard } from "../../plataforma-guard";
 import { dataEmDias, paraIsoFimDoDia } from "@/lib/data-avaliacao";
 
@@ -104,8 +112,6 @@ export default function NovaEmpresaPage() {
         );
         if (cancelado) return;
         setContaExistente(r.existe);
-        // Preenche o nome só para exibição; o servidor ignora nome de conta
-        // que já existe.
         if (r.existe && r.nome) setAdminNome(r.nome);
       } catch {
         if (!cancelado) setContaExistente(null);
@@ -123,7 +129,6 @@ export default function NovaEmpresaPage() {
     nomeFantasia.trim().length >= 2 &&
     cnpjValido &&
     emailValido &&
-    // Conta que já existe dispensa nome e senha — é vinculada, não criada.
     (contaExistente === true ||
       (adminNome.trim().length >= 2 && adminSenha.length >= 8));
 
@@ -196,8 +201,6 @@ export default function NovaEmpresaPage() {
             limiteUsuarios.trim() === "" ? null : Number(limiteUsuarios),
           admin: {
             email: adminEmail.trim().toLowerCase(),
-            // Conta que ja existe e vinculada: mandar nome e senha aqui daria a
-            // entender que a conta dela seria alterada, e o servidor ignora.
             ...(contaExistente
               ? {}
               : { nome: adminNome.trim(), senha: adminSenha }),
@@ -223,28 +226,37 @@ export default function NovaEmpresaPage() {
 
   return (
     <PlataformaGuard>
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
           <Button
-            variant="ghost"
+            variant="outline"
             size="icon"
             onClick={() => router.push("/plataforma/empresas")}
+            className="size-9 shadow-xs"
           >
             <ArrowLeft className="size-4" />
           </Button>
-          <h1 className="text-lg font-semibold">Nova empresa</h1>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight">Nova Empresa Tenant</h1>
+            <p className="text-xs text-muted-foreground">
+              Cadastre uma nova empresa cliente na plataforma SaaS com usuário administrador inicial.
+            </p>
+          </div>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Empresa</CardTitle>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className="shadow-xs border-border/60">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Building2 className="size-4 text-primary" /> Cadastro da Empresa
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="nomeFantasia">Nome fantasia</Label>
                 <Input
                   id="nomeFantasia"
+                  placeholder="ex.: Cuiabá Distribuidora"
                   value={nomeFantasia}
                   onChange={(e) => {
                     setNomeFantasia(e.target.value);
@@ -257,49 +269,79 @@ export default function NovaEmpresaPage() {
                 <Label htmlFor="razaoSocial">Razão social</Label>
                 <Input
                   id="razaoSocial"
+                  placeholder="ex.: Cuiabá Distribuidora de Bebidas Ltda"
                   value={razaoSocial}
                   onChange={(e) => setRazaoSocial(e.target.value)}
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="tipoPessoa">Tipo de pessoa</Label>
-                <select id="tipoPessoa" className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={tipoPessoa}
-                  onChange={(e) => { setTipoPessoa(e.target.value as "fisica" | "juridica"); setCnpj(""); cnpjAtual.current = ""; }}>
-                  <option value="juridica">Pessoa Jurídica</option>
-                  <option value="fisica">Pessoa Física</option>
-                </select>
-                <Label htmlFor="cnpj">{tipoPessoa === "fisica" ? "CPF" : "CNPJ"}</Label>
-                <Input
-                  id="cnpj"
-                  inputMode="numeric"
-                  placeholder="somente números"
-                  value={cnpj}
-                  onChange={(e) => {
-                    const valor = somenteDigitos(e.target.value).slice(0, tipoPessoa === "fisica" ? 11 : 14);
-                    cnpjAtual.current = valor;
-                    setCnpj(valor);
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={consultarCnpj}
-                  disabled={tipoPessoa !== "juridica" || !cnpjValido || consultandoCnpj || salvando}
-                >
-                  {consultandoCnpj ? "Consultando..." : "Consultar CNPJ"}
-                </Button>
-                {cnpj.length > 0 && !cnpjValido && (
-                  <p className="text-xs text-destructive">
-                    {tipoPessoa === "fisica" ? "CPF deve ter 11 dígitos." : "CNPJ deve ter 14 dígitos."}
-                  </p>
-                )}
+              <div className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="tipoPessoa">Tipo de pessoa</Label>
+                    <Select
+                      value={tipoPessoa}
+                      onValueChange={(v) => {
+                        setTipoPessoa(v as "fisica" | "juridica");
+                        setCnpj("");
+                        cnpjAtual.current = "";
+                      }}
+                    >
+                      <SelectTrigger id="tipoPessoa">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="juridica">Pessoa Jurídica (CNPJ)</SelectItem>
+                        <SelectItem value="fisica">Pessoa Física (CPF)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="cnpj">{tipoPessoa === "fisica" ? "CPF" : "CNPJ"}</Label>
+                    <Input
+                      id="cnpj"
+                      inputMode="numeric"
+                      placeholder="somente números"
+                      value={cnpj}
+                      onChange={(e) => {
+                        const valor = somenteDigitos(e.target.value).slice(
+                          0,
+                          tipoPessoa === "fisica" ? 11 : 14,
+                        );
+                        cnpjAtual.current = valor;
+                        setCnpj(valor);
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={consultarCnpj}
+                    disabled={tipoPessoa !== "juridica" || !cnpjValido || consultandoCnpj || salvando}
+                    className="gap-2 text-xs"
+                  >
+                    <Search className="size-3.5" />
+                    {consultandoCnpj ? "Consultando Receita..." : "Consultar CNPJ"}
+                  </Button>
+
+                  {cnpj.length > 0 && !cnpjValido && (
+                    <p className="text-xs text-destructive font-medium">
+                      {tipoPessoa === "fisica" ? "CPF exige 11 dígitos." : "CNPJ exige 14 dígitos."}
+                    </p>
+                  )}
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="alias">Alias</Label>
+              <div className="space-y-2 pt-2 border-t">
+                <Label htmlFor="alias">Alias / Identificador de Login</Label>
                 <Input
                   id="alias"
+                  placeholder="ex.: cuiaba-distribuidora"
                   value={alias}
                   onChange={(e) => {
                     setAliasTocado(true);
@@ -307,18 +349,18 @@ export default function NovaEmpresaPage() {
                   }}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Identifica a empresa na tela de login (?empresa=
-                  {alias || "..."}). Só letras minúsculas, números e hífen.
+                  Identifica a empresa na URL do login (`?empresa={alias || "..."}`).
                 </p>
               </div>
-              <div className="border-t pt-4">
-                <h2 className="mb-4 text-sm font-semibold">
-                  Dados fiscais, endereço e contato
+
+              <div className="border-t pt-4 space-y-4">
+                <h2 className="text-sm font-semibold flex items-center gap-2">
+                  <MapPin className="size-4 text-primary" /> Dados Fiscais, Endereço e Contato
                 </h2>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-2">
                   {CAMPOS_EMPRESA.map(([campo, label, maxLength]) => (
-                    <div key={campo} className="space-y-2">
-                      <Label htmlFor={campo}>{label}</Label>
+                    <div key={campo} className="space-y-1.5">
+                      <Label htmlFor={campo} className="text-xs">{label}</Label>
                       <Input
                         id={campo}
                         maxLength={maxLength}
@@ -340,8 +382,8 @@ export default function NovaEmpresaPage() {
                       />
                     </div>
                   ))}
-                  <div className="space-y-2">
-                    <Label htmlFor="fundadaEm">Data de fundação</Label>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="fundadaEm" className="text-xs">Data de fundação</Label>
                     <Input
                       id="fundadaEm"
                       type="date"
@@ -350,11 +392,12 @@ export default function NovaEmpresaPage() {
                     />
                   </div>
                 </div>
-                <div className="mt-4 space-y-2">
-                  <Label htmlFor="historia">História da empresa</Label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="historia" className="text-xs">História da empresa</Label>
                   <Textarea
                     id="historia"
                     maxLength={4000}
+                    rows={3}
                     value={historia}
                     onChange={(e) => setHistoria(e.target.value)}
                   />
@@ -363,10 +406,12 @@ export default function NovaEmpresaPage() {
             </CardContent>
           </Card>
 
-          <div className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Acesso</CardTitle>
+          <div className="space-y-6">
+            <Card className="shadow-xs border-border/60">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <ShieldCheck className="size-4 text-primary" /> Condições de Licença e Acesso
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
@@ -397,7 +442,7 @@ export default function NovaEmpresaPage() {
                       value={testeExpiraEm}
                       onChange={(e) => setTesteExpiraEm(e.target.value)}
                     />
-                    <div className="flex gap-1">
+                    <div className="flex gap-1.5">
                       {[15, 30, 60].map((dias) => (
                         <Button
                           key={dias}
@@ -405,6 +450,7 @@ export default function NovaEmpresaPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => setTesteExpiraEm(dataEmDias(dias))}
+                          className="h-7 text-xs"
                         >
                           {dias} dias
                         </Button>
@@ -414,12 +460,12 @@ export default function NovaEmpresaPage() {
                 )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="limite">Limite de usuários</Label>
+                  <Label htmlFor="limite">Limite de usuários contratados</Label>
                   <Input
                     id="limite"
                     type="number"
                     min={1}
-                    placeholder="sem limite"
+                    placeholder="Deixe em branco para ilimitado"
                     value={limiteUsuarios}
                     onChange={(e) => setLimiteUsuarios(e.target.value)}
                   />
@@ -427,24 +473,23 @@ export default function NovaEmpresaPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  Administrador desta empresa
+            <Card className="shadow-xs border-border/60">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <UserCheck className="size-4 text-primary" /> Administrador da Empresa
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-xs text-muted-foreground">
-                  Criado junto com a empresa: sem ele, ninguém consegue entrar.
-                  Recebe o perfil Administrador Empresa e conta como um dos
-                  usuários desta empresa.
+                  Conta principal para primeiro acesso. Recebe o perfil de Administrador da Empresa.
                 </p>
 
                 <div className="space-y-2">
-                  <Label htmlFor="adminEmail">E-mail</Label>
+                  <Label htmlFor="adminEmail">E-mail corporativo do Administrador</Label>
                   <Input
                     id="adminEmail"
                     type="email"
+                    placeholder="admin@empresa.com.br"
                     value={adminEmail}
                     onChange={(e) => {
                       setContaExistente(null);
@@ -453,39 +498,38 @@ export default function NovaEmpresaPage() {
                   />
                 </div>
 
-                {/* Se a conta já existe, ela é reaproveitada: a mesma pessoa
-                    pode administrar várias empresas, e pedir nome e senha de
-                    novo sugeriria (errado) que uma segunda conta nasceria. */}
                 {contaExistente === true ? (
-                  <div className="rounded-md bg-sky-50 p-3 text-xs text-sky-900 dark:bg-sky-950 dark:text-sky-100">
-                    <p className="font-medium">Esta conta já existe.</p>
-                    <p className="mt-1">
-                      Ela será vinculada a esta empresa como Administradora,
-                      mantendo a senha que já usa. Nome e senha não são pedidos
-                      — é a mesma pessoa, administrando mais uma empresa.
+                  <div className="rounded-lg bg-sky-50 p-3 text-xs text-sky-900 dark:bg-sky-950/60 dark:text-sky-200 border border-sky-200 dark:border-sky-800">
+                    <p className="font-semibold flex items-center gap-1.5">
+                      <UserCheck className="size-4 text-sky-600 dark:text-sky-400" />
+                      Esta conta de usuário já existe na plataforma.
+                    </p>
+                    <p className="mt-1 leading-relaxed">
+                      Ela será vinculada como administradora desta nova empresa mantendo sua credencial e senha atuais.
                     </p>
                   </div>
                 ) : (
                   <>
                     <div className="space-y-2">
-                      <Label htmlFor="adminNome">Nome</Label>
+                      <Label htmlFor="adminNome">Nome completo</Label>
                       <Input
                         id="adminNome"
+                        placeholder="Nome do responsável"
                         value={adminNome}
                         onChange={(e) => setAdminNome(e.target.value)}
                       />
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="adminSenha">Senha provisória</Label>
+                      <Label htmlFor="adminSenha">Senha provisória de acesso</Label>
                       <PasswordInput
                         id="adminSenha"
                         value={adminSenha}
                         onChange={(e) => setAdminSenha(e.target.value)}
                       />
                       {adminSenha.length > 0 && adminSenha.length < 8 && (
-                        <p className="text-xs text-destructive">
-                          Mínimo de 8 caracteres.
+                        <p className="text-xs text-destructive font-medium">
+                          Exige no mínimo 8 caracteres.
                         </p>
                       )}
                     </div>
@@ -496,7 +540,7 @@ export default function NovaEmpresaPage() {
           </div>
         </div>
 
-        <div className="flex justify-end gap-2">
+        <div className="flex items-center justify-end gap-3 pt-2">
           <Button
             variant="outline"
             onClick={() => router.push("/plataforma/empresas")}
@@ -507,11 +551,13 @@ export default function NovaEmpresaPage() {
           <Button
             onClick={salvar}
             disabled={!podeSalvar || salvando || consultandoCnpj}
+            className="gap-2 shadow-xs"
           >
-            {salvando ? "Criando..." : "Criar empresa"}
+            {salvando ? "Criando Empresa..." : "Criar Empresa Tenant"}
           </Button>
         </div>
       </div>
     </PlataformaGuard>
   );
 }
+

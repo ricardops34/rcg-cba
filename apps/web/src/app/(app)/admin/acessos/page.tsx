@@ -14,9 +14,10 @@ import { apiFetch } from "@/lib/api-client";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -33,6 +34,8 @@ import {
   ShieldAlert,
   TriangleAlert,
   Users,
+  Search,
+  Filter,
 } from "lucide-react";
 
 /** Página de resposta das rotas paginadas de /acessos. */
@@ -66,7 +69,6 @@ const inicioPadrao = () => {
   return dateToInput(d);
 };
 
-/** Eventos que representam acesso negado — pintados em vermelho na listagem. */
 const EVENTOS_FALHA: AcessoEvento[] = [
   "login_falha",
   "login_bloqueado",
@@ -76,20 +78,25 @@ const EVENTOS_FALHA: AcessoEvento[] = [
 
 function EventoBadge({ evento }: { evento: AcessoEvento }) {
   const falha = EVENTOS_FALHA.includes(evento);
-  const classe = falha
-    ? "border-destructive/40 bg-destructive/10 text-destructive"
-    : evento === "login_sucesso"
-      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-      : "border-border/70 bg-muted/40 text-muted-foreground";
+  const isSuccess = evento === "login_sucesso";
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs ${classe}`}>
-      {falha && <TriangleAlert className="size-3" />}
+    <Badge
+      variant="outline"
+      className={`text-xs font-medium ${
+        falha
+          ? "border-destructive/40 bg-destructive/10 text-destructive"
+          : isSuccess
+            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+            : "border-border bg-muted/50 text-muted-foreground"
+      }`}
+    >
+      {falha && <TriangleAlert className="mr-1 h-3 w-3 inline" />}
       {ACESSO_EVENTO_LABEL[evento]}
-    </span>
+    </Badge>
   );
 }
 
-function Cartao({
+function CartaoKpi({
   icone: Icone,
   titulo,
   valor,
@@ -103,32 +110,31 @@ function Cartao({
   alerta?: boolean;
 }) {
   return (
-    <Card>
-      <CardContent className="flex items-start gap-3 py-4">
-        <span
-          className={`rounded-md border p-2 ${
+    <Card className="bg-card">
+      <CardContent className="p-4 flex items-center justify-between">
+        <div>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            {titulo}
+          </p>
+          <p className={`text-2xl font-bold mt-1 ${alerta ? "text-destructive" : ""}`}>
+            {valor}
+          </p>
+          {detalhe && <p className="text-xs text-muted-foreground mt-0.5">{detalhe}</p>}
+        </div>
+        <div
+          className={`rounded-full p-3 ${
             alerta
-              ? "border-destructive/40 bg-destructive/10 text-destructive"
-              : "border-border/70 bg-muted/40 text-muted-foreground"
+              ? "bg-destructive/10 text-destructive"
+              : "bg-primary/10 text-primary"
           }`}
         >
-          <Icone className="size-4" />
-        </span>
-        <div className="min-w-0">
-          <p className="text-xs text-muted-foreground">{titulo}</p>
-          <p className="text-lg font-semibold tracking-tight">{valor}</p>
-          {detalhe && <p className="text-xs text-muted-foreground">{detalhe}</p>}
+          <Icone className="h-5 w-5" />
         </div>
       </CardContent>
     </Card>
   );
 }
 
-/**
- * Administração > Acessos: quem entrou, quanto tempo ficou e quem tentou sem
- * conseguir. Os dados vêm do rastro gravado pelo próprio fluxo de
- * autenticação (ver AcessosService na API) — esta tela é só leitura.
- */
 export default function AcessosPage() {
   const [dataInicio, setDataInicio] = useState(inicioPadrao);
   const [dataFim, setDataFim] = useState(() => dateToInput(new Date()));
@@ -138,7 +144,6 @@ export default function AcessosPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [pageSessoes, setPageSessoes] = useState(1);
-  // Sem sortBy escolhido, a API já devolve do mais recente para o mais antigo.
   const [ordemEventos, setOrdemEventos] = useState<{
     sortBy?: string;
     sortOrder: "asc" | "desc";
@@ -148,8 +153,6 @@ export default function AcessosPage() {
     sortOrder: "asc" | "desc";
   }>({ sortOrder: "desc" });
 
-  // dataFim entra como o fim do dia: sem isso, escolher "hoje" cortaria tudo
-  // o que aconteceu depois da meia-noite.
   const filtros = {
     dataInicio: `${dataInicio}T00:00:00`,
     dataFim: `${dataFim}T23:59:59`,
@@ -194,12 +197,12 @@ export default function AcessosPage() {
   };
 
   const colunasEventos: ColumnDef<AcessoLog>[] = [
-    { header: "Quando", sortKey: "criadoEm", cell: (l) => dataHoraBr(l.criadoEm) },
+    { header: "Quando", sortKey: "criadoEm", cell: (l) => <span className="text-xs font-mono">{dataHoraBr(l.criadoEm)}</span> },
     {
       header: "Usuário",
       cell: (l) => (
         <div className="min-w-0">
-          <p className="truncate font-medium">{l.usuarioNome ?? "—"}</p>
+          <p className="truncate text-sm font-medium">{l.usuarioNome ?? "—"}</p>
           <p className="truncate text-xs text-muted-foreground">{l.email}</p>
         </div>
       ),
@@ -209,14 +212,14 @@ export default function AcessosPage() {
       header: "Detalhe",
       cell: (l) => <span className="text-xs text-muted-foreground">{l.detalhe ?? "—"}</span>,
     },
-    { header: "IP", cell: (l) => <code className="text-xs">{l.ip ?? "—"}</code> },
+    { header: "IP", cell: (l) => <code className="text-xs font-mono">{l.ip ?? "—"}</code> },
     {
       header: "Dispositivo",
       cell: (l) =>
         l.userAgent ? (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="block max-w-[18rem] truncate text-xs text-muted-foreground">
+              <span className="block max-w-[16rem] truncate text-xs text-muted-foreground">
                 {l.userAgent}
               </span>
             </TooltipTrigger>
@@ -233,28 +236,28 @@ export default function AcessosPage() {
       header: "Usuário",
       cell: (s) => (
         <div className="min-w-0">
-          <p className="truncate font-medium">{s.usuarioNome}</p>
+          <p className="truncate text-sm font-medium">{s.usuarioNome}</p>
           <p className="truncate text-xs text-muted-foreground">{s.email}</p>
         </div>
       ),
     },
-    { header: "Entrada", sortKey: "iniciadaEm", cell: (s) => dataHoraBr(s.iniciadaEm) },
+    { header: "Entrada", sortKey: "iniciadaEm", cell: (s) => <span className="text-xs font-mono">{dataHoraBr(s.iniciadaEm)}</span> },
     {
       header: "Saída",
       cell: (s) =>
         s.encerradaEm ? (
-          dataHoraBr(s.encerradaEm)
+          <span className="text-xs font-mono">{dataHoraBr(s.encerradaEm)}</span>
         ) : s.ativa ? (
-          <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400">
-            <CircleCheck className="size-3.5" /> Em uso
-          </span>
+          <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs">
+            <CircleCheck className="mr-1 h-3 w-3 inline" /> Em uso
+          </Badge>
         ) : (
           <span className="text-xs text-muted-foreground">
-            sem saída registrada (última atividade {dataHoraBr(s.ultimaAtividadeEm)})
+            Sem registro (última ativ: {dataHoraBr(s.ultimaAtividadeEm)})
           </span>
         ),
     },
-    { header: "Tempo de uso", cell: (s) => duracao(s.duracaoMinutos) },
+    { header: "Tempo de uso", cell: (s) => <span className="text-xs font-medium">{duracao(s.duracaoMinutos)}</span> },
     {
       header: "Motivo do fim",
       cell: (s) => (
@@ -267,7 +270,7 @@ export default function AcessosPage() {
         </span>
       ),
     },
-    { header: "IP", cell: (s) => <code className="text-xs">{s.ip ?? "—"}</code> },
+    { header: "IP", cell: (s) => <code className="text-xs font-mono">{s.ip ?? "—"}</code> },
   ];
 
   const colunasUsuarios: ColumnDef<AcessoResumo["porUsuario"][number]>[] = [
@@ -275,20 +278,20 @@ export default function AcessosPage() {
       header: "Usuário",
       cell: (u) => (
         <div className="min-w-0">
-          <p className="truncate font-medium">{u.usuarioNome}</p>
+          <p className="truncate text-sm font-medium">{u.usuarioNome}</p>
           <p className="truncate text-xs text-muted-foreground">{u.email}</p>
         </div>
       ),
     },
-    { header: "Sessões", cell: (u) => u.sessoes },
-    { header: "Tempo total", cell: (u) => duracao(u.minutosTotal) },
-    { header: "Média por sessão", cell: (u) => duracao(u.minutosMedio) },
-    { header: "Último acesso", cell: (u) => dataHoraBr(u.ultimoAcesso) },
+    { header: "Sessões", cell: (u) => <Badge variant="secondary">{u.sessoes}</Badge> },
+    { header: "Tempo total", cell: (u) => <span className="text-xs font-semibold">{duracao(u.minutosTotal)}</span> },
+    { header: "Média por sessão", cell: (u) => <span className="text-xs text-muted-foreground">{duracao(u.minutosMedio)}</span> },
+    { header: "Último acesso", cell: (u) => <span className="text-xs font-mono">{dataHoraBr(u.ultimoAcesso)}</span> },
     {
       header: "Tentativas sem sucesso",
       cell: (u) =>
         u.tentativasFalha > 0 ? (
-          <span className="text-destructive">{u.tentativasFalha}</span>
+          <Badge variant="destructive" className="text-xs">{u.tentativasFalha}</Badge>
         ) : (
           "—"
         ),
@@ -296,19 +299,55 @@ export default function AcessosPage() {
   ];
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Acessos</h1>
-        <p className="text-sm text-muted-foreground">
-          Entradas, tempo de uso e tentativas sem sucesso dos usuários desta empresa. O horário
-          de trabalho que limita o acesso é definido no cadastro de cada usuário.
-        </p>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Auditoria de Acessos</h1>
+          <p className="text-sm text-muted-foreground">
+            Acompanhe o histórico de login, sessões ativas e tentativas de acesso dos usuários.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={recarregar}>
+          <RefreshCw className={`mr-1.5 h-4 w-4 ${eventosQuery.isFetching ? "animate-spin" : ""}`} />
+          Atualizar dados
+        </Button>
       </div>
 
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <CartaoKpi icone={LogIn} titulo="Entradas no período" valor={String(resumo?.loginsSucesso ?? 0)} />
+        <CartaoKpi
+          icone={ShieldAlert}
+          titulo="Tentativas s/ sucesso"
+          valor={String(resumo?.tentativasFalha ?? 0)}
+          alerta={(resumo?.tentativasFalha ?? 0) > 0}
+        />
+        <CartaoKpi icone={Users} titulo="Usuários ativos" valor={String(resumo?.usuariosDistintos ?? 0)} />
+        <CartaoKpi
+          icone={Clock}
+          titulo="Tempo total de uso"
+          valor={duracao(resumo?.minutosTotal ?? 0)}
+          detalhe={`Média ${duracao(resumo?.minutosMedioPorSessao ?? 0)}/sessão`}
+        />
+        <CartaoKpi
+          icone={CircleCheck}
+          titulo="Sessões abertas"
+          valor={String(resumo?.sessoesAbertas ?? 0)}
+        />
+      </div>
+
+      {/* Filtros */}
       <Card>
-        <CardContent className="grid grid-cols-1 gap-3 py-4 sm:grid-cols-2 lg:grid-cols-5">
+        <CardHeader className="pb-3 border-b bg-muted/20">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-primary" />
+            <CardTitle className="text-base">Filtros de Pesquisa</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:grid-cols-5">
           <Field>
-            <FieldLabel htmlFor="dataInicio">De</FieldLabel>
+            <FieldLabel htmlFor="dataInicio">Data Início</FieldLabel>
             <Input
               id="dataInicio"
               type="date"
@@ -320,7 +359,7 @@ export default function AcessosPage() {
             />
           </Field>
           <Field>
-            <FieldLabel htmlFor="dataFim">Até</FieldLabel>
+            <FieldLabel htmlFor="dataFim">Data Fim</FieldLabel>
             <Input
               id="dataFim"
               type="date"
@@ -344,7 +383,7 @@ export default function AcessosPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
+                <SelectItem value="todos">Todos os usuários</SelectItem>
                 {(usuariosQuery.data?.data ?? []).map((u) => (
                   <SelectItem key={u.id} value={u.id}>
                     {u.nome}
@@ -354,7 +393,7 @@ export default function AcessosPage() {
             </Select>
           </Field>
           <Field>
-            <FieldLabel htmlFor="evento">Evento</FieldLabel>
+            <FieldLabel htmlFor="evento">Tipo de Evento</FieldLabel>
             <Select
               value={evento}
               onValueChange={(v) => {
@@ -366,7 +405,7 @@ export default function AcessosPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
+                <SelectItem value="todos">Todos os eventos</SelectItem>
                 {(Object.keys(ACESSO_EVENTO_LABEL) as AcessoEvento[]).map((e) => (
                   <SelectItem key={e} value={e}>
                     {ACESSO_EVENTO_LABEL[e]}
@@ -376,57 +415,33 @@ export default function AcessosPage() {
             </Select>
           </Field>
           <Field>
-            <FieldLabel htmlFor="search">Buscar (e-mail, IP, nome)</FieldLabel>
-            <div className="flex gap-2">
+            <FieldLabel htmlFor="search">Busca livre</FieldLabel>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 id="search"
+                className="pl-8"
                 value={search}
-                placeholder="maria@… ou 189.45…"
+                placeholder="E-mail, IP ou Nome"
                 onChange={(e) => {
                   setSearch(e.target.value);
                   setPage(1);
                 }}
               />
-              <Button type="button" variant="outline" size="icon" onClick={recarregar}>
-                <RefreshCw
-                  className={`size-4 ${eventosQuery.isFetching ? "animate-spin" : ""}`}
-                />
-              </Button>
             </div>
           </Field>
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <Cartao icone={LogIn} titulo="Entradas no período" valor={String(resumo?.loginsSucesso ?? 0)} />
-        <Cartao
-          icone={ShieldAlert}
-          titulo="Tentativas sem sucesso"
-          valor={String(resumo?.tentativasFalha ?? 0)}
-          alerta={(resumo?.tentativasFalha ?? 0) > 0}
-        />
-        <Cartao icone={Users} titulo="Usuários que acessaram" valor={String(resumo?.usuariosDistintos ?? 0)} />
-        <Cartao
-          icone={Clock}
-          titulo="Tempo total de uso"
-          valor={duracao(resumo?.minutosTotal ?? 0)}
-          detalhe={`Média de ${duracao(resumo?.minutosMedioPorSessao ?? 0)} por sessão`}
-        />
-        <Cartao
-          icone={CircleCheck}
-          titulo="Sessões em uso agora"
-          valor={String(resumo?.sessoesAbertas ?? 0)}
-        />
-      </div>
-
-      <Tabs defaultValue="eventos">
-        <TabsList>
-          <TabsTrigger value="eventos">Eventos</TabsTrigger>
-          <TabsTrigger value="sessoes">Sessões</TabsTrigger>
-          <TabsTrigger value="usuarios">Tempo por usuário</TabsTrigger>
+      {/* Tabela por Abas */}
+      <Tabs defaultValue="eventos" className="w-full">
+        <TabsList className="grid w-full grid-cols-3 max-w-md">
+          <TabsTrigger value="eventos">Eventos Rasteados</TabsTrigger>
+          <TabsTrigger value="sessoes">Sessões de Uso</TabsTrigger>
+          <TabsTrigger value="usuarios">Tempo por Usuário</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="eventos" className="pt-3">
+        <TabsContent value="eventos" className="pt-4">
           <EntityTable
             columns={colunasEventos}
             rows={eventosQuery.data?.data ?? []}
@@ -446,11 +461,11 @@ export default function AcessosPage() {
             sortOrder={ordemEventos.sortOrder}
             onSortChange={(sortBy, sortOrder) => setOrdemEventos({ sortBy, sortOrder })}
             storageKey="acessos-eventos"
-            emptyMessage="Nenhum acesso registrado no período."
+            emptyMessage="Nenhum evento de acesso registrado no período selecionado."
           />
         </TabsContent>
 
-        <TabsContent value="sessoes" className="pt-3">
+        <TabsContent value="sessoes" className="pt-4">
           <EntityTable
             columns={colunasSessoes}
             rows={sessoesQuery.data?.data ?? []}
@@ -470,13 +485,11 @@ export default function AcessosPage() {
             sortOrder={ordemSessoes.sortOrder}
             onSortChange={(sortBy, sortOrder) => setOrdemSessoes({ sortBy, sortOrder })}
             storageKey="acessos-sessoes"
-            emptyMessage="Nenhuma sessão no período."
+            emptyMessage="Nenhuma sessão registrada no período selecionado."
           />
         </TabsContent>
 
-        <TabsContent value="usuarios" className="pt-3">
-          {/* Ranking já vem inteiro no resumo (é uma linha por usuário da
-              empresa), então esta aba não pagina no servidor. */}
+        <TabsContent value="usuarios" className="pt-4">
           <EntityTable
             columns={colunasUsuarios}
             rows={resumo?.porUsuario ?? []}
@@ -489,10 +502,11 @@ export default function AcessosPage() {
             totalPages={1}
             onPageChange={() => undefined}
             onPageSizeChange={() => undefined}
-            emptyMessage="Nenhum acesso no período."
+            emptyMessage="Nenhum dado de usuário registrado no período selecionado."
           />
         </TabsContent>
       </Tabs>
     </div>
   );
 }
+

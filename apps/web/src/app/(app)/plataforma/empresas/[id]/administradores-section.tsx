@@ -18,7 +18,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { UserMinus, UserPlus } from "lucide-react";
+import { UserMinus, UserPlus, Users } from "lucide-react";
+
 
 /**
  * Quem administra esta empresa.
@@ -90,16 +91,23 @@ export function AdministradoresSection({ empresaId }: { empresaId: string }) {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">
-          Administradores desta empresa {admins.length > 0 && `(${admins.length})`}
+    <Card className="shadow-xs border-border/60">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <Users className="size-4 text-primary" /> Administradores desta Empresa
+          </span>
+          {admins.length > 0 && (
+            <Badge variant="secondary" className="font-normal">
+              {admins.length} administrador(es)
+            </Badge>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="min-w-64 flex-1 space-y-2">
-            <Label htmlFor="novoAdmin">Vincular conta existente</Label>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-64 flex-1 space-y-1.5">
+            <Label htmlFor="novoAdmin" className="text-xs font-medium">Vincular conta existente</Label>
             <Input
               id="novoAdmin"
               type="email"
@@ -109,14 +117,12 @@ export function AdministradoresSection({ empresaId }: { empresaId: string }) {
               onKeyDown={(e) => e.key === "Enter" && void vincular()}
             />
           </div>
-          <Button onClick={vincular} disabled={ocupado || !email.trim()}>
+          <Button onClick={vincular} disabled={ocupado || !email.trim()} className="gap-2 shadow-xs">
             <UserPlus className="size-4" /> Vincular
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          A conta precisa existir e passa a administrar esta empresa também,
-          mantendo a senha que já usa. Ocupa uma vaga do limite de usuários
-          daqui.
+          A conta precisa já existir na plataforma. Ao vincular, ela assume a administração desta empresa mantendo a mesma senha.
         </p>
 
         <Table>
@@ -124,58 +130,66 @@ export function AdministradoresSection({ empresaId }: { empresaId: string }) {
             <TableRow>
               <TableHead>Nome</TableHead>
               <TableHead>E-mail</TableHead>
-              <TableHead className="w-32">Administra</TableHead>
-              <TableHead className="w-28" />
+              <TableHead className="w-36">Empresas Gerenciadas</TableHead>
+              <TableHead className="w-28 text-right" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={4} className="text-muted-foreground">
-                  Carregando...
+                <TableCell colSpan={4} className="text-center py-6 text-muted-foreground">
+                  Carregando administradores...
                 </TableCell>
               </TableRow>
             )}
             {!isLoading && admins.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} className="text-muted-foreground">
-                  Nenhum administrador nesta empresa.
+                <TableCell colSpan={4} className="text-center py-6 text-muted-foreground">
+                  Nenhum administrador vinculado a esta empresa.
                 </TableCell>
               </TableRow>
             )}
             {admins.map((a) => (
               <TableRow key={a.usuarioId}>
                 <TableCell className="font-medium">
-                  {a.nome}
-                  {!a.ativo && (
-                    <Badge variant="outline" className="ml-2">
-                      inativo
-                    </Badge>
-                  )}
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold text-xs shrink-0">
+                      {a.nome?.charAt(0).toUpperCase() ?? "U"}
+                    </div>
+                    <div>
+                      <span>{a.nome}</span>
+                      {!a.ativo && (
+                        <Badge variant="outline" className="ml-2 text-[10px] border-amber-500/50 text-amber-600">
+                          inativo
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
                 </TableCell>
-                <TableCell className="text-muted-foreground">{a.email}</TableCell>
+                <TableCell className="text-muted-foreground text-xs font-mono">{a.email}</TableCell>
                 <TableCell>
                   {a.empresasQueAdministra > 1 ? (
-                    <Badge variant="secondary">
+                    <Badge variant="secondary" className="text-xs">
                       {a.empresasQueAdministra} empresas
                     </Badge>
                   ) : (
-                    <span className="text-muted-foreground">só esta</span>
+                    <span className="text-xs text-muted-foreground">Somente esta</span>
                   )}
                 </TableCell>
-                <TableCell>
+                <TableCell className="text-right">
                   <Button
                     variant="ghost"
                     size="sm"
                     disabled={ocupado || ultimo}
                     title={
                       ultimo
-                        ? "É o único administrador — vincule outro antes"
+                        ? "É o único administrador desta empresa — vincule outro antes de remover"
                         : undefined
                     }
                     onClick={() => desvincular(a)}
+                    className="gap-1.5 text-xs hover:text-destructive"
                   >
-                    <UserMinus className="size-4" /> Remover
+                    <UserMinus className="size-3.5" /> Remover
                   </Button>
                 </TableCell>
               </TableRow>
@@ -186,3 +200,4 @@ export function AdministradoresSection({ empresaId }: { empresaId: string }) {
     </Card>
   );
 }
+

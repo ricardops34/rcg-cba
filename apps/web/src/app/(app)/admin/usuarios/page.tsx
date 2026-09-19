@@ -15,6 +15,7 @@ import { FiltersPopover } from "@/components/crud/filters-popover";
 import { roleColorClass } from "@/lib/role-color";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -23,7 +24,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import {
+  Users,
+  UserCheck,
+  UserX,
+  ShieldCheck,
+  Plus,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 
 interface UsuarioRow extends Usuario {
   perfil: { id: string; nome: string } | null;
@@ -74,9 +84,28 @@ export default function UsuariosPage() {
     setPage(1);
   };
 
+  const usuarios = data?.data ?? [];
+  const totalUsuarios = data?.total ?? usuarios.length;
+  const totalAtivos = usuarios.filter((u) => u.ativo).length;
+  const totalInativos = usuarios.filter((u) => !u.ativo).length;
+  const perfisCount = perfisQuery.data?.data.length ?? 0;
+
   const columns: ColumnDef<UsuarioRow>[] = [
-    { header: "Nome", sortKey: "nome", cell: (u) => <span className="font-medium">{u.nome}</span> },
-    { header: "E-mail", sortKey: "email", cell: (u) => u.email },
+    {
+      header: "Usuário",
+      sortKey: "nome",
+      cell: (u) => (
+        <div className="flex items-center gap-2.5">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold text-xs">
+            {u.nome.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <span className="font-medium text-foreground text-sm block">{u.nome}</span>
+            <span className="text-xs text-muted-foreground font-mono">{u.email}</span>
+          </div>
+        </div>
+      ),
+    },
     {
       header: "Perfil",
       cell: (u) =>
@@ -94,7 +123,7 @@ export default function UsuariosPage() {
       sortKey: "ultimoLogin",
       cell: (u) =>
         u.ultimoLogin ? (
-          <span className="text-sm text-muted-foreground">
+          <span className="text-xs font-mono text-muted-foreground">
             {new Date(u.ultimoLogin).toLocaleString("pt-BR", {
               day: "2-digit",
               month: "2-digit",
@@ -104,7 +133,7 @@ export default function UsuariosPage() {
             })}
           </span>
         ) : (
-          <span className="text-sm text-muted-foreground">Nunca</span>
+          <span className="text-xs text-muted-foreground">Nunca acessou</span>
         ),
     },
     {
@@ -131,7 +160,85 @@ export default function UsuariosPage() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Superior Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-xs">
+            <Users className="size-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold tracking-tight">Cadastro de Usuários</h1>
+              <Badge variant="outline" className="text-xs">RBAC & Hierarquia</Badge>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Gerencie usuários da empresa, vínculos de perfil de acesso, hierarquia comercial e restrições.
+            </p>
+          </div>
+        </div>
+        <Button onClick={() => router.push("/admin/usuarios/novo")} className="gap-2 shadow-xs">
+          <Plus className="size-4" /> Novo usuário
+        </Button>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="shadow-xs border-border/60">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Total de Usuários</p>
+              <p className="text-2xl font-bold tracking-tight mt-1">{totalUsuarios}</p>
+            </div>
+            <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Users className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-xs border-border/60">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Usuários Ativos</p>
+              <p className="text-2xl font-bold tracking-tight mt-1 text-emerald-600 dark:text-emerald-400">
+                {totalAtivos}
+              </p>
+            </div>
+            <div className="flex size-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+              <UserCheck className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-xs border-border/60">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Inativos / Bloqueados</p>
+              <p className="text-2xl font-bold tracking-tight mt-1 text-muted-foreground">
+                {totalInativos}
+              </p>
+            </div>
+            <div className="flex size-9 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+              <UserX className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-xs border-border/60">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Perfis Disponíveis</p>
+              <p className="text-2xl font-bold tracking-tight mt-1 text-purple-600 dark:text-purple-400">
+                {perfisCount}
+              </p>
+            </div>
+            <div className="flex size-9 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500">
+              <ShieldCheck className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <CrudHeader
         search={search}
         onSearchChange={(v) => {
@@ -140,8 +247,7 @@ export default function UsuariosPage() {
         }}
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
-        onCreate={() => router.push("/admin/usuarios/novo")}
-        createLabel="Novo usuário"
+        placeholder="Buscar por nome ou e-mail..."
       />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -154,7 +260,7 @@ export default function UsuariosPage() {
         />
         <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
           <div className="space-y-2">
-            <FieldLabel>Perfil</FieldLabel>
+            <FieldLabel>Perfil de acesso</FieldLabel>
             <Select
               value={perfilId ?? "none"}
               onValueChange={(v) => {
@@ -163,10 +269,10 @@ export default function UsuariosPage() {
               }}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Qualquer" />
+                <SelectValue placeholder="Qualquer perfil" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">Qualquer</SelectItem>
+                <SelectItem value="none">Qualquer perfil</SelectItem>
                 {(perfisQuery.data?.data ?? []).map((p) => (
                   <SelectItem key={p.id} value={p.id}>
                     {p.nome}
@@ -184,6 +290,7 @@ export default function UsuariosPage() {
         rowKey={(u) => u.id}
         isLoading={isLoading}
         error={error}
+        emptyMessage="Nenhum usuário encontrado com os filtros aplicados."
         page={data?.page ?? page}
         pageSize={data?.pageSize ?? pageSize}
         total={data?.total ?? 0}
@@ -204,3 +311,4 @@ export default function UsuariosPage() {
     </div>
   );
 }
+

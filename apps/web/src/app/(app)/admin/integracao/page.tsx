@@ -19,6 +19,7 @@ import { StatusDot } from "@/components/crud/status-dot";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -32,13 +33,27 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Copy, Check, KeyRound, MoreHorizontal, ShieldOff, ShieldCheck, Trash2 } from "lucide-react";
+import {
+  Copy,
+  Check,
+  KeyRound,
+  MoreHorizontal,
+  ShieldOff,
+  ShieldCheck,
+  Trash2,
+  Plug,
+  Activity,
+  ShieldAlert,
+  Plus,
+  BookOpen,
+} from "lucide-react";
 
 const dataBr = (v: string | null) => {
-  if (!v) return "—";
+  if (!v) return "Nunca";
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
 };
+
 const dataHoraBr = (v: string | null) => {
   if (!v) return "Nunca usada";
   const d = new Date(v);
@@ -56,6 +71,10 @@ export default function IntegracaoPage() {
     { search, page, pageSize, sortBy: "createdAt", sortOrder: "desc" },
   );
   const { update, remove } = useResourceMutations<never, { ativo: boolean }>("integracao-keys");
+
+  const rows = data?.data ?? [];
+  const ativasCount = rows.filter((r) => r.ativo).length;
+  const revogadasCount = rows.filter((r) => !r.ativo).length;
 
   const onToggleAtivo = async (chave: IntegracaoApiKey) => {
     try {
@@ -78,20 +97,41 @@ export default function IntegracaoPage() {
 
   const columns: ColumnDef<IntegracaoApiKey>[] = [
     {
-      header: "Nome",
+      header: "Identificação da Chave",
       cell: (c) => (
-        <div className="flex items-center gap-2">
-          <KeyRound className="size-3.5 text-muted-foreground" />
-          <p className="font-medium">{c.nome}</p>
+        <div className="flex items-center gap-2.5">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/40">
+            <KeyRound className="size-4 text-primary" />
+          </div>
+          <div>
+            <p className="font-medium leading-tight">{c.nome}</p>
+            <p className="text-xs text-muted-foreground font-mono mt-0.5">{c.prefixo}…</p>
+          </div>
         </div>
       ),
     },
-    { header: "Prefixo", cell: (c) => <code className="text-xs">{c.prefixo}…</code> },
-    { header: "Status", cell: (c) => <StatusDot active={c.ativo} /> },
-    { header: "Expira em", cell: (c) => dataBr(c.expiraEm) },
+    {
+      header: "Status",
+      cell: (c) => (
+        <div className="flex items-center gap-2">
+          <StatusDot active={c.ativo} />
+          <span className="text-xs font-medium">
+            {c.ativo ? "Ativa" : "Revogada"}
+          </span>
+        </div>
+      ),
+    },
+    {
+      header: "Expira em",
+      cell: (c) => (
+        <span className="text-xs text-muted-foreground">{dataBr(c.expiraEm)}</span>
+      ),
+    },
     {
       header: "Último uso",
-      cell: (c) => <span className="text-xs text-muted-foreground">{dataHoraBr(c.ultimoUso)}</span>,
+      cell: (c) => (
+        <span className="text-xs text-muted-foreground">{dataHoraBr(c.ultimoUso)}</span>
+      ),
     },
     {
       header: "",
@@ -99,7 +139,12 @@ export default function IntegracaoPage() {
       cell: (c) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-8" onClick={(ev) => ev.stopPropagation()}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={(ev) => ev.stopPropagation()}
+            >
               <MoreHorizontal className="size-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -107,16 +152,16 @@ export default function IntegracaoPage() {
             <DropdownMenuItem onClick={() => onToggleAtivo(c)}>
               {c.ativo ? (
                 <>
-                  <ShieldOff className="size-4" /> Revogar
+                  <ShieldOff className="size-4 text-amber-500" /> Revogar acesso
                 </>
               ) : (
                 <>
-                  <ShieldCheck className="size-4" /> Reativar
+                  <ShieldCheck className="size-4 text-emerald-500" /> Reativar chave
                 </>
               )}
             </DropdownMenuItem>
             <DropdownMenuItem variant="destructive" onClick={() => onDelete(c)}>
-              <Trash2 className="size-4" /> Excluir
+              <Trash2 className="size-4" /> Excluir permanentemente
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -125,7 +170,70 @@ export default function IntegracaoPage() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Cabeçalho da página no padrão do sistema */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b pb-4">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Integração ERP (API Keys)</h1>
+          <p className="text-sm text-muted-foreground">
+            Gerencie as credenciais de API para sincronização automática de dados com sistemas ERP parceiros.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => window.open("/api/docs", "_blank")}
+          >
+            <BookOpen className="size-4" />
+            Swagger / Docs API
+          </Button>
+          <Button type="button" size="sm" onClick={() => setNovaChaveAberta(true)}>
+            <Plus className="size-4" />
+            Nova chave
+          </Button>
+        </div>
+      </div>
+
+      {/* Cards de Resumo */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card className="border-border/70 shadow-xs">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary">
+              <Plug className="size-5" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Total de Chaves</p>
+              <p className="text-xl font-bold">{data?.total ?? 0}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/70 shadow-xs">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              <Activity className="size-5" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Chaves Ativas</p>
+              <p className="text-xl font-bold">{ativasCount}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/70 shadow-xs">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400">
+              <ShieldAlert className="size-5" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Revogadas / Inativas</p>
+              <p className="text-xl font-bold">{revogadasCount}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Barra de Busca e Filtros */}
       <CrudHeader
         search={search}
         onSearchChange={(v) => {
@@ -134,19 +242,12 @@ export default function IntegracaoPage() {
         }}
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
-        onCreate={() => setNovaChaveAberta(true)}
-        createLabel="Nova chave"
       />
 
-      <p className="text-sm text-muted-foreground">
-        Chaves de API pra um ERP externo empurrar dados continuamente (upsert em lote,
-        idempotente). Veja os endpoints em{" "}
-        <code className="text-xs">/api/docs</code>, seção &quot;integracao&quot;.
-      </p>
-
+      {/* Tabela de Chaves */}
       <EntityTable
         columns={columns}
-        rows={data?.data ?? []}
+        rows={rows}
         rowKey={(c) => c.id}
         isLoading={isLoading}
         error={error}
@@ -162,7 +263,9 @@ export default function IntegracaoPage() {
         emptyMessage="Nenhuma chave de integração cadastrada."
       />
 
-      {novaChaveAberta && <NovaChaveDialog onClose={() => setNovaChaveAberta(false)} />}
+      {novaChaveAberta && (
+        <NovaChaveDialog onClose={() => setNovaChaveAberta(false)} />
+      )}
     </div>
   );
 }
@@ -179,7 +282,10 @@ function NovaChaveDialog({ onClose }: { onClose: () => void }) {
 
   const criar = useMutation({
     mutationFn: (input: IntegracaoApiKeyCreate) =>
-      apiFetch<IntegracaoApiKeyCriada>("/integracao-keys", { method: "POST", body: input }),
+      apiFetch<IntegracaoApiKeyCriada>("/integracao-keys", {
+        method: "POST",
+        body: input,
+      }),
     onSuccess: (resultado) => {
       setCriada(resultado);
       queryClient.invalidateQueries({ queryKey: ["integracao-keys", "list"] });
@@ -190,7 +296,9 @@ function NovaChaveDialog({ onClose }: { onClose: () => void }) {
     try {
       await criar.mutateAsync(values);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Erro ao criar chave");
+      toast.error(
+        err instanceof ApiError ? err.message : "Erro ao criar chave",
+      );
     }
   };
 
@@ -203,56 +311,85 @@ function NovaChaveDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         {criada ? (
           <>
             <DialogHeader>
-              <DialogTitle>Chave criada</DialogTitle>
+              <DialogTitle className="flex items-center gap-2">
+                <Check className="size-5 text-emerald-500" />
+                Chave Gerada com Sucesso
+              </DialogTitle>
             </DialogHeader>
-            <div className="space-y-3 py-2">
-              <p className="text-sm text-destructive">
-                Copie agora — esta chave não aparece de novo. Se perdida, revogue e crie outra.
-              </p>
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
+                <strong>Atenção:</strong> Copie esta chave de API agora. Ela é exibida uma única vez e não poderá ser recuperada posteriormente.
+              </div>
               <div className="flex items-center gap-2">
-                <code className="flex-1 truncate rounded-md border bg-muted px-3 py-2 text-xs">
+                <code className="flex-1 truncate rounded-lg border bg-muted p-2.5 font-mono text-xs font-semibold">
                   {criada.chave}
                 </code>
-                <Button type="button" variant="outline" size="icon" onClick={copiar}>
-                  {copiado ? <Check className="size-4" /> : <Copy className="size-4" />}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={copiar}
+                >
+                  {copiado ? (
+                    <Check className="size-4 text-emerald-500" />
+                  ) : (
+                    <Copy className="size-4" />
+                  )}
                 </Button>
               </div>
             </div>
             <DialogFooter>
               <Button type="button" onClick={onClose}>
-                Fechar
+                Entendido, Fechar
               </Button>
             </DialogFooter>
           </>
         ) : (
           <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
             <DialogHeader>
-              <DialogTitle>Nova chave de integração</DialogTitle>
+              <DialogTitle>Gerar Nova Chave de API</DialogTitle>
             </DialogHeader>
-            <FieldGroup className="py-4">
+            <FieldGroup className="py-4 space-y-4">
               <Field data-invalid={!!form.formState.errors.nome}>
-                <FieldLabel htmlFor="nome">Nome</FieldLabel>
-                <Input id="nome" placeholder="Ex.: ERP Protheus - produção" {...form.register("nome")} />
+                <FieldLabel htmlFor="nome">Nome da Integração / Sistema</FieldLabel>
+                <Input
+                  id="nome"
+                  placeholder="Ex.: ERP Protheus - Produção"
+                  {...form.register("nome")}
+                />
                 <FieldError errors={[form.formState.errors.nome]} />
               </Field>
               <Field>
-                <FieldLabel htmlFor="expiraEm">Expira em (opcional)</FieldLabel>
+                <FieldLabel htmlFor="expiraEm">Data de Expiração (Opcional)</FieldLabel>
                 <Input
                   id="expiraEm"
                   type="date"
                   onChange={(e) =>
-                    form.setValue("expiraEm", e.target.value ? new Date(`${e.target.value}T00:00:00`) : null)
+                    form.setValue(
+                      "expiraEm",
+                      e.target.value
+                        ? new Date(`${e.target.value}T00:00:00`)
+                        : null,
+                    )
                   }
                 />
               </Field>
             </FieldGroup>
             <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                disabled={form.formState.isSubmitting}
+              >
+                Cancelar
+              </Button>
               <Button type="submit" disabled={form.formState.isSubmitting}>
-                Criar
+                Gerar Chave
               </Button>
             </DialogFooter>
           </form>

@@ -58,7 +58,7 @@ export class EmpresasController {
     summary: 'Listar empresas',
     description:
       'Lista empresas cadastradas no sistema, com paginação, busca e ordenação. ' +
-      'Requer a permissão empresas.visualizar.',
+      'Requer a permissão empresas.visualizar. Para administradores do tenant, lista as empresas a que ele pertence.',
   })
   @ApiResponse({
     status: 200,
@@ -66,10 +66,9 @@ export class EmpresasController {
   })
   @ApiPaginationQuery()
   @RequirePermission('empresas', 'visualizar')
-  @UseGuards(PlatformAdminGuard)
   @Get()
-  findAll(@Query() query: EmpresaQueryDto) {
-    return this.service.findAll(query);
+  findAll(@Query() query: EmpresaQueryDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.findAll(query, user);
   }
 
   @ApiOperation({

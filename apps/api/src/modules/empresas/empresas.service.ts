@@ -85,9 +85,22 @@ export class EmpresasService {
     return out;
   }
 
-  async findAll(query: EmpresaQuery) {
+  async findAll(query: EmpresaQuery, user?: AtorEmpresa) {
+    let idsEscopo: string[] | undefined = undefined;
+
+    if (user && !user.administradorPlataforma) {
+      const empresasDoUsuario = await this.prisma.usuarioEmpresa.findMany({
+        where: { usuarioId: user.id, deletedAt: null, ativo: true },
+        select: { empresaId: true },
+      });
+      const ids = new Set(empresasDoUsuario.map((e) => e.empresaId));
+      if (user.empresaAtivaId) ids.add(user.empresaAtivaId);
+      idsEscopo = Array.from(ids);
+    }
+
     const where = {
       deletedAt: null,
+      ...(idsEscopo !== undefined ? { id: { in: idsEscopo } } : {}),
       ...(query.situacao !== undefined ? { situacao: query.situacao } : {}),
       ...(query.search
         ? {

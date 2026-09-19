@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { MoreHorizontal, Pencil, Star, Trash2 } from "lucide-react";
+import { MoreHorizontal, Pencil, Star, Trash2, Landmark, CheckCircle2, CreditCard, Plus } from "lucide-react";
 import type { ContaBancaria } from "@plataforma/contracts";
 import { BANCO_BOLETO_LABEL } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
@@ -14,7 +14,9 @@ import {
   StatusQuickFilter,
   type StatusFilterValue,
 } from "@/components/crud/status-quick-filter";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -22,7 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { FieldLabel } from "@/components/ui/field";
+import { FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -77,7 +79,6 @@ const FORM_VAZIO: FormState = {
   ativo: true,
 };
 
-/** Campo numérico opcional: em branco vira null, não zero. */
 const numeroOuNulo = (v: string) => {
   const t = v.trim().replace(",", ".");
   if (!t) return null;
@@ -87,14 +88,6 @@ const numeroOuNulo = (v: string) => {
 
 const textoOuNulo = (v: string) => (v.trim() ? v.trim() : null);
 
-/**
- * Contas Bancárias — o convênio de cobrança usado na 2ª via de boleto
- * (ver `docs/planos/segunda-via-danfe-boleto.md`).
- *
- * Fica em Administração, e não em Cadastros, porque agência, conta e carteira
- * entram no código de barras: valor errado aqui não dá erro em tela nenhuma —
- * dá um boleto que o cliente tenta pagar e o banco recusa.
- */
 export default function ContasBancariasPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -176,14 +169,14 @@ export default function ContasBancariasPage() {
     try {
       if (editando) {
         await update.mutateAsync({ id: editando.id, input });
-        toast.success("Conta atualizada");
+        toast.success("Conta bancária atualizada com sucesso");
       } else {
         await create.mutateAsync(input);
-        toast.success("Conta cadastrada");
+        toast.success("Conta bancária cadastrada com sucesso");
       }
       setAberto(false);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Erro ao salvar");
+      toast.error(err instanceof ApiError ? err.message : "Erro ao salvar conta bancária");
     }
   };
 
@@ -197,39 +190,54 @@ export default function ContasBancariasPage() {
     }
   };
 
+  const totalContas = data?.total ?? 0;
+  const listaContas = data?.data ?? [];
+  const totalAtivas = listaContas.filter((c) => c.ativo).length;
+  const contaPadrao = listaContas.find((c) => c.padrao);
+
   const columns: ColumnDef<ContaBancaria>[] = [
     {
       header: "Descrição",
       sortKey: "descricao",
       cell: (c) => (
-        <span className="flex items-center gap-1.5 font-medium">
-          {c.padrao && <Star className="size-3.5 shrink-0 text-primary" />}
-          {c.descricao}
-        </span>
+        <div className="flex items-center gap-2">
+          {c.padrao && (
+            <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs px-1.5 py-0">
+              <Star className="h-3 w-3 mr-1 inline fill-amber-500 text-amber-500" /> Padrão
+            </Badge>
+          )}
+          <span className="font-semibold text-sm text-foreground">{c.descricao}</span>
+        </div>
       ),
     },
     {
       header: "Banco",
       sortKey: "banco",
-      cell: (c) =>
-        `${c.banco} — ${BANCO_BOLETO_LABEL[c.banco as keyof typeof BANCO_BOLETO_LABEL] ?? "—"}`,
+      cell: (c) => (
+        <Badge variant="secondary" className="font-mono text-xs">
+          {c.banco} — {BANCO_BOLETO_LABEL[c.banco as keyof typeof BANCO_BOLETO_LABEL] ?? "—"}
+        </Badge>
+      ),
     },
     {
       header: "Agência / Conta",
       sortKey: "agencia",
-      cell: (c) =>
-        `${c.agencia}${c.agenciaDv ? `-${c.agenciaDv}` : ""} / ${c.conta}${c.contaDv ? `-${c.contaDv}` : ""}`,
+      cell: (c) => (
+        <span className="font-mono text-xs">
+          {c.agencia}{c.agenciaDv ? `-${c.agenciaDv}` : ""} / {c.conta}{c.contaDv ? `-${c.contaDv}` : ""}
+        </span>
+      ),
     },
-    { header: "Carteira", cell: (c) => c.carteira },
+    { header: "Carteira", cell: (c) => <Badge variant="outline" className="font-mono text-xs">{c.carteira}</Badge> },
     {
       header: "Encargos",
       cell: (c) =>
         [
-          c.multaPerc ? `multa ${c.multaPerc}%` : null,
-          c.jurosMesPerc ? `juros ${c.jurosMesPerc}%/mês` : null,
+          c.multaPerc ? `Multa ${c.multaPerc}%` : null,
+          c.jurosMesPerc ? `Juros ${c.jurosMesPerc}%/mês` : null,
         ]
           .filter(Boolean)
-          .join(" · ") || "—",
+          .join(" · ") || <span className="text-xs text-muted-foreground">—</span>,
     },
     {
       header: "Status",
@@ -247,10 +255,10 @@ export default function ContasBancariasPage() {
             <Button
               variant="ghost"
               size="icon"
-              className="size-8"
+              className="h-8 w-8"
               onClick={(ev) => ev.stopPropagation()}
             >
-              <MoreHorizontal className="size-4" />
+              <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(ev) => ev.stopPropagation()}>
@@ -260,10 +268,10 @@ export default function ContasBancariasPage() {
                 setAberto(true);
               }}
             >
-              <Pencil className="size-4" /> Editar
+              <Pencil className="mr-2 h-4 w-4" /> Editar
             </DropdownMenuItem>
             <DropdownMenuItem variant="destructive" onClick={() => excluir(c)}>
-              <Trash2 className="size-4" /> Excluir
+              <Trash2 className="mr-2 h-4 w-4" /> Excluir
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -272,7 +280,88 @@ export default function ContasBancariasPage() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Contas Bancárias</h1>
+          <p className="text-sm text-muted-foreground">
+            Configure as contas e convênios bancários utilizados para emissão de boleto e segunda via.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          onClick={() => {
+            setEditando(null);
+            setAberto(true);
+          }}
+        >
+          <Plus className="mr-1.5 h-4 w-4" />
+          Nova conta
+        </Button>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Card className="bg-card">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Total de Contas
+              </p>
+              <p className="text-2xl font-bold mt-1">{totalContas}</p>
+            </div>
+            <div className="rounded-full bg-primary/10 p-3 text-primary">
+              <Landmark className="h-5 w-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Contas Ativas
+              </p>
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                  {totalAtivas}
+                </p>
+                <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs">
+                  Disponíveis
+                </Badge>
+              </div>
+            </div>
+            <div className="rounded-full bg-emerald-500/10 p-3 text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="h-5 w-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Conta Padrão
+              </p>
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-base font-bold truncate max-w-[150px]">
+                  {contaPadrao ? contaPadrao.descricao : "Nenhuma"}
+                </p>
+                {contaPadrao && (
+                  <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs">
+                    Principal
+                  </Badge>
+                )}
+              </div>
+            </div>
+            <div className="rounded-full bg-amber-500/10 p-3 text-amber-600 dark:text-amber-400">
+              <CreditCard className="h-5 w-5" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <CrudHeader
         search={search}
         onSearchChange={(v) => {
@@ -321,41 +410,41 @@ export default function ContasBancariasPage() {
           setSortBy(key);
           setSortOrder(order);
         }}
+        emptyMessage="Nenhuma conta bancária cadastrada."
       />
 
       <Dialog open={aberto} onOpenChange={setAberto}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>
-              {editando ? "Editar conta bancária" : "Nova conta bancária"}
+            <DialogTitle className="flex items-center gap-2">
+              <Landmark className="h-5 w-5 text-primary" />
+              {editando ? "Editar Conta Bancária" : "Nova Conta Bancária"}
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <p className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
-              Estes dados entram no código de barras do boleto. Confira agência,
-              conta e carteira com o extrato ou com o gerente: um dígito errado
-              produz um boleto que o banco recusa no caixa, sem erro nenhum aqui.
+          <FieldGroup className="space-y-4 py-2">
+            <p className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-3 text-xs text-amber-900 dark:text-amber-200">
+              Estes dados entram diretamente no código de barras e linha digitável do boleto. Certifique-se de que os dados de agência, conta e carteira conferem exatamente com o contrato bancário.
             </p>
 
             <div className="space-y-1.5">
-              <FieldLabel htmlFor="descricao">Descrição</FieldLabel>
+              <FieldLabel htmlFor="descricao">Descrição da Conta</FieldLabel>
               <Input
                 id="descricao"
                 value={form.descricao}
                 maxLength={80}
-                placeholder="Bradesco 237 — carteira 09"
+                placeholder="Ex: Bradesco Principal — Carteira 09"
                 onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))}
               />
               <p className="text-xs text-muted-foreground">
-                É por esta descrição que o ERP indica a conta ao enviar o título.
+                Descrição de referência para a seleção do convênio nas operações do sistema.
               </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-4">
               <div className="space-y-1.5">
                 <FieldLabel htmlFor="banco">Banco</FieldLabel>
-                <Input id="banco" value="237 — Bradesco" disabled />
+                <Input id="banco" value="237 — Bradesco" disabled className="bg-muted font-medium text-xs" />
               </div>
               <div className="space-y-1.5">
                 <FieldLabel htmlFor="agencia">Agência</FieldLabel>
@@ -365,34 +454,38 @@ export default function ContasBancariasPage() {
                     value={form.agencia}
                     inputMode="numeric"
                     maxLength={5}
+                    placeholder="0000"
                     onChange={(e) => setForm((f) => ({ ...f, agencia: e.target.value }))}
                   />
                   <span className="text-muted-foreground">-</span>
                   <Input
-                    className="w-12"
+                    className="w-12 text-center"
                     value={form.agenciaDv}
                     inputMode="numeric"
                     maxLength={1}
+                    placeholder="0"
                     onChange={(e) => setForm((f) => ({ ...f, agenciaDv: e.target.value }))}
                   />
                 </div>
               </div>
               <div className="space-y-1.5">
-                <FieldLabel htmlFor="conta">Conta</FieldLabel>
+                <FieldLabel htmlFor="conta">Conta Corrente</FieldLabel>
                 <div className="flex items-center gap-1">
                   <Input
                     id="conta"
                     value={form.conta}
                     inputMode="numeric"
                     maxLength={9}
+                    placeholder="000000"
                     onChange={(e) => setForm((f) => ({ ...f, conta: e.target.value }))}
                   />
                   <span className="text-muted-foreground">-</span>
                   <Input
-                    className="w-12"
+                    className="w-12 text-center"
                     value={form.contaDv}
                     inputMode="numeric"
                     maxLength={1}
+                    placeholder="0"
                     onChange={(e) => setForm((f) => ({ ...f, contaDv: e.target.value }))}
                   />
                 </div>
@@ -417,7 +510,7 @@ export default function ContasBancariasPage() {
                   id="multaPerc"
                   value={form.multaPerc}
                   inputMode="decimal"
-                  placeholder="2"
+                  placeholder="2.0"
                   onChange={(e) => setForm((f) => ({ ...f, multaPerc: e.target.value }))}
                 />
               </div>
@@ -427,7 +520,7 @@ export default function ContasBancariasPage() {
                   id="jurosMesPerc"
                   value={form.jurosMesPerc}
                   inputMode="decimal"
-                  placeholder="1"
+                  placeholder="1.0"
                   onChange={(e) => setForm((f) => ({ ...f, jurosMesPerc: e.target.value }))}
                 />
               </div>
@@ -437,28 +530,24 @@ export default function ContasBancariasPage() {
                   id="diasProtesto"
                   value={form.diasProtesto}
                   inputMode="numeric"
+                  placeholder="0"
                   onChange={(e) => setForm((f) => ({ ...f, diasProtesto: e.target.value }))}
                 />
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Multa e juros são usados para <strong>atualizar o valor</strong> do
-              boleto de título vencido, e saem detalhados nas instruções da ficha.
-              Em branco: a 2ª via sai pelo valor original.
+              Multa e juros são calculados na atualização do valor da 2ª via após o vencimento.
             </p>
 
             <div className="space-y-1.5">
-              <FieldLabel htmlFor="instrucoes">Instruções ao caixa</FieldLabel>
+              <FieldLabel htmlFor="instrucoes">Instruções de Cobrança</FieldLabel>
               <Textarea
                 id="instrucoes"
                 rows={3}
+                placeholder="Ex: Não receber após 30 dias do vencimento"
                 value={form.instrucoes}
                 onChange={(e) => setForm((f) => ({ ...f, instrucoes: e.target.value }))}
               />
-              <p className="text-xs text-muted-foreground">
-                Uma por linha. As linhas de multa, juros e protesto são
-                acrescentadas automaticamente.
-              </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-3">
@@ -496,27 +585,27 @@ export default function ContasBancariasPage() {
             </div>
 
             <div className="space-y-1.5">
-              <FieldLabel htmlFor="beneficiarioNome">Beneficiário</FieldLabel>
+              <FieldLabel htmlFor="beneficiarioNome">Nome do Beneficiário</FieldLabel>
               <Input
                 id="beneficiarioNome"
                 value={form.beneficiarioNome}
                 maxLength={120}
-                placeholder="Em branco: usa a razão social da empresa"
+                placeholder="Em branco: utiliza a Razão Social da empresa ativa"
                 onChange={(e) =>
                   setForm((f) => ({ ...f, beneficiarioNome: e.target.value }))
                 }
               />
             </div>
 
-            <div className="flex items-center gap-6">
-              <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <div className="flex items-center gap-6 pt-2 border-t">
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
                 <Switch
                   checked={form.padrao}
                   onCheckedChange={(v) => setForm((f) => ({ ...f, padrao: v }))}
                 />
-                Conta padrão
+                Definir como Conta Padrão
               </label>
-              <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
                 <Switch
                   checked={form.ativo}
                   onCheckedChange={(v) => setForm((f) => ({ ...f, ativo: v }))}
@@ -524,19 +613,14 @@ export default function ContasBancariasPage() {
                 Ativa
               </label>
             </div>
-            <p className="text-xs text-muted-foreground">
-              A conta padrão é usada pelos títulos que não indicam nenhuma — o
-              caso de todos os títulos já importados do ERP. Só uma por empresa:
-              marcar esta desmarca a anterior.
-            </p>
-          </div>
+          </FieldGroup>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setAberto(false)}>
               Cancelar
             </Button>
             <Button onClick={salvar} disabled={create.isPending || update.isPending}>
-              {create.isPending || update.isPending ? "Salvando…" : "Salvar"}
+              {create.isPending || update.isPending ? "Salvando..." : "Salvar Conta"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -544,3 +628,4 @@ export default function ContasBancariasPage() {
     </div>
   );
 }
+

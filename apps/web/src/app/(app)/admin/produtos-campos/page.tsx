@@ -3,7 +3,20 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  GripVertical,
+  Pencil,
+  Plus,
+  Trash2,
+  Package,
+  Layers,
+  Bot,
+  CheckCircle2,
+  Tag,
+  HelpCircle,
+  Folder,
+  SlidersHorizontal,
+} from "lucide-react";
 import type {
   ProdutoCampo,
   ProdutoCampoTipo,
@@ -13,7 +26,7 @@ import { ApiError, apiFetch } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -23,7 +36,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { FieldLabel } from "@/components/ui/field";
+import { FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -35,26 +48,12 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 
-/**
- * Campos do Produto: o que a empresa quer guardar além do que vem do ERP.
- *
- * Vizinha de "Campos do Cliente" e com o mesmo espírito, mas não a mesma
- * coisa: lá se escolhe quais campos já existentes podem ser editados; aqui se
- * **cria** o campo, porque cada empresa guarda dados diferentes do produto —
- * diluição num químico, aplicação numa autopeça, tensão num elétrico.
- *
- * Preencher o valor é na tela do produto, com `produtos.editar`. Aqui só se
- * decide o que existe.
- */
-
-const SEM_GRUPO = "Sem grupo";
+const SEM_GRUPO = "Gerais / Sem grupo";
 
 /** Vira `peso-bruto` a partir de "Peso bruto" — só uma sugestão inicial. */
 function sugerirChave(nome: string) {
   return nome
     .normalize("NFD")
-    // A classe abaixo é a faixa dos acentos combinantes (U+0300 a U+036F),
-    // que o NFD acabou de separar da letra.
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -130,7 +129,6 @@ export default function ProdutosCamposPage() {
 
   const invalidar = () => {
     void queryClient.invalidateQueries({ queryKey: ["produtos-campos"] });
-    // O formulário do produto lê a mesma definição.
     void queryClient.invalidateQueries({ queryKey: ["produtos"] });
   };
 
@@ -162,7 +160,7 @@ export default function ProdutosCamposPage() {
           });
     },
     onSuccess: (_, r) => {
-      toast.success(r.id ? "Campo alterado" : "Campo criado");
+      toast.success(r.id ? "Campo alterado com sucesso" : "Campo criado com sucesso");
       setRascunho(null);
       invalidar();
     },
@@ -186,8 +184,6 @@ export default function ProdutosCamposPage() {
       ),
   });
 
-  // Agrupado como aparece no produto: é assim que se percebe que um campo foi
-  // parar no grupo errado.
   const grupos = useMemo(() => {
     const mapa = new Map<string, ProdutoCampo[]>();
     for (const c of campos) {
@@ -200,96 +196,212 @@ export default function ProdutosCamposPage() {
   }, [campos]);
 
   const editando = !!rascunho?.id;
+  const totalCampos = campos.length;
+  const totalAtivos = campos.filter((c) => c.ativo).length;
+  const totalVisiveisAgente = campos.filter((c) => c.visivelAgente).length;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">
+          <h1 className="text-2xl font-bold tracking-tight">
             Campos do Produto
           </h1>
           <p className="text-sm text-muted-foreground">
-            Dados que só a sua empresa guarda — dimensões, diluição, validade,
-            aplicação. Aparecem no cadastro de cada produto.
+            Gerencie os atributos e especificações técnicas complementares cadastrados nos produtos da empresa.
           </p>
         </div>
         {podeCadastrar && (
-          <Button onClick={() => setRascunho({ ...VAZIO })}>
-            <Plus className="size-4" />
+          <Button onClick={() => setRascunho({ ...VAZIO })} size="sm">
+            <Plus className="mr-1.5 h-4 w-4" />
             Novo campo
           </Button>
         )}
       </div>
 
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Card className="bg-card">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Total de Campos
+              </p>
+              <p className="text-2xl font-bold mt-1">{totalCampos}</p>
+            </div>
+            <div className="rounded-full bg-primary/10 p-3 text-primary">
+              <Package className="h-5 w-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Campos Ativos
+              </p>
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                  {totalAtivos}
+                </p>
+                <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs">
+                  {grupos.length} grupo(s)
+                </Badge>
+              </div>
+            </div>
+            <div className="rounded-full bg-emerald-500/10 p-3 text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="h-5 w-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Visíveis para IA
+              </p>
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
+                  {totalVisiveisAgente}
+                </p>
+                <Badge variant="outline" className="border-indigo-500/30 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-xs">
+                  Agente AI
+                </Badge>
+              </div>
+            </div>
+            <div className="rounded-full bg-indigo-500/10 p-3 text-indigo-600 dark:text-indigo-400">
+              <Bot className="h-5 w-5" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {isLoading ? (
         <Skeleton className="h-64 w-full rounded-xl" />
       ) : campos.length === 0 ? (
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            Nenhum campo complementar ainda. O cadastro de produto mostra apenas
-            o que vem do ERP.
+        <Card className="border-dashed">
+          <CardContent className="py-12 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+              <Package className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <h3 className="mt-4 text-lg font-semibold">Nenhum campo personalizado</h3>
+            <p className="mt-1 text-sm text-muted-foreground max-w-md mx-auto">
+              Nenhum campo complementar cadastrado. Adicione atributos como especificações técnicas, dimensões e diluição.
+            </p>
+            {podeCadastrar && (
+              <Button onClick={() => setRascunho({ ...VAZIO })} className="mt-4" size="sm">
+                <Plus className="mr-1.5 h-4 w-4" />
+                Criar primeiro campo
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-6">
           {grupos.map(([grupo, doGrupo]) => (
-            <Card key={grupo}>
-              <CardContent className="space-y-1 p-4">
-                <p className="pb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                  {grupo}
-                </p>
+            <Card key={grupo} className="overflow-hidden">
+              <CardHeader className="bg-muted/30 pb-3 border-b">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="rounded-lg bg-primary/10 p-2 text-primary">
+                      <Folder className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-semibold">{grupo}</CardTitle>
+                      <CardDescription className="text-xs">
+                        {doGrupo.length} {doGrupo.length === 1 ? "campo cadastrado" : "campos cadastrados"}
+                      </CardDescription>
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0 divide-y">
                 {doGrupo.map((campo) => (
                   <div
                     key={campo.id}
-                    className="flex flex-wrap items-center gap-3 rounded-md px-2 py-2 hover:bg-muted/50"
+                    className="flex flex-col gap-3 sm:flex-row sm:items-center justify-between p-4 hover:bg-muted/30 transition-colors"
                   >
-                    <GripVertical className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="w-8 text-xs text-muted-foreground">
-                      {campo.ordem}
-                    </span>
-                    <div className="min-w-40 flex-1">
-                      <p className="text-sm font-medium">
-                        {campo.nome}
-                        {campo.unidade && (
-                          <span className="text-muted-foreground">
-                            {" "}
-                            ({campo.unidade})
+                    <div className="flex items-start gap-3">
+                      <GripVertical className="h-4 w-4 mt-1 text-muted-foreground/50 shrink-0" />
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-foreground">
+                            {campo.nome}
                           </span>
+                          {campo.unidade && (
+                            <span className="text-xs text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded">
+                              {campo.unidade}
+                            </span>
+                          )}
+                          <Badge variant="outline" className="text-xs font-mono">
+                            {campo.chave}
+                          </Badge>
+                        </div>
+                        {campo.ajuda && (
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <HelpCircle className="h-3 w-3 inline" />
+                            {campo.ajuda}
+                          </p>
                         )}
-                      </p>
-                      <p className="font-mono text-xs text-muted-foreground">
-                        {campo.chave}
-                      </p>
+                      </div>
                     </div>
-                    <Badge variant="outline">
-                      {PRODUTO_CAMPO_TIPO_LABEL[campo.tipo]}
-                    </Badge>
-                    {campo.obrigatorio && (
-                      <Badge variant="secondary">Obrigatório</Badge>
-                    )}
-                    {!campo.visivelAgente && (
-                      <Badge variant="secondary">Oculto para a IA</Badge>
-                    )}
-                    {!campo.ativo && <Badge variant="destructive">Inativo</Badge>}
-                    <div className="ml-auto flex gap-1">
-                      {podeEditar && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setRascunho(paraRascunho(campo))}
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
+
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 pl-7 sm:pl-0">
+                      <Badge variant="secondary" className="text-xs">
+                        {PRODUTO_CAMPO_TIPO_LABEL[campo.tipo]}
+                      </Badge>
+
+                      {campo.obrigatorio && (
+                        <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs">
+                          Obrigatório
+                        </Badge>
                       )}
-                      {podeExcluir && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setAExcluir(campo)}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
+
+                      {campo.visivelAgente ? (
+                        <Badge variant="outline" className="border-indigo-500/30 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-xs">
+                          <Bot className="h-3 w-3 mr-1 inline" /> Visível IA
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-muted-foreground text-xs">
+                          Oculto IA
+                        </Badge>
                       )}
+
+                      {!campo.ativo ? (
+                        <Badge variant="destructive" className="text-xs">
+                          Inativo
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-500/5 text-xs">
+                          Ativo
+                        </Badge>
+                      )}
+
+                      <div className="flex items-center gap-1 ml-auto">
+                        {podeEditar && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            onClick={() => setRascunho(paraRascunho(campo))}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {podeExcluir && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            onClick={() => setAExcluir(campo)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -299,37 +411,36 @@ export default function ProdutosCamposPage() {
         </div>
       )}
 
-      <Dialog
-        open={!!rascunho}
-        onOpenChange={(aberto) => !aberto && setRascunho(null)}
-      >
+      {/* Modal Criar / Editar Campo */}
+      <Dialog open={!!rascunho} onOpenChange={(aberto) => !aberto && setRascunho(null)}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editando ? "Alterar campo" : "Novo campo"}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Tag className="h-5 w-5 text-primary" />
+              {editando ? "Alterar Campo do Produto" : "Novo Campo do Produto"}
+            </DialogTitle>
             <DialogDescription>
               {editando
-                ? "A chave não muda: é por ela que a IA e as integrações referenciam o campo."
-                : "O nome é o que aparece na tela; a chave é o identificador estável."}
+                ? "A chave identificadora é imutável para garantir integridade com a IA e ERPs."
+                : "Defina o nome de exibição e a chave única de identificação do atributo."}
             </DialogDescription>
           </DialogHeader>
 
           {rascunho && (
-            <div className="space-y-4">
+            <FieldGroup className="space-y-4 py-2">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <FieldLabel htmlFor="campo-nome">Nome</FieldLabel>
+                  <FieldLabel htmlFor="campo-nome">Nome de exibição</FieldLabel>
                   <Input
                     id="campo-nome"
                     value={rascunho.nome}
-                    placeholder="Peso bruto"
+                    placeholder="Ex: Peso Bruto"
                     onChange={(e) =>
                       setRascunho((r) =>
                         r
                           ? {
                               ...r,
                               nome: e.target.value,
-                              // Só sugere enquanto o campo é novo e ninguém
-                              // digitou a chave à mão.
                               chave:
                                 !r.id && sugerirChave(r.nome) === r.chave
                                   ? sugerirChave(e.target.value)
@@ -341,17 +452,15 @@ export default function ProdutosCamposPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <FieldLabel htmlFor="campo-chave">Chave</FieldLabel>
+                  <FieldLabel htmlFor="campo-chave">Chave identificadora</FieldLabel>
                   <Input
                     id="campo-chave"
                     value={rascunho.chave}
                     disabled={editando}
                     placeholder="peso-bruto"
-                    className="font-mono"
+                    className="font-mono text-xs"
                     onChange={(e) =>
-                      setRascunho((r) =>
-                        r ? { ...r, chave: e.target.value } : r,
-                      )
+                      setRascunho((r) => (r ? { ...r, chave: e.target.value } : r))
                     }
                   />
                 </div>
@@ -359,13 +468,11 @@ export default function ProdutosCamposPage() {
 
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-2">
-                  <FieldLabel>Tipo</FieldLabel>
+                  <FieldLabel>Tipo de Dado</FieldLabel>
                   <Select
                     value={rascunho.tipo}
                     onValueChange={(v) =>
-                      setRascunho((r) =>
-                        r ? { ...r, tipo: v as ProdutoCampoTipo } : r,
-                      )
+                      setRascunho((r) => (r ? { ...r, tipo: v as ProdutoCampoTipo } : r))
                     }
                   >
                     <SelectTrigger className="w-full">
@@ -383,29 +490,25 @@ export default function ProdutosCamposPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <FieldLabel htmlFor="campo-unidade">Unidade</FieldLabel>
+                  <FieldLabel htmlFor="campo-unidade">Unidade (Opcional)</FieldLabel>
                   <Input
                     id="campo-unidade"
                     value={rascunho.unidade}
-                    placeholder="kg"
+                    placeholder="kg, mm, L"
                     onChange={(e) =>
-                      setRascunho((r) =>
-                        r ? { ...r, unidade: e.target.value } : r,
-                      )
+                      setRascunho((r) => (r ? { ...r, unidade: e.target.value } : r))
                     }
                   />
                 </div>
                 <div className="space-y-2">
-                  <FieldLabel htmlFor="campo-ordem">Ordem</FieldLabel>
+                  <FieldLabel htmlFor="campo-ordem">Ordem de Exibição</FieldLabel>
                   <Input
                     id="campo-ordem"
                     inputMode="numeric"
                     value={rascunho.ordem}
                     onChange={(e) =>
                       setRascunho((r) =>
-                        r
-                          ? { ...r, ordem: e.target.value.replace(/\D/g, "") }
-                          : r,
+                        r ? { ...r, ordem: e.target.value.replace(/\D/g, "") } : r
                       )
                     }
                   />
@@ -415,7 +518,7 @@ export default function ProdutosCamposPage() {
               {rascunho.tipo === "lista" && (
                 <div className="space-y-2">
                   <FieldLabel htmlFor="campo-opcoes">
-                    Opções — uma por linha
+                    Opções da Lista (uma por linha)
                   </FieldLabel>
                   <Textarea
                     id="campo-opcoes"
@@ -423,9 +526,7 @@ export default function ProdutosCamposPage() {
                     value={rascunho.opcoes}
                     placeholder={"Concentrado\nPronto para uso"}
                     onChange={(e) =>
-                      setRascunho((r) =>
-                        r ? { ...r, opcoes: e.target.value } : r,
-                      )
+                      setRascunho((r) => (r ? { ...r, opcoes: e.target.value } : r))
                     }
                   />
                 </div>
@@ -433,95 +534,85 @@ export default function ProdutosCamposPage() {
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <FieldLabel htmlFor="campo-grupo">Grupo</FieldLabel>
+                  <FieldLabel htmlFor="campo-grupo">Grupo / Categoria</FieldLabel>
                   <Input
                     id="campo-grupo"
                     value={rascunho.grupo}
-                    placeholder="Dimensões"
+                    placeholder="Ex: Dimensões"
                     onChange={(e) =>
-                      setRascunho((r) =>
-                        r ? { ...r, grupo: e.target.value } : r,
-                      )
+                      setRascunho((r) => (r ? { ...r, grupo: e.target.value } : r))
                     }
                   />
                 </div>
                 <div className="space-y-2">
-                  <FieldLabel htmlFor="campo-ajuda">Ajuda</FieldLabel>
+                  <FieldLabel htmlFor="campo-ajuda">Texto de Ajuda</FieldLabel>
                   <Input
                     id="campo-ajuda"
                     value={rascunho.ajuda}
-                    placeholder="Proporção recomendada, ex. 1:100"
+                    placeholder="Orientação de preenchimento"
                     onChange={(e) =>
-                      setRascunho((r) =>
-                        r ? { ...r, ajuda: e.target.value } : r,
-                      )
+                      setRascunho((r) => (r ? { ...r, ajuda: e.target.value } : r))
                     }
                   />
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <label className="flex items-center gap-2 text-sm">
+              <div className="space-y-3 pt-2 border-t">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <Checkbox
                     checked={rascunho.obrigatorio}
                     onCheckedChange={(v) =>
                       setRascunho((r) => (r ? { ...r, obrigatorio: !!v } : r))
                     }
                   />
-                  Obrigatório ao preencher o produto
+                  Preenchimento obrigatório no cadastro do produto
                 </label>
-                <label className="flex items-center gap-2 text-sm">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <Checkbox
                     checked={rascunho.visivelAgente}
                     onCheckedChange={(v) =>
                       setRascunho((r) => (r ? { ...r, visivelAgente: !!v } : r))
                     }
                   />
-                  A IA pode citar este campo ao falar do produto
+                  Disponível para leitura e recomendação pelo Agente de IA
                 </label>
-                <label className="flex items-center gap-2 text-sm">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <Checkbox
                     checked={rascunho.ativo}
                     onCheckedChange={(v) =>
                       setRascunho((r) => (r ? { ...r, ativo: !!v } : r))
                     }
                   />
-                  Ativo (aparece no cadastro de produto)
+                  Ativo (exibido nas telas de cadastro de produto)
                 </label>
               </div>
-            </div>
+            </FieldGroup>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setRascunho(null)}>
               Cancelar
             </Button>
             <Button
-              disabled={
-                salvar.isPending || !rascunho?.nome.trim() || !rascunho?.chave.trim()
-              }
+              disabled={salvar.isPending || !rascunho?.nome.trim() || !rascunho?.chave.trim()}
               onClick={() => rascunho && salvar.mutate(rascunho)}
             >
-              Salvar
+              {salvar.isPending ? "Salvando..." : "Salvar Campo"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={!!aExcluir}
-        onOpenChange={(aberto) => !aberto && setAExcluir(null)}
-      >
+      {/* Modal Confirmar Exclusão */}
+      <Dialog open={!!aExcluir} onOpenChange={(aberto) => !aberto && setAExcluir(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Excluir {aExcluir?.nome}?</DialogTitle>
+            <DialogTitle>Excluir campo &quot;{aExcluir?.nome}&quot;?</DialogTitle>
             <DialogDescription>
-              O campo some do cadastro de produto. O que os produtos já têm
-              preenchido continua gravado — se quiser só tirar da tela por um
-              tempo, desative em vez de excluir.
+              Esta ação remove o campo do formulário de produto. Os dados gravados em produtos existentes não serão perdidos.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setAExcluir(null)}>
               Cancelar
             </Button>
@@ -530,7 +621,7 @@ export default function ProdutosCamposPage() {
               disabled={excluir.isPending}
               onClick={() => aExcluir && excluir.mutate(aExcluir.id)}
             >
-              Excluir
+              {excluir.isPending ? "Excluindo..." : "Excluir Definitivamente"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -538,3 +629,4 @@ export default function ProdutosCamposPage() {
     </div>
   );
 }
+

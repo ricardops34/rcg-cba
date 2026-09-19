@@ -3,14 +3,14 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cable, CheckCircle2, Cloud, Eraser, History, MoreHorizontal, RefreshCw, Smartphone, Trash2, TriangleAlert } from "lucide-react";
+import { Cable, CheckCircle2, Cloud, Eraser, History, MoreHorizontal, RefreshCw, Smartphone, Trash2, TriangleAlert, Bot } from "lucide-react";
 import { toast } from "sonner";
 import { WHATSAPP_AVISO_NAO_OFICIAL, WHATSAPP_TRANSPORTE_ROTULO, type WhatsappConfig, type WhatsappSessao, type WhatsappTemplate } from "@plataforma/contracts";
 import { API_ORIGIN, ApiError, apiFetch } from "@/lib/api-client";
 import { InstitucionalConfig } from "@/components/whatsapp/institucional-config";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -19,6 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStore } from "@/stores/auth-store";
 
 type Aba = "zapo" | "evolution-go" | "cloud-api" | "instancias" | "atendimento" | "institucional";
@@ -37,12 +38,18 @@ export default function WhatsappConfigPage() {
     queryFn: () => apiFetch<WhatsappConfig>("/whatsapp/config"),
   });
   const searchParams = useSearchParams();
-  // A aba abre no provedor que a empresa usa hoje — quem entra aqui quase
-  // sempre vem mexer no que está no ar, não no que ainda não foi escolhido.
-  // Exceção: um link direto (`?aba=institucional`, do menu de conta) pede uma
-  // aba específica, e essa intenção vale mais que o provedor em uso.
   const [aba, setAba] = useState<Aba | null>(null);
-  if (isLoading || !config) return <p className="text-sm text-muted-foreground">Carregando central de WhatsApp...</p>;
+
+  if (isLoading || !config) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-24 w-full rounded-xl" />
+        <Skeleton className="h-12 w-full max-w-2xl rounded-lg" />
+        <Skeleton className="h-96 w-full rounded-xl" />
+      </div>
+    );
+  }
+
   const abaDoLink = searchParams.get("aba");
   const abaAtual =
     aba ??
@@ -55,16 +62,16 @@ export default function WhatsappConfigPage() {
           : "zapo");
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <ChannelHeader config={config} />
-      <Tabs value={abaAtual} onValueChange={(value) => setAba(value as Aba)}>
-        <TabsList>
+      <Tabs value={abaAtual} onValueChange={(value) => setAba(value as Aba)} className="w-full">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-6 max-w-4xl">
           <TabsTrigger value="zapo">zapo-js</TabsTrigger>
           <TabsTrigger value="evolution-go">Evolution GO</TabsTrigger>
           <TabsTrigger value="cloud-api">API Oficial</TabsTrigger>
           <TabsTrigger value="instancias">Instâncias</TabsTrigger>
           <TabsTrigger value="atendimento">Atendimento IA</TabsTrigger>
-          <TabsTrigger value="institucional">Número institucional</TabsTrigger>
+          <TabsTrigger value="institucional">Institucional</TabsTrigger>
         </TabsList>
         <TabsContent value="zapo" className="pt-4"><ZapoConfig config={config} /></TabsContent>
         <TabsContent value="evolution-go" className="pt-4"><EvolutionConfig config={config} /></TabsContent>
@@ -76,6 +83,7 @@ export default function WhatsappConfigPage() {
     </div>
   );
 }
+
 
 /**
  * Atendimento por IA no número institucional.
