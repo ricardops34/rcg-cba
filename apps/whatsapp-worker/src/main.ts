@@ -189,6 +189,7 @@ async function restaurarSessoes(tentativa = 1): Promise<void> {
           sessao.sessaoId,
           sessao.empresaId,
           Boolean(sessao.arquivarMensagens),
+          true,
         )
         .catch((erro: unknown) =>
           console.error(`Falha ao restaurar a sessão ${sessao.sessaoId}`, erro),

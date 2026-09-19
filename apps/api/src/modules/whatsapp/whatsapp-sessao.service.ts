@@ -2,9 +2,13 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
+import {
+  PrismaService,
+  type TenantTx,
+} from '../../common/prisma/prisma.service';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappProviderService } from './providers/whatsapp-provider.service';
 import { cifrarSegredo } from './whatsapp-cripto';
@@ -39,6 +43,8 @@ import type { AuthenticatedUser } from '../../common/decorators/current-user.dec
  */
 @Injectable()
 export class WhatsappSessaoService {
+  private readonly logger = new Logger(WhatsappSessaoService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: WhatsappConfigService,
@@ -430,7 +436,12 @@ export class WhatsappSessaoService {
   async pareamento(empresaId: string, user: AuthenticatedUser) {
     const sessao = await this.minha(empresaId, user);
     if (!sessao) {
-      return { status: 'desconectada' as const, qr: null, numero: null, erro: null };
+      return {
+        status: 'desconectada' as const,
+        qr: null,
+        numero: null,
+        erro: null,
+      };
     }
 
     const doProvedor = await this.provedores.pareamento(empresaId, sessao.id);
@@ -439,15 +450,30 @@ export class WhatsappSessaoService {
     // celular, fora do nosso fluxo. Sem gravar de volta, o banco fica preso em
     // `pareando` para sempre e a tela nunca sai do "aguardando leitura do QR",
     // mesmo com a sessão já ativa.
+    //
+    // **A gravação não pode derrubar a leitura.** O que esta rota existe para
+    // entregar é o QR; persistir o status é efeito colateral útil. Sem este
+    // try/catch a tela some com o código por causa de uma escrita que falhou —
+    // foi exatamente o que aconteceu em 2026-09-19, com o banco do store do
+    // worker mal configurado: o QR chegava do provedor e morria aqui, e a tela
+    // ficava em "gerando o código..." para sempre, sem nada no log da API que
+    // ligasse uma coisa à outra.
     if (
       doProvedor.status !== sessao.status ||
       doProvedor.numero !== sessao.numero
     ) {
-      await this.registrarEstado(empresaId, sessao.id, {
-        status: doProvedor.status,
-        numero: doProvedor.numero,
-        erro: doProvedor.erro,
-      });
+      try {
+        await this.registrarEstado(empresaId, sessao.id, {
+          status: doProvedor.status,
+          numero: doProvedor.numero,
+          erro: doProvedor.erro,
+        });
+      } catch (erro) {
+        this.logger.error(
+          `Falha ao gravar o estado da sessão ${sessao.id} durante o pareamento ` +
+            `(o QR foi devolvido mesmo assim): ${erro instanceof Error ? erro.message : String(erro)}`,
+        );
+      }
     }
 
     return {
@@ -475,9 +501,9 @@ export class WhatsappSessaoService {
     sessaoId: string,
     dados: { status: string; numero: string | null; erro: string | null },
   ) {
-    const status = (
-      WHATSAPP_SESSAO_STATUS as readonly string[]
-    ).includes(dados.status)
+    const status = (WHATSAPP_SESSAO_STATUS as readonly string[]).includes(
+      dados.status,
+    )
       ? (dados.status as WhatsappSessaoStatus)
       : 'desconectada';
 
@@ -514,7 +540,8 @@ export class WhatsappSessaoService {
         where: { empresaId_vendedorId: { empresaId, vendedorId: vendedor.id } },
         select: { id: true },
       });
-      if (!sessao) throw new NotFoundException('Nenhuma sessão para desconectar');
+      if (!sessao)
+        throw new NotFoundException('Nenhuma sessão para desconectar');
       return { sessaoId: sessao.id, vendedorNome: vendedor.nome };
     });
 
@@ -577,7 +604,9 @@ export class WhatsappSessaoService {
         include: { vendedor: { select: { nome: true } } },
         orderBy: { updatedAt: 'desc' },
       });
-      return sessoes.map((s) => this.paraLeitura(s, s.vendedor?.nome ?? 'Empresa'));
+      return sessoes.map((s) =>
+        this.paraLeitura(s, s.vendedor?.nome ?? 'Empresa'),
+      );
     });
   }
 
@@ -709,7 +738,11 @@ export class WhatsappSessaoService {
         select: { id: true },
       });
       if (conversas.length === 0) {
-        return { conversas: 0, mensagens: 0, vendedor: sessao.vendedor?.nome ?? "Empresa" };
+        return {
+          conversas: 0,
+          mensagens: 0,
+          vendedor: sessao.vendedor?.nome ?? 'Empresa',
+        };
       }
       const ids = conversas.map((c) => c.id);
 
@@ -790,7 +823,11 @@ export class WhatsappSessaoService {
     await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappSessao.delete({ where: { id: sessao.id } }),
     );
-    return { excluida: true, vendedor: sessao.vendedor?.nome ?? "Empresa", por: user.id };
+    return {
+      excluida: true,
+      vendedor: sessao.vendedor?.nome ?? 'Empresa',
+      por: user.id,
+    };
   }
 
   /**
@@ -854,7 +891,7 @@ export class WhatsappSessaoService {
       dias: config.historicoDias,
       encontradas: resultado.encontradas,
       conversas: resultado.conversas,
-      vendedor: sessao.vendedor?.nome ?? "Empresa",
+      vendedor: sessao.vendedor?.nome ?? 'Empresa',
     };
   }
 

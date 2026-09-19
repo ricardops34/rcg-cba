@@ -158,6 +158,13 @@ export interface WhatsappTransport {
      * o worker sabe que a conversa existe, não o que foi dito nela.
      */
     arquivarMensagens?: boolean,
+    /**
+     * Reabrir uma sessao ja pareada, em vez de parear uma nova.
+     *
+     * Muda o que acontece quando a biblioteca pede QR: numa restauracao isso
+     * significa credencial perdida, e o transporte encerra em vez de insistir.
+     */
+    restaurando?: boolean,
   ): Promise<void>;
   /** Estado corrente — o QR expira em segundos, então é sempre lido na hora. */
   estado(sessaoId: string): EstadoPareamento;
