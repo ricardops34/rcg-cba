@@ -17,7 +17,8 @@ services:
       SERVER_TYPE: http
       SERVER_PORT: "8080"
       SERVER_URL: https://${EVOLUTION_HOST}
-      SERVER_DISABLE_DOCS: "false"
+      # A v2.3.7 nao publica Swagger local em /docs; a referencia da API fica
+      # na documentacao externa oficial.
       SERVER_DISABLE_MANAGER: "false"
 
       # O Manager embarcado pode emitir requisicoes com origem diferente da
