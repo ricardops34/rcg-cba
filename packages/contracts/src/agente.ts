@@ -25,7 +25,7 @@ export const SYSTEM_PROMPT_PADRAO = `Você é o assistente interno da equipe com
 ## Como responder
 Direto e curto, como um colega experiente do time. Comece pela resposta — o número, o nome, a conclusão — e só depois o detalhe, se ele mudar o que a pessoa faria em seguida. Nada de preâmbulo ("Claro!", "Vou verificar...") nem de recapitular a pergunta.
 
-Use tabela só para listas de fatos curtos (produtos, títulos, meses). Para uma pergunta simples, responda em uma frase.
+Use tabela só para listas de fatos curtos (produtos, títulos, meses). Para uma pergunta simples ou saudação (ex.: "oi", "olá", "bom dia"), responda educadamente em uma frase, sem citar ferramentas ou funções.
 
 ## Sobre os números
 Todo número, código ou nome que você citar tem que ter vindo de uma ferramenta nesta conversa. Se não veio, diga que não sabe e ofereça consultar — **nunca estime, arredonde de memória ou complete um dado que faltou**. Num sistema comercial, um número inventado vira decisão errada.
@@ -312,6 +312,45 @@ export const AGENTE_RESPOSTA_EXAMPLE: AgenteResposta = {
     },
   ],
 };
+
+/**
+ * Um passo do turno, enquanto ele acontece.
+ *
+ * O envio só responde depois de todas as voltas de ferramenta, e uma pergunta
+ * que encadeia três ou quatro passa dezenas de segundos sem nada na tela.
+ * Estes eventos existem para esse vão: o servidor conta o que vai fazer
+ * **antes** de fazer, e quem perguntou lê "Consultando títulos em aberto…" em
+ * vez de encarar um spinner mudo.
+ *
+ * Não é token a token — é passo a passo. O que faz esperar aqui é a ida ao
+ * banco e ao provedor, não a digitação do texto final.
+ */
+export const agenteEventoSchema = z.discriminatedUnion("tipo", [
+  z.object({
+    tipo: z.literal("ferramenta"),
+    /** Nome técnico, caso a tela precise tratar uma ferramenta em especial. */
+    nome: z.string(),
+    /** O que mostrar a quem espera, ex.: "Consultando títulos em aberto". */
+    rotulo: z.string(),
+  }),
+  /** Fim do turno: o payload é o mesmo do envio sem streaming. */
+  z.object({ tipo: z.literal("fim"), resposta: agenteRespostaSchema }),
+  /**
+   * A falha vem como evento porque o cabeçalho já foi enviado: depois do
+   * primeiro byte não há mais status HTTP para dar, e um stream que morre calado
+   * deixa a tela girando para sempre.
+   */
+  z.object({ tipo: z.literal("erro"), mensagem: z.string() }),
+]);
+export type AgenteEvento = z.infer<typeof agenteEventoSchema>;
+
+/** Uma conversa na lista — sem as mensagens, que só o detalhe carrega. */
+export const agenteConversaResumoSchema = z.object({
+  id: z.string().uuid(),
+  titulo: z.string().nullable(),
+  updatedAt: z.string().datetime(),
+});
+export type AgenteConversaResumo = z.infer<typeof agenteConversaResumoSchema>;
 
 /**
  * Governança de uma ferramenta do agente, por empresa.

@@ -22,6 +22,8 @@ import {
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappSessaoService } from './whatsapp-sessao.service';
 import { WhatsappProviderService } from './providers/whatsapp-provider.service';
+import { AgenteConfigService } from '../agente/agente-config.service';
+import { ProvedorFactory } from '../agente/provedor.factory';
 import {
   marcarNotificacoesDaOrigem,
   registrarNotificacao,
@@ -69,6 +71,8 @@ export class WhatsappConversasService {
     private readonly config: WhatsappConfigService,
     private readonly sessoes: WhatsappSessaoService,
     private readonly provedores: WhatsappProviderService,
+    private readonly agenteConfig: AgenteConfigService,
+    private readonly provedorIaFactory: ProvedorFactory,
   ) {}
 
   /**
@@ -2430,5 +2434,69 @@ export class WhatsappConversasService {
       ]);
       return { naoLidas, agendamentos };
     });
+  }
+
+  /**
+   * Copilot de IA: Sugere um rascunho de resposta em texto para a conversa
+   * com base nas últimas mensagens e nos dados do cliente.
+   */
+  async sugerirResposta(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+  ): Promise<{ sugestao: string }> {
+    const conversa = await this.prisma.withTenant(empresaId, (tx) =>
+      this.conversaParaEnvio(tx, empresaId, user, conversaId),
+    );
+
+    const mensagens = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappMensagem.findMany({
+        where: { empresaId, conversaId },
+        orderBy: { criadaEm: 'desc' },
+        take: 10,
+      }),
+    );
+
+    mensagens.reverse();
+
+    if (mensagens.length === 0) {
+      throw new BadRequestException('A conversa não tem mensagens para analisar.');
+    }
+
+    const config = await this.agenteConfig.paraUso(empresaId);
+    if (!config || !config.apiKey) {
+      throw new BadRequestException(
+        'O provedor de IA da empresa não está configurado em Administração > Agente de IA.',
+      );
+    }
+
+    const nomeCliente = conversa.contato?.nomeExibicao ?? 'Cliente';
+    const contextoHistorico = mensagens
+      .map((m) => `${m.direcao === 'saida' ? 'Vendedor' : nomeCliente}: ${m.conteudo ?? '(arquivo/mídia)'}`)
+      .join('\n');
+
+    const systemPrompt = `Você é um copilot de vendas altamente eficiente em uma plataforma comercial.
+Sua tarefa é sugerir uma resposta direta, cortês, profissional e persuasiva para o vendedor enviar via WhatsApp para o cliente "${nomeCliente}".
+- Seja conciso e use linguagem comercial em português do Brasil.
+- NÃO adicione saudações excessivas ou enrolação.
+- Escreva APENAS a sugestão de mensagem para o vendedor copiar/revisar, sem explicações ou aspas em volta.`;
+
+    const provedorClient = this.provedorIaFactory.para(config.provedor);
+    const resposta = await provedorClient.conversar({
+      baseUrl: config.baseUrl,
+      apiKey: config.apiKey,
+      contaId: config.contaId,
+      modelo: config.modelo,
+      temperatura: 0.7,
+      maxTokens: 300,
+      mensagens: [
+        { papel: 'system', conteudo: systemPrompt },
+        { papel: 'user', conteudo: `Histórico recente da conversa com ${nomeCliente}:\n\n${contextoHistorico}\n\nSugira a resposta ideal para o vendedor enviar:` },
+      ],
+      ferramentas: [],
+    });
+
+    const sugestao = resposta.texto?.trim() ?? 'Olá! Como posso ajudar você hoje?';
+    return { sugestao };
   }
 }

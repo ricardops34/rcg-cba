@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -45,6 +46,7 @@ import {
   WhatsappNovoOrcamentoDto,
   WhatsappReagirDto,
   WhatsappRecadoCriarDto,
+  WhatsappRecadoEditarDto,
   WhatsappVincularDto,
 } from './dto/whatsapp.dto';
 import { WhatsappFuncionarioService } from './triagem/whatsapp-funcionario.service';
@@ -58,6 +60,8 @@ import {
   type AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
 
+import { WhatsappRespostasRapidasService } from './whatsapp-respostas-rapidas.service';
+
 @ApiTags('whatsapp')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -67,6 +71,7 @@ export class WhatsappController {
     private readonly config: WhatsappConfigService,
     private readonly sessao: WhatsappSessaoService,
     private readonly conversas: WhatsappConversasService,
+    private readonly respostasRapidas: WhatsappRespostasRapidasService,
     private readonly agenda: WhatsappAgendaService,
     private readonly acoes: WhatsappAcoesService,
     private readonly agendamento: WhatsappAgendamentoService,
@@ -199,6 +204,16 @@ export class WhatsappController {
   }
 
   @ApiOperation({
+    summary: 'Recados internos que recebi',
+    description: 'Os últimos 50 recados recebidos pelo usuário logado.',
+  })
+  @RequirePermission('whatsapp-recados', 'visualizar')
+  @Get('recados/recebidos')
+  listarRecadosRecebidos(@CurrentUser() user: AuthenticatedUser) {
+    return this.recados.listarRecebidos(user.empresaAtivaId, user);
+  }
+
+  @ApiOperation({
     summary: 'Mandar (ou agendar) um recado para a equipe',
     description:
       'Alcança **apenas** quem tem cadastro de vendedor — não existe envio em ' +
@@ -213,6 +228,33 @@ export class WhatsappController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.recados.criar(user.empresaAtivaId, user, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Editar um recado agendado',
+    description: 'Altera o texto, data/hora de envio, destinatários e canais de um recado pendente.',
+  })
+  @RequirePermission('whatsapp-recados', 'cadastrar')
+  @Put('recados/:id')
+  editarRecado(
+    @Param('id') id: string,
+    @Body() dto: WhatsappRecadoEditarDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.recados.editar(user.empresaAtivaId, user, id, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Marcar recado como lido',
+    description: 'Registra que o usuário visualizou o recado na plataforma.',
+  })
+  @RequirePermission('whatsapp-recados', 'visualizar')
+  @Patch('recados/:id/lido')
+  marcarRecadoLido(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.recados.marcarLido(user.empresaAtivaId, user, id);
   }
 
   @ApiOperation({
@@ -864,6 +906,28 @@ export class WhatsappController {
     );
   }
 
+  @ApiOperation({ summary: 'Fichas técnicas disponíveis para envio na conversa' })
+  @RequirePermission('produtos', 'visualizar')
+  @Get('conversas/:id/acoes/fichas')
+  listarFichas(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('busca') busca?: string,
+  ) {
+    return this.acoes.listarFichas(user.empresaAtivaId, user, id, busca);
+  }
+
+  @ApiOperation({ summary: 'Enviar ficha técnica em PDF na conversa' })
+  @RequirePermission('produtos', 'visualizar')
+  @Post('conversas/:id/acoes/ficha')
+  enviarFicha(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { fichaId: string },
+  ) {
+    return this.acoes.enviarFicha(user.empresaAtivaId, user, id, body.fichaId);
+  }
+
   @ApiOperation({
     summary: 'Agendar uma mensagem',
     description:
@@ -973,5 +1037,57 @@ export class WhatsappController {
   @Post('conversas/:id/encerrar')
   encerrar(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.conversas.encerrarAtendimento(user.empresaAtivaId, user, id);
+  }
+
+  // ---------------- respostas rápidas / atalhos ----------------
+
+  @ApiOperation({ summary: 'Listar respostas rápidas da empresa' })
+  @RequirePermission('whatsapp-conversas', 'visualizar')
+  @Get('respostas-rapidas')
+  listarRespostasRapidas(@CurrentUser() user: AuthenticatedUser) {
+    return this.respostasRapidas.listar(user.empresaAtivaId);
+  }
+
+  @ApiOperation({ summary: 'Criar resposta rápida (atalho)' })
+  @RequirePermission('whatsapp-conversas', 'editar')
+  @Post('respostas-rapidas')
+  criarRespostaRapida(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { atalho: string; titulo: string; conteudo: string },
+  ) {
+    return this.respostasRapidas.criar(user.empresaAtivaId, user.id, body);
+  }
+
+  @ApiOperation({ summary: 'Atualizar resposta rápida (atalho)' })
+  @RequirePermission('whatsapp-conversas', 'editar')
+  @Put('respostas-rapidas/:id')
+  atualizarRespostaRapida(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { atalho?: string; titulo?: string; conteudo?: string },
+  ) {
+    return this.respostasRapidas.atualizar(user.empresaAtivaId, id, body);
+  }
+
+  @ApiOperation({ summary: 'Excluir resposta rápida (atalho)' })
+  @RequirePermission('whatsapp-conversas', 'editar')
+  @Delete('respostas-rapidas/:id')
+  excluirRespostaRapida(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.respostasRapidas.excluir(user.empresaAtivaId, id);
+  }
+
+  // ---------------- copilot / sugestão por IA ----------------
+
+  @ApiOperation({ summary: 'Sugerir rascunho de resposta por IA para o vendedor' })
+  @RequirePermission('whatsapp-conversas', 'visualizar')
+  @Post('conversas/:id/sugerir-resposta')
+  sugerirResposta(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversas.sugerirResposta(user.empresaAtivaId, user, id);
   }
 }

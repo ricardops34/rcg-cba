@@ -16,6 +16,7 @@ import { VendedoresService } from '../vendedores/vendedores.service';
 import { MeusAtendimentosService } from '../meus-atendimentos/meus-atendimentos.service';
 import { ProdutoFichasService } from '../produtos/produto-fichas.service';
 import { AgenteAnexosService } from './agente-anexos.service';
+import { AgenteMeuDiaService, type MeuDia } from './agente-meu-dia.service';
 import type { AgenteDestino } from '@plataforma/contracts';
 import type { FerramentaChat } from './provedor-ia';
 // Só o tipo: `import type` some no build, então não há ciclo em runtime com
@@ -390,6 +391,7 @@ export class AgenteToolsService {
     private readonly meusAtendimentos: MeusAtendimentosService,
     private readonly fichas: ProdutoFichasService,
     private readonly anexos: AgenteAnexosService,
+    private readonly meuDia: AgenteMeuDiaService,
   ) {}
 
   /**
@@ -576,6 +578,12 @@ export class AgenteToolsService {
           'então use esta ferramenta para responder "quantos clientes eu tenho", ' +
           '"quantos ativos" ou "quantos em tal cidade", combinando os filtros. ' +
           'A lista traz só os primeiros; o total vale sempre.',
+        instrucoes:
+          'Para "quantos", responda com o `total` — ele é da consulta inteira, ' +
+          'e contar os itens da lista devolve o tamanho da página, não a ' +
+          'resposta. Dê o número primeiro e cite nomes só se ajudarem. Busca ' +
+          'vazia é "não encontrei na sua carteira", nunca "esse cliente não ' +
+          'existe".',
         permissao: 'clientes.visualizar',
         exemplos: [
           'Quantos clientes ativos eu tenho?',
@@ -659,6 +667,12 @@ export class AgenteToolsService {
           'prospectar. Devolve apenas identificação e o vendedor responsável: ' +
           'nada de valores, títulos ou histórico de quem está fora da carteira. ' +
           'Para consultar dados do cliente, use buscar_cliente.',
+        instrucoes:
+          'Responda o que foi perguntado: se já é cliente, e de quem. Quando ' +
+          'for de outro vendedor, diga isso antes de qualquer sugestão de ' +
+          'prospecção — é o que evita dois vendedores na mesma porta. Não ' +
+          'complete com valores nem histórico: não vêm nesta consulta, e de ' +
+          'fora da carteira não viriam em nenhuma.',
         permissao: 'clientes.visualizar',
         exemplos: ['A empresa X já é cliente da casa? De quem ela é?'],
         parametros: {
@@ -681,6 +695,10 @@ export class AgenteToolsService {
       {
         nome: 'buscar_produto',
         descricao: 'Busca produtos do catálogo por descrição ou código.',
+        instrucoes:
+          'Com mais de um candidato, liste código e descrição e pergunte qual, ' +
+          'em vez de escolher o mais parecido. Código de produto sai como veio ' +
+          'da ferramenta — nunca reconstrua um que apareceu antes na conversa.',
         permissao: 'produtos.visualizar',
         exemplos: ['Tem detergente no catálogo? Qual o código?'],
         parametros: {
@@ -709,6 +727,11 @@ export class AgenteToolsService {
           'última compra, preço praticado e preço de tabela), total comprado, ' +
           'títulos em aberto e vencidos, últimas notas e comodatos. Use para ' +
           'responder "o que este cliente compra" e "como ele está".',
+        instrucoes:
+          'O resultado é grande: comece pelo que foi perguntado e deixe o resto ' +
+          'para quem pedir. Havendo título vencido, diga isso antes de falar de ' +
+          'mix — é o que muda a conversa com o cliente. Preço praticado e preço ' +
+          'de tabela são coisas diferentes; ao citar um, diga qual dos dois é.',
         permissao: 'posicao-cliente.visualizar',
         exemplos: [
           'O que o cliente X compra?',
@@ -743,6 +766,12 @@ export class AgenteToolsService {
           'Sugere produtos para um cliente com base no que clientes semelhantes ' +
           '(mesmo ramo/CNAE e cesta de compras parecida) compram e ele não. ' +
           'Devolve a evidência: quantos semelhantes compram e o ticket médio.',
+        instrucoes:
+          'A sugestão é estatística, não promessa: traga junto a evidência que ' +
+          'veio (quantos semelhantes compram, ticket médio) para o vendedor ' +
+          'julgar. Não invente motivo comercial que o resultado não mostra, e ' +
+          'nunca cite os clientes semelhantes pelo nome — o que interessa é o ' +
+          'padrão, não quem.',
         permissao: 'sugestao-compra.visualizar',
         exemplos: ['O que eu posso oferecer para o cliente X?'],
         parametros: {
@@ -780,6 +809,11 @@ export class AgenteToolsService {
         nome: 'titulos_em_aberto',
         descricao:
           'Títulos a receber em aberto, com vencidos e a vencer. Aceita filtro por cliente.',
+        instrucoes:
+          'Separe vencido de a vencer, e diga primeiro o vencido, com quantos ' +
+          'dias. Some apenas o que a ferramenta devolveu; se a lista veio ' +
+          'cortada, diga que há mais em vez de arredondar um total. Informe a ' +
+          'situação e pare aí — quem decide como cobrar é o vendedor.',
         permissao: 'titulos-receber.visualizar',
         exemplos: ['Quais clientes meus têm título vencido?'],
         parametros: {
@@ -809,6 +843,11 @@ export class AgenteToolsService {
         nome: 'listar_orcamentos',
         descricao:
           'Lista orçamentos da carteira, com filtro opcional por cliente.',
+        instrucoes:
+          'Diga em que situação cada orçamento está: um aprovado e um ' +
+          'aguardando não valem a mesma conversa. Quando não houver nada para o ' +
+          'cliente perguntado, responda isso e ofereça criar um — não liste os ' +
+          'de outros clientes para preencher a resposta.',
         permissao: 'orcamentos.visualizar',
         exemplos: ['Quais orçamentos eu tenho em aberto?'],
         parametros: {
@@ -836,6 +875,12 @@ export class AgenteToolsService {
         descricao:
           'Vendas do período somadas mês a mês por cliente. Informe ano/mês inicial e final ' +
           '(máximo 12 meses).',
+        instrucoes:
+          'Diga o período junto do número, sempre ("de janeiro a junho de ' +
+          '2026"): sem isso o valor não quer dizer nada. O corte é de 12 meses; ' +
+          'em pedido maior, recorte e avise que recortou. Compare meses só ' +
+          'dentro da mesma consulta — não retome números ditos antes na ' +
+          'conversa como se fossem desta.',
         permissao: 'consulta-vendas-cliente.visualizar',
         exemplos: ['Quanto o cliente X comprou nos últimos 6 meses?'],
         parametros: {
@@ -872,6 +917,11 @@ export class AgenteToolsService {
         nome: 'vendas_por_produto',
         descricao:
           'Vendas do período somadas mês a mês por produto (máximo 12 meses).',
+        instrucoes:
+          'Diga o período junto do número, sempre. Apontar queda ou alta entre ' +
+          'meses é útil; explicar a causa, não — o motivo não está nos dados, e ' +
+          'quem conhece o cliente é o vendedor. Máximo de 12 meses: recorte e ' +
+          'avise quando pedirem mais.',
         permissao: 'consulta-vendas-produto.visualizar',
         exemplos: ['Quais produtos mais venderam de janeiro a junho?'],
         parametros: {
@@ -910,6 +960,13 @@ export class AgenteToolsService {
           'Responde sempre pela carteira de quem está perguntando — não existe ' +
           'consulta de meta de outro vendedor, da equipe ou da empresa por aqui; ' +
           'isso é o Dashboard Comercial, na tela.',
+        instrucoes:
+          'O número é sempre da carteira de quem perguntou, nunca da equipe nem ' +
+          'da empresa; se pedirem a meta de outra pessoa, diga que por aqui só ' +
+          'sai a própria e aponte o Dashboard Comercial. Dê o percentual junto ' +
+          'do valor — "78% de R$ 200 mil" informa, "R$ 156 mil" sozinho não. Se ' +
+          'o mês ainda está correndo, diga isso antes de comparar com a meta ' +
+          'cheia.',
         permissao: 'dashboard-comercial.visualizar',
         exemplos: [
           'Como foi a minha execução de objetivos em julho?',
@@ -1057,6 +1114,12 @@ export class AgenteToolsService {
           '"resuma minha semana" e "o que eu já fiz para o cliente X". Com ' +
           '`escopo: "equipe"`, traz o que os subordinados fizeram — só responde ' +
           'assim para quem tem equipe; para os demais volta o próprio.',
+        instrucoes:
+          'Agrupe por cliente quando houver vários toques no mesmo, mantendo a ' +
+          'ordem do tempo dentro de cada um — o que interessa é a sequência. ' +
+          'Com escopo de equipe, deixe claro de quem é cada item; sem isso o ' +
+          'gerente lê o trabalho da equipe como se fosse dele. Período sem ' +
+          'movimento é "não há registro", não "você não fez nada".',
         permissao: 'meus-atendimentos.visualizar',
         limiteItens: 30,
         exemplos: [
@@ -1112,12 +1175,57 @@ export class AgenteToolsService {
         }),
       },
       {
+        nome: 'meu_dia',
+        descricao:
+          'O resumo de abertura DESTE usuário: a agenda de hoje e o que ficou ' +
+          'atrasado, a execução da meta do mês quando ele é vendedor, quantos ' +
+          'recados não lidos esperam no sino e se hoje é o aniversário dele. ' +
+          'Não aceita parâmetro e não fala de mais ninguém. Use quando ele ' +
+          'cumprimentar ("bom dia"), perguntar "como estou", "o que eu tenho ' +
+          'para hoje" ou "o que eu preciso saber hoje".',
+        instrucoes:
+          'Cumprimente pelo tratamento que veio, sem repetir o nome a cada ' +
+          "frase. Aniversário vem primeiro, em uma linha. Meta 'atingida' " +
+          "merece parabéns de verdade; 'perto', um incentivo curto; " +
+          "'abaixo', só o número, sem cobrança — quem cobra é o gestor, não " +
+          'o assistente. Na agenda, o atrasado vem antes do que vence hoje. ' +
+          'Recados você apenas OFERECE: diga quantos são e pergunte se quer ' +
+          'ver; o conteúdo não vem nesta ferramenta e não deve ser imaginado. ' +
+          'Bloco nulo é assunto que não existe para esta pessoa — pule em ' +
+          'silêncio, sem dizer que faltou permissão. Feche perguntando como ' +
+          'pode ajudar.',
+        // A permissão é a de usar o assistente porque esta ferramenta, por si,
+        // não alcança nada: cada bloco do resultado checa a permissão da sua
+        // própria origem em `AgenteMeuDiaService` (agenda, meta) e o que a
+        // pessoa não pode ver volta nulo. Exigir aqui a permissão de um dos
+        // blocos tiraria os outros três de quem tem direito a eles.
+        permissao: 'agente.visualizar',
+        exemplos: [
+          'Bom dia!',
+          'O que eu preciso saber hoje?',
+          'Como eu estou este mês?',
+        ],
+        parametros: { type: 'object', properties: {} },
+        executar: (_a, user) => this.meuDia.montar(user.empresaAtivaId, user),
+        // Só quando há agenda: sem a permissão de atividades o bloco volta
+        // nulo, e o botão levaria a uma tela que o usuário não abre.
+        destino: (_a, resultado) =>
+          (resultado as MeuDia).agenda
+            ? { rotulo: 'Abrir a agenda', rota: '/crm/agenda' }
+            : null,
+      },
+      {
         nome: 'minha_agenda',
         descricao:
           'Compromissos e tarefas do CRM: o que está pendente, o que venceu e o ' +
           'que está marcado para um período. Aceita filtro por cliente. Use para ' +
           '"o que eu tenho para hoje", "o que está atrasado" e "quando eu falo com ' +
           'o cliente X".',
+        instrucoes:
+          'O atrasado vem primeiro, com quantos dias; depois o de hoje, depois ' +
+          'o resto. Diga a hora quando houver. Agenda vazia é boa notícia: ' +
+          'responda que não há nada pendente, sem inventar tarefa que ninguém ' +
+          'pediu.',
         permissao: 'atividades.visualizar',
         limiteItens: 25,
         exemplos: [
@@ -1179,6 +1287,11 @@ export class AgenteToolsService {
           'Oportunidades do CRM (funil de vendas): título, estágio, valor previsto ' +
           'e data de previsão. Aceita filtro por cliente e por estágio ' +
           '(prospeccao, qualificacao, proposta, negociacao, ganha, perdida).',
+        instrucoes:
+          'Diga o estágio de cada uma — é ele que define o próximo passo. Some ' +
+          'valor previsto só se pedirem, e avisando que é previsão, não venda. ' +
+          'Oportunidade com previsão já vencida merece ser apontada: costuma ' +
+          'estar parada, não ganha.',
         permissao: 'oportunidades.visualizar',
         limiteItens: 25,
         exemplos: [
@@ -1222,6 +1335,12 @@ export class AgenteToolsService {
           'Use antes de ligar para o cliente, para saber onde a conversa parou. ' +
           'Não tem recorte de período: para "o que eu fiz nos últimos dias", com ' +
           'ou sem cliente, use resumo_atendimentos.',
+        instrucoes:
+          'Responda como quem prepara uma ligação: onde a conversa parou, o que ' +
+          'ficou pendente e há quanto tempo. O último contato é o dado mais ' +
+          'importante — comece por ele. Sem histórico nenhum, diga isso com ' +
+          'todas as letras: "cliente sem contato registrado" é informação, e ' +
+          'das que mais valem.',
         permissao: 'clientes.visualizar',
         limiteItens: 15,
         exemplos: [
@@ -1258,6 +1377,13 @@ export class AgenteToolsService {
           'visita, reunião ou tarefa. NÃO grava imediatamente — o usuário confirma ' +
           'na tela. Informe o título, quando (data e hora) e, quando for sobre um ' +
           'cliente, o clienteId. Vai para a agenda de quem está pedindo.',
+        instrucoes:
+          'Converta o que o usuário falou em data e hora explícitas e repita na ' +
+          'resposta ("terça, 23/09, às 14h") — "semana que vem" agenda errado ' +
+          'sem ninguém perceber. Sem hora dita, pergunte em vez de arbitrar. ' +
+          'Com o cliente identificado, chame a ferramenta direto: a confirmação ' +
+          'é o cartão na tela, e perguntar "posso agendar?" em texto antes só ' +
+          'repete o passo.',
         permissao: 'atividades.cadastrar',
         escrita: true,
         exemplos: [
@@ -1321,6 +1447,11 @@ export class AgenteToolsService {
           'Cria uma oportunidade no funil do CRM para um cliente. NÃO grava ' +
           'imediatamente — o usuário confirma na tela. Informe clienteId, título e, ' +
           'se souber, valor previsto e estágio.',
+        instrucoes:
+          'Valor previsto só entra se o usuário disser: número inventado vira ' +
+          'previsão errada no funil que a equipe inteira lê. Sem estágio dito, ' +
+          'use o inicial. Com o cliente identificado, chame a ferramenta direto ' +
+          '— quem confirma é o cartão na tela.',
         permissao: 'oportunidades.cadastrar',
         escrita: true,
         exemplos: [
@@ -1392,6 +1523,11 @@ export class AgenteToolsService {
           'valor previsto, a previsão de fechamento ou a observação. Para marcar ' +
           'como perdida, informe também o motivo. NÃO grava imediatamente — o ' +
           'usuário confirma na tela. Use listar_oportunidades antes, para pegar o id.',
+        instrucoes:
+          'Pegue o id em listar_oportunidades; nunca monte um a partir do ' +
+          'título. Ao marcar como perdida, o motivo é obrigatório — pergunte se ' +
+          'não foi dito, porque é ele que alimenta a análise depois. Mudança de ' +
+          'estágio para trás é decisão do vendedor: registre sem questionar.',
         permissao: 'oportunidades.editar',
         escrita: true,
         exemplos: [
@@ -1515,6 +1651,12 @@ export class AgenteToolsService {
           'Cria um orçamento para um cliente. NÃO grava imediatamente: o usuário ' +
           'precisa confirmar na tela. Informe clienteId, título e os itens ' +
           '(produtoId e quantidade).',
+        instrucoes:
+          'Cada item precisa de produto identificado e quantidade dita pelo ' +
+          'usuário — não arredonde nem complete com "o de sempre". Produto sem ' +
+          'identificação segura vira pergunta, não palpite. Não fale de preço, ' +
+          'desconto ou total: quem calcula é o sistema, e o valor aparece no ' +
+          'cartão de confirmação.',
         permissao: 'orcamentos.cadastrar',
         exemplos: [
           'Monte um orçamento para o cliente X com 10 caixas do produto Y',
@@ -1703,6 +1845,12 @@ export class AgenteToolsService {
           'ficaram. Use `busca` para um contato específico (nome ou telefone) e ' +
           'sem `busca` para os últimos atendimentos. Devolve o `conversaId` que as ' +
           'outras ferramentas de WhatsApp pedem.',
+        instrucoes:
+          'São as conversas deste aparelho, e só: nem quem chefia equipe ' +
+          'alcança a dos outros por aqui — se pedirem, aponte a tela de ' +
+          'Atendimento. Diga quem falou por último e há quanto tempo, que é o ' +
+          'que indica o que espera resposta. Para o conteúdo, use ' +
+          'mensagens_whatsapp em vez de adivinhar pelo resumo.',
         permissao: 'whatsapp-conversas.visualizar',
         exigeWhatsapp: true,
         limiteItens: 15,
@@ -1757,6 +1905,12 @@ export class AgenteToolsService {
           'O que foi dito numa conversa de WhatsApp — as mensagens mais recentes, ' +
           'na ordem. Use para resumir um atendimento, conferir o que o cliente ' +
           'pediu e se já foi respondido. Pegue o `conversaId` em conversas_whatsapp.',
+        instrucoes:
+          'Resuma sem reescrever a intenção de ninguém, e cite a mensagem ' +
+          'quando a palavra exata importar (preço, prazo, quantidade). Diga se ' +
+          'o cliente ficou sem resposta — é a razão mais comum de alguém pedir ' +
+          'isto. Conteúdo de conversa é dado do cliente: não o transporte para ' +
+          'outro cliente.',
         permissao: 'whatsapp-conversas.visualizar',
         exigeWhatsapp: true,
         limiteItens: 30,
@@ -1793,6 +1947,12 @@ export class AgenteToolsService {
           'Deixa uma mensagem programada para sair no WhatsApp numa data e hora ' +
           'futuras. NÃO envia nem grava imediatamente — o usuário confirma na tela. ' +
           'Pegue o `conversaId` em conversas_whatsapp.',
+        instrucoes:
+          'Repita na resposta o texto exato que vai sair e a data e hora em que ' +
+          'sai: depois de programado, quem corrige é o usuário, e ele só ' +
+          'corrige o que leu. Data no passado não se agenda — avise e proponha ' +
+          'a próxima. Escreva como o vendedor falaria com o cliente, não como ' +
+          'aviso de sistema.',
         permissao: 'whatsapp-conversas.cadastrar',
         exigeWhatsapp: true,
         escrita: true,
@@ -1850,6 +2010,12 @@ export class AgenteToolsService {
           'confirma na tela. `boleto`, `danfe` e `orcamento` exigem o id do registro: ' +
           'pegue em titulos_em_aberto, listar_orcamentos ou vendas_por_cliente. Só ' +
           'funciona em conversa de contato já vinculado a um cliente.',
+        instrucoes:
+          'Confirme de qual cliente e de qual documento se trata antes de ' +
+          'chamar: boleto no contato errado chega ao cliente, e não volta ' +
+          'atrás. Diga na resposta o que será enviado e para quem. Havendo mais ' +
+          'de um título ou nota candidata, pergunte qual em vez de mandar ' +
+          'todas.',
         permissao: 'whatsapp-conversas.cadastrar',
         exigeWhatsapp: true,
         escrita: true,

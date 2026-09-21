@@ -16,16 +16,33 @@ const VARIAVEIS = [
   'WHATSAPP_CRYPTO_KEY',
 ] as const;
 
+const VARIAVEIS_OBRIGATORIAS_PROD = [
+  'JWT_ACCESS_SECRET',
+  'PORTAL_JWT_ACCESS_SECRET',
+  'JWT_REFRESH_SECRET',
+  'WHATSAPP_WORKER_TOKEN',
+] as const;
+
 export function validarSegredosDoAmbiente(
   env: NodeJS.ProcessEnv = process.env,
 ): void {
   if (env.NODE_ENV === 'development' || env.NODE_ENV === 'test') return;
+
+  const ausentes = VARIAVEIS_OBRIGATORIAS_PROD.filter(
+    (nome) => !env[nome] || env[nome]?.trim() === '',
+  );
+  if (ausentes.length > 0) {
+    throw new Error(
+      `Variáveis de segredo obrigatórias não configuradas em produção: ${ausentes.join(', ')}`,
+    );
+  }
+
   const inseguras = VARIAVEIS.filter((nome) =>
     SEGREDOS_PUBLICOS.has(env[nome] ?? ''),
   );
   if (inseguras.length > 0) {
     throw new Error(
-      `Segredos pÃºblicos de desenvolvimento fora de development: ${inseguras.join(', ')}`,
+      `Segredos públicos de desenvolvimento fora de development: ${inseguras.join(', ')}`,
     );
   }
 }

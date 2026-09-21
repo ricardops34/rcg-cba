@@ -18,10 +18,12 @@ export function QuickFilterButton({
   active,
   onClick,
   children,
+  className,
 }: {
   active: boolean;
   onClick: () => void;
   children: ReactNode;
+  className?: string;
 }) {
   return (
     <button
@@ -32,9 +34,11 @@ export function QuickFilterButton({
         active
           ? "bg-background text-foreground shadow-sm"
           : "text-muted-foreground hover:text-foreground",
+        className,
       )}
     >
       {children}
     </button>
   );
 }
+

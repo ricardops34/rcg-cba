@@ -42,6 +42,7 @@ const ICONE: Record<NotificacaoTipo, typeof Bell> = {
   // chaves, e o TypeScript vinha acusando sem ninguem ver.
   whatsapp_aguardando: MessageCircle,
   lead_novo: UserPlus,
+  recado_interno: Bell,
 };
 
 /** O que aparece em vermelho: prazo estourado ou algo que falhou. */
@@ -56,6 +57,7 @@ const URGENTE: Record<NotificacaoTipo, boolean> = {
   // vermelho, que fica reservado para prazo estourado.
   whatsapp_aguardando: false,
   lead_novo: false,
+  recado_interno: false,
   titulo_vencido: true,
 };
 

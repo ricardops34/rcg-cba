@@ -39,6 +39,7 @@ import { ParametrosModule } from './modules/parametros/parametros.module';
 import { ConsultasModule } from './modules/consultas/consultas.module';
 import { SugestaoCompraModule } from './modules/sugestao-compra/sugestao-compra.module';
 import { AgenteModule } from './modules/agente/agente.module';
+import { DemoModule } from './modules/demo/demo.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { NotificacoesModule } from './modules/notificacoes/notificacoes.module';
 import { InicioModule } from './modules/inicio/inicio.module';
@@ -109,6 +110,7 @@ import { ToursModule } from './modules/tours/tours.module';
     ConsultasModule,
     SugestaoCompraModule,
     AgenteModule,
+    DemoModule,
     WhatsappModule,
     NotificacoesModule,
     InicioModule,

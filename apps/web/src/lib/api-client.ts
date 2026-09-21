@@ -389,3 +389,89 @@ export async function apiDownload(path: string, nomePadrao: string): Promise<voi
     setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
   }
 }
+
+/**
+ * Consome uma rota `text/event-stream`, entregando cada evento assim que chega.
+ *
+ * Não dá para usar `EventSource`: ele só faz GET e não deixa mandar cabeçalho,
+ * e toda rota daqui exige o Bearer token. Daí `fetch` + leitura do corpo, com
+ * o mesmo refresh de 401 e o mesmo tratamento de erro do `apiFetch` — quem
+ * chama não deveria precisar saber que o transporte é outro.
+ *
+ * Só o cabeçalho e a falha de rede viram exceção. Depois do primeiro byte o
+ * servidor não tem mais status HTTP para dar, então o que dá errado no meio do
+ * turno chega como evento (ver `mensagemDeErro`, na API) — e quem consome
+ * decide o que fazer com ele.
+ */
+export async function apiStream<T>(
+  path: string,
+  body: unknown,
+  onEvento: (evento: T) => void,
+): Promise<void> {
+  const url = `${resolveApiUrl()}${path}`;
+
+  const doRequest = async (token: string | null) => {
+    try {
+      return await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (erro) {
+      throw erroDeRede(erro, { rota: path, metodo: "POST" });
+    }
+  };
+
+  let token = useAuthStore.getState().accessToken;
+  let res = await doRequest(token);
+
+  if (res.status === 401 && useAuthStore.getState().refreshToken) {
+    refreshPromise ??= refreshAccessToken().finally(() => {
+      refreshPromise = null;
+    });
+    token = await refreshPromise;
+    if (token) res = await doRequest(token);
+  }
+
+  if (!res.ok) {
+    // Recusa antes do stream começar: o corpo ainda é o JSON de erro do Nest.
+    const payload = await res.json().catch(() => ({}));
+    const erro = new ApiError(payload.message ?? res.statusText, res.status, payload.details);
+    if (ehForaDoExpediente(erro)) encerrarPorHorario(erro.message);
+    throw erro;
+  }
+
+  if (!res.body) {
+    throw new ApiError("O servidor não devolveu um stream.", res.status);
+  }
+
+  const leitor = res.body.getReader();
+  const decoder = new TextDecoder();
+  // Um chunk da rede não respeita a fronteira do evento: pode trazer meio
+  // JSON. O que sobra fica aqui até o "\n\n" que fecha o evento chegar.
+  let restante = "";
+
+  for (;;) {
+    const { done, value } = await leitor.read();
+    if (done) break;
+    restante += decoder.decode(value, { stream: true });
+
+    const blocos = restante.split("\n\n");
+    restante = blocos.pop() ?? "";
+
+    for (const bloco of blocos) {
+      const linha = bloco.split("\n").find((l) => l.startsWith("data: "));
+      if (!linha) continue;
+      try {
+        onEvento(JSON.parse(linha.slice(6)) as T);
+      } catch {
+        // Evento ilegível não derruba os outros: o turno continua, e o
+        // "fim" que interessa provavelmente ainda vem.
+      }
+    }
+  }
+}

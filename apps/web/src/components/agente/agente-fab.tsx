@@ -1,16 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { createPortal } from "react-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type {
   AgenteAnexo,
   AgenteConfirmacao,
+  AgenteConversa,
+  AgenteConversaResumo,
   AgenteDestino,
+  AgenteEvento,
   AgentePendencia,
   AgenteResposta,
 } from "@plataforma/contracts";
-import { ApiError, apiFetch, apiUpload } from "@/lib/api-client";
+import { ApiError, apiFetch, apiStream, apiUpload } from "@/lib/api-client";
 import { useAgenteUiStore } from "@/stores/agente-ui-store";
 import { useAgente } from "@/components/agente/use-agente";
 import { Button } from "@/components/ui/button";
@@ -21,6 +25,7 @@ import {
   Eraser,
   ExternalLink,
   HelpCircle,
+  History,
   Minus,
   Paperclip,
   Send,
@@ -47,20 +52,31 @@ const ALTURA_MIN = 320;
 const MARGEM = 8;
 /** Altura da barra de título — a faixa por onde a janela é arrastada. */
 const ALTURA_TITULO = 44;
-const CHAVE_GEOMETRIA = "agente-janela";
+
+function viewport() {
+  const visual = window.visualViewport;
+  return {
+    largura: visual?.width ?? window.innerWidth,
+    altura: visual?.height ?? window.innerHeight,
+    x: visual?.offsetLeft ?? 0,
+    y: visual?.offsetTop ?? 0,
+  };
+}
 
 const limitar = (v: number, min: number, max: number) =>
   Math.min(Math.max(v, min), Math.max(min, max));
 
 /** Encosta a janela no canto inferior direito, longe do ícone que a abre. */
 function geometriaPadrao(): Geometria {
-  const largura = Math.min(420, window.innerWidth - MARGEM * 2);
-  const altura = Math.min(560, window.innerHeight - MARGEM * 2);
+  const tela = viewport();
+  const compacta = tela.largura < 640;
+  const largura = Math.max(1, Math.min(compacta ? tela.largura : 420, tela.largura - MARGEM * 2));
+  const altura = Math.max(1, Math.min(compacta ? tela.altura : 560, tela.altura - MARGEM * 2));
   return {
     largura,
     altura,
-    x: window.innerWidth - largura - MARGEM,
-    y: window.innerHeight - altura - MARGEM,
+    x: tela.x + tela.largura - largura - MARGEM,
+    y: tela.y + tela.altura - altura - MARGEM,
   };
 }
 
@@ -73,19 +89,22 @@ function geometriaPadrao(): Geometria {
  * jeito de trazer a janela de volta.
  */
 function acomodar(g: Geometria): Geometria {
+  const tela = viewport();
+  if (tela.largura < 640) return geometriaPadrao();
+  const larguraDisponivel = Math.max(1, tela.largura - MARGEM * 2);
+  const alturaDisponivel = Math.max(1, tela.altura - MARGEM * 2);
   const largura = limitar(
     g.largura,
-    LARGURA_MIN,
-    window.innerWidth - MARGEM * 2,
+    Math.min(LARGURA_MIN, larguraDisponivel),
+    larguraDisponivel,
   );
-  const altura = limitar(g.altura, ALTURA_MIN, window.innerHeight - MARGEM * 2);
+  const altura = limitar(g.altura, Math.min(ALTURA_MIN, alturaDisponivel), alturaDisponivel);
   return {
     largura,
     altura,
-    x: limitar(g.x, MARGEM, window.innerWidth - largura - MARGEM),
-    // O rodapé pode encostar na borda de baixo; a barra de título, nunca sai
-    // da tela — é por ela que a janela é trazida de volta.
-    y: limitar(g.y, MARGEM, window.innerHeight - ALTURA_TITULO - MARGEM),
+    x: limitar(g.x, tela.x + MARGEM, tela.x + tela.largura - largura - MARGEM),
+    // Preserva também o rodapé com o campo de mensagem, não só o título.
+    y: limitar(g.y, tela.y + MARGEM, tela.y + tela.altura - altura - MARGEM),
   };
 }
 
@@ -136,29 +155,28 @@ export function AgenteFab() {
   const [conversaId, setConversaId] = useState<string | undefined>();
   const [baloes, setBaloes] = useState<Balao[]>([]);
   const [pendencias, setPendencias] = useState<AgentePendencia[]>([]);
+  /**
+   * O passo que o servidor está executando agora, em texto.
+   *
+   * Uma pergunta que encadeia três ferramentas leva dezenas de segundos, e
+   * até aqui a janela dizia só "Consultando..." o tempo todo — o que não
+   * distingue um turno vivo de um turno travado. Chega por evento (ver
+   * `apiStream`) e volta a nulo no fim do turno.
+   */
+  const [progresso, setProgresso] = useState<string | null>(null);
+  /** A lista de conversas anteriores está aberta. */
+  const [historicoAberto, setHistoricoAberto] = useState(false);
   const fim = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
-  /**
-   * Posição e tamanho só existem no cliente (dependem da viewport) e ficam
-   * guardados entre sessões: quem arrumou a janela onde queria não quer
-   * arrumá-la de novo a cada login.
-   *
-   * Resolvido aqui, num efeito, e não no clique que abre: quem abre é o ícone
-   * da topbar, e a topbar não tem por que conhecer a geometria da janela.
-   * Depende de `window`, então só no cliente.
-   */
+  // Cada abertura usa a tela atual, sem coordenadas salvas de outro monitor.
   useEffect(() => {
-    if (!aberto || geometria) return;
-    let salva: Geometria | null = null;
-    try {
-      const bruto = localStorage.getItem(CHAVE_GEOMETRIA);
-      if (bruto) salva = JSON.parse(bruto) as Geometria;
-    } catch {
-      // Storage bloqueado ou JSON corrompido: cai no padrão, sem quebrar.
-    }
-    setGeometria(acomodar(salva ?? geometriaPadrao()));
-  }, [aberto, geometria]);
+    if (!aberto) return;
+    const frame = window.requestAnimationFrame(() => {
+      setGeometria(geometriaPadrao());
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [aberto]);
 
   // Pendência é ação parada esperando gente. Quem mostra o "!" é o ícone da
   // topbar, então o estado tem de chegar até ele.
@@ -167,20 +185,17 @@ export function AgenteFab() {
   }, [pendencias, setPendente]);
 
   useEffect(() => {
-    if (!geometria) return;
-    try {
-      localStorage.setItem(CHAVE_GEOMETRIA, JSON.stringify(geometria));
-    } catch {
-      // Sem persistência é aceitável; sem assistente, não.
-    }
-  }, [geometria]);
-
-  useEffect(() => {
-    if (!aberto) return;
-    const aoRedimensionar = () => setGeometria((g) => (g ? acomodar(g) : g));
+    const aoRedimensionar = () => setGeometria((g) => (g ? geometriaPadrao() : g));
+    const visual = window.visualViewport;
     window.addEventListener("resize", aoRedimensionar);
-    return () => window.removeEventListener("resize", aoRedimensionar);
-  }, [aberto]);
+    visual?.addEventListener("resize", aoRedimensionar);
+    visual?.addEventListener("scroll", aoRedimensionar);
+    return () => {
+      window.removeEventListener("resize", aoRedimensionar);
+      visual?.removeEventListener("resize", aoRedimensionar);
+      visual?.removeEventListener("scroll", aoRedimensionar);
+    };
+  }, []);
 
   useEffect(() => {
     if (aberto) fim.current?.scrollIntoView({ behavior: "smooth" });
@@ -195,6 +210,7 @@ export function AgenteFab() {
     (modo: "mover" | "redimensionar") => (e: React.PointerEvent) => {
       // Só botão principal, e nunca a partir dos botões do cabeçalho.
       if (e.button !== 0) return;
+      if (viewport().largura < 640) return;
       if (
         modo === "mover" &&
         (e.target as HTMLElement).closest("button, input, textarea")
@@ -237,11 +253,37 @@ export function AgenteFab() {
   );
 
   const enviar = useMutation({
-    mutationFn: ({ pergunta, anexoId }: { pergunta: string; anexoId?: string }) =>
-      apiFetch<AgenteResposta>("/agente/conversas/mensagens", {
-        method: "POST",
-        body: { conversaId, texto: pergunta, anexoId },
-      }),
+    mutationFn: async ({
+      pergunta,
+      anexoId,
+    }: {
+      pergunta: string;
+      anexoId?: string;
+    }) => {
+      // Um objeto, e não duas `let`: o TypeScript não acompanha atribuição
+      // feita dentro do callback, e a variável solta continuaria estreitada
+      // para `null` depois do laço.
+      const colhido: { resposta?: AgenteResposta; erro?: string } = {};
+
+      await apiStream<AgenteEvento>(
+        "/agente/conversas/mensagens/stream",
+        { conversaId, texto: pergunta, anexoId },
+        (e) => {
+          if (e.tipo === "ferramenta") setProgresso(e.rotulo);
+          else if (e.tipo === "fim") colhido.resposta = e.resposta;
+          else if (e.tipo === "erro") colhido.erro = e.mensagem;
+        },
+      );
+
+      if (colhido.erro) throw new ApiError(colhido.erro, 0);
+      if (!colhido.resposta) {
+        // Stream fechou sem o "fim": conexão caiu no meio. A pergunta já está
+        // gravada no servidor, mas a resposta não chegou aqui.
+        throw new ApiError("A resposta foi interrompida. Tente de novo.", 0);
+      }
+      return colhido.resposta;
+    },
+    onSettled: () => setProgresso(null),
     onSuccess: (r) => {
       setConversaId(r.conversaId);
       if (r.texto) {
@@ -251,6 +293,9 @@ export function AgenteFab() {
         ]);
       }
       setPendencias(r.pendencias);
+      // A conversa nova (ou a que acabou de receber mensagem) muda a ordem e o
+      // título da lista — sem isto o painel mostraria o estado de antes.
+      void queryClient.invalidateQueries({ queryKey: ["agente-conversas"] });
       // Perguntou e foi cuidar da vida: o ícone avisa que a resposta chegou.
       if (!useAgenteUiStore.getState().aberto) setNovidade(true);
     },
@@ -317,6 +362,8 @@ export function AgenteFab() {
       },
     ]);
     setTexto("");
+    // Perguntar é sair da lista: a resposta vem na conversa, atrás do painel.
+    setHistoricoAberto(false);
     enviar.mutate({ pergunta, anexoId: anexo?.id });
     setAnexo(null);
   };
@@ -351,12 +398,65 @@ export function AgenteFab() {
     setBaloes([]);
     setPendencias([]);
     setTexto("");
+    setHistoricoAberto(false);
     toast.success("Conversa encerrada");
   };
 
+  /**
+   * As conversas anteriores desta pessoa.
+   *
+   * Só busca com o painel aberto: a lista não é o caminho comum — quem abre o
+   * assistente quase sempre vem perguntar algo novo —, e uma consulta em toda
+   * abertura da janela seria paga por todo mundo para servir a poucos.
+   */
+  const { data: conversas } = useQuery({
+    queryKey: ["agente-conversas"],
+    queryFn: () => apiFetch<AgenteConversaResumo[]>("/agente/conversas"),
+    enabled: aberto && historicoAberto,
+  });
+
+  /**
+   * Reabre uma conversa: traz as mensagens gravadas e volta a apontar para ela.
+   *
+   * O `conversaId` é o que faz a próxima pergunta continuar de onde parou, em
+   * vez de abrir outra conversa — sem ele a tela mostraria o histórico e o
+   * modelo não o teria no contexto, que é a pior combinação possível.
+   *
+   * Pendências não são remontadas de propósito: uma ação preparada ontem e não
+   * confirmada não deve reaparecer como um botão "Confirmar" no meio de uma
+   * conversa retomada, fora do assunto que a originou.
+   */
+  const abrirConversa = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<AgenteConversa>(`/agente/conversas/${id}`),
+    onSuccess: (c) => {
+      setConversaId(c.id);
+      setPendencias([]);
+      setBaloes(
+        c.mensagens
+          // Só o que foi dito. As linhas de ferramenta são registro de
+          // auditoria — o que elas devolveram já está redigido na resposta ao
+          // lado, e mostrá-las aqui seria repetir em JSON o que a prosa diz.
+          .filter(
+            (m) =>
+              (m.papel === "usuario" || m.papel === "assistente") && m.conteudo,
+          )
+          .map((m) => ({
+            papel: m.papel as "usuario" | "assistente",
+            texto: m.conteudo as string,
+          })),
+      );
+      setHistoricoAberto(false);
+    },
+    onError: (err) =>
+      toast.error(
+        err instanceof ApiError ? err.message : "Não consegui abrir a conversa",
+      ),
+  });
+
   if (!disponivel || !aberto || !geometria) return null;
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-label="Assistente"
@@ -371,7 +471,7 @@ export function AgenteFab() {
       <div
         onPointerDown={iniciarGesto("mover")}
         onDoubleClick={minimizar}
-        className="flex cursor-move touch-none select-none items-center gap-2 border-b bg-muted/40 px-3"
+        className="flex shrink-0 touch-none select-none items-center gap-2 border-b bg-muted/40 px-3 sm:cursor-move"
         style={{ height: ALTURA_TITULO }}
       >
         <Sparkles className="size-4 shrink-0" />
@@ -391,6 +491,18 @@ export function AgenteFab() {
           <Link href="/assistente/ajuda">
             <HelpCircle className="size-4" />
           </Link>
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={`size-7${historicoAberto ? " bg-muted" : ""}`}
+          title="Conversas anteriores"
+          aria-label="Conversas anteriores"
+          aria-pressed={historicoAberto}
+          onClick={() => setHistoricoAberto((v) => !v)}
+        >
+          <History className="size-4" />
         </Button>
         <Button
           type="button"
@@ -432,7 +544,50 @@ export function AgenteFab() {
         </Button>
       </div>
 
-      <div className="flex-1 space-y-3 overflow-y-auto p-4">
+      {/* A lista cobre a conversa em vez de dividir a janela: ela já é
+          estreita, e partir a altura em duas deixaria as duas ilegíveis.
+          Escolher uma conversa fecha o painel e devolve a leitura inteira. */}
+      {historicoAberto && (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
+          {!conversas && (
+            <p className="p-2 text-sm text-muted-foreground">Carregando…</p>
+          )}
+          {conversas?.length === 0 && (
+            <p className="p-2 text-sm text-muted-foreground">
+              Nenhuma conversa anterior ainda.
+            </p>
+          )}
+          {conversas?.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              disabled={abrirConversa.isPending}
+              onClick={() => abrirConversa.mutate(c.id)}
+              className={`flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left hover:bg-muted disabled:opacity-50${
+                c.id === conversaId ? " bg-muted" : ""
+              }`}
+            >
+              {/* O título é a primeira pergunta cortada — é o que a pessoa
+                  reconhece, muito mais do que uma data sozinha. */}
+              <span className="line-clamp-2 text-sm">
+                {c.titulo || "Conversa sem título"}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {new Date(c.updatedAt).toLocaleString("pt-BR", {
+                  dateStyle: "short",
+                  timeStyle: "short",
+                })}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div
+        className={`min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4${
+          historicoAberto ? " hidden" : ""
+        }`}
+      >
         {/* Conversa nova abre com a saudação da empresa, como um balão do
             próprio agente — a tela em branco não diz o que dá para pedir.
             Volta a aparecer depois de encerrar a conversa. */}
@@ -500,8 +655,12 @@ export function AgenteFab() {
         ))}
 
         {enviar.isPending && (
-          <div className="mr-auto rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
-            Consultando...
+          <div className="mr-auto flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+            <span className="size-1.5 animate-pulse rounded-full bg-current" />
+            {/* O rótulo do passo, quando o servidor já contou qual é. Até a
+                primeira ferramenta responder, o modelo ainda está lendo a
+                pergunta — e aí "Pensando" é a verdade. */}
+            {progresso ?? "Pensando"}…
           </div>
         )}
 
@@ -541,7 +700,7 @@ export function AgenteFab() {
         <div ref={fim} />
       </div>
 
-      <div className="border-t p-3">
+      <div className="shrink-0 border-t p-3">
         {anexo && (
           <div className="mb-2 flex items-center gap-2 rounded-md bg-muted px-2 py-1.5 text-xs">
             <Paperclip className="size-3.5 shrink-0" />
@@ -557,6 +716,7 @@ export function AgenteFab() {
         )}
         <div className="flex gap-2">
           <Textarea
+            className="min-w-0 resize-none"
             rows={2}
             value={texto}
             placeholder="Pergunte alguma coisa..."
@@ -602,7 +762,7 @@ export function AgenteFab() {
         onPointerDown={iniciarGesto("redimensionar")}
         role="separator"
         aria-label="Redimensionar assistente"
-        className="absolute bottom-0 right-0 size-4 cursor-nwse-resize touch-none text-border"
+        className="absolute bottom-0 right-0 hidden size-4 cursor-nwse-resize touch-none text-border sm:block"
         style={{
           // `currentColor` para não depender do formato do token de
           // cor (hsl/oklch): a cor vem do `text-border` acima.
@@ -610,6 +770,7 @@ export function AgenteFab() {
             "linear-gradient(135deg, transparent 50%, currentColor 50%)",
         }}
       />
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -11,6 +11,7 @@ interface CrudHeaderProps {
   onCreate?: () => void;
   createLabel?: string;
   isRefreshing?: boolean;
+  placeholder?: string;
 }
 
 export function CrudHeader({
@@ -20,6 +21,7 @@ export function CrudHeader({
   onCreate,
   createLabel = "Novo",
   isRefreshing,
+  placeholder = "Buscar...",
 }: CrudHeaderProps) {
   return (
     <div data-tour="crud-busca" className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -28,10 +30,11 @@ export function CrudHeader({
         <Input
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Buscar..."
+          placeholder={placeholder}
           className="pl-8"
         />
       </div>
+
       <div className="flex w-full gap-2 sm:w-auto">
         {onRefresh && (
           <Button className="flex-1 sm:flex-none" variant="outline" onClick={onRefresh} disabled={isRefreshing}>

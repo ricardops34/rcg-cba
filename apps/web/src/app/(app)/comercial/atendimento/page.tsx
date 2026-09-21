@@ -302,14 +302,14 @@ export default function AtendimentoPage() {
 
   return (
     <>
-      <div data-tour="atendimento-controles" className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+      <div data-tour="atendimento-controles" className="mb-3 flex flex-col gap-2 rounded-xl border bg-card/70 p-2 backdrop-blur-md shadow-xs lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center">
           <Button
             variant="outline"
             size="icon"
             title={listaAberta ? "Ocultar conversas" : "Mostrar conversas"}
             onClick={alternarLista}
-            className="hidden md:inline-flex"
+            className="hidden md:inline-flex shrink-0"
           >
             {listaAberta ? (
               <PanelLeftClose className="size-4" />
@@ -317,28 +317,24 @@ export default function AtendimentoPage() {
               <PanelLeftOpen className="size-4" />
             )}
           </Button>
-          <Input
-            placeholder="Buscar por contato, telefone ou cliente"
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            className="w-full min-w-0 flex-1 rounded-full bg-muted/40 lg:max-w-80"
-          />
-          {/* Só para quem alcança mais de uma conexão — supervisor e gerente.
-              Uma conexão por vez, sem opção "todas": atendimento é conversa de
-              um número, e a lista misturada não diz por onde responder. */}
+          <div className="relative w-full lg:w-80">
+            <Input
+              placeholder="Buscar por contato, telefone ou cliente"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="w-full rounded-full bg-background/80 text-xs h-9 pl-3 pr-8"
+            />
+          </div>
+          {/* Só para quem alcança mais de uma conexão — supervisor e gerente. */}
           {podeTrocarConexao ? (
             <Select
               value={conexaoAtual ?? ""}
               onValueChange={setConexaoEscolhida}
             >
-              <SelectTrigger className="w-full sm:w-64">
+              <SelectTrigger className="w-full sm:w-60 h-9 text-xs bg-background/80">
                 <SelectValue placeholder="Minha conexão" />
               </SelectTrigger>
               <SelectContent>
-                {/* A sessão institucional tem `vendedorId` nulo — ela não é de
-                    vendedor nenhum, e o `/whatsapp/sessoes` já não a devolve.
-                    O filtro é o que prova isso ao tipo: um `SelectItem` sem
-                    valor quebraria o select em tempo de execução. */}
                 {conexoes
                   .filter((c): c is typeof c & { vendedorId: string } =>
                     Boolean(c.vendedorId),
@@ -355,14 +351,25 @@ export default function AtendimentoPage() {
             </Select>
           ) : null}
         </div>
-        <div className="flex items-center justify-end gap-2 overflow-x-auto pb-1 lg:pb-0">
-          <Button className="shrink-0" onClick={() => setNovaConversaAberta(true)}>
+        <div className="flex items-center justify-end gap-2 overflow-x-auto pb-1 lg:pb-0 [scrollbar-width:none]">
+          <Button
+            className="shrink-0 h-9 gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium shadow-xs"
+            onClick={() => setNovaConversaAberta(true)}
+          >
             <MessageSquarePlus className="size-4" />
             Nova conversa
           </Button>
-          <Button className="shrink-0" variant="outline" onClick={() => setConexaoAberta(true)}>
-            <Plug className="size-4" />
-            {sessao.numero ?? "Conexão"}
+          <Button
+            className="shrink-0 h-9 gap-2 border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-medium"
+            variant="outline"
+            onClick={() => setConexaoAberta(true)}
+          >
+            <span className="relative flex size-2">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+            </span>
+            <Plug className="size-3.5" />
+            {sessao.numero ? telefoneBonito(sessao.numero) : "Conectar WhatsApp"}
           </Button>
         </div>
       </div>
@@ -492,27 +499,39 @@ function ListaDeConversas({
     return true;
   });
 
+  const contagemNaoLidas = conversas.reduce((acc, c) => acc + (c.naoLidas > 0 ? 1 : 0), 0);
+  const contagemSemVinculo = conversas.reduce((acc, c) => acc + (!c.clienteId ? 1 : 0), 0);
+
   return (
-    <div data-tour="atendimento-conversas" className="flex h-full w-full flex-col border-r bg-muted/10">
-      <div className="flex shrink-0 gap-1 overflow-x-auto border-b p-2">
+    <div data-tour="atendimento-conversas" className="flex h-full w-full flex-col border-r bg-card/40">
+      <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b p-2.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden bg-card/60 backdrop-blur-xs">
         {(
           [
-            ["todas", "Todas"],
-            ["nao_lidas", "Não lidas"],
-            ["sem_vinculo", "Sem vínculo"],
-            ["retornos", "Retornos"],
-            ["aprovacoes", "Aprovações"],
+            ["todas", "Todas", conversas.length],
+            ["nao_lidas", "Não lidas", contagemNaoLidas],
+            ["sem_vinculo", "Sem vínculo", contagemSemVinculo],
+            ["retornos", "Retornos", 0],
+            ["aprovacoes", "Aprovações", 0],
           ] as const
-        ).map(([valor, rotulo]) => (
+        ).map(([valor, rotulo, qtd]) => (
           <Button
             key={valor}
             type="button"
             size="sm"
             variant={filtro === valor ? "secondary" : "ghost"}
-            className="h-7 rounded-full px-2.5 text-xs"
+            className={`h-7 shrink-0 rounded-full px-3 text-xs transition-all ${
+              filtro === valor
+                ? "bg-primary/15 text-primary font-semibold shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
             onClick={() => onFiltroChange(valor)}
           >
             {rotulo}
+            {qtd > 0 && valor !== "todas" ? (
+              <span className="ml-1 rounded-full bg-primary/20 px-1.5 py-0.2 text-[10px] font-bold">
+                {qtd}
+              </span>
+            ) : null}
           </Button>
         ))}
       </div>
@@ -539,20 +558,34 @@ function ListaDeConversas({
               aria-label={`Abrir conversa com ${nome}`}
               type="button"
               onClick={() => onSelecionar(c.id)}
-              className={`relative flex w-full gap-3 border-b p-3 text-left transition hover:bg-muted/60 ${
+              className={`relative flex w-full gap-3 border-b border-border/40 p-3 text-left transition-all hover:bg-accent/50 ${
                 selecionada === c.id
-                  ? "bg-primary/10 before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-r-full before:bg-primary"
+                  ? "bg-accent/80 font-medium border-l-4 border-l-primary shadow-xs"
                   : ""
               }`}
             >
-              <div
-                className={`flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${avatarColorClass(nome)}`}
-              >
-                {initials(nome)}
+              <div className="relative shrink-0">
+                <div
+                  className={`flex size-10 items-center justify-center rounded-full text-sm font-semibold shadow-xs ${avatarColorClass(nome)}`}
+                >
+                  {c.contato.fotoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={assetUrl(c.contato.fotoUrl) ?? undefined}
+                      alt=""
+                      className="size-full rounded-full object-cover"
+                    />
+                  ) : (
+                    initials(nome)
+                  )}
+                </div>
+                {c.clienteId ? (
+                  <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full bg-emerald-500 border-2 border-background" title="Cliente Vinculado" />
+                ) : null}
               </div>
               <div className="min-w-0 flex-1 space-y-1">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm font-semibold">{nome}</span>
+                  <span className={`truncate text-sm ${c.naoLidas > 0 ? "font-bold text-foreground" : "font-semibold text-foreground/90"}`}>{nome}</span>
                   <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
                     {horaDaConversa(c.ultimaMensagemEm)}
                   </span>
@@ -566,7 +599,7 @@ function ListaDeConversas({
                       "Sem mensagens gravadas"}
                   </span>
                   {c.naoLidas > 0 ? (
-                    <Badge className="h-5 min-w-5 shrink-0 justify-center rounded-full px-1.5">
+                    <Badge className="h-5 min-w-5 shrink-0 justify-center rounded-full px-1.5 bg-primary font-bold text-primary-foreground animate-pulse">
                       {c.naoLidas}
                     </Badge>
                   ) : null}
@@ -795,8 +828,8 @@ function Conversa({
   ].sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
 
   return (
-    <div data-tour="atendimento-mensagens" className="flex h-full min-h-0 flex-col overflow-hidden bg-muted/5">
-      <div className="flex h-16 shrink-0 items-center justify-between gap-3 border-b bg-background px-4">
+    <div data-tour="atendimento-mensagens" className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+      <div className="flex h-16 shrink-0 items-center justify-between gap-3 border-b bg-card/80 backdrop-blur-md px-4 shadow-2xs">
         <div className="flex min-w-0 items-center gap-3">
           <Button
             type="button"
@@ -812,7 +845,7 @@ function Conversa({
             type="button"
             onClick={onAbrirContato}
             title="Abrir dados do contato"
-            className={`flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${avatarColorClass(conversa ? nomeDaConversa(conversa) : "Contato")}`}
+            className={`relative flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold shadow-xs transition-transform hover:scale-105 ${avatarColorClass(conversa ? nomeDaConversa(conversa) : "Contato")}`}
           >
             {conversa?.contato.fotoUrl ? (
               // Foto vem do perfil do WhatsApp e é copiada para o storage local.
@@ -827,11 +860,22 @@ function Conversa({
             )}
           </button>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">
-              {conversa ? nomeDaConversa(conversa) : "Contato"}
-            </p>
-            <p className="truncate text-xs text-muted-foreground">
-              WhatsApp {telefoneBonito(conversa?.contato.telefoneNormalizado ?? null)}
+            <div className="flex items-center gap-2">
+              <p className="truncate text-sm font-bold text-foreground">
+                {conversa ? nomeDaConversa(conversa) : "Contato"}
+              </p>
+              {conversa?.clienteId ? (
+                <Badge variant="outline" className="h-4 px-1.5 text-[10px] font-medium border-emerald-500/30 text-emerald-600 bg-emerald-500/10">
+                  Cliente
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="h-4 px-1.5 text-[10px] font-medium text-amber-600 bg-amber-500/10 border-amber-500/30">
+                  Sem Vínculo
+                </Badge>
+              )}
+            </div>
+            <p className="truncate text-xs text-muted-foreground flex items-center gap-1.5">
+              <span>WhatsApp {telefoneBonito(conversa?.contato.telefoneNormalizado ?? null)}</span>
               {conversa?.vendedorNome
                 ? ` · Atendimento de ${conversa.vendedorNome}`
                 : ""}
@@ -839,22 +883,20 @@ function Conversa({
           </div>
         </div>
         {clienteId ? (
-          <div data-tour="atendimento-acoes" className="flex shrink-0 items-center gap-1">
-            <Button variant="ghost" size="sm" onClick={onAbrirPosicao}>
-              <UserRound className="size-4" />
-              Posição
+          <div data-tour="atendimento-acoes" className="flex shrink-0 items-center gap-1.5">
+            <Button variant="outline" size="sm" onClick={onAbrirPosicao} className="h-8 text-xs gap-1.5 shadow-2xs">
+              <UserRound className="size-3.5 text-primary" />
+              Posição 360°
             </Button>
-            <Button variant="ghost" size="sm" onClick={onAbrirOrcamento}>
-              <BriefcaseBusiness className="size-4" />
+            <Button variant="outline" size="sm" onClick={onAbrirOrcamento} className="h-8 text-xs gap-1.5 shadow-2xs">
+              <BriefcaseBusiness className="size-3.5 text-emerald-600 dark:text-emerald-400" />
               Orçamento
             </Button>
           </div>
         ) : null}
       </div>
-      {/* min-h-0 é o que faz a barra de rolagem ficar aqui dentro: sem ele o
-          filho de um flex não encolhe abaixo do próprio conteúdo, o rolo
-          cresce com as mensagens e quem rola é a página inteira. */}
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-muted/15 p-4">
+      {/* min-h-0 é o que faz a barra de rolagem ficar aqui dentro */}
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-muted/20 via-background to-muted/30 p-4">
         {linhaDoTempo.map((entrada) =>
           entrada.tipo === "mensagem" ? (
             <MensagemBolha

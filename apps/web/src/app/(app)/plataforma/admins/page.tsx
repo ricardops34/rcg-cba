@@ -19,11 +19,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ShieldMinus, ShieldPlus } from "lucide-react";
+import {
+  ShieldCheck,
+  ShieldPlus,
+  ShieldMinus,
+  Users,
+  UserCheck,
+  Shield,
+  Info,
+} from "lucide-react";
 import { PlataformaGuard } from "../plataforma-guard";
 
 const formatarData = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString("pt-BR") : "nunca entrou";
+  iso ? new Date(iso).toLocaleString("pt-BR") : "Nunca acessou";
 
 export default function PlataformaAdminsPage() {
   const meuId = useAuthStore((s) => s.user?.id);
@@ -36,7 +44,9 @@ export default function PlataformaAdminsPage() {
   });
 
   const admins = data ?? [];
-  const ultimo = admins.filter((a) => a.ativo).length <= 1;
+  const totalAdmins = admins.length;
+  const totalAtivos = admins.filter((a) => a.ativo).length;
+  const ultimo = totalAtivos <= 1;
 
   const alterar = async (usuarioId: string, virar: boolean) => {
     setOcupado(true);
@@ -56,14 +66,6 @@ export default function PlataformaAdminsPage() {
     }
   };
 
-  /**
-   * Promove pelo e-mail, e a busca acontece no servidor.
-   *
-   * A tela não procura o usuário em `/usuarios`: aquela rota é do tenant —
-   * exige `usuarios.visualizar` e enxerga só a empresa da sessão. Quem
-   * administra a plataforma promove gente de qualquer empresa e pode não ter
-   * permissão de usuários em lugar nenhum.
-   */
   const promover = async () => {
     const email = emailNovo.trim().toLowerCase();
     if (!email) return;
@@ -73,7 +75,7 @@ export default function PlataformaAdminsPage() {
         method: "POST",
         body: { email },
       });
-      toast.success("Administrador promovido");
+      toast.success("Administrador promovido com sucesso");
       setEmailNovo("");
       void refetch();
     } catch (err) {
@@ -87,73 +89,141 @@ export default function PlataformaAdminsPage() {
 
   return (
     <PlataformaGuard>
-      <div className="space-y-4">
-        <div>
-          <h1 className="text-lg font-semibold">Administradores da plataforma</h1>
-          <p className="text-sm text-muted-foreground">
-            Quem enxerga e opera este módulo. É o perfil "Administrador da
-            Plataforma", aplicado a um vínculo do usuário — administrar uma
-            empresa (perfil Administrador Empresa) não dá este acesso.
-          </p>
+      <div className="space-y-6">
+        {/* Superior Header */}
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-xs">
+            <ShieldCheck className="size-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold tracking-tight">
+                Administradores da Plataforma
+              </h1>
+              <Badge variant="outline" className="text-xs">Superadmin Global</Badge>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Gerenciamento de acesso ao módulo de administração global do SaaS e supervisão de empresas.
+            </p>
+          </div>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Promover alguém</CardTitle>
+        {/* KPI Cards */}
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Card className="shadow-xs border-border/60">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Administradores Globais</p>
+                <p className="text-2xl font-bold tracking-tight mt-1">{totalAdmins}</p>
+              </div>
+              <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Shield className="size-5" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-xs border-border/60">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Contas Ativas</p>
+                <p className="text-2xl font-bold tracking-tight mt-1 text-emerald-600 dark:text-emerald-400">
+                  {totalAtivos}
+                </p>
+              </div>
+              <div className="flex size-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+                <UserCheck className="size-5" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-xs border-border/60">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Seu Perfil Atual</p>
+                <p className="text-sm font-semibold tracking-tight mt-1 text-primary">
+                  Administrador Plataforma
+                </p>
+              </div>
+              <div className="flex size-9 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
+                <Users className="size-5" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Promover Admin Card */}
+        <Card className="shadow-xs border-border/60">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <ShieldPlus className="size-4 text-primary" /> Promover Novo Administrador
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="min-w-64 flex-1 space-y-2">
-                <Label htmlFor="email">E-mail do usuário</Label>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-64 flex-1 space-y-1.5">
+                <Label htmlFor="email" className="text-xs font-medium">E-mail do usuário</Label>
                 <Input
                   id="email"
                   type="email"
-                  placeholder="pessoa@empresa.com.br"
+                  placeholder="usuario@empresa.com.br"
                   value={emailNovo}
                   onChange={(e) => setEmailNovo(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && void promover()}
                 />
               </div>
-              <Button onClick={promover} disabled={ocupado || !emailNovo.trim()}>
-                <ShieldPlus className="size-4" /> Promover
+              <Button
+                onClick={promover}
+                disabled={ocupado || !emailNovo.trim()}
+                className="gap-2 shadow-xs"
+              >
+                <ShieldPlus className="size-4" /> Promover para Admin
               </Button>
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              A conta precisa existir e já ter vínculo ativo com alguma
-              empresa — é nesse vínculo que o perfil é aplicado. A busca é
-              feita em toda a base, não só na empresa da sua sessão.
-            </p>
+            <div className="flex items-start gap-2 rounded-md bg-muted/60 p-2.5 text-xs text-muted-foreground">
+              <Info className="size-4 text-primary shrink-0 mt-0.5" />
+              <p>
+                A conta precisa já existir na plataforma. A busca é realizada globalmente em todas as empresas tenants.
+              </p>
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              Administradores atuais {admins.length > 0 && `(${admins.length})`}
+        {/* Lista de Admins Card */}
+        <Card className="shadow-xs border-border/60">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Users className="size-4 text-primary" /> Administradores Atuais
+              </span>
+              {admins.length > 0 && (
+                <Badge variant="secondary" className="font-normal">
+                  {admins.length} registrado(s)
+                </Badge>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Nome</TableHead>
+                  <TableHead>Administrador</TableHead>
                   <TableHead>E-mail</TableHead>
-                  <TableHead>Último acesso</TableHead>
-                  <TableHead className="w-32" />
+                  <TableHead>Último Acesso</TableHead>
+                  <TableHead className="w-36 text-right">Ação</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading && (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-muted-foreground">
-                      Carregando...
+                    <TableCell colSpan={4} className="text-center py-6 text-muted-foreground">
+                      Carregando administradores...
                     </TableCell>
                   </TableRow>
                 )}
                 {!isLoading && admins.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-muted-foreground">
-                      Nenhum administrador da plataforma.
+                    <TableCell colSpan={4} className="text-center py-6 text-muted-foreground">
+                      Nenhum administrador da plataforma encontrado.
                     </TableCell>
                   </TableRow>
                 )}
@@ -162,39 +232,47 @@ export default function PlataformaAdminsPage() {
                   return (
                     <TableRow key={a.id}>
                       <TableCell className="font-medium">
-                        {a.nome}
-                        {souEu && (
-                          <Badge variant="secondary" className="ml-2">
-                            você
-                          </Badge>
-                        )}
-                        {!a.ativo && (
-                          <Badge variant="outline" className="ml-2">
-                            inativo
-                          </Badge>
-                        )}
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold text-xs">
+                            {a.nome?.charAt(0).toUpperCase() ?? "U"}
+                          </div>
+                          <div>
+                            <span className="font-medium">{a.nome}</span>
+                            {souEu && (
+                              <Badge variant="secondary" className="ml-2 text-[10px]">
+                                você
+                              </Badge>
+                            )}
+                            {!a.ativo && (
+                              <Badge variant="outline" className="ml-2 text-[10px] border-amber-500/50 text-amber-600">
+                                inativo
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
+                      <TableCell className="text-muted-foreground text-xs font-mono">
                         {a.email}
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
+                      <TableCell className="text-muted-foreground text-xs">
                         {formatarData(a.ultimoLogin)}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-right">
                         <Button
                           variant="ghost"
                           size="sm"
                           disabled={ocupado || souEu || ultimo}
                           title={
                             souEu
-                              ? "Você não pode remover a si mesmo"
+                              ? "Você não pode remover seu próprio acesso"
                               : ultimo
-                                ? "É o único administrador — promova outro antes"
+                                ? "Único administrador ativo da plataforma"
                                 : undefined
                           }
                           onClick={() => alterar(a.id, false)}
+                          className="gap-1.5 text-xs hover:text-destructive"
                         >
-                          <ShieldMinus className="size-4" /> Remover
+                          <ShieldMinus className="size-3.5" /> Remover
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -208,3 +286,4 @@ export default function PlataformaAdminsPage() {
     </PlataformaGuard>
   );
 }
+

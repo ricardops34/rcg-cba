@@ -35,6 +35,7 @@ describe('AgenteToolsService — permissão × configuração', () => {
       {} as never, // referencias
       {} as never, // fichas
       {} as never, // anexos
+      {} as never, // meuDia
     );
 
   const tools = instanciar();

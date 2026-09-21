@@ -163,6 +163,7 @@ model Empresa {
   whatsappAcoes              WhatsappAcaoRegistro[]
   whatsappVinculos           WhatsappVinculoFuncionario[]
   whatsappTemplates          WhatsappTemplate[]
+  whatsappRespostasRapidas   WhatsappRespostaRapida[]
   leads                      Lead[]
   whatsappRecados            WhatsappRecadoInterno[]
   whatsappRecadoDestinos     WhatsappRecadoDestinatario[]
@@ -3923,6 +3924,11 @@ model WhatsappRecadoInterno {
 
   status WhatsappAgendamentoStatus @default(pendente)
 
+  /// Enviar notificação/visualização na plataforma
+  enviarPlataforma Boolean @default(true)
+  /// Enviar mensagem no WhatsApp da empresa (se conectado)
+  enviarWhatsapp   Boolean @default(true)
+
   /// Quem escreveu. O nome vai junto porque o recado precisa continuar
   /// legível depois que a pessoa sair da empresa.
   criadoPor     String
@@ -3960,6 +3966,7 @@ model WhatsappRecadoDestinatario {
   status    WhatsappAgendamentoStatus @default(pendente)
   erro      String?
   enviadoEm DateTime?
+  lidoEm    DateTime?
 
   empresa Empresa               @relation(fields: [empresaId], references: [id])
   recado  WhatsappRecadoInterno @relation(fields: [recadoId], references: [id], onDelete: Cascade)
@@ -4133,6 +4140,31 @@ model WhatsappTemplate {
 }
 
 /**
+ * Respostas rápidas / atalhos (/pix, /horario, /catalogo) cadastrados para uso
+ * no chat de atendimento por WhatsApp.
+ */
+model WhatsappRespostaRapida {
+  id        String @id @default(uuid())
+  empresaId String
+
+  /// O comando do atalho sem a barra (ex: "pix", "catalogo", "segundavia").
+  atalho String
+  titulo String
+  /// O texto completo da mensagem. Pode incluir variáveis como {nome_cliente}.
+  conteudo String @db.Text
+
+  criadoPor String?
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@unique([empresaId, atalho])
+  @@index([empresaId])
+  @@map("whatsapp_respostas_rapidas")
+}
+
+/**
  * Notificação do sino, uma linha por destinatário.
  * O feed é lido **só desta tabela** (fonte única): o que antes era derivado do
  * dado vivo — conversa não lida, atividade vencida — agora é registrado aqui
@@ -4203,6 +4235,8 @@ enum NotificacaoTipo {
   whatsapp_aguardando
   /// Lead captado pela IA no numero institucional, aguardando alguem.
   lead_novo
+  /// Recado interno da equipe enviado para o usuário.
+  recado_interno
 }
 
 /// Em que ponto o lead está. Deliberadamente curto: um funil de lead com sete

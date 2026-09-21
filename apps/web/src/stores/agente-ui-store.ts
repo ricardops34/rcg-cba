@@ -24,8 +24,8 @@ interface AgenteUiState {
 /**
  * Estado só do momento: janela aberta e avisos pendentes não atravessam
  * sessões — reabrir o sistema não pode ressuscitar um "!" de uma conversa que
- * já morreu. Por isso nada aqui é persistido (a geometria da janela, essa sim,
- * fica no `localStorage`, dentro do `AgenteFab`).
+ * já morreu. Por isso nada aqui é persistido. A geometria da janela se adapta
+ * à tela atual a cada abertura, dentro do `AgenteFab`.
  */
 export const useAgenteUiStore = create<AgenteUiState>()((set) => ({
   aberto: false,

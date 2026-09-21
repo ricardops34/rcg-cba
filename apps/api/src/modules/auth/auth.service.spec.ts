@@ -24,6 +24,7 @@ describe('AuthService', () => {
       update: jest.Mock;
       updateMany: jest.Mock;
     };
+    sessao: { findFirst: jest.Mock; update: jest.Mock };
     perfilPermissao: { findMany: jest.Mock };
     withTenant: jest.Mock;
     withUsuario: jest.Mock;
@@ -36,6 +37,8 @@ describe('AuthService', () => {
     senhaHash: 'hash',
     ativo: true,
     nome: 'Fulano',
+    tentativasFalhas: 0,
+    bloqueadoAte: null,
   };
 
   const vinculo = {
@@ -75,6 +78,7 @@ describe('AuthService', () => {
         update: jest.fn(),
         updateMany: jest.fn(),
       },
+      sessao: { findFirst: jest.fn(), update: jest.fn() },
       perfilPermissao: { findMany: jest.fn() },
       withTenant: jest.fn(),
       withUsuario: jest.fn(),
@@ -89,9 +93,28 @@ describe('AuthService', () => {
       fn(prisma),
     );
     jwt = { signAsync: jest.fn().mockResolvedValue('signed.jwt.token') };
+    const politicaSenhaService = {
+      getVigenteParaUsuario: jest.fn().mockResolvedValue({ maxTentativas: 5, bloqueioMinutos: 15 }),
+      registrarTentativaFalha: jest.fn(),
+      limparTentativasFalhas: jest.fn(),
+    };
+    const acessos = {
+      registrar: jest.fn().mockResolvedValue(undefined),
+      abrirSessao: jest.fn().mockResolvedValue({ id: 'sessao-1' }),
+      atualizarUltimaAtividade: jest.fn().mockResolvedValue(undefined),
+      encerrarSessao: jest.fn().mockResolvedValue(undefined),
+      encerrarSessoesDoUsuario: jest.fn().mockResolvedValue(undefined),
+      tocarSessao: jest.fn().mockResolvedValue(undefined),
+    };
+    const horarios = {
+      verificar: jest.fn().mockResolvedValue({ dentro: true, motivo: '' }),
+    };
     service = new AuthService(
       prisma as unknown as PrismaService,
       jwt as unknown as JwtService,
+      politicaSenhaService as any,
+      acessos as any,
+      horarios as any,
     );
   });
 
@@ -157,7 +180,7 @@ describe('AuthService', () => {
       expect(result.expiresIn).toBe(15 * 60);
       expect(prisma.usuario.update).toHaveBeenCalledWith({
         where: { id: usuarioAtivo.id },
-        data: { ultimoLogin: expect.any(Date) },
+        data: expect.objectContaining({ ultimoLogin: expect.any(Date) }),
       });
       const signPayload = jwt.signAsync.mock.calls[0][0];
       expect(signPayload.permissoes).toEqual(['clientes.visualizar']);

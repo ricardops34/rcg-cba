@@ -119,8 +119,13 @@ Com RLS: `usuario_empresas`, `produtos`, `vendedores`, `clientes`,
 `atividades`, `orcamentos`, `orcamento_itens`, `cliente_campo_config`,
 `orcamento_config`, `cliente_cnaes`, `whatsapp_sessoes`, `whatsapp_contatos`,
 `whatsapp_conversas`, `whatsapp_mensagens`, `whatsapp_acoes`, `notificacoes`,
-`portal_cliente_credenciais` e `portal_cliente_acessos_log`. As duas últimas
-usam policies pré-tenant estreitas, configuradas por `withPortalCredential` e
+`portal_cliente_credenciais`, `portal_cliente_acessos_log`, `fornecedores`,
+`notas_entrada`, `notas_entrada_itens`, `produto_fichas`, `produto_ficha_trechos`,
+`produto_ficha_importacoes`, `agente_anexos`, `leads`, `produto_relacionados`,
+`produto_campos`, `produto_campo_valores`, `agente_ferramenta_auditoria`,
+`whatsapp_recados_internos`, `whatsapp_recados_destinatarios`, `whatsapp_vinculos_funcionario`,
+`empresa_horarios_atendimento`, `feriados`, `tour_execucoes` e `whatsapp_templates`. As duas últimas
+do portal cliente usam policies pré-tenant estreitas, configuradas por `withPortalCredential` e
 `withPortalAudit`, além da policy normal de tenant.
 
 `integracao_api_keys`, `acessos_log`, `sessoes` e `audit_logs` têm `empresaId`

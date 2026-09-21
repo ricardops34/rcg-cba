@@ -1,62 +1,16 @@
 #include "totvs.ch"
 
-// Sentido e status da mensagem, iguais aos do BJPLA002 - a fila e a mesma.
-#Define BJ_ENTRADA        "E"
-#Define BJ_EXECUTADA      "2"
-#Define BJ_ERRO           "3"
-
-// Entidades da fila para o que chega da plataforma. Nao estao no catalogo do
-// BJPLA002 porque nao sao varridas do ERP: nascem de um GET na plataforma.
-#Define BJ_ENT_ORCAMENTO  "orcamentos-pendentes"
-#Define BJ_ENT_CLIENTE    "clientes-alteracoes"
-
-// Rotas do retorno.
-#Define BJ_ROTA_PENDENTES "/integracao/orcamentos/pendentes"
-#Define BJ_ROTA_ALTCLI    "/integracao/clientes/alteracoes"
+// Sentido e status da mensagem, entidades e rotas da entrada sao escritos como
+// literal no ponto de uso, com o comentario na frente:
+//
+//    ZZ_TIPO     "E" entrada (plataforma -> ERP)
+//    ZZ_STATUS   "1" pendente   "2" executada   "3" erro
+//
+//    Entidades:  "orcamentos-pendentes"   "clientes-alteracoes"
+//    Rotas:      /integracao/orcamentos/pendentes   /integracao/clientes/alteracoes
 
 /*/{Protheus.doc} BJPLA004
-Gravacao no ERP do que chega da Plataforma BJ.
-
-Duas entidades andam neste sentido:
-
-	orcamentos-pendentes  orcamento aprovado na plataforma vira Orcamento no ERP
-	clientes-alteracoes   alteracao de cadastro aprovada volta para a SA1
-
-**O orcamento da plataforma passa pelo Orcamento do ERP antes de virar Pedido de
-Venda.** Nao vai direto para o MATA410: entra como Orcamento (SCJ/SCK) pelo
-MATA415 e e efetivado em seguida pelo MATA416, o mesmo caminho que a opcao
-"Aprovar" do browse usa (U_AprvOrc, em MA415MNU - referencia, nao alterado).
-
-**Todo orcamento recebido e efetivado.** A aprovacao ja aconteceu do lado da
-plataforma; repeti-la no ERP seria pedir duas vezes a mesma decisao.
-
-Passar pelo orcamento em vez de ir direto ao pedido da dois vinculos nativos, sem
-criar campo nenhum:
-
-	CJ_NUMEXT  C(36)  o id da plataforma, que cabe inteiro num UUID
-	CK_NUMPV   C(6)   o pedido, gravado pelo proprio MATA416 na efetivacao
-
-O fluxo tem cinco passos, e a ordem dos quatro primeiros nao pode ser trocada:
-
-	1. GET  /integracao/orcamentos/pendentes   lista os aprovados sem codigoErp
-	2. consulta a fila local e a SCJ por CJ_NUMEXT: orcamento ja criado significa
-	   que falta so reenviar o aviso do passo 5
-	3. Begin Transaction: MATA415 grava a SCJ/SCK **e** a mensagem passa a
-	   executada com o numero do orcamento, juntos
-	4. MATA416 efetiva o orcamento e gera o Pedido de Venda - **fora** da
-	   transacao do passo 3, ver BJEfetiva
-	5. PATCH /integracao/orcamentos/pendentes/{id}  grava o codigo gerado
-
-**A garantia contra orcamento duplicado esta inteira no passo 3.** Se a gravacao
-da mensagem sair de dentro do Begin Transaction, volta a existir o intervalo em
-que o orcamento esta na SCJ e a plataforma nao sabe - e o ciclo seguinte cria um
-segundo orcamento do mesmo pedido da plataforma. Nada quebra e nada avisa.
-
-O {id} do passo 4 e o unico lugar da API em que se usa o id interno da plataforma
-(UUID) em vez da chave natural do ERP. O vinculo so pode ser feito uma vez: a API
-responde 409 quando ja esta vinculado, quando ainda nao esta aprovado, ou quando
-o codigoErp colide com o de outro.
-
+Envio da fila para a Plataforma BJ e gravacao no ERP do que chega dela.
 @type    function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
@@ -68,7 +22,6 @@ o codigoErp colide com o de outro.
 
 /*/{Protheus.doc} BJRETORNO
 Le as pendencias da plataforma, aplica no ERP e atualiza o status la.
-
 @type    User Function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
@@ -77,48 +30,115 @@ Le as pendencias da plataforma, aplica no ERP e atualiza o status la.
 /*/
 User Function BJRETORNO()
 
-	Local aTotal := {0, 0, 0, 0}
+	Local aTotal    := {0, 0, 0, 0}
+	Local cSeqMae   := ""
+	Local cQuerySeq := ""
+	Local cAliasSeq := ""
+	Local oStmtSeq  := Nil
+	Local nTamSeq   := 0
+	Local cPasta    := SuperGetMV("MV_BJAPI12", .F., "\bjapi\")   // pasta dos semaforos
+	Local cArqLock  := ""
+	Local nSeg      := Seconds()
 
 	If !AllTrim(Upper(SuperGetMV("MV_BJAPI03", .F., "N"))) == "S"
 		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Integracao BJ desabilitada (MV_BJAPI03). Nada a receber.", 0, 0, {})
 		Return aTotal
 	EndIf
 
-	// O MA415END dispara ao fim do MATA415 e chama MsgYesNo perguntando se o
-	// orcamento deve ser efetivado. Em job nao ha quem responda: dependendo da
-	// versao, a chamada devolve o padrao ou prende a thread ate o timeout. O aviso
-	// fica aqui porque, se a coleta parar sem erro nenhum no log, e o primeiro
-	// lugar a olhar.
-	If ExistBlock("MA415END")
-		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "O Ponto de Entrada MA415END existe neste ambiente e chama MsgYesNo ao " + ;
-			"fim do MATA415. Em job nao ha interface para responder. Se o retorno travar sem erro no log, e por ai: o EP precisa " + ;
-			"de um desvio por IsBlind() para nao perguntar em execucao sem tela.", 0, 0, {})
+	// Um retorno por vez, venha do agendamento ou do monitor.
+	cArqLock := cPasta + cEmpAnt + "\bjpla-retorno.tsk"
+
+	MakeDir(cPasta)
+	MakeDir(cPasta + cEmpAnt + "\")
+
+	If File(cArqLock)
+		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Retorno ja em andamento. Chamada ignorada.", 0, 0, {})
+		Return aTotal
 	EndIf
 
-	BJLeOrcam(@aTotal)
-	BJLeAltCli(@aTotal)
+	MemoWrite(cArqLock, DtoS(Date()) + " " + Time())
 
-	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Retorno concluido - lidos: " + cValToChar(aTotal[1]) + ;
+	// Abre o lote (SZY) deste retorno - cobre orcamentos-pendentes e
+	// clientes-alteracoes juntos, ja que as duas sao lidas na mesma chamada. A SZY
+	// nao tem campo de entidade; quem identifica cada mensagem e o ZZ_ENTID no
+	// detalhe (SZZ), gravado por BJLeOrcam/BJLeAltCli via U_BJENFILA.
+	nTamSeq := TamSX3("ZY_CODIGO")[1]
+	If nTamSeq <= 0
+		nTamSeq := 9
+	EndIf
+
+	cQuerySeq := "SELECT MAX(ZY_CODIGO) AS MAXSEQ "
+	cQuerySeq += "  FROM " + RetSqlName("SZY") + " SZY "
+	cQuerySeq += " WHERE SZY.D_E_L_E_T_ = ' ' "
+	cQuerySeq += "   AND SZY.ZY_FILIAL  = ? "
+
+	oStmtSeq := FWExecStatement():New(ChangeQuery(cQuerySeq))
+	oStmtSeq:SetString(1, xFilial("SZY"))
+	cAliasSeq := oStmtSeq:OpenAlias()
+
+	If (cAliasSeq)->(!Eof()) .And. !Empty((cAliasSeq)->MAXSEQ)
+		cSeqMae := Soma1(PadL(AllTrim((cAliasSeq)->MAXSEQ), nTamSeq, "0"))
+	Else
+		cSeqMae := StrZero(1, nTamSeq)
+	EndIf
+
+	(cAliasSeq)->(dbCloseArea())
+	oStmtSeq:Destroy()
+
+	dbSelectArea("SZY")
+	RecLock("SZY", .T.)
+	SZY->ZY_FILIAL := xFilial("SZY")
+	SZY->ZY_CODIGO := cSeqMae
+	SZY->ZY_DTINI  := Date()
+	SZY->ZY_HRINI  := Time()
+	SZY->ZY_STATUS := "1"
+	SZY->(MsUnlock())
+
+	BJLeOrcam(@aTotal, cSeqMae)
+	BJLeAltCli(@aTotal, cSeqMae)
+
+	// Fecha o lote com fim, status e contadores
+	dbSelectArea("SZY")
+	SZY->(dbSetOrder(1)) // ZY_FILIAL + ZY_CODIGO
+
+	If SZY->(dbSeek(xFilial("SZY") + cSeqMae))
+		RecLock("SZY", .F.)
+		SZY->ZY_DTFIM   := Date()
+		SZY->ZY_HRFIM   := Time()
+		SZY->ZY_QTDLIDO := aTotal[1]
+		SZY->ZY_QTDENV  := aTotal[2]
+		SZY->ZY_QTDERR  := aTotal[4]
+
+		If aTotal[4] == 0
+			SZY->ZY_STATUS := "2"
+		Else
+			SZY->ZY_STATUS := "3"
+		EndIf
+
+		SZY->(MsUnlock())
+	EndIf
+
+	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Retorno concluido - lote " + cSeqMae + " - lidos: " + cValToChar(aTotal[1]) + ;
 		" aplicados: " + cValToChar(aTotal[2]) + ;
 		" ignorados: " + cValToChar(aTotal[3]) + ;
-		" erros: " + cValToChar(aTotal[4]), 0, 0, {})
+		" erros: " + cValToChar(aTotal[4]) + " em " + cValToChar(Round(Seconds() - nSeg, 2)) + "s", 0, 0, {})
+
+	If File(cArqLock)
+		FErase(cArqLock)
+	EndIf
 
 Return aTotal
 
 /*/{Protheus.doc} BJLeOrcam
 Le a fila de orcamentos pendentes da plataforma e trata um a um.
-
-A leitura e paginada. A propria fila da plataforma e quem garante que um
-orcamento nao seja lido duas vezes em condicoes normais: /pendentes so devolve o
-que ainda nao tem codigoErp, e o PATCH de vinculo o tira da lista.
-
 @type    Static Function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
-@param   aTotal, array, [Referencia] Totalizadores
+@param   aTotal , array    , [Referencia] Totalizadores
+@param   cSeqMae, character, ZY_CODIGO do lote (SZY) deste retorno
 @return  Nil
 /*/
-Static Function BJLeOrcam(aTotal)
+Static Function BJLeOrcam(aTotal, cSeqMae)
 
 	Local cRota  := ""
 	Local cResp  := ""
@@ -132,7 +152,7 @@ Static Function BJLeOrcam(aTotal)
 
 	While lSegue
 
-		cRota := BJ_ROTA_PENDENTES + "?pageSize=100&page=" + cValToChar(nPage)
+		cRota := "/integracao/orcamentos/pendentes" + "?pageSize=100&page=" + cValToChar(nPage)
 
 		If !U_BJHTTP("GET", cRota, "", @cResp, @nHttp, @cErro)
 			FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Falha ao listar orcamentos pendentes: " + cErro, 0, 0, {})
@@ -156,7 +176,7 @@ Static Function BJLeOrcam(aTotal)
 
 		For nX := 1 To Len(aDados)
 			aTotal[1] += 1
-			BJTrataOrc(aDados[nX], @aTotal)
+			BJTrataOrc(aDados[nX], @aTotal, cSeqMae)
 		Next nX
 
 		// Pagina incompleta e a ultima
@@ -173,21 +193,21 @@ Return Nil
 
 /*/{Protheus.doc} BJTrataOrc
 Trata um orcamento pendente: enfileira, cria o orcamento no ERP e avisa a
-plataforma.
-
 @type    Static Function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
-@param   oOrc  , object, Orcamento devolvido pela API
-@param   aTotal, array , [Referencia] Totalizadores
+@param   oOrc   , object   , Orcamento devolvido pela API
+@param   aTotal , array    , [Referencia] Totalizadores
+@param   cSeqMae, character, ZY_CODIGO do lote (SZY) deste retorno
 @return  Nil
 /*/
-Static Function BJTrataOrc(oOrc, aTotal)
+Static Function BJTrataOrc(oOrc, aTotal, cSeqMae)
 
 	Local cIdPlat  := ""
 	Local cSeq     := ""
-	Local cNumOrc  := ""
+	Local cNumPed  := ""
 	Local cArqLock := ""
+	Local cPasta   := ""
 
 	If ValType(oOrc) != "O"
 		aTotal[4] += 1
@@ -205,12 +225,12 @@ Static Function BJTrataOrc(oOrc, aTotal)
 	// Passo 2, primeira linha de defesa: a fila. Mensagem executada para este id
 	// significa que o orcamento ja foi criado num ciclo anterior e o que falhou
 	// foi o aviso a plataforma.
-	If U_BJACHOU(BJ_ENTRADA, BJ_ENT_ORCAMENTO, cIdPlat, @cNumOrc)
+	If U_BJACHOU("E", "orcamentos-pendentes", cIdPlat, @cNumPed)
 
-		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Orcamento " + cIdPlat + " ja gerou o orcamento " + cNumOrc + ;
+		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Orcamento " + cIdPlat + " ja gerou o orcamento " + cNumPed + ;
 			" num ciclo anterior, mas continua na fila da plataforma. Reenviando so o vinculo.", 0, 0, {})
 
-		If BJVincula(cIdPlat, cNumOrc)
+		If BJVincula(cIdPlat, cNumPed)
 			aTotal[2] += 1
 		Else
 			aTotal[4] += 1
@@ -219,29 +239,11 @@ Static Function BJTrataOrc(oOrc, aTotal)
 		Return Nil
 	EndIf
 
-	// Segunda linha de defesa: a propria SCJ. CJ_NUMEXT guarda o id da plataforma,
-	// entao o ERP sabe responder sozinho se ja recebeu este orcamento - mesmo que
-	// a fila tenha sido expurgada ou que alguem tenha criado o orcamento a mao.
-	cNumOrc := BJAchaSCJ(cIdPlat)
+	cPasta   := SuperGetMV("MV_BJAPI12", .F., "\bjapi\")   // pasta dos semaforos
+	cArqLock := cPasta + cEmpAnt + "\bjpla-orc-" + Lower(AllTrim(cIdPlat)) + ".tsk"
 
-	If !Empty(cNumOrc)
-
-		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "O orcamento " + cNumOrc + " da SCJ ja aponta para " + cIdPlat + ;
-			" em CJ_NUMEXT. Nao sera criado outro; reenviando so o vinculo.", 0, 0, {})
-
-		If BJVincula(cIdPlat, cNumOrc)
-			aTotal[2] += 1
-		Else
-			aTotal[4] += 1
-		EndIf
-
-		Return Nil
-	EndIf
-
-	cArqLock := "\bjapi\" + cEmpAnt + "\bjpla-orc-" + Lower(AllTrim(cIdPlat)) + ".tsk"
-
-	MakeDir("\bjapi\")
-	MakeDir("\bjapi\" + cEmpAnt + "\")
+	MakeDir(cPasta)
+	MakeDir(cPasta + cEmpAnt + "\")
 
 	// Um processo por orcamento: se o arquivo existir, outro processo ja esta tratando este orcamento.
 	If File(cArqLock)
@@ -253,7 +255,7 @@ Static Function BJTrataOrc(oOrc, aTotal)
 
 	// A mensagem entra na fila com o payload que veio. A partir daqui existe
 	// rastro, mesmo que tudo falhe depois.
-	cSeq := U_BJENFILA(BJ_ENTRADA, BJ_ENT_ORCAMENTO, cIdPlat, "GET", oOrc:ToJson())
+	cSeq := U_BJENFILA("E", "orcamentos-pendentes", cIdPlat, "GET", oOrc:ToJson(), cSeqMae)
 
 	If Empty(cSeq)
 		aTotal[4] += 1
@@ -263,9 +265,9 @@ Static Function BJTrataOrc(oOrc, aTotal)
 		Return Nil
 	EndIf
 
-	cNumOrc := BJGeraOrc(oOrc, cIdPlat, cSeq)
+	cNumPed := BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 
-	If Empty(cNumOrc)
+	If Empty(cNumPed)
 		aTotal[4] += 1
 		If File(cArqLock)
 			FErase(cArqLock)
@@ -273,14 +275,7 @@ Static Function BJTrataOrc(oOrc, aTotal)
 		Return Nil
 	EndIf
 
-	// Todo orcamento vindo da plataforma e efetivado. A efetivacao roda **fora**
-	// da transacao do MATA415, de proposito: se ela falhar, o orcamento continua
-	// valido na SCJ, ja vinculado a plataforma, e alguem o efetiva pela tela.
-	// Dentro da transacao, uma falha aqui desfaria o orcamento tambem, e o ciclo
-	// seguinte tentaria de novo para bater no mesmo erro para sempre.
-	BJEfetiva(cNumOrc, cIdPlat, cSeq)
-
-	If BJVincula(cIdPlat, cNumOrc)
+	If BJVincula(cIdPlat, cNumPed)
 		aTotal[2] += 1
 	Else
 		// O orcamento existe e a mensagem esta marcada como executada. O vinculo
@@ -294,164 +289,25 @@ Static Function BJTrataOrc(oOrc, aTotal)
 
 Return Nil
 
-/*/{Protheus.doc} BJEfetiva
-Efetiva o orcamento em Pedido de Venda, por MATA416.
-
-Todo orcamento recebido da plataforma e efetivado: a aprovacao ja aconteceu do
-lado de la, e repeti-la no ERP seria pedir duas vezes a mesma decisao.
-
-Segue o padrao de U_AprvOrc, em MA415MNU.prw - **MATA416 e chamada direto, nao
-por MSExecAuto**, com so o CJ_NUM no cabecalho e a SCJ posicionada. E a rotina
-que grava CK_NUMPV no item e deixa a SC5 posicionada no pedido gerado.
-
-**Falha aqui nao desfaz o orcamento.** Ele continua na SCJ, com CJ_NUMEXT
-apontando para a plataforma e ja vinculado; o que falta e alguem clicar em
-Aprovar no browse. Por isso esta rotina nao devolve erro para o chamador: o
-retorno ja foi um sucesso quando o orcamento passou a existir.
-
+/*/{Protheus.doc} BJGeraPed
+Grava o Pedido de Venda (SC5/SC6) do orcamento aprovado na plataforma.
 @type    Static Function
 @author  Ricardo P Sotomayor
-@since   01/09/2026
-@param   cNumOrc, character, CJ_NUM do orcamento a efetivar
-@param   cIdPlat, character, Id da plataforma, para o log
-@param   cSeq   , character, Sequencia da mensagem na fila
-@return  Nil
-/*/
-Static Function BJEfetiva(cNumOrc, cIdPlat, cSeq)
-
-	Local aArea  := GetArea()
-	Local aCab   := {}
-	Local cNumPV := ""
-
-	Private lMsErroAuto    := .F.
-	Private lMsHelpAuto    := .T.
-	Private lAutoErrNoFile := .T.
-
-	dbSelectArea("SCJ")
-	SCJ->(dbSetOrder(1))
-
-	If !SCJ->(dbSeek(xFilial("SCJ") + PadR(cNumOrc, TamSX3("CJ_NUM")[1])))
-		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Orcamento " + cNumOrc + " nao encontrado na SCJ para efetivar. " + ;
-			"Ele existe e esta vinculado; efetive pela opcao Aprovar do browse.", 0, 0, {})
-		RestArea(aArea)
-		Return Nil
-	EndIf
-
-	aAdd(aCab, {"CJ_NUM", SCJ->CJ_NUM, Nil})
-
-	MATA416(aCab, {})
-
-	If lMsErroAuto
-		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "MATA416 recusou a efetivacao do orcamento " + cNumOrc + ;
-			" (plataforma " + cIdPlat + "): " + BJLogAuto() + " O orcamento continua valido; efetive pela opcao Aprovar do browse.", 0, 0, {})
-		RestArea(aArea)
-		Return Nil
-	EndIf
-
-	// O MATA416 deixa a SC5 posicionada no pedido que acabou de gerar, e grava o
-	// numero dele em CK_NUMPV, no item do orcamento.
-	cNumPV := AllTrim(SC5->C5_NUM)
-
-	// O numero do pedido vai para o texto da mensagem, nao para ZZ_CHVDES: aquele
-	// campo guarda o orcamento, que e o que a plataforma conhece pelo codigoErp e
-	// o que BJACHOU precisa devolver no reenvio do vinculo. Do orcamento chega-se
-	// ao pedido por CK_NUMPV.
-	U_BJGRAVA(cSeq, BJ_EXECUTADA, 0, "Orcamento " + cNumOrc + " criado por MATA415 e efetivado por MATA416. " + ;
-		"Pedido de Venda " + cNumPV + ".", cNumOrc)
-
-	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Orcamento " + cNumOrc + " efetivado: Pedido de Venda " + cNumPV + ".", 0, 0, {})
-
-	RestArea(aArea)
-
-Return Nil
-
-/*/{Protheus.doc} BJAchaSCJ
-Procura na SCJ um orcamento ja criado para um id da plataforma.
-
-CJ_NUMEXT tem 36 posicoes, que e exatamente o tamanho de um UUID: o vinculo com a
-plataforma cabe no campo nativo e nao precisa de campo novo.
-
-E a segunda linha de defesa contra duplicidade. A primeira e a fila, que responde
-mais rapido; esta responde mesmo depois de a fila ter sido expurgada, porque a
-resposta esta no proprio documento.
-
-@type    Static Function
-@author  Ricardo P Sotomayor
-@since   01/09/2026
-@param   cIdPlat, character, Id interno da plataforma (UUID)
-@return  character, CJ_NUM do orcamento existente, ou vazio
-/*/
-Static Function BJAchaSCJ(cIdPlat)
-
-	Local cRet   := ""
-	Local cQuery := ""
-	Local cTmp   := ""
-	Local oStmt  := Nil
-
-	Default cIdPlat := ""
-
-	If Empty(cIdPlat)
-		Return ""
-	EndIf
-
-	cQuery := "SELECT CJ_NUM "
-	cQuery += "  FROM " + RetSQLName("SCJ") + " SCJ "
-	cQuery += " WHERE SCJ.D_E_L_E_T_ = ? "
-	cQuery += "   AND SCJ.CJ_FILIAL  = ? "
-	cQuery += "   AND SCJ.CJ_NUMEXT  = ? "
-
-	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
-	oStmt:SetString(1, " ")
-	oStmt:SetString(2, xFilial("SCJ"))
-	oStmt:SetString(3, cIdPlat)
-
-	cTmp := oStmt:OpenAlias()
-
-	If (cTmp)->(!Eof())
-		cRet := AllTrim((cTmp)->CJ_NUM)
-	EndIf
-
-	(cTmp)->(dbCloseArea())
-	oStmt:Destroy()
-
-Return cRet
-
-/*/{Protheus.doc} BJGeraOrc
-Cria o Orcamento de Venda a partir do orcamento da plataforma, por MATA415.
-
-O cabecalho puxa do **cadastro do cliente** o que a plataforma nao informa:
-condicao, tabela de preco e vendedor. O TES e o armazem saem do produto (B1_TS e
-B1_LOCPAD); produto sem B1_TS nao recebe CK_TES, e a regra de TES inteligente do
-ambiente resolve melhor que um valor fixo.
-
-**A numeracao e do MATA415.** Nada de GetSxeNum antes: a rotina numera, e o
-numero e lido da SCJ posicionada depois. Na recusa, RollBackSx8 em laco devolve
-todos os semaforos consumidos, nao so o ultimo.
-
-**Cliente bloqueado nao e liberado aqui.** Diferente do caminho de Pedido de
-Venda, um orcamento e proposta, nao venda: destravar permanentemente um cliente
-bloqueado por credito para registrar uma proposta seria caro demais pelo que se
-ganha. Se o MATA415 recusar por bloqueio, o erro aparece na fila e a decisao fica
-com quem opera.
-
-Em job nao ha tela: o erro do ExecAuto sai por GetAutoGRLog para o log, nunca por
-MostraErro.
-
-@type    Static Function
-@author  Ricardo P Sotomayor
-@since   01/09/2026
-@param   oOrc   , object   , Orcamento devolvido pela API
+@since   18/09/2026
+@param   oOrc   , object   , Orcamento aprovado devolvido pela API
 @param   cIdPlat, character, Id interno da plataforma (UUID)
 @param   cSeq   , character, Sequencia da mensagem na fila
-@return  character, Numero do orcamento gerado, ou vazio quando falhou
+@param   cSeqMae, character, Lote (ZY_CODIGO) da mensagem
+@return  character, C5_NUM do pedido criado, ou vazio quando falhou
 /*/
-Static Function BJGeraOrc(oOrc, cIdPlat, cSeq)
+Static Function BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 
-	Local cNumOrc  := ""
+	Local cNumPed  := ""
 	Local aArea    := GetArea()
 	Local aCabec   := {}
 	Local aItens   := {}
 	Local aItJson  := {}
+	Local aParte   := {}
 	Local cCliente := ""
 	Local cLoja    := ""
 	Local cVend    := ""
@@ -459,8 +315,15 @@ Static Function BJGeraOrc(oOrc, cIdPlat, cSeq)
 	Local cObs     := ""
 	Local cChvCli  := ""
 	Local cLogErr  := ""
-	Local cValida  := ""
+	Local cDtEmis  := ""
 	Local dEmissao := CtoD("")
+	Local aLinha   := {}
+	Local cItem    := StrZero(0, TamSX3("C6_ITEM")[1])
+	Local cProd    := ""
+	Local cTes     := ""
+	Local nQtd     := 0
+	Local nPreco   := 0
+	Local nX       := 0
 	Local nTamLoj  := TamSX3("A1_LOJA")[1]
 	Local nSaveSx8 := 0
 
@@ -472,173 +335,102 @@ Static Function BJGeraOrc(oOrc, cIdPlat, cSeq)
 	cVend   := AllTrim(cValToChar(oOrc:GetJsonObject("vendedorCodigo")))
 	cCond   := AllTrim(cValToChar(oOrc:GetJsonObject("condicaoPagamentoCodigo")))
 	cObs    := AllTrim(cValToChar(oOrc:GetJsonObject("observacao")))
-	cValida := AllTrim(cValToChar(oOrc:GetJsonObject("dataValidade")))
 	aItJson := oOrc:GetJsonObject("itens")
 
+	// vendedorCodigo e condicaoPagamentoCodigo voltam prefixados pela filial
+	// (01-000234); o pedido guarda so o codigo.
+	If At("-", cVend) > 0
+		cVend := SubStr(cVend, At("-", cVend) + 1)
+	EndIf
+
+	If At("-", cCond) > 0
+		cCond := SubStr(cCond, At("-", cCond) + 1)
+	EndIf
+
 	If Empty(cChvCli) .Or. ValType(aItJson) != "A" .Or. Len(aItJson) == 0
-		BJErroOrc(cSeq, cIdPlat, "Orcamento sem cliente ou sem itens. Nao foi criado.")
+		BJErroOrc(cSeqMae, cSeq, cIdPlat, "Orcamento sem cliente ou sem itens. Pedido nao foi criado.")
 		RestArea(aArea)
 		Return ""
 	EndIf
 
-	// A chave da API concatena codigo e loja; o Protheus precisa dos dois separados
-	cCliente := SubStr(cChvCli, 1, Len(cChvCli) - nTamLoj)
-	cLoja    := Right(cChvCli, nTamLoj)
+	// O clienteCodigo volta como saiu daqui: filial-codigo-loja, separados por
+	// hifen. A filial nao entra na SA1, e o Protheus precisa do codigo e da loja
+	// em campos separados.
+	aParte := U_BJCHAVE(cChvCli, {"A1_FILIAL", "A1_COD", "A1_LOJA"})
 
-	// Posiciona a SA1 e a deixa posicionada: o cabecalho puxa dela condicao,
-	// tabela de preco e vendedor logo abaixo.
+	If Len(aParte) == 3
+		cCliente := aParte[2]
+		cLoja    := aParte[3]
+	Else
+		// Chave sem o prefixo de filial: codigo e loja colados
+		cCliente := SubStr(cChvCli, 1, Len(cChvCli) - nTamLoj)
+		cLoja    := Right(cChvCli, nTamLoj)
+	EndIf
+
+	// Posiciona a SA1 e a deixa posicionada: o cabecalho puxa dela natureza,
+	// condicao, tabela de preco e vendedor quando a plataforma nao mandou.
 	dbSelectArea("SA1")
 	SA1->(dbSetOrder(1))
 
 	If !SA1->(dbSeek(xFilial("SA1") + PadR(cCliente, TamSX3("A1_COD")[1]) + PadR(cLoja, TamSX3("A1_LOJA")[1])))
-		BJErroOrc(cSeq, cIdPlat, "Cliente " + cChvCli + " nao encontrado na SA1. Orcamento nao foi criado.")
+		BJErroOrc(cSeqMae, cSeq, cIdPlat, "Cliente " + cChvCli + " nao encontrado na SA1. Pedido nao foi criado.")
 		RestArea(aArea)
 		Return ""
+	EndIf
+
+	If Empty(cVend)
+		cVend := AllTrim(SA1->A1_VEND)
+	EndIf
+
+	If Empty(cCond)
+		cCond := AllTrim(SA1->A1_COND)
 	EndIf
 
 	// Guarda o topo do semaforo de numeracao antes do ExecAuto.
 	nSaveSx8 := GetSx8Len()
 
-	dEmissao := BJDataOrc(oOrc)
+	// Data de emissao. A API devolve ISO 8601: "2026-08-26T00:00:00.000Z", e o
+	// pedido nao pode nascer com data anterior a do sistema.
+	cDtEmis  := AllTrim(cValToChar(oOrc:GetJsonObject("dtEmissao")))
+	dEmissao := dDataBase
 
-	// O que a plataforma nao trouxer sai do cadastro do cliente.
-	If Empty(cVend)
-		cVend := AllTrim(SA1->A1_VEND)
+	If Len(cDtEmis) >= 10
+		dEmissao := SToD(StrTran(SubStr(cDtEmis, 1, 10), "-", ""))
 	EndIf
-	If Empty(cCond)
-		cCond := AllTrim(SA1->A1_COND)
+
+	If Empty(dEmissao) .Or. dEmissao < dDataBase
+		dEmissao := dDataBase
 	EndIf
 
-	aAdd(aCabec, {"CJ_FILIAL" , xFilial("SCJ"), Nil})
-	aAdd(aCabec, {"CJ_CLIENTE", cCliente      , Nil})
-	aAdd(aCabec, {"CJ_LOJA"   , cLoja         , Nil})
-	aAdd(aCabec, {"CJ_EMISSAO", dEmissao      , Nil})
-
-	// CJ_NUMEXT tem 36 posicoes e guarda o UUID da plataforma inteiro. E o vinculo
-	// nativo entre os dois lados, e o que permite ao ERP responder sozinho se ja
-	// recebeu este orcamento.
-	aAdd(aCabec, {"CJ_NUMEXT" , cIdPlat       , Nil})
+	aAdd(aCabec, {"C5_FILIAL" , xFilial("SC5"), Nil})
+	aAdd(aCabec, {"C5_TIPO"   , "N"           , Nil})
+	aAdd(aCabec, {"C5_CLIENTE", cCliente      , Nil})
+	aAdd(aCabec, {"C5_LOJACLI", cLoja         , Nil})
+	aAdd(aCabec, {"C5_EMISSAO", dEmissao      , Nil})
 
 	If !Empty(cVend)
-		aAdd(aCabec, {"CJ_VEND1", cVend, Nil})
+		aAdd(aCabec, {"C5_VEND1", cVend, Nil})
 	EndIf
+
 	If !Empty(cCond)
-		aAdd(aCabec, {"CJ_CONDPAG", cCond, Nil})
+		aAdd(aCabec, {"C5_CONDPAG", cCond, Nil})
 	EndIf
+
 	If !Empty(SA1->A1_TABELA)
-		aAdd(aCabec, {"CJ_TABELA", SA1->A1_TABELA, Nil})
+		aAdd(aCabec, {"C5_TABELA", SA1->A1_TABELA, Nil})
 	EndIf
 
-	// A API devolve ISO 8601: "2026-09-28T00:00:00.000Z"
-	If Len(cValida) >= 10
-		aAdd(aCabec, {"CJ_VALIDA", SToD(StrTran(SubStr(cValida, 1, 10), "-", "")), Nil})
+	If !Empty(SA1->A1_NATUREZ)
+		aAdd(aCabec, {"C5_NATUREZ", SA1->A1_NATUREZ, Nil})
 	EndIf
 
-	If !Empty(cObs)
-		aAdd(aCabec, {"CJ_XOBSVEN", cObs, Nil})
+	// A observacao so entra se o campo existir neste dicionario
+	If !Empty(cObs) .And. SC5->(FieldPos("C5_XOBSVEN")) > 0
+		aAdd(aCabec, {"C5_XOBSVEN", cObs, Nil})
 	EndIf
 
-	aItens := BJItensOrc(aItJson)
-
-	If Len(aItens) == 0
-		BJErroOrc(cSeq, cIdPlat, "Nenhum item do orcamento pode ser convertido. Orcamento nao foi criado.")
-		RestArea(aArea)
-		Return ""
-	EndIf
-
-	// ---------------------------------------------------------------------
-	// A transacao que impede o orcamento duplicado.
-	//
-	// O orcamento e a marcacao da mensagem gravam juntos, ou nenhum dos dois. Se a
-	// marcacao falhar, o orcamento volta atras com ela e o registro da plataforma
-	// e reprocessado do zero no ciclo seguinte, sem deixar orfao na SCJ.
-	//
-	// **Nao tire a chamada de U_BJGRAVA de dentro deste bloco.** Fora dele volta a
-	// existir o intervalo em que o orcamento esta gravado e ninguem sabe - e o
-	// ciclo seguinte cria um segundo. Nada quebra e nada avisa.
-	//
-	// Nao ha chamada de tela aqui dentro: em job nao existe interface, e UI em
-	// transacao segura o lock do banco. O MA415END, se existir no ambiente, e a
-	// excecao que escapa a este cuidado - ver o aviso em U_BJRETORNO.
-	// ---------------------------------------------------------------------
-	Begin Transaction
-
-		dbSelectArea("SCJ")
-		MSExecAuto({|x, y, z| MATA415(x, y, z)}, aCabec, aItens, 3)
-
-		If lMsErroAuto
-
-			cLogErr := BJLogAuto()
-
-			DisarmTransaction()
-
-		Else
-
-			// O MATA415 deixa a SCJ posicionada no orcamento que acabou de gravar.
-			cNumOrc := AllTrim(SCJ->CJ_NUM)
-
-			If Empty(cNumOrc)
-				cLogErr := "Orcamento gerado, mas a SCJ nao ficou posicionada para ler o numero."
-				DisarmTransaction()
-			ElseIf !U_BJGRAVA(cSeq, BJ_EXECUTADA, 0, "Orcamento " + cNumOrc + " criado por MATA415.", cNumOrc)
-				cLogErr := "Orcamento " + cNumOrc + " criado, mas a mensagem " + cSeq + " nao pode ser marcada. " + ;
-					"A transacao foi desfeita para nao deixar orcamento sem rastro."
-				cNumOrc := ""
-				DisarmTransaction()
-			EndIf
-
-		EndIf
-
-	End Transaction
-
-	If Empty(cNumOrc)
-
-		// Devolve todos os numeros consumidos, nao apenas o ultimo.
-		While GetSx8Len() > nSaveSx8
-			RollBackSx8()
-		End
-
-		BJErroOrc(cSeq, cIdPlat, "ExecAuto MATA415: " + cLogErr)
-		RestArea(aArea)
-		Return ""
-	EndIf
-
-	ConfirmSx8()
-
-	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Orcamento da plataforma " + cIdPlat + " criou o orcamento " + cNumOrc + ;
-		" na SCJ.", 0, 0, {})
-
-	RestArea(aArea)
-
-Return cNumOrc
-
-/*/{Protheus.doc} BJItensOrc
-Monta o vetor de itens do Orcamento de Venda.
-
-O TES sai do B1_TS do produto e o armazem do B1_LOCPAD. Produto sem B1_TS nao
-recebe CK_TES: a regra de TES inteligente do ambiente resolve, e forcar um valor
-fixo erraria em toda venda fora do caso comum.
-
-Produto inexistente na SB1 e descartado com aviso, em vez de derrubar o orcamento
-inteiro - mas se nenhum item sobreviver, o chamador aborta.
-
-@type    Static Function
-@author  Ricardo P Sotomayor
-@since   01/09/2026
-@param   aItJson, array, Itens devolvidos pela API
-@return  array, Itens no formato do ExecAuto
-/*/
-Static Function BJItensOrc(aItJson)
-
-	Local aRet   := {}
-	Local aLinha := {}
-	Local aArea  := GetArea()
-	Local cItem  := StrZero(0, TamSX3("CK_ITEM")[1])
-	Local cProd  := ""
-	Local nQtd   := 0
-	Local nPreco := 0
-	Local nX     := 0
-
+	// Itens do pedido. Produto que nao existe na SB1 ou linha sem quantidade sao
+	// ignorados com WARN - um item ruim nao derruba o pedido inteiro.
 	dbSelectArea("SB1")
 	SB1->(dbSetOrder(1))
 
@@ -647,6 +439,12 @@ Static Function BJItensOrc(aItJson)
 		cProd  := AllTrim(cValToChar(aItJson[nX]:GetJsonObject("produtoCodigo")))
 		nQtd   := aItJson[nX]:GetJsonObject("quantidade")
 		nPreco := aItJson[nX]:GetJsonObject("vlrUnitario")
+
+		// O produtoCodigo volta prefixado pela filial (01-11400443); a SB1 guarda
+		// so o B1_COD.
+		If At("-", cProd) > 0
+			cProd := SubStr(cProd, At("-", cProd) + 1)
+		EndIf
 
 		If Empty(cProd) .Or. ValType(nQtd) != "N" .Or. nQtd <= 0
 			FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Item " + cValToChar(nX) + " sem produto ou sem quantidade. Ignorado.", 0, 0, {})
@@ -662,57 +460,111 @@ Static Function BJItensOrc(aItJson)
 			nPreco := 0
 		EndIf
 
+		cTes   := AllTrim(SB1->B1_TS)
 		cItem  := Soma1(cItem)
 		aLinha := {}
 
-		aAdd(aLinha, {"CK_ITEM"   , cItem                  , Nil})
-		aAdd(aLinha, {"CK_PRODUTO", cProd                  , Nil})
-		aAdd(aLinha, {"CK_QTDVEN" , nQtd                   , Nil})
-		aAdd(aLinha, {"CK_PRCVEN" , nPreco                 , Nil})
-		aAdd(aLinha, {"CK_VALOR"  , Round(nQtd * nPreco, 2), Nil})
+		aAdd(aLinha, {"C6_ITEM"   , cItem                  , Nil})
+		aAdd(aLinha, {"C6_PRODUTO", cProd                  , Nil})
+		aAdd(aLinha, {"C6_QTDVEN" , nQtd                   , Nil})
+		aAdd(aLinha, {"C6_PRCVEN" , nPreco                 , Nil})
+		aAdd(aLinha, {"C6_VALOR"  , Round(nQtd * nPreco, 2), Nil})
 
 		If !Empty(SB1->B1_UM)
-			aAdd(aLinha, {"CK_UM", SB1->B1_UM, Nil})
+			aAdd(aLinha, {"C6_UM", SB1->B1_UM, Nil})
 		EndIf
-		If !Empty(SB1->B1_TS)
-			aAdd(aLinha, {"CK_TES", SB1->B1_TS, Nil})
+		If !Empty(cTes)
+			aAdd(aLinha, {"C6_TES", cTes, Nil})
 		EndIf
 		If !Empty(SB1->B1_LOCPAD)
-			aAdd(aLinha, {"CK_LOCAL", SB1->B1_LOCPAD, Nil})
+			aAdd(aLinha, {"C6_LOCAL", SB1->B1_LOCPAD, Nil})
 		EndIf
 
-		aAdd(aRet, aLinha)
+		aAdd(aItens, aLinha)
 
 	Next nX
 
+	If Len(aItens) == 0
+		BJErroOrc(cSeqMae, cSeq, cIdPlat, "Nenhum item do orcamento pode ser convertido. Pedido nao foi criado.")
+		RestArea(aArea)
+		Return ""
+	EndIf
+
+	// ---------------------------------------------------------------------
+	// A transacao que impede o pedido duplicado.
+	//
+	// O pedido e a marcacao da mensagem gravam juntos, ou nenhum dos dois. Se a
+	// marcacao falhar, o pedido volta atras com ela e o registro da plataforma e
+	// reprocessado do zero no ciclo seguinte, sem deixar orfao na SC5.
+	//
+	// **Nao tire a chamada de U_BJGRAVA de dentro deste bloco.** Fora dele volta a
+	// existir o intervalo em que o pedido esta gravado e ninguem sabe - e o ciclo
+	// seguinte cria um segundo. Nada quebra e nada avisa.
+	//
+	// Nao ha chamada de tela aqui dentro: em job nao existe interface, e UI em
+	// transacao segura o lock do banco.
+	// ---------------------------------------------------------------------
+	Begin Transaction
+
+		dbSelectArea("SC5")
+		MSExecAuto({|x, y, z| MATA410(x, y, z)}, aCabec, aItens, 3)
+
+		If lMsErroAuto
+
+			cLogErr := BJLogAuto()
+
+			DisarmTransaction()
+
+		Else
+
+			// O MATA410 deixa a SC5 posicionada no pedido que acabou de gravar.
+			cNumPed := AllTrim(SC5->C5_NUM)
+
+			If Empty(cNumPed)
+				cLogErr := "Pedido gerado, mas a SC5 nao ficou posicionada para ler o numero."
+				DisarmTransaction()
+			ElseIf !U_BJGRAVA(cSeqMae, cSeq, "2", 0, "Pedido " + cNumPed + " criado por MATA410.", cNumPed)
+				cLogErr := "Pedido " + cNumPed + " criado, mas a mensagem " + cSeq + " nao pode ser marcada. " + ;
+					"A transacao foi desfeita para nao deixar pedido sem rastro."
+				cNumPed := ""
+				DisarmTransaction()
+			EndIf
+
+		EndIf
+
+	End Transaction
+
+	If Empty(cNumPed)
+
+		// Devolve todos os numeros consumidos, nao apenas o ultimo.
+		While GetSx8Len() > nSaveSx8
+			RollBackSx8()
+		End
+
+		BJErroOrc(cSeqMae, cSeq, cIdPlat, "ExecAuto MATA410: " + cLogErr)
+		RestArea(aArea)
+		Return ""
+	EndIf
+
+	ConfirmSx8()
+
+	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Orcamento da plataforma " + cIdPlat + " criou o pedido " + cNumPed + ;
+		" na SC5.", 0, 0, {})
+
 	RestArea(aArea)
 
-Return aRet
+Return cNumPed
 
 /*/{Protheus.doc} BJVincula
-Avisa a plataforma que o orcamento dela virou um orcamento no ERP.
-
-E o passo 4, e o unico ponto da API que usa o id interno da plataforma. O vinculo
-so pode ser feito uma vez: 409 significa ja vinculado, ainda nao aprovado, ou
-codigoErp colidindo com o de outro orcamento.
-
-O codigo enviado e **texto**, como o contrato documenta - `{"codigoErp":
-"004512"}`, entre aspas -, e precisa ser exatamente o mesmo codigoErp que o
-mapeador de saida usa para este orcamento: `filial-CJ_NUM`.
-
-**Nao mande so o CJ_NUM.** Depois de vinculado, o orcamento passa a aparecer no
-GET /integracao/orcamentos normal, e o U_BJMAPORC vai empurra-lo com
-`filial-CJ_NUM`. Se o vinculo tiver gravado "000123" e o mapeador mandar
-"01-000123", a plataforma fica com dois orcamentos onde existe um.
-
+Avisa a plataforma que o orcamento dela virou um Pedido de Venda no ERP.
 @type    Static Function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
 @param   cIdPlat, character, Id interno da plataforma (UUID)
-@param   cNumOrc, character, CJ_NUM do orcamento criado
+@param   cNumPed, character, C5_NUM do pedido criado
 @return  logical, .T. quando a plataforma aceitou o vinculo
 /*/
-Static Function BJVincula(cIdPlat, cNumOrc)
+Static Function BJVincula(cIdPlat, cNumPed)
 
 	Local lRet  := .F.
 	Local cResp := ""
@@ -721,57 +573,24 @@ Static Function BJVincula(cIdPlat, cNumOrc)
 	Local oJson := Nil
 
 	oJson := JsonObject():New()
-	oJson["codigoErp"] := xFilial("SCJ") + "-" + AllTrim(cNumOrc)
+	oJson["codigoErp"] := xFilial("SC5") + "-" + AllTrim(cNumPed)
 
-	lRet := U_BJHTTP("PATCH", BJ_ROTA_PENDENTES + "/" + AllTrim(cIdPlat), oJson:ToJson(), @cResp, @nHttp, @cErro)
+	lRet := U_BJHTTP("PATCH", "/integracao/orcamentos/pendentes" + "/" + AllTrim(cIdPlat), oJson:ToJson(), @cResp, @nHttp, @cErro)
 
 	oJson := Nil
 
 	If lRet
 		FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Orcamento da plataforma " + cIdPlat + " vinculado ao orcamento " + ;
-			cNumOrc + " do ERP.", 0, 0, {})
+			cNumPed + " do ERP.", 0, 0, {})
 	Else
-		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Falha ao vincular " + cIdPlat + " ao orcamento " + cNumOrc + ;
+		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Falha ao vincular " + cIdPlat + " ao orcamento " + cNumPed + ;
 			" (HTTP " + cValToChar(nHttp) + "): " + cErro, 0, 0, {})
 	EndIf
 
 Return lRet
 
-/*/{Protheus.doc} BJDataOrc
-Devolve a data de emissao a usar no orcamento.
-
-A da plataforma quando for de hoje em diante; passada, usa a data base. Orcamento
-com emissao retroativa entra com tabela de preco e condicao de pagamento de outra
-epoca.
-
-@type    Static Function
-@author  Ricardo P Sotomayor
-@since   01/09/2026
-@param   oOrc, object, Orcamento devolvido pela API
-@return  date, Data de emissao
-/*/
-Static Function BJDataOrc(oOrc)
-
-	Local cData := AllTrim(cValToChar(oOrc:GetJsonObject("dtEmissao")))
-	Local dRet  := dDataBase
-
-	// A API devolve ISO 8601: "2026-08-26T00:00:00.000Z"
-	If Len(cData) >= 10
-		dRet := SToD(StrTran(SubStr(cData, 1, 10), "-", ""))
-	EndIf
-
-	If Empty(dRet) .Or. dRet < dDataBase
-		dRet := dDataBase
-	EndIf
-
-Return dRet
-
 /*/{Protheus.doc} BJLogAuto
 Devolve o log de erro do ultimo ExecAuto como texto de uma linha.
-
-Em job nao ha tela: MostraErro abriria uma janela que ninguem fecha e travaria a
-thread. GetAutoGRLog devolve as mesmas mensagens em array.
-
 @type    Static Function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
@@ -797,7 +616,6 @@ Return SubStr(cRet, 1, 400)
 
 /*/{Protheus.doc} BJErroOrc
 Grava a falha da criacao do orcamento na mensagem e no log.
-
 @type    Static Function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
@@ -806,11 +624,11 @@ Grava a falha da criacao do orcamento na mensagem e no log.
 @param   cMsg   , character, Motivo da falha
 @return  Nil
 /*/
-Static Function BJErroOrc(cSeq, cIdPlat, cMsg)
+Static Function BJErroOrc(cSeqMae, cSeq, cIdPlat, cMsg)
 
 	FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Orcamento " + cIdPlat + ": " + cMsg, 0, 0, {})
 
-	U_BJGRAVA(cSeq, BJ_ERRO, 0, cMsg, "")
+	U_BJGRAVA(cSeqMae, cSeq, "3", 0, cMsg, "")
 
 Return Nil
 
@@ -820,19 +638,14 @@ Return Nil
 
 /*/{Protheus.doc} BJLeAltCli
 Le as alteracoes de cliente aprovadas na plataforma e as aplica na SA1.
-
-**A rota que esta funcao consome ainda nao existe** na API de integracao. O que
-existe hoje e GET /clientes-alteracoes, sob JWT e permissao clientes.aprovar,
-declarada como rota interna. Enquanto a rota nao subir, o 404 e registrado e o
-ciclo segue - nada quebra.
-
 @type    Static Function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
-@param   aTotal, array, [Referencia] Totalizadores
+@param   aTotal , array    , [Referencia] Totalizadores
+@param   cSeqMae, character, ZY_CODIGO do lote (SZY) deste retorno
 @return  Nil
 /*/
-Static Function BJLeAltCli(aTotal)
+Static Function BJLeAltCli(aTotal, cSeqMae)
 
 	Local cResp  := ""
 	Local cErro  := ""
@@ -841,10 +654,10 @@ Static Function BJLeAltCli(aTotal)
 	Local oJson  := Nil
 	Local aDados := {}
 
-	If !U_BJHTTP("GET", BJ_ROTA_ALTCLI + "?pageSize=100&page=1", "", @cResp, @nHttp, @cErro)
+	If !U_BJHTTP("GET", "/integracao/clientes/alteracoes" + "?pageSize=100&page=1", "", @cResp, @nHttp, @cErro)
 
 		If nHttp == 404
-			FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Rota " + BJ_ROTA_ALTCLI + " ainda nao existe na API. " + ;
+			FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Rota " + "/integracao/clientes/alteracoes" + " ainda nao existe na API. " + ;
 				"Retorno de alteracao de cliente ignorado neste ciclo.", 0, 0, {})
 		Else
 			FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Falha ao listar alteracoes de cliente: " + cErro, 0, 0, {})
@@ -870,22 +683,22 @@ Static Function BJLeAltCli(aTotal)
 
 	For nX := 1 To Len(aDados)
 		aTotal[1] += 1
-		BJTrataAlt(aDados[nX], @aTotal)
+		BJTrataAlt(aDados[nX], @aTotal, cSeqMae)
 	Next nX
 
 Return Nil
 
 /*/{Protheus.doc} BJTrataAlt
 Aplica uma alteracao de cliente na SA1 e confirma na plataforma.
-
 @type    Static Function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
-@param   oAlt  , object, Alteracao devolvida pela API
-@param   aTotal, array , [Referencia] Totalizadores
+@param   oAlt   , object   , Alteracao devolvida pela API
+@param   aTotal , array    , [Referencia] Totalizadores
+@param   cSeqMae, character, ZY_CODIGO do lote (SZY) deste retorno
 @return  Nil
 /*/
-Static Function BJTrataAlt(oAlt, aTotal)
+Static Function BJTrataAlt(oAlt, aTotal, cSeqMae)
 
 	Local cIdPlat  := ""
 	Local cChvCli  := ""
@@ -894,7 +707,12 @@ Static Function BJTrataAlt(oAlt, aTotal)
 	Local cSeq     := ""
 	Local cLogErr  := ""
 	Local cFeito   := ""
+	Local aParte   := {}
 	Local aCampos  := {}
+	Local aMapa    := {}
+	Local cTexto   := ""
+	Local xValor   := Nil
+	Local nX       := 0
 	Local nTamLoj  := TamSX3("A1_LOJA")[1]
 
 	If ValType(oAlt) != "O"
@@ -912,7 +730,7 @@ Static Function BJTrataAlt(oAlt, aTotal)
 	EndIf
 
 	// Ja aplicada num ciclo anterior: falta so confirmar na plataforma
-	If U_BJACHOU(BJ_ENTRADA, BJ_ENT_CLIENTE, cIdPlat, @cFeito)
+	If U_BJACHOU("E", "clientes-alteracoes", cIdPlat, @cFeito)
 		If BJConfAlt(cIdPlat)
 			aTotal[2] += 1
 		Else
@@ -921,87 +739,37 @@ Static Function BJTrataAlt(oAlt, aTotal)
 		Return Nil
 	EndIf
 
-	cSeq := U_BJENFILA(BJ_ENTRADA, BJ_ENT_CLIENTE, cIdPlat, "GET", oAlt:ToJson())
+	cSeq := U_BJENFILA("E", "clientes-alteracoes", cIdPlat, "GET", oAlt:ToJson(), cSeqMae)
 
 	If Empty(cSeq)
 		aTotal[4] += 1
 		Return Nil
 	EndIf
 
-	cCliente := SubStr(cChvCli, 1, Len(cChvCli) - nTamLoj)
-	cLoja    := Right(cChvCli, nTamLoj)
+	// O clienteCodigo volta prefixado pela filial, como saiu daqui.
+	aParte := U_BJCHAVE(cChvCli, {"A1_FILIAL", "A1_COD", "A1_LOJA"})
+
+	If Len(aParte) == 3
+		cCliente := aParte[2]
+		cLoja    := aParte[3]
+	Else
+		// Chave sem o prefixo de filial: codigo e loja colados
+		cCliente := SubStr(cChvCli, 1, Len(cChvCli) - nTamLoj)
+		cLoja    := Right(cChvCli, nTamLoj)
+	EndIf
 
 	dbSelectArea("SA1")
 	SA1->(dbSetOrder(1))
 
 	If !SA1->(dbSeek(xFilial("SA1") + PadR(cCliente, TamSX3("A1_COD")[1]) + PadR(cLoja, TamSX3("A1_LOJA")[1])))
-		U_BJGRAVA(cSeq, BJ_ERRO, 0, "Cliente " + cChvCli + " nao encontrado na SA1.", "")
+		U_BJGRAVA(cSeqMae, cSeq, "3", 0, "Cliente " + cChvCli + " nao encontrado na SA1.", "")
 		aTotal[4] += 1
 		Return Nil
 	EndIf
 
-	aCampos := BJCamposAlt(oAlt)
-
-	If Len(aCampos) == 0
-		U_BJGRAVA(cSeq, BJ_ERRO, 0, "Alteracao sem nenhum campo reconhecido no de-para.", "")
-		aTotal[3] += 1
-		Return Nil
-	EndIf
-
-	// A gravacao e a marcacao andam juntas, pelo mesmo motivo do orcamento:
-	// cadastro alterado sem rastro voltaria a ser alterado no ciclo seguinte.
-	Begin Transaction
-
-		If BJGravSA1(aCampos, @cLogErr)
-
-			If !U_BJGRAVA(cSeq, BJ_EXECUTADA, 0, "Cliente " + cChvCli + " alterado por CRMA980.", cChvCli)
-				cLogErr := "Cliente alterado, mas a mensagem " + cSeq + " nao pode ser marcada."
-				DisarmTransaction()
-			EndIf
-
-		Else
-
-			DisarmTransaction()
-
-		EndIf
-
-	End Transaction
-
-	If !Empty(cLogErr)
-		U_BJGRAVA(cSeq, BJ_ERRO, 0, cLogErr, "")
-		aTotal[4] += 1
-		Return Nil
-	EndIf
-
-	If BJConfAlt(cIdPlat)
-		aTotal[2] += 1
-	Else
-		aTotal[4] += 1
-	EndIf
-
-Return Nil
-
-/*/{Protheus.doc} BJCamposAlt
-Traduz os campos da alteracao para os campos da SA1.
-
-O de-para e a **lista branca**: campo que nao esta aqui nao volta da plataforma,
-por mais que ela mande. Chave, filial, bloqueio e os campos calculados ficam de
-fora de proposito - alterar A1_COD por integracao seria criar outro cliente.
-
-@type    Static Function
-@author  Ricardo P Sotomayor
-@since   01/09/2026
-@param   oAlt, object, Alteracao devolvida pela API
-@return  array, Campos no formato do FWMVCRotAuto
-/*/
-Static Function BJCamposAlt(oAlt)
-
-	Local aRet   := {}
-	Local aMapa  := {}
-	Local xValor := Nil
-	Local nX     := 0
-
-	//         Campo no contrato          Campo na SA1  Tipo
+	// De-para dos campos que a plataforma pode alterar na SA1. E lista branca:
+	// campo fora dela nao volta, por mais que a plataforma mande.
+	//         Campo no contrato          Campo na SA1  Tipo (R = referencia prefixada pela filial)
 	aAdd(aMapa, {"razaoSocial"            , "A1_NOME"   , "C"})
 	aAdd(aMapa, {"nomeFantasia"           , "A1_NREDUZ" , "C"})
 	aAdd(aMapa, {"cnpjCpf"                , "A1_CGC"    , "C"})
@@ -1017,9 +785,9 @@ Static Function BJCamposAlt(oAlt)
 	aAdd(aMapa, {"email"                  , "A1_EMAIL"  , "C"})
 	aAdd(aMapa, {"telefone"               , "A1_TEL"    , "C"})
 	aAdd(aMapa, {"celular"                , "A1_CELULAR", "C"})
-	aAdd(aMapa, {"vendedorCodigo"         , "A1_VEND"   , "C"})
-	aAdd(aMapa, {"tabelaPrecoCodigo"      , "A1_TABELA" , "C"})
-	aAdd(aMapa, {"condicaoPagamentoCodigo", "A1_COND"   , "C"})
+	aAdd(aMapa, {"vendedorCodigo"         , "A1_VEND"   , "R"})
+	aAdd(aMapa, {"tabelaPrecoCodigo"      , "A1_TABELA" , "R"})
+	aAdd(aMapa, {"condicaoPagamentoCodigo", "A1_COND"   , "R"})
 	aAdd(aMapa, {"limiteCredito"          , "A1_LC"     , "N"})
 	aAdd(aMapa, {"vencimentoLimite"       , "A1_VENCLC" , "D"})
 	aAdd(aMapa, {"latitude"               , "A1_XLAT"   , "C"})
@@ -1041,32 +809,73 @@ Static Function BJCamposAlt(oAlt)
 		Do Case
 			Case aMapa[nX][3] == "N"
 				If ValType(xValor) == "N"
-					aAdd(aRet, {aMapa[nX][2], xValor, Nil})
+					aAdd(aCampos, {aMapa[nX][2], xValor, Nil})
 				EndIf
+
+			Case aMapa[nX][3] == "R"
+				// Referencia a outra entidade: volta prefixada pela filial, como
+				// saiu daqui (01-000234). A SA1 guarda so o codigo.
+				cTexto := AllTrim(cValToChar(xValor))
+
+				If At("-", cTexto) > 0
+					cTexto := SubStr(cTexto, At("-", cTexto) + 1)
+				EndIf
+
+				aAdd(aCampos, {aMapa[nX][2], cTexto, Nil})
 
 			Case aMapa[nX][3] == "D"
 				// A API devolve ISO 8601: "2026-08-26T00:00:00.000Z"
 				If ValType(xValor) == "C" .And. Len(AllTrim(xValor)) >= 10
-					aAdd(aRet, {aMapa[nX][2], SToD(StrTran(SubStr(AllTrim(xValor), 1, 10), "-", "")), Nil})
+					aAdd(aCampos, {aMapa[nX][2], SToD(StrTran(SubStr(AllTrim(xValor), 1, 10), "-", "")), Nil})
 				EndIf
 
 			Otherwise
-				aAdd(aRet, {aMapa[nX][2], AllTrim(cValToChar(xValor)), Nil})
+				aAdd(aCampos, {aMapa[nX][2], AllTrim(cValToChar(xValor)), Nil})
 		EndCase
 
 	Next nX
 
-Return aRet
+	If Len(aCampos) == 0
+		U_BJGRAVA(cSeqMae, cSeq, "3", 0, "Alteracao sem nenhum campo reconhecido no de-para.", "")
+		aTotal[3] += 1
+		Return Nil
+	EndIf
+
+	// A gravacao e a marcacao andam juntas, pelo mesmo motivo do orcamento:
+	// cadastro alterado sem rastro voltaria a ser alterado no ciclo seguinte.
+	Begin Transaction
+
+		If BJGravSA1(aCampos, @cLogErr)
+
+			If !U_BJGRAVA(cSeqMae, cSeq, "2", 0, "Cliente " + cChvCli + " alterado por CRMA980.", cChvCli)
+				cLogErr := "Cliente alterado, mas a mensagem " + cSeq + " nao pode ser marcada."
+				DisarmTransaction()
+			EndIf
+
+		Else
+
+			DisarmTransaction()
+
+		EndIf
+
+	End Transaction
+
+	If !Empty(cLogErr)
+		U_BJGRAVA(cSeqMae, cSeq, "3", 0, cLogErr, "")
+		aTotal[4] += 1
+		Return Nil
+	EndIf
+
+	If BJConfAlt(cIdPlat)
+		aTotal[2] += 1
+	Else
+		aTotal[4] += 1
+	EndIf
+
+Return Nil
 
 /*/{Protheus.doc} BJGravSA1
 Grava a alteracao no cadastro de clientes pelo modelo MVC.
-
-Usa o **CRMA980**, que substituiu o MATA030 descontinuado pela TOTVS. A rotina
-padrao aplica as validacoes e os gatilhos do cadastro, que e o que se espera de
-uma alteracao vinda de fora; RecLock gravaria o campo e ignoraria tudo isso.
-
-A SA1 precisa chegar posicionada no cliente a alterar.
-
 @type    Static Function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
@@ -1135,10 +944,6 @@ Return lRet
 
 /*/{Protheus.doc} BJConfAlt
 Confirma na plataforma que a alteracao foi aplicada no ERP.
-
-Sem esta etapa a mesma alteracao voltaria em todo ciclo, e uma correcao feita
-depois no ERP seria sobrescrita pela versao antiga da plataforma.
-
 @type    Static Function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
@@ -1152,7 +957,7 @@ Static Function BJConfAlt(cIdPlat)
 	Local cErro := ""
 	Local nHttp := 0
 
-	lRet := U_BJHTTP("PATCH", BJ_ROTA_ALTCLI + "/" + AllTrim(cIdPlat) + "/aplicada", "{}", @cResp, @nHttp, @cErro)
+	lRet := U_BJHTTP("PATCH", "/integracao/clientes/alteracoes" + "/" + AllTrim(cIdPlat) + "/aplicada", "{}", @cResp, @nHttp, @cErro)
 
 	If !lRet
 		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Falha ao confirmar a alteracao " + cIdPlat + ;
@@ -1160,3 +965,551 @@ Static Function BJConfAlt(cIdPlat)
 	EndIf
 
 Return lRet
+
+// ===========================================================================
+// DRENAGEM
+// ===========================================================================
+
+/*/{Protheus.doc} BJDRENA
+Envia as mensagens de saida que estao na fila, lote a lote.
+@type    User Function
+@author  Ricardo P Sotomayor
+@since   01/09/2026
+@param   nLimite, numeric, Maximo de mensagens por lote nesta passada. Zero drena tudo
+@param   cSeqMae, character, ZY_CODIGO do lote a drenar. Vazio percorre os lotes em aberto
+@return  array, {nLidas, nEnviadas, nErros}
+@example aTot := U_BJDRENA(0)
+/*/
+User Function BJDRENA(nLimite, cSeqMae)
+
+	Local aTotal  := {0, 0, 0}
+	Local aLotes  := {}
+	Local aFila   := {}
+	Local aCat    := U_BJCATALO()
+	Local aEnt    := {}
+	Local cLote   := ""
+	Local cStatus := ""
+	Local cQuery  := ""
+	Local cAlias  := ""
+	Local oStmt   := Nil
+	Local cRota   := ""
+	Local cResp   := ""
+	Local cErro   := ""
+	Local nHttp   := 0
+	Local nPos    := 0
+	Local nErrLot := 0
+	Local nL      := 0
+	Local nX      := 0
+
+	// Parametros lidos aqui, uma vez: dentro dos lacos seriam uma leitura por
+	// mensagem enviada.
+	Local nPausa   := SuperGetMV("MV_BJAPI08", .F., 1050)   // ms entre requisicoes
+	Local cPasta   := SuperGetMV("MV_BJAPI12", .F., "\bjapi\")   // pasta dos semaforos
+	Local cArqLock := ""
+	Local nSeg     := Seconds()
+
+	Default nLimite := 0
+	Default cSeqMae := ""
+
+	If !AllTrim(Upper(SuperGetMV("MV_BJAPI03", .F., "N"))) == "S"
+		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Integracao BJ desabilitada (MV_BJAPI03). Fila nao drenada.", 0, 0, {})
+		Return aTotal
+	EndIf
+
+	// Um envio por vez, venha do agendamento ou do monitor: os dois chamam esta
+	// funcao. O semaforo e um arquivo; se existir, outro ja esta rodando.
+	cArqLock := cPasta + cEmpAnt + "\bjpla-envio.tsk"
+
+	MakeDir(cPasta)
+	MakeDir(cPasta + cEmpAnt + "\")
+
+	If File(cArqLock)
+		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Envio ja em andamento. Chamada ignorada.", 0, 0, {})
+		Return aTotal
+	EndIf
+
+	MemoWrite(cArqLock, DtoS(Date()) + " " + Time())
+
+	If Empty(cSeqMae)
+
+		// Os lotes que ainda precisam sair: "1" nao processado e "3" parou com erro.
+		// O indice 2 (ZY_FILIAL + ZY_STATUS + ZY_CODIGO) poe o status antes do
+		// codigo, entao o dbSeek cai direto no primeiro lote de cada status e lote
+		// ja processado nem e lido. Duas passadas, uma por status, e depois a ordem
+		// de processamento e restaurada pelo codigo.
+		dbSelectArea("SZY")
+		SZY->(dbSetOrder(2))   // ZY_FILIAL + ZY_STATUS + ZY_CODIGO
+
+		For nX := 1 To 2
+
+			If nX == 1
+				cStatus := "1"   // nao processado
+			Else
+				cStatus := "3"   // parou com erro
+			EndIf
+
+			If SZY->(dbSeek(xFilial("SZY") + cStatus))
+				While SZY->(!Eof()) .And. SZY->ZY_FILIAL == xFilial("SZY") .And. ;
+					SZY->ZY_STATUS == cStatus
+
+					aAdd(aLotes, AllTrim(SZY->ZY_CODIGO))
+					SZY->(dbSkip())
+				End
+			EndIf
+
+		Next nX
+
+		aSort(aLotes)
+
+	Else
+
+		aAdd(aLotes, AllTrim(cSeqMae))
+
+	EndIf
+
+	If Len(aLotes) == 0
+		FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Nenhum lote em aberto na fila de saida.", 0, 0, {})
+		FErase(cArqLock)
+		Return aTotal
+	EndIf
+
+	For nL := 1 To Len(aLotes)
+
+		cLote   := aLotes[nL]
+		aFila   := {}
+		nErrLot := 0
+
+		// So o que falta sair deste lote. O indice 2 poe o status antes da sequencia
+		// (ZZ_FILIAL + ZZ_CODIGO + ZZ_STATUS + ZZ_SEQUEN), entao o dbSeek cai direto
+		// no primeiro pendente e mensagem ja executada nem e lida: num lote de 5.000
+		// onde 4.900 sairam, sao 100 leituras e nao 5.000. Duas passadas, uma por
+		// status, e o aSort devolve a ordem da sequencia, que e a ordem de carga.
+		dbSelectArea("SZZ")
+		SZZ->(dbSetOrder(2))   // ZZ_FILIAL + ZZ_CODIGO + ZZ_STATUS + ZZ_SEQUEN
+
+		For nX := 1 To 2
+
+			If nX == 1
+				cStatus := "1"   // pendente
+			Else
+				cStatus := "3"   // com erro
+			EndIf
+
+			If SZZ->(dbSeek(xFilial("SZZ") + PadR(cLote, TamSX3("ZZ_CODIGO")[1]) + cStatus))
+
+				While SZZ->(!Eof()) .And. SZZ->ZZ_FILIAL == xFilial("SZZ") .And. ;
+					AllTrim(SZZ->ZZ_CODIGO) == cLote .And. SZZ->ZZ_STATUS == cStatus
+
+					If nLimite > 0 .And. Len(aFila) >= nLimite
+						Exit
+					EndIf
+
+					If SZZ->ZZ_TIPO == "S"
+						aAdd(aFila, {SZZ->ZZ_SEQUEN, AllTrim(SZZ->ZZ_ENTID), AllTrim(SZZ->ZZ_CHVORI), ;
+							AllTrim(SZZ->ZZ_VERBO), SZZ->ZZ_JSON, AllTrim(SZZ->ZZ_CODIGO)})
+					EndIf
+
+					SZZ->(dbSkip())
+				End
+
+			EndIf
+
+		Next nX
+
+		aSort(aFila, , , {|x, y| x[1] < y[1]})
+
+		// Lote sem nada a enviar nao e fechado: pode ser de entrada, ou ja ter saido
+		If Len(aFila) == 0
+			Loop
+		EndIf
+
+		aTotal[1] += Len(aFila)
+
+		FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Lote " + cLote + " - drenando " + ;
+			cValToChar(Len(aFila)) + " mensagens de saida.", 0, 0, {})
+
+		For nX := 1 To Len(aFila)
+
+			// aFila[nX] = {cSequen, cEntid, cChave, cVerbo, cJson, cLote}
+			nPos := aScan(aCat, {|x| x[1] == aFila[nX][2]})
+
+			If nPos == 0
+				FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Mensagem " + aFila[nX][1] + " aponta para a entidade " + ;
+					aFila[nX][2] + ", que nao esta no catalogo.", 0, 0, {})
+				U_BJGRAVA(aFila[nX][6], aFila[nX][1], "3", 0, "Entidade fora do catalogo: " + aFila[nX][2], "")   // erro
+				aTotal[3] += 1
+				nErrLot   += 1
+				Loop
+			EndIf
+
+			aEnt  := aCat[nPos]
+			cRota := aEnt[3]
+
+			If "{chave}" $ cRota
+				// Rota com a chave no meio, como a do XML da nota:
+				// /integracao/notas-saida/{chave}/xml
+				cRota := StrTran(cRota, "{chave}", AllTrim(aFila[nX][3]))
+			ElseIf aFila[nX][4] != "POST"
+				// POST cria ou atualiza na rota da entidade. PATCH e DELETE
+				// identificam o recurso pela chave no fim da URL.
+				cRota += "/" + AllTrim(aFila[nX][3])
+			EndIf
+
+			If U_BJHTTP(aFila[nX][4], cRota, aFila[nX][5], @cResp, @nHttp, @cErro)
+
+				// A chave de destino da saida e o id que a plataforma atribuiu ao
+				// registro. Guardar os dois lados fecha o rastro nas duas direcoes:
+				// dado um codigoErp, saber o id de la; dado o id, saber de onde veio.
+				U_BJGRAVA(aFila[nX][6], aFila[nX][1], "2", nHttp, cResp, BJIdPlat(cResp))   // executada
+				aTotal[2] += 1
+
+			ElseIf aFila[nX][4] == "DELETE" .And. nHttp == 404
+
+				// O objetivo do DELETE era que o registro nao estivesse la, e nao esta.
+				// Nao ha historico do que ja foi enviado antes desta fila existir, entao
+				// uma exclusao pode chegar para uma chave que a plataforma nunca conheceu.
+				U_BJGRAVA(aFila[nX][6], aFila[nX][1], "2", nHttp, "404 no DELETE: o registro ja nao existia na plataforma.", "")   // executada
+				aTotal[2] += 1
+
+			Else
+
+				U_BJGRAVA(aFila[nX][6], aFila[nX][1], "3", nHttp, cErro, "")   // erro
+				aTotal[3] += 1
+				nErrLot   += 1
+
+			EndIf
+
+			Sleep(nPausa)
+
+			If nX % 50 == 0
+				FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Lote " + cLote + " - " + cValToChar(nX) + " de " + cValToChar(Len(aFila)), 0, 0, {})
+			EndIf
+
+		Next nX
+
+		// O resultado do envio volta para a SZY.
+		dbSelectArea("SZY")
+		SZY->(dbSetOrder(1))   // ZY_FILIAL + ZY_CODIGO
+
+		If SZY->(dbSeek(xFilial("SZY") + PadR(cLote, TamSX3("ZY_CODIGO")[1])))
+
+			RecLock("SZY", .F.)
+
+			If nErrLot == 0
+				SZY->ZY_STATUS := "2"   // processado
+			Else
+				SZY->ZY_STATUS := "3"   // erro
+			EndIf
+
+			SZY->(MsUnlock())
+
+		EndIf
+
+	Next nL
+
+	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Drenagem concluida - lidas: " + cValToChar(aTotal[1]) + ;
+		" enviadas: " + cValToChar(aTotal[2]) + ;
+		" erros: " + cValToChar(aTotal[3]) + " em " + cValToChar(Round(Seconds() - nSeg, 2)) + "s", 0, 0, {})
+
+	If File(cArqLock)
+		FErase(cArqLock)
+	EndIf
+
+Return aTotal
+
+// ===========================================================================
+// LOTE
+// ===========================================================================
+
+/*/{Protheus.doc} BJLOTE
+Envia a fila de saida em blocos por PUT, agrupados por entidade.
+@type    User Function
+@author  Ricardo P Sotomayor
+@since   09/09/2026
+@param   nLimite, numeric, Maximo de mensagens lidas da fila nesta passada. Zero le tudo
+@return  array, {nLidas, nEnviadas, nErros}
+@example aTotal := U_BJLOTE(0)
+/*/
+User Function BJLOTE(nLimite)
+
+	Local aTotal    := {0, 0, 0}
+	Local aFila     := {}
+	Local aCat      := U_BJCATALO()
+	Local aLote     := {}
+	Local aRegistro := {}
+	Local aErroIdx  := {}
+	Local aErro     := Nil
+	Local oReg      := Nil
+	Local oEnv      := Nil
+	Local oErro     := Nil
+	Local cBody     := ""
+	Local cResp     := ""
+	Local cErro     := ""
+	Local nHttp     := 0
+	Local nIni      := 0
+	Local nFim      := 0
+	Local nIdx      := 0
+	Local nPos      := 0
+	Local nE        := 0
+	Local nL        := 0
+	Local aLotes    := {}
+	Local cStatus   := ""
+	Local nX        := 0
+
+	// Parametros lidos aqui, uma vez: dentro dos lacos seriam uma leitura por bloco
+	Local nPausa   := SuperGetMV("MV_BJAPI08", .F., 1050)   // ms entre requisicoes
+	Local nLoteMax := SuperGetMV("MV_BJAPI09", .F., 1000)   // registros por PUT
+	Local cQuery   := ""
+	Local cAlias   := ""
+	Local oStmt    := Nil
+
+	Default nLimite := 0
+
+	If !AllTrim(Upper(SuperGetMV("MV_BJAPI03", .F., "N"))) == "S"
+		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Integracao BJ desabilitada (MV_BJAPI03). Lote nao enviado.", 0, 0, {})
+		Return aTotal
+	EndIf
+
+	// Os lotes em aberto, na ordem do codigo, e dentro de cada um so o que falta
+	// sair. Os dois lacos usam o status na frente da chave, entao nada ja
+	// executado e lido.
+	dbSelectArea("SZY")
+	SZY->(dbSetOrder(2))   // ZY_FILIAL + ZY_STATUS + ZY_CODIGO
+
+	For nX := 1 To 2
+
+		If nX == 1
+			cStatus := "1"   // nao processado
+		Else
+			cStatus := "3"   // parou com erro
+		EndIf
+
+		If SZY->(dbSeek(xFilial("SZY") + cStatus))
+			While SZY->(!Eof()) .And. SZY->ZY_FILIAL == xFilial("SZY") .And. ;
+				SZY->ZY_STATUS == cStatus
+
+				aAdd(aLotes, AllTrim(SZY->ZY_CODIGO))
+				SZY->(dbSkip())
+			End
+		EndIf
+
+	Next nX
+
+	aSort(aLotes)
+
+	dbSelectArea("SZZ")
+	SZZ->(dbSetOrder(2))   // ZZ_FILIAL + ZZ_CODIGO + ZZ_STATUS + ZZ_SEQUEN
+
+	For nL := 1 To Len(aLotes)
+
+		For nX := 1 To 2
+
+			If nX == 1
+				cStatus := "1"   // pendente
+			Else
+				cStatus := "3"   // com erro
+			EndIf
+
+			If SZZ->(dbSeek(xFilial("SZZ") + PadR(aLotes[nL], TamSX3("ZZ_CODIGO")[1]) + cStatus))
+
+				While SZZ->(!Eof()) .And. SZZ->ZZ_FILIAL == xFilial("SZZ") .And. ;
+					AllTrim(SZZ->ZZ_CODIGO) == aLotes[nL] .And. SZZ->ZZ_STATUS == cStatus
+
+					If nLimite > 0 .And. Len(aFila) >= nLimite
+						Exit
+					EndIf
+
+					If SZZ->ZZ_TIPO == "S"
+						aAdd(aFila, {SZZ->ZZ_SEQUEN, AllTrim(SZZ->ZZ_ENTID), AllTrim(SZZ->ZZ_CHVORI), ;
+							AllTrim(SZZ->ZZ_VERBO), SZZ->ZZ_JSON, AllTrim(SZZ->ZZ_CODIGO)})
+					EndIf
+
+					SZZ->(dbSkip())
+				End
+
+			EndIf
+
+		Next nX
+
+	Next nL
+
+	// Lote e sequencia: a ordem em que as mensagens nasceram, que e a ordem de carga
+	aSort(aFila, , , {|x, y| x[6] + x[1] < y[6] + y[1]})
+
+	aTotal[1] := Len(aFila)
+
+	If Len(aFila) == 0
+		FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Nada pendente na fila de saida.", 0, 0, {})
+		Return aTotal
+	EndIf
+
+	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Lote - " + cValToChar(Len(aFila)) + " mensagens de saida na fila.", 0, 0, {})
+
+	For nE := 1 To Len(aCat)
+
+		If !aCat[nE][5] .Or. "{chave}" $ aCat[nE][3]
+			Loop
+		EndIf
+
+		// As mensagens desta entidade, na ordem em que ja estao na fila
+		aLote := {}
+
+		For nX := 1 To Len(aFila)
+			If aFila[nX][2] == aCat[nE][1]
+				aAdd(aLote, aFila[nX])
+			EndIf
+		Next nX
+
+		If Len(aLote) == 0
+			Loop
+		EndIf
+
+		nIni := 1
+
+		While nIni <= Len(aLote)
+
+			nFim      := Min(nIni + nLoteMax - 1, Len(aLote))
+			aRegistro := {}
+
+			For nX := nIni To nFim
+
+				oReg := JsonObject():New()
+
+				If aLote[nX][4] == "DELETE"
+					// A API dispensa os demais campos quando excluido vem true - basta a chave.
+					oReg["codigoErp"] := aLote[nX][3]
+					oReg["excluido"]  := .T.
+				Else
+					oReg:FromJson(aLote[nX][5])
+				EndIf
+
+				aAdd(aRegistro, oReg)
+
+			Next nX
+
+			oEnv  := JsonObject():New()
+			oEnv["registros"] := aRegistro
+			cBody := oEnv:ToJson()
+
+			If U_BJHTTP("PUT", aCat[nE][3], cBody, @cResp, @nHttp, @cErro)
+
+				oErro := JsonObject():New()
+
+				If oErro:FromJson(cResp) == Nil
+
+					aErroIdx := {}
+					aErro    := oErro:GetJsonObject("erros")
+
+					If ValType(aErro) == "A"
+						For nX := 1 To Len(aErro)
+							aAdd(aErroIdx, {aErro[nX]:GetJsonObject("indice"), aErro[nX]:GetJsonObject("mensagem")})
+						Next nX
+					EndIf
+
+					For nX := nIni To nFim
+						nIdx := nX - nIni   // posicao do registro no array enviado, base zero
+						nPos := aScan(aErroIdx, {|x| x[1] == nIdx})
+
+						If nPos > 0
+							U_BJGRAVA(aLote[nX][6], aLote[nX][1], "3", nHttp, aErroIdx[nPos][2], "")   // erro
+							aTotal[3] += 1
+						Else
+							U_BJGRAVA(aLote[nX][6], aLote[nX][1], "2", nHttp, "Lote HTTP " + cValToChar(nHttp) + " - sem erro para este registro.", "")   // executada
+							aTotal[2] += 1
+						EndIf
+					Next nX
+
+				Else
+
+					// HTTP 2xx mas o corpo nao veio no formato esperado: sem o relatorio
+					// por indice ninguem sabe o que realmente entrou, entao nenhuma
+					// mensagem deste bloco e marcada como executada por suposicao.
+					For nX := nIni To nFim
+						U_BJGRAVA(aLote[nX][6], aLote[nX][1], "3", nHttp, "Resposta do lote em formato inesperado: " + cResp, "")   // erro
+						aTotal[3] += 1
+					Next nX
+
+				EndIf
+
+			Else
+
+				// Envelope recusado (lote vazio, acima do maximo, registro sem
+				// codigoErp) ou falha de rede apos as retentativas do BJHTTP: nada
+				// deste bloco foi gravado do lado da plataforma.
+				For nX := nIni To nFim
+					U_BJGRAVA(aLote[nX][6], aLote[nX][1], "3", nHttp, cErro, "")   // erro
+					aTotal[3] += 1
+				Next nX
+
+			EndIf
+
+			FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Lote " + aCat[nE][1] + " - bloco " + cValToChar(nIni) + " a " + ;
+				cValToChar(nFim) + " de " + cValToChar(Len(aLote)) + " - HTTP " + cValToChar(nHttp), 0, 0, {})
+
+			Sleep(nPausa)
+
+			nIni := nFim + 1
+
+		End
+
+	Next nE
+
+	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Lote concluido - enviadas: " + cValToChar(aTotal[2]) + ;
+		" erros: " + cValToChar(aTotal[3]), 0, 0, {})
+
+Return aTotal
+
+/*/{Protheus.doc} BJIdPlat
+Extrai da resposta o id que a plataforma atribuiu ao registro.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   01/09/2026
+@param   cResp, character, Corpo da resposta da API
+@return  character, Id da plataforma, ou vazio
+/*/
+Static Function BJIdPlat(cResp)
+
+	Local cRet  := ""
+	Local oJson := Nil
+	Local oDado := Nil
+
+	Default cResp := ""
+
+	If Empty(cResp)
+		Return ""
+	EndIf
+
+	oJson := JsonObject():New()
+
+	If oJson:FromJson(cResp) == Nil
+
+		// O contrato devolve ora o objeto direto, ora dentro de "data"
+		If ValType(oJson:GetJsonObject("id")) == "C"
+			cRet := oJson:GetJsonObject("id")
+		Else
+			oDado := oJson:GetJsonObject("data")
+
+			If ValType(oDado) == "J" .And. ValType(oDado:GetJsonObject("id")) == "C"
+				cRet := oDado:GetJsonObject("id")
+			EndIf
+		EndIf
+
+	EndIf
+
+	oJson := Nil
+
+Return Left(AllTrim(cRet), TamSX3("ZZ_CHVDES")[1])
+
+/*/{Protheus.doc} SchedDef
+Define as rotinas deste fonte como agendaveis pelo Schedule do Protheus.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   17/09/2026
+@return  array, Parametros do agendamento
+/*/
+Static Function SchedDef()
+
+	Local aParam := {"R", "", "", {"T"}, ""}
+
+Return aParam
+

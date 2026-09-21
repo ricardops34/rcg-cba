@@ -28,7 +28,7 @@ function buildUser(overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUse
 describe('PermissionsGuard', () => {
   function buildGuard(required: string | undefined) {
     const reflector = {
-      getAllAndOverride: jest.fn().mockReturnValue(required),
+      getAllAndOverride: jest.fn().mockReturnValue(required ? [required] : undefined),
     } as unknown as Reflector;
     return new PermissionsGuard(reflector);
   }
@@ -59,7 +59,7 @@ describe('PermissionsGuard', () => {
     const guard = buildGuard('clientes.excluir');
     const user = buildUser({ permissoes: ['clientes.visualizar'] });
     expect(() => guard.canActivate(buildContext(user))).toThrow(
-      "Usuário não possui a permissão 'clientes.excluir'",
+      'Usuário não possui nenhuma das permissões: clientes.excluir',
     );
   });
 });

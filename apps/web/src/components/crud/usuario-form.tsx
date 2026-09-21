@@ -23,10 +23,11 @@ import { UsuarioHorariosSection } from "@/components/crud/usuario-horarios-secti
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
+import { Switch } from "@/components/ui/switch";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { ArrowLeft } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { ArrowLeft, User, UserCheck, UserPlus, Building2 } from "lucide-react";
 
 const LIST_ROUTE = "/admin/usuarios";
 
@@ -37,8 +38,7 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
     queryKey: ["perfis", "select"],
     queryFn: () => apiFetch<{ data: Perfil[] }>("/perfis", { query: { pageSize: 100 } }),
   });
-  // Usuário novo ainda não tem vínculo, então a política que vale é a da
-  // empresa ativa — a mesma que o backend cobra na criação.
+
   const { data: politica } = useQuery({
     queryKey: ["politica-senha", "empresa-ativa"],
     queryFn: () => apiFetch<PoliticaSenha>("/politica-senha/empresa-ativa"),
@@ -50,6 +50,7 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
     : politica
       ? usuarioCreateSchema.extend({ senha: buildSenhaSchema(politica) })
       : usuarioCreateSchema;
+
   const form = useForm<UsuarioCreate>({
     resolver: zodResolver(schema as typeof usuarioCreateSchema),
     defaultValues: usuario
@@ -62,11 +63,11 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
       if (usuario) {
         const { nome, email, ativo } = values;
         await update.mutateAsync({ id: usuario.id, input: { nome, email, ativo } });
-        toast.success("Usuário atualizado");
+        toast.success("Usuário atualizado com sucesso");
         router.push(LIST_ROUTE);
       } else {
         await create.mutateAsync(values);
-        toast.success("Usuário cadastrado");
+        toast.success("Usuário cadastrado com sucesso");
         router.push(LIST_ROUTE);
       }
     } catch (err) {
@@ -75,44 +76,74 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => router.push(LIST_ROUTE)}>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => router.push(LIST_ROUTE)}
+          className="size-9 shadow-xs"
+        >
           <ArrowLeft className="size-4" />
         </Button>
-        <h1 className="text-xl font-semibold tracking-tight">
-          {usuario ? "Editar usuário" : "Novo usuário"}
-        </h1>
+        <div>
+          <h1 className="text-xl font-bold tracking-tight">
+            {usuario ? `Editar: ${usuario.nome}` : "Novo Usuário"}
+          </h1>
+          <p className="text-xs text-muted-foreground">
+            {usuario
+              ? "Atualize o cadastro, status, empresas vinculadas e permissões do usuário."
+              : "Cadastre um novo usuário com perfil inicial e credenciais de acesso."}
+          </p>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card className="shadow-xs border-border/60">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <User className="size-4 text-primary" /> Dados Gerais do Usuário
+            </CardTitle>
+          </CardHeader>
           <form id="usuario-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
-            <CardContent>
+            <CardContent className="space-y-4">
               <FieldGroup>
                 <Field data-invalid={!!form.formState.errors.nome}>
-                  <FieldLabel htmlFor="nome">Nome</FieldLabel>
-                  <Input id="nome" {...form.register("nome")} />
+                  <FieldLabel htmlFor="nome">Nome completo</FieldLabel>
+                  <Input id="nome" placeholder="ex.: João da Silva" {...form.register("nome")} />
                   <FieldError errors={[form.formState.errors.nome]} />
                 </Field>
 
                 <Field data-invalid={!!form.formState.errors.email}>
-                  <FieldLabel htmlFor="email">E-mail</FieldLabel>
-                  <Input id="email" type="email" {...form.register("email")} />
+                  <FieldLabel htmlFor="email">E-mail de login</FieldLabel>
+                  <Input id="email" type="email" placeholder="joao@empresa.com.br" {...form.register("email")} />
                   <FieldError errors={[form.formState.errors.email]} />
                 </Field>
 
+                {usuario && (
+                  <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/20">
+                    <div className="space-y-0.5">
+                      <FieldLabel htmlFor="ativo" className="text-sm font-medium">Status do Usuário</FieldLabel>
+                      <FieldDescription className="text-xs">
+                        Usuários inativos têm o acesso bloqueado ao sistema.
+                      </FieldDescription>
+                    </div>
+                    <Switch
+                      id="ativo"
+                      checked={form.watch("ativo")}
+                      onCheckedChange={(checked) => form.setValue("ativo", checked)}
+                    />
+                  </div>
+                )}
+
                 {usuario && <UsuarioResetSenhaSection usuarioId={usuario.id} />}
 
-                {/* Horário de trabalho grava por rota própria (PUT
-                    /usuarios/:id/horarios), como a redefinição de senha — por
-                    isso só aparece na edição, quando já existe o id. */}
                 {usuario && <UsuarioHorariosSection usuarioId={usuario.id} />}
 
                 {!usuario && (
                   <>
                     <Field data-invalid={!!form.formState.errors.senha}>
-                      <FieldLabel htmlFor="senha">Senha inicial</FieldLabel>
+                      <FieldLabel htmlFor="senha">Senha inicial de acesso</FieldLabel>
                       <PasswordInput id="senha" {...form.register("senha")} />
                       {politica && (
                         <FieldDescription>{describeRequisitos(politica).join(" · ")}</FieldDescription>
@@ -121,7 +152,7 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
                     </Field>
 
                     <Field data-invalid={!!form.formState.errors.perfilId}>
-                      <FieldLabel htmlFor="perfilId">Perfil</FieldLabel>
+                      <FieldLabel htmlFor="perfilId">Perfil inicial de acesso</FieldLabel>
                       <Select
                         value={form.watch("perfilId")}
                         onValueChange={(v) => form.setValue("perfilId", v, { shouldValidate: true })}
@@ -144,19 +175,24 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
               </FieldGroup>
             </CardContent>
 
-            <CardFooter className="justify-end gap-2">
+            <CardFooter className="justify-end gap-3 border-t pt-4">
               <Button type="button" variant="outline" onClick={() => router.push(LIST_ROUTE)}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                {usuario ? "Salvar alterações" : "Cadastrar"}
+              <Button type="submit" disabled={form.formState.isSubmitting} className="shadow-xs gap-2">
+                {usuario ? "Salvar alterações" : "Cadastrar Usuário"}
               </Button>
             </CardFooter>
           </form>
         </Card>
 
         {usuario && (
-          <Card>
+          <Card className="shadow-xs border-border/60">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Building2 className="size-4 text-primary" /> Vínculo de Empresas e Vendedor
+              </CardTitle>
+            </CardHeader>
             <CardContent>
               <UsuarioEmpresasSection usuarioId={usuario.id} />
             </CardContent>
@@ -166,3 +202,4 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-# Agente interno — 26 ferramentas
+# Agente interno — 27 ferramentas
 
 O assistente que o funcionário **logado** usa pelo ícone da topbar, em qualquer
 tela. Ver [o mapa](README.md) para as outras duas famílias.
@@ -48,6 +48,7 @@ em si.
 | `consultar_cnpj` | `clientes.visualizar` | leitura | `enriquecimento.consultarCnpj` + `clientes.titularidadePorCnpj` |
 | `resumo_atendimentos` | `meus-atendimentos.visualizar` | leitura | `meusAtendimentos.resumo` |
 | `minha_agenda` | `atividades.visualizar` | leitura | `atividades.findAll` |
+| `meu_dia` | `agente.visualizar` * | leitura | agenda + meta + sino, composto em `AgenteMeuDiaService` |
 | `listar_oportunidades` | `oportunidades.visualizar` | leitura | `oportunidades.findAll` |
 | `historico_atendimento_cliente` | `clientes.visualizar` | leitura | `historicoAtendimento` (monta de várias fontes) |
 | `agendar_atividade` | `atividades.cadastrar` | **escrita** | `atividades.create` |
@@ -61,6 +62,75 @@ em si.
 | `enviar_documento_whatsapp` | `whatsapp-conversas.cadastrar` | **escrita** + WhatsApp pareado | `whatsappAcoes.enviar{Titulos,Notas,Boleto,Danfe,Orcamento}` |
 | `anexar_ficha_tecnica` | `produtos.editar` | **escrita** + arquivo anexado | `fichas.criar` |
 | `anexar_foto_produto` | `produtos.editar` | **escrita** + arquivo anexado | `produtos.setFotoDeArquivo` |
+
+> **`meu_dia` é a única com a permissão do próprio assistente**, porque por si
+> ela não alcança nada: **cada bloco do resultado checa a permissão da sua
+> fonte**, e o que a pessoa não pode ver volta nulo. Exigir aqui a permissão de
+> um dos blocos tiraria os outros três de quem tem direito a eles.
+
+## A abertura da conversa
+
+`meu_dia` responde a pergunta que nenhuma das outras 26 responde: *o que esta
+pessoa precisa saber agora*. Agenda de hoje e o atrasado, a execução da meta do
+mês, o aniversário e quantos recados esperam no sino — numa chamada só.
+
+**E ela não espera ser chamada.** Na primeira mensagem de cada conversa o
+servidor monta o bloco e o entrega junto do prompt (`aberturaDoDia`, em
+`agente-chat.service.ts`).
+
+Por que não deixar o modelo decidir: a saudação que se queria — cumprimentar
+pelo nome, conferir a meta, resumir a agenda, ver o aniversário e oferecer os
+recados — depende de **quatro** dados. Em prompt, isso vira o modelo encadear
+quatro chamadas certas, na ordem, toda vez; ele acerta em alguns dias e falha
+em outros, que é a pior forma de falhar, porque ninguém consegue reproduzir.
+Composto no servidor, acontece sempre.
+
+É a regra do projeto aplicada inteira: **a composição dos dados é código, o tom
+é prompt.** O que sobra para o texto editável é como parabenizar, em que ordem
+falar e quando calar — e se o modelo ignorar, perde-se simpatia, não acesso.
+
+### O limiar da meta é do código
+
+`80%` é reta final, `100%` é meta batida (`PERTO_DA_META`, em
+`agente-meu-dia.service.ts`). Fica aqui, e não no prompt, porque "está perto da
+meta?" sem um número escrito é um limiar diferente a cada resposta: o modelo
+parabeniza com 62% numa conversa e cobra com 91% na seguinte, sem que ninguém
+consiga apontar onde isso está definido.
+
+Pelo mesmo motivo, **objetivo não lançado no mês devolve o bloco nulo** em vez
+de `0%`: dizer "você está em 0% da meta" a quem simplesmente não tem número
+digitado é reportar um problema de cadastro como se fosse desempenho.
+
+### A meta é de quem vende
+
+`meu_dia` **não** usa o `filtroCarteira` das outras ferramentas, de propósito.
+Lá a pergunta é "o que esta pessoa alcança" — e para um administrador a
+resposta é "tudo", o que faria a saudação apresentar o realizado da empresa
+inteira como se fosse a meta dele. Aqui a pergunta é outra, "de quem é a meta",
+e ela só tem resposta para um vendedor.
+
+### Os recados saem só como número
+
+O bloco traz **a contagem**, nunca os títulos. Duas razões, e as duas bastam:
+
+- o título de uma notificação é texto livre e costuma carregar o nome de quem a
+  originou ("nova mensagem de …"). A máscara de identificação age sobre campos
+  conhecidos, não sobre prosa — mandá-los ao provedor a contornaria por um
+  caminho que ela não cobre;
+- o que se quer é o assistente **oferecer** mostrar, não despejar a caixa de
+  entrada em cima de um "bom dia".
+
+### O bloco passa pela mesma máscara de um resultado
+
+`aberturaDoDia` devolve o payload por `resumirResultado`, o mesmo de qualquer
+ferramenta. Não é reaproveitamento de código: escrever o bloco direto no texto
+do sistema desviaria da máscara e da trava `garantirMascarado`, e é por aí que
+um nome de cliente chegaria ao provedor sem ninguém perceber.
+
+Falha aqui **não derruba a mensagem**. Cada fonte é isolada (`semQuebrar`), e o
+bloco inteiro é opcional: com o Dashboard Comercial fora do ar sai um "bom dia"
+sem a linha da meta — a alternativa seria um "bom dia" que não acontece, já que
+isto é montado na primeira mensagem.
 
 ## Ferramentas de anexo
 
@@ -188,6 +258,13 @@ Vazio nos dois casos volta ao texto do código. Só as instruções das ferramen
 tem seria ensinar o modelo a se portar com algo que ele nem enxerga, e gastar
 prompt em toda mensagem para isso.
 
+**As 27 têm `instrucoes` no código.** Até 2026-09-19 só quatro tinham, e o
+efeito não era o campo ficar em branco: era o bloco "COMO USAR CADA FERRAMENTA"
+quase não existir, e a tela de governança abrir vazia em 22 casos — quem fosse
+editar não tinha de onde partir, e o modelo se portava por conta própria em
+tudo o que o texto não cobria. O padrão escrito é o ponto de partida da
+reescrita, não o teto dela.
+
 > **O limite disto é o de sempre.** Comportamento é prompt, e prompt não é
 > barreira. Nada que dependa desse texto pode ser a única coisa entre alguém e
 > um dado: quem alcança o quê é decidido no servidor, e o modelo não contorna
@@ -224,6 +301,23 @@ entre "v1" e "v2" é escolher no escuro.
 `restaurar padrão` apaga a reescrita e devolve a ferramenta a seguir a versão —
 apaga, não reescreve com o texto de hoje, que congelaria a cópia de novo.
 
+**Restaurar todos** (`POST /agente/ferramentas/restaurar-todos`) faz o mesmo nas
+27 de uma vez, numa transação só. Existe porque restaurar uma a uma é onde se
+desiste no meio, e meia restauração é pior que nenhuma: fica um catálogo em que
+parte fala com a voz da empresa e parte com a do sistema, sem nada na tela
+dizendo qual é qual.
+
+Duas coisas que ele **não** faz, e por quê:
+
+- **não toca em ligado/desligado, perfis nem versão** — isto restaura *texto*;
+  quem desligou uma ferramenta de propósito não está pedindo para religá-la;
+- **não passa por quem já está no padrão** — atualizar essas linhas faria
+  `updatedBy` apontar para quem não alterou nada, e a tela mostra esse nome
+  como autor da última mudança.
+
+O botão mostra **quantas** serão restauradas e some quando não há nenhuma
+reescrita: "restaurar todos" sem dizer quantos é um clique no escuro.
+
 ### Ver antes de decidir
 
 | Ação | Custo | Responde |
@@ -253,6 +347,65 @@ Montado em `agente-chat.service.ts` → `montarContexto()`:
 Todas são **alinhamento**, não barreira. O recorte de carteira, a confirmação de
 escrita e a substituição das referências acontecem no código, independente do
 que o modelo faça com a instrução.
+
+## O turno contado enquanto acontece
+
+`POST /agente/conversas/mensagens/stream` é o mesmo laço do envio comum, em
+`text/event-stream`. Cada passo sai como um evento **antes** de o passo
+acontecer:
+
+```
+data: {"tipo":"ferramenta","nome":"titulos_em_aberto","rotulo":"Consultando títulos em aberto"}
+data: {"tipo":"fim","resposta":{ … }}
+```
+
+O que demora aqui é a ida ao banco e ao provedor, não a digitação do texto —
+por isso o progresso é **passo a passo, não token a token**. Uma pergunta que
+encadeia `buscar_cliente` → `posicao_cliente` → `titulos_em_aberto` leva
+dezenas de segundos, e até aqui a janela mostrava "Consultando..." o tempo
+todo, o que não distingue um turno vivo de um turno travado.
+
+Três decisões que sustentam isso:
+
+- **O evento sai depois da checagem de permissão.** Anunciar antes faria a tela
+  mostrar "Consultando títulos em aberto…" para quem não pode consultá-los.
+- **Falha vira evento, não status HTTP.** Depois do primeiro byte não há mais
+  código de resposta para dar, e um stream que morre calado deixa a tela
+  girando para sempre. O texto passa por `mensagemDeErro`, que só deixa sair
+  mensagem de erro de negócio — `erro.message` cru mostraria stack na janela.
+- **`X-Accel-Buffering: no`.** Sem isso o Nginx segura tudo e entrega de uma
+  vez no fim, que é exatamente o comportamento que o endpoint existe para
+  evitar.
+
+O `POST` comum **continua existindo e não mudou**: `onProgresso` é opcional, e
+o laço é o mesmo com ou sem alguém escutando.
+
+Do lado da tela, `apiStream` (em `apps/web/src/lib/api-client.ts`) faz o
+transporte. Não dá para usar `EventSource`: ele só faz GET e não aceita
+cabeçalho, e toda rota daqui exige o Bearer token — daí `fetch` com leitura do
+corpo, com o mesmo refresh de 401 do `apiFetch`.
+
+## As conversas anteriores
+
+O ícone de histórico na barra da janela abre a lista (`GET /agente/conversas`,
+as 30 mais recentes) e escolher uma traz as mensagens gravadas
+(`GET /agente/conversas/:id`) **e volta a apontar para ela**: a próxima
+pergunta continua de onde parou, em vez de abrir outra conversa. Mostrar o
+histórico sem devolver o `conversaId` seria a pior combinação — a tela com o
+assunto, o modelo sem ele.
+
+Duas coisas que a lista de propósito não faz:
+
+- **não remonta pendências.** Uma ação preparada ontem e não confirmada
+  reapareceria como um botão "Confirmar" no meio de uma conversa retomada, fora
+  do assunto que a originou;
+- **não mostra as linhas de ferramenta.** Elas são registro de auditoria; o que
+  devolveram já está redigido na resposta ao lado, e repetir o JSON embaixo da
+  prosa não informa ninguém.
+
+A busca só acontece com o painel aberto: quem abre o assistente quase sempre
+vem perguntar algo novo, e uma consulta em toda abertura da janela seria paga
+por todos para servir a poucos.
 
 ## Mexendo aqui
 

@@ -449,6 +449,64 @@ export class AgenteFerramentasService {
     return this.listar(empresaId);
   }
 
+  /**
+   * Devolve **todas** as ferramentas ao texto do sistema, de uma vez.
+   *
+   * Restaurar uma a uma, em 26, é onde se desiste no meio — e meia
+   * restauração é pior que nenhuma: fica um catálogo em que parte fala com a
+   * voz da empresa e parte com a do sistema, sem nada na tela dizendo qual é
+   * qual.
+   *
+   * Numa transação só, pelo mesmo motivo: uma falha na décima deixaria
+   * exatamente esse estado misto, e quem clicou não teria como saber onde
+   * parou.
+   *
+   * **Só texto.** Não mexe em ligado/desligado, em perfis nem na versão
+   * escolhida — desligar uma ferramenta é outra decisão, tomada em outro lugar
+   * da tela, e quem pede "voltar os textos ao padrão" não está pedindo para
+   * religar o que alguém desligou de propósito.
+   */
+  async restaurarTodosPadrao(empresaId: string, user: AuthenticatedUser) {
+    await this.prisma.withTenant(empresaId, async (tx) => {
+      // Só o que tem reescrita. Passar por cima das demais não seria só
+      // desperdício: `updatedBy` passaria a apontar para quem não alterou
+      // nada, e a tela mostra esse nome como autor da última mudança.
+      const comReescrita = await tx.agenteFerramenta.findMany({
+        where: {
+          empresaId,
+          OR: [
+            { nome: { not: null } },
+            { descricao: { not: null } },
+            { instrucoes: { not: null } },
+          ],
+        },
+        include: { perfis: { select: { perfilId: true } } },
+      });
+
+      for (const antes of comReescrita) {
+        await tx.agenteFerramenta.update({
+          where: { id: antes.id },
+          data: {
+            nome: null,
+            descricao: null,
+            instrucoes: null,
+            updatedBy: user.id,
+          },
+        });
+
+        // A mesma trilha do restauro individual, uma linha por campo que de
+        // fato mudou — quem faz esse corte é `registrarAuditoria`.
+        await this.registrarAuditoria(tx, empresaId, user, antes.chave, antes, {
+          nome: '',
+          descricao: '',
+          instrucoes: '',
+        });
+      }
+    });
+
+    return this.listar(empresaId);
+  }
+
   /** A trilha, para a tela mostrar o que mudou e quem mudou. */
   async auditoria(empresaId: string) {
     return this.prisma.withTenant(empresaId, (tx) =>

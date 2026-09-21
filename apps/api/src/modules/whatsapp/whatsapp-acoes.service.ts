@@ -1,4 +1,7 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { UPLOADS_DIR } from '../../common/uploads/uploads.config';
 import { Prisma, PrismaService } from '../../common/prisma/prisma.service';
 import { WhatsappConversasService } from './whatsapp-conversas.service';
 import { TitulosReceberService } from '../titulos-receber/titulos-receber.service';
@@ -741,6 +744,85 @@ export class WhatsappAcoesService {
     );
 
     return atividade;
+  }
+
+  /** Lista fichas técnicas disponíveis para envio na conversa. */
+  async listarFichas(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    busca?: string,
+  ) {
+    await this.contexto(empresaId, user, conversaId);
+    return this.prisma.withTenant(empresaId, (tx) =>
+      tx.produtoFicha.findMany({
+        where: {
+          empresaId,
+          ...(busca
+            ? {
+                OR: [
+                  { titulo: { contains: busca, mode: 'insensitive' } },
+                  { produto: { descricao: { contains: busca, mode: 'insensitive' } } },
+                  { produto: { codigoErp: { contains: busca, mode: 'insensitive' } } },
+                ],
+              }
+            : {}),
+        },
+        include: {
+          produto: { select: { descricao: true, codigoErp: true } },
+        },
+        take: 30,
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+  }
+
+  /** Manda a ficha técnica (PDF) de um produto pela conversa. */
+  async enviarFicha(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    fichaId: string,
+  ) {
+    const { clienteId, clienteNome } = await this.contexto(
+      empresaId,
+      user,
+      conversaId,
+    );
+
+    const ficha = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.produtoFicha.findFirst({
+        where: { id: fichaId, empresaId },
+        include: { produto: { select: { descricao: true, codigoErp: true } } },
+      }),
+    );
+
+    if (!ficha) {
+      throw new NotFoundException('Ficha técnica não encontrada.');
+    }
+
+    const caminhoArquivo = join(UPLOADS_DIR, 'fichas', ficha.arquivo);
+    const conteudo = await readFile(caminhoArquivo).catch(() => null);
+
+    if (!conteudo) {
+      throw new NotFoundException('Arquivo PDF da ficha técnica não encontrado no servidor.');
+    }
+
+    const mensagem = await this.conversas.enviarConteudo(
+      empresaId,
+      user,
+      conversaId,
+      {
+        conteudo,
+        nome: `${ficha.arquivoNome}`,
+        mime: ficha.mime,
+      },
+      {
+        legenda: `Ficha Técnica: ${ficha.produto.descricao} (${ficha.titulo})`,
+      },
+    );
+
+    return mensagem;
   }
 
   private moeda(valor: number) {

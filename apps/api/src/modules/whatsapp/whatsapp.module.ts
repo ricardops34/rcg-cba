@@ -28,6 +28,8 @@ import { AtividadesModule } from '../atividades/atividades.module';
 import { OrcamentosModule } from '../orcamentos/orcamentos.module';
 import { ProdutosModule } from '../produtos/produtos.module';
 
+import { WhatsappRespostasRapidasService } from './whatsapp-respostas-rapidas.service';
+
 @Module({
   // As ações de dentro da conversa delegam aos services que as telas já usam
   // — nada de consulta própria, para o escopo de carteira e o RLS não serem
@@ -60,6 +62,7 @@ import { ProdutosModule } from '../produtos/produtos.module';
     WhatsappConfigService,
     WhatsappSessaoService,
     WhatsappConversasService,
+    WhatsappRespostasRapidasService,
     WhatsappAgendaService,
     WhatsappAcoesService,
     WhatsappAgendamentoService,
@@ -90,6 +93,7 @@ import { ProdutosModule } from '../produtos/produtos.module';
     WhatsappConfigService,
     WhatsappSessaoService,
     WhatsappConversasService,
+    WhatsappRespostasRapidasService,
     // Para o catálogo do agente de IA, que fala pela conversa do próprio vendedor.
     WhatsappAcoesService,
     WhatsappAgendamentoService,

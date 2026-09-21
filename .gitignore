@@ -14,5 +14,6 @@ coverage/
 apps/api/uploads/
 
 docs/integração/testes-swagger.json
+docs/seguranca/
 
 .vscode/.advpl/

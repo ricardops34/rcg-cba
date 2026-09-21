@@ -10,9 +10,11 @@ import {
   FilePlus2,
   FileSpreadsheet,
   FileText,
+  FileCheck,
   Receipt,
   Wrench,
 } from "lucide-react";
+import { FichasTecnicasDialog } from "@/components/whatsapp/fichas-tecnicas-dialog";
 import type { Orcamento } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -66,6 +68,7 @@ export function AcoesCliente({
   const [enviandoOrcamento, setEnviandoOrcamento] = useState(false);
   const [enviandoBoleto, setEnviandoBoleto] = useState(false);
   const [enviandoDanfe, setEnviandoDanfe] = useState(false);
+  const [enviandoFicha, setEnviandoFicha] = useState(false);
   const permissoes = useAuthStore((s) => s.user?.permissoes);
 
   // Mesma leitura do menu lateral: a lista já vem resolvida pelo perfil, e o
@@ -183,6 +186,10 @@ export function AcoesCliente({
               Enviar orçamento (PDF)
             </DropdownMenuItem>
           ) : null}
+          <DropdownMenuItem onClick={() => setEnviandoFicha(true)}>
+            <FileCheck className="size-4" />
+            Enviar ficha técnica (PDF)
+          </DropdownMenuItem>
           {podeAgendar ? (
             <>
               <DropdownMenuSeparator />
@@ -218,6 +225,12 @@ export function AcoesCliente({
         conversaId={conversaId}
         aberto={enviandoDanfe}
         onOpenChange={setEnviandoDanfe}
+      />
+
+      <FichasTecnicasDialog
+        conversaId={conversaId}
+        aberto={enviandoFicha}
+        onOpenChange={setEnviandoFicha}
       />
     </>
   );

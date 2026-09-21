@@ -92,6 +92,20 @@ export class ZapoTransport implements WhatsappTransport {
    */
   private readonly arquivam = new Set<string>();
   private readonly limpezas = new Map<string, { stop: () => void }>();
+  /**
+   * Sessões que o boot mandou **reabrir**, não parear.
+   *
+   * A diferença importa porque o sintoma de credencial perdida é justamente um
+   * pedido de QR: reabrir uma sessão já pareada não deveria pedir código
+   * nenhum. Quando pede, o store está vazio — e insistir transforma cada
+   * sessão órfã num pareamento que ninguém pediu, gerando QR que ninguém vai
+   * ler e uma enxurrada de mudanças de estado para a API.
+   *
+   * Aconteceu em 2026-09-19: o banco do store estava com credencial de acesso
+   * errada, nada foi persistido, e as 15 sessões restauradas viraram 15
+   * pareamentos simultâneos em laço.
+   */
+  private readonly restaurando = new Set<string>();
   /** Reconexões agendadas, para poder cancelá-las ao desconectar. */
   private readonly reconexoes = new Map<string, NodeJS.Timeout>();
   private readonly tentativas = new Map<string, number>();
@@ -388,8 +402,11 @@ export class ZapoTransport implements WhatsappTransport {
     sessaoId: string,
     empresaId: string,
     arquivarMensagens = false,
+    restaurando = false,
   ): Promise<void> {
     this.empresas.set(sessaoId, empresaId);
+    if (restaurando) this.restaurando.add(sessaoId);
+    else this.restaurando.delete(sessaoId);
     if (arquivarMensagens) this.arquivam.add(sessaoId);
     else this.arquivam.delete(sessaoId);
     // Reentrante de propósito: a tela pode chamar "conectar" duas vezes, e
@@ -483,6 +500,23 @@ export class ZapoTransport implements WhatsappTransport {
     });
 
     cliente.on('auth_qr', ({ qr }: { qr: string }) => {
+      // Pedir QR durante uma **restauração** significa que a credencial não
+      // está mais no store. Não é pareamento: é sessão órfã. Encerra aqui, com
+      // motivo legível, em vez de ficar girando QR que ninguém vai ler.
+      if (this.restaurando.has(sessaoId)) {
+        this.restaurando.delete(sessaoId);
+        this.encerrarCliente(sessaoId);
+        this.definirEstado(sessaoId, {
+          status: 'desconectada',
+          qr: null,
+          numero: null,
+          erro:
+            'A credencial desta sessão não está mais no banco do worker. ' +
+            'É preciso parear o número de novo.',
+        });
+        return;
+      }
+
       this.definirEstado(sessaoId, {
         status: 'pareando',
         qr,
@@ -492,6 +526,8 @@ export class ZapoTransport implements WhatsappTransport {
     });
 
     cliente.on('auth_paired', ({ credentials }: { credentials: { meJid?: string } }) => {
+      // Pareou: o que vier depois não é mais restauração.
+      this.restaurando.delete(sessaoId);
       this.definirEstado(sessaoId, {
         status: 'conectada',
         qr: null,
@@ -1094,6 +1130,7 @@ export class ZapoTransport implements WhatsappTransport {
     if (agendada) clearTimeout(agendada);
     this.reconexoes.delete(sessaoId);
     this.tentativas.delete(sessaoId);
+    this.restaurando.delete(sessaoId);
 
     const cliente = this.clientes.get(sessaoId) as
       | (WaClient & { disconnect?: () => Promise<void>; close?: () => Promise<void> })
