@@ -1,0 +1,121 @@
+# Evolution API para Portainer / Docker Swarm na VPS.
+#
+# Antes do deploy, cadastre no Portainer as variaveis documentadas em
+# .env.evolution-api.prod.example. A API e publicada somente pelo Traefik;
+# Usa o PostgreSQL e o Redis ja existentes na VPS, ambos acessiveis pela rede
+# compartilhada `network_public`.
+#
+# Mantemos a imagem em uma versao estavel fixa. Atualizacoes devem ser feitas
+# de forma explicita, depois de conferir changelog, backup e compatibilidade.
+version: "3.8"
+
+services:
+  evolution-api:
+    image: ${EVOLUTION_IMAGE:-evoapicloud/evolution-api:v2.3.7}
+    environment:
+      SERVER_NAME: evolution
+      SERVER_TYPE: http
+      SERVER_PORT: "8080"
+      SERVER_URL: https://${EVOLUTION_HOST}
+      SERVER_DISABLE_DOCS: "false"
+      SERVER_DISABLE_MANAGER: "false"
+
+      # O Manager embarcado pode emitir requisicoes com origem diferente da
+      # SERVER_URL em alguns fluxos. A API continua protegida pela `apikey`.
+      CORS_ORIGIN: "${EVOLUTION_CORS_ORIGIN:-*}"
+      CORS_METHODS: POST,GET,PUT,DELETE
+      CORS_CREDENTIALS: "true"
+
+      DATABASE_PROVIDER: postgresql
+      # Banco e role exclusivos da Evolution API dentro do PostgreSQL
+      # compartilhado. Nao use o banco comercial nem o banco da Evolution GO.
+      # Stack `postgres` + servico `postgres` = DNS Swarm `postgres_postgres`.
+      DATABASE_CONNECTION_URI: "postgresql://evolution:${EVOLUTION_POSTGRES_PASSWORD}@postgres_postgres:5432/evolution"
+      DATABASE_CONNECTION_CLIENT_NAME: evolution_api
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      DATABASE_SAVE_DATA_HISTORIC: "true"
+      DATABASE_SAVE_DATA_LABELS: "true"
+      DATABASE_SAVE_IS_ON_WHATSAPP: "true"
+      DATABASE_SAVE_IS_ON_WHATSAPP_DAYS: "7"
+      DATABASE_DELETE_MESSAGE: "false"
+
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: "redis://redis:6379/0"
+      CACHE_REDIS_PREFIX_KEY: evolution-cache
+      CACHE_REDIS_TTL: "604800"
+      CACHE_REDIS_SAVE_INSTANCES: "true"
+      CACHE_LOCAL_ENABLED: "false"
+
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "false"
+
+      LANGUAGE: pt-BR
+      LOG_LEVEL: ERROR,WARN,INFO,LOG
+      LOG_COLOR: "true"
+      LOG_BAILEYS: error
+      DEL_INSTANCE: "false"
+      DEL_TEMP_INSTANCES: "true"
+      CONFIG_SESSION_PHONE_CLIENT: Evolution API
+      CONFIG_SESSION_PHONE_NAME: Chrome
+      QRCODE_LIMIT: "30"
+
+      # Webhooks devem ser configurados por instancia. Assim cada consumidor
+      # recebe somente os eventos que escolheu, sem um endpoint global aberto.
+      WEBHOOK_GLOBAL_ENABLED: "false"
+      WEBSOCKET_ENABLED: "true"
+      WEBSOCKET_GLOBAL_EVENTS: "false"
+
+      # Integracoes opcionais ficam desligadas ate serem configuradas.
+      RABBITMQ_ENABLED: "false"
+      NATS_ENABLED: "false"
+      SQS_ENABLED: "false"
+      PUSHER_ENABLED: "false"
+      TYPEBOT_ENABLED: "false"
+      CHATWOOT_ENABLED: "false"
+      OPENAI_ENABLED: "false"
+      DIFY_ENABLED: "false"
+      N8N_ENABLED: "false"
+      EVOAI_ENABLED: "false"
+      FLOWISE_ENABLED: "false"
+      S3_ENABLED: "false"
+      PROMETHEUS_METRICS: "false"
+      TELEMETRY_ENABLED: "false"
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      - network_public
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        # No primeiro deploy o Postgres ainda pode estar inicializando. Sem
+        # max_attempts, o Swarm continua tentando ate a dependencia responder.
+        delay: 10s
+        window: 120s
+      update_config:
+        parallelism: 1
+        order: stop-first
+        # Mantem a configuracao nova visivel se o boot falhar; rollback
+        # automatico faria os logs voltarem a mostrar os hosts antigos.
+        failure_action: pause
+      labels:
+        - "traefik.enable=true"
+        - "traefik.swarm.network=network_public"
+        - "traefik.http.routers.evolution-api.rule=Host(`${EVOLUTION_HOST}`)"
+        - "traefik.http.routers.evolution-api.entrypoints=websecure"
+        - "traefik.http.routers.evolution-api.tls=true"
+        - "traefik.http.routers.evolution-api.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.evolution-api.service=evolution-api"
+        - "traefik.http.services.evolution-api.loadbalancer.server.port=8080"
+        - "traefik.http.services.evolution-api.loadbalancer.passhostheader=true"
+
+volumes:
+  evolution_instances:
+
+networks:
+  network_public:
+    external: true
