@@ -844,56 +844,67 @@ function Conversa({
           <button
             type="button"
             onClick={onAbrirContato}
-            title="Abrir dados do contato"
-            className={`relative flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold shadow-xs transition-transform hover:scale-105 ${avatarColorClass(conversa ? nomeDaConversa(conversa) : "Contato")}`}
+            title="Abrir dados e opções do contato"
+            className="flex min-w-0 items-center gap-3 text-left group hover:opacity-85 transition-opacity cursor-pointer"
           >
-            {conversa?.contato.fotoUrl ? (
-              // Foto vem do perfil do WhatsApp e é copiada para o storage local.
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={assetUrl(conversa.contato.fotoUrl) ?? undefined}
-                alt=""
-                className="size-full rounded-full object-cover"
-              />
-            ) : (
-              initials(conversa ? nomeDaConversa(conversa) : "Contato")
-            )}
-          </button>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="truncate text-sm font-bold text-foreground">
-                {conversa ? nomeDaConversa(conversa) : "Contato"}
-              </p>
-              {conversa?.clienteId ? (
-                <Badge variant="outline" className="h-4 px-1.5 text-[10px] font-medium border-emerald-500/30 text-emerald-600 bg-emerald-500/10">
-                  Cliente
-                </Badge>
+            <div
+              className={`relative flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold shadow-xs transition-transform group-hover:scale-105 ${avatarColorClass(conversa ? nomeDaConversa(conversa) : "Contato")}`}
+            >
+              {conversa?.contato.fotoUrl ? (
+                // Foto vem do perfil do WhatsApp e é copiada para o storage local.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={assetUrl(conversa.contato.fotoUrl) ?? undefined}
+                  alt=""
+                  className="size-full rounded-full object-cover"
+                />
               ) : (
-                <Badge variant="outline" className="h-4 px-1.5 text-[10px] font-medium text-amber-600 bg-amber-500/10 border-amber-500/30">
-                  Sem Vínculo
-                </Badge>
+                initials(conversa ? nomeDaConversa(conversa) : "Contato")
               )}
             </div>
-            <p className="truncate text-xs text-muted-foreground flex items-center gap-1.5">
-              <span>WhatsApp {telefoneBonito(conversa?.contato.telefoneNormalizado ?? null)}</span>
-              {conversa?.vendedorNome
-                ? ` · Atendimento de ${conversa.vendedorNome}`
-                : ""}
-            </p>
-          </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="truncate text-sm font-bold text-foreground group-hover:underline">
+                  {conversa ? nomeDaConversa(conversa) : "Contato"}
+                </p>
+                {conversa?.clienteId ? (
+                  <Badge variant="outline" className="h-4 px-1.5 text-[10px] font-medium border-emerald-500/30 text-emerald-600 bg-emerald-500/10">
+                    Cliente
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="h-4 px-1.5 text-[10px] font-medium text-amber-600 bg-amber-500/10 border-amber-500/30">
+                    Sem Vínculo
+                  </Badge>
+                )}
+              </div>
+              <p className="truncate text-xs text-muted-foreground flex items-center gap-1.5">
+                <span>WhatsApp {telefoneBonito(conversa?.contato.telefoneNormalizado ?? null)}</span>
+                {conversa?.vendedorNome
+                  ? ` · Atendimento de ${conversa.vendedorNome}`
+                  : ""}
+              </p>
+            </div>
+          </button>
         </div>
-        {clienteId ? (
-          <div data-tour="atendimento-acoes" className="flex shrink-0 items-center gap-1.5">
-            <Button variant="outline" size="sm" onClick={onAbrirPosicao} className="h-8 text-xs gap-1.5 shadow-2xs">
-              <UserRound className="size-3.5 text-primary" />
-              Posição 360°
+        <div data-tour="atendimento-acoes" className="flex shrink-0 items-center gap-1.5">
+          {clienteId ? (
+            <>
+              <Button variant="outline" size="sm" onClick={onAbrirPosicao} className="h-8 text-xs gap-1.5 shadow-2xs">
+                <UserRound className="size-3.5 text-primary" />
+                Posição 360°
+              </Button>
+              <Button variant="outline" size="sm" onClick={onAbrirOrcamento} className="h-8 text-xs gap-1.5 shadow-2xs">
+                <BriefcaseBusiness className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                Orçamento
+              </Button>
+            </>
+          ) : (
+            <Button variant="default" size="sm" onClick={onAbrirContato} className="h-8 text-xs gap-1.5 shadow-2xs">
+              <Link2 className="size-3.5" />
+              Vincular Cliente
             </Button>
-            <Button variant="outline" size="sm" onClick={onAbrirOrcamento} className="h-8 text-xs gap-1.5 shadow-2xs">
-              <BriefcaseBusiness className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-              Orçamento
-            </Button>
-          </div>
-        ) : null}
+          )}
+        </div>
       </div>
       {/* min-h-0 é o que faz a barra de rolagem ficar aqui dentro */}
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-muted/20 via-background to-muted/30 p-4">
