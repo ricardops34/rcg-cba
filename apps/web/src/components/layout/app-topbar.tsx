@@ -19,7 +19,8 @@ import {
   UserCog,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
-import { apiFetch, ApiError } from "@/lib/api-client";
+import { apiFetch, ApiError, assetUrl } from "@/lib/api-client";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { CurrentUser } from "@plataforma/contracts";
 import { avatarColorClass, initials } from "@/lib/avatar-color";
 import { Button } from "@/components/ui/button";
@@ -216,39 +217,47 @@ export function AppTopbar({
               aria-label="Conta"
               data-tour="conta"
             >
-              <div
-                className={
-                  "flex size-7 items-center justify-center rounded-full text-xs font-semibold " +
-                  (user ? avatarColorClass(user.nome) : "bg-muted")
-                }
-              >
-                {user ? initials(user.nome) : "?"}
-              </div>
+              <Avatar className="size-8 ring-2 ring-background">
+                <AvatarImage src={assetUrl(user?.avatarUrl) ?? undefined} alt={user?.nome ?? "Conta"} />
+                <AvatarFallback className={user ? avatarColorClass(user.nome) : "bg-muted"}>
+                  {user ? initials(user.nome) : "?"}
+                </AvatarFallback>
+              </Avatar>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64">
-            <DropdownMenuLabel className="space-y-0.5">
-              <p>{user?.nome}</p>
-              <p className="text-xs font-normal text-muted-foreground">
-                {user?.email}
-              </p>
+          <DropdownMenuContent align="end" sideOffset={8} className="w-80 max-w-[calc(100vw-1rem)] rounded-xl p-2">
+            <DropdownMenuLabel className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
+              <Avatar className="size-12 shrink-0">
+                <AvatarImage src={assetUrl(user?.avatarUrl) ?? undefined} alt={user?.nome ?? "Conta"} />
+                <AvatarFallback className={user ? avatarColorClass(user.nome) : "bg-muted"}>{user ? initials(user.nome) : "?"}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 space-y-1">
+                <p className="truncate text-sm font-semibold">{user?.nome}</p>
+                <p className="truncate text-xs font-normal text-muted-foreground" title={user?.email}>{user?.email}</p>
+                <p className="truncate text-xs font-medium text-primary">{empresaAtiva?.perfilNome}</p>
+              </div>
             </DropdownMenuLabel>
             {empresaAtiva && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Building2 className="size-3.5" />
-                  Empresa ativa
+                  {switching ? "Trocando empresa…" : "Suas empresas"}
                 </DropdownMenuLabel>
                 {user?.empresas.map((empresa) => {
                   const ativa = empresa.empresaId === user.empresaAtivaId;
                   return (
                     <DropdownMenuItem
                       key={empresa.empresaId}
-                      disabled={ativa || switching}
-                      onClick={() => handleSwitch(empresa.empresaId)}
+                      disabled={switching}
+                      className={ativa ? "my-1 gap-3 rounded-lg bg-primary/10 py-2.5 text-primary" : "my-1 gap-3 rounded-lg py-2.5"}
+                      onSelect={(event) => { if (ativa) event.preventDefault(); else void handleSwitch(empresa.empresaId); }}
                     >
-                      <span className="truncate">{empresa.nomeFantasia}</span>
+                      <Building2 className="size-4 shrink-0" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium" title={empresa.nomeFantasia}>{empresa.nomeFantasia}</span>
+                        {ativa && <span className="block text-[11px]">Empresa ativa</span>}
+                      </span>
                       {ativa && (
                         <Check className="ml-auto size-4 text-primary" />
                       )}
@@ -271,9 +280,9 @@ export function AppTopbar({
               </>
             )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => router.push("/perfil")}>
+            <DropdownMenuItem className="gap-3 rounded-lg py-2.5" onClick={() => router.push("/perfil")}>
               <UserCog className="size-4" />
-              Meu perfil
+              <span><span className="block">Meu perfil</span><span className="block text-xs text-muted-foreground">Foto, dados da conta e senha</span></span>
             </DropdownMenuItem>
             <DropdownMenuItem
               className="sm:hidden"
@@ -299,7 +308,7 @@ export function AppTopbar({
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleLogout}>
+            <DropdownMenuItem className="rounded-lg py-2.5 text-destructive focus:bg-destructive/10 focus:text-destructive" onClick={handleLogout}>
               <LogOut className="size-4" />
               Sair
             </DropdownMenuItem>

@@ -5,49 +5,32 @@ import {
   type Aniversariante,
 } from '@plataforma/contracts';
 
-/**
- * Aniversariantes da equipe, para a tela inicial.
- *
- * **Não usa o escopo hierárquico**, e a diferença é deliberada: por
- * `resolverEscopoVendedores`, um vendedor de carteira enxerga só a si mesmo —
- * a seção mostraria o próprio aniversário e mais nada. Aniversário de colega
- * não é dado de carteira; é a lista da empresa inteira, e o que sai dela é
- * nome e dia, nunca o ano.
- *
- * Cadastro de sistema (ESCRITORIO, E-COMMERCE) e desligado ficam de fora: não
- * são pessoas a parabenizar.
- */
+/** Aniversariantes dos usuarios ativos vinculados a empresa, sem expor o ano. */
 @Injectable()
 export class AniversariantesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async listar(empresaId: string): Promise<Aniversariante[]> {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const vendedores = await tx.vendedor.findMany({
+      const vinculos = await tx.usuarioEmpresa.findMany({
         where: {
           empresaId,
-          deletedAt: null,
           ativo: true,
-          desligado: false,
+          deletedAt: null,
           dataNascimento: { not: null },
-          // `vinculo` é nulo na base inteira hoje (o import do ERP não traz),
-          // e `{ not: 'sistema' }` sozinho **descartaria todo mundo**: em SQL,
-          // `NULL <> 'sistema'` não é verdadeiro. O OR explícito é o que faz
-          // "não é cadastro de sistema" incluir quem não tem vínculo definido.
-          OR: [{ vinculo: null }, { vinculo: { not: 'sistema' } }],
+          usuario: { ativo: true, deletedAt: null },
         },
         select: {
-          id: true,
-          nome: true,
-          nomeReduzido: true,
+          usuarioId: true,
           dataNascimento: true,
+          usuario: { select: { nome: true } },
         },
       });
 
       const hoje = new Date();
       hoje.setHours(0, 0, 0, 0);
 
-      const lista = vendedores
+      const lista = vinculos
         .map((v) => {
           // A data vem como timestamp; o que interessa é dia/mês. Lido em UTC
           // porque é assim que foi gravada — em horário local, um nascimento
@@ -67,8 +50,8 @@ export class AniversariantesService {
           );
 
           return {
-            id: v.id,
-            nome: v.nomeReduzido || v.nome,
+            id: v.usuarioId,
+            nome: v.usuario.nome,
             dia,
             mes,
             emDias,

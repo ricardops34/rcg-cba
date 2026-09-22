@@ -17,3 +17,7 @@ docs/integração/testes-swagger.json
 docs/seguranca/
 
 .vscode/.advpl/
+
+# Importações locais com dados reais e relatórios derivados.
+docs/sql/
+scripts/

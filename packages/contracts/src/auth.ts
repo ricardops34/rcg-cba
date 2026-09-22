@@ -77,9 +77,22 @@ export const updateOwnProfileSchema = z.object({
 });
 export type UpdateOwnProfileInput = z.infer<typeof updateOwnProfileSchema>;
 
+export const completeFirstAccessSchema = updateOwnProfileSchema.extend({
+  telefoneInstitucional: z.string().trim().min(1, "Informe o telefone institucional")
+    .max(30).regex(/^\+?[\d\s().-]+$/, "Informe um telefone válido")
+    .refine((v) => { const digits = v.replace(/\D/g, ""); return digits.length >= 10 && digits.length <= 15; }, "Informe o telefone com DDD"),
+  dataNascimento: z.string().date("Informe uma data válida")
+    .refine((v) => v >= "1900-01-01" && v <= new Date().toISOString().slice(0, 10), "Informe uma data de nascimento válida"),
+});
+export type CompleteFirstAccessInput = z.infer<typeof completeFirstAccessSchema>;
+
 export const currentUserSchema = z.object({
   id: z.string().uuid().describe("Identificador do usuário autenticado"),
   nome: z.string().describe("Nome completo do usuário"),
+  avatarUrl: z.string().nullable(),
+  telefoneInstitucional: z.string().nullable(),
+  dataNascimento: z.string().nullable(),
+  mustCompleteFirstAccess: z.boolean(),
   email: z.string().email().describe("E-mail do usuário"),
   administradorPlataforma: z
     .boolean()
@@ -157,6 +170,10 @@ export const AUTH_TOKENS_EXAMPLE: AuthTokens = {
 };
 
 export const CURRENT_USER_EXAMPLE: CurrentUser = {
+  avatarUrl: null,
+  telefoneInstitucional: null,
+  dataNascimento: null,
+  mustCompleteFirstAccess: false,
   id: "827167a9-93f9-4fd8-9cc5-dcd8077c600d",
   nome: "Administrador do Sistema",
   email: "admin@demo.com",

@@ -1,4 +1,7 @@
-import { Body, Controller, Get, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, Query, Req, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { CompleteFirstAccessDto } from './dto/auth.dto';
 import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
@@ -151,6 +154,27 @@ export class AuthController {
   @Patch('change-password')
   changePassword(@Body() dto: ChangePasswordDto, @CurrentUser() user: AuthenticatedUser) {
     return this.authService.changePassword(user.id, dto);
+  }
+
+  @ApiOperation({ summary: 'Confirmar os dados do primeiro acesso e sincronizar o vendedor vinculado' })
+  @ApiResponse({ status: 200, description: 'Dados confirmados' })
+  @ApiResponse({ status: 400, description: 'Dados obrigatórios inválidos' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Patch('me/primeiro-acesso')
+  completeFirstAccess(@Body() dto: CompleteFirstAccessDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.authService.completeFirstAccess(user.id, user.empresaAtivaId, dto);
+  }
+
+  @ApiOperation({ summary: 'Enviar fotografia do próprio perfil (PNG, JPEG ou WEBP, até 2 MB)' })
+  @ApiResponse({ status: 201, description: 'Fotografia atualizada' })
+  @ApiResponse({ status: 400, description: 'Fotografia inválida' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Post('me/foto')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 2 * 1024 * 1024, files: 1 } }))
+  uploadPhoto(@UploadedFile() file: Express.Multer.File | undefined, @CurrentUser() user: AuthenticatedUser) {
+    return this.authService.uploadOwnAvatar(user.id, user.empresaAtivaId, file);
   }
 
   @ApiOperation({ summary: 'Alterar o nome do próprio usuário' })

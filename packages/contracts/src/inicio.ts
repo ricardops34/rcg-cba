@@ -6,7 +6,7 @@ import { booleanQueryParam, paginationQuerySchema } from "./common";
  *
  * São três blocos, e cada um tem dono diferente: os **atalhos** são estáticos
  * no frontend (filtrados por permissão, sem ida ao servidor), os
- * **aniversariantes** saem do cadastro de vendedores e os **comunicados** de
+ * **aniversariantes** saem do cadastro de usuários e os **comunicados** de
  * um cadastro próprio, mantido em Administração.
  */
 

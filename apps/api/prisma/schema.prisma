@@ -194,6 +194,7 @@ model Usuario {
   senhaHash   String
   ativo       Boolean   @default(true)
   ultimoLogin DateTime?
+  primeiroAcessoConcluidoEm DateTime?
   avatarUrl   String?
   mfaEnabled  Boolean   @default(false)
 

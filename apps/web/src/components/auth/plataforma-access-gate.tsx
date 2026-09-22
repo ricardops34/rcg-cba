@@ -17,6 +17,7 @@ import { ChangePasswordForm } from "@/components/perfil/change-password-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { FirstAccessForm } from "@/components/perfil/first-access-form";
 
 export function PlataformaAccessGate({ children }: { children: React.ReactNode }) {
   const accessToken = useAuthStore((state) => state.accessToken);
@@ -64,6 +65,13 @@ export function PlataformaAccessGate({ children }: { children: React.ReactNode }
 
   const termo = termosQuery.data?.pendentes[0];
   if (termo) return <TermoObrigatorio key={termo.id} termo={termo} />;
+
+  if (usuarioQuery.data?.mustCompleteFirstAccess) {
+    return <GateFrame><div className="w-full max-w-md space-y-4">
+      <FirstAccessForm key={`${usuarioQuery.data.id}:${usuarioQuery.data.empresaAtivaId}`} user={usuarioQuery.data} />
+      <SairButton />
+    </div></GateFrame>;
+  }
 
   return children;
 }

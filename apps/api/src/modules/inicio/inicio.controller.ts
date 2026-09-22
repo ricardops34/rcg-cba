@@ -58,7 +58,7 @@ export class InicioController {
   @ApiOperation({
     summary: 'Aniversariantes da equipe',
     description:
-      'Vendedores ativos da empresa cujo aniversário cai nos próximos 30 dias, hoje incluído. ' +
+      'Usuários ativos vinculados à empresa cujo aniversário cai nos próximos 30 dias, hoje incluído. ' +
       'Devolve nome, dia e mês — nunca o ano. Só login.',
   })
   @Get('aniversariantes')

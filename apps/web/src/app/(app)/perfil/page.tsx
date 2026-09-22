@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CurrentUser } from "@plataforma/contracts";
 import { toast } from "sonner";
 import { useAuthStore } from "@/stores/auth-store";
@@ -13,11 +13,13 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { TermosAceitosCard } from "@/components/perfil/termos-aceitos-card";
+import { ProfilePhoto } from "@/components/perfil/profile-photo";
 
 export default function PerfilPage() {
   const { user, setUser } = useAuthStore();
-  const [nome, setNome] = useState(user?.nome ?? "");
-  useEffect(() => setNome(user?.nome ?? ""), [user?.nome]);
+  const queryClient = useQueryClient();
+  const [nomeEditado, setNome] = useState<string | undefined>();
+  const nome = nomeEditado ?? user?.nome ?? "";
   const salvarNome = useMutation({
     mutationFn: () =>
       apiFetch<CurrentUser>("/auth/me", {
@@ -26,6 +28,8 @@ export default function PerfilPage() {
       }),
     onSuccess: (atualizado) => {
       setUser(atualizado);
+      setNome(undefined);
+      queryClient.setQueryData(["auth", "me"], atualizado);
       toast.success("Nome do perfil atualizado");
     },
     onError: (erro) =>
@@ -41,6 +45,7 @@ export default function PerfilPage() {
         </CardHeader>
         <CardContent>
           <FieldGroup>
+            {user && <ProfilePhoto user={user} />}
             <Field>
               <FieldLabel>Nome</FieldLabel>
               <div className="flex flex-col gap-2 sm:flex-row">
