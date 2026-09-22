@@ -279,7 +279,7 @@ Static Function BJGrupos()
 
 	aAdd(aRet, {"Todos"           , {}})
 	aAdd(aRet, {"Cadastros"       , {"regras-desconto", "categorias", "condicoes-pagto", "armazens", ;
-		"produtos", "vendedores", "clientes", "fornecedores", "tabelas-preco"}})
+		"vendedores", "fornecedores", "produtos", "tabelas-preco", "clientes"}})
 	aAdd(aRet, {"Financeiro"      , {"titulos-receber"}})
 	aAdd(aRet, {"Estoque"         , {"estoque"}})
 	aAdd(aRet, {"Notas de Saida"  , {"notas-saida", "notas-saida-xml"}})
@@ -427,6 +427,7 @@ User Function BJMONMSG()
 	Local cQuery  := ""
 	Local cSeqMae := ""
 	Local cStat   := ""
+	Local cDtCria := ""
 	Local cTmp    := ""
 	Local nOpc    := 0
 	Local oStmt   := Nil
@@ -467,6 +468,17 @@ User Function BJMONMSG()
 				cStat := "?"
 		EndCase
 
+		cDtCria := ""
+		If ValType((cTmp)->ZZ_DTCRIA) == "D"
+			cDtCria := DtoC((cTmp)->ZZ_DTCRIA)
+		ElseIf ValType((cTmp)->ZZ_DTCRIA) == "C"
+			If Len(AllTrim((cTmp)->ZZ_DTCRIA)) == 8
+				cDtCria := DtoC(StoD((cTmp)->ZZ_DTCRIA))
+			Else
+				cDtCria := AllTrim((cTmp)->ZZ_DTCRIA)
+			EndIf
+		EndIf
+
 		aAdd(aLista, PadR((cTmp)->ZZ_SEQUEN, 10) + ;
 			PadR((cTmp)->ZZ_TIPO, 2) + ;
 			PadR(AllTrim((cTmp)->ZZ_ENTID), 18) + ;
@@ -474,7 +486,7 @@ User Function BJMONMSG()
 			PadR(AllTrim((cTmp)->ZZ_VERBO), 7) + ;
 			PadR(cStat, 9) + ;
 			PadL(cValToChar((cTmp)->ZZ_HTTP), 4) + "  " + ;
-			DtoC((cTmp)->ZZ_DTCRIA) + " " + AllTrim((cTmp)->ZZ_HRCRIA))
+			cDtCria + " " + AllTrim((cTmp)->ZZ_HRCRIA))
 
 		aAdd(aSeq, (cTmp)->ZZ_SEQUEN)
 

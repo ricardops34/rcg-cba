@@ -1032,6 +1032,8 @@ User Function BJDRENA(nLimite, cSeqMae, oProcess)
 	Local nHttp   := 0
 	Local nPos    := 0
 	Local nErrLot := 0
+	Local nPx     := 0
+	Local nPy     := 0
 	Local nL      := 0
 	Local nX      := 0
 
@@ -1145,7 +1147,11 @@ User Function BJDRENA(nLimite, cSeqMae, oProcess)
 
 		Next nX
 
-		aSort(aFila, , , {|x, y| x[1] < y[1]})
+		aSort(aFila, , , {|x, y| ;
+			nPx := aScan(aCat, {|c| c[1] == x[2]}), ;
+			nPy := aScan(aCat, {|c| c[1] == y[2]}), ;
+			Iif(nPx != nPy, nPx < nPy, x[1] < y[1]) ;
+		})
 
 		// Lote sem nada a enviar nao e fechado: pode ser de entrada, ou ja ter saido
 		If Len(aFila) == 0
@@ -1239,6 +1245,11 @@ User Function BJDRENA(nLimite, cSeqMae, oProcess)
 				aTotal[3] += 1
 				nErrLot   += 1
 
+				FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", ;
+					"Envio interrompido por erro na mensagem " + aFila[nX][1] + " (entidade " + aFila[nX][2] + ") do lote " + cLote + ": " + cErro, 0, 0, {})
+
+				Exit
+
 			EndIf
 
 			Sleep(nPausa)
@@ -1256,6 +1267,11 @@ User Function BJDRENA(nLimite, cSeqMae, oProcess)
 		If SZY->(dbSeek(xFilial("SZY") + PadR(cLote, TamSX3("ZY_CODIGO")[1])))
 
 			RecLock("SZY", .F.)
+
+			SZY->ZY_DTFIM  := Date()
+			SZY->ZY_HRFIM  := Time()
+			SZY->ZY_QTDENV := aTotal[2]
+			SZY->ZY_QTDERR := nErrLot
 
 			If nErrLot == 0
 				SZY->ZY_STATUS := "2"   // processado
@@ -1307,6 +1323,8 @@ User Function BJLOTE(nLimite, oProcess)
 	Local cResp     := ""
 	Local cErro     := ""
 	Local nHttp     := 0
+	Local nPx       := 0
+	Local nPy       := 0
 	Local nIni      := 0
 	Local nFim      := 0
 	Local nIdx      := 0
@@ -1391,8 +1409,12 @@ User Function BJLOTE(nLimite, oProcess)
 
 	Next nL
 
-	// Lote e sequencia: a ordem em que as mensagens nasceram, que e a ordem de carga
-	aSort(aFila, , , {|x, y| x[6] + x[1] < y[6] + y[1]})
+	// Lote e sequencia: a ordem em que as mensagens nasceram, ajustada pela ordem de dependencias do catalogo
+	aSort(aFila, , , {|x, y| ;
+		nPx := aScan(aCat, {|c| c[1] == x[2]}), ;
+		nPy := aScan(aCat, {|c| c[1] == y[2]}), ;
+		Iif(nPx != nPy, nPx < nPy, x[6] + x[1] < y[6] + y[1]) ;
+	})
 
 	aTotal[1] := Len(aFila)
 
