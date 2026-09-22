@@ -66,7 +66,14 @@ describe('AuthService', () => {
           rotina: {
             codigo: 'clientes',
             ativo: true,
-            menu: { ativo: true, menuPai: null, modulo: { ativo: true } },
+            menu: {
+              id: 'menu-1',
+              moduloId: 'modulo-1',
+              menuPaiId: null,
+              ativo: true,
+              menuPai: null,
+              modulo: { ativo: true },
+            },
           },
         },
       ],
@@ -91,6 +98,10 @@ describe('AuthService', () => {
       },
       sessao: { findFirst: jest.fn(), update: jest.fn() },
       perfilPermissao: { findMany: jest.fn() },
+      // Liga/desliga por empresa: vazio = a empresa não desligou nada, que é o
+      // estado normal (só a exceção vira linha).
+      empresaModulo: { findMany: jest.fn().mockResolvedValue([]) },
+      empresaMenu: { findMany: jest.fn().mockResolvedValue([]) },
       withTenant: jest.fn(),
       withUsuario: jest.fn(),
     };
@@ -213,12 +224,35 @@ describe('AuthService', () => {
               rotina: {
                 codigo: 'clientes',
                 ativo: true,
-                menu: { ativo: true, menuPai: null, modulo: { ativo: false } },
+                menu: {
+                  id: 'menu-1',
+                  moduloId: 'modulo-1',
+                  menuPaiId: null,
+                  ativo: true,
+                  menuPai: null,
+                  modulo: { ativo: false },
+                },
               },
             },
           ],
         },
       });
+      prisma.refreshToken.create.mockResolvedValue({});
+      prisma.usuario.update.mockResolvedValue(usuarioAtivo);
+
+      await service.login({ email: usuarioAtivo.email, senha: '123' }, {});
+
+      const signPayload = jwt.signAsync.mock.calls[0][0];
+      expect(signPayload.permissoes).toEqual([]);
+    });
+
+    it('não emite permissão de módulo que a empresa desligou, mesmo com o catálogo ligado', async () => {
+      prisma.usuario.findUnique.mockResolvedValue(usuarioAtivo);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      prisma.usuarioEmpresa.findFirst.mockResolvedValue(vinculo);
+      prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue(vinculoCompleto);
+      // O catálogo continua com tudo ligado; quem desligou foi esta empresa.
+      prisma.empresaModulo.findMany.mockResolvedValue([{ moduloId: 'modulo-1' }]);
       prisma.refreshToken.create.mockResolvedValue({});
       prisma.usuario.update.mockResolvedValue(usuarioAtivo);
 

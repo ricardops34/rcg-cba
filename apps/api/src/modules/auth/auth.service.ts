@@ -40,11 +40,20 @@ const ROTINA_COM_ARVORE = {
 type RotinaComArvore = {
   ativo: boolean;
   menu: {
+    id: string;
+    moduloId: string;
+    menuPaiId: string | null;
     ativo: boolean;
     modulo: { ativo: boolean };
     menuPai: { ativo: boolean } | null;
   };
 };
+
+/** O que a empresa desligou — ausência de linha é "ligado". */
+interface DesativadosDaEmpresa {
+  modulos: Set<string>;
+  menus: Set<string>;
+}
 
 /**
  * Desligar um módulo na tela de Estrutura precisa desligá-lo de verdade, não só
@@ -52,17 +61,25 @@ type RotinaComArvore = {
  * digitada à mão não. Podando aqui — onde a lista de permissões nasce — o item
  * some da navegação e a API passa a responder 403, com uma regra só.
  *
+ * São dois desligamentos, e os dois contam: o `ativo` do catálogo (global, do
+ * administrador da plataforma) e o da empresa (`empresa_modulos`/
+ * `empresa_menus`, do administrador dela).
+ *
  * Quem já está logado continua com o token antigo até ele expirar (15 min).
  *
  * Perfil `sistemaBase` não passa por aqui: o `PermissionsGuard` libera pelo
  * `isAdmin` antes de olhar a lista. É aceito — quem liga e desliga é ele.
  */
-function rotinaNoAr(rotina: RotinaComArvore) {
+function rotinaNoAr(rotina: RotinaComArvore, daEmpresa: DesativadosDaEmpresa) {
+  const menu = rotina.menu;
   return (
     rotina.ativo &&
-    rotina.menu.ativo &&
-    rotina.menu.modulo.ativo &&
-    (rotina.menu.menuPai?.ativo ?? true)
+    menu.ativo &&
+    menu.modulo.ativo &&
+    (menu.menuPai?.ativo ?? true) &&
+    !daEmpresa.modulos.has(menu.moduloId) &&
+    !daEmpresa.menus.has(menu.id) &&
+    !(menu.menuPaiId ? daEmpresa.menus.has(menu.menuPaiId) : false)
   );
 }
 
@@ -78,6 +95,31 @@ export class AuthService {
 
   private hashToken(token: string) {
     return createHash('sha256').update(token).digest('hex');
+  }
+
+  /**
+   * Módulos e menus que **esta empresa** desligou. As tabelas têm RLS, então a
+   * consulta precisa do `withTenant` — fora dele a policy filtra tudo e voltaria
+   * vazio, o que aqui significaria "nada desligado" e abriria o que a empresa
+   * fechou.
+   */
+  private async desativadosDaEmpresa(empresaId: string) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const [modulos, menus] = await Promise.all([
+        tx.empresaModulo.findMany({
+          where: { empresaId, ativo: false },
+          select: { moduloId: true },
+        }),
+        tx.empresaMenu.findMany({
+          where: { empresaId, ativo: false },
+          select: { menuId: true },
+        }),
+      ]);
+      return {
+        modulos: new Set(modulos.map((m) => m.moduloId)),
+        menus: new Set(menus.map((m) => m.menuId)),
+      };
+    });
   }
 
   private async buildAccessToken(usuarioEmpresaId: string, empresaId: string) {
@@ -105,9 +147,12 @@ export class AuthService {
     // evitando erro 431 Request Header Fields Too Large.
     const permissoes = vinculo.perfil.sistemaBase
       ? []
-      : vinculo.perfil.permissoes
-          .filter((p) => rotinaNoAr(p.rotina))
-          .map((p) => `${p.rotina.codigo}.${p.acao}`);
+      : await (async () => {
+          const daEmpresa = await this.desativadosDaEmpresa(empresaId);
+          return vinculo.perfil.permissoes
+            .filter((p) => rotinaNoAr(p.rotina, daEmpresa))
+            .map((p) => `${p.rotina.codigo}.${p.acao}`);
+        })();
 
     const payload = {
       sub: vinculo.usuarioId,
@@ -571,6 +616,9 @@ export class AuthService {
 
     const ativoIndex = vinculos.findIndex((v) => v.empresaId === empresaAtivaId);
     const ativo = ativoIndex === -1 ? undefined : vinculos[ativoIndex];
+    const daEmpresa = ativo
+      ? await this.desativadosDaEmpresa(ativo.empresaId)
+      : { modulos: new Set<string>(), menus: new Set<string>() };
     const permissoes = ativo
       ? (
           await this.prisma.perfilPermissao.findMany({
@@ -578,7 +626,7 @@ export class AuthService {
             include: { rotina: { include: ROTINA_COM_ARVORE } },
           })
         )
-          .filter((p) => rotinaNoAr(p.rotina))
+          .filter((p) => rotinaNoAr(p.rotina, daEmpresa))
           .map((p) => `${p.rotina.codigo}.${p.acao}`)
       : [];
 

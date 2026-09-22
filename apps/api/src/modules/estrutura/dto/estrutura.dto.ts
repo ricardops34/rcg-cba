@@ -1,5 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import {
+  empresaEstruturaToggleSchema,
   menuCreateSchema,
   menuUpdateSchema,
   moduloCreateSchema,
@@ -14,3 +15,6 @@ export class MenuCreateDto extends createZodDto(menuCreateSchema) {}
 export class MenuUpdateDto extends createZodDto(menuUpdateSchema) {}
 export class RotinaCreateDto extends createZodDto(rotinaCreateSchema) {}
 export class RotinaUpdateDto extends createZodDto(rotinaUpdateSchema) {}
+export class EmpresaEstruturaToggleDto extends createZodDto(
+  empresaEstruturaToggleSchema,
+) {}

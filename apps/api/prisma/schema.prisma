@@ -181,6 +181,8 @@ model Empresa {
   notasEntrada               NotaEntrada[]
   notasEntradaItens          NotaEntradaItem[]
   tourExecucoes              TourExecucao[]
+  modulosDesativados         EmpresaModulo[]
+  menusDesativados           EmpresaMenu[]
 
   @@map("empresas")
 }
@@ -433,9 +435,59 @@ model Modulo {
   updatedBy String?
   deletedBy String?
 
-  menus Menu[]
+  menus     Menu[]
+  ativacoes EmpresaModulo[]
 
   @@map("modulos")
+}
+
+// Liga/desliga de módulo **para uma empresa**, sem tocar no catálogo.
+//
+// O catálogo (Modulo/Menu/Rotina) é global: o `ativo` de lá vale para todos os
+// clientes, e só administrador da plataforma mexe nele. Estas duas tabelas são
+// o outro lado — o administrador de uma empresa decide o que a empresa dele usa.
+//
+// **Ausência de linha significa ligado.** Gravar só a exceção evita ter de criar
+// uma linha por empresa × módulo a cada empresa ou módulo novo, e faz o módulo
+// recém-criado já nascer disponível para todo mundo.
+//
+// Tem `empresaId`, logo tem RLS (ver prisma/migrations/README.md).
+model EmpresaModulo {
+  id        String  @id @default(uuid())
+  empresaId String
+  moduloId  String
+  ativo     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  modulo  Modulo  @relation(fields: [moduloId], references: [id])
+
+  @@unique([empresaId, moduloId])
+  @@map("empresa_modulos")
+}
+
+/// Mesma ideia de `EmpresaModulo`, um nível abaixo: a empresa usa o módulo, mas
+/// não esta tela dele.
+model EmpresaMenu {
+  id        String  @id @default(uuid())
+  empresaId String
+  menuId    String
+  ativo     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  menu    Menu    @relation(fields: [menuId], references: [id])
+
+  @@unique([empresaId, menuId])
+  @@map("empresa_menus")
 }
 
 model Menu {
@@ -456,10 +508,11 @@ model Menu {
   updatedBy String?
   deletedBy String?
 
-  modulo   Modulo   @relation(fields: [moduloId], references: [id])
-  menuPai  Menu?    @relation("MenuSubmenu", fields: [menuPaiId], references: [id])
-  submenus Menu[]   @relation("MenuSubmenu")
-  rotinas  Rotina[]
+  modulo    Modulo        @relation(fields: [moduloId], references: [id])
+  menuPai   Menu?         @relation("MenuSubmenu", fields: [menuPaiId], references: [id])
+  submenus  Menu[]        @relation("MenuSubmenu")
+  rotinas   Rotina[]
+  ativacoes EmpresaMenu[]
 
   @@map("menus")
 }

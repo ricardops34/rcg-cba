@@ -51,6 +51,10 @@ const PRESERVADOS = [
   'ProdutoCampo',
   'EmpresaHorarioAtendimento',
   'Feriado',
+  // quais módulos e telas esta empresa usa — configuração do menu dela, não
+  // dado de negócio: uma demonstração recomeça com os mesmos módulos ligados
+  'EmpresaModulo',
+  'EmpresaMenu',
   // agente de IA: configuração, credencial e governança
   'AgenteConfig',
   'AgenteCredencial',

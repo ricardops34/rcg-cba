@@ -24,6 +24,7 @@ import {
 } from '@plataforma/contracts';
 import { EstruturaService } from './estrutura.service';
 import {
+  EmpresaEstruturaToggleDto,
   MenuCreateDto,
   MenuUpdateDto,
   ModuloCreateDto,
@@ -61,8 +62,55 @@ export class EstruturaController {
       'permissões de cada rotina. As mutações de estrutura continuam exigindo modulos.*.',
   })
   @Get('modulos')
-  listModulos() {
-    return this.service.listModulos();
+  listModulos(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.listModulos(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Ligar/desligar um módulo nesta empresa',
+    description:
+      'Liga ou desliga o módulo **apenas para a empresa ativa**, sem tocar no catálogo global — ' +
+      'este é o controle do administrador da empresa, e por isso não passa pelo PlatformAdminGuard. ' +
+      'Requer estrutura.editar.',
+  })
+  @ApiParam({ name: 'moduloId', example: MODULO_ID_EXAMPLE })
+  @ApiBodyExample({ ativo: false })
+  @RequirePermission('estrutura', 'editar')
+  @Patch('estrutura/empresa/modulos/:moduloId')
+  definirModuloDaEmpresa(
+    @Param('moduloId') moduloId: string,
+    @Body() dto: EmpresaEstruturaToggleDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.definirModuloDaEmpresa(
+      user.empresaAtivaId,
+      moduloId,
+      dto.ativo,
+      user.id,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Ligar/desligar um menu nesta empresa',
+    description:
+      'Mesma ideia do módulo, um nível abaixo: a empresa usa o módulo, mas não esta tela dele. ' +
+      'Requer estrutura.editar.',
+  })
+  @ApiParam({ name: 'menuId', example: MENU_ID_EXAMPLE })
+  @ApiBodyExample({ ativo: false })
+  @RequirePermission('estrutura', 'editar')
+  @Patch('estrutura/empresa/menus/:menuId')
+  definirMenuDaEmpresa(
+    @Param('menuId') menuId: string,
+    @Body() dto: EmpresaEstruturaToggleDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.definirMenuDaEmpresa(
+      user.empresaAtivaId,
+      menuId,
+      dto.ativo,
+      user.id,
+    );
   }
 
   @ApiOperation({
@@ -74,8 +122,8 @@ export class EstruturaController {
   })
   @RequirePermission('estrutura', 'visualizar')
   @Get('estrutura/arvore')
-  listArvore() {
-    return this.service.listArvore();
+  listArvore(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.listArvore(user.empresaAtivaId);
   }
 
   @ApiOperation({

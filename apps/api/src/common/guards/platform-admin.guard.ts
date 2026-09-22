@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import type { AuthenticatedUser } from '../decorators/current-user.decorator';
 
-/** Separa a administraÃ§Ã£o global da administraÃ§Ã£o de uma empresa. */
+/** Separa a administração global da administração de uma empresa. */
 @Injectable()
 export class PlatformAdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
@@ -15,7 +15,7 @@ export class PlatformAdminGuard implements CanActivate {
       .getRequest<{ user?: AuthenticatedUser }>().user;
     if (!user?.administradorPlataforma) {
       throw new ForbiddenException(
-        'Apenas administradores da plataforma podem alterar o catÃ¡logo global',
+        'Apenas administradores da plataforma podem alterar o catálogo global',
       );
     }
     return true;

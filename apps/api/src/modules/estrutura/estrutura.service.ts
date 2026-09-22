@@ -33,17 +33,22 @@ export class EstruturaService {
 
   // Módulos --------------------------------------------------------
   /**
-   * Árvore que monta o menu lateral: só o que está ativo.
+   * Árvore que monta o menu lateral: o que está ativo **no catálogo** e não foi
+   * desligado **nesta empresa**.
    *
-   * O `ativo` do módulo vale em cascata **na leitura** — desligar o CRM tira do
-   * ar os menus e rotinas dele sem gravar `ativo: false` em cada um, então
-   * religar devolve a configuração exatamente como estava.
+   * São dois liga/desliga com donos diferentes: o do catálogo é global (só
+   * administrador da plataforma) e o da empresa é do administrador dela. Os
+   * dois valem em cascata **na leitura** — desligar o CRM tira do ar os menus e
+   * rotinas dele sem gravar nada neles, então religar devolve a configuração
+   * exatamente como estava.
    *
    * Para administrar a estrutura (e reativar o que foi desligado) existe
    * `listArvore`: aqui o inativo é invisível de propósito.
    */
-  listModulos(): Promise<unknown> {
-    return this.prisma.modulo.findMany({
+  async listModulos(empresaId: string) {
+    const desativados = await this.desativadosDaEmpresa(empresaId);
+
+    const modulos = await this.prisma.modulo.findMany({
       where: { deletedAt: null, ativo: true },
       orderBy: { ordem: 'asc' },
       include: {
@@ -70,14 +75,85 @@ export class EstruturaService {
         },
       },
     });
+
+    // O recorte da empresa é aplicado aqui, e não no `where`: são duas tabelas
+    // pequenas (só as exceções) e a alternativa seria um `NOT EXISTS` repetido
+    // em três níveis do include.
+    return modulos
+      .filter((modulo) => !desativados.modulos.has(modulo.id))
+      .map((modulo) => ({
+        ...modulo,
+        menus: modulo.menus
+          .filter((menu) => !desativados.menus.has(menu.id))
+          .map((menu) => ({
+            ...menu,
+            submenus: menu.submenus.filter((sub) => !desativados.menus.has(sub.id)),
+          })),
+      }));
+  }
+
+  /**
+   * O que esta empresa desligou. Ausência de linha é "ligado", então só as
+   * exceções chegam aqui.
+   *
+   * As duas tabelas têm RLS, daí o `withTenant` — fora dele a policy filtra
+   * tudo e a consulta volta vazia (ver prisma/migrations/README.md).
+   */
+  private async desativadosDaEmpresa(empresaId: string) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const [modulos, menus] = await Promise.all([
+        tx.empresaModulo.findMany({ where: { empresaId, ativo: false } }),
+        tx.empresaMenu.findMany({ where: { empresaId, ativo: false } }),
+      ]);
+      return {
+        modulos: new Set(modulos.map((m) => m.moduloId)),
+        menus: new Set(menus.map((m) => m.menuId)),
+      };
+    });
+  }
+
+  /** Liga ou desliga um módulo só para esta empresa. O catálogo não muda. */
+  async definirModuloDaEmpresa(
+    empresaId: string,
+    moduloId: string,
+    ativo: boolean,
+    actorId: string,
+  ) {
+    await this.ensureExists('modulo', moduloId);
+    return this.prisma.withTenant(empresaId, (tx) =>
+      tx.empresaModulo.upsert({
+        where: { empresaId_moduloId: { empresaId, moduloId } },
+        create: { empresaId, moduloId, ativo, createdBy: actorId, updatedBy: actorId },
+        update: { ativo, updatedBy: actorId },
+      }),
+    );
+  }
+
+  /** Idem, um nível abaixo: a empresa usa o módulo, mas não esta tela dele. */
+  async definirMenuDaEmpresa(
+    empresaId: string,
+    menuId: string,
+    ativo: boolean,
+    actorId: string,
+  ) {
+    await this.ensureMenu(menuId);
+    return this.prisma.withTenant(empresaId, (tx) =>
+      tx.empresaMenu.upsert({
+        where: { empresaId_menuId: { empresaId, menuId } },
+        create: { empresaId, menuId, ativo, createdBy: actorId, updatedBy: actorId },
+        update: { ativo, updatedBy: actorId },
+      }),
+    );
   }
 
   /**
    * Árvore completa para a tela de Estrutura de Menu — **inclui o inativo**,
    * que é justamente o que precisa aparecer para poder ser religado.
    */
-  listArvore(): Promise<unknown> {
-    return this.prisma.modulo.findMany({
+  async listArvore(empresaId: string) {
+    const desativados = await this.desativadosDaEmpresa(empresaId);
+
+    const modulos = await this.prisma.modulo.findMany({
       where: { deletedAt: null },
       orderBy: { ordem: 'asc' },
       include: {
@@ -100,6 +176,22 @@ export class EstruturaService {
         },
       },
     });
+
+    // `ativoNaEmpresa` é o estado do liga/desliga desta empresa; `ativo`
+    // continua sendo o do catálogo global. A tela mostra os dois porque quem
+    // pode mexer em cada um é diferente.
+    return modulos.map((modulo) => ({
+      ...modulo,
+      ativoNaEmpresa: !desativados.modulos.has(modulo.id),
+      menus: modulo.menus.map((menu) => ({
+        ...menu,
+        ativoNaEmpresa: !desativados.menus.has(menu.id),
+        submenus: menu.submenus.map((sub) => ({
+          ...sub,
+          ativoNaEmpresa: !desativados.menus.has(sub.id),
+        })),
+      })),
+    }));
   }
 
   async createModulo(input: ModuloCreate, actorId: string) {

@@ -65,7 +65,7 @@ export class PrismaService
   }
 
   /**
-   * Contexto mÃ­nimo para localizar uma credencial do portal antes de o tenant
+   * Contexto mínimo para localizar uma credencial do portal antes de o tenant
    * estar autenticado. A policy aceita somente a credencial exata informada.
    */
   async withPortalCredential<T>(
@@ -80,7 +80,7 @@ export class PrismaService
     });
   }
 
-  /** Permite inserir apenas o evento de auditoria que estÃ¡ sendo registrado. */
+  /** Permite inserir apenas o evento de auditoria que está sendo registrado. */
   async withPortalAudit<T>(
     email: string,
     empresaId: string | undefined,

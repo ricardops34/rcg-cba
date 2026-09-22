@@ -57,6 +57,16 @@ export const menuSchema = menuCreateSchema.extend({
 });
 export type Menu = z.infer<typeof menuSchema>;
 
+/**
+ * Liga/desliga de um módulo ou menu **na empresa ativa** — o outro lado do
+ * `ativo` do catálogo, que é global. Só `ativo`: qual empresa vem do token, e
+ * qual módulo/menu vem da URL.
+ */
+export const empresaEstruturaToggleSchema = z.object({
+  ativo: z.boolean().describe("Se este módulo/menu fica disponível nesta empresa"),
+});
+export type EmpresaEstruturaToggle = z.infer<typeof empresaEstruturaToggleSchema>;
+
 export const rotinaCreateSchema = z.object({
   menuId: z.string().min(1).describe("Menu ao qual esta rotina pertence"),
   nome: z.string().trim().min(2).max(80).describe("Nome amigável da rotina"),

@@ -32,6 +32,7 @@ import {
   type RotinaCreate,
 } from "@plataforma/contracts";
 import { apiFetch, ApiError } from "@/lib/api-client";
+import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
 import { DynamicIcon } from "@/lib/dynamic-icon";
 import { IconPicker } from "@/components/crud/icon-picker";
@@ -55,8 +56,10 @@ import {
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -81,14 +84,22 @@ import {
   Menu as MenuIcon,
 } from "lucide-react";
 
-/** O menu como a árvore o entrega: com as rotinas e os submenus juntos. */
+/**
+ * O menu como a árvore o entrega: com as rotinas e os submenus juntos.
+ *
+ * `ativo` e `ativoNaEmpresa` são dois liga/desliga distintos — o do catálogo
+ * global (só administrador da plataforma) e o desta empresa (administrador
+ * dela). Basta um deles estar desligado para o item sair do menu.
+ */
 interface MenuArvore extends Menu {
   rotinas: Rotina[];
   submenus: MenuArvore[];
+  ativoNaEmpresa: boolean;
 }
 
 interface ModuloComMenus extends Modulo {
   menus: MenuArvore[];
+  ativoNaEmpresa: boolean;
 }
 
 /** Menu e submenus achatados numa lista só — para contas e para os seletores. */
@@ -98,6 +109,17 @@ function achatarMenus(menus: MenuArvore[]): MenuArvore[] {
 
 export default function EstruturaPage() {
   const qc = useQueryClient();
+
+  /**
+   * O catálogo (criar, renomear, mover, excluir, ligar globalmente) é da
+   * plataforma e vale para **todas** as empresas — a API recusa quem não é
+   * administrador dela. Sem isto aqui, o administrador de uma empresa via os
+   * controles, mexia e recebia "Apenas administradores da plataforma podem
+   * alterar o catálogo global". O que ele pode é ligar e desligar na empresa
+   * dele, e isso continua à mostra.
+   */
+  const podeCatalogo =
+    useAuthStore((state) => state.user?.administradorPlataforma) ?? false;
 
   /**
    * Árvore de administração, não a do menu lateral (`/modulos`): esta inclui o
@@ -263,6 +285,36 @@ export default function EstruturaPage() {
       });
   };
 
+  const toggleModuloEmpresa = useMutation({
+    mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) =>
+      apiFetch(`/estrutura/empresa/modulos/${id}`, { method: "PATCH", body: { ativo } }),
+  });
+  const toggleMenuEmpresa = useMutation({
+    mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) =>
+      apiFetch(`/estrutura/empresa/menus/${id}`, { method: "PATCH", body: { ativo } }),
+  });
+
+  /** Liga/desliga desta empresa — não encosta no catálogo. */
+  const alternarNaEmpresa = (
+    tipo: "modulo" | "menu",
+    id: string,
+    nome: string,
+    ativo: boolean,
+  ) => {
+    const mutation = tipo === "modulo" ? toggleModuloEmpresa : toggleMenuEmpresa;
+    return mutation
+      .mutateAsync({ id, ativo })
+      .then(() => {
+        invalidate();
+        toast.success(
+          ativo ? `"${nome}" ligado nesta empresa` : `"${nome}" desligado nesta empresa`,
+        );
+      })
+      .catch((err: unknown) =>
+        toast.error(err instanceof ApiError ? err.message : "Erro ao alterar o estado"),
+      );
+  };
+
   const alternarAtivo = (
     tipo: "modulo" | "menu" | "rotina",
     id: string,
@@ -307,15 +359,26 @@ export default function EstruturaPage() {
               <Badge variant="outline" className="text-xs">Navegação & RBAC</Badge>
             </div>
             <p className="text-xs text-muted-foreground">
-              Módulos agrupam menus e rotinas de permissão do sistema. Arraste (⋮⋮) para reordenar ou
-              para levar um menu de um módulo a outro.
+              {podeCatalogo
+                ? "Módulos agrupam menus e rotinas de permissão do sistema. Arraste (⋮⋮) para reordenar ou para levar um menu de um módulo a outro."
+                : "Ligue ou desligue aqui os módulos e as telas que esta empresa usa."}
             </p>
           </div>
         </div>
-        <Button onClick={() => setModuloDialog({ editing: null })} className="gap-2 shadow-xs">
-          <Plus className="size-4" /> Novo módulo
-        </Button>
+        {podeCatalogo && (
+          <Button onClick={() => setModuloDialog({ editing: null })} className="gap-2 shadow-xs">
+            <Plus className="size-4" /> Novo módulo
+          </Button>
+        )}
       </div>
+
+      {!podeCatalogo && (
+        <p className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+          O <strong>catálogo</strong> (criar, renomear, mover e excluir módulos, menus e rotinas) é
+          da plataforma e vale para todos os clientes, por isso não aparece aqui. O que você liga e
+          desliga nesta tela vale <strong>só para esta empresa</strong>.
+        </p>
+      )}
 
       {/* KPI Cards */}
       <div className="grid gap-3 sm:grid-cols-3">
@@ -378,6 +441,13 @@ export default function EstruturaPage() {
               <ModuloRow
                 key={modulo.id}
                 modulo={modulo}
+                podeCatalogo={podeCatalogo}
+                onToggleEmpresaModulo={(value) =>
+                  alternarNaEmpresa("modulo", modulo.id, modulo.nome, value)
+                }
+                onToggleEmpresaMenu={(menu, value) =>
+                  alternarNaEmpresa("menu", menu.id, menu.nome, value)
+                }
                 onEditModulo={() => setModuloDialog({ editing: modulo })}
                 onToggleAtivoModulo={(value) =>
                   alternarAtivo("modulo", modulo.id, modulo.nome, value)
@@ -491,6 +561,9 @@ export default function EstruturaPage() {
 
 function ModuloRow({
   modulo,
+  podeCatalogo,
+  onToggleEmpresaModulo,
+  onToggleEmpresaMenu,
   onEditModulo,
   onToggleAtivoModulo,
   onToggleTelaPequenaModulo,
@@ -508,6 +581,9 @@ function ModuloRow({
   onDeleteRotina,
 }: {
   modulo: ModuloComMenus;
+  podeCatalogo: boolean;
+  onToggleEmpresaModulo: (value: boolean) => void;
+  onToggleEmpresaMenu: (menu: MenuArvore, value: boolean) => void;
   onEditModulo: () => void;
   onToggleAtivoModulo: (value: boolean) => void;
   onToggleTelaPequenaModulo: (value: boolean) => void;
@@ -539,14 +615,18 @@ function ModuloRow({
       data-desligado={!modulo.ativo || undefined}
     >
       <div className="flex items-center gap-1 px-2 py-3 data-[dragging]:opacity-50">
-        <button
-          type="button"
-          className="cursor-grab touch-none rounded p-1.5 text-muted-foreground hover:bg-muted active:cursor-grabbing"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="size-4" />
-        </button>
+        {podeCatalogo ? (
+          <button
+            type="button"
+            className="cursor-grab touch-none rounded p-1.5 text-muted-foreground hover:bg-muted active:cursor-grabbing"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="size-4" />
+          </button>
+        ) : (
+          <span className="w-7" />
+        )}
 
         <CollapsibleTrigger asChild>
           <button className="group flex flex-1 items-center gap-3 text-left">
@@ -573,48 +653,66 @@ function ModuloRow({
         <div className="flex shrink-0 items-center gap-2">
           {!modulo.ativo && (
             <Badge variant="secondary" className="hidden sm:inline-flex">
-              Módulo desligado
+              Desligado na plataforma
             </Badge>
           )}
+          {/* O switch da linha é o da EMPRESA: é a decisão do dia a dia, e a
+              única que o administrador de empresa pode tomar. O liga/desliga
+              global fica escrito por extenso no menu "…". */}
           <SwitchDeLinha
             rotulo="Ativo"
-            checked={modulo.ativo}
-            label={`Ligar ou desligar o módulo ${modulo.nome} inteiro`}
-            onCheckedChange={onToggleAtivoModulo}
+            checked={modulo.ativoNaEmpresa}
+            label={`Ligar ou desligar o módulo ${modulo.nome} nesta empresa`}
+            onCheckedChange={onToggleEmpresaModulo}
           />
-          <SwitchDeLinha
-            rotulo="Tela pequena"
-            checked={modulo.disponivelTelaPequena}
-            label={`Disponibilidade de ${modulo.nome} em telas pequenas`}
-            onCheckedChange={onToggleTelaPequenaModulo}
-          />
-          <Button variant="outline" size="sm" onClick={onCreateMenu}>
-            <Plus className="size-3.5" />
-            Menu
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-8">
-                <MoreHorizontal className="size-4" />
+          {podeCatalogo && (
+            <>
+              <Button variant="outline" size="sm" onClick={onCreateMenu}>
+                <Plus className="size-3.5" />
+                Menu
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onEditModulo}>
-                <Pencil className="size-4" /> Editar módulo
-              </DropdownMenuItem>
-              <DropdownMenuItem variant="destructive" onClick={onDeleteModulo}>
-                <Trash2 className="size-4" /> Excluir módulo
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="size-8">
+                    <MoreHorizontal className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={onEditModulo}>
+                    <Pencil className="size-4" /> Editar módulo
+                  </DropdownMenuItem>
+                  <DropdownMenuCheckboxItem
+                    checked={modulo.ativo}
+                    onCheckedChange={onToggleAtivoModulo}
+                    onSelect={(event) => event.preventDefault()}
+                  >
+                    Ativo na plataforma inteira
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={modulo.disponivelTelaPequena}
+                    onCheckedChange={onToggleTelaPequenaModulo}
+                    onSelect={(event) => event.preventDefault()}
+                  >
+                    Disponível no celular
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive" onClick={onDeleteModulo}>
+                    <Trash2 className="size-4" /> Excluir módulo
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          )}
         </div>
       </div>
 
-      {!modulo.ativo && (
+      {(!modulo.ativo || !modulo.ativoNaEmpresa) && (
         <p className="border-t border-border/60 bg-muted/40 px-4 py-2 pl-14 text-xs text-muted-foreground">
-          Com o módulo desligado, os menus e rotinas abaixo saem do menu lateral e a API recusa o
-          acesso a eles — sem perder nada do que está configurado aqui. Religue para voltar ao que
-          era.
+          {!modulo.ativo
+            ? "Desligado no catálogo da plataforma: some para todas as empresas."
+            : "Desligado nesta empresa."}{" "}
+          Os menus e rotinas abaixo saem do menu lateral e a API recusa o acesso a eles — sem perder
+          nada do que está configurado aqui. Religue para voltar ao que era.
         </p>
       )}
 
@@ -776,12 +874,6 @@ function MenuRow({
             label={`Ligar ou desligar o menu ${menu.nome}`}
             onCheckedChange={onToggleAtivo}
           />
-          <SwitchDeLinha
-            rotulo="Tela pequena"
-            checked={menu.disponivelTelaPequena}
-            label={`Disponibilidade de ${menu.nome} em telas pequenas`}
-            onCheckedChange={onToggleTelaPequena}
-          />
           <Button variant="ghost" size="sm" onClick={onCreateRotina}>
             <Plus className="size-3.5" />
             Rotina
@@ -801,6 +893,14 @@ function MenuRow({
                   <CornerDownRight className="size-4" /> Novo submenu
                 </DropdownMenuItem>
               )}
+              <DropdownMenuCheckboxItem
+                checked={menu.disponivelTelaPequena}
+                onCheckedChange={onToggleTelaPequena}
+                onSelect={(event) => event.preventDefault()}
+              >
+                Disponível no celular
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onClick={onDelete}>
                 <Trash2 className="size-4" /> Excluir menu
               </DropdownMenuItem>
@@ -885,12 +985,6 @@ function RotinaRow({
           label={`Ligar ou desligar a rotina ${rotina.nome}`}
           onCheckedChange={onToggleAtivo}
         />
-        <SwitchDeLinha
-          rotulo="Tela pequena"
-          checked={rotina.disponivelTelaPequena}
-          label={`Disponibilidade de ${rotina.nome} em telas pequenas`}
-          onCheckedChange={onToggleTelaPequena}
-        />
         <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" className="size-7">
@@ -901,6 +995,14 @@ function RotinaRow({
           <DropdownMenuItem onClick={onEdit}>
             <Pencil className="size-4" /> Editar / mover
           </DropdownMenuItem>
+          <DropdownMenuCheckboxItem
+            checked={rotina.disponivelTelaPequena}
+            onCheckedChange={onToggleTelaPequena}
+            onSelect={(event) => event.preventDefault()}
+          >
+            Disponível no celular
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onClick={onDelete}>
             <Trash2 className="size-4" /> Excluir
           </DropdownMenuItem>
@@ -912,9 +1014,13 @@ function RotinaRow({
 }
 
 /**
- * Switch de linha, usado tanto para "Ativo" quanto para "Tela pequena". O
- * rótulo só aparece em telas largas — abaixo disso ficam dois switches lado a
- * lado, e é o `title`/`aria-label` que diz qual é qual.
+ * O switch de ligar/desligar da linha — **um só**, e sempre com o rótulo à
+ * vista.
+ *
+ * Eram dois switches lado a lado (ativo e "tela pequena"), com o texto escondido
+ * abaixo de `2xl`: na largura em que a tela costuma ser usada, viravam dois
+ * controles idênticos e mudos. O que é raro de mexer (disponibilidade no
+ * celular) foi para o menu "…" da linha, escrito por extenso.
  */
 function SwitchDeLinha({
   rotulo,
@@ -933,7 +1039,7 @@ function SwitchDeLinha({
       title={label}
       onClick={(event) => event.stopPropagation()}
     >
-      <span className="hidden 2xl:inline">{rotulo}</span>
+      <span>{rotulo}</span>
       <Switch checked={checked} onCheckedChange={onCheckedChange} aria-label={label} />
     </label>
   );

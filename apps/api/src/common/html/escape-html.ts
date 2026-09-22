@@ -1,4 +1,4 @@
-/** Escapa texto nÃ£o confiÃ¡vel antes de interpolÃ¡-lo em HTML. */
+/** Escapa texto não confiável antes de interpolá-lo em HTML. */
 export function escapeHtml(valor: string): string {
   return valor.replace(/[&<>'"]/g, (caractere) => {
     const entidades: Record<string, string> = {
