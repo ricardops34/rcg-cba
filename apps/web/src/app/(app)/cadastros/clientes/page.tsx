@@ -213,136 +213,136 @@ export default function ClientesPage() {
         isRefreshing={isFetching}
         onCreate={() => router.push("/cadastros/clientes/novo")}
         createLabel="Novo cliente"
-      />
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <StatusQuickFilter
-          value={status}
-          onChange={(v) => {
-            setStatus(v);
-            setPage(1);
-          }}
-        />
-        <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
-          <div className="space-y-2">
-            <FieldLabel>Tipo de pessoa</FieldLabel>
-            <Select
-              value={tipoPessoa}
-              onValueChange={(v) => {
-                setTipoPessoa(v as TipoPessoaFiltro);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="juridica">Jurídica</SelectItem>
-                <SelectItem value="fisica">Física</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <FieldLabel>UF</FieldLabel>
-            <Select
-              value={uf ?? "todas"}
-              onValueChange={(v) => {
-                setUf(v === "todas" ? undefined : v);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Todas" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todas">Todas</SelectItem>
-                {opcoesUf.map((o) => (
-                  <SelectItem key={o.uf} value={o.uf}>
-                    {o.uf} ({o.total})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Município e CNAE entram como texto: são muitas opções para um
-              select, e o caso de uso é o link que já vem com o valor pronto
-              (do assistente ou de um favorito). Digitados à mão funcionam
-              igual — município é o nome inteiro, CNAE é prefixo do código. */}
-          <div className="space-y-2">
-            <FieldLabel>Município</FieldLabel>
-            <Input
-              value={municipio ?? ""}
-              placeholder="Nome do município"
-              onChange={(e) => {
-                setMunicipio(e.target.value || undefined);
-                setPage(1);
-              }}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <FieldLabel>Ramo (CNAE)</FieldLabel>
-            <Input
-              value={cnae ?? ""}
-              placeholder="2 a 7 dígitos, ex.: 5611"
-              inputMode="numeric"
-              onChange={(e) => {
-                const so = e.target.value.replace(/\D/g, "").slice(0, 7);
-                setCnae(so || undefined);
-                setPage(1);
-              }}
-            />
-          </div>
-
-          {mostrarFiltroVendedor && (
+        actions={
+          <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
             <div className="space-y-2">
-              <FieldLabel>Vendedor</FieldLabel>
+              <FieldLabel>Tipo de pessoa</FieldLabel>
               <Select
-                value={vendedorId ?? "none"}
+                value={tipoPessoa}
                 onValueChange={(v) => {
-                  setVendedorId(v === "none" ? undefined : v);
+                  setTipoPessoa(v as TipoPessoaFiltro);
                   setPage(1);
                 }}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Qualquer" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Qualquer</SelectItem>
-                  {opcoesVendedor.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {vendedorFiltroLabel(v)}
+                  <SelectItem value="todos">Todos</SelectItem>
+                  <SelectItem value="juridica">Jurídica</SelectItem>
+                  <SelectItem value="fisica">Física</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <FieldLabel>UF</FieldLabel>
+              <Select
+                value={uf ?? "todas"}
+                onValueChange={(v) => {
+                  setUf(v === "todas" ? undefined : v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Todas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas</SelectItem>
+                  {opcoesUf.map((o) => (
+                    <SelectItem key={o.uf} value={o.uf}>
+                      {o.uf} ({o.total})
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-          )}
 
-          <div className="space-y-2">
-            <FieldLabel>Cliente de carteira</FieldLabel>
-            <Select
-              value={carteira}
-              onValueChange={(v) => {
-                setCarteira(v as SimNaoTodos);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="sim">Sim</SelectItem>
-                <SelectItem value="nao">Não</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </FiltersPopover>
-      </div>
+            {/* Município e CNAE entram como texto: são muitas opções para um
+                select, e o caso de uso é o link que já vem com o valor pronto
+                (do assistente ou de um favorito). Digitados à mão funcionam
+                igual — município é o nome inteiro, CNAE é prefixo do código. */}
+            <div className="space-y-2">
+              <FieldLabel>Município</FieldLabel>
+              <Input
+                value={municipio ?? ""}
+                placeholder="Nome do município"
+                onChange={(e) => {
+                  setMunicipio(e.target.value || undefined);
+                  setPage(1);
+                }}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <FieldLabel>Ramo (CNAE)</FieldLabel>
+              <Input
+                value={cnae ?? ""}
+                placeholder="2 a 7 dígitos, ex.: 5611"
+                inputMode="numeric"
+                onChange={(e) => {
+                  const so = e.target.value.replace(/\D/g, "").slice(0, 7);
+                  setCnae(so || undefined);
+                  setPage(1);
+                }}
+              />
+            </div>
+
+            {mostrarFiltroVendedor && (
+              <div className="space-y-2">
+                <FieldLabel>Vendedor</FieldLabel>
+                <Select
+                  value={vendedorId ?? "none"}
+                  onValueChange={(v) => {
+                    setVendedorId(v === "none" ? undefined : v);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Qualquer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Qualquer</SelectItem>
+                    {opcoesVendedor.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {vendedorFiltroLabel(v)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <FieldLabel>Cliente de carteira</FieldLabel>
+              <Select
+                value={carteira}
+                onValueChange={(v) => {
+                  setCarteira(v as SimNaoTodos);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  <SelectItem value="sim">Sim</SelectItem>
+                  <SelectItem value="nao">Não</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </FiltersPopover>
+        }
+      />
+
+      <StatusQuickFilter
+        value={status}
+        onChange={(v) => {
+          setStatus(v);
+          setPage(1);
+        }}
+      />
 
       <EntityTable
         columns={columns}

@@ -142,61 +142,61 @@ export default function CategoriasPage() {
         }}
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
+        actions={
+          <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+            <div className="space-y-2">
+              <FieldLabel>Nível</FieldLabel>
+              <Select
+                value={nivel}
+                onValueChange={(v) => {
+                  setNivel(v as "todos" | "raiz" | "sub");
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todas</SelectItem>
+                  <SelectItem value="raiz">Categoria</SelectItem>
+                  <SelectItem value="sub">Subcategoria</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <FieldLabel>Categoria pai</FieldLabel>
+              <Select
+                value={categoriaPaiId ?? "none"}
+                onValueChange={(v) => {
+                  setCategoriaPaiId(v === "none" ? undefined : v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Qualquer" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Qualquer</SelectItem>
+                  {(raizesQuery.data?.data ?? []).map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.descricao}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </FiltersPopover>
+        }
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <StatusQuickFilter
-          value={status}
-          onChange={(v) => {
-            setStatus(v);
-            setPage(1);
-          }}
-        />
-        <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
-          <div className="space-y-2">
-            <FieldLabel>Nível</FieldLabel>
-            <Select
-              value={nivel}
-              onValueChange={(v) => {
-                setNivel(v as "todos" | "raiz" | "sub");
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todas</SelectItem>
-                <SelectItem value="raiz">Categoria</SelectItem>
-                <SelectItem value="sub">Subcategoria</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <FieldLabel>Categoria pai</FieldLabel>
-            <Select
-              value={categoriaPaiId ?? "none"}
-              onValueChange={(v) => {
-                setCategoriaPaiId(v === "none" ? undefined : v);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Qualquer" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Qualquer</SelectItem>
-                {(raizesQuery.data?.data ?? []).map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.descricao}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </FiltersPopover>
-      </div>
+      <StatusQuickFilter
+        value={status}
+        onChange={(v) => {
+          setStatus(v);
+          setPage(1);
+        }}
+      />
 
       <EntityTable
         columns={columns}

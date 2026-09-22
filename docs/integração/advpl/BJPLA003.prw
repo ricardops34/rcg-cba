@@ -1121,6 +1121,8 @@ Vendedores - SA3.
 User Function BJMAPVND(cMarca, cChave, cMarcaFim)
 
 	Local aRet    := {}
+	Local aSuper  := {}
+	Local cChvSup := ""
 	Local cCod    := ""
 	Local cAlias  := ""
 	Local cQuery  := ""
@@ -1131,8 +1133,13 @@ User Function BJMAPVND(cMarca, cChave, cMarcaFim)
 	Local lBloq   := .F.
 	Local lComis  := SA3->(FieldPos("A3_COMIS"))   > 0
 	Local lSuper  := SA3->(FieldPos("A3_SUPER"))   > 0
-	Local lTpVend := SA3->(FieldPos("A3_TIPVEND")) > 0
+	Local lGeren  := SA3->(FieldPos("A3_GEREN"))   > 0
 	Local lCel    := SA3->(FieldPos("A3_CEL"))     > 0
+	Local aGerent := {}
+	Local aSuperv := {}
+	Local lEhGer  := .F.
+	Local lEhSup  := .F.
+	Local cSupOri := ""
 
 	Default cMarca    := ""
 	Default cChave    := ""
@@ -1146,8 +1153,8 @@ User Function BJMAPVND(cMarca, cChave, cMarcaFim)
 	If lSuper
 		cQuery += ", A3_SUPER "
 	EndIf
-	If lTpVend
-		cQuery += ", A3_TIPVEND "
+	If lGeren
+		cQuery += ", A3_GEREN "
 	EndIf
 	If lCel
 		cQuery += ", A3_CEL "
@@ -1175,15 +1182,7 @@ User Function BJMAPVND(cMarca, cChave, cMarcaFim)
 		cQuery += "   AND SA3.S_T_A_M_P_ <= '" + cMarcaFim + "' "
 	EndIf
 
-	// Supervisor e vendedor tambem: a SA3 aponta para ela mesma, e a API recusa
-	// referencia a registro que ainda nao subiu. Quem nao tem supervisor vai
-	// primeiro (A3_SUPER em branco ordena antes), entao o supervisor ja existe
-	// na plataforma quando o vendedor dele chega.
-	If lSuper
-		cQuery += " ORDER BY A3_SUPER, A3_COD "
-	Else
-		cQuery += " ORDER BY A3_COD "
-	EndIf
+	cQuery += " ORDER BY A3_COD "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, " ")
@@ -1200,6 +1199,18 @@ User Function BJMAPVND(cMarca, cChave, cMarcaFim)
 
 		oStmt:SetString(3, PadR(cCod, TamSX3("A3_COD")[1]))
 	EndIf
+
+	// Quem e gerente e quem e supervisor sai do proprio cadastro: gerente e o
+	// codigo que aparece em algum A3_GEREN, supervisor o que aparece em algum
+	// A3_SUPER, e o resto e vendedor. Duas consultas curtas, antes da principal,
+	// porque o papel de uma linha depende do que as outras apontam.
+	aGerent := BJCodsRef("A3_GEREN", lGeren)
+	aSuperv := BJCodsRef("A3_SUPER", lSuper)
+
+	// A SA3 fica posicionavel por codigo: o superior de um vendedor e outro
+	// vendedor, e cada linha confere se ele existe antes de mandar a referencia.
+	dbSelectArea("SA3")
+	SA3->(dbSetOrder(1))
 
 	cAlias := oStmt:OpenAlias()
 
@@ -1244,21 +1255,42 @@ User Function BJMAPVND(cMarca, cChave, cMarcaFim)
 			oJson["percComissao"] := (cAlias)->A3_COMIS
 		EndIf
 
-		// A3_SUPER preenchido = este vendedor responde a um supervisor
-		If lSuper .And. !Empty((cAlias)->A3_SUPER)
-			oJson["supervisorChave"]  := FWxFilial("SA3") + "-" + (cAlias)->A3_SUPER
-		Else
-			oJson["supervisorChave"]  := Nil
+		// O papel decide a quem a linha responde: gerente nao responde a ninguem,
+		// supervisor responde ao gerente dele (A3_GEREN) e vendedor ao supervisor
+		// dele (A3_SUPER). A plataforma guarda um superior so, e trata gerente e
+		// supervisor como o mesmo papel - superior.
+		lEhGer  := aScan(aGerent, {|c| c == AllTrim((cAlias)->A3_COD)}) > 0
+		lEhSup  := !lEhGer .And. aScan(aSuperv, {|c| c == AllTrim((cAlias)->A3_COD)}) > 0
+		cSupOri := ""
+
+		If lEhGer
+			cSupOri := ""
+		ElseIf lEhSup .And. lGeren
+			cSupOri := (cAlias)->A3_GEREN
+		ElseIf !lEhSup .And. lSuper
+			cSupOri := (cAlias)->A3_SUPER
 		EndIf
 
-		// A3_TIPVEND distingue vendedor de supervisor no dicionario padrao
-		If lTpVend
-			oJson["supervisor"] := (AllTrim((cAlias)->A3_TIPVEND) == "S")
-			oJson["vendedor"]   := !(AllTrim((cAlias)->A3_TIPVEND) == "S")
-		Else
-			oJson["supervisor"] := .F.
-			oJson["vendedor"]   := .T.
+		cChvSup := ""
+		oJson["supervisorChave"] := Nil
+
+		// Autorreferencia (o campo aponta para o proprio codigo) acontece no
+		// cadastro e nao quer dizer nada: mandar assim exigiria que a linha ja
+		// existisse na plataforma para poder ser criada.
+		If !Empty(cSupOri) .And. !(AllTrim(cSupOri) == AllTrim((cAlias)->A3_COD))
+
+			If SA3->(dbSeek(xFilial("SA3") + PadR(cSupOri, TamSX3("A3_COD")[1]))) .And. !SA3->(Deleted())
+				cChvSup := FWxFilial("SA3") + "-" + cSupOri
+				oJson["supervisorChave"] := cChvSup
+			Else
+				FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Vendedor " + AllTrim((cAlias)->A3_COD) + ;
+					" responde ao codigo " + AllTrim(cSupOri) + ", que nao existe (ou esta excluido) na SA3. Sobe sem superior.", 0, 0, {})
+			EndIf
 		EndIf
+
+		// Gerente e supervisor entram como superior; o resto, como vendedor.
+		oJson["supervisor"] := (lEhGer .Or. lEhSup)
+		oJson["vendedor"]   := !(lEhGer .Or. lEhSup)
 
 		cVerbo := "POST"
 		If (cAlias)->DELETADO == "*"
@@ -1266,6 +1298,7 @@ User Function BJMAPVND(cMarca, cChave, cMarcaFim)
 		EndIf
 
 		aAdd(aRet, {oJson["chave"], oJson, cVerbo})
+		aAdd(aSuper, cChvSup)
 
 		(cAlias)->(dbSkip())
 	End
@@ -1273,7 +1306,122 @@ User Function BJMAPVND(cMarca, cChave, cMarcaFim)
 	(cAlias)->(dbCloseArea())
 	oStmt:Destroy()
 
+	aRet := BJOrdSup(aRet, aSuper)
+
 Return aRet
+
+/*/{Protheus.doc} BJCodsRef
+Codigos que aparecem num campo de chefia da SA3, sem repetir.
+Gerente e supervisor nao sao marcados no cadastro: quem esta em algum
+A3_GEREN e gerente, quem esta em algum A3_SUPER e supervisor, e o resto e
+vendedor. A consulta e a propria definicao do papel.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   22/09/2026
+@param   cCampo, character, "A3_GEREN" ou "A3_SUPER"
+@param   lTem  , logical  , .F. quando o campo nao existe no dicionario
+@return  array, Codigos ja com AllTrim
+/*/
+Static Function BJCodsRef(cCampo, lTem)
+
+	Local aRet   := {}
+	Local cQuery := ""
+	Local cAlias := ""
+	Local oStmt  := Nil
+
+	Default cCampo := ""
+	Default lTem   := .F.
+
+	If !lTem
+		Return {}
+	EndIf
+
+	cQuery := "SELECT DISTINCT " + cCampo + " AS CHEFIA "
+	cQuery += "  FROM " + RetSQLName("SA3") + " SA3 "
+	cQuery += " WHERE SA3.D_E_L_E_T_ = ' ' "
+	cQuery += "   AND SA3.A3_FILIAL  = ? "
+	cQuery += "   AND " + cCampo + " <> ? "
+
+	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
+	oStmt:SetString(1, FWxFilial("SA3"))
+	oStmt:SetString(2, " ")
+
+	cAlias := oStmt:OpenAlias()
+
+	While (cAlias)->(!Eof())
+		aAdd(aRet, AllTrim((cAlias)->CHEFIA))
+		(cAlias)->(dbSkip())
+	End
+
+	(cAlias)->(dbCloseArea())
+	oStmt:Destroy()
+
+Return aRet
+
+/*/{Protheus.doc} BJOrdSup
+Poe os vendedores na ordem em que a API aceita: o supervisor antes de quem
+responde a ele.
+A SA3 aponta para ela mesma, e a hierarquia tem mais de um nivel (gerente,
+supervisor, vendedor), entao nenhuma ordenacao de SQL resolve: ordenar por
+A3_SUPER acerta um nivel e erra o seguinte. Aqui cada volta emite quem ja pode
+ir - sem supervisor, supervisor fora deste lote (ja esta na plataforma) ou
+supervisor ja emitido - ate ninguem mais poder. O que sobrar e ciclo no
+cadastro; vai como veio, e a API recusa so esses.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   22/09/2026
+@param   aRet  , array, {chave, oJson, cVerbo} de cada vendedor
+@param   aSuper, array, Chave do supervisor de cada vendedor, na mesma ordem
+@return  array, aRet reordenado
+/*/
+Static Function BJOrdSup(aRet, aSuper)
+
+	Local aOrd   := {}
+	Local aFeito := {}
+	Local aFalta := {}
+	Local aResta := {}
+	Local lMudou := .T.
+	Local nX     := 0
+	Local cSup   := ""
+
+	For nX := 1 To Len(aRet)
+		aAdd(aFalta, nX)
+	Next nX
+
+	While lMudou .And. Len(aFalta) > 0
+
+		lMudou := .F.
+		aResta := {}
+
+		For nX := 1 To Len(aFalta)
+
+			cSup := AllTrim(aSuper[aFalta[nX]])
+
+			If Empty(cSup) .Or. cSup == AllTrim(aRet[aFalta[nX]][1]) .Or. ;
+				aScan(aFeito, {|c| c == cSup}) > 0 .Or. ;
+				aScan(aRet, {|x| AllTrim(x[1]) == cSup}) == 0
+
+				aAdd(aOrd, aRet[aFalta[nX]])
+				aAdd(aFeito, AllTrim(aRet[aFalta[nX]][1]))
+				lMudou := .T.
+
+			Else
+				aAdd(aResta, aFalta[nX])
+			EndIf
+
+		Next nX
+
+		aFalta := aResta
+
+	End
+
+	For nX := 1 To Len(aFalta)
+		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Vendedor " + AllTrim(aRet[aFalta[nX]][1]) + ;
+			" esta num ciclo de supervisao na SA3. Enviado assim mesmo.", 0, 0, {})
+		aAdd(aOrd, aRet[aFalta[nX]])
+	Next nX
+
+Return aOrd
 
 /*/{Protheus.doc} BJMAPCLI
 Clientes - SA1.

@@ -13,10 +13,10 @@ import {
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Card, CardContent } from "@/components/ui/card";
+import { CrudHeader } from "@/components/crud/crud-header";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -157,7 +157,7 @@ export default function ClientesAlteracoesPage() {
     });
 
   const chave = ["clientes-alteracoes", status, busca];
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching, refetch, error } = useQuery({
     queryKey: chave,
     queryFn: () =>
       apiFetch<Pagina<ClienteAlteracao>>("/clientes-alteracoes", {
@@ -208,39 +208,47 @@ export default function ClientesAlteracoesPage() {
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardContent className="flex flex-wrap items-end gap-3 pt-6">
-          <Tabs value={status} onValueChange={(v) => setStatus(v as StatusAlteracaoCliente)}>
-            <TabsList>
-              <TabsTrigger value="pendente">Pendentes</TabsTrigger>
-              <TabsTrigger value="aprovada">Aprovadas</TabsTrigger>
-              <TabsTrigger value="rejeitada">Recusadas</TabsTrigger>
-            </TabsList>
-          </Tabs>
-          <Input
-            className="w-full sm:w-72"
-            placeholder="Buscar pela razão social..."
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-          />
-        </CardContent>
-      </Card>
+      <CrudHeader
+        search={busca}
+        onSearchChange={setBusca}
+        placeholder="Buscar pela razão social..."
+        onRefresh={() => refetch()}
+        isRefreshing={isFetching}
+      />
+      <Tabs value={status} onValueChange={(v) => setStatus(v as StatusAlteracaoCliente)}>
+        <TabsList>
+          <TabsTrigger value="pendente">Pendentes</TabsTrigger>
+          <TabsTrigger value="aprovada">Aprovadas</TabsTrigger>
+          <TabsTrigger value="rejeitada">Recusadas</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
-      {isLoading ? (
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {error instanceof ApiError ? error.message : "Não foi possível carregar as alterações."}
+        </p>
+      ) : isLoading ? (
         <p className="text-sm text-muted-foreground">Carregando...</p>
       ) : linhas.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
+        <p className="py-6 text-sm text-muted-foreground">
             {status === "pendente"
               ? "Nenhuma alteração aguardando aprovação."
               : "Nada aqui."}
-          </CardContent>
-        </Card>
+        </p>
       ) : (
-        <div className="space-y-3">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Cliente</TableHead>
+              <TableHead>Alterações</TableHead>
+              <TableHead>Histórico</TableHead>
+              <TableHead className="text-right">Ações</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
           {linhas.map((linha) => (
-            <Card key={linha.id}>
-              <CardContent className="space-y-3 pt-6">
+            <TableRow key={linha.id}>
+              <TableCell className="align-top whitespace-normal">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">
                     {linha.clienteRazaoSocial ?? "Cliente"}
@@ -256,6 +264,8 @@ export default function ClientesAlteracoesPage() {
                   </Badge>
                 </div>
 
+              </TableCell>
+              <TableCell className="min-w-80 align-top whitespace-normal">
                 <DiffCampos
                   alteracoes={linha.alteracoes}
                   {...(linha.status === "pendente" && podeAprovar
@@ -267,6 +277,8 @@ export default function ClientesAlteracoesPage() {
                     : {})}
                 />
 
+              </TableCell>
+              <TableCell className="min-w-48 space-y-2 align-top whitespace-normal">
                 <p className="text-xs text-muted-foreground">
                   Solicitado por {linha.solicitadoPorNome ?? "—"} em{" "}
                   {dataHora(linha.solicitadoEm)}
@@ -284,6 +296,8 @@ export default function ClientesAlteracoesPage() {
                   </p>
                 )}
 
+              </TableCell>
+              <TableCell className="align-top whitespace-normal">
                 {linha.status === "pendente" && podeAprovar && (
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     {marcadosDe(linha).length < camposDe(linha).length && (
@@ -321,10 +335,11 @@ export default function ClientesAlteracoesPage() {
                     </Button>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </TableCell>
+            </TableRow>
           ))}
-        </div>
+          </TableBody>
+        </Table>
       )}
 
       <Dialog open={!!recusando} onOpenChange={(open) => !open && setRecusando(null)}>

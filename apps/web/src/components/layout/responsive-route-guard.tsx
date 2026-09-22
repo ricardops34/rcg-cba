@@ -13,7 +13,14 @@ export function ResponsiveRouteGuard({ children }: { children: React.ReactNode }
   const isMobile = useIsMobile();
   const { data: modulos } = useMenu();
   const entradaAtual = modulos
-    ?.flatMap((modulo) => modulo.menus.map((menu) => ({ modulo, menu })))
+    ?.flatMap((modulo) =>
+      modulo.menus.flatMap((menu) => [
+        { modulo, menu },
+        // O submenu tem a sua própria marcação de tela pequena — é a tela dele
+        // que está aberta, não a do pai.
+        ...(menu.submenus ?? []).map((submenu) => ({ modulo, menu: submenu })),
+      ]),
+    )
     .find(({ menu }) =>
       menu.rota && (pathname === menu.rota || pathname.startsWith(`${menu.rota}/`)),
     );

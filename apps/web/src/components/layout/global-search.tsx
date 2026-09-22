@@ -50,16 +50,26 @@ export function GlobalSearch({ open, onOpenChange }: { open: boolean; onOpenChan
         {modulos?.filter((modulo) => !isMobile || modulo.disponivelTelaPequena).map((modulo) => (
           <CommandGroup key={modulo.id} heading={modulo.nome}>
             {modulo.menus
+              // Submenu vira uma linha própria, com o nome do pai à frente:
+              // aqui se busca pelo nome da tela, não se navega pela árvore.
+              .flatMap((menu) => [
+                { menu, rotulo: menu.nome },
+                ...(menu.submenus ?? []).map((sub) => ({
+                  menu: sub,
+                  rotulo: `${menu.nome} › ${sub.nome}`,
+                })),
+              ])
               .filter(
-                (menu) =>
-                  !isMobile ||
-                  (menu.disponivelTelaPequena &&
-                    menu.rotinas.some((rotina) => rotina.disponivelTelaPequena)),
+                ({ menu }) =>
+                  menu.rota &&
+                  (!isMobile ||
+                    (menu.disponivelTelaPequena &&
+                      menu.rotinas.some((rotina) => rotina.disponivelTelaPequena))),
               )
-              .map((menu) => (
+              .map(({ menu, rotulo }) => (
               <CommandItem key={menu.id} onSelect={() => go(menu.rota ?? "#")}>
                 <DynamicIcon name={menu.icone} />
-                {menu.nome}
+                {rotulo}
               </CommandItem>
               ))}
           </CommandGroup>

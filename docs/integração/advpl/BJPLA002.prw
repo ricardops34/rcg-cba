@@ -216,13 +216,6 @@ User Function BJHTTP(cVerbo, cRota, cBody, cResp, nHttp, cErro)
 
 		EndIf
 
-		// TEMPORARIO - diagnostico do 404. Remover junto com as outras linhas marcadas.
-		ConOut("[BJHTTP] " + DtoC(Date()) + " " + Time() + " tentativa " + cValToChar(nTent) + "/" + cValToChar(nMaxTent))   // TEMPORARIO
-		ConOut("[BJHTTP] " + cVerbo + " " + cUrlBase + cRota)   // TEMPORARIO
-		ConOut("[BJHTTP] base=[" + cUrlBase + "] rota=[" + cRota + "] chave=" + cValToChar(Len(cChvApi)) + " caracteres")   // TEMPORARIO
-		ConOut("[BJHTTP] body=" + Left(cBody, 500))   // TEMPORARIO
-		ConOut("[BJHTTP] HTTP " + cValToChar(nHttp) + " ok=" + cValToChar(lRet) + " resp=" + Left(cResp, 500))   // TEMPORARIO
-
 		If lRet
 
 			lSegue := .F.
@@ -704,11 +697,12 @@ Apaga mensagens executadas mais velhas que o prazo de retencao.
 @type    User Function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
-@param   nDias, numeric, Dias de retencao. Zero usa MV_BJAPI11
+@param   nDias , numeric, Dias de retencao. Zero usa MV_BJAPI11
+@param   nLotes, numeric, [Referencia] Quantidade de lotes (SZY) apagados
 @return  numeric, Quantidade de mensagens apagadas
-@example nApagadas := U_BJEXPURG(0)
+@example nApagadas := U_BJEXPURG(0, @nLotes)
 /*/
-User Function BJEXPURG(nDias)
+User Function BJEXPURG(nDias, nLotes)
 
 	Local nRet    := 0
 	Local dLimite := CtoD("")
@@ -720,7 +714,8 @@ User Function BJEXPURG(nDias)
 	Local aArea   := GetArea()
 	Local cTrava   := "BJPLA_EXPURGO"
 
-	Default nDias := 0
+	Default nDias  := 0
+	Default nLotes := 0
 
 	If nDias <= 0
 		nDias := SuperGetMV("MV_BJAPI11", .F., 90)   // dias de retencao
@@ -770,8 +765,57 @@ User Function BJEXPURG(nDias)
 		nRet += 1
 	Next nX
 
+	// Lote sem mensagem nenhuma nao e acessivel por nada: o monitor abre as
+	// mensagens a partir dele. Sai junto, com tres cuidados que se reforcam:
+	// so o que ficou vazio (pendente e erro nunca sao apagadas, entao lote com
+	// pendencia continua com mensagem), so o que passou da retencao, e nunca o
+	// lote mais recente que gravou marca - e dele que sai a janela da proxima
+	// coleta.
+	aRecno := {}
+
+	cQuery := "SELECT SZY.R_E_C_N_O_ AS RECSZY "
+	cQuery += "  FROM " + RetSqlName("SZY") + " SZY "
+	cQuery += " WHERE SZY.D_E_L_E_T_ = ' ' "
+	cQuery += "   AND SZY.ZY_FILIAL  = ? "
+	cQuery += "   AND SZY.ZY_DTINI   < ? "
+	cQuery += "   AND NOT EXISTS (SELECT 1 "
+	cQuery += "                     FROM " + RetSqlName("SZZ") + " SZZ "
+	cQuery += "                    WHERE SZZ.D_E_L_E_T_ = ' ' "
+	cQuery += "                      AND SZZ.ZZ_FILIAL  = SZY.ZY_FILIAL "
+	cQuery += "                      AND SZZ.ZZ_CODIGO  = SZY.ZY_CODIGO) "
+	cQuery += "   AND SZY.ZY_CODIGO <> (SELECT MAX(ZY2.ZY_CODIGO) "
+	cQuery += "                           FROM " + RetSqlName("SZY") + " ZY2 "
+	cQuery += "                          WHERE ZY2.D_E_L_E_T_ = ' ' "
+	cQuery += "                            AND ZY2.ZY_FILIAL  = SZY.ZY_FILIAL "
+	cQuery += "                            AND ZY2.ZY_MARCA  <> ?) "
+
+	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
+	oStmt:SetString(1, xFilial("SZY"))
+	oStmt:SetString(2, DtoS(dLimite))
+	oStmt:SetString(3, " ")
+
+	cAlias := oStmt:OpenAlias()
+
+	While (cAlias)->(!Eof())
+		aAdd(aRecno, (cAlias)->RECSZY)
+		(cAlias)->(dbSkip())
+	End
+
+	(cAlias)->(dbCloseArea())
+	oStmt:Destroy()
+
+	dbSelectArea("SZY")
+
+	For nX := 1 To Len(aRecno)
+		SZY->(dbGoto(aRecno[nX]))
+		RecLock("SZY", .F.)
+		SZY->(dbDelete())
+		SZY->(MsUnlock())
+		nLotes += 1
+	Next nX
+
 	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Expurgo da fila: " + cValToChar(nRet) + ;
-		" mensagens executadas antes de " + DtoC(dLimite) + " foram apagadas.", 0, 0, {})
+		" mensagens executadas e " + cValToChar(nLotes) + " lotes vazios antes de " + DtoC(dLimite) + " foram apagados.", 0, 0, {})
 
 	UnLockByName(cTrava, .T., .F.)
 

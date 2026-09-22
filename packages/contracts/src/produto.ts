@@ -72,6 +72,11 @@ export type ProdutoFotoImportacaoItem = z.infer<
 export const produtoSchema = produtoCreateSchema.extend({
   id: z.string().uuid(),
   empresaId: z.string().uuid(),
+  // Chave de integração (X2_UNICO). Só leitura: quem a define é o ERP, e é ela
+  // que diz de onde o produto veio — com chave, o cadastro é espelho do
+  // Protheus e a tela não edita os campos que o import sobrescreve; sem chave,
+  // o produto nasceu aqui e é editável por inteiro.
+  chave: z.string().nullable().optional(),
   fotos: z.array(produtoFotoSchema),
   // Regra de desconto (SZ0): leitura apenas — quem mantém é o ERP, pela API
   // de integração; nem a tela nem o CRUD interno gravam este vínculo.

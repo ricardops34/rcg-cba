@@ -110,7 +110,9 @@ export const MENUS: DefinicaoMenu[] = [
     // tela de Perfis, multiplicadas por nove ações, para uma decisão só.
     codigo: 'estrutura',
     moduloId: MODULO.administracao,
-    disponivelTelaPequena: false,
+    // Liberada no celular: ligar/desligar um módulo e conferir a árvore cabem
+    // numa tela pequena. Só o arrastar (reordenar, mover de módulo) é de tela
+    // grande — lá se usa o diálogo, que faz o mesmo pelos seletores.
   },
   {
     id: 'seed-menu-integracao',
@@ -126,20 +128,6 @@ export const MENUS: DefinicaoMenu[] = [
     rota: '/admin/clientes-config',
     icone: 'list-checks',
     codigo: 'clientes-config',
-    moduloId: MODULO.administracao,
-  },
-  // Campos complementares do produto. Vizinho de "Campos do Cliente" e com o
-  // mesmo espírito, mas não a mesma coisa: lá se escolhe quais campos **já
-  // existentes** podem ser editados; aqui se **cria** o campo, porque cada
-  // empresa guarda dados diferentes do produto (diluição, dimensões, tensão).
-  //
-  // Preencher o valor num produto não passa por esta rotina: é `produtos.editar`.
-  {
-    id: 'seed-menu-produtos-campos',
-    nome: 'Campos do Produto',
-    rota: '/admin/produtos-campos',
-    icone: 'ruler',
-    codigo: 'produtos-campos',
     moduloId: MODULO.administracao,
   },
   {
@@ -173,6 +161,39 @@ export const MENUS: DefinicaoMenu[] = [
     icone: 'package',
     codigo: 'produtos',
     moduloId: MODULO.comercial,
+  },
+  // Produtos aparece em dois módulos, com rotinas diferentes: no Comercial
+  // (`produtos`) é o catálogo de consulta do vendedor; aqui é a manutenção do
+  // cadastro. Rotinas separadas porque o menu nasce da permissão — com um
+  // código só, quem pode consultar veria também a tela de manutenção.
+  //
+  // Num produto vindo do ERP a tela de manutenção não altera os campos que o
+  // Protheus manda (ver CAMPOS_DO_ERP em produtos.service.ts).
+  {
+    id: 'seed-menu-produtos-cadastro',
+    nome: 'Produtos',
+    rota: '/cadastros/produtos',
+    icone: 'package',
+    codigo: 'produtos-cadastro',
+    moduloId: MODULO.cadastros,
+  },
+  // Campos complementares do produto. Estava em Administração, ao lado de
+  // "Campos do Cliente"; veio para cá, logo depois do cadastro de Produtos,
+  // porque é onde se usa — e aqui vale para quem tem acesso ao módulo, sem a
+  // reserva que `corrigirPermissoesDoDiretor` impõe às rotinas de Administração.
+  //
+  // Não confundir com "Campos do Cliente": lá se escolhe quais campos **já
+  // existentes** podem ser editados; aqui se **cria** o campo, porque cada
+  // empresa guarda dados diferentes do produto (diluição, dimensões, tensão).
+  //
+  // Preencher o valor num produto não passa por esta rotina: é `produtos.editar`.
+  {
+    id: 'seed-menu-produtos-campos',
+    nome: 'Campos do Produto',
+    rota: '/admin/produtos-campos',
+    icone: 'ruler',
+    codigo: 'produtos-campos',
+    moduloId: MODULO.cadastros,
   },
   {
     id: 'seed-menu-clientes',

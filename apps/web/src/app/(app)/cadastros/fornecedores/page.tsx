@@ -74,45 +74,44 @@ export default function FornecedoresPage() {
         }}
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
+        actions={
+          <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+            <div className="space-y-2">
+              <FieldLabel>Status</FieldLabel>
+              <Select
+                value={status ?? "none"}
+                onValueChange={(v) => {
+                  setStatus(v === "none" ? undefined : v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Todos</SelectItem>
+                  <SelectItem value="true">Ativos</SelectItem>
+                  <SelectItem value="false">Inativos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <FieldLabel htmlFor="filtro-uf">UF</FieldLabel>
+              <Input
+                id="filtro-uf"
+                placeholder="Ex.: MS"
+                maxLength={2}
+                value={uf}
+                onChange={(e) => {
+                  setUf(e.target.value.replace(/[^a-zA-Z]/g, "").toUpperCase());
+                  setPage(1);
+                }}
+              />
+            </div>
+          </FiltersPopover>
+        }
       />
-
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
-          <div className="space-y-2">
-            <FieldLabel>Status</FieldLabel>
-            <Select
-              value={status ?? "none"}
-              onValueChange={(v) => {
-                setStatus(v === "none" ? undefined : v);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Todos" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Todos</SelectItem>
-                <SelectItem value="true">Ativos</SelectItem>
-                <SelectItem value="false">Inativos</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <FieldLabel htmlFor="filtro-uf">UF</FieldLabel>
-            <Input
-              id="filtro-uf"
-              placeholder="Ex.: MS"
-              maxLength={2}
-              value={uf}
-              onChange={(e) => {
-                setUf(e.target.value.replace(/[^a-zA-Z]/g, "").toUpperCase());
-                setPage(1);
-              }}
-            />
-          </div>
-        </FiltersPopover>
-      </div>
 
       <EntityTable
         columns={columns}

@@ -32,6 +32,40 @@ interface RequestMeta {
 const SALT_ROUNDS = 12;
 const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** Sobe da rotina até o módulo — o `ativo` de qualquer nível derruba o de baixo. */
+const ROTINA_COM_ARVORE = {
+  menu: { include: { modulo: true, menuPai: true } },
+} as const;
+
+type RotinaComArvore = {
+  ativo: boolean;
+  menu: {
+    ativo: boolean;
+    modulo: { ativo: boolean };
+    menuPai: { ativo: boolean } | null;
+  };
+};
+
+/**
+ * Desligar um módulo na tela de Estrutura precisa desligá-lo de verdade, não só
+ * escondê-lo: o menu lateral é montado a partir destas permissões, mas a URL
+ * digitada à mão não. Podando aqui — onde a lista de permissões nasce — o item
+ * some da navegação e a API passa a responder 403, com uma regra só.
+ *
+ * Quem já está logado continua com o token antigo até ele expirar (15 min).
+ *
+ * Perfil `sistemaBase` não passa por aqui: o `PermissionsGuard` libera pelo
+ * `isAdmin` antes de olhar a lista. É aceito — quem liga e desliga é ele.
+ */
+function rotinaNoAr(rotina: RotinaComArvore) {
+  return (
+    rotina.ativo &&
+    rotina.menu.ativo &&
+    rotina.menu.modulo.ativo &&
+    (rotina.menu.menuPai?.ativo ?? true)
+  );
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -57,7 +91,7 @@ export class AuthService {
             include: {
               permissoes: {
                 where: { permitido: true },
-                include: { rotina: true },
+                include: { rotina: { include: ROTINA_COM_ARVORE } },
               },
             },
           },
@@ -71,7 +105,9 @@ export class AuthService {
     // evitando erro 431 Request Header Fields Too Large.
     const permissoes = vinculo.perfil.sistemaBase
       ? []
-      : vinculo.perfil.permissoes.map((p) => `${p.rotina.codigo}.${p.acao}`);
+      : vinculo.perfil.permissoes
+          .filter((p) => rotinaNoAr(p.rotina))
+          .map((p) => `${p.rotina.codigo}.${p.acao}`);
 
     const payload = {
       sub: vinculo.usuarioId,
@@ -539,9 +575,11 @@ export class AuthService {
       ? (
           await this.prisma.perfilPermissao.findMany({
             where: { perfilId: ativo.perfilId, permitido: true },
-            include: { rotina: true },
+            include: { rotina: { include: ROTINA_COM_ARVORE } },
           })
-        ).map((p) => `${p.rotina.codigo}.${p.acao}`)
+        )
+          .filter((p) => rotinaNoAr(p.rotina))
+          .map((p) => `${p.rotina.codigo}.${p.acao}`)
       : [];
 
     const mustChangePassword = await this.computeMustChangePassword(usuario);

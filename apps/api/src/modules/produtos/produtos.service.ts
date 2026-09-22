@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import {
   buildPaginatedResult,
@@ -27,6 +31,35 @@ const SORT_FIELDS = new Set([
   'ultimoPreco',
   'ativo',
 ]);
+
+/**
+ * Campos que o import do ERP grava (ver `integracao-produtos.service.ts`) e
+ * que por isso não se editam pela tela num produto que tem `chave`: o próximo
+ * sync do Protheus sobrescreveria o que a pessoa digitou, sem avisar ninguém.
+ *
+ * Produto nascido na plataforma não tem `chave` — nele tudo é editável, e o
+ * import (que casa por `chave`) nunca encosta.
+ *
+ * `exibirFotoOrcamento` fica fora da lista de propósito: é o único campo do
+ * cadastro que o ERP não manda, então vale para os dois tipos de produto.
+ */
+const CAMPOS_DO_ERP = [
+  'codigoErp',
+  'descricao',
+  'unidade',
+  'categoriaId',
+  'subCategoriaId',
+  'armazemId',
+  'marca',
+  'codigoBarras',
+  'codigoFornecedor',
+  'ncm',
+  'qtdEmbalagem',
+  'peso',
+  'ultimoPreco',
+  'observacao',
+  'ativo',
+] as const;
 
 // Cadastros auxiliares anexados às respostas (colunas da listagem/form).
 const CATEGORIA_SELECT = {
@@ -167,10 +200,31 @@ export class ProdutosService {
         where: { id, empresaId, deletedAt: null },
       });
       if (!produto) throw new NotFoundException('Produto não encontrado');
+
+      const dados = this.limpar(input);
+
+      // A tela manda o formulário inteiro, então só interessa o que o usuário
+      // de fato mudou — comparar com o que está gravado evita recusar um
+      // "salvar" que nem tocou nos campos do ERP.
+      if (produto.chave) {
+        const bloqueados = CAMPOS_DO_ERP.filter(
+          (campo) =>
+            dados[campo] !== undefined &&
+            dados[campo] !== (produto as Record<string, unknown>)[campo],
+        );
+        if (bloqueados.length > 0) {
+          throw new BadRequestException(
+            `Este produto vem do ERP (chave ${produto.chave}). ` +
+              `Altere no Protheus — o próximo import sobrescreveria o que for ` +
+              `mudado aqui em: ${bloqueados.join(', ')}.`,
+          );
+        }
+      }
+
       return tx.produto.update({
         where: { id },
         data: {
-          ...(this.limpar(input) as object),
+          ...(dados as object),
           updatedBy: user.id,
         } as never,
         include: PRODUTO_INCLUDE,
@@ -184,6 +238,15 @@ export class ProdutosService {
         where: { id, empresaId, deletedAt: null },
       });
       if (!produto) throw new NotFoundException('Produto não encontrado');
+      // Excluir um produto do ERP aqui não resolveria nada: o próximo import
+      // recria pela mesma `chave`. A baixa é no Protheus, que então manda a
+      // exclusão pela integração.
+      if (produto.chave) {
+        throw new BadRequestException(
+          `Este produto vem do ERP (chave ${produto.chave}) e o import o recriaria. ` +
+            'Exclua no Protheus.',
+        );
+      }
       return tx.produto.update({
         where: { id },
         data: { deletedAt: new Date(), deletedBy: user.id, ativo: false },

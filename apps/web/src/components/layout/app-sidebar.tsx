@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, LayoutDashboard } from "lucide-react";
-import { useMenu } from "@/hooks/use-menu";
+import { useMenu, type MenuItem } from "@/hooks/use-menu";
 import { useAuthStore } from "@/stores/auth-store";
 import { DynamicIcon } from "@/lib/dynamic-icon";
 import { avatarColorClass, initials } from "@/lib/avatar-color";
@@ -75,6 +75,20 @@ export function MobileSidebar({
   );
 }
 
+/**
+ * Poda o menu para o celular: cai o que foi marcado como "somente tela maior",
+ * e o grupo que ficar sem nenhum filho cai junto.
+ */
+function noCelular(menu: MenuItem): MenuItem | null {
+  if (!menu.disponivelTelaPequena) return null;
+  const submenus = (menu.submenus ?? [])
+    .map(noCelular)
+    .filter((sub): sub is MenuItem => sub !== null);
+  const temRotina = menu.rotinas.some((rotina) => rotina.disponivelTelaPequena);
+  if (!temRotina && submenus.length === 0) return null;
+  return { ...menu, submenus };
+}
+
 function SidebarContent({
   collapsed,
   onNavigate,
@@ -95,11 +109,9 @@ function SidebarContent({
       ...modulo,
       menus: onNavigate
         ? modulo.disponivelTelaPequena
-          ? modulo.menus.filter(
-              (menu) =>
-                menu.disponivelTelaPequena &&
-                menu.rotinas.some((rotina) => rotina.disponivelTelaPequena),
-            )
+          ? modulo.menus
+              .map(noCelular)
+              .filter((menu): menu is MenuItem => menu !== null)
           : []
         : modulo.menus,
     }))
@@ -203,21 +215,28 @@ function SidebarContent({
               >
                 <DropdownMenuLabel>{modulo.nome}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {modulo.menus.map((menu) => (
-                  <DropdownMenuItem key={menu.id} asChild>
-                    <Link
-                      href={menu.rota ?? "#"}
-                      className={cn(
-                        "flex items-center gap-2",
-                        pathname === menu.rota &&
-                          "bg-accent text-accent-foreground",
-                      )}
-                    >
-                      <DynamicIcon name={menu.icone} className="size-4" />
-                      <span>{menu.nome}</span>
-                    </Link>
-                  </DropdownMenuItem>
-                ))}
+                {modulo.menus.flatMap((menu) =>
+                  // Submenu entra na mesma lista, recuado: um menu dentro de
+                  // outro não caberia na barra recolhida.
+                  [{ menu, nivel: 0 }, ...(menu.submenus ?? []).map((sub) => ({ menu: sub, nivel: 1 }))].map(
+                    ({ menu: item, nivel }) => (
+                      <DropdownMenuItem key={item.id} asChild>
+                        <Link
+                          href={item.rota ?? "#"}
+                          className={cn(
+                            "flex items-center gap-2",
+                            nivel > 0 && "pl-7",
+                            pathname === item.rota &&
+                              "bg-accent text-accent-foreground",
+                          )}
+                        >
+                          <DynamicIcon name={item.icone} className="size-4" />
+                          <span>{item.nome}</span>
+                        </Link>
+                      </DropdownMenuItem>
+                    ),
+                  ),
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
@@ -234,15 +253,28 @@ function SidebarContent({
               </CollapsibleTrigger>
               <CollapsibleContent className="space-y-0.5 pt-1">
                 {modulo.menus.map((menu) => (
-                  <NavLink
-                    key={menu.id}
-                    href={menu.rota ?? "#"}
-                    icon={<DynamicIcon name={menu.icone} className="size-4" />}
-                    label={menu.nome}
-                    active={pathname === menu.rota}
-                    collapsed={collapsed}
-                    onNavigate={onNavigate}
-                  />
+                  <div key={menu.id} className="space-y-0.5">
+                    <NavLink
+                      href={menu.rota ?? "#"}
+                      icon={<DynamicIcon name={menu.icone} className="size-4" />}
+                      label={menu.nome}
+                      active={pathname === menu.rota}
+                      collapsed={collapsed}
+                      onNavigate={onNavigate}
+                    />
+                    {(menu.submenus ?? []).map((submenu) => (
+                      <NavLink
+                        key={submenu.id}
+                        href={submenu.rota ?? "#"}
+                        icon={<DynamicIcon name={submenu.icone} className="size-4" />}
+                        label={submenu.nome}
+                        active={pathname === submenu.rota}
+                        collapsed={collapsed}
+                        onNavigate={onNavigate}
+                        nivel={1}
+                      />
+                    ))}
+                  </div>
                 ))}
               </CollapsibleContent>
             </Collapsible>
@@ -293,6 +325,7 @@ function NavLink({
   active,
   collapsed,
   onNavigate,
+  nivel = 0,
 }: {
   href: string;
   icon: React.ReactNode;
@@ -300,6 +333,8 @@ function NavLink({
   active: boolean;
   collapsed: boolean;
   onNavigate?: () => void;
+  /** 1 = submenu: recuado, para o agrupamento ficar visível. */
+  nivel?: number;
 }) {
   const link = (
     <Link
@@ -307,6 +342,7 @@ function NavLink({
       onClick={onNavigate}
       className={cn(
         "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/85 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        nivel > 0 && !collapsed && "ml-3 border-l border-sidebar-border pl-4 text-sidebar-foreground/70",
         collapsed && "justify-center px-0",
         active &&
           "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm hover:bg-sidebar-primary hover:text-sidebar-primary-foreground",

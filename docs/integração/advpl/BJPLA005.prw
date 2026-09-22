@@ -608,16 +608,19 @@ Roda o expurgo da fila agora, pela tela.
 User Function BJMONLIM()
 
 	Local nApagadas := 0
+	Local nLotes    := 0
 
 	If !MsgYesNo("Apagar da fila as mensagens executadas ha mais de " + ;
 		cValToChar(SuperGetMV("MV_BJAPI11", .F., 90)) + " dias?" + CRLF + CRLF + ;
-		"Pendentes e com erro nao sao apagadas. A marca d'agua (SZY) nao e afetada.", cCadastro)
+		"Pendentes e com erro nao sao apagadas. Lote que ficar sem nenhuma mensagem sai junto, " + ;
+		"menos o mais recente com marca - e dele que sai a janela da proxima coleta.", cCadastro)
 		Return Nil
 	EndIf
 
-	Processa({|| nApagadas := U_BJEXPURG(0)}, "Limpando a fila...")
+	Processa({|| nApagadas := U_BJEXPURG(0, @nLotes)}, "Limpando a fila...")
 
-	MsgInfo("Apagadas: " + cValToChar(nApagadas), cCadastro)
+	MsgInfo("Mensagens apagadas: " + cValToChar(nApagadas) + CRLF + ;
+		"Lotes apagados: " + cValToChar(nLotes), cCadastro)
 
 Return Nil
 

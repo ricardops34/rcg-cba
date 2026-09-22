@@ -507,6 +507,20 @@ correção de segurança — ver o cabeçalho do catálogo.
 A ordem dos itens no menu é a **posição no array** `MENUS`: mover uma entrada ali
 move o item na tela.
 
+**O catálogo vence a tela de Estrutura de Menu** (Administração → Estrutura de
+Menu). Desde 2026-09-22 essa tela move menu entre módulos, reordena, renomeia e
+liga/desliga. Para um menu que **está no catálogo**, tudo isso vale até o
+próximo `sincronizar-catalogo`, que regrava nome, ícone, rota, ordem e
+`moduloId` a partir do arquivo. Sobrevivem: o que a tela criou do zero e os
+campos que o script não toca — entre eles o `ativo` (o liga/desliga de módulo,
+menu e rotina) e as rotinas, cujo upsert é `update: {}`. Mudança de organização
+que precisa durar entra no `catalogo-sistema.ts`.
+
+**Migration que concede permissão:** filtre por `perfis."sistemaBase" = true`, e
+não pelo nome do perfil — ver "Migration que concede permissão" em
+`apps/api/prisma/migrations/README.md`. O molde antigo, que casava
+`nome = 'Administrador'`, não concede nada nesta plataforma.
+
 **Rotina nova que precisa nascer permitida** (o caso de `meus-atendimentos`, em
 2026-09-02): a permissão continua sendo de migration, mas ela roda **antes** do
 `sincronizar-catalogo` — e não acharia a rotina, que ainda não existe. Nesse

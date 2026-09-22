@@ -66,6 +66,19 @@ export class EstruturaController {
   }
 
   @ApiOperation({
+    summary: 'Árvore completa da estrutura (inclui o que está inativo)',
+    description:
+      'Para a tela de Estrutura de Menu. Diferente de GET /modulos, devolve também módulos, ' +
+      'menus e rotinas desativados — sem eles não haveria como religar pela tela o que foi ' +
+      'desligado. Requer estrutura.visualizar.',
+  })
+  @RequirePermission('estrutura', 'visualizar')
+  @Get('estrutura/arvore')
+  listArvore() {
+    return this.service.listArvore();
+  }
+
+  @ApiOperation({
     summary: 'Cadastrar módulo',
     description: 'Requer modulos.cadastrar.',
   })

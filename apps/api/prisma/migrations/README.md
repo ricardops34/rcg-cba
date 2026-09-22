@@ -97,6 +97,33 @@ usuários).
   auditoria de alteração que ela tinha saíram ali. `erros_log_config`, criada na
   mesma migration, é configuração da plataforma e nem sequer tem `empresaId`.
 
+## Migration que concede permissão: use `sistemaBase`, não o nome do perfil
+
+**[verificado em dev, 2026-09-22]** As migrations `perm_*` que concedem uma
+rotina nova ao administrador vinham filtrando `perfis.nome = 'Administrador'` —
+nome que **não existe**: os perfis de administração se chamam "Administrador
+Empresa" e "Administrador da Plataforma". O INSERT dessas migrations casa zero
+linhas e passa em silêncio (não é erro), então a tela nova nasce invisível até
+para o administrador, porque a barra lateral é montada pelas permissões
+gravadas — inclusive as de quem é `sistemaBase`.
+
+Nas bases criadas do zero o efeito não aparece, porque o `seed-base.ts` concede
+as 9 ações de todas as rotinas a quem é `sistemaBase`. O problema é só na base
+que já existe, que é justamente o caso em que a migration deveria trabalhar.
+
+O filtro correto é o mesmo critério do seed:
+
+```sql
+WHERE r."codigo" = '<rotina nova>'
+  AND p."sistemaBase" = true
+  AND p."deletedAt" IS NULL
+ON CONFLICT ("perfilId", "rotinaId", "acao") DO NOTHING;
+```
+
+Modelo: `20260922130000_perm_produtos_cadastro_admin`. As que usam o nome
+(`20260905181000_perm_produtos_campos` e as anteriores do mesmo molde) seguem
+aplicadas e inofensivas — não vale reescrevê-las, o checksum já foi registrado.
+
 ## Pré-requisitos operacionais
 
 - RLS é **ignorada** por superusuário, por role com atributo `BYPASSRLS` e

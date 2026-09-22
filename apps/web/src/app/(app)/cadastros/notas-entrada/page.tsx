@@ -89,49 +89,48 @@ export default function NotasEntradaPage() {
         }}
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
+        actions={
+          <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+            <div className="space-y-2">
+              <FieldLabel htmlFor="filtro-ano">Ano</FieldLabel>
+              <Input
+                id="filtro-ano"
+                placeholder="Ex.: 2026"
+                inputMode="numeric"
+                maxLength={4}
+                value={ano}
+                onChange={(e) => {
+                  setAno(e.target.value.replace(/\D/g, ""));
+                  setPage(1);
+                }}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <FieldLabel>Mês</FieldLabel>
+              <Select
+                value={mes ?? "none"}
+                onValueChange={(v) => {
+                  setMes(v === "none" ? undefined : v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Todos</SelectItem>
+                  {Array.from({ length: 12 }, (_, i) => String(i + 1)).map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {m.padStart(2, "0")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </FiltersPopover>
+        }
       />
-
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
-          <div className="space-y-2">
-            <FieldLabel htmlFor="filtro-ano">Ano</FieldLabel>
-            <Input
-              id="filtro-ano"
-              placeholder="Ex.: 2026"
-              inputMode="numeric"
-              maxLength={4}
-              value={ano}
-              onChange={(e) => {
-                setAno(e.target.value.replace(/\D/g, ""));
-                setPage(1);
-              }}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <FieldLabel>Mês</FieldLabel>
-            <Select
-              value={mes ?? "none"}
-              onValueChange={(v) => {
-                setMes(v === "none" ? undefined : v);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Todos" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Todos</SelectItem>
-                {Array.from({ length: 12 }, (_, i) => String(i + 1)).map((m) => (
-                  <SelectItem key={m} value={m}>
-                    {m.padStart(2, "0")}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </FiltersPopover>
-      </div>
 
       <EntityTable
         columns={columns}

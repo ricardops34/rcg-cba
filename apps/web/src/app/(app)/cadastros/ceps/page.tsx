@@ -122,47 +122,47 @@ export default function CepsPage() {
         isRefreshing={isFetching}
         onCreate={() => router.push("/cadastros/ceps/novo")}
         createLabel="Novo CEP"
+        actions={
+          <FiltersPopover
+            active={!!estadoId}
+            onClear={() => {
+              setEstadoId(undefined);
+              setPage(1);
+            }}
+          >
+            <div className="space-y-2">
+              <FieldLabel>Estado</FieldLabel>
+              <Select
+                value={estadoId ?? "none"}
+                onValueChange={(v) => {
+                  setEstadoId(v === "none" ? undefined : v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Todos</SelectItem>
+                  {(estadosQuery.data?.data ?? []).map((e) => (
+                    <SelectItem key={e.id} value={e.id}>
+                      {e.sigla} — {e.descricao}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </FiltersPopover>
+        }
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <StatusQuickFilter
-          value={status}
-          onChange={(v) => {
-            setStatus(v);
-            setPage(1);
-          }}
-        />
-        <FiltersPopover
-          active={!!estadoId}
-          onClear={() => {
-            setEstadoId(undefined);
-            setPage(1);
-          }}
-        >
-          <div className="space-y-2">
-            <FieldLabel>Estado</FieldLabel>
-            <Select
-              value={estadoId ?? "none"}
-              onValueChange={(v) => {
-                setEstadoId(v === "none" ? undefined : v);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Todos" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Todos</SelectItem>
-                {(estadosQuery.data?.data ?? []).map((e) => (
-                  <SelectItem key={e.id} value={e.id}>
-                    {e.sigla} — {e.descricao}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </FiltersPopover>
-      </div>
+      <StatusQuickFilter
+        value={status}
+        onChange={(v) => {
+          setStatus(v);
+          setPage(1);
+        }}
+      />
 
       <EntityTable
         columns={columns}

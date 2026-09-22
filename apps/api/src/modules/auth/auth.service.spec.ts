@@ -57,7 +57,18 @@ describe('AuthService', () => {
       sistemaBase: false,
       administraPlataforma: false,
       permissoes: [
-        { permitido: true, acao: 'visualizar', rotina: { codigo: 'clientes' } },
+        {
+          permitido: true,
+          acao: 'visualizar',
+          // A rotina vem com o caminho até o módulo: o token só carrega a
+          // permissão se rotina, menu e módulo estiverem ligados (ver
+          // `rotinaNoAr` em auth.service.ts).
+          rotina: {
+            codigo: 'clientes',
+            ativo: true,
+            menu: { ativo: true, menuPai: null, modulo: { ativo: true } },
+          },
+        },
       ],
     },
   };
@@ -185,6 +196,36 @@ describe('AuthService', () => {
       const signPayload = jwt.signAsync.mock.calls[0][0];
       expect(signPayload.permissoes).toEqual(['clientes.visualizar']);
       expect(signPayload.isAdmin).toBe(false);
+    });
+
+    it('não emite permissão de rotina cujo módulo está desligado', async () => {
+      prisma.usuario.findUnique.mockResolvedValue(usuarioAtivo);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      prisma.usuarioEmpresa.findFirst.mockResolvedValue(vinculo);
+      prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue({
+        ...vinculoCompleto,
+        perfil: {
+          ...vinculoCompleto.perfil,
+          permissoes: [
+            {
+              permitido: true,
+              acao: 'visualizar',
+              rotina: {
+                codigo: 'clientes',
+                ativo: true,
+                menu: { ativo: true, menuPai: null, modulo: { ativo: false } },
+              },
+            },
+          ],
+        },
+      });
+      prisma.refreshToken.create.mockResolvedValue({});
+      prisma.usuario.update.mockResolvedValue(usuarioAtivo);
+
+      await service.login({ email: usuarioAtivo.email, senha: '123' }, {});
+
+      const signPayload = jwt.signAsync.mock.calls[0][0];
+      expect(signPayload.permissoes).toEqual([]);
     });
 
   });

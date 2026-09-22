@@ -40,7 +40,7 @@ O que os outros três usam. Não depende de nenhum deles.
 | `U_BJGRAVA` | Fecha a mensagem: status, HTTP, retorno e chave de destino. Não abre transação, de propósito |
 | `U_BJACHOU` | A memória: essa chave já foi executada? Devolve o documento que ela gerou |
 | `U_BJTEVE` | Essa chave já teve mensagem com tal verbo, em qualquer status? A coleta usa para mandar o `POST` antes do `DELETE` de um registro incluído e excluído entre duas coletas |
-| `U_BJEXPURG` | **Agendável.** Apaga executadas mais velhas que `MV_BJAPI11`. Nunca toca em pendente ou com erro |
+| `U_BJEXPURG` | **Agendável.** Apaga da SZZ as executadas mais velhas que `MV_BJAPI11`, e da SZY os lotes que ficaram sem nenhuma mensagem — menos o mais recente com marca. Nunca toca em pendente ou com erro |
 
 ### [`BJPLA003.prw`](BJPLA003.prw) — Coleta de saída
 
@@ -343,14 +343,43 @@ ativo inteiro.
 **Individual** é a única opção que pede a entidade e a única em que a chave vale
 — é por ela que se reprocessa um registro específico.
 
-### Referência dentro da própria entidade: a SA3
+### Hierarquia comercial: a SA3 aponta para ela mesma
 
-O supervisor de um vendedor é outro vendedor, e a API recusa referência a
-registro que ainda não subiu. Por isso o mapeador ordena por
-`A3_SUPER, A3_COD`: quem não tem supervisor (campo em branco) vai primeiro, e
-o supervisor já existe na plataforma quando o vendedor dele chega. Uma cadeia
-mais funda — supervisor que também tem supervisor — ainda pode falhar no
-primeiro envio; o reenvio da chave resolve, porque aí o de cima já está lá.
+O papel **não é marcado no cadastro**; sai de quem aponta para quem
+(decisão de 22/09/2026, confirmada na base da RCG):
+
+| Papel | Como é descoberto | Superior enviado |
+|---|---|---|
+| Gerente | o código aparece em algum `A3_GEREN` | nenhum |
+| Supervisor | o código aparece em algum `A3_SUPER` e não é gerente | o `A3_GEREN` dele |
+| Vendedor | os demais | o `A3_SUPER` dele |
+
+O `BJCodsRef` levanta os dois conjuntos em duas consultas curtas, antes da
+principal. A plataforma guarda **um** superior por vendedor e trata gerente e
+supervisor como o mesmo papel — superior.
+
+Quatro cuidados, todos nascidos de caso real:
+
+1. **Autorreferência é ignorada.** Na RCG, o gerente `000315` tem
+   `A3_SUPER = 000035` e o supervisor `000035` tem `A3_GEREN = 000315`: ler os
+   dois campos para todo mundo fecharia um ciclo. Como o papel decide qual
+   campo vale, a cadeia fica linear. Campo que aponta para o próprio código
+   também não vale.
+2. **O superior tem que existir na SA3**, e não estar excluído. Código órfão
+   faria a API recusar o registro inteiro com 404; assim ele sobe sem superior,
+   com aviso no log.
+3. **Inativo também sobe, e também pode chefiar.** `A3_MSBLQL = 1` vira
+   `ativo: false` e `desligado: true`, e o registro continua na plataforma —
+   nota e título antigos apontam para ele. Ele conta no levantamento dos
+   papéis como qualquer outro (decisão de 22/09/2026).
+4. **A ordem de envio é por dependência, não por código.** Depois de coletar, o
+   `BJOrdSup` emite em voltas: primeiro quem pode ir — sem superior, superior
+   fora do lote (já está na plataforma) ou superior já emitido —, repetindo até
+   não sobrar ninguém. Na prática: gerente, supervisor, vendedores.
+
+**A fila guarda o JSON montado na coleta.** Corrigir o mapeador não conserta
+mensagem que já está enfileirada: reenviar repete o mesmo corpo. Depois de
+compilar, gere de novo — as mensagens antigas com erro saem no Limpar.
 
 ### POST como upsert e DELETE no mesmo fluxo
 
@@ -535,20 +564,39 @@ Consequências práticas:
 8. Cadastre os quatro agendamentos em
    *Configurador > Ambiente > Schedule > Agendamentos*, apontando para
    `U_BJVARRE` (coleta), `U_BJDRENA` (envio), `U_BJRETORNO` (retorno) e
-   `U_BJEXPURG` (expurgo) — as mesmas funções que o monitor chama. Empresa e
-   filial saem da própria tela do agendamento. **Uma chave de API por empresa, logo um conjunto de
+   `U_BJEXPURG` (expurgo) — as mesmas funções que o monitor chama. Cada fonte
+   tem `SchedDef`, então elas aparecem como agendáveis; nenhuma recebe
+   parâmetro pelo Schedule. Empresa e filial saem da própria tela do
+   agendamento. **Uma chave de API por empresa, logo um conjunto de
    agendamentos por empresa.**
 
-Ritmo sugerido: coleta de hora em hora, envio contínuo (ou a cada poucos
-minutos), retorno de hora em hora, expurgo uma vez por dia fora do horário
-comercial.
+| Rotina | O que faz | Ritmo sugerido |
+|---|---|---|
+| `U_BJVARRE` | Coleta e enfileira na SZZ | de hora em hora |
+| `U_BJDRENA` | Drena a fila e executa as requisições | a cada poucos minutos |
+| `U_BJRETORNO` | Orçamento aprovado → Pedido; alteração de cliente → SA1 | de hora em hora |
+| `U_BJEXPURG` | Apaga executadas acima de `MV_BJAPI11` | 1× por dia, fora do horário comercial |
+
+**O intervalo do JOB define a frequência, não a janela** (decisão de
+22/09/2026). A coleta agendada vai sem entidade, sem chave e sem datas: varre
+o catálogo ativo da `ZY_MARCA` do último lote válido até o instante em que
+começou. Se uma execução falhar, ou o servidor ficar parado a noite inteira, a
+marca não avança e a execução seguinte cobre o intervalo acumulado — mudar o
+intervalo muda só a latência entre a alteração no ERP e a chegada na
+plataforma.
+
+O que costuma impedir o JOB de rodar: `MV_BJAPI03` diferente de `S`, o serviço
+de Schedule fora do ar no `appserver.ini`, ou uma coleta já em andamento — cada
+rotina segura a própria trava (`LockByName`) e a chamada repetida é ignorada
+com aviso no log.
 
 **Primeira carga:** enquanto a fila não tiver nenhuma mensagem de saída (SZZ
 vazia, `ZZ_TIPO = "S"`), a coleta é **carga inicial**: a marca fica vazia e os
 mapeadores leem a origem inteira, **sem os registros excluídos** (nem cabeçalho
-nem item) — o que nunca chegou à plataforma não vira `DELETE`. Basta rodar **Gerar** com "Todas as entidades
-ativas", sem chave nem datas, e depois **Enviar em Bloco**, respeitando a ordem
-de carga do catálogo. Terminando sem erro, o lote grava a marca e as próximas
+nem item) — o que nunca chegou à plataforma não vira `DELETE`. Basta rodar **Gerar** com o grupo **Todos**,
+sem chave nem datas, e depois **Enviar em Bloco**. A ordem de carga é a do
+catálogo, e os grupos (Cadastros, Financeiro, Estoque, Notas) permitem fazer
+por partes. Terminando sem erro, o lote grava a marca e as próximas
 coletas passam a ser incrementais. Se a fila já tem mensagens e nenhum lote
 gravou marca ainda, a marca recua `MV_BJAPI10` (30 dias por padrão).
 

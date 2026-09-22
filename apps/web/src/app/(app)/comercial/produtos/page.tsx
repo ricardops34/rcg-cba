@@ -134,57 +134,59 @@ export default function ProdutosPage() {
         }}
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
+        actions={
+          <>
+            <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+              <div className="space-y-2">
+                <FieldLabel>Categoria</FieldLabel>
+                <Select
+                  value={categoriaId ?? "none"}
+                  onValueChange={(v) => {
+                    setCategoriaId(v === "none" ? undefined : v);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Todas</SelectItem>
+                    {(categoriasQuery.data?.data ?? []).map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.descricao}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </FiltersPopover>
+            {podeImportarFotos ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => router.push("/comercial/produtos/fotos")}
+                >
+                  <Images className="size-4" /> Importar fotos
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => router.push("/comercial/produtos/fichas")}
+                >
+                  <FileText className="size-4" /> Importar fichas
+                </Button>
+              </>
+            ) : null}
+          </>
+        }
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <StatusQuickFilter
-          value={status}
-          onChange={(v) => {
-            setStatus(v);
-            setPage(1);
-          }}
-        />
-        <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
-          <div className="space-y-2">
-            <FieldLabel>Categoria</FieldLabel>
-            <Select
-              value={categoriaId ?? "none"}
-              onValueChange={(v) => {
-                setCategoriaId(v === "none" ? undefined : v);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Todas" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Todas</SelectItem>
-                {(categoriasQuery.data?.data ?? []).map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.descricao}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </FiltersPopover>
-        {podeImportarFotos ? (
-          <>
-            <Button
-              variant="outline"
-              onClick={() => router.push("/comercial/produtos/fotos")}
-            >
-              <Images className="size-4" /> Importar fotos
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => router.push("/comercial/produtos/fichas")}
-            >
-              <FileText className="size-4" /> Importar fichas
-            </Button>
-          </>
-        ) : null}
-      </div>
+      <StatusQuickFilter
+        value={status}
+        onChange={(v) => {
+          setStatus(v);
+          setPage(1);
+        }}
+      />
 
       <EntityTable
         columns={columns}

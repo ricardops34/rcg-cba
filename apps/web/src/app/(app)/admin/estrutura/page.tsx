@@ -32,6 +32,7 @@ import {
   type RotinaCreate,
 } from "@plataforma/contracts";
 import { apiFetch, ApiError } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
 import { DynamicIcon } from "@/lib/dynamic-icon";
 import { IconPicker } from "@/components/crud/icon-picker";
 import { Badge } from "@/components/ui/badge";
@@ -68,6 +69,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import {
   ChevronRight,
+  CornerDownRight,
   FolderTree,
   GripVertical,
   ListTree,
@@ -79,39 +81,50 @@ import {
   Menu as MenuIcon,
 } from "lucide-react";
 
+/** O menu como a árvore o entrega: com as rotinas e os submenus juntos. */
+interface MenuArvore extends Menu {
+  rotinas: Rotina[];
+  submenus: MenuArvore[];
+}
+
 interface ModuloComMenus extends Modulo {
-  menus: Menu[];
+  menus: MenuArvore[];
+}
+
+/** Menu e submenus achatados numa lista só — para contas e para os seletores. */
+function achatarMenus(menus: MenuArvore[]): MenuArvore[] {
+  return menus.flatMap((menu) => [menu, ...achatarMenus(menu.submenus ?? [])]);
 }
 
 export default function EstruturaPage() {
   const qc = useQueryClient();
 
+  /**
+   * Árvore de administração, não a do menu lateral (`/modulos`): esta inclui o
+   * que está desligado, que é justamente o que precisa aparecer aqui para
+   * poder ser religado.
+   */
   const modulosQuery = useQuery({
-    queryKey: ["modulos"],
-    queryFn: () => apiFetch<ModuloComMenus[]>("/modulos"),
-  });
-  const rotinasQuery = useQuery({
-    queryKey: ["rotinas"],
-    queryFn: () => apiFetch<Rotina[]>("/rotinas"),
+    queryKey: ["estrutura-arvore"],
+    queryFn: () => apiFetch<ModuloComMenus[]>("/estrutura/arvore"),
   });
 
-  const rotinasPorMenu = useMemo(() => {
-    const map = new Map<string, Rotina[]>();
-    for (const r of rotinasQuery.data ?? []) {
-      if (!map.has(r.menuId)) map.set(r.menuId, []);
-      map.get(r.menuId)!.push(r);
-    }
-    return map;
-  }, [rotinasQuery.data]);
+  const modulos = useMemo(() => modulosQuery.data ?? [], [modulosQuery.data]);
+  const menusAchatados = useMemo(
+    () => modulos.flatMap((modulo) => achatarMenus(modulo.menus)),
+    [modulos],
+  );
 
-  const modulos = modulosQuery.data ?? [];
   const totalModulos = modulos.length;
-  const totalMenus = modulos.reduce((acc, m) => acc + m.menus.length, 0);
-  const totalRotinas = rotinasQuery.data?.length ?? 0;
+  const totalMenus = menusAchatados.length;
+  const totalRotinas = menusAchatados.reduce((acc, menu) => acc + menu.rotinas.length, 0);
 
+  // A barra lateral e a busca global leem `/modulos`, então toda mudança aqui
+  // precisa invalidar as duas caches — senão o menu do próprio administrador
+  // fica mostrando o que ele acabou de desligar.
   const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["estrutura-arvore"] });
     qc.invalidateQueries({ queryKey: ["modulos"] });
-    qc.invalidateQueries({ queryKey: ["rotinas"] });
   };
 
   const createModulo = useMutation({
@@ -155,43 +168,130 @@ export default function EstruturaPage() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
-  const handleModuloDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id || !modulosQuery.data) return;
-    const oldIndex = modulosQuery.data.findIndex((m) => m.id === active.id);
-    const newIndex = modulosQuery.data.findIndex((m) => m.id === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
-    const reordered = arrayMove(modulosQuery.data, oldIndex, newIndex);
-    qc.setQueryData(["modulos"], reordered);
-    Promise.all(reordered.map((m, i) => updateModulo.mutateAsync({ id: m.id, input: { ordem: i } })))
+  const salvarOrdem = (
+    promessas: Promise<unknown>[],
+    erro: string,
+  ) =>
+    Promise.all(promessas)
       .then(invalidate)
       .catch(() => {
-        toast.error("Erro ao salvar nova ordem dos módulos");
+        toast.error(erro);
+        invalidate();
+      });
+
+  /**
+   * Um `DndContext` só para módulos e menus. Eram dois (um por módulo), e por
+   * isso o menu só se movia dentro do próprio módulo: para soltá-lo em outro,
+   * os dois precisam estar sob o mesmo contexto. Quem é quem vem do
+   * `data.tipo` que cada linha arrastável declara.
+   */
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const tipoArrastado = active.data.current?.tipo;
+    const tipoDestino = over.data.current?.tipo;
+
+    if (tipoArrastado === "modulo") {
+      if (tipoDestino !== "modulo") return;
+      const oldIndex = modulos.findIndex((m) => m.id === active.id);
+      const newIndex = modulos.findIndex((m) => m.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
+      const reordenados = arrayMove(modulos, oldIndex, newIndex);
+      qc.setQueryData(["estrutura-arvore"], reordenados);
+      salvarOrdem(
+        reordenados.map((m, i) => updateModulo.mutateAsync({ id: m.id, input: { ordem: i } })),
+        "Erro ao salvar nova ordem dos módulos",
+      );
+      return;
+    }
+
+    if (tipoArrastado !== "menu") return;
+
+    const moduloOrigemId = active.data.current?.moduloId as string | undefined;
+    // Soltar sobre outro menu leva ao módulo daquele menu; soltar sobre o
+    // cabeçalho de um módulo leva para o fim da lista dele.
+    const moduloDestinoId =
+      tipoDestino === "menu"
+        ? (over.data.current?.moduloId as string | undefined)
+        : tipoDestino === "modulo"
+          ? (over.id as string)
+          : undefined;
+    if (!moduloOrigemId || !moduloDestinoId) return;
+
+    const origem = modulos.find((m) => m.id === moduloOrigemId);
+    const destino = modulos.find((m) => m.id === moduloDestinoId);
+    if (!origem || !destino) return;
+
+    if (moduloOrigemId === moduloDestinoId) {
+      const oldIndex = origem.menus.findIndex((m) => m.id === active.id);
+      const newIndex = origem.menus.findIndex((m) => m.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
+      const reordenados = arrayMove(origem.menus, oldIndex, newIndex);
+      qc.setQueryData<ModuloComMenus[]>(["estrutura-arvore"], (old) =>
+        old?.map((m) => (m.id === origem.id ? { ...m, menus: reordenados } : m)),
+      );
+      salvarOrdem(
+        reordenados.map((m, i) => updateMenu.mutateAsync({ id: m.id, input: { ordem: i } })),
+        "Erro ao salvar nova ordem dos menus",
+      );
+      return;
+    }
+
+    const menu = origem.menus.find((m) => m.id === active.id);
+    if (!menu) return;
+
+    // Entra no fim do destino: a ordem que ele tinha é do módulo de origem e
+    // cairia num ponto qualquer da lista de lá. O menu pai também fica para
+    // trás — ele pertence à árvore do módulo antigo.
+    updateMenu
+      .mutateAsync({
+        id: menu.id,
+        input: {
+          moduloId: moduloDestinoId,
+          menuPaiId: null,
+          ordem: Math.max(0, ...destino.menus.map((m) => m.ordem)) + 1,
+        },
+      })
+      .then(() => {
+        invalidate();
+        toast.success(`"${menu.nome}" movido para ${destino.nome}`);
+      })
+      .catch((err) => {
+        toast.error(err instanceof ApiError ? err.message : "Erro ao mover o menu");
         invalidate();
       });
   };
 
-  const handleMenuDragEnd = (modulo: ModuloComMenus) => (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = modulo.menus.findIndex((m) => m.id === active.id);
-    const newIndex = modulo.menus.findIndex((m) => m.id === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
-    const reordered = arrayMove(modulo.menus, oldIndex, newIndex);
-    qc.setQueryData<ModuloComMenus[]>(["modulos"], (old) =>
-      old?.map((m) => (m.id === modulo.id ? { ...m, menus: reordered } : m)),
-    );
-    Promise.all(reordered.map((m, i) => updateMenu.mutateAsync({ id: m.id, input: { ordem: i } })))
-      .then(invalidate)
-      .catch(() => {
-        toast.error("Erro ao salvar nova ordem dos menus");
+  const alternarAtivo = (
+    tipo: "modulo" | "menu" | "rotina",
+    id: string,
+    nome: string,
+    ativo: boolean,
+  ) => {
+    const mutation =
+      tipo === "modulo" ? updateModulo : tipo === "menu" ? updateMenu : updateRotina;
+    return mutation
+      .mutateAsync({ id, input: { ativo } })
+      .then(() => {
         invalidate();
-      });
+        toast.success(ativo ? `"${nome}" ligado` : `"${nome}" desligado`);
+      })
+      .catch((err: unknown) =>
+        toast.error(err instanceof ApiError ? err.message : "Erro ao alterar o estado"),
+      );
   };
 
   const [moduloDialog, setModuloDialog] = useState<{ editing: Modulo | null } | null>(null);
-  const [menuDialog, setMenuDialog] = useState<{ moduloId: string; editing: Menu | null } | null>(null);
-  const [rotinaDialog, setRotinaDialog] = useState<{ menuId: string; editing: Rotina | null } | null>(null);
+  const [menuDialog, setMenuDialog] = useState<{
+    moduloId: string;
+    editing: MenuArvore | null;
+    /** Preenchido quando o diálogo nasceu de "Novo submenu". */
+    menuPaiId?: string | null;
+  } | null>(null);
+  const [rotinaDialog, setRotinaDialog] = useState<{ menuId: string; editing: Rotina | null } | null>(
+    null,
+  );
 
   return (
     <div className="space-y-6">
@@ -207,7 +307,8 @@ export default function EstruturaPage() {
               <Badge variant="outline" className="text-xs">Navegação & RBAC</Badge>
             </div>
             <p className="text-xs text-muted-foreground">
-              Módulos agrupam menus e rotinas de permissão do sistema. Arraste (⋮⋮) para reordenar a exibição.
+              Módulos agrupam menus e rotinas de permissão do sistema. Arraste (⋮⋮) para reordenar ou
+              para levar um menu de um módulo a outro.
             </p>
           </div>
         </div>
@@ -259,7 +360,6 @@ export default function EstruturaPage() {
         </Card>
       </div>
 
-
       {modulosQuery.isLoading && (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -268,20 +368,20 @@ export default function EstruturaPage() {
         </div>
       )}
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleModuloDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext
-          items={modulosQuery.data?.map((m) => m.id) ?? []}
+          items={modulos.map((m) => m.id)}
           strategy={verticalListSortingStrategy}
         >
           <div className="space-y-3">
-            {modulosQuery.data?.map((modulo) => (
+            {modulos.map((modulo) => (
               <ModuloRow
                 key={modulo.id}
                 modulo={modulo}
-                rotinasPorMenu={rotinasPorMenu}
-                onDragEndMenus={handleMenuDragEnd(modulo)}
-                sensors={sensors}
                 onEditModulo={() => setModuloDialog({ editing: modulo })}
+                onToggleAtivoModulo={(value) =>
+                  alternarAtivo("modulo", modulo.id, modulo.nome, value)
+                }
                 onToggleTelaPequenaModulo={(value) =>
                   updateModulo.mutateAsync({ id: modulo.id, input: { disponivelTelaPequena: value } })
                     .then(() => { invalidate(); toast.success(value ? "Módulo liberado no celular" : "Módulo bloqueado no celular"); })
@@ -298,6 +398,9 @@ export default function EstruturaPage() {
                 }}
                 onCreateMenu={() => setMenuDialog({ moduloId: modulo.id, editing: null })}
                 onEditMenu={(menu) => setMenuDialog({ moduloId: modulo.id, editing: menu })}
+                onToggleAtivoMenu={(menu, value) =>
+                  alternarAtivo("menu", menu.id, menu.nome, value)
+                }
                 onToggleTelaPequenaMenu={(menu, value) =>
                   updateMenu.mutateAsync({ id: menu.id, input: { disponivelTelaPequena: value } })
                     .then(() => { invalidate(); toast.success(value ? "Tela liberada no celular" : "Tela bloqueada no celular"); })
@@ -312,8 +415,14 @@ export default function EstruturaPage() {
                     toast.error(err instanceof ApiError ? err.message : "Erro ao excluir menu");
                   }
                 }}
+                onCreateSubmenu={(menu) =>
+                  setMenuDialog({ moduloId: modulo.id, editing: null, menuPaiId: menu.id })
+                }
                 onCreateRotina={(menu) => setRotinaDialog({ menuId: menu.id, editing: null })}
                 onEditRotina={(menu, rotina) => setRotinaDialog({ menuId: menu.id, editing: rotina })}
+                onToggleAtivoRotina={(rotina, value) =>
+                  alternarAtivo("rotina", rotina.id, rotina.nome, value)
+                }
                 onToggleTelaPequenaRotina={(rotina, value) =>
                   updateRotina.mutateAsync({ id: rotina.id, input: { disponivelTelaPequena: value } })
                     .then(() => { invalidate(); toast.success(value ? "Rotina liberada no celular" : "Rotina bloqueada no celular"); })
@@ -334,7 +443,7 @@ export default function EstruturaPage() {
         </SortableContext>
       </DndContext>
 
-      {!modulosQuery.isLoading && modulosQuery.data?.length === 0 && (
+      {!modulosQuery.isLoading && modulos.length === 0 && (
         <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border py-16 text-muted-foreground">
           <FolderTree className="size-6" />
           <p className="text-sm">Nenhum módulo cadastrado ainda.</p>
@@ -353,8 +462,9 @@ export default function EstruturaPage() {
       {menuDialog && (
         <MenuFormDialog
           moduloId={menuDialog.moduloId}
-          modulos={modulosQuery.data ?? []}
+          modulos={modulos}
           editing={menuDialog.editing}
+          menuPaiInicial={menuDialog.menuPaiId ?? null}
           onClose={() => setMenuDialog(null)}
           onCreate={(input) => createMenu.mutateAsync(input)}
           onUpdate={(id, input) => updateMenu.mutateAsync({ id, input }).then(invalidate)}
@@ -364,6 +474,7 @@ export default function EstruturaPage() {
       {rotinaDialog && (
         <RotinaFormDialog
           menuId={rotinaDialog.menuId}
+          modulos={modulos}
           editing={rotinaDialog.editing}
           onClose={() => setRotinaDialog(null)}
           onCreate={(input) => createRotina.mutateAsync(input)}
@@ -380,39 +491,42 @@ export default function EstruturaPage() {
 
 function ModuloRow({
   modulo,
-  rotinasPorMenu,
-  onDragEndMenus,
-  sensors,
   onEditModulo,
+  onToggleAtivoModulo,
   onToggleTelaPequenaModulo,
   onDeleteModulo,
   onCreateMenu,
   onEditMenu,
+  onToggleAtivoMenu,
   onToggleTelaPequenaMenu,
   onDeleteMenu,
+  onCreateSubmenu,
   onCreateRotina,
   onEditRotina,
+  onToggleAtivoRotina,
   onToggleTelaPequenaRotina,
   onDeleteRotina,
 }: {
   modulo: ModuloComMenus;
-  rotinasPorMenu: Map<string, Rotina[]>;
-  onDragEndMenus: (event: DragEndEvent) => void;
-  sensors: ReturnType<typeof useSensors>;
   onEditModulo: () => void;
+  onToggleAtivoModulo: (value: boolean) => void;
   onToggleTelaPequenaModulo: (value: boolean) => void;
   onDeleteModulo: () => void;
   onCreateMenu: () => void;
-  onEditMenu: (menu: Menu) => void;
-  onToggleTelaPequenaMenu: (menu: Menu, value: boolean) => void;
-  onDeleteMenu: (menu: Menu) => void;
-  onCreateRotina: (menu: Menu) => void;
-  onEditRotina: (menu: Menu, rotina: Rotina) => void;
+  onEditMenu: (menu: MenuArvore) => void;
+  onToggleAtivoMenu: (menu: MenuArvore, value: boolean) => void;
+  onToggleTelaPequenaMenu: (menu: MenuArvore, value: boolean) => void;
+  onDeleteMenu: (menu: MenuArvore) => void;
+  onCreateSubmenu: (menu: MenuArvore) => void;
+  onCreateRotina: (menu: MenuArvore) => void;
+  onEditRotina: (menu: MenuArvore, rotina: Rotina) => void;
+  onToggleAtivoRotina: (rotina: Rotina, value: boolean) => void;
   onToggleTelaPequenaRotina: (rotina: Rotina, value: boolean) => void;
   onDeleteRotina: (rotina: Rotina) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: modulo.id,
+    data: { tipo: "modulo" },
   });
 
   return (
@@ -420,8 +534,9 @@ function ModuloRow({
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       defaultOpen
-      className="overflow-hidden rounded-2xl border border-border/70 bg-card"
+      className="overflow-hidden rounded-2xl border border-border/70 bg-card data-[desligado]:border-dashed"
       data-dragging={isDragging || undefined}
+      data-desligado={!modulo.ativo || undefined}
     >
       <div className="flex items-center gap-1 px-2 py-3 data-[dragging]:opacity-50">
         <button
@@ -436,11 +551,18 @@ function ModuloRow({
         <CollapsibleTrigger asChild>
           <button className="group flex flex-1 items-center gap-3 text-left">
             <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
-            <div className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <div
+              className={cn(
+                "flex size-9 items-center justify-center rounded-full",
+                modulo.ativo ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
+              )}
+            >
               <DynamicIcon name={modulo.icone} className="size-4" />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-medium">{modulo.nome}</p>
+              <p className={cn("text-sm font-medium", !modulo.ativo && "text-muted-foreground")}>
+                {modulo.nome}
+              </p>
               <p className="text-xs text-muted-foreground">
                 {modulo.menus.length} {modulo.menus.length === 1 ? "menu" : "menus"}
               </p>
@@ -449,12 +571,23 @@ function ModuloRow({
         </CollapsibleTrigger>
 
         <div className="flex shrink-0 items-center gap-2">
-          <MobileAvailabilitySwitch
+          {!modulo.ativo && (
+            <Badge variant="secondary" className="hidden sm:inline-flex">
+              Módulo desligado
+            </Badge>
+          )}
+          <SwitchDeLinha
+            rotulo="Ativo"
+            checked={modulo.ativo}
+            label={`Ligar ou desligar o módulo ${modulo.nome} inteiro`}
+            onCheckedChange={onToggleAtivoModulo}
+          />
+          <SwitchDeLinha
+            rotulo="Tela pequena"
             checked={modulo.disponivelTelaPequena}
             label={`Disponibilidade de ${modulo.nome} em telas pequenas`}
             onCheckedChange={onToggleTelaPequenaModulo}
           />
-          {!modulo.ativo && <Badge variant="secondary">Inativo</Badge>}
           <Button variant="outline" size="sm" onClick={onCreateMenu}>
             <Plus className="size-3.5" />
             Menu
@@ -477,6 +610,14 @@ function ModuloRow({
         </div>
       </div>
 
+      {!modulo.ativo && (
+        <p className="border-t border-border/60 bg-muted/40 px-4 py-2 pl-14 text-xs text-muted-foreground">
+          Com o módulo desligado, os menus e rotinas abaixo saem do menu lateral e a API recusa o
+          acesso a eles — sem perder nada do que está configurado aqui. Religue para voltar ao que
+          era.
+        </p>
+      )}
+
       <CollapsibleContent>
         <div className="divide-y divide-border/60 border-t border-border/60">
           {modulo.menus.length === 0 && (
@@ -485,24 +626,35 @@ function ModuloRow({
             </p>
           )}
 
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEndMenus}>
-            <SortableContext items={modulo.menus.map((m) => m.id)} strategy={verticalListSortingStrategy}>
-              {modulo.menus.map((menu) => (
-                <MenuRow
-                  key={menu.id}
-                  menu={menu}
-                  rotinas={rotinasPorMenu.get(menu.id) ?? []}
-                  onEdit={() => onEditMenu(menu)}
-                  onToggleTelaPequena={(value) => onToggleTelaPequenaMenu(menu, value)}
-                  onDelete={() => onDeleteMenu(menu)}
-                  onCreateRotina={() => onCreateRotina(menu)}
-                  onEditRotina={(rotina) => onEditRotina(menu, rotina)}
-                  onToggleTelaPequenaRotina={onToggleTelaPequenaRotina}
-                  onDeleteRotina={onDeleteRotina}
-                />
-              ))}
-            </SortableContext>
-          </DndContext>
+          <SortableContext
+            items={modulo.menus.map((m) => m.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            {modulo.menus.map((menu) => (
+              <MenuRow
+                key={menu.id}
+                menu={menu}
+                moduloId={modulo.id}
+                moduloAtivo={modulo.ativo}
+                onEdit={() => onEditMenu(menu)}
+                onToggleAtivo={(value) => onToggleAtivoMenu(menu, value)}
+                onToggleTelaPequena={(value) => onToggleTelaPequenaMenu(menu, value)}
+                onDelete={() => onDeleteMenu(menu)}
+                onCreateSubmenu={() => onCreateSubmenu(menu)}
+                onCreateRotina={() => onCreateRotina(menu)}
+                onEditRotina={(rotina) => onEditRotina(menu, rotina)}
+                onToggleAtivoRotina={onToggleAtivoRotina}
+                onToggleTelaPequenaRotina={onToggleTelaPequenaRotina}
+                onDeleteRotina={onDeleteRotina}
+                onEditSubmenu={onEditMenu}
+                onToggleAtivoSubmenu={onToggleAtivoMenu}
+                onToggleTelaPequenaSubmenu={onToggleTelaPequenaMenu}
+                onDeleteSubmenu={onDeleteMenu}
+                onCreateRotinaSubmenu={onCreateRotina}
+                onEditRotinaSubmenu={onEditRotina}
+              />
+            ))}
+          </SortableContext>
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -511,52 +663,97 @@ function ModuloRow({
 
 function MenuRow({
   menu,
-  rotinas,
+  moduloId,
+  moduloAtivo,
+  nivel = 0,
   onEdit,
+  onToggleAtivo,
   onToggleTelaPequena,
   onDelete,
+  onCreateSubmenu,
   onCreateRotina,
   onEditRotina,
+  onToggleAtivoRotina,
   onToggleTelaPequenaRotina,
   onDeleteRotina,
+  onEditSubmenu,
+  onToggleAtivoSubmenu,
+  onToggleTelaPequenaSubmenu,
+  onDeleteSubmenu,
+  onCreateRotinaSubmenu,
+  onEditRotinaSubmenu,
 }: {
-  menu: Menu;
-  rotinas: Rotina[];
+  menu: MenuArvore;
+  moduloId: string;
+  moduloAtivo: boolean;
+  nivel?: number;
   onEdit: () => void;
+  onToggleAtivo: (value: boolean) => void;
   onToggleTelaPequena: (value: boolean) => void;
   onDelete: () => void;
+  onCreateSubmenu?: () => void;
   onCreateRotina: () => void;
   onEditRotina: (rotina: Rotina) => void;
+  onToggleAtivoRotina: (rotina: Rotina, value: boolean) => void;
   onToggleTelaPequenaRotina: (rotina: Rotina, value: boolean) => void;
   onDeleteRotina: (rotina: Rotina) => void;
+  onEditSubmenu?: (menu: MenuArvore) => void;
+  onToggleAtivoSubmenu?: (menu: MenuArvore, value: boolean) => void;
+  onToggleTelaPequenaSubmenu?: (menu: MenuArvore, value: boolean) => void;
+  onDeleteSubmenu?: (menu: MenuArvore) => void;
+  onCreateRotinaSubmenu?: (menu: MenuArvore) => void;
+  onEditRotinaSubmenu?: (menu: MenuArvore, rotina: Rotina) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  // Só o primeiro nível é arrastável: é ele que troca de posição e de módulo.
+  // Submenu muda de lugar pelo diálogo, onde se escolhe o menu pai.
+  const sortable = useSortable({
     id: menu.id,
+    data: { tipo: "menu", moduloId },
+    disabled: nivel > 0,
   });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable;
+  const submenus = menu.submenus ?? [];
+  const desligadoPorCima = !moduloAtivo;
 
   return (
     <Collapsible
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className="bg-muted/20"
+      className={cn(nivel === 0 ? "bg-muted/20" : "bg-muted/10")}
       data-dragging={isDragging || undefined}
     >
-      <div className="flex items-center gap-1 py-2.5 pr-4 pl-10 data-[dragging]:opacity-50">
-        <button
-          type="button"
-          className="cursor-grab touch-none rounded p-1 text-muted-foreground hover:bg-muted active:cursor-grabbing"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="size-3.5" />
-        </button>
+      <div
+        className={cn(
+          "flex items-center gap-1 py-2.5 pr-4 data-[dragging]:opacity-50",
+          nivel === 0 ? "pl-10" : "pl-16",
+        )}
+      >
+        {nivel === 0 ? (
+          <button
+            type="button"
+            className="cursor-grab touch-none rounded p-1 text-muted-foreground hover:bg-muted active:cursor-grabbing"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="size-3.5" />
+          </button>
+        ) : (
+          <CornerDownRight className="size-3.5 shrink-0 text-muted-foreground/60" />
+        )}
 
         <CollapsibleTrigger asChild>
           <button className="group flex flex-1 items-center gap-2.5 text-left">
             <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
             <DynamicIcon name={menu.icone} className="size-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0">
-              <p className="text-sm font-medium">{menu.nome}</p>
+              <p
+                className={cn(
+                  "text-sm font-medium",
+                  (!menu.ativo || desligadoPorCima) && "text-muted-foreground",
+                )}
+              >
+                {menu.nome}
+              </p>
               {menu.rota && (
                 <p className="truncate font-mono text-xs text-muted-foreground">{menu.rota}</p>
               )}
@@ -565,19 +762,26 @@ function MenuRow({
         </CollapsibleTrigger>
 
         <div className="flex shrink-0 items-center gap-2">
-          <MobileAvailabilitySwitch
-            checked={menu.disponivelTelaPequena}
-            label={`Disponibilidade de ${menu.nome} em telas pequenas`}
-            onCheckedChange={onToggleTelaPequena}
-          />
           {!menu.disponivelTelaPequena && (
-            <Badge variant="secondary" className="hidden sm:inline-flex">
+            <Badge variant="secondary" className="hidden xl:inline-flex">
               Somente tela maior
             </Badge>
           )}
           <Badge variant="outline">
-            {rotinas.length} {rotinas.length === 1 ? "rotina" : "rotinas"}
+            {menu.rotinas.length} {menu.rotinas.length === 1 ? "rotina" : "rotinas"}
           </Badge>
+          <SwitchDeLinha
+            rotulo="Ativo"
+            checked={menu.ativo}
+            label={`Ligar ou desligar o menu ${menu.nome}`}
+            onCheckedChange={onToggleAtivo}
+          />
+          <SwitchDeLinha
+            rotulo="Tela pequena"
+            checked={menu.disponivelTelaPequena}
+            label={`Disponibilidade de ${menu.nome} em telas pequenas`}
+            onCheckedChange={onToggleTelaPequena}
+          />
           <Button variant="ghost" size="sm" onClick={onCreateRotina}>
             <Plus className="size-3.5" />
             Rotina
@@ -592,6 +796,11 @@ function MenuRow({
               <DropdownMenuItem onClick={onEdit}>
                 <Pencil className="size-4" /> Editar menu
               </DropdownMenuItem>
+              {nivel === 0 && onCreateSubmenu && (
+                <DropdownMenuItem onClick={onCreateSubmenu}>
+                  <CornerDownRight className="size-4" /> Novo submenu
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem variant="destructive" onClick={onDelete}>
                 <Trash2 className="size-4" /> Excluir menu
               </DropdownMenuItem>
@@ -601,21 +810,47 @@ function MenuRow({
       </div>
 
       <CollapsibleContent>
-        <div className="space-y-1 py-2 pr-4 pl-[4.75rem]">
-          {rotinas.length === 0 && (
+        <div
+          className={cn("space-y-1 py-2 pr-4", nivel === 0 ? "pl-[4.75rem]" : "pl-[6.5rem]")}
+        >
+          {menu.rotinas.length === 0 && (
             <p className="text-sm text-muted-foreground">Nenhuma rotina neste menu ainda.</p>
           )}
 
-          {rotinas.map((rotina) => (
+          {menu.rotinas.map((rotina) => (
             <RotinaRow
               key={rotina.id}
               rotina={rotina}
               onEdit={() => onEditRotina(rotina)}
+              onToggleAtivo={(value) => onToggleAtivoRotina(rotina, value)}
               onToggleTelaPequena={(value) => onToggleTelaPequenaRotina(rotina, value)}
               onDelete={() => onDeleteRotina(rotina)}
             />
           ))}
         </div>
+
+        {submenus.length > 0 && (
+          <div className="divide-y divide-border/60 border-t border-border/60">
+            {submenus.map((submenu) => (
+              <MenuRow
+                key={submenu.id}
+                menu={submenu}
+                moduloId={moduloId}
+                moduloAtivo={moduloAtivo && menu.ativo}
+                nivel={nivel + 1}
+                onEdit={() => onEditSubmenu?.(submenu)}
+                onToggleAtivo={(value) => onToggleAtivoSubmenu?.(submenu, value)}
+                onToggleTelaPequena={(value) => onToggleTelaPequenaSubmenu?.(submenu, value)}
+                onDelete={() => onDeleteSubmenu?.(submenu)}
+                onCreateRotina={() => onCreateRotinaSubmenu?.(submenu)}
+                onEditRotina={(rotina) => onEditRotinaSubmenu?.(submenu, rotina)}
+                onToggleAtivoRotina={onToggleAtivoRotina}
+                onToggleTelaPequenaRotina={onToggleTelaPequenaRotina}
+                onDeleteRotina={onDeleteRotina}
+              />
+            ))}
+          </div>
+        )}
       </CollapsibleContent>
     </Collapsible>
   );
@@ -624,11 +859,13 @@ function MenuRow({
 function RotinaRow({
   rotina,
   onEdit,
+  onToggleAtivo,
   onToggleTelaPequena,
   onDelete,
 }: {
   rotina: Rotina;
   onEdit: () => void;
+  onToggleAtivo: (value: boolean) => void;
   onToggleTelaPequena: (value: boolean) => void;
   onDelete: () => void;
 }) {
@@ -636,14 +873,20 @@ function RotinaRow({
     <div className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-muted/60">
       <div className="flex items-center gap-2 text-sm">
         <ListTree className="size-3.5 text-muted-foreground" />
-        <span>{rotina.nome}</span>
+        <span className={cn(!rotina.ativo && "text-muted-foreground")}>{rotina.nome}</span>
         <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
           {rotina.codigo}
         </code>
-        {!rotina.ativo && <Badge variant="secondary">Inativo</Badge>}
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <MobileAvailabilitySwitch
+        <SwitchDeLinha
+          rotulo="Ativo"
+          checked={rotina.ativo}
+          label={`Ligar ou desligar a rotina ${rotina.nome}`}
+          onCheckedChange={onToggleAtivo}
+        />
+        <SwitchDeLinha
+          rotulo="Tela pequena"
           checked={rotina.disponivelTelaPequena}
           label={`Disponibilidade de ${rotina.nome} em telas pequenas`}
           onCheckedChange={onToggleTelaPequena}
@@ -656,7 +899,7 @@ function RotinaRow({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={onEdit}>
-            <Pencil className="size-4" /> Editar
+            <Pencil className="size-4" /> Editar / mover
           </DropdownMenuItem>
           <DropdownMenuItem variant="destructive" onClick={onDelete}>
             <Trash2 className="size-4" /> Excluir
@@ -668,11 +911,18 @@ function RotinaRow({
   );
 }
 
-function MobileAvailabilitySwitch({
+/**
+ * Switch de linha, usado tanto para "Ativo" quanto para "Tela pequena". O
+ * rótulo só aparece em telas largas — abaixo disso ficam dois switches lado a
+ * lado, e é o `title`/`aria-label` que diz qual é qual.
+ */
+function SwitchDeLinha({
+  rotulo,
   checked,
   label,
   onCheckedChange,
 }: {
+  rotulo: string;
   checked: boolean;
   label: string;
   onCheckedChange: (checked: boolean) => void;
@@ -683,7 +933,7 @@ function MobileAvailabilitySwitch({
       title={label}
       onClick={(event) => event.stopPropagation()}
     >
-      <span className="hidden lg:inline">Tela pequena</span>
+      <span className="hidden 2xl:inline">{rotulo}</span>
       <Switch checked={checked} onCheckedChange={onCheckedChange} aria-label={label} />
     </label>
   );
@@ -750,6 +1000,20 @@ function ModuloFormDialog({
                 onChange={(v) => form.setValue("icone", v)}
               />
             </Field>
+            <Field>
+              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border p-3">
+                <span>
+                  <span className="block text-sm font-medium">Módulo ativo</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Desligado, o módulo inteiro sai do menu lateral e a API recusa suas rotinas.
+                  </span>
+                </span>
+                <Switch
+                  checked={form.watch("ativo")}
+                  onCheckedChange={(value) => form.setValue("ativo", value, { shouldDirty: true })}
+                />
+              </label>
+            </Field>
           </FieldGroup>
           <DialogFooter>
             <Button type="submit" disabled={form.formState.isSubmitting}>
@@ -766,6 +1030,7 @@ function MenuFormDialog({
   moduloId,
   modulos,
   editing,
+  menuPaiInicial,
   onClose,
   onCreate,
   onUpdate,
@@ -773,7 +1038,9 @@ function MenuFormDialog({
   moduloId: string;
   /** Todos os módulos com seus menus — destino possível e base do cálculo da ordem. */
   modulos: ModuloComMenus[];
-  editing: Menu | null;
+  editing: MenuArvore | null;
+  /** Preenchido quando o diálogo foi aberto por "Novo submenu". */
+  menuPaiInicial?: string | null;
   onClose: () => void;
   onCreate: (input: MenuCreate) => Promise<unknown>;
   onUpdate: (id: string, input: Partial<MenuCreate>) => Promise<unknown>;
@@ -782,7 +1049,7 @@ function MenuFormDialog({
     resolver: zodResolver(menuCreateSchema),
     defaultValues: {
       moduloId,
-      menuPaiId: editing?.menuPaiId ?? null,
+      menuPaiId: editing?.menuPaiId ?? menuPaiInicial ?? null,
       nome: editing?.nome ?? "",
       icone: editing?.icone ?? "",
       rota: editing?.rota ?? "",
@@ -792,6 +1059,14 @@ function MenuFormDialog({
     },
   });
   const moduloSelecionado = form.watch("moduloId");
+  const menuPaiSelecionado = form.watch("menuPaiId");
+
+  // Pai possível: menu de primeiro nível do módulo escolhido, que não seja o
+  // próprio menu. A API recusa o resto (neto, pai de outro módulo, ciclo).
+  const paisPossiveis = (modulos.find((m) => m.id === moduloSelecionado)?.menus ?? []).filter(
+    (m) => m.id !== editing?.id,
+  );
+  const temSubmenus = (editing?.submenus?.length ?? 0) > 0;
 
   const onSubmit = async (values: MenuCreate) => {
     // Mudou de módulo: entra no fim do destino (a ordem antiga é do módulo de
@@ -813,7 +1088,7 @@ function MenuFormDialog({
         toast.success(trocouDeModulo ? "Menu movido de módulo" : "Menu atualizado");
       } else {
         await onCreate(dados);
-        toast.success("Menu cadastrado");
+        toast.success(dados.menuPaiId ? "Submenu cadastrado" : "Menu cadastrado");
       }
       onClose();
     } catch (err) {
@@ -838,7 +1113,12 @@ function MenuFormDialog({
               <FieldLabel htmlFor="moduloId">Módulo</FieldLabel>
               <Select
                 value={moduloSelecionado}
-                onValueChange={(v) => form.setValue("moduloId", v)}
+                onValueChange={(v) => {
+                  form.setValue("moduloId", v);
+                  // O pai é do módulo antigo — segurá-lo aqui só geraria erro
+                  // na API ("pai precisa estar no mesmo módulo").
+                  form.setValue("menuPaiId", null);
+                }}
               >
                 <SelectTrigger id="moduloId" className="w-full">
                   <SelectValue />
@@ -857,6 +1137,31 @@ function MenuFormDialog({
                   dele pode ser ajustada arrastando.
                 </FieldDescription>
               )}
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="menuPaiId">Dentro de</FieldLabel>
+              <Select
+                value={menuPaiSelecionado ?? "__raiz__"}
+                onValueChange={(v) => form.setValue("menuPaiId", v === "__raiz__" ? null : v)}
+                disabled={temSubmenus}
+              >
+                <SelectTrigger id="menuPaiId" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__raiz__">O próprio módulo (primeiro nível)</SelectItem>
+                  {paisPossiveis.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FieldDescription>
+                {temSubmenus
+                  ? "Este menu já tem submenus, então ele próprio não pode virar submenu — a árvore tem dois níveis."
+                  : "Escolher um menu aqui transforma este item em submenu dele."}
+              </FieldDescription>
             </Field>
             <Field>
               <FieldLabel htmlFor="rota">Rota no sistema</FieldLabel>
@@ -899,12 +1204,14 @@ function MenuFormDialog({
 
 function RotinaFormDialog({
   menuId,
+  modulos,
   editing,
   onClose,
   onCreate,
   onUpdate,
 }: {
   menuId: string;
+  modulos: ModuloComMenus[];
   editing: Rotina | null;
   onClose: () => void;
   onCreate: (input: RotinaCreate) => Promise<unknown>;
@@ -920,12 +1227,22 @@ function RotinaFormDialog({
       disponivelTelaPequena: editing?.disponivelTelaPequena ?? true,
     },
   });
+  const menuSelecionado = form.watch("menuId");
+
+  // Todos os menus de todos os módulos, com o nome do módulo à frente: mover a
+  // rotina é escolher outro daqui.
+  const destinos = modulos.flatMap((modulo) =>
+    achatarMenus(modulo.menus).map((menu) => ({
+      id: menu.id,
+      rotulo: `${modulo.nome} › ${menu.nome}`,
+    })),
+  );
 
   const onSubmit = async (values: RotinaCreate) => {
     try {
       if (editing) {
         await onUpdate(editing.id, values);
-        toast.success("Rotina atualizada");
+        toast.success(values.menuId !== menuId ? "Rotina movida de menu" : "Rotina atualizada");
       } else {
         await onCreate(values);
         toast.success("Rotina cadastrada");
@@ -957,6 +1274,27 @@ function RotinaFormDialog({
                 alterado depois de criado.
               </FieldDescription>
               <FieldError errors={[form.formState.errors.codigo]} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="menuId">Menu</FieldLabel>
+              <Select value={menuSelecionado} onValueChange={(v) => form.setValue("menuId", v)}>
+                <SelectTrigger id="menuId" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {destinos.map((destino) => (
+                    <SelectItem key={destino.id} value={destino.id}>
+                      {destino.rotulo}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {editing && menuSelecionado !== menuId && (
+                <FieldDescription>
+                  O código não muda ao mover, então as permissões já concedidas nos perfis continuam
+                  valendo.
+                </FieldDescription>
+              )}
             </Field>
           </FieldGroup>
           <DialogFooter>

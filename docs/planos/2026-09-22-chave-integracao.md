@@ -200,7 +200,16 @@ Teste, na ordem de carga, conferindo na tela ("Código") e na resposta da API
 - [ ] Categorias (SZ1) e subcategorias (SBM): `chave` `-12`, `codigoErp` `12`,
       e a subcategoria ligada à categoria pai. As 2 categorias que já tinham
       subido antes recebem o `codigoErp` certo no reenvio.
-- [ ] Regras de desconto, condições, armazéns, produtos, vendedores, clientes e
+- [~] Vendedores (SA3): pendente de recompilar e reenviar. O papel passou a sair
+      do cadastro (gerente = aparece em algum A3_GEREN; supervisor = aparece em
+      algum A3_SUPER; o resto, vendedor), o superior vem do campo do nível e a
+      ordem de envio segue a dependência. Na RCG: gerente 000315, supervisor
+      000035, 67 vendedores (69 no total). Antes disso a hierarquia subiu inteira
+      (22/09/2026). Dois ajustes foram necessários no BJPLA003: ordenar por
+      `A3_SUPER, A3_COD` (o supervisor é outro vendedor e precisa existir antes)
+      e conferir na SA3 se o supervisor existe e não está excluído — se não
+      existir, o vendedor sobe sem supervisor, com aviso no log.
+- [ ] Regras de desconto, condições, armazéns, produtos, clientes e
       fornecedores: `codigoErp` sem filial e sem `-`, e referências ligadas.
 - [ ] Tabela de preço (DA0/DA1): cabeçalho e itens juntos, com a chave do item
       `FILIAL-CODTAB-CODPRO-ITEM`.

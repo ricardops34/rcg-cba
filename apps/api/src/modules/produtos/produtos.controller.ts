@@ -42,6 +42,20 @@ import {
   type AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
 
+/**
+ * Duas telas chegam aqui, cada uma com a sua rotina:
+ *
+ * - `produtos` — "Produtos" no módulo Comercial, o catálogo de consulta;
+ * - `produtos-cadastro` — "Produtos" no módulo Cadastros, o CRUD.
+ *
+ * Por isso cada rota aceita as duas (o `RequirePermission` é um OR). Quem
+ * separa consulta de manutenção é a permissão que o perfil recebeu, não o
+ * caminho pelo qual a pessoa entrou — a requisição é a mesma dos dois lados,
+ * e o que o cliente dissesse sobre a própria origem não seria barreira.
+ *
+ * O que `produtos-cadastro` deixa mudar num produto vindo do ERP é assunto do
+ * service — ver `CAMPOS_DO_ERP`.
+ */
 @ApiTags('produtos')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -59,7 +73,10 @@ export class ProdutosController {
       'Catálogo da empresa ativa. Busca por descrição, código ERP, marca, categoria ou código de barras. Requer produtos.visualizar.',
   })
   @ApiPaginationQuery()
-  @RequirePermission('produtos', 'visualizar')
+  @RequirePermission('produtos', 'visualizar', [
+    'produtos-cadastro',
+    'visualizar',
+  ])
   @Get()
   findAll(
     @Query() query: ProdutoQueryDto,
@@ -74,10 +91,12 @@ export class ProdutosController {
       'Requer produtos.visualizar ou posicao-cliente.visualizar — a cortina de detalhe da ' +
       'Posição de Cliente abre esta rota a partir do mix de produtos que a própria tela já listou.',
   })
-  @RequirePermission('produtos', 'visualizar', [
-    'posicao-cliente',
+  @RequirePermission(
+    'produtos',
     'visualizar',
-  ])
+    ['posicao-cliente', 'visualizar'],
+    ['produtos-cadastro', 'visualizar'],
+  )
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.findOne(user.empresaAtivaId, id);
@@ -87,7 +106,10 @@ export class ProdutosController {
     summary: 'Cadastrar produto',
     description: 'Requer produtos.cadastrar.',
   })
-  @RequirePermission('produtos', 'cadastrar')
+  @RequirePermission('produtos', 'cadastrar', [
+    'produtos-cadastro',
+    'cadastrar',
+  ])
   @Post()
   create(
     @Body() dto: ProdutoCreateDto,
@@ -100,7 +122,7 @@ export class ProdutosController {
     summary: 'Editar produto',
     description: 'Requer produtos.editar.',
   })
-  @RequirePermission('produtos', 'editar')
+  @RequirePermission('produtos', 'editar', ['produtos-cadastro', 'editar'])
   @Patch(':id')
   update(
     @Param('id') id: string,
@@ -119,7 +141,7 @@ export class ProdutosController {
     },
   })
   @ApiResponse({ status: 201, description: 'Foto gravada no produto' })
-  @RequirePermission('produtos', 'editar')
+  @RequirePermission('produtos', 'editar', ['produtos-cadastro', 'editar'])
   @Post(':id/foto')
   @UseInterceptors(FileInterceptor('file', produtoFotoUploadOptions))
   uploadFoto(
@@ -138,7 +160,7 @@ export class ProdutosController {
   }
 
   @ApiOperation({ summary: 'Definir a foto principal do produto' })
-  @RequirePermission('produtos', 'editar')
+  @RequirePermission('produtos', 'editar', ['produtos-cadastro', 'editar'])
   @Patch(':id/fotos/:fotoId/principal')
   definirFotoPrincipal(
     @Param('id') id: string,
@@ -154,7 +176,7 @@ export class ProdutosController {
   }
 
   @ApiOperation({ summary: 'Remover uma foto do produto' })
-  @RequirePermission('produtos', 'editar')
+  @RequirePermission('produtos', 'editar', ['produtos-cadastro', 'editar'])
   @Delete(':id/fotos/:fotoId')
   removerFoto(
     @Param('id') id: string,
@@ -197,7 +219,7 @@ export class ProdutosController {
       'direcional: cadastre no equipamento os produtos que ele usa. Requer ' +
       'produtos.editar.',
   })
-  @RequirePermission('produtos', 'editar')
+  @RequirePermission('produtos', 'editar', ['produtos-cadastro', 'editar'])
   @Post(':id/relacionados')
   criarRelacionado(
     @Param('id') id: string,
@@ -213,7 +235,7 @@ export class ProdutosController {
       'Aceita remover pela ponta que estiver aberta na tela — quem vê ' +
       '"usado em" não precisa ir até o outro produto. Requer produtos.editar.',
   })
-  @RequirePermission('produtos', 'editar')
+  @RequirePermission('produtos', 'editar', ['produtos-cadastro', 'editar'])
   @Delete(':id/relacionados/:relacaoId')
   removerRelacionado(
     @Param('id') id: string,
@@ -252,7 +274,7 @@ export class ProdutosController {
       '`visivelAgente: false` tira a ficha do alcance da IA sem apagá-la. ' +
       'Requer produtos.editar.',
   })
-  @RequirePermission('produtos', 'editar')
+  @RequirePermission('produtos', 'editar', ['produtos-cadastro', 'editar'])
   @Patch(':id/fichas/:fichaId')
   atualizarFicha(
     @Param('id') id: string,
@@ -267,7 +289,7 @@ export class ProdutosController {
     summary: 'Excluir uma ficha técnica',
     description: 'O PDF sai do disco junto. Requer produtos.editar.',
   })
-  @RequirePermission('produtos', 'editar')
+  @RequirePermission('produtos', 'editar', ['produtos-cadastro', 'editar'])
   @Delete(':id/fichas/:fichaId')
   removerFicha(
     @Param('id') id: string,
@@ -281,7 +303,7 @@ export class ProdutosController {
     summary: 'Excluir produto (soft delete)',
     description: 'Requer produtos.excluir.',
   })
-  @RequirePermission('produtos', 'excluir')
+  @RequirePermission('produtos', 'excluir', ['produtos-cadastro', 'excluir'])
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.remove(user.empresaAtivaId, user, id);

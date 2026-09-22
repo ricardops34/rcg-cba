@@ -17,6 +17,8 @@ export interface MenuItem {
   ordem: number;
   disponivelTelaPequena: boolean;
   rotinas: { id: string; codigo: string; nome: string; disponivelTelaPequena: boolean }[];
+  /** Segundo (e último) nível da árvore — ver EstruturaService.validarMenuPai. */
+  submenus?: MenuItem[];
 }
 
 export interface ModuloComMenus {
@@ -124,15 +126,26 @@ export function useMenu() {
       (whatsappAtivo === true ||
         !ROTINAS_DEPENDENTES_WHATSAPP.includes(codigo));
 
+    /**
+     * Um menu que só agrupa (sem rota nem rotina própria) sobrevive se algum
+     * submenu sobreviver — senão o grupo sumiria levando junto os filhos que o
+     * usuário pode ver.
+     */
+    const filtrarMenu = (menu: MenuItem): MenuItem | null => {
+      const submenus = (menu.submenus ?? [])
+        .map(filtrarMenu)
+        .filter((sub): sub is MenuItem => sub !== null);
+      const rotinas = (menu.rotinas ?? []).filter((rotina) => podeVer(rotina.codigo));
+      if (rotinas.length === 0 && submenus.length === 0) return null;
+      return { ...menu, rotinas, submenus };
+    };
+
     const doCatalogo = query.data
       .map((modulo) => ({
         ...modulo,
         menus: modulo.menus
-          .map((menu) => ({
-            ...menu,
-            rotinas: (menu.rotinas ?? []).filter((rotina) => podeVer(rotina.codigo)),
-          }))
-          .filter((menu) => menu.rotinas.length > 0),
+          .map(filtrarMenu)
+          .filter((menu): menu is MenuItem => menu !== null),
       }))
       .filter((modulo) => modulo.menus.length > 0);
 
