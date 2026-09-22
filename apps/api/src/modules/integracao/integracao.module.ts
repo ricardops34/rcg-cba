@@ -31,6 +31,8 @@ import { IntegracaoTitulosReceberController } from './titulos-receber/integracao
 import { IntegracaoTitulosReceberService } from './titulos-receber/integracao-titulos-receber.service';
 import { IntegracaoOrcamentosController } from './orcamentos/integracao-orcamentos.controller';
 import { IntegracaoOrcamentosService } from './orcamentos/integracao-orcamentos.service';
+import { IntegracaoFileController } from './import/integracao-file.controller';
+import { IntegracaoFileService } from './import/integracao-file.service';
 import { ApiKeyGuard } from './guards/api-key.guard';
 
 @Module({
@@ -53,6 +55,7 @@ import { ApiKeyGuard } from './guards/api-key.guard';
     IntegracaoNotasEntradaController,
     IntegracaoTitulosReceberController,
     IntegracaoOrcamentosController,
+    IntegracaoFileController,
   ],
   providers: [
     ApiKeyGuard,
@@ -71,6 +74,8 @@ import { ApiKeyGuard } from './guards/api-key.guard';
     IntegracaoNotasEntradaService,
     IntegracaoTitulosReceberService,
     IntegracaoOrcamentosService,
+    IntegracaoFileService,
   ],
 })
 export class IntegracaoModule {}
+

@@ -1590,3 +1590,226 @@ Static Function SchedDef()
 
 Return aParam
 
+/*/{Protheus.doc} BJEXPTOARQ
+Exporta as mensagens de um lote da SZZ para um arquivo TXT em disco e atualiza o status na SZY e SZZ.
+@type    User Function
+@author  Ricardo P Sotomayor
+@since   22/09/2026
+@param   cSeqMae , character, ZY_CODIGO do lote a exportar
+@param   cCaminho, character, Caminho completo do arquivo TXT destino
+@return  array, {nLidas, nExportadas, nErros}
+@example aTot := U_BJEXPTOARQ("000000001", "C:\temp\lote.txt")
+/*/
+User Function BJEXPTOARQ(cSeqMae, cCaminho)
+
+	Local aTotal    := {0, 0, 0}
+	Local cQuery    := ""
+	Local cAlias    := ""
+	Local cLine     := ""
+	Local nHandle   := -1
+	Local oStmt     := Nil
+
+	Default cSeqMae  := ""
+	Default cCaminho := ""
+
+	If Empty(cSeqMae) .Or. Empty(cCaminho)
+		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Parametros invalidos para exportacao em TXT.", 0, 0, {})
+		Return aTotal
+	EndIf
+
+	nHandle := fCreate(cCaminho)
+
+	If nHandle < 0
+		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Nao foi possivel criar o arquivo: " + cCaminho, 0, 0, {})
+		aTotal[3] += 1
+		Return aTotal
+	EndIf
+
+	cQuery := "SELECT ZZ_FILIAL, ZZ_CODIGO, ZZ_SEQUEN, ZZ_TIPO, ZZ_ENTID, ZZ_CHVORI, ZZ_VERBO, ZZ_JSON "
+	cQuery += "  FROM " + RetSqlName("SZZ") + " SZZ "
+	cQuery += " WHERE SZZ.D_E_L_E_T_ = ' ' "
+	cQuery += "   AND SZZ.ZZ_FILIAL  = ? "
+	cQuery += "   AND SZZ.ZZ_CODIGO  = ? "
+	cQuery += " ORDER BY ZZ_SEQUEN "
+
+	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
+	oStmt:SetString(1, xFilial("SZZ"))
+	oStmt:SetString(2, PadR(cSeqMae, TamSX3("ZZ_CODIGO")[1]))
+
+	cAlias := oStmt:OpenAlias()
+
+	While (cAlias)->(!Eof())
+		aTotal[1] += 1
+
+		cLine := '{"lote":"' + AllTrim((cAlias)->ZZ_CODIGO) + '",'
+		cLine += '"seq":"' + AllTrim((cAlias)->ZZ_SEQUEN) + '",'
+		cLine += '"entidade":"' + AllTrim((cAlias)->ZZ_ENTID) + '",'
+		cLine += '"verbo":"' + AllTrim((cAlias)->ZZ_VERBO) + '",'
+		cLine += '"chave":"' + AllTrim((cAlias)->ZZ_CHVORI) + '",'
+		cLine += '"payload":' + AllTrim((cAlias)->ZZ_JSON) + '}' + CRLF
+
+		If fWrite(nHandle, cLine) > 0
+			aTotal[2] += 1
+			// Marca a mensagem como executada/exportada
+			U_BJGRAVA((cAlias)->ZZ_CODIGO, (cAlias)->ZZ_SEQUEN, "2", 200, "Exportado para arquivo TXT: " + cCaminho, "")
+		Else
+			aTotal[3] += 1
+			U_BJGRAVA((cAlias)->ZZ_CODIGO, (cAlias)->ZZ_SEQUEN, "3", 500, "Erro ao gravar no arquivo TXT: " + cCaminho, "")
+		EndIf
+
+		(cAlias)->(dbSkip())
+	End
+
+	(cAlias)->(dbCloseArea())
+	oStmt:Destroy()
+	fClose(nHandle)
+
+	// Se exportou e nao teve erro, atualiza a SZY
+	dbSelectArea("SZY")
+	SZY->(dbSetOrder(1)) // ZY_FILIAL + ZY_CODIGO
+	If SZY->(dbSeek(xFilial("SZY") + PadR(cSeqMae, TamSX3("ZY_CODIGO")[1])))
+		RecLock("SZY", .F.)
+		SZY->ZY_DTFIM  := Date()
+		SZY->ZY_HRFIM  := Time()
+		SZY->ZY_QTDENV := aTotal[2]
+		SZY->ZY_QTDERR := aTotal[3]
+		If aTotal[3] == 0
+			SZY->ZY_STATUS := "2" // Processado
+		Else
+			SZY->ZY_STATUS := "3" // Erro
+		EndIf
+		SZY->(MsUnlock())
+	EndIf
+
+	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Exportacao concluida - Lote " + cSeqMae + " - Exportadas: " + cValToChar(aTotal[2]) + " Erros: " + cValToChar(aTotal[3]), 0, 0, {})
+
+Return aTotal
+
+/*/{Protheus.doc} BJIMPDOARQ
+Importa mensagens de um arquivo TXT gerado pela Plataforma BJ e enfileira/executa na SZY/SZZ.
+@type    User Function
+@author  Ricardo P Sotomayor
+@since   22/09/2026
+@param   cCaminho, character, Caminho completo do arquivo TXT a importar
+@return  array, {nLidos, nEnfileirados, nErros}
+@example aTot := U_BJIMPDOARQ("C:\temp\import.txt")
+/*/
+User Function BJIMPDOARQ(cCaminho)
+
+	Local aTotal    := {0, 0, 0}
+	Local cLine     := ""
+	Local cSeqMae   := ""
+	Local cQuerySeq := ""
+	Local cAliasSeq := ""
+	Local cEntidad  := ""
+	Local cVerbo    := ""
+	Local cChave    := ""
+	Local cPayload  := ""
+	Local nTamSeq   := 0
+	Local oStmtSeq  := Nil
+	Local oJson     := Nil
+	Local oPayload  := Nil
+
+	Default cCaminho := ""
+
+	If Empty(cCaminho) .Or. !File(cCaminho)
+		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Arquivo de importacao invalido ou inexistente: " + cCaminho, 0, 0, {})
+		Return aTotal
+	EndIf
+
+	// Abre novo lote SZY para a importacao
+	nTamSeq := TamSX3("ZY_CODIGO")[1]
+	If nTamSeq <= 0
+		nTamSeq := 9
+	EndIf
+
+	cQuerySeq := "SELECT MAX(ZY_CODIGO) AS MAXSEQ FROM " + RetSqlName("SZY") + " SZY WHERE SZY.D_E_L_E_T_ = ' ' AND SZY.ZY_FILIAL = ? "
+	oStmtSeq  := FWExecStatement():New(ChangeQuery(cQuerySeq))
+	oStmtSeq:SetString(1, xFilial("SZY"))
+	cAliasSeq := oStmtSeq:OpenAlias()
+
+	If (cAliasSeq)->(!Eof()) .And. !Empty((cAliasSeq)->MAXSEQ)
+		cSeqMae := Soma1(PadL(AllTrim((cAliasSeq)->MAXSEQ), nTamSeq, "0"))
+	Else
+		cSeqMae := StrZero(1, nTamSeq)
+	EndIf
+	(cAliasSeq)->(dbCloseArea())
+	oStmtSeq:Destroy()
+
+	dbSelectArea("SZY")
+	RecLock("SZY", .T.)
+	SZY->ZY_FILIAL := xFilial("SZY")
+	SZY->ZY_CODIGO := cSeqMae
+	SZY->ZY_DTINI  := Date()
+	SZY->ZY_HRINI  := Time()
+	SZY->ZY_STATUS := "1"
+	SZY->(MsUnlock())
+
+	// Le arquivo linha por linha usando FT_FUse
+	FT_FUse(cCaminho)
+	FT_FGoTop()
+
+	While !FT_FEOF()
+		cLine := AllTrim(FT_FReadLN())
+		If !Empty(cLine)
+			aTotal[1] += 1
+			oJson := JsonObject():New()
+			If oJson:FromJson(cLine) == Nil
+				cEntidad := AllTrim(cValToChar(oJson:GetJsonObject("entidade")))
+				cVerbo   := AllTrim(cValToChar(oJson:GetJsonObject("verbo")))
+				cChave   := AllTrim(cValToChar(oJson:GetJsonObject("chave")))
+				oPayload := oJson:GetJsonObject("payload")
+
+				If ValType(oPayload) == "J"
+					cPayload := oPayload:ToJson()
+				Else
+					cPayload := AllTrim(cValToChar(oPayload))
+				EndIf
+
+				If Empty(cVerbo)
+					cVerbo := "POST"
+				EndIf
+
+				If U_BJENFILA(cSeqMae, "E", cEntidad, cChave, cVerbo, cPayload)
+					aTotal[2] += 1
+				Else
+					aTotal[3] += 1
+				EndIf
+			Else
+				aTotal[3] += 1
+			EndIf
+			oJson := Nil
+		EndIf
+		FT_FSKIP()
+	End
+
+	FT_FUse()
+
+	// Atualiza lote SZY
+	dbSelectArea("SZY")
+	SZY->(dbSetOrder(1))
+	If SZY->(dbSeek(xFilial("SZY") + cSeqMae))
+		RecLock("SZY", .F.)
+		SZY->ZY_DTFIM   := Date()
+		SZY->ZY_HRFIM   := Time()
+		SZY->ZY_QTDLIDO := aTotal[1]
+		SZY->ZY_QTDENV  := aTotal[2]
+		SZY->ZY_QTDERR  := aTotal[3]
+		If aTotal[3] == 0
+			SZY->ZY_STATUS := "2"
+		Else
+			SZY->ZY_STATUS := "3"
+		EndIf
+		SZY->(MsUnlock())
+	EndIf
+
+	// Processa mensagens de entrada recebidas
+	If aTotal[2] > 0
+		U_BJRETORNO()
+	EndIf
+
+	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Importacao de arquivo concluida - Lote " + cSeqMae + " - Lidos: " + cValToChar(aTotal[1]) + " Enfileirados: " + cValToChar(aTotal[2]), 0, 0, {})
+
+Return aTotal
+
+

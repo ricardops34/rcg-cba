@@ -56,12 +56,14 @@ O que os outros três usam. Não depende de nenhum deles.
 | `U_BJDRENA` | **Agendável.** Drena lote a lote: pega na SZY os lotes `1` e `3`, manda as mensagens de cada um e grava o resultado do envio no lote |
 | `U_BJLOTE` | Envio em bloco por `PUT`, agrupado por entidade — caminho da carga inicial |
 | `U_BJRETORNO` | **Agendável.** Lê da plataforma o que está aprovado, grava no ERP e confirma lá: orçamento aprovado → Pedido de Venda (SC5/SC6) por `MATA410`; alteração de cliente → SA1 por `CRMA980` |
+| `U_BJEXPTOARQ` | Exporta as mensagens da SZZ de um lote em arquivo TXT e marca como executadas |
+| `U_BJIMPDOARQ` | Importa um arquivo TXT da Plataforma BJ, grava lote SZY/SZZ de Entrada e executa a aplicação no ERP |
 
 ### [`BJPLA005.prw`](BJPLA005.prw) — Monitor (MVC)
 
 | Função | O que faz |
 |---|---|
-| `U_BJPLA005` | A única tela. Browse dos lotes (SZY) com Gerar (por grupo — ver *Gerar por grupo*), Enviar, Receber, Mensagens, Enviar em Bloco, Limpar e Ajuda |
+| `U_BJPLA005` | A única tela. Browse dos lotes (SZY) com Gerar, Enviar, Receber, Mensagens, Enviar em Bloco, Exportar TXT, Importar TXT, Limpar e Ajuda |
 
 **O agendamento chama a mesma função que o monitor.** Não existe uma camada
 de rotinas agendáveis entre o Schedule e o trabalho: `U_BJVARRE`, `U_BJDRENA`,

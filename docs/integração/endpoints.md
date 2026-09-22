@@ -37,6 +37,8 @@ até 1.000 registros de uma vez — ver [Lote](#lote--put-integracaoentidade).
 | `/integracao/notas-entrada` | `chave` | `ativo`, `tipo`, `fornecedorChave`, `clienteChave` | mestre-detalhe (`itens`) + `tipo` decide o participante |
 | `/integracao/titulos-receber` | `chave` | `ativo` | campos de cobrança bancária |
 | `/integracao/orcamentos` | `chave` | `ativo`, `status` | mestre-detalhe (`itens`) + fila de pendentes |
+| `/integracao/arquivo/importar` | — | — | `POST` envia arquivo TXT/JSON do Protheus e processa em lote |
+| `/integracao/arquivo/exportar` | — | — | `GET` baixa pendências da plataforma em TXT para importar no Protheus |
 
 Todos os `GET` de lista aceitam ainda `page`, `pageSize`, `search`, `sortBy` e
 `sortOrder`.

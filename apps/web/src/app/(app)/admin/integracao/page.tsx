@@ -46,6 +46,10 @@ import {
   ShieldAlert,
   Plus,
   BookOpen,
+  Upload,
+  Download,
+  FileText,
+  AlertCircle,
 } from "lucide-react";
 
 const dataBr = (v: string | null) => {
@@ -62,6 +66,7 @@ const dataHoraBr = (v: string | null) => {
 
 export default function IntegracaoPage() {
   const [novaChaveAberta, setNovaChaveAberta] = useState(false);
+  const [importDialogAberta, setImportDialogAberta] = useState(false);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -184,6 +189,15 @@ export default function IntegracaoPage() {
             type="button"
             variant="outline"
             size="sm"
+            onClick={() => setImportDialogAberta(true)}
+          >
+            <Upload className="size-4" />
+            Importar TXT Protheus
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
             onClick={() => window.open("/api/docs", "_blank")}
           >
             <BookOpen className="size-4" />
@@ -265,6 +279,13 @@ export default function IntegracaoPage() {
 
       {novaChaveAberta && (
         <NovaChaveDialog onClose={() => setNovaChaveAberta(false)} />
+      )}
+
+      {importDialogAberta && (
+        <ImportTxtDialog
+          chaves={rows.filter((r) => r.ativo)}
+          onClose={() => setImportDialogAberta(false)}
+        />
       )}
     </div>
   );
@@ -398,3 +419,145 @@ function NovaChaveDialog({ onClose }: { onClose: () => void }) {
     </Dialog>
   );
 }
+
+interface ResultadoImportacao {
+  total: number;
+  processados: number;
+  criados: number;
+  atualizados: number;
+  excluidos: number;
+  erros: Array<{ linha: number; chave?: string; mensagem: string }>;
+}
+
+function ImportTxtDialog({
+  chaves,
+  onClose,
+}: {
+  chaves: IntegracaoApiKey[];
+  onClose: () => void;
+}) {
+  const [apiKey, setApiKey] = useState(chaves[0]?.prefixo ? "" : "");
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [carregando, setCarregando] = useState(false);
+  const [resultado, setResultado] = useState<ResultadoImportacao | null>(null);
+  const [chaveSelecionada, setChaveSelecionada] = useState<string>("");
+
+  const handleImportar = async () => {
+    if (!arquivo) {
+      toast.error("Selecione um arquivo TXT para importar");
+      return;
+    }
+    if (!chaveSelecionada) {
+      toast.error("Informe a chave de API para a importação");
+      return;
+    }
+
+    try {
+      setCarregando(true);
+      const conteudo = await arquivo.text();
+
+      const res = await fetch("/api/v1/integracao/arquivo/importar", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": chaveSelecionada,
+        },
+        body: JSON.stringify({ conteudo }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Falha ao processar arquivo");
+      }
+
+      const data: ResultadoImportacao = await res.json();
+      setResultado(data);
+      toast.success("Importação concluída");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro na importação");
+    } finally {
+      setCarregando(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Upload className="size-5 text-primary" />
+            Importar Arquivo TXT do Protheus
+          </DialogTitle>
+        </DialogHeader>
+
+        {resultado ? (
+          <div className="space-y-4 py-4">
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4">
+              <h4 className="font-semibold text-emerald-600 dark:text-emerald-400">
+                Resumo do Processamento
+              </h4>
+              <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
+                <p>Total de Linhas: <span className="font-semibold">{resultado.total}</span></p>
+                <p>Processados: <span className="font-semibold">{resultado.processados}</span></p>
+                <p>Criados: <span className="font-semibold text-emerald-600">{resultado.criados}</span></p>
+                <p>Atualizados: <span className="font-semibold text-blue-600">{resultado.atualizados}</span></p>
+                <p>Excluídos: <span className="font-semibold text-amber-600">{resultado.excluidos}</span></p>
+                <p>Erros: <span className="font-semibold text-rose-600">{resultado.erros.length}</span></p>
+              </div>
+            </div>
+
+            {resultado.erros.length > 0 && (
+              <div className="max-h-40 overflow-y-auto space-y-1 text-xs border rounded-md p-2 bg-muted/40">
+                <p className="font-semibold text-rose-600">Detalhes dos Erros:</p>
+                {resultado.erros.map((e, idx) => (
+                  <p key={idx} className="text-muted-foreground font-mono">
+                    Linha {e.linha} {e.chave ? `(${e.chave})` : ""}: {e.mensagem}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button onClick={onClose}>Concluir</Button>
+            </DialogFooter>
+          </div>
+        ) : (
+          <div className="space-y-4 py-4">
+            <Field>
+              <FieldLabel htmlFor="keyInput">Chave de API (x-api-key)</FieldLabel>
+              <Input
+                id="keyInput"
+                placeholder="Cole aqui a chave de API (itg_...)"
+                value={chaveSelecionada}
+                onChange={(e) => setChaveSelecionada(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                A chave de API identifica a empresa de destino dos dados.
+              </p>
+            </Field>
+
+            <Field>
+              <FieldLabel htmlFor="fileInput">Arquivo TXT / JSON</FieldLabel>
+              <Input
+                id="fileInput"
+                type="file"
+                accept=".txt,.json"
+                onChange={(e) => setArquivo(e.target.files?.[0] || null)}
+              />
+            </Field>
+
+            <DialogFooter className="pt-2">
+              <Button variant="outline" onClick={onClose} disabled={carregando}>
+                Cancelar
+              </Button>
+              <Button onClick={handleImportar} disabled={carregando || !arquivo || !chaveSelecionada}>
+                {carregando ? "Processando..." : "Importar Arquivo"}
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+

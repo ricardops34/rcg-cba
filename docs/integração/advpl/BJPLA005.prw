@@ -88,6 +88,8 @@ Static Function MenuDef()
 	ADD OPTION aRotina TITLE "Receber"         ACTION "U_BJMONREC"       OPERATION 3 ACCESS 0
 	ADD OPTION aRotina TITLE "Mensagens"       ACTION "U_BJMONMSG"       OPERATION 9 ACCESS 0
 	ADD OPTION aRotina TITLE "Enviar em Bloco" ACTION "U_BJMONBLO"       OPERATION 3 ACCESS 0
+	ADD OPTION aRotina TITLE "Exportar TXT"    ACTION "U_BJMONEXP"       OPERATION 9 ACCESS 0
+	ADD OPTION aRotina TITLE "Importar TXT"    ACTION "U_BJMONIMP"       OPERATION 3 ACCESS 0
 	ADD OPTION aRotina TITLE "Limpar"          ACTION "U_BJMONLIM"       OPERATION 3 ACCESS 0
 	ADD OPTION aRotina TITLE "Ajuda"           ACTION "U_BJMONAJU"       OPERATION 3 ACCESS 0
 
@@ -342,6 +344,71 @@ User Function BJMONREC()
 		"Aplicados: "    + cValToChar(aTotal[2]) + CRLF + ;
 		"Ignorados: "    + cValToChar(aTotal[3]) + CRLF + ;
 		"Erros: "        + cValToChar(aTotal[4]), cCadastro)
+
+Return Nil
+
+/*/{Protheus.doc} BJMONEXP
+Exporta as mensagens do lote posicionado no browse para um arquivo TXT.
+@type    User Function
+@author  Ricardo P Sotomayor
+@since   22/09/2026
+@return  Nil
+/*/
+User Function BJMONEXP()
+
+	Local aTotal   := {0, 0, 0}
+	Local cSeqMae  := ""
+	Local cCaminho := ""
+
+	If SZY->(Eof()) .Or. Empty(SZY->ZY_CODIGO)
+		MsgStop("Nao ha lote posicionado.", cCadastro)
+		Return Nil
+	EndIf
+
+	cSeqMae := AllTrim(SZY->ZY_CODIGO)
+
+	cCaminho := cGetFile("Arquivos TXT (*.txt)|*.txt", "Salvar JSONs do Lote " + cSeqMae, 1, "C:\", .F., nOR(GETF_LOCALHARD, GETF_LOCALFLOPPY), .T.)
+
+	If Empty(cCaminho)
+		Return Nil
+	EndIf
+
+	Processa({|| aTotal := U_BJEXPTOARQ(cSeqMae, cCaminho)}, "Exportando Lote " + cSeqMae + "...")
+
+	MsgInfo("Lidas: "      + cValToChar(aTotal[1]) + CRLF + ;
+		"Exportadas: " + cValToChar(aTotal[2]) + CRLF + ;
+		"Erros: "      + cValToChar(aTotal[3]) + CRLF + CRLF + ;
+		"Arquivo salvo em: " + cCaminho, cCadastro)
+
+Return Nil
+
+/*/{Protheus.doc} BJMONIMP
+Importa mensagens de um arquivo TXT da Plataforma BJ para a SZY/SZZ do Protheus.
+@type    User Function
+@author  Ricardo P Sotomayor
+@since   22/09/2026
+@return  Nil
+/*/
+User Function BJMONIMP()
+
+	Local aTotal   := {0, 0, 0}
+	Local cCaminho := ""
+
+	cCaminho := cGetFile("Arquivos TXT (*.txt)|*.txt", "Selecione Arquivo TXT da Plataforma", 1, "C:\", .T., nOR(GETF_LOCALHARD, GETF_LOCALFLOPPY), .T.)
+
+	If Empty(cCaminho) .Or. !File(cCaminho)
+		Return Nil
+	EndIf
+
+	If !MsgYesNo("Importar o arquivo " + cCaminho + " para o Protheus agora?", cCadastro)
+		Return Nil
+	EndIf
+
+	Processa({|| aTotal := U_BJIMPDOARQ(cCaminho)}, "Importando Arquivo...")
+
+	MsgInfo("Lidos: "        + cValToChar(aTotal[1]) + CRLF + ;
+		"Enfileirados: " + cValToChar(aTotal[2]) + CRLF + ;
+		"Erros: "        + cValToChar(aTotal[3]), cCadastro)
 
 Return Nil
 
