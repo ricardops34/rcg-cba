@@ -31,9 +31,9 @@ import { processarLote } from '../common/processar-lote';
 import { ClienteAlteracoesService } from '../../clientes/cliente-alteracoes.service';
 
 const INCLUDE = {
-  vendedor: { select: { codigoErp: true } },
-  tabelaPreco: { select: { codigoErp: true } },
-  condicaoPagamento: { select: { codigoErp: true } },
+  vendedor: { select: { chave: true } },
+  tabelaPreco: { select: { chave: true } },
+  condicaoPagamento: { select: { chave: true } },
 } satisfies Prisma.ClienteInclude;
 type ClienteComRelacoes = Prisma.ClienteGetPayload<{ include: typeof INCLUDE }>;
 
@@ -47,7 +47,8 @@ export class IntegracaoClientesService {
   private paraLeitura(row: ClienteComRelacoes): IntegracaoCliente {
     return {
       id: row.id,
-      codigoErp: row.codigoErp ?? '',
+      chave: row.chave ?? '',
+      codigoErp: row.codigoErp,
       tipoPessoa: row.tipoPessoa,
       razaoSocial: row.razaoSocial,
       nomeFantasia: row.nomeFantasia,
@@ -70,9 +71,9 @@ export class IntegracaoClientesService {
       cep: row.cep,
       latitude: row.latitude,
       longitude: row.longitude,
-      vendedorCodigo: row.vendedor?.codigoErp ?? null,
-      tabelaPrecoCodigo: row.tabelaPreco?.codigoErp ?? null,
-      condicaoPagamentoCodigo: row.condicaoPagamento?.codigoErp ?? null,
+      vendedorChave: row.vendedor?.chave ?? null,
+      tabelaPrecoChave: row.tabelaPreco?.chave ?? null,
+      condicaoPagamentoChave: row.condicaoPagamento?.chave ?? null,
       ativo: row.ativo,
       carteira: row.carteira,
       site: row.site,
@@ -129,11 +130,11 @@ export class IntegracaoClientesService {
 
   async findOne(
     empresaId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<IntegracaoCliente> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const row = await tx.cliente.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
         include: INCLUDE,
       });
       if (!row) throw new NotFoundException('Cliente não encontrado');
@@ -166,28 +167,29 @@ export class IntegracaoClientesService {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.cliente.findFirst({
-        where: { empresaId, codigoErp: input.codigoErp },
+        where: { empresaId, chave: input.chave },
       });
       const decisao = decidirUpsert(existente);
 
       const vendedorId = await this.resolverVendedor(
         tx,
         empresaId,
-        input.vendedorCodigo,
+        input.vendedorChave,
       );
       const tabelaPrecoId = await this.resolverTabelaPreco(
         tx,
         empresaId,
-        input.tabelaPrecoCodigo,
+        input.tabelaPrecoChave,
       );
       const condicaoPagamentoId = await this.resolverCondicaoPagamento(
         tx,
         empresaId,
-        input.condicaoPagamentoCodigo,
+        input.condicaoPagamentoChave,
       );
 
       const dados = {
-          codigoErp: input.codigoErp,
+          chave: input.chave,
+          codigoErp: input.codigoErp ?? null,
           tipoPessoa: input.tipoPessoa,
           razaoSocial: input.razaoSocial,
           nomeFantasia: input.nomeFantasia ?? null,
@@ -263,7 +265,7 @@ export class IntegracaoClientesService {
   ): Promise<IntegracaoLoteResultado> {
     return processarLote(registros, async (item) => {
       if (item.excluido) {
-        await this.remove(empresaId, apiKeyId, item.codigoErp);
+        await this.remove(empresaId, apiKeyId, item.chave);
         return 'excluido';
       }
       const { decisao } = await this.upsert(
@@ -278,34 +280,34 @@ export class IntegracaoClientesService {
   async update(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
     input: IntegracaoClienteUpdate,
   ): Promise<IntegracaoClienteUpdateResultado> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.cliente.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente) throw new NotFoundException('Cliente não encontrado');
 
       const vendedorId =
-        input.vendedorCodigo !== undefined
-          ? await this.resolverVendedor(tx, empresaId, input.vendedorCodigo)
+        input.vendedorChave !== undefined
+          ? await this.resolverVendedor(tx, empresaId, input.vendedorChave)
           : undefined;
       const tabelaPrecoId =
-        input.tabelaPrecoCodigo !== undefined
+        input.tabelaPrecoChave !== undefined
           ? await this.resolverTabelaPreco(
               tx,
               empresaId,
-              input.tabelaPrecoCodigo,
+              input.tabelaPrecoChave,
             )
           : undefined;
       const condicaoPagamentoId =
-        input.condicaoPagamentoCodigo !== undefined
+        input.condicaoPagamentoChave !== undefined
           ? await this.resolverCondicaoPagamento(
               tx,
               empresaId,
-              input.condicaoPagamentoCodigo,
+              input.condicaoPagamentoChave,
             )
           : undefined;
 
@@ -391,12 +393,12 @@ export class IntegracaoClientesService {
   async remove(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<void> {
     const autor = autorIntegracao(apiKeyId);
     await this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.cliente.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente) throw new NotFoundException('Cliente não encontrado');
       await tx.cliente.update({
@@ -413,11 +415,11 @@ export class IntegracaoClientesService {
   ) {
     if (!codigo) return null;
     const vendedor = await tx.vendedor.findFirst({
-      where: { empresaId, codigoErp: codigo, deletedAt: null },
+      where: { empresaId, chave: codigo, deletedAt: null },
       select: { id: true },
     });
     if (!vendedor)
-      throw new NotFoundException(`vendedorCodigo '${codigo}' não encontrado`);
+      throw new NotFoundException(`vendedorChave '${codigo}' não encontrado`);
     return vendedor.id;
   }
 
@@ -428,12 +430,12 @@ export class IntegracaoClientesService {
   ) {
     if (!codigo) return null;
     const tabela = await tx.tabelaPreco.findFirst({
-      where: { empresaId, codigoErp: codigo, deletedAt: null },
+      where: { empresaId, chave: codigo, deletedAt: null },
       select: { id: true },
     });
     if (!tabela)
       throw new NotFoundException(
-        `tabelaPrecoCodigo '${codigo}' não encontrado`,
+        `tabelaPrecoChave '${codigo}' não encontrado`,
       );
     return tabela.id;
   }
@@ -445,12 +447,12 @@ export class IntegracaoClientesService {
   ) {
     if (!codigo) return null;
     const condicao = await tx.condicaoPagamento.findFirst({
-      where: { empresaId, codigoErp: codigo, deletedAt: null },
+      where: { empresaId, chave: codigo, deletedAt: null },
       select: { id: true },
     });
     if (!condicao)
       throw new NotFoundException(
-        `condicaoPagamentoCodigo '${codigo}' não encontrado`,
+        `condicaoPagamentoChave '${codigo}' não encontrado`,
       );
     return condicao.id;
   }

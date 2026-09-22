@@ -83,25 +83,30 @@ Empresa nova = chave nova. A mesma chave não serve para duas empresas.
 
 ## Convenções de todas as entidades
 
-### Chave natural — o ERP manda no identificador
+### Chave de integração — o ERP manda no identificador
 
 A plataforma tem `id` UUID próprio, mas a integração **não** trabalha com ele (a
 única exceção é `PATCH /integracao/orcamentos/pendentes/{id}`, explicada em
-[`endpoints.md`](./endpoints.md)). O que identifica um registro é o código do
-ERP, único por empresa:
+[`endpoints.md`](./endpoints.md)). Todo registro tem dois campos, independentes
+— um nunca é calculado a partir do outro (plano
+[`2026-09-22-chave-integracao.md`](../planos/2026-09-22-chave-integracao.md)):
 
-| Tipo de entidade | Chave | Formato |
+| Campo | O que é | Tela |
 |---|---|---|
-| Cadastros (produto, cliente, vendedor, categoria, armazém, condição de pagamento, tabela de preço, regra de desconto) | `codigoErp` | string, até 30 chars |
-| Transacionais (nota de saída, título a receber, objetivo, orçamento) e os filhos deles (item de nota, item de orçamento, item de tabela de preço, meta por categoria) | `codigoErp` | string, até 60 chars |
-| Estoque | `codigoErp` | `B2_FILIAL-B2_COD-B2_LOCAL` |
+| `chave` | **Chave de integração**: a chave única da tabela no Protheus (X2_UNICO), com `-` entre os campos, na mesma ordem. É por ela que a API cadastra, atualiza, exclui e liga os registros. Única por empresa — nos itens, única dentro do cabeçalho | "Integração" |
+| `codigoErp` | Código no ERP, **só informativo**. Opcional; sem ele o campo fica vazio. Existe nos cadastros e cabeçalhos — itens não têm | "Código" |
 
-O `codigoErp` é **opaco para a plataforma**: quem escolhe o que vai nele é o
-ERP, endpoint por endpoint. A API não interpreta, não monta e não valida
-formato — guarda, indexa e compara. A validação é só tamanho e não-vazio.
+Exemplos: categoria `chave` `-12` (tabela compartilhada: filial em branco) e
+`codigoErp` `12`; cliente `01-000001-01` e `00000101`; estoque
+`01-11400443-01` (`B2_FILIAL-B2_COD-B2_LOCAL`) e `11400443`. A tabela completa
+de chaves, tabela por tabela, está no plano.
 
-Referências entre entidades também são por código, nunca por UUID:
-`categoriaCodigo`, `vendedorCodigo`, `clienteCodigo`, `produtoCodigo`… O
+A `chave` é **opaca para a plataforma**: quem escolhe o que vai nela é o ERP. A
+API não interpreta, não monta e não valida formato — guarda, indexa e compara.
+A validação é só tamanho (até 60) e não-vazio.
+
+Referências entre entidades também são pela chave, nunca por UUID:
+`categoriaChave`, `vendedorChave`, `clienteChave`, `produtoChave`… O
 registro referenciado **precisa já existir** — daí a [ordem de carga](#ordem-de-carga).
 
 ### Verbos
@@ -110,16 +115,16 @@ registro referenciado **precisa já existir** — daí a [ordem de carga](#ordem
 |---|---|---|
 | `GET` | `/integracao/<entidade>` | Lista paginada |
 | `GET` | `/integracao/<entidade>/{codigo}` | Detalhe; **404** se não existir |
-| `POST` | `/integracao/<entidade>` | **Upsert** por `codigoErp`: cria ou atualiza, `201` nos dois casos |
+| `POST` | `/integracao/<entidade>` | **Upsert** por `chave`: cria ou atualiza, `201` nos dois casos |
 | `PATCH` | `/integracao/<entidade>/{codigo}` | Atualização **parcial**; **404** se não existir |
-| `DELETE` | `/integracao/<entidade>/{codigo}` | **Soft delete** por `codigoErp` (marca `deletedAt`) |
+| `DELETE` | `/integracao/<entidade>/{codigo}` | **Soft delete** por `chave` (marca `deletedAt`) |
 
 Não há `PUT`, e não há endpoint de lote: uma chamada, um registro.
 
 ### POST é upsert
 
 O ERP não tem como saber se um registro já subiu — ele manda o que mudou, e é a
-plataforma que reconhece. Todo `POST` procura o `codigoErp` na empresa da chave,
+plataforma que reconhece. Todo `POST` procura a `chave` na empresa da chave,
 **inclusive entre os excluídos**, e decide (ver
 [`decidir-upsert.ts`](../../apps/api/src/modules/integracao/common/decidir-upsert.ts)):
 
@@ -142,15 +147,17 @@ e o `PATCH` não achava nada, porque filtra `deletedAt: null`.
 registro some das listagens e dos detalhes (todo `WHERE` filtra
 `deletedAt: null`), até que o ERP o reenvie.
 
-### Mestre-detalhe casa filho a filho
+### Mestre-detalhe: cabeçalho e itens sempre juntos
 
 Nas entidades com coleção aninhada — itens da nota, itens do orçamento, itens da
-tabela de preço, metas por categoria —, cada filho é casado pelo `codigoErp`
-dele e criado ou atualizado no lugar.
+tabela de preço, metas por categoria —, cabeçalho e itens vão **sempre juntos**,
+no mesmo envio. Não existe rota de item avulso. O item fica ligado ao cabeçalho
+pelo vínculo interno da plataforma e é casado pela sua `chave` **dentro do
+cabeçalho**: criado se é novo, atualizado se já existe.
 
-**Filho ausente do payload não é excluído**, para não apagar linhas que
-simplesmente não participaram de um envio incremental. Para remover uma linha,
-mande-a com `"delete": true` — é o único jeito (ver
+**Filho ausente do payload não é excluído.** O ERP lê os itens sem filtrar
+`D_E_L_E_T_`: o item excluído vem no envio com `"delete": true`, e é assim — e
+só assim — que ele sai (ver
 [`sincronizar-filhos.ts`](../../apps/api/src/modules/integracao/common/sincronizar-filhos.ts)).
 
 Apagar e recriar o conjunto daria o mesmo conteúdo final, mas trocaria o uuid de
@@ -189,7 +196,7 @@ Resposta:
 
 ```json
 {
-  "data": [ { "id": "…", "codigoErp": "11400443" } ],
+  "data": [ { "id": "…", "chave": "11400443" } ],
   "total": 1342,
   "page": 1,
   "pageSize": 20,
@@ -215,7 +222,7 @@ Erro de validação (Zod) vem com o detalhamento campo a campo:
   "code": "VALIDATION_ERROR",
   "message": "Dados inválidos",
   "details": [
-    { "path": "itens.0.produtoCodigo", "message": "Required" }
+    { "path": "itens.0.produtoChave", "message": "Required" }
   ]
 }
 ```
@@ -224,7 +231,7 @@ Erro de validação (Zod) vem com o detalhamento campo a campo:
 |---|---|
 | `400` | Payload inválido (`VALIDATION_ERROR`) |
 | `401` | Chave ausente, inválida, revogada ou expirada |
-| `404` | Código não encontrado (ou já excluído) — **inclusive um código referenciado no payload**: `produtoCodigo 'X' não encontrado` |
+| `404` | Código não encontrado (ou já excluído) — **inclusive um código referenciado no payload**: `produtoChave 'X' não encontrado` |
 | `409` | Regra de negócio violada: orçamento já vinculado, XML com chave divergente da nota. **Não** é mais devolvido por código duplicado — `POST` é upsert |
 | `429` | Limite de requisições excedido |
 | `500` | Erro interno (`INTERNAL_ERROR`) — o detalhe fica no log do servidor |

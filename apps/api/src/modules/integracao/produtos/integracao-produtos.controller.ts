@@ -58,8 +58,8 @@ export class IntegracaoProdutosController {
     return this.service.findAll(integracao.empresaId, query);
   }
 
-  @ApiOperation({ summary: 'Detalhar produto por codigoErp' })
-  @ApiParam({ name: 'codigo', description: 'codigoErp do produto' })
+  @ApiOperation({ summary: 'Detalhar produto por chave' })
+  @ApiParam({ name: 'codigo', description: 'chave do produto' })
   @ApiResponse({ status: 200, schema: { example: INTEGRACAO_PRODUTO_EXAMPLE } })
   @ApiResponse({ status: 404, description: 'Produto não encontrado' })
   @Get(':codigo')
@@ -73,14 +73,14 @@ export class IntegracaoProdutosController {
   @ApiOperation({
     summary: 'Criar produto',
     description:
-      'categoriaCodigo/subCategoriaCodigo/armazemCodigo referenciam os respectivos cadastros ' +
-      'pelo codigoErp (precisam já existir).',
+      'categoriaChave/subCategoriaChave/armazemChave referenciam os respectivos cadastros ' +
+      'pela chave (precisam já existir).',
   })
   @ApiBodyExample(INTEGRACAO_PRODUTO_CREATE_EXAMPLE)
   @ApiResponse({ status: 201, schema: { example: INTEGRACAO_PRODUTO_EXAMPLE } })
   @ApiResponse({
     status: 409,
-    description: 'Já existe produto com esse codigoErp',
+    description: 'Já existe produto com essa chave',
   })
   @Post()
   create(
@@ -93,7 +93,7 @@ export class IntegracaoProdutosController {
   @ApiOperation({
     summary: 'Enviar lote de produtos',
     description:
-      'Upsert em lote por codigoErp (máx. 1.000 por chamada). Um registro com ' +
+      'Upsert em lote por chave (máx. 1.000 por chamada). Um registro com ' +
       '"excluido": true é excluído (soft delete) e dispensa os demais campos. ' +
       'Responde 200 com o relatório: um item inválido não desfaz os que já ' +
       'passaram, e vem listado em "erros" com o índice no array enviado.',
@@ -123,7 +123,7 @@ export class IntegracaoProdutosController {
     summary: 'Atualizar produto',
     description: 'Atualização parcial.',
   })
-  @ApiParam({ name: 'codigo', description: 'codigoErp do produto' })
+  @ApiParam({ name: 'codigo', description: 'chave do produto' })
   @ApiResponse({ status: 200, schema: { example: INTEGRACAO_PRODUTO_EXAMPLE } })
   @ApiResponse({ status: 404, description: 'Produto não encontrado' })
   @Patch(':codigo')
@@ -141,7 +141,7 @@ export class IntegracaoProdutosController {
   }
 
   @ApiOperation({ summary: 'Excluir produto (soft delete)' })
-  @ApiParam({ name: 'codigo', description: 'codigoErp do produto' })
+  @ApiParam({ name: 'codigo', description: 'chave do produto' })
   @ApiResponse({ status: 200, description: 'Excluído' })
   @ApiResponse({ status: 404, description: 'Produto não encontrado' })
   @Delete(':codigo')

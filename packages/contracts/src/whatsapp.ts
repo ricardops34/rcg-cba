@@ -140,6 +140,24 @@ export const whatsappConfigSchema = z.object({
    */
   evolutionVersao: z.string().nullable(),
 
+  /**
+   * `advancedSettings` da instância na Evolution GO.
+   *
+   * São **política da empresa**, não do aparelho: a mesma regra vale para
+   * todos os vendedores dela. Ficavam fixos no código, então só valiam para
+   * instância nova — alterar depois usa `PUT /instance/{id}/advanced-settings`.
+   */
+  evolutionAlwaysOnline: z.boolean(),
+  /** Grupo não faz parte do atendimento. */
+  evolutionIgnoreGroups: z.boolean(),
+  evolutionIgnoreStatus: z.boolean(),
+  /** Ligado, manda visto azul ao cliente sem ninguém ter lido. */
+  evolutionReadMessages: z.boolean(),
+  /** Recusar chamada automaticamente. */
+  evolutionRejectCall: z.boolean(),
+  /** Só sai quando `evolutionRejectCall` está ligado. */
+  evolutionMsgRejectCall: z.string().nullable(),
+
   /** Endereço do número no Business Manager da Meta. Usado só na Cloud API. */
   cloudApiPhoneNumberId: z.string().nullable(),
   cloudApiBusinessAccountId: z.string().nullable(),
@@ -230,6 +248,14 @@ export const whatsappConfigUpdateSchema = z.object({
    */
   evolutionApiKey: z.string().trim().max(500).nullable().optional(),
   evolutionVersao: z.string().trim().max(40).nullable().optional(),
+
+  evolutionAlwaysOnline: z.boolean().optional(),
+  evolutionIgnoreGroups: z.boolean().optional(),
+  evolutionIgnoreStatus: z.boolean().optional(),
+  evolutionReadMessages: z.boolean().optional(),
+  evolutionRejectCall: z.boolean().optional(),
+  // Vazio limpa: sem texto, o gateway recusa a chamada sem responder nada.
+  evolutionMsgRejectCall: z.string().trim().max(500).nullable().optional(),
 
   cloudApiPhoneNumberId: z.string().trim().max(60).nullable().optional(),
   cloudApiBusinessAccountId: z.string().trim().max(60).nullable().optional(),

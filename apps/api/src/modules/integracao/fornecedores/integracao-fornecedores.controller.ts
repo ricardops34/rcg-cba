@@ -59,8 +59,8 @@ export class IntegracaoFornecedoresController {
     return this.service.findAll(integracao.empresaId, query);
   }
 
-  @ApiOperation({ summary: 'Detalhar fornecedor por codigoErp' })
-  @ApiParam({ name: 'codigo', description: 'codigoErp do fornecedor' })
+  @ApiOperation({ summary: 'Detalhar fornecedor por chave' })
+  @ApiParam({ name: 'codigo', description: 'chave do fornecedor' })
   @ApiResponse({
     status: 200,
     schema: { example: INTEGRACAO_FORNECEDOR_EXAMPLE },
@@ -77,8 +77,8 @@ export class IntegracaoFornecedoresController {
   @ApiOperation({
     summary: 'Criar fornecedor',
     description:
-      'Upsert por codigoErp. Carregue os fornecedores **antes** das notas de ' +
-      'entrada: o fornecedorCodigo da nota aponta para cá e o registro precisa ' +
+      'Upsert por chave. Carregue os fornecedores **antes** das notas de ' +
+      'entrada: o fornecedorChave da nota aponta para cá e o registro precisa ' +
       'já existir.',
   })
   @ApiBodyExample(INTEGRACAO_FORNECEDOR_CREATE_EXAMPLE)
@@ -97,7 +97,7 @@ export class IntegracaoFornecedoresController {
   @ApiOperation({
     summary: 'Enviar lote de fornecedores',
     description:
-      'Upsert em lote por codigoErp (máx. 1.000 por chamada). Um registro com ' +
+      'Upsert em lote por chave (máx. 1.000 por chamada). Um registro com ' +
       '"excluido": true é excluído (soft delete) e dispensa os demais campos. ' +
       'Responde 200 com o relatório: um item inválido não desfaz os que já ' +
       'passaram, e vem listado em "erros" com o índice no array enviado.',
@@ -127,7 +127,7 @@ export class IntegracaoFornecedoresController {
     summary: 'Atualizar fornecedor',
     description: 'Atualização parcial.',
   })
-  @ApiParam({ name: 'codigo', description: 'codigoErp do fornecedor' })
+  @ApiParam({ name: 'codigo', description: 'chave do fornecedor' })
   @ApiResponse({
     status: 200,
     schema: { example: INTEGRACAO_FORNECEDOR_EXAMPLE },
@@ -148,7 +148,7 @@ export class IntegracaoFornecedoresController {
   }
 
   @ApiOperation({ summary: 'Excluir fornecedor (soft delete)' })
-  @ApiParam({ name: 'codigo', description: 'codigoErp do fornecedor' })
+  @ApiParam({ name: 'codigo', description: 'chave do fornecedor' })
   @ApiResponse({ status: 200, description: 'Excluído' })
   @ApiResponse({ status: 404, description: 'Fornecedor não encontrado' })
   @Delete(':codigo')

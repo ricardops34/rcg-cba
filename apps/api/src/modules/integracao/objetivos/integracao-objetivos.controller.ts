@@ -59,10 +59,10 @@ export class IntegracaoObjetivosController {
     return this.service.findAll(integracao.empresaId, query);
   }
 
-  @ApiOperation({ summary: 'Detalhar objetivo por codigoErp' })
+  @ApiOperation({ summary: 'Detalhar objetivo por chave' })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoErp — a chave de identidade do registro no ERP',
+    description: 'chave — a chave de identidade do registro no ERP',
   })
   @ApiResponse({
     status: 200,
@@ -80,8 +80,8 @@ export class IntegracaoObjetivosController {
   @ApiOperation({
     summary: 'Criar objetivo',
     description:
-      'vendedorCodigo/categoriaCodigo (nas linhas de "categorias") referenciam os respectivos ' +
-      'cadastros pelo codigoErp.',
+      'vendedorChave/categoriaChave (nas linhas de "categorias") referenciam os respectivos ' +
+      'cadastros pela chave.',
   })
   @ApiBodyExample(INTEGRACAO_OBJETIVO_CREATE_EXAMPLE)
   @ApiResponse({
@@ -90,7 +90,7 @@ export class IntegracaoObjetivosController {
   })
   @ApiResponse({
     status: 409,
-    description: 'Já existe objetivo com esse codigoErp',
+    description: 'Já existe objetivo com essa chave',
   })
   @Post()
   create(
@@ -103,7 +103,7 @@ export class IntegracaoObjetivosController {
   @ApiOperation({
     summary: 'Enviar lote de objetivos',
     description:
-      'Upsert em lote por codigoErp (máx. 1.000 por chamada). Um registro com ' +
+      'Upsert em lote por chave (máx. 1.000 por chamada). Um registro com ' +
       '"excluido": true é excluído (soft delete) e dispensa os demais campos. ' +
       'Responde 200 com o relatório: um item inválido não desfaz os que já ' +
       'passaram, e vem listado em "erros" com o índice no array enviado.',
@@ -137,7 +137,7 @@ export class IntegracaoObjetivosController {
   })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoErp — a chave de identidade do registro no ERP',
+    description: 'chave — a chave de identidade do registro no ERP',
   })
   @ApiResponse({
     status: 200,
@@ -161,7 +161,7 @@ export class IntegracaoObjetivosController {
   @ApiOperation({ summary: 'Excluir objetivo (soft delete)' })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoErp — a chave de identidade do registro no ERP',
+    description: 'chave — a chave de identidade do registro no ERP',
   })
   @ApiResponse({ status: 200, description: 'Excluído' })
   @ApiResponse({ status: 404, description: 'Objetivo não encontrado' })

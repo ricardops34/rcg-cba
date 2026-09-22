@@ -48,7 +48,7 @@ export class IntegracaoNotasEntradaController {
   @ApiOperation({
     summary: 'Listar notas de entrada',
     description:
-      'Paginado; filtra por ativo e fornecedorCodigo, e busca por número.',
+      'Paginado; filtra por ativo e fornecedorChave, e busca por número.',
   })
   @ApiPaginationQuery()
   @Get()
@@ -59,10 +59,10 @@ export class IntegracaoNotasEntradaController {
     return this.service.findAll(integracao.empresaId, query);
   }
 
-  @ApiOperation({ summary: 'Detalhar nota de entrada por codigoErp' })
+  @ApiOperation({ summary: 'Detalhar nota de entrada por chave' })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoErp — a chave de identidade do registro no ERP',
+    description: 'chave — a chave de identidade do registro no ERP',
   })
   @ApiResponse({
     status: 200,
@@ -80,9 +80,9 @@ export class IntegracaoNotasEntradaController {
   @ApiOperation({
     summary: 'Criar nota de entrada',
     description:
-      'Upsert por codigoErp. fornecedorCodigo/condicaoCodigo e, nos itens, ' +
-      'produtoCodigo e armazemCodigo referenciam os respectivos cadastros pelo ' +
-      'codigoErp — carregue os fornecedores antes das notas.',
+      'Upsert por chave. fornecedorChave/condicaoChave e, nos itens, ' +
+      'produtoChave e armazemChave referenciam os respectivos cadastros pelo ' +
+      'chave — carregue os fornecedores antes das notas.',
   })
   @ApiBodyExample(INTEGRACAO_NOTA_ENTRADA_CREATE_EXAMPLE)
   @ApiResponse({
@@ -100,7 +100,7 @@ export class IntegracaoNotasEntradaController {
   @ApiOperation({
     summary: 'Enviar lote de notas-entrada',
     description:
-      'Upsert em lote por codigoErp (máx. 1.000 por chamada). Um registro com ' +
+      'Upsert em lote por chave (máx. 1.000 por chamada). Um registro com ' +
       '"excluido": true é excluído (soft delete) e dispensa os demais campos. ' +
       'Responde 200 com o relatório: um item inválido não desfaz os que já ' +
       'passaram, e vem listado em "erros" com o índice no array enviado.',
@@ -133,7 +133,7 @@ export class IntegracaoNotasEntradaController {
   })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoErp — a chave de identidade do registro no ERP',
+    description: 'chave — a chave de identidade do registro no ERP',
   })
   @ApiResponse({
     status: 200,
@@ -157,7 +157,7 @@ export class IntegracaoNotasEntradaController {
   @ApiOperation({ summary: 'Excluir nota de entrada (soft delete)' })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoErp — a chave de identidade do registro no ERP',
+    description: 'chave — a chave de identidade do registro no ERP',
   })
   @ApiResponse({ status: 200, description: 'Excluída' })
   @ApiResponse({ status: 404, description: 'Nota de entrada não encontrada' })

@@ -63,10 +63,10 @@ export class IntegracaoNotasSaidaController {
     return this.service.findAll(integracao.empresaId, query);
   }
 
-  @ApiOperation({ summary: 'Detalhar nota de saída por codigoErp' })
+  @ApiOperation({ summary: 'Detalhar nota de saída por chave' })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoErp — a chave de identidade do registro no ERP',
+    description: 'chave — a chave de identidade do registro no ERP',
   })
   @ApiResponse({
     status: 200,
@@ -84,8 +84,8 @@ export class IntegracaoNotasSaidaController {
   @ApiOperation({
     summary: 'Criar nota de saída',
     description:
-      'clienteCodigo/vendedorCodigo/condicaoCodigo e, nos itens, produtoCodigo referenciam os ' +
-      'respectivos cadastros pelo codigoErp.',
+      'clienteChave/vendedorChave/condicaoChave e, nos itens, produtoChave referenciam os ' +
+      'respectivos cadastros pela chave.',
   })
   @ApiBodyExample(INTEGRACAO_NOTA_SAIDA_CREATE_EXAMPLE)
   @ApiResponse({
@@ -94,7 +94,7 @@ export class IntegracaoNotasSaidaController {
   })
   @ApiResponse({
     status: 409,
-    description: 'Já existe nota de saída com esse codigoErp',
+    description: 'Já existe nota de saída com essa chave',
   })
   @Post()
   create(
@@ -107,7 +107,7 @@ export class IntegracaoNotasSaidaController {
   @ApiOperation({
     summary: 'Enviar lote de notas-saida',
     description:
-      'Upsert em lote por codigoErp (máx. 1.000 por chamada). Um registro com ' +
+      'Upsert em lote por chave (máx. 1.000 por chamada). Um registro com ' +
       '"excluido": true é excluído (soft delete) e dispensa os demais campos. ' +
       'Responde 200 com o relatório: um item inválido não desfaz os que já ' +
       'passaram, e vem listado em "erros" com o índice no array enviado.',
@@ -140,7 +140,7 @@ export class IntegracaoNotasSaidaController {
   })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoErp — a chave de identidade do registro no ERP',
+    description: 'chave — a chave de identidade do registro no ERP',
   })
   @ApiResponse({
     status: 200,
@@ -164,7 +164,7 @@ export class IntegracaoNotasSaidaController {
   @ApiOperation({ summary: 'Excluir nota de saída (soft delete)' })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoErp — a chave de identidade do registro no ERP',
+    description: 'chave — a chave de identidade do registro no ERP',
   })
   @ApiResponse({ status: 200, description: 'Excluída' })
   @ApiResponse({ status: 404, description: 'Nota de saída não encontrada' })
@@ -188,7 +188,7 @@ export class IntegracaoNotasSaidaController {
       'do próprio arquivo, e recusa (409) XML que não seja NF-e ou cuja chave não confira com ' +
       'a da nota. Reenviar substitui o XML anterior.',
   })
-  @ApiParam({ name: 'codigo', description: 'codigoErp (id da linha no ERP)' })
+  @ApiParam({ name: 'codigo', description: 'chave (id da linha no ERP)' })
   @ApiBodyExample(INTEGRACAO_NFE_XML_EXAMPLE)
   @ApiResponse({
     status: 201,
@@ -225,7 +225,7 @@ export class IntegracaoNotasSaidaController {
       '`conteudo=true` para recebê-lo. Para descobrir em lote o que falta enviar, use ' +
       '`GET /integracao/notas-saida?semXml=true`.',
   })
-  @ApiParam({ name: 'codigo', description: 'codigoErp (id da linha no ERP)' })
+  @ApiParam({ name: 'codigo', description: 'chave (id da linha no ERP)' })
   @ApiQuery({
     name: 'conteudo',
     required: false,
@@ -252,11 +252,11 @@ export class IntegracaoNotasSaidaController {
   @ApiOperation({
     summary: 'Remover o XML de uma nota',
     description:
-      'Para o caso de o arquivo ter sido enviado no codigoErp errado. Limpa junto o ' +
+      'Para o caso de o arquivo ter sido enviado na chave errado. Limpa junto o ' +
       'protocolo e a situação da nota — sem XML, a 2ª via deixa de ser oferecida. A nota em ' +
       'si não é tocada.',
   })
-  @ApiParam({ name: 'codigo', description: 'codigoErp (id da linha no ERP)' })
+  @ApiParam({ name: 'codigo', description: 'chave (id da linha no ERP)' })
   @ApiResponse({ status: 200, description: 'XML removido' })
   @ApiResponse({
     status: 404,

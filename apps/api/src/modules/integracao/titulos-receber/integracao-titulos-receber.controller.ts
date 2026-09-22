@@ -58,10 +58,10 @@ export class IntegracaoTitulosReceberController {
     return this.service.findAll(integracao.empresaId, query);
   }
 
-  @ApiOperation({ summary: 'Detalhar título a receber por codigoErp' })
+  @ApiOperation({ summary: 'Detalhar título a receber por chave' })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoErp — a chave de identidade do registro no ERP',
+    description: 'chave — a chave de identidade do registro no ERP',
   })
   @ApiResponse({
     status: 200,
@@ -79,7 +79,7 @@ export class IntegracaoTitulosReceberController {
   @ApiOperation({
     summary: 'Criar título a receber',
     description:
-      'clienteCodigo/vendedorCodigo referenciam os respectivos cadastros pelo codigoErp.',
+      'clienteChave/vendedorChave referenciam os respectivos cadastros pela chave.',
   })
   @ApiBodyExample(INTEGRACAO_TITULO_RECEBER_CREATE_EXAMPLE)
   @ApiResponse({
@@ -88,7 +88,7 @@ export class IntegracaoTitulosReceberController {
   })
   @ApiResponse({
     status: 409,
-    description: 'Já existe título com esse codigoErp',
+    description: 'Já existe título com essa chave',
   })
   @Post()
   create(
@@ -101,7 +101,7 @@ export class IntegracaoTitulosReceberController {
   @ApiOperation({
     summary: 'Enviar lote de titulos-receber',
     description:
-      'Upsert em lote por codigoErp (máx. 1.000 por chamada). Um registro com ' +
+      'Upsert em lote por chave (máx. 1.000 por chamada). Um registro com ' +
       '"excluido": true é excluído (soft delete) e dispensa os demais campos. ' +
       'Responde 200 com o relatório: um item inválido não desfaz os que já ' +
       'passaram, e vem listado em "erros" com o índice no array enviado.',
@@ -133,7 +133,7 @@ export class IntegracaoTitulosReceberController {
   })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoErp — a chave de identidade do registro no ERP',
+    description: 'chave — a chave de identidade do registro no ERP',
   })
   @ApiResponse({
     status: 200,
@@ -157,7 +157,7 @@ export class IntegracaoTitulosReceberController {
   @ApiOperation({ summary: 'Excluir título a receber (soft delete)' })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoErp — a chave de identidade do registro no ERP',
+    description: 'chave — a chave de identidade do registro no ERP',
   })
   @ApiResponse({ status: 200, description: 'Excluído' })
   @ApiResponse({ status: 404, description: 'Título a receber não encontrado' })

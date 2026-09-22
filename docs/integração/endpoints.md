@@ -16,27 +16,27 @@ que o geram estão em
 
 Todas seguem o mesmo CRUD — `GET` lista, `GET /{codigo}`, `POST`,
 `PATCH /{codigo}`, `DELETE /{codigo}`. Estoque troca `{codigo}` por
-`{produtoCodigo}/{armazemCodigo}`; notas de saída e orçamentos têm rotas extras
+`{produtoChave}/{armazemChave}`; notas de saída e orçamentos têm rotas extras
 além do CRUD. Todas aceitam também `PUT` na raiz do recurso, que aplica
 até 1.000 registros de uma vez — ver [Lote](#lote--put-integracaoentidade).
 
 | Recurso | Chave | Filtros próprios | Particularidade |
 |---|---|---|---|
-| `/integracao/regras-desconto` | `codigoErp` | `ativo` | — |
-| `/integracao/categorias` | `codigoErp` | `ativo` | hierárquica (`categoriaPaiCodigo`) |
-| `/integracao/condicoes-pagamento` | `codigoErp` | `ativo` | — |
-| `/integracao/armazens` | `codigoErp` | `ativo` | — |
-| `/integracao/produtos` | `codigoErp` | `ativo` | — |
-| `/integracao/vendedores` | `codigoErp` | `ativo` | — |
-| `/integracao/fornecedores` | `codigoErp` | `ativo` | — |
-| `/integracao/clientes` | `codigoErp` | `ativo` | **`PATCH` vai para fila de aprovação** |
-| `/integracao/tabelas-preco` | `codigoErp` | `ativo` | mestre-detalhe (`itens`) |
-| `/integracao/estoque` | `codigoErp` | `codigoErp`, `produtoCodigo`, `armazemCodigo` | `B2_FILIAL-B2_COD-B2_LOCAL` |
-| `/integracao/objetivos` | `codigoErp` | `ativo`, `ano`, `mes` | mestre-detalhe (`categorias`) |
-| `/integracao/notas-saida` | `codigoErp` | `ativo`, `semXml` | mestre-detalhe (`itens`) + rotas de XML |
-| `/integracao/notas-entrada` | `codigoErp` | `ativo`, `tipo`, `fornecedorCodigo`, `clienteCodigo` | mestre-detalhe (`itens`) + `tipo` decide o participante |
-| `/integracao/titulos-receber` | `codigoErp` | `ativo` | campos de cobrança bancária |
-| `/integracao/orcamentos` | `codigoErp` | `ativo`, `status` | mestre-detalhe (`itens`) + fila de pendentes |
+| `/integracao/regras-desconto` | `chave` | `ativo` | — |
+| `/integracao/categorias` | `chave` | `ativo` | hierárquica (`categoriaPaiChave`) |
+| `/integracao/condicoes-pagamento` | `chave` | `ativo` | — |
+| `/integracao/armazens` | `chave` | `ativo` | — |
+| `/integracao/produtos` | `chave` | `ativo` | — |
+| `/integracao/vendedores` | `chave` | `ativo` | — |
+| `/integracao/fornecedores` | `chave` | `ativo` | — |
+| `/integracao/clientes` | `chave` | `ativo` | **`PATCH` vai para fila de aprovação** |
+| `/integracao/tabelas-preco` | `chave` | `ativo` | mestre-detalhe (`itens`) |
+| `/integracao/estoque` | `chave` | `chave`, `produtoChave`, `armazemChave` | `B2_FILIAL-B2_COD-B2_LOCAL` |
+| `/integracao/objetivos` | `chave` | `ativo`, `ano`, `mes` | mestre-detalhe (`categorias`) |
+| `/integracao/notas-saida` | `chave` | `ativo`, `semXml` | mestre-detalhe (`itens`) + rotas de XML |
+| `/integracao/notas-entrada` | `chave` | `ativo`, `tipo`, `fornecedorChave`, `clienteChave` | mestre-detalhe (`itens`) + `tipo` decide o participante |
+| `/integracao/titulos-receber` | `chave` | `ativo` | campos de cobrança bancária |
+| `/integracao/orcamentos` | `chave` | `ativo`, `status` | mestre-detalhe (`itens`) + fila de pendentes |
 
 Todos os `GET` de lista aceitam ainda `page`, `pageSize`, `search`, `sortBy` e
 `sortOrder`.
@@ -51,61 +51,63 @@ Base dos percentuais de desconto usados por categoria, produto, tabela de preço
 e item de orçamento (`Z0_CODIGO` da SZ0 no ERP). Carregue **antes** das
 categorias e dos produtos.
 
-Campos principais: `codigoErp`, `descricao`, `percDescontoAutorizado`,
+Campos principais: `chave`, `descricao`, `percDescontoAutorizado`,
 `percDescontoMaximo`, `ativo`.
 
 ### Categorias — `/integracao/categorias`
 
 Hierarquia de duas pontas no mesmo recurso: uma subcategoria é uma categoria com
-`categoriaPaiCodigo` preenchido. **A pai precisa existir antes da filha.**
+`categoriaPaiChave` preenchido. **A pai precisa existir antes da filha.**
 
 ```json
 {
+  "chave": "01-000004",
   "codigoErp": "000004",
   "descricao": "COZINHA",
-  "categoriaPaiCodigo": null,
-  "regraDescontoCodigo": null,
+  "categoriaPaiChave": null,
+  "regraDescontoChave": null,
   "ativo": true
 }
 ```
 
 ### Condições de pagamento — `/integracao/condicoes-pagamento`
 
-Referenciada por cliente, nota de saída e orçamento (`condicaoCodigo` /
-`condicaoPagamentoCodigo`).
+Referenciada por cliente, nota de saída e orçamento (`condicaoChave` /
+`condicaoPagamentoChave`).
 
 ### Armazéns — `/integracao/armazens`
 
-Referenciado pelo produto (`armazemCodigo`, armazém padrão) e pelo saldo de
+Referenciado pelo produto (`armazemChave`, armazém padrão) e pelo saldo de
 estoque.
 
 ### Produtos — `/integracao/produtos`
 
 ```json
 {
+  "chave": "01-11400443",
   "codigoErp": "11400443",
   "descricao": "DETERGENTE NEUTRO 5L",
   "unidade": "GL",
-  "categoriaCodigo": "000004",
-  "subCategoriaCodigo": null,
-  "armazemCodigo": "001",
+  "categoriaChave": "01-000004",
+  "subCategoriaChave": null,
+  "armazemChave": "01-01",
   "ativo": true
 }
 ```
 
-`categoriaCodigo`, `subCategoriaCodigo`, `armazemCodigo` e
-`regraDescontoCodigo` apontam para o `codigoErp` do respectivo cadastro, que
+`categoriaChave`, `subCategoriaChave`, `armazemChave` e
+`regraDescontoChave` apontam para a `chave` do respectivo cadastro, que
 precisa já existir. Demais campos: `marca`, `codigoBarras`, `ncm`,
 `codigoFornecedor`, `qtdEmbalagem`, `peso`, `ultimoPreco`, `observacao`.
 
 ### Vendedores — `/integracao/vendedores`
 
-Chave `codigoErp`. É o alvo de `vendedorCodigo` em clientes, notas, títulos,
+Chave `chave`. É o alvo de `vendedorChave` em clientes, notas, títulos,
 objetivos e orçamentos.
 
 ### Fornecedores — `/integracao/fornecedores`
 
-Chave `codigoErp`. É o alvo de `fornecedorCodigo` nas notas de entrada —
+Chave `chave`. É o alvo de `fornecedorChave` nas notas de entrada —
 carregue **antes** delas.
 
 Cadastro enxuto, sem nada de carteira ou crédito: identificação (`tipoPessoa`,
@@ -122,19 +124,20 @@ Mestre-detalhe. `GET /{codigo}` devolve a tabela **com os itens**.
 
 ```json
 {
+  "chave": "01-001",
   "codigoErp": "001",
   "descricao": "TABELA PADRAO",
   "dtInicio": "2019-07-11T00:00:00.000Z",
   "dtFim": null,
   "ativo": true,
   "itens": [
-    { "produtoCodigo": "11400443", "preco": 89.9, "regraDescontoCodigo": null, "ativo": true }
+    { "chave": "01-001-11400443-0001", "produtoChave": "01-11400443", "preco": 89.9, "regraDescontoChave": null, "ativo": true }
   ]
 }
 ```
 
 > **`itens` substitui o conjunto inteiro.** Não é uma lista incremental: o que
-> não vier no array é removido, e o que vier é casado pelo `codigoErp` do item.
+> não vier no array é removido, e o que vier é casado pela `chave` do item.
 > Para mexer em um preço, reenvie a tabela completa.
 
 ### Estoque — `/integracao/estoque`
@@ -142,28 +145,28 @@ Mestre-detalhe. `GET /{codigo}` devolve a tabela **com os itens**.
 Chave composta, refletida na URL:
 
 ```
-GET    /integracao/estoque/{codigoErp}
-PATCH  /integracao/estoque/{codigoErp}
-DELETE /integracao/estoque/{codigoErp}
+GET    /integracao/estoque/{chave}
+PATCH  /integracao/estoque/{chave}
+DELETE /integracao/estoque/{chave}
 ```
 
-A listagem filtra por `produtoCodigo` e/ou `armazemCodigo`
-(`GET /integracao/estoque?produtoCodigo=11400443`). Produto e armazém precisam
+A listagem filtra por `produtoChave` e/ou `armazemChave`
+(`GET /integracao/estoque?produtoChave=01-11400443`). Produto e armazém precisam
 existir.
 
 ```json
-{ "codigoErp": "01-11400443-001", "produtoCodigo": "01-11400443", "armazemCodigo": "01-001", "saldo": 128 }
+{ "chave": "01-11400443-01", "codigoErp": "11400443", "produtoChave": "01-11400443", "armazemChave": "01-01", "saldo": 128 }
 ```
 
 ---
 
 ## Clientes — `/integracao/clientes`
 
-Chave `codigoErp`. Payload plano com o cadastro comercial completo: dados
+Chave `chave`. Payload plano com o cadastro comercial completo: dados
 fiscais (`tipoPessoa`, `cnpjCpf`, `inscricaoEstadual`, `contribuinteIcms`),
 contato, endereço (com `latitude`/`longitude`), `limiteCredito` e
-`vencimentoLimite`. Referencia `vendedorCodigo`, `tabelaPrecoCodigo` e
-`condicaoPagamentoCodigo`.
+`vencimentoLimite`. Referencia `vendedorChave`, `tabelaPrecoChave` e
+`condicaoPagamentoChave`.
 
 ### `POST` grava; `PATCH` **não** grava direto
 
@@ -182,9 +185,9 @@ Resposta do `PATCH`:
 
 ```json
 {
-  "cliente": { "codigoErp": "004417", "razaoSocial": "MERCADO ANDRADE LTDA" },
+  "cliente": { "chave": "01-004417-01", "codigoErp": "00441701", "razaoSocial": "MERCADO ANDRADE LTDA" },
   "pendente": true,
-  "camposPendentes": ["telefone", "vendedorCodigo"]
+  "camposPendentes": ["telefone", "vendedorChave"]
 }
 ```
 
@@ -202,32 +205,37 @@ mandar tudo sempre, sem inundar a fila.
 
 ### Objetivos — `/integracao/objetivos`
 
-Metas por vendedor/mês/ano. Chave `codigoErp` — o valor que o ERP escolheu
+Metas por vendedor/mês/ano. Chave `chave` — o valor que o ERP escolheu
 para identificar a meta. Filtros extras: `ano`, `mes`.
 
 ```json
 {
-  "codigoErp": "000234-2026-08",
-  "vendedorCodigo": "000234",
+  "chave": "01-000234-2026-08",
+  "vendedorChave": "01-000234",
   "mes": 8,
   "ano": 2026,
   "valor": 250000,
-  "categorias": [ { "categoriaCodigo": "000004", "valor": 80000 } ]
+  "categorias": [ { "chave": "01-000234-2026-08-000004", "categoriaChave": "01-000004", "valor": 80000 } ]
 }
 ```
 
 `categorias` (metas por categoria) segue a mesma regra dos outros
 mestre-detalhe: **substitui o conjunto inteiro**, casando cada linha pelo
-`codigoErp` dela.
+`chave` dela.
 
 ### Notas de saída — `/integracao/notas-saida`
 
-Chave `codigoErp`. Cabeçalho + `itens` (cada item com o próprio
-`codigoErp`). `clienteId`, `vendedorId` e `dtEmissao`
+Chave `chave`
+(`F2_FILIAL`-`F2_DOC`-`F2_SERIE`-`F2_CLIENTE`-`F2_LOJA`-`F2_FORMUL`-`F2_TIPO`),
+`codigoErp` = `F2_DOC`. Cabeçalho + `itens`, sempre juntos; cada item com a
+própria `chave` (`D2_FILIAL`-`D2_DOC`-`D2_SERIE`-`D2_CLIENTE`-`D2_LOJA`-`D2_COD`-`D2_ITEM`)
+e sem `codigoErp`. `clienteId`, `vendedorId` e `dtEmissao`
 dos itens são preenchidos pelo service a partir do cabeçalho — não vêm no
 payload do item.
 
-`itens` **substitui o conjunto inteiro**, casando cada item pelo `codigoErp`.
+Cada item é casado pela `chave` **dentro da nota**. Item com `delete: true` é
+removido; item ausente do payload **não** é excluído — o ERP manda os itens sem
+filtrar `D_E_L_E_T_`, então o excluído chega marcado.
 
 Filtro `semXml=true` lista as notas que ainda não têm XML autorizado na
 plataforma — é assim que o ERP descobre o que falta enviar numa carga
@@ -236,9 +244,9 @@ retroativa, sem perguntar nota a nota.
 #### XML da NF-e (2ª via do DANFE)
 
 ```
-POST   /integracao/notas-saida/{codigoErp}/xml
-GET    /integracao/notas-saida/{codigoErp}/xml[?conteudo=true]
-DELETE /integracao/notas-saida/{codigoErp}/xml
+POST   /integracao/notas-saida/{chave}/xml
+GET    /integracao/notas-saida/{chave}/xml[?conteudo=true]
+DELETE /integracao/notas-saida/{chave}/xml
 ```
 
 No `POST`, envie **`xml`** (texto) **ou** `xmlBase64` — exatamente um dos dois
@@ -251,7 +259,7 @@ com a da nota. Reenviar substitui o XML anterior.
 
 ```json
 {
-  "codigoErp": "000116067-1",
+  "chave": "01-000116067-1  -004417-01-N-N",
   "chaveNfe": "50260600000000000191550010001160671000116060",
   "numero": "116067",
   "serie": "1",
@@ -263,7 +271,7 @@ com a da nota. Reenviar substitui o XML anterior.
 
 O `GET` por padrão devolve só a situação (chegou? quando? que tamanho?);
 `?conteudo=true` traz o arquivo. O `DELETE` existe para o caso de o arquivo ter
-ido no `codigoErp` errado: limpa protocolo e situação, e a 2ª via deixa de
+ido na `chave` errado: limpa protocolo e situação, e a 2ª via deixa de
 ser oferecida. A nota em si não é tocada.
 
 Limite próprio de 120 req/min nesta rota — uma carga retroativa de milhares de
@@ -271,9 +279,11 @@ arquivos não divide o balde com o cadastro.
 
 ### Notas de entrada — `/integracao/notas-entrada`
 
-Espelho da **SF1**. Chave `codigoErp`
-(`F1_FILIAL`-`F1_DOC`-`F1_SERIE`-`F1_FORNECE`-`F1_LOJA`-`F1_FORMUL`).
-Cabeçalho + `itens` (cada item com o próprio `codigoErp`, montado da SD1), nas
+Espelho da **SF1**. Chave `chave`
+(`F1_FILIAL`-`F1_DOC`-`F1_SERIE`-`F1_FORNECE`-`F1_LOJA`-`F1_FORMUL`-`F1_TIPO`),
+`codigoErp` = `F1_DOC`. Cabeçalho + `itens`, sempre juntos; cada item com a
+própria `chave` (`D1_FILIAL`-`D1_DOC`-`D1_SERIE`-`D1_FORNECE`-`D1_LOJA`-`D1_COD`-`D1_ITEM`)
+e sem `codigoErp`, nas
 mesmas regras da nota de saída: item com `delete: true` é removido, e item
 ausente do payload **não** é excluído. `fornecedorId`, `clienteId`, `dtEmissao`,
 `ano` e `mes` dos itens são preenchidos pelo service a partir do cabeçalho — não
@@ -283,15 +293,15 @@ vêm no payload do item.
 
 | `tipo` | O que é | Mande |
 |---|---|---|
-| `'N'` | Compra | `fornecedorCodigo` |
-| `'D'` | Devolução de venda | `clienteCodigo` |
+| `'N'` | Compra | `fornecedorChave` |
+| `'D'` | Devolução de venda | `clienteChave` |
 
 No ERP os dois saem do mesmo par de campos (`F1_FORNECE`+`F1_LOJA`), mas apontam
 para cadastros diferentes — SA2 na compra, SA1 na devolução. Por isso o payload
 tem os dois campos, e o mapeador manda **um deles**. A plataforma aceita o que
-vier e não impõe a combinação; mas é o `clienteCodigo` que faz a devolução
+vier e não impõe a combinação; mas é o `clienteChave` que faz a devolução
 aparecer na aba "Devoluções" da Posição de Cliente, então mandar
-`fornecedorCodigo` numa nota `'D'` deixa a devolução invisível para quem atende
+`fornecedorChave` numa nota `'D'` deixa a devolução invisível para quem atende
 o cliente.
 
 A devolução **não** entra nas apurações (Objetivos, Consultas, Dashboard): quem
@@ -301,8 +311,8 @@ devolução duas vezes.
 
 #### Demais campos
 
-`condicaoCodigo` no cabeçalho, e `produtoCodigo` / `armazemCodigo` nos itens,
-referenciam os respectivos cadastros pelo `codigoErp`, que precisa já existir.
+`condicaoChave` no cabeçalho, e `produtoChave` / `armazemChave` nos itens,
+referenciam os respectivos cadastros pela `chave`, que precisa já existir.
 
 Duas datas, e não uma: `dtEmissao` é a do documento emitido pelo terceiro e
 `dtEntrada` é a do recebimento da mercadoria. `ano`/`mes` derivam da **emissão**,
@@ -327,7 +337,7 @@ plataforma não a reimprime.
 
 ### Títulos a receber — `/integracao/titulos-receber`
 
-Chave `codigoErp`. Além do financeiro básico (`numero`, `parcela`,
+Chave `chave`. Além do financeiro básico (`numero`, `parcela`,
 `prefixo`, `emissao`, `vencimento`, `vencimentoReal`, `valor`, `saldo`,
 `acrescimo`, `decrescimo`, `dtBaixa`, `formaPgto`, `historico`), carrega os
 campos de **cobrança bancária** que a 2ª via de boleto usa (`nossoNumero` e
@@ -338,8 +348,8 @@ não tem boleto.
 
 ## Orçamentos — `/integracao/orcamentos`
 
-Chave `codigoErp`. `status`: `rascunho`, `enviado`, `aprovado`, `recusado`,
-`expirado`. `itens` **substitui o conjunto inteiro**, casando cada item pelo `codigoErp`.
+Chave `chave`. `status`: `rascunho`, `enviado`, `aprovado`, `recusado`,
+`expirado`. `itens` **substitui o conjunto inteiro**, casando cada item pela `chave`.
 
 O orçamento é a única entidade que anda **nos dois sentidos**: o ERP empurra os
 dele, e a plataforma produz orçamentos próprios (feitos pelo vendedor na tela)
@@ -353,12 +363,21 @@ PATCH /integracao/orcamentos/pendentes/{id}
 ```
 
 1. `GET .../pendentes` lista os orçamentos **aprovados** criados na plataforma
-   que ainda não têm `codigoErp` — prontos para o ERP importar.
-2. O ERP importa e gera o número dele.
-3. `PATCH .../pendentes/{id}` grava esse número:
+   que ainda não têm `chave` — prontos para o ERP importar.
+2. O ERP importa e gera o pedido (SC5/SC6).
+3. `PATCH .../pendentes/{id}` devolve o pedido e os itens juntos: a chave do
+   SC5 (`C5_FILIAL-C5_NUM`), o número como `codigoErp` e, para cada item do
+   orçamento (pelo `id` que veio no `GET`), a chave do SC6
+   (`C6_FILIAL-C6_NUM-C6_ITEM-C6_PRODUTO`):
 
    ```json
-   { "codigoErp": "004512" }
+   {
+     "chave": "01-004512",
+     "codigoErp": "004512",
+     "itens": [
+       { "id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f", "chave": "01-004512-01-11400443" }
+     ]
+   }
    ```
 
    Aqui — e só aqui — o `{id}` é o **id interno da plataforma** (UUID), o mesmo
@@ -368,10 +387,10 @@ PATCH /integracao/orcamentos/pendentes/{id}
    normal, como qualquer outro.
 
 O vínculo só pode ser feito **uma vez**. Retorna `409` se o orçamento já estiver
-vinculado, se ainda não estiver aprovado, ou se o `codigoErp` colidir com o de
+vinculado, se ainda não estiver aprovado, ou se a `chave` colidir com o de
 outro orçamento.
 
-> `GET /integracao/orcamentos` lista **só** os que já têm `codigoErp`. Quem
+> `GET /integracao/orcamentos` lista **só** os que já têm `chave`. Quem
 > procura orçamento da plataforma ali não acha nada: eles estão em
 > `.../pendentes` até serem vinculados.
 
@@ -389,9 +408,9 @@ valendo e não muda.
 // PUT /api/v1/integracao/categorias
 {
   "registros": [
-    { "codigoErp": "000001", "descricao": "MATERIAL ELETRICO", "ativo": true },
-    { "codigoErp": "000002", "descricao": "HIDRAULICA", "ativo": true },
-    { "codigoErp": "000009", "excluido": true }
+    { "chave": "01-000001", "codigoErp": "000001", "descricao": "MATERIAL ELETRICO", "ativo": true },
+    { "chave": "01-000002", "codigoErp": "000002", "descricao": "HIDRAULICA", "ativo": true },
+    { "chave": "01-000009", "excluido": true }
   ]
 }
 ```
@@ -413,7 +432,7 @@ O payload de cada registro é **o mesmo do `POST`** daquela entidade — o lote 
   "atualizados": 875,
   "excluidos": 4,
   "erros": [
-    { "indice": 37, "codigoErp": "004417", "mensagem": "vendedorCodigo '000999' não encontrado" }
+    { "indice": 37, "chave": "01-004417-01", "mensagem": "vendedorChave '01-000999' não encontrado" }
   ]
 }
 ```
@@ -431,7 +450,7 @@ filha, o cliente antes da nota): mande o pai primeiro e ele estará lá.
 
 - lote vazio (`registros: []`);
 - acima de 1.000 registros;
-- registro sem `codigoErp`.
+- registro sem `chave`.
 
 Nesses casos nada é gravado — a validação é do envelope, antes de qualquer
 escrita.
@@ -477,7 +496,7 @@ KEY="itg_SEU_TOKEN_AQUI"
 # Criar um produto
 curl -X POST "$API/integracao/produtos" \
   -H "x-api-key: $KEY" -H "Content-Type: application/json" \
-  -d '{"codigoErp":"11400443","descricao":"DETERGENTE NEUTRO 5L","unidade":"GL","categoriaCodigo":"000004"}'
+  -d '{"chave":"01-11400443","codigoErp":"11400443","descricao":"DETERGENTE NEUTRO 5L","unidade":"GL","categoriaChave":"01-000004"}'
 
 # Atualizar só o preço de referência (parcial)
 curl -X PATCH "$API/integracao/produtos/11400443" \
@@ -499,5 +518,5 @@ curl -X POST "$API/integracao/notas-saida/45012/xml" \
 curl "$API/integracao/orcamentos/pendentes" -H "x-api-key: $KEY"
 curl -X PATCH "$API/integracao/orcamentos/pendentes/8b9c0d1e-2f3a-4b4c-5d6e-7f8091a2b3c4" \
   -H "x-api-key: $KEY" -H "Content-Type: application/json" \
-  -d '{"codigoErp":"004512"}'
+  -d '{"chave":"01-004512","codigoErp":"004512","itens":[]}'
 ```

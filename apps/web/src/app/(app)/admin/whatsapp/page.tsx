@@ -370,6 +370,12 @@ function EvolutionConfig({ config }: { config: WhatsappConfig }) {
     retencaoDias: config.retencaoDias,
     historicoDias: config.historicoDias,
     dddPadrao: config.dddPadrao ?? "",
+    evolutionAlwaysOnline: config.evolutionAlwaysOnline,
+    evolutionIgnoreGroups: config.evolutionIgnoreGroups,
+    evolutionIgnoreStatus: config.evolutionIgnoreStatus,
+    evolutionReadMessages: config.evolutionReadMessages,
+    evolutionRejectCall: config.evolutionRejectCall,
+    evolutionMsgRejectCall: config.evolutionMsgRejectCall ?? "",
   });
   // A chave fica fora do `form` de propósito: ela nunca vem da API, então o
   // campo nasce vazio mesmo com uma chave gravada. Vazio significa "não
@@ -385,6 +391,7 @@ function EvolutionConfig({ config }: { config: WhatsappConfig }) {
         evolutionUrl: form.evolutionUrl.trim() || null,
         evolutionVersao: form.evolutionVersao.trim() || null,
         dddPadrao: form.dddPadrao.trim() || null,
+        evolutionMsgRejectCall: form.evolutionMsgRejectCall.trim() || null,
         // String vazia apaga do lado da API; ausente mantém a que está lá.
         ...(opcoes.apagarChave ? { evolutionApiKey: "" } : chave.trim() ? { evolutionApiKey: chave.trim() } : {}),
       },
@@ -446,6 +453,47 @@ function EvolutionConfig({ config }: { config: WhatsappConfig }) {
               Continua valendo a regra de sempre: só vira conversa o contato vinculado a um cliente.
             </FieldDescription>
           </Field>
+          {/* Política de atendimento do gateway. Vale para TODA instância da
+              empresa — vendedor, gerente, supervisor e o institucional —,
+              porque a regra é de atendimento, não do aparelho. */}
+          <Field>
+            <FieldLabel>Comportamento das instâncias</FieldLabel>
+            <FieldDescription>
+              Vale para todas as instâncias desta empresa: vendedor, gerente, supervisor e o número
+              institucional. A alteração alcança as que já existem na próxima conexão de cada uma.
+            </FieldDescription>
+            <div className="grid gap-3 pt-1 sm:grid-cols-2">
+              <label className="flex items-start gap-2 text-sm">
+                <Switch checked={form.evolutionIgnoreGroups} onCheckedChange={(v) => setForm((f) => ({ ...f, evolutionIgnoreGroups: v }))} />
+                <span>Ignorar grupos<span className="block text-xs text-muted-foreground">Grupo não faz parte do atendimento; ignorar na origem evita tráfego que a API descartaria.</span></span>
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <Switch checked={form.evolutionIgnoreStatus} onCheckedChange={(v) => setForm((f) => ({ ...f, evolutionIgnoreStatus: v }))} />
+                <span>Ignorar status<span className="block text-xs text-muted-foreground">As publicações de status dos contatos não entram no atendimento.</span></span>
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <Switch checked={form.evolutionReadMessages} onCheckedChange={(v) => setForm((f) => ({ ...f, evolutionReadMessages: v }))} />
+                <span>Marcar como lida automaticamente<span className="block text-xs text-muted-foreground">Ligado, manda o visto azul ao cliente sem ninguém ter lido.</span></span>
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <Switch checked={form.evolutionAlwaysOnline} onCheckedChange={(v) => setForm((f) => ({ ...f, evolutionAlwaysOnline: v }))} />
+                <span>Sempre online<span className="block text-xs text-muted-foreground">Mostra o número como disponível o tempo todo, inclusive fora do expediente.</span></span>
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <Switch checked={form.evolutionRejectCall} onCheckedChange={(v) => setForm((f) => ({ ...f, evolutionRejectCall: v }))} />
+                <span>Recusar chamadas<span className="block text-xs text-muted-foreground">O número não atende ligação: a plataforma é de mensagem.</span></span>
+              </label>
+            </div>
+          </Field>
+          {/* Só com a recusa ligada: um texto de resposta a chamadas que não
+              são recusadas não vai a lugar nenhum. */}
+          {form.evolutionRejectCall && (
+            <Field>
+              <FieldLabel htmlFor="evolutionMsgRejectCall">Resposta ao recusar uma chamada</FieldLabel>
+              <Input id="evolutionMsgRejectCall" maxLength={500} placeholder="Ex.: Não atendemos por chamada. Me escreva por aqui que eu respondo." value={form.evolutionMsgRejectCall} onChange={(event) => setForm((f) => ({ ...f, evolutionMsgRejectCall: event.target.value }))} />
+              <FieldDescription>Em branco, a chamada é recusada sem resposta nenhuma.</FieldDescription>
+            </Field>
+          )}
           <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 text-sm text-amber-900 dark:text-amber-200">
             <div className="flex gap-2 font-medium"><TriangleAlert className="mt-0.5 size-4 shrink-0" /> Integração não oficial</div>
             {/* O gateway muda quem mantém a sessão, não o fato de o pareamento

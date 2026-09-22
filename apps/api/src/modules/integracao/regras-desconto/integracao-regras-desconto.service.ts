@@ -44,7 +44,8 @@ export class IntegracaoRegrasDescontoService {
   private paraLeitura(row: RegraComFaixas): IntegracaoRegraDesconto {
     return {
       id: row.id,
-      codigoErp: row.codigoErp ?? '',
+      chave: row.chave ?? '',
+      codigoErp: row.codigoErp,
       descricao: row.descricao,
       percDescontoAutorizado: row.percDescontoAutorizado,
       percDescontoMaximo: row.percDescontoMaximo,
@@ -163,7 +164,7 @@ export class IntegracaoRegrasDescontoService {
           where,
           include: INCLUDE,
           ...paginationToSkipTake(query),
-          orderBy: { codigoErp: 'asc' },
+          orderBy: { chave: 'asc' },
         }),
         tx.regraDesconto.count({ where }),
       ]);
@@ -177,11 +178,11 @@ export class IntegracaoRegrasDescontoService {
 
   async findOne(
     empresaId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<IntegracaoRegraDesconto> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const row = await tx.regraDesconto.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
         include: INCLUDE,
       });
       if (!row) throw new NotFoundException('Regra de desconto não encontrada');
@@ -216,13 +217,14 @@ export class IntegracaoRegrasDescontoService {
 
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.regraDesconto.findFirst({
-        where: { empresaId, codigoErp: input.codigoErp },
+        where: { empresaId, chave: input.chave },
       });
       const decisao = decidirUpsert(existente);
       if (input.padrao) await this.garantirPadraoUnico(tx, empresaId);
 
       const dados = {
-        codigoErp: input.codigoErp,
+        chave: input.chave,
+        codigoErp: input.codigoErp ?? null,
         descricao: input.descricao,
         percDescontoAutorizado: input.percDescontoAutorizado,
         percDescontoMaximo: input.percDescontoMaximo,
@@ -284,7 +286,7 @@ export class IntegracaoRegrasDescontoService {
   ): Promise<IntegracaoLoteResultado> {
     return processarLote(registros, async (item) => {
       if (item.excluido) {
-        await this.remove(empresaId, apiKeyId, item.codigoErp);
+        await this.remove(empresaId, apiKeyId, item.chave);
         return 'excluido';
       }
       const { decisao } = await this.upsert(
@@ -299,7 +301,7 @@ export class IntegracaoRegrasDescontoService {
   async update(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
     input: IntegracaoRegraDescontoUpdate,
   ): Promise<IntegracaoRegraDesconto> {
     const autor = autorIntegracao(apiKeyId);
@@ -307,7 +309,7 @@ export class IntegracaoRegrasDescontoService {
 
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.regraDesconto.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente) {
         throw new NotFoundException('Regra de desconto não encontrada');
@@ -329,6 +331,9 @@ export class IntegracaoRegrasDescontoService {
       const atualizada = await tx.regraDesconto.update({
         where: { id: existente.id },
         data: {
+          ...(input.codigoErp !== undefined
+            ? { codigoErp: input.codigoErp ?? null }
+            : {}),
           ...(input.descricao !== undefined
             ? { descricao: input.descricao }
             : {}),
@@ -354,12 +359,12 @@ export class IntegracaoRegrasDescontoService {
   async remove(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<void> {
     const autor = autorIntegracao(apiKeyId);
     await this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.regraDesconto.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente) {
         throw new NotFoundException('Regra de desconto não encontrada');

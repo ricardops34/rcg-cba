@@ -27,13 +27,13 @@ import { processarLote } from '../common/processar-lote';
 import { criarFilhos, sincronizarFilhos } from '../common/sincronizar-filhos';
 
 const INCLUDE = {
-  fornecedor: { select: { codigoErp: true } },
-  cliente: { select: { codigoErp: true } },
-  condicaoPagamento: { select: { codigoErp: true } },
+  fornecedor: { select: { chave: true } },
+  cliente: { select: { chave: true } },
+  condicaoPagamento: { select: { chave: true } },
   itens: {
     include: {
-      produto: { select: { codigoErp: true } },
-      armazem: { select: { codigoErp: true } },
+      produto: { select: { chave: true } },
+      armazem: { select: { chave: true } },
     },
   },
 } satisfies Prisma.NotaEntradaInclude;
@@ -48,10 +48,11 @@ export class IntegracaoNotasEntradaService {
   private paraLeitura(row: NotaComRelacoes): IntegracaoNotaEntrada {
     return {
       id: row.id,
-      codigoErp: row.codigoErp ?? '',
-      fornecedorCodigo: row.fornecedor?.codigoErp ?? null,
-      clienteCodigo: row.cliente?.codigoErp ?? null,
-      condicaoCodigo: row.condicaoPagamento?.codigoErp ?? null,
+      chave: row.chave ?? '',
+      codigoErp: row.codigoErp,
+      fornecedorChave: row.fornecedor?.chave ?? null,
+      clienteChave: row.cliente?.chave ?? null,
+      condicaoChave: row.condicaoPagamento?.chave ?? null,
       numero: row.numero,
       serie: row.serie,
       especieFiscal: row.especieFiscal,
@@ -74,9 +75,9 @@ export class IntegracaoNotasEntradaService {
       ativo: row.ativo,
       itens: row.itens.map((item) => ({
         delete: false,
-        codigoErp: item.codigoErp ?? '',
-        produtoCodigo: item.produto?.codigoErp ?? null,
-        armazemCodigo: item.armazem?.codigoErp ?? null,
+        chave: item.chave ?? '',
+        produtoChave: item.produto?.chave ?? null,
+        armazemChave: item.armazem?.chave ?? null,
         item: item.item,
         cfop: item.cfop,
         quantidade: item.quantidade,
@@ -102,11 +103,11 @@ export class IntegracaoNotasEntradaService {
         empresaId,
         deletedAt: null,
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
-        ...(query.fornecedorCodigo
-          ? { fornecedor: { codigoErp: query.fornecedorCodigo } }
+        ...(query.fornecedorChave
+          ? { fornecedor: { chave: query.fornecedorChave } }
           : {}),
-        ...(query.clienteCodigo
-          ? { cliente: { codigoErp: query.clienteCodigo } }
+        ...(query.clienteChave
+          ? { cliente: { chave: query.clienteChave } }
           : {}),
         ...(query.tipo ? { tipo: query.tipo } : {}),
         ...(query.search
@@ -118,7 +119,7 @@ export class IntegracaoNotasEntradaService {
           where,
           include: INCLUDE,
           ...paginationToSkipTake(query),
-          orderBy: { codigoErp: 'asc' },
+          orderBy: { chave: 'asc' },
         }),
         tx.notaEntrada.count({ where }),
       ]);
@@ -132,11 +133,11 @@ export class IntegracaoNotasEntradaService {
 
   async findOne(
     empresaId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<IntegracaoNotaEntrada> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const row = await tx.notaEntrada.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
         include: INCLUDE,
       });
       if (!row) throw new NotFoundException('Nota de entrada não encontrada');
@@ -159,35 +160,35 @@ export class IntegracaoNotasEntradaService {
     return Promise.all(
       itens.map(async (item) => {
         let produtoId: string | null = null;
-        if (item.produtoCodigo) {
+        if (item.produtoChave) {
           const produto = await tx.produto.findFirst({
             where: {
               empresaId,
-              codigoErp: item.produtoCodigo,
+              chave: item.produtoChave,
               deletedAt: null,
             },
             select: { id: true },
           });
           if (!produto) {
             throw new NotFoundException(
-              `itens[].produtoCodigo '${item.produtoCodigo}' não encontrado`,
+              `itens[].produtoChave '${item.produtoChave}' não encontrado`,
             );
           }
           produtoId = produto.id;
         }
         let armazemId: string | null = null;
-        if (item.armazemCodigo) {
+        if (item.armazemChave) {
           const armazem = await tx.armazem.findFirst({
             where: {
               empresaId,
-              codigoErp: item.armazemCodigo,
+              chave: item.armazemChave,
               deletedAt: null,
             },
             select: { id: true },
           });
           if (!armazem) {
             throw new NotFoundException(
-              `itens[].armazemCodigo '${item.armazemCodigo}' não encontrado`,
+              `itens[].armazemChave '${item.armazemChave}' não encontrado`,
             );
           }
           armazemId = armazem.id;
@@ -195,7 +196,7 @@ export class IntegracaoNotasEntradaService {
         return {
           delete: item.delete,
           empresaId,
-          codigoErp: item.codigoErp,
+          chave: item.chave,
           fornecedorId,
           clienteId,
           produtoId,
@@ -220,7 +221,7 @@ export class IntegracaoNotasEntradaService {
   }
 
   /**
-   * Resolve os códigos do ERP em uuid. `fornecedorCodigo` e `clienteCodigo`
+   * Resolve os códigos do ERP em uuid. `fornecedorChave` e `clienteChave`
    * são excludentes na prática — compra manda um, devolução manda o outro —,
    * mas nenhum dos dois é obrigatório: a plataforma resolve o que vier e não
    * inventa regra sobre o que o mapeador deveria ter mandado.
@@ -228,9 +229,9 @@ export class IntegracaoNotasEntradaService {
   private async resolverRefs(
     tx: TenantTx,
     empresaId: string,
-    fornecedorCodigo: string | null | undefined,
-    clienteCodigo: string | null | undefined,
-    condicaoCodigo: string | null | undefined,
+    fornecedorChave: string | null | undefined,
+    clienteChave: string | null | undefined,
+    condicaoChave: string | null | undefined,
   ) {
     const resolver = async (
       codigo: string | null | undefined,
@@ -244,31 +245,31 @@ export class IntegracaoNotasEntradaService {
       return row.id;
     };
     const fornecedorId = await resolver(
-      fornecedorCodigo,
+      fornecedorChave,
       () =>
         tx.fornecedor.findFirst({
-          where: { empresaId, codigoErp: fornecedorCodigo!, deletedAt: null },
+          where: { empresaId, chave: fornecedorChave!, deletedAt: null },
           select: { id: true },
         }),
-      'fornecedorCodigo',
+      'fornecedorChave',
     );
     const clienteId = await resolver(
-      clienteCodigo,
+      clienteChave,
       () =>
         tx.cliente.findFirst({
-          where: { empresaId, codigoErp: clienteCodigo!, deletedAt: null },
+          where: { empresaId, chave: clienteChave!, deletedAt: null },
           select: { id: true },
         }),
-      'clienteCodigo',
+      'clienteChave',
     );
     const condicaoPagamentoId = await resolver(
-      condicaoCodigo,
+      condicaoChave,
       () =>
         tx.condicaoPagamento.findFirst({
-          where: { empresaId, codigoErp: condicaoCodigo!, deletedAt: null },
+          where: { empresaId, chave: condicaoChave!, deletedAt: null },
           select: { id: true },
         }),
-      'condicaoCodigo',
+      'condicaoChave',
     );
     return { fornecedorId, clienteId, condicaoPagamentoId };
   }
@@ -294,7 +295,7 @@ export class IntegracaoNotasEntradaService {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.notaEntrada.findFirst({
-        where: { empresaId, codigoErp: input.codigoErp },
+        where: { empresaId, chave: input.chave },
       });
       const decisao = decidirUpsert(existente);
 
@@ -302,9 +303,9 @@ export class IntegracaoNotasEntradaService {
         await this.resolverRefs(
           tx,
           empresaId,
-          input.fornecedorCodigo,
-          input.clienteCodigo,
-          input.condicaoCodigo,
+          input.fornecedorChave,
+          input.clienteChave,
+          input.condicaoChave,
         );
       const dtEmissao = input.dtEmissao ?? null;
       const itensData = await this.montarItens(
@@ -317,7 +318,8 @@ export class IntegracaoNotasEntradaService {
       );
 
       const dados = {
-        codigoErp: input.codigoErp,
+        chave: input.chave,
+        codigoErp: input.codigoErp ?? null,
         fornecedorId,
         clienteId,
         condicaoPagamentoId,
@@ -347,14 +349,17 @@ export class IntegracaoNotasEntradaService {
       };
 
       if (decisao !== 'criar') {
-        // Item que veio é casado pelo codigoErp em vez de recriado; item
+        // Item que veio é casado pela chave em vez de recriado; item
         // ausente do payload não é excluído (ver `sincronizarFilhos`).
         const atualizadaUpsert = await tx.notaEntrada.update({
           where: { id: existente!.id },
           data: {
             ...dados,
             ...camposDaDecisao(decisao),
-            itens: sincronizarFilhos(empresaId, itensData),
+            itens: sincronizarFilhos(
+              { campo: 'notaEntradaId', id: existente!.id },
+              itensData,
+            ),
           },
           include: INCLUDE,
         });
@@ -388,7 +393,7 @@ export class IntegracaoNotasEntradaService {
   ): Promise<IntegracaoLoteResultado> {
     return processarLote(registros, async (item) => {
       if (item.excluido) {
-        await this.remove(empresaId, apiKeyId, item.codigoErp);
+        await this.remove(empresaId, apiKeyId, item.chave);
         return 'excluido';
       }
       const { decisao } = await this.upsert(
@@ -403,13 +408,13 @@ export class IntegracaoNotasEntradaService {
   async update(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
     input: IntegracaoNotaEntradaUpdate,
   ): Promise<IntegracaoNotaEntrada> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.notaEntrada.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente)
         throw new NotFoundException('Nota de entrada não encontrada');
@@ -418,9 +423,9 @@ export class IntegracaoNotasEntradaService {
         await this.resolverRefs(
           tx,
           empresaId,
-          input.fornecedorCodigo,
-          input.clienteCodigo,
-          input.condicaoCodigo,
+          input.fornecedorChave,
+          input.clienteChave,
+          input.condicaoChave,
         );
       const dtEmissao =
         input.dtEmissao !== undefined ? input.dtEmissao : undefined;
@@ -430,11 +435,11 @@ export class IntegracaoNotasEntradaService {
         // Os itens são denormalizados a partir dos valores **finais** do
         // cabeçalho: o que o PATCH mandou, ou o que já estava gravado.
         const fornecedorIdFinal =
-          input.fornecedorCodigo !== undefined
+          input.fornecedorChave !== undefined
             ? fornecedorId
             : existente.fornecedorId;
         const clienteIdFinal =
-          input.clienteCodigo !== undefined ? clienteId : existente.clienteId;
+          input.clienteChave !== undefined ? clienteId : existente.clienteId;
         const dtEmissaoFinal =
           dtEmissao !== undefined ? dtEmissao : existente.dtEmissao;
         const itensData = await this.montarItens(
@@ -445,15 +450,18 @@ export class IntegracaoNotasEntradaService {
           clienteIdFinal,
           dtEmissaoFinal,
         );
-        itensUpdate = { itens: sincronizarFilhos(empresaId, itensData) };
+        itensUpdate = { itens: sincronizarFilhos(
+          { campo: 'notaEntradaId', id: existente.id },
+          itensData,
+        ) };
       }
 
       const atualizada = await tx.notaEntrada.update({
         where: { id: existente.id },
         data: {
-          ...(input.fornecedorCodigo !== undefined ? { fornecedorId } : {}),
-          ...(input.clienteCodigo !== undefined ? { clienteId } : {}),
-          ...(input.condicaoCodigo !== undefined
+          ...(input.fornecedorChave !== undefined ? { fornecedorId } : {}),
+          ...(input.clienteChave !== undefined ? { clienteId } : {}),
+          ...(input.condicaoChave !== undefined
             ? { condicaoPagamentoId }
             : {}),
           ...(input.numero !== undefined ? { numero: input.numero } : {}),
@@ -508,12 +516,12 @@ export class IntegracaoNotasEntradaService {
   async remove(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<void> {
     const autor = autorIntegracao(apiKeyId);
     await this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.notaEntrada.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente)
         throw new NotFoundException('Nota de entrada não encontrada');

@@ -31,6 +31,7 @@ export class IntegracaoCondicoesPagamentoService {
   private paraLeitura(row: {
     id: string;
     codigoErp: string;
+    chave: string | null;
     descricao: string;
     forma: string | null;
     ativo: boolean;
@@ -41,6 +42,7 @@ export class IntegracaoCondicoesPagamentoService {
   }): IntegracaoCondicaoPagamento {
     return {
       id: row.id,
+      chave: row.chave ?? '',
       codigoErp: row.codigoErp,
       descricao: row.descricao,
       forma: row.forma,
@@ -71,7 +73,7 @@ export class IntegracaoCondicoesPagamentoService {
         tx.condicaoPagamento.findMany({
           where,
           ...paginationToSkipTake(query),
-          orderBy: { codigoErp: 'asc' },
+          orderBy: { chave: 'asc' },
         }),
         tx.condicaoPagamento.count({ where }),
       ]);
@@ -85,11 +87,11 @@ export class IntegracaoCondicoesPagamentoService {
 
   async findOne(
     empresaId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<IntegracaoCondicaoPagamento> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const row = await tx.condicaoPagamento.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!row)
         throw new NotFoundException('Condição de pagamento não encontrada');
@@ -118,16 +120,20 @@ export class IntegracaoCondicoesPagamentoService {
     empresaId: string,
     apiKeyId: string,
     input: IntegracaoCondicaoPagamentoCreate,
-  ): Promise<{ registro: IntegracaoCondicaoPagamento; decisao: DecisaoUpsert }> {
+  ): Promise<{
+    registro: IntegracaoCondicaoPagamento;
+    decisao: DecisaoUpsert;
+  }> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.condicaoPagamento.findFirst({
-        where: { empresaId, codigoErp: input.codigoErp },
+        where: { empresaId, chave: input.chave },
       });
       const decisao = decidirUpsert(existente);
 
       const dados = {
-        codigoErp: input.codigoErp,
+        chave: input.chave,
+        codigoErp: input.codigoErp ?? '',
         descricao: input.descricao,
         forma: input.forma ?? null,
         ativo: input.ativo,
@@ -164,7 +170,7 @@ export class IntegracaoCondicoesPagamentoService {
   ): Promise<IntegracaoLoteResultado> {
     return processarLote(registros, async (item) => {
       if (item.excluido) {
-        await this.remove(empresaId, apiKeyId, item.codigoErp);
+        await this.remove(empresaId, apiKeyId, item.chave);
         return 'excluido';
       }
       const { decisao } = await this.upsert(
@@ -179,13 +185,13 @@ export class IntegracaoCondicoesPagamentoService {
   async update(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
     input: IntegracaoCondicaoPagamentoUpdate,
   ): Promise<IntegracaoCondicaoPagamento> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.condicaoPagamento.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente)
         throw new NotFoundException('Condição de pagamento não encontrada');
@@ -193,6 +199,9 @@ export class IntegracaoCondicoesPagamentoService {
       const atualizada = await tx.condicaoPagamento.update({
         where: { id: existente.id },
         data: {
+          ...(input.codigoErp !== undefined
+            ? { codigoErp: input.codigoErp ?? '' }
+            : {}),
           ...(input.descricao !== undefined
             ? { descricao: input.descricao }
             : {}),
@@ -208,12 +217,12 @@ export class IntegracaoCondicoesPagamentoService {
   async remove(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<void> {
     const autor = autorIntegracao(apiKeyId);
     await this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.condicaoPagamento.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente)
         throw new NotFoundException('Condição de pagamento não encontrada');

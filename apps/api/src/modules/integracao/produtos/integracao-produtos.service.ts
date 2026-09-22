@@ -26,10 +26,10 @@ import { processarLote } from '../common/processar-lote';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 
 const INCLUDE = {
-  categoria: { select: { codigoErp: true } },
-  subCategoria: { select: { codigoErp: true } },
-  armazem: { select: { codigoErp: true } },
-  regraDesconto: { select: { codigoErp: true } },
+  categoria: { select: { chave: true } },
+  subCategoria: { select: { chave: true } },
+  armazem: { select: { chave: true } },
+  regraDesconto: { select: { chave: true } },
 } satisfies Prisma.ProdutoInclude;
 type ProdutoComRelacoes = Prisma.ProdutoGetPayload<{ include: typeof INCLUDE }>;
 
@@ -40,12 +40,13 @@ export class IntegracaoProdutosService {
   private paraLeitura(row: ProdutoComRelacoes): IntegracaoProduto {
     return {
       id: row.id,
+      chave: row.chave ?? '',
       codigoErp: row.codigoErp,
       descricao: row.descricao,
       unidade: row.unidade,
-      categoriaCodigo: row.categoria?.codigoErp ?? null,
-      subCategoriaCodigo: row.subCategoria?.codigoErp ?? null,
-      armazemCodigo: row.armazem?.codigoErp ?? null,
+      categoriaChave: row.categoria?.chave ?? null,
+      subCategoriaChave: row.subCategoria?.chave ?? null,
+      armazemChave: row.armazem?.chave ?? null,
       marca: row.marca,
       codigoBarras: row.codigoBarras,
       codigoFornecedor: row.codigoFornecedor,
@@ -54,7 +55,7 @@ export class IntegracaoProdutosService {
       peso: row.peso,
       ultimoPreco: row.ultimoPreco,
       observacao: row.observacao,
-      regraDescontoCodigo: row.regraDesconto?.codigoErp ?? null,
+      regraDescontoChave: row.regraDesconto?.chave ?? null,
       ativo: row.ativo,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -83,7 +84,7 @@ export class IntegracaoProdutosService {
           where,
           include: INCLUDE,
           ...paginationToSkipTake(query),
-          orderBy: { codigoErp: 'asc' },
+          orderBy: { chave: 'asc' },
         }),
         tx.produto.count({ where }),
       ]);
@@ -95,13 +96,10 @@ export class IntegracaoProdutosService {
     });
   }
 
-  async findOne(
-    empresaId: string,
-    codigoErp: string,
-  ): Promise<IntegracaoProduto> {
+  async findOne(empresaId: string, chave: string): Promise<IntegracaoProduto> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const row = await tx.produto.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
         include: INCLUDE,
       });
       if (!row) throw new NotFoundException('Produto não encontrado');
@@ -134,35 +132,36 @@ export class IntegracaoProdutosService {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.produto.findFirst({
-        where: { empresaId, codigoErp: input.codigoErp },
+        where: { empresaId, chave: input.chave },
       });
       const decisao = decidirUpsert(existente);
 
       const categoriaId = await this.resolverCategoria(
         tx,
         empresaId,
-        input.categoriaCodigo,
-        'categoriaCodigo',
+        input.categoriaChave,
+        'categoriaChave',
       );
       const subCategoriaId = await this.resolverCategoria(
         tx,
         empresaId,
-        input.subCategoriaCodigo,
-        'subCategoriaCodigo',
+        input.subCategoriaChave,
+        'subCategoriaChave',
       );
       const armazemId = await this.resolverArmazem(
         tx,
         empresaId,
-        input.armazemCodigo,
+        input.armazemChave,
       );
       const regraDescontoId = await resolverRegraDesconto(
         tx,
         empresaId,
-        input.regraDescontoCodigo,
+        input.regraDescontoChave,
       );
 
       const dados = {
-        codigoErp: input.codigoErp,
+        chave: input.chave,
+        codigoErp: input.codigoErp ?? '',
         descricao: input.descricao,
         unidade: input.unidade ?? null,
         categoriaId,
@@ -213,7 +212,7 @@ export class IntegracaoProdutosService {
   ): Promise<IntegracaoLoteResultado> {
     return processarLote(registros, async (item) => {
       if (item.excluido) {
-        await this.remove(empresaId, apiKeyId, item.codigoErp);
+        await this.remove(empresaId, apiKeyId, item.chave);
         return 'excluido';
       }
       const { decisao } = await this.upsert(
@@ -228,47 +227,50 @@ export class IntegracaoProdutosService {
   async update(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
     input: IntegracaoProdutoUpdate,
   ): Promise<IntegracaoProduto> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.produto.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente) throw new NotFoundException('Produto não encontrado');
 
       const categoriaId =
-        input.categoriaCodigo !== undefined
+        input.categoriaChave !== undefined
           ? await this.resolverCategoria(
               tx,
               empresaId,
-              input.categoriaCodigo,
-              'categoriaCodigo',
+              input.categoriaChave,
+              'categoriaChave',
             )
           : undefined;
       const subCategoriaId =
-        input.subCategoriaCodigo !== undefined
+        input.subCategoriaChave !== undefined
           ? await this.resolverCategoria(
               tx,
               empresaId,
-              input.subCategoriaCodigo,
-              'subCategoriaCodigo',
+              input.subCategoriaChave,
+              'subCategoriaChave',
             )
           : undefined;
       const armazemId =
-        input.armazemCodigo !== undefined
-          ? await this.resolverArmazem(tx, empresaId, input.armazemCodigo)
+        input.armazemChave !== undefined
+          ? await this.resolverArmazem(tx, empresaId, input.armazemChave)
           : undefined;
       const regraDescontoId = await resolverRegraDesconto(
         tx,
         empresaId,
-        input.regraDescontoCodigo,
+        input.regraDescontoChave,
       );
 
       const atualizado = await tx.produto.update({
         where: { id: existente.id },
         data: {
+          ...(input.codigoErp !== undefined
+            ? { codigoErp: input.codigoErp ?? '' }
+            : {}),
           ...(input.descricao !== undefined
             ? { descricao: input.descricao }
             : {}),
@@ -307,12 +309,12 @@ export class IntegracaoProdutosService {
   async remove(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<void> {
     const autor = autorIntegracao(apiKeyId);
     await this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.produto.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente) throw new NotFoundException('Produto não encontrado');
       await tx.produto.update({
@@ -330,7 +332,7 @@ export class IntegracaoProdutosService {
   ) {
     if (!codigo) return null;
     const categoria = await tx.categoria.findFirst({
-      where: { empresaId, codigoErp: codigo, deletedAt: null },
+      where: { empresaId, chave: codigo, deletedAt: null },
       select: { id: true },
     });
     if (!categoria)
@@ -345,11 +347,11 @@ export class IntegracaoProdutosService {
   ) {
     if (!codigo) return null;
     const armazem = await tx.armazem.findFirst({
-      where: { empresaId, codigoErp: codigo, deletedAt: null },
+      where: { empresaId, chave: codigo, deletedAt: null },
       select: { id: true },
     });
     if (!armazem)
-      throw new NotFoundException(`armazemCodigo '${codigo}' não encontrado`);
+      throw new NotFoundException(`armazemChave '${codigo}' não encontrado`);
     return armazem.id;
   }
 }

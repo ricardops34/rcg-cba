@@ -7,32 +7,48 @@ import {
 import { tipoPessoaSchema } from "./cliente";
 import { statusOrcamentoSchema } from "./orcamento";
 
+// Plano docs/planos/2026-09-22-chave-integracao.md. Todo registro da integração
+// é identificado pela `chave`: a chave única do Protheus (X2_UNICO), com "-"
+// entre os campos. É por ela que a API cadastra, atualiza, exclui e liga os
+// registros, e as referências entre registros vão como `…Chave`. O
+// `codigoErp` é só informativo (título "Código" na tela) e existe nos
+// cadastros e cabeçalhos; itens não têm. Os dois são independentes.
+const codigoErpSchema = z
+  .string()
+  .trim()
+  .max(60)
+  .nullable()
+  .optional()
+  .describe("Código no ERP, só informativo (título \"Código\" na tela)");
+
+
 // ------------------------------------------------------------------
 // Categorias
 // ------------------------------------------------------------------
 
 export const integracaoCategoriaCreateSchema = z.object({
-  codigoErp: z
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(30)
     .describe("Chave natural do registro"),
+  codigoErp: codigoErpSchema,
   descricao: z.string().trim().min(1).max(120).describe("Nome da categoria"),
-  categoriaPaiCodigo: z
+  categoriaPaiChave: z
     .string()
     .trim()
     .max(30)
     .nullable()
     .optional()
-    .describe("codigoErp da categoria pai, se esta for uma subcategoria"),
-  regraDescontoCodigo: z
+    .describe("chave da categoria pai, se esta for uma subcategoria"),
+  regraDescontoChave: z
     .string()
     .trim()
     .max(30)
     .nullable()
     .optional()
-    .describe("codigoErp da regra de desconto (Z0_CODIGO da SZ0)"),
+    .describe("chave da regra de desconto (Z0_FILIAL-Z0_CODIGO)"),
   ativo: z.boolean().default(true),
 });
 export type IntegracaoCategoriaCreate = z.infer<
@@ -40,7 +56,7 @@ export type IntegracaoCategoriaCreate = z.infer<
 >;
 
 export const integracaoCategoriaUpdateSchema = integracaoCategoriaCreateSchema
-  .omit({ codigoErp: true })
+  .omit({ chave: true })
   .partial();
 export type IntegracaoCategoriaUpdate = z.infer<
   typeof integracaoCategoriaUpdateSchema
@@ -62,10 +78,11 @@ export type IntegracaoCategoriaQuery = z.infer<
 >;
 
 export const INTEGRACAO_CATEGORIA_CREATE_EXAMPLE: IntegracaoCategoriaCreate = {
+  chave: "01-000004",
   codigoErp: "000004",
   descricao: "COZINHA",
-  categoriaPaiCodigo: null,
-  regraDescontoCodigo: null,
+  categoriaPaiChave: null,
+  regraDescontoChave: null,
   ativo: true,
 };
 
@@ -83,12 +100,13 @@ export const INTEGRACAO_CATEGORIA_EXAMPLE: IntegracaoCategoria = {
 // ------------------------------------------------------------------
 
 export const integracaoCondicaoPagamentoCreateSchema = z.object({
-  codigoErp: z
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(30)
     .describe("Chave natural do registro"),
+  codigoErp: codigoErpSchema,
   descricao: z.string().trim().min(1).max(150),
   forma: z
     .string()
@@ -104,7 +122,7 @@ export type IntegracaoCondicaoPagamentoCreate = z.infer<
 >;
 
 export const integracaoCondicaoPagamentoUpdateSchema =
-  integracaoCondicaoPagamentoCreateSchema.omit({ codigoErp: true }).partial();
+  integracaoCondicaoPagamentoCreateSchema.omit({ chave: true }).partial();
 export type IntegracaoCondicaoPagamentoUpdate = z.infer<
   typeof integracaoCondicaoPagamentoUpdateSchema
 >;
@@ -128,6 +146,7 @@ export type IntegracaoCondicaoPagamentoQuery = z.infer<
 
 export const INTEGRACAO_CONDICAO_PAGAMENTO_CREATE_EXAMPLE: IntegracaoCondicaoPagamentoCreate =
   {
+    chave: "01-001",
     codigoErp: "001",
     descricao: "BOLETO 28 DIAS",
     forma: "BOL",
@@ -149,12 +168,13 @@ export const INTEGRACAO_CONDICAO_PAGAMENTO_EXAMPLE: IntegracaoCondicaoPagamento 
 // ------------------------------------------------------------------
 
 export const integracaoArmazemCreateSchema = z.object({
-  codigoErp: z
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(30)
     .describe("Chave natural do registro"),
+  codigoErp: codigoErpSchema,
   descricao: z.string().trim().min(1).max(150),
   ativo: z.boolean().default(true),
 });
@@ -163,7 +183,7 @@ export type IntegracaoArmazemCreate = z.infer<
 >;
 
 export const integracaoArmazemUpdateSchema = integracaoArmazemCreateSchema
-  .omit({ codigoErp: true })
+  .omit({ chave: true })
   .partial();
 export type IntegracaoArmazemUpdate = z.infer<
   typeof integracaoArmazemUpdateSchema
@@ -183,6 +203,7 @@ export type IntegracaoArmazemQuery = z.infer<
 >;
 
 export const INTEGRACAO_ARMAZEM_CREATE_EXAMPLE: IntegracaoArmazemCreate = {
+  chave: "01-001",
   codigoErp: "001",
   descricao: "ARMAZÉM CENTRAL",
   ativo: true,
@@ -202,12 +223,13 @@ export const INTEGRACAO_ARMAZEM_EXAMPLE: IntegracaoArmazem = {
 // ------------------------------------------------------------------
 
 export const integracaoProdutoCreateSchema = z.object({
-  codigoErp: z
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(30)
     .describe("Chave natural do registro"),
+  codigoErp: codigoErpSchema,
   descricao: z.string().trim().min(1).max(120),
   unidade: z
     .string()
@@ -216,27 +238,27 @@ export const integracaoProdutoCreateSchema = z.object({
     .nullable()
     .optional()
     .describe("Unidade de medida (ex.: UN, KG, GL)"),
-  categoriaCodigo: z
+  categoriaChave: z
     .string()
     .trim()
     .max(30)
     .nullable()
     .optional()
-    .describe("codigoErp da categoria"),
-  subCategoriaCodigo: z
+    .describe("chave da categoria"),
+  subCategoriaChave: z
     .string()
     .trim()
     .max(30)
     .nullable()
     .optional()
-    .describe("codigoErp da subcategoria"),
-  armazemCodigo: z
+    .describe("chave da subcategoria"),
+  armazemChave: z
     .string()
     .trim()
     .max(30)
     .nullable()
     .optional()
-    .describe("codigoErp do armazém padrão"),
+    .describe("chave do armazém padrão"),
   marca: z.string().trim().max(40).nullable().optional(),
   codigoBarras: z.string().trim().max(30).nullable().optional(),
   codigoFornecedor: z.string().trim().max(60).nullable().optional(),
@@ -245,13 +267,13 @@ export const integracaoProdutoCreateSchema = z.object({
   peso: z.coerce.number().min(0).nullable().optional(),
   ultimoPreco: z.coerce.number().min(0).nullable().optional(),
   observacao: z.string().trim().max(500).nullable().optional(),
-  regraDescontoCodigo: z
+  regraDescontoChave: z
     .string()
     .trim()
     .max(30)
     .nullable()
     .optional()
-    .describe("codigoErp da regra de desconto (Z0_CODIGO da SZ0)"),
+    .describe("chave da regra de desconto (Z0_FILIAL-Z0_CODIGO)"),
   ativo: z.boolean().default(true),
 });
 export type IntegracaoProdutoCreate = z.infer<
@@ -259,7 +281,7 @@ export type IntegracaoProdutoCreate = z.infer<
 >;
 
 export const integracaoProdutoUpdateSchema = integracaoProdutoCreateSchema
-  .omit({ codigoErp: true })
+  .omit({ chave: true })
   .partial();
 export type IntegracaoProdutoUpdate = z.infer<
   typeof integracaoProdutoUpdateSchema
@@ -279,12 +301,13 @@ export type IntegracaoProdutoQuery = z.infer<
 >;
 
 export const INTEGRACAO_PRODUTO_CREATE_EXAMPLE: IntegracaoProdutoCreate = {
+  chave: "01-11400443",
   codigoErp: "11400443",
   descricao: "DETERGENTE NEUTRO 5L",
   unidade: "GL",
-  categoriaCodigo: "000004",
-  subCategoriaCodigo: null,
-  armazemCodigo: "001",
+  categoriaChave: "01-000004",
+  subCategoriaChave: null,
+  armazemChave: "01-001",
   marca: "AUDAX",
   codigoBarras: "7898920071234",
   codigoFornecedor: "AUD-5000-N",
@@ -293,7 +316,7 @@ export const INTEGRACAO_PRODUTO_CREATE_EXAMPLE: IntegracaoProdutoCreate = {
   peso: 5.2,
   ultimoPreco: 28.9,
   observacao: "",
-  regraDescontoCodigo: null,
+  regraDescontoChave: null,
   ativo: true,
 };
 
@@ -314,12 +337,13 @@ export const INTEGRACAO_PRODUTO_EXAMPLE: IntegracaoProduto = {
 // scripts de import.
 
 export const integracaoVendedorCreateSchema = z.object({
-  codigoErp: z
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(30)
     .describe("Chave natural do registro"),
+  codigoErp: codigoErpSchema,
   nome: z.string().trim().min(1).max(100),
   nomeReduzido: z.string().trim().max(50).nullable().optional(),
   telefone: z.string().trim().max(15).nullable().optional(),
@@ -329,13 +353,13 @@ export const integracaoVendedorCreateSchema = z.object({
     .boolean()
     .default(true)
     .describe("true = atua como vendedor de carteira"),
-  supervisorCodigo: z
+  supervisorChave: z
     .string()
     .trim()
     .max(30)
     .nullable()
     .optional()
-    .describe("codigoErp do vendedor que é supervisor deste"),
+    .describe("chave do vendedor que é supervisor deste"),
   supervisor: z
     .boolean()
     .default(false)
@@ -355,7 +379,7 @@ export type IntegracaoVendedorCreate = z.infer<
 >;
 
 export const integracaoVendedorUpdateSchema = integracaoVendedorCreateSchema
-  .omit({ codigoErp: true })
+  .omit({ chave: true })
   .partial();
 export type IntegracaoVendedorUpdate = z.infer<
   typeof integracaoVendedorUpdateSchema
@@ -375,6 +399,7 @@ export type IntegracaoVendedorQuery = z.infer<
 >;
 
 export const INTEGRACAO_VENDEDOR_CREATE_EXAMPLE: IntegracaoVendedorCreate = {
+  chave: "01-000234",
   codigoErp: "000234",
   nome: "FABIANO OLIVEIRA",
   nomeReduzido: "FABIANO",
@@ -382,7 +407,7 @@ export const INTEGRACAO_VENDEDOR_CREATE_EXAMPLE: IntegracaoVendedorCreate = {
   email: "fabiano@rcg.com.br",
   dataNascimento: null,
   vendedor: true,
-  supervisorCodigo: null,
+  supervisorChave: null,
   supervisor: false,
   percComissao: 4,
   ativo: true,
@@ -405,12 +430,13 @@ export const INTEGRACAO_VENDEDOR_EXAMPLE: IntegracaoVendedor = {
 // models ainda não existem (ver docs/planos/cadastros-cliente-cnae-contatos-socios.md).
 
 export const integracaoClienteCreateSchema = z.object({
-  codigoErp: z
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(30)
     .describe("Chave natural do registro"),
+  codigoErp: codigoErpSchema,
   tipoPessoa: tipoPessoaSchema.default("juridica"),
   razaoSocial: z.string().trim().min(1).max(150),
   nomeFantasia: z.string().trim().max(150).nullable().optional(),
@@ -433,27 +459,27 @@ export const integracaoClienteCreateSchema = z.object({
   cep: z.string().trim().max(10).nullable().optional(),
   latitude: z.coerce.number().min(-90).max(90).nullable().optional(),
   longitude: z.coerce.number().min(-180).max(180).nullable().optional(),
-  vendedorCodigo: z
+  vendedorChave: z
     .string()
     .trim()
     .max(30)
     .nullable()
     .optional()
-    .describe("codigoErp do vendedor"),
-  tabelaPrecoCodigo: z
+    .describe("chave do vendedor"),
+  tabelaPrecoChave: z
     .string()
     .trim()
     .max(30)
     .nullable()
     .optional()
-    .describe("codigoErp da tabela de preço"),
-  condicaoPagamentoCodigo: z
+    .describe("chave da tabela de preço"),
+  condicaoPagamentoChave: z
     .string()
     .trim()
     .max(30)
     .nullable()
     .optional()
-    .describe("codigoErp da condição de pagamento padrão"),
+    .describe("chave da condição de pagamento padrão"),
   ativo: z.boolean().default(true),
   carteira: z.boolean().nullable().optional(),
   site: z.string().trim().max(150).nullable().optional(),
@@ -475,7 +501,7 @@ export type IntegracaoClienteCreate = z.infer<
 >;
 
 export const integracaoClienteUpdateSchema = integracaoClienteCreateSchema
-  .omit({ codigoErp: true })
+  .omit({ chave: true })
   .partial();
 export type IntegracaoClienteUpdate = z.infer<
   typeof integracaoClienteUpdateSchema
@@ -516,7 +542,8 @@ export type IntegracaoClienteUpdateResultado = z.infer<
 >;
 
 export const INTEGRACAO_CLIENTE_CREATE_EXAMPLE: IntegracaoClienteCreate = {
-  codigoErp: "004417",
+  chave: "01-004417-01",
+  codigoErp: "00441701",
   tipoPessoa: "juridica",
   razaoSocial: "MERCADO ANDRADE LTDA",
   nomeFantasia: "MERCADO ANDRADE",
@@ -539,9 +566,9 @@ export const INTEGRACAO_CLIENTE_CREATE_EXAMPLE: IntegracaoClienteCreate = {
   cep: "79002-201",
   latitude: null,
   longitude: null,
-  vendedorCodigo: "000234",
-  tabelaPrecoCodigo: "001",
-  condicaoPagamentoCodigo: "001",
+  vendedorChave: "01-000234",
+  tabelaPrecoChave: "01-001",
+  condicaoPagamentoChave: "01-001",
   ativo: true,
   carteira: true,
   site: null,
@@ -576,27 +603,27 @@ export const integracaoTabelaPrecoItemSchema = z.object({
   delete: z
     .boolean()
     .default(false)
-    .describe("Quando true, exclui somente este item pelo codigoErp"),
-  codigoErp: z
+    .describe("Quando true, exclui somente este item pela chave"),
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(60)
     .describe("Chave de identidade do item no ERP"),
-  produtoCodigo: z
+  produtoChave: z
     .string()
     .trim()
     .min(1)
     .max(30)
-    .describe("codigoErp do produto"),
+    .describe("chave do produto"),
   preco: z.coerce.number().min(0),
-  regraDescontoCodigo: z
+  regraDescontoChave: z
     .string()
     .trim()
     .max(30)
     .nullable()
     .optional()
-    .describe("codigoErp da regra de desconto (Z0_CODIGO da SZ0)"),
+    .describe("chave da regra de desconto (Z0_FILIAL-Z0_CODIGO)"),
   ativo: z.boolean().default(true),
 });
 export type IntegracaoTabelaPrecoItem = z.infer<
@@ -604,12 +631,13 @@ export type IntegracaoTabelaPrecoItem = z.infer<
 >;
 
 export const integracaoTabelaPrecoCreateSchema = z.object({
-  codigoErp: z
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(30)
     .describe("Chave natural do registro"),
+  codigoErp: codigoErpSchema,
   descricao: z.string().trim().min(1).max(150),
   dtInicio: z.coerce.date().nullable().optional(),
   dtFim: z.coerce.date().nullable().optional(),
@@ -624,7 +652,7 @@ export type IntegracaoTabelaPrecoCreate = z.infer<
 >;
 
 export const integracaoTabelaPrecoUpdateSchema =
-  integracaoTabelaPrecoCreateSchema.omit({ codigoErp: true }).partial();
+  integracaoTabelaPrecoCreateSchema.omit({ chave: true }).partial();
 export type IntegracaoTabelaPrecoUpdate = z.infer<
   typeof integracaoTabelaPrecoUpdateSchema
 >;
@@ -645,6 +673,7 @@ export type IntegracaoTabelaPrecoQuery = z.infer<
 
 export const INTEGRACAO_TABELA_PRECO_CREATE_EXAMPLE: IntegracaoTabelaPrecoCreate =
   {
+    chave: "01-001",
     codigoErp: "001",
     descricao: "TABELA PADRAO",
     dtInicio: new Date("2019-07-11T00:00:00.000Z"),
@@ -653,10 +682,10 @@ export const INTEGRACAO_TABELA_PRECO_CREATE_EXAMPLE: IntegracaoTabelaPrecoCreate
     itens: [
       {
         delete: false,
-        codigoErp: "001-11400443",
-        produtoCodigo: "11400443",
+        chave: "01-001-11400443-0001",
+        produtoChave: "01-11400443",
         preco: 735.3,
-        regraDescontoCodigo: null,
+        regraDescontoChave: null,
         ativo: true,
       },
     ],
@@ -672,28 +701,29 @@ export const INTEGRACAO_TABELA_PRECO_EXAMPLE: IntegracaoTabelaPreco = {
 };
 
 // ------------------------------------------------------------------
-// Estoque — chave composta (produtoCodigo + armazemCodigo), sem codigoErp
+// Estoque — chave composta (produtoChave + armazemChave), sem chave
 // próprio.
 // ------------------------------------------------------------------
 
 export const integracaoEstoqueCreateSchema = z.object({
-  codigoErp: z
+  chave: z
     .string()
     .min(1)
     .max(60)
-    .describe("Chave opaca do estoque no ERP: B2_FILIAL-B2_COD-B2_LOCAL"),
-  produtoCodigo: z
+    .describe("Chave de integração do estoque: B2_FILIAL-B2_COD-B2_LOCAL"),
+  codigoErp: codigoErpSchema,
+  produtoChave: z
     .string()
     .trim()
     .min(1)
     .max(30)
-    .describe("codigoErp do produto (parte da chave)"),
-  armazemCodigo: z
+    .describe("chave do produto (parte da chave)"),
+  armazemChave: z
     .string()
     .trim()
     .min(1)
     .max(30)
-    .describe("codigoErp do armazém (parte da chave)"),
+    .describe("chave do armazém (parte da chave)"),
   saldo: z.coerce.number().default(0),
   reserva: z.coerce.number().nullable().optional(),
   custo: z.coerce.number().nullable().optional(),
@@ -705,7 +735,7 @@ export type IntegracaoEstoqueCreate = z.infer<
 >;
 
 export const integracaoEstoqueUpdateSchema = integracaoEstoqueCreateSchema
-  .omit({ codigoErp: true, produtoCodigo: true, armazemCodigo: true })
+  .omit({ chave: true, produtoChave: true, armazemChave: true })
   .partial();
 export type IntegracaoEstoqueUpdate = z.infer<
   typeof integracaoEstoqueUpdateSchema
@@ -718,18 +748,19 @@ export const integracaoEstoqueSchema = integracaoEstoqueCreateSchema.extend({
 export type IntegracaoEstoque = z.infer<typeof integracaoEstoqueSchema>;
 
 export const integracaoEstoqueQuerySchema = paginationQuerySchema.extend({
-  codigoErp: z.string().optional(),
-  produtoCodigo: z.string().trim().optional(),
-  armazemCodigo: z.string().trim().optional(),
+  chave: z.string().optional(),
+  produtoChave: z.string().trim().optional(),
+  armazemChave: z.string().trim().optional(),
 });
 export type IntegracaoEstoqueQuery = z.infer<
   typeof integracaoEstoqueQuerySchema
 >;
 
 export const INTEGRACAO_ESTOQUE_CREATE_EXAMPLE: IntegracaoEstoqueCreate = {
-  codigoErp: "01-11400443-001",
-  produtoCodigo: "01-11400443",
-  armazemCodigo: "01-001",
+  chave: "01-11400443-01",
+  codigoErp: "11400443",
+  produtoChave: "01-11400443",
+  armazemChave: "01-01",
   saldo: 128,
   reserva: 12,
   custo: 21.4,
@@ -747,22 +778,22 @@ export const INTEGRACAO_ESTOQUE_EXAMPLE: IntegracaoEstoque = {
 };
 
 // ------------------------------------------------------------------
-// Objetivos (mestre-detalhe) — chave: codigoErp.
+// Objetivos (mestre-detalhe) — identificado pela chave.
 // ------------------------------------------------------------------
 
 export const integracaoObjetivoCategoriaSchema = z.object({
-  codigoErp: z
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(60)
     .describe("Chave de identidade da meta por categoria no ERP"),
-  categoriaCodigo: z
+  categoriaChave: z
     .string()
     .trim()
     .min(1)
     .max(30)
-    .describe("codigoErp da categoria"),
+    .describe("chave da categoria"),
   valor: z.coerce.number().min(0),
 });
 export type IntegracaoObjetivoCategoria = z.infer<
@@ -770,13 +801,14 @@ export type IntegracaoObjetivoCategoria = z.infer<
 >;
 
 export const integracaoObjetivoCreateSchema = z.object({
-  codigoErp: z
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(60)
     .describe("Chave de identidade do registro no ERP"),
-  vendedorCodigo: z.string().trim().min(1).max(30),
+  codigoErp: codigoErpSchema,
+  vendedorChave: z.string().trim().min(1).max(30),
   mes: z.coerce.number().int().min(1).max(12),
   ano: z.coerce.number().int().min(2000).max(2100),
   valor: z.coerce.number().min(0).default(0),
@@ -796,7 +828,7 @@ export type IntegracaoObjetivoCreate = z.infer<
 >;
 
 export const integracaoObjetivoUpdateSchema = integracaoObjetivoCreateSchema
-  .omit({ codigoErp: true })
+  .omit({ chave: true })
   .partial();
 export type IntegracaoObjetivoUpdate = z.infer<
   typeof integracaoObjetivoUpdateSchema
@@ -818,8 +850,9 @@ export type IntegracaoObjetivoQuery = z.infer<
 >;
 
 export const INTEGRACAO_OBJETIVO_CREATE_EXAMPLE: IntegracaoObjetivoCreate = {
-  codigoErp: "000234-2026-07",
-  vendedorCodigo: "000234",
+  chave: "01-000234-2026-07",
+  codigoErp: null,
+  vendedorChave: "01-000234",
   mes: 7,
   ano: 2026,
   valor: 85600,
@@ -829,8 +862,8 @@ export const INTEGRACAO_OBJETIVO_CREATE_EXAMPLE: IntegracaoObjetivoCreate = {
   ativo: true,
   categorias: [
     {
-      codigoErp: "000234-2026-07-000004",
-      categoriaCodigo: "000004",
+      chave: "01-000234-2026-07-000004",
+      categoriaChave: "01-000004",
       valor: 13805.34,
     },
   ],
@@ -846,7 +879,7 @@ export const INTEGRACAO_OBJETIVO_EXAMPLE: IntegracaoObjetivo = {
 };
 
 // ------------------------------------------------------------------
-// Notas de saída (mestre-detalhe) — chave: codigoErp.
+// Notas de saída (mestre-detalhe) — identificado pela chave.
 // ------------------------------------------------------------------
 // clienteId/vendedorId/dtEmissao dos itens são denormalizados a partir do
 // cabeçalho pelo próprio service — não fazem parte do payload do item.
@@ -855,14 +888,14 @@ export const integracaoNotaSaidaItemSchema = z.object({
   delete: z
     .boolean()
     .default(false)
-    .describe("Quando true, exclui somente este item pelo codigoErp"),
-  codigoErp: z
+    .describe("Quando true, exclui somente este item pela chave"),
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(60)
     .describe("Chave de identidade do item no ERP"),
-  produtoCodigo: z.string().trim().max(30).nullable().optional(),
+  produtoChave: z.string().trim().max(30).nullable().optional(),
   item: z.coerce
     .number()
     .int()
@@ -888,13 +921,13 @@ export const integracaoNotaSaidaItemSchema = z.object({
     .nullable()
     .optional()
     .describe("Percentual de comissão apurado na linha"),
-  regraDescontoCodigo: z
+  regraDescontoChave: z
     .string()
     .trim()
     .max(30)
     .nullable()
     .optional()
-    .describe("codigoErp da regra de desconto (Z0_CODIGO da SZ0)"),
+    .describe("chave da regra de desconto (Z0_FILIAL-Z0_CODIGO)"),
   ativo: z.boolean().default(true),
 });
 export type IntegracaoNotaSaidaItem = z.infer<
@@ -902,15 +935,16 @@ export type IntegracaoNotaSaidaItem = z.infer<
 >;
 
 export const integracaoNotaSaidaCreateSchema = z.object({
-  codigoErp: z
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(60)
     .describe("Chave de identidade do registro no ERP"),
-  clienteCodigo: z.string().trim().max(30).nullable().optional(),
-  vendedorCodigo: z.string().trim().max(30).nullable().optional(),
-  condicaoCodigo: z.string().trim().max(30).nullable().optional(),
+  codigoErp: codigoErpSchema,
+  clienteChave: z.string().trim().max(30).nullable().optional(),
+  vendedorChave: z.string().trim().max(30).nullable().optional(),
+  condicaoChave: z.string().trim().max(30).nullable().optional(),
   numero: z.string().trim().min(1).max(20),
   serie: z.string().trim().max(5).nullable().optional(),
   especieFiscal: z.string().trim().max(10).nullable().optional(),
@@ -943,7 +977,7 @@ export type IntegracaoNotaSaidaCreate = z.infer<
 >;
 
 export const integracaoNotaSaidaUpdateSchema = integracaoNotaSaidaCreateSchema
-  .omit({ codigoErp: true })
+  .omit({ chave: true })
   .partial();
 export type IntegracaoNotaSaidaUpdate = z.infer<
   typeof integracaoNotaSaidaUpdateSchema
@@ -971,10 +1005,11 @@ export type IntegracaoNotaSaidaQuery = z.infer<
 >;
 
 export const INTEGRACAO_NOTA_SAIDA_CREATE_EXAMPLE: IntegracaoNotaSaidaCreate = {
-  codigoErp: "000116067-1",
-  clienteCodigo: "004417",
-  vendedorCodigo: "000234",
-  condicaoCodigo: "001",
+  chave: "01-000116067-1  -004417-01-N-N",
+  codigoErp: "000116067",
+  clienteChave: "01-004417-01",
+  vendedorChave: "01-000234",
+  condicaoChave: "01-001",
   numero: "000116067",
   serie: "1",
   especieFiscal: "SPED",
@@ -996,8 +1031,8 @@ export const INTEGRACAO_NOTA_SAIDA_CREATE_EXAMPLE: IntegracaoNotaSaidaCreate = {
   itens: [
     {
       delete: false,
-      codigoErp: "000116067-1-0001",
-      produtoCodigo: "11400443",
+      chave: "01-000116067-1  -004417-01-11400443-01",
+      produtoChave: "01-11400443",
       item: 1,
       cfop: "5102",
       tipo: "N",
@@ -1059,7 +1094,7 @@ export const INTEGRACAO_NFE_XML_EXAMPLE: IntegracaoNfeXml = {
 
 /** Resposta do envio do XML: o que a plataforma extraiu e guardou. */
 export const integracaoNfeXmlResultadoSchema = z.object({
-  codigoErp: z.string(),
+  chave: z.string(),
   chaveNfe: z.string(),
   numero: z.string().nullable(),
   serie: z.string().nullable(),
@@ -1072,7 +1107,7 @@ export type IntegracaoNfeXmlResultado = z.infer<
 >;
 
 export const INTEGRACAO_NFE_XML_RESULTADO_EXAMPLE: IntegracaoNfeXmlResultado = {
-  codigoErp: "000116067-1",
+  chave: "01-000116067-1  -004417-01-N-N",
   chaveNfe: "50260600000000000191550010001160671000116060",
   numero: "116067",
   serie: "1",
@@ -1089,7 +1124,7 @@ export const INTEGRACAO_NFE_XML_RESULTADO_EXAMPLE: IntegracaoNfeXmlResultado = {
  * transformaria a conferência no maior tráfego da integração.
  */
 export const integracaoNfeXmlStatusSchema = z.object({
-  codigoErp: z.string(),
+  chave: z.string(),
   temXml: z.boolean(),
   chaveNfe: z.string().nullable(),
   protocolo: z.string().nullable(),
@@ -1103,7 +1138,7 @@ export type IntegracaoNfeXmlStatus = z.infer<
 >;
 
 export const INTEGRACAO_NFE_XML_STATUS_EXAMPLE: IntegracaoNfeXmlStatus = {
-  codigoErp: "000116067-1",
+  chave: "01-000116067-1  -004417-01-N-N",
   temXml: true,
   chaveNfe: "50260600000000000191550010001160671000116060",
   protocolo: "150260000123456",
@@ -1113,18 +1148,19 @@ export const INTEGRACAO_NFE_XML_STATUS_EXAMPLE: IntegracaoNfeXmlStatus = {
 };
 
 // ------------------------------------------------------------------
-// Fornecedores — chave: codigoErp.
+// Fornecedores — identificado pela chave.
 // ------------------------------------------------------------------
-// Carregue **antes** das notas de entrada: `fornecedorCodigo` da nota aponta
+// Carregue **antes** das notas de entrada: `fornecedorChave` da nota aponta
 // para cá e o registro precisa já existir.
 
 export const integracaoFornecedorCreateSchema = z.object({
-  codigoErp: z
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(30)
     .describe("Chave natural do registro"),
+  codigoErp: codigoErpSchema,
   tipoPessoa: tipoPessoaSchema.default("juridica"),
   razaoSocial: z.string().trim().min(1).max(150),
   nomeFantasia: z.string().trim().max(150).nullable().optional(),
@@ -1149,7 +1185,7 @@ export type IntegracaoFornecedorCreate = z.infer<
 >;
 
 export const integracaoFornecedorUpdateSchema =
-  integracaoFornecedorCreateSchema.omit({ codigoErp: true }).partial();
+  integracaoFornecedorCreateSchema.omit({ chave: true }).partial();
 export type IntegracaoFornecedorUpdate = z.infer<
   typeof integracaoFornecedorUpdateSchema
 >;
@@ -1171,7 +1207,8 @@ export type IntegracaoFornecedorQuery = z.infer<
 export const INTEGRACAO_FORNECEDOR_CREATE_EXAMPLE: IntegracaoFornecedorCreate =
   {
     // A2_FILIAL-A2_COD-A2_LOJA
-    codigoErp: "01-000042-01",
+    chave: "01-000042-01",
+    codigoErp: "00004201",
     tipoPessoa: "juridica",
     razaoSocial: "Distribuidora Serra Azul Ltda",
     nomeFantasia: "Serra Azul",
@@ -1202,7 +1239,7 @@ export const INTEGRACAO_FORNECEDOR_EXAMPLE: IntegracaoFornecedor = {
 };
 
 // ------------------------------------------------------------------
-// Notas de entrada (mestre-detalhe) — chave: codigoErp.
+// Notas de entrada (mestre-detalhe) — identificado pela chave.
 // ------------------------------------------------------------------
 // Espelho da SF1, irmã da nota de saída, com as mesmas regras de item
 // (`delete: true` exclui a linha; item ausente do payload não é excluído).
@@ -1211,10 +1248,10 @@ export const INTEGRACAO_FORNECEDOR_EXAMPLE: IntegracaoFornecedor = {
 // item.
 //
 // **A SF1 guarda dois documentos**, e `tipo` diz qual:
-//   'N' compra    → mande `fornecedorCodigo`
-//   'D' devolução → mande `clienteCodigo`
+//   'N' compra    → mande `fornecedorChave`
+//   'D' devolução → mande `clienteChave`
 // Mandar o outro não é erro (a plataforma resolve o que vier), mas a tela do
-// cliente só encontra a devolução pelo `clienteCodigo`.
+// cliente só encontra a devolução pelo `clienteChave`.
 //
 // Sem XML: a segunda via do documento de entrada é de quem o emitiu.
 
@@ -1222,21 +1259,21 @@ export const integracaoNotaEntradaItemSchema = z.object({
   delete: z
     .boolean()
     .default(false)
-    .describe("Quando true, exclui somente este item pelo codigoErp"),
-  codigoErp: z
+    .describe("Quando true, exclui somente este item pela chave"),
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(60)
     .describe("Chave de identidade do item no ERP"),
-  produtoCodigo: z.string().trim().max(30).nullable().optional(),
-  armazemCodigo: z
+  produtoChave: z.string().trim().max(30).nullable().optional(),
+  armazemChave: z
     .string()
     .trim()
     .max(30)
     .nullable()
     .optional()
-    .describe("codigoErp do armazém em que a mercadoria entrou"),
+    .describe("chave do armazém em que a mercadoria entrou"),
   item: z.coerce
     .number()
     .int()
@@ -1261,33 +1298,34 @@ export type IntegracaoNotaEntradaItem = z.infer<
 >;
 
 export const integracaoNotaEntradaCreateSchema = z.object({
-  codigoErp: z
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(60)
     .describe("Chave de identidade do registro no ERP"),
-  fornecedorCodigo: z
+  codigoErp: codigoErpSchema,
+  fornecedorChave: z
     .string()
     .trim()
     .max(30)
     .nullable()
     .optional()
-    .describe("codigoErp do fornecedor — nas notas de compra (tipo 'N')"),
-  clienteCodigo: z
+    .describe("chave do fornecedor — nas notas de compra (tipo 'N')"),
+  clienteChave: z
     .string()
     .trim()
     .max(30)
     .nullable()
     .optional()
-    .describe("codigoErp do cliente — nas devoluções de venda (tipo 'D')"),
-  condicaoCodigo: z
+    .describe("chave do cliente — nas devoluções de venda (tipo 'D')"),
+  condicaoChave: z
     .string()
     .trim()
     .max(30)
     .nullable()
     .optional()
-    .describe("codigoErp da condição de pagamento"),
+    .describe("chave da condição de pagamento"),
   numero: z.string().trim().min(1).max(20),
   serie: z.string().trim().max(5).nullable().optional(),
   especieFiscal: z.string().trim().max(10).nullable().optional(),
@@ -1326,7 +1364,7 @@ export type IntegracaoNotaEntradaCreate = z.infer<
 >;
 
 export const integracaoNotaEntradaUpdateSchema =
-  integracaoNotaEntradaCreateSchema.omit({ codigoErp: true }).partial();
+  integracaoNotaEntradaCreateSchema.omit({ chave: true }).partial();
 export type IntegracaoNotaEntradaUpdate = z.infer<
   typeof integracaoNotaEntradaUpdateSchema
 >;
@@ -1340,18 +1378,18 @@ export type IntegracaoNotaEntrada = z.infer<typeof integracaoNotaEntradaSchema>;
 
 export const integracaoNotaEntradaQuerySchema = paginationQuerySchema.extend({
   ativo: booleanQueryParam,
-  fornecedorCodigo: z
+  fornecedorChave: z
     .string()
     .trim()
     .max(30)
     .optional()
-    .describe("Filtra pelo codigoErp do fornecedor"),
-  clienteCodigo: z
+    .describe("Filtra pela chave do fornecedor"),
+  clienteChave: z
     .string()
     .trim()
     .max(30)
     .optional()
-    .describe("Filtra pelo codigoErp do cliente (devoluções)"),
+    .describe("Filtra pela chave do cliente (devoluções)"),
   tipo: z
     .string()
     .trim()
@@ -1365,11 +1403,12 @@ export type IntegracaoNotaEntradaQuery = z.infer<
 
 export const INTEGRACAO_NOTA_ENTRADA_CREATE_EXAMPLE: IntegracaoNotaEntradaCreate =
   {
-    // F1_FILIAL-F1_DOC-F1_SERIE-F1_FORNECE-F1_LOJA-F1_FORMUL
-    codigoErp: "01-000004212-1-000042-01-N",
-    fornecedorCodigo: "01-000042-01",
-    clienteCodigo: null,
-    condicaoCodigo: "01-001",
+    // F1_FILIAL-F1_DOC-F1_SERIE-F1_FORNECE-F1_LOJA-F1_FORMUL-F1_TIPO
+    chave: "01-000004212-1  -000042-01-N-N",
+    codigoErp: "000004212",
+    fornecedorChave: "01-000042-01",
+    clienteChave: null,
+    condicaoChave: "01-001",
     numero: "000004212",
     serie: "1",
     especieFiscal: "SPED",
@@ -1393,10 +1432,10 @@ export const INTEGRACAO_NOTA_ENTRADA_CREATE_EXAMPLE: IntegracaoNotaEntradaCreate
     itens: [
       {
         delete: false,
-        // D1_FILIAL-D1_DOC-D1_SERIE-D1_FORNECE-D1_LOJA-D1_ITEM
-        codigoErp: "01-000004212-1-000042-01-0001",
-        produtoCodigo: "01-11400443",
-        armazemCodigo: "01-01",
+        // D1_FILIAL-D1_DOC-D1_SERIE-D1_FORNECE-D1_LOJA-D1_COD-D1_ITEM
+        chave: "01-000004212-1  -000042-01-11400443-0001",
+        produtoChave: "01-11400443",
+        armazemChave: "01-01",
         item: 1,
         cfop: "1102",
         quantidade: 200,
@@ -1422,18 +1461,19 @@ export const INTEGRACAO_NOTA_ENTRADA_EXAMPLE: IntegracaoNotaEntrada = {
 };
 
 // ------------------------------------------------------------------
-// Títulos a receber — chave: codigoErp.
+// Títulos a receber — identificado pela chave.
 // ------------------------------------------------------------------
 
 export const integracaoTituloReceberCreateSchema = z.object({
-  codigoErp: z
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(60)
     .describe("Chave de identidade do registro no ERP"),
-  clienteCodigo: z.string().trim().max(30).nullable().optional(),
-  vendedorCodigo: z.string().trim().max(30).nullable().optional(),
+  codigoErp: codigoErpSchema,
+  clienteChave: z.string().trim().max(30).nullable().optional(),
+  vendedorChave: z.string().trim().max(30).nullable().optional(),
   numero: z.string().trim().min(1).max(20),
   parcela: z.string().trim().max(5).nullable().optional(),
   prefixo: z.string().trim().max(10).nullable().optional(),
@@ -1660,7 +1700,7 @@ export type IntegracaoTituloReceberCreate = z.infer<
 >;
 
 export const integracaoTituloReceberUpdateSchema =
-  integracaoTituloReceberCreateSchema.omit({ codigoErp: true }).partial();
+  integracaoTituloReceberCreateSchema.omit({ chave: true }).partial();
 export type IntegracaoTituloReceberUpdate = z.infer<
   typeof integracaoTituloReceberUpdateSchema
 >;
@@ -1683,9 +1723,10 @@ export type IntegracaoTituloReceberQuery = z.infer<
 
 export const INTEGRACAO_TITULO_RECEBER_CREATE_EXAMPLE: IntegracaoTituloReceberCreate =
   {
-    codigoErp: "NF-000116067-A-NF",
-    clienteCodigo: "004417",
-    vendedorCodigo: "000234",
+    chave: "01-1  -000116067-A-NF ",
+    codigoErp: "000116067",
+    clienteChave: "01-004417-01",
+    vendedorChave: "01-000234",
     numero: "000116067",
     parcela: "A",
     prefixo: "NF",
@@ -1737,7 +1778,7 @@ export const INTEGRACAO_TITULO_RECEBER_EXAMPLE: IntegracaoTituloReceber = {
 };
 
 // ------------------------------------------------------------------
-// Orçamentos (mestre-detalhe) — chave: codigoErp.
+// Orçamentos (mestre-detalhe) — identificado pela chave.
 // ------------------------------------------------------------------
 // Sem oportunidadeCodigo: Oportunidade é um recurso interno do CRM (nasce só
 // pela tela), sem chave de legado — vínculo a uma oportunidade, se desejado,
@@ -1746,22 +1787,27 @@ export const INTEGRACAO_TITULO_RECEBER_EXAMPLE: IntegracaoTituloReceber = {
 // é criado pela tela.
 
 export const integracaoOrcamentoItemSchema = z.object({
+  id: z
+    .string()
+    .uuid()
+    .optional()
+    .describe("id do item na plataforma. Só na leitura: é por ele que o ERP devolve a chave do SC6 no PATCH de pendentes"),
   delete: z
     .boolean()
     .default(false)
-    .describe("Quando true, exclui somente este item pelo codigoErp"),
-  codigoErp: z
+    .describe("Quando true, exclui somente este item pela chave"),
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(60)
     .describe("Chave de identidade do item no ERP"),
-  produtoCodigo: z
+  produtoChave: z
     .string()
     .trim()
     .min(1)
     .max(30)
-    .describe("codigoErp do produto"),
+    .describe("chave do produto"),
   quantidade: z.coerce.number().positive(),
   vlrUnitario: z.coerce.number().min(0),
   percComissao: z.coerce
@@ -1771,28 +1817,29 @@ export const integracaoOrcamentoItemSchema = z.object({
     .nullable()
     .optional()
     .describe("Percentual de comissão apurado na linha"),
-  regraDescontoCodigo: z
+  regraDescontoChave: z
     .string()
     .trim()
     .max(30)
     .nullable()
     .optional()
-    .describe("codigoErp da regra de desconto (Z0_CODIGO da SZ0)"),
+    .describe("chave da regra de desconto (Z0_FILIAL-Z0_CODIGO)"),
 });
 export type IntegracaoOrcamentoItem = z.infer<
   typeof integracaoOrcamentoItemSchema
 >;
 
 export const integracaoOrcamentoCreateSchema = z.object({
-  codigoErp: z
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(60)
     .describe("Chave de identidade do registro no ERP"),
-  clienteCodigo: z.string().trim().min(1).max(30),
-  vendedorCodigo: z.string().trim().min(1).max(30),
-  condicaoPagamentoCodigo: z.string().trim().max(30).nullable().optional(),
+  codigoErp: codigoErpSchema,
+  clienteChave: z.string().trim().min(1).max(30),
+  vendedorChave: z.string().trim().min(1).max(30),
+  condicaoPagamentoChave: z.string().trim().max(30).nullable().optional(),
   titulo: z.string().trim().min(1).max(150),
   status: statusOrcamentoSchema.default("rascunho"),
   dataValidade: z.coerce.date().nullable().optional(),
@@ -1809,7 +1856,7 @@ export type IntegracaoOrcamentoCreate = z.infer<
 >;
 
 export const integracaoOrcamentoUpdateSchema = integracaoOrcamentoCreateSchema
-  .omit({ codigoErp: true })
+  .omit({ chave: true })
   .partial();
 export type IntegracaoOrcamentoUpdate = z.infer<
   typeof integracaoOrcamentoUpdateSchema
@@ -1831,29 +1878,46 @@ export type IntegracaoOrcamentoQuery = z.infer<
   typeof integracaoOrcamentoQuerySchema
 >;
 
-// Vincula um orçamento aprovado criado na plataforma (sem codigoErp) ao
-// código que o ERP passa a usar pra ele — ver GET/PATCH .../pendentes
-// abaixo. Só pode ser feito uma vez por orçamento (não pode reatribuir).
+// Vincula um orçamento aprovado criado na plataforma (sem chave) ao pedido
+// que o ERP gerou a partir dele — ver GET/PATCH .../pendentes abaixo. Pedido
+// e itens voltam juntos: a chave do SC5 e, para cada item do orçamento (pelo
+// id que o GET de pendentes expõe), a chave do SC6. Só pode ser feito uma vez
+// por orçamento (não pode reatribuir).
 export const integracaoOrcamentoVincularSchema = z.object({
-  codigoErp: z
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(60)
-    .describe(
-      "Chave de identidade que o ERP passa a usar para esse orçamento — o " +
-        "número do Pedido de Venda gerado a partir dele",
-    ),
+    .describe("Chave de integração do pedido gerado: C5_FILIAL-C5_NUM"),
+  codigoErp: codigoErpSchema.describe("Número do pedido (C5_NUM), informativo"),
+  itens: z
+    .array(
+      z.object({
+        id: z.string().uuid().describe("id do item do orçamento na plataforma"),
+        chave: z
+          .string()
+          .trim()
+          .min(1)
+          .max(60)
+          .describe(
+            "Chave de integração do item do pedido: C6_FILIAL-C6_NUM-C6_ITEM-C6_PRODUTO",
+          ),
+      }),
+    )
+    .default([])
+    .describe("Chave do SC6 de cada item do orçamento"),
 });
 export type IntegracaoOrcamentoVincular = z.infer<
   typeof integracaoOrcamentoVincularSchema
 >;
 
 export const INTEGRACAO_ORCAMENTO_CREATE_EXAMPLE: IntegracaoOrcamentoCreate = {
+  chave: "01-000123",
   codigoErp: "000123",
-  clienteCodigo: "004417",
-  vendedorCodigo: "000234",
-  condicaoPagamentoCodigo: "001",
+  clienteChave: "01-004417-01",
+  vendedorChave: "01-000234",
+  condicaoPagamentoChave: "01-001",
   titulo: "Proposta — reposição de estoque linha de limpeza",
   status: "enviado",
   dataValidade: new Date("2026-08-20T00:00:00.000Z"),
@@ -1863,11 +1927,11 @@ export const INTEGRACAO_ORCAMENTO_CREATE_EXAMPLE: IntegracaoOrcamentoCreate = {
   itens: [
     {
       delete: false,
-      codigoErp: "000123-01",
-      produtoCodigo: "11400443",
+      chave: "01-000123-01-11400443",
+      produtoChave: "01-11400443",
       quantidade: 5,
       vlrUnitario: 735.3,
-      regraDescontoCodigo: null,
+      regraDescontoChave: null,
     },
   ],
 };
@@ -1883,11 +1947,18 @@ export const INTEGRACAO_ORCAMENTO_EXAMPLE: IntegracaoOrcamento = {
 
 export const INTEGRACAO_ORCAMENTO_VINCULAR_EXAMPLE: IntegracaoOrcamentoVincular =
   {
+    chave: "01-004512",
     codigoErp: "004512",
+    itens: [
+      {
+        id: "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
+        chave: "01-004512-01-11400443",
+      },
+    ],
   };
 
 // ------------------------------------------------------------------
-// Regras de desconto (mestre-detalhe) — chave: codigoErp (Z0_CODIGO da SZ0).
+// Regras de desconto (mestre-detalhe) — identificado pela chave (Z0_FILIAL-Z0_CODIGO).
 // ------------------------------------------------------------------
 // As faixas vêm no mesmo corpo. delete=true remove somente a sequência
 // informada; as demais são incluídas ou atualizadas.
@@ -1919,12 +1990,13 @@ export type IntegracaoRegraDescontoFaixa = z.infer<
 >;
 
 export const integracaoRegraDescontoCreateSchema = z.object({
-  codigoErp: z
+  chave: z
     .string()
     .trim()
     .min(1)
     .max(30)
     .describe("Chave natural do registro (Z0_CODIGO)"),
+  codigoErp: codigoErpSchema,
   descricao: z.string().trim().min(1).max(120).describe("Z0_DESC"),
   percDescontoAutorizado: z.coerce
     .number()
@@ -1959,7 +2031,7 @@ export type IntegracaoRegraDescontoCreate = z.infer<
 >;
 
 export const integracaoRegraDescontoUpdateSchema =
-  integracaoRegraDescontoCreateSchema.omit({ codigoErp: true }).partial();
+  integracaoRegraDescontoCreateSchema.omit({ chave: true }).partial();
 export type IntegracaoRegraDescontoUpdate = z.infer<
   typeof integracaoRegraDescontoUpdateSchema
 >;
@@ -1982,6 +2054,7 @@ export type IntegracaoRegraDescontoQuery = z.infer<
 
 export const INTEGRACAO_REGRA_DESCONTO_CREATE_EXAMPLE: IntegracaoRegraDescontoCreate =
   {
+    chave: "01-000001",
     codigoErp: "000001",
     descricao: "REGRA GERAL",
     percDescontoAutorizado: 35,
@@ -2022,12 +2095,12 @@ export const INTEGRACAO_LOTE_MAX = 1000;
  * Item que falhou, com a posição no array enviado.
  *
  * O ERP precisa do índice para saber **qual** registro reenviar: o
- * `codigoErp` pode vir nulo justamente quando o payload está malformado, que é
+ * `chave` pode vir nulo justamente quando o payload está malformado, que é
  * um dos casos que caem aqui.
  */
 export const integracaoLoteErroSchema = z.object({
   indice: z.number().int().min(0),
-  codigoErp: z.string().nullable(),
+  chave: z.string().nullable(),
   mensagem: z.string(),
 });
 export type IntegracaoLoteErro = z.infer<typeof integracaoLoteErroSchema>;
@@ -2037,7 +2110,7 @@ export type IntegracaoLoteErro = z.infer<typeof integracaoLoteErroSchema>;
  * na sua própria transação, e um item inválido não desfaz os que já passaram.
  *
  * É decisão de desenho, não limitação: numa carga de 1.000 notas, um item com
- * `vendedorCodigo` inexistente não pode obrigar a reenviar os outros 999. Por
+ * `vendedorChave` inexistente não pode obrigar a reenviar os outros 999. Por
  * isso a resposta é sempre 200 com o relatório — quem chama decide o que fazer
  * lendo `erros`, que vem vazio quando tudo passou.
  */
@@ -2081,7 +2154,7 @@ export function integracaoLoteSchema<T extends z.ZodTypeAny>(item: T) {
  * schema da entidade, com o caminho do campo.
  */
 export type IntegracaoLoteItem<C> = Partial<C> & {
-  codigoErp: string;
+  chave: string;
   excluido?: boolean;
 };
 
@@ -2091,7 +2164,7 @@ export function integracaoLoteItemSchema<T extends z.AnyZodObject>(
   const schema = create
     .partial()
     .extend({
-      codigoErp: z.string().min(1),
+      chave: z.string().min(1),
       excluido: z.boolean().optional(),
     })
     .superRefine((valor, ctx) => {
@@ -2119,8 +2192,8 @@ export const INTEGRACAO_LOTE_RESULTADO_EXAMPLE: IntegracaoLoteResultado = {
   erros: [
     {
       indice: 37,
-      codigoErp: "004417",
-      mensagem: "vendedorCodigo '000999' não encontrado",
+      chave: "01-004417-01",
+      mensagem: "vendedorChave '000999' não encontrado",
     },
   ],
 };

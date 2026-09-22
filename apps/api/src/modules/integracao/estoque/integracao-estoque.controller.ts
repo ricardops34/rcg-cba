@@ -47,7 +47,7 @@ export class IntegracaoEstoqueController {
 
   @ApiOperation({
     summary: 'Listar saldos de estoque',
-    description: 'Paginado; filtra por produtoCodigo e/ou armazemCodigo.',
+    description: 'Paginado; filtra por produtoChave e/ou armazemChave.',
   })
   @ApiPaginationQuery()
   @Get()
@@ -59,23 +59,23 @@ export class IntegracaoEstoqueController {
   }
 
   @ApiOperation({
-    summary: 'Detalhar saldo de estoque por codigoErp',
+    summary: 'Detalhar saldo de estoque por chave',
   })
-  @ApiParam({ name: 'codigo', description: 'codigoErp do estoque' })
+  @ApiParam({ name: 'codigo', description: 'chave do estoque' })
   @ApiResponse({ status: 200, schema: { example: INTEGRACAO_ESTOQUE_EXAMPLE } })
   @ApiResponse({ status: 404, description: 'Saldo de estoque não encontrado' })
   @Get(':codigo')
   findOne(
-    @Param('codigo') codigoErp: string,
+    @Param('codigo') chave: string,
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
-    return this.service.findOne(integracao.empresaId, codigoErp);
+    return this.service.findOne(integracao.empresaId, chave);
   }
 
   @ApiOperation({
-    summary: 'Criar ou atualizar saldo de estoque por codigoErp',
+    summary: 'Criar ou atualizar saldo de estoque por chave',
     description:
-      'POST faz upsert por codigoErp; produtoCodigo e armazemCodigo precisam existir.',
+      'POST faz upsert por chave; produtoChave e armazemChave precisam existir.',
   })
   @ApiBodyExample(INTEGRACAO_ESTOQUE_CREATE_EXAMPLE)
   @ApiResponse({ status: 201, schema: { example: INTEGRACAO_ESTOQUE_EXAMPLE } })
@@ -90,7 +90,7 @@ export class IntegracaoEstoqueController {
   @ApiOperation({
     summary: 'Enviar lote de estoque',
     description:
-      'Upsert em lote por codigoErp (máx. 1.000 por chamada). Um registro com ' +
+      'Upsert em lote por chave (máx. 1.000 por chamada). Um registro com ' +
       '"excluido": true é excluído (soft delete) e dispensa os demais campos. ' +
       'Responde 200 com o relatório: um item inválido não desfaz os que já ' +
       'passaram, e vem listado em "erros" com o índice no array enviado.',
@@ -120,36 +120,36 @@ export class IntegracaoEstoqueController {
     summary: 'Atualizar saldo de estoque',
     description: 'Atualização parcial.',
   })
-  @ApiParam({ name: 'codigo', description: 'codigoErp do estoque' })
+  @ApiParam({ name: 'codigo', description: 'chave do estoque' })
   @ApiResponse({ status: 200, schema: { example: INTEGRACAO_ESTOQUE_EXAMPLE } })
   @ApiResponse({ status: 404, description: 'Saldo de estoque não encontrado' })
   @Patch(':codigo')
   update(
-    @Param('codigo') codigoErp: string,
+    @Param('codigo') chave: string,
     @Body() dto: IntegracaoEstoqueUpdateDto,
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
     return this.service.update(
       integracao.empresaId,
       integracao.apiKeyId,
-      codigoErp,
+      chave,
       dto,
     );
   }
 
   @ApiOperation({ summary: 'Excluir saldo de estoque (soft delete)' })
-  @ApiParam({ name: 'codigo', description: 'codigoErp do estoque' })
+  @ApiParam({ name: 'codigo', description: 'chave do estoque' })
   @ApiResponse({ status: 200, description: 'Excluído' })
   @ApiResponse({ status: 404, description: 'Saldo de estoque não encontrado' })
   @Delete(':codigo')
   remove(
-    @Param('codigo') codigoErp: string,
+    @Param('codigo') chave: string,
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
     return this.service.remove(
       integracao.empresaId,
       integracao.apiKeyId,
-      codigoErp,
+      chave,
     );
   }
 }

@@ -56,7 +56,6 @@ User Function BJCATALO()
 	aAdd(aRet, {"notas-saida-xml", "XML das notas de saida", "/integracao/notas-saida/{chave}/xml", "U_BJMAPXML", .T., "SF2", "F2_FILIAL"})
 	aAdd(aRet, {"notas-entrada"  , "Notas de entrada"       , "/integracao/notas-entrada"      , "U_BJMAPNFE", .T., "SF1", "F1_FILIAL" })
 	aAdd(aRet, {"titulos-receber", "Titulos a receber"      , "/integracao/titulos-receber"    , "U_BJMAPTIT", .T., "SE1", "E1_FILIAL" })
-	aAdd(aRet, {"orcamentos"     , "Orcamentos"             , "/integracao/orcamentos"         , "U_BJMAPORC", .T., "SCJ", "CJ_FILIAL" })
 
 Return aRet
 
@@ -111,6 +110,15 @@ User Function BJHTTP(cVerbo, cRota, cBody, cResp, nHttp, cErro)
 
 	cVerbo := Upper(AllTrim(cVerbo))
 	cRota  := AllTrim(cRota)
+
+	// MV_BJAPI04 ja existiu no desenho antigo guardando data, como caractere. Se
+	// sobrou assim no SX6, o FWRest repassa o texto ao HttpPost e a thread cai.
+	// Melhor recusar com a causa escrita do que derrubar o envio.
+	If ValType(nTimeOut) != "N" .Or. ValType(nMaxTent) != "N" .Or. ValType(nEspRetr) != "N"
+		cErro := "MV_BJAPI04, MV_BJAPI05 e MV_BJAPI06 precisam ser numericos no SX6 (timeout, retentativas, espera)."
+		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", cErro, 0, 0, {})
+		Return .F.
+	EndIf
 
 	// O prefixo das rotas (/api/v1) faz parte da URL base, em MV_BJAPI01: prefixo
 	// e host mudam juntos, na mesma migracao de versao da API, e mante-los em dois
@@ -182,14 +190,21 @@ User Function BJHTTP(cVerbo, cRota, cBody, cResp, nHttp, cErro)
 					Return .F.
 			EndCase
 
+			// GetHTTPCode() devolve o codigo como texto ("200", "429"), e Nil quando a
+			// conexao falha antes de qualquer resposta (timeout, recusa, DNS). As
+			// comparacoes de faixa abaixo e o ZZ_HTTP precisam de numero: sem resposta
+			// e HTTP 0.
 			nHttp := oClient:GetHTTPCode()
 			cResp := oClient:GetResult()
 
-			// A conexao pode falhar antes de qualquer resposta chegar (timeout, recusa,
-			// falha de DNS); nesse caso GetHTTPCode() devolve Nil e a comparacao de
-			// faixa abaixo quebraria por tipo. Sem resposta e HTTP 0.
-			If nHttp == Nil
+			If ValType(nHttp) == "C"
+				nHttp := Val(nHttp)
+			ElseIf ValType(nHttp) != "N"
 				nHttp := 0
+			EndIf
+
+			If ValType(cResp) != "C"
+				cResp := ""
 			EndIf
 
 			If !lRet .And. Empty(cResp)
@@ -200,6 +215,13 @@ User Function BJHTTP(cVerbo, cRota, cBody, cResp, nHttp, cErro)
 			oClient := Nil
 
 		EndIf
+
+		// TEMPORARIO - diagnostico do 404. Remover junto com as outras linhas marcadas.
+		ConOut("[BJHTTP] " + DtoC(Date()) + " " + Time() + " tentativa " + cValToChar(nTent) + "/" + cValToChar(nMaxTent))   // TEMPORARIO
+		ConOut("[BJHTTP] " + cVerbo + " " + cUrlBase + cRota)   // TEMPORARIO
+		ConOut("[BJHTTP] base=[" + cUrlBase + "] rota=[" + cRota + "] chave=" + cValToChar(Len(cChvApi)) + " caracteres")   // TEMPORARIO
+		ConOut("[BJHTTP] body=" + Left(cBody, 500))   // TEMPORARIO
+		ConOut("[BJHTTP] HTTP " + cValToChar(nHttp) + " ok=" + cValToChar(lRet) + " resp=" + Left(cResp, 500))   // TEMPORARIO
 
 		If lRet
 
@@ -271,17 +293,19 @@ User Function BJHTTP(cVerbo, cRota, cBody, cResp, nHttp, cErro)
 	End
 
 	If !lRet
-		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", cVerbo + " " + cRota + " - HTTP " + cValToChar(nHttp) + " - " + cErro, 0, 0, {})
+		// URL inteira no log: um 404 sem o JSON da API quase sempre e base errada
+		// em MV_BJAPI01, e so a URL completa mostra isso.
+		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", cVerbo + " " + cUrlBase + cRota + " - HTTP " + cValToChar(nHttp) + " - " + cErro, 0, 0, {})
 	EndIf
 
 Return lRet
 
 /*/{Protheus.doc} BJCHAVE
-Parte um codigoErp nos campos que o compoem, prontos para busca.
+Parte uma chave de integracao nos campos que o compoem, prontos para busca.
 @type    User Function
 @author  Ricardo P Sotomayor
 @since   08/09/2026
-@param   cChave , character, codigoErp recebido, com as partes separadas por "-"
+@param   cChave , character, Chave de integracao recebida, com as partes separadas por "-"
 @param   aCampos, array    , Campos do indice, na ordem. Ex.: {"A1_FILIAL", "A1_COD", "A1_LOJA"}
 @return  array, Uma posicao por campo, ja no tamanho do dicionario. Vazio se nao casar
 @example aP := U_BJCHAVE("01-11400443", {"B1_FILIAL", "B1_COD"})
@@ -299,10 +323,13 @@ User Function BJCHAVE(cChave, aCampos)
 		Return {}
 	EndIf
 
-	aParte := StrTokArr(cChave, "-")
+	// U_BJPARTES, e nao StrTokArr: a filial de tabela compartilhada chega em
+	// branco ("-000001-01") e precisa continuar ocupando a primeira posicao.
+	// O RTrim tira o preenchimento de ZZ_CHVORI sem apagar parte vazia no fim,
+	// que continua marcada pelo separador.
+	aParte := U_BJPARTES(RTrim(cChave))
 
-	// StrTokArr descarta o vazio entre dois separadores, entao uma parte em
-	// branco - filial de tabela compartilhada, por exemplo - reduz a contagem.
+	// Contagem diferente aqui e codigo com hifen dentro de uma das partes.
 	// Melhor recusar do que devolver as partes deslocadas uma casa.
 	If Len(aParte) != Len(aCampos)
 		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Chave " + cChave + " tem " + ;
@@ -313,6 +340,93 @@ User Function BJCHAVE(cChave, aCampos)
 	For nX := 1 To Len(aCampos)
 		aAdd(aRet, PadR(aParte[nX], TamSX3(aCampos[nX])[1]))
 	Next nX
+
+Return aRet
+
+/*/{Protheus.doc} BJSEMFIL
+Converte a chave devolvida pela plataforma no valor do ERP, sem filial e sem
+hifen: as partes depois da filial, cada uma no tamanho do dicionario, coladas
+como no indice do Protheus.
+A plataforma devolve a chave como recebeu daqui (FILIAL-COD, com "-" entre os
+campos do X2_UNICO). O hifen nao existe no ERP; e so separador da integracao.
+@type    User Function
+@author  Ricardo P Sotomayor
+@since   22/09/2026
+@param   cChave , character, Chave recebida. Ex.: "01-000234" ou "-000234"
+@param   aCampos, array    , Campos da chave unica, com a filial primeiro. Ex.: {"A3_FILIAL", "A3_COD"}
+@return  character, Valor sem filial e sem hifen, no tamanho do dicionario. Vazio se nao casar
+@example cVend := U_BJSEMFIL("-000234", {"A3_FILIAL", "A3_COD"})   // "000234"
+/*/
+User Function BJSEMFIL(cChave, aCampos)
+
+	Local cRet   := ""
+	Local aParte := {}
+	Local aSemFl := {}
+	Local nX     := 0
+
+	Default cChave  := ""
+	Default aCampos := {}
+
+	If Empty(cChave) .Or. Len(aCampos) < 2
+		Return ""
+	EndIf
+
+	aParte := U_BJCHAVE(cChave, aCampos)
+
+	If Len(aParte) == Len(aCampos)
+		For nX := 2 To Len(aParte)
+			cRet += aParte[nX]
+		Next nX
+
+		Return cRet
+	EndIf
+
+	// Chave informada sem o prefixo de filial: as partes sao so os campos de
+	// depois dela.
+	For nX := 2 To Len(aCampos)
+		aAdd(aSemFl, aCampos[nX])
+	Next nX
+
+	aParte := U_BJCHAVE(cChave, aSemFl)
+
+	For nX := 1 To Len(aParte)
+		cRet += aParte[nX]
+	Next nX
+
+Return cRet
+
+/*/{Protheus.doc} BJPARTES
+Separa uma chave de integracao nas partes, mantendo as vazias na posicao.
+A chave e sempre filial + "-" + campos da chave. Em tabela compartilhada a
+filial e branca e o codigo comeca pelo hifen ("-12"). StrTokArr descarta a
+parte vazia e desloca as demais uma casa; esta funcao nao.
+@type    User Function
+@author  Ricardo P Sotomayor
+@since   22/09/2026
+@param   cChave, character, Chave de integracao com as partes separadas por "-"
+@return  array, Uma posicao por parte, sem trim. Vazio se cChave for vazia
+@example aP := U_BJPARTES("-000001-01")   // {"", "000001", "01"}
+/*/
+User Function BJPARTES(cChave)
+
+	Local aRet := {}
+	Local nPos := 0
+
+	Default cChave := ""
+
+	If Empty(cChave)
+		Return {}
+	EndIf
+
+	nPos := At("-", cChave)
+
+	While nPos > 0
+		aAdd(aRet, SubStr(cChave, 1, nPos - 1))
+		cChave := SubStr(cChave, nPos + 1)
+		nPos   := At("-", cChave)
+	End
+
+	aAdd(aRet, cChave)
 
 Return aRet
 
@@ -329,7 +443,7 @@ Poe uma mensagem na fila.
 @since   01/09/2026
 @param   cTipo , character, "S" saida ou "E" entrada
 @param   cEntid, character, Id da entidade no catalogo
-@param   cChave, character, codigoErp na saida, id da plataforma na entrada
+@param   cChave, character, Chave de integracao na saida, id da plataforma na entrada
 @param   cVerbo, character, POST, PATCH, DELETE ou GET
 @param   cJson , character, Payload da mensagem
 @param   cSeqMae, character, ZY_CODIGO do processamento (SZY) que gerou esta mensagem. Vazio na entrada
@@ -460,6 +574,68 @@ User Function BJGRAVA(cLote, cSeq, cStatus, nHttp, cRetorn, cChvDes)
 
 Return .T.
 
+/*/{Protheus.doc} BJTEVE
+Indica se ja houve mensagem com um verbo para uma entidade e chave, em qualquer
+status (pendente, executada ou com erro).
+Usada pela coleta: registro que chega excluido sem nunca ter tido POST foi
+incluido e excluido entre duas coletas, e a inclusao precisa ir antes do DELETE.
+@type    User Function
+@author  Ricardo P Sotomayor
+@since   22/09/2026
+@param   cTipo , character, "S" saida ou "E" entrada
+@param   cEntid, character, Id da entidade
+@param   cChave, character, Chave da mensagem
+@param   cVerbo, character, Verbo procurado. Ex.: "POST"
+@return  logical, .T. quando ja existe mensagem com o verbo
+@example If !U_BJTEVE("S", "categorias", cChave, "POST")
+/*/
+User Function BJTEVE(cTipo, cEntid, cChave, cVerbo)
+
+	Local lRet   := .F.
+	Local aArea  := GetArea()
+	Local cQuery := ""
+	Local cAlias := ""
+	Local oStmt  := Nil
+
+	Default cTipo  := "S"   // saida: ERP -> plataforma
+	Default cEntid := ""
+	Default cChave := ""
+	Default cVerbo := "POST"
+
+	If Empty(cEntid) .Or. Empty(cChave)
+		RestArea(aArea)
+		Return .F.
+	EndIf
+
+	// Mesmo motivo do BJACHOU para ser consulta, e nao indice. Mensagem expurgada
+	// pelo BJEXPURG some daqui: o registro antigo excluido reenvia o POST antes
+	// do DELETE, o que so custa uma requisicao a mais.
+	cQuery := "SELECT ZZ_SEQUEN "
+	cQuery += "  FROM " + RetSqlName("SZZ") + " SZZ "
+	cQuery += " WHERE SZZ.D_E_L_E_T_ = ' ' "
+	cQuery += "   AND SZZ.ZZ_FILIAL  = ? "
+	cQuery += "   AND SZZ.ZZ_ENTID   = ? "
+	cQuery += "   AND SZZ.ZZ_CHVORI  = ? "
+	cQuery += "   AND SZZ.ZZ_TIPO    = ? "
+	cQuery += "   AND SZZ.ZZ_VERBO   = ? "
+
+	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
+	oStmt:SetString(1, xFilial("SZZ"))
+	oStmt:SetString(2, PadR(cEntid, TamSX3("ZZ_ENTID")[1]))
+	oStmt:SetString(3, PadR(cChave, TamSX3("ZZ_CHVORI")[1]))
+	oStmt:SetString(4, cTipo)
+	oStmt:SetString(5, PadR(cVerbo, TamSX3("ZZ_VERBO")[1]))
+
+	cAlias := oStmt:OpenAlias()
+	lRet   := (cAlias)->(!Eof())
+
+	(cAlias)->(dbCloseArea())
+	oStmt:Destroy()
+
+	RestArea(aArea)
+
+Return lRet
+
 /*/{Protheus.doc} BJACHOU
 Indica se ja existe mensagem executada para uma entidade e chave.
 @type    User Function
@@ -542,8 +718,7 @@ User Function BJEXPURG(nDias)
 	Local oStmt   := Nil
 	Local nX      := 0
 	Local aArea   := GetArea()
-	Local cPasta  := SuperGetMV("MV_BJAPI12", .F., "\bjapi\")   // pasta dos semaforos
-	Local cArqLock := cPasta + cEmpAnt + "\bjpla-expurgo.tsk"
+	Local cTrava   := "BJPLA_EXPURGO"
 
 	Default nDias := 0
 
@@ -554,16 +729,11 @@ User Function BJEXPURG(nDias)
 	dLimite := Date() - nDias
 
 	// Um expurgo por vez, venha do agendamento ou do monitor.
-	MakeDir(cPasta)
-	MakeDir(cPasta + cEmpAnt + "\")
-
-	If File(cArqLock)
+	If !LockByName(cTrava, .T., .F.)
 		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Expurgo ja em andamento. Chamada ignorada.", 0, 0, {})
 		RestArea(aArea)
 		Return 0
 	EndIf
-
-	MemoWrite(cArqLock, DtoS(Date()) + " " + Time())
 
 	// So anota o que apagar; apagar durante a leitura reposicionaria o cursor.
 	// A data entra na propria consulta - pendente e com erro nunca sao apagadas,
@@ -603,9 +773,7 @@ User Function BJEXPURG(nDias)
 	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Expurgo da fila: " + cValToChar(nRet) + ;
 		" mensagens executadas antes de " + DtoC(dLimite) + " foram apagadas.", 0, 0, {})
 
-	If File(cArqLock)
-		FErase(cArqLock)
-	EndIf
+	UnLockByName(cTrava, .T., .F.)
 
 	RestArea(aArea)
 

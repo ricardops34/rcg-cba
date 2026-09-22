@@ -61,6 +61,10 @@ const PRESERVADOS = [
   'WhatsappConfig',
   'WhatsappSessao',
   'WhatsappTemplate',
+  // Atalhos de resposta (`/pix`, `/catalogo`): texto que a empresa escreveu
+  // para atender mais rápido, não conversa. Mesma família do template — quem
+  // pede "limpar a base" não está pedindo para reescrever os atalhos.
+  'WhatsappRespostaRapida',
   'WhatsappVinculoFuncionario',
   // Portal do Cliente: a configuração, não as credenciais dos clientes
   'PortalClienteConfig',

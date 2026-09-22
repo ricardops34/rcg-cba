@@ -58,8 +58,8 @@ export class IntegracaoArmazensController {
     return this.service.findAll(integracao.empresaId, query);
   }
 
-  @ApiOperation({ summary: 'Detalhar armazém por codigoErp' })
-  @ApiParam({ name: 'codigo', description: 'codigoErp do armazém' })
+  @ApiOperation({ summary: 'Detalhar armazém por chave' })
+  @ApiParam({ name: 'codigo', description: 'chave do armazém' })
   @ApiResponse({ status: 200, schema: { example: INTEGRACAO_ARMAZEM_EXAMPLE } })
   @ApiResponse({ status: 404, description: 'Armazém não encontrado' })
   @Get(':codigo')
@@ -75,7 +75,7 @@ export class IntegracaoArmazensController {
   @ApiResponse({ status: 201, schema: { example: INTEGRACAO_ARMAZEM_EXAMPLE } })
   @ApiResponse({
     status: 409,
-    description: 'Já existe armazém com esse codigoErp',
+    description: 'Já existe armazém com essa chave',
   })
   @Post()
   create(
@@ -88,7 +88,7 @@ export class IntegracaoArmazensController {
   @ApiOperation({
     summary: 'Enviar lote de armazens',
     description:
-      'Upsert em lote por codigoErp (máx. 1.000 por chamada). Um registro com ' +
+      'Upsert em lote por chave (máx. 1.000 por chamada). Um registro com ' +
       '"excluido": true é excluído (soft delete) e dispensa os demais campos. ' +
       'Responde 200 com o relatório: um item inválido não desfaz os que já ' +
       'passaram, e vem listado em "erros" com o índice no array enviado.',
@@ -118,7 +118,7 @@ export class IntegracaoArmazensController {
     summary: 'Atualizar armazém',
     description: 'Atualização parcial.',
   })
-  @ApiParam({ name: 'codigo', description: 'codigoErp do armazém' })
+  @ApiParam({ name: 'codigo', description: 'chave do armazém' })
   @ApiResponse({ status: 200, schema: { example: INTEGRACAO_ARMAZEM_EXAMPLE } })
   @ApiResponse({ status: 404, description: 'Armazém não encontrado' })
   @Patch(':codigo')
@@ -136,7 +136,7 @@ export class IntegracaoArmazensController {
   }
 
   @ApiOperation({ summary: 'Excluir armazém (soft delete)' })
-  @ApiParam({ name: 'codigo', description: 'codigoErp do armazém' })
+  @ApiParam({ name: 'codigo', description: 'chave do armazém' })
   @ApiResponse({ status: 200, description: 'Excluído' })
   @ApiResponse({ status: 404, description: 'Armazém não encontrado' })
   @Delete(':codigo')

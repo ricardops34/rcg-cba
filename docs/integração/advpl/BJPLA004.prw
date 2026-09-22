@@ -36,8 +36,7 @@ User Function BJRETORNO()
 	Local cAliasSeq := ""
 	Local oStmtSeq  := Nil
 	Local nTamSeq   := 0
-	Local cPasta    := SuperGetMV("MV_BJAPI12", .F., "\bjapi\")   // pasta dos semaforos
-	Local cArqLock  := ""
+	Local cTrava    := ""
 	Local nSeg      := Seconds()
 
 	If !AllTrim(Upper(SuperGetMV("MV_BJAPI03", .F., "N"))) == "S"
@@ -46,17 +45,12 @@ User Function BJRETORNO()
 	EndIf
 
 	// Um retorno por vez, venha do agendamento ou do monitor.
-	cArqLock := cPasta + cEmpAnt + "\bjpla-retorno.tsk"
+	cTrava := "BJPLA_RETORNO"
 
-	MakeDir(cPasta)
-	MakeDir(cPasta + cEmpAnt + "\")
-
-	If File(cArqLock)
+	If !LockByName(cTrava, .T., .F.)
 		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Retorno ja em andamento. Chamada ignorada.", 0, 0, {})
 		Return aTotal
 	EndIf
-
-	MemoWrite(cArqLock, DtoS(Date()) + " " + Time())
 
 	// Abre o lote (SZY) deste retorno - cobre orcamentos-pendentes e
 	// clientes-alteracoes juntos, ja que as duas sao lidas na mesma chamada. A SZY
@@ -123,9 +117,7 @@ User Function BJRETORNO()
 		" ignorados: " + cValToChar(aTotal[3]) + ;
 		" erros: " + cValToChar(aTotal[4]) + " em " + cValToChar(Round(Seconds() - nSeg, 2)) + "s", 0, 0, {})
 
-	If File(cArqLock)
-		FErase(cArqLock)
-	EndIf
+	UnLockByName(cTrava, .T., .F.)
 
 Return aTotal
 
@@ -206,8 +198,7 @@ Static Function BJTrataOrc(oOrc, aTotal, cSeqMae)
 	Local cIdPlat  := ""
 	Local cSeq     := ""
 	Local cNumPed  := ""
-	Local cArqLock := ""
-	Local cPasta   := ""
+	Local cTrava   := ""
 
 	If ValType(oOrc) != "O"
 		aTotal[4] += 1
@@ -230,7 +221,7 @@ Static Function BJTrataOrc(oOrc, aTotal, cSeqMae)
 		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Orcamento " + cIdPlat + " ja gerou o orcamento " + cNumPed + ;
 			" num ciclo anterior, mas continua na fila da plataforma. Reenviando so o vinculo.", 0, 0, {})
 
-		If BJVincula(cIdPlat, cNumPed)
+		If BJVincula(cIdPlat, cNumPed, oOrc)
 			aTotal[2] += 1
 		Else
 			aTotal[4] += 1
@@ -239,19 +230,13 @@ Static Function BJTrataOrc(oOrc, aTotal, cSeqMae)
 		Return Nil
 	EndIf
 
-	cPasta   := SuperGetMV("MV_BJAPI12", .F., "\bjapi\")   // pasta dos semaforos
-	cArqLock := cPasta + cEmpAnt + "\bjpla-orc-" + Lower(AllTrim(cIdPlat)) + ".tsk"
+	cTrava := "BJPLA_ORC_" + Upper(AllTrim(cIdPlat))
 
-	MakeDir(cPasta)
-	MakeDir(cPasta + cEmpAnt + "\")
-
-	// Um processo por orcamento: se o arquivo existir, outro processo ja esta tratando este orcamento.
-	If File(cArqLock)
+	// Um processo por orcamento: se a trava estiver tomada, outro processo esta tratando este orcamento.
+	If !LockByName(cTrava, .T., .F.)
 		aTotal[3] += 1
 		Return Nil
 	EndIf
-
-	MemoWrite(cArqLock, DtoS(Date()) + " " + Time())
 
 	// A mensagem entra na fila com o payload que veio. A partir daqui existe
 	// rastro, mesmo que tudo falhe depois.
@@ -259,9 +244,7 @@ Static Function BJTrataOrc(oOrc, aTotal, cSeqMae)
 
 	If Empty(cSeq)
 		aTotal[4] += 1
-		If File(cArqLock)
-			FErase(cArqLock)
-		EndIf
+		UnLockByName(cTrava, .T., .F.)
 		Return Nil
 	EndIf
 
@@ -269,13 +252,11 @@ Static Function BJTrataOrc(oOrc, aTotal, cSeqMae)
 
 	If Empty(cNumPed)
 		aTotal[4] += 1
-		If File(cArqLock)
-			FErase(cArqLock)
-		EndIf
+		UnLockByName(cTrava, .T., .F.)
 		Return Nil
 	EndIf
 
-	If BJVincula(cIdPlat, cNumPed)
+	If BJVincula(cIdPlat, cNumPed, oOrc)
 		aTotal[2] += 1
 	Else
 		// O orcamento existe e a mensagem esta marcada como executada. O vinculo
@@ -283,9 +264,7 @@ Static Function BJTrataOrc(oOrc, aTotal, cSeqMae)
 		aTotal[4] += 1
 	EndIf
 
-	If File(cArqLock)
-		FErase(cArqLock)
-	EndIf
+	UnLockByName(cTrava, .T., .F.)
 
 Return Nil
 
@@ -331,21 +310,17 @@ Static Function BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 	Private lMsHelpAuto    := .T.
 	Private lAutoErrNoFile := .T.
 
-	cChvCli := AllTrim(cValToChar(oOrc:GetJsonObject("clienteCodigo")))
-	cVend   := AllTrim(cValToChar(oOrc:GetJsonObject("vendedorCodigo")))
-	cCond   := AllTrim(cValToChar(oOrc:GetJsonObject("condicaoPagamentoCodigo")))
+	cChvCli := AllTrim(cValToChar(oOrc:GetJsonObject("clienteChave")))
+	cVend   := AllTrim(cValToChar(oOrc:GetJsonObject("vendedorChave")))
+	cCond   := AllTrim(cValToChar(oOrc:GetJsonObject("condicaoPagamentoChave")))
 	cObs    := AllTrim(cValToChar(oOrc:GetJsonObject("observacao")))
 	aItJson := oOrc:GetJsonObject("itens")
 
-	// vendedorCodigo e condicaoPagamentoCodigo voltam prefixados pela filial
-	// (01-000234); o pedido guarda so o codigo.
-	If At("-", cVend) > 0
-		cVend := SubStr(cVend, At("-", cVend) + 1)
-	EndIf
-
-	If At("-", cCond) > 0
-		cCond := SubStr(cCond, At("-", cCond) + 1)
-	EndIf
+	// vendedorChave e condicaoPagamentoChave voltam como a chave de integracao
+	// que saiu daqui (01-000234, ou -000234 em tabela compartilhada); o pedido
+	// guarda so o codigo, sem filial e sem hifen.
+	cVend := U_BJSEMFIL(cVend, {"A3_FILIAL", "A3_COD"})
+	cCond := U_BJSEMFIL(cCond, {"E4_FILIAL", "E4_CODIGO"})
 
 	If Empty(cChvCli) .Or. ValType(aItJson) != "A" .Or. Len(aItJson) == 0
 		BJErroOrc(cSeqMae, cSeq, cIdPlat, "Orcamento sem cliente ou sem itens. Pedido nao foi criado.")
@@ -353,7 +328,7 @@ Static Function BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 		Return ""
 	EndIf
 
-	// O clienteCodigo volta como saiu daqui: filial-codigo-loja, separados por
+	// O clienteChave volta como saiu daqui: filial-codigo-loja, separados por
 	// hifen. A filial nao entra na SA1, e o Protheus precisa do codigo e da loja
 	// em campos separados.
 	aParte := U_BJCHAVE(cChvCli, {"A1_FILIAL", "A1_COD", "A1_LOJA"})
@@ -436,15 +411,13 @@ Static Function BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 
 	For nX := 1 To Len(aItJson)
 
-		cProd  := AllTrim(cValToChar(aItJson[nX]:GetJsonObject("produtoCodigo")))
+		cProd  := AllTrim(cValToChar(aItJson[nX]:GetJsonObject("produtoChave")))
 		nQtd   := aItJson[nX]:GetJsonObject("quantidade")
 		nPreco := aItJson[nX]:GetJsonObject("vlrUnitario")
 
-		// O produtoCodigo volta prefixado pela filial (01-11400443); a SB1 guarda
-		// so o B1_COD.
-		If At("-", cProd) > 0
-			cProd := SubStr(cProd, At("-", cProd) + 1)
-		EndIf
+		// O produtoChave volta como a chave de integracao (01-11400443); a SB1
+		// guarda so o B1_COD, sem filial e sem hifen.
+		cProd := U_BJSEMFIL(cProd, {"B1_FILIAL", "B1_COD"})
 
 		If Empty(cProd) .Or. ValType(nQtd) != "N" .Or. nQtd <= 0
 			FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Item " + cValToChar(nX) + " sem produto ou sem quantidade. Ignorado.", 0, 0, {})
@@ -557,33 +530,94 @@ Return cNumPed
 
 /*/{Protheus.doc} BJVincula
 Avisa a plataforma que o orcamento dela virou um Pedido de Venda no ERP.
+Pedido e itens voltam juntos: a chave de integracao do SC5 e, para cada item do
+orcamento, a do SC6 gerado a partir dele. O item e casado pelo produto, na
+ordem do C6_ITEM, contra o que o pedido realmente gravou - item que o pedido
+pulou (produto inexistente, sem quantidade) nao tem SC6 e volta sem chave.
+Por ler a SC6 gravada, serve tanto logo depois do MATA410 quanto no ciclo
+seguinte, quando so o aviso tinha falhado.
 @type    Static Function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
 @param   cIdPlat, character, Id interno da plataforma (UUID)
 @param   cNumPed, character, C5_NUM do pedido criado
+@param   oOrc   , object   , Orcamento devolvido pela API, com o id de cada item
 @return  logical, .T. quando a plataforma aceitou o vinculo
 /*/
-Static Function BJVincula(cIdPlat, cNumPed)
+Static Function BJVincula(cIdPlat, cNumPed, oOrc)
 
-	Local lRet  := .F.
-	Local cResp := ""
-	Local cErro := ""
-	Local nHttp := 0
-	Local oJson := Nil
+	Local lRet    := .F.
+	Local cResp   := ""
+	Local cErro   := ""
+	Local cQuery  := ""
+	Local cAlias  := ""
+	Local cProd   := ""
+	Local nHttp   := 0
+	Local nX      := 0
+	Local nY      := 0
+	Local aSc6    := {}
+	Local aItens  := {}
+	Local aItJson := {}
+	Local oJson   := Nil
+	Local oItem   := Nil
+	Local oStmt   := Nil
 
+	// Itens gravados no pedido: {chave, produto, ja casado}
+	cQuery := "SELECT C6_FILIAL, C6_NUM, C6_ITEM, C6_PRODUTO "
+	cQuery += "  FROM " + RetSqlName("SC6") + " SC6 "
+	cQuery += " WHERE SC6.D_E_L_E_T_ = ' ' "
+	cQuery += "   AND SC6.C6_FILIAL  = ? "
+	cQuery += "   AND SC6.C6_NUM     = ? "
+	cQuery += " ORDER BY C6_ITEM "
+
+	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
+	oStmt:SetString(1, xFilial("SC6"))
+	oStmt:SetString(2, PadR(cNumPed, TamSX3("C6_NUM")[1]))
+
+	cAlias := oStmt:OpenAlias()
+
+	While (cAlias)->(!Eof())
+		// Chave de integracao do item: a chave unica da SC6 (X2_UNICO)
+		aAdd(aSc6, {(cAlias)->C6_FILIAL + "-" + (cAlias)->C6_NUM + "-" + (cAlias)->C6_ITEM + "-" + (cAlias)->C6_PRODUTO, ;
+			AllTrim((cAlias)->C6_PRODUTO), .F.})
+		(cAlias)->(dbSkip())
+	End
+
+	(cAlias)->(dbCloseArea())
+	oStmt:Destroy()
+
+	aItJson := oOrc:GetJsonObject("itens")
+
+	If ValType(aItJson) == "A"
+		For nX := 1 To Len(aItJson)
+			cProd := AllTrim(U_BJSEMFIL(AllTrim(cValToChar(aItJson[nX]:GetJsonObject("produtoChave"))), {"B1_FILIAL", "B1_COD"}))
+			nY    := aScan(aSc6, {|x| !x[3] .And. x[2] == cProd})
+
+			If nY > 0 .And. ValType(aItJson[nX]:GetJsonObject("id")) == "C"
+				aSc6[nY][3] := .T.
+				oItem := JsonObject():New()
+				oItem["id"]    := aItJson[nX]:GetJsonObject("id")
+				oItem["chave"] := aSc6[nY][1]
+				aAdd(aItens, oItem)
+			EndIf
+		Next nX
+	EndIf
+
+	// Chave de integracao do pedido: a chave unica da SC5 (X2_UNICO)
 	oJson := JsonObject():New()
-	oJson["codigoErp"] := xFilial("SC5") + "-" + AllTrim(cNumPed)
+	oJson["chave"]     := xFilial("SC5") + "-" + PadR(cNumPed, TamSX3("C5_NUM")[1])
+	oJson["codigoErp"] := AllTrim(cNumPed)
+	oJson["itens"]     := aItens
 
 	lRet := U_BJHTTP("PATCH", "/integracao/orcamentos/pendentes" + "/" + AllTrim(cIdPlat), oJson:ToJson(), @cResp, @nHttp, @cErro)
 
 	oJson := Nil
 
 	If lRet
-		FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Orcamento da plataforma " + cIdPlat + " vinculado ao orcamento " + ;
-			cNumPed + " do ERP.", 0, 0, {})
+		FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Orcamento da plataforma " + cIdPlat + " vinculado ao pedido " + ;
+			cNumPed + " do ERP (" + cValToChar(Len(aItens)) + " itens).", 0, 0, {})
 	Else
-		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Falha ao vincular " + cIdPlat + " ao orcamento " + cNumPed + ;
+		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Falha ao vincular " + cIdPlat + " ao pedido " + cNumPed + ;
 			" (HTTP " + cValToChar(nHttp) + "): " + cErro, 0, 0, {})
 	EndIf
 
@@ -721,7 +755,7 @@ Static Function BJTrataAlt(oAlt, aTotal, cSeqMae)
 	EndIf
 
 	cIdPlat := AllTrim(cValToChar(oAlt:GetJsonObject("id")))
-	cChvCli := AllTrim(cValToChar(oAlt:GetJsonObject("clienteCodigo")))
+	cChvCli := AllTrim(cValToChar(oAlt:GetJsonObject("clienteChave")))
 
 	If Empty(cIdPlat) .Or. Empty(cChvCli)
 		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Alteracao de cliente sem id ou sem cliente. Ignorada.", 0, 0, {})
@@ -746,7 +780,7 @@ Static Function BJTrataAlt(oAlt, aTotal, cSeqMae)
 		Return Nil
 	EndIf
 
-	// O clienteCodigo volta prefixado pela filial, como saiu daqui.
+	// O clienteChave volta prefixado pela filial, como saiu daqui.
 	aParte := U_BJCHAVE(cChvCli, {"A1_FILIAL", "A1_COD", "A1_LOJA"})
 
 	If Len(aParte) == 3
@@ -785,9 +819,11 @@ Static Function BJTrataAlt(oAlt, aTotal, cSeqMae)
 	aAdd(aMapa, {"email"                  , "A1_EMAIL"  , "C"})
 	aAdd(aMapa, {"telefone"               , "A1_TEL"    , "C"})
 	aAdd(aMapa, {"celular"                , "A1_CELULAR", "C"})
-	aAdd(aMapa, {"vendedorCodigo"         , "A1_VEND"   , "R"})
-	aAdd(aMapa, {"tabelaPrecoCodigo"      , "A1_TABELA" , "R"})
-	aAdd(aMapa, {"condicaoPagamentoCodigo", "A1_COND"   , "R"})
+	// Referencia ("R") leva, na quarta posicao, os campos da chave unica da
+	// tabela referenciada, para desmontar a chave de integracao recebida.
+	aAdd(aMapa, {"vendedorChave"          , "A1_VEND"   , "R", {"A3_FILIAL", "A3_COD"}})
+	aAdd(aMapa, {"tabelaPrecoChave"       , "A1_TABELA" , "R", {"DA0_FILIAL", "DA0_CODTAB"}})
+	aAdd(aMapa, {"condicaoPagamentoChave" , "A1_COND"   , "R", {"E4_FILIAL", "E4_CODIGO"}})
 	aAdd(aMapa, {"limiteCredito"          , "A1_LC"     , "N"})
 	aAdd(aMapa, {"vencimentoLimite"       , "A1_VENCLC" , "D"})
 	aAdd(aMapa, {"latitude"               , "A1_XLAT"   , "C"})
@@ -813,13 +849,10 @@ Static Function BJTrataAlt(oAlt, aTotal, cSeqMae)
 				EndIf
 
 			Case aMapa[nX][3] == "R"
-				// Referencia a outra entidade: volta prefixada pela filial, como
-				// saiu daqui (01-000234). A SA1 guarda so o codigo.
-				cTexto := AllTrim(cValToChar(xValor))
-
-				If At("-", cTexto) > 0
-					cTexto := SubStr(cTexto, At("-", cTexto) + 1)
-				EndIf
+				// Referencia a outra entidade: volta como a chave de integracao que
+				// saiu daqui (01-000234). A SA1 guarda so o codigo, sem filial e
+				// sem hifen.
+				cTexto := U_BJSEMFIL(AllTrim(cValToChar(xValor)), aMapa[nX][4])
 
 				aAdd(aCampos, {aMapa[nX][2], cTexto, Nil})
 
@@ -977,21 +1010,22 @@ Envia as mensagens de saida que estao na fila, lote a lote.
 @since   01/09/2026
 @param   nLimite, numeric, Maximo de mensagens por lote nesta passada. Zero drena tudo
 @param   cSeqMae, character, ZY_CODIGO do lote a drenar. Vazio percorre os lotes em aberto
+@param   oProcess, object, MsNewProcess do monitor, para as reguas. Nil no agendamento
 @return  array, {nLidas, nEnviadas, nErros}
 @example aTot := U_BJDRENA(0)
 /*/
-User Function BJDRENA(nLimite, cSeqMae)
+User Function BJDRENA(nLimite, cSeqMae, oProcess)
 
 	Local aTotal  := {0, 0, 0}
+	Local aGrupos := {}
+	Local nGrupo  := 0
+	Local nNoGrp  := 0
 	Local aLotes  := {}
 	Local aFila   := {}
 	Local aCat    := U_BJCATALO()
 	Local aEnt    := {}
 	Local cLote   := ""
 	Local cStatus := ""
-	Local cQuery  := ""
-	Local cAlias  := ""
-	Local oStmt   := Nil
 	Local cRota   := ""
 	Local cResp   := ""
 	Local cErro   := ""
@@ -1004,8 +1038,7 @@ User Function BJDRENA(nLimite, cSeqMae)
 	// Parametros lidos aqui, uma vez: dentro dos lacos seriam uma leitura por
 	// mensagem enviada.
 	Local nPausa   := SuperGetMV("MV_BJAPI08", .F., 1050)   // ms entre requisicoes
-	Local cPasta   := SuperGetMV("MV_BJAPI12", .F., "\bjapi\")   // pasta dos semaforos
-	Local cArqLock := ""
+	Local cTrava   := ""
 	Local nSeg     := Seconds()
 
 	Default nLimite := 0
@@ -1017,18 +1050,14 @@ User Function BJDRENA(nLimite, cSeqMae)
 	EndIf
 
 	// Um envio por vez, venha do agendamento ou do monitor: os dois chamam esta
-	// funcao. O semaforo e um arquivo; se existir, outro ja esta rodando.
-	cArqLock := cPasta + cEmpAnt + "\bjpla-envio.tsk"
+	// funcao. A trava e por nome (LockByName): o servidor a solta quando a thread termina,
+	// mesmo que caia com erro - nao sobra trava para apagar a mao.
+	cTrava := "BJPLA_ENVIO"
 
-	MakeDir(cPasta)
-	MakeDir(cPasta + cEmpAnt + "\")
-
-	If File(cArqLock)
+	If !LockByName(cTrava, .T., .F.)
 		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Envio ja em andamento. Chamada ignorada.", 0, 0, {})
 		Return aTotal
 	EndIf
-
-	MemoWrite(cArqLock, DtoS(Date()) + " " + Time())
 
 	If Empty(cSeqMae)
 
@@ -1069,7 +1098,7 @@ User Function BJDRENA(nLimite, cSeqMae)
 
 	If Len(aLotes) == 0
 		FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Nenhum lote em aberto na fila de saida.", 0, 0, {})
-		FErase(cArqLock)
+		UnLockByName(cTrava, .T., .F.)
 		Return aTotal
 	EndIf
 
@@ -1128,7 +1157,40 @@ User Function BJDRENA(nLimite, cSeqMae)
 		FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Lote " + cLote + " - drenando " + ;
 			cValToChar(Len(aFila)) + " mensagens de saida.", 0, 0, {})
 
+		// Regua 1 por entidade, regua 2 pelas mensagens dela. A fila ja vem na
+		// ordem da sequencia, que e a do catalogo, entao as mensagens de uma
+		// entidade chegam juntas: cada troca de entidade abre um grupo. So o
+		// monitor passa oProcess; no agendamento nao ha tela.
+		If ValType(oProcess) == "O"
+			aGrupos := {}
+
+			For nX := 1 To Len(aFila)
+				If Len(aGrupos) == 0 .Or. !(aGrupos[Len(aGrupos)][1] == aFila[nX][2])
+					aAdd(aGrupos, {aFila[nX][2], 0})
+				EndIf
+				aGrupos[Len(aGrupos)][2] += 1
+			Next nX
+
+			oProcess:SetRegua1(Len(aGrupos))
+			nGrupo := 0
+			nNoGrp := 0
+		EndIf
+
 		For nX := 1 To Len(aFila)
+
+			If ValType(oProcess) == "O"
+				If nX == 1 .Or. !(aFila[nX][2] == aFila[nX - 1][2])
+					nGrupo += 1
+					nNoGrp := 0
+					oProcess:IncRegua1("Lote " + cLote + " - " + aGrupos[nGrupo][1] + " - " + ;
+						cValToChar(nGrupo) + " de " + cValToChar(Len(aGrupos)) + "...")
+					oProcess:SetRegua2(aGrupos[nGrupo][2])
+				EndIf
+
+				nNoGrp += 1
+				oProcess:IncRegua2("Registro: " + cValToChar(nNoGrp) + " de " + cValToChar(aGrupos[nGrupo][2]) + ". " + ;
+					Transform(Round(nNoGrp * 100 / aGrupos[nGrupo][2], 2), "@E 999.99") + "%")
+			EndIf
 
 			// aFila[nX] = {cSequen, cEntid, cChave, cVerbo, cJson, cLote}
 			nPos := aScan(aCat, {|x| x[1] == aFila[nX][2]})
@@ -1159,7 +1221,7 @@ User Function BJDRENA(nLimite, cSeqMae)
 
 				// A chave de destino da saida e o id que a plataforma atribuiu ao
 				// registro. Guardar os dois lados fecha o rastro nas duas direcoes:
-				// dado um codigoErp, saber o id de la; dado o id, saber de onde veio.
+				// dada uma chave, saber o id de la; dado o id, saber de onde veio.
 				U_BJGRAVA(aFila[nX][6], aFila[nX][1], "2", nHttp, cResp, BJIdPlat(cResp))   // executada
 				aTotal[2] += 1
 
@@ -1211,9 +1273,7 @@ User Function BJDRENA(nLimite, cSeqMae)
 		" enviadas: " + cValToChar(aTotal[2]) + ;
 		" erros: " + cValToChar(aTotal[3]) + " em " + cValToChar(Round(Seconds() - nSeg, 2)) + "s", 0, 0, {})
 
-	If File(cArqLock)
-		FErase(cArqLock)
-	EndIf
+	UnLockByName(cTrava, .T., .F.)
 
 Return aTotal
 
@@ -1227,10 +1287,11 @@ Envia a fila de saida em blocos por PUT, agrupados por entidade.
 @author  Ricardo P Sotomayor
 @since   09/09/2026
 @param   nLimite, numeric, Maximo de mensagens lidas da fila nesta passada. Zero le tudo
+@param   oProcess, object, MsNewProcess do monitor, para as reguas. Nil no agendamento
 @return  array, {nLidas, nEnviadas, nErros}
 @example aTotal := U_BJLOTE(0)
 /*/
-User Function BJLOTE(nLimite)
+User Function BJLOTE(nLimite, oProcess)
 
 	Local aTotal    := {0, 0, 0}
 	Local aFila     := {}
@@ -1259,9 +1320,6 @@ User Function BJLOTE(nLimite)
 	// Parametros lidos aqui, uma vez: dentro dos lacos seriam uma leitura por bloco
 	Local nPausa   := SuperGetMV("MV_BJAPI08", .F., 1050)   // ms entre requisicoes
 	Local nLoteMax := SuperGetMV("MV_BJAPI09", .F., 1000)   // registros por PUT
-	Local cQuery   := ""
-	Local cAlias   := ""
-	Local oStmt    := Nil
 
 	Default nLimite := 0
 
@@ -1345,7 +1403,17 @@ User Function BJLOTE(nLimite)
 
 	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Lote - " + cValToChar(Len(aFila)) + " mensagens de saida na fila.", 0, 0, {})
 
+	// Regua 1 por entidade do catalogo, regua 2 pelos blocos de PUT dela. So o
+	// monitor passa oProcess; no agendamento nao ha tela.
+	If ValType(oProcess) == "O"
+		oProcess:SetRegua1(Len(aCat))
+	EndIf
+
 	For nE := 1 To Len(aCat)
+
+		If ValType(oProcess) == "O"
+			oProcess:IncRegua1(aCat[nE][2] + " - " + cValToChar(nE) + " de " + cValToChar(Len(aCat)) + "...")
+		EndIf
 
 		If !aCat[nE][5] .Or. "{chave}" $ aCat[nE][3]
 			Loop
@@ -1364,6 +1432,10 @@ User Function BJLOTE(nLimite)
 			Loop
 		EndIf
 
+		If ValType(oProcess) == "O"
+			oProcess:SetRegua2(Int((Len(aLote) + nLoteMax - 1) / nLoteMax))
+		EndIf
+
 		nIni := 1
 
 		While nIni <= Len(aLote)
@@ -1371,13 +1443,18 @@ User Function BJLOTE(nLimite)
 			nFim      := Min(nIni + nLoteMax - 1, Len(aLote))
 			aRegistro := {}
 
+			If ValType(oProcess) == "O"
+				oProcess:IncRegua2("Registros " + cValToChar(nIni) + " a " + cValToChar(nFim) + " de " + cValToChar(Len(aLote)) + ". " + ;
+					Transform(Round(nFim * 100 / Len(aLote), 2), "@E 999.99") + "%")
+			EndIf
+
 			For nX := nIni To nFim
 
 				oReg := JsonObject():New()
 
 				If aLote[nX][4] == "DELETE"
 					// A API dispensa os demais campos quando excluido vem true - basta a chave.
-					oReg["codigoErp"] := aLote[nX][3]
+					oReg["chave"]     := aLote[nX][3]
 					oReg["excluido"]  := .T.
 				Else
 					oReg:FromJson(aLote[nX][5])
@@ -1434,7 +1511,7 @@ User Function BJLOTE(nLimite)
 			Else
 
 				// Envelope recusado (lote vazio, acima do maximo, registro sem
-				// codigoErp) ou falha de rede apos as retentativas do BJHTTP: nada
+				// chave) ou falha de rede apos as retentativas do BJHTTP: nada
 				// deste bloco foi gravado do lado da plataforma.
 				For nX := nIni To nFim
 					U_BJGRAVA(aLote[nX][6], aLote[nX][1], "3", nHttp, cErro, "")   // erro

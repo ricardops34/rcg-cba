@@ -4,7 +4,7 @@ import type { IntegracaoLoteErro, IntegracaoLoteResultado } from '@plataforma/co
 export type AcaoLote = 'criado' | 'atualizado' | 'excluido';
 
 /** Todo item de lote traz a chave, e pode pedir a exclusão em vez do upsert. */
-export type ItemLote = { codigoErp: string; excluido?: boolean };
+export type ItemLote = { chave: string; excluido?: boolean };
 
 /**
  * Aplica os registros de um lote, um a um, e devolve o relatório.
@@ -47,7 +47,7 @@ export async function processarLote<T extends ItemLote>(
     } catch (erro) {
       erros.push({
         indice,
-        codigoErp: item.codigoErp ?? null,
+        chave: item.chave ?? null,
         mensagem: mensagemDoErro(erro),
       });
     }

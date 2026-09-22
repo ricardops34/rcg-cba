@@ -70,9 +70,9 @@ Consequências práticas:
   um campo é editar o contrato, não o controller:
 
   ```ts
-  categoriaCodigo: z
+  categoriaChave: z
     .string().trim().max(30).nullable().optional()
-    .describe("codigoErp da categoria"),
+    .describe("chave da categoria"),
   ```
 
 - **Exemplos moram no contrato**, com nome em maiúsculas e tipados — o
@@ -120,12 +120,12 @@ Um método, com tudo o que se espera dele:
 @ApiOperation({
   summary: 'Criar produto',
   description:
-    'categoriaCodigo/subCategoriaCodigo/armazemCodigo referenciam os respectivos ' +
-    'cadastros pelo codigoErp (precisam já existir).',
+    'categoriaChave/subCategoriaChave/armazemChave referenciam os respectivos ' +
+    'cadastros pela chave (precisam já existir).',
 })
 @ApiBodyExample(INTEGRACAO_PRODUTO_CREATE_EXAMPLE)
 @ApiResponse({ status: 201, schema: { example: INTEGRACAO_PRODUTO_EXAMPLE } })
-@ApiResponse({ status: 201, description: 'Criado ou atualizado (upsert por codigoErp)' })
+@ApiResponse({ status: 201, description: 'Criado ou atualizado (upsert por chave)' })
 @Post()
 create(
   @Body() dto: IntegracaoProdutoCreateDto,
@@ -135,11 +135,11 @@ create(
 }
 ```
 
-Em rota com parâmetro, documente o que o parâmetro **é** — `codigoErp` na quase
+Em rota com parâmetro, documente o que o parâmetro **é** — `chave` na quase
 totalidade das rotas, id interno na fila de orçamentos pendentes:
 
 ```ts
-@ApiParam({ name: 'codigo', description: 'codigoErp do produto' })
+@ApiParam({ name: 'codigo', description: 'chave do produto' })
 ```
 
 ---

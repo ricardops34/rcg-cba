@@ -37,6 +37,11 @@ export interface ContextoSessao {
    */
   vendedorId: string | null;
   /**
+   * Nome do vendedor no momento da consulta, so para compor o nome legivel da
+   * instancia no gateway. Nulo na sessao institucional.
+   */
+  vendedorNome: string | null;
+  /**
    * O transporte da **sessão**, não o da empresa.
    *
    * A empresa escolhe um provedor de cada vez, mas a linha da sessão guarda
@@ -51,6 +56,19 @@ export interface ContextoSessao {
     /** Já decifrada. Nunca sai da API nem entra em log. */
     evolutionApiKey: string | null;
     historicoDias: number;
+    /**
+     * `advancedSettings` da Evolution GO, politica da empresa.
+     *
+     * Valem para **toda** instancia dela — vendedor, gerente, supervisor e o
+     * numero institucional —, porque a regra e de atendimento, nao do
+     * aparelho.
+     */
+    evolutionAlwaysOnline: boolean;
+    evolutionIgnoreGroups: boolean;
+    evolutionIgnoreStatus: boolean;
+    evolutionReadMessages: boolean;
+    evolutionRejectCall: boolean;
+    evolutionMsgRejectCall: string | null;
     /** Preenchidos só quando a empresa configurou a Cloud API. */
     cloudApiPhoneNumberId: string | null;
     cloudApiBusinessAccountId: string | null;

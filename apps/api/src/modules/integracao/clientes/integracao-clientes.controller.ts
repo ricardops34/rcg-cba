@@ -58,8 +58,8 @@ export class IntegracaoClientesController {
     return this.service.findAll(integracao.empresaId, query);
   }
 
-  @ApiOperation({ summary: 'Detalhar cliente por codigoErp' })
-  @ApiParam({ name: 'codigo', description: 'codigoErp do cliente' })
+  @ApiOperation({ summary: 'Detalhar cliente por chave' })
+  @ApiParam({ name: 'codigo', description: 'chave do cliente' })
   @ApiResponse({ status: 200, schema: { example: INTEGRACAO_CLIENTE_EXAMPLE } })
   @ApiResponse({ status: 404, description: 'Cliente não encontrado' })
   @Get(':codigo')
@@ -73,14 +73,14 @@ export class IntegracaoClientesController {
   @ApiOperation({
     summary: 'Criar cliente',
     description:
-      'vendedorCodigo/tabelaPrecoCodigo referenciam os respectivos cadastros pelo codigoErp ' +
+      'vendedorChave/tabelaPrecoChave referenciam os respectivos cadastros pela chave ' +
       '(precisam já existir). Coleções filhas (CNAEs/contatos/sócios) não fazem parte desta versão.',
   })
   @ApiBodyExample(INTEGRACAO_CLIENTE_CREATE_EXAMPLE)
   @ApiResponse({ status: 201, schema: { example: INTEGRACAO_CLIENTE_EXAMPLE } })
   @ApiResponse({
     status: 409,
-    description: 'Já existe cliente com esse codigoErp',
+    description: 'Já existe cliente com essa chave',
   })
   @Post()
   create(
@@ -93,7 +93,7 @@ export class IntegracaoClientesController {
   @ApiOperation({
     summary: 'Enviar lote de clientes',
     description:
-      'Upsert em lote por codigoErp (máx. 1.000 por chamada). Um registro com ' +
+      'Upsert em lote por chave (máx. 1.000 por chamada). Um registro com ' +
       '"excluido": true é excluído (soft delete) e dispensa os demais campos. ' +
       'Responde 200 com o relatório: um item inválido não desfaz os que já ' +
       'passaram, e vem listado em "erros" com o índice no array enviado.',
@@ -123,7 +123,7 @@ export class IntegracaoClientesController {
     summary: 'Atualizar cliente',
     description: 'Atualização parcial.',
   })
-  @ApiParam({ name: 'codigo', description: 'codigoErp do cliente' })
+  @ApiParam({ name: 'codigo', description: 'chave do cliente' })
   @ApiResponse({ status: 200, schema: { example: INTEGRACAO_CLIENTE_EXAMPLE } })
   @ApiResponse({ status: 404, description: 'Cliente não encontrado' })
   @Patch(':codigo')
@@ -141,7 +141,7 @@ export class IntegracaoClientesController {
   }
 
   @ApiOperation({ summary: 'Excluir cliente (soft delete)' })
-  @ApiParam({ name: 'codigo', description: 'codigoErp do cliente' })
+  @ApiParam({ name: 'codigo', description: 'chave do cliente' })
   @ApiResponse({ status: 200, description: 'Excluído' })
   @ApiResponse({ status: 404, description: 'Cliente não encontrado' })
   @Delete(':codigo')

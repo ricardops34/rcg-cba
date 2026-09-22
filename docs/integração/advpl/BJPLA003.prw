@@ -10,7 +10,9 @@
 // Os ajustes sao parametros, lidos com SuperGetMV onde sao usados:
 //
 //    MV_BJAPI03  Habilita a integracao (S/N)
-//    MV_BJAPI10  Recuo da marca d agua na primeira carga, em dias
+//    MV_BJAPI10  Recuo da marca d agua quando nao ha marca valida e a fila de
+//                saida ja tem mensagens, em dias. Com a fila vazia e carga
+//                inicial: a origem e lida inteira
 
 /*/{Protheus.doc} BJPLA003
 Coleta dos dados do ERP para envio a Plataforma BJ.
@@ -32,12 +34,13 @@ Varre as entidades e enfileira o que mudou.
 @param   cChave  , character, Chave unica a reprocessar. Ignora a marca d'agua
 @param   dDataDe , date     , Data inicial opcional (ignora corte e usa inicio do dia em UTC)
 @param   dDataAte, date     , Data final opcional (limite ate o fim do dia em UTC)
-@return  array, {nLidos, nEnfileirados, nEntidades, nErros, cLote}
+@param   oProcess, object   , MsNewProcess do monitor, para as reguas. Nil no agendamento
+@return  array, {nLidos, nEnfileirados, nEntidades, nErros, cLote, cFalhas}. cFalhas lista, uma por linha, cada erro com a entidade e o motivo
 @example aTot := U_BJVARRE("produtos", "", Date() - 7, Date())
 /*/
-User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte)
+User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte, oProcess)
 
-	Local aTotal    := {0, 0, 0, 0, ""}
+	Local aTotal    := {0, 0, 0, 0, "", ""}
 	Local aCat      := U_BJCATALO()
 	Local nX        := 0
 	Local cSeqMae   := ""
@@ -48,8 +51,9 @@ User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte)
 	Local cAliasSeq := ""
 	Local oStmtSeq  := Nil
 	Local nSeg      := Seconds()
-	Local cPasta    := SuperGetMV("MV_BJAPI12", .F., "\bjapi\")   // pasta dos semaforos
-	Local cArqLock  := ""
+	Local cTrava    := ""
+	Local lCarga    := .F.
+	Local aVarrer   := {}
 
 	Default xEntid   := ""
 	Default cChave   := ""
@@ -63,18 +67,14 @@ User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte)
 	EndIf
 
 	// Uma coleta por vez, venha do agendamento ou do monitor: os dois chamam
-	// esta funcao. O semaforo e um arquivo; se existir, outra ja esta rodando.
-	cArqLock := cPasta + cEmpAnt + "\bjpla-coleta.tsk"
+	// esta funcao. A trava e por nome (LockByName): o servidor a solta quando a thread termina,
+	// mesmo que caia com erro - nao sobra trava para apagar a mao.
+	cTrava := "BJPLA_COLETA"
 
-	MakeDir(cPasta)
-	MakeDir(cPasta + cEmpAnt + "\")
-
-	If File(cArqLock)
+	If !LockByName(cTrava, .T., .F.)
 		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Coleta ja em andamento. Chamada ignorada.", 0, 0, {})
 		Return aTotal
 	EndIf
-
-	MemoWrite(cArqLock, DtoS(Date()) + " " + Time())
 
 	// A hora vem em UTC porque o S_T_A_M_P_ e escrito pelo gatilho do DBAccess em UTC.
 	// Um instante so para o lote inteiro - todas as entidades varridas nesta chamada
@@ -85,6 +85,29 @@ User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte)
 		// Data inicial informada pelo usuario: inicio do dia em UTC, ignora a marca.
 		cMarca := Left(StrTran(StrTran(FWTimeStamp(6, dDataDe, "00:00:00"), "T", " "), "Z", ""), 19)
 	Else
+		// Carga inicial: se a fila nunca teve mensagem de saida, nada chegou a
+		// plataforma ainda. A marca fica vazia e os mapeadores, sem janela, leem a
+		// origem inteira - nao so os ultimos MV_BJAPI10 dias.
+		cQuerySeq := "SELECT COUNT(*) AS QTDSAI "
+		cQuerySeq += "  FROM " + RetSqlName("SZZ") + " SZZ "
+		cQuerySeq += " WHERE SZZ.D_E_L_E_T_ = ' ' "
+		cQuerySeq += "   AND SZZ.ZZ_FILIAL  = ? "
+		cQuerySeq += "   AND SZZ.ZZ_TIPO    = ? "
+
+		oStmtSeq := FWExecStatement():New(ChangeQuery(cQuerySeq))
+		oStmtSeq:SetString(1, xFilial("SZZ"))
+		oStmtSeq:SetString(2, "S")   // saida
+		cAliasSeq := oStmtSeq:OpenAlias()
+
+		lCarga := (cAliasSeq)->(Eof()) .Or. (cAliasSeq)->QTDSAI == 0
+
+		(cAliasSeq)->(dbCloseArea())
+		oStmtSeq:Destroy()
+	EndIf
+
+	If lCarga
+		FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Fila de saida vazia (SZZ): carga inicial, origem inteira.", 0, 0, {})
+	ElseIf Empty(dDataDe)
 		// Marca d'agua do ultimo processamento VALIDO - aquele que varreu o catalogo
 		// inteiro sem erro. So esses gravam ZY_MARCA, entao a marca preenchida e o
 		// proprio atestado de validade; o envio nao entra nessa conta, porque uma
@@ -113,7 +136,8 @@ User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte)
 		oStmtSeq:Destroy()
 
 		If Empty(cMarca) .Or. Len(cMarca) < 10
-			// Primeira carga: recua 30 dias por padrao
+			// Fila ja tem mensagens, mas nenhum lote valido gravou marca: recua
+			// MV_BJAPI10 dias (30 por padrao)
 			cMarca := Left(StrTran(StrTran(FWTimeStamp(6, Date() - SuperGetMV("MV_BJAPI10", .F., 30), "00:00:00"), "T", " "), "Z", ""), 19)
 		EndIf
 	EndIf
@@ -154,6 +178,7 @@ User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte)
 	// Quem chamou precisa saber que lote esta coleta abriu, para drenar so ele
 	aTotal[5] := cSeqMae
 
+	// Primeiro as entidades que esta chamada varre, para a regua saber o total
 	For nX := 1 To Len(aCat)
 
 		If ValType(xEntid) == "A"
@@ -169,7 +194,23 @@ User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte)
 			Loop
 		EndIf
 
-		BJVarreEnt(aCat[nX], cChave, @aTotal, dDataAte, cSeqMae, cAgora, cMarca)
+		aAdd(aVarrer, aCat[nX])
+
+	Next nX
+
+	// Regua 1 por entidade, regua 2 pelos registros dela (em BJVarreEnt). So o
+	// monitor passa oProcess; no agendamento nao ha tela.
+	If ValType(oProcess) == "O"
+		oProcess:SetRegua1(Len(aVarrer))
+	EndIf
+
+	For nX := 1 To Len(aVarrer)
+
+		If ValType(oProcess) == "O"
+			oProcess:IncRegua1(aVarrer[nX][2] + " - " + cValToChar(nX) + " de " + cValToChar(Len(aVarrer)) + "...")
+		EndIf
+
+		BJVarreEnt(aVarrer[nX], cChave, @aTotal, dDataAte, cSeqMae, cAgora, cMarca, oProcess)
 
 	Next nX
 
@@ -211,9 +252,7 @@ User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte)
 		" entidades: " + cValToChar(aTotal[3]) + ;
 		" erros: " + cValToChar(aTotal[4]) + " - " + cValToChar(Round(Seconds() - nSeg, 2)) + "s", 0, 0, {})
 
-	If File(cArqLock)
-		FErase(cArqLock)
-	EndIf
+	UnLockByName(cTrava, .T., .F.)
 
 Return aTotal
 
@@ -243,9 +282,10 @@ Varre uma entidade e enfileira os registros que ela devolver, sob o lote
 @param   cSeqMae , character, ZY_CODIGO do lote (SZY) aberto por BJVARRE
 @param   cAgora  , character, Instante de corte do lote, UTC, lido por BJVARRE
 @param   cMarca  , character, Inicio do intervalo a varrer, UTC, achado por BJVARRE
+@param   oProcess, object   , MsNewProcess do monitor, para a regua 2. Nil no agendamento
 @return  Nil
 /*/
-Static Function BJVarreEnt(aEnt, cChave, aTotal, dDataAte, cSeqMae, cAgora, cMarca)
+Static Function BJVarreEnt(aEnt, cChave, aTotal, dDataAte, cSeqMae, cAgora, cMarca, oProcess)
 
 	Local cId       := aEnt[1]
 	Local cColeta   := aEnt[4]
@@ -255,21 +295,18 @@ Static Function BJVarreEnt(aEnt, cChave, aTotal, dDataAte, cSeqMae, cAgora, cMar
 	Local nX        := 0
 	Local nSeg      := Seconds()
 	Local bColeta   := Nil
-	Local cPasta    := SuperGetMV("MV_BJAPI12", .F., "\bjapi\")   // pasta dos semaforos
-	Local cArqLock  := cPasta + cEmpAnt + "\bjpla-ent-" + Lower(AllTrim(cId)) + ".tsk"
+	Local cTrava    := "BJPLA_ENT_" + Upper(AllTrim(cId))
 	Local aArea     := GetArea()
 
-	MakeDir(cPasta)
-	MakeDir(cPasta + cEmpAnt + "\")
-
-	// Uma varredura por entidade de cada vez. Se o arquivo existir, outro processo ja esta varrendo esta entidade.
-	If File(cArqLock)
+	// Uma varredura por entidade de cada vez. Se a trava estiver tomada, outro processo esta varrendo esta entidade agora.
+	If !LockByName(cTrava, .T., .F.)
+		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Entidade " + cId + " ignorada: trava " + cTrava + ;
+			" tomada por outra coleta em andamento. Lote " + cSeqMae, 0, 0, {})
 		aTotal[4] += 1
+		aTotal[6] += cId + ": trava " + cTrava + " tomada por outra coleta" + CRLF
 		RestArea(aArea)
 		Return Nil
 	EndIf
-
-	MemoWrite(cArqLock, DtoS(Date()) + " " + Time())
 
 	// Se data final foi informada pelo usuario, usa o fim do dia em UTC.
 	// Se nao informada (Job agendado ou varredura padrao), pega ate a hora atual (cAgora),
@@ -283,6 +320,12 @@ Static Function BJVarreEnt(aEnt, cChave, aTotal, dDataAte, cSeqMae, cAgora, cMar
 	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Coletando " + aEnt[2] + " (" + cId + ") - lote " + cSeqMae + ;
 		" - intervalo: " + cMarca + " ate " + cMarcaFim, 0, 0, {})
 
+	// Enquanto o mapeador le a origem ainda nao se sabe quantos registros vem
+	If ValType(oProcess) == "O"
+		oProcess:SetRegua2(1)
+		oProcess:IncRegua2("Lendo " + aEnt[2] + " na origem...")
+	EndIf
+
 	// O mapeador e chamado por macro: cada entidade tem a sua.
 	bColeta := &("{|cRef, cChv, cFim| " + cColeta + "(cRef, cChv, cFim) }")
 	aDados  := Eval(bColeta, cMarca, cChave, cMarcaFim)
@@ -290,23 +333,48 @@ Static Function BJVarreEnt(aEnt, cChave, aTotal, dDataAte, cSeqMae, cAgora, cMar
 	If ValType(aDados) != "A"
 		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Mapeador " + cColeta + " nao devolveu array. Entidade " + cId + " ignorada.", 0, 0, {})
 		aTotal[4] += 1
+		aTotal[6] += cId + ": " + cColeta + " nao devolveu array" + CRLF
 
-		If File(cArqLock)
-			FErase(cArqLock)
-		EndIf
+		UnLockByName(cTrava, .T., .F.)
 		RestArea(aArea)
 		Return Nil
 	EndIf
 
 	aTotal[1] += Len(aDados)
 
+	If ValType(oProcess) == "O"
+		oProcess:SetRegua2(Len(aDados))
+	EndIf
+
 	For nX := 1 To Len(aDados)
+
+		If ValType(oProcess) == "O"
+			oProcess:IncRegua2("Registro: " + cValToChar(nX) + " de " + cValToChar(Len(aDados)) + ". " + ;
+				Transform(Round(nX * 100 / Len(aDados), 2), "@E 999.99") + "%")
+		EndIf
+
+		// Registro que chega excluido sem nunca ter tido POST foi incluido e
+		// excluido entre duas coletas. A coleta le o estado atual, entao so veria
+		// o DELETE; a inclusao entra antes na fila, com os dados que a linha
+		// excluida ainda guarda, e a plataforma recebe os dois eventos na ordem.
+		If aDados[nX][3] == "DELETE" .And. !U_BJTEVE("S", cId, aDados[nX][1], "POST")
+			cSeq := U_BJENFILA("S", cId, aDados[nX][1], "POST", BJJsonInc(aDados[nX][2]), cSeqMae)   // saida
+
+			If Empty(cSeq)
+				aTotal[4] += 1
+				aTotal[6] += cId + ": inclusao da chave " + cValToChar(aDados[nX][1]) + " nao entrou na fila" + CRLF
+			Else
+				aTotal[1] += 1
+				aTotal[2] += 1
+			EndIf
+		EndIf
 
 		// aDados[nX] = {cChaveRegistro, oJsonPayload, cVerbo}
 		cSeq := U_BJENFILA("S", cId, aDados[nX][1], aDados[nX][3], aDados[nX][2]:ToJson(), cSeqMae)   // saida
 
 		If Empty(cSeq)
 			aTotal[4] += 1
+			aTotal[6] += cId + ": chave " + cValToChar(aDados[nX][1]) + " nao entrou na fila" + CRLF
 		Else
 			aTotal[2] += 1
 		EndIf
@@ -318,13 +386,46 @@ Static Function BJVarreEnt(aEnt, cChave, aTotal, dDataAte, cSeqMae, cAgora, cMar
 	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Concluido " + cId + " em " + cValToChar(Round(Seconds() - nSeg, 2)) + "s - " + ;
 		cValToChar(Len(aDados)) + " registros enfileirados", 0, 0, {})
 
-	If File(cArqLock)
-		FErase(cArqLock)
-	EndIf
+	UnLockByName(cTrava, .T., .F.)
 
 	RestArea(aArea)
 
 Return Nil
+
+/*/{Protheus.doc} BJJsonInc
+JSON da inclusao de um registro que a coleta ja encontrou excluido.
+O mapeador monta o payload com os itens da linha excluida marcados "delete";
+na inclusao eles entram ativos, como estavam quando o registro foi criado.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   22/09/2026
+@param   oJson, object, Payload montado pelo mapeador
+@return  character, JSON da inclusao
+/*/
+Static Function BJJsonInc(oJson)
+
+	Local oInc   := JsonObject():New()
+	Local aItens := {}
+	Local nX     := 0
+
+	// Copia, para nao alterar o payload do DELETE que vai logo depois
+	oInc:FromJson(oJson:ToJson())
+
+	If ValType(oInc["ativo"]) == "L"
+		oInc["ativo"] := .T.
+	EndIf
+
+	aItens := oInc["itens"]
+
+	If ValType(aItens) == "A"
+		For nX := 1 To Len(aItens)
+			If ValType(aItens[nX]["delete"]) == "L"
+				aItens[nX]["delete"] := .F.
+			EndIf
+		Next nX
+	EndIf
+
+Return oInc:ToJson()
 
 // ===========================================================================
 // MAPEADORES DE CADASTRO
@@ -364,6 +465,13 @@ User Function BJMAPRGD(cMarca, cChave, cMarcaFim)
 	cQuery += "  FROM " + RetSQLName("SZ0") + " SZ0 "
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND SZ0.Z0_FILIAL = ? "
+
+	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
+	// plataforma, entao nao vira DELETE.
+	If Empty(cMarca) .And. Empty(cChave)
+		cQuery += "   AND SZ0.D_E_L_E_T_ = ' ' "
+	EndIf
+
 	cQuery += "   AND SZ0.Z0_SEQ    = ? "
 
 	If !Empty(cChave)
@@ -402,7 +510,7 @@ User Function BJMAPRGD(cMarca, cChave, cMarcaFim)
 	oStmt:SetString(3, "001")
 
 	If !Empty(cChave)
-		// cChave e o codigoErp, prefixado pela filial; o filtro e por Z0_CODIGO, sem
+		// cChave e a chave de integracao, prefixada pela filial; o filtro e por Z0_CODIGO, sem
 		// prefixo. Sai so o primeiro segmento - codigo com hifen atravessa inteiro.
 		cCod := AllTrim(cChave)
 
@@ -418,7 +526,8 @@ User Function BJMAPRGD(cMarca, cChave, cMarcaFim)
 	While (cAlias)->(!Eof())
 
 		oJson := JsonObject():New()
-		oJson["codigoErp"]              := (cAlias)->Z0_FILIAL + "-" + (cAlias)->Z0_CODIGO
+		oJson["chave"]                  := (cAlias)->Z0_FILIAL + "-" + (cAlias)->Z0_CODIGO
+		oJson["codigoErp"]              := AllTrim((cAlias)->Z0_CODIGO)
 		oJson["descricao"]              := AllTrim((cAlias)->Z0_DESC)
 		oJson["percDescontoAutorizado"] := (cAlias)->Z0_DESCAUT
 		oJson["percDescontoMaximo"]     := (cAlias)->Z0_PERMAX
@@ -434,6 +543,13 @@ User Function BJMAPRGD(cMarca, cChave, cMarcaFim)
 		cQryFx += "  FROM " + RetSQLName("SZ0") + " SZ0 "
 		cQryFx += " WHERE ? = ' ' "
 		cQryFx += "   AND SZ0.Z0_FILIAL  = ? "
+
+		// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
+		// plataforma, entao nao vira DELETE.
+		If Empty(cMarca) .And. Empty(cChave)
+			cQryFx += "   AND SZ0.D_E_L_E_T_ = ' ' "
+		EndIf
+
 		cQryFx += "   AND SZ0.Z0_CODIGO  = ? "
 		cQryFx += " ORDER BY Z0_SEQ "
 
@@ -468,7 +584,7 @@ User Function BJMAPRGD(cMarca, cChave, cMarcaFim)
 			cVerbo := "DELETE"
 		EndIf
 
-		aAdd(aRet, {oJson["codigoErp"], oJson, cVerbo})
+		aAdd(aRet, {oJson["chave"], oJson, cVerbo})
 
 		(cAlias)->(dbSkip())
 	End
@@ -507,6 +623,12 @@ User Function BJMAPCAT(cMarca, cChave, cMarcaFim)
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND SZ1.Z1_FILIAL = ? "
 
+	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
+	// plataforma, entao nao vira DELETE.
+	If Empty(cMarca) .And. Empty(cChave)
+		cQuery += "   AND SZ1.D_E_L_E_T_ = ' ' "
+	EndIf
+
 	If !Empty(cChave)
 		cQuery += "   AND SZ1.Z1_TIPO = ? "
 	EndIf
@@ -526,7 +648,7 @@ User Function BJMAPCAT(cMarca, cChave, cMarcaFim)
 	oStmt:SetString(2, FWxFilial("SZ1"))
 
 	If !Empty(cChave)
-		// cChave e o codigoErp, prefixado pela filial; o filtro e por Z1_TIPO, sem
+		// cChave e a chave de integracao, prefixada pela filial; o filtro e por Z1_TIPO, sem
 		// prefixo. Sai so o primeiro segmento - codigo com hifen atravessa inteiro.
 		cCod := AllTrim(cChave)
 
@@ -542,10 +664,11 @@ User Function BJMAPCAT(cMarca, cChave, cMarcaFim)
 	While (cAlias)->(!Eof())
 
 		oJson := JsonObject():New()
-		oJson["codigoErp"]           := (cAlias)->Z1_FILIAL + "-" + (cAlias)->Z1_TIPO
+		oJson["chave"]               := (cAlias)->Z1_FILIAL + "-" + (cAlias)->Z1_TIPO
+		oJson["codigoErp"]           := AllTrim((cAlias)->Z1_TIPO)
 		oJson["descricao"]           := AllTrim((cAlias)->Z1_DESCRIC)
-		oJson["categoriaPaiCodigo"]  := Nil
-		oJson["regraDescontoCodigo"] := Nil
+		oJson["categoriaPaiChave"]   := Nil
+		oJson["regraDescontoChave"]  := Nil
 		oJson["ativo"]               := .T.
 
 		cVerbo := "POST"
@@ -553,7 +676,7 @@ User Function BJMAPCAT(cMarca, cChave, cMarcaFim)
 			cVerbo := "DELETE"
 		EndIf
 
-		aAdd(aRet, {oJson["codigoErp"], oJson, cVerbo})
+		aAdd(aRet, {oJson["chave"], oJson, cVerbo})
 
 		(cAlias)->(dbSkip())
 	End
@@ -575,6 +698,12 @@ User Function BJMAPCAT(cMarca, cChave, cMarcaFim)
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND SBM.BM_FILIAL = ? "
 
+	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
+	// plataforma, entao nao vira DELETE.
+	If Empty(cMarca) .And. Empty(cChave)
+		cQuery += "   AND SBM.D_E_L_E_T_ = ' ' "
+	EndIf
+
 	If !Empty(cChave)
 		cQuery += "   AND SBM.BM_GRUPO = ? "
 	EndIf
@@ -594,7 +723,7 @@ User Function BJMAPCAT(cMarca, cChave, cMarcaFim)
 	oStmt:SetString(2, FWxFilial("SBM"))
 
 	If !Empty(cChave)
-		// cChave e o codigoErp, prefixado pela filial; o filtro e por BM_GRUPO, sem
+		// cChave e a chave de integracao, prefixada pela filial; o filtro e por BM_GRUPO, sem
 		// prefixo. Sai so o primeiro segmento - codigo com hifen atravessa inteiro.
 		cCod := AllTrim(cChave)
 
@@ -610,17 +739,18 @@ User Function BJMAPCAT(cMarca, cChave, cMarcaFim)
 	While (cAlias)->(!Eof())
 
 		oJson := JsonObject():New()
-		oJson["codigoErp"]           := (cAlias)->BM_FILIAL + "-" + (cAlias)->BM_GRUPO
+		oJson["chave"]               := (cAlias)->BM_FILIAL + "-" + (cAlias)->BM_GRUPO
+		oJson["codigoErp"]           := AllTrim((cAlias)->BM_GRUPO)
 		oJson["descricao"]           := AllTrim((cAlias)->BM_DESC)
-		oJson["regraDescontoCodigo"] := Nil
+		oJson["regraDescontoChave"]  := Nil
 
 		// Grupo sem tipo sobe como raiz. E dado inconsistente no cadastro, mas
 		// mandar categoriaPaiCodigo apontando para vazio faria a API recusar o
 		// registro inteiro.
 		If Empty((cAlias)->BM_YTIPO)
-			oJson["categoriaPaiCodigo"] := Nil
+			oJson["categoriaPaiChave"]  := Nil
 		Else
-			oJson["categoriaPaiCodigo"] := FWxFilial("SZ1") + "-" + AllTrim((cAlias)->BM_YTIPO)
+			oJson["categoriaPaiChave"]  := FWxFilial("SZ1") + "-" + AllTrim((cAlias)->BM_YTIPO)
 		EndIf
 
 		oJson["ativo"] := !(AllTrim(cValToChar((cAlias)->BM_MSBLQL)) == "1")
@@ -630,7 +760,7 @@ User Function BJMAPCAT(cMarca, cChave, cMarcaFim)
 			cVerbo := "DELETE"
 		EndIf
 
-		aAdd(aRet, {oJson["codigoErp"], oJson, cVerbo})
+		aAdd(aRet, {oJson["chave"], oJson, cVerbo})
 
 		(cAlias)->(dbSkip())
 	End
@@ -668,6 +798,12 @@ User Function BJMAPCND(cMarca, cChave, cMarcaFim)
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND SE4.E4_FILIAL = ? "
 
+	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
+	// plataforma, entao nao vira DELETE.
+	If Empty(cMarca) .And. Empty(cChave)
+		cQuery += "   AND SE4.D_E_L_E_T_ = ' ' "
+	EndIf
+
 	If !Empty(cChave)
 		cQuery += "   AND SE4.E4_CODIGO = ? "
 	EndIf
@@ -687,7 +823,7 @@ User Function BJMAPCND(cMarca, cChave, cMarcaFim)
 	oStmt:SetString(2, FWxFilial("SE4"))
 
 	If !Empty(cChave)
-		// cChave e o codigoErp, prefixado pela filial; o filtro e por E4_CODIGO, sem
+		// cChave e a chave de integracao, prefixada pela filial; o filtro e por E4_CODIGO, sem
 		// prefixo. Sai so o primeiro segmento - codigo com hifen atravessa inteiro.
 		cCod := AllTrim(cChave)
 
@@ -703,7 +839,8 @@ User Function BJMAPCND(cMarca, cChave, cMarcaFim)
 	While (cAlias)->(!Eof())
 
 		oJson := JsonObject():New()
-		oJson["codigoErp"] := (cAlias)->E4_FILIAL + "-" + (cAlias)->E4_CODIGO
+		oJson["chave"]     := (cAlias)->E4_FILIAL + "-" + (cAlias)->E4_CODIGO
+		oJson["codigoErp"] := AllTrim((cAlias)->E4_CODIGO)
 		oJson["descricao"] := AllTrim((cAlias)->E4_DESCRI)
 		oJson["ativo"]     := !(AllTrim(cValToChar((cAlias)->E4_MSBLQL)) == "1")
 
@@ -718,7 +855,7 @@ User Function BJMAPCND(cMarca, cChave, cMarcaFim)
 			cVerbo := "DELETE"
 		EndIf
 
-		aAdd(aRet, {oJson["codigoErp"], oJson, cVerbo})
+		aAdd(aRet, {oJson["chave"], oJson, cVerbo})
 
 		(cAlias)->(dbSkip())
 	End
@@ -756,6 +893,12 @@ User Function BJMAPARM(cMarca, cChave, cMarcaFim)
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND NNR.NNR_FILIAL = ? "
 
+	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
+	// plataforma, entao nao vira DELETE.
+	If Empty(cMarca) .And. Empty(cChave)
+		cQuery += "   AND NNR.D_E_L_E_T_ = ' ' "
+	EndIf
+
 	If !Empty(cChave)
 		cQuery += "   AND NNR.NNR_CODIGO = ? "
 	EndIf
@@ -775,7 +918,7 @@ User Function BJMAPARM(cMarca, cChave, cMarcaFim)
 	oStmt:SetString(2, FWxFilial("NNR"))
 
 	If !Empty(cChave)
-		// cChave e o codigoErp, prefixado pela filial; o filtro e por NNR_CODIGO, sem
+		// cChave e a chave de integracao, prefixada pela filial; o filtro e por NNR_CODIGO, sem
 		// prefixo. Sai so o primeiro segmento - codigo com hifen atravessa inteiro.
 		cCod := AllTrim(cChave)
 
@@ -791,7 +934,8 @@ User Function BJMAPARM(cMarca, cChave, cMarcaFim)
 	While (cAlias)->(!Eof())
 
 		oJson := JsonObject():New()
-		oJson["codigoErp"] := (cAlias)->NNR_FILIAL + "-" + (cAlias)->NNR_CODIGO
+		oJson["chave"]     := (cAlias)->NNR_FILIAL + "-" + (cAlias)->NNR_CODIGO
+		oJson["codigoErp"] := AllTrim((cAlias)->NNR_CODIGO)
 		oJson["descricao"] := AllTrim((cAlias)->NNR_DESCRI)
 		oJson["ativo"]     := !(AllTrim(cValToChar((cAlias)->NNR_MSBLQL)) == "1")
 
@@ -800,7 +944,7 @@ User Function BJMAPARM(cMarca, cChave, cMarcaFim)
 			cVerbo := "DELETE"
 		EndIf
 
-		aAdd(aRet, {oJson["codigoErp"], oJson, cVerbo})
+		aAdd(aRet, {oJson["chave"], oJson, cVerbo})
 
 		(cAlias)->(dbSkip())
 	End
@@ -856,6 +1000,12 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim)
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND SB1.B1_FILIAL = ? "
 
+	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
+	// plataforma, entao nao vira DELETE.
+	If Empty(cMarca) .And. Empty(cChave)
+		cQuery += "   AND SB1.D_E_L_E_T_ = ' ' "
+	EndIf
+
 	If !Empty(cChave)
 		cQuery += "   AND SB1.B1_COD = ? "
 	EndIf
@@ -875,7 +1025,7 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim)
 	oStmt:SetString(2, FWxFilial("SB1"))
 
 	If !Empty(cChave)
-		// cChave e o codigoErp, prefixado pela filial; o filtro e por B1_COD, sem
+		// cChave e a chave de integracao, prefixada pela filial; o filtro e por B1_COD, sem
 		// prefixo. Sai so o primeiro segmento - codigo com hifen atravessa inteiro.
 		cCod := AllTrim(cChave)
 
@@ -891,10 +1041,11 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim)
 	While (cAlias)->(!Eof())
 
 		oJson := JsonObject():New()
-		oJson["codigoErp"]           := (cAlias)->B1_FILIAL + "-" + (cAlias)->B1_COD
+		oJson["chave"]               := (cAlias)->B1_FILIAL + "-" + (cAlias)->B1_COD
+		oJson["codigoErp"]           := AllTrim((cAlias)->B1_COD)
 		oJson["descricao"]           := AllTrim((cAlias)->B1_DESC)
-		oJson["armazemCodigo"]       := FWxFilial("NNR") + "-" + (cAlias)->B1_LOCPAD
-		oJson["regraDescontoCodigo"] := Nil
+		oJson["armazemChave"]        := FWxFilial("NNR") + "-" + (cAlias)->B1_LOCPAD
+		oJson["regraDescontoChave"]  := Nil
 		oJson["ativo"]               := !(AllTrim(cValToChar((cAlias)->B1_MSBLQL)) == "1")
 
 		If Empty((cAlias)->B1_UM)
@@ -913,15 +1064,15 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim)
 		// so com a subcategoria - mandar categoriaCodigo vazio faria a API procurar
 		// um cadastro de codigo vazio e recusar o registro.
 		If Empty((cAlias)->B1_TPRCG)
-			oJson["categoriaCodigo"] := Nil
+			oJson["categoriaChave"]  := Nil
 		Else
-			oJson["categoriaCodigo"] := FWxFilial("SZ1") + "-" + AllTrim((cAlias)->B1_TPRCG)
+			oJson["categoriaChave"]  := FWxFilial("SZ1") + "-" + AllTrim((cAlias)->B1_TPRCG)
 		EndIf
 
 		If Empty((cAlias)->B1_GRUPO)
-			oJson["subCategoriaCodigo"] := Nil
+			oJson["subCategoriaChave"]  := Nil
 		Else
-			oJson["subCategoriaCodigo"] := FWxFilial("SBM") + "-" + AllTrim((cAlias)->B1_GRUPO)
+			oJson["subCategoriaChave"]  := FWxFilial("SBM") + "-" + AllTrim((cAlias)->B1_GRUPO)
 		EndIf
 
 		// Codigo de barras: GTIN quando existir, senao o campo classico
@@ -948,7 +1099,7 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim)
 			cVerbo := "DELETE"
 		EndIf
 
-		aAdd(aRet, {oJson["codigoErp"], oJson, cVerbo})
+		aAdd(aRet, {oJson["chave"], oJson, cVerbo})
 
 		(cAlias)->(dbSkip())
 	End
@@ -1006,6 +1157,12 @@ User Function BJMAPVND(cMarca, cChave, cMarcaFim)
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND SA3.A3_FILIAL = ? "
 
+	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
+	// plataforma, entao nao vira DELETE.
+	If Empty(cMarca) .And. Empty(cChave)
+		cQuery += "   AND SA3.D_E_L_E_T_ = ' ' "
+	EndIf
+
 	If !Empty(cChave)
 		cQuery += "   AND SA3.A3_COD = ? "
 	EndIf
@@ -1018,14 +1175,22 @@ User Function BJMAPVND(cMarca, cChave, cMarcaFim)
 		cQuery += "   AND SA3.S_T_A_M_P_ <= '" + cMarcaFim + "' "
 	EndIf
 
-	cQuery += " ORDER BY A3_COD "
+	// Supervisor e vendedor tambem: a SA3 aponta para ela mesma, e a API recusa
+	// referencia a registro que ainda nao subiu. Quem nao tem supervisor vai
+	// primeiro (A3_SUPER em branco ordena antes), entao o supervisor ja existe
+	// na plataforma quando o vendedor dele chega.
+	If lSuper
+		cQuery += " ORDER BY A3_SUPER, A3_COD "
+	Else
+		cQuery += " ORDER BY A3_COD "
+	EndIf
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, " ")
 	oStmt:SetString(2, FWxFilial("SA3"))
 
 	If !Empty(cChave)
-		// cChave e o codigoErp, prefixado pela filial; o filtro e por A3_COD, sem
+		// cChave e a chave de integracao, prefixada pela filial; o filtro e por A3_COD, sem
 		// prefixo. Sai so o primeiro segmento - codigo com hifen atravessa inteiro.
 		cCod := AllTrim(cChave)
 
@@ -1050,7 +1215,8 @@ User Function BJMAPVND(cMarca, cChave, cMarcaFim)
 		lBloq := (AllTrim(cValToChar((cAlias)->A3_MSBLQL)) == "1")
 
 		oJson := JsonObject():New()
-		oJson["codigoErp"]      := (cAlias)->A3_FILIAL + "-" + (cAlias)->A3_COD
+		oJson["chave"]          := (cAlias)->A3_FILIAL + "-" + (cAlias)->A3_COD
+		oJson["codigoErp"]      := AllTrim((cAlias)->A3_COD)
 		oJson["nome"]           := AllTrim((cAlias)->A3_NOME)
 		oJson["dataNascimento"] := Nil
 		oJson["ativo"]          := !lBloq
@@ -1080,9 +1246,9 @@ User Function BJMAPVND(cMarca, cChave, cMarcaFim)
 
 		// A3_SUPER preenchido = este vendedor responde a um supervisor
 		If lSuper .And. !Empty((cAlias)->A3_SUPER)
-			oJson["supervisorCodigo"] := FWxFilial("SA3") + "-" + (cAlias)->A3_SUPER
+			oJson["supervisorChave"]  := FWxFilial("SA3") + "-" + (cAlias)->A3_SUPER
 		Else
-			oJson["supervisorCodigo"] := Nil
+			oJson["supervisorChave"]  := Nil
 		EndIf
 
 		// A3_TIPVEND distingue vendedor de supervisor no dicionario padrao
@@ -1099,7 +1265,7 @@ User Function BJMAPVND(cMarca, cChave, cMarcaFim)
 			cVerbo := "DELETE"
 		EndIf
 
-		aAdd(aRet, {oJson["codigoErp"], oJson, cVerbo})
+		aAdd(aRet, {oJson["chave"], oJson, cVerbo})
 
 		(cAlias)->(dbSkip())
 	End
@@ -1178,7 +1344,13 @@ User Function BJMAPCLI(cMarca, cChave, cMarcaFim)
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND SA1.A1_FILIAL = ? "
 
-	// A chave da API e o codigoErp: filial-codigo-loja, separados por hifen. A
+	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
+	// plataforma, entao nao vira DELETE.
+	If Empty(cMarca) .And. Empty(cChave)
+		cQuery += "   AND SA1.D_E_L_E_T_ = ' ' "
+	EndIf
+
+	// A chave de integracao e filial-codigo-loja, separados por hifen. A
 	// filial e a parte 1 e nao entra no filtro - concatenacao em SQL varia por
 	// banco e nao entra na clausula.
 	If !Empty(cChave)
@@ -1224,11 +1396,12 @@ User Function BJMAPCLI(cMarca, cChave, cMarcaFim)
 		cCodigo := (cAlias)->A1_FILIAL + "-" + (cAlias)->A1_COD + "-" + (cAlias)->A1_LOJA
 
 		oJson := JsonObject():New()
-		oJson["codigoErp"]               := cCodigo
+		oJson["chave"]                   := cCodigo
+		oJson["codigoErp"]               := AllTrim((cAlias)->A1_COD + (cAlias)->A1_LOJA)
 		oJson["razaoSocial"]             := AllTrim((cAlias)->A1_NOME)
-		oJson["vendedorCodigo"]          := FWxFilial("SA3") + "-" + (cAlias)->A1_VEND
-		oJson["tabelaPrecoCodigo"]       := FWxFilial("DA0") + "-" + (cAlias)->A1_TABELA
-		oJson["condicaoPagamentoCodigo"] := FWxFilial("SE4") + "-" + (cAlias)->A1_COND
+		oJson["vendedorChave"]           := FWxFilial("SA3") + "-" + (cAlias)->A1_VEND
+		oJson["tabelaPrecoChave"]        := FWxFilial("DA0") + "-" + (cAlias)->A1_TABELA
+		oJson["condicaoPagamentoChave"]  := FWxFilial("SE4") + "-" + (cAlias)->A1_COND
 		oJson["ativo"]                   := !(AllTrim(cValToChar((cAlias)->A1_MSBLQL)) == "1")
 
 		BJPoeTexto(oJson, "nomeFantasia"     , (cAlias)->A1_NREDUZ)
@@ -1328,7 +1501,7 @@ Fornecedores - SA2.
 @author  Ricardo P Sotomayor
 @since   08/09/2026
 @param   cMarca, character, Marca d'agua UTC
-@param   cChave, character, codigoErp a reprocessar
+@param   cChave, character, Chave de integracao a reprocessar
 @return  array, {cChave, oJson, cVerbo}
 /*/
 User Function BJMAPFOR(cMarca, cChave, cMarcaFim)
@@ -1364,6 +1537,12 @@ User Function BJMAPFOR(cMarca, cChave, cMarcaFim)
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND SA2.A2_FILIAL = ? "
 
+	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
+	// plataforma, entao nao vira DELETE.
+	If Empty(cMarca) .And. Empty(cChave)
+		cQuery += "   AND SA2.D_E_L_E_T_ = ' ' "
+	EndIf
+
 	// A chave da API concatena filial, codigo e loja. Para reprocessar um
 	// fornecedor, as tres partes sao separadas aqui - concatenacao em SQL varia
 	// por banco e nao entra na clausula.
@@ -1372,7 +1551,7 @@ User Function BJMAPFOR(cMarca, cChave, cMarcaFim)
 		If At("-", cChvAux) > 0
 			cChvAux := SubStr(cChvAux, At("-", cChvAux) + 1)
 		EndIf
-		aChave := StrTokArr(cChvAux, "-")
+		aChave := U_BJPARTES(cChvAux)
 
 		If Len(aChave) >= 2
 			cCodSA2 := aChave[1]
@@ -1412,7 +1591,8 @@ User Function BJMAPFOR(cMarca, cChave, cMarcaFim)
 		cCodigo := (cAlias)->A2_FILIAL + "-" + (cAlias)->A2_COD + "-" + (cAlias)->A2_LOJA
 
 		oJson := JsonObject():New()
-		oJson["codigoErp"]   := cCodigo
+		oJson["chave"]       := cCodigo
+		oJson["codigoErp"]      := AllTrim((cAlias)->A2_COD + (cAlias)->A2_LOJA)
 		oJson["razaoSocial"] := AllTrim((cAlias)->A2_NOME)
 		oJson["ativo"]       := !(AllTrim(cValToChar((cAlias)->A2_MSBLQL)) == "1")
 
@@ -1507,13 +1687,15 @@ User Function BJMAPTAB(cMarca, cChave, cMarcaFim)
 	Default cMarcaFim := ""
 
 	cQuery := "SELECT DA0_FILIAL, DA0_CODTAB, DA0_DESCRI, DA0_DATDE, DA0_DATATE, DA0_ATIVO, DA0.D_E_L_E_T_ AS DELETADO, "
-	cQuery += "       DA1_FILIAL, DA1_CODPRO, DA1_PRCVEN, DA1_ATIVO, DA1.D_E_L_E_T_ AS ITEM_DELETADO "
+	cQuery += "       DA1_FILIAL, DA1_ITEM, DA1_CODPRO, DA1_PRCVEN, DA1_ATIVO, DA1.D_E_L_E_T_ AS ITEM_DELETADO "
 
 	If lRegra
 		cQuery += ", DA1_XDESC "
 	EndIf
 
-	// O JOIN inclui ativos e excluidos para enviar delete no proprio item.
+	// O JOIN inclui ativos e excluidos, sem filtro de D_E_L_E_T_ nem na carga
+	// inicial: o item excluido vai com delete no proprio item, e a plataforma
+	// o apaga. Excluir um item que ela nunca recebeu nao faz nada.
 	cQuery += "  FROM " + RetSQLName("DA0") + " DA0 "
 	cQuery += "  LEFT JOIN " + RetSQLName("DA1") + " DA1 "
 	cQuery += "    ON DA1.DA1_FILIAL = DA0.DA0_FILIAL "
@@ -1521,8 +1703,14 @@ User Function BJMAPTAB(cMarca, cChave, cMarcaFim)
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND DA0.DA0_FILIAL = ? "
 
+	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
+	// plataforma, entao nao vira DELETE.
+	If Empty(cMarca) .And. Empty(cChave)
+		cQuery += "   AND DA0.D_E_L_E_T_ = ' ' "
+	EndIf
+
 	If !Empty(cChave)
-		// cChave e o codigoErp: filial-codigo. Filtra pelo codigo, a parte 2.
+		// cChave e a chave de integracao: filial-codigo. Filtra pelo codigo, a parte 2.
 		cQuery += "   AND DA0.DA0_CODTAB = ? "
 	ElseIf !Empty(cMarca)
 		// O delta fica no nivel da TABELA, num EXISTS - nao na linha do JOIN.
@@ -1547,14 +1735,14 @@ User Function BJMAPTAB(cMarca, cChave, cMarcaFim)
 		cQuery += "                      AND " + cJanDet + ")) "
 	EndIf
 
-	cQuery += " ORDER BY DA0_CODTAB, DA1_CODPRO "
+	cQuery += " ORDER BY DA0_CODTAB, DA1_CODPRO, DA1_ITEM "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, " ")
 	oStmt:SetString(2, FWxFilial("DA0"))
 
 	If !Empty(cChave)
-		aChave := StrTokArr(cChave, "-")
+		aChave := U_BJPARTES(AllTrim(cChave))
 
 		If Len(aChave) >= 2
 			oStmt:SetString(3, PadR(aChave[2], TamSX3("DA0_CODTAB")[1]))
@@ -1579,7 +1767,8 @@ User Function BJMAPTAB(cMarca, cChave, cMarcaFim)
 			aItens := {}
 			oJson  := JsonObject():New()
 
-			oJson["codigoErp"] := cChvTab
+			oJson["chave"]     := cChvTab
+			oJson["codigoErp"] := AllTrim((cAlias)->DA0_CODTAB)
 			oJson["descricao"] := AllTrim((cAlias)->DA0_DESCRI)
 			oJson["ativo"]     := (AllTrim((cAlias)->DA0_ATIVO) == "1")
 
@@ -1606,12 +1795,14 @@ User Function BJMAPTAB(cMarca, cChave, cMarcaFim)
 
 			oItem := JsonObject():New()
 
-			// Chave do item: a da tabela mais o produto. Um produto aparece uma
-			// unica vez por tabela de preco, entao o par identifica a linha.
-			oItem["codigoErp"]     := (cAlias)->DA1_FILIAL + "-" + ;
+			// Chave do item: a chave unica da DA1 (X2_UNICO) - filial, tabela,
+			// produto e item. O mesmo produto pode aparecer em mais de um item.
+			// Item nao tem codigoErp: so e visto dentro da tabela de preco.
+			oItem["chave"]         := (cAlias)->DA1_FILIAL + "-" + ;
 			                          (cAlias)->DA0_CODTAB + "-" + ;
-			                          (cAlias)->DA1_CODPRO
-			oItem["produtoCodigo"] := FWxFilial("SB1") + "-" + (cAlias)->DA1_CODPRO
+			                          (cAlias)->DA1_CODPRO + "-" + ;
+			                          (cAlias)->DA1_ITEM
+			oItem["produtoChave"]  := FWxFilial("SB1") + "-" + (cAlias)->DA1_CODPRO
 			oItem["preco"]         := (cAlias)->DA1_PRCVEN
 			oItem["ativo"]         := (AllTrim((cAlias)->DA1_ATIVO) == "1")
 			oItem["delete"]        := !Empty((cAlias)->ITEM_DELETADO)
@@ -1619,7 +1810,7 @@ User Function BJMAPTAB(cMarca, cChave, cMarcaFim)
 			If lRegra
 				BJPoeTexto(oItem, "regraDescontoCodigo", (cAlias)->DA1_XDESC)
 			Else
-				oItem["regraDescontoCodigo"] := Nil
+				oItem["regraDescontoChave"]  := Nil
 			EndIf
 
 			aAdd(aItens, oItem)
@@ -1679,10 +1870,16 @@ User Function BJMAPEST(cMarca, cChave, cMarcaFim)
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND SB2.B2_FILIAL = ? "
 
+	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
+	// plataforma, entao nao vira DELETE.
+	If Empty(cMarca) .And. Empty(cChave)
+		cQuery += "   AND SB2.D_E_L_E_T_ = ' ' "
+	EndIf
+
 	If !Empty(cChave)
-		// cChave e o codigoErp do estoque: filial-produto-armazem, separados por
-		// hifen - nunca por barra. A filial e a parte 1 e nao entra no filtro,
-		// que e por B2_COD e B2_LOCAL, ambos sem prefixo.
+		// cChave e a chave de integracao do estoque: a chave unica da SB2
+		// (X2_UNICO), filial-produto-armazem, separados por hifen. A filial e a
+		// parte 1 e nao entra no filtro, que e por B2_COD e B2_LOCAL.
 		aParte := U_BJCHAVE(cChave, {"B2_FILIAL", "B2_COD", "B2_LOCAL"})
 
 		If Len(aParte) == 3
@@ -1690,7 +1887,7 @@ User Function BJMAPEST(cMarca, cChave, cMarcaFim)
 			cLocal := aParte[3]
 		Else
 			// Chave informada sem o prefixo de filial: produto-armazem
-			aParte := StrTokArr(AllTrim(cChave), "-")
+			aParte := U_BJPARTES(AllTrim(cChave))
 
 			If Len(aParte) == 2
 				cProd  := PadR(aParte[1], TamSX3("B2_COD")[1])
@@ -1733,9 +1930,10 @@ User Function BJMAPEST(cMarca, cChave, cMarcaFim)
 		cChvReg := (cAlias)->B2_FILIAL + "-" + (cAlias)->B2_COD + "-" + (cAlias)->B2_LOCAL
 
 		oJson := JsonObject():New()
-		oJson["codigoErp"]     := cChvReg
-		oJson["produtoCodigo"] := FWxFilial("SB1") + "-" + (cAlias)->B2_COD
-		oJson["armazemCodigo"] := FWxFilial("NNR") + "-" + (cAlias)->B2_LOCAL
+		oJson["chave"]         := cChvReg
+		oJson["codigoErp"]     := AllTrim((cAlias)->B2_COD)
+		oJson["produtoChave"]  := FWxFilial("SB1") + "-" + (cAlias)->B2_COD
+		oJson["armazemChave"]  := FWxFilial("NNR") + "-" + (cAlias)->B2_LOCAL
 		oJson["saldo"]         := (cAlias)->B2_QATU
 		oJson["reserva"]       := (cAlias)->B2_RESERVA
 
@@ -1771,7 +1969,7 @@ Notas de saida - SF2 e SD2, na mesma leitura.
 @author  Ricardo P Sotomayor
 @since   01/09/2026
 @param   cMarca, character, Marca d'agua UTC
-@param   cChave, character, codigoErp a reprocessar
+@param   cChave, character, Chave de integracao a reprocessar
 @return  array, {cChave, oJson, cVerbo}
 /*/
 User Function BJMAPNFS(cMarca, cChave, cMarcaFim)
@@ -1802,9 +2000,9 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim)
 	Default cMarcaFim := ""
 
 	cQuery := "SELECT F2_FILIAL, F2_DOC, F2_SERIE, F2_EMISSAO, SF2.D_E_L_E_T_ AS DELETADO, "
-	cQuery += "       F2_CLIENTE, F2_LOJA, F2_VEND1, F2_COND, F2_ESPECIE, F2_TIPO, "
+	cQuery += "       F2_CLIENTE, F2_LOJA, F2_FORMUL, F2_VEND1, F2_COND, F2_ESPECIE, F2_TIPO, "
 	cQuery += "       F2_VALBRUT, F2_VALMERC, F2_DESCONT, F2_VALICM, F2_CHVNFE, "
-	cQuery += "       D2_FILIAL, D2_DOC, D2_SERIE, D2_ITEM, D2_COD, D2_QUANT, D2_PRCVEN, D2_TOTAL, D2_DESCON, "
+	cQuery += "       D2_FILIAL, D2_DOC, D2_SERIE, D2_CLIENTE, D2_LOJA, D2_ITEM, D2_COD, D2_QUANT, D2_PRCVEN, D2_TOTAL, D2_DESCON, "
 	cQuery += "       D2_CF, D2_TP, SD2.D_E_L_E_T_ AS ITEM_DELETADO "
 
 	If lIpi
@@ -1831,31 +2029,45 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim)
 
 	// O JOIN inclui itens ativos e excluidos; o D_E_L_E_T_ vira delete no JSON.
 	//
-	// D2_TIPO entra no relacionamento quando existe no dicionario: F2_DOC e
-	// F2_SERIE nao identificam a nota sozinhos - normal, devolucao e
-	// beneficiamento compartilham numeracao. Com tres campos, duas notas nessa
-	// situacao viram produto cartesiano e cada uma sobe com os itens das duas.
+	// O relacionamento usa os campos da chave unica da SF2 que a SD2 tambem tem:
+	// filial, documento, serie, cliente e loja. F2_DOC e F2_SERIE nao
+	// identificam a nota sozinhos;
+	// sem cliente e loja, duas notas com a mesma numeracao virariam produto
+	// cartesiano e cada uma subiria com os itens das duas.
 	//
-	// A especie fica de fora porque a SD2 nao tem coluna equivalente a
-	// F2_ESPECIE: duas notas que diferem so nela continuam se cruzando.
+	// D2_TIPO continua no relacionamento quando existe no dicionario, como
+	// reforco para normal, devolucao e beneficiamento.
 	cQuery += "  FROM " + RetSQLName("SF2") + " SF2 "
 	cQuery += "  LEFT JOIN " + RetSQLName("SD2") + " SD2 "
-	cQuery += "    ON SD2.D2_FILIAL = SF2.F2_FILIAL "
-	cQuery += "   AND SD2.D2_DOC    = SF2.F2_DOC "
-	cQuery += "   AND SD2.D2_SERIE  = SF2.F2_SERIE "
+	cQuery += "    ON SD2.D2_FILIAL  = SF2.F2_FILIAL "
+	cQuery += "   AND SD2.D2_DOC     = SF2.F2_DOC "
+	cQuery += "   AND SD2.D2_SERIE   = SF2.F2_SERIE "
+	cQuery += "   AND SD2.D2_CLIENTE = SF2.F2_CLIENTE "
+	cQuery += "   AND SD2.D2_LOJA    = SF2.F2_LOJA "
 
 	If lTipoD2
 		cQuery += "   AND SD2.D2_TIPO   = SF2.F2_TIPO "
 	EndIf
 
+	// Sem filtro de D_E_L_E_T_ nos itens, nem na carga inicial: o item excluido
+	// vai com delete no proprio item. Excluir um item que a plataforma nunca
+	// recebeu nao faz nada.
+
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND SF2.F2_FILIAL = ? "
 
+	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
+	// plataforma, entao nao vira DELETE.
+	If Empty(cMarca) .And. Empty(cChave)
+		cQuery += "   AND SF2.D_E_L_E_T_ = ' ' "
+	EndIf
+
 	If !Empty(cChave)
-		// cChave e o codigoErp: filial-documento-serie-tipo-especie. Filtra pelo
+		// cChave e a chave de integracao: filial-documento-serie-cliente-loja-
+		// formulario-tipo. Filtra pelo
 		// documento, que e a parte 2 e nunca vem vazia. Se houver mais de uma nota
-		// com esse numero (series ou tipos diferentes), todas sobem - cada uma com
-		// a sua chave, e o POST e upsert.
+		// com esse numero (series ou clientes diferentes), todas sobem - cada uma
+		// com a sua chave, e o POST e upsert.
 		cQuery += "   AND SF2.F2_DOC = ? "
 	Else
 		If !Empty(cMarca)
@@ -1874,14 +2086,14 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim)
 
 	// A ordem e a da quebra: os campos que formam a chave da nota, depois o item.
 	// Sem isso o laco fecharia a mesma nota mais de uma vez.
-	cQuery += " ORDER BY F2_DOC, F2_SERIE, F2_TIPO, F2_ESPECIE, D2_ITEM "
+	cQuery += " ORDER BY F2_DOC, F2_SERIE, F2_CLIENTE, F2_LOJA, F2_FORMUL, F2_TIPO, D2_COD, D2_ITEM "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, " ")
 	oStmt:SetString(2, FWxFilial("SF2"))
 
 	If !Empty(cChave)
-		aChave := StrTokArr(cChave, "-")
+		aChave := U_BJPARTES(AllTrim(cChave))
 
 		If Len(aChave) >= 2
 			oStmt:SetString(3, PadR(aChave[2], TamSX3("F2_DOC")[1]))
@@ -1894,15 +2106,15 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim)
 
 	While (cAlias)->(!Eof())
 
-		// Chave de identidade da nota no ERP. A filial entra porque a chave de API
-		// e por empresa e duas filiais emitem a mesma numeracao; tipo e especie
-		// separam documentos que compartilham numero (normal, devolucao,
-		// beneficiamento).
-		cChvNota := (cAlias)->F2_FILIAL + "-" + ;
-		            (cAlias)->F2_DOC    + "-" + ;
-		            (cAlias)->F2_SERIE  + "-" + ;
-		            (cAlias)->F2_TIPO   + "-" + ;
-		            (cAlias)->F2_ESPECIE
+		// Chave de integracao da nota: a chave unica da SF2 (X2_UNICO), na mesma
+		// ordem - filial, documento, serie, cliente, loja, formulario e tipo.
+		cChvNota := (cAlias)->F2_FILIAL  + "-" + ;
+		            (cAlias)->F2_DOC     + "-" + ;
+		            (cAlias)->F2_SERIE   + "-" + ;
+		            (cAlias)->F2_CLIENTE + "-" + ;
+		            (cAlias)->F2_LOJA    + "-" + ;
+		            (cAlias)->F2_FORMUL  + "-" + ;
+		            (cAlias)->F2_TIPO
 
 		If !(cChvNota == cChvAnt)
 
@@ -1917,11 +2129,12 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim)
 			nDevNota := 0
 			oJson    := JsonObject():New()
 
-			oJson["codigoErp"]      := cChvNota
+			oJson["chave"]          := cChvNota
+			oJson["codigoErp"]      := AllTrim((cAlias)->F2_DOC)
 			oJson["numero"]         := AllTrim((cAlias)->F2_DOC)
-			oJson["clienteCodigo"]  := FWxFilial("SA1") + "-" + (cAlias)->F2_CLIENTE + "-" + (cAlias)->F2_LOJA
-			oJson["vendedorCodigo"] := FWxFilial("SA3") + "-" + (cAlias)->F2_VEND1
-			oJson["condicaoCodigo"] := FWxFilial("SE4") + "-" + (cAlias)->F2_COND
+			oJson["clienteChave"]   := FWxFilial("SA1") + "-" + (cAlias)->F2_CLIENTE + "-" + (cAlias)->F2_LOJA
+			oJson["vendedorChave"]  := FWxFilial("SA3") + "-" + (cAlias)->F2_VEND1
+			oJson["condicaoChave"]  := FWxFilial("SE4") + "-" + (cAlias)->F2_COND
 			oJson["vlrBruto"]       := (cAlias)->F2_VALBRUT
 			oJson["vlrMercadoria"]  := (cAlias)->F2_VALMERC
 			oJson["vlrItens"]       := (cAlias)->F2_VALMERC
@@ -1977,15 +2190,18 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim)
 
 			oItem := JsonObject():New()
 
-			// Chave do item: os mesmos campos que o JOIN usa para liga-lo a nota,
-			// mais o numero do item. Duas linhas do mesmo produto na mesma nota
-			// (CFOP ou preco diferentes) continuam distintas.
-			oItem["codigoErp"]     := (cAlias)->D2_FILIAL + "-" + ;
-			                          (cAlias)->D2_DOC    + "-" + ;
-			                          (cAlias)->D2_SERIE  + "-" + ;
+			// Chave do item: a chave unica da SD2 (X2_UNICO) - filial, documento,
+			// serie, cliente, loja, produto e item. Item nao tem codigoErp: so e
+			// visto dentro da nota.
+			oItem["chave"]         := (cAlias)->D2_FILIAL  + "-" + ;
+			                          (cAlias)->D2_DOC     + "-" + ;
+			                          (cAlias)->D2_SERIE   + "-" + ;
+			                          (cAlias)->D2_CLIENTE + "-" + ;
+			                          (cAlias)->D2_LOJA    + "-" + ;
+			                          (cAlias)->D2_COD     + "-" + ;
 			                          (cAlias)->D2_ITEM
 			oItem["item"]          := Val((cAlias)->D2_ITEM)
-			oItem["produtoCodigo"] := FWxFilial("SB1") + "-" + (cAlias)->D2_COD
+			oItem["produtoChave"]  := FWxFilial("SB1") + "-" + (cAlias)->D2_COD
 			oItem["quantidade"]    := (cAlias)->D2_QUANT
 			oItem["vlrUnitario"]   := (cAlias)->D2_PRCVEN
 			oItem["vlrDesconto"]   := (cAlias)->D2_DESCON
@@ -2048,7 +2264,7 @@ XML autorizado das notas de saida - SF2 e TSS.
 @author  Ricardo P Sotomayor
 @since   01/09/2026
 @param   cMarca, character, Marca d'agua UTC
-@param   cChave, character, codigoErp a reprocessar
+@param   cChave, character, Chave de integracao a reprocessar
 @return  array, {cChave, oJson, cVerbo}
 /*/
 User Function BJMAPXML(cMarca, cChave, cMarcaFim)
@@ -2066,10 +2282,17 @@ User Function BJMAPXML(cMarca, cChave, cMarcaFim)
 	Default cChave    := ""
 	Default cMarcaFim := ""
 
-	cQuery := "SELECT F2_FILIAL, F2_DOC, F2_SERIE, F2_TIPO, F2_ESPECIE "
+	cQuery := "SELECT F2_FILIAL, F2_DOC, F2_SERIE, F2_CLIENTE, F2_LOJA, F2_FORMUL, F2_TIPO "
 	cQuery += "  FROM " + RetSQLName("SF2") + " SF2 "
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND SF2.F2_FILIAL = ? "
+
+	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
+	// plataforma, entao nao vira DELETE.
+	If Empty(cMarca) .And. Empty(cChave)
+		cQuery += "   AND SF2.D_E_L_E_T_ = ' ' "
+	EndIf
+
 	cQuery += "   AND SF2.F2_CHVNFE <> ? "
 
 	If !Empty(cChave)
@@ -2092,7 +2315,7 @@ User Function BJMAPXML(cMarca, cChave, cMarcaFim)
 	oStmt:SetString(3, " ")
 
 	If !Empty(cChave)
-		aChave := StrTokArr(cChave, "-")
+		aChave := U_BJPARTES(AllTrim(cChave))
 
 		If Len(aChave) >= 2
 			oStmt:SetString(4, PadR(aChave[2], TamSX3("F2_DOC")[1]))
@@ -2105,11 +2328,14 @@ User Function BJMAPXML(cMarca, cChave, cMarcaFim)
 
 	While (cAlias)->(!Eof())
 
-		cChvNota := (cAlias)->F2_FILIAL + "-" + ;
-		            (cAlias)->F2_DOC    + "-" + ;
-		            (cAlias)->F2_SERIE  + "-" + ;
-		            (cAlias)->F2_TIPO   + "-" + ;
-		            (cAlias)->F2_ESPECIE
+		// Mesma chave do mapeador da nota (X2_UNICO da SF2)
+		cChvNota := (cAlias)->F2_FILIAL  + "-" + ;
+		            (cAlias)->F2_DOC     + "-" + ;
+		            (cAlias)->F2_SERIE   + "-" + ;
+		            (cAlias)->F2_CLIENTE + "-" + ;
+		            (cAlias)->F2_LOJA    + "-" + ;
+		            (cAlias)->F2_FORMUL  + "-" + ;
+		            (cAlias)->F2_TIPO
 
 		cXml := BJXmlTSS((cAlias)->F2_DOC, (cAlias)->F2_SERIE)
 
@@ -2264,7 +2490,7 @@ Notas de entrada - SF1 (cabecalho) e SD1 (itens).
 @author  Ricardo P Sotomayor
 @since   08/09/2026
 @param   cMarca, character, Marca d'agua UTC
-@param   cChave, character, codigoErp a reprocessar
+@param   cChave, character, Chave de integracao a reprocessar
 @return  array, {cChave, oJson, cVerbo}
 /*/
 User Function BJMAPNFE(cMarca, cChave, cMarcaFim)
@@ -2382,11 +2608,22 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim)
 	cQuery += "   AND SD1.D1_LOJA    = SF1.F1_LOJA "
 	cQuery += "   AND SD1.D1_FORMUL  = SF1.F1_FORMUL "
 	cQuery += "   AND SD1.D1_TIPO    = SF1.F1_TIPO "
+
+	// Sem filtro de D_E_L_E_T_ nos itens, nem na carga inicial: o item excluido
+	// vai com delete no proprio item. Excluir um item que a plataforma nunca
+	// recebeu nao faz nada.
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND SF1.F1_FILIAL = ? "
 
+	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
+	// plataforma, entao nao vira DELETE.
+	If Empty(cMarca) .And. Empty(cChave)
+		cQuery += "   AND SF1.D_E_L_E_T_ = ' ' "
+	EndIf
+
 	If !Empty(cChave)
-		// cChave e o codigoErp: filial-documento-serie-fornecedor-loja-formulario.
+		// cChave e a chave de integracao: filial-documento-serie-fornecedor-loja-
+		// formulario-tipo.
 		// Filtra pelo documento, que e a parte 2 e nunca vem vazia. Se houver mais
 		// de uma nota com esse numero, todas sobem - cada uma com a sua chave, e o
 		// POST e upsert.
@@ -2407,10 +2644,8 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim)
 	EndIf
 
 	// A ordem e a da quebra: os campos que formam a chave da nota, depois o item.
-	// F1_TIPO entra no fim porque nao compoe a chave, mas separa as linhas que a
-	// compartilham - sem ele, uma compra e uma devolucao do mesmo documento viriam
-	// intercaladas e a quebra abriria e fecharia a mesma chave varias vezes.
-	cQuery += " ORDER BY F1_DOC, F1_SERIE, F1_FORNECE, F1_LOJA, F1_FORMUL, F1_TIPO, D1_ITEM "
+	// Sem isso o laco fecharia a mesma nota mais de uma vez.
+	cQuery += " ORDER BY F1_DOC, F1_SERIE, F1_FORNECE, F1_LOJA, F1_FORMUL, F1_TIPO, D1_COD, D1_ITEM "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, " ")
@@ -2421,7 +2656,7 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim)
 		If At("-", cChvAux) > 0
 			cChvAux := SubStr(cChvAux, At("-", cChvAux) + 1)
 		EndIf
-		aChave := StrTokArr(cChvAux, "-")
+		aChave := U_BJPARTES(cChvAux)
 
 		If Len(aChave) >= 1
 			oStmt:SetString(3, PadR(aChave[1], TamSX3("F1_DOC")[1]))
@@ -2434,15 +2669,16 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim)
 
 	While (cAlias)->(!Eof())
 
-		// Chave de identidade da nota no ERP. Nao leva o F1_TIPO: decidido em
-		// 08/09/2026. Compra e devolucao com a mesma numeracao e o mesmo
-		// participante colidiriam, mas o participante difere entre as duas.
+		// Chave de integracao da nota: a chave unica da SF1 (X2_UNICO), na mesma
+		// ordem - filial, documento, serie, fornecedor, loja, formulario e tipo.
+		// O F1_TIPO entrou em 22/09/2026 (antes ficava de fora).
 		cChvNota := (cAlias)->F1_FILIAL  + "-" + ;
 		            (cAlias)->F1_DOC     + "-" + ;
 		            (cAlias)->F1_SERIE   + "-" + ;
 		            (cAlias)->F1_FORNECE + "-" + ;
 		            (cAlias)->F1_LOJA    + "-" + ;
-		            (cAlias)->F1_FORMUL
+		            (cAlias)->F1_FORMUL  + "-" + ;
+		            (cAlias)->F1_TIPO
 
 		If !(cChvNota == cChvAnt)
 
@@ -2461,7 +2697,8 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim)
 			nStNota := 0
 			oJson   := JsonObject():New()
 
-			oJson["codigoErp"] := cChvNota
+			oJson["chave"]     := cChvNota
+			oJson["codigoErp"] := AllTrim((cAlias)->F1_DOC)
 			oJson["numero"]    := AllTrim((cAlias)->F1_DOC)
 			oJson["vlrBruto"]  := (cAlias)->F1_VALBRUT
 			oJson["ativo"]     := .T.
@@ -2471,11 +2708,11 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim)
 			cPartic := (cAlias)->F1_FORNECE + "-" + (cAlias)->F1_LOJA
 
 			If AllTrim((cAlias)->F1_TIPO) == "D"
-				oJson["clienteCodigo"]    := FWxFilial("SA1") + "-" + cPartic
-				oJson["fornecedorCodigo"] := Nil
+				oJson["clienteChave"]     := FWxFilial("SA1") + "-" + cPartic
+				oJson["fornecedorChave"]  := Nil
 			Else
-				oJson["fornecedorCodigo"] := FWxFilial("SA2") + "-" + cPartic
-				oJson["clienteCodigo"]    := Nil
+				oJson["fornecedorChave"]  := FWxFilial("SA2") + "-" + cPartic
+				oJson["clienteChave"]     := Nil
 			EndIf
 
 			BJPoeTexto(oJson, "serie"        , (cAlias)->F1_SERIE)
@@ -2498,7 +2735,7 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim)
 			EndIf
 
 			If lCond
-				oJson["condicaoCodigo"] := FWxFilial("SE4") + "-" + (cAlias)->F1_COND
+				oJson["condicaoChave"]  := FWxFilial("SE4") + "-" + (cAlias)->F1_COND
 			EndIf
 
 			If lMerc
@@ -2570,16 +2807,18 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim)
 
 			oItem := JsonObject():New()
 
-			// Chave do item: os mesmos campos que o JOIN usa para liga-lo a nota,
-			// mais o numero do item.
-			oItem["codigoErp"]     := (cAlias)->D1_FILIAL  + "-" + ;
+			// Chave do item: a chave unica da SD1 (X2_UNICO) - filial, documento,
+			// serie, fornecedor, loja, produto e item. Item nao tem codigoErp: so e
+			// visto dentro da nota.
+			oItem["chave"]         := (cAlias)->D1_FILIAL  + "-" + ;
 			                          (cAlias)->D1_DOC     + "-" + ;
 			                          (cAlias)->D1_SERIE   + "-" + ;
 			                          (cAlias)->D1_FORNECE + "-" + ;
 			                          (cAlias)->D1_LOJA    + "-" + ;
+			                          (cAlias)->D1_COD     + "-" + ;
 			                          (cAlias)->D1_ITEM
 			oItem["item"]          := Val((cAlias)->D1_ITEM)
-			oItem["produtoCodigo"] := FWxFilial("SB1") + "-" + (cAlias)->D1_COD
+			oItem["produtoChave"]  := FWxFilial("SB1") + "-" + (cAlias)->D1_COD
 			oItem["quantidade"]    := (cAlias)->D1_QUANT
 			oItem["vlrTotal"]      := (cAlias)->D1_TOTAL
 			oItem["ativo"]         := .T.
@@ -2588,7 +2827,7 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim)
 			BJPoeTexto(oItem, "cfop", (cAlias)->D1_CF)
 
 			If lLocal
-				oItem["armazemCodigo"] := FWxFilial("NNR") + "-" + (cAlias)->D1_LOCAL
+				oItem["armazemChave"]  := FWxFilial("NNR") + "-" + (cAlias)->D1_LOCAL
 			EndIf
 
 			If lVUnit
@@ -2654,7 +2893,7 @@ Titulos a receber - SE1.
 @author  Ricardo P Sotomayor
 @since   01/09/2026
 @param   cMarca, character, Marca d'agua UTC
-@param   cChave, character, codigoErp a reprocessar
+@param   cChave, character, Chave de integracao a reprocessar
 @return  array, {cChave, oJson, cVerbo}
 /*/
 User Function BJMAPTIT(cMarca, cChave, cMarcaFim)
@@ -2776,8 +3015,14 @@ User Function BJMAPTIT(cMarca, cChave, cMarcaFim)
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND SE1.E1_FILIAL = ? "
 
+	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
+	// plataforma, entao nao vira DELETE.
+	If Empty(cMarca) .And. Empty(cChave)
+		cQuery += "   AND SE1.D_E_L_E_T_ = ' ' "
+	EndIf
+
 	If !Empty(cChave)
-		// cChave e o codigoErp: filial-prefixo-numero-parcela-tipo. Filtra pelo
+		// cChave e a chave de integracao: filial-prefixo-numero-parcela-tipo. Filtra pelo
 		// numero, que e a parte 3 e nunca vem vazio; parcelas e tipos do mesmo
 		// numero sobem juntos, cada um com a sua chave.
 		cQuery += "   AND SE1.E1_NUM = ? "
@@ -2798,7 +3043,7 @@ User Function BJMAPTIT(cMarca, cChave, cMarcaFim)
 	oStmt:SetString(2, FWxFilial("SE1"))
 
 	If !Empty(cChave)
-		aChave := StrTokArr(cChave, "-")
+		aChave := U_BJPARTES(AllTrim(cChave))
 
 		If Len(aChave) >= 3
 			oStmt:SetString(3, PadR(aChave[3], TamSX3("E1_NUM")[1]))
@@ -2821,10 +3066,11 @@ User Function BJMAPTIT(cMarca, cChave, cMarcaFim)
 		           (cAlias)->E1_TIPO
 
 		oJson := JsonObject():New()
-		oJson["codigoErp"]      := cChvTit
+		oJson["chave"]          := cChvTit
+		oJson["codigoErp"]      := AllTrim((cAlias)->E1_NUM)
 		oJson["numero"]         := AllTrim((cAlias)->E1_NUM)
-		oJson["clienteCodigo"]  := FWxFilial("SA1") + "-" + (cAlias)->E1_CLIENTE + "-" + (cAlias)->E1_LOJA
-		oJson["vendedorCodigo"] := FWxFilial("SA3") + "-" + (cAlias)->E1_VEND1
+		oJson["clienteChave"]   := FWxFilial("SA1") + "-" + (cAlias)->E1_CLIENTE + "-" + (cAlias)->E1_LOJA
+		oJson["vendedorChave"]  := FWxFilial("SA3") + "-" + (cAlias)->E1_VEND1
 		oJson["valor"]          := (cAlias)->E1_VALOR
 		oJson["saldo"]          := (cAlias)->E1_SALDO
 		oJson["acrescimo"]      := (cAlias)->E1_ACRESC
@@ -3295,205 +3541,13 @@ Static Function BJContaTit(cPortad, cAgenci, cConta, cCartei)
 	// O contrato limita a 80 caracteres
 Return Left(cRet, 80)
 
-/*/{Protheus.doc} BJMAPORC
-Orcamentos gerados no ERP - SCJ (cabecalho) e SCK (itens).
-@type    User Function
-@author  Ricardo P Sotomayor
-@since   01/09/2026
-@param   cMarca, character, Marca d'agua UTC
-@param   cChave, character, codigoErp a reprocessar
-@return  array, {cChave, oJson, cVerbo}
-/*/
-User Function BJMAPORC(cMarca, cChave, cMarcaFim)
-
-	Local cStatOrc := ""
-	Local aRet    := {}
-	Local aItens  := {}
-	Local aChave  := {}
-	Local cAlias  := ""
-	Local cQuery  := ""
-	Local cChvOrc := ""
-	Local cChvAnt := ""
-	Local cVrbAnt := ""
-	Local oStmt   := Nil
-	Local oJson   := Nil
-	Local oItem   := Nil
-	Local lValida := SCJ->(FieldPos("CJ_VALIDA"))  > 0
-	Local lObs    := SCJ->(FieldPos("CJ_XOBSVEN")) > 0
-	Local lRegra  := SCK->(FieldPos("CK_XDESC"))   > 0
-	Local lComis  := SCK->(FieldPos("CK_RCGCOM1")) > 0
-
-	Default cMarca    := ""
-	Default cChave    := ""
-	Default cMarcaFim := ""
-
-	cQuery := "SELECT CJ_FILIAL, CJ_NUM, CJ_CLIENTE, CJ_LOJA, SCJ.D_E_L_E_T_ AS DELETADO, "
-	cQuery += "       CJ_VEND1, CJ_CONDPAG, CJ_STATUS, "
-	cQuery += "       CK_FILIAL, CK_ITEM, CK_PRODUTO, CK_QTDVEN, CK_PRCVEN, SCK.D_E_L_E_T_ AS ITEM_DELETADO "
-
-	If lValida
-		cQuery += ", CJ_VALIDA "
-	EndIf
-	If lObs
-		cQuery += ", CJ_XOBSVEN "
-	EndIf
-	If lRegra
-		cQuery += ", CK_XDESC "
-	EndIf
-	If lComis
-		cQuery += ", CK_RCGCOM1 "
-	EndIf
-
-	// LEFT JOIN pelo mesmo criterio da nota: orcamento sem item nao some.
-	cQuery += "  FROM " + RetSQLName("SCJ") + " SCJ "
-	cQuery += "  LEFT JOIN " + RetSQLName("SCK") + " SCK "
-	cQuery += "    ON SCK.CK_FILIAL = SCJ.CJ_FILIAL "
-	cQuery += "   AND SCK.CK_NUM    = SCJ.CJ_NUM "
-	cQuery += " WHERE ? = ' ' "
-	cQuery += "   AND SCJ.CJ_FILIAL = ? "
-
-	If !Empty(cChave)
-		// cChave e o codigoErp: filial-numero. Filtra pelo numero, a parte 2.
-		cQuery += "   AND SCJ.CJ_NUM = ? "
-	Else
-		If !Empty(cMarca)
-			// O delta fica no nivel do ORCAMENTO, num EXISTS - nao na linha do JOIN.
-			// Assim o cabecalho segue com os itens alterados e excluidos.
-			cQuery += "   AND (SCJ.S_T_A_M_P_ >= '" + cMarca + "' "
-			cQuery += "        OR EXISTS (SELECT 1 "
-			cQuery += "                     FROM " + RetSQLName("SCK") + " SCKD "
-			cQuery += "                    WHERE SCKD.CK_FILIAL = SCJ.CJ_FILIAL "
-			cQuery += "                      AND SCKD.CK_NUM    = SCJ.CJ_NUM "
-			cQuery += "                      AND SCKD.S_T_A_M_P_ >= '" + cMarca + "')) "
-		EndIf
-
-		If !Empty(cMarcaFim)
-			cQuery += "   AND (SCJ.S_T_A_M_P_ <= '" + cMarcaFim + "' "
-			cQuery += "        OR EXISTS (SELECT 1 "
-			cQuery += "                     FROM " + RetSQLName("SCK") + " SCKD "
-			cQuery += "                    WHERE SCKD.CK_FILIAL = SCJ.CJ_FILIAL "
-			cQuery += "                      AND SCKD.CK_NUM    = SCJ.CJ_NUM "
-			cQuery += "                      AND SCKD.S_T_A_M_P_ <= '" + cMarcaFim + "')) "
-		EndIf
-	EndIf
-
-	cQuery += " ORDER BY CJ_NUM, CK_ITEM "
-
-	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
-	oStmt:SetString(1, " ")
-	oStmt:SetString(2, FWxFilial("SCJ"))
-
-	If !Empty(cChave)
-		aChave := StrTokArr(cChave, "-")
-
-		If Len(aChave) >= 2
-			oStmt:SetString(3, PadR(aChave[2], TamSX3("CJ_NUM")[1]))
-		Else
-			oStmt:SetString(3, PadR(cChave, TamSX3("CJ_NUM")[1]))
-		EndIf
-	EndIf
-
-	cAlias := oStmt:OpenAlias()
-
-	While (cAlias)->(!Eof())
-
-		cChvOrc := (cAlias)->CJ_FILIAL + "-" + (cAlias)->CJ_NUM
-
-		If !(cChvOrc == cChvAnt)
-
-			If !Empty(cChvAnt)
-				oJson["itens"] := aItens
-				aAdd(aRet, {cChvAnt, oJson, cVrbAnt})
-			EndIf
-
-			aItens := {}
-			oJson  := JsonObject():New()
-
-			oJson["codigoErp"]               := cChvOrc
-			oJson["clienteCodigo"]           := FWxFilial("SA1") + "-" + (cAlias)->CJ_CLIENTE + "-" + (cAlias)->CJ_LOJA
-			oJson["vendedorCodigo"]          := FWxFilial("SA3") + "-" + (cAlias)->CJ_VEND1
-			oJson["condicaoPagamentoCodigo"] := FWxFilial("SE4") + "-" + (cAlias)->CJ_CONDPAG
-			// Status do orcamento no contrato da plataforma. O que nao casar sobe
-			// como rascunho, que e o estado mais conservador.
-			cStatOrc := "rascunho"
-
-			Do Case
-				Case AllTrim((cAlias)->CJ_STATUS) == "A"
-					cStatOrc := "enviado"
-				Case AllTrim((cAlias)->CJ_STATUS) == "B"
-					cStatOrc := "aprovado"
-				Case AllTrim((cAlias)->CJ_STATUS) == "C"
-					cStatOrc := "recusado"
-			EndCase
-
-			oJson["status"]                  := cStatOrc
-			oJson["ativo"]                   := .T.
-
-			// titulo e obrigatorio no contrato e a SCJ nao tem campo equivalente: o
-			// numero identifica a proposta para quem le na plataforma
-			oJson["titulo"] := "Orcamento " + AllTrim((cAlias)->CJ_NUM) + " - ERP"
-
-			If lValida
-				BJPoeData(oJson, "dataValidade", (cAlias)->CJ_VALIDA)
-			EndIf
-			If lObs
-				BJPoeTexto(oJson, "observacao", (cAlias)->CJ_XOBSVEN)
-			EndIf
-
-			cChvAnt := cChvOrc
-			cVrbAnt := "POST"
-			If (cAlias)->DELETADO == "*"
-				cVrbAnt := "DELETE"
-			EndIf
-		EndIf
-
-		If !Empty((cAlias)->CK_ITEM)
-
-			oItem := JsonObject():New()
-
-			// Chave do item: a do orcamento mais o numero do item, pelos campos da
-			// propria SCK - que sao o vinculo do JOIN.
-			oItem["codigoErp"]     := (cAlias)->CK_FILIAL + "-" + ;
-			                          (cAlias)->CJ_NUM    + "-" + ;
-			                          (cAlias)->CK_ITEM
-			oItem["produtoCodigo"] := FWxFilial("SB1") + "-" + (cAlias)->CK_PRODUTO
-			oItem["quantidade"]    := (cAlias)->CK_QTDVEN
-			oItem["vlrUnitario"]   := (cAlias)->CK_PRCVEN
-			oItem["delete"]        := !Empty((cAlias)->ITEM_DELETADO)
-
-			If lRegra
-				BJPoeTexto(oItem, "regraDescontoCodigo", (cAlias)->CK_XDESC)
-			Else
-				oItem["regraDescontoCodigo"] := Nil
-			EndIf
-
-			If lComis
-				oItem["percComissao"] := (cAlias)->CK_RCGCOM1
-			EndIf
-
-			aAdd(aItens, oItem)
-		EndIf
-
-		(cAlias)->(dbSkip())
-	End
-
-	If !Empty(cChvAnt)
-		oJson["itens"] := aItens
-		aAdd(aRet, {cChvAnt, oJson, cVrbAnt})
-	EndIf
-
-	(cAlias)->(dbCloseArea())
-	oStmt:Destroy()
-
-Return aRet
-
 /*/{Protheus.doc} BJMAPOBJ
 Objetivos de venda - sem origem no ERP.
 @type    User Function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
 @param   cMarca, character, Marca d'agua UTC
-@param   cChave, character, codigoErp a reprocessar
+@param   cChave, character, Chave de integracao a reprocessar
 @return  array, Vazio enquanto nao houver origem definida
 /*/
 User Function BJMAPOBJ(cMarca, cChave, cMarcaFim)

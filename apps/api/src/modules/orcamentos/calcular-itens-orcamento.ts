@@ -97,7 +97,7 @@ export async function calcularItensOrcamento(
 
     return {
       empresaId,
-      codigoErp: item.codigoErp ?? null,
+      chave: item.chave ?? null,
       produtoId: item.produtoId,
       quantidade: item.quantidade,
       vlrTabela,

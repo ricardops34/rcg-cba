@@ -31,6 +31,7 @@ export class IntegracaoArmazensService {
   private paraLeitura(row: {
     id: string;
     codigoErp: string;
+    chave: string | null;
     descricao: string;
     ativo: boolean;
     createdAt: Date;
@@ -40,6 +41,7 @@ export class IntegracaoArmazensService {
   }): IntegracaoArmazem {
     return {
       id: row.id,
+      chave: row.chave ?? '',
       codigoErp: row.codigoErp,
       descricao: row.descricao,
       ativo: row.ativo,
@@ -69,7 +71,7 @@ export class IntegracaoArmazensService {
         tx.armazem.findMany({
           where,
           ...paginationToSkipTake(query),
-          orderBy: { codigoErp: 'asc' },
+          orderBy: { chave: 'asc' },
         }),
         tx.armazem.count({ where }),
       ]);
@@ -81,13 +83,10 @@ export class IntegracaoArmazensService {
     });
   }
 
-  async findOne(
-    empresaId: string,
-    codigoErp: string,
-  ): Promise<IntegracaoArmazem> {
+  async findOne(empresaId: string, chave: string): Promise<IntegracaoArmazem> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const row = await tx.armazem.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!row) throw new NotFoundException('Armazém não encontrado');
       return this.paraLeitura(row);
@@ -119,12 +118,13 @@ export class IntegracaoArmazensService {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.armazem.findFirst({
-        where: { empresaId, codigoErp: input.codigoErp },
+        where: { empresaId, chave: input.chave },
       });
       const decisao = decidirUpsert(existente);
 
       const dados = {
-        codigoErp: input.codigoErp,
+        chave: input.chave,
+        codigoErp: input.codigoErp ?? '',
         descricao: input.descricao,
         ativo: input.ativo,
         updatedBy: autor,
@@ -160,7 +160,7 @@ export class IntegracaoArmazensService {
   ): Promise<IntegracaoLoteResultado> {
     return processarLote(registros, async (item) => {
       if (item.excluido) {
-        await this.remove(empresaId, apiKeyId, item.codigoErp);
+        await this.remove(empresaId, apiKeyId, item.chave);
         return 'excluido';
       }
       const { decisao } = await this.upsert(
@@ -175,19 +175,22 @@ export class IntegracaoArmazensService {
   async update(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
     input: IntegracaoArmazemUpdate,
   ): Promise<IntegracaoArmazem> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.armazem.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente) throw new NotFoundException('Armazém não encontrado');
 
       const atualizado = await tx.armazem.update({
         where: { id: existente.id },
         data: {
+          ...(input.codigoErp !== undefined
+            ? { codigoErp: input.codigoErp ?? '' }
+            : {}),
           ...(input.descricao !== undefined
             ? { descricao: input.descricao }
             : {}),
@@ -202,12 +205,12 @@ export class IntegracaoArmazensService {
   async remove(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<void> {
     const autor = autorIntegracao(apiKeyId);
     await this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.armazem.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente) throw new NotFoundException('Armazém não encontrado');
       await tx.armazem.update({

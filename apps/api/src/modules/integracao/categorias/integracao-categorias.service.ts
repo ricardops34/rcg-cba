@@ -30,8 +30,8 @@ import { processarLote } from '../common/processar-lote';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 
 const INCLUDE = {
-  categoriaPai: { select: { codigoErp: true } },
-  regraDesconto: { select: { codigoErp: true } },
+  categoriaPai: { select: { chave: true } },
+  regraDesconto: { select: { chave: true } },
 } satisfies Prisma.CategoriaInclude;
 type CategoriaComPai = Prisma.CategoriaGetPayload<{ include: typeof INCLUDE }>;
 
@@ -42,10 +42,11 @@ export class IntegracaoCategoriasService {
   private paraLeitura(row: CategoriaComPai): IntegracaoCategoria {
     return {
       id: row.id,
+      chave: row.chave ?? '',
       codigoErp: row.codigoErp,
       descricao: row.descricao,
-      categoriaPaiCodigo: row.categoriaPai?.codigoErp ?? null,
-      regraDescontoCodigo: row.regraDesconto?.codigoErp ?? null,
+      categoriaPaiChave: row.categoriaPai?.chave ?? null,
+      regraDescontoChave: row.regraDesconto?.chave ?? null,
       ativo: row.ativo,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -74,7 +75,7 @@ export class IntegracaoCategoriasService {
           where,
           include: INCLUDE,
           ...paginationToSkipTake(query),
-          orderBy: { codigoErp: 'asc' },
+          orderBy: { chave: 'asc' },
         }),
         tx.categoria.count({ where }),
       ]);
@@ -88,11 +89,11 @@ export class IntegracaoCategoriasService {
 
   async findOne(
     empresaId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<IntegracaoCategoria> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const row = await tx.categoria.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
         include: INCLUDE,
       });
       if (!row) throw new NotFoundException('Categoria não encontrada');
@@ -125,24 +126,25 @@ export class IntegracaoCategoriasService {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.categoria.findFirst({
-        where: { empresaId, codigoErp: input.codigoErp },
+        where: { empresaId, chave: input.chave },
       });
       const decisao = decidirUpsert(existente);
 
       const categoriaPaiId = await this.resolverCategoriaPai(
         tx,
         empresaId,
-        input.categoriaPaiCodigo,
+        input.categoriaPaiChave,
       );
 
       const regraDescontoId = await resolverRegraDesconto(
         tx,
         empresaId,
-        input.regraDescontoCodigo,
+        input.regraDescontoChave,
       );
 
       const dados = {
-        codigoErp: input.codigoErp,
+        chave: input.chave,
+        codigoErp: input.codigoErp ?? '',
         descricao: input.descricao,
         categoriaPaiId,
         regraDescontoId: regraDescontoId ?? null,
@@ -182,7 +184,7 @@ export class IntegracaoCategoriasService {
   ): Promise<IntegracaoLoteResultado> {
     return processarLote(registros, async (item) => {
       if (item.excluido) {
-        await this.remove(empresaId, apiKeyId, item.codigoErp);
+        await this.remove(empresaId, apiKeyId, item.chave);
         return 'excluido';
       }
       const { decisao } = await this.upsert(
@@ -197,34 +199,37 @@ export class IntegracaoCategoriasService {
   async update(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
     input: IntegracaoCategoriaUpdate,
   ): Promise<IntegracaoCategoria> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.categoria.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente) throw new NotFoundException('Categoria não encontrada');
 
       const categoriaPaiId =
-        input.categoriaPaiCodigo !== undefined
+        input.categoriaPaiChave !== undefined
           ? await this.resolverCategoriaPai(
               tx,
               empresaId,
-              input.categoriaPaiCodigo,
+              input.categoriaPaiChave,
             )
           : undefined;
 
       const regraDescontoId = await resolverRegraDesconto(
         tx,
         empresaId,
-        input.regraDescontoCodigo,
+        input.regraDescontoChave,
       );
 
       const atualizada = await tx.categoria.update({
         where: { id: existente.id },
         data: {
+          ...(input.codigoErp !== undefined
+            ? { codigoErp: input.codigoErp ?? '' }
+            : {}),
           ...(input.descricao !== undefined
             ? { descricao: input.descricao }
             : {}),
@@ -242,12 +247,12 @@ export class IntegracaoCategoriasService {
   async remove(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<void> {
     const autor = autorIntegracao(apiKeyId);
     await this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.categoria.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente) throw new NotFoundException('Categoria não encontrada');
       await tx.categoria.update({
@@ -260,16 +265,16 @@ export class IntegracaoCategoriasService {
   private async resolverCategoriaPai(
     tx: TenantTx,
     empresaId: string,
-    categoriaPaiCodigo: string | null | undefined,
+    categoriaPaiChave: string | null | undefined,
   ) {
-    if (!categoriaPaiCodigo) return null;
+    if (!categoriaPaiChave) return null;
     const pai = await tx.categoria.findFirst({
-      where: { empresaId, codigoErp: categoriaPaiCodigo, deletedAt: null },
+      where: { empresaId, chave: categoriaPaiChave, deletedAt: null },
       select: { id: true },
     });
     if (!pai)
       throw new NotFoundException(
-        `categoriaPaiCodigo '${categoriaPaiCodigo}' não encontrado`,
+        `categoriaPaiChave '${categoriaPaiChave}' não encontrado`,
       );
     return pai.id;
   }

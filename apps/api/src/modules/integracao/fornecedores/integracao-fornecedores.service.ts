@@ -29,7 +29,8 @@ export class IntegracaoFornecedoresService {
   private paraLeitura(row: FornecedorRow): IntegracaoFornecedor {
     return {
       id: row.id,
-      codigoErp: row.codigoErp ?? '',
+      chave: row.chave ?? '',
+      codigoErp: row.codigoErp,
       tipoPessoa: row.tipoPessoa,
       razaoSocial: row.razaoSocial,
       nomeFantasia: row.nomeFantasia,
@@ -98,11 +99,11 @@ export class IntegracaoFornecedoresService {
 
   async findOne(
     empresaId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<IntegracaoFornecedor> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const row = await tx.fornecedor.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!row) throw new NotFoundException('Fornecedor não encontrado');
       return this.paraLeitura(row);
@@ -132,12 +133,13 @@ export class IntegracaoFornecedoresService {
       // Sem `deletedAt: null` de propósito: é o que permite reativar um
       // fornecedor que o ERP mandar de volta.
       const existente = await tx.fornecedor.findFirst({
-        where: { empresaId, codigoErp: input.codigoErp },
+        where: { empresaId, chave: input.chave },
       });
       const decisao = decidirUpsert(existente);
 
       const dados = {
-        codigoErp: input.codigoErp,
+        chave: input.chave,
+        codigoErp: input.codigoErp ?? null,
         tipoPessoa: input.tipoPessoa,
         razaoSocial: input.razaoSocial,
         nomeFantasia: input.nomeFantasia ?? null,
@@ -181,7 +183,7 @@ export class IntegracaoFornecedoresService {
   ): Promise<IntegracaoLoteResultado> {
     return processarLote(registros, async (item) => {
       if (item.excluido) {
-        await this.remove(empresaId, apiKeyId, item.codigoErp);
+        await this.remove(empresaId, apiKeyId, item.chave);
         return 'excluido';
       }
       const { decisao } = await this.upsert(
@@ -196,13 +198,13 @@ export class IntegracaoFornecedoresService {
   async update(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
     input: IntegracaoFornecedorUpdate,
   ): Promise<IntegracaoFornecedor> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.fornecedor.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente) throw new NotFoundException('Fornecedor não encontrado');
 
@@ -211,6 +213,9 @@ export class IntegracaoFornecedoresService {
         data: {
           ...(input.tipoPessoa !== undefined
             ? { tipoPessoa: input.tipoPessoa }
+            : {}),
+          ...(input.codigoErp !== undefined
+            ? { codigoErp: input.codigoErp ?? null }
             : {}),
           ...(input.razaoSocial !== undefined
             ? { razaoSocial: input.razaoSocial }
@@ -253,12 +258,12 @@ export class IntegracaoFornecedoresService {
   async remove(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<void> {
     const autor = autorIntegracao(apiKeyId);
     await this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.fornecedor.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente) throw new NotFoundException('Fornecedor não encontrado');
       await tx.fornecedor.update({

@@ -59,8 +59,8 @@ export class IntegracaoRegrasDescontoController {
     return this.service.findAll(integracao.empresaId, query);
   }
 
-  @ApiOperation({ summary: 'Detalhar regra de desconto por codigoErp' })
-  @ApiParam({ name: 'codigo', description: 'codigoErp da regra (Z0_CODIGO)' })
+  @ApiOperation({ summary: 'Detalhar regra de desconto por chave' })
+  @ApiParam({ name: 'codigo', description: 'chave da regra (Z0_CODIGO)' })
   @ApiResponse({
     status: 200,
     schema: { example: INTEGRACAO_REGRA_DESCONTO_EXAMPLE },
@@ -87,7 +87,7 @@ export class IntegracaoRegrasDescontoController {
   })
   @ApiResponse({
     status: 409,
-    description: 'Já existe regra com esse codigoErp',
+    description: 'Já existe regra com essa chave',
   })
   @Post()
   create(
@@ -100,7 +100,7 @@ export class IntegracaoRegrasDescontoController {
   @ApiOperation({
     summary: 'Enviar lote de regras-desconto',
     description:
-      'Upsert em lote por codigoErp (máx. 1.000 por chamada). Um registro com ' +
+      'Upsert em lote por chave (máx. 1.000 por chamada). Um registro com ' +
       '"excluido": true é excluído (soft delete) e dispensa os demais campos. ' +
       'Responde 200 com o relatório: um item inválido não desfaz os que já ' +
       'passaram, e vem listado em "erros" com o índice no array enviado.',
@@ -132,7 +132,7 @@ export class IntegracaoRegrasDescontoController {
       'Atualização parcial — faixa com delete=true exclui somente a sequência indicada; ' +
       'as demais são incluídas ou atualizadas.',
   })
-  @ApiParam({ name: 'codigo', description: 'codigoErp da regra (Z0_CODIGO)' })
+  @ApiParam({ name: 'codigo', description: 'chave da regra (Z0_CODIGO)' })
   @ApiResponse({
     status: 200,
     schema: { example: INTEGRACAO_REGRA_DESCONTO_EXAMPLE },
@@ -153,7 +153,7 @@ export class IntegracaoRegrasDescontoController {
   }
 
   @ApiOperation({ summary: 'Excluir regra de desconto (soft delete)' })
-  @ApiParam({ name: 'codigo', description: 'codigoErp da regra (Z0_CODIGO)' })
+  @ApiParam({ name: 'codigo', description: 'chave da regra (Z0_CODIGO)' })
   @ApiResponse({ status: 200, description: 'Excluída' })
   @ApiResponse({ status: 404, description: 'Regra não encontrada' })
   @Delete(':codigo')

@@ -29,8 +29,8 @@ import {
 import { processarLote } from '../common/processar-lote';
 
 const INCLUDE = {
-  cliente: { select: { codigoErp: true } },
-  vendedor: { select: { codigoErp: true } },
+  cliente: { select: { chave: true } },
+  vendedor: { select: { chave: true } },
   // A conta de cobrança volta pela descrição, que é como o ERP a referencia —
   // ele não conhece o uuid do cadastro da plataforma.
   contaBancaria: { select: { descricao: true } },
@@ -76,9 +76,10 @@ export class IntegracaoTitulosReceberService {
   private paraLeitura(row: TituloComRelacoes): IntegracaoTituloReceber {
     return {
       id: row.id,
-      codigoErp: row.codigoErp ?? '',
-      clienteCodigo: row.cliente?.codigoErp ?? null,
-      vendedorCodigo: row.vendedor?.codigoErp ?? null,
+      chave: row.chave ?? '',
+      codigoErp: row.codigoErp,
+      clienteChave: row.cliente?.chave ?? null,
+      vendedorChave: row.vendedor?.chave ?? null,
       numero: row.numero,
       parcela: row.parcela,
       prefixo: row.prefixo,
@@ -139,7 +140,7 @@ export class IntegracaoTitulosReceberService {
           where,
           include: INCLUDE,
           ...paginationToSkipTake(query),
-          orderBy: { codigoErp: 'asc' },
+          orderBy: { chave: 'asc' },
         }),
         tx.tituloReceber.count({ where }),
       ]);
@@ -153,11 +154,11 @@ export class IntegracaoTitulosReceberService {
 
   async findOne(
     empresaId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<IntegracaoTituloReceber> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const row = await tx.tituloReceber.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
         include: INCLUDE,
       });
       if (!row) throw new NotFoundException('Título a receber não encontrado');
@@ -190,19 +191,19 @@ export class IntegracaoTitulosReceberService {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.tituloReceber.findFirst({
-        where: { empresaId, codigoErp: input.codigoErp },
+        where: { empresaId, chave: input.chave },
       });
       const decisao = decidirUpsert(existente);
 
       const clienteId = await this.resolverCliente(
         tx,
         empresaId,
-        input.clienteCodigo,
+        input.clienteChave,
       );
       const vendedorId = await this.resolverVendedor(
         tx,
         empresaId,
-        input.vendedorCodigo,
+        input.vendedorChave,
       );
       const contaBancariaId = await this.resolverContaBancaria(
         tx,
@@ -211,31 +212,32 @@ export class IntegracaoTitulosReceberService {
       );
 
       const dados = {
-          codigoErp: input.codigoErp,
-          clienteId,
-          vendedorId,
-          numero: input.numero,
-          parcela: input.parcela ?? null,
-          prefixo: input.prefixo ?? null,
-          tipo: input.tipo ?? null,
-          emissao: input.emissao ?? null,
-          vencimento: input.vencimento ?? null,
-          vencimentoReal: input.vencimentoReal ?? null,
-          valor: input.valor,
-          saldo: input.saldo,
-          acrescimo: input.acrescimo ?? null,
-          decrescimo: input.decrescimo ?? null,
-          dtBaixa: input.dtBaixa ?? null,
-          formaPgto: input.formaPgto ?? null,
-          historico: input.historico ?? null,
-          ativo: input.ativo,
-          contaBancariaId,
-          nossoNumero: this.soDigitos(input.nossoNumero),
-          carteira: this.soDigitos(input.carteira),
-          codigoBarras: this.validarCodigoBarras(input.codigoBarras),
-          linhaDigitavel: this.soDigitos(input.linhaDigitavel),
-          ...this.dadosDoBoleto(input),
-          updatedBy: autor,
+        chave: input.chave,
+        codigoErp: input.codigoErp ?? null,
+        clienteId,
+        vendedorId,
+        numero: input.numero,
+        parcela: input.parcela ?? null,
+        prefixo: input.prefixo ?? null,
+        tipo: input.tipo ?? null,
+        emissao: input.emissao ?? null,
+        vencimento: input.vencimento ?? null,
+        vencimentoReal: input.vencimentoReal ?? null,
+        valor: input.valor,
+        saldo: input.saldo,
+        acrescimo: input.acrescimo ?? null,
+        decrescimo: input.decrescimo ?? null,
+        dtBaixa: input.dtBaixa ?? null,
+        formaPgto: input.formaPgto ?? null,
+        historico: input.historico ?? null,
+        ativo: input.ativo,
+        contaBancariaId,
+        nossoNumero: this.soDigitos(input.nossoNumero),
+        carteira: this.soDigitos(input.carteira),
+        codigoBarras: this.validarCodigoBarras(input.codigoBarras),
+        linhaDigitavel: this.soDigitos(input.linhaDigitavel),
+        ...this.dadosDoBoleto(input),
+        updatedBy: autor,
       };
 
       if (decisao !== 'criar') {
@@ -270,7 +272,7 @@ export class IntegracaoTitulosReceberService {
   ): Promise<IntegracaoLoteResultado> {
     return processarLote(registros, async (item) => {
       if (item.excluido) {
-        await this.remove(empresaId, apiKeyId, item.codigoErp);
+        await this.remove(empresaId, apiKeyId, item.chave);
         return 'excluido';
       }
       const { decisao } = await this.upsert(
@@ -285,24 +287,24 @@ export class IntegracaoTitulosReceberService {
   async update(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
     input: IntegracaoTituloReceberUpdate,
   ): Promise<IntegracaoTituloReceber> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.tituloReceber.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente)
         throw new NotFoundException('Título a receber não encontrado');
 
       const clienteId =
-        input.clienteCodigo !== undefined
-          ? await this.resolverCliente(tx, empresaId, input.clienteCodigo)
+        input.clienteChave !== undefined
+          ? await this.resolverCliente(tx, empresaId, input.clienteChave)
           : undefined;
       const vendedorId =
-        input.vendedorCodigo !== undefined
-          ? await this.resolverVendedor(tx, empresaId, input.vendedorCodigo)
+        input.vendedorChave !== undefined
+          ? await this.resolverVendedor(tx, empresaId, input.vendedorChave)
           : undefined;
       const contaBancariaId =
         input.contaBancariaDescricao !== undefined
@@ -370,12 +372,12 @@ export class IntegracaoTitulosReceberService {
   async remove(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<void> {
     const autor = autorIntegracao(apiKeyId);
     await this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.tituloReceber.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente)
         throw new NotFoundException('Título a receber não encontrado');
@@ -393,11 +395,11 @@ export class IntegracaoTitulosReceberService {
   ) {
     if (!codigo) return null;
     const cliente = await tx.cliente.findFirst({
-      where: { empresaId, codigoErp: codigo, deletedAt: null },
+      where: { empresaId, chave: codigo, deletedAt: null },
       select: { id: true },
     });
     if (!cliente)
-      throw new NotFoundException(`clienteCodigo '${codigo}' não encontrado`);
+      throw new NotFoundException(`clienteChave '${codigo}' não encontrado`);
     return cliente.id;
   }
 
@@ -408,11 +410,11 @@ export class IntegracaoTitulosReceberService {
   ) {
     if (!codigo) return null;
     const vendedor = await tx.vendedor.findFirst({
-      where: { empresaId, codigoErp: codigo, deletedAt: null },
+      where: { empresaId, chave: codigo, deletedAt: null },
       select: { id: true },
     });
     if (!vendedor)
-      throw new NotFoundException(`vendedorCodigo '${codigo}' não encontrado`);
+      throw new NotFoundException(`vendedorChave '${codigo}' não encontrado`);
     return vendedor.id;
   }
 

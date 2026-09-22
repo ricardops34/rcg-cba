@@ -22,7 +22,7 @@ describe('contrato do lote da integracao', () => {
     it(`recusa acima de ${INTEGRACAO_LOTE_MAX} registros`, () => {
       const registros = Array.from({ length: INTEGRACAO_LOTE_MAX + 1 }, (_, i) => ({
         ...registro,
-        codigoErp: String(i).padStart(6, '0'),
+        chave: String(i).padStart(6, '0'),
       }));
       expect(() => integracaoCategoriaLoteSchema.parse({ registros })).toThrow();
     });
@@ -30,7 +30,7 @@ describe('contrato do lote da integracao', () => {
     it(`aceita exatamente ${INTEGRACAO_LOTE_MAX} registros`, () => {
       const registros = Array.from({ length: INTEGRACAO_LOTE_MAX }, (_, i) => ({
         ...registro,
-        codigoErp: String(i).padStart(6, '0'),
+        chave: String(i).padStart(6, '0'),
       }));
       expect(
         integracaoCategoriaLoteSchema.parse({ registros }).registros,
@@ -42,13 +42,13 @@ describe('contrato do lote da integracao', () => {
     it('exige os campos da entidade quando nao e exclusao', () => {
       // Sem `descricao`, que o schema de criacao exige.
       expect(() =>
-        integracaoCategoriaLoteItemSchema.parse({ codigoErp: '000001' }),
+        integracaoCategoriaLoteItemSchema.parse({ chave: '000001' }),
       ).toThrow();
     });
 
     it('aponta qual campo faltou, em vez de "nenhuma opcao casou"', () => {
       const conferido = integracaoCategoriaLoteItemSchema.safeParse({
-        codigoErp: '000001',
+        chave: '000001',
       });
       expect(conferido.success).toBe(false);
       if (conferido.success) return;
@@ -58,10 +58,10 @@ describe('contrato do lote da integracao', () => {
 
     it('para excluir basta a chave', () => {
       const item = integracaoCategoriaLoteItemSchema.parse({
-        codigoErp: '000001',
+        chave: '000001',
         excluido: true,
       });
-      expect(item).toEqual({ codigoErp: '000001', excluido: true });
+      expect(item).toEqual({ chave: '000001', excluido: true });
     });
 
     it('exige a chave tambem na exclusao', () => {
@@ -70,9 +70,9 @@ describe('contrato do lote da integracao', () => {
       ).toThrow();
     });
 
-    it('recusa codigoErp vazio', () => {
+    it('recusa chave vazia', () => {
       expect(() =>
-        integracaoCategoriaLoteItemSchema.parse({ codigoErp: '', excluido: true }),
+        integracaoCategoriaLoteItemSchema.parse({ chave: '', excluido: true }),
       ).toThrow();
     });
 

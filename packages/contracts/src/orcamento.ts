@@ -63,8 +63,8 @@ export const orcamentoItemLinhaSchema = z.object({
 export type OrcamentoItemLinha = z.infer<typeof orcamentoItemLinhaSchema> & {
   regraDescontoId?: string | null;
   percComissao?: number | null;
-  /// Chave de identidade do item no ERP; nula no item que nasce na tela.
-  codigoErp?: string | null;
+  /// Chave de integração do item (SC6 do pedido); nula no item que nasce na tela.
+  chave?: string | null;
 };
 
 export const orcamentoCreateSchema = z.object({

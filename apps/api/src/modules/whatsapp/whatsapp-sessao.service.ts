@@ -387,15 +387,23 @@ export class WhatsappSessaoService {
       throw new NotFoundException('O número da empresa ainda não foi pareado.');
     }
     const doProvedor = await this.provedores.pareamento(empresaId, sessao.id);
+    // Mesma regra de `pareamento()`: a gravação não pode derrubar a leitura.
     if (
       doProvedor.status !== sessao.status ||
       doProvedor.numero !== sessao.numero
     ) {
-      await this.registrarEstado(empresaId, sessao.id, {
-        status: doProvedor.status,
-        numero: doProvedor.numero,
-        erro: doProvedor.erro,
-      });
+      try {
+        await this.registrarEstado(empresaId, sessao.id, {
+          status: doProvedor.status,
+          numero: doProvedor.numero,
+          erro: doProvedor.erro,
+        });
+      } catch (erro) {
+        this.logger.error(
+          `Falha ao gravar o estado da sessão ${sessao.id} durante o pareamento ` +
+            `(o QR foi devolvido mesmo assim): ${erro instanceof Error ? erro.message : String(erro)}`,
+        );
+      }
     }
     return doProvedor;
   }

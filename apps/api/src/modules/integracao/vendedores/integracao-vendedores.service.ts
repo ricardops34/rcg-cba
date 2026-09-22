@@ -29,7 +29,7 @@ import { processarLote } from '../common/processar-lote';
 // gerente ou o que a empresa tiver acima. Para o contrato de integração, o
 // superior imediato **é** o supervisor.
 const INCLUDE = {
-  superior: { select: { codigoErp: true } },
+  superior: { select: { chave: true } },
 } satisfies Prisma.VendedorInclude;
 type VendedorComSuperior = Prisma.VendedorGetPayload<{
   include: typeof INCLUDE;
@@ -42,7 +42,8 @@ export class IntegracaoVendedoresService {
   private paraLeitura(row: VendedorComSuperior): IntegracaoVendedor {
     return {
       id: row.id,
-      codigoErp: row.codigoErp ?? '',
+      chave: row.chave ?? '',
+      codigoErp: row.codigoErp,
       nome: row.nome,
       nomeReduzido: row.nomeReduzido,
       telefone: row.telefone,
@@ -52,7 +53,7 @@ export class IntegracaoVendedoresService {
       // o papel virou um campo só (Vendedor.tipo). A conversão fica aqui para
       // não quebrar quem já integra.
       vendedor: row.tipo === 'vendedor',
-      supervisorCodigo: row.superior?.codigoErp ?? null,
+      supervisorChave: row.superior?.chave ?? null,
       supervisor: row.tipo === 'superior',
       percComissao: row.percComissao,
       ativo: row.ativo,
@@ -91,13 +92,10 @@ export class IntegracaoVendedoresService {
     });
   }
 
-  async findOne(
-    empresaId: string,
-    codigoErp: string,
-  ): Promise<IntegracaoVendedor> {
+  async findOne(empresaId: string, chave: string): Promise<IntegracaoVendedor> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const row = await tx.vendedor.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
         include: INCLUDE,
       });
       if (!row) throw new NotFoundException('Vendedor não encontrado');
@@ -130,23 +128,23 @@ export class IntegracaoVendedoresService {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.vendedor.findFirst({
-        where: { empresaId, codigoErp: input.codigoErp },
+        where: { empresaId, chave: input.chave },
       });
       const decisao = decidirUpsert(existente);
 
       let supervisorId: string | null = null;
-      if (input.supervisorCodigo) {
+      if (input.supervisorChave) {
         const supervisor = await tx.vendedor.findFirst({
           where: {
             empresaId,
-            codigoErp: input.supervisorCodigo,
+            chave: input.supervisorChave,
             deletedAt: null,
           },
           select: { id: true },
         });
         if (!supervisor) {
           throw new NotFoundException(
-            `supervisorCodigo '${input.supervisorCodigo}' não encontrado`,
+            `supervisorChave '${input.supervisorChave}' não encontrado`,
           );
         }
         supervisorId = supervisor.id;
@@ -157,7 +155,8 @@ export class IntegracaoVendedoresService {
       // também na reativação: um vendedor que volta mantém o vínculo com o
       // usuário que tinha.
       const dados = {
-        codigoErp: input.codigoErp,
+        chave: input.chave,
+        codigoErp: input.codigoErp ?? null,
         nome: input.nome,
         nomeReduzido: input.nomeReduzido ?? null,
         telefone: input.telefone ?? null,
@@ -204,7 +203,7 @@ export class IntegracaoVendedoresService {
   ): Promise<IntegracaoLoteResultado> {
     return processarLote(registros, async (item) => {
       if (item.excluido) {
-        await this.remove(empresaId, apiKeyId, item.codigoErp);
+        await this.remove(empresaId, apiKeyId, item.chave);
         return 'excluido';
       }
       const { decisao } = await this.upsert(
@@ -219,32 +218,32 @@ export class IntegracaoVendedoresService {
   async update(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
     input: IntegracaoVendedorUpdate,
   ): Promise<IntegracaoVendedor> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.vendedor.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente) throw new NotFoundException('Vendedor não encontrado');
 
       let supervisorId: string | null | undefined = undefined;
-      if (input.supervisorCodigo !== undefined) {
-        if (input.supervisorCodigo === null) {
+      if (input.supervisorChave !== undefined) {
+        if (input.supervisorChave === null) {
           supervisorId = null;
         } else {
           const supervisor = await tx.vendedor.findFirst({
             where: {
               empresaId,
-              codigoErp: input.supervisorCodigo,
+              chave: input.supervisorChave,
               deletedAt: null,
             },
             select: { id: true },
           });
           if (!supervisor) {
             throw new NotFoundException(
-              `supervisorCodigo '${input.supervisorCodigo}' não encontrado`,
+              `supervisorChave '${input.supervisorChave}' não encontrado`,
             );
           }
           supervisorId = supervisor.id;
@@ -266,6 +265,9 @@ export class IntegracaoVendedoresService {
         where: { id: existente.id },
         data: {
           ...(tipo !== undefined ? { tipo } : {}),
+          ...(input.codigoErp !== undefined
+            ? { codigoErp: input.codigoErp ?? null }
+            : {}),
           ...(input.nome !== undefined ? { nome: input.nome } : {}),
           ...(input.nomeReduzido !== undefined
             ? { nomeReduzido: input.nomeReduzido }
@@ -294,12 +296,12 @@ export class IntegracaoVendedoresService {
   async remove(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<void> {
     const autor = autorIntegracao(apiKeyId);
     await this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.vendedor.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente) throw new NotFoundException('Vendedor não encontrado');
       await tx.vendedor.update({

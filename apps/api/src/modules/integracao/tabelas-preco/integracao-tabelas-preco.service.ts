@@ -30,8 +30,8 @@ const INCLUDE = {
   itens: {
     where: { deletedAt: null },
     include: {
-      produto: { select: { codigoErp: true } },
-      regraDesconto: { select: { codigoErp: true } },
+      produto: { select: { chave: true } },
+      regraDesconto: { select: { chave: true } },
     },
   },
 } satisfies Prisma.TabelaPrecoInclude;
@@ -44,6 +44,7 @@ export class IntegracaoTabelasPrecoService {
   private paraLeitura(row: TabelaComItens): IntegracaoTabelaPreco {
     return {
       id: row.id,
+      chave: row.chave ?? '',
       codigoErp: row.codigoErp,
       descricao: row.descricao,
       dtInicio: row.dtInicio,
@@ -51,10 +52,10 @@ export class IntegracaoTabelasPrecoService {
       ativo: row.ativo,
       itens: row.itens.map((item) => ({
         delete: false,
-        codigoErp: item.codigoErp ?? '',
-        produtoCodigo: item.produto.codigoErp,
+        chave: item.chave ?? '',
+        produtoChave: item.produto.chave ?? '',
         preco: item.preco,
-        regraDescontoCodigo: item.regraDesconto?.codigoErp ?? null,
+        regraDescontoChave: item.regraDesconto?.chave ?? null,
         ativo: item.ativo,
       })),
       createdAt: row.createdAt.toISOString(),
@@ -84,7 +85,7 @@ export class IntegracaoTabelasPrecoService {
           where,
           include: INCLUDE,
           ...paginationToSkipTake(query),
-          orderBy: { codigoErp: 'asc' },
+          orderBy: { chave: 'asc' },
         }),
         tx.tabelaPreco.count({ where }),
       ]);
@@ -98,11 +99,11 @@ export class IntegracaoTabelasPrecoService {
 
   async findOne(
     empresaId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<IntegracaoTabelaPreco> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const row = await tx.tabelaPreco.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
         include: INCLUDE,
       });
       if (!row) throw new NotFoundException('Tabela de preço não encontrada');
@@ -135,7 +136,7 @@ export class IntegracaoTabelasPrecoService {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.tabelaPreco.findFirst({
-        where: { empresaId, codigoErp: input.codigoErp },
+        where: { empresaId, chave: input.chave },
       });
       const decisao = decidirUpsert(existente);
 
@@ -144,26 +145,26 @@ export class IntegracaoTabelasPrecoService {
           const produto = await tx.produto.findFirst({
             where: {
               empresaId,
-              codigoErp: item.produtoCodigo,
+              chave: item.produtoChave,
               deletedAt: null,
             },
             select: { id: true },
           });
           if (!produto)
             throw new NotFoundException(
-              `produtoCodigo '${item.produtoCodigo}' não encontrado`,
+              `produtoChave '${item.produtoChave}' não encontrado`,
             );
           return {
             delete: item.delete,
             empresaId,
-            codigoErp: item.codigoErp,
+            chave: item.chave,
             produtoId: produto.id,
             preco: item.preco,
             regraDescontoId:
               (await resolverRegraDesconto(
                 tx,
                 empresaId,
-                item.regraDescontoCodigo,
+                item.regraDescontoChave,
               )) ?? null,
             ativo: item.ativo,
           };
@@ -171,7 +172,8 @@ export class IntegracaoTabelasPrecoService {
       );
 
       const dados = {
-        codigoErp: input.codigoErp,
+        chave: input.chave,
+        codigoErp: input.codigoErp ?? '',
         descricao: input.descricao,
         dtInicio: input.dtInicio ?? null,
         dtFim: input.dtFim ?? null,
@@ -181,13 +183,16 @@ export class IntegracaoTabelasPrecoService {
 
       if (decisao !== 'criar') {
         // O ERP manda a tabela inteira: linha que não veio mais não existe
-        // mais, e a que veio é casada pelo codigoErp.
+        // mais, e a que veio é casada pela chave.
         const atualizadoUpsert = await tx.tabelaPreco.update({
           where: { id: existente!.id },
           data: {
             ...dados,
             ...camposDaDecisao(decisao),
-            itens: sincronizarFilhos(empresaId, itensData),
+            itens: sincronizarFilhos(
+              { campo: 'tabelaPrecoId', id: existente!.id },
+              itensData,
+            ),
           },
           include: INCLUDE,
         });
@@ -222,7 +227,7 @@ export class IntegracaoTabelasPrecoService {
   ): Promise<IntegracaoLoteResultado> {
     return processarLote(registros, async (item) => {
       if (item.excluido) {
-        await this.remove(empresaId, apiKeyId, item.codigoErp);
+        await this.remove(empresaId, apiKeyId, item.chave);
         return 'excluido';
       }
       const { decisao } = await this.upsert(
@@ -237,13 +242,13 @@ export class IntegracaoTabelasPrecoService {
   async update(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
     input: IntegracaoTabelaPrecoUpdate,
   ): Promise<IntegracaoTabelaPreco> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.tabelaPreco.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente)
         throw new NotFoundException('Tabela de preço não encontrada');
@@ -255,38 +260,46 @@ export class IntegracaoTabelasPrecoService {
             const produto = await tx.produto.findFirst({
               where: {
                 empresaId,
-                codigoErp: item.produtoCodigo,
+                chave: item.produtoChave,
                 deletedAt: null,
               },
               select: { id: true },
             });
             if (!produto) {
               throw new NotFoundException(
-                `produtoCodigo '${item.produtoCodigo}' não encontrado`,
+                `produtoChave '${item.produtoChave}' não encontrado`,
               );
             }
             return {
               delete: item.delete,
               empresaId,
-              codigoErp: item.codigoErp,
+              chave: item.chave,
               produtoId: produto.id,
               preco: item.preco,
               regraDescontoId:
                 (await resolverRegraDesconto(
                   tx,
                   empresaId,
-                  item.regraDescontoCodigo,
+                  item.regraDescontoChave,
                 )) ?? null,
               ativo: item.ativo,
             };
           }),
         );
-        itensUpdate = { itens: sincronizarFilhos(empresaId, itensData) };
+        itensUpdate = {
+          itens: sincronizarFilhos(
+            { campo: 'tabelaPrecoId', id: existente.id },
+            itensData,
+          ),
+        };
       }
 
       const atualizada = await tx.tabelaPreco.update({
         where: { id: existente.id },
         data: {
+          ...(input.codigoErp !== undefined
+            ? { codigoErp: input.codigoErp ?? '' }
+            : {}),
           ...(input.descricao !== undefined
             ? { descricao: input.descricao }
             : {}),
@@ -305,12 +318,12 @@ export class IntegracaoTabelasPrecoService {
   async remove(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<void> {
     const autor = autorIntegracao(apiKeyId);
     await this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.tabelaPreco.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente)
         throw new NotFoundException('Tabela de preço não encontrada');

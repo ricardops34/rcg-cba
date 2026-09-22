@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   WHATSAPP_TRANSPORTE_ROTULO,
   type WhatsappConfig,
+  type WhatsappPareamento,
   type WhatsappTransporte,
 } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
@@ -13,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, QrCode, Smartphone, TriangleAlert, Unplug } from "lucide-react";
+import { useImagemQr } from "./use-imagem-qr";
 
 interface SessaoEmpresa {
   id: string;
@@ -62,7 +64,6 @@ export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
   });
 
   const [ocupado, setOcupado] = useState(false);
-  const [qr, setQr] = useState<string | null>(null);
   // null = ainda não mexeu no seletor; usa o padrão (sessão atual, ou da
   // empresa) até o admin escolher outro provedor explicitamente.
   const [transporteEscolhido, setTransporteEscolhido] =
@@ -77,6 +78,24 @@ export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
     refetchInterval: (q) =>
       (q.state.data as SessaoEmpresa | null)?.status === "pareando" ? 3000 : false,
   });
+
+  // O QR expira em segundos e o provedor renova: buscar uma vez só (como era)
+  // deixava na tela um código já vencido. A rota devolve `qr` — o campo lido
+  // antes era `qrCode`, que nunca existiu, e o código não aparecia com
+  // provedor nenhum.
+  const pareandoAgora = sessao?.status === "pareando";
+  const {
+    data: pareamento,
+    error: erroPareamento,
+    refetch: buscarQr,
+  } = useQuery({
+    queryKey: ["whatsapp", "pareamento-empresa", chaveCache],
+    queryFn: () => apiFetch<WhatsappPareamento>(`${sessaoUrl}/pareamento`),
+    enabled: config?.ativo === true && pareandoAgora,
+    refetchInterval: 3000,
+  });
+
+  const qrImagem = useImagemQr(pareandoAgora ? pareamento?.qr : null);
 
   if (carregandoConfig || !config) {
     return (
@@ -137,22 +156,12 @@ export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
         body: { transporte },
       });
       await refetch();
-      await buscarQr();
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "Não foi possível iniciar o pareamento",
       );
     } finally {
       setOcupado(false);
-    }
-  };
-
-  const buscarQr = async () => {
-    try {
-      const r = await apiFetch<{ qrCode?: string | null }>(`${sessaoUrl}/pareamento`);
-      setQr(r.qrCode ?? null);
-    } catch {
-      setQr(null);
     }
   };
 
@@ -166,7 +175,6 @@ export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
     setOcupado(true);
     try {
       await apiFetch(sessaoUrl, { method: "DELETE" });
-      setQr(null);
       await refetch();
       toast.success("Número desconectado");
     } catch (err) {
@@ -261,10 +269,10 @@ export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
               Abra o WhatsApp do número da empresa → Aparelhos conectados →
               Conectar aparelho, e leia o código.
             </p>
-            {qr ? (
+            {qrImagem ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={qr}
+                src={qrImagem}
                 alt="QR de pareamento"
                 className="mx-auto size-56 rounded bg-white p-2"
               />
@@ -273,7 +281,22 @@ export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
                 <Loader2 className="size-4 animate-spin" /> gerando o código...
               </div>
             )}
-            <Button variant="outline" size="sm" onClick={buscarQr} className="w-full">
+            {/* Sem isto, QR que não vem e QR que ainda vai chegar eram o mesmo
+                "gerando o código..." girando para sempre. */}
+            {!qrImagem && (pareamento?.erro || erroPareamento) ? (
+              <p className="text-xs text-destructive">
+                {pareamento?.erro ??
+                  (erroPareamento instanceof ApiError
+                    ? erroPareamento.message
+                    : "Falha ao buscar o QR Code.")}
+              </p>
+            ) : null}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void buscarQr()}
+              className="w-full"
+            >
               <QrCode className="size-4" /> Gerar novo código
             </Button>
           </div>

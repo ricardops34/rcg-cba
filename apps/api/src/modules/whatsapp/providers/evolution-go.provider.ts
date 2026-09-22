@@ -1,7 +1,7 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import type { WhatsappTransporte } from '@plataforma/contracts';
-import { EvolutionGoClient, lista, texto } from './evolution-go.client';
+import { EvolutionGoClient, lista, objeto, texto } from './evolution-go.client';
 import type {
   ArquivoParaEnviar,
   ContatoAparelho,
@@ -61,16 +61,53 @@ export class EvolutionGoProvider implements WhatsappProvider {
   // ----------------------------------------------------------------------
 
   /**
-   * Nome técnico da instância.
+   * Nome técnico da instância: `rcg-<vendedor>-<sessaoId>`.
    *
-   * Determinístico a partir do id da sessão, e não sequencial nem pelo nome do
-   * vendedor: precisa sobreviver a renomeação de pessoa, ser único entre
-   * empresas do mesmo gateway e permitir reencontrar a instância quando a
-   * linha local perdeu o `instanciaId` (deploy interrompido no meio da
-   * criação).
+   * O `sessaoId` inteiro continua ali, e é ele que garante o que importa —
+   * unicidade entre empresas do mesmo gateway e a possibilidade de reencontrar
+   * a instância. O nome do vendedor entrou na frente porque o gateway tem
+   * painel próprio, e ali `rcg-d10a894d-9db0-…` não diz de quem é: quem
+   * administra precisa abrir a plataforma e cruzar o id à mão para saber qual
+   * aparelho está derrubado.
+   *
+   * **Uma vez criada, o nome não é recalculado**: ele fica gravado em
+   * `instanciaExterna` e é o que esta função devolve. Renomear a pessoa depois
+   * não renomeia a instância — o nome é um rótulo do momento da criação, não
+   * uma referência viva ao cadastro.
+   *
+   * O risco que isso abre, e que foi aceito em 2026-09-21: se a linha local
+   * perder o nome gravado **e** o vendedor tiver sido renomeado no intervalo,
+   * o nome recalculado não bate com o que está no gateway e uma instância nova
+   * é criada em vez de reaproveitar a antiga. É recuperável (apagar a órfã
+   * pelo painel), ao contrário de perder mensagem.
    */
   private nomeInstancia(ctx: ContextoSessao): string {
-    return ctx.instancia.nome ?? `rcg-${ctx.sessaoId}`;
+    if (ctx.instancia.nome) return ctx.instancia.nome;
+    return `rcg-${this.apelidoDe(ctx)}-${ctx.sessaoId}`;
+  }
+
+  /**
+   * Pedaço legível do nome: o vendedor, ou `institucional`.
+   *
+   * Sem acento, sem espaço e curto de propósito — é identificador de instância
+   * num gateway de terceiro, e não há garantia de que ele aceite o resto. O
+   * `sessaoId` ao lado é quem carrega a unicidade, então encurtar aqui não
+   * cria colisão.
+   */
+  private apelidoDe(ctx: ContextoSessao): string {
+    const bruto = ctx.vendedorNome?.trim();
+    if (!bruto) return 'institucional';
+    const limpo = bruto
+      .normalize('NFD')
+      // `\p{Diacritic}` em vez da faixa `̀-ͯ`: o formatador
+      // transforma aquela nos próprios caracteres combinantes, que são
+      // invisíveis no fonte e ninguém consegue revisar depois.
+      .replace(/\p{Diacritic}/gu, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 24)
+      .replace(/-+$/g, '');
+    return limpo || 'vendedor';
   }
 
   /**
@@ -115,6 +152,58 @@ export class EvolutionGoProvider implements WhatsappProvider {
     return ctx.instancia.id ?? this.nomeInstancia(ctx);
   }
 
+  /**
+   * `advancedSettings` como o gateway os espera.
+   *
+   * Vêm da configuração da empresa e valem para **toda** instância dela —
+   * vendedor, gerente, supervisor e o número institucional. A regra é de
+   * atendimento, não do aparelho: não faria sentido um vendedor ignorar grupos
+   * e o outro não.
+   */
+  private configuracoesAvancadas(ctx: ContextoSessao) {
+    return {
+      alwaysOnline: ctx.config.evolutionAlwaysOnline,
+      ignoreGroups: ctx.config.evolutionIgnoreGroups,
+      ignoreStatus: ctx.config.evolutionIgnoreStatus,
+      readMessages: ctx.config.evolutionReadMessages,
+      rejectCall: ctx.config.evolutionRejectCall,
+      // O gateway espera string; nulo aqui é "recusar sem responder nada".
+      msgRejectCall: ctx.config.evolutionMsgRejectCall ?? '',
+    };
+  }
+
+  /**
+   * Empurra as configurações para uma instância que **já existe**.
+   *
+   * Roda a cada `iniciar`, e não só na criação: é o que faz uma alteração na
+   * tela alcançar as instâncias antigas. Sem isto, mudar a política valeria só
+   * para quem parear depois — que é justamente o que motivou tirar esses
+   * valores do código.
+   *
+   * Melhor-esforço de propósito: a configuração é preferência de atendimento,
+   * e falhar aqui não pode impedir o vendedor de conectar. O motivo vai ao log
+   * porque o sintoma, sem ele, seria uma opção da tela que simplesmente não
+   * surte efeito.
+   */
+  private async aplicarConfiguracoes(ctx: ContextoSessao): Promise<void> {
+    try {
+      await this.http.chamar<unknown>(
+        ctx.config.evolutionUrl,
+        `/instance/${encodeURIComponent(this.idInstancia(ctx))}/advanced-settings`,
+        {
+          metodo: 'PUT',
+          credencial: this.chaveInstancia(ctx),
+          corpo: this.configuracoesAvancadas(ctx),
+        },
+      );
+    } catch (erro) {
+      this.logger.warn(
+        `Não consegui aplicar as configurações avançadas em ${this.nomeInstancia(ctx)}: ` +
+          `${erro instanceof Error ? erro.message : String(erro)}`,
+      );
+    }
+  }
+
   async iniciar(
     ctx: ContextoSessao,
     opcoes: { arquivarMensagens: boolean },
@@ -145,21 +234,21 @@ export class EvolutionGoProvider implements WhatsappProvider {
         corpo: {
           name: nome,
           token,
-          advancedSettings: {
-            // Grupo não faz parte do atendimento; ignorar na origem evita
-            // tráfego que a API descartaria de qualquer forma.
-            ignoreGroups: true,
-            ignoreStatus: true,
-            // Quem marca como lida é o vendedor, abrindo a conversa. Ligar
-            // isto mandaria o visto azul ao cliente sem ninguém ter lido.
-            readMessages: false,
-            alwaysOnline: false,
-          },
+          // Eram fixos aqui até 2026-09-21. Agora vêm da configuração da
+          // empresa (Administração > WhatsApp > Evolution GO), com os mesmos
+          // valores como padrão — ver `configuracoesAvancadas`.
+          advancedSettings: this.configuracoesAvancadas(ctx),
         },
       });
       instanciaId =
         texto(criada, 'instanceId', 'id', 'instance_id', 'instance.id') ?? null;
     }
+
+    // A política de atendimento é reaplicada a cada conexão, não só na
+    // criação: é o que faz uma alteração na tela alcançar as instâncias que já
+    // existiam. Vale para todas — vendedor, gerente, supervisor e o
+    // institucional.
+    if (jaExiste) await this.aplicarConfiguracoes(ctx);
 
     // `connect` é chamado sempre, inclusive na instância que já existia: é ele
     // que (re)registra o webhook e a lista de eventos. Uma instância que voltou
@@ -203,27 +292,102 @@ export class EvolutionGoProvider implements WhatsappProvider {
       aceitarAusente: true,
     });
 
-    const status = this.traduzirStatus(
-      texto(estado, 'state', 'status', 'connection', 'instance.state'),
-    );
+    // A Evolution GO embrulha tudo em `{ data, message }` e usa os nomes dos
+    // structs Go (`Connected`, `LoggedIn`, `Qrcode`, `Code`). Lendo só a raiz
+    // em minúsculas nada era encontrado: o status caía em "desconectada" e o
+    // QR nunca aparecia. Os nomes antigos ficam como retaguarda.
+    const dadosEstado = objeto(estado, 'data') ?? estado;
+    const status = this.statusDoEstado(dadosEstado);
     const numero = this.somenteDigitos(
-      texto(estado, 'number', 'phone', 'owner', 'instance.owner', 'jid'),
+      texto(
+        dadosEstado,
+        'number',
+        'phone',
+        'owner',
+        'instance.owner',
+        'jid',
+        'Jid',
+        'myJid',
+      ),
     );
 
     // O QR só é buscado enquanto faz sentido: pedi-lo com a sessão conectada
     // devolve erro em algumas versões, e o erro apareceria na tela como falha
     // de uma sessão que está perfeitamente de pé.
     let qr: string | null = null;
+    // Por que a busca do QR falhou, quando falhou.
+    //
+    // Antes o erro era engolido (`.catch(() => null)`) e o sintoma na tela era
+    // uma caixa vazia girando para sempre, sem nada que dissesse o motivo — nem
+    // na tela, nem no log da API. Licença não ativada, chave de instância
+    // errada e rota ausente na versão do gateway produziam exatamente a mesma
+    // imagem. Ver docs/whatsapp/operacao.md, seção Diagnóstico.
+    let motivoQr: string | null = null;
+
+    // Sem token da instância, a retaguarda é a chave administrativa — e para
+    // **esta** rota isso não funciona.
+    //
+    // `/instance/qr` não recebe parâmetro nenhum (conferido no Swagger do
+    // gateway em 2026-09-21): quem seleciona a instância é a credencial do
+    // cabeçalho. A documentação oficial é explícita — rota administrativa usa
+    // a `GLOBAL_API_KEY`, rota de operação usa o token da instância. Com a
+    // chave global aqui, o gateway não tem como saber de qual instância se
+    // pede o código, e a tela fica esperando um QR que nunca vem.
+    const semTokenProprio = !ctx.instancia.token;
+    if (semTokenProprio) {
+      this.logger.warn(
+        `A instância ${this.nomeInstancia(ctx)} não tem token próprio gravado; ` +
+          'o QR será pedido com a chave administrativa e provavelmente não virá.',
+      );
+    }
+
     if (status === 'pareando' || status === 'desconectada') {
       const resposta = await this.http
         .chamar<unknown>(url, '/instance/qr', {
           credencial: this.chaveInstancia(ctx),
           aceitarAusente: true,
         })
-        .catch(() => null);
+        .catch((erro: unknown) => {
+          motivoQr = erro instanceof Error ? erro.message : String(erro);
+          this.logger.error(
+            `Falha ao buscar o QR da instância ${this.nomeInstancia(ctx)}: ${motivoQr}`,
+          );
+          return null;
+        });
+      const dadosQr = objeto(resposta, 'data') ?? resposta;
+      // `Code` é o conteúdo cru do QR (`2@...`) e vem primeiro: a tela desenha
+      // o código a partir dele. `Qrcode` é a imagem PNG pronta em data URL —
+      // a tela também aceita, mas é a segunda opção.
       qr =
-        texto(resposta, 'qrcode', 'qr', 'code', 'base64', 'qrcode.code') ??
-        null;
+        texto(
+          dadosQr,
+          'Code',
+          'code',
+          'qrcode.code',
+          'Qrcode',
+          'qrcode',
+          'qr',
+          'base64',
+        ) ?? null;
+
+      // Respondeu, mas sem QR em nenhum dos campos conhecidos. É diferente de
+      // ter falhado: costuma ser a versão do gateway devolvendo o código em
+      // outro nome, e sem esta distinção os dois casos somem na mesma tela
+      // vazia.
+      if (!qr && !motivoQr) {
+        motivoQr = semTokenProprio
+          ? 'Esta instância não tem token próprio gravado, e o QR é pedido com ' +
+            'a chave administrativa — que não identifica qual instância é. ' +
+            'Recrie a instância pela aba Instâncias para o gateway devolver um ' +
+            'token e gravá-lo.'
+          : 'O gateway respondeu sem QR Code em nenhum campo conhecido ' +
+            '(qrcode, qr, code, base64). Confira a versão homologada em ' +
+            'EVOLUTION_GO_IMAGE.';
+        this.logger.warn(
+          `QR ausente na resposta da instância ${this.nomeInstancia(ctx)}` +
+            (semTokenProprio ? ' (sem token próprio)' : ''),
+        );
+      }
     }
 
     return {
@@ -232,7 +396,11 @@ export class EvolutionGoProvider implements WhatsappProvider {
       status: status === 'desconectada' && qr ? 'pareando' : status,
       qr,
       numero,
-      erro: texto(estado, 'error', 'lastError', 'message'),
+      // O erro do estado vem primeiro: ele explica a conexão inteira, enquanto
+      // o do QR explica só o código que faltou.
+      // `message` fica de fora: na Evolution GO ele vale "success" em toda
+      // resposta boa, e apareceria na tela como se fosse o erro da sessão.
+      erro: texto(dadosEstado, 'error', 'lastError') ?? motivoQr,
     };
   }
 
@@ -610,6 +778,26 @@ export class EvolutionGoProvider implements WhatsappProvider {
       );
     }
     return id;
+  }
+
+  /**
+   * Status a partir do corpo de `/instance/status`. A 0.7.x devolve booleanos
+   * (`Connected`, `LoggedIn`), não um texto de estado: `Connected` sem
+   * `LoggedIn` é o socket de pé esperando a leitura do QR.
+   */
+  private statusDoEstado(dados: unknown): EstadoPareamento['status'] {
+    if (dados && typeof dados === 'object') {
+      const d = dados as Record<string, unknown>;
+      const logado = d.LoggedIn ?? d.loggedIn;
+      const conectado = d.Connected ?? d.connected;
+      if (typeof logado === 'boolean' || typeof conectado === 'boolean') {
+        if (logado === true) return 'conectada';
+        return conectado === true ? 'pareando' : 'desconectada';
+      }
+    }
+    return this.traduzirStatus(
+      texto(dados, 'state', 'status', 'connection', 'instance.state'),
+    );
   }
 
   private traduzirStatus(bruto: string | null): EstadoPareamento['status'] {

@@ -26,10 +26,10 @@ import { processarLote } from '../common/processar-lote';
 import { sincronizarFilhos } from '../common/sincronizar-filhos';
 
 const INCLUDE = {
-  vendedor: { select: { codigoErp: true } },
+  vendedor: { select: { chave: true } },
   categorias: {
     where: { deletedAt: null },
-    include: { categoria: { select: { codigoErp: true } } },
+    include: { categoria: { select: { chave: true } } },
   },
 } satisfies Prisma.ObjetivoVendedorMesInclude;
 type ObjetivoComRelacoes = Prisma.ObjetivoVendedorMesGetPayload<{
@@ -43,8 +43,9 @@ export class IntegracaoObjetivosService {
   private paraLeitura(row: ObjetivoComRelacoes): IntegracaoObjetivo {
     return {
       id: row.id,
-      codigoErp: row.codigoErp ?? '',
-      vendedorCodigo: row.vendedor.codigoErp ?? '',
+      chave: row.chave ?? '',
+      codigoErp: row.codigoErp,
+      vendedorChave: row.vendedor.chave ?? '',
       mes: row.mes,
       ano: row.ano,
       valor: row.valor,
@@ -53,8 +54,8 @@ export class IntegracaoObjetivosService {
       tipo: row.tipo,
       ativo: row.ativo,
       categorias: row.categorias.map((c) => ({
-        codigoErp: c.codigoErp ?? '',
-        categoriaCodigo: c.categoria.codigoErp,
+        chave: c.chave ?? '',
+        categoriaChave: c.categoria.chave ?? '',
         valor: c.valor,
       })),
       createdAt: row.createdAt.toISOString(),
@@ -78,7 +79,7 @@ export class IntegracaoObjetivosService {
           where,
           include: INCLUDE,
           ...paginationToSkipTake(query),
-          orderBy: { codigoErp: 'asc' },
+          orderBy: { chave: 'asc' },
         }),
         tx.objetivoVendedorMes.count({ where }),
       ]);
@@ -92,11 +93,11 @@ export class IntegracaoObjetivosService {
 
   async findOne(
     empresaId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<IntegracaoObjetivo> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const row = await tx.objetivoVendedorMes.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
         include: INCLUDE,
       });
       if (!row) throw new NotFoundException('Objetivo não encontrado');
@@ -129,17 +130,17 @@ export class IntegracaoObjetivosService {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.objetivoVendedorMes.findFirst({
-        where: { empresaId, codigoErp: input.codigoErp },
+        where: { empresaId, chave: input.chave },
       });
       const decisao = decidirUpsert(existente);
 
       const vendedor = await tx.vendedor.findFirst({
-        where: { empresaId, codigoErp: input.vendedorCodigo, deletedAt: null },
+        where: { empresaId, chave: input.vendedorChave, deletedAt: null },
         select: { id: true },
       });
       if (!vendedor)
         throw new NotFoundException(
-          `vendedorCodigo '${input.vendedorCodigo}' não encontrado`,
+          `vendedorChave '${input.vendedorChave}' não encontrado`,
         );
 
       const categoriasData = await Promise.all(
@@ -147,19 +148,19 @@ export class IntegracaoObjetivosService {
           const categoria = await tx.categoria.findFirst({
             where: {
               empresaId,
-              codigoErp: linha.categoriaCodigo,
+              chave: linha.categoriaChave,
               deletedAt: null,
             },
             select: { id: true },
           });
           if (!categoria) {
             throw new NotFoundException(
-              `categoriaCodigo '${linha.categoriaCodigo}' não encontrado`,
+              `categoriaChave '${linha.categoriaChave}' não encontrado`,
             );
           }
           return {
             empresaId,
-            codigoErp: linha.codigoErp,
+            chave: linha.chave,
             categoriaId: categoria.id,
             valor: linha.valor,
           };
@@ -167,7 +168,8 @@ export class IntegracaoObjetivosService {
       );
 
       const dados = {
-        codigoErp: input.codigoErp,
+        chave: input.chave,
+        codigoErp: input.codigoErp ?? null,
         vendedorId: vendedor.id,
         mes: input.mes,
         ano: input.ano,
@@ -181,13 +183,16 @@ export class IntegracaoObjetivosService {
 
       if (decisao !== 'criar') {
         // O ERP manda o objetivo inteiro: categoria que não veio mais não
-        // existe mais, e a que veio é casada pelo codigoErp.
+        // existe mais, e a que veio é casada pela chave.
         const atualizadoUpsert = await tx.objetivoVendedorMes.update({
           where: { id: existente!.id },
           data: {
             ...dados,
             ...camposDaDecisao(decisao),
-            categorias: sincronizarFilhos(empresaId, categoriasData),
+            categorias: sincronizarFilhos(
+              { campo: 'objetivoVendedorMesId', id: existente!.id },
+              categoriasData,
+            ),
           },
           include: INCLUDE,
         });
@@ -222,7 +227,7 @@ export class IntegracaoObjetivosService {
   ): Promise<IntegracaoLoteResultado> {
     return processarLote(registros, async (item) => {
       if (item.excluido) {
-        await this.remove(empresaId, apiKeyId, item.codigoErp);
+        await this.remove(empresaId, apiKeyId, item.chave);
         return 'excluido';
       }
       const { decisao } = await this.upsert(
@@ -237,29 +242,29 @@ export class IntegracaoObjetivosService {
   async update(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
     input: IntegracaoObjetivoUpdate,
   ): Promise<IntegracaoObjetivo> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.objetivoVendedorMes.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente) throw new NotFoundException('Objetivo não encontrado');
 
       let vendedorId: string | undefined;
-      if (input.vendedorCodigo !== undefined) {
+      if (input.vendedorChave !== undefined) {
         const vendedor = await tx.vendedor.findFirst({
           where: {
             empresaId,
-            codigoErp: input.vendedorCodigo,
+            chave: input.vendedorChave,
             deletedAt: null,
           },
           select: { id: true },
         });
         if (!vendedor)
           throw new NotFoundException(
-            `vendedorCodigo '${input.vendedorCodigo}' não encontrado`,
+            `vendedorChave '${input.vendedorChave}' não encontrado`,
           );
         vendedorId = vendedor.id;
       }
@@ -271,26 +276,29 @@ export class IntegracaoObjetivosService {
             const categoria = await tx.categoria.findFirst({
               where: {
                 empresaId,
-                codigoErp: linha.categoriaCodigo,
+                chave: linha.categoriaChave,
                 deletedAt: null,
               },
               select: { id: true },
             });
             if (!categoria) {
               throw new NotFoundException(
-                `categoriaCodigo '${linha.categoriaCodigo}' não encontrado`,
+                `categoriaChave '${linha.categoriaChave}' não encontrado`,
               );
             }
             return {
             empresaId,
-            codigoErp: linha.codigoErp,
+            chave: linha.chave,
             categoriaId: categoria.id,
             valor: linha.valor,
           };
           }),
         );
         categoriasUpdate = {
-          categorias: sincronizarFilhos(empresaId, categoriasData),
+          categorias: sincronizarFilhos(
+          { campo: 'objetivoVendedorMesId', id: existente.id },
+          categoriasData,
+        ),
         };
       }
 
@@ -321,12 +329,12 @@ export class IntegracaoObjetivosService {
   async remove(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<void> {
     const autor = autorIntegracao(apiKeyId);
     await this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.objetivoVendedorMes.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente) throw new NotFoundException('Objetivo não encontrado');
       await tx.objetivoVendedorMes.update({

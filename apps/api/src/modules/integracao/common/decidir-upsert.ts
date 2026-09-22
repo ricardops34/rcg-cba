@@ -2,7 +2,7 @@
  * O que fazer quando a chave enviada pelo ERP já existe na plataforma.
  *
  * Regra fechada da integração: **o ERP é a fonte da verdade**, e o `POST` de
- * cada entidade é um *upsert* por `codigoErp`. O ERP não tem como saber se um
+ * cada entidade é um *upsert* pela `chave`. O ERP não tem como saber se um
  * registro já subiu — ele manda o que mudou, e é a plataforma que reconhece.
  *
  * Três respostas possíveis:

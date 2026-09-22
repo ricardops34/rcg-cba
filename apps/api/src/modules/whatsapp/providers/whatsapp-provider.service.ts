@@ -73,6 +73,7 @@ export class WhatsappProviderService {
         select: {
           id: true,
           vendedorId: true,
+          vendedor: { select: { nome: true } },
           transporte: true,
           instanciaExterna: true,
           instanciaId: true,
@@ -90,6 +91,12 @@ export class WhatsappProviderService {
           evolutionUrl: true,
           evolutionApiKeyCifrada: true,
           historicoDias: true,
+          evolutionAlwaysOnline: true,
+          evolutionIgnoreGroups: true,
+          evolutionIgnoreStatus: true,
+          evolutionReadMessages: true,
+          evolutionRejectCall: true,
+          evolutionMsgRejectCall: true,
           cloudApiPhoneNumberId: true,
           cloudApiBusinessAccountId: true,
           cloudApiAccessTokenCifrada: true,
@@ -108,6 +115,7 @@ export class WhatsappProviderService {
       empresaId,
       sessaoId: sessao.id,
       vendedorId: sessao.vendedorId,
+      vendedorNome: sessao.vendedor?.nome ?? null,
       // O enum do Prisma e o do contrato são o mesmo conjunto de valores, então
       // não há conversão a fazer aqui.
       transporte: sessao.transporte,
@@ -118,6 +126,14 @@ export class WhatsappProviderService {
           config?.evolutionApiKeyCifrada ?? null,
         ),
         historicoDias: config?.historicoDias ?? 0,
+        // Os defaults repetem os que estavam fixos no codigo: empresa sem
+        // linha de configuracao continua com o comportamento de antes.
+        evolutionAlwaysOnline: config?.evolutionAlwaysOnline ?? false,
+        evolutionIgnoreGroups: config?.evolutionIgnoreGroups ?? true,
+        evolutionIgnoreStatus: config?.evolutionIgnoreStatus ?? true,
+        evolutionReadMessages: config?.evolutionReadMessages ?? false,
+        evolutionRejectCall: config?.evolutionRejectCall ?? false,
+        evolutionMsgRejectCall: config?.evolutionMsgRejectCall ?? null,
         cloudApiPhoneNumberId: config?.cloudApiPhoneNumberId ?? null,
         cloudApiBusinessAccountId: config?.cloudApiBusinessAccountId ?? null,
         cloudApiAccessToken: decifrarSeHouver(

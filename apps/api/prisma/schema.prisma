@@ -649,6 +649,7 @@ model Produto {
   id                  String  @id @default(uuid())
   empresaId           String
   codigoErp           String
+  chave               String? // chave de integração (X2_UNICO); codigoErp é informativo
   descricao           String
   unidade             String?
   categoriaId         String?
@@ -698,7 +699,8 @@ model Produto {
   relacionadoDe ProdutoRelacionado[] @relation("ProdutoRelacaoDestino")
   fichas        ProdutoFicha[]
 
-  @@unique([empresaId, codigoErp])
+  @@unique([empresaId, chave])
+  @@index([empresaId, codigoErp])
   @@index([empresaId, descricao])
   @@index([empresaId, categoriaId])
   @@index([empresaId, regraDescontoId])
@@ -1112,6 +1114,7 @@ model Vendedor {
   empresaId      String
   usuarioId      String?
   codigoErp      String?
+  chave          String? // chave de integração (X2_UNICO); codigoErp é informativo
   nome           String
   nomeReduzido   String?
   telefone       String?
@@ -1165,7 +1168,8 @@ model Vendedor {
   orcamentos           Orcamento[]
   whatsappSessoes      WhatsappSessao[]
 
-  @@unique([empresaId, codigoErp])
+  @@unique([empresaId, chave])
+  @@index([empresaId, codigoErp])
   @@index([empresaId, nome])
   // Subir e descer a hierarquia é consulta recursiva (ver resolverEscopoVendedores).
   @@index([empresaId, superiorId])
@@ -1218,6 +1222,7 @@ model Cliente {
   tabelaPrecoId       String?
   condicaoPagamentoId String?
   codigoErp           String?
+  chave               String? // chave de integração (X2_UNICO); codigoErp é informativo
 
   tipoPessoa         TipoPessoa @default(juridica)
   razaoSocial        String
@@ -1292,7 +1297,8 @@ model Cliente {
   contatosPortal    ClienteContato[]
   portalHabilitacao PortalClienteHabilitacao?
 
-  @@unique([empresaId, codigoErp])
+  @@unique([empresaId, chave])
+  @@index([empresaId, codigoErp])
   @@index([empresaId, razaoSocial])
   @@index([empresaId, vendedorId])
   @@index([empresaId, tabelaPrecoId])
@@ -2218,6 +2224,7 @@ model Categoria {
   empresaId      String
   categoriaPaiId String?
   codigoErp      String
+  chave          String? // chave de integração (X2_UNICO); codigoErp é informativo
   descricao      String
   usado          Boolean?
   ativo          Boolean  @default(true)
@@ -2242,7 +2249,8 @@ model Categoria {
   produtosSub                Produto[]                   @relation("ProdutoSubCategoria")
   objetivosVendedorCategoria ObjetivoVendedorCategoria[]
 
-  @@unique([empresaId, codigoErp])
+  @@unique([empresaId, chave])
+  @@index([empresaId, codigoErp])
   @@index([empresaId, descricao])
   @@index([empresaId, regraDescontoId])
   @@map("categorias")
@@ -2252,6 +2260,7 @@ model CondicaoPagamento {
   id        String  @id @default(uuid())
   empresaId String
   codigoErp String
+  chave     String? // chave de integração (X2_UNICO); codigoErp é informativo
   descricao String
   forma     String?
   ativo     Boolean @default(true)
@@ -2269,7 +2278,8 @@ model CondicaoPagamento {
   orcamentos   Orcamento[]
   clientes     Cliente[]
 
-  @@unique([empresaId, codigoErp])
+  @@unique([empresaId, chave])
+  @@index([empresaId, codigoErp])
   @@map("condicoes_pagamento")
 }
 
@@ -2277,6 +2287,7 @@ model Armazem {
   id        String  @id @default(uuid())
   empresaId String
   codigoErp String
+  chave     String? // chave de integração (X2_UNICO); codigoErp é informativo
   descricao String
   ativo     Boolean @default(true)
 
@@ -2292,7 +2303,8 @@ model Armazem {
   estoques          Estoque[]
   notasEntradaItens NotaEntradaItem[]
 
-  @@unique([empresaId, codigoErp])
+  @@unique([empresaId, chave])
+  @@index([empresaId, codigoErp])
   @@map("armazens")
 }
 
@@ -2303,6 +2315,7 @@ model TabelaPreco {
   id        String    @id @default(uuid())
   empresaId String
   codigoErp String
+  chave     String? // chave de integração (X2_UNICO); codigoErp é informativo
   descricao String
   dtInicio  DateTime?
   dtFim     DateTime?
@@ -2319,22 +2332,23 @@ model TabelaPreco {
   itens    TabelaPrecoItem[]
   clientes Cliente[]
 
-  @@unique([empresaId, codigoErp])
+  @@unique([empresaId, chave])
+  @@index([empresaId, codigoErp])
   @@index([empresaId, descricao])
   @@map("tabelas_preco")
 }
 
 // Item (produto + preço) de uma tabela de preço. empresaId denormalizado
 // (mesmo padrão de NotaSaidaItem) para RLS/consulta sem join na tabela mãe.
-// codigoErp é a chave de upsert da integração (linhas criadas manualmente
-// ficam com codigoErp = null).
+// chave é a chave de upsert da integração, única dentro da tabela de preço
+// (linhas criadas manualmente ficam com chave = null).
 model TabelaPrecoItem {
   id            String  @id @default(uuid())
   empresaId     String
   tabelaPrecoId String
   produtoId     String
-  // Chave de identidade do item no ERP — ver NotaSaida.codigoErp.
-  codigoErp     String?
+  // Ver NotaSaida.chave.
+  chave         String? // chave de integração (X2_UNICO), única dentro do cabeçalho
   preco         Float
   ativo         Boolean @default(true)
 
@@ -2354,7 +2368,7 @@ model TabelaPrecoItem {
   tabelaPreco   TabelaPreco    @relation(fields: [tabelaPrecoId], references: [id], onDelete: Cascade)
   produto       Produto        @relation(fields: [produtoId], references: [id], onDelete: Restrict)
 
-  @@unique([empresaId, codigoErp])
+  @@unique([tabelaPrecoId, chave])
   @@index([tabelaPrecoId, produtoId])
   @@index([empresaId, produtoId])
   @@index([empresaId, regraDescontoId])
@@ -2374,6 +2388,7 @@ model RegraDesconto {
   // Z0_CODIGO — chave de upsert da API de integração; null quando a regra
   // nasce na tela do CRM (mesmo padrão de Orcamento.codigoErp).
   codigoErp String?
+  chave     String? // chave de integração (X2_UNICO); codigoErp é informativo
   descricao String
 
   // Z0_DESCAUT ("% Desc. Aut"): percentual de desconto autorizado.
@@ -2404,7 +2419,8 @@ model RegraDesconto {
   notasSaidaItens  NotaSaidaItem[]
   orcamentoItens   OrcamentoItem[]
 
-  @@unique([empresaId, codigoErp])
+  @@unique([empresaId, chave])
+  @@index([empresaId, codigoErp])
   @@index([empresaId, descricao])
   @@map("regras_desconto")
 }
@@ -2443,16 +2459,17 @@ model RegraDescontoFaixa {
 // ------------------------------------------------------------------
 // Espelhos do ERP (estoque, notas fiscais de saída e títulos a receber): a
 // API de tela só expõe listagem/detalhe — os dados entram pela API de
-// integração, que o Protheus alimenta. codigoErp guarda a chave de identidade
-// que o ERP escolheu para o registro e é a chave de upsert idempotente: a
-// plataforma não interpreta o valor, só o usa para reconhecer o que já
-// recebeu. Notas, itens e títulos carregam vendedorId para o mesmo escopo
+// integração, que o Protheus alimenta. chave guarda a chave de identidade
+// que o ERP escolheu para o registro (X2_UNICO) e é a chave de upsert
+// idempotente: a plataforma não interpreta o valor, só o usa para reconhecer o
+// que já recebeu. codigoErp é só informativo (título "Código" na tela). Notas, itens e títulos carregam vendedorId para o mesmo escopo
 // hierárquico de Clientes.
 
 model Estoque {
   id        String @id @default(uuid())
   empresaId String
   codigoErp String
+  chave     String? // chave de integração (X2_UNICO); codigoErp é informativo
   produtoId String
   armazemId String
 
@@ -2474,7 +2491,8 @@ model Estoque {
   armazem Armazem @relation(fields: [armazemId], references: [id])
 
   @@unique([empresaId, produtoId, armazemId])
-  @@unique([empresaId, codigoErp])
+  @@unique([empresaId, chave])
+  @@index([empresaId, codigoErp])
   @@index([empresaId, armazemId])
   @@map("estoques")
 }
@@ -2482,10 +2500,12 @@ model Estoque {
 model NotaSaida {
   id                  String  @id @default(uuid())
   empresaId           String
-  // Chave de identidade do registro no ERP: o valor que o Protheus manda para
-  // dizer "esta é a mesma nota que já mandei antes". A plataforma não
-  // interpreta o conteúdo — guarda, indexa e usa no upsert do POST.
+  // Número da nota no ERP, informativo (título "Código" na tela).
   codigoErp           String?
+  // Chave de identidade do registro no ERP (X2_UNICO): o valor que o Protheus
+  // manda para dizer "esta é a mesma nota que já mandei antes". A plataforma
+  // não interpreta o conteúdo — guarda, indexa e usa no upsert do POST.
+  chave               String?
   clienteId           String?
   vendedorId          String?
   condicaoPagamentoId String?
@@ -2548,7 +2568,8 @@ model NotaSaida {
   itens             NotaSaidaItem[]
   xml               NotaSaidaXml?
 
-  @@unique([empresaId, codigoErp])
+  @@unique([empresaId, chave])
+  @@index([empresaId, codigoErp])
   @@index([empresaId, numero])
   @@index([empresaId, vendedorId, ano, mes])
   @@index([empresaId, clienteId])
@@ -2603,7 +2624,7 @@ model NotaSaidaItem {
   // Chave de identidade do item no ERP. Tem a sua própria porque o upsert do
   // cabeçalho casa item a item por ela, em vez de apagar e recriar o conjunto
   // — o uuid do item sobrevive à alteração de uma linha da nota.
-  codigoErp   String?
+  chave       String? // chave de integração (X2_UNICO), única dentro do cabeçalho
   clienteId   String?
   vendedorId  String?
   produtoId   String?
@@ -2650,7 +2671,7 @@ model NotaSaidaItem {
   vendedor      Vendedor?      @relation(fields: [vendedorId], references: [id])
   produto       Produto?       @relation(fields: [produtoId], references: [id])
 
-  @@unique([empresaId, codigoErp])
+  @@unique([notaSaidaId, chave])
   @@index([notaSaidaId])
   @@index([empresaId, produtoId])
   @@index([empresaId, vendedorId, dtEmissao])
@@ -2675,6 +2696,7 @@ model Fornecedor {
   empresaId String
   // Chave de identidade do registro no ERP — o que o upsert do POST casa.
   codigoErp String?
+  chave     String? // chave de integração (X2_UNICO); codigoErp é informativo
 
   tipoPessoa         TipoPessoa @default(juridica)
   razaoSocial        String
@@ -2709,7 +2731,8 @@ model Fornecedor {
   notasEntrada      NotaEntrada[]
   notasEntradaItens NotaEntradaItem[]
 
-  @@unique([empresaId, codigoErp])
+  @@unique([empresaId, chave])
+  @@index([empresaId, codigoErp])
   @@index([empresaId, razaoSocial])
   @@index([empresaId, cnpjCpf])
   @@map("fornecedores")
@@ -2738,6 +2761,7 @@ model NotaEntrada {
   empresaId           String
   // Chave de identidade do registro no ERP — mesma semântica de NotaSaida.
   codigoErp           String?
+  chave               String? // chave de integração (X2_UNICO); codigoErp é informativo
   fornecedorId        String?
   clienteId           String?
   condicaoPagamentoId String?
@@ -2788,7 +2812,8 @@ model NotaEntrada {
   condicaoPagamento CondicaoPagamento? @relation(fields: [condicaoPagamentoId], references: [id])
   itens             NotaEntradaItem[]
 
-  @@unique([empresaId, codigoErp])
+  @@unique([empresaId, chave])
+  @@index([empresaId, codigoErp])
   @@index([empresaId, numero])
   @@index([empresaId, fornecedorId])
   @@index([empresaId, dtEmissao])
@@ -2812,7 +2837,7 @@ model NotaEntradaItem {
   notaEntradaId String
   // Chave própria do item no ERP: o upsert do cabeçalho casa item a item por
   // ela, em vez de apagar e recriar o conjunto.
-  codigoErp     String?
+  chave         String? // chave de integração (X2_UNICO), única dentro do cabeçalho
   // Espelham o participante do cabeçalho: fornecedor na compra, cliente na
   // devolução (ver NotaEntrada).
   fornecedorId  String?
@@ -2851,7 +2876,7 @@ model NotaEntradaItem {
   produto     Produto?    @relation(fields: [produtoId], references: [id])
   armazem     Armazem?    @relation(fields: [armazemId], references: [id])
 
-  @@unique([empresaId, codigoErp])
+  @@unique([notaEntradaId, chave])
   @@index([notaEntradaId])
   @@index([empresaId, produtoId])
   @@index([empresaId, fornecedorId, dtEmissao])
@@ -2925,8 +2950,9 @@ model ContaBancaria {
 model TituloReceber {
   id         String  @id @default(uuid())
   empresaId  String
-  // Chave de identidade do título no ERP — ver NotaSaida.codigoErp.
+  // Ver NotaSaida.chave.
   codigoErp  String?
+  chave      String? // chave de integração (X2_UNICO); codigoErp é informativo
   clienteId  String?
   vendedorId String?
 
@@ -3007,7 +3033,8 @@ model TituloReceber {
   vendedor      Vendedor?      @relation(fields: [vendedorId], references: [id])
   contaBancaria ContaBancaria? @relation(fields: [contaBancariaId], references: [id])
 
-  @@unique([empresaId, codigoErp])
+  @@unique([empresaId, chave])
+  @@index([empresaId, codigoErp])
   @@index([empresaId, clienteId])
   @@index([empresaId, vendedorId, vencimento])
   @@index([empresaId, vencimento])
@@ -3149,6 +3176,7 @@ model Orcamento {
   // /integracao/orcamentos/pendentes — nulo enquanto o ERP não o importou,
   // e nulo para sempre no orçamento que morre na tela sem virar pedido.
   codigoErp           String?
+  chave               String? // chave de integração (X2_UNICO); codigoErp é informativo
   // Número do orçamento pro cliente (é o que sai na proposta em PDF):
   // sequencial por empresa, atribuído na criação a partir do contador
   // OrcamentoConfig.ultimoNumero. Existe desde o rascunho — diferente do
@@ -3206,7 +3234,8 @@ model Orcamento {
   atividades         Atividade[]
   clienteDecididoPor ClienteContato?    @relation("OrcamentoDecisaoContato", fields: [clienteDecididoPorContatoId], references: [id])
 
-  @@unique([empresaId, codigoErp])
+  @@unique([empresaId, chave])
+  @@index([empresaId, codigoErp])
   @@unique([empresaId, numero])
   @@index([empresaId, vendedorId])
   @@index([empresaId, clienteId])
@@ -3222,7 +3251,7 @@ model OrcamentoItem {
   produtoId   String
   // Chave de identidade do item no ERP — nula no item criado na tela, que é
   // o caso normal aqui: o orçamento nasce na plataforma.
-  codigoErp   String?
+  chave       String? // chave de integração (X2_UNICO), única dentro do cabeçalho
 
   quantidade   Float  @default(1)
   vlrTabela    Float?
@@ -3250,6 +3279,7 @@ model OrcamentoItem {
   @@index([orcamentoId])
   @@index([empresaId, regraDescontoId])
   @@map("orcamento_itens")
+  @@unique([orcamentoId, chave])
 }
 
 // ------------------------------------------------------------------
@@ -3264,8 +3294,9 @@ model ObjetivoVendedorMes {
   id         String  @id @default(uuid())
   empresaId  String
   vendedorId String
-  // Chave de identidade do objetivo no ERP — ver NotaSaida.codigoErp.
+  // Ver NotaSaida.chave.
   codigoErp  String?
+  chave      String? // chave de integração (X2_UNICO); codigoErp é informativo
 
   mes           Int
   ano           Int
@@ -3287,7 +3318,8 @@ model ObjetivoVendedorMes {
   categorias ObjetivoVendedorCategoria[]
 
   @@unique([empresaId, vendedorId, mes, ano])
-  @@unique([empresaId, codigoErp])
+  @@unique([empresaId, chave])
+  @@index([empresaId, codigoErp])
   @@index([empresaId, ano, mes])
   @@map("objetivos_vendedor_mes")
 }
@@ -3297,8 +3329,8 @@ model ObjetivoVendedorCategoria {
   empresaId             String
   objetivoVendedorMesId String
   categoriaId           String
-  // Chave de identidade da meta por categoria no ERP — ver NotaSaida.codigoErp.
-  codigoErp             String?
+  // Ver NotaSaida.chave.
+  chave                 String? // chave de integração (X2_UNICO), única dentro do cabeçalho
   valor                 Float   @default(0)
 
   createdAt DateTime  @default(now())
@@ -3313,7 +3345,7 @@ model ObjetivoVendedorCategoria {
   categoria Categoria           @relation(fields: [categoriaId], references: [id])
 
   @@unique([objetivoVendedorMesId, categoriaId])
-  @@unique([empresaId, codigoErp])
+  @@unique([objetivoVendedorMesId, chave])
   @@map("objetivos_vendedor_categoria")
 }
 
@@ -4030,6 +4062,28 @@ model WhatsappConfig {
   // Registrada por quem implantou. Diferença de versão é a primeira hipótese
   // quando um evento (resposta citada, reação) para de chegar.
   evolutionVersao        String?
+
+  // `advancedSettings` da instância na Evolution GO.
+  //
+  // Eram fixos no código, no corpo do `POST /instance/create`, e portanto só
+  // valiam para instância nova — não havia como rever a decisão depois. Ficam
+  // aqui porque são **política da empresa**, não do aparelho: a mesma regra
+  // vale para todos os vendedores dela.
+  //
+  // Os defaults reproduzem exatamente o que estava fixo no código até
+  // 2026-09-21, então ligar isto não muda o comportamento de ninguém.
+  // Atualizar depois de criada usa `PUT /instance/{id}/advanced-settings`.
+  evolutionAlwaysOnline  Boolean @default(false)
+  /// Grupo não faz parte do atendimento; ignorar na origem evita tráfego que a
+  /// API descartaria de qualquer forma.
+  evolutionIgnoreGroups  Boolean @default(true)
+  evolutionIgnoreStatus  Boolean @default(true)
+  /// Quem marca como lida é o vendedor, abrindo a conversa. Ligar isto manda o
+  /// visto azul ao cliente sem ninguém ter lido.
+  evolutionReadMessages  Boolean @default(false)
+  /// Recusar chamada automaticamente. A mensagem abaixo só sai quando ligado.
+  evolutionRejectCall    Boolean @default(false)
+  evolutionMsgRejectCall String?
 
   // Cloud API (Meta) — usados só quando `transporte = cloud_api`.
   //

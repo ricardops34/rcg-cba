@@ -10,8 +10,8 @@ describe('processarLote', () => {
       D: 'excluido',
     };
     const resultado = await processarLote(
-      [{ codigoErp: 'A' }, { codigoErp: 'B' }, { codigoErp: 'C' }, { codigoErp: 'D' }],
-      (item) => Promise.resolve(acoes[item.codigoErp]),
+      [{ chave: 'A' }, { chave: 'B' }, { chave: 'C' }, { chave: 'D' }],
+      (item) => Promise.resolve(acoes[item.chave]),
     );
 
     expect(resultado).toEqual({
@@ -26,12 +26,14 @@ describe('processarLote', () => {
   it('registra o item que falhou e segue com os demais', async () => {
     const aplicados: string[] = [];
     const resultado = await processarLote(
-      [{ codigoErp: 'A' }, { codigoErp: 'B' }, { codigoErp: 'C' }],
+      [{ chave: 'A' }, { chave: 'B' }, { chave: 'C' }],
       (item) => {
-        if (item.codigoErp === 'B') {
-          throw new NotFoundException("vendedorCodigo '000999' não encontrado");
+        if (item.chave === 'B') {
+          throw new NotFoundException(
+            "vendedorChave '01-000999' não encontrado",
+          );
         }
-        aplicados.push(item.codigoErp);
+        aplicados.push(item.chave);
         return Promise.resolve('criado' as AcaoLote);
       },
     );
@@ -43,8 +45,8 @@ describe('processarLote', () => {
     expect(resultado.erros).toEqual([
       {
         indice: 1,
-        codigoErp: 'B',
-        mensagem: "vendedorCodigo '000999' não encontrado",
+        chave: 'B',
+        mensagem: "vendedorChave '01-000999' não encontrado",
       },
     ]);
   });
@@ -52,11 +54,11 @@ describe('processarLote', () => {
   it('aplica na ordem recebida, para o registro que depende de outro do mesmo lote', async () => {
     const ordem: string[] = [];
     await processarLote(
-      [{ codigoErp: 'pai' }, { codigoErp: 'filho' }],
+      [{ chave: 'pai' }, { chave: 'filho' }],
       async (item) => {
         // Espera decrescente: em paralelo, 'filho' terminaria antes de 'pai'.
-        await new Promise((r) => setTimeout(r, item.codigoErp === 'pai' ? 20 : 1));
-        ordem.push(item.codigoErp);
+        await new Promise((r) => setTimeout(r, item.chave === 'pai' ? 20 : 1));
+        ordem.push(item.chave);
         return 'criado';
       },
     );
@@ -66,7 +68,7 @@ describe('processarLote', () => {
 
   it('encaminha a exclusao pedida no proprio registro', async () => {
     const resultado = await processarLote(
-      [{ codigoErp: 'A', excluido: true }],
+      [{ chave: 'A', excluido: true }],
       (item) => Promise.resolve(item.excluido ? 'excluido' : 'criado'),
     );
 
@@ -75,7 +77,7 @@ describe('processarLote', () => {
   });
 
   it('extrai a mensagem util da excecao do Nest, nao o "Not Found" de fora', async () => {
-    const resultado = await processarLote([{ codigoErp: 'A' }], () => {
+    const resultado = await processarLote([{ chave: 'A' }], () => {
       throw new NotFoundException('Categoria não encontrada');
     });
 
@@ -83,8 +85,11 @@ describe('processarLote', () => {
   });
 
   it('junta as mensagens quando a excecao traz uma lista', async () => {
-    const resultado = await processarLote([{ codigoErp: 'A' }], () => {
-      throw new NotFoundException(['descricao é obrigatório', 'ativo é obrigatório']);
+    const resultado = await processarLote([{ chave: 'A' }], () => {
+      throw new NotFoundException([
+        'descricao é obrigatório',
+        'ativo é obrigatório',
+      ]);
     });
 
     expect(resultado.erros[0].mensagem).toBe(
@@ -93,7 +98,7 @@ describe('processarLote', () => {
   });
 
   it('nao quebra com erro que nao e excecao do Nest', async () => {
-    const resultado = await processarLote([{ codigoErp: 'A' }], () => {
+    const resultado = await processarLote([{ chave: 'A' }], () => {
       throw new Error('conexao perdida');
     });
 

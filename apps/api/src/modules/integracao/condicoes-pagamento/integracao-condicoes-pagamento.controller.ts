@@ -58,8 +58,8 @@ export class IntegracaoCondicoesPagamentoController {
     return this.service.findAll(integracao.empresaId, query);
   }
 
-  @ApiOperation({ summary: 'Detalhar condição de pagamento por codigoErp' })
-  @ApiParam({ name: 'codigo', description: 'codigoErp da condição' })
+  @ApiOperation({ summary: 'Detalhar condição de pagamento por chave' })
+  @ApiParam({ name: 'codigo', description: 'chave da condição' })
   @ApiResponse({
     status: 200,
     schema: { example: INTEGRACAO_CONDICAO_PAGAMENTO_EXAMPLE },
@@ -84,7 +84,7 @@ export class IntegracaoCondicoesPagamentoController {
   })
   @ApiResponse({
     status: 409,
-    description: 'Já existe condição de pagamento com esse codigoErp',
+    description: 'Já existe condição de pagamento com essa chave',
   })
   @Post()
   create(
@@ -97,7 +97,7 @@ export class IntegracaoCondicoesPagamentoController {
   @ApiOperation({
     summary: 'Enviar lote de condicoes-pagamento',
     description:
-      'Upsert em lote por codigoErp (máx. 1.000 por chamada). Um registro com ' +
+      'Upsert em lote por chave (máx. 1.000 por chamada). Um registro com ' +
       '"excluido": true é excluído (soft delete) e dispensa os demais campos. ' +
       'Responde 200 com o relatório: um item inválido não desfaz os que já ' +
       'passaram, e vem listado em "erros" com o índice no array enviado.',
@@ -127,7 +127,7 @@ export class IntegracaoCondicoesPagamentoController {
     summary: 'Atualizar condição de pagamento',
     description: 'Atualização parcial.',
   })
-  @ApiParam({ name: 'codigo', description: 'codigoErp da condição' })
+  @ApiParam({ name: 'codigo', description: 'chave da condição' })
   @ApiResponse({
     status: 200,
     schema: { example: INTEGRACAO_CONDICAO_PAGAMENTO_EXAMPLE },
@@ -151,7 +151,7 @@ export class IntegracaoCondicoesPagamentoController {
   }
 
   @ApiOperation({ summary: 'Excluir condição de pagamento (soft delete)' })
-  @ApiParam({ name: 'codigo', description: 'codigoErp da condição' })
+  @ApiParam({ name: 'codigo', description: 'chave da condição' })
   @ApiResponse({ status: 200, description: 'Excluída' })
   @ApiResponse({
     status: 404,

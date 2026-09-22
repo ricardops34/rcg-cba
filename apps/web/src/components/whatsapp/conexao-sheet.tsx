@@ -1,8 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import QRCode from "qrcode";
 import { toast } from "sonner";
 import {
   WHATSAPP_ACEITE_TEXTO,
@@ -22,6 +20,7 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle } from "lucide-react";
+import { useImagemQr } from "./use-imagem-qr";
 
 /**
  * Conexão do WhatsApp do vendedor — um painel dentro do Atendimento, não uma
@@ -43,7 +42,7 @@ export function ConexaoSheet({
 
   // Só consulta o QR enquanto está pareando: o código expira em segundos e é
   // renovado pelo provedor, então a tela repinta em vez de guardar o primeiro.
-  const { data: pareamento } = useQuery({
+  const { data: pareamento, error: erroPareamento } = useQuery({
     queryKey: ["whatsapp-pareamento"],
     queryFn: () => apiFetch<WhatsappPareamento>("/whatsapp/sessao/pareamento"),
     enabled: aberto && pareando,
@@ -52,24 +51,7 @@ export function ConexaoSheet({
 
   // O QR expira em segundos e o provedor renova; redesenhar a cada conteúdo
   // novo é o que mantém o código válido na tela.
-  const [qrImagem, setQrImagem] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelado = false;
-    if (!pareamento?.qr) {
-      setQrImagem(null);
-      return;
-    }
-    QRCode.toDataURL(pareamento.qr, { margin: 1, width: 512 })
-      .then((url) => {
-        if (!cancelado) setQrImagem(url);
-      })
-      .catch(() => {
-        if (!cancelado) setQrImagem(null);
-      });
-    return () => {
-      cancelado = true;
-    };
-  }, [pareamento?.qr]);
+  const qrImagem = useImagemQr(pareamento?.qr);
 
   const conectar = useMutation({
     mutationFn: () =>
@@ -165,7 +147,19 @@ export function ConexaoSheet({
                   </p>
                 </div>
               ) : (
-                <Skeleton className="h-64 w-full" />
+                <>
+                  <Skeleton className="h-64 w-full" />
+                  {/* Sem isto, QR que não vem e QR que ainda vai chegar eram
+                      o mesmo quadro cinza — o motivo existia, só não aparecia. */}
+                  {pareamento?.erro || erroPareamento ? (
+                    <p className="rounded-md bg-destructive/10 p-3 text-xs text-destructive">
+                      {pareamento?.erro ??
+                        (erroPareamento instanceof ApiError
+                          ? erroPareamento.message
+                          : "Falha ao buscar o QR Code.")}
+                    </p>
+                  ) : null}
+                </>
               )}
             </div>
           ) : null}

@@ -968,7 +968,7 @@ export async function gerarDemo(
             itens: {
               create: linhas.map((l, item) => ({
                 empresaId,
-                codigoErp: `${PREFIXO}NFI${numeroNota}-${item + 1}`,
+                chave: `${PREFIXO}NFI${numeroNota}-${item + 1}`,
                 clienteId: cliente.id,
                 vendedorId: cliente.vendedorId,
                 produtoId: l.produto.id,
@@ -1767,7 +1767,7 @@ export async function apagarDemo(db: DemoDb, empresaId: string) {
   });
   // O XML cai junto com a nota (cascade); os itens, não.
   await db.notaSaidaItem.deleteMany({
-    where: { empresaId, codigoErp: { startsWith: PREFIXO } },
+    where: { empresaId, chave: { startsWith: PREFIXO } },
   });
   await db.notaSaida.deleteMany({
     where: { empresaId, codigoErp: { startsWith: PREFIXO } },

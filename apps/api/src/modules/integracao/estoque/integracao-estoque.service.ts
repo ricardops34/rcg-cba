@@ -25,8 +25,8 @@ import {
 import { processarLote } from '../common/processar-lote';
 
 const INCLUDE = {
-  produto: { select: { codigoErp: true } },
-  armazem: { select: { codigoErp: true } },
+  produto: { select: { chave: true } },
+  armazem: { select: { chave: true } },
 } satisfies Prisma.EstoqueInclude;
 type EstoqueComRelacoes = Prisma.EstoqueGetPayload<{ include: typeof INCLUDE }>;
 
@@ -37,9 +37,10 @@ export class IntegracaoEstoqueService {
   private paraLeitura(row: EstoqueComRelacoes): IntegracaoEstoque {
     return {
       id: row.id,
+      chave: row.chave ?? '',
       codigoErp: row.codigoErp,
-      produtoCodigo: row.produto.codigoErp,
-      armazemCodigo: row.armazem.codigoErp,
+      produtoChave: row.produto.chave ?? '',
+      armazemChave: row.armazem.chave ?? '',
       saldo: row.saldo,
       reserva: row.reserva,
       custo: row.custo,
@@ -57,12 +58,12 @@ export class IntegracaoEstoqueService {
       const where = {
         empresaId,
         deletedAt: null,
-        ...(query.codigoErp ? { codigoErp: query.codigoErp } : {}),
-        ...(query.produtoCodigo
-          ? { produto: { codigoErp: query.produtoCodigo } }
+        ...(query.chave ? { chave: query.chave } : {}),
+        ...(query.produtoChave
+          ? { produto: { chave: query.produtoChave } }
           : {}),
-        ...(query.armazemCodigo
-          ? { armazem: { codigoErp: query.armazemCodigo } }
+        ...(query.armazemChave
+          ? { armazem: { chave: query.armazemChave } }
           : {}),
       };
       const [data, total] = await Promise.all([
@@ -81,16 +82,13 @@ export class IntegracaoEstoqueService {
     });
   }
 
-  async findOne(
-    empresaId: string,
-    codigoErp: string,
-  ): Promise<IntegracaoEstoque> {
+  async findOne(empresaId: string, chave: string): Promise<IntegracaoEstoque> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const row = await tx.estoque.findFirst({
         where: {
           empresaId,
           deletedAt: null,
-          codigoErp,
+          chave,
         },
         include: INCLUDE,
       });
@@ -124,27 +122,27 @@ export class IntegracaoEstoqueService {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const produto = await tx.produto.findFirst({
-        where: { empresaId, codigoErp: input.produtoCodigo, deletedAt: null },
+        where: { empresaId, chave: input.produtoChave, deletedAt: null },
         select: { id: true },
       });
       if (!produto)
         throw new NotFoundException(
-          `produtoCodigo '${input.produtoCodigo}' não encontrado`,
+          `produtoChave '${input.produtoChave}' não encontrado`,
         );
       const armazem = await tx.armazem.findFirst({
-        where: { empresaId, codigoErp: input.armazemCodigo, deletedAt: null },
+        where: { empresaId, chave: input.armazemChave, deletedAt: null },
         select: { id: true },
       });
       if (!armazem)
         throw new NotFoundException(
-          `armazemCodigo '${input.armazemCodigo}' não encontrado`,
+          `armazemChave '${input.armazemChave}' não encontrado`,
         );
 
       const existente = await tx.estoque.findFirst({
         where: {
           empresaId,
           OR: [
-            { codigoErp: input.codigoErp },
+            { chave: input.chave },
             { produtoId: produto.id, armazemId: armazem.id },
           ],
         },
@@ -152,7 +150,8 @@ export class IntegracaoEstoqueService {
       const decisao = decidirUpsert(existente);
 
       const dados = {
-        codigoErp: input.codigoErp,
+        chave: input.chave,
+        codigoErp: input.codigoErp ?? '',
         produtoId: produto.id,
         armazemId: armazem.id,
         saldo: input.saldo,
@@ -195,7 +194,7 @@ export class IntegracaoEstoqueService {
   ): Promise<IntegracaoLoteResultado> {
     return processarLote(registros, async (item) => {
       if (item.excluido) {
-        await this.remove(empresaId, apiKeyId, item.codigoErp);
+        await this.remove(empresaId, apiKeyId, item.chave);
         return 'excluido';
       }
       const { decisao } = await this.upsert(
@@ -210,7 +209,7 @@ export class IntegracaoEstoqueService {
   async update(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
     input: IntegracaoEstoqueUpdate,
   ): Promise<IntegracaoEstoque> {
     const autor = autorIntegracao(apiKeyId);
@@ -219,7 +218,7 @@ export class IntegracaoEstoqueService {
         where: {
           empresaId,
           deletedAt: null,
-          codigoErp,
+          chave,
         },
       });
       if (!existente)
@@ -248,7 +247,7 @@ export class IntegracaoEstoqueService {
   async remove(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<void> {
     const autor = autorIntegracao(apiKeyId);
     await this.prisma.withTenant(empresaId, async (tx) => {
@@ -256,7 +255,7 @@ export class IntegracaoEstoqueService {
         where: {
           empresaId,
           deletedAt: null,
-          codigoErp,
+          chave,
         },
       });
       if (!existente)

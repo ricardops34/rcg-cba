@@ -59,9 +59,9 @@ export class IntegracaoTabelasPrecoController {
   }
 
   @ApiOperation({
-    summary: 'Detalhar tabela de preço (com itens) por codigoErp',
+    summary: 'Detalhar tabela de preço (com itens) por chave',
   })
-  @ApiParam({ name: 'codigo', description: 'codigoErp da tabela' })
+  @ApiParam({ name: 'codigo', description: 'chave da tabela' })
   @ApiResponse({
     status: 200,
     schema: { example: INTEGRACAO_TABELA_PRECO_EXAMPLE },
@@ -78,7 +78,7 @@ export class IntegracaoTabelasPrecoController {
   @ApiOperation({
     summary: 'Criar tabela de preço (com itens)',
     description:
-      'produtoCodigo (em cada item) referencia um produto pelo codigoErp (precisa já existir).',
+      'produtoChave (em cada item) referencia um produto pela chave (precisa já existir).',
   })
   @ApiBodyExample(INTEGRACAO_TABELA_PRECO_CREATE_EXAMPLE)
   @ApiResponse({
@@ -87,7 +87,7 @@ export class IntegracaoTabelasPrecoController {
   })
   @ApiResponse({
     status: 409,
-    description: 'Já existe tabela de preço com esse codigoErp',
+    description: 'Já existe tabela de preço com essa chave',
   })
   @Post()
   create(
@@ -100,7 +100,7 @@ export class IntegracaoTabelasPrecoController {
   @ApiOperation({
     summary: 'Enviar lote de tabelas-preco',
     description:
-      'Upsert em lote por codigoErp (máx. 1.000 por chamada). Um registro com ' +
+      'Upsert em lote por chave (máx. 1.000 por chamada). Um registro com ' +
       '"excluido": true é excluído (soft delete) e dispensa os demais campos. ' +
       'Responde 200 com o relatório: um item inválido não desfaz os que já ' +
       'passaram, e vem listado em "erros" com o índice no array enviado.',
@@ -131,7 +131,7 @@ export class IntegracaoTabelasPrecoController {
     description:
       'Atualização parcial. Itens com delete=true são excluídos; os demais são incluídos ou atualizados.',
   })
-  @ApiParam({ name: 'codigo', description: 'codigoErp da tabela' })
+  @ApiParam({ name: 'codigo', description: 'chave da tabela' })
   @ApiResponse({
     status: 200,
     schema: { example: INTEGRACAO_TABELA_PRECO_EXAMPLE },
@@ -152,7 +152,7 @@ export class IntegracaoTabelasPrecoController {
   }
 
   @ApiOperation({ summary: 'Excluir tabela de preço (soft delete)' })
-  @ApiParam({ name: 'codigo', description: 'codigoErp da tabela' })
+  @ApiParam({ name: 'codigo', description: 'chave da tabela' })
   @ApiResponse({ status: 200, description: 'Excluída' })
   @ApiResponse({ status: 404, description: 'Tabela de preço não encontrada' })
   @Delete(':codigo')

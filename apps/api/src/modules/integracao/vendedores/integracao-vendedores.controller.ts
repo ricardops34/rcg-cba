@@ -58,8 +58,8 @@ export class IntegracaoVendedoresController {
     return this.service.findAll(integracao.empresaId, query);
   }
 
-  @ApiOperation({ summary: 'Detalhar vendedor por codigoErp' })
-  @ApiParam({ name: 'codigo', description: 'codigoErp do vendedor' })
+  @ApiOperation({ summary: 'Detalhar vendedor por chave' })
+  @ApiParam({ name: 'codigo', description: 'chave do vendedor' })
   @ApiResponse({
     status: 200,
     schema: { example: INTEGRACAO_VENDEDOR_EXAMPLE },
@@ -76,7 +76,7 @@ export class IntegracaoVendedoresController {
   @ApiOperation({
     summary: 'Criar vendedor',
     description:
-      'supervisorCodigo referencia outro vendedor pelo codigoErp (precisa já existir). gerente/' +
+      'supervisorChave referencia outro vendedor pela chave (precisa já existir). gerente/' +
       'usuarioId nunca é alterado por esta API — vínculo mantido manualmente na tela.',
   })
   @ApiBodyExample(INTEGRACAO_VENDEDOR_CREATE_EXAMPLE)
@@ -86,7 +86,7 @@ export class IntegracaoVendedoresController {
   })
   @ApiResponse({
     status: 409,
-    description: 'Já existe vendedor com esse codigoErp',
+    description: 'Já existe vendedor com essa chave',
   })
   @Post()
   create(
@@ -99,7 +99,7 @@ export class IntegracaoVendedoresController {
   @ApiOperation({
     summary: 'Enviar lote de vendedores',
     description:
-      'Upsert em lote por codigoErp (máx. 1.000 por chamada). Um registro com ' +
+      'Upsert em lote por chave (máx. 1.000 por chamada). Um registro com ' +
       '"excluido": true é excluído (soft delete) e dispensa os demais campos. ' +
       'Responde 200 com o relatório: um item inválido não desfaz os que já ' +
       'passaram, e vem listado em "erros" com o índice no array enviado.',
@@ -129,7 +129,7 @@ export class IntegracaoVendedoresController {
     summary: 'Atualizar vendedor',
     description: 'Atualização parcial.',
   })
-  @ApiParam({ name: 'codigo', description: 'codigoErp do vendedor' })
+  @ApiParam({ name: 'codigo', description: 'chave do vendedor' })
   @ApiResponse({
     status: 200,
     schema: { example: INTEGRACAO_VENDEDOR_EXAMPLE },
@@ -150,7 +150,7 @@ export class IntegracaoVendedoresController {
   }
 
   @ApiOperation({ summary: 'Excluir vendedor (soft delete)' })
-  @ApiParam({ name: 'codigo', description: 'codigoErp do vendedor' })
+  @ApiParam({ name: 'codigo', description: 'chave do vendedor' })
   @ApiResponse({ status: 200, description: 'Excluído' })
   @ApiResponse({ status: 404, description: 'Vendedor não encontrado' })
   @Delete(':codigo')

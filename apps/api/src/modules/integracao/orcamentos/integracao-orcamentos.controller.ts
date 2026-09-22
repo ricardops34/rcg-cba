@@ -51,7 +51,7 @@ export class IntegracaoOrcamentosController {
   @ApiOperation({
     summary: 'Listar orçamentos',
     description:
-      'Paginado; filtra por ativo e status. Só orçamentos com codigoErp (ou seja, já ' +
+      'Paginado; filtra por ativo e status. Só orçamentos com chave (ou seja, já ' +
       'vinculados ao ERP — criados por aqui via POST, ou criados na plataforma e vinculados via ' +
       'PATCH .../pendentes/{id}). Orçamentos aprovados aguardando vínculo estão em GET .../pendentes.',
   })
@@ -68,8 +68,8 @@ export class IntegracaoOrcamentosController {
   @ApiOperation({
     summary: 'Listar orçamentos aprovados pendentes de integração',
     description:
-      'Orçamentos aprovados criados na plataforma (sem codigoErp ainda) — prontos pro ERP ' +
-      'importar. Depois de importar, chame PATCH .../pendentes/{id} com o codigoErp gerado no ' +
+      'Orçamentos aprovados criados na plataforma (sem chave ainda) — prontos pro ERP ' +
+      'importar. Depois de importar, chame PATCH .../pendentes/{id} com a chave gerado no ' +
       'ERP pra vincular; a partir daí o orçamento passa a aparecer no GET normal, como qualquer outro.',
   })
   @ApiPaginationQuery()
@@ -83,10 +83,10 @@ export class IntegracaoOrcamentosController {
 
   // Idem: declarado antes de PATCH :codigo.
   @ApiOperation({
-    summary: 'Vincular orçamento aprovado ao codigoErp do ERP',
+    summary: 'Vincular orçamento aprovado ao pedido gerado no ERP (SC5/SC6)',
     description:
-      'Marca o orçamento como integrado, gravando o codigoErp gerado ao importar no ERP. Só ' +
-      'funciona uma vez — orçamento já vinculado, ainda não aprovado, ou codigoErp colidindo ' +
+      'Marca o orçamento como integrado, gravando a chave do pedido (SC5) e a de cada item (SC6) geradas no ERP. Só ' +
+      'funciona uma vez — orçamento já vinculado, ainda não aprovado, ou chave colidindo ' +
       'com outro orçamento retornam 409.',
   })
   @ApiParam({
@@ -101,7 +101,7 @@ export class IntegracaoOrcamentosController {
   @ApiResponse({ status: 404, description: 'Orçamento não encontrado' })
   @ApiResponse({
     status: 409,
-    description: 'Já vinculado, ainda não aprovado, ou codigoErp duplicado',
+    description: 'Já vinculado, ainda não aprovado, ou chave duplicado',
   })
   @Patch('pendentes/:id')
   vincular(
@@ -113,14 +113,14 @@ export class IntegracaoOrcamentosController {
       integracao.empresaId,
       integracao.apiKeyId,
       id,
-      dto.codigoErp,
+      dto,
     );
   }
 
-  @ApiOperation({ summary: 'Detalhar orçamento por codigoErp' })
+  @ApiOperation({ summary: 'Detalhar orçamento por chave' })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoErp — a chave de identidade do registro no ERP',
+    description: 'chave — a chave de identidade do registro no ERP',
   })
   @ApiResponse({
     status: 200,
@@ -138,8 +138,8 @@ export class IntegracaoOrcamentosController {
   @ApiOperation({
     summary: 'Criar orçamento',
     description:
-      'clienteCodigo/vendedorCodigo/condicaoPagamentoCodigo e, nos itens, produtoCodigo referenciam ' +
-      'os respectivos cadastros pelo codigoErp. O preço unitário informado é o praticado; vlrTabela/' +
+      'clienteChave/vendedorChave/condicaoPagamentoChave e, nos itens, produtoChave referenciam ' +
+      'os respectivos cadastros pela chave. O preço unitário informado é o praticado; vlrTabela/' +
       'desconto/total são recalculados a partir da Tabela de Preço do cliente, mesma regra da tela. ' +
       'dataRetorno preenchida gera automaticamente uma Atividade de acompanhamento. Sem vínculo a ' +
       'Oportunidade (recurso interno do CRM, sem chave de legado) — pode ser associado depois ' +
@@ -152,7 +152,7 @@ export class IntegracaoOrcamentosController {
   })
   @ApiResponse({
     status: 409,
-    description: 'Já existe orçamento com esse codigoErp',
+    description: 'Já existe orçamento com essa chave',
   })
   @Post()
   create(
@@ -165,7 +165,7 @@ export class IntegracaoOrcamentosController {
   @ApiOperation({
     summary: 'Enviar lote de orcamentos',
     description:
-      'Upsert em lote por codigoErp (máx. 1.000 por chamada). Um registro com ' +
+      'Upsert em lote por chave (máx. 1.000 por chamada). Um registro com ' +
       '"excluido": true é excluído (soft delete) e dispensa os demais campos. ' +
       'Responde 200 com o relatório: um item inválido não desfaz os que já ' +
       'passaram, e vem listado em "erros" com o índice no array enviado.',
@@ -200,7 +200,7 @@ export class IntegracaoOrcamentosController {
   })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoErp — a chave de identidade do registro no ERP',
+    description: 'chave — a chave de identidade do registro no ERP',
   })
   @ApiResponse({
     status: 200,
@@ -228,7 +228,7 @@ export class IntegracaoOrcamentosController {
   @ApiOperation({ summary: 'Excluir orçamento (soft delete)' })
   @ApiParam({
     name: 'codigo',
-    description: 'codigoErp — a chave de identidade do registro no ERP',
+    description: 'chave — a chave de identidade do registro no ERP',
   })
   @ApiResponse({ status: 200, description: 'Excluído' })
   @ApiResponse({ status: 404, description: 'Orçamento não encontrado' })

@@ -111,35 +111,109 @@ delas que saíram as correções abaixo — todas já aplicadas no código:
   antiga continuaria pareada ao celular do vendedor, recebendo mensagens que a
   API já não escuta.
 
-## 2. Compatibilidade com o contrato atual
+## 2. Compatibilidade com o contrato atual **[revisto contra o código em 2026-09-21]**
 
 O contrato usado pelo worker está definido em
 `apps/whatsapp-worker/src/transport/whatsapp-transport.ts`.
 
-| Função atual | Evolution GO | Implementação ou ressalva |
+> **Esta seção nasceu como estudo de viabilidade, antes de existir código.**
+> Várias linhas diziam "a validar" sobre coisas que o
+> `EvolutionGoProvider` já resolveu — e uma rota que o provider usa todo dia
+> (`advanced-settings`) nunca esteve na lista. A revisão de 2026-09-21 acertou
+> as duas pontas: o que está marcado **Sim** abaixo é o que o código chama de
+> fato, e o que continua "a validar" é o que ninguém conferiu contra um
+> gateway em execução.
+
+| Função | Evolution GO | Implementação ou ressalva |
 |---|---|---|
-| Criar instância por vendedor | Sim | `POST /instance/create` |
+| Criar instância por vendedor | Sim | `POST /instance/create`, com `advancedSettings` no corpo |
+| **Ler as configurações da instância** | Sim | `GET /instance/{instanceId}/advanced-settings` |
+| **Alterar as configurações da instância** | Sim | `PUT /instance/{instanceId}/advanced-settings` — reaplicado a cada conexão |
 | Conectar e obter QR Code | Sim | `POST /instance/connect` e `GET /instance/qr` |
-| Parear por código telefônico | Sim | `POST /instance/pair` |
 | Consultar estado | Sim | `GET /instance/status` |
-| Reconectar | Sim | `POST /instance/reconnect` |
 | Desconectar preservando sessão | Sim | `POST /instance/disconnect` |
 | Encerrar sessão do WhatsApp | Sim | `DELETE /instance/logout` |
 | Excluir instância | Sim | `DELETE /instance/delete/:instanceId` |
 | Enviar texto | Sim | `POST /send/text` |
-| Responder citando mensagem | Não garantido | Há divergência entre documentação e versões; validar em prova de conceito |
-| Enviar imagem, vídeo, áudio e documento | Sim | `POST /send/media` |
-| Receber mensagens | Sim | Evento `Message` por webhook |
-| Capturar mensagens enviadas pelo celular | Sim | Eventos `Message`/`SendMessage`, com deduplicação por ID |
-| Baixar mídia somente após autorização | Sim | `WEBHOOK_FILES=false` e download posterior pelo objeto do evento |
-| Marcar mensagem como lida | Sim | `POST /message/markread` |
-| Receber recibos de entrega e leitura | Sim | Categoria `READ_RECEIPT`, evento `Receipt` |
-| Enviar reação | Sim | `POST /message/react` |
-| Receber reação | A validar | Documentada entre os eventos de mensagem; validar o payload da versão fixada |
+| Responder citando mensagem | Sim | `quoted: { messageId }` — **não** é o `quotedMessageId` plano que a documentação do projeto sugeria |
+| Enviar imagem, vídeo, áudio e documento | Sim | `POST /send/media`, com os bytes num `data:` URI (ver a ressalva em `enviarArquivo`) |
+| Marcar mensagem como lida | Sim | `POST /message/markread` — `id` é **lista** |
+| Enviar reação | Sim | `POST /message/react`, com `fromMe` para localizar a mensagem reagida |
+| **Baixar mídia sob demanda** | Sim | `POST /message/downloadmedia` |
 | Listar contatos | Sim | `GET /user/contacts` |
-| Listar conversas | Parcial | Há sincronização de histórico, mas não um equivalente direto confirmado de `listarConversas()` |
+| **Foto do contato** | Sim | `POST /user/avatar` com `{number, preview}` — é POST, apesar de ser leitura |
+| **Importar histórico do aparelho** | Sim | `POST /chat/history-sync`, disparado pela tela |
+| Receber mensagens | Sim | Evento `MESSAGE` por webhook |
+| Capturar mensagens enviadas pelo celular | Sim | `MESSAGE`/`SEND_MESSAGE`, com deduplicação por id |
+| Baixar mídia somente após autorização | Sim | `WEBHOOK_FILES=false` e download posterior |
+| Receber recibos de entrega e leitura | Sim | `READ_RECEIPT` |
+| Receber reação | A validar | Documentada entre os eventos de mensagem; o payload da versão fixada não foi conferido |
 | Tratar JID telefônico e `@lid` | Sim | Versões recentes normalizam `Sender`, `SenderAlt` e JIDs |
-| Restaurar sessões após reinício | Sim | A Evolution GO persiste credenciais no PostgreSQL; comportamento deve ser testado |
+| Restaurar sessões após reinício | Sim | O gateway persiste as credenciais no PostgreSQL dele |
+
+### A credencial escolhe a instância — e isso não é detalhe
+
+A documentação oficial separa dois tipos de rota, e o gateway obedece:
+
+| Tipo | Credencial | Exemplos |
+|---|---|---|
+| Administrativa | `GLOBAL_API_KEY` | `/instance/create`, `/instance/all`, `/instance/delete/{id}` |
+| Operação | **token da instância** | `/instance/qr`, `/instance/status`, `/send/*`, `/message/*` |
+
+`GET /instance/qr` **não recebe parâmetro nenhum** (conferido no Swagger do
+gateway em 2026-09-21): quem diz de qual instância se trata é a credencial do
+cabeçalho.
+
+> **A retaguarda do `chaveInstancia` é uma armadilha aqui.** Ela devolve a
+> chave administrativa quando não há token da instância gravado. Isso salva as
+> rotas administrativas, mas em `/instance/qr` produz o pior sintoma possível:
+> nenhum erro, nenhum QR, e a tela esperando para sempre. Desde 2026-09-21 o
+> provider avisa no log e devolve o motivo à tela quando cai nesse caso.
+
+### Rotas que existem e a plataforma não usa
+
+Levantadas do Swagger do gateway em 2026-09-21. Ficam registradas porque são
+as candidatas naturais quando faltar diagnóstico:
+
+| Rota | Serve para |
+|---|---|
+| `GET /instance/info/{instanceId}` | detalhe da instância |
+| `GET /instance/logs/{instanceId}` | **log do gateway para aquela instância** — o primeiro lugar a olhar quando o QR não vem |
+| `POST /instance/forcereconnect/{instanceId}` | reconexão forçada |
+| `POST/DELETE /instance/proxy/{instanceId}` | proxy por instância |
+| `POST /instance/pair` | parear por código telefônico — aqui o pareamento é só por QR |
+| `POST /instance/reconnect` | reconectar; quem reabre na plataforma é o `connect` |
+
+### O que **não** existe no gateway
+
+**Listar as conversas do aparelho.** A tabela de rotas do serviço em execução
+(99) tem `/group/list`, `/newsletter/list` e `/instance/all`, mas nada que
+liste as conversas individuais. É a diferença de contrato mais relevante em
+relação ao worker do zapo, e a razão de `listarConversas()` não ter equivalente
+aqui.
+
+### `advancedSettings`
+
+São **política da empresa**, gravados em `whatsapp_config` e válidos para toda
+instância dela — vendedor, gerente, supervisor e o número institucional.
+Editáveis em Administração > WhatsApp > Evolution GO.
+
+| Campo | Padrão | O que faz |
+|---|---|---|
+| `ignoreGroups` | `true` | Grupo não faz parte do atendimento |
+| `ignoreStatus` | `true` | Publicações de status não entram |
+| `readMessages` | `false` | Ligado, manda visto azul sem ninguém ter lido |
+| `alwaysOnline` | `false` | Mostra o número disponível o tempo todo |
+| `rejectCall` | `false` | Recusa chamadas automaticamente |
+| `msgRejectCall` | vazio | Resposta ao recusar; vazio recusa sem responder |
+
+Ficavam fixos no corpo do `POST /instance/create` até 2026-09-21, então só
+valiam para instância nova. Os padrões acima reproduzem exatamente aqueles
+valores — ligar a configuração não mudou o comportamento de ninguém.
+
+**A alteração alcança as instâncias antigas na próxima conexão de cada uma**,
+porque o `PUT` é reaplicado em todo `iniciar`. Não há disparo imediato para
+todas ao salvar.
 
 Referências oficiais:
 
@@ -148,6 +222,10 @@ Referências oficiais:
 - [Mensagens e mídia](https://github.com/evolution-foundation/evolution-go/blob/main/docs/wiki/guias-api/api-messages.md)
 - [Sistema de eventos](https://github.com/evolution-foundation/evolution-go/blob/main/docs/wiki/recursos-avancados/events-system.md)
 - [Changelog](https://github.com/evolution-foundation/evolution-go/blob/main/CHANGELOG.md)
+
+> O Swagger da instância em uso é a fonte mais confiável que o projeto tem —
+> nomes de rota e de campo mudaram entre versões, e foi ali que
+> `quoted.messageId` e `advanced-settings` foram confirmados.
 
 ## 3. Arquitetura proposta
 
@@ -222,6 +300,12 @@ comerciais, RBAC e persistência comercial continuam na API e não são delegada
 | `evolutionApiKeyCifrada` | Chave administrativa, AES-256-GCM; nenhuma rota de leitura a devolve |
 | `evolutionVersao` | Versão da imagem homologada, registrada por quem implantou |
 | `ativo` | Libera ou bloqueia novas conexões e o atendimento |
+| `evolutionIgnoreGroups` | `advancedSettings` da instância — ver a seção 2 |
+| `evolutionIgnoreStatus` | idem |
+| `evolutionReadMessages` | idem |
+| `evolutionAlwaysOnline` | idem |
+| `evolutionRejectCall` | idem |
+| `evolutionMsgRejectCall` | idem |
 
 O `webhookUrl` **não** é configurável: ele é derivado de
 `WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL` e carrega empresa, sessão e o segredo da

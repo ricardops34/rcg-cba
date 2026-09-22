@@ -2,7 +2,7 @@
 goal: Plano único da integração ERP Protheus ↔ Plataforma BJ — os dois lados, do que já foi entregue ao que falta
 version: 4.0
 date_created: 2026-09-01
-last_updated: 2026-09-18
+last_updated: 2026-09-22
 owner: Ricardo P Sotomayor
 status: 'In progress'
 tags: [architecture, feature, integracao, protheus, advpl, api]
@@ -31,7 +31,7 @@ tags: [architecture, feature, integracao, protheus, advpl, api]
 ```text
         ERP (Protheus)                          Plataforma (BJ)
  ┌──────────────────────────┐            ┌──────────────────────────┐
- │ SB1 SA1 SA3 SF2 SE1 SCJ… │            │  /api/v1/integracao/…    │
+ │ SB1 SA1 SA3 SF2 SE1 SF1… │            │  /api/v1/integracao/…    │
  │          │               │            │        x-api-key         │
  │   S_T_A_M_P_ diz o que   │            │                          │
  │        mudou             │            │                          │
@@ -39,7 +39,7 @@ tags: [architecture, feature, integracao, protheus, advpl, api]
  │  ① coleta → enfileira    │            │                          │
  │          ▼               │  POST      │                          │
  │      ╔═══════╗           │  DELETE    │                          │
- │      ║  SZZ  ║ ② drena ──┼───────────▶│  upsert por codigoErp    │
+ │      ║  SZZ  ║ ② drena ──┼───────────▶│  upsert pela chave       │
  │      ║ fila  ║           │            │                          │
  │      ╚═══════╝ ③ retorno │  GET/PATCH │  orçamentos/pendentes    │
  │          ▲───────────────┼◀───────────│  (aprovados na tela)     │
@@ -83,7 +83,7 @@ Juntos, uma carga grande bloqueia a próxima varredura.
 - **CON-005**: A tabela de fila é a **SZZ**, prefixo de campo `ZZ_`.
 - **CON-006**: A API limita **60 req/min** nas rotas de integração e **120 req/min** no envio de XML, contados **por IP** — duas chaves do mesmo IP dividem o balde. O lote (`PUT`) tem o mesmo teto de requisições, mas leva até 1.000 registros em cada uma.
 - **CON-007**: Os arquivos-fonte são gravados em **CP-1252**, nunca UTF-8. Os `.md` são UTF-8.
-- **CON-008**: **`codigoErp` é a única chave que atravessa a fronteira.** O uuid da plataforma é interno e nunca sai, exceto no `PATCH /orcamentos/pendentes/{id}`. Ver seção 3.
+- **CON-008**: **A `chave` (chave de integração, X2_UNICO com `-`) é a única chave que atravessa a fronteira** — até 22/09/2026 esse papel era do `codigoErp`, que agora é só informativo. O uuid da plataforma é interno e nunca sai, exceto no `PATCH /orcamentos/pendentes/{id}`. Ver seção 3.
 - **CON-009**: **Sem include próprio.** A integração não tem `.ch` — nem `BJPLA.CH`, nem qualquer outro. Os fontes incluem apenas `totvs.ch`. Não há `#Define` para compartilhar: sentido e status são literais no ponto de uso e os ajustes são parâmetros `MV_BJAPI*`.
 
 ### Padrões obrigatórios
@@ -189,52 +189,50 @@ coluna `*_FILIAL` do registro**, sem `AllTrim()`; `FWxFilial()` aparece só no
 filtro SQL e ao montar referência para outra tabela. POST e DELETE montam
 exatamente a mesma string.
 
+> **22/09/2026 — chave e codigoErp separados.** O que esta tabela chamava de
+> `codigoErp` passou a se chamar **`chave`** (chave de integração, título
+> "Integração" na tela), e segue a chave única da tabela (`X2_UNICO`), campos na
+> mesma ordem. O `codigoErp` agora é **só informativo** (título "Código") e vem
+> em campo próprio; itens não têm. Referências viram `…Chave`. Definição
+> completa em [`docs/planos/2026-09-22-chave-integracao.md`](../../planos/2026-09-22-chave-integracao.md).
+
 **Cadastros:**
 
-| Endpoint | Origem | `codigoErp` | Situação |
+| Endpoint | Origem | `chave` | `codigoErp` |
 |---|---|---|---|
-| regras-desconto | SZ0 | `Z0_FILIAL`-`Z0_CODIGO` | ✅ |
-| categorias (raiz) | **SZ1** | `Z1_FILIAL`-`Z1_TIPO` | ✅ |
-| categorias (filha) | SBM | `BM_FILIAL`-`BM_GRUPO`, pai `filial`-`BM_YTIPO` | ✅ |
-| condicoes-pagamento | SE4 | `E4_FILIAL`-`E4_CODIGO` | ✅ |
-| armazens | NNR | `NNR_FILIAL`-`NNR_CODIGO` | ✅ |
-| produtos | SB1 | `B1_FILIAL`-`B1_COD` | ✅ |
-| vendedores | SA3 | `A3_FILIAL`-`A3_COD` | ✅ |
-| clientes | SA1 | `A1_FILIAL`-`A1_COD`-`A1_LOJA` | ✅ |
-| **fornecedores** | SA2 | `A2_FILIAL`-`A2_COD`-`A2_LOJA` | ✅ 08/09 |
-| tabelas-preco | DA0 | `DA0_FILIAL`-`DA0_CODTAB` | ✅ |
-| tabelas-preco → itens | DA1 | `DA1_FILIAL`-`DA1_CODTAB`-`DA1_CODPRO` | ✅ |
-| **estoque** | SB2 | `B2_FILIAL`-`B2_COD`-`B2_LOCAL` | ✅ |
+| regras-desconto | SZ0 | `Z0_FILIAL`-`Z0_CODIGO` | `Z0_CODIGO` |
+| categorias (raiz) | **SZ1** | `Z1_FILIAL`-`Z1_TIPO` | `Z1_TIPO` |
+| categorias (filha) | SBM | `BM_FILIAL`-`BM_GRUPO`, pai `filial`-`BM_YTIPO` | `BM_GRUPO` |
+| condicoes-pagamento | SE4 | `E4_FILIAL`-`E4_CODIGO` | `E4_CODIGO` |
+| armazens | NNR | `NNR_FILIAL`-`NNR_CODIGO` | `NNR_CODIGO` |
+| produtos | SB1 | `B1_FILIAL`-`B1_COD` | `B1_COD` |
+| vendedores | SA3 | `A3_FILIAL`-`A3_COD` | `A3_COD` |
+| clientes | SA1 | `A1_FILIAL`-`A1_COD`-`A1_LOJA` | `A1_COD`+`A1_LOJA` |
+| fornecedores | SA2 | `A2_FILIAL`-`A2_COD`-`A2_LOJA` | `A2_COD`+`A2_LOJA` |
+| tabelas-preco | DA0 | `DA0_FILIAL`-`DA0_CODTAB` | `DA0_CODTAB` |
+| tabelas-preco → itens | DA1 | `DA1_FILIAL`-`DA1_CODTAB`-`DA1_CODPRO`-`DA1_ITEM` | — |
+| estoque | SB2 | `B2_FILIAL`-`B2_COD`-`B2_LOCAL` | `B2_COD` |
 
-> **Correção de 08/09/2026 — o estoque tem `codigoErp` próprio.** O documento
-> absorvido dizia em dois lugares que o estoque era "a única entidade sem
-> `codigoErp`", com a chave "na URL" como `{produtoCodigo}/{armazemCodigo}`.
-> **Está errado**, e contradizia a própria tabela dele. O contrato
-> (`integracaoEstoqueCreateSchema`) tem `codigoErp`, e a rota é
-> `@Patch(':codigo')` — um segmento só. Foi essa frase que produziu o bug do
-> exemplo errado no `endpoints.md` — TASK-050.
+**Transacionais** (cabeçalho e itens sempre juntos; itens sem filtro de
+`D_E_L_E_T_`):
 
-**Transacionais:**
+| Endpoint | Origem | `chave` | `codigoErp` |
+|---|---|---|---|
+| notas-saida | SF2 | `F2_FILIAL`-`F2_DOC`-`F2_SERIE`-`F2_CLIENTE`-`F2_LOJA`-`F2_FORMUL`-`F2_TIPO` | `F2_DOC` |
+| notas-saida → itens | SD2 | `D2_FILIAL`-`D2_DOC`-`D2_SERIE`-`D2_CLIENTE`-`D2_LOJA`-`D2_COD`-`D2_ITEM` | — |
+| notas-entrada | SF1 | `F1_FILIAL`-`F1_DOC`-`F1_SERIE`-`F1_FORNECE`-`F1_LOJA`-`F1_FORMUL`-`F1_TIPO` | `F1_DOC` |
+| notas-entrada → itens | SD1 | `D1_FILIAL`-`D1_DOC`-`D1_SERIE`-`D1_FORNECE`-`D1_LOJA`-`D1_COD`-`D1_ITEM` | — |
+| titulos-receber | SE1 | `E1_FILIAL`-`E1_PREFIXO`-`E1_NUM`-`E1_PARCELA`-`E1_TIPO` | `E1_NUM` |
+| pedido (retorno do orçamento) | SC5 | `C5_FILIAL`-`C5_NUM` | `C5_NUM` |
+| pedido → itens (retorno) | SC6 | `C6_FILIAL`-`C6_NUM`-`C6_ITEM`-`C6_PRODUTO` | — |
+| ~~orcamentos~~ | ~~SCJ/SCK~~ | | ❌ fora desde 21/09/2026 |
+| objetivos | — | sem origem no ERP; entidade inativa no catálogo | |
 
-| Endpoint | Origem | `codigoErp` | Exemplo | Situação |
-|---|---|---|---|---|
-| notas-saida | SF2 | `F2_FILIAL`-`F2_DOC`-`F2_SERIE`-`F2_TIPO`-`F2_ESPECIE` | `01-000012345-1-N-SPED` | ✅ |
-| notas-saida → itens | SD2 | `D2_FILIAL`-`D2_DOC`-`D2_SERIE`-`D2_ITEM` | `01-000012345-1-0001` | ✅ |
-| **notas-entrada** | SF1 | `F1_FILIAL`-`F1_DOC`-`F1_SERIE`-`F1_FORNECE`-`F1_LOJA`-`F1_FORMUL` | `01-000004212-1-000042-01-N` | ✅ 08/09 |
-| **notas-entrada → itens** | SD1 | `D1_FILIAL`-`D1_DOC`-`D1_SERIE`-`D1_FORNECE`-`D1_LOJA`-`D1_ITEM` | `01-000004212-1-000042-01-0001` | ✅ 08/09 |
-| titulos-receber | SE1 | `E1_FILIAL`-`E1_PREFIXO`-`E1_NUM`-`E1_PARCELA`-`E1_TIPO` | `01-NF-000012345-A-NF` | ✅ |
-| orcamentos | SCJ | `CJ_FILIAL`-`CJ_NUM` | `01-000123` | ✅ |
-| orcamentos → itens | SCK | `CK_FILIAL`-`CK_NUM`-`CK_ITEM` | `01-000123-01` | ✅ |
-| objetivos | — | sem origem no ERP; entidade inativa no catálogo | | ⏸️ |
+**A filial entra na chave** porque a chave de API é por **empresa**, e uma
+empresa tem várias filiais. A chave da NF-e foi descartada: só existe depois da
+autorização, e a nota em digitação precisa subir antes.
 
-**Por que a nota leva filial, tipo e espécie.** A filial entra porque a chave de
-API é por **empresa**, e uma empresa tem várias filiais: duas filiais emitindo a
-nota `000012345` série `1` cairiam no mesmo registro, e a segunda sobrescreveria
-a primeira sem erro nenhum. Tipo e espécie separam documentos que compartilham
-numeração (normal, devolução, beneficiamento). A chave da NF-e foi descartada: só
-existe depois da autorização, e nota em digitação precisa subir antes disso.
-
-**A chave da SF1 não leva o `F1_TIPO`** (decidido em 08/09/2026). Consequência
+~~**A chave da SF1 não leva o `F1_TIPO`**~~ — **superado em 22/09/2026**: a chave segue o X2_UNICO e leva o `F1_TIPO`. Texto original (08/09/2026): Consequência
 conhecida: se um dia existir uma compra `'N'` e uma devolução `'D'` com o mesmo
 `F1_DOC`+`F1_SERIE`+`F1_FORNECE`+`F1_LOJA`+`F1_FORMUL`, as duas montariam a mesma
 string e a segunda sobrescreveria a primeira. Na prática o participante difere.
@@ -271,7 +269,7 @@ tem prefixo nenhum.
 | Tarefa | O quê |
 |---|---|
 | TASK-058 | ⛔ **Cadastrar a SZY** (SX2, SX3 e SIX) pelo Configurador, conforme a **seção 5**: 11 campos, dois índices, `ZY_STATUS` com combo. Sem ela o `RecLock("SZY", .T.)` de `U_BJVARRE` falha na primeira linha e nenhuma coleta acontece |
-| TASK-059 | ⛔ **Acrescentar à SZZ** o campo `ZZ_CODIGO` (C(9), amarração com o lote da SZY) e os dois índices: `ZZ_FILIAL+ZZ_CODIGO+ZZ_SEQUEN` (chave única) e `ZZ_FILIAL+ZZ_CODIGO+ZZ_SEQUEN+ZZ_STATUS`. **Sem o primeiro nada roda** — é por ele que o envio percorre a fila e que a gravação do resultado acha a mensagem |
+| TASK-059 | ⛔ **Acrescentar à SZZ** o campo `ZZ_CODIGO` (C(9), amarração com o lote da SZY) e os dois índices: `ZZ_FILIAL+ZZ_CODIGO+ZZ_SEQUEN` (chave única) e `ZZ_FILIAL+ZZ_CODIGO+ZZ_STATUS+ZZ_SEQUEN`. **Sem o primeiro nada roda** — é por ele que o envio percorre a fila e que a gravação do resultado acha a mensagem |
 | TASK-060 | ⛔ **Entrada de cliente novo.** O escopo da entrada é orçamento aprovado, cliente novo e alteração de cliente aprovada. O `BJPLA004` só sabe *alterar* cliente que já existe na SA1 (`CRMA980`); a **inclusão** não está escrita. Depende do contrato da rota, que a plataforma não expõe — mesma dependência de TASK-051 (**DEP-005**) |
 | TASK-049 | Segunda passada de XML por `?semXml=true`: nota enviada antes da autorização na SEFAZ não tem XML no TSS naquele instante, e é essa varredura que a alcança depois. Hoje o XML é reenviado a cada mudança da SF2 |
 | TASK-051 | **Decidir com a plataforma** o retorno de cliente (novo e alteração) — **spec de desenvolvimento no apêndice C**. A rota `/integracao/clientes/alteracoes` que o `BJPLA004` chama **não existe** — a fila de aprovação é interna. Ou a API expõe a rota, ou TASK-023 sai do escopo e o código é removido |
@@ -326,7 +324,7 @@ mensagem é o `ZZ_ENTID`, no detalhe.
 | `ZY_QTDENV` | N(6) | Registros enfileirados com sucesso, somados de todas as entidades do lote |
 | `ZY_QTDERR` | N(6) | Erros de enfileiramento, somados de todas as entidades do lote |
 
-Índice: `ZY_FILIAL + ZY_CODIGO`, chave única.
+Índices: ver "Índices", abaixo.
 
 **Consequência aceita:** como o `ZY_STATUS`/`ZY_MARCA` valem para o lote
 inteiro, um erro numa única entidade (ex.: produtos) segura o avanço da
@@ -380,14 +378,14 @@ padrão de repetição curta já usado no projeto (GUD-002), sem wrapper.
 | Ordem | Chave | Para quê |
 |---|---|---|
 | 1 | `ZY_FILIAL + ZY_CODIGO` | Chave única, e a ordem de processamento: do lote mais antigo para o mais novo |
-| 2 | `ZY_FILIAL + ZY_CODIGO + ZY_STATUS` | Achar os lotes **com erro e os não processados** sem varrer os que já saíram. O status vem no fim: quem o usa é o banco, na consulta que o envio faz |
+| 2 | `ZY_FILIAL + ZY_STATUS + ZY_CODIGO` | Achar os lotes **com erro e os não processados** sem varrer os que já saíram. O status vem antes do código: o envio faz `dbSeek` por filial + status |
 
 **SZZ**
 
 | Ordem | Chave | Para quê |
 |---|---|---|
 | 1 | `ZZ_FILIAL + ZZ_CODIGO + ZZ_SEQUEN` | **Chave única.** O detalhe do mestre: o lote amarra, a sequência ordena. É por ele que o envio percorre a fila e que `U_BJGRAVA` e o monitor chegam numa mensagem |
-| 2 | `ZZ_FILIAL + ZZ_CODIGO + ZZ_SEQUEN + ZZ_STATUS` | **Pegar as pendentes e as com erro** de um lote. O status vem depois da sequência, então não entra em `dbSeek`: quem o usa é o banco, nas consultas que filtram status dentro do lote, e a chave cobre todo o filtro |
+| 2 | `ZZ_FILIAL + ZZ_CODIGO + ZZ_STATUS + ZZ_SEQUEN` | **Pegar as pendentes e as com erro** de um lote. O status vem antes da sequência: o envio faz `dbSeek` por filial + lote + status e não lê as mensagens já executadas |
 
 Três índices foram retirados em 17/09/2026. O `ZZ_STATUS + ZZ_DTCRIA` era o
 caminho do drenador antigo, que varria por status; desde que a drenagem passou a
@@ -449,8 +447,8 @@ fornecedor antes de nota de entrada.
 Em `Portal/BJ/`:
 
 - **FILE-002**: `BJPLA002.prw` — **Funções.** Agendável: `U_BJEXPURG`. Catálogo, cliente HTTP, leitura do `codigoErp`, fila (enfileirar, gravar resultado, memória, expurgo). Todos dependem dele; ele não depende de nenhum.
-- **FILE-003**: `BJPLA003.prw` — **Coleta de saída.** Agendável: `U_BJVARRE`. A varredura que lê por `S_T_A_M_P_` e enfileira, e os 16 mapeadores.
-- **FILE-004**: `BJPLA004.prw` — **Envio e retorno.** Agendáveis: `U_BJDRENA` e `U_BJRETORNO`. Drenagem lote a lote (`BJDRENA`), envio em bloco por `PUT` (`BJLOTE`) e a gravação do que chega: orçamento → SCJ, alteração de cliente → SA1.
+- **FILE-003**: `BJPLA003.prw` — **Coleta de saída.** Agendável: `U_BJVARRE`. A varredura que lê por `S_T_A_M_P_` e enfileira, e os 15 mapeadores.
+- **FILE-004**: `BJPLA004.prw` — **Envio e retorno.** Agendáveis: `U_BJDRENA` e `U_BJRETORNO`. Drenagem lote a lote (`BJDRENA`), envio em bloco por `PUT` (`BJLOTE`) e a gravação do que chega: orçamento aprovado → Pedido de Venda (SC5/SC6) por `MATA410`, alteração de cliente → SA1.
 - **FILE-005**: `BJPLA005.prw` — **Monitor.** A única com interface: browse dos lotes, leitura de uma mensagem, reenvio, envio em bloco e expurgo sob demanda.
 - ~~**FILE-006**: `BJPLA006.prw`~~ — **Removido em 08/09/2026.** Preparava a coluna `S_T_A_M_P_`; todas as tabelas já têm a coluna. SZZ e parâmetros continuam conferidos pelo Configurador.
 
@@ -463,13 +461,13 @@ Ponto de Entrada.
 - **TEST-002**: Enfileirar uma entidade sem drenar, e confirmar que a marca d'água avançou e nada chegou à plataforma.
 - **TEST-003**: Drenar com a API indisponível, e confirmar que as mensagens continuam com status `3` e voltam no ciclo seguinte, e que a varredura seguinte não as duplica.
 - **TEST-004**: **Duplicidade.** Interromper o processo entre o passo 3 e o 4 da entrada. Na execução seguinte, confirmar que nenhum documento novo é gerado e que só o `PATCH` é reenviado.
-- **TEST-005**: **Transação.** Forçar falha na gravação da mensagem dentro do `Begin Transaction` e confirmar que o orçamento não fica na SCJ.
+- **TEST-005**: **Transação.** Forçar falha na gravação da mensagem dentro do `Begin Transaction` e confirmar que o Pedido de Venda não fica na SC5/SC6.
 - **TEST-006**: Excluir um registro na origem e confirmar que a mensagem sai com `DELETE`, e que 404 é tratado como resolvido.
 - **TEST-007**: Rodar o expurgo e confirmar que pendentes e com erro nunca são apagadas, independente da idade.
 - **TEST-008**: Categorias — confirmar que a SZ1 sobe antes da SBM e que o produto referencia `B1_TPRCG` e `B1_GRUPO`, ambos já existentes na plataforma.
 - **TEST-009**: Compilar os seis fontes sem erro e sem aviso novo.
 - **TEST-010**: Revisar cada função contra PAT-002: se apagar a função e colar o corpo em cada chamada deixasse o código igual ou mais claro, a função sobra e tem de sair.
-- **TEST-011**: **Ida e volta da chave.** Criar um orçamento na plataforma para um cliente e um produto que subiram daqui, rodar o retorno e confirmar que a SCJ recebeu o cliente, o produto, o vendedor e a condição certos — não a string prefixada.
+- **TEST-011**: **Ida e volta da chave.** Criar um orçamento na plataforma para um cliente e um produto que subiram daqui, rodar o retorno e confirmar que o Pedido de Venda (SC5/SC6) recebeu o cliente, o produto, o vendedor e a condição certos — não a string prefixada.
 - **TEST-012**: **Reenvio dirigido.** Pelo monitor, reenviar uma chave de cada entidade e confirmar que o mapeador achou o registro. Hoje nenhum acha.
 - **TEST-013**: **Lote.** Mandar 1.000 registros com um inválido no meio e confirmar que os 999 entraram, que o inválido volta em `erros` com o `indice` certo, e que a mensagem correspondente na fila ficou com erro e as outras executadas.
 - **TEST-014**: **Devolução.** Uma devolução de venda `'D'` aparece na aba *Devoluções* da Posição de Cliente, e o valor não é contado duas vezes nas apurações.
@@ -511,10 +509,11 @@ Ponto de Entrada.
 
 | Item | Situação |
 |---|---|
+| **Orçamento do ERP (SCJ/SCK)** | **Decisão de 21/09/2026: não é enviado nem recebido.** A entidade `orcamentos` saiu do catálogo e o `U_BJMAPORC` foi removido. Na entrada, o orçamento aprovado na plataforma vira Pedido de Venda (SC5/SC6) direto, sem gravar SCJ/SCK |
 | Objetivos de venda | Sem origem definida no ERP. A entidade nasce inativa no catálogo, e o mapeador é um esqueleto |
 | Pedido de Venda (SC5/SC6) | Não há model, tabela nem rota na plataforma. Exigiria criar a entidade do lado de lá |
 | Purge físico | Linha removida do banco não aparece em varredura nenhuma. Só por reenvio dirigido pelo monitor |
-| `regraDescontoCodigo` nos itens | Sem campo confirmado na SB1, DA1, SD2 ou SCK deste dicionário. Vai `null` |
+| `regraDescontoCodigo` nos itens | Sem campo confirmado na SB1, DA1 ou SD2 deste dicionário. Vai `null` |
 | Consultas gerenciais de compra | Decisão da plataforma em 08/09: nasceriam sobre dados que ainda não existem |
 
 ---
@@ -525,7 +524,7 @@ Ponto de Entrada.
 |---|---|---|
 | `POST /notas-saida/{codigoErp}/xml` | `endpoints.md` documenta corpo JSON com `xml` **ou** `xmlBase64`, com curl executável; `testes-swagger.json` anota `multipart/form-data` | Segue o `endpoints.md` e manda `xmlBase64`. Se o primeiro envio voltar **415**, é este o motivo — e aí o caminho é multipart, que o `FWRest` não monta sozinho |
 | Rota do estoque | `endpoints.md` mostra `/estoque/{produtoCodigo}/{armazemCodigo}` na "Visão geral" e nas "Receitas rápidas"; a seção de Estoque e o controller usam `/estoque/{codigoErp}` | Envia certo, na rota de um segmento. O reenvio dirigido lia errado até 17/09/2026 — TASK-044. Documentação corrigida em TASK-050 |
-| `dataRetorno` no orçamento | Não citado no `endpoints.md`, aparece no payload de teste | Não é enviado. Não há campo confirmado na SCJ que o alimente |
+| `dataRetorno` no orçamento | Não citado no `endpoints.md`, aparece no payload de teste | Não se aplica: desde 21/09/2026 o orçamento do ERP (SCJ) não é enviado |
 
 ---
 

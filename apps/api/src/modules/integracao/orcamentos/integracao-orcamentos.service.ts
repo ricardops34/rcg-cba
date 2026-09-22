@@ -18,6 +18,7 @@ import type {
   IntegracaoOrcamentoItem,
   IntegracaoOrcamentoQuery,
   IntegracaoOrcamentoUpdate,
+  IntegracaoOrcamentoVincular,
   PaginationQuery,
   IntegracaoOrcamentoLoteItem,
   IntegracaoLoteResultado,
@@ -37,13 +38,13 @@ import { ParametrosService } from '../../parametros/parametros.service';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 
 const INCLUDE = {
-  cliente: { select: { codigoErp: true } },
-  vendedor: { select: { codigoErp: true } },
-  condicaoPagamento: { select: { codigoErp: true } },
+  cliente: { select: { chave: true } },
+  vendedor: { select: { chave: true } },
+  condicaoPagamento: { select: { chave: true } },
   itens: {
     include: {
-      produto: { select: { codigoErp: true } },
-      regraDesconto: { select: { codigoErp: true } },
+      produto: { select: { chave: true } },
+      regraDesconto: { select: { chave: true } },
     },
   },
 } satisfies Prisma.OrcamentoInclude;
@@ -61,10 +62,11 @@ export class IntegracaoOrcamentosService {
   private paraLeitura(row: OrcamentoComRelacoes): IntegracaoOrcamento {
     return {
       id: row.id,
-      codigoErp: row.codigoErp ?? '',
-      clienteCodigo: row.cliente.codigoErp ?? '',
-      vendedorCodigo: row.vendedor.codigoErp ?? '',
-      condicaoPagamentoCodigo: row.condicaoPagamento?.codigoErp ?? null,
+      chave: row.chave ?? '',
+      codigoErp: row.codigoErp,
+      clienteChave: row.cliente.chave ?? '',
+      vendedorChave: row.vendedor.chave ?? '',
+      condicaoPagamentoChave: row.condicaoPagamento?.chave ?? null,
       titulo: row.titulo,
       status: row.status,
       dataValidade: row.dataValidade,
@@ -72,13 +74,14 @@ export class IntegracaoOrcamentosService {
       observacao: row.observacao,
       ativo: row.ativo,
       itens: row.itens.map((item) => ({
+        id: item.id,
         delete: false,
-        codigoErp: item.codigoErp ?? '',
-        produtoCodigo: item.produto?.codigoErp ?? '',
+        chave: item.chave ?? '',
+        produtoChave: item.produto?.chave ?? '',
         quantidade: item.quantidade,
         vlrUnitario: item.vlrUnitario,
         percComissao: item.percComissao,
-        regraDescontoCodigo: item.regraDesconto?.codigoErp ?? null,
+        regraDescontoChave: item.regraDesconto?.chave ?? null,
       })),
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -91,7 +94,7 @@ export class IntegracaoOrcamentosService {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const where = {
         empresaId,
-        codigoErp: { not: null },
+        chave: { not: null },
         deletedAt: null,
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
         ...(query.status !== undefined ? { status: query.status } : {}),
@@ -101,7 +104,7 @@ export class IntegracaoOrcamentosService {
           where,
           include: INCLUDE,
           ...paginationToSkipTake(query),
-          orderBy: { codigoErp: 'asc' },
+          orderBy: { chave: 'asc' },
         }),
         tx.orcamento.count({ where }),
       ]);
@@ -115,11 +118,11 @@ export class IntegracaoOrcamentosService {
 
   async findOne(
     empresaId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<IntegracaoOrcamento> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const row = await tx.orcamento.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
         include: INCLUDE,
       });
       if (!row) throw new NotFoundException('Orçamento não encontrado');
@@ -128,7 +131,7 @@ export class IntegracaoOrcamentosService {
   }
 
   /**
-   * Orçamentos aprovados criados na plataforma (sem codigoErp ainda) —
+   * Orçamentos aprovados criados na plataforma (sem chave ainda) —
    * prontos pro ERP importar. Depois de importar, o ERP chama vincular()
    * com o código gerado lá pra "reivindicar" o registro; a partir daí ele
    * passa a aparecer no findAll/findOne normais, como qualquer outro.
@@ -137,7 +140,7 @@ export class IntegracaoOrcamentosService {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const where = {
         empresaId,
-        codigoErp: null,
+        chave: null,
         status: 'aprovado' as const,
         deletedAt: null,
       };
@@ -159,26 +162,27 @@ export class IntegracaoOrcamentosService {
   }
 
   /**
-   * Vincula um orçamento aprovado (criado na plataforma) ao codigoErp
-   * gerado pelo ERP ao importá-lo. Só funciona uma vez — já vinculado, ainda
-   * não aprovado, ou codigoErp colidindo com outro orçamento dão 409.
+   * Vincula um orçamento aprovado (criado na plataforma) ao pedido que o ERP
+   * gerou a partir dele. Pedido e itens vêm juntos: a chave do SC5 vai para o
+   * orçamento, e a de cada SC6 para o item do orçamento de mesmo id. Só
+   * funciona uma vez — já vinculado, ainda não aprovado, chave colidindo com
+   * outro orçamento ou item que não é deste orçamento dão 409.
    */
   async vincular(
     empresaId: string,
     apiKeyId: string,
     id: string,
-    codigoErp: string,
+    dto: IntegracaoOrcamentoVincular,
   ): Promise<IntegracaoOrcamento> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.orcamento.findFirst({
         where: { id, empresaId, deletedAt: null },
+        include: { itens: { select: { id: true } } },
       });
       if (!existente) throw new NotFoundException('Orçamento não encontrado');
-      if (existente.codigoErp != null) {
-        throw new ConflictException(
-          'Orçamento já está vinculado a um codigoErp',
-        );
+      if (existente.chave != null) {
+        throw new ConflictException('Orçamento já está vinculado a um pedido');
       }
       if (existente.status !== 'aprovado') {
         throw new ConflictException(
@@ -186,17 +190,34 @@ export class IntegracaoOrcamentosService {
         );
       }
       const duplicado = await tx.orcamento.findFirst({
-        where: { empresaId, codigoErp },
+        where: { empresaId, chave: dto.chave },
       });
       if (duplicado) {
         throw new ConflictException(
-          `Já existe orçamento com codigoErp ''`,
+          `Já existe orçamento com a chave '${dto.chave}'`,
+        );
+      }
+      const doOrcamento = new Set(existente.itens.map((item) => item.id));
+      const alheio = dto.itens.find((item) => !doOrcamento.has(item.id));
+      if (alheio) {
+        throw new ConflictException(
+          `Item '${alheio.id}' não pertence a este orçamento`,
         );
       }
 
+      for (const item of dto.itens) {
+        await tx.orcamentoItem.update({
+          where: { id: item.id },
+          data: { chave: item.chave },
+        });
+      }
       const atualizado = await tx.orcamento.update({
         where: { id },
-        data: { codigoErp, updatedBy: autor },
+        data: {
+          chave: dto.chave,
+          codigoErp: dto.codigoErp ?? null,
+          updatedBy: autor,
+        },
         include: INCLUDE,
       });
       return this.paraLeitura(atualizado);
@@ -209,11 +230,11 @@ export class IntegracaoOrcamentosService {
     codigo: string,
   ) {
     const cliente = await tx.cliente.findFirst({
-      where: { empresaId, codigoErp: codigo, deletedAt: null },
+      where: { empresaId, chave: codigo, deletedAt: null },
       select: { id: true },
     });
     if (!cliente)
-      throw new NotFoundException(`clienteCodigo '${codigo}' não encontrado`);
+      throw new NotFoundException(`clienteChave '${codigo}' não encontrado`);
     return cliente.id;
   }
 
@@ -223,11 +244,11 @@ export class IntegracaoOrcamentosService {
     codigo: string,
   ) {
     const vendedor = await tx.vendedor.findFirst({
-      where: { empresaId, codigoErp: codigo, deletedAt: null },
+      where: { empresaId, chave: codigo, deletedAt: null },
       select: { id: true },
     });
     if (!vendedor)
-      throw new NotFoundException(`vendedorCodigo '${codigo}' não encontrado`);
+      throw new NotFoundException(`vendedorChave '${codigo}' não encontrado`);
     return vendedor.id;
   }
 
@@ -238,12 +259,12 @@ export class IntegracaoOrcamentosService {
   ) {
     if (!codigo) return null;
     const condicao = await tx.condicaoPagamento.findFirst({
-      where: { empresaId, codigoErp: codigo, deletedAt: null },
+      where: { empresaId, chave: codigo, deletedAt: null },
       select: { id: true },
     });
     if (!condicao)
       throw new NotFoundException(
-        `condicaoPagamentoCodigo '${codigo}' não encontrado`,
+        `condicaoPagamentoChave '${codigo}' não encontrado`,
       );
     return condicao.id;
   }
@@ -259,15 +280,15 @@ export class IntegracaoOrcamentosService {
     const itensParaCalculo = await Promise.all(
       itens.filter((item) => !item.delete).map(async (item) => {
         const produto = await tx.produto.findFirst({
-          where: { empresaId, codigoErp: item.produtoCodigo, deletedAt: null },
+          where: { empresaId, chave: item.produtoChave, deletedAt: null },
           select: { id: true },
         });
         if (!produto)
           throw new NotFoundException(
-            `itens[].produtoCodigo '${item.produtoCodigo}' não encontrado`,
+            `itens[].produtoChave '${item.produtoChave}' não encontrado`,
           );
         return {
-          codigoErp: item.codigoErp,
+          chave: item.chave,
           produtoId: produto.id,
           quantidade: item.quantidade,
           vlrUnitario: item.vlrUnitario,
@@ -275,7 +296,7 @@ export class IntegracaoOrcamentosService {
           regraDescontoId: await resolverRegraDesconto(
             tx,
             empresaId,
-            item.regraDescontoCodigo,
+            item.regraDescontoChave,
           ),
         };
       }),
@@ -298,7 +319,7 @@ export class IntegracaoOrcamentosService {
         ...calculados.data,
         ...itensExcluidos.map((item) => ({
           empresaId,
-          codigoErp: item.codigoErp,
+          chave: item.chave,
           delete: true,
         })),
       ],
@@ -330,24 +351,24 @@ export class IntegracaoOrcamentosService {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.orcamento.findFirst({
-        where: { empresaId, codigoErp: input.codigoErp },
+        where: { empresaId, chave: input.chave },
       });
       const decisao = decidirUpsert(existente);
 
       const clienteId = await this.resolverCliente(
         tx,
         empresaId,
-        input.clienteCodigo,
+        input.clienteChave,
       );
       const vendedorId = await this.resolverVendedor(
         tx,
         empresaId,
-        input.vendedorCodigo,
+        input.vendedorChave,
       );
       const condicaoPagamentoId = await this.resolverCondicaoPagamento(
         tx,
         empresaId,
-        input.condicaoPagamentoCodigo,
+        input.condicaoPagamentoChave,
       );
       const { data: itensData, vlrTotal } = await this.montarItens(
         tx,
@@ -358,7 +379,8 @@ export class IntegracaoOrcamentosService {
       );
 
       const dados = {
-        codigoErp: input.codigoErp,
+        chave: input.chave,
+        codigoErp: input.codigoErp ?? null,
         clienteId,
         vendedorId,
         condicaoPagamentoId,
@@ -373,7 +395,7 @@ export class IntegracaoOrcamentosService {
       };
 
       // No upsert o orçamento **mantém o número que já tinha**: numerar de
-      // novo criaria uma segunda proposta com o mesmo codigoErp do ponto de
+      // novo criaria uma segunda proposta com o mesma chave do ponto de
       // vista do ERP, e o cliente já viu o número antigo.
       const criado = decisao !== 'criar'
         ? await (async () => {
@@ -382,7 +404,10 @@ export class IntegracaoOrcamentosService {
               data: {
                 ...dados,
                 ...camposDaDecisao(decisao),
-                itens: sincronizarFilhos(empresaId, itensData),
+                itens: sincronizarFilhos(
+              { campo: 'orcamentoId', id: existente!.id },
+              itensData,
+            ),
               } as never,
               include: INCLUDE,
             });
@@ -428,7 +453,7 @@ export class IntegracaoOrcamentosService {
   ): Promise<IntegracaoLoteResultado> {
     return processarLote(registros, async (item) => {
       if (item.excluido) {
-        await this.remove(empresaId, apiKeyId, item.codigoErp);
+        await this.remove(empresaId, apiKeyId, item.chave);
         return 'excluido';
       }
       const { decisao } = await this.upsert(
@@ -443,13 +468,13 @@ export class IntegracaoOrcamentosService {
   async update(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
     input: IntegracaoOrcamentoUpdate,
   ): Promise<IntegracaoOrcamento> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.orcamento.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente) throw new NotFoundException('Orçamento não encontrado');
       if (existente.status === 'aprovado') {
@@ -457,19 +482,19 @@ export class IntegracaoOrcamentosService {
       }
 
       const clienteId =
-        input.clienteCodigo !== undefined
-          ? await this.resolverCliente(tx, empresaId, input.clienteCodigo)
+        input.clienteChave !== undefined
+          ? await this.resolverCliente(tx, empresaId, input.clienteChave)
           : undefined;
       const vendedorId =
-        input.vendedorCodigo !== undefined
-          ? await this.resolverVendedor(tx, empresaId, input.vendedorCodigo)
+        input.vendedorChave !== undefined
+          ? await this.resolverVendedor(tx, empresaId, input.vendedorChave)
           : undefined;
       const condicaoPagamentoId =
-        input.condicaoPagamentoCodigo !== undefined
+        input.condicaoPagamentoChave !== undefined
           ? await this.resolverCondicaoPagamento(
               tx,
               empresaId,
-              input.condicaoPagamentoCodigo,
+              input.condicaoPagamentoChave,
             )
           : undefined;
 
@@ -484,7 +509,10 @@ export class IntegracaoOrcamentosService {
           input.itens,
           vendedorId ?? existente.vendedorId,
         );
-        itensUpdate = { itens: sincronizarFilhos(empresaId, itensData) };
+        itensUpdate = { itens: sincronizarFilhos(
+          { campo: 'orcamentoId', id: existente.id },
+          itensData,
+        ) };
         vlrTotal = total;
       }
 
@@ -537,12 +565,12 @@ export class IntegracaoOrcamentosService {
   async remove(
     empresaId: string,
     apiKeyId: string,
-    codigoErp: string,
+    chave: string,
   ): Promise<void> {
     const autor = autorIntegracao(apiKeyId);
     await this.prisma.withTenant(empresaId, async (tx) => {
       const existente = await tx.orcamento.findFirst({
-        where: { empresaId, codigoErp, deletedAt: null },
+        where: { empresaId, chave, deletedAt: null },
       });
       if (!existente) throw new NotFoundException('Orçamento não encontrado');
       await tx.orcamento.update({

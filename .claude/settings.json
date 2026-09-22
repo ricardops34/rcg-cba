@@ -27,7 +27,9 @@
       "Bash(docker compose *)",
       "Bash(git diff --stat -- apps/web/src/lib/tours/tour-tipos.ts docs/planos/tour-termos-ajuda.md | cat *)",
       "Read(//c/VPS/rcg/**)",
-      "Bash(wait)"
+      "Bash(wait)",
+      "Bash(cd /c/VPS/rcg/apps/api && sed -n 90,105p src/modules/orcamentos/calcular-itens-orcamento.ts; grep -rn \"codigoErp\" src/modules/orcamentos/*.ts | grep -v spec | head; grep -rn \"\\\\.itens\\\\b.*codigoErp\\\\|codigoErp: i\\\\.\\\\|itens.*codigoErp\" src ../web/src --include=*.ts --include=*.tsx | grep -v \"integracao/\\\\|spec\" | head)",
+      "Read(//c/VPS/web/**)"
     ]
   }
 }

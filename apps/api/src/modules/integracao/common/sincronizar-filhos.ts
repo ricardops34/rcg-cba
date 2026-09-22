@@ -1,45 +1,48 @@
 /**
  * Casa a coleção de filhos que veio no payload com a que está no banco,
- * usando o `codigoErp` de cada filho como chave.
+ * usando a `chave` de cada filho **dentro do cabeçalho**.
  *
- * O ERP manda o cabeçalho com os itens alterados. Filho com `delete: true` é
- * removido; filho ativo é criado ou atualizado. A ausência de um filho não o
- * exclui, evitando apagar linhas que não participaram do lote incremental.
+ * Cabeçalho e itens vêm sempre juntos, no mesmo envio. Filho com
+ * `delete: true` é removido; filho ativo é criado ou atualizado. A ausência de
+ * um filho não o exclui: o ERP manda os itens sem filtrar `D_E_L_E_T_`, então o
+ * excluído chega marcado, e o que não veio simplesmente não mudou.
+ *
+ * O filho fica ligado ao cabeçalho pelo vínculo interno da plataforma (a FK do
+ * item para o cabeçalho), e a chave é única só dentro dele:
+ * `@@unique([<cabeçalho>Id, chave])`. Por isso o `where` do upsert leva o id do
+ * cabeçalho junto — não há como um envio alcançar o item de outro documento.
  *
  * A alternativa óbvia (apagar tudo e recriar) dá o mesmo conteúdo final, mas
  * troca o uuid de **todos** os itens a cada envio, mesmo quando só um preço
- * mudou. Como o uuid é a identidade interna da linha na plataforma, isso
- * significa que qualquer coisa que aponte para um item — hoje nada, amanhã um
- * anexo, um comentário, um log de auditoria — perderia a referência num
- * reenvio de rotina.
- *
- * O `where` do upsert usa o índice `@@unique([empresaId, codigoErp])`; o
- * Prisma ainda restringe a operação aos filhos do pai que está sendo gravado,
- * então não há como um envio alcançar o item de outro documento.
+ * mudou, e qualquer coisa que aponte para um item perderia a referência.
  */
 export function sincronizarFilhos<
-  T extends { empresaId: string; codigoErp?: string | null; delete?: boolean },
->(empresaId: string, filhos: T[]) {
-  const semChave = filhos.findIndex((filho) => !filho.codigoErp);
+  C extends string,
+  T extends { chave?: string | null; delete?: boolean },
+>(pai: { campo: C; id: string }, filhos: T[]) {
+  const semChave = filhos.findIndex((filho) => !filho.chave);
   if (semChave >= 0) {
-    // Não deveria acontecer: o contrato exige codigoErp em todo filho vindo do
+    // Não deveria acontecer: o contrato exige chave em todo filho vindo do
     // ERP. Se acontecer, é bug de mapeamento — e cair aqui é melhor do que
-    // gravar um filho órfão de chave, que o próximo envio duplicaria.
+    // gravar um filho sem chave, que o próximo envio duplicaria.
     throw new Error(
-      `Filho ${semChave} chegou sem codigoErp — a sincronização precisa da chave`,
+      `Filho ${semChave} chegou sem chave — a sincronização precisa dela`,
     );
   }
   const excluidos = filhos
     .filter((filho) => filho.delete)
-    .map((filho) => filho.codigoErp as string);
+    .map((filho) => filho.chave as string);
   const ativos = filhos.filter((filho) => !filho.delete);
   const semControle = ativos.map(({ delete: _delete, ...filho }) => filho);
   return {
-    deleteMany: { codigoErp: { in: excluidos } },
+    deleteMany: { chave: { in: excluidos } },
     upsert: semControle.map((filho) => ({
       where: {
-        empresaId_codigoErp: { empresaId, codigoErp: filho.codigoErp as string },
-      },
+        [`${pai.campo}_chave`]: {
+          [pai.campo]: pai.id,
+          chave: filho.chave as string,
+        },
+      } as Record<`${C}_chave`, Record<C | 'chave', string>>,
       create: filho,
       update: filho,
     })),

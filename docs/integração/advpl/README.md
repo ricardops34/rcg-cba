@@ -31,12 +31,15 @@ O que os outros três usam. Não depende de nenhum deles.
 
 | Função | O que faz |
 |---|---|
-| `U_BJCATALO` | O catálogo: as 16 entidades, na ordem de carga que a API exige |
+| `U_BJCATALO` | O catálogo: as 15 entidades, na ordem de carga que a API exige |
 | `U_BJHTTP` | O cliente HTTP inteiro numa função: cabeçalho, verbo, execução, erro traduzido e retentativa. PATCH por `HTTPQuote`, o resto por `FWRest` |
-| `U_BJCHAVE` | Parte um `codigoErp` nos campos do índice, já no tamanho do dicionário |
+| `U_BJCHAVE` | Parte uma `chave` nos campos do índice, já no tamanho do dicionário |
+| `U_BJPARTES` | Separa uma `chave` pelo `-` **mantendo as partes vazias** (a filial de tabela compartilhada). Use no lugar de `StrTokArr` |
+| `U_BJSEMFIL` | Retorno: converte a chave de integração devolvida pela plataforma (`01-000234`, `-000234`) no valor do ERP, sem filial e sem hífen, pelos campos da chave única. Aceita também a chave sem o prefixo de filial |
 | `U_BJENFILA` | Põe a mensagem na SZZ: uma linha nova por registro coletado, com o lote e a sequência do momento. Não reaproveita nem sobrescreve linha — as janelas de coleta não se sobrepõem, então a mesma chave só volta se mudou de novo |
 | `U_BJGRAVA` | Fecha a mensagem: status, HTTP, retorno e chave de destino. Não abre transação, de propósito |
 | `U_BJACHOU` | A memória: essa chave já foi executada? Devolve o documento que ela gerou |
+| `U_BJTEVE` | Essa chave já teve mensagem com tal verbo, em qualquer status? A coleta usa para mandar o `POST` antes do `DELETE` de um registro incluído e excluído entre duas coletas |
 | `U_BJEXPURG` | **Agendável.** Apaga executadas mais velhas que `MV_BJAPI11`. Nunca toca em pendente ou com erro |
 
 ### [`BJPLA003.prw`](BJPLA003.prw) — Coleta de saída
@@ -44,7 +47,7 @@ O que os outros três usam. Não depende de nenhum deles.
 | Função | O que faz |
 |---|---|
 | `U_BJVARRE` | **Agendável.** Abre o lote na SZY, percorre o catálogo lendo por `S_T_A_M_P_`, enfileira e fecha o lote |
-| `U_BJMAP*` | Os 16 mapeadores, um por entidade: regras de desconto, categorias, condições, armazéns, produtos, vendedores, clientes, fornecedores, tabelas de preço, estoque, notas de saída, XML das notas, notas de entrada, títulos, orçamentos e objetivos |
+| `U_BJMAP*` | Os 15 mapeadores, um por entidade: regras de desconto, categorias, condições, armazéns, produtos, vendedores, clientes, fornecedores, tabelas de preço, estoque, notas de saída, XML das notas, notas de entrada, títulos e objetivos. **Orçamento (SCJ/SCK) não é enviado** — ver *SCJ e SCK fora da integração* |
 
 ### [`BJPLA004.prw`](BJPLA004.prw) — Envio e retorno
 
@@ -54,16 +57,16 @@ O que os outros três usam. Não depende de nenhum deles.
 | `U_BJLOTE` | Envio em bloco por `PUT`, agrupado por entidade — caminho da carga inicial |
 | `U_BJRETORNO` | **Agendável.** Lê da plataforma o que está aprovado, grava no ERP e confirma lá: orçamento aprovado → Pedido de Venda (SC5/SC6) por `MATA410`; alteração de cliente → SA1 por `CRMA980` |
 
-### [`BJPLA005.prw`](BJPLA005.prw) — Monitor
+### [`BJPLA005.prw`](BJPLA005.prw) — Monitor (MVC)
 
 | Função | O que faz |
 |---|---|
-| `U_BJPLA005` | A única tela. Browse dos lotes (SZY) com Gerar, Enviar, Receber, Mensagens, Enviar em Bloco, Limpar e Ajuda |
+| `U_BJPLA005` | A única tela. Browse dos lotes (SZY) com Gerar (por grupo — ver *Gerar por grupo*), Enviar, Receber, Mensagens, Enviar em Bloco, Limpar e Ajuda |
 
 **O agendamento chama a mesma função que o monitor.** Não existe uma camada
 de rotinas agendáveis entre o Schedule e o trabalho: `U_BJVARRE`, `U_BJDRENA`,
 `U_BJRETORNO` e `U_BJEXPURG` recebem parâmetro e são chamadas pelos dois lados.
-Cada uma segura o próprio semáforo — um arquivo `.tsk` em `MV_BJAPI12` —, então
+Cada uma segura a própria trava — `LockByName`, que o servidor solta quando a thread termina, mesmo caindo com erro —, então
 job e tela não se atropelam. O `SchedDef` fica no fonte onde a função mora.
 
 **Cada fonte se lê sozinho.** A referência de escrita é o
@@ -111,10 +114,10 @@ Dois índices:
 
 1. `ZY_FILIAL + ZY_CODIGO` — chave única, e a ordem de processamento: do lote
    mais antigo para o mais novo.
-2. `ZY_FILIAL + ZY_CODIGO + ZY_STATUS` — para achar os lotes **com erro e os
-   não processados** sem varrer os que já saíram. Como no detalhe, o status vem
-   no fim: quem o usa é o banco, na consulta que o envio faz para montar a
-   lista de lotes.
+2. `ZY_FILIAL + ZY_STATUS + ZY_CODIGO` — para achar os lotes **com erro e os
+   não processados** sem varrer os que já saíram. O status vem antes do código:
+   o envio faz `dbSeek` por filial + status e lê só os lotes daquele status, na
+   ordem do código.
 
 **Consequência aceita:** como o status/marca valem para o lote inteiro, um
 erro numa única entidade segura o avanço da marca de todas as outras do
@@ -131,7 +134,7 @@ entidade sem marca nova simplesmente alarga a janela de busca até achar o
 | `ZZ_SEQUEN` | C(9) | Sequência — a ordem de chegada, e a ordem de consumo |
 | `ZZ_TIPO` | C(1) | `S` saída · `E` entrada |
 | `ZZ_ENTID` | C(20) | Entidade do catálogo. 20 cabe o maior id: `orcamentos-pendentes` |
-| `ZZ_CHVORI` | C(60) | **Chave de origem.** `codigoErp` na saída, id da plataforma na entrada |
+| `ZZ_CHVORI` | C(60) | **Chave de origem.** `chave` na saída, id da plataforma na entrada |
 | `ZZ_VERBO` | C(6) | POST · PATCH · DELETE · GET · PUT |
 | `ZZ_JSON` | Memo | O payload. Permite reenviar sem varrer a origem de novo |
 | `ZZ_STATUS` | C(1) | `1` pendente · `2` executada · `3` erro |
@@ -146,11 +149,10 @@ Dois índices:
 1. `ZZ_FILIAL + ZZ_CODIGO + ZZ_SEQUEN` — **chave única.** É o detalhe do
    mestre: o lote amarra, a sequência ordena. É por ele que o envio percorre a
    fila e que `U_BJGRAVA` e o monitor chegam numa mensagem específica.
-2. `ZZ_FILIAL + ZZ_CODIGO + ZZ_SEQUEN + ZZ_STATUS` — **para pegar as pendentes
-   e as com erro** de um lote. Como o status vem depois da sequência, ele não
-   entra em `dbSeek`; quem o usa é o banco, nas consultas que filtram status
-   dentro do lote — e como a chave cobre todos os campos do filtro, responde
-   sem tocar na tabela.
+2. `ZZ_FILIAL + ZZ_CODIGO + ZZ_STATUS + ZZ_SEQUEN` — **para pegar as pendentes
+   e as com erro** de um lote. O status vem antes da sequência: o envio faz
+   `dbSeek` por filial + lote + status e cai direto na primeira pendente, sem
+   ler as mensagens já executadas.
 
 **O envio pega sempre as pendentes e as com erro, na ordem de código +
 sequência.** Status `1` e `3` entram; `2` não volta. Lote a lote, do mais antigo
@@ -181,9 +183,9 @@ sem recompilar.
 | `MV_BJAPI06` | N | `2000` | Espera entre retentativas, em ms — multiplicada pelo número da tentativa |
 | `MV_BJAPI08` | N | `1050` | Pausa entre requisições, em ms |
 | `MV_BJAPI09` | N | `1000` | Máximo de registros por `PUT` em bloco |
-| `MV_BJAPI10` | N | `30` | Recuo da marca d'água na primeira carga, em dias |
+| `MV_BJAPI10` | N | `30` | Recuo da marca d'água, em dias, quando nenhum lote gravou marca e a fila de saída já tem mensagens. Com a fila vazia a coleta é carga inicial e lê a origem inteira |
 | `MV_BJAPI11` | N | `90` | Retenção da mensagem executada, em dias |
-| `MV_BJAPI12` | C | `\bjapi\` | Pasta raiz dos arquivos de semáforo (um processo por vez) |
+| `MV_BJAPI12` | — | — | **Não é mais lido** desde 21/09/2026: as travas passaram de arquivo `.tsk` para `LockByName`. Pode ficar cadastrado, sem efeito |
 
 Todos são lidos com valor padrão (`SuperGetMV`), então a integração sobe antes
 de o SX6 estar completo — desligada (`MV_BJAPI03 = N`) até alguém ligar. Os
@@ -205,7 +207,7 @@ Nenhuma tabela de negócio nova — só `SZY` e `SZZ`.
 |---|---|---|
 | O que já foi enviado | `ZY_MARCA` na SZY, comparado com `S_T_A_M_P_` da origem | `BJPLA003` (`BJVARRE`) |
 | Cada mensagem, pendente ou concluída | `SZZ` | `BJPLA002` |
-| Um processo por vez | Arquivo `.tsk` em `MV_BJAPI12`+`<empresa>\` — um por rotina (`bjpla-coleta`, `bjpla-envio`, `bjpla-retorno`, `bjpla-expurgo`) e um por entidade (`bjpla-ent-<id>`) durante a varredura | `BJPLA001`, `BJPLA003` |
+| Um processo por vez | `LockByName` por empresa — um por rotina (`BJPLA_COLETA`, `BJPLA_ENVIO`, `BJPLA_RETORNO`, `BJPLA_EXPURGO`), um por entidade (`BJPLA_ENT_<id>`) na varredura e um por orçamento (`BJPLA_ORC_<id>`) no retorno. O servidor solta a trava quando a thread termina, então uma queda não deixa a rotina travada | `BJPLA002`, `BJPLA003`, `BJPLA004` |
 | O que deu errado | `ZZ_RETORN` da própria mensagem (resposta íntegra da API) + console do AppServer via `FwLogMsg` | `BJPLA002` |
 | Retorno já tratado | Fila da própria plataforma (`orcamentos-pendentes`/`clientes-alteracoes` só devolvem o que falta) + a mensagem executada na SZZ, com o documento em `ZZ_CHVDES` | `BJPLA004` |
 
@@ -276,7 +278,7 @@ da `SF2`. Nas entidades que sobem cabeçalho e itens no mesmo payload — notas
 
 O item continua dentro do payload do cabeçalho. Quando `D_E_L_E_T_` estiver
 preenchido no item, ele leva `delete: true`; a API remove somente esse
-`codigoErp`. Itens ativos levam `delete: false` e são incluídos ou
+`chave`. Itens ativos levam `delete: false` e são incluídos ou
 atualizados.
 
 ---
@@ -304,7 +306,7 @@ de produto; vendedor antes de cliente; produto antes de estoque.
 | notas-saida-xml | SF2 (TSS) | `U_BJMAPXML` | ✅ |
 | notas-entrada | SF1 | `U_BJMAPNFE` | ✅ |
 | titulos-receber | SE1 | `U_BJMAPTIT` | ✅ |
-| orcamentos | SCJ | `U_BJMAPORC` | ✅ |
+| ~~orcamentos~~ | ~~SCJ+SCK~~ | ~~`U_BJMAPORC`~~ | ❌ removido em 21/09/2026 — ver *SCJ e SCK fora da integração* |
 
 Duas entidades adicionais chegam **da** plataforma (não estão neste catálogo
 porque não são varridas do ERP — nascem de um `GET`, ver `BJPLA004`):
@@ -328,11 +330,43 @@ orçamento. Por isso `BJHTTP` (`BJPLA002.prw`) usa `HTTPQuote()` só para PATCH
 e `FWRest` para o resto, nos dois ramos do mesmo `If` — a requisição inteira,
 das duas formas, se lê numa função só.
 
+### Gerar por grupo, não entidade a entidade
+
+O **Gerar** do monitor escolhe um **grupo**, na ordem em que a carga precisa
+acontecer (decisão de 22/09/2026): **Todos**, Cadastros, Financeiro, Estoque,
+Notas de Saída, Notas de Entrada e, no fim, **Individual**. Os grupos estão em
+`BJGrupos()`, no [`BJPLA005.prw`](BJPLA005.prw); cada um é a lista de
+entidades que o compõe, e o `U_BJVARRE` varre a lista na ordem do catálogo,
+que já é a ordem de dependência. "Todos" manda a lista vazia e varre o catálogo
+ativo inteiro.
+
+**Individual** é a única opção que pede a entidade e a única em que a chave vale
+— é por ela que se reprocessa um registro específico.
+
+### Referência dentro da própria entidade: a SA3
+
+O supervisor de um vendedor é outro vendedor, e a API recusa referência a
+registro que ainda não subiu. Por isso o mapeador ordena por
+`A3_SUPER, A3_COD`: quem não tem supervisor (campo em branco) vai primeiro, e
+o supervisor já existe na plataforma quando o vendedor dele chega. Uma cadeia
+mais funda — supervisor que também tem supervisor — ainda pode falhar no
+primeiro envio; o reenvio da chave resolve, porque aí o de cima já está lá.
+
 ### POST como upsert e DELETE no mesmo fluxo
 
 O mapeador seleciona alterações por `S_T_A_M_P_` sem filtrar `D_E_L_E_T_`.
 Registro ativo gera `POST` (upsert); registro excluído gera `DELETE` com a
 mesma chave. Não existe varredura independente de exclusões.
+
+**Incluído e excluído entre duas coletas: vão duas mensagens.** A coleta lê o
+estado atual do registro, então um registro criado e apagado no intervalo
+apareceria só como `DELETE`. Antes de enfileirar um `DELETE`, a coleta pergunta
+ao `U_BJTEVE` se a chave já teve `POST` na fila, em qualquer status. Se não
+teve, enfileira primeiro um `POST`, montado com os dados que a linha excluída
+ainda guarda, e depois o `DELETE`. A plataforma recebe a inclusão e a exclusão,
+nessa ordem (decisão de 22/09/2026). Um registro antigo cujas mensagens o
+`U_BJEXPURG` já apagou também reenvia o `POST` antes do `DELETE`; isso custa só
+uma requisição a mais.
 
 ### Cliente: PATCH não grava
 
@@ -341,29 +375,77 @@ entra na fila de aprovação interna da plataforma. O código lê `pendente` na
 resposta e registra isso no log, para não parecer que a alteração foi
 aplicada.
 
+### Chave de integração e codigoErp
+
+Todo registro vai com dois campos independentes — um nunca é calculado a partir
+do outro (plano
+[`2026-09-22-chave-integracao.md`](../../planos/2026-09-22-chave-integracao.md),
+com a tabela completa de chaves):
+
+| Campo | O que é | Exemplo |
+|---|---|---|
+| `chave` | **Chave de integração**: a chave única da tabela (X2_UNICO), campos na mesma ordem, `*_FILIAL` primeiro, `-` entre eles. A plataforma cadastra, atualiza, exclui e liga os registros por ela. Na tela: "Integração" | categoria `-12` (compartilhada) ou `01-12` (exclusiva); cliente `-000001-01` |
+| `codigoErp` | Código no ERP, **só informativo**. Na tela: "Código". Cliente e fornecedor: COD+LOJA. Itens (DA1, SD2, SD1, SC6) não têm | `12`; cliente `00000101` |
+
+As referências (`categoriaChave`, `clienteChave`...) são sempre a **chave** do
+outro registro, com `FWxFilial(tabela) + "-" + ...`. Em tabela compartilhada a
+filial fica em branco e a chave começa pelo hífen.
+
+**Mestre e detalhe vão sempre juntos** (DA0/DA1, SF2/SD2, SF1/SD1 e, no
+retorno, SC5/SC6), cada item com a própria `chave`. Os itens são lidos **sem
+filtro de `D_E_L_E_T_`**, inclusive na carga inicial: o excluído vai com
+`delete: true` e a plataforma o apaga.
+
+**No retorno** a plataforma devolve as chaves (`clienteChave`, `produtoChave`...)
+e o `U_BJSEMFIL` tira a filial e o hífen para chegar ao valor do ERP. Depois de
+gerar o pedido, o `BJVincula` devolve a chave do SC5 e, para cada item do
+orçamento, a do SC6 que o pedido gravou (casada pelo produto, na ordem do
+`C6_ITEM`).
+
+Na leitura, a filial é **sempre a primeira parte, mesmo vazia**. Por isso a
+separação é feita com `U_BJPARTES`, nunca com `StrTokArr(..., "-")`, que
+descarta a parte vazia. Com `StrTokArr`, `-000001-01` virava duas partes em vez
+de três, o `U_BJCHAVE` recusava a chave e o pedido não achava o cliente
+(corrigido em 22/09/2026).
+
 ### Chave do cliente
 
-A API tem uma chave só; o Protheus tem `A1_COD` + `A1_LOJA`. O `codigoErp`
-enviado é a concatenação dos dois.
+A API tem uma chave só; o Protheus tem `A1_COD` + `A1_LOJA`. A `chave` enviada
+é `A1_FILIAL-A1_COD-A1_LOJA`.
 
-### codigoErp dos transacionais
+### Chave dos transacionais
+
 
 É a composição dos campos naturais da tabela, incluindo `*_FILIAL`.
 `R_E_C_N_O_` não participa da integração.
 
-### Orçamento da plataforma passa pelo Orçamento do ERP antes de virar Pedido
+### SCJ e SCK fora da integração
+
+**Decisão de 21/09/2026: a integração não envia nem recebe SCJ/SCK.** O
+Orçamento do ERP não participa em nenhum dos dois sentidos:
+
+- **Saída:** a entidade `orcamentos` saiu do catálogo (`U_BJCATALO`) e o
+  mapeador `U_BJMAPORC` foi removido do `BJPLA003`. Orçamento criado no ERP
+  não sobe para a plataforma.
+- **Entrada:** o orçamento aprovado na plataforma nunca grava SCJ/SCK — vira
+  Pedido de Venda (SC5/SC6) direto, como descrito abaixo.
+
+Os orçamentos nascem e são aprovados na plataforma; o ERP só recebe o pedido
+que resulta deles.
+
+### Orçamento da plataforma vira Pedido sem passar pelo Orçamento do ERP
 
 O orçamento aprovado na plataforma vira **Pedido de Venda direto** — SC5/SC6
 por `MATA410`. Não passa pelo Orçamento do ERP: a aprovação já aconteceu do
 outro lado, e o orçamento intermediário só acrescentaria um documento para
 efetivar depois. Quatro passos:
 
-1. `GET /integracao/orcamentos/pendentes` lista os aprovados sem `codigoErp`.
+1. `GET /integracao/orcamentos/pendentes` lista os aprovados sem `chave`.
 2. Consulta a fila: mensagem de entrada já executada para esse id significa que
    o pedido existe e falta só reenviar o aviso do passo 4.
 3. `Begin Transaction`: `MATA410` grava SC5/SC6 **e** a mensagem passa a
    executada com o número do pedido, juntos.
-4. `PATCH /integracao/orcamentos/pendentes/{id}` grava o `codigoErp` do pedido.
+4. `PATCH /integracao/orcamentos/pendentes/{id}` grava a `chave` do pedido.
 
 **A garantia contra pedido duplicado está inteira no passo 3.** Se a gravação
 da mensagem sair de dentro do `Begin Transaction`, volta a existir o intervalo
@@ -388,7 +470,7 @@ mensagem executada na SZZ responde que o pedido já existe, com o número dele e
 ### Exclusões
 
 Cada mapeador lê `D_E_L_E_T_` sem usá-lo como filtro. Valor em branco gera
-POST (upsert); preenchido gera DELETE com a mesma `codigoErp`.
+POST (upsert); preenchido gera DELETE com a mesma `chave`.
 
 Não há registro do que já foi enviado antes, então um `DELETE` pode chegar
 para uma chave que a plataforma nunca conheceu. A API responde **404** e o
@@ -461,11 +543,14 @@ Ritmo sugerido: coleta de hora em hora, envio contínuo (ou a cada poucos
 minutos), retorno de hora em hora, expurgo uma vez por dia fora do horário
 comercial.
 
-**Primeira carga:** sem `ZY_MARCA` cadastrada para uma entidade, a marca
-recua `MV_BJAPI10` (30 dias por padrão) e a primeira varredura sobe tudo que
-mudou nesse período. Para carregar a base inteira, abra o monitor e use
-**Gerar** com um intervalo de datas largo, acompanhe, e use **Enviar em Bloco**
-para o envio — respeitando a ordem de carga do catálogo.
+**Primeira carga:** enquanto a fila não tiver nenhuma mensagem de saída (SZZ
+vazia, `ZZ_TIPO = "S"`), a coleta é **carga inicial**: a marca fica vazia e os
+mapeadores leem a origem inteira, **sem os registros excluídos** (nem cabeçalho
+nem item) — o que nunca chegou à plataforma não vira `DELETE`. Basta rodar **Gerar** com "Todas as entidades
+ativas", sem chave nem datas, e depois **Enviar em Bloco**, respeitando a ordem
+de carga do catálogo. Terminando sem erro, o lote grava a marca e as próximas
+coletas passam a ser incrementais. Se a fila já tem mensagens e nenhum lote
+gravou marca ainda, a marca recua `MV_BJAPI10` (30 dias por padrão).
 
 **Nenhum campo customizado é necessário** na SC5/SC6: o vínculo com a
 plataforma mora na fila (`ZZ_CHVORI` guarda o id de lá, `ZZ_CHVDES` o número do
@@ -475,15 +560,23 @@ pedido daqui).
 
 ## Monitor (`U_BJPLA005`)
 
-O monitor é um browse (`FWFormBrowse`) sobre a
-**SZY** — cada linha é um lote (um processamento), com entidade, status,
-início, fim, marca d'água e contadores. Selecionar um lote e usar os botões
-opera sobre ele; duplo clique (ou **Mensagens**) abre o detalhe (SZZ, por
-`ZZ_CODIGO`).
+O monitor é **MVC padrão** sobre a **SZY**: `FWmBrowse` no browse,
+`ModelDef`/`ViewDef` com o lote como mestre e as mensagens (SZZ) como detalhe,
+amarradas por `ZZ_CODIGO`. As colunas vêm do dicionário — títulos, pictures e o
+combo do `ZY_STATUS` —, e a linha é colorida pela legenda:
 
-| Botão | O que faz |
+| Cor | `ZY_STATUS` |
 |---|---|
-| **Gerar** | Pede entidade e, opcionalmente, chave ou intervalo de datas (`ParamBox`); roda a coleta com esses parâmetros e cria um lote novo |
+| Amarelo | `1` coletado, aguardando envio |
+| Verde | `2` processado |
+| Vermelho | `3` erro |
+
+**Visualizar** abre o lote com a lista de mensagens dele. As ações da integração
+ficam no mesmo menu, e operam sobre o lote posicionado:
+
+| Opção | O que faz |
+|---|---|
+| **Gerar** | Pede entidade (ou "Todas as entidades ativas") e, opcionalmente, chave ou intervalo de datas (`ParamBox`); roda a coleta com esses parâmetros e cria um lote novo |
 | **Enviar** | Drena só as mensagens do lote posicionado na lista. Sem lote posicionado, o agendamento de envio percorre os lotes `1` e `3`, do mais antigo ao mais novo |
 | **Receber** | Pergunta na plataforma se há orçamentos aprovados ou alterações de cliente; se houver, grava um lote e já aplica no ERP, confirmando o status lá — tudo numa chamada |
 | **Mensagens** | Lista as mensagens do lote posicionado (SZZ) e abre a escolhida, com payload e resposta |
@@ -491,7 +584,5 @@ opera sobre ele; duplo clique (ou **Mensagens**) abre o detalhe (SZZ, por
 | **Limpar** | Roda o expurgo agora (mensagens executadas mais antigas que `MV_BJAPI11`, 90 dias por padrão). Não expurga lotes (SZY) — ainda sem rotina para isso |
 | **Ajuda** | Explica como a integração decide o que enviar |
 
-O botão **Marca** (alterar a marca d'água manualmente) saiu do monitor: o
-mesmo resultado — reprocessar um período sem esperar a marca automática — se
-consegue com **Gerar** informando o intervalo de datas, sem mexer no estado
-da entidade para os próximos ciclos automáticos.
+Para reprocessar um período, use **Gerar** informando o intervalo de datas: a
+coleta pontual não mexe na marca d'água dos ciclos automáticos.

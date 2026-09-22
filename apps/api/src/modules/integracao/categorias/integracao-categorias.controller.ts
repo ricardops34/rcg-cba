@@ -58,8 +58,8 @@ export class IntegracaoCategoriasController {
     return this.service.findAll(integracao.empresaId, query);
   }
 
-  @ApiOperation({ summary: 'Detalhar categoria por codigoErp' })
-  @ApiParam({ name: 'codigo', description: 'codigoErp da categoria' })
+  @ApiOperation({ summary: 'Detalhar categoria por chave' })
+  @ApiParam({ name: 'codigo', description: 'chave da categoria' })
   @ApiResponse({
     status: 200,
     schema: { example: INTEGRACAO_CATEGORIA_EXAMPLE },
@@ -76,7 +76,7 @@ export class IntegracaoCategoriasController {
   @ApiOperation({
     summary: 'Criar categoria',
     description:
-      'categoriaPaiCodigo referencia outra categoria pelo codigoErp (precisa já existir).',
+      'categoriaPaiChave referencia outra categoria pela chave (precisa já existir).',
   })
   @ApiBodyExample(INTEGRACAO_CATEGORIA_CREATE_EXAMPLE)
   @ApiResponse({
@@ -85,7 +85,7 @@ export class IntegracaoCategoriasController {
   })
   @ApiResponse({
     status: 409,
-    description: 'Já existe categoria com esse codigoErp',
+    description: 'Já existe categoria com essa chave',
   })
   @Post()
   create(
@@ -98,7 +98,7 @@ export class IntegracaoCategoriasController {
   @ApiOperation({
     summary: 'Enviar lote de categorias',
     description:
-      'Upsert em lote por codigoErp (máx. 1.000 por chamada). Um registro com ' +
+      'Upsert em lote por chave (máx. 1.000 por chamada). Um registro com ' +
       '"excluido": true é excluído (soft delete) e dispensa os demais campos. ' +
       'Responde 200 com o relatório: um item inválido não desfaz os que já ' +
       'passaram, e vem listado em "erros" com o índice no array enviado.',
@@ -128,7 +128,7 @@ export class IntegracaoCategoriasController {
     summary: 'Atualizar categoria',
     description: 'Atualização parcial — envie só os campos a mudar.',
   })
-  @ApiParam({ name: 'codigo', description: 'codigoErp da categoria' })
+  @ApiParam({ name: 'codigo', description: 'chave da categoria' })
   @ApiResponse({
     status: 200,
     schema: { example: INTEGRACAO_CATEGORIA_EXAMPLE },
@@ -149,7 +149,7 @@ export class IntegracaoCategoriasController {
   }
 
   @ApiOperation({ summary: 'Excluir categoria (soft delete)' })
-  @ApiParam({ name: 'codigo', description: 'codigoErp da categoria' })
+  @ApiParam({ name: 'codigo', description: 'chave da categoria' })
   @ApiResponse({ status: 200, description: 'Excluída' })
   @ApiResponse({ status: 404, description: 'Categoria não encontrada' })
   @Delete(':codigo')
