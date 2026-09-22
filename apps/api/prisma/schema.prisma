@@ -712,6 +712,10 @@ model Produto {
   marca               String?
   codigoBarras        String?
   codigoFornecedor    String?
+  fabricanteId        String?
+  codigoFabricante    String?
+  descricaoFabricante String?
+  dadosTecnicos       String?
   ncm                 String?
   qtdEmbalagem        Float?
   peso                Float?
@@ -736,6 +740,7 @@ model Produto {
   categoria     Categoria?     @relation("ProdutoCategoria", fields: [categoriaId], references: [id])
   subCategoria  Categoria?     @relation("ProdutoSubCategoria", fields: [subCategoriaId], references: [id])
   armazem       Armazem?       @relation(fields: [armazemId], references: [id])
+  fabricante    Fornecedor?    @relation(fields: [fabricanteId], references: [id])
 
   estoques          Estoque[]
   tabelasPrecoItens TabelaPrecoItem[]
@@ -759,6 +764,7 @@ model Produto {
   @@index([empresaId, categoriaId])
   @@index([empresaId, regraDescontoId])
   @@index([empresaId, codigoFornecedor])
+  @@index([empresaId, fabricanteId])
   @@map("produtos")
 }
 
@@ -2784,6 +2790,7 @@ model Fornecedor {
   empresa           Empresa           @relation(fields: [empresaId], references: [id])
   notasEntrada      NotaEntrada[]
   notasEntradaItens NotaEntradaItem[]
+  produtos          Produto[]
 
   @@unique([empresaId, chave])
   @@index([empresaId, codigoErp])

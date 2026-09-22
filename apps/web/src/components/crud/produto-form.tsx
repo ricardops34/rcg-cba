@@ -327,6 +327,44 @@ export function ProdutoForm({ produto }: { produto?: Produto }) {
                 />
               </Field>
 
+              {(produto?.fabricante ||
+                produto?.fabricanteChave ||
+                produto?.codigoFabricante ||
+                produto?.descricaoFabricante ||
+                produto?.dadosTecnicos) && (
+                <div className="space-y-3 rounded-lg border p-4 bg-muted/20">
+                  <h3 className="text-sm font-medium text-foreground">Fabricante & Ficha Técnica</h3>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <Field>
+                      <FieldLabel>Fabricante / Fornecedor (SA2)</FieldLabel>
+                      <Input
+                        disabled
+                        value={
+                          (produto as any)?.fabricante?.nomeFantasia ||
+                          (produto as any)?.fabricante?.razaoSocial ||
+                          produto?.fabricanteChave ||
+                          "—"
+                        }
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel>Código no Fabricante</FieldLabel>
+                      <Input disabled value={produto?.codigoFabricante || "—"} />
+                    </Field>
+                    <Field>
+                      <FieldLabel>Descrição no Fabricante</FieldLabel>
+                      <Input disabled value={produto?.descricaoFabricante || "—"} />
+                    </Field>
+                  </div>
+                  {produto?.dadosTecnicos && (
+                    <Field>
+                      <FieldLabel>Dados Técnicos</FieldLabel>
+                      <Textarea disabled rows={3} value={produto.dadosTecnicos} />
+                    </Field>
+                  )}
+                </div>
+              )}
+
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
                 <label className="flex cursor-pointer items-center gap-2 text-sm">
                   <Checkbox

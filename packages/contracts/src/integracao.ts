@@ -267,6 +267,16 @@ export const integracaoProdutoCreateSchema = z.object({
   peso: z.coerce.number().min(0).nullable().optional(),
   ultimoPreco: z.coerce.number().min(0).nullable().optional(),
   observacao: z.string().trim().max(500).nullable().optional(),
+  fabricanteChave: z
+    .string()
+    .trim()
+    .max(60)
+    .nullable()
+    .optional()
+    .describe("chave do fabricante/fornecedor (A2_FILIAL-A2_COD-A2_LOJA)"),
+  codigoFabricante: z.string().trim().max(60).nullable().optional(),
+  descricaoFabricante: z.string().trim().max(120).nullable().optional(),
+  dadosTecnicos: z.string().trim().max(1000).nullable().optional(),
   regraDescontoChave: z
     .string()
     .trim()

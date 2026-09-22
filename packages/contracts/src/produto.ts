@@ -77,6 +77,19 @@ export const produtoSchema = produtoCreateSchema.extend({
   // Protheus e a tela não edita os campos que o import sobrescreve; sem chave,
   // o produto nasceu aqui e é editável por inteiro.
   chave: z.string().nullable().optional(),
+  fabricanteId: z.string().uuid().nullable().optional(),
+  fabricanteChave: z.string().nullable().optional(),
+  codigoFabricante: z.string().nullable().optional(),
+  descricaoFabricante: z.string().nullable().optional(),
+  dadosTecnicos: z.string().nullable().optional(),
+  fabricante: z
+    .object({
+      id: z.string().uuid(),
+      razaoSocial: z.string(),
+      nomeFantasia: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
   fotos: z.array(produtoFotoSchema),
   // Regra de desconto (SZ0): leitura apenas — quem mantém é o ERP, pela API
   // de integração; nem a tela nem o CRUD interno gravam este vínculo.

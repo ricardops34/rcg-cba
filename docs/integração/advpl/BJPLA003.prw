@@ -1094,6 +1094,30 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim)
 			oJson["ultimoPreco"] := (cAlias)->B1_PRV1
 		EndIf
 
+		If SB1->(FieldPos("B1_PROC")) > 0 .And. !Empty((cAlias)->B1_PROC)
+			oJson["fabricanteChave"] := FWxFilial("SA2") + "-" + AllTrim((cAlias)->B1_PROC) + "-" + AllTrim((cAlias)->B1_LOJPROC)
+		Else
+			oJson["fabricanteChave"] := Nil
+		EndIf
+
+		If SB1->(FieldPos("B1_XFOR")) > 0 .And. !Empty((cAlias)->B1_XFOR)
+			oJson["codigoFabricante"] := AllTrim((cAlias)->B1_XFOR)
+		Else
+			oJson["codigoFabricante"] := Nil
+		EndIf
+
+		If SB1->(FieldPos("B1_XDESFOR")) > 0 .And. !Empty((cAlias)->B1_XDESFOR)
+			oJson["descricaoFabricante"] := AllTrim((cAlias)->B1_XDESFOR)
+		Else
+			oJson["descricaoFabricante"] := Nil
+		EndIf
+
+		If SB1->(FieldPos("B1_XTEC")) > 0 .And. !Empty((cAlias)->B1_XTEC)
+			oJson["dadosTecnicos"] := AllTrim((cAlias)->B1_XTEC)
+		Else
+			oJson["dadosTecnicos"] := Nil
+		EndIf
+
 		cVerbo := "POST"
 		If (cAlias)->DELETADO == "*"
 			cVerbo := "DELETE"

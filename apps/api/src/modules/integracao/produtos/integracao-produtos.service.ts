@@ -30,6 +30,7 @@ const INCLUDE = {
   subCategoria: { select: { chave: true } },
   armazem: { select: { chave: true } },
   regraDesconto: { select: { chave: true } },
+  fabricante: { select: { chave: true, razaoSocial: true, nomeFantasia: true } },
 } satisfies Prisma.ProdutoInclude;
 type ProdutoComRelacoes = Prisma.ProdutoGetPayload<{ include: typeof INCLUDE }>;
 
@@ -47,6 +48,10 @@ export class IntegracaoProdutosService {
       categoriaChave: row.categoria?.chave ?? null,
       subCategoriaChave: row.subCategoria?.chave ?? null,
       armazemChave: row.armazem?.chave ?? null,
+      fabricanteChave: row.fabricante?.chave ?? null,
+      codigoFabricante: row.codigoFabricante ?? null,
+      descricaoFabricante: row.descricaoFabricante ?? null,
+      dadosTecnicos: row.dadosTecnicos ?? null,
       marca: row.marca,
       codigoBarras: row.codigoBarras,
       codigoFornecedor: row.codigoFornecedor,
@@ -118,11 +123,6 @@ export class IntegracaoProdutosService {
 
   /**
    * O mesmo upsert do `create`, devolvendo também **o que aconteceu**.
-   *
-   * Só o lote precisa dessa informação — é o que separa `criados` de
-   * `atualizados` no relatório. O `create` continua devolvendo apenas o
-   * registro, porque o REST individual responde a entidade e a decisão não
-   * cabe no corpo dela.
    */
   async upsert(
     empresaId: string,
@@ -153,6 +153,11 @@ export class IntegracaoProdutosService {
         empresaId,
         input.armazemChave,
       );
+      const fabricanteId = await this.resolverFabricante(
+        tx,
+        empresaId,
+        input.fabricanteChave,
+      );
       const regraDescontoId = await resolverRegraDesconto(
         tx,
         empresaId,
@@ -167,6 +172,10 @@ export class IntegracaoProdutosService {
         categoriaId,
         subCategoriaId,
         armazemId,
+        fabricanteId,
+        codigoFabricante: input.codigoFabricante ?? null,
+        descricaoFabricante: input.descricaoFabricante ?? null,
+        dadosTecnicos: input.dadosTecnicos ?? null,
         marca: input.marca ?? null,
         codigoBarras: input.codigoBarras ?? null,
         codigoFornecedor: input.codigoFornecedor ?? null,
@@ -197,14 +206,6 @@ export class IntegracaoProdutosService {
     });
   }
 
-  /**
-   * Aplica um lote. Ver `processarLote` para a ordem e o tratamento de erro;
-   * aqui fica só o que é da entidade.
-   *
-   * A reativação conta como `atualizado`: a linha já existia e mantém o mesmo
-   * uuid — quem lê o relatório está conferindo quantos registros novos
-   * entraram, e um código que volta do soft delete não é um deles.
-   */
   upsertLote(
     empresaId: string,
     apiKeyId: string,
@@ -259,6 +260,10 @@ export class IntegracaoProdutosService {
         input.armazemChave !== undefined
           ? await this.resolverArmazem(tx, empresaId, input.armazemChave)
           : undefined;
+      const fabricanteId =
+        input.fabricanteChave !== undefined
+          ? await this.resolverFabricante(tx, empresaId, input.fabricanteChave)
+          : undefined;
       const regraDescontoId = await resolverRegraDesconto(
         tx,
         empresaId,
@@ -278,6 +283,16 @@ export class IntegracaoProdutosService {
           ...(categoriaId !== undefined ? { categoriaId } : {}),
           ...(subCategoriaId !== undefined ? { subCategoriaId } : {}),
           ...(armazemId !== undefined ? { armazemId } : {}),
+          ...(fabricanteId !== undefined ? { fabricanteId } : {}),
+          ...(input.codigoFabricante !== undefined
+            ? { codigoFabricante: input.codigoFabricante }
+            : {}),
+          ...(input.descricaoFabricante !== undefined
+            ? { descricaoFabricante: input.descricaoFabricante }
+            : {}),
+          ...(input.dadosTecnicos !== undefined
+            ? { dadosTecnicos: input.dadosTecnicos }
+            : {}),
           ...(regraDescontoId !== undefined ? { regraDescontoId } : {}),
           ...(input.marca !== undefined ? { marca: input.marca } : {}),
           ...(input.codigoBarras !== undefined
@@ -353,5 +368,20 @@ export class IntegracaoProdutosService {
     if (!armazem)
       throw new NotFoundException(`armazemChave '${codigo}' não encontrado`);
     return armazem.id;
+  }
+
+  private async resolverFabricante(
+    tx: TenantTx,
+    empresaId: string,
+    codigo: string | null | undefined,
+  ) {
+    if (!codigo) return null;
+    const fornecedor = await tx.fornecedor.findFirst({
+      where: { empresaId, chave: codigo, deletedAt: null },
+      select: { id: true },
+    });
+    if (!fornecedor)
+      throw new NotFoundException(`fabricanteChave '${codigo}' não encontrado`);
+    return fornecedor.id;
   }
 }

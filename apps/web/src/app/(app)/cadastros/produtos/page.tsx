@@ -27,6 +27,7 @@ import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 type ProdutoRow = Produto & {
   categoria?: { id: string; descricao: string } | null;
   subCategoria?: { id: string; descricao: string } | null;
+  fabricante?: { id: string; razaoSocial: string; nomeFantasia?: string | null } | null;
 };
 
 const moeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -86,6 +87,17 @@ export default function ProdutosCadastroPage() {
       header: "Descrição",
       sortKey: "descricao",
       cell: (p) => <span className="font-medium">{p.descricao}</span>,
+    },
+    {
+      header: "Fabricante",
+      cell: (p) => (
+        <span className="text-xs">
+          {p.fabricante?.nomeFantasia || p.fabricante?.razaoSocial || p.fabricanteChave || "—"}
+          {p.codigoFabricante && (
+            <span className="text-muted-foreground font-mono ml-1">({p.codigoFabricante})</span>
+          )}
+        </span>
+      ),
     },
     {
       header: "Categoria",
