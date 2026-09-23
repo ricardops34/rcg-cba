@@ -62,6 +62,10 @@ export const empresaCreateSchema = z.object({
     .nullable()
     .optional()
     .describe("Caminho relativo do logo da empresa (definido via upload)"),
+  ePlataforma: z
+    .boolean()
+    .default(false)
+    .describe("Define se esta empresa é a gestora/administradora da plataforma SaaS"),
 
   // Faixa institucional no topo do sistema (associação, certificação, grupo).
   // Só aparece dentro do sistema, nunca no login — lá ainda não há empresa.
@@ -171,6 +175,7 @@ export const EMPRESA_CREATE_EXAMPLE: EmpresaCreate = {
   cnpj: "12345678000199",
   alias: "andrade",
   logoUrl: null,
+  ePlataforma: false,
   bannerAtivo: true,
   bannerCor: "#bd1e7d",
   bannerImagemUrl: "/uploads/banners/andrade-associada.png",

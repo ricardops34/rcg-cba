@@ -55,6 +55,13 @@ const PRESERVADOS = [
   // dado de negócio: uma demonstração recomeça com os mesmos módulos ligados
   'EmpresaModulo',
   'EmpresaMenu',
+  'EmpresaRotina',
+  // contrato comercial da empresa e a trilha de acesso do suporte: o primeiro
+  // é o que ela assinou, os outros dois são auditoria — nada disso é dado de
+  // demonstração
+  'Assinatura',
+  'EmpresaSuporteAcesso',
+  'EmpresaSuporteLog',
   // agente de IA: configuração, credencial e governança
   'AgenteConfig',
   'AgenteCredencial',

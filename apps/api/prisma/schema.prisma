@@ -20,6 +20,9 @@ model Empresa {
   alias        String?    @unique
   logoUrl      String?
 
+  /// Define se esta empresa é a gestora/administradora da plataforma SaaS.
+  ePlataforma  Boolean    @default(false)
+
   // Situação da assinatura — **fonte única do "pode entrar"**. Substituiu o
   // `ativo` booleano: manter os dois obrigaria a mantê-los coerentes, e dois
   // campos que precisam concordar já se provaram um defeito neste schema

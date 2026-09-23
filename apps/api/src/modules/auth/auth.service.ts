@@ -657,6 +657,7 @@ export class AuthService {
         bannerImagemUrl: v.empresa.bannerImagemUrl,
         situacao: v.empresa.situacao,
         testeExpiraEm: v.empresa.testeExpiraEm?.toISOString() ?? null,
+        ePlataforma: v.empresa.ePlataforma,
         perfilId: v.perfilId,
         perfilNome: perfis[i].nome,
       })),

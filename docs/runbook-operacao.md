@@ -748,6 +748,48 @@ Ao validar pela primeira vez com uma conta real, troque a marca
 tomado com a Evolution GO, cuja documentação (`hub.mode`, nomes de campo do
 payload) pode não bater exatamente com o que a conta em uso devolve.
 
+## Armadilha: `HTTP 500 INTERNAL_ERROR` porque o schema andou e a migration não **[verificado em dev, 2026-09-22]**
+
+Sintoma: uma rota que sempre funcionou passa a responder
+`{"code":"INTERNAL_ERROR","message":"Erro interno inesperado"}`. Em 22/09/2026
+isso apareceu três vezes no mesmo dia, em lugares sem relação aparente: o
+`POST /api/v1/integracao/produtos` do Protheus, o **login** e o `GET /modulos`
+(que derruba a barra lateral inteira).
+
+Causa, sempre a mesma: alguém editou o `schema.prisma` (ou o código passou a ler
+um campo novo) **sem criar a migration**. O Prisma gera o SQL a partir do
+schema, o Postgres recusa a coluna ou a tabela que não existe, e o filtro de
+exceção transforma isso no 500 genérico. Em dev o `prisma generate` ainda faz o
+código compilar, o que esconde o problema até a primeira chamada.
+
+O erro real **não** vai para a resposta HTTP — ele está no log da API e na tela
+Plataforma → Erros, em uma linha direta:
+
+```
+The column `usuarios.perfilPlataformaRole` does not exist in the current database.
+The table `public.assinaturas` does not exist in the current database.
+```
+
+```bash
+# o que o banco tem de diferente do schema (não aplica nada, só imprime o SQL)
+docker exec plataforma-comercial-dev-api-1 sh -c \
+  "cd /app/apps/api && pnpm exec prisma migrate diff \
+   --from-url \"postgresql://plataforma:plataforma@postgres:5432/plataforma_comercial?schema=public\" \
+   --to-schema-datamodel ./prisma/schema.prisma --script"
+```
+
+Saída vazia = banco e schema em dia. Se sair DDL, falta migration — escreva-a a
+partir desse SQL (com a RLS das tabelas que têm `empresaId`) e rode
+`migrate deploy`.
+
+**Cuidado ao aproveitar esse SQL:** o diff também propõe `DROP` do que existe no
+banco e o schema não declara — o índice vetorial de `produto_ficha_trechos`, por
+exemplo, que é criado à mão (ver a seção de pgvector). Copie as criações, nunca
+os DROPs.
+
+**Antes de um deploy**, rode o mesmo diff contra o banco de produção: é mais
+barato descobrir a coluna faltando aqui do que pelo 500 do cliente.
+
 ## Armadilha: rota nova da API não aparece depois de um `docker restart` **[verificado em dev, 2026-09-08]**
 
 Sintoma: você criou um endpoint, reiniciou `plataforma-comercial-dev-api-1`, e o log de

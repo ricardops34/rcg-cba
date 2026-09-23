@@ -6,23 +6,13 @@ import type { Empresa } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
 import { EmpresaForm } from "@/components/crud/empresa-form";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PlataformaGuard } from "../../plataforma-guard";
 import { AdministradoresSection } from "./administradores-section";
 import { AssinaturaSection } from "./assinatura-section";
 import { EstruturaEmpresaSection } from "./estrutura-empresa-section";
+import { Building2, CreditCard, Layers, Users } from "lucide-react";
 
-/**
- * Cadastro completo de **qualquer** empresa, pela administração do SaaS.
- *
- * É o mesmo `EmpresaForm` de Administração — mesmos campos, mesmo
- * `PATCH /empresas/:id`, mesmas validações. Só muda a lista para onde o botão
- * voltar leva, e a seção de assinatura, que o formulário mostra a quem
- * administra a plataforma.
- *
- * O que autoriza alcançar empresa que não é a da sessão está no servidor
- * (`garantirEscopo`, em EmpresasService): administrador de tenant só passa pela
- * própria; quem administra a plataforma passa por todas.
- */
 export default function EditarEmpresaPlataformaPage() {
   const { id } = useParams<{ id: string }>();
 
@@ -46,10 +36,49 @@ export default function EditarEmpresaPlataformaPage() {
         <p className="text-sm text-muted-foreground">Empresa não encontrada.</p>
       ) : (
         <div className="space-y-6">
-          <EmpresaForm empresa={empresa} listRoute="/plataforma/empresas" />
-          <AssinaturaSection empresaId={empresa.id} />
-          <EstruturaEmpresaSection empresaId={empresa.id} />
-          <AdministradoresSection empresaId={empresa.id} />
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold font-heading">{empresa.nomeFantasia}</h1>
+              <p className="text-sm text-muted-foreground">{empresa.razaoSocial} — CNPJ/CPF: {empresa.cnpj}</p>
+            </div>
+          </div>
+
+          <Tabs defaultValue="cadastro" className="w-full space-y-6">
+            <TabsList className="grid grid-cols-2 md:grid-cols-4 w-full max-w-3xl">
+              <TabsTrigger value="cadastro" className="gap-2">
+                <Building2 className="w-4 h-4" />
+                Ficha & Cadastro
+              </TabsTrigger>
+              <TabsTrigger value="assinatura" className="gap-2">
+                <CreditCard className="w-4 h-4" />
+                Plano & Assinatura
+              </TabsTrigger>
+              <TabsTrigger value="funcionalidades" className="gap-2">
+                <Layers className="w-4 h-4" />
+                Módulos & Rotinas
+              </TabsTrigger>
+              <TabsTrigger value="usuarios" className="gap-2">
+                <Users className="w-4 h-4" />
+                Administradores
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="cadastro">
+              <EmpresaForm empresa={empresa} listRoute="/plataforma/empresas" />
+            </TabsContent>
+
+            <TabsContent value="assinatura">
+              <AssinaturaSection empresaId={empresa.id} />
+            </TabsContent>
+
+            <TabsContent value="funcionalidades">
+              <EstruturaEmpresaSection empresaId={empresa.id} />
+            </TabsContent>
+
+            <TabsContent value="usuarios">
+              <AdministradoresSection empresaId={empresa.id} />
+            </TabsContent>
+          </Tabs>
         </div>
       )}
     </PlataformaGuard>
