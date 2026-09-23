@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { Categoria, Produto } from "@plataforma/contracts";
+import type { Produto } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
@@ -12,10 +12,9 @@ import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
 import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
 import { FiltersPopover } from "@/components/crud/filters-popover";
-import { Badge } from "@/components/ui/badge";
+import { FilterMultiSelect } from "@/components/crud/filter-multi-select";
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,10 +24,20 @@ import {
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 type ProdutoRow = Produto & {
-  categoria?: { id: string; descricao: string } | null;
+  categoria?: { id: string; codigoErp: string; descricao: string } | null;
   subCategoria?: { id: string; descricao: string } | null;
   fabricante?: { id: string; razaoSocial: string; nomeFantasia?: string | null } | null;
 };
+
+interface ProdutoOpcoesFiltro {
+  categorias: { id: string; codigoErp: string; descricao: string }[];
+  fabricantes: {
+    id: string;
+    codigoErp: string | null;
+    razaoSocial: string;
+    nomeFantasia: string | null;
+  }[];
+}
 
 const moeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -44,13 +53,13 @@ export default function ProdutosCadastroPage() {
   const [pageSize, setPageSize] = useState(10);
   const [sortBy, setSortBy] = useState("descricao");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
-  const [status, setStatus] = useState<StatusFilterValue>("todos");
-  const [categoriaId, setCategoriaId] = useState<string | undefined>(undefined);
+  const [status, setStatus] = useState<StatusFilterValue>("ativos");
+  const [categoriaIds, setCategoriaIds] = useState<string[]>([]);
+  const [fabricanteIds, setFabricanteIds] = useState<string[]>([]);
 
-  const categoriasQuery = useQuery({
-    queryKey: ["categorias", "select", "raizes"],
-    queryFn: () =>
-      apiFetch<{ data: Categoria[] }>("/categorias", { query: { pageSize: 100, raiz: true } }),
+  const opcoesQuery = useQuery({
+    queryKey: ["produtos", "opcoes-filtro"],
+    queryFn: () => apiFetch<ProdutoOpcoesFiltro>("/produtos/opcoes-filtro"),
   });
 
   const { data, isLoading, isFetching, refetch, error } = useResourceList<ProdutoRow>("produtos", {
@@ -60,7 +69,8 @@ export default function ProdutosCadastroPage() {
     sortBy,
     sortOrder,
     ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
-    ...(categoriaId ? { categoriaId } : {}),
+    ...(categoriaIds.length > 0 ? { categoriaIds: categoriaIds.join(",") } : {}),
+    ...(fabricanteIds.length > 0 ? { fabricanteIds: fabricanteIds.join(",") } : {}),
   });
 
   const { remove } = useResourceMutations("produtos");
@@ -124,19 +134,6 @@ export default function ProdutosCadastroPage() {
         </span>
       ),
     },
-    {
-      header: "Origem",
-      // Quem tem chave de integração é espelho do Protheus: o import regrava, e
-      // por isso a edição desses campos fica bloqueada.
-      cell: (p) =>
-        p.chave ? (
-          <Badge variant="secondary" title={`Chave de integração ${p.chave}`}>
-            ERP
-          </Badge>
-        ) : (
-          <Badge variant="outline">Plataforma</Badge>
-        ),
-    },
     { header: "Status", sortKey: "ativo", cell: (p) => <StatusDot active={p.ativo} /> },
     {
       header: "",
@@ -177,33 +174,52 @@ export default function ProdutosCadastroPage() {
         createLabel="Novo produto"
         actions={
           <FiltersPopover
-            active={!!categoriaId}
+            active={categoriaIds.length > 0 || fabricanteIds.length > 0}
             onClear={() => {
-              setCategoriaId(undefined);
+              setCategoriaIds([]);
+              setFabricanteIds([]);
               setPage(1);
             }}
           >
-            <div className="space-y-2">
-              <FieldLabel>Categoria</FieldLabel>
-              <Select
-                value={categoriaId ?? "none"}
-                onValueChange={(v) => {
-                  setCategoriaId(v === "none" ? undefined : v);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Todas</SelectItem>
-                  {(categoriasQuery.data?.data ?? []).map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.descricao}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <FieldLabel>Categoria</FieldLabel>
+                <FilterMultiSelect
+                  value={categoriaIds}
+                  onChange={(ids) => {
+                    setCategoriaIds(ids);
+                    setPage(1);
+                  }}
+                  options={(opcoesQuery.data?.categorias ?? []).map((categoria) => ({
+                    value: categoria.id,
+                    label: `${categoria.codigoErp} · ${categoria.descricao}`,
+                  }))}
+                  placeholder="Todas as categorias"
+                  searchPlaceholder="Buscar categoria..."
+                  emptyMessage="Nenhuma categoria encontrada."
+                />
+              </div>
+              <div className="space-y-2">
+                <FieldLabel>Fabricante</FieldLabel>
+                <FilterMultiSelect
+                  value={fabricanteIds}
+                  onChange={(ids) => {
+                    setFabricanteIds(ids);
+                    setPage(1);
+                  }}
+                  options={(opcoesQuery.data?.fabricantes ?? []).map((fabricante) => {
+                    const nome = fabricante.nomeFantasia || fabricante.razaoSocial;
+                    return {
+                      value: fabricante.id,
+                      label: fabricante.codigoErp ? `${fabricante.codigoErp} · ${nome}` : nome,
+                      searchText: fabricante.razaoSocial,
+                    };
+                  })}
+                  placeholder="Todos os fabricantes"
+                  searchPlaceholder="Buscar fabricante..."
+                  emptyMessage="Nenhum fabricante encontrado."
+                />
+              </div>
             </div>
           </FiltersPopover>
         }

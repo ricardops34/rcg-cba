@@ -23,7 +23,11 @@ import {
   type DecisaoUpsert,
 } from '../common/decidir-upsert';
 import { processarLote } from '../common/processar-lote';
-import { criarFilhos, sincronizarFilhos } from '../common/sincronizar-filhos';
+import {
+  consolidarFilhos,
+  criarFilhos,
+  sincronizarFilhos,
+} from '../common/sincronizar-filhos';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 import { resolverProduto } from '../common/resolver-produto';
 
@@ -142,7 +146,7 @@ export class IntegracaoTabelasPrecoService {
       const decisao = decidirUpsert(existente);
 
       const itensData = await Promise.all(
-        input.itens.map(async (item) => {
+        consolidarFilhos(input.itens).map(async (item) => {
           const produto = await resolverProduto(tx, empresaId, item.produtoChave);
           return {
             delete: item.delete,
@@ -154,7 +158,7 @@ export class IntegracaoTabelasPrecoService {
               (await resolverRegraDesconto(
                 tx,
                 empresaId,
-                item.regraDescontoChave,
+                item.regraDescontoChave ?? item.regraDescontoCodigo,
               )) ?? null,
             ativo: item.ativo,
           };
@@ -246,7 +250,7 @@ export class IntegracaoTabelasPrecoService {
       let itensUpdate: Record<string, unknown> = {};
       if (input.itens) {
         const itensData = await Promise.all(
-          input.itens.map(async (item) => {
+          consolidarFilhos(input.itens).map(async (item) => {
             const produto = await resolverProduto(tx, empresaId, item.produtoChave);
             return {
               delete: item.delete,
@@ -258,7 +262,7 @@ export class IntegracaoTabelasPrecoService {
                 (await resolverRegraDesconto(
                   tx,
                   empresaId,
-                  item.regraDescontoChave,
+                  item.regraDescontoChave ?? item.regraDescontoCodigo,
                 )) ?? null,
               ativo: item.ativo,
             };
@@ -303,8 +307,7 @@ export class IntegracaoTabelasPrecoService {
       const existente = await tx.tabelaPreco.findFirst({
         where: { empresaId, chave, deletedAt: null },
       });
-      if (!existente)
-        throw new NotFoundException('Tabela de preço não encontrada');
+      if (!existente) return;
       await tx.tabelaPreco.update({
         where: { id: existente.id },
         data: { deletedAt: new Date(), deletedBy: autor, ativo: false },

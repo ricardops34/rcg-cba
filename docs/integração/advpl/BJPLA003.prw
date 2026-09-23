@@ -1044,7 +1044,11 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim)
 		oJson["chave"]               := (cAlias)->B1_FILIAL + "-" + (cAlias)->B1_COD
 		oJson["codigoErp"]           := AllTrim((cAlias)->B1_COD)
 		oJson["descricao"]           := AllTrim((cAlias)->B1_DESC)
-		oJson["armazemChave"]        := FWxFilial("NNR") + "-" + (cAlias)->B1_LOCPAD
+		If Empty((cAlias)->B1_LOCPAD)
+			oJson["armazemChave"] := Nil
+		Else
+			oJson["armazemChave"] := FWxFilial("NNR") + "-" + (cAlias)->B1_LOCPAD
+		EndIf
 		oJson["regraDescontoChave"]  := Nil
 		oJson["ativo"]               := !(AllTrim(cValToChar((cAlias)->B1_MSBLQL)) == "1")
 
@@ -1573,7 +1577,11 @@ User Function BJMAPCLI(cMarca, cChave, cMarcaFim)
 		oJson["razaoSocial"]             := AllTrim((cAlias)->A1_NOME)
 		oJson["vendedorChave"]           := FWxFilial("SA3") + "-" + (cAlias)->A1_VEND
 		oJson["tabelaPrecoChave"]        := FWxFilial("DA0") + "-" + (cAlias)->A1_TABELA
-		oJson["condicaoPagamentoChave"]  := FWxFilial("SE4") + "-" + (cAlias)->A1_COND
+		If Empty((cAlias)->A1_COND)
+			oJson["condicaoPagamentoChave"] := Nil
+		Else
+			oJson["condicaoPagamentoChave"] := FWxFilial("SE4") + "-" + (cAlias)->A1_COND
+		EndIf
 		oJson["ativo"]                   := !(AllTrim(cValToChar((cAlias)->A1_MSBLQL)) == "1")
 
 		BJPoeTexto(oJson, "nomeFantasia"     , (cAlias)->A1_NREDUZ)
@@ -1872,8 +1880,18 @@ User Function BJMAPTAB(cMarca, cChave, cMarcaFim)
 	cQuery += "  LEFT JOIN " + RetSQLName("DA1") + " DA1 "
 	cQuery += "    ON DA1.DA1_FILIAL = DA0.DA0_FILIAL "
 	cQuery += "   AND DA1.DA1_CODTAB = DA0.DA0_CODTAB "
+	cQuery += "   AND DA1.R_E_C_N_O_ = (SELECT MAX(DA1X.R_E_C_N_O_) "
+	cQuery += "                            FROM " + RetSQLName("DA1") + " DA1X "
+	cQuery += "                           WHERE DA1X.DA1_FILIAL = DA1.DA1_FILIAL "
+	cQuery += "                             AND DA1X.DA1_CODTAB = DA1.DA1_CODTAB "
+	cQuery += "                             AND DA1X.DA1_CODPRO = DA1.DA1_CODPRO "
+	cQuery += "                             AND DA1X.DA1_ITEM   = DA1.DA1_ITEM) "
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND DA0.DA0_FILIAL = ? "
+	cQuery += "   AND DA0.R_E_C_N_O_ = (SELECT MAX(DA0X.R_E_C_N_O_) "
+	cQuery += "                            FROM " + RetSQLName("DA0") + " DA0X "
+	cQuery += "                           WHERE DA0X.DA0_FILIAL = DA0.DA0_FILIAL "
+	cQuery += "                             AND DA0X.DA0_CODTAB = DA0.DA0_CODTAB) "
 
 	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
 	// plataforma, entao nao vira DELETE.
@@ -1979,8 +1997,8 @@ User Function BJMAPTAB(cMarca, cChave, cMarcaFim)
 			oItem["ativo"]         := (AllTrim((cAlias)->DA1_ATIVO) == "1")
 			oItem["delete"]        := !Empty((cAlias)->ITEM_DELETADO)
 
-			If lRegra
-				BJPoeTexto(oItem, "regraDescontoCodigo", (cAlias)->DA1_XDESC)
+			If lRegra .And. !Empty((cAlias)->DA1_XDESC)
+				oItem["regraDescontoChave"] := FWxFilial("SZ0") + "-" + AllTrim((cAlias)->DA1_XDESC)
 			Else
 				oItem["regraDescontoChave"]  := Nil
 			EndIf

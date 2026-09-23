@@ -99,7 +99,6 @@ const orcamentoItemProdutoSchema = z.object({
   descricao: z.string(),
   unidade: z.string().nullable(),
   fotos: z.array(z.object({ url: z.string(), principal: z.boolean() })),
-  exibirFotoOrcamento: z.boolean(),
 });
 
 export const orcamentoItemSchema = z.object({
@@ -281,7 +280,6 @@ export const ORCAMENTO_EXAMPLE: Orcamento = {
         descricao: "DETERGENTE NEUTRO 5L",
         unidade: "GL",
         fotos: [],
-        exibirFotoOrcamento: false,
       },
     },
   ],

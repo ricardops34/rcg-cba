@@ -265,7 +265,7 @@ export class IntegracaoFornecedoresService {
       const existente = await tx.fornecedor.findFirst({
         where: { empresaId, chave, deletedAt: null },
       });
-      if (!existente) throw new NotFoundException('Fornecedor não encontrado');
+      if (!existente) return;
       await tx.fornecedor.update({
         where: { id: existente.id },
         data: { deletedAt: new Date(), deletedBy: autor, ativo: false },

@@ -154,7 +154,6 @@ export class IntegracaoTabelasPrecoController {
   @ApiOperation({ summary: 'Excluir tabela de preço (soft delete)' })
   @ApiParam({ name: 'codigo', description: 'chave da tabela' })
   @ApiResponse({ status: 200, description: 'Excluída' })
-  @ApiResponse({ status: 404, description: 'Tabela de preço não encontrada' })
   @Delete(':codigo')
   remove(
     @Param('codigo') codigo: string,

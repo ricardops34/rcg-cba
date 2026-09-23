@@ -336,7 +336,7 @@ export class IntegracaoObjetivosService {
       const existente = await tx.objetivoVendedorMes.findFirst({
         where: { empresaId, chave, deletedAt: null },
       });
-      if (!existente) throw new NotFoundException('Objetivo não encontrado');
+      if (!existente) return;
       await tx.objetivoVendedorMes.update({
         where: { id: existente.id },
         data: { deletedAt: new Date(), deletedBy: autor, ativo: false },

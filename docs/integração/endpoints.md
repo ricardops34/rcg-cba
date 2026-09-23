@@ -102,6 +102,16 @@ estoque.
 precisa já existir. Demais campos: `marca`, `codigoBarras`, `ncm`,
 `codigoFornecedor`, `qtdEmbalagem`, `peso`, `ultimoPreco`, `observacao`.
 
+Quando `armazemChave` vier ausente, `null`, vazio ou apenas `-` (formato gerado
+por integrações Protheus antigas com filial e armazém vazios), a API usa o conteúdo do
+parâmetro ativo `ARMAZEM_PADRAO` da empresa. O parâmetro aceita a **chave
+natural** do armazém (por exemplo, `-01` ou `01-01`) ou o `codigoErp` (por
+exemplo, `01`) quando ele identificar um único armazém. Se o código existir em
+mais de uma filial, é obrigatório informar a chave completa. O armazém precisa
+existir antes da carga do produto. Se o parâmetro também estiver vazio, o produto fica sem armazém
+padrão. No `PATCH`, omitir o campo preserva o armazém atual; enviá-lo vazio
+aplica novamente o fallback.
+
 ### Vendedores — `/integracao/vendedores`
 
 Chave `chave`. É o alvo de `vendedorChave` em clientes, notas, títulos,
@@ -138,9 +148,17 @@ Mestre-detalhe. `GET /{codigo}` devolve a tabela **com os itens**.
 }
 ```
 
-> **`itens` substitui o conjunto inteiro.** Não é uma lista incremental: o que
-> não vier no array é removido, e o que vier é casado pela `chave` do item.
-> Para mexer em um preço, reenvie a tabela completa.
+Os itens são sincronizados pela `chave`: `delete: true` exclui somente a linha
+informada e a ausência de uma chave no array não exclui o item já cadastrado.
+Por compatibilidade com versões antigas do integrador Protheus, se a mesma
+chave vier repetida como ativa e excluída no mesmo envio, prevalece a ativa;
+repetições ativas com dados diferentes são recusadas com erro de validação.
+
+`regraDescontoChave`, quando preenchida, deve conter a chave completa da regra
+de desconto (`Z0_FILIAL-Z0_CODIGO`). Por compatibilidade, payloads antigos com
+`regraDescontoCodigo` também são aceitos quando o código identifica uma única
+regra dentro da empresa; se houver o mesmo código em mais de uma filial, a
+chave completa é obrigatória.
 
 ### Estoque — `/integracao/estoque`
 
@@ -169,6 +187,10 @@ fiscais (`tipoPessoa`, `cnpjCpf`, `inscricaoEstadual`, `contribuinteIcms`),
 contato, endereço (com `latitude`/`longitude`), `limiteCredito` e
 `vencimentoLimite`. Referencia `vendedorChave`, `tabelaPrecoChave` e
 `condicaoPagamentoChave`.
+
+`condicaoPagamentoChave` é opcional. Envie `null` quando o cliente não tiver
+condição padrão. Por compatibilidade com versões antigas do integrador, valores
+incompletos como `01-` também são interpretados como ausência de vínculo.
 
 ### `POST` grava; `PATCH` **não** grava direto
 

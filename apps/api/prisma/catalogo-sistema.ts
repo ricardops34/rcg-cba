@@ -610,13 +610,13 @@ export const ROTINAS_SEM_TELA: {
     nome: 'WhatsApp da equipe',
     menuId: 'seed-menu-whatsapp',
   },
-  // Usar o assistente — o ícone da topbar, em qualquer tela. Divide o menu com
-  // `agente-config` (a tela da chave de API), que é rotina de menu e fica em
-  // MENUS. São coisas diferentes: usar não é configurar.
+  // Usar o assistente — o ícone da topbar, em qualquer tela. A rotina fica
+  // vinculada ao Dashboard Comercial porque não é administração; somente
+  // `agente-config` fica no módulo Administração.
   {
     codigo: 'agente',
     nome: 'Agente IA (usar)',
-    menuId: 'seed-menu-agente-config',
+    menuId: 'seed-menu-dashboard-comercial',
   },
   // Base de demonstração: popular uma empresa com dado fictício de oito meses,
   // e limpar o dado de negócio dela. Aparece como ação no **detalhe da
@@ -760,7 +760,6 @@ export const ADMINISTRATIVO_PERMISSOES: Record<string, Acao[]> = {
   produtos: ['visualizar', 'cadastrar', 'editar'],
   'tabelas-preco': ['visualizar', 'cadastrar', 'editar'],
   'condicoes-pagamento': ['visualizar', 'cadastrar', 'editar'],
-  'contas-bancarias': ['visualizar', 'cadastrar', 'editar'],
   categorias: ['visualizar', 'cadastrar', 'editar'],
   armazens: ['visualizar', 'cadastrar', 'editar'],
   'regras-desconto': ['visualizar', 'cadastrar', 'editar'],
@@ -869,13 +868,10 @@ export async function sincronizarEstrutura(prisma: PrismaClient) {
  * depois nunca mais nasce liberada para ele — mas as que já escaparam antes de a
  * regra existir continuariam gravadas. Isto as retira, e é seguro repetir.
  *
- * Duas exceções, deliberadas: `agente` fica (é usar o assistente, não
- * administrá-lo — mora naquele menu só por dividi-lo com `agente-config`), e
  * `whatsapp-equipe` sai apesar de ser menu comercial, porque sem cadastro de
  * vendedor `resolverEscopoVendedores` devolve "sem restrição": a permissão que
  * dá "a equipe" a um supervisor daria a **empresa inteira** ao Diretor.
  */
-export const ROTINAS_DE_USO_EM_ADMINISTRACAO = new Set(['agente']);
 export const ROTINAS_FORA_DO_DIRETOR = new Set(['whatsapp-equipe']);
 
 export async function corrigirPermissoesDoDiretor(prisma: PrismaClient) {
@@ -896,9 +892,7 @@ export async function corrigirPermissoesDoDiretor(prisma: PrismaClient) {
     select: { id: true, codigo: true },
   });
 
-  const alvo = proibidas
-    .filter((r) => !ROTINAS_DE_USO_EM_ADMINISTRACAO.has(r.codigo))
-    .map((r) => r.id);
+  const alvo = proibidas.map((r) => r.id);
   if (alvo.length === 0) return 0;
 
   const { count } = await prisma.perfilPermissao.deleteMany({

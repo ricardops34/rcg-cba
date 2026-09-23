@@ -6,9 +6,15 @@ import type { Produto } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
 import { ProdutoForm } from "@/components/crud/produto-form";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuthStore } from "@/stores/auth-store";
 
 export default function EditarProdutoPage() {
   const { id } = useParams<{ id: string }>();
+  const podeEditarExtras = useAuthStore(
+    (state) =>
+      state.hasPermission("produtos-cadastro", "editar") ||
+      state.hasPermission("produtos", "editar"),
+  );
 
   const {
     data: produto,
@@ -32,5 +38,5 @@ export default function EditarProdutoPage() {
     return <p className="text-sm text-muted-foreground">Produto não encontrado.</p>;
   }
 
-  return <ProdutoForm produto={produto} />;
+  return <ProdutoForm produto={produto} permitirEdicaoExtras={podeEditarExtras} />;
 }

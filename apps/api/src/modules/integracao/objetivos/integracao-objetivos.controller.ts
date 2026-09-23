@@ -164,7 +164,6 @@ export class IntegracaoObjetivosController {
     description: 'chave — a chave de identidade do registro no ERP',
   })
   @ApiResponse({ status: 200, description: 'Excluído' })
-  @ApiResponse({ status: 404, description: 'Objetivo não encontrado' })
   @Delete(':codigo')
   remove(
     @Param('codigo') codigo: string,

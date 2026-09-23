@@ -20,7 +20,6 @@ import {
   ADMINISTRATIVO_PERMISSOES,
   MODULO,
   SUPERVISAO_PERMISSOES,
-  ROTINAS_DE_USO_EM_ADMINISTRACAO,
   ROTINAS_FORA_DO_DIRETOR,
   sincronizarEstrutura,
   VENDEDOR_PERMISSOES,
@@ -42,6 +41,7 @@ interface EmpresaSeed {
   nomeFantasia: string;
   cnpj: string;
   alias: string;
+  ePlataforma: boolean;
 }
 
 // CNPJs são placeholders — troque pelos reais quando tiver.
@@ -51,6 +51,7 @@ const EMPRESAS: EmpresaSeed[] = [
     nomeFantasia: 'BJSoftware',
     cnpj: '11222333000181',
     alias: 'bjs',
+    ePlataforma: true,
   },
 ];
 
@@ -66,20 +67,34 @@ const ACOES: Acao[] = [
   'bloquear',
 ];
 
-
 /**
  * Parâmetros que toda empresa nasce tendo (Administração > Parâmetros). Os
- * mesmos da migration 20260810184018_parametros_empresa — quem lê cada um
+ * mesmos da migration 20260923162000_parametros_padrao_backfill — quem lê cada um
  * está no service correspondente (ex.: ORCAMENTO_DIAS_VALIDADE em
  * OrcamentoConfigService). O admin pode criar outros pela tela.
  */
 const PARAMETROS_PADRAO = [
+  {
+    parametro: 'ARMAZEM_PADRAO',
+    tipo: 'texto' as const,
+    tamanho: 30,
+    conteudo: null,
+    descricao:
+      'Chave de integração ou código ERP do armazém usado quando armazemChave vier vazio',
+  },
   {
     parametro: 'ORCAMENTO_DIAS_VALIDADE',
     tipo: 'numero' as const,
     tamanho: 3,
     conteudo: '30',
     descricao: 'Dias somados à emissão para sugerir a validade do orçamento',
+  },
+  {
+    parametro: 'ORCAMENTO_EXIBIR_FOTOS_PRODUTOS',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'true',
+    descricao: 'Exibe a foto principal dos produtos nas propostas de orçamento',
   },
   {
     parametro: 'DESCONTO_ACIMA_LIMITE_BLOQUEIA',
@@ -216,7 +231,8 @@ const PARAMETROS_PADRAO = [
     tipo: 'numero' as const,
     tamanho: 2,
     conteudo: '0',
-    descricao: 'Quantas senhas anteriores não podem ser reutilizadas; 0 = não valida',
+    descricao:
+      'Quantas senhas anteriores não podem ser reutilizadas; 0 = não valida',
   },
   {
     parametro: 'SENHA_TENTATIVAS_ANTES_BLOQUEIO',
@@ -233,7 +249,6 @@ const PARAMETROS_PADRAO = [
     descricao: 'Minutos que a conta fica bloqueada após exceder as tentativas',
   },
 ];
-
 
 /**
  * Rotinas que o Diretor **não** recebe.
@@ -381,7 +396,6 @@ async function bootstrapMenu() {
   });
 }
 
-
 // Perfil é global (ver migration perfil_global) — Administrador e Vendedor
 // são criados uma única vez, compartilhados por todas as empresas.
 async function bootstrapPerfis(rotinas: { id: string; codigo: string }[]) {
@@ -393,7 +407,8 @@ async function bootstrapPerfis(rotinas: { id: string; codigo: string }[]) {
   const perfilAdminPlataforma = await prisma.perfil.create({
     data: {
       nome: 'Administrador da Plataforma',
-      descricao: 'Acesso total ao sistema e à administração da plataforma (todas as empresas)',
+      descricao:
+        'Acesso total ao sistema e à administração da plataforma (todas as empresas)',
       sistemaBase: true,
       administraPlataforma: true,
     },
@@ -417,7 +432,8 @@ async function bootstrapPerfis(rotinas: { id: string; codigo: string }[]) {
   const perfilAdmin = await prisma.perfil.create({
     data: {
       nome: 'Administrador Empresa',
-      descricao: 'Perfil com acesso total ao sistema, dentro da própria empresa',
+      descricao:
+        'Perfil com acesso total ao sistema, dentro da própria empresa',
       sistemaBase: true,
     },
   });
@@ -440,7 +456,8 @@ async function bootstrapPerfis(rotinas: { id: string; codigo: string }[]) {
   const perfilAdministrativo = await prisma.perfil.create({
     data: {
       nome: 'Administrativo',
-      descricao: 'Cadastros, financeiro e consultas gerenciais, sem administração do sistema',
+      descricao:
+        'Cadastros, financeiro e consultas gerenciais, sem administração do sistema',
       sistemaBase: false,
     },
   });
@@ -492,8 +509,14 @@ async function bootstrapPerfis(rotinas: { id: string; codigo: string }[]) {
   // alheia exige a permissão **e** o vendedor estar no time
   // (ver escopoLeituraWhatsapp).
   for (const [nome, descricao] of [
-    ['Supervisor', 'Mesmas telas do Vendedor; a carteira alcançada vem da hierarquia do cadastro de Vendedores'],
-    ['Gerente', 'Mesmas telas do Vendedor; a carteira alcançada vem da hierarquia do cadastro de Vendedores'],
+    [
+      'Supervisor',
+      'Mesmas telas do Vendedor; a carteira alcançada vem da hierarquia do cadastro de Vendedores',
+    ],
+    [
+      'Gerente',
+      'Mesmas telas do Vendedor; a carteira alcançada vem da hierarquia do cadastro de Vendedores',
+    ],
   ]) {
     const perfil = await prisma.perfil.create({
       data: { nome, descricao, sistemaBase: false },
@@ -534,7 +557,8 @@ async function bootstrapPerfilDiretor(
   const perfilDiretor = await prisma.perfil.create({
     data: {
       nome: 'Diretor',
-      descricao: 'Acesso irrestrito aos dados comerciais, sem administração do sistema',
+      descricao:
+        'Acesso irrestrito aos dados comerciais, sem administração do sistema',
       sistemaBase: false,
     },
   });
@@ -542,8 +566,7 @@ async function bootstrapPerfilDiretor(
     data: rotinas
       .filter(
         (rotina) =>
-          (rotina.menu.moduloId !== MODULO.administracao ||
-            ROTINAS_DE_USO_EM_ADMINISTRACAO.has(rotina.codigo)) &&
+          rotina.menu.moduloId !== MODULO.administracao &&
           !ROTINAS_FORA_DO_DIRETOR.has(rotina.codigo),
       )
       .flatMap((rotina) =>
@@ -608,6 +631,7 @@ async function main() {
         nomeFantasia: cfg.nomeFantasia,
         cnpj: cfg.cnpj,
         alias: cfg.alias,
+        ePlataforma: cfg.ePlataforma,
       },
     });
 

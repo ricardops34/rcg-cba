@@ -224,8 +224,7 @@ export class IntegracaoCondicoesPagamentoService {
       const existente = await tx.condicaoPagamento.findFirst({
         where: { empresaId, chave, deletedAt: null },
       });
-      if (!existente)
-        throw new NotFoundException('Condição de pagamento não encontrada');
+      if (!existente) return;
       await tx.condicaoPagamento.update({
         where: { id: existente.id },
         data: { deletedAt: new Date(), deletedBy: autor, ativo: false },

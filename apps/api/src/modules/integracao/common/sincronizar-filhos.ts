@@ -1,3 +1,64 @@
+import { BadRequestException } from '@nestjs/common';
+
+/**
+ * Consolida repetições da mesma chave antes de resolver FKs ou montar o nested
+ * write do Prisma.
+ *
+ * O Protheus mantém fisicamente registros excluídos. Em versões antigas do
+ * integrador, um JOIN podia mandar a versão ativa e a excluída da mesma chave
+ * no mesmo payload. Nesse caso a ativa representa o estado atual. Repetições
+ * idênticas também são inofensivas; duas versões ativas diferentes, porém,
+ * são ambíguas e viram erro 400 em vez de uma violação de índice/erro 500.
+ */
+export function consolidarFilhos<
+  T extends { chave?: string | null; delete?: boolean },
+>(filhos: T[]): T[] {
+  const consolidados = new Map<string, T>();
+
+  filhos.forEach((filho, indice) => {
+    const chave = filho.chave?.trim();
+    if (!chave) {
+      throw new BadRequestException(
+        `Filho ${indice} chegou sem chave — a sincronização precisa dela`,
+      );
+    }
+
+    const normalizado = { ...filho, chave } as T;
+    const anterior = consolidados.get(chave);
+    if (!anterior) {
+      consolidados.set(chave, normalizado);
+      return;
+    }
+
+    if (anterior.delete && !normalizado.delete) {
+      consolidados.set(chave, normalizado);
+      return;
+    }
+    if (!anterior.delete && normalizado.delete) return;
+
+    // Os demais campos de uma exclusão não são aplicados ao banco.
+    if (anterior.delete && normalizado.delete) return;
+
+    const campos = new Set([
+      ...Object.keys(anterior),
+      ...Object.keys(normalizado),
+    ]);
+    campos.delete('delete');
+    const iguais = [...campos].every(
+      (campo) =>
+        (anterior as Record<string, unknown>)[campo] ===
+        (normalizado as Record<string, unknown>)[campo],
+    );
+    if (!iguais) {
+      throw new BadRequestException(
+        `A chave de item '${chave}' foi enviada mais de uma vez com dados ativos diferentes`,
+      );
+    }
+  });
+
+  return [...consolidados.values()];
+}
+
 /**
  * Casa a coleção de filhos que veio no payload com a que está no banco,
  * usando a `chave` de cada filho **dentro do cabeçalho**.
@@ -20,19 +81,11 @@ export function sincronizarFilhos<
   C extends string,
   T extends { chave?: string | null; delete?: boolean },
 >(pai: { campo: C; id: string }, filhos: T[]) {
-  const semChave = filhos.findIndex((filho) => !filho.chave);
-  if (semChave >= 0) {
-    // Não deveria acontecer: o contrato exige chave em todo filho vindo do
-    // ERP. Se acontecer, é bug de mapeamento — e cair aqui é melhor do que
-    // gravar um filho sem chave, que o próximo envio duplicaria.
-    throw new Error(
-      `Filho ${semChave} chegou sem chave — a sincronização precisa dela`,
-    );
-  }
-  const excluidos = filhos
+  const consolidados = consolidarFilhos(filhos);
+  const excluidos = consolidados
     .filter((filho) => filho.delete)
     .map((filho) => filho.chave as string);
-  const ativos = filhos.filter((filho) => !filho.delete);
+  const ativos = consolidados.filter((filho) => !filho.delete);
   const semControle = ativos.map(({ delete: _delete, ...filho }) => filho);
   return {
     deleteMany: { chave: { in: excluidos } },
@@ -50,7 +103,9 @@ export function sincronizarFilhos<
 }
 
 export function criarFilhos<T extends object>(filhos: T[]) {
-  return filhos
+  return consolidarFilhos(
+    filhos as (T & { chave?: string | null; delete?: boolean })[],
+  )
     .filter((filho) => !(filho as { delete?: boolean }).delete)
     .map((filho) => {
       const { delete: _delete, ...dados } = filho as T & { delete?: boolean };

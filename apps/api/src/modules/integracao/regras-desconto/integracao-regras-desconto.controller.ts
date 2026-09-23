@@ -155,7 +155,6 @@ export class IntegracaoRegrasDescontoController {
   @ApiOperation({ summary: 'Excluir regra de desconto (soft delete)' })
   @ApiParam({ name: 'codigo', description: 'chave da regra (Z0_CODIGO)' })
   @ApiResponse({ status: 200, description: 'Excluída' })
-  @ApiResponse({ status: 404, description: 'Regra não encontrada' })
   @Delete(':codigo')
   remove(
     @Param('codigo') codigo: string,

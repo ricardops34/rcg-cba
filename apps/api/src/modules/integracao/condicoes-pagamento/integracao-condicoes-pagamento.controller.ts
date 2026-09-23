@@ -153,10 +153,6 @@ export class IntegracaoCondicoesPagamentoController {
   @ApiOperation({ summary: 'Excluir condição de pagamento (soft delete)' })
   @ApiParam({ name: 'codigo', description: 'chave da condição' })
   @ApiResponse({ status: 200, description: 'Excluída' })
-  @ApiResponse({
-    status: 404,
-    description: 'Condição de pagamento não encontrada',
-  })
   @Delete(':codigo')
   remove(
     @Param('codigo') codigo: string,

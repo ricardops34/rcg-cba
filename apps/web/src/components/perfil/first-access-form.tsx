@@ -42,7 +42,7 @@ export function FirstAccessForm({ user }: { user: CurrentUser }) {
             <FieldError errors={[form.formState.errors.nome]} />
           </Field>
           <Field>
-            <FieldLabel htmlFor="primeiro-telefone">Telefone institucional</FieldLabel>
+            <FieldLabel htmlFor="primeiro-telefone">Telefone celular com DDD</FieldLabel>
             <Input id="primeiro-telefone" type="tel" autoComplete="tel" placeholder="(65) 99999-9999" maxLength={30} {...form.register("telefoneInstitucional")} />
             <FieldError errors={[form.formState.errors.telefoneInstitucional]} />
           </Field>

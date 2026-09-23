@@ -231,7 +231,6 @@ export class IntegracaoOrcamentosController {
     description: 'chave — a chave de identidade do registro no ERP',
   })
   @ApiResponse({ status: 200, description: 'Excluído' })
-  @ApiResponse({ status: 404, description: 'Orçamento não encontrado' })
   @Delete(':codigo')
   remove(
     @Param('codigo') codigo: string,

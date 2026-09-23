@@ -1,4 +1,8 @@
-import { sincronizarFilhos } from './sincronizar-filhos';
+import {
+  consolidarFilhos,
+  criarFilhos,
+  sincronizarFilhos,
+} from './sincronizar-filhos';
 
 describe('sincronizarFilhos', () => {
   const pai = { campo: 'notaSaidaId' as const, id: 'nota-1' };
@@ -33,5 +37,25 @@ describe('sincronizarFilhos', () => {
     expect(() =>
       sincronizarFilhos(pai, [{ chave: '', delete: false }]),
     ).toThrow(/sem chave/);
+  });
+
+  it('mantém a versão ativa quando a mesma chave também veio excluída', () => {
+    const filhos = consolidarFilhos([
+      { chave: 'ITEM-1', delete: true, preco: 20 },
+      { chave: 'ITEM-1', delete: false, preco: 25 },
+      { chave: 'ITEM-1', delete: false, preco: 25 },
+    ]);
+
+    expect(filhos).toEqual([{ chave: 'ITEM-1', delete: false, preco: 25 }]);
+    expect(criarFilhos(filhos)).toEqual([{ chave: 'ITEM-1', preco: 25 }]);
+  });
+
+  it('recusa versões ativas diferentes da mesma chave', () => {
+    expect(() =>
+      consolidarFilhos([
+        { chave: 'ITEM-1', delete: false, preco: 20 },
+        { chave: 'ITEM-1', delete: false, preco: 25 },
+      ]),
+    ).toThrow(/dados ativos diferentes/);
   });
 });

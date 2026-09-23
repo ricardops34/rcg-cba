@@ -366,9 +366,7 @@ export class IntegracaoRegrasDescontoService {
       const existente = await tx.regraDesconto.findFirst({
         where: { empresaId, chave, deletedAt: null },
       });
-      if (!existente) {
-        throw new NotFoundException('Regra de desconto não encontrada');
-      }
+      if (!existente) return;
       await tx.regraDesconto.update({
         where: { id: existente.id },
         data: {

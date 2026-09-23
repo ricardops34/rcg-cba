@@ -509,8 +509,7 @@ export class IntegracaoNotasSaidaService {
       const existente = await tx.notaSaida.findFirst({
         where: { empresaId, chave, deletedAt: null },
       });
-      if (!existente)
-        throw new NotFoundException('Nota de saída não encontrada');
+      if (!existente) return;
       await tx.notaSaida.update({
         where: { id: existente.id },
         data: { deletedAt: new Date(), deletedBy: autor, ativo: false },

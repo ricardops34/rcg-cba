@@ -212,7 +212,7 @@ export class IntegracaoArmazensService {
       const existente = await tx.armazem.findFirst({
         where: { empresaId, chave, deletedAt: null },
       });
-      if (!existente) throw new NotFoundException('Armazém não encontrado');
+      if (!existente) return;
       await tx.armazem.update({
         where: { id: existente.id },
         data: { deletedAt: new Date(), deletedBy: autor, ativo: false },

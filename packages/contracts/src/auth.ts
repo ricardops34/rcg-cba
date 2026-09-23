@@ -78,13 +78,23 @@ export const updateOwnProfileSchema = z.object({
 export type UpdateOwnProfileInput = z.infer<typeof updateOwnProfileSchema>;
 
 export const completeFirstAccessSchema = updateOwnProfileSchema.extend({
-  telefoneInstitucional: z.string().trim().min(1, "Informe o telefone institucional")
+  telefoneInstitucional: z.string().trim().min(1, "Informe o telefone celular")
     .max(30).regex(/^\+?[\d\s().-]+$/, "Informe um telefone válido")
     .refine((v) => { const digits = v.replace(/\D/g, ""); return digits.length >= 10 && digits.length <= 15; }, "Informe o telefone com DDD"),
   dataNascimento: z.string().date("Informe uma data válida")
     .refine((v) => v >= "1900-01-01" && v <= new Date().toISOString().slice(0, 10), "Informe uma data de nascimento válida"),
 });
 export type CompleteFirstAccessInput = z.infer<typeof completeFirstAccessSchema>;
+
+export const avatarPadraoSchema = z.object({
+  avatar: z.enum([
+    "corporativo-01",
+    "corporativo-02",
+    "corporativo-03",
+    "corporativo-04",
+  ]),
+});
+export type AvatarPadraoInput = z.infer<typeof avatarPadraoSchema>;
 
 export const currentUserSchema = z.object({
   id: z.string().uuid().describe("Identificador do usuário autenticado"),

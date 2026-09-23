@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   PrismaService,
   Prisma,
@@ -24,19 +28,28 @@ import {
 } from '../common/decidir-upsert';
 import { processarLote } from '../common/processar-lote';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
+import {
+  PARAMETRO_ARMAZEM_PADRAO,
+  ParametrosService,
+} from '../../parametros/parametros.service';
 
 const INCLUDE = {
   categoria: { select: { chave: true } },
   subCategoria: { select: { chave: true } },
   armazem: { select: { chave: true } },
   regraDesconto: { select: { chave: true } },
-  fabricante: { select: { chave: true, razaoSocial: true, nomeFantasia: true } },
+  fabricante: {
+    select: { chave: true, razaoSocial: true, nomeFantasia: true },
+  },
 } satisfies Prisma.ProdutoInclude;
 type ProdutoComRelacoes = Prisma.ProdutoGetPayload<{ include: typeof INCLUDE }>;
 
 @Injectable()
 export class IntegracaoProdutosService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly parametros: ParametrosService,
+  ) {}
 
   private paraLeitura(row: ProdutoComRelacoes): IntegracaoProduto {
     return {
@@ -148,7 +161,7 @@ export class IntegracaoProdutosService {
         input.subCategoriaChave,
         'subCategoriaChave',
       );
-      const armazemId = await this.resolverArmazem(
+      const armazemId = await this.resolverArmazemRecebido(
         tx,
         empresaId,
         input.armazemChave,
@@ -258,7 +271,11 @@ export class IntegracaoProdutosService {
           : undefined;
       const armazemId =
         input.armazemChave !== undefined
-          ? await this.resolverArmazem(tx, empresaId, input.armazemChave)
+          ? await this.resolverArmazemRecebido(
+              tx,
+              empresaId,
+              input.armazemChave,
+            )
           : undefined;
       const fabricanteId =
         input.fabricanteChave !== undefined
@@ -331,7 +348,7 @@ export class IntegracaoProdutosService {
       const existente = await tx.produto.findFirst({
         where: { empresaId, chave, deletedAt: null },
       });
-      if (!existente) throw new NotFoundException('Produto não encontrado');
+      if (!existente) return;
       await tx.produto.update({
         where: { id: existente.id },
         data: { deletedAt: new Date(), deletedBy: autor, ativo: false },
@@ -368,6 +385,72 @@ export class IntegracaoProdutosService {
     if (!armazem)
       throw new NotFoundException(`armazemChave '${codigo}' não encontrado`);
     return armazem.id;
+  }
+
+  /**
+   * Valor informado pelo ERP tem prioridade. Ausência, null ou texto vazio
+   * usa o ARMAZEM_PADRAO da empresa; se o parâmetro também estiver vazio, o
+   * produto continua sem armazém associado.
+   */
+  private async resolverArmazemRecebido(
+    tx: TenantTx,
+    empresaId: string,
+    informado: string | null | undefined,
+  ) {
+    const valorInformado = informado?.trim();
+    // Integrações Protheus antigas concatenavam FILIAL + "-" + B1_LOCPAD.
+    // Quando ambos estavam vazios, o resultado era apenas "-", que representa
+    // ausência de armazém e deve acionar o fallback da empresa.
+    const chaveInformada =
+      valorInformado && !/^-+$/.test(valorInformado) ? valorInformado : null;
+    const configurada = chaveInformada
+      ? null
+      : await this.parametros.obterTexto(
+          empresaId,
+          PARAMETRO_ARMAZEM_PADRAO,
+          null,
+          tx,
+        );
+    if (chaveInformada) {
+      return this.resolverArmazem(tx, empresaId, chaveInformada);
+    }
+
+    const valorPadrao = configurada?.trim();
+    if (!valorPadrao) return null;
+    return this.resolverArmazemPadrao(tx, empresaId, valorPadrao);
+  }
+
+  /**
+   * Na tela de parâmetros é comum o administrador conhecer apenas o código
+   * do armazém (ex.: 01), não a chave composta da integração (ex.: -01).
+   * A chave exata tem prioridade; codigoErp só é aceito quando identifica uma
+   * única linha, para nunca escolher silenciosamente a filial errada.
+   */
+  private async resolverArmazemPadrao(
+    tx: TenantTx,
+    empresaId: string,
+    valor: string,
+  ) {
+    const porChave = await tx.armazem.findFirst({
+      where: { empresaId, chave: valor, deletedAt: null },
+      select: { id: true },
+    });
+    if (porChave) return porChave.id;
+
+    const porCodigoErp = await tx.armazem.findMany({
+      where: { empresaId, codigoErp: valor, deletedAt: null },
+      select: { id: true },
+      take: 2,
+    });
+    if (porCodigoErp.length === 1) return porCodigoErp[0].id;
+    if (porCodigoErp.length > 1) {
+      throw new BadRequestException(
+        `ARMAZEM_PADRAO '${valor}' corresponde a mais de um armazém; informe a chave de integração completa`,
+      );
+    }
+    throw new NotFoundException(
+      `ARMAZEM_PADRAO '${valor}' não encontrou armazém por chave nem por codigoErp`,
+    );
   }
 
   private async resolverFabricante(

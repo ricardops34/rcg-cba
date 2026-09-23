@@ -22,11 +22,13 @@ import {
   motivoBloqueio,
   whereEmpresaAcessivel,
 } from '../../common/empresa/situacao-empresa';
-import type {
-  ChangePasswordInput,
-  CompleteFirstAccessInput,
-  LoginInput,
-  RefreshInput,
+import {
+  completeFirstAccessSchema,
+  type AvatarPadraoInput,
+  type CompleteFirstAccessInput,
+  type ChangePasswordInput,
+  type LoginInput,
+  type RefreshInput,
 } from '@plataforma/contracts';
 
 interface RequestMeta {
@@ -36,6 +38,36 @@ interface RequestMeta {
 
 const SALT_ROUNDS = 12;
 const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const MODULO_ADMINISTRACAO_ID = 'seed-modulo-administracao';
+
+type DadosPrimeiroAcesso = {
+  nome: string;
+  primeiroAcessoConcluidoEm: Date | null;
+};
+
+type VinculoPrimeiroAcesso = {
+  telefone: string | null;
+  dataNascimento: Date | null;
+};
+
+/**
+ * O marco de conclusão sozinho não basta: a migration inicial preservou quem
+ * já havia entrado na plataforma, inclusive cadastros sem telefone ou data de
+ * nascimento. Nesses casos o formulário precisa aparecer para reparar os
+ * dados que ficaram pendentes.
+ */
+export function precisaCompletarPrimeiroAcesso(
+  usuario: DadosPrimeiroAcesso,
+  vinculo?: VinculoPrimeiroAcesso,
+) {
+  if (!usuario.primeiroAcessoConcluidoEm) return true;
+
+  return !completeFirstAccessSchema.safeParse({
+    nome: usuario.nome,
+    telefoneInstitucional: vinculo?.telefone ?? '',
+    dataNascimento: vinculo?.dataNascimento?.toISOString().slice(0, 10) ?? '',
+  }).success;
+}
 
 /** Sobe da rotina até o módulo — o `ativo` de qualquer nível derruba o de baixo. */
 const ROTINA_COM_ARVORE = {
@@ -155,7 +187,11 @@ export class AuthService {
       : await (async () => {
           const daEmpresa = await this.desativadosDaEmpresa(empresaId);
           return vinculo.perfil.permissoes
-            .filter((p) => rotinaNoAr(p.rotina, daEmpresa))
+            .filter(
+              (p) =>
+                p.rotina.menu.moduloId !== MODULO_ADMINISTRACAO_ID &&
+                rotinaNoAr(p.rotina, daEmpresa),
+            )
             .map((p) => `${p.rotina.codigo}.${p.acao}`);
         })();
 
@@ -613,13 +649,19 @@ export class AuthService {
         this.prisma.withTenant(v.empresaId, (tx) =>
           tx.perfil.findUniqueOrThrow({
             where: { id: v.perfilId },
-            select: { nome: true, administraPlataforma: true },
+            select: {
+              nome: true,
+              sistemaBase: true,
+              administraPlataforma: true,
+            },
           }),
         ),
       ),
     );
 
-    const ativoIndex = vinculos.findIndex((v) => v.empresaId === empresaAtivaId);
+    const ativoIndex = vinculos.findIndex(
+      (v) => v.empresaId === empresaAtivaId,
+    );
     const ativo = ativoIndex === -1 ? undefined : vinculos[ativoIndex];
     const daEmpresa = ativo
       ? await this.desativadosDaEmpresa(ativo.empresaId)
@@ -631,7 +673,12 @@ export class AuthService {
             include: { rotina: { include: ROTINA_COM_ARVORE } },
           })
         )
-          .filter((p) => rotinaNoAr(p.rotina, daEmpresa))
+          .filter(
+            (p) =>
+              (perfis[ativoIndex].sistemaBase ||
+                p.rotina.menu.moduloId !== MODULO_ADMINISTRACAO_ID) &&
+              rotinaNoAr(p.rotina, daEmpresa),
+          )
           .map((p) => `${p.rotina.codigo}.${p.acao}`)
       : [];
 
@@ -643,10 +690,11 @@ export class AuthService {
       avatarUrl: usuario.avatarUrl,
       telefoneInstitucional: ativo?.telefone ?? null,
       dataNascimento: ativo?.dataNascimento?.toISOString().slice(0, 10) ?? null,
-      mustCompleteFirstAccess: !usuario.primeiroAcessoConcluidoEm,
+      mustCompleteFirstAccess: precisaCompletarPrimeiroAcesso(usuario, ativo),
       email: usuario.email,
       // Do perfil do vínculo ATIVO, não do usuário (ver buildAccessToken).
-      administradorPlataforma: ativoIndex === -1 ? false : perfis[ativoIndex].administraPlataforma,
+      administradorPlataforma:
+        ativoIndex === -1 ? false : perfis[ativoIndex].administraPlataforma,
       empresaAtivaId,
       empresas: vinculos.map((v, i) => ({
         empresaId: v.empresaId,
@@ -666,45 +714,86 @@ export class AuthService {
     };
   }
 
-  async completeFirstAccess(usuarioId: string, empresaId: string, input: CompleteFirstAccessInput) {
+  async completeFirstAccess(
+    usuarioId: string,
+    empresaId: string,
+    input: CompleteFirstAccessInput,
+  ) {
     await this.prisma.withTenant(empresaId, async (tx) => {
-      const usuario = await tx.usuario.findUniqueOrThrow({ where: { id: usuarioId } });
-      if (usuario.primeiroAcessoConcluidoEm) return;
+      const usuario = await tx.usuario.findUniqueOrThrow({
+        where: { id: usuarioId },
+      });
       const vinculo = await tx.usuarioEmpresa.findFirst({
         where: { usuarioId, empresaId, ativo: true, deletedAt: null },
       });
-      if (!vinculo) throw new ForbiddenException('Vínculo com a empresa indisponível');
+      if (!vinculo)
+        throw new ForbiddenException('Vínculo com a empresa indisponível');
+      if (!precisaCompletarPrimeiroAcesso(usuario, vinculo)) return;
       await tx.usuarioEmpresa.update({
         where: { id: vinculo.id },
-        data: { telefone: input.telefoneInstitucional, dataNascimento: new Date(`${input.dataNascimento}T00:00:00.000Z`), updatedBy: usuarioId },
+        data: {
+          telefone: input.telefoneInstitucional,
+          dataNascimento: new Date(`${input.dataNascimento}T00:00:00.000Z`),
+          updatedBy: usuarioId,
+        },
       });
       await tx.usuario.update({
         where: { id: usuarioId },
-        data: { nome: input.nome, primeiroAcessoConcluidoEm: new Date(), updatedBy: usuarioId },
+        data: {
+          nome: input.nome,
+          primeiroAcessoConcluidoEm: new Date(),
+          updatedBy: usuarioId,
+        },
       });
-      const vendedores = await tx.vendedor.findMany({ where: { usuarioId, empresaId, deletedAt: null } });
+      const vendedores = await tx.vendedor.findMany({
+        where: { usuarioId, empresaId, deletedAt: null },
+      });
       for (const vendedor of vendedores) {
         const data = {
           ...(vendedor.nome !== input.nome ? { nome: input.nome } : {}),
-          ...(vendedor.telefone !== input.telefoneInstitucional ? { telefone: input.telefoneInstitucional } : {}),
-          ...(vendedor.dataNascimento?.toISOString().slice(0, 10) !== input.dataNascimento
-            ? { dataNascimento: new Date(`${input.dataNascimento}T00:00:00.000Z`) } : {}),
+          ...(vendedor.telefone !== input.telefoneInstitucional
+            ? { telefone: input.telefoneInstitucional }
+            : {}),
+          ...(vendedor.dataNascimento?.toISOString().slice(0, 10) !==
+          input.dataNascimento
+            ? {
+                dataNascimento: new Date(
+                  `${input.dataNascimento}T00:00:00.000Z`,
+                ),
+              }
+            : {}),
         };
         if (Object.keys(data).length) {
-          await tx.vendedor.update({ where: { id: vendedor.id }, data: { ...data, updatedBy: usuarioId } });
+          await tx.vendedor.update({
+            where: { id: vendedor.id },
+            data: { ...data, updatedBy: usuarioId },
+          });
         }
       }
     });
     return this.me(usuarioId, empresaId);
   }
 
-  async uploadOwnAvatar(usuarioId: string, empresaId: string, file?: Express.Multer.File) {
-    if (!file || file.size > 2 * 1024 * 1024) throw new BadRequestException('Envie uma foto de até 2 MB');
+  async uploadOwnAvatar(
+    usuarioId: string,
+    empresaId: string,
+    file?: Express.Multer.File,
+  ) {
+    if (!file || file.size > 2 * 1024 * 1024)
+      throw new BadRequestException('Envie uma foto de até 2 MB');
     const buffer = file.buffer;
-    const extension = buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ? 'png'
-      : buffer.subarray(0, 3).equals(Buffer.from([255, 216, 255])) ? 'jpg'
-      : buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP' ? 'webp' : null;
-    if (!extension) throw new BadRequestException('Envie uma foto PNG, JPEG ou WEBP');
+    const extension = buffer
+      .subarray(0, 8)
+      .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+      ? 'png'
+      : buffer.subarray(0, 3).equals(Buffer.from([255, 216, 255]))
+        ? 'jpg'
+        : buffer.toString('ascii', 0, 4) === 'RIFF' &&
+            buffer.toString('ascii', 8, 12) === 'WEBP'
+          ? 'webp'
+          : null;
+    if (!extension)
+      throw new BadRequestException('Envie uma foto PNG, JPEG ou WEBP');
     const filename = `${randomBytes(16).toString('hex')}.${extension}`;
     const directory = join(UPLOADS_DIR, 'avatares');
     await mkdir(directory, { recursive: true });
@@ -713,12 +802,30 @@ export class AuthService {
     try {
       await this.prisma.usuario.update({
         where: { id: usuarioId },
-        data: { avatarUrl: `/uploads/avatares/${filename}`, updatedBy: usuarioId },
+        data: {
+          avatarUrl: `/uploads/avatares/${filename}`,
+          updatedBy: usuarioId,
+        },
       });
     } catch (error) {
       await unlink(path).catch(() => undefined);
       throw error;
     }
+    return this.me(usuarioId, empresaId);
+  }
+
+  async selectDefaultAvatar(
+    usuarioId: string,
+    empresaId: string,
+    avatar: AvatarPadraoInput['avatar'],
+  ) {
+    await this.prisma.usuario.update({
+      where: { id: usuarioId },
+      data: {
+        avatarUrl: `/avatares-padrao/${avatar}.jpg`,
+        updatedBy: usuarioId,
+      },
+    });
     return this.me(usuarioId, empresaId);
   }
 

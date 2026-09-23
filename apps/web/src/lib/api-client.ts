@@ -40,6 +40,9 @@ export const API_ORIGIN =
 export function assetUrl(path: string | null | undefined): string | null {
   if (!path) return null;
   if (/^https?:\/\//.test(path)) return path;
+  // Avatares padrão pertencem ao `public` do Next, não ao volume de uploads
+  // da API. Manter a URL relativa também evita diferença entre SSR e browser.
+  if (path.startsWith("/avatares-padrao/")) return path;
   const origin = getApiOrigin();
   return `${origin}${path.startsWith("/") ? "" : "/"}${path}`;
 }

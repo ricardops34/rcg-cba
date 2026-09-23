@@ -151,7 +151,6 @@ export class IntegracaoCategoriasController {
   @ApiOperation({ summary: 'Excluir categoria (soft delete)' })
   @ApiParam({ name: 'codigo', description: 'chave da categoria' })
   @ApiResponse({ status: 200, description: 'Excluída' })
-  @ApiResponse({ status: 404, description: 'Categoria não encontrada' })
   @Delete(':codigo')
   remove(
     @Param('codigo') codigo: string,

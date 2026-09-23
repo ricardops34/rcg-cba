@@ -22,6 +22,7 @@ const ACAO_LABEL: Record<Acao, string> = {
   bloquear: "Bloquear",
 };
 const ACOES = acaoSchema.options;
+const MODULO_ADMINISTRACAO_ID = "seed-modulo-administracao";
 
 interface PerfilPermissaoRow {
   rotinaId: string;
@@ -42,7 +43,13 @@ interface PerfilDetail {
  * quem está configurando o perfil escolhe pelo nome da tela, sem precisar
  * saber código ou rota de cor.
  */
-export function PermissoesMatrix({ perfilId, onSaved }: { perfilId: string; onSaved?: () => void }) {
+export function PermissoesMatrix({
+  perfilId,
+  onSaved,
+}: {
+  perfilId: string;
+  onSaved?: () => void;
+}) {
   const qc = useQueryClient();
   // Estrutura completa (sem filtro de permissão do usuário logado) — a
   // matriz precisa mostrar todas as rotinas, mesmo as que o admin atual
@@ -57,7 +64,9 @@ export function PermissoesMatrix({ perfilId, onSaved }: { perfilId: string; onSa
     queryFn: () => apiFetch<PerfilDetail>(`/perfis/${perfilId}`),
   });
 
-  const [state, setState] = useState<Record<string, Partial<Record<Acao, boolean>>>>({});
+  const [state, setState] = useState<
+    Record<string, Partial<Record<Acao, boolean>>>
+  >({});
 
   useEffect(() => {
     if (!perfilQuery.data) return;
@@ -71,17 +80,26 @@ export function PermissoesMatrix({ perfilId, onSaved }: { perfilId: string; onSa
 
   const rotinasPorModulo = useMemo(
     () =>
-      (modulos ?? []).map((modulo) => ({
-        modulo,
-        rotinas: modulo.menus.flatMap((menu) =>
-          menu.rotinas.map((r) => ({ ...r, menuNome: menu.nome })),
-        ),
-      })),
-    [modulos],
+      (modulos ?? [])
+        .filter(
+          (modulo) =>
+            perfilQuery.data?.sistemaBase ||
+            modulo.id !== MODULO_ADMINISTRACAO_ID,
+        )
+        .map((modulo) => ({
+          modulo,
+          rotinas: modulo.menus.flatMap((menu) =>
+            menu.rotinas.map((r) => ({ ...r, menuNome: menu.nome })),
+          ),
+        })),
+    [modulos, perfilQuery.data?.sistemaBase],
   );
 
   const toggle = (rotinaId: string, acao: Acao, value: boolean) => {
-    setState((prev) => ({ ...prev, [rotinaId]: { ...prev[rotinaId], [acao]: value } }));
+    setState((prev) => ({
+      ...prev,
+      [rotinaId]: { ...prev[rotinaId], [acao]: value },
+    }));
   };
 
   const save = useMutation({
@@ -93,14 +111,20 @@ export function PermissoesMatrix({ perfilId, onSaved }: { perfilId: string; onSa
           permitido: !!permitido,
         })),
       );
-      return apiFetch(`/perfis/${perfilId}/permissoes`, { method: "PUT", body: { permissoes } });
+      return apiFetch(`/perfis/${perfilId}/permissoes`, {
+        method: "PUT",
+        body: { permissoes },
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["perfis"] });
       toast.success("Permissões salvas");
       onSaved?.();
     },
-    onError: (err) => toast.error(err instanceof ApiError ? err.message : "Erro ao salvar permissões"),
+    onError: (err) =>
+      toast.error(
+        err instanceof ApiError ? err.message : "Erro ao salvar permissões",
+      ),
   });
 
   const isLoading = loadingMenu || perfilQuery.isLoading;
@@ -129,7 +153,10 @@ export function PermissoesMatrix({ perfilId, onSaved }: { perfilId: string; onSa
                   <tr className="border-b border-border/60 bg-muted/40">
                     <th className="px-3 py-2 text-left font-medium">Tela</th>
                     {ACOES.map((acao) => (
-                      <th key={acao} className="px-2 py-2 text-center font-medium whitespace-nowrap">
+                      <th
+                        key={acao}
+                        className="px-2 py-2 text-center font-medium whitespace-nowrap"
+                      >
                         {ACAO_LABEL[acao]}
                       </th>
                     ))}
@@ -137,16 +164,23 @@ export function PermissoesMatrix({ perfilId, onSaved }: { perfilId: string; onSa
                 </thead>
                 <tbody>
                   {rotinas.map((rotina) => (
-                    <tr key={rotina.id} className="border-b border-border/40 last:border-0">
+                    <tr
+                      key={rotina.id}
+                      className="border-b border-border/40 last:border-0"
+                    >
                       <td className="px-3 py-2">
                         <p className="font-medium">{rotina.nome}</p>
-                        <p className="text-xs text-muted-foreground">{rotina.menuNome}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {rotina.menuNome}
+                        </p>
                       </td>
                       {ACOES.map((acao) => (
                         <td key={acao} className="px-2 py-2 text-center">
                           <Checkbox
                             checked={!!state[rotina.id]?.[acao]}
-                            onCheckedChange={(v) => toggle(rotina.id, acao, v === true)}
+                            onCheckedChange={(v) =>
+                              toggle(rotina.id, acao, v === true)
+                            }
                             aria-label={`${rotina.nome} — ${ACAO_LABEL[acao]}`}
                           />
                         </td>

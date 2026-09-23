@@ -138,7 +138,6 @@ export class IntegracaoArmazensController {
   @ApiOperation({ summary: 'Excluir armazém (soft delete)' })
   @ApiParam({ name: 'codigo', description: 'chave do armazém' })
   @ApiResponse({ status: 200, description: 'Excluído' })
-  @ApiResponse({ status: 404, description: 'Armazém não encontrado' })
   @Delete(':codigo')
   remove(
     @Param('codigo') codigo: string,

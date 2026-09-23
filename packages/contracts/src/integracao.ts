@@ -634,6 +634,15 @@ export const integracaoTabelaPrecoItemSchema = z.object({
     .nullable()
     .optional()
     .describe("chave da regra de desconto (Z0_FILIAL-Z0_CODIGO)"),
+  regraDescontoCodigo: z
+    .string()
+    .trim()
+    .max(30)
+    .nullable()
+    .optional()
+    .describe(
+      "Compatibilidade: código Z0_CODIGO enviado por versões antigas do integrador",
+    ),
   ativo: z.boolean().default(true),
 });
 export type IntegracaoTabelaPrecoItem = z.infer<

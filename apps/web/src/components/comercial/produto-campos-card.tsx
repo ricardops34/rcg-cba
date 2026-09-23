@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { ProdutoCampoValor } from "@plataforma/contracts";
@@ -52,9 +52,11 @@ function exibir(linha: ProdutoCampoValor): string {
 export function ProdutoCamposCard({
   produtoId,
   permitirEdicao = false,
+  mostrarVazio = false,
 }: {
   produtoId: string;
   permitirEdicao?: boolean;
+  mostrarVazio?: boolean;
 }) {
   const queryClient = useQueryClient();
   const [editando, setEditando] = useState(false);
@@ -66,15 +68,14 @@ export function ProdutoCamposCard({
       apiFetch<ProdutoCampoValor[]>(`/produtos/${produtoId}/campos`),
   });
 
-  // O rascunho nasce do que está gravado a cada vez que a edição abre — senão
-  // cancelar e reabrir traria o que foi digitado e descartado.
-  useEffect(() => {
-    if (editando && linhas) {
-      setRascunho(
-        Object.fromEntries(linhas.map((l) => [l.campoId, l.valor ?? ""])),
-      );
-    }
-  }, [editando, linhas]);
+  // O rascunho nasce no evento que abre a edição. Assim, cancelar e reabrir
+  // restaura o valor gravado sem sincronizar estado derivado por efeito.
+  const iniciarEdicao = () => {
+    setRascunho(
+      Object.fromEntries((linhas ?? []).map((l) => [l.campoId, l.valor ?? ""])),
+    );
+    setEditando(true);
+  };
 
   const salvar = useMutation({
     mutationFn: (valores: Record<string, string>) =>
@@ -110,7 +111,16 @@ export function ProdutoCamposCard({
   }, [linhas]);
 
   if (isLoading) return <Skeleton className="h-32 w-full rounded-xl" />;
-  if (!linhas || linhas.length === 0) return null;
+  if (!linhas || linhas.length === 0) {
+    if (!mostrarVazio) return null;
+    return (
+      <Card>
+        <CardContent className="p-6 text-sm text-muted-foreground">
+          Nenhum atributo configurado. Crie os campos em Cadastros &gt; Campos do Produto.
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -121,6 +131,7 @@ export function ProdutoCamposCard({
             (editando ? (
               <div className="flex gap-2">
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
                   onClick={() => setEditando(false)}
@@ -128,6 +139,7 @@ export function ProdutoCamposCard({
                   Cancelar
                 </Button>
                 <Button
+                  type="button"
                   size="sm"
                   disabled={salvar.isPending}
                   onClick={() => salvar.mutate(rascunho)}
@@ -137,9 +149,10 @@ export function ProdutoCamposCard({
               </div>
             ) : (
               <Button
+                type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setEditando(true)}
+                onClick={iniciarEdicao}
               >
                 Editar
               </Button>

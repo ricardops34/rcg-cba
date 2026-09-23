@@ -86,6 +86,21 @@ export class ProdutosController {
   }
 
   @ApiOperation({
+    summary: 'Listar opções dos filtros de produtos',
+    description:
+      'Categorias raiz e fabricantes vinculados a produtos da empresa ativa. ' +
+      'Requer a mesma permissão da listagem de produtos.',
+  })
+  @RequirePermission('produtos', 'visualizar', [
+    'produtos-cadastro',
+    'visualizar',
+  ])
+  @Get('opcoes-filtro')
+  opcoesFiltro(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.opcoesFiltro(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
     summary: 'Detalhar produto',
     description:
       'Requer produtos.visualizar ou posicao-cliente.visualizar — a cortina de detalhe da ' +

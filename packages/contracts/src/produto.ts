@@ -24,7 +24,6 @@ export const produtoCreateSchema = z.object({
   peso: z.coerce.number().min(0).nullable().optional(),
   ultimoPreco: z.coerce.number().min(0).nullable().optional(),
   observacao: opt(500),
-  exibirFotoOrcamento: z.boolean().default(false),
   ativo: z.boolean().default(true),
 });
 export type ProdutoCreate = z.infer<typeof produtoCreateSchema>;
@@ -99,10 +98,29 @@ export const produtoSchema = produtoCreateSchema.extend({
 });
 export type Produto = z.infer<typeof produtoSchema>;
 
+/**
+ * Filtros múltiplos chegam pelo query string como ids separados por vírgula.
+ * Também aceitamos parâmetros repetidos para clientes HTTP que usam esse
+ * formato. O limite evita montar um `IN` sem tamanho previsível no banco.
+ */
+const produtoFiltroIdsSchema = z.preprocess(
+  (valor) => {
+    if (valor === undefined || valor === null || valor === "") return undefined;
+    const lista = (Array.isArray(valor) ? valor : [valor])
+      .flatMap((v) => String(v).split(","))
+      .map((v) => v.trim())
+      .filter(Boolean);
+    return lista.length > 0 ? lista : undefined;
+  },
+  z.array(z.string().uuid()).max(100).optional(),
+);
+
 export const produtoQuerySchema = paginationQuerySchema.extend({
   ativo: booleanQueryParam,
   regraDescontoId: z.string().uuid().optional(),
+  categoriaIds: produtoFiltroIdsSchema,
   categoriaId: z.string().uuid().optional(),
+  fabricanteIds: produtoFiltroIdsSchema,
   subCategoriaId: z.string().uuid().optional(),
   armazemId: z.string().uuid().optional(),
 });
@@ -126,7 +144,6 @@ export const PRODUTO_EXAMPLE: Produto = {
   ultimoPreco: 28.9,
   observacao: "",
   fotos: [],
-  exibirFotoOrcamento: false,
   ativo: true,
   regraDescontoId: null,
   regraDesconto: null,
@@ -151,6 +168,5 @@ export const PRODUTO_CREATE_EXAMPLE: ProdutoCreate = {
   peso: 5.2,
   ultimoPreco: 28.9,
   observacao: "",
-  exibirFotoOrcamento: false,
   ativo: true,
 };

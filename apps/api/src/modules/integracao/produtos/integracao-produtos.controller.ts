@@ -74,7 +74,8 @@ export class IntegracaoProdutosController {
     summary: 'Criar produto',
     description:
       'categoriaChave/subCategoriaChave/armazemChave referenciam os respectivos cadastros ' +
-      'pela chave (precisam já existir).',
+      'pela chave (precisam já existir). Se armazemChave vier ausente, nulo ou vazio, ' +
+      'a API usa o parâmetro ARMAZEM_PADRAO da empresa.',
   })
   @ApiBodyExample(INTEGRACAO_PRODUTO_CREATE_EXAMPLE)
   @ApiResponse({ status: 201, schema: { example: INTEGRACAO_PRODUTO_EXAMPLE } })
@@ -95,6 +96,7 @@ export class IntegracaoProdutosController {
     description:
       'Upsert em lote por chave (máx. 1.000 por chamada). Um registro com ' +
       '"excluido": true é excluído (soft delete) e dispensa os demais campos. ' +
+      'Produto sem armazemChave usa o parâmetro ARMAZEM_PADRAO da empresa. ' +
       'Responde 200 com o relatório: um item inválido não desfaz os que já ' +
       'passaram, e vem listado em "erros" com o índice no array enviado.',
   })
@@ -140,10 +142,13 @@ export class IntegracaoProdutosController {
     );
   }
 
-  @ApiOperation({ summary: 'Excluir produto (soft delete)' })
+  @ApiOperation({
+    summary: 'Excluir produto (soft delete idempotente)',
+    description:
+      'Se a chave já não existir, a operação também retorna sucesso.',
+  })
   @ApiParam({ name: 'codigo', description: 'chave do produto' })
   @ApiResponse({ status: 200, description: 'Excluído' })
-  @ApiResponse({ status: 404, description: 'Produto não encontrado' })
   @Delete(':codigo')
   remove(
     @Param('codigo') codigo: string,

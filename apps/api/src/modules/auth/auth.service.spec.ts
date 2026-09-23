@@ -11,7 +11,11 @@ jest.mock('bcryptjs', () => ({
 describe('AuthService', () => {
   let service: AuthService;
   let prisma: {
-    usuario: { findUnique: jest.Mock; findUniqueOrThrow: jest.Mock; update: jest.Mock };
+    usuario: {
+      findUnique: jest.Mock;
+      findUniqueOrThrow: jest.Mock;
+      update: jest.Mock;
+    };
     empresa: { findFirst: jest.Mock };
     usuarioEmpresa: {
       findFirst: jest.Mock;
@@ -85,7 +89,11 @@ describe('AuthService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prisma = {
-      usuario: { findUnique: jest.fn(), findUniqueOrThrow: jest.fn(), update: jest.fn() },
+      usuario: {
+        findUnique: jest.fn(),
+        findUniqueOrThrow: jest.fn(),
+        update: jest.fn(),
+      },
       empresa: { findFirst: jest.fn() },
       usuarioEmpresa: {
         findFirst: jest.fn(),
@@ -110,15 +118,17 @@ describe('AuthService', () => {
     // Mesmo comportamento de PrismaService.withTenant/withUsuario: roda fn
     // contra as mesmas coleções mockadas, só sem abrir transação/SET LOCAL
     // de verdade.
-    prisma.withTenant.mockImplementation((_empresaId: string, fn: (tx: unknown) => unknown) =>
-      fn(prisma),
+    prisma.withTenant.mockImplementation(
+      (_empresaId: string, fn: (tx: unknown) => unknown) => fn(prisma),
     );
-    prisma.withUsuario.mockImplementation((_usuarioId: string, fn: (tx: unknown) => unknown) =>
-      fn(prisma),
+    prisma.withUsuario.mockImplementation(
+      (_usuarioId: string, fn: (tx: unknown) => unknown) => fn(prisma),
     );
     jwt = { signAsync: jest.fn().mockResolvedValue('signed.jwt.token') };
     const politicaSenhaService = {
-      getVigenteParaUsuario: jest.fn().mockResolvedValue({ maxTentativas: 5, bloqueioMinutos: 15 }),
+      getVigenteParaUsuario: jest
+        .fn()
+        .mockResolvedValue({ maxTentativas: 5, bloqueioMinutos: 15 }),
       registrarTentativaFalha: jest.fn(),
       limparTentativasFalhas: jest.fn(),
     };
@@ -151,7 +161,10 @@ describe('AuthService', () => {
     });
 
     it('rejeita quando o usuário está inativo', async () => {
-      prisma.usuario.findUnique.mockResolvedValue({ ...usuarioAtivo, ativo: false });
+      prisma.usuario.findUnique.mockResolvedValue({
+        ...usuarioAtivo,
+        ativo: false,
+      });
       await expect(
         service.login({ email: usuarioAtivo.email, senha: '123' }, {}),
       ).rejects.toThrow(UnauthorizedException);
@@ -171,7 +184,11 @@ describe('AuthService', () => {
       prisma.empresa.findFirst.mockResolvedValue(null);
       await expect(
         service.login(
-          { email: usuarioAtivo.email, senha: '123', empresaAlias: 'inexistente' },
+          {
+            email: usuarioAtivo.email,
+            senha: '123',
+            empresaAlias: 'inexistente',
+          },
           {},
         ),
       ).rejects.toThrow(ForbiddenException);
@@ -190,7 +207,9 @@ describe('AuthService', () => {
       prisma.usuario.findUnique.mockResolvedValue(usuarioAtivo);
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       prisma.usuarioEmpresa.findFirst.mockResolvedValue(vinculo);
-      prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue(vinculoCompleto);
+      prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue(
+        vinculoCompleto,
+      );
       prisma.refreshToken.create.mockResolvedValue({});
       prisma.usuario.update.mockResolvedValue(usuarioAtivo);
 
@@ -252,9 +271,13 @@ describe('AuthService', () => {
       prisma.usuario.findUnique.mockResolvedValue(usuarioAtivo);
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       prisma.usuarioEmpresa.findFirst.mockResolvedValue(vinculo);
-      prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue(vinculoCompleto);
+      prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue(
+        vinculoCompleto,
+      );
       // O catálogo continua com tudo ligado; quem desligou foi esta empresa.
-      prisma.empresaModulo.findMany.mockResolvedValue([{ moduloId: 'modulo-1' }]);
+      prisma.empresaModulo.findMany.mockResolvedValue([
+        { moduloId: 'modulo-1' },
+      ]);
       prisma.refreshToken.create.mockResolvedValue({});
       prisma.usuario.update.mockResolvedValue(usuarioAtivo);
 
@@ -264,14 +287,51 @@ describe('AuthService', () => {
       expect(signPayload.permissoes).toEqual([]);
     });
 
+    it('não emite permissões de Administração para perfil não Admin', async () => {
+      prisma.usuario.findUnique.mockResolvedValue(usuarioAtivo);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      prisma.usuarioEmpresa.findFirst.mockResolvedValue(vinculo);
+      prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue({
+        ...vinculoCompleto,
+        perfil: {
+          ...vinculoCompleto.perfil,
+          permissoes: [
+            {
+              permitido: true,
+              acao: 'editar',
+              rotina: {
+                codigo: 'parametros',
+                ativo: true,
+                menu: {
+                  id: 'seed-menu-parametros',
+                  moduloId: 'seed-modulo-administracao',
+                  menuPaiId: null,
+                  ativo: true,
+                  menuPai: null,
+                  modulo: { ativo: true },
+                },
+              },
+            },
+          ],
+        },
+      });
+      prisma.refreshToken.create.mockResolvedValue({});
+      prisma.usuario.update.mockResolvedValue(usuarioAtivo);
+
+      await service.login({ email: usuarioAtivo.email, senha: '123' }, {});
+
+      const signPayload = jwt.signAsync.mock.calls[0][0];
+      expect(signPayload.isAdmin).toBe(false);
+      expect(signPayload.permissoes).toEqual([]);
+    });
   });
 
   describe('refresh', () => {
     it('rejeita token inexistente', async () => {
       prisma.refreshToken.findUnique.mockResolvedValue(null);
-      await expect(service.refresh({ refreshToken: 'abc' }, {})).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(
+        service.refresh({ refreshToken: 'abc' }, {}),
+      ).rejects.toThrow(UnauthorizedException);
     });
 
     it('rejeita token revogado', async () => {
@@ -282,9 +342,9 @@ describe('AuthService', () => {
         revokedAt: new Date(),
         expiresAt: new Date(Date.now() + 100000),
       });
-      await expect(service.refresh({ refreshToken: 'abc' }, {})).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(
+        service.refresh({ refreshToken: 'abc' }, {}),
+      ).rejects.toThrow(UnauthorizedException);
     });
 
     it('rejeita token expirado', async () => {
@@ -295,9 +355,9 @@ describe('AuthService', () => {
         revokedAt: null,
         expiresAt: new Date(Date.now() - 1000),
       });
-      await expect(service.refresh({ refreshToken: 'abc' }, {})).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(
+        service.refresh({ refreshToken: 'abc' }, {}),
+      ).rejects.toThrow(UnauthorizedException);
     });
 
     it('rotaciona o token válido e mantém a mesma empresa ativa', async () => {
@@ -310,7 +370,9 @@ describe('AuthService', () => {
       });
       prisma.refreshToken.update.mockResolvedValue({});
       prisma.usuarioEmpresa.findFirst.mockResolvedValue(vinculo);
-      prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue(vinculoCompleto);
+      prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue(
+        vinculoCompleto,
+      );
       prisma.refreshToken.create.mockResolvedValue({});
 
       const result = await service.refresh({ refreshToken: 'abc' }, {});
@@ -321,7 +383,10 @@ describe('AuthService', () => {
       });
       expect(prisma.usuarioEmpresa.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ usuarioId: 'usuario-1', empresaId: 'empresa-1' }),
+          where: expect.objectContaining({
+            usuarioId: 'usuario-1',
+            empresaId: 'empresa-1',
+          }),
         }),
       );
       expect(result.accessToken).toBe('signed.jwt.token');
@@ -350,7 +415,9 @@ describe('AuthService', () => {
 
     it('emite novos tokens para a empresa de destino', async () => {
       prisma.usuarioEmpresa.findFirst.mockResolvedValue(vinculo);
-      prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue(vinculoCompleto);
+      prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue(
+        vinculoCompleto,
+      );
       prisma.refreshToken.create.mockResolvedValue({});
 
       const result = await service.switchEmpresa('usuario-1', 'empresa-1', {});

@@ -120,12 +120,12 @@ export interface OrcamentoPdfDados {
       descricao: string;
       unidade: string | null;
       fotos: { url: string; principal: boolean }[];
-      exibirFotoOrcamento: boolean;
     };
     quantidade: number | null;
     vlrUnitario: number | null;
     vlrTotal: number | null;
   }[];
+  exibirFotosProdutos: boolean;
   empresa: {
     nomeFantasia?: string | null;
     razaoSocial?: string | null;
@@ -195,7 +195,7 @@ export async function montarOrcamentoPdf(
   const fotos = await Promise.all(
     dados.itens.map(async (item) => {
       const fotoPrincipal = item.produto.fotos.find((foto) => foto.principal);
-      if (!item.produto.exibirFotoOrcamento || !fotoPrincipal) return null;
+      if (!dados.exibirFotosProdutos || !fotoPrincipal) return null;
       try {
         const arquivo = basename(fotoPrincipal.url);
         const ext = arquivo.slice(arquivo.lastIndexOf('.')).toLowerCase();

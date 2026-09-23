@@ -38,7 +38,10 @@ import { montarOrcamentoPdf } from './orcamento-pdf';
 import { proximoNumeroOrcamento } from './proximo-numero-orcamento';
 import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
 import { resolverRegrasDescontoDosItens } from '../../common/precos/resolver-regra-desconto-item';
-import { ParametrosService } from '../parametros/parametros.service';
+import {
+  PARAMETRO_ORCAMENTO_EXIBIR_FOTOS,
+  ParametrosService,
+} from '../parametros/parametros.service';
 import {
   ocultarComissaoDosItens,
   podeVerComissao,
@@ -86,7 +89,6 @@ const PRODUTO_SELECT = {
       select: { url: true, principal: true },
       orderBy: { principal: 'desc' as const },
     },
-    exibirFotoOrcamento: true,
   },
 };
 const INCLUDE = {
@@ -855,7 +857,13 @@ export class OrcamentosService {
           orcamento,
         );
       }
-      return { orcamento, cliente };
+      const exibirFotosProdutos = await this.parametros.obterBoolean(
+        empresaId,
+        PARAMETRO_ORCAMENTO_EXIBIR_FOTOS,
+        true,
+        tx,
+      );
+      return { orcamento, cliente, exibirFotosProdutos };
     });
 
     // A empresa emitente não é tabela de tenant (não tem empresaId); é lida
@@ -864,7 +872,7 @@ export class OrcamentosService {
       where: { id: empresaId, deletedAt: null },
     });
 
-    const { orcamento, cliente } = dados;
+    const { orcamento, cliente, exibirFotosProdutos } = dados;
     const conteudo = await montarOrcamentoPdf({
       numero: orcamento.numero,
       status: orcamento.status,
@@ -898,6 +906,7 @@ export class OrcamentosService {
         vlrUnitario: this.numeroOuNulo(i.vlrUnitario),
         vlrTotal: this.numeroOuNulo(i.vlrTotal),
       })),
+      exibirFotosProdutos,
       empresa,
     });
 

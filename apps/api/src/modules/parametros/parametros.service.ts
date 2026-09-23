@@ -21,6 +21,11 @@ import type { AuthenticatedUser } from '../../common/decorators/current-user.dec
 
 const SORT_FIELDS = new Set(['parametro', 'tipo', 'ativo', 'createdAt']);
 
+/** Chave usada pela integração de produtos quando o ERP não informa armazém. */
+export const PARAMETRO_ARMAZEM_PADRAO = 'ARMAZEM_PADRAO';
+export const PARAMETRO_ORCAMENTO_EXIBIR_FOTOS =
+  'ORCAMENTO_EXIBIR_FOTOS_PRODUTOS';
+
 type ParametroRow = {
   id: string;
   empresaId: string;

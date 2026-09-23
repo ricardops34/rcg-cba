@@ -40,8 +40,8 @@ const SORT_FIELDS = new Set([
  * Produto nascido na plataforma não tem `chave` — nele tudo é editável, e o
  * import (que casa por `chave`) nunca encosta.
  *
- * `exibirFotoOrcamento` fica fora da lista de propósito: é o único campo do
- * cadastro que o ERP não manda, então vale para os dois tipos de produto.
+ * A exibição das fotos na proposta é configuração da empresa, não do
+ * produto (parâmetro `ORCAMENTO_EXIBIR_FOTOS_PRODUTOS`).
  */
 const CAMPOS_DO_ERP = [
   'codigoErp',
@@ -77,6 +77,14 @@ const PRODUTO_INCLUDE = {
   categoria: CATEGORIA_SELECT,
   subCategoria: CATEGORIA_SELECT,
   armazem: ARMAZEM_SELECT,
+  fabricante: {
+    select: {
+      id: true,
+      codigoErp: true,
+      razaoSocial: true,
+      nomeFantasia: true,
+    },
+  },
   regraDesconto: REGRA_DESCONTO_SELECT,
   fotos: {
     orderBy: [{ principal: 'desc' as const }, { ordem: 'asc' as const }],
@@ -96,11 +104,19 @@ export class ProdutosService {
 
   findAll(empresaId: string, query: ProdutoQuery) {
     return this.prisma.withTenant(empresaId, async (tx) => {
+      const categoriaIds = query.categoriaIds?.length
+        ? query.categoriaIds
+        : query.categoriaId
+          ? [query.categoriaId]
+          : undefined;
       const where = {
         empresaId,
         deletedAt: null,
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
-        ...(query.categoriaId ? { categoriaId: query.categoriaId } : {}),
+        ...(categoriaIds ? { categoriaId: { in: categoriaIds } } : {}),
+        ...(query.fabricanteIds?.length
+          ? { fabricanteId: { in: query.fabricanteIds } }
+          : {}),
         ...(query.regraDescontoId
           ? { regraDescontoId: query.regraDescontoId }
           : {}),
@@ -161,6 +177,44 @@ export class ProdutosService {
         tx.produto.count({ where }),
       ]);
       return buildPaginatedResult(data, total, query);
+    });
+  }
+
+  /**
+   * Opções dos filtros da listagem de produtos. Vive nesta rota para que
+   * consultar o catálogo não exija permissão adicional nos cadastros de
+   * Categorias ou Fornecedores.
+   */
+  opcoesFiltro(empresaId: string) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const [categorias, fabricantes] = await Promise.all([
+        tx.categoria.findMany({
+          where: {
+            empresaId,
+            categoriaPaiId: null,
+            deletedAt: null,
+            produtos: { some: { empresaId, deletedAt: null } },
+          },
+          select: { id: true, codigoErp: true, descricao: true },
+          orderBy: [{ descricao: 'asc' }, { codigoErp: 'asc' }],
+        }),
+        tx.fornecedor.findMany({
+          where: {
+            empresaId,
+            deletedAt: null,
+            produtos: { some: { empresaId, deletedAt: null } },
+          },
+          select: {
+            id: true,
+            codigoErp: true,
+            razaoSocial: true,
+            nomeFantasia: true,
+          },
+          orderBy: [{ nomeFantasia: 'asc' }, { razaoSocial: 'asc' }],
+        }),
+      ]);
+
+      return { categorias, fabricantes };
     });
   }
 

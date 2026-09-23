@@ -117,7 +117,7 @@ registro referenciado **precisa já existir** — daí a [ordem de carga](#ordem
 | `GET` | `/integracao/<entidade>/{codigo}` | Detalhe; **404** se não existir |
 | `POST` | `/integracao/<entidade>` | **Upsert** por `chave`: cria ou atualiza, `201` nos dois casos |
 | `PATCH` | `/integracao/<entidade>/{codigo}` | Atualização **parcial**; **404** se não existir |
-| `DELETE` | `/integracao/<entidade>/{codigo}` | **Soft delete** por `chave` (marca `deletedAt`) |
+| `DELETE` | `/integracao/<entidade>/{codigo}` | **Soft delete idempotente** por `chave` (marca `deletedAt`); se não existir, também retorna sucesso |
 
 Não há `PUT`, e não há endpoint de lote: uma chamada, um registro.
 
@@ -146,6 +146,10 @@ e o `PATCH` não achava nada, porque filtra `deletedAt: null`.
 `DELETE` nunca apaga a linha — grava `deletedAt`/`deletedBy`. A partir daí o
 registro some das listagens e dos detalhes (todo `WHERE` filtra
 `deletedAt: null`), até que o ERP o reenvie.
+
+Repetir o mesmo `DELETE` é seguro: registro inexistente ou já excluído retorna
+sucesso, sem `404`. A mesma regra vale para itens de lote com `excluido: true`,
+permitindo reprocessar uma carga sem transformar uma exclusão já aplicada em erro.
 
 ### Mestre-detalhe: cabeçalho e itens sempre juntos
 

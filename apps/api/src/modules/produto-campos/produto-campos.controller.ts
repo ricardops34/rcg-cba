@@ -113,7 +113,10 @@ export class ProdutoCamposController {
       'inteiro. Requer produtos.visualizar.',
   })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermission('produtos', 'visualizar')
+  @RequirePermission('produtos', 'visualizar', [
+    'produtos-cadastro',
+    'visualizar',
+  ])
   @Get('produtos/:id/campos')
   valores(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.valoresDoProduto(user.empresaAtivaId, id);
@@ -126,7 +129,7 @@ export class ProdutoCamposController {
       'valor é validado contra o tipo da definição. Requer produtos.editar.',
   })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermission('produtos', 'editar')
+  @RequirePermission('produtos', 'editar', ['produtos-cadastro', 'editar'])
   @Patch('produtos/:id/campos')
   gravar(
     @Param('id') id: string,

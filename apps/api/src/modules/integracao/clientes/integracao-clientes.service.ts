@@ -28,6 +28,7 @@ import {
   type DecisaoUpsert,
 } from '../common/decidir-upsert';
 import { processarLote } from '../common/processar-lote';
+import { normalizarChaveOpcional } from '../common/normalizar-chave-opcional';
 import { ClienteAlteracoesService } from '../../clientes/cliente-alteracoes.service';
 
 const INCLUDE = {
@@ -400,7 +401,7 @@ export class IntegracaoClientesService {
       const existente = await tx.cliente.findFirst({
         where: { empresaId, chave, deletedAt: null },
       });
-      if (!existente) throw new NotFoundException('Cliente não encontrado');
+      if (!existente) return;
       await tx.cliente.update({
         where: { id: existente.id },
         data: { deletedAt: new Date(), deletedBy: autor, ativo: false },
@@ -445,9 +446,10 @@ export class IntegracaoClientesService {
     empresaId: string,
     codigo: string | null | undefined,
   ) {
-    if (!codigo) return null;
+    const chave = normalizarChaveOpcional(codigo);
+    if (!chave) return null;
     const condicao = await tx.condicaoPagamento.findFirst({
-      where: { empresaId, chave: codigo, deletedAt: null },
+      where: { empresaId, chave, deletedAt: null },
       select: { id: true },
     });
     if (!condicao)

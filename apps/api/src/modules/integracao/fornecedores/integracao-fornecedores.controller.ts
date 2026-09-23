@@ -150,7 +150,6 @@ export class IntegracaoFornecedoresController {
   @ApiOperation({ summary: 'Excluir fornecedor (soft delete)' })
   @ApiParam({ name: 'codigo', description: 'chave do fornecedor' })
   @ApiResponse({ status: 200, description: 'Excluído' })
-  @ApiResponse({ status: 404, description: 'Fornecedor não encontrado' })
   @Delete(':codigo')
   remove(
     @Param('codigo') codigo: string,

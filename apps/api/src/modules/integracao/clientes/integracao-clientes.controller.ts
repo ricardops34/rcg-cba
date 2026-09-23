@@ -143,7 +143,6 @@ export class IntegracaoClientesController {
   @ApiOperation({ summary: 'Excluir cliente (soft delete)' })
   @ApiParam({ name: 'codigo', description: 'chave do cliente' })
   @ApiResponse({ status: 200, description: 'Excluído' })
-  @ApiResponse({ status: 404, description: 'Cliente não encontrado' })
   @Delete(':codigo')
   remove(
     @Param('codigo') codigo: string,

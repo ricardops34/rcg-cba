@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import {
   buildPaginatedResult,
@@ -12,6 +16,7 @@ import type {
 } from '@plataforma/contracts';
 
 const SORT_FIELDS = new Set(['nome', 'ativo', 'sistemaBase', 'createdAt']);
+const MODULO_ADMINISTRACAO_ID = 'seed-modulo-administracao';
 
 // Perfil é global (sem empresaId/RLS, ver migration perfil_global) — os
 // métodos abaixo não precisam de withTenant/escopo por empresa.
@@ -30,13 +35,16 @@ export class PerfisService {
     const where = {
       deletedAt: null,
       ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
-      ...(query.sistemaBase !== undefined ? { sistemaBase: query.sistemaBase } : {}),
+      ...(query.sistemaBase !== undefined
+        ? { sistemaBase: query.sistemaBase }
+        : {}),
       ...(atorEhAdminPlataforma ? {} : { administraPlataforma: false }),
       ...(query.search
         ? { nome: { contains: query.search, mode: 'insensitive' as const } }
         : {}),
     };
-    const sortField = query.sortBy && SORT_FIELDS.has(query.sortBy) ? query.sortBy : 'nome';
+    const sortField =
+      query.sortBy && SORT_FIELDS.has(query.sortBy) ? query.sortBy : 'nome';
     const [data, total] = await Promise.all([
       this.prisma.perfil.findMany({
         where,
@@ -74,7 +82,9 @@ export class PerfisService {
   async remove(id: string, actorId: string) {
     const perfil = await this.findOne(id);
     if (perfil.sistemaBase) {
-      throw new NotFoundException('Perfil base do sistema não pode ser excluído');
+      throw new NotFoundException(
+        'Perfil base do sistema não pode ser excluído',
+      );
     }
     return this.prisma.perfil.update({
       where: { id },
@@ -82,8 +92,31 @@ export class PerfisService {
     });
   }
 
-  async updatePermissoes(id: string, input: PerfilPermissoesUpdate, actorId: string) {
-    await this.findOne(id);
+  async updatePermissoes(
+    id: string,
+    input: PerfilPermissoesUpdate,
+    actorId: string,
+  ) {
+    const perfil = await this.findOne(id);
+    const rotinasLiberadas = input.permissoes
+      .filter((p) => p.permitido)
+      .map((p) => p.rotinaId);
+
+    if (!perfil.sistemaBase && rotinasLiberadas.length > 0) {
+      const rotinaAdministrativa = await this.prisma.rotina.findFirst({
+        where: {
+          id: { in: rotinasLiberadas },
+          menu: { moduloId: MODULO_ADMINISTRACAO_ID },
+        },
+        select: { nome: true },
+      });
+      if (rotinaAdministrativa) {
+        throw new ForbiddenException(
+          `A rotina '${rotinaAdministrativa.nome}' é exclusiva de Administradores`,
+        );
+      }
+    }
+
     await Promise.all(
       input.permissoes.map((p) =>
         this.prisma.perfilPermissao.upsert({

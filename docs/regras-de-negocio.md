@@ -13,6 +13,18 @@ concede acesso à administração do SaaS — todas as empresas, catálogo globa
 — e é o que `PlatformAdminGuard` confere; não é concedível pela API de
 Perfis/Usuários (ver `UsuariosService.garantirPodeAtribuirPerfil`).
 
+### Administração é exclusiva de Admin
+
+Todas as rotinas vinculadas ao módulo **Administração** são exclusivas dos
+perfis base `Administrador Empresa` e `Administrador da Plataforma`. Perfis
+personalizados não recebem essas permissões, mesmo que uma requisição tente
+gravá-las diretamente. O primeiro administra somente a empresa ativa; o
+segundo também possui a autoridade global `administraPlataforma`.
+
+Usar o Agente IA não é administração: a rotina sem tela `agente` pertence ao
+contexto comercial. Apenas `agente-config`, que guarda credenciais e configura
+o provedor, permanece no módulo Administração.
+
 Não existe cadastro de "colaborador" separado — hierarquia (`superiorId`),
 nome reduzido, código ERP e contato são todos campos do próprio
 `UsuarioEmpresa` (o vínculo usuário×empresa). Um usuário multiempresa tem um
@@ -164,7 +176,7 @@ Decidido em 2026-08-21. Detalhe de implementação em
 [`docs/planos/segunda-via-danfe-boleto.md`](planos/segunda-via-danfe-boleto.md).
 
 **A plataforma não emite documento fiscal nem registra cobrança.** Ela
-*reimprime* o que já existe:
+_reimprime_ o que já existe:
 
 - **DANFE**: renderizado a partir do **XML autorizado** que o ERP empurra
   (`POST /integracao/notas-saida/:codigo/xml`). Sem XML não há DANFE — a rota
@@ -231,10 +243,10 @@ até aqui a regra vivia só no comentário do código.
 A lista da tela de Atendimento (`/comercial/atendimento`) tem **duas origens**, e
 elas não se somam por acaso:
 
-| Origem | De quem é a conversa | O que recorta |
-|---|---|---|
-| Aparelho do vendedor | de quem é dono da sessão | o escopo de leitura: a própria, ou a do time |
-| Número institucional | a sessão **não tem dono** | a quem a IA direcionou |
+| Origem               | De quem é a conversa      | O que recorta                                |
+| -------------------- | ------------------------- | -------------------------------------------- |
+| Aparelho do vendedor | de quem é dono da sessão  | o escopo de leitura: a própria, ou a do time |
+| Número institucional | a sessão **não tem dono** | a quem a IA direcionou                       |
 
 Para a diferença entre os dois números e os catálogos de IA de cada um, ver
 [o mapa das ferramentas](ferramentas/README.md) — aqui a pergunta é só quem vê.

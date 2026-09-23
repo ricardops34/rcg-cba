@@ -254,7 +254,7 @@ export class IntegracaoCategoriasService {
       const existente = await tx.categoria.findFirst({
         where: { empresaId, chave, deletedAt: null },
       });
-      if (!existente) throw new NotFoundException('Categoria não encontrada');
+      if (!existente) return;
       await tx.categoria.update({
         where: { id: existente.id },
         data: { deletedAt: new Date(), deletedBy: autor, ativo: false },

@@ -303,7 +303,7 @@ export class IntegracaoVendedoresService {
       const existente = await tx.vendedor.findFirst({
         where: { empresaId, chave, deletedAt: null },
       });
-      if (!existente) throw new NotFoundException('Vendedor não encontrado');
+      if (!existente) return;
       await tx.vendedor.update({
         where: { id: existente.id },
         data: { deletedAt: new Date(), deletedBy: autor, ativo: false },

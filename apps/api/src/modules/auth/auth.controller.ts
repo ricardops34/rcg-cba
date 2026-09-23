@@ -1,7 +1,17 @@
-import { Body, Controller, Get, Patch, Post, Query, Req, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { CompleteFirstAccessDto } from './dto/auth.dto';
 import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
@@ -17,7 +27,15 @@ import {
   LOGIN_EXAMPLE,
 } from '@plataforma/contracts';
 import { AuthService } from './auth.service';
-import { ChangePasswordDto, LoginDto, RefreshDto, SwitchEmpresaDto, UpdateOwnProfileDto } from './dto/auth.dto';
+import {
+  AvatarPadraoDto,
+  ChangePasswordDto,
+  CompleteFirstAccessDto,
+  LoginDto,
+  RefreshDto,
+  SwitchEmpresaDto,
+  UpdateOwnProfileDto,
+} from './dto/auth.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ApiBodyExample } from '../../common/decorators/api-body-example.decorator';
 import {
@@ -175,6 +193,15 @@ export class AuthController {
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 2 * 1024 * 1024, files: 1 } }))
   uploadPhoto(@UploadedFile() file: Express.Multer.File | undefined, @CurrentUser() user: AuthenticatedUser) {
     return this.authService.uploadOwnAvatar(user.id, user.empresaAtivaId, file);
+  }
+
+  @ApiOperation({ summary: 'Escolher um avatar corporativo padrão para o próprio perfil' })
+  @ApiResponse({ status: 200, description: 'Avatar atualizado' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Patch('me/avatar-padrao')
+  selectDefaultAvatar(@Body() dto: AvatarPadraoDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.authService.selectDefaultAvatar(user.id, user.empresaAtivaId, dto.avatar);
   }
 
   @ApiOperation({ summary: 'Alterar o nome do próprio usuário' })

@@ -252,8 +252,7 @@ export class IntegracaoEstoqueService {
           chave,
         },
       });
-      if (!existente)
-        throw new NotFoundException('Saldo de estoque não encontrado');
+      if (!existente) return;
       await tx.estoque.update({
         where: { id: existente.id },
         data: { deletedAt: new Date(), deletedBy: autor },

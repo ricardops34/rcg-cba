@@ -140,7 +140,6 @@ export class IntegracaoEstoqueController {
   @ApiOperation({ summary: 'Excluir saldo de estoque (soft delete)' })
   @ApiParam({ name: 'codigo', description: 'chave do estoque' })
   @ApiResponse({ status: 200, description: 'Excluído' })
-  @ApiResponse({ status: 404, description: 'Saldo de estoque não encontrado' })
   @Delete(':codigo')
   remove(
     @Param('codigo') chave: string,

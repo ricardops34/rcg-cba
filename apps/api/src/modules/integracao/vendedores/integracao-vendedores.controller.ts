@@ -152,7 +152,6 @@ export class IntegracaoVendedoresController {
   @ApiOperation({ summary: 'Excluir vendedor (soft delete)' })
   @ApiParam({ name: 'codigo', description: 'chave do vendedor' })
   @ApiResponse({ status: 200, description: 'Excluído' })
-  @ApiResponse({ status: 404, description: 'Vendedor não encontrado' })
   @Delete(':codigo')
   remove(
     @Param('codigo') codigo: string,

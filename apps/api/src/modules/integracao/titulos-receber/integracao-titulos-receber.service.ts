@@ -379,8 +379,7 @@ export class IntegracaoTitulosReceberService {
       const existente = await tx.tituloReceber.findFirst({
         where: { empresaId, chave, deletedAt: null },
       });
-      if (!existente)
-        throw new NotFoundException('Título a receber não encontrado');
+      if (!existente) return;
       await tx.tituloReceber.update({
         where: { id: existente.id },
         data: { deletedAt: new Date(), deletedBy: autor, ativo: false },

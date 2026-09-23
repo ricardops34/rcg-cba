@@ -167,7 +167,6 @@ export class IntegracaoNotasSaidaController {
     description: 'chave — a chave de identidade do registro no ERP',
   })
   @ApiResponse({ status: 200, description: 'Excluída' })
-  @ApiResponse({ status: 404, description: 'Nota de saída não encontrada' })
   @Delete(':codigo')
   remove(
     @Param('codigo') codigo: string,
