@@ -1031,6 +1031,7 @@ User Function BJDRENA(nLimite, cSeqMae, oProcess)
 	Local cErro   := ""
 	Local nHttp   := 0
 	Local nPos    := 0
+	Local nPosCat := 0
 	Local nErrLot := 0
 	Local nPx     := 0
 	Local nPy     := 0
