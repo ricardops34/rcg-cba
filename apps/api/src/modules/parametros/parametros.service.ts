@@ -23,6 +23,9 @@ const SORT_FIELDS = new Set(['parametro', 'tipo', 'ativo', 'createdAt']);
 
 /** Chave usada pela integração de produtos quando o ERP não informa armazém. */
 export const PARAMETRO_ARMAZEM_PADRAO = 'ARMAZEM_PADRAO';
+export const PARAMETRO_TABELA_PRECO_PADRAO = 'TABELA_PRECO_PADRAO';
+export const PARAMETRO_TABELA_PRECO_CAPITAL = 'TABELA_PRECO_CAPITAL';
+export const PARAMETRO_TABELA_PRECO_INTERIOR = 'TABELA_PRECO_INTERIOR';
 export const PARAMETRO_ORCAMENTO_EXIBIR_FOTOS =
   'ORCAMENTO_EXIBIR_FOTOS_PRODUTOS';
 

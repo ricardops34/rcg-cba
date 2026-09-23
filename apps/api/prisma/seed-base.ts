@@ -83,6 +83,30 @@ const PARAMETROS_PADRAO = [
       'Chave de integração ou código ERP do armazém usado quando armazemChave vier vazio',
   },
   {
+    parametro: 'TABELA_PRECO_PADRAO',
+    tipo: 'texto' as const,
+    tamanho: 30,
+    conteudo: null,
+    descricao:
+      'Chave de integração ou código ERP da tabela de preço padrão da empresa',
+  },
+  {
+    parametro: 'TABELA_PRECO_CAPITAL',
+    tipo: 'texto' as const,
+    tamanho: 30,
+    conteudo: null,
+    descricao:
+      'Chave de integração ou código ERP da tabela de preço usada para clientes da Capital',
+  },
+  {
+    parametro: 'TABELA_PRECO_INTERIOR',
+    tipo: 'texto' as const,
+    tamanho: 30,
+    conteudo: null,
+    descricao:
+      'Chave de integração ou código ERP da tabela de preço usada para clientes do Interior',
+  },
+  {
     parametro: 'ORCAMENTO_DIAS_VALIDADE',
     tipo: 'numero' as const,
     tamanho: 3,
