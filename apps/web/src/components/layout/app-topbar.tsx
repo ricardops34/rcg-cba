@@ -12,11 +12,10 @@ import {
   Info,
   LogOut,
   Menu,
-  MessageCircle,
   Moon,
+  Pencil,
   Search,
   Sun,
-  UserCog,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { apiFetch, ApiError, assetUrl } from "@/lib/api-client";
@@ -42,7 +41,6 @@ import {
 } from "@/components/ui/tooltip";
 import { ajudaPorRota } from "@/lib/ajuda-rotinas";
 import { useTour } from "@/components/tour/tour-provider";
-import { useWhatsappIntegracao } from "@/hooks/use-whatsapp-integracao";
 
 export function AppTopbar({
   onToggleSidebar,
@@ -58,7 +56,6 @@ export function AppTopbar({
   const { theme, setTheme } = useTheme();
   const { user, logout, setTokens, setUser } = useAuthStore();
   const { iniciarTourAtual, tourDisponivel } = useTour();
-  const { ativo: whatsappAtivo } = useWhatsappIntegracao();
   const [searchOpen, setSearchOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
 
@@ -226,17 +223,26 @@ export function AppTopbar({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" sideOffset={8} className="w-80 max-w-[calc(100vw-1rem)] rounded-xl p-2">
-            <DropdownMenuLabel className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
+            {/* O cabeçalho é o próprio atalho para o perfil: clicar na foto ou
+                no nome abre "Meu perfil". Era um item separado na lista, e o
+                menu ficava com duas linhas dizendo a mesma coisa. */}
+            <DropdownMenuItem
+              className="group flex items-center gap-3 rounded-lg bg-muted/50 p-3 focus:bg-muted"
+              title="Meu perfil — foto, dados da conta e senha"
+              onClick={() => router.push("/perfil")}
+            >
               <Avatar className="size-12 shrink-0">
                 <AvatarImage src={assetUrl(user?.avatarUrl) ?? undefined} alt={user?.nome ?? "Conta"} />
                 <AvatarFallback className={user ? avatarColorClass(user.nome) : "bg-muted"}>{user ? initials(user.nome) : "?"}</AvatarFallback>
               </Avatar>
               <div className="min-w-0 space-y-1">
-                <p className="truncate text-sm font-semibold">{user?.nome}</p>
-                <p className="truncate text-xs font-normal text-muted-foreground" title={user?.email}>{user?.email}</p>
+                <p className="flex items-center gap-1.5 truncate text-sm font-semibold">
+                  {user?.nome}
+                  <Pencil className="size-3 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
+                </p>
                 <p className="truncate text-xs font-medium text-primary">{empresaAtiva?.perfilNome}</p>
               </div>
-            </DropdownMenuLabel>
+            </DropdownMenuItem>
             {empresaAtiva && (
               <>
                 <DropdownMenuSeparator />
@@ -266,24 +272,7 @@ export function AppTopbar({
                 })}
               </>
             )}
-            {whatsappAtivo && user?.permissoes.includes("whatsapp-config.visualizar") && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() =>
-                    router.push("/admin/whatsapp?aba=institucional")
-                  }
-                >
-                  <MessageCircle className="size-4" />
-                  Conectar WhatsApp
-                </DropdownMenuItem>
-              </>
-            )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="gap-3 rounded-lg py-2.5" onClick={() => router.push("/perfil")}>
-              <UserCog className="size-4" />
-              <span><span className="block">Meu perfil</span><span className="block text-xs text-muted-foreground">Foto, dados da conta e senha</span></span>
-            </DropdownMenuItem>
             <DropdownMenuItem
               className="sm:hidden"
               onClick={() => router.push(ajudaAtual?.href ?? "/ajuda")}

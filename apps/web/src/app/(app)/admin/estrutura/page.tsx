@@ -733,7 +733,10 @@ function ModuloRow({
                 key={menu.id}
                 menu={menu}
                 moduloId={modulo.id}
-                moduloAtivo={modulo.ativo}
+                moduloAtivo={modulo.ativo && modulo.ativoNaEmpresa}
+                podeCatalogo={podeCatalogo}
+                onToggleEmpresa={(value) => onToggleEmpresaMenu(menu, value)}
+                onToggleEmpresaSubmenu={onToggleEmpresaMenu}
                 onEdit={() => onEditMenu(menu)}
                 onToggleAtivo={(value) => onToggleAtivoMenu(menu, value)}
                 onToggleTelaPequena={(value) => onToggleTelaPequenaMenu(menu, value)}
@@ -763,7 +766,10 @@ function MenuRow({
   menu,
   moduloId,
   moduloAtivo,
+  podeCatalogo,
   nivel = 0,
+  onToggleEmpresa,
+  onToggleEmpresaSubmenu,
   onEdit,
   onToggleAtivo,
   onToggleTelaPequena,
@@ -784,7 +790,10 @@ function MenuRow({
   menu: MenuArvore;
   moduloId: string;
   moduloAtivo: boolean;
+  podeCatalogo: boolean;
   nivel?: number;
+  onToggleEmpresa: (value: boolean) => void;
+  onToggleEmpresaSubmenu?: (menu: MenuArvore, value: boolean) => void;
   onEdit: () => void;
   onToggleAtivo: (value: boolean) => void;
   onToggleTelaPequena: (value: boolean) => void;
@@ -826,7 +835,7 @@ function MenuRow({
           nivel === 0 ? "pl-10" : "pl-16",
         )}
       >
-        {nivel === 0 ? (
+        {nivel === 0 && podeCatalogo ? (
           <button
             type="button"
             className="cursor-grab touch-none rounded p-1 text-muted-foreground hover:bg-muted active:cursor-grabbing"
@@ -835,6 +844,8 @@ function MenuRow({
           >
             <GripVertical className="size-3.5" />
           </button>
+        ) : nivel === 0 ? (
+          <span className="w-6" />
         ) : (
           <CornerDownRight className="size-3.5 shrink-0 text-muted-foreground/60" />
         )}
@@ -860,9 +871,9 @@ function MenuRow({
         </CollapsibleTrigger>
 
         <div className="flex shrink-0 items-center gap-2">
-          {!menu.disponivelTelaPequena && (
+          {!menu.ativo && (
             <Badge variant="secondary" className="hidden xl:inline-flex">
-              Somente tela maior
+              Desligado na plataforma
             </Badge>
           )}
           <Badge variant="outline">
@@ -870,42 +881,53 @@ function MenuRow({
           </Badge>
           <SwitchDeLinha
             rotulo="Ativo"
-            checked={menu.ativo}
-            label={`Ligar ou desligar o menu ${menu.nome}`}
-            onCheckedChange={onToggleAtivo}
+            checked={menu.ativoNaEmpresa}
+            label={`Ligar ou desligar o menu ${menu.nome} nesta empresa`}
+            onCheckedChange={onToggleEmpresa}
           />
-          <Button variant="ghost" size="sm" onClick={onCreateRotina}>
-            <Plus className="size-3.5" />
-            Rotina
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-8">
-                <MoreHorizontal className="size-4" />
+          {podeCatalogo && (
+            <>
+              <Button variant="ghost" size="sm" onClick={onCreateRotina}>
+                <Plus className="size-3.5" />
+                Rotina
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onEdit}>
-                <Pencil className="size-4" /> Editar menu
-              </DropdownMenuItem>
-              {nivel === 0 && onCreateSubmenu && (
-                <DropdownMenuItem onClick={onCreateSubmenu}>
-                  <CornerDownRight className="size-4" /> Novo submenu
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuCheckboxItem
-                checked={menu.disponivelTelaPequena}
-                onCheckedChange={onToggleTelaPequena}
-                onSelect={(event) => event.preventDefault()}
-              >
-                Disponível no celular
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                <Trash2 className="size-4" /> Excluir menu
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="size-8">
+                    <MoreHorizontal className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={onEdit}>
+                    <Pencil className="size-4" /> Editar menu
+                  </DropdownMenuItem>
+                  {nivel === 0 && onCreateSubmenu && (
+                    <DropdownMenuItem onClick={onCreateSubmenu}>
+                      <CornerDownRight className="size-4" /> Novo submenu
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuCheckboxItem
+                    checked={menu.ativo}
+                    onCheckedChange={onToggleAtivo}
+                    onSelect={(event) => event.preventDefault()}
+                  >
+                    Ativo na plataforma inteira
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={menu.disponivelTelaPequena}
+                    onCheckedChange={onToggleTelaPequena}
+                    onSelect={(event) => event.preventDefault()}
+                  >
+                    Disponível no celular
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive" onClick={onDelete}>
+                    <Trash2 className="size-4" /> Excluir menu
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          )}
         </div>
       </div>
 
@@ -921,6 +943,7 @@ function MenuRow({
             <RotinaRow
               key={rotina.id}
               rotina={rotina}
+              podeCatalogo={podeCatalogo}
               onEdit={() => onEditRotina(rotina)}
               onToggleAtivo={(value) => onToggleAtivoRotina(rotina, value)}
               onToggleTelaPequena={(value) => onToggleTelaPequenaRotina(rotina, value)}
@@ -936,8 +959,11 @@ function MenuRow({
                 key={submenu.id}
                 menu={submenu}
                 moduloId={moduloId}
-                moduloAtivo={moduloAtivo && menu.ativo}
+                moduloAtivo={moduloAtivo && menu.ativo && menu.ativoNaEmpresa}
+                podeCatalogo={podeCatalogo}
                 nivel={nivel + 1}
+                onToggleEmpresa={(value) => onToggleEmpresaSubmenu?.(submenu, value)}
+                onToggleEmpresaSubmenu={onToggleEmpresaSubmenu}
                 onEdit={() => onEditSubmenu?.(submenu)}
                 onToggleAtivo={(value) => onToggleAtivoSubmenu?.(submenu, value)}
                 onToggleTelaPequena={(value) => onToggleTelaPequenaSubmenu?.(submenu, value)}
@@ -956,14 +982,22 @@ function MenuRow({
   );
 }
 
+/**
+ * A rotina é o código de permissão da tela, e só existe no catálogo global —
+ * não tem liga/desliga por empresa. Para quem administra uma empresa ela é
+ * informação: o que se decide por empresa está um nível acima (o menu), e quem
+ * pode ou não usá-la se resolve em Perfis.
+ */
 function RotinaRow({
   rotina,
+  podeCatalogo,
   onEdit,
   onToggleAtivo,
   onToggleTelaPequena,
   onDelete,
 }: {
   rotina: Rotina;
+  podeCatalogo: boolean;
   onEdit: () => void;
   onToggleAtivo: (value: boolean) => void;
   onToggleTelaPequena: (value: boolean) => void;
@@ -977,38 +1011,41 @@ function RotinaRow({
         <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
           {rotina.codigo}
         </code>
+        {!rotina.ativo && !podeCatalogo && <Badge variant="secondary">Desligada</Badge>}
       </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <SwitchDeLinha
-          rotulo="Ativo"
-          checked={rotina.ativo}
-          label={`Ligar ou desligar a rotina ${rotina.nome}`}
-          onCheckedChange={onToggleAtivo}
-        />
-        <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="size-7">
-            <MoreHorizontal className="size-3.5" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={onEdit}>
-            <Pencil className="size-4" /> Editar / mover
-          </DropdownMenuItem>
-          <DropdownMenuCheckboxItem
-            checked={rotina.disponivelTelaPequena}
-            onCheckedChange={onToggleTelaPequena}
-            onSelect={(event) => event.preventDefault()}
-          >
-            Disponível no celular
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onClick={onDelete}>
-            <Trash2 className="size-4" /> Excluir
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      {podeCatalogo && (
+        <div className="flex shrink-0 items-center gap-2">
+          <SwitchDeLinha
+            rotulo="Ativo"
+            checked={rotina.ativo}
+            label={`Ligar ou desligar a rotina ${rotina.nome} na plataforma inteira`}
+            onCheckedChange={onToggleAtivo}
+          />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-7">
+                <MoreHorizontal className="size-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onEdit}>
+                <Pencil className="size-4" /> Editar / mover
+              </DropdownMenuItem>
+              <DropdownMenuCheckboxItem
+                checked={rotina.disponivelTelaPequena}
+                onCheckedChange={onToggleTelaPequena}
+                onSelect={(event) => event.preventDefault()}
+              >
+                Disponível no celular
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onClick={onDelete}>
+                <Trash2 className="size-4" /> Excluir
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
     </div>
   );
 }

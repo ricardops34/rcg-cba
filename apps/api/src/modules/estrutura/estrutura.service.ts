@@ -13,12 +13,6 @@ import type {
   RotinaUpdate,
 } from '@plataforma/contracts';
 
-/**
- * Campos da rotina que o menu lateral precisa. `disponivelTelaPequena` faltava
- * aqui e o cliente lê `rotinas.some((r) => r.disponivelTelaPequena)`: com o
- * campo ausente a conta dava sempre falso e, abaixo de 768 px, a barra lateral
- * vinha vazia e toda rotina caía no aviso "abra em uma tela maior".
- */
 const ROTINA_SELECT = {
   id: true,
   codigo: true,
@@ -32,19 +26,6 @@ export class EstruturaService {
   constructor(private readonly prisma: PrismaService) {}
 
   // Módulos --------------------------------------------------------
-  /**
-   * Árvore que monta o menu lateral: o que está ativo **no catálogo** e não foi
-   * desligado **nesta empresa**.
-   *
-   * São dois liga/desliga com donos diferentes: o do catálogo é global (só
-   * administrador da plataforma) e o da empresa é do administrador dela. Os
-   * dois valem em cascata **na leitura** — desligar o CRM tira do ar os menus e
-   * rotinas dele sem gravar nada neles, então religar devolve a configuração
-   * exatamente como estava.
-   *
-   * Para administrar a estrutura (e reativar o que foi desligado) existe
-   * `listArvore`: aqui o inativo é invisível de propósito.
-   */
   async listModulos(empresaId: string) {
     const desativados = await this.desativadosDaEmpresa(empresaId);
 
@@ -53,7 +34,6 @@ export class EstruturaService {
       orderBy: { ordem: 'asc' },
       include: {
         menus: {
-          // Só a raiz: os submenus vêm aninhados dentro do pai.
           where: { deletedAt: null, ativo: true, menuPaiId: null },
           orderBy: { ordem: 'asc' },
           include: {
@@ -76,9 +56,6 @@ export class EstruturaService {
       },
     });
 
-    // O recorte da empresa é aplicado aqui, e não no `where`: são duas tabelas
-    // pequenas (só as exceções) e a alternativa seria um `NOT EXISTS` repetido
-    // em três níveis do include.
     return modulos
       .filter((modulo) => !desativados.modulos.has(modulo.id))
       .map((modulo) => ({
@@ -87,32 +64,86 @@ export class EstruturaService {
           .filter((menu) => !desativados.menus.has(menu.id))
           .map((menu) => ({
             ...menu,
-            submenus: menu.submenus.filter((sub) => !desativados.menus.has(sub.id)),
+            rotinas: menu.rotinas.filter(
+              (rotina) => !desativados.rotinas.has(rotina.id),
+            ),
+            submenus: menu.submenus
+              .filter((sub) => !desativados.menus.has(sub.id))
+              .map((sub) => ({
+                ...sub,
+                rotinas: sub.rotinas.filter(
+                  (rotina) => !desativados.rotinas.has(rotina.id),
+                ),
+              })),
           })),
       }));
   }
 
-  /**
-   * O que esta empresa desligou. Ausência de linha é "ligado", então só as
-   * exceções chegam aqui.
-   *
-   * As duas tabelas têm RLS, daí o `withTenant` — fora dele a policy filtra
-   * tudo e a consulta volta vazia (ver prisma/migrations/README.md).
-   */
   private async desativadosDaEmpresa(empresaId: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const [modulos, menus] = await Promise.all([
+      const [modulos, menus, rotinas, assinatura] = await Promise.all([
         tx.empresaModulo.findMany({ where: { empresaId, ativo: false } }),
         tx.empresaMenu.findMany({ where: { empresaId, ativo: false } }),
+        tx.empresaRotina.findMany({ where: { empresaId, ativo: false } }),
+        tx.assinatura.findFirst({
+          where: { empresaId },
+          include: {
+            plano: {
+              include: {
+                modulos: true,
+                menus: true,
+                rotinas: true,
+              },
+            },
+          },
+        }),
       ]);
+
+      const disabledModulos = new Set(modulos.map((m) => m.moduloId));
+      const disabledMenus = new Set(menus.map((m) => m.menuId));
+      const disabledRotinas = new Set(rotinas.map((r) => r.rotinaId));
+
+      if (assinatura?.plano) {
+        const planoModulos = new Set(
+          assinatura.plano.modulos.map((m) => m.moduloId),
+        );
+        const planoMenus = new Set(
+          assinatura.plano.menus.map((m) => m.menuId),
+        );
+        const planoRotinas = new Set(
+          assinatura.plano.rotinas.map((r) => r.rotinaId),
+        );
+
+        if (planoModulos.size > 0) {
+          const allModulos = await tx.modulo.findMany({ select: { id: true } });
+          allModulos.forEach((m) => {
+            if (!planoModulos.has(m.id)) disabledModulos.add(m.id);
+          });
+        }
+
+        if (planoMenus.size > 0) {
+          const allMenus = await tx.menu.findMany({ select: { id: true } });
+          allMenus.forEach((m) => {
+            if (!planoMenus.has(m.id)) disabledMenus.add(m.id);
+          });
+        }
+
+        if (planoRotinas.size > 0) {
+          const allRotinas = await tx.rotina.findMany({ select: { id: true } });
+          allRotinas.forEach((r) => {
+            if (!planoRotinas.has(r.id)) disabledRotinas.add(r.id);
+          });
+        }
+      }
+
       return {
-        modulos: new Set(modulos.map((m) => m.moduloId)),
-        menus: new Set(menus.map((m) => m.menuId)),
+        modulos: disabledModulos,
+        menus: disabledMenus,
+        rotinas: disabledRotinas,
       };
     });
   }
 
-  /** Liga ou desliga um módulo só para esta empresa. O catálogo não muda. */
   async definirModuloDaEmpresa(
     empresaId: string,
     moduloId: string,
@@ -123,13 +154,18 @@ export class EstruturaService {
     return this.prisma.withTenant(empresaId, (tx) =>
       tx.empresaModulo.upsert({
         where: { empresaId_moduloId: { empresaId, moduloId } },
-        create: { empresaId, moduloId, ativo, createdBy: actorId, updatedBy: actorId },
+        create: {
+          empresaId,
+          moduloId,
+          ativo,
+          createdBy: actorId,
+          updatedBy: actorId,
+        },
         update: { ativo, updatedBy: actorId },
       }),
     );
   }
 
-  /** Idem, um nível abaixo: a empresa usa o módulo, mas não esta tela dele. */
   async definirMenuDaEmpresa(
     empresaId: string,
     menuId: string,
@@ -140,16 +176,40 @@ export class EstruturaService {
     return this.prisma.withTenant(empresaId, (tx) =>
       tx.empresaMenu.upsert({
         where: { empresaId_menuId: { empresaId, menuId } },
-        create: { empresaId, menuId, ativo, createdBy: actorId, updatedBy: actorId },
+        create: {
+          empresaId,
+          menuId,
+          ativo,
+          createdBy: actorId,
+          updatedBy: actorId,
+        },
         update: { ativo, updatedBy: actorId },
       }),
     );
   }
 
-  /**
-   * Árvore completa para a tela de Estrutura de Menu — **inclui o inativo**,
-   * que é justamente o que precisa aparecer para poder ser religado.
-   */
+  async definirRotinaDaEmpresa(
+    empresaId: string,
+    rotinaId: string,
+    ativo: boolean,
+    actorId: string,
+  ) {
+    await this.ensureExists('rotina', rotinaId);
+    return this.prisma.withTenant(empresaId, (tx) =>
+      tx.empresaRotina.upsert({
+        where: { empresaId_rotinaId: { empresaId, rotinaId } },
+        create: {
+          empresaId,
+          rotinaId,
+          ativo,
+          createdBy: actorId,
+          updatedBy: actorId,
+        },
+        update: { ativo, updatedBy: actorId },
+      }),
+    );
+  }
+
   async listArvore(empresaId: string) {
     const desativados = await this.desativadosDaEmpresa(empresaId);
 
@@ -177,18 +237,23 @@ export class EstruturaService {
       },
     });
 
-    // `ativoNaEmpresa` é o estado do liga/desliga desta empresa; `ativo`
-    // continua sendo o do catálogo global. A tela mostra os dois porque quem
-    // pode mexer em cada um é diferente.
     return modulos.map((modulo) => ({
       ...modulo,
       ativoNaEmpresa: !desativados.modulos.has(modulo.id),
       menus: modulo.menus.map((menu) => ({
         ...menu,
         ativoNaEmpresa: !desativados.menus.has(menu.id),
+        rotinas: menu.rotinas.map((rotina) => ({
+          ...rotina,
+          ativoNaEmpresa: !desativados.rotinas.has(rotina.id),
+        })),
         submenus: menu.submenus.map((sub) => ({
           ...sub,
           ativoNaEmpresa: !desativados.menus.has(sub.id),
+          rotinas: sub.rotinas.map((rotina) => ({
+            ...rotina,
+            ativoNaEmpresa: !desativados.rotinas.has(rotina.id),
+          })),
         })),
       })),
     }));
@@ -247,10 +312,6 @@ export class EstruturaService {
         data: { ...input, updatedBy: actorId },
       });
 
-      // Submenu não muda de módulo sozinho: se o pai fosse para outro módulo e
-      // os filhos ficassem para trás, eles sumiriam do menu (a listagem só
-      // busca submenu dentro do módulo do pai) sem nenhuma tela mostrando onde
-      // foram parar.
       if (input.moduloId && input.moduloId !== atual.moduloId) {
         await tx.menu.updateMany({
           where: { menuPaiId: id, deletedAt: null },
@@ -281,7 +342,6 @@ export class EstruturaService {
     return { success: true };
   }
 
-  /** Como `ensureExists`, mas devolvendo o menu tipado (o outro é genérico). */
   private async ensureMenu(id: string) {
     const menu = await this.prisma.menu.findFirst({
       where: { id, deletedAt: null },
@@ -292,11 +352,6 @@ export class EstruturaService {
     return menu;
   }
 
-  /**
-   * A hierarquia de menu tem **dois níveis**: menu e submenu, sem neto. É o que
-   * a barra lateral sabe desenhar, então um terceiro nível viraria um item
-   * invisível — melhor recusar aqui do que aceitar e sumir com ele.
-   */
   private async validarMenuPai(
     menuId: string | null,
     menuPaiId: string | null,
@@ -354,10 +409,6 @@ export class EstruturaService {
 
   async updateRotina(id: string, input: RotinaUpdate, actorId: string) {
     await this.ensureExists('rotina', id);
-    // Mover de menu é trocar o `menuId`. O `codigo` não muda junto (a tela
-    // nem deixa editá-lo depois de criado), então as permissões já concedidas
-    // nos perfis continuam valendo — elas apontam para a rotina, não para o
-    // lugar dela na árvore.
     if (input.menuId) {
       await this.ensureMenu(input.menuId);
     }

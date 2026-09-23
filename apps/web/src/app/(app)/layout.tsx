@@ -11,6 +11,7 @@ import { AgenteFab } from "@/components/agente/agente-fab";
 import { ResponsiveRouteGuard } from "@/components/layout/responsive-route-guard";
 import { FaixaInstitucional } from "@/components/layout/faixa-institucional";
 import { AvisoAvaliacao } from "@/components/layout/aviso-avaliacao";
+import { AvisoSuportePlataforma } from "@/components/layout/aviso-suporte-plataforma";
 import { TourProvider } from "@/components/tour/tour-provider";
 
 const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
@@ -18,6 +19,7 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   "/admin/empresas": { title: "Empresas", subtitle: "Cadastro base" },
   "/admin/usuarios": { title: "Usuários", subtitle: "Cadastro e permissões" },
   "/admin/perfis": { title: "Perfis", subtitle: "Papéis e permissões (RBAC)" },
+  "/admin/suporte-acesso": { title: "Liberação de Suporte", subtitle: "Acesso da Plataforma e auditoria" },
   "/admin/estrutura": {
     title: "Estrutura de menu",
     subtitle: "Módulos, menus e rotinas",
@@ -80,6 +82,7 @@ export default function AppShellLayout({
         <div className="flex min-h-svh flex-col">
           <FaixaInstitucional />
           <AvisoAvaliacao />
+          <AvisoSuportePlataforma />
 
           <div className="flex min-h-0 flex-1">
             <AppSidebar collapsed={collapsed} />

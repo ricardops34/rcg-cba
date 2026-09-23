@@ -26,6 +26,8 @@ describe('AuthService', () => {
     };
     sessao: { findFirst: jest.Mock; update: jest.Mock };
     perfilPermissao: { findMany: jest.Mock };
+    empresaModulo: { findMany: jest.Mock };
+    empresaMenu: { findMany: jest.Mock };
     withTenant: jest.Mock;
     withUsuario: jest.Mock;
   };

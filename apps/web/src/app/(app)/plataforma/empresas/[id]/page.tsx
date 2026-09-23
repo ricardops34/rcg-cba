@@ -8,6 +8,8 @@ import { EmpresaForm } from "@/components/crud/empresa-form";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PlataformaGuard } from "../../plataforma-guard";
 import { AdministradoresSection } from "./administradores-section";
+import { AssinaturaSection } from "./assinatura-section";
+import { EstruturaEmpresaSection } from "./estrutura-empresa-section";
 
 /**
  * Cadastro completo de **qualquer** empresa, pela administração do SaaS.
@@ -43,8 +45,10 @@ export default function EditarEmpresaPlataformaPage() {
       ) : isError || !empresa ? (
         <p className="text-sm text-muted-foreground">Empresa não encontrada.</p>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <EmpresaForm empresa={empresa} listRoute="/plataforma/empresas" />
+          <AssinaturaSection empresaId={empresa.id} />
+          <EstruturaEmpresaSection empresaId={empresa.id} />
           <AdministradoresSection empresaId={empresa.id} />
         </div>
       )}

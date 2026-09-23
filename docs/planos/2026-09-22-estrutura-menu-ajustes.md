@@ -119,8 +119,8 @@ completa vira endpoint próprio, atrás de `estrutura.visualizar`.
 
 ## Fora de escopo
 
-- Desligar módulo por empresa (hoje `Modulo` é global, sem `empresaId` — seria
-  outra tabela e outra decisão).
+- ~~Desligar módulo por empresa~~ — **feito depois**, ver "Liga/desliga por
+  empresa" no fim deste plano.
 - Três níveis de menu.
 
 ## Execução
@@ -221,3 +221,54 @@ runbook; o critério certo é `sistemaBase = true`.
 Produto" e liberou a Estrutura no celular) e o restart duplo da API, com a rota
 `/api/estrutura/arvore` confirmada no `Mapped`. Falta a conferência visual das
 telas.
+
+## Liga/desliga por empresa (decidido e feito em 22/09/2026)
+
+O usuário perguntou "o menu não é por empresa?" depois de esbarrar em
+*"Apenas administradores da plataforma podem alterar o catálogo global"*.
+
+**Não era.** `modulos`, `menus`, `rotinas`, `perfis` e `perfil_permissoes` são
+todos globais — nenhum tem `empresaId`. O único ponto por empresa é
+`usuario_empresas.perfilId`. Por isso desligar o CRM desligaria para todos os
+clientes, e por isso o `PlatformAdminGuard` barra o administrador de empresa.
+
+Agora são **dois liga/desliga**, com donos diferentes:
+
+| | Onde mora | Quem mexe | Alcance |
+|---|---|---|---|
+| Catálogo | `modulos.ativo`, `menus.ativo`, `rotinas.ativo` | Administrador da plataforma | Todos os clientes |
+| Empresa | `empresa_modulos`, `empresa_menus` | Administrador da empresa (`estrutura.editar`) | Só a empresa ativa |
+
+Decisões:
+
+- **Ausência de linha = ligado.** Só a exceção é gravada, então empresa nova e
+  módulo novo já nascem disponíveis, sem carga inicial.
+- **Dois níveis, não três.** Módulo e menu têm o controle por empresa; rotina
+  não — ela é o código de permissão, e quem a recebe já se decide em Perfis.
+- **A barreira é a mesma do catálogo**: a poda de permissões no token e no `/me`
+  passou a considerar as duas tabelas, então o módulo desligado na empresa
+  também responde 403 na URL digitada à mão.
+- **RLS obrigatória** nas duas tabelas, na mesma migration
+  (`20260922140000_empresa_modulos_menus`), como manda `migrations/README.md`.
+- A limpeza da base de demonstração **preserva** as duas: é configuração do
+  menu da empresa, não dado de negócio (a trava `demo-limpeza.spec` pegou isso).
+
+Na tela, o switch da linha passou a ser o **da empresa** (a decisão do dia a
+dia), e o global virou "Ativo na plataforma inteira" no menu "…", visível só
+para administrador da plataforma. Para quem não é, os controles de catálogo
+(criar, renomear, mover, excluir, arrastar) somem, com um aviso explicando por
+quê — antes eles apareciam e davam 403 ao serem usados.
+
+## Ajustes de interface pedidos no caminho
+
+- **Dois switches mudos na linha.** "Ativo" e "Tela pequena" ficavam lado a
+  lado com o rótulo escondido abaixo de `2xl` — na largura real de uso, dois
+  controles idênticos sem legenda. Ficou **um** switch rotulado ("Ativo") e
+  "Disponível no celular" foi para o menu "…", escrito por extenso.
+- **Menu do avatar** (`app-topbar.tsx`): saiu o item "Meu perfil" e o e-mail do
+  cabeçalho; o cabeçalho (foto + nome, com um lápis) virou o próprio atalho
+  para `/perfil`. Saiu também "Conectar WhatsApp".
+- **Texto corrompido no código.** A mensagem do `PlatformAdminGuard` estava
+  gravada como "catÃ¡logo global" — três arquivos tinham mojibake de UTF-8 lido
+  como Latin-1 (`platform-admin.guard.ts`, `escape-html.ts`,
+  `prisma.service.ts`). Corrigidos.

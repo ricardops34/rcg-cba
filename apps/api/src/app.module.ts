@@ -53,8 +53,15 @@ import { validarSegredosDoAmbiente } from './common/config/validar-segredos';
 import { TermosModule } from './modules/termos/termos.module';
 import { ToursModule } from './modules/tours/tours.module';
 
+import { PlanosModule } from './modules/planos/planos.module';
+import { AssinaturasModule } from './modules/assinaturas/assinaturas.module';
+import { SuporteAcessoModule } from './modules/suporte-acesso/suporte-acesso.module';
+
 @Module({
   imports: [
+    PlanosModule,
+    AssinaturasModule,
+    SuporteAcessoModule,
     ConfigModule.forRoot({
       isGlobal: true,
       validate: (config) => {
