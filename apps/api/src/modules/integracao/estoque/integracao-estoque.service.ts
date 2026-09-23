@@ -23,6 +23,7 @@ import {
   type DecisaoUpsert,
 } from '../common/decidir-upsert';
 import { processarLote } from '../common/processar-lote';
+import { resolverProduto } from '../common/resolver-produto';
 
 const INCLUDE = {
   produto: { select: { chave: true } },
@@ -121,14 +122,7 @@ export class IntegracaoEstoqueService {
   ): Promise<{ registro: IntegracaoEstoque; decisao: DecisaoUpsert }> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const produto = await tx.produto.findFirst({
-        where: { empresaId, chave: input.produtoChave, deletedAt: null },
-        select: { id: true },
-      });
-      if (!produto)
-        throw new NotFoundException(
-          `produtoChave '${input.produtoChave}' não encontrado`,
-        );
+      const produto = await resolverProduto(tx, empresaId, input.produtoChave);
       const armazem = await tx.armazem.findFirst({
         where: { empresaId, chave: input.armazemChave, deletedAt: null },
         select: { id: true },

@@ -25,6 +25,7 @@ import {
 import { processarLote } from '../common/processar-lote';
 import { criarFilhos, sincronizarFilhos } from '../common/sincronizar-filhos';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
+import { resolverProduto } from '../common/resolver-produto';
 
 const INCLUDE = {
   itens: {
@@ -142,18 +143,7 @@ export class IntegracaoTabelasPrecoService {
 
       const itensData = await Promise.all(
         input.itens.map(async (item) => {
-          const produto = await tx.produto.findFirst({
-            where: {
-              empresaId,
-              chave: item.produtoChave,
-              deletedAt: null,
-            },
-            select: { id: true },
-          });
-          if (!produto)
-            throw new NotFoundException(
-              `produtoChave '${item.produtoChave}' não encontrado`,
-            );
+          const produto = await resolverProduto(tx, empresaId, item.produtoChave);
           return {
             delete: item.delete,
             empresaId,
@@ -257,19 +247,7 @@ export class IntegracaoTabelasPrecoService {
       if (input.itens) {
         const itensData = await Promise.all(
           input.itens.map(async (item) => {
-            const produto = await tx.produto.findFirst({
-              where: {
-                empresaId,
-                chave: item.produtoChave,
-                deletedAt: null,
-              },
-              select: { id: true },
-            });
-            if (!produto) {
-              throw new NotFoundException(
-                `produtoChave '${item.produtoChave}' não encontrado`,
-              );
-            }
+            const produto = await resolverProduto(tx, empresaId, item.produtoChave);
             return {
               delete: item.delete,
               empresaId,

@@ -1136,8 +1136,12 @@ User Function BJDRENA(nLimite, cSeqMae, oProcess)
 					EndIf
 
 					If SZZ->ZZ_TIPO == "S"
+						nPosCat := aScan(aCat, {|c| c[1] == AllTrim(SZZ->ZZ_ENTID)})
+						If nPosCat == 0
+							nPosCat := 999
+						EndIf
 						aAdd(aFila, {SZZ->ZZ_SEQUEN, AllTrim(SZZ->ZZ_ENTID), AllTrim(SZZ->ZZ_CHVORI), ;
-							AllTrim(SZZ->ZZ_VERBO), SZZ->ZZ_JSON, AllTrim(SZZ->ZZ_CODIGO)})
+							AllTrim(SZZ->ZZ_VERBO), SZZ->ZZ_JSON, AllTrim(SZZ->ZZ_CODIGO), nPosCat})
 					EndIf
 
 					SZZ->(dbSkip())
@@ -1148,9 +1152,7 @@ User Function BJDRENA(nLimite, cSeqMae, oProcess)
 		Next nX
 
 		aSort(aFila, , , {|x, y| ;
-			nPx := aScan(aCat, {|c| c[1] == x[2]}), ;
-			nPy := aScan(aCat, {|c| c[1] == y[2]}), ;
-			Iif(nPx != nPy, nPx < nPy, x[1] < y[1]) ;
+			Iif(x[7] != y[7], x[7] < y[7], x[1] < y[1]) ;
 		})
 
 		// Lote sem nada a enviar nao e fechado: pode ser de entrada, ou ja ter saido
