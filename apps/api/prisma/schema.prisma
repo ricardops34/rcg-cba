@@ -2724,6 +2724,7 @@ model Estoque {
   custo        Float?
   ultimoPreco  Float?
   ultimaCompra DateTime?
+  dataEnvio    DateTime  @default(now())
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

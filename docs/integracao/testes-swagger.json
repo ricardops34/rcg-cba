@@ -211,6 +211,7 @@
       "produtoChave": "01-PROD-TESTE",
       "armazemChave": "01-ARM-TESTE",
       "saldo": 100,
+      "dataEnvio": "2026-09-24T12:30:00.000Z",
       "reserva": 10,
       "custo": 20.5,
       "ultimoPreco": 25.9,

@@ -73,8 +73,9 @@ export class IntegracaoClientesController {
   @ApiOperation({
     summary: 'Criar cliente',
     description:
-      'vendedorChave/tabelaPrecoChave referenciam os respectivos cadastros pela chave ' +
-      '(precisam já existir). Coleções filhas (CNAEs/contatos/sócios) não fazem parte desta versão.',
+      'vendedorChave/tabelaPrecoChave, quando preenchidos, referenciam os respectivos ' +
+      'cadastros pela chave (precisam já existir). Coleções filhas (CNAEs/contatos/sócios) ' +
+      'não fazem parte desta versão.',
   })
   @ApiBodyExample(INTEGRACAO_CLIENTE_CREATE_EXAMPLE)
   @ApiResponse({ status: 201, schema: { example: INTEGRACAO_CLIENTE_EXAMPLE } })

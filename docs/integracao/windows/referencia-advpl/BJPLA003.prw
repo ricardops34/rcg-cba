@@ -1613,7 +1613,11 @@ User Function BJMAPCLI(cMarca, cChave, cMarcaFim, lEnvDel)
 		oJson["codigoErp"]               := AllTrim((cAlias)->A1_COD + (cAlias)->A1_LOJA)
 		oJson["razaoSocial"]             := AllTrim((cAlias)->A1_NOME)
 		oJson["vendedorChave"]           := FWxFilial("SA3") + "-" + (cAlias)->A1_VEND
-		oJson["tabelaPrecoChave"]        := FWxFilial("DA0") + "-" + (cAlias)->A1_TABELA
+		If Empty((cAlias)->A1_TABELA)
+			oJson["tabelaPrecoChave"] := Nil
+		Else
+			oJson["tabelaPrecoChave"] := FWxFilial("DA0") + "-" + (cAlias)->A1_TABELA
+		EndIf
 		If Empty((cAlias)->A1_COND)
 			oJson["condicaoPagamentoChave"] := Nil
 		Else
@@ -2088,6 +2092,7 @@ User Function BJMAPEST(cMarca, cChave, cMarcaFim, lEnvDel)
 	Local cChvReg := ""
 	Local cProd   := ""
 	Local cLocal  := ""
+	Local cDataEnv := FWTimeStamp(6, Date(), Time())
 	Local lCusto  := SB2->(FieldPos("B2_CM1"))    > 0
 	Local lUltCom := SB2->(FieldPos("B2_DTUCOM")) > 0
 
@@ -2096,7 +2101,8 @@ User Function BJMAPEST(cMarca, cChave, cMarcaFim, lEnvDel)
 	Default cMarcaFim := ""
 	Default lEnvDel   := .T.
 
-	cQuery := "SELECT B2_FILIAL, B2_COD, B2_LOCAL, B2_QATU, B2_RESERVA, SB2.D_E_L_E_T_ AS DELETADO "
+	cQuery := "SELECT SB2.B2_FILIAL, SB2.B2_COD, SB2.B2_LOCAL, SB2.B2_QATU, SB2.B2_RESERVA, "
+	cQuery += "       SB1.B1_FILIAL AS FILPROD, NNR.NNR_FILIAL AS FILARM, SB2.D_E_L_E_T_ AS DELETADO "
 
 	If lCusto
 		cQuery += ", B2_CM1 "
@@ -2106,6 +2112,14 @@ User Function BJMAPEST(cMarca, cChave, cMarcaFim, lEnvDel)
 	EndIf
 
 	cQuery += "  FROM " + RetSQLName("SB2") + " SB2 "
+	cQuery += " INNER JOIN " + RetSQLName("SB1") + " SB1 "
+	cQuery += "    ON SB1.B1_FILIAL = ? "
+	cQuery += "   AND SB1.B1_COD = SB2.B2_COD "
+	cQuery += "   AND SB1.D_E_L_E_T_ = ' ' "
+	cQuery += " INNER JOIN " + RetSQLName("NNR") + " NNR "
+	cQuery += "    ON NNR.NNR_FILIAL = ? "
+	cQuery += "   AND NNR.NNR_CODIGO = SB2.B2_LOCAL "
+	cQuery += "   AND NNR.D_E_L_E_T_ = ' ' "
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND SB2.B2_FILIAL = ? "
 
@@ -2155,12 +2169,14 @@ User Function BJMAPEST(cMarca, cChave, cMarcaFim, lEnvDel)
 	cQuery += " ORDER BY B2_COD, B2_LOCAL "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
-	oStmt:SetString(1, " ")
-	oStmt:SetString(2, FWxFilial("SB2"))
+	oStmt:SetString(1, FWxFilial("SB1"))
+	oStmt:SetString(2, FWxFilial("NNR"))
+	oStmt:SetString(3, " ")
+	oStmt:SetString(4, FWxFilial("SB2"))
 
 	If !Empty(cChave)
-		oStmt:SetString(3, cProd)
-		oStmt:SetString(4, cLocal)
+		oStmt:SetString(5, cProd)
+		oStmt:SetString(6, cLocal)
 	EndIf
 
 	cAlias := oStmt:OpenAlias()
@@ -2172,9 +2188,10 @@ User Function BJMAPEST(cMarca, cChave, cMarcaFim, lEnvDel)
 		oJson := JsonObject():New()
 		oJson["chave"]         := cChvReg
 		oJson["codigoErp"]     := AllTrim((cAlias)->B2_COD)
-		oJson["produtoChave"]  := FWxFilial("SB1") + "-" + (cAlias)->B2_COD
-		oJson["armazemChave"]  := FWxFilial("NNR") + "-" + (cAlias)->B2_LOCAL
+		oJson["produtoChave"]  := (cAlias)->FILPROD + "-" + (cAlias)->B2_COD
+		oJson["armazemChave"]  := (cAlias)->FILARM + "-" + (cAlias)->B2_LOCAL
 		oJson["saldo"]         := (cAlias)->B2_QATU
+		oJson["dataEnvio"]     := cDataEnv
 		oJson["reserva"]       := (cAlias)->B2_RESERVA
 
 		If lCusto

@@ -112,6 +112,11 @@ existir antes da carga do produto. Se o parâmetro também estiver vazio, o prod
 padrão. No `PATCH`, omitir o campo preserva o armazém atual; enviá-lo vazio
 aplica novamente o fallback.
 
+`fabricanteChave` é opcional. Quando vier preenchida, a API tenta vinculá-la a
+um fornecedor pela chave; se o fornecedor ainda não existir, o produto é aceito
+e fica sem fabricante associado. No `PATCH`, omitir o campo preserva o vínculo
+atual; enviar `null`, vazio ou uma chave inexistente remove o vínculo.
+
 ### Vendedores — `/integracao/vendedores`
 
 Chave `chave`. É o alvo de `vendedorChave` em clientes, notas, títulos,
@@ -175,8 +180,14 @@ A listagem filtra por `produtoChave` e/ou `armazemChave`
 existir.
 
 ```json
-{ "chave": "01-11400443-01", "codigoErp": "11400443", "produtoChave": "01-11400443", "armazemChave": "01-01", "saldo": 128 }
+{ "chave": "01-11400443-01", "codigoErp": "11400443", "produtoChave": "01-11400443", "armazemChave": "01-01", "saldo": 128, "dataEnvio": "2026-09-24T12:30:00.000Z" }
 ```
+
+O estoque é uma posição atual, sem histórico de movimentações: existe uma linha
+por produto e armazém, atualizada por upsert. No Protheus, a coleta cruza `SB2`
+(saldo) com `SB1` (produto) e `NNR` (armazém). `dataEnvio` é obrigatória e guarda
+o instante UTC em que o ERP coletou aquele saldo para envio; ela não deve ser
+confundida com `updatedAt`, que é a hora em que a API gravou o registro.
 
 ---
 
@@ -191,6 +202,11 @@ contato, endereço (com `latitude`/`longitude`), `limiteCredito` e
 `condicaoPagamentoChave` é opcional. Envie `null` quando o cliente não tiver
 condição padrão. Por compatibilidade com versões antigas do integrador, valores
 incompletos como `01-` também são interpretados como ausência de vínculo.
+
+`tabelaPrecoChave` também é opcional. Envie `null` quando `A1_TABELA` estiver
+vazio. Os valores sentinela `-` e chaves incompletas como `01-`, produzidos por
+versões antigas do PRW, são tratados como ausência de tabela e não recusam o
+cliente.
 
 ### `POST` grava; `PATCH` **não** grava direto
 

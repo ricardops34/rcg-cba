@@ -1,8 +1,4 @@
-import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   PrismaService,
   Prisma,
@@ -129,10 +125,7 @@ export class IntegracaoClientesService {
     });
   }
 
-  async findOne(
-    empresaId: string,
-    chave: string,
-  ): Promise<IntegracaoCliente> {
+  async findOne(empresaId: string, chave: string): Promise<IntegracaoCliente> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const row = await tx.cliente.findFirst({
         where: { empresaId, chave, deletedAt: null },
@@ -189,49 +182,49 @@ export class IntegracaoClientesService {
       );
 
       const dados = {
-          chave: input.chave,
-          codigoErp: input.codigoErp ?? null,
-          tipoPessoa: input.tipoPessoa,
-          razaoSocial: input.razaoSocial,
-          nomeFantasia: input.nomeFantasia ?? null,
-          cnpjCpf: input.cnpjCpf ?? null,
-          inscricaoEstadual: input.inscricaoEstadual ?? null,
-          inscricaoMunicipal: input.inscricaoMunicipal ?? null,
-          contribuinteIcms: input.contribuinteIcms ?? null,
-          rg: input.rg ?? null,
-          dataNascimento: input.dataNascimento ?? null,
-          contato: input.contato ?? null,
-          email: input.email ?? null,
-          telefone: input.telefone ?? null,
-          telefone2: input.telefone2 ?? null,
-          celular: input.celular ?? null,
-          endereco: input.endereco ?? null,
-          complemento: input.complemento ?? null,
-          bairro: input.bairro ?? null,
-          municipio: input.municipio ?? null,
-          uf: input.uf ?? null,
-          cep: input.cep ?? null,
-          latitude: input.latitude ?? null,
-          longitude: input.longitude ?? null,
-          vendedorId,
-          tabelaPrecoId,
-          condicaoPagamentoId,
-          ativo: input.ativo,
-          carteira: input.carteira ?? null,
-          site: input.site ?? null,
-          limiteCredito: input.limiteCredito ?? null,
-          vencimentoLimite: input.vencimentoLimite ?? null,
-          observacao: input.observacao ?? null,
-          dataBloqueio: input.dataBloqueio ?? null,
-          observacaoBloqueio: input.observacaoBloqueio ?? null,
-          dataReativacao: input.dataReativacao ?? null,
-          observacaoReativacao: input.observacaoReativacao ?? null,
-          primeiraCompra: input.primeiraCompra ?? null,
-          ultimaVisita: input.ultimaVisita ?? null,
-          ultimaCompra: input.ultimaCompra ?? null,
-          ultimoAtendimento: input.ultimoAtendimento ?? null,
-          dataConsultaRfb: input.dataConsultaRfb ?? null,
-          updatedBy: autor,
+        chave: input.chave,
+        codigoErp: input.codigoErp ?? null,
+        tipoPessoa: input.tipoPessoa,
+        razaoSocial: input.razaoSocial,
+        nomeFantasia: input.nomeFantasia ?? null,
+        cnpjCpf: input.cnpjCpf ?? null,
+        inscricaoEstadual: input.inscricaoEstadual ?? null,
+        inscricaoMunicipal: input.inscricaoMunicipal ?? null,
+        contribuinteIcms: input.contribuinteIcms ?? null,
+        rg: input.rg ?? null,
+        dataNascimento: input.dataNascimento ?? null,
+        contato: input.contato ?? null,
+        email: input.email ?? null,
+        telefone: input.telefone ?? null,
+        telefone2: input.telefone2 ?? null,
+        celular: input.celular ?? null,
+        endereco: input.endereco ?? null,
+        complemento: input.complemento ?? null,
+        bairro: input.bairro ?? null,
+        municipio: input.municipio ?? null,
+        uf: input.uf ?? null,
+        cep: input.cep ?? null,
+        latitude: input.latitude ?? null,
+        longitude: input.longitude ?? null,
+        vendedorId,
+        tabelaPrecoId,
+        condicaoPagamentoId,
+        ativo: input.ativo,
+        carteira: input.carteira ?? null,
+        site: input.site ?? null,
+        limiteCredito: input.limiteCredito ?? null,
+        vencimentoLimite: input.vencimentoLimite ?? null,
+        observacao: input.observacao ?? null,
+        dataBloqueio: input.dataBloqueio ?? null,
+        observacaoBloqueio: input.observacaoBloqueio ?? null,
+        dataReativacao: input.dataReativacao ?? null,
+        observacaoReativacao: input.observacaoReativacao ?? null,
+        primeiraCompra: input.primeiraCompra ?? null,
+        ultimaVisita: input.ultimaVisita ?? null,
+        ultimaCompra: input.ultimaCompra ?? null,
+        ultimoAtendimento: input.ultimoAtendimento ?? null,
+        dataConsultaRfb: input.dataConsultaRfb ?? null,
+        updatedBy: autor,
       };
 
       if (decisao !== 'criar') {
@@ -367,7 +360,7 @@ export class IntegracaoClientesService {
       const registro = await this.alteracoes.registrar(tx, {
         empresaId,
         clienteId: existente.id,
-        atual: existente as unknown as Record<string, unknown>,
+        atual: existente,
         input: data,
         origem: 'integracao',
         autorId: autor,
@@ -429,9 +422,10 @@ export class IntegracaoClientesService {
     empresaId: string,
     codigo: string | null | undefined,
   ) {
-    if (!codigo) return null;
+    const chave = normalizarChaveOpcional(codigo);
+    if (!chave) return null;
     const tabela = await tx.tabelaPreco.findFirst({
-      where: { empresaId, chave: codigo, deletedAt: null },
+      where: { empresaId, chave, deletedAt: null },
       select: { id: true },
     });
     if (!tabela)

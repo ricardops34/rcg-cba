@@ -109,6 +109,12 @@ Referências entre entidades também são pela chave, nunca por UUID:
 `categoriaChave`, `vendedorChave`, `clienteChave`, `produtoChave`… O
 registro referenciado **precisa já existir** — daí a [ordem de carga](#ordem-de-carga).
 
+Em qualquer campo de referência `...Chave`, valores vazios gerados pela
+composição do Protheus (`-`, somente hífens ou chave terminada em hífen, como
+`01-`) representam ausência de vínculo. A API os normaliza para `null` quando o
+campo é opcional. Quando a referência é obrigatória, o mesmo valor produz erro
+de validação, sem consulta por uma chave sentinela no banco.
+
 ### Verbos
 
 | Verbo | Rota | Semântica |

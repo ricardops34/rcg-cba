@@ -35,6 +35,9 @@ describe('IntegracaoProdutosService', () => {
         }),
         findMany: jest.fn().mockResolvedValue([{ id: 'armazem-1' }]),
       },
+      fornecedor: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
     };
     const prisma = {
       withTenant: jest.fn((_id: string, fn: (tenant: typeof tx) => unknown) =>
@@ -164,6 +167,31 @@ describe('IntegracaoProdutosService', () => {
     expect(tx.produto.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ armazemId: null }),
+      }),
+    );
+  });
+
+  it('aceita produto quando fabricanteChave não existe', async () => {
+    const { service, tx } = montar(null);
+
+    await expect(
+      service.create(empresaId, apiKeyId, {
+        ...produtoBase,
+        fabricanteChave: '-000734-01',
+      }),
+    ).resolves.toEqual(expect.objectContaining({ fabricanteChave: null }));
+
+    expect(tx.fornecedor.findFirst).toHaveBeenCalledWith({
+      where: {
+        empresaId,
+        chave: '-000734-01',
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    expect(tx.produto.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ fabricanteId: null }),
       }),
     );
   });

@@ -19,36 +19,38 @@ const codigoErpSchema = z
   .max(60)
   .nullable()
   .optional()
-  .describe("Código no ERP, só informativo (título \"Código\" na tela)");
+  .describe('Código no ERP, só informativo (título "Código" na tela)');
 
+function normalizarValorChave(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const chave = value.trim();
+  if (!chave || /^-+$/.test(chave) || chave.endsWith("-")) return null;
+  return chave;
+}
+
+const chaveObrigatoriaSchema = (max = 30) =>
+  z.preprocess(normalizarValorChave, z.string().trim().min(1).max(max));
+
+const chaveOpcionalSchema = (max = 30) =>
+  z.preprocess(
+    normalizarValorChave,
+    z.string().trim().max(max).nullable().optional(),
+  );
 
 // ------------------------------------------------------------------
 // Categorias
 // ------------------------------------------------------------------
 
 export const integracaoCategoriaCreateSchema = z.object({
-  chave: z
-    .string()
-    .trim()
-    .min(1)
-    .max(30)
-    .describe("Chave natural do registro"),
+  chave: z.string().trim().min(1).max(30).describe("Chave natural do registro"),
   codigoErp: codigoErpSchema,
   descricao: z.string().trim().min(1).max(120).describe("Nome da categoria"),
-  categoriaPaiChave: z
-    .string()
-    .trim()
-    .max(30)
-    .nullable()
-    .optional()
-    .describe("chave da categoria pai, se esta for uma subcategoria"),
-  regraDescontoChave: z
-    .string()
-    .trim()
-    .max(30)
-    .nullable()
-    .optional()
-    .describe("chave da regra de desconto (Z0_FILIAL-Z0_CODIGO)"),
+  categoriaPaiChave: chaveOpcionalSchema().describe(
+    "chave da categoria pai, se esta for uma subcategoria",
+  ),
+  regraDescontoChave: chaveOpcionalSchema().describe(
+    "chave da regra de desconto (Z0_FILIAL-Z0_CODIGO)",
+  ),
   ativo: z.boolean().default(true),
 });
 export type IntegracaoCategoriaCreate = z.infer<
@@ -100,12 +102,7 @@ export const INTEGRACAO_CATEGORIA_EXAMPLE: IntegracaoCategoria = {
 // ------------------------------------------------------------------
 
 export const integracaoCondicaoPagamentoCreateSchema = z.object({
-  chave: z
-    .string()
-    .trim()
-    .min(1)
-    .max(30)
-    .describe("Chave natural do registro"),
+  chave: z.string().trim().min(1).max(30).describe("Chave natural do registro"),
   codigoErp: codigoErpSchema,
   descricao: z.string().trim().min(1).max(150),
   forma: z
@@ -168,12 +165,7 @@ export const INTEGRACAO_CONDICAO_PAGAMENTO_EXAMPLE: IntegracaoCondicaoPagamento 
 // ------------------------------------------------------------------
 
 export const integracaoArmazemCreateSchema = z.object({
-  chave: z
-    .string()
-    .trim()
-    .min(1)
-    .max(30)
-    .describe("Chave natural do registro"),
+  chave: z.string().trim().min(1).max(30).describe("Chave natural do registro"),
   codigoErp: codigoErpSchema,
   descricao: z.string().trim().min(1).max(150),
   ativo: z.boolean().default(true),
@@ -223,12 +215,7 @@ export const INTEGRACAO_ARMAZEM_EXAMPLE: IntegracaoArmazem = {
 // ------------------------------------------------------------------
 
 export const integracaoProdutoCreateSchema = z.object({
-  chave: z
-    .string()
-    .trim()
-    .min(1)
-    .max(30)
-    .describe("Chave natural do registro"),
+  chave: z.string().trim().min(1).max(30).describe("Chave natural do registro"),
   codigoErp: codigoErpSchema,
   descricao: z.string().trim().min(1).max(120),
   unidade: z
@@ -238,27 +225,9 @@ export const integracaoProdutoCreateSchema = z.object({
     .nullable()
     .optional()
     .describe("Unidade de medida (ex.: UN, KG, GL)"),
-  categoriaChave: z
-    .string()
-    .trim()
-    .max(30)
-    .nullable()
-    .optional()
-    .describe("chave da categoria"),
-  subCategoriaChave: z
-    .string()
-    .trim()
-    .max(30)
-    .nullable()
-    .optional()
-    .describe("chave da subcategoria"),
-  armazemChave: z
-    .string()
-    .trim()
-    .max(30)
-    .nullable()
-    .optional()
-    .describe("chave do armazém padrão"),
+  categoriaChave: chaveOpcionalSchema().describe("chave da categoria"),
+  subCategoriaChave: chaveOpcionalSchema().describe("chave da subcategoria"),
+  armazemChave: chaveOpcionalSchema().describe("chave do armazém padrão"),
   marca: z.string().trim().max(40).nullable().optional(),
   codigoBarras: z.string().trim().max(30).nullable().optional(),
   codigoFornecedor: z.string().trim().max(60).nullable().optional(),
@@ -267,23 +236,15 @@ export const integracaoProdutoCreateSchema = z.object({
   peso: z.coerce.number().min(0).nullable().optional(),
   ultimoPreco: z.coerce.number().min(0).nullable().optional(),
   observacao: z.string().trim().max(500).nullable().optional(),
-  fabricanteChave: z
-    .string()
-    .trim()
-    .max(60)
-    .nullable()
-    .optional()
-    .describe("chave do fabricante/fornecedor (A2_FILIAL-A2_COD-A2_LOJA)"),
+  fabricanteChave: chaveOpcionalSchema(60).describe(
+    "chave do fabricante/fornecedor (A2_FILIAL-A2_COD-A2_LOJA)",
+  ),
   codigoFabricante: z.string().trim().max(60).nullable().optional(),
   descricaoFabricante: z.string().trim().max(120).nullable().optional(),
   dadosTecnicos: z.string().trim().max(1000).nullable().optional(),
-  regraDescontoChave: z
-    .string()
-    .trim()
-    .max(30)
-    .nullable()
-    .optional()
-    .describe("chave da regra de desconto (Z0_FILIAL-Z0_CODIGO)"),
+  regraDescontoChave: chaveOpcionalSchema().describe(
+    "chave da regra de desconto (Z0_FILIAL-Z0_CODIGO)",
+  ),
   ativo: z.boolean().default(true),
 });
 export type IntegracaoProdutoCreate = z.infer<
@@ -347,12 +308,7 @@ export const INTEGRACAO_PRODUTO_EXAMPLE: IntegracaoProduto = {
 // scripts de import.
 
 export const integracaoVendedorCreateSchema = z.object({
-  chave: z
-    .string()
-    .trim()
-    .min(1)
-    .max(30)
-    .describe("Chave natural do registro"),
+  chave: z.string().trim().min(1).max(30).describe("Chave natural do registro"),
   codigoErp: codigoErpSchema,
   nome: z.string().trim().min(1).max(100),
   nomeReduzido: z.string().trim().max(50).nullable().optional(),
@@ -363,13 +319,9 @@ export const integracaoVendedorCreateSchema = z.object({
     .boolean()
     .default(true)
     .describe("true = atua como vendedor de carteira"),
-  supervisorChave: z
-    .string()
-    .trim()
-    .max(30)
-    .nullable()
-    .optional()
-    .describe("chave do vendedor que é supervisor deste"),
+  supervisorChave: chaveOpcionalSchema().describe(
+    "chave do vendedor que é supervisor deste",
+  ),
   supervisor: z
     .boolean()
     .default(false)
@@ -440,12 +392,7 @@ export const INTEGRACAO_VENDEDOR_EXAMPLE: IntegracaoVendedor = {
 // models ainda não existem (ver docs/planos/cadastros-cliente-cnae-contatos-socios.md).
 
 export const integracaoClienteCreateSchema = z.object({
-  chave: z
-    .string()
-    .trim()
-    .min(1)
-    .max(30)
-    .describe("Chave natural do registro"),
+  chave: z.string().trim().min(1).max(30).describe("Chave natural do registro"),
   codigoErp: codigoErpSchema,
   tipoPessoa: tipoPessoaSchema.default("juridica"),
   razaoSocial: z.string().trim().min(1).max(150),
@@ -469,27 +416,11 @@ export const integracaoClienteCreateSchema = z.object({
   cep: z.string().trim().max(10).nullable().optional(),
   latitude: z.coerce.number().min(-90).max(90).nullable().optional(),
   longitude: z.coerce.number().min(-180).max(180).nullable().optional(),
-  vendedorChave: z
-    .string()
-    .trim()
-    .max(30)
-    .nullable()
-    .optional()
-    .describe("chave do vendedor"),
-  tabelaPrecoChave: z
-    .string()
-    .trim()
-    .max(30)
-    .nullable()
-    .optional()
-    .describe("chave da tabela de preço"),
-  condicaoPagamentoChave: z
-    .string()
-    .trim()
-    .max(30)
-    .nullable()
-    .optional()
-    .describe("chave da condição de pagamento padrão"),
+  vendedorChave: chaveOpcionalSchema().describe("chave do vendedor"),
+  tabelaPrecoChave: chaveOpcionalSchema().describe("chave da tabela de preço"),
+  condicaoPagamentoChave: chaveOpcionalSchema().describe(
+    "chave da condição de pagamento padrão",
+  ),
   ativo: z.boolean().default(true),
   carteira: z.boolean().nullable().optional(),
   site: z.string().trim().max(150).nullable().optional(),
@@ -620,20 +551,11 @@ export const integracaoTabelaPrecoItemSchema = z.object({
     .min(1)
     .max(60)
     .describe("Chave de identidade do item no ERP"),
-  produtoChave: z
-    .string()
-    .trim()
-    .min(1)
-    .max(30)
-    .describe("chave do produto"),
+  produtoChave: chaveObrigatoriaSchema().describe("chave do produto"),
   preco: z.coerce.number().min(0),
-  regraDescontoChave: z
-    .string()
-    .trim()
-    .max(30)
-    .nullable()
-    .optional()
-    .describe("chave da regra de desconto (Z0_FILIAL-Z0_CODIGO)"),
+  regraDescontoChave: chaveOpcionalSchema().describe(
+    "chave da regra de desconto (Z0_FILIAL-Z0_CODIGO)",
+  ),
   regraDescontoCodigo: z
     .string()
     .trim()
@@ -650,12 +572,7 @@ export type IntegracaoTabelaPrecoItem = z.infer<
 >;
 
 export const integracaoTabelaPrecoCreateSchema = z.object({
-  chave: z
-    .string()
-    .trim()
-    .min(1)
-    .max(30)
-    .describe("Chave natural do registro"),
+  chave: z.string().trim().min(1).max(30).describe("Chave natural do registro"),
   codigoErp: codigoErpSchema,
   descricao: z.string().trim().min(1).max(150),
   dtInicio: z.coerce.date().nullable().optional(),
@@ -731,19 +648,16 @@ export const integracaoEstoqueCreateSchema = z.object({
     .max(60)
     .describe("Chave de integração do estoque: B2_FILIAL-B2_COD-B2_LOCAL"),
   codigoErp: codigoErpSchema,
-  produtoChave: z
-    .string()
-    .trim()
-    .min(1)
-    .max(30)
-    .describe("chave do produto (parte da chave)"),
-  armazemChave: z
-    .string()
-    .trim()
-    .min(1)
-    .max(30)
-    .describe("chave do armazém (parte da chave)"),
+  produtoChave: chaveObrigatoriaSchema().describe(
+    "chave do produto (parte da chave)",
+  ),
+  armazemChave: chaveObrigatoriaSchema().describe(
+    "chave do armazém (parte da chave)",
+  ),
   saldo: z.coerce.number().default(0),
+  dataEnvio: z.coerce
+    .date()
+    .describe("Data e hora UTC em que o saldo foi coletado para envio"),
   reserva: z.coerce.number().nullable().optional(),
   custo: z.coerce.number().nullable().optional(),
   ultimoPreco: z.coerce.number().nullable().optional(),
@@ -768,8 +682,8 @@ export type IntegracaoEstoque = z.infer<typeof integracaoEstoqueSchema>;
 
 export const integracaoEstoqueQuerySchema = paginationQuerySchema.extend({
   chave: z.string().optional(),
-  produtoChave: z.string().trim().optional(),
-  armazemChave: z.string().trim().optional(),
+  produtoChave: chaveOpcionalSchema(),
+  armazemChave: chaveOpcionalSchema(),
 });
 export type IntegracaoEstoqueQuery = z.infer<
   typeof integracaoEstoqueQuerySchema
@@ -781,6 +695,7 @@ export const INTEGRACAO_ESTOQUE_CREATE_EXAMPLE: IntegracaoEstoqueCreate = {
   produtoChave: "01-11400443",
   armazemChave: "01-01",
   saldo: 128,
+  dataEnvio: new Date("2026-09-24T12:30:00.000Z"),
   reserva: 12,
   custo: 21.4,
   ultimoPreco: 28.9,
@@ -807,12 +722,7 @@ export const integracaoObjetivoCategoriaSchema = z.object({
     .min(1)
     .max(60)
     .describe("Chave de identidade da meta por categoria no ERP"),
-  categoriaChave: z
-    .string()
-    .trim()
-    .min(1)
-    .max(30)
-    .describe("chave da categoria"),
+  categoriaChave: chaveObrigatoriaSchema().describe("chave da categoria"),
   valor: z.coerce.number().min(0),
 });
 export type IntegracaoObjetivoCategoria = z.infer<
@@ -827,7 +737,7 @@ export const integracaoObjetivoCreateSchema = z.object({
     .max(60)
     .describe("Chave de identidade do registro no ERP"),
   codigoErp: codigoErpSchema,
-  vendedorChave: z.string().trim().min(1).max(30),
+  vendedorChave: chaveObrigatoriaSchema(),
   mes: z.coerce.number().int().min(1).max(12),
   ano: z.coerce.number().int().min(2000).max(2100),
   valor: z.coerce.number().min(0).default(0),
@@ -914,7 +824,7 @@ export const integracaoNotaSaidaItemSchema = z.object({
     .min(1)
     .max(60)
     .describe("Chave de identidade do item no ERP"),
-  produtoChave: z.string().trim().max(30).nullable().optional(),
+  produtoChave: chaveOpcionalSchema(),
   item: z.coerce
     .number()
     .int()
@@ -940,13 +850,9 @@ export const integracaoNotaSaidaItemSchema = z.object({
     .nullable()
     .optional()
     .describe("Percentual de comissão apurado na linha"),
-  regraDescontoChave: z
-    .string()
-    .trim()
-    .max(30)
-    .nullable()
-    .optional()
-    .describe("chave da regra de desconto (Z0_FILIAL-Z0_CODIGO)"),
+  regraDescontoChave: chaveOpcionalSchema().describe(
+    "chave da regra de desconto (Z0_FILIAL-Z0_CODIGO)",
+  ),
   ativo: z.boolean().default(true),
 });
 export type IntegracaoNotaSaidaItem = z.infer<
@@ -961,9 +867,9 @@ export const integracaoNotaSaidaCreateSchema = z.object({
     .max(60)
     .describe("Chave de identidade do registro no ERP"),
   codigoErp: codigoErpSchema,
-  clienteChave: z.string().trim().max(30).nullable().optional(),
-  vendedorChave: z.string().trim().max(30).nullable().optional(),
-  condicaoChave: z.string().trim().max(30).nullable().optional(),
+  clienteChave: chaveOpcionalSchema(),
+  vendedorChave: chaveOpcionalSchema(),
+  condicaoChave: chaveOpcionalSchema(),
   numero: z.string().trim().min(1).max(20),
   serie: z.string().trim().max(5).nullable().optional(),
   especieFiscal: z.string().trim().max(10).nullable().optional(),
@@ -1173,12 +1079,7 @@ export const INTEGRACAO_NFE_XML_STATUS_EXAMPLE: IntegracaoNfeXmlStatus = {
 // para cá e o registro precisa já existir.
 
 export const integracaoFornecedorCreateSchema = z.object({
-  chave: z
-    .string()
-    .trim()
-    .min(1)
-    .max(30)
-    .describe("Chave natural do registro"),
+  chave: z.string().trim().min(1).max(30).describe("Chave natural do registro"),
   codigoErp: codigoErpSchema,
   tipoPessoa: tipoPessoaSchema.default("juridica"),
   razaoSocial: z.string().trim().min(1).max(150),
@@ -1203,8 +1104,9 @@ export type IntegracaoFornecedorCreate = z.infer<
   typeof integracaoFornecedorCreateSchema
 >;
 
-export const integracaoFornecedorUpdateSchema =
-  integracaoFornecedorCreateSchema.omit({ chave: true }).partial();
+export const integracaoFornecedorUpdateSchema = integracaoFornecedorCreateSchema
+  .omit({ chave: true })
+  .partial();
 export type IntegracaoFornecedorUpdate = z.infer<
   typeof integracaoFornecedorUpdateSchema
 >;
@@ -1285,14 +1187,10 @@ export const integracaoNotaEntradaItemSchema = z.object({
     .min(1)
     .max(60)
     .describe("Chave de identidade do item no ERP"),
-  produtoChave: z.string().trim().max(30).nullable().optional(),
-  armazemChave: z
-    .string()
-    .trim()
-    .max(30)
-    .nullable()
-    .optional()
-    .describe("chave do armazém em que a mercadoria entrou"),
+  produtoChave: chaveOpcionalSchema(),
+  armazemChave: chaveOpcionalSchema().describe(
+    "chave do armazém em que a mercadoria entrou",
+  ),
   item: z.coerce
     .number()
     .int()
@@ -1324,27 +1222,15 @@ export const integracaoNotaEntradaCreateSchema = z.object({
     .max(60)
     .describe("Chave de identidade do registro no ERP"),
   codigoErp: codigoErpSchema,
-  fornecedorChave: z
-    .string()
-    .trim()
-    .max(30)
-    .nullable()
-    .optional()
-    .describe("chave do fornecedor — nas notas de compra (tipo 'N')"),
-  clienteChave: z
-    .string()
-    .trim()
-    .max(30)
-    .nullable()
-    .optional()
-    .describe("chave do cliente — nas devoluções de venda (tipo 'D')"),
-  condicaoChave: z
-    .string()
-    .trim()
-    .max(30)
-    .nullable()
-    .optional()
-    .describe("chave da condição de pagamento"),
+  fornecedorChave: chaveOpcionalSchema().describe(
+    "chave do fornecedor — nas notas de compra (tipo 'N')",
+  ),
+  clienteChave: chaveOpcionalSchema().describe(
+    "chave do cliente — nas devoluções de venda (tipo 'D')",
+  ),
+  condicaoChave: chaveOpcionalSchema().describe(
+    "chave da condição de pagamento",
+  ),
   numero: z.string().trim().min(1).max(20),
   serie: z.string().trim().max(5).nullable().optional(),
   especieFiscal: z.string().trim().max(10).nullable().optional(),
@@ -1397,18 +1283,12 @@ export type IntegracaoNotaEntrada = z.infer<typeof integracaoNotaEntradaSchema>;
 
 export const integracaoNotaEntradaQuerySchema = paginationQuerySchema.extend({
   ativo: booleanQueryParam,
-  fornecedorChave: z
-    .string()
-    .trim()
-    .max(30)
-    .optional()
-    .describe("Filtra pela chave do fornecedor"),
-  clienteChave: z
-    .string()
-    .trim()
-    .max(30)
-    .optional()
-    .describe("Filtra pela chave do cliente (devoluções)"),
+  fornecedorChave: chaveOpcionalSchema().describe(
+    "Filtra pela chave do fornecedor",
+  ),
+  clienteChave: chaveOpcionalSchema().describe(
+    "Filtra pela chave do cliente (devoluções)",
+  ),
   tipo: z
     .string()
     .trim()
@@ -1491,8 +1371,8 @@ export const integracaoTituloReceberCreateSchema = z.object({
     .max(60)
     .describe("Chave de identidade do registro no ERP"),
   codigoErp: codigoErpSchema,
-  clienteChave: z.string().trim().max(30).nullable().optional(),
-  vendedorChave: z.string().trim().max(30).nullable().optional(),
+  clienteChave: chaveOpcionalSchema(),
+  vendedorChave: chaveOpcionalSchema(),
   numero: z.string().trim().min(1).max(20),
   parcela: z.string().trim().max(5).nullable().optional(),
   prefixo: z.string().trim().max(10).nullable().optional(),
@@ -1810,7 +1690,9 @@ export const integracaoOrcamentoItemSchema = z.object({
     .string()
     .uuid()
     .optional()
-    .describe("id do item na plataforma. Só na leitura: é por ele que o ERP devolve a chave do SC6 no PATCH de pendentes"),
+    .describe(
+      "id do item na plataforma. Só na leitura: é por ele que o ERP devolve a chave do SC6 no PATCH de pendentes",
+    ),
   delete: z
     .boolean()
     .default(false)
@@ -1821,12 +1703,7 @@ export const integracaoOrcamentoItemSchema = z.object({
     .min(1)
     .max(60)
     .describe("Chave de identidade do item no ERP"),
-  produtoChave: z
-    .string()
-    .trim()
-    .min(1)
-    .max(30)
-    .describe("chave do produto"),
+  produtoChave: chaveObrigatoriaSchema().describe("chave do produto"),
   quantidade: z.coerce.number().positive(),
   vlrUnitario: z.coerce.number().min(0),
   percComissao: z.coerce
@@ -1836,13 +1713,9 @@ export const integracaoOrcamentoItemSchema = z.object({
     .nullable()
     .optional()
     .describe("Percentual de comissão apurado na linha"),
-  regraDescontoChave: z
-    .string()
-    .trim()
-    .max(30)
-    .nullable()
-    .optional()
-    .describe("chave da regra de desconto (Z0_FILIAL-Z0_CODIGO)"),
+  regraDescontoChave: chaveOpcionalSchema().describe(
+    "chave da regra de desconto (Z0_FILIAL-Z0_CODIGO)",
+  ),
 });
 export type IntegracaoOrcamentoItem = z.infer<
   typeof integracaoOrcamentoItemSchema
@@ -1856,9 +1729,9 @@ export const integracaoOrcamentoCreateSchema = z.object({
     .max(60)
     .describe("Chave de identidade do registro no ERP"),
   codigoErp: codigoErpSchema,
-  clienteChave: z.string().trim().min(1).max(30),
-  vendedorChave: z.string().trim().min(1).max(30),
-  condicaoPagamentoChave: z.string().trim().max(30).nullable().optional(),
+  clienteChave: chaveObrigatoriaSchema(),
+  vendedorChave: chaveObrigatoriaSchema(),
+  condicaoPagamentoChave: chaveOpcionalSchema(),
   titulo: z.string().trim().min(1).max(150),
   status: statusOrcamentoSchema.default("rascunho"),
   dataValidade: z.coerce.date().nullable().optional(),
@@ -2043,7 +1916,9 @@ export const integracaoRegraDescontoCreateSchema = z.object({
   faixas: z
     .array(integracaoRegraDescontoFaixaSchema)
     .default([])
-    .describe("Sincroniza faixas; delete=true exclui somente a sequência informada"),
+    .describe(
+      "Sincroniza faixas; delete=true exclui somente a sequência informada",
+    ),
 });
 export type IntegracaoRegraDescontoCreate = z.infer<
   typeof integracaoRegraDescontoCreateSchema
@@ -2082,8 +1957,20 @@ export const INTEGRACAO_REGRA_DESCONTO_CREATE_EXAMPLE: IntegracaoRegraDescontoCr
     padrao: true,
     ativo: true,
     faixas: [
-      { delete: false, sequencia: 1, percInicial: 0, percFinal: 10, percBaseComissao: 100 },
-      { delete: false, sequencia: 2, percInicial: 10.01, percFinal: 15, percBaseComissao: 90 },
+      {
+        delete: false,
+        sequencia: 1,
+        percInicial: 0,
+        percFinal: 10,
+        percBaseComissao: 100,
+      },
+      {
+        delete: false,
+        sequencia: 2,
+        percInicial: 10.01,
+        percFinal: 15,
+        percBaseComissao: 90,
+      },
     ],
   };
 

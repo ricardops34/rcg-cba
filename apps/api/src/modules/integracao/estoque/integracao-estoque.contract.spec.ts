@@ -8,6 +8,7 @@ describe('contrato de integração do estoque', () => {
       produtoChave: '01-11400443',
       armazemChave: '01-01',
       saldo: 128,
+      dataEnvio: '2026-09-24T12:30:00.000Z',
     });
 
     expect(resultado.success).toBe(true);
@@ -19,6 +20,7 @@ describe('contrato de integração do estoque', () => {
       produtoChave: '01-11400443',
       armazemChave: '01-01',
       saldo: 128,
+      dataEnvio: '2026-09-24T12:30:00.000Z',
     });
 
     expect(resultado.success).toBe(true);
@@ -26,6 +28,19 @@ describe('contrato de integração do estoque', () => {
 
   it('recusa estoque sem chave', () => {
     const resultado = integracaoEstoqueCreateSchema.safeParse({
+      codigoErp: '11400443',
+      produtoChave: '01-11400443',
+      armazemChave: '01-01',
+      saldo: 128,
+      dataEnvio: '2026-09-24T12:30:00.000Z',
+    });
+
+    expect(resultado.success).toBe(false);
+  });
+
+  it('recusa estoque sem dataEnvio', () => {
+    const resultado = integracaoEstoqueCreateSchema.safeParse({
+      chave: '01-11400443-01',
       codigoErp: '11400443',
       produtoChave: '01-11400443',
       armazemChave: '01-01',

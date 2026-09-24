@@ -463,8 +463,9 @@ export class IntegracaoProdutosService {
       where: { empresaId, chave: codigo, deletedAt: null },
       select: { id: true },
     });
-    if (!fornecedor)
-      throw new NotFoundException(`fabricanteChave '${codigo}' não encontrado`);
-    return fornecedor.id;
+    // Fabricante é uma referência opcional do produto. O ERP pode enviar uma
+    // chave cujo fornecedor ainda não foi sincronizado; isso não deve impedir
+    // o cadastro do produto.
+    return fornecedor?.id ?? null;
   }
 }

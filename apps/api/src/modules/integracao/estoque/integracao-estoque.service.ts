@@ -1,8 +1,4 @@
-import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService, Prisma } from '../../../common/prisma/prisma.service';
 import {
   buildPaginatedResult,
@@ -43,6 +39,7 @@ export class IntegracaoEstoqueService {
       produtoChave: row.produto.chave ?? '',
       armazemChave: row.armazem.chave ?? '',
       saldo: row.saldo,
+      dataEnvio: row.dataEnvio,
       reserva: row.reserva,
       custo: row.custo,
       ultimoPreco: row.ultimoPreco,
@@ -149,6 +146,7 @@ export class IntegracaoEstoqueService {
         produtoId: produto.id,
         armazemId: armazem.id,
         saldo: input.saldo,
+        dataEnvio: input.dataEnvio,
         reserva: input.reserva ?? null,
         custo: input.custo ?? null,
         ultimoPreco: input.ultimoPreco ?? null,
@@ -222,6 +220,9 @@ export class IntegracaoEstoqueService {
         where: { id: existente.id },
         data: {
           ...(input.saldo !== undefined ? { saldo: input.saldo } : {}),
+          ...(input.dataEnvio !== undefined
+            ? { dataEnvio: input.dataEnvio }
+            : {}),
           ...(input.reserva !== undefined ? { reserva: input.reserva } : {}),
           ...(input.custo !== undefined ? { custo: input.custo } : {}),
           ...(input.ultimoPreco !== undefined
