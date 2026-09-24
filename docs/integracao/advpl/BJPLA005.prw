@@ -155,9 +155,9 @@ Static Function ViewDef()
 Return oView
 
 /*/{Protheus.doc} BJMONGER
-Gera um lote: pede entidade (ou todas as ativas), chave e intervalo de datas
-opcionais, e roda a coleta (U_BJVARRE) - le a origem, monta o JSON e
-enfileira. Nao envia nada.
+Gera um lote: pede entidade (ou todas as ativas), chave, intervalo de datas
+opcionais e se manda o que foi excluido na origem, e roda a coleta
+(U_BJVARRE) - le a origem, monta o JSON e enfileira. Nao envia nada.
 @type    User Function
 @author  Ricardo P Sotomayor
 @since   11/09/2026
@@ -179,6 +179,8 @@ User Function BJMONGER()
 	Local xEntid   := ""
 	Local nOpc     := 0
 	Local nEnt     := 0
+	Local nDel     := 1
+	Local lEnvDel  := .T.
 	Local nX       := 0
 
 	// O combo trabalha por grupo, na ordem em que a carga precisa acontecer:
@@ -205,8 +207,16 @@ User Function BJMONGER()
 	EndIf
 	// O combo tem 7 posicoes, e a quinta e o tamanho, numerico. O Get tem 9, com
 	// o tamanho na oitava - os dois layouts sao diferentes.
+	//
+	// Os combos vem todos antes dos Gets de proposito: Enter num Get confirma o
+	// ParamBox na hora, e combo que ficasse depois deles seria pulado, valendo o
+	// default sem o usuario ter escolhido nada.
 	aAdd(aPergs, {2, "Grupo"                    , 1       , aCombo  , 200, ".T.", .T.})
 	aAdd(aPergs, {2, "Entidade (so Individual)" , 1       , aCombEnt, 200, ".T.", .T.})
+	// "Nao" filtra o D_E_L_E_T_ na origem, em todos os mapeadores: a coleta nem
+	// le a linha excluida, e nenhum DELETE entra na fila. "Sim" e o que a coleta
+	// agendada faz.
+	aAdd(aPergs, {2, "Envia deletados?"         , 1       , {"1=Sim", "2=Nao"}, 060, ".T.", .T.})
 	aAdd(aPergs, {1, "Chave (opcional)"         , cChave  , "@!"    , ".T.", "", ".T.", 150, .F.})
 	aAdd(aPergs, {1, "Data de"                  , dDataDe , ""      , ".T.", "", ".T.", 080, .F.})
 	aAdd(aPergs, {1, "Data ate"                 , dDataAte, ""      , ".T.", "", ".T.", 080, .F.})
@@ -229,9 +239,16 @@ User Function BJMONGER()
 		nEnt := MV_PAR02
 	EndIf
 
-	cChave   := AllTrim(MV_PAR03)
-	dDataDe  := MV_PAR04
-	dDataAte := MV_PAR05
+	If ValType(MV_PAR03) == "C"
+		nDel := Val(MV_PAR03)
+	Else
+		nDel := MV_PAR03
+	EndIf
+
+	cChave   := AllTrim(MV_PAR04)
+	dDataDe  := MV_PAR05
+	dDataAte := MV_PAR06
+	lEnvDel  := (nDel == 1)
 
 	If nOpc == Len(aGrupo) + 1   // Individual
 		xEntid := aCat[nEnt][1]
@@ -245,7 +262,7 @@ User Function BJMONGER()
 		EndIf
 	EndIf
 
-	oProcess := MsNewProcess():New({|| aTotal := U_BJVARRE(xEntid, cChave, dDataDe, dDataAte, oProcess)}, "Gerando lote...", "Aguarde...", .F.)
+	oProcess := MsNewProcess():New({|| aTotal := U_BJVARRE(xEntid, cChave, dDataDe, dDataAte, oProcess, lEnvDel)}, "Gerando lote...", "Aguarde...", .F.)
 	oProcess:Activate()
 
 	cMsg := "Lote: "      + aTotal[5] + CRLF + ;

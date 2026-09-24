@@ -1,0 +1,578 @@
+{
+  "_instrucoes": {
+    "baseUrl": "/api/v1",
+    "autenticacao": "Informe a API key no header x-api-key pelo botão Authorize do Swagger.",
+    "uso": "Copie somente o objeto body da rota desejada para o Request body.",
+    "ordemRecomendada": [
+      "regras-desconto",
+      "categorias",
+      "condicoes-pagamento",
+      "armazens",
+      "produtos",
+      "vendedores",
+      "fornecedores",
+      "tabelas-preco",
+      "clientes",
+      "estoque",
+      "objetivos",
+      "notas-saida",
+      "notas-entrada",
+      "titulos-receber",
+      "orcamentos"
+    ]
+  },
+  "POST /api/v1/integracao/regras-desconto": {
+    "body": {
+      "chave": "01-REGRA-TESTE",
+      "codigoErp": "REGRA-TESTE",
+      "descricao": "REGRA DE TESTE SWAGGER",
+      "percDescontoAutorizado": 10,
+      "percDescontoMaximo": 20,
+      "percComissao": 4,
+      "padrao": false,
+      "ativo": true,
+      "faixas": [
+        {
+          "delete": false,
+          "sequencia": 1,
+          "percInicial": 0,
+          "percFinal": 10,
+          "percBaseComissao": 100
+        },
+        {
+          "delete": false,
+          "sequencia": 2,
+          "percInicial": 10.01,
+          "percFinal": 20,
+          "percBaseComissao": 80
+        }
+      ]
+    }
+  },
+  "POST /api/v1/integracao/categorias": {
+    "body": {
+      "chave": "01-CAT-TESTE",
+      "codigoErp": "CAT-TESTE",
+      "descricao": "CATEGORIA TESTE SWAGGER",
+      "categoriaPaiChave": null,
+      "regraDescontoChave": "01-REGRA-TESTE",
+      "ativo": true
+    }
+  },
+  "POST /api/v1/integracao/condicoes-pagamento": {
+    "body": {
+      "chave": "01-CP-TESTE",
+      "codigoErp": "CP-TESTE",
+      "descricao": "BOLETO TESTE 28 DIAS",
+      "forma": "BOL",
+      "ativo": true
+    }
+  },
+  "POST /api/v1/integracao/armazens": {
+    "body": {
+      "chave": "01-ARM-TESTE",
+      "codigoErp": "ARM-TESTE",
+      "descricao": "ARMAZEM TESTE SWAGGER",
+      "ativo": true
+    }
+  },
+  "POST /api/v1/integracao/produtos": {
+    "body": {
+      "chave": "01-PROD-TESTE",
+      "codigoErp": "PROD-TESTE",
+      "descricao": "PRODUTO TESTE SWAGGER",
+      "unidade": "UN",
+      "categoriaChave": "01-CAT-TESTE",
+      "subCategoriaChave": null,
+      "armazemChave": "01-ARM-TESTE",
+      "marca": "TESTE",
+      "codigoBarras": "7890000000001",
+      "codigoFornecedor": "FORN-TESTE",
+      "ncm": "34022000",
+      "qtdEmbalagem": 1,
+      "peso": 1.5,
+      "ultimoPreco": 25.9,
+      "observacao": "Criado pelo Swagger",
+      "regraDescontoChave": "01-REGRA-TESTE",
+      "ativo": true
+    }
+  },
+  "POST /api/v1/integracao/vendedores": {
+    "body": {
+      "chave": "01-VEND-TESTE",
+      "codigoErp": "VEND-TESTE",
+      "nome": "VENDEDOR TESTE SWAGGER",
+      "nomeReduzido": "VENDEDOR TESTE",
+      "telefone": "(67) 3333-0000",
+      "email": "vendedor.teste@example.com",
+      "dataNascimento": null,
+      "vendedor": true,
+      "supervisorChave": null,
+      "supervisor": false,
+      "percComissao": 4,
+      "ativo": true,
+      "desligado": false
+    }
+  },
+  "POST /api/v1/integracao/fornecedores": {
+    "body": {
+      "chave": "01-FORN-TESTE-01",
+      "codigoErp": "FORN-TESTE-01",
+      "tipoPessoa": "juridica",
+      "razaoSocial": "FORNECEDOR TESTE SWAGGER LTDA",
+      "nomeFantasia": "FORNECEDOR TESTE",
+      "cnpjCpf": "04252011000110",
+      "inscricaoEstadual": "283910457",
+      "inscricaoMunicipal": null,
+      "contato": "CONTATO TESTE",
+      "email": "fornecedor.teste@example.com",
+      "telefone": "(67) 3333-1111",
+      "celular": null,
+      "endereco": "RUA TESTE, 1240",
+      "complemento": "GALPAO 3",
+      "bairro": "DISTRITO INDUSTRIAL",
+      "municipio": "CAMPO GRANDE",
+      "uf": "MS",
+      "cep": "79108250",
+      "observacao": null,
+      "ativo": true
+    }
+  },
+  "POST /api/v1/integracao/tabelas-preco": {
+    "body": {
+      "chave": "01-TAB-TESTE",
+      "codigoErp": "TAB-TESTE",
+      "descricao": "TABELA TESTE SWAGGER",
+      "dtInicio": "2026-08-28T00:00:00.000Z",
+      "dtFim": null,
+      "ativo": true,
+      "itens": [
+        {
+          "delete": false,
+          "chave": "01-TAB-TESTE-PROD-TESTE",
+          "produtoChave": "01-PROD-TESTE",
+          "preco": 29.9,
+          "regraDescontoChave": "01-REGRA-TESTE",
+          "ativo": true
+        }
+      ]
+    }
+  },
+  "POST /api/v1/integracao/clientes": {
+    "body": {
+      "chave": "01-CLI-TESTE-01",
+      "codigoErp": "CLI-TESTE-01",
+      "tipoPessoa": "juridica",
+      "razaoSocial": "CLIENTE TESTE SWAGGER LTDA",
+      "nomeFantasia": "CLIENTE TESTE",
+      "cnpjCpf": "12345678000190",
+      "inscricaoEstadual": "283456789",
+      "inscricaoMunicipal": null,
+      "contribuinteIcms": true,
+      "rg": null,
+      "dataNascimento": null,
+      "contato": "CONTATO TESTE",
+      "email": "cliente.teste@example.com",
+      "telefone": "(67) 3321-0000",
+      "telefone2": null,
+      "celular": "(67) 99999-0000",
+      "endereco": "RUA TESTE, 100",
+      "complemento": null,
+      "bairro": "CENTRO",
+      "municipio": "CAMPO GRANDE",
+      "uf": "MS",
+      "cep": "79002-201",
+      "latitude": null,
+      "longitude": null,
+      "vendedorChave": "01-VEND-TESTE",
+      "tabelaPrecoChave": "01-TAB-TESTE",
+      "condicaoPagamentoChave": "01-CP-TESTE",
+      "ativo": true,
+      "carteira": true,
+      "site": null,
+      "limiteCredito": 10000,
+      "vencimentoLimite": null,
+      "observacao": "Criado pelo Swagger",
+      "dataBloqueio": null,
+      "observacaoBloqueio": null,
+      "dataReativacao": null,
+      "observacaoReativacao": null,
+      "primeiraCompra": null,
+      "ultimaVisita": null,
+      "ultimaCompra": null,
+      "ultimoAtendimento": null,
+      "dataConsultaRfb": null
+    }
+  },
+  "POST /api/v1/integracao/estoque": {
+    "body": {
+      "chave": "01-PROD-TESTE-ARM-TESTE",
+      "codigoErp": "PROD-TESTE-ARM-TESTE",
+      "produtoChave": "01-PROD-TESTE",
+      "armazemChave": "01-ARM-TESTE",
+      "saldo": 100,
+      "reserva": 10,
+      "custo": 20.5,
+      "ultimoPreco": 25.9,
+      "ultimaCompra": "2026-08-28T00:00:00.000Z"
+    }
+  },
+  "POST /api/v1/integracao/objetivos": {
+    "observacao": "O endpoint existe, mas está inativo no catálogo BJIN002.",
+    "body": {
+      "chave": "01-VEND-TESTE-2026-08",
+      "codigoErp": "VEND-TESTE-2026-08",
+      "vendedorChave": "01-VEND-TESTE",
+      "mes": 8,
+      "ano": 2026,
+      "valor": 50000,
+      "numeroCliente": 20,
+      "novoCliente": 5,
+      "tipo": null,
+      "ativo": true,
+      "categorias": [
+        {
+          "chave": "01-VEND-TESTE-2026-08-CAT-TESTE",
+          "categoriaChave": "01-CAT-TESTE",
+          "valor": 15000
+        }
+      ]
+    }
+  },
+  "POST /api/v1/integracao/notas-saida": {
+    "body": {
+      "chave": "01-900000001-1-N-SPED",
+      "codigoErp": "900000001-1-N-SPED",
+      "clienteChave": "01-CLI-TESTE-01",
+      "vendedorChave": "01-VEND-TESTE",
+      "condicaoChave": "01-CP-TESTE",
+      "numero": "900000001",
+      "serie": "1",
+      "especieFiscal": "SPED",
+      "tipo": "N",
+      "dtEmissao": "2026-08-28T00:00:00.000Z",
+      "vlrBruto": 89.7,
+      "vlrMercadoria": 89.7,
+      "vlrItens": 89.7,
+      "vlrDesconto": 0,
+      "vlrIcms": 15.25,
+      "vlrIpi": 0,
+      "vlrFrete": 0,
+      "vlrDevolucao": 0,
+      "chaveNfe": null,
+      "dtNfe": null,
+      "mensagem": "Nota criada pelo Swagger",
+      "comodato": false,
+      "ativo": true,
+      "itens": [
+        {
+          "delete": false,
+          "chave": "01-900000001-1-0001",
+          "produtoChave": "01-PROD-TESTE",
+          "item": 1,
+          "cfop": "5102",
+          "tipo": "N",
+          "quantidade": 3,
+          "vlrUnitario": 29.9,
+          "vlrTabela": 29.9,
+          "percDesconto": 0,
+          "vlrDesconto": 0,
+          "vlrTotal": 89.7,
+          "quantidadeDev": null,
+          "vlrDev": null,
+          "peso": 4.5,
+          "comodato": false,
+          "percComissao": 4,
+          "regraDescontoChave": "01-REGRA-TESTE",
+          "ativo": true
+        }
+      ]
+    }
+  },
+  "_comentario_notas_entrada": "A SF1 guarda dois documentos: tipo 'N' é compra (mande fornecedorCodigo) e tipo 'D' é devolução de venda (mande clienteCodigo). Os dois exemplos abaixo cobrem os dois casos.",
+  "POST /api/v1/integracao/notas-entrada": {
+    "body": {
+      "chave": "01-800000001-1-FORN-TESTE-01-N",
+      "codigoErp": "800000001-1-FORN-TESTE-01-N",
+      "fornecedorChave": "01-FORN-TESTE-01",
+      "clienteChave": null,
+      "condicaoChave": "01-CP-TESTE",
+      "numero": "800000001",
+      "serie": "1",
+      "especieFiscal": "SPED",
+      "tipo": "N",
+      "dtEmissao": "2026-08-28T00:00:00.000Z",
+      "dtEntrada": "2026-09-01T00:00:00.000Z",
+      "vlrBruto": 59.8,
+      "vlrMercadoria": 59.8,
+      "vlrItens": 59.8,
+      "vlrDesconto": 0,
+      "vlrIcms": 10.17,
+      "vlrIcmsSt": 0,
+      "vlrIpi": 0,
+      "vlrFrete": 0,
+      "vlrSeguro": 0,
+      "vlrDespesa": 0,
+      "chaveNfe": null,
+      "dtNfe": null,
+      "mensagem": "Nota de entrada criada pelo Swagger",
+      "ativo": true,
+      "itens": [
+        {
+          "delete": false,
+          "chave": "01-800000001-1-FORN-TESTE-01-0001",
+          "produtoChave": "01-PROD-TESTE",
+          "armazemChave": "01-ARM-TESTE",
+          "item": 1,
+          "cfop": "1102",
+          "quantidade": 4,
+          "vlrUnitario": 14.95,
+          "vlrDesconto": 0,
+          "vlrTotal": 59.8,
+          "vlrIcms": 10.17,
+          "vlrIcmsSt": 0,
+          "vlrIpi": 0,
+          "peso": 6,
+          "ativo": true
+        }
+      ]
+    }
+  },
+  "POST /api/v1/integracao/notas-entrada (devolução de venda)": {
+    "body": {
+      "chave": "01-800000002-1-CLI-TESTE-01-N",
+      "codigoErp": "800000002-1-CLI-TESTE-01-N",
+      "fornecedorChave": null,
+      "clienteChave": "01-CLI-TESTE-01",
+      "condicaoChave": null,
+      "numero": "800000002",
+      "serie": "1",
+      "especieFiscal": "SPED",
+      "tipo": "D",
+      "dtEmissao": "2026-09-02T00:00:00.000Z",
+      "dtEntrada": "2026-09-03T00:00:00.000Z",
+      "vlrBruto": 29.9,
+      "vlrMercadoria": 29.9,
+      "vlrItens": 29.9,
+      "vlrDesconto": 0,
+      "vlrIcms": 5.08,
+      "vlrIcmsSt": 0,
+      "vlrIpi": 0,
+      "vlrFrete": 0,
+      "vlrSeguro": 0,
+      "vlrDespesa": 0,
+      "chaveNfe": null,
+      "dtNfe": null,
+      "mensagem": "Devolução criada pelo Swagger",
+      "ativo": true,
+      "itens": [
+        {
+          "delete": false,
+          "chave": "01-800000002-1-CLI-TESTE-01-0001",
+          "produtoChave": "01-PROD-TESTE",
+          "armazemChave": "01-ARM-TESTE",
+          "item": 1,
+          "cfop": "1202",
+          "quantidade": 1,
+          "vlrUnitario": 29.9,
+          "vlrDesconto": 0,
+          "vlrTotal": 29.9,
+          "vlrIcms": 5.08,
+          "vlrIcmsSt": 0,
+          "vlrIpi": 0,
+          "peso": 1.5,
+          "ativo": true
+        }
+      ]
+    }
+  },
+  "POST /api/v1/integracao/titulos-receber": {
+    "body": {
+      "chave": "01-NF-900000001-A-NF",
+      "codigoErp": "NF-900000001-A-NF",
+      "clienteChave": "01-CLI-TESTE-01",
+      "vendedorChave": "01-VEND-TESTE",
+      "numero": "900000001",
+      "parcela": "A",
+      "prefixo": "NF",
+      "tipo": "NF",
+      "emissao": "2026-08-28T00:00:00.000Z",
+      "vencimento": "2026-09-28T00:00:00.000Z",
+      "vencimentoReal": "2026-09-28T00:00:00.000Z",
+      "valor": 89.7,
+      "saldo": 89.7,
+      "acrescimo": null,
+      "decrescimo": null,
+      "dtBaixa": null,
+      "formaPgto": "B",
+      "historico": "Título criado pelo Swagger",
+      "ativo": true,
+      "nossoNumero": "900000001",
+      "carteira": "09",
+      "contaBancariaDescricao": "CONTA TESTE",
+      "codigoBarras": null,
+      "linhaDigitavel": null,
+      "banco": "237",
+      "bancoNome": "BRADESCO",
+      "bancoCodigoCompensacao": "237-2",
+      "agencia": "1108",
+      "agenciaDv": "6",
+      "conta": "0630524",
+      "contaDv": "5",
+      "beneficiarioNome": "EMPRESA TESTE",
+      "beneficiarioDocumento": "19.654.062/0001-45",
+      "beneficiarioEndereco": "RUA TESTE, 100",
+      "localPagamento": "Pagavel em qualquer banco",
+      "aceite": "Sim",
+      "especieDocumento": "DM",
+      "nossoNumeroDac": "8",
+      "jurosValorDia": 0.03,
+      "multaValor": 1.79,
+      "descontoValor": null,
+      "instrucoes": null
+    }
+  },
+  "POST /api/v1/integracao/orcamentos": {
+    "observacao": "O endpoint existe, mas está inativo no catálogo BJIN002.",
+    "body": {
+      "chave": "01-ORC-TESTE",
+      "codigoErp": "ORC-TESTE",
+      "clienteChave": "01-CLI-TESTE-01",
+      "vendedorChave": "01-VEND-TESTE",
+      "condicaoPagamentoChave": "01-CP-TESTE",
+      "titulo": "ORCAMENTO TESTE SWAGGER",
+      "status": "enviado",
+      "dataValidade": "2026-09-28T00:00:00.000Z",
+      "dataRetorno": "2026-09-05T00:00:00.000Z",
+      "observacao": "Criado pelo Swagger",
+      "ativo": true,
+      "itens": [
+        {
+          "delete": false,
+          "chave": "01-ORC-TESTE-01",
+          "produtoChave": "01-PROD-TESTE",
+          "quantidade": 2,
+          "vlrUnitario": 29.9,
+          "percComissao": 4,
+          "regraDescontoChave": "01-REGRA-TESTE"
+        }
+      ]
+    }
+  },
+  "TESTE exclusao de faixa SZ0": {
+    "rota": "POST /api/v1/integracao/regras-desconto",
+    "body": {
+      "chave": "01-REGRA-TESTE",
+      "codigoErp": "REGRA-TESTE",
+      "descricao": "REGRA DE TESTE SWAGGER",
+      "percDescontoAutorizado": 10,
+      "percDescontoMaximo": 20,
+      "percComissao": 4,
+      "padrao": false,
+      "ativo": true,
+      "faixas": [
+        {
+          "delete": true,
+          "sequencia": 2,
+          "percInicial": 10.01,
+          "percFinal": 20,
+          "percBaseComissao": 80
+        }
+      ]
+    }
+  },
+  "TESTE exclusao de item DA1": {
+    "rota": "POST /api/v1/integracao/tabelas-preco",
+    "body": {
+      "chave": "01-TAB-TESTE",
+      "codigoErp": "TAB-TESTE",
+      "descricao": "TABELA TESTE SWAGGER",
+      "dtInicio": "2026-08-28T00:00:00.000Z",
+      "dtFim": null,
+      "ativo": true,
+      "itens": [
+        {
+          "delete": true,
+          "chave": "01-TAB-TESTE-PROD-TESTE",
+          "produtoChave": "01-PROD-TESTE",
+          "preco": 29.9,
+          "regraDescontoChave": "01-REGRA-TESTE",
+          "ativo": true
+        }
+      ]
+    }
+  },
+  "TESTE exclusao de item SD2": {
+    "rota": "POST /api/v1/integracao/notas-saida",
+    "body": {
+      "chave": "01-900000001-1-N-SPED",
+      "codigoErp": "900000001-1-N-SPED",
+      "clienteChave": "01-CLI-TESTE-01",
+      "vendedorChave": "01-VEND-TESTE",
+      "condicaoChave": "01-CP-TESTE",
+      "numero": "900000001",
+      "serie": "1",
+      "especieFiscal": "SPED",
+      "tipo": "N",
+      "dtEmissao": "2026-08-28T00:00:00.000Z",
+      "vlrBruto": 0,
+      "vlrMercadoria": 0,
+      "vlrItens": 0,
+      "vlrDesconto": 0,
+      "vlrIcms": 0,
+      "vlrIpi": 0,
+      "vlrFrete": 0,
+      "vlrDevolucao": 0,
+      "comodato": false,
+      "ativo": true,
+      "itens": [
+        {
+          "delete": true,
+          "chave": "01-900000001-1-0001",
+          "produtoChave": "01-PROD-TESTE",
+          "item": 1,
+          "quantidade": 3,
+          "vlrUnitario": 29.9,
+          "vlrDesconto": 0,
+          "vlrTotal": 89.7,
+          "comodato": false,
+          "ativo": true
+        }
+      ]
+    }
+  },
+  "TESTE exclusao de item SCK": {
+    "rota": "POST /api/v1/integracao/orcamentos",
+    "body": {
+      "chave": "01-ORC-TESTE",
+      "codigoErp": "ORC-TESTE",
+      "clienteChave": "01-CLI-TESTE-01",
+      "vendedorChave": "01-VEND-TESTE",
+      "condicaoPagamentoChave": "01-CP-TESTE",
+      "titulo": "ORCAMENTO TESTE SWAGGER",
+      "status": "enviado",
+      "ativo": true,
+      "itens": [
+        {
+          "delete": true,
+          "chave": "01-ORC-TESTE-01",
+          "produtoChave": "01-PROD-TESTE",
+          "quantidade": 2,
+          "vlrUnitario": 29.9,
+          "regraDescontoChave": "01-REGRA-TESTE"
+        }
+      ]
+    }
+  },
+  "_rotasSemBody": [
+    "GET /api/v1/integracao/<entidade>",
+    "GET /api/v1/integracao/<entidade>/{codigoErp}",
+    "DELETE /api/v1/integracao/<entidade>/{codigoErp}",
+    "GET /api/v1/integracao/notas-saida?semXml=true",
+    "DELETE /api/v1/integracao/notas-saida/{codigoErp}/xml"
+  ],
+  "_rotaXml": {
+    "rota": "POST /api/v1/integracao/notas-saida/{codigoErp}/xml",
+    "observacao": "Este endpoint usa multipart/form-data com arquivo XML, não application/json."
+  }
+}

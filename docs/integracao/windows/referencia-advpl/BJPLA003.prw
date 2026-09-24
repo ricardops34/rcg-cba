@@ -35,10 +35,11 @@ Varre as entidades e enfileira o que mudou.
 @param   dDataDe , date     , Data inicial opcional (ignora corte e usa inicio do dia em UTC)
 @param   dDataAte, date     , Data final opcional (limite ate o fim do dia em UTC)
 @param   oProcess, object   , MsNewProcess do monitor, para as reguas. Nil no agendamento
+@param   lEnvDel , logical  , .T. manda o que foi excluido na origem como DELETE. .F. filtra o D_E_L_E_T_ e nao manda exclusao nenhuma. Default .T.
 @return  array, {nLidos, nEnfileirados, nEntidades, nErros, cLote, cFalhas}. cFalhas lista, uma por linha, cada erro com a entidade e o motivo
 @example aTot := U_BJVARRE("produtos", "", Date() - 7, Date())
 /*/
-User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte, oProcess)
+User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte, oProcess, lEnvDel)
 
 	Local aTotal    := {0, 0, 0, 0, "", ""}
 	Local aCat      := U_BJCATALO()
@@ -59,6 +60,7 @@ User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte, oProcess)
 	Default cChave   := ""
 	Default dDataDe  := CToD("//")
 	Default dDataAte := CToD("//")
+	Default lEnvDel  := .T.
 
 	If !AllTrim(Upper(SuperGetMV("MV_BJAPI03", .F., "N"))) == "S"
 		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Integracao BJ desabilitada (MV_BJAPI03). Nada a varrer.", 0, 0, {})
@@ -210,7 +212,7 @@ User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte, oProcess)
 			oProcess:IncRegua1(aVarrer[nX][2] + " - " + cValToChar(nX) + " de " + cValToChar(Len(aVarrer)) + "...")
 		EndIf
 
-		BJVarreEnt(aVarrer[nX], cChave, @aTotal, dDataAte, cSeqMae, cAgora, cMarca, oProcess)
+		BJVarreEnt(aVarrer[nX], cChave, @aTotal, dDataAte, cSeqMae, cAgora, cMarca, oProcess, lEnvDel)
 
 	Next nX
 
@@ -283,9 +285,10 @@ Varre uma entidade e enfileira os registros que ela devolver, sob o lote
 @param   cAgora  , character, Instante de corte do lote, UTC, lido por BJVARRE
 @param   cMarca  , character, Inicio do intervalo a varrer, UTC, achado por BJVARRE
 @param   oProcess, object   , MsNewProcess do monitor, para a regua 2. Nil no agendamento
+@param   lEnvDel , logical  , .T. manda o excluido como DELETE. .F. filtra o D_E_L_E_T_ ja na origem
 @return  Nil
 /*/
-Static Function BJVarreEnt(aEnt, cChave, aTotal, dDataAte, cSeqMae, cAgora, cMarca, oProcess)
+Static Function BJVarreEnt(aEnt, cChave, aTotal, dDataAte, cSeqMae, cAgora, cMarca, oProcess, lEnvDel)
 
 	Local cId       := aEnt[1]
 	Local cColeta   := aEnt[4]
@@ -297,6 +300,8 @@ Static Function BJVarreEnt(aEnt, cChave, aTotal, dDataAte, cSeqMae, cAgora, cMar
 	Local bColeta   := Nil
 	Local cTrava    := "BJPLA_ENT_" + Upper(AllTrim(cId))
 	Local aArea     := GetArea()
+
+	Default lEnvDel := .T.
 
 	// Uma varredura por entidade de cada vez. Se a trava estiver tomada, outro processo esta varrendo esta entidade agora.
 	If !LockByName(cTrava, .T., .F.)
@@ -318,7 +323,7 @@ Static Function BJVarreEnt(aEnt, cChave, aTotal, dDataAte, cSeqMae, cAgora, cMar
 	EndIf
 
 	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Coletando " + aEnt[2] + " (" + cId + ") - lote " + cSeqMae + ;
-		" - intervalo: " + cMarca + " ate " + cMarcaFim, 0, 0, {})
+		" - intervalo: " + cMarca + " ate " + cMarcaFim + " - deletados: " + IIf(lEnvDel, "sim", "nao"), 0, 0, {})
 
 	// Enquanto o mapeador le a origem ainda nao se sabe quantos registros vem
 	If ValType(oProcess) == "O"
@@ -327,8 +332,8 @@ Static Function BJVarreEnt(aEnt, cChave, aTotal, dDataAte, cSeqMae, cAgora, cMar
 	EndIf
 
 	// O mapeador e chamado por macro: cada entidade tem a sua.
-	bColeta := &("{|cRef, cChv, cFim| " + cColeta + "(cRef, cChv, cFim) }")
-	aDados  := Eval(bColeta, cMarca, cChave, cMarcaFim)
+	bColeta := &("{|cRef, cChv, cFim, lDel| " + cColeta + "(cRef, cChv, cFim, lDel) }")
+	aDados  := Eval(bColeta, cMarca, cChave, cMarcaFim, lEnvDel)
 
 	If ValType(aDados) != "A"
 		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Mapeador " + cColeta + " nao devolveu array. Entidade " + cId + " ignorada.", 0, 0, {})
@@ -440,7 +445,7 @@ Regras de desconto - SZ0.
 @param   cChave, character, Codigo unico a reprocessar
 @return  array, {cChave, oJson, cVerbo}
 /*/
-User Function BJMAPRGD(cMarca, cChave, cMarcaFim)
+User Function BJMAPRGD(cMarca, cChave, cMarcaFim, lEnvDel)
 
 	Local aRet    := {}
 	Local cJanCab := ""
@@ -460,6 +465,7 @@ User Function BJMAPRGD(cMarca, cChave, cMarcaFim)
 	Default cMarca    := ""
 	Default cChave    := ""
 	Default cMarcaFim := ""
+	Default lEnvDel   := .T.
 
 	cQuery := "SELECT Z0_FILIAL, Z0_CODIGO, Z0_DESC, Z0_DESCAUT, Z0_PERMAX, Z0_COMISS, Z0_PADRAO, Z0_MSBLQL, SZ0.D_E_L_E_T_ AS DELETADO "
 	cQuery += "  FROM " + RetSQLName("SZ0") + " SZ0 "
@@ -467,8 +473,9 @@ User Function BJMAPRGD(cMarca, cChave, cMarcaFim)
 	cQuery += "   AND SZ0.Z0_FILIAL = ? "
 
 	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
-	// plataforma, entao nao vira DELETE.
-	If Empty(cMarca) .And. Empty(cChave)
+	// plataforma, entao nao vira DELETE. Com "Envia deletados? = Nao" o
+	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
+	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND SZ0.D_E_L_E_T_ = ' ' "
 	EndIf
 
@@ -545,8 +552,9 @@ User Function BJMAPRGD(cMarca, cChave, cMarcaFim)
 		cQryFx += "   AND SZ0.Z0_FILIAL  = ? "
 
 		// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
-		// plataforma, entao nao vira DELETE.
-		If Empty(cMarca) .And. Empty(cChave)
+		// plataforma, entao nao vira DELETE. Com "Envia deletados? = Nao" o
+		// filtro vale em qualquer coleta: linha excluida nem sai da origem.
+		If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 			cQryFx += "   AND SZ0.D_E_L_E_T_ = ' ' "
 		EndIf
 
@@ -603,7 +611,7 @@ Categorias - SZ1 (tipo de produto, as raizes) e SBM (grupo de produtos, as filha
 @param   cChave, character, Codigo unico a reprocessar
 @return  array, {cChave, oJson, cVerbo}
 /*/
-User Function BJMAPCAT(cMarca, cChave, cMarcaFim)
+User Function BJMAPCAT(cMarca, cChave, cMarcaFim, lEnvDel)
 
 	Local aRet   := {}
 	Local cCod   := ""
@@ -616,6 +624,7 @@ User Function BJMAPCAT(cMarca, cChave, cMarcaFim)
 	Default cMarca    := ""
 	Default cChave    := ""
 	Default cMarcaFim := ""
+	Default lEnvDel   := .T.
 
 	// ----- SZ1: as raizes, que sobem primeiro porque a API exige a pai antes
 	cQuery := "SELECT Z1_FILIAL, Z1_TIPO, Z1_DESCRIC, SZ1.D_E_L_E_T_ AS DELETADO "
@@ -624,8 +633,9 @@ User Function BJMAPCAT(cMarca, cChave, cMarcaFim)
 	cQuery += "   AND SZ1.Z1_FILIAL = ? "
 
 	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
-	// plataforma, entao nao vira DELETE.
-	If Empty(cMarca) .And. Empty(cChave)
+	// plataforma, entao nao vira DELETE. Com "Envia deletados? = Nao" o
+	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
+	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND SZ1.D_E_L_E_T_ = ' ' "
 	EndIf
 
@@ -699,8 +709,9 @@ User Function BJMAPCAT(cMarca, cChave, cMarcaFim)
 	cQuery += "   AND SBM.BM_FILIAL = ? "
 
 	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
-	// plataforma, entao nao vira DELETE.
-	If Empty(cMarca) .And. Empty(cChave)
+	// plataforma, entao nao vira DELETE. Com "Envia deletados? = Nao" o
+	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
+	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND SBM.D_E_L_E_T_ = ' ' "
 	EndIf
 
@@ -779,7 +790,7 @@ Condicoes de pagamento - SE4.
 @param   cChave, character, Codigo unico a reprocessar
 @return  array, {cChave, oJson, cVerbo}
 /*/
-User Function BJMAPCND(cMarca, cChave, cMarcaFim)
+User Function BJMAPCND(cMarca, cChave, cMarcaFim, lEnvDel)
 
 	Local aRet   := {}
 	Local cCod   := ""
@@ -792,6 +803,7 @@ User Function BJMAPCND(cMarca, cChave, cMarcaFim)
 	Default cMarca    := ""
 	Default cChave    := ""
 	Default cMarcaFim := ""
+	Default lEnvDel   := .T.
 
 	cQuery := "SELECT E4_FILIAL, E4_CODIGO, E4_DESCRI, E4_FORMA, E4_MSBLQL, SE4.D_E_L_E_T_ AS DELETADO "
 	cQuery += "  FROM " + RetSQLName("SE4") + " SE4 "
@@ -799,8 +811,9 @@ User Function BJMAPCND(cMarca, cChave, cMarcaFim)
 	cQuery += "   AND SE4.E4_FILIAL = ? "
 
 	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
-	// plataforma, entao nao vira DELETE.
-	If Empty(cMarca) .And. Empty(cChave)
+	// plataforma, entao nao vira DELETE. Com "Envia deletados? = Nao" o
+	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
+	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND SE4.D_E_L_E_T_ = ' ' "
 	EndIf
 
@@ -874,7 +887,7 @@ Armazens - NNR.
 @param   cChave, character, Codigo unico a reprocessar
 @return  array, {cChave, oJson, cVerbo}
 /*/
-User Function BJMAPARM(cMarca, cChave, cMarcaFim)
+User Function BJMAPARM(cMarca, cChave, cMarcaFim, lEnvDel)
 
 	Local aRet   := {}
 	Local cCod   := ""
@@ -887,6 +900,7 @@ User Function BJMAPARM(cMarca, cChave, cMarcaFim)
 	Default cMarca    := ""
 	Default cChave    := ""
 	Default cMarcaFim := ""
+	Default lEnvDel   := .T.
 
 	cQuery := "SELECT NNR_FILIAL, NNR_CODIGO, NNR_DESCRI, NNR_MSBLQL, NNR.D_E_L_E_T_ AS DELETADO "
 	cQuery += "  FROM " + RetSQLName("NNR") + " NNR "
@@ -894,8 +908,9 @@ User Function BJMAPARM(cMarca, cChave, cMarcaFim)
 	cQuery += "   AND NNR.NNR_FILIAL = ? "
 
 	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
-	// plataforma, entao nao vira DELETE.
-	If Empty(cMarca) .And. Empty(cChave)
+	// plataforma, entao nao vira DELETE. Com "Envia deletados? = Nao" o
+	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
+	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND NNR.D_E_L_E_T_ = ' ' "
 	EndIf
 
@@ -963,7 +978,7 @@ Produtos - SB1.
 @param   cChave, character, Codigo unico a reprocessar
 @return  array, {cChave, oJson, cVerbo}
 /*/
-User Function BJMAPPRD(cMarca, cChave, cMarcaFim)
+User Function BJMAPPRD(cMarca, cChave, cMarcaFim, lEnvDel)
 
 	Local aRet   := {}
 	Local cCod   := ""
@@ -976,10 +991,15 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim)
 	Local lPrv   := SB1->(FieldPos("B1_PRV1"))    > 0
 	Local lGtin  := SB1->(FieldPos("B1_CODGTIN")) > 0
 	Local lPeso  := SB1->(FieldPos("B1_PESO"))    > 0
+	Local lProc  := SB1->(FieldPos("B1_PROC"))    > 0 .And. SB1->(FieldPos("B1_LOJPROC")) > 0
+	Local lXFor  := SB1->(FieldPos("B1_XFOR"))    > 0
+	Local lXDesF := SB1->(FieldPos("B1_XDESFOR")) > 0
+	Local lXTec  := SB1->(FieldPos("B1_XTEC"))    > 0
 
 	Default cMarca    := ""
 	Default cChave    := ""
 	Default cMarcaFim := ""
+	Default lEnvDel   := .T.
 
 	cQuery := "SELECT B1_FILIAL, B1_COD, B1_DESC, B1_UM, B1_GRUPO, B1_TPRCG, B1_LOCPAD, B1_POSIPI, B1_CODBAR, B1_MSBLQL, SB1.D_E_L_E_T_ AS DELETADO "
 
@@ -995,14 +1015,27 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim)
 	If lPeso
 		cQuery += ", B1_PESO "
 	EndIf
+	If lProc
+		cQuery += ", B1_PROC, B1_LOJPROC "
+	EndIf
+	If lXFor
+		cQuery += ", B1_XFOR "
+	EndIf
+	If lXDesF
+		cQuery += ", B1_XDESFOR "
+	EndIf
+	If lXTec
+		cQuery += ", B1_XTEC "
+	EndIf
 
 	cQuery += "  FROM " + RetSQLName("SB1") + " SB1 "
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND SB1.B1_FILIAL = ? "
 
 	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
-	// plataforma, entao nao vira DELETE.
-	If Empty(cMarca) .And. Empty(cChave)
+	// plataforma, entao nao vira DELETE. Com "Envia deletados? = Nao" o
+	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
+	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND SB1.D_E_L_E_T_ = ' ' "
 	EndIf
 
@@ -1098,25 +1131,25 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim)
 			oJson["ultimoPreco"] := (cAlias)->B1_PRV1
 		EndIf
 
-		If SB1->(FieldPos("B1_PROC")) > 0 .And. !Empty((cAlias)->B1_PROC)
+		If lProc .And. !Empty((cAlias)->B1_PROC)
 			oJson["fabricanteChave"] := FWxFilial("SA2") + "-" + AllTrim((cAlias)->B1_PROC) + "-" + AllTrim((cAlias)->B1_LOJPROC)
 		Else
 			oJson["fabricanteChave"] := Nil
 		EndIf
 
-		If SB1->(FieldPos("B1_XFOR")) > 0 .And. !Empty((cAlias)->B1_XFOR)
+		If lXFor .And. !Empty((cAlias)->B1_XFOR)
 			oJson["codigoFabricante"] := AllTrim((cAlias)->B1_XFOR)
 		Else
 			oJson["codigoFabricante"] := Nil
 		EndIf
 
-		If SB1->(FieldPos("B1_XDESFOR")) > 0 .And. !Empty((cAlias)->B1_XDESFOR)
+		If lXDesF .And. !Empty((cAlias)->B1_XDESFOR)
 			oJson["descricaoFabricante"] := AllTrim((cAlias)->B1_XDESFOR)
 		Else
 			oJson["descricaoFabricante"] := Nil
 		EndIf
 
-		If SB1->(FieldPos("B1_XTEC")) > 0 .And. !Empty((cAlias)->B1_XTEC)
+		If lXTec .And. !Empty((cAlias)->B1_XTEC)
 			oJson["dadosTecnicos"] := AllTrim((cAlias)->B1_XTEC)
 		Else
 			oJson["dadosTecnicos"] := Nil
@@ -1146,7 +1179,7 @@ Vendedores - SA3.
 @param   cChave, character, Codigo unico a reprocessar
 @return  array, {cChave, oJson, cVerbo}
 /*/
-User Function BJMAPVND(cMarca, cChave, cMarcaFim)
+User Function BJMAPVND(cMarca, cChave, cMarcaFim, lEnvDel)
 
 	Local aRet    := {}
 	Local aSuper  := {}
@@ -1172,6 +1205,7 @@ User Function BJMAPVND(cMarca, cChave, cMarcaFim)
 	Default cMarca    := ""
 	Default cChave    := ""
 	Default cMarcaFim := ""
+	Default lEnvDel   := .T.
 
 	cQuery := "SELECT A3_FILIAL, A3_COD, A3_NOME, A3_NREDUZ, A3_EMAIL, A3_TEL, A3_DDDTEL, A3_MSBLQL, SA3.D_E_L_E_T_ AS DELETADO "
 
@@ -1193,8 +1227,9 @@ User Function BJMAPVND(cMarca, cChave, cMarcaFim)
 	cQuery += "   AND SA3.A3_FILIAL = ? "
 
 	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
-	// plataforma, entao nao vira DELETE.
-	If Empty(cMarca) .And. Empty(cChave)
+	// plataforma, entao nao vira DELETE. Com "Envia deletados? = Nao" o
+	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
+	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND SA3.D_E_L_E_T_ = ' ' "
 	EndIf
 
@@ -1460,7 +1495,7 @@ Clientes - SA1.
 @param   cChave, character, Codigo + loja a reprocessar
 @return  array, {cChave, oJson, cVerbo}
 /*/
-User Function BJMAPCLI(cMarca, cChave, cMarcaFim)
+User Function BJMAPCLI(cMarca, cChave, cMarcaFim, lEnvDel)
 
 	Local aRet    := {}
 	Local aParte  := {}
@@ -1485,6 +1520,7 @@ User Function BJMAPCLI(cMarca, cChave, cMarcaFim)
 	Default cMarca    := ""
 	Default cChave    := ""
 	Default cMarcaFim := ""
+	Default lEnvDel   := .T.
 
 	cQuery := "SELECT A1_FILIAL, A1_COD, A1_LOJA, A1_NOME, A1_NREDUZ, A1_PESSOA, A1_CGC, A1_INSCR, A1_CONTRIB, SA1.D_E_L_E_T_ AS DELETADO, "
 	cQuery += "       A1_END, A1_COMPLEM, A1_BAIRRO, A1_MUN, A1_EST, A1_CEP, "
@@ -1521,8 +1557,9 @@ User Function BJMAPCLI(cMarca, cChave, cMarcaFim)
 	cQuery += "   AND SA1.A1_FILIAL = ? "
 
 	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
-	// plataforma, entao nao vira DELETE.
-	If Empty(cMarca) .And. Empty(cChave)
+	// plataforma, entao nao vira DELETE. Com "Envia deletados? = Nao" o
+	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
+	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND SA1.D_E_L_E_T_ = ' ' "
 	EndIf
 
@@ -1684,7 +1721,7 @@ Fornecedores - SA2.
 @param   cChave, character, Chave de integracao a reprocessar
 @return  array, {cChave, oJson, cVerbo}
 /*/
-User Function BJMAPFOR(cMarca, cChave, cMarcaFim)
+User Function BJMAPFOR(cMarca, cChave, cMarcaFim, lEnvDel)
 
 	Local aRet    := {}
 	Local aChave  := {}
@@ -1703,6 +1740,7 @@ User Function BJMAPFOR(cMarca, cChave, cMarcaFim)
 	Default cMarca    := ""
 	Default cChave    := ""
 	Default cMarcaFim := ""
+	Default lEnvDel   := .T.
 
 	cQuery := "SELECT A2_FILIAL, A2_COD, A2_LOJA, A2_NOME, A2_NREDUZ, A2_CGC, A2_INSCR, SA2.D_E_L_E_T_ AS DELETADO, "
 	cQuery += "       A2_INSCRM, A2_TIPO, A2_CONTATO, "
@@ -1718,8 +1756,9 @@ User Function BJMAPFOR(cMarca, cChave, cMarcaFim)
 	cQuery += "   AND SA2.A2_FILIAL = ? "
 
 	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
-	// plataforma, entao nao vira DELETE.
-	If Empty(cMarca) .And. Empty(cChave)
+	// plataforma, entao nao vira DELETE. Com "Envia deletados? = Nao" o
+	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
+	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND SA2.D_E_L_E_T_ = ' ' "
 	EndIf
 
@@ -1845,7 +1884,7 @@ Tabelas de preco - DA0 (cabecalho) e DA1 (itens).
 @param   cChave, character, Codigo de tabela a reprocessar
 @return  array, {cChave, oJson, cVerbo}
 /*/
-User Function BJMAPTAB(cMarca, cChave, cMarcaFim)
+User Function BJMAPTAB(cMarca, cChave, cMarcaFim, lEnvDel)
 
 	Local cJanCab := ""
 	Local cJanDet := ""
@@ -1865,6 +1904,7 @@ User Function BJMAPTAB(cMarca, cChave, cMarcaFim)
 	Default cMarca    := ""
 	Default cChave    := ""
 	Default cMarcaFim := ""
+	Default lEnvDel   := .T.
 
 	cQuery := "SELECT DA0_FILIAL, DA0_CODTAB, DA0_DESCRI, DA0_DATDE, DA0_DATATE, DA0_ATIVO, DA0.D_E_L_E_T_ AS DELETADO, "
 	cQuery += "       DA1_FILIAL, DA1_ITEM, DA1_CODPRO, DA1_PRCVEN, DA1_ATIVO, DA1.D_E_L_E_T_ AS ITEM_DELETADO "
@@ -1875,7 +1915,9 @@ User Function BJMAPTAB(cMarca, cChave, cMarcaFim)
 
 	// O JOIN inclui ativos e excluidos, sem filtro de D_E_L_E_T_ nem na carga
 	// inicial: o item excluido vai com delete no proprio item, e a plataforma
-	// o apaga. Excluir um item que ela nunca recebeu nao faz nada.
+	// o apaga. Excluir um item que ela nunca recebeu nao faz nada. So "Envia
+	// deletados? = Nao" corta o item excluido, e o corte vai no ON: no WHERE
+	// ele derrubaria junto a tabela que so tem itens excluidos.
 	cQuery += "  FROM " + RetSQLName("DA0") + " DA0 "
 	cQuery += "  LEFT JOIN " + RetSQLName("DA1") + " DA1 "
 	cQuery += "    ON DA1.DA1_FILIAL = DA0.DA0_FILIAL "
@@ -1886,6 +1928,11 @@ User Function BJMAPTAB(cMarca, cChave, cMarcaFim)
 	cQuery += "                             AND DA1X.DA1_CODTAB = DA1.DA1_CODTAB "
 	cQuery += "                             AND DA1X.DA1_CODPRO = DA1.DA1_CODPRO "
 	cQuery += "                             AND DA1X.DA1_ITEM   = DA1.DA1_ITEM) "
+
+	If !lEnvDel
+		cQuery += "   AND DA1.D_E_L_E_T_ = ' ' "
+	EndIf
+
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND DA0.DA0_FILIAL = ? "
 	cQuery += "   AND DA0.R_E_C_N_O_ = (SELECT MAX(DA0X.R_E_C_N_O_) "
@@ -1894,8 +1941,9 @@ User Function BJMAPTAB(cMarca, cChave, cMarcaFim)
 	cQuery += "                             AND DA0X.DA0_CODTAB = DA0.DA0_CODTAB) "
 
 	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
-	// plataforma, entao nao vira DELETE.
-	If Empty(cMarca) .And. Empty(cChave)
+	// plataforma, entao nao vira DELETE. Com "Envia deletados? = Nao" o
+	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
+	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND DA0.D_E_L_E_T_ = ' ' "
 	EndIf
 
@@ -2028,7 +2076,7 @@ Saldo em estoque - SB2.
 @param   cChave, character, Chave "produto/armazem" a reprocessar
 @return  array, {cChave, oJson, cVerbo}
 /*/
-User Function BJMAPEST(cMarca, cChave, cMarcaFim)
+User Function BJMAPEST(cMarca, cChave, cMarcaFim, lEnvDel)
 
 	Local aRet    := {}
 	Local aParte  := {}
@@ -2046,6 +2094,7 @@ User Function BJMAPEST(cMarca, cChave, cMarcaFim)
 	Default cMarca    := ""
 	Default cChave    := ""
 	Default cMarcaFim := ""
+	Default lEnvDel   := .T.
 
 	cQuery := "SELECT B2_FILIAL, B2_COD, B2_LOCAL, B2_QATU, B2_RESERVA, SB2.D_E_L_E_T_ AS DELETADO "
 
@@ -2061,8 +2110,9 @@ User Function BJMAPEST(cMarca, cChave, cMarcaFim)
 	cQuery += "   AND SB2.B2_FILIAL = ? "
 
 	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
-	// plataforma, entao nao vira DELETE.
-	If Empty(cMarca) .And. Empty(cChave)
+	// plataforma, entao nao vira DELETE. Com "Envia deletados? = Nao" o
+	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
+	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND SB2.D_E_L_E_T_ = ' ' "
 	EndIf
 
@@ -2162,7 +2212,7 @@ Notas de saida - SF2 e SD2, na mesma leitura.
 @param   cChave, character, Chave de integracao a reprocessar
 @return  array, {cChave, oJson, cVerbo}
 /*/
-User Function BJMAPNFS(cMarca, cChave, cMarcaFim)
+User Function BJMAPNFS(cMarca, cChave, cMarcaFim, lEnvDel)
 
 	Local aRet     := {}
 	Local aItens   := {}
@@ -2188,6 +2238,7 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim)
 	Default cMarca    := ""
 	Default cChave    := ""
 	Default cMarcaFim := ""
+	Default lEnvDel   := .T.
 
 	cQuery := "SELECT F2_FILIAL, F2_DOC, F2_SERIE, F2_EMISSAO, SF2.D_E_L_E_T_ AS DELETADO, "
 	cQuery += "       F2_CLIENTE, F2_LOJA, F2_FORMUL, F2_VEND1, F2_COND, F2_ESPECIE, F2_TIPO, "
@@ -2241,14 +2292,20 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim)
 
 	// Sem filtro de D_E_L_E_T_ nos itens, nem na carga inicial: o item excluido
 	// vai com delete no proprio item. Excluir um item que a plataforma nunca
-	// recebeu nao faz nada.
+	// recebeu nao faz nada. So "Envia deletados? = Nao" corta o item excluido,
+	// e o corte vai no ON: no WHERE ele derrubaria junto a nota inteira que so
+	// tem itens excluidos.
+	If !lEnvDel
+		cQuery += "   AND SD2.D_E_L_E_T_ = ' ' "
+	EndIf
 
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND SF2.F2_FILIAL = ? "
 
 	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
-	// plataforma, entao nao vira DELETE.
-	If Empty(cMarca) .And. Empty(cChave)
+	// plataforma, entao nao vira DELETE. Com "Envia deletados? = Nao" o
+	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
+	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND SF2.D_E_L_E_T_ = ' ' "
 	EndIf
 
@@ -2457,7 +2514,7 @@ XML autorizado das notas de saida - SF2 e TSS.
 @param   cChave, character, Chave de integracao a reprocessar
 @return  array, {cChave, oJson, cVerbo}
 /*/
-User Function BJMAPXML(cMarca, cChave, cMarcaFim)
+User Function BJMAPXML(cMarca, cChave, cMarcaFim, lEnvDel)
 
 	Local aRet     := {}
 	Local aChave   := {}
@@ -2471,6 +2528,7 @@ User Function BJMAPXML(cMarca, cChave, cMarcaFim)
 	Default cMarca    := ""
 	Default cChave    := ""
 	Default cMarcaFim := ""
+	Default lEnvDel   := .T.
 
 	cQuery := "SELECT F2_FILIAL, F2_DOC, F2_SERIE, F2_CLIENTE, F2_LOJA, F2_FORMUL, F2_TIPO "
 	cQuery += "  FROM " + RetSQLName("SF2") + " SF2 "
@@ -2478,8 +2536,9 @@ User Function BJMAPXML(cMarca, cChave, cMarcaFim)
 	cQuery += "   AND SF2.F2_FILIAL = ? "
 
 	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
-	// plataforma, entao nao vira DELETE.
-	If Empty(cMarca) .And. Empty(cChave)
+	// plataforma, entao nao vira DELETE. Com "Envia deletados? = Nao" o
+	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
+	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND SF2.D_E_L_E_T_ = ' ' "
 	EndIf
 
@@ -2683,7 +2742,7 @@ Notas de entrada - SF1 (cabecalho) e SD1 (itens).
 @param   cChave, character, Chave de integracao a reprocessar
 @return  array, {cChave, oJson, cVerbo}
 /*/
-User Function BJMAPNFE(cMarca, cChave, cMarcaFim)
+User Function BJMAPNFE(cMarca, cChave, cMarcaFim, lEnvDel)
 
 	Local aRet     := {}
 	Local aChave   := {}
@@ -2721,6 +2780,7 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim)
 	Default cMarca    := ""
 	Default cChave    := ""
 	Default cMarcaFim := ""
+	Default lEnvDel   := .T.
 
 	cQuery := "SELECT F1_FILIAL, F1_DOC, F1_SERIE, F1_FORNECE, F1_LOJA, F1_FORMUL, SF1.D_E_L_E_T_ AS DELETADO, "
 	cQuery += "       F1_TIPO, F1_ESPECIE, F1_EMISSAO, F1_CHVNFE, F1_VALBRUT, "
@@ -2801,13 +2861,20 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim)
 
 	// Sem filtro de D_E_L_E_T_ nos itens, nem na carga inicial: o item excluido
 	// vai com delete no proprio item. Excluir um item que a plataforma nunca
-	// recebeu nao faz nada.
+	// recebeu nao faz nada. So "Envia deletados? = Nao" corta o item excluido,
+	// e o corte vai no ON: no WHERE ele derrubaria junto a nota inteira que so
+	// tem itens excluidos.
+	If !lEnvDel
+		cQuery += "   AND SD1.D_E_L_E_T_ = ' ' "
+	EndIf
+
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND SF1.F1_FILIAL = ? "
 
 	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
-	// plataforma, entao nao vira DELETE.
-	If Empty(cMarca) .And. Empty(cChave)
+	// plataforma, entao nao vira DELETE. Com "Envia deletados? = Nao" o
+	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
+	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND SF1.D_E_L_E_T_ = ' ' "
 	EndIf
 
@@ -3086,7 +3153,7 @@ Titulos a receber - SE1.
 @param   cChave, character, Chave de integracao a reprocessar
 @return  array, {cChave, oJson, cVerbo}
 /*/
-User Function BJMAPTIT(cMarca, cChave, cMarcaFim)
+User Function BJMAPTIT(cMarca, cChave, cMarcaFim, lEnvDel)
 
 	Local aRet     := {}
 	Local aChave   := {}
@@ -3129,6 +3196,7 @@ User Function BJMAPTIT(cMarca, cChave, cMarcaFim)
 	Default cMarca    := ""
 	Default cChave    := ""
 	Default cMarcaFim := ""
+	Default lEnvDel   := .T.
 
 	// Endereco da empresa para a instrucao do boleto: o de cobranca quando existe,
 	// o de entrega como alternativa.
@@ -3206,8 +3274,9 @@ User Function BJMAPTIT(cMarca, cChave, cMarcaFim)
 	cQuery += "   AND SE1.E1_FILIAL = ? "
 
 	// Carga inicial (sem marca e sem chave): o excluido nunca chegou a
-	// plataforma, entao nao vira DELETE.
-	If Empty(cMarca) .And. Empty(cChave)
+	// plataforma, entao nao vira DELETE. Com "Envia deletados? = Nao" o
+	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
+	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND SE1.D_E_L_E_T_ = ' ' "
 	EndIf
 
@@ -3740,12 +3809,13 @@ Objetivos de venda - sem origem no ERP.
 @param   cChave, character, Chave de integracao a reprocessar
 @return  array, Vazio enquanto nao houver origem definida
 /*/
-User Function BJMAPOBJ(cMarca, cChave, cMarcaFim)
+User Function BJMAPOBJ(cMarca, cChave, cMarcaFim, lEnvDel)
 
 	Local aRet := {}
 
 	Default cMarca    := ""
 	Default cChave    := ""
 	Default cMarcaFim := ""
+	Default lEnvDel   := .T.
 
 Return aRet

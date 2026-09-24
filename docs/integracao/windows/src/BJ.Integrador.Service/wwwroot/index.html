@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BJ.Integrador - Monitor de Integração Protheus</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Navbar Header -->
+  <header class="navbar">
+    <div class="brand">
+      <div class="brand-icon">BJ</div>
+      <div class="brand-title">BJ.Integrador — Painel de Controle</div>
+    </div>
+    <nav class="nav-links">
+      <button class="nav-btn" data-tab="overview">Visão Geral</button>
+      <button class="nav-btn" data-tab="fluxos">Fluxos de Integração</button>
+      <button class="nav-btn" data-tab="config">⚙️ Configurações</button>
+      <button class="nav-btn" data-tab="cofre">Cofre de Credenciais</button>
+      <button class="nav-btn" data-tab="logs">Histórico de Logs</button>
+      <button class="nav-btn" data-tab="hangfire">Monitor Hangfire</button>
+    </nav>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-container">
+
+    <!-- TAB 1: Visão Geral -->
+    <section id="tab-overview" class="tab-content active">
+      <div class="stats-grid">
+        <div class="card">
+          <div class="card-title">Tenants / Empresas Ativas</div>
+          <div class="card-value" id="stat-empresas">-</div>
+          <div class="card-subtitle">Empresas isoladas por tenant</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Fluxos Ativos</div>
+          <div class="card-value" id="stat-fluxos">-</div>
+          <div class="card-subtitle">Agendamentos dinâmicos</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Fila Pendente</div>
+          <div class="card-value" id="stat-pendentes">-</div>
+          <div class="card-subtitle">Mensagens aguardando envio</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Total Processados</div>
+          <div class="card-value" id="stat-processados" style="color: var(--accent-success);">-</div>
+          <div class="card-subtitle">Executados com sucesso</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Falhas / Erros</div>
+          <div class="card-value" id="stat-erros" style="color: var(--accent-danger);">-</div>
+          <div class="card-subtitle">Tentativas com erro</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <h2 class="panel-title">Resumo Operacional do Serviço</h2>
+        </div>
+        <p style="color: var(--text-secondary); font-size: 0.9rem;">
+          O serviço <strong>BJ.Integrador</strong> roda em segundo plano coletando e processando registros das tabelas de fila do Protheus sem alterar o dicionário do ERP. O isolamento por empresa é reforçado por conexão própria e parâmetros hierárquicos.
+        </p>
+      </div>
+    </section>
+
+    <!-- TAB 2: Fluxos de Integração -->
+    <section id="tab-fluxos" class="tab-content">
+      <div class="panel">
+        <div class="panel-header">
+          <h2 class="panel-title">Fluxos de Integração Cadastrados</h2>
+        </div>
+        <table class="custom-table">
+          <thead>
+            <tr>
+              <th>Empresa:Fluxo</th>
+              <th>Direção</th>
+              <th>Tabela Fila</th>
+              <th>Endpoint REST</th>
+              <th>Expressão Cron</th>
+              <th>Último Status</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-fluxos">
+            <!-- Preenchido via JavaScript -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TAB: Configurações do Sistema -->
+    <section id="tab-config" class="tab-content">
+      <div class="panel" style="max-width: 850px;">
+        <div class="panel-header">
+          <h2 class="panel-title">⚙️ Configurações de Conexão e Serviço</h2>
+        </div>
+        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.5rem;">
+          Gerencie as Connection Strings do SQL Server e parâmetros do Monitor visual. Altera o arquivo <code>appsettings.json</code>.
+        </p>
+
+        <div class="form-group">
+          <label class="form-label" for="cfg-conn-config">String de Conexão — Banco do Integrador (BJ_INTEGRADOR):</label>
+          <div style="display: flex; gap: 0.5rem;">
+            <input type="text" id="cfg-conn-config" class="form-input" placeholder="Server=localhost;Database=BJ_INTEGRADOR;Trusted_Connection=True;Encrypt=False;" />
+            <button class="btn-trigger" onclick="testarConexao('cfg-conn-config', 'res-test-config')" style="white-space: nowrap;">🧪 Testar SQL</button>
+          </div>
+          <div id="res-test-config" class="test-feedback" style="display:none; margin-top: 0.5rem; font-size: 0.85rem;"></div>
+        </div>
+
+        <div class="form-group" style="margin-top: 1.5rem;">
+          <label class="form-label" for="cfg-conn-protheus">String de Conexão — Banco ERP Protheus (TOTVS):</label>
+          <div style="display: flex; gap: 0.5rem;">
+            <input type="text" id="cfg-conn-protheus" class="form-input" placeholder="Server=localhost;Database=PROTHEUS;Trusted_Connection=True;Encrypt=False;" />
+            <button class="btn-trigger" onclick="testarConexao('cfg-conn-protheus', 'res-test-protheus')" style="white-space: nowrap;">🧪 Testar SQL</button>
+          </div>
+          <div id="res-test-protheus" class="test-feedback" style="display:none; margin-top: 0.5rem; font-size: 0.85rem;"></div>
+        </div>
+
+        <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.08); margin: 1.5rem 0;" />
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+          <div class="form-group">
+            <label class="form-label" for="cfg-porta">Porta Web Service:</label>
+            <input type="number" id="cfg-porta" class="form-input" value="5080" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="cfg-usuario">Usuário de Acesso:</label>
+            <input type="text" id="cfg-usuario" class="form-input" value="admin" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="cfg-senha">Nova Senha (opcional):</label>
+            <input type="password" id="cfg-senha" class="form-input" placeholder="Manter atual" />
+          </div>
+        </div>
+
+        <div style="margin-top: 1.5rem; display: flex; gap: 1rem; align-items: center;">
+          <button class="btn-trigger" onclick="salvarConfiguracoes()" style="background: linear-gradient(135deg, #10b981, #059669); padding: 0.75rem 1.5rem; font-size: 0.9rem;">💾 Salvar Configurações</button>
+          <span id="cfg-salvar-status" style="font-size: 0.85rem; color: var(--accent-success);"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: Cofre de Credenciais (DPAPI) -->
+    <section id="tab-cofre" class="tab-content">
+      <div class="panel" style="max-width: 700px;">
+        <div class="panel-header">
+          <h2 class="panel-title">🔒 Cofre de Credenciais (Criptografia DPAPI)</h2>
+        </div>
+        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.5rem;">
+          Criptografe tokens e senhas de API REST utilizando a proteção do Windows Server (DPAPI escopo máquina). Grave a string gerada na coluna <code>integ.Empresa.CredencialCriptografada</code>.
+        </p>
+
+        <div class="form-group">
+          <label class="form-label" for="input-credencial">Token ou Senha de API em Texto Puro:</label>
+          <input type="password" id="input-credencial" class="form-input" placeholder="Cole sua chave de API ou token Bearer aqui..." />
+        </div>
+
+        <button class="btn-trigger" onclick="protegerCredencial()">Gerar Valor Criptografado</button>
+
+        <div id="result-credencial" class="result-box" style="display: none;"></div>
+      </div>
+    </section>
+
+    <!-- TAB 4: Histórico de Logs -->
+    <section id="tab-logs" class="tab-content">
+      <div class="panel">
+        <div class="panel-header">
+          <h2 class="panel-title">📜 Histórico Recente de Execuções</h2>
+        </div>
+        <table class="custom-table">
+          <thead>
+            <tr>
+              <th>Data/Hora</th>
+              <th>Empresa:Fluxo</th>
+              <th>Requisição</th>
+              <th>HTTP Status</th>
+              <th>Duração</th>
+              <th>Resultado</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-logs">
+            <!-- Preenchido via JavaScript -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TAB 5: Monitor Hangfire -->
+    <section id="tab-hangfire" class="tab-content">
+      <div class="panel" style="padding: 0.5rem;">
+        <iframe src="/monitor" class="iframe-monitor"></iframe>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

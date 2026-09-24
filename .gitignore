@@ -21,3 +21,17 @@ docs/seguranca/
 # Importações locais com dados reais e relatórios derivados.
 docs/sql/
 scripts/
+
+# Compilação .NET e Executáveis Windows (BJ.Integrador)
+*.exe
+*.dll
+*.pdb
+bin/
+obj/
+publish/
+docs/integracao/windows/publish/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+

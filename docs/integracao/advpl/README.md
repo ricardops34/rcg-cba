@@ -389,6 +389,12 @@ O mapeador seleciona alterações por `S_T_A_M_P_` sem filtrar `D_E_L_E_T_`.
 Registro ativo gera `POST` (upsert); registro excluído gera `DELETE` com a
 mesma chave. Não existe varredura independente de exclusões.
 
+**O Gerar do monitor pergunta "Envia deletados?".** Em **Sim** vale o que
+está descrito aqui, e é o que a coleta agendada faz. Em **Não** o filtro
+`D_E_L_E_T_ = ' '` entra em todos os mapeadores, cabeçalho e item: a coleta
+nem lê a linha excluída, e nenhum `DELETE` entra na fila. Serve para a carga
+por datas, em que a marca preenchida faria a linha excluída subir.
+
 **Incluído e excluído entre duas coletas: vão duas mensagens.** A coleta lê o
 estado atual do registro, então um registro criado e apagado no intervalo
 apareceria só como `DELETE`. Antes de enfileirar um `DELETE`, a coleta pergunta
@@ -425,7 +431,9 @@ filial fica em branco e a chave começa pelo hífen.
 **Mestre e detalhe vão sempre juntos** (DA0/DA1, SF2/SD2, SF1/SD1 e, no
 retorno, SC5/SC6), cada item com a própria `chave`. Os itens são lidos **sem
 filtro de `D_E_L_E_T_`**, inclusive na carga inicial: o excluído vai com
-`delete: true` e a plataforma o apaga.
+`delete: true` e a plataforma o apaga. Com **Envia deletados? = Não** o item
+excluído é cortado no `ON` do JOIN — no `WHERE` ele derrubaria junto o
+cabeçalho que só tem itens excluídos.
 
 **No retorno** a plataforma devolve as chaves (`clienteChave`, `produtoChave`...)
 e o `U_BJSEMFIL` tira a filial e o hífen para chegar ao valor do ERP. Depois de
@@ -501,7 +509,9 @@ mensagem executada na SZZ responde que o pedido já existe, com o número dele e
 ### Exclusões
 
 Cada mapeador lê `D_E_L_E_T_` sem usá-lo como filtro. Valor em branco gera
-POST (upsert); preenchido gera DELETE com a mesma `chave`.
+POST (upsert); preenchido gera DELETE com a mesma `chave`. As duas exceções,
+em que o filtro volta e nada excluído sai da origem: a carga inicial e o
+**Envia deletados? = Não** do Gerar.
 
 Não há registro do que já foi enviado antes, então um `DELETE` pode chegar
 para uma chave que a plataforma nunca conheceu. A API responde **404** e o
@@ -626,7 +636,7 @@ ficam no mesmo menu, e operam sobre o lote posicionado:
 
 | Opção | O que faz |
 |---|---|
-| **Gerar** | Pede entidade (ou "Todas as entidades ativas") e, opcionalmente, chave ou intervalo de datas (`ParamBox`); roda a coleta com esses parâmetros e cria um lote novo |
+| **Gerar** | Pede entidade (ou "Todas as entidades ativas"), opcionalmente chave ou intervalo de datas, e **Envia deletados?** (`ParamBox`); roda a coleta com esses parâmetros e cria um lote novo |
 | **Enviar** | Drena só as mensagens do lote posicionado na lista. Sem lote posicionado, o agendamento de envio percorre os lotes `1` e `3`, do mais antigo ao mais novo |
 | **Receber** | Pergunta na plataforma se há orçamentos aprovados ou alterações de cliente; se houver, grava um lote e já aplica no ERP, confirmando o status lá — tudo numa chamada |
 | **Mensagens** | Lista as mensagens do lote posicionado (SZZ) e abre a escolhida, com payload e resposta |
