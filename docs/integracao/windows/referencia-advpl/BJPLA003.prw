@@ -209,6 +209,10 @@ User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte, oProcess, lEnvDel)
 	For nX := 1 To Len(aVarrer)
 
 		If ValType(oProcess) == "O"
+			If oProcess:lEnd
+				FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Varredura interrompida pelo usuario no lote " + cSeqMae, 0, 0, {})
+				Exit
+			EndIf
 			oProcess:IncRegua1(aVarrer[nX][2] + " - " + cValToChar(nX) + " de " + cValToChar(Len(aVarrer)) + "...")
 		EndIf
 
@@ -354,6 +358,10 @@ Static Function BJVarreEnt(aEnt, cChave, aTotal, dDataAte, cSeqMae, cAgora, cMar
 	For nX := 1 To Len(aDados)
 
 		If ValType(oProcess) == "O"
+			If oProcess:lEnd
+				FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Coleta da entidade " + cId + " interrompida pelo usuario.", 0, 0, {})
+				Exit
+			EndIf
 			oProcess:IncRegua2("Registro: " + cValToChar(nX) + " de " + cValToChar(Len(aDados)) + ". " + ;
 				Transform(Round(nX * 100 / Len(aDados), 2), "@E 999.99") + "%")
 		EndIf

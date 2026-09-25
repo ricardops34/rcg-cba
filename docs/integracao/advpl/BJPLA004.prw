@@ -1188,6 +1188,10 @@ User Function BJDRENA(nLimite, cSeqMae, oProcess)
 		For nX := 1 To Len(aFila)
 
 			If ValType(oProcess) == "O"
+				If oProcess:lEnd
+					FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Envio do lote " + cLote + " interrompido pelo usuario.", 0, 0, {})
+					Exit
+				EndIf
 				If nX == 1 .Or. !(aFila[nX][2] == aFila[nX - 1][2])
 					nGrupo += 1
 					nNoGrp := 0
@@ -1469,6 +1473,10 @@ User Function BJLOTE(nLimite, oProcess)
 			aRegistro := {}
 
 			If ValType(oProcess) == "O"
+				If oProcess:lEnd
+					FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Envio em bloco interrompido pelo usuario.", 0, 0, {})
+					Exit
+				EndIf
 				oProcess:IncRegua2("Registros " + cValToChar(nIni) + " a " + cValToChar(nFim) + " de " + cValToChar(Len(aLote)) + ". " + ;
 					Transform(Round(nFim * 100 / Len(aLote), 2), "@E 999.99") + "%")
 			EndIf
