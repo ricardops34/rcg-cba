@@ -430,16 +430,48 @@ export class IntegracaoTitulosReceberService {
     descricao: string | null | undefined,
   ) {
     if (!descricao) return null;
-    const conta = await tx.contaBancaria.findFirst({
+
+    // 1. Busca por descrição exata (ex: '237/2201/014575-0/06')
+    let conta = await tx.contaBancaria.findFirst({
       where: { empresaId, descricao, deletedAt: null },
       select: { id: true },
     });
-    if (!conta) {
-      throw new NotFoundException(
-        `contaBancariaDescricao '${descricao}' não encontrada no cadastro de contas bancárias`,
-      );
+
+    if (conta) return conta.id;
+
+    // 2. Fallback: se a descrição for composta por 'banco/agencia/conta/carteira', busca pelos campos individuais
+    const partes = descricao.split('/').map((p) => p.trim());
+    if (partes.length >= 3) {
+      const banco = partes[0];
+      const agencia = partes[1];
+      const contaNum = partes[2];
+      const carteira = partes.length >= 4 ? partes[3] : undefined;
+
+      const agenciaLimpa = agencia.replace(/^0+/, '') || agencia;
+      const contaLimpa = contaNum.replace(/^0+/, '') || contaNum;
+
+      conta = await tx.contaBancaria.findFirst({
+        where: {
+          empresaId,
+          deletedAt: null,
+          banco,
+          OR: [
+            { agencia, conta: contaNum },
+            { agencia: agenciaLimpa, conta: contaLimpa },
+            { agencia, conta: contaLimpa },
+            { agencia: agenciaLimpa, conta: contaNum },
+          ],
+          ...(carteira ? { carteira } : {}),
+        },
+        select: { id: true },
+      });
+
+      if (conta) return conta.id;
     }
-    return conta.id;
+
+    throw new NotFoundException(
+      `contaBancariaDescricao '${descricao}' não encontrada no cadastro de contas bancárias`,
+    );
   }
 
   /**
