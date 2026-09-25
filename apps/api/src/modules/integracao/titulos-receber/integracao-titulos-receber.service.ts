@@ -209,6 +209,7 @@ export class IntegracaoTitulosReceberService {
         tx,
         empresaId,
         input.contaBancariaDescricao,
+        input,
       );
 
       const dados = {
@@ -312,6 +313,7 @@ export class IntegracaoTitulosReceberService {
               tx,
               empresaId,
               input.contaBancariaDescricao,
+              input,
             )
           : undefined;
 
@@ -428,6 +430,7 @@ export class IntegracaoTitulosReceberService {
     tx: TenantTx,
     empresaId: string,
     descricao: string | null | undefined,
+    input?: Partial<IntegracaoTituloReceberCreate>,
   ) {
     if (!descricao) return null;
 
@@ -469,9 +472,34 @@ export class IntegracaoTitulosReceberService {
       if (conta) return conta.id;
     }
 
-    throw new NotFoundException(
-      `contaBancariaDescricao '${descricao}' não encontrada no cadastro de contas bancárias`,
-    );
+    // 3. Se a conta não existir, realiza o cadastro automático (auto-provisioning/upsert)
+    const novoBanco = input?.banco ?? (partes.length >= 1 ? partes[0] : '237');
+    const novaAgencia = input?.agencia ?? (partes.length >= 2 ? partes[1] : '0000');
+    const novaContaNum = input?.conta ?? (partes.length >= 3 ? partes[2] : '000000');
+    const novaCarteira = input?.carteira ?? (partes.length >= 4 ? partes[3] : '09');
+
+    const novaContaCriada = await tx.contaBancaria.create({
+      data: {
+        empresaId,
+        descricao,
+        banco: novoBanco,
+        agencia: novaAgencia,
+        agenciaDv: input?.agenciaDv ?? null,
+        conta: novaContaNum,
+        contaDv: input?.contaDv ?? null,
+        carteira: novaCarteira,
+        beneficiarioNome: input?.beneficiarioNome ?? null,
+        beneficiarioDocumento: input?.beneficiarioDocumento ?? null,
+        beneficiarioEndereco: input?.beneficiarioEndereco ?? null,
+        localPagamento: input?.localPagamento ?? 'Pagável preferencialmente em qualquer agência bancária',
+        aceite: input?.aceite ?? 'N',
+        especieDocumento: input?.especieDocumento ?? 'DM',
+        instrucoes: input?.instrucoes ?? null,
+      },
+      select: { id: true },
+    });
+
+    return novaContaCriada.id;
   }
 
   /**
