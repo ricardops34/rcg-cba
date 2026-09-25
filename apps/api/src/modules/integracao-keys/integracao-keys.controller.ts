@@ -21,6 +21,7 @@ import {
   INTEGRACAO_API_KEY_EXAMPLE,
 } from '@plataforma/contracts';
 import { IntegracaoKeysService } from './integracao-keys.service';
+import { IntegracaoEndpointsService } from './integracao-endpoints.service';
 import {
   IntegracaoApiKeyCreateDto,
   IntegracaoApiKeyQueryDto,
@@ -41,7 +42,40 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('integracao-keys')
 export class IntegracaoKeysController {
-  constructor(private readonly service: IntegracaoKeysService) {}
+  constructor(
+    private readonly service: IntegracaoKeysService,
+    private readonly endpointsService: IntegracaoEndpointsService,
+  ) {}
+
+  @ApiOperation({
+    summary: 'Monitor de endpoints de integração ERP',
+    description:
+      'Lista os endpoints de integração com status de ativação, data de último uso e contagem de chamadas. Requer integracao.visualizar.',
+  })
+  @RequirePermission('integracao', 'visualizar')
+  @Get('endpoints')
+  listarEndpoints(@CurrentUser() user: AuthenticatedUser) {
+    return this.endpointsService.listarEndpoints(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Ativar ou desativar endpoint de integração',
+    description:
+      'Ativa ou desativa um endpoint específico da API de integração ERP para a empresa. Requer integracao.editar.',
+  })
+  @RequirePermission('integracao', 'editar')
+  @Patch('endpoints/:endpointKey')
+  alternarEndpointStatus(
+    @Param('endpointKey') endpointKey: string,
+    @Body('ativo') ativo: boolean,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.endpointsService.alternarStatus(
+      user.empresaAtivaId,
+      endpointKey,
+      Boolean(ativo),
+    );
+  }
 
   @ApiOperation({
     summary: 'Listar chaves de API de integração',

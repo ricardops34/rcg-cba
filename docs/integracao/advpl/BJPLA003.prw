@@ -7,12 +7,12 @@
 //    ZZ_STATUS   "1" pendente         "2" executada    "3" erro
 //    ZY_STATUS   "1" nao processado   "2" processado   "3" erro
 //
-// Os ajustes sao parametros, lidos com SuperGetMV onde sao usados:
+// Os ajustes sao parametros, lidos com GetMV onde sao usados (SuperGetMV nao: guarda cache e a troca so vale reiniciando o AppServer):
 //
 //    MV_BJAPI03  Habilita a integracao (S/N)
-//    MV_BJAPI10  Recuo da marca d agua quando nao ha marca valida e a fila de
-//                saida ja tem mensagens, em dias. Com a fila vazia e carga
-//                inicial: a origem e lida inteira
+//    MV_BJAPI10  NAO E MAIS LIDO (26/09/2026). Fila com mensagens e sem marca e
+//                carga inicial que nao terminou: refaz a carga do corte
+//                (MV_BJAPI14), em vez de recuar dias e perder o resto
 
 /*/{Protheus.doc} BJPLA003
 Coleta dos dados do ERP para envio a Plataforma BJ.
@@ -36,18 +36,37 @@ Varre as entidades e enfileira o que mudou.
 @param   dDataAte, date     , Data final opcional (limite ate o fim do dia em UTC)
 @param   oProcess, object   , MsNewProcess do monitor, para as reguas. Nil no agendamento
 @param   lEnvDel , logical  , .T. manda o que foi excluido na origem como DELETE. .F. filtra o D_E_L_E_T_ e nao manda exclusao nenhuma. Default .T.
-@return  array, {nLidos, nEnfileirados, nEntidades, nErros, cLote, cFalhas}. cFalhas lista, uma por linha, cada erro com a entidade e o motivo
+@return  array, {nLidos, nEnfileirados, nEntidades, nErros, cLote, cFalhas, aLotes, aClsErro}. cLote e o primeiro lote aberto; aLotes, todos (a coleta abre um por entidade e por fatia de MV_BJAPI12). cFalhas lista, uma por linha, cada erro com a entidade e o motivo; aClsErro, os pesos das classes com erro (vao para o MV_BJAPI15)
 @example aTot := U_BJVARRE("produtos", "", Date() - 7, Date())
 /*/
 User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte, oProcess, lEnvDel)
 
-	Local aTotal    := {0, 0, 0, 0, "", ""}
+	Local aTotal    := {0, 0, 0, 0, "", "", {}, {}}
 	Local aCat      := U_BJCATALO()
 	Local nX        := 0
-	Local cSeqMae   := ""
+	Local aLote     := {}
+	Local aCodLotes := {}
+	Local nMaxLote  := 0
+	Local nPeso     := 0
+	Local lPesoCarga := .F.
+	Local lEnvDelLe  := .T.
+	Local dCorte    := CToD("")
+	Local xCorte    := Nil
+	Local cCorteTxt := ""
+	Local lCorteOk  := .F.
+	Local cCh       := ""
+	Local nY        := 0
+	Local cFalhas   := ""
+	Local aFalhas   := {}
+	Local aOrdem    := {}
 	Local cAgora    := ""
+	Local dAgora    := CToD("")
+	Local nAgora    := 0
+	Local nMargem   := 0
+	Local dMargem   := CToD("")
+	Local cHrMarg   := ""
+	Local cMarcaNova := ""
 	Local cMarca    := ""
-	Local nTamSeq   := 0
 	Local cQuerySeq := ""
 	Local cAliasSeq := ""
 	Local oStmtSeq  := Nil
@@ -56,14 +75,39 @@ User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte, oProcess, lEnvDel)
 	Local lCarga    := .F.
 	Local aVarrer   := {}
 
+	// Agendamento: o Schedule passa {empresa, filial, ...} no PRIMEIRO
+	// parametro. Aqui array tambem e lista de entidades (os grupos do monitor),
+	// e o que separa os dois e o conteudo: lista de entidades traz ids do
+	// catalogo, e "01" nao e um. Separar pelo ambiente (cFilAnt) nao servia - o
+	// Schedule pode chegar com ambiente aberto, e ai o {"01", "01"} era varrido
+	// como duas entidades inexistentes: a coleta rodava e nao lia nada.
+	If ValType(xEntid) == "A" .And. Len(xEntid) >= 2 .And. ValType(xEntid[1]) == "C" .And. ;
+		aScan(aCat, {|c| c[1] == AllTrim(xEntid[1])}) == 0
+		U_BJAMBIENTE(xEntid[1], xEntid[2])
+		xEntid := ""
+	EndIf
+
 	Default xEntid   := ""
 	Default cChave   := ""
 	Default dDataDe  := CToD("//")
 	Default dDataAte := CToD("//")
 	Default lEnvDel  := .T.
 
-	If !AllTrim(Upper(SuperGetMV("MV_BJAPI03", .F., "N"))) == "S"
+	// Primeira linha de toda rotina agendavel. Agendamento cadastrado como Job
+	// e lancado pelo agente do Schedule via WFLAUNCHER, SEM ambiente: cFilAnt
+	// nem existe, e a proxima leitura de parametro cai em "CFILANT".
+	U_BJAMBIENTE()
+
+	// ConOut e nao so FwLogMsg: neste servidor o FwLogMsg nao chega ao
+	// console.log, e sem isto nao ha como saber se o agendamento chegou aqui e
+	// por onde saiu.
+	ConOut("[BJPLA] U_BJVARRE inicio - thread " + cValToChar(ThreadId()) + ;
+		" - empresa/filial " + cEmpAnt + "/" + cFilAnt + ;
+		" - entidades: " + Iif(ValType(xEntid) == "A", cValToChar(Len(xEntid)) + " na lista", "'" + cValToChar(xEntid) + "'"))
+
+	If !AllTrim(Upper(GetMV("MV_BJAPI03"))) == "S"
 		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Integracao BJ desabilitada (MV_BJAPI03). Nada a varrer.", 0, 0, {})
+		ConOut("[BJPLA] U_BJVARRE saiu - MV_BJAPI03 = '" + cValToChar(GetMV("MV_BJAPI03")) + "', integracao desabilitada")
 		Return aTotal
 
 	EndIf
@@ -75,13 +119,35 @@ User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte, oProcess, lEnvDel)
 
 	If !LockByName(cTrava, .T., .F.)
 		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Coleta ja em andamento. Chamada ignorada.", 0, 0, {})
+		ConOut("[BJPLA] U_BJVARRE saiu - trava BJPLA_COLETA ocupada: outra coleta em andamento (monitor ou agendamento)")
 		Return aTotal
 	EndIf
 
 	// A hora vem em UTC porque o S_T_A_M_P_ e escrito pelo gatilho do DBAccess em UTC.
 	// Um instante so para o lote inteiro - todas as entidades varridas nesta chamada
 	// usam o mesmo corte.
-	cAgora := Left(StrTran(StrTran(FWTimeStamp(6, Date(), Time()), "T", " "), "Z", ""), 19)
+	dAgora := Date()
+	nAgora := Seconds()
+	cAgora := Left(StrTran(StrTran(FWTimeStamp(6, dAgora, Time()), "T", " "), "Z", ""), 19)
+
+	// A marca que esta coleta vai gravar e o inicio dela MENOS 10 minutos, para
+	// a proxima reler esse trecho (decisao do usuario, 26/09/2026). Cobre dois
+	// jeitos de perder registro em silencio: o relogio do AppServer (cAgora)
+	// adiantado em relacao ao do banco (S_T_A_M_P_), e a transacao longa do
+	// Protheus que grava antes do cAgora e so confirma depois da consulta da
+	// entidade. O que for lido de novo nao duplica: a API faz upsert pela chave e
+	// o envio marca a mensagem mais antiga como superada (BJSuperada, BJPLA004).
+	nMargem := nAgora - 600   // 10 minutos
+
+	If nMargem < 0
+		dMargem := dAgora - 1
+		nMargem += 86400
+	Else
+		dMargem := dAgora
+	EndIf
+
+	cHrMarg    := StrZero(Int(nMargem / 3600), 2) + ":" + StrZero(Int((nMargem % 3600) / 60), 2) + ":" + StrZero(Int(nMargem % 60), 2)
+	cMarcaNova := Left(StrTran(StrTran(FWTimeStamp(6, dMargem, cHrMarg), "T", " "), "Z", ""), 19)
 
 	If !Empty(dDataDe)
 		// Data inicial informada pelo usuario: inicio do dia em UTC, ignora a marca.
@@ -107,9 +173,7 @@ User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte, oProcess, lEnvDel)
 		oStmtSeq:Destroy()
 	EndIf
 
-	If lCarga
-		FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Fila de saida vazia (SZZ): carga inicial, origem inteira.", 0, 0, {})
-	ElseIf Empty(dDataDe)
+	If !lCarga .And. Empty(dDataDe)
 		// Marca d'agua do ultimo processamento VALIDO - aquele que varreu o catalogo
 		// inteiro sem erro. So esses gravam ZY_MARCA, entao a marca preenchida e o
 		// proprio atestado de validade; o envio nao entra nessa conta, porque uma
@@ -138,47 +202,104 @@ User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte, oProcess, lEnvDel)
 		oStmtSeq:Destroy()
 
 		If Empty(cMarca) .Or. Len(cMarca) < 10
-			// Fila ja tem mensagens, mas nenhum lote valido gravou marca: recua
-			// MV_BJAPI10 dias (30 por padrao)
-			cMarca := Left(StrTran(StrTran(FWTimeStamp(6, Date() - SuperGetMV("MV_BJAPI10", .F., 30), "00:00:00"), "T", " "), "Z", ""), 19)
+			// Fila com mensagens e NENHUMA marca: a carga inicial nao terminou -
+			// com a coleta fracionada, a marca so vai no ultimo lote, e ela caiu
+			// antes dele. Refaz a carga, do mesmo corte. Recuar MV_BJAPI10 dias
+			// (como era) perdia em silencio tudo que a carga nao chegou a ler e
+			// nao mudou nesse intervalo. Reler o que ja estava na fila nao duplica
+			// nada na plataforma: a mensagem antiga e marcada superada pela nova
+			// no envio (BJSuperada, BJPLA004), sem sair.
+			ConOut("[BJPLA] U_BJVARRE sem marca d'agua com a fila ja preenchida: a carga inicial nao terminou - refazendo a carga")
+			cMarca := ""
+			lCarga := .T.
 		EndIf
 	EndIf
 
-	// Abre o lote (SZY): uma linha por chamada de BJVARRE, nao mais por entidade.
-	nTamSeq := TamSX3("ZY_CODIGO")[1]
-	If nTamSeq <= 0
-		nTamSeq := 9
+	If lCarga
+		// Data de corte da carga inicial (MV_BJAPI14): a carga le so o que foi
+		// incluido ou alterado a partir dela, pelo S_T_A_M_P_ - decisao do
+		// usuario em 26/09/2026. Vazio, le a origem inteira.
+		// ATENCAO: o corte vale para TODAS as entidades. Cliente, produto ou
+		// preco sem alteracao desde antes do corte nao sobem, e titulo EM
+		// ABERTO emitido antes dele tambem nao - so entram quando forem
+		// alterados, ou por um Gerar com periodo.
+		// Cadastrado como caractere, no formato da ZY_MARCA (AAAA-MM-DD, com hora
+		// opcional, em UTC como o S_T_A_M_P_); DD/MM/AAAA tambem e aceito. Se um
+		// dia for trocado para tipo D, a data vale igual.
+		xCorte := GetMV("MV_BJAPI14")
+
+		If ValType(xCorte) == "D"
+			dCorte := xCorte
+		ElseIf ValType(xCorte) == "C" .And. !Empty(xCorte)
+			xCorte := AllTrim(xCorte)
+			If "/" $ xCorte
+				dCorte := CToD(xCorte)
+			ElseIf Len(xCorte) >= 10
+				// O valor entra como literal nas consultas de todas as entidades
+				// (S_T_A_M_P_ >= '...'): so aceita o formato AAAA-MM-DD[ HH:MM:SS],
+				// digito a digito. Um apostrofo aqui mudaria a consulta.
+				cCorteTxt := Left(xCorte + Iif(Len(xCorte) == 10, " 00:00:00", ""), 19)
+				lCorteOk  := .T.
+
+				For nY := 1 To 19
+					cCh := SubStr(cCorteTxt, nY, 1)
+					If nY == 5 .Or. nY == 8
+						lCorteOk := lCorteOk .And. cCh == "-"
+					ElseIf nY == 11
+						lCorteOk := lCorteOk .And. cCh == " "
+					ElseIf nY == 14 .Or. nY == 17
+						lCorteOk := lCorteOk .And. cCh == ":"
+					Else
+						lCorteOk := lCorteOk .And. IsDigit(cCh)
+					EndIf
+				Next nY
+
+				If lCorteOk
+					cMarca := cCorteTxt
+				EndIf
+			EndIf
+		EndIf
+
+		If !Empty(dCorte)
+			cMarca := Left(StrTran(StrTran(FWTimeStamp(6, dCorte, "00:00:00"), "T", " "), "Z", ""), 19)
+		EndIf
+
+		If !Empty(cMarca)
+			ConOut("[BJPLA] U_BJVARRE carga inicial a partir do corte MV_BJAPI14 (S_T_A_M_P_ >= '" + cMarca + "')")
+		ElseIf ValType(xCorte) == "C" .And. !Empty(xCorte)
+			ConOut("[BJPLA] U_BJVARRE MV_BJAPI14 = '" + xCorte + "' fora do formato (AAAA-MM-DD ou DD/MM/AAAA) - carga da origem inteira")
+		Else
+			FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Fila de saida vazia (SZZ): carga inicial, origem inteira.", 0, 0, {})
+		EndIf
 	EndIf
 
-	cQuerySeq := "SELECT MAX(ZY_CODIGO) AS MAXSEQ "
-	cQuerySeq += "  FROM " + RetSqlName("SZY") + " SZY "
-	cQuerySeq += " WHERE SZY.D_E_L_E_T_ = ' ' "
-	cQuerySeq += "   AND SZY.ZY_FILIAL  = ? "
+	// Os lotes (SZY) nao abrem mais aqui, um por chamada. Cada lote tem UMA
+	// classe de entidade e no maximo MV_BJAPI12 mensagens; o peso (ZY_PRIOR) sai
+	// do catalogo - coluna 8 no dia a dia, 9 na carga. Abrem sob demanda, na
+	// primeira mensagem, para coleta que nao achou nada nao deixar lote vazio.
+	// Ver docs/planos/2026-09-26-filas-prioridade-integracao.md.
+	nMaxLote := GetMV("MV_BJAPI12")
 
-	oStmtSeq := FWExecStatement():New(ChangeQuery(cQuerySeq))
-	oStmtSeq:SetString(1, xFilial("SZY"))
-	cAliasSeq := oStmtSeq:OpenAlias()
-
-	If (cAliasSeq)->(!Eof()) .And. !Empty((cAliasSeq)->MAXSEQ)
-		cSeqMae := Soma1(PadL(AllTrim((cAliasSeq)->MAXSEQ), nTamSeq, "0"))
-	Else
-		cSeqMae := StrZero(1, nTamSeq)
+	If nMaxLote <= 0
+		nMaxLote := 2000
 	EndIf
 
-	(cAliasSeq)->(dbCloseArea())
-	oStmtSeq:Destroy()
+	// Carga pesa menos que o dia a dia da mesma classe: sem marca (carga
+	// inicial), com periodo, ou uma entidade/grupo inteiro pedido no monitor. A
+	// recoleta de UMA chave e o usuario esperando por ela - vai como dia a dia.
+	lPesoCarga := lCarga .Or. !Empty(dDataDe) .Or. !Empty(dDataAte) .Or. ;
+		(!Empty(xEntid) .And. Empty(cChave))
 
-	dbSelectArea("SZY")
-	RecLock("SZY", .T.)
-	SZY->ZY_FILIAL := xFilial("SZY")
-	SZY->ZY_CODIGO := cSeqMae
-	SZY->ZY_DTINI  := Date()
-	SZY->ZY_HRINI  := Time()
-	SZY->ZY_STATUS := "1"
-	SZY->(MsUnlock())
+	// Carga inicial nao le excluido: a plataforma esta vazia, nao ha o que
+	// excluir la. Os mapeadores so filtravam o D_E_L_E_T_ com a marca vazia;
+	// com o corte (MV_BJAPI14) a carga tem marca, era lida como incremental e
+	// mandava cada excluido desde o corte como POST + DELETE - trabalho jogado
+	// fora. So a LEITURA muda (lEnvDelLe): a regra da marca continua olhando o
+	// lEnvDel pedido, senao a carga nunca gravaria marca e se repetiria sempre.
+	lEnvDelLe := lEnvDel .And. !lCarga
 
-	// Quem chamou precisa saber que lote esta coleta abriu, para drenar so ele
-	aTotal[5] := cSeqMae
+	ConOut("[BJPLA] U_BJVARRE marca '" + cMarca + "'" + Iif(lCarga, " (carga inicial, sem excluidos)", "") + ;
+		" - peso " + Iif(lPesoCarga, "de carga", "do dia a dia") + " - lote de ate " + cValToChar(nMaxLote))
 
 	// Primeiro as entidades que esta chamada varre, para a regua saber o total
 	For nX := 1 To Len(aCat)
@@ -203,63 +324,143 @@ User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte, oProcess, lEnvDel)
 
 	Next nX
 
+	// A coleta anda pela PRIORIDADE, por lote/classe (decisao do usuario,
+	// 26/09/2026): primeiro a classe que teve erro na ultima coleta
+	// (MV_BJAPI15, gravado no fim dela), depois as demais do maior peso para o
+	// menor, e dentro da classe na ordem do catalogo. Cada lote tem uma
+	// entidade so; a ordem por classe so decide quem e coletado antes.
+	// A chave de ordenacao e montada antes, em aOrdem: um bloco aninhado dentro
+	// do aSort nao enxerga o x do bloco de fora ("variable does not exist X").
+	cFalhas := AllTrim(GetMV("MV_BJAPI15"))
+	aFalhas := {}
+
+	If !Empty(cFalhas)
+		aFalhas := StrTokArr2(cFalhas, ",", .F.)
+		ConOut("[BJPLA] U_BJVARRE comecando pelos lotes (classes de peso) com erro na ultima coleta: " + cFalhas)
+	EndIf
+
+	aOrdem := {}
+
+	For nX := 1 To Len(aVarrer)
+		// {falhou (0 primeiro), peso (maior primeiro), posicao no catalogo, entidade}
+		nPeso := aVarrer[nX][8]
+		aAdd(aOrdem, {Iif(aScan(aFalhas, {|c| Val(c) == nPeso}) > 0, 0, 1), nPeso, nX, aVarrer[nX]})
+	Next nX
+
+	aSort(aOrdem, , , {|x, y| ;
+		Iif(x[1] != y[1], x[1] < y[1], ;
+		Iif(x[2] != y[2], x[2] > y[2], x[3] < y[3])) ;
+	})
+
+	aVarrer := {}
+
+	For nX := 1 To Len(aOrdem)
+		aAdd(aVarrer, aOrdem[nX][4])
+	Next nX
+
 	// Regua 1 por entidade, regua 2 pelos registros dela (em BJVarreEnt). So o
 	// monitor passa oProcess; no agendamento nao ha tela.
 	If ValType(oProcess) == "O"
 		oProcess:SetRegua1(Len(aVarrer))
 	EndIf
 
+	// aLote = {cCodigo, nPeso, nEnfileiradas, nErros}: o lote aberto agora. O
+	// codigo fica vazio ate a primeira mensagem (BJVarreEnt abre sob demanda).
+	aLote := {"", 0, 0, 0}
+
 	For nX := 1 To Len(aVarrer)
 
 		If ValType(oProcess) == "O"
 			If oProcess:lEnd
-				FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Varredura interrompida pelo usuario no lote " + cSeqMae, 0, 0, {})
+				FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Varredura interrompida pelo usuario no lote " + aLote[1], 0, 0, {})
 				Exit
 			EndIf
 			oProcess:IncRegua1(aVarrer[nX][2] + " - " + cValToChar(nX) + " de " + cValToChar(Len(aVarrer)) + "...")
 		EndIf
 
-		BJVarreEnt(aVarrer[nX], cChave, @aTotal, dDataAte, cSeqMae, cAgora, cMarca, oProcess, lEnvDel)
+		// Peso do lote: o da classe da entidade (coluna 8 no dia a dia, 9 na carga)
+		nPeso := Iif(lPesoCarga, aVarrer[nX][9], aVarrer[nX][8])
+
+		// Um lote, UMA entidade (decisao do usuario, 26/09/2026): comecou outra
+		// entidade, fecha o lote que estava aberto - mesmo que a classe (peso)
+		// seja a mesma. A entidade pode ocupar varios lotes (fatias de
+		// MV_BJAPI12), mas um lote nunca mistura duas.
+		If !Empty(aLote[1])
+			BJFechaCol(aLote)
+			aLote := {"", 0, 0, 0}
+
+			// Fechou um lote: esta pronto, libera para o envio e segue gerando
+			BJLibera()
+		EndIf
+
+		aLote[2] := nPeso
+
+		BJVarreEnt(aVarrer[nX], cChave, @aTotal, dDataAte, aLote, aCodLotes, nMaxLote, cAgora, cMarca, oProcess, lEnvDelLe)
 
 	Next nX
 
-	// Fecha o lote (SZY): fim e totais agregados de todas as entidades desta chamada.
-	dbSelectArea("SZY")
-	SZY->(dbSetOrder(1)) // ZY_FILIAL + ZY_CODIGO
-
-	If SZY->(dbSeek(xFilial("SZY") + cSeqMae))
-		RecLock("SZY", .F.)
-		SZY->ZY_DTFIM   := Date()
-		SZY->ZY_HRFIM   := Time()
-		SZY->ZY_QTDLIDO := aTotal[1]
-		SZY->ZY_QTDENV  := aTotal[2]
-		SZY->ZY_QTDERR  := aTotal[4]
-
-		// O lote fecha "1" - coletado, esperando o envio. Quem o marca "2" e o
-		// BJDRENA, depois de mandar as mensagens dele. Coleta com erro ja fecha "3",
-		// e coleta que nao enfileirou nada fecha "2": nao ha o que enviar.
-		If aTotal[4] > 0
-			SZY->ZY_STATUS := "3"   // erro
-		ElseIf aTotal[2] == 0
-			SZY->ZY_STATUS := "2"   // nada mudou desde a marca anterior
-		Else
-			SZY->ZY_STATUS := "1"   // coletado, aguardando envio
-		EndIf
-
-		// A marca so avanca quando a coleta inteira passou sem erro e nao foi
-		// pontual. Como a leitura dela filtra ZY_STATUS = "2", a janela so vale
-		// como concluida depois que as mensagens do lote sairem.
-		If aTotal[4] == 0 .And. Empty(cChave) .And. Empty(dDataDe) .And. Empty(dDataAte)
-			SZY->ZY_MARCA := cAgora
-		EndIf
-
-		SZY->(MsUnlock())
+	If !Empty(aLote[1])
+		BJFechaCol(aLote)
+		BJLibera()   // o ultimo lote tambem sai sem esperar o proximo agendamento
 	EndIf
 
-	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Varredura concluida - lote " + cSeqMae + " - lidos: " + cValToChar(aTotal[1]) + ;
+	// A marca e UMA para o catalogo inteiro: a proxima coleta le todas as
+	// entidades a partir dela. Entao so a grava a coleta que cobriu a janela
+	// inteira - sem erro, catalogo todo (xEntid vazio: "" ou {}), com os
+	// deletados e sem recorte de chave ou periodo. Um Gerar de um grupo, uma
+	// entidade ou um Reenviar gravavam a marca, e o que mudou nas OUTRAS
+	// entidades desde a marca anterior nunca mais era coletado.
+	// Com a coleta fracionada ela vai no ULTIMO lote, gravada so depois de tudo
+	// fechado: se a thread cair no meio, nao ha marca e a janela e relida (o
+	// envio descarta a mensagem repetida - ver BJSuperada no BJPLA004).
+	// Coleta que nao achou nada abre um lote vazio so para guardar a marca.
+	// O envio nao entra nessa conta: mensagem que falhar fica na fila do lote.
+	If aTotal[4] == 0 .And. Empty(xEntid) .And. lEnvDel .And. ;
+		Empty(cChave) .And. Empty(dDataDe) .And. Empty(dDataAte)
+
+		If Len(aCodLotes) == 0
+			aLote := {U_BJABRELT(0), 0, 0, 0}
+			aAdd(aCodLotes, aLote[1])
+			BJFechaCol(aLote)
+		EndIf
+
+		dbSelectArea("SZY")
+		SZY->(dbSetOrder(1))   // ZY_FILIAL + ZY_CODIGO
+
+		If SZY->(dbSeek(xFilial("SZY") + aCodLotes[Len(aCodLotes)]))
+			RecLock("SZY", .F.)
+			SZY->ZY_MARCA := cMarcaNova   // inicio - 10 min: a proxima coleta rele esse trecho
+			SZY->(MsUnlock())
+		EndIf
+
+	EndIf
+
+	// As classes (lotes) que falharam agora: a proxima coleta comeca por elas. So a
+	// coleta do catalogo inteiro regrava a lista - um Gerar de uma entidade nao
+	// sabe das outras, e apagaria a falha delas.
+	If Empty(xEntid)
+		cFalhas := ""
+		For nX := 1 To Len(aTotal[8])
+			cFalhas += Iif(Empty(cFalhas), "", ",") + cValToChar(aTotal[8][nX])
+		Next nX
+		PutMV("MV_BJAPI15", cFalhas)
+	EndIf
+
+	// Quem chamou precisa saber que lotes esta coleta abriu, para drenar so eles
+	If Len(aCodLotes) > 0
+		aTotal[5] := aCodLotes[1]
+	EndIf
+	aTotal[7] := aCodLotes
+
+	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Varredura concluida - " + cValToChar(Len(aCodLotes)) + " lotes - lidos: " + cValToChar(aTotal[1]) + ;
 		" enfileirados: " + cValToChar(aTotal[2]) + ;
 		" entidades: " + cValToChar(aTotal[3]) + ;
 		" erros: " + cValToChar(aTotal[4]) + " - " + cValToChar(Round(Seconds() - nSeg, 2)) + "s", 0, 0, {})
+
+	ConOut("[BJPLA] U_BJVARRE fim - " + cValToChar(Len(aCodLotes)) + " lotes" + ;
+		Iif(Len(aCodLotes) > 0, " (" + aCodLotes[1] + " a " + aCodLotes[Len(aCodLotes)] + ")", "") + ;
+		" - entidades: " + cValToChar(aTotal[3]) + ;
+		" lidos: " + cValToChar(aTotal[1]) + " enfileirados: " + cValToChar(aTotal[2]) + " erros: " + cValToChar(aTotal[4]))
 
 	UnLockByName(cTrava, .T., .F.)
 
@@ -288,14 +489,16 @@ Varre uma entidade e enfileira os registros que ela devolver, sob o lote
 @param   cChave  , character, Chave unica a reprocessar
 @param   aTotal  , array    , [Referencia] Totalizadores
 @param   dDataAte, date     , Data final opcional
-@param   cSeqMae , character, ZY_CODIGO do lote (SZY) aberto por BJVARRE
+@param   aLote   , array    , [Referencia] Lote aberto: {cCodigo, nPeso, nEnfileiradas, nErros}. Codigo vazio abre sob demanda
+@param   aCodLotes, array   , [Referencia] Codigos de todos os lotes que a coleta abriu
+@param   nMaxLote, numeric  , Mensagens por lote (MV_BJAPI12): cheio, fecha e abre o proximo
 @param   cAgora  , character, Instante de corte do lote, UTC, lido por BJVARRE
 @param   cMarca  , character, Inicio do intervalo a varrer, UTC, achado por BJVARRE
 @param   oProcess, object   , MsNewProcess do monitor, para a regua 2. Nil no agendamento
 @param   lEnvDel , logical  , .T. manda o excluido como DELETE. .F. filtra o D_E_L_E_T_ ja na origem
 @return  Nil
 /*/
-Static Function BJVarreEnt(aEnt, cChave, aTotal, dDataAte, cSeqMae, cAgora, cMarca, oProcess, lEnvDel)
+Static Function BJVarreEnt(aEnt, cChave, aTotal, dDataAte, aLote, aCodLotes, nMaxLote, cAgora, cMarca, oProcess, lEnvDel)
 
 	Local cId       := aEnt[1]
 	Local cColeta   := aEnt[4]
@@ -307,14 +510,23 @@ Static Function BJVarreEnt(aEnt, cChave, aTotal, dDataAte, cSeqMae, cAgora, cMar
 	Local bColeta   := Nil
 	Local cTrava    := "BJPLA_ENT_" + Upper(AllTrim(cId))
 	Local aArea     := GetArea()
+	Local nIni      := 0
+	Local nFim      := 0
+	Local nPasso    := 0
+	Local nPassos   := 0
+	Local nTamBlk   := 0
+	Local lParou    := .F.
 
 	Default lEnvDel := .T.
 
 	// Uma varredura por entidade de cada vez. Se a trava estiver tomada, outro processo esta varrendo esta entidade agora.
 	If !LockByName(cTrava, .T., .F.)
 		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Entidade " + cId + " ignorada: trava " + cTrava + ;
-			" tomada por outra coleta em andamento. Lote " + cSeqMae, 0, 0, {})
+			" tomada por outra coleta em andamento. Lote " + aLote[1], 0, 0, {})
 		aTotal[4] += 1
+		If aScan(aTotal[8], {|n| n == aEnt[8]}) == 0
+			aAdd(aTotal[8], aEnt[8])   // classe (lote) com erro: a proxima coleta comeca por ela
+		EndIf
 		aTotal[6] += cId + ": trava " + cTrava + " tomada por outra coleta" + CRLF
 		RestArea(aArea)
 		Return Nil
@@ -329,7 +541,7 @@ Static Function BJVarreEnt(aEnt, cChave, aTotal, dDataAte, cSeqMae, cAgora, cMar
 		cMarcaFim := cAgora
 	EndIf
 
-	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Coletando " + aEnt[2] + " (" + cId + ") - lote " + cSeqMae + ;
+	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Coletando " + aEnt[2] + " (" + cId + ") - peso " + cValToChar(aLote[2]) + ;
 		" - intervalo: " + cMarca + " ate " + cMarcaFim + " - deletados: " + IIf(lEnvDel, "sim", "nao"), 0, 0, {})
 
 	// Enquanto o mapeador le a origem ainda nao se sabe quantos registros vem
@@ -345,6 +557,9 @@ Static Function BJVarreEnt(aEnt, cChave, aTotal, dDataAte, cSeqMae, cAgora, cMar
 	If ValType(aDados) != "A"
 		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Mapeador " + cColeta + " nao devolveu array. Entidade " + cId + " ignorada.", 0, 0, {})
 		aTotal[4] += 1
+		If aScan(aTotal[8], {|n| n == aEnt[8]}) == 0
+			aAdd(aTotal[8], aEnt[8])   // classe (lote) com erro: a proxima coleta comeca por ela
+		EndIf
 		aTotal[6] += cId + ": " + cColeta + " nao devolveu array" + CRLF
 
 		UnLockByName(cTrava, .T., .F.)
@@ -354,48 +569,118 @@ Static Function BJVarreEnt(aEnt, cChave, aTotal, dDataAte, cSeqMae, cAgora, cMar
 
 	aTotal[1] += Len(aDados)
 
-	If ValType(oProcess) == "O"
-		oProcess:SetRegua2(Len(aDados))
+	// A regua 2 nao anda mais de um em um: com dezenas de milhares de registros
+	// cada IncRegua2 repinta a tela e ainda monta tres strings. O passo e de no
+	// minimo 100 registros e rende no maximo 100 atualizacoes. Como IncRegua2 anda
+	// uma casa por chamada, a regua e dimensionada em passos, nao em registros -
+	// senao a barra pararia numa fracao do caminho.
+	nPasso  := Max(100, Int(Len(aDados) / 100))
+	nPassos := Int(Len(aDados) / nPasso)
+
+	If Len(aDados) % nPasso > 0
+		nPassos += 1
 	EndIf
 
-	For nX := 1 To Len(aDados)
+	If ValType(oProcess) == "O"
+		oProcess:SetRegua2(Max(nPassos, 1))
+	EndIf
 
-		If ValType(oProcess) == "O"
-			If oProcess:lEnd
-				FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Coleta da entidade " + cId + " interrompida pelo usuario.", 0, 0, {})
-				Exit
-			EndIf
-			oProcess:IncRegua2("Registro: " + cValToChar(nX) + " de " + cValToChar(Len(aDados)) + ". " + ;
-				Transform(Round(nX * 100 / Len(aDados), 2), "@E 999.99") + "%")
+	// Um RecLock solto por registro e um commit por registro. Os registros entram
+	// em blocos de MV_BJAPI07 dentro de uma transacao so. O bloco que falhar volta
+	// inteiro: o lote fecha com erro e e recoletado, nada fica enviado pela metade.
+	nTamBlk := GetMV("MV_BJAPI07")
+
+	If nTamBlk <= 0
+		nTamBlk := 500
+	EndIf
+
+	For nIni := 1 To Len(aDados) Step nTamBlk
+
+		nFim := Min(nIni + nTamBlk - 1, Len(aDados))
+
+		// O lote abre e troca FORA da transacao: aberto dentro, um bloco que
+		// falhasse levaria junto o registro do lote, e as mensagens seguintes
+		// apontariam para um lote que nao existe. Por isso o lote troca entre
+		// blocos, e pode passar do MV_BJAPI12 em ate um bloco (MV_BJAPI07).
+		If Empty(aLote[1])
+			aLote[1] := U_BJABRELT(aLote[2])
+			aLote[3] := 0
+			aLote[4] := 0
+			aAdd(aCodLotes, aLote[1])
 		EndIf
 
-		// Registro que chega excluido sem nunca ter tido POST foi incluido e
-		// excluido entre duas coletas. A coleta le o estado atual, entao so veria
-		// o DELETE; a inclusao entra antes na fila, com os dados que a linha
-		// excluida ainda guarda, e a plataforma recebe os dois eventos na ordem.
-		If aDados[nX][3] == "DELETE" .And. !U_BJTEVE("S", cId, aDados[nX][1], "POST")
-			cSeq := U_BJENFILA("S", cId, aDados[nX][1], "POST", BJJsonInc(aDados[nX][2]), cSeqMae)   // saida
+		Begin Transaction
 
-			If Empty(cSeq)
-				aTotal[4] += 1
-				aTotal[6] += cId + ": inclusao da chave " + cValToChar(aDados[nX][1]) + " nao entrou na fila" + CRLF
-			Else
-				aTotal[1] += 1
-				aTotal[2] += 1
-			EndIf
+			For nX := nIni To nFim
+
+				If ValType(oProcess) == "O"
+					If oProcess:lEnd
+						FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Coleta da entidade " + cId + " interrompida pelo usuario.", 0, 0, {})
+						lParou := .T.
+						// Sai so do laco interno: o Exit continua dentro da transacao, que
+						// fecha logo abaixo gravando o que ja entrou. Sair de um
+						// Begin Transaction por Exit, Loop ou Return deixa a transacao aberta.
+						Exit
+					EndIf
+					If nX % nPasso == 0 .Or. nX == Len(aDados)
+						oProcess:IncRegua2("Registro: " + cValToChar(nX) + " de " + cValToChar(Len(aDados)) + ". " + ;
+							Transform(Round(nX * 100 / Len(aDados), 2), "@E 999.99") + "%")
+					EndIf
+				EndIf
+
+				// Registro que chega excluido sem nunca ter tido POST foi incluido e
+				// excluido entre duas coletas. A coleta le o estado atual, entao so veria
+				// o DELETE; a inclusao entra antes na fila, com os dados que a linha
+				// excluida ainda guarda, e a plataforma recebe os dois eventos na ordem.
+				If aDados[nX][3] == "DELETE" .And. !U_BJTEVE("S", cId, aDados[nX][1], "POST")
+					cSeq := U_BJENFILA("S", cId, aDados[nX][1], "POST", BJJsonInc(aDados[nX][2]), aLote[1])   // saida
+
+					If Empty(cSeq)
+						aTotal[4] += 1
+						If aScan(aTotal[8], {|n| n == aEnt[8]}) == 0
+							aAdd(aTotal[8], aEnt[8])   // classe (lote) com erro: a proxima coleta comeca por ela
+						EndIf
+						aLote[4]  += 1
+						aTotal[6] += cId + ": inclusao da chave " + cValToChar(aDados[nX][1]) + " nao entrou na fila" + CRLF
+					Else
+						aTotal[1] += 1
+						aTotal[2] += 1
+						aLote[3]  += 1
+					EndIf
+				EndIf
+
+				// aDados[nX] = {cChaveRegistro, oJsonPayload, cVerbo}
+				cSeq := U_BJENFILA("S", cId, aDados[nX][1], aDados[nX][3], aDados[nX][2]:ToJson(), aLote[1])   // saida
+
+				If Empty(cSeq)
+					aTotal[4] += 1
+					If aScan(aTotal[8], {|n| n == aEnt[8]}) == 0
+						aAdd(aTotal[8], aEnt[8])   // classe (lote) com erro: a proxima coleta comeca por ela
+					EndIf
+					aLote[4]  += 1
+					aTotal[6] += cId + ": chave " + cValToChar(aDados[nX][1]) + " nao entrou na fila" + CRLF
+				Else
+					aTotal[2] += 1
+					aLote[3]  += 1
+				EndIf
+
+			Next nX
+
+		End Transaction
+
+		// Lote cheio: fecha, libera para o envio, e o proximo bloco abre outro
+		// com o mesmo peso.
+		If aLote[3] >= nMaxLote
+			BJFechaCol(aLote)
+			aLote[1] := ""
+			BJLibera()
 		EndIf
 
-		// aDados[nX] = {cChaveRegistro, oJsonPayload, cVerbo}
-		cSeq := U_BJENFILA("S", cId, aDados[nX][1], aDados[nX][3], aDados[nX][2]:ToJson(), cSeqMae)   // saida
-
-		If Empty(cSeq)
-			aTotal[4] += 1
-			aTotal[6] += cId + ": chave " + cValToChar(aDados[nX][1]) + " nao entrou na fila" + CRLF
-		Else
-			aTotal[2] += 1
+		If lParou
+			Exit
 		EndIf
 
-	Next nX
+	Next nIni
 
 	aTotal[3] += 1
 
@@ -403,6 +688,102 @@ Static Function BJVarreEnt(aEnt, cChave, aTotal, dDataAte, cSeqMae, cAgora, cMar
 		cValToChar(Len(aDados)) + " registros enfileirados", 0, 0, {})
 
 	UnLockByName(cTrava, .T., .F.)
+
+	RestArea(aArea)
+
+Return Nil
+
+/*/{Protheus.doc} BJLibera
+Libera o lote que a coleta acabou de fechar: dispara o envio e o retorno em
+threads proprias (StartJob) e volta, sem esperar nenhum dos dois.
+Gerar, enviar e receber sao independentes (decisao do usuario, 26/09/2026):
+"ficou pronto, pode fazer". No teste da carga o Schedule, com um agente so,
+deixava o envio "Aguardando execucao" ate ser cancelado enquanto a coleta
+rodava - horas sem enviar nada. Com o disparo, o lote fechado comeca a sair
+na hora, e o agendamento de cada rotina continua valendo por fora.
+Pronto = fechado pela coleta: o envio so pega lote com ZY_DTFIM preenchido
+(U_BJDRENA, BJPLA004), entao nunca um lote pela metade.
+Cada rotina pega a propria trava. Se ja ha um envio rodando, a thread nova
+acha a BJPLA_ENVIO ocupada e termina na hora - e o envio em andamento pega o
+lote recem-liberado na proxima volta, pela prioridade. O mesmo com o retorno.
+O {empresa, filial} no primeiro parametro e o mesmo que o Schedule passa: as
+duas rotinas ja abrem o ambiente a partir dele (U_BJAMBIENTE).
+O retorno entra junto porque o orcamento e o ciclo mais critico e, com um
+agente so, ficava esperando a coleta do mesmo jeito.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   26/09/2026
+@return  Nil
+/*/
+Static Function BJLibera()
+
+	Local cEnvio := ""
+	Local cRet   := ""
+
+	// So abre thread se nao houver uma rodando: testa a trava (pega e solta na
+	// hora). Abrir sempre custava uma thread e um ambiente por lote fechado - na
+	// carga, centenas - so para a thread nova achar a trava ocupada e sair. O
+	// envio que ja esta rodando pega o lote recem-liberado na proxima volta.
+	If LockByName("BJPLA_ENVIO", .T., .F.)
+		UnLockByName("BJPLA_ENVIO", .T., .F.)
+		StartJob("U_BJDRENA", GetEnvServer(), .F., {cEmpAnt, cFilAnt})
+		cEnvio := "envio disparado"
+	Else
+		cEnvio := "envio ja rodando"
+	EndIf
+
+	If LockByName("BJPLA_RETORNO", .T., .F.)
+		UnLockByName("BJPLA_RETORNO", .T., .F.)
+		StartJob("U_BJRETORNO", GetEnvServer(), .F., {cEmpAnt, cFilAnt})
+		cRet := "retorno disparado"
+	Else
+		cRet := "retorno ja rodando"
+	EndIf
+
+	ConOut("[BJPLA] U_BJVARRE lote liberado - " + cEnvio + ", " + cRet)
+
+Return Nil
+
+/*/{Protheus.doc} BJFechaCol
+Fecha um lote da coleta: fim e os contadores DELE, nao os da chamada inteira.
+O lote fecha "1" - coletado, esperando o envio; quem o marca "2" e o envio,
+depois de mandar as mensagens dele. Com erro de enfileiramento fecha "3", e
+sem nenhuma mensagem fecha "2": nao ha o que enviar.
+A marca d'agua nao e gravada aqui - vai so no ultimo lote, no fim da coleta.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   26/09/2026
+@param   aLote, array, {cCodigo, nPeso, nEnfileiradas, nErros}
+@return  Nil
+/*/
+Static Function BJFechaCol(aLote)
+
+	Local aArea := GetArea()
+
+	dbSelectArea("SZY")
+	SZY->(dbSetOrder(1))   // ZY_FILIAL + ZY_CODIGO
+
+	If SZY->(dbSeek(xFilial("SZY") + aLote[1]))
+
+		RecLock("SZY", .F.)
+
+		SZY->ZY_DTFIM   := Date()
+		SZY->ZY_HRFIM   := Time()
+		SZY->ZY_QTDLIDO := aLote[3] + aLote[4]
+		SZY->ZY_QTDENV  := aLote[3]
+		SZY->ZY_QTDERR  := aLote[4]
+
+		If aLote[4] > 0
+			SZY->ZY_STATUS := "3"   // erro
+		ElseIf aLote[3] == 0
+			SZY->ZY_STATUS := "2"   // nada a enviar
+		Else
+			SZY->ZY_STATUS := "1"   // coletado, aguardando envio
+		EndIf
+
+		SZY->(MsUnlock())
+
+	EndIf
 
 	RestArea(aArea)
 
@@ -2106,6 +2487,13 @@ User Function BJMAPEST(cMarca, cChave, cMarcaFim, lEnvDel)
 	Local cDataEnv := FWTimeStamp(6, Date(), Time())
 	Local lCusto  := SB2->(FieldPos("B2_CM1"))    > 0
 	Local lUltCom := SB2->(FieldPos("B2_DTUCOM")) > 0
+	Local cArmazens := ""
+	Local aArmaz  := {}
+	Local cInArm  := ""
+	Local cArm    := ""
+	Local lArmOk  := .F.
+	Local nX      := 0
+	Local nY      := 0
 
 	Default cMarca    := ""
 	Default cChave    := ""
@@ -2139,6 +2527,40 @@ User Function BJMAPEST(cMarca, cChave, cMarcaFim, lEnvDel)
 	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
 	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND SB2.D_E_L_E_T_ = ' ' "
+	EndIf
+
+	// So os armazens de REVENDA (MV_BJAPI16, ex.: "01,02,07") - decisao do
+	// usuario em 26/09/2026. Vazio, todos. Cada codigo passa por validacao
+	// (so letras e numeros) antes de entrar no IN, porque vai como literal.
+	cArmazens := AllTrim(GetMV("MV_BJAPI16"))
+
+	If !Empty(cArmazens)
+		aArmaz := StrTokArr2(cArmazens, ",", .F.)
+		cInArm := ""
+
+		For nX := 1 To Len(aArmaz)
+			cArm := AllTrim(aArmaz[nX])
+			lArmOk := !Empty(cArm)
+
+			For nY := 1 To Len(cArm)
+				If !(IsDigit(SubStr(cArm, nY, 1)) .Or. IsAlpha(SubStr(cArm, nY, 1)))
+					lArmOk := .F.
+				EndIf
+			Next nY
+
+			If lArmOk
+				cInArm += Iif(Empty(cInArm), "", ", ") + "'" + PadR(cArm, TamSX3("B2_LOCAL")[1]) + "'"
+			Else
+				FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "MV_BJAPI16: armazem '" + cArm + "' ignorado (so letras e numeros).", 0, 0, {})
+			EndIf
+		Next nX
+
+		If Empty(cInArm)
+			ConOut("[BJPLA] BJMAPEST - MV_BJAPI16 = '" + cArmazens + "' sem nenhum armazem valido - estoque nao coletado")
+			Return {}
+		EndIf
+
+		cQuery += "   AND SB2.B2_LOCAL IN (" + cInArm + ") "
 	EndIf
 
 	If !Empty(cChave)
@@ -2410,7 +2832,16 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim, lEnvDel)
 			oJson["chave"]          := cChvNota
 			oJson["codigoErp"]      := AllTrim((cAlias)->F2_DOC)
 			oJson["numero"]         := AllTrim((cAlias)->F2_DOC)
-			oJson["clienteChave"]   := FWxFilial("SA1") + "-" + (cAlias)->F2_CLIENTE + "-" + (cAlias)->F2_LOJA
+			// O participante muda com o tipo, espelho da nota de entrada: na
+			// devolucao de compra (D) o F2_CLIENTE e um fornecedor (SA2). So um dos
+			// dois campos vai preenchido; a API le o que o tipo manda e ignora o outro.
+			If AllTrim((cAlias)->F2_TIPO) == "D"
+				oJson["fornecedorChave"] := FWxFilial("SA2") + "-" + (cAlias)->F2_CLIENTE + "-" + (cAlias)->F2_LOJA
+				oJson["clienteChave"]    := Nil
+			Else
+				oJson["clienteChave"]    := FWxFilial("SA1") + "-" + (cAlias)->F2_CLIENTE + "-" + (cAlias)->F2_LOJA
+				oJson["fornecedorChave"] := Nil
+			EndIf
 			oJson["vendedorChave"]  := FWxFilial("SA3") + "-" + (cAlias)->F2_VEND1
 			oJson["condicaoChave"]  := FWxFilial("SE4") + "-" + (cAlias)->F2_COND
 			oJson["vlrBruto"]       := (cAlias)->F2_VALBRUT
@@ -2659,7 +3090,7 @@ Recupera o XML autorizado de uma NF-e no TSS.
 Static Function BJXmlTSS(cDoc, cSerie)
 
 	Local cRet    := ""
-	Local cUrl    := PadR(GetNewPar("MV_SPEDURL", "http://"), 250)
+	Local cUrl    := PadR(GetMV("MV_SPEDURL"), 250)
 	Local cXmlNfe := ""
 	Local cXmlPrt := ""
 	Local cVersao := "4.00"
@@ -3212,17 +3643,24 @@ User Function BJMAPTIT(cMarca, cChave, cMarcaFim, lEnvDel)
 	Local lMoraDia := SE1->(FieldPos("E1_MORADIA")) > 0
 	Local lTxMulta := SE1->(FieldPos("E1_TXMULTA")) > 0
 	Local lDescFin := SA1->(FieldPos("A1_DESCFIN")) > 0
+	Local cTipos   := ""
+	Local aTipos   := {}
+	Local cInTip   := ""
+	Local cTip     := ""
+	Local lTipOk   := .F.
+	Local nX       := 0
+	Local nY       := 0
 
 	// Beneficiario: e a empresa, igual para todos os titulos do ciclo
 	Local cBenNome := AllTrim(SM0->M0_NOMECOM) + " - " + FWxFilial("SE1")
 	Local cBenDoc  := Transform(SM0->M0_CGC, PesqPict("SA1", "A1_CGC"))
 	Local cBenEnd  := ""
 
-	// Percentuais de juros e multa do boleto, lidos uma vez: SuperGetMV dentro do
+	// Percentuais de juros e multa do boleto, lidos uma vez: GetMV dentro do
 	// laco seria uma consulta ao SX6 por titulo. Sao os mesmos parametros que o
 	// U_JRBOL e o U_MTBOL usam no BjBoletos.
-	Local nPerJrs := SuperGetMV("MV_RGC_PJUR", .T., 0.02)
-	Local nPerMlt := SuperGetMV("MV_RGC_PMUL", .T., 0.02)
+	Local nPerJrs := GetMV("MV_RGC_PJUR")
+	Local nPerMlt := GetMV("MV_RGC_PMUL")
 
 	Default cMarca    := ""
 	Default cChave    := ""
@@ -3309,6 +3747,43 @@ User Function BJMAPTIT(cMarca, cChave, cMarcaFim, lEnvDel)
 	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
 	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND SE1.D_E_L_E_T_ = ' ' "
+	EndIf
+
+	// So os tipos de titulo que a plataforma usa (MV_BJAPI17, ex.: "NF,DP,BOL")
+	// - decisao do usuario em 26/09/2026: retencao (IR-, PI-, CF-, CS-...),
+	// abatimento (AB-) e afins nao sao cobranca do cliente. Lista do que VAI, e
+	// nao do que fica: um tipo novo criado no Protheus fica de fora ate alguem
+	// incluir, em vez de aparecer na cobranca. Vazio, todos. Cada tipo passa
+	// por validacao (letras, numeros e "-") antes do IN, porque vai como literal.
+	cTipos := AllTrim(GetMV("MV_BJAPI17"))
+
+	If !Empty(cTipos)
+		aTipos := StrTokArr2(cTipos, ",", .F.)
+		cInTip := ""
+
+		For nX := 1 To Len(aTipos)
+			cTip   := AllTrim(aTipos[nX])
+			lTipOk := !Empty(cTip)
+
+			For nY := 1 To Len(cTip)
+				If !(IsDigit(SubStr(cTip, nY, 1)) .Or. IsAlpha(SubStr(cTip, nY, 1)) .Or. SubStr(cTip, nY, 1) == "-")
+					lTipOk := .F.
+				EndIf
+			Next nY
+
+			If lTipOk
+				cInTip += Iif(Empty(cInTip), "", ", ") + "'" + PadR(cTip, TamSX3("E1_TIPO")[1]) + "'"
+			Else
+				FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "MV_BJAPI17: tipo '" + cTip + "' ignorado (so letras, numeros e -).", 0, 0, {})
+			EndIf
+		Next nX
+
+		If Empty(cInTip)
+			ConOut("[BJPLA] BJMAPTIT - MV_BJAPI17 = '" + cTipos + "' sem nenhum tipo valido - titulos nao coletados")
+			Return {}
+		EndIf
+
+		cQuery += "   AND SE1.E1_TIPO IN (" + cInTip + ") "
 	EndIf
 
 	If !Empty(cChave)

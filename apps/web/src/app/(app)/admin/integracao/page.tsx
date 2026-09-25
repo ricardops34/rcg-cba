@@ -3,23 +3,27 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   integracaoApiKeyCreateSchema,
   type IntegracaoApiKey,
   type IntegracaoApiKeyCreate,
   type IntegracaoApiKeyCriada,
+  type IntegracaoEndpointItem,
 } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Card, CardContent } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -34,6 +38,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   Copy,
   Check,
   KeyRound,
@@ -47,9 +59,9 @@ import {
   Plus,
   BookOpen,
   Upload,
-  Download,
-  FileText,
-  AlertCircle,
+  Server,
+  Radio,
+  Search,
 } from "lucide-react";
 
 const dataBr = (v: string | null) => {
@@ -65,12 +77,17 @@ const dataHoraBr = (v: string | null) => {
 };
 
 export default function IntegracaoPage() {
+  const [abaAtiva, setAbaAtiva] = useState<"chaves" | "monitor">("chaves");
   const [novaChaveAberta, setNovaChaveAberta] = useState(false);
   const [importDialogAberta, setImportDialogAberta] = useState(false);
   const [search, setSearch] = useState("");
+  const [endpointSearch, setEndpointSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
+  const queryClient = useQueryClient();
+
+  // 1. Chaves de API
   const { data, isLoading, isFetching, refetch, error } = useResourceList<IntegracaoApiKey>(
     "integracao-keys",
     { search, page, pageSize, sortBy: "createdAt", sortOrder: "desc" },
@@ -80,6 +97,23 @@ export default function IntegracaoPage() {
   const rows = data?.data ?? [];
   const ativasCount = rows.filter((r) => r.ativo).length;
   const revogadasCount = rows.filter((r) => !r.ativo).length;
+
+  // 2. Monitor de Endpoints
+  const endpointsQuery = useQuery<IntegracaoEndpointItem[]>({
+    queryKey: ["integracao-endpoints"],
+    queryFn: () => apiFetch<IntegracaoEndpointItem[]>("/integracao-keys/endpoints"),
+  });
+
+  const toggleEndpointMutation = useMutation({
+    mutationFn: ({ endpointKey, ativo }: { endpointKey: string; ativo: boolean }) =>
+      apiFetch(`/integracao-keys/endpoints/${endpointKey}`, {
+        method: "PATCH",
+        body: { ativo },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["integracao-endpoints"] });
+    },
+  });
 
   const onToggleAtivo = async (chave: IntegracaoApiKey) => {
     try {
@@ -99,6 +133,37 @@ export default function IntegracaoPage() {
       toast.error(err instanceof ApiError ? err.message : "Erro ao excluir chave");
     }
   };
+
+  const onToggleEndpointStatus = async (endpointKey: string, ativoAtual: boolean) => {
+    try {
+      await toggleEndpointMutation.mutateAsync({
+        endpointKey,
+        ativo: !ativoAtual,
+      });
+      toast.success(
+        ativoAtual
+          ? `Endpoint '${endpointKey}' desativado`
+          : `Endpoint '${endpointKey}' ativado`,
+      );
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Erro ao alterar status do endpoint",
+      );
+    }
+  };
+
+  const endpoints = endpointsQuery.data ?? [];
+  const endpointsFiltrados = endpoints.filter(
+    (e) =>
+      e.nome.toLowerCase().includes(endpointSearch.toLowerCase()) ||
+      e.endpointKey.toLowerCase().includes(endpointSearch.toLowerCase()) ||
+      e.rota.toLowerCase().includes(endpointSearch.toLowerCase()),
+  );
+
+  const totalEndpoints = endpoints.length;
+  const endpointsAtivosCount = endpoints.filter((e) => e.ativo).length;
+  const endpointsDesativadosCount = endpoints.filter((e) => !e.ativo).length;
+  const totalChamadasSum = endpoints.reduce((acc, e) => acc + e.totalChamadas, 0);
 
   const columns: ColumnDef<IntegracaoApiKey>[] = [
     {
@@ -176,12 +241,12 @@ export default function IntegracaoPage() {
 
   return (
     <div className="space-y-6">
-      {/* Cabeçalho da página no padrão do sistema */}
+      {/* Cabeçalho da página */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b pb-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Integração ERP (API Keys)</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Integração ERP</h1>
           <p className="text-sm text-muted-foreground">
-            Gerencie as credenciais de API para sincronização automática de dados com sistemas ERP parceiros.
+            Gerencie as chaves de API e monitore/controle a ativação dos endpoints de integração.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -210,72 +275,252 @@ export default function IntegracaoPage() {
         </div>
       </div>
 
-      {/* Cards de Resumo */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="border-border/70 shadow-xs">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary">
-              <Plug className="size-5" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">Total de Chaves</p>
-              <p className="text-xl font-bold">{data?.total ?? 0}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-border/70 shadow-xs">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              <Activity className="size-5" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">Chaves Ativas</p>
-              <p className="text-xl font-bold">{ativasCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-border/70 shadow-xs">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400">
-              <ShieldAlert className="size-5" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">Revogadas / Inativas</p>
-              <p className="text-xl font-bold">{revogadasCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <Tabs value={abaAtiva} onValueChange={(v) => setAbaAtiva(v as "chaves" | "monitor")}>
+        <TabsList className="mb-2">
+          <TabsTrigger value="chaves" className="gap-2">
+            <Plug className="size-4" />
+            Chaves de API
+          </TabsTrigger>
+          <TabsTrigger value="monitor" className="gap-2">
+            <Server className="size-4" />
+            Monitor de Endpoints
+            {endpointsDesativadosCount > 0 && (
+              <Badge variant="secondary" className="ml-1 bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20">
+                {endpointsDesativadosCount} desativados
+              </Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Barra de Busca e Filtros */}
-      <CrudHeader
-        search={search}
-        onSearchChange={(v) => {
-          setSearch(v);
-          setPage(1);
-        }}
-        onRefresh={() => refetch()}
-        isRefreshing={isFetching}
-      />
+        <TabsContent value="chaves" className="space-y-6">
+          {/* Cards de Resumo de Chaves */}
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Card className="border-border/70 shadow-xs">
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary">
+                  <Plug className="size-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Total de Chaves</p>
+                  <p className="text-xl font-bold">{data?.total ?? 0}</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-border/70 shadow-xs">
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <Activity className="size-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Chaves Ativas</p>
+                  <p className="text-xl font-bold">{ativasCount}</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-border/70 shadow-xs">
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <ShieldAlert className="size-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Revogadas / Inativas</p>
+                  <p className="text-xl font-bold">{revogadasCount}</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
-      {/* Tabela de Chaves */}
-      <EntityTable
-        columns={columns}
-        rows={rows}
-        rowKey={(c) => c.id}
-        isLoading={isLoading}
-        error={error}
-        page={data?.page ?? page}
-        pageSize={data?.pageSize ?? pageSize}
-        total={data?.total ?? 0}
-        totalPages={data?.totalPages ?? 1}
-        onPageChange={setPage}
-        onPageSizeChange={(n) => {
-          setPageSize(n);
-          setPage(1);
-        }}
-        emptyMessage="Nenhuma chave de integração cadastrada."
-      />
+          {/* Barra de Busca e Filtros */}
+          <CrudHeader
+            search={search}
+            onSearchChange={(v) => {
+              setSearch(v);
+              setPage(1);
+            }}
+            onRefresh={() => refetch()}
+            isRefreshing={isFetching}
+          />
+
+          {/* Tabela de Chaves */}
+          <EntityTable
+            columns={columns}
+            rows={rows}
+            rowKey={(c) => c.id}
+            isLoading={isLoading}
+            error={error}
+            page={data?.page ?? page}
+            pageSize={data?.pageSize ?? pageSize}
+            total={data?.total ?? 0}
+            totalPages={data?.totalPages ?? 1}
+            onPageChange={setPage}
+            onPageSizeChange={(n) => {
+              setPageSize(n);
+              setPage(1);
+            }}
+            emptyMessage="Nenhuma chave de integração cadastrada."
+          />
+        </TabsContent>
+
+        <TabsContent value="monitor" className="space-y-6">
+          {/* Cards de Resumo do Monitor */}
+          <div className="grid gap-4 sm:grid-cols-4">
+            <Card className="border-border/70 shadow-xs">
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary">
+                  <Server className="size-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Endpoints Monitorados</p>
+                  <p className="text-xl font-bold">{totalEndpoints}</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-border/70 shadow-xs">
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <Activity className="size-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Endpoints Ativos</p>
+                  <p className="text-xl font-bold">{endpointsAtivosCount}</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-border/70 shadow-xs">
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <ShieldAlert className="size-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Desativados</p>
+                  <p className="text-xl font-bold">{endpointsDesativadosCount}</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-border/70 shadow-xs">
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                  <Radio className="size-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Total de Chamadas</p>
+                  <p className="text-xl font-bold">{totalChamadasSum.toLocaleString("pt-BR")}</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Busca de endpoints */}
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+              <Input
+                placeholder="Filtrar por nome do endpoint ou rota..."
+                value={endpointSearch}
+                onChange={(e) => setEndpointSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => endpointsQuery.refetch()}
+              disabled={endpointsQuery.isFetching}
+            >
+              Atualizar
+            </Button>
+          </div>
+
+          {/* Tabela de Monitor de Endpoints */}
+          <Card className="border border-border/70 shadow-xs overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-64">Endpoint / Recurso</TableHead>
+                  <TableHead>Descrição</TableHead>
+                  <TableHead className="w-48">Métodos HTTP</TableHead>
+                  <TableHead className="w-44">Último Uso</TableHead>
+                  <TableHead className="w-28 text-right">Chamadas</TableHead>
+                  <TableHead className="w-36 text-center">Status / Controle</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {endpointsQuery.isLoading ? (
+                  Array.from({ length: 5 }).map((_, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell colSpan={6}>
+                        <div className="h-10 w-full animate-pulse rounded bg-muted/50" />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : endpointsFiltrados.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                      Nenhum endpoint encontrado.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  endpointsFiltrados.map((item) => (
+                    <TableRow key={item.endpointKey} className={!item.ativo ? "bg-muted/20" : ""}>
+                      <TableCell>
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/40 text-primary">
+                            <Server className="size-4" />
+                          </div>
+                          <div>
+                            <p className="font-medium leading-tight">{item.nome}</p>
+                            <code className="text-xs text-muted-foreground font-mono">{item.rota}</code>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {item.descricao}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {item.metodos.map((m) => (
+                            <Badge
+                              key={m}
+                              variant="outline"
+                              className="text-[10px] px-1.5 py-0 font-mono"
+                            >
+                              {m}
+                            </Badge>
+                          ))}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {dataHoraBr(item.ultimoUso)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs font-semibold">
+                        {item.totalChamadas.toLocaleString("pt-BR")}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-center gap-2.5">
+                          <Switch
+                            checked={item.ativo}
+                            onCheckedChange={() =>
+                              onToggleEndpointStatus(item.endpointKey, item.ativo)
+                            }
+                            disabled={toggleEndpointMutation.isPending}
+                          />
+                          <span className="text-xs font-medium w-16">
+                            {item.ativo ? (
+                              <span className="text-emerald-600 dark:text-emerald-400">Ativo</span>
+                            ) : (
+                              <span className="text-amber-600 dark:text-amber-400">Desativado</span>
+                            )}
+                          </span>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {novaChaveAberta && (
         <NovaChaveDialog onClose={() => setNovaChaveAberta(false)} />
@@ -436,7 +681,6 @@ function ImportTxtDialog({
   chaves: IntegracaoApiKey[];
   onClose: () => void;
 }) {
-  const [apiKey, setApiKey] = useState(chaves[0]?.prefixo ? "" : "");
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [resultado, setResultado] = useState<ResultadoImportacao | null>(null);
@@ -560,4 +804,3 @@ function ImportTxtDialog({
     </Dialog>
   );
 }
-

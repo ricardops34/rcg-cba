@@ -832,7 +832,7 @@ export const integracaoNotaSaidaItemSchema = z.object({
     .optional()
     .describe("Número sequencial do item na nota"),
   cfop: z.string().trim().max(10).nullable().optional(),
-  tipo: z.string().trim().max(1).nullable().optional(),
+  tipo: z.string().trim().max(10).nullable().optional(),
   quantidade: z.coerce.number().default(0),
   vlrUnitario: z.coerce.number().default(0),
   vlrTabela: z.coerce.number().nullable().optional(),
@@ -867,13 +867,21 @@ export const integracaoNotaSaidaCreateSchema = z.object({
     .max(60)
     .describe("Chave de identidade do registro no ERP"),
   codigoErp: codigoErpSchema,
-  clienteChave: chaveOpcionalSchema(),
+  // A SF2 também guarda dois documentos, espelho da SF1: na venda (tipo 'N')
+  // o destinatário é cliente; na devolução de compra ('D'), fornecedor. Numa
+  // nota 'D' o `clienteChave` é ignorado — o F2_CLIENTE dela é código de SA2.
+  clienteChave: chaveOpcionalSchema().describe(
+    "chave do cliente — ignorada nas devoluções de compra (tipo 'D')",
+  ),
+  fornecedorChave: chaveOpcionalSchema().describe(
+    "chave do fornecedor — só nas devoluções de compra (tipo 'D')",
+  ),
   vendedorChave: chaveOpcionalSchema(),
   condicaoChave: chaveOpcionalSchema(),
   numero: z.string().trim().min(1).max(20),
   serie: z.string().trim().max(5).nullable().optional(),
   especieFiscal: z.string().trim().max(10).nullable().optional(),
-  tipo: z.string().trim().max(1).nullable().optional(),
+  tipo: z.string().trim().max(10).nullable().optional(),
   dtEmissao: z.coerce
     .date()
     .nullable()
@@ -1171,8 +1179,8 @@ export const INTEGRACAO_FORNECEDOR_EXAMPLE: IntegracaoFornecedor = {
 // **A SF1 guarda dois documentos**, e `tipo` diz qual:
 //   'N' compra    → mande `fornecedorChave`
 //   'D' devolução → mande `clienteChave`
-// Mandar o outro não é erro (a plataforma resolve o que vier), mas a tela do
-// cliente só encontra a devolução pelo `clienteChave`.
+// O `tipo` decide qual das duas é lida; a outra é ignorada e gravada nula.
+// Mandar a errada não é erro, mas o participante fica vazio.
 //
 // Sem XML: a segunda via do documento de entrada é de quem o emitiu.
 
@@ -1234,7 +1242,7 @@ export const integracaoNotaEntradaCreateSchema = z.object({
   numero: z.string().trim().min(1).max(20),
   serie: z.string().trim().max(5).nullable().optional(),
   especieFiscal: z.string().trim().max(10).nullable().optional(),
-  tipo: z.string().trim().max(1).nullable().optional(),
+  tipo: z.string().trim().max(10).nullable().optional(),
   dtEmissao: z.coerce
     .date()
     .nullable()
@@ -1363,6 +1371,79 @@ export const INTEGRACAO_NOTA_ENTRADA_EXAMPLE: IntegracaoNotaEntrada = {
 // Títulos a receber — identificado pela chave.
 // ------------------------------------------------------------------
 
+// ------------------------------------------------------------------
+// Baixas do título (mestre-detalhe) — o que o cliente pagou de verdade.
+// ------------------------------------------------------------------
+// Espelho da SE5 do Protheus. A plataforma **não cria, não altera e não
+// estorna** baixa: ela é ato financeiro do ERP e chega só por aqui.
+//
+// Vem como lista dentro do título, com as mesmas regras de item das notas:
+// `delete: true` exclui a linha pela chave; linha ausente do payload **não** é
+// excluída. Um estorno no ERP, portanto, precisa vir como `delete: true` — some
+// da coleta não basta, senão a baixa estornada ficaria para sempre na
+// plataforma.
+//
+// Os encargos são sempre positivos: o sinal está no nome do campo. Desconto de
+// R$ 10 é `desconto: 10`, nunca `-10`.
+export const integracaoTituloReceberBaixaSchema = z.object({
+  delete: z
+    .boolean()
+    .default(false)
+    .describe("Quando true, exclui somente esta baixa pela chave"),
+  chave: z
+    .string()
+    .trim()
+    .min(1)
+    .max(60)
+    .describe("Chave de identidade do movimento de baixa no ERP"),
+  data: z.coerce
+    .date()
+    .nullable()
+    .optional()
+    .describe("Data da baixa (E5_DATA no Protheus)"),
+  valor: z.coerce
+    .number()
+    .default(0)
+    .describe("Principal do título amortizado nesta baixa, sem encargos"),
+  juros: z.coerce.number().default(0).describe("Juros recebidos, em reais"),
+  multa: z.coerce.number().default(0).describe("Multa recebida, em reais"),
+  desconto: z.coerce
+    .number()
+    .default(0)
+    .describe("Desconto concedido na baixa, em reais e positivo"),
+  abatimento: z.coerce
+    .number()
+    .default(0)
+    .describe("Abatimento concedido na baixa, em reais e positivo"),
+  impostosRetidos: z.coerce
+    .number()
+    .default(0)
+    .describe(
+      "Total retido de impostos na liquidação (IRRF, PIS, COFINS, CSLL, ISS), em reais e positivo",
+    ),
+  motivo: z
+    .string()
+    .trim()
+    .max(10)
+    .nullable()
+    .optional()
+    .describe("Motivo da baixa no ERP (E5_MOTBX: NOR, CMP, DAC…)"),
+  historico: z.string().trim().max(500).nullable().optional(),
+  banco: z
+    .string()
+    .trim()
+    .max(10)
+    .nullable()
+    .optional()
+    .describe("Banco em que o dinheiro entrou, não a conta de cobrança"),
+  agencia: z.string().trim().max(10).nullable().optional(),
+  conta: z.string().trim().max(20).nullable().optional(),
+  ativo: z.boolean().default(true),
+});
+export type IntegracaoTituloReceberBaixa = z.infer<
+  typeof integracaoTituloReceberBaixaSchema
+>;
+
 export const integracaoTituloReceberCreateSchema = z.object({
   chave: z
     .string()
@@ -1388,6 +1469,13 @@ export const integracaoTituloReceberCreateSchema = z.object({
   formaPgto: z.string().trim().max(5).nullable().optional(),
   historico: z.string().trim().max(500).nullable().optional(),
   ativo: z.boolean().default(true),
+
+  // Baixas do título. Omitir a lista não mexe nas baixas já gravadas; mandar
+  // `[]` também não apaga nada — para excluir, a linha vem com `delete: true`.
+  baixas: z
+    .array(integracaoTituloReceberBaixaSchema)
+    .default([])
+    .describe("Sincroniza baixas; delete=true exclui somente a linha informada"),
 
   // ---- Cobrança bancária: o que a 2ª via de boleto precisa saber ----
   // (ver docs/planos/segunda-via-danfe-boleto.md). Todos opcionais: título de
@@ -1641,6 +1729,12 @@ export const INTEGRACAO_TITULO_RECEBER_CREATE_EXAMPLE: IntegracaoTituloReceberCr
     formaPgto: "B",
     historico: null,
     ativo: true,
+    // Título em aberto não tem baixa. Quando é baixado, a lista traz um
+    // movimento por pagamento — aqui vai o formato:
+    // { chave: "01-BCO-000000123", data: …, valor: 1260.5, juros: 8.4,
+    //   multa: 25.21, desconto: 0, abatimento: 0, impostosRetidos: 0,
+    //   motivo: "NOR", delete: false, ativo: true }
+    baixas: [],
     nossoNumero: "00000001160",
     carteira: "09",
     contaBancariaDescricao: "Bradesco 237 — carteira 09",

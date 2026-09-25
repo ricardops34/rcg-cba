@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -7,8 +8,11 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ContasBancariasService } from './contas-bancarias.service';
 import {
@@ -24,6 +28,7 @@ import {
   CurrentUser,
   type AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
+import { bancoLogoUploadOptions } from '../../common/uploads/uploads.config';
 
 @ApiTags('contas-bancarias')
 @ApiBearerAuth()
@@ -85,6 +90,34 @@ export class ContasBancariasController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.update(user.empresaAtivaId, user, id, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Enviar logo do banco',
+    description:
+      'Faz upload da imagem do logo do banco (PNG, JPEG, WEBP ou SVG, até 2 MB) e grava o caminho em logoUrl. ' +
+      'Requer contas-bancarias.editar.',
+  })
+  @RequirePermission('contas-bancarias', 'editar')
+  @Post(':id/logo')
+  @UseInterceptors(FileInterceptor('file', bancoLogoUploadOptions))
+  uploadLogo(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    if (!file) throw new BadRequestException('Nenhum arquivo enviado');
+    return this.service.setLogo(user.empresaAtivaId, user, id, file.filename);
+  }
+
+  @ApiOperation({
+    summary: 'Remover logo do banco',
+    description: 'Remove o logo cadastrado da conta bancária. Requer contas-bancarias.editar.',
+  })
+  @RequirePermission('contas-bancarias', 'editar')
+  @Delete(':id/logo')
+  removeLogo(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.removeLogo(user.empresaAtivaId, user, id);
   }
 
   @ApiOperation({

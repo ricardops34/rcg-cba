@@ -57,7 +57,7 @@ export const notaEntradaQuerySchema = paginationQuerySchema.extend({
   fornecedorId: z.string().uuid().optional(),
   clienteId: z.string().uuid().optional(),
   // 'N' compra, 'D' devolução de venda.
-  tipo: z.string().trim().max(1).optional(),
+  tipo: z.string().trim().max(10).optional(),
   ano: z.coerce.number().int().optional(),
   mes: z.coerce.number().int().min(1).max(12).optional(),
 });

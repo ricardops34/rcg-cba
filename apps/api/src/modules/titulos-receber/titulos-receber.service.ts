@@ -5,11 +5,16 @@ import {
 } from '@nestjs/common';
 import { PrismaService, Prisma } from '../../common/prisma/prisma.service';
 import { ContasBancariasService } from '../contas-bancarias/contas-bancarias.service';
+import {
+  ParametrosService,
+  PARAMETRO_BOLETO_PRAZO_MAXIMO_REEMISSAO,
+} from '../parametros/parametros.service';
 import { BoletoInvalidoError } from './boleto-codigo';
 import { montarBoletoPdf } from './boleto-pdf';
 import { registrarAtividadeDocumento } from '../../common/atividades/registrar-atividade-documento';
 import {
   calcularEncargos,
+  diasEmAtraso,
   foraDoPrazoDeReemissao,
   podeEmitirBoleto,
   PRAZO_MAXIMO_REEMISSAO_DIAS,
@@ -48,6 +53,7 @@ export class TitulosReceberService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly contas: ContasBancariasService,
+    private readonly parametros: ParametrosService,
   ) {}
 
   findAll(empresaId: string, user: AuthenticatedUser, query: TituloReceberQuery) {
@@ -107,10 +113,16 @@ export class TitulosReceberService {
         where: { empresaId, deletedAt: null, ativo: true, padrao: true },
         select: { id: true },
       }));
+      const prazoMaximoReemissao = await this.parametros.obterNumero(
+        empresaId,
+        PARAMETRO_BOLETO_PRAZO_MAXIMO_REEMISSAO,
+        60,
+        tx,
+      );
       const comStatus = data.map((titulo) => ({
         ...titulo,
         status: calcularStatusTituloReceber(titulo, hoje),
-        temBoleto: podeEmitirBoleto(titulo, temContaPadrao),
+        temBoleto: podeEmitirBoleto(titulo, temContaPadrao, hoje, prazoMaximoReemissao),
       }));
       return buildPaginatedResult(comStatus, total, query);
     });
@@ -126,17 +138,28 @@ export class TitulosReceberService {
           deletedAt: null,
           ...(escopo ? { vendedorId: { in: escopo } } : {}),
         },
-        include: { cliente: CLIENTE_SELECT, vendedor: VENDEDOR_SELECT },
+        include: {
+          cliente: CLIENTE_SELECT,
+          vendedor: VENDEDOR_SELECT,
+          // Só no detalhe: na listagem seriam N linhas por título.
+          baixas: { orderBy: { data: 'asc' } },
+        },
       });
       if (!titulo) throw new NotFoundException('Título não encontrado');
       const temContaPadrao = !!(await tx.contaBancaria.findFirst({
         where: { empresaId, deletedAt: null, ativo: true, padrao: true },
         select: { id: true },
       }));
+      const prazoMaximoReemissao = await this.parametros.obterNumero(
+        empresaId,
+        PARAMETRO_BOLETO_PRAZO_MAXIMO_REEMISSAO,
+        60,
+        tx,
+      );
       return {
         ...titulo,
         status: calcularStatusTituloReceber(titulo, inicioDoDia()),
-        temBoleto: podeEmitirBoleto(titulo, temContaPadrao),
+        temBoleto: podeEmitirBoleto(titulo, temContaPadrao, inicioDoDia(), prazoMaximoReemissao),
       };
     });
   }
@@ -162,7 +185,7 @@ export class TitulosReceberService {
     empresaId: string,
     quem: QuemPede,
     id: string,
-    opcoes: { registrarEvento?: boolean } = {},
+    opcoes: { registrarEvento?: boolean; atualizado?: boolean } = {},
   ) {
     const titulo = await this.prisma.withTenant(empresaId, async (tx) => {
       // O recorte muda com quem pede: o usuário alcança a carteira dele; o
@@ -185,18 +208,17 @@ export class TitulosReceberService {
       return encontrado;
     });
 
-    if (titulo.dtBaixa) {
-      throw new ConflictException(
-        `O título ${titulo.numero} já está baixado — não há 2ª via de boleto pago.`,
-      );
-    }
+    const prazoMaximoReemissao = await this.parametros.obterNumero(
+      empresaId,
+      PARAMETRO_BOLETO_PRAZO_MAXIMO_REEMISSAO,
+      60,
+    );
 
-    // Janela de reemissão: passados 30 dias do vencimento a cobrança já está
-    // em outro rito (negativação, protesto, acordo), e um boleto emitido aqui
-    // atropelaria isso.
-    if (foraDoPrazoDeReemissao(titulo.vencimento)) {
+    // Janela de reemissão: passados os dias configurados do vencimento a cobrança já está
+    // em outro rito (negativação, protesto, acordo), e um boleto emitido aqui atropelaria isso.
+    if (foraDoPrazoDeReemissao(titulo.vencimento, new Date(), prazoMaximoReemissao)) {
       throw new ConflictException(
-        `O título ${titulo.numero} está vencido há mais de ${PRAZO_MAXIMO_REEMISSAO_DIAS} dias — ` +
+        `O título ${titulo.numero} está vencido há mais de ${prazoMaximoReemissao} dias — ` +
           'a 2ª via não pode mais ser emitida pela plataforma. Fale com o financeiro.',
       );
     }
@@ -217,20 +239,29 @@ export class TitulosReceberService {
     });
 
     const saldo = Number(titulo.saldo) > 0 ? Number(titulo.saldo) : Number(titulo.valor);
-    // Vencido sai com valor atualizado (multa + juros pro rata), decisão do
-    // usuário em 2026-08-21: reimprimir o valor original faria o cliente pagar
-    // a menos e o título continuar aberto por diferença.
-    const encargos = calcularEncargos({
-      saldo,
-      vencimento: titulo.vencimento,
-      multaPerc: conta.multaPerc,
-      jurosMesPerc: conta.jurosMesPerc,
-      // O que o ERP calculou e imprimiu no boleto original vence o percentual
-      // do convênio — senão o papel do cliente e a 2ª via divergem.
-      multaValor: titulo.multaValor,
-      jurosValorDia: titulo.jurosValorDia,
-    });
+    const emAtraso = diasEmAtraso(titulo.vencimento) > 0;
+    const usarAtualizado = opcoes.atualizado !== false && emAtraso;
+    const encargos = usarAtualizado
+      ? calcularEncargos({
+          saldo,
+          vencimento: titulo.vencimento,
+          multaPerc: conta.multaPerc,
+          jurosMesPerc: conta.jurosMesPerc,
+          multaValor: titulo.multaValor,
+          jurosValorDia: titulo.jurosValorDia,
+        })
+      : {
+          valor: saldo,
+          saldo,
+          multa: 0,
+          juros: 0,
+          diasAtraso: 0,
+          atualizadoAte: inicioDoDia(),
+        };
     const valor = encargos.valor;
+    const dataVencimentoBoleto = usarAtualizado ? encargos.atualizadoAte : titulo.vencimento;
+    const marcaDagua = titulo.dtBaixa ? 'TÍTULO BAIXADO' : null;
+
     // Número como sai impresso na ficha e no histórico do cliente — uma
     // definição só, para os dois não divergirem.
     const numeroDocumento = [titulo.numero, titulo.parcela]
@@ -242,15 +273,14 @@ export class TitulosReceberService {
       // empresa**. Quem registrou o boleto no banco foi o ERP, e o papel na mão
       // do cliente foi impresso com os dados dele. A conta de cobrança segue
       // valendo para título antigo, que não traz o desenho completo.
-      const boleto = montarBoletoPdf({
+      const boleto = await montarBoletoPdf({
         banco: {
           codigo: titulo.banco ?? conta.banco,
-          // O código de compensação com dígito ("237-2") é o que vai impresso
-          // ao lado do logo; sem ele, o nome do banco.
           nome:
             titulo.bancoCodigoCompensacao ??
             titulo.bancoNome ??
             nomeBanco(titulo.banco ?? conta.banco),
+          logoUrl: conta.logoUrl,
         },
         beneficiario: {
           nome:
@@ -283,30 +313,28 @@ export class TitulosReceberService {
         },
         titulo: {
           numeroDocumento,
-          vencimento: titulo.vencimento,
+          vencimento: dataVencimentoBoleto,
           emissao: titulo.emissao,
           valor,
           carteira: titulo.carteira ?? conta.carteira,
           especieDocumento: titulo.especieDocumento ?? conta.especieDocumento,
           aceite: titulo.aceite ?? conta.aceite,
+          impressoPor: quem.tipo === 'usuario' ? quem.user.nome : 'Plataforma',
         },
         localPagamento: titulo.localPagamento ?? conta.localPagamento,
-        instrucoes: montarInstrucoes(titulo, conta, encargos),
+        instrucoes: montarInstrucoes(titulo, conta, encargos, usarAtualizado),
         demonstrativo: conta.demonstrativo,
+        marcaDagua,
         codigo: {
           banco: titulo.banco ?? conta.banco,
           agencia: titulo.agencia ?? conta.agencia,
           conta: titulo.conta ?? conta.conta,
           carteira: titulo.carteira ?? conta.carteira,
           nossoNumero: titulo.nossoNumero ?? '',
-          vencimento: titulo.vencimento,
+          vencimento: dataVencimentoBoleto,
           valor,
-          // Em atraso com encargo aplicado, o código registrado pelo ERP não
-          // serve: ele carrega o valor original, e o que se cobra agora é
-          // outro. Fora isso, o do ERP continua prevalecendo.
-          codigoBarrasErp: encargos.valor === encargos.saldo ? titulo.codigoBarras : null,
-          linhaDigitavelErp:
-            encargos.valor === encargos.saldo ? titulo.linhaDigitavel : null,
+          codigoBarrasErp: usarAtualizado ? null : titulo.codigoBarras,
+          linhaDigitavelErp: usarAtualizado ? null : titulo.linhaDigitavel,
         },
       });
 
@@ -376,11 +404,7 @@ function nomeBanco(codigo: string): string {
 }
 
 /**
- * "1234-5 / 0567890-1" — como o banco imprime na ficha.
- *
- * A agência e a conta vêm do título quando o ERP as manda, e do cadastro quando
- * não. Os dois lados são resolvidos **em bloco**: misturar a agência do título
- * com a conta do cadastro produziria um par que não existe em banco nenhum.
+ * Agência e conta formatadas no padrão do ERP (ex.: 2201-2/00145750).
  */
 function formatarAgenciaConta(
   titulo: {
@@ -406,23 +430,30 @@ function formatarAgenciaConta(
         }
       : conta;
 
-  const agencia = origem.agenciaDv ? `${origem.agencia}-${origem.agenciaDv}` : origem.agencia;
-  const numero = origem.contaDv ? `${origem.conta}-${origem.contaDv}` : origem.conta;
-  return `${agencia} / ${numero}`;
+  const agenciaStr = (origem.agencia ?? '').trim();
+  const agenciaDvStr = (origem.agenciaDv ?? '').trim();
+  const contaStr = (origem.conta ?? '').trim();
+  const contaDvStr = (origem.contaDv ?? '').trim();
+
+  const agencia = agenciaDvStr ? `${agenciaStr}-${agenciaDvStr}` : agenciaStr;
+
+  // No ERP Bradesco, Agência/Código Beneficiário é impresso como 2201-2/00145750
+  // (conta com 7 dígitos + DV = 8 dígitos sem espaço)
+  const contaDigitos = contaStr.replace(/\D/g, '');
+  let contaFormatada = contaStr;
+  if (contaDvStr) {
+    const comDv = `${contaDigitos}${contaDvStr}`;
+    contaFormatada = comDv.length < 8 ? comDv.padStart(8, '0') : comDv;
+  } else if (contaDigitos.length < 8) {
+    contaFormatada = contaDigitos.padStart(8, '0');
+  }
+
+  return `${agencia}/${contaFormatada}`;
 }
 
 /**
  * Instruções ao caixa: o texto livre do convênio, mais as linhas de encargo
- * derivadas dos percentuais cadastrados.
- *
- * Os encargos entram como **instrução**, não somados ao valor do documento: o
- * que se cobra depois do vencimento é calculado pelo banco na liquidação, e
- * embutir no valor mudaria o código de barras já registrado.
- *
- * As instruções do título **somam** às da conta, e não as substituem: as do
- * cadastro são a política da empresa ("protestar após 15 dias"), as do título
- * são os valores que o ERP calculou para aquele boleto. As duas coisas cabem
- * no papel, e nenhuma torna a outra falsa.
+ * no formato padrão ERP.
  */
 function montarInstrucoes(
   titulo: {
@@ -437,51 +468,41 @@ function montarInstrucoes(
     diasProtesto: number | null;
   },
   encargos: EncargosCalculados,
+  usarAtualizado?: boolean,
 ): string[] {
   const linhas: string[] = [];
+
+  // 1. Instruções de encargo (formato do ERP Bradesco)
+  const jurosDia = titulo.jurosValorDia ?? (encargos.saldo * (conta.jurosMesPerc ?? 0) / 100 / 30);
+  const multaVal = titulo.multaValor ?? (encargos.saldo * (conta.multaPerc ?? 0) / 100);
+
+  if (jurosDia > 0) {
+    linhas.push(`Importancia por Dia de Atraso de ${moedaFormato(jurosDia)}`);
+  }
+  if (multaVal > 0) {
+    linhas.push(`Após Vencimento Cobrar Multa de ${moedaFormato(multaVal)}`);
+  }
+
+  linhas.push(' - - - 2º Via - - -');
+
+  if (usarAtualizado) {
+    linhas.push('Boleto atualizado para pagamento apenas nesta data.');
+  }
+
+  // 2. Instruções do cadastro de conta e do título
   if (conta.instrucoes) linhas.push(...conta.instrucoes.split(/\r?\n/));
   if (titulo.instrucoes) linhas.push(...titulo.instrucoes.split(/\r?\n/));
-
-  // Título em atraso: o papel precisa mostrar como o valor foi composto. Sem
-  // isso o cliente vê um valor diferente do que combinou e liga para o
-  // vendedor — que é justamente a ligação que a 2ª via existe para evitar.
-  if (encargos.diasAtraso > 0) {
-    linhas.push(
-      `Valor atualizado em ${encargos.atualizadoAte.toLocaleDateString('pt-BR')} ` +
-        `(${encargos.diasAtraso} dia(s) de atraso).`,
-    );
-    linhas.push(`Valor original: ${real(encargos.saldo)}.`);
-
-    // O percentual só aparece quando foi ele que produziu o número. Vindo o
-    // valor pronto do ERP, imprimir "(2%)" ao lado seria uma conta que não
-    // fecha para quem conferir no papel.
-    if (encargos.multa > 0) {
-      const criterio = titulo.multaValor != null ? '' : ` (${conta.multaPerc}%)`;
-      linhas.push(`Multa${criterio}: ${real(encargos.multa)}.`);
-    }
-    if (encargos.juros > 0) {
-      const criterio =
-        titulo.jurosValorDia != null
-          ? ` (${real(titulo.jurosValorDia)} por dia)`
-          : ` (${conta.jurosMesPerc}% ao mês, pro rata)`;
-      linhas.push(`Juros${criterio}: ${real(encargos.juros)}.`);
-    }
-    linhas.push(`Total a pagar: ${real(encargos.valor)}.`);
-  } else {
-    if (conta.multaPerc) {
-      linhas.push(`Após o vencimento, cobrar multa de ${conta.multaPerc}%.`);
-    }
-    if (conta.jurosMesPerc) {
-      linhas.push(`Após o vencimento, cobrar juros de ${conta.jurosMesPerc}% ao mês.`);
-    }
-  }
 
   if (conta.diasProtesto) {
     linhas.push(`Protestar após ${conta.diasProtesto} dias corridos do vencimento.`);
   }
+
   return linhas.filter((l) => l.trim().length > 0);
+}
+
+function moedaFormato(valor: number): string {
+  return `R$ ${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 const real = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-

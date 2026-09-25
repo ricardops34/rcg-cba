@@ -22,24 +22,43 @@ Envio da fila para a Plataforma BJ e gravacao no ERP do que chega dela.
 
 /*/{Protheus.doc} BJRETORNO
 Le as pendencias da plataforma, aplica no ERP e atualiza o status la.
+O ciclo do orcamento e o mais critico da integracao, nos dois sentidos
+(README, Prioridade dos dados). Por isso a ordem e: orcamentos, alteracoes
+de cliente, e de novo orcamentos - o que chegou enquanto as alteracoes eram
+aplicadas sai neste ciclo, nao no proximo.
+Um lote (SZY) por pagina de orcamentos e um para as alteracoes, em vez de um
+lote so para a execucao inteira. Ver
+docs/planos/2026-09-26-filas-prioridade-integracao.md.
 @type    User Function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
 @return  array, {nLidos, nAplicados, nIgnorados, nErros}
 @example aTot := U_BJRETORNO()
 /*/
-User Function BJRETORNO()
+User Function BJRETORNO(aJob)
 
 	Local aTotal    := {0, 0, 0, 0}
-	Local cSeqMae   := ""
-	Local cQuerySeq := ""
-	Local cAliasSeq := ""
-	Local oStmtSeq  := Nil
-	Local nTamSeq   := 0
+	Local aAntes    := {}
+	Local aVistos   := {}
+	Local aErros    := {}
+	Local cLote     := ""
+	Local nCiclo    := 0
 	Local cTrava    := ""
 	Local nSeg      := Seconds()
 
-	If !AllTrim(Upper(SuperGetMV("MV_BJAPI03", .F., "N"))) == "S"
+	// O Schedule e o disparo da coleta (StartJob, BJLibera no BJPLA003) passam
+	// {empresa, filial} no primeiro parametro. Antes ele era ignorado e o
+	// ambiente abria sempre em 01/01.
+	If ValType(aJob) == "A" .And. Len(aJob) >= 2
+		U_BJAMBIENTE(aJob[1], aJob[2])
+	EndIf
+
+	// Primeira linha de toda rotina agendavel. Agendamento cadastrado como Job
+	// e lancado pelo agente do Schedule via WFLAUNCHER, SEM ambiente: cFilAnt
+	// nem existe, e a proxima leitura de parametro cai em "CFILANT".
+	U_BJAMBIENTE()
+
+	If !AllTrim(Upper(GetMV("MV_BJAPI03"))) == "S"
 		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Integracao BJ desabilitada (MV_BJAPI03). Nada a receber.", 0, 0, {})
 		Return aTotal
 	EndIf
@@ -49,105 +68,96 @@ User Function BJRETORNO()
 
 	If !LockByName(cTrava, .T., .F.)
 		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Retorno ja em andamento. Chamada ignorada.", 0, 0, {})
+		ConOut("[BJPLA] U_BJRETORNO ignorado - ja ha um retorno em andamento (trava BJPLA_RETORNO)")
 		Return aTotal
 	EndIf
 
-	// Abre o lote (SZY) deste retorno - cobre orcamentos-pendentes e
-	// clientes-alteracoes juntos, ja que as duas sao lidas na mesma chamada. A SZY
-	// nao tem campo de entidade; quem identifica cada mensagem e o ZZ_ENTID no
-	// detalhe (SZZ), gravado por BJLeOrcam/BJLeAltCli via U_BJENFILA.
-	nTamSeq := TamSX3("ZY_CODIGO")[1]
-	If nTamSeq <= 0
-		nTamSeq := 9
+	// 0. Primeiro os orcamentos que ja falharam numa execucao anterior e
+	// continuam pendentes la (decisao do usuario, 26/09/2026: recomeca pelos
+	// com erro, depois os nao processados).
+	aErros := BJOrcErro()
+
+	If Len(aErros) > 0
+		BJLeOrcam(@aTotal, aVistos, aErros)
 	EndIf
 
-	cQuerySeq := "SELECT MAX(ZY_CODIGO) AS MAXSEQ "
-	cQuerySeq += "  FROM " + RetSqlName("SZY") + " SZY "
-	cQuerySeq += " WHERE SZY.D_E_L_E_T_ = ' ' "
-	cQuerySeq += "   AND SZY.ZY_FILIAL  = ? "
+	// 1. Orcamentos aprovados: um lote por pagina (BJLeOrcam abre e fecha).
+	BJLeOrcam(@aTotal, aVistos, {})
 
-	oStmtSeq := FWExecStatement():New(ChangeQuery(cQuerySeq))
-	oStmtSeq:SetString(1, xFilial("SZY"))
-	cAliasSeq := oStmtSeq:OpenAlias()
+	// 2. Alteracoes de cliente, no lote delas. A SZY nao tem campo de
+	// entidade; quem identifica cada mensagem e o ZZ_ENTID no detalhe (SZZ).
+	aAntes := aClone(aTotal)
+	cLote  := U_BJABRELT(98)
+	BJLeAltCli(@aTotal, cLote)
+	BJFechaRet(cLote, aTotal, aAntes)
 
-	If (cAliasSeq)->(!Eof()) .And. !Empty((cAliasSeq)->MAXSEQ)
-		cSeqMae := Soma1(PadL(AllTrim((cAliasSeq)->MAXSEQ), nTamSeq, "0"))
-	Else
-		cSeqMae := StrZero(1, nTamSeq)
-	EndIf
-
-	(cAliasSeq)->(dbCloseArea())
-	oStmtSeq:Destroy()
-
-	dbSelectArea("SZY")
-	RecLock("SZY", .T.)
-	SZY->ZY_FILIAL := xFilial("SZY")
-	SZY->ZY_CODIGO := cSeqMae
-	SZY->ZY_DTINI  := Date()
-	SZY->ZY_HRINI  := Time()
-	SZY->ZY_STATUS := "1"
-	SZY->(MsUnlock())
-
-	BJLeOrcam(@aTotal, cSeqMae)
-	BJLeAltCli(@aTotal, cSeqMae)
-
-	// Fecha o lote com fim, status e contadores
-	dbSelectArea("SZY")
-	SZY->(dbSetOrder(1)) // ZY_FILIAL + ZY_CODIGO
-
-	If SZY->(dbSeek(xFilial("SZY") + cSeqMae))
-		RecLock("SZY", .F.)
-		SZY->ZY_DTFIM   := Date()
-		SZY->ZY_HRFIM   := Time()
-		SZY->ZY_QTDLIDO := aTotal[1]
-		SZY->ZY_QTDENV  := aTotal[2]
-		SZY->ZY_QTDERR  := aTotal[4]
-
-		If aTotal[4] == 0
-			SZY->ZY_STATUS := "2"
-		Else
-			SZY->ZY_STATUS := "3"
+	// 3. Orcamento que chegou durante as alteracoes. Ate tres voltas: aVistos
+	// impede tratar de novo, nesta execucao, o orcamento que ja falhou - ele
+	// volta no proximo ciclo.
+	For nCiclo := 1 To 3
+		If BJLeOrcam(@aTotal, aVistos, {}) == 0
+			Exit
 		EndIf
+	Next nCiclo
 
-		SZY->(MsUnlock())
-	EndIf
-
-	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Retorno concluido - lote " + cSeqMae + " - lidos: " + cValToChar(aTotal[1]) + ;
+	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Retorno concluido - lidos: " + cValToChar(aTotal[1]) + ;
 		" aplicados: " + cValToChar(aTotal[2]) + ;
 		" ignorados: " + cValToChar(aTotal[3]) + ;
 		" erros: " + cValToChar(aTotal[4]) + " em " + cValToChar(Round(Seconds() - nSeg, 2)) + "s", 0, 0, {})
+
+	If aTotal[1] > 0 .Or. aTotal[4] > 0
+		ConOut("[BJPLA] U_BJRETORNO - lidos: " + cValToChar(aTotal[1]) + " aplicados: " + cValToChar(aTotal[2]) + ;
+			" ignorados: " + cValToChar(aTotal[3]) + " erros: " + cValToChar(aTotal[4]) + ;
+			" em " + cValToChar(Round(Seconds() - nSeg, 0)) + "s")
+	EndIf
 
 	UnLockByName(cTrava, .T., .F.)
 
 Return aTotal
 
 /*/{Protheus.doc} BJLeOrcam
-Le a fila de orcamentos pendentes da plataforma e trata um a um.
+Le a fila de orcamentos pendentes da plataforma e trata um a um, um lote por
+pagina.
+Orcamento tratado sai da lista de pendentes, entao a leitura volta a pagina 1
+enquanto ela trouxer orcamento novo: pedir a pagina 2 depois de tratar a 1
+pulava os 100 seguintes, que so saiam no ciclo seguinte. So avanca de pagina
+quando a pagina inteira ja foi tentada nesta execucao (aVistos) - sao os que
+falharam e continuam pendentes la.
 @type    Static Function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
-@param   aTotal , array    , [Referencia] Totalizadores
-@param   cSeqMae, character, ZY_CODIGO do lote (SZY) deste retorno
-@return  Nil
+@param   aTotal , array, [Referencia] Totalizadores
+@param   aVistos, array, [Referencia] Ids ja tentados nesta execucao
+@param   aSo    , array, So estes ids (os que ja falharam antes - BJOrcErro). Vazio, todos
+@return  numeric, Quantos orcamentos novos foram tratados
 /*/
-Static Function BJLeOrcam(aTotal, cSeqMae)
+Static Function BJLeOrcam(aTotal, aVistos, aSo)
 
 	Local cRota  := ""
 	Local cResp  := ""
 	Local cErro  := ""
+	Local cLote  := ""
+	Local cId    := ""
 	Local nHttp  := 0
 	Local nPage  := 1
+	Local nNovos := 0
+	Local nPag   := 0
+	Local nVolta := 0
 	Local nX     := 0
-	Local lSegue := .T.
 	Local oJson  := Nil
 	Local aDados := {}
+	Local aAntes := {}
 
-	While lSegue
+	// Teto de voltas: protege contra uma lista que nunca esvazie
+	While nVolta < 50
+
+		nVolta += 1
 
 		cRota := "/integracao/orcamentos/pendentes" + "?pageSize=100&page=" + cValToChar(nPage)
 
 		If !U_BJHTTP("GET", cRota, "", @cResp, @nHttp, @cErro)
 			FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Falha ao listar orcamentos pendentes: " + cErro, 0, 0, {})
+			ConOut("[BJPLA] U_BJRETORNO - falha ao listar orcamentos pendentes (HTTP " + cValToChar(nHttp) + "): " + cErro)
 			aTotal[4] += 1
 			Exit
 		EndIf
@@ -166,20 +176,156 @@ Static Function BJLeOrcam(aTotal, cSeqMae)
 			Exit
 		EndIf
 
+		// O lote so abre se a pagina trouxer orcamento novo
+		cLote  := ""
+		nPag   := 0
+		aAntes := aClone(aTotal)
+
 		For nX := 1 To Len(aDados)
+
+			cId := cValToChar(aDados[nX]:GetJsonObject("id"))
+
+			// Rodada dos que ja falharam: o resto fica para a rodada normal, sem
+			// entrar em aVistos.
+			If Len(aSo) > 0 .And. aScan(aSo, {|c| c == cId}) == 0
+				Loop
+			EndIf
+
+			If aScan(aVistos, {|c| c == cId}) > 0
+				Loop
+			EndIf
+
+			aAdd(aVistos, cId)
+
+			If Empty(cLote)
+				cLote := U_BJABRELT(99)
+			EndIf
+
 			aTotal[1] += 1
-			BJTrataOrc(aDados[nX], @aTotal, cSeqMae)
+			nPag      += 1
+			BJTrataOrc(aDados[nX], @aTotal, cLote)
+
 		Next nX
+
+		If !Empty(cLote)
+			BJFechaRet(cLote, aTotal, aAntes)
+		EndIf
+
+		nNovos += nPag
 
 		// Pagina incompleta e a ultima
 		If Len(aDados) < 100
-			lSegue := .F.
+			Exit
 		EndIf
 
-		nPage += 1
+		// Pagina so de orcamentos ja tentados: avanca. Com novos, os tratados
+		// sairam da lista e a mesma pagina agora traz os seguintes.
+		If nPag == 0
+			nPage += 1
+		EndIf
+
 		oJson := Nil
 
 	End
+
+Return nNovos
+
+/*/{Protheus.doc} BJOrcErro
+Ids dos orcamentos que falharam numa execucao anterior e ainda nao foram
+aplicados: a mensagem de entrada deles ficou com erro ("3") e nao ha outra da
+mesma chave executada ("2") depois. O retorno comeca por eles.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   26/09/2026
+@return  array, Ids da plataforma (ZZ_CHVORI)
+/*/
+Static Function BJOrcErro()
+
+	Local aRet   := {}
+	Local cQuery := ""
+	Local cAlias := ""
+	Local oStmt  := Nil
+
+	cQuery := "SELECT DISTINCT SZZ.ZZ_CHVORI "
+	cQuery += "  FROM " + RetSqlName("SZZ") + " SZZ "
+	cQuery += " WHERE SZZ.D_E_L_E_T_ = ' ' "
+	cQuery += "   AND SZZ.ZZ_FILIAL  = ? "
+	cQuery += "   AND SZZ.ZZ_TIPO    = 'E' "
+	cQuery += "   AND SZZ.ZZ_ENTID   = ? "
+	cQuery += "   AND SZZ.ZZ_STATUS  = '3' "
+	cQuery += "   AND NOT EXISTS (SELECT 1 "
+	cQuery += "                     FROM " + RetSqlName("SZZ") + " OK "
+	cQuery += "                    WHERE OK.D_E_L_E_T_ = ' ' "
+	cQuery += "                      AND OK.ZZ_FILIAL  = SZZ.ZZ_FILIAL "
+	cQuery += "                      AND OK.ZZ_TIPO    = 'E' "
+	cQuery += "                      AND OK.ZZ_ENTID   = SZZ.ZZ_ENTID "
+	cQuery += "                      AND OK.ZZ_CHVORI  = SZZ.ZZ_CHVORI "
+	cQuery += "                      AND OK.ZZ_STATUS  = '2') "
+
+	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
+	oStmt:SetString(1, xFilial("SZZ"))
+	oStmt:SetString(2, PadR("orcamentos-pendentes", TamSX3("ZZ_ENTID")[1]))
+
+	cAlias := oStmt:OpenAlias()
+
+	While (cAlias)->(!Eof())
+		aAdd(aRet, AllTrim((cAlias)->ZZ_CHVORI))
+		(cAlias)->(dbSkip())
+	End
+
+	(cAlias)->(dbCloseArea())
+	oStmt:Destroy()
+
+Return aRet
+
+/*/{Protheus.doc} BJFechaRet
+Fecha um lote do retorno com os contadores dele: a diferenca dos totais
+entre a abertura e agora. Lote que nao recebeu nada (a lista de alteracoes
+de cliente vazia, o caso comum) e apagado - senao cada ciclo do retorno
+deixaria um lote vazio na SZY.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   26/09/2026
+@param   cLote , character, ZY_CODIGO do lote
+@param   aTotal, array    , Totais agora: {nLidos, nAplicados, nIgnorados, nErros}
+@param   aAntes, array    , Totais na abertura do lote
+@return  Nil
+/*/
+Static Function BJFechaRet(cLote, aTotal, aAntes)
+
+	Local aArea  := GetArea()
+	Local nLidos := aTotal[1] - aAntes[1]
+	Local nAplic := aTotal[2] - aAntes[2]
+	Local nErr   := aTotal[4] - aAntes[4]
+
+	dbSelectArea("SZY")
+	SZY->(dbSetOrder(1))   // ZY_FILIAL + ZY_CODIGO
+
+	If SZY->(dbSeek(xFilial("SZY") + cLote))
+
+		RecLock("SZY", .F.)
+
+		If nLidos == 0 .And. nErr == 0
+			SZY->(dbDelete())
+		Else
+			SZY->ZY_DTFIM   := Date()
+			SZY->ZY_HRFIM   := Time()
+			SZY->ZY_QTDLIDO := nLidos
+			SZY->ZY_QTDENV  := nAplic
+			SZY->ZY_QTDERR  := nErr
+
+			If nErr == 0
+				SZY->ZY_STATUS := "2"
+			Else
+				SZY->ZY_STATUS := "3"
+			EndIf
+		EndIf
+
+		SZY->(MsUnlock())
+
+	EndIf
+
+	RestArea(aArea)
 
 Return Nil
 
@@ -1004,13 +1150,24 @@ Return lRet
 // ===========================================================================
 
 /*/{Protheus.doc} BJDRENA
-Envia as mensagens de saida que estao na fila, lote a lote.
+Envia as mensagens de saida da fila, pela prioridade dos lotes.
+A cada volta pega o lote aberto de maior peso (ZY_PRIOR) que ainda tem
+mensagem de saida pendente, le no maximo MV_BJAPI12 mensagens dele (a fatia),
+envia e volta a perguntar: se chegou lote mais pesado nesse meio tempo, e ele
+que sai agora. Uma carga grande nunca segura o dia a dia por mais de uma fatia.
+Erro de DADO (400, 404, 409, 422) marca aquela mensagem e o envio segue; erro
+de API ou rede (transporte, 5xx, 401, 403, 429) para a chamada - insistir so
+acumularia falha.
+Mensagem cuja chave ja tem versao mais nova em lote posterior e marcada
+executada sem envio: a carga, que sai depois, nao sobrescreve na plataforma o
+que o dia a dia ja mandou.
+Ver docs/planos/2026-09-26-filas-prioridade-integracao.md.
 @type    User Function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
-@param   nLimite, numeric, Maximo de mensagens por lote nesta passada. Zero drena tudo
-@param   cSeqMae, character, ZY_CODIGO do lote a drenar. Vazio percorre os lotes em aberto
-@param   oProcess, object, MsNewProcess do monitor, para as reguas. Nil no agendamento
+@param   nLimite , numeric  , Maximo de mensagens lidas nesta chamada. Zero, sem limite
+@param   cSeqMae , character, ZY_CODIGO de um lote so (Enviar do monitor). Vazio segue a prioridade
+@param   oProcess, object   , MsNewProcess do monitor, para as reguas. Nil no agendamento
 @return  array, {nLidas, nEnviadas, nErros}
 @example aTot := U_BJDRENA(0)
 /*/
@@ -1020,34 +1177,67 @@ User Function BJDRENA(nLimite, cSeqMae, oProcess)
 	Local aGrupos := {}
 	Local nGrupo  := 0
 	Local nNoGrp  := 0
-	Local aLotes  := {}
+	Local nPasso  := 0
+	Local nPassos := 0
 	Local aFila   := {}
 	Local aCat    := U_BJCATALO()
 	Local aEnt    := {}
+	Local aFeitos := {}
 	Local cLote   := ""
 	Local cStatus := ""
 	Local cRota   := ""
 	Local cResp   := ""
 	Local cErro   := ""
+	Local cNovo   := ""
+	Local cQuery  := ""
+	Local cAlias  := ""
+	Local oStmt   := Nil
 	Local nHttp   := 0
 	Local nPos    := 0
 	Local nPosCat := 0
-	Local nErrLot := 0
-	Local nPx     := 0
-	Local nPy     := 0
-	Local nL      := 0
+	Local nPrior  := 0
+	Local nFatia  := 0
+	Local nCabe   := 0
+	Local nSuper  := 0
+	Local lFatiou := .F.
+	Local lParou  := .F.
+	Local nFase   := 1
+	Local aStatus := {}
 	Local nX      := 0
 
-	// Parametros lidos aqui, uma vez: dentro dos lacos seriam uma leitura por
-	// mensagem enviada.
-	Local nPausa   := SuperGetMV("MV_BJAPI08", .F., 1050)   // ms entre requisicoes
+	Local nPausa   := 0
 	Local cTrava   := ""
+	Local cInicio  := ""
 	Local nSeg     := Seconds()
+
+	// Agendamento tipo Job: o WFLAUNCHER passa {empresa, filial} no PRIMEIRO
+	// parametro, e o nLimite chegava como array - o Default nao age (so troca
+	// Nil) e o "nLimite > 0" caia em "type mismatch on compare". Aproveita a
+	// empresa/filial para o ambiente e volta o parametro ao padrao.
+	If ValType(nLimite) == "A"
+		U_BJAMBIENTE(nLimite[1], nLimite[2])
+		nLimite := 0
+	EndIf
 
 	Default nLimite := 0
 	Default cSeqMae := ""
 
-	If !AllTrim(Upper(SuperGetMV("MV_BJAPI03", .F., "N"))) == "S"
+	// Primeira linha de toda rotina agendavel. Agendamento cadastrado como Job
+	// e lancado pelo agente do Schedule via WFLAUNCHER, SEM ambiente: cFilAnt
+	// nem existe, e a proxima leitura de parametro cai em "CFILANT".
+	U_BJAMBIENTE()
+
+	// Parametros lidos aqui, uma vez: dentro dos lacos seria uma leitura por
+	// mensagem enviada. **Depois** do ambiente, e nao na declaracao do Local -
+	// Local e avaliado antes da primeira instrucao, logo antes do U_BJAMBIENTE.
+	nPausa := GetMV("MV_BJAPI08")   // ms entre requisicoes
+	nFatia := GetMV("MV_BJAPI12")   // mensagens por fatia, entre uma conferencia de prioridade e outra
+
+	If nFatia <= 0
+		nFatia := 2000
+	EndIf
+
+	If !AllTrim(Upper(GetMV("MV_BJAPI03"))) == "S"
 		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Integracao BJ desabilitada (MV_BJAPI03). Fila nao drenada.", 0, 0, {})
 		Return aTotal
 	EndIf
@@ -1059,81 +1249,149 @@ User Function BJDRENA(nLimite, cSeqMae, oProcess)
 
 	If !LockByName(cTrava, .T., .F.)
 		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Envio ja em andamento. Chamada ignorada.", 0, 0, {})
+		ConOut("[BJPLA] U_BJDRENA ignorado - ja ha um envio em andamento (trava BJPLA_ENVIO); ele pega os lotes liberados na proxima volta")
 		Return aTotal
 	EndIf
 
-	If Empty(cSeqMae)
+	// Batimento: quem segura a trava e ate onde chegou, para o monitor saber se
+	// o envio esta lento ou parado. Atualizado na leitura e no envio; apagado
+	// antes de cada UnLockByName.
+	cInicio := DtoS(Date()) + " " + Time()
+	U_BJBATIDA(cInicio, "procurando lotes em aberto")
 
-		// Os lotes que ainda precisam sair: "1" nao processado e "3" parou com erro.
-		// O indice 2 (ZY_FILIAL + ZY_STATUS + ZY_CODIGO) poe o status antes do
-		// codigo, entao o dbSeek cai direto no primeiro lote de cada status e lote
-		// ja processado nem e lido. Duas passadas, uma por status, e depois a ordem
-		// de processamento e restaurada pelo codigo.
-		dbSelectArea("SZY")
-		SZY->(dbSetOrder(2))   // ZY_FILIAL + ZY_STATUS + ZY_CODIGO
+	ConOut("[BJPLA] U_BJDRENA inicio - thread " + cValToChar(ThreadId()) + " - fatia " + cValToChar(nFatia) + ;
+		Iif(Empty(cSeqMae), "", " - so o lote " + AllTrim(cSeqMae)))
 
-		For nX := 1 To 2
+	While !lParou
 
-			If nX == 1
-				cStatus := "1"   // nao processado
+		If nLimite > 0 .And. aTotal[1] >= nLimite
+			Exit
+		EndIf
+
+		// ---------------------------------------------------------------
+		// Qual lote agora. O Enviar do monitor manda um lote so; o resto segue
+		// a prioridade: o de maior peso que ainda tem saida pendente, e entre
+		// os de mesmo peso o mais antigo. aFeitos sao os lotes que esta chamada
+		// ja leu ate o fim - o que sobrou neles e erro desta volta, e tentar de
+		// novo agora so repetiria o erro.
+		// ---------------------------------------------------------------
+		If !Empty(cSeqMae)
+
+			If aScan(aFeitos, {|c| c == AllTrim(cSeqMae)}) > 0
+				Exit
+			EndIf
+
+			cLote  := AllTrim(cSeqMae)
+			nPrior := 0
+
+		Else
+
+			cQuery := "SELECT SZY.ZY_CODIGO, SZY.ZY_PRIOR "
+			cQuery += "  FROM " + RetSqlName("SZY") + " SZY "
+			cQuery += " WHERE SZY.D_E_L_E_T_ = ' ' "
+			cQuery += "   AND SZY.ZY_FILIAL  = ? "
+			cQuery += "   AND SZY.ZY_STATUS IN ('1', '3') "
+			// So lote LIBERADO: a coleta preenche o fim ao fechar o lote. O que
+			// ainda esta sendo gerado tem o fim vazio e nao e tocado - senao o
+			// envio pegaria o lote pela metade, e o fecharia com a coleta ainda
+			// gravando nele.
+			cQuery += "   AND SZY.ZY_DTFIM   > ' ' "
+			cQuery += "   AND EXISTS (SELECT 1 "
+			cQuery += "                 FROM " + RetSqlName("SZZ") + " SZZ "
+			cQuery += "                WHERE SZZ.D_E_L_E_T_ = ' ' "
+			cQuery += "                  AND SZZ.ZZ_FILIAL  = ? "
+			cQuery += "                  AND SZZ.ZZ_CODIGO  = SZY.ZY_CODIGO "
+			cQuery += "                  AND SZZ.ZZ_TIPO    = 'S' "
+			// Duas fases (decisao do usuario, 26/09/2026): primeiro os lotes com
+			// ERRO de processamento ("3"), depois os NAO ENVIADOS ("1"). Um erro
+			// nao segura nada: marca a mensagem e passa para a proxima; a
+			// proxima execucao comeca por ele.
+			cQuery += "                  AND SZZ.ZZ_STATUS  = '" + Iif(nFase == 1, "3", "1") + "') "
+
+			For nX := 1 To Len(aFeitos)
+				cQuery += "   AND SZY.ZY_CODIGO <> '" + aFeitos[nX] + "' "
+			Next nX
+
+			cQuery += " ORDER BY SZY.ZY_PRIOR DESC, SZY.ZY_CODIGO "
+
+			oStmt := FWExecStatement():New(ChangeQuery(cQuery))
+			oStmt:SetString(1, xFilial("SZY"))
+			oStmt:SetString(2, xFilial("SZZ"))
+
+			cAlias := oStmt:OpenAlias()
+
+			If (cAlias)->(Eof())
+				cLote := ""
 			Else
-				cStatus := "3"   // parou com erro
+				cLote  := AllTrim((cAlias)->ZY_CODIGO)
+				nPrior := (cAlias)->ZY_PRIOR
 			EndIf
 
-			If SZY->(dbSeek(xFilial("SZY") + cStatus))
-				While SZY->(!Eof()) .And. SZY->ZY_FILIAL == xFilial("SZY") .And. ;
-					SZY->ZY_STATUS == cStatus
+			(cAlias)->(dbCloseArea())
+			oStmt:Destroy()
 
-					aAdd(aLotes, AllTrim(SZY->ZY_CODIGO))
-					SZY->(dbSkip())
-				End
+			If Empty(cLote)
+				If nFase == 1
+					// Acabaram os erros: agora os nao enviados, com a lista de
+					// lotes feitos zerada - um lote pode ter as duas coisas.
+					nFase   := 2
+					aFeitos := {}
+					Loop
+				EndIf
+				Exit   // nada pendente
 			EndIf
 
-		Next nX
+		EndIf
 
-		aSort(aLotes)
-
-	Else
-
-		aAdd(aLotes, AllTrim(cSeqMae))
-
-	EndIf
-
-	If Len(aLotes) == 0
-		FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Nenhum lote em aberto na fila de saida.", 0, 0, {})
-		UnLockByName(cTrava, .T., .F.)
-		Return aTotal
-	EndIf
-
-	For nL := 1 To Len(aLotes)
-
-		cLote   := aLotes[nL]
+		// ---------------------------------------------------------------
+		// A fatia: ate nFatia mensagens pendentes deste lote. O indice 2 poe o
+		// status antes da sequencia (ZZ_FILIAL + ZZ_CODIGO + ZZ_STATUS +
+		// ZZ_SEQUEN): o dbSeek cai direto no primeiro pendente e mensagem ja
+		// executada nem e lida. Primeiro as "1", depois as "3".
+		// ---------------------------------------------------------------
 		aFila   := {}
-		nErrLot := 0
+		lFatiou := .F.
+		nCabe   := nFatia
 
-		// So o que falta sair deste lote. O indice 2 poe o status antes da sequencia
-		// (ZZ_FILIAL + ZZ_CODIGO + ZZ_STATUS + ZZ_SEQUEN), entao o dbSeek cai direto
-		// no primeiro pendente e mensagem ja executada nem e lida: num lote de 5.000
-		// onde 4.900 sairam, sao 100 leituras e nao 5.000. Duas passadas, uma por
-		// status, e o aSort devolve a ordem da sequencia, que e a ordem de carga.
+		If nLimite > 0
+			nCabe := Min(nCabe, nLimite - aTotal[1])
+		EndIf
+
+		U_BJBATIDA(cInicio, "lote " + cLote + " (peso " + cValToChar(nPrior) + ") - lendo a fila")
+
 		dbSelectArea("SZZ")
 		SZZ->(dbSetOrder(2))   // ZZ_FILIAL + ZZ_CODIGO + ZZ_STATUS + ZZ_SEQUEN
 
-		For nX := 1 To 2
+		// Que status ler: na fase 1 so os com erro, na 2 so os nao enviados. O
+		// Reenviar de um lote (cSeqMae) le os dois.
+		If !Empty(cSeqMae)
+			aStatus := {"1", "3"}
+		ElseIf nFase == 1
+			aStatus := {"3"}
+		Else
+			aStatus := {"1"}
+		EndIf
 
-			If nX == 1
-				cStatus := "1"   // pendente
-			Else
-				cStatus := "3"   // com erro
-			EndIf
+		For nX := 1 To Len(aStatus)
+
+			cStatus := aStatus[nX]
 
 			If SZZ->(dbSeek(xFilial("SZZ") + PadR(cLote, TamSX3("ZZ_CODIGO")[1]) + cStatus))
 
 				While SZZ->(!Eof()) .And. SZZ->ZZ_FILIAL == xFilial("SZZ") .And. ;
 					AllTrim(SZZ->ZZ_CODIGO) == cLote .And. SZZ->ZZ_STATUS == cStatus
 
-					If nLimite > 0 .And. Len(aFila) >= nLimite
+					If Len(aFila) >= nCabe
+						lFatiou := .T.
 						Exit
+					EndIf
+
+					// Erro que esta chamada ja tentou (executada depois do inicio dela)
+					// nao volta agora: senao um lote com mais erros que uma fatia
+					// releria as mesmas mensagens para sempre.
+					If cStatus == "3" .And. DtoS(SZZ->ZZ_DTEXEC) + " " + SZZ->ZZ_HREXEC >= cInicio
+						SZZ->(dbSkip())
+						Loop
 					EndIf
 
 					If SZZ->ZZ_TIPO == "S"
@@ -1141,13 +1399,19 @@ User Function BJDRENA(nLimite, cSeqMae, oProcess)
 						If nPosCat == 0
 							nPosCat := 999
 						EndIf
+						// O elemento 8 e a chave como esta gravada, com os espacos: e por
+						// ela que BJSuperada busca a mesma chave em lote mais novo.
 						aAdd(aFila, {SZZ->ZZ_SEQUEN, AllTrim(SZZ->ZZ_ENTID), AllTrim(SZZ->ZZ_CHVORI), ;
-							AllTrim(SZZ->ZZ_VERBO), SZZ->ZZ_JSON, AllTrim(SZZ->ZZ_CODIGO), nPosCat})
+							AllTrim(SZZ->ZZ_VERBO), SZZ->ZZ_JSON, AllTrim(SZZ->ZZ_CODIGO), nPosCat, SZZ->ZZ_CHVORI})
 					EndIf
 
 					SZZ->(dbSkip())
 				End
 
+			EndIf
+
+			If lFatiou
+				Exit
 			EndIf
 
 		Next nX
@@ -1156,20 +1420,27 @@ User Function BJDRENA(nLimite, cSeqMae, oProcess)
 			Iif(x[7] != y[7], x[7] < y[7], x[1] < y[1]) ;
 		})
 
-		// Lote sem nada a enviar nao e fechado: pode ser de entrada, ou ja ter saido
+		// Leu o lote ate o fim nesta volta: o que sobrar nele e erro desta
+		// chamada, e ele nao volta nela.
+		If !lFatiou
+			aAdd(aFeitos, cLote)
+		EndIf
+
 		If Len(aFila) == 0
+			BJFechaEnv(cLote)
 			Loop
 		EndIf
 
 		aTotal[1] += Len(aFila)
 
-		FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Lote " + cLote + " - drenando " + ;
-			cValToChar(Len(aFila)) + " mensagens de saida.", 0, 0, {})
+		ConOut("[BJPLA] U_BJDRENA " + Iif(Empty(cSeqMae), Iif(nFase == 1, "erros - ", "nao enviados - "), "reenvio - ") + ;
+			"lote " + cLote + " (peso " + cValToChar(nPrior) + ") - " + cValToChar(Len(aFila)) + ;
+			" mensagens" + Iif(lFatiou, " (fatia; o lote continua depois)", ""))
 
 		// Regua 1 por entidade, regua 2 pelas mensagens dela. A fila ja vem na
-		// ordem da sequencia, que e a do catalogo, entao as mensagens de uma
-		// entidade chegam juntas: cada troca de entidade abre um grupo. So o
-		// monitor passa oProcess; no agendamento nao ha tela.
+		// ordem do catalogo, entao as mensagens de uma entidade chegam juntas:
+		// cada troca de entidade abre um grupo. So o monitor passa oProcess; no
+		// agendamento nao ha tela.
 		If ValType(oProcess) == "O"
 			aGrupos := {}
 
@@ -1190,22 +1461,49 @@ User Function BJDRENA(nLimite, cSeqMae, oProcess)
 			If ValType(oProcess) == "O"
 				If oProcess:lEnd
 					FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Envio do lote " + cLote + " interrompido pelo usuario.", 0, 0, {})
+					lParou := .T.
 					Exit
 				EndIf
 				If nX == 1 .Or. !(aFila[nX][2] == aFila[nX - 1][2])
-					nGrupo += 1
-					nNoGrp := 0
+					nGrupo  += 1
+					nNoGrp  := 0
+
+					// No minimo 100 mensagens entre repintagens, no maximo 100
+					// atualizacoes no grupo. IncRegua2 anda uma casa por chamada,
+					// entao a regua conta passos, nao mensagens.
+					nPasso  := Max(100, Int(aGrupos[nGrupo][2] / 100))
+					nPassos := Int(aGrupos[nGrupo][2] / nPasso)
+
+					If aGrupos[nGrupo][2] % nPasso > 0
+						nPassos += 1
+					EndIf
+
 					oProcess:IncRegua1("Lote " + cLote + " - " + aGrupos[nGrupo][1] + " - " + ;
 						cValToChar(nGrupo) + " de " + cValToChar(Len(aGrupos)) + "...")
-					oProcess:SetRegua2(aGrupos[nGrupo][2])
+					oProcess:SetRegua2(Max(nPassos, 1))
 				EndIf
 
 				nNoGrp += 1
-				oProcess:IncRegua2("Registro: " + cValToChar(nNoGrp) + " de " + cValToChar(aGrupos[nGrupo][2]) + ". " + ;
-					Transform(Round(nNoGrp * 100 / aGrupos[nGrupo][2], 2), "@E 999.99") + "%")
+
+				If nNoGrp % nPasso == 0 .Or. nNoGrp == aGrupos[nGrupo][2]
+					oProcess:IncRegua2("Registro: " + cValToChar(nNoGrp) + " de " + cValToChar(aGrupos[nGrupo][2]) + ". " + ;
+						Transform(Round(nNoGrp * 100 / aGrupos[nGrupo][2], 2), "@E 999.99") + "%")
+				EndIf
 			EndIf
 
-			// aFila[nX] = {cSequen, cEntid, cChave, cVerbo, cJson, cLote}
+			// aFila[nX] = {cSequen, cEntid, cChave, cVerbo, cJson, cLote, nPosCat, cChaveGravada}
+
+			// Superada: a mesma chave ja tem mensagem em lote mais novo, que sai
+			// (ou saiu) com o estado mais recente. Mandar esta agora seria voltar
+			// a plataforma para tras.
+			cNovo := BJSuperada(cLote, aFila[nX][2], aFila[nX][8])
+
+			If !Empty(cNovo)
+				U_BJGRAVA(aFila[nX][6], aFila[nX][1], "2", 0, "Superada: a mesma chave tem mensagem mais nova no lote " + cNovo + ". Nao enviada.", "")
+				nSuper += 1
+				Loop
+			EndIf
+
 			nPos := aScan(aCat, {|x| x[1] == aFila[nX][2]})
 
 			If nPos == 0
@@ -1213,7 +1511,6 @@ User Function BJDRENA(nLimite, cSeqMae, oProcess)
 					aFila[nX][2] + ", que nao esta no catalogo.", 0, 0, {})
 				U_BJGRAVA(aFila[nX][6], aFila[nX][1], "3", 0, "Entidade fora do catalogo: " + aFila[nX][2], "")   // erro
 				aTotal[3] += 1
-				nErrLot   += 1
 				Loop
 			EndIf
 
@@ -1248,57 +1545,180 @@ User Function BJDRENA(nLimite, cSeqMae, oProcess)
 
 			Else
 
-				U_BJGRAVA(aFila[nX][6], aFila[nX][1], "3", nHttp, cErro, "")   // erro
 				aTotal[3] += 1
-				nErrLot   += 1
 
-				FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", ;
-					"Envio interrompido por erro na mensagem " + aFila[nX][1] + " (entidade " + aFila[nX][2] + ") do lote " + cLote + ": " + cErro, 0, 0, {})
+				If nHttp == 400 .Or. nHttp == 404 .Or. nHttp == 409 .Or. nHttp == 422
 
-				Exit
+					// Erro de DADO (processamento): e daquele registro. Fica com
+					// erro ("3"), visivel no monitor, e o resto segue - um vendedor
+					// inexistente num titulo segurou 104 mil mensagens em 25/09/2026.
+					// So volta pelo Reenviar do lote, depois de corrigido o dado.
+					U_BJGRAVA(aFila[nX][6], aFila[nX][1], "3", nHttp, cErro, "")   // erro
+					FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", ;
+						"Mensagem " + aFila[nX][1] + " (entidade " + aFila[nX][2] + ") do lote " + cLote + " recusada: " + cErro, 0, 0, {})
+
+				Else
+
+					// Erro de API ou rede: nao e da mensagem, e vale para todas as
+					// seguintes. Ela continua PENDENTE ("1", com a falha anotada) e
+					// o proximo envio tenta de novo sozinho - marcar "3" encheria os
+					// lotes de erro a cada queda da API, e so o Reenviar manual os
+					// tiraria de la. Para a chamada.
+					U_BJGRAVA(aFila[nX][6], aFila[nX][1], "1", nHttp, "Falha de API/rede, sera tentada de novo: " + cErro, "")   // continua pendente
+					ConOut("[BJPLA] U_BJDRENA parou - HTTP " + cValToChar(nHttp) + " na mensagem " + aFila[nX][1] + ;
+						" do lote " + cLote + ": " + cErro)
+					lParou := .T.
+					Exit
+
+				EndIf
 
 			EndIf
 
 			Sleep(nPausa)
 
 			If nX % 50 == 0
-				FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Lote " + cLote + " - " + cValToChar(nX) + " de " + cValToChar(Len(aFila)), 0, 0, {})
+				U_BJBATIDA(cInicio, "lote " + cLote + " (peso " + cValToChar(nPrior) + ") - enviando, " + ;
+					cValToChar(nX) + " de " + cValToChar(Len(aFila)))
 			EndIf
 
 		Next nX
 
-		// O resultado do envio volta para a SZY.
-		dbSelectArea("SZY")
-		SZY->(dbSetOrder(1))   // ZY_FILIAL + ZY_CODIGO
+		// Fecha o lote se nao sobrou pendente; senao ele fica aberto e volta
+		// quando for a vez dele.
+		BJFechaEnv(cLote)
 
-		If SZY->(dbSeek(xFilial("SZY") + PadR(cLote, TamSX3("ZY_CODIGO")[1])))
-
-			RecLock("SZY", .F.)
-
-			SZY->ZY_DTFIM  := Date()
-			SZY->ZY_HRFIM  := Time()
-			SZY->ZY_QTDENV := aTotal[2]
-			SZY->ZY_QTDERR := nErrLot
-
-			If nErrLot == 0
-				SZY->ZY_STATUS := "2"   // processado
-			Else
-				SZY->ZY_STATUS := "3"   // erro
-			EndIf
-
-			SZY->(MsUnlock())
-
-		EndIf
-
-	Next nL
+	End
 
 	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Drenagem concluida - lidas: " + cValToChar(aTotal[1]) + ;
 		" enviadas: " + cValToChar(aTotal[2]) + ;
 		" erros: " + cValToChar(aTotal[3]) + " em " + cValToChar(Round(Seconds() - nSeg, 2)) + "s", 0, 0, {})
 
+	ConOut("[BJPLA] U_BJDRENA fim - lidas: " + cValToChar(aTotal[1]) + " enviadas: " + cValToChar(aTotal[2]) + ;
+		" superadas: " + cValToChar(nSuper) + " erros: " + cValToChar(aTotal[3]) + ;
+		" em " + cValToChar(Round(Seconds() - nSeg, 0)) + "s" + Iif(lParou, " (interrompido)", ""))
+
+	U_BJBATIDA()
 	UnLockByName(cTrava, .T., .F.)
 
 Return aTotal
+
+/*/{Protheus.doc} BJFechaEnv
+Atualiza o lote (SZY) pelo que sobrou dele na fila de saida.
+Conta as mensagens de saida do lote por status: sem pendente ("1"), o lote
+fecha - "3" se ficou alguma com erro, "2" se nao. Com pendente, o status fica
+como esta e o lote volta quando for a vez dele. Contar na SZZ, e nao somar o
+que esta chamada enviou, e o que da o numero certo depois de varias fatias e
+varias chamadas.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   26/09/2026
+@param   cLote, character, ZY_CODIGO do lote
+@return  Nil
+/*/
+Static Function BJFechaEnv(cLote)
+
+	Local aArea  := GetArea()
+	Local cQuery := ""
+	Local cAlias := ""
+	Local oStmt  := Nil
+	Local nPend  := 0
+	Local nErr   := 0
+	Local nOk    := 0
+
+	cQuery := "SELECT ZZ_STATUS, COUNT(*) AS QTD "
+	cQuery += "  FROM " + RetSqlName("SZZ") + " SZZ "
+	cQuery += " WHERE SZZ.D_E_L_E_T_ = ' ' "
+	cQuery += "   AND SZZ.ZZ_FILIAL  = ? "
+	cQuery += "   AND SZZ.ZZ_CODIGO  = ? "
+	cQuery += "   AND SZZ.ZZ_TIPO    = 'S' "
+	cQuery += " GROUP BY ZZ_STATUS "
+
+	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
+	oStmt:SetString(1, xFilial("SZZ"))
+	oStmt:SetString(2, PadR(cLote, TamSX3("ZZ_CODIGO")[1]))
+
+	cAlias := oStmt:OpenAlias()
+
+	While (cAlias)->(!Eof())
+		If (cAlias)->ZZ_STATUS == "1"
+			nPend := (cAlias)->QTD
+		ElseIf (cAlias)->ZZ_STATUS == "3"
+			nErr := (cAlias)->QTD
+		ElseIf (cAlias)->ZZ_STATUS == "2"
+			nOk := (cAlias)->QTD
+		EndIf
+		(cAlias)->(dbSkip())
+	End
+
+	(cAlias)->(dbCloseArea())
+	oStmt:Destroy()
+
+	dbSelectArea("SZY")
+	SZY->(dbSetOrder(1))   // ZY_FILIAL + ZY_CODIGO
+
+	If SZY->(dbSeek(xFilial("SZY") + PadR(cLote, TamSX3("ZY_CODIGO")[1])))
+
+		RecLock("SZY", .F.)
+
+		SZY->ZY_DTFIM  := Date()
+		SZY->ZY_HRFIM  := Time()
+		SZY->ZY_QTDENV := nOk
+		SZY->ZY_QTDERR := nErr
+
+		If nPend == 0
+			If nErr > 0
+				SZY->ZY_STATUS := "3"   // saiu tudo que dava; ficou erro
+			Else
+				SZY->ZY_STATUS := "2"   // processado
+			EndIf
+		EndIf
+
+		SZY->(MsUnlock())
+
+	EndIf
+
+	RestArea(aArea)
+
+Return Nil
+
+/*/{Protheus.doc} BJSuperada
+Diz se a mensagem ja foi superada por outra, da mesma chave, em lote mais novo.
+Lote de codigo maior e coleta mais recente, entao a mensagem dele carrega o
+estado mais novo do registro. Sem esta checagem, uma carga enviada depois do
+dia a dia sobrescreveria na plataforma um titulo baixado ontem com o estado de
+antes da baixa. Usa o indice 3 da SZZ para nao varrer a fila.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   26/09/2026
+@param   cLote , character, ZY_CODIGO do lote da mensagem
+@param   cEntid, character, Id da entidade no catalogo
+@param   cChave, character, ZZ_CHVORI como esta gravado, com os espacos
+@return  character, Codigo do lote mais novo com a mesma chave; vazio se nao ha
+/*/
+Static Function BJSuperada(cLote, cEntid, cChave)
+
+	Local aArea    := GetArea()
+	Local aAreaSZZ := SZZ->(GetArea())
+	Local cNovo    := ""
+	Local cBusca   := xFilial("SZZ") + "S" + PadR(cEntid, TamSX3("ZZ_ENTID")[1]) + cChave
+	Local cLotePad := PadR(cLote, TamSX3("ZZ_CODIGO")[1])
+
+	SZZ->(dbSetOrder(3))   // ZZ_FILIAL + ZZ_TIPO + ZZ_ENTID + ZZ_CHVORI
+
+	If SZZ->(dbSeek(cBusca))
+		While SZZ->(!Eof()) .And. SZZ->(ZZ_FILIAL + ZZ_TIPO + ZZ_ENTID + ZZ_CHVORI) == cBusca
+			If SZZ->ZZ_CODIGO > cLotePad
+				cNovo := AllTrim(SZZ->ZZ_CODIGO)
+				Exit
+			EndIf
+			SZZ->(dbSkip())
+		End
+	EndIf
+
+	RestArea(aAreaSZZ)
+	RestArea(aArea)
+
+Return cNovo
 
 // ===========================================================================
 // LOTE
@@ -1330,8 +1750,7 @@ User Function BJLOTE(nLimite, oProcess)
 	Local cResp     := ""
 	Local cErro     := ""
 	Local nHttp     := 0
-	Local nPx       := 0
-	Local nPy       := 0
+	Local nPosCat   := 0
 	Local nIni      := 0
 	Local nFim      := 0
 	Local nIdx      := 0
@@ -1340,18 +1759,34 @@ User Function BJLOTE(nLimite, oProcess)
 	Local nL        := 0
 	Local aLotes    := {}
 	Local cStatus   := ""
+	Local cTrava    := "BJPLA_ENVIO"
+	Local cInicio   := ""
+	Local lOk       := .F.
+	Local nT0       := 0
+	Local nT1       := 0
+	Local nT2       := 0
 	Local nX        := 0
 
 	// Parametros lidos aqui, uma vez: dentro dos lacos seriam uma leitura por bloco
-	Local nPausa   := SuperGetMV("MV_BJAPI08", .F., 1050)   // ms entre requisicoes
-	Local nLoteMax := SuperGetMV("MV_BJAPI09", .F., 1000)   // registros por PUT
+	Local nPausa   := GetMV("MV_BJAPI08")   // ms entre requisicoes
+	Local nLoteMax := GetMV("MV_BJAPI09")   // registros por PUT
 
 	Default nLimite := 0
 
-	If !AllTrim(Upper(SuperGetMV("MV_BJAPI03", .F., "N"))) == "S"
+	If !AllTrim(Upper(GetMV("MV_BJAPI03"))) == "S"
 		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Integracao BJ desabilitada (MV_BJAPI03). Lote nao enviado.", 0, 0, {})
 		Return aTotal
 	EndIf
+
+	// A mesma trava do BJDRENA: os dois leem as mesmas pendentes, e rodando
+	// juntos mandariam o mesmo registro duas vezes.
+	If !LockByName(cTrava, .T., .F.)
+		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Envio ja em andamento. Envio em bloco ignorado.", 0, 0, {})
+		Return aTotal
+	EndIf
+
+	cInicio := DtoS(Date()) + " " + Time()
+	U_BJBATIDA(cInicio, "em bloco - procurando lotes em aberto")
 
 	// Os lotes em aberto, na ordem do codigo, e dentro de cada um so o que falta
 	// sair. Os dois lacos usam o status na frente da chave, entao nada ja
@@ -1403,8 +1838,16 @@ User Function BJLOTE(nLimite, oProcess)
 					EndIf
 
 					If SZZ->ZZ_TIPO == "S"
+						nPosCat := aScan(aCat, {|c| c[1] == AllTrim(SZZ->ZZ_ENTID)})
+						If nPosCat == 0
+							nPosCat := 999
+						EndIf
 						aAdd(aFila, {SZZ->ZZ_SEQUEN, AllTrim(SZZ->ZZ_ENTID), AllTrim(SZZ->ZZ_CHVORI), ;
-							AllTrim(SZZ->ZZ_VERBO), SZZ->ZZ_JSON, AllTrim(SZZ->ZZ_CODIGO)})
+							AllTrim(SZZ->ZZ_VERBO), SZZ->ZZ_JSON, AllTrim(SZZ->ZZ_CODIGO), nPosCat})
+
+						If Len(aFila) % 5000 == 0
+							U_BJBATIDA(cInicio, "em bloco - lendo a fila, " + cValToChar(Len(aFila)) + " lidas")
+						EndIf
 					EndIf
 
 					SZZ->(dbSkip())
@@ -1416,17 +1859,21 @@ User Function BJLOTE(nLimite, oProcess)
 
 	Next nL
 
-	// Lote e sequencia: a ordem em que as mensagens nasceram, ajustada pela ordem de dependencias do catalogo
+	U_BJBATIDA(cInicio, "em bloco - ordenando " + cValToChar(Len(aFila)) + " mensagens")
+
+	// Lote e sequencia: a ordem em que as mensagens nasceram, ajustada pela ordem de dependencias do catalogo.
+	// A posicao no catalogo ja vem no elemento 7: um bloco aninhado ({|c| c[1] == x[2]}) nao enxerga o x
+	// do bloco de fora e cai em "variable does not exist X".
 	aSort(aFila, , , {|x, y| ;
-		nPx := aScan(aCat, {|c| c[1] == x[2]}), ;
-		nPy := aScan(aCat, {|c| c[1] == y[2]}), ;
-		Iif(nPx != nPy, nPx < nPy, x[6] + x[1] < y[6] + y[1]) ;
+		Iif(x[7] != y[7], x[7] < y[7], x[6] + x[1] < y[6] + y[1]) ;
 	})
 
 	aTotal[1] := Len(aFila)
 
 	If Len(aFila) == 0
 		FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Nada pendente na fila de saida.", 0, 0, {})
+		U_BJBATIDA()
+		UnLockByName(cTrava, .T., .F.)
 		Return aTotal
 	EndIf
 
@@ -1481,6 +1928,8 @@ User Function BJLOTE(nLimite, oProcess)
 					Transform(Round(nFim * 100 / Len(aLote), 2), "@E 999.99") + "%")
 			EndIf
 
+			nT0 := Seconds()
+
 			For nX := nIni To nFim
 
 				oReg := JsonObject():New()
@@ -1501,7 +1950,13 @@ User Function BJLOTE(nLimite, oProcess)
 			oEnv["registros"] := aRegistro
 			cBody := oEnv:ToJson()
 
-			If U_BJHTTP("PUT", aCat[nE][3], cBody, @cResp, @nHttp, @cErro)
+			// Tres tempos por bloco, para saber onde a carga gasta: montar o JSON
+			// aqui, a API processar o PUT, e gravar o resultado de cada mensagem.
+			nT1 := Seconds()
+			lOk := U_BJHTTP("PUT", aCat[nE][3], cBody, @cResp, @nHttp, @cErro)
+			nT2 := Seconds()
+
+			If lOk
 
 				oErro := JsonObject():New()
 
@@ -1556,6 +2011,15 @@ User Function BJLOTE(nLimite, oProcess)
 			FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Lote " + aCat[nE][1] + " - bloco " + cValToChar(nIni) + " a " + ;
 				cValToChar(nFim) + " de " + cValToChar(Len(aLote)) + " - HTTP " + cValToChar(nHttp), 0, 0, {})
 
+			U_BJBATIDA(cInicio, "em bloco - " + aCat[nE][1] + ", " + cValToChar(nFim) + " de " + cValToChar(Len(aLote)))
+
+			ConOut("[BJPLA] Enviar em bloco - " + aCat[nE][1] + " " + cValToChar(nIni) + " a " + cValToChar(nFim) + ;
+				" de " + cValToChar(Len(aLote)) + " - HTTP " + cValToChar(nHttp) + ;
+				" - montar " + cValToChar(Round(nT1 - nT0, 1)) + "s" + ;
+				" | API " + cValToChar(Round(nT2 - nT1, 1)) + "s" + ;
+				" | gravar " + cValToChar(Round(Seconds() - nT2, 1)) + "s" + ;
+				" | " + cValToChar(Round(Len(cBody) / 1024, 0)) + " KB")
+
 			Sleep(nPausa)
 
 			nIni := nFim + 1
@@ -1566,6 +2030,24 @@ User Function BJLOTE(nLimite, oProcess)
 
 	FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Lote concluido - enviadas: " + cValToChar(aTotal[2]) + ;
 		" erros: " + cValToChar(aTotal[3]), 0, 0, {})
+
+	// Fecha os lotes que este envio tocou e que ficaram sem pendente. Antes o
+	// Enviar em Bloco nunca fechava: o lote ficava amarelo no browse com tudo
+	// ja enviado.
+	aLotes := {}
+
+	For nX := 1 To Len(aFila)
+		If aScan(aLotes, {|c| c == aFila[nX][6]}) == 0
+			aAdd(aLotes, aFila[nX][6])
+		EndIf
+	Next nX
+
+	For nX := 1 To Len(aLotes)
+		BJFechaEnv(aLotes[nX])
+	Next nX
+
+	U_BJBATIDA()
+	UnLockByName(cTrava, .T., .F.)
 
 Return aTotal
 

@@ -77,3 +77,12 @@ export const aniversarianteSchema = z.object({
 export type Aniversariante = z.infer<typeof aniversarianteSchema>;
 
 export const ANIVERSARIANTES_JANELA_DIAS = 30;
+
+/* --------------------------- Status da Integração ------------------------- */
+
+export const statusIntegracaoSchema = z.object({
+  ultimaColeta: z.string().datetime().nullable(),
+  ultimoEnvio: z.string().datetime().nullable(),
+});
+export type StatusIntegracao = z.infer<typeof statusIntegracaoSchema>;
+

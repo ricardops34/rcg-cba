@@ -19,6 +19,7 @@ export type Estoque = z.infer<typeof estoqueSchema>;
 
 export const estoqueQuerySchema = paginationQuerySchema.extend({
   armazemId: z.string().uuid().optional(),
+  categoriaId: z.string().uuid().optional(),
   comSaldo: booleanQueryParam,
 });
 export type EstoqueQuery = z.infer<typeof estoqueQuerySchema>;
@@ -37,12 +38,18 @@ export const estoqueProdutoResumoSchema = z.object({
   reservaTotal: z.number().nullable(),
   qtdArmazens: z.number().int(),
   ultimaCompra: z.string().datetime().nullable(),
+  ativo: z.boolean().default(true),
 });
 export type EstoqueProdutoResumo = z.infer<typeof estoqueProdutoResumoSchema>;
 
 // Detalhe: saldo do produto aberto por armazém.
 export const estoqueSaldoArmazemSchema = estoqueSchema.omit({ produtoId: true }).extend({
-  armazem: z.object({ id: z.string().uuid(), codigoErp: z.string().nullable(), descricao: z.string() }),
+  armazem: z.object({
+    id: z.string().uuid(),
+    codigoErp: z.string().nullable(),
+    descricao: z.string(),
+    ativo: z.boolean().optional(),
+  }),
 });
 export type EstoqueSaldoArmazem = z.infer<typeof estoqueSaldoArmazemSchema>;
 
@@ -53,6 +60,7 @@ export const estoqueDetalheSchema = z.object({
     descricao: z.string(),
     unidade: z.string().nullable(),
     categoria: categoriaRefSchema,
+    ativo: z.boolean().optional(),
   }),
   saldos: z.array(estoqueSaldoArmazemSchema),
 });

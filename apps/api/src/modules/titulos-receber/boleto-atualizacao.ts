@@ -15,8 +15,8 @@
  * que precisa ser conferível linha a linha.
  */
 
-/** Depois disso, a plataforma não emite mais: o caso é do financeiro. */
-export const PRAZO_MAXIMO_REEMISSAO_DIAS = 30;
+/** Depois disso, a plataforma não emite mais: o caso é do financeiro. Padrão 60 dias (configurável em Parâmetros). */
+export const PRAZO_MAXIMO_REEMISSAO_DIAS = 60;
 
 /** Meia-noite local — encargo se conta por dia inteiro, não por hora. */
 export function inicioDoDia(data: Date = new Date()): Date {
@@ -34,12 +34,13 @@ export function diasEmAtraso(vencimento: Date | null, hoje: Date = new Date()): 
   return dias > 0 ? dias : 0;
 }
 
-/** Passou da janela de 30 dias — a emissão deixa de ser permitida. */
+/** Passou da janela de reemissão — a emissão deixa de ser permitida. */
 export function foraDoPrazoDeReemissao(
   vencimento: Date | null,
   hoje: Date = new Date(),
+  prazoMaximoDias: number = PRAZO_MAXIMO_REEMISSAO_DIAS,
 ): boolean {
-  return diasEmAtraso(vencimento, hoje) > PRAZO_MAXIMO_REEMISSAO_DIAS;
+  return diasEmAtraso(vencimento, hoje) > prazoMaximoDias;
 }
 
 export type EncargosCalculados = {
@@ -130,16 +131,16 @@ function centavos(valor: number): number {
 export function podeEmitirBoleto(
   titulo: {
     nossoNumero: string | null;
-    contaBancariaId: string | null;
-    dtBaixa: Date | null;
+    contaBancariaId?: string | null;
+    dtBaixa?: Date | null;
     vencimento: Date | null;
   },
   temContaPadrao: boolean,
   hoje: Date = new Date(),
+  prazoMaximoDias: number = PRAZO_MAXIMO_REEMISSAO_DIAS,
 ): boolean {
-  // Sem nosso número o boleto não foi registrado no banco; baixado, já foi
-  // pago; fora da janela, a emissão está encerrada.
-  if (!titulo.nossoNumero || titulo.dtBaixa) return false;
-  if (foraDoPrazoDeReemissao(titulo.vencimento, hoje)) return false;
+  // Sem nosso número o boleto não foi registrado no banco; fora da janela, a emissão está encerrada.
+  if (!titulo.nossoNumero) return false;
+  if (foraDoPrazoDeReemissao(titulo.vencimento, hoje, prazoMaximoDias)) return false;
   return !!titulo.contaBancariaId || temContaPadrao;
 }

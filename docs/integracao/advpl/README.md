@@ -11,6 +11,11 @@ REST por recurso — **um registro por chamada** —, então o desenho aqui é o
 **Não cria tabela no dicionário de negócio.** O estado da integração mora em
 duas tabelas próprias — `SZY` (mestre, marca d'água do lote) e `SZZ`
 (detalhe, fila de mensagens) — e no console/log do AppServer via `FwLogMsg()`.
+
+> **Neste servidor o `FwLogMsg()` não aparece no `console.log`** — só o que sai
+> por `ConOut()` (constatado em 25/09/2026). Os WARN/INFO dos fontes não servem de
+> diagnóstico aqui: o estado se lê pela SZY/SZZ. Ex.: "está drenando?" é o
+> `COUNT(*)` de `ZZ_STATUS = '2'` do lote subindo entre duas consultas.
 Cadastro de `SZY`/`SZZ`, campos e índices é feito pelo Configurador; nenhum
 fonte cria ou altera dicionário.
 
@@ -40,6 +45,7 @@ O que os outros três usam. Não depende de nenhum deles.
 | `U_BJGRAVA` | Fecha a mensagem: status, HTTP, retorno e chave de destino. Não abre transação, de propósito |
 | `U_BJACHOU` | A memória: essa chave já foi executada? Devolve o documento que ela gerou |
 | `U_BJTEVE` | Essa chave já teve mensagem com tal verbo, em qualquer status? A coleta usa para mandar o `POST` antes do `DELETE` de um registro incluído e excluído entre duas coletas |
+| `U_BJAMBIENTE` | Abre o ambiente quando quem chamou não tem um. Primeira linha de toda rotina agendável — ver *Agendamento e ambiente* |
 | `U_BJEXPURG` | **Agendável.** Apaga da SZZ as executadas mais velhas que `MV_BJAPI11`, e da SZY os lotes que ficaram sem nenhuma mensagem — menos o mais recente com marca. Nunca toca em pendente ou com erro |
 
 ### [`BJPLA003.prw`](BJPLA003.prw) — Coleta de saída
@@ -64,6 +70,77 @@ O que os outros três usam. Não depende de nenhum deles.
 | Função | O que faz |
 |---|---|
 | `U_BJPLA005` | A única tela. Browse dos lotes (SZY) com Gerar, Enviar, Receber, Mensagens, Enviar em Bloco, Exportar TXT, Importar TXT, Limpar e Ajuda |
+
+### Agendamento e ambiente
+
+**Toda rotina agendável abre com `U_BJAMBIENTE()`.** Uma chamada pode chegar por
+três caminhos, e só dois trazem ambiente pronto:
+
+| Caminho | Ambiente | O que acontece |
+|---|---|---|
+| Monitor (`U_BJPLA005`) | Pronto | Ambiente do usuário logado |
+| Schedule, agendamento tipo **Rotina** | Pronto | O serviço prepara a partir do `SchedDef` |
+| Schedule, agendamento tipo **Job** | **Não existe** | O agente lança por `WFLAUNCHER` sem preparar nada |
+
+**É o terceiro que está em uso.** O erro é este, e não diz nada sobre a
+integração:
+
+```
+THREAD ERROR ([10684], TOTVS12_AGENT00_, THIS)
+variable does not exist CFILANT on SUPERGETMV(MATXFUNA.PRX) line : 5211
+[remark: U_BJDRENA|01|01]
+[threadtype: JobThread]
+Called from U_BJDRENA(BJPLA004.PRW) line : 1043
+Called from WFLAUNCHER(WF.PRW) line : 501
+```
+
+`TOTVS12_AGENT00_` é o agente do Schedule — então *é* pelo Schedule. O que
+denuncia o tipo é o resto: `remark` no formato `função|empresa|filial` e
+`WFLAUNCHER` na pilha são a assinatura do agendamento **tipo Job**, criado
+apontando direto para a função. O tipo **Rotina** passaria pelo `SchedDef` e
+traria ambiente.
+
+`U_BJAMBIENTE()` detecta a ausência (`Type("cFilAnt")`), abre com
+`RpcSetType(3)` + `RpcSetEnv()` e registra um WARN no log. **Não fecha**: a
+thread termina junto com a função e o servidor solta o que ela abriu — mesmo
+raciocínio do `LockByName` das travas. Quando o ambiente já existe, é no-op.
+
+Sem empresa/filial informadas ela assume `01`/`01`. Numa base com mais de uma
+empresa, cadastre como Rotina, que o Schedule prepara o ambiente certo.
+
+> **Cuidado com `Local` que lê parâmetro.** `Local x := GetMV(...)` é
+> avaliado **antes** da primeira instrução da função, logo antes do
+> `U_BJAMBIENTE()` — e cai pelo mesmo motivo, com a guarda no lugar. Leia o
+> parâmetro depois, por atribuição. Foi o que aconteceu com o `nPausa` do
+> `U_BJDRENA`.
+
+> **O Job passa `{empresa, filial}` no primeiro parâmetro.** O `WFLAUNCHER`
+> chama a função com um array, e o `Default` não age — só substitui `Nil`. Em
+> 25/09/2026 o `U_BJDRENA` caiu com `type mismatch on compare` no
+> `nLimite > 0`, porque `nLimite` era `{"01", "01"}`. As três rotinas com
+> parâmetro testam `ValType(...) == "A"` antes do `Default`, passam
+> empresa/filial ao `U_BJAMBIENTE()` e voltam o parâmetro ao padrão. No
+> `U_BJVARRE` o array também é lista de entidades; o que separa os dois é o
+> conteúdo — lista de entidades traz ids do catálogo, e `"01"` não é um. (A
+> primeira versão separava pela falta de `cFilAnt`; com o Schedule chegando com
+> ambiente, a coleta rodava procurando as entidades "01" e não lia nada.)
+
+#### O `SchedDef` atual não cobre o tipo Rotina
+
+Os três fontes têm o mesmo `SchedDef` genérico:
+
+```advpl
+Static Function SchedDef()
+	Local aParam := {"R", "", "", {"T"}, ""}
+Return aParam
+```
+
+**Ele é um por fonte, e o `BJPLA004` tem duas funções agendáveis**
+(`U_BJDRENA` e `U_BJRETORNO`). O Schedule casa o `SchedDef` com a rotina
+registrada, não com a função, então esse desenho não distingue as duas — nem
+declara parâmetro nenhum. Migrar para agendamento tipo Rotina exige refazer
+isso antes; enquanto não for feito, o tipo Job com `U_BJAMBIENTE()` é o caminho
+suportado.
 
 **O agendamento chama a mesma função que o monitor.** Não existe uma camada
 de rotinas agendáveis entre o Schedule e o trabalho: `U_BJVARRE`, `U_BJDRENA`,
@@ -107,7 +184,7 @@ mensagem é o `ZZ_ENTID`, no detalhe.
 | `ZY_DTINI` / `ZY_HRINI` | D / C(8) | Quando o lote começou a trabalhar. Com o fim, mede quanto durou — **não tem relação com a janela de coleta**, que é a `ZY_MARCA` |
 | `ZY_DTFIM` / `ZY_HRFIM` | D / C(8) | Quando o lote terminou de coletar. Com o início, é o tempo de trabalho do lote |
 | `ZY_STATUS` | C(1) | **Diz qual lote ainda precisa ser processado.** `1` coletado, aguardando envio · `2` processado (coletado e enviado) · `3` erro. O envio percorre os `1` e os `3`, do mais antigo ao mais novo; o `2` está pronto e não volta. Não interfere na marca |
-| `ZY_MARCA` | C(19) | **A marca do lote**: o corte até onde ele coletou, em UTC `AAAA-MM-DD HH:MM:SS`. É a referência para o início do próximo lote. Só é preenchida quando a coleta varreu o catálogo inteiro sem erro e não foi pontual — coleta por chave ou por intervalo de datas não move a janela |
+| `ZY_MARCA` | C(19) | **A marca do lote**: o corte até onde ele coletou, em UTC `AAAA-MM-DD HH:MM:SS`. É a referência para o início do próximo lote. Só é preenchida quando a coleta varreu o catálogo inteiro sem erro, com os deletados, e não foi pontual — coleta por chave, por intervalo de datas, de um grupo ou de uma entidade não move a janela. **Até 25/09/2026 o código não conferia o catálogo inteiro nem os deletados**: Gerar de um grupo e Reenviar de uma entidade gravavam a marca, e as outras entidades perdiam a janela |
 | `ZY_QTDLIDO` | N(6) | Registros que os mapeadores devolveram, somados de todas as entidades do lote |
 | `ZY_QTDENV` | N(6) | Registros enfileirados com sucesso, somados de todas as entidades do lote |
 | `ZY_QTDERR` | N(6) | Erros de enfileiramento, somados de todas as entidades do lote |
@@ -183,17 +260,26 @@ sem recompilar.
 | `MV_BJAPI04` | N | `120` | Timeout da requisição, em segundos |
 | `MV_BJAPI05` | N | `3` | Retentativas dentro da mesma requisição |
 | `MV_BJAPI06` | N | `2000` | Espera entre retentativas, em ms — multiplicada pelo número da tentativa |
+| `MV_BJAPI07` | N | `500` | Registros por transação ao enfileirar na SZZ. A coleta grava em blocos desse tamanho; `0` usa 500. **Precisa estar cadastrado** — o `GetMV` não tem padrão |
 | `MV_BJAPI08` | N | `1050` | Pausa entre requisições, em ms |
 | `MV_BJAPI09` | N | `1000` | Máximo de registros por `PUT` em bloco |
-| `MV_BJAPI10` | N | `30` | Recuo da marca d'água, em dias, quando nenhum lote gravou marca e a fila de saída já tem mensagens. Com a fila vazia a coleta é carga inicial e lê a origem inteira |
+| `MV_BJAPI10` | — | — | **Não é mais lido** desde 26/09/2026. Recuava a marca, em dias, quando a fila já tinha mensagens e nenhum lote tinha marca — e com a coleta fracionada esse é o caso da **carga inicial que caiu no meio**: o recuo perdia em silêncio tudo que ela não chegou a ler. Agora a coleta refaz a carga desde o corte (`MV_BJAPI14`); o envio descarta a mensagem repetida como superada. Pode ficar cadastrado, sem efeito |
 | `MV_BJAPI11` | N | `90` | Retenção da mensagem executada, em dias |
-| `MV_BJAPI12` | — | — | **Não é mais lido** desde 21/09/2026: as travas passaram de arquivo `.tsk` para `LockByName`. Pode ficar cadastrado, sem efeito |
+| `MV_BJAPI12` | N | `2000` | **Tamanho máximo do lote**, em mensagens (reaproveitado em 26/09/2026 — ver [plano](../../planos/2026-09-26-filas-prioridade-integracao.md)). A coleta fecha o lote nesse tamanho e abre o próximo; o envio confere a prioridade a cada tantas mensagens. **Ainda não lido pelo código** até o plano ser implementado. Até 21/09/2026 este nome guardava o caminho das travas `.tsk` (caractere) — se ainda estiver cadastrado assim, **trocar o tipo para N** |
+| `MV_BJAPI14` | C(19) | vazio | **Marca d'água inicial de corte** da carga inicial, pelo `S_T_A_M_P_` (decisão do usuário, 26/09/2026). Formato da `ZY_MARCA`: `AAAA-MM-DD` ou `AAAA-MM-DD HH:MM:SS`, **em UTC** (como o `S_T_A_M_P_`); `DD/MM/AAAA` também é aceito, e o tipo D também. **O servidor do Protheus está em UTC−4** (conferido em 25/09/2026: 18:05 local = 22:05 no `S_T_A_M_P_`): meia-noite local é `04:00:00` UTC. Prefira `DD/MM/AAAA`, que converte pelo fuso do servidor. Só vale quando a SZZ não tem nenhuma mensagem de saída; vazio lê a origem inteira. **Vale para todas as entidades**: cliente, produto ou preço sem alteração desde antes do corte não sobem, e título **em aberto** emitido antes dele também não — só entram quando forem alterados, ou por um Gerar com período. **A carga inicial não manda excluídos** (a plataforma está vazia): até 26/09/2026, com o corte ela mandava cada excluído desde a data como POST + DELETE |
+| `MV_BJAPI15` | C(250) | vazio | **Gravado pela coleta, não configurado.** Pesos das classes (lotes) que tiveram erro na última coleta do catálogo inteiro, separados por vírgula (ex.: `90,40`). A coleta seguinte **começa por essas classes** e depois segue do maior peso para o menor (decisão do usuário, 26/09/2026: "recomeça pelos com erro", por lote/prioridade). Só muda a ordem da coleta; o envio segue a prioridade dos lotes |
+| `MV_BJAPI16` | C(250) | vazio | **Armazéns de revenda** cujo saldo vai para a plataforma, separados por vírgula (ex.: `01,02,07`) — decisão do usuário, 26/09/2026. Vazio, todos. Filtra o `U_BJMAPEST` (`B2_LOCAL IN (...)`); código com caractere que não seja letra ou número é ignorado. **Tirar um armazém da lista não apaga na plataforma o saldo que ele já mandou** |
+| `MV_BJAPI17` | C(250) | vazio | **Tipos de título (`E1_TIPO`) que vão para a plataforma**, separados por vírgula (ex.: `NF,DP,BOL`) — decisão do usuário, 26/09/2026: retenção (`IR-`, `PI-`, `CF-`, `CS-`…) e abatimento (`AB-`) não são cobrança do cliente. É a lista do que **vai**, não do que fica: tipo novo no Protheus fica de fora até ser incluído. Vazio, todos. Tipo com caractere que não seja letra, número ou `-` é ignorado. **Tirar um tipo da lista não apaga na plataforma o que ele já mandou** |
+| `MV_BJAPI13` | C(250) | vazio | **Gravado pelo envio, não configurado.** Batimento de quem segura a trava `BJPLA_ENVIO`: `thread\|origem\|início\|último avanço\|fase`. O `U_BJDRENA` e o `U_BJLOTE` atualizam a cada 50 mensagens (ou 5.000 lidas) e apagam ao terminar; o monitor lê quando a trava está ocupada |
 
-Todos são lidos com valor padrão (`SuperGetMV`), então a integração sobe antes
-de o SX6 estar completo — desligada (`MV_BJAPI03 = N`) até alguém ligar. Os
-padrões acima são os mesmos valores que eram constantes no fonte até
-17/09/2026, então um ambiente sem nenhum deles cadastrado se comporta como
-antes. **Não há parâmetro de marca d'água**: ela mora na SZY, uma por lote.
+Todos são lidos com `GetMV("MV_...")` — **não** `SuperGetMV`, que guarda cache:
+trocar o conteúdo só valia depois de reiniciar o AppServer (trocado em
+25/09/2026). O `GetMV` não tem valor padrão, então **todos precisam estar
+cadastrados** antes de a integração rodar, inclusive o `MV_SPEDURL` e os
+`MV_RGC_PJUR`/`MV_RGC_PMUL` que a coleta lê. A coluna de padrão acima é o
+valor recomendado para o cadastro — os mesmos valores que eram constantes no
+fonte até 17/09/2026. **Não há parâmetro de marca d'água**: ela mora na SZY,
+uma por lote.
 
 > **Atenção ao `MV_BJAPI04`.** Esse nome já existiu no desenho antigo (`BJIN*`),
 > onde guardava a marca d'água. Se sobrou na base, ele tem um conteúdo de data
@@ -210,6 +296,7 @@ Nenhuma tabela de negócio nova — só `SZY` e `SZZ`.
 | O que já foi enviado | `ZY_MARCA` na SZY, comparado com `S_T_A_M_P_` da origem | `BJPLA003` (`BJVARRE`) |
 | Cada mensagem, pendente ou concluída | `SZZ` | `BJPLA002` |
 | Um processo por vez | `LockByName` por empresa — um por rotina (`BJPLA_COLETA`, `BJPLA_ENVIO`, `BJPLA_RETORNO`, `BJPLA_EXPURGO`), um por entidade (`BJPLA_ENT_<id>`) na varredura e um por orçamento (`BJPLA_ORC_<id>`) no retorno. O servidor solta a trava quando a thread termina, então uma queda não deixa a rotina travada | `BJPLA002`, `BJPLA003`, `BJPLA004` |
+| Trava presa × envio lento | Batimento no `MV_BJAPI13` (`U_BJBATIDA`). Enviar, Reenviar e Enviar em Bloco, achando a `BJPLA_ENVIO` ocupada, mostram origem, início, último avanço e fase. **10 minutos sem avanço** é tratado como parado, e a tela indica a thread a encerrar no Monitor do AppServer — encerrar é manual | `BJPLA002`, `BJPLA004`, `BJPLA005` |
 | O que deu errado | `ZZ_RETORN` da própria mensagem (resposta íntegra da API) + console do AppServer via `FwLogMsg` | `BJPLA002` |
 | Retorno já tratado | Fila da própria plataforma (`orcamentos-pendentes`/`clientes-alteracoes` só devolvem o que falta) + a mensagem executada na SZZ, com o documento em `ZZ_CHVDES` | `BJPLA004` |
 
@@ -233,6 +320,21 @@ mudou entre 10:00 e 10:30, durante a própria varredura, entra na janela das
 11:00. Por isso a marca é o **corte**, não o fim: gravasse 10:30, essa faixa
 ficaria sem coletar para sempre.
 
+**Desde 26/09/2026 a marca gravada é o corte menos 10 minutos** — a coleta das
+10:00 grava `09:50`, e a das 11:00 varre de 09:50. As janelas passam a se
+sobrepor de propósito, para cobrir dois jeitos de perder registro em silêncio:
+
+- **relógios diferentes** — o corte vem do relógio do AppServer, e o
+  `S_T_A_M_P_`, do relógio do banco. Com o AppServer adiantado, um registro
+  alterado logo depois do corte recebe carimbo *anterior* a ele e, se a
+  entidade já tinha sido lida, não entrava em nenhuma das duas coletas;
+- **transação longa** — o registro gravado antes do corte e confirmado depois da
+  consulta da entidade tem carimbo anterior ao corte, e a coleta não o via
+  enquanto não estava confirmado.
+
+O que é lido de novo na sobreposição não duplica: a API faz upsert pela chave, e
+o envio marca a mensagem mais antiga como **superada**, sem enviar.
+
 Três regras seguram o desenho:
 
 **A hora é lida antes do ciclo, não depois.** Marcar a hora do fim descartaria
@@ -248,6 +350,28 @@ intervalo de datas é ação dirigida e não a move; só uma chamada de `BJVARRE
 que varreu o catálogo inteiro e terminou sem nenhum erro grava `ZY_MARCA`.
 **O envio não entra nessa conta**: mensagem que falhou continua pendente no
 lote dela e é reenviada de lá, sem segurar a coleta seguinte.
+
+### Como a coleta grava e como a régua anda
+
+Duas coisas custavam caro por registro e foram agrupadas em **`BJVarreEnt`**:
+
+1. **Gravação.** Cada `U_BJENFILA` era um `RecLock`/`MsUnlock` solto, ou seja, um
+   commit por registro. Agora os registros entram em blocos de `MV_BJAPI07`
+   (500 por padrão) dentro de um `Begin Transaction`. **O bloco que falhar volta
+   inteiro** — o lote fecha com erro, é recoletado, e nada fica meio enviado.
+2. **Régua.** `IncRegua2` repinta a tela a cada chamada. O passo agora é de no
+   mínimo 100 registros e rende no máximo 100 atualizações por entidade. Como
+   `IncRegua2` anda uma casa por chamada, **a régua é dimensionada em passos, não
+   em registros** — senão a barra pararia numa fração do caminho. O mesmo vale
+   para a régua 2 do envio, em `U_BJDRENA`.
+
+O teste de `oProcess:lEnd` continua a cada registro, para o Cancelar responder.
+Ele marca uma variável e sai **só do laço interno** — sair de um
+`Begin Transaction` por `Exit`, `Loop` ou `Return` deixa a transação aberta.
+
+> **A pausa entre requisições (`MV_BJAPI08`) não foi tocada.** Ela é o custo
+> dominante do *envio*, não da coleta — ver
+> [Limite de requisições](#limite-de-requisições--leia-antes-da-primeira-carga).
 
 ### O que dispara a coleta em cada entidade
 
@@ -319,6 +443,72 @@ porque não são varridas do ERP — nascem de um `GET`, ver `BJPLA004`):
 > além disso. A inclusão de cliente novo ainda não está escrita (TASK-060): o
 > código hoje só altera cliente que já existe na SA1, e a rota da plataforma
 > para o cliente ainda não existe (TASK-051).
+
+## Prioridade dos dados
+
+> Definido com o usuário em 26/09/2026. **Vale para toda decisão sobre coleta,
+> envio e tratamento de erro**: quando duas coisas competem — ordem, tempo,
+> quem espera quem —, ganha a de prioridade maior.
+
+A plataforma existe para **vender**: recebe do ERP o que o vendedor e o cliente
+usam na hora (cliente, estoque, preço, títulos) e devolve ao ERP o orçamento
+aprovado. O risco que importa não é lentidão em si — é o **dado velho na hora
+da venda ou da cobrança**, e a **mensagem perdida**.
+
+### ERP → plataforma
+
+| Prioridade | Entidades | Onde a plataforma usa | O que dá errado se atrasar |
+|---|---|---|---|
+| **Crítica** | `estoque` | Orçamento, catálogo do vendedor | Vender o que não tem |
+| **Crítica** | `tabelas-preco` | Orçamento | Vender com preço antigo |
+| **Crítica** | `clientes` | Orçamento, Posição de Cliente, WhatsApp | Orçamento para cliente que não existe ainda na plataforma; tabela de preço, condição ou contato desatualizados |
+| **Crítica** | `titulos-receber` | WhatsApp do cliente (vencidos, 2ª via), Posição de Cliente (vencidos, crédito), agente | **Cobrar título já pago**; boleto com valor ou vencimento errado; travar venda por inadimplência já quitada |
+| Alta (cadastros base — saem **antes** dos críticos, que dependem deles) | `produtos`, `condicoes-pagto`, `vendedores`, `regras-desconto`, `categorias`, `armazens`, `fornecedores` | Base do orçamento e da carteira; fornecedor é o fabricante do produto | Mudam pouco; atraso aparece como produto ou condição faltando, ou produto sem fabricante |
+| Histórico | `notas-saida`, `notas-saida-xml`, `notas-entrada` | Posição de Cliente (histórico, mix, devoluções), sugestão de compra, 2ª via de DANFE | Consulta desatualizada — incomoda, não gera venda ou cobrança errada |
+
+### Plataforma → ERP
+
+**O ciclo do orçamento é o mais crítico da integração inteira, nos dois
+sentidos**: receber o orçamento aprovado e devolver à plataforma o pedido
+gerado. Orçamento que não chega ao ERP é venda perdida; pedido que não volta
+deixa o vendedor sem saber se a venda entrou. Alteração de cliente aprovada
+vem logo depois.
+
+O ciclo **não passa pela fila da SZZ**: o `U_BJRETORNO` lê o orçamento, grava o
+pedido e devolve o vínculo (`BJVincula`, `PATCH` direto) na mesma thread, com
+trava própria (`BJPLA_RETORNO`). Uma carga no envio não o segura na fila.
+
+**O que ele divide com o envio é o limite da API** — 60 requisições/min por
+IP. O envio uma a uma (`U_BJDRENA`, pausa de ~1 s) sozinho usa ~57; durante
+uma carga, orçamento e vínculo disputam o resto, levam 429 e esperam na
+retentativa do `U_BJHTTP`. Envio em bloco (`PUT`) resolve: poucas requisições
+por minuto, e a folga fica para o orçamento.
+
+### O que isso exige do código
+
+1. **Dado crítico não espera histórico.** Uma baixa de título ou uma mudança de
+   estoque de agora sai antes de uma carga de notas antigas, mesmo que a carga
+   esteja num lote mais velho.
+2. **Um registro ruim não trava os outros.** Erro de **dado** (400, 404, 409,
+   422) marca aquela mensagem com erro e o envio segue; só erro de **API ou
+   rede** (transporte, 5xx, 401, 403, 429) para o lote.
+3. **Nada se perde em silêncio.** Toda mensagem fica na SZZ até sair; quem
+   falha fica com erro, visível no monitor, e é reenviada. A marca d'água só
+   avança por coleta completa (ver [A marca d'água](#a-marca-dágua)).
+4. **Divergência tem que aparecer.** O que escapar das regras acima precisa ser
+   detectado por conferência, não pela reclamação do cliente.
+
+### Onde o código está hoje (26/09/2026)
+
+| Exigência | Situação |
+|---|---|
+| 1. Crítico antes de histórico | ✍️ **Escrito em 26/09, falta compilar e testar.** Lote com uma classe só e peso (`ZY_PRIOR`, do catálogo); o `U_BJDRENA` escolhe o lote de maior peso a cada fatia de `MV_BJAPI12` mensagens. Ver o [plano](../../planos/2026-09-26-filas-prioridade-integracao.md) |
+| 2. Erro de dado não trava | ✍️ **Escrito em 26/09, falta compilar e testar.** 400, 404, 409 e 422 marcam a mensagem e seguem; rede, 5xx, 401, 403 e 429 param a chamada |
+| 3. Nada se perde | ✅ No envio, pelo desenho (reenvio é upsert). Dois furos fechados em 25/09 — marca gravada por coleta parcial e lote fechado pelo Cancelar com pendentes —, pendentes de compilação |
+| 4. Conferência | ❌ Não existe |
+
+As mudanças que faltam estão em
+[`docs/planos/2026-09-25-desempenho-integracao-advpl.md`](../../planos/2026-09-25-desempenho-integracao-advpl.md).
 
 ---
 
@@ -565,7 +755,7 @@ Consequências práticas:
    têm a coluna `S_T_A_M_P_` — responsabilidade do DBA/Configurador
    (`TCConfig('SETUSEROWSTAMP = ON')` / `SETAUTOSTAMP = ON`, DBAccess
    20.1.1.0+). Tabela sem a coluna é lida inteira a cada ciclo.
-4. **Cadastre os parâmetros** `MV_BJAPI01` a `MV_BJAPI12` — no Configurador,
+4. **Cadastre os parâmetros** `MV_BJAPI01` a `MV_BJAPI13` — no Configurador,
    ou distribuídos por UPDDISTR. Todos têm valor padrão, então a integração
    sobe mesmo sem cadastro explícito (desligada, por `MV_BJAPI03 = N`).
 5. Preencha `MV_BJAPI02` com a chave de API (`itg_...`), obtida em

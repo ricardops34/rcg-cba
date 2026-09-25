@@ -74,6 +74,7 @@ export default function PosicaoClientePage() {
   const [vendedorId, setVendedorId] = useState<string | undefined>(undefined);
   const [carteira, setCarteira] = useState<SimNaoTodos>("todos");
   const [diasSemComprar, setDiasSemComprar] = useState<number | undefined>(undefined);
+  const [temTituloVencido, setTemTituloVencido] = useState<boolean | undefined>(undefined);
 
   // Visualizar/Alterar Cliente e Incluir Orçamento abrem em cortina lateral
   // (não navegam pra fora desta listagem) — só nesta tela; o cadastro de
@@ -150,6 +151,7 @@ export default function PosicaoClientePage() {
       ...(vendedorId ? { vendedorId } : {}),
       ...(carteira !== "todos" ? { carteira: carteira === "sim" } : {}),
       ...(diasSemComprar !== undefined ? { diasSemComprar } : {}),
+      ...(temTituloVencido !== undefined ? { temTituloVencido } : {}),
     },
   );
 
@@ -162,7 +164,8 @@ export default function PosicaoClientePage() {
     !!municipio ||
     !!vendedorId ||
     carteira !== "todos" ||
-    diasSemComprar !== undefined;
+    diasSemComprar !== undefined ||
+    temTituloVencido !== undefined;
 
   const limparFiltros = () => {
     setStatus("ativos");
@@ -171,6 +174,7 @@ export default function PosicaoClientePage() {
     setVendedorId(undefined);
     setCarteira("todos");
     setDiasSemComprar(undefined);
+    setTemTituloVencido(undefined);
     setPage(1);
   };
 
@@ -327,6 +331,18 @@ export default function PosicaoClientePage() {
               </QuickFilterButton>
             ))}
           </QuickFilterGroup>
+          <QuickFilterGroup>
+            <QuickFilterButton
+              active={temTituloVencido === true}
+              onClick={() => {
+                setTemTituloVencido((atual) => (atual === true ? undefined : true));
+                setPage(1);
+              }}
+              className={temTituloVencido === true ? "text-destructive font-semibold" : ""}
+            >
+              <span className="text-destructive font-bold">$</span> Títulos vencidos
+            </QuickFilterButton>
+          </QuickFilterGroup>
         </div>
         <div data-tour="posicao-cliente-filtros-avancados">
           <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
@@ -428,6 +444,26 @@ export default function PosicaoClientePage() {
                   <SelectItem value="todos">Todos</SelectItem>
                   <SelectItem value="sim">Sim</SelectItem>
                   <SelectItem value="nao">Não</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <FieldLabel>Título vencido</FieldLabel>
+              <Select
+                value={temTituloVencido === true ? "sim" : temTituloVencido === false ? "nao" : "todos"}
+                onValueChange={(v) => {
+                  setTemTituloVencido(v === "sim" ? true : v === "nao" ? false : undefined);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  <SelectItem value="sim">Com título vencido</SelectItem>
+                  <SelectItem value="nao">Sem título vencido</SelectItem>
                 </SelectContent>
               </Select>
             </div>

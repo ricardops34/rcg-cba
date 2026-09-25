@@ -52,7 +52,7 @@ export const notaSaidaQuerySchema = paginationQuerySchema.extend({
   clienteId: z.string().uuid().optional(),
   vendedorId: z.string().uuid().optional(),
   comodato: booleanQueryParam,
-  tipo: z.string().trim().max(1).optional(),
+  tipo: z.string().trim().max(10).optional(),
   ano: z.coerce.number().int().optional(),
   mes: z.coerce.number().int().min(1).max(12).optional(),
 });

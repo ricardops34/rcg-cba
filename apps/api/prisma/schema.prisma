@@ -128,6 +128,7 @@ model Empresa {
   notasSaidaItens            NotaSaidaItem[]
   notasSaidaXml              NotaSaidaXml[]
   titulosReceber             TituloReceber[]
+  titulosReceberBaixas       TituloReceberBaixa[]
   contasBancarias            ContaBancaria[]
   oportunidades              Oportunidade[]
   atividades                 Atividade[]
@@ -136,6 +137,7 @@ model Empresa {
   orcamentos                 Orcamento[]
   orcamentoItens             OrcamentoItem[]
   integracaoApiKeys          IntegracaoApiKey[]
+  integracaoEndpointConfigs   IntegracaoEndpointConfig[]
   clienteCampoConfigs        ClienteCampoConfig[]
   produtoCampos              ProdutoCampo[]
   produtoCampoValores        ProdutoCampoValor[]
@@ -417,6 +419,7 @@ model Perfil {
   // abrir escalonamento de privilégio pela tela de Perfis/Usuários.
   administraPlataforma Boolean @default(false)
   ativo                Boolean @default(true)
+  rotinaInicialId      String?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -425,6 +428,7 @@ model Perfil {
   updatedBy String?
   deletedBy String?
 
+  rotinaInicial     Rotina?                 @relation("PerfilRotinaInicial", fields: [rotinaInicialId], references: [id])
   usuarioEmpresas   UsuarioEmpresa[]
   permissoes        PerfilPermissao[]
   agenteFerramentas AgenteFerramentaPerfil[]
@@ -567,10 +571,11 @@ model Rotina {
   updatedBy String?
   deletedBy String?
 
-  menu       Menu              @relation(fields: [menuId], references: [id])
-  permissoes PerfilPermissao[]
-  ativacoes  EmpresaRotina[]
-  planos     PlanoRotina[]
+  menu                Menu              @relation(fields: [menuId], references: [id])
+  permissoes          PerfilPermissao[]
+  ativacoes           EmpresaRotina[]
+  planos              PlanoRotina[]
+  perfisRotinaInicial Perfil[]          @relation("PerfilRotinaInicial")
 
   @@unique([codigo])
   @@map("rotinas")
@@ -863,6 +868,8 @@ model IntegracaoApiKey {
   ativo     Boolean   @default(true)
   expiraEm  DateTime?
   ultimoUso DateTime?
+  ultimaColeta DateTime?
+  ultimoEnvio  DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -875,6 +882,30 @@ model IntegracaoApiKey {
 
   @@index([empresaId])
   @@map("integracao_api_keys")
+}
+
+// Configuração e monitor dos endpoints da API de integração ERP por empresa.
+model IntegracaoEndpointConfig {
+  id            String    @id @default(uuid())
+  empresaId     String
+  endpointKey   String
+  nome          String
+  ativo         Boolean   @default(true)
+  ultimoUso     DateTime?
+  totalChamadas Int       @default(0)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@unique([empresaId, endpointKey])
+  @@index([empresaId])
+  @@map("integracao_endpoint_configs")
 }
 
 // ------------------------------------------------------------------
@@ -2754,6 +2785,10 @@ model NotaSaida {
   // não interpreta o conteúdo — guarda, indexa e usa no upsert do POST.
   chave               String?
   clienteId           String?
+  // Só na devolução de compra (tipo 'D'): o destinatário é um fornecedor, e
+  // `clienteId` fica nulo. Espelho da NotaEntrada, onde a devolução de venda
+  // aponta para o cliente.
+  fornecedorId        String?
   vendedorId          String?
   condicaoPagamentoId String?
 
@@ -2810,6 +2845,7 @@ model NotaSaida {
 
   empresa           Empresa            @relation(fields: [empresaId], references: [id])
   cliente           Cliente?           @relation(fields: [clienteId], references: [id])
+  fornecedor        Fornecedor?        @relation(fields: [fornecedorId], references: [id])
   vendedor          Vendedor?          @relation(fields: [vendedorId], references: [id])
   condicaoPagamento CondicaoPagamento? @relation(fields: [condicaoPagamentoId], references: [id])
   itens             NotaSaidaItem[]
@@ -2820,6 +2856,7 @@ model NotaSaida {
   @@index([empresaId, numero])
   @@index([empresaId, vendedorId, ano, mes])
   @@index([empresaId, clienteId])
+  @@index([empresaId, fornecedorId])
   @@index([empresaId, dtEmissao])
   @@map("notas_saida")
 }
@@ -2977,6 +3014,7 @@ model Fornecedor {
   empresa           Empresa           @relation(fields: [empresaId], references: [id])
   notasEntrada      NotaEntrada[]
   notasEntradaItens NotaEntradaItem[]
+  notasSaida        NotaSaida[]
   produtos          Produto[]
 
   @@unique([empresaId, chave])
@@ -3158,6 +3196,9 @@ model ContaBancaria {
   // de barras e é impressa na ficha.
   carteira  String
 
+  /// Logo do banco para exibição na 2ª via do boleto.
+  logoUrl String?
+
   // Beneficiário do boleto. Nulo = usa o cadastro da empresa — o caso normal;
   // preencher só quando a conta é de outra razão social (filial, factoring).
   beneficiarioNome      String?
@@ -3281,12 +3322,81 @@ model TituloReceber {
   vendedor      Vendedor?      @relation(fields: [vendedorId], references: [id])
   contaBancaria ContaBancaria? @relation(fields: [contaBancariaId], references: [id])
 
+  baixas TituloReceberBaixa[]
+
   @@unique([empresaId, chave])
   @@index([empresaId, codigoErp])
   @@index([empresaId, clienteId])
   @@index([empresaId, vendedorId, vencimento])
   @@index([empresaId, vencimento])
   @@map("titulos_receber")
+}
+
+// A baixa do título — o que o cliente pagou de verdade, movimento a movimento.
+// Espelho read-only da SE5 do Protheus: **a plataforma nunca cria, altera nem
+// estorna uma baixa**, só recebe pelo import. Baixa é ato financeiro do ERP.
+//
+// Existe como tabela, e não como colunas no título, porque um título aceita
+// baixa parcial: três pagamentos com datas, juros e descontos diferentes viram
+// três linhas, e somá-los no título perderia justamente o que se quer ver.
+//
+// `valor` é o principal amortizado; os encargos vêm ao lado, cada um no seu
+// campo. O que entrou em caixa é
+// `valor + juros + multa - desconto - abatimento - impostosRetidos`, e a
+// plataforma não recalcula isso: quem fecha a conta é o ERP.
+//
+// Não confundir com `TituloReceber.jurosValorDia`/`multaValor`/`descontoValor`:
+// aqueles são as **instruções do boleto em aberto** (importância por dia de
+// atraso, multa após o vencimento, desconto até o vencimento), calculadas sobre
+// o saldo. Estes aqui são realizados, e só existem depois da baixa.
+model TituloReceberBaixa {
+  id              String  @id @default(uuid())
+  empresaId       String
+  tituloReceberId String
+  // Chave própria do movimento no ERP: o upsert do título casa baixa a baixa
+  // por ela, em vez de apagar e recriar o conjunto a cada coleta.
+  chave           String?
+
+  data  DateTime?
+  // Principal amortizado do título nesta baixa.
+  valor Float     @default(0)
+
+  // Encargos realizados. Sempre positivos: o sinal está no nome do campo, não
+  // no número — desconto de 10 é `desconto: 10`, nunca `-10`.
+  juros           Float @default(0)
+  multa           Float @default(0)
+  desconto        Float @default(0)
+  abatimento      Float @default(0)
+  impostosRetidos Float @default(0)
+
+  // Motivo da baixa no ERP (E5_MOTBX: NOR normal, CMP compensação, DAC…) e o
+  // histórico digitado. Informativos.
+  motivo    String?
+  historico String?
+
+  // Onde o dinheiro entrou, quando o ERP registra. Texto solto, e não um
+  // vínculo com `contas_bancarias`: é o banco do movimento, não a conta de
+  // cobrança em que o boleto foi registrado.
+  banco   String?
+  agencia String?
+  conta   String?
+
+  ativo Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa       Empresa       @relation(fields: [empresaId], references: [id])
+  tituloReceber TituloReceber @relation(fields: [tituloReceberId], references: [id], onDelete: Cascade)
+
+  @@unique([tituloReceberId, chave])
+  @@index([empresaId, tituloReceberId])
+  @@index([empresaId, data])
+  @@map("titulo_receber_baixas")
 }
 
 // ------------------------------------------------------------------

@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { EstoqueDetalhe } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -68,7 +69,17 @@ export default function EstoqueDetalhePage() {
         <Button variant="ghost" size="icon" onClick={() => router.push(LIST_ROUTE)}>
           <ArrowLeft className="size-4" />
         </Button>
-        <h1 className="text-xl font-semibold tracking-tight">{produto.descricao}</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-semibold tracking-tight">{produto.descricao}</h1>
+          {!produto.ativo && (
+            <Badge
+              variant="outline"
+              className="border-amber-500/40 bg-amber-500/10 text-xs text-amber-600 dark:text-amber-400"
+            >
+              Bloqueado
+            </Badge>
+          )}
+        </div>
       </div>
 
       <Card>
@@ -90,16 +101,23 @@ export default function EstoqueDetalhePage() {
                   <TableHead>Armazém</TableHead>
                   <TableHead className="text-right">Saldo</TableHead>
                   <TableHead className="text-right">Reserva</TableHead>
-                  <TableHead className="text-right">Custo</TableHead>
-                  <TableHead className="text-right">Últ. preço</TableHead>
-                  <TableHead>Últ. compra</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {saldos.map((s) => (
                   <TableRow key={s.id}>
                     <TableCell>
-                      <p>{s.armazem.descricao}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p>{s.armazem.descricao}</p>
+                        {!s.armazem.ativo && (
+                          <Badge
+                            variant="outline"
+                            className="border-amber-500/40 bg-amber-500/10 text-[10px] text-amber-600 dark:text-amber-400 shrink-0"
+                          >
+                            Bloqueado
+                          </Badge>
+                        )}
+                      </div>
                       {s.armazem.codigoErp && (
                         <p className="font-mono text-xs text-muted-foreground">{s.armazem.codigoErp}</p>
                       )}
@@ -113,9 +131,6 @@ export default function EstoqueDetalhePage() {
                     <TableCell className="text-right">
                       {s.reserva != null ? s.reserva.toLocaleString("pt-BR") : "—"}
                     </TableCell>
-                    <TableCell className="text-right">{moeda(s.custo)}</TableCell>
-                    <TableCell className="text-right">{moeda(s.ultimoPreco)}</TableCell>
-                    <TableCell>{dataBr(s.ultimaCompra)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

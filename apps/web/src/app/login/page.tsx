@@ -157,7 +157,11 @@ function LoginForm() {
       } else {
         toast.success(`Bem-vindo, ${me.nome.split(" ")[0]}`);
       }
-      router.replace("/");
+      if (!tokens.mustChangePassword && me.rotinaInicialRota && me.rotinaInicialRota !== "/" && me.rotinaInicialRota !== "") {
+        router.replace(me.rotinaInicialRota);
+      } else {
+        router.replace("/");
+      }
     } catch (err) {
       logout();
       const message =

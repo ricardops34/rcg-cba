@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import type { Armazem, EstoqueProdutoResumo } from "@plataforma/contracts";
+import type { Armazem, Categoria, EstoqueProdutoResumo } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
 import { apiFetch } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { FiltersPopover } from "@/components/crud/filters-popover";
+import { Badge } from "@/components/ui/badge";
 import { FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -29,11 +30,17 @@ export default function EstoquePage() {
   const [sortBy, setSortBy] = useState("descricao");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [armazemId, setArmazemId] = useState<string | undefined>(undefined);
+  const [categoriaId, setCategoriaId] = useState<string | undefined>(undefined);
   const [comSaldo, setComSaldo] = useState<"todos" | "sim" | "nao">("todos");
 
   const armazensQuery = useQuery({
     queryKey: ["armazens", "select"],
     queryFn: () => apiFetch<{ data: Armazem[] }>("/armazens", { query: { pageSize: 100 } }),
+  });
+
+  const categoriasQuery = useQuery({
+    queryKey: ["categorias", "select", "usadas"],
+    queryFn: () => apiFetch<{ data: Categoria[] }>("/categorias", { query: { pageSize: 100, usado: true } }),
   });
 
   const { data, isLoading, isFetching, refetch, error } = useResourceList<EstoqueProdutoResumo>("estoque", {
@@ -43,12 +50,14 @@ export default function EstoquePage() {
     sortBy,
     sortOrder,
     ...(armazemId ? { armazemId } : {}),
+    ...(categoriaId ? { categoriaId } : {}),
     ...(comSaldo !== "todos" ? { comSaldo: comSaldo === "sim" } : {}),
   });
 
-  const filtrosAtivos = !!armazemId || comSaldo !== "todos";
+  const filtrosAtivos = !!armazemId || !!categoriaId || comSaldo !== "todos";
   const limparFiltros = () => {
     setArmazemId(undefined);
+    setCategoriaId(undefined);
     setComSaldo("todos");
     setPage(1);
   };
@@ -62,7 +71,19 @@ export default function EstoquePage() {
     {
       header: "Produto",
       sortKey: "descricao",
-      cell: (p) => <p className="font-medium">{p.descricao}</p>,
+      cell: (p) => (
+        <div className="flex items-center gap-1.5">
+          <p className="font-medium">{p.descricao}</p>
+          {!p.ativo && (
+            <Badge
+              variant="outline"
+              className="ml-1 border-amber-500/40 bg-amber-500/10 text-[10px] text-amber-600 dark:text-amber-400 shrink-0"
+            >
+              Bloqueado
+            </Badge>
+          )}
+        </div>
+      ),
     },
     {
       header: "Categoria",
@@ -86,7 +107,6 @@ export default function EstoquePage() {
       header: "Reserva total",
       cell: (p) => (p.reservaTotal != null ? p.reservaTotal.toLocaleString("pt-BR") : "—"),
     },
-    { header: "Últ. compra", cell: (p) => dataBr(p.ultimaCompra) },
   ];
 
   return (
@@ -103,6 +123,29 @@ export default function EstoquePage() {
 
       <div className="flex flex-wrap items-center justify-end gap-2">
         <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+          <div className="space-y-2">
+            <FieldLabel>Categoria</FieldLabel>
+            <Select
+              value={categoriaId ?? "none"}
+              onValueChange={(v) => {
+                setCategoriaId(v === "none" ? undefined : v);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Todas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Todas</SelectItem>
+                {(categoriasQuery.data?.data ?? []).map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.descricao}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="space-y-2">
             <FieldLabel>Armazém</FieldLabel>
             <Select

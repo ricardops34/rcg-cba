@@ -11,6 +11,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 /**
  * Botões de 2ª via — DANFE, XML e boleto.
@@ -140,26 +146,73 @@ export function SegundaViaTitulo({
   temBoleto: boolean;
   status: "aberto" | "vencido" | "baixado";
 }) {
+  const [baixando, setBaixando] = useState(false);
+  const queryClient = useQueryClient();
+
   // O motivo mais provável varia com o status, e dizer o certo evita o
   // chamado: título baixado não tem boleto; vencido sem botão quase sempre
   // passou dos 30 dias; o resto é falta de registro no ERP.
   const motivo = temBoleto
     ? null
     : status === "baixado"
-      ? "Título já baixado — não há 2ª via de boleto pago."
+      ? "Sem número do banco ou convênio de cobrança."
       : status === "vencido"
-        ? "Vencido há mais de 30 dias, ou sem registro bancário no ERP. Fale com o financeiro."
+        ? "Vencido além do prazo permitido de reemissão, ou sem registro bancário no ERP."
         : "Título sem nosso número do banco, ou sem conta de cobrança padrão cadastrada.";
 
+  const baixarBoleto = async (ev: React.MouseEvent, atualizado: boolean) => {
+    semPropagar(ev);
+    setBaixando(true);
+    try {
+      const sulfix = atualizado ? "?atualizado=true" : "?atualizado=false";
+      const sufixoNome = atualizado ? "-atualizado" : "-original";
+      await apiDownload(`/titulos-receber/${tituloId}/boleto${sulfix}`, `boleto-${numero}${sufixoNome}.pdf`);
+      void queryClient.invalidateQueries({ queryKey: ["atividades"] });
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "Não foi possível gerar o boleto",
+      );
+    } finally {
+      setBaixando(false);
+    }
+  };
+
+  if (!temBoleto || status !== "vencido") {
+    return (
+      <div className="flex justify-end">
+        <BotaoDocumento
+          rotulo="Baixar boleto"
+          motivoIndisponivel={motivo}
+          icone={<Barcode className="size-4" />}
+          caminho={`/titulos-receber/${tituloId}/boleto`}
+          nomePadrao={`boleto-${numero}.pdf`}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="flex justify-end">
-      <BotaoDocumento
-        rotulo="Baixar boleto"
-        motivoIndisponivel={motivo}
-        icone={<Barcode className="size-4" />}
-        caminho={`/titulos-receber/${tituloId}/boleto`}
-        nomePadrao={`boleto-${numero}.pdf`}
-      />
+    <div className="flex justify-end" onClick={semPropagar}>
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-8" disabled={baixando}>
+                {baixando ? <Loader2 className="size-4 animate-spin" /> : <Barcode className="size-4 text-amber-600 dark:text-amber-400" />}
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>Opções de emissão do boleto (vencido)</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="end" onClick={semPropagar}>
+          <DropdownMenuItem onClick={(ev) => baixarBoleto(ev, true)}>
+            Boleto Atualizado (com juros/multa)
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={(ev) => baixarBoleto(ev, false)}>
+            Boleto Original (sem encargos)
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

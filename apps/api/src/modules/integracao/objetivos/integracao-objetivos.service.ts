@@ -23,6 +23,7 @@ import {
   type DecisaoUpsert,
 } from '../common/decidir-upsert';
 import { processarLote } from '../common/processar-lote';
+import { resolverVendedor } from '../common/resolver-vendedor';
 import { sincronizarFilhos } from '../common/sincronizar-filhos';
 
 const INCLUDE = {
@@ -134,14 +135,16 @@ export class IntegracaoObjetivosService {
       });
       const decisao = decidirUpsert(existente);
 
-      const vendedor = await tx.vendedor.findFirst({
-        where: { empresaId, chave: input.vendedorChave, deletedAt: null },
-        select: { id: true },
-      });
-      if (!vendedor)
+      const vendedorId = await resolverVendedor(
+        tx,
+        empresaId,
+        input.vendedorChave,
+      );
+      if (!vendedorId) {
         throw new NotFoundException(
           `vendedorChave '${input.vendedorChave}' não encontrado`,
         );
+      }
 
       const categoriasData = await Promise.all(
         input.categorias.map(async (linha) => {
@@ -170,7 +173,7 @@ export class IntegracaoObjetivosService {
       const dados = {
         chave: input.chave,
         codigoErp: input.codigoErp ?? null,
-        vendedorId: vendedor.id,
+        vendedorId,
         mes: input.mes,
         ano: input.ano,
         valor: input.valor,
@@ -254,19 +257,13 @@ export class IntegracaoObjetivosService {
 
       let vendedorId: string | undefined;
       if (input.vendedorChave !== undefined) {
-        const vendedor = await tx.vendedor.findFirst({
-          where: {
-            empresaId,
-            chave: input.vendedorChave,
-            deletedAt: null,
-          },
-          select: { id: true },
-        });
-        if (!vendedor)
+        const id = await resolverVendedor(tx, empresaId, input.vendedorChave);
+        if (!id) {
           throw new NotFoundException(
             `vendedorChave '${input.vendedorChave}' não encontrado`,
           );
-        vendedorId = vendedor.id;
+        }
+        vendedorId = id;
       }
 
       let categoriasUpdate: Record<string, unknown> = {};

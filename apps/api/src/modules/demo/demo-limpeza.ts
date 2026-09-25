@@ -46,6 +46,7 @@ const PRESERVADOS = [
   // configuração da empresa
   'ParametroEmpresa',
   'IntegracaoApiKey',
+  'IntegracaoEndpointConfig',
   'OrcamentoConfig',
   'ClienteCampoConfig',
   'ProdutoCampo',
@@ -110,6 +111,7 @@ const ORDEM_DE_EXCLUSAO = [
   'NotaSaida',
   'NotaEntradaItem',
   'NotaEntrada',
+  'TituloReceberBaixa',
   'TituloReceber',
   'OrcamentoItem',
   'Orcamento',

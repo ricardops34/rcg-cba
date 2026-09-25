@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { MoreHorizontal, Pencil, Star, Trash2, Landmark, CheckCircle2, CreditCard, Plus } from "lucide-react";
+import { MoreHorizontal, Pencil, Star, Trash2, Landmark, CheckCircle2, CreditCard, Plus, Upload } from "lucide-react";
 import type { ContaBancaria } from "@plataforma/contracts";
 import { BANCO_BOLETO_LABEL } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
-import { ApiError } from "@/lib/api-client";
+import { ApiError, apiFetch, apiUpload, assetUrl } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
@@ -99,6 +99,40 @@ export default function ContasBancariasPage() {
   const [editando, setEditando] = useState<ContaBancaria | null>(null);
   const [aberto, setAberto] = useState(false);
   const [form, setForm] = useState<FormState>(FORM_VAZIO);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !editando) return;
+    setUploadingLogo(true);
+    try {
+      const updated = await apiUpload<ContaBancaria>(`/contas-bancarias/${editando.id}/logo`, file);
+      setEditando(updated);
+      toast.success("Logo do banco enviado com sucesso");
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Erro ao enviar logo");
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleRemoverLogo = async () => {
+    if (!editando || !editando.logoUrl) return;
+    setUploadingLogo(true);
+    try {
+      const updated = await apiFetch<ContaBancaria>(`/contas-bancarias/${editando.id}/logo`, {
+        method: "DELETE",
+      });
+      setEditando(updated);
+      toast.success("Logo removido com sucesso");
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Erro ao remover logo");
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
 
   const { data, isLoading, isFetching, refetch, error } =
     useResourceList<ContaBancaria>("contas-bancarias", {
@@ -214,9 +248,18 @@ export default function ContasBancariasPage() {
       header: "Banco",
       sortKey: "banco",
       cell: (c) => (
-        <Badge variant="secondary" className="font-mono text-xs">
-          {c.banco} — {BANCO_BOLETO_LABEL[c.banco as keyof typeof BANCO_BOLETO_LABEL] ?? "—"}
-        </Badge>
+        <div className="flex items-center gap-2">
+          {c.logoUrl ? (
+            <img
+              src={assetUrl(c.logoUrl) ?? undefined}
+              alt="Logo Banco"
+              className="h-6 max-w-[60px] object-contain rounded bg-white p-0.5 border"
+            />
+          ) : null}
+          <Badge variant="secondary" className="font-mono text-xs">
+            {c.banco} — {BANCO_BOLETO_LABEL[c.banco as keyof typeof BANCO_BOLETO_LABEL] ?? "—"}
+          </Badge>
+        </div>
       ),
     },
     {
@@ -439,6 +482,59 @@ export default function ContasBancariasPage() {
               <p className="text-xs text-muted-foreground">
                 Descrição de referência para a seleção do convênio nas operações do sistema.
               </p>
+            </div>
+
+            {/* Logo do Banco para exibição no boleto */}
+            <div className="space-y-1.5 border rounded-lg p-3 bg-muted/30">
+              <FieldLabel>Logo do Banco no Boleto</FieldLabel>
+              {editando ? (
+                <div className="flex items-center gap-4">
+                  {editando.logoUrl ? (
+                    <div className="relative group shrink-0">
+                      <img
+                        src={assetUrl(editando.logoUrl) ?? undefined}
+                        alt="Logo do Banco"
+                        className="h-12 max-w-[140px] object-contain rounded border bg-white p-1"
+                      />
+                    </div>
+                  ) : (
+                    <div className="h-12 w-28 rounded border flex items-center justify-center bg-muted text-muted-foreground text-xs font-mono shrink-0">
+                      Sem logo
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-primary hover:underline">
+                      <Upload className="h-3.5 w-3.5" />
+                      {uploadingLogo ? "Enviando..." : editando.logoUrl ? "Alterar logo do banco" : "Anexar logo do banco"}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        className="hidden"
+                        disabled={uploadingLogo}
+                        onChange={handleLogoUpload}
+                      />
+                    </label>
+                    {editando.logoUrl && (
+                      <button
+                        type="button"
+                        onClick={handleRemoverLogo}
+                        disabled={uploadingLogo}
+                        className="inline-flex items-center gap-1 text-xs text-destructive hover:underline text-left"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Remover logo
+                      </button>
+                    )}
+                    <p className="text-[11px] text-muted-foreground">
+                      PNG, JPEG, WEBP ou SVG (até 2 MB). Imagem impressa no topo do boleto.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Cadastre a conta primeiro para realizar o upload da imagem do logo do banco.
+                </p>
+              )}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-4">

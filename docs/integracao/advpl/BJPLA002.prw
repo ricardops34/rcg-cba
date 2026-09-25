@@ -7,7 +7,7 @@
 //    ZZ_TIPO     "S" saida (ERP -> plataforma)   "E" entrada (plataforma -> ERP)
 //    ZZ_STATUS   "1" pendente   "2" executada   "3" erro
 //
-// Os ajustes sao parametros, lidos com SuperGetMV no ponto de uso:
+// Os ajustes sao parametros, lidos com GetMV no ponto de uso (SuperGetMV nao: guarda cache e a troca so vale reiniciando o AppServer):
 //
 //    MV_BJAPI01  URL base da API, ja com o prefixo das rotas
 //    MV_BJAPI02  Chave de API (x-api-key)
@@ -40,22 +40,22 @@ User Function BJCATALO()
 
 	Local aRet := {}
 
-	//        cId                  cDescr                     cRota                              cColeta      lAtivo cAlias cCpoFil
-	aAdd(aRet, {"regras-desconto", "Regras de desconto"     , "/integracao/regras-desconto"    , "U_BJMAPRGD", .T., "SZ0", "Z0_FILIAL" })
-	aAdd(aRet, {"categorias"     , "Categorias"             , "/integracao/categorias"         , "U_BJMAPCAT", .T., "SZ1", "Z1_FILIAL" })
-	aAdd(aRet, {"condicoes-pagto", "Condicoes de pagamento" , "/integracao/condicoes-pagamento", "U_BJMAPCND", .T., "SE4", "E4_FILIAL" })
-	aAdd(aRet, {"armazens"       , "Armazens"               , "/integracao/armazens"           , "U_BJMAPARM", .T., "NNR", "NNR_FILIAL"})
-	aAdd(aRet, {"vendedores"     , "Vendedores"             , "/integracao/vendedores"         , "U_BJMAPVND", .T., "SA3", "A3_FILIAL" })
-	aAdd(aRet, {"fornecedores"   , "Fornecedores"           , "/integracao/fornecedores"       , "U_BJMAPFOR", .T., "SA2", "A2_FILIAL" })
-	aAdd(aRet, {"produtos"       , "Produtos"               , "/integracao/produtos"           , "U_BJMAPPRD", .T., "SB1", "B1_FILIAL" })
-	aAdd(aRet, {"estoque"        , "Saldo em estoque"       , "/integracao/estoque"            , "U_BJMAPEST", .T., "SB2", "B2_FILIAL" })
-	aAdd(aRet, {"tabelas-preco"  , "Tabelas de preco"       , "/integracao/tabelas-preco"      , "U_BJMAPTAB", .T., "DA0", "DA0_FILIAL"})
-	aAdd(aRet, {"clientes"       , "Clientes"               , "/integracao/clientes"           , "U_BJMAPCLI", .T., "SA1", "A1_FILIAL" })
-	aAdd(aRet, {"objetivos"      , "Objetivos de venda"     , "/integracao/objetivos"          , "U_BJMAPOBJ", .F., ""   , ""          })
-	aAdd(aRet, {"notas-saida"    , "Notas de saida"         , "/integracao/notas-saida"        , "U_BJMAPNFS", .T., "SF2", "F2_FILIAL" })
-	aAdd(aRet, {"notas-saida-xml", "XML das notas de saida", "/integracao/notas-saida/{chave}/xml", "U_BJMAPXML", .T., "SF2", "F2_FILIAL"})
-	aAdd(aRet, {"notas-entrada"  , "Notas de entrada"       , "/integracao/notas-entrada"      , "U_BJMAPNFE", .T., "SF1", "F1_FILIAL" })
-	aAdd(aRet, {"titulos-receber", "Titulos a receber"      , "/integracao/titulos-receber"    , "U_BJMAPTIT", .T., "SE1", "E1_FILIAL" })
+	//        cId                  cDescr                     cRota                              cColeta      lAtivo cAlias cCpoFil       nPesoDia nPesoCarga
+	aAdd(aRet, {"regras-desconto", "Regras de desconto"     , "/integracao/regras-desconto"    , "U_BJMAPRGD", .T., "SZ0", "Z0_FILIAL" , 95, 55})
+	aAdd(aRet, {"categorias"     , "Categorias"             , "/integracao/categorias"         , "U_BJMAPCAT", .T., "SZ1", "Z1_FILIAL" , 95, 55})
+	aAdd(aRet, {"condicoes-pagto", "Condicoes de pagamento" , "/integracao/condicoes-pagamento", "U_BJMAPCND", .T., "SE4", "E4_FILIAL" , 95, 55})
+	aAdd(aRet, {"armazens"       , "Armazens"               , "/integracao/armazens"           , "U_BJMAPARM", .T., "NNR", "NNR_FILIAL", 95, 55})
+	aAdd(aRet, {"vendedores"     , "Vendedores"             , "/integracao/vendedores"         , "U_BJMAPVND", .T., "SA3", "A3_FILIAL" , 95, 55})
+	aAdd(aRet, {"fornecedores"   , "Fornecedores"           , "/integracao/fornecedores"       , "U_BJMAPFOR", .T., "SA2", "A2_FILIAL" , 95, 55})
+	aAdd(aRet, {"produtos"       , "Produtos"               , "/integracao/produtos"           , "U_BJMAPPRD", .T., "SB1", "B1_FILIAL" , 95, 55})
+	aAdd(aRet, {"estoque"        , "Saldo em estoque"       , "/integracao/estoque"            , "U_BJMAPEST", .T., "SB2", "B2_FILIAL" , 90, 50})
+	aAdd(aRet, {"tabelas-preco"  , "Tabelas de preco"       , "/integracao/tabelas-preco"      , "U_BJMAPTAB", .T., "DA0", "DA0_FILIAL", 90, 50})
+	aAdd(aRet, {"clientes"       , "Clientes"               , "/integracao/clientes"           , "U_BJMAPCLI", .T., "SA1", "A1_FILIAL" , 90, 50})
+	aAdd(aRet, {"objetivos"      , "Objetivos de venda"     , "/integracao/objetivos"          , "U_BJMAPOBJ", .F., ""   , ""          , 40, 10})
+	aAdd(aRet, {"notas-saida"    , "Notas de saida"         , "/integracao/notas-saida"        , "U_BJMAPNFS", .T., "SF2", "F2_FILIAL" , 40, 10})
+	aAdd(aRet, {"notas-saida-xml", "XML das notas de saida", "/integracao/notas-saida/{chave}/xml", "U_BJMAPXML", .T., "SF2", "F2_FILIAL", 40, 10})
+	aAdd(aRet, {"notas-entrada"  , "Notas de entrada"       , "/integracao/notas-entrada"      , "U_BJMAPNFE", .T., "SF1", "F1_FILIAL" , 40, 10})
+	aAdd(aRet, {"titulos-receber", "Titulos a receber"      , "/integracao/titulos-receber"    , "U_BJMAPTIT", .T., "SE1", "E1_FILIAL" , 90, 50})
 
 Return aRet
 
@@ -95,11 +95,11 @@ User Function BJHTTP(cVerbo, cRota, cBody, cResp, nHttp, cErro)
 	// Parametros lidos aqui, uma vez: dentro do laco seriam uma leitura por
 	// tentativa. As pausas derivam do teto da API (60 req/min nas rotas de
 	// integracao, contadas por IP) - baixa-las rende 429 e fica mais lento.
-	Local cUrlBase := AllTrim(SuperGetMV("MV_BJAPI01", .F., "https://api.rcgcba.bjsoft.com.br/api/v1"))
-	Local cChvApi  := AllTrim(SuperGetMV("MV_BJAPI02", .F., ""))
-	Local nTimeOut := SuperGetMV("MV_BJAPI04", .F., 120)    // segundos
-	Local nMaxTent := SuperGetMV("MV_BJAPI05", .F., 3)      // retentativas
-	Local nEspRetr := SuperGetMV("MV_BJAPI06", .F., 2000)   // ms por tentativa
+	Local cUrlBase := AllTrim(GetMV("MV_BJAPI01"))
+	Local cChvApi  := AllTrim(GetMV("MV_BJAPI02"))
+	Local nTimeOut := GetMV("MV_BJAPI04")    // segundos
+	Local nMaxTent := GetMV("MV_BJAPI05")      // retentativas
+	Local nEspRetr := GetMV("MV_BJAPI06")   // ms por tentativa
 
 	Default cVerbo := "GET"
 	Default cRota  := ""
@@ -714,11 +714,25 @@ User Function BJEXPURG(nDias, nLotes)
 	Local aArea   := GetArea()
 	Local cTrava   := "BJPLA_EXPURGO"
 
+	// Agendamento tipo Job: o WFLAUNCHER passa {empresa, filial} no PRIMEIRO
+	// parametro, e o nDias chegaria como array - o Default nao age (so troca
+	// Nil) e o "nDias <= 0" cairia em "type mismatch on compare". Aproveita a
+	// empresa/filial para o ambiente e volta o parametro ao padrao.
+	If ValType(nDias) == "A"
+		U_BJAMBIENTE(nDias[1], nDias[2])
+		nDias := 0
+	EndIf
+
 	Default nDias  := 0
 	Default nLotes := 0
 
+	// Primeira linha de toda rotina agendavel. Agendamento cadastrado como Job
+	// e lancado pelo agente do Schedule via WFLAUNCHER, SEM ambiente: cFilAnt
+	// nem existe, e a proxima leitura de parametro cai em "CFILANT".
+	U_BJAMBIENTE()
+
 	If nDias <= 0
-		nDias := SuperGetMV("MV_BJAPI11", .F., 90)   // dias de retencao
+		nDias := GetMV("MV_BJAPI11")   // dias de retencao
 	EndIf
 
 	dLimite := Date() - nDias
@@ -823,6 +837,156 @@ User Function BJEXPURG(nDias, nLotes)
 
 Return nRet
 
+
+
+/*/{Protheus.doc} BJAMBIENTE
+Abre o ambiente quando quem chamou nao tem um.
+Rotina agendavel pode chegar por tres caminhos, e so dois trazem ambiente
+pronto: o monitor (tela, ambiente do usuario logado) e o agendamento do tipo
+Rotina, que o Schedule prepara a partir do SchedDef.
+O terceiro e o agendamento do tipo Job - o agente do Schedule lanca a funcao
+por WFLAUNCHER sem preparar nada, e a primeira leitura de parametro cai com
+"variable does not exist CFILANT". E o caminho em uso hoje: o remark do erro
+vem como U_BJDRENA|01|01, que e a assinatura do Job (funcao|empresa|filial).
+Nao fecha o ambiente: a thread do job termina junto com a funcao e o servidor
+solta o que ela abriu - mesmo raciocinio do LockByName usado nas travas.
+@type    User Function
+@author  Ricardo P Sotomayor
+@since   25/09/2026
+@param   cEmp, character, Codigo da empresa. Vazio assume "01"
+@param   cFil, character, Codigo da filial. Vazio assume "01"
+@return  logical, .T. quando ESTA chamada abriu o ambiente
+@example U_BJAMBIENTE()   // primeira linha de toda rotina agendavel
+/*/
+User Function BJAMBIENTE(cEmp, cFil)
+
+	Default cEmp := ""
+	Default cFil := ""
+
+	// Monitor e agendamento tipo Rotina ja chegam com ambiente: nada a fazer.
+	If Type("cFilAnt") == "C" .And. !Empty(cFilAnt)
+		Return .F.
+	EndIf
+
+	If Empty(cEmp)
+		cEmp := "01"
+	EndIf
+
+	If Empty(cFil)
+		cFil := "01"
+	EndIf
+
+	// Tipo 3 nao consome licenca - agendamento nao e sessao de usuario.
+	RpcSetType(3)
+	RpcSetEnv(cEmp, cFil)
+
+	// Depois do RpcSetEnv ja da para logar: o FwLogMsg nao depende de ambiente,
+	// mas o aviso so faz sentido sabendo qual empresa/filial entrou.
+	FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", ;
+		"Chamada sem ambiente (agendamento tipo Job). Ambiente aberto em " + ;
+		cEmp + "/" + cFil + ". Cadastrado como Rotina, o Schedule prepararia.", 0, 0, {})
+
+Return .T.
+
+
+/*/{Protheus.doc} BJABRELT
+Abre um lote (SZY) com a prioridade de processamento informada.
+O codigo e o proximo da SZY (MAX + 1). A coleta abre um lote por entidade e por fatia de
+MV_BJAPI12 mensagens; o retorno, um por pagina de
+orcamentos. O envio escolhe o proximo lote pelo ZY_PRIOR - maior sai primeiro
+(ver docs/planos/2026-09-26-filas-prioridade-integracao.md).
+@type    User Function
+@author  Ricardo P Sotomayor
+@since   26/09/2026
+@param   nPrior, numeric, Peso do lote (ZY_PRIOR)
+@return  character, ZY_CODIGO do lote aberto
+@example cLote := U_BJABRELT(90)
+/*/
+User Function BJABRELT(nPrior)
+
+	Local cCodigo := ""
+	Local cQuery  := ""
+	Local cAlias  := ""
+	Local oStmt   := Nil
+	Local nTamSeq := TamSX3("ZY_CODIGO")[1]
+
+	Default nPrior := 0
+
+	If nTamSeq <= 0
+		nTamSeq := 9
+	EndIf
+
+	cQuery := "SELECT MAX(ZY_CODIGO) AS MAXSEQ "
+	cQuery += "  FROM " + RetSqlName("SZY") + " SZY "
+	cQuery += " WHERE SZY.D_E_L_E_T_ = ' ' "
+	cQuery += "   AND SZY.ZY_FILIAL  = ? "
+
+	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
+	oStmt:SetString(1, xFilial("SZY"))
+	cAlias := oStmt:OpenAlias()
+
+	If (cAlias)->(!Eof()) .And. !Empty((cAlias)->MAXSEQ)
+		cCodigo := Soma1(PadL(AllTrim((cAlias)->MAXSEQ), nTamSeq, "0"))
+	Else
+		cCodigo := StrZero(1, nTamSeq)
+	EndIf
+
+	(cAlias)->(dbCloseArea())
+	oStmt:Destroy()
+
+	dbSelectArea("SZY")
+	RecLock("SZY", .T.)
+	SZY->ZY_FILIAL := xFilial("SZY")
+	SZY->ZY_CODIGO := cCodigo
+	SZY->ZY_DTINI  := Date()
+	SZY->ZY_HRINI  := Time()
+	SZY->ZY_STATUS := "1"
+	SZY->ZY_PRIOR  := nPrior
+	SZY->(MsUnlock())
+
+Return cCodigo
+
+
+/*/{Protheus.doc} BJBATIDA
+Grava no MV_BJAPI13 quem segura a trava de envio e ate onde chegou.
+A trava (LockByName) so responde ocupada ou livre. O batimento diz quem a
+pegou, desde quando e quando avancou pela ultima vez - e o que o monitor le
+para separar um envio lento de um envio parado.
+Parametro (SX6) e nao variavel global: o Schedule roda em outro servico, e a
+global so e vista dentro do proprio AppServer.
+Formato, separado por "|": thread | origem | inicio | ultimo avanco | fase.
+Datas em AAAAMMDD HH:MM:SS. Se a thread cair, o batimento fica sujo, mas a
+trava e solta junto - por isso o monitor so o le com a trava ocupada.
+@type    User Function
+@author  Ricardo P Sotomayor
+@since   25/09/2026
+@param   cInicio, character, Inicio do envio, AAAAMMDD HH:MM:SS
+@param   cFase  , character, O que o envio esta fazendo agora. Vazio apaga o batimento
+@return  Nil
+@example U_BJBATIDA(cInicio, "lote 000003 - 50 de 104294")
+/*/
+User Function BJBATIDA(cInicio, cFase)
+
+	Local cOrigem := ""
+
+	Default cInicio := ""
+	Default cFase   := ""
+
+	If Empty(cFase)
+		PutMV("MV_BJAPI13", "")
+		Return Nil
+	EndIf
+
+	If IsBlind()
+		cOrigem := "Schedule"
+	Else
+		cOrigem := "Monitor (" + AllTrim(cUserName) + ")"
+	EndIf
+
+	PutMV("MV_BJAPI13", Left(cValToChar(ThreadId()) + "|" + cOrigem + "|" + cInicio + "|" + ;
+		DtoS(Date()) + " " + Time() + "|" + cFase, 250))
+
+Return Nil
 
 
 /*/{Protheus.doc} SchedDef

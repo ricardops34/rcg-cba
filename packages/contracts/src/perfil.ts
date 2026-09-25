@@ -10,6 +10,11 @@ export const perfilCreateSchema = z.object({
     .optional()
     .describe("Descrição livre do que este perfil representa"),
   ativo: z.boolean().default(true).describe("Perfis inativos não podem ser atribuídos a novos usuários"),
+  rotinaInicialId: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("ID da rotina inicial padrão para este perfil"),
 });
 export type PerfilCreate = z.infer<typeof perfilCreateSchema>;
 
@@ -31,6 +36,8 @@ export const perfilSchema = perfilCreateSchema.extend({
   administraPlataforma: z
     .boolean()
     .describe("Perfil de administração da plataforma (todas as empresas) — não concedível pela API"),
+  rotinaInicialNome: z.string().nullable().optional().describe("Nome da rotina inicial vinculada"),
+  rotinaInicialRota: z.string().nullable().optional().describe("Rota da rotina inicial vinculada (ex.: /comercial/dashboard)"),
   ...auditFieldsSchema.shape,
 });
 export type Perfil = z.infer<typeof perfilSchema>;

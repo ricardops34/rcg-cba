@@ -33,6 +33,8 @@ import {
 import { processarLote } from '../common/processar-lote';
 import { criarFilhos, sincronizarFilhos } from '../common/sincronizar-filhos';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
+import { resolverVendedor } from '../common/resolver-vendedor';
+import { resolverCliente } from '../common/resolver-cliente';
 import {
   extrairNfe,
   NFE_XML_MAX_BYTES,
@@ -41,6 +43,7 @@ import {
 
 const INCLUDE = {
   cliente: { select: { chave: true } },
+  fornecedor: { select: { chave: true } },
   vendedor: { select: { chave: true } },
   condicaoPagamento: { select: { chave: true } },
   itens: {
@@ -52,6 +55,42 @@ const INCLUDE = {
 } satisfies Prisma.NotaSaidaInclude;
 type NotaComRelacoes = Prisma.NotaSaidaGetPayload<{ include: typeof INCLUDE }>;
 
+/**
+ * Tipos de nota de saída (F2_TIPO) cujo participante é fornecedor, não
+ * cliente. Ver `resolverRefs`.
+ */
+const TIPOS_DE_FORNECEDOR = ['D'];
+
+/**
+ * Fornecedor pela chave do ERP (A2_FILIAL-A2_COD-A2_LOJA), com a mesma
+ * tolerância de `resolverCliente` à filial vazia ("  -000072-04"). Ausente ou
+ * desconhecido volta `null` — ver `resolverRefs`.
+ */
+async function resolverFornecedorOuNulo(
+  tx: TenantTx,
+  empresaId: string,
+  fornecedorChave: string | null | undefined,
+): Promise<string | null> {
+  if (!fornecedorChave) return null;
+  const trimmed = fornecedorChave.trim();
+  const codigoLimpo = trimmed.replace(/^-+/, '').trim();
+  if (!codigoLimpo) return null;
+
+  const fornecedor = await tx.fornecedor.findFirst({
+    where: {
+      empresaId,
+      deletedAt: null,
+      OR: [
+        { chave: fornecedorChave },
+        { chave: trimmed },
+        { chave: { endsWith: `-${codigoLimpo}` } },
+      ],
+    },
+    select: { id: true },
+  });
+  return fornecedor?.id ?? null;
+}
+
 @Injectable()
 export class IntegracaoNotasSaidaService {
   constructor(private readonly prisma: PrismaService) {}
@@ -62,6 +101,7 @@ export class IntegracaoNotasSaidaService {
       chave: row.chave ?? '',
       codigoErp: row.codigoErp,
       clienteChave: row.cliente?.chave ?? null,
+      fornecedorChave: row.fornecedor?.chave ?? null,
       vendedorChave: row.vendedor?.chave ?? null,
       condicaoChave: row.condicaoPagamento?.chave ?? null,
       numero: row.numero,
@@ -219,52 +259,49 @@ export class IntegracaoNotasSaidaService {
     );
   }
 
+  /**
+   * `tipo` decide quem é o participante, e só a chave dele é lida. Na
+   * devolução de compra ('D') o F2_CLIENTE do ERP é um **fornecedor** (SA2):
+   * procurá-lo entre os clientes dava 404 — e o ERP para o lote no primeiro
+   * erro — ou, pior, ligava a nota ao cliente que por acaso tivesse o mesmo
+   * código e loja.
+   *
+   * Fornecedor não encontrado grava `null` em vez de 404: a devolução de compra
+   * não entra em venda nenhuma, e travar o lote por ela seria desproporcional.
+   * Também é o que acontece com as mensagens gravadas na fila antes de o ERP
+   * mandar `fornecedorChave` — elas passam, sem fornecedor.
+   */
   private async resolverRefs(
     tx: TenantTx,
     empresaId: string,
     clienteChave: string | null | undefined,
+    fornecedorChave: string | null | undefined,
     vendedorChave: string | null | undefined,
     condicaoChave: string | null | undefined,
+    tipo: string | null | undefined,
   ) {
-    const resolver = async (
-      codigo: string | null | undefined,
-      finder: () => Promise<{ id: string } | null>,
-      campo: string,
-    ) => {
-      if (!codigo) return null;
-      const row = await finder();
-      if (!row)
-        throw new NotFoundException(`${campo} '${codigo}' não encontrado`);
-      return row.id;
-    };
-    const clienteId = await resolver(
-      clienteChave,
-      () =>
-        tx.cliente.findFirst({
-          where: { empresaId, chave: clienteChave!, deletedAt: null },
-          select: { id: true },
-        }),
-      'clienteChave',
-    );
-    const vendedorId = await resolver(
-      vendedorChave,
-      () =>
-        tx.vendedor.findFirst({
-          where: { empresaId, chave: vendedorChave!, deletedAt: null },
-          select: { id: true },
-        }),
-      'vendedorChave',
-    );
-    const condicaoPagamentoId = await resolver(
-      condicaoChave,
-      () =>
-        tx.condicaoPagamento.findFirst({
-          where: { empresaId, chave: condicaoChave!, deletedAt: null },
-          select: { id: true },
-        }),
-      'condicaoChave',
-    );
-    return { clienteId, vendedorId, condicaoPagamentoId };
+    const ehDeFornecedor = TIPOS_DE_FORNECEDOR.includes(tipo?.trim() ?? '');
+    const clienteId = ehDeFornecedor
+      ? null
+      : await resolverCliente(tx, empresaId, clienteChave);
+    const fornecedorId = ehDeFornecedor
+      ? await resolverFornecedorOuNulo(tx, empresaId, fornecedorChave)
+      : null;
+    const vendedorId = await resolverVendedor(tx, empresaId, vendedorChave);
+    const condicaoPagamentoId = condicaoChave
+      ? (
+          await tx.condicaoPagamento.findFirst({
+            where: { empresaId, chave: condicaoChave, deletedAt: null },
+            select: { id: true },
+          })
+        )?.id ?? null
+      : null;
+    if (condicaoChave && !condicaoPagamentoId) {
+      throw new NotFoundException(
+        `condicaoChave '${condicaoChave}' não encontrado`,
+      );
+    }
+    return { clienteId, fornecedorId, vendedorId, condicaoPagamentoId };
   }
 
   async create(
@@ -296,13 +333,15 @@ export class IntegracaoNotasSaidaService {
       });
       const decisao = decidirUpsert(existente);
 
-      const { clienteId, vendedorId, condicaoPagamentoId } =
+      const { clienteId, fornecedorId, vendedorId, condicaoPagamentoId } =
         await this.resolverRefs(
           tx,
           empresaId,
           input.clienteChave,
+          input.fornecedorChave,
           input.vendedorChave,
           input.condicaoChave,
+          input.tipo,
         );
       const dtEmissao = input.dtEmissao ?? null;
       const itensData = await this.montarItens(
@@ -318,6 +357,7 @@ export class IntegracaoNotasSaidaService {
           chave: input.chave,
           codigoErp: input.codigoErp ?? null,
           clienteId,
+          fornecedorId,
           vendedorId,
           condicaoPagamentoId,
           numero: input.numero,
@@ -415,13 +455,19 @@ export class IntegracaoNotasSaidaService {
       if (!existente)
         throw new NotFoundException('Nota de saída não encontrada');
 
-      const { clienteId, vendedorId, condicaoPagamentoId } =
+      const tipoFinal = input.tipo !== undefined ? input.tipo : existente.tipo;
+      const ehDeFornecedor = TIPOS_DE_FORNECEDOR.includes(
+        tipoFinal?.trim() ?? '',
+      );
+      const { clienteId, fornecedorId, vendedorId, condicaoPagamentoId } =
         await this.resolverRefs(
           tx,
           empresaId,
           input.clienteChave,
+          input.fornecedorChave,
           input.vendedorChave,
           input.condicaoChave,
+          tipoFinal,
         );
       const dtEmissao =
         input.dtEmissao !== undefined ? input.dtEmissao : undefined;
@@ -429,7 +475,9 @@ export class IntegracaoNotasSaidaService {
       let itensUpdate: Record<string, unknown> = {};
       if (input.itens) {
         const clienteIdFinal =
-          input.clienteChave !== undefined ? clienteId : existente.clienteId;
+          input.clienteChave !== undefined || ehDeFornecedor
+            ? clienteId
+            : existente.clienteId;
         const vendedorIdFinal =
           input.vendedorChave !== undefined
             ? vendedorId
@@ -453,7 +501,14 @@ export class IntegracaoNotasSaidaService {
       const atualizada = await tx.notaSaida.update({
         where: { id: existente.id },
         data: {
-          ...(input.clienteChave !== undefined ? { clienteId } : {}),
+          // Nota de fornecedor nunca fica com cliente, e nota de cliente nunca
+          // fica com fornecedor — mesmo que o PATCH só tenha mudado o tipo.
+          ...(input.clienteChave !== undefined || ehDeFornecedor
+            ? { clienteId }
+            : {}),
+          ...(input.fornecedorChave !== undefined || !ehDeFornecedor
+            ? { fornecedorId }
+            : {}),
           ...(input.vendedorChave !== undefined ? { vendedorId } : {}),
           ...(input.condicaoChave !== undefined
             ? { condicaoPagamentoId }

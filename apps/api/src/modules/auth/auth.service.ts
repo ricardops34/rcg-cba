@@ -653,6 +653,13 @@ export class AuthService {
               nome: true,
               sistemaBase: true,
               administraPlataforma: true,
+              rotinaInicial: {
+                select: {
+                  menu: {
+                    select: { rota: true },
+                  },
+                },
+              },
             },
           }),
         ),
@@ -683,6 +690,8 @@ export class AuthService {
       : [];
 
     const mustChangePassword = await this.computeMustChangePassword(usuario);
+    const rotinaInicialRota =
+      ativoIndex === -1 ? null : perfis[ativoIndex]?.rotinaInicial?.menu?.rota ?? null;
 
     return {
       id: usuario.id,
@@ -711,6 +720,7 @@ export class AuthService {
       })),
       permissoes,
       mustChangePassword,
+      rotinaInicialRota,
     };
   }
 

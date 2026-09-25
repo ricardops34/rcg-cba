@@ -33,6 +33,8 @@ import {
   type DecisaoUpsert,
 } from '../common/decidir-upsert';
 import { processarLote } from '../common/processar-lote';
+import { resolverVendedor } from '../common/resolver-vendedor';
+import { resolverCliente } from '../common/resolver-cliente';
 import { criarFilhos, sincronizarFilhos } from '../common/sincronizar-filhos';
 import { ParametrosService } from '../../parametros/parametros.service';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
@@ -229,13 +231,10 @@ export class IntegracaoOrcamentosService {
     empresaId: string,
     codigo: string,
   ) {
-    const cliente = await tx.cliente.findFirst({
-      where: { empresaId, chave: codigo, deletedAt: null },
-      select: { id: true },
-    });
-    if (!cliente)
+    const id = await resolverCliente(tx, empresaId, codigo);
+    if (!id)
       throw new NotFoundException(`clienteChave '${codigo}' não encontrado`);
-    return cliente.id;
+    return id;
   }
 
   private async resolverVendedor(
@@ -243,13 +242,10 @@ export class IntegracaoOrcamentosService {
     empresaId: string,
     codigo: string,
   ) {
-    const vendedor = await tx.vendedor.findFirst({
-      where: { empresaId, chave: codigo, deletedAt: null },
-      select: { id: true },
-    });
-    if (!vendedor)
+    const id = await resolverVendedor(tx, empresaId, codigo);
+    if (!id)
       throw new NotFoundException(`vendedorChave '${codigo}' não encontrado`);
-    return vendedor.id;
+    return id;
   }
 
   private async resolverCondicaoPagamento(

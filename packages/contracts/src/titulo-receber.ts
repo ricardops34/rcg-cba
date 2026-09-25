@@ -7,6 +7,30 @@ import { auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./c
 export const tituloReceberStatusSchema = z.enum(["aberto", "vencido", "baixado"]);
 export type TituloReceberStatus = z.infer<typeof tituloReceberStatusSchema>;
 
+// Uma baixa do título: o que o cliente pagou, movimento a movimento. Vem da
+// SE5 do Protheus pelo import. A plataforma não cria nem estorna baixa — ela
+// só mostra o que o ERP liquidou.
+//
+// Os encargos são sempre positivos: o sinal está no nome do campo. O que
+// entrou em caixa é `valor + juros + multa - desconto - abatimento -
+// impostosRetidos`, conta que quem fecha é o ERP.
+export const tituloReceberBaixaSchema = z.object({
+  id: z.string().uuid(),
+  data: z.string().datetime().nullable(),
+  valor: z.number(),
+  juros: z.number(),
+  multa: z.number(),
+  desconto: z.number(),
+  abatimento: z.number(),
+  impostosRetidos: z.number(),
+  motivo: z.string().nullable(),
+  historico: z.string().nullable(),
+  banco: z.string().nullable(),
+  agencia: z.string().nullable(),
+  conta: z.string().nullable(),
+});
+export type TituloReceberBaixa = z.infer<typeof tituloReceberBaixaSchema>;
+
 // Espelho read-only do ERP: sem create/update — os dados entram só pelo
 // import (e no futuro pela API externa de manutenção).
 export const tituloReceberSchema = z.object({
@@ -42,6 +66,11 @@ export const tituloReceberSchema = z.object({
   // duas versões da mesma condição divergiriam, e o botão prometeria um
   // download que a rota recusa com 409.
   temBoleto: z.boolean(),
+
+  // Extrato da baixa, do ERP. Só no detalhe (`findOne`): na listagem seriam N
+  // linhas por título, e a lista não mostra pagamento. Ausente = não carregado,
+  // `[]` = título sem baixa.
+  baixas: z.array(tituloReceberBaixaSchema).optional(),
 
   ...auditFieldsSchema.shape,
 });

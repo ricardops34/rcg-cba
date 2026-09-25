@@ -57,6 +57,7 @@ export const posicaoClienteListQuerySchema = paginationQuerySchema.extend({
     .optional()
     .describe("Filtro rápido: só clientes cuja última compra foi há N+ dias (ou nunca compraram)"),
   bloqueado: booleanQueryParam,
+  temTituloVencido: booleanQueryParam,
 });
 export type PosicaoClienteListQuery = z.infer<typeof posicaoClienteListQuerySchema>;
 

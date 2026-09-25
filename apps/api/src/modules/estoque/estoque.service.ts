@@ -8,7 +8,7 @@ import {
 import type { EstoqueQuery } from '@plataforma/contracts';
 
 const CATEGORIA_SELECT = { select: { id: true, descricao: true } };
-const ARMAZEM_SELECT = { select: { id: true, codigoErp: true, descricao: true } };
+const ARMAZEM_SELECT = { select: { id: true, codigoErp: true, descricao: true, ativo: true } };
 
 // Consulta read-only: o saldo entra só pelo import do legado (e no futuro
 // pela API externa de manutenção) — nada de create/update/delete manual.
@@ -27,23 +27,54 @@ export class EstoqueService {
         empresaId,
         deletedAt: null,
         ...(query.armazemId ? { armazemId: query.armazemId } : {}),
+        OR: [
+          { armazem: { ativo: true } },
+          { armazem: { ativo: false }, saldo: { gt: 0 } },
+        ],
+      };
+
+      const estoqueComSaldoFilter: Prisma.EstoqueWhereInput = {
+        ...estoqueFilter,
+        saldo: { gt: 0 },
       };
 
       const where: Prisma.ProdutoWhereInput = {
         empresaId,
         deletedAt: null,
+        // Regra de negócio: listar somente produtos de categorias usadas (usado = true)
+        categoria: {
+          usado: true,
+          ...(query.categoriaId ? { id: query.categoriaId } : {}),
+        },
+        // Regra de negócio: itens (produtos) inativos/bloqueados só aparecem se tiverem saldo (> 0)
+        OR: [
+          { ativo: true },
+          {
+            ativo: false,
+            estoques: {
+              some: estoqueComSaldoFilter,
+            },
+          },
+        ],
         ...(query.search
           ? {
-              OR: [
-                { descricao: { contains: query.search, mode: 'insensitive' as const } },
-                { codigoErp: { contains: query.search, mode: 'insensitive' as const } },
+              AND: [
+                {
+                  OR: [
+                    { descricao: { contains: query.search, mode: 'insensitive' as const } },
+                    { codigoErp: { contains: query.search, mode: 'insensitive' as const } },
+                  ],
+                },
               ],
             }
           : {}),
-        estoques:
-          query.comSaldo === false
-            ? { some: estoqueFilter, every: { ...estoqueFilter, saldo: { lte: 0 } } }
-            : { some: { ...estoqueFilter, ...(query.comSaldo === true ? { saldo: { gt: 0 } } : {}) } },
+        ...(query.comSaldo === false
+          ? { estoques: { some: estoqueFilter, every: { ...estoqueFilter, saldo: { lte: 0 } } } }
+          : query.comSaldo === true
+            ? { estoques: { some: { ...estoqueFilter, saldo: { gt: 0 } } } }
+            : query.armazemId
+              ? { estoques: { some: estoqueFilter } }
+              : {}),
       };
 
       const orderBy: Prisma.ProdutoOrderByWithRelationInput =
@@ -87,6 +118,7 @@ export class EstoqueService {
           reservaTotal: soma?._sum.reserva ?? null,
           qtdArmazens: soma?._count._all ?? 0,
           ultimaCompra: soma?._max.ultimaCompra ?? null,
+          ativo: p.ativo,
         };
       });
 
@@ -103,10 +135,25 @@ export class EstoqueService {
       if (!produto) throw new NotFoundException('Produto não encontrado');
 
       const saldos = await tx.estoque.findMany({
-        where: { produtoId, empresaId, deletedAt: null },
+        where: {
+          produtoId,
+          empresaId,
+          deletedAt: null,
+          OR: [
+            { armazem: { ativo: true } },
+            { armazem: { ativo: false }, saldo: { gt: 0 } },
+          ],
+        },
         include: { armazem: ARMAZEM_SELECT },
         orderBy: { armazem: { descricao: 'asc' } },
       });
+
+      if (!produto.ativo) {
+        const temSaldo = saldos.some((s) => s.saldo > 0);
+        if (!temSaldo) {
+          throw new NotFoundException('Produto não encontrado');
+        }
+      }
 
       return {
         produto: {
@@ -115,6 +162,7 @@ export class EstoqueService {
           descricao: produto.descricao,
           unidade: produto.unidade,
           categoria: produto.categoria,
+          ativo: produto.ativo,
         },
         saldos,
       };

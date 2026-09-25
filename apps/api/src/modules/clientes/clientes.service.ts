@@ -58,10 +58,11 @@ const NOTA_DE_VENDA = {
   ativo: true,
   comodato: false,
   tipo: 'N',
+  condicaoPagamentoId: { not: null },
 } as const;
 
 /** Mesma regra, em SQL — a listagem usa query bruta. */
-const NOTA_DE_VENDA_SQL = Prisma.sql`"deletedAt" IS NULL AND "ativo" = true AND "comodato" = false AND "tipo" = 'N'`;
+const NOTA_DE_VENDA_SQL = Prisma.sql`"deletedAt" IS NULL AND "ativo" = true AND "comodato" = false AND "tipo" = 'N' AND "condicaoPagamentoId" IS NOT NULL`;
 
 // Colunas calculadas ao vivo (agregação de notas_saida) que a listagem de
 // Posição de Cliente aceita ordenar — mapeia sortBy -> expressão/alias SQL já
@@ -72,7 +73,7 @@ const LISTAGEM_POSICAO_SORT_EXPR: Record<string, string> = {
   codigoErp: 'c."codigoErp"',
   municipio: 'c."municipio"',
   ativo: 'c."ativo"',
-  ultimaCompra: 'c."ultimaCompra"',
+  ultimaCompra: 'COALESCE(u."ultimaData", c."ultimaCompra")',
   vendaUltimos30Dias: '"vendaUltimos30Dias"',
   vendaMedia90Dias: '"vendaMedia90Dias"',
   difMesEMedia: '"difMesEMedia"',
@@ -1112,12 +1113,20 @@ export class ClientesService {
       if (buscaSql) condicoes.push(buscaSql);
       if (query.diasSemComprar !== undefined) {
         condicoes.push(
-          Prisma.sql`(c."ultimaCompra" IS NULL OR c."ultimaCompra" <= now() - (${query.diasSemComprar} * interval '1 day'))`,
+          Prisma.sql`(COALESCE(u."ultimaData", c."ultimaCompra") IS NULL OR COALESCE(u."ultimaData", c."ultimaCompra") <= now() - (${query.diasSemComprar} * interval '1 day'))`,
         );
       }
       if (query.bloqueado !== undefined) {
         const bloqueadoExpr = Prisma.sql`(c."dataBloqueio" IS NOT NULL AND (c."dataReativacao" IS NULL OR c."dataReativacao" < c."dataBloqueio"))`;
         condicoes.push(query.bloqueado ? bloqueadoExpr : Prisma.sql`NOT ${bloqueadoExpr}`);
+      }
+      if (query.temTituloVencido !== undefined) {
+        const temVencidoExpr = Prisma.sql`EXISTS (
+          SELECT 1 FROM titulos_receber tv
+          WHERE tv."clienteId" = c.id AND tv."empresaId" = c."empresaId"
+            AND tv."deletedAt" IS NULL AND tv."dtBaixa" IS NULL AND tv."vencimento" < CURRENT_DATE
+        )`;
+        condicoes.push(query.temTituloVencido ? temVencidoExpr : Prisma.sql`NOT ${temVencidoExpr}`);
       }
 
       const where = Prisma.join(condicoes, ' AND ');
@@ -1143,8 +1152,8 @@ export class ClientesService {
       const orderBy =
         query.sortBy === 'dias'
           ? sortDir === 'ASC'
-            ? Prisma.raw('c."ultimaCompra" DESC NULLS LAST')
-            : Prisma.raw('c."ultimaCompra" ASC NULLS FIRST')
+            ? Prisma.raw('COALESCE(u."ultimaData", c."ultimaCompra") DESC NULLS LAST')
+            : Prisma.raw('COALESCE(u."ultimaData", c."ultimaCompra") ASC NULLS FIRST')
           : Prisma.raw(`${LISTAGEM_POSICAO_SORT_EXPR[sortField]} ${sortDir}`);
 
       const { skip, take } = paginationToSkipTake(query);
@@ -1157,7 +1166,7 @@ export class ClientesService {
           c."municipio",
           c."uf",
           c."ativo",
-          c."ultimaCompra",
+          COALESCE(u."ultimaData", c."ultimaCompra") AS "ultimaCompra",
           COALESCE(v30.total, 0) AS "vendaUltimos30Dias",
           COALESCE(v90.total, 0) / 3.0 AS "vendaMedia90Dias",
           COALESCE(v30.total, 0) - (COALESCE(v90.total, 0) / 3.0) AS "difMesEMedia",
@@ -1206,6 +1215,13 @@ export class ClientesService {
             LIMIT 1
           ) AS "whatsappConversaId"
         FROM clientes c
+        -- Última compra considerando apenas notas de saída com financeiro (ver NOTA_DE_VENDA_SQL).
+        LEFT JOIN (
+          SELECT "clienteId", MAX("dtEmissao") AS "ultimaData"
+          FROM notas_saida
+          WHERE "empresaId" = ${empresaId} AND ${NOTA_DE_VENDA_SQL}
+          GROUP BY "clienteId"
+        ) u ON u."clienteId" = c.id
         -- Venda dos últimos 30/90 dias conta só nota de venda, igual à aba de
         -- notas do detalhe e às Consultas (ver NOTA_DE_VENDA_SQL).
         LEFT JOIN (
@@ -1226,7 +1242,17 @@ export class ClientesService {
         ORDER BY ${orderBy}
         LIMIT ${take} OFFSET ${skip}
       `;
-      const countSelect = Prisma.sql`SELECT COUNT(*)::int AS count FROM clientes c WHERE ${where}`;
+      const countSelect = Prisma.sql`
+        SELECT COUNT(*)::int AS count
+        FROM clientes c
+        LEFT JOIN (
+          SELECT "clienteId", MAX("dtEmissao") AS "ultimaData"
+          FROM notas_saida
+          WHERE "empresaId" = ${empresaId} AND ${NOTA_DE_VENDA_SQL}
+          GROUP BY "clienteId"
+        ) u ON u."clienteId" = c.id
+        WHERE ${where}
+      `;
 
       const [rows, countRows] = await Promise.all([
         tx.$queryRaw<ListagemPosicaoRawRow[]>(select),

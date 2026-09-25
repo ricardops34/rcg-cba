@@ -1,9 +1,13 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
+  ArrowDownToLine,
   ArrowRight,
+  ArrowUpFromLine,
   Cake,
   CalendarDays,
   ClipboardList,
@@ -21,7 +25,11 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import type { Aniversariante, ComunicadoMural } from "@plataforma/contracts";
+import type {
+  Aniversariante,
+  ComunicadoMural,
+  StatusIntegracao,
+} from "@plataforma/contracts";
 import { useAuthStore } from "@/stores/auth-store";
 import { useWhatsappIntegracao } from "@/hooks/use-whatsapp-integracao";
 import { apiFetch } from "@/lib/api-client";
@@ -155,16 +163,47 @@ function saudacao(hora: number) {
   return "Boa noite";
 }
 
+function formatarDataHora(isoString: string | null | undefined) {
+  if (!isoString) return "Não registrada";
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return "Não registrada";
+
+  const dataStr = date.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+  const horaStr = date.toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return `${dataStr} às ${horaStr}`;
+}
+
 export default function InicioPage() {
+  const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const permissoes = user?.permissoes;
   const { ativo: whatsappAtivo } = useWhatsappIntegracao();
+
+  useEffect(() => {
+    if (user?.rotinaInicialRota && user.rotinaInicialRota !== "/" && user.rotinaInicialRota !== "") {
+      router.replace(user.rotinaInicialRota);
+    }
+  }, [user?.rotinaInicialRota, router]);
 
   const visiveis = ATALHOS.filter(
     (a) =>
       permissoes?.includes(a.permissao) &&
       (!a.exigeWhatsapp || whatsappAtivo === true),
   ).slice(0, MAX_ATALHOS);
+
+  const statusIntegracaoQuery = useQuery({
+    queryKey: ["inicio", "status-integracao"],
+    queryFn: () => apiFetch<StatusIntegracao>("/inicio/status-integracao"),
+    refetchInterval: 30_000,
+  });
 
   const muralQuery = useQuery({
     queryKey: ["inicio", "mural"],
@@ -185,11 +224,18 @@ export default function InicioPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {saudacao(agora.getHours())}, {user?.nome.split(" ")[0]}
-        </h1>
-        <p className="text-muted-foreground first-letter:uppercase">{hoje}</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {saudacao(agora.getHours())}, {user?.nome.split(" ")[0]}
+          </h1>
+          <p className="text-muted-foreground first-letter:uppercase">{hoje}</p>
+        </div>
+
+        <StatusIntegracaoCard
+          status={statusIntegracaoQuery.data}
+          carregando={statusIntegracaoQuery.isLoading}
+        />
       </div>
 
       {visiveis.length > 0 && (
@@ -229,6 +275,54 @@ export default function InicioPage() {
           lista={aniversariantesQuery.data}
           carregando={aniversariantesQuery.isLoading}
         />
+      </div>
+    </div>
+  );
+}
+
+function StatusIntegracaoCard({
+  status,
+  carregando,
+}: {
+  status: StatusIntegracao | undefined;
+  carregando: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3.5 shadow-xs text-xs">
+      <div className="flex items-center gap-2.5 pr-4 border-r border-border/60">
+        <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 shrink-0">
+          <ArrowDownToLine className="size-4" />
+        </div>
+        <div>
+          <span className="font-medium text-muted-foreground block">
+            Última Coleta ERP
+          </span>
+          <span className="font-semibold text-foreground">
+            {carregando ? (
+              <Skeleton className="h-3.5 w-28 mt-0.5 inline-block" />
+            ) : (
+              formatarDataHora(status?.ultimaColeta)
+            )}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2.5 pl-1">
+        <div className="flex size-8 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 shrink-0">
+          <ArrowUpFromLine className="size-4" />
+        </div>
+        <div>
+          <span className="font-medium text-muted-foreground block">
+            Último Envio ERP
+          </span>
+          <span className="font-semibold text-foreground">
+            {carregando ? (
+              <Skeleton className="h-3.5 w-28 mt-0.5 inline-block" />
+            ) : (
+              formatarDataHora(status?.ultimoEnvio)
+            )}
+          </span>
+        </div>
       </div>
     </div>
   );

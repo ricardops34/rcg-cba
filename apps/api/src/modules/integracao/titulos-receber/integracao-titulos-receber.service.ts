@@ -17,6 +17,7 @@ import type {
   IntegracaoTituloReceberCreate,
   IntegracaoTituloReceberQuery,
   IntegracaoTituloReceberUpdate,
+  IntegracaoTituloReceberBaixa,
   IntegracaoTituloReceberLoteItem,
   IntegracaoLoteResultado,
 } from '@plataforma/contracts';
@@ -27,6 +28,12 @@ import {
   type DecisaoUpsert,
 } from '../common/decidir-upsert';
 import { processarLote } from '../common/processar-lote';
+import {
+  criarFilhos,
+  sincronizarFilhos,
+} from '../common/sincronizar-filhos';
+import { resolverVendedor } from '../common/resolver-vendedor';
+import { resolverCliente } from '../common/resolver-cliente';
 
 const INCLUDE = {
   cliente: { select: { chave: true } },
@@ -34,6 +41,8 @@ const INCLUDE = {
   // A conta de cobrança volta pela descrição, que é como o ERP a referencia —
   // ele não conhece o uuid do cadastro da plataforma.
   contaBancaria: { select: { descricao: true } },
+  // Na ordem do pagamento: é como o extrato do título é lido.
+  baixas: { orderBy: { data: 'asc' } },
 } satisfies Prisma.TituloReceberInclude;
 type TituloComRelacoes = Prisma.TituloReceberGetPayload<{
   include: typeof INCLUDE;
@@ -118,6 +127,25 @@ export class IntegracaoTitulosReceberService {
       multaValor: row.multaValor,
       descontoValor: row.descontoValor,
       instrucoes: row.instrucoes,
+      baixas: row.baixas.map((baixa) => ({
+        // `delete` é campo de comando do payload de entrada, não estado: na
+        // leitura toda baixa devolvida existe, então vai sempre false.
+        delete: false,
+        chave: baixa.chave ?? '',
+        data: baixa.data,
+        valor: baixa.valor,
+        juros: baixa.juros,
+        multa: baixa.multa,
+        desconto: baixa.desconto,
+        abatimento: baixa.abatimento,
+        impostosRetidos: baixa.impostosRetidos,
+        motivo: baixa.motivo,
+        historico: baixa.historico,
+        banco: baixa.banco,
+        agencia: baixa.agencia,
+        conta: baixa.conta,
+        ativo: baixa.ativo,
+      })),
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       createdBy: row.createdBy,
@@ -241,17 +269,34 @@ export class IntegracaoTitulosReceberService {
         updatedBy: autor,
       };
 
+      const baixasData = this.montarBaixas(empresaId, input.baixas);
+
       if (decisao !== 'criar') {
+        // Baixa que veio é casada pela chave em vez de recriada; baixa ausente
+        // do payload não é excluída (ver `sincronizarFilhos`). Estorno no ERP
+        // precisa chegar como `delete: true`.
         const atualizadoUpsert = await tx.tituloReceber.update({
           where: { id: existente!.id },
-          data: { ...dados, ...camposDaDecisao(decisao) },
+          data: {
+            ...dados,
+            ...camposDaDecisao(decisao),
+            baixas: sincronizarFilhos(
+              { campo: 'tituloReceberId', id: existente!.id },
+              baixasData,
+            ),
+          },
           include: INCLUDE,
         });
         return { registro: this.paraLeitura(atualizadoUpsert), decisao };
       }
 
       const criado = await tx.tituloReceber.create({
-        data: { ...dados, empresaId, createdBy: autor },
+        data: {
+          ...dados,
+          empresaId,
+          createdBy: autor,
+          baixas: { create: criarFilhos(baixasData) },
+        },
         include: INCLUDE,
       });
       return { registro: this.paraLeitura(criado), decisao };
@@ -362,6 +407,14 @@ export class IntegracaoTitulosReceberService {
         if (input[campo] !== undefined) data[campo] = input[campo] ?? null;
       }
 
+      // Lista omitida no PATCH não mexe nas baixas gravadas.
+      if (input.baixas) {
+        data.baixas = sincronizarFilhos(
+          { campo: 'tituloReceberId', id: existente.id },
+          this.montarBaixas(empresaId, input.baixas),
+        );
+      }
+
       const atualizado = await tx.tituloReceber.update({
         where: { id: existente.id },
         data: data as never,
@@ -394,29 +447,28 @@ export class IntegracaoTitulosReceberService {
     empresaId: string,
     codigo: string | null | undefined,
   ) {
-    if (!codigo) return null;
-    const cliente = await tx.cliente.findFirst({
-      where: { empresaId, chave: codigo, deletedAt: null },
-      select: { id: true },
-    });
-    if (!cliente)
-      throw new NotFoundException(`clienteChave '${codigo}' não encontrado`);
-    return cliente.id;
+    return resolverCliente(tx, empresaId, codigo);
   }
 
+  /**
+   * Vendedor do título: vazio ou desconhecido grava `null`, sem 404.
+   *
+   * O E1_VEND1 vazio chega como `"  -"` (filial + hífen) e o de um vendedor
+   * que a plataforma não tem, como `"  -00312"`. Nos dois casos o título é
+   * válido sem vendedor — e o 404 travava o envio: o ERP para o lote no
+   * primeiro erro, e um título segurava as cem mil mensagens seguintes.
+   */
   private async resolverVendedor(
     tx: TenantTx,
     empresaId: string,
     codigo: string | null | undefined,
   ) {
-    if (!codigo) return null;
-    const vendedor = await tx.vendedor.findFirst({
-      where: { empresaId, chave: codigo, deletedAt: null },
-      select: { id: true },
-    });
-    if (!vendedor)
-      throw new NotFoundException(`vendedorChave '${codigo}' não encontrado`);
-    return vendedor.id;
+    try {
+      return await resolverVendedor(tx, empresaId, codigo);
+    } catch (e) {
+      if (e instanceof NotFoundException) return null;
+      throw e;
+    }
   }
 
   /**
@@ -536,6 +588,32 @@ export class IntegracaoTitulosReceberService {
   }
 
   /** Máscara do ERP não entra no banco: o boleto consome dígito puro. */
+  /**
+   * Baixas prontas para gravar. Sem resolução de vínculo: a baixa não aponta
+   * para cadastro nenhum da plataforma — banco, agência e conta são o texto do
+   * movimento no ERP, não a conta de cobrança do boleto.
+   */
+  private montarBaixas(empresaId: string, baixas: IntegracaoTituloReceberBaixa[]) {
+    return baixas.map((baixa) => ({
+      delete: baixa.delete,
+      empresaId,
+      chave: baixa.chave,
+      data: baixa.data ?? null,
+      valor: baixa.valor,
+      juros: baixa.juros,
+      multa: baixa.multa,
+      desconto: baixa.desconto,
+      abatimento: baixa.abatimento,
+      impostosRetidos: baixa.impostosRetidos,
+      motivo: baixa.motivo ?? null,
+      historico: baixa.historico ?? null,
+      banco: baixa.banco ?? null,
+      agencia: baixa.agencia ?? null,
+      conta: baixa.conta ?? null,
+      ativo: baixa.ativo,
+    }));
+  }
+
   private soDigitos(valor: string | null | undefined) {
     if (valor == null) return null;
     const digitos = valor.replace(/\D/g, '');

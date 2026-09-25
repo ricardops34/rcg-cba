@@ -1,9 +1,15 @@
+import { existsSync, unlink } from 'node:fs';
+import { basename, join } from 'node:path';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
 import {
   buildPaginatedResult,
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
+import {
+  BANCOS_DIR,
+  bancoLogoPublicPath,
+} from '../../common/uploads/uploads.config';
 import type {
   ContaBancariaCreate,
   ContaBancariaQuery,
@@ -129,6 +135,43 @@ export class ContasBancariasService {
         },
       });
     });
+  }
+
+  /** Define o logo do banco a partir do arquivo já gravado em disco. */
+  async setLogo(
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+    filename: string,
+  ) {
+    const conta = await this.findOne(empresaId, id);
+    if (conta.logoUrl) {
+      const anterior = join(BANCOS_DIR, basename(conta.logoUrl));
+      if (existsSync(anterior)) unlink(anterior, () => undefined);
+    }
+
+    return this.prisma.withTenant(empresaId, (tx) =>
+      tx.contaBancaria.update({
+        where: { id },
+        data: { logoUrl: bancoLogoPublicPath(filename), updatedBy: user.id },
+      }),
+    );
+  }
+
+  /** Remove o logo do banco. */
+  async removeLogo(empresaId: string, user: AuthenticatedUser, id: string) {
+    const conta = await this.findOne(empresaId, id);
+    if (conta.logoUrl) {
+      const anterior = join(BANCOS_DIR, basename(conta.logoUrl));
+      if (existsSync(anterior)) unlink(anterior, () => undefined);
+    }
+
+    return this.prisma.withTenant(empresaId, (tx) =>
+      tx.contaBancaria.update({
+        where: { id },
+        data: { logoUrl: null, updatedBy: user.id },
+      }),
+    );
   }
 
   /**

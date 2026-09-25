@@ -31,7 +31,7 @@ User Function BJPLA005()
 
 	Private cCadastro := "Monitor da Integracao BJ"
 	Private _lCarga := .F.
-	If !AllTrim(Upper(SuperGetMV("MV_BJAPI03", .F., "N"))) == "S"
+	If !AllTrim(Upper(GetMV("MV_BJAPI03"))) == "S"
 		If !MsgYesNo("A integracao BJ esta desligada (MV_BJAPI03 = N)." + CRLF + CRLF + ;
 			"Abrir o monitor mesmo assim?", cCadastro)
 			Return Nil
@@ -84,7 +84,7 @@ Static Function MenuDef()
 	ADD OPTION aRotina TITLE "Pesquisar"       ACTION "PesqBrw"          OPERATION 0 ACCESS 0
 	ADD OPTION aRotina TITLE "Visualizar"      ACTION "VIEWDEF.BJPLA005" OPERATION 2 ACCESS 0
 	ADD OPTION aRotina TITLE "Gerar"           ACTION "U_BJMONGER"       OPERATION 3 ACCESS 0
-	ADD OPTION aRotina TITLE "Enviar"          ACTION "U_BJMONENV"       OPERATION 9 ACCESS 0
+	ADD OPTION aRotina TITLE "Reenviar"        ACTION "U_BJMONENV"       OPERATION 9 ACCESS 0
 	ADD OPTION aRotina TITLE "Receber"         ACTION "U_BJMONREC"       OPERATION 3 ACCESS 0
 	ADD OPTION aRotina TITLE "Mensagens"       ACTION "U_BJMONMSG"       OPERATION 9 ACCESS 0
 	ADD OPTION aRotina TITLE "Enviar em Bloco" ACTION "U_BJMONBLO"       OPERATION 3 ACCESS 0
@@ -265,7 +265,9 @@ User Function BJMONGER()
 	oProcess := MsNewProcess():New({|| aTotal := U_BJVARRE(xEntid, cChave, dDataDe, dDataAte, oProcess, lEnvDel)}, "Gerando lote...", "Aguarde...", .F.)
 	oProcess:Activate()
 
-	cMsg := "Lote: "      + aTotal[5] + CRLF + ;
+	// A coleta abre um lote por entidade e por fatia de MV_BJAPI12
+	cMsg := "Lotes: "     + Iif(Len(aTotal[7]) == 0, "nenhum", ;
+		cValToChar(Len(aTotal[7])) + " (" + aTotal[7][1] + " a " + aTotal[7][Len(aTotal[7])] + ")") + CRLF + ;
 		"Lidos: "         + cValToChar(aTotal[1]) + CRLF + ;
 		"Enfileirados: "  + cValToChar(aTotal[2]) + CRLF + ;
 		"Erros: "         + cValToChar(aTotal[4])
@@ -305,7 +307,11 @@ Static Function BJGrupos()
 Return aRet
 
 /*/{Protheus.doc} BJMONENV
-Drena so as mensagens do lote posicionado no browse (SZZ, por ZZ_CODIGO).
+Reenvia o lote posicionado no browse - so lote com ERRO de processamento.
+Decisao do usuario (26/09/2026): so existe reenvio de lote com erro. O lote
+pendente sai sozinho, pelo envio automatico e pela prioridade; o que para e a
+mensagem com erro de dado ("3"), que o envio automatico nao tenta de novo -
+ela espera alguem corrigir o dado na origem e reenviar o lote por aqui.
 @type    User Function
 @author  Ricardo P Sotomayor
 @since   11/09/2026
@@ -316,6 +322,10 @@ User Function BJMONENV()
 	Local aTotal  := {0, 0, 0}
 	Local oProcess := Nil
 	Local cSeqMae := ""
+	Local cQuery  := ""
+	Local cAlias  := ""
+	Local oStmt   := Nil
+	Local nErros  := 0
 
 	If SZY->(Eof()) .Or. Empty(SZY->ZY_CODIGO)
 		MsgStop("Nao ha lote posicionado.", cCadastro)
@@ -324,16 +334,57 @@ User Function BJMONENV()
 
 	cSeqMae := AllTrim(SZY->ZY_CODIGO)
 
-	If !MsgYesNo("Enviar so as mensagens do lote " + cSeqMae + "?", cCadastro)
+	If !(SZY->ZY_STATUS == "3")
+		MsgInfo("So lote com erro de processamento (vermelho) pode ser reenviado." + CRLF + CRLF + ;
+			"O lote " + cSeqMae + " sai sozinho: o envio automatico manda os lotes pendentes " + ;
+			"pela prioridade, assim que a coleta os libera.", cCadastro)
 		Return Nil
 	EndIf
 
-	oProcess := MsNewProcess():New({|| aTotal := U_BJDRENA(0, cSeqMae, oProcess)}, "Enviando o lote...", "Aguarde...", .F.)
+	// Quantas mensagens com erro o lote tem. O lote pode estar vermelho por erro
+	// na COLETA (mensagem que nao entrou na fila) - ai nao ha o que reenviar, e o
+	// caminho e gerar de novo.
+	cQuery := "SELECT COUNT(*) AS QTDERR "
+	cQuery += "  FROM " + RetSqlName("SZZ") + " SZZ "
+	cQuery += " WHERE SZZ.D_E_L_E_T_ = ' ' "
+	cQuery += "   AND SZZ.ZZ_FILIAL  = ? "
+	cQuery += "   AND SZZ.ZZ_CODIGO  = ? "
+	cQuery += "   AND SZZ.ZZ_TIPO    = 'S' "
+	cQuery += "   AND SZZ.ZZ_STATUS  = '3' "
+
+	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
+	oStmt:SetString(1, xFilial("SZZ"))
+	oStmt:SetString(2, PadR(cSeqMae, TamSX3("ZZ_CODIGO")[1]))
+
+	cAlias := oStmt:OpenAlias()
+	nErros := (cAlias)->QTDERR
+	(cAlias)->(dbCloseArea())
+	oStmt:Destroy()
+
+	If nErros == 0
+		MsgInfo("O lote " + cSeqMae + " esta com erro, mas nenhuma mensagem de envio falhou." + CRLF + ;
+			"O erro foi na coleta (o registro nao entrou na fila): gere de novo a entidade pelo Gerar.", cCadastro)
+		Return Nil
+	EndIf
+
+	If !MsgYesNo("Reenviar as " + cValToChar(nErros) + " mensagens com erro do lote " + cSeqMae + "?" + CRLF + CRLF + ;
+		"Corrija antes o dado na origem (veja o retorno de cada uma em Mensagens): " + ;
+		"o reenvio manda o mesmo payload que falhou.", cCadastro)
+		Return Nil
+	EndIf
+
+	// O envio automatico pode estar rodando agora; o U_BJDRENA acharia a trava
+	// ocupada e devolveria zeros sem dizer nada.
+	If BJEnvOcupa()
+		Return Nil
+	EndIf
+
+	oProcess := MsNewProcess():New({|| aTotal := U_BJDRENA(0, cSeqMae, oProcess)}, "Reenviando o lote...", "Aguarde...", .F.)
 	oProcess:Activate()
 
-	MsgInfo("Lidas: "    + cValToChar(aTotal[1]) + CRLF + ;
-		"Enviadas: "     + cValToChar(aTotal[2]) + CRLF + ;
-		"Erros: "        + cValToChar(aTotal[3]), cCadastro)
+	MsgInfo("Reenviadas: " + cValToChar(aTotal[1]) + CRLF + ;
+		"Aceitas: "        + cValToChar(aTotal[2]) + CRLF + ;
+		"Com erro de novo: " + cValToChar(aTotal[3]), cCadastro)
 
 Return Nil
 
@@ -545,7 +596,6 @@ Static Function BJAbreMsg(cLote, cSeq)
 	Local cChave := ""
 	Local cSentid := ""
 	Local cStatMsg := ""
-	Local lPode  := .F.
 
 	dbSelectArea("SZZ")
 	SZZ->(dbSetOrder(1))   // ZZ_FILIAL + ZZ_CODIGO + ZZ_SEQUEN
@@ -561,7 +611,6 @@ Static Function BJAbreMsg(cLote, cSeq)
 
 	// So mensagem de saida se reenvia por aqui. A de entrada e reprocessada pelo
 	// agendamento de retorno, que le a plataforma de novo.
-	lPode := (SZZ->ZZ_TIPO == "S")   // saida
 
 	cSentid := "?"
 
@@ -615,55 +664,12 @@ Static Function BJAbreMsg(cLote, cSeq)
 	oMemo:oFont := oFont
 	oMemo:bWhen := {|| .F.}
 
-	If lPode
-		@ 368, 008 BUTTON "Reenviar entidade" SIZE 090, 016 OF oDlg PIXEL ;
-			ACTION (BJReenvia(cEntid, ""), oDlg:End())
-
-		@ 368, 108 BUTTON "Reenviar esta chave" SIZE 090, 016 OF oDlg PIXEL ;
-			ACTION (BJReenvia(cEntid, cChave), oDlg:End())
-	EndIf
 
 	@ 368, 713 BUTTON "Fechar" SIZE 075, 016 OF oDlg PIXEL ACTION oDlg:End()
 
 	ACTIVATE MSDIALOG oDlg CENTERED
 
 	RestArea(aArea)
-
-Return Nil
-
-/*/{Protheus.doc} BJReenvia
-Recoleta e reenfileira uma entidade, ou uma chave dela. Gera um lote novo.
-@type    Static Function
-@author  Ricardo P Sotomayor
-@since   01/09/2026
-@param   cEntid, character, Id da entidade
-@param   cChave, character, Chave unica, ou vazio para a entidade inteira
-@return  Nil
-/*/
-Static Function BJReenvia(cEntid, cChave)
-
-	Local aTotal := {0, 0, 0, 0, ""}
-	Local aEnvio := {0, 0, 0}
-	Local oProcess := Nil
-	Local cMsg   := ""
-
-	If !MsgYesNo("Recoletar e reenviar " + ;
-		IfBJAlvo(cEntid, cChave) + "?" + CRLF + CRLF + ;
-		"A coleta le a origem de novo; o payload guardado na mensagem nao e reaproveitado.", cCadastro)
-		Return Nil
-	EndIf
-
-	oProcess := MsNewProcess():New({|| aTotal := U_BJVARRE(cEntid, cChave, , , oProcess)}, "Coletando...", "Aguarde...", .F.)
-	oProcess:Activate()
-
-	// Drena so o lote que esta recoleta abriu (aTotal[5]), nao a fila inteira
-	oProcess := MsNewProcess():New({|| aEnvio := U_BJDRENA(0, aTotal[5], oProcess)}, "Enviando...", "Aguarde...", .F.)
-	oProcess:Activate()
-
-	cMsg := "Coleta: " + cValToChar(aTotal[2]) + " enfileiradas, " + cValToChar(aTotal[4]) + " erros." + CRLF + ;
-		"Envio: " + cValToChar(aEnvio[2]) + " enviadas, " + cValToChar(aEnvio[3]) + " erros."
-
-	MsgInfo(cMsg, cCadastro)
 
 Return Nil
 
@@ -685,6 +691,10 @@ User Function BJMONBLO()
 		Return Nil
 	EndIf
 
+	If BJEnvOcupa()
+		Return Nil
+	EndIf
+
 	oProcess := MsNewProcess():New({|| aTotal := U_BJLOTE(0, oProcess)}, "Enviando em bloco...", "Aguarde...", .F.)
 	oProcess:Activate()
 
@@ -693,6 +703,59 @@ User Function BJMONBLO()
 		"Erros: "        + cValToChar(aTotal[3]), cCadastro)
 
 Return Nil
+
+/*/{Protheus.doc} BJEnvOcupa
+Diz se ha um envio segurando a trava BJPLA_ENVIO e, se houver, mostra quem e
+se esta andando - pelo batimento que o envio grava no MV_BJAPI13.
+Sem avanco ha 10 minutos ou mais e envio parado: bem acima do pior caso de uma
+mensagem (timeout e retentativas do BJHTTP) e de uma batida de leitura.
+A trava so e testada: pega e solta na hora. Quem envia e que a segura.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   25/09/2026
+@return  logical, .T. quando ha envio em andamento (e o aviso ja foi mostrado)
+/*/
+Static Function BJEnvOcupa()
+
+	Local cBat    := ""
+	Local aBat    := {}
+	Local nMin    := 0
+	Local cMsg    := ""
+
+	If LockByName("BJPLA_ENVIO", .T., .F.)
+		UnLockByName("BJPLA_ENVIO", .T., .F.)
+		Return .F.
+	EndIf
+
+	// GetMV e nao SuperGetMV: o SuperGetMV guarda cache, e o segundo
+	// clique mostraria o batimento do primeiro.
+	cBat := AllTrim(GetMV("MV_BJAPI13"))
+	aBat := StrTokArr2(cBat, "|", .T.)
+
+	If Len(aBat) < 5
+		MsgStop("Ja existe um envio em andamento, mas ele nao registrou batimento (MV_BJAPI13 vazio)." + CRLF + ;
+			"Pode ser um fonte antigo no RPO. Tente de novo em alguns minutos.", cCadastro)
+		Return .T.
+	EndIf
+
+	// aBat = {thread, origem, inicio, ultimo avanco, fase}; datas em AAAAMMDD HH:MM:SS
+	nMin := Int(((Date() - StoD(Left(aBat[4], 8))) * 86400 + Seconds() - Secs(SubStr(aBat[4], 10, 8))) / 60)
+
+	cMsg := "Origem: " + aBat[2] + CRLF + ;
+		"Inicio: " + DtoC(StoD(Left(aBat[3], 8))) + " " + SubStr(aBat[3], 10, 8) + CRLF + ;
+		"Ultimo avanco: " + DtoC(StoD(Left(aBat[4], 8))) + " " + SubStr(aBat[4], 10, 8) + ;
+		" (ha " + cValToChar(nMin) + " min)" + CRLF + ;
+		"Fazendo: " + aBat[5]
+
+	If nMin >= 10
+		MsgStop("ENVIO PARADO - sem avanco ha " + cValToChar(nMin) + " minutos." + CRLF + CRLF + cMsg + CRLF + CRLF + ;
+			"Provavelmente travado. Procure a thread " + aBat[1] + " no Monitor do AppServer" + CRLF + ;
+			"e encerre-a: a trava e solta junto e o proximo envio recomeca de onde parou.", cCadastro)
+	Else
+		MsgInfo("Ja existe um envio em andamento. Aguarde ele terminar." + CRLF + CRLF + cMsg, cCadastro)
+	EndIf
+
+Return .T.
 
 /*/{Protheus.doc} BJMONLIM
 Roda o expurgo da fila agora, pela tela.
@@ -707,7 +770,7 @@ User Function BJMONLIM()
 	Local nLotes    := 0
 
 	If !MsgYesNo("Apagar da fila as mensagens executadas ha mais de " + ;
-		cValToChar(SuperGetMV("MV_BJAPI11", .F., 90)) + " dias?" + CRLF + CRLF + ;
+		cValToChar(GetMV("MV_BJAPI11")) + " dias?" + CRLF + CRLF + ;
 		"Pendentes e com erro nao sao apagadas. Lote que ficar sem nenhuma mensagem sai junto, " + ;
 		"menos o mais recente com marca - e dele que sai a janela da proxima coleta.", cCadastro)
 		Return Nil
@@ -756,25 +819,6 @@ Static Function BJEscolhe(aLista, cTitulo)
 	ACTIVATE MSDIALOG oDlg CENTERED
 
 Return nRet
-
-/*/{Protheus.doc} IfBJAlvo
-Descreve o alvo do reenvio para a pergunta de confirmacao.
-@type    Static Function
-@author  Ricardo P Sotomayor
-@since   01/09/2026
-@param   cEntid, character, Id da entidade
-@param   cChave, character, Chave, ou vazio
-@return  character, Descricao
-/*/
-Static Function IfBJAlvo(cEntid, cChave)
-
-	Local cRet := "a entidade " + cEntid + " inteira"
-
-	If !Empty(cChave)
-		cRet := "so a chave " + cChave + " de " + cEntid
-	EndIf
-
-Return cRet
 
 /*/{Protheus.doc} BJMONAJU
 Explica como a integracao decide o que enviar.
@@ -854,7 +898,7 @@ User Function BJMONAJU()
 	cTexto += Replicate("-", 90) + CRLF
 	cTexto += "LIMPAR A FILA" + CRLF
 	cTexto += Replicate("-", 90) + CRLF + CRLF
-	cTexto += "Apaga so mensagens ja executadas com mais de " + cValToChar(SuperGetMV("MV_BJAPI11", .F., 90)) + " dias." + CRLF
+	cTexto += "Apaga so mensagens ja executadas com mais de " + cValToChar(GetMV("MV_BJAPI11")) + " dias." + CRLF
 	cTexto += "Pendentes e com erro nunca sao apagadas - mesma regra do expurgo" + CRLF
 	cTexto += "automatico diario, so que na hora que voce pedir. Nao ha expurgo de" + CRLF
 	cTexto += "lotes (SZY) ainda." + CRLF

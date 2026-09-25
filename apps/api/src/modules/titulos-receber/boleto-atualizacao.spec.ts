@@ -21,12 +21,18 @@ describe('diasEmAtraso', () => {
 });
 
 describe('foraDoPrazoDeReemissao', () => {
-  it('permite até o 30º dia de atraso e bloqueia a partir do 31º', () => {
+  it('permite até o 60º dia de atraso (padrão) e bloqueia a partir do 61º', () => {
+    const sessentaDias = new Date(2026, 5, 22); // 22/06/2026
+    const sessentaEUmDias = new Date(2026, 5, 21); // 21/06/2026
+    expect(diasEmAtraso(sessentaDias, HOJE)).toBe(PRAZO_MAXIMO_REEMISSAO_DIAS);
+    expect(foraDoPrazoDeReemissao(sessentaDias, HOJE)).toBe(false);
+    expect(foraDoPrazoDeReemissao(sessentaEUmDias, HOJE)).toBe(true);
+  });
+
+  it('respeita o prazo máximo customizado em parâmetro', () => {
     const trintaDias = new Date(2026, 6, 22);
-    const trintaEUmDias = new Date(2026, 6, 21);
-    expect(diasEmAtraso(trintaDias, HOJE)).toBe(PRAZO_MAXIMO_REEMISSAO_DIAS);
-    expect(foraDoPrazoDeReemissao(trintaDias, HOJE)).toBe(false);
-    expect(foraDoPrazoDeReemissao(trintaEUmDias, HOJE)).toBe(true);
+    expect(foraDoPrazoDeReemissao(trintaDias, HOJE, 15)).toBe(true);
+    expect(foraDoPrazoDeReemissao(trintaDias, HOJE, 30)).toBe(false);
   });
 });
 

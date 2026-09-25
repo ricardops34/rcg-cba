@@ -79,13 +79,16 @@ export class TitulosReceberController {
   @Get(':id/boleto')
   async boleto(
     @Param('id') id: string,
+    @Query('atualizado') atualizadoStr: string | undefined,
     @CurrentUser() user: AuthenticatedUser,
     @Res({ passthrough: true }) res: Response,
   ) {
+    const atualizado = atualizadoStr === undefined ? true : atualizadoStr === 'true';
     const { conteudo, nomeArquivo } = await this.service.gerarBoleto(
       user.empresaAtivaId,
       { tipo: 'usuario', user },
       id,
+      { atualizado },
     );
     res.set({
       'Content-Type': 'application/pdf',

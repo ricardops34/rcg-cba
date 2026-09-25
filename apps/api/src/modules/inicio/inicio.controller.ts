@@ -12,6 +12,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ComunicadosService } from './comunicados.service';
 import { AniversariantesService } from './aniversariantes.service';
+import { StatusIntegracaoService } from './status-integracao.service';
 import {
   ComunicadoCreateDto,
   ComunicadoQueryDto,
@@ -29,7 +30,7 @@ import {
 /**
  * Tela inicial (Início) — o que o usuário vê ao entrar.
  *
- * As duas rotas de leitura daqui **não exigem permissão de rotina**, só login:
+ * As rotas de leitura daqui **não exigem permissão de rotina**, só login:
  * são o conteúdo da própria porta de entrada. Exigir uma permissão para ler o
  * mural ou os aniversários deixaria a tela inicial vazia para quem tem perfil
  * enxuto — que é justamente quem mais precisa dos atalhos.
@@ -42,6 +43,7 @@ export class InicioController {
   constructor(
     private readonly comunicados: ComunicadosService,
     private readonly aniversariantes: AniversariantesService,
+    private readonly statusIntegracao: StatusIntegracaoService,
   ) {}
 
   @ApiOperation({
@@ -64,6 +66,16 @@ export class InicioController {
   @Get('aniversariantes')
   listarAniversariantes(@CurrentUser() user: AuthenticatedUser) {
     return this.aniversariantes.listar(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Status da integração ERP (última coleta e último envio)',
+    description:
+      'Data e hora da última coleta de dados pelo ERP e do último envio de dados para o ERP.',
+  })
+  @Get('status-integracao')
+  obterStatusIntegracao(@CurrentUser() user: AuthenticatedUser) {
+    return this.statusIntegracao.obterStatus(user.empresaAtivaId);
   }
 }
 

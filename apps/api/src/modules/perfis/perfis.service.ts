@@ -18,6 +18,19 @@ import type {
 const SORT_FIELDS = new Set(['nome', 'ativo', 'sistemaBase', 'createdAt']);
 const MODULO_ADMINISTRACAO_ID = 'seed-modulo-administracao';
 
+function formatPerfil<
+  T extends {
+    rotinaInicial?: { id: string; nome: string; menu?: { rota: string | null } | null } | null;
+  },
+>(p: T) {
+  const { rotinaInicial, ...rest } = p;
+  return {
+    ...rest,
+    rotinaInicialNome: rotinaInicial?.nome ?? null,
+    rotinaInicialRota: rotinaInicial?.menu?.rota ?? null,
+  };
+}
+
 // Perfil é global (sem empresaId/RLS, ver migration perfil_global) — os
 // métodos abaixo não precisam de withTenant/escopo por empresa.
 @Injectable()
@@ -50,33 +63,49 @@ export class PerfisService {
         where,
         ...paginationToSkipTake(query),
         orderBy: { [sortField]: query.sortOrder },
+        include: {
+          rotinaInicial: {
+            include: { menu: true },
+          },
+        },
       }),
       this.prisma.perfil.count({ where }),
     ]);
-    return buildPaginatedResult(data, total, query);
+    return buildPaginatedResult(data.map(formatPerfil), total, query);
   }
 
   async findOne(id: string) {
     const perfil = await this.prisma.perfil.findFirst({
       where: { id, deletedAt: null },
-      include: { permissoes: { include: { rotina: true } } },
+      include: {
+        permissoes: { include: { rotina: true } },
+        rotinaInicial: { include: { menu: true } },
+      },
     });
     if (!perfil) throw new NotFoundException('Perfil não encontrado');
-    return perfil;
+    return formatPerfil(perfil);
   }
 
   async create(input: PerfilCreate, actorId: string) {
-    return this.prisma.perfil.create({
+    const perfil = await this.prisma.perfil.create({
       data: { ...input, createdBy: actorId, updatedBy: actorId },
+      include: {
+        rotinaInicial: { include: { menu: true } },
+      },
     });
+    return formatPerfil(perfil);
   }
 
   async update(id: string, input: PerfilUpdate, actorId: string) {
     await this.findOne(id);
-    return this.prisma.perfil.update({
+    const perfil = await this.prisma.perfil.update({
       where: { id },
       data: { ...input, updatedBy: actorId },
+      include: {
+        rotinaInicial: { include: { menu: true } },
+      },
     });
+    return formatPerfil(perfil);
   }
 
   async remove(id: string, actorId: string) {

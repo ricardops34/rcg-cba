@@ -41,6 +41,12 @@ type NotaComRelacoes = Prisma.NotaEntradaGetPayload<{
   include: typeof INCLUDE;
 }>;
 
+/**
+ * Tipos de nota de entrada (F1_TIPO) cujo participante é cliente, não
+ * fornecedor. Ver `resolverRefs`.
+ */
+const TIPOS_DE_CLIENTE = ['D'];
+
 @Injectable()
 export class IntegracaoNotasEntradaService {
   constructor(private readonly prisma: PrismaService) {}
@@ -221,10 +227,13 @@ export class IntegracaoNotasEntradaService {
   }
 
   /**
-   * Resolve os códigos do ERP em uuid. `fornecedorChave` e `clienteChave`
-   * são excludentes na prática — compra manda um, devolução manda o outro —,
-   * mas nenhum dos dois é obrigatório: a plataforma resolve o que vier e não
-   * inventa regra sobre o que o mapeador deveria ter mandado.
+   * Resolve os códigos do ERP em uuid. `tipo` decide quem é o participante, e
+   * só a chave dele é lida: na devolução de venda ('D') o F1_FORNECE é um
+   * **cliente** (SA1); nos demais tipos, fornecedor. A chave do outro lado é
+   * ignorada — antes a plataforma resolvia o que viesse, e um código de SA1
+   * mandado como fornecedor (ou o contrário) caía no cadastro errado ou dava
+   * 404. Espelho da nota de saída, onde a devolução de compra aponta para o
+   * fornecedor.
    */
   private async resolverRefs(
     tx: TenantTx,
@@ -232,7 +241,13 @@ export class IntegracaoNotasEntradaService {
     fornecedorChave: string | null | undefined,
     clienteChave: string | null | undefined,
     condicaoChave: string | null | undefined,
+    tipo: string | null | undefined,
   ) {
+    if (TIPOS_DE_CLIENTE.includes(tipo?.trim() ?? '')) {
+      fornecedorChave = null;
+    } else {
+      clienteChave = null;
+    }
     const resolver = async (
       codigo: string | null | undefined,
       finder: () => Promise<{ id: string } | null>,
@@ -306,6 +321,7 @@ export class IntegracaoNotasEntradaService {
           input.fornecedorChave,
           input.clienteChave,
           input.condicaoChave,
+          input.tipo,
         );
       const dtEmissao = input.dtEmissao ?? null;
       const itensData = await this.montarItens(
@@ -419,6 +435,8 @@ export class IntegracaoNotasEntradaService {
       if (!existente)
         throw new NotFoundException('Nota de entrada não encontrada');
 
+      const tipoFinal = input.tipo !== undefined ? input.tipo : existente.tipo;
+      const ehDeCliente = TIPOS_DE_CLIENTE.includes(tipoFinal?.trim() ?? '');
       const { fornecedorId, clienteId, condicaoPagamentoId } =
         await this.resolverRefs(
           tx,
@@ -426,20 +444,25 @@ export class IntegracaoNotasEntradaService {
           input.fornecedorChave,
           input.clienteChave,
           input.condicaoChave,
+          tipoFinal,
         );
       const dtEmissao =
         input.dtEmissao !== undefined ? input.dtEmissao : undefined;
+
+      // O lado que o tipo descarta é sempre gravado nulo, mesmo sem vir no
+      // PATCH; o lado que ele escolhe só muda quando a chave veio.
+      const gravaFornecedor =
+        input.fornecedorChave !== undefined || ehDeCliente;
+      const gravaCliente = input.clienteChave !== undefined || !ehDeCliente;
 
       let itensUpdate: Record<string, unknown> = {};
       if (input.itens) {
         // Os itens são denormalizados a partir dos valores **finais** do
         // cabeçalho: o que o PATCH mandou, ou o que já estava gravado.
-        const fornecedorIdFinal =
-          input.fornecedorChave !== undefined
-            ? fornecedorId
-            : existente.fornecedorId;
-        const clienteIdFinal =
-          input.clienteChave !== undefined ? clienteId : existente.clienteId;
+        const fornecedorIdFinal = gravaFornecedor
+          ? fornecedorId
+          : existente.fornecedorId;
+        const clienteIdFinal = gravaCliente ? clienteId : existente.clienteId;
         const dtEmissaoFinal =
           dtEmissao !== undefined ? dtEmissao : existente.dtEmissao;
         const itensData = await this.montarItens(
@@ -459,8 +482,8 @@ export class IntegracaoNotasEntradaService {
       const atualizada = await tx.notaEntrada.update({
         where: { id: existente.id },
         data: {
-          ...(input.fornecedorChave !== undefined ? { fornecedorId } : {}),
-          ...(input.clienteChave !== undefined ? { clienteId } : {}),
+          ...(gravaFornecedor ? { fornecedorId } : {}),
+          ...(gravaCliente ? { clienteId } : {}),
           ...(input.condicaoChave !== undefined
             ? { condicaoPagamentoId }
             : {}),

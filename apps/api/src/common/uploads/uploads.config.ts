@@ -38,6 +38,7 @@ export const FICHAS_IMPORTACAO_DIR = join(UPLOADS_DIR, 'fichas-importacao');
 export const AGENTE_DIR = join(UPLOADS_DIR, 'agente');
 /** Imagem da faixa institucional do topo do sistema, por empresa. */
 export const BANNERS_DIR = join(UPLOADS_DIR, 'banners');
+export const BANCOS_DIR = join(UPLOADS_DIR, 'bancos');
 
 /** Tamanho máximo aceito para o logo de uma empresa (2 MB). */
 export const LOGO_MAX_BYTES = 2 * 1024 * 1024;
@@ -53,6 +54,10 @@ export const LOGO_MIME_TYPES = [
 /** Caminho público (servido em /uploads) de um arquivo salvo em LOGOS_DIR. */
 export function logoPublicPath(filename: string) {
   return `/uploads/logos/${filename}`;
+}
+
+export function bancoLogoPublicPath(filename: string) {
+  return `/uploads/bancos/${filename}`;
 }
 
 export function produtoFotoPublicPath(filename: string) {
@@ -315,6 +320,35 @@ export const logoUploadOptions = {
     destination: (_req, _file, cb) => {
       if (!existsSync(LOGOS_DIR)) mkdirSync(LOGOS_DIR, { recursive: true });
       cb(null, LOGOS_DIR);
+    },
+    filename: (_req: Request, file, cb) => {
+      const ext = EXT_POR_MIME[file.mimetype] ?? '.png';
+      cb(null, `${randomUUID()}${ext}`);
+    },
+  }),
+  limits: { fileSize: LOGO_MAX_BYTES },
+  fileFilter: (
+    _req: Request,
+    file: Express.Multer.File,
+    cb: (error: Error | null, acceptFile: boolean) => void,
+  ) => {
+    if (!LOGO_MIME_TYPES.includes(file.mimetype)) {
+      return cb(
+        new BadRequestException(
+          'Formato inválido. Envie PNG, JPEG, WEBP ou SVG.',
+        ),
+        false,
+      );
+    }
+    cb(null, true);
+  },
+};
+
+export const bancoLogoUploadOptions = {
+  storage: diskStorage({
+    destination: (_req, _file, cb) => {
+      if (!existsSync(BANCOS_DIR)) mkdirSync(BANCOS_DIR, { recursive: true });
+      cb(null, BANCOS_DIR);
     },
     filename: (_req: Request, file, cb) => {
       const ext = EXT_POR_MIME[file.mimetype] ?? '.png';

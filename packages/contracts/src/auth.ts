@@ -163,6 +163,11 @@ export const currentUserSchema = z.object({
     .describe(
       "Se true, a senha expirou ou foi redefinida por um admin — o frontend deve bloquear a navegação até a troca (ver POST /auth/login)",
     ),
+  rotinaInicialRota: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Rota inicial configurada para o perfil ativo nesta empresa (ex.: /comercial/dashboard)"),
 });
 export type CurrentUser = z.infer<typeof currentUserSchema>;
 

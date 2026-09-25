@@ -25,6 +25,7 @@ import {
 } from '../common/decidir-upsert';
 import { processarLote } from '../common/processar-lote';
 import { normalizarChaveOpcional } from '../common/normalizar-chave-opcional';
+import { resolverVendedor } from '../common/resolver-vendedor';
 import { ClienteAlteracoesService } from '../../clientes/cliente-alteracoes.service';
 
 const INCLUDE = {
@@ -407,14 +408,7 @@ export class IntegracaoClientesService {
     empresaId: string,
     codigo: string | null | undefined,
   ) {
-    if (!codigo) return null;
-    const vendedor = await tx.vendedor.findFirst({
-      where: { empresaId, chave: codigo, deletedAt: null },
-      select: { id: true },
-    });
-    if (!vendedor)
-      throw new NotFoundException(`vendedorChave '${codigo}' não encontrado`);
-    return vendedor.id;
+    return resolverVendedor(tx, empresaId, codigo);
   }
 
   private async resolverTabelaPreco(
