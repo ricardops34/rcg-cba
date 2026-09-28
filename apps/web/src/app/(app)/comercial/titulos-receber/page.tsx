@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { TituloReceber } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
 import { apiFetch } from "@/lib/api-client";
+import { dataCivilBr } from "@/lib/data";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { FiltersPopover } from "@/components/crud/filters-popover";
@@ -28,11 +29,7 @@ interface VendedorEscopo {
 
 const moeda = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
-const dataBr = (v: string | null | undefined) => {
-  if (!v) return "—";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
-};
+const dataBr = dataCivilBr;
 
 // Consulta read-only, com o mesmo escopo hierárquico de Clientes.
 export default function TitulosReceberPage() {

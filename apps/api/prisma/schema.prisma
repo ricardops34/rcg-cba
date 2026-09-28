@@ -1396,7 +1396,7 @@ model Vendedor {
   nomeReduzido   String?
   telefone       String?
   email          String?
-  dataNascimento DateTime?
+  dataNascimento DateTime? @db.Date
 
   // Percentual de comissão do vendedor. Mantido pelo ERP (API de integração),
   // somente leitura na tela — mesmo tratamento dos campos de regra de desconto.
@@ -1509,7 +1509,7 @@ model Cliente {
   inscricaoMunicipal String?
   contribuinteIcms   Boolean?
   rg                 String?
-  dataNascimento     DateTime?
+  dataNascimento     DateTime? @db.Date
 
   contato   String?
   email     String?
@@ -1530,19 +1530,19 @@ model Cliente {
   carteira         Boolean?
   site             String?
   limiteCredito    Float?
-  vencimentoLimite DateTime?
+  vencimentoLimite DateTime? @db.Date
   observacao       String?
 
-  dataBloqueio         DateTime?
+  dataBloqueio         DateTime? @db.Date
   observacaoBloqueio   String?
-  dataReativacao       DateTime?
+  dataReativacao       DateTime? @db.Date
   observacaoReativacao String?
 
-  primeiraCompra    DateTime?
-  ultimaVisita      DateTime?
-  ultimaCompra      DateTime?
-  ultimoAtendimento DateTime?
-  dataConsultaRfb   DateTime?
+  primeiraCompra    DateTime? @db.Date
+  ultimaVisita      DateTime? @db.Date
+  ultimaCompra      DateTime? @db.Date
+  ultimoAtendimento DateTime? @db.Date
+  dataConsultaRfb   DateTime? @db.Date
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -2594,8 +2594,8 @@ model TabelaPreco {
   codigoErp String
   chave     String? // chave de integração (X2_UNICO); codigoErp é informativo
   descricao String
-  dtInicio  DateTime?
-  dtFim     DateTime?
+  dtInicio  DateTime? @db.Date
+  dtFim     DateTime? @db.Date
   ativo     Boolean   @default(true)
 
   createdAt DateTime  @default(now())
@@ -2754,7 +2754,7 @@ model Estoque {
   reserva      Float?
   custo        Float?
   ultimoPreco  Float?
-  ultimaCompra DateTime?
+  ultimaCompra DateTime? @db.Date
   dataEnvio    DateTime  @default(now())
 
   createdAt DateTime  @default(now())
@@ -2796,7 +2796,7 @@ model NotaSaida {
   serie         String?
   especieFiscal String?
   tipo          String?
-  dtEmissao     DateTime?
+  dtEmissao     DateTime? @db.Date
   ano           Int?
   mes           Int?
 
@@ -2810,7 +2810,7 @@ model NotaSaida {
   vlrDevolucao  Float @default(0)
 
   chaveNfe String?
-  dtNfe    DateTime?
+  dtNfe    DateTime? @db.Date
   mensagem String?
   comodato Boolean   @default(false)
   ativo    Boolean   @default(true)
@@ -2914,7 +2914,7 @@ model NotaSaidaItem {
   produtoId   String?
 
   item      Int?
-  dtEmissao DateTime?
+  dtEmissao DateTime? @db.Date
   ano       Int?
   mes       Int?
   cfop      String?
@@ -3060,8 +3060,8 @@ model NotaEntrada {
   // mercadoria foi recebida. As duas raramente coincidem, e é a de emissão
   // que alimenta `ano`/`mes` — para que a apuração de compra case com a de
   // venda, que também usa emissão.
-  dtEmissao     DateTime?
-  dtEntrada     DateTime?
+  dtEmissao     DateTime? @db.Date
+  dtEntrada     DateTime? @db.Date
   ano           Int?
   mes           Int?
 
@@ -3081,7 +3081,7 @@ model NotaEntrada {
   vlrDespesa    Float @default(0)
 
   chaveNfe String?
-  dtNfe    DateTime?
+  dtNfe    DateTime? @db.Date
   mensagem String?
   ativo    Boolean   @default(true)
 
@@ -3132,7 +3132,7 @@ model NotaEntradaItem {
   armazemId     String?
 
   item      Int?
-  dtEmissao DateTime?
+  dtEmissao DateTime? @db.Date
   ano       Int?
   mes       Int?
   cfop      String?
@@ -3250,14 +3250,14 @@ model TituloReceber {
   prefixo String?
   tipo    String?
 
-  emissao        DateTime?
-  vencimento     DateTime?
-  vencimentoReal DateTime?
+  emissao        DateTime? @db.Date
+  vencimento     DateTime? @db.Date
+  vencimentoReal DateTime? @db.Date
   valor          Float     @default(0)
   saldo          Float     @default(0)
   acrescimo      Float?
   decrescimo     Float?
-  dtBaixa        DateTime?
+  dtBaixa        DateTime? @db.Date
   formaPgto      String?
   historico      String?
   ativo          Boolean   @default(true)
@@ -3549,7 +3549,7 @@ model Orcamento {
   // Quem originou — ver `OrigemVenda`. O histórico anterior a 2026-09-02 fica
   // como `vendedor`: não há como saber, depois, quem digitou o que.
   origem              OrigemVenda     @default(vendedor)
-  dataValidade        DateTime?
+  dataValidade        DateTime? @db.Date
   // Data de retorno/follow-up: ao ser definida (na criação ou numa edição
   // que muda o valor), o backend gera automaticamente uma Atividade de
   // acompanhamento (tipo ligação) vinculada a este orçamento, com

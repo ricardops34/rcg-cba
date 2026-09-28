@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { PosicaoClienteListRow } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
 import { apiFetch } from "@/lib/api-client";
+import { dataCivilBr } from "@/lib/data";
 import { useAuthStore } from "@/stores/auth-store";
 import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
 import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
@@ -42,11 +43,7 @@ const DIAS_OPCOES = [120, 90, 60, 30, 15] as const;
 type SimNaoTodos = "todos" | "sim" | "nao";
 
 const moeda = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const dataBr = (v: string | null) => {
-  if (!v) return "—";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
-};
+const dataBr = dataCivilBr;
 
 // Prioridade vencido > vencendo (≤7 dias) > não vencido — o $ mostra só a
 // pior situação entre os títulos em aberto do cliente; sem título em

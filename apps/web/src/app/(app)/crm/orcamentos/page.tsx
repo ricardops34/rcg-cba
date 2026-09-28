@@ -7,6 +7,7 @@ import type { Orcamento, StatusOrcamento } from "@plataforma/contracts";
 import { ORIGEM_VENDA_ROTULO } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError } from "@/lib/api-client";
+import { dataCivilBr } from "@/lib/data";
 import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
@@ -35,11 +36,7 @@ import { CheckCircle2, Clock, MoreHorizontal, Pencil, Trash2 } from "lucide-reac
 type StatusFiltro = "todos" | StatusOrcamento;
 
 const moeda = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const dataBr = (v: string | null) => {
-  if (!v) return "—";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
-};
+const dataBr = dataCivilBr;
 
 // Acompanhamento da integração com o ERP: só faz sentido depois de aprovado
 // (é quando o orçamento fica disponível pro ERP puxar via API). codigoErp

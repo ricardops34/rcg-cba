@@ -26,6 +26,11 @@ import {
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
 import { apiDownload, apiFetch, ApiError } from "@/lib/api-client";
+import {
+  dataCivilBr,
+  dataCivilParaInput as dateToInput,
+  inputParaDataCivil as inputToDate,
+} from "@/lib/data";
 import { regraDescontoLabel } from "@/lib/regra-desconto";
 import { useAuthStore } from "@/stores/auth-store";
 import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
@@ -69,12 +74,6 @@ import {
 
 const LIST_ROUTE = "/crm/orcamentos";
 
-const dateToInput = (v: unknown) => {
-  if (!v) return "";
-  const d = new Date(v as string);
-  return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
-};
-const inputToDate = (v: unknown) => (v === "" || v == null ? null : new Date(`${v}T00:00:00`));
 /**
  * Par date<->input do campo Data de retorno, que é datetime-local (a hora vai
  * pro vencimento da Atividade de acompanhamento gerada pelo backend, então
@@ -95,11 +94,7 @@ const percentual = (v: number | null | undefined) =>
   v != null ? `${v.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%` : "—";
 const numero = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { maximumFractionDigits: 2 }) : "—";
-const dataBr = (v: string | null | undefined) => {
-  if (!v) return "—";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
-};
+const dataBr = dataCivilBr;
 const dataHoraBr = (v: string | null | undefined) => {
   if (!v) return "—";
   const d = new Date(v);

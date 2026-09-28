@@ -181,8 +181,13 @@ As respostas trazem `createdAt`, `updatedAt`, `createdBy`, `updatedBy`.
 
 ### Datas e números
 
-- Datas: ISO 8601 na entrada (`"2026-08-26T00:00:00.000Z"` ou `"2026-08-26"`) e
-  na saída. Campos opcionais aceitam `null`.
+- Campos de **data** do ERP: `YYYY-MM-DD` (`"2026-08-26"`), sem hora e sem
+  fuso. A API preserva o dia civil; campos opcionais aceitam `null`. Por
+  compatibilidade, timestamps enviados por integradores antigos usam somente
+  o prefixo da data e não sofrem conversão de fuso.
+- Campos de **hora**: `HH:mm:ss`, sem data e sem fuso.
+- Campos **DateTime** (por exemplo `dataEnvio` e auditoria): ISO 8601 completo,
+  com offset ou `Z` (`"2026-08-26T12:30:00.000Z"`).
 - Decimais: número JSON, não string (`"valor": 1234.56`).
 - Booleanos em filtro de query: `?ativo=true` / `?ativo=false`.
 

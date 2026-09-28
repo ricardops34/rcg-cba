@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { NotaSaida, NotaSaidaItem } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
+import { dataCivilBr } from "@/lib/data";
 import { regraDescontoLabel } from "@/lib/regra-desconto";
 import { useAuthStore } from "@/stores/auth-store";
 import { Badge } from "@/components/ui/badge";
@@ -34,12 +35,6 @@ const percentual = (v: number | null | undefined) =>
   v != null ? `${v.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%` : "—";
 const moeda = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
-const dataBr = (v: string | null | undefined) => {
-  if (!v) return "—";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
-};
-
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
@@ -58,7 +53,7 @@ export function NotaSaidaDetalheContent({ nota }: { nota: NotaSaidaDetalhe }) {
     <div className="space-y-4">
       <Card>
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Info label="Emissão" value={dataBr(nota.dtEmissao)} />
+          <Info label="Emissão" value={dataCivilBr(nota.dtEmissao)} />
           <Info label="Espécie" value={nota.especieFiscal || "—"} />
           <Info label="Cliente" value={nota.cliente?.razaoSocial ?? "—"} />
           <Info
