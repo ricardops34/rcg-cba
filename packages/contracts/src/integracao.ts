@@ -37,6 +37,40 @@ const chaveOpcionalSchema = (max = 30) =>
     z.string().trim().max(max).nullable().optional(),
   );
 
+// Campos D do ERP são datas civis, não instantes. O prefixo YYYY-MM-DD é
+// preservado mesmo para clientes antigos que ainda enviam um timestamp ISO;
+// assim nenhum offset consegue deslocar o registro para o dia anterior/seguinte.
+const DATA_CIVIL_ISO =
+  /^(\d{4})-(\d{2})-(\d{2})(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))?$/;
+
+function normalizarDataCivil(value: unknown): unknown {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return value;
+    return new Date(
+      Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()),
+    );
+  }
+  if (typeof value !== "string") return value;
+
+  const match = DATA_CIVIL_ISO.exec(value.trim());
+  if (!match) return value;
+
+  const ano = Number(match[1]);
+  const mes = Number(match[2]);
+  const dia = Number(match[3]);
+  const data = new Date(Date.UTC(ano, mes - 1, dia));
+  if (
+    data.getUTCFullYear() !== ano ||
+    data.getUTCMonth() !== mes - 1 ||
+    data.getUTCDate() !== dia
+  ) {
+    return value;
+  }
+  return data;
+}
+
+const dataCivilSchema = z.preprocess(normalizarDataCivil, z.date());
+
 // ------------------------------------------------------------------
 // Categorias
 // ------------------------------------------------------------------
@@ -314,7 +348,7 @@ export const integracaoVendedorCreateSchema = z.object({
   nomeReduzido: z.string().trim().max(50).nullable().optional(),
   telefone: z.string().trim().max(15).nullable().optional(),
   email: z.string().trim().max(100).nullable().optional(),
-  dataNascimento: z.coerce.date().nullable().optional(),
+  dataNascimento: dataCivilSchema.nullable().optional(),
   vendedor: z
     .boolean()
     .default(true)
@@ -402,7 +436,7 @@ export const integracaoClienteCreateSchema = z.object({
   inscricaoMunicipal: z.string().trim().max(20).nullable().optional(),
   contribuinteIcms: z.boolean().nullable().optional(),
   rg: z.string().trim().max(20).nullable().optional(),
-  dataNascimento: z.coerce.date().nullable().optional(),
+  dataNascimento: dataCivilSchema.nullable().optional(),
   contato: z.string().trim().max(100).nullable().optional(),
   email: z.string().trim().max(120).nullable().optional(),
   telefone: z.string().trim().max(20).nullable().optional(),
@@ -425,17 +459,17 @@ export const integracaoClienteCreateSchema = z.object({
   carteira: z.boolean().nullable().optional(),
   site: z.string().trim().max(150).nullable().optional(),
   limiteCredito: z.coerce.number().min(0).nullable().optional(),
-  vencimentoLimite: z.coerce.date().nullable().optional(),
+  vencimentoLimite: dataCivilSchema.nullable().optional(),
   observacao: z.string().trim().max(1000).nullable().optional(),
-  dataBloqueio: z.coerce.date().nullable().optional(),
+  dataBloqueio: dataCivilSchema.nullable().optional(),
   observacaoBloqueio: z.string().trim().max(500).nullable().optional(),
-  dataReativacao: z.coerce.date().nullable().optional(),
+  dataReativacao: dataCivilSchema.nullable().optional(),
   observacaoReativacao: z.string().trim().max(500).nullable().optional(),
-  primeiraCompra: z.coerce.date().nullable().optional(),
-  ultimaVisita: z.coerce.date().nullable().optional(),
-  ultimaCompra: z.coerce.date().nullable().optional(),
-  ultimoAtendimento: z.coerce.date().nullable().optional(),
-  dataConsultaRfb: z.coerce.date().nullable().optional(),
+  primeiraCompra: dataCivilSchema.nullable().optional(),
+  ultimaVisita: dataCivilSchema.nullable().optional(),
+  ultimaCompra: dataCivilSchema.nullable().optional(),
+  ultimoAtendimento: dataCivilSchema.nullable().optional(),
+  dataConsultaRfb: dataCivilSchema.nullable().optional(),
 });
 export type IntegracaoClienteCreate = z.infer<
   typeof integracaoClienteCreateSchema
@@ -575,8 +609,8 @@ export const integracaoTabelaPrecoCreateSchema = z.object({
   chave: z.string().trim().min(1).max(30).describe("Chave natural do registro"),
   codigoErp: codigoErpSchema,
   descricao: z.string().trim().min(1).max(150),
-  dtInicio: z.coerce.date().nullable().optional(),
-  dtFim: z.coerce.date().nullable().optional(),
+  dtInicio: dataCivilSchema.nullable().optional(),
+  dtFim: dataCivilSchema.nullable().optional(),
   ativo: z.boolean().default(true),
   itens: z
     .array(integracaoTabelaPrecoItemSchema)
@@ -661,7 +695,7 @@ export const integracaoEstoqueCreateSchema = z.object({
   reserva: z.coerce.number().nullable().optional(),
   custo: z.coerce.number().nullable().optional(),
   ultimoPreco: z.coerce.number().nullable().optional(),
-  ultimaCompra: z.coerce.date().nullable().optional(),
+  ultimaCompra: dataCivilSchema.nullable().optional(),
 });
 export type IntegracaoEstoqueCreate = z.infer<
   typeof integracaoEstoqueCreateSchema
@@ -882,8 +916,7 @@ export const integracaoNotaSaidaCreateSchema = z.object({
   serie: z.string().trim().max(5).nullable().optional(),
   especieFiscal: z.string().trim().max(10).nullable().optional(),
   tipo: z.string().trim().max(10).nullable().optional(),
-  dtEmissao: z.coerce
-    .date()
+  dtEmissao: dataCivilSchema
     .nullable()
     .optional()
     .describe("ano/mes são derivados desta data"),
@@ -896,7 +929,7 @@ export const integracaoNotaSaidaCreateSchema = z.object({
   vlrFrete: z.coerce.number().default(0),
   vlrDevolucao: z.coerce.number().default(0),
   chaveNfe: z.string().trim().max(44).nullable().optional(),
-  dtNfe: z.coerce.date().nullable().optional(),
+  dtNfe: dataCivilSchema.nullable().optional(),
   mensagem: z.string().trim().max(500).nullable().optional(),
   comodato: z.boolean().default(false),
   ativo: z.boolean().default(true),
@@ -1243,13 +1276,11 @@ export const integracaoNotaEntradaCreateSchema = z.object({
   serie: z.string().trim().max(5).nullable().optional(),
   especieFiscal: z.string().trim().max(10).nullable().optional(),
   tipo: z.string().trim().max(10).nullable().optional(),
-  dtEmissao: z.coerce
-    .date()
+  dtEmissao: dataCivilSchema
     .nullable()
     .optional()
     .describe("Data do documento do fornecedor; ano/mes são derivados dela"),
-  dtEntrada: z.coerce
-    .date()
+  dtEntrada: dataCivilSchema
     .nullable()
     .optional()
     .describe("Quando a mercadoria foi recebida"),
@@ -1264,7 +1295,7 @@ export const integracaoNotaEntradaCreateSchema = z.object({
   vlrSeguro: z.coerce.number().default(0),
   vlrDespesa: z.coerce.number().default(0),
   chaveNfe: z.string().trim().max(44).nullable().optional(),
-  dtNfe: z.coerce.date().nullable().optional(),
+  dtNfe: dataCivilSchema.nullable().optional(),
   mensagem: z.string().trim().max(500).nullable().optional(),
   ativo: z.boolean().default(true),
   itens: z
@@ -1458,14 +1489,14 @@ export const integracaoTituloReceberCreateSchema = z.object({
   parcela: z.string().trim().max(5).nullable().optional(),
   prefixo: z.string().trim().max(10).nullable().optional(),
   tipo: z.string().trim().max(5).nullable().optional(),
-  emissao: z.coerce.date().nullable().optional(),
-  vencimento: z.coerce.date().nullable().optional(),
-  vencimentoReal: z.coerce.date().nullable().optional(),
+  emissao: dataCivilSchema.nullable().optional(),
+  vencimento: dataCivilSchema.nullable().optional(),
+  vencimentoReal: dataCivilSchema.nullable().optional(),
   valor: z.coerce.number().default(0),
   saldo: z.coerce.number().default(0),
   acrescimo: z.coerce.number().nullable().optional(),
   decrescimo: z.coerce.number().nullable().optional(),
-  dtBaixa: z.coerce.date().nullable().optional(),
+  dtBaixa: dataCivilSchema.nullable().optional(),
   formaPgto: z.string().trim().max(5).nullable().optional(),
   historico: z.string().trim().max(500).nullable().optional(),
   ativo: z.boolean().default(true),
@@ -1828,7 +1859,7 @@ export const integracaoOrcamentoCreateSchema = z.object({
   condicaoPagamentoChave: chaveOpcionalSchema(),
   titulo: z.string().trim().min(1).max(150),
   status: statusOrcamentoSchema.default("rascunho"),
-  dataValidade: z.coerce.date().nullable().optional(),
+  dataValidade: dataCivilSchema.nullable().optional(),
   dataRetorno: z.coerce.date().nullable().optional(),
   observacao: z.string().trim().max(1000).nullable().optional(),
   ativo: z.boolean().default(true),

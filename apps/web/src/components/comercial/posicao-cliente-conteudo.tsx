@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import type { PosicaoCliente, SugestaoCompraCalculada } from "@plataforma/contracts";
 import { apiFetch, assetUrl } from "@/lib/api-client";
+import { dataCivilBr } from "@/lib/data";
 import { SugestaoCompraCalculadaTabela } from "@/components/crud/sugestao-compra-calculada";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -50,11 +51,7 @@ const moeda = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
 const percentual = (v: number | null | undefined) =>
   v != null ? `${v.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%` : "—";
-const dataBr = (v: string | null | undefined) => {
-  if (!v) return "—";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
-};
+const dataBr = dataCivilBr;
 
 const telefoneBr = (v: string | null | undefined) => {
   if (!v) return "Número não informado";

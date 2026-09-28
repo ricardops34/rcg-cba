@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Armazem, Categoria, EstoqueProdutoResumo } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
 import { apiFetch } from "@/lib/api-client";
+import { dataCivilBr } from "@/lib/data";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { FiltersPopover } from "@/components/crud/filters-popover";
@@ -13,11 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-const dataBr = (v: string | null | undefined) => {
-  if (!v) return "—";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
-};
+const dataBr = dataCivilBr;
 
 // Consulta read-only: os saldos entram pelo import do ERP. Uma linha por
 // produto, com o saldo somado em todos os armazéns (ou só no armazém

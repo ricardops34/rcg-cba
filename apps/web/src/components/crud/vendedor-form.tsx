@@ -18,6 +18,10 @@ import {
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
 import { apiFetch, ApiError } from "@/lib/api-client";
+import {
+  dataCivilParaInput as dateToInput,
+  inputParaDataCivil as inputToDate,
+} from "@/lib/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -32,13 +36,6 @@ interface UsuarioOption {
   id: string;
   nome: string;
 }
-
-const dateToInput = (v: unknown) => {
-  if (!v) return "";
-  const d = new Date(v as string);
-  return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
-};
-const inputToDate = (v: unknown) => (v === "" || v == null ? null : new Date(`${v}T00:00:00`));
 
 export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
   const router = useRouter();

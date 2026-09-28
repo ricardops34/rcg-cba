@@ -21,6 +21,11 @@ import {
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
 import { apiFetch, ApiError } from "@/lib/api-client";
+import {
+  dataCivilBr,
+  dataCivilParaInput as dateToInput,
+  inputParaDataCivil as inputToDate,
+} from "@/lib/data";
 import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,17 +56,7 @@ const UFS = [
   "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
 ];
 
-const dateToInput = (v: unknown) => {
-  if (!v) return "";
-  const d = new Date(v as string);
-  return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
-};
-const inputToDate = (v: unknown) => (v === "" || v == null ? null : new Date(`${v}T00:00:00`));
-const dateToLabel = (v: string | null | undefined) => {
-  if (!v) return "—";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
-};
+const dateToLabel = dataCivilBr;
 const emptyToNull = (v: unknown) => (v === "" || v === null || v === undefined ? null : Number(v));
 const nanToNull = (v: number | null | undefined) => (v == null || Number.isNaN(v) ? null : v);
 

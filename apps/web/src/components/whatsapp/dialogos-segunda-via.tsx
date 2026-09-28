@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { NotaSaida, TituloReceber } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
+import { dataCivilBr } from "@/lib/data";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -31,9 +32,6 @@ import {
 
 const moeda = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
-const dataBr = (v: string | null | undefined) =>
-  v ? new Date(v).toLocaleDateString("pt-BR") : "—";
-
 /** Item selecionável da lista, com o motivo quando indisponível. */
 function Opcao({
   selecionada,
@@ -281,7 +279,7 @@ export function DanfeDialog({
                   selecionada={escolhida === n.id}
                   disponivel={n.temXml}
                   onClick={() => setEscolhida(n.id)}
-                  titulo={`NF ${n.numero}${n.serie ? `/${n.serie}` : ""} — ${dataBr(n.dtEmissao)}`}
+                  titulo={`NF ${n.numero}${n.serie ? `/${n.serie}` : ""} — ${dataCivilBr(n.dtEmissao)}`}
                   valor={moeda(n.vlrBruto)}
                   motivo="Sem 2ª via: o XML desta nota ainda não foi enviado pelo ERP."
                 />

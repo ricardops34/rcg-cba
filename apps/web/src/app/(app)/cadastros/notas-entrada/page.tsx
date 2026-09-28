@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { NotaEntrada } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
+import { dataCivilBr } from "@/lib/data";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
@@ -18,11 +19,7 @@ type NotaRow = NotaEntrada & {
 
 const moeda = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
-const dataBr = (v: string | null | undefined) => {
-  if (!v) return "—";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
-};
+const dataBr = dataCivilBr;
 
 // Consulta read-only das notas de compra. Sem filtro de vendedor, ao contrário
 // de Notas de Saída: compra não tem carteira — quem chega aqui já passou pela

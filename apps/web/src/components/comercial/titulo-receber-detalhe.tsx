@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { TituloReceber } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
+import { dataCivilBr } from "@/lib/data";
 import { TituloStatusBadge } from "@/components/comercial/titulo-status-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,11 +17,7 @@ export type TituloReceberDetalhe = TituloReceber & {
 
 const moeda = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
-const dataBr = (v: string | null | undefined) => {
-  if (!v) return "—";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
-};
+const dataBr = dataCivilBr;
 
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (

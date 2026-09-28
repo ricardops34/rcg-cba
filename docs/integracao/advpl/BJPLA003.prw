@@ -901,7 +901,7 @@ User Function BJMAPRGD(cMarca, cChave, cMarcaFim, lEnvDel)
 
 	EndIf
 
-	cQuery += " ORDER BY Z0_CODIGO "
+	cQuery += " ORDER BY SZ0.R_E_C_N_O_ "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, " ")
@@ -951,7 +951,7 @@ User Function BJMAPRGD(cMarca, cChave, cMarcaFim, lEnvDel)
 		EndIf
 
 		cQryFx += "   AND SZ0.Z0_CODIGO  = ? "
-		cQryFx += " ORDER BY Z0_SEQ "
+		cQryFx += " ORDER BY SZ0.R_E_C_N_O_ "
 
 		oStmtFx := FWExecStatement():New(ChangeQuery(cQryFx))
 		oStmtFx:SetString(1, " ")
@@ -1043,7 +1043,7 @@ User Function BJMAPCAT(cMarca, cChave, cMarcaFim, lEnvDel)
 		cQuery += "   AND SZ1.S_T_A_M_P_ <= '" + cMarcaFim + "' "
 	EndIf
 
-	cQuery += " ORDER BY Z1_TIPO "
+	cQuery += " ORDER BY SZ1.R_E_C_N_O_ "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, " ")
@@ -1119,7 +1119,7 @@ User Function BJMAPCAT(cMarca, cChave, cMarcaFim, lEnvDel)
 		cQuery += "   AND SBM.S_T_A_M_P_ <= '" + cMarcaFim + "' "
 	EndIf
 
-	cQuery += " ORDER BY BM_YTIPO, BM_GRUPO "
+	cQuery += " ORDER BY SBM.R_E_C_N_O_ "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, " ")
@@ -1221,7 +1221,7 @@ User Function BJMAPCND(cMarca, cChave, cMarcaFim, lEnvDel)
 		cQuery += "   AND SE4.S_T_A_M_P_ <= '" + cMarcaFim + "' "
 	EndIf
 
-	cQuery += " ORDER BY E4_CODIGO "
+	cQuery += " ORDER BY SE4.R_E_C_N_O_ "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, " ")
@@ -1318,7 +1318,7 @@ User Function BJMAPARM(cMarca, cChave, cMarcaFim, lEnvDel)
 		cQuery += "   AND NNR.S_T_A_M_P_ <= '" + cMarcaFim + "' "
 	EndIf
 
-	cQuery += " ORDER BY NNR_CODIGO "
+	cQuery += " ORDER BY NNR.R_E_C_N_O_ "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, " ")
@@ -1443,7 +1443,7 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim, lEnvDel)
 		cQuery += "   AND SB1.S_T_A_M_P_ <= '" + cMarcaFim + "' "
 	EndIf
 
-	cQuery += " ORDER BY B1_COD "
+	cQuery += " ORDER BY SB1.R_E_C_N_O_ "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, " ")
@@ -1637,7 +1637,7 @@ User Function BJMAPVND(cMarca, cChave, cMarcaFim, lEnvDel)
 		cQuery += "   AND SA3.S_T_A_M_P_ <= '" + cMarcaFim + "' "
 	EndIf
 
-	cQuery += " ORDER BY A3_COD "
+	cQuery += " ORDER BY SA3.R_E_C_N_O_ "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, " ")
@@ -1983,7 +1983,7 @@ User Function BJMAPCLI(cMarca, cChave, cMarcaFim, lEnvDel)
 		cQuery += "   AND SA1.S_T_A_M_P_ <= '" + cMarcaFim + "' "
 	EndIf
 
-	cQuery += " ORDER BY A1_COD, A1_LOJA "
+	cQuery += " ORDER BY SA1.R_E_C_N_O_ "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, " ")
@@ -2017,18 +2017,18 @@ User Function BJMAPCLI(cMarca, cChave, cMarcaFim, lEnvDel)
 		EndIf
 		oJson["ativo"]                   := !(AllTrim(cValToChar((cAlias)->A1_MSBLQL)) == "1")
 
-		BJPoeTexto(oJson, "nomeFantasia"     , (cAlias)->A1_NREDUZ)
-		BJPoeTexto(oJson, "cnpjCpf"          , (cAlias)->A1_CGC)
-		BJPoeTexto(oJson, "inscricaoEstadual", (cAlias)->A1_INSCR)
-		BJPoeTexto(oJson, "endereco"         , (cAlias)->A1_END)
-		BJPoeTexto(oJson, "complemento"      , (cAlias)->A1_COMPLEM)
-		BJPoeTexto(oJson, "bairro"           , (cAlias)->A1_BAIRRO)
-		BJPoeTexto(oJson, "municipio"        , (cAlias)->A1_MUN)
-		BJPoeTexto(oJson, "uf"               , (cAlias)->A1_EST)
-		BJPoeTexto(oJson, "cep"              , (cAlias)->A1_CEP)
-		BJPoeTexto(oJson, "contato"          , (cAlias)->A1_CONTATO)
-		BJPoeTexto(oJson, "email"            , (cAlias)->A1_EMAIL)
-		BJPoeTexto(oJson, "celular"          , (cAlias)->A1_CELULAR)
+		oJson["nomeFantasia"]      := IIf(Empty((cAlias)->A1_NREDUZ), Nil, AllTrim((cAlias)->A1_NREDUZ))
+		oJson["cnpjCpf"]           := IIf(Empty((cAlias)->A1_CGC), Nil, AllTrim((cAlias)->A1_CGC))
+		oJson["inscricaoEstadual"] := IIf(Empty((cAlias)->A1_INSCR), Nil, AllTrim((cAlias)->A1_INSCR))
+		oJson["endereco"]          := IIf(Empty((cAlias)->A1_END), Nil, AllTrim((cAlias)->A1_END))
+		oJson["complemento"]       := IIf(Empty((cAlias)->A1_COMPLEM), Nil, AllTrim((cAlias)->A1_COMPLEM))
+		oJson["bairro"]            := IIf(Empty((cAlias)->A1_BAIRRO), Nil, AllTrim((cAlias)->A1_BAIRRO))
+		oJson["municipio"]         := IIf(Empty((cAlias)->A1_MUN), Nil, AllTrim((cAlias)->A1_MUN))
+		oJson["uf"]                := IIf(Empty((cAlias)->A1_EST), Nil, AllTrim((cAlias)->A1_EST))
+		oJson["cep"]               := IIf(Empty((cAlias)->A1_CEP), Nil, AllTrim((cAlias)->A1_CEP))
+		oJson["contato"]           := IIf(Empty((cAlias)->A1_CONTATO), Nil, AllTrim((cAlias)->A1_CONTATO))
+		oJson["email"]             := IIf(Empty((cAlias)->A1_EMAIL), Nil, AllTrim((cAlias)->A1_EMAIL))
+		oJson["celular"]           := IIf(Empty((cAlias)->A1_CELULAR), Nil, AllTrim((cAlias)->A1_CELULAR))
 
 		// O contrato usa o enum tipoPessoa da plataforma, nao a letra do Protheus
 		If AllTrim((cAlias)->A1_PESSOA) == "F"
@@ -2048,25 +2048,25 @@ User Function BJMAPCLI(cMarca, cChave, cMarcaFim, lEnvDel)
 		EndIf
 
 		If lInscrM
-			BJPoeTexto(oJson, "inscricaoMunicipal", (cAlias)->A1_INSCRM)
+			oJson["inscricaoMunicipal"] := IIf(Empty((cAlias)->A1_INSCRM), Nil, AllTrim((cAlias)->A1_INSCRM))
 		EndIf
 		If lPFisic
-			BJPoeTexto(oJson, "rg", (cAlias)->A1_PFISICA)
+			oJson["rg"] := IIf(Empty((cAlias)->A1_PFISICA), Nil, AllTrim((cAlias)->A1_PFISICA))
 		EndIf
 		If lObs
-			BJPoeTexto(oJson, "observacao", (cAlias)->A1_OBSERV)
+			oJson["observacao"] := IIf(Empty((cAlias)->A1_OBSERV), Nil, AllTrim((cAlias)->A1_OBSERV))
 		EndIf
 		If lLimite
 			oJson["limiteCredito"] := (cAlias)->A1_LC
 		EndIf
 		If lVencLC .And. !Empty((cAlias)->A1_VENCLC)
-			oJson["vencimentoLimite"] := FWTimeStamp(3, SToD((cAlias)->A1_VENCLC), "00:00:00") + "Z"
+			oJson["vencimentoLimite"] := FWDateTo8601(SToD((cAlias)->A1_VENCLC))
 		EndIf
 		If lUltCom .And. !Empty((cAlias)->A1_ULTCOM)
-			oJson["ultimaCompra"] := FWTimeStamp(3, SToD((cAlias)->A1_ULTCOM), "00:00:00") + "Z"
+			oJson["ultimaCompra"] := FWDateTo8601(SToD((cAlias)->A1_ULTCOM))
 		EndIf
 		If lPriCom .And. !Empty((cAlias)->A1_PRICOM)
-			oJson["primeiraCompra"] := FWTimeStamp(3, SToD((cAlias)->A1_PRICOM), "00:00:00") + "Z"
+			oJson["primeiraCompra"] := FWDateTo8601(SToD((cAlias)->A1_PRICOM))
 		EndIf
 		If lGeo
 			oJson["latitude"]  := Val(StrTran(AllTrim((cAlias)->A1_XLAT), ",", "."))
@@ -2087,26 +2087,6 @@ User Function BJMAPCLI(cMarca, cChave, cMarcaFim, lEnvDel)
 	oStmt:Destroy()
 
 Return aRet
-
-/*/{Protheus.doc} BJPoeTexto
-Poe um campo de texto no payload, ou null quando ele esta vazio.
-@type    Static Function
-@author  Ricardo P Sotomayor
-@since   01/09/2026
-@param   oJson , object   , [Referencia] Payload em montagem
-@param   cCampo, character, Nome do campo no contrato
-@param   cValor, character, Valor lido da tabela
-@return  Nil
-/*/
-Static Function BJPoeTexto(oJson, cCampo, cValor)
-
-	If Empty(cValor)
-		oJson[cCampo] := Nil
-	Else
-		oJson[cCampo] := AllTrim(cValor)
-	EndIf
-
-Return Nil
 
 /*/{Protheus.doc} BJMAPFOR
 Fornecedores - SA2.
@@ -2188,7 +2168,7 @@ User Function BJMAPFOR(cMarca, cChave, cMarcaFim, lEnvDel)
 		cQuery += "   AND SA2.S_T_A_M_P_ <= '" + cMarcaFim + "' "
 	EndIf
 
-	cQuery += " ORDER BY A2_COD, A2_LOJA "
+	cQuery += " ORDER BY SA2.R_E_C_N_O_ "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, " ")
@@ -2229,16 +2209,16 @@ User Function BJMAPFOR(cMarca, cChave, cMarcaFim, lEnvDel)
 			oJson["tipoPessoa"] := "juridica"
 		EndIf
 
-		BJPoeTexto(oJson, "nomeFantasia"     , (cAlias)->A2_NREDUZ)
-		BJPoeTexto(oJson, "cnpjCpf"          , (cAlias)->A2_CGC)
-		BJPoeTexto(oJson, "inscricaoEstadual", (cAlias)->A2_INSCR)
-		BJPoeTexto(oJson, "endereco"         , (cAlias)->A2_END)
-		BJPoeTexto(oJson, "complemento"      , (cAlias)->A2_COMPLEM)
-		BJPoeTexto(oJson, "bairro"           , (cAlias)->A2_BAIRRO)
-		BJPoeTexto(oJson, "municipio"        , (cAlias)->A2_MUN)
-		BJPoeTexto(oJson, "uf"               , (cAlias)->A2_EST)
-		BJPoeTexto(oJson, "cep"              , (cAlias)->A2_CEP)
-		BJPoeTexto(oJson, "email"            , (cAlias)->A2_EMAIL)
+		oJson["nomeFantasia"]      := IIf(Empty((cAlias)->A2_NREDUZ), Nil, AllTrim((cAlias)->A2_NREDUZ))
+		oJson["cnpjCpf"]           := IIf(Empty((cAlias)->A2_CGC), Nil, AllTrim((cAlias)->A2_CGC))
+		oJson["inscricaoEstadual"] := IIf(Empty((cAlias)->A2_INSCR), Nil, AllTrim((cAlias)->A2_INSCR))
+		oJson["endereco"]          := IIf(Empty((cAlias)->A2_END), Nil, AllTrim((cAlias)->A2_END))
+		oJson["complemento"]       := IIf(Empty((cAlias)->A2_COMPLEM), Nil, AllTrim((cAlias)->A2_COMPLEM))
+		oJson["bairro"]            := IIf(Empty((cAlias)->A2_BAIRRO), Nil, AllTrim((cAlias)->A2_BAIRRO))
+		oJson["municipio"]         := IIf(Empty((cAlias)->A2_MUN), Nil, AllTrim((cAlias)->A2_MUN))
+		oJson["uf"]                := IIf(Empty((cAlias)->A2_EST), Nil, AllTrim((cAlias)->A2_EST))
+		oJson["cep"]               := IIf(Empty((cAlias)->A2_CEP), Nil, AllTrim((cAlias)->A2_CEP))
+		oJson["email"]             := IIf(Empty((cAlias)->A2_EMAIL), Nil, AllTrim((cAlias)->A2_EMAIL))
 
 		// Telefone: o Protheus separa DDD do numero
 		If Empty((cAlias)->A2_TEL)
@@ -2247,13 +2227,13 @@ User Function BJMAPFOR(cMarca, cChave, cMarcaFim, lEnvDel)
 			oJson["telefone"] := AllTrim((cAlias)->A2_DDD) + AllTrim((cAlias)->A2_TEL)
 		EndIf
 
-		BJPoeTexto(oJson, "inscricaoMunicipal", (cAlias)->A2_INSCRM)
-		BJPoeTexto(oJson, "contato"           , (cAlias)->A2_CONTATO)
+		oJson["inscricaoMunicipal"] := IIf(Empty((cAlias)->A2_INSCRM), Nil, AllTrim((cAlias)->A2_INSCRM))
+		oJson["contato"]            := IIf(Empty((cAlias)->A2_CONTATO), Nil, AllTrim((cAlias)->A2_CONTATO))
 
 		// A2_CEL e o unico campo deste mapeador ainda nao conferido no SX3 - dai a
 		// guarda. O telefone nao depende dele: sai de A2_DDD+A2_TEL, confirmados.
 		If lCelula
-			BJPoeTexto(oJson, "celular", (cAlias)->A2_CEL)
+			oJson["celular"] := IIf(Empty((cAlias)->A2_CEL), Nil, AllTrim((cAlias)->A2_CEL))
 		EndIf
 
 		cVerbo := "POST"
@@ -2369,7 +2349,7 @@ User Function BJMAPTAB(cMarca, cChave, cMarcaFim, lEnvDel)
 		cQuery += "                      AND " + cJanDet + ")) "
 	EndIf
 
-	cQuery += " ORDER BY DA0_CODTAB, DA1_CODPRO, DA1_ITEM "
+	cQuery += " ORDER BY DA0.R_E_C_N_O_, DA1.R_E_C_N_O_ "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, " ")
@@ -2406,16 +2386,13 @@ User Function BJMAPTAB(cMarca, cChave, cMarcaFim, lEnvDel)
 			oJson["descricao"] := AllTrim((cAlias)->DA0_DESCRI)
 			oJson["ativo"]     := (AllTrim((cAlias)->DA0_ATIVO) == "1")
 
-			If Empty((cAlias)->DA0_DATDE)
-				oJson["dtInicio"] := Nil
-			Else
-				oJson["dtInicio"] := FWTimeStamp(3, SToD((cAlias)->DA0_DATDE), "00:00:00") + "Z"
+			oJson["dtInicio"] := Nil
+			oJson["dtFim"]    := Nil
+			If !Empty((cAlias)->DA0_DATDE)
+				oJson["dtInicio"] := FWDateTo8601(SToD((cAlias)->DA0_DATDE))
 			EndIf
-
-			If Empty((cAlias)->DA0_DATATE)
-				oJson["dtFim"] := Nil
-			Else
-				oJson["dtFim"] := FWTimeStamp(3, SToD((cAlias)->DA0_DATATE), "00:00:00") + "Z"
+			If !Empty((cAlias)->DA0_DATATE)
+				oJson["dtFim"] := FWDateTo8601(SToD((cAlias)->DA0_DATATE))
 			EndIf
 
 			cChvAnt := cChvTab
@@ -2599,7 +2576,7 @@ User Function BJMAPEST(cMarca, cChave, cMarcaFim, lEnvDel)
 		cQuery += "   AND SB2.S_T_A_M_P_ <= '" + cMarcaFim + "' "
 	EndIf
 
-	cQuery += " ORDER BY B2_COD, B2_LOCAL "
+	cQuery += " ORDER BY SB2.R_E_C_N_O_ "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, FWxFilial("SB1"))
@@ -2631,7 +2608,7 @@ User Function BJMAPEST(cMarca, cChave, cMarcaFim, lEnvDel)
 			oJson["custo"] := (cAlias)->B2_CM1
 		EndIf
 		If lUltCom .And. !Empty((cAlias)->B2_DTUCOM)
-			oJson["ultimaCompra"] := FWTimeStamp(3, SToD((cAlias)->B2_DTUCOM), "00:00:00") + "Z"
+			oJson["ultimaCompra"] := FWDateTo8601(SToD((cAlias)->B2_DTUCOM))
 		EndIf
 
 		cVerbo := "POST"
@@ -2684,13 +2661,14 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim, lEnvDel)
 	Local lRegra   := SD2->(FieldPos("D2_YDESC"))   > 0
 	Local lTipoD2  := SD2->(FieldPos("D2_TIPO"))    > 0
 	Local nDevNota := 0
+	Local nRecAnt   := 0
 
 	Default cMarca    := ""
 	Default cChave    := ""
 	Default cMarcaFim := ""
 	Default lEnvDel   := .T.
 
-	cQuery := "SELECT F2_FILIAL, F2_DOC, F2_SERIE, F2_EMISSAO, SF2.D_E_L_E_T_ AS DELETADO, "
+	cQuery := "SELECT SF2.R_E_C_N_O_ AS REC_CAB, F2_FILIAL, F2_DOC, F2_SERIE, F2_EMISSAO, SF2.D_E_L_E_T_ AS DELETADO, "
 	cQuery += "       F2_CLIENTE, F2_LOJA, F2_FORMUL, F2_VEND1, F2_COND, F2_ESPECIE, F2_TIPO, "
 	cQuery += "       F2_VALBRUT, F2_VALMERC, F2_DESCONT, F2_VALICM, F2_CHVNFE, "
 	cQuery += "       D2_FILIAL, D2_DOC, D2_SERIE, D2_CLIENTE, D2_LOJA, D2_ITEM, D2_COD, D2_QUANT, D2_PRCVEN, D2_TOTAL, D2_DESCON, "
@@ -2782,11 +2760,11 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim, lEnvDel)
 	EndIf
 
 	cQuery += "   AND F2_SERIE IN ('1','3') "
-	
-	// A ordem e a da quebra: os campos que formam a chave da nota, depois o item.
-	// Sem isso o laco fecharia a mesma nota mais de uma vez.
-	
-	cQuery += " ORDER BY F2_DOC, F2_SERIE, F2_CLIENTE, F2_LOJA, F2_FORMUL, F2_TIPO, D2_COD, D2_ITEM "
+
+	// Ordem de geracao fisica: uma inclusao sempre entra na fila antes de uma
+	// alteracao/exclusao posterior. O REC_CAB tambem separa duas geracoes que
+	// reutilizem a mesma chave logica; os itens ficam na ordem em que nasceram.
+	cQuery += " ORDER BY SF2.R_E_C_N_O_, SD2.R_E_C_N_O_ "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, " ")
@@ -2816,7 +2794,7 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim, lEnvDel)
 		            (cAlias)->F2_FORMUL  + "-" + ;
 		            (cAlias)->F2_TIPO
 
-		If !(cChvNota == cChvAnt)
+		If (cAlias)->REC_CAB != nRecAnt
 
 			// Fecha a nota anterior antes de comecar a proxima.
 			If !Empty(cChvAnt)
@@ -2852,15 +2830,14 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim, lEnvDel)
 			oJson["comodato"]       := .F.
 			oJson["ativo"]          := .T.
 
-			BJPoeTexto(oJson, "serie"        , (cAlias)->F2_SERIE)
-			BJPoeTexto(oJson, "especieFiscal", (cAlias)->F2_ESPECIE)
-			BJPoeTexto(oJson, "tipo"         , (cAlias)->F2_TIPO)
-			BJPoeTexto(oJson, "chaveNfe"     , (cAlias)->F2_CHVNFE)
+			oJson["serie"]         := IIf(Empty((cAlias)->F2_SERIE), Nil, AllTrim((cAlias)->F2_SERIE))
+			oJson["especieFiscal"] := IIf(Empty((cAlias)->F2_ESPECIE), Nil, AllTrim((cAlias)->F2_ESPECIE))
+			oJson["tipo"]          := IIf(Empty((cAlias)->F2_TIPO), Nil, AllTrim((cAlias)->F2_TIPO))
+			oJson["chaveNfe"]      := IIf(Empty((cAlias)->F2_CHVNFE), Nil, AllTrim((cAlias)->F2_CHVNFE))
 
-			If Empty((cAlias)->F2_EMISSAO)
-				oJson["dtEmissao"] := Nil
-			Else
-				oJson["dtEmissao"] := FWTimeStamp(3, SToD((cAlias)->F2_EMISSAO), "00:00:00") + "Z"
+			oJson["dtEmissao"] := Nil
+			If !Empty((cAlias)->F2_EMISSAO)
+				oJson["dtEmissao"] := FWDateTo8601(SToD((cAlias)->F2_EMISSAO))
 			EndIf
 
 			// dtNfe: a data de autorizacao acompanha a emissao quando a nota ja tem
@@ -2868,7 +2845,7 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim, lEnvDel)
 			If Empty((cAlias)->F2_CHVNFE) .Or. Empty((cAlias)->F2_EMISSAO)
 				oJson["dtNfe"] := Nil
 			Else
-				oJson["dtNfe"] := FWTimeStamp(3, SToD((cAlias)->F2_EMISSAO), "00:00:00") + "Z"
+				oJson["dtNfe"] := FWDateTo8601(SToD((cAlias)->F2_EMISSAO))
 			EndIf
 
 			If lIpi
@@ -2884,10 +2861,11 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim, lEnvDel)
 			EndIf
 
 			If lMens
-				BJPoeTexto(oJson, "mensagem", (cAlias)->F2_MENNOTA)
+				oJson["mensagem"] := IIf(Empty((cAlias)->F2_MENNOTA), Nil, AllTrim((cAlias)->F2_MENNOTA))
 			EndIf
 
 			cChvAnt := cChvNota
+			nRecAnt  := (cAlias)->REC_CAB
 			cVrbAnt := "POST"
 			If (cAlias)->DELETADO == "*"
 				cVrbAnt := "DELETE"
@@ -2919,8 +2897,8 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim, lEnvDel)
 			oItem["ativo"]         := .T.
 			oItem["delete"]        := !Empty((cAlias)->ITEM_DELETADO)
 
-			BJPoeTexto(oItem, "cfop", (cAlias)->D2_CF)
-			BJPoeTexto(oItem, "tipo", (cAlias)->D2_TP)
+			oItem["cfop"] := IIf(Empty((cAlias)->D2_CF), Nil, AllTrim((cAlias)->D2_CF))
+			oItem["tipo"] := IIf(Empty((cAlias)->D2_TP), Nil, AllTrim((cAlias)->D2_TP))
 
 			If lTabela
 				oItem["vlrTabela"] := (cAlias)->D2_PRUNIT
@@ -2938,7 +2916,7 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim, lEnvDel)
 				nDevNota += (cAlias)->D2_VALDEV
 			EndIf
 			If lRegra
-				BJPoeTexto(oItem, "regraDescontoCodigo", (cAlias)->D2_YDESC)
+				oItem["regraDescontoCodigo"] := IIf(Empty((cAlias)->D2_YDESC), Nil, AllTrim((cAlias)->D2_YDESC))
 			EndIf
 
 			// Percentual de desconto derivado do valor: a SD2 grava o valor, o
@@ -3018,7 +2996,7 @@ User Function BJMAPXML(cMarca, cChave, cMarcaFim, lEnvDel)
 		cQuery += "   AND SF2.S_T_A_M_P_ <= '" + cMarcaFim + "' "
 	EndIf
 
-	cQuery += " ORDER BY F2_DOC, F2_SERIE "
+	cQuery += " ORDER BY SF2.R_E_C_N_O_ "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, " ")
@@ -3238,13 +3216,14 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim, lEnvDel)
 	Local lItSt    := SD1->(FieldPos("D1_ICMSRET")) > 0
 	Local lItIpi   := SD1->(FieldPos("D1_VALIPI"))  > 0
 	Local lItPeso  := SD1->(FieldPos("D1_PESO"))    > 0
+	Local nRecAnt  := 0
 
 	Default cMarca    := ""
 	Default cChave    := ""
 	Default cMarcaFim := ""
 	Default lEnvDel   := .T.
 
-	cQuery := "SELECT F1_FILIAL, F1_DOC, F1_SERIE, F1_FORNECE, F1_LOJA, F1_FORMUL, SF1.D_E_L_E_T_ AS DELETADO, "
+	cQuery := "SELECT SF1.R_E_C_N_O_ AS REC_CAB, F1_FILIAL, F1_DOC, F1_SERIE, F1_FORNECE, F1_LOJA, F1_FORMUL, SF1.D_E_L_E_T_ AS DELETADO, "
 	cQuery += "       F1_TIPO, F1_ESPECIE, F1_EMISSAO, F1_CHVNFE, F1_VALBRUT, "
 	cQuery += "       D1_FILIAL, D1_DOC, D1_SERIE, D1_FORNECE, D1_LOJA, D1_ITEM, D1_COD, "
 	cQuery += "       D1_QUANT, D1_TOTAL, D1_CF, SD1.D_E_L_E_T_ AS ITEM_DELETADO "
@@ -3362,9 +3341,10 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim, lEnvDel)
 		EndIf
 	EndIf
 
-	// A ordem e a da quebra: os campos que formam a chave da nota, depois o item.
-	// Sem isso o laco fecharia a mesma nota mais de uma vez.
-	cQuery += " ORDER BY F1_DOC, F1_SERIE, F1_FORNECE, F1_LOJA, F1_FORMUL, F1_TIPO, D1_COD, D1_ITEM "
+	// Ordem de geracao fisica: uma inclusao sempre entra na fila antes de uma
+	// alteracao/exclusao posterior. O REC_CAB tambem separa duas geracoes que
+	// reutilizem a mesma chave logica; os itens ficam na ordem em que nasceram.
+	cQuery += " ORDER BY SF1.R_E_C_N_O_, SD1.R_E_C_N_O_ "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, " ")
@@ -3399,7 +3379,7 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim, lEnvDel)
 		            (cAlias)->F1_FORMUL  + "-" + ;
 		            (cAlias)->F1_TIPO
 
-		If !(cChvNota == cChvAnt)
+		If (cAlias)->REC_CAB != nRecAnt
 
 			// Fecha a nota anterior antes de comecar a proxima.
 			If !Empty(cChvAnt)
@@ -3434,23 +3414,28 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim, lEnvDel)
 				oJson["clienteChave"]     := Nil
 			EndIf
 
-			BJPoeTexto(oJson, "serie"        , (cAlias)->F1_SERIE)
-			BJPoeTexto(oJson, "especieFiscal", (cAlias)->F1_ESPECIE)
-			BJPoeTexto(oJson, "tipo"         , (cAlias)->F1_TIPO)
-			BJPoeTexto(oJson, "chaveNfe"     , (cAlias)->F1_CHVNFE)
+			oJson["serie"]         := IIf(Empty((cAlias)->F1_SERIE), Nil, AllTrim((cAlias)->F1_SERIE))
+			oJson["especieFiscal"] := IIf(Empty((cAlias)->F1_ESPECIE), Nil, AllTrim((cAlias)->F1_ESPECIE))
+			oJson["tipo"]          := IIf(Empty((cAlias)->F1_TIPO), Nil, AllTrim((cAlias)->F1_TIPO))
+			oJson["chaveNfe"]      := IIf(Empty((cAlias)->F1_CHVNFE), Nil, AllTrim((cAlias)->F1_CHVNFE))
 
-			BJPoeData(oJson, "dtEmissao", (cAlias)->F1_EMISSAO)
+			oJson["dtEmissao"] := Nil
+			If !Empty((cAlias)->F1_EMISSAO)
+				oJson["dtEmissao"] := FWDateTo8601(SToD((cAlias)->F1_EMISSAO))
+			EndIf
 
 			// dtNfe: a data de autorizacao acompanha a emissao quando a nota ja tem
 			// chave.
-			If Empty((cAlias)->F1_CHVNFE)
+			If Empty((cAlias)->F1_CHVNFE) .Or. Empty((cAlias)->F1_EMISSAO)
 				oJson["dtNfe"] := Nil
 			Else
-				BJPoeData(oJson, "dtNfe", (cAlias)->F1_EMISSAO)
+				oJson["dtNfe"] := FWDateTo8601(SToD((cAlias)->F1_EMISSAO))
 			EndIf
 
-			If lEntrad
-				BJPoeData(oJson, "dtEntrada", (cAlias)->F1_DTDIGIT)
+			If lEntrad .And. !Empty((cAlias)->F1_DTDIGIT)
+				oJson["dtEntrada"] := FWDateTo8601(SToD((cAlias)->F1_DTDIGIT))
+			Else
+				oJson["dtEntrada"] := Nil
 			EndIf
 
 			If lCond
@@ -3511,10 +3496,11 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim, lEnvDel)
 			EndIf
 
 			If lMens
-				BJPoeTexto(oJson, "mensagem", (cAlias)->F1_MENNOTA)
+				oJson["mensagem"] := IIf(Empty((cAlias)->F1_MENNOTA), Nil, AllTrim((cAlias)->F1_MENNOTA))
 			EndIf
 
 			cChvAnt := cChvNota
+			nRecAnt  := (cAlias)->REC_CAB
 			cVrbAnt := "POST"
 			If (cAlias)->DELETADO == "*"
 				cVrbAnt := "DELETE"
@@ -3543,7 +3529,7 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim, lEnvDel)
 			oItem["ativo"]         := .T.
 			oItem["delete"]        := !Empty((cAlias)->ITEM_DELETADO)
 
-			BJPoeTexto(oItem, "cfop", (cAlias)->D1_CF)
+			oItem["cfop"] := IIf(Empty((cAlias)->D1_CF), Nil, AllTrim((cAlias)->D1_CF))
 
 			If lLocal
 				oItem["armazemChave"]  := FWxFilial("NNR") + "-" + (cAlias)->D1_LOCAL
@@ -3801,7 +3787,7 @@ User Function BJMAPTIT(cMarca, cChave, cMarcaFim, lEnvDel)
 		cQuery += "   AND SE1.S_T_A_M_P_ <= '" + cMarcaFim + "' "
 	EndIf
 
-	cQuery += " ORDER BY E1_EMISSAO, E1_PREFIXO, E1_NUM, E1_PARCELA "
+	cQuery += " ORDER BY SE1.R_E_C_N_O_ "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, " ")
@@ -3842,16 +3828,28 @@ User Function BJMAPTIT(cMarca, cChave, cMarcaFim, lEnvDel)
 		oJson["decrescimo"]     := (cAlias)->E1_DECRESC
 		oJson["ativo"]          := .T.
 
-		BJPoeTexto(oJson, "prefixo"  , (cAlias)->E1_PREFIXO)
-		BJPoeTexto(oJson, "parcela"  , (cAlias)->E1_PARCELA)
-		BJPoeTexto(oJson, "tipo"     , (cAlias)->E1_TIPO)
-		BJPoeTexto(oJson, "formaPgto", (cAlias)->E1_FORPGT)
-		BJPoeTexto(oJson, "historico", (cAlias)->E1_HIST)
+		oJson["prefixo"]   := IIf(Empty((cAlias)->E1_PREFIXO), Nil, AllTrim((cAlias)->E1_PREFIXO))
+		oJson["parcela"]   := IIf(Empty((cAlias)->E1_PARCELA), Nil, AllTrim((cAlias)->E1_PARCELA))
+		oJson["tipo"]      := IIf(Empty((cAlias)->E1_TIPO), Nil, AllTrim((cAlias)->E1_TIPO))
+		oJson["formaPgto"] := IIf(Empty((cAlias)->E1_FORPGT), Nil, AllTrim((cAlias)->E1_FORPGT))
+		oJson["historico"] := IIf(Empty((cAlias)->E1_HIST), Nil, AllTrim((cAlias)->E1_HIST))
 
-		BJPoeData(oJson, "emissao"       , (cAlias)->E1_EMISSAO)
-		BJPoeData(oJson, "vencimento"    , (cAlias)->E1_VENCTO)
-		BJPoeData(oJson, "vencimentoReal", (cAlias)->E1_VENCREA)
-		BJPoeData(oJson, "dtBaixa"       , (cAlias)->E1_BAIXA)
+		oJson["emissao"]        := Nil
+		oJson["vencimento"]     := Nil
+		oJson["vencimentoReal"] := Nil
+		oJson["dtBaixa"]        := Nil
+		If !Empty((cAlias)->E1_EMISSAO)
+			oJson["emissao"] := FWDateTo8601(SToD((cAlias)->E1_EMISSAO))
+		EndIf
+		If !Empty((cAlias)->E1_VENCTO)
+			oJson["vencimento"] := FWDateTo8601(SToD((cAlias)->E1_VENCTO))
+		EndIf
+		If !Empty((cAlias)->E1_VENCREA)
+			oJson["vencimentoReal"] := FWDateTo8601(SToD((cAlias)->E1_VENCREA))
+		EndIf
+		If !Empty((cAlias)->E1_BAIXA)
+			oJson["dtBaixa"] := FWDateTo8601(SToD((cAlias)->E1_BAIXA))
+		EndIf
 
 		// ---- Cobranca bancaria ----
 		// Nosso numero com 11 digitos, zero-preenchido, que e o que o Ret_cBarra
@@ -3869,13 +3867,13 @@ User Function BJMAPTIT(cMarca, cChave, cMarcaFim, lEnvDel)
 		// guarda a primeira ("09" nesta base, gravado pelo BjBoletos); E1_CARTEIR
 		// guarda a segunda, que e outra coisa e nao serve ao contrato.
 		If lCtrBol
-			BJPoeTexto(oJson, "carteira", (cAlias)->E1_CTRBOL)
+			oJson["carteira"] := IIf(Empty((cAlias)->E1_CTRBOL), Nil, AllTrim((cAlias)->E1_CTRBOL))
 		Else
 			oJson["carteira"] := Nil
 		EndIf
 
 		If lCodBar
-			BJPoeTexto(oJson, "codigoBarras", (cAlias)->E1_CODBAR)
+			oJson["codigoBarras"] := IIf(Empty((cAlias)->E1_CODBAR), Nil, AllTrim((cAlias)->E1_CODBAR))
 		Else
 			oJson["codigoBarras"] := Nil
 		EndIf
@@ -3883,7 +3881,7 @@ User Function BJMAPTIT(cMarca, cChave, cMarcaFim, lEnvDel)
 		// Linha digitavel: a do titulo, quando o campo existir. Deriva-la do codigo
 		// de barras seria recalcular o que o banco ja registrou.
 		If lCodDig
-			BJPoeTexto(oJson, "linhaDigitavel", (cAlias)->E1_CODDIG)
+			oJson["linhaDigitavel"] := IIf(Empty((cAlias)->E1_CODDIG), Nil, AllTrim((cAlias)->E1_CODDIG))
 		Else
 			oJson["linhaDigitavel"] := Nil
 		EndIf
@@ -3943,16 +3941,16 @@ User Function BJMAPTIT(cMarca, cChave, cMarcaFim, lEnvDel)
 			// boleto no banco foi o ERP, e e a informacao dele que vale.
 			aBanco := BJDadosSA6((cAlias)->E1_PORTADO, cAgeTit, cCtaTit)
 
-			BJPoeTexto(oJson, "banco"                 , aBanco[1])
-			BJPoeTexto(oJson, "bancoNome"             , aBanco[2])
-			BJPoeTexto(oJson, "bancoCodigoCompensacao", BJCodCompen(aBanco[1]))
-			BJPoeTexto(oJson, "agencia"               , aBanco[3])
-			BJPoeTexto(oJson, "agenciaDv"             , aBanco[4])
-			BJPoeTexto(oJson, "conta"                 , aBanco[5])
-			BJPoeTexto(oJson, "contaDv"               , aBanco[6])
-			BJPoeTexto(oJson, "beneficiarioNome"      , cBenNome)
-			BJPoeTexto(oJson, "beneficiarioDocumento" , cBenDoc)
-			BJPoeTexto(oJson, "beneficiarioEndereco"  , cBenEnd)
+			oJson["banco"]                  := IIf(Empty(aBanco[1]), Nil, AllTrim(aBanco[1]))
+			oJson["bancoNome"]              := IIf(Empty(aBanco[2]), Nil, AllTrim(aBanco[2]))
+			oJson["bancoCodigoCompensacao"] := IIf(Empty(BJCodCompen(aBanco[1])), Nil, AllTrim(BJCodCompen(aBanco[1])))
+			oJson["agencia"]                := IIf(Empty(aBanco[3]), Nil, AllTrim(aBanco[3]))
+			oJson["agenciaDv"]              := IIf(Empty(aBanco[4]), Nil, AllTrim(aBanco[4]))
+			oJson["conta"]                  := IIf(Empty(aBanco[5]), Nil, AllTrim(aBanco[5]))
+			oJson["contaDv"]                := IIf(Empty(aBanco[6]), Nil, AllTrim(aBanco[6]))
+			oJson["beneficiarioNome"]       := IIf(Empty(cBenNome), Nil, AllTrim(cBenNome))
+			oJson["beneficiarioDocumento"]  := IIf(Empty(cBenDoc), Nil, AllTrim(cBenDoc))
+			oJson["beneficiarioEndereco"]   := IIf(Empty(cBenEnd), Nil, AllTrim(cBenEnd))
 
 			oJson["localPagamento"]   := "Pagavel preferencialmente em qualquer Agencia Bradesco"
 			oJson["aceite"]           := "Sim"
@@ -4016,26 +4014,6 @@ User Function BJMAPTIT(cMarca, cChave, cMarcaFim, lEnvDel)
 	oStmt:Destroy()
 
 Return aRet
-
-/*/{Protheus.doc} BJPoeData
-Poe uma data no payload em ISO 8601, ou null quando ela esta vazia.
-@type    Static Function
-@author  Ricardo P Sotomayor
-@since   01/09/2026
-@param   oJson , object   , [Referencia] Payload em montagem
-@param   cCampo, character, Nome do campo no contrato
-@param   cData , character, Data lida da tabela, no formato AAAAMMDD
-@return  Nil
-/*/
-Static Function BJPoeData(oJson, cCampo, cData)
-
-	If Empty(cData)
-		oJson[cCampo] := Nil
-	Else
-		oJson[cCampo] := FWTimeStamp(3, SToD(cData), "00:00:00") + "Z"
-	EndIf
-
-Return Nil
 
 /*/{Protheus.doc} BJCodCompen
 Devolve o codigo de compensacao do banco com o digito, para o cabecalho do boleto.
