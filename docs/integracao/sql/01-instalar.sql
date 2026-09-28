@@ -47,7 +47,8 @@ USING (VALUES
     ('PERC_MULTA',   NULL,     N'MV_RGC_PMUL - multa do boleto quando o titulo nao tem E1_TXMULTA. Sem parametro, 0.02 (padrao do BjBoletos)'),
     ('BEN_NOME',     NULL,     N'Beneficiario do boleto: M0_NOMECOM + " - " + filial da SE1'),
     ('BEN_DOC',      NULL,     N'Beneficiario do boleto: CNPJ formatado'),
-    ('BEN_ENDERECO', NULL,     N'Beneficiario do boleto: endereco de cobranca')
+    ('BEN_ENDERECO', NULL,     N'Beneficiario do boleto: endereco de cobranca'),
+    ('LINHAS_POR_ARQUIVO', NULL, N'MV_BJAPI12 - registros por arquivo gerado, o mesmo tamanho do lote da fila. Sem parametro, 2000')
 ) AS n (nome, valor, descricao)
 ON c.nome = n.nome
 WHEN NOT MATCHED THEN INSERT (nome, valor, descricao) VALUES (n.nome, n.valor, n.descricao)
@@ -97,12 +98,37 @@ INSERT @tabs VALUES
     ('SE1', 'E1_CODBAR:c,E1_CODDIG:c,E1_CTRBOL:c,E1_AGEDEP:c,E1_CONTA:c,E1_DACNOSS:c,E1_MORADIA:n,E1_TXMULTA:n'),
     ('SA6', 'A6_DVAGE:c,A6_DVCTA:c');
 
--- Colunas que existem de fato, lidas uma vez do banco do Protheus
+-- Nome fisico de cada tabela: o X2_ARQUIVO da SX2 da empresa (o RetSQLName
+-- do Protheus). Tabela fora da SX2 cai na regra padrao: alias + empresa + "0".
+IF OBJECT_ID('tempdb..#fisico') IS NOT NULL DROP TABLE #fisico;
+CREATE TABLE #fisico (alias varchar(3) PRIMARY KEY, tabela sysname);
+
+DECLARE @sx2 nvarchar(400) = QUOTENAME(@BANCO) + N'.dbo.' + QUOTENAME('SX2' + @EMP + '0');
+
+IF OBJECT_ID(@sx2) IS NULL
+    PRINT 'ATENCAO: ' + @sx2 + ' nao encontrada - nomes das tabelas pela regra alias + empresa + 0.';
+ELSE
+BEGIN
+    SET @sql = N'SELECT RTRIM(X2_CHAVE), RTRIM(X2_ARQUIVO) FROM ' + @sx2 +
+               N' WHERE D_E_L_E_T_ = '' '' AND RTRIM(X2_ARQUIVO) <> ''''';
+    IF OBJECT_ID('tempdb..#sx2') IS NOT NULL DROP TABLE #sx2;
+    CREATE TABLE #sx2 (chave varchar(10), arquivo sysname);
+    INSERT #sx2 EXEC sp_executesql @sql;
+    INSERT #fisico (alias, tabela)
+    SELECT t.alias, s.arquivo FROM @tabs t JOIN #sx2 s ON s.chave = t.alias;
+END
+
+INSERT #fisico (alias, tabela)
+SELECT t.alias, t.alias + @EMP + '0' FROM @tabs t
+ WHERE NOT EXISTS (SELECT 1 FROM #fisico f WHERE f.alias = t.alias);
+
+-- Colunas que existem de fato, so das tabelas usadas
 IF OBJECT_ID('tempdb..#cols') IS NOT NULL DROP TABLE #cols;
 CREATE TABLE #cols (tabela sysname, coluna sysname);
 
+DECLARE @lista nvarchar(max) = STUFF((SELECT N', ''' + tabela + N'''' FROM #fisico FOR XML PATH(''), TYPE).value('.', 'nvarchar(max)'), 1, 2, N'');
 SET @sql = N'SELECT TABLE_NAME, COLUMN_NAME FROM ' + QUOTENAME(@BANCO) + N'.INFORMATION_SCHEMA.COLUMNS ' +
-           N'WHERE TABLE_SCHEMA = ''dbo'' AND TABLE_NAME LIKE ''%' + @EMP + N'0''';
+           N'WHERE TABLE_SCHEMA = ''dbo'' AND TABLE_NAME IN (' + @lista + N')';
 INSERT #cols EXEC sp_executesql @sql;
 
 DECLARE @alias varchar(3), @opc varchar(max), @tab sysname, @full nvarchar(400);
@@ -114,7 +140,8 @@ FETCH NEXT FROM cur INTO @alias, @opc;
 
 WHILE @@FETCH_STATUS = 0
 BEGIN
-    SET @tab  = @alias + @EMP + '0';
+    SET @tab  = (SELECT tabela FROM #fisico WHERE alias = @alias);
+    PRINT 'BJ_' + @alias + ' -> ' + @tab;
     SET @full = QUOTENAME(@BANCO) + N'.dbo.' + QUOTENAME(@tab);
 
     SET @sql = N'DROP VIEW IF EXISTS dbo.BJ_' + @alias;
@@ -218,6 +245,7 @@ DECLARE @par TABLE (cfg varchar(40), mv varchar(20));
 INSERT @par VALUES
     ('ARMAZENS', 'MV_BJAPI16'), ('TIPOS_TITULO', 'MV_BJAPI17'),
     ('PERC_JUROS', 'MV_RGC_PJUR'), ('PERC_MULTA', 'MV_RGC_PMUL'),
+    ('LINHAS_POR_ARQUIVO', 'MV_BJAPI12'),
     ('MV_BJAPI14', 'MV_BJAPI14');
 
 IF OBJECT_ID(@sx6) IS NULL
@@ -258,6 +286,11 @@ UPDATE dbo.BJ_CARGA_CONFIG SET valor = '0.02'
  WHERE nome IN ('PERC_JUROS', 'PERC_MULTA') AND valor IS NULL;
 IF @@ROWCOUNT > 0
     PRINT 'PERC_JUROS/PERC_MULTA sem MV_RGC_PJUR/MV_RGC_PMUL na SX6 - usando 0.02, o padrao do BjBoletos.';
+
+-- Registros por arquivo: o MV_BJAPI12 (tamanho do lote na fila); o U_BJVARRE
+-- usa 2000 quando ele esta zerado, e aqui tambem
+UPDATE dbo.BJ_CARGA_CONFIG SET valor = '2000'
+ WHERE nome = 'LINHAS_POR_ARQUIVO' AND (valor IS NULL OR TRY_CAST(valor AS int) IS NULL OR TRY_CAST(valor AS int) <= 0);
 
 -- Beneficiario: o SM0 fica na SYS_COMPANY quando o dicionario esta no banco
 BEGIN TRY
@@ -1058,6 +1091,48 @@ END;
 GO
 
 -- ---------------------------------------------------------------------------
--- 8. Confira a configuracao
+-- 8. Preparar uma entidade/ano para exportar em partes
+--
+-- Gera as linhas UMA vez numa tabela de trabalho (neste banco, nao no
+-- Protheus), numeradas na ordem de carga. O 02-comandos-exportar.sql tira
+-- dela as partes de LINHAS_POR_ARQUIVO registros sem refazer a consulta.
+-- ---------------------------------------------------------------------------
+IF OBJECT_ID('dbo.BJ_CARGA_LINHAS') IS NULL
+    CREATE TABLE dbo.BJ_CARGA_LINHAS (
+        entidade varchar(40)   NOT NULL,
+        ano      int           NOT NULL,   -- -1 = entidade sem ano (cadastro)
+        n        int           NOT NULL,   -- ordem da linha dentro da entidade/ano
+        linha    nvarchar(max) NOT NULL,
+        CONSTRAINT PK_BJ_CARGA_LINHAS PRIMARY KEY (entidade, ano, n)
+    );
+GO
+
+CREATE OR ALTER PROCEDURE dbo.BJ_CARGA_PREPARAR
+    @entidade  varchar(40),
+    @ano       int = NULL,
+    -- Por OUTPUT, e nao por SELECT: quem chama nao pode usar INSERT...EXEC,
+    -- porque esta procedure ja usa um (o SQL Server nao aninha os dois)
+    @registros int = NULL OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @chaveAno int = ISNULL(@ano, -1);
+
+    DELETE dbo.BJ_CARGA_LINHAS WHERE entidade = @entidade AND ano = @chaveAno;
+
+    -- A identidade guarda a ordem em que a procedure devolveu as linhas
+    CREATE TABLE #l (n int IDENTITY(1, 1) PRIMARY KEY, linha nvarchar(max));
+    INSERT #l (linha) EXEC dbo.BJ_CARGA_JSONL @entidade, @ano;
+
+    INSERT dbo.BJ_CARGA_LINHAS (entidade, ano, n, linha)
+    SELECT @entidade, @chaveAno, n, linha FROM #l;
+
+    SET @registros = (SELECT COUNT(*) FROM #l);
+END;
+GO
+
+-- ---------------------------------------------------------------------------
+-- 9. Confira a configuracao
 -- ---------------------------------------------------------------------------
 SELECT nome, '[' + valor + ']' AS valor, descricao FROM dbo.BJ_CARGA_CONFIG ORDER BY nome;

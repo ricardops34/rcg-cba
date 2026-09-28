@@ -114,6 +114,23 @@ async function compactar(arquivo: File): Promise<File> {
   return new File([blob], `${arquivo.name}.gz`, { type: "application/gzip" });
 }
 
+/**
+ * Sobe um arquivo; se a API responder 429 (muitas requisições), espera e
+ * tenta de novo em vez de parar o envio no meio — 5 s, 10 s, 15 s…
+ */
+async function subirComEspera(form: FormData, aoEsperar: (segundos: number) => void) {
+  for (let tentativa = 1; ; tentativa++) {
+    try {
+      return await apiUpload<IntegracaoCarga>("/integracao-cargas", form);
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 429) || tentativa >= 6) throw err;
+      const segundos = tentativa * 5;
+      aoEsperar(segundos);
+      await new Promise((r) => setTimeout(r, segundos * 1000));
+    }
+  }
+}
+
 const tamanhoBr = (bytes: number) =>
   bytes >= 1024 * 1024
     ? `${(bytes / 1024 / 1024).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} MB`
@@ -207,7 +224,7 @@ export function UploadCargasTab({ onEnviados }: { onEnviados?: () => void }) {
           form.append("file", arquivo);
           form.append("apiKeyId", chaveEscolhida);
           form.append("descricao", original.name);
-          await apiUpload<IntegracaoCarga>("/integracao-cargas", form);
+          await subirComEspera(form, (s) => marcar(i, "enviando", `Servidor ocupado, tentando de novo em ${s} s`));
           marcar(i, "enviado");
           enviados++;
           queryClient.invalidateQueries({ queryKey: CHAVE_CARGAS });
@@ -314,7 +331,9 @@ export function UploadCargasTab({ onEnviados }: { onEnviados?: () => void }) {
                         <span className="flex items-center gap-1.5"><Loader2 className="size-3.5 animate-spin" /> Compactando</span>
                       )}
                       {f.estado === "enviando" && (
-                        <span className="flex items-center gap-1.5"><Loader2 className="size-3.5 animate-spin" /> Enviando</span>
+                        <span className="flex items-center gap-1.5">
+                          <Loader2 className="size-3.5 animate-spin" /> {f.mensagem ?? "Enviando"}
+                        </span>
                       )}
                       {f.estado === "enviado" && <span className="text-emerald-600 dark:text-emerald-400">Enviado</span>}
                       {f.estado === "erro" && <span className="text-rose-600 dark:text-rose-400">{f.mensagem}</span>}

@@ -2195,7 +2195,11 @@ export function integracaoLoteItemSchema<T extends z.AnyZodObject>(
   const schema = create
     .partial()
     .extend({
-      chave: z.string().min(1),
+      // Sem espaços nas pontas, como as chaves de referência: tabela
+      // compartilhada do Protheus manda a filial em branco ("  -01"), e a
+      // referência a ela chega aparada ("-01"). Gravada com os espaços, a
+      // chave nunca casava — categoria pai, produto, cliente, vendedor.
+      chave: z.string().trim().min(1),
       excluido: z.boolean().optional(),
     })
     .superRefine((valor, ctx) => {

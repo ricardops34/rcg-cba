@@ -19,6 +19,9 @@ Mensagens) antes de gerar tudo.
 Abra [`01-instalar.sql`](01-instalar.sql), ajuste `@BANCO`, `@EMPRESA` e
 `@FILIAL` no topo e rode. No fim ele mostra a configuração — confira:
 
+- As linhas `BJ_<alias> -> <tabela>`: o nome físico de cada tabela, lido do
+  `X2_ARQUIVO` da SX2 da empresa. Tabela fora da SX2 usa a regra padrão
+  (alias + empresa + `0`).
 - `FIL_<alias>`: a filial de cada tabela (o `xFilial`). Descoberta pelo que
   está gravado; corrija com `UPDATE dbo.BJ_CARGA_CONFIG` se alguma estiver
   errada.
@@ -27,6 +30,8 @@ Abra [`01-instalar.sql`](01-instalar.sql), ajuste `@BANCO`, `@EMPRESA` e
   sem parâmetro cadastrado ficam `0.02` — o padrão com que o BjBoletos os lê
   (`SuperGetMV(..., .T., '0.02')`).
 - `BEN_*`: beneficiário do boleto, lido da `SYS_COMPANY`.
+- `LINHAS_POR_ARQUIVO`: registros por arquivo gerado, lido do `MV_BJAPI12` (o
+  tamanho do lote da fila no Protheus). Sem parâmetro, `2000`.
 - `CORTE`: vazio lê tudo. Para o mesmo recorte do `MV_BJAPI14`, preencha
   **em UTC** (`AAAA-MM-DD HH:MM:SS`) — o servidor do Protheus está em UTC−4.
 - As mensagens `campo X não existe - vai como nulo` são os campos que os
@@ -63,6 +68,7 @@ EXEC sp_configure 'xp_cmdshell', 1; RECONFIGURE;
 | `@SERVIDOR` | `@@SERVERNAME` | Instância que o `bcp` acessa |
 | `@AUTENTIC` | `-T` | `-T` = conta do Windows; ou `-U usuario -P senha` |
 | `@ENTIDADE` | `NULL` | Só uma entidade, ex.: `'titulos-receber'` |
+| `@LINHAS` | `NULL` | Registros por arquivo. `NULL` usa o `LINHAS_POR_ARQUIVO` da configuração (`MV_BJAPI12`) |
 | `@ANO` | `NULL` | Só um ano de notas e títulos, ex.: `2026`. Os cadastros saem sempre — notas e títulos dependem deles |
 
 Para testar antes de gerar tudo: `@ENTIDADE = 'titulos-receber'`, `@ANO = 2025`.
@@ -85,25 +91,31 @@ longas (notas com muitos itens).
 
 ### Os arquivos
 
-Um por entidade; notas e títulos, um por ano de emissão:
+Um por entidade; notas e títulos, um por ano de emissão. Cada arquivo tem no
+máximo `LINHAS_POR_ARQUIVO` registros (o `MV_BJAPI12`): o que passar disso sai
+em partes, `-parte01`, `-parte02`…; o que couber numa parte fica sem o sufixo.
 
 ```
-C:\carga-bj\regras-desconto.json
-C:\carga-bj\categorias.json
-C:\carga-bj\condicoes-pagamento.json
-C:\carga-bj\armazens.json
-C:\carga-bj\vendedores.json
-C:\carga-bj\fornecedores.json
-C:\carga-bj\produtos.json
-C:\carga-bj\estoque.json
-C:\carga-bj\tabelas-preco.json
-C:\carga-bj\clientes.json
-C:\carga-bj\notas-saida-2025.json
-C:\carga-bj\notas-saida-2026.json
-C:\carga-bj\notas-entrada-2026.json
-C:\carga-bj\titulos-receber-2025.json
-C:\carga-bj\titulos-receber-2026.json
+C:carga-bjegras-desconto.json
+C:carga-bjcategorias.json
+C:carga-bjcondicoes-pagamento.json
+C:carga-bjarmazens.json
+C:carga-bjendedores.json
+C:carga-bjornecedores.json
+C:carga-bjprodutos-parte01.json … produtos-parte05.json
+C:carga-bjestoque-parte01.json, estoque-parte02.json
+C:carga-bj	abelas-preco.json
+C:carga-bjclientes-parte01.json … clientes-parte04.json
+C:carga-bj
+otas-saida-2026-parte01.json …
+C:carga-bj
+otas-entrada-2026-parte01.json …
+C:carga-bj	itulos-receber-2026-parte01.json …
 ```
+
+Cada entidade/ano é gerada **uma vez**, na tabela de trabalho
+`BJ_CARGA_LINHAS` (no banco das procedures, não no Protheus); as partes saem
+dela, e ela é esvaziada no fim quando todos os arquivos foram gravados.
 
 A lista acima está na **ordem de carga** — a ordem em que a plataforma
 precisa recebê-los (vendedor antes de cliente, cliente antes de título). Cada arquivo tem **um registro por

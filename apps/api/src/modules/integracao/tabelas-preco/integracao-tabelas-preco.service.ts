@@ -31,6 +31,14 @@ import {
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 import { resolverProduto } from '../common/resolver-produto';
 
+/**
+ * A tabela sobe inteira numa transação só, e cada item resolve o produto e a
+ * regra de desconto: uma tabela de ~1.000 itens passa dos 5 s padrão do
+ * Prisma, e a maior da base medida tem 2.783 (conferido em 28/09/2026 com os
+ * arquivos da carga por SQL — as de 800+ itens caíam por tempo).
+ */
+const UPSERT_TIMEOUT_MS = 120_000;
+
 const INCLUDE = {
   itens: {
     where: { deletedAt: null },
@@ -139,71 +147,79 @@ export class IntegracaoTabelasPrecoService {
     input: IntegracaoTabelaPrecoCreate,
   ): Promise<{ registro: IntegracaoTabelaPreco; decisao: DecisaoUpsert }> {
     const autor = autorIntegracao(apiKeyId);
-    return this.prisma.withTenant(empresaId, async (tx) => {
-      const existente = await tx.tabelaPreco.findFirst({
-        where: { empresaId, chave: input.chave },
-      });
-      const decisao = decidirUpsert(existente);
+    return this.prisma.withTenant(
+      empresaId,
+      async (tx) => {
+        const existente = await tx.tabelaPreco.findFirst({
+          where: { empresaId, chave: input.chave },
+        });
+        const decisao = decidirUpsert(existente);
 
-      const itensData = await Promise.all(
-        consolidarFilhos(input.itens).map(async (item) => {
-          const produto = await resolverProduto(tx, empresaId, item.produtoChave);
-          return {
-            delete: item.delete,
-            empresaId,
-            chave: item.chave,
-            produtoId: produto.id,
-            preco: item.preco,
-            regraDescontoId:
-              (await resolverRegraDesconto(
-                tx,
-                empresaId,
-                item.regraDescontoChave ?? item.regraDescontoCodigo,
-              )) ?? null,
-            ativo: item.ativo,
-          };
-        }),
-      );
+        const itensData = await Promise.all(
+          consolidarFilhos(input.itens).map(async (item) => {
+            const produto = await resolverProduto(
+              tx,
+              empresaId,
+              item.produtoChave,
+            );
+            return {
+              delete: item.delete,
+              empresaId,
+              chave: item.chave,
+              produtoId: produto.id,
+              preco: item.preco,
+              regraDescontoId:
+                (await resolverRegraDesconto(
+                  tx,
+                  empresaId,
+                  item.regraDescontoChave ?? item.regraDescontoCodigo,
+                )) ?? null,
+              ativo: item.ativo,
+            };
+          }),
+        );
 
-      const dados = {
-        chave: input.chave,
-        codigoErp: input.codigoErp ?? '',
-        descricao: input.descricao,
-        dtInicio: input.dtInicio ?? null,
-        dtFim: input.dtFim ?? null,
-        ativo: input.ativo,
-        updatedBy: autor,
-      };
+        const dados = {
+          chave: input.chave,
+          codigoErp: input.codigoErp ?? '',
+          descricao: input.descricao,
+          dtInicio: input.dtInicio ?? null,
+          dtFim: input.dtFim ?? null,
+          ativo: input.ativo,
+          updatedBy: autor,
+        };
 
-      if (decisao !== 'criar') {
-        // O ERP manda a tabela inteira: linha que não veio mais não existe
-        // mais, e a que veio é casada pela chave.
-        const atualizadoUpsert = await tx.tabelaPreco.update({
-          where: { id: existente!.id },
+        if (decisao !== 'criar') {
+          // O ERP manda a tabela inteira: linha que não veio mais não existe
+          // mais, e a que veio é casada pela chave.
+          const atualizadoUpsert = await tx.tabelaPreco.update({
+            where: { id: existente!.id },
+            data: {
+              ...dados,
+              ...camposDaDecisao(decisao),
+              itens: sincronizarFilhos(
+                { campo: 'tabelaPrecoId', id: existente!.id },
+                itensData,
+              ),
+            },
+            include: INCLUDE,
+          });
+          return { registro: this.paraLeitura(atualizadoUpsert), decisao };
+        }
+
+        const criada = await tx.tabelaPreco.create({
           data: {
             ...dados,
-            ...camposDaDecisao(decisao),
-            itens: sincronizarFilhos(
-              { campo: 'tabelaPrecoId', id: existente!.id },
-              itensData,
-            ),
+            empresaId,
+            createdBy: autor,
+            itens: { create: criarFilhos(itensData) },
           },
           include: INCLUDE,
         });
-        return { registro: this.paraLeitura(atualizadoUpsert), decisao };
-      }
-
-      const criada = await tx.tabelaPreco.create({
-        data: {
-          ...dados,
-          empresaId,
-          createdBy: autor,
-          itens: { create: criarFilhos(itensData) },
-        },
-        include: INCLUDE,
-      });
-      return { registro: this.paraLeitura(criada), decisao };
-    });
+        return { registro: this.paraLeitura(criada), decisao };
+      },
+      { timeout: UPSERT_TIMEOUT_MS },
+    );
   }
 
   /**
@@ -251,7 +267,11 @@ export class IntegracaoTabelasPrecoService {
       if (input.itens) {
         const itensData = await Promise.all(
           consolidarFilhos(input.itens).map(async (item) => {
-            const produto = await resolverProduto(tx, empresaId, item.produtoChave);
+            const produto = await resolverProduto(
+              tx,
+              empresaId,
+              item.produtoChave,
+            );
             return {
               delete: item.delete,
               empresaId,

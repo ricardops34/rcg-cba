@@ -204,3 +204,26 @@ A conferir no primeiro teste no Protheus:
 - O Prisma Client do container de dev estava desatualizado há vários commits
   (81 erros de compilação): precisou de `prisma generate` no container.
 
+**28/09/2026 (noite) — Upload e Processamento separados; teste com os arquivos reais do SQL**
+
+- **Duas abas** (decisão do usuário): **Upload** sobe e deixa a carga `aguardando`
+  (situação nova, migration `20260928170000_integracao_cargas_aguardando`);
+  **Processamento** manda processar (todas ou uma), acompanha, cancela e exclui a
+  que ainda aguarda. O processamento é no servidor — a janela pode ser fechada.
+  O ERP pela chave de API continua entrando como `recebida` (sem esperar).
+- **Teste com os arquivos gerados pelo SQL na base real** (cadastros + 2026): a
+  tela funcionou; os dados falharam em cascata por **chave com espaço** — tabela
+  compartilhada tem a filial em branco (`"  -01"`), a API gravava a chave com os
+  espaços e procurava a referência sem eles. SA1 e SA3 ainda misturam filial
+  vazia e com espaços. **Correção na API:** a chave do item de lote é gravada
+  sem espaços nas pontas (`integracaoLoteItemSchema`) — vale para o `PUT` e o
+  arquivo. Conferido antes em produção: 0 chaves com espaço em categorias,
+  produtos, clientes e vendedores. Depois: categorias 247/247, produtos
+  8.029/8.030 (1 com grupo inexistente na SBM), estoque 2.729/2.729.
+- **Tabela de preço grande caía por tempo** (transação de 5 s do Prisma; tabelas
+  de 800 a 2.783 itens): `upsert` da tabela com `timeout` de 120 s. Depois:
+  55/55 em 75 s. Afetava o `PUT` do Protheus igual.
+- **SQL:** ordem dos vendedores compara chaves sem espaço nas duas pontas;
+  juros e multa com padrão 0.02 (o do BjBoletos); nome físico das tabelas pelo
+  `X2_ARQUIVO` da SX2.
+
