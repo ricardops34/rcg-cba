@@ -156,7 +156,7 @@ export function BoletoDialog({
                   selecionada={escolhido === t.id}
                   disponivel={t.temBoleto}
                   onClick={() => setEscolhido(t.id)}
-                  titulo={`${t.numero}${t.parcela ? `/${t.parcela}` : ""} — venc. ${dataBr(t.vencimento)}`}
+                  titulo={`${t.numero}${t.parcela ? `/${t.parcela}` : ""} — venc. ${dataCivilBr(t.vencimento)}`}
                   valor={moeda(t.saldo)}
                   motivo="Sem 2ª via: título sem registro bancário no ERP, ou vencido há mais de 30 dias."
                 />

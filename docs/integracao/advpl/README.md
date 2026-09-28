@@ -53,6 +53,8 @@ O que os outros três usam. Não depende de nenhum deles.
 | Função | O que faz |
 |---|---|
 | `U_BJVARRE` | **Agendável.** Abre o lote na SZY, percorre o catálogo lendo por `S_T_A_M_P_`, enfileira e fecha o lote |
+| `U_BJCORTE` | O corte da carga inicial (`MV_BJAPI14`) no formato da `ZY_MARCA` — a mesma regra para a carga pela fila e por arquivo |
+| `U_BJMARGEM` | A marca que uma coleta grava: início menos 10 minutos, em UTC |
 | `U_BJMAP*` | Os 15 mapeadores, um por entidade: regras de desconto, categorias, condições, armazéns, produtos, vendedores, clientes, fornecedores, tabelas de preço, estoque, notas de saída, XML das notas, notas de entrada, títulos e objetivos. **Orçamento (SCJ/SCK) não é enviado** — ver *SCJ e SCK fora da integração* |
 
 ### [`BJPLA004.prw`](BJPLA004.prw) — Envio e retorno
@@ -61,6 +63,7 @@ O que os outros três usam. Não depende de nenhum deles.
 |---|---|
 | `U_BJDRENA` | **Agendável.** Drena lote a lote: pega na SZY os lotes `1` e `3`, manda as mensagens de cada um e grava o resultado do envio no lote |
 | `U_BJLOTE` | Envio em bloco por `PUT`, agrupado por entidade — caminho da carga inicial |
+| `U_BJCARGARQ` | **Carga inicial por arquivo** (28/09/2026): um arquivo JSON Lines por entidade, gzip se a build tiver, `POST /integracao/cargas`. Não passa pela SZZ; grava só a marca d'água no fim. Ver *Carga por arquivo* |
 | `U_BJRETORNO` | **Agendável.** Lê da plataforma o que está aprovado, grava no ERP e confirma lá: orçamento aprovado → Pedido de Venda (SC5/SC6) por `MATA410`; alteração de cliente → SA1 por `CRMA980` |
 | `U_BJEXPTOARQ` | Exporta as mensagens da SZZ de um lote em arquivo TXT e marca como executadas |
 | `U_BJIMPDOARQ` | Importa um arquivo TXT da Plataforma BJ, grava lote SZY/SZZ de Entrada e executa a aplicação no ERP |
@@ -69,7 +72,7 @@ O que os outros três usam. Não depende de nenhum deles.
 
 | Função | O que faz |
 |---|---|
-| `U_BJPLA005` | A única tela. Browse dos lotes (SZY) com Gerar, Enviar, Receber, Mensagens, Enviar em Bloco, Exportar TXT, Importar TXT, Limpar e Ajuda |
+| `U_BJPLA005` | A única tela. Browse dos lotes (SZY) com Gerar, Enviar, Receber, Mensagens, Enviar em Bloco, Carga por Arquivo, Cargas na Plataforma, Exportar TXT, Importar TXT, Limpar e Ajuda |
 
 ### Agendamento e ambiente
 
@@ -266,7 +269,7 @@ sem recompilar.
 | `MV_BJAPI10` | — | — | **Não é mais lido** desde 26/09/2026. Recuava a marca, em dias, quando a fila já tinha mensagens e nenhum lote tinha marca — e com a coleta fracionada esse é o caso da **carga inicial que caiu no meio**: o recuo perdia em silêncio tudo que ela não chegou a ler. Agora a coleta refaz a carga desde o corte (`MV_BJAPI14`); o envio descarta a mensagem repetida como superada. Pode ficar cadastrado, sem efeito |
 | `MV_BJAPI11` | N | `90` | Retenção da mensagem executada, em dias |
 | `MV_BJAPI12` | N | `2000` | **Tamanho máximo do lote**, em mensagens (reaproveitado em 26/09/2026 — ver [plano](../../planos/2026-09-26-filas-prioridade-integracao.md)). A coleta fecha o lote nesse tamanho e abre o próximo; o envio confere a prioridade a cada tantas mensagens. **Ainda não lido pelo código** até o plano ser implementado. Até 21/09/2026 este nome guardava o caminho das travas `.tsk` (caractere) — se ainda estiver cadastrado assim, **trocar o tipo para N** |
-| `MV_BJAPI14` | C(19) | vazio | **Marca d'água inicial de corte** da carga inicial, pelo `S_T_A_M_P_` (decisão do usuário, 26/09/2026). Formato da `ZY_MARCA`: `AAAA-MM-DD` ou `AAAA-MM-DD HH:MM:SS`, **em UTC** (como o `S_T_A_M_P_`); `DD/MM/AAAA` também é aceito, e o tipo D também. **O servidor do Protheus está em UTC−4** (conferido em 25/09/2026: 18:05 local = 22:05 no `S_T_A_M_P_`): meia-noite local é `04:00:00` UTC. Prefira `DD/MM/AAAA`, que converte pelo fuso do servidor. Só vale quando a SZZ não tem nenhuma mensagem de saída; vazio lê a origem inteira. **Vale para todas as entidades**: cliente, produto ou preço sem alteração desde antes do corte não sobem, e título **em aberto** emitido antes dele também não — só entram quando forem alterados, ou por um Gerar com período. **A carga inicial não manda excluídos** (a plataforma está vazia): até 26/09/2026, com o corte ela mandava cada excluído desde a data como POST + DELETE |
+| `MV_BJAPI14` | C(19) | vazio | **Marca d'água inicial de corte** da carga inicial, pelo `S_T_A_M_P_` (decisão do usuário, 26/09/2026). Formato da `ZY_MARCA`: `AAAA-MM-DD` ou `AAAA-MM-DD HH:MM:SS`, **em UTC** (como o `S_T_A_M_P_`); `DD/MM/AAAA` também é aceito, e o tipo D também. **O servidor do Protheus está em UTC−4** (conferido em 25/09/2026: 18:05 local = 22:05 no `S_T_A_M_P_`): meia-noite local é `04:00:00` UTC. Prefira `DD/MM/AAAA`, que converte pelo fuso do servidor. Só vale na carga inicial — quando nenhum lote tem marca (até 28/09/2026: quando a SZZ não tinha mensagem de saída) —, pela fila ou por arquivo; vazio lê a origem inteira. **Vale para todas as entidades**: cliente, produto ou preço sem alteração desde antes do corte não sobem, e título **em aberto** emitido antes dele também não — só entram quando forem alterados, ou por um Gerar com período. **A carga inicial não manda excluídos** (a plataforma está vazia): até 26/09/2026, com o corte ela mandava cada excluído desde a data como POST + DELETE |
 | `MV_BJAPI15` | C(250) | vazio | **Gravado pela coleta, não configurado.** Pesos das classes (lotes) que tiveram erro na última coleta do catálogo inteiro, separados por vírgula (ex.: `90,40`). A coleta seguinte **começa por essas classes** e depois segue do maior peso para o menor (decisão do usuário, 26/09/2026: "recomeça pelos com erro", por lote/prioridade). Só muda a ordem da coleta; o envio segue a prioridade dos lotes |
 | `MV_BJAPI16` | C(250) | vazio | **Armazéns de revenda** cujo saldo vai para a plataforma, separados por vírgula (ex.: `01,02,07`) — decisão do usuário, 26/09/2026. Vazio, todos. Filtra o `U_BJMAPEST` (`B2_LOCAL IN (...)`); código com caractere que não seja letra ou número é ignorado. **Tirar um armazém da lista não apaga na plataforma o saldo que ele já mandou** |
 | `MV_BJAPI17` | C(250) | vazio | **Tipos de título (`E1_TIPO`) que vão para a plataforma**, separados por vírgula (ex.: `NF,DP,BOL`) — decisão do usuário, 26/09/2026: retenção (`IR-`, `PI-`, `CF-`, `CS-`…) e abatimento (`AB-`) não são cobrança do cliente. É a lista do que **vai**, não do que fica: tipo novo no Protheus fica de fora até ser incluído. Vazio, todos. Tipo com caractere que não seja letra, número ou `-` é ignorado. **Tirar um tipo da lista não apaga na plataforma o que ele já mandou** |
@@ -800,7 +803,31 @@ sem chave nem datas, e depois **Enviar em Bloco**. A ordem de carga é a do
 catálogo, e os grupos (Cadastros, Financeiro, Estoque, Notas) permitem fazer
 por partes. Terminando sem erro, o lote grava a marca e as próximas
 coletas passam a ser incrementais. Se a fila já tem mensagens e nenhum lote
-gravou marca ainda, a marca recua `MV_BJAPI10` (30 dias por padrão).
+gravou marca ainda, a coleta refaz a carga desde o corte (`MV_BJAPI14`).
+**Desde 28/09/2026 só a falta de marca decide que é carga**: a fila vazia com
+marca gravada é incremental — é o estado que a carga por arquivo deixa.
+
+### Carga por arquivo
+
+Opção **extra** à carga pela fila (decisão do usuário, 28/09/2026): o botão
+**Carga por Arquivo** do monitor (`U_BJCARGARQ`) lê cada entidade ativa pelo
+mapeador — mesmo corte `MV_BJAPI14`, sem excluídos —, grava as linhas em
+`\bjcarga\` (pasta do RootPath), compacta com `GzCompress` se a build tiver
+e sobe cada arquivo em `POST /integracao/cargas`. A plataforma responde 202 e
+processa em segundo plano, na ordem de chegada. Nada passa pela SZZ.
+
+- Cada arquivo tem até **8 MB de texto**; entidade maior vira várias partes. O
+  arquivo é lido numa string para o envio, e o teto é o `MaxStringSize` do
+  `appserver.ini`.
+- Um envio recusado **para tudo** e **não grava a marca**; o arquivo recusado
+  fica em `\bjcarga\` para conferir. Rodar de novo refaz a carga — o upsert
+  por chave não duplica.
+- Todos aceitos: um lote na SZY, sem mensagens, guarda a marca (início − 10
+  min). Dali em diante o `U_BJVARRE` segue incremental.
+- Aceito é o **arquivo**: registro que a plataforma recusar fica na lista de
+  erros da carga. **Cargas na Plataforma** mostra a situação e os primeiros
+  recusados.
+- Segura a trava `BJPLA_COLETA`: o `U_BJVARRE` agendado não roda junto.
 
 **Nenhum campo customizado é necessário** na SC5/SC6: o vínculo com a
 plataforma mora na fila (`ZZ_CHVORI` guarda o id de lá, `ZZ_CHVDES` o número do
@@ -831,6 +858,8 @@ ficam no mesmo menu, e operam sobre o lote posicionado:
 | **Receber** | Pergunta na plataforma se há orçamentos aprovados ou alterações de cliente; se houver, grava um lote e já aplica no ERP, confirmando o status lá — tudo numa chamada |
 | **Mensagens** | Lista as mensagens do lote posicionado (SZZ) e abre a escolhida, com payload e resposta |
 | **Enviar em Bloco** | Envia tudo que está pendente em blocos de até `MV_BJAPI09`, por `PUT` — caminho da carga inicial. Não confundir com "lote" (SZY): isto é o envio em lote da API |
+| **Carga por Arquivo** | Carga inicial sem a fila: um arquivo por entidade, enviado inteiro para a plataforma (`U_BJCARGARQ`). Avisa se há mensagens de saída pendentes — enviadas depois, levariam um estado mais antigo que o da carga |
+| **Cargas na Plataforma** | As últimas cargas por arquivo (`GET /integracao/cargas`): situação, progresso e, da escolhida, os primeiros registros recusados |
 | **Limpar** | Roda o expurgo agora (mensagens executadas mais antigas que `MV_BJAPI11`, 90 dias por padrão). Não expurga lotes (SZY) — ainda sem rotina para isso |
 | **Ajuda** | Explica como a integração decide o que enviar |
 

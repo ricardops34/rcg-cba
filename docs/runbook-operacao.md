@@ -531,6 +531,13 @@ então o script depois não encontra nada a fazer. Modelo:
 
 ---
 
+## Carga inicial da integração por SQL **[escrito em 2026-09-28, não rodado]**
+
+Gera os arquivos JSON da carga inicial direto do SQL Server do Protheus, um
+por entidade (notas e títulos, um por ano), sem passar pela fila. Só gera os
+arquivos: não envia e não altera nada na base do Protheus. Instalação e uso em
+[`docs/integracao/sql/README.md`](integracao/sql/README.md).
+
 ## Publicar imagens
 
 `publish.ps1` (raiz) builda e **publica no Docker Hub** as **três** imagens

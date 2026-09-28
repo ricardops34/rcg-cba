@@ -119,4 +119,11 @@ export const CATALOGO_ENDPOINTS_INTEGRACAO: IntegracaoEndpointCatalogoItem[] = [
     metodos: ['GET', 'POST'],
     rota: '/api/v1/integracao/arquivo',
   },
+  {
+    endpointKey: 'cargas',
+    nome: 'Carga por Arquivo',
+    descricao: 'Carga inicial em arquivo JSON Lines (gzip), processada em segundo plano.',
+    metodos: ['GET', 'POST'],
+    rota: '/api/v1/integracao/cargas',
+  },
 ];

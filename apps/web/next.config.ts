@@ -7,6 +7,13 @@ const nextConfig: NextConfig = {
   // Monorepo: o file tracing do standalone precisa partir da raiz do workspace.
   outputFileTracingRoot: path.join(__dirname, "../../"),
   allowedDevOrigins: ["rcgcba.bjsoft.com.br"],
+  experimental: {
+    // O proxy de /api/v1 corta o corpo em 10 MB por padrão — e corta calado:
+    // a API recebe o arquivo truncado. A carga por arquivo aceita até 100 MB
+    // (INTEGRACAO_CARGA_MAX_BYTES); a tela compacta antes de subir, mas um
+    // arquivo grande passa de 10 MB mesmo compactado.
+    proxyClientMaxBodySize: "100mb",
+  },
   // Cadastro de Clientes mudou de módulo (Comercial → Cadastros) junto com a
   // URL; mantém de pé o que já estava salvo/compartilhado do caminho antigo.
   async redirects() {

@@ -138,6 +138,8 @@ model Empresa {
   orcamentoItens             OrcamentoItem[]
   integracaoApiKeys          IntegracaoApiKey[]
   integracaoEndpointConfigs   IntegracaoEndpointConfig[]
+  integracaoCargas           IntegracaoCarga[]
+  integracaoCargaErros       IntegracaoCargaErro[]
   clienteCampoConfigs        ClienteCampoConfig[]
   produtoCampos              ProdutoCampo[]
   produtoCampoValores        ProdutoCampoValor[]
@@ -906,6 +908,93 @@ model IntegracaoEndpointConfig {
   @@unique([empresaId, endpointKey])
   @@index([empresaId])
   @@map("integracao_endpoint_configs")
+}
+
+enum IntegracaoCargaSituacao {
+  /// Subida pela tela, esperando alguém mandar processar
+  aguardando
+  recebida
+  processando
+  concluida
+  cancelada
+  erro
+}
+
+/// Carga por arquivo: o ERP sobe um arquivo JSON Lines (gzip opcional) e a API
+/// o aplica em segundo plano, pelo mesmo `upsertLote` do `PUT` em bloco. Ver
+/// docs/planos/2026-09-28-carga-por-arquivo.md.
+///
+/// O arquivo fica no banco, e não em disco, para a carga sobreviver a um
+/// redeploy no meio do processamento sem depender de volume.
+model IntegracaoCarga {
+  id        String @id @default(uuid())
+  empresaId String
+  apiKeyId  String
+
+  descricao String?
+  /// Sempre compactado (gzip), mesmo quando chegou em texto puro.
+  arquivo   Bytes
+  /// Bytes recebidos — o tamanho do que o ERP mandou.
+  tamanho   Int
+  /// Linhas por entidade, contadas no recebimento: `{ "titulos-receber": 104294 }`.
+  entidades Json
+
+  situacao IntegracaoCargaSituacao @default(recebida)
+
+  totalLinhas       Int @default(0)
+  /// Registros já aplicados (com ou sem erro) — é o progresso mostrado.
+  linhasProcessadas Int @default(0)
+  /// Checkpoint: número da última linha do arquivo já aplicada. Retomar
+  /// começa depois dela. Separado da contagem porque linha em branco conta
+  /// na posição e não é registro.
+  ultimaLinha       Int @default(0)
+  criados           Int @default(0)
+  atualizados       Int @default(0)
+  excluidos         Int @default(0)
+  erros             Int @default(0)
+
+  /// Motivo quando a carga inteira parou (`situacao = erro`). Erro de registro
+  /// não para a carga — vai para `integracao_carga_erros`.
+  mensagem           String?
+  cancelarSolicitado Boolean @default(false)
+  /// Vezes que o processamento pegou a carga. Normal é 1; cada queda da API
+  /// no meio soma uma. Passou do teto, a carga para em `erro` em vez de
+  /// repetir a mesma falha para sempre.
+  tentativas         Int     @default(0)
+
+  iniciadaEm  DateTime?
+  concluidaEm DateTime?
+  createdAt   DateTime  @default(now())
+  /// Batimento: atualizado a cada bloco. Parado há muito tempo em
+  /// `processando` = a API caiu no meio, e a carga é retomada.
+  updatedAt   DateTime  @updatedAt
+
+  empresa     Empresa               @relation(fields: [empresaId], references: [id])
+  errosLinhas IntegracaoCargaErro[]
+
+  @@index([empresaId, situacao, createdAt])
+  @@map("integracao_cargas")
+}
+
+/// Registro recusado numa carga por arquivo: a linha, a entidade, a chave e o
+/// motivo. Tabela própria porque uma carga pode ter dezenas de milhares.
+model IntegracaoCargaErro {
+  id        String @id @default(uuid())
+  empresaId String
+  cargaId   String
+
+  linha    Int
+  entidade String
+  chave    String?
+  mensagem String
+
+  createdAt DateTime @default(now())
+
+  empresa Empresa         @relation(fields: [empresaId], references: [id])
+  carga   IntegracaoCarga @relation(fields: [cargaId], references: [id], onDelete: Cascade)
+
+  @@index([cargaId, linha])
+  @@map("integracao_carga_erros")
 }
 
 // ------------------------------------------------------------------

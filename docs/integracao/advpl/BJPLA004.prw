@@ -2328,3 +2328,433 @@ User Function BJIMPDOARQ(cCaminho)
 Return aTotal
 
 
+
+// ===========================================================================
+// CARGA POR ARQUIVO
+// ===========================================================================
+
+/*/{Protheus.doc} BJCARGARQ
+Carga inicial por arquivo: para cada entidade do catalogo, na ordem de carga,
+le a origem pelo mapeador, grava as linhas num arquivo (JSON Lines), compacta
+se a build tiver gzip e sobe para POST /integracao/cargas. A plataforma guarda
+o arquivo, responde 202 e processa em segundo plano, uma carga por vez por
+empresa, na ordem de chegada - e isso que preserva a dependencia entre as
+entidades. Nada passa pela SZZ.
+Opcao EXTRA de envio (decisao do usuario, 28/09/2026): a fila, o Enviar em
+Bloco e o PUT continuam como estao. Ver
+docs/planos/2026-09-28-carga-por-arquivo.md.
+Mesmo recorte da carga pela fila: o corte do MV_BJAPI14 (U_BJCORTE) e sem
+excluidos - a plataforma esta vazia, nao ha o que excluir la.
+Terminados os envios, TODOS aceitos, grava um lote na SZY so com a marca
+d'agua (inicio - 10 min, U_BJMARGEM) e sem mensagens: a partir dela o
+U_BJVARRE segue incremental. Um envio recusado para tudo ali e nao grava a
+marca - rodar de novo refaz a carga inteira, e o upsert por chave nao duplica.
+Aceito e o arquivo, nao cada registro: o que o schema ou a gravacao recusar
+fica na lista de erros da carga (GET /integracao/cargas/{id}/erros).
+@type    User Function
+@author  Ricardo P Sotomayor
+@since   28/09/2026
+@param   oProcess, object, MsNewProcess do monitor, para as reguas. Nil fora dele
+@return  array, {nEntidades, nRegistros, nArquivos, cFalha, aCargas}. aCargas = {cEntidade, nParte, cId, nLinhas} de cada arquivo aceito; cFalha vazio quando tudo foi aceito
+@example aTot := U_BJCARGARQ()
+/*/
+User Function BJCARGARQ(oProcess)
+
+	Local aTotal    := {0, 0, 0, "", {}}
+	Local aCat      := U_BJCATALO()
+	Local aDados    := {}
+	Local aArq      := {}
+	Local bColeta   := Nil
+	Local oReg      := Nil
+	Local cEntid    := ""
+	Local cLinha    := ""
+	Local cBuf      := ""
+	Local cMarca    := ""
+	Local cMarcaNova := ""
+	Local cAgora    := ""
+	Local cLote     := ""
+	Local cTrava    := "BJPLA_COLETA"
+	Local dAgora    := CToD("")
+	Local nAgora    := 0
+	Local nE        := 0
+	Local nX        := 0
+	Local nSeg      := Seconds()
+
+	// Parte do arquivo, em bytes de TEXTO. O arquivo inteiro e lido numa string
+	// para o envio, e o teto da string no AppServer e o MaxStringSize do
+	// appserver.ini (em MB) - 8 MB cabe no padrao. Compactado, cada parte fica
+	// perto de 1 MB. Entidade maior vira mais de um arquivo; a plataforma os
+	// processa na ordem de chegada, entao as partes entram na ordem.
+	Local nMaxParte := 8 * 1024 * 1024
+
+	If !AllTrim(Upper(GetMV("MV_BJAPI03"))) == "S"
+		aTotal[4] := "Integracao BJ desabilitada (MV_BJAPI03)."
+		Return aTotal
+	EndIf
+
+	// A trava da coleta: com o U_BJVARRE agendado rodando junto, ele acharia a
+	// SZY sem marca e comecaria a carga PELA FILA, ao mesmo tempo que esta.
+	If !LockByName(cTrava, .T., .F.)
+		aTotal[4] := "Ha uma coleta em andamento (trava " + cTrava + "). Aguarde ela terminar."
+		Return aTotal
+	EndIf
+
+	// Um instante so para a carga inteira, como na coleta: todas as entidades
+	// leem ate ele, e a marca que fica e ele menos 10 minutos.
+	dAgora     := Date()
+	nAgora     := Seconds()
+	cAgora     := Left(StrTran(StrTran(FWTimeStamp(6, dAgora, Time()), "T", " "), "Z", ""), 19)
+	cMarcaNova := U_BJMARGEM(dAgora, nAgora)
+	cMarca     := U_BJCORTE("U_BJCARGARQ")
+
+	If !ExistDir("\bjcarga")
+		MakeDir("\bjcarga")
+	EndIf
+
+	ConOut("[BJPLA] U_BJCARGARQ inicio - thread " + cValToChar(ThreadId()) + " - empresa/filial " + cEmpAnt + "/" + cFilAnt + ;
+		" - corte '" + cMarca + "' ate '" + cAgora + "'")
+
+	If ValType(oProcess) == "O"
+		oProcess:SetRegua1(Len(aCat))
+	EndIf
+
+	For nE := 1 To Len(aCat)
+
+		If ValType(oProcess) == "O"
+			If oProcess:lEnd
+				aTotal[4] := "Interrompida pelo usuario antes de " + aCat[nE][2] + "."
+				Exit
+			EndIf
+			oProcess:IncRegua1(aCat[nE][2] + " - " + cValToChar(nE) + " de " + cValToChar(Len(aCat)) + "...")
+		EndIf
+
+		// Inativa no catalogo, ou rota por chave (XML da nota): fora da carga
+		// por arquivo - o XML continua pelo caminho atual.
+		If !aCat[nE][5] .Or. "{chave}" $ aCat[nE][3]
+			Loop
+		EndIf
+
+		// No arquivo a entidade vai pelo nome da ROTA, nao pelo id do catalogo:
+		// "condicoes-pagamento", e nao "condicoes-pagto".
+		cEntid := SubStr(aCat[nE][3], Len("/integracao/") + 1)
+
+		If ValType(oProcess) == "O"
+			oProcess:SetRegua2(1)
+			oProcess:IncRegua2("Lendo " + aCat[nE][2] + " na origem...")
+		EndIf
+
+		// O mapeador, como na coleta: marca = corte, fim = agora, sem excluidos
+		bColeta := &("{|cRef, cChv, cFim, lDel| " + aCat[nE][4] + "(cRef, cChv, cFim, lDel) }")
+		aDados  := Eval(bColeta, cMarca, "", cAgora, .F.)
+
+		If ValType(aDados) != "A"
+			aTotal[4] := "Mapeador " + aCat[nE][4] + " nao devolveu array (" + cEntid + ")."
+			Exit
+		EndIf
+
+		aTotal[1] += 1
+
+		If Len(aDados) == 0
+			ConOut("[BJPLA] U_BJCARGARQ " + cEntid + " - nada a enviar")
+			Loop
+		EndIf
+
+		If ValType(oProcess) == "O"
+			oProcess:SetRegua2(Int((Len(aDados) + 999) / 1000))
+		EndIf
+
+		// aArq = {nHandle, cCaminho, nBytes, nLinhas, nParte}: a parte aberta agora
+		aArq := {-1, "", 0, 0, 0}
+		cBuf := ""
+
+		For nX := 1 To Len(aDados)
+
+			// aDados[nX] = {cChaveRegistro, oJsonPayload, cVerbo}. Sem excluidos
+			// na leitura nao deveria vir DELETE, mas se vier vai como no PUT.
+			If aDados[nX][3] == "DELETE"
+				oReg := JsonObject():New()
+				oReg["chave"]    := aDados[nX][1]
+				oReg["excluido"] := .T.
+				cLinha := oReg:ToJson()
+				oReg   := Nil
+			Else
+				cLinha := aDados[nX][2]:ToJson()
+			EndIf
+
+			cLinha := '{"entidade":"' + cEntid + '","registro":' + cLinha + '}' + Chr(10)
+
+			// Parte cheia: fecha, sobe e abre a proxima
+			If aArq[1] >= 0 .And. aArq[3] + Len(cBuf) + Len(cLinha) > nMaxParte
+				If !BJFechaParte(aArq, @cBuf, cEntid, aTotal)
+					Exit
+				EndIf
+			EndIf
+
+			If aArq[1] < 0 .And. !BJAbreParte(aArq, cEntid, aTotal)
+				Exit
+			EndIf
+
+			cBuf    += cLinha
+			aArq[4] += 1
+
+			// Grava em pedacos de 512 KB, nao linha a linha
+			If Len(cBuf) >= 524288
+				fWrite(aArq[1], cBuf)
+				aArq[3] += Len(cBuf)
+				cBuf := ""
+			EndIf
+
+			// IncRegua2 anda uma casa por chamada: a regua e dimensionada em
+			// milhares, e anda a cada mil registros.
+			If ValType(oProcess) == "O" .And. nX % 1000 == 0
+				oProcess:IncRegua2(cEntid + " - " + cValToChar(nX) + " de " + cValToChar(Len(aDados)))
+			EndIf
+
+		Next nX
+
+		If Empty(aTotal[4]) .And. aArq[1] >= 0
+			BJFechaParte(aArq, @cBuf, cEntid, aTotal)
+		EndIf
+
+		aTotal[2] += Len(aDados)
+		aDados    := {}
+
+		If !Empty(aTotal[4])
+			// Parte aberta que nao chegou a subir fica no disco, para conferir
+			If aArq[1] >= 0
+				fClose(aArq[1])
+			EndIf
+			Exit
+		EndIf
+
+	Next nE
+
+	If Empty(aTotal[4])
+
+		// Tudo aceito: o lote so com a marca. Fecha "2" (nada a enviar) e o
+		// U_BJVARRE passa a ler dela em diante.
+		cLote := U_BJABRELT(0)
+
+		dbSelectArea("SZY")
+		SZY->(dbSetOrder(1))   // ZY_FILIAL + ZY_CODIGO
+
+		If SZY->(dbSeek(xFilial("SZY") + cLote))
+			RecLock("SZY", .F.)
+			SZY->ZY_DTFIM   := Date()
+			SZY->ZY_HRFIM   := Time()
+			SZY->ZY_QTDLIDO := aTotal[2]
+			SZY->ZY_QTDENV  := aTotal[2]
+			SZY->ZY_QTDERR  := 0
+			SZY->ZY_STATUS  := "2"          // processado
+			SZY->ZY_MARCA   := cMarcaNova   // inicio - 10 min
+			SZY->(MsUnlock())
+		EndIf
+
+		FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Carga por arquivo concluida - " + cValToChar(aTotal[3]) + " arquivos, " + ;
+			cValToChar(aTotal[2]) + " registros - marca " + cMarcaNova + " no lote " + cLote, 0, 0, {})
+
+	Else
+
+		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Carga por arquivo parou: " + aTotal[4], 0, 0, {})
+
+	EndIf
+
+	ConOut("[BJPLA] U_BJCARGARQ fim - " + cValToChar(aTotal[3]) + " arquivos aceitos, " + cValToChar(aTotal[2]) + " registros, " + ;
+		cValToChar(Round(Seconds() - nSeg, 1)) + "s" + Iif(Empty(aTotal[4]), " - marca " + cMarcaNova, " - PAROU: " + aTotal[4]))
+
+	UnLockByName(cTrava, .T., .F.)
+
+Return aTotal
+
+/*/{Protheus.doc} BJAbreParte
+Abre o arquivo da proxima parte de uma entidade, em \bjcarga.
+Arrays vao por referencia em ADVPL: aArq e aTotal voltam alterados.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   28/09/2026
+@param   aArq  , array    , {nHandle, cCaminho, nBytes, nLinhas, nParte}
+@param   cEntid, character, Entidade (nome da rota)
+@param   aTotal, array    , Totais do U_BJCARGARQ - a falha vai em aTotal[4]
+@return  logical, .T. se abriu
+/*/
+Static Function BJAbreParte(aArq, cEntid, aTotal)
+
+	aArq[5] += 1
+	aArq[2] := "\bjcarga\" + cEntid + "_" + DtoS(Date()) + StrTran(Time(), ":", "") + "_" + StrZero(aArq[5], 3) + ".jsonl"
+	aArq[3] := 0
+	aArq[4] := 0
+	aArq[1] := fCreate(aArq[2])
+
+	If aArq[1] < 0
+		aTotal[4] := "Nao foi possivel criar " + aArq[2] + " (fError " + cValToChar(fError()) + ")."
+		Return .F.
+	EndIf
+
+Return .T.
+
+/*/{Protheus.doc} BJFechaParte
+Fecha a parte aberta, compacta se der e sobe para a plataforma.
+Arrays vao por referencia em ADVPL: aArq e aTotal voltam alterados.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   28/09/2026
+@param   aArq  , array    , {nHandle, cCaminho, nBytes, nLinhas, nParte}. Volta com o handle -1
+@param   cBuf  , character, [Referencia] Linhas ainda nao gravadas. Volta vazio
+@param   cEntid, character, Entidade (nome da rota)
+@param   aTotal, array    , Totais do U_BJCARGARQ
+@return  logical, .T. se a plataforma aceitou o arquivo
+/*/
+Static Function BJFechaParte(aArq, cBuf, cEntid, aTotal)
+
+	Local cEnvio  := ""
+	Local cTipo   := "application/x-ndjson"
+	Local cCorpo  := ""
+	Local cResp   := ""
+	Local cErro   := ""
+	Local cId     := ""
+	Local nHttp   := 0
+	Local nEnvio  := 0
+	Local lOk     := .F.
+	Local oResp   := Nil
+
+	If !Empty(cBuf)
+		fWrite(aArq[1], cBuf)
+		aArq[3] += Len(cBuf)
+		cBuf := ""
+	EndIf
+
+	fClose(aArq[1])
+	aArq[1] := -1
+
+	// Compacta se a build tiver como. Sem gzip a carga funciona igual, so maior:
+	// a API reconhece o compactado pelos dois primeiros bytes e aceita os dois.
+	cEnvio := BJGzip(aArq[2])
+
+	If !(cEnvio == aArq[2])
+		cTipo := "application/gzip"
+	EndIf
+
+	cCorpo := BJLeArq(cEnvio)
+	nEnvio := Len(cCorpo)
+
+	If nEnvio == 0
+		aTotal[4] := "Nao foi possivel ler " + cEnvio + " para o envio (acima do MaxStringSize do appserver.ini?)."
+		Return .F.
+	EndIf
+
+	lOk := U_BJHTTP("POST", "/integracao/cargas?descricao=" + cEntid + "-parte-" + cValToChar(aArq[5]), ;
+		cCorpo, @cResp, @nHttp, @cErro, cTipo)
+
+	cCorpo := ""
+
+	ConOut("[BJPLA] U_BJCARGARQ " + cEntid + " parte " + cValToChar(aArq[5]) + " - " + cValToChar(aArq[4]) + " linhas, " + ;
+		cValToChar(Round(aArq[3] / 1024, 0)) + " KB de texto, " + cValToChar(Round(nEnvio / 1024, 0)) + " KB enviados (" + cTipo + ") - HTTP " + cValToChar(nHttp))
+
+	If !lOk
+		// O arquivo fica no disco: e o que foi recusado, e o erro da API diz a linha
+		aTotal[4] := cEntid + " parte " + cValToChar(aArq[5]) + " recusada - HTTP " + cValToChar(nHttp) + " - " + cErro + ;
+			" (arquivo em " + aArq[2] + ")"
+		Return .F.
+	EndIf
+
+	oResp := JsonObject():New()
+
+	If oResp:FromJson(cResp) == Nil .And. ValType(oResp["id"]) == "C"
+		cId := oResp["id"]
+	EndIf
+
+	oResp := Nil
+
+	aTotal[3] += 1
+	aAdd(aTotal[5], {cEntid, aArq[5], cId, aArq[4]})
+
+	// Aceito: a plataforma ja guardou o arquivo, a copia local nao serve mais
+	fErase(aArq[2])
+	If !(cEnvio == aArq[2])
+		fErase(cEnvio)
+	EndIf
+
+	Sleep(GetMV("MV_BJAPI08"))   // a mesma pausa entre requisicoes do envio
+
+Return .T.
+
+/*/{Protheus.doc} BJGzip
+Compacta o arquivo em gzip, se a build do AppServer tiver como.
+A funcao de compactacao disponivel varia com a build (decisao em aberto no
+plano de 28/09/2026). Por isso a chamada vai protegida, e o resultado so vale
+se comecar pelos bytes do gzip (1f 8b) - o mesmo teste que a API faz. Fora
+disso, manda o texto.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   28/09/2026
+@param   cArq, character, Arquivo de texto
+@return  character, Caminho do .gz, ou o proprio cArq quando nao compactou
+/*/
+Static Function BJGzip(cArq)
+
+	Local cGz    := cArq + ".gz"
+	Local cCab   := ""
+	Local nH     := -1
+	Local lOk    := .F.
+	Local bErro  := ErrorBlock({|e| Break(e)})
+
+	Begin Sequence
+		If FindFunction("GzCompress")
+			lOk := GzCompress(cArq, cGz)
+		EndIf
+	Recover
+		lOk := .F.
+	End Sequence
+
+	ErrorBlock(bErro)
+
+	If ValType(lOk) != "L" .Or. !lOk .Or. !File(cGz)
+		Return cArq
+	EndIf
+
+	nH := fOpen(cGz, 0)   // leitura
+
+	If nH >= 0
+		cCab := Space(2)
+		fRead(nH, @cCab, 2)
+		fClose(nH)
+	EndIf
+
+	If !(cCab == Chr(31) + Chr(139))
+		ConOut("[BJPLA] U_BJCARGARQ GzCompress nao gerou gzip - enviando texto")
+		fErase(cGz)
+		Return cArq
+	EndIf
+
+Return cGz
+
+/*/{Protheus.doc} BJLeArq
+Le um arquivo inteiro numa string.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   28/09/2026
+@param   cArq, character, Caminho do arquivo
+@return  character, Conteudo, ou vazio se nao abriu ou nao leu tudo
+/*/
+Static Function BJLeArq(cArq)
+
+	Local cRet := ""
+	Local nH   := fOpen(cArq, 0)   // leitura
+	Local nTam := 0
+
+	If nH < 0
+		Return ""
+	EndIf
+
+	nTam := fSeek(nH, 0, 2)   // fim: o tamanho
+	fSeek(nH, 0, 0)
+
+	cRet := Space(nTam)
+
+	If fRead(nH, @cRet, nTam) != nTam
+		cRet := ""
+	EndIf
+
+	fClose(nH)
+
+Return cRet

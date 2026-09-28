@@ -88,6 +88,8 @@ Static Function MenuDef()
 	ADD OPTION aRotina TITLE "Receber"         ACTION "U_BJMONREC"       OPERATION 3 ACCESS 0
 	ADD OPTION aRotina TITLE "Mensagens"       ACTION "U_BJMONMSG"       OPERATION 9 ACCESS 0
 	ADD OPTION aRotina TITLE "Enviar em Bloco" ACTION "U_BJMONBLO"       OPERATION 3 ACCESS 0
+	ADD OPTION aRotina TITLE "Carga por Arquivo"    ACTION "U_BJMONCAR" OPERATION 3 ACCESS 0
+	ADD OPTION aRotina TITLE "Cargas na Plataforma" ACTION "U_BJMONCST" OPERATION 3 ACCESS 0
 	ADD OPTION aRotina TITLE "Exportar TXT"    ACTION "U_BJMONEXP"       OPERATION 9 ACCESS 0
 	ADD OPTION aRotina TITLE "Importar TXT"    ACTION "U_BJMONIMP"       OPERATION 3 ACCESS 0
 	ADD OPTION aRotina TITLE "Limpar"          ACTION "U_BJMONLIM"       OPERATION 3 ACCESS 0
@@ -701,6 +703,177 @@ User Function BJMONBLO()
 	MsgInfo("Lidas: "    + cValToChar(aTotal[1]) + CRLF + ;
 		"Enviadas: "     + cValToChar(aTotal[2]) + CRLF + ;
 		"Erros: "        + cValToChar(aTotal[3]), cCadastro)
+
+Return Nil
+
+/*/{Protheus.doc} BJMONCAR
+Carga inicial por arquivo, pela tela: gera um arquivo por entidade e sobe
+para a plataforma (U_BJCARGARQ, BJPLA004). Opcao extra - a carga pela fila
+(Gerar + Enviar em Bloco) continua valendo.
+@type    User Function
+@author  Ricardo P Sotomayor
+@since   28/09/2026
+@return  Nil
+/*/
+User Function BJMONCAR()
+
+	Local aTotal   := {}
+	Local oProcess := Nil
+	Local cMsg     := ""
+	Local cQuery   := ""
+	Local cAlias   := ""
+	Local oStmt    := Nil
+	Local nPend    := 0
+	Local nX       := 0
+
+	// Mensagem de saida ainda na fila carrega o estado de QUANDO foi coletada.
+	// Enviada depois da carga, volta o registro na plataforma para esse estado
+	// antigo - ate a proxima alteracao dele.
+	cQuery := "SELECT COUNT(*) AS QTDPEND "
+	cQuery += "  FROM " + RetSqlName("SZZ") + " SZZ "
+	cQuery += " WHERE SZZ.D_E_L_E_T_ = ' ' "
+	cQuery += "   AND SZZ.ZZ_FILIAL  = ? "
+	cQuery += "   AND SZZ.ZZ_TIPO    = ? "
+	cQuery += "   AND SZZ.ZZ_STATUS IN (?, ?) "
+
+	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
+	oStmt:SetString(1, xFilial("SZZ"))
+	oStmt:SetString(2, "S")   // saida
+	oStmt:SetString(3, "1")   // pendente
+	oStmt:SetString(4, "3")   // erro
+	cAlias := oStmt:OpenAlias()
+
+	If (cAlias)->(!Eof())
+		nPend := (cAlias)->QTDPEND
+	EndIf
+
+	(cAlias)->(dbCloseArea())
+	oStmt:Destroy()
+
+	cMsg := "Gerar um arquivo por entidade e enviar para a plataforma?" + CRLF + CRLF + ;
+		"A plataforma processa em segundo plano; acompanhe em Cargas na Plataforma." + CRLF + ;
+		"Le a partir do corte do MV_BJAPI14, sem excluidos. O XML da nota nao entra." + CRLF + ;
+		"No fim grava a marca d'agua, e a coleta segue so com o que mudar."
+
+	If nPend > 0
+		cMsg += CRLF + CRLF + "ATENCAO: ha " + cValToChar(nPend) + " mensagens de saida pendentes ou com erro na fila." + CRLF + ;
+			"Se forem enviadas DEPOIS da carga, levam para a plataforma o estado de quando" + CRLF + ;
+			"foram coletadas, mais antigo que o da carga."
+	EndIf
+
+	If !MsgYesNo(cMsg, cCadastro)
+		Return Nil
+	EndIf
+
+	oProcess := MsNewProcess():New({|| aTotal := U_BJCARGARQ(oProcess)}, "Carga por arquivo...", "Aguarde...", .T.)
+	oProcess:Activate()
+
+	cMsg := "Entidades lidas: " + cValToChar(aTotal[1]) + CRLF + ;
+		"Registros: "           + cValToChar(aTotal[2]) + CRLF + ;
+		"Arquivos aceitos: "    + cValToChar(aTotal[3]) + CRLF
+
+	For nX := 1 To Len(aTotal[5])
+		cMsg += CRLF + PadR(aTotal[5][nX][1] + " parte " + cValToChar(aTotal[5][nX][2]), 32) + ;
+			" " + cValToChar(aTotal[5][nX][4]) + " linhas"
+	Next nX
+
+	If Empty(aTotal[4])
+		MsgInfo(cMsg + CRLF + CRLF + "Marca d'agua gravada. A plataforma processa os arquivos na ordem;" + CRLF + ;
+			"acompanhe em Cargas na Plataforma.", cCadastro)
+	Else
+		MsgStop(cMsg + CRLF + CRLF + "PAROU: " + aTotal[4] + CRLF + CRLF + ;
+			"A marca d'agua NAO foi gravada. Os arquivos ja aceitos seguem sendo" + CRLF + ;
+			"processados; rodar de novo refaz tudo sem duplicar.", cCadastro)
+	EndIf
+
+Return Nil
+
+/*/{Protheus.doc} BJMONCST
+Situacao das cargas por arquivo na plataforma (GET /integracao/cargas) e,
+da escolhida, os primeiros registros recusados.
+@type    User Function
+@author  Ricardo P Sotomayor
+@since   28/09/2026
+@return  Nil
+/*/
+User Function BJMONCST()
+
+	Local aLista := {}
+	Local aCarga := {}
+	Local aErros := {}
+	Local oResp  := Nil
+	Local oPag   := Nil
+	Local cResp  := ""
+	Local cErro  := ""
+	Local cMsg   := ""
+	Local nHttp  := 0
+	Local nSel   := 0
+	Local nX     := 0
+
+	If !U_BJHTTP("GET", "/integracao/cargas", "", @cResp, @nHttp, @cErro)
+		MsgStop("Nao foi possivel consultar as cargas - HTTP " + cValToChar(nHttp) + CRLF + cErro, cCadastro)
+		Return Nil
+	EndIf
+
+	oResp := JsonObject():New()
+
+	If !(oResp:FromJson('{"cargas":' + cResp + '}') == Nil) .Or. ValType(oResp["cargas"]) != "A"
+		MsgStop("Resposta em formato inesperado:" + CRLF + Left(cResp, 250), cCadastro)
+		Return Nil
+	EndIf
+
+	aCarga := oResp["cargas"]
+
+	If Len(aCarga) == 0
+		MsgInfo("Nenhuma carga por arquivo nesta empresa.", cCadastro)
+		Return Nil
+	EndIf
+
+	For nX := 1 To Len(aCarga)
+		// createdAt em UTC, AAAA-MM-DDTHH:MM:SS
+		aAdd(aLista, StrTran(Left(cValToChar(aCarga[nX]["createdAt"]), 16), "T", " ") + " UTC  " + ;
+			PadR(cValToChar(aCarga[nX]["situacao"]), 12) + ;
+			PadR(cValToChar(aCarga[nX]["descricao"]), 30) + ;
+			PadL(cValToChar(aCarga[nX]["linhasProcessadas"]), 8) + " de " + ;
+			PadR(cValToChar(aCarga[nX]["totalLinhas"]), 8) + ;
+			" erros " + cValToChar(aCarga[nX]["erros"]))
+	Next nX
+
+	nSel := BJEscolhe(aLista, "Cargas na plataforma (mais recentes primeiro)")
+
+	If nSel == 0
+		Return Nil
+	EndIf
+
+	cMsg := "Carga " + cValToChar(aCarga[nSel]["id"]) + CRLF + ;
+		"Situacao: "   + cValToChar(aCarga[nSel]["situacao"]) + CRLF + ;
+		"Linhas: "     + cValToChar(aCarga[nSel]["linhasProcessadas"]) + " de " + cValToChar(aCarga[nSel]["totalLinhas"]) + CRLF + ;
+		"Criados: "    + cValToChar(aCarga[nSel]["criados"]) + ;
+		"  Atualizados: " + cValToChar(aCarga[nSel]["atualizados"]) + ;
+		"  Excluidos: "   + cValToChar(aCarga[nSel]["excluidos"]) + CRLF + ;
+		"Erros: "      + cValToChar(aCarga[nSel]["erros"])
+
+	If ValType(aCarga[nSel]["mensagem"]) == "C"
+		cMsg += CRLF + "Mensagem: " + aCarga[nSel]["mensagem"]
+	EndIf
+
+	If aCarga[nSel]["erros"] > 0 .And. ;
+		U_BJHTTP("GET", "/integracao/cargas/" + aCarga[nSel]["id"] + "/erros?pageSize=20", "", @cResp, @nHttp, @cErro)
+
+		oPag := JsonObject():New()
+
+		If oPag:FromJson(cResp) == Nil .And. ValType(oPag["data"]) == "A"
+			aErros := oPag["data"]
+			cMsg += CRLF + CRLF + "Primeiros " + cValToChar(Len(aErros)) + " recusados:"
+			For nX := 1 To Len(aErros)
+				cMsg += CRLF + "linha " + cValToChar(aErros[nX]["linha"]) + " - " + cValToChar(aErros[nX]["chave"]) + ;
+					" - " + Left(cValToChar(aErros[nX]["mensagem"]), 120)
+			Next nX
+		EndIf
+
+	EndIf
+
+	MsgInfo(cMsg, cCadastro)
 
 Return Nil
 

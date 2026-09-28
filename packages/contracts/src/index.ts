@@ -48,6 +48,7 @@ export * from "./parametro-empresa";
 export * from "./integracao";
 export * from "./integracao-api-key";
 export * from "./integracao-endpoint";
+export * from "./integracao-carga";
 export * from "./auth";
 export * from "./politica-senha";
 export * from "./usuario-horario";

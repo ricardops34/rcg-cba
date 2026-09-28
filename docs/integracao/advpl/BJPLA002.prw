@@ -74,10 +74,11 @@ Executa uma requisicao contra a API BJ e devolve o resultado ja tratado.
 @param   cResp , character, [Referencia] Corpo da resposta
 @param   nHttp , numeric  , [Referencia] Codigo HTTP
 @param   cErro , character, [Referencia] Mensagem de erro ja tratada
+@param   cTipo , character, Content-Type do corpo. Default application/json. Outro tipo (o arquivo da carga, compactado) vai pelo HTTPQuote, que manda o corpo como esta
 @return  logical, .T. quando a resposta ficou na faixa 2xx
 @example U_BJHTTP("POST", "/integracao/produtos", cJson, @cResp, @nHttp, @cErro)
 /*/
-User Function BJHTTP(cVerbo, cRota, cBody, cResp, nHttp, cErro)
+User Function BJHTTP(cVerbo, cRota, cBody, cResp, nHttp, cErro, cTipo)
 
 	Local lRet    := .F.
 	Local lSegue  := .T.
@@ -107,6 +108,7 @@ User Function BJHTTP(cVerbo, cRota, cBody, cResp, nHttp, cErro)
 	Default cResp  := ""
 	Default nHttp  := 0
 	Default cErro  := ""
+	Default cTipo  := "application/json"
 
 	cVerbo := Upper(AllTrim(cVerbo))
 	cRota  := AllTrim(cRota)
@@ -128,7 +130,7 @@ User Function BJHTTP(cVerbo, cRota, cBody, cResp, nHttp, cErro)
 		cRota := "/" + cRota
 	EndIf
 
-	aAdd(aHeader, "Content-Type: application/json")
+	aAdd(aHeader, "Content-Type: " + cTipo)
 	aAdd(aHeader, "Accept: application/json")
 	aAdd(aHeader, "x-api-key: " + cChvApi)
 
@@ -139,11 +141,14 @@ User Function BJHTTP(cVerbo, cRota, cBody, cResp, nHttp, cErro)
 		nHttp := 0
 		cErro := ""
 
-		If cVerbo == "PATCH"
+		// PATCH nao existe no FWRest. O corpo que nao e JSON (o arquivo da carga,
+		// gzip) tambem vai por aqui: o HTTPQuote manda a string como esta, sem
+		// nenhuma conversao no caminho.
+		If cVerbo == "PATCH" .Or. !(cTipo == "application/json")
 
 			cUrl    := cUrlBase + cRota
 			cHeadRt := ""
-			cResp   := HTTPQuote(cUrl, "PATCH", /*cGetParms*/, cBody, nTimeOut, aHeader, @cHeadRt)
+			cResp   := HTTPQuote(cUrl, cVerbo, /*cGetParms*/, cBody, nTimeOut, aHeader, @cHeadRt)
 
 			If cResp == Nil
 				cResp := ""

@@ -62,7 +62,10 @@ import {
   Server,
   Radio,
   Search,
+  FileUp,
+  ListChecks,
 } from "lucide-react";
+import { ProcessamentoCargasTab, UploadCargasTab } from "./cargas-tab";
 
 const dataBr = (v: string | null) => {
   if (!v) return "Nunca";
@@ -77,7 +80,7 @@ const dataHoraBr = (v: string | null) => {
 };
 
 export default function IntegracaoPage() {
-  const [abaAtiva, setAbaAtiva] = useState<"chaves" | "monitor">("chaves");
+  const [abaAtiva, setAbaAtiva] = useState<"chaves" | "monitor" | "upload" | "processamento">("chaves");
   const [novaChaveAberta, setNovaChaveAberta] = useState(false);
   const [importDialogAberta, setImportDialogAberta] = useState(false);
   const [search, setSearch] = useState("");
@@ -275,7 +278,7 @@ export default function IntegracaoPage() {
         </div>
       </div>
 
-      <Tabs value={abaAtiva} onValueChange={(v) => setAbaAtiva(v as "chaves" | "monitor")}>
+      <Tabs value={abaAtiva} onValueChange={(v) => setAbaAtiva(v as "chaves" | "monitor" | "upload" | "processamento")}>
         <TabsList className="mb-2">
           <TabsTrigger value="chaves" className="gap-2">
             <Plug className="size-4" />
@@ -289,6 +292,14 @@ export default function IntegracaoPage() {
                 {endpointsDesativadosCount} desativados
               </Badge>
             )}
+          </TabsTrigger>
+          <TabsTrigger value="upload" className="gap-2">
+            <FileUp className="size-4" />
+            Upload de cargas
+          </TabsTrigger>
+          <TabsTrigger value="processamento" className="gap-2">
+            <ListChecks className="size-4" />
+            Processamento
           </TabsTrigger>
         </TabsList>
 
@@ -519,6 +530,14 @@ export default function IntegracaoPage() {
               </TableBody>
             </Table>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="upload" className="space-y-6">
+          <UploadCargasTab onEnviados={() => setAbaAtiva("processamento")} />
+        </TabsContent>
+
+        <TabsContent value="processamento" className="space-y-6">
+          <ProcessamentoCargasTab />
         </TabsContent>
       </Tabs>
 

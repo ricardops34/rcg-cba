@@ -33,6 +33,11 @@ import { IntegracaoOrcamentosController } from './orcamentos/integracao-orcament
 import { IntegracaoOrcamentosService } from './orcamentos/integracao-orcamentos.service';
 import { IntegracaoFileController } from './import/integracao-file.controller';
 import { IntegracaoFileService } from './import/integracao-file.service';
+import { IntegracaoCargasController } from './cargas/integracao-cargas.controller';
+import { IntegracaoCargasAdminController } from './cargas/integracao-cargas-admin.controller';
+import { IntegracaoCargasService } from './cargas/integracao-cargas.service';
+import { CargasProcessador } from './cargas/cargas-processador.service';
+import { EntidadesCarga } from './cargas/entidades-carga';
 import { ApiKeyGuard } from './guards/api-key.guard';
 
 @Module({
@@ -56,6 +61,8 @@ import { ApiKeyGuard } from './guards/api-key.guard';
     IntegracaoTitulosReceberController,
     IntegracaoOrcamentosController,
     IntegracaoFileController,
+    IntegracaoCargasController,
+    IntegracaoCargasAdminController,
   ],
   providers: [
     ApiKeyGuard,
@@ -75,6 +82,9 @@ import { ApiKeyGuard } from './guards/api-key.guard';
     IntegracaoTitulosReceberService,
     IntegracaoOrcamentosService,
     IntegracaoFileService,
+    IntegracaoCargasService,
+    EntidadesCarga,
+    CargasProcessador,
   ],
 })
 export class IntegracaoModule {}

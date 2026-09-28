@@ -341,7 +341,7 @@ export const MENUS: DefinicaoMenu[] = [
     rota: '/crm/orcamentos',
     icone: 'clipboard-list',
     codigo: 'orcamentos',
-    moduloId: MODULO.crm,
+    moduloId: MODULO.comercial,
   },
   {
     id: 'seed-menu-vendedores',

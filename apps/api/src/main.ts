@@ -52,6 +52,13 @@ async function bootstrap() {
   // 24 MB cobre o limite de 16 MB do próprio WhatsApp mais o inchaço do
   // base64. Vale só para JSON; upload de arquivo continua indo por multipart.
   app.useBodyParser('json', { limit: '24mb' });
+  // Carga por arquivo (POST /integracao/cargas): o corpo é o próprio arquivo,
+  // compactado ou não, e chega como Buffer. Só estes Content-Types — nenhuma
+  // outra rota os usa. O teto é o de INTEGRACAO_CARGA_MAX_BYTES.
+  app.useBodyParser('raw', {
+    type: ['application/gzip', 'application/x-gzip', 'application/x-ndjson'],
+    limit: '100mb',
+  });
 
   app.setGlobalPrefix('api');
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });

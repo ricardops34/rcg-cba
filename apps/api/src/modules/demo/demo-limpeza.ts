@@ -106,6 +106,11 @@ const ORDEM_DE_EXCLUSAO = [
   'WhatsappRecadoInterno',
   'WhatsappContato',
   // --- movimento ----------------------------------------------------------
+  // A carga por arquivo é o dado de negócio ainda em trânsito do ERP: limpar
+  // a base e deixar o arquivo para trás faria uma retomada repovoar o que
+  // acabou de ser apagado.
+  'IntegracaoCargaErro',
+  'IntegracaoCarga',
   'NotaSaidaItem',
   'NotaSaidaXml',
   'NotaSaida',

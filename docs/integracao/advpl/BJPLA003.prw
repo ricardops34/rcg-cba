@@ -50,21 +50,12 @@ User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte, oProcess, lEnvDel)
 	Local nPeso     := 0
 	Local lPesoCarga := .F.
 	Local lEnvDelLe  := .T.
-	Local dCorte    := CToD("")
-	Local xCorte    := Nil
-	Local cCorteTxt := ""
-	Local lCorteOk  := .F.
-	Local cCh       := ""
-	Local nY        := 0
 	Local cFalhas   := ""
 	Local aFalhas   := {}
 	Local aOrdem    := {}
 	Local cAgora    := ""
 	Local dAgora    := CToD("")
 	Local nAgora    := 0
-	Local nMargem   := 0
-	Local dMargem   := CToD("")
-	Local cHrMarg   := ""
 	Local cMarcaNova := ""
 	Local cMarca    := ""
 	Local cQuerySeq := ""
@@ -137,43 +128,12 @@ User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte, oProcess, lEnvDel)
 	// Protheus que grava antes do cAgora e so confirma depois da consulta da
 	// entidade. O que for lido de novo nao duplica: a API faz upsert pela chave e
 	// o envio marca a mensagem mais antiga como superada (BJSuperada, BJPLA004).
-	nMargem := nAgora - 600   // 10 minutos
-
-	If nMargem < 0
-		dMargem := dAgora - 1
-		nMargem += 86400
-	Else
-		dMargem := dAgora
-	EndIf
-
-	cHrMarg    := StrZero(Int(nMargem / 3600), 2) + ":" + StrZero(Int((nMargem % 3600) / 60), 2) + ":" + StrZero(Int(nMargem % 60), 2)
-	cMarcaNova := Left(StrTran(StrTran(FWTimeStamp(6, dMargem, cHrMarg), "T", " "), "Z", ""), 19)
+	cMarcaNova := U_BJMARGEM(dAgora, nAgora)
 
 	If !Empty(dDataDe)
 		// Data inicial informada pelo usuario: inicio do dia em UTC, ignora a marca.
 		cMarca := Left(StrTran(StrTran(FWTimeStamp(6, dDataDe, "00:00:00"), "T", " "), "Z", ""), 19)
 	Else
-		// Carga inicial: se a fila nunca teve mensagem de saida, nada chegou a
-		// plataforma ainda. A marca fica vazia e os mapeadores, sem janela, leem a
-		// origem inteira - nao so os ultimos MV_BJAPI10 dias.
-		cQuerySeq := "SELECT COUNT(*) AS QTDSAI "
-		cQuerySeq += "  FROM " + RetSqlName("SZZ") + " SZZ "
-		cQuerySeq += " WHERE SZZ.D_E_L_E_T_ = ' ' "
-		cQuerySeq += "   AND SZZ.ZZ_FILIAL  = ? "
-		cQuerySeq += "   AND SZZ.ZZ_TIPO    = ? "
-
-		oStmtSeq := FWExecStatement():New(ChangeQuery(cQuerySeq))
-		oStmtSeq:SetString(1, xFilial("SZZ"))
-		oStmtSeq:SetString(2, "S")   // saida
-		cAliasSeq := oStmtSeq:OpenAlias()
-
-		lCarga := (cAliasSeq)->(Eof()) .Or. (cAliasSeq)->QTDSAI == 0
-
-		(cAliasSeq)->(dbCloseArea())
-		oStmtSeq:Destroy()
-	EndIf
-
-	If !lCarga .And. Empty(dDataDe)
 		// Marca d'agua do ultimo processamento VALIDO - aquele que varreu o catalogo
 		// inteiro sem erro. So esses gravam ZY_MARCA, entao a marca preenchida e o
 		// proprio atestado de validade; o envio nao entra nessa conta, porque uma
@@ -201,76 +161,28 @@ User Function BJVARRE(xEntid, cChave, dDataDe, dDataAte, oProcess, lEnvDel)
 		(cAliasSeq)->(dbCloseArea())
 		oStmtSeq:Destroy()
 
+		// Sem marca e carga inicial - e so a falta dela decide (28/09/2026). Antes
+		// a fila sem mensagem de saida tambem contava como carga, mesmo com marca
+		// gravada; com a carga por arquivo (U_BJCARGARQ, BJPLA004) a SZZ fica
+		// vazia DE PROPOSITO e so a marca diz que a plataforma ja tem os dados.
+		// Fila com mensagens e sem marca e a carga pela fila que nao terminou -
+		// com a coleta fracionada, a marca so vai no ultimo lote, e ela caiu
+		// antes dele. Refaz a carga, do mesmo corte. Recuar MV_BJAPI10 dias
+		// (como era) perdia em silencio tudo que a carga nao chegou a ler e
+		// nao mudou nesse intervalo. Reler o que ja estava na fila nao duplica
+		// nada na plataforma: a mensagem antiga e marcada superada pela nova
+		// no envio (BJSuperada, BJPLA004), sem sair.
 		If Empty(cMarca) .Or. Len(cMarca) < 10
-			// Fila com mensagens e NENHUMA marca: a carga inicial nao terminou -
-			// com a coleta fracionada, a marca so vai no ultimo lote, e ela caiu
-			// antes dele. Refaz a carga, do mesmo corte. Recuar MV_BJAPI10 dias
-			// (como era) perdia em silencio tudo que a carga nao chegou a ler e
-			// nao mudou nesse intervalo. Reler o que ja estava na fila nao duplica
-			// nada na plataforma: a mensagem antiga e marcada superada pela nova
-			// no envio (BJSuperada, BJPLA004), sem sair.
-			ConOut("[BJPLA] U_BJVARRE sem marca d'agua com a fila ja preenchida: a carga inicial nao terminou - refazendo a carga")
+			ConOut("[BJPLA] U_BJVARRE sem marca d'agua: carga inicial (ou a anterior nao terminou)")
 			cMarca := ""
 			lCarga := .T.
 		EndIf
 	EndIf
 
 	If lCarga
-		// Data de corte da carga inicial (MV_BJAPI14): a carga le so o que foi
-		// incluido ou alterado a partir dela, pelo S_T_A_M_P_ - decisao do
-		// usuario em 26/09/2026. Vazio, le a origem inteira.
-		// ATENCAO: o corte vale para TODAS as entidades. Cliente, produto ou
-		// preco sem alteracao desde antes do corte nao sobem, e titulo EM
-		// ABERTO emitido antes dele tambem nao - so entram quando forem
-		// alterados, ou por um Gerar com periodo.
-		// Cadastrado como caractere, no formato da ZY_MARCA (AAAA-MM-DD, com hora
-		// opcional, em UTC como o S_T_A_M_P_); DD/MM/AAAA tambem e aceito. Se um
-		// dia for trocado para tipo D, a data vale igual.
-		xCorte := GetMV("MV_BJAPI14")
-
-		If ValType(xCorte) == "D"
-			dCorte := xCorte
-		ElseIf ValType(xCorte) == "C" .And. !Empty(xCorte)
-			xCorte := AllTrim(xCorte)
-			If "/" $ xCorte
-				dCorte := CToD(xCorte)
-			ElseIf Len(xCorte) >= 10
-				// O valor entra como literal nas consultas de todas as entidades
-				// (S_T_A_M_P_ >= '...'): so aceita o formato AAAA-MM-DD[ HH:MM:SS],
-				// digito a digito. Um apostrofo aqui mudaria a consulta.
-				cCorteTxt := Left(xCorte + Iif(Len(xCorte) == 10, " 00:00:00", ""), 19)
-				lCorteOk  := .T.
-
-				For nY := 1 To 19
-					cCh := SubStr(cCorteTxt, nY, 1)
-					If nY == 5 .Or. nY == 8
-						lCorteOk := lCorteOk .And. cCh == "-"
-					ElseIf nY == 11
-						lCorteOk := lCorteOk .And. cCh == " "
-					ElseIf nY == 14 .Or. nY == 17
-						lCorteOk := lCorteOk .And. cCh == ":"
-					Else
-						lCorteOk := lCorteOk .And. IsDigit(cCh)
-					EndIf
-				Next nY
-
-				If lCorteOk
-					cMarca := cCorteTxt
-				EndIf
-			EndIf
-		EndIf
-
-		If !Empty(dCorte)
-			cMarca := Left(StrTran(StrTran(FWTimeStamp(6, dCorte, "00:00:00"), "T", " "), "Z", ""), 19)
-		EndIf
-
-		If !Empty(cMarca)
-			ConOut("[BJPLA] U_BJVARRE carga inicial a partir do corte MV_BJAPI14 (S_T_A_M_P_ >= '" + cMarca + "')")
-		ElseIf ValType(xCorte) == "C" .And. !Empty(xCorte)
-			ConOut("[BJPLA] U_BJVARRE MV_BJAPI14 = '" + xCorte + "' fora do formato (AAAA-MM-DD ou DD/MM/AAAA) - carga da origem inteira")
-		Else
-			FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Fila de saida vazia (SZZ): carga inicial, origem inteira.", 0, 0, {})
-		EndIf
+		// Data de corte da carga inicial (MV_BJAPI14) - a mesma regra da carga
+		// por arquivo, por isso numa funcao so. Vazio, le a origem inteira.
+		cMarca := U_BJCORTE("U_BJVARRE")
 	EndIf
 
 	// Os lotes (SZY) nao abrem mais aqui, um por chamada. Cada lote tem UMA
@@ -479,6 +391,113 @@ Static Function SchedDef()
 
 Return aParam
 
+
+/*/{Protheus.doc} BJMARGEM
+A marca d'agua que uma coleta grava: o inicio dela MENOS 10 minutos, em UTC,
+no formato da ZY_MARCA. A proxima coleta rele esse trecho (decisao do
+usuario, 26/09/2026) - cobre o relogio do AppServer adiantado em relacao ao
+do banco e a transacao longa que grava antes do inicio e so confirma depois.
+Usada pela coleta (U_BJVARRE) e pela carga por arquivo (U_BJCARGARQ).
+@type    User Function
+@author  Ricardo P Sotomayor
+@since   28/09/2026
+@param   dAgora, date   , Data do inicio da coleta
+@param   nAgora, numeric, Seconds() do inicio da coleta
+@return  character, AAAA-MM-DD HH:MM:SS em UTC
+@example cMarca := U_BJMARGEM(Date(), Seconds())
+/*/
+User Function BJMARGEM(dAgora, nAgora)
+
+	Local nMargem := nAgora - 600   // 10 minutos
+	Local dMargem := dAgora
+	Local cHrMarg := ""
+
+	If nMargem < 0
+		dMargem := dAgora - 1
+		nMargem += 86400
+	EndIf
+
+	cHrMarg := StrZero(Int(nMargem / 3600), 2) + ":" + StrZero(Int((nMargem % 3600) / 60), 2) + ":" + StrZero(Int(nMargem % 60), 2)
+
+Return Left(StrTran(StrTran(FWTimeStamp(6, dMargem, cHrMarg), "T", " "), "Z", ""), 19)
+
+/*/{Protheus.doc} BJCORTE
+Data de corte da carga inicial (MV_BJAPI14), no formato da ZY_MARCA: a carga
+le so o que foi incluido ou alterado a partir dela, pelo S_T_A_M_P_ - decisao
+do usuario em 26/09/2026. Vazio, a carga le a origem inteira.
+ATENCAO: o corte vale para TODAS as entidades. Cliente, produto ou preco sem
+alteracao desde antes do corte nao sobem, e titulo EM ABERTO emitido antes
+dele tambem nao - so entram quando forem alterados, ou por um Gerar com
+periodo.
+Cadastrado como caractere, no formato da ZY_MARCA (AAAA-MM-DD, com hora
+opcional, em UTC como o S_T_A_M_P_); DD/MM/AAAA tambem e aceito. Se um dia
+for trocado para tipo D, a data vale igual.
+Usada pela coleta (U_BJVARRE) e pela carga por arquivo (U_BJCARGARQ): as duas
+cargas precisam ler o mesmo recorte.
+@type    User Function
+@author  Ricardo P Sotomayor
+@since   28/09/2026
+@param   cQuem, character, Rotina que pediu, so para o console
+@return  character, AAAA-MM-DD HH:MM:SS em UTC, ou vazio (origem inteira)
+@example cMarca := U_BJCORTE("U_BJVARRE")
+/*/
+User Function BJCORTE(cQuem)
+
+	Local cMarca    := ""
+	Local dCorte    := CToD("")
+	Local xCorte    := GetMV("MV_BJAPI14")
+	Local cCorteTxt := ""
+	Local lCorteOk  := .F.
+	Local cCh       := ""
+	Local nY        := 0
+
+	Default cQuem := FunName()
+
+	If ValType(xCorte) == "D"
+		dCorte := xCorte
+	ElseIf ValType(xCorte) == "C" .And. !Empty(xCorte)
+		xCorte := AllTrim(xCorte)
+		If "/" $ xCorte
+			dCorte := CToD(xCorte)
+		ElseIf Len(xCorte) >= 10
+			// O valor entra como literal nas consultas de todas as entidades
+			// (S_T_A_M_P_ >= '...'): so aceita o formato AAAA-MM-DD[ HH:MM:SS],
+			// digito a digito. Um apostrofo aqui mudaria a consulta.
+			cCorteTxt := Left(xCorte + Iif(Len(xCorte) == 10, " 00:00:00", ""), 19)
+			lCorteOk  := .T.
+
+			For nY := 1 To 19
+				cCh := SubStr(cCorteTxt, nY, 1)
+				If nY == 5 .Or. nY == 8
+					lCorteOk := lCorteOk .And. cCh == "-"
+				ElseIf nY == 11
+					lCorteOk := lCorteOk .And. cCh == " "
+				ElseIf nY == 14 .Or. nY == 17
+					lCorteOk := lCorteOk .And. cCh == ":"
+				Else
+					lCorteOk := lCorteOk .And. IsDigit(cCh)
+				EndIf
+			Next nY
+
+			If lCorteOk
+				cMarca := cCorteTxt
+			EndIf
+		EndIf
+	EndIf
+
+	If !Empty(dCorte)
+		cMarca := Left(StrTran(StrTran(FWTimeStamp(6, dCorte, "00:00:00"), "T", " "), "Z", ""), 19)
+	EndIf
+
+	If !Empty(cMarca)
+		ConOut("[BJPLA] " + cQuem + " carga inicial a partir do corte MV_BJAPI14 (S_T_A_M_P_ >= '" + cMarca + "')")
+	ElseIf ValType(xCorte) == "C" .And. !Empty(xCorte)
+		ConOut("[BJPLA] " + cQuem + " MV_BJAPI14 = '" + xCorte + "' fora do formato (AAAA-MM-DD ou DD/MM/AAAA) - carga da origem inteira")
+	Else
+		FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Carga inicial sem corte (MV_BJAPI14 vazio): origem inteira.", 0, 0, {})
+	EndIf
+
+Return cMarca
 
 /*/{Protheus.doc} BJVarreEnt
 Varre uma entidade e enfileira os registros que ela devolver, sob o lote
