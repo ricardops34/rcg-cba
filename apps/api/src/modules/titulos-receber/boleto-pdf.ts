@@ -2,10 +2,8 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { jsPDF } from 'jspdf';
-import {
-  desenharBarras,
-  itfModulos,
-} from '../../common/pdf/barcode';
+import { desenharBarras, itfModulos } from '../../common/pdf/barcode';
+import { HORARIO_TIMEZONE } from '../../common/horario/horario-trabalho';
 import { montarBoleto, type BoletoEntrada } from './boleto-codigo';
 
 /**
@@ -69,11 +67,25 @@ const moeda = (v: number | null | undefined) =>
         maximumFractionDigits: 2,
       });
 
+/**
+ * Data do título (vencimento, emissão). Chega do ERP como meia-noite UTC de
+ * uma data sem hora, então é lida em UTC: no fuso da máquina, qualquer
+ * servidor a oeste de Greenwich imprimia o dia anterior.
+ */
 const dataBr = (v: Date | string | null | undefined) => {
   if (!v) return '';
   const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('pt-BR');
+  return Number.isNaN(d.getTime())
+    ? ''
+    : d.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
 };
+
+/**
+ * "Data do Processamento" é o dia em que o boleto foi impresso, como no ERP —
+ * não a emissão do título. No fuso da operação, para não virar o dia às 20h.
+ */
+const hojeBr = () =>
+  new Date().toLocaleDateString('pt-BR', { timeZone: HORARIO_TIMEZONE });
 
 const documento = (v: string | null | undefined) => {
   const d = (v ?? '').replace(/\D/g, '');
@@ -92,10 +104,21 @@ export type BoletoPdfDados = {
     endereco: string | null;
     agenciaConta: string;
   };
+  /**
+   * Os campos separados, e não uma linha pronta: o bloco sai em três linhas
+   * no padrão do boleto do ERP (ver `linhasPagador`).
+   */
   pagador: {
+    /** Código-loja do cliente no ERP (ex.: `004199-01`). */
+    codigo: string | null;
     nome: string;
     documento: string | null;
+    /** Logradouro com número, como no cadastro. */
     endereco: string | null;
+    bairro: string | null;
+    municipio: string | null;
+    uf: string | null;
+    cep: string | null;
   };
   titulo: {
     numeroDocumento: string;
@@ -126,77 +149,248 @@ function desenharMarcaDagua(doc: jsPDF, texto: string) {
   doc.setTextColor(0, 0, 0);
 }
 
-/** Desenha a logo do banco ou o nome textual no box do cabeçalho. */
+/**
+ * O pagador em três linhas, no padrão do boleto do ERP:
+ *
+ *     (004199-01) IPE DOURADO CAFE E RESTAURANTE LTDA
+ *     AV. MARGINAL LESTE,10105-CHAC. CASTELO II
+ *     DOURADOS-MS CEP:79842-000 CNPJ: 19.123.290/0001-99
+ *
+ * Parte vazia some sem deixar separador sobrando.
+ */
+export function linhasPagador(p: BoletoPdfDados['pagador']): string[] {
+  const limpo = (v: string | null | undefined) => (v ?? '').trim();
+
+  const linha1 = [p.codigo ? `(${limpo(p.codigo)})` : '', limpo(p.nome)]
+    .filter(Boolean)
+    .join(' ');
+
+  const linha2 = [limpo(p.endereco), limpo(p.bairro)].filter(Boolean).join('-');
+
+  const cepDigitos = limpo(p.cep).replace(/\D/g, '');
+  const cep =
+    cepDigitos.length === 8
+      ? `${cepDigitos.slice(0, 5)}-${cepDigitos.slice(5)}`
+      : limpo(p.cep);
+  const docDigitos = limpo(p.documento).replace(/\D/g, '');
+  const rotuloDoc = docDigitos.length === 11 ? 'CPF' : 'CNPJ';
+
+  const linha3 = [
+    [limpo(p.municipio), limpo(p.uf)].filter(Boolean).join('-'),
+    cep ? `CEP:${cep}` : '',
+    docDigitos ? `${rotuloDoc}: ${documento(p.documento)}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  return [linha1, linha2, linha3].filter(Boolean);
+}
+
+// ---------------------------------------------------------------------------
+// Desenho — no padrão do boleto impresso pelo ERP (Protheus). As colunas foram
+// medidas no PDF de referência: a da direita (vencimento, valores) tem ~33 mm
+// e começa em 157,6 mm; as divisórias internas caem nos mesmos pontos em todas
+// as vias.
+// ---------------------------------------------------------------------------
+
+/** Início da coluna da direita, a partir da margem. */
+const COL_DIR = 157.6;
+/** Largura da coluna da direita. */
+const LARG_DIR = LARGURA - COL_DIR;
+/** Altura de uma linha de campos. */
+const ALT_LINHA = 7;
+/** Altura do bloco do pagador (três linhas). */
+const ALT_PAGADOR = 13;
+/** Cinza das caixas de destaque (vencimento e valor do documento). */
+const CINZA = 217;
+
+type Alinhamento = 'left' | 'right';
+
+/**
+ * Uma caixa: borda, rótulo miúdo em cima (como vem, com minúsculas) e valor
+ * em negrito embaixo. `cinza` pinta o fundo, como o ERP faz no vencimento e
+ * no valor do documento.
+ */
+function caixa(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  largura: number,
+  altura: number,
+  rotulo: string,
+  valor: string,
+  opcoes: { alinhamento?: Alinhamento; cinza?: boolean; tamanho?: number } = {},
+) {
+  doc.setLineWidth(0.15);
+  if (opcoes.cinza) {
+    doc.setFillColor(CINZA, CINZA, CINZA);
+    doc.rect(x, y, largura, altura, 'FD');
+  } else {
+    doc.rect(x, y, largura, altura);
+  }
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(5.5);
+  doc.text(rotulo, x + 0.8, y + 2.2);
+
+  if (!valor) return;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(opcoes.tamanho ?? 7.5);
+  const texto =
+    (doc.splitTextToSize(valor, largura - 1.6) as string[])[0] ?? '';
+  const alinhamento = opcoes.alinhamento ?? 'left';
+  doc.text(
+    texto,
+    alinhamento === 'right' ? x + largura - 0.8 : x + 0.8,
+    y + altura - 1.4,
+    { align: alinhamento },
+  );
+}
+
+/**
+ * Uma linha de campos da esquerda, com a caixa da coluna da direita.
+ * `campos` são `[rótulo, valor, largura]`; a última caixa da esquerda estica
+ * até a coluna da direita.
+ */
+function linhaCampos(
+  doc: jsPDF,
+  y: number,
+  campos: Array<[string, string, number?]>,
+  direita: { rotulo: string; valor: string; cinza?: boolean; tamanho?: number },
+) {
+  let x = MARGEM;
+  campos.forEach(([rotulo, valor, largura], i) => {
+    const w = i === campos.length - 1 ? MARGEM + COL_DIR - x : (largura ?? 0);
+    caixa(doc, x, y, w, ALT_LINHA, rotulo, valor);
+    x += w;
+  });
+  caixa(
+    doc,
+    MARGEM + COL_DIR,
+    y,
+    LARG_DIR,
+    ALT_LINHA,
+    direita.rotulo,
+    direita.valor,
+    { alinhamento: 'right', cinza: direita.cinza, tamanho: direita.tamanho },
+  );
+}
+
+/**
+ * O bloco de baixo de cada via: à esquerda as instruções e, embaixo delas, o
+ * pagador; à direita as caixas de valor, dividindo a mesma altura. Devolve a
+ * altura usada.
+ */
+function blocoValores(
+  doc: jsPDF,
+  y: number,
+  dados: BoletoPdfDados,
+  opcoes: {
+    alturaInstrucoes: number;
+    instrucoes: string[];
+    valores: Array<{ rotulo: string; valor?: string; cinza?: boolean }>;
+  },
+): number {
+  const altura = opcoes.alturaInstrucoes + ALT_PAGADOR;
+
+  // Instruções
+  doc.setLineWidth(0.15);
+  doc.rect(MARGEM, y, COL_DIR, opcoes.alturaInstrucoes);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(5.5);
+  doc.text(
+    'Instruções - Texto de Responsabilidade do Beneficiário',
+    MARGEM + 0.8,
+    y + 2.2,
+  );
+  if (opcoes.instrucoes.length) {
+    doc.setFontSize(8.5);
+    const cabem = Math.max(1, Math.floor((opcoes.alturaInstrucoes - 4) / 3.4));
+    const linhas = opcoes.instrucoes
+      .flatMap((l) => doc.splitTextToSize(l, COL_DIR - 3) as string[])
+      .slice(0, cabem);
+    linhas.forEach((linha, i) =>
+      doc.text(linha, MARGEM + 1.5, y + 5.6 + i * 3.4),
+    );
+  }
+
+  // Pagador
+  const yPag = y + opcoes.alturaInstrucoes;
+  doc.rect(MARGEM, yPag, COL_DIR, ALT_PAGADOR);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(5.5);
+  doc.text('Pagador/Avalista', MARGEM + 0.8, yPag + 2.2);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  linhasPagador(dados.pagador)
+    .slice(0, 3)
+    .forEach((linha, i) => {
+      const texto =
+        (doc.splitTextToSize(linha, COL_DIR - 2) as string[])[0] ?? '';
+      doc.text(texto, MARGEM + 0.8, yPag + 5.2 + i * 2.8);
+    });
+
+  // Coluna de valores, na mesma altura
+  const alturaCaixa = altura / opcoes.valores.length;
+  opcoes.valores.forEach((v, i) => {
+    caixa(
+      doc,
+      MARGEM + COL_DIR,
+      y + i * alturaCaixa,
+      LARG_DIR,
+      alturaCaixa,
+      v.rotulo,
+      v.valor ?? '',
+      { alinhamento: 'right', cinza: v.cinza },
+    );
+  });
+
+  return altura;
+}
+
+/** Linha pontilhada de corte. */
+function linhaPontilhada(doc: jsPDF, y: number) {
+  doc.setLineWidth(0.1);
+  doc.setLineDashPattern([0.8, 0.8], 0);
+  doc.line(MARGEM, y, MARGEM + LARGURA, y);
+  doc.setLineDashPattern([], 0);
+}
+
+/** Desenha a logo do banco ou o nome em texto, no primeiro box do cabeçalho. */
 function desenharLogoOuNome(
   doc: jsPDF,
   x: number,
   y: number,
+  altura: number,
   dados: BoletoPdfDados,
   logoImage?: { dados: string; formato: 'PNG' | 'JPEG' } | null,
 ) {
   if (logoImage) {
     try {
       const props = doc.getImageProperties(logoImage.dados);
-      const maxW = 38;
-      const maxH = 7;
-      const escala = Math.min(maxW / props.width, maxH / props.height);
+      const escala = Math.min(38 / props.width, (altura - 1.5) / props.height);
       const w = props.width * escala;
       const h = props.height * escala;
-      const yPos = y + (8 - h) / 2;
-      doc.addImage(logoImage.dados, logoImage.formato, x + 1, yPos, w, h);
+      doc.addImage(
+        logoImage.dados,
+        logoImage.formato,
+        x + 1.5,
+        y + (altura - h) / 2,
+        w,
+        h,
+      );
+      return;
     } catch {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
-      doc.text(dados.banco.nome, x + 1, y + 6);
+      // cai no nome em texto
     }
-  } else {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text(dados.banco.nome, x + 1, y + 6);
   }
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text(dados.banco.nome, x + 1.5, y + altura - 2);
 }
 
-/** Campo da ficha: rótulo miúdo em cima, valor embaixo, linha inferior. */
-function campo(
-  doc: jsPDF,
-  x: number,
-  y: number,
-  largura: number,
-  rotulo: string,
-  valor: string,
-  opcoes: { alinhamento?: 'left' | 'right'; negrito?: boolean; tamanho?: number; altura?: number } = {},
-) {
-  const altura = opcoes.altura ?? 8;
-  doc.setLineWidth(0.1);
-  doc.line(x, y + altura, x + largura, y + altura);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(4.8);
-  doc.text(rotulo.toUpperCase(), x + 1, y + 2.5);
-
-  doc.setFont('helvetica', opcoes.negrito ? 'bold' : 'normal');
-  doc.setFontSize(opcoes.tamanho ?? 7.5);
-  const texto = (doc.splitTextToSize(valor || '', largura - 2) as string[])[0] ?? '';
-  const alinhamento = opcoes.alinhamento ?? 'left';
-  doc.text(texto, alinhamento === 'right' ? x + largura - 1 : x + 1, y + 6.8, {
-    align: alinhamento,
-  });
-}
-
-/** Divisor vertical entre campos. */
-function divisor(doc: jsPDF, x: number, y: number, altura = 8) {
-  doc.setLineWidth(0.1);
-  doc.line(x, y, x, y + altura);
-}
-
-/** Linha pontilhada de corte. */
-function linhaPontilhada(doc: jsPDF, y: number) {
-  doc.setLineDashPattern([1.2, 1.2], 0);
-  doc.line(MARGEM, y, MARGEM + LARGURA, y);
-  doc.setLineDashPattern([], 0);
-}
-
-/** Cabeçalho para VIA EMPRESA e VIA PAGADOR. */
+/** Cabeçalho das vias Empresa e Pagador: logo, dois boxes vazios e o título. */
 function cabecalhoVia(
   doc: jsPDF,
   y: number,
@@ -204,20 +398,20 @@ function cabecalhoVia(
   dados: BoletoPdfDados,
   logoImage?: { dados: string; formato: 'PNG' | 'JPEG' } | null,
 ) {
-  desenharLogoOuNome(doc, MARGEM, y, dados, logoImage);
-  divisor(doc, MARGEM + 45, y, 8);
-  divisor(doc, MARGEM + LARGURA - 45, y, 8);
+  const altura = 8;
+  doc.setLineWidth(0.15);
+  doc.rect(MARGEM, y, 50, altura);
+  doc.rect(MARGEM + 50, y, 22, altura);
+  doc.rect(MARGEM + 72, y, COL_DIR - 72, altura);
+  doc.rect(MARGEM + COL_DIR, y, LARG_DIR, altura);
+  desenharLogoOuNome(doc, MARGEM, y, altura, dados, logoImage);
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.text(tituloVia, MARGEM + LARGURA - 1, y + 5.5, { align: 'right' });
-
-  doc.setLineWidth(0.4);
-  doc.line(MARGEM, y + 8, MARGEM + LARGURA, y + 8);
-  doc.setLineWidth(0.1);
+  doc.setFontSize(8);
+  doc.text(tituloVia, MARGEM + LARGURA - 1.5, y + 3.2, { align: 'right' });
 }
 
-/** Cabeçalho para a FICHA DE COMPENSAÇÃO (Logo + 237-2 + Linha Digitável). */
+/** Cabeçalho da Ficha de Compensação: logo, código do banco e linha digitável. */
 function cabecalhoFichaCompensacao(
   doc: jsPDF,
   y: number,
@@ -225,21 +419,22 @@ function cabecalhoFichaCompensacao(
   linhaDigitavel: string,
   logoImage?: { dados: string; formato: 'PNG' | 'JPEG' } | null,
 ) {
-  desenharLogoOuNome(doc, MARGEM, y, dados, logoImage);
-  divisor(doc, MARGEM + 45, y, 8);
+  const altura = 9;
+  doc.setLineWidth(0.15);
+  doc.rect(MARGEM, y, 50, altura);
+  doc.rect(MARGEM + 50, y, 22, altura);
+  doc.rect(MARGEM + 72, y, LARGURA - 72, altura);
+  desenharLogoOuNome(doc, MARGEM, y, altura, dados, logoImage);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(14);
-  doc.text(formatarCodigoBanco(dados.banco.codigo), MARGEM + 47, y + 6);
-  divisor(doc, MARGEM + 68, y, 8);
+  doc.text(formatarCodigoBanco(dados.banco.codigo), MARGEM + 61, y + 6.5, {
+    align: 'center',
+  });
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10.5);
-  doc.text(linhaDigitavel, MARGEM + LARGURA, y + 6, { align: 'right' });
-
-  doc.setLineWidth(0.4);
-  doc.line(MARGEM, y + 8, MARGEM + LARGURA, y + 8);
-  doc.setLineWidth(0.1);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(11);
+  doc.text(linhaDigitavel, MARGEM + 74, y + 6.5);
 }
 
 export async function montarBoletoPdf(dados: BoletoPdfDados): Promise<{
@@ -255,240 +450,220 @@ export async function montarBoletoPdf(dados: BoletoPdfDados): Promise<{
   const calculado = montarBoleto(dados.codigo);
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
 
+  const vencimento = dataBr(dados.titulo.vencimento);
+  const emissao = dataBr(dados.titulo.emissao);
+  const processamento = hojeBr();
+  const valorDocumento = moeda(dados.titulo.valor);
+  const cnpjBeneficiario = documento(dados.beneficiario.documento);
+
   // ------------------------------------------------------------------
-  // 1. VIA EMPRESA (Topo)
+  // 1. VIA EMPRESA
   // ------------------------------------------------------------------
   let y = 10;
   cabecalhoVia(doc, y, 'VIA EMPRESA', dados, logoImage);
   y += 8;
 
-  // Row 1
-  campo(doc, MARGEM, y, 115, 'Beneficiário', dados.beneficiario.nome);
-  divisor(doc, MARGEM + 115, y);
-  campo(doc, MARGEM + 115, y, 40, 'CNPJ', documento(dados.beneficiario.documento));
-  divisor(doc, MARGEM + 155, y);
-  campo(doc, MARGEM + 155, y, 35, 'Vencimento', dataBr(dados.titulo.vencimento), { alinhamento: 'right', negrito: true });
-  y += 8;
-
-  // Row 2
-  campo(doc, MARGEM, y, 35, 'Data do Documento', dataBr(dados.titulo.emissao));
-  divisor(doc, MARGEM + 35, y);
-  campo(doc, MARGEM + 35, y, 40, 'Nº Documento', dados.titulo.numeroDocumento);
-  divisor(doc, MARGEM + 75, y);
-  campo(doc, MARGEM + 75, y, 40, 'Impresso por', dados.titulo.impressoPor ?? 'Plataforma');
-  divisor(doc, MARGEM + 115, y);
-  campo(doc, MARGEM + 115, y, 40, 'Data do Processamento', dataBr(dados.titulo.emissao ?? new Date()));
-  divisor(doc, MARGEM + 155, y);
-  campo(doc, MARGEM + 155, y, 35, 'Nosso Número', calculado.nossoNumeroFormatado, { alinhamento: 'right' });
-  y += 8;
-
-  // Row 3 & Side Box
-  doc.setFontSize(4.8);
-  doc.setFont('helvetica', 'normal');
-  doc.text('INSTRUÇÕES - TEXTO DE RESPONSABILIDADE DO BENEFICIÁRIO', MARGEM + 1, y + 2.5);
-  doc.setLineWidth(0.1);
-  doc.line(MARGEM, y + 24, MARGEM + 145, y + 24);
-  divisor(doc, MARGEM + 145, y, 24);
-
-  campo(doc, MARGEM + 145, y, 45, '(=)Valor do Documento', moeda(dados.titulo.valor), { alinhamento: 'right', negrito: true, altura: 6 });
-  campo(doc, MARGEM + 145, y + 6, 45, '(-)Deduções', '', { alinhamento: 'right', altura: 6 });
-  campo(doc, MARGEM + 145, y + 12, 45, '(+)Mora/Multa', '', { alinhamento: 'right', altura: 6 });
-  campo(doc, MARGEM + 145, y + 18, 45, '(=)Valor Cobrado', '', { alinhamento: 'right', altura: 6 });
-  y += 24;
-
-  // Row 4: Pagador/Avalista
-  campo(
+  linhaCampos(
     doc,
-    MARGEM,
     y,
-    190,
-    'Pagador/Avalista',
-    [dados.pagador.nome, documento(dados.pagador.documento), dados.pagador.endereco].filter(Boolean).join(' — '),
-    { altura: 10 },
+    [
+      ['Beneficiário', dados.beneficiario.nome, 126.8],
+      ['CNPJ', cnpjBeneficiario],
+    ],
+    { rotulo: 'Vencimento', valor: vencimento, cinza: true },
   );
-  y += 12;
+  y += ALT_LINHA;
 
+  linhaCampos(
+    doc,
+    y,
+    [
+      ['Data do Documento', emissao, 35.6],
+      ['Nº Documento', dados.titulo.numeroDocumento, 49],
+      ['Impresso por', dados.titulo.impressoPor ?? 'Plataforma', 42.2],
+      ['Data do Processamento', processamento],
+    ],
+    { rotulo: 'Nosso Número', valor: calculado.nossoNumeroFormatado },
+  );
+  y += ALT_LINHA;
+
+  // O ERP não repete as instruções na via da empresa
+  y += blocoValores(doc, y, dados, {
+    alturaInstrucoes: 13,
+    instrucoes: [],
+    valores: [
+      { rotulo: '(=)Valor do Documento', valor: valorDocumento, cinza: true },
+      { rotulo: '(-)Deduções' },
+      { rotulo: '(+)Mora/Multa' },
+      { rotulo: '(=)Valor Cobrado' },
+    ],
+  });
+
+  y += 5;
   linhaPontilhada(doc, y);
-  y += 4;
+  y += 5;
 
   // ------------------------------------------------------------------
-  // 2. VIA PAGADOR (Meio)
+  // 2. VIA PAGADOR
   // ------------------------------------------------------------------
   cabecalhoVia(doc, y, 'VIA PAGADOR', dados, logoImage);
   y += 8;
 
-  // Row 1
-  campo(doc, MARGEM, y, 115, 'Beneficiário', dados.beneficiario.nome);
-  divisor(doc, MARGEM + 115, y);
-  campo(doc, MARGEM + 115, y, 40, 'CNPJ', documento(dados.beneficiario.documento));
-  divisor(doc, MARGEM + 155, y);
-  campo(doc, MARGEM + 155, y, 35, 'Vencimento', dataBr(dados.titulo.vencimento), { alinhamento: 'right', negrito: true });
-  y += 8;
-
-  // Row 2
-  campo(doc, MARGEM, y, 35, 'Data do Documento', dataBr(dados.titulo.emissao));
-  divisor(doc, MARGEM + 35, y);
-  campo(doc, MARGEM + 35, y, 40, 'Nº Documento', dados.titulo.numeroDocumento);
-  divisor(doc, MARGEM + 75, y);
-  campo(doc, MARGEM + 75, y, 25, 'Esp.Documento', dados.titulo.especieDocumento);
-  divisor(doc, MARGEM + 100, y);
-  campo(doc, MARGEM + 100, y, 15, 'Aceite', dados.titulo.aceite);
-  divisor(doc, MARGEM + 115, y);
-  campo(doc, MARGEM + 115, y, 40, 'Data do Processamento', dataBr(dados.titulo.emissao ?? new Date()));
-  divisor(doc, MARGEM + 155, y);
-  campo(doc, MARGEM + 155, y, 35, 'Agência/Código Beneficiário', dados.beneficiario.agenciaConta, { alinhamento: 'right' });
-  y += 8;
-
-  // Row 3
-  campo(doc, MARGEM, y, 20, 'Uso Banco', '');
-  divisor(doc, MARGEM + 20, y);
-  campo(doc, MARGEM + 20, y, 15, 'CIP', '000');
-  divisor(doc, MARGEM + 35, y);
-  campo(doc, MARGEM + 35, y, 20, 'Carteira', dados.titulo.carteira);
-  divisor(doc, MARGEM + 55, y);
-  campo(doc, MARGEM + 55, y, 20, 'Espécie', 'R$');
-  divisor(doc, MARGEM + 75, y);
-  campo(doc, MARGEM + 75, y, 40, 'Quantidade', '');
-  divisor(doc, MARGEM + 115, y);
-  campo(doc, MARGEM + 115, y, 40, '(x)Valor', '');
-  divisor(doc, MARGEM + 155, y);
-  campo(doc, MARGEM + 155, y, 35, 'Nosso Número', calculado.nossoNumeroFormatado, { alinhamento: 'right' });
-  y += 8;
-
-  // Row 4 & Side Box
-  doc.setFontSize(4.8);
-  doc.setFont('helvetica', 'normal');
-  doc.text('INSTRUÇÕES - TEXTO DE RESPONSABILIDADE DO BENEFICIÁRIO', MARGEM + 1, y + 2.5);
-  doc.setFontSize(6.5);
-  const linhasInstrucoesVia = dados.instrucoes
-    .flatMap((i) => doc.splitTextToSize(i, 142) as string[])
-    .slice(0, 7);
-  doc.text(linhasInstrucoesVia, MARGEM + 1, y + 6);
-  doc.setLineWidth(0.1);
-  doc.line(MARGEM, y + 36, MARGEM + 145, y + 36);
-  divisor(doc, MARGEM + 145, y, 36);
-
-  campo(doc, MARGEM + 145, y, 45, '(=)Valor do Documento', moeda(dados.titulo.valor), { alinhamento: 'right', negrito: true, altura: 6 });
-  campo(doc, MARGEM + 145, y + 6, 45, '(-)Desconto/Abatimento', '', { alinhamento: 'right', altura: 6 });
-  campo(doc, MARGEM + 145, y + 12, 45, '(-)Outras Deduções', '', { alinhamento: 'right', altura: 6 });
-  campo(doc, MARGEM + 145, y + 18, 45, '(+)Mora/Multa', '', { alinhamento: 'right', altura: 6 });
-  campo(doc, MARGEM + 145, y + 24, 45, '(+)Outros Acréscimos', '', { alinhamento: 'right', altura: 6 });
-  campo(doc, MARGEM + 145, y + 30, 45, '(=)Valor Cobrado', '', { alinhamento: 'right', altura: 6 });
-  y += 36;
-
-  // Row 5: Pagador/Avalista
-  campo(
+  linhaCampos(
     doc,
-    MARGEM,
     y,
-    190,
-    'Pagador/Avalista',
-    [dados.pagador.nome, documento(dados.pagador.documento), dados.pagador.endereco].filter(Boolean).join(' — '),
-    { altura: 10 },
+    [
+      ['Beneficiário', dados.beneficiario.nome, 126.8],
+      ['CNPJ', cnpjBeneficiario],
+    ],
+    { rotulo: 'Vencimento', valor: vencimento, cinza: true },
   );
-  y += 11;
+  y += ALT_LINHA;
 
-  doc.setFontSize(5.6);
-  doc.text('Autenticação Mecânica', MARGEM + LARGURA, y, { align: 'right' });
-  y += 3;
+  linhaCampos(
+    doc,
+    y,
+    [
+      ['Data do Documento', emissao, 35.6],
+      ['Nº Documento', dados.titulo.numeroDocumento, 49],
+      ['Esp.Documento', dados.titulo.especieDocumento, 23.1],
+      ['Aceite', dados.titulo.aceite, 19.1],
+      ['Data do Processamento', processamento],
+    ],
+    {
+      rotulo: 'Agência/Código Beneficiário',
+      valor: dados.beneficiario.agenciaConta,
+    },
+  );
+  y += ALT_LINHA;
 
+  linhaCampos(
+    doc,
+    y,
+    [
+      ['Uso Banco', '', 17],
+      ['CIP', '000', 18.6],
+      ['Carteira', dados.titulo.carteira, 22],
+      ['Espécie', 'R$', 27],
+      ['Quantidade', '', 42.2],
+      ['(x)Valor', ''],
+    ],
+    { rotulo: 'Nosso Número', valor: calculado.nossoNumeroFormatado },
+  );
+  y += ALT_LINHA;
+
+  y += blocoValores(doc, y, dados, {
+    alturaInstrucoes: 29,
+    instrucoes: dados.instrucoes,
+    valores: [
+      { rotulo: '(=)Valor do Documento', valor: valorDocumento, cinza: true },
+      { rotulo: '(-)Desconto/Abatimento' },
+      { rotulo: '(-)Outras Deduções' },
+      { rotulo: '(+)Mora/Multa' },
+      { rotulo: '(+)Outros Acréscimos' },
+      { rotulo: '(=)Valor Cobrado' },
+    ],
+  });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6);
+  doc.text('Autenticação Mecânica', MARGEM + LARGURA - 20, y + 3, {
+    align: 'right',
+  });
+  y += 10;
   linhaPontilhada(doc, y);
-  y += 4;
+  y += 5;
 
   // ------------------------------------------------------------------
-  // 3. FICHA DE COMPENSAÇÃO (Base)
+  // 3. FICHA DE COMPENSAÇÃO — a coluna da direita segue a ordem do ERP:
+  //    vencimento, CNPJ, agência, nosso número e os valores
   // ------------------------------------------------------------------
-  cabecalhoFichaCompensacao(doc, y, dados, calculado.linhaDigitavelFormatada, logoImage);
-  y += 8;
-
-  // Row 1
-  campo(doc, MARGEM, y, 145, 'Local de Pagamento', dados.localPagamento);
-  divisor(doc, MARGEM + 145, y);
-  campo(doc, MARGEM + 145, y, 45, 'Vencimento', dataBr(dados.titulo.vencimento), { alinhamento: 'right', negrito: true, tamanho: 9 });
-  y += 8;
-
-  // Row 2
-  campo(doc, MARGEM, y, 110, 'Beneficiário', dados.beneficiario.nome);
-  divisor(doc, MARGEM + 110, y);
-  campo(doc, MARGEM + 110, y, 35, 'CNPJ', documento(dados.beneficiario.documento));
-  divisor(doc, MARGEM + 145, y);
-  campo(doc, MARGEM + 145, y, 45, 'Agência/Código Beneficiário', dados.beneficiario.agenciaConta, { alinhamento: 'right' });
-  y += 8;
-
-  // Row 3
-  campo(doc, MARGEM, y, 30, 'Data do Documento', dataBr(dados.titulo.emissao));
-  divisor(doc, MARGEM + 30, y);
-  campo(doc, MARGEM + 30, y, 35, 'Nº Documento', dados.titulo.numeroDocumento);
-  divisor(doc, MARGEM + 65, y);
-  campo(doc, MARGEM + 65, y, 25, 'Esp.Documento', dados.titulo.especieDocumento);
-  divisor(doc, MARGEM + 90, y);
-  campo(doc, MARGEM + 90, y, 15, 'Aceite', dados.titulo.aceite);
-  divisor(doc, MARGEM + 105, y);
-  campo(doc, MARGEM + 105, y, 40, 'Data do Processamento', dataBr(dados.titulo.emissao ?? new Date()));
-  divisor(doc, MARGEM + 145, y);
-  campo(doc, MARGEM + 145, y, 45, 'Nosso Número', calculado.nossoNumeroFormatado, { alinhamento: 'right' });
-  y += 8;
-
-  // Row 4
-  campo(doc, MARGEM, y, 20, 'Uso Banco', '');
-  divisor(doc, MARGEM + 20, y);
-  campo(doc, MARGEM + 20, y, 15, 'CIP', '000');
-  divisor(doc, MARGEM + 35, y);
-  campo(doc, MARGEM + 35, y, 20, 'Carteira', dados.titulo.carteira);
-  divisor(doc, MARGEM + 55, y);
-  campo(doc, MARGEM + 55, y, 20, 'Espécie', 'R$');
-  divisor(doc, MARGEM + 75, y);
-  campo(doc, MARGEM + 75, y, 35, 'Quantidade', '');
-  divisor(doc, MARGEM + 110, y);
-  campo(doc, MARGEM + 110, y, 35, '(x)Valor', '');
-  divisor(doc, MARGEM + 145, y);
-  campo(doc, MARGEM + 145, y, 45, '(=)Valor do Documento', moeda(dados.titulo.valor), { alinhamento: 'right', negrito: true, tamanho: 9 });
-  y += 8;
-
-  // Row 5 & Side Box
-  doc.setFontSize(4.8);
-  doc.setFont('helvetica', 'normal');
-  doc.text('INSTRUÇÕES - TEXTO DE RESPONSABILIDADE DO BENEFICIÁRIO', MARGEM + 1, y + 2.5);
-  doc.setFontSize(6.5);
-  const linhasInstrucoesFicha = dados.instrucoes
-    .flatMap((i) => doc.splitTextToSize(i, 142) as string[])
-    .slice(0, 7);
-  doc.text(linhasInstrucoesFicha, MARGEM + 1, y + 6);
-  doc.setLineWidth(0.1);
-  doc.line(MARGEM, y + 36, MARGEM + 145, y + 36);
-  divisor(doc, MARGEM + 145, y, 36);
-
-  campo(doc, MARGEM + 145, y, 45, '(-)Desconto/Abatimento', '', { alinhamento: 'right', altura: 7.2 });
-  campo(doc, MARGEM + 145, y + 7.2, 45, '(-)Outras Deduções', '', { alinhamento: 'right', altura: 7.2 });
-  campo(doc, MARGEM + 145, y + 14.4, 45, '(+)Mora/Multa', '', { alinhamento: 'right', altura: 7.2 });
-  campo(doc, MARGEM + 145, y + 21.6, 45, '(+)Outros Acréscimos', '', { alinhamento: 'right', altura: 7.2 });
-  campo(doc, MARGEM + 145, y + 28.8, 45, '(=)Valor Cobrado', '', { alinhamento: 'right', altura: 7.2 });
-  y += 36;
-
-  // Row 6: Pagador/Avalista
-  campo(
+  cabecalhoFichaCompensacao(
     doc,
-    MARGEM,
     y,
-    190,
-    'Pagador/Avalista',
-    [dados.pagador.nome, documento(dados.pagador.documento), dados.pagador.endereco].filter(Boolean).join(' — '),
-    { altura: 10 },
+    dados,
+    calculado.linhaDigitavelFormatada,
+    logoImage,
   );
-  y += 11;
+  y += 9;
 
-  doc.setFontSize(5.6);
-  doc.text('Autenticação Mecânica - Ficha de Compensação', MARGEM + LARGURA, y, { align: 'right' });
-  y += 3;
+  linhaCampos(doc, y, [['Local de Pagamento', dados.localPagamento]], {
+    rotulo: 'Vencimento',
+    valor: vencimento,
+    cinza: true,
+  });
+  y += ALT_LINHA;
 
-  // Barcode
+  linhaCampos(doc, y, [['Beneficiário', dados.beneficiario.nome]], {
+    rotulo: 'CNPJ',
+    valor: cnpjBeneficiario,
+  });
+  y += ALT_LINHA;
+
+  linhaCampos(
+    doc,
+    y,
+    [
+      ['Data do Documento', emissao, 35.6],
+      ['Nº Documento', dados.titulo.numeroDocumento, 49],
+      ['Esp.Documento', dados.titulo.especieDocumento, 23.1],
+      ['Aceite', dados.titulo.aceite, 19.1],
+      ['Data do Processamento', processamento],
+    ],
+    {
+      rotulo: 'Agência/Código Beneficiário',
+      valor: dados.beneficiario.agenciaConta,
+    },
+  );
+  y += ALT_LINHA;
+
+  linhaCampos(
+    doc,
+    y,
+    [
+      ['Uso Banco', '', 17],
+      ['CIP', '000', 18.6],
+      ['Carteira', dados.titulo.carteira, 22],
+      ['Espécie', 'R$', 27],
+      ['Quantidade', '', 42.2],
+      ['(x)Valor', ''],
+    ],
+    { rotulo: 'Nosso Número', valor: calculado.nossoNumeroFormatado },
+  );
+  y += ALT_LINHA;
+
+  y += blocoValores(doc, y, dados, {
+    alturaInstrucoes: 29,
+    instrucoes: dados.instrucoes,
+    valores: [
+      { rotulo: '(=)Valor do Documento', valor: valorDocumento, cinza: true },
+      { rotulo: '(-)Desconto/Abatimento' },
+      { rotulo: '(-)Outras Deduções' },
+      { rotulo: '(+)Mora/Multa' },
+      { rotulo: '(+)Outros Acréscimos' },
+      { rotulo: '(=)Valor Cobrado' },
+    ],
+  });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6);
+  doc.text(
+    'Autenticação Mecânica - Ficha de Compensação',
+    MARGEM + LARGURA,
+    y + 3,
+    {
+      align: 'right',
+    },
+  );
+  y += 5;
+
+  // Código de barras
   const modulos = itfModulos(calculado.codigoBarras);
-  const larguraModulo = 0.26;
   desenharBarras(doc, modulos, {
     x: MARGEM,
     y: y + 1,
     altura: 13,
-    larguraModulo,
+    larguraModulo: 0.26,
   });
 
   if (dados.demonstrativo) {

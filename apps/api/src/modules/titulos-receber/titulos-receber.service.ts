@@ -300,16 +300,17 @@ export class TitulosReceberService {
           agenciaConta: formatarAgenciaConta(titulo, conta),
         },
         pagador: {
+          codigo: codigoClienteErp(
+            titulo.cliente?.chave,
+            titulo.cliente?.codigoErp,
+          ),
           nome: titulo.cliente?.razaoSocial ?? 'Cliente não identificado',
           documento: titulo.cliente?.cnpjCpf ?? null,
-          endereco: [
-            titulo.cliente?.endereco,
-            titulo.cliente?.bairro,
-            titulo.cliente?.municipio,
-            titulo.cliente?.uf,
-          ]
-            .filter(Boolean)
-            .join(', '),
+          endereco: titulo.cliente?.endereco ?? null,
+          bairro: titulo.cliente?.bairro ?? null,
+          municipio: titulo.cliente?.municipio ?? null,
+          uf: titulo.cliente?.uf ?? null,
+          cep: titulo.cliente?.cep ?? null,
         },
         titulo: {
           numeroDocumento,
@@ -452,10 +453,47 @@ function formatarAgenciaConta(
 }
 
 /**
- * Instruções ao caixa: o texto livre do convênio, mais as linhas de encargo
- * no formato padrão ERP.
+ * Código-loja do cliente como o ERP imprime no boleto (`004199-01`).
+ *
+ * A chave de integração é `filial-código-loja` — com a filial vazia quando o
+ * cadastro é compartilhado (`  -004199-01`). Sem chave nesse formato, vale o
+ * `codigoErp`, que é o código e a loja juntos.
  */
-function montarInstrucoes(
+function codigoClienteErp(
+  chave: string | null | undefined,
+  codigoErp: string | null | undefined,
+): string | null {
+  const partes = (chave ?? '').split('-').map((p) => p.trim());
+  if (partes.length >= 3 && partes[1] && partes[2]) {
+    return `${partes[1]}-${partes[2]}`;
+  }
+  return codigoErp?.trim() || null;
+}
+
+/**
+ * Linha de encargo que a própria plataforma monta (juros ao dia e multa).
+ *
+ * O ERP manda as mesmas duas linhas nas instruções do título (`BJInstrBol`,
+ * no BJPLA003), sem acento — somadas às daqui, saíam duplicadas no boleto.
+ */
+function ehLinhaDeEncargo(linha: string): boolean {
+  const semAcento = linha
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .trim()
+    .toLowerCase();
+  return (
+    semAcento.startsWith('importancia por dia de atraso') ||
+    semAcento.startsWith('apos vencimento cobrar multa')
+  );
+}
+
+/**
+ * Instruções ao caixa, na ordem do boleto do ERP: as linhas de encargo, as
+ * demais instruções do título e da conta (sem repetir os encargos), o
+ * protesto, e por fim a marca de 2ª via.
+ */
+export function montarInstrucoes(
   titulo: {
     instrucoes: string | null;
     multaValor: number | null;
@@ -483,18 +521,25 @@ function montarInstrucoes(
     linhas.push(`Após Vencimento Cobrar Multa de ${moedaFormato(multaVal)}`);
   }
 
+  // 2. Demais instruções do título e da conta — o desconto, por exemplo. As de
+  // encargo já saíram acima, calculadas aqui.
+  const extras = [
+    ...(titulo.instrucoes ?? '').split(/\r?\n/),
+    ...(conta.instrucoes ?? '').split(/\r?\n/),
+  ].filter((l) => !ehLinhaDeEncargo(l));
+  linhas.push(...extras);
+
+  if (conta.diasProtesto) {
+    linhas.push(
+      `Protestar após ${conta.diasProtesto} dias corridos do vencimento.`,
+    );
+  }
+
+  // 3. A marca de 2ª via, e o aviso quando o valor foi atualizado
   linhas.push(' - - - 2º Via - - -');
 
   if (usarAtualizado) {
     linhas.push('Boleto atualizado para pagamento apenas nesta data.');
-  }
-
-  // 2. Instruções do cadastro de conta e do título
-  if (conta.instrucoes) linhas.push(...conta.instrucoes.split(/\r?\n/));
-  if (titulo.instrucoes) linhas.push(...titulo.instrucoes.split(/\r?\n/));
-
-  if (conta.diasProtesto) {
-    linhas.push(`Protestar após ${conta.diasProtesto} dias corridos do vencimento.`);
   }
 
   return linhas.filter((l) => l.trim().length > 0);

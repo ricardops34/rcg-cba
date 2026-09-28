@@ -3125,18 +3125,28 @@ Static Function BJXmlTSS(cDoc, cSerie)
 	// monta em aNotas[4] + aNotas[5]
 	aTail(oWs:oWSNFEID:oWSNotas:oWSNFESID2):cID := (cSerie + cDoc)
 
+	// O cliente do webservice guarda a resposta SOAP ja lida, em nos de XML da
+	// thread. Sem liberar, uma coleta de milhares de notas acumulava tudo na
+	// mesma thread ate o "Too many XML Dynamic Nodes (over 262143 nodes)" - e a
+	// coleta ficava cada vez mais lenta. Libera em toda saida daqui em diante; o
+	// XML sai copiado para variaveis de texto antes.
 	If !oWs:RETORNANOTASNX()
 		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "TSS nao respondeu para " + AllTrim(cSerie) + "/" + AllTrim(cDoc) + ": " + GetWscError(1), 0, 0, {})
+		FreeObj(oWs)
 		Return ""
 	EndIf
 
 	If Len(oWs:oWSRETORNANOTASNXRESULT:OWSNOTAS:OWSNFES5) == 0
+		FreeObj(oWs)
 		Return ""
 	EndIf
 
 	oNota   := oWs:oWSRETORNANOTASNXRESULT:OWSNOTAS:OWSNFES5[1]
 	cXmlNfe := AllTrim(oNota:oWSNFE:CXML)
 	cXmlPrt := AllTrim(oNota:oWSNFE:CXMLPROT)
+
+	oNota := Nil
+	FreeObj(oWs)
 
 	// O nfeProc leva uma unica declaracao, a do envelope. Se cada pedaco vier com
 	// a sua, o resultado tem tres - e deixa de ser XML valido no primeiro parser
