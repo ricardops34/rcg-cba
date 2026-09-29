@@ -930,7 +930,9 @@ export const integracaoNotaSaidaCreateSchema = z.object({
   vlrDevolucao: z.coerce.number().default(0),
   chaveNfe: z.string().trim().max(44).nullable().optional(),
   dtNfe: dataCivilSchema.nullable().optional(),
-  mensagem: z.string().trim().max(500).nullable().optional(),
+  // Mensagem da nota (F2_MENNOTA/F1_MENNOTA é memo no Protheus): no banco é
+  // texto sem limite. Os 500 de antes recusavam a nota inteira.
+  mensagem: z.string().trim().max(10000).nullable().optional(),
   comodato: z.boolean().default(false),
   ativo: z.boolean().default(true),
   itens: z
@@ -1296,7 +1298,9 @@ export const integracaoNotaEntradaCreateSchema = z.object({
   vlrDespesa: z.coerce.number().default(0),
   chaveNfe: z.string().trim().max(44).nullable().optional(),
   dtNfe: dataCivilSchema.nullable().optional(),
-  mensagem: z.string().trim().max(500).nullable().optional(),
+  // Mensagem da nota (F2_MENNOTA/F1_MENNOTA é memo no Protheus): no banco é
+  // texto sem limite. Os 500 de antes recusavam a nota inteira.
+  mensagem: z.string().trim().max(10000).nullable().optional(),
   ativo: z.boolean().default(true),
   itens: z
     .array(integracaoNotaEntradaItemSchema)
@@ -1545,7 +1549,7 @@ export const integracaoTituloReceberCreateSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Código de barras como o banco registrou (44 dígitos). Quando enviado, prevalece sobre o cálculo da plataforma.",
+      "Código de barras como o banco registrou (44 dígitos). Quando enviado, prevalece sobre o cálculo da plataforma. Com outro tamanho é ignorado (fica vazio) e o título entra.",
     ),
   linhaDigitavel: z
     .string()

@@ -16,9 +16,11 @@ import { Badge } from "@/components/ui/badge";
 import { FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type NotaRow = NotaSaida & {
   cliente?: { id: string; razaoSocial: string; nomeFantasia: string | null } | null;
+  fornecedor?: { id: string; razaoSocial: string; nomeFantasia: string | null } | null;
   vendedor?: { id: string; nome: string; nomeReduzido: string | null } | null;
 };
 
@@ -41,6 +43,9 @@ export default function NotasSaidaPage() {
   const [vendedorId, setVendedorId] = useState<string | undefined>(undefined);
   const [ano, setAno] = useState("");
   const [mes, setMes] = useState<string | undefined>(undefined);
+  // Normais x devoluções de compra (tipo D, destinatário é fornecedor)
+  const [aba, setAba] = useState<"normais" | "devolucoes">("normais");
+  const devolucoes = aba === "devolucoes";
 
   const escopoQuery = useQuery({
     queryKey: ["escopo", "vendedores"],
@@ -59,6 +64,7 @@ export default function NotasSaidaPage() {
     ...(vendedorId ? { vendedorId } : {}),
     ...(ano && /^\d{4}$/.test(ano) ? { ano: Number(ano) } : {}),
     ...(mes ? { mes: Number(mes) } : {}),
+    devolucao: devolucoes,
   });
 
   const filtrosAtivos = !!vendedorId || !!ano || !!mes;
@@ -84,18 +90,31 @@ export default function NotasSaidaPage() {
       ),
     },
     { header: "Emissão", sortKey: "dtEmissao", cell: (n) => dataCivilBr(n.dtEmissao) },
-    {
-      header: "Cliente",
-      cell: (n) => (
-        <span className="text-xs">{n.cliente ? n.cliente.nomeFantasia || n.cliente.razaoSocial : "—"}</span>
-      ),
-    },
-    {
-      header: "Vendedor",
-      cell: (n) => (
-        <span className="text-xs">{n.vendedor ? n.vendedor.nomeReduzido || n.vendedor.nome : "—"}</span>
-      ),
-    },
+    devolucoes
+      ? {
+          header: "Fornecedor",
+          cell: (n: NotaRow) => (
+            <span className="text-xs">
+              {n.fornecedor ? n.fornecedor.nomeFantasia || n.fornecedor.razaoSocial : "—"}
+            </span>
+          ),
+        }
+      : {
+          header: "Cliente",
+          cell: (n: NotaRow) => (
+            <span className="text-xs">{n.cliente ? n.cliente.nomeFantasia || n.cliente.razaoSocial : "—"}</span>
+          ),
+        },
+    ...(devolucoes
+      ? []
+      : [
+          {
+            header: "Vendedor",
+            cell: (n: NotaRow) => (
+              <span className="text-xs">{n.vendedor ? n.vendedor.nomeReduzido || n.vendedor.nome : "—"}</span>
+            ),
+          },
+        ]),
     { header: "Vlr. itens", sortKey: "vlrItens", cell: (n) => moeda(n.vlrItens) },
     { header: "Vlr. bruto", sortKey: "vlrBruto", cell: (n) => moeda(n.vlrBruto) },
     { header: "Status", sortKey: "ativo", cell: (n) => <StatusDot active={n.ativo} /> },
@@ -118,9 +137,21 @@ export default function NotasSaidaPage() {
         isRefreshing={isFetching}
       />
 
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Tabs
+          value={aba}
+          onValueChange={(v) => {
+            setAba(v as "normais" | "devolucoes");
+            setPage(1);
+          }}
+        >
+          <TabsList>
+            <TabsTrigger value="normais">Notas de saída</TabsTrigger>
+            <TabsTrigger value="devolucoes">Devoluções de compra</TabsTrigger>
+          </TabsList>
+        </Tabs>
         <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
-          {mostrarFiltroVendedor && (
+          {mostrarFiltroVendedor && !devolucoes && (
             <div className="space-y-2">
               <FieldLabel>Vendedor</FieldLabel>
               <Select
@@ -201,7 +232,7 @@ export default function NotasSaidaPage() {
           setPage(1);
         }}
         onRowClick={(n) => router.push(`/comercial/notas-saida/${n.id}`)}
-        emptyMessage="Nenhuma nota de saída."
+        emptyMessage={devolucoes ? "Nenhuma devolução de compra." : "Nenhuma nota de saída."}
         sortBy={sortBy}
         sortOrder={sortOrder}
         onSortChange={(key, order) => {

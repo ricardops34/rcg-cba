@@ -263,4 +263,16 @@ nada andava. Mudou:
 - **Nota de entrada com armazém inválido** (`D1_LOCAL = "O1"`, letra O, que não
   existe na NNR) recusava a nota inteira. Decisão do usuário: armazém vazio ou
   inexistente → item sem armazém, a nota entra. Vale para o `PUT` também.
+- **Nota com mensagem acima de 500 caracteres** (`F2_MENNOTA` é memo) era
+  recusada: o limite existia só no contrato; no banco a coluna é texto sem
+  limite. Limite do contrato passou a 10.000 nas notas de saída e de entrada.
+- **Notas de saída de devolução de compra (tipo D)** — decisão do usuário: a
+  tela Comercial > Notas de saída separa **Notas de saída** e **Devoluções de
+  compra** (filtro `devolucao` na API); a devolução mostra o **fornecedor** na
+  lista e no detalhe, e só quem enxerga todas as notas (sem escopo de carteira)
+  a vê. **Não conta na Posição de Cliente** — que já só soma nota de venda
+  (tipo N) e a devolução não tem cliente. Testado no dev com a nota 000117283.
+- **Título com código de barras fora de 44 dígitos** (`E1_CODBAR` com 25 na
+  base da RCG) recusava o título. Mesmo critério do armazém: o código inválido
+  fica vazio (a plataforma calcula o do boleto) e o título entra.
 

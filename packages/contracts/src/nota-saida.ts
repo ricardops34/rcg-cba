@@ -53,6 +53,11 @@ export const notaSaidaQuerySchema = paginationQuerySchema.extend({
   vendedorId: z.string().uuid().optional(),
   comodato: booleanQueryParam,
   tipo: z.string().trim().max(10).optional(),
+  /**
+   * `true` = só as devoluções de compra (tipo D, destinatário é fornecedor);
+   * `false` = as demais. Ausente = todas.
+   */
+  devolucao: booleanQueryParam,
   ano: z.coerce.number().int().optional(),
   mes: z.coerce.number().int().min(1).max(12).optional(),
 });

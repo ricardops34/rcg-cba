@@ -22,6 +22,7 @@ import {
 
 export type NotaSaidaDetalhe = NotaSaida & {
   cliente?: { id: string; codigoErp: string | null; razaoSocial: string } | null;
+  fornecedor?: { id: string; codigoErp: string | null; razaoSocial: string } | null;
   vendedor?: { id: string; nome: string; nomeReduzido: string | null } | null;
   condicaoPagamento?: { id: string; descricao: string } | null;
   itens: Array<
@@ -55,7 +56,12 @@ export function NotaSaidaDetalheContent({ nota }: { nota: NotaSaidaDetalhe }) {
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Info label="Emissão" value={dataCivilBr(nota.dtEmissao)} />
           <Info label="Espécie" value={nota.especieFiscal || "—"} />
-          <Info label="Cliente" value={nota.cliente?.razaoSocial ?? "—"} />
+          {nota.tipo === "D" ? (
+            // Devolução de compra: o destinatário é o fornecedor
+            <Info label="Fornecedor (devolução de compra)" value={nota.fornecedor?.razaoSocial ?? "—"} />
+          ) : (
+            <Info label="Cliente" value={nota.cliente?.razaoSocial ?? "—"} />
+          )}
           <Info
             label="Vendedor"
             value={nota.vendedor ? nota.vendedor.nomeReduzido || nota.vendedor.nome : "—"}

@@ -35,6 +35,16 @@ const CLIENTE_SELECT = {
   select: { id: true, codigoErp: true, razaoSocial: true, nomeFantasia: true },
 };
 const VENDEDOR_SELECT = { select: { id: true, nome: true, nomeReduzido: true } };
+const FORNECEDOR_SELECT = {
+  select: { id: true, codigoErp: true, razaoSocial: true, nomeFantasia: true },
+};
+
+/**
+ * Devolução de compra: tipo D. O destinatário é um fornecedor, não um
+ * cliente — a nota não tem cliente e nunca conta como venda (as apurações
+ * filtram tipo N).
+ */
+const TIPO_DEVOLUCAO = 'D';
 const CONDICAO_SELECT = { select: { id: true, codigoErp: true, descricao: true } };
 
 // Consulta read-only com o mesmo escopo hierárquico de Clientes: usuário
@@ -55,10 +65,29 @@ export class NotasSaidaService {
   findAll(empresaId: string, user: AuthenticatedUser, query: NotaSaidaQuery) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      // Devolução de compra não é de cliente nenhum: o escopo por carteira não
+      // se aplica, e só quem enxerga todas as notas (sem escopo) as vê.
+      const filtroDono =
+        query.devolucao === true
+          ? escopo === null
+            ? {}
+            : { id: { in: [] as string[] } }
+          : { cliente: combinarFiltroVendedor(escopo, query.vendedorId) };
+      const filtroDevolucao =
+        query.devolucao === true
+          ? { tipo: TIPO_DEVOLUCAO }
+          : query.devolucao === false
+            ? {
+                AND: [
+                  { OR: [{ tipo: null }, { tipo: { not: TIPO_DEVOLUCAO } }] },
+                ],
+              }
+            : {};
       const where = {
         empresaId,
         deletedAt: null,
-        cliente: combinarFiltroVendedor(escopo, query.vendedorId),
+        ...filtroDono,
+        ...filtroDevolucao,
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
         ...(query.clienteId ? { clienteId: query.clienteId } : {}),
         ...(query.comodato !== undefined ? { comodato: query.comodato } : {}),
@@ -75,6 +104,11 @@ export class NotasSaidaService {
                     razaoSocial: { contains: query.search, mode: 'insensitive' as const },
                   },
                 },
+                {
+                  fornecedor: {
+                    razaoSocial: { contains: query.search, mode: 'insensitive' as const },
+                  },
+                },
               ],
             }
           : {}),
@@ -86,6 +120,7 @@ export class NotasSaidaService {
           where,
           include: {
             cliente: CLIENTE_SELECT,
+            fornecedor: FORNECEDOR_SELECT,
             vendedor: VENDEDOR_SELECT,
           },
           ...paginationToSkipTake(query),
@@ -109,6 +144,7 @@ export class NotasSaidaService {
         },
         include: {
           cliente: CLIENTE_SELECT,
+          fornecedor: FORNECEDOR_SELECT,
           vendedor: VENDEDOR_SELECT,
           condicaoPagamento: CONDICAO_SELECT,
           itens: {
