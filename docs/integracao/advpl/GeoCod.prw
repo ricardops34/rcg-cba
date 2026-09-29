@@ -64,7 +64,7 @@ User Function GeoCod(_cEnd, _cRetJson)
 	//	CriarSX6("MV_XKEYAPI","C","YOUR_API_KEY Google.https://cloud.google.com/maps-platform/#get-started","")
 	//EndIf
 
-	cKeyApi:= 'AIzaSyAmXwMSzayhp6B_t47KxlafWECVOElwMdA' //Alltrim(GetMV("MV_XKEYAPI"))
+	cKeyApi:= Alltrim(GetMV("MV_XKEYAPI"))
 	// region/components: so resultados no Brasil - fora dele volta ZERO_RESULTS
 	_cUrl  := _cUrl+"?address="+_cLocal+"&region=br&components=country:BR&key="+cKeyApi
 
