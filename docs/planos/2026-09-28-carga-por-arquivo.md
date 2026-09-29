@@ -227,3 +227,40 @@ A conferir no primeiro teste no Protheus:
   juros e multa com padrão 0.02 (o do BjBoletos); nome físico das tabelas pelo
   `X2_ARQUIVO` da SX2.
 
+**28/09/2026 (noite) — aba Processamento para a carga completa (pedido do usuário)**
+
+Na produção, com todos os anos (dezenas de partes), a aba mostrava só as 50
+cargas mais recentes — as últimas da fila, paradas em "na fila" — e parecia que
+nada andava. Mudou:
+
+- **Lista paginada**, com **grupos** e contagem da empresa toda: não
+  processados (aguardando e na fila), em processamento, processados (sem
+  recusados), com erro (parou, ou concluiu com recusados) e canceladas.
+  Clicar filtra. **"Processando agora"** mostra o arquivo que roda e o
+  progresso. A atualização automática olha a empresa toda, não a página.
+- **Limpeza:** excluir uma carga terminada, ou de uma vez as de um grupo
+  (`POST /integracao-cargas/limpar`). Some o registro e o arquivo guardado; os
+  dados gravados ficam. Nunca a que está na fila ou rodando.
+- **Reprocessar** uma carga terminada, ou todas as com erro
+  (`POST /integracao-cargas/reprocessar`): volta para a fila e roda o arquivo
+  inteiro de novo, do zero (a gravação é por chave, não duplica). Mantém a
+  data de chegada — entra na ordem de carga.
+- **Log da carga:** datas, duração, tentativas, mensagem, registros por
+  entidade e os recusados.
+- **Upload:** 429 do limite global (200/min por IP, que atrás do proxy do Next
+  é compartilhado) não para mais o envio — a tela espera e tenta de novo. O
+  limite ficou como estava (decisão do usuário).
+- Testado no dev: grupos, filtro, reprocessar uma cancelada (2.147 linhas,
+  concluiu) e limpar canceladas.
+- **Produção: títulos recusados com "Cannot read properties of undefined
+  (reading map)".** O item de lote usa o schema de criação com tudo
+  opcional (`partial`), e ali o `default([])` de `baixas` não se aplica: título
+  sem baixas (o SQL e o ADVPL não mandam) chegava com o campo ausente, e o
+  `montarBaixas` quebrava. Ausente passa a ser lista vazia — não cria baixa e
+  não apaga as gravadas (`sincronizarFilhos` não exclui ausentes). Afetava o
+  `PUT` de títulos do Protheus igual. No dev não apareceu porque os títulos
+  pararam antes, no cliente inexistente.
+- **Nota de entrada com armazém inválido** (`D1_LOCAL = "O1"`, letra O, que não
+  existe na NNR) recusava a nota inteira. Decisão do usuário: armazém vazio ou
+  inexistente → item sem armazém, a nota entra. Vale para o `PUT` também.
+

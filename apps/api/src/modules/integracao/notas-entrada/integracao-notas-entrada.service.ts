@@ -182,6 +182,10 @@ export class IntegracaoNotasEntradaService {
           }
           produtoId = produto.id;
         }
+        // O armazém do item é informativo na nota de entrada: vazio ou
+        // inexistente na plataforma, o item fica sem armazém e a nota entra
+        // (decisão do usuário, 28/09/2026). Recusar a nota inteira por um
+        // D1_LOCAL digitado errado ("O1" em vez de "01") travava a carga.
         let armazemId: string | null = null;
         if (item.armazemChave) {
           const armazem = await tx.armazem.findFirst({
@@ -192,12 +196,7 @@ export class IntegracaoNotasEntradaService {
             },
             select: { id: true },
           });
-          if (!armazem) {
-            throw new NotFoundException(
-              `itens[].armazemChave '${item.armazemChave}' não encontrado`,
-            );
-          }
-          armazemId = armazem.id;
+          armazemId = armazem?.id ?? null;
         }
         return {
           delete: item.delete,

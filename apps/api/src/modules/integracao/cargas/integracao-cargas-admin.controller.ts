@@ -37,7 +37,10 @@ import {
 import { IntegracaoCargasService } from './integracao-cargas.service';
 import {
   IntegracaoCargaErrosQueryDto,
+  IntegracaoCargaLimparDto,
+  IntegracaoCargaListaQueryDto,
   IntegracaoCargaProcessarDto,
+  IntegracaoCargaReprocessarDto,
 } from './dto/integracao-carga.dto';
 
 /**
@@ -126,10 +129,45 @@ export class IntegracaoCargasAdminController {
   }
 
   @ApiOperation({
-    summary: 'Excluir uma carga que aguarda',
+    summary: 'Reprocessar cargas',
     description:
-      'Só a que ainda não foi mandada processar (o arquivo subido por ' +
-      'engano). Requer integracao.excluir.',
+      'A carga terminada volta para a fila e roda o arquivo inteiro de ' +
+      'novo (a gravação é por chave, não duplica). Sem "ids", todas as com ' +
+      'erro. Requer integracao.editar.',
+  })
+  @RequirePermission('integracao', 'editar')
+  @Post('reprocessar')
+  @HttpCode(200)
+  reprocessar(
+    @Body() dto: IntegracaoCargaReprocessarDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.reprocessar(user.empresaAtivaId, dto.ids);
+  }
+
+  @ApiOperation({
+    summary: 'Limpar cargas de um grupo',
+    description:
+      'Exclui de uma vez as cargas do grupo (processados, com-erro, ' +
+      'canceladas, ou as que aguardam). Some o registro e o arquivo ' +
+      'guardado; os dados já gravados ficam. Requer integracao.excluir.',
+  })
+  @RequirePermission('integracao', 'excluir')
+  @Post('limpar')
+  @HttpCode(200)
+  limpar(
+    @Body() dto: IntegracaoCargaLimparDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.limpar(user.empresaAtivaId, dto.grupo);
+  }
+
+  @ApiOperation({
+    summary: 'Excluir uma carga',
+    description:
+      'A que aguarda (subida por engano) ou a que já terminou. Some o ' +
+      'registro e o arquivo guardado; os dados já gravados ficam. A que ' +
+      'está na fila ou rodando, não. Requer integracao.excluir.',
   })
   @RequirePermission('integracao', 'excluir')
   @Delete(':id')
@@ -142,13 +180,19 @@ export class IntegracaoCargasAdminController {
   }
 
   @ApiOperation({
-    summary: 'Listar as últimas cargas por arquivo',
-    description: 'Requer integracao.visualizar.',
+    summary: 'Listar as cargas por arquivo',
+    description:
+      'Paginada (mais recentes primeiro), filtrável por situação, com o ' +
+      'resumo por situação da empresa toda e a carga que está rodando ' +
+      'agora. Requer integracao.visualizar.',
   })
   @RequirePermission('integracao', 'visualizar')
   @Get()
-  listar(@CurrentUser() user: AuthenticatedUser) {
-    return this.service.listar(user.empresaAtivaId);
+  listar(
+    @Query() query: IntegracaoCargaListaQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.listarPagina(user.empresaAtivaId, query);
   }
 
   @ApiOperation({

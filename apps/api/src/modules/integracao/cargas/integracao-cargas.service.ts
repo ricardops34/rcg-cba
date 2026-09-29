@@ -8,7 +8,13 @@ import type {
   IntegracaoCarga,
   IntegracaoCargaErrosPage,
   IntegracaoCargaErrosQuery,
+  IntegracaoCargaGrupo,
+  IntegracaoCargaLimpar,
+  IntegracaoCargaLista,
+  IntegracaoCargaListaQuery,
+  IntegracaoCargaSituacao,
 } from '@plataforma/contracts';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import {
   ArquivoCargaInvalido,
@@ -31,6 +37,7 @@ const SELECAO = {
   excluidos: true,
   erros: true,
   mensagem: true,
+  tentativas: true,
   createdAt: true,
   iniciadaEm: true,
   concluidaEm: true,
@@ -50,6 +57,7 @@ type LinhaCarga = {
   excluidos: number;
   erros: number;
   mensagem: string | null;
+  tentativas: number;
   createdAt: Date;
   iniciadaEm: Date | null;
   concluidaEm: Date | null;
@@ -70,12 +78,36 @@ function paraResposta(c: LinhaCarga): IntegracaoCarga {
     excluidos: c.excluidos,
     erros: c.erros,
     mensagem: c.mensagem,
+    tentativas: c.tentativas,
     createdAt: c.createdAt.toISOString(),
     iniciadaEm: c.iniciadaEm?.toISOString() ?? null,
     concluidaEm: c.concluidaEm?.toISOString() ?? null,
     atualizadaEm: c.updatedAt.toISOString(),
   };
 }
+
+/** Filtro de cada grupo da tela (ver `integracaoCargaGrupoSchema`). */
+function whereGrupo(
+  grupo: IntegracaoCargaGrupo,
+): Prisma.IntegracaoCargaWhereInput {
+  switch (grupo) {
+    case 'nao-processados':
+      return { situacao: { in: ['aguardando', 'recebida'] } };
+    case 'em-processamento':
+      return { situacao: 'processando' };
+    case 'processados':
+      return { situacao: 'concluida', erros: 0 };
+    case 'com-erro':
+      return {
+        OR: [{ situacao: 'erro' }, { situacao: 'concluida', erros: { gt: 0 } }],
+      };
+    case 'canceladas':
+      return { situacao: 'cancelada' };
+  }
+}
+
+/** Terminadas: podem ser excluídas e reprocessadas. As da fila e a que roda, não. */
+const TERMINADAS = ['concluida', 'erro', 'cancelada'] as const;
 
 /**
  * Carga por arquivo: recebe, guarda e responde. Quem aplica é o
@@ -182,6 +214,84 @@ export class IntegracaoCargasService {
     }
   }
 
+  /**
+   * A lista da tela: paginada (mais recentes primeiro), filtrável por
+   * situação, com o resumo por situação da empresa toda e a carga que está
+   * rodando agora. Sem isso a tela mostrava só as 50 mais novas — as últimas
+   * da fila, paradas em "na fila" — e não o que estava sendo processado.
+   */
+  async listarPagina(
+    empresaId: string,
+    query: IntegracaoCargaListaQuery,
+  ): Promise<IntegracaoCargaLista> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const where = {
+        empresaId,
+        ...(query.situacao ? { situacao: query.situacao } : {}),
+        ...(query.grupo ? whereGrupo(query.grupo) : {}),
+      };
+      const nomesGrupo: IntegracaoCargaGrupo[] = [
+        'nao-processados',
+        'em-processamento',
+        'processados',
+        'com-erro',
+        'canceladas',
+      ];
+      const contagemGrupos = await Promise.all(
+        nomesGrupo.map((g) =>
+          tx.integracaoCarga.count({ where: { empresaId, ...whereGrupo(g) } }),
+        ),
+      );
+      const [total, linhas, grupos, rodando] = await Promise.all([
+        tx.integracaoCarga.count({ where }),
+        tx.integracaoCarga.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip: (query.page - 1) * query.pageSize,
+          take: query.pageSize,
+          select: SELECAO,
+        }),
+        tx.integracaoCarga.groupBy({
+          by: ['situacao'],
+          where: { empresaId },
+          _count: { _all: true },
+        }),
+        tx.integracaoCarga.findFirst({
+          where: { empresaId, situacao: 'processando' },
+          orderBy: { createdAt: 'asc' },
+          select: SELECAO,
+        }),
+      ]);
+
+      const resumo: Record<IntegracaoCargaSituacao, number> = {
+        aguardando: 0,
+        recebida: 0,
+        processando: 0,
+        concluida: 0,
+        cancelada: 0,
+        erro: 0,
+      };
+      for (const g of grupos) resumo[g.situacao] = g._count._all;
+
+      return {
+        data: linhas.map(paraResposta),
+        total,
+        page: query.page,
+        pageSize: query.pageSize,
+        totalPages: Math.ceil(total / query.pageSize),
+        resumo,
+        grupos: {
+          'nao-processados': contagemGrupos[0],
+          'em-processamento': contagemGrupos[1],
+          processados: contagemGrupos[2],
+          'com-erro': contagemGrupos[3],
+          canceladas: contagemGrupos[4],
+        },
+        emProcessamento: rodando ? paraResposta(rodando) : null,
+      };
+    });
+  }
+
   async listar(empresaId: string): Promise<IntegracaoCarga[]> {
     const linhas = await this.prisma.withTenant(empresaId, (tx) =>
       tx.integracaoCarga.findMany({
@@ -261,8 +371,10 @@ export class IntegracaoCargasService {
   }
 
   /**
-   * Exclui uma carga que ainda aguarda — o arquivo subido por engano. A que já
-   * foi para a fila fica: é o registro do que foi (ou está sendo) aplicado.
+   * Exclui uma carga que aguarda (o arquivo subido por engano) ou que já
+   * terminou (limpeza). Some o registro, o arquivo guardado e os erros dela;
+   * os dados já gravados na plataforma ficam. A que está na fila ou rodando,
+   * não — cancele antes.
    */
   async excluir(empresaId: string, id: string): Promise<void> {
     await this.prisma.withTenant(empresaId, async (tx) => {
@@ -272,13 +384,77 @@ export class IntegracaoCargasService {
       });
       if (!carga) throw new NotFoundException('Carga não encontrada');
       const { count } = await tx.integracaoCarga.deleteMany({
-        where: { id, situacao: 'aguardando' },
+        where: { id, situacao: { in: ['aguardando', ...TERMINADAS] } },
       });
       if (count === 0) {
         throw new BadRequestException(
-          'Só dá para excluir carga que ainda aguarda processamento; esta já foi para a fila (use cancelar).',
+          'A carga está na fila ou em processamento; cancele antes de excluir.',
         );
       }
+    });
+  }
+
+  /**
+   * Exclui de uma vez as cargas de um grupo — a limpeza da tela. Do grupo
+   * "não processados" só as que aguardam: as da fila podem começar a qualquer
+   * momento.
+   */
+  async limpar(
+    empresaId: string,
+    grupo: IntegracaoCargaLimpar['grupo'],
+  ): Promise<{ excluidas: number }> {
+    const where =
+      grupo === 'nao-processados'
+        ? { situacao: 'aguardando' as const }
+        : whereGrupo(grupo);
+    const { count } = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.integracaoCarga.deleteMany({ where: { empresaId, ...where } }),
+    );
+    return { excluidas: count };
+  }
+
+  /**
+   * Reprocessa: a carga volta para a fila e roda o arquivo inteiro de novo,
+   * do zero — os erros anteriores saem, e a gravação é por chave, então o que
+   * já tinha entrado não duplica. Sem `ids`, todas as do grupo com erro. Só
+   * carga terminada; mantém a data de chegada, então entra na fila na ordem
+   * em que foi subida (a ordem de carga).
+   */
+  async reprocessar(
+    empresaId: string,
+    ids?: string[],
+  ): Promise<{ reprocessadas: number }> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const alvo = await tx.integracaoCarga.findMany({
+        where: ids
+          ? { empresaId, id: { in: ids }, situacao: { in: [...TERMINADAS] } }
+          : { empresaId, ...whereGrupo('com-erro') },
+        select: { id: true },
+      });
+      const alvoIds = alvo.map((c) => c.id);
+      if (alvoIds.length === 0) return { reprocessadas: 0 };
+
+      await tx.integracaoCargaErro.deleteMany({
+        where: { cargaId: { in: alvoIds } },
+      });
+      const { count } = await tx.integracaoCarga.updateMany({
+        where: { id: { in: alvoIds } },
+        data: {
+          situacao: 'recebida',
+          linhasProcessadas: 0,
+          ultimaLinha: 0,
+          criados: 0,
+          atualizados: 0,
+          excluidos: 0,
+          erros: 0,
+          mensagem: null,
+          tentativas: 0,
+          cancelarSolicitado: false,
+          iniciadaEm: null,
+          concluidaEm: null,
+        },
+      });
+      return { reprocessadas: count };
     });
   }
 

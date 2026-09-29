@@ -269,7 +269,11 @@ export class IntegracaoTitulosReceberService {
         updatedBy: autor,
       };
 
-      const baixasData = this.montarBaixas(empresaId, input.baixas);
+      // `baixas` tem default([]) no schema de criação, mas o item de lote usa
+      // o schema com tudo opcional (partial), e ali o default não se aplica:
+      // título sem baixas chega com o campo ausente. Ausente = nenhuma baixa
+      // nova; as gravadas ficam (ver `sincronizarFilhos`).
+      const baixasData = this.montarBaixas(empresaId, input.baixas ?? []);
 
       if (decisao !== 'criar') {
         // Baixa que veio é casada pela chave em vez de recriada; baixa ausente

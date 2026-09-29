@@ -65,6 +65,7 @@ export const integracaoCargaSchema = z.object({
   excluidos: z.number().int(),
   erros: z.number().int().describe("Registros recusados — detalhe em /erros"),
   mensagem: z.string().nullable().describe("Motivo quando a carga inteira parou"),
+  tentativas: z.number().int().describe("Vezes que o processamento pegou a carga (normal: 1)"),
   createdAt: z.string().datetime(),
   iniciadaEm: z.string().datetime().nullable(),
   concluidaEm: z.string().datetime().nullable(),
@@ -80,11 +81,83 @@ export const integracaoCargaErroSchema = z.object({
 });
 export type IntegracaoCargaErro = z.infer<typeof integracaoCargaErroSchema>;
 
+/**
+ * Lista da tela (aba Processamento): paginada, filtrável por situação, com o
+ * resumo por situação de TODAS as cargas da empresa e a que está rodando agora
+ * — a página mostra só um pedaço, e a fila anda das mais antigas para as mais
+ * novas.
+ */
+/**
+ * Grupos da tela: **nao-processados** (aguardando e na fila),
+ * **em-processamento**, **processados** (concluída sem nenhum registro
+ * recusado), **com-erro** (parou com erro, ou concluiu com recusados) e
+ * **canceladas**.
+ */
+export const integracaoCargaGrupoSchema = z.enum([
+  "nao-processados",
+  "em-processamento",
+  "processados",
+  "com-erro",
+  "canceladas",
+]);
+export type IntegracaoCargaGrupo = z.infer<typeof integracaoCargaGrupoSchema>;
+
+export const integracaoCargaListaQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  situacao: integracaoCargaSituacaoSchema.optional(),
+  grupo: integracaoCargaGrupoSchema.optional(),
+});
+export type IntegracaoCargaListaQuery = z.infer<typeof integracaoCargaListaQuerySchema>;
+
+export const integracaoCargaListaSchema = paginatedResponseSchema(integracaoCargaSchema).extend({
+  resumo: z
+    .object({
+      aguardando: z.number().int(),
+      recebida: z.number().int(),
+      processando: z.number().int(),
+      concluida: z.number().int(),
+      cancelada: z.number().int(),
+      erro: z.number().int(),
+    })
+    .describe("Cargas por situação, na empresa toda"),
+  grupos: z
+    .object({
+      "nao-processados": z.number().int(),
+      "em-processamento": z.number().int(),
+      processados: z.number().int(),
+      "com-erro": z.number().int(),
+      canceladas: z.number().int(),
+    })
+    .describe("Cargas por grupo da tela, na empresa toda"),
+  emProcessamento: integracaoCargaSchema.nullable().describe("A carga que está rodando agora"),
+});
+export type IntegracaoCargaLista = z.infer<typeof integracaoCargaListaSchema>;
+
 /** Libera para processar as cargas que aguardam. Sem `ids`, todas. */
 export const integracaoCargaProcessarSchema = z.object({
   ids: z.array(z.string().uuid()).min(1).optional(),
 });
 export type IntegracaoCargaProcessar = z.infer<typeof integracaoCargaProcessarSchema>;
+
+/**
+ * Reprocessar: a carga volta para a fila e roda o arquivo inteiro de novo
+ * (a gravação é por chave, não duplica). Sem `ids`, todas as do grupo
+ * **com-erro**.
+ */
+export const integracaoCargaReprocessarSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).optional(),
+});
+export type IntegracaoCargaReprocessar = z.infer<typeof integracaoCargaReprocessarSchema>;
+
+/**
+ * Limpar: exclui as cargas do grupo (registro e arquivo guardado; os dados já
+ * gravados na plataforma ficam). Nunca as que estão na fila ou rodando.
+ */
+export const integracaoCargaLimparSchema = z.object({
+  grupo: z.enum(["processados", "com-erro", "canceladas", "nao-processados"]),
+});
+export type IntegracaoCargaLimpar = z.infer<typeof integracaoCargaLimparSchema>;
 
 export const integracaoCargaErrosQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -108,6 +181,7 @@ export const INTEGRACAO_CARGA_EXAMPLE: IntegracaoCarga = {
   excluidos: 0,
   erros: 50,
   mensagem: null,
+  tentativas: 1,
   createdAt: "2026-09-28T13:00:00.000Z",
   iniciadaEm: "2026-09-28T13:00:05.000Z",
   concluidaEm: null,

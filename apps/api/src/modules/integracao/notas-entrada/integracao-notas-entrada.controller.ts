@@ -82,7 +82,8 @@ export class IntegracaoNotasEntradaController {
     description:
       'Upsert por chave. fornecedorChave/condicaoChave e, nos itens, ' +
       'produtoChave e armazemChave referenciam os respectivos cadastros pelo ' +
-      'chave — carregue os fornecedores antes das notas.',
+      'chave — carregue os fornecedores antes das notas. armazemChave vazio ' +
+      'ou inexistente não recusa a nota: o item fica sem armazém.',
   })
   @ApiBodyExample(INTEGRACAO_NOTA_ENTRADA_CREATE_EXAMPLE)
   @ApiResponse({
