@@ -346,7 +346,10 @@ Static Function BJTrataOrc(oOrc, aTotal, cSeqMae)
 	Local cNumPed  := ""
 	Local cTrava   := ""
 
-	If ValType(oOrc) != "O"
+	// Item de array lido de um JsonObject e "J", nao "O"
+	If ValType(oOrc) != "J"
+		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Orcamento pendente com formato invalido na resposta. Registro ignorado.", 0, 0, {})
+		ConOut("[BJPLA] U_BJRETORNO - orcamento com formato invalido na resposta (ValType " + ValType(oOrc) + "). Ignorado.")
 		aTotal[4] += 1
 		Return Nil
 	EndIf
@@ -364,7 +367,7 @@ Static Function BJTrataOrc(oOrc, aTotal, cSeqMae)
 	// foi o aviso a plataforma.
 	If U_BJACHOU("E", "orcamentos-pendentes", cIdPlat, @cNumPed)
 
-		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Orcamento " + cIdPlat + " ja gerou o orcamento " + cNumPed + ;
+		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Orcamento " + cIdPlat + " ja gerou o pedido " + cNumPed + ;
 			" num ciclo anterior, mas continua na fila da plataforma. Reenviando so o vinculo.", 0, 0, {})
 
 		If BJVincula(cIdPlat, cNumPed, oOrc)
@@ -389,6 +392,7 @@ Static Function BJTrataOrc(oOrc, aTotal, cSeqMae)
 	cSeq := U_BJENFILA("E", "orcamentos-pendentes", cIdPlat, "GET", oOrc:ToJson(), cSeqMae)
 
 	If Empty(cSeq)
+		ConOut("[BJPLA] U_BJRETORNO - orcamento " + cIdPlat + " nao entrou na fila (SZZ).")
 		aTotal[4] += 1
 		UnLockByName(cTrava, .T., .F.)
 		Return Nil
@@ -545,6 +549,45 @@ Static Function BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 		aAdd(aCabec, {"C5_NATUREZ", SA1->A1_NATUREZ, Nil})
 	EndIf
 
+	// Origem do pedido, obrigatoria no dicionario: pedido vindo da plataforma BJ
+	If SC5->(FieldPos("C5_ORGPED")) > 0
+		aAdd(aCabec, {"C5_ORGPED", "P", Nil})   // plataforma BJ
+	EndIf
+
+	// Tipo de venda, obrigatorio no dicionario e usado pelo SX5NOTA para escolher
+	// a serie. Combo: 01=Venda;02=Pecas;03=Servicos;04=Comodato
+	If SC5->(FieldPos("C5_YTPVEN")) > 0
+		aAdd(aCabec, {"C5_YTPVEN", "01", Nil})   // venda
+	EndIf
+
+	// Os campos abaixo seguem o pedido da Maxima (Faturamento/Maxima/IMPPED.prw),
+	// o outro pedido que entra no ERP vindo de fora.
+	If SC5->(FieldPos("C5_FORPGT")) > 0
+		If Empty(SA1->A1_FORPGT)
+			aAdd(aCabec, {"C5_FORPGT", "B", Nil})   // sem forma no cliente: a mesma da Maxima
+		Else
+			aAdd(aCabec, {"C5_FORPGT", SA1->A1_FORPGT, Nil})
+		EndIf
+	EndIf
+
+	If SC5->(FieldPos("C5_DTIMP")) > 0
+		aAdd(aCabec, {"C5_DTIMP", Date(), Nil})
+	EndIf
+
+	If SC5->(FieldPos("C5_HRIMP")) > 0
+		aAdd(aCabec, {"C5_HRIMP", Time(), Nil})
+	EndIf
+
+	If SC5->(FieldPos("C5_XSTATUS")) > 0
+		aAdd(aCabec, {"C5_XSTATUS", "P", Nil})
+	EndIf
+
+	// 0=Nao Aplica;1=Presencial;2=Nao Presencial,Net;3=Nao Presencial,TeleAtendi.;
+	// 5=Presencial,ForadoEstab.;9=Nao Presencial,outros
+	If SC5->(FieldPos("C5_INDPRES")) > 0
+		aAdd(aCabec, {"C5_INDPRES", "1", Nil})   // presencial
+	EndIf
+
 	// A observacao so entra se o campo existir neste dicionario
 	If !Empty(cObs) .And. SC5->(FieldPos("C5_XOBSVEN")) > 0
 		aAdd(aCabec, {"C5_XOBSVEN", cObs, Nil})
@@ -586,6 +629,7 @@ Static Function BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 		aAdd(aLinha, {"C6_ITEM"   , cItem                  , Nil})
 		aAdd(aLinha, {"C6_PRODUTO", cProd                  , Nil})
 		aAdd(aLinha, {"C6_QTDVEN" , nQtd                   , Nil})
+		aAdd(aLinha, {"C6_QTDLIB" , 0                      , Nil})
 		aAdd(aLinha, {"C6_PRCVEN" , nPreco                 , Nil})
 		aAdd(aLinha, {"C6_VALOR"  , Round(nQtd * nPreco, 2), Nil})
 
@@ -765,6 +809,7 @@ Static Function BJVincula(cIdPlat, cNumPed, oOrc)
 	Else
 		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Falha ao vincular " + cIdPlat + " ao pedido " + cNumPed + ;
 			" (HTTP " + cValToChar(nHttp) + "): " + cErro, 0, 0, {})
+		ConOut("[BJPLA] U_BJRETORNO - falha ao vincular " + cIdPlat + " ao pedido " + cNumPed + " (HTTP " + cValToChar(nHttp) + "): " + cErro)
 	EndIf
 
 Return lRet
@@ -795,10 +840,14 @@ Static Function BJLogAuto()
 Return SubStr(cRet, 1, 400)
 
 /*/{Protheus.doc} BJErroOrc
-Grava a falha da criacao do orcamento na mensagem e no log.
+Grava a falha da criacao do pedido na mensagem e no log, e avisa a
+plataforma: o orcamento passa a mostrar "Erro de integracao" com o motivo, em
+vez de ficar "aguardando" sem explicacao. O orcamento continua pendente la e
+volta no proximo ciclo; o vinculo, quando der certo, limpa o erro.
 @type    Static Function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
+@param   cSeqMae, character, Lote (ZY_CODIGO) da mensagem
 @param   cSeq   , character, Sequencia da mensagem na fila
 @param   cIdPlat, character, Id interno da plataforma
 @param   cMsg   , character, Motivo da falha
@@ -806,9 +855,26 @@ Grava a falha da criacao do orcamento na mensagem e no log.
 /*/
 Static Function BJErroOrc(cSeqMae, cSeq, cIdPlat, cMsg)
 
+	Local cResp := ""
+	Local cErro := ""
+	Local nHttp := 0
+	Local oJson := Nil
+
 	FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Orcamento " + cIdPlat + ": " + cMsg, 0, 0, {})
+	ConOut("[BJPLA] U_BJRETORNO - orcamento " + cIdPlat + ": " + cMsg)
 
 	U_BJGRAVA(cSeqMae, cSeq, "3", 0, cMsg, "")
+
+	// O aviso nao muda nada aqui: se falhar, o erro ja esta na SZZ e o
+	// orcamento volta no proximo ciclo, que avisa de novo.
+	oJson := JsonObject():New()
+	oJson["mensagem"] := SubStr(cMsg, 1, 2000)
+
+	If !U_BJHTTP("PATCH", "/integracao/orcamentos/pendentes/" + AllTrim(cIdPlat) + "/erro", oJson:ToJson(), @cResp, @nHttp, @cErro)
+		ConOut("[BJPLA] U_BJRETORNO - falha ao avisar a recusa do orcamento " + cIdPlat + " (HTTP " + cValToChar(nHttp) + "): " + cErro)
+	EndIf
+
+	oJson := Nil
 
 Return Nil
 
@@ -895,7 +961,9 @@ Static Function BJTrataAlt(oAlt, aTotal, cSeqMae)
 	Local nX       := 0
 	Local nTamLoj  := TamSX3("A1_LOJA")[1]
 
-	If ValType(oAlt) != "O"
+	// Item de array lido de um JsonObject e "J", nao "O"
+	If ValType(oAlt) != "J"
+		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Alteracao de cliente com formato invalido na resposta. Registro ignorado.", 0, 0, {})
 		aTotal[4] += 1
 		Return Nil
 	EndIf
@@ -1520,11 +1588,11 @@ User Function BJDRENA(nLimite, cSeqMae, oProcess)
 			If "{chave}" $ cRota
 				// Rota com a chave no meio, como a do XML da nota:
 				// /integracao/notas-saida/{chave}/xml
-				cRota := StrTran(cRota, "{chave}", AllTrim(aFila[nX][3]))
+				cRota := StrTran(cRota, "{chave}", BJUrlChave(aFila[nX][3]))
 			ElseIf aFila[nX][4] != "POST"
 				// POST cria ou atualiza na rota da entidade. PATCH e DELETE
 				// identificam o recurso pela chave no fim da URL.
-				cRota += "/" + AllTrim(aFila[nX][3])
+				cRota += "/" + BJUrlChave(aFila[nX][3])
 			EndIf
 
 			If U_BJHTTP(aFila[nX][4], cRota, aFila[nX][5], @cResp, @nHttp, @cErro)
@@ -1680,6 +1748,42 @@ Static Function BJFechaEnv(cLote)
 	RestArea(aArea)
 
 Return Nil
+
+/*/{Protheus.doc} BJUrlChave
+Chave de integracao pronta para ir no caminho da URL (percent-encoding).
+A chave e a concatenacao dos campos do X2_UNICO sem tirar os espacos de dentro -
+a serie da nota ("1  ") e o formulario (" ") deixam a chave como
+"01-000117438-1  -000033-01- -N". Espaco cru na URL e recusado pelo servidor com
+400 Bad Request antes de a API ler o corpo. So as pontas sao aparadas, como antes;
+a API decodifica e recebe a chave com os espacos de dentro, que e como ela esta gravada.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   29/09/2026
+@param   cChave, character, ZZ_CHVORI como esta gravado
+@return  character, Chave com tudo que nao for letra, numero ou -_.~ em %XX
+/*/
+Static Function BJUrlChave(cChave)
+
+	Local cHex := "0123456789ABCDEF"
+	Local cRet := ""
+	Local cCar := ""
+	Local nAsc := 0
+	Local nI   := 0
+
+	cChave := AllTrim(cChave)
+
+	For nI := 1 To Len(cChave)
+		cCar := SubStr(cChave, nI, 1)
+		nAsc := Asc(cCar)
+
+		If (nAsc < 128 .And. (IsAlpha(cCar) .Or. IsDigit(cCar))) .Or. cCar $ "-_.~"
+			cRet += cCar
+		Else
+			cRet += "%" + SubStr(cHex, Int(nAsc / 16) + 1, 1) + SubStr(cHex, (nAsc % 16) + 1, 1)
+		EndIf
+	Next nI
+
+Return cRet
 
 /*/{Protheus.doc} BJSuperada
 Diz se a mensagem ja foi superada por outra, da mesma chave, em lote mais novo.

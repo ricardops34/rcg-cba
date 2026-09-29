@@ -279,7 +279,7 @@ export const MENUS: DefinicaoMenu[] = [
     rota: '/comercial/leads',
     icone: 'user-search',
     codigo: 'leads',
-    moduloId: MODULO.comercial,
+    moduloId: MODULO.crm,
   },
   {
     id: 'seed-menu-configuracoes-whatsapp',

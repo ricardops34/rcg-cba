@@ -138,7 +138,7 @@ export function useMenu() {
   });
 
   const data = useMemo(() => {
-    if (!query.data || !permissoes) return query.data;
+    if (!query.data || !permissoes) return undefined;
     const podeVer = (codigo: string) =>
       permissoes.includes(`${codigo}.visualizar`) &&
       (whatsappAtivo === true ||

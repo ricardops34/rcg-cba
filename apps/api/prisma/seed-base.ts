@@ -145,6 +145,22 @@ const PARAMETROS_PADRAO = [
       'Agrupa o Dashboard Gerencial pela hierarquia comercial (gerente, supervisor e seus vendedores); falso mostra a lista plana',
   },
   {
+    parametro: 'VENDAS_SERIES_NOTA',
+    tipo: 'texto' as const,
+    tamanho: 30,
+    conteudo: null,
+    descricao:
+      'Séries de nota de saída que contam como venda nos Dashboards e Consultas, separadas por vírgula (ex.: 1 ou 1,3); vazio considera todas',
+  },
+  {
+    parametro: 'VENDAS_CFOPS_EXCLUIDOS',
+    tipo: 'texto' as const,
+    tamanho: 100,
+    conteudo: '5908,6908,5910,6910',
+    descricao:
+      'CFOPs de item que não contam como venda nos Dashboards e Consultas, separados por vírgula (padrão: comodato 5908/6908 e bonificação 5910/6910); vazio conta todos',
+  },
+  {
     parametro: 'COMISSAO_OCULTA_PARA_TODOS',
     tipo: 'booleano' as const,
     tamanho: null,

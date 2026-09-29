@@ -96,15 +96,49 @@ export class EstoqueService {
             ? { codigoErp: query.sortOrder }
             : { descricao: query.sortOrder };
 
+      // O saldo é agregado por produto: ordenar antes de paginar. Reutiliza
+      // o filtro de produtos para preservar as regras de visibilidade.
+      let idsOrdenados: string[] | undefined;
+      if (query.sortBy === 'saldoTotal') {
+        const candidatos = await tx.produto.findMany({ where, select: { id: true } });
+        const { skip, take } = paginationToSkipTake(query);
+        const direcao = query.sortOrder === 'desc' ? Prisma.sql`DESC` : Prisma.sql`ASC`;
+        const ordenados = candidatos.length
+          ? await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+              SELECT p.id
+              FROM produtos p
+              LEFT JOIN (
+                SELECT e."produtoId", SUM(e.saldo) AS saldo
+                FROM estoques e
+                JOIN armazens a ON a.id = e."armazemId" AND a."empresaId" = e."empresaId"
+                WHERE e."empresaId" = ${empresaId} AND e."deletedAt" IS NULL
+                  AND a.revenda = true AND (a.ativo = true OR e.saldo > 0)
+                  ${query.armazemId ? Prisma.sql`AND e."armazemId" = ${query.armazemId}` : Prisma.empty}
+                GROUP BY e."produtoId"
+              ) s ON s."produtoId" = p.id
+              WHERE p."empresaId" = ${empresaId}
+                AND p.id = ANY(${candidatos.map((p) => p.id)}::text[])
+              ORDER BY COALESCE(s.saldo, 0) ${direcao}, p.id ASC
+              LIMIT ${take} OFFSET ${skip}
+            `)
+          : [];
+        idsOrdenados = ordenados.map((p) => p.id);
+      }
+
       const [produtos, total] = await Promise.all([
         tx.produto.findMany({
-          where,
+          where: idsOrdenados ? { ...where, id: { in: idsOrdenados } } : where,
           include: { categoria: CATEGORIA_SELECT },
-          ...paginationToSkipTake(query),
+          ...(idsOrdenados ? {} : paginationToSkipTake(query)),
           orderBy,
         }),
         tx.produto.count({ where }),
       ]);
+
+      if (idsOrdenados) {
+        const posicoes = new Map(idsOrdenados.map((id, index) => [id, index]));
+        produtos.sort((a, b) => posicoes.get(a.id)! - posicoes.get(b.id)!);
+      }
 
       const produtoIds = produtos.map((p) => p.id);
       const somas = produtoIds.length

@@ -36,7 +36,8 @@ até 1.000 registros de uma vez — ver [Lote](#lote--put-integracaoentidade).
 | `/integracao/notas-saida` | `chave` | `ativo`, `semXml` | mestre-detalhe (`itens`) + rotas de XML |
 | `/integracao/notas-entrada` | `chave` | `ativo`, `tipo`, `fornecedorChave`, `clienteChave` | mestre-detalhe (`itens`) + `tipo` decide o participante |
 | `/integracao/titulos-receber` | `chave` | `ativo` | campos de cobrança bancária |
-| `/integracao/orcamentos` | `chave` | `ativo`, `status` | mestre-detalhe (`itens`) + fila de pendentes |
+| `/integracao/orcamentos` | `chave` | `ativo`, `status` | mestre-detalhe (`itens`) + fila de pendentes + recusa do pedido |
+| `/integracao/pedidos` | `chave` | — | `POST`, `PUT` e `DELETE`, sem `GET`: situação do pedido gerado de um orçamento |
 | `/integracao/arquivo/importar` | — | — | `POST` envia arquivo TXT/JSON do Protheus e processa em lote |
 | `/integracao/arquivo/exportar` | — | — | `GET` baixa pendências da plataforma em TXT para importar no Protheus |
 
@@ -443,6 +444,85 @@ outro orçamento.
 > `GET /integracao/orcamentos` lista **só** os que já têm `chave`. Quem
 > procura orçamento da plataforma ali não acha nada: eles estão em
 > `.../pendentes` até serem vinculados.
+
+### Recusa do pedido no ERP
+
+```
+PATCH /integracao/orcamentos/pendentes/{id}/erro
+```
+
+Quando o ERP tenta gravar o pedido e não consegue (`MATA410` recusou), ele
+informa o motivo:
+
+```json
+{ "mensagem": "ExecAuto MATA410: AJUDA:OBRIGAT ... Tp. Venda" }
+```
+
+O orçamento **sai de `.../pendentes`** e a tela mostra **Erro de integração**
+com o motivo. O ERP não tenta de novo: o vendedor copia o orçamento, corrige e
+aprova o novo. `409` se o orçamento já estiver vinculado ou não estiver
+aprovado.
+
+---
+
+## Pedidos — `/integracao/pedidos`
+
+```
+POST   /integracao/pedidos           um pedido
+PUT    /integracao/pedidos           lote (até 1.000)
+DELETE /integracao/pedidos/{chave}   pedido excluído → Cancelado
+```
+
+Acompanhamento do pedido de venda (SC5/SC6) que o ERP gerou a partir de um
+orçamento — plano `docs/planos/2026-09-28-orcamento-situacao-erp.md`. **Não
+cria registro**: a plataforma acha o orçamento pela `chave` do pedido
+(`C5_FILIAL-C5_NUM`, a mesma que o `PATCH .../pendentes/{id}` gravou nele) e
+atualiza nele a situação, a quebra e as notas. `POST` e `DELETE` existem para
+o envio por mensagem do ERP (um registro por chamada, como as outras
+entidades); `POST` e `DELETE` sem orçamento vinculado respondem `404`. Não há
+`GET`: a situação se lê no próprio orçamento.
+
+```json
+{
+  "registros": [
+    {
+      "chave": "01-004512",
+      "codigoErp": "004512",
+      "situacao": "faturado_parcial",
+      "itens": [
+        {
+          "chave": "01-004512-01-11400443",
+          "produtoChave": "01-11400443",
+          "quantidade": 5,
+          "vlrUnitario": 735.3,
+          "quantidadeEntregue": 2
+        }
+      ],
+      "notas": [{ "numero": "000081234", "serie": "1", "emissao": "2026-09-29" }]
+    },
+    { "chave": "01-004513", "excluido": true }
+  ]
+}
+```
+
+- **`situacao`** vem calculada pelo ERP: `pendente`, `liberado`,
+  `bloqueado_desconto`, `bloqueado_credito`, `bloqueado_estoque`,
+  `faturado_parcial`, `faturado`. Precedência dos bloqueios: desconto
+  (`C5_LIBDESC = 2`) → crédito (`C9_BLCRED`) → estoque (`C9_BLEST`).
+- **`"excluido": true`** é o pedido excluído no ERP: o orçamento fica
+  **Cancelado**. Basta a `chave`.
+- **`situacao: "cancelado"`** é o pedido encerrado por eliminação de resíduo:
+  ele continua existindo no ERP, então vem completo, com itens e notas.
+- **Quebra** é calculada aqui: os `itens` (todos os ativos do pedido) são
+  comparados com os do orçamento pela chave do SC6. Item incluído ou retirado,
+  quantidade ou preço diferente (tolerância de meio centavo) marcam o orçamento
+  **com quebra**. Mande sempre o pedido inteiro.
+- **`notas`** substitui a lista de notas do orçamento.
+- Pedido sem orçamento vinculado (digitado direto no ERP) volta em `erros` no
+  relatório — o ERP deve mandar só os pedidos que vieram da plataforma.
+
+O status comercial do orçamento (`aprovado`) **não muda**: a situação do
+pedido é um campo à parte.
 
 
 ---

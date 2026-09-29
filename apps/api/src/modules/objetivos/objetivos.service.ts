@@ -8,10 +8,7 @@ import {
   buildPaginatedResult,
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
-import {
-  ITEM_DE_VENDA_WHERE,
-  NOTA_DE_VENDA_WHERE,
-} from '../../common/vendas/venda-analitica';
+import { corteDeVenda } from '../../common/vendas/venda-analitica';
 import type {
   DashboardGerencial,
   DashboardGerencialClientesSemVendedor,
@@ -322,7 +319,7 @@ export class ObjetivosService {
    * legado: o campo item-level vlr_bruto do legado não foi importado, só
    * vlr_total, que já é o valor líquido de desconto).
    *
-   * O que entra vem de `ITEM_DE_VENDA_WHERE`: até então o realizado somava
+   * O que entra vem de `corteDeVenda`: até então o realizado somava
    * item de qualquer nota — comodato, devolução e nota sem financeiro
    * inclusive —, o que dava um realizado maior do que o das Consultas para o
    * mesmo mês.
@@ -330,6 +327,7 @@ export class ObjetivosService {
   async dashboard(empresaId: string, user: AuthenticatedUser, query: ObjetivoDashboardQuery) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const venda = await corteDeVenda(tx, empresaId);
       const filtroVendedor = combinarFiltroVendedor(escopo, query.vendedorId);
 
       const objetivos = await tx.objetivoVendedorMes.findMany({
@@ -363,7 +361,7 @@ export class ObjetivosService {
         : {};
       const itensWhere = {
         empresaId,
-        ...ITEM_DE_VENDA_WHERE,
+        ...venda.item,
         ano: query.ano,
         mes: query.mes,
         ...filtroVendedor,
@@ -475,13 +473,14 @@ export class ObjetivosService {
   ): Promise<string[]> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const venda = await corteDeVenda(tx, empresaId);
       const filtroVendedor = combinarFiltroVendedor(escopo, query.vendedorId);
 
       const grupos = await tx.notaSaidaItem.groupBy({
         by: ['clienteId'],
         where: {
           empresaId,
-          ...ITEM_DE_VENDA_WHERE,
+          ...venda.item,
           ano: query.ano,
           mes: query.mes,
           clienteId: { not: null },
@@ -524,11 +523,12 @@ export class ObjetivosService {
   ): Promise<DashboardGerencial> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const venda = await corteDeVenda(tx, empresaId);
       const filtroVendedor = combinarFiltroVendedor(escopo, query.vendedorId);
 
       const itensWhere = {
         empresaId,
-        ...ITEM_DE_VENDA_WHERE,
+        ...venda.item,
         ano: query.ano,
         mes: query.mes,
         ...filtroVendedor,
@@ -540,7 +540,7 @@ export class ObjetivosService {
         positivacaoGrupos,
         baseTotal,
         clientesSemVendedor,
-        totalNotas,
+        notasGrupos,
       ] = await Promise.all([
         tx.objetivoVendedorMes.findMany({
           where: {
@@ -577,16 +577,20 @@ export class ObjetivosService {
               },
             })
           : Promise.resolve(0),
-        tx.notaSaida.count({
-          where: {
-            empresaId,
-            ...NOTA_DE_VENDA_WHERE,
-            ano: query.ano,
-            mes: query.mes,
-            ...filtroVendedor,
-          },
+        // O divisor do ticket (total de vendas ÷ número de vendas) conta a
+        // nota pelos **itens** que o realizado soma, e não pelo cabeçalho: uma
+        // nota só de comodato, bonificação ou categoria não acompanhada entra
+        // com zero no realizado e, contada aqui, puxava o ticket para baixo
+        // (09/2026: 147 de 621 notas nessa situação). O par com o vendedor é
+        // para seguir o realizado, que descarta item sem vendedor.
+        tx.notaSaidaItem.groupBy({
+          by: ['notaSaidaId', 'vendedorId'],
+          where: itensWhere,
         }),
       ]);
+      const totalNotas = new Set(
+        notasGrupos.filter((g) => g.vendedorId).map((g) => g.notaSaidaId),
+      ).size;
 
       const objetivoPorVendedor = new Map<
         string,
@@ -789,6 +793,7 @@ export class ObjetivosService {
   ): Promise<DashboardGerencialVendedor> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const venda = await corteDeVenda(tx, empresaId);
       const filtroVendedor = combinarFiltroVendedor(escopo, vendedorId);
       const noEscopo = escopo === null || escopo.includes(vendedorId);
 
@@ -816,7 +821,7 @@ export class ObjetivosService {
           by: ['produtoId'],
           where: {
             empresaId,
-            ...ITEM_DE_VENDA_WHERE,
+            ...venda.item,
             ano: query.ano,
             mes: query.mes,
             ...filtroVendedor,
@@ -935,6 +940,7 @@ export class ObjetivosService {
   ): Promise<DashboardGerencialClientesSemVendedor> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const venda = await corteDeVenda(tx, empresaId);
       if (escopo !== null) {
         return { total: 0, limite: LIMITE_CLIENTES_SEM_VENDEDOR, linhas: [] };
       }
@@ -966,7 +972,7 @@ export class ObjetivosService {
             by: ['clienteId'],
             where: {
               empresaId,
-              ...NOTA_DE_VENDA_WHERE,
+              ...venda.nota,
               clienteId: { in: clientes.map((c) => c.id) },
             },
             _max: { dtEmissao: true },

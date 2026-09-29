@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { TenantTx } from '../../../common/prisma/prisma.service';
 import type { EscopoVendedores } from '../../../common/escopo/escopo-vendedores';
-import { ITEM_DE_VENDA_WHERE } from '../../../common/vendas/venda-analitica';
+import { corteDeVenda } from '../../../common/vendas/venda-analitica';
 
 /** Teto de linhas devolvidas ao modelo. Resposta de WhatsApp é curta. */
 const MAX_LINHAS = 20;
@@ -170,6 +170,7 @@ export class TriagemFuncionarioToolsService {
     if (busca.length < 3) {
       return { erro: 'Informe pelo menos 3 letras do nome do cliente' };
     }
+    const venda = await corteDeVenda(tx, empresaId);
 
     const clientes = await tx.cliente.findMany({
       where: {
@@ -238,7 +239,7 @@ export class TriagemFuncionarioToolsService {
         where: {
           empresaId,
           clienteId: cliente.id,
-          ...ITEM_DE_VENDA_WHERE,
+          ...venda.item,
         },
         _max: { dtEmissao: true },
       }),
@@ -337,7 +338,7 @@ export class TriagemFuncionarioToolsService {
   /**
    * Objetivo × realizado do mês, por pessoa.
    *
-   * **O realizado sai de `ITEM_DE_VENDA_WHERE`**, a mesma regra do Dashboard,
+   * **O realizado sai de `corteDeVenda`**, a mesma regra do Dashboard,
    * dos Objetivos e das Consultas. Reimplementar "o que conta como venda" aqui
    * daria um segundo número para a mesma pergunta — que é exatamente o
    * problema que aquele arquivo existe para ter resolvido, e o tipo de coisa
@@ -349,6 +350,7 @@ export class TriagemFuncionarioToolsService {
     escopo: EscopoVendedores,
     opcoes: { vendedor?: string; mes?: number; ano?: number },
   ) {
+    const venda = await corteDeVenda(tx, empresaId);
     const agora = new Date();
     const mes = opcoes.mes ?? agora.getMonth() + 1;
     const ano = opcoes.ano ?? agora.getFullYear();
@@ -392,14 +394,14 @@ export class TriagemFuncionarioToolsService {
       }),
       tx.notaSaidaItem.groupBy({
         by: ['vendedorId'],
-        where: { empresaId, ...ITEM_DE_VENDA_WHERE, ano, mes, ...filtro },
+        where: { empresaId, ...venda.item, ano, mes, ...filtro },
         _sum: { vlrTotal: true, vlrDev: true },
       }),
       tx.notaSaidaItem.groupBy({
         by: ['vendedorId', 'clienteId'],
         where: {
           empresaId,
-          ...ITEM_DE_VENDA_WHERE,
+          ...venda.item,
           ano,
           mes,
           clienteId: { not: null },
@@ -653,7 +655,7 @@ export class TriagemFuncionarioToolsService {
    * Clientes da carteira sem compra no mês, com o que sugerir a cada um.
    *
    * "Sem compra no mês" é o contrário de **positivado**, o mesmo indicador das
-   * Consultas — e usa o mesmo `ITEM_DE_VENDA_WHERE`, então a conta bate com a
+   * Consultas — e usa o mesmo `corteDeVenda`, então a conta bate com a
    * do painel.
    *
    * A ordem é por última compra, do mais recente para o mais antigo: quem
@@ -666,6 +668,7 @@ export class TriagemFuncionarioToolsService {
     escopo: EscopoVendedores,
     quantidade: number,
   ) {
+    const venda = await corteDeVenda(tx, empresaId);
     const take = Math.min(Math.max(quantidade || PADRAO_LINHAS, 1), MAX_LINHAS);
     const agora = new Date();
     const mes = agora.getMonth() + 1;
@@ -675,7 +678,7 @@ export class TriagemFuncionarioToolsService {
       by: ['clienteId'],
       where: {
         empresaId,
-        ...ITEM_DE_VENDA_WHERE,
+        ...venda.item,
         ano,
         mes,
         clienteId: { not: null },
@@ -698,7 +701,7 @@ export class TriagemFuncionarioToolsService {
       by: ['clienteId'],
       where: {
         empresaId,
-        ...ITEM_DE_VENDA_WHERE,
+        ...venda.item,
         clienteId: { not: null },
         ...this.doEscopo(escopo),
       },

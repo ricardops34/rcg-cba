@@ -31,6 +31,8 @@ import { IntegracaoTitulosReceberController } from './titulos-receber/integracao
 import { IntegracaoTitulosReceberService } from './titulos-receber/integracao-titulos-receber.service';
 import { IntegracaoOrcamentosController } from './orcamentos/integracao-orcamentos.controller';
 import { IntegracaoOrcamentosService } from './orcamentos/integracao-orcamentos.service';
+import { IntegracaoPedidosController } from './pedidos/integracao-pedidos.controller';
+import { IntegracaoPedidosService } from './pedidos/integracao-pedidos.service';
 import { IntegracaoFileController } from './import/integracao-file.controller';
 import { IntegracaoFileService } from './import/integracao-file.service';
 import { IntegracaoCargasController } from './cargas/integracao-cargas.controller';
@@ -60,6 +62,7 @@ import { ApiKeyGuard } from './guards/api-key.guard';
     IntegracaoNotasEntradaController,
     IntegracaoTitulosReceberController,
     IntegracaoOrcamentosController,
+    IntegracaoPedidosController,
     IntegracaoFileController,
     IntegracaoCargasController,
     IntegracaoCargasAdminController,
@@ -81,6 +84,7 @@ import { ApiKeyGuard } from './guards/api-key.guard';
     IntegracaoNotasEntradaService,
     IntegracaoTitulosReceberService,
     IntegracaoOrcamentosService,
+    IntegracaoPedidosService,
     IntegracaoFileService,
     IntegracaoCargasService,
     EntidadesCarga,

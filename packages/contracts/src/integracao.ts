@@ -5,7 +5,10 @@ import {
   paginationQuerySchema,
 } from "./common";
 import { tipoPessoaSchema } from "./cliente";
-import { statusOrcamentoSchema } from "./orcamento";
+import {
+  situacaoErpOrcamentoSchema,
+  statusOrcamentoSchema,
+} from "./orcamento";
 
 // Plano docs/planos/2026-09-22-chave-integracao.md. Todo registro da integração
 // é identificado pela `chave`: a chave única do Protheus (X2_UNICO), com "-"
@@ -1991,6 +1994,121 @@ export const INTEGRACAO_ORCAMENTO_VINCULAR_EXAMPLE: IntegracaoOrcamentoVincular 
     ],
   };
 
+// O ERP recusou gravar o pedido do orçamento pendente (MATA410). O orçamento
+// continua na fila de pendentes e mostra o motivo; o próximo vínculo limpa.
+export const integracaoOrcamentoErroSchema = z.object({
+  mensagem: z
+    .string()
+    .trim()
+    .min(1)
+    .max(2000)
+    .describe("Motivo da recusa no ERP (log do ExecAuto)"),
+});
+export type IntegracaoOrcamentoErro = z.infer<
+  typeof integracaoOrcamentoErroSchema
+>;
+
+export const INTEGRACAO_ORCAMENTO_ERRO_EXAMPLE: IntegracaoOrcamentoErro = {
+  mensagem:
+    "ExecAuto MATA410: AJUDA:OBRIGAT Um ou mais campos obrigatórios não foram preenchidos. Tp. Venda",
+};
+
+// ------------------------------------------------------------------
+// Pedidos de venda (SC5/SC6) — situação do pedido gerado de um orçamento.
+// ------------------------------------------------------------------
+// Não cria nada na plataforma: acha o orçamento pela chave do pedido (a mesma
+// que o PATCH .../pendentes/{id} gravou nele) e atualiza a situação, a quebra
+// e as notas. Pedido digitado direto no ERP não tem orçamento e volta como
+// erro no relatório do lote. "excluido": true = pedido excluído no ERP →
+// situação Cancelado.
+
+export const integracaoPedidoItemSchema = z.object({
+  chave: z
+    .string()
+    .trim()
+    .min(1)
+    .max(60)
+    .describe("Chave do item do pedido: C6_FILIAL-C6_NUM-C6_ITEM-C6_PRODUTO"),
+  produtoChave: chaveObrigatoriaSchema().describe("chave do produto"),
+  quantidade: z.coerce.number().min(0).describe("C6_QTDVEN"),
+  vlrUnitario: z.coerce.number().min(0).describe("C6_PRCVEN"),
+  quantidadeEntregue: z.coerce
+    .number()
+    .min(0)
+    .default(0)
+    .describe("C6_QTDENT — quanto já foi faturado"),
+});
+export type IntegracaoPedidoItem = z.infer<typeof integracaoPedidoItemSchema>;
+
+export const integracaoPedidoNotaSchema = z.object({
+  numero: z.string().trim().min(1).max(20).describe("F2_DOC"),
+  serie: z.string().trim().max(5).default("").describe("F2_SERIE"),
+  emissao: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Use AAAA-MM-DD")
+    .describe("F2_EMISSAO, AAAA-MM-DD"),
+});
+
+export const integracaoPedidoCreateSchema = z.object({
+  chave: z
+    .string()
+    .trim()
+    .min(1)
+    .max(60)
+    .describe("Chave do pedido: C5_FILIAL-C5_NUM — a do vínculo do orçamento"),
+  codigoErp: codigoErpSchema.describe("C5_NUM, informativo"),
+  situacao: situacaoErpOrcamentoSchema.describe(
+    "Situação calculada no ERP. \"cancelado\" aqui é o pedido encerrado por " +
+      "eliminação de resíduo (continua existindo, com as notas); o pedido " +
+      "excluído vem como \"excluido\": true ou DELETE",
+  ),
+  itens: z
+    .array(integracaoPedidoItemSchema)
+    .default([])
+    .describe("Todos os itens ativos do pedido — a quebra é calculada sobre eles"),
+  notas: z
+    .array(integracaoPedidoNotaSchema)
+    .default([])
+    .describe("Notas de saída do pedido (SD2 pelo D2_PEDIDO)"),
+});
+export type IntegracaoPedidoCreate = z.infer<
+  typeof integracaoPedidoCreateSchema
+>;
+
+// Resposta do POST e do DELETE: o orçamento que o pedido atualizou. O `id` é o
+// do orçamento na plataforma — é o que o ERP guarda como chave de destino.
+export const integracaoPedidoSchema = z.object({
+  id: z.string().uuid().describe("id do orçamento que gerou o pedido"),
+  chave: z.string(),
+  situacaoErp: situacaoErpOrcamentoSchema.nullable(),
+  comQuebra: z.boolean(),
+});
+export type IntegracaoPedido = z.infer<typeof integracaoPedidoSchema>;
+
+export const INTEGRACAO_PEDIDO_EXAMPLE: IntegracaoPedido = {
+  id: "0d1e2f3a-4b5c-4d6e-7f80-91a2b3c4d5e6",
+  chave: "01-004512",
+  situacaoErp: "faturado_parcial",
+  comQuebra: false,
+};
+
+export const INTEGRACAO_PEDIDO_CREATE_EXAMPLE: IntegracaoPedidoCreate = {
+  chave: "01-004512",
+  codigoErp: "004512",
+  situacao: "faturado_parcial",
+  itens: [
+    {
+      chave: "01-004512-01-11400443",
+      produtoChave: "01-11400443",
+      quantidade: 5,
+      vlrUnitario: 735.3,
+      quantidadeEntregue: 2,
+    },
+  ],
+  notas: [{ numero: "000081234", serie: "1", emissao: "2026-09-29" }],
+};
+
 // ------------------------------------------------------------------
 // Regras de desconto (mestre-detalhe) — identificado pela chave (Z0_FILIAL-Z0_CODIGO).
 // ------------------------------------------------------------------
@@ -2390,6 +2508,16 @@ export type IntegracaoOrcamentoLoteItem = z.infer<
 >;
 export const integracaoOrcamentoLoteSchema = integracaoLoteSchema(
   integracaoOrcamentoLoteItemSchema,
+);
+
+export const integracaoPedidoLoteItemSchema = integracaoLoteItemSchema(
+  integracaoPedidoCreateSchema,
+);
+export type IntegracaoPedidoLoteItem = z.infer<
+  typeof integracaoPedidoLoteItemSchema
+>;
+export const integracaoPedidoLoteSchema = integracaoLoteSchema(
+  integracaoPedidoLoteItemSchema,
 );
 
 export const integracaoRegraDescontoLoteItemSchema = integracaoLoteItemSchema(

@@ -16,6 +16,89 @@ export const statusOrcamentoSchema = z.enum([
 export type StatusOrcamento = z.infer<typeof statusOrcamentoSchema>;
 
 /**
+ * Situação do pedido que o ERP gerou a partir do orçamento — gravada pela
+ * integração (`PUT /integracao/pedidos`), separada do `status` comercial.
+ * Ver docs/planos/2026-09-28-orcamento-situacao-erp.md.
+ */
+export const situacaoErpOrcamentoSchema = z.enum([
+  "pendente",
+  "liberado",
+  "bloqueado_credito",
+  "bloqueado_estoque",
+  "bloqueado_desconto",
+  "faturado_parcial",
+  "faturado",
+  "cancelado",
+]);
+export type SituacaoErpOrcamento = z.infer<typeof situacaoErpOrcamentoSchema>;
+
+/** Nota fiscal do pedido, como o ERP a informa. */
+export const notaErpOrcamentoSchema = z.object({
+  numero: z.string(),
+  serie: z.string(),
+  emissao: z.string().describe("Data de emissão, AAAA-MM-DD"),
+});
+export type NotaErpOrcamento = z.infer<typeof notaErpOrcamentoSchema>;
+
+/** Item do pedido como o ERP mandou por último — comparado com o orçamento. */
+export const itemErpOrcamentoSchema = z.object({
+  chave: z.string().describe("C6_FILIAL-C6_NUM-C6_ITEM-C6_PRODUTO"),
+  produtoChave: z.string(),
+  quantidade: z.number(),
+  vlrUnitario: z.number(),
+  quantidadeEntregue: z.number(),
+});
+export type ItemErpOrcamento = z.infer<typeof itemErpOrcamentoSchema>;
+
+/**
+ * Onde o orçamento está em relação ao ERP, para a listagem e a aba de
+ * integração lerem a mesma coisa. Além das situações gravadas pelo ERP, duas
+ * saem do próprio orçamento:
+ *
+ * - `nao_enviado` — ainda não aprovado; o ERP não o enxerga;
+ * - `aguardando` — aprovado, sem pedido ainda;
+ * - `erro_integracao` — aprovado, sem pedido, e o ERP recusou a gravação.
+ *
+ * A marca "com quebra" (`comQuebra`) acompanha qualquer situação de pedido.
+ */
+export type SituacaoIntegracaoOrcamento =
+  | "nao_enviado"
+  | "aguardando"
+  | "erro_integracao"
+  | SituacaoErpOrcamento;
+
+export const SITUACAO_INTEGRACAO_ROTULO: Record<SituacaoIntegracaoOrcamento, string> = {
+  nao_enviado: "Não enviado ao ERP",
+  aguardando: "Aguardando Integração",
+  erro_integracao: "Erro de integração",
+  pendente: "Pendente",
+  liberado: "Liberado",
+  bloqueado_credito: "Bloqueado Crédito",
+  bloqueado_estoque: "Bloqueado Estoque",
+  bloqueado_desconto: "Bloqueado Desconto",
+  // "Faturando" e não "Faturado parcial" (decisão do usuário, 29/09/2026): o
+  // pedido está em faturamento, e a tela aponta item a item o que falta.
+  faturado_parcial: "Faturando",
+  faturado: "Faturado",
+  cancelado: "Cancelado",
+};
+
+export function situacaoIntegracaoOrcamento(o: {
+  status: StatusOrcamento;
+  chave?: string | null;
+  codigoErp: string | null;
+  situacaoErp: SituacaoErpOrcamento | null;
+  erroIntegracao: string | null;
+}): SituacaoIntegracaoOrcamento {
+  if (o.situacaoErp) return o.situacaoErp;
+  if (o.status !== "aprovado") return "nao_enviado";
+  // Vinculado e o ERP ainda não mandou a situação: o pedido existe.
+  if (o.chave || o.codigoErp) return "pendente";
+  if (o.erroIntegracao) return "erro_integracao";
+  return "aguardando";
+}
+
+/**
  * Quem originou a venda — o executor, não o dono da carteira.
  *
  * A venda fica sempre com o vendedor que atende o cliente; supervisor,
@@ -112,6 +195,9 @@ export const orcamentoItemSchema = z.object({
   vlrDesconto: z.number(),
   vlrTotal: z.number(),
   produto: orcamentoItemProdutoSchema,
+  // Chave do item do pedido no ERP (SC6), gravada no vínculo. Nula enquanto
+  // não há pedido, ou no item que o ERP não aceitou no pedido.
+  chave: z.string().nullable().optional(),
   // Percentual de comissão apurado na linha (resultado da regra de desconto).
   // Nulo = ainda não apurado — o cálculo não existe por enquanto.
   percComissao: z.number().nullable().optional(),
@@ -150,6 +236,14 @@ export const orcamentoSchema = z.object({
   descontoSolicitadoPor: z.string().nullable(),
   descontoAutorizadoEm: z.string().datetime().nullable(),
   descontoAutorizadoPor: z.string().nullable(),
+  // Pedido no ERP (ver situacaoIntegracaoOrcamento): só a integração grava.
+  situacaoErp: situacaoErpOrcamentoSchema.nullable(),
+  situacaoErpEm: z.string().datetime().nullable(),
+  comQuebra: z.boolean(),
+  erroIntegracao: z.string().nullable(),
+  erroIntegracaoEm: z.string().datetime().nullable(),
+  notasErp: z.array(notaErpOrcamentoSchema).nullable(),
+  itensErp: z.array(itemErpOrcamentoSchema).nullable(),
   cliente: z.object({
     id: z.string().uuid(),
     razaoSocial: z.string(),
@@ -243,6 +337,13 @@ export const ORCAMENTO_EXAMPLE: Orcamento = {
   descontoSolicitadoPor: null,
   descontoAutorizadoEm: null,
   descontoAutorizadoPor: null,
+  situacaoErp: null,
+  situacaoErpEm: null,
+  comQuebra: false,
+  erroIntegracao: null,
+  erroIntegracaoEm: null,
+  notasErp: null,
+  itensErp: null,
   cliente: {
     id: "d4e5f6a7-8b9c-4d0e-9f1a-2b3c4d5e6f70",
     razaoSocial: "MERCADO ANDRADE LTDA",

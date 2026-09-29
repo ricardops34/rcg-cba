@@ -6,8 +6,7 @@ import {
 } from '../../common/prisma/prisma.service';
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
 import {
-  CONDICOES_ITEM_DE_VENDA_SQL,
-  CONDICOES_NOTA_DE_VENDA_SQL,
+  corteDeVenda,
   JOIN_CATEGORIA_DO_ITEM_SQL,
 } from '../../common/vendas/venda-analitica';
 import type {
@@ -166,9 +165,17 @@ export class ConsultasService {
   /**
    * O que conta como venda, aqui e no Dashboard/Objetivos — a definição mora
    * em `common/vendas/venda-analitica`, para as três telas responderem a
-   * mesma coisa.
+   * mesma coisa. Cabeçalho (alias `n`, com as séries de `VENDAS_SERIES_NOTA`)
+   * e item (alias `i` e categoria em `cat`, sem os CFOPs de
+   * `VENDAS_CFOPS_EXCLUIDOS`).
    */
-  private readonly condicoesNotaDeVenda = CONDICOES_NOTA_DE_VENDA_SQL;
+  private async condicoesDeVenda(
+    tx: TenantTx,
+    empresaId: string,
+  ): Promise<Prisma.Sql[]> {
+    const corte = await corteDeVenda(tx, empresaId);
+    return [...corte.notaSql, ...corte.itemSql];
+  }
 
   /** Recorte do período em meses corridos, sobre as colunas ano/mes do ERP. */
   private condicaoPeriodo(prefixo: Prisma.Sql, periodo: Periodo): Prisma.Sql[] {
@@ -305,8 +312,7 @@ export class ConsultasService {
 
       const condicoes: Prisma.Sql[] = [
         Prisma.sql`n."empresaId" = ${empresaId}`,
-        ...this.condicoesNotaDeVenda,
-        ...CONDICOES_ITEM_DE_VENDA_SQL,
+        ...(await this.condicoesDeVenda(tx, empresaId)),
         ...this.condicaoPeriodo(Prisma.sql`n`, query),
         ...this.condicaoEscopoClientes(escopo),
         ...this.condicaoFiltroVendedor(
@@ -364,8 +370,7 @@ export class ConsultasService {
 
       const condicoes: Prisma.Sql[] = [
         Prisma.sql`n."empresaId" = ${empresaId}`,
-        ...this.condicoesNotaDeVenda,
-        ...CONDICOES_ITEM_DE_VENDA_SQL,
+        ...(await this.condicoesDeVenda(tx, empresaId)),
         ...this.condicaoPeriodo(Prisma.sql`n`, query),
         ...this.condicaoEscopoClientes(escopo),
         ...this.condicaoFiltroVendedor(
@@ -423,11 +428,10 @@ export class ConsultasService {
         Prisma.sql`i."empresaId" = ${empresaId}`,
         // Aqui a categoria vem do produto que a consulta já traz (alias `p`),
         // então não é preciso o join extra de `JOIN_CATEGORIA_DO_ITEM_SQL`.
-        ...CONDICOES_ITEM_DE_VENDA_SQL,
         ...this.condicaoPeriodo(Prisma.sql`i`, query),
-        // O cabeçalho manda no que é venda: item de nota cancelada, de
-        // devolução, de remessa de comodato ou sem financeiro não entra.
-        ...this.condicoesNotaDeVenda,
+        // O cabeçalho manda no que é venda (nota cancelada, de devolução,
+        // de comodato ou sem financeiro), e o CFOP do item tira o resto.
+        ...(await this.condicoesDeVenda(tx, empresaId)),
         ...this.condicaoEscopoClientes(escopo),
         ...this.condicaoFiltroVendedor(
           colunaVendedor,
@@ -505,9 +509,8 @@ export class ConsultasService {
         Prisma.sql`i."empresaId" = ${empresaId}`,
         // `cat` é a categoria do produto, já no join abaixo — o mesmo atalho
         // da consulta por produto, que dispensa JOIN_CATEGORIA_DO_ITEM_SQL.
-        ...CONDICOES_ITEM_DE_VENDA_SQL,
         ...this.condicaoPeriodo(Prisma.sql`i`, query),
-        ...this.condicoesNotaDeVenda,
+        ...(await this.condicoesDeVenda(tx, empresaId)),
         ...this.condicaoEscopoClientes(escopo),
         ...this.condicaoFiltroVendedor(
           colunaVendedor,
@@ -761,7 +764,7 @@ export class ConsultasService {
    * empresa acompanha** — nota só de item descartado não positiva cliente.
    * O `DISTINCT` já cuida de a nota virar várias linhas no join.
    */
-  private evolucaoSobreNotas(
+  private async evolucaoSobreNotas(
     tx: TenantTx,
     empresaId: string,
     escopo: string[] | null,
@@ -774,8 +777,7 @@ export class ConsultasService {
         : Prisma.sql`n."vendedorId"`;
     const condicoes: Prisma.Sql[] = [
       Prisma.sql`n."empresaId" = ${empresaId}`,
-      ...this.condicoesNotaDeVenda,
-      ...CONDICOES_ITEM_DE_VENDA_SQL,
+      ...(await this.condicoesDeVenda(tx, empresaId)),
       ...this.condicaoPeriodo(Prisma.sql`n`, query),
       ...this.condicaoEscopoClientes(escopo),
       ...this.condicaoFiltroVendedor(colunaVendedor, escopo, query.vendedorIds),
@@ -811,7 +813,7 @@ export class ConsultasService {
    * primeira que trouxe algo que a empresa acompanha — senão o cliente
    * "estreava" numa remessa de brinde e nunca mais aparecia como novo.
    */
-  private evolucaoNovos(
+  private async evolucaoNovos(
     tx: TenantTx,
     empresaId: string,
     escopo: string[] | null,
@@ -824,8 +826,7 @@ export class ConsultasService {
         : Prisma.sql`p."vendedorId"`;
     const condicoesPrimeira: Prisma.Sql[] = [
       Prisma.sql`n."empresaId" = ${empresaId}`,
-      ...this.condicoesNotaDeVenda,
-      ...CONDICOES_ITEM_DE_VENDA_SQL,
+      ...(await this.condicoesDeVenda(tx, empresaId)),
       Prisma.sql`n."clienteId" IS NOT NULL`,
       Prisma.sql`n."ano" IS NOT NULL`,
       Prisma.sql`n."mes" IS NOT NULL`,

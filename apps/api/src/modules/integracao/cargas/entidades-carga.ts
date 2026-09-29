@@ -11,6 +11,7 @@ import {
   integracaoNotaSaidaLoteItemSchema,
   integracaoObjetivoLoteItemSchema,
   integracaoOrcamentoLoteItemSchema,
+  integracaoPedidoLoteItemSchema,
   integracaoProdutoLoteItemSchema,
   integracaoRegraDescontoLoteItemSchema,
   integracaoTabelaPrecoLoteItemSchema,
@@ -29,6 +30,7 @@ import { IntegracaoNotasEntradaService } from '../notas-entrada/integracao-notas
 import { IntegracaoNotasSaidaService } from '../notas-saida/integracao-notas-saida.service';
 import { IntegracaoObjetivosService } from '../objetivos/integracao-objetivos.service';
 import { IntegracaoOrcamentosService } from '../orcamentos/integracao-orcamentos.service';
+import { IntegracaoPedidosService } from '../pedidos/integracao-pedidos.service';
 import { IntegracaoProdutosService } from '../produtos/integracao-produtos.service';
 import { IntegracaoRegrasDescontoService } from '../regras-desconto/integracao-regras-desconto.service';
 import { IntegracaoTabelasPrecoService } from '../tabelas-preco/integracao-tabelas-preco.service';
@@ -69,6 +71,7 @@ export class EntidadesCarga {
     notasSaida: IntegracaoNotasSaidaService,
     notasEntrada: IntegracaoNotasEntradaService,
     orcamentos: IntegracaoOrcamentosService,
+    pedidos: IntegracaoPedidosService,
   ) {
     // O cast em `registros` é seguro porque cada item passou pelo `schema` da
     // mesma linha antes de chegar aqui (ver CargasProcessador).
@@ -133,6 +136,10 @@ export class EntidadesCarga {
       orcamentos: {
         schema: integracaoOrcamentoLoteItemSchema,
         aplicar: (e, k, r) => orcamentos.upsertLote(e, k, r as any),
+      },
+      pedidos: {
+        schema: integracaoPedidoLoteItemSchema,
+        aplicar: (e, k, r) => pedidos.upsertLote(e, k, r as any),
       },
     };
   }

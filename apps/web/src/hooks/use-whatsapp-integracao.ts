@@ -13,7 +13,10 @@ import { useAuthStore } from "@/stores/auth-store";
  * `whatsapp-config` fica de fora de propósito — é a tela onde se liga a
  * integração; escondê-la deixaria o administrador sem por onde religar.
  */
-export const ROTINAS_DEPENDENTES_WHATSAPP = ["whatsapp-conversas"];
+export const ROTINAS_DEPENDENTES_WHATSAPP = [
+  "whatsapp-conversas",
+  "whatsapp-equipe",
+];
 
 /**
  * Se o WhatsApp está ativo na empresa da sessão.
@@ -24,11 +27,12 @@ export const ROTINAS_DEPENDENTES_WHATSAPP = ["whatsapp-conversas"];
  */
 export function useWhatsappIntegracao() {
   const accessToken = useAuthStore((s) => s.accessToken);
+  const empresaId = useAuthStore((s) => s.user?.empresaAtivaId);
 
   const query = useQuery({
-    queryKey: ["whatsapp", "integracao"],
+    queryKey: ["whatsapp", "integracao", empresaId],
     queryFn: () => apiFetch<WhatsappIntegracao>("/whatsapp/integracao"),
-    enabled: !!accessToken,
+    enabled: !!accessToken && !!empresaId,
     staleTime: 5 * 60_000,
   });
 

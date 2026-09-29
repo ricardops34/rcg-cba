@@ -56,6 +56,9 @@ User Function BJCATALO()
 	aAdd(aRet, {"notas-saida-xml", "XML das notas de saida", "/integracao/notas-saida/{chave}/xml", "U_BJMAPXML", .T., "SF2", "F2_FILIAL", 40, 10})
 	aAdd(aRet, {"notas-entrada"  , "Notas de entrada"       , "/integracao/notas-entrada"      , "U_BJMAPNFE", .T., "SF1", "F1_FILIAL" , 40, 10})
 	aAdd(aRet, {"titulos-receber", "Titulos a receber"      , "/integracao/titulos-receber"    , "U_BJMAPTIT", .T., "SE1", "E1_FILIAL" , 90, 50})
+	// Situacao do pedido que veio de um orcamento da plataforma. Depois de
+	// tudo: o orcamento precisa estar vinculado ao pedido la.
+	aAdd(aRet, {"pedidos"        , "Pedidos de venda"       , "/integracao/pedidos"            , "U_BJMAPPED", .T., "SC5", "C5_FILIAL" , 90, 50})
 
 Return aRet
 

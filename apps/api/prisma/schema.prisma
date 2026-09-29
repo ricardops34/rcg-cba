@@ -3619,6 +3619,22 @@ enum StatusOrcamento {
   expirado
 }
 
+// Situação do pedido de venda que o ERP gerou a partir do orçamento
+// (docs/planos/2026-09-28-orcamento-situacao-erp.md). Separada do status
+// comercial: o orçamento continua "aprovado", e é esta que acompanha o pedido.
+// "Aguardando Integração" e "Erro de integração" não são gravadas aqui — saem
+// de status aprovado + chave nula (+ erroIntegracao).
+enum SituacaoErpOrcamento {
+  pendente
+  liberado
+  bloqueado_credito
+  bloqueado_estoque
+  bloqueado_desconto
+  faturado_parcial
+  faturado
+  cancelado
+}
+
 model Orcamento {
   id                  String          @id @default(uuid())
   empresaId           String
@@ -3652,6 +3668,27 @@ model Orcamento {
   observacao          String?
   vlrTotal            Float           @default(0)
   ativo               Boolean         @default(true)
+
+  // Acompanhamento do pedido no ERP — gravado só pela integração
+  // (PUT /integracao/pedidos e PATCH .../pendentes/{id}/erro).
+  // situacaoErp: nula até o ERP mandar o pedido pela primeira vez.
+  // comQuebra: o pedido no ERP difere do orçamento aprovado (item incluído
+  // ou retirado, quantidade ou preço diferente); calculada aqui, comparando
+  // os itens que o ERP manda com os do orçamento.
+  // erroIntegracao: motivo da recusa do pedido pelo ERP (MATA410). Orçamento
+  // recusado sai da fila de pendentes e fica assim; o caminho é copiar
+  // (decisão do usuário, 29/09/2026).
+  // notasErp: [{ numero, serie, emissao }] das notas do pedido.
+  // itensErp: os itens do pedido como o ERP mandou por último ({ chave,
+  // produtoChave, quantidade, vlrUnitario, quantidadeEntregue }) — é o que a
+  // tela compara com os itens do orçamento para apontar as diferenças.
+  situacaoErp         SituacaoErpOrcamento?
+  situacaoErpEm       DateTime?
+  comQuebra           Boolean         @default(false)
+  erroIntegracao      String?
+  erroIntegracaoEm    DateTime?
+  notasErp            Json?
+  itensErp            Json?
 
   // Autorização de desconto em duas etapas: item com desconto igual ou acima
   // do "% Desc Máximo" da regra trava PDF e efetivação (status aprovado) até

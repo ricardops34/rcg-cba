@@ -15,6 +15,7 @@ import {
 import type {
   IntegracaoOrcamento,
   IntegracaoOrcamentoCreate,
+  IntegracaoOrcamentoErro,
   IntegracaoOrcamentoItem,
   IntegracaoOrcamentoQuery,
   IntegracaoOrcamentoUpdate,
@@ -144,6 +145,10 @@ export class IntegracaoOrcamentosService {
         empresaId,
         chave: null,
         status: 'aprovado' as const,
+        // Recusado pelo ERP sai da fila e fica como erro; o caminho é copiar
+        // (decisão do usuário, 29/09/2026). Sem isto o ERP tentaria de novo
+        // a cada ciclo, com o mesmo erro.
+        erroIntegracao: null,
         deletedAt: null,
       };
       const [data, total] = await Promise.all([
@@ -218,6 +223,46 @@ export class IntegracaoOrcamentosService {
         data: {
           chave: dto.chave,
           codigoErp: dto.codigoErp ?? null,
+          // Uma recusa anterior do ERP deixa de valer: o pedido saiu.
+          erroIntegracao: null,
+          erroIntegracaoEm: null,
+          updatedBy: autor,
+        },
+        include: INCLUDE,
+      });
+      return this.paraLeitura(atualizado);
+    });
+  }
+
+  /**
+   * O ERP recusou gravar o pedido do orçamento pendente (MATA410). O orçamento
+   * sai da fila de pendentes e fica como Erro de integração, com o motivo; o
+   * caminho é copiar para um novo (decisão do usuário, 29/09/2026).
+   */
+  async registrarErro(
+    empresaId: string,
+    apiKeyId: string,
+    id: string,
+    dto: IntegracaoOrcamentoErro,
+  ): Promise<IntegracaoOrcamento> {
+    const autor = autorIntegracao(apiKeyId);
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const existente = await tx.orcamento.findFirst({
+        where: { id, empresaId, deletedAt: null },
+        select: { chave: true, status: true },
+      });
+      if (!existente) throw new NotFoundException('Orçamento não encontrado');
+      if (existente.chave != null) {
+        throw new ConflictException('Orçamento já está vinculado a um pedido');
+      }
+      if (existente.status !== 'aprovado') {
+        throw new ConflictException('Só orçamentos aprovados vão ao ERP');
+      }
+      const atualizado = await tx.orcamento.update({
+        where: { id },
+        data: {
+          erroIntegracao: dto.mensagem,
+          erroIntegracaoEm: new Date(),
           updatedBy: autor,
         },
         include: INCLUDE,

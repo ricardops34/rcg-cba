@@ -55,7 +55,7 @@ O que os outros três usam. Não depende de nenhum deles.
 | `U_BJVARRE` | **Agendável.** Abre o lote na SZY, percorre o catálogo lendo por `S_T_A_M_P_`, enfileira e fecha o lote |
 | `U_BJCORTE` | O corte da carga inicial (`MV_BJAPI14`) no formato da `ZY_MARCA` — a mesma regra para a carga pela fila e por arquivo |
 | `U_BJMARGEM` | A marca que uma coleta grava: início menos 10 minutos, em UTC |
-| `U_BJMAP*` | Os 15 mapeadores, um por entidade: regras de desconto, categorias, condições, armazéns, produtos, vendedores, clientes, fornecedores, tabelas de preço, estoque, notas de saída, XML das notas, notas de entrada, títulos e objetivos. **Orçamento (SCJ/SCK) não é enviado** — ver *SCJ e SCK fora da integração* |
+| `U_BJMAP*` | Os 16 mapeadores, um por entidade: regras de desconto, categorias, condições, armazéns, produtos, vendedores, clientes, fornecedores, tabelas de preço, estoque, notas de saída, XML das notas, notas de entrada, títulos, objetivos e a situação dos pedidos que vieram da plataforma (`U_BJMAPPED`). **Orçamento (SCJ/SCK) não é enviado** — ver *SCJ e SCK fora da integração* |
 
 ### [`BJPLA004.prw`](BJPLA004.prw) — Envio e retorno
 
@@ -435,6 +435,7 @@ de produto; vendedor antes de cliente; produto antes de estoque.
 | notas-saida-xml | SF2 (TSS) | `U_BJMAPXML` | ✅ |
 | notas-entrada | SF1 | `U_BJMAPNFE` | ✅ |
 | titulos-receber | SE1 | `U_BJMAPTIT` | ✅ |
+| pedidos | SC5+SC6+SC9+SD2 | `U_BJMAPPED` | ✍️ 29/09/2026, falta compilar e testar — só pedidos com `C5_ORGPED = 'P'` |
 | ~~orcamentos~~ | ~~SCJ+SCK~~ | ~~`U_BJMAPORC`~~ | ❌ removido em 21/09/2026 — ver *SCJ e SCK fora da integração* |
 
 Duas entidades adicionais chegam **da** plataforma (não estão neste catálogo
@@ -683,6 +684,40 @@ efetivar depois. Quatro passos:
 da mensagem sair de dentro do `Begin Transaction`, volta a existir o intervalo
 em que o pedido está na SC5 e a plataforma não sabe — e o ciclo seguinte cria
 um segundo pedido do mesmo orçamento.
+
+**Campos que o pedido recebe** além do que vem da plataforma (29/09/2026, no
+molde do pedido da Máxima, `Faturamento/Maxima/IMPPED.prw`): `C5_ORGPED = "P"`
+(plataforma — é por ele que o `U_BJMAPPED` separa os pedidos que voltam),
+`C5_YTPVEN = "01"`, `C5_FORPGT` (da SA1, ou `"B"`), `C5_DTIMP`/`C5_HRIMP`,
+`C5_XSTATUS = "P"`, `C5_INDPRES = "1"` e `C6_QTDLIB = 0`.
+
+**Recusa do `MATA410`.** O `BJErroOrc` grava o erro na SZZ e avisa a
+plataforma (`PATCH /integracao/orcamentos/pendentes/{id}/erro`): o orçamento
+mostra **Erro de integração** com o motivo. Continua pendente lá, volta no
+próximo ciclo, e o vínculo limpa o erro.
+
+### Situação do pedido volta para o orçamento
+
+Plano `docs/planos/2026-09-28-orcamento-situacao-erp.md` (repositório da
+plataforma). A entidade `pedidos` do catálogo (`U_BJMAPPED`) manda, para cada
+pedido que veio da plataforma, a situação calculada aqui, os itens e as notas.
+A plataforma acha o orçamento pela chave do pedido e calcula a **quebra**
+(item incluído ou retirado, quantidade ou preço diferente do orçamento).
+
+| Situação | Regra, nesta ordem |
+|---|---|
+| Cancelado | SC5 excluída → `DELETE` |
+| Faturado | todo item com `C6_QTDENT` = `C6_QTDVEN` |
+| Faturado parcial | algum item com `C6_QTDENT` > 0 |
+| Bloqueado Desconto | `C5_LIBDESC = "2"` |
+| Bloqueado Crédito | SC9 não faturada com `C9_BLCRED` preenchido |
+| Bloqueado Estoque | SC9 não faturada com `C9_BLEST` preenchido |
+| Liberado | SC9 não faturada sem bloqueio |
+| Pendente | nenhuma das anteriores |
+
+A janela olha o `S_T_A_M_P_` da SC5, SC6, SC9 e SD2 (pela `D2_PEDIDO`): a
+liberação e o faturamento mudam o pedido sem encostar na SC5. **As quatro
+tabelas precisam ter a coluna `S_T_A_M_P_`.**
 
 ### Alteração de cliente: CRMA980
 

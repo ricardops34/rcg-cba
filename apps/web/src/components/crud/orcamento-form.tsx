@@ -11,6 +11,8 @@ import {
   calcularComissaoItem,
   orcamentoCreateSchema,
   orcamentoUpdateSchema,
+  SITUACAO_INTEGRACAO_ROTULO,
+  situacaoIntegracaoOrcamento,
   type Cliente,
   type CondicaoPagamento,
   type Oportunidade,
@@ -22,6 +24,7 @@ import {
   type PosicaoClienteMix,
   type RegraParaCalculo,
   type Produto,
+  type SituacaoIntegracaoOrcamento,
   type StatusOrcamento,
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
@@ -34,7 +37,11 @@ import {
 import { regraDescontoLabel } from "@/lib/regra-desconto";
 import { useAuthStore } from "@/stores/auth-store";
 import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
-import { STATUS_ORCAMENTO, STATUS_ORCAMENTO_LABEL } from "@/components/crud/orcamento-status";
+import {
+  SITUACAO_INTEGRACAO_VISUAL,
+  STATUS_ORCAMENTO,
+  STATUS_ORCAMENTO_LABEL,
+} from "@/components/crud/orcamento-status";
 import { ClienteCombobox } from "@/components/crud/cliente-combobox";
 import { ProdutoCombobox } from "@/components/crud/produto-combobox";
 import { Button } from "@/components/ui/button";
@@ -60,13 +67,10 @@ import { SortableTableHead } from "@/components/crud/sortable-table-head";
 import { OrcamentoTimeline } from "@/components/crud/orcamento-timeline";
 import {
   ArrowLeft,
-  CheckCircle2,
   CircleCheck,
-  Clock,
   Copy,
   FileDown,
   Info,
-  MinusCircle,
   Plus,
   Trash2,
   TriangleAlert,
@@ -101,35 +105,91 @@ const dataHoraBr = (v: string | null | undefined) => {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("pt-BR");
 };
 
+// O que cada situação quer dizer, no quadro da aba "Aprovação e integração".
+const SITUACAO_INTEGRACAO_DESCRICAO: Record<SituacaoIntegracaoOrcamento, string> = {
+  nao_enviado: "O orçamento só é enviado ao ERP depois de aprovado.",
+  aguardando: "Disponível para o ERP importar; o pedido aparece aqui depois do vínculo.",
+  erro_integracao:
+    "O ERP recusou gerar o pedido e não tenta de novo. Use “Copiar” para gerar um novo orçamento corrigido.",
+  pendente: "Pedido recebido no ERP.",
+  liberado: "Pedido liberado no ERP.",
+  bloqueado_credito: "Pedido recebido no ERP e com bloqueio de crédito.",
+  bloqueado_estoque: "Pedido recebido no ERP e com bloqueio de estoque.",
+  bloqueado_desconto: "Pedido recebido no ERP e com bloqueio de desconto.",
+  faturado_parcial:
+    "Pedido em faturamento no ERP. Veja abaixo, item a item, o que já foi faturado e o saldo.",
+  faturado: "Pedido faturado no ERP.",
+  cancelado:
+    "O pedido foi excluído ou encerrado por eliminação de resíduo no ERP. Use “Copiar” para gerar um novo orçamento.",
+};
+
 /**
  * Situação do orçamento perante o ERP, pra aba "Aprovação e integração" —
- * mesmos três estados do ícone da listagem de Orçamentos: só aprovado fica
- * disponível pro ERP puxar; codigoErp preenchido = já vinculado lá.
+ * a mesma do ícone da listagem de Orçamentos (situacaoIntegracaoOrcamento).
  */
 function situacaoIntegracao(orcamento: Orcamento) {
-  if (orcamento.status !== "aprovado") {
-    return {
-      icone: MinusCircle,
-      classe: "border-border/70 bg-muted/40 text-muted-foreground",
-      titulo: "Ainda não disponível para o ERP",
-      descricao: "O orçamento só é enviado ao ERP depois de aprovado.",
-    };
+  const situacao = situacaoIntegracaoOrcamento(orcamento);
+  const visual = SITUACAO_INTEGRACAO_VISUAL[situacao];
+  let titulo = SITUACAO_INTEGRACAO_ROTULO[situacao];
+  if (orcamento.comQuebra) titulo += " — com quebra";
+  let descricao = SITUACAO_INTEGRACAO_DESCRICAO[situacao];
+  if (orcamento.comQuebra) {
+    descricao += " O pedido foi alterado no ERP em relação ao orçamento aprovado.";
   }
-  if (orcamento.codigoErp != null) {
+  return { icone: visual.icone, classe: visual.classe, titulo, descricao, situacao };
+}
+
+// Meio centavo absorve o arredondamento do C6_PRCVEN — o mesmo critério da
+// quebra no servidor (pedido-tem-quebra.ts).
+const TOLERANCIA_PRECO = 0.005;
+
+/**
+ * Orçamento x pedido no ERP, item a item, para apontar as diferenças: item
+ * retirado ou incluído no ERP, quantidade ou preço alterados, e quanto já foi
+ * faturado de cada um. Casamento pela chave do SC6, gravada no vínculo.
+ */
+function diferencasPedido(orcamento: Orcamento) {
+  const doPedido = new Map(
+    (orcamento.itensErp ?? []).map((item) => [item.chave.trim(), item] as const),
+  );
+  const linhas = orcamento.itens.map((item) => {
+    const chave = item.chave?.trim() ?? "";
+    const erp = chave ? doPedido.get(chave) : undefined;
+    if (erp) doPedido.delete(chave);
+    const diferencas: string[] = [];
+    if (!erp) diferencas.push("Retirado no ERP");
+    else {
+      if (erp.quantidade !== item.quantidade) diferencas.push("Quantidade alterada");
+      if (Math.abs(erp.vlrUnitario - item.vlrUnitario) > TOLERANCIA_PRECO) {
+        diferencas.push("Preço alterado");
+      }
+    }
     return {
-      icone: CheckCircle2,
-      classe:
-        "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-      titulo: "Integrado ao ERP",
-      descricao: `Importado pelo ERP com o código ${orcamento.codigoErp}.`,
+      chave: item.id,
+      produto: `${item.produto.codigoErp} — ${item.produto.descricao}`,
+      qtdOrcamento: item.quantidade as number | null,
+      precoOrcamento: item.vlrUnitario as number | null,
+      qtdPedido: erp?.quantidade ?? null,
+      precoPedido: erp?.vlrUnitario ?? null,
+      faturado: erp?.quantidadeEntregue ?? null,
+      diferencas,
     };
+  });
+  // O que sobrou do pedido não veio do orçamento: incluído no ERP. O produto
+  // só é conhecido pela chave (filial-código).
+  for (const erp of doPedido.values()) {
+    linhas.push({
+      chave: erp.chave,
+      produto: erp.produtoChave.split("-").pop() ?? erp.produtoChave,
+      qtdOrcamento: null,
+      precoOrcamento: null,
+      qtdPedido: erp.quantidade,
+      precoPedido: erp.vlrUnitario,
+      faturado: erp.quantidadeEntregue,
+      diferencas: ["Incluído no ERP"],
+    });
   }
-  return {
-    icone: Clock,
-    classe: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
-    titulo: "Aprovado — aguardando integração",
-    descricao: "Disponível para o ERP importar; o código será preenchido no vínculo.",
-  };
+  return linhas;
 }
 
 /**
@@ -866,6 +926,7 @@ export function OrcamentoFormContent({
   const mixPorProduto = new Map(mix.map((m) => [m.produtoId, m]));
 
   const integracao = registro ? situacaoIntegracao(registro) : null;
+  const diferencas = registro?.itensErp ? diferencasPedido(registro) : null;
 
   // Proposta em PDF — só pra orçamento já salvo: os itens só carregam produto
   // (código/descrição/unidade) e total consolidado depois de gravados.
@@ -1129,7 +1190,11 @@ export function OrcamentoFormContent({
             <p data-tour="orcamento-bloqueio" className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
               {registro?.status === "expirado"
                 ? "Orçamento vencido — não pode ser alterado nem efetivado. Use “Copiar” para gerar um novo com a validade reiniciada."
-                : "Orçamento aprovado — não pode mais ser alterado."}
+                : registro?.situacaoErp === "cancelado"
+                  ? "Pedido cancelado no ERP — o orçamento não pode mais ser alterado. Use “Copiar” para gerar um novo."
+                  : registro?.erroIntegracao && !registro.codigoErp
+                    ? "Recusado pelo ERP — o orçamento não pode mais ser alterado. Veja o motivo na aba “Aprovação e integração” e use “Copiar” para gerar um novo."
+                    : "Orçamento aprovado — não pode mais ser alterado."}
             </p>
           )}
 
@@ -1884,11 +1949,17 @@ export function OrcamentoFormContent({
                     <div className="text-sm">{STATUS_ORCAMENTO_LABEL[registro.status]}</div>
                   </Field>
                   <Field>
-                    <FieldLabel>Código no ERP</FieldLabel>
+                    <FieldLabel>Pedido no ERP</FieldLabel>
                     <div className="text-sm">
                       {registro.codigoErp ?? "— (ainda não integrado)"}
                     </div>
                   </Field>
+                  {registro.situacaoErpEm && (
+                    <Field>
+                      <FieldLabel>Situação do pedido atualizada em</FieldLabel>
+                      <div className="text-sm">{dataHoraBr(registro.situacaoErpEm)}</div>
+                    </Field>
+                  )}
                   <Field>
                     <FieldLabel>Criado em</FieldLabel>
                     <div className="text-sm">{dataHoraBr(registro.createdAt)}</div>
@@ -1899,9 +1970,92 @@ export function OrcamentoFormContent({
                   </Field>
                 </div>
 
+                {integracao.situacao === "erro_integracao" && registro.erroIntegracao && (
+                  <Field>
+                    <FieldLabel>
+                      Motivo da recusa no ERP
+                      {registro.erroIntegracaoEm ? ` (${dataHoraBr(registro.erroIntegracaoEm)})` : ""}
+                    </FieldLabel>
+                    <p className="whitespace-pre-wrap rounded-lg border px-3 py-2 text-sm">
+                      {registro.erroIntegracao}
+                    </p>
+                  </Field>
+                )}
+
+                {diferencas && diferencas.length > 0 && (
+                  <Field>
+                    <FieldLabel>Orçamento x pedido no ERP</FieldLabel>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Produto</TableHead>
+                          <TableHead className="text-right">Qtd orçamento</TableHead>
+                          <TableHead className="text-right">Qtd pedido</TableHead>
+                          <TableHead className="text-right">Faturado</TableHead>
+                          <TableHead className="text-right">Saldo</TableHead>
+                          <TableHead className="text-right">Preço orçamento</TableHead>
+                          <TableHead className="text-right">Preço pedido</TableHead>
+                          <TableHead>Diferença</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {diferencas.map((linha) => (
+                          <TableRow key={linha.chave}>
+                            <TableCell>{linha.produto}</TableCell>
+                            <TableCell className="text-right">{numero(linha.qtdOrcamento)}</TableCell>
+                            <TableCell className="text-right">{numero(linha.qtdPedido)}</TableCell>
+                            <TableCell className="text-right">{numero(linha.faturado)}</TableCell>
+                            <TableCell className="text-right">
+                              {linha.qtdPedido != null && linha.faturado != null
+                                ? numero(Math.max(linha.qtdPedido - linha.faturado, 0))
+                                : "—"}
+                            </TableCell>
+                            <TableCell className="text-right">{moeda(linha.precoOrcamento)}</TableCell>
+                            <TableCell className="text-right">{moeda(linha.precoPedido)}</TableCell>
+                            <TableCell
+                              className={
+                                linha.diferencas.length > 0
+                                  ? "text-amber-700 dark:text-amber-400"
+                                  : "text-muted-foreground"
+                              }
+                            >
+                              {linha.diferencas.length > 0 ? linha.diferencas.join(", ") : "—"}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </Field>
+                )}
+
+                {registro.notasErp && registro.notasErp.length > 0 && (
+                  <Field>
+                    <FieldLabel>Notas fiscais do pedido</FieldLabel>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Número</TableHead>
+                          <TableHead>Série</TableHead>
+                          <TableHead>Emissão</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {registro.notasErp.map((nota) => (
+                          <TableRow key={`${nota.serie}-${nota.numero}`}>
+                            <TableCell>{nota.numero}</TableCell>
+                            <TableCell>{nota.serie || "—"}</TableCell>
+                            <TableCell>{dataBr(nota.emissao)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </Field>
+                )}
+
                 <p className="text-sm text-muted-foreground">
                   Só orçamentos aprovados ficam disponíveis para o ERP importar. Depois de importar,
-                  o ERP vincula o registro e o código gerado lá aparece aqui.
+                  o ERP vincula o registro e acompanha aqui a situação do pedido: liberação,
+                  bloqueios, faturamento e exclusão.
                 </p>
               </TabsContent>
             )}

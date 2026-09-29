@@ -305,6 +305,7 @@ Static Function BJGrupos()
 	aAdd(aRet, {"Estoque"         , {"estoque"}})
 	aAdd(aRet, {"Notas de Saida"  , {"notas-saida", "notas-saida-xml"}})
 	aAdd(aRet, {"Notas de Entrada", {"notas-entrada"}})
+	aAdd(aRet, {"Pedidos de Venda", {"pedidos"}})
 
 Return aRet
 

@@ -4,7 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { Orcamento, StatusOrcamento } from "@plataforma/contracts";
-import { ORIGEM_VENDA_ROTULO } from "@plataforma/contracts";
+import {
+  ORIGEM_VENDA_ROTULO,
+  SITUACAO_INTEGRACAO_ROTULO,
+  situacaoIntegracaoOrcamento,
+} from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError } from "@/lib/api-client";
 import { dataCivilBr } from "@/lib/data";
@@ -22,6 +26,7 @@ import {
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { useFiltrosUrl } from "@/hooks/use-filtros-url";
 import {
+  SITUACAO_INTEGRACAO_VISUAL,
   STATUS_ORCAMENTO,
   STATUS_ORCAMENTO_LABEL,
   STATUS_ORCAMENTO_VARIANT,
@@ -48,8 +53,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  CheckCircle2,
-  Clock,
   MoreHorizontal,
   Pencil,
   Trash2,
@@ -61,23 +64,20 @@ const moeda = (v: number) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const dataBr = dataCivilBr;
 
-// Acompanhamento da integração com o ERP: só faz sentido depois de aprovado
-// (é quando o orçamento fica disponível pro ERP puxar via API). codigoErp
-// preenchido = o ERP já vinculou o registro; null = ainda aguardando.
+// Acompanhamento do pedido no ERP (situacaoIntegracaoOrcamento): só faz
+// sentido depois de aprovado, que é quando o orçamento vai ao ERP. A marca de
+// quebra acompanha a situação na legenda.
 function integracaoIndicador(o: Orcamento) {
-  if (o.status !== "aprovado") return null;
-  if (o.codigoErp != null) {
-    return {
-      icone: CheckCircle2,
-      cor: "text-emerald-600",
-      legenda: `Integrado ao ERP (código ${o.codigoErp})`,
-    };
+  const situacao = situacaoIntegracaoOrcamento(o);
+  if (situacao === "nao_enviado") return null;
+  const visual = SITUACAO_INTEGRACAO_VISUAL[situacao];
+  let legenda = SITUACAO_INTEGRACAO_ROTULO[situacao];
+  if (o.comQuebra) legenda += " — com quebra";
+  if (o.codigoErp) legenda += ` (pedido ${o.codigoErp})`;
+  if (situacao === "erro_integracao" && o.erroIntegracao) {
+    legenda += `: ${o.erroIntegracao}`;
   }
-  return {
-    icone: Clock,
-    cor: "text-amber-500",
-    legenda: "Aprovado — aguardando integração com o ERP",
-  };
+  return { icone: visual.icone, cor: visual.cor, legenda };
 }
 
 export default function OrcamentosPage() {

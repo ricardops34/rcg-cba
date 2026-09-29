@@ -34,6 +34,7 @@ export const INTEGRACAO_CARGA_ENTIDADES = [
   "notas-saida",
   "notas-entrada",
   "orcamentos",
+  "pedidos",
 ] as const;
 export type IntegracaoCargaEntidade = (typeof INTEGRACAO_CARGA_ENTIDADES)[number];
 

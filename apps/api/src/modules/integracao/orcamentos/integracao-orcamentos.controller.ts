@@ -21,12 +21,14 @@ import { Throttle } from '@nestjs/throttler';
 import {
   INTEGRACAO_LOTE_RESULTADO_EXAMPLE,
   INTEGRACAO_ORCAMENTO_CREATE_EXAMPLE,
+  INTEGRACAO_ORCAMENTO_ERRO_EXAMPLE,
   INTEGRACAO_ORCAMENTO_EXAMPLE,
   INTEGRACAO_ORCAMENTO_VINCULAR_EXAMPLE,
 } from '@plataforma/contracts';
 import { IntegracaoOrcamentosService } from './integracao-orcamentos.service';
 import {
   IntegracaoOrcamentoCreateDto,
+  IntegracaoOrcamentoErroDto,
   IntegracaoOrcamentoLoteDto,
   IntegracaoOrcamentoQueryDto,
   IntegracaoOrcamentoUpdateDto,
@@ -110,6 +112,42 @@ export class IntegracaoOrcamentosController {
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
     return this.service.vincular(
+      integracao.empresaId,
+      integracao.apiKeyId,
+      id,
+      dto,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Informar que o ERP recusou o pedido do orçamento pendente',
+    description:
+      'O ERP tentou gravar o pedido (MATA410) e não conseguiu. O orçamento ' +
+      'sai de GET .../pendentes e fica como "Erro de integração", com o ' +
+      'motivo — o ERP não tenta de novo; o vendedor copia para um novo. ' +
+      'Orçamento já vinculado ou não aprovado retorna 409.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'id interno da plataforma (retornado no GET .../pendentes)',
+  })
+  @ApiBodyExample(INTEGRACAO_ORCAMENTO_ERRO_EXAMPLE)
+  @ApiResponse({
+    status: 200,
+    schema: { example: INTEGRACAO_ORCAMENTO_EXAMPLE },
+  })
+  @ApiResponse({ status: 404, description: 'Orçamento não encontrado' })
+  @ApiResponse({
+    status: 409,
+    description: 'Já vinculado a um pedido, ou ainda não aprovado',
+  })
+  @Patch('pendentes/:id/erro')
+  registrarErro(
+    @Param('id') id: string,
+    @Body() dto: IntegracaoOrcamentoErroDto,
+    @CurrentIntegracao() integracao: IntegracaoContext,
+  ) {
+    return this.service.registrarErro(
       integracao.empresaId,
       integracao.apiKeyId,
       id,

@@ -72,6 +72,53 @@ Se um dia o ERP voltar a ser a fonte da verdade disso, é esse `update` que
 precisa mudar de volta — e a edição na tela deve sair junto, senão as duas
 pontas brigam.
 
+## Série e CFOP — o que conta como venda nas análises
+
+Dashboards (Comercial e Gerencial), Objetivos, Consultas e as ferramentas do
+WhatsApp do funcionário apuram a venda pelo mesmo corte, `corteDeVenda` em
+`apps/api/src/common/vendas/venda-analitica.ts`. Além do corte fixo (nota
+ativa, tipo Normal, com financeiro, categoria acompanhada), dois parâmetros da
+empresa (Administração > Parâmetros) completam a regra:
+
+- **`VENDAS_SERIES_NOTA`** — séries de nota que contam (ex.: `1`). Vazio conta
+  todas. Na RCG a série 3 é o RPS de serviço: a integração o traz, porque a
+  nota precisa aparecer na Posição do Cliente, mas ele não entrava no
+  realizado do sistema anterior.
+- **`VENDAS_CFOPS_EXCLUIDOS`** — CFOPs de **item** que não contam. Nasce com
+  `5908,6908,5910,6910` (comodato e bonificação). O ERP põe esses itens dentro
+  da nota de venda e nunca marca o cabeçalho como comodato, então o corte do
+  cabeçalho não os alcança.
+
+Os dois vieram da conferência de 2026-09-29 contra o sistema anterior, feita
+num dump da produção: com eles, o realizado de 09/2026 fechou em R$ 520.263,86
+contra R$ 520.990,82 (6 de 11 vendedores exatos, positivação igual), e o que
+sobrou são notas isoladas. As consultas estão em
+`docs/sql/2026-09-29-diagnostico-dashboard-gerencial.sql`.
+
+Um corte novo de "o que é venda" entra em `corteDeVenda`, nunca num serviço só
+— senão uma tela passa a responder diferente das outras para a mesma pergunta.
+
+**Positivação é cliente único; valor é de quem emitiu a nota** — confirmado
+pelo usuário em 2026-09-29. Quando o mesmo cliente recebe no mês notas de dois
+vendedores, cada vendedor o positiva na própria linha e fica com o valor da
+própria nota, mas no total da empresa ele conta **uma vez**. Por isso o cartão
+"Clientes" do Dashboard Gerencial não é a soma das linhas: em 09/2026 foram
+346 clientes únicos contra 351 na soma (o sistema anterior somava as linhas).
+
+**Cliente sem vendedor é cliente ativo cujo vendedor está inativo** (ou
+excluído, ou sem vendedor no cadastro) — confirmado pelo usuário em
+2026-09-29. A carteira do ESCRITORIO **não** entra: é um vendedor ativo. O
+sistema anterior contava essa carteira e mostrava 124; pela regra, em 09/2026
+são 18 (carteiras de ELISA, CAFFARO e VINICIO). Critério em
+`CLIENTE_SEM_VENDEDOR_ATIVO` (`objetivos.service.ts`).
+
+**Ticket médio = total de vendas ÷ número de vendas (notas)** — confirmado
+pelo usuário em 2026-09-29. A nota conta se tiver ao menos um item que passou
+pelo corte de venda; nota só de comodato, bonificação ou categoria não
+acompanhada soma zero no realizado e não entra no divisor. O sistema anterior
+dividia por um número (101) que não corresponde a nenhuma contagem de notas
+na base.
+
 ## Campos complementares do produto — o que é da empresa, não do ERP
 
 O cadastro de produto é read-only por natureza: os dados entram pelo import e

@@ -10,7 +10,7 @@ import type {
 } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
 import { apiFetch } from "@/lib/api-client";
-import { dataCivilBr } from "@/lib/data";
+import { QuickFilterButton, QuickFilterGroup } from "@/components/crud/quick-filter-group";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { FiltersPopover } from "@/components/crud/filters-popover";
@@ -24,8 +24,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const dataBr = dataCivilBr;
-
 // Consulta read-only: os saldos entram pelo import do ERP. Uma linha por
 // produto, com o saldo somado em todos os armazéns (ou só no armazém
 // filtrado); o detalhamento por armazém fica na tela de visualização.
@@ -38,7 +36,7 @@ export default function EstoquePage() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [armazemId, setArmazemId] = useState<string | undefined>(undefined);
   const [categoriaId, setCategoriaId] = useState<string | undefined>(undefined);
-  const [comSaldo, setComSaldo] = useState<"todos" | "sim" | "nao">("todos");
+  const [comSaldo, setComSaldo] = useState<"todos" | "sim" | "nao">("sim");
 
   const armazensQuery = useQuery({
     queryKey: ["armazens", "select", "revenda"],
@@ -69,11 +67,10 @@ export default function EstoquePage() {
       ...(comSaldo !== "todos" ? { comSaldo: comSaldo === "sim" } : {}),
     });
 
-  const filtrosAtivos = !!armazemId || !!categoriaId || comSaldo !== "todos";
+  const filtrosAtivos = !!armazemId || !!categoriaId;
   const limparFiltros = () => {
     setArmazemId(undefined);
     setCategoriaId(undefined);
-    setComSaldo("todos");
     setPage(1);
   };
 
@@ -107,6 +104,7 @@ export default function EstoquePage() {
     },
     {
       header: "Saldo total",
+      sortKey: "saldoTotal",
       className: "text-right",
       cell: (p) => (
         <span className={p.saldoTotal > 0 ? "" : "text-muted-foreground"}>
@@ -179,28 +177,28 @@ export default function EstoquePage() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <FieldLabel>Com saldo</FieldLabel>
-              <Select
-                value={comSaldo}
-                onValueChange={(v) => {
-                  setComSaldo(v as "todos" | "sim" | "nao");
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  <SelectItem value="sim">Com saldo</SelectItem>
-                  <SelectItem value="nao">Sem saldo</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </FiltersPopover>
         }
       />
+
+      <QuickFilterGroup>
+        {([
+          ["sim", "Com saldo"],
+          ["nao", "Sem saldo"],
+          ["todos", "Todos"],
+        ] as const).map(([valor, rotulo]) => (
+          <QuickFilterButton
+            key={valor}
+            active={comSaldo === valor}
+            onClick={() => {
+              setComSaldo(valor);
+              setPage(1);
+            }}
+          >
+            {rotulo}
+          </QuickFilterButton>
+        ))}
+      </QuickFilterGroup>
 
       <EntityTable
         columns={columns}
@@ -224,6 +222,7 @@ export default function EstoquePage() {
         onSortChange={(key, order) => {
           setSortBy(key);
           setSortOrder(order);
+          setPage(1);
         }}
       />
     </div>

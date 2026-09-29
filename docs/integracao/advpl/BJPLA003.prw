@@ -2983,6 +2983,303 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim, lEnvDel)
 
 Return aRet
 
+/*/{Protheus.doc} BJMAPPED
+Situacao dos pedidos de venda que vieram da plataforma - SC5, SC6, SC9 e SD2.
+Nao cria nada la: a plataforma acha o orcamento pela chave do pedido
+(C5_FILIAL-C5_NUM, a mesma que o BJVincula gravou nele) e atualiza a
+situacao, a quebra e as notas. Plano
+docs/planos/2026-09-28-orcamento-situacao-erp.md (repositorio da plataforma).
+So os pedidos com C5_ORGPED = "P" (plataforma), gravado pelo BJGeraPed.
+Um pedido muda sem mexer na SC5: a liberacao mexe na SC9 e o faturamento na
+SC6 (C6_QTDENT) e na SD2. Por isso a janela olha o S_T_A_M_P_ das quatro.
+Situacao, na ordem da decisao do usuario (28/09/2026):
+   excluido                          -> DELETE (Cancelado la)
+   todo item com C6_QTDENT = C6_QTDVEN -> faturado
+   algum item com C6_QTDENT > 0      -> faturado_parcial
+   C5_LIBDESC = "2"                  -> bloqueado_desconto
+   C9_BLCRED preenchido              -> bloqueado_credito
+   C9_BLEST preenchido               -> bloqueado_estoque
+   liberado na SC9                   -> liberado
+   senao                             -> pendente
+@type    User Function
+@author  Ricardo P Sotomayor
+@since   29/09/2026
+@param   cMarca   , character, Marca d'agua UTC
+@param   cChave   , character, Chave de integracao a reprocessar (C5_FILIAL-C5_NUM)
+@param   cMarcaFim, character, Fim da janela, UTC
+@param   lEnvDel  , logical  , .F. nao manda pedido excluido
+@return  array, {cChave, oJson, cVerbo}
+/*/
+User Function BJMAPPED(cMarca, cChave, cMarcaFim, lEnvDel)
+
+	Local aRet     := {}
+	Local aChave   := {}
+	Local aItens   := {}
+	Local aNotas   := {}
+	Local cQuery   := ""
+	Local cAlias   := ""
+	Local cAliasIt := ""
+	Local cJanela  := ""
+	Local cChvPed  := ""
+	Local cSituac  := ""
+	Local cDelItem := ""
+	Local oStmt    := Nil
+	Local oStmtIt  := Nil
+	Local oJson    := Nil
+	Local oItem    := Nil
+	Local oNota    := Nil
+	Local lDelet   := .F.
+	Local lTudo    := .F.
+	Local lAlgum   := .F.
+	Local lCred    := .F.
+	Local lEst     := .F.
+	Local lLib     := .F.
+	Local lLibDesc := SC5->(FieldPos("C5_LIBDESC")) > 0
+
+	Default cMarca    := ""
+	Default cChave    := ""
+	Default cMarcaFim := ""
+	Default lEnvDel   := .T.
+
+	// Sem o campo de origem nao ha como separar o pedido da plataforma do
+	// digitado no ERP - e a plataforma so conhece os dela.
+	If SC5->(FieldPos("C5_ORGPED")) == 0
+		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "C5_ORGPED nao existe no dicionario. Pedidos nao coletados.", 0, 0, {})
+		Return aRet
+	EndIf
+
+	cQuery := "SELECT SC5.C5_FILIAL, SC5.C5_NUM, SC5.D_E_L_E_T_ AS DELETADO "
+
+	If lLibDesc
+		cQuery += ", SC5.C5_LIBDESC "
+	EndIf
+
+	cQuery += "  FROM " + RetSqlName("SC5") + " SC5 "
+	cQuery += " WHERE SC5.C5_FILIAL = ? "
+	cQuery += "   AND SC5.C5_ORGPED = 'P' "   // plataforma
+
+	// Carga inicial (sem marca e sem chave): pedido excluido nunca foi visto
+	// la. Com "Envia deletados? = Nao" o filtro vale em qualquer coleta.
+	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
+		cQuery += "   AND SC5.D_E_L_E_T_ = ' ' "
+	EndIf
+
+	If !Empty(cChave)
+		cQuery += "   AND SC5.C5_NUM = ? "
+	ElseIf !Empty(cMarca)
+
+		// A janela vale para o cabecalho e para o que muda o pedido por fora
+		// dele. As linhas excluidas entram: estornar uma liberacao apaga a SC9.
+		// "#" e trocado pelo alias de cada tabela logo abaixo
+		cJanela := "#.S_T_A_M_P_ >= '" + cMarca + "'"
+
+		If !Empty(cMarcaFim)
+			cJanela += " AND #.S_T_A_M_P_ <= '" + cMarcaFim + "'"
+		EndIf
+
+		cQuery += "   AND ( (" + StrTran(cJanela, "#", "SC5") + ") "
+		cQuery += "      OR EXISTS (SELECT 1 FROM " + RetSqlName("SC6") + " SC6 "
+		cQuery += "                  WHERE SC6.C6_FILIAL = SC5.C5_FILIAL AND SC6.C6_NUM = SC5.C5_NUM "
+		cQuery += "                    AND " + StrTran(cJanela, "#", "SC6") + ") "
+		cQuery += "      OR EXISTS (SELECT 1 FROM " + RetSqlName("SC9") + " SC9 "
+		cQuery += "                  WHERE SC9.C9_FILIAL = '" + FWxFilial("SC9") + "' AND SC9.C9_PEDIDO = SC5.C5_NUM "
+		cQuery += "                    AND " + StrTran(cJanela, "#", "SC9") + ") "
+		cQuery += "      OR EXISTS (SELECT 1 FROM " + RetSqlName("SD2") + " SD2 "
+		cQuery += "                  WHERE SD2.D2_FILIAL = '" + FWxFilial("SD2") + "' AND SD2.D2_PEDIDO = SC5.C5_NUM "
+		cQuery += "                    AND " + StrTran(cJanela, "#", "SD2") + ") ) "
+
+	EndIf
+
+	// Ordem fisica: a inclusao entra na fila antes de uma alteracao posterior
+	cQuery += " ORDER BY SC5.R_E_C_N_O_ "
+
+	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
+	oStmt:SetString(1, FWxFilial("SC5"))
+
+	If !Empty(cChave)
+		aChave := U_BJPARTES(AllTrim(cChave))
+
+		If Len(aChave) >= 2
+			oStmt:SetString(2, PadR(aChave[2], TamSX3("C5_NUM")[1]))
+		Else
+			oStmt:SetString(2, PadR(cChave, TamSX3("C5_NUM")[1]))
+		EndIf
+	EndIf
+
+	cAlias := oStmt:OpenAlias()
+
+	While (cAlias)->(!Eof())
+
+		// Chave do pedido: a mesma que o BJVincula devolveu no orcamento
+		cChvPed := (cAlias)->C5_FILIAL + "-" + (cAlias)->C5_NUM
+		lDelet  := (cAlias)->DELETADO == "*"
+
+		// Pedido excluido leva os itens excluidos com ele: se a coleta nunca
+		// mandou este pedido, ela poe um POST com este payload antes do DELETE,
+		// e o POST precisa estar completo.
+		If lDelet
+			cDelItem := "*"
+		Else
+			cDelItem := " "
+		EndIf
+
+		// ---- Itens (SC6): a quebra e calculada la, comparando com o orcamento
+		aItens := {}
+		lTudo  := .T.
+		lAlgum := .F.
+
+		cQuery := "SELECT C6_FILIAL, C6_NUM, C6_ITEM, C6_PRODUTO, C6_QTDVEN, C6_PRCVEN, C6_QTDENT "
+		cQuery += "  FROM " + RetSqlName("SC6") + " SC6 "
+		cQuery += " WHERE SC6.D_E_L_E_T_ = ? "
+		cQuery += "   AND SC6.C6_FILIAL  = ? "
+		cQuery += "   AND SC6.C6_NUM     = ? "
+		cQuery += " ORDER BY C6_ITEM "
+
+		oStmtIt := FWExecStatement():New(ChangeQuery(cQuery))
+		oStmtIt:SetString(1, cDelItem)
+		oStmtIt:SetString(2, (cAlias)->C5_FILIAL)
+		oStmtIt:SetString(3, (cAlias)->C5_NUM)
+		cAliasIt := oStmtIt:OpenAlias()
+
+		While (cAliasIt)->(!Eof())
+
+			oItem := JsonObject():New()
+			// Chave do item: a mesma do BJVincula (C6_FILIAL-C6_NUM-C6_ITEM-C6_PRODUTO)
+			oItem["chave"]              := (cAliasIt)->C6_FILIAL + "-" + (cAliasIt)->C6_NUM + "-" + (cAliasIt)->C6_ITEM + "-" + (cAliasIt)->C6_PRODUTO
+			oItem["produtoChave"]       := FWxFilial("SB1") + "-" + (cAliasIt)->C6_PRODUTO
+			oItem["quantidade"]         := (cAliasIt)->C6_QTDVEN
+			oItem["vlrUnitario"]        := (cAliasIt)->C6_PRCVEN
+			oItem["quantidadeEntregue"] := (cAliasIt)->C6_QTDENT
+			aAdd(aItens, oItem)
+
+			If (cAliasIt)->C6_QTDENT < (cAliasIt)->C6_QTDVEN
+				lTudo := .F.
+			EndIf
+
+			If (cAliasIt)->C6_QTDENT > 0
+				lAlgum := .T.
+			EndIf
+
+			(cAliasIt)->(dbSkip())
+		End
+
+		(cAliasIt)->(dbCloseArea())
+		oStmtIt:Destroy()
+
+		If Len(aItens) == 0
+			lTudo := .F.
+		EndIf
+
+		// ---- Liberacao (SC9): so o que ainda nao foi faturado
+		lCred := .F.
+		lEst  := .F.
+		lLib  := .F.
+
+		If !lDelet
+
+			cQuery := "SELECT C9_BLCRED, C9_BLEST "
+			cQuery += "  FROM " + RetSqlName("SC9") + " SC9 "
+			cQuery += " WHERE SC9.D_E_L_E_T_ = ' ' "
+			cQuery += "   AND SC9.C9_FILIAL  = ? "
+			cQuery += "   AND SC9.C9_PEDIDO  = ? "
+			cQuery += "   AND SC9.C9_NFISCAL = ' ' "
+
+			oStmtIt := FWExecStatement():New(ChangeQuery(cQuery))
+			oStmtIt:SetString(1, FWxFilial("SC9"))
+			oStmtIt:SetString(2, (cAlias)->C5_NUM)
+			cAliasIt := oStmtIt:OpenAlias()
+
+			While (cAliasIt)->(!Eof())
+
+				// Bloqueio preenchido e diferente de "10" (faturado) segura o pedido
+				If !Empty((cAliasIt)->C9_BLCRED) .And. AllTrim((cAliasIt)->C9_BLCRED) != "10"
+					lCred := .T.
+				ElseIf !Empty((cAliasIt)->C9_BLEST) .And. AllTrim((cAliasIt)->C9_BLEST) != "10"
+					lEst := .T.
+				Else
+					lLib := .T.
+				EndIf
+
+				(cAliasIt)->(dbSkip())
+			End
+
+			(cAliasIt)->(dbCloseArea())
+			oStmtIt:Destroy()
+
+		EndIf
+
+		// ---- Notas (SD2 pelo pedido)
+		aNotas := {}
+
+		If !lDelet
+
+			cQuery := "SELECT DISTINCT D2_DOC, D2_SERIE, D2_EMISSAO "
+			cQuery += "  FROM " + RetSqlName("SD2") + " SD2 "
+			cQuery += " WHERE SD2.D_E_L_E_T_ = ' ' "
+			cQuery += "   AND SD2.D2_FILIAL  = ? "
+			cQuery += "   AND SD2.D2_PEDIDO  = ? "
+			cQuery += " ORDER BY D2_EMISSAO, D2_DOC "
+
+			oStmtIt := FWExecStatement():New(ChangeQuery(cQuery))
+			oStmtIt:SetString(1, FWxFilial("SD2"))
+			oStmtIt:SetString(2, (cAlias)->C5_NUM)
+			cAliasIt := oStmtIt:OpenAlias()
+
+			While (cAliasIt)->(!Eof())
+				oNota := JsonObject():New()
+				oNota["numero"]  := AllTrim((cAliasIt)->D2_DOC)
+				oNota["serie"]   := AllTrim((cAliasIt)->D2_SERIE)
+				// D2_EMISSAO vem AAAAMMDD; a API pede AAAA-MM-DD
+				oNota["emissao"] := SubStr((cAliasIt)->D2_EMISSAO, 1, 4) + "-" + SubStr((cAliasIt)->D2_EMISSAO, 5, 2) + "-" + SubStr((cAliasIt)->D2_EMISSAO, 7, 2)
+				aAdd(aNotas, oNota)
+				(cAliasIt)->(dbSkip())
+			End
+
+			(cAliasIt)->(dbCloseArea())
+			oStmtIt:Destroy()
+
+		EndIf
+
+		// ---- Situacao, na precedencia combinada com o usuario
+		If lDelet
+			cSituac := "pendente"   // so vale para o POST que antecede o DELETE
+		ElseIf lTudo
+			cSituac := "faturado"
+		ElseIf lAlgum
+			cSituac := "faturado_parcial"
+		ElseIf lLibDesc .And. AllTrim((cAlias)->C5_LIBDESC) == "2"
+			cSituac := "bloqueado_desconto"
+		ElseIf lCred
+			cSituac := "bloqueado_credito"
+		ElseIf lEst
+			cSituac := "bloqueado_estoque"
+		ElseIf lLib
+			cSituac := "liberado"
+		Else
+			cSituac := "pendente"
+		EndIf
+
+		oJson := JsonObject():New()
+		oJson["chave"]     := cChvPed
+		oJson["codigoErp"] := AllTrim((cAlias)->C5_NUM)
+		oJson["situacao"]  := cSituac
+		oJson["itens"]     := aItens
+		oJson["notas"]     := aNotas
+
+		If lDelet
+			aAdd(aRet, {cChvPed, oJson, "DELETE"})
+		Else
+			aAdd(aRet, {cChvPed, oJson, "POST"})
+		EndIf
+
+		(cAlias)->(dbSkip())
+	End
+
+	(cAlias)->(dbCloseArea())
+	oStmt:Destroy()
+
+Return aRet
+
 /*/{Protheus.doc} BJMAPXML
 XML autorizado das notas de saida - SF2 e TSS.
 @type    User Function
