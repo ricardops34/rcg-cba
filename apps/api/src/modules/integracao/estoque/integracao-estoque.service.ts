@@ -39,6 +39,7 @@ export class IntegracaoEstoqueService {
       produtoChave: row.produto.chave ?? '',
       armazemChave: row.armazem.chave ?? '',
       saldo: row.saldo,
+      disponivel: row.disponivel,
       dataEnvio: row.dataEnvio,
       reserva: row.reserva,
       custo: row.custo,
@@ -146,6 +147,7 @@ export class IntegracaoEstoqueService {
         produtoId: produto.id,
         armazemId: armazem.id,
         saldo: input.saldo,
+        disponivel: input.disponivel ?? null,
         dataEnvio: input.dataEnvio,
         reserva: input.reserva ?? null,
         custo: input.custo ?? null,
@@ -220,6 +222,9 @@ export class IntegracaoEstoqueService {
         where: { id: existente.id },
         data: {
           ...(input.saldo !== undefined ? { saldo: input.saldo } : {}),
+          ...(input.disponivel !== undefined
+            ? { disponivel: input.disponivel }
+            : {}),
           ...(input.dataEnvio !== undefined
             ? { dataEnvio: input.dataEnvio }
             : {}),

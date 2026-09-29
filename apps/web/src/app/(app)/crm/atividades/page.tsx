@@ -6,18 +6,33 @@ import { toast } from "sonner";
 import type { Atividade, TipoAtividade } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError } from "@/lib/api-client";
-import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
+import {
+  useVendedoresEscopo,
+  vendedorFiltroLabel,
+} from "@/hooks/use-vendedores-escopo";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
-import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
-import { QuickFilterButton, QuickFilterGroup } from "@/components/crud/quick-filter-group";
+import {
+  StatusQuickFilter,
+  type StatusFilterValue,
+} from "@/components/crud/status-quick-filter";
+import {
+  QuickFilterButton,
+  QuickFilterGroup,
+} from "@/components/crud/quick-filter-group";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { TIPOS, TIPO_LABEL } from "@/components/crud/atividade-tipo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,19 +68,22 @@ export default function AtividadesPage() {
 
   const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
-  const mostrarFiltroVendedor = !(vendedoresEscopoQuery.data?.ehVendedorPuro ?? false);
+  const mostrarFiltroVendedor = !(
+    vendedoresEscopoQuery.data?.ehVendedorPuro ?? false
+  );
 
-  const { data, isLoading, isFetching, refetch, error } = useResourceList<Atividade>("atividades", {
-    search,
-    page,
-    pageSize,
-    sortBy,
-    sortOrder,
-    ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
-    ...(tipo !== "todos" ? { tipo } : {}),
-    ...(vendedorId ? { vendedorId } : {}),
-    ...(vencidas ? { vencidas: true } : {}),
-  });
+  const { data, isLoading, isFetching, refetch, error } =
+    useResourceList<Atividade>("atividades", {
+      search,
+      page,
+      pageSize,
+      sortBy,
+      sortOrder,
+      ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
+      ...(tipo !== "todos" ? { tipo } : {}),
+      ...(vendedorId ? { vendedorId } : {}),
+      ...(vencidas ? { vencidas: true } : {}),
+    });
 
   const { remove } = useResourceMutations("atividades");
 
@@ -77,7 +95,9 @@ export default function AtividadesPage() {
       await remove.mutateAsync(a.id);
       toast.success("Atividade excluída");
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Erro ao excluir atividade");
+      toast.error(
+        err instanceof ApiError ? err.message : "Erro ao excluir atividade",
+      );
     }
   };
 
@@ -90,26 +110,44 @@ export default function AtividadesPage() {
 
   const agora = new Date().getTime();
   const estaVencida = (a: Atividade) =>
-    !a.concluida && !!a.dataVencimento && new Date(a.dataVencimento).getTime() < agora;
+    !a.concluida &&
+    !!a.dataVencimento &&
+    new Date(a.dataVencimento).getTime() < agora;
 
   const columns: ColumnDef<Atividade>[] = [
-    { header: "Título", sortKey: "titulo", cell: (a) => <p className="font-medium">{a.titulo}</p> },
+    {
+      header: "Título",
+      sortKey: "titulo",
+      cell: (a) => <p className="font-medium">{a.titulo}</p>,
+    },
     { header: "Tipo", sortKey: "tipo", cell: (a) => TIPO_LABEL[a.tipo] },
     {
       header: "Cliente",
       cell: (a) => (
-        <span className="text-xs">{a.cliente ? a.cliente.nomeFantasia || a.cliente.razaoSocial : "—"}</span>
+        <span className="text-xs">
+          {a.cliente ? a.cliente.nomeFantasia || a.cliente.razaoSocial : "—"}
+        </span>
       ),
     },
     {
       header: "Vendedor",
-      cell: (a) => <span className="text-xs">{a.vendedor.nomeReduzido || a.vendedor.nome}</span>,
+      cell: (a) => (
+        <span className="text-xs">
+          {a.vendedor.nomeReduzido || a.vendedor.nome}
+        </span>
+      ),
     },
     {
       header: "Vencimento",
       sortKey: "dataVencimento",
       cell: (a) => (
-        <span className={estaVencida(a) ? "flex items-center gap-1 text-destructive" : undefined}>
+        <span
+          className={
+            estaVencida(a)
+              ? "flex items-center gap-1 text-destructive"
+              : undefined
+          }
+        >
           {estaVencida(a) && <AlertTriangle className="size-3.5" />}
           {dataBr(a.dataVencimento)}
         </span>
@@ -119,16 +157,29 @@ export default function AtividadesPage() {
       header: "Situação",
       sortKey: "concluida",
       cell: (a) =>
-        a.concluida ? <Badge variant="outline">Concluída</Badge> : <Badge>Pendente</Badge>,
+        a.concluida ? (
+          <Badge variant="outline">Concluída</Badge>
+        ) : (
+          <Badge>Pendente</Badge>
+        ),
     },
-    { header: "Status", sortKey: "ativo", cell: (a) => <StatusDot active={a.ativo} /> },
+    {
+      header: "Status",
+      sortKey: "ativo",
+      cell: (a) => <StatusDot active={a.ativo} />,
+    },
     {
       header: "",
       className: "w-10",
       cell: (a) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-8" onClick={(ev) => ev.stopPropagation()}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={(ev) => ev.stopPropagation()}
+            >
               <MoreHorizontal className="size-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -157,6 +208,57 @@ export default function AtividadesPage() {
         isRefreshing={isFetching}
         onCreate={() => router.push("/crm/atividades/novo")}
         createLabel="Nova atividade"
+        actions={
+          <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+            <div className="space-y-2">
+              <FieldLabel>Tipo</FieldLabel>
+              <Select
+                value={tipo}
+                onValueChange={(v) => {
+                  setTipo(v as TipoFiltro);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  {TIPOS.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {mostrarFiltroVendedor && (
+              <div className="space-y-2">
+                <FieldLabel>Vendedor</FieldLabel>
+                <Select
+                  value={vendedorId ?? "none"}
+                  onValueChange={(v) => {
+                    setVendedorId(v === "none" ? undefined : v);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Qualquer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Qualquer</SelectItem>
+                    {opcoesVendedor.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {vendedorFiltroLabel(v)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </FiltersPopover>
+        }
       />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -181,55 +283,6 @@ export default function AtividadesPage() {
             </QuickFilterButton>
           </QuickFilterGroup>
         </div>
-        <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
-          <div className="space-y-2">
-            <FieldLabel>Tipo</FieldLabel>
-            <Select
-              value={tipo}
-              onValueChange={(v) => {
-                setTipo(v as TipoFiltro);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                {TIPOS.map((t) => (
-                  <SelectItem key={t.value} value={t.value}>
-                    {t.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {mostrarFiltroVendedor && (
-            <div className="space-y-2">
-              <FieldLabel>Vendedor</FieldLabel>
-              <Select
-                value={vendedorId ?? "none"}
-                onValueChange={(v) => {
-                  setVendedorId(v === "none" ? undefined : v);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Qualquer" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Qualquer</SelectItem>
-                  {opcoesVendedor.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {vendedorFiltroLabel(v)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-        </FiltersPopover>
       </div>
 
       <EntityTable

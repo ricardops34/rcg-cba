@@ -1,4 +1,5 @@
 "use client";
+import { CrudHeader } from "@/components/crud/crud-header";
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -31,21 +32,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import {
-  AlertOctagon,
-  Settings2,
-  Trash2,
-  Clock,
-  Calendar,
-  Boxes,
-  Server,
-  Globe,
-  Building2,
-  Search,
-  Copy,
-  Check,
-  Code2,
-} from "lucide-react";
+import { AlertOctagon, Settings2, Trash2, Clock, Calendar, Boxes, Server, Globe, Building2, Copy, Check, Code2 } from "lucide-react";
 import { PlataformaGuard } from "../plataforma-guard";
 
 const ORIGENS = [
@@ -70,13 +57,19 @@ const formatarDataHora = (iso: string) =>
 function StatusBadge({ status }: { status: number | null }) {
   if (status === null) {
     return (
-      <Badge variant="outline" className="border-amber-500/50 text-amber-600 dark:text-amber-400">
+      <Badge
+        variant="outline"
+        className="border-amber-500/50 text-amber-600 dark:text-amber-400"
+      >
         sem resposta
       </Badge>
     );
   }
   return (
-    <Badge variant={status >= 500 ? "destructive" : "outline"} className="font-mono">
+    <Badge
+      variant={status >= 500 ? "destructive" : "outline"}
+      className="font-mono"
+    >
       {status}
     </Badge>
   );
@@ -98,9 +91,13 @@ function Cartao({
       <CardContent className="px-4 py-3 flex items-center justify-between">
         <div>
           <p className="text-xs text-muted-foreground">{rotulo}</p>
-          <p className="text-xl font-bold tracking-tight mt-0.5 tabular-nums">{valor}</p>
+          <p className="text-xl font-bold tracking-tight mt-0.5 tabular-nums">
+            {valor}
+          </p>
         </div>
-        <div className={`flex size-8 items-center justify-center rounded-lg ${colorClass || "bg-primary/10 text-primary"}`}>
+        <div
+          className={`flex size-8 items-center justify-center rounded-lg ${colorClass || "bg-primary/10 text-primary"}`}
+        >
           <Icon className="size-4" />
         </div>
       </CardContent>
@@ -150,21 +147,32 @@ function DetalheGrupo({
         </DialogHeader>
 
         {isLoading && (
-          <p className="text-sm text-muted-foreground text-center py-4">Carregando ocorrências…</p>
+          <p className="text-sm text-muted-foreground text-center py-4">
+            Carregando ocorrências…
+          </p>
         )}
 
         <div className="space-y-3">
           {data?.data.map((o) => (
-            <div key={o.id} className="rounded-lg border bg-card p-3 text-sm space-y-2">
+            <div
+              key={o.id}
+              className="rounded-lg border bg-card p-3 text-sm space-y-2"
+            >
               <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-medium">{formatarDataHora(o.ultimaEm)}</span>
+                  <span className="font-mono text-xs font-medium">
+                    {formatarDataHora(o.ultimaEm)}
+                  </span>
                   {o.ocorrencias > 1 && (
-                    <Badge variant="secondary" className="text-[10px]">×{o.ocorrencias}</Badge>
+                    <Badge variant="secondary" className="text-[10px]">
+                      ×{o.ocorrencias}
+                    </Badge>
                   )}
                   <StatusBadge status={o.status} />
                 </div>
-                <span className="text-xs font-mono text-muted-foreground">{o.rota}</span>
+                <span className="text-xs font-mono text-muted-foreground">
+                  {o.rota}
+                </span>
               </div>
 
               <p className="font-medium text-foreground">{o.mensagem}</p>
@@ -188,7 +196,11 @@ function DetalheGrupo({
                       className="h-6 px-2 text-[10px] gap-1"
                       onClick={() => copiarStack(o.stack!)}
                     >
-                      {copiado ? <Check className="size-3 text-emerald-500" /> : <Copy className="size-3" />}
+                      {copiado ? (
+                        <Check className="size-3 text-emerald-500" />
+                      ) : (
+                        <Copy className="size-3" />
+                      )}
                       {copiado ? "Copiado" : "Copiar"}
                     </Button>
                   </div>
@@ -226,7 +238,9 @@ function PainelConfig() {
       }),
     onSuccess: () => {
       setRascunho({});
-      void queryClient.invalidateQueries({ queryKey: ["plataforma/erros/config"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["plataforma/erros/config"],
+      });
       toast.success("Governança do log atualizada.");
     },
     onError: (erro: Error) => toast.error(erro.message),
@@ -246,7 +260,10 @@ function PainelConfig() {
             className="w-28"
             value={valor.retencaoDias}
             onChange={(e) =>
-              setRascunho((r) => ({ ...r, retencaoDias: Number(e.target.value) }))
+              setRascunho((r) => ({
+                ...r,
+                retencaoDias: Number(e.target.value),
+              }))
             }
           />
           <p className="text-xs text-muted-foreground">0 = sem expurgo</p>
@@ -316,12 +333,14 @@ export default function PlataformaErrosPage() {
     ...(search ? { search } : {}),
   };
 
-  const { data, isLoading, error } = useResourceList<ErroLogGrupo>(
-    "plataforma/erros",
-    filtros,
-  );
+  const { data, isLoading, error, refetch, isFetching } =
+    useResourceList<ErroLogGrupo>("plataforma/erros", filtros);
 
-  const { data: resumo } = useQuery({
+  const {
+    data: resumo,
+    refetch: refetchResumo,
+    isFetching: fetchingResumo,
+  } = useQuery({
     queryKey: ["plataforma/erros/resumo", origem, search],
     queryFn: () =>
       apiFetch<ErroLogResumo>("/plataforma/erros/resumo", {
@@ -353,8 +372,15 @@ export default function PlataformaErrosPage() {
       header: "Origem",
       className: "w-28",
       cell: (g) => (
-        <Badge variant={g.origem === "cliente" ? "secondary" : "outline"} className="gap-1 text-[11px]">
-          {g.origem === "cliente" ? <Globe className="size-3" /> : <Server className="size-3" />}
+        <Badge
+          variant={g.origem === "cliente" ? "secondary" : "outline"}
+          className="gap-1 text-[11px]"
+        >
+          {g.origem === "cliente" ? (
+            <Globe className="size-3" />
+          ) : (
+            <Server className="size-3" />
+          )}
           {ERRO_ORIGEM_LABEL[g.origem]}
         </Badge>
       ),
@@ -368,7 +394,11 @@ export default function PlataformaErrosPage() {
         </span>
       ),
     },
-    { header: "Status", className: "w-28", cell: (g) => <StatusBadge status={g.status} /> },
+    {
+      header: "Status",
+      className: "w-28",
+      cell: (g) => <StatusBadge status={g.status} />,
+    },
     {
       header: "Rota",
       cell: (g) => (
@@ -380,7 +410,9 @@ export default function PlataformaErrosPage() {
     },
     {
       header: "Mensagem",
-      cell: (g) => <span className="text-xs font-medium text-foreground">{g.resumo}</span>,
+      cell: (g) => (
+        <span className="text-xs font-medium text-foreground">{g.resumo}</span>
+      ),
     },
     {
       header: "Vezes",
@@ -420,39 +452,88 @@ export default function PlataformaErrosPage() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold tracking-tight">Erros e Exceções do Sistema</h1>
-                <Badge variant="outline" className="text-xs">Error Tracking</Badge>
+                <h1 className="text-xl font-bold tracking-tight">
+                  Erros e Exceções do Sistema
+                </h1>
+                <Badge variant="outline" className="text-xs">
+                  Error Tracking
+                </Badge>
               </div>
               <p className="text-xs text-muted-foreground">
-                Captura e agrupamento automático de falhas do servidor, erros de navegação e exceções.
+                Captura e agrupamento automático de falhas do servidor, erros de
+                navegação e exceções.
               </p>
             </div>
           </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setMostrarConfig((v) => !v)}
-            className="gap-2 shadow-xs"
-          >
-            <Settings2 className="size-4" />
-            Governança de Logs
-          </Button>
         </div>
 
         {mostrarConfig && <PainelConfig />}
 
         {resumo && (
           <div className="flex flex-wrap gap-3">
-            <Cartao rotulo="Últimas 24h" valor={resumo.ultimas24h} icon={Clock} colorClass="bg-rose-500/10 text-rose-500" />
-            <Cartao rotulo="Últimos 7 dias" valor={resumo.ultimos7Dias} icon={Calendar} colorClass="bg-amber-500/10 text-amber-500" />
-            <Cartao rotulo="Grupos distintos" valor={resumo.gruposDistintos} icon={Boxes} colorClass="bg-primary/10 text-primary" />
-            <Cartao rotulo="Servidor" valor={resumo.doServidor} icon={Server} colorClass="bg-blue-500/10 text-blue-500" />
-            <Cartao rotulo="Navegador" valor={resumo.doCliente} icon={Globe} colorClass="bg-purple-500/10 text-purple-500" />
-            <Cartao rotulo="Empresas Afetadas" valor={resumo.empresasAfetadas} icon={Building2} colorClass="bg-emerald-500/10 text-emerald-500" />
+            <Cartao
+              rotulo="Últimas 24h"
+              valor={resumo.ultimas24h}
+              icon={Clock}
+              colorClass="bg-rose-500/10 text-rose-500"
+            />
+            <Cartao
+              rotulo="Últimos 7 dias"
+              valor={resumo.ultimos7Dias}
+              icon={Calendar}
+              colorClass="bg-amber-500/10 text-amber-500"
+            />
+            <Cartao
+              rotulo="Grupos distintos"
+              valor={resumo.gruposDistintos}
+              icon={Boxes}
+              colorClass="bg-primary/10 text-primary"
+            />
+            <Cartao
+              rotulo="Servidor"
+              valor={resumo.doServidor}
+              icon={Server}
+              colorClass="bg-blue-500/10 text-blue-500"
+            />
+            <Cartao
+              rotulo="Navegador"
+              valor={resumo.doCliente}
+              icon={Globe}
+              colorClass="bg-purple-500/10 text-purple-500"
+            />
+            <Cartao
+              rotulo="Empresas Afetadas"
+              valor={resumo.empresasAfetadas}
+              icon={Building2}
+              colorClass="bg-emerald-500/10 text-emerald-500"
+            />
           </div>
         )}
 
+        <CrudHeader
+          search={search}
+          onSearchChange={(v) => {
+            setSearch(v);
+            setPage(1);
+          }}
+          placeholder="Buscar por rota ou mensagem..."
+          actions={
+            <Button
+              variant="outline"
+
+              onClick={() => setMostrarConfig((v) => !v)}
+              className="gap-2 shadow-xs"
+            >
+              <Settings2 className="size-4" />
+              Governança de Logs
+            </Button>
+          }
+          onRefresh={() => {
+            void refetch();
+            void refetchResumo();
+          }}
+          isRefreshing={isFetching || fetchingResumo}
+        />
         <div className="flex flex-wrap items-center gap-3">
           <QuickFilterGroup>
             {ORIGENS.map(([valor, rotulo, Icone]) => (
@@ -470,19 +551,6 @@ export default function PlataformaErrosPage() {
               </QuickFilterButton>
             ))}
           </QuickFilterGroup>
-
-          <div className="relative flex-1 min-w-64 max-w-sm">
-            <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por rota ou mensagem..."
-              className="pl-8"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
-            />
-          </div>
         </div>
 
         <EntityTable
@@ -509,4 +577,3 @@ export default function PlataformaErrosPage() {
     </PlataformaGuard>
   );
 }
-

@@ -16,20 +16,37 @@ import { apiFetch, ApiError } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
-import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
+import {
+  StatusQuickFilter,
+  type StatusFilterValue,
+} from "@/components/crud/status-quick-filter";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { KeyRound, Lock, MoreHorizontal, Pencil, Trash2, Unlock, UserPlus } from "lucide-react";
+import {
+  KeyRound,
+  Lock,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Unlock,
+  UserPlus,
+} from "lucide-react";
 
 type SimNaoTodos = "todos" | "sim" | "nao";
 
@@ -75,24 +92,28 @@ export default function VendedoresPage() {
       }),
   });
 
-  const { data, isLoading, isFetching, refetch, error } = useResourceList<Vendedor>("vendedores", {
-    search,
-    page,
-    pageSize,
-    sortBy,
-    sortOrder,
-    ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
-    ...(tipo !== "todos" ? { tipo } : {}),
-    ...(vinculo !== "todos" ? { vinculo } : {}),
-    ...(usaDashboard !== "todos" ? { usaDashboard: usaDashboard === "sim" } : {}),
-    ...(desligado !== "todos" ? { desligado: desligado === "sim" } : {}),
-    ...(superiorId ? { superiorId } : {}),
-  });
+  const { data, isLoading, isFetching, refetch, error } =
+    useResourceList<Vendedor>("vendedores", {
+      search,
+      page,
+      pageSize,
+      sortBy,
+      sortOrder,
+      ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
+      ...(tipo !== "todos" ? { tipo } : {}),
+      ...(vinculo !== "todos" ? { vinculo } : {}),
+      ...(usaDashboard !== "todos"
+        ? { usaDashboard: usaDashboard === "sim" }
+        : {}),
+      ...(desligado !== "todos" ? { desligado: desligado === "sim" } : {}),
+      ...(superiorId ? { superiorId } : {}),
+    });
 
   const { remove } = useResourceMutations("vendedores");
   const queryClient = useQueryClient();
 
-  const openEdit = (v: Vendedor) => router.push(`/gerencial/vendedores/${v.id}`);
+  const openEdit = (v: Vendedor) =>
+    router.push(`/gerencial/vendedores/${v.id}`);
 
   const onDelete = async (v: Vendedor) => {
     if (!confirm(`Excluir o vendedor "${v.nome}"?`)) return;
@@ -100,47 +121,74 @@ export default function VendedoresPage() {
       await remove.mutateAsync(v.id);
       toast.success("Vendedor excluído");
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Erro ao excluir vendedor");
+      toast.error(
+        err instanceof ApiError ? err.message : "Erro ao excluir vendedor",
+      );
     }
   };
 
   const criarUsuario = useMutation({
     mutationFn: (id: string) =>
-      apiFetch<AcessoVendedorResposta>(`/vendedores/${id}/criar-usuario`, { method: "POST" }),
+      apiFetch<AcessoVendedorResposta>(`/vendedores/${id}/criar-usuario`, {
+        method: "POST",
+      }),
     onSuccess: (r) => {
       toast.success(mensagemAcesso("Usuário criado", r));
       queryClient.invalidateQueries({ queryKey: ["vendedores"] });
       queryClient.invalidateQueries({ queryKey: ["usuarios"] });
     },
-    onError: (err) => toast.error(err instanceof ApiError ? err.message : "Erro ao criar usuário"),
+    onError: (err) =>
+      toast.error(
+        err instanceof ApiError ? err.message : "Erro ao criar usuário",
+      ),
   });
 
   const onCriarUsuario = (v: Vendedor) => {
-    if (!confirm(`Criar usuário de acesso para "${v.nome}" e enviar senha provisória por e-mail?`)) return;
+    if (
+      !confirm(
+        `Criar usuário de acesso para "${v.nome}" e enviar senha provisória por e-mail?`,
+      )
+    )
+      return;
     criarUsuario.mutate(v.id);
   };
 
   const reenviarSenha = useMutation({
     mutationFn: (id: string) =>
-      apiFetch<AcessoVendedorResposta>(`/vendedores/${id}/reenviar-senha`, { method: "POST" }),
+      apiFetch<AcessoVendedorResposta>(`/vendedores/${id}/reenviar-senha`, {
+        method: "POST",
+      }),
     onSuccess: (r) => toast.success(mensagemAcesso("Senha redefinida", r)),
-    onError: (err) => toast.error(err instanceof ApiError ? err.message : "Erro ao reenviar senha"),
+    onError: (err) =>
+      toast.error(
+        err instanceof ApiError ? err.message : "Erro ao reenviar senha",
+      ),
   });
 
   const onReenviarSenha = (v: Vendedor) => {
-    if (!confirm(`Enviar uma nova senha provisória para "${v.nome}" (${v.email})?`)) return;
+    if (
+      !confirm(
+        `Enviar uma nova senha provisória para "${v.nome}" (${v.email})?`,
+      )
+    )
+      return;
     reenviarSenha.mutate(v.id);
   };
 
   const toggleBloqueio = useMutation({
     mutationFn: ({ id, bloquear }: { id: string; bloquear: boolean }) =>
-      apiFetch(`/vendedores/${id}/${bloquear ? "bloquear" : "desbloquear"}`, { method: "PATCH" }),
+      apiFetch(`/vendedores/${id}/${bloquear ? "bloquear" : "desbloquear"}`, {
+        method: "PATCH",
+      }),
     onSuccess: (_data, { bloquear }) => {
       toast.success(bloquear ? "Vendedor bloqueado" : "Vendedor desbloqueado");
       queryClient.invalidateQueries({ queryKey: ["vendedores"] });
       queryClient.invalidateQueries({ queryKey: ["usuarios"] });
     },
-    onError: (err) => toast.error(err instanceof ApiError ? err.message : "Erro ao atualizar bloqueio"),
+    onError: (err) =>
+      toast.error(
+        err instanceof ApiError ? err.message : "Erro ao atualizar bloqueio",
+      ),
   });
 
   const onToggleBloqueio = (v: Vendedor) => {
@@ -173,14 +221,18 @@ export default function VendedoresPage() {
       cell: (v) => (
         <div>
           <p className="font-medium">{v.nome}</p>
-          {v.nomeReduzido && <p className="text-xs text-muted-foreground">{v.nomeReduzido}</p>}
+          {v.nomeReduzido && (
+            <p className="text-xs text-muted-foreground">{v.nomeReduzido}</p>
+          )}
         </div>
       ),
     },
     {
       header: "Código",
       sortKey: "codigoErp",
-      cell: (v) => <span className="font-mono text-xs">{v.codigoErp || "—"}</span>,
+      cell: (v) => (
+        <span className="font-mono text-xs">{v.codigoErp || "—"}</span>
+      ),
     },
     {
       header: "Contato",
@@ -223,7 +275,9 @@ export default function VendedoresPage() {
     {
       header: "Dashboard",
       cell: (v) => (
-        <span className="text-xs text-muted-foreground">{v.usaDashboard ? "Sim" : "—"}</span>
+        <span className="text-xs text-muted-foreground">
+          {v.usaDashboard ? "Sim" : "—"}
+        </span>
       ),
     },
     {
@@ -234,14 +288,23 @@ export default function VendedoresPage() {
           ? `${v.percComissao.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`
           : "—",
     },
-    { header: "Status", sortKey: "ativo", cell: (v) => <StatusDot active={v.ativo} /> },
+    {
+      header: "Status",
+      sortKey: "ativo",
+      cell: (v) => <StatusDot active={v.ativo} />,
+    },
     {
       header: "",
       className: "w-10",
       cell: (v) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-8" onClick={(ev) => ev.stopPropagation()}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={(ev) => ev.stopPropagation()}
+            >
               <MoreHorizontal className="size-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -289,6 +352,97 @@ export default function VendedoresPage() {
         isRefreshing={isFetching}
         onCreate={() => router.push("/gerencial/vendedores/novo")}
         createLabel="Novo vendedor"
+        actions={
+          <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+            <div className="space-y-2">
+              <FieldLabel>Vínculo</FieldLabel>
+              <Select
+                value={vinculo}
+                onValueChange={(v) => {
+                  setVinculo(v as VinculoVendedor | "todos");
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  {(
+                    Object.keys(VINCULO_VENDEDOR_LABEL) as VinculoVendedor[]
+                  ).map((v) => (
+                    <SelectItem key={v} value={v}>
+                      {VINCULO_VENDEDOR_LABEL[v]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <FieldLabel>Usa em Dashboard</FieldLabel>
+              <Select
+                value={usaDashboard}
+                onValueChange={(v) => {
+                  setUsaDashboard(v as SimNaoTodos);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  <SelectItem value="sim">Sim</SelectItem>
+                  <SelectItem value="nao">Não</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <FieldLabel>Desligado</FieldLabel>
+              <Select
+                value={desligado}
+                onValueChange={(v) => {
+                  setDesligado(v as SimNaoTodos);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  <SelectItem value="sim">Sim</SelectItem>
+                  <SelectItem value="nao">Não</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <FieldLabel>Superior</FieldLabel>
+              <Select
+                value={superiorId ?? "none"}
+                onValueChange={(v) => {
+                  setSuperiorId(v === "none" ? undefined : v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Qualquer" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Qualquer</SelectItem>
+                  {(superioresQuery.data?.data ?? []).map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.nomeReduzido || s.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </FiltersPopover>
+        }
       />
 
       {/* Agrupamento por tipo: cada aba é o recorte de um papel, e o filtro
@@ -318,93 +472,6 @@ export default function VendedoresPage() {
             setPage(1);
           }}
         />
-        <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
-          <div className="space-y-2">
-            <FieldLabel>Vínculo</FieldLabel>
-            <Select
-              value={vinculo}
-              onValueChange={(v) => {
-                setVinculo(v as VinculoVendedor | "todos");
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                {(Object.keys(VINCULO_VENDEDOR_LABEL) as VinculoVendedor[]).map((v) => (
-                  <SelectItem key={v} value={v}>
-                    {VINCULO_VENDEDOR_LABEL[v]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <FieldLabel>Usa em Dashboard</FieldLabel>
-            <Select
-              value={usaDashboard}
-              onValueChange={(v) => {
-                setUsaDashboard(v as SimNaoTodos);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="sim">Sim</SelectItem>
-                <SelectItem value="nao">Não</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <FieldLabel>Desligado</FieldLabel>
-            <Select
-              value={desligado}
-              onValueChange={(v) => {
-                setDesligado(v as SimNaoTodos);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="sim">Sim</SelectItem>
-                <SelectItem value="nao">Não</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <FieldLabel>Superior</FieldLabel>
-            <Select
-              value={superiorId ?? "none"}
-              onValueChange={(v) => {
-                setSuperiorId(v === "none" ? undefined : v);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Qualquer" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Qualquer</SelectItem>
-                {(superioresQuery.data?.data ?? []).map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.nomeReduzido || s.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </FiltersPopover>
       </div>
 
       <EntityTable

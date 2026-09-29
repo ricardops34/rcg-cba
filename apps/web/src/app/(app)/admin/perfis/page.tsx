@@ -9,14 +9,23 @@ import { ApiError } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
-import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
+import {
+  StatusQuickFilter,
+  type StatusFilterValue,
+} from "@/components/crud/status-quick-filter";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { roleColorClass } from "@/lib/role-color";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { FieldLabel } from "@/components/ui/field";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,15 +55,18 @@ export default function PerfisPage() {
   const [status, setStatus] = useState<StatusFilterValue>("todos");
   const [sistemaBase, setSistemaBase] = useState<SimNaoTodos>("todos");
 
-  const { data, isLoading, isFetching, refetch, error } = useResourceList<Perfil>("perfis", {
-    search,
-    page,
-    pageSize,
-    sortBy,
-    sortOrder,
-    ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
-    ...(sistemaBase !== "todos" ? { sistemaBase: sistemaBase === "sim" } : {}),
-  });
+  const { data, isLoading, isFetching, refetch, error } =
+    useResourceList<Perfil>("perfis", {
+      search,
+      page,
+      pageSize,
+      sortBy,
+      sortOrder,
+      ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
+      ...(sistemaBase !== "todos"
+        ? { sistemaBase: sistemaBase === "sim" }
+        : {}),
+    });
   const { remove } = useResourceMutations("perfis");
 
   const filtrosAtivos = sistemaBase !== "todos";
@@ -70,7 +82,8 @@ export default function PerfisPage() {
   const totalAtivos = perfis.filter((p) => p.ativo).length;
 
   const openEdit = (p: Perfil) => router.push(`/admin/perfis/${p.id}`);
-  const openPermissoes = (p: Perfil) => router.push(`/admin/perfis/${p.id}?tab=permissoes`);
+  const openPermissoes = (p: Perfil) =>
+    router.push(`/admin/perfis/${p.id}?tab=permissoes`);
 
   const onDelete = async (perfil: Perfil) => {
     if (perfil.sistemaBase) {
@@ -82,7 +95,9 @@ export default function PerfisPage() {
       await remove.mutateAsync(perfil.id);
       toast.success("Perfil excluído com sucesso");
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Erro ao excluir perfil");
+      toast.error(
+        err instanceof ApiError ? err.message : "Erro ao excluir perfil",
+      );
     }
   };
 
@@ -101,7 +116,10 @@ export default function PerfisPage() {
             </Badge>
           )}
           {p.administraPlataforma && (
-            <Badge variant="outline" className="text-[10px] border-purple-500/40 text-purple-600 dark:text-purple-400">
+            <Badge
+              variant="outline"
+              className="text-[10px] border-purple-500/40 text-purple-600 dark:text-purple-400"
+            >
               Plataforma
             </Badge>
           )}
@@ -110,16 +128,29 @@ export default function PerfisPage() {
     },
     {
       header: "Descrição",
-      cell: (p) => <span className="text-xs text-muted-foreground">{p.descricao ?? "—"}</span>,
+      cell: (p) => (
+        <span className="text-xs text-muted-foreground">
+          {p.descricao ?? "—"}
+        </span>
+      ),
     },
-    { header: "Status", sortKey: "ativo", cell: (p) => <StatusDot active={p.ativo} /> },
+    {
+      header: "Status",
+      sortKey: "ativo",
+      cell: (p) => <StatusDot active={p.ativo} />,
+    },
     {
       header: "",
       className: "w-10",
       cell: (p) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-8" onClick={(ev) => ev.stopPropagation()}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={(ev) => ev.stopPropagation()}
+            >
               <MoreHorizontal className="size-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -131,7 +162,10 @@ export default function PerfisPage() {
               <Pencil className="size-4" /> Editar perfil
             </DropdownMenuItem>
             {!p.sistemaBase && (
-              <DropdownMenuItem variant="destructive" onClick={() => onDelete(p)}>
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={() => onDelete(p)}
+              >
                 <Trash2 className="size-4" /> Excluir perfil
               </DropdownMenuItem>
             )}
@@ -151,15 +185,23 @@ export default function PerfisPage() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold tracking-tight">Perfis de Acesso (RBAC)</h1>
-              <Badge variant="outline" className="text-xs">Segurança e Permissões</Badge>
+              <h1 className="text-xl font-bold tracking-tight">
+                Perfis de Acesso (RBAC)
+              </h1>
+              <Badge variant="outline" className="text-xs">
+                Segurança e Permissões
+              </Badge>
             </div>
             <p className="text-xs text-muted-foreground">
-              Configure perfis de acesso, permissões granulares por rotina e regras de segurança da empresa.
+              Configure perfis de acesso, permissões granulares por rotina e
+              regras de segurança da empresa.
             </p>
           </div>
         </div>
-        <Button onClick={() => router.push("/admin/perfis/novo")} className="gap-2 shadow-xs">
+        <Button
+          onClick={() => router.push("/admin/perfis/novo")}
+          className="gap-2 shadow-xs"
+        >
           <Plus className="size-4" /> Novo perfil
         </Button>
       </div>
@@ -169,8 +211,12 @@ export default function PerfisPage() {
         <Card className="shadow-xs border-border/60">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-muted-foreground">Total de Perfis</p>
-              <p className="text-2xl font-bold tracking-tight mt-1">{totalPerfis}</p>
+              <p className="text-xs font-medium text-muted-foreground">
+                Total de Perfis
+              </p>
+              <p className="text-2xl font-bold tracking-tight mt-1">
+                {totalPerfis}
+              </p>
             </div>
             <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <Shield className="size-5" />
@@ -181,7 +227,9 @@ export default function PerfisPage() {
         <Card className="shadow-xs border-border/60">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-muted-foreground">Base do Sistema</p>
+              <p className="text-xs font-medium text-muted-foreground">
+                Base do Sistema
+              </p>
               <p className="text-2xl font-bold tracking-tight mt-1 text-purple-600 dark:text-purple-400">
                 {totalBaseSistema}
               </p>
@@ -195,7 +243,9 @@ export default function PerfisPage() {
         <Card className="shadow-xs border-border/60">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-muted-foreground">Personalizados</p>
+              <p className="text-xs font-medium text-muted-foreground">
+                Personalizados
+              </p>
               <p className="text-2xl font-bold tracking-tight mt-1 text-blue-600 dark:text-blue-400">
                 {totalPersonalizados}
               </p>
@@ -209,7 +259,9 @@ export default function PerfisPage() {
         <Card className="shadow-xs border-border/60">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-muted-foreground">Perfis Ativos</p>
+              <p className="text-xs font-medium text-muted-foreground">
+                Perfis Ativos
+              </p>
               <p className="text-2xl font-bold tracking-tight mt-1 text-emerald-600 dark:text-emerald-400">
                 {totalAtivos}
               </p>
@@ -230,6 +282,29 @@ export default function PerfisPage() {
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
         placeholder="Buscar por nome do perfil..."
+        actions={
+          <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+            <div className="space-y-2">
+              <FieldLabel>Base do sistema</FieldLabel>
+              <Select
+                value={sistemaBase}
+                onValueChange={(v) => {
+                  setSistemaBase(v as SimNaoTodos);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os perfis</SelectItem>
+                  <SelectItem value="sim">Somente base do sistema</SelectItem>
+                  <SelectItem value="nao">Somente personalizados</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </FiltersPopover>
+        }
       />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -240,27 +315,6 @@ export default function PerfisPage() {
             setPage(1);
           }}
         />
-        <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
-          <div className="space-y-2">
-            <FieldLabel>Base do sistema</FieldLabel>
-            <Select
-              value={sistemaBase}
-              onValueChange={(v) => {
-                setSistemaBase(v as SimNaoTodos);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos os perfis</SelectItem>
-                <SelectItem value="sim">Somente base do sistema</SelectItem>
-                <SelectItem value="nao">Somente personalizados</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </FiltersPopover>
       </div>
 
       <EntityTable
@@ -290,4 +344,3 @@ export default function PerfisPage() {
     </div>
   );
 }
-

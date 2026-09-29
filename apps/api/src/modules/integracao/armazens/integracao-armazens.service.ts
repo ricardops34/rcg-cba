@@ -34,6 +34,7 @@ export class IntegracaoArmazensService {
     chave: string | null;
     descricao: string;
     ativo: boolean;
+    revenda: boolean;
     createdAt: Date;
     updatedAt: Date;
     createdBy: string | null;
@@ -45,6 +46,7 @@ export class IntegracaoArmazensService {
       codigoErp: row.codigoErp,
       descricao: row.descricao,
       ativo: row.ativo,
+      revenda: row.revenda,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       createdBy: row.createdBy,
@@ -127,6 +129,7 @@ export class IntegracaoArmazensService {
         codigoErp: input.codigoErp ?? '',
         descricao: input.descricao,
         ativo: input.ativo,
+        revenda: input.revenda,
         updatedBy: autor,
       };
 
@@ -195,6 +198,7 @@ export class IntegracaoArmazensService {
             ? { descricao: input.descricao }
             : {}),
           ...(input.ativo !== undefined ? { ativo: input.ativo } : {}),
+          ...(input.revenda !== undefined ? { revenda: input.revenda } : {}),
           updatedBy: autor,
         },
       });

@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
 interface CrudHeaderProps {
-  search: string;
-  onSearchChange: (value: string) => void;
+  search?: string;
+  onSearchChange?: (value: string) => void;
   onRefresh?: () => void;
   onCreate?: () => void;
   createLabel?: string;
@@ -27,27 +27,34 @@ export function CrudHeader({
   actions,
 }: CrudHeaderProps) {
   return (
-    <div data-tour="crud-busca" className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-      <div className="relative w-full sm:max-w-xs">
-        <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder={placeholder}
-          className="pl-8"
-        />
-      </div>
+    <div
+      data-tour="crud-busca"
+      className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
+    >
+      {onSearchChange && (
+        <div className="relative w-full sm:max-w-xs">
+          <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder={placeholder}
+            className="pl-8"
+          />
+        </div>
+      )}
 
-      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+      <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:ml-auto sm:w-auto">
         {actions}
         {onRefresh && (
-          <Button className="flex-1 sm:flex-none" variant="outline" onClick={onRefresh} disabled={isRefreshing}>
-            <RefreshCw className={isRefreshing ? "size-4 animate-spin" : "size-4"} />
+          <Button variant="outline" onClick={onRefresh} disabled={isRefreshing}>
+            <RefreshCw
+              className={isRefreshing ? "size-4 animate-spin" : "size-4"}
+            />
             Atualizar
           </Button>
         )}
         {onCreate && (
-          <Button className="flex-1 sm:flex-none" onClick={onCreate}>
+          <Button onClick={onCreate}>
             <Plus className="size-4" />
             {createLabel}
           </Button>

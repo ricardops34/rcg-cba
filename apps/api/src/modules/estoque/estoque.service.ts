@@ -13,6 +13,10 @@ const ARMAZEM_SELECT = { select: { id: true, codigoErp: true, descricao: true, a
 // Consulta read-only: o saldo entra só pelo import do legado (e no futuro
 // pela API externa de manutenção) — nada de create/update/delete manual.
 //
+// Só conta o estoque dos armazéns de revenda (MV_BJAPI16 no Protheus, marcado
+// pelo ERP em armazem.revenda) — decisão de 29/09/2026, vale em toda leitura
+// de estoque da plataforma.
+//
 // A listagem é por produto (um produto pode ter saldo em vários armazéns);
 // o saldo apresentado é a soma em todos os armazéns, ou só no armazém
 // filtrado quando query.armazemId é informado. O detalhamento por armazém
@@ -27,6 +31,7 @@ export class EstoqueService {
         empresaId,
         deletedAt: null,
         ...(query.armazemId ? { armazemId: query.armazemId } : {}),
+        AND: [{ armazem: { revenda: true } }],
         OR: [
           { armazem: { ativo: true } },
           { armazem: { ativo: false }, saldo: { gt: 0 } },
@@ -69,7 +74,14 @@ export class EstoqueService {
             }
           : {}),
         ...(query.comSaldo === false
-          ? { estoques: { some: estoqueFilter, every: { ...estoqueFilter, saldo: { lte: 0 } } } }
+          ? {
+              estoques: {
+                some: estoqueFilter,
+                // "Toda linha que conta está zerada" — linha de armazém fora da
+                // revenda (ou inativo sem saldo) não entra na conta.
+                every: { OR: [{ NOT: estoqueFilter }, { saldo: { lte: 0 } }] },
+              },
+            }
           : query.comSaldo === true
             ? { estoques: { some: { ...estoqueFilter, saldo: { gt: 0 } } } }
             : query.armazemId
@@ -139,6 +151,7 @@ export class EstoqueService {
           produtoId,
           empresaId,
           deletedAt: null,
+          AND: [{ armazem: { revenda: true } }],
           OR: [
             { armazem: { ativo: true } },
             { armazem: { ativo: false }, saldo: { gt: 0 } },

@@ -8,20 +8,39 @@ import { useResourceList } from "@/hooks/use-resource";
 import { apiFetch } from "@/lib/api-client";
 import { dataCivilBr } from "@/lib/data";
 import { useAuthStore } from "@/stores/auth-store";
-import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
+import {
+  useVendedoresEscopo,
+  vendedorFiltroLabel,
+} from "@/hooks/use-vendedores-escopo";
 import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
-import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
-import { QuickFilterButton, QuickFilterGroup } from "@/components/crud/quick-filter-group";
+import {
+  StatusQuickFilter,
+  type StatusFilterValue,
+} from "@/components/crud/status-quick-filter";
+import {
+  QuickFilterButton,
+  QuickFilterGroup,
+} from "@/components/crud/quick-filter-group";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { ClienteSheet } from "@/components/crud/cliente-form";
 import { OrcamentoSheet } from "@/components/crud/orcamento-form";
 import { FieldLabel } from "@/components/ui/field";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,16 +61,28 @@ const DIAS_OPCOES = [120, 90, 60, 30, 15] as const;
 
 type SimNaoTodos = "todos" | "sim" | "nao";
 
-const moeda = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const moeda = (v: number) =>
+  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const dataBr = dataCivilBr;
 
 // Prioridade vencido > vencendo (≤7 dias) > não vencido — o $ mostra só a
 // pior situação entre os títulos em aberto do cliente; sem título em
 // aberto, não mostra nada.
-function tituloIndicador(c: PosicaoClienteListRow): { cor: string; legenda: string } | null {
-  if (c.temTituloVencido) return { cor: "text-destructive", legenda: "Tem título vencido" };
-  if (c.temTituloVencendo) return { cor: "text-blue-600 dark:text-blue-400", legenda: "Tem título vencendo nos próximos 7 dias" };
-  if (c.temTituloNaoVencido) return { cor: "text-success", legenda: "Tem título em aberto, não vencido" };
+function tituloIndicador(
+  c: PosicaoClienteListRow,
+): { cor: string; legenda: string } | null {
+  if (c.temTituloVencido)
+    return { cor: "text-destructive", legenda: "Tem título vencido" };
+  if (c.temTituloVencendo)
+    return {
+      cor: "text-blue-600 dark:text-blue-400",
+      legenda: "Tem título vencendo nos próximos 7 dias",
+    };
+  if (c.temTituloNaoVencido)
+    return {
+      cor: "text-success",
+      legenda: "Tem título em aberto, não vencido",
+    };
   return null;
 }
 
@@ -63,23 +94,30 @@ export default function PosicaoClientePage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [sortBy, setSortBy] = useState("ultimaCompra");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [sortBy, setSortBy] = useState("dias");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [status, setStatus] = useState<StatusFilterValue>("ativos");
   const [uf, setUf] = useState<string | undefined>(undefined);
   const [municipio, setMunicipio] = useState<string | undefined>(undefined);
   const [vendedorId, setVendedorId] = useState<string | undefined>(undefined);
   const [carteira, setCarteira] = useState<SimNaoTodos>("todos");
-  const [diasSemComprar, setDiasSemComprar] = useState<number | undefined>(undefined);
-  const [temTituloVencido, setTemTituloVencido] = useState<boolean | undefined>(undefined);
+  const [diasSemComprar, setDiasSemComprar] = useState<number | undefined>(
+    undefined,
+  );
+  const [temTituloVencido, setTemTituloVencido] = useState<boolean | undefined>(
+    undefined,
+  );
 
   // Visualizar/Alterar Cliente e Incluir Orçamento abrem em cortina lateral
   // (não navegam pra fora desta listagem) — só nesta tela; o cadastro de
   // Clientes continua abrindo em página cheia normalmente.
-  const [clienteSheet, setClienteSheet] = useState<{ id: string; modo: "visualizar" | "alterar" } | null>(
+  const [clienteSheet, setClienteSheet] = useState<{
+    id: string;
+    modo: "visualizar" | "alterar";
+  } | null>(null);
+  const [orcamentoClienteId, setOrcamentoClienteId] = useState<string | null>(
     null,
   );
-  const [orcamentoClienteId, setOrcamentoClienteId] = useState<string | null>(null);
 
   // Esconder o que o perfil não permite. Mesma leitura do menu lateral: a
   // lista de permissões já vem resolvida pelo perfil e o administrador chega
@@ -100,7 +138,11 @@ export default function PosicaoClientePage() {
   // vendedores com pelo menos um cliente (inclui bloqueados) — filtrar por
   // um vendedor sem nenhum cliente na Posição de Cliente não serviria pra
   // nada, e um vendedor bloqueado ainda pode ter carteira pra revisar.
-  const vendedoresEscopoQuery = useVendedoresEscopo({ apenasComCliente: true, uf, municipio });
+  const vendedoresEscopoQuery = useVendedoresEscopo({
+    apenasComCliente: true,
+    uf,
+    municipio,
+  });
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
   const ehVendedorPuro = vendedoresEscopoQuery.data?.ehVendedorPuro ?? false;
   const mostrarFiltroVendedor = !ehVendedorPuro;
@@ -108,7 +150,10 @@ export default function PosicaoClientePage() {
   // sentido pré-filtrar pela própria carteira de quem enxerga a de vários
   // vendedores) — só vendedor puro (que nem vê este filtro) recebe o próprio
   // id como padrão.
-  useVendedorPadrao(ehVendedorPuro ? vendedoresEscopoQuery.data?.meuVendedorId : null, setVendedorId);
+  useVendedorPadrao(
+    ehVendedorPuro ? vendedoresEscopoQuery.data?.meuVendedorId : null,
+    setVendedorId,
+  );
 
   // UFs e municípios distintos presentes na carteira visível ao usuário —
   // só lista o que realmente existe no cadastro (mesmo racional de escopo
@@ -119,24 +164,29 @@ export default function PosicaoClientePage() {
   const ufsEscopoQuery = useQuery({
     queryKey: ["clientes", "ufs-escopo", municipio, vendedorId],
     queryFn: () =>
-      apiFetch<{ data: { uf: string; total: number }[] }>("/clientes/ufs-escopo", {
-        query: { municipio, vendedorId },
-      }),
+      apiFetch<{ data: { uf: string; total: number }[] }>(
+        "/clientes/ufs-escopo",
+        {
+          query: { municipio, vendedorId },
+        },
+      ),
   });
   const opcoesUf = ufsEscopoQuery.data?.data ?? [];
 
   const municipiosEscopoQuery = useQuery({
     queryKey: ["clientes", "municipios-escopo", uf, vendedorId],
     queryFn: () =>
-      apiFetch<{ data: { municipio: string; total: number }[] }>("/clientes/municipios-escopo", {
-        query: { uf, vendedorId },
-      }),
+      apiFetch<{ data: { municipio: string; total: number }[] }>(
+        "/clientes/municipios-escopo",
+        {
+          query: { uf, vendedorId },
+        },
+      ),
   });
   const opcoesMunicipio = municipiosEscopoQuery.data?.data ?? [];
 
-  const { data, isLoading, isFetching, refetch, error } = useResourceList<PosicaoClienteListRow>(
-    "clientes/posicao",
-    {
+  const { data, isLoading, isFetching, refetch, error } =
+    useResourceList<PosicaoClienteListRow>("clientes/posicao", {
       search,
       page,
       pageSize,
@@ -149,8 +199,7 @@ export default function PosicaoClientePage() {
       ...(carteira !== "todos" ? { carteira: carteira === "sim" } : {}),
       ...(diasSemComprar !== undefined ? { diasSemComprar } : {}),
       ...(temTituloVencido !== undefined ? { temTituloVencido } : {}),
-    },
-  );
+    });
 
   // "Ativos" é o status inicial da tela — não conta como filtro "aplicado"
   // pro indicador do botão Filtros; só sai desse estado padrão se o usuário
@@ -196,24 +245,39 @@ export default function PosicaoClientePage() {
         );
       },
     },
-    { header: "Situação", sortKey: "ativo", cell: (c) => <StatusDot active={c.ativo} /> },
+    {
+      header: "Situação",
+      sortKey: "ativo",
+      cell: (c) => <StatusDot active={c.ativo} />,
+    },
     {
       header: "Código",
       sortKey: "codigoErp",
-      cell: (c) => <span className="font-mono text-xs">{c.codigoErp || "—"}</span>,
+      cell: (c) => (
+        <span className="font-mono text-xs">{c.codigoErp || "—"}</span>
+      ),
     },
-    { header: "Últ. Compra", sortKey: "ultimaCompra", cell: (c) => dataBr(c.ultimaCompra) },
+    {
+      header: "Últ. Compra",
+      sortKey: "ultimaCompra",
+      cell: (c) => dataBr(c.ultimaCompra),
+    },
     {
       header: "Razão Social",
       sortKey: "razaoSocial",
       className: "whitespace-normal",
-      cell: (c) => <span className="block max-w-56 font-medium">{c.razaoSocial}</span>,
+      cell: (c) => (
+        <span className="block max-w-56 font-medium">{c.razaoSocial}</span>
+      ),
     },
     {
       header: "Cidade",
       sortKey: "municipio",
       cell: (c) => (
-        <span className="block max-w-28 truncate" title={c.municipio ?? undefined}>
+        <span
+          className="block max-w-28 truncate"
+          title={c.municipio ?? undefined}
+        >
           {c.municipio || "—"}
         </span>
       ),
@@ -223,7 +287,11 @@ export default function PosicaoClientePage() {
       sortKey: "difMesEMedia",
       className: "text-right",
       cell: (c) => (
-        <span className={c.difMesEMedia >= 0 ? "text-emerald-600" : "text-destructive"}>
+        <span
+          className={
+            c.difMesEMedia >= 0 ? "text-emerald-600" : "text-destructive"
+          }
+        >
           {moeda(c.difMesEMedia)}
         </span>
       ),
@@ -244,29 +312,55 @@ export default function PosicaoClientePage() {
       header: "Dias",
       sortKey: "dias",
       className: "text-right",
-      cell: (c) => c.dias ?? "—",
+      cell: (c) =>
+        c.dias ?? (
+          <span
+            className="text-muted-foreground"
+            title="Data da última compra indisponível nas notas de venda e no cadastro do cliente."
+          >
+            Sem data
+          </span>
+        ),
     },
-    { header: "Comodato", sortKey: "comodato", cell: (c) => (c.comodato ? "Sim" : "Não") },
+    {
+      header: "Comodato",
+      sortKey: "comodato",
+      cell: (c) => (c.comodato ? "Sim" : "Não"),
+    },
     {
       header: "",
       className: "w-10",
       cell: (c) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-8" onClick={(ev) => ev.stopPropagation()}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={(ev) => ev.stopPropagation()}
+            >
               <MoreHorizontal className="size-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" onClick={(ev) => ev.stopPropagation()}>
-            <DropdownMenuItem onClick={() => setClienteSheet({ id: c.id, modo: "visualizar" })}>
+          <DropdownMenuContent
+            align="end"
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            <DropdownMenuItem
+              onClick={() => setClienteSheet({ id: c.id, modo: "visualizar" })}
+            >
               <Eye className="size-4" /> Visualizar Cliente
             </DropdownMenuItem>
             {podeEditarCliente && (
-              <DropdownMenuItem onClick={() => setClienteSheet({ id: c.id, modo: "alterar" })}>
+              <DropdownMenuItem
+                onClick={() => setClienteSheet({ id: c.id, modo: "alterar" })}
+              >
                 <Pencil className="size-4" /> Alterar Cliente
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={() => router.push(`/comercial/posicao-cliente/${c.id}`)}>
+            <DropdownMenuItem
+              onClick={() => router.push(`/comercial/posicao-cliente/${c.id}`)}
+            >
               <ClipboardList className="size-4" /> Posição do Cliente
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setOrcamentoClienteId(c.id)}>
@@ -279,7 +373,9 @@ export default function PosicaoClientePage() {
             {podeVerAtendimento && c.whatsappConversaId && (
               <DropdownMenuItem
                 onClick={() =>
-                  router.push(`/comercial/atendimento?conversa=${c.whatsappConversaId}`)
+                  router.push(
+                    `/comercial/atendimento?conversa=${c.whatsappConversaId}`,
+                  )
                 }
               >
                 <MessageCircle className="size-4" /> Conversa
@@ -302,6 +398,139 @@ export default function PosicaoClientePage() {
           }}
           onRefresh={() => refetch()}
           isRefreshing={isFetching}
+          actions={
+            <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+              <div className="space-y-2">
+                <FieldLabel>UF</FieldLabel>
+                <Select
+                  value={uf ?? "todas"}
+                  onValueChange={(v) => {
+                    setUf(v === "todas" ? undefined : v);
+                    // Um município de outra UF deixaria de existir na lista —
+                    // evita ficar com um filtro de município inválido/invisível.
+                    setMunicipio(undefined);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todas">Todas</SelectItem>
+                    {opcoesUf.map((o) => (
+                      <SelectItem key={o.uf} value={o.uf}>
+                        {o.uf} ({o.total})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <FieldLabel>Município</FieldLabel>
+                <Select
+                  value={municipio ?? "todos"}
+                  onValueChange={(v) => {
+                    setMunicipio(v === "todos" ? undefined : v);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos</SelectItem>
+                    {opcoesMunicipio.map((o) => (
+                      <SelectItem key={o.municipio} value={o.municipio}>
+                        {o.municipio} ({o.total})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {mostrarFiltroVendedor && (
+                <div className="space-y-2">
+                  <FieldLabel>Vendedor</FieldLabel>
+                  <Select
+                    value={vendedorId ?? "none"}
+                    onValueChange={(v) => {
+                      setVendedorId(v === "none" ? undefined : v);
+                      setPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Qualquer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Qualquer</SelectItem>
+                      {opcoesVendedor.map((v) => (
+                        <SelectItem key={v.id} value={v.id}>
+                          <span className="flex items-center gap-1.5">
+                            {vendedorFiltroLabel(v)}
+                            {!v.ativo && (
+                              <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
+                                <Lock className="size-3" />
+                                bloqueado
+                              </span>
+                            )}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <FieldLabel>Cliente de carteira</FieldLabel>
+                <Select
+                  value={carteira}
+                  onValueChange={(v) => {
+                    setCarteira(v as SimNaoTodos);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos</SelectItem>
+                    <SelectItem value="sim">Sim</SelectItem>
+                    <SelectItem value="nao">Não</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <FieldLabel>Título vencido</FieldLabel>
+                <Select
+                  value={
+                    temTituloVencido === true
+                      ? "sim"
+                      : temTituloVencido === false
+                        ? "nao"
+                        : "todos"
+                  }
+                  onValueChange={(v) => {
+                    setTemTituloVencido(
+                      v === "sim" ? true : v === "nao" ? false : undefined,
+                    );
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos</SelectItem>
+                    <SelectItem value="sim">Com título vencido</SelectItem>
+                    <SelectItem value="nao">Sem título vencido</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </FiltersPopover>
+          }
         />
       </div>
 
@@ -332,140 +561,23 @@ export default function PosicaoClientePage() {
             <QuickFilterButton
               active={temTituloVencido === true}
               onClick={() => {
-                setTemTituloVencido((atual) => (atual === true ? undefined : true));
+                setTemTituloVencido((atual) =>
+                  atual === true ? undefined : true,
+                );
                 setPage(1);
               }}
-              className={temTituloVencido === true ? "text-destructive font-semibold" : ""}
+              className={
+                temTituloVencido === true
+                  ? "text-destructive font-semibold"
+                  : ""
+              }
             >
-              <span className="text-destructive font-bold">$</span> Títulos vencidos
+              <span className="text-destructive font-bold">$</span> Títulos
+              vencidos
             </QuickFilterButton>
           </QuickFilterGroup>
         </div>
-        <div data-tour="posicao-cliente-filtros-avancados">
-          <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
-            <div className="space-y-2">
-              <FieldLabel>UF</FieldLabel>
-              <Select
-                value={uf ?? "todas"}
-                onValueChange={(v) => {
-                  setUf(v === "todas" ? undefined : v);
-                  // Um município de outra UF deixaria de existir na lista —
-                  // evita ficar com um filtro de município inválido/invisível.
-                  setMunicipio(undefined);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas</SelectItem>
-                  {opcoesUf.map((o) => (
-                    <SelectItem key={o.uf} value={o.uf}>
-                      {o.uf} ({o.total})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <FieldLabel>Município</FieldLabel>
-              <Select
-                value={municipio ?? "todos"}
-                onValueChange={(v) => {
-                  setMunicipio(v === "todos" ? undefined : v);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  {opcoesMunicipio.map((o) => (
-                    <SelectItem key={o.municipio} value={o.municipio}>
-                      {o.municipio} ({o.total})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {mostrarFiltroVendedor && (
-              <div className="space-y-2">
-                <FieldLabel>Vendedor</FieldLabel>
-                <Select
-                  value={vendedorId ?? "none"}
-                  onValueChange={(v) => {
-                    setVendedorId(v === "none" ? undefined : v);
-                    setPage(1);
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Qualquer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Qualquer</SelectItem>
-                    {opcoesVendedor.map((v) => (
-                      <SelectItem key={v.id} value={v.id}>
-                        <span className="flex items-center gap-1.5">
-                          {vendedorFiltroLabel(v)}
-                          {!v.ativo && (
-                            <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
-                              <Lock className="size-3" />
-                              bloqueado
-                            </span>
-                          )}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <FieldLabel>Cliente de carteira</FieldLabel>
-              <Select
-                value={carteira}
-                onValueChange={(v) => {
-                  setCarteira(v as SimNaoTodos);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  <SelectItem value="sim">Sim</SelectItem>
-                  <SelectItem value="nao">Não</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <FieldLabel>Título vencido</FieldLabel>
-              <Select
-                value={temTituloVencido === true ? "sim" : temTituloVencido === false ? "nao" : "todos"}
-                onValueChange={(v) => {
-                  setTemTituloVencido(v === "sim" ? true : v === "nao" ? false : undefined);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  <SelectItem value="sim">Com título vencido</SelectItem>
-                  <SelectItem value="nao">Sem título vencido</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </FiltersPopover>
-        </div>
+        <div data-tour="posicao-cliente-filtros-avancados"></div>
       </div>
 
       <div
@@ -477,7 +589,10 @@ export default function PosicaoClientePage() {
           <span className="text-sm font-bold text-destructive">$</span> vencido
         </span>
         <span className="flex items-center gap-1">
-          <span className="text-sm font-bold text-blue-600 dark:text-blue-400">$</span> vencendo em até 7 dias
+          <span className="text-sm font-bold text-blue-600 dark:text-blue-400">
+            $
+          </span>{" "}
+          vencendo em até 7 dias
         </span>
         <span className="flex items-center gap-1">
           <span className="text-sm font-bold text-success">$</span> não vencido

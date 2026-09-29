@@ -1,4 +1,5 @@
 "use client";
+import { CrudHeader } from "@/components/crud/crud-header";
 
 import { useQuery } from "@tanstack/react-query";
 import type { Assinatura } from "@plataforma/contracts";
@@ -8,7 +9,14 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CreditCard, DollarSign, Building2, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
+import {
+  CreditCard,
+  DollarSign,
+  Building2,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+} from "lucide-react";
 
 type AssinaturaRow = Assinatura & {
   empresa?: {
@@ -26,10 +34,18 @@ type AssinaturaRow = Assinatura & {
   };
 };
 
-const moeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const moeda = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+});
 
 export default function AssinaturasPage() {
-  const { data: resumo, isLoading: loadingResumo } = useQuery({
+  const {
+    data: resumo,
+    isLoading: loadingResumo,
+    refetch: refetchResumo,
+    isFetching: fetchingResumo,
+  } = useQuery({
     queryKey: ["plataforma-assinaturas-resumo"],
     queryFn: () =>
       apiFetch<{
@@ -41,7 +57,12 @@ export default function AssinaturasPage() {
       }>("/plataforma/assinaturas/resumo"),
   });
 
-  const { data: assinaturas, isLoading: loadingAssinaturas } = useQuery({
+  const {
+    data: assinaturas,
+    isLoading: loadingAssinaturas,
+    refetch: refetchAssinaturas,
+    isFetching: fetchingAssinaturas,
+  } = useQuery({
     queryKey: ["plataforma-assinaturas-lista"],
     queryFn: () => apiFetch<AssinaturaRow[]>("/plataforma/assinaturas"),
   });
@@ -51,14 +72,20 @@ export default function AssinaturasPage() {
       header: "Empresa",
       cell: (a) => (
         <div>
-          <p className="font-medium text-foreground">{a.empresa?.nomeFantasia || a.empresa?.razaoSocial}</p>
-          <p className="text-xs text-muted-foreground font-mono">{a.empresa?.cnpj}</p>
+          <p className="font-medium text-foreground">
+            {a.empresa?.nomeFantasia || a.empresa?.razaoSocial}
+          </p>
+          <p className="text-xs text-muted-foreground font-mono">
+            {a.empresa?.cnpj}
+          </p>
         </div>
       ),
     },
     {
       header: "Plano / Pacote",
-      cell: (a) => <Badge variant="outline">{a.plano?.nome || "Sem plano"}</Badge>,
+      cell: (a) => (
+        <Badge variant="outline">{a.plano?.nome || "Sem plano"}</Badge>
+      ),
     },
     {
       header: "Ciclo",
@@ -67,7 +94,9 @@ export default function AssinaturasPage() {
     {
       header: "Mensalidade",
       cell: (a) => (
-        <span className="font-semibold text-primary">{moeda.format(a.valorMensalidade)}</span>
+        <span className="font-semibold text-primary">
+          {moeda.format(a.valorMensalidade)}
+        </span>
       ),
     },
     {
@@ -77,7 +106,10 @@ export default function AssinaturasPage() {
     {
       header: "Situação",
       cell: (a) => {
-        const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+        const variants: Record<
+          string,
+          "default" | "secondary" | "destructive" | "outline"
+        > = {
           ativa: "default",
           teste: "secondary",
           atrasada: "destructive",
@@ -85,7 +117,10 @@ export default function AssinaturasPage() {
           cancelada: "outline",
         };
         return (
-          <Badge variant={variants[a.situacao] || "outline"} className="capitalize">
+          <Badge
+            variant={variants[a.situacao] || "outline"}
+            className="capitalize"
+          >
             {a.situacao}
           </Badge>
         );
@@ -98,10 +133,12 @@ export default function AssinaturasPage() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <CreditCard className="size-6 text-primary" /> Assinaturas & Cobranças SaaS
+            <CreditCard className="size-6 text-primary" /> Assinaturas &
+            Cobranças SaaS
           </h1>
           <p className="text-sm text-muted-foreground">
-            Acompanhe o faturamento recorrente (MRR), vigência de planos e situação financeira das empresas.
+            Acompanhe o faturamento recorrente (MRR), vigência de planos e
+            situação financeira das empresas.
           </p>
         </div>
 
@@ -116,50 +153,77 @@ export default function AssinaturasPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Receita Mensal (MRR)</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  Receita Mensal (MRR)
+                </CardTitle>
                 <DollarSign className="size-4 text-emerald-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-emerald-600">{moeda.format(resumo?.mrr || 0)}</div>
-                <p className="text-xs text-muted-foreground mt-1">Faturamento recorrente das empresas ativas</p>
+                <div className="text-2xl font-bold text-emerald-600">
+                  {moeda.format(resumo?.mrr || 0)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Faturamento recorrente das empresas ativas
+                </p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Empresas Ativas</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  Empresas Ativas
+                </CardTitle>
                 <CheckCircle2 className="size-4 text-primary" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{resumo?.ativas || 0}</div>
-                <p className="text-xs text-muted-foreground mt-1">Com assinatura regular ativada</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Com assinatura regular ativada
+                </p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Em Período de Teste</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  Em Período de Teste
+                </CardTitle>
                 <Clock className="size-4 text-amber-500" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{resumo?.emTeste || 0}</div>
-                <p className="text-xs text-muted-foreground mt-1">Degustação / Período de avaliação</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Degustação / Período de avaliação
+                </p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Inadimplentes / Atrasadas</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  Inadimplentes / Atrasadas
+                </CardTitle>
                 <AlertTriangle className="size-4 text-destructive" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-destructive">{resumo?.inadimplentes || 0}</div>
-                <p className="text-xs text-muted-foreground mt-1">Pendentes de pagamento ou suspensas</p>
+                <div className="text-2xl font-bold text-destructive">
+                  {resumo?.inadimplentes || 0}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Pendentes de pagamento ou suspensas
+                </p>
               </CardContent>
             </Card>
           </div>
         )}
 
+        <CrudHeader
+          onRefresh={() => {
+            void refetchResumo();
+            void refetchAssinaturas();
+          }}
+          isRefreshing={fetchingResumo || fetchingAssinaturas}
+        />
         <EntityTable
           columns={columns}
           rows={assinaturas || []}

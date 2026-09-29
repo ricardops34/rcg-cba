@@ -18,6 +18,7 @@ export class ArmazensService {
         empresaId,
         deletedAt: null,
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
+        ...(query.revenda !== undefined ? { revenda: query.revenda } : {}),
         ...(query.search
           ? {
               OR: [

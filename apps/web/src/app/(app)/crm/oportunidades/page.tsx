@@ -6,20 +6,39 @@ import { toast } from "sonner";
 import type { EstagioOportunidade, Oportunidade } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError } from "@/lib/api-client";
-import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
+import {
+  useVendedoresEscopo,
+  vendedorFiltroLabel,
+} from "@/hooks/use-vendedores-escopo";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
-import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
+import {
+  StatusQuickFilter,
+  type StatusFilterValue,
+} from "@/components/crud/status-quick-filter";
 import { FiltersPopover } from "@/components/crud/filters-popover";
-import { QuickFilterButton, QuickFilterGroup } from "@/components/crud/quick-filter-group";
+import {
+  QuickFilterButton,
+  QuickFilterGroup,
+} from "@/components/crud/quick-filter-group";
 import { OportunidadesKanban } from "@/components/crud/oportunidades-kanban";
-import { ESTAGIOS, ESTAGIO_LABEL, ESTAGIO_VARIANT } from "@/components/crud/oportunidade-estagio";
+import {
+  ESTAGIOS,
+  ESTAGIO_LABEL,
+  ESTAGIO_VARIANT,
+} from "@/components/crud/oportunidade-estagio";
 import { useFiltrosUrl } from "@/hooks/use-filtros-url";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,7 +51,9 @@ type EstagioFiltro = "todos" | EstagioOportunidade;
 type Visao = "kanban" | "lista";
 
 const moeda = (v: number | null) =>
-  v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
+  v != null
+    ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+    : "—";
 const dataBr = (v: string | null) => {
   if (!v) return "—";
   const d = new Date(v);
@@ -64,23 +85,27 @@ export default function OportunidadesPage() {
 
   const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
-  const mostrarFiltroVendedor = !(vendedoresEscopoQuery.data?.ehVendedorPuro ?? false);
+  const mostrarFiltroVendedor = !(
+    vendedoresEscopoQuery.data?.ehVendedorPuro ?? false
+  );
 
-  const { data, isLoading, isFetching, refetch, error } = useResourceList<Oportunidade>("oportunidades", {
-    search,
-    page,
-    pageSize,
-    sortBy,
-    sortOrder,
-    ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
-    ...(estagio !== "todos" ? { estagio } : {}),
-    ...(clienteId ? { clienteId } : {}),
-    ...(vendedorId ? { vendedorId } : {}),
-  });
+  const { data, isLoading, isFetching, refetch, error } =
+    useResourceList<Oportunidade>("oportunidades", {
+      search,
+      page,
+      pageSize,
+      sortBy,
+      sortOrder,
+      ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
+      ...(estagio !== "todos" ? { estagio } : {}),
+      ...(clienteId ? { clienteId } : {}),
+      ...(vendedorId ? { vendedorId } : {}),
+    });
 
   const { remove } = useResourceMutations("oportunidades");
 
-  const abrirEdicao = (o: Oportunidade) => router.push(`/crm/oportunidades/${o.id}`);
+  const abrirEdicao = (o: Oportunidade) =>
+    router.push(`/crm/oportunidades/${o.id}`);
 
   const onDelete = async (o: Oportunidade) => {
     if (!confirm(`Excluir a oportunidade "${o.titulo}"?`)) return;
@@ -88,7 +113,9 @@ export default function OportunidadesPage() {
       await remove.mutateAsync(o.id);
       toast.success("Oportunidade excluída");
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Erro ao excluir oportunidade");
+      toast.error(
+        err instanceof ApiError ? err.message : "Erro ao excluir oportunidade",
+      );
     }
   };
 
@@ -100,21 +127,35 @@ export default function OportunidadesPage() {
   };
 
   const columns: ColumnDef<Oportunidade>[] = [
-    { header: "Título", sortKey: "titulo", cell: (o) => <p className="font-medium">{o.titulo}</p> },
+    {
+      header: "Título",
+      sortKey: "titulo",
+      cell: (o) => <p className="font-medium">{o.titulo}</p>,
+    },
     {
       header: "Cliente",
       cell: (o) => (
-        <span className="text-xs">{o.cliente.nomeFantasia || o.cliente.razaoSocial}</span>
+        <span className="text-xs">
+          {o.cliente.nomeFantasia || o.cliente.razaoSocial}
+        </span>
       ),
     },
     {
       header: "Vendedor",
-      cell: (o) => <span className="text-xs">{o.vendedor.nomeReduzido || o.vendedor.nome}</span>,
+      cell: (o) => (
+        <span className="text-xs">
+          {o.vendedor.nomeReduzido || o.vendedor.nome}
+        </span>
+      ),
     },
     {
       header: "Estágio",
       sortKey: "estagio",
-      cell: (o) => <Badge variant={ESTAGIO_VARIANT[o.estagio]}>{ESTAGIO_LABEL[o.estagio]}</Badge>,
+      cell: (o) => (
+        <Badge variant={ESTAGIO_VARIANT[o.estagio]}>
+          {ESTAGIO_LABEL[o.estagio]}
+        </Badge>
+      ),
     },
     {
       header: "Valor previsto",
@@ -122,15 +163,28 @@ export default function OportunidadesPage() {
       className: "text-right",
       cell: (o) => moeda(o.valorPrevisto),
     },
-    { header: "Previsão", sortKey: "dataPrevisao", cell: (o) => dataBr(o.dataPrevisao) },
-    { header: "Status", sortKey: "ativo", cell: (o) => <StatusDot active={o.ativo} /> },
+    {
+      header: "Previsão",
+      sortKey: "dataPrevisao",
+      cell: (o) => dataBr(o.dataPrevisao),
+    },
+    {
+      header: "Status",
+      sortKey: "ativo",
+      cell: (o) => <StatusDot active={o.ativo} />,
+    },
     {
       header: "",
       className: "w-10",
       cell: (o) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-8" onClick={(ev) => ev.stopPropagation()}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={(ev) => ev.stopPropagation()}
+            >
               <MoreHorizontal className="size-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -159,6 +213,59 @@ export default function OportunidadesPage() {
         isRefreshing={isFetching}
         onCreate={() => router.push("/crm/oportunidades/novo")}
         createLabel="Nova oportunidade"
+        actions={
+          <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+            {visao === "lista" && (
+              <div className="space-y-2">
+                <FieldLabel>Estágio</FieldLabel>
+                <Select
+                  value={estagio}
+                  onValueChange={(v) => {
+                    setEstagio(v as EstagioFiltro);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos</SelectItem>
+                    {ESTAGIOS.map((e) => (
+                      <SelectItem key={e.value} value={e.value}>
+                        {e.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {mostrarFiltroVendedor && (
+              <div className="space-y-2">
+                <FieldLabel>Vendedor</FieldLabel>
+                <Select
+                  value={vendedorId ?? "none"}
+                  onValueChange={(v) => {
+                    setVendedorId(v === "none" ? undefined : v);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Qualquer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Qualquer</SelectItem>
+                    {opcoesVendedor.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {vendedorFiltroLabel(v)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </FiltersPopover>
+        }
       />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -171,67 +278,21 @@ export default function OportunidadesPage() {
         />
         <div className="flex flex-wrap items-center gap-2">
           <QuickFilterGroup>
-            <QuickFilterButton active={visao === "kanban"} onClick={() => setVisao("kanban")}>
+            <QuickFilterButton
+              active={visao === "kanban"}
+              onClick={() => setVisao("kanban")}
+            >
               <LayoutGrid className="size-3.5" />
               Kanban
             </QuickFilterButton>
-            <QuickFilterButton active={visao === "lista"} onClick={() => setVisao("lista")}>
+            <QuickFilterButton
+              active={visao === "lista"}
+              onClick={() => setVisao("lista")}
+            >
               <List className="size-3.5" />
               Lista
             </QuickFilterButton>
           </QuickFilterGroup>
-
-          <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
-          {visao === "lista" && (
-            <div className="space-y-2">
-              <FieldLabel>Estágio</FieldLabel>
-              <Select
-                value={estagio}
-                onValueChange={(v) => {
-                  setEstagio(v as EstagioFiltro);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  {ESTAGIOS.map((e) => (
-                    <SelectItem key={e.value} value={e.value}>
-                      {e.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {mostrarFiltroVendedor && (
-            <div className="space-y-2">
-              <FieldLabel>Vendedor</FieldLabel>
-              <Select
-                value={vendedorId ?? "none"}
-                onValueChange={(v) => {
-                  setVendedorId(v === "none" ? undefined : v);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Qualquer" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Qualquer</SelectItem>
-                  {opcoesVendedor.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {vendedorFiltroLabel(v)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-          </FiltersPopover>
         </div>
       </div>
 

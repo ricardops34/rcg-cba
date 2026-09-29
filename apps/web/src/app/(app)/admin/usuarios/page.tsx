@@ -10,14 +10,23 @@ import { apiFetch, ApiError } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
-import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
+import {
+  StatusQuickFilter,
+  type StatusFilterValue,
+} from "@/components/crud/status-quick-filter";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { roleColorClass } from "@/lib/role-color";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { FieldLabel } from "@/components/ui/field";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,22 +60,25 @@ export default function UsuariosPage() {
 
   const perfisQuery = useQuery({
     queryKey: ["perfis", "select"],
-    queryFn: () => apiFetch<{ data: Perfil[] }>("/perfis", { query: { pageSize: 100 } }),
+    queryFn: () =>
+      apiFetch<{ data: Perfil[] }>("/perfis", { query: { pageSize: 100 } }),
   });
 
-  const { data, isLoading, isFetching, refetch, error } = useResourceList<UsuarioRow>("usuarios", {
-    search,
-    page,
-    pageSize,
-    sortBy,
-    sortOrder,
-    ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
-    ...(perfilId ? { perfilId } : {}),
-  });
+  const { data, isLoading, isFetching, refetch, error } =
+    useResourceList<UsuarioRow>("usuarios", {
+      search,
+      page,
+      pageSize,
+      sortBy,
+      sortOrder,
+      ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
+      ...(perfilId ? { perfilId } : {}),
+    });
 
   const { remove } = useResourceMutations("usuarios");
 
-  const openEdit = (usuario: UsuarioRow) => router.push(`/admin/usuarios/${usuario.id}`);
+  const openEdit = (usuario: UsuarioRow) =>
+    router.push(`/admin/usuarios/${usuario.id}`);
 
   const onDelete = async (usuario: UsuarioRow) => {
     if (!confirm(`Excluir o usuário "${usuario.nome}"?`)) return;
@@ -74,7 +86,9 @@ export default function UsuariosPage() {
       await remove.mutateAsync(usuario.id);
       toast.success("Usuário excluído");
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Erro ao excluir usuário");
+      toast.error(
+        err instanceof ApiError ? err.message : "Erro ao excluir usuário",
+      );
     }
   };
 
@@ -100,8 +114,12 @@ export default function UsuariosPage() {
             {u.nome.charAt(0).toUpperCase()}
           </div>
           <div>
-            <span className="font-medium text-foreground text-sm block">{u.nome}</span>
-            <span className="text-xs text-muted-foreground font-mono">{u.email}</span>
+            <span className="font-medium text-foreground text-sm block">
+              {u.nome}
+            </span>
+            <span className="text-xs text-muted-foreground font-mono">
+              {u.email}
+            </span>
           </div>
         </div>
       ),
@@ -117,7 +135,11 @@ export default function UsuariosPage() {
           <span className="text-muted-foreground">—</span>
         ),
     },
-    { header: "Status", sortKey: "ativo", cell: (u) => <StatusDot active={u.ativo} /> },
+    {
+      header: "Status",
+      sortKey: "ativo",
+      cell: (u) => <StatusDot active={u.ativo} />,
+    },
     {
       header: "Último acesso",
       sortKey: "ultimoLogin",
@@ -142,7 +164,12 @@ export default function UsuariosPage() {
       cell: (u) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-8" onClick={(ev) => ev.stopPropagation()}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={(ev) => ev.stopPropagation()}
+            >
               <MoreHorizontal className="size-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -169,15 +196,23 @@ export default function UsuariosPage() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold tracking-tight">Cadastro de Usuários</h1>
-              <Badge variant="outline" className="text-xs">RBAC & Hierarquia</Badge>
+              <h1 className="text-xl font-bold tracking-tight">
+                Cadastro de Usuários
+              </h1>
+              <Badge variant="outline" className="text-xs">
+                RBAC & Hierarquia
+              </Badge>
             </div>
             <p className="text-xs text-muted-foreground">
-              Gerencie usuários da empresa, vínculos de perfil de acesso, hierarquia comercial e restrições.
+              Gerencie usuários da empresa, vínculos de perfil de acesso,
+              hierarquia comercial e restrições.
             </p>
           </div>
         </div>
-        <Button onClick={() => router.push("/admin/usuarios/novo")} className="gap-2 shadow-xs">
+        <Button
+          onClick={() => router.push("/admin/usuarios/novo")}
+          className="gap-2 shadow-xs"
+        >
           <Plus className="size-4" /> Novo usuário
         </Button>
       </div>
@@ -187,8 +222,12 @@ export default function UsuariosPage() {
         <Card className="shadow-xs border-border/60">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-muted-foreground">Total de Usuários</p>
-              <p className="text-2xl font-bold tracking-tight mt-1">{totalUsuarios}</p>
+              <p className="text-xs font-medium text-muted-foreground">
+                Total de Usuários
+              </p>
+              <p className="text-2xl font-bold tracking-tight mt-1">
+                {totalUsuarios}
+              </p>
             </div>
             <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <Users className="size-5" />
@@ -199,7 +238,9 @@ export default function UsuariosPage() {
         <Card className="shadow-xs border-border/60">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-muted-foreground">Usuários Ativos</p>
+              <p className="text-xs font-medium text-muted-foreground">
+                Usuários Ativos
+              </p>
               <p className="text-2xl font-bold tracking-tight mt-1 text-emerald-600 dark:text-emerald-400">
                 {totalAtivos}
               </p>
@@ -213,7 +254,9 @@ export default function UsuariosPage() {
         <Card className="shadow-xs border-border/60">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-muted-foreground">Inativos / Bloqueados</p>
+              <p className="text-xs font-medium text-muted-foreground">
+                Inativos / Bloqueados
+              </p>
               <p className="text-2xl font-bold tracking-tight mt-1 text-muted-foreground">
                 {totalInativos}
               </p>
@@ -227,7 +270,9 @@ export default function UsuariosPage() {
         <Card className="shadow-xs border-border/60">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-muted-foreground">Perfis Disponíveis</p>
+              <p className="text-xs font-medium text-muted-foreground">
+                Perfis Disponíveis
+              </p>
               <p className="text-2xl font-bold tracking-tight mt-1 text-purple-600 dark:text-purple-400">
                 {perfisCount}
               </p>
@@ -248,6 +293,32 @@ export default function UsuariosPage() {
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
         placeholder="Buscar por nome ou e-mail..."
+        actions={
+          <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+            <div className="space-y-2">
+              <FieldLabel>Perfil de acesso</FieldLabel>
+              <Select
+                value={perfilId ?? "none"}
+                onValueChange={(v) => {
+                  setPerfilId(v === "none" ? undefined : v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Qualquer perfil" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Qualquer perfil</SelectItem>
+                  {(perfisQuery.data?.data ?? []).map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </FiltersPopover>
+        }
       />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -258,30 +329,6 @@ export default function UsuariosPage() {
             setPage(1);
           }}
         />
-        <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
-          <div className="space-y-2">
-            <FieldLabel>Perfil de acesso</FieldLabel>
-            <Select
-              value={perfilId ?? "none"}
-              onValueChange={(v) => {
-                setPerfilId(v === "none" ? undefined : v);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Qualquer perfil" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Qualquer perfil</SelectItem>
-                {(perfisQuery.data?.data ?? []).map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </FiltersPopover>
       </div>
 
       <EntityTable
@@ -311,4 +358,3 @@ export default function UsuariosPage() {
     </div>
   );
 }
-

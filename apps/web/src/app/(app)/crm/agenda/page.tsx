@@ -1,21 +1,42 @@
 "use client";
+import { CrudHeader } from "@/components/crud/crud-header";
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Atividade, Orcamento, TipoAtividade } from "@plataforma/contracts";
+import type {
+  Atividade,
+  Orcamento,
+  TipoAtividade,
+} from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
-import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
+import {
+  useVendedoresEscopo,
+  vendedorFiltroLabel,
+} from "@/hooks/use-vendedores-escopo";
 import { TIPOS, TIPO_COR } from "@/components/crud/atividade-tipo";
 import { STATUS_ORCAMENTO_COR } from "@/components/crud/orcamento-status";
-import { QuickFilterButton, QuickFilterGroup } from "@/components/crud/quick-filter-group";
+import {
+  QuickFilterButton,
+  QuickFilterGroup,
+} from "@/components/crud/quick-filter-group";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFiltrosUrl } from "@/hooks/use-filtros-url";
-import { AlertTriangle, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 
 type TipoFiltro = "todos" | TipoAtividade;
 type AgendaItem =
@@ -23,8 +44,18 @@ type AgendaItem =
   | { kind: "orcamento"; id: string; data: Orcamento };
 
 const MESES = [
-  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+  "Janeiro",
+  "Fevereiro",
+  "Março",
+  "Abril",
+  "Maio",
+  "Junho",
+  "Julho",
+  "Agosto",
+  "Setembro",
+  "Outubro",
+  "Novembro",
+  "Dezembro",
 ];
 const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const MAX_VISIVEL = 3;
@@ -39,9 +70,13 @@ const addDays = (d: Date, n: number) => {
 const toKey = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const isSameDay = (a: Date, b: Date) =>
-  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  a.getFullYear() === b.getFullYear() &&
+  a.getMonth() === b.getMonth() &&
+  a.getDate() === b.getDate();
 const estaVencida = (a: Atividade) =>
-  !a.concluida && !!a.dataVencimento && new Date(a.dataVencimento).getTime() < Date.now();
+  !a.concluida &&
+  !!a.dataVencimento &&
+  new Date(a.dataVencimento).getTime() < Date.now();
 
 export default function AgendaPage() {
   const router = useRouter();
@@ -59,15 +94,21 @@ export default function AgendaPage() {
 
   const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
-  const mostrarFiltroVendedor = !(vendedoresEscopoQuery.data?.ehVendedorPuro ?? false);
+  const mostrarFiltroVendedor = !(
+    vendedoresEscopoQuery.data?.ehVendedorPuro ?? false
+  );
 
-  const gridStart = useMemo(() => addDays(startOfMonth(mesAtual), -startOfMonth(mesAtual).getDay()), [mesAtual]);
+  const gridStart = useMemo(
+    () => addDays(startOfMonth(mesAtual), -startOfMonth(mesAtual).getDay()),
+    [mesAtual],
+  );
   const gridEnd = useMemo(() => {
     const fim = endOfMonth(mesAtual);
     return addDays(fim, 6 - fim.getDay());
   }, [mesAtual]);
   const dias = useMemo(() => {
-    const total = Math.round((gridEnd.getTime() - gridStart.getTime()) / 86_400_000) + 1;
+    const total =
+      Math.round((gridEnd.getTime() - gridStart.getTime()) / 86_400_000) + 1;
     return Array.from({ length: total }, (_, i) => addDays(gridStart, i));
   }, [gridStart, gridEnd]);
 
@@ -105,10 +146,18 @@ export default function AgendaPage() {
     };
     for (const a of atividadesQuery.data?.data ?? []) {
       if (!a.dataVencimento) continue;
-      add(toKey(new Date(a.dataVencimento)), { kind: "atividade", id: a.id, data: a });
+      add(toKey(new Date(a.dataVencimento)), {
+        kind: "atividade",
+        id: a.id,
+        data: a,
+      });
     }
     for (const o of orcamentosQuery.data?.data ?? []) {
-      add(toKey(new Date(o.createdAt)), { kind: "orcamento", id: o.id, data: o });
+      add(toKey(new Date(o.createdAt)), {
+        kind: "orcamento",
+        id: o.id,
+        data: o,
+      });
     }
     return mapa;
   }, [atividadesQuery.data, orcamentosQuery.data]);
@@ -127,6 +176,62 @@ export default function AgendaPage() {
 
   return (
     <div data-tour="rotina" className="space-y-4">
+      <CrudHeader
+        actions={
+          <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+            <div className="space-y-2">
+              <FieldLabel>Tipo</FieldLabel>
+              <Select
+                value={tipo}
+                onValueChange={(v) => setTipo(v as TipoFiltro)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  {TIPOS.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {mostrarFiltroVendedor && (
+              <div className="space-y-2">
+                <FieldLabel>Vendedor</FieldLabel>
+                <Select
+                  value={vendedorId ?? "none"}
+                  onValueChange={(v) =>
+                    setVendedorId(v === "none" ? undefined : v)
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Qualquer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Qualquer</SelectItem>
+                    {opcoesVendedor.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {vendedorFiltroLabel(v)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </FiltersPopover>
+        }
+        onRefresh={() => {
+          void atividadesQuery.refetch();
+          void orcamentosQuery.refetch();
+        }}
+        isRefreshing={atividadesQuery.isFetching || orcamentosQuery.isFetching}
+        onCreate={() => router.push("/crm/atividades/novo")}
+        createLabel="Nova atividade"
+      />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold capitalize tracking-tight">
           {MESES[mesAtual.getMonth()]} de {mesAtual.getFullYear()}
@@ -135,103 +240,73 @@ export default function AgendaPage() {
           <Button
             variant="outline"
             size="icon"
-            onClick={() => setMesAtual((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+            onClick={() =>
+              setMesAtual((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))
+            }
           >
             <ChevronLeft className="size-4" />
           </Button>
-          <Button variant="outline" onClick={() => setMesAtual(startOfMonth(new Date()))}>
+          <Button
+            variant="outline"
+            onClick={() => setMesAtual(startOfMonth(new Date()))}
+          >
             Hoje
           </Button>
           <Button
             variant="outline"
             size="icon"
-            onClick={() => setMesAtual((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+            onClick={() =>
+              setMesAtual((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))
+            }
           >
             <ChevronRight className="size-4" />
-          </Button>
-          <Button onClick={() => router.push("/crm/atividades/novo")}>
-            <Plus className="size-4" />
-            Nova atividade
           </Button>
         </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <QuickFilterGroup>
-          <QuickFilterButton active={somentePendentes} onClick={() => setSomentePendentes((v) => !v)}>
+          <QuickFilterButton
+            active={somentePendentes}
+            onClick={() => setSomentePendentes((v) => !v)}
+          >
             <AlertTriangle className="size-3.5" />
             Somente pendentes
           </QuickFilterButton>
         </QuickFilterGroup>
-
-        <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
-          <div className="space-y-2">
-            <FieldLabel>Tipo</FieldLabel>
-            <Select value={tipo} onValueChange={(v) => setTipo(v as TipoFiltro)}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                {TIPOS.map((t) => (
-                  <SelectItem key={t.value} value={t.value}>
-                    {t.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {mostrarFiltroVendedor && (
-            <div className="space-y-2">
-              <FieldLabel>Vendedor</FieldLabel>
-              <Select
-                value={vendedorId ?? "none"}
-                onValueChange={(v) => setVendedorId(v === "none" ? undefined : v)}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Qualquer" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Qualquer</SelectItem>
-                  {opcoesVendedor.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {vendedorFiltroLabel(v)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-        </FiltersPopover>
       </div>
 
       <p className="text-xs text-muted-foreground sm:hidden">
         Deslize o calendário para consultar todos os dias da semana.
       </p>
-      <div data-tour="agenda-calendario" className="overflow-x-auto rounded-lg border">
-      <div className="grid min-w-[700px] grid-cols-7 gap-px overflow-hidden bg-border">
-        {DIAS_SEMANA.map((d) => (
-          <div
-            key={d}
-            className="bg-muted px-2 py-1.5 text-center text-xs font-medium text-muted-foreground"
-          >
-            {d}
-          </div>
-        ))}
-        {dias.map((dia) => (
-          <DayCell
-            key={toKey(dia)}
-            dia={dia}
-            noMes={dia.getMonth() === mesAtual.getMonth()}
-            hoje={isSameDay(dia, hoje)}
-            itens={porDia.get(toKey(dia)) ?? []}
-            isLoading={isLoading}
-            onSelectDia={() => router.push(`/crm/atividades/novo?data=${toKey(dia)}`)}
-            onSelectItem={onSelectItem}
-          />
-        ))}
-      </div>
+      <div
+        data-tour="agenda-calendario"
+        className="overflow-x-auto rounded-lg border"
+      >
+        <div className="grid min-w-[700px] grid-cols-7 gap-px overflow-hidden bg-border">
+          {DIAS_SEMANA.map((d) => (
+            <div
+              key={d}
+              className="bg-muted px-2 py-1.5 text-center text-xs font-medium text-muted-foreground"
+            >
+              {d}
+            </div>
+          ))}
+          {dias.map((dia) => (
+            <DayCell
+              key={toKey(dia)}
+              dia={dia}
+              noMes={dia.getMonth() === mesAtual.getMonth()}
+              hoje={isSameDay(dia, hoje)}
+              itens={porDia.get(toKey(dia)) ?? []}
+              isLoading={isLoading}
+              onSelectDia={() =>
+                router.push(`/crm/atividades/novo?data=${toKey(dia)}`)
+              }
+              onSelectItem={onSelectItem}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -280,7 +355,11 @@ function DayCell({
       ) : (
         <div className="flex flex-col gap-1">
           {visiveis.map((item) => (
-            <AgendaItemChip key={`${item.kind}-${item.id}`} item={item} onSelect={() => onSelectItem(item)} />
+            <AgendaItemChip
+              key={`${item.kind}-${item.id}`}
+              item={item}
+              onSelect={() => onSelectItem(item)}
+            />
           ))}
           {resto > 0 && (
             <Popover>
@@ -313,18 +392,35 @@ function DayCell({
   );
 }
 
-function AgendaItemChip({ item, onSelect }: { item: AgendaItem; onSelect: () => void }) {
+function AgendaItemChip({
+  item,
+  onSelect,
+}: {
+  item: AgendaItem;
+  onSelect: () => void;
+}) {
   const vencida = item.kind === "atividade" && estaVencida(item.data);
   const concluida = item.kind === "atividade" && item.data.concluida;
-  const titulo = item.kind === "atividade" ? item.data.titulo : item.data.titulo;
-  const cor = item.kind === "atividade" ? TIPO_COR[item.data.tipo] : STATUS_ORCAMENTO_COR[item.data.status];
+  const titulo =
+    item.kind === "atividade" ? item.data.titulo : item.data.titulo;
+  const cor =
+    item.kind === "atividade"
+      ? TIPO_COR[item.data.tipo]
+      : STATUS_ORCAMENTO_COR[item.data.status];
   // Hora só quando informada (atividade de dia inteiro fica em 00:00) — ajuda
   // a ordenar visualmente o dia sem poluir quem não marcou horário.
   const hora = (() => {
     if (item.kind !== "atividade" || !item.data.dataVencimento) return null;
     const d = new Date(item.data.dataVencimento);
-    if (Number.isNaN(d.getTime()) || (d.getHours() === 0 && d.getMinutes() === 0)) return null;
-    return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    if (
+      Number.isNaN(d.getTime()) ||
+      (d.getHours() === 0 && d.getMinutes() === 0)
+    )
+      return null;
+    return d.toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   })();
 
   return (
@@ -336,11 +432,19 @@ function AgendaItemChip({ item, onSelect }: { item: AgendaItem; onSelect: () => 
       }}
       title={titulo}
       className={`flex w-full items-center gap-1.5 truncate rounded px-1 py-0.5 text-left text-xs hover:bg-muted ${
-        concluida ? "text-muted-foreground line-through" : vencida ? "text-destructive" : ""
+        concluida
+          ? "text-muted-foreground line-through"
+          : vencida
+            ? "text-destructive"
+            : ""
       }`}
     >
       <span className={`size-1.5 shrink-0 rounded-full ${cor}`} />
-      {hora && <span className="shrink-0 tabular-nums text-muted-foreground">{hora}</span>}
+      {hora && (
+        <span className="shrink-0 tabular-nums text-muted-foreground">
+          {hora}
+        </span>
+      )}
       <span className="truncate">{titulo}</span>
     </button>
   );

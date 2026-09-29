@@ -8,11 +8,17 @@ import { ORIGEM_VENDA_ROTULO } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError } from "@/lib/api-client";
 import { dataCivilBr } from "@/lib/data";
-import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
+import {
+  useVendedoresEscopo,
+  vendedorFiltroLabel,
+} from "@/hooks/use-vendedores-escopo";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
-import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
+import {
+  StatusQuickFilter,
+  type StatusFilterValue,
+} from "@/components/crud/status-quick-filter";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { useFiltrosUrl } from "@/hooks/use-filtros-url";
 import {
@@ -23,19 +29,36 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { CheckCircle2, Clock, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  CheckCircle2,
+  Clock,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 
 type StatusFiltro = "todos" | StatusOrcamento;
 
-const moeda = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const moeda = (v: number) =>
+  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const dataBr = dataCivilBr;
 
 // Acompanhamento da integração com o ERP: só faz sentido depois de aprovado
@@ -75,19 +98,22 @@ export default function OrcamentosPage() {
 
   const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
-  const mostrarFiltroVendedor = !(vendedoresEscopoQuery.data?.ehVendedorPuro ?? false);
+  const mostrarFiltroVendedor = !(
+    vendedoresEscopoQuery.data?.ehVendedorPuro ?? false
+  );
 
-  const { data, isLoading, isFetching, refetch, error } = useResourceList<Orcamento>("orcamentos", {
-    search,
-    page,
-    pageSize,
-    sortBy,
-    sortOrder,
-    ...(status_ !== "todos" ? { ativo: status_ === "ativos" } : {}),
-    ...(statusOrcamento !== "todos" ? { status: statusOrcamento } : {}),
-    ...(clienteId ? { clienteId } : {}),
-    ...(vendedorId ? { vendedorId } : {}),
-  });
+  const { data, isLoading, isFetching, refetch, error } =
+    useResourceList<Orcamento>("orcamentos", {
+      search,
+      page,
+      pageSize,
+      sortBy,
+      sortOrder,
+      ...(status_ !== "todos" ? { ativo: status_ === "ativos" } : {}),
+      ...(statusOrcamento !== "todos" ? { status: statusOrcamento } : {}),
+      ...(clienteId ? { clienteId } : {}),
+      ...(vendedorId ? { vendedorId } : {}),
+    });
 
   const { remove } = useResourceMutations("orcamentos");
 
@@ -99,7 +125,9 @@ export default function OrcamentosPage() {
       await remove.mutateAsync(o.id);
       toast.success("Orçamento excluído");
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Erro ao excluir orçamento");
+      toast.error(
+        err instanceof ApiError ? err.message : "Erro ao excluir orçamento",
+      );
     }
   };
 
@@ -117,10 +145,18 @@ export default function OrcamentosPage() {
       className: "w-16",
       cell: (o) => <span className="font-mono text-xs">{o.numero}</span>,
     },
-    { header: "Título", sortKey: "titulo", cell: (o) => <p className="font-medium">{o.titulo}</p> },
+    {
+      header: "Título",
+      sortKey: "titulo",
+      cell: (o) => <p className="font-medium">{o.titulo}</p>,
+    },
     {
       header: "Cliente",
-      cell: (o) => <span className="text-xs">{o.cliente.nomeFantasia || o.cliente.razaoSocial}</span>,
+      cell: (o) => (
+        <span className="text-xs">
+          {o.cliente.nomeFantasia || o.cliente.razaoSocial}
+        </span>
+      ),
     },
     {
       header: "Vendedor",
@@ -143,7 +179,9 @@ export default function OrcamentosPage() {
       header: "Status",
       sortKey: "status",
       cell: (o) => (
-        <Badge variant={STATUS_ORCAMENTO_VARIANT[o.status]}>{STATUS_ORCAMENTO_LABEL[o.status]}</Badge>
+        <Badge variant={STATUS_ORCAMENTO_VARIANT[o.status]}>
+          {STATUS_ORCAMENTO_LABEL[o.status]}
+        </Badge>
       ),
     },
     {
@@ -168,15 +206,28 @@ export default function OrcamentosPage() {
       className: "text-right",
       cell: (o) => moeda(o.vlrTotal),
     },
-    { header: "Válido até", sortKey: "dataValidade", cell: (o) => dataBr(o.dataValidade) },
-    { header: "Ativo", sortKey: "ativo", cell: (o) => <StatusDot active={o.ativo} /> },
+    {
+      header: "Válido até",
+      sortKey: "dataValidade",
+      cell: (o) => dataBr(o.dataValidade),
+    },
+    {
+      header: "Ativo",
+      sortKey: "ativo",
+      cell: (o) => <StatusDot active={o.ativo} />,
+    },
     {
       header: "",
       className: "w-10",
       cell: (o) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-8" onClick={(ev) => ev.stopPropagation()}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={(ev) => ev.stopPropagation()}
+            >
               <MoreHorizontal className="size-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -206,10 +257,64 @@ export default function OrcamentosPage() {
           isRefreshing={isFetching}
           onCreate={() => router.push("/crm/orcamentos/novo")}
           createLabel="Novo orçamento"
+          actions={
+            <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+              <div className="space-y-2">
+                <FieldLabel>Status</FieldLabel>
+                <Select
+                  value={statusOrcamento}
+                  onValueChange={(v) => {
+                    setStatusOrcamento(v as StatusFiltro);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos</SelectItem>
+                    {STATUS_ORCAMENTO.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {mostrarFiltroVendedor && (
+                <div className="space-y-2">
+                  <FieldLabel>Vendedor</FieldLabel>
+                  <Select
+                    value={vendedorId ?? "none"}
+                    onValueChange={(v) => {
+                      setVendedorId(v === "none" ? undefined : v);
+                      setPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Qualquer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Qualquer</SelectItem>
+                      {opcoesVendedor.map((v) => (
+                        <SelectItem key={v.id} value={v.id}>
+                          {vendedorFiltroLabel(v)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </FiltersPopover>
+          }
         />
       </div>
 
-      <div data-tour="orcamentos-filtros" className="flex flex-wrap items-center justify-between gap-2">
+      <div
+        data-tour="orcamentos-filtros"
+        className="flex flex-wrap items-center justify-between gap-2"
+      >
         <StatusQuickFilter
           value={status_}
           onChange={(v) => {
@@ -217,56 +322,6 @@ export default function OrcamentosPage() {
             setPage(1);
           }}
         />
-
-        <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
-          <div className="space-y-2">
-            <FieldLabel>Status</FieldLabel>
-            <Select
-              value={statusOrcamento}
-              onValueChange={(v) => {
-                setStatusOrcamento(v as StatusFiltro);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                {STATUS_ORCAMENTO.map((s) => (
-                  <SelectItem key={s.value} value={s.value}>
-                    {s.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {mostrarFiltroVendedor && (
-            <div className="space-y-2">
-              <FieldLabel>Vendedor</FieldLabel>
-              <Select
-                value={vendedorId ?? "none"}
-                onValueChange={(v) => {
-                  setVendedorId(v === "none" ? undefined : v);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Qualquer" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Qualquer</SelectItem>
-                  {opcoesVendedor.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {vendedorFiltroLabel(v)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-        </FiltersPopover>
       </div>
 
       <div data-tour="orcamentos-lista">

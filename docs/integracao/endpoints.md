@@ -82,6 +82,11 @@ Referenciada por cliente, nota de saída e orçamento (`condicaoChave` /
 Referenciado pelo produto (`armazemChave`, armazém padrão) e pelo saldo de
 estoque.
 
+`revenda` (boolean, padrão `true`) marca o armazém de revenda — no Protheus, os
+do `MV_BJAPI16`. **Só o estoque dos armazéns de revenda conta na plataforma**
+(tela de Estoque, orçamento); o saldo dos outros fica gravado, mas não aparece
+nem soma. Decisão de 29/09/2026.
+
 ### Produtos — `/integracao/produtos`
 
 ```json
@@ -180,8 +185,13 @@ A listagem filtra por `produtoChave` e/ou `armazemChave`
 existir.
 
 ```json
-{ "chave": "01-11400443-01", "codigoErp": "11400443", "produtoChave": "01-11400443", "armazemChave": "01-01", "saldo": 128, "dataEnvio": "2026-09-24T12:30:00.000Z" }
+{ "chave": "01-11400443-01", "codigoErp": "11400443", "produtoChave": "01-11400443", "armazemChave": "01-01", "saldo": 128, "disponivel": 104, "dataEnvio": "2026-09-24T12:30:00.000Z" }
 ```
+
+`saldo` é o físico (`B2_QATU`); `disponivel` é o que dá para vender — o
+`SaldoSB2()` do Protheus, que desconta reserva, empenho e o que mais o pedido
+de venda considera. O orçamento usa o `disponivel`; linha sem ele (enviada
+antes de 29/09/2026) cai no `saldo`.
 
 O estoque é uma posição atual, sem histórico de movimentações: existe uma linha
 por produto e armazém, atualizada por upsert. No Protheus, a coleta cruza `SB2`

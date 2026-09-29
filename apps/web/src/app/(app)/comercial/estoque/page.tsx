@@ -3,7 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import type { Armazem, Categoria, EstoqueProdutoResumo } from "@plataforma/contracts";
+import type {
+  Armazem,
+  Categoria,
+  EstoqueProdutoResumo,
+} from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
 import { apiFetch } from "@/lib/api-client";
 import { dataCivilBr } from "@/lib/data";
@@ -12,7 +16,13 @@ import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { Badge } from "@/components/ui/badge";
 import { FieldLabel } from "@/components/ui/field";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const dataBr = dataCivilBr;
 
@@ -31,25 +41,33 @@ export default function EstoquePage() {
   const [comSaldo, setComSaldo] = useState<"todos" | "sim" | "nao">("todos");
 
   const armazensQuery = useQuery({
-    queryKey: ["armazens", "select"],
-    queryFn: () => apiFetch<{ data: Armazem[] }>("/armazens", { query: { pageSize: 100 } }),
+    queryKey: ["armazens", "select", "revenda"],
+    // Só armazém de revenda: o estoque dos outros não conta na plataforma
+    queryFn: () =>
+      apiFetch<{ data: Armazem[] }>("/armazens", {
+        query: { pageSize: 100, revenda: true },
+      }),
   });
 
   const categoriasQuery = useQuery({
     queryKey: ["categorias", "select", "usadas"],
-    queryFn: () => apiFetch<{ data: Categoria[] }>("/categorias", { query: { pageSize: 100, usado: true } }),
+    queryFn: () =>
+      apiFetch<{ data: Categoria[] }>("/categorias", {
+        query: { pageSize: 100, usado: true },
+      }),
   });
 
-  const { data, isLoading, isFetching, refetch, error } = useResourceList<EstoqueProdutoResumo>("estoque", {
-    search,
-    page,
-    pageSize,
-    sortBy,
-    sortOrder,
-    ...(armazemId ? { armazemId } : {}),
-    ...(categoriaId ? { categoriaId } : {}),
-    ...(comSaldo !== "todos" ? { comSaldo: comSaldo === "sim" } : {}),
-  });
+  const { data, isLoading, isFetching, refetch, error } =
+    useResourceList<EstoqueProdutoResumo>("estoque", {
+      search,
+      page,
+      pageSize,
+      sortBy,
+      sortOrder,
+      ...(armazemId ? { armazemId } : {}),
+      ...(categoriaId ? { categoriaId } : {}),
+      ...(comSaldo !== "todos" ? { comSaldo: comSaldo === "sim" } : {}),
+    });
 
   const filtrosAtivos = !!armazemId || !!categoriaId || comSaldo !== "todos";
   const limparFiltros = () => {
@@ -88,21 +106,18 @@ export default function EstoquePage() {
       cell: (p) => p.categoria?.descricao ?? "—",
     },
     {
-      header: "Armazéns",
-      cell: (p) => <span className="text-xs text-muted-foreground">{p.qtdArmazens}</span>,
-    },
-    {
       header: "Saldo total",
+      className: "text-right",
       cell: (p) => (
         <span className={p.saldoTotal > 0 ? "" : "text-muted-foreground"}>
           {p.saldoTotal.toLocaleString("pt-BR")}
-          {p.unidade && <span className="text-xs text-muted-foreground"> {p.unidade}</span>}
         </span>
       ),
     },
     {
       header: "Reserva total",
-      cell: (p) => (p.reservaTotal != null ? p.reservaTotal.toLocaleString("pt-BR") : "—"),
+      cell: (p) =>
+        p.reservaTotal != null ? p.reservaTotal.toLocaleString("pt-BR") : "—",
     },
   ];
 
@@ -116,77 +131,76 @@ export default function EstoquePage() {
         }}
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
+        actions={
+          <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+            <div className="space-y-2">
+              <FieldLabel>Categoria</FieldLabel>
+              <Select
+                value={categoriaId ?? "none"}
+                onValueChange={(v) => {
+                  setCategoriaId(v === "none" ? undefined : v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Todas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Todas</SelectItem>
+                  {(categoriasQuery.data?.data ?? []).map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.descricao}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <FieldLabel>Armazém</FieldLabel>
+              <Select
+                value={armazemId ?? "none"}
+                onValueChange={(v) => {
+                  setArmazemId(v === "none" ? undefined : v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Todos</SelectItem>
+                  {(armazensQuery.data?.data ?? []).map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.descricao}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <FieldLabel>Com saldo</FieldLabel>
+              <Select
+                value={comSaldo}
+                onValueChange={(v) => {
+                  setComSaldo(v as "todos" | "sim" | "nao");
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  <SelectItem value="sim">Com saldo</SelectItem>
+                  <SelectItem value="nao">Sem saldo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </FiltersPopover>
+        }
       />
-
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
-          <div className="space-y-2">
-            <FieldLabel>Categoria</FieldLabel>
-            <Select
-              value={categoriaId ?? "none"}
-              onValueChange={(v) => {
-                setCategoriaId(v === "none" ? undefined : v);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Todas" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Todas</SelectItem>
-                {(categoriasQuery.data?.data ?? []).map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.descricao}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <FieldLabel>Armazém</FieldLabel>
-            <Select
-              value={armazemId ?? "none"}
-              onValueChange={(v) => {
-                setArmazemId(v === "none" ? undefined : v);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Todos" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Todos</SelectItem>
-                {(armazensQuery.data?.data ?? []).map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.descricao}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <FieldLabel>Com saldo</FieldLabel>
-            <Select
-              value={comSaldo}
-              onValueChange={(v) => {
-                setComSaldo(v as "todos" | "sim" | "nao");
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="sim">Com saldo</SelectItem>
-                <SelectItem value="nao">Sem saldo</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </FiltersPopover>
-      </div>
 
       <EntityTable
         columns={columns}

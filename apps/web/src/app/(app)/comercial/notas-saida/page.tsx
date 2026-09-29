@@ -15,12 +15,26 @@ import { FiltersPopover } from "@/components/crud/filters-popover";
 import { Badge } from "@/components/ui/badge";
 import { FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type NotaRow = NotaSaida & {
-  cliente?: { id: string; razaoSocial: string; nomeFantasia: string | null } | null;
-  fornecedor?: { id: string; razaoSocial: string; nomeFantasia: string | null } | null;
+  cliente?: {
+    id: string;
+    razaoSocial: string;
+    nomeFantasia: string | null;
+  } | null;
+  fornecedor?: {
+    id: string;
+    razaoSocial: string;
+    nomeFantasia: string | null;
+  } | null;
   vendedor?: { id: string; nome: string; nomeReduzido: string | null } | null;
 };
 
@@ -31,7 +45,9 @@ interface VendedorEscopo {
 }
 
 const moeda = (v: number | null | undefined) =>
-  v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
+  v != null
+    ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+    : "—";
 // Consulta read-only, com o mesmo escopo hierárquico de Clientes.
 export default function NotasSaidaPage() {
   const router = useRouter();
@@ -50,22 +66,25 @@ export default function NotasSaidaPage() {
   const escopoQuery = useQuery({
     queryKey: ["escopo", "vendedores"],
     queryFn: () =>
-      apiFetch<{ data: VendedorEscopo[]; restrito: boolean }>("/escopo/vendedores"),
+      apiFetch<{ data: VendedorEscopo[]; restrito: boolean }>(
+        "/escopo/vendedores",
+      ),
   });
   const opcoesVendedor = escopoQuery.data?.data ?? [];
   const restrito = escopoQuery.data?.restrito ?? false;
   const mostrarFiltroVendedor = !restrito || opcoesVendedor.length > 1;
 
-  const { data, isLoading, isFetching, refetch, error } = useResourceList<NotaRow>("notas-saida", {
-    search,
-    page,
-    pageSize,
-    ...(sortBy ? { sortBy, sortOrder } : {}),
-    ...(vendedorId ? { vendedorId } : {}),
-    ...(ano && /^\d{4}$/.test(ano) ? { ano: Number(ano) } : {}),
-    ...(mes ? { mes: Number(mes) } : {}),
-    devolucao: devolucoes,
-  });
+  const { data, isLoading, isFetching, refetch, error } =
+    useResourceList<NotaRow>("notas-saida", {
+      search,
+      page,
+      pageSize,
+      ...(sortBy ? { sortBy, sortOrder } : {}),
+      ...(vendedorId ? { vendedorId } : {}),
+      ...(ano && /^\d{4}$/.test(ano) ? { ano: Number(ano) } : {}),
+      ...(mes ? { mes: Number(mes) } : {}),
+      devolucao: devolucoes,
+    });
 
   const filtrosAtivos = !!vendedorId || !!ano || !!mes;
   const limparFiltros = () => {
@@ -83,26 +102,38 @@ export default function NotasSaidaPage() {
         <div className="flex items-center gap-2">
           <span className="font-mono font-medium">
             {n.numero}
-            {n.serie && <span className="text-muted-foreground">/{n.serie}</span>}
+            {n.serie && (
+              <span className="text-muted-foreground">/{n.serie}</span>
+            )}
           </span>
           {n.comodato && <Badge variant="outline">Comodato</Badge>}
         </div>
       ),
     },
-    { header: "Emissão", sortKey: "dtEmissao", cell: (n) => dataCivilBr(n.dtEmissao) },
+    {
+      header: "Emissão",
+      sortKey: "dtEmissao",
+      cell: (n) => dataCivilBr(n.dtEmissao),
+    },
     devolucoes
       ? {
           header: "Fornecedor",
           cell: (n: NotaRow) => (
             <span className="text-xs">
-              {n.fornecedor ? n.fornecedor.nomeFantasia || n.fornecedor.razaoSocial : "—"}
+              {n.fornecedor
+                ? n.fornecedor.nomeFantasia || n.fornecedor.razaoSocial
+                : "—"}
             </span>
           ),
         }
       : {
           header: "Cliente",
           cell: (n: NotaRow) => (
-            <span className="text-xs">{n.cliente ? n.cliente.nomeFantasia || n.cliente.razaoSocial : "—"}</span>
+            <span className="text-xs">
+              {n.cliente
+                ? n.cliente.nomeFantasia || n.cliente.razaoSocial
+                : "—"}
+            </span>
           ),
         },
     ...(devolucoes
@@ -111,17 +142,33 @@ export default function NotasSaidaPage() {
           {
             header: "Vendedor",
             cell: (n: NotaRow) => (
-              <span className="text-xs">{n.vendedor ? n.vendedor.nomeReduzido || n.vendedor.nome : "—"}</span>
+              <span className="text-xs">
+                {n.vendedor ? n.vendedor.nomeReduzido || n.vendedor.nome : "—"}
+              </span>
             ),
           },
         ]),
-    { header: "Vlr. itens", sortKey: "vlrItens", cell: (n) => moeda(n.vlrItens) },
-    { header: "Vlr. bruto", sortKey: "vlrBruto", cell: (n) => moeda(n.vlrBruto) },
-    { header: "Status", sortKey: "ativo", cell: (n) => <StatusDot active={n.ativo} /> },
+    {
+      header: "Vlr. itens",
+      sortKey: "vlrItens",
+      cell: (n) => moeda(n.vlrItens),
+    },
+    {
+      header: "Vlr. bruto",
+      sortKey: "vlrBruto",
+      cell: (n) => moeda(n.vlrBruto),
+    },
+    {
+      header: "Status",
+      sortKey: "ativo",
+      cell: (n) => <StatusDot active={n.ativo} />,
+    },
     {
       header: "2ª via",
       className: "w-20 text-right",
-      cell: (n) => <SegundaViaNota notaId={n.id} numero={n.numero} temXml={n.temXml} />,
+      cell: (n) => (
+        <SegundaViaNota notaId={n.id} numero={n.numero} temXml={n.temXml} />
+      ),
     },
   ];
 
@@ -135,6 +182,74 @@ export default function NotasSaidaPage() {
         }}
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
+        actions={
+          <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+            {mostrarFiltroVendedor && !devolucoes && (
+              <div className="space-y-2">
+                <FieldLabel>Vendedor</FieldLabel>
+                <Select
+                  value={vendedorId ?? "none"}
+                  onValueChange={(v) => {
+                    setVendedorId(v === "none" ? undefined : v);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Qualquer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Qualquer</SelectItem>
+                    {opcoesVendedor.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.nomeReduzido || v.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <FieldLabel htmlFor="filtro-ano">Ano</FieldLabel>
+              <Input
+                id="filtro-ano"
+                placeholder="Ex.: 2025"
+                inputMode="numeric"
+                maxLength={4}
+                value={ano}
+                onChange={(e) => {
+                  setAno(e.target.value.replace(/\D/g, ""));
+                  setPage(1);
+                }}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <FieldLabel>Mês</FieldLabel>
+              <Select
+                value={mes ?? "none"}
+                onValueChange={(v) => {
+                  setMes(v === "none" ? undefined : v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Todos</SelectItem>
+                  {Array.from({ length: 12 }, (_, i) => String(i + 1)).map(
+                    (m) => (
+                      <SelectItem key={m} value={m}>
+                        {m.padStart(2, "0")}
+                      </SelectItem>
+                    ),
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          </FiltersPopover>
+        }
       />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -150,70 +265,6 @@ export default function NotasSaidaPage() {
             <TabsTrigger value="devolucoes">Devoluções de compra</TabsTrigger>
           </TabsList>
         </Tabs>
-        <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
-          {mostrarFiltroVendedor && !devolucoes && (
-            <div className="space-y-2">
-              <FieldLabel>Vendedor</FieldLabel>
-              <Select
-                value={vendedorId ?? "none"}
-                onValueChange={(v) => {
-                  setVendedorId(v === "none" ? undefined : v);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Qualquer" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Qualquer</SelectItem>
-                  {opcoesVendedor.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {v.nomeReduzido || v.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <FieldLabel htmlFor="filtro-ano">Ano</FieldLabel>
-            <Input
-              id="filtro-ano"
-              placeholder="Ex.: 2025"
-              inputMode="numeric"
-              maxLength={4}
-              value={ano}
-              onChange={(e) => {
-                setAno(e.target.value.replace(/\D/g, ""));
-                setPage(1);
-              }}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <FieldLabel>Mês</FieldLabel>
-            <Select
-              value={mes ?? "none"}
-              onValueChange={(v) => {
-                setMes(v === "none" ? undefined : v);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Todos" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Todos</SelectItem>
-                {Array.from({ length: 12 }, (_, i) => String(i + 1)).map((m) => (
-                  <SelectItem key={m} value={m}>
-                    {m.padStart(2, "0")}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </FiltersPopover>
       </div>
 
       <EntityTable
@@ -232,7 +283,9 @@ export default function NotasSaidaPage() {
           setPage(1);
         }}
         onRowClick={(n) => router.push(`/comercial/notas-saida/${n.id}`)}
-        emptyMessage={devolucoes ? "Nenhuma devolução de compra." : "Nenhuma nota de saída."}
+        emptyMessage={
+          devolucoes ? "Nenhuma devolução de compra." : "Nenhuma nota de saída."
+        }
         sortBy={sortBy}
         sortOrder={sortOrder}
         onSortChange={(key, order) => {

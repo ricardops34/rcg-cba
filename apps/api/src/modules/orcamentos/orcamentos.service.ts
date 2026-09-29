@@ -218,8 +218,9 @@ export class OrcamentosService {
    * pré-preenchimento de vlrUnitario ao adicionar um item no form de
    * orçamento (vlrTabela da Tabela de Preço vinculada ao cliente, com
    * ultimoPreco do produto como fallback informativo quando não há
-   * tabela/preço cadastrado) e a coluna "Estoque" (saldo somado em todos os
-   * armazéns). Usa a permissão de orcamentos, não a de estoque — é só
+   * tabela/preço cadastrado) e a coluna "Estoque": o **disponível** (SaldoSB2
+   * do Protheus) somado nos armazéns de revenda — linha enviada antes de o ERP
+   * mandar o disponível cai no saldo físico. Usa a permissão de orcamentos, não a de estoque — é só
    * informativo dentro do form, não a tela de Estoque em si.
    */
   async precoProduto(
@@ -252,9 +253,14 @@ export class OrcamentosService {
           where: { id: produtoId, empresaId },
           select: { ultimoPreco: true },
         }),
-        tx.estoque.aggregate({
-          where: { empresaId, produtoId, deletedAt: null },
-          _sum: { saldo: true },
+        tx.estoque.findMany({
+          where: {
+            empresaId,
+            produtoId,
+            deletedAt: null,
+            armazem: { revenda: true },
+          },
+          select: { saldo: true, disponivel: true },
         }),
       ]);
       // Regra aplicável ao item, pra tela avisar em tempo real quando o
@@ -274,7 +280,10 @@ export class OrcamentosService {
       return {
         vlrTabela: tabelaItem?.preco ?? null,
         ultimoPreco: produto?.ultimoPreco ?? null,
-        saldoEstoque: estoque._sum.saldo ?? 0,
+        saldoEstoque: estoque.reduce(
+          (total, e) => total + (e.disponivel ?? e.saldo),
+          0,
+        ),
         regraDesconto:
           regra &&
           !podeVerComissao(user, await this.comissaoOcultaParaTodos(empresaId))

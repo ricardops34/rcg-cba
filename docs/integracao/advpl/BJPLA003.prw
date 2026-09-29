@@ -1307,11 +1307,18 @@ User Function BJMAPARM(cMarca, cChave, cMarcaFim, lEnvDel)
 	Local cVerbo := ""
 	Local oStmt  := Nil
 	Local oJson  := Nil
+	Local aArmaz := {}
 
 	Default cMarca    := ""
 	Default cChave    := ""
 	Default cMarcaFim := ""
 	Default lEnvDel   := .T.
+
+	// Armazens de revenda (MV_BJAPI16, ex.: "01,02,07"). Troca de parametro nao mexe no
+	// S_T_A_M_P_ da NNR: depois de mudar, reenviar os armazens (Gerar > Cadastros).
+	If !Empty(AllTrim(GetMV("MV_BJAPI16")))
+		aArmaz := StrTokArr2(AllTrim(GetMV("MV_BJAPI16")), ",", .F.)
+	EndIf
 
 	cQuery := "SELECT NNR_FILIAL, NNR_CODIGO, NNR_DESCRI, NNR_MSBLQL, NNR.D_E_L_E_T_ AS DELETADO "
 	cQuery += "  FROM " + RetSQLName("NNR") + " NNR "
@@ -1364,6 +1371,9 @@ User Function BJMAPARM(cMarca, cChave, cMarcaFim, lEnvDel)
 		oJson["codigoErp"] := AllTrim((cAlias)->NNR_CODIGO)
 		oJson["descricao"] := AllTrim((cAlias)->NNR_DESCRI)
 		oJson["ativo"]     := !(AllTrim(cValToChar((cAlias)->NNR_MSBLQL)) == "1")
+		// So o estoque dos armazens de revenda conta na plataforma (decisao de 29/09/2026).
+		// Parametro vazio: todos sao de revenda, como na coleta do estoque (BJMAPEST).
+		oJson["revenda"]   := Empty(aArmaz) .Or. AScan(aArmaz, {|x| AllTrim(x) == AllTrim((cAlias)->NNR_CODIGO)}) > 0
 
 		cVerbo := "POST"
 		If (cAlias)->DELETADO == "*"
@@ -2497,7 +2507,8 @@ User Function BJMAPEST(cMarca, cChave, cMarcaFim, lEnvDel)
 	Default lEnvDel   := .T.
 
 	cQuery := "SELECT SB2.B2_FILIAL, SB2.B2_COD, SB2.B2_LOCAL, SB2.B2_QATU, SB2.B2_RESERVA, "
-	cQuery += "       SB1.B1_FILIAL AS FILPROD, NNR.NNR_FILIAL AS FILARM, SB2.D_E_L_E_T_ AS DELETADO "
+	cQuery += "       SB1.B1_FILIAL AS FILPROD, NNR.NNR_FILIAL AS FILARM, SB2.D_E_L_E_T_ AS DELETADO, "
+	cQuery += "       SB2.R_E_C_N_O_ AS RECSB2 "
 
 	If lCusto
 		cQuery += ", B2_CM1 "
@@ -2622,6 +2633,14 @@ User Function BJMAPEST(cMarca, cChave, cMarcaFim, lEnvDel)
 		oJson["saldo"]         := (cAlias)->B2_QATU
 		oJson["dataEnvio"]     := cDataEnv
 		oJson["reserva"]       := (cAlias)->B2_RESERVA
+
+		// Disponivel para venda: o SaldoSB2() padrao, o mesmo que o pedido de venda
+		// considera (decisao de 29/09/2026). Ele le a SB2 posicionada. Reserva, empenho
+		// e pedido mexem na propria SB2, entao a marca d'agua ja pega a mudanca.
+		If !((cAlias)->DELETADO == "*")
+			SB2->(dbGoTo((cAlias)->RECSB2))
+			oJson["disponivel"] := SaldoSB2()
+		EndIf
 
 		If lCusto
 			oJson["custo"] := (cAlias)->B2_CM1

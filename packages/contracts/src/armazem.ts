@@ -9,12 +9,15 @@ export const armazemSchema = z.object({
   codigoErp: z.string(),
   descricao: z.string(),
   ativo: z.boolean(),
+  // Armazém do MV_BJAPI16 no Protheus — só o estoque destes conta na plataforma.
+  revenda: z.boolean(),
   ...auditFieldsSchema.shape,
 });
 export type Armazem = z.infer<typeof armazemSchema>;
 
 export const armazemQuerySchema = paginationQuerySchema.extend({
   ativo: booleanQueryParam,
+  revenda: booleanQueryParam,
 });
 export type ArmazemQuery = z.infer<typeof armazemQuerySchema>;
 
@@ -24,6 +27,7 @@ export const ARMAZEM_EXAMPLE: Armazem = {
   codigoErp: "001",
   descricao: "ARMAZÉM CENTRAL",
   ativo: true,
+  revenda: true,
   createdAt: "2026-07-24T12:00:00.000Z",
   updatedAt: "2026-07-24T12:00:00.000Z",
   createdBy: null,

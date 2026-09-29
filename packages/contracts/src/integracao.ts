@@ -203,6 +203,12 @@ export const integracaoArmazemCreateSchema = z.object({
   codigoErp: codigoErpSchema,
   descricao: z.string().trim().min(1).max(150),
   ativo: z.boolean().default(true),
+  revenda: z
+    .boolean()
+    .default(true)
+    .describe(
+      "Armazém de revenda (MV_BJAPI16 no Protheus). Só o estoque destes conta na plataforma",
+    ),
 });
 export type IntegracaoArmazemCreate = z.infer<
   typeof integracaoArmazemCreateSchema
@@ -233,6 +239,7 @@ export const INTEGRACAO_ARMAZEM_CREATE_EXAMPLE: IntegracaoArmazemCreate = {
   codigoErp: "001",
   descricao: "ARMAZÉM CENTRAL",
   ativo: true,
+  revenda: true,
 };
 
 export const INTEGRACAO_ARMAZEM_EXAMPLE: IntegracaoArmazem = {
@@ -689,6 +696,11 @@ export const integracaoEstoqueCreateSchema = z.object({
     "chave do armazém (parte da chave)",
   ),
   saldo: z.coerce.number().default(0),
+  disponivel: z.coerce
+    .number()
+    .nullable()
+    .optional()
+    .describe("Saldo disponível para venda (SaldoSB2 no Protheus)"),
   dataEnvio: z.coerce
     .date()
     .describe("Data e hora UTC em que o saldo foi coletado para envio"),
@@ -729,6 +741,7 @@ export const INTEGRACAO_ESTOQUE_CREATE_EXAMPLE: IntegracaoEstoqueCreate = {
   produtoChave: "01-11400443",
   armazemChave: "01-01",
   saldo: 128,
+  disponivel: 104,
   dataEnvio: new Date("2026-09-24T12:30:00.000Z"),
   reserva: 12,
   custo: 21.4,
