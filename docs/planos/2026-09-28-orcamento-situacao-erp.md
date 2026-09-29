@@ -6,11 +6,12 @@
 > /integracao/pedidos`, `pedidos` na carga por arquivo,
 > `PATCH /integracao/orcamentos/pendentes/{id}/erro` e a tela. Fase 2 (ADVPL)
 > escrita em 29/09 — `U_BJMAPPED` no `BJPLA003`, entidade `pedidos` no
-> catálogo, grupo no monitor e o aviso de recusa no `BJErroOrc`. Falta aplicar
-> a migration, compilar os fontes e testar ponta a ponta. Fase 3: SQL da carga
-> inicial. O código ADVPL vive em `C:\VPS\protheusrcg\Portal\BJ`; os `.prw`
-> em `docs/integracao/advpl` são cópia. O desenho abaixo já é o implementado;
-> as decisões ainda abertas estão no fim.
+> catálogo, grupo no monitor e o aviso de recusa no `BJErroOrc`. Fase 3 (SQL
+> da carga inicial) escrita em 29/09. **Falta:** aplicar as duas migrations,
+> compilar os fontes, rodar o `01` de novo e testar ponta a ponta. O código
+> ADVPL vive em `C:\VPS\protheusrcg\Portal\BJ`; os `.prw` em
+> `docs/integracao/advpl` são cópia. O desenho abaixo já é o implementado; as
+> decisões estão no fim, todas fechadas.
 
 ## O problema
 
@@ -121,7 +122,10 @@ nota(s).
 ### Carga inicial
 
 - O SQL (`docs/integracao/sql`) ganha a entidade `pedidos`, com a mesma
-  regra, para os pedidos já vinculados a orçamentos. **Ainda não feito.**
+  regra, para os pedidos já vinculados a orçamentos. **Escrito em 29/09/2026,
+  não rodado:** views `BJ_SC5`, `BJ_SC6` e `BJ_SC9` no `01`, bloco `pedidos`
+  no `BJ_CARGA_JSONL` (espelho do `U_BJMAPPED`, com o `CORTE` valendo para as
+  quatro tabelas) e `pedidos` por último na ordem do `02`.
 
 ## Decisões (usuário) — todas fechadas em 29/09/2026
 

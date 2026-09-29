@@ -177,6 +177,33 @@ SELECT ZZ_STATUS, COUNT(*) FROM SZZ010
 dali em diante. Não mexe no que já está na SZZ: mensagens pendentes (status
 `1`) ou com erro (`3`) de uma carga anterior continuam saindo pelo envio.
 
+## Pedidos de venda (`pedidos.json`)
+
+Incluído em 29/09/2026 (Fase 3 do plano
+`docs/planos/2026-09-28-orcamento-situacao-erp.md`). É o espelho do
+`U_BJMAPPED`: a situação dos pedidos que **vieram da plataforma**
+(`C5_ORGPED = 'P'`), com os itens (SC6) e as notas (SD2 pelo `D2_PEDIDO`).
+Sai **por último** na ordem de carga, porque a plataforma acha o orçamento pela
+chave do pedido (`C5_FILIAL-C5_NUM`) — ele já tem de estar vinculado lá. Pedido
+sem orçamento vinculado volta como erro na carga.
+
+A situação segue a mesma regra do ADVPL, na mesma ordem: resíduo eliminado em
+todo o saldo → `cancelado`; tudo entregue → `faturado`; algo entregue →
+`faturado_parcial` (na tela, "Faturando"); `C5_LIBDESC = '2'` → bloqueio de
+desconto; SC9 não faturada com `C9_BLCRED` / `C9_BLEST` preenchido e diferente
+de `10` → bloqueio de crédito / estoque; SC9 não faturada sem bloqueio →
+`liberado`; senão `pendente`.
+
+O `CORTE` vale como a janela do job: o pedido entra se a SC5, a SC6, a SC9 ou a
+SD2 dele mudou depois do corte. As views novas são `BJ_SC5`, `BJ_SC6` e
+`BJ_SC9` — rode o `01` de novo para criá-las.
+
+Para ver as linhas antes de gerar o arquivo:
+
+```sql
+EXEC dbo.BJ_CARGA_JSONL 'pedidos';
+```
+
 ## Diferenças conhecidas para o ADVPL
 
 - **Dígito do nosso número:** vai o `E1_DACNOSS`; sem ele, nulo. O `U_DACBRA`

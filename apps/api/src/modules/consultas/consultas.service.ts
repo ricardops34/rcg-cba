@@ -165,9 +165,8 @@ export class ConsultasService {
   /**
    * O que conta como venda, aqui e no Dashboard/Objetivos — a definição mora
    * em `common/vendas/venda-analitica`, para as três telas responderem a
-   * mesma coisa. Cabeçalho (alias `n`, com as séries de `VENDAS_SERIES_NOTA`)
-   * e item (alias `i` e categoria em `cat`, sem os CFOPs de
-   * `VENDAS_CFOPS_EXCLUIDOS`).
+   * mesma coisa. Cabeçalho (alias `n`: nota que gerou duplicata, nas séries de
+   * `VENDAS_SERIES_NOTA`) e item (alias `i` e categoria em `cat`).
    */
   private async condicoesDeVenda(
     tx: TenantTx,

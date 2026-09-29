@@ -949,6 +949,18 @@ export const integracaoNotaSaidaCreateSchema = z.object({
   // Mensagem da nota (F2_MENNOTA/F1_MENNOTA é memo no Protheus): no banco é
   // texto sem limite. Os 500 de antes recusavam a nota inteira.
   mensagem: z.string().trim().max(10000).nullable().optional(),
+  // F2_DUPL. Vazio = a nota não gerou financeiro (comodato, bonificação,
+  // transferência) e não conta como venda nas análises. Omitido = a
+  // plataforma não sabe, e cai no critério antigo (condição de pagamento).
+  duplicata: z
+    .string()
+    .trim()
+    .max(20)
+    .nullable()
+    .optional()
+    .describe(
+      "F2_DUPL — número da duplicata gerada; vazio ou null = a nota não gerou financeiro",
+    ),
   comodato: z.boolean().default(false),
   ativo: z.boolean().default(true),
   itens: z
@@ -1010,6 +1022,7 @@ export const INTEGRACAO_NOTA_SAIDA_CREATE_EXAMPLE: IntegracaoNotaSaidaCreate = {
   chaveNfe: "50260600000000000191550010001160671000116060",
   dtNfe: new Date("2026-06-30T00:00:00.000Z"),
   mensagem: null,
+  duplicata: "000116067",
   comodato: false,
   ativo: true,
   itens: [

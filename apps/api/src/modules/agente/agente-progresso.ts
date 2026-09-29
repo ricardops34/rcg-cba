@@ -37,6 +37,7 @@ const ROTULOS: Record<string, string> = {
   vendas_por_cliente: 'Apurando as vendas do cliente',
   vendas_por_produto: 'Apurando as vendas do produto',
   execucao_objetivos: 'Conferindo a execução dos objetivos',
+  execucao_objetivos_vendedores: 'Conferindo as metas dos vendedores',
   consultar_cnpj: 'Consultando o CNPJ na Receita',
   resumo_atendimentos: 'Resumindo os atendimentos',
   minha_agenda: 'Abrindo a agenda',

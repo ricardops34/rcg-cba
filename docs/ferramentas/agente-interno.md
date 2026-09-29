@@ -45,6 +45,7 @@ em si.
 | `vendas_por_cliente` | `consulta-vendas-cliente.visualizar` | leitura | `consultas.vendasPorCliente` |
 | `vendas_por_produto` | `consulta-vendas-produto.visualizar` | leitura | `consultas.vendasPorProduto` |
 | `execucao_objetivos` | `dashboard-comercial.visualizar` | leitura | `objetivos.dashboard` |
+| `execucao_objetivos_vendedores` | `dashboard-gerencial.visualizar` | leitura | `objetivos.dashboardGerencial` |
 | `consultar_cnpj` | `clientes.visualizar` | leitura | `enriquecimento.consultarCnpj` + `clientes.titularidadePorCnpj` |
 | `resumo_atendimentos` | `meus-atendimentos.visualizar` | leitura | `meusAtendimentos.resumo` |
 | `minha_agenda` | `atividades.visualizar` | leitura | `atividades.findAll` |

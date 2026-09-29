@@ -73,7 +73,7 @@ quer — se o escopo não resolve, não se atende.
 ## Duas fontes de verdade que não se reinventa aqui
 
 **O que conta como venda** sai de `common/vendas/venda-analitica.ts`
-(`corteDeVenda`, com os parâmetros `VENDAS_SERIES_NOTA` e `VENDAS_CFOPS_EXCLUIDOS`) — o mesmo corte do Dashboard, dos Objetivos e das
+(`corteDeVenda`: nota que gerou duplicata, nas séries de `VENDAS_SERIES_NOTA`) — o mesmo corte do Dashboard, dos Objetivos e das
 Consultas. Aquele arquivo existe porque as três telas divergiam, e ter dois
 números para a mesma pergunta é o tipo de coisa que ninguém percebe até a
 reunião de fechamento. Conferido ao centavo contra `GET /objetivos/dashboard`.

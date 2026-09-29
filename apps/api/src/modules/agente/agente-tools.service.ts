@@ -517,8 +517,8 @@ export class AgenteToolsService {
     clienteId: string,
   ) {
     const empresaId = user.empresaAtivaId;
-    // O cliente estar no alcance não faz da agenda do colega assunto de quem
-    // pergunta: para vendedor e supervisor, só o que é da própria carteira.
+    // CRM segue a carteira autorizada, incluindo subordinados para superiores.
+    // O WhatsApp permanece limitado à própria conexão.
     const carteira = await this.filtroCarteira(user);
     const [agenda, funil, whatsapp] = await Promise.all([
       this.atividades.findAll(empresaId, user, {
@@ -895,8 +895,7 @@ export class AgenteToolsService {
         },
         executar: async (a, user) =>
           this.consultas.vendasPorCliente(user.empresaAtivaId, user, {
-            // O total do período é o **meu** total: sem isto, a mesma pergunta
-            // devolveria o agregado da equipe para o supervisor.
+            // Vendedor puro recebe recorte próprio; superiores usam a equipe do service.
             ...(await this.filtroCarteiraConsulta(user)),
             anoInicial: numero(a.anoInicial, new Date().getFullYear()),
             mesInicial: numero(a.mesInicial, 1),
@@ -957,13 +956,12 @@ export class AgenteToolsService {
         descricao:
           'A SUA execução de metas em um mês: objetivo x realizado em valor e em ' +
           'clientes positivados, percentuais, devoluções e a quebra por categoria. ' +
-          'Responde sempre pela carteira de quem está perguntando — não existe ' +
-          'consulta de meta de outro vendedor, da equipe ou da empresa por aqui; ' +
-          'isso é o Dashboard Comercial, na tela.',
+          'Responde pelo escopo autorizado de quem pergunta. Para comparar vendedores ' +
+          'ou saber quem bateu a meta, use execucao_objetivos_vendedores.',
         instrucoes:
-          'O número é sempre da carteira de quem perguntou, nunca da equipe nem ' +
-          'da empresa; se pedirem a meta de outra pessoa, diga que por aqui só ' +
-          'sai a própria e aponte o Dashboard Comercial. Dê o percentual junto ' +
+          'O número é agregado no escopo autorizado: carteira do vendedor, equipe ' +
+          'do superior ou empresa ativa do administrador. Para comparar vendedores, ' +
+          'use execucao_objetivos_vendedores. Dê o percentual junto ' +
           'do valor — "78% de R$ 200 mil" informa, "R$ 156 mil" sozinho não. Se ' +
           'o mês ainda está correndo, diga isso antes de comparar com a meta ' +
           'cheia.',
@@ -990,8 +988,7 @@ export class AgenteToolsService {
           this.objetivos.dashboard(user.empresaAtivaId, user, {
             mes: numero(a.mes, new Date().getMonth() + 1),
             ano: numero(a.ano, new Date().getFullYear()),
-            // Sempre o próprio vendedor: omitir agregaria o escopo — a equipe,
-            // para o supervisor, e a empresa, para o administrador.
+            // O service aplica a hierarquia; o filtro adicional restringe o vendedor puro.
             ...(await this.filtroCarteira(user)),
             ...(texto(a.municipio) ? { municipio: texto(a.municipio) } : {}),
           }),
@@ -999,6 +996,42 @@ export class AgenteToolsService {
           rotulo: 'Abrir o Dashboard Comercial',
           rota: '/comercial/dashboard',
         }),
+      },
+      {
+        nome: 'execucao_objetivos_vendedores',
+        descricao:
+          'Metas por vendedor no mês: quem bateu a meta, objetivo, realizado e percentual. ' +
+          'Considera somente vendedores autorizados na empresa ativa e na hierarquia do usuário.',
+        instrucoes:
+          'Use para perguntas como "Qual vendedor já bateu a meta?". Informe o período, ' +
+          'nome, objetivo, realizado e percentual. Use metaAtingida, não arredondamento do percentual, ' +
+          'para decidir quem atingiu. Meta ausente não é meta batida. Se o mês está em andamento, ' +
+          'avise. Nunca apresente o escopo retornado como se incluísse outras empresas ou equipes.',
+        permissao: 'dashboard-gerencial.visualizar',
+        exemplos: ['Qual vendedor já bateu a meta?', 'Como estão as metas da minha equipe?'],
+        parametros: {
+          type: 'object',
+          properties: {
+            mes: { type: 'number', description: '1 a 12' },
+            ano: { type: 'number' },
+          },
+          required: ['mes', 'ano'],
+        },
+        executar: async (a, user) => {
+          const resultado = await this.objetivos.dashboardGerencial(user.empresaAtivaId, user, {
+            mes: numero(a.mes, new Date().getMonth() + 1),
+            ano: numero(a.ano, new Date().getFullYear()),
+            ...(await this.filtroCarteira(user)),
+          });
+          return {
+            periodo: resultado.periodo,
+            vendedores: resultado.linhas.map((linha) => ({
+              ...linha,
+              metaAtingida: linha.objetivo > 0 && linha.realizado >= linha.objetivo,
+            })),
+          };
+        },
+        destino: () => ({ rotulo: 'Abrir o Dashboard Gerencial', rota: '/gerencial/dashboard' }),
       },
       {
         nome: 'consultar_cnpj',

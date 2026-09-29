@@ -16,11 +16,19 @@ import { Prisma } from '@prisma/client';
  * - `comodato = false` — remessa de comodato é empréstimo, não venda;
  * - `tipo = 'N'` (Normal) — exclui devolução ('D', CFOP 5915/5916/6202/6909…),
  *   beneficiamento ('B'), complemento ('C') e 'I';
- * - `condicaoPagamentoId IS NOT NULL` — a nota **Sem Financeiro**, que não
- *   gerou título. São remessas, bonificações e brindes: saem do estoque, não
- *   entram no faturamento. Elas vêm com valor zero, então não mexem em
- *   somatório — mas inflavam contagem de notas e de clientes positivados, que
- *   é onde o erro aparecia.
+ * - **a nota gerou duplicata** (`geraDuplicata`, o F2_DUPL do ERP). É o que
+ *   separa venda de remessa: a nota de comodato, de bonificação ou de
+ *   transferência sai do estoque sem gerar financeiro. Se a nota gerou
+ *   duplicata, **todos** os itens dela contam — inclusive um item de comodato
+ *   que foi junto na nota de venda —, e se não gerou, nenhum conta. É a regra
+ *   do sistema que a plataforma substituiu, conferida no ERP em 2026-09-29: com
+ *   ela, 10 de 11 vendedores bateram ao centavo (o 11º era erro do sistema
+ *   anterior com uma nota excluída e reemitida).
+ *
+ *   Até então o critério era `condicaoPagamentoId IS NOT NULL`, e ele não
+ *   separa: a nota de comodato da RCG tem condição de pagamento. Continua
+ *   valendo **só** para a nota com `geraDuplicata` nulo — a que chegou por uma
+ *   integração que ainda não mandava o F2_DUPL.
  * - `serie IN (...)` — só as séries do parâmetro `VENDAS_SERIES_NOTA`, quando
  *   preenchido. Esse corte depende da empresa, então não mora nas constantes
  *   abaixo: entra por `corteDeVenda`, no fim do arquivo.
@@ -37,16 +45,27 @@ const CONDICOES_NOTA_DE_VENDA_SQL: Prisma.Sql[] = [
   Prisma.sql`n."ativo" = true`,
   Prisma.sql`n."comodato" = false`,
   Prisma.sql`n."tipo" = 'N'`,
-  Prisma.sql`n."condicaoPagamentoId" IS NOT NULL`,
+  Prisma.sql`(n."geraDuplicata" = true OR (n."geraDuplicata" IS NULL AND n."condicaoPagamentoId" IS NOT NULL))`,
 ];
 
-/** O mesmo corte de cabeçalho, para quem consulta pelo Prisma. */
+/**
+ * O mesmo corte de cabeçalho, para quem consulta pelo Prisma. O `OR` da
+ * duplicata vai num `AND` para não colidir com um `OR` que quem chama espalhe
+ * no mesmo where.
+ */
 const NOTA_DE_VENDA_WHERE = {
   deletedAt: null,
   ativo: true,
   comodato: false,
   tipo: 'N',
-  condicaoPagamentoId: { not: null },
+  AND: [
+    {
+      OR: [
+        { geraDuplicata: true },
+        { geraDuplicata: null, condicaoPagamentoId: { not: null } },
+      ],
+    },
+  ],
 } satisfies Prisma.NotaSaidaWhereInput;
 
 /**
@@ -61,7 +80,7 @@ export const JOIN_CATEGORIA_DO_ITEM_SQL = Prisma.sql`
   LEFT JOIN "categorias" cat ON cat."id" = prod_cat."categoriaId"`;
 
 /**
- * O item que entra na análise.
+ * O item que entra na análise — **dentro** de uma nota de venda.
  *
  * `cat."usado" IS DISTINCT FROM false` — a marcação "Usada nas análises" de
  * Cadastros > Categorias. Sai o que a empresa disse que **não** acompanha
@@ -70,7 +89,10 @@ export const JOIN_CATEGORIA_DO_ITEM_SQL = Prisma.sql`
  * categoria nova nascia invisível e a venda sumia sem ninguém ter decidido
  * isso. `IS DISTINCT FROM` porque `<> false` não sobrevive ao nulo.
  *
- * O corte de CFOP depende da empresa e entra por `corteDeVenda`.
+ * A categoria filtra só entre as vendas: o comodato já saiu pela duplicata.
+ * Por isso uma categoria como SABONETEIRAS/DISPENSER'S — desmarcada quando o
+ * comodato de dispenser entrava como venda — pode ser marcada de novo, e a
+ * venda de dispenser passa a contar.
  */
 const CONDICOES_ITEM_DE_VENDA_SQL: Prisma.Sql[] = [
   Prisma.sql`i."deletedAt" IS NULL`,
@@ -82,14 +104,29 @@ const CONDICOES_ITEM_DE_VENDA_SQL: Prisma.Sql[] = [
  * O mesmo item, para quem consulta pelo Prisma: linha viva e categoria não
  * recusada. O cabeçalho de venda entra em `montarCorteDeVenda`.
  *
- * O `NOT` é o equivalente do `IS DISTINCT FROM false`: exclui só quem tem
- * produto **com** categoria marcada como não usada — item sem produto ou de
- * categoria em branco passa.
+ * O equivalente do `IS DISTINCT FROM false` é escrito **pelo lado de quem
+ * passa**: item sem produto, produto sem categoria, ou categoria com `usado`
+ * verdadeiro **ou nulo**. Não use `NOT: { ... usado: false }`: o Prisma gera
+ * `NOT (usado = false)`, que com `usado` nulo dá nulo e descarta o item em
+ * silêncio. Foi assim até 2026-09-29, e a categoria PECAS — que está em branco
+ * no cadastro — sumia do Dashboard (R$ 10.656,00 do vendedor PECAS em
+ * 09/2026) enquanto as Consultas, em SQL, a contavam.
  */
+const CATEGORIA_ACOMPANHADA_WHERE = {
+  OR: [
+    { produtoId: null },
+    { produto: { is: { categoriaId: null } } },
+    {
+      produto: {
+        is: { categoria: { is: { OR: [{ usado: null }, { usado: true }] } } },
+      },
+    },
+  ],
+} satisfies Prisma.NotaSaidaItemWhereInput;
+
 const CONDICOES_DO_ITEM_WHERE = {
   deletedAt: null,
   ativo: true,
-  NOT: { produto: { is: { categoria: { is: { usado: false } } } } },
 } satisfies Prisma.NotaSaidaItemWhereInput;
 
 /**
@@ -99,24 +136,11 @@ const CONDICOES_DO_ITEM_WHERE = {
  * A série diz qual documento o ERP emitiu: na RCG a série 1 é a NF-e de
  * mercadoria (SPED) e a série 3 é o RPS de serviço. A integração traz as duas
  * (`F2_SERIE IN ('1','3')` no BJPLA003), porque a nota de serviço precisa
- * estar na base para a Posição do Cliente. Se o serviço entra no realizado é
- * decisão comercial da empresa, não do ERP. O sistema que a plataforma
- * substituiu apurava só a série 1, e foi essa a diferença que o Dashboard
- * Gerencial mostrou em 2026-09-29.
+ * estar na base para a Posição do Cliente. O RPS gera duplicata, então a
+ * duplicata não o separa: se o serviço entra no realizado é decisão comercial
+ * da empresa, e o sistema anterior apurava só a série 1.
  */
 export const PARAMETRO_SERIES_DE_VENDA = 'VENDAS_SERIES_NOTA';
-
-/**
- * Parâmetro da empresa com os CFOPs de **item** que não contam como venda,
- * separados por vírgula. Vazio = nenhum excluído.
- *
- * O corte de comodato do cabeçalho (`comodato = false`) não basta: o ERP
- * emite a remessa em comodato (5908/6908) e a bonificação (5910/6910) como
- * itens **dentro** da nota de venda, e o cabeçalho nunca vem marcado. Na
- * conferência de 2026-09-29 com o sistema anterior, esses itens eram toda a
- * diferença de ESCRITORIO, JOSUE, RUBENS e JOAO.
- */
-export const PARAMETRO_CFOPS_EXCLUIDOS = 'VENDAS_CFOPS_EXCLUIDOS';
 
 /** `"1, 3"` → `['1', '3']`; vazio ou nulo → `null` (sem corte). */
 export function lerLista(conteudo: string | null | undefined): string[] | null {
@@ -125,7 +149,7 @@ export function lerLista(conteudo: string | null | undefined): string[] | null {
 }
 
 /**
- * O que é venda para **esta empresa**: o corte fixo acima mais os parâmetros.
+ * O que é venda para **esta empresa**: o corte fixo acima mais as séries.
  * Duas formas do mesmo corte: `nota` e `item` para quem consulta pelo
  * Prisma; `notaSql` (alias `n`) e `itemSql` (alias `i`, com a categoria em
  * `cat`) para quem escreve SQL.
@@ -139,28 +163,21 @@ export type CorteDeVenda = {
 
 export type ParametrosDeVenda = {
   series: string[] | null;
-  cfopsExcluidos: string[] | null;
 };
 
 export function montarCorteDeVenda({
   series,
-  cfopsExcluidos,
 }: ParametrosDeVenda): CorteDeVenda {
   const nota: Prisma.NotaSaidaWhereInput = series
     ? { ...NOTA_DE_VENDA_WHERE, serie: { in: series } }
     : { ...NOTA_DE_VENDA_WHERE };
 
-  // Item sem CFOP continua contando: `NOT IN` sozinho descartaria o nulo em
-  // silêncio, no SQL e no Prisma. Vai num `AND` para não colidir com um `OR`
-  // que quem chama espalhe no mesmo where.
+  // A categoria vai num `AND` para não colidir com um `OR` que quem chama
+  // espalhe no mesmo where.
   const item: Prisma.NotaSaidaItemWhereInput = {
     ...CONDICOES_DO_ITEM_WHERE,
     notaSaida: { is: nota },
-    ...(cfopsExcluidos
-      ? {
-          AND: [{ OR: [{ cfop: null }, { cfop: { notIn: cfopsExcluidos } }] }],
-        }
-      : {}),
+    AND: [CATEGORIA_ACOMPANHADA_WHERE],
   };
 
   return {
@@ -172,38 +189,27 @@ export function montarCorteDeVenda({
           Prisma.sql`n."serie" IN (${Prisma.join(series)})`,
         ]
       : [...CONDICOES_NOTA_DE_VENDA_SQL],
-    itemSql: cfopsExcluidos
-      ? [
-          ...CONDICOES_ITEM_DE_VENDA_SQL,
-          Prisma.sql`(i."cfop" IS NULL OR i."cfop" NOT IN (${Prisma.join(cfopsExcluidos)}))`,
-        ]
-      : [...CONDICOES_ITEM_DE_VENDA_SQL],
+    itemSql: [...CONDICOES_ITEM_DE_VENDA_SQL],
   };
 }
 
 /**
- * Lê os parâmetros da empresa e monta o corte. Lê a tabela direto, na
- * transação de quem chama, em vez de passar pelo `ParametrosService`: assim
- * qualquer serviço que apura venda consegue o corte sem depender de mais um
- * provider.
+ * Lê as séries da empresa e monta o corte. Lê a tabela direto, na transação
+ * de quem chama, em vez de passar pelo `ParametrosService`: assim qualquer
+ * serviço que apura venda consegue o corte sem depender de mais um provider.
  */
 export async function corteDeVenda(
   tx: Prisma.TransactionClient,
   empresaId: string,
 ): Promise<CorteDeVenda> {
-  const parametros = await tx.parametroEmpresa.findMany({
+  const parametro = await tx.parametroEmpresa.findFirst({
     where: {
       empresaId,
-      parametro: { in: [PARAMETRO_SERIES_DE_VENDA, PARAMETRO_CFOPS_EXCLUIDOS] },
+      parametro: PARAMETRO_SERIES_DE_VENDA,
       ativo: true,
       deletedAt: null,
     },
-    select: { parametro: true, conteudo: true },
+    select: { conteudo: true },
   });
-  const conteudo = (nome: string) =>
-    parametros.find((p) => p.parametro === nome)?.conteudo;
-  return montarCorteDeVenda({
-    series: lerLista(conteudo(PARAMETRO_SERIES_DE_VENDA)),
-    cfopsExcluidos: lerLista(conteudo(PARAMETRO_CFOPS_EXCLUIDOS)),
-  });
+  return montarCorteDeVenda({ series: lerLista(parametro?.conteudo) });
 }

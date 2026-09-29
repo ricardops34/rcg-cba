@@ -2908,6 +2908,16 @@ model NotaSaida {
   comodato Boolean   @default(false)
   ativo    Boolean   @default(true)
 
+  // Número da duplicata que a nota gerou (F2_DUPL). É o que diz se a nota é
+  // venda nas análises: nota que não gerou duplicata — remessa em comodato,
+  // bonificação, transferência — tem condição de pagamento mesmo assim, e por
+  // ela não dá para separar (ver `common/vendas/venda-analitica.ts`).
+  duplicata     String?
+  // true/false = o ERP informou (F2_DUPL preenchido ou vazio); null = a nota
+  // chegou por uma integração que ainda não mandava o campo, e a análise cai
+  // no critério antigo (condição de pagamento).
+  geraDuplicata Boolean?
+
   // ---- 2ª via de DANFE (ver docs/planos/segunda-via-danfe-boleto.md) ----
   // O XML autorizado vive na tabela acessória `nota_saida_xml`, e não numa
   // coluna daqui: o Prisma seleciona todas as colunas quando não há `select`

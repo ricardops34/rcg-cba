@@ -53,7 +53,7 @@ describe('Ferramentas de consulta do funcionário — recorte de carteira', () =
         findMany: jest.fn(registrar('objetivoVendedorMes')),
       },
       notaSaidaItem: { groupBy: jest.fn(registrar('notaSaidaItem')) },
-      parametroEmpresa: { findMany: jest.fn(() => Promise.resolve([])) },
+      parametroEmpresa: { findFirst: jest.fn(() => Promise.resolve(null)) },
       sugestaoCompraGerada: {
         findMany: jest.fn(registrar('sugestaoCompraGerada')),
       },

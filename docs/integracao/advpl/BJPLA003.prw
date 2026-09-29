@@ -2707,7 +2707,7 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim, lEnvDel)
 	Default lEnvDel   := .T.
 
 	cQuery := "SELECT SF2.R_E_C_N_O_ AS REC_CAB, F2_FILIAL, F2_DOC, F2_SERIE, F2_EMISSAO, SF2.D_E_L_E_T_ AS DELETADO, "
-	cQuery += "       F2_CLIENTE, F2_LOJA, F2_FORMUL, F2_VEND1, F2_COND, F2_ESPECIE, F2_TIPO, "
+	cQuery += "       F2_CLIENTE, F2_LOJA, F2_FORMUL, F2_VEND1, F2_COND, F2_DUPL, F2_ESPECIE, F2_TIPO, "
 	cQuery += "       F2_VALBRUT, F2_VALMERC, F2_DESCONT, F2_VALICM, F2_CHVNFE, "
 	cQuery += "       D2_FILIAL, D2_DOC, D2_SERIE, D2_CLIENTE, D2_LOJA, D2_ITEM, D2_COD, D2_QUANT, D2_PRCVEN, D2_TOTAL, D2_DESCON, "
 	cQuery += "       D2_CF, D2_TP, SD2.D_E_L_E_T_ AS ITEM_DELETADO "
@@ -2867,6 +2867,12 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim, lEnvDel)
 			oJson["vlrIcms"]        := (cAlias)->F2_VALICM
 			oJson["comodato"]       := .F.
 			oJson["ativo"]          := .T.
+
+			// F2_DUPL decide se a nota e venda nas analises da plataforma: nota
+			// de comodato, bonificacao ou transferencia tem condicao de
+			// pagamento mas nao gera duplicata. Vai sempre, mesmo vazio - vazio
+			// e "nao gerou"; omitido a plataforma trataria como "nao sei".
+			oJson["duplicata"]      := AllTrim((cAlias)->F2_DUPL)
 
 			oJson["serie"]         := IIf(Empty((cAlias)->F2_SERIE), Nil, AllTrim((cAlias)->F2_SERIE))
 			oJson["especieFiscal"] := IIf(Empty((cAlias)->F2_ESPECIE), Nil, AllTrim((cAlias)->F2_ESPECIE))

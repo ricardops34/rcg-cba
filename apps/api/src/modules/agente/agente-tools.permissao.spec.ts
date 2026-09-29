@@ -16,7 +16,7 @@ describe('AgenteToolsService — permissão × configuração', () => {
   // catálogo, e instanciar as dependências reais traria o Prisma junto. Um
   // `as never` por dependência do construtor — se o número divergir, o
   // TypeScript acusa aqui antes de o Nest acusar na subida.
-  const instanciar = (clientes: unknown = {}) =>
+  const instanciar = (clientes: unknown = {}, objetivos: unknown = {}, vendedores: unknown = {}) =>
     new AgenteToolsService(
       {} as never, // consultas
       clientes as never, // clientes
@@ -24,12 +24,12 @@ describe('AgenteToolsService — permissão × configuração', () => {
       {} as never, // orcamentos
       {} as never, // titulos
       {} as never, // sugestao
-      {} as never, // objetivos
+      objetivos as never, // objetivos
       {} as never, // enriquecimento
       {} as never, // atividades
       {} as never, // oportunidades
       {} as never, // conversas
-      {} as never, // vendedores
+      vendedores as never, // vendedores
       {} as never, // whatsappAcoes
       {} as never, // agendamento
       {} as never, // referencias
@@ -39,6 +39,55 @@ describe('AgenteToolsService — permissão × configuração', () => {
     );
 
   const tools = instanciar();
+
+  describe('filtro de carteira compartilhado pelas consultas comerciais', () => {
+    it.each([
+      { isAdmin: true, vendedor: { id: 'v', tipo: 'vendedor' }, esperado: {} },
+      { isAdmin: false, vendedor: { id: 's', tipo: 'superior' }, esperado: {} },
+      { isAdmin: false, vendedor: { id: 'v', tipo: 'vendedor' }, esperado: { vendedorId: 'v' } },
+      { isAdmin: false, vendedor: null, esperado: {} },
+    ])('preserva o escopo do backend: %j', async ({ isAdmin, vendedor, esperado }) => {
+      const vendedorDoUsuario = jest.fn().mockResolvedValue(vendedor);
+      const service = instanciar({}, {}, { vendedorDoUsuario });
+      const user = { id: 'u', empresaAtivaId: 'empresa', isAdmin, permissoes: [] } as unknown as AuthenticatedUser;
+      expect(await service['filtroCarteira'](user)).toEqual(esperado);
+      expect(await service['filtroCarteiraConsulta'](user)).toEqual(
+        'vendedorId' in esperado ? { vendedorIds: [esperado.vendedorId] } : {},
+      );
+      if (isAdmin) expect(vendedorDoUsuario).not.toHaveBeenCalled();
+      else expect(vendedorDoUsuario).toHaveBeenCalledWith('empresa', user);
+    });
+  });
+
+  describe('metas por vendedor', () => {
+    it.each([true, false])('preserva usuário e empresa para o escopo do service (admin=%s)', async (isAdmin) => {
+      const dashboardGerencial = jest.fn().mockResolvedValue({
+        periodo: { mes: 9, ano: 2026 },
+        linhas: [
+          { nome: 'A', objetivo: 100, realizado: 100 },
+          { nome: 'B', objetivo: 100, realizado: 99.999 },
+          { nome: 'C', objetivo: 0, realizado: 50 },
+        ],
+      });
+      const vendedorDoUsuario = jest.fn().mockResolvedValue({ id: 'supervisor', tipo: 'superior' });
+      const service = instanciar({}, { dashboardGerencial }, { vendedorDoUsuario });
+      const user = { id: 'u', empresaAtivaId: 'empresa', isAdmin, permissoes: ['dashboard-gerencial.visualizar'] } as AuthenticatedUser;
+      const result = await service.executar('execucao_objetivos_vendedores', { mes: 9, ano: 2026, vendedorId: 'fora-do-escopo', empresaId: 'outra' }, user);
+      expect(dashboardGerencial).toHaveBeenCalledWith('empresa', user, { mes: 9, ano: 2026 });
+      expect(result).toMatchObject({ vendedores: [
+        { metaAtingida: true }, { metaAtingida: false }, { metaAtingida: false },
+      ] });
+    });
+
+    it('recusa consulta por vendedor sem permissão gerencial', async () => {
+      const dashboardGerencial = jest.fn();
+      const service = instanciar({}, { dashboardGerencial });
+      await expect(service.executar('execucao_objetivos_vendedores', { mes: 9, ano: 2026 }, {
+        id: 'u', empresaAtivaId: 'empresa', isAdmin: false, permissoes: [],
+      } as unknown as AuthenticatedUser)).rejects.toThrow();
+      expect(dashboardGerencial).not.toHaveBeenCalled();
+    });
+  });
 
   const admin: AuthenticatedUser = {
     id: 'u-admin',

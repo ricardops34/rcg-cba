@@ -96,7 +96,11 @@ INSERT @tabs VALUES
     ('SF1', 'F1_COND:c,F1_DTDIGIT:c,F1_VALMERC:n,F1_DESCONT:n,F1_VALICM:n,F1_VALSOLI:n,F1_VALIPI:n,F1_FRETE:n,F1_SEGURO:n,F1_DESPESA:n,F1_MENNOTA:c'),
     ('SD1', 'D1_LOCAL:c,D1_VUNIT:n,D1_VALDESC:n,D1_VALICM:n,D1_ICMSRET:n,D1_VALIPI:n,D1_PESO:n'),
     ('SE1', 'E1_CODBAR:c,E1_CODDIG:c,E1_CTRBOL:c,E1_AGEDEP:c,E1_CONTA:c,E1_DACNOSS:c,E1_MORADIA:n,E1_TXMULTA:n'),
-    ('SA6', 'A6_DVAGE:c,A6_DVCTA:c');
+    ('SA6', 'A6_DVAGE:c,A6_DVCTA:c'),
+    -- pedidos (BJMAPPED): sem C5_ORGPED a entidade sai vazia, como no ADVPL
+    ('SC5', 'C5_ORGPED:c,C5_LIBDESC:c'),
+    ('SC6', 'C6_BLQ:c'),
+    ('SC9', '');
 
 -- Nome fisico de cada tabela: o X2_ARQUIVO da SX2 da empresa (o RetSQLName
 -- do Protheus). Tabela fora da SX2 cai na regra padrao: alias + empresa + "0".
@@ -418,7 +422,8 @@ BEGIN
             @fSB2 varchar(20) = dbo.BJ_CFG('FIL_SB2'), @fDA0 varchar(20) = dbo.BJ_CFG('FIL_DA0'),
             @fSA1 varchar(20) = dbo.BJ_CFG('FIL_SA1'), @fSF2 varchar(20) = dbo.BJ_CFG('FIL_SF2'),
             @fSF1 varchar(20) = dbo.BJ_CFG('FIL_SF1'), @fSE1 varchar(20) = dbo.BJ_CFG('FIL_SE1'),
-            @fSA6 varchar(20) = dbo.BJ_CFG('FIL_SA6');
+            @fSA6 varchar(20) = dbo.BJ_CFG('FIL_SA6'), @fSC5 varchar(20) = dbo.BJ_CFG('FIL_SC5'),
+            @fSC9 varchar(20) = dbo.BJ_CFG('FIL_SC9'), @fSD2 varchar(20) = dbo.BJ_CFG('FIL_SD2');
 
     DECLARE @crlf char(2) = CHAR(13) + CHAR(10);
 
@@ -834,6 +839,9 @@ BEGIN
                 CAST(ISNULL(SF2.F2_VALIPI, 0) AS decimal(19, 6))                      AS vlrIpi,
                 CAST(ISNULL(SF2.F2_FRETE, 0)  AS decimal(19, 6))                      AS vlrFrete,
                 NULLIF(LTRIM(RTRIM(SF2.F2_MENNOTA)), '')                              AS mensagem,
+                -- F2_DUPL decide se a nota e venda nas analises. Vai sempre, mesmo
+                -- vazio ('' = nao gerou); nulo a plataforma trataria como "nao sei".
+                ISNULL(LTRIM(RTRIM(SF2.F2_DUPL)), '')                                 AS duplicata,
                 CAST(ISNULL((SELECT SUM(D.D2_VALDEV) FROM dbo.BJ_SD2 D
                               WHERE D.D2_FILIAL = SF2.F2_FILIAL AND D.D2_DOC = SF2.F2_DOC AND D.D2_SERIE = SF2.F2_SERIE
                                 AND D.D2_CLIENTE = SF2.F2_CLIENTE AND D.D2_LOJA = SF2.F2_LOJA
@@ -1083,6 +1091,100 @@ BEGIN
            AND (@ano IS NULL OR (@ano = 0 AND SE1.E1_EMISSAO = '') OR SE1.E1_EMISSAO LIKE @anoTxt + '%')
            AND (@corte IS NULL OR SE1.S_T_A_M_P_ >= @corte)
          ORDER BY SE1.R_E_C_N_O_;
+        RETURN;
+    END
+
+    -- =======================================================================
+    -- pedidos (BJMAPPED): situacao dos pedidos que vieram da plataforma
+    -- (C5_ORGPED = 'P'). Precisa que o orcamento ja esteja vinculado la - o
+    -- pedido e achado pela chave C5_FILIAL-C5_NUM. Situacao, nesta ordem
+    -- (decisoes do usuario, 28 e 29/09/2026):
+    --   todo item encerrado e algum por residuo (C6_BLQ = 'R') -> cancelado
+    --   todo item com C6_QTDENT >= C6_QTDVEN                 -> faturado
+    --   algum item com C6_QTDENT > 0                         -> faturado_parcial ("Faturando")
+    --   C5_LIBDESC = '2'                                     -> bloqueado_desconto
+    --   SC9 nao faturada com C9_BLCRED preenchido e <> '10'  -> bloqueado_credito
+    --   idem C9_BLEST (com o credito liberado)               -> bloqueado_estoque
+    --   SC9 nao faturada sem bloqueio                        -> liberado
+    --   senao                                                -> pendente
+    -- Carga inicial: sem excluidos. O CORTE vale como a janela do ADVPL: o
+    -- pedido entra se a SC5, a SC6, a SC9 ou a SD2 dele mudou depois do corte.
+    -- =======================================================================
+    IF @entidade = 'pedidos'
+    BEGIN
+        SELECT linha = N'{"entidade":"pedidos","registro":' + r.j + N'}'
+          FROM dbo.BJ_SC5 SC5
+         CROSS APPLY (SELECT
+                -- Itens ativos, uma leitura so para os tres indicadores
+                lResid = CASE WHEN EXISTS (SELECT 1 FROM dbo.BJ_SC6 I
+                                            WHERE I.D_E_L_E_T_ = ' ' AND I.C6_FILIAL = SC5.C5_FILIAL AND I.C6_NUM = SC5.C5_NUM
+                                              AND ISNULL(I.C6_BLQ, '') LIKE '%R%') THEN 1 ELSE 0 END,
+                lTudo  = CASE WHEN EXISTS (SELECT 1 FROM dbo.BJ_SC6 I
+                                            WHERE I.D_E_L_E_T_ = ' ' AND I.C6_FILIAL = SC5.C5_FILIAL AND I.C6_NUM = SC5.C5_NUM)
+                               AND NOT EXISTS (SELECT 1 FROM dbo.BJ_SC6 I
+                                                WHERE I.D_E_L_E_T_ = ' ' AND I.C6_FILIAL = SC5.C5_FILIAL AND I.C6_NUM = SC5.C5_NUM
+                                                  AND ISNULL(I.C6_BLQ, '') NOT LIKE '%R%'
+                                                  AND I.C6_QTDENT < I.C6_QTDVEN) THEN 1 ELSE 0 END,
+                lAlgum = CASE WHEN EXISTS (SELECT 1 FROM dbo.BJ_SC6 I
+                                            WHERE I.D_E_L_E_T_ = ' ' AND I.C6_FILIAL = SC5.C5_FILIAL AND I.C6_NUM = SC5.C5_NUM
+                                              AND I.C6_QTDENT > 0) THEN 1 ELSE 0 END,
+                -- Liberacao ainda nao faturada; "10" e faturado, nao bloqueio
+                lCred  = CASE WHEN EXISTS (SELECT 1 FROM dbo.BJ_SC9 L
+                                            WHERE L.D_E_L_E_T_ = ' ' AND L.C9_FILIAL = @fSC9 AND L.C9_PEDIDO = SC5.C5_NUM
+                                              AND RTRIM(L.C9_NFISCAL) = ''
+                                              AND RTRIM(L.C9_BLCRED) NOT IN ('', '10')) THEN 1 ELSE 0 END,
+                lEst   = CASE WHEN EXISTS (SELECT 1 FROM dbo.BJ_SC9 L
+                                            WHERE L.D_E_L_E_T_ = ' ' AND L.C9_FILIAL = @fSC9 AND L.C9_PEDIDO = SC5.C5_NUM
+                                              AND RTRIM(L.C9_NFISCAL) = ''
+                                              AND RTRIM(L.C9_BLCRED) IN ('', '10')
+                                              AND RTRIM(L.C9_BLEST) NOT IN ('', '10')) THEN 1 ELSE 0 END,
+                lLib   = CASE WHEN EXISTS (SELECT 1 FROM dbo.BJ_SC9 L
+                                            WHERE L.D_E_L_E_T_ = ' ' AND L.C9_FILIAL = @fSC9 AND L.C9_PEDIDO = SC5.C5_NUM
+                                              AND RTRIM(L.C9_NFISCAL) = ''
+                                              AND RTRIM(L.C9_BLCRED) IN ('', '10')
+                                              AND RTRIM(L.C9_BLEST) IN ('', '10')) THEN 1 ELSE 0 END
+                ) f
+         CROSS APPLY (SELECT
+                SC5.C5_FILIAL + '-' + SC5.C5_NUM                                      AS chave,
+                LTRIM(RTRIM(SC5.C5_NUM))                                              AS codigoErp,
+                CASE WHEN f.lTudo = 1 AND f.lResid = 1                     THEN 'cancelado'
+                     WHEN f.lTudo = 1                                      THEN 'faturado'
+                     WHEN f.lAlgum = 1                                     THEN 'faturado_parcial'
+                     WHEN LTRIM(RTRIM(ISNULL(SC5.C5_LIBDESC, ''))) = '2'   THEN 'bloqueado_desconto'
+                     WHEN f.lCred = 1                                      THEN 'bloqueado_credito'
+                     WHEN f.lEst = 1                                       THEN 'bloqueado_estoque'
+                     WHEN f.lLib = 1                                       THEN 'liberado'
+                     ELSE 'pendente' END                                              AS situacao,
+                JSON_QUERY(COALESCE((
+                    -- Chave do item: a mesma do BJVincula (C6_FILIAL-C6_NUM-C6_ITEM-C6_PRODUTO)
+                    SELECT SC6.C6_FILIAL + '-' + SC6.C6_NUM + '-' + SC6.C6_ITEM + '-' + SC6.C6_PRODUTO AS chave,
+                           @fSB1 + '-' + SC6.C6_PRODUTO                                  AS produtoChave,
+                           CAST(SC6.C6_QTDVEN AS decimal(19, 6))                         AS quantidade,
+                           CAST(SC6.C6_PRCVEN AS decimal(19, 6))                         AS vlrUnitario,
+                           CAST(SC6.C6_QTDENT AS decimal(19, 6))                         AS quantidadeEntregue
+                      FROM dbo.BJ_SC6 SC6
+                     WHERE SC6.D_E_L_E_T_ = ' ' AND SC6.C6_FILIAL = SC5.C5_FILIAL AND SC6.C6_NUM = SC5.C5_NUM
+                     ORDER BY SC6.C6_ITEM
+                       FOR JSON PATH, INCLUDE_NULL_VALUES), N'[]'))                    AS itens,
+                JSON_QUERY(COALESCE((
+                    SELECT n.numero, n.serie, n.emissao
+                      FROM (SELECT DISTINCT
+                                   LTRIM(RTRIM(SD2.D2_DOC))                              AS numero,
+                                   LTRIM(RTRIM(SD2.D2_SERIE))                            AS serie,
+                                   STUFF(STUFF(SD2.D2_EMISSAO, 7, 0, '-'), 5, 0, '-')    AS emissao
+                              FROM dbo.BJ_SD2 SD2
+                             WHERE SD2.D_E_L_E_T_ = ' ' AND SD2.D2_FILIAL = @fSD2 AND SD2.D2_PEDIDO = SC5.C5_NUM) n
+                     ORDER BY n.emissao, n.numero
+                       FOR JSON PATH, INCLUDE_NULL_VALUES), N'[]'))                    AS notas
+                FOR JSON PATH, WITHOUT_ARRAY_WRAPPER, INCLUDE_NULL_VALUES) r(j)
+         WHERE SC5.D_E_L_E_T_ = ' ' AND SC5.C5_FILIAL = @fSC5
+           AND SC5.C5_ORGPED = 'P'   -- plataforma
+           AND (@corte IS NULL
+                OR SC5.S_T_A_M_P_ >= @corte
+                OR EXISTS (SELECT 1 FROM dbo.BJ_SC6 I WHERE I.C6_FILIAL = SC5.C5_FILIAL AND I.C6_NUM = SC5.C5_NUM AND I.S_T_A_M_P_ >= @corte)
+                OR EXISTS (SELECT 1 FROM dbo.BJ_SC9 L WHERE L.C9_FILIAL = @fSC9 AND L.C9_PEDIDO = SC5.C5_NUM AND L.S_T_A_M_P_ >= @corte)
+                OR EXISTS (SELECT 1 FROM dbo.BJ_SD2 D WHERE D.D2_FILIAL = @fSD2 AND D.D2_PEDIDO = SC5.C5_NUM AND D.S_T_A_M_P_ >= @corte))
+         ORDER BY SC5.R_E_C_N_O_;
         RETURN;
     END
 

@@ -78,7 +78,10 @@ INSERT @ordem VALUES
     (10, 'clientes',            0),
     (11, 'notas-saida',         1),
     (12, 'notas-entrada',       1),
-    (13, 'titulos-receber',     1);
+    (13, 'titulos-receber',     1),
+    -- Situacao dos pedidos que vieram da plataforma: por ultimo, porque o
+    -- orcamento ja tem de estar vinculado ao pedido la
+    (14, 'pedidos',             0);
 
 IF @ENTIDADE IS NOT NULL
     DELETE @ordem WHERE entidade <> @ENTIDADE;

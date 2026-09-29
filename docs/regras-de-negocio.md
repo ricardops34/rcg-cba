@@ -72,28 +72,42 @@ Se um dia o ERP voltar a ser a fonte da verdade disso, é esse `update` que
 precisa mudar de volta — e a edição na tela deve sair junto, senão as duas
 pontas brigam.
 
-## Série e CFOP — o que conta como venda nas análises
+## Duplicata, série e categoria — o que conta como venda nas análises
 
 Dashboards (Comercial e Gerencial), Objetivos, Consultas e as ferramentas do
 WhatsApp do funcionário apuram a venda pelo mesmo corte, `corteDeVenda` em
-`apps/api/src/common/vendas/venda-analitica.ts`. Além do corte fixo (nota
-ativa, tipo Normal, com financeiro, categoria acompanhada), dois parâmetros da
-empresa (Administração > Parâmetros) completam a regra:
+`apps/api/src/common/vendas/venda-analitica.ts`:
 
-- **`VENDAS_SERIES_NOTA`** — séries de nota que contam (ex.: `1`). Vazio conta
-  todas. Na RCG a série 3 é o RPS de serviço: a integração o traz, porque a
-  nota precisa aparecer na Posição do Cliente, mas ele não entrava no
-  realizado do sistema anterior.
-- **`VENDAS_CFOPS_EXCLUIDOS`** — CFOPs de **item** que não contam. Nasce com
-  `5908,6908,5910,6910` (comodato e bonificação). O ERP põe esses itens dentro
-  da nota de venda e nunca marca o cabeçalho como comodato, então o corte do
-  cabeçalho não os alcança.
+1. **A nota gerou duplicata** (F2_DUPL, `notas_saida.geraDuplicata`). Se gerou,
+   **todos** os itens dela contam — inclusive um comodato que foi junto na
+   nota de venda —; se não gerou, nenhum conta. Nota de comodato, bonificação,
+   demonstração e transferência não gera duplicata. Não há corte por CFOP nem
+   por TES: é a nota que decide.
+2. **A série está em `VENDAS_SERIES_NOTA`** (Administração > Parâmetros; na RCG,
+   `1`). O RPS de serviço (série 3) gera duplicata, então só a série o separa.
+3. **A categoria é acompanhada** (Cadastros > Categorias, "Usada"; em branco
+   conta). A categoria filtra **entre as vendas**: como o comodato já saiu pela
+   duplicata, uma categoria de equipamento como SABONETEIRAS/DISPENSER'S pode
+   ficar marcada, e a venda de dispenser conta.
 
-Os dois vieram da conferência de 2026-09-29 contra o sistema anterior, feita
-num dump da produção: com eles, o realizado de 09/2026 fechou em R$ 520.263,86
-contra R$ 520.990,82 (6 de 11 vendedores exatos, positivação igual), e o que
-sobrou são notas isoladas. As consultas estão em
-`docs/sql/2026-09-29-diagnostico-dashboard-gerencial.sql`.
+Mais o corte fixo: nota ativa, tipo Normal, fora de comodato.
+
+Como se chegou aqui (2026-09-29, dump da produção e consulta no ERP): o
+critério antigo de "com financeiro" era ter condição de pagamento, mas a nota
+de comodato da RCG também tem. Tentou-se tirar comodato e bonificação por CFOP
+(parâmetro `VENDAS_CFOPS_EXCLUIDOS`, já retirado), e sobravam diferenças: o
+sistema anterior conta um comodato de R$ 785,40 dentro de uma nota de venda
+(TES 502, que não gera duplicata — mas a nota gerou). Com a regra da
+duplicata, 10 de 11 vendedores bateram ao centavo com o sistema anterior; o
+11º (E-COMMERCE, +R$ 235,44) é erro dele — a nota 000117238 foi excluída e
+reemitida no ERP e ele descartou a válida. As consultas estão em
+`docs/sql/2026-09-29-diagnostico-dashboard-gerencial.sql` e
+`docs/sql/2026-09-29-conferencia-tes-erp.sql`.
+
+As notas anteriores ao campo foram preenchidas pelos títulos a receber
+(migration `20260930120000_nota_saida_duplicata`). Nota que chega por uma
+integração que ainda não manda o F2_DUPL fica com `geraDuplicata` nulo e cai no
+critério antigo (condição de pagamento) até o ERP reenviá-la.
 
 Um corte novo de "o que é venda" entra em `corteDeVenda`, nunca num serviço só
 — senão uma tela passa a responder diferente das outras para a mesma pergunta.

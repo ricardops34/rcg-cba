@@ -62,6 +62,19 @@ type NotaComRelacoes = Prisma.NotaSaidaGetPayload<{ include: typeof INCLUDE }>;
 const TIPOS_DE_FORNECEDOR = ['D'];
 
 /**
+ * F2_DUPL → colunas da nota. Omitido não mexe em nada: uma integração que
+ * ainda não manda o campo não pode apagar o que outra já informou, nem marcar
+ * a nota como "sem financeiro" — `geraDuplicata` nulo é o "não sei" que faz a
+ * análise cair no critério antigo. Vazio (o Protheus manda o campo com
+ * espaços) é "não gerou".
+ */
+function dadosDuplicata(duplicata: string | null | undefined) {
+  if (duplicata === undefined) return {};
+  const numero = duplicata?.trim() || null;
+  return { duplicata: numero, geraDuplicata: numero !== null };
+}
+
+/**
  * Fornecedor pela chave do ERP (A2_FILIAL-A2_COD-A2_LOJA), com a mesma
  * tolerância de `resolverCliente` à filial vazia ("  -000072-04"). Ausente ou
  * desconhecido volta `null` — ver `resolverRefs`.
@@ -120,6 +133,7 @@ export class IntegracaoNotasSaidaService {
       chaveNfe: row.chaveNfe,
       dtNfe: row.dtNfe,
       mensagem: row.mensagem,
+      duplicata: row.duplicata,
       comodato: row.comodato,
       ativo: row.ativo,
       itens: row.itens.map((item) => ({
@@ -378,6 +392,7 @@ export class IntegracaoNotasSaidaService {
           chaveNfe: input.chaveNfe ?? null,
           dtNfe: input.dtNfe ?? null,
           mensagem: input.mensagem ?? null,
+          ...dadosDuplicata(input.duplicata),
           comodato: input.comodato,
           ativo: input.ativo,
           updatedBy: autor,
@@ -543,6 +558,7 @@ export class IntegracaoNotasSaidaService {
           ...(input.chaveNfe !== undefined ? { chaveNfe: input.chaveNfe } : {}),
           ...(input.dtNfe !== undefined ? { dtNfe: input.dtNfe } : {}),
           ...(input.mensagem !== undefined ? { mensagem: input.mensagem } : {}),
+          ...dadosDuplicata(input.duplicata),
           ...(input.comodato !== undefined ? { comodato: input.comodato } : {}),
           ...(input.ativo !== undefined ? { ativo: input.ativo } : {}),
           updatedBy: autor,
