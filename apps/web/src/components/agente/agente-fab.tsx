@@ -18,6 +18,8 @@ import { ApiError, apiFetch, apiStream, apiUpload } from "@/lib/api-client";
 import { useAgenteUiStore } from "@/stores/agente-ui-store";
 import { useAgente } from "@/components/agente/use-agente";
 import { ConteudoMensagem } from "@/components/agente/conteudo-mensagem";
+import { useResumoDiario } from "@/components/agente/use-resumo-diario";
+import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import Link from "next/link";
@@ -40,6 +42,7 @@ import {
 interface Balao {
   papel: "usuario" | "assistente";
   texto: string;
+  resumoDiario?: boolean;
   /** Telas onde ver o que a resposta resumiu — vêm do servidor, por turno. */
   destinos?: AgenteDestino[];
 }
@@ -143,6 +146,12 @@ function acomodar(g: Geometria): Geometria {
  * e o usuário confirma no card. Até clicar em Confirmar, nada foi gravado.
  */
 export function AgenteFab() {
+  const usuarioId = useAuthStore((s) => s.user?.id);
+  const empresaId = useAuthStore((s) => s.user?.empresaAtivaId);
+  return <AgenteJanela key={`${usuarioId}:${empresaId}`} />;
+}
+
+function AgenteJanela() {
   const { disponivel, nomeAgente, boasVindas } = useAgente();
   // Abrir, minimizar e os avisos moram no store: o ícone da topbar mexe nos
   // mesmos estados, e a janela é uma só.
@@ -184,7 +193,14 @@ export function AgenteFab() {
   /** A lista de conversas anteriores está aberta. */
   const [historicoAberto, setHistoricoAberto] = useState(false);
   const fim = useRef<HTMLDivElement>(null);
+  const inicioResumo = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  const apresentarResumo = useCallback((mensagem: string) => {
+    setBaloes((atuais) => [...atuais, { papel: "assistente", texto: mensagem, resumoDiario: true }]);
+    setHistoricoAberto(false);
+    useAgenteUiStore.getState().abrir();
+  }, []);
+  useResumoDiario(disponivel, apresentarResumo);
 
   // Cada abertura usa a tela atual, sem coordenadas salvas de outro monitor.
   useEffect(() => {
@@ -214,9 +230,12 @@ export function AgenteFab() {
     };
   }, [maximizada]);
 
+  const possuiGeometria = geometria !== null;
   useEffect(() => {
-    if (aberto) fim.current?.scrollIntoView({ behavior: "smooth" });
-  }, [baloes, pendencias, aberto]);
+    if (!aberto) return;
+    if (baloes.at(-1)?.resumoDiario) inicioResumo.current?.scrollIntoView({ block: "start" });
+    else fim.current?.scrollIntoView({ behavior: "smooth" });
+  }, [baloes, pendencias, aberto, possuiGeometria]);
 
   /**
    * Arrasto e redimensionamento com Pointer Events e captura de ponteiro: o
@@ -646,7 +665,7 @@ export function AgenteFab() {
         )}
 
         {baloes.map((b, i) => (
-          <div key={i} className="space-y-1">
+          <div key={i} ref={b.resumoDiario ? inicioResumo : undefined} className="space-y-1">
             <div
               className={
                 b.papel === "usuario"

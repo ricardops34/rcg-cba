@@ -6,6 +6,7 @@ import { AgenteReferenciasService } from './agente-referencias.service';
 import { AgenteFerramentasService } from './agente-ferramentas.service';
 import { AgenteAnexosService } from './agente-anexos.service';
 import { AgenteMeuDiaService } from './agente-meu-dia.service';
+import { AgenteResumoDiarioService } from './agente-resumo-diario.service';
 import { ProvedorIaModule } from './provedor-ia.module';
 import { ConsultasModule } from '../consultas/consultas.module';
 import { ClientesModule } from '../clientes/clientes.module';
@@ -51,6 +52,7 @@ import { NotificacoesModule } from '../notificacoes/notificacoes.module';
     AgenteFerramentasService,
     AgenteAnexosService,
     AgenteMeuDiaService,
+    AgenteResumoDiarioService,
   ],
 })
 export class AgenteModule {}

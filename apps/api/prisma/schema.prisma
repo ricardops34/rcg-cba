@@ -2231,6 +2231,16 @@ model AgenteCredencial {
   @@map("agente_credenciais")
 }
 
+// Último resumo diário apresentado, sem armazenar conteúdo comercial.
+model AgenteResumoExibido {
+  empresaId String
+  usuarioId String
+  data String
+
+  @@id([empresaId, usuarioId])
+  @@map("agente_resumos_exibidos")
+}
+
 model AgenteConversa {
   id        String  @id @default(uuid())
   empresaId String
