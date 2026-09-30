@@ -20,21 +20,25 @@ export default function PerfilPage() {
   const { user, setUser } = useAuthStore();
   const queryClient = useQueryClient();
   const [nomeEditado, setNome] = useState<string | undefined>();
+  const [nascimentoEditado, setNascimento] = useState<string | undefined>();
   const nome = nomeEditado ?? user?.nome ?? "";
-  const salvarNome = useMutation({
+  const nascimento = nascimentoEditado ?? user?.dataNascimento ?? "";
+  const mudou = nome.trim() !== user?.nome || nascimento !== (user?.dataNascimento ?? "");
+  const salvarDados = useMutation({
     mutationFn: () =>
       apiFetch<CurrentUser>("/auth/me", {
         method: "PATCH",
-        body: { nome: nome.trim() },
+        body: { nome: nome.trim(), ...(nascimento ? { dataNascimento: nascimento } : {}) },
       }),
     onSuccess: (atualizado) => {
       setUser(atualizado);
       setNome(undefined);
+      setNascimento(undefined);
       queryClient.setQueryData(["auth", "me"], atualizado);
-      toast.success("Nome do perfil atualizado");
+      toast.success("Dados atualizados");
     },
     onError: (erro) =>
-      toast.error(erro instanceof ApiError ? erro.message : "Não foi possível atualizar o nome"),
+      toast.error(erro instanceof ApiError ? erro.message : "Não foi possível atualizar os dados"),
   });
   const empresaAtiva = user?.empresas.find((e) => e.empresaId === user.empresaAtivaId);
 
@@ -49,25 +53,35 @@ export default function PerfilPage() {
             {user && <ProfilePhoto user={user} />}
             <Field>
               <FieldLabel>Nome</FieldLabel>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  value={nome}
-                  onChange={(event) => setNome(event.target.value)}
-                  maxLength={120}
-                  aria-label="Nome do perfil"
-                />
-                <Button
-                  type="button"
-                  disabled={nome.trim().length < 2 || nome.trim() === user?.nome || salvarNome.isPending}
-                  onClick={() => salvarNome.mutate()}
-                >
-                  {salvarNome.isPending ? "Salvando…" : "Salvar nome"}
-                </Button>
-              </div>
+              <Input
+                value={nome}
+                onChange={(event) => setNome(event.target.value)}
+                maxLength={120}
+                aria-label="Nome do perfil"
+              />
               <p className="text-xs text-muted-foreground">
                 Este nome identifica você no atendimento e assina as mensagens enviadas ao cliente.
               </p>
             </Field>
+            <Field>
+              <FieldLabel htmlFor="nascimento">Data de nascimento</FieldLabel>
+              <Input
+                id="nascimento"
+                type="date"
+                className="sm:w-56"
+                value={nascimento}
+                onChange={(event) => setNascimento(event.target.value)}
+              />
+            </Field>
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                disabled={nome.trim().length < 2 || !mudou || salvarDados.isPending}
+                onClick={() => salvarDados.mutate()}
+              >
+                {salvarDados.isPending ? "Salvando…" : "Salvar dados"}
+              </Button>
+            </div>
             <Field>
               <FieldLabel>E-mail</FieldLabel>
               <p className="text-sm">{user?.email}</p>

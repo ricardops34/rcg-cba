@@ -1,5 +1,9 @@
 # Grupo econômico
 
+**Atualização:** a regra anterior de criar empresas suspensas foi substituída
+pelo [plano único do grupo e limite de empresas](2026-09-30-plano-do-grupo.md).
+Dentro da cota contratada, novas empresas herdam a situação do contrato.
+
 A primeira versão (módulo `grupos-economicos`, migration
 `20260930150000_grupos_economicos`) veio de outra frente de trabalho. Este
 arquivo registra as decisões do usuário de 30/09/2026 e o que foi ajustado a

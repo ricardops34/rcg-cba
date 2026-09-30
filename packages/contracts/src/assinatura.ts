@@ -19,7 +19,8 @@ export type CicloPagamento = z.infer<typeof cicloPagamentoSchema>;
 
 export const assinaturaSchema = z.object({
   id: z.string().uuid(),
-  empresaId: z.string().uuid(),
+  empresaId: z.string().uuid().nullable(),
+  grupoEconomicoId: z.string().uuid().nullable().optional(),
   planoId: z.string().uuid(),
   situacao: situacaoAssinaturaSchema,
   ciclo: cicloPagamentoSchema,

@@ -86,7 +86,7 @@ export class EstruturaService {
         tx.empresaMenu.findMany({ where: { empresaId, ativo: false } }),
         tx.empresaRotina.findMany({ where: { empresaId, ativo: false } }),
         tx.assinatura.findFirst({
-          where: { empresaId },
+          where: { grupoEconomico: { empresas: { some: { id: empresaId } } } },
           include: {
             plano: {
               include: {

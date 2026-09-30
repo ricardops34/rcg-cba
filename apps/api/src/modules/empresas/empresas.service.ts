@@ -1,4 +1,5 @@
 import { existsSync, unlink } from 'node:fs';
+import { garantirVagaDeEmpresa } from '../../common/empresa/limite-empresas';
 import { validarDocumentoEmpresa } from '../../common/empresa/documento-empresa';
 import { basename, join } from 'node:path';
 import {
@@ -199,11 +200,15 @@ export class EmpresasService {
     const perfil = await this.prisma.perfil.findFirst({ where: { sistemaBase: true, administraPlataforma: false, ativo: true, deletedAt: null }, select: { id: true } });
     if (!perfil) throw new ForbiddenException('Perfil Administrador Empresa não disponível');
     return this.prisma.$transaction(async (tx) => {
+      const assinatura = await garantirVagaDeEmpresa(tx, ator.grupoEconomicoId!);
+      const origem = user.empresaAtivaId ? await tx.empresa.findUnique({ where: { id: user.empresaAtivaId }, select: { testeExpiraEm: true } }) : null;
       const empresa = await tx.empresa.create({ data: {
         ...(this.limpar(input) as object),
         grupoEconomicoId: ator.grupoEconomicoId,
-        // Criar uma empresa não concede assinatura nem libera recursos pagos.
-        ePlataforma: false, situacao: 'suspensa', testeExpiraEm: null, limiteUsuarios: 1,
+        // A nova empresa utiliza o contrato do grupo, sem gerar nova cobrança.
+        ePlataforma: false, situacao: assinatura.situacao === 'teste' ? 'teste' : 'ativa',
+        testeExpiraEm: assinatura.situacao === 'teste' ? origem?.testeExpiraEm ?? null : null,
+        limiteUsuarios: assinatura.plano.limiteUsuarios,
         createdBy: user.id, updatedBy: user.id,
       } as never });
       await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${empresa.id}, true)`;

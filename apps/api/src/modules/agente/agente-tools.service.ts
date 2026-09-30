@@ -109,6 +109,8 @@ export interface Ferramenta {
    * corte volta pelo outro lado.
    */
   limiteItens?: number;
+  /** Teto específico para resultados paginados e compactos. */
+  limiteCaracteres?: number;
   /**
    * A tela onde ver o que esta ferramenta consultou ou gravou.
    *
@@ -999,6 +1001,8 @@ export class AgenteToolsService {
       },
       {
         nome: 'execucao_objetivos_vendedores',
+        limiteItens: 50,
+        limiteCaracteres: 16000,
         descricao:
           'Metas por vendedor no mês: quem bateu a meta, objetivo, realizado e percentual. ' +
           'Considera somente vendedores autorizados na empresa ativa e na hierarquia do usuário.',
@@ -1006,14 +1010,19 @@ export class AgenteToolsService {
           'Use para perguntas como "Qual vendedor já bateu a meta?". Informe o período, ' +
           'nome, objetivo, realizado e percentual. Use metaAtingida, não arredondamento do percentual, ' +
           'para decidir quem atingiu. Meta ausente não é meta batida. Se o mês está em andamento, ' +
-          'avise. Nunca apresente o escopo retornado como se incluísse outras empresas ou equipes.',
+          'avise. Para quem ainda não atingiu, use situacao=nao_atingida. Sem meta é uma categoria separada. ' +
+          'Consulte proximaPagina até terminar antes de afirmar que listou todos. ' +
+          'Prefira uma lista curta por vendedor: percentual e valor que falta. ' +
+          'Nunca apresente o escopo retornado como se incluísse outras empresas ou equipes.',
         permissao: 'dashboard-gerencial.visualizar',
-        exemplos: ['Qual vendedor já bateu a meta?', 'Como estão as metas da minha equipe?'],
+        exemplos: ['Qual vendedor já bateu a meta?', 'Quem ainda não atingiu a meta?', 'Como estão as metas da minha equipe?'],
         parametros: {
           type: 'object',
           properties: {
             mes: { type: 'number', description: '1 a 12' },
             ano: { type: 'number' },
+            situacao: { type: 'string', enum: ['todas', 'atingida', 'nao_atingida', 'sem_meta'] },
+            pagina: { type: 'integer', minimum: 1, description: 'Página de até 50 vendedores; continue enquanto houver proximaPagina.' },
           },
           required: ['mes', 'ano'],
         },
@@ -1023,12 +1032,28 @@ export class AgenteToolsService {
             ano: numero(a.ano, new Date().getFullYear()),
             ...(await this.filtroCarteira(user)),
           });
+          const todos = resultado.linhas.map((linha) => ({
+              vendedorId: linha.vendedorId,
+              nome: linha.nome,
+              objetivo: linha.objetivo,
+              realizado: linha.realizado,
+              percRealizado: linha.percRealizado,
+              metaAtingida: linha.objetivo > 0 && linha.realizado >= linha.objetivo,
+              falta: linha.objetivo > 0 ? Math.max(0, linha.objetivo - linha.realizado) : null,
+            }));
+          const situacao = texto(a.situacao) || 'todas';
+          const filtrados = todos.filter((v) => situacao === 'atingida' ? v.metaAtingida
+            : situacao === 'nao_atingida' ? v.objetivo > 0 && !v.metaAtingida
+            : situacao === 'sem_meta' ? v.objetivo <= 0 : true);
+          const pagina = Math.max(1, Math.floor(numero(a.pagina, 1)));
           return {
             periodo: resultado.periodo,
-            vendedores: resultado.linhas.map((linha) => ({
-              ...linha,
-              metaAtingida: linha.objetivo > 0 && linha.realizado >= linha.objetivo,
-            })),
+            situacao,
+            total: filtrados.length,
+            totalSemMeta: todos.filter((v) => v.objetivo <= 0).length,
+            pagina,
+            proximaPagina: pagina * 50 < filtrados.length ? pagina + 1 : null,
+            vendedores: filtrados.slice((pagina - 1) * 50, pagina * 50),
           };
         },
         destino: () => ({ rotulo: 'Abrir o Dashboard Gerencial', rota: '/gerencial/dashboard' }),

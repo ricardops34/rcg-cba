@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { GrupoForm } from "@/components/crud/grupos-economicos";
 import { PlataformaGuard } from "../plataforma-guard";
+import { AssinaturaSection } from "../empresas/[id]/assinatura-section";
 
 /**
  * Hierarquia Grupo econômico → Empresa. O grupo fica acima das empresas, então
@@ -55,6 +56,7 @@ export default function PlataformaGruposPage() {
               rotaEmpresa={(id) => `/plataforma/empresas/${id}`}
               rotaVolta="/plataforma/grupos"
             />
+            {grupo && <AssinaturaSection key={`assinatura-${grupo.id}`} grupoId={grupo.id} />}
           </>
         )}
       </div>

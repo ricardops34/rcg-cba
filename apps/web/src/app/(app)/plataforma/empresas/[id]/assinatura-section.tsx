@@ -14,17 +14,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreditCard, Check } from "lucide-react";
 
-export function AssinaturaSection({ empresaId }: { empresaId: string }) {
+export function AssinaturaSection({ empresaId, grupoId }: { empresaId?: string; grupoId?: string }) {
   const queryClient = useQueryClient();
+  const endpoint = grupoId ? `/plataforma/grupos/${grupoId}/assinatura` : `/plataforma/empresas/${empresaId}/assinatura`;
+  const chave = grupoId ? ["grupo-assinatura", grupoId] : ["empresa-assinatura", empresaId];
 
   const { data: planos } = useQuery({
     queryKey: ["plataforma-planos"],
     queryFn: () => apiFetch<Plano[]>("/plataforma/planos"),
   });
 
-  const { data: assinatura, isLoading } = useQuery({
-    queryKey: ["empresa-assinatura", empresaId],
-    queryFn: () => apiFetch<Assinatura>(`/plataforma/empresas/${empresaId}/assinatura`),
+  const { data: assinatura, isLoading, error } = useQuery({
+    queryKey: chave,
+    queryFn: () => apiFetch<Assinatura | null>(endpoint),
   });
 
   const [planoId, setPlanoId] = useState("");
@@ -47,13 +49,16 @@ export function AssinaturaSection({ empresaId }: { empresaId: string }) {
 
   const mutation = useMutation({
     mutationFn: (payload: any) =>
-      apiFetch(`/plataforma/empresas/${empresaId}/assinatura`, {
+      apiFetch(endpoint, {
         method: "PATCH",
         body: payload,
       }),
     onSuccess: () => {
       toast.success("Assinatura e mensalidade atualizadas");
-      queryClient.invalidateQueries({ queryKey: ["empresa-assinatura", empresaId] });
+      queryClient.invalidateQueries({ queryKey: ["empresa-assinatura"] });
+      queryClient.invalidateQueries({ queryKey: ["grupo-assinatura"] });
+      queryClient.invalidateQueries({ queryKey: ["grupos-economicos"] });
+      queryClient.invalidateQueries({ queryKey: ["plataforma-assinaturas-lista"] });
       queryClient.invalidateQueries({ queryKey: ["plataforma-assinaturas-resumo"] });
     },
     onError: (err) => {
@@ -85,6 +90,7 @@ export function AssinaturaSection({ empresaId }: { empresaId: string }) {
   };
 
   if (isLoading) return <Skeleton className="h-48 w-full rounded-xl" />;
+  if (error) return <p role="alert" className="text-destructive">{error.message}</p>;
 
   return (
     <Card>
@@ -93,7 +99,7 @@ export function AssinaturaSection({ empresaId }: { empresaId: string }) {
           <CreditCard className="size-5 text-primary" /> Pacote, Assinatura & Mensalidade
         </CardTitle>
         <CardDescription>
-          Defina o pacote contratado por esta empresa, ciclo de cobrança e valor da mensalidade.
+          Defina o plano único do grupo econômico, ciclo de cobrança e mensalidade. As alterações valem para todas as empresas do grupo.
         </CardDescription>
       </CardHeader>
       <CardContent>

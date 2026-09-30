@@ -72,12 +72,16 @@ export const changePasswordSchema = z
   });
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
+const dataNascimentoSchema = z.string().date("Informe uma data válida")
+  .refine((v) => v >= "1900-01-01" && v <= new Date().toISOString().slice(0, 10), "Informe uma data de nascimento válida");
+
 export const updateOwnProfileSchema = z.object({
   nome: z.string().trim().min(2, "Informe o nome").max(120),
   whatsapp: z.string().trim().max(20).refine(
     (v) => v === "" || /^(?:\+?55[\s.-]?)?\(?[1-9]\d\)?[\s.-]?9?\d{4}[\s.-]?\d{4}$/.test(v),
     "Informe o WhatsApp com DDD (ex.: 65 99999-9999)",
   ).optional(),
+  dataNascimento: dataNascimentoSchema.optional(),
 });
 export type UpdateOwnProfileInput = z.infer<typeof updateOwnProfileSchema>;
 
@@ -94,8 +98,7 @@ export const completeFirstAccessSchema = updateOwnProfileSchema.extend({
   telefoneInstitucional: z.string().trim().min(1, "Informe o telefone celular")
     .max(30).regex(/^\+?[\d\s().-]+$/, "Informe um telefone válido")
     .refine((v) => { const digits = v.replace(/\D/g, ""); return digits.length >= 10 && digits.length <= 15; }, "Informe o telefone com DDD"),
-  dataNascimento: z.string().date("Informe uma data válida")
-    .refine((v) => v >= "1900-01-01" && v <= new Date().toISOString().slice(0, 10), "Informe uma data de nascimento válida"),
+  dataNascimento: dataNascimentoSchema,
 });
 export type CompleteFirstAccessInput = z.infer<typeof completeFirstAccessSchema>;
 

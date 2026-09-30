@@ -210,7 +210,13 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Patch('me')
   updateMe(@Body() dto: UpdateOwnProfileDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.authService.updateOwnProfile(user.id, user.empresaAtivaId, dto.nome, dto.whatsapp);
+    return this.authService.updateOwnProfile(
+      user.id,
+      user.empresaAtivaId,
+      dto.nome,
+      dto.whatsapp,
+      dto.dataNascimento,
+    );
   }
 
   @ApiOperation({

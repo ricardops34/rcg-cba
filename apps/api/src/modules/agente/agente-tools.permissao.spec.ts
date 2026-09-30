@@ -79,6 +79,22 @@ describe('AgenteToolsService — permissão × configuração', () => {
       ] });
     });
 
+    it('filtra não atingidas antes de paginar, separando quem não tem meta', async () => {
+      const linhas = Array.from({ length: 60 }, (_, i) => ({ vendedorId: `v${i}`, nome: `Pessoa ${i}`, objetivo: 100, realizado: 99.99, percRealizado: 100 }));
+      const dashboardGerencial = jest.fn().mockResolvedValue({ periodo: { mes: 9, ano: 2026 }, linhas: [
+        { vendedorId: 'sem', nome: 'Sem meta', objetivo: 0, realizado: 0, percRealizado: 0 },
+        { vendedorId: 'atingiu', nome: 'Atingiu', objetivo: 100, realizado: 100, percRealizado: 100 }, ...linhas,
+      ] });
+      const service = instanciar({}, { dashboardGerencial });
+      const user = { id: 'u', empresaAtivaId: 'empresa', isAdmin: true, permissoes: [] } as unknown as AuthenticatedUser;
+      const primeiro = await service.executar('execucao_objetivos_vendedores', { mes: 9, ano: 2026, situacao: 'nao_atingida' }, user);
+      expect(primeiro).toMatchObject({ total: 60, totalSemMeta: 1, proximaPagina: 2 });
+      expect((primeiro as { vendedores: unknown[] }).vendedores).toHaveLength(50);
+      const segundo = await service.executar('execucao_objetivos_vendedores', { mes: 9, ano: 2026, situacao: 'nao_atingida', pagina: 2 }, user);
+      expect(segundo).toMatchObject({ total: 60, proximaPagina: null });
+      expect((segundo as { vendedores: unknown[] }).vendedores).toHaveLength(10);
+    });
+
     it('recusa consulta por vendedor sem permissão gerencial', async () => {
       const dashboardGerencial = jest.fn();
       const service = instanciar({}, { dashboardGerencial });

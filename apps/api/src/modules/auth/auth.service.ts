@@ -813,6 +813,7 @@ export class AuthService {
     usuarioId: string,
     empresaId: string,
     file?: Express.Multer.File,
+    autorId: string = usuarioId,
   ) {
     if (!file || file.size > 2 * 1024 * 1024)
       throw new BadRequestException('Envie uma foto de até 2 MB');
@@ -839,7 +840,7 @@ export class AuthService {
         where: { id: usuarioId },
         data: {
           avatarUrl: `/uploads/avatares/${filename}`,
-          updatedBy: usuarioId,
+          updatedBy: autorId,
         },
       });
     } catch (error) {
@@ -853,12 +854,13 @@ export class AuthService {
     usuarioId: string,
     empresaId: string,
     avatar: AvatarPadraoInput['avatar'],
+    autorId: string = usuarioId,
   ) {
     await this.prisma.usuario.update({
       where: { id: usuarioId },
       data: {
         avatarUrl: `/avatares-padrao/${avatar}.jpg`,
-        updatedBy: usuarioId,
+        updatedBy: autorId,
       },
     });
     return this.me(usuarioId, empresaId);
@@ -869,7 +871,15 @@ export class AuthService {
     empresaAtivaId: string,
     nome: string,
     whatsapp?: string,
+    dataNascimento?: string,
   ) {
+    if (dataNascimento !== undefined) {
+      await this.gravarDataNascimento(
+        usuarioId,
+        empresaAtivaId,
+        dataNascimento,
+      );
+    }
     await this.prisma.withTenant(empresaAtivaId, async (tx) => {
       if (whatsapp !== undefined) {
         const vinculo = await tx.usuarioEmpresa.findUnique({
@@ -895,6 +905,43 @@ export class AuthService {
   }
 
   /**
+   * O usuário é um só no grupo econômico, e a data de nascimento também
+   * (decisão de 30/09/2026): grava no vínculo de cada empresa do grupo a que
+   * ele tem acesso e, como no primeiro acesso, no cadastro de vendedor ligado
+   * a ele em cada uma.
+   */
+  private async gravarDataNascimento(
+    usuarioId: string,
+    empresaAtivaId: string,
+    dataNascimento: string,
+  ) {
+    const data = new Date(`${dataNascimento}T00:00:00.000Z`);
+    const ativa = await this.prisma.empresa.findUnique({
+      where: { id: empresaAtivaId },
+      select: { grupoEconomicoId: true },
+    });
+    const empresas = ativa
+      ? await this.prisma.empresa.findMany({
+          where: { grupoEconomicoId: ativa.grupoEconomicoId, deletedAt: null },
+          select: { id: true },
+        })
+      : [{ id: empresaAtivaId }];
+    for (const { id: empresaId } of empresas) {
+      await this.prisma.withTenant(empresaId, async (tx) => {
+        const { count } = await tx.usuarioEmpresa.updateMany({
+          where: { usuarioId, empresaId, ativo: true, deletedAt: null },
+          data: { dataNascimento: data, updatedBy: usuarioId },
+        });
+        if (count === 0) return;
+        await tx.vendedor.updateMany({
+          where: { usuarioId, empresaId, deletedAt: null },
+          data: { dataNascimento: data, updatedBy: usuarioId },
+        });
+      });
+    }
+  }
+
+  /**
    * Grava a tela inicial do próprio usuário na empresa ativa. Só aceita rotina
    * que ele enxerga agora (`<codigo>.visualizar`, já podado por módulo/menu
    * desligado) e que tenha tela — o menu dela precisa de rota.
@@ -903,6 +950,7 @@ export class AuthService {
     usuarioId: string,
     empresaAtivaId: string,
     rotinaId: string | null,
+    autorId: string = usuarioId,
   ) {
     if (rotinaId) {
       const rotina = await this.prisma.rotina.findFirst({
@@ -922,13 +970,90 @@ export class AuthService {
     const { count } = await this.prisma.withTenant(empresaAtivaId, (tx) =>
       tx.usuarioEmpresa.updateMany({
         where: { usuarioId, empresaId: empresaAtivaId, ativo: true },
-        data: { rotinaInicialId: rotinaId, updatedBy: usuarioId },
+        data: { rotinaInicialId: rotinaId, updatedBy: autorId },
       }),
     );
     if (count === 0) {
       throw new ForbiddenException('Sem vínculo ativo com esta empresa');
     }
     return this.me(usuarioId, empresaAtivaId);
+  }
+
+  /** Recusa quem não tem vínculo ativo com a empresa (a leitura passa pela RLS dela). */
+  async exigirVinculoAtivo(usuarioId: string, empresaId: string) {
+    const vinculos = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.usuarioEmpresa.count({
+        where: { usuarioId, empresaId, ativo: true, deletedAt: null },
+      }),
+    );
+    if (!vinculos) {
+      throw new ForbiddenException('O usuário não tem acesso a esta empresa');
+    }
+  }
+
+  /**
+   * As telas que o usuário pode escolher como inicial na empresa: uma por
+   * menu com rota, entre as rotinas que ele enxerga (`<codigo>.visualizar`).
+   * É o que o cadastro de usuário mostra ao administrador — a lista sai das
+   * permissões de quem está sendo editado, não das de quem edita.
+   */
+  async telasIniciais(usuarioId: string, empresaId: string) {
+    await this.exigirVinculoAtivo(usuarioId, empresaId);
+    const alvo = await this.me(usuarioId, empresaId);
+    const codigos = alvo.permissoes
+      .filter((p) => p.endsWith('.visualizar'))
+      .map((p) => p.slice(0, -'.visualizar'.length));
+    const rotinas = await this.prisma.rotina.findMany({
+      where: {
+        codigo: { in: codigos },
+        deletedAt: null,
+        menu: { rota: { not: null } },
+      },
+      select: {
+        id: true,
+        menu: {
+          select: {
+            id: true,
+            nome: true,
+            ordem: true,
+            menuPai: { select: { nome: true } },
+            modulo: { select: { nome: true, ordem: true } },
+          },
+        },
+      },
+      orderBy: { nome: 'asc' },
+    });
+    const porMenu = new Map<
+      string,
+      { rotinaId: string; rotinaIds: string[]; rotulo: string; ordem: number[] }
+    >();
+    for (const r of rotinas) {
+      const atual = porMenu.get(r.menu.id);
+      if (atual) {
+        atual.rotinaIds.push(r.id);
+        continue;
+      }
+      porMenu.set(r.menu.id, {
+        rotinaId: r.id,
+        rotinaIds: [r.id],
+        rotulo: [r.menu.modulo.nome, r.menu.menuPai?.nome, r.menu.nome]
+          .filter(Boolean)
+          .join(' › '),
+        ordem: [r.menu.modulo.ordem, r.menu.ordem],
+      });
+    }
+    const opcoes = [...porMenu.values()]
+      .sort((a, b) => a.ordem[0] - b.ordem[0] || a.ordem[1] - b.ordem[1])
+      .map(({ rotinaId, rotinaIds, rotulo }) => ({
+        rotinaId,
+        rotinaIds,
+        rotulo,
+      }));
+    return {
+      rotinaInicialId: alvo.rotinaInicialId,
+      rotinaInicialPerfilNome: alvo.rotinaInicialPerfilNome,
+      opcoes,
+    };
   }
 
   /** Troca a senha do próprio usuário logado, exigindo a senha atual. */

@@ -20,9 +20,12 @@ ordenar pela S_T_A_M_P_.
 
 Nota 000117238 (E-COMMERCE, 09/2026): emitida em 09/09, excluída e reemitida
 em 15/09 com o mesmo número. O sistema anterior ficou com a exclusão e perdeu
-a venda (R$ 235,44). **Na plataforma não houve dano**: a chave da nota inclui
-cliente e loja (`filial-doc-série-cliente-loja-formulário-tipo`, o X2_UNICO
-da SF2), e as duas versões eram de clientes diferentes — duas chaves.
+a venda (R$ 235,44). As duas versões são do **mesmo cliente e loja** (a
+consulta no ERP liga SF2 e SD2 por cliente e loja e trouxe os dois
+cabeçalhos), logo da **mesma chave** (`filial-doc-série-cliente-loja-
+formulário-tipo`, o X2_UNICO da SF2). Na plataforma o resultado ficou certo
+— a chave está ativa com a versão de 15/09 —, mas só porque a exclusão saiu
+antes da reemissão.
 
 ## O que já protege a ordem hoje
 

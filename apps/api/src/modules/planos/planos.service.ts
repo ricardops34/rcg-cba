@@ -16,7 +16,7 @@ export class PlanosService {
       orderBy: { valorMensal: 'asc' },
       include: {
         _count: {
-          select: { assinaturas: true },
+          select: { assinaturas: { where: { grupoEconomicoId: { not: null }, grupoEconomico: { deletedAt: null } } } },
         },
         modulos: { select: { moduloId: true } },
         menus: { select: { menuId: true } },

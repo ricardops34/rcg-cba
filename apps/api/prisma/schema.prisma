@@ -206,6 +206,7 @@ model Empresa {
 
 /// Organização administrativa dos tenants, sem dados comerciais compartilhados.
 model GrupoEconomico {
+  assinatura Assinatura?
   usuarios Usuario[]
   id String @id @default(uuid())
   descricao String
@@ -628,6 +629,7 @@ enum CicloPagamento {
 
 /// Plano / Pacote de funcionalidades do SaaS (Básico, Profissional, Enterprise, Custom).
 model Plano {
+  limiteEmpresas Int @default(1)
   id              String   @id @default(uuid())
   nome            String
   codigo          String   @unique
@@ -736,10 +738,12 @@ model EmpresaSuporteLog {
   @@map("empresa_suporte_logs")
 }
 
-/// Assinatura da Empresa com o SaaS (plano, mensalidade, vencimento, ciclo).
+/// Contrato único do grupo; empresaId é somente referência histórica.
 model Assinatura {
+  grupoEconomicoId String? @unique
+  grupoEconomico GrupoEconomico? @relation(fields: [grupoEconomicoId], references: [id])
   id                  String             @id @default(uuid())
-  empresaId           String             @unique
+  empresaId           String?            @unique
   planoId             String
   situacao            SituacaoAssinatura @default(ativa)
   ciclo               CicloPagamento     @default(mensal)
@@ -755,7 +759,7 @@ model Assinatura {
   createdBy String?
   updatedBy String?
 
-  empresa Empresa @relation(fields: [empresaId], references: [id])
+  empresa Empresa? @relation(fields: [empresaId], references: [id], onDelete: Restrict)
   plano   Plano   @relation(fields: [planoId], references: [id])
 
   @@map("assinaturas")

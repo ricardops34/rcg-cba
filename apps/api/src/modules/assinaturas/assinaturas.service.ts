@@ -1,4 +1,4 @@
-import {
+﻿import {
   BadRequestException,
   Injectable,
   NotFoundException,
@@ -12,137 +12,94 @@ export class AssinaturasService {
 
   async listAssinaturas() {
     const assinaturas = await this.prisma.assinatura.findMany({
+      where: {
+        grupoEconomicoId: { not: null },
+        grupoEconomico: { deletedAt: null },
+      },
       orderBy: { createdAt: 'desc' },
       include: {
-        empresa: {
+        grupoEconomico: {
           select: {
             id: true,
-            razaoSocial: true,
-            nomeFantasia: true,
-            cnpj: true,
-            situacao: true,
+            descricao: true,
+            _count: { select: { empresas: { where: { deletedAt: null } } } },
           },
         },
-        plano: {
-          select: {
-            id: true,
-            nome: true,
-            codigo: true,
-            valorMensal: true,
-            valorTrimestral: true,
-            valorSemestral: true,
-            valorAnual: true,
-          },
-        },
+        plano: true,
       },
     });
-
     return assinaturas.map((a) => ({
       ...a,
       valorMensalidade: Number(a.valorMensalidade),
-      plano: a.plano
-        ? {
-            ...a.plano,
-            valorMensal: Number(a.plano.valorMensal),
-            valorTrimestral: Number(a.plano.valorTrimestral),
-            valorSemestral: Number(a.plano.valorSemestral),
-            valorAnual: Number(a.plano.valorAnual),
-          }
-        : null,
+      plano: {
+        ...a.plano,
+        valorMensal: Number(a.plano.valorMensal),
+        valorTrimestral: Number(a.plano.valorTrimestral),
+        valorSemestral: Number(a.plano.valorSemestral),
+        valorAnual: Number(a.plano.valorAnual),
+      },
     }));
   }
 
   async getResumoSaaS() {
     const assinaturas = await this.prisma.assinatura.findMany({
-      where: { situacao: 'ativa' },
-      select: { valorMensalidade: true, ciclo: true },
+      where: {
+        grupoEconomicoId: { not: null },
+        grupoEconomico: { deletedAt: null },
+      },
+      select: { valorMensalidade: true, ciclo: true, situacao: true },
     });
-
-    const mrr = assinaturas.reduce((acc, curr) => {
-      const val = Number(curr.valorMensalidade);
-      if (curr.ciclo === 'anual') return acc + val / 12;
-      if (curr.ciclo === 'semestral') return acc + val / 6;
-      if (curr.ciclo === 'trimestral') return acc + val / 3;
-      return acc + val;
-    }, 0);
-
-    const [totalEmpresas, ativas, emTeste, inadimplentes] = await Promise.all([
-      this.prisma.empresa.count({ where: { deletedAt: null } }),
-      this.prisma.assinatura.count({ where: { situacao: 'ativa' } }),
-      this.prisma.assinatura.count({ where: { situacao: 'teste' } }),
-      this.prisma.assinatura.count({ where: { situacao: 'atrasada' } }),
-    ]);
-
+    const mrr = assinaturas
+      .filter((a) => a.situacao === 'ativa')
+      .reduce((acc, a) => {
+        const meses = { mensal: 1, trimestral: 3, semestral: 6, anual: 12 };
+        return acc + Number(a.valorMensalidade) / meses[a.ciclo];
+      }, 0);
     return {
       mrr: Math.round(mrr * 100) / 100,
-      totalEmpresas,
-      ativas,
-      emTeste,
-      inadimplentes,
+      totalEmpresas: await this.prisma.empresa.count({
+        where: { deletedAt: null },
+      }),
+      ativas: assinaturas.filter((a) => a.situacao === 'ativa').length,
+      emTeste: assinaturas.filter((a) => a.situacao === 'teste').length,
+      inadimplentes: assinaturas.filter((a) => a.situacao === 'atrasada')
+        .length,
     };
   }
 
-  async getAssinaturaEmpresa(empresaId: string) {
+  private async grupoDaEmpresa(empresaId: string) {
     const empresa = await this.prisma.empresa.findFirst({
       where: { id: empresaId, deletedAt: null },
+      select: { grupoEconomicoId: true },
     });
-    if (!empresa) {
-      throw new NotFoundException('Empresa não encontrada');
-    }
+    if (!empresa) throw new NotFoundException('Empresa não encontrada');
+    return empresa.grupoEconomicoId;
+  }
 
-    let assinatura = await this.prisma.assinatura.findFirst({
-      where: { empresaId },
-      include: {
-        plano: true,
-      },
+  async getAssinaturaEmpresa(empresaId: string) {
+    return this.getAssinaturaGrupo(await this.grupoDaEmpresa(empresaId));
+  }
+
+  async getAssinaturaGrupo(grupoEconomicoId: string) {
+    const grupo = await this.prisma.grupoEconomico.findFirst({
+      where: { id: grupoEconomicoId, deletedAt: null },
     });
-
-    if (!assinatura) {
-      let planoPadrao = await this.prisma.plano.findFirst({
-        where: { deletedAt: null, ativo: true },
-        orderBy: { valorMensal: 'asc' },
-      });
-
-      if (!planoPadrao) {
-        planoPadrao = await this.prisma.plano.create({
-          data: {
-            nome: 'Plano Padrão',
-            codigo: 'padrao',
-            descricao: 'Plano padrão inicial do sistema',
-            valorMensal: 0,
-            valorTrimestral: 0,
-            valorSemestral: 0,
-            valorAnual: 0,
-          },
-        });
-      }
-
-      assinatura = await this.prisma.assinatura.create({
-        data: {
-          empresaId,
-          planoId: planoPadrao.id,
-          situacao: 'teste',
-          valorMensalidade: planoPadrao.valorMensal,
-          diaVencimento: 10,
-        },
-        include: {
-          plano: true,
-        },
-      });
-    }
-
+    if (!grupo) throw new NotFoundException('Grupo econômico não encontrado');
+    const assinatura = await this.prisma.assinatura.findUnique({
+      where: { grupoEconomicoId },
+      include: { plano: true },
+    });
+    if (!assinatura) return null;
     return {
       ...assinatura,
       valorMensalidade: Number(assinatura.valorMensalidade),
-      plano: assinatura.plano
-        ? {
-            ...assinatura.plano,
-            valorMensal: Number(assinatura.plano.valorMensal),
-            valorTrimestral: Number(assinatura.plano.valorTrimestral),
-            valorSemestral: Number(assinatura.plano.valorSemestral),
-            valorAnual: Number(assinatura.plano.valorAnual),
-          }
-        : null,
+      plano: {
+        ...assinatura.plano,
+        valorMensal: Number(assinatura.plano.valorMensal),
+        valorTrimestral: Number(assinatura.plano.valorTrimestral),
+        valorSemestral: Number(assinatura.plano.valorSemestral),
+        valorAnual: Number(assinatura.plano.valorAnual),
+      },
     };
   }
 
@@ -151,31 +108,64 @@ export class AssinaturasService {
     input: AssinaturaUpdate,
     actorId: string,
   ) {
-    await this.getAssinaturaEmpresa(empresaId);
+    return this.updateAssinaturaGrupo(
+      await this.grupoDaEmpresa(empresaId),
+      input,
+      actorId,
+    );
+  }
 
-    if (input.planoId) {
-      const plano = await this.prisma.plano.findFirst({
-        where: { id: input.planoId, deletedAt: null },
+  async updateAssinaturaGrupo(
+    grupoEconomicoId: string,
+    input: AssinaturaUpdate,
+    actorId: string,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM grupos_economicos WHERE id = ${grupoEconomicoId} FOR UPDATE`;
+      const grupo = await tx.grupoEconomico.findFirst({
+        where: { id: grupoEconomicoId, deletedAt: null },
       });
-      if (!plano) {
-        throw new BadRequestException('Plano informado não existe.');
-      }
-    }
-
-    const updated = await this.prisma.assinatura.update({
-      where: { empresaId },
-      data: {
-        ...input,
-        updatedBy: actorId,
-      },
-      include: {
-        plano: true,
-      },
+      if (!grupo) throw new NotFoundException('Grupo econômico não encontrado');
+      const atual = await tx.assinatura.findUnique({
+        where: { grupoEconomicoId },
+      });
+      const planoId = input.planoId ?? atual?.planoId;
+      if (!planoId) throw new BadRequestException('Selecione o plano do grupo');
+      const plano = await tx.plano.findFirst({
+        where: { id: planoId, deletedAt: null },
+      });
+      if (!plano) throw new BadRequestException('Plano informado não existe');
+      if ((!atual || atual.planoId !== planoId) && !plano.ativo)
+        throw new BadRequestException(
+          'Plano indisponível para novas assinaturas',
+        );
+      const assinatura = await tx.assinatura.upsert({
+        where: { grupoEconomicoId },
+        create: {
+          ...input,
+          grupoEconomicoId,
+          planoId,
+          valorMensalidade: input.valorMensalidade ?? plano.valorMensal,
+          createdBy: actorId,
+          updatedBy: actorId,
+        },
+        update: { ...input, updatedBy: actorId },
+      });
+      const situacao =
+        assinatura.situacao === 'atrasada' ? 'suspensa' : assinatura.situacao;
+      await tx.empresa.updateMany({
+        where: { grupoEconomicoId, deletedAt: null },
+        data: {
+          situacao,
+          limiteUsuarios: plano.limiteUsuarios,
+          updatedBy: actorId,
+          ...(situacao !== 'teste' ? { testeExpiraEm: null } : {}),
+        },
+      });
+      return {
+        ...assinatura,
+        valorMensalidade: Number(assinatura.valorMensalidade),
+      };
     });
-
-    return {
-      ...updated,
-      valorMensalidade: Number(updated.valorMensalidade),
-    };
   }
 }

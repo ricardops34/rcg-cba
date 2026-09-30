@@ -4,6 +4,7 @@ import { PrismaService, type TenantTx } from '../../common/prisma/prisma.service
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import type { GrupoEconomicoInput, GrupoUsuarioInput, GrupoUsuario } from '@plataforma/contracts';
 import { garantirVagaDeUsuario } from '../../common/empresa/limite-usuarios';
+import { garantirVagaDeEmpresa } from '../../common/empresa/limite-empresas';
 import { PoliticaSenhaService } from '../politica-senha/politica-senha.service';
 
 const empresaSelect = { id: true, nomeFantasia: true, cnpj: true, grupoEconomicoId: true } as const;
@@ -38,7 +39,7 @@ export class GruposEconomicosService {
     const grupoId = await this.grupoDoAdmin(user);
     const grupos = await this.prisma.grupoEconomico.findMany({
       where: { deletedAt: null, ...(ids === null ? {} : { id: grupoId ?? '' }) },
-      select: { id: true, descricao: true, empresas: { where: { deletedAt: null }, select: empresaSelect, orderBy: { nomeFantasia: 'asc' } } },
+      select: { id: true, descricao: true, assinatura: { select: { situacao: true, plano: { select: { nome: true, limiteEmpresas: true } } } }, empresas: { where: { deletedAt: null }, select: empresaSelect, orderBy: { nomeFantasia: 'asc' } } },
       orderBy: { descricao: 'asc' },
     });
     // Toda empresa tem grupo: "disponível" é empresa de **outro** grupo, que
@@ -85,6 +86,9 @@ export class GruposEconomicosService {
     // Serializa alterações de composição; uma empresa não pode pertencer a dois grupos.
     return this.prisma.$transaction(async (tx) => {
       if (id) await tx.$queryRaw`SELECT id FROM grupos_economicos WHERE id = ${id} FOR UPDATE`;
+      if (id && !user.administradorPlataforma && input.empresaIds.some((empresaId) => !atuais.has(empresaId))) {
+        await garantirVagaDeEmpresa(tx, id, input.empresaIds.length);
+      }
       const todas = [...new Set([...atuais, ...input.empresaIds])].sort();
       for (const empresaId of todas) {
         await tx.$queryRaw`SELECT id FROM empresas WHERE id = ${empresaId} FOR UPDATE`;
@@ -115,7 +119,10 @@ export class GruposEconomicosService {
       const excluidas = await tx.empresa.findMany({ where: { grupoEconomicoId: grupo.id, id: { notIn: input.empresaIds } }, select: { id: true, nomeFantasia: true } });
       for (const e of excluidas) {
         const proprio = await tx.grupoEconomico.create({ data: { descricao: e.nomeFantasia, createdBy: user.id, updatedBy: user.id } });
-        await tx.empresa.update({ where: { id: e.id }, data: { grupoEconomicoId: proprio.id, updatedBy: user.id } });
+        await tx.empresa.update({ where: { id: e.id }, data: {
+          grupoEconomicoId: proprio.id, updatedBy: user.id,
+          situacao: 'suspensa', testeExpiraEm: null,
+        } });
       }
       await tx.empresa.updateMany({ where: { id: { in: input.empresaIds } }, data: { grupoEconomicoId: grupo.id, updatedBy: user.id } });
       // O grupo de onde a empresa saiu, se ficou vazio, é desativado.

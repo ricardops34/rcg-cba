@@ -25,12 +25,19 @@ function iniciais(nome: string) {
   }`.toUpperCase();
 }
 
+/**
+ * Foto do usuário. Sem `usuarioId`, é a de quem está logado (Meu perfil e
+ * primeiro acesso); com ele, a do usuário aberto no cadastro, que só o
+ * administrador da empresa altera.
+ */
 export function ProfilePhoto({
   user,
+  usuarioId,
   onlyIfMissing = false,
   disabled = false,
 }: {
-  user: CurrentUser;
+  user: Pick<CurrentUser, "nome" | "avatarUrl">;
+  usuarioId?: string;
   onlyIfMissing?: boolean;
   disabled?: boolean;
 }) {
@@ -38,8 +45,13 @@ export function ProfilePhoto({
   const queryClient = useQueryClient();
   const setUser = useAuthStore((state) => state.setUser);
   const podeAlterar = !onlyIfMissing || !user.avatarUrl;
+  const base = usuarioId ? `/usuarios/${usuarioId}` : "/auth/me";
 
-  const atualizarUsuario = (updated: CurrentUser) => {
+  const atualizarUsuario = async (updated: CurrentUser) => {
+    if (usuarioId) {
+      await queryClient.invalidateQueries({ queryKey: ["usuarios"] });
+      return;
+    }
     setUser(updated);
     queryClient.setQueryData(["auth", "me"], updated);
   };
@@ -50,7 +62,7 @@ export function ProfilePhoto({
       if (file.size > 2 * 1024 * 1024) {
         throw new Error("Escolha uma foto de até 2 MB.");
       }
-      return apiUpload<CurrentUser>("/auth/me/foto", file);
+      return apiUpload<CurrentUser>(`${base}/foto`, file);
     },
     onSuccess: atualizarUsuario,
   });
@@ -58,7 +70,7 @@ export function ProfilePhoto({
   const selecionarAvatar = useMutation({
     mutationKey: ["perfil", "foto"],
     mutationFn: (avatar: AvatarPadraoInput["avatar"]) =>
-      apiFetch<CurrentUser>("/auth/me/avatar-padrao", {
+      apiFetch<CurrentUser>(`${base}/avatar-padrao`, {
         method: "PATCH",
         body: { avatar } satisfies AvatarPadraoInput,
       }),
@@ -81,11 +93,13 @@ export function ProfilePhoto({
 
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium">
-              {user.avatarUrl ? "Foto do perfil" : "Escolha como você quer aparecer"}
+              {user.avatarUrl ? "Foto do perfil" : usuarioId ? "Sem foto" : "Escolha como você quer aparecer"}
             </p>
             <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
               {podeAlterar
-                ? "Use um avatar corporativo ou envie uma foto sua."
+                ? usuarioId
+                  ? "Use um avatar corporativo ou envie uma foto."
+                  : "Use um avatar corporativo ou envie uma foto sua."
                 : "Sua foto já está cadastrada. Você poderá alterá-la em Meu perfil."}
             </p>
 
@@ -116,7 +130,7 @@ export function ProfilePhoto({
                   ) : (
                     <Camera data-icon="inline-start" />
                   )}
-                  {upload.isPending ? "Enviando…" : user.avatarUrl ? "Enviar outra foto" : "Enviar minha foto"}
+                  {upload.isPending ? "Enviando…" : user.avatarUrl ? "Enviar outra foto" : usuarioId ? "Enviar foto" : "Enviar minha foto"}
                 </Button>
               </>
             ) : null}

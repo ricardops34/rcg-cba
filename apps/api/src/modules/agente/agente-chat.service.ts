@@ -663,7 +663,7 @@ export class AgenteChatService {
     resultado: unknown,
     ferramenta?: Ferramenta,
   ): string {
-    const TETO = 4_000;
+    const TETO = ferramenta?.limiteCaracteres ?? 4_000;
     const limiteItens = ferramenta?.limiteItens ?? 8;
     // A mascaração vem **antes** da poda e do corte: cortar primeiro poderia
     // partir uma referência ao meio (`«CLI:12`), e o modelo passaria a citar

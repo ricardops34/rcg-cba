@@ -419,3 +419,16 @@ por todos para servir a poucos.
   do RBAC e configuração da empresa — que é onde o erro passa despercebido, nos
   dois sentidos (liberar o que devia estar fechado, ou fechar o que o
   administrador acabou de configurar).
+## Janela e respostas (30/09/2026)
+
+A janela pode ser maximizada/restaurada pelo botão do cabeçalho ou com duplo
+clique no título. No computador, as alças dos cantos superior esquerdo e inferior
+direito ajustam seu tamanho; minimizar e reabrir preserva o tamanho na sessão.
+A janela se mantém dentro da tela, inclusive ao redimensionar o navegador.
+
+Respostas exibem tabelas e negrito, sem interpretar HTML ou links enviados pelo
+modelo. Tabelas largas têm rolagem horizontal. A consulta de metas por vendedor
+filtra atingidas, não atingidas e sem meta antes de paginar (50 por página), com
+total e próxima página. Esse resultado compacto tem teto específico de 16 mil
+caracteres, evitando o corte padrão de oito itens; as demais consultas mantêm
+os limites anteriores e a mesma proteção dos dados enviados ao provedor.

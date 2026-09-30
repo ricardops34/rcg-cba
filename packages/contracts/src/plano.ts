@@ -10,6 +10,7 @@ export const planoCreateSchema = z.object({
   valorSemestral: z.coerce.number().min(0, "Valor inválido").default(0),
   valorAnual: z.coerce.number().min(0, "Valor inválido").default(0),
   limiteUsuarios: z.coerce.number().int().min(1).optional().nullable(),
+  limiteEmpresas: z.coerce.number().int().min(1, "Informe pelo menos uma empresa").max(10000).default(1),
   ativo: z.boolean().default(true),
   moduloIds: z.array(z.string().uuid()).default([]),
   menuIds: z.array(z.string().uuid()).default([]),

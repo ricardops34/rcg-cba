@@ -10,5 +10,7 @@ import { PoliticaSenhaModule } from '../politica-senha/politica-senha.module';
   imports: [PassportModule, JwtModule.register({}), PoliticaSenhaModule],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],
+  // O cadastro de usuário reusa a foto e a tela inicial do próprio perfil.
+  exports: [AuthService],
 })
 export class AuthModule {}

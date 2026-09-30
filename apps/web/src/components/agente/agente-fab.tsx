@@ -17,6 +17,7 @@ import type {
 import { ApiError, apiFetch, apiStream, apiUpload } from "@/lib/api-client";
 import { useAgenteUiStore } from "@/stores/agente-ui-store";
 import { useAgente } from "@/components/agente/use-agente";
+import { ConteudoMensagem } from "@/components/agente/conteudo-mensagem";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import Link from "next/link";
@@ -26,6 +27,9 @@ import {
   ExternalLink,
   HelpCircle,
   History,
+  Maximize2,
+  Minimize2,
+  Grip,
   Minus,
   Paperclip,
   Send,
@@ -78,6 +82,12 @@ function geometriaPadrao(): Geometria {
     x: tela.x + tela.largura - largura - MARGEM,
     y: tela.y + tela.altura - altura - MARGEM,
   };
+}
+
+function geometriaMaximizada(): Geometria {
+  const tela = viewport();
+  return { x: tela.x + MARGEM, y: tela.y + MARGEM,
+    largura: Math.max(1, tela.largura - MARGEM * 2), altura: Math.max(1, tela.altura - MARGEM * 2) };
 }
 
 /**
@@ -141,6 +151,13 @@ export function AgenteFab() {
   const setNovidade = useAgenteUiStore((s) => s.setNovidade);
   const setPendente = useAgenteUiStore((s) => s.setPendente);
   const [geometria, setGeometria] = useState<Geometria | null>(null);
+  const [maximizada, setMaximizada] = useState(false);
+  const geometriaAnterior = useRef<Geometria | null>(null);
+  const alternarMaximizada = () => {
+    if (maximizada) setGeometria(acomodar(geometriaAnterior.current ?? geometriaPadrao()));
+    else { geometriaAnterior.current = geometria; setGeometria(geometriaMaximizada()); }
+    setMaximizada(!maximizada);
+  };
   const [texto, setTexto] = useState("");
   /**
    * O arquivo anexado ao **próximo** envio.
@@ -173,10 +190,10 @@ export function AgenteFab() {
   useEffect(() => {
     if (!aberto) return;
     const frame = window.requestAnimationFrame(() => {
-      setGeometria(geometriaPadrao());
+      setGeometria((g) => maximizada ? geometriaMaximizada() : acomodar(g ?? geometriaPadrao()));
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [aberto]);
+  }, [aberto, maximizada]);
 
   // Pendência é ação parada esperando gente. Quem mostra o "!" é o ícone da
   // topbar, então o estado tem de chegar até ele.
@@ -185,7 +202,7 @@ export function AgenteFab() {
   }, [pendencias, setPendente]);
 
   useEffect(() => {
-    const aoRedimensionar = () => setGeometria((g) => (g ? geometriaPadrao() : g));
+    const aoRedimensionar = () => setGeometria((g) => (g ? maximizada ? geometriaMaximizada() : acomodar(g) : g));
     const visual = window.visualViewport;
     window.addEventListener("resize", aoRedimensionar);
     visual?.addEventListener("resize", aoRedimensionar);
@@ -195,7 +212,7 @@ export function AgenteFab() {
       visual?.removeEventListener("resize", aoRedimensionar);
       visual?.removeEventListener("scroll", aoRedimensionar);
     };
-  }, []);
+  }, [maximizada]);
 
   useEffect(() => {
     if (aberto) fim.current?.scrollIntoView({ behavior: "smooth" });
@@ -207,13 +224,14 @@ export function AgenteFab() {
    * por cima de um iframe, o que `mousemove` no documento não garante.
    */
   const iniciarGesto = useCallback(
-    (modo: "mover" | "redimensionar") => (e: React.PointerEvent) => {
+    (modo: "mover" | "redimensionar" | "redimensionar-inicio") => (e: React.PointerEvent) => {
       // Só botão principal, e nunca a partir dos botões do cabeçalho.
       if (e.button !== 0) return;
+      if (maximizada) return;
       if (viewport().largura < 640) return;
       if (
         modo === "mover" &&
-        (e.target as HTMLElement).closest("button, input, textarea")
+        (e.target as HTMLElement).closest("button, a, input, textarea")
       ) {
         return;
       }
@@ -231,7 +249,10 @@ export function AgenteFab() {
           acomodar(
             modo === "mover"
               ? { ...base, x: base.x + dx, y: base.y + dy }
-              : {
+              : modo === "redimensionar-inicio" ? {
+                  ...base, x: base.x + dx, y: base.y + dy,
+                  largura: base.largura - dx, altura: base.altura - dy,
+                } : {
                   ...base,
                   largura: base.largura + dx,
                   altura: base.altura + dy,
@@ -249,7 +270,7 @@ export function AgenteFab() {
       alvo.addEventListener("pointerup", soltar);
       alvo.addEventListener("pointercancel", soltar);
     },
-    [geometria],
+    [geometria, maximizada],
   );
 
   const enviar = useMutation({
@@ -470,7 +491,7 @@ export function AgenteFab() {
     >
       <div
         onPointerDown={iniciarGesto("mover")}
-        onDoubleClick={minimizar}
+        onDoubleClick={(e) => { if (!(e.target as HTMLElement).closest("button, a")) alternarMaximizada(); }}
         className="flex shrink-0 touch-none select-none items-center gap-2 border-b bg-muted/40 px-3 sm:cursor-move"
         style={{ height: ALTURA_TITULO }}
       >
@@ -530,6 +551,12 @@ export function AgenteFab() {
           onClick={minimizar}
         >
           <Minus className="size-4" />
+        </Button>
+        <Button type="button" variant="ghost" size="icon" className="size-7"
+          title={maximizada ? "Restaurar tamanho" : "Maximizar janela"}
+          aria-label={maximizada ? "Restaurar tamanho" : "Maximizar janela"}
+          aria-pressed={maximizada} onClick={alternarMaximizada}>
+          {maximizada ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
         </Button>
         <Button
           type="button"
@@ -624,10 +651,10 @@ export function AgenteFab() {
               className={
                 b.papel === "usuario"
                   ? "ml-auto max-w-[85%] rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"
-                  : "mr-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-sm whitespace-pre-wrap"
+                  : "mr-auto min-w-0 max-w-full rounded-lg bg-muted px-3 py-2 text-sm"
               }
             >
-              {b.texto}
+              {b.papel === "usuario" ? b.texto : <ConteudoMensagem texto={b.texto} />}
             </div>
             {/* O chat resume; a tela tem o resto. O link vem montado do
                     servidor, com os ids reais — o modelo não escreve link.
@@ -758,18 +785,23 @@ export function AgenteFab() {
 
       {/* Alça de redimensionamento. `touch-none` para o gesto não virar
               rolagem no tablet. */}
-      <div
+      {!maximizada && <div
         onPointerDown={iniciarGesto("redimensionar")}
         role="separator"
         aria-label="Redimensionar assistente"
-        className="absolute bottom-0 right-0 hidden size-4 cursor-nwse-resize touch-none text-border sm:block"
+        title="Arraste para ajustar o tamanho"
+        className="absolute bottom-0 right-0 hidden size-5 cursor-nwse-resize touch-none text-muted-foreground sm:block"
         style={{
           // `currentColor` para não depender do formato do token de
           // cor (hsl/oklch): a cor vem do `text-border` acima.
           background:
             "linear-gradient(135deg, transparent 50%, currentColor 50%)",
         }}
-      />
+      ><Grip className="size-4" /></div>}
+      {!maximizada && <div onPointerDown={iniciarGesto("redimensionar-inicio")}
+        role="separator" aria-label="Redimensionar pelo canto superior esquerdo"
+        title="Arraste para ajustar o tamanho"
+        className="absolute left-0 top-0 hidden size-3 cursor-nwse-resize touch-none border-l-2 border-t-2 border-muted-foreground/60 sm:block" />}
     </div>,
     document.body
   );

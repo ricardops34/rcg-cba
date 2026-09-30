@@ -8,8 +8,12 @@ import {
   Post,
   Put,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -31,6 +35,8 @@ import {
   UsuarioQueryDto,
   UsuarioUpdateDto,
 } from './dto/usuario.dto';
+import { AuthService } from '../auth/auth.service';
+import { AvatarPadraoDto, UpdateRotinaInicialDto } from '../auth/dto/auth.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -49,7 +55,99 @@ const EMPRESA_ID_EXAMPLE = '2113ce67-5cf9-40e6-b1ed-fa88281c2a92';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('usuarios')
 export class UsuariosController {
-  constructor(private readonly service: UsuariosService) {}
+  constructor(
+    private readonly service: UsuariosService,
+    private readonly auth: AuthService,
+  ) {}
+
+  // Foto e tela inicial: o administrador da empresa altera pelo cadastro o
+  // mesmo que o usuário altera em "Meu perfil" (decisão de 30/09/2026). A
+  // lógica é a do próprio perfil; aqui entra só a empresa ativa de quem edita,
+  // e o usuário editado precisa ter vínculo ativo com ela.
+
+  @ApiOperation({
+    summary: 'Telas que o usuário pode ter como inicial na empresa ativa',
+    description:
+      'Uma por menu com tela, entre as rotinas que o usuário editado enxerga. Requer usuarios.visualizar.',
+  })
+  @ApiParam({ name: 'id', example: USUARIO_ID_EXAMPLE })
+  @RequirePermission('usuarios', 'visualizar')
+  @Get(':id/telas-iniciais')
+  telasIniciais(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.auth.telasIniciais(id, user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Definir a tela inicial do usuário na empresa ativa',
+    description:
+      'Só aceita tela a que o usuário editado tem acesso; rotinaId null volta para a ' +
+      'rotina inicial do perfil. Requer usuarios.editar.',
+  })
+  @ApiParam({ name: 'id', example: USUARIO_ID_EXAMPLE })
+  @ApiBodyExample({ rotinaId: null })
+  @RequirePermission('usuarios', 'editar')
+  @Patch(':id/rotina-inicial')
+  async definirRotinaInicial(
+    @Param('id') id: string,
+    @Body() dto: UpdateRotinaInicialDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    await this.auth.updateRotinaInicial(
+      id,
+      user.empresaAtivaId,
+      dto.rotinaId,
+      user.id,
+    );
+    return this.auth.telasIniciais(id, user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Enviar a foto do usuário (PNG, JPEG ou WEBP, até 2 MB)',
+    description: 'Requer usuarios.editar.',
+  })
+  @ApiParam({ name: 'id', example: USUARIO_ID_EXAMPLE })
+  @RequirePermission('usuarios', 'editar')
+  @Post(':id/foto')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 2 * 1024 * 1024, files: 1 },
+    }),
+  )
+  async enviarFoto(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    await this.auth.exigirVinculoAtivo(id, user.empresaAtivaId);
+    await this.auth.uploadOwnAvatar(id, user.empresaAtivaId, file, user.id);
+    return this.service.findOne(id, user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Escolher um avatar corporativo padrão para o usuário',
+    description: 'Requer usuarios.editar.',
+  })
+  @ApiParam({ name: 'id', example: USUARIO_ID_EXAMPLE })
+  @RequirePermission('usuarios', 'editar')
+  @Patch(':id/avatar-padrao')
+  async escolherAvatarPadrao(
+    @Param('id') id: string,
+    @Body() dto: AvatarPadraoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    await this.auth.exigirVinculoAtivo(id, user.empresaAtivaId);
+    await this.auth.selectDefaultAvatar(
+      id,
+      user.empresaAtivaId,
+      dto.avatar,
+      user.id,
+    );
+    return this.service.findOne(id, user.empresaAtivaId);
+  }
 
   @ApiOperation({
     summary: 'Listar usuários da empresa ativa',

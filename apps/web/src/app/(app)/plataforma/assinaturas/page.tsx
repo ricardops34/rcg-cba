@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 type AssinaturaRow = Assinatura & {
+  grupoEconomico?: { id: string; descricao: string; _count: { empresas: number } };
   empresa?: {
     id: string;
     razaoSocial: string;
@@ -69,14 +70,14 @@ export default function AssinaturasPage() {
 
   const columns: ColumnDef<AssinaturaRow>[] = [
     {
-      header: "Empresa",
+      header: "Grupo econômico",
       cell: (a) => (
         <div>
           <p className="font-medium text-foreground">
-            {a.empresa?.nomeFantasia || a.empresa?.razaoSocial}
+            {a.grupoEconomico?.descricao}
           </p>
           <p className="text-xs text-muted-foreground font-mono">
-            {a.empresa?.cnpj}
+            {a.grupoEconomico?._count.empresas} empresa(s)
           </p>
         </div>
       ),
@@ -138,7 +139,7 @@ export default function AssinaturasPage() {
           </h1>
           <p className="text-sm text-muted-foreground">
             Acompanhe o faturamento recorrente (MRR), vigência de planos e
-            situação financeira das empresas.
+            situação financeira dos grupos econômicos.
           </p>
         </div>
 
@@ -163,7 +164,7 @@ export default function AssinaturasPage() {
                   {moeda.format(resumo?.mrr || 0)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Faturamento recorrente das empresas ativas
+                  Faturamento recorrente dos grupos ativos
                 </p>
               </CardContent>
             </Card>
@@ -171,7 +172,7 @@ export default function AssinaturasPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Empresas Ativas
+                  Grupos ativos
                 </CardTitle>
                 <CheckCircle2 className="size-4 text-primary" />
               </CardHeader>

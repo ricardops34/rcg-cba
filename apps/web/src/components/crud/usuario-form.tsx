@@ -15,13 +15,14 @@ import {
   type UsuarioUpdate,
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
-import { ApiError, apiFetch, assetUrl } from "@/lib/api-client";
+import { ApiError, apiFetch } from "@/lib/api-client";
 import { buildSenhaSchema, describeRequisitos } from "@/lib/politica-senha";
 import { UsuarioEmpresasGrupo } from "@/components/crud/usuario-empresas-grupo";
 import { UsuarioDadosGrupo } from "@/components/crud/usuario-dados-grupo";
 import { UsuarioResetSenhaSection } from "@/components/crud/usuario-reset-senha-section";
 import { UsuarioHorariosSection } from "@/components/crud/usuario-horarios-section";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UsuarioTelaInicial } from "@/components/crud/usuario-tela-inicial";
+import { ProfilePhoto } from "@/components/perfil/profile-photo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -90,15 +91,7 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
     <form id="usuario-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
       <CardContent className="space-y-4 pt-6">
         <FieldGroup>
-          {usuario && (
-            <div className="flex items-center gap-3">
-              <Avatar className="size-14">
-                <AvatarImage src={assetUrl(usuario.avatarUrl) ?? undefined} alt={usuario.nome} />
-                <AvatarFallback>{usuario.nome.slice(0, 2).toUpperCase()}</AvatarFallback>
-              </Avatar>
-              <p className="text-xs text-muted-foreground">A foto é escolhida pelo próprio usuário, em Meu perfil.</p>
-            </div>
-          )}
+          {usuario && <ProfilePhoto user={usuario} usuarioId={usuario.id} />}
 
           <Field data-invalid={!!form.formState.errors.nome}>
             <FieldLabel htmlFor="nome">Nome apresentado</FieldLabel>
@@ -191,6 +184,7 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
           <TabsContent value="dados" className="space-y-4">
             <Card>{dadosGerais}</Card>
             <Card><CardContent className="pt-6"><UsuarioDadosGrupo usuarioId={usuario.id} /></CardContent></Card>
+            <Card><CardContent className="pt-6"><UsuarioTelaInicial usuarioId={usuario.id} /></CardContent></Card>
           </TabsContent>
 
           <TabsContent value="empresas">

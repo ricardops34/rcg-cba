@@ -19,6 +19,6 @@ export const grupoUsuarioInputSchema = z.object({
 }).refine((v) => Boolean(v.usuarioId) !== Boolean(v.novo), "Selecione um usuário ou cadastre um novo");
 export type GrupoUsuarioInput = z.infer<typeof grupoUsuarioInputSchema>;
 export interface GrupoEmpresa { id: string; nomeFantasia: string; cnpj: string; grupoEconomicoId: string | null }
-export interface GrupoEconomico { id: string; descricao: string; empresas: GrupoEmpresa[] }
+export interface GrupoEconomico { id: string; descricao: string; empresas: GrupoEmpresa[]; assinatura?: { situacao: string; plano: { nome: string; limiteEmpresas: number } } | null }
 export interface GrupoContexto { grupos: GrupoEconomico[]; empresasDisponiveis: GrupoEmpresa[]; podeCriarGrupo: boolean }
 export interface GrupoUsuario { id: string; nome: string; email: string; vinculos: { empresaId: string; perfilId: string; ativo: boolean }[] }

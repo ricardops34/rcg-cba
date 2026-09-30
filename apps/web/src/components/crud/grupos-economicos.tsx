@@ -45,6 +45,9 @@ export default function GruposPage() {
         {data.grupos.map((g) => <Button key={g.id} variant={grupoId === g.id ? "default" : "outline"} onClick={() => setGrupoId(g.id)}>{g.descricao} ({g.empresas.length})</Button>)}
       </div>}
       <GrupoForm key={grupo.id} grupo={grupo} disponiveis={data.empresasDisponiveis} onSaved={setGrupoId} rotaEmpresa={(id) => `/admin/empresas/${id}`} rotaVolta="/admin/grupo-economico" />
+      <p className="text-sm text-muted-foreground">{grupo.assinatura
+        ? `Plano ${grupo.assinatura.plano.nome}: ${grupo.empresas.length} de ${grupo.assinatura.plano.limiteEmpresas} empresas utilizadas.`
+        : "O grupo ainda não tem um plano contratado. Solicite a configuração à administração da plataforma."}</p>
     </>}
   </div>;
 }
@@ -107,7 +110,7 @@ export function GrupoForm({ grupo, disponiveis, onSaved, rotaEmpresa, rotaVolta 
   }
 
   const excluir = (empresa: GrupoEmpresa) => {
-    if (!confirm(`Tirar ${empresa.nomeFantasia} do grupo ${grupo.descricao}? A empresa não é apagada: ela passa a ter um grupo próprio, e os usuários mantêm os vínculos.`)) return;
+    if (!confirm(`Tirar ${empresa.nomeFantasia} do grupo ${grupo.descricao}? Ela terá um grupo próprio e ficará suspensa até contratar um plano. Os dados e vínculos serão preservados.`)) return;
     salvar.mutate({ descricao: grupo.descricao, empresaIds: empresasDoGrupo.filter((id) => id !== empresa.id) });
   };
 

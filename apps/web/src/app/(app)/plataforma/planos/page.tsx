@@ -122,8 +122,9 @@ export default function PlanosPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground pt-2 border-t">
                     <span>Usuários: {plano.limiteUsuarios ? `${plano.limiteUsuarios} máx.` : "Ilimitado"}</span>
+                    <span>Empresas no grupo: {plano.limiteEmpresas ?? 1} máx.</span>
                     <span>Assinantes: {plano.totalEmpresas || 0}</span>
                   </div>
 
@@ -185,6 +186,7 @@ function PlanoFormDialog({
   const [valorSemestral, setValorSemestral] = useState(plano?.valorSemestral?.toString() || "0");
   const [valorAnual, setValorAnual] = useState(plano?.valorAnual?.toString() || "0");
   const [limiteUsuarios, setLimiteUsuarios] = useState(plano?.limiteUsuarios?.toString() || "");
+  const [limiteEmpresas, setLimiteEmpresas] = useState(String(plano?.limiteEmpresas ?? 1));
   const [ativo, setAtivo] = useState(plano?.ativo ?? true);
 
   const [selectedModulos, setSelectedModulos] = useState<string[]>(plano?.moduloIds || []);
@@ -221,6 +223,7 @@ function PlanoFormDialog({
       valorSemestral: Number(valorSemestral),
       valorAnual: Number(valorAnual),
       limiteUsuarios: limiteUsuarios ? Number(limiteUsuarios) : null,
+      limiteEmpresas: Number(limiteEmpresas),
       ativo,
       moduloIds: selectedModulos,
       menuIds: selectedMenus,
@@ -306,6 +309,11 @@ function PlanoFormDialog({
               />
             </Field>
 
+            <Field>
+              <FieldLabel htmlFor="plano-empresas">Empresas permitidas no grupo</FieldLabel>
+              <Input id="plano-empresas" type="number" required min={1} max={10000} step={1}
+                value={limiteEmpresas} onChange={(e) => setLimiteEmpresas(e.target.value)} />
+            </Field>
             <div className="flex items-center gap-2 pt-6">
               <Checkbox id="plano-ativo" checked={ativo} onCheckedChange={(v) => setAtivo(v === true)} />
               <label htmlFor="plano-ativo" className="text-sm font-medium cursor-pointer">
