@@ -27,6 +27,10 @@ import {
 // Consulta read-only: os saldos entram pelo import do ERP. Uma linha por
 // produto, com o saldo somado em todos os armazéns (ou só no armazém
 // filtrado); o detalhamento por armazém fica na tela de visualização.
+// Saldo sempre com duas casas e sem unidade de medida (ver o detalhe).
+const quantidade = (v: number) =>
+  v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 export default function EstoquePage() {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -108,14 +112,15 @@ export default function EstoquePage() {
       className: "text-right",
       cell: (p) => (
         <span className={p.saldoTotal > 0 ? "" : "text-muted-foreground"}>
-          {p.saldoTotal.toLocaleString("pt-BR")}
+          {quantidade(p.saldoTotal)}
         </span>
       ),
     },
     {
       header: "Reserva total",
+      className: "text-right",
       cell: (p) =>
-        p.reservaTotal != null ? p.reservaTotal.toLocaleString("pt-BR") : "—",
+        p.reservaTotal != null ? quantidade(p.reservaTotal) : "—",
     },
   ];
 
