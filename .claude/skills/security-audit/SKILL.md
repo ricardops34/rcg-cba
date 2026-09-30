@@ -51,7 +51,19 @@ file:line citation or a live test result, not a guess.
 - Vendor-scoped (hierarchical) data access goes through
   `resolverEscopoVendedores`/`combinarFiltroVendedor`
   (`apps/api/src/common/escopo/escopo-vendedores.ts`) — returns `null`
-  (unrestricted) for admins and for any user with no linked `Vendedor` row.
+  (unrestricted) for admins and for perfis with `carteiraCompleta`; a user with
+  no linked `Vendedor` row gets `[]` (nothing) since 2026-09-30. The consultas
+  also restrict the *base* vendor column, not just the client's portfolio.
+- On top of the per-empresa RLS, `usuarios`, `empresas`, `grupos_economicos`,
+  `perfis` and `perfil_permissoes` have RLS **per grupo econômico**. Logged-in
+  requests are confined to their group (context set automatically by
+  `PrismaService`); everything without a logged-in user runs in "modo
+  sistema" (`app.plataforma = 'on'` is the role default). `withSistema` /
+  `liberarModoSistema` are the only in-request escapes — each use must be
+  justified (global uniqueness or code-authorized cross-group operation).
+- `/uploads` is public static, except `/uploads/whatsapp` (signed links,
+  `common/uploads/link-assinado.ts`) and `/uploads/agente`,
+  `/uploads/fichas-importacao` (404). SVG gets a sandbox CSP.
 - Refresh tokens are opaque random values (`randomBytes`), hashed at rest,
   rotated + revoked on use — not JWTs. `JWT_REFRESH_SECRET` in env is
   legacy/unused; don't flag it as a "secret with no purpose" without checking
