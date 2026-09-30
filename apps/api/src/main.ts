@@ -20,6 +20,16 @@ async function bootstrap() {
     rawBody: true,
   });
 
+  // Em produção a API fica atrás do Traefik (docker/stack.rcgcba.prod.yml), sem
+  // porta publicada. Sem isto o Express toma o IP do Traefik como o de todo
+  // mundo: o limite de login (10/min por IP) vira da empresa inteira — dez
+  // tentativas de qualquer um travam o login de todos — e o log de acessos
+  // grava o proxy. `1` = confia só no último salto (o Traefik), então um
+  // X-Forwarded-For forjado pelo cliente não passa. TRUST_PROXY sobrepõe
+  // (número de saltos); fora de produção, sem proxy, fica desligado.
+  const trustProxy = process.env.TRUST_PROXY ?? (process.env.NODE_ENV === 'production' ? '1' : '');
+  if (trustProxy) app.set('trust proxy', Number(trustProxy));
+
   // Contexto da RLS: cada requisição abre o seu, vazio; o JwtStrategy o preenche
   // ao validar o token, e o PrismaService o leva ao banco. Primeiro middleware,
   // para cobrir tudo o que vem depois.
