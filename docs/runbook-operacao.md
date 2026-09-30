@@ -640,6 +640,21 @@ docker build -f docker/web.Dockerfile -t rcgcba-web:check .
 docker build -f docker/api.Dockerfile -t rcgcba-api:check .
 ```
 
+**Push falhando com `image ... was found but does not provide any platform`**
+**[verificado em 2026-09-30, Docker Desktop 29.6.1]**. O build passa e as camadas
+sobem, mas o manifesto não: o armazenamento containerd do Docker Desktop monta um
+índice com atestado que o `docker push` não consegue enviar. O script para no
+`push de API` e o web/worker nem são enviados. Contorno, imagem por imagem:
+
+```powershell
+.\publish.ps1 -Target web -BuildOnly          # builda sem enviar (idem api/worker)
+docker push --platform linux/amd64 bjsoftware/rcgcba-web:latest
+```
+
+`--platform` envia o manifesto de plataforma única (sem o atestado de proveniência,
+que a produção não usa). Confira o `latest: digest: ...` de cada uma antes do
+redeploy.
+
 O estágio de build roda `next build` / `nest build` (e compila
 `@plataforma/contracts` antes), então um erro de tipo derruba o `docker build`
 com o mesmo log. Não existe toolchain Node utilizável no Windows fora dos
