@@ -33,6 +33,9 @@ describe('empresa criada pelo administrador do grupo', () => {
       perfil: { findFirst: jest.fn().mockResolvedValue({ id: 'admin' }) },
       $transaction: jest.fn((fn) => fn(tx)),
     };
+    // A checagem de CNPJ roda no modo sistema (unicidade na base inteira):
+    // mesmo cliente mockado, sem transação de verdade.
+    Object.assign(prisma, { withSistema: jest.fn((fn) => fn(prisma)) });
     const service = new EmpresasService(prisma as never);
     const user = { id: 'u', empresaAtivaId: 'origem', isAdmin: true };
     const input = {

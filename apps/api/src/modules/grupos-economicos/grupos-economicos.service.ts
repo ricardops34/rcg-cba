@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
-import { PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
+import { liberarModoSistema, PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import type { GrupoEconomicoInput, GrupoUsuarioInput, GrupoUsuario } from '@plataforma/contracts';
 import { garantirVagaDeUsuario } from '../../common/empresa/limite-usuarios';
@@ -86,6 +86,12 @@ export class GruposEconomicosService {
     }
     // Serializa alterações de composição; uma empresa não pode pertencer a dois grupos.
     return this.prisma.$transaction(async (tx) => {
+      // Modo sistema: recompor o grupo mexe em mais de um grupo (a empresa sai
+      // de um e entra em outro, a excluída ganha grupo próprio, o de origem
+      // vazio é desativado), e a RLS por grupo só enxergaria o da empresa
+      // ativa. Quem pode fazer o quê já foi conferido acima: grupo() e
+      // empresasAdministradas().
+      await liberarModoSistema(tx);
       if (id) await tx.$queryRaw`SELECT id FROM grupos_economicos WHERE id = ${id} FOR UPDATE`;
       if (id && !user.administradorPlataforma && input.empresaIds.some((empresaId) => !atuais.has(empresaId))) {
         await garantirVagaDeEmpresa(tx, id, input.empresaIds.length);
@@ -183,7 +189,8 @@ export class GruposEconomicosService {
       throw new NotFoundException('Usuário não encontrado no grupo');
     }
     if (input.novo) {
-      if (await this.prisma.usuario.findUnique({ where: { email: input.novo.email }, select: { id: true } })) {
+      // Modo sistema: o e-mail é único na base inteira, não só no grupo.
+      if (await this.prisma.withSistema((tx) => tx.usuario.findUnique({ where: { email: input.novo!.email }, select: { id: true } }))) {
         throw new ConflictException('E-mail já cadastrado. Selecione o usuário existente do grupo; contas externas precisam de vinculação autorizada.');
       }
       for (const v of input.vinculos) await this.senhas.validarSenhaDaEmpresa(v.empresaId, input.novo.senha);

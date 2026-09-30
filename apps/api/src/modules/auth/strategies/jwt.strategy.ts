@@ -39,6 +39,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (contexto) {
       contexto.empresaId = payload.empresaAtivaId;
       contexto.plataforma = payload.administradorPlataforma === true;
+      contexto.usuarioId = payload.sub;
     }
     return {
       id: payload.sub,

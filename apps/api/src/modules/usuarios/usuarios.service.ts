@@ -217,9 +217,11 @@ export class UsuariosService {
   ) {
     await this.garantirPodeAtribuirPerfil(input.perfilId, null, atorEhAdminPlataforma, empresaId);
 
-    const existente = await this.prisma.usuario.findUnique({
-      where: { email: input.email },
-    });
+    // Modo sistema: o e-mail é único na base inteira, e a RLS de usuarios só
+    // mostraria o grupo de quem cadastra.
+    const existente = await this.prisma.withSistema((tx) =>
+      tx.usuario.findUnique({ where: { email: input.email }, select: { id: true } }),
+    );
     if (existente) throw new ConflictException('E-mail já cadastrado');
 
     await this.politicaSenhaService.validarSenhaDaEmpresa(

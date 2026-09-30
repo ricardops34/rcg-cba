@@ -10,15 +10,35 @@ import { contextoBanco, type ContextoBanco } from './contexto-banco';
 
 type TenantTx = Prisma.TransactionClient;
 
-/** O `set_config` que leva o contexto da requisição à transação. */
+/**
+ * O `set_config` que leva o contexto da requisição à transação.
+ *
+ * Só há o que informar em requisição de usuário logado (o JwtStrategy preenche
+ * o contexto). Sem contexto — jobs, webhooks, integração por chave de API,
+ * login, portal — nada é setado e vale o padrão do papel `plataforma_app`,
+ * `app.plataforma = 'on'` (migration 20260930240000_rls_grupo): as tabelas com
+ * RLS por grupo (usuarios, empresas, grupos_economicos, perfis) ficam como
+ * eram antes de ter RLS. As de negócio seguem na RLS por empresa, que não olha
+ * esse modo. Quem está logado e não administra a plataforma tem o modo
+ * desligado aqui, e o banco o prende ao grupo da empresa ativa.
+ */
 function informarContexto(
   cliente: { $executeRaw: PrismaClient['$executeRaw'] },
   contexto: ContextoBanco | undefined,
 ) {
-  if (!contexto?.empresaId && !contexto?.plataforma) return null;
+  if (!contexto?.empresaId) return null;
   return cliente.$executeRaw`SELECT
-    set_config('app.current_empresa_id', ${contexto.empresaId ?? ''}, true),
-    set_config('app.plataforma', ${contexto.plataforma ? 'on' : ''}, true)`;
+    set_config('app.current_empresa_id', ${contexto.empresaId}, true),
+    set_config('app.plataforma', ${contexto.plataforma ? 'on' : ''}, true),
+    set_config('app.usuario_logado', ${contexto.usuarioId ?? ''}, true)`;
+}
+
+/**
+ * Liga o "modo sistema" na transação em curso — ver `PrismaService.withSistema`
+ * para quando cabe. Para quem já está numa transação (ex.: recompor um grupo).
+ */
+export function liberarModoSistema(tx: { $executeRaw: PrismaClient['$executeRaw'] }) {
+  return tx.$executeRaw`SELECT set_config('app.plataforma', 'on', true)`;
 }
 
 @Injectable()
@@ -117,6 +137,24 @@ export class PrismaService
       await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${empresaId}, true)`;
       return fn(tx);
     }, options);
+  }
+
+  /**
+   * Transação no "modo sistema" (`app.plataforma = 'on'`): as tabelas com RLS
+   * por grupo (usuarios, empresas, grupos_economicos, perfis) ficam visíveis
+   * por inteiro, mesmo numa requisição de usuário logado.
+   *
+   * **Só** para o que é global por natureza ou já foi autorizado em código:
+   * conferir se um e-mail, CNPJ ou alias já existe na base inteira (a
+   * unicidade é global, e sem isto a checagem não veria o outro grupo e o
+   * insert estouraria na constraint), ou recompor um grupo econômico depois de
+   * `GruposEconomicosService` conferir quem pode. Cada uso diz o porquê.
+   */
+  async withSistema<T>(fn: (tx: TenantTx) => Promise<T>): Promise<T> {
+    return this.$transaction(async (tx) => {
+      await liberarModoSistema(tx);
+      return fn(tx);
+    });
   }
 
   /**

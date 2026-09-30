@@ -306,9 +306,11 @@ export class VendedoresService {
           );
         }
 
-        const existente = await tx.usuario.findUnique({
-          where: { email: vendedor.email },
-        });
+        // Modo sistema: o e-mail é único na base inteira, não só no grupo.
+        const email = vendedor.email;
+        const existente = await this.prisma.withSistema((s) =>
+          s.usuario.findUnique({ where: { email }, select: { id: true } }),
+        );
         if (existente) {
           throw new ConflictException(
             'Já existe um usuário cadastrado com este e-mail',

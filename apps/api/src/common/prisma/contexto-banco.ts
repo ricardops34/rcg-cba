@@ -21,6 +21,14 @@ export interface ContextoBanco {
    * (ex.: alterar perfil da plataforma).
    */
   plataforma?: boolean;
+  /**
+   * `app.usuario_logado` — quem fez a requisição. As policies de `usuarios` e
+   * `empresas` o usam para o próprio usuário se enxergar e às empresas a que
+   * tem acesso. Separado de `app.current_usuario_id` (o de `withUsuario`) de
+   * propósito: aquele liga a policy "self" de `usuario_empresas`, que somaria
+   * os vínculos do usuário em outras empresas a toda consulta de tenant.
+   */
+  usuarioId?: string;
 }
 
 const armazenamento = new AsyncLocalStorage<ContextoBanco>();

@@ -20,6 +20,12 @@ Dois papéis, e trocá-los quebra de formas silenciosas:
 Toda tabela de negócio com `empresaId` tem RLS e precisa da policy criada na mesma
 migration — ver `apps/api/prisma/migrations/README.md`.
 
+`usuarios`, `empresas`, `grupos_economicos` e `perfis` têm RLS **por grupo
+econômico**: requisição de usuário logado vê só o grupo dele; o que roda sem
+usuário logado usa o "modo sistema", padrão do papel `plataforma_app` **por base**
+(base restaurada de dump perde — ver o runbook). `PrismaService.withSistema` só
+para unicidade global (e-mail, CNPJ, alias) ou operação já autorizada em código.
+
 ## Ferramentas de IA
 
 **Leia [`docs/ferramentas/README.md`](docs/ferramentas/README.md) antes de criar ou

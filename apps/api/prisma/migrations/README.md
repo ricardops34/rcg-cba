@@ -59,6 +59,30 @@ foi informado quando ela abriu.
   continuar sendo "os dados deste usuário/credencial".
 - `set_config` explícito dentro da transação prevalece (vem depois).
 
+## RLS por grupo econômico: quem é restringido e o "modo sistema"
+
+`usuarios`, `empresas`, `grupos_economicos`, `perfis` e `perfil_permissoes` têm
+RLS **por grupo econômico** (migrations `20260930210000_rls_perfis` e
+`20260930240000_rls_grupo`), diferente da RLS por empresa das tabelas de negócio:
+
+- **Requisição de usuário logado** fica presa ao grupo da empresa ativa (mais o
+  próprio cadastro e as empresas a que ele tem acesso). O `PrismaService` informa
+  empresa, usuário (`app.usuario_logado`) e desliga o modo sistema.
+- **O resto — login, refresh, jobs, webhooks, integração por chave de API,
+  portal — roda no "modo sistema"**: `app.plataforma = 'on'` é o **padrão do
+  papel** `plataforma_app` naquela base (`ALTER ROLE ... IN DATABASE`), e essas
+  tabelas ficam como eram antes da RLS. Nada que roda sem usuário logado quebra
+  em silêncio. As tabelas de negócio seguem na RLS por empresa, que ignora o
+  modo. **Base restaurada de dump perde essa configuração** — ver o runbook,
+  "Base de dev a partir da cópia da produção".
+- **`PrismaService.withSistema` / `liberarModoSistema`** ligam o modo dentro de
+  uma requisição logada, **só** para o que é global por natureza (e-mail, CNPJ
+  e alias únicos na base inteira) ou já autorizado em código (recompor grupo
+  econômico). Cada uso diz o porquê — não use para "fazer funcionar".
+- As policies usam funções `SECURITY DEFINER` (`app_grupo_atual`,
+  `app_empresas_do_usuario`, `app_usuarios_da_empresa_atual`) para ler
+  `empresas`/`usuario_empresas` sem cair na própria RLS.
+
 ## RLS por grupo econômico: `perfis` e `perfil_permissoes`
 
 `perfis` é lida no login, antes de haver empresa ativa, por isso a leitura dos
@@ -193,17 +217,18 @@ empresas).
 
 Sem RLS por serem referência global (sem coluna `empresaId`): `paises`,
 `estados`, `municipios`, `ceps`, `cnaes` (além das tabelas de sistema
-`modulos`/`menus`/`rotinas`, de `politica_senha`/`senha_historico` — login e
-senha são globais — e de `perfis`, que é lida no login, antes de haver
-empresa ativa). **`perfis` tem dono, mas o corte é código, não RLS**
-(migration `20260930200000_perfil_por_grupo`): `grupoEconomicoId` nulo é perfil
-da plataforma (os de sistema e os modelos, que só o administrador da plataforma
-altera); preenchido é perfil do grupo econômico, que o administrador de uma
-empresa do grupo altera. O corte está em `PerfisService` (listar, ler e
-alterar filtram pelo grupo da empresa ativa) e em
-`common/perfil/perfil-do-grupo.ts` (atribuir perfil a vínculo, comunicado ou
-ferramenta do agente; empresa que muda de grupo leva os perfis). Consulta nova a
-`perfis` precisa manter esse filtro — aqui o Postgres não está segurando. O nome
+`modulos`/`menus`/`rotinas` e de `politica_senha`/`senha_historico` — login e
+senha são globais).
+
+Com RLS **por grupo econômico** (ver "RLS por grupo econômico" acima):
+`usuarios`, `empresas`, `grupos_economicos`, `perfis` e `perfil_permissoes`.
+`perfis` tem dono (migration `20260930200000_perfil_por_grupo`):
+`grupoEconomicoId` nulo é perfil da plataforma (os de sistema e os modelos, que
+só o administrador da plataforma altera); preenchido é perfil do grupo
+econômico, que o administrador de uma empresa do grupo altera. O corte está no
+banco e também em `PerfisService` e em `common/perfil/perfil-do-grupo.ts`
+(atribuir perfil a usuário, comunicado ou ferramenta do agente; empresa que
+muda de grupo leva os perfis). O nome
 é único por dono: `(grupoEconomicoId, nome)` e, para os da plataforma, o índice
 parcial `perfis_nome_plataforma_key`, que o Prisma não representa (aparece no
 `migrate diff` como esperado). Busca de perfil de sistema por nome (ex.

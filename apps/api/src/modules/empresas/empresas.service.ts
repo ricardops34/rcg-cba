@@ -195,7 +195,8 @@ export class EmpresasService {
     const ator = await this.prisma.usuario.findUnique({ where: { id: user.id }, select: { grupoEconomicoId: true } });
     if (!ator?.grupoEconomicoId) throw new ForbiddenException('Sua empresa precisa fazer parte de um grupo econômico para criar outra empresa. O grupo é cadastrado pela administração da plataforma.');
     validarDocumentoEmpresa(input.tipoPessoa, input.cnpj);
-    if (await this.prisma.empresa.findUnique({ where: { cnpj: input.cnpj } })) throw new ConflictException('CNPJ já cadastrado');
+    // Modo sistema: o CNPJ é único na base inteira, não só no grupo.
+    if (await this.prisma.withSistema((tx) => tx.empresa.findUnique({ where: { cnpj: input.cnpj }, select: { id: true } }))) throw new ConflictException('CNPJ já cadastrado');
     if (input.alias) await this.ensureAliasDisponivel(input.alias);
     return this.prisma.$transaction(async (tx) => {
       const assinatura = await garantirVagaDeEmpresa(tx, ator.grupoEconomicoId!);
@@ -235,14 +236,17 @@ export class EmpresasService {
 
   /** Garante que o alias não está em uso por outra empresa. */
   private async ensureAliasDisponivel(alias: string, ignorarId?: string) {
-    const emUso = await this.prisma.empresa.findFirst({
-      where: {
-        alias,
-        deletedAt: null,
-        ...(ignorarId ? { NOT: { id: ignorarId } } : {}),
-      },
-      select: { id: true },
-    });
+    // Modo sistema: o alias é único na base inteira (é a URL de login).
+    const emUso = await this.prisma.withSistema((tx) =>
+      tx.empresa.findFirst({
+        where: {
+          alias,
+          deletedAt: null,
+          ...(ignorarId ? { NOT: { id: ignorarId } } : {}),
+        },
+        select: { id: true },
+      }),
+    );
     if (emUso) throw new ConflictException('Alias já em uso por outra empresa');
   }
 

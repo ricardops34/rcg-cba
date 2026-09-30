@@ -134,6 +134,25 @@ ALTER DEFAULT PRIVILEGES FOR ROLE plataforma IN SCHEMA public
 SQL
 ```
 
+**O dump também vem sem o "modo sistema" do `plataforma_app`** (a partir da
+migration `20260930240000_rls_grupo`). É uma configuração do papel **por base**
+(`ALTER ROLE ... IN DATABASE`), e base nova não a herda de dump nem de
+`TEMPLATE`. Sem ela, tudo o que roda sem usuário logado — **login**, refresh,
+jobs, webhooks, integração por chave de API — deixa de enxergar `usuarios`,
+`empresas` e `grupos_economicos`, sem erro: o login responde "credenciais
+inválidas" para todo mundo. Se a migration já estava aplicada no dump (o
+`migrate deploy` não a reaplica), rode, e reinicie a API:
+
+```bash
+docker exec plataforma-comercial-dev-postgres-1 psql -U plataforma -d plataforma_comercial \
+  -c "ALTER ROLE plataforma_app IN DATABASE plataforma_comercial SET app.plataforma = 'on'"
+```
+
+Conferir: `psql -U plataforma_app ... -c "SHOW app.plataforma"` numa conexão nova
+deve dar `on`. **[verificado em dev, 2026-09-30]** — nesta data a cópia da
+produção ainda não tinha a migration, e o `migrate deploy` configurou sozinho. O
+mesmo vale para restaurar a produção a partir de backup.
+
 Depois, `migrate deploy` com a role dona, como em "Criar migration em dev". Em
 seguida, `prisma generate` **dentro do container**: gerar no Windows não atualiza o
 `node_modules` do container, e a API deixa de compilar. Por fim, o restart duplo
