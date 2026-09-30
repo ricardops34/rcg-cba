@@ -87,6 +87,13 @@ export class HorarioTrabalhoService {
    */
   private readonly feriadoCache = new Map<string, { descricao: string | null; expiraEm: number }>();
 
+  /** Descarta o feriado em cache da empresa — chamado pelo cadastro de feriados. */
+  invalidarFeriados(empresaId: string) {
+    for (const chave of this.feriadoCache.keys()) {
+      if (chave.startsWith(`${empresaId}:`)) this.feriadoCache.delete(chave);
+    }
+  }
+
   private async feriadoDeHoje(empresaId: string, agora: Date): Promise<string | null> {
     const dia = new Intl.DateTimeFormat('en-CA', { timeZone: HORARIO_TIMEZONE }).format(agora);
     const chave = `${empresaId}:${dia}`;

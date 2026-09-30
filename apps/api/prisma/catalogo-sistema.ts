@@ -159,6 +159,16 @@ export const MENUS: DefinicaoMenu[] = [
     moduloId: MODULO.administracao,
   },
   {
+    // Ao lado de Acessos: quem usa os feriados é a trava de horário de
+    // trabalho — no feriado, quem tem "restringir horário" não entra.
+    id: 'seed-menu-feriados',
+    nome: 'Feriados',
+    rota: '/admin/feriados',
+    icone: 'calendar-off',
+    codigo: 'feriados',
+    moduloId: MODULO.administracao,
+  },
+  {
     id: 'seed-menu-dashboard-comercial',
     nome: 'Dashboard',
     rota: '/comercial/dashboard',

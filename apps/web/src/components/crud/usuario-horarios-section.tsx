@@ -139,7 +139,7 @@ export function UsuarioHorariosSection({ usuarioId }: { usuarioId: string }) {
 
       <FieldDescription className="pt-2">
         {restringir
-          ? "O usuário só entra (e permanece) no sistema dentro das faixas marcadas, no horário de Mato Grosso do Sul. Dia desmarcado é dia sem acesso."
+          ? "O usuário só entra (e permanece) no sistema dentro das faixas marcadas, no horário de Mato Grosso do Sul. Dia desmarcado é dia sem acesso, assim como os feriados da empresa (Administração → Feriados)."
           : "Sem restrição: o usuário acessa a qualquer hora. Ligue a chave para limitar ao expediente."}
       </FieldDescription>
 

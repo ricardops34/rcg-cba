@@ -35,6 +35,7 @@ export * from "./fornecedor";
 export * from "./nota-entrada";
 export * from "./titulo-receber";
 export * from "./conta-bancaria";
+export * from "./feriado";
 export * from "./objetivo";
 export * from "./objetivo-dashboard";
 export * from "./dashboard-gerencial";
