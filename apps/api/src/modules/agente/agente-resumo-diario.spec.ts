@@ -21,6 +21,10 @@ describe('Resumo diário automático', () => {
     const tx = {
       agenteResumoExibido: recibo,
       vendedor: vendedoresTx,
+      // O escopo da carteira consulta o perfil do usuário (carteiraCompleta).
+      usuarioEmpresa: {
+        findFirst: jest.fn().mockResolvedValue({ usuario: { perfil: { carteiraCompleta: false } } }),
+      },
       $queryRaw: jest.fn().mockResolvedValue([{ id: 's1' }, { id: 'v1' }]),
     };
     const prisma = {

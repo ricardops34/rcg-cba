@@ -149,13 +149,23 @@ export class ConsultasService {
    * NENHUM dos pedidos for permitido, o resultado é vazio, não "todos": cair
    * no sem-filtro aqui mostraria a carteira inteira a quem pediu justamente a
    * de outra pessoa (mesma regra de combinarFiltroVendedor).
+   *
+   * Sem filtro escolhido, quem tem carteira restrita fica preso ao próprio
+   * escopo **também na coluna da base**. Com a base "vendedor da nota", o
+   * recorte por cliente (`condicaoEscopoClientes`) sozinho deixava aparecer a
+   * venda que outro vendedor fez a um cliente da carteira — e a linha desse
+   * outro vendedor. Regra de 30/09/2026: o vendedor vê só os próprios dados;
+   * supervisor e gerente, os do time.
    */
   private condicaoFiltroVendedor(
     coluna: Prisma.Sql,
     escopo: string[] | null,
     vendedorIds?: string[],
   ): Prisma.Sql[] {
-    if (!vendedorIds || vendedorIds.length === 0) return [];
+    if (!vendedorIds || vendedorIds.length === 0) {
+      if (escopo === null) return [];
+      return [escopo.length > 0 ? Prisma.sql`${coluna} IN (${Prisma.join(escopo)})` : Prisma.sql`false`];
+    }
     const permitidos =
       escopo === null ? vendedorIds : vendedorIds.filter((id) => escopo.includes(id));
     if (permitidos.length === 0) return [Prisma.sql`false`];
