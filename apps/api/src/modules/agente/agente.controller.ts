@@ -35,6 +35,7 @@ import { AgenteConfigService } from './agente-config.service';
 import { AgenteChatService } from './agente-chat.service';
 import { AgenteFerramentasService } from './agente-ferramentas.service';
 import { AgenteAnexosService } from './agente-anexos.service';
+import { AgenteResumoDiarioService } from './agente-resumo-diario.service';
 import {
   AgenteConfigUpdateDto,
   AgenteEnvioDto,
@@ -81,6 +82,7 @@ export class AgenteController {
     private readonly chat: AgenteChatService,
     private readonly ferramentas: AgenteFerramentasService,
     private readonly anexos: AgenteAnexosService,
+    private readonly resumoDiario: AgenteResumoDiarioService,
   ) {}
 
   // ---------------- configuração ----------------
@@ -106,6 +108,26 @@ export class AgenteController {
   @Get('apresentacao')
   apresentacao(@CurrentUser() user: AuthenticatedUser) {
     return this.config.apresentacao(user.empresaAtivaId);
+  }
+
+  @Get('resumo-diario')
+  @RequirePermission('agente', 'visualizar')
+  @ApiOperation({
+    summary:
+      'Resumo do primeiro acesso do dia, dentro das permissões do usuário',
+  })
+  resumo(@CurrentUser() user: AuthenticatedUser) {
+    return this.resumoDiario.consultar(user);
+  }
+
+  @Post('resumo-diario/:data/exibido')
+  @RequirePermission('agente', 'visualizar')
+  @ApiOperation({ summary: 'Confirma que o resumo diário foi apresentado' })
+  confirmarResumo(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('data') data: string,
+  ) {
+    return this.resumoDiario.confirmar(user, data);
   }
 
   @ApiOperation({
