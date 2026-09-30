@@ -18,6 +18,7 @@ import { WhatsappConversasService } from './whatsapp-conversas.service';
 import { WhatsappSessaoService } from './whatsapp-sessao.service';
 import { WhatsappProviderService } from './providers/whatsapp-provider.service';
 import type { ContextoSessao } from './providers/whatsapp-provider';
+import { segredosIguais } from '../../common/cripto/segredos-iguais';
 
 /**
  * Webhook da WhatsApp Cloud API (Meta).
@@ -76,8 +77,7 @@ export class WhatsappCloudApiController {
     if (
       modo === 'subscribe' &&
       challenge &&
-      tokenEsperado &&
-      tokenRecebido === tokenEsperado
+      segredosIguais(tokenEsperado, tokenRecebido)
     ) {
       // Texto puro, não JSON — a Meta recusa o handshake se o corpo vier
       // envolto em aspas ou objeto.

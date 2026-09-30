@@ -10,6 +10,7 @@ import { ApiExcludeController } from '@nestjs/swagger';
 import { WhatsappConversasService } from './whatsapp-conversas.service';
 import { WhatsappSessaoService } from './whatsapp-sessao.service';
 import { WhatsappTriagemService } from './triagem/whatsapp-triagem.service';
+import { segredosIguais } from '../../common/cripto/segredos-iguais';
 
 /**
  * Rota interna, falada **só pelo worker** — não por navegador.
@@ -32,7 +33,7 @@ export class WhatsappInternoController {
 
   private conferirToken(authorization?: string) {
     const esperado = process.env.WHATSAPP_WORKER_TOKEN;
-    if (!esperado || authorization !== `Bearer ${esperado}`) {
+    if (!esperado || !segredosIguais(`Bearer ${esperado}`, authorization)) {
       throw new UnauthorizedException();
     }
   }
