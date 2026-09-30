@@ -98,6 +98,66 @@ um cliente é consultado.
 
 ---
 
+## Base de dev a partir da cópia da produção **[verificado em dev, 2026-09-30]**
+
+O Postgres de dev guarda um dump da produção como `plataforma_rcg_backup`. Para a
+API de dev trabalhar com dados reais, a base `plataforma_comercial` (o nome que a
+`DATABASE_URL` do container usa) é recriada como cópia dela. Assim não é preciso
+mexer em `.env` nem em container. A base anterior é **renomeada, não apagada**.
+
+```bash
+docker stop plataforma-comercial-dev-api-1 plataforma-comercial-dev-web-1   # CREATE ... TEMPLATE exige zero conexões
+docker exec plataforma-comercial-dev-postgres-1 psql -U plataforma -d postgres -v ON_ERROR_STOP=1 \
+  -c 'ALTER DATABASE plataforma_comercial RENAME TO plataforma_comercial_antiga_AAAAMMDD' \
+  -c 'CREATE DATABASE plataforma_comercial TEMPLATE plataforma_rcg_backup OWNER plataforma' \
+  -c 'GRANT CONNECT ON DATABASE plataforma_comercial TO plataforma_app'
+```
+
+**O dump vem sem os GRANTs do `plataforma_app`.** Em 2026-09-30 ele tinha acesso a
+0 de 137 tabelas, e a API responderia `permission denied` em tudo. Conceda como na
+baseline, **menos nas `wa_*`**: na produção o armazenamento do worker do WhatsApp
+mora no `public`, e a API não tem nada que ler ali.
+
+```bash
+docker exec -i plataforma-comercial-dev-postgres-1 psql -U plataforma -d plataforma_comercial -v ON_ERROR_STOP=1 <<'SQL'
+DO $$
+DECLARE t record;
+BEGIN
+  FOR t IN SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+           WHERE n.nspname = 'public' AND c.relkind IN ('r','v','m') AND c.relname NOT LIKE 'wa\_%'
+  LOOP
+    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO plataforma_app', t.relname);
+  END LOOP;
+END $$;
+ALTER DEFAULT PRIVILEGES FOR ROLE plataforma IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO plataforma_app;
+SQL
+```
+
+Depois, `migrate deploy` com a role dona, como em "Criar migration em dev". Em
+seguida, `prisma generate` **dentro do container**: gerar no Windows não atualiza o
+`node_modules` do container, e a API deixa de compilar. Por fim, o restart duplo
+de "rota nova da API não aparece".
+
+**Migration já aplicada à mão.** A cópia recebeu alterações manuais durante a
+conferência do Dashboard, e o deploy falhou com `column ... already exists`
+(P3018). O Postgres desfaz a migration inteira quando ela falha. Confira no banco
+que o efeito dela já está lá, colunas **e** dados, e só então marque:
+
+```bash
+docker exec -e DATABASE_URL="postgresql://plataforma:plataforma@postgres:5432/plataforma_comercial?schema=public" \
+  plataforma-comercial-dev-api-1 sh -c "cd /app/apps/api && pnpm exec prisma migrate resolve --applied <migration>"
+```
+
+Diferenças conhecidas entre a cópia e o `schema.prisma` (`migrate diff`):
+- as `wa_*` e 3 índices mais uma FK criados por SQL próprio nas migrations do
+  WhatsApp e do pgvector são **esperados**, porque o Prisma não os representa;
+- `whatsapp_sessoes_vendedorId_fkey` é `ON DELETE RESTRICT` na produção, e o
+  schema pede `SET NULL`. É uma divergência real da produção, **ainda não
+  tratada**.
+
+---
+
 ## Base de demonstração **[escrito em 2026-09-19, não rodado em ambiente]**
 
 Os botões ficam **no detalhe da empresa**, em Administração > Empresas

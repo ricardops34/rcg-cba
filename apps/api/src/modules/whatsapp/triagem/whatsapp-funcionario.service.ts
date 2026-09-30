@@ -38,7 +38,7 @@ export type Identidade =
       tipo: 'funcionario';
       vinculoId: string;
       usuarioId: string;
-      vendedorId: string;
+      vendedorId: string | null;
       nome: string;
       /** Tem gente abaixo na hierarquia — enxerga a equipe, não só a carteira. */
       superior: boolean;
@@ -63,16 +63,10 @@ export class WhatsappFuncionarioService {
   /**
    * Quem é o dono deste número, do ponto de vista da empresa.
    *
-   * Duas comparações diferentes, de propósito:
-   *
-   * - **Encontrar a pessoa** no cadastro usa os últimos 8 dígitos, como
-   *   `casarCliente` — tolerante porque o cadastro pode estar sem DDI ou sem o
-   *   9º dígito. Encontrar não autoriza nada: abre um pedido de código.
-   * - **O pareamento** usa a chave exata (DDD + 8), porque ali a tolerância
-   *   deixaria um número de outro DDD herdar a confirmação alheia.
-   *
-   * Como em `casarCliente`, **ambiguidade não adivinha**: dois vendedores com o
-   * mesmo sufixo devolvem `desconhecido`, e a conversa segue como cliente.
+   * Usa o número informado no perfil (`usuario_empresas.celular`). O sufixo
+   * reduz a consulta; a chave com DDD decide a identidade. Dois usuários com
+   * o mesmo número não são identificados. Encontrar exige confirmação antes
+   * de liberar consultas; não depende de cadastro de vendedor.
    */
   async identificar(
     tx: TenantTx,
@@ -93,26 +87,23 @@ export class WhatsappFuncionarioService {
     // consultando a carteira pelo WhatsApp com o pareamento que já tinha. Aqui
     // basta cortar o acesso ao sistema, que é o que se faz primeiro.
     const candidatos = await tx.$queryRaw<
-      { id: string; nome: string; usuarioId: string | null }[]
+      { nome: string; usuarioId: string; celular: string }[]
     >`
-      SELECT v.id, v.nome, v."usuarioId"
-      FROM vendedores v
-      JOIN usuarios u ON u.id = v."usuarioId"
-      JOIN usuario_empresas ue
-        ON ue."usuarioId" = u.id AND ue."empresaId" = v."empresaId"
-      WHERE v."empresaId" = ${empresaId}
-        AND v."deletedAt" IS NULL
-        AND v.ativo
+      SELECT u.nome, u.id AS "usuarioId", ue.celular
+      FROM usuario_empresas ue
+      JOIN usuarios u ON u.id = ue."usuarioId"
+      WHERE ue."empresaId" = ${empresaId}
+        AND ue."deletedAt" IS NULL
         AND u."deletedAt" IS NULL
         AND u.ativo
         AND ue.ativo
-        AND right(regexp_replace(coalesce(v.telefone, ''), '\D', '', 'g'), 8) = ${sufixo}
-      LIMIT 2`;
+        AND right(regexp_replace(coalesce(ue.celular, ''), '\D', '', 'g'), 8) = ${sufixo}`;
 
-    // Ambiguidade não adivinha: dois vendedores com o mesmo sufixo não
+    // Ambiguidade não adivinha: dois usuários com a mesma chave não
     // resolvem para nenhum.
-    if (candidatos.length !== 1) return { tipo: 'desconhecido' };
-    const vendedor = candidatos[0];
+    const exatos = candidatos.filter((c) => chaveTelefone(c.celular) === chave);
+    if (exatos.length !== 1) return { tipo: 'desconhecido' };
+    const vendedor = exatos[0];
     if (!vendedor.usuarioId) return { tipo: 'desconhecido' };
 
     const vinculo = await this.vinculo(
@@ -141,15 +132,30 @@ export class WhatsappFuncionarioService {
     // "Superior" aqui é quem tem gente abaixo, e não o rótulo do cargo — a
     // mesma regra de `resolverEscopoVendedores`. Gerente e supervisor são o
     // mesmo grupo por decisão do usuário: o cadastro não os distingue.
-    const abaixo = await tx.vendedor.count({
-      where: { empresaId, superiorId: vendedor.id, deletedAt: null },
+    const cadastroVendedor = await tx.vendedor.findFirst({
+      where: {
+        empresaId,
+        usuarioId: vendedor.usuarioId,
+        deletedAt: null,
+        ativo: true,
+      },
+      select: { id: true },
     });
+    const abaixo = cadastroVendedor
+      ? await tx.vendedor.count({
+          where: {
+            empresaId,
+            superiorId: cadastroVendedor.id,
+            deletedAt: null,
+          },
+        })
+      : 0;
 
     return {
       tipo: 'funcionario',
       vinculoId: vinculo.id,
       usuarioId: vendedor.usuarioId,
-      vendedorId: vendedor.id,
+      vendedorId: cadastroVendedor?.id ?? null,
       nome: vendedor.nome,
       superior: abaixo > 0,
     };

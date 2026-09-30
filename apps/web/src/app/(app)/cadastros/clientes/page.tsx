@@ -192,9 +192,16 @@ export default function ClientesPage() {
             <DropdownMenuItem onClick={() => openEdit(c)}>
               <Pencil className="size-4" /> Editar
             </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={() => onDelete(c)}>
-              <Trash2 className="size-4" /> Excluir
-            </DropdownMenuItem>
+            {/* Cliente do ERP (chave de integração ou código ERP) não se exclui aqui; a API também recusa. */}
+            {c.chave || c.codigoErp ? (
+              <DropdownMenuItem disabled title="Cliente vindo do ERP: não pode ser excluído aqui">
+                <Trash2 className="size-4" /> Excluir (cliente do ERP)
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem variant="destructive" onClick={() => onDelete(c)}>
+                <Trash2 className="size-4" /> Excluir
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       ),

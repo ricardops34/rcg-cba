@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { TermosAceitosCard } from "@/components/perfil/termos-aceitos-card";
 import { ProfilePhoto } from "@/components/perfil/profile-photo";
+import { TelaInicialCard } from "@/components/perfil/tela-inicial-card";
 
 export default function PerfilPage() {
   const { user, setUser } = useAuthStore();
@@ -82,6 +83,8 @@ export default function PerfilPage() {
           </FieldGroup>
         </CardContent>
       </Card>
+
+      <TelaInicialCard />
 
       <ChangePasswordForm />
 

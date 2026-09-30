@@ -1,5 +1,11 @@
 import { randomUUID } from 'crypto';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   Prisma,
   PrismaService,
@@ -17,6 +23,7 @@ import type {
   ClienteSemelhante,
   ProdutoSugerido,
   SugestaoCompraCalculada,
+  SugestaoCompraExecucao,
   SugestaoCompraGerarLoteBody,
   SugestaoCompraGerarResultado,
   SugestaoCompraListQuery,
@@ -31,6 +38,9 @@ import type { AuthenticatedUser } from '../../common/decorators/current-user.dec
  * Cliente: nota ativa, fora de comodato e do tipo Normal. Devolução e remessa
  * não são compra e não podem virar sinal de afinidade.
  */
+/** Teto do lote (timeout da transação em `gerarLote`). */
+const TEMPO_MAXIMO_LOTE_MS = 15 * 60_000;
+
 const NOTA_DE_VENDA = Prisma.sql`n."deletedAt" IS NULL AND n."ativo" = true AND n."comodato" = false AND n."tipo" = 'N'`;
 
 /**
@@ -118,6 +128,8 @@ interface LinhaListagem {
  */
 @Injectable()
 export class SugestaoCompraService {
+  private readonly logger = new Logger(SugestaoCompraService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly parametros: ParametrosService,
@@ -646,8 +658,117 @@ export class SugestaoCompraService {
       // Lote sobre (até) a base inteira: uma varredura pesada por cliente
       // elegível, então o timeout da tela (30s, para um cliente só) não chega
       // perto do necessário aqui.
-      { timeout: 15 * 60_000 },
+      { timeout: TEMPO_MAXIMO_LOTE_MS },
     );
+  }
+
+  /**
+   * "Calcular" em lote em segundo plano. O lote pode levar minutos (uma
+   * varredura por cliente), então o pedido só registra a execução e responde;
+   * o cálculo corre depois, e a tela acompanha por `ultimaExecucao`.
+   *
+   * Uma execução em andamento por empresa — quem garante é o índice parcial
+   * único da migration, não esta checagem. Execução que ficou "rodando" além
+   * do tempo máximo do lote (a API reiniciou no meio) é dada como falha, senão
+   * travaria a empresa para sempre.
+   */
+  async iniciarLote(
+    empresaId: string,
+    user: AuthenticatedUser,
+    body: SugestaoCompraGerarLoteBody = {},
+  ): Promise<SugestaoCompraExecucao> {
+    const limite = new Date(Date.now() - TEMPO_MAXIMO_LOTE_MS - 5 * 60_000);
+    let execucao: { id: string };
+    try {
+      execucao = await this.prisma.withTenant(empresaId, async (tx) => {
+        await tx.sugestaoCompraExecucao.updateMany({
+          where: { empresaId, situacao: 'rodando', iniciadaEm: { lt: limite } },
+          data: { situacao: 'falhou', erro: 'Interrompido: o servidor reiniciou durante o cálculo.', concluidaEm: new Date() },
+        });
+        return tx.sugestaoCompraExecucao.create({
+          data: { empresaId, usuarioId: user.id, parametros: body },
+          select: { id: true },
+        });
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException('Já existe um cálculo em andamento nesta empresa. Aguarde ele terminar.');
+      }
+      throw err;
+    }
+    // Sem `await`: é isto que tira o cálculo da requisição.
+    void this.executarLote(execucao.id, empresaId, user, body);
+    return (await this.ultimaExecucao(empresaId))!;
+  }
+
+  private async executarLote(
+    execucaoId: string,
+    empresaId: string,
+    user: AuthenticatedUser,
+    body: SugestaoCompraGerarLoteBody,
+  ) {
+    let titulo: string;
+    let descricao: string;
+    try {
+      const { clientesProcessados, clientesComSugestao, sugestoesGravadas } = await this.gerarLote(empresaId, user, body);
+      const resultado = { clientesProcessados, clientesComSugestao, sugestoesGravadas };
+      await this.prisma.withTenant(empresaId, (tx) =>
+        tx.sugestaoCompraExecucao.update({
+          where: { id: execucaoId },
+          data: { situacao: 'concluida', resultado, concluidaEm: new Date() },
+        }),
+      );
+      titulo = 'Sugestão de compra calculada';
+      descricao = `${resultado.clientesComSugestao} de ${resultado.clientesProcessados} cliente(s) ganharam sugestão.`;
+    } catch (err) {
+      this.logger.error(`Cálculo em lote da sugestão de compra falhou (execução ${execucaoId})`, err as Error);
+      const erro = err instanceof Error ? err.message : String(err);
+      await this.prisma
+        .withTenant(empresaId, (tx) =>
+          tx.sugestaoCompraExecucao.update({
+            where: { id: execucaoId },
+            data: { situacao: 'falhou', erro: erro.slice(0, 1000), concluidaEm: new Date() },
+          }),
+        )
+        .catch((e) => this.logger.error(`Não foi possível registrar a falha da execução ${execucaoId}`, e as Error));
+      titulo = 'O cálculo da sugestão de compra falhou';
+      descricao = 'Abra a Sugestão de Compra para ver o motivo e tentar de novo.';
+    }
+    // Aviso no sino de quem pediu; sem ele, a pessoa precisaria ficar na tela.
+    await this.prisma
+      .withTenant(empresaId, (tx) =>
+        tx.notificacao.create({
+          data: {
+            empresaId,
+            usuarioId: user.id,
+            tipo: 'sugestao_compra_calculada',
+            titulo,
+            descricao,
+            rota: '/consultas/sugestao-compra',
+            referenciaId: execucaoId,
+            ocorridaEm: new Date(),
+          },
+        }),
+      )
+      .catch((e) => this.logger.error('Não foi possível notificar o fim do cálculo', e as Error));
+  }
+
+  /** A execução mais recente da empresa, para a tela acompanhar. */
+  async ultimaExecucao(empresaId: string): Promise<SugestaoCompraExecucao | null> {
+    const e = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.sugestaoCompraExecucao.findFirst({ where: { empresaId }, orderBy: { iniciadaEm: 'desc' } }),
+    );
+    if (!e) return null;
+    const usuario = await this.prisma.usuario.findUnique({ where: { id: e.usuarioId }, select: { nome: true } });
+    return {
+      id: e.id,
+      situacao: e.situacao,
+      iniciadaEm: e.iniciadaEm.toISOString(),
+      concluidaEm: e.concluidaEm?.toISOString() ?? null,
+      usuarioNome: usuario?.nome ?? null,
+      resultado: (e.resultado as SugestaoCompraExecucao['resultado']) ?? null,
+      erro: e.erro,
+    };
   }
 
   /**

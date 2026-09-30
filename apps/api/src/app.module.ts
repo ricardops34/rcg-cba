@@ -56,9 +56,11 @@ import { ToursModule } from './modules/tours/tours.module';
 import { PlanosModule } from './modules/planos/planos.module';
 import { AssinaturasModule } from './modules/assinaturas/assinaturas.module';
 import { SuporteAcessoModule } from './modules/suporte-acesso/suporte-acesso.module';
+import { GruposEconomicosModule } from './modules/grupos-economicos/grupos-economicos.module';
 
 @Module({
   imports: [
+    GruposEconomicosModule,
     PlanosModule,
     AssinaturasModule,
     SuporteAcessoModule,

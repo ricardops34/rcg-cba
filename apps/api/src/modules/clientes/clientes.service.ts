@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -200,16 +201,12 @@ export class ClientesService {
       .filter((c) => !c.cnaeId)
       .map((c) => c.codigo);
 
+    // Tudo vai para análise e aprovação, inclusive o ramo de quem ainda não
+    // tem CNAE nenhum (decisão de 30/09/2026 — antes esse caso era gravado
+    // direto). Nada é gravado aqui.
     const cnaesAplicados: string[] = [];
-    if (atuais.length === 0) {
-      for (const sugerido of sugeridos) {
-        await this.clienteCnaes.create(empresaId, user, clienteId, {
-          cnaeId: sugerido.cnaeId as string,
-          principal: sugerido.principal,
-        });
-        cnaesAplicados.push(sugerido.codigo);
-      }
-    }
+    const principalAtual = atuais.find((c) => c.principal)?.codigo ?? null;
+    const principalReceita = sugeridos.find((c) => c.principal)?.codigo ?? null;
 
     // Só o que a Receita realmente respondeu, e só o que ainda falta.
     const doCadastro: Record<string, unknown> = {};
@@ -228,22 +225,21 @@ export class ClientesService {
     propor('telefone2', consulta.telefone2);
     propor('email', consulta.email);
 
-    const input: Record<string, unknown> =
-      atuais.length === 0
-        ? doCadastro
-        : {
-            ...doCadastro,
-            // União: a fila nunca propõe remover ramo que já está no cadastro.
-            cnaes: [
-              ...new Set([...codigosAtuais, ...sugeridos.map((c) => c.codigo)]),
-            ],
-          };
+    const input: Record<string, unknown> = {
+      ...doCadastro,
+      // União: a fila nunca propõe remover ramo que já está no cadastro.
+      cnaes: [
+        ...new Set([...codigosAtuais, ...sugeridos.map((c) => c.codigo)]),
+      ],
+      // O principal da Receita entra como proposta própria (de → para).
+      ...(principalReceita ? { cnaePrincipal: principalReceita } : {}),
+    };
 
     const registro = await this.prisma.withTenant(empresaId, (tx) =>
       this.alteracoes.registrar(tx, {
         empresaId,
         clienteId,
-        atual: { ...cliente, cnaes: codigosAtuais },
+        atual: { ...cliente, cnaes: codigosAtuais, cnaePrincipal: principalAtual },
         input,
         origem: 'enriquecimento',
         autorId: user.id,
@@ -716,6 +712,15 @@ export class ClientesService {
         },
       });
       if (!cliente) throw new NotFoundException('Cliente não encontrado');
+      // Cliente que veio do ERP ou está integrado a ele não se exclui aqui
+      // (decisão de 30/09/2026): o ERP é a origem, e a próxima carga o traria
+      // de volta — ou, pior, o orçamento/título dele perderia o cadastro. A
+      // marca da integração é a `chave` (FILIAL-COD) ou o código ERP.
+      if (cliente.chave || cliente.codigoErp) {
+        throw new ConflictException(
+          'Este cliente vem do ERP (ou está integrado a ele) e não pode ser excluído aqui. Inative-o, ou exclua no ERP.',
+        );
+      }
       return tx.cliente.update({
         where: { id },
         data: { deletedAt: new Date(), deletedBy: user.id, ativo: false },

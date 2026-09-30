@@ -73,8 +73,8 @@ export class UsuariosController {
   @ApiResponse({ status: 404, description: 'Usuário não encontrado' })
   @RequirePermission('usuarios', 'visualizar')
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.findOne(id, user.empresaAtivaId);
   }
 
   @ApiOperation({

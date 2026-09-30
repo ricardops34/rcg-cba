@@ -18,9 +18,10 @@ import { useAuthStore } from "@/stores/auth-store";
  */
 export function useAgente() {
   const podeUsar = useAuthStore((s) => s.hasPermission("agente", "visualizar"));
+  const empresaId = useAuthStore((s) => s.user?.empresaAtivaId);
 
   const { data: config } = useQuery({
-    queryKey: ["agente-apresentacao"],
+    queryKey: ["agente-apresentacao", empresaId],
     queryFn: () => apiFetch<AgenteApresentacao>("/agente/apresentacao"),
     enabled: podeUsar,
     retry: false,

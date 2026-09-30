@@ -36,8 +36,6 @@ import {
   FieldError,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
-  FieldSet,
 } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
@@ -48,6 +46,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClienteCnaeSection } from "@/components/crud/cliente-cnae-section";
 import { ClienteHistoricoSection } from "@/components/crud/cliente-historico-section";
 import { ArrowLeft, Search } from "lucide-react";
+import { ResultadoReceitaDialog, type ResultadoReceita } from "@/components/crud/cliente-receita-dialog";
 
 const LIST_ROUTE = "/cadastros/clientes";
 
@@ -66,22 +65,19 @@ const boolToSelect = (v: boolean | null | undefined) => (v == null ? "nao-inform
 const selectToBool = (v: string) => (v === "nao-informado" ? null : v === "sim");
 
 /**
- * Corpo do formulário de cliente (cartão + campos) — usado tanto na página
- * cheia (`ClienteForm`, `variant="page"`, seções empilhadas) quanto na
- * cortina lateral (`ClienteSheet`, `variant="sheet"`, seções em abas — cabe
- * melhor numa cortina mais estreita).
+ * Corpo do formulário de cliente (cartão + campos), em abas — o mesmo na
+ * página cheia (`ClienteForm`, editar e visualizar) e na cortina lateral
+ * (`ClienteSheet`).
  */
 export function ClienteFormContent({
   cliente,
   readOnly = false,
   onClose,
-  variant = "page",
 }: {
   cliente?: Cliente;
   readOnly?: boolean;
   /** Chamado ao cancelar ou depois de salvar com sucesso. */
   onClose: () => void;
-  variant?: "page" | "sheet";
 }) {
   const { create, update } = useResourceMutations<ClienteCreate, ClienteUpdate>("clientes");
 
@@ -231,7 +227,6 @@ export function ClienteFormContent({
     }
   }, [cliente, restrito, vendedorPadraoAplicado, meuVendedorId, form]);
 
-  const queryClient = useQueryClient();
 
   /**
    * Preenche o formulário com o que a Receita Federal tem sobre o CNPJ. Só
@@ -245,6 +240,7 @@ export function ClienteFormContent({
   // vinculados assim que o cadastro é criado (ver onSubmit). Sem isso o usuário
   // teria de salvar e consultar o CNPJ de novo só para trazer o ramo.
   const [cnaesRetidos, setCnaesRetidos] = useState<ConsultaCnpjResultado["cnaes"]>([]);
+  const [resultadoReceita, setResultadoReceita] = useState<ResultadoReceita | null>(null);
   const consultarCnpj = async () => {
     const cnpj = (form.getValues("cnpjCpf") ?? "").replace(/\D/g, "");
     if (cnpj.length !== 14) {
@@ -253,6 +249,15 @@ export function ClienteFormContent({
     }
     setConsultandoCnpj(true);
     try {
+      // Cliente já cadastrado: nada é gravado aqui. A API compara com a
+      // Receita e abre uma solicitação — dados, CNAE principal e secundários —
+      // para quem aprova escolher campo a campo (Alterações de clientes).
+      if (cliente) {
+        setResultadoReceita(
+          await apiFetch<ResultadoReceita>(`/clientes/${cliente.id}/atualizar-receita`, { method: "POST" }),
+        );
+        return;
+      }
       const dados = await apiFetch<ConsultaCnpjResultado>(`/clientes/consulta-cnpj/${cnpj}`);
       const preencher = (campo: keyof ClienteCreate, valor: string | null) => {
         if (valor == null || desabilitado(campo as string)) return;
@@ -270,38 +275,13 @@ export function ClienteFormContent({
       preencher("telefone2", dados.telefone2);
       preencher("email", dados.email);
 
-      // CNAEs são coleção filha: só dá para vincular em cliente já salvo.
-      if (cliente && dados.cnaes.length > 0) {
-        const vinculaveis = dados.cnaes.filter((c) => c.cnaeId);
-        for (const c of vinculaveis) {
-          try {
-            await apiFetch(`/clientes/${cliente.id}/cnaes`, {
-              method: "POST",
-              body: { cnaeId: c.cnaeId, principal: c.principal },
-            });
-          } catch {
-            // Já vinculado (409) é resultado esperado ao reconsultar — segue.
-          }
-        }
-        void queryClient.invalidateQueries({
-          queryKey: ["clientes", cliente.id, "cnaes"],
-        });
-        const semReferencia = dados.cnaes.length - vinculaveis.length;
-        toast.success(
-          `Dados da Receita preenchidos. ${vinculaveis.length} CNAE(s) vinculado(s)` +
-            (semReferencia
-              ? ` — ${semReferencia} não estão na referência local (rode o sync do IBGE).`
-              : "."),
-        );
-      } else {
-        // Cadastro novo: retém para vincular logo após a criação.
-        setCnaesRetidos(dados.cnaes.filter((c) => c.cnaeId));
-        toast.success(
-          dados.cnaes.length > 0 && !cliente
-            ? `Dados preenchidos. ${dados.cnaes.length} CNAE(s) serão vinculados ao salvar.`
-            : "Dados da Receita preenchidos. Revise antes de salvar.",
-        );
-      }
+      // Cadastro novo: retém para vincular logo após a criação.
+      setCnaesRetidos(dados.cnaes.filter((c) => c.cnaeId));
+      toast.success(
+        dados.cnaes.length > 0 && !cliente
+          ? `Dados preenchidos. ${dados.cnaes.length} CNAE(s) serão vinculados ao salvar.`
+          : "Dados da Receita preenchidos. Revise antes de salvar.",
+      );
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Erro ao consultar o CNPJ");
     } finally {
@@ -413,12 +393,12 @@ export function ClienteFormContent({
           <div className="flex gap-2">
             <Input id="cnpjCpf" {...form.register("cnpjCpf")} disabled={desabilitado("cnpjCpf")} />
             {/* Só para jurídica: a consulta é de CNPJ na base da Receita. */}
-            {tipoPessoa === "juridica" && !readOnly && (
+            {tipoPessoa === "juridica" && (!readOnly || !!cliente) && (
               <Button
                 type="button"
                 variant="outline"
                 size="icon"
-                title="Consultar CNPJ na Receita Federal"
+                title={cliente ? "Consultar CNPJ na Receita e enviar para aprovação" : "Consultar CNPJ na Receita Federal"}
                 onClick={consultarCnpj}
                 disabled={consultandoCnpj}
               >
@@ -830,73 +810,29 @@ export function ClienteFormContent({
 
   return (
     <Card>
+      <ResultadoReceitaDialog resultado={resultadoReceita} onClose={() => setResultadoReceita(null)} />
       <form id="cliente-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
         <CardContent>
-          {variant === "sheet" ? (
-            <Tabs defaultValue="identificacao">
-              <TabsList>
-                <TabsTrigger value="identificacao">Identificação</TabsTrigger>
-                <TabsTrigger value="contato">Contato</TabsTrigger>
-                <TabsTrigger value="endereco">Endereço</TabsTrigger>
-                <TabsTrigger value="comercial">Comercial</TabsTrigger>
-                {cliente && <TabsTrigger value="cnae">CNAE</TabsTrigger>}
-                {cliente && <TabsTrigger value="bloqueio">Bloqueio</TabsTrigger>}
-                {cliente && <TabsTrigger value="historico">Histórico</TabsTrigger>}
-                {cliente && <TabsTrigger value="alteracoes">Alterações</TabsTrigger>}
-              </TabsList>
-              <TabsContent value="identificacao">{camposIdentificacao}</TabsContent>
-              <TabsContent value="contato">{camposContato}</TabsContent>
-              <TabsContent value="endereco">{camposEndereco}</TabsContent>
-              <TabsContent value="comercial">{camposComercial}</TabsContent>
-              {cliente && <TabsContent value="cnae">{camposCnae}</TabsContent>}
-              {cliente && <TabsContent value="bloqueio">{camposBloqueio}</TabsContent>}
-              {cliente && <TabsContent value="historico">{camposHistorico}</TabsContent>}
-              {cliente && <TabsContent value="alteracoes">{camposAlteracoes}</TabsContent>}
-            </Tabs>
-          ) : (
-            <FieldGroup>
-              <FieldSet>
-                <FieldLegend>Identificação</FieldLegend>
-                {camposIdentificacao}
-              </FieldSet>
-              <FieldSet>
-                <FieldLegend>Contato</FieldLegend>
-                {camposContato}
-              </FieldSet>
-              <FieldSet>
-                <FieldLegend>Endereço</FieldLegend>
-                {camposEndereco}
-              </FieldSet>
-              <FieldSet>
-                <FieldLegend>Comercial</FieldLegend>
-                {camposComercial}
-              </FieldSet>
-              {cliente && (
-                <FieldSet>
-                  <FieldLegend>Ramo de atividade</FieldLegend>
-                  {camposCnae}
-                </FieldSet>
-              )}
-              {cliente && (
-                <FieldSet>
-                  <FieldLegend>Bloqueio</FieldLegend>
-                  {camposBloqueio}
-                </FieldSet>
-              )}
-              {cliente && (
-                <FieldSet>
-                  <FieldLegend>Histórico comercial</FieldLegend>
-                  {camposHistorico}
-                </FieldSet>
-              )}
-              {cliente && (
-                <FieldSet>
-                  <FieldLegend>Alterações do cadastro</FieldLegend>
-                  {camposAlteracoes}
-                </FieldSet>
-              )}
-            </FieldGroup>
-          )}
+          <Tabs defaultValue="identificacao">
+            <TabsList>
+              <TabsTrigger value="identificacao">Identificação</TabsTrigger>
+              <TabsTrigger value="contato">Contato</TabsTrigger>
+              <TabsTrigger value="endereco">Endereço</TabsTrigger>
+              <TabsTrigger value="comercial">Comercial</TabsTrigger>
+              {cliente && <TabsTrigger value="cnae">CNAE</TabsTrigger>}
+              {cliente && <TabsTrigger value="bloqueio">Bloqueio</TabsTrigger>}
+              {cliente && <TabsTrigger value="historico">Histórico</TabsTrigger>}
+              {cliente && <TabsTrigger value="alteracoes">Alterações</TabsTrigger>}
+            </TabsList>
+            <TabsContent value="identificacao">{camposIdentificacao}</TabsContent>
+            <TabsContent value="contato">{camposContato}</TabsContent>
+            <TabsContent value="endereco">{camposEndereco}</TabsContent>
+            <TabsContent value="comercial">{camposComercial}</TabsContent>
+            {cliente && <TabsContent value="cnae">{camposCnae}</TabsContent>}
+            {cliente && <TabsContent value="bloqueio">{camposBloqueio}</TabsContent>}
+            {cliente && <TabsContent value="historico">{camposHistorico}</TabsContent>}
+            {cliente && <TabsContent value="alteracoes">{camposAlteracoes}</TabsContent>}
+          </Tabs>
         </CardContent>
 
         <CardFooter className="justify-end gap-2">
@@ -981,7 +917,6 @@ export function ClienteSheet({
               cliente={cliente}
               readOnly={modo === "visualizar"}
               onClose={handleClose}
-              variant="sheet"
             />
           )}
         </div>

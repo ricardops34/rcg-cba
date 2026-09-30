@@ -145,6 +145,13 @@ export const empresaCreateSchema = z.object({
     .describe("Data de fundação; vira 'no mercado desde' na resposta da IA"),
   historia: opt(4000).describe("A história da empresa, escrita por ela"),
   segmentos: opt(300).describe("Em que a empresa atua, em uma linha"),
+  grupoEconomicoId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe(
+      "Grupo econômico em que a empresa nasce (só administrador da plataforma; o administrador de um grupo cria sempre no próprio grupo). Ausente: nasce um grupo com o nome dela",
+    ),
 });
 export type EmpresaCreate = z.infer<typeof empresaCreateSchema>;
 
@@ -155,7 +162,9 @@ export const empresaBrandingSchema = z.object({
 });
 export type EmpresaBranding = z.infer<typeof empresaBrandingSchema>;
 
-export const empresaUpdateSchema = empresaCreateSchema.partial();
+// Trocar de grupo não é edição da empresa: passa pela tela do grupo, que
+// move os usuários junto (GruposEconomicosService.salvar).
+export const empresaUpdateSchema = empresaCreateSchema.omit({ grupoEconomicoId: true }).partial();
 export type EmpresaUpdate = z.infer<typeof empresaUpdateSchema>;
 
 export const empresaSchema = empresaCreateSchema.extend({

@@ -12,6 +12,10 @@ datasource db {
 // ------------------------------------------------------------------
 
 model Empresa {
+  // Toda empresa tem grupo econômico (hierarquia Grupo → Empresa, decisão de
+  // 30/09/2026). Sem grupo definido na criação, nasce um com o nome dela.
+  grupoEconomicoId String
+  grupoEconomico GrupoEconomico @relation(fields: [grupoEconomicoId], references: [id])
   tipoPessoa   TipoPessoa @default(juridica)
   id           String     @id @default(uuid())
   razaoSocial  String
@@ -139,6 +143,7 @@ model Empresa {
   integracaoApiKeys          IntegracaoApiKey[]
   integracaoEndpointConfigs   IntegracaoEndpointConfig[]
   integracaoCargas           IntegracaoCarga[]
+  sugestaoCompraExecucoes    SugestaoCompraExecucao[]
   integracaoCargaErros       IntegracaoCargaErro[]
   clienteCampoConfigs        ClienteCampoConfig[]
   produtoCampos              ProdutoCampo[]
@@ -195,10 +200,27 @@ model Empresa {
   suporteAcessos             EmpresaSuporteAcesso[]
   suporteLogs                EmpresaSuporteLog[]
 
+  @@index([grupoEconomicoId])
   @@map("empresas")
 }
 
+/// Organização administrativa dos tenants, sem dados comerciais compartilhados.
+model GrupoEconomico {
+  usuarios Usuario[]
+  id String @id @default(uuid())
+  descricao String
+  empresas Empresa[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  @@map("grupos_economicos")
+}
+
 model Usuario {
+  grupoEconomicoId String?
+  grupoEconomico GrupoEconomico? @relation(fields: [grupoEconomicoId], references: [id])
   id          String    @id @default(uuid())
   nome        String
   email       String    @unique
@@ -384,6 +406,10 @@ model UsuarioEmpresa {
   telefone       String?
   celular        String?
   dataNascimento DateTime?
+  // Tela inicial escolhida pelo próprio usuário em "Meu perfil", entre as
+  // rotinas que ele enxerga nesta empresa. Nula = segue Perfil.rotinaInicial.
+  // Só vale enquanto ele tiver `<rotina>.visualizar` — conferido no /me.
+  rotinaInicialId String?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -392,9 +418,10 @@ model UsuarioEmpresa {
   updatedBy String?
   deletedBy String?
 
-  usuario   Usuario          @relation(fields: [usuarioId], references: [id])
-  empresa   Empresa          @relation(fields: [empresaId], references: [id])
-  perfil    Perfil           @relation(fields: [perfilId], references: [id])
+  usuario       Usuario          @relation(fields: [usuarioId], references: [id])
+  empresa       Empresa          @relation(fields: [empresaId], references: [id])
+  perfil        Perfil           @relation(fields: [perfilId], references: [id])
+  rotinaInicial Rotina?          @relation("UsuarioEmpresaRotinaInicial", fields: [rotinaInicialId], references: [id], onDelete: SetNull)
   superior  UsuarioEmpresa?  @relation("UsuarioEmpresaHierarquia", fields: [superiorId], references: [id])
   liderados UsuarioEmpresa[] @relation("UsuarioEmpresaHierarquia")
 
@@ -578,6 +605,7 @@ model Rotina {
   ativacoes           EmpresaRotina[]
   planos              PlanoRotina[]
   perfisRotinaInicial Perfil[]          @relation("PerfilRotinaInicial")
+  vinculosRotinaInicial UsuarioEmpresa[] @relation("UsuarioEmpresaRotinaInicial")
 
   @@unique([codigo])
   @@map("rotinas")
@@ -2286,6 +2314,34 @@ model SugestaoCompraGerada {
   @@index([empresaId, clienteId, origem, ordem])
   @@index([empresaId, loteId])
   @@map("sugestoes_compra")
+}
+
+enum SituacaoExecucaoSugestao {
+  rodando
+  concluida
+  falhou
+}
+
+/// Execução do "Calcular" em lote da Sugestão de Compra, que corre em segundo
+/// plano (o lote pode levar minutos). Uma em andamento por empresa — índice
+/// parcial único na migration 20260930190000_sugestao_compra_execucoes.
+model SugestaoCompraExecucao {
+  id          String                   @id @default(uuid())
+  empresaId   String
+  usuarioId   String
+  situacao    SituacaoExecucaoSugestao @default(rodando)
+  /// meses, clienteCodigoDe, clienteCodigoAte pedidos.
+  parametros  Json?
+  /// clientesProcessados, clientesComSugestao, sugestoesGravadas.
+  resultado   Json?
+  erro        String?
+  iniciadaEm  DateTime                 @default(now())
+  concluidaEm DateTime?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@index([empresaId, iniciadaEm])
+  @@map("sugestao_compra_execucoes")
 }
 
 // Define, por empresa, quais campos do cadastro de Cliente o formulário
@@ -4789,6 +4845,8 @@ enum NotificacaoTipo {
   lead_novo
   /// Recado interno da equipe enviado para o usuário.
   recado_interno
+  /// O "Calcular" em lote da Sugestão de Compra terminou (ou falhou).
+  sugestao_compra_calculada
 }
 
 /// Em que ponto o lead está. Deliberadamente curto: um funil de lead com sete
@@ -4965,7 +5023,7 @@ model Feriado {
   empresaId String
 
   data DateTime @db.Date
-  nome String
+  descricao String
 
   /// De onde veio, e é o que autoriza o sistema a regerar sem apagar o que
   /// alguém cadastrou à mão.

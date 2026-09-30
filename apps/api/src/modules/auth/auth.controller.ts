@@ -35,6 +35,7 @@ import {
   RefreshDto,
   SwitchEmpresaDto,
   UpdateOwnProfileDto,
+  UpdateRotinaInicialDto,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ApiBodyExample } from '../../common/decorators/api-body-example.decorator';
@@ -204,11 +205,34 @@ export class AuthController {
     return this.authService.selectDefaultAvatar(user.id, user.empresaAtivaId, dto.avatar);
   }
 
-  @ApiOperation({ summary: 'Alterar o nome do próprio usuário' })
+  @ApiOperation({ summary: 'Alterar nome e número de telefone do próprio usuário' })
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Patch('me')
   updateMe(@Body() dto: UpdateOwnProfileDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.authService.updateOwnProfile(user.id, user.empresaAtivaId, dto.nome);
+    return this.authService.updateOwnProfile(user.id, user.empresaAtivaId, dto.nome, dto.whatsapp);
+  }
+
+  @ApiOperation({
+    summary: 'Escolher a própria tela inicial',
+    description:
+      'Grava, para a empresa ativa, a rotina que abre ao entrar. Só aceita rotina que o usuário ' +
+      "enxerga (permissão '<rotina>.visualizar') e que tenha tela. rotinaId null volta para a " +
+      'rotina inicial do perfil.',
+  })
+  @ApiBodyExample({ rotinaId: null })
+  @ApiResponse({ status: 400, description: 'Rotina sem acesso ou sem tela' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Patch('me/rotina-inicial')
+  updateRotinaInicial(
+    @Body() dto: UpdateRotinaInicialDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.authService.updateRotinaInicial(
+      user.id,
+      user.empresaAtivaId,
+      dto.rotinaId,
+    );
   }
 }

@@ -316,3 +316,18 @@ export const sugestaoCompraGerarResultadoSchema = z.object({
   sugestoesGravadas: z.number().int().describe("Total de linhas gravadas em sugestoes_compra"),
 });
 export type SugestaoCompraGerarResultado = z.infer<typeof sugestaoCompraGerarResultadoSchema>;
+
+/**
+ * Execução do "Calcular" em lote, que corre em segundo plano: o POST devolve a
+ * execução na hora e a tela acompanha pela última execução da empresa.
+ */
+export const sugestaoCompraExecucaoSchema = z.object({
+  id: z.string().uuid(),
+  situacao: z.enum(["rodando", "concluida", "falhou"]),
+  iniciadaEm: z.string().datetime(),
+  concluidaEm: z.string().datetime().nullable(),
+  usuarioNome: z.string().nullable().describe("Quem pediu o cálculo"),
+  resultado: sugestaoCompraGerarResultadoSchema.omit({ loteId: true }).nullable(),
+  erro: z.string().nullable(),
+});
+export type SugestaoCompraExecucao = z.infer<typeof sugestaoCompraExecucaoSchema>;

@@ -65,6 +65,16 @@ const MODULO_PLATAFORMA: ModuloComMenus = {
   ordem: 0,
   disponivelTelaPequena: false,
   menus: [
+    // Hierarquia Grupo econômico → Empresa: o grupo vem antes.
+    {
+      id: "plataforma-grupos",
+      nome: "Grupos econômicos",
+      icone: "network",
+      rota: "/plataforma/grupos",
+      ordem: 0,
+      disponivelTelaPequena: false,
+      rotinas: [],
+    },
     {
       id: "plataforma-empresas",
       nome: "Empresas",

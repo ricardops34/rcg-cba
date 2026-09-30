@@ -160,6 +160,8 @@ export const CAMPO_CLIENTE_LABEL: Record<string, string> = {
   // Não é coluna do cliente: é a coleção `cliente_cnaes`, que entra no diff
   // como a lista de códigos separada por vírgula (ver `calcularDiff`).
   cnaes: "Ramo de atividade (CNAE)",
+  // Também virtual: o código do CNAE marcado como principal.
+  cnaePrincipal: "CNAE principal",
   codigoErp: "Código ERP",
   tipoPessoa: "Tipo de pessoa",
   razaoSocial: "Razão social",

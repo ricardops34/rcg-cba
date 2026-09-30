@@ -21,6 +21,7 @@ import {
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { SugestaoCompraCalculadaSheet } from "@/components/crud/sugestao-compra-calculada";
 import { SugestaoCompraGerarDialog } from "@/components/crud/sugestao-compra-gerar-dialog";
+import { SugestaoCompraExecucaoFaixa, useExecucaoSugestao } from "@/components/crud/sugestao-compra-execucao";
 import { FieldLabel } from "@/components/ui/field";
 import {
   Select,
@@ -151,6 +152,13 @@ export default function SugestaoCompraPage() {
       ...(vendedorId ? { vendedorId } : {}),
       ...(bloqueado !== "todos" ? { bloqueado: bloqueado === "sim" } : {}),
     });
+
+  // O Calcular em lote corre em segundo plano; a lista recarrega ao terminar.
+  const {
+    execucao,
+    rodando: calculoEmAndamento,
+    refetch: refetchExecucao,
+  } = useExecucaoSugestao(() => void refetch());
 
   const filtrosAtivos =
     status !== "ativos" ||
@@ -379,13 +387,21 @@ export default function SugestaoCompraPage() {
               </div>
             </FiltersPopover>
             {podeCalcularLote && (
-              <Button variant="outline" onClick={() => setCalcularLote(true)}>
-                <RefreshCw className="size-4" /> Calcular
+              <Button
+                variant="outline"
+                disabled={calculoEmAndamento}
+                title={calculoEmAndamento ? "Já há um cálculo em andamento" : undefined}
+                onClick={() => setCalcularLote(true)}
+              >
+                <RefreshCw className={calculoEmAndamento ? "size-4 animate-spin" : "size-4"} />
+                {calculoEmAndamento ? "Calculando…" : "Calcular"}
               </Button>
             )}
           </>
         }
       />
+
+      <SugestaoCompraExecucaoFaixa execucao={execucao} />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
@@ -442,7 +458,7 @@ export default function SugestaoCompraPage() {
       <SugestaoCompraGerarDialog
         open={calcularLote}
         onOpenChange={setCalcularLote}
-        onGerado={() => void refetch()}
+        onGerado={() => void refetchExecucao()}
       />
     </div>
   );

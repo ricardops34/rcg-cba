@@ -77,6 +77,17 @@ const CAMPOS_ACOMPANHADOS = [
  */
 export const CAMPO_CNAES = 'cnaes';
 
+/**
+ * Também virtual: o código do CNAE principal do cliente. Separado da lista
+ * porque a lista só acrescenta (ver `aplicarCnaes`) e não diz qual é o
+ * principal — e a consulta à Receita traz principal e secundários, que o
+ * usuário quer ver e aprovar (decisão de 30/09/2026).
+ */
+export const CAMPO_CNAE_PRINCIPAL = 'cnaePrincipal';
+
+/** Campos que não são coluna do cliente. */
+const CAMPOS_VIRTUAIS: string[] = [CAMPO_CNAES, CAMPO_CNAE_PRINCIPAL];
+
 /** Lista de códigos CNAE como o diff a representa: ordenada, sem repetição. */
 function serializarCnaes(valor: unknown): string | null {
   if (!Array.isArray(valor)) return null;
@@ -136,6 +147,11 @@ export function calcularDiff(
     const de = serializarCnaes(atual[CAMPO_CNAES]);
     const para = serializarCnaes(input[CAMPO_CNAES]);
     if (de !== para && para !== null) diff[CAMPO_CNAES] = { de, para };
+  }
+  if (CAMPO_CNAE_PRINCIPAL in input) {
+    const de = serializar(atual[CAMPO_CNAE_PRINCIPAL]);
+    const para = serializar(input[CAMPO_CNAE_PRINCIPAL]);
+    if (de !== para && para !== null) diff[CAMPO_CNAE_PRINCIPAL] = { de, para };
   }
 
   return diff;
@@ -284,7 +300,7 @@ export class ClienteAlteracoesService {
   ) {
     const bruto: Record<string, unknown> = {};
     for (const [campo, { para }] of Object.entries(diff)) {
-      if (campo === CAMPO_CNAES) continue;
+      if (CAMPOS_VIRTUAIS.includes(campo)) continue;
       bruto[campo] = para;
     }
 
@@ -304,6 +320,15 @@ export class ClienteAlteracoesService {
         empresaId,
         clienteId,
         String(diff[CAMPO_CNAES].para ?? ''),
+        autorId,
+      );
+    }
+    if (diff[CAMPO_CNAE_PRINCIPAL]?.para) {
+      await this.aplicarCnaePrincipal(
+        tx,
+        empresaId,
+        clienteId,
+        String(diff[CAMPO_CNAE_PRINCIPAL].para),
         autorId,
       );
     }
@@ -396,6 +421,43 @@ export class ClienteAlteracoesService {
           createdBy: autorId,
           updatedBy: autorId,
         },
+      });
+    }
+  }
+
+  /**
+   * Marca o CNAE aprovado como o principal do cliente (vinculando-o, se ainda
+   * não estiver) e desmarca o anterior. Aqui o principal muda porque alguém
+   * aprovou exatamente isso, campo a campo.
+   */
+  private async aplicarCnaePrincipal(
+    tx: TenantTx,
+    empresaId: string,
+    clienteId: string,
+    codigo: string,
+    autorId: string | null,
+  ) {
+    const cnae = await tx.cnae.findFirst({
+      where: { codigoErp: codigo, deletedAt: null },
+      select: { id: true },
+    });
+    if (!cnae) return;
+    await tx.clienteCnae.updateMany({
+      where: { empresaId, clienteId, principal: true, cnaeId: { not: cnae.id } },
+      data: { principal: false, updatedBy: autorId },
+    });
+    const linha = await tx.clienteCnae.findFirst({
+      where: { empresaId, clienteId, cnaeId: cnae.id },
+      select: { id: true },
+    });
+    if (linha) {
+      await tx.clienteCnae.update({
+        where: { id: linha.id },
+        data: { principal: true, deletedAt: null, deletedBy: null, updatedBy: autorId },
+      });
+    } else {
+      await tx.clienteCnae.create({
+        data: { empresaId, clienteId, cnaeId: cnae.id, principal: true, createdBy: autorId, updatedBy: autorId },
       });
     }
   }
@@ -541,7 +603,7 @@ export class ClienteAlteracoesService {
       // toca o cadastro, e travar a aprovação por causa dele seria pedir para
       // refazer uma solicitação que já foi analisada.
       const conflitos = Object.entries(diff).filter(([campo, { de }]) =>
-        campo === CAMPO_CNAES
+        CAMPOS_VIRTUAIS.includes(campo)
           ? false
           : serializar((cliente as Record<string, unknown>)[campo]) !== de,
       );

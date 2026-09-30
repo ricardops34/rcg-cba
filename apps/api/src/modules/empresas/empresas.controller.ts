@@ -104,10 +104,9 @@ export class EmpresasController {
   @ApiResponse({ status: 201, schema: { example: EMPRESA_EXAMPLE } })
   @ApiResponse({ status: 409, description: 'CNPJ já cadastrado' })
   @RequirePermission('empresas', 'cadastrar')
-  @UseGuards(PlatformAdminGuard)
   @Post()
   create(@Body() dto: EmpresaCreateDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.create(dto, user.id);
+    return this.service.createDoAtor(dto, user);
   }
 
   @ApiOperation({ summary: 'Editar empresa', description: 'Requer a permissão empresas.editar.' })

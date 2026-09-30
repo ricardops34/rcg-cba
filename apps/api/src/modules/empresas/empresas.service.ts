@@ -32,6 +32,7 @@ const SORT_FIELDS = new Set([
  * removida do payload antes do `update`, em vez de apenas escondida da tela.
  */
 const CAMPOS_DA_PLATAFORMA = [
+  'ePlataforma',
   'situacao',
   'testeExpiraEm',
   'limiteUsuarios',
@@ -42,6 +43,7 @@ export type AtorEmpresa = {
   id: string;
   empresaAtivaId?: string;
   administradorPlataforma?: boolean;
+  isAdmin?: boolean;
 };
 
 @Injectable()
@@ -57,11 +59,15 @@ export class EmpresasService {
    * as empresas da base, porque o service nunca comparou o id recebido com o
    * da sessão.
    */
-  private garantirEscopo(
-    user: { empresaAtivaId?: string; administradorPlataforma?: boolean },
+  private async garantirEscopo(
+    user: AtorEmpresa,
     empresaId: string,
   ) {
     if (user.administradorPlataforma) return;
+    if (user.isAdmin) {
+      const ator = await this.prisma.usuario.findUnique({ where: { id: user.id }, select: { grupoEconomicoId: true } });
+      if (ator?.grupoEconomicoId && await this.prisma.empresa.findFirst({ where: { id: empresaId, grupoEconomicoId: ator.grupoEconomicoId, deletedAt: null }, select: { id: true } })) return;
+    }
     if (user.empresaAtivaId !== empresaId) {
       throw new ForbiddenException('Esta empresa não é a da sua sessão');
     }
@@ -89,13 +95,20 @@ export class EmpresasService {
     let idsEscopo: string[] | undefined = undefined;
 
     if (user && !user.administradorPlataforma) {
-      const empresasDoUsuario = await this.prisma.usuarioEmpresa.findMany({
+      const empresasDoUsuario = await this.prisma.withUsuario(user.id, (tx) => tx.usuarioEmpresa.findMany({
         where: { usuarioId: user.id, deletedAt: null, ativo: true },
         select: { empresaId: true },
-      });
+      }));
       const ids = new Set(empresasDoUsuario.map((e) => e.empresaId));
       if (user.empresaAtivaId) ids.add(user.empresaAtivaId);
       idsEscopo = Array.from(ids);
+      if (user.isAdmin) {
+        const ator = await this.prisma.usuario.findUnique({ where: { id: user.id }, select: { grupoEconomicoId: true } });
+        if (ator?.grupoEconomicoId) {
+          const empresasGrupo = await this.prisma.empresa.findMany({ where: { grupoEconomicoId: ator.grupoEconomicoId, deletedAt: null }, select: { id: true } });
+          idsEscopo = empresasGrupo.map((e) => e.id);
+        }
+      }
     }
 
     const where = {
@@ -140,7 +153,7 @@ export class EmpresasService {
    * fica para uso interno, onde o id já veio da própria sessão.
    */
   async findOneDoAtor(id: string, user: AtorEmpresa) {
-    this.garantirEscopo(user, id);
+    await this.garantirEscopo(user, id);
     return this.findOne(id);
   }
 
@@ -153,17 +166,54 @@ export class EmpresasService {
 
     if (input.alias) await this.ensureAliasDisponivel(input.alias);
 
+    // Toda empresa tem grupo econômico: entra no informado (tela do grupo,
+    // "Adicionar empresa") ou nasce um com o nome dela.
+    const { grupoEconomicoId, ...dados } = input;
+    if (grupoEconomicoId) {
+      const existe = await this.prisma.grupoEconomico.findFirst({
+        where: { id: grupoEconomicoId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!existe) throw new NotFoundException('Grupo econômico não encontrado');
+    }
     return this.prisma.empresa.create({
       data: {
-        ...(this.limpar(input) as object),
+        ...(this.limpar(dados) as object),
+        grupoEconomico: grupoEconomicoId
+          ? { connect: { id: grupoEconomicoId } }
+          : { create: { descricao: input.nomeFantasia, createdBy: userId, updatedBy: userId } },
         createdBy: userId,
         updatedBy: userId,
       } as never,
     });
   }
 
+  async createDoAtor(input: EmpresaCreate, user: AtorEmpresa) {
+    if (user.administradorPlataforma) return this.create(input, user.id);
+    if (!user.isAdmin) throw new ForbiddenException('Somente administradores podem criar empresas');
+    const ator = await this.prisma.usuario.findUnique({ where: { id: user.id }, select: { grupoEconomicoId: true } });
+    if (!ator?.grupoEconomicoId) throw new ForbiddenException('Sua empresa precisa fazer parte de um grupo econômico para criar outra empresa. O grupo é cadastrado pela administração da plataforma.');
+    validarDocumentoEmpresa(input.tipoPessoa, input.cnpj);
+    if (await this.prisma.empresa.findUnique({ where: { cnpj: input.cnpj } })) throw new ConflictException('CNPJ já cadastrado');
+    if (input.alias) await this.ensureAliasDisponivel(input.alias);
+    const perfil = await this.prisma.perfil.findFirst({ where: { sistemaBase: true, administraPlataforma: false, ativo: true, deletedAt: null }, select: { id: true } });
+    if (!perfil) throw new ForbiddenException('Perfil Administrador Empresa não disponível');
+    return this.prisma.$transaction(async (tx) => {
+      const empresa = await tx.empresa.create({ data: {
+        ...(this.limpar(input) as object),
+        grupoEconomicoId: ator.grupoEconomicoId,
+        // Criar uma empresa não concede assinatura nem libera recursos pagos.
+        ePlataforma: false, situacao: 'suspensa', testeExpiraEm: null, limiteUsuarios: 1,
+        createdBy: user.id, updatedBy: user.id,
+      } as never });
+      await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${empresa.id}, true)`;
+      await tx.usuarioEmpresa.create({ data: { empresaId: empresa.id, usuarioId: user.id, perfilId: perfil.id, createdBy: user.id, updatedBy: user.id } });
+      return empresa;
+    });
+  }
+
   async update(id: string, input: EmpresaUpdate, user: AtorEmpresa) {
-    this.garantirEscopo(user, id);
+    await this.garantirEscopo(user, id);
     const atual = await this.findOne(id);
     if (input.tipoPessoa !== undefined || input.cnpj !== undefined) {
       validarDocumentoEmpresa(input.tipoPessoa ?? atual.tipoPessoa, input.cnpj ?? atual.cnpj);
@@ -194,7 +244,7 @@ export class EmpresasService {
 
   /** Define o logo da empresa a partir do arquivo já gravado em disco. */
   async setLogo(id: string, filename: string, user: AtorEmpresa) {
-    this.garantirEscopo(user, id);
+    await this.garantirEscopo(user, id);
     const empresa = await this.findOne(id);
 
     // Remove o logo anterior (best-effort) para não acumular órfãos em disco.
@@ -216,7 +266,7 @@ export class EmpresasService {
    * diferentes, e o admin costuma subir a arte antes de publicar.
    */
   async setBanner(id: string, filename: string, user: AtorEmpresa) {
-    this.garantirEscopo(user, id);
+    await this.garantirEscopo(user, id);
     const empresa = await this.findOne(id);
 
     if (empresa.bannerImagemUrl) {

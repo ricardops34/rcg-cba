@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   Post,
   Query,
@@ -139,15 +140,31 @@ export class SugestaoCompraController {
       'substituindo o que já existia para **cada cliente processado** — quem está fora do ' +
       'escopo/faixa não é tocado. `clienteCodigoDe`/`clienteCodigoAte` restringem por código ERP ' +
       '(faixa inclusiva); sem os dois, roda sobre todo o escopo. Disparo manual — não há ' +
-      'agendamento automático. Pode levar minutos numa base grande: uma varredura por cliente. ' +
+      'agendamento automático. Pode levar minutos numa base grande: uma varredura por cliente, ' +
+      'por isso **corre em segundo plano**: responde 202 com a execução na hora, e o andamento ' +
+      'sai em GET /sugestao-compra/execucoes/ultima (quem pediu recebe um aviso no sino ao ' +
+      'terminar). 409 se já houver um cálculo em andamento na empresa. ' +
       'Requer sugestao-compra.cadastrar.',
   })
   @RequirePermission('sugestao-compra', 'cadastrar')
+  @HttpCode(202)
   @Post('gerar')
   gerar(
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: SugestaoCompraGerarLoteBodyDto,
   ) {
-    return this.service.gerarLote(user.empresaAtivaId, user, body);
+    return this.service.iniciarLote(user.empresaAtivaId, user, body);
+  }
+
+  @ApiOperation({
+    summary: 'Última execução do cálculo em lote',
+    description:
+      'Andamento do "Calcular" em lote da empresa ativa (rodando, concluída ou falhou), com o ' +
+      'resultado ou o erro. null se nunca rodou. Requer sugestao-compra.visualizar.',
+  })
+  @RequirePermission('sugestao-compra', 'visualizar')
+  @Get('execucoes/ultima')
+  ultimaExecucao(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.ultimaExecucao(user.empresaAtivaId);
   }
 }

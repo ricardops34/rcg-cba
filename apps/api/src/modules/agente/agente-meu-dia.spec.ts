@@ -1,4 +1,5 @@
 import { AgenteMeuDiaService } from './agente-meu-dia.service';
+import { dataDoResumo } from './dia-operacional';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
 /**
@@ -71,13 +72,11 @@ describe('AgenteMeuDiaService', () => {
 
   describe('aniversário', () => {
     it('compara dia e mês, ignorando o ano de nascimento', async () => {
-      const hoje = new Date();
+      const hoje = dataDoResumo();
       const s = montar({
         vinculo: {
           nomeReduzido: null,
-          dataNascimento: new Date(
-            Date.UTC(1985, hoje.getUTCMonth(), hoje.getUTCDate()),
-          ),
+          dataNascimento: new Date(`1985-${hoje.slice(5)}T00:00:00.000Z`),
         },
       });
       expect((await s.montar('e1', usuario())).aniversario).toBe(true);
@@ -161,6 +160,11 @@ describe('AgenteMeuDiaService', () => {
   });
 
   describe('agenda', () => {
+    it('conta pendências além da página apresentada', async () => {
+      const s = montar({ atividades: { data: [], total: 120 } });
+      const r = await s.montar('e1', usuario(['atividades.visualizar']));
+      expect(r.agenda).toMatchObject({ hoje: 120, atrasadas: 120, proximas: [] });
+    });
     const ontem = new Date(Date.now() - 2 * 86_400_000);
     const hoje = new Date();
 

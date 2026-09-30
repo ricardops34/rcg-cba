@@ -244,6 +244,11 @@ export class PlataformaService {
             ? new Date(input.testeExpiraEm)
             : null,
           limiteUsuarios: input.limiteUsuarios ?? null,
+          // Toda empresa tem grupo econômico: nasce um com o nome dela, que a
+          // Plataforma pode depois juntar a outro em Grupos econômicos.
+          grupoEconomico: {
+            create: { descricao: input.nomeFantasia, createdBy: ator.id, updatedBy: ator.id },
+          },
           createdBy: ator.id,
           updatedBy: ator.id,
         },

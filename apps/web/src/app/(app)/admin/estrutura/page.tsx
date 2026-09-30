@@ -60,6 +60,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -72,7 +75,10 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import {
   ChevronRight,
+  ArrowDown,
+  ArrowUp,
   CornerDownRight,
+  FolderInput,
   FolderTree,
   GripVertical,
   ListTree,
@@ -262,7 +268,30 @@ export default function EstruturaPage() {
 
     const menu = origem.menus.find((m) => m.id === active.id);
     if (!menu) return;
+    moverParaModulo(menu, destino);
+  };
 
+  /**
+   * "Subir" e "Descer" do menu "…": a mesma gravação do arrasto dentro do
+   * módulo, para quem não consegue (ou não sabe) arrastar a linha.
+   */
+  const moverNoModulo = (moduloId: string, menuId: string, delta: -1 | 1) => {
+    const modulo = modulos.find((m) => m.id === moduloId);
+    if (!modulo) return;
+    const oldIndex = modulo.menus.findIndex((m) => m.id === menuId);
+    const newIndex = oldIndex + delta;
+    if (oldIndex === -1 || newIndex < 0 || newIndex >= modulo.menus.length) return;
+    const reordenados = arrayMove(modulo.menus, oldIndex, newIndex);
+    qc.setQueryData<ModuloComMenus[]>(["estrutura-arvore"], (old) =>
+      old?.map((m) => (m.id === modulo.id ? { ...m, menus: reordenados } : m)),
+    );
+    salvarOrdem(
+      reordenados.map((m, i) => updateMenu.mutateAsync({ id: m.id, input: { ordem: i } })),
+      "Erro ao salvar nova ordem dos menus",
+    );
+  };
+
+  const moverParaModulo = (menu: MenuArvore, destino: ModuloComMenus) => {
     // Entra no fim do destino: a ordem que ele tinha é do módulo de origem e
     // cairia num ponto qualquer da lista de lá. O menu pai também fica para
     // trás — ele pertence à árvore do módulo antigo.
@@ -270,7 +299,7 @@ export default function EstruturaPage() {
       .mutateAsync({
         id: menu.id,
         input: {
-          moduloId: moduloDestinoId,
+          moduloId: destino.id,
           menuPaiId: null,
           ordem: Math.max(0, ...destino.menus.map((m) => m.ordem)) + 1,
         },
@@ -468,6 +497,9 @@ export default function EstruturaPage() {
                 }}
                 onCreateMenu={() => setMenuDialog({ moduloId: modulo.id, editing: null })}
                 onEditMenu={(menu) => setMenuDialog({ moduloId: modulo.id, editing: menu })}
+                outrosModulos={modulos.filter((m) => m.id !== modulo.id)}
+                onMoverMenu={(menu, delta) => moverNoModulo(modulo.id, menu.id, delta)}
+                onMoverMenuPara={moverParaModulo}
                 onToggleAtivoMenu={(menu, value) =>
                   alternarAtivo("menu", menu.id, menu.nome, value)
                 }
@@ -570,6 +602,9 @@ function ModuloRow({
   onDeleteModulo,
   onCreateMenu,
   onEditMenu,
+  outrosModulos,
+  onMoverMenu,
+  onMoverMenuPara,
   onToggleAtivoMenu,
   onToggleTelaPequenaMenu,
   onDeleteMenu,
@@ -582,6 +617,9 @@ function ModuloRow({
 }: {
   modulo: ModuloComMenus;
   podeCatalogo: boolean;
+  outrosModulos: ModuloComMenus[];
+  onMoverMenu: (menu: MenuArvore, delta: -1 | 1) => void;
+  onMoverMenuPara: (menu: MenuArvore, destino: ModuloComMenus) => void;
   onToggleEmpresaModulo: (value: boolean) => void;
   onToggleEmpresaMenu: (menu: MenuArvore, value: boolean) => void;
   onEditModulo: () => void;
@@ -728,11 +766,17 @@ function ModuloRow({
             items={modulo.menus.map((m) => m.id)}
             strategy={verticalListSortingStrategy}
           >
-            {modulo.menus.map((menu) => (
+            {modulo.menus.map((menu, i) => (
               <MenuRow
                 key={menu.id}
                 menu={menu}
                 moduloId={modulo.id}
+                mover={{
+                  onSubir: i > 0 ? () => onMoverMenu(menu, -1) : undefined,
+                  onDescer: i < modulo.menus.length - 1 ? () => onMoverMenu(menu, 1) : undefined,
+                  destinos: outrosModulos,
+                  onMoverPara: (destino) => onMoverMenuPara(menu, destino),
+                }}
                 moduloAtivo={modulo.ativo && modulo.ativoNaEmpresa}
                 podeCatalogo={podeCatalogo}
                 onToggleEmpresa={(value) => onToggleEmpresaMenu(menu, value)}
@@ -765,6 +809,7 @@ function ModuloRow({
 function MenuRow({
   menu,
   moduloId,
+  mover,
   moduloAtivo,
   podeCatalogo,
   nivel = 0,
@@ -789,6 +834,13 @@ function MenuRow({
 }: {
   menu: MenuArvore;
   moduloId: string;
+  /** Só no primeiro nível: submenu muda de lugar pelo diálogo (menu pai). */
+  mover?: {
+    onSubir?: () => void;
+    onDescer?: () => void;
+    destinos: ModuloComMenus[];
+    onMoverPara: (destino: ModuloComMenus) => void;
+  };
   moduloAtivo: boolean;
   podeCatalogo: boolean;
   nivel?: number;
@@ -905,6 +957,32 @@ function MenuRow({
                     <DropdownMenuItem onClick={onCreateSubmenu}>
                       <CornerDownRight className="size-4" /> Novo submenu
                     </DropdownMenuItem>
+                  )}
+                  {nivel === 0 && mover && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem disabled={!mover.onSubir} onClick={mover.onSubir}>
+                        <ArrowUp className="size-4" /> Subir
+                      </DropdownMenuItem>
+                      <DropdownMenuItem disabled={!mover.onDescer} onClick={mover.onDescer}>
+                        <ArrowDown className="size-4" /> Descer
+                      </DropdownMenuItem>
+                      {mover.destinos.length > 0 && (
+                        <DropdownMenuSub>
+                          <DropdownMenuSubTrigger>
+                            <FolderInput className="size-4" /> Mover para
+                          </DropdownMenuSubTrigger>
+                          <DropdownMenuSubContent>
+                            {mover.destinos.map((destino) => (
+                              <DropdownMenuItem key={destino.id} onClick={() => mover.onMoverPara(destino)}>
+                                {destino.nome}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuSubContent>
+                        </DropdownMenuSub>
+                      )}
+                      <DropdownMenuSeparator />
+                    </>
                   )}
                   <DropdownMenuCheckboxItem
                     checked={menu.ativo}

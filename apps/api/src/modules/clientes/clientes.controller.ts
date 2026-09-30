@@ -317,7 +317,9 @@ export class ClientesController {
 
   @ApiOperation({
     summary: 'Excluir cliente (soft delete)',
-    description: 'Requer clientes.excluir.',
+    description:
+      'Recusa (409) cliente que veio do ERP ou está integrado a ele (tem chave de integração ou ' +
+      'código ERP): o ERP é a origem, e a próxima carga o traria de volta. Requer clientes.excluir.',
   })
   @RequirePermission('clientes', 'excluir')
   @Delete(':id')

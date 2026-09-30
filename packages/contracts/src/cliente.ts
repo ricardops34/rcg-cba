@@ -81,6 +81,9 @@ export const clienteSchema = clienteCreateSchema.extend({
   empresaId: z.string().uuid(),
   tabelaPreco: vinculoSchema.nullable().optional(),
   condicaoPagamento: vinculoSchema.nullable().optional(),
+  // Chave de integração (FILIAL-COD), gravada pela carga do ERP. Só leitura:
+  // com ela (ou com código ERP) o cliente é do ERP e não pode ser excluído.
+  chave: z.string().nullable().optional(),
   ...historicoComercialSchema.shape,
   ...auditFieldsSchema.shape,
 });

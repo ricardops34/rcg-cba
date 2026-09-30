@@ -37,9 +37,12 @@ const LIST_ROUTE = "/admin/empresas";
 export function EmpresaForm({
   empresa,
   listRoute = LIST_ROUTE,
+  grupoEconomicoId,
 }: {
   empresa?: Empresa;
   listRoute?: string;
+  /** Empresa nova aberta pelo "Adicionar empresa" de um grupo: nasce nele. */
+  grupoEconomicoId?: string;
 }) {
   const router = useRouter();
   const setUser = useAuthStore((state) => state.setUser);
@@ -169,7 +172,7 @@ export function EmpresaForm({
         await update.mutateAsync({ id: empresa.id, input: values });
         toast.success("Empresa atualizada");
       } else {
-        await create.mutateAsync(values);
+        await create.mutateAsync(grupoEconomicoId ? { ...values, grupoEconomicoId } : values);
         toast.success("Empresa cadastrada");
       }
       router.push(listRoute);

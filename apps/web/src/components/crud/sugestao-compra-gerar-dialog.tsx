@@ -47,28 +47,33 @@ export function SugestaoCompraGerarDialog({
 
   const mesesNumero = meses === "padrao" ? undefined : Number(meses);
 
+  // Um cliente é rápido e responde com o resultado. O lote corre em segundo
+  // plano: a API só registra a execução, e a tela acompanha o andamento.
   const gerar = useMutation({
-    mutationFn: () =>
-      clienteId
-        ? apiFetch<SugestaoCompraGerarResultado>(`/sugestao-compra/cliente/${clienteId}/gerar`, {
-            method: "POST",
-            body: { meses: mesesNumero },
-          })
-        : apiFetch<SugestaoCompraGerarResultado>("/sugestao-compra/gerar", {
-            method: "POST",
-            body: {
-              meses: mesesNumero,
-              clienteCodigoDe: codigoDe.trim() || undefined,
-              clienteCodigoAte: codigoAte.trim() || undefined,
-            },
-          }),
+    mutationFn: async (): Promise<SugestaoCompraGerarResultado | null> => {
+      if (clienteId) {
+        return apiFetch<SugestaoCompraGerarResultado>(`/sugestao-compra/cliente/${clienteId}/gerar`, {
+          method: "POST",
+          body: { meses: mesesNumero },
+        });
+      }
+      await apiFetch("/sugestao-compra/gerar", {
+        method: "POST",
+        body: {
+          meses: mesesNumero,
+          clienteCodigoDe: codigoDe.trim() || undefined,
+          clienteCodigoAte: codigoAte.trim() || undefined,
+        },
+      });
+      return null;
+    },
     onSuccess: (r) => {
       toast.success(
-        clienteId
+        r
           ? r.sugestoesGravadas > 0
             ? `${r.sugestoesGravadas} produto(s) sugerido(s).`
             : "Nenhuma sugestão encontrada para este cliente no período."
-          : `${r.clientesComSugestao} de ${r.clientesProcessados} cliente(s) ganharam sugestão (${r.sugestoesGravadas} linha(s)).`,
+          : "Cálculo iniciado em segundo plano. Você pode continuar usando o sistema; o aviso chega no sino quando terminar.",
       );
       onGerado();
       onOpenChange(false);
@@ -88,7 +93,7 @@ export function SugestaoCompraGerarDialog({
           <DialogDescription>
             {clienteId
               ? "Recalcula este cliente e substitui a sugestão gravada para ele."
-              : "Recalcula os clientes ativos e não bloqueados dentro do seu escopo, substituindo a sugestão já gravada para cada um deles. Pode levar alguns minutos."}
+              : "Recalcula os clientes ativos e não bloqueados dentro do seu escopo, substituindo a sugestão já gravada para cada um deles. Roda em segundo plano: você não precisa esperar nesta tela."}
           </DialogDescription>
         </DialogHeader>
 

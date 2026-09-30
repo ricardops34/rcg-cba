@@ -15,28 +15,40 @@ import {
   type UsuarioUpdate,
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
-import { ApiError, apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch, assetUrl } from "@/lib/api-client";
 import { buildSenhaSchema, describeRequisitos } from "@/lib/politica-senha";
-import { UsuarioEmpresasSection } from "@/components/crud/usuario-empresas-section";
+import { UsuarioEmpresasGrupo } from "@/components/crud/usuario-empresas-grupo";
+import { UsuarioDadosGrupo } from "@/components/crud/usuario-dados-grupo";
 import { UsuarioResetSenhaSection } from "@/components/crud/usuario-reset-senha-section";
 import { UsuarioHorariosSection } from "@/components/crud/usuario-horarios-section";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Switch } from "@/components/ui/switch";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { ArrowLeft, User, UserCheck, UserPlus, Building2 } from "lucide-react";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ArrowLeft } from "lucide-react";
 
 const LIST_ROUTE = "/admin/usuarios";
 
+/**
+ * Cadastro do usuário. É a mesma pessoa de "Meu perfil" (a mesma tabela), vista
+ * por quem administra. O usuário é um só no grupo econômico: perfil, empresas e
+ * dados valem para todas as empresas do grupo a que ele tem acesso.
+ *
+ * Novo usuário (só pela Plataforma — o administrador de um grupo usa
+ * "Novo usuário do grupo") fica num formulário simples; a edição é em abas.
+ */
 export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
   const router = useRouter();
   const { create, update } = useResourceMutations<UsuarioCreate, UsuarioUpdate>("usuarios");
   const { data: perfis } = useQuery({
     queryKey: ["perfis", "select"],
     queryFn: () => apiFetch<{ data: Perfil[] }>("/perfis", { query: { pageSize: 100 } }),
+    enabled: !usuario,
   });
 
   const { data: politica } = useQuery({
@@ -64,7 +76,6 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
         const { nome, email, ativo } = values;
         await update.mutateAsync({ id: usuario.id, input: { nome, email, ativo } });
         toast.success("Usuário atualizado com sucesso");
-        router.push(LIST_ROUTE);
       } else {
         await create.mutateAsync(values);
         toast.success("Usuário cadastrado com sucesso");
@@ -75,131 +86,127 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
     }
   };
 
+  const dadosGerais = (
+    <form id="usuario-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
+      <CardContent className="space-y-4 pt-6">
+        <FieldGroup>
+          {usuario && (
+            <div className="flex items-center gap-3">
+              <Avatar className="size-14">
+                <AvatarImage src={assetUrl(usuario.avatarUrl) ?? undefined} alt={usuario.nome} />
+                <AvatarFallback>{usuario.nome.slice(0, 2).toUpperCase()}</AvatarFallback>
+              </Avatar>
+              <p className="text-xs text-muted-foreground">A foto é escolhida pelo próprio usuário, em Meu perfil.</p>
+            </div>
+          )}
+
+          <Field data-invalid={!!form.formState.errors.nome}>
+            <FieldLabel htmlFor="nome">Nome apresentado</FieldLabel>
+            <Input id="nome" placeholder="ex.: João da Silva" {...form.register("nome")} />
+            <FieldDescription>Identifica o usuário no atendimento e assina as mensagens enviadas ao cliente.</FieldDescription>
+            <FieldError errors={[form.formState.errors.nome]} />
+          </Field>
+
+          <Field data-invalid={!!form.formState.errors.email}>
+            <FieldLabel htmlFor="email">E-mail de login</FieldLabel>
+            <Input id="email" type="email" placeholder="joao@empresa.com.br" {...form.register("email")} />
+            <FieldError errors={[form.formState.errors.email]} />
+          </Field>
+
+          {usuario && (
+            <div className="flex items-center justify-between rounded-lg border bg-muted/20 p-3">
+              <div className="space-y-0.5">
+                <FieldLabel htmlFor="ativo" className="text-sm font-medium">Usuário ativo</FieldLabel>
+                <FieldDescription className="text-xs">Usuários inativos têm o acesso bloqueado ao sistema.</FieldDescription>
+              </div>
+              <Switch
+                id="ativo"
+                checked={form.watch("ativo")}
+                onCheckedChange={(checked) => form.setValue("ativo", checked, { shouldDirty: true })}
+              />
+            </div>
+          )}
+
+          {!usuario && (
+            <>
+              <Field data-invalid={!!form.formState.errors.senha}>
+                <FieldLabel htmlFor="senha">Senha inicial de acesso</FieldLabel>
+                <PasswordInput id="senha" {...form.register("senha")} />
+                {politica && <FieldDescription>{describeRequisitos(politica).join(" · ")}</FieldDescription>}
+                <FieldError errors={[form.formState.errors.senha]} />
+              </Field>
+
+              <Field data-invalid={!!form.formState.errors.perfilId}>
+                <FieldLabel htmlFor="perfilId">Perfil</FieldLabel>
+                <Select
+                  value={form.watch("perfilId")}
+                  onValueChange={(v) => form.setValue("perfilId", v, { shouldValidate: true })}
+                >
+                  <SelectTrigger id="perfilId" className="w-full">
+                    <SelectValue placeholder="Selecione um perfil" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {perfis?.data.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FieldError errors={[form.formState.errors.perfilId]} />
+              </Field>
+            </>
+          )}
+        </FieldGroup>
+      </CardContent>
+
+      <CardFooter className="justify-end gap-3 border-t pt-4">
+        <Button type="button" variant="outline" onClick={() => router.push(LIST_ROUTE)}>
+          {usuario ? "Voltar" : "Cancelar"}
+        </Button>
+        <Button type="submit" disabled={form.formState.isSubmitting}>
+          {usuario ? "Salvar" : "Cadastrar usuário"}
+        </Button>
+      </CardFooter>
+    </form>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => router.push(LIST_ROUTE)}
-          className="size-9 shadow-xs"
-        >
+        <Button variant="outline" size="icon" onClick={() => router.push(LIST_ROUTE)} className="size-9 shadow-xs">
           <ArrowLeft className="size-4" />
         </Button>
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">
-            {usuario ? `Editar: ${usuario.nome}` : "Novo Usuário"}
-          </h1>
-          <p className="text-xs text-muted-foreground">
-            {usuario
-              ? "Atualize o cadastro, status, empresas vinculadas e permissões do usuário."
-              : "Cadastre um novo usuário com perfil inicial e credenciais de acesso."}
-          </p>
-        </div>
+        <h1 className="text-xl font-bold tracking-tight">{usuario ? usuario.nome : "Novo usuário"}</h1>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card className="shadow-xs border-border/60">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <User className="size-4 text-primary" /> Dados Gerais do Usuário
-            </CardTitle>
-          </CardHeader>
-          <form id="usuario-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
-            <CardContent className="space-y-4">
-              <FieldGroup>
-                <Field data-invalid={!!form.formState.errors.nome}>
-                  <FieldLabel htmlFor="nome">Nome completo</FieldLabel>
-                  <Input id="nome" placeholder="ex.: João da Silva" {...form.register("nome")} />
-                  <FieldError errors={[form.formState.errors.nome]} />
-                </Field>
+      {!usuario ? (
+        <Card className="max-w-2xl">{dadosGerais}</Card>
+      ) : (
+        <Tabs defaultValue="dados" className="max-w-3xl">
+          <TabsList className="flex-wrap">
+            <TabsTrigger value="dados">Dados gerais</TabsTrigger>
+            <TabsTrigger value="empresas">Empresas e perfil</TabsTrigger>
+            <TabsTrigger value="acesso">Acesso ao sistema</TabsTrigger>
+          </TabsList>
 
-                <Field data-invalid={!!form.formState.errors.email}>
-                  <FieldLabel htmlFor="email">E-mail de login</FieldLabel>
-                  <Input id="email" type="email" placeholder="joao@empresa.com.br" {...form.register("email")} />
-                  <FieldError errors={[form.formState.errors.email]} />
-                </Field>
+          <TabsContent value="dados" className="space-y-4">
+            <Card>{dadosGerais}</Card>
+            <Card><CardContent className="pt-6"><UsuarioDadosGrupo usuarioId={usuario.id} /></CardContent></Card>
+          </TabsContent>
 
-                {usuario && (
-                  <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/20">
-                    <div className="space-y-0.5">
-                      <FieldLabel htmlFor="ativo" className="text-sm font-medium">Status do Usuário</FieldLabel>
-                      <FieldDescription className="text-xs">
-                        Usuários inativos têm o acesso bloqueado ao sistema.
-                      </FieldDescription>
-                    </div>
-                    <Switch
-                      id="ativo"
-                      checked={form.watch("ativo")}
-                      onCheckedChange={(checked) => form.setValue("ativo", checked)}
-                    />
-                  </div>
-                )}
+          <TabsContent value="empresas">
+            <Card><CardContent className="pt-6"><UsuarioEmpresasGrupo usuarioId={usuario.id} /></CardContent></Card>
+          </TabsContent>
 
-                {usuario && <UsuarioResetSenhaSection usuarioId={usuario.id} />}
-
-                {usuario && <UsuarioHorariosSection usuarioId={usuario.id} />}
-
-                {!usuario && (
-                  <>
-                    <Field data-invalid={!!form.formState.errors.senha}>
-                      <FieldLabel htmlFor="senha">Senha inicial de acesso</FieldLabel>
-                      <PasswordInput id="senha" {...form.register("senha")} />
-                      {politica && (
-                        <FieldDescription>{describeRequisitos(politica).join(" · ")}</FieldDescription>
-                      )}
-                      <FieldError errors={[form.formState.errors.senha]} />
-                    </Field>
-
-                    <Field data-invalid={!!form.formState.errors.perfilId}>
-                      <FieldLabel htmlFor="perfilId">Perfil inicial de acesso</FieldLabel>
-                      <Select
-                        value={form.watch("perfilId")}
-                        onValueChange={(v) => form.setValue("perfilId", v, { shouldValidate: true })}
-                      >
-                        <SelectTrigger id="perfilId" className="w-full">
-                          <SelectValue placeholder="Selecione um perfil" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {perfis?.data.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.nome}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FieldError errors={[form.formState.errors.perfilId]} />
-                    </Field>
-                  </>
-                )}
-              </FieldGroup>
-            </CardContent>
-
-            <CardFooter className="justify-end gap-3 border-t pt-4">
-              <Button type="button" variant="outline" onClick={() => router.push(LIST_ROUTE)}>
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting} className="shadow-xs gap-2">
-                {usuario ? "Salvar alterações" : "Cadastrar Usuário"}
-              </Button>
-            </CardFooter>
-          </form>
-        </Card>
-
-        {usuario && (
-          <Card className="shadow-xs border-border/60">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Building2 className="size-4 text-primary" /> Vínculo de Empresas e Vendedor
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <UsuarioEmpresasSection usuarioId={usuario.id} />
-            </CardContent>
-          </Card>
-        )}
-      </div>
+          <TabsContent value="acesso">
+            <Card>
+              <CardContent className="space-y-6 pt-6">
+                <UsuarioResetSenhaSection usuarioId={usuario.id} />
+                <UsuarioHorariosSection usuarioId={usuario.id} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      )}
     </div>
   );
 }
-

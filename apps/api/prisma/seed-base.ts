@@ -409,6 +409,8 @@ async function limparDados() {
   await prisma.whatsappVinculoFuncionario.deleteMany();
   await prisma.lead.deleteMany();
   await prisma.empresa.deleteMany();
+  // Depois das empresas e dos usuários, que apontam para o grupo.
+  await prisma.grupoEconomico.deleteMany();
 }
 
 /**
@@ -664,6 +666,8 @@ async function main() {
         cnpj: cfg.cnpj,
         alias: cfg.alias,
         ePlataforma: cfg.ePlataforma,
+        // Toda empresa tem grupo econômico: nasce um com o nome dela.
+        grupoEconomico: { create: { descricao: cfg.nomeFantasia } },
       },
     });
 

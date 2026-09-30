@@ -638,7 +638,12 @@ export class AuthService {
     const vinculos = await this.prisma.withUsuario(usuarioId, (tx) =>
       tx.usuarioEmpresa.findMany({
         where: { usuarioId, ativo: true },
-        include: { empresa: true },
+        include: {
+          empresa: true,
+          rotinaInicial: {
+            select: { codigo: true, menu: { select: { rota: true } } },
+          },
+        },
       }),
     );
 
@@ -655,6 +660,7 @@ export class AuthService {
               administraPlataforma: true,
               rotinaInicial: {
                 select: {
+                  nome: true,
                   menu: {
                     select: { rota: true },
                   },
@@ -690,14 +696,28 @@ export class AuthService {
       : [];
 
     const mustChangePassword = await this.computeMustChangePassword(usuario);
+    // A escolha do usuário só vale enquanto ele enxerga a rotina: o perfil
+    // pode ter mudado, ou o módulo ter sido desligado, depois da escolha.
+    // Nesses casos a gravação fica, e volta a valer se o acesso voltar.
+    const escolhida = ativo?.rotinaInicial;
+    const rotaEscolhida =
+      escolhida?.menu.rota &&
+      permissoes.includes(`${escolhida.codigo}.visualizar`)
+        ? escolhida.menu.rota
+        : null;
     const rotinaInicialRota =
-      ativoIndex === -1 ? null : perfis[ativoIndex]?.rotinaInicial?.menu?.rota ?? null;
+      ativoIndex === -1
+        ? null
+        : (rotaEscolhida ??
+          perfis[ativoIndex]?.rotinaInicial?.menu?.rota ??
+          null);
 
     return {
       id: usuario.id,
       nome: usuario.nome,
       avatarUrl: usuario.avatarUrl,
       telefoneInstitucional: ativo?.telefone ?? null,
+      whatsapp: ativo?.celular ?? null,
       dataNascimento: ativo?.dataNascimento?.toISOString().slice(0, 10) ?? null,
       mustCompleteFirstAccess: precisaCompletarPrimeiroAcesso(usuario, ativo),
       email: usuario.email,
@@ -721,6 +741,11 @@ export class AuthService {
       permissoes,
       mustChangePassword,
       rotinaInicialRota,
+      rotinaInicialId: ativo?.rotinaInicialId ?? null,
+      rotinaInicialPerfilNome:
+        ativoIndex === -1
+          ? null
+          : (perfis[ativoIndex]?.rotinaInicial?.nome ?? null),
     };
   }
 
@@ -843,11 +868,66 @@ export class AuthService {
     usuarioId: string,
     empresaAtivaId: string,
     nome: string,
+    whatsapp?: string,
   ) {
-    await this.prisma.usuario.update({
-      where: { id: usuarioId },
-      data: { nome: nome.trim(), updatedBy: usuarioId },
+    await this.prisma.withTenant(empresaAtivaId, async (tx) => {
+      if (whatsapp !== undefined) {
+        const vinculo = await tx.usuarioEmpresa.findUnique({
+          where: { usuarioId_empresaId: { usuarioId, empresaId: empresaAtivaId } },
+          select: { celular: true },
+        });
+        if (!vinculo) throw new BadRequestException('Vínculo com empresa não encontrado');
+        const celular = whatsapp.replace(/\D/g, '') || null;
+        if (celular !== vinculo.celular) {
+          await tx.usuarioEmpresa.update({
+            where: { usuarioId_empresaId: { usuarioId, empresaId: empresaAtivaId } },
+            data: { celular, updatedBy: usuarioId },
+          });
+          await tx.whatsappVinculoFuncionario.deleteMany({ where: { empresaId: empresaAtivaId, usuarioId } });
+        }
+      }
+      await tx.usuario.update({
+        where: { id: usuarioId },
+        data: { nome: nome.trim(), updatedBy: usuarioId },
+      });
     });
+    return this.me(usuarioId, empresaAtivaId);
+  }
+
+  /**
+   * Grava a tela inicial do próprio usuário na empresa ativa. Só aceita rotina
+   * que ele enxerga agora (`<codigo>.visualizar`, já podado por módulo/menu
+   * desligado) e que tenha tela — o menu dela precisa de rota.
+   */
+  async updateRotinaInicial(
+    usuarioId: string,
+    empresaAtivaId: string,
+    rotinaId: string | null,
+  ) {
+    if (rotinaId) {
+      const rotina = await this.prisma.rotina.findFirst({
+        where: { id: rotinaId, deletedAt: null },
+        select: { codigo: true, menu: { select: { rota: true } } },
+      });
+      const { permissoes } = await this.me(usuarioId, empresaAtivaId);
+      if (
+        !rotina?.menu.rota ||
+        !permissoes.includes(`${rotina.codigo}.visualizar`)
+      ) {
+        throw new BadRequestException(
+          'Escolha uma tela a que você tenha acesso nesta empresa',
+        );
+      }
+    }
+    const { count } = await this.prisma.withTenant(empresaAtivaId, (tx) =>
+      tx.usuarioEmpresa.updateMany({
+        where: { usuarioId, empresaId: empresaAtivaId, ativo: true },
+        data: { rotinaInicialId: rotinaId, updatedBy: usuarioId },
+      }),
+    );
+    if (count === 0) {
+      throw new ForbiddenException('Sem vínculo ativo com esta empresa');
+    }
     return this.me(usuarioId, empresaAtivaId);
   }
 

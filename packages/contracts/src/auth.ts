@@ -74,8 +74,21 @@ export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
 export const updateOwnProfileSchema = z.object({
   nome: z.string().trim().min(2, "Informe o nome").max(120),
+  whatsapp: z.string().trim().max(20).refine(
+    (v) => v === "" || /^(?:\+?55[\s.-]?)?\(?[1-9]\d\)?[\s.-]?9?\d{4}[\s.-]?\d{4}$/.test(v),
+    "Informe o WhatsApp com DDD (ex.: 65 99999-9999)",
+  ).optional(),
 });
 export type UpdateOwnProfileInput = z.infer<typeof updateOwnProfileSchema>;
+
+export const updateRotinaInicialSchema = z.object({
+  rotinaId: z
+    .string()
+    .min(1)
+    .nullable()
+    .describe("Rotina que abre ao entrar; null volta para a rotina inicial do perfil"),
+});
+export type UpdateRotinaInicialInput = z.infer<typeof updateRotinaInicialSchema>;
 
 export const completeFirstAccessSchema = updateOwnProfileSchema.extend({
   telefoneInstitucional: z.string().trim().min(1, "Informe o telefone celular")
@@ -101,6 +114,7 @@ export const currentUserSchema = z.object({
   nome: z.string().describe("Nome completo do usuário"),
   avatarUrl: z.string().nullable(),
   telefoneInstitucional: z.string().nullable(),
+  whatsapp: z.string().nullable().optional(),
   dataNascimento: z.string().nullable(),
   mustCompleteFirstAccess: z.boolean(),
   email: z.string().email().describe("E-mail do usuário"),
@@ -167,7 +181,19 @@ export const currentUserSchema = z.object({
     .string()
     .nullable()
     .optional()
-    .describe("Rota inicial configurada para o perfil ativo nesta empresa (ex.: /comercial/dashboard)"),
+    .describe(
+      "Tela que abre ao entrar na empresa ativa: a escolhida pelo usuário, se ele ainda a enxerga; senão a do perfil (ex.: /comercial/dashboard)",
+    ),
+  rotinaInicialId: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Rotina inicial escolhida pelo próprio usuário nesta empresa; null = segue a do perfil"),
+  rotinaInicialPerfilNome: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Nome da rotina inicial do perfil, usada quando o usuário não escolhe uma"),
 });
 export type CurrentUser = z.infer<typeof currentUserSchema>;
 

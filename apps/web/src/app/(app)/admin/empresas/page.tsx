@@ -186,7 +186,7 @@ export default function EmpresasPage() {
         }}
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
-        onCreate={administradorPlataforma ? () => router.push("/admin/empresas/novo") : undefined}
+        onCreate={() => router.push("/admin/empresas/novo")}
         createLabel="Nova empresa"
       />
 

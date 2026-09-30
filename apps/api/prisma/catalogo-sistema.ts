@@ -77,6 +77,18 @@ export interface DefinicaoMenu {
 
 export const MENUS: DefinicaoMenu[] = [
   {
+    // Hierarquia Grupo econômico → Empresa: por isso vem antes de Empresas. O
+    // grupo é criado em Plataforma > Grupos econômicos; aqui o administrador
+    // de uma empresa do grupo edita a descrição, as empresas e os usuários
+    // (ver docs/planos/2026-09-30-grupo-economico.md).
+    id: 'seed-menu-grupo-economico',
+    nome: 'Grupo Econômico',
+    rota: '/admin/grupo-economico',
+    icone: 'network',
+    codigo: 'grupo-economico',
+    moduloId: MODULO.administracao,
+  },
+  {
     id: 'seed-menu-empresas',
     nome: 'Empresas',
     rota: '/admin/empresas',

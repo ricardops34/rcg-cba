@@ -1,4 +1,4 @@
-import { calcularDiff, CAMPO_CNAES } from './cliente-alteracoes.service';
+import { calcularDiff, CAMPO_CNAE_PRINCIPAL, CAMPO_CNAES } from './cliente-alteracoes.service';
 
 /**
  * O diff é o que a fila de aprovação mostra e o que ela aplica — errar aqui
@@ -46,6 +46,18 @@ describe('calcularDiff', () => {
     it('preenche o cliente que ainda não tem ramo nenhum', () => {
       const diff = calcularDiff({ cnaes: [] }, { cnaes: ['4639701'] });
       expect(diff[CAMPO_CNAES]).toEqual({ de: null, para: '4639701' });
+    });
+  });
+
+  describe(`campo virtual ${CAMPO_CNAE_PRINCIPAL}`, () => {
+    it('propõe trocar o principal pelo da Receita', () => {
+      const diff = calcularDiff({ cnaePrincipal: '4721102' }, { cnaePrincipal: '4639701' });
+      expect(diff[CAMPO_CNAE_PRINCIPAL]).toEqual({ de: '4721102', para: '4639701' });
+    });
+
+    it('não propõe nada quando o principal já é o mesmo', () => {
+      const diff = calcularDiff({ cnaePrincipal: '4639701' }, { cnaePrincipal: '4639701' });
+      expect(diff[CAMPO_CNAE_PRINCIPAL]).toBeUndefined();
     });
   });
 });

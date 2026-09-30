@@ -5,6 +5,8 @@ import { ObjetivosService } from '../objetivos/objetivos.service';
 import { NotificacoesService } from '../notificacoes/notificacoes.service';
 import { VendedoresService } from '../vendedores/vendedores.service';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { dataDoResumo, inicioDoDiaOperacional } from './dia-operacional';
+import { HORARIO_TIMEZONE } from '../../common/horario/horario-trabalho';
 
 /**
  * O que a pessoa precisa saber ao abrir o assistente.
@@ -138,50 +140,50 @@ export class AgenteMeuDiaService {
   /** Aniversário compara dia e mês — o ano é o de nascimento. */
   private ehHoje(data: Date | null): boolean {
     if (!data) return false;
-    const hoje = new Date();
-    return (
-      data.getUTCDate() === hoje.getUTCDate() &&
-      data.getUTCMonth() === hoje.getUTCMonth()
-    );
+    return data.toISOString().slice(5, 10) === dataDoResumo().slice(5, 10);
   }
 
   private async agendaDe(empresaId: string, user: AuthenticatedUser) {
     if (!this.pode(user, 'atividades.visualizar')) return null;
 
-    const inicioDeHoje = new Date(
-      Date.UTC(
-        new Date().getUTCFullYear(),
-        new Date().getUTCMonth(),
-        new Date().getUTCDate(),
-      ),
-    );
+    const inicioDeHoje = inicioDoDiaOperacional();
     const fimDeHoje = new Date(inicioDeHoje.getTime() + 86_400_000 - 1);
 
-    // Pendente com vencimento até o fim de hoje: pega o atrasado e o do dia
-    // numa consulta só. O que vence amanhã não é assunto de "bom dia".
-    const pagina = (await this.atividades.findAll(empresaId, user, {
+    const filtro = {
       ...(await this.escopoDoVendedor(empresaId, user)),
       page: 1,
-      pageSize: 50,
+      pageSize: ITENS_AGENDA,
       sortBy: 'dataVencimento',
       sortOrder: 'asc',
       concluida: false,
-      dataFim: fimDeHoje,
-    } as never)) as {
-      data: { titulo: string; tipo: string; dataVencimento: Date | null }[];
     };
-
-    const itens = pagina.data ?? [];
-    const atrasadas = itens.filter(
+    type Pagina = {
+      data: { titulo: string; tipo: string; dataVencimento: Date | null }[];
+      total: number;
+    };
+    // Contagens vêm do banco, não da primeira página (a equipe pode ter
+    // centenas de pendências). Só trazemos os primeiros itens para o cartão.
+    const [paginaAtrasadas, paginaHoje] = (await Promise.all([
+      this.atividades.findAll(empresaId, user, {
+        ...filtro,
+        dataFim: new Date(inicioDeHoje.getTime() - 1),
+      } as never),
+      this.atividades.findAll(empresaId, user, {
+        ...filtro,
+        dataInicio: inicioDeHoje,
+        dataFim: fimDeHoje,
+      } as never),
+    ])) as [Pagina, Pagina];
+    const atrasadas = paginaAtrasadas.data.filter(
       (a) => a.dataVencimento && a.dataVencimento < inicioDeHoje,
     );
-    const hoje = itens.filter(
+    const hoje = paginaHoje.data.filter(
       (a) => !a.dataVencimento || a.dataVencimento >= inicioDeHoje,
     );
 
     return {
-      hoje: hoje.length,
-      atrasadas: atrasadas.length,
+      hoje: paginaHoje.total ?? hoje.length,
+      atrasadas: paginaAtrasadas.total ?? atrasadas.length,
       // O atrasado vem primeiro de propósito: é o que muda o que a pessoa faz
       // nos próximos minutos, e é o primeiro a ser cortado se a lista encher.
       proximas: [...atrasadas, ...hoje].slice(0, ITENS_AGENDA).map((a) => ({
@@ -200,7 +202,11 @@ export class AgenteMeuDiaService {
       );
       return `atrasada há ${dias} dia(s)`;
     }
-    const hora = data.toISOString().slice(11, 16);
+    const hora = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: HORARIO_TIMEZONE,
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(data);
     return hora === '00:00' ? 'hoje' : `hoje às ${hora}`;
   }
 
@@ -219,9 +225,9 @@ export class AgenteMeuDiaService {
     const vendedor = await this.vendedores.vendedorDoUsuario(empresaId, user);
     if (!vendedor || vendedor.tipo !== 'vendedor') return null;
 
-    const agora = new Date();
-    const mes = agora.getMonth() + 1;
-    const ano = agora.getFullYear();
+    const hoje = dataDoResumo();
+    const mes = Number(hoje.slice(5, 7));
+    const ano = Number(hoje.slice(0, 4));
 
     const d = (await this.objetivos.dashboard(empresaId, user, {
       mes,

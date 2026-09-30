@@ -20,6 +20,7 @@ describe('Row-Level Security (e2e)', () => {
         razaoSocial: `RLS Test A ${sufixo}`,
         nomeFantasia: `RLS Test A ${sufixo}`,
         cnpj: `A-${sufixo}`,
+        grupoEconomico: { create: { descricao: `RLS Test A ${sufixo}` } },
       },
     });
     empresaB = await prisma.empresa.create({
@@ -27,6 +28,7 @@ describe('Row-Level Security (e2e)', () => {
         razaoSocial: `RLS Test B ${sufixo}`,
         nomeFantasia: `RLS Test B ${sufixo}`,
         cnpj: `B-${sufixo}`,
+        grupoEconomico: { create: { descricao: `RLS Test B ${sufixo}` } },
       },
     });
 

@@ -22,6 +22,8 @@ export const NOTIFICACAO_TIPOS = [
   "lead_novo",
   /** Recado interno da equipe enviado para o usuário. */
   "recado_interno",
+  /** O "Calcular" em lote da Sugestão de Compra terminou (ou falhou). */
+  "sugestao_compra_calculada",
 ] as const;
 export const notificacaoTipoSchema = z.enum(NOTIFICACAO_TIPOS);
 export type NotificacaoTipo = z.infer<typeof notificacaoTipoSchema>;

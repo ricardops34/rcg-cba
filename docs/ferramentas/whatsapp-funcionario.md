@@ -12,9 +12,10 @@ gerente ou supervisor. Ver [o mapa](README.md) para as outras famílias.
 
 Duas etapas, e a segunda é a que autoriza:
 
-1. **Encontrar** — o telefone é comparado com `vendedores.telefone` pelos
-   **últimos 8 dígitos**, tolerante de propósito (o cadastro pode estar sem DDI
-   ou sem o 9º dígito). Encontrar não autoriza nada.
+1. **Encontrar** — o telefone é comparado com o **Número de telefone** informado
+   em Meu perfil ou no vínculo do usuário com a empresa (`usuario_empresas.celular`).
+   A comparação preserva o DDD e tolera apenas DDI 55 e a variação do nono dígito.
+   Números ambíguos não identificam ninguém. Encontrar não autoriza nada.
 2. **Confirmar** — a pessoa recebe um código de 6 dígitos que aparece **só em
    Meu perfil**, dentro do sistema, onde ela entrou com senha. Só depois disso o
    catálogo abre. Vale 30 dias.
@@ -25,10 +26,12 @@ Duas etapas, e a segunda é a que autoriza:
 > confirmação do vendedor. **Nunca voltar a chavear credencial em comparação
 > tolerante.**
 
-A identificação também exige `usuarios.ativo` **e** `usuario_empresas.ativo`,
-além do cadastro de vendedor ativo. Sem isso, desligar alguém exigiria lembrar
-de desativar o cadastro de vendedor — enquanto ele ficasse ativo, o
-ex-funcionário seguiria consultando a carteira com o pareamento que já tinha.
+A identificação exige usuário e vínculo ativos e não excluídos. Não exige
+cadastro de vendedor: as permissões e a hierarquia continuam sendo resolvidas
+pelo usuário identificado. Trocar ou remover o WhatsApp no perfil ou no cadastro
+administrativo invalida os pareamentos anteriores na empresa. O telefone do
+vendedor não é usado como alternativa: o usuário precisa preencher seu WhatsApp
+de uso do usuário. Não há migração de schema; o campo reutiliza `usuario_empresas.celular`.
 
 ## Só consulta — e é decisão, não limitação
 
