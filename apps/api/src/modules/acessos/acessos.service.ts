@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { MOTIVO_DESCONECTADO } from '../../common/sessao/sessao-encerrada.exception';
 import { AcessoEvento } from '@prisma/client';
 import type { AcessoQuery } from '@plataforma/contracts';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -177,6 +178,39 @@ export class AcessosService {
     ]);
     for (const id of ids) this.situacaoCache.delete(id);
     return abertas;
+  }
+
+  /**
+   * Desconecta uma sessão pela tela de Acessos. Só alcança sessão de usuário
+   * com acesso à empresa ativa — o mesmo corte das consultas desta tela
+   * (`sessoes` não tem RLS). A pessoa sai na próxima requisição
+   * (JwtAuthGuard) e não consegue renovar. A própria sessão atual fica de
+   * fora: para isso existe o "Sair".
+   */
+  async desconectar(empresaId: string, ator: AuthenticatedUser, sessaoId: string) {
+    if (ator.sessaoId && ator.sessaoId === sessaoId) {
+      throw new BadRequestException('Esta é a sua sessão atual. Para encerrá-la, use "Sair".');
+    }
+    const usuarios = await this.usuariosDaEmpresa(empresaId);
+    const sessao = await this.prisma.sessao.findFirst({
+      where: { id: sessaoId, usuarioId: { in: usuarios } },
+      select: { id: true, usuarioId: true, encerradaEm: true, usuario: { select: { email: true } } },
+    });
+    if (!sessao) throw new NotFoundException('Sessão não encontrada');
+    if (sessao.encerradaEm) return { success: true, jaEncerrada: true };
+
+    await this.encerrarSessoes(
+      { usuarioId: sessao.usuarioId, sessaoId: sessao.id },
+      MOTIVO_DESCONECTADO,
+    );
+    await this.registrar({
+      evento: AcessoEvento.sessao_desconectada,
+      email: sessao.usuario.email,
+      usuarioId: sessao.usuarioId,
+      empresaId,
+      detalhe: `Desconectada pela administração (${ator.email})`,
+    });
+    return { success: true, jaEncerrada: false };
   }
 
   /**

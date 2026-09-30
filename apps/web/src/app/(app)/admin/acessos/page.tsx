@@ -12,7 +12,10 @@ import {
   type Sessao,
   type Usuario,
 } from "@plataforma/contracts";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, ApiError } from "@/lib/api-client";
+import { useAuthStore } from "@/stores/auth-store";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 
 import { Input } from "@/components/ui/input";
@@ -32,7 +35,26 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { CircleCheck, Clock, LogIn, ShieldAlert, TriangleAlert, Users } from "lucide-react";
+import { CircleCheck, Clock, LogIn, LogOut, ShieldAlert, TriangleAlert, Users } from "lucide-react";
+
+/** Por que a sessão terminou (sessoes.motivoFim). */
+const MOTIVO_FIM_LABEL: Record<string, string> = {
+  fora_horario: "Fim do expediente",
+  logout: "Saiu do sistema",
+  novo_acesso: "Novo acesso em outro lugar",
+  desconectado: "Desconectado pela administração",
+};
+
+/** Sessão do próprio token (`sid`), para não oferecer "Desconectar" nela. */
+function sessaoDoToken(token: string | null | undefined): string | null {
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof payload.sid === "string" ? payload.sid : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Página de resposta das rotas paginadas de /acessos. */
 interface Pagina<T> {
@@ -206,6 +228,27 @@ export default function AcessosPage() {
     void sessoesQuery.refetch();
   };
 
+  // Desconectar exige acessos.editar (a API confere de novo). A sessão atual de
+  // quem está na tela não recebe o botão: para ela existe o "Sair".
+  const podeDesconectar = useAuthStore((st) => st.hasPermission("acessos", "editar"));
+  const sessaoAtual = useAuthStore((st) => sessaoDoToken(st.accessToken));
+  const [desconectando, setDesconectando] = useState<string | null>(null);
+  const desconectar = async (s: Sessao) => {
+    if (!window.confirm(`Desconectar ${s.usuarioNome}? A pessoa sai do sistema e precisa entrar de novo.`)) {
+      return;
+    }
+    setDesconectando(s.id);
+    try {
+      await apiFetch(`/acessos/sessoes/${s.id}/desconectar`, { method: "POST" });
+      toast.success(`${s.usuarioNome} foi desconectado`);
+      recarregar();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Não foi possível desconectar");
+    } finally {
+      setDesconectando(null);
+    }
+  };
+
   const colunasEventos: ColumnDef<AcessoLog>[] = [
     {
       header: "Quando",
@@ -299,11 +342,7 @@ export default function AcessosPage() {
       header: "Motivo do fim",
       cell: (s) => (
         <span className="text-xs text-muted-foreground">
-          {s.motivoFim === "fora_horario"
-            ? "Fim do expediente"
-            : s.motivoFim === "logout"
-              ? "Saiu do sistema"
-              : (s.motivoFim ?? "—")}
+          {(s.motivoFim && MOTIVO_FIM_LABEL[s.motivoFim]) ?? s.motivoFim ?? "—"}
         </span>
       ),
     },
@@ -311,6 +350,30 @@ export default function AcessosPage() {
       header: "IP",
       cell: (s) => <code className="text-xs font-mono">{s.ip ?? "—"}</code>,
     },
+    ...(podeDesconectar
+      ? [
+          {
+            header: "",
+            className: "w-32 text-right",
+            cell: (s: Sessao) =>
+              !s.encerradaEm && s.id !== sessaoAtual ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1 text-destructive"
+                  disabled={desconectando === s.id}
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    void desconectar(s);
+                  }}
+                >
+                  <LogOut className="size-3.5" />
+                  {desconectando === s.id ? "Desconectando…" : "Desconectar"}
+                </Button>
+              ) : null,
+          } satisfies ColumnDef<Sessao>,
+        ]
+      : []),
   ];
 
   const colunasUsuarios: ColumnDef<AcessoResumo["porUsuario"][number]>[] = [

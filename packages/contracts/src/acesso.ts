@@ -20,6 +20,8 @@ export const acessoEventoSchema = z.enum([
   "acesso_fora_horario",
   "logout",
   "troca_empresa",
+  "sessao_substituida",
+  "sessao_desconectada",
 ]);
 export type AcessoEvento = z.infer<typeof acessoEventoSchema>;
 
@@ -31,6 +33,8 @@ export const ACESSO_EVENTO_LABEL: Record<AcessoEvento, string> = {
   acesso_fora_horario: "Uso fora do expediente",
   logout: "Saída",
   troca_empresa: "Troca de empresa",
+  sessao_substituida: "Sessão encerrada por novo acesso",
+  sessao_desconectada: "Sessão desconectada pela administração",
 };
 
 /** Eventos que representam tentativa de acesso negada. */

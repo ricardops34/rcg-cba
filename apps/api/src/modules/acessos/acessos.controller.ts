@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -68,6 +68,20 @@ export class AcessosController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.listarSessoes(user.empresaAtivaId, query);
+  }
+
+  @ApiOperation({
+    summary: 'Desconectar uma sessão',
+    description:
+      'Encerra a sessão e revoga a renovação dela: o usuário sai na próxima requisição e ' +
+      'precisa entrar de novo. Só sessão de usuário com acesso à empresa ativa; a sessão ' +
+      'atual de quem pede fica de fora (use "Sair"). Registra sessao_desconectada. ' +
+      'Requer acessos.editar.',
+  })
+  @RequirePermission('acessos', 'editar')
+  @Post('sessoes/:id/desconectar')
+  desconectar(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.desconectar(user.empresaAtivaId, user, id);
   }
 
   @ApiOperation({
