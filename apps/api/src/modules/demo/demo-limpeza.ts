@@ -128,6 +128,9 @@ const ORDEM_DE_EXCLUSAO = [
   'Oportunidade',
   'Lead',
   'SugestaoCompraGerada',
+  // Histórico das execuções da Sugestão de Compra: dado de negócio, não
+  // auditoria de acesso. Só aponta para a empresa (preservada).
+  'SugestaoCompraExecucao',
   'Notificacao',
   // --- mural --------------------------------------------------------------
   'ComunicadoPerfil',
