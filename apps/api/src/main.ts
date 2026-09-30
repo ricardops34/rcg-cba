@@ -9,6 +9,7 @@ import { AppModule } from './app.module';
 import { IntegracaoModule } from './modules/integracao/integracao.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { ErrosLogService } from './modules/erros/erros-log.service';
+import { executarComContexto } from './common/prisma/contexto-banco';
 
 async function bootstrap() {
   // `rawBody: true` é o que faz `req.rawBody` existir — só passa a ser lido
@@ -18,6 +19,11 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
   });
+
+  // Contexto da RLS: cada requisição abre o seu, vazio; o JwtStrategy o preenche
+  // ao validar o token, e o PrismaService o leva ao banco. Primeiro middleware,
+  // para cobrir tudo o que vem depois.
+  app.use((_req: unknown, _res: unknown, next: () => void) => executarComContexto({}, next));
 
   // A API é consumida por outra origem (web) e serve assets embutidos via <img>
   // (logos em /uploads). O CORP padrão "same-origin" bloquearia esse embed

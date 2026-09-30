@@ -2,9 +2,10 @@ import type { TenantTx } from '../prisma/prisma.service';
 import type { AuthenticatedUser } from '../decorators/current-user.decorator';
 
 /**
- * null = sem restrição de carteira (admin, "Diretor" ou usuário sem Vendedor
- * vinculado, ex.: Administrativo). string[] = ids de Vendedor cujas carteiras
- * o usuário logado pode ver/mexer.
+ * null = sem restrição de carteira (Administrador, ou perfil com
+ * `carteiraCompleta`, ex.: Administrativo). string[] = ids de Vendedor cujas
+ * carteiras o usuário logado pode ver/mexer — vazio para quem não tem
+ * Vendedor ligado.
  *
  * Usado por Clientes, Notas de Saída, Itens e Títulos a Receber — a regra é
  * uma só (ver docs/planos/clientes-crud.md).
@@ -62,13 +63,25 @@ export async function resolverEscopoDoUsuario(
   empresaId: string,
   quem: { usuarioId: string; isAdmin: boolean },
 ): Promise<EscopoVendedores> {
-  if (quem.isAdmin) return null; // acesso total (cobre Administrador; "Diretor" tratado igual)
+  if (quem.isAdmin) return null; // Administrador: carteira inteira
+
+  // Carteira inteira é atributo do perfil (hoje Administrador e Administrativo),
+  // não do nome dele — o grupo pode renomear ou criar os seus.
+  const vinculo = await tx.usuarioEmpresa.findFirst({
+    where: { usuarioId: quem.usuarioId, empresaId, ativo: true },
+    select: { perfil: { select: { carteiraCompleta: true } } },
+  });
+  if (vinculo?.perfil.carteiraCompleta) return null;
 
   const vendedor = await tx.vendedor.findFirst({
     where: { usuarioId: quem.usuarioId, empresaId, deletedAt: null },
     select: { id: true },
   });
-  if (!vendedor) return null; // sem Vendedor vinculado (ex.: Administrativo) = acesso total
+  // Sem Vendedor ligado ao usuário: carteira nenhuma. Até 30/09/2026 isso era
+  // "sem restrição", e um vendedor cujo cadastro não estava ligado ao usuário
+  // via a empresa toda (decisão de 30/09/2026: só Administrador e
+  // Administrativo veem tudo).
+  if (!vendedor) return [];
 
   const linhas = await tx.$queryRaw<{ id: string }[]>`
     WITH RECURSIVE time_do_vendedor AS (

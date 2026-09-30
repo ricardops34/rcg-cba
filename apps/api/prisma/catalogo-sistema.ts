@@ -887,11 +887,13 @@ export async function sincronizarEstrutura(prisma: PrismaClient) {
 export const ROTINAS_FORA_DO_DIRETOR = new Set(['whatsapp-equipe']);
 
 export async function corrigirPermissoesDoDiretor(prisma: PrismaClient) {
-  const diretor = await prisma.perfil.findFirst({
+  // Todos: o da plataforma e as cópias que cada grupo econômico recebeu dele
+  // (migration 20260930200000_perfil_por_grupo).
+  const diretores = await prisma.perfil.findMany({
     where: { nome: 'Diretor', deletedAt: null },
     select: { id: true },
   });
-  if (!diretor) return 0;
+  if (diretores.length === 0) return 0;
 
   const proibidas = await prisma.rotina.findMany({
     where: {
@@ -908,7 +910,7 @@ export async function corrigirPermissoesDoDiretor(prisma: PrismaClient) {
   if (alvo.length === 0) return 0;
 
   const { count } = await prisma.perfilPermissao.deleteMany({
-    where: { perfilId: diretor.id, rotinaId: { in: alvo } },
+    where: { perfilId: { in: diretores.map((d) => d.id) }, rotinaId: { in: alvo } },
   });
   return count;
 }

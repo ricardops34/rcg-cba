@@ -46,9 +46,12 @@ interface PerfilDetail {
 export function PermissoesMatrix({
   perfilId,
   onSaved,
+  somenteLeitura = false,
 }: {
   perfilId: string;
   onSaved?: () => void;
+  /** Perfil da plataforma visto por quem não o administra: a API recusaria salvar. */
+  somenteLeitura?: boolean;
 }) {
   const qc = useQueryClient();
   // Estrutura completa (sem filtro de permissão do usuário logado) — a
@@ -181,6 +184,7 @@ export function PermissoesMatrix({
                             onCheckedChange={(v) =>
                               toggle(rotina.id, acao, v === true)
                             }
+                            disabled={somenteLeitura}
                             aria-label={`${rotina.nome} — ${ACAO_LABEL[acao]}`}
                           />
                         </td>
@@ -194,11 +198,13 @@ export function PermissoesMatrix({
         ),
       )}
 
-      <div className="flex justify-end">
-        <Button onClick={() => save.mutate()} disabled={save.isPending}>
-          Salvar permissões
-        </Button>
-      </div>
+      {!somenteLeitura && (
+        <div className="flex justify-end">
+          <Button onClick={() => save.mutate()} disabled={save.isPending}>
+            Salvar permissões
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

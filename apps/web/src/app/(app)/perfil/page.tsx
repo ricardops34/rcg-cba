@@ -43,68 +43,79 @@ export default function PerfilPage() {
   const empresaAtiva = user?.empresas.find((e) => e.empresaId === user.empresaAtivaId);
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <CardTitle>Dados da conta</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <FieldGroup>
-            {user && <ProfilePhoto user={user} />}
-            <Field>
-              <FieldLabel>Nome</FieldLabel>
-              <Input
-                value={nome}
-                onChange={(event) => setNome(event.target.value)}
-                maxLength={120}
-                aria-label="Nome do perfil"
-              />
-              <p className="text-xs text-muted-foreground">
-                Este nome identifica você no atendimento e assina as mensagens enviadas ao cliente.
-              </p>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="nascimento">Data de nascimento</FieldLabel>
-              <Input
-                id="nascimento"
-                type="date"
-                className="sm:w-56"
-                value={nascimento}
-                onChange={(event) => setNascimento(event.target.value)}
-              />
-            </Field>
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                disabled={nome.trim().length < 2 || !mudou || salvarDados.isPending}
-                onClick={() => salvarDados.mutate()}
-              >
-                {salvarDados.isPending ? "Salvando…" : "Salvar dados"}
-              </Button>
-            </div>
-            <Field>
-              <FieldLabel>E-mail</FieldLabel>
-              <p className="text-sm">{user?.email}</p>
-            </Field>
-            <Field>
-              <FieldLabel>Empresa ativa</FieldLabel>
-              <p className="text-sm">{empresaAtiva?.nomeFantasia}</p>
-            </Field>
-            <Field>
-              <FieldLabel>Perfil</FieldLabel>
-              <p className="text-sm">{empresaAtiva?.perfilNome}</p>
-            </Field>
-          </FieldGroup>
-        </CardContent>
-      </Card>
+    // Duas pilhas independentes, e não uma grade de linhas: na grade, cada linha
+    // assumia a altura do card mais alto, e a Tela inicial esticava vazia ao
+    // lado dos Dados da conta.
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+      <div className="flex flex-col gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Dados da conta</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <FieldGroup>
+              {user && <ProfilePhoto user={user} />}
+              {/* Só leitura: quem muda é o administrador. Fica acima dos campos
+                  editáveis para o "Salvar dados" não parecer valer para eles. */}
+              <dl className="grid grid-cols-1 gap-3 rounded-lg border bg-muted/20 p-3 text-sm sm:grid-cols-3">
+                <div className="min-w-0">
+                  <dt className="text-xs text-muted-foreground">E-mail</dt>
+                  <dd className="truncate font-medium" title={user?.email}>{user?.email}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-xs text-muted-foreground">Empresa ativa</dt>
+                  <dd className="truncate font-medium">{empresaAtiva?.nomeFantasia}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-xs text-muted-foreground">Perfil</dt>
+                  <dd className="truncate font-medium">{empresaAtiva?.perfilNome}</dd>
+                </div>
+              </dl>
+              <Field>
+                <FieldLabel>Nome</FieldLabel>
+                <Input
+                  value={nome}
+                  onChange={(event) => setNome(event.target.value)}
+                  maxLength={120}
+                  aria-label="Nome do perfil"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Este nome identifica você no atendimento e assina as mensagens enviadas ao cliente.
+                </p>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="nascimento">Data de nascimento</FieldLabel>
+                <Input
+                  id="nascimento"
+                  type="date"
+                  className="sm:w-56"
+                  value={nascimento}
+                  onChange={(event) => setNascimento(event.target.value)}
+                />
+              </Field>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  disabled={nome.trim().length < 2 || !mudou || salvarDados.isPending}
+                  onClick={() => salvarDados.mutate()}
+                >
+                  {salvarDados.isPending ? "Salvando…" : "Salvar dados"}
+                </Button>
+              </div>
+            </FieldGroup>
+          </CardContent>
+        </Card>
 
-      <TelaInicialCard />
+        <TermosAceitosCard />
+      </div>
 
-      <ChangePasswordForm />
+      <div className="flex flex-col gap-4">
+        <TelaInicialCard />
 
-      <TermosAceitosCard />
+        <ChangePasswordForm />
 
-      <WhatsappPareamentoCard />
+        <WhatsappPareamentoCard />
+      </div>
     </div>
   );
 }

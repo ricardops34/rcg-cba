@@ -30,6 +30,8 @@ type ProdutoRow = Produto & {
   categoria?: { id: string; descricao: string } | null;
   subCategoria?: { id: string; descricao: string } | null;
   armazem?: { id: string; descricao: string } | null;
+  /** Última venda (nota de saída): o "Últ. preço" da tela. */
+  ultimaVenda?: { preco: number; data: string } | null;
 };
 
 export default function ProdutosPage() {
@@ -42,14 +44,15 @@ export default function ProdutosPage() {
   const [pageSize, setPageSize] = useState(10);
   const [sortBy, setSortBy] = useState("descricao");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
-  const [status, setStatus] = useState<StatusFilterValue>("todos");
+  // Abre nos ativos: é o catálogo que se vende. Os demais seguem a um clique.
+  const [status, setStatus] = useState<StatusFilterValue>("ativos");
   const [categoriaId, setCategoriaId] = useState<string | undefined>(undefined);
 
   const categoriasQuery = useQuery({
     queryKey: ["categorias", "select", "raizes"],
     queryFn: () =>
       apiFetch<{ data: Categoria[] }>("/categorias", {
-        query: { pageSize: 100, raiz: true },
+        query: { pageSize: 100, raiz: true, ativo: true },
       }),
   });
 
@@ -107,15 +110,27 @@ export default function ProdutosPage() {
     },
     { header: "Unidade", cell: (p) => p.unidade || "—" },
     {
+      // Preço unitário da última venda (nota de saída), com a data. O
+      // "ultimoPreco" do cadastro vem do ERP quase sempre zerado. Sem
+      // ordenação: é apurado só para a página exibida.
       header: "Últ. preço",
-      sortKey: "ultimoPreco",
+      className: "text-right",
       cell: (p) =>
-        p.ultimoPreco != null
-          ? p.ultimoPreco.toLocaleString("pt-BR", {
-              style: "currency",
-              currency: "BRL",
-            })
-          : "—",
+        p.ultimaVenda ? (
+          <div>
+            <p>
+              {p.ultimaVenda.preco.toLocaleString("pt-BR", {
+                style: "currency",
+                currency: "BRL",
+              })}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {new Date(p.ultimaVenda.data).toLocaleDateString("pt-BR", { timeZone: "UTC" })}
+            </p>
+          </div>
+        ) : (
+          <span className="text-muted-foreground">Sem venda</span>
+        ),
     },
     {
       header: "Status",

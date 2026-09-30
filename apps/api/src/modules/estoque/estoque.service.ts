@@ -46,9 +46,11 @@ export class EstoqueService {
       const where: Prisma.ProdutoWhereInput = {
         empresaId,
         deletedAt: null,
-        // Regra de negócio: listar somente produtos de categorias usadas (usado = true)
+        // Regra de negócio: listar somente produtos de categorias usadas
+        // (usado = true, marcação da plataforma) e ativas (status do ERP).
         categoria: {
           usado: true,
+          ativo: true,
           ...(query.categoriaId ? { id: query.categoriaId } : {}),
         },
         // Regra de negócio: itens (produtos) inativos/bloqueados só aparecem se tiverem saldo (> 0)

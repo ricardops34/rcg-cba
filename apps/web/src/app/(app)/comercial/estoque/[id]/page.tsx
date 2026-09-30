@@ -22,6 +22,10 @@ const LIST_ROUTE = "/comercial/estoque";
 
 const moeda = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
+// Saldo sempre com duas casas e sem unidade de medida: o número é o que o ERP
+// guarda, e a unidade do cadastro confundia (produto "5KG" com saldo "3 KG").
+const quantidade = (v: number) =>
+  v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const dataBr = (v: string | null | undefined) => {
   if (!v) return "—";
   const d = new Date(v);
@@ -85,9 +89,8 @@ export default function EstoqueDetalhePage() {
       <Card>
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Info label="Código ERP" value={produto.codigoErp} />
-          <Info label="Unidade" value={produto.unidade || "—"} />
           <Info label="Categoria" value={produto.categoria?.descricao ?? "—"} />
-          <Info label="Saldo total" value={saldoTotal.toLocaleString("pt-BR")} />
+          <Info label="Saldo total" value={quantidade(saldoTotal)} />
         </CardContent>
       </Card>
 
@@ -124,12 +127,11 @@ export default function EstoqueDetalhePage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <span className={s.saldo > 0 ? "" : "text-muted-foreground"}>
-                        {s.saldo.toLocaleString("pt-BR")}
-                        {produto.unidade && <span className="text-xs text-muted-foreground"> {produto.unidade}</span>}
+                        {quantidade(s.saldo)}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      {s.reserva != null ? s.reserva.toLocaleString("pt-BR") : "—"}
+                      {s.reserva != null ? quantidade(s.reserva) : "—"}
                     </TableCell>
                   </TableRow>
                 ))}

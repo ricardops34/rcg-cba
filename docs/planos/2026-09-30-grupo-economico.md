@@ -71,6 +71,31 @@ partir delas.
   trocar só a RCG pela rota de usuários é recusado (400); trocar o perfil
   mandando só a Cuiabá leva a RCG junto. O estado original foi restaurado.
 
+## Perfis do grupo (decisão de 30/09/2026)
+
+O administrador da empresa não conseguia alterar perfil nenhum: todos eram
+globais, e a tela de Perfis passava pelo `PlatformAdminGuard`, porque mexer num
+perfil global mudaria as permissões de todos os clientes. Decisão: **perfil
+passa a ter dono**, a plataforma ou um grupo econômico
+(`perfis.grupoEconomicoId`, migration `20260930200000_perfil_por_grupo`).
+
+- **Da plataforma** (grupo nulo): os de sistema (Administrador Empresa,
+  Administrador da Plataforma) e os modelos. Todo grupo enxerga e atribui; só o
+  administrador da plataforma altera. O administrador da empresa vê "Padrão da
+  plataforma" e a tela só para consulta.
+- **Do grupo:** o administrador de uma empresa do grupo cria, edita, exclui e
+  muda as permissões. Só as empresas do grupo enxergam e atribuem. O perfil
+  criado pelo administrador da plataforma é da plataforma.
+- **Migração:** cada grupo recebeu uma cópia, com as permissões, de cada perfil
+  da plataforma que usava (vínculos, ferramentas do agente e comunicados), e
+  esses usos passaram para a cópia. Na lista, o perfil da plataforma some
+  quando o grupo tem um de mesmo nome.
+- **Empresa que muda de grupo** (incluir ou excluir no grupo) leva os perfis:
+  usa o de mesmo nome do grupo novo ou recebe uma cópia
+  (`levarPerfisParaGrupo`).
+- **Atribuir** perfil de outro grupo é recusado para qualquer ator, inclusive a
+  plataforma (`garantirPerfilDoGrupo`).
+
 ## Usuário único no grupo (decisão de 30/09/2026)
 
 O usuário é um só no grupo econômico, e os dados dele também. Superior, nome

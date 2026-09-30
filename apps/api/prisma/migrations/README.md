@@ -41,6 +41,35 @@ O `app.current_empresa_id` é definido por transação em
 `withTenant(empresaId, ...)`, senão a policy filtra tudo (valor vazio) e a query
 volta vazia.
 
+## Contexto automático nas requisições **[verificado em dev, 2026-09-30]**
+
+Desde a migration `20260930210000_rls_perfis`, toda consulta feita durante uma
+requisição autenticada leva ao banco, sozinha, a empresa ativa
+(`app.current_empresa_id`) e o modo plataforma (`app.plataforma = 'on'` para o
+administrador da plataforma). Quem faz isso é o `PrismaService`, lendo o
+`AsyncLocalStorage` de `common/prisma/contexto-banco.ts`, que o middleware de
+`main.ts` abre e o `JwtStrategy` preenche. Consulta avulsa vira um lote curto
+`[set_config, consulta]`; dentro de transação passa direto, porque o contexto
+foi informado quando ela abriu.
+
+- `withTenant` continua valendo, e é **obrigatório fora de requisição
+  autenticada**: login, refresh, `me()` chamado pelo login, jobs, webhooks,
+  integração por chave de API. Ali não há contexto automático.
+- `withUsuario` e os helpers do portal **zeram** a empresa, para a pergunta
+  continuar sendo "os dados deste usuário/credencial".
+- `set_config` explícito dentro da transação prevalece (vem depois).
+
+## RLS por grupo econômico: `perfis` e `perfil_permissoes`
+
+`perfis` é lida no login, antes de haver empresa ativa, por isso a leitura dos
+perfis **da plataforma** (grupo nulo) é livre. Os de grupo aparecem para o
+próprio grupo (`app_grupo_atual()`, o grupo da empresa informada), para o modo
+plataforma e para o usuário com vínculo neles (`withUsuario`). Escrever exige
+modo plataforma (perfil da plataforma) ou o grupo da empresa ativa.
+`perfil_permissoes` herda a visibilidade do perfil. Operação que atravessa
+grupos (empresa mudando de grupo) precisa ler antes e gravar depois da mudança
+— ver `planejarPerfisParaGrupo`/`aplicarPerfisNoGrupo`.
+
 ## `usuario_empresas`: RLS com duas policies (tenant + self)
 
 `usuario_empresas` carrega hierarquia/dados do vínculo
@@ -163,10 +192,21 @@ empresas).
 Sem RLS por serem referência global (sem coluna `empresaId`): `paises`,
 `estados`, `municipios`, `ceps`, `cnaes` (além das tabelas de sistema
 `modulos`/`menus`/`rotinas`, de `politica_senha`/`senha_historico` — login e
-senha são globais — e de `perfis`: um
-mesmo papel/RBAC, ex. "Administrador Empresa"/"Vendedor", é compartilhado por
-todas as empresas; cada vínculo usuário×empresa continua escolhendo seu
-próprio perfil dessa lista global). `termo_documentos` e `termo_aceites`
+senha são globais — e de `perfis`, que é lida no login, antes de haver
+empresa ativa). **`perfis` tem dono, mas o corte é código, não RLS**
+(migration `20260930200000_perfil_por_grupo`): `grupoEconomicoId` nulo é perfil
+da plataforma (os de sistema e os modelos, que só o administrador da plataforma
+altera); preenchido é perfil do grupo econômico, que o administrador de uma
+empresa do grupo altera. O corte está em `PerfisService` (listar, ler e
+alterar filtram pelo grupo da empresa ativa) e em
+`common/perfil/perfil-do-grupo.ts` (atribuir perfil a vínculo, comunicado ou
+ferramenta do agente; empresa que muda de grupo leva os perfis). Consulta nova a
+`perfis` precisa manter esse filtro — aqui o Postgres não está segurando. O nome
+é único por dono: `(grupoEconomicoId, nome)` e, para os da plataforma, o índice
+parcial `perfis_nome_plataforma_key`, que o Prisma não representa (aparece no
+`migrate diff` como esperado). Busca de perfil de sistema por nome (ex.
+"Administrador Empresa") filtra `grupoEconomicoId: null`, senão um grupo que
+criasse um perfil com o mesmo nome seria encontrado no lugar. `termo_documentos` e `termo_aceites`
 também são globais: o aceite acompanha a conta do usuário mesmo quando ela
 participa de várias empresas; `empresaContextoId` é somente evidência da
 sessão em que o evento ocorreu, não uma chave de isolamento tenant.

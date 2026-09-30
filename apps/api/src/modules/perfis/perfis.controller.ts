@@ -30,7 +30,6 @@ import {
 } from './dto/perfil.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
-import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { ApiBodyExample } from '../../common/decorators/api-body-example.decorator';
 import {
@@ -51,13 +50,14 @@ export class PerfisController {
   @ApiOperation({
     summary: 'Listar perfis',
     description:
-      'Perfis (papéis RBAC) são globais, compartilhados por todas as empresas. Requer perfis.visualizar.',
+      'Os perfis da plataforma (grupoEconomicoId nulo, valem para todos) e os do grupo econômico da ' +
+      'empresa ativa. Requer perfis.visualizar.',
   })
   @ApiPaginationQuery()
   @RequirePermission('perfis', 'visualizar')
   @Get()
   findAll(@Query() query: PerfilQueryDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.findAll(query, user.administradorPlataforma === true);
+    return this.service.findAll(query, user);
   }
 
   @ApiOperation({
@@ -67,32 +67,31 @@ export class PerfisController {
   @ApiResponse({ status: 404, description: 'Perfil não encontrado' })
   @RequirePermission('perfis', 'visualizar')
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.findOne(id, user);
   }
 
   @ApiOperation({
     summary: 'Cadastrar perfil',
     description:
-      'Cria um novo perfil (papel), disponível para todas as empresas. Requer perfis.cadastrar. ' +
-      'Atenção: como o perfil é global, essa permissão concedida em qualquer empresa afeta todas as demais.',
+      'O administrador da empresa cria o perfil no grupo econômico da empresa ativa; o administrador ' +
+      'da plataforma cria perfil da plataforma, disponível para todas as empresas. Requer perfis.cadastrar.',
   })
   @ApiBodyExample(PERFIL_CREATE_EXAMPLE)
-  @UseGuards(PlatformAdminGuard)
   @RequirePermission('perfis', 'cadastrar')
   @Post()
   create(@Body() dto: PerfilCreateDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.create(dto, user.id);
+    return this.service.create(dto, user);
   }
 
   @ApiOperation({
     summary: 'Editar perfil',
     description:
-      'Requer perfis.editar. Atenção: como o perfil é global, a edição afeta todas as empresas que o utilizam.',
+      'Requer perfis.editar. Perfil do grupo: o administrador da empresa edita. Perfil da plataforma ' +
+      '(vale para todas as empresas): só o administrador da plataforma (403 para os demais).',
   })
   @ApiParam({ name: 'id', example: PERFIL_ID_EXAMPLE })
   @ApiBodyExample({ descricao: 'Acesso comercial padrão' })
-  @UseGuards(PlatformAdminGuard)
   @RequirePermission('perfis', 'editar')
   @Patch(':id')
   update(
@@ -100,7 +99,7 @@ export class PerfisController {
     @Body() dto: PerfilUpdateDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.update(id, dto, user.id);
+    return this.service.update(id, dto, user);
   }
 
   @ApiOperation({
@@ -110,11 +109,10 @@ export class PerfisController {
   })
   @ApiParam({ name: 'id', example: PERFIL_ID_EXAMPLE })
   @ApiResponse({ status: 200, schema: { example: { success: true } } })
-  @UseGuards(PlatformAdminGuard)
   @RequirePermission('perfis', 'excluir')
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.remove(id, user.id);
+    return this.service.remove(id, user);
   }
 
   @ApiOperation({
@@ -125,7 +123,6 @@ export class PerfisController {
   })
   @ApiParam({ name: 'id', example: PERFIL_ID_EXAMPLE })
   @ApiBodyExample(PERFIL_PERMISSOES_UPDATE_EXAMPLE)
-  @UseGuards(PlatformAdminGuard)
   @RequirePermission('perfis', 'editar')
   @Put(':id/permissoes')
   updatePermissoes(
@@ -133,6 +130,6 @@ export class PerfisController {
     @Body() dto: PerfilPermissoesUpdateDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.updatePermissoes(id, dto, user.id);
+    return this.service.updatePermissoes(id, dto, user);
   }
 }
