@@ -2773,6 +2773,18 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim, lEnvDel)
 	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
 	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND SF2.D_E_L_E_T_ = ' ' "
+	Else
+		// Linha excluida so vira DELETE se a chave nao tiver outra linha ativa.
+		// Nota excluida e reemitida com o mesmo numero, cliente e loja deixa duas
+		// linhas com a mesma chave; se a excluida voltar a aparecer numa coleta
+		// (a S_T_A_M_P_ dela mudou), o DELETE apagaria na plataforma a versao
+		// valida. O estado da chave e o da linha ativa, em qualquer ordem de
+		// chegada - decisao do usuario em 30/09/2026, ver
+		// docs/planos/2026-09-30-ordem-eventos-stamp-integracao.md.
+		cQuery += "   AND (SF2.D_E_L_E_T_ = ' ' OR NOT EXISTS (SELECT 1 FROM " + RetSQLName("SF2") + " ATV "
+		cQuery += "        WHERE ATV.D_E_L_E_T_ = ' ' AND ATV.F2_FILIAL = SF2.F2_FILIAL AND ATV.F2_DOC = SF2.F2_DOC "
+		cQuery += "          AND ATV.F2_SERIE = SF2.F2_SERIE AND ATV.F2_CLIENTE = SF2.F2_CLIENTE AND ATV.F2_LOJA = SF2.F2_LOJA "
+		cQuery += "          AND ATV.F2_FORMUL = SF2.F2_FORMUL AND ATV.F2_TIPO = SF2.F2_TIPO)) "
 	EndIf
 
 	If !Empty(cChave)
@@ -3068,6 +3080,11 @@ User Function BJMAPPED(cMarca, cChave, cMarcaFim, lEnvDel)
 	// la. Com "Envia deletados? = Nao" o filtro vale em qualquer coleta.
 	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND SC5.D_E_L_E_T_ = ' ' "
+	Else
+		// Linha excluida so vira DELETE se a chave nao tiver outra linha ativa -
+		// mesma regra da nota de saida (BJMAPNFS).
+		cQuery += "   AND (SC5.D_E_L_E_T_ = ' ' OR NOT EXISTS (SELECT 1 FROM " + RetSqlName("SC5") + " ATV "
+		cQuery += "        WHERE ATV.D_E_L_E_T_ = ' ' AND ATV.C5_FILIAL = SC5.C5_FILIAL AND ATV.C5_NUM = SC5.C5_NUM)) "
 	EndIf
 
 	If !Empty(cChave)
@@ -3668,6 +3685,13 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim, lEnvDel)
 	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
 	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND SF1.D_E_L_E_T_ = ' ' "
+	Else
+		// Linha excluida so vira DELETE se a chave nao tiver outra linha ativa -
+		// mesma regra da nota de saida (BJMAPNFS).
+		cQuery += "   AND (SF1.D_E_L_E_T_ = ' ' OR NOT EXISTS (SELECT 1 FROM " + RetSQLName("SF1") + " ATV "
+		cQuery += "        WHERE ATV.D_E_L_E_T_ = ' ' AND ATV.F1_FILIAL = SF1.F1_FILIAL AND ATV.F1_DOC = SF1.F1_DOC "
+		cQuery += "          AND ATV.F1_SERIE = SF1.F1_SERIE AND ATV.F1_FORNECE = SF1.F1_FORNECE AND ATV.F1_LOJA = SF1.F1_LOJA "
+		cQuery += "          AND ATV.F1_FORMUL = SF1.F1_FORMUL AND ATV.F1_TIPO = SF1.F1_TIPO)) "
 	EndIf
 
 	If !Empty(cChave)
@@ -4084,6 +4108,13 @@ User Function BJMAPTIT(cMarca, cChave, cMarcaFim, lEnvDel)
 	// filtro vale em qualquer coleta: linha excluida nem sai da origem.
 	If !lEnvDel .Or. (Empty(cMarca) .And. Empty(cChave))
 		cQuery += "   AND SE1.D_E_L_E_T_ = ' ' "
+	Else
+		// Linha excluida so vira DELETE se a chave nao tiver outra linha ativa -
+		// mesma regra da nota de saida (BJMAPNFS): titulo excluido e gerado de
+		// novo com o mesmo prefixo, numero, parcela e tipo.
+		cQuery += "   AND (SE1.D_E_L_E_T_ = ' ' OR NOT EXISTS (SELECT 1 FROM " + RetSQLName("SE1") + " ATV "
+		cQuery += "        WHERE ATV.D_E_L_E_T_ = ' ' AND ATV.E1_FILIAL = SE1.E1_FILIAL AND ATV.E1_PREFIXO = SE1.E1_PREFIXO "
+		cQuery += "          AND ATV.E1_NUM = SE1.E1_NUM AND ATV.E1_PARCELA = SE1.E1_PARCELA AND ATV.E1_TIPO = SE1.E1_TIPO)) "
 	EndIf
 
 	// So os tipos de titulo que a plataforma usa (MV_BJAPI17, ex.: "NF,DP,BOL")
