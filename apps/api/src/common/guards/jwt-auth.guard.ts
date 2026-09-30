@@ -56,7 +56,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       }
     }
 
-    const expediente = await this.horarios.verificar(user.id);
+    const expediente = await this.horarios.verificar(user.id, user.empresaAtivaId);
     if (!expediente.dentro) {
       await this.acessos.encerrarSessoesDoUsuario(user.id, 'fora_horario');
       await this.acessos.registrar({

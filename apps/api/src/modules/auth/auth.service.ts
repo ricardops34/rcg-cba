@@ -328,22 +328,6 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
-    // Expediente só é avaliado depois da senha conferir: quem erra a senha
-    // recebe sempre a mesma resposta, sem descobrir de tabela nenhuma.
-    const expediente = await this.horarios.verificar(usuario.id);
-    if (!expediente.dentro) {
-      await this.acessos.registrar({
-        evento: 'login_fora_horario',
-        email,
-        usuarioId: usuario.id,
-        detalhe: expediente.motivo,
-        ...meta,
-      });
-      throw new ForaDoExpedienteException(
-        `Acesso permitido apenas em horário de trabalho. ${expediente.motivo}.`,
-      );
-    }
-
     // Quando o login vem com o alias da empresa (?empresa=<alias> na tela de
     // login), a sessão entra diretamente nessa empresa — desde que o usuário
     // tenha vínculo ativo com ela. Sem alias, cai na primeira empresa ativa.
@@ -389,6 +373,25 @@ export class AuthService {
       throw input.empresaAlias
         ? new ForbiddenException('Você não tem acesso a esta empresa')
         : new UnauthorizedException('Usuário sem empresa ativa vinculada');
+    }
+
+    // Expediente só é avaliado depois da senha conferir: quem erra a senha
+    // recebe sempre a mesma resposta, sem descobrir de tabela nenhuma. E depois
+    // de saber a empresa, porque o feriado é dela (só pesa para quem tem a
+    // restrição de horário no cadastro).
+    const expediente = await this.horarios.verificar(usuario.id, vinculo.empresaId);
+    if (!expediente.dentro) {
+      await this.acessos.registrar({
+        evento: 'login_fora_horario',
+        email,
+        usuarioId: usuario.id,
+        empresaId: vinculo.empresaId,
+        detalhe: expediente.motivo,
+        ...meta,
+      });
+      throw new ForaDoExpedienteException(
+        `Acesso permitido apenas em horário de trabalho. ${expediente.motivo}.`,
+      );
     }
 
     // A sessão nasce aqui e acompanha as renovações de token pelo sessaoId —
@@ -538,7 +541,7 @@ export class AuthService {
     // pelo próprio refresh token), então a trava de expediente precisa ser
     // conferida aqui também — senão bastaria deixar a aba aberta para o
     // sistema se renovar indefinidamente depois do fim do turno.
-    const expediente = await this.horarios.verificar(stored.usuarioId);
+    const expediente = await this.horarios.verificar(stored.usuarioId, stored.empresaId);
     if (!expediente.dentro) {
       await this.encerrarAcessoPorHorario(stored.usuarioId, expediente.motivo);
       throw new ForaDoExpedienteException(

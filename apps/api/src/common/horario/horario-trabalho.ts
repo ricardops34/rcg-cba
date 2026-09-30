@@ -88,8 +88,14 @@ export function dentroDoExpediente(
   restringir: boolean,
   horarios: UsuarioHorario[],
   agora: Date = new Date(),
+  /**
+   * Descrição do feriado de hoje na empresa, se houver. Só pesa para quem tem
+   * a restrição de horário ligada no cadastro — os demais seguem livres.
+   */
+  feriado?: string | null,
 ): ResultadoExpediente {
   if (!restringir) return { dentro: true, motivo: '' };
+  if (feriado) return { dentro: false, motivo: `Feriado: ${feriado}` };
 
   const { diaSemana, hora } = momentoLocal(agora);
   const doDia = horarios.find((h) => h.diaSemana === diaSemana);

@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { UsuarioHorario } from '@plataforma/contracts';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import {
   dentroDoExpediente,
+  HORARIO_TIMEZONE,
   type ResultadoExpediente,
 } from '../../common/horario/horario-trabalho';
 
@@ -27,6 +28,7 @@ const TTL_MS = 60_000;
  */
 @Injectable()
 export class HorarioTrabalhoService {
+  private readonly logger = new Logger(HorarioTrabalhoService.name);
   private readonly cache = new Map<string, EntradaCache>();
 
   constructor(private readonly prisma: PrismaService) {}
@@ -78,12 +80,47 @@ export class HorarioTrabalhoService {
     };
   }
 
-  /** O usuário pode acessar agora? */
+  /**
+   * Feriado de hoje na empresa (descrição) ou null. Os feriados são por
+   * empresa — RCG e Cuiabá têm os municipais diferentes. Cache por empresa e
+   * dia: a tabela muda pouco e o guard pergunta a cada requisição.
+   */
+  private readonly feriadoCache = new Map<string, { descricao: string | null; expiraEm: number }>();
+
+  private async feriadoDeHoje(empresaId: string, agora: Date): Promise<string | null> {
+    const dia = new Intl.DateTimeFormat('en-CA', { timeZone: HORARIO_TIMEZONE }).format(agora);
+    const chave = `${empresaId}:${dia}`;
+    const emCache = this.feriadoCache.get(chave);
+    if (emCache && emCache.expiraEm > Date.now()) return emCache.descricao;
+    // Falha ao ler o feriado não pode virar 500 no login nem em toda
+    // requisição: registra e segue sem ele (as faixas por dia continuam valendo).
+    const feriado = await this.prisma
+      .withTenant(empresaId, (tx) =>
+        tx.feriado.findFirst({
+          where: { empresaId, data: new Date(`${dia}T00:00:00.000Z`) },
+          select: { descricao: true },
+        }),
+      )
+      .catch((erro: unknown) => {
+        this.logger.error(`Falha ao ler o feriado de ${empresaId}: ${String(erro)}`);
+        return null;
+      });
+    if (this.feriadoCache.size > 5_000) this.feriadoCache.clear();
+    this.feriadoCache.set(chave, { descricao: feriado?.descricao ?? null, expiraEm: Date.now() + 10 * TTL_MS });
+    return feriado?.descricao ?? null;
+  }
+
+  /**
+   * O usuário pode acessar agora? Com `empresaId`, o feriado dela também
+   * barra — só quem tem a restrição de horário ligada no cadastro.
+   */
   async verificar(
     usuarioId: string,
+    empresaId?: string | null,
     agora: Date = new Date(),
   ): Promise<ResultadoExpediente> {
     const { restringir, horarios } = await this.carregar(usuarioId);
-    return dentroDoExpediente(restringir, horarios, agora);
+    const feriado = restringir && empresaId ? await this.feriadoDeHoje(empresaId, agora) : null;
+    return dentroDoExpediente(restringir, horarios, agora, feriado);
   }
 }
