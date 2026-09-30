@@ -3,8 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
-import { corteDeVenda, JOIN_CATEGORIA_DO_ITEM_SQL } from '../../common/vendas/venda-analitica';
+import { PrismaService } from '../../common/prisma/prisma.service';
 import {
   buildPaginatedResult,
   paginationToSkipTake,
@@ -113,8 +112,12 @@ export class ProdutosService {
       const where = {
         empresaId,
         deletedAt: null,
-        // Regra de negócio: só produtos de categoria ativa (status do ERP).
-        categoria: { is: { ativo: true } },
+        // Comercial › Produtos: só categoria ativa (status do ERP) e usada
+        // (marcação da plataforma) — o mesmo critério da Consulta de Estoque.
+        // O cadastro e o seletor do orçamento não pedem, e veem tudo.
+        ...(query.categoriaAtiva
+          ? { categoria: { is: { ativo: true, usado: true } } }
+          : {}),
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
         ...(categoriaIds ? { categoriaId: { in: categoriaIds } } : {}),
         ...(query.fabricanteIds?.length
@@ -179,47 +182,13 @@ export class ProdutosService {
         }),
         tx.produto.count({ where }),
       ]);
-      const vendas = await this.ultimasVendas(tx, empresaId, data.map((p) => p.id));
-      return buildPaginatedResult(
-        data.map((p) => ({ ...p, ultimaVenda: vendas.get(p.id) ?? null })),
-        total,
-        query,
-      );
+      return buildPaginatedResult(data, total, query);
     });
   }
 
   /**
-   * Preço unitário e data da última venda de cada produto — o "Últ. preço" da
-   * tela. O `ultimoPreco` do cadastro vem do ERP e chega quase sempre zerado
-   * (8.030 de 8.032 na RCG em 30/09/2026), então a referência passou a ser a
-   * própria nota: o que de fato foi cobrado por último.
-   *
-   * "Venda" é o mesmo corte do Dashboard e das Consultas (`corteDeVenda`):
-   * nota que gera duplicata, fora comodato, nas séries da empresa.
-   */
-  private async ultimasVendas(tx: TenantTx, empresaId: string, produtoIds: string[]) {
-    const resultado = new Map<string, { preco: number; data: Date }>();
-    if (produtoIds.length === 0) return resultado;
-    const corte = await corteDeVenda(tx, empresaId);
-    const linhas = await tx.$queryRaw<{ produtoId: string; preco: number; data: Date }[]>`
-      SELECT DISTINCT ON (i."produtoId")
-        i."produtoId", i."vlrUnitario" AS preco, n."dtEmissao" AS data
-      FROM "notas_saida_itens" i
-      JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
-      ${JOIN_CATEGORIA_DO_ITEM_SQL}
-      WHERE i."empresaId" = ${empresaId}
-        AND i."produtoId" IN (${Prisma.join(produtoIds)})
-        AND ${Prisma.join([...corte.notaSql, ...corte.itemSql], ' AND ')}
-      ORDER BY i."produtoId", n."dtEmissao" DESC, n."id" DESC
-    `;
-    for (const l of linhas) resultado.set(l.produtoId, { preco: Number(l.preco), data: l.data });
-    return resultado;
-  }
-
-  /**
    * Preço de venda do produto em cada tabela de preço ativa — a aba Preços do
-   * detalhe. Tabela e item precisam estar ativos; a vigência (início/fim)
-   * acompanha para a tela mostrar.
+   * detalhe. Tabela e item precisam estar ativos.
    */
   precos(empresaId: string, produtoId: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
@@ -235,7 +204,7 @@ export class ProdutosService {
           id: true,
           preco: true,
           tabelaPreco: {
-            select: { id: true, codigoErp: true, descricao: true, dtInicio: true, dtFim: true },
+            select: { id: true, codigoErp: true, descricao: true },
           },
         },
         orderBy: { tabelaPreco: { descricao: 'asc' } },
@@ -262,7 +231,6 @@ export class ProdutosService {
           where: {
             empresaId,
             categoriaPaiId: null,
-            ativo: true,
             deletedAt: null,
             produtos: { some: { empresaId, deletedAt: null } },
           },
@@ -296,8 +264,7 @@ export class ProdutosService {
         include: PRODUTO_INCLUDE,
       });
       if (!produto) throw new NotFoundException('Produto não encontrado');
-      const vendas = await this.ultimasVendas(tx, empresaId, [produto.id]);
-      return { ...produto, ultimaVenda: vendas.get(produto.id) ?? null };
+      return produto;
     });
   }
 

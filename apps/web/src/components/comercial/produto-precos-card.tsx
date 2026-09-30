@@ -16,28 +16,10 @@ import {
 type PrecoTabela = {
   id: string;
   preco: number;
-  tabela: {
-    id: string;
-    codigoErp: string;
-    descricao: string;
-    dtInicio: string | null;
-    dtFim: string | null;
-  };
+  tabela: { id: string; codigoErp: string; descricao: string };
 };
 
 const moeda = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-// Vigência é data sem hora (@db.Date): lida em UTC para não voltar um dia.
-const data = (v: string | null) =>
-  v ? new Date(v).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : null;
-
-function vigencia(t: PrecoTabela["tabela"]) {
-  const inicio = data(t.dtInicio);
-  const fim = data(t.dtFim);
-  if (inicio && fim) return `${inicio} a ${fim}`;
-  if (inicio) return `desde ${inicio}`;
-  if (fim) return `até ${fim}`;
-  return "sem prazo";
-}
 
 /** Preço de venda do produto em cada tabela de preço ativa (aba Preços do detalhe). */
 export function ProdutoPrecosCard({ produtoId }: { produtoId: string }) {
@@ -64,7 +46,6 @@ export function ProdutoPrecosCard({ produtoId }: { produtoId: string }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Tabela de preço</TableHead>
-                  <TableHead>Vigência</TableHead>
                   <TableHead className="text-right">Preço de venda</TableHead>
                 </TableRow>
               </TableHeader>
@@ -75,7 +56,6 @@ export function ProdutoPrecosCard({ produtoId }: { produtoId: string }) {
                       <p>{p.tabela.descricao}</p>
                       <p className="font-mono text-xs text-muted-foreground">{p.tabela.codigoErp}</p>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{vigencia(p.tabela)}</TableCell>
                     <TableCell className="text-right font-medium">{moeda(p.preco)}</TableCell>
                   </TableRow>
                 ))}

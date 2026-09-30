@@ -24,14 +24,7 @@ export type ProdutoDetalhe = Produto & {
     descricao: string;
   } | null;
   armazem?: { id: string; codigoErp: string | null; descricao: string } | null;
-  /** Última venda (nota de saída) — o "Último preço". */
-  ultimaVenda?: { preco: number; data: string } | null;
 };
-
-const moeda = (v: number | null | undefined) =>
-  v != null
-    ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-    : "—";
 
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -72,14 +65,6 @@ export function ProdutoDetalheContent({
         <Info label="NCM" value={produto.ncm || "—"} />
         <Info label="Qtd. embalagem" value={produto.qtdEmbalagem ?? "—"} />
         <Info label="Peso" value={produto.peso ?? "—"} />
-        <Info
-          label="Último preço"
-          value={
-            produto.ultimaVenda
-              ? `${moeda(produto.ultimaVenda.preco)} em ${new Date(produto.ultimaVenda.data).toLocaleDateString("pt-BR", { timeZone: "UTC" })}`
-              : "Sem venda"
-          }
-        />
         <Info
           label="Regra de desconto"
           value={regraDescontoLabel(produto.regraDesconto)}
