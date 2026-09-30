@@ -71,7 +71,9 @@ export const dashboardGerencialSchema = z.object({
     clientesPositivados: z
       .number()
       .int()
-      .describe("Clientes distintos com compra no período"),
+      .describe(
+        "Soma da positivação dos vendedores: cliente que comprou de dois vendedores conta uma vez em cada",
+      ),
     objetivoClientes: z.number().int().describe("Soma de numeroCliente dos objetivos"),
     percClientes: z.number(),
     devolucao: z.number().describe("Soma de vlrDev no período"),

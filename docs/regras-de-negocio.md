@@ -112,12 +112,16 @@ critério antigo (condição de pagamento) até o ERP reenviá-la.
 Um corte novo de "o que é venda" entra em `corteDeVenda`, nunca num serviço só
 — senão uma tela passa a responder diferente das outras para a mesma pergunta.
 
-**Positivação é cliente único; valor é de quem emitiu a nota** — confirmado
-pelo usuário em 2026-09-29. Quando o mesmo cliente recebe no mês notas de dois
-vendedores, cada vendedor o positiva na própria linha e fica com o valor da
-própria nota, mas no total da empresa ele conta **uma vez**. Por isso o cartão
-"Clientes" do Dashboard Gerencial não é a soma das linhas: em 09/2026 foram
-346 clientes únicos contra 351 na soma (o sistema anterior somava as linhas).
+**Positivação é cliente único por vendedor; valor é de quem emitiu a nota** —
+confirmado pelo usuário em 2026-09-29. Quando o mesmo cliente recebe no mês
+notas de dois vendedores, cada vendedor o positiva na própria linha e fica com
+o valor da própria nota.
+
+**No Dashboard Gerencial, os cartões "Clientes" e "Base" são a soma das
+linhas** — decisão do usuário em 2026-09-30, que substituiu a de contar o
+cliente uma vez só no total da empresa. Com clientes distintos, o cartão (353)
+e o rodapé da tabela (358) mostravam números diferentes para a mesma coisa em
+09/2026. A soma é também como o sistema anterior contava.
 
 **Cliente sem vendedor é cliente ativo cujo vendedor está inativo** (ou
 excluído, ou sem vendedor no cadastro) — confirmado pelo usuário em

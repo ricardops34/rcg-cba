@@ -619,9 +619,7 @@ export class ObjetivosService {
       }
 
       const positivacaoPorVendedor = new Map<string, number>();
-      const clientesDistintos = new Set<string>();
       for (const g of positivacaoGrupos) {
-        if (g.clienteId) clientesDistintos.add(g.clienteId);
         if (!g.vendedorId) continue;
         positivacaoPorVendedor.set(
           g.vendedorId,
@@ -741,7 +739,14 @@ export class ObjetivosService {
         (acc, o) => acc + o.clientes,
         0,
       );
-      const clientesPositivados = clientesDistintos.size;
+      // O cartão é a **soma das linhas**, não o total de clientes distintos:
+      // quem comprou de dois vendedores no mês conta uma vez em cada carteira
+      // — é como o sistema anterior contava e bate com o rodapé da tabela
+      // (decisão do usuário em 2026-09-30).
+      const clientesPositivados = [...positivacaoPorVendedor.values()].reduce(
+        (a, b) => a + b,
+        0,
+      );
 
       return {
         periodo: {
