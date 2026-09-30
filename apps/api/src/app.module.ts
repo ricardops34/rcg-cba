@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { AssinarUploadsInterceptor } from './common/uploads/assinar-uploads.interceptor';
 import { ConfigModule } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -145,6 +146,11 @@ import { GruposEconomicosModule } from './modules/grupos-economicos/grupos-econo
     ProdutoCamposModule,
   ],
   controllers: [AppController],
-  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [
+    AppService,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // Assina a mídia do WhatsApp nas respostas (ver common/uploads/link-assinado.ts).
+    { provide: APP_INTERCEPTOR, useClass: AssinarUploadsInterceptor },
+  ],
 })
 export class AppModule {}

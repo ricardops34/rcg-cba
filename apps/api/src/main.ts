@@ -10,6 +10,8 @@ import { IntegracaoModule } from './modules/integracao/integracao.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { ErrosLogService } from './modules/erros/erros-log.service';
 import { executarComContexto } from './common/prisma/contexto-banco';
+import { linkValido, PREFIXO_ASSINADO } from './common/uploads/link-assinado';
+import { posix } from 'node:path';
 
 async function bootstrap() {
   // `rawBody: true` é o que faz `req.rawBody` existir — só passa a ser lido
@@ -63,6 +65,30 @@ async function bootstrap() {
     },
     credentials: true,
   });
+  // /uploads é servido estático e sem login (logo, foto de produto, banner são
+  // públicos). O que não é: anexos do agente e PDFs da importação de fichas só
+  // o servidor lê — ninguém de fora tem motivo para baixar, então 404; a mídia
+  // de conversa do WhatsApp só com link assinado e no prazo
+  // (common/uploads/link-assinado.ts). Caminho normalizado antes de conferir,
+  // para um `../` não contornar o bloqueio. Registrado antes do estático, que
+  // o ServeStaticModule só liga no init.
+  app.use((req: any, res: any, next: () => void) => {
+    let caminho: string;
+    try {
+      caminho = posix.normalize(decodeURIComponent(req.path ?? ''));
+    } catch {
+      return res.status(400).end();
+    }
+    if (!caminho.startsWith('/uploads/')) return next();
+    if (caminho.startsWith('/uploads/agente/') || caminho.startsWith('/uploads/fichas-importacao/')) {
+      return res.status(404).end();
+    }
+    if (caminho.startsWith(PREFIXO_ASSINADO) && !linkValido(caminho, req.query?.exp, req.query?.sig)) {
+      return res.status(403).end();
+    }
+    next();
+  });
+
   // Os parsers abaixo valem para todas as rotas (o Nest não os limita por
   // caminho), mas só estas precisam de corpo grande. Este filtro roda antes
   // deles: as demais — inclusive login e as outras rotas públicas — recusam
