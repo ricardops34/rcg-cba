@@ -155,7 +155,7 @@ export class AuthController {
     @CurrentUser() user: AuthenticatedUser,
     @Req() req: Request,
   ) {
-    return this.authService.switchEmpresa(user.id, dto.empresaId, this.meta(req));
+    return this.authService.switchEmpresa(user.id, dto.empresaId, this.meta(req), user.sessaoId);
   }
 
   @ApiOperation({

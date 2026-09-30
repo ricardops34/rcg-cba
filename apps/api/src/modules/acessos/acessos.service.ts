@@ -118,6 +118,65 @@ export class AcessosService {
       where: { id: sessaoId, encerradaEm: null },
       data: { encerradaEm: new Date(), motivoFim: motivo },
     });
+    this.situacaoCache.delete(sessaoId);
+  }
+
+  /**
+   * Situação da sessão para o JwtAuthGuard, que pergunta a cada requisição.
+   * Cache curto por sessão: o suficiente para uma tela que dispara várias
+   * consultas juntas não virar várias leituras, e curto o bastante para quem
+   * foi desconectado sair em segundos. Encerrar pela API limpa o cache na hora.
+   */
+  private readonly situacaoCache = new Map<string, { aberta: boolean; motivo: string | null; ate: number }>();
+  private static readonly CACHE_SESSAO_MS = 10_000;
+
+  async situacaoSessao(sessaoId: string): Promise<{ aberta: boolean; motivo: string | null }> {
+    const cache = this.situacaoCache.get(sessaoId);
+    if (cache && cache.ate > Date.now()) return cache;
+    const sessao = await this.prisma.sessao.findUnique({
+      where: { id: sessaoId },
+      select: { encerradaEm: true, motivoFim: true },
+    });
+    // Sessão que não existe mais conta como encerrada: o token não tem onde se apoiar.
+    const situacao = { aberta: !!sessao && !sessao.encerradaEm, motivo: sessao?.motivoFim ?? null };
+    if (this.situacaoCache.size > 10_000) this.situacaoCache.clear();
+    this.situacaoCache.set(sessaoId, { ...situacao, ate: Date.now() + AcessosService.CACHE_SESSAO_MS });
+    return situacao;
+  }
+
+  /**
+   * Encerra sessões abertas e revoga os refresh tokens delas — sem isto a outra
+   * ponta renovaria o token e seguiria logada. `manter` é a sessão que fica
+   * (a do login que acabou de acontecer).
+   */
+  async encerrarSessoes(
+    filtro: { usuarioId: string; manter?: string; sessaoId?: string },
+    motivo: string,
+  ) {
+    const abertas = await this.prisma.sessao.findMany({
+      where: {
+        usuarioId: filtro.usuarioId,
+        encerradaEm: null,
+        ...(filtro.sessaoId ? { id: filtro.sessaoId } : {}),
+        ...(filtro.manter ? { NOT: { id: filtro.manter } } : {}),
+      },
+      select: { id: true, empresaId: true },
+    });
+    if (abertas.length === 0) return [];
+    const ids = abertas.map((s) => s.id);
+    const agora = new Date();
+    await this.prisma.$transaction([
+      this.prisma.sessao.updateMany({
+        where: { id: { in: ids }, encerradaEm: null },
+        data: { encerradaEm: agora, motivoFim: motivo },
+      }),
+      this.prisma.refreshToken.updateMany({
+        where: { sessaoId: { in: ids }, revokedAt: null },
+        data: { revokedAt: agora },
+      }),
+    ]);
+    for (const id of ids) this.situacaoCache.delete(id);
+    return abertas;
   }
 
   /**
@@ -130,6 +189,8 @@ export class AcessosService {
       where: { usuarioId, encerradaEm: null },
       data: { encerradaEm: new Date(), motivoFim: motivo },
     });
+    // Raro (fim de expediente): mais simples esvaziar do que achar as dele.
+    this.situacaoCache.clear();
   }
 
   // ---------------------------------------------------------------- consultas

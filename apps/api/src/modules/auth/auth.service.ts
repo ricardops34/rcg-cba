@@ -1,3 +1,8 @@
+import {
+  MOTIVO_DESCONECTADO,
+  MOTIVO_NOVO_ACESSO,
+  SessaoEncerradaException,
+} from '../../common/sessao/sessao-encerrada.exception';
 import { randomBytes, createHash } from 'node:crypto';
 import { mkdir, writeFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -159,7 +164,12 @@ export class AuthService {
     });
   }
 
-  private async buildAccessToken(usuarioEmpresaId: string, empresaId: string) {
+  private async buildAccessToken(
+    usuarioEmpresaId: string,
+    empresaId: string,
+    /** Sessão do login — o JwtAuthGuard confere se segue aberta. */
+    sessaoId: string | null,
+  ) {
     const vinculo = await this.prisma.withTenant(empresaId, (tx) =>
       tx.usuarioEmpresa.findUniqueOrThrow({
         where: { id: usuarioEmpresaId },
@@ -212,6 +222,7 @@ export class AuthService {
       // só: trocar de empresa não troca de perfil.
       administradorPlataforma: perfil.administraPlataforma,
       permissoes,
+      ...(sessaoId ? { sid: sessaoId } : {}),
     };
 
     const accessToken = await this.jwt.signAsync(payload, {
@@ -380,10 +391,6 @@ export class AuthService {
         : new UnauthorizedException('Usuário sem empresa ativa vinculada');
     }
 
-    const { accessToken } = await this.buildAccessToken(
-      vinculo.id,
-      vinculo.empresaId,
-    );
     // A sessão nasce aqui e acompanha as renovações de token pelo sessaoId —
     // é ela que mede o tempo de uso na tela de Acessos.
     const sessaoId = await this.acessos.abrirSessao({
@@ -392,6 +399,29 @@ export class AuthService {
       ip: meta.ip,
       userAgent: meta.userAgent,
     });
+    // Sessão única por usuário (decisão de 30/09/2026): este login derruba o
+    // que estiver aberto em outro navegador ou computador — sessão encerrada e
+    // renovação revogada; o token de acesso de lá para de valer na próxima
+    // requisição (JwtAuthGuard). Abas do mesmo navegador são a mesma sessão.
+    const substituidas = await this.acessos.encerrarSessoes(
+      { usuarioId: usuario.id, manter: sessaoId },
+      MOTIVO_NOVO_ACESSO,
+    );
+    if (substituidas.length > 0) {
+      await this.acessos.registrar({
+        evento: 'sessao_substituida',
+        email,
+        usuarioId: usuario.id,
+        empresaId: vinculo.empresaId,
+        detalhe: `${substituidas.length} sessão(ões) anterior(es) encerrada(s) por novo acesso`,
+        ...meta,
+      });
+    }
+    const { accessToken } = await this.buildAccessToken(
+      vinculo.id,
+      vinculo.empresaId,
+      sessaoId,
+    );
     const refreshToken = await this.issueRefreshToken(
       usuario.id,
       vinculo.empresaId,
@@ -479,6 +509,18 @@ export class AuthService {
       where: { tokenHash },
     });
 
+    // Sessão derrubada por novo acesso ou pela administração: explica o motivo
+    // (a tela volta ao login com ele), em vez de um "token inválido" seco.
+    if (stored?.sessaoId) {
+      const sessao = await this.acessos.situacaoSessao(stored.sessaoId);
+      if (
+        !sessao.aberta &&
+        (sessao.motivo === MOTIVO_NOVO_ACESSO || sessao.motivo === MOTIVO_DESCONECTADO)
+      ) {
+        throw new SessaoEncerradaException(sessao.motivo);
+      }
+    }
+
     if (
       !stored ||
       stored.revokedAt ||
@@ -517,6 +559,7 @@ export class AuthService {
     const { accessToken } = await this.buildAccessToken(
       vinculo.id,
       vinculo.empresaId,
+      stored.sessaoId,
     );
     const refreshToken = await this.issueRefreshToken(
       stored.usuarioId,
@@ -586,25 +629,29 @@ export class AuthService {
   }
 
   /** Troca a empresa ativa da sessão, emitindo um novo par de tokens. */
-  async switchEmpresa(usuarioId: string, empresaId: string, meta: RequestMeta) {
+  async switchEmpresa(
+    usuarioId: string,
+    empresaId: string,
+    meta: RequestMeta,
+    /** Sessão do token de quem troca (ausente em token anterior à sessão única). */
+    sessaoAtual?: string,
+  ) {
     const vinculo = await this.findVinculoAtivo(usuarioId, empresaId);
     if (!vinculo) {
       throw new ForbiddenException('Usuário não tem acesso a esta empresa');
     }
 
-    const { accessToken } = await this.buildAccessToken(
-      vinculo.id,
-      vinculo.empresaId,
-    );
     // Trocar de empresa não é uma sessão nova — é a mesma pessoa, seguindo o
-    // trabalho. Reaproveita a sessão aberta (o corpo da requisição não traz o
-    // refresh token, então ela é localizada pelo usuário) e só abre outra se
-    // não houver nenhuma, caso de sessão já encerrada por horário.
-    const aberta = await this.prisma.sessao.findFirst({
-      where: { usuarioId, encerradaEm: null },
-      orderBy: { iniciadaEm: 'desc' },
-      select: { id: true },
-    });
+    // trabalho. Reaproveita a sessão do próprio token (o JwtAuthGuard já
+    // conferiu que está aberta); token antigo, sem sessão, cai na última
+    // aberta do usuário, e só abre outra se não houver nenhuma.
+    const aberta = sessaoAtual
+      ? { id: sessaoAtual }
+      : await this.prisma.sessao.findFirst({
+          where: { usuarioId, encerradaEm: null },
+          orderBy: { iniciadaEm: 'desc' },
+          select: { id: true },
+        });
     const sessaoId =
       aberta?.id ??
       (await this.acessos.abrirSessao({
@@ -613,6 +660,11 @@ export class AuthService {
         ip: meta.ip,
         userAgent: meta.userAgent,
       }));
+    const { accessToken } = await this.buildAccessToken(
+      vinculo.id,
+      vinculo.empresaId,
+      sessaoId,
+    );
     const refreshToken = await this.issueRefreshToken(
       usuarioId,
       vinculo.empresaId,

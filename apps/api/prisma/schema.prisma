@@ -875,6 +875,7 @@ model Sessao {
   refreshTokens RefreshToken[]
 
   @@index([usuarioId, iniciadaEm])
+  @@index([usuarioId, encerradaEm])
   @@map("sessoes")
 }
 
@@ -886,6 +887,10 @@ enum AcessoEvento {
   acesso_fora_horario
   logout
   troca_empresa
+  // Sessão única por usuário (30/09/2026): um novo login encerra as outras.
+  sessao_substituida
+  // Sessão encerrada pela administração (Acessos > Sessões > Desconectar).
+  sessao_desconectada
 }
 
 /**

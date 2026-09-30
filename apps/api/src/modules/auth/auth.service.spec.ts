@@ -36,6 +36,7 @@ describe('AuthService', () => {
     withUsuario: jest.Mock;
   };
   let jwt: { signAsync: jest.Mock };
+  let acessosMock: Record<string, jest.Mock>;
 
   const usuarioAtivo = {
     id: 'usuario-1',
@@ -138,12 +139,16 @@ describe('AuthService', () => {
     };
     const acessos = {
       registrar: jest.fn().mockResolvedValue(undefined),
-      abrirSessao: jest.fn().mockResolvedValue({ id: 'sessao-1' }),
+      // O real devolve o id da sessão (texto).
+      abrirSessao: jest.fn().mockResolvedValue('sessao-1'),
       atualizarUltimaAtividade: jest.fn().mockResolvedValue(undefined),
       encerrarSessao: jest.fn().mockResolvedValue(undefined),
       encerrarSessoesDoUsuario: jest.fn().mockResolvedValue(undefined),
       tocarSessao: jest.fn().mockResolvedValue(undefined),
+      encerrarSessoes: jest.fn().mockResolvedValue([]),
+      situacaoSessao: jest.fn().mockResolvedValue({ aberta: true, motivo: null }),
     };
+    acessosMock = acessos;
     const horarios = {
       verificar: jest.fn().mockResolvedValue({ dentro: true, motivo: '' }),
     };
@@ -205,6 +210,27 @@ describe('AuthService', () => {
       await expect(
         service.login({ email: usuarioAtivo.email, senha: '123' }, {}),
       ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('sessão única: o login encerra as outras sessões e o token leva a sessão', async () => {
+      prisma.usuario.findUnique.mockResolvedValue(usuarioAtivo);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      prisma.usuarioEmpresa.findFirst.mockResolvedValue(vinculo);
+      prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue(vinculoCompleto);
+      prisma.refreshToken.create.mockResolvedValue({});
+      prisma.usuario.update.mockResolvedValue(usuarioAtivo);
+      acessosMock.encerrarSessoes.mockResolvedValue([{ id: 'antiga', empresaId: 'empresa-1' }]);
+
+      await service.login({ email: usuarioAtivo.email, senha: '123' }, {});
+
+      expect(acessosMock.encerrarSessoes).toHaveBeenCalledWith(
+        { usuarioId: usuarioAtivo.id, manter: 'sessao-1' },
+        'novo_acesso',
+      );
+      expect(acessosMock.registrar).toHaveBeenCalledWith(
+        expect.objectContaining({ evento: 'sessao_substituida' }),
+      );
+      expect(jwt.signAsync.mock.calls[0][0].sid).toBe('sessao-1');
     });
 
     it('autentica com sucesso e emite access + refresh token', async () => {

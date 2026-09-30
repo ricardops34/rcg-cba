@@ -64,12 +64,21 @@ export class ApiError extends Error {
  * tela precisa voltar ao login em vez de só avisar.
  */
 const CODIGO_FORA_HORARIO = "FORA_HORARIO";
+/**
+ * Mesmo tratamento para a sessão encerrada no servidor: novo acesso com o mesmo
+ * usuário em outro navegador ou computador, ou desconexão pela administração
+ * (SessaoEncerradaException na API). Volta ao login com o motivo.
+ */
+const CODIGO_SESSAO_ENCERRADA = "SESSAO_ENCERRADA";
+const CODIGOS_FIM_DE_SESSAO = [CODIGO_FORA_HORARIO, CODIGO_SESSAO_ENCERRADA];
 
 export function ehForaDoExpediente(erro: unknown): boolean {
   return (
     erro instanceof ApiError &&
     erro.status === 403 &&
-    (erro.details as { codigo?: string } | undefined)?.codigo === CODIGO_FORA_HORARIO
+    CODIGOS_FIM_DE_SESSAO.includes(
+      (erro.details as { codigo?: string } | undefined)?.codigo ?? "",
+    )
   );
 }
 
@@ -187,12 +196,15 @@ async function refreshAccessToken(): Promise<string | null> {
   }
 
   if (!res.ok) {
-    // Renovar fora do expediente é recusado com o mesmo 403 das demais rotas
-    // — aqui a mensagem é a que explica ao usuário por que ele caiu.
+    // Renovar fora do expediente, ou com a sessão encerrada por novo acesso /
+    // pela administração, é recusado com o mesmo 403 das demais rotas — aqui a
+    // mensagem é a que explica ao usuário por que ele caiu.
     const payload = await res.json().catch(() => ({}));
     if (
       res.status === 403 &&
-      (payload.details as { codigo?: string } | undefined)?.codigo === CODIGO_FORA_HORARIO
+      CODIGOS_FIM_DE_SESSAO.includes(
+        (payload.details as { codigo?: string } | undefined)?.codigo ?? "",
+      )
     ) {
       encerrarPorHorario(payload.message ?? "Acesso permitido apenas em horário de trabalho.");
       return null;

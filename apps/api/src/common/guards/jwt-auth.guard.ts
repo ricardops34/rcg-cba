@@ -5,6 +5,7 @@ import type { Request } from 'express';
 import { HorarioTrabalhoService } from '../../modules/acessos/horario-trabalho.service';
 import { AcessosService } from '../../modules/acessos/acessos.service';
 import { ForaDoExpedienteException } from '../horario/horario-trabalho';
+import { SessaoEncerradaException } from '../sessao/sessao-encerrada.exception';
 import type { AuthenticatedUser } from '../decorators/current-user.decorator';
 import { PERMITIR_TERMO_PENDENTE } from '../decorators/permitir-termo-pendente.decorator';
 import { TermosService } from '../../modules/termos/termos.service';
@@ -41,6 +42,19 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       .getRequest<Request & { user?: AuthenticatedUser }>();
     const user = request.user;
     if (!user) return false;
+
+    // Sessão única por usuário: um novo login em outro navegador ou computador
+    // (ou a administração, em Acessos) encerra esta sessão, e o token de acesso
+    // — que vale 15 min — deixa de servir na hora, não só quando vencer. Token
+    // emitido antes da sessão existir (sem `sid`) segue até vencer.
+    if (user.sessaoId) {
+      const sessao = await this.acessos.situacaoSessao(user.sessaoId);
+      // Encerrada por fim de expediente: a checagem de horário logo abaixo
+      // responde, com a mensagem que explica o motivo.
+      if (!sessao.aberta && sessao.motivo !== 'fora_horario') {
+        throw new SessaoEncerradaException(sessao.motivo);
+      }
+    }
 
     const expediente = await this.horarios.verificar(user.id);
     if (!expediente.dentro) {

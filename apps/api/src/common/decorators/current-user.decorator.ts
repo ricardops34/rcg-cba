@@ -8,6 +8,8 @@ export interface AuthenticatedUser {
   isAdmin: boolean;
   administradorPlataforma?: boolean;
   permissoes: string[];
+  /** Sessão do login (tabela `sessoes`) — ausente em token emitido antes dela. */
+  sessaoId?: string;
 }
 
 export const CurrentUser = createParamDecorator(
