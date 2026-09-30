@@ -469,11 +469,26 @@ export class UsuariosService {
     return this.horarioTrabalho.obter(id);
   }
 
-  async desvincularEmpresa(usuarioId: string, empresaId: string, actorId: string) {
-    await this.prisma.usuarioEmpresa.update({
-      where: { usuarioId_empresaId: { usuarioId, empresaId } },
-      data: { ativo: false, updatedBy: actorId },
-    });
+  /**
+   * Tira o acesso do usuário a uma empresa. A `empresaId` vem da URL: só vale
+   * a empresa ativa de quem pede e as demais do grupo dela. Antes, só a RLS
+   * segurava uma empresa de fora (e a resposta era 500, não 404).
+   */
+  async desvincularEmpresa(
+    usuarioId: string,
+    empresaId: string,
+    actorId: string,
+    empresaAtivaId: string,
+  ) {
+    const alcance = await this.empresasNoAlcance(empresaAtivaId);
+    if (!alcance.includes(empresaId)) throw new NotFoundException('Vínculo não encontrado');
+    const { count } = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.usuarioEmpresa.updateMany({
+        where: { usuarioId, empresaId },
+        data: { ativo: false, updatedBy: actorId },
+      }),
+    );
+    if (count === 0) throw new NotFoundException('Vínculo não encontrado');
     return { success: true };
   }
 }

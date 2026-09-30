@@ -318,6 +318,6 @@ export class UsuariosController {
     @Param('empresaId') empresaId: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.desvincularEmpresa(id, empresaId, user.id);
+    return this.service.desvincularEmpresa(id, empresaId, user.id, user.empresaAtivaId);
   }
 }
