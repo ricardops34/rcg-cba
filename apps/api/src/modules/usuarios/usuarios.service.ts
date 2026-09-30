@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
-import { PrismaService } from '../../common/prisma/prisma.service';
+import { PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
 import { garantirVagaDeUsuario } from '../../common/empresa/limite-usuarios';
 import { PoliticaSenhaService } from '../politica-senha/politica-senha.service';
 import {
@@ -14,7 +14,10 @@ import {
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
 import { HorarioTrabalhoService } from '../acessos/horario-trabalho.service';
-import { garantirPerfilDoGrupo as garantirPerfilDoGrupoDaEmpresa } from '../../common/perfil/perfil-do-grupo';
+import {
+  garantirPerfilDoGrupo as garantirPerfilDoGrupoDaEmpresa,
+  grupoDaEmpresa,
+} from '../../common/perfil/perfil-do-grupo';
 import type {
   ResetPasswordInput,
   UsuarioCreate,
@@ -44,13 +47,8 @@ export class UsuariosService {
   async findAll(empresaId: string, query: UsuarioQuery) {
     const where = {
       deletedAt: null,
-      usuarioEmpresas: {
-        some: {
-          empresaId,
-          ativo: true,
-          ...(query.perfilId ? { perfilId: query.perfilId } : {}),
-        },
-      },
+      usuarioEmpresas: { some: { empresaId, ativo: true } },
+      ...(query.perfilId ? { perfilId: query.perfilId } : {}),
       ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
       ...(query.search
         ? {
@@ -80,18 +78,18 @@ export class UsuariosService {
             updatedAt: true,
             createdBy: true,
             updatedBy: true,
+            // Do usuário, iguais em todas as empresas do grupo. superiorId é
+            // o id do usuário superior (até 30/09/2026 era o do vínculo dele).
+            perfil: { select: { id: true, nome: true } },
+            superiorId: true,
+            codigoErp: true,
+            nomeReduzido: true,
+            telefone: true,
+            celular: true,
+            dataNascimento: true,
             usuarioEmpresas: {
               where: { empresaId, ativo: true },
-              select: {
-                id: true,
-                perfil: { select: { id: true, nome: true } },
-                superiorId: true,
-                codigoErp: true,
-                nomeReduzido: true,
-                telefone: true,
-                celular: true,
-                dataNascimento: true,
-              },
+              select: { id: true },
               take: 1,
             },
           },
@@ -100,32 +98,15 @@ export class UsuariosService {
       ]),
     );
 
-    const data = rows.map(({ usuarioEmpresas, ...usuario }) => {
-      const vinculo = usuarioEmpresas[0];
-      return {
-        ...usuario,
-        // Id do vínculo (usuarioEmpresa) nesta empresa — é o que superiorId
-        // de OUTRO vínculo referencia (hierarquia é por vínculo, não por
-        // usuário, já que um usuário pode ter perfis diferentes por empresa).
-        vinculoId: vinculo?.id ?? null,
-        perfil: vinculo?.perfil ?? null,
-        superiorId: vinculo?.superiorId ?? null,
-        codigoErp: vinculo?.codigoErp ?? null,
-        nomeReduzido: vinculo?.nomeReduzido ?? null,
-        telefone: vinculo?.telefone ?? null,
-        celular: vinculo?.celular ?? null,
-        dataNascimento: vinculo?.dataNascimento ?? null,
-      };
-    });
+    const data = rows.map(({ usuarioEmpresas, ...usuario }) => ({
+      ...usuario,
+      // Id do acesso (usuarioEmpresa) a esta empresa, para quem ainda o usa.
+      vinculoId: usuarioEmpresas[0]?.id ?? null,
+    }));
 
     return buildPaginatedResult(data, total, query);
   }
 
-  /**
-   * "perfis" é global (sem RLS) — o withTenant abaixo é só reaproveitamento
-   * do helper de transação por vínculo (mesmo padrão de AuthService.me),
-   * não uma exigência de RLS sobre o perfil em si.
-   */
   /**
    * `usuario_empresas` tem RLS: lido sem empresa definida (o `include` direto
    * que existia aqui), a policy filtra tudo e a tela mostrava "Nenhuma empresa
@@ -135,9 +116,16 @@ export class UsuariosService {
    * Sem `empresaAtivaId` (uso interno, só conferir que existe), volta sem vínculos.
    */
   async findOne(id: string, empresaAtivaId?: string) {
-    const usuario = await this.prisma.usuario.findFirst({
-      where: { id, deletedAt: null },
-    });
+    // Perfil e dados são do usuário. O perfil tem RLS por grupo: sem empresa
+    // informada (uso interno), lê como o próprio usuário (withUsuario).
+    const ler = (tx: TenantTx) =>
+      tx.usuario.findFirst({
+        where: { id, deletedAt: null },
+        include: { perfil: true },
+      });
+    const usuario = empresaAtivaId
+      ? await this.prisma.withTenant(empresaAtivaId, ler)
+      : await this.prisma.withUsuario(id, ler);
     if (!usuario) throw new NotFoundException('Usuário não encontrado');
 
     const alcance = empresaAtivaId ? await this.empresasNoAlcance(empresaAtivaId) : [];
@@ -147,12 +135,16 @@ export class UsuariosService {
           this.prisma.withTenant(empresaId, (tx) =>
             tx.usuarioEmpresa.findFirst({
               where: { usuarioId: id, empresaId, ativo: true },
-              include: { empresa: true, perfil: true },
+              include: { empresa: true },
             }),
           ),
         ),
       )
-    ).filter((v) => v !== null);
+    )
+      .filter((v) => v !== null)
+      // perfil/perfilId repetidos em cada acesso: é o mesmo em todos, e as
+      // telas que liam por vínculo seguem funcionando.
+      .map((v) => ({ ...v, perfilId: usuario.perfilId, perfil: usuario.perfil }));
 
     const { senhaHash: _senhaHash, ...safe } = usuario;
     return { ...safe, usuarioEmpresas: vinculos };
@@ -248,12 +240,14 @@ export class UsuariosService {
           ativo: input.ativo,
           senhaHash,
           senhaAlteradaEm: new Date(),
+          // Perfil e grupo são da conta; o vínculo é só o acesso à empresa.
+          perfilId: input.perfilId,
+          grupoEconomicoId: await grupoDaEmpresa(tx, empresaId),
           createdBy: actorId,
           updatedBy: actorId,
           usuarioEmpresas: {
             create: {
               empresaId,
-              perfilId: input.perfilId,
               createdBy: actorId,
               updatedBy: actorId,
             },
@@ -342,40 +336,13 @@ export class UsuariosService {
   }
 
   /**
-   * O perfil do usuário é do grupo econômico, não da empresa (decisão de
-   * 30/09/2026). Se a empresa é de um grupo e o usuário já tem acesso a outra
-   * empresa dele com perfil diferente, esta rota — que muda uma empresa por
-   * vez — deixaria os perfis divergentes. A troca vai pelo bloco "Empresas com
-   * acesso", que aplica o perfil a todas (GruposEconomicosService.salvarUsuario).
-   */
-  private async garantirPerfilDoGrupo(usuarioId: string, empresaId: string, perfilId: string) {
-    const empresa = await this.prisma.empresa.findUnique({
-      where: { id: empresaId },
-      select: { grupoEconomicoId: true },
-    });
-    if (!empresa?.grupoEconomicoId) return;
-    const irmas = await this.prisma.empresa.findMany({
-      where: { grupoEconomicoId: empresa.grupoEconomicoId, id: { not: empresaId }, deletedAt: null },
-      select: { id: true },
-    });
-    for (const irma of irmas) {
-      const vinculo = await this.prisma.withTenant(irma.id, (tx) =>
-        tx.usuarioEmpresa.findUnique({
-          where: { usuarioId_empresaId: { usuarioId, empresaId: irma.id } },
-          select: { ativo: true, perfilId: true },
-        }),
-      );
-      if (vinculo?.ativo && vinculo.perfilId !== perfilId) {
-        throw new BadRequestException(
-          'O perfil do usuário é o mesmo em todas as empresas do grupo. Altere-o em "Perfil e empresas do usuário", no cadastro do usuário.',
-        );
-      }
-    }
-  }
-
-  /**
-   * Cria (ou edita, mesma rota) o vínculo do usuário com uma empresa —
-   * perfil RBAC + hierarquia/dados de vendedor completos.
+   * Dá (ou confirma) o acesso do usuário a uma empresa e grava o perfil e os
+   * dados dele — que são da conta, iguais em todas as empresas do grupo
+   * (migration 20260930230000_dados_do_usuario). Mesma rota de antes, para as
+   * telas não mudarem; o que mudou é onde grava.
+   *
+   * Uma conta é de um grupo só (decisão de 30/09/2026): acesso a empresa de
+   * outro grupo é recusado, e o superior precisa ser usuário do mesmo grupo.
    */
   async vincularEmpresa(
     usuarioId: string,
@@ -384,123 +351,71 @@ export class UsuariosService {
     actorId: string,
     atorEhAdminPlataforma: boolean,
   ) {
-    await this.garantirPerfilDoGrupo(usuarioId, empresaId, input.perfilId);
-    const vinculo = await this.prisma.withTenant(empresaId, async (tx) => {
-      // Só o vínculo novo consome vaga; a edição de um que já existe, não —
-      // daí o `ignorarUsuarioId`, que tira a própria linha da contagem.
-      const jaVinculado = await tx.usuarioEmpresa.findUnique({
-        where: { usuarioId_empresaId: { usuarioId, empresaId } },
-        select: { ativo: true, perfilId: true, celular: true },
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const usuario = await tx.usuario.findFirst({
+        where: { id: usuarioId, deletedAt: null },
+        select: { perfilId: true, celular: true, grupoEconomicoId: true },
       });
+      if (!usuario) throw new NotFoundException('Usuário não encontrado');
+      const grupo = await grupoDaEmpresa(tx, empresaId);
+      if (usuario.grupoEconomicoId && grupo && usuario.grupoEconomicoId !== grupo) {
+        throw new ConflictException(
+          'Esta conta pertence a outro grupo econômico. Uma conta dá acesso só às empresas do próprio grupo.',
+        );
+      }
       await this.garantirPodeAtribuirPerfil(
         input.perfilId,
-        jaVinculado?.perfilId ?? null,
+        usuario.perfilId,
         atorEhAdminPlataforma,
         empresaId,
       );
+      const superiorId = input.superiorId || null;
+      if (superiorId) {
+        if (superiorId === usuarioId) {
+          throw new BadRequestException('O usuário não pode ser superior de si mesmo');
+        }
+        const superior = await tx.usuario.findFirst({
+          where: { id: superiorId, deletedAt: null, grupoEconomicoId: grupo },
+          select: { id: true },
+        });
+        if (!superior) throw new BadRequestException('Superior não encontrado neste grupo econômico');
+      }
+
+      // Só o acesso novo (ou reativado) consome vaga — daí o
+      // `ignorarUsuarioId`, que tira a própria linha da contagem.
+      const jaVinculado = await tx.usuarioEmpresa.findUnique({
+        where: { usuarioId_empresaId: { usuarioId, empresaId } },
+        select: { ativo: true },
+      });
       if (!jaVinculado || !jaVinculado.ativo) {
         await garantirVagaDeUsuario(tx, empresaId, usuarioId);
       }
 
-      if (jaVinculado && jaVinculado.celular !== (input.celular || null)) {
-        await tx.whatsappVinculoFuncionario.deleteMany({ where: { empresaId, usuarioId } });
+      const celular = input.celular || null;
+      if (usuario.celular !== celular) {
+        // Número novo desfaz o pareamento do WhatsApp confirmado com o antigo.
+        await tx.whatsappVinculoFuncionario.deleteMany({ where: { usuarioId } });
       }
+      await tx.usuario.update({
+        where: { id: usuarioId },
+        data: {
+          perfilId: input.perfilId,
+          superiorId,
+          codigoErp: input.codigoErp,
+          nomeReduzido: input.nomeReduzido,
+          telefone: input.telefone || null,
+          celular,
+          dataNascimento: input.dataNascimento,
+          grupoEconomicoId: grupo,
+          updatedBy: actorId,
+        },
+      });
       return tx.usuarioEmpresa.upsert({
         where: { usuarioId_empresaId: { usuarioId, empresaId } },
-        create: {
-          usuarioId,
-          empresaId,
-          perfilId: input.perfilId,
-          superiorId: input.superiorId,
-          codigoErp: input.codigoErp,
-          nomeReduzido: input.nomeReduzido,
-          telefone: input.telefone || null,
-          celular: input.celular || null,
-          dataNascimento: input.dataNascimento,
-          createdBy: actorId,
-          updatedBy: actorId,
-        },
-        update: {
-          perfilId: input.perfilId,
-          superiorId: input.superiorId,
-          codigoErp: input.codigoErp,
-          nomeReduzido: input.nomeReduzido,
-          telefone: input.telefone || null,
-          celular: input.celular || null,
-          dataNascimento: input.dataNascimento,
-          ativo: true,
-          updatedBy: actorId,
-        },
+        create: { usuarioId, empresaId, createdBy: actorId, updatedBy: actorId },
+        update: { ativo: true, deletedAt: null, deletedBy: null, updatedBy: actorId },
       });
     });
-    await this.sincronizarDadosNoGrupo(usuarioId, empresaId, input, actorId);
-    return vinculo;
-  }
-
-  /**
-   * O usuário é um só no grupo econômico, e os dados dele também (decisão de
-   * 30/09/2026): superior, nome reduzido, código ERP, telefones e nascimento
-   * valem para todas as empresas do grupo a que ele tem acesso. Eles moram
-   * em cada vínculo (`usuario_empresas`, que o token e a hierarquia leem), então
-   * gravar numa empresa replica nas demais do grupo.
-   *
-   * O superior é um vínculo **da empresa**: em cada empresa ele vira o vínculo
-   * do mesmo superior ali; se o superior não tem acesso a ela, fica sem.
-   */
-  private async sincronizarDadosNoGrupo(
-    usuarioId: string,
-    empresaId: string,
-    input: UsuarioEmpresaCreate,
-    actorId: string,
-  ) {
-    const empresa = await this.prisma.empresa.findUnique({
-      where: { id: empresaId },
-      select: { grupoEconomicoId: true },
-    });
-    if (!empresa) return;
-    const irmas = await this.prisma.empresa.findMany({
-      where: { grupoEconomicoId: empresa.grupoEconomicoId, id: { not: empresaId }, deletedAt: null },
-      select: { id: true },
-    });
-    if (!irmas.length) return;
-    const superiorUsuarioId = input.superiorId
-      ? ((
-          await this.prisma.withTenant(empresaId, (tx) =>
-            tx.usuarioEmpresa.findUnique({ where: { id: input.superiorId! }, select: { usuarioId: true } }),
-          )
-        )?.usuarioId ?? null)
-      : null;
-    const celular = input.celular || null;
-    for (const irma of irmas) {
-      await this.prisma.withTenant(irma.id, async (tx) => {
-        const atual = await tx.usuarioEmpresa.findUnique({
-          where: { usuarioId_empresaId: { usuarioId, empresaId: irma.id } },
-          select: { id: true, ativo: true, celular: true },
-        });
-        if (!atual?.ativo) return;
-        const superior = superiorUsuarioId
-          ? await tx.usuarioEmpresa.findUnique({
-              where: { usuarioId_empresaId: { usuarioId: superiorUsuarioId, empresaId: irma.id } },
-              select: { id: true, ativo: true },
-            })
-          : null;
-        if (atual.celular !== celular) {
-          await tx.whatsappVinculoFuncionario.deleteMany({ where: { empresaId: irma.id, usuarioId } });
-        }
-        await tx.usuarioEmpresa.update({
-          where: { id: atual.id },
-          data: {
-            superiorId: superior?.ativo ? superior.id : null,
-            codigoErp: input.codigoErp,
-            nomeReduzido: input.nomeReduzido,
-            telefone: input.telefone || null,
-            celular,
-            dataNascimento: input.dataNascimento,
-            updatedBy: actorId,
-          },
-        });
-      });
-    }
   }
 
   /** Expediente cadastrado do usuário (ver UsuarioHorario). */

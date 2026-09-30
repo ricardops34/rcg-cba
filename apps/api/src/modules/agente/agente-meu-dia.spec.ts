@@ -19,11 +19,18 @@ describe('AgenteMeuDiaService', () => {
       permissoes,
     }) as unknown as AuthenticatedUser;
 
-  /** Só o vínculo é lido direto; o resto vem dos services das telas. */
+  /**
+   * Só o vínculo é lido direto; o resto vem dos services das telas. Nome
+   * reduzido e nascimento são do usuário: vêm em `vinculo.usuario`.
+   */
   const prismaCom = (vinculo: unknown) =>
     ({
       withTenant: (_e: string, fn: (tx: unknown) => unknown) =>
-        fn({ usuarioEmpresa: { findFirst: () => Promise.resolve(vinculo) } }),
+        fn({
+          usuarioEmpresa: {
+            findFirst: () => Promise.resolve(vinculo ? { usuario: vinculo } : vinculo),
+          },
+        }),
     }) as never;
 
   const montar = (opcoes: {

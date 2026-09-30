@@ -55,11 +55,15 @@ describe('AuthService', () => {
     createdAt: new Date(),
   };
 
-  const vinculoCompleto = {
+  // O perfil é do usuário (migration 20260930230000_dados_do_usuario): o token
+  // lê vinculo.usuario.perfil.
+  const comPerfil = (perfil: typeof perfilBase) => ({
     ...vinculo,
-    usuario: usuarioAtivo,
+    usuario: { ...usuarioAtivo, perfil },
     empresa: { id: 'empresa-1', nomeFantasia: 'Empresa 1' },
-    perfil: {
+  });
+
+  const perfilBase = {
       sistemaBase: false,
       administraPlataforma: false,
       permissoes: [
@@ -83,8 +87,8 @@ describe('AuthService', () => {
           },
         },
       ],
-    },
   };
+  const vinculoCompleto = comPerfil(perfilBase);
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -234,10 +238,9 @@ describe('AuthService', () => {
       prisma.usuario.findUnique.mockResolvedValue(usuarioAtivo);
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       prisma.usuarioEmpresa.findFirst.mockResolvedValue(vinculo);
-      prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue({
-        ...vinculoCompleto,
-        perfil: {
-          ...vinculoCompleto.perfil,
+      prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue(
+        comPerfil({
+          ...perfilBase,
           permissoes: [
             {
               permitido: true,
@@ -256,8 +259,8 @@ describe('AuthService', () => {
               },
             },
           ],
-        },
-      });
+        }),
+      );
       prisma.refreshToken.create.mockResolvedValue({});
       prisma.usuario.update.mockResolvedValue(usuarioAtivo);
 
@@ -291,10 +294,9 @@ describe('AuthService', () => {
       prisma.usuario.findUnique.mockResolvedValue(usuarioAtivo);
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       prisma.usuarioEmpresa.findFirst.mockResolvedValue(vinculo);
-      prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue({
-        ...vinculoCompleto,
-        perfil: {
-          ...vinculoCompleto.perfil,
+      prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue(
+        comPerfil({
+          ...perfilBase,
           permissoes: [
             {
               permitido: true,
@@ -313,8 +315,8 @@ describe('AuthService', () => {
               },
             },
           ],
-        },
-      });
+        }),
+      );
       prisma.refreshToken.create.mockResolvedValue({});
       prisma.usuario.update.mockResolvedValue(usuarioAtivo);
 

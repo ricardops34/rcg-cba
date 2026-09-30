@@ -83,9 +83,9 @@ export class ComunicadosService {
   ) {
     const vinculo = await tx.usuarioEmpresa.findFirst({
       where: { usuarioId: user.id, empresaId, ativo: true },
-      select: { perfilId: true },
+      select: { usuario: { select: { perfilId: true } } },
     });
-    return vinculo?.perfilId ?? null;
+    return vinculo?.usuario.perfilId ?? null;
   }
 
   /**

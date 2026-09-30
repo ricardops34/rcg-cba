@@ -223,6 +223,23 @@ model GrupoEconomico {
 model Usuario {
   grupoEconomicoId String?
   grupoEconomico GrupoEconomico? @relation(fields: [grupoEconomicoId], references: [id])
+
+  // Do usuário no grupo inteiro (decisão de 30/09/2026): uma conta pertence a
+  // um grupo só, e perfil, superior e dados valem em todas as empresas dele.
+  // Até a migration 20260930230000_dados_do_usuario moravam em cada vínculo
+  // (usuario_empresas) e a API os replicava entre as empresas.
+  perfilId       String
+  superiorId     String?
+  codigoErp      String?
+  nomeReduzido   String?
+  telefone       String?
+  celular        String?
+  dataNascimento DateTime?
+
+  perfil    Perfil    @relation(fields: [perfilId], references: [id])
+  superior  Usuario?  @relation("UsuarioHierarquia", fields: [superiorId], references: [id], onDelete: SetNull)
+  liderados Usuario[] @relation("UsuarioHierarquia")
+
   id          String    @id @default(uuid())
   nome        String
   email       String    @unique
@@ -395,19 +412,17 @@ model UsuarioHorario {
 // um registro aqui por empresa, cada um com seu próprio perfil/superior. O
 // perfil sistemaBase enxerga tudo da empresa sem restrição de carteira; os
 // demais são escopados pela árvore superiorId, qualquer que seja o perfil.
+/// Acesso do usuário a uma empresa do grupo dele. Só isso: perfil, superior e
+/// os dados da pessoa são do usuário (`Usuario`), iguais em todas as empresas
+/// do grupo — migration 20260930230000_dados_do_usuario. As colunas antigas
+/// (perfilId, superiorId, codigoErp, nomeReduzido, telefone, celular,
+/// dataNascimento) continuam na tabela, sem uso, até a migration que as apaga.
 model UsuarioEmpresa {
   id        String  @id @default(uuid())
   usuarioId String
   empresaId String
-  perfilId  String
   ativo     Boolean @default(true)
 
-  superiorId     String?
-  codigoErp      String?
-  nomeReduzido   String?
-  telefone       String?
-  celular        String?
-  dataNascimento DateTime?
   // Tela inicial escolhida pelo próprio usuário em "Meu perfil", entre as
   // rotinas que ele enxerga nesta empresa. Nula = segue Perfil.rotinaInicial.
   // Só vale enquanto ele tiver `<rotina>.visualizar` — conferido no /me.
@@ -422,10 +437,7 @@ model UsuarioEmpresa {
 
   usuario       Usuario          @relation(fields: [usuarioId], references: [id])
   empresa       Empresa          @relation(fields: [empresaId], references: [id])
-  perfil        Perfil           @relation(fields: [perfilId], references: [id])
   rotinaInicial Rotina?          @relation("UsuarioEmpresaRotinaInicial", fields: [rotinaInicialId], references: [id], onDelete: SetNull)
-  superior  UsuarioEmpresa?  @relation("UsuarioEmpresaHierarquia", fields: [superiorId], references: [id])
-  liderados UsuarioEmpresa[] @relation("UsuarioEmpresaHierarquia")
 
   @@unique([usuarioId, empresaId])
   @@map("usuario_empresas")
@@ -473,7 +485,7 @@ model Perfil {
 
   rotinaInicial     Rotina?                 @relation("PerfilRotinaInicial", fields: [rotinaInicialId], references: [id])
   grupoEconomico    GrupoEconomico?         @relation(fields: [grupoEconomicoId], references: [id], onDelete: Restrict)
-  usuarioEmpresas   UsuarioEmpresa[]
+  usuarios          Usuario[]
   permissoes        PerfilPermissao[]
   agenteFerramentas AgenteFerramentaPerfil[]
   comunicados       ComunicadoPerfil[]

@@ -11,9 +11,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 
-interface Vinculo {
-  id: string;
-  empresaId: string;
+/** Perfil, superior e dados são do usuário (iguais no grupo todo). */
+interface UsuarioDetalhe {
   perfilId: string;
   superiorId: string | null;
   codigoErp: string | null;
@@ -21,6 +20,7 @@ interface Vinculo {
   telefone: string | null;
   celular: string | null;
   dataNascimento: string | null;
+  usuarioEmpresas: { id: string; empresaId: string }[];
 }
 
 interface UsuarioOption {
@@ -40,7 +40,7 @@ interface Dados {
   dataNascimento: string;
 }
 
-const dadosDo = (v: Vinculo): Dados => ({
+const dadosDo = (v: UsuarioDetalhe): Dados => ({
   superiorId: v.superiorId,
   nomeReduzido: v.nomeReduzido ?? "",
   codigoErp: v.codigoErp ?? "",
@@ -51,9 +51,8 @@ const dadosDo = (v: Vinculo): Dados => ({
 
 /**
  * Superior, nome reduzido, código ERP, telefones e nascimento do usuário. O usuário é um
- * só no grupo econômico e esses dados também (decisão de 30/09/2026): grava-se
- * pelo vínculo da empresa ativa, e a API replica nas demais empresas do grupo
- * a que ele tem acesso (`UsuariosService.sincronizarDadosNoGrupo`).
+ * só no grupo econômico e esses dados também (decisão de 30/09/2026): moram na
+ * conta, e o superior é outro usuário do grupo.
  */
 export function UsuarioDadosGrupo({ usuarioId }: { usuarioId: string }) {
   const qc = useQueryClient();
@@ -62,7 +61,7 @@ export function UsuarioDadosGrupo({ usuarioId }: { usuarioId: string }) {
 
   const detalhe = useQuery({
     queryKey: ["usuarios", usuarioId],
-    queryFn: () => apiFetch<{ usuarioEmpresas: Vinculo[] }>(`/usuarios/${usuarioId}`),
+    queryFn: () => apiFetch<UsuarioDetalhe>(`/usuarios/${usuarioId}`),
   });
   // Candidatos a superior: usuários da empresa ativa (a lista é isolada por RLS).
   const superiores = useQuery({
@@ -70,8 +69,10 @@ export function UsuarioDadosGrupo({ usuarioId }: { usuarioId: string }) {
     queryFn: () => apiFetch<{ data: UsuarioOption[] }>("/usuarios", { query: { pageSize: 100 } }),
   });
 
+  // O acesso à empresa ativa é o que permite editar por aqui (a rota grava
+  // pela empresa da sessão); os dados em si são do usuário.
   const vinculo = detalhe.data?.usuarioEmpresas.find((v) => v.empresaId === empresaAtivaId);
-  const salvo = vinculo ? dadosDo(vinculo) : null;
+  const salvo = vinculo && detalhe.data ? dadosDo(detalhe.data) : null;
   const base = JSON.stringify(salvo);
   const dados = edicao?.base === base ? edicao.valor : salvo;
   const editar = (parcial: Partial<Dados>) => dados && setEdicao({ base, valor: { ...dados, ...parcial } });
@@ -80,11 +81,11 @@ export function UsuarioDadosGrupo({ usuarioId }: { usuarioId: string }) {
     mutationFn: () =>
       apiFetch(`/usuarios/${usuarioId}/empresas/${empresaAtivaId}`, {
         method: "POST",
-        body: { perfilId: vinculo!.perfilId, ...dados!, dataNascimento: dados!.dataNascimento || null },
+        body: { perfilId: detalhe.data!.perfilId, ...dados!, dataNascimento: dados!.dataNascimento || null },
       }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["usuarios", usuarioId] });
-      toast.success("Dados salvos em todas as empresas do grupo");
+      toast.success("Dados salvos");
     },
     onError: (err) => toast.error(err instanceof ApiError ? err.message : "Erro ao salvar os dados"),
   });
@@ -99,7 +100,8 @@ export function UsuarioDadosGrupo({ usuarioId }: { usuarioId: string }) {
     );
   }
 
-  const opcoesSuperior = (superiores.data?.data ?? []).filter((u) => u.id !== usuarioId && u.vinculoId);
+  // O superior é um usuário (não mais o vínculo dele numa empresa).
+  const opcoesSuperior = (superiores.data?.data ?? []).filter((u) => u.id !== usuarioId);
 
   return (
     <FieldGroup>
@@ -123,7 +125,7 @@ export function UsuarioDadosGrupo({ usuarioId }: { usuarioId: string }) {
           <SelectContent>
             <SelectItem value="none">Sem superior</SelectItem>
             {opcoesSuperior.map((u) => (
-              <SelectItem key={u.vinculoId} value={u.vinculoId!}>
+              <SelectItem key={u.id} value={u.id}>
                 {u.nomeReduzido || u.nome}
               </SelectItem>
             ))}

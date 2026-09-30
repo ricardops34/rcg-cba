@@ -27,6 +27,7 @@ import type {
   VendedorUpdate,
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { grupoDaEmpresa } from '../../common/perfil/perfil-do-grupo';
 
 // Campos que a listagem aceita ordenar por — whitelist pra não repassar
 // direto pro Prisma um sortBy arbitrário vindo da query string.
@@ -339,12 +340,14 @@ export class VendedoresService {
             ativo: true,
             deveTrocarSenha: true,
             senhaAlteradaEm: new Date(),
+            // Perfil e grupo são do usuário; o vínculo é só o acesso.
+            perfilId: perfilVendedor.id,
+            grupoEconomicoId: await grupoDaEmpresa(tx, empresaId),
             createdBy: actorId,
             updatedBy: actorId,
             usuarioEmpresas: {
               create: {
                 empresaId,
-                perfilId: perfilVendedor.id,
                 createdBy: actorId,
                 updatedBy: actorId,
               },

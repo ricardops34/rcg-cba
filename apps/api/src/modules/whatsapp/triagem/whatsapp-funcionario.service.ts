@@ -63,7 +63,7 @@ export class WhatsappFuncionarioService {
   /**
    * Quem é o dono deste número, do ponto de vista da empresa.
    *
-   * Usa o número informado no perfil (`usuario_empresas.celular`). O sufixo
+   * Usa o número informado no cadastro do usuário (`usuarios.celular`). O sufixo
    * reduz a consulta; a chave com DDD decide a identidade. Dois usuários com
    * o mesmo número não são identificados. Encontrar exige confirmação antes
    * de liberar consultas; não depende de cadastro de vendedor.
@@ -89,7 +89,7 @@ export class WhatsappFuncionarioService {
     const candidatos = await tx.$queryRaw<
       { nome: string; usuarioId: string; celular: string }[]
     >`
-      SELECT u.nome, u.id AS "usuarioId", ue.celular
+      SELECT u.nome, u.id AS "usuarioId", u.celular
       FROM usuario_empresas ue
       JOIN usuarios u ON u.id = ue."usuarioId"
       WHERE ue."empresaId" = ${empresaId}
@@ -97,7 +97,7 @@ export class WhatsappFuncionarioService {
         AND u."deletedAt" IS NULL
         AND u.ativo
         AND ue.ativo
-        AND right(regexp_replace(coalesce(ue.celular, ''), '\D', '', 'g'), 8) = ${sufixo}`;
+        AND right(regexp_replace(coalesce(u.celular, ''), '\D', '', 'g'), 8) = ${sufixo}`;
 
     // Ambiguidade não adivinha: dois usuários com a mesma chave não
     // resolvem para nenhum.

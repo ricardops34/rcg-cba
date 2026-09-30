@@ -67,11 +67,12 @@ export async function resolverEscopoDoUsuario(
 
   // Carteira inteira é atributo do perfil (hoje Administrador e Administrativo),
   // não do nome dele — o grupo pode renomear ou criar os seus.
+  // O perfil é do usuário; o vínculo ativo confirma que ele tem acesso aqui.
   const vinculo = await tx.usuarioEmpresa.findFirst({
     where: { usuarioId: quem.usuarioId, empresaId, ativo: true },
-    select: { perfil: { select: { carteiraCompleta: true } } },
+    select: { usuario: { select: { perfil: { select: { carteiraCompleta: true } } } } },
   });
-  if (vinculo?.perfil.carteiraCompleta) return null;
+  if (vinculo?.usuario.perfil.carteiraCompleta) return null;
 
   const vendedor = await tx.vendedor.findFirst({
     where: { usuarioId: quem.usuarioId, empresaId, deletedAt: null },

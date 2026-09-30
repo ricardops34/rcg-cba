@@ -73,7 +73,8 @@ export async function planejarPerfisParaGrupo(
   grupoDestinoId: string,
 ) {
   const [vinculos, ferramentas, comunicados] = await Promise.all([
-    tx.usuarioEmpresa.findMany({ where: { empresaId }, select: { perfilId: true } }),
+    // Perfil é do usuário: os de quem tem acesso a esta empresa.
+    tx.usuario.findMany({ where: { usuarioEmpresas: { some: { empresaId } } }, select: { perfilId: true } }),
     tx.agenteFerramentaPerfil.findMany({ where: { empresaId }, select: { perfilId: true } }),
     tx.comunicadoPerfil.findMany({ where: { empresaId }, select: { perfilId: true } }),
   ]);
@@ -143,7 +144,10 @@ export async function aplicarPerfisNoGrupo(
 
     const de = { empresaId, perfilId: origem.id };
     const para = { perfilId: destinoId };
-    await tx.usuarioEmpresa.updateMany({ where: de, data: { ...para, updatedBy: actorId } });
+    await tx.usuario.updateMany({
+      where: { perfilId: origem.id, usuarioEmpresas: { some: { empresaId } } },
+      data: { ...para, updatedBy: actorId },
+    });
     await tx.agenteFerramentaPerfil.updateMany({ where: de, data: para });
     await tx.comunicadoPerfil.updateMany({ where: de, data: para });
   }

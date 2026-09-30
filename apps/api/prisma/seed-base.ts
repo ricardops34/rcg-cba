@@ -367,7 +367,7 @@ async function limparDados() {
   // O documento publicado é catálogo global e permanece; somente as
   // evidências dos usuários recriados por este seed precisam ser removidas.
   await prisma.termoAceite.deleteMany();
-  await prisma.usuarioEmpresa.updateMany({ data: { superiorId: null } });
+  await prisma.usuario.updateMany({ data: { superiorId: null } });
   await prisma.usuarioEmpresa.deleteMany();
   await prisma.perfilPermissao.deleteMany();
   await prisma.perfil.deleteMany();
@@ -627,16 +627,16 @@ async function main() {
 
   const senhaHash = await bcrypt.hash(SENHA_ADMIN, 12);
 
-  // Um único usuário Admin, vinculado como Administrador da Plataforma em
-  // cada empresa do seed — em dev não há "empresa matriz", e assim trocar de
-  // empresa não derruba o menu da plataforma (ver comentário da coluna
-  // Perfil.administraPlataforma no schema).
+  // Um único usuário Admin, Administrador da Plataforma (o perfil é da conta),
+  // com acesso a cada empresa do seed — em dev não há "empresa matriz". O grupo
+  // dele é o da empresa da plataforma, gravado no laço abaixo.
   const admin = await prisma.usuario.create({
     data: {
       nome: ADMIN.nome,
       email: ADMIN.email,
       senhaHash,
       ativo: true,
+      perfilId: perfilAdminPlataforma.id,
       senhaAlteradaEm: new Date(),
     },
   });
@@ -672,13 +672,14 @@ async function main() {
     });
 
     await prisma.usuarioEmpresa.create({
-      data: {
-        usuarioId: admin.id,
-        empresaId: empresa.id,
-        perfilId: perfilAdminPlataforma.id,
-        ativo: true,
-      },
+      data: { usuarioId: admin.id, empresaId: empresa.id, ativo: true },
     });
+    if (cfg.ePlataforma) {
+      await prisma.usuario.update({
+        where: { id: admin.id },
+        data: { grupoEconomicoId: empresa.grupoEconomicoId },
+      });
+    }
 
     await prisma.parametroEmpresa.createMany({
       data: PARAMETROS_PADRAO.map((p) => ({ ...p, empresaId: empresa.id })),

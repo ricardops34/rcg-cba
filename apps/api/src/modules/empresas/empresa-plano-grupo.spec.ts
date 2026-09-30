@@ -56,11 +56,11 @@ describe('empresa criada pelo administrador do grupo', () => {
         limiteUsuarios: 10,
       }),
     });
+    // Só o acesso: o perfil é da conta de quem cria (já administrador).
     expect(tx.usuarioEmpresa.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         usuarioId: 'u',
         empresaId: 'nova',
-        perfilId: 'admin',
       }),
     });
   });

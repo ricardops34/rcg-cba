@@ -295,7 +295,7 @@ export class AgenteFerramentasService {
         // e preferível a inflar o token com um dado que muda sem novo login.
         vinculo: await tx.usuarioEmpresa.findFirst({
           where: { empresaId, usuarioId: user.id, ativo: true },
-          select: { perfilId: true },
+          select: { usuario: { select: { perfilId: true } } },
         }),
         // O aparelho pareado deste usuário. Basta a sessão existir: se estiver
         // desconectada no momento, o envio falha com a mensagem que manda
@@ -339,7 +339,7 @@ export class AgenteFerramentasService {
           ] as const;
         }),
       ),
-      perfilId: vinculo?.perfilId ?? null,
+      perfilId: vinculo?.usuario.perfilId ?? null,
       whatsappVinculado: !!sessaoWhatsapp,
     };
   }

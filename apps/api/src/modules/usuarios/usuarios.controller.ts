@@ -277,11 +277,11 @@ export class UsuariosController {
   }
 
   @ApiOperation({
-    summary: 'Vincular usuário a outra empresa (ou editar um vínculo existente)',
+    summary: 'Dar acesso a uma empresa do grupo e gravar perfil e dados do usuário',
     description:
-      'Cria ou edita o vínculo do usuário com a empresa informada: perfil (RBAC) + ' +
-      'hierarquia/dados de vendedor. Mesma rota serve pra vincular a uma empresa nova e pra ' +
-      'completar/editar um vínculo já existente. Requer usuarios.editar.',
+      'Dá (ou confirma) o acesso do usuário à empresa informada e grava o perfil (RBAC), o ' +
+      'superior (outro usuário do grupo) e os dados dele — que são da conta, iguais em todas ' +
+      'as empresas do grupo. Conta de outro grupo econômico é recusada. Requer usuarios.editar.',
   })
   @ApiParam({ name: 'id', example: USUARIO_ID_EXAMPLE })
   @ApiParam({ name: 'empresaId', example: EMPRESA_ID_EXAMPLE })

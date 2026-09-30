@@ -63,17 +63,17 @@ export const usuarioSchema = z.object({
 });
 export type Usuario = z.infer<typeof usuarioSchema>;
 
-// Corpo de POST /usuarios/:id/empresas/:empresaId — cria o vínculo (ou edita
-// um existente, mesma rota) com o perfil (RBAC) + hierarquia/dados de
-// vendedor completos.
+// Corpo de POST /usuarios/:id/empresas/:empresaId — dá (ou confirma) o acesso
+// do usuário à empresa e grava o perfil e os dados dele. Perfil, superior e
+// dados são da conta, iguais em todas as empresas do grupo (desde 30/09/2026).
 export const usuarioEmpresaCreateSchema = z.object({
-  perfilId: z.string().uuid().describe("Perfil (RBAC) do usuário nesta empresa"),
+  perfilId: z.string().uuid().describe("Perfil (RBAC) do usuário — vale em todas as empresas do grupo"),
   superiorId: z
     .string()
     .uuid()
     .nullable()
     .optional()
-    .describe("Vínculo (usuário×empresa) superior na hierarquia; null se for o topo"),
+    .describe("Usuário superior na hierarquia (do mesmo grupo); null se for o topo"),
   codigoErp: z
     .string()
     .trim()

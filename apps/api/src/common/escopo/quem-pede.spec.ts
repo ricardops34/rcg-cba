@@ -20,7 +20,7 @@ describe('QuemPede — recorte do solicitante', () => {
   function txComVendedor(vendedorId: string | null, carteiraCompleta = false) {
     return {
       usuarioEmpresa: {
-        findFirst: jest.fn(() => Promise.resolve({ perfil: { carteiraCompleta } })),
+        findFirst: jest.fn(() => Promise.resolve({ usuario: { perfil: { carteiraCompleta } } })),
       },
       vendedor: {
         findFirst: jest.fn(() =>

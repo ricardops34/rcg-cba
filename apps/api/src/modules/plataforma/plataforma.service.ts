@@ -187,10 +187,23 @@ export class PlataformaService {
       this.prisma.empresa.findUnique({ where: { cnpj: input.cnpj } }),
       this.prisma.usuario.findFirst({
         where: { email, deletedAt: null },
-        select: { id: true, nome: true },
+        select: {
+          id: true,
+          nome: true,
+          grupoEconomicoId: true,
+          perfil: { select: { sistemaBase: true, administraPlataforma: true } },
+        },
       }),
     ]);
     if (cnpjEmUso) throw new ConflictException('CNPJ já cadastrado');
+    // Conta de quem administra a plataforma não vira administradora de
+    // cliente: ela passaria a pertencer ao grupo dele (uma conta é de um grupo
+    // só), e a plataforma já entra nas empresas pelo próprio perfil.
+    if (contaExistente?.perfil.administraPlataforma) {
+      throw new ConflictException(
+        'Este e-mail é de um administrador da plataforma. Informe o e-mail do administrador do cliente.',
+      );
+    }
 
     // Conta que já existe é **vinculada**, não recusada: um administrador de
     // empresa pode administrar várias com uma conta só. Nome e senha do payload
@@ -244,18 +257,20 @@ export class PlataformaService {
             ? new Date(input.testeExpiraEm)
             : null,
           limiteUsuarios: input.limiteUsuarios ?? null,
-          // Toda empresa tem grupo econômico: nasce um com o nome dela, que a
+          // Toda empresa tem grupo econômico. Administrador com conta já
+          // existente traz a empresa para o grupo dele (a conta é de um grupo
+          // só); conta nova ganha um grupo com o nome da empresa, que a
           // Plataforma pode depois juntar a outro em Grupos econômicos.
-          grupoEconomico: {
-            create: { descricao: input.nomeFantasia, createdBy: ator.id, updatedBy: ator.id },
-          },
+          grupoEconomico: contaExistente?.grupoEconomicoId
+            ? { connect: { id: contaExistente.grupoEconomicoId } }
+            : { create: { descricao: input.nomeFantasia, createdBy: ator.id, updatedBy: ator.id } },
           createdBy: ator.id,
           updatedBy: ator.id,
         },
       });
 
-      // O perfil é global (compartilhado por todas as empresas), então o
-      // Administrador que a empresa nova usa é o mesmo que já existe.
+      // "Administrador Empresa" é perfil da plataforma (grupo nulo), o mesmo
+      // para todos os clientes.
       const perfilAdmin = await tx.perfil.findFirst({
         where: { nome: 'Administrador Empresa', grupoEconomicoId: null, deletedAt: null },
         select: { id: true },
@@ -270,15 +285,24 @@ export class PlataformaService {
       // transação para o insert passar no WITH CHECK.
       await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${empresa.id}, true)`;
 
+      // O perfil é da conta: administrar a empresa nova é ter o perfil de
+      // administrador (que vale em todas as empresas do grupo dela).
+      const promovida = !!contaExistente && !contaExistente.perfil.sistemaBase;
       if (contaExistente) {
-        // Conta que já administra outra empresa: ganha o vínculo aqui também,
-        // com o mesmo perfil Administrador. A senha dela não é tocada.
+        // Conta existente ganha o acesso aqui também. A senha não é tocada.
         await tx.usuarioEmpresa.create({
           data: {
             usuarioId: contaExistente.id,
             empresaId: empresa.id,
-            perfilId: perfilAdmin.id,
             createdBy: ator.id,
+            updatedBy: ator.id,
+          },
+        });
+        await tx.usuario.update({
+          where: { id: contaExistente.id },
+          data: {
+            grupoEconomicoId: empresa.grupoEconomicoId,
+            ...(promovida ? { perfilId: perfilAdmin.id } : {}),
             updatedBy: ator.id,
           },
         });
@@ -291,12 +315,13 @@ export class PlataformaService {
             senhaAlteradaEm: new Date(),
             // Provisória: quem recebe a senha por fora troca no primeiro acesso.
             deveTrocarSenha: true,
+            perfilId: perfilAdmin.id,
+            grupoEconomicoId: empresa.grupoEconomicoId,
             createdBy: ator.id,
             updatedBy: ator.id,
             usuarioEmpresas: {
               create: {
                 empresaId: empresa.id,
-                perfilId: perfilAdmin.id,
                 createdBy: ator.id,
                 updatedBy: ator.id,
               },
@@ -311,7 +336,11 @@ export class PlataformaService {
         empresaRazaoSocial: empresa.razaoSocial,
         valorNovo:
           `situacao=${empresa.situacao}, admin=${email}` +
-          (contaExistente ? ' (conta existente, vinculada)' : ' (conta nova)'),
+          (contaExistente
+            ? promovida
+              ? ' (conta existente, vinculada e promovida a Administrador no grupo)'
+              : ' (conta existente, vinculada)'
+            : ' (conta nova)'),
       });
 
       return empresa;
@@ -359,7 +388,7 @@ export class PlataformaService {
     // `usuario_empresas` tem RLS — sem `withTenant` a leitura volta vazia.
     const vinculos = await this.prisma.withTenant(empresaId, (tx) =>
       tx.usuarioEmpresa.findMany({
-        where: { empresaId, perfilId: perfilAdmin.id, ativo: true },
+        where: { empresaId, ativo: true, usuario: { perfilId: perfilAdmin.id } },
         select: {
           usuarioId: true,
           usuario: {
@@ -390,12 +419,10 @@ export class PlataformaService {
     const contagens = await Promise.all(
       vinculos.map((v) =>
         this.prisma.withUsuario(v.usuarioId, (tx) =>
+          // O perfil é da conta: quem é administrador administra todas as
+          // empresas a que tem acesso.
           tx.usuarioEmpresa.count({
-            where: {
-              usuarioId: v.usuarioId,
-              perfilId: perfilAdmin.id,
-              ativo: true,
-            },
+            where: { usuarioId: v.usuarioId, ativo: true },
           }),
         ),
       ),
@@ -426,11 +453,17 @@ export class PlataformaService {
     const [empresa, usuario, perfilAdmin] = await Promise.all([
       this.prisma.empresa.findFirst({
         where: { id: empresaId, deletedAt: null },
-        select: { id: true, razaoSocial: true },
+        select: { id: true, razaoSocial: true, grupoEconomicoId: true },
       }),
       this.prisma.usuario.findFirst({
         where: { email: email.toLowerCase(), deletedAt: null },
-        select: { id: true, email: true },
+        select: {
+          id: true,
+          email: true,
+          perfilId: true,
+          grupoEconomicoId: true,
+          perfil: { select: { administraPlataforma: true } },
+        },
       }),
       this.prisma.perfil.findFirst({
         where: { nome: 'Administrador Empresa', grupoEconomicoId: null, deletedAt: null },
@@ -446,16 +479,27 @@ export class PlataformaService {
     if (!perfilAdmin) {
       throw new NotFoundException('Perfil Administrador Empresa não encontrado');
     }
+    if (usuario.perfil.administraPlataforma) {
+      throw new ConflictException(
+        'Este e-mail é de um administrador da plataforma. Informe o e-mail do administrador do cliente.',
+      );
+    }
+    // Uma conta é de um grupo só (decisão de 30/09/2026).
+    if (usuario.grupoEconomicoId && usuario.grupoEconomicoId !== empresa.grupoEconomicoId) {
+      throw new ConflictException(
+        'Esta conta pertence a outro grupo econômico. Uma conta dá acesso só às empresas do próprio grupo.',
+      );
+    }
 
     return this.prisma.withTenant(empresaId, async (tx) => {
       const jaVinculado = await tx.usuarioEmpresa.findUnique({
         where: {
           usuarioId_empresaId: { usuarioId: usuario.id, empresaId },
         },
-        select: { ativo: true, perfilId: true },
+        select: { ativo: true },
       });
 
-      if (jaVinculado?.ativo && jaVinculado.perfilId === perfilAdmin.id) {
+      if (jaVinculado?.ativo && usuario.perfilId === perfilAdmin.id) {
         throw new ConflictException(
           'Esta conta já administra esta empresa.',
         );
@@ -475,13 +519,20 @@ export class PlataformaService {
         create: {
           usuarioId: usuario.id,
           empresaId,
-          perfilId: perfilAdmin.id,
           createdBy: ator.id,
           updatedBy: ator.id,
         },
         update: {
-          perfilId: perfilAdmin.id,
           ativo: true,
+          updatedBy: ator.id,
+        },
+      });
+      // O perfil é da conta: vira administradora em todas as empresas do grupo.
+      await tx.usuario.update({
+        where: { id: usuario.id },
+        data: {
+          perfilId: perfilAdmin.id,
+          grupoEconomicoId: empresa.grupoEconomicoId,
           updatedBy: ator.id,
         },
       });
@@ -524,7 +575,7 @@ export class PlataformaService {
 
     return this.prisma.withTenant(empresaId, async (tx) => {
       const admins = await tx.usuarioEmpresa.count({
-        where: { empresaId, perfilId: perfilAdmin.id, ativo: true },
+        where: { empresaId, ativo: true, usuario: { perfilId: perfilAdmin.id } },
       });
       if (admins <= 1) {
         throw new ConflictException(
@@ -653,38 +704,15 @@ export class PlataformaService {
   }
 
   /**
-   * Quem administra a plataforma hoje: usuários com vínculo ATIVO no perfil
-   * "Administrador da Plataforma", em qualquer empresa.
-   *
-   * `usuario_empresas` tem RLS e não há policy de visão global sobre ela —
-   * por isso o laço por empresa com `withTenant`, no mesmo espírito do laço
-   * de `listarAdministradoresDaEmpresa` mais abaixo. Se o número de empresas
-   * crescer a ponto de doer, a saída é uma policy nova + um `withPlataforma`
-   * no PrismaService, no molde de `withPortalCredential` — não vale a pena
-   * antes de doer.
+   * Quem administra a plataforma hoje: contas com o perfil "Administrador da
+   * Plataforma". Desde que o perfil é da conta (migration
+   * 20260930230000_dados_do_usuario), é uma consulta só — antes era um laço
+   * por empresa procurando o vínculo que carregava o perfil.
    */
   async listarAdmins() {
     const perfil = await this.perfilPlataforma();
-    const empresas = await this.prisma.empresa.findMany({
-      where: { deletedAt: null },
-      select: { id: true },
-    });
-
-    const usuarioIds = new Set<string>();
-    for (const { id: empresaId } of empresas) {
-      const vinculos = await this.prisma.withTenant(empresaId, (tx) =>
-        tx.usuarioEmpresa.findMany({
-          where: { empresaId, perfilId: perfil.id, ativo: true },
-          select: { usuarioId: true },
-        }),
-      );
-      for (const v of vinculos) usuarioIds.add(v.usuarioId);
-    }
-
-    if (usuarioIds.size === 0) return [];
-
     const linhas = await this.prisma.usuario.findMany({
-      where: { id: { in: [...usuarioIds] }, deletedAt: null },
+      where: { perfilId: perfil.id, deletedAt: null },
       select: {
         id: true,
         nome: true,
@@ -722,20 +750,14 @@ export class PlataformaService {
   }
 
   /**
-   * Promove ou revoga um administrador da plataforma, trocando o perfil do
-   * vínculo (RBAC via perfil, não mais um atributo solto do usuário — ver o
-   * comentário de Perfil.administraPlataforma no schema).
+   * Promove ou revoga um administrador da plataforma, trocando o perfil da
+   * conta (ver o comentário de Perfil.administraPlataforma no schema).
    *
-   * Promover: aplica o perfil no vínculo ATIVO mais antigo do usuário (mesmo
-   * desempate de AuthService.findVinculoAtivo). Precisa de pelo menos um
-   * vínculo — não há empresa nenhuma para "inventar" um.
-   *
-   * Revogar: devolve esse vínculo para "Administrador Empresa" (o perfil de
-   * acesso total dentro do próprio tenant — sem isso a pessoa ficaria com um
-   * perfil qualquer, ou nenhum). Recusa revogar o último administrador: sem
-   * nenhum, o módulo fica inacessível e a saída volta a ser um UPDATE manual
-   * no banco. E recusa revogar a si mesmo — quem faz isso perde o acesso no
-   * clique seguinte, sem ter como desfazer.
+   * Revogar devolve a conta para "Administrador Empresa" (acesso total dentro
+   * do próprio grupo — sem isso a pessoa ficaria com um perfil qualquer). Recusa
+   * revogar o último administrador: sem nenhum, o módulo fica inacessível e a
+   * saída volta a ser um UPDATE manual no banco. E recusa revogar a si mesmo —
+   * quem faz isso perde o acesso no clique seguinte, sem ter como desfazer.
    */
   async definirAdmin(
     usuarioId: string,
@@ -785,38 +807,23 @@ export class PlataformaService {
       throw new NotFoundException('Perfil Administrador Empresa não encontrado');
     }
 
-    // Promover: o vínculo ATIVO mais antigo — mesmo desempate do AuthService,
-    // para que qual empresa "carrega" o acesso de plataforma seja estável e
-    // previsível. Revogar: o vínculo que hoje CARREGA o perfil da plataforma
-    // (não necessariamente o mais antigo — um admin de plataforma consegue,
-    // via /usuarios, aplicar o perfil num vínculo específico), senão a
-    // revogação trocaria o vínculo errado e deixaria o de verdade intacto.
+    // A empresa entra só na auditoria (a primeira a que a conta tem acesso).
     const vinculo = await this.prisma.withUsuario(usuarioId, (tx) =>
       tx.usuarioEmpresa.findFirst({
-        where: {
-          usuarioId,
-          ativo: true,
-          deletedAt: null,
-          ...(administradorPlataforma ? {} : { perfilId: perfilPlataforma.id }),
-        },
+        where: { usuarioId, ativo: true, deletedAt: null },
         orderBy: { createdAt: 'asc' },
-        select: { id: true, empresaId: true },
+        select: { empresaId: true },
       }),
     );
-    if (!vinculo) {
-      throw new ConflictException(
-        'Este usuário não tem vínculo ativo com nenhuma empresa — não há onde aplicar o perfil.',
-      );
-    }
 
-    return this.prisma.withTenant(vinculo.empresaId, async (tx) => {
-      await tx.usuarioEmpresa.update({
-        where: { id: vinculo.id },
+    return this.prisma.$transaction(async (tx) => {
+      await tx.usuario.update({
+        where: { id: usuario.id },
         data: { perfilId: perfilAlvo.id, updatedBy: ator.id },
       });
       await this.registrar(tx, ator, {
         acao: administradorPlataforma ? 'admin.promovido' : 'admin.revogado',
-        empresaId: vinculo.empresaId,
+        empresaId: vinculo?.empresaId ?? null,
         valorNovo: usuario.email,
       });
       return {

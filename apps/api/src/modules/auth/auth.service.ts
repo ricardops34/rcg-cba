@@ -164,29 +164,35 @@ export class AuthService {
       tx.usuarioEmpresa.findUniqueOrThrow({
         where: { id: usuarioEmpresaId },
         include: {
-          usuario: true,
-          empresa: true,
-          perfil: {
+          // O perfil é do usuário (igual em todas as empresas do grupo); o
+          // vínculo diz só que ele tem acesso a esta empresa.
+          usuario: {
             include: {
-              permissoes: {
-                where: { permitido: true },
-                include: { rotina: { include: ROTINA_COM_ARVORE } },
+              perfil: {
+                include: {
+                  permissoes: {
+                    where: { permitido: true },
+                    include: { rotina: { include: ROTINA_COM_ARVORE } },
+                  },
+                },
               },
             },
           },
+          empresa: true,
         },
       }),
     );
+    const perfil = vinculo.usuario.perfil;
 
     // Para perfis admin do sistema (sistemaBase: true), PermissionsGuard
     // libera o acesso direto (isAdmin = true) sem precisar checar array.
     // Omitir as 470+ permissões do token reduz o JWT de 16 KB para ~400 bytes,
     // evitando erro 431 Request Header Fields Too Large.
-    const permissoes = vinculo.perfil.sistemaBase
+    const permissoes = perfil.sistemaBase
       ? []
       : await (async () => {
           const daEmpresa = await this.desativadosDaEmpresa(empresaId);
-          return vinculo.perfil.permissoes
+          return perfil.permissoes
             .filter(
               (p) =>
                 p.rotina.menu.moduloId !== MODULO_ADMINISTRACAO_ID &&
@@ -200,11 +206,11 @@ export class AuthService {
       nome: vinculo.usuario.nome,
       email: vinculo.usuario.email,
       empresaAtivaId: vinculo.empresaId,
-      isAdmin: vinculo.perfil.sistemaBase,
-      // Autoridade do PERFIL do vínculo ativo, não do usuário — quem troca de
-      // empresa passa a agir sob o perfil daquela empresa (ver comentário de
-      // Perfil.administraPlataforma no schema).
-      administradorPlataforma: vinculo.perfil.administraPlataforma,
+      isAdmin: perfil.sistemaBase,
+      // Autoridade do perfil do usuário (ver Perfil.administraPlataforma no
+      // schema). Desde 30/09/2026 o perfil é da conta, e a conta é de um grupo
+      // só: trocar de empresa não troca de perfil.
+      administradorPlataforma: perfil.administraPlataforma,
       permissoes,
     };
 
@@ -647,53 +653,45 @@ export class AuthService {
       }),
     );
 
-    // withTenant por vínculo: "perfis" tem RLS por grupo econômico, e o perfil
-    // de cada vínculo só é visível com a empresa dele informada.
-    const perfis = await Promise.all(
-      vinculos.map((v) =>
-        this.prisma.withTenant(v.empresaId, (tx) =>
-          tx.perfil.findUniqueOrThrow({
-            where: { id: v.perfilId },
+    // O perfil é do usuário, igual em todas as empresas do grupo. withUsuario:
+    // "perfis" tem RLS, e a policy deixa o próprio usuário ver o seu perfil
+    // mesmo quando é de um grupo — o me() roda também no login e na troca de
+    // empresa, sem token na requisição.
+    const perfil = await this.prisma.withUsuario(usuarioId, (tx) =>
+      tx.perfil.findUniqueOrThrow({
+        where: { id: usuario.perfilId },
+        select: {
+          nome: true,
+          sistemaBase: true,
+          administraPlataforma: true,
+          rotinaInicial: {
             select: {
               nome: true,
-              sistemaBase: true,
-              administraPlataforma: true,
-              rotinaInicial: {
-                select: {
-                  nome: true,
-                  menu: {
-                    select: { rota: true },
-                  },
-                },
+              menu: {
+                select: { rota: true },
               },
             },
-          }),
-        ),
-      ),
+          },
+        },
+      }),
     );
 
-    const ativoIndex = vinculos.findIndex(
-      (v) => v.empresaId === empresaAtivaId,
-    );
-    const ativo = ativoIndex === -1 ? undefined : vinculos[ativoIndex];
+    const ativo = vinculos.find((v) => v.empresaId === empresaAtivaId);
     const daEmpresa = ativo
       ? await this.desativadosDaEmpresa(ativo.empresaId)
       : { modulos: new Set<string>(), menus: new Set<string>() };
     const permissoes = ativo
       ? (
-          // withTenant: perfil_permissoes segue a RLS de perfis, e o perfil de
-          // um grupo só é visível com a empresa (do grupo) informada. O me()
-          // também roda no login e na troca de empresa, sem token na requisição.
-          await this.prisma.withTenant(ativo.empresaId, (tx) =>
+          await this.prisma.withUsuario(usuarioId, (tx) =>
             tx.perfilPermissao.findMany({
-              where: { perfilId: ativo.perfilId, permitido: true },
+              where: { perfilId: usuario.perfilId, permitido: true },
               include: { rotina: { include: ROTINA_COM_ARVORE } },
             }),
           )
         )
           .filter(
             (p) =>
-              (perfis[ativoIndex].sistemaBase ||
+              (perfil.sistemaBase ||
                 p.rotina.menu.moduloId !== MODULO_ADMINISTRACAO_ID) &&
               rotinaNoAr(p.rotina, daEmpresa),
           )
@@ -710,27 +708,23 @@ export class AuthService {
       permissoes.includes(`${escolhida.codigo}.visualizar`)
         ? escolhida.menu.rota
         : null;
-    const rotinaInicialRota =
-      ativoIndex === -1
-        ? null
-        : (rotaEscolhida ??
-          perfis[ativoIndex]?.rotinaInicial?.menu?.rota ??
-          null);
+    const rotinaInicialRota = !ativo
+      ? null
+      : (rotaEscolhida ?? perfil.rotinaInicial?.menu?.rota ?? null);
 
     return {
       id: usuario.id,
       nome: usuario.nome,
       avatarUrl: usuario.avatarUrl,
-      telefoneInstitucional: ativo?.telefone ?? null,
-      whatsapp: ativo?.celular ?? null,
-      dataNascimento: ativo?.dataNascimento?.toISOString().slice(0, 10) ?? null,
-      mustCompleteFirstAccess: precisaCompletarPrimeiroAcesso(usuario, ativo),
+      telefoneInstitucional: usuario.telefone ?? null,
+      whatsapp: usuario.celular ?? null,
+      dataNascimento: usuario.dataNascimento?.toISOString().slice(0, 10) ?? null,
+      mustCompleteFirstAccess: precisaCompletarPrimeiroAcesso(usuario, usuario),
       email: usuario.email,
-      // Do perfil do vínculo ATIVO, não do usuário (ver buildAccessToken).
-      administradorPlataforma:
-        ativoIndex === -1 ? false : perfis[ativoIndex].administraPlataforma,
+      // Sem acesso à empresa ativa, nenhuma autoridade (ver buildAccessToken).
+      administradorPlataforma: ativo ? perfil.administraPlataforma : false,
       empresaAtivaId,
-      empresas: vinculos.map((v, i) => ({
+      empresas: vinculos.map((v) => ({
         empresaId: v.empresaId,
         nomeFantasia: v.empresa.nomeFantasia,
         logoUrl: v.empresa.logoUrl,
@@ -740,17 +734,16 @@ export class AuthService {
         situacao: v.empresa.situacao,
         testeExpiraEm: v.empresa.testeExpiraEm?.toISOString() ?? null,
         ePlataforma: v.empresa.ePlataforma,
-        perfilId: v.perfilId,
-        perfilNome: perfis[i].nome,
+        // O mesmo em todas: o perfil é do usuário. Mantido por empresa para
+        // não mudar o contrato de quem já lê daqui.
+        perfilId: usuario.perfilId,
+        perfilNome: perfil.nome,
       })),
       permissoes,
       mustChangePassword,
       rotinaInicialRota,
       rotinaInicialId: ativo?.rotinaInicialId ?? null,
-      rotinaInicialPerfilNome:
-        ativoIndex === -1
-          ? null
-          : (perfis[ativoIndex]?.rotinaInicial?.nome ?? null),
+      rotinaInicialPerfilNome: ativo ? (perfil.rotinaInicial?.nome ?? null) : null,
     };
   }
 
@@ -768,19 +761,13 @@ export class AuthService {
       });
       if (!vinculo)
         throw new ForbiddenException('Vínculo com a empresa indisponível');
-      if (!precisaCompletarPrimeiroAcesso(usuario, vinculo)) return;
-      await tx.usuarioEmpresa.update({
-        where: { id: vinculo.id },
-        data: {
-          telefone: input.telefoneInstitucional,
-          dataNascimento: new Date(`${input.dataNascimento}T00:00:00.000Z`),
-          updatedBy: usuarioId,
-        },
-      });
+      if (!precisaCompletarPrimeiroAcesso(usuario, usuario)) return;
       await tx.usuario.update({
         where: { id: usuarioId },
         data: {
           nome: input.nome,
+          telefone: input.telefoneInstitucional,
+          dataNascimento: new Date(`${input.dataNascimento}T00:00:00.000Z`),
           primeiroAcessoConcluidoEm: new Date(),
           updatedBy: usuarioId,
         },
@@ -887,18 +874,21 @@ export class AuthService {
     }
     await this.prisma.withTenant(empresaAtivaId, async (tx) => {
       if (whatsapp !== undefined) {
-        const vinculo = await tx.usuarioEmpresa.findUnique({
-          where: { usuarioId_empresaId: { usuarioId, empresaId: empresaAtivaId } },
+        const atual = await tx.usuario.findUniqueOrThrow({
+          where: { id: usuarioId },
           select: { celular: true },
         });
-        if (!vinculo) throw new BadRequestException('Vínculo com empresa não encontrado');
         const celular = whatsapp.replace(/\D/g, '') || null;
-        if (celular !== vinculo.celular) {
-          await tx.usuarioEmpresa.update({
-            where: { usuarioId_empresaId: { usuarioId, empresaId: empresaAtivaId } },
+        if (celular !== atual.celular) {
+          await tx.usuario.update({
+            where: { id: usuarioId },
             data: { celular, updatedBy: usuarioId },
           });
-          await tx.whatsappVinculoFuncionario.deleteMany({ where: { empresaId: empresaAtivaId, usuarioId } });
+          // Número novo desfaz o pareamento confirmado com o antigo. O número é
+          // do usuário (vale no grupo todo), então a confirmação cai em todas as
+          // empresas — o delete sem empresaId alcança as que a RLS mostrar; as
+          // demais caem na próxima identificação, que confere o número.
+          await tx.whatsappVinculoFuncionario.deleteMany({ where: { usuarioId } });
         }
       }
       await tx.usuario.update({
@@ -911,9 +901,9 @@ export class AuthService {
 
   /**
    * O usuário é um só no grupo econômico, e a data de nascimento também
-   * (decisão de 30/09/2026): grava no vínculo de cada empresa do grupo a que
-   * ele tem acesso e, como no primeiro acesso, no cadastro de vendedor ligado
-   * a ele em cada uma.
+   * (decisão de 30/09/2026): grava no usuário e, como no primeiro acesso, no
+   * cadastro de vendedor ligado a ele em cada empresa do grupo a que ele tem
+   * acesso — esse cadastro é por empresa.
    */
   private async gravarDataNascimento(
     usuarioId: string,
@@ -921,6 +911,10 @@ export class AuthService {
     dataNascimento: string,
   ) {
     const data = new Date(`${dataNascimento}T00:00:00.000Z`);
+    await this.prisma.usuario.update({
+      where: { id: usuarioId },
+      data: { dataNascimento: data, updatedBy: usuarioId },
+    });
     const ativa = await this.prisma.empresa.findUnique({
       where: { id: empresaAtivaId },
       select: { grupoEconomicoId: true },
@@ -933,11 +927,10 @@ export class AuthService {
       : [{ id: empresaAtivaId }];
     for (const { id: empresaId } of empresas) {
       await this.prisma.withTenant(empresaId, async (tx) => {
-        const { count } = await tx.usuarioEmpresa.updateMany({
+        const acesso = await tx.usuarioEmpresa.count({
           where: { usuarioId, empresaId, ativo: true, deletedAt: null },
-          data: { dataNascimento: data, updatedBy: usuarioId },
         });
-        if (count === 0) return;
+        if (acesso === 0) return;
         await tx.vendedor.updateMany({
           where: { usuarioId, empresaId, deletedAt: null },
           data: { dataNascimento: data, updatedBy: usuarioId },

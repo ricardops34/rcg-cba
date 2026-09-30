@@ -29,7 +29,7 @@ export class GruposEconomicosService {
     if (user.administradorPlataforma) return null;
     const links = await this.prisma.withUsuario(user.id, (tx) => tx.usuarioEmpresa.findMany({
       where: { usuarioId: user.id, ativo: true, deletedAt: null,
-        perfil: { sistemaBase: true, deletedAt: null }, empresa: { deletedAt: null } },
+        usuario: { perfil: { sistemaBase: true, deletedAt: null } }, empresa: { deletedAt: null } },
       select: { empresaId: true },
     }));
     return links.map((v) => v.empresaId);
@@ -156,11 +156,13 @@ export class GruposEconomicosService {
     for (const empresa of grupo.empresas) {
       const links = await this.prisma.withTenant(empresa.id, (tx) => tx.usuarioEmpresa.findMany({
         where: { empresaId: empresa.id, deletedAt: null, usuario: { deletedAt: null, grupoEconomicoId: id } },
-        select: { empresaId: true, perfilId: true, ativo: true, usuario: { select: { id: true, nome: true, email: true } } },
+        select: { empresaId: true, ativo: true, usuario: { select: { id: true, nome: true, email: true, perfilId: true } } },
       }));
-      for (const { usuario, ...vinculo } of links) {
+      // perfilId em cada acesso: é o do usuário, o mesmo em todos (o contrato
+      // de GrupoUsuario continua por vínculo).
+      for (const { usuario: { perfilId, ...usuario }, ...vinculo } of links) {
         const item = resultado.get(usuario.id) ?? { ...usuario, vinculos: [] };
-        item.vinculos.push(vinculo);
+        item.vinculos.push({ ...vinculo, perfilId });
         resultado.set(usuario.id, item);
       }
     }
@@ -187,48 +189,42 @@ export class GruposEconomicosService {
       for (const v of input.vinculos) await this.senhas.validarSenhaDaEmpresa(v.empresaId, input.novo.senha);
     }
     const senhaHash = input.novo ? await bcrypt.hash(input.novo.senha, 12) : null;
-    // Os dados do usuário são únicos no grupo (decisão de 30/09/2026): acesso
-    // novo a uma empresa nasce com os dados que ele já tem nas outras.
-    const modelo = input.usuarioId ? await this.dadosDoUsuarioNoGrupo(input.usuarioId, grupo.empresas.map((e) => e.id)) : null;
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM grupos_economicos WHERE id = ${id} FOR UPDATE`;
-      const usuario = input.novo ? await tx.usuario.create({ data: {
-        grupoEconomicoId: id,
-        nome: input.novo.nome, email: input.novo.email, senhaHash: senhaHash!, ativo: true,
-        deveTrocarSenha: true, senhaAlteradaEm: new Date(), createdBy: user.id, updatedBy: user.id,
-      }, select: { id: true } }) : { id: input.usuarioId! };
+      const primeira = [...input.vinculos].sort((a, b) => a.empresaId.localeCompare(b.empresaId))[0];
+      await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${primeira.empresaId}, true)`;
+      const anterior = input.usuarioId
+        ? await tx.usuario.findFirst({ where: { id: input.usuarioId, grupoEconomicoId: id, deletedAt: null }, select: { perfilId: true } })
+        : null;
+      if (input.usuarioId && !anterior) throw new ForbiddenException('Usuário fora do grupo econômico');
+      // O perfil é da conta (migration 20260930230000_dados_do_usuario): grava
+      // uma vez, e vale em todas as empresas do grupo.
+      await this.validarPerfil(tx, perfilDoGrupo, anterior?.perfilId, user, primeira.empresaId);
+      const usuario = input.novo
+        ? await tx.usuario.create({ data: {
+            grupoEconomicoId: id, perfilId: perfilDoGrupo,
+            nome: input.novo.nome, email: input.novo.email, senhaHash: senhaHash!, ativo: true,
+            deveTrocarSenha: true, senhaAlteradaEm: new Date(), createdBy: user.id, updatedBy: user.id,
+          }, select: { id: true } })
+        : await tx.usuario.update({
+            where: { id: input.usuarioId! },
+            data: { perfilId: perfilDoGrupo, updatedBy: user.id },
+            select: { id: true },
+          });
       for (const v of [...input.vinculos].sort((a, b) => a.empresaId.localeCompare(b.empresaId))) {
         await tx.$queryRaw`SELECT id FROM empresas WHERE id = ${v.empresaId} FOR UPDATE`;
         const empresa = await tx.empresa.findFirst({ where: { id: v.empresaId, grupoEconomicoId: id, deletedAt: null } });
         if (!empresa) throw new ForbiddenException('A empresa não pertence mais ao grupo');
         await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${v.empresaId}, true)`;
         const atual = await tx.usuarioEmpresa.findUnique({ where: { usuarioId_empresaId: { usuarioId: usuario.id, empresaId: v.empresaId } } });
-        await this.validarPerfil(tx, v.perfilId, atual?.perfilId, user, v.empresaId);
-        const conta = await tx.usuario.findFirst({ where: { id: usuario.id, grupoEconomicoId: id, deletedAt: null }, select: { id: true } });
-        if (!conta) throw new ForbiddenException('Usuário fora do grupo econômico');
         if (!atual?.ativo) await garantirVagaDeUsuario(tx, v.empresaId, usuario.id);
-        // Vínculo que (re)nasce copia os dados do usuário no grupo; o superior
-        // vira o vínculo do mesmo superior nesta empresa, se ele tiver acesso.
-        const superior = !atual?.ativo && modelo?.superiorUsuarioId
-          ? await tx.usuarioEmpresa.findUnique({ where: { usuarioId_empresaId: { usuarioId: modelo.superiorUsuarioId, empresaId: v.empresaId } }, select: { id: true, ativo: true } })
-          : null;
-        const dados = !atual?.ativo && modelo ? { ...modelo.dados, superiorId: superior?.ativo ? superior.id : null } : {};
+        // Só o acesso: perfil e dados já são da conta.
         await tx.usuarioEmpresa.upsert({
           where: { usuarioId_empresaId: { usuarioId: usuario.id, empresaId: v.empresaId } },
-          create: { usuarioId: usuario.id, empresaId: v.empresaId, perfilId: v.perfilId, ...dados, createdBy: user.id, updatedBy: user.id },
-          update: { perfilId: v.perfilId, ativo: true, deletedAt: null, deletedBy: null, ...dados, updatedBy: user.id },
+          create: { usuarioId: usuario.id, empresaId: v.empresaId, createdBy: user.id, updatedBy: user.id },
+          update: { ativo: true, deletedAt: null, deletedBy: null, updatedBy: user.id },
         });
         if (input.novo) await tx.vendedor.updateMany({ where: { empresaId: v.empresaId, email: input.novo.email, usuarioId: null, deletedAt: null }, data: { usuarioId: usuario.id, updatedBy: user.id } });
-      }
-      // As demais empresas do grupo em que ele já tem acesso acompanham o
-      // perfil do grupo — senão o perfil divergiria entre elas.
-      const informadas = new Set(input.vinculos.map((v) => v.empresaId));
-      for (const empresa of grupo.empresas.filter((e) => !informadas.has(e.id))) {
-        await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${empresa.id}, true)`;
-        const atual = await tx.usuarioEmpresa.findUnique({ where: { usuarioId_empresaId: { usuarioId: usuario.id, empresaId: empresa.id } } });
-        if (!atual?.ativo || atual.perfilId === perfilDoGrupo) continue;
-        await this.validarPerfil(tx, perfilDoGrupo, atual.perfilId, user, empresa.id);
-        await tx.usuarioEmpresa.update({ where: { id: atual.id }, data: { perfilId: perfilDoGrupo, updatedBy: user.id } });
       }
       return usuario;
     }, { timeout: 20_000 });
@@ -244,32 +240,17 @@ export class GruposEconomicosService {
     if (restrito) throw new ForbiddenException('Somente a plataforma pode alterar o perfil Administrador da Plataforma');
   }
 
-  /** Dados do usuário, tirados do primeiro vínculo ativo dele nas empresas do grupo. */
-  private async dadosDoUsuarioNoGrupo(usuarioId: string, empresaIds: string[]) {
-    for (const empresaId of empresaIds) {
-      const v = await this.prisma.withTenant(empresaId, (tx) => tx.usuarioEmpresa.findFirst({
-        where: { usuarioId, empresaId, ativo: true },
-        select: {
-          codigoErp: true, nomeReduzido: true, telefone: true, celular: true, dataNascimento: true,
-          superior: { select: { usuarioId: true } },
-        },
-      }));
-      if (v) {
-        const { superior, ...dados } = v;
-        return { dados, superiorUsuarioId: superior?.usuarioId ?? null };
-      }
-    }
-    return null;
-  }
-
   async removerAcesso(id: string, usuarioId: string, empresaId: string, user: AuthenticatedUser) {
     const grupo = await this.grupo(id, user);
     if (!grupo.empresas.some((e) => e.id === empresaId)) throw new ForbiddenException('Empresa fora do grupo');
     if (usuarioId === user.id) throw new BadRequestException('Não remova seu próprio acesso por esta tela');
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const atual = await tx.usuarioEmpresa.findUnique({ where: { usuarioId_empresaId: { usuarioId, empresaId } } });
+      const atual = await tx.usuarioEmpresa.findUnique({
+        where: { usuarioId_empresaId: { usuarioId, empresaId } },
+        include: { usuario: { select: { perfilId: true } } },
+      });
       if (!atual) throw new NotFoundException('Vínculo não encontrado');
-      await this.validarPerfil(tx, atual.perfilId, atual.perfilId, user);
+      await this.validarPerfil(tx, atual.usuario.perfilId, atual.usuario.perfilId, user);
       await tx.usuarioEmpresa.update({ where: { id: atual.id }, data: { ativo: false, updatedBy: user.id } });
       await tx.whatsappVinculoFuncionario.deleteMany({ where: { usuarioId, empresaId } });
       return { success: true };

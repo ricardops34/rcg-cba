@@ -634,20 +634,29 @@ export async function gerarDemo(
 
   for (const [i, pessoa] of equipe.entries()) {
     const email = `${pessoa.chave}@bjsoft.com.br`;
+    // Perfil e grupo são do usuário; o vínculo é só o acesso à empresa.
     const usuario = await db.usuario.upsert({
       where: { email },
-      create: { nome: pessoa.nome, email, senhaHash, ativo: true },
-      update: { nome: pessoa.nome, senhaHash, ativo: true },
+      create: {
+        nome: pessoa.nome,
+        email,
+        senhaHash,
+        ativo: true,
+        perfilId: perfilPor(pessoa.perfil),
+        grupoEconomicoId: empresa.grupoEconomicoId,
+      },
+      update: {
+        nome: pessoa.nome,
+        senhaHash,
+        ativo: true,
+        perfilId: perfilPor(pessoa.perfil),
+        grupoEconomicoId: empresa.grupoEconomicoId,
+      },
     });
     await db.usuarioEmpresa.upsert({
       where: { usuarioId_empresaId: { usuarioId: usuario.id, empresaId } },
-      create: {
-        usuarioId: usuario.id,
-        empresaId,
-        perfilId: perfilPor(pessoa.perfil),
-        ativo: true,
-      },
-      update: { perfilId: perfilPor(pessoa.perfil), ativo: true },
+      create: { usuarioId: usuario.id, empresaId, ativo: true },
+      update: { ativo: true },
     });
     const vendedor = await db.vendedor.create({
       data: {
@@ -693,8 +702,7 @@ export async function gerarDemo(
     where: {
       empresaId,
       ativo: true,
-      perfil: { administraPlataforma: true },
-      usuario: { deletedAt: null },
+      usuario: { deletedAt: null, perfil: { administraPlataforma: true } },
     },
     orderBy: { createdAt: 'asc' },
     select: { usuario: { select: { id: true, nome: true } } },

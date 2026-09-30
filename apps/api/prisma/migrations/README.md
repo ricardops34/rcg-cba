@@ -64,7 +64,8 @@ foi informado quando ela abriu.
 `perfis` é lida no login, antes de haver empresa ativa, por isso a leitura dos
 perfis **da plataforma** (grupo nulo) é livre. Os de grupo aparecem para o
 próprio grupo (`app_grupo_atual()`, o grupo da empresa informada), para o modo
-plataforma e para o usuário com vínculo neles (`withUsuario`). Escrever exige
+plataforma e para o próprio usuário que tem o perfil (`usuarios.perfilId`, via
+`withUsuario`). Escrever exige
 modo plataforma (perfil da plataforma) ou o grupo da empresa ativa.
 `perfil_permissoes` herda a visibilidade do perfil. Operação que atravessa
 grupos (empresa mudando de grupo) precisa ler antes e gravar depois da mudança
@@ -72,8 +73,9 @@ grupos (empresa mudando de grupo) precisa ler antes e gravar depois da mudança
 
 ## `usuario_empresas`: RLS com duas policies (tenant + self)
 
-`usuario_empresas` carrega hierarquia/dados do vínculo
-(ver `docs/regras-de-negocio.md`), então é dado de negócio e tem RLS — mas
+`usuario_empresas` diz a quais empresas o usuário tem acesso (perfil, superior
+e dados da pessoa moram em `usuarios` desde `20260930230000_dados_do_usuario`)
+e tem RLS — mas
 precisa continuar sendo consultável **antes** de existir empresa ativa (login
 descobrindo a quais empresas o usuário pertence; `AuthService.me()` listando
 todas). Por isso tem uma policy extra, além da de tenant padrão:

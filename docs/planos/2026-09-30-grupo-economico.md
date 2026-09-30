@@ -53,23 +53,12 @@ partir delas.
   Econômico, que mostra só o grupo e as empresas dele. O Novo usuário, quando
   quem cadastra é administrador de uma empresa de grupo, pede nome, e-mail,
   senha, um perfil e as empresas.
-- **O perfil é do usuário, para o grupo todo, e não por empresa.** A regra fica
-  no código, em duas portas:
-  - `GruposEconomicosService.salvarUsuario` recusa perfis diferentes entre as
-    empresas e leva o perfil novo às demais empresas do grupo em que o usuário
-    já tem acesso;
-  - `UsuariosService.vincularEmpresa` (`POST /usuarios/:id/empresas/:empresaId`,
-    que muda uma empresa por vez) recusa um perfil diferente do que o usuário
-    tem nas outras empresas do grupo.
-
-  No bloco da empresa ativa, o seletor de perfil e o "Vincular" somem quando a
-  empresa é de um grupo. O banco continua guardando `perfilId` por vínculo
-  (`usuario_empresas`), porque o token e o `/me` leem dali; a regra mantém os
-  vínculos do grupo iguais.
-
-  Testado em 30/09/2026 com o Gabriel: perfis diferentes são recusados (400);
-  trocar só a RCG pela rota de usuários é recusado (400); trocar o perfil
-  mandando só a Cuiabá leva a RCG junto. O estado original foi restaurado.
+- **O perfil é do usuário, para o grupo todo, e não por empresa.** Primeiro a
+  regra ficou no código (duas travas mantinham iguais os `perfilId` de cada
+  vínculo). Desde a migration `20260930230000_dados_do_usuario` o perfil mora
+  em `usuarios.perfilId` e a regra é da própria estrutura — ver "Usuário único
+  no grupo" abaixo. `salvarUsuario` ainda recusa perfis diferentes no mesmo
+  pedido, porque o contrato manda um perfil por empresa marcada.
 
 ## Perfis do grupo (decisão de 30/09/2026)
 
@@ -98,20 +87,29 @@ passa a ter dono**, a plataforma ou um grupo econômico
 
 ## Usuário único no grupo (decisão de 30/09/2026)
 
-O usuário é um só no grupo econômico, e os dados dele também. Superior, nome
-reduzido, código ERP, telefones, WhatsApp e data de nascimento são os mesmos
-em todas as empresas do grupo. Eles moram em cada vínculo (`usuario_empresas`),
-então a API os mantém sincronizados:
+O usuário é um só no grupo econômico, e os dados dele também. Perfil, superior,
+nome reduzido, código ERP, telefones, WhatsApp e data de nascimento são os
+mesmos em todas as empresas do grupo.
 
-- `UsuariosService.vincularEmpresa` grava na empresa e replica nas demais do
-  grupo (`sincronizarDadosNoGrupo`). O superior é traduzido para o vínculo do
-  mesmo superior em cada empresa, ou fica sem superior se ele não tiver acesso
-  a ela.
-- Um acesso novo a uma empresa do grupo (`GruposEconomicosService.salvarUsuario`)
-  nasce com os dados que o usuário já tem.
+**Estrutura (migration `20260930230000_dados_do_usuario`):** esses dados
+passaram a morar em `usuarios`. `usuario_empresas` diz só a quais empresas o
+usuário tem acesso (e a tela inicial dele em cada uma, que continua por
+empresa). O superior aponta para outro **usuário** do grupo, não mais para o
+vínculo dele numa empresa. Saíram a sincronização entre vínculos
+(`sincronizarDadosNoGrupo`) e as travas de "perfil igual em todas as empresas":
+agora é um registro só. As colunas antigas continuam em `usuario_empresas`, sem
+uso e sem `NOT NULL`, até a migration que as apaga.
 
-Testado com o Ricardo (RCG e Cuiabá): salvar pela RCG levou os dados para a
-Cuiabá. O estado original foi restaurado.
+**Uma conta é de um grupo só:** acesso a empresa de outro grupo é recusado
+(`UsuariosService.vincularEmpresa`, `PlataformaService.vincularAdministrador`),
+e o superior precisa ser do mesmo grupo. Empresa nova criada pela Plataforma
+com um administrador que já tem conta entra no grupo dessa conta. Tornar alguém
+administrador de uma empresa troca o perfil da conta, então vale no grupo todo.
+
+Testado pela API em 30/09/2026 (cópia da produção): login e permissões iguais
+às de antes (Rubens: 12), gravação dos dados pelo card do usuário, superior e
+conta de outro grupo recusados, carteira do vendedor intacta (313 clientes) e
+lista de admins da plataforma. Os dados do Rubens foram restaurados.
 
 ## Cadastro de usuário em abas (30/09/2026)
 

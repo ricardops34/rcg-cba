@@ -63,16 +63,25 @@ describe('Primeiro acesso', () => {
     tx.vendedor.findMany.mockResolvedValue([{ id: 'vendedor', nome: input.nome, telefone: 'antigo', dataNascimento: new Date('1990-05-12T00:00:00Z') }]);
     await service.completeFirstAccess('usuario', 'empresa', input);
     expect(prisma.withTenant).toHaveBeenCalledWith('empresa', expect.any(Function));
-    expect(tx.usuarioEmpresa.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ telefone: input.telefoneInstitucional, dataNascimento: new Date('1990-05-12T00:00:00Z') }) }));
-    expect(tx.usuario.update).toHaveBeenCalledWith({ where: { id: 'usuario' }, data: { nome: input.nome, primeiroAcessoConcluidoEm: expect.any(Date), updatedBy: 'usuario' } });
+    // Telefone e nascimento são do usuário (migration 20260930230000_dados_do_usuario).
+    expect(tx.usuario.update).toHaveBeenCalledWith({
+      where: { id: 'usuario' },
+      data: {
+        nome: input.nome,
+        telefone: input.telefoneInstitucional,
+        dataNascimento: new Date('1990-05-12T00:00:00Z'),
+        primeiroAcessoConcluidoEm: expect.any(Date),
+        updatedBy: 'usuario',
+      },
+    });
     expect(tx.vendedor.findMany).toHaveBeenCalledWith({ where: { usuarioId: 'usuario', empresaId: 'empresa', deletedAt: null } });
     expect(tx.vendedor.update).toHaveBeenCalledWith({ where: { id: 'vendedor' }, data: { telefone: input.telefoneInstitucional, updatedBy: 'usuario' } });
   });
 
   it('não regrava dados na repetição da confirmação', async () => {
-    tx.usuario.findUniqueOrThrow.mockResolvedValue({ nome: input.nome, primeiroAcessoConcluidoEm: new Date() });
-    tx.usuarioEmpresa.findFirst.mockResolvedValue({
-      id: 'vinculo',
+    tx.usuario.findUniqueOrThrow.mockResolvedValue({
+      nome: input.nome,
+      primeiroAcessoConcluidoEm: new Date(),
       telefone: input.telefoneInstitucional,
       dataNascimento: new Date('1990-05-12T00:00:00Z'),
     });
@@ -82,12 +91,15 @@ describe('Primeiro acesso', () => {
   });
 
   it('permite reparar um cadastro incompleto mesmo com o marco preenchido', async () => {
-    tx.usuario.findUniqueOrThrow.mockResolvedValue({ nome: input.nome, primeiroAcessoConcluidoEm: new Date() });
-    tx.usuarioEmpresa.findFirst.mockResolvedValue({ id: 'vinculo', telefone: null, dataNascimento: null });
+    tx.usuario.findUniqueOrThrow.mockResolvedValue({
+      nome: input.nome,
+      primeiroAcessoConcluidoEm: new Date(),
+      telefone: null,
+      dataNascimento: null,
+    });
 
     await service.completeFirstAccess('usuario', 'empresa', input);
 
-    expect(tx.usuarioEmpresa.update).toHaveBeenCalled();
     expect(tx.usuario.update).toHaveBeenCalled();
   });
 

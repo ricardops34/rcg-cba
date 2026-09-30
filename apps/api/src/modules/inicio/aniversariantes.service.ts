@@ -17,13 +17,11 @@ export class AniversariantesService {
           empresaId,
           ativo: true,
           deletedAt: null,
-          dataNascimento: { not: null },
-          usuario: { ativo: true, deletedAt: null },
+          usuario: { ativo: true, deletedAt: null, dataNascimento: { not: null } },
         },
         select: {
           usuarioId: true,
-          dataNascimento: true,
-          usuario: { select: { nome: true } },
+          usuario: { select: { nome: true, dataNascimento: true } },
         },
       });
 
@@ -35,7 +33,7 @@ export class AniversariantesService {
           // A data vem como timestamp; o que interessa é dia/mês. Lido em UTC
           // porque é assim que foi gravada — em horário local, um nascimento
           // à meia-noite vira o dia anterior.
-          const nascimento = v.dataNascimento!;
+          const nascimento = v.usuario.dataNascimento!;
           const dia = nascimento.getUTCDate();
           const mes = nascimento.getUTCMonth() + 1;
 

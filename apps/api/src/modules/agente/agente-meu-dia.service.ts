@@ -100,9 +100,10 @@ export class AgenteMeuDiaService {
     const vinculo = await this.prisma.withTenant(empresaId, (tx) =>
       tx.usuarioEmpresa.findFirst({
         where: { usuarioId: user.id, empresaId, deletedAt: null },
-        select: { nomeReduzido: true, dataNascimento: true },
+        select: { usuario: { select: { nomeReduzido: true, dataNascimento: true } } },
       }),
     );
+    const pessoa = vinculo?.usuario;
 
     // As três fontes são independentes: uma fora do ar não pode derrubar as
     // outras duas nem a saudação. Ver `semQuebrar`.
@@ -114,8 +115,8 @@ export class AgenteMeuDiaService {
 
     return {
       tratamento:
-        vinculo?.nomeReduzido?.trim() || user.nome.trim().split(/\s+/)[0],
-      aniversario: this.ehHoje(vinculo?.dataNascimento ?? null),
+        pessoa?.nomeReduzido?.trim() || user.nome.trim().split(/\s+/)[0],
+      aniversario: this.ehHoje(pessoa?.dataNascimento ?? null),
       agenda,
       meta,
       recados,
