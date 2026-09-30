@@ -405,8 +405,9 @@ export async function gerarDemo(
 
   await apagarDemo(db, empresaId);
 
+  // Os da plataforma: por nome, um grupo pode ter o seu "Vendedor" também.
   const perfis = await db.perfil.findMany({
-    where: { deletedAt: null },
+    where: { deletedAt: null, grupoEconomicoId: null },
     select: { id: true, nome: true },
   });
   const perfilPor = (nome: string) => {

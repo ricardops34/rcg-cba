@@ -15,6 +15,12 @@ export const perfilCreateSchema = z.object({
     .nullable()
     .optional()
     .describe("ID da rotina inicial padrão para este perfil"),
+  carteiraCompleta: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Vê a carteira de clientes inteira da empresa. Sem isso, o usuário vê só a carteira do Vendedor ligado a ele e a do time abaixo",
+    ),
 });
 export type PerfilCreate = z.infer<typeof perfilCreateSchema>;
 
@@ -36,6 +42,12 @@ export const perfilSchema = perfilCreateSchema.extend({
   administraPlataforma: z
     .boolean()
     .describe("Perfil de administração da plataforma (todas as empresas) — não concedível pela API"),
+  grupoEconomicoId: z
+    .string()
+    .nullable()
+    .describe(
+      "Dono do perfil. Nulo = perfil da plataforma, que vale para todas as empresas e só o administrador da plataforma altera; preenchido = perfil do grupo econômico",
+    ),
   rotinaInicialNome: z.string().nullable().optional().describe("Nome da rotina inicial vinculada"),
   rotinaInicialRota: z.string().nullable().optional().describe("Rota da rotina inicial vinculada (ex.: /comercial/dashboard)"),
   ...auditFieldsSchema.shape,
@@ -68,6 +80,7 @@ export const PERFIL_CREATE_EXAMPLE: PerfilCreate = {
   nome: "Gerente",
   descricao: "Acesso aos cadastros comerciais",
   ativo: true,
+  carteiraCompleta: false,
 };
 
 export const PERFIL_PERMISSOES_UPDATE_EXAMPLE: PerfilPermissoesUpdate = {

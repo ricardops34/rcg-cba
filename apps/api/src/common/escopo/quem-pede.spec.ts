@@ -17,8 +17,11 @@ describe('QuemPede — recorte do solicitante', () => {
     permissoes: [],
   };
 
-  function txComVendedor(vendedorId: string | null) {
+  function txComVendedor(vendedorId: string | null, carteiraCompleta = false) {
     return {
+      usuarioEmpresa: {
+        findFirst: jest.fn(() => Promise.resolve({ perfil: { carteiraCompleta } })),
+      },
       vendedor: {
         findFirst: jest.fn(() =>
           Promise.resolve(vendedorId ? { id: vendedorId } : null),
@@ -67,15 +70,27 @@ describe('QuemPede — recorte do solicitante', () => {
     expect(r.escopoVendedores).toEqual(['vend-1']);
   });
 
-  it('usuário sem cadastro de vendedor fica sem restrição, como no resto do sistema', async () => {
+  // Até 30/09/2026 era o contrário ("sem restrição"): um vendedor cujo cadastro
+  // não estava ligado ao usuário via a empresa inteira.
+  it('usuário sem cadastro de vendedor não alcança carteira nenhuma', async () => {
     const tx = txComVendedor(null);
     const r = await recorteDoSolicitante(tx, 'emp-1', {
       tipo: 'usuario',
       user,
     });
 
-    expect(r.escopoVendedores).toBeNull();
+    expect(r.escopoVendedores).toEqual([]);
     expect(r.clienteId).toBeNull();
+  });
+
+  it('perfil com carteira completa (ex.: Administrativo) fica sem restrição', async () => {
+    const tx = txComVendedor(null, true);
+    const r = await recorteDoSolicitante(tx, 'emp-1', {
+      tipo: 'usuario',
+      user,
+    });
+
+    expect(r.escopoVendedores).toBeNull();
   });
 
   describe('autor do evento', () => {

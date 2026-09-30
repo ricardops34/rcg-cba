@@ -211,6 +211,7 @@ model GrupoEconomico {
   id String @id @default(uuid())
   descricao String
   empresas Empresa[]
+  perfis Perfil[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   createdBy String?
@@ -450,6 +451,18 @@ model Perfil {
   administraPlataforma Boolean @default(false)
   ativo                Boolean @default(true)
   rotinaInicialId      String?
+  // Dono do perfil. Nulo = perfil da plataforma (os de sistema e os modelos),
+  // que só o administrador da plataforma altera e que todo grupo enxerga.
+  // Preenchido = perfil do grupo econômico: o administrador de uma empresa do
+  // grupo cria, edita e exclui, e só as empresas do grupo o enxergam e o
+  // atribuem. Corte no banco (RLS por grupo, migration 20260930210000_rls_perfis)
+  // e no código (PerfisService e as travas de atribuição).
+  grupoEconomicoId     String?
+  // Vê a carteira de clientes inteira da empresa, sem o recorte por vendedor
+  // (common/escopo/escopo-vendedores.ts). Os demais veem só a carteira do
+  // Vendedor ligado ao usuário e a do time abaixo dele — e, sem Vendedor
+  // ligado, nenhuma. Administrador (sistemaBase) já vê tudo pelo isAdmin.
+  carteiraCompleta     Boolean @default(false)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -459,12 +472,17 @@ model Perfil {
   deletedBy String?
 
   rotinaInicial     Rotina?                 @relation("PerfilRotinaInicial", fields: [rotinaInicialId], references: [id])
+  grupoEconomico    GrupoEconomico?         @relation(fields: [grupoEconomicoId], references: [id], onDelete: Restrict)
   usuarioEmpresas   UsuarioEmpresa[]
   permissoes        PerfilPermissao[]
   agenteFerramentas AgenteFerramentaPerfil[]
   comunicados       ComunicadoPerfil[]
 
-  @@unique([nome])
+  // Nome único dentro do dono. Para os da plataforma (grupo nulo) quem garante
+  // é o índice parcial "perfis_nome_plataforma_key", criado por SQL na
+  // migration 20260930200000_perfil_por_grupo: o Prisma não representa índice
+  // parcial, e no Postgres nulos não colidem num índice único comum.
+  @@unique([grupoEconomicoId, nome])
   @@map("perfis")
 }
 

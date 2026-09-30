@@ -8,12 +8,14 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { perfilCreateSchema, type Perfil, type PerfilCreate } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
+import { useAuthStore } from "@/stores/auth-store";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import type { ModuloComMenus } from "@/hooks/use-menu";
 import { PermissoesMatrix } from "@/components/crud/permissoes-matrix";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Switch } from "@/components/ui/switch";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -23,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Lock } from "lucide-react";
 
 const LIST_ROUTE = "/admin/perfis";
 
@@ -33,6 +35,10 @@ export function PerfilForm({ perfil, initialTab = "dados" }: { perfil?: Perfil; 
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<PerfilTab>(initialTab);
   const { create, update } = useResourceMutations<PerfilCreate, Partial<PerfilCreate>>("perfis");
+  const administradorPlataforma = useAuthStore((s) => s.user?.administradorPlataforma === true);
+  // Perfil da plataforma vale para todas as empresas: só o administrador da
+  // plataforma altera (a API recusa os demais). O da empresa cria o seu.
+  const somenteLeitura = !!perfil && perfil.grupoEconomicoId === null && !administradorPlataforma;
 
   const { data: modulos } = useQuery({
     queryKey: ["modulos", "all"],
@@ -67,8 +73,9 @@ export function PerfilForm({ perfil, initialTab = "dados" }: { perfil?: Perfil; 
           descricao: perfil.descricao ?? "",
           ativo: perfil.ativo,
           rotinaInicialId: perfil.rotinaInicialId ?? null,
+          carteiraCompleta: perfil.carteiraCompleta ?? false,
         }
-      : { nome: "", descricao: "", ativo: true, rotinaInicialId: null },
+      : { nome: "", descricao: "", ativo: true, rotinaInicialId: null, carteiraCompleta: false },
   });
 
   const onSubmit = async (values: PerfilCreate) => {
@@ -100,6 +107,17 @@ export function PerfilForm({ perfil, initialTab = "dados" }: { perfil?: Perfil; 
         </h1>
       </div>
 
+      {somenteLeitura && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+          <Lock className="mt-0.5 size-4 shrink-0" />
+          <p>
+            Este é um perfil da plataforma e vale para todas as empresas, por isso fica só para
+            consulta. Para ajustar permissões, crie um perfil do seu grupo em{" "}
+            <strong>Novo perfil</strong>.
+          </p>
+        </div>
+      )}
+
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as PerfilTab)}>
         <TabsList>
           <TabsTrigger value="dados">Dados</TabsTrigger>
@@ -111,54 +129,75 @@ export function PerfilForm({ perfil, initialTab = "dados" }: { perfil?: Perfil; 
         <TabsContent value="dados">
           <Card>
             <form id="perfil-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
-              <CardContent>
-                <FieldGroup>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <Field data-invalid={!!form.formState.errors.nome}>
-                      <FieldLabel htmlFor="nome">Nome</FieldLabel>
-                      <Input id="nome" {...form.register("nome")} />
-                      <FieldError errors={[form.formState.errors.nome]} />
-                    </Field>
+              <fieldset disabled={somenteLeitura} className="contents">
+                <CardContent>
+                  <FieldGroup>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <Field data-invalid={!!form.formState.errors.nome}>
+                        <FieldLabel htmlFor="nome">Nome</FieldLabel>
+                        <Input id="nome" {...form.register("nome")} />
+                        <FieldError errors={[form.formState.errors.nome]} />
+                      </Field>
+  
+                      <Field data-invalid={!!form.formState.errors.descricao}>
+                        <FieldLabel htmlFor="descricao">Descrição</FieldLabel>
+                        <Input id="descricao" {...form.register("descricao")} />
+                        <FieldError errors={[form.formState.errors.descricao]} />
+                      </Field>
+  
+                      <Field data-invalid={!!form.formState.errors.rotinaInicialId} className="sm:col-span-2">
+                        <FieldLabel htmlFor="rotinaInicialId">Rotina Inicial (Tela Inicial Padrão)</FieldLabel>
+                        <Select
+                          value={selectedRotinaInicial ?? "none"}
+                          onValueChange={(val) =>
+                            form.setValue("rotinaInicialId", val === "none" ? null : val, { shouldDirty: true })
+                          }
+                        >
+                          <SelectTrigger id="rotinaInicialId">
+                            <SelectValue placeholder="Padrão do Sistema (Mural / Atalhos)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Padrão do Sistema (Mural / Atalhos)</SelectItem>
+                            {todasRotinas.map((r) => (
+                              <SelectItem key={r.id} value={r.id}>
+                                {r.moduloNome} &gt; {r.menuNome} &gt; {r.nome}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FieldError errors={[form.formState.errors.rotinaInicialId]} />
+                      </Field>
+                    </div>
 
-                    <Field data-invalid={!!form.formState.errors.descricao}>
-                      <FieldLabel htmlFor="descricao">Descrição</FieldLabel>
-                      <Input id="descricao" {...form.register("descricao")} />
-                      <FieldError errors={[form.formState.errors.descricao]} />
-                    </Field>
-
-                    <Field data-invalid={!!form.formState.errors.rotinaInicialId} className="sm:col-span-2">
-                      <FieldLabel htmlFor="rotinaInicialId">Rotina Inicial (Tela Inicial Padrão)</FieldLabel>
-                      <Select
-                        value={selectedRotinaInicial ?? "none"}
-                        onValueChange={(val) =>
-                          form.setValue("rotinaInicialId", val === "none" ? null : val, { shouldDirty: true })
-                        }
-                      >
-                        <SelectTrigger id="rotinaInicialId">
-                          <SelectValue placeholder="Padrão do Sistema (Mural / Atalhos)" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Padrão do Sistema (Mural / Atalhos)</SelectItem>
-                          {todasRotinas.map((r) => (
-                            <SelectItem key={r.id} value={r.id}>
-                              {r.moduloNome} &gt; {r.menuNome} &gt; {r.nome}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FieldError errors={[form.formState.errors.rotinaInicialId]} />
-                    </Field>
-                  </div>
-                </FieldGroup>
-              </CardContent>
+                    <div className="flex items-center justify-between gap-4 rounded-lg border bg-muted/20 p-3">
+                      <div className="space-y-0.5">
+                        <FieldLabel htmlFor="carteiraCompleta" className="text-sm font-medium">
+                          Carteira completa
+                        </FieldLabel>
+                        <FieldDescription className="text-xs">
+                          Vê os clientes de todos os vendedores. Desligado, o usuário vê só a carteira do
+                          vendedor ligado a ele e a do time abaixo — e, sem vendedor ligado, nenhuma.
+                        </FieldDescription>
+                      </div>
+                      <Switch
+                        id="carteiraCompleta"
+                        checked={form.watch("carteiraCompleta") ?? false}
+                        onCheckedChange={(v) => form.setValue("carteiraCompleta", v, { shouldDirty: true })}
+                      />
+                    </div>
+                  </FieldGroup>
+                </CardContent>
+              </fieldset>
 
               <CardFooter className="justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => router.push(LIST_ROUTE)}>
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={form.formState.isSubmitting}>
-                  {perfil ? "Salvar alterações" : "Cadastrar e continuar"}
-                </Button>
+                {!somenteLeitura && (
+                  <Button type="submit" disabled={form.formState.isSubmitting}>
+                    {perfil ? "Salvar alterações" : "Cadastrar e continuar"}
+                  </Button>
+                )}
               </CardFooter>
             </form>
           </Card>
@@ -168,7 +207,7 @@ export function PerfilForm({ perfil, initialTab = "dados" }: { perfil?: Perfil; 
           {perfil && (
             <Card>
               <CardContent>
-                <PermissoesMatrix perfilId={perfil.id} />
+                <PermissoesMatrix perfilId={perfil.id} somenteLeitura={somenteLeitura} />
               </CardContent>
             </Card>
           )}

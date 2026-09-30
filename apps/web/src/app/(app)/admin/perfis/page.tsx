@@ -15,6 +15,7 @@ import {
 } from "@/components/crud/status-quick-filter";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { roleColorClass } from "@/lib/role-color";
+import { useAuthStore } from "@/stores/auth-store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -47,6 +48,9 @@ type SimNaoTodos = "todos" | "sim" | "nao";
 
 export default function PerfisPage() {
   const router = useRouter();
+  const administradorPlataforma = useAuthStore((s) => s.user?.administradorPlataforma === true);
+  // Perfil da plataforma vale para todas as empresas: só o administrador dela altera.
+  const podeAlterar = (p: Perfil) => administradorPlataforma || p.grupoEconomicoId !== null;
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -123,6 +127,16 @@ export default function PerfisPage() {
               Plataforma
             </Badge>
           )}
+          {administradorPlataforma && p.grupoEconomicoId !== null && (
+            <Badge variant="outline" className="text-[10px]">
+              Do grupo
+            </Badge>
+          )}
+          {!podeAlterar(p) && !p.sistemaBase && (
+            <Badge variant="secondary" className="text-[10px] gap-1">
+              <Lock className="size-2.5" /> Padrão da plataforma
+            </Badge>
+          )}
         </div>
       ),
     },
@@ -159,9 +173,9 @@ export default function PerfisPage() {
               <ShieldCheck className="size-4" /> Matriz de Permissões
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => openEdit(p)}>
-              <Pencil className="size-4" /> Editar perfil
+              <Pencil className="size-4" /> {podeAlterar(p) ? "Editar perfil" : "Ver perfil"}
             </DropdownMenuItem>
-            {!p.sistemaBase && (
+            {!p.sistemaBase && podeAlterar(p) && (
               <DropdownMenuItem
                 variant="destructive"
                 onClick={() => onDelete(p)}

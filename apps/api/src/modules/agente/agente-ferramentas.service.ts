@@ -11,6 +11,7 @@ import { AgenteToolsService } from './agente-tools.service';
 import { versaoEmUso, versoesDaFerramenta } from './agente-prompt-versoes';
 import type { AgenteFerramentaUpdate } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { garantirPerfisDoGrupo } from '../../common/perfil/perfil-do-grupo';
 
 /** Configuração gravada de uma ferramenta. Nulo em nome/descrição = usa o código. */
 export interface ConfigFerramenta {
@@ -157,6 +158,7 @@ export class AgenteFerramentasService {
       });
 
       if (input.perfilIds) {
+        await garantirPerfisDoGrupo(tx, input.perfilIds, empresaId);
         // Troca o conjunto inteiro: a tela manda a seleção completa, e um
         // diff aqui só criaria caminhos para divergir do que está na tela.
         await tx.agenteFerramentaPerfil.deleteMany({

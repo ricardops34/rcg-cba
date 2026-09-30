@@ -257,7 +257,7 @@ export class PlataformaService {
       // O perfil é global (compartilhado por todas as empresas), então o
       // Administrador que a empresa nova usa é o mesmo que já existe.
       const perfilAdmin = await tx.perfil.findFirst({
-        where: { nome: 'Administrador Empresa', deletedAt: null },
+        where: { nome: 'Administrador Empresa', grupoEconomicoId: null, deletedAt: null },
         select: { id: true },
       });
       if (!perfilAdmin) {
@@ -351,7 +351,7 @@ export class PlataformaService {
     if (!empresa) throw new NotFoundException('Empresa não encontrada');
 
     const perfilAdmin = await this.prisma.perfil.findFirst({
-      where: { nome: 'Administrador Empresa', deletedAt: null },
+      where: { nome: 'Administrador Empresa', grupoEconomicoId: null, deletedAt: null },
       select: { id: true },
     });
     if (!perfilAdmin) return [];
@@ -433,7 +433,7 @@ export class PlataformaService {
         select: { id: true, email: true },
       }),
       this.prisma.perfil.findFirst({
-        where: { nome: 'Administrador Empresa', deletedAt: null },
+        where: { nome: 'Administrador Empresa', grupoEconomicoId: null, deletedAt: null },
         select: { id: true },
       }),
     ]);
@@ -517,7 +517,7 @@ export class PlataformaService {
     if (!empresa) throw new NotFoundException('Empresa não encontrada');
 
     const perfilAdmin = await this.prisma.perfil.findFirst({
-      where: { nome: 'Administrador Empresa', deletedAt: null },
+      where: { nome: 'Administrador Empresa', grupoEconomicoId: null, deletedAt: null },
       select: { id: true },
     });
     if (!perfilAdmin) throw new NotFoundException('Perfil Administrador Empresa não encontrado');
@@ -778,7 +778,7 @@ export class PlataformaService {
     const perfilAlvo = administradorPlataforma
       ? perfilPlataforma
       : await this.prisma.perfil.findFirst({
-          where: { nome: 'Administrador Empresa', deletedAt: null },
+          where: { nome: 'Administrador Empresa', grupoEconomicoId: null, deletedAt: null },
           select: { id: true },
         });
     if (!perfilAlvo) {

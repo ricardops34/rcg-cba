@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import type { AuthenticatedUser } from '../../../common/decorators/current-user.decorator';
+import { contextoBanco } from '../../../common/prisma/contexto-banco';
 
 export interface JwtPayload {
   sub: string;
@@ -32,6 +33,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   validate(payload: JwtPayload): AuthenticatedUser {
+    // Leva a empresa ativa e o modo plataforma às policies de RLS de toda
+    // consulta desta requisição (ver PrismaService).
+    const contexto = contextoBanco();
+    if (contexto) {
+      contexto.empresaId = payload.empresaAtivaId;
+      contexto.plataforma = payload.administradorPlataforma === true;
+    }
     return {
       id: payload.sub,
       nome: payload.nome,

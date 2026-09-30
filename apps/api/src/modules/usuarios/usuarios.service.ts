@@ -14,6 +14,7 @@ import {
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
 import { HorarioTrabalhoService } from '../acessos/horario-trabalho.service';
+import { garantirPerfilDoGrupo as garantirPerfilDoGrupoDaEmpresa } from '../../common/perfil/perfil-do-grupo';
 import type {
   ResetPasswordInput,
   UsuarioCreate,
@@ -184,12 +185,17 @@ export class UsuariosService {
    * outra rota, sem esse guard. `perfilIdAtual` cobre a retirada: alguém sem
    * a mesma autoridade não pode tirar o perfil de quem já tem, o que travaria
    * o dono da plataforma para fora do próprio tenant.
+   *
+   * Antes disso, para qualquer ator: o perfil novo tem de ser da plataforma
+   * ou do grupo econômico da empresa (perfil tem dono, ver `perfil-do-grupo`).
    */
   private async garantirPodeAtribuirPerfil(
     perfilIdNovo: string,
     perfilIdAtual: string | null,
     atorEhAdminPlataforma: boolean,
+    empresaId: string,
   ) {
+    await garantirPerfilDoGrupoDaEmpresa(this.prisma, perfilIdNovo, empresaId);
     if (atorEhAdminPlataforma) return;
     const ids = [
       perfilIdNovo,
@@ -217,7 +223,7 @@ export class UsuariosService {
     actorId: string,
     atorEhAdminPlataforma: boolean,
   ) {
-    await this.garantirPodeAtribuirPerfil(input.perfilId, null, atorEhAdminPlataforma);
+    await this.garantirPodeAtribuirPerfil(input.perfilId, null, atorEhAdminPlataforma, empresaId);
 
     const existente = await this.prisma.usuario.findUnique({
       where: { email: input.email },
@@ -390,6 +396,7 @@ export class UsuariosService {
         input.perfilId,
         jaVinculado?.perfilId ?? null,
         atorEhAdminPlataforma,
+        empresaId,
       );
       if (!jaVinculado || !jaVinculado.ativo) {
         await garantirVagaDeUsuario(tx, empresaId, usuarioId);

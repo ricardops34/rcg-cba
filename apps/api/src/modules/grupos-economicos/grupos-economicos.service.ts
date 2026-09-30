@@ -6,6 +6,7 @@ import type { GrupoEconomicoInput, GrupoUsuarioInput, GrupoUsuario } from '@plat
 import { garantirVagaDeUsuario } from '../../common/empresa/limite-usuarios';
 import { garantirVagaDeEmpresa } from '../../common/empresa/limite-empresas';
 import { PoliticaSenhaService } from '../politica-senha/politica-senha.service';
+import { aplicarPerfisNoGrupo, garantirPerfilDoGrupo, planejarPerfisParaGrupo, type PlanoDePerfis } from '../../common/perfil/perfil-do-grupo';
 
 const empresaSelect = { id: true, nomeFantasia: true, cnpj: true, grupoEconomicoId: true } as const;
 
@@ -104,9 +105,15 @@ export class GruposEconomicosService {
       // inativo não conta: é histórico, não pertença. Usuário que já está num
       // terceiro grupo (nem o de origem da empresa, nem este) exige revisão.
       const origens = new Set<string>();
+      // Perfil é do grupo: a empresa que chega traz para cá os perfis do grupo
+      // antigo que usa (ou passa a usar o daqui de mesmo nome). Planejado aqui,
+      // com a empresa ainda no grupo antigo, e aplicado depois da mudança — a
+      // RLS de perfis só mostra o grupo atual da empresa.
+      const planos = new Map<string, PlanoDePerfis>();
       for (const empresa of empresas) {
         if (empresa.grupoEconomicoId && empresa.grupoEconomicoId !== grupo.id) origens.add(empresa.grupoEconomicoId);
         await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${empresa.id}, true)`;
+        if (empresa.grupoEconomicoId !== grupo.id) planos.set(empresa.id, await planejarPerfisParaGrupo(tx, empresa.id, grupo.id));
         const links = await tx.usuarioEmpresa.findMany({ where: { empresaId: empresa.id, ativo: true, deletedAt: null }, select: { usuarioId: true } });
         for (const link of links) {
           const aceitos = [grupo.id, ...(empresa.grupoEconomicoId ? [empresa.grupoEconomicoId] : [])];
@@ -119,12 +126,19 @@ export class GruposEconomicosService {
       const excluidas = await tx.empresa.findMany({ where: { grupoEconomicoId: grupo.id, id: { notIn: input.empresaIds } }, select: { id: true, nomeFantasia: true } });
       for (const e of excluidas) {
         const proprio = await tx.grupoEconomico.create({ data: { descricao: e.nomeFantasia, createdBy: user.id, updatedBy: user.id } });
+        await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${e.id}, true)`;
+        const plano = await planejarPerfisParaGrupo(tx, e.id, proprio.id);
         await tx.empresa.update({ where: { id: e.id }, data: {
           grupoEconomicoId: proprio.id, updatedBy: user.id,
           situacao: 'suspensa', testeExpiraEm: null,
         } });
+        await aplicarPerfisNoGrupo(tx, e.id, proprio.id, plano, user.id);
       }
       await tx.empresa.updateMany({ where: { id: { in: input.empresaIds } }, data: { grupoEconomicoId: grupo.id, updatedBy: user.id } });
+      for (const [empresaId, plano] of planos) {
+        await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${empresaId}, true)`;
+        await aplicarPerfisNoGrupo(tx, empresaId, grupo.id, plano, user.id);
+      }
       // O grupo de onde a empresa saiu, se ficou vazio, é desativado.
       for (const origem of origens) {
         const restantes = await tx.empresa.count({ where: { grupoEconomicoId: origem, deletedAt: null } });
@@ -189,7 +203,7 @@ export class GruposEconomicosService {
         if (!empresa) throw new ForbiddenException('A empresa não pertence mais ao grupo');
         await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${v.empresaId}, true)`;
         const atual = await tx.usuarioEmpresa.findUnique({ where: { usuarioId_empresaId: { usuarioId: usuario.id, empresaId: v.empresaId } } });
-        await this.validarPerfil(tx, v.perfilId, atual?.perfilId, user);
+        await this.validarPerfil(tx, v.perfilId, atual?.perfilId, user, v.empresaId);
         const conta = await tx.usuario.findFirst({ where: { id: usuario.id, grupoEconomicoId: id, deletedAt: null }, select: { id: true } });
         if (!conta) throw new ForbiddenException('Usuário fora do grupo econômico');
         if (!atual?.ativo) await garantirVagaDeUsuario(tx, v.empresaId, usuario.id);
@@ -213,16 +227,18 @@ export class GruposEconomicosService {
         await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${empresa.id}, true)`;
         const atual = await tx.usuarioEmpresa.findUnique({ where: { usuarioId_empresaId: { usuarioId: usuario.id, empresaId: empresa.id } } });
         if (!atual?.ativo || atual.perfilId === perfilDoGrupo) continue;
-        await this.validarPerfil(tx, perfilDoGrupo, atual.perfilId, user);
+        await this.validarPerfil(tx, perfilDoGrupo, atual.perfilId, user, empresa.id);
         await tx.usuarioEmpresa.update({ where: { id: atual.id }, data: { perfilId: perfilDoGrupo, updatedBy: user.id } });
       }
       return usuario;
     }, { timeout: 20_000 });
   }
 
-  private async validarPerfil(tx: TenantTx, perfilId: string, anterior: string | undefined, user: AuthenticatedUser) {
+  /** `empresaId` presente = atribuição: o perfil tem de ser da plataforma ou do grupo da empresa. */
+  private async validarPerfil(tx: TenantTx, perfilId: string, anterior: string | undefined, user: AuthenticatedUser, empresaId?: string) {
     const perfil = await tx.perfil.findFirst({ where: { id: perfilId, deletedAt: null } });
     if (!perfil) throw new BadRequestException('Perfil não encontrado');
+    if (empresaId) await garantirPerfilDoGrupo(tx, perfilId, empresaId);
     if (user.administradorPlataforma) return;
     const restrito = await tx.perfil.findFirst({ where: { id: { in: [perfilId, ...(anterior ? [anterior] : [])] }, administraPlataforma: true } });
     if (restrito) throw new ForbiddenException('Somente a plataforma pode alterar o perfil Administrador da Plataforma');

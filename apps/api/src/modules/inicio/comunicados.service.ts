@@ -15,6 +15,7 @@ import type {
   ComunicadoUpdate,
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { garantirPerfisDoGrupo } from '../../common/perfil/perfil-do-grupo';
 
 const SORT_FIELDS = new Set([
   'titulo',
@@ -205,6 +206,7 @@ export class ComunicadosService {
     dto: ComunicadoCreate,
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
+      await garantirPerfisDoGrupo(tx, dto.perfisIds ?? [], empresaId);
       const linha = await tx.comunicado.create({
         data: {
           empresaId,
@@ -243,6 +245,7 @@ export class ComunicadosService {
         select: { id: true },
       });
       if (!existe) throw new NotFoundException('Comunicado não encontrado');
+      await garantirPerfisDoGrupo(tx, dto.perfisIds ?? [], empresaId);
 
       const linha = await tx.comunicado.update({
         where: { id },

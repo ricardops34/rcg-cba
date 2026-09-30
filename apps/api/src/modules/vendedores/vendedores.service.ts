@@ -284,7 +284,7 @@ export class VendedoresService {
 
   /**
    * Cria um Usuario de acesso para o vendedor, com o perfil "Vendedor"
-   * (global) e senha provisória enviada por e-mail. Tudo dentro de uma única
+   * (o do grupo econômico, ou o da plataforma) e senha provisória enviada por e-mail. Tudo dentro de uma única
    * transação — se o e-mail falhar, a exceção propaga e o Prisma desfaz a
    * criação do usuário/vínculo (não fica usuário órfão sem senha comunicada).
    */
@@ -314,8 +314,12 @@ export class VendedoresService {
           );
         }
 
+        // O "Vendedor" do grupo da empresa, se ele tiver o seu; senão o da
+        // plataforma. A RLS de perfis (withTenant acima) já esconde os de
+        // outros grupos; a ordem põe o do grupo (não nulo) na frente.
         const perfilVendedor = await tx.perfil.findFirst({
           where: { nome: 'Vendedor', deletedAt: null },
+          orderBy: { grupoEconomicoId: { sort: 'asc', nulls: 'last' } },
         });
         if (!perfilVendedor) {
           throw new NotFoundException(

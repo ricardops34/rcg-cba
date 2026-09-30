@@ -175,7 +175,7 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
         <Card className="max-w-2xl">{dadosGerais}</Card>
       ) : (
         <Tabs defaultValue="dados" className="max-w-3xl">
-          <TabsList className="flex-wrap">
+          <TabsList className="grid w-full max-w-md grid-cols-3">
             <TabsTrigger value="dados">Dados gerais</TabsTrigger>
             <TabsTrigger value="empresas">Empresas e perfil</TabsTrigger>
             <TabsTrigger value="acesso">Acesso ao sistema</TabsTrigger>

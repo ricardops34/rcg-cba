@@ -647,8 +647,8 @@ export class AuthService {
       }),
     );
 
-    // "perfis" é global (sem RLS) — o withTenant aqui não é por causa do
-    // perfil, e sim de reaproveitar o mesmo helper de transação por vínculo.
+    // withTenant por vínculo: "perfis" tem RLS por grupo econômico, e o perfil
+    // de cada vínculo só é visível com a empresa dele informada.
     const perfis = await Promise.all(
       vinculos.map((v) =>
         this.prisma.withTenant(v.empresaId, (tx) =>
@@ -681,10 +681,15 @@ export class AuthService {
       : { modulos: new Set<string>(), menus: new Set<string>() };
     const permissoes = ativo
       ? (
-          await this.prisma.perfilPermissao.findMany({
-            where: { perfilId: ativo.perfilId, permitido: true },
-            include: { rotina: { include: ROTINA_COM_ARVORE } },
-          })
+          // withTenant: perfil_permissoes segue a RLS de perfis, e o perfil de
+          // um grupo só é visível com a empresa (do grupo) informada. O me()
+          // também roda no login e na troca de empresa, sem token na requisição.
+          await this.prisma.withTenant(ativo.empresaId, (tx) =>
+            tx.perfilPermissao.findMany({
+              where: { perfilId: ativo.perfilId, permitido: true },
+              include: { rotina: { include: ROTINA_COM_ARVORE } },
+            }),
+          )
         )
           .filter(
             (p) =>
