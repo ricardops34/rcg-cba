@@ -14,6 +14,8 @@ import {
 import { ProdutoCamposCard } from "@/components/comercial/produto-campos-card";
 import { ProdutoRelacionadosCard } from "@/components/comercial/produto-relacionados-card";
 import { ProdutoFichasCard } from "@/components/comercial/produto-fichas-card";
+import { ProdutoPrecosCard } from "@/components/comercial/produto-precos-card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -70,16 +72,35 @@ export default function ProdutoDetalhePage() {
         {!produto.ativo && <Badge variant="destructive">Inativo</Badge>}
       </div>
 
-      <ProdutoDetalheContent produto={produto} permitirEdicaoFoto={podeEditar} />
+      <Tabs defaultValue="dados">
+        <TabsList>
+          <TabsTrigger value="dados">Dados gerais</TabsTrigger>
+          <TabsTrigger value="precos">Preços</TabsTrigger>
+          <TabsTrigger value="complementares">Complementares</TabsTrigger>
+          <TabsTrigger value="fichas">Fichas técnicas</TabsTrigger>
+          <TabsTrigger value="relacionados">Relacionados</TabsTrigger>
+        </TabsList>
 
-      <ProdutoCamposCard produtoId={produto.id} permitirEdicao={podeEditar} />
+        <TabsContent value="dados">
+          <ProdutoDetalheContent produto={produto} permitirEdicaoFoto={podeEditar} />
+        </TabsContent>
 
-      <ProdutoFichasCard produtoId={produto.id} permitirEdicao={podeEditar} />
+        <TabsContent value="precos">
+          <ProdutoPrecosCard produtoId={produto.id} />
+        </TabsContent>
 
-      <ProdutoRelacionadosCard
-        produtoId={produto.id}
-        permitirEdicao={podeEditar}
-      />
+        <TabsContent value="complementares">
+          <ProdutoCamposCard produtoId={produto.id} permitirEdicao={podeEditar} />
+        </TabsContent>
+
+        <TabsContent value="fichas">
+          <ProdutoFichasCard produtoId={produto.id} permitirEdicao={podeEditar} />
+        </TabsContent>
+
+        <TabsContent value="relacionados">
+          <ProdutoRelacionadosCard produtoId={produto.id} permitirEdicao={podeEditar} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

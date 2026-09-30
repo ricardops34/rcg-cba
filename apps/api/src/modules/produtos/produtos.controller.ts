@@ -118,6 +118,23 @@ export class ProdutosController {
   }
 
   @ApiOperation({
+    summary: 'Preços do produto nas tabelas de preço ativas',
+    description:
+      'Preço de venda em cada tabela de preço ativa (tabela e item ativos), com a vigência da ' +
+      'tabela. Alimenta a aba Preços do detalhe. Mesmas permissões do detalhe.',
+  })
+  @RequirePermission(
+    'produtos',
+    'visualizar',
+    ['posicao-cliente', 'visualizar'],
+    ['produtos-cadastro', 'visualizar'],
+  )
+  @Get(':id/precos')
+  precos(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.precos(user.empresaAtivaId, id);
+  }
+
+  @ApiOperation({
     summary: 'Cadastrar produto',
     description: 'Requer produtos.cadastrar.',
   })
