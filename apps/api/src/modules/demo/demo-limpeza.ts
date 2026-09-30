@@ -96,6 +96,8 @@ const ORDEM_DE_EXCLUSAO = [
   'AgenteMensagem',
   'AgenteConversa',
   'AgenteAnexo',
+  // Marca de "resumo diário já mostrado hoje" — uso, não configuração.
+  'AgenteResumoExibido',
   // --- WhatsApp: mensagens e conversas, não o aparelho --------------------
   'WhatsappReacao',
   'WhatsappMensagemAgendada',
