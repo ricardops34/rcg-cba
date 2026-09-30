@@ -77,6 +77,21 @@ import { GruposEconomicosModule } from './modules/grupos-economicos/grupos-econo
     ServeStaticModule.forRoot({
       rootPath: UPLOADS_DIR,
       serveRoot: '/uploads',
+      serveStaticOptions: {
+        // Logo em SVG é aceito (empresas, bancos), e SVG pode levar <script>.
+        // Aberto direto pelo endereço, rodaria na origem da API — a CSP global
+        // está desligada (API JSON). Em <img> o navegador já não executa; isto
+        // cobre o acesso direto. Só no .svg: `sandbox` em tudo impediria o
+        // navegador de abrir os PDFs de fichas técnicas.
+        setHeaders: (res, caminho) => {
+          if (caminho.toLowerCase().endsWith('.svg')) {
+            res.setHeader(
+              'Content-Security-Policy',
+              "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
+            );
+          }
+        },
+      },
     }),
     PrismaModule,
     MailModule,
