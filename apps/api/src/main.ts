@@ -63,6 +63,28 @@ async function bootstrap() {
     },
     credentials: true,
   });
+  // Os parsers abaixo valem para todas as rotas (o Nest não os limita por
+  // caminho), mas só estas precisam de corpo grande. Este filtro roda antes
+  // deles: as demais — inclusive login e as outras rotas públicas — recusam
+  // corpo acima de 2 MB antes de alguém ler o corpo inteiro, e o corpo
+  // compactado da carga só é aceito na rota da carga. Confere o
+  // Content-Length declarado; envio sem ele (chunked) segue barrado pelo teto
+  // do parser.
+  const CORPO_GRANDE = ['/api/v1/whatsapp/interno', '/api/v1/integracao/'];
+  const TIPOS_DA_CARGA = /^application\/(x-)?gzip|^application\/x-ndjson/i;
+  app.use((req: any, res: any, next: () => void) => {
+    const caminho: string = req.path ?? '';
+    const tipo: string = req.headers?.['content-type'] ?? '';
+    if (TIPOS_DA_CARGA.test(tipo) && !caminho.startsWith('/api/v1/integracao/cargas')) {
+      return res.status(415).json({ code: 'UNSUPPORTED_MEDIA_TYPE', message: 'Tipo de conteúdo não aceito nesta rota' });
+    }
+    const tamanho = Number(req.headers?.['content-length'] ?? 0);
+    if (tamanho > 2 * 1024 * 1024 && !CORPO_GRANDE.some((p) => caminho.startsWith(p))) {
+      return res.status(413).json({ code: 'PAYLOAD_TOO_LARGE', message: 'Corpo da requisição grande demais' });
+    }
+    next();
+  });
+
   // O padrão do Express é 100 kB, e a mídia de WhatsApp chega do worker em
   // base64 pela rota interna — um áudio de meio minuto já estoura esse teto.
   // 24 MB cobre o limite de 16 MB do próprio WhatsApp mais o inchaço do
