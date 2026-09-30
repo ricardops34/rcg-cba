@@ -1149,7 +1149,7 @@ export class ClientesService {
             : Prisma.sql`false`;
 
       const sortField =
-        query.sortBy && LISTAGEM_POSICAO_SORT_EXPR[query.sortBy] ? query.sortBy : 'ultimaCompra';
+        query.sortBy && Object.hasOwn(LISTAGEM_POSICAO_SORT_EXPR, query.sortBy) ? query.sortBy : 'ultimaCompra';
       const sortDir = query.sortOrder === 'desc' ? 'DESC' : 'ASC';
       // "dias" (dias sem comprar) é o inverso de ultimaCompra: menos dias =
       // compra mais recente = ultimaCompra maior. NULLS explícito porque o

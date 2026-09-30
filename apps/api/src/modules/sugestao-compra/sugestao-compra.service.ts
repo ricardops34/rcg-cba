@@ -375,7 +375,7 @@ export class SugestaoCompraService {
         ultimoCalculo: Prisma.sql`s."ultimoCalculo"`,
         ativo: Prisma.sql`c."ativo"`,
       };
-      const sortField = query.sortBy && sortMap[query.sortBy] ? query.sortBy : 'razaoSocial';
+      const sortField = query.sortBy && Object.hasOwn(sortMap, query.sortBy) ? query.sortBy : 'razaoSocial';
       const sortDir = query.sortOrder === 'desc' ? Prisma.raw('DESC') : Prisma.raw('ASC');
 
       const { skip, take } = paginationToSkipTake(query);
