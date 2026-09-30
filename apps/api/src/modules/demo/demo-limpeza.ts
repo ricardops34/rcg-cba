@@ -98,6 +98,8 @@ const ORDEM_DE_EXCLUSAO = [
   'AgenteAnexo',
   // Marca de "resumo diário já mostrado hoje" — uso, não configuração.
   'AgenteResumoExibido',
+  // Contagem de telas abertas por usuário (Acessos > Uso por Rotina).
+  'UsoRotina',
   // --- WhatsApp: mensagens e conversas, não o aparelho --------------------
   'WhatsappReacao',
   'WhatsappMensagemAgendada',

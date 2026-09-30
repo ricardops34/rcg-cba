@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { MOTIVO_DESCONECTADO } from '../../common/sessao/sessao-encerrada.exception';
+import { HORARIO_TIMEZONE } from '../../common/horario/horario-trabalho';
 import { AcessoEvento } from '@prisma/client';
 import type { AcessoQuery } from '@plataforma/contracts';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -178,6 +179,137 @@ export class AcessosService {
     ]);
     for (const id of ids) this.situacaoCache.delete(id);
     return abertas;
+  }
+
+  // ------------------------------------------------------------ uso por rotina
+
+  /**
+   * Rota do menu → rotina. Catálogo muda raramente (sincronizar-catalogo), então
+   * fica em memória por alguns minutos em vez de uma leitura por tela aberta.
+   */
+  private mapaRotas: { ate: number; itens: { rota: string; rotinaId: string }[] } | null = null;
+
+  private async rotinasPorRota() {
+    if (this.mapaRotas && this.mapaRotas.ate > Date.now()) return this.mapaRotas.itens;
+    const menus = await this.prisma.menu.findMany({
+      where: { rota: { not: null }, deletedAt: null },
+      select: {
+        nome: true,
+        rota: true,
+        rotinas: {
+          where: { deletedAt: null },
+          select: { id: true, codigo: true, nome: true },
+          orderBy: { codigo: 'asc' },
+        },
+      },
+    });
+    // Menu com mais de uma rotina (Empresas + Base de Demonstração, Orçamentos
+    // + Comissão...): a tela é a da rotina de mesmo nome do menu; senão a cujo
+    // código aparece na rota; senão a primeira.
+    const principal = (m: (typeof menus)[number]) =>
+      m.rotinas.find((r) => r.nome === m.nome) ??
+      m.rotinas.find((r) => m.rota!.split('/').includes(r.codigo)) ??
+      m.rotinas[0];
+    const itens = menus
+      .filter((m) => m.rota && m.rotinas.length > 0)
+      .map((m) => ({ rota: m.rota!.replace(/\/+$/, ''), rotinaId: principal(m).id }))
+      // Prefixo mais longo primeiro: /comercial/produtos/fichas antes de /comercial/produtos.
+      .sort((a, b) => b.rota.length - a.rota.length);
+    this.mapaRotas = { ate: Date.now() + 5 * 60_000, itens };
+    return itens;
+  }
+
+  /**
+   * Conta a abertura de uma tela. O web manda o caminho; a rotina sai da rota
+   * do menu (prefixo mais longo — `/comercial/produtos/123` conta em Produtos).
+   * Caminho que não é tela do sistema é ignorado, sem erro: isto é medição, não
+   * pode derrubar a navegação.
+   */
+  async registrarUso(empresaId: string, usuarioId: string, caminho: string) {
+    const limpo = caminho.split(/[?#]/)[0].replace(/\/+$/, '') || '/';
+    const alvo = (await this.rotinasPorRota()).find(
+      (r) => limpo === r.rota || limpo.startsWith(`${r.rota}/`),
+    );
+    if (!alvo) return { registrado: false };
+    const agora = new Date();
+    const dia = new Date(
+      `${new Intl.DateTimeFormat('en-CA', { timeZone: HORARIO_TIMEZONE }).format(agora)}T00:00:00.000Z`,
+    );
+    await this.prisma.withTenant(empresaId, (tx) =>
+      tx.usoRotina.upsert({
+        where: {
+          empresaId_usuarioId_rotinaId_dia: { empresaId, usuarioId, rotinaId: alvo.rotinaId, dia },
+        },
+        create: { empresaId, usuarioId, rotinaId: alvo.rotinaId, dia, acessos: 1, ultimoAcessoEm: agora },
+        update: { acessos: { increment: 1 }, ultimoAcessoEm: agora },
+      }),
+    );
+    return { registrado: true };
+  }
+
+  /**
+   * Rotinas mais usadas no período: acessos, usuários distintos e último
+   * acesso. Mesmo corte das demais consultas da tela — usuários com acesso à
+   * empresa — e o filtro de usuário da tela.
+   */
+  async usoPorRotina(empresaId: string, query: AcessoQuery) {
+    const { inicio, fim } = this.periodo(query);
+    const usuarios = await this.usuariosDaEmpresa(empresaId);
+    const linhas = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.usoRotina.findMany({
+        where: {
+          empresaId,
+          usuarioId: query.usuarioId ? query.usuarioId : { in: usuarios },
+          dia: {
+            gte: new Date(`${inicio.toISOString().slice(0, 10)}T00:00:00.000Z`),
+            lte: new Date(`${fim.toISOString().slice(0, 10)}T00:00:00.000Z`),
+          },
+        },
+        select: {
+          usuarioId: true,
+          acessos: true,
+          ultimoAcessoEm: true,
+          rotina: {
+            select: {
+              id: true,
+              codigo: true,
+              nome: true,
+              menu: { select: { modulo: { select: { nome: true } } } },
+            },
+          },
+        },
+      }),
+    );
+
+    const porRotina = new Map<
+      string,
+      { rotinaId: string; rotinaCodigo: string; rotinaNome: string; moduloNome: string | null;
+        acessos: number; usuarios: Set<string>; ultimoAcessoEm: Date }
+    >();
+    for (const l of linhas) {
+      const atual = porRotina.get(l.rotina.id) ?? {
+        rotinaId: l.rotina.id,
+        rotinaCodigo: l.rotina.codigo,
+        rotinaNome: l.rotina.nome,
+        moduloNome: l.rotina.menu?.modulo?.nome ?? null,
+        acessos: 0,
+        usuarios: new Set<string>(),
+        ultimoAcessoEm: l.ultimoAcessoEm,
+      };
+      atual.acessos += l.acessos;
+      atual.usuarios.add(l.usuarioId);
+      if (l.ultimoAcessoEm > atual.ultimoAcessoEm) atual.ultimoAcessoEm = l.ultimoAcessoEm;
+      porRotina.set(l.rotina.id, atual);
+    }
+    return {
+      data: [...porRotina.values()]
+        .map(({ usuarios: u, ultimoAcessoEm, ...r }) => ({
+          ...r,
+          usuarios: u.size,
+          ultimoAcessoEm: ultimoAcessoEm.toISOString(),
+        }))
+        .sort((a, b) => b.acessos - a.acessos),
+    };
   }
 
   /**

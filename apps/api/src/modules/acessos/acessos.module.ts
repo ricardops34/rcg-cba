@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { AcessosController } from './acessos.controller';
+import { UsoRotinaController } from './uso-rotina.controller';
 import { AcessosService } from './acessos.service';
 import { HorarioTrabalhoService } from './horario-trabalho.service';
 
@@ -12,7 +13,7 @@ import { HorarioTrabalhoService } from './horario-trabalho.service';
  */
 @Global()
 @Module({
-  controllers: [AcessosController],
+  controllers: [AcessosController, UsoRotinaController],
   providers: [AcessosService, HorarioTrabalhoService],
   exports: [AcessosService, HorarioTrabalhoService],
 })

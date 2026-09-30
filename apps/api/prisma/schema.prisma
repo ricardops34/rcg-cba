@@ -287,6 +287,7 @@ model Usuario {
   whatsappVinculos            WhatsappVinculoFuncionario[]
   termosAceites               TermoAceite[]
   tourExecucoes               TourExecucao[]
+  usosRotina                  UsoRotina[]
   suporteConcessoesConcedidas EmpresaSuporteAcesso[]        @relation("SuporteConcedidoPor")
   suporteConcessoesRevogadas  EmpresaSuporteAcesso[]        @relation("SuporteRevogadoPor")
   suporteAcoesRealizadas      EmpresaSuporteLog[]           @relation("SuporteAcoesRealizadas")
@@ -637,6 +638,7 @@ model Rotina {
   planos              PlanoRotina[]
   perfisRotinaInicial Perfil[]          @relation("PerfilRotinaInicial")
   vinculosRotinaInicial UsuarioEmpresa[] @relation("UsuarioEmpresaRotinaInicial")
+  usos                UsoRotina[]
 
   @@unique([codigo])
   @@map("rotinas")
@@ -5099,4 +5101,29 @@ enum OrigemFeriado {
   /// Cadastrado por alguém da empresa: feriado municipal, aniversário da
   /// cidade, ponto facultativo que a empresa decidiu emendar.
   manual
+}
+
+/// Quantas vezes cada usuário abriu cada rotina (tela), por dia — a aba "Uso
+/// por Rotina" de Administração > Acessos. Uma linha por empresa, usuário,
+/// rotina e dia, com o contador e o último acesso: o volume fica pequeno e a
+/// consulta por período soma linhas prontas.
+///
+/// Quem grava é o web, ao abrir uma tela (POST /acessos/uso com o caminho); a
+/// API descobre a rotina pela rota do menu. Com RLS por empresa.
+model UsoRotina {
+  id             String   @id @default(uuid())
+  empresaId      String
+  usuarioId      String
+  rotinaId       String
+  /// Dia no fuso da operação (America/Campo_Grande).
+  dia            DateTime @db.Date
+  acessos        Int      @default(0)
+  ultimoAcessoEm DateTime
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  rotina  Rotina  @relation(fields: [rotinaId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, usuarioId, rotinaId, dia])
+  @@index([empresaId, dia])
+  @@map("uso_rotinas")
 }

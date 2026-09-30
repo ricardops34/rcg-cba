@@ -13,6 +13,7 @@ import { FaixaInstitucional } from "@/components/layout/faixa-institucional";
 import { AvisoAvaliacao } from "@/components/layout/aviso-avaliacao";
 import { AvisoSuportePlataforma } from "@/components/layout/aviso-suporte-plataforma";
 import { TourProvider } from "@/components/tour/tour-provider";
+import { RegistroUsoRotina } from "@/components/layout/registro-uso-rotina";
 
 const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   "/": { title: "Dashboard", subtitle: "Visão comercial" },
@@ -79,6 +80,7 @@ export default function AppShellLayout({
   return (
     <PlataformaAccessGate>
       <TourProvider>
+        <RegistroUsoRotina />
         <div className="flex min-h-svh flex-col">
           <FaixaInstitucional />
           <AvisoAvaliacao />

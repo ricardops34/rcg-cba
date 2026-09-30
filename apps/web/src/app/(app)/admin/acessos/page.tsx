@@ -11,6 +11,7 @@ import {
   type AcessoResumo,
   type Sessao,
   type Usuario,
+  type UsoRotina,
 } from "@plataforma/contracts";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
@@ -220,12 +221,56 @@ export default function AcessosPage() {
       }),
   });
 
+  // Telas mais abertas no período (mesmos filtros de período e usuário).
+  const usoQuery = useQuery({
+    queryKey: ["acessos", "uso-rotinas", filtros],
+    queryFn: () => apiFetch<{ data: UsoRotina[] }>("/acessos/uso-rotinas", { query: filtros }),
+  });
+  const maiorUso = Math.max(1, ...(usoQuery.data?.data ?? []).map((r) => r.acessos));
+
+  const colunasRotinas: ColumnDef<UsoRotina>[] = [
+    {
+      header: "Rotina",
+      cell: (r) => (
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">{r.rotinaNome}</p>
+          <p className="truncate text-xs text-muted-foreground">{r.moduloNome ?? "—"}</p>
+        </div>
+      ),
+    },
+    {
+      header: "Acessos",
+      className: "w-64",
+      cell: (r) => (
+        <div className="flex items-center gap-2">
+          <div className="h-2 flex-1 rounded-full bg-muted">
+            <div
+              className="h-2 rounded-full bg-primary"
+              style={{ width: `${Math.round((r.acessos / maiorUso) * 100)}%` }}
+            />
+          </div>
+          <span className="w-12 text-right text-xs font-medium">{r.acessos.toLocaleString("pt-BR")}</span>
+        </div>
+      ),
+    },
+    {
+      header: "Usuários",
+      className: "text-right",
+      cell: (r) => <span className="text-xs">{r.usuarios}</span>,
+    },
+    {
+      header: "Último acesso",
+      cell: (r) => <span className="text-xs font-mono">{dataHoraBr(r.ultimoAcessoEm)}</span>,
+    },
+  ];
+
   const resumo = resumoQuery.data;
 
   const recarregar = () => {
     void resumoQuery.refetch();
     void eventosQuery.refetch();
     void sessoesQuery.refetch();
+    void usoQuery.refetch();
   };
 
   // Desconectar exige acessos.editar (a API confere de novo). A sessão atual de
@@ -576,10 +621,11 @@ export default function AcessosPage() {
 
       {/* Tabela por Abas */}
       <Tabs defaultValue="eventos" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 max-w-md">
-          <TabsTrigger value="eventos">Eventos Rasteados</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-4 max-w-2xl">
+          <TabsTrigger value="eventos">Eventos Rastreados</TabsTrigger>
           <TabsTrigger value="sessoes">Sessões de Uso</TabsTrigger>
           <TabsTrigger value="usuarios">Tempo por Usuário</TabsTrigger>
+          <TabsTrigger value="rotinas">Uso por Rotina</TabsTrigger>
         </TabsList>
 
         <TabsContent value="eventos" className="pt-4">
@@ -648,6 +694,23 @@ export default function AcessosPage() {
             onPageChange={() => undefined}
             onPageSizeChange={() => undefined}
             emptyMessage="Nenhum dado de usuário registrado no período selecionado."
+          />
+        </TabsContent>
+
+        <TabsContent value="rotinas" className="pt-4">
+          <EntityTable
+            columns={colunasRotinas}
+            rows={usoQuery.data?.data ?? []}
+            rowKey={(r) => r.rotinaId}
+            isLoading={usoQuery.isLoading}
+            error={usoQuery.error}
+            page={1}
+            pageSize={usoQuery.data?.data.length || 1}
+            total={usoQuery.data?.data.length ?? 0}
+            totalPages={1}
+            onPageChange={() => undefined}
+            onPageSizeChange={() => undefined}
+            emptyMessage="Nenhuma tela aberta no período selecionado. O registro começou em 30/09/2026."
           />
         </TabsContent>
       </Tabs>

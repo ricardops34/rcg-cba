@@ -71,6 +71,17 @@ export class AcessosController {
   }
 
   @ApiOperation({
+    summary: 'Uso por rotina no período',
+    description:
+      'Rotinas (telas) mais abertas no período: acessos, usuários distintos e último acesso. ' +
+      'Filtra por usuário como as demais abas. Requer acessos.visualizar.',
+  })
+  @Get('uso-rotinas')
+  usoRotinas(@Query() query: AcessoQueryDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.usoPorRotina(user.empresaAtivaId, query);
+  }
+
+  @ApiOperation({
     summary: 'Desconectar uma sessão',
     description:
       'Encerra a sessão e revoga a renovação dela: o usuário sai na próxima requisição e ' +

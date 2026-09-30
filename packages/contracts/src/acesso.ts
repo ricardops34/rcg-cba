@@ -175,3 +175,24 @@ export const ACESSO_RESUMO_EXAMPLE: AcessoResumo = {
     },
   ],
 };
+
+/**
+ * Corpo de POST /acessos/uso: o caminho da tela aberta. A API descobre a
+ * rotina pela rota do menu — o web não diz qual rotina é.
+ */
+export const registrarUsoSchema = z.object({
+  rota: z.string().trim().min(1).max(300).describe("Caminho da tela aberta (ex.: /comercial/produtos/123)"),
+});
+export type RegistrarUso = z.infer<typeof registrarUsoSchema>;
+
+/** Uma linha da aba "Uso por Rotina" (GET /acessos/uso-rotinas). */
+export const usoRotinaSchema = z.object({
+  rotinaId: z.string(),
+  rotinaCodigo: z.string(),
+  rotinaNome: z.string(),
+  moduloNome: z.string().nullable(),
+  acessos: z.number().int().describe("Vezes que a tela foi aberta no período"),
+  usuarios: z.number().int().describe("Usuários distintos que abriram a tela"),
+  ultimoAcessoEm: z.string().describe("Último acesso no período (ISO)"),
+});
+export type UsoRotina = z.infer<typeof usoRotinaSchema>;
