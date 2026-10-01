@@ -6,7 +6,7 @@ export const DADOS_VENDEDOR_SELECT = {
   dataNascimento: true,
 } as const;
 
-type DadosVendedor = {
+export type DadosVendedor = {
   codigoErp: string | null;
   nomeReduzido: string | null;
   telefone: string | null;

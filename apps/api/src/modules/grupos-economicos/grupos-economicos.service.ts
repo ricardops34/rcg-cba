@@ -1,4 +1,4 @@
-import { dadosDoVendedor, DADOS_VENDEDOR_SELECT } from '../../common/usuarios/dados-do-vendedor';
+import { dadosDoVendedor, DADOS_VENDEDOR_SELECT, type DadosVendedor } from '../../common/usuarios/dados-do-vendedor';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { liberarModoSistema, PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
@@ -208,7 +208,8 @@ export class GruposEconomicosService {
       // O perfil é da conta (migration 20260930230000_dados_do_usuario): grava
       // uma vez, e vale em todas as empresas do grupo.
       await this.validarPerfil(tx, perfilDoGrupo, anterior?.perfilId, user, primeira.empresaId);
-      const vendedores = [];
+      // Tipado: `[]` sem tipo vira never[] e o push abaixo não compila.
+      const vendedores: DadosVendedor[] = [];
       if (input.novo) {
         for (const vinculo of input.vinculos) {
           await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${vinculo.empresaId}, true)`;
