@@ -12,6 +12,10 @@ que o geram estão em
 
 ## Calendário da empresa
 
+A `dataValidade` de orçamentos enviada no POST/PATCH é prorrogada para o próximo
+dia útil quando cair em sábado, domingo ou feriado da empresa. A resposta retorna
+a data ajustada. Valor nulo é preservado; campo omitido no PATCH não altera a validade.
+
 Datas originais de títulos recebidas do ERP são preservadas. A plataforma
 calcula separadamente o próximo dia útil para atraso, juros e multa, usando
 sábados, domingos e os feriados cadastrados na empresa da chave de integração.

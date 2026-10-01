@@ -18,7 +18,16 @@ os feriados dos anos utilizados.
 - Datas históricas de atividades concluídas não são ajustadas. Não há alteração
   em massa de compromissos já cadastrados.
 
-## Títulos
+## Validade de orçamentos
+
+A data de validade informada ou gerada pelo prazo padrão passa ao próximo dia
+útil ao salvar, na criação e edição pela plataforma (incluindo o agente) e nos
+POST/PATCH de integração. O prazo continua em dias corridos; só o último dia
+é prorrogado. Validade nula ou não enviada não ganha uma data automaticamente.
+Orçamentos antigos não são alterados em lote. O PDF e as consultas usam a data
+ajustada persistida.
+
+## Títulos e encargos
 
 O vencimento original do ERP permanece armazenado e visível. `vencimentoEfetivo`
 é calculado em consulta e exibido separadamente quando diferente. Esse vencimento
