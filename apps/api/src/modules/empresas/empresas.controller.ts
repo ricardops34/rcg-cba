@@ -153,6 +153,21 @@ export class EmpresasController {
   }
 
   @ApiOperation({
+    summary: 'Remover o logo da empresa',
+    description: 'Apaga o logo da empresa. Requer a permissão empresas.editar.',
+  })
+  @ApiParam({ name: 'id', example: EMPRESA_ID_EXAMPLE })
+  @ApiResponse({ status: 200, schema: { example: EMPRESA_EXAMPLE } })
+  @RequirePermission('empresas', 'editar')
+  @Delete(':id/logo')
+  removerLogo(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.setLogo(id, null, user);
+  }
+
+  @ApiOperation({
     summary: 'Enviar a imagem da faixa institucional',
     description:
       'Faz upload da imagem exibida na faixa do topo do sistema (PNG, JPEG, WEBP ou SVG, ' +

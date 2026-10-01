@@ -1,3 +1,4 @@
+import { gravarWhatsappDoUsuario } from '../../common/usuarios/whatsapp-do-usuario';
 import {
   BadRequestException,
   ConflictException,
@@ -245,16 +246,24 @@ export class VendedoresService {
     user: AuthenticatedUser,
     input: VendedorCreate,
   ) {
-    return this.prisma.withTenant(empresaId, (tx) =>
-      tx.vendedor.create({
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const criado = await tx.vendedor.create({
         data: {
           ...(this.espelharDesligado(this.limpar(input)) as object),
           empresaId,
           createdBy: user.id,
           updatedBy: user.id,
         } as never,
-      }),
-    );
+      });
+      if (criado.usuarioId) {
+        const conta = await tx.usuario.findUniqueOrThrow({
+          where: { id: criado.usuarioId }, select: { celular: true, telefone: true },
+        });
+        await gravarWhatsappDoUsuario(tx, criado.usuarioId, empresaId, conta.celular ?? conta.telefone ?? criado.telefone, user.id);
+        return tx.vendedor.findUniqueOrThrow({ where: { id: criado.id } });
+      }
+      return criado;
+    });
   }
 
   async update(
@@ -276,13 +285,20 @@ export class VendedoresService {
           input.superiorId,
         );
       }
-      return tx.vendedor.update({
+      const atualizado = await tx.vendedor.update({
         where: { id },
         data: {
           ...(this.espelharDesligado(this.limpar(input)) as object),
           updatedBy: user.id,
         } as never,
       });
+      if (atualizado.usuarioId && (input.telefone !== undefined || input.usuarioId !== undefined)) {
+        const conta = await tx.usuario.findUniqueOrThrow({ where: { id: atualizado.usuarioId }, select: { celular: true, telefone: true } });
+        const numero = input.usuarioId !== undefined && input.usuarioId !== vendedor.usuarioId ? conta.celular ?? conta.telefone ?? atualizado.telefone : atualizado.telefone;
+        await gravarWhatsappDoUsuario(tx, atualizado.usuarioId, empresaId, numero, user.id);
+        return tx.vendedor.findUniqueOrThrow({ where: { id } });
+      }
+      return atualizado;
     });
   }
 

@@ -689,3 +689,10 @@ curl -X PATCH "$API/integracao/orcamentos/pendentes/8b9c0d1e-2f3a-4b4c-5d6e-7f80
   -H "x-api-key: $KEY" -H "Content-Type: application/json" \
   -d '{"chave":"01-004512","codigoErp":"004512","itens":[]}'
 ```
+
+### Telefone do vendedor vinculado a usuário
+
+O campo `telefone` representa o WhatsApp. Quando o vendedor possui usuário
+vinculado, alterações de telefone por POST ou PATCH também atualizam o número
+único da conta e seus vendedores no grupo econômico, invalidando a confirmação
+do WhatsApp quando o número muda.

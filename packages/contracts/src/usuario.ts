@@ -87,7 +87,10 @@ export const usuarioEmpresaCreateSchema = z.object({
     .optional()
     .describe("Nome curto/apelido usado em listagens e relatórios (ex.: 'CARLOS' em vez do nome completo)"),
   telefone: z.string().trim().max(20).optional().or(z.literal("")),
-  celular: z.string().trim().max(20).optional().or(z.literal("")),
+  celular: z.string().trim().max(20).refine(
+    (v) => v === "" || /^(?:\+?55[\s.-]?)?\(?[1-9]\d\)?[\s.-]?9?\d{4}[\s.-]?\d{4}$/.test(v),
+    "Informe o WhatsApp com DDD (ex.: 65 99999-9999)",
+  ).optional(),
   dataNascimento: z.coerce.date().nullable().optional(),
   ativo: z.boolean().default(true).describe("Vínculo ativo permite login nesta empresa"),
 });

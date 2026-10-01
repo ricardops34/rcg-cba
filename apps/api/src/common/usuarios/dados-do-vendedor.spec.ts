@@ -11,11 +11,12 @@ describe('Dados do vendedor na criação do usuário', () => {
     expect(dadosDoVendedor([vendedor])).toEqual({
       ...vendedor,
       nomeReduzido: 'Ana',
+      celular: vendedor.telefone,
     });
   });
-  it('não presume que telefone seja celular e não copia acesso ou credenciais', () => {
+  it('usa o telefone como WhatsApp e não copia acesso ou credenciais', () => {
     const dados = dadosDoVendedor([vendedor]);
-    expect(dados).not.toHaveProperty('celular');
+    expect(dados.celular).toBe(vendedor.telefone);
     expect(dados).not.toHaveProperty('perfilId');
     expect(dados).not.toHaveProperty('senhaHash');
   });
@@ -30,7 +31,7 @@ describe('Dados do vendedor na criação do usuário', () => {
           dataNascimento: null,
         },
       ]),
-    ).toEqual({ ...vendedor, nomeReduzido: 'Ana' });
+    ).toEqual({ ...vendedor, nomeReduzido: 'Ana', celular: vendedor.telefone });
   });
   it('não escolhe arbitrariamente dados divergentes entre empresas', () => {
     expect(
@@ -46,6 +47,7 @@ describe('Dados do vendedor na criação do usuário', () => {
       ...vendedor,
       nomeReduzido: 'Ana',
       codigoErp: null,
+      celular: vendedor.telefone,
       dataNascimento: null,
     });
   });
@@ -54,6 +56,7 @@ describe('Dados do vendedor na criação do usuário', () => {
       codigoErp: null,
       nomeReduzido: null,
       telefone: null,
+      celular: null,
       dataNascimento: null,
     });
   });

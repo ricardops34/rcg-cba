@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 # Imagem de PRODUÇÃO da API (NestJS). Build em duas etapas: compila tudo e o
 # runtime fica só com deps de produção + dist. O código vai DENTRO da imagem
 # (diferente do api.Dockerfile.dev, que usa bind mount + hot reload).

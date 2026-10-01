@@ -15,9 +15,16 @@ import { MailService, type AnexoEmail } from '../../common/mail/mail.service';
 import { smtpDaEmpresa } from '../../common/mail/smtp-da-empresa';
 import {
   buscarEmpresaDoEmail,
+  carregarLogoEmail,
   layoutEmail,
+  type RemetenteEmail,
 } from '../../common/mail/email-layout';
 import { escapeHtml } from '../../common/html/escape-html';
+import {
+  substituirTags,
+  formatarTextoHtml,
+  type TagsContextoEmail,
+} from '../../common/mail/substituir-tags';
 import { registrarAtividadeDocumento } from '../../common/atividades/registrar-atividade-documento';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ParametrosService } from '../parametros/parametros.service';
@@ -59,19 +66,7 @@ const diasDeAtraso = (v: string | Date | null | undefined) => {
 };
 
 /**
- * 2ª via e cobrança por e-mail
- * (docs/planos/2026-10-01-envio-email-documentos-cobranca.md).
- *
- * Três regras:
- *
- * 1. **O destinatário é o e-mail do cadastro do cliente**, sempre. Não há
- *    campo de endereço na rota — nota fiscal e boleto só vão para quem é dono
- *    deles.
- * 2. **Os documentos saem dos serviços da tela** (`gerarDanfe`, `obterXml`,
- *    `gerarBoleto`, `findAll`), com o usuário que pede: a carteira dele vale
- *    sem ser reimplementada aqui, e o PDF é o mesmo que ele baixaria.
- * 3. **O envio é a ação.** Diferente do e-mail de senha, falha de SMTP volta
- *    para a tela com o motivo — e só um envio que saiu vai para o histórico.
+ * 2ª via e cobrança por e-mail com identidade visual da empresa e assinatura do colaborador.
  */
 @Injectable()
 export class DocumentosEmailService {
@@ -84,6 +79,49 @@ export class DocumentosEmailService {
     private readonly emailConfig: EmailConfigService,
   ) {}
 
+  /** Carrega configurações de template, logo e dados do colaborador para o envio. */
+  private async obterContextoEnvio(empresaId: string, user: AuthenticatedUser) {
+    const empresa = await buscarEmpresaDoEmail(this.prisma, empresaId);
+    const modelos = await this.emailConfig.obterModelos(empresaId);
+    const logoInline = await carregarLogoEmail(empresa.logoUrl);
+
+    let remetente: RemetenteEmail | null = null;
+    let usuarioEmail: string | undefined = undefined;
+
+    if (modelos.incluirAssinaturaUsuario || modelos.replyToUsuario) {
+      const u = await this.prisma.usuario.findUnique({
+        where: { id: user.id },
+        select: {
+          nome: true,
+          nomeReduzido: true,
+          email: true,
+          telefone: true,
+          celular: true,
+          perfil: { select: { nome: true } },
+        },
+      });
+      if (u) {
+        usuarioEmail = u.email;
+        if (modelos.incluirAssinaturaUsuario) {
+          remetente = {
+            nome: u.nomeReduzido || u.nome,
+            cargo: u.perfil?.nome || (user.isAdmin ? 'Administração' : 'Departamento Comercial'),
+            email: modelos.incluirEmailUsuario ? u.email : null,
+            telefone: modelos.incluirTelefoneUsuario ? (u.celular || u.telefone) : null,
+          };
+        }
+      }
+    }
+
+    return {
+      empresa,
+      modelos,
+      logoInline,
+      remetente,
+      replyTo: modelos.replyToUsuario ? usuarioEmail : undefined,
+    };
+  }
+
   // -------------------------------------------------------------------------
   // DANFE + XML
   // -------------------------------------------------------------------------
@@ -94,10 +132,7 @@ export class DocumentosEmailService {
     notaId: string,
     input: EnviarNotaEmail,
   ): Promise<EnvioEmailResultado> {
-    // Envio e funcionalidade ligados (Administração > E-mail).
     await this.emailConfig.exigir(empresaId, 'documentos');
-    // O histórico recebe "DANFE enviado por e-mail", não "gerado": uma ação,
-    // um registro.
     const danfe = await this.notas.gerarDanfe(
       empresaId,
       { tipo: 'usuario', user },
@@ -125,31 +160,81 @@ export class DocumentosEmailService {
       });
     }
 
-    const empresa = await buscarEmpresaDoEmail(this.prisma, empresaId);
+    const { empresa, modelos, logoInline, remetente, replyTo } =
+      await this.obterContextoEnvio(empresaId, user);
+
+    if (logoInline) {
+      anexos.push({
+        nome: logoInline.nome,
+        conteudo: logoInline.conteudo,
+        mime: logoInline.mime,
+        cid: logoInline.cid,
+      });
+    }
+
     const numero = String(danfe.numero);
-    const assunto = `NF ${numero} — ${empresa.nomeFantasia}`;
+    const chaveFormatada = String(danfe.chave).replace(/(\d{4})(?=\d)/g, '$1 ');
+    const tagsCtx: TagsContextoEmail = {
+      cliente: {
+        nome: cliente.razaoSocial,
+        razaoSocial: cliente.razaoSocial,
+      },
+      empresa: {
+        nomeFantasia: empresa.nomeFantasia,
+        razaoSocial: empresa.razaoSocial,
+        telefone: empresa.telefone,
+        email: empresa.email,
+      },
+      colaborador: remetente
+        ? {
+            nome: remetente.nome,
+            cargo: remetente.cargo,
+            telefone: remetente.telefone,
+            email: remetente.email,
+          }
+        : undefined,
+      nota: {
+        numero,
+        chave: chaveFormatada,
+      },
+    };
+
+    const assunto = substituirTags(modelos.notaAssunto, tagsCtx);
+    const aberturaTexto = substituirTags(modelos.notaTexto, tagsCtx);
+
     const corpo = `
-      <p>Olá, ${escapeHtml(cliente.razaoSocial)}!</p>
-      <p>Segue a 2ª via da <strong>nota fiscal ${escapeHtml(numero)}</strong>${
-        input.incluirXml
-          ? ', com o DANFE em PDF e o arquivo XML'
-          : ', com o DANFE em PDF'
-      }.</p>
+      <p>Prezado(a) <strong>${escapeHtml(cliente.razaoSocial)}</strong>,</p>
+      <p>${formatarTextoHtml(aberturaTexto)}</p>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:14px;margin:16px 0">
+        <div style="font-size:12px;color:#64748b;text-transform:uppercase;font-weight:bold">Documento Fiscal</div>
+        <div style="font-size:15px;font-weight:bold;color:#0f172a;margin-top:4px">Nota Fiscal Eletrônica nº ${escapeHtml(
+          numero,
+        )}</div>
+        <div style="font-size:12px;color:#475569;margin-top:6px">Chave de acesso: <span style="font-family:monospace;color:#1e40af">${escapeHtml(
+          chaveFormatada,
+        )}</span></div>
+      </div>
       ${
         danfe.cancelada
-          ? '<p style="color:#b91c1c"><strong>Atenção: esta nota fiscal está CANCELADA.</strong></p>'
+          ? '<p style="color:#b91c1c;font-weight:bold">Atenção: esta nota fiscal está CANCELADA na SEFAZ.</p>'
           : ''
       }
-      <p style="font-size:12px;color:#555">Chave de acesso: ${escapeHtml(
-        String(danfe.chave).replace(/(\d{4})(?=\d)/g, '$1 '),
-      )}</p>`;
+      <p style="font-size:12px;color:#64748b">Anexos inclusos: <code>${escapeHtml(
+        danfe.nomeArquivo,
+      )}</code>${input.incluirXml ? ' e o arquivo XML' : ''}.</p>`;
 
     await this.enviar(
       empresaId,
       cliente.emails,
       assunto,
-      layoutEmail(empresa, corpo),
+      layoutEmail(empresa, corpo, {
+        remetente,
+        corCabecalho: modelos.corCabecalho,
+        badgeTitulo: 'Documento Fiscal',
+        temLogo: Boolean(logoInline),
+      }),
       anexos,
+      replyTo,
     );
 
     await this.prisma.withTenant(empresaId, (tx) =>
@@ -195,24 +280,9 @@ export class DocumentosEmailService {
       { registrarEvento: false, atualizado: input.atualizado },
     );
     const cliente = await this.cliente(empresaId, boleto.clienteId);
-    const empresa = await buscarEmpresaDoEmail(this.prisma, empresaId);
 
-    const atrasado = boleto.encargos.diasAtraso > 0;
-    const assunto = `Boleto do título ${boleto.numeroDocumento} — ${empresa.nomeFantasia}`;
-    const corpo = `
-      <p>Olá, ${escapeHtml(cliente.razaoSocial)}!</p>
-      <p>Segue a 2ª via do boleto do <strong>título ${escapeHtml(boleto.numeroDocumento)}</strong>.</p>
-      <table style="border-collapse:collapse;margin:12px 0">
-        <tr><td style="padding:2px 12px 2px 0"><strong>${
-          atrasado
-            ? 'Valor atualizado até ' + dataBr(boleto.encargos.atualizadoAte)
-            : 'Vencimento'
-        }:</strong></td><td>${atrasado ? moeda(boleto.valor) : dataBr(boleto.vencimento)}</td></tr>
-        ${atrasado ? '' : `<tr><td style="padding:2px 12px 2px 0"><strong>Valor:</strong></td><td>${moeda(boleto.valor)}</td></tr>`}
-        <tr><td style="padding:2px 12px 2px 0"><strong>Linha digitável:</strong></td><td style="font-family:Consolas,monospace">${escapeHtml(
-          boleto.linhaDigitavelFormatada,
-        )}</td></tr>
-      </table>`;
+    const { empresa, modelos, logoInline, remetente, replyTo } =
+      await this.obterContextoEnvio(empresaId, user);
 
     const anexos: AnexoEmail[] = [
       {
@@ -221,12 +291,89 @@ export class DocumentosEmailService {
         mime: 'application/pdf',
       },
     ];
+    if (logoInline) {
+      anexos.push({
+        nome: logoInline.nome,
+        conteudo: logoInline.conteudo,
+        mime: logoInline.mime,
+        cid: logoInline.cid,
+      });
+    }
+
+    const atrasado = boleto.encargos.diasAtraso > 0;
+    const tagsCtx: TagsContextoEmail = {
+      cliente: {
+        nome: cliente.razaoSocial,
+        razaoSocial: cliente.razaoSocial,
+      },
+      empresa: {
+        nomeFantasia: empresa.nomeFantasia,
+        razaoSocial: empresa.razaoSocial,
+        telefone: empresa.telefone,
+        email: empresa.email,
+      },
+      colaborador: remetente
+        ? {
+            nome: remetente.nome,
+            cargo: remetente.cargo,
+            telefone: remetente.telefone,
+            email: remetente.email,
+          }
+        : undefined,
+      boleto: {
+        numero: boleto.numeroDocumento,
+        vencimento: atrasado
+          ? dataBr(boleto.encargos.atualizadoAte)
+          : dataBr(boleto.vencimento),
+        valor: moeda(boleto.valor),
+        linhaDigitavel: boleto.linhaDigitavelFormatada,
+      },
+    };
+
+    const assunto = substituirTags(modelos.boletoAssunto, tagsCtx);
+    const aberturaTexto = substituirTags(modelos.boletoTexto, tagsCtx);
+
+    const corpo = `
+      <p>Prezado(a) <strong>${escapeHtml(cliente.razaoSocial)}</strong>,</p>
+      <p>${formatarTextoHtml(aberturaTexto)}</p>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:14px;margin:16px 0">
+        <table cellpadding="0" cellspacing="0" border="0" style="width:100%;font-size:13px">
+          <tr><td style="padding:4px 12px 4px 0;color:#64748b">Título:</td><td style="padding:4px 0;font-weight:bold;color:#0f172a">${escapeHtml(
+            boleto.numeroDocumento,
+          )}</td></tr>
+          <tr><td style="padding:4px 12px 4px 0;color:#64748b">${
+            atrasado
+              ? 'Valor atualizado até ' + dataBr(boleto.encargos.atualizadoAte)
+              : 'Vencimento'
+          }:</td><td style="padding:4px 0;font-weight:bold;color:#0f172a">${
+            atrasado ? moeda(boleto.valor) : dataBr(boleto.vencimento)
+          }</td></tr>
+          ${
+            atrasado
+              ? ''
+              : `<tr><td style="padding:4px 12px 4px 0;color:#64748b">Valor:</td><td style="padding:4px 0;font-weight:bold;color:#0f172a">${moeda(
+                  boleto.valor,
+                )}</td></tr>`
+          }
+          <tr><td style="padding:4px 12px 4px 0;color:#64748b">Linha digitável:</td><td style="padding:4px 0;font-family:Consolas,monospace;font-size:11px;color:#1e40af">${escapeHtml(
+            boleto.linhaDigitavelFormatada,
+          )}</td></tr>
+        </table>
+      </div>
+      <p style="font-size:12px;color:#64748b">O boleto para pagamento segue anexado em formato PDF.</p>`;
+
     await this.enviar(
       empresaId,
       cliente.emails,
       assunto,
-      layoutEmail(empresa, corpo),
+      layoutEmail(empresa, corpo, {
+        remetente,
+        corCabecalho: modelos.corCabecalho,
+        badgeTitulo: 'Cobrança Bancária',
+        temLogo: Boolean(logoInline),
+      }),
       anexos,
+      replyTo,
     );
 
     await this.prisma.withTenant(empresaId, (tx) =>
@@ -255,17 +402,6 @@ export class DocumentosEmailService {
   // Cobrança
   // -------------------------------------------------------------------------
 
-  /**
-   * Posição dos títulos vencidos do cliente, com o boleto atualizado de cada
-   * um e o DANFE da nota de origem.
-   *
-   * Título não aponta para nota: a nota é a de mesmo número e mesmo cliente
-   * (o prefixo do título não é a série). Só vai DANFE de nota com XML, e uma
-   * vez por número — várias parcelas são da mesma nota.
-   *
-   * Um documento que não pôde ser gerado não impede a cobrança: o título vai
-   * na tabela, e o motivo volta em `avisos`.
-   */
   async enviarCobranca(
     empresaId: string,
     user: AuthenticatedUser,
@@ -339,52 +475,103 @@ export class DocumentosEmailService {
     }
 
     const total = titulos.reduce((soma, t) => soma + Number(t.saldo ?? 0), 0);
-    const empresa = await buscarEmpresaDoEmail(this.prisma, empresaId);
+    const { empresa, modelos, logoInline, remetente, replyTo } =
+      await this.obterContextoEnvio(empresaId, user);
+
+    if (logoInline) {
+      anexos.push({
+        nome: logoInline.nome,
+        conteudo: logoInline.conteudo,
+        mime: logoInline.mime,
+        cid: logoInline.cid,
+      });
+    }
+
+    const tagsCtx: TagsContextoEmail = {
+      cliente: {
+        nome: cliente.razaoSocial,
+        razaoSocial: cliente.razaoSocial,
+      },
+      empresa: {
+        nomeFantasia: empresa.nomeFantasia,
+        razaoSocial: empresa.razaoSocial,
+        telefone: empresa.telefone,
+        email: empresa.email,
+      },
+      colaborador: remetente
+        ? {
+            nome: remetente.nome,
+            cargo: remetente.cargo,
+            telefone: remetente.telefone,
+            email: remetente.email,
+          }
+        : undefined,
+      cobranca: {
+        quantidade: titulos.length,
+        total: moeda(total),
+      },
+    };
+
+    const assunto = substituirTags(modelos.cobrancaAssunto, tagsCtx);
+    const aberturaTexto = substituirTags(modelos.cobrancaTexto, tagsCtx);
+
     const linhas = titulos
       .map((t) => {
         const venc = t.vencimentoEfetivo ?? t.vencimento;
         return `<tr>
-          <td style="padding:4px 8px;border-bottom:1px solid #eee">${escapeHtml(nomeTitulo(t))}</td>
-          <td style="padding:4px 8px;border-bottom:1px solid #eee">${dataBr(venc)}</td>
-          <td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right">${diasDeAtraso(venc)}</td>
-          <td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right">${moeda(Number(t.saldo ?? 0))}</td>
-          <td style="padding:4px 8px;border-bottom:1px solid #eee;font-size:12px;color:#555">${
-            semBoleto.has(t.id)
-              ? 'Boleto indisponível — fale conosco'
-              : 'Boleto em anexo'
-          }</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:bold;color:#0f172a">${escapeHtml(
+            nomeTitulo(t),
+          )}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569">${dataBr(
+            venc,
+          )}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right"><span style="background:#fef2f2;color:#b91c1c;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold">${diasDeAtraso(
+            venc,
+          )} dias</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:bold;color:#0f172a">${moeda(
+            Number(t.saldo ?? 0),
+          )}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:12px;color:${
+            semBoleto.has(t.id) ? '#64748b' : '#16a34a'
+          }">${semBoleto.has(t.id) ? 'Fale conosco' : 'Em anexo'}</td>
         </tr>`;
       })
       .join('');
-    const assunto = `Títulos em atraso — ${empresa.nomeFantasia}`;
+
     const corpo = `
-      <p>Olá, ${escapeHtml(cliente.razaoSocial)}!</p>
-      <p>Consta em nosso sistema o(s) título(s) abaixo em atraso. Caso o pagamento já
-      tenha sido feito, por favor desconsidere esta mensagem.</p>
-      <table style="border-collapse:collapse;margin:12px 0;font-size:13px">
-        <thead><tr style="background:#f3f4f6">
-          <th style="padding:6px 8px;text-align:left">Título</th>
-          <th style="padding:6px 8px;text-align:left">Vencimento</th>
-          <th style="padding:6px 8px;text-align:right">Dias em atraso</th>
-          <th style="padding:6px 8px;text-align:right">Saldo</th>
-          <th style="padding:6px 8px;text-align:left">Boleto</th>
+      <p>Prezado(a) <strong>${escapeHtml(cliente.razaoSocial)}</strong>,</p>
+      <p>${formatarTextoHtml(aberturaTexto)}</p>
+      <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;margin:16px 0;font-size:13px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">
+        <thead><tr style="background:#f1f5f9;color:#475569">
+          <th style="padding:8px 12px;text-align:left">Título</th>
+          <th style="padding:8px 12px;text-align:left">Vencimento</th>
+          <th style="padding:8px 12px;text-align:right">Atraso</th>
+          <th style="padding:8px 12px;text-align:right">Saldo</th>
+          <th style="padding:8px 12px;text-align:left">Boleto</th>
         </tr></thead>
         <tbody>${linhas}</tbody>
-        <tfoot><tr>
-          <td colspan="3" style="padding:6px 8px;text-align:right"><strong>Total</strong></td>
-          <td style="padding:6px 8px;text-align:right"><strong>${moeda(total)}</strong></td>
+        <tfoot><tr style="background:#f8fafc;border-top:2px solid #cbd5e1">
+          <td colspan="3" style="padding:8px 12px;text-align:right;font-weight:bold;color:#64748b">Total em Aberto:</td>
+          <td style="padding:8px 12px;text-align:right;font-weight:bold;color:#0f172a;font-size:14px">${moeda(
+            total,
+          )}</td>
           <td></td>
         </tr></tfoot>
       </table>
-      <p style="font-size:12px;color:#555">Os boletos em anexo estão com o valor atualizado
-      (juros e multa) até hoje. Seguem também os DANFEs das notas fiscais de origem.</p>`;
+      <p style="font-size:12px;color:#64748b;font-style:italic">Os boletos em anexo estão com o valor atualizado (juros e multa) até hoje. Seguem também os DANFEs das notas fiscais de origem.</p>`;
 
     await this.enviar(
       empresaId,
       cliente.emails,
       assunto,
-      layoutEmail(empresa, corpo),
+      layoutEmail(empresa, corpo, {
+        remetente,
+        corCabecalho: modelos.corCabecalho,
+        badgeTitulo: 'Cobrança Comercial',
+        temLogo: Boolean(logoInline),
+      }),
       anexos,
+      replyTo,
     );
 
     await this.prisma.withTenant(empresaId, (tx) =>
@@ -482,6 +669,7 @@ export class DocumentosEmailService {
     assunto: string,
     html: string,
     anexos: AnexoEmail[],
+    replyTo?: string | null,
   ) {
     const smtp = await smtpDaEmpresa(this.parametros, empresaId);
     if (!this.mail.configurado(smtp)) {
@@ -490,7 +678,7 @@ export class DocumentosEmailService {
       );
     }
     try {
-      await this.mail.send(para, assunto, html, smtp, anexos);
+      await this.mail.send(para, assunto, html, smtp, anexos, replyTo);
     } catch (erro) {
       throw new BadGatewayException(
         `O servidor de e-mail recusou o envio: ${(erro as Error).message}`,

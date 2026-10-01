@@ -54,7 +54,7 @@ function WhatsappDoUsuario({ user }: { user: CurrentUser }) {
       setEditado(undefined);
       queryClient.setQueryData(["auth", "me"], atualizado);
       void queryClient.invalidateQueries({ queryKey: ["whatsapp-meu-numero"] });
-      toast.success("Número de telefone atualizado");
+      toast.success("WhatsApp atualizado");
     },
     onError: (error) => toast.error(error.message),
   });
@@ -78,14 +78,14 @@ function WhatsappDoUsuario({ user }: { user: CurrentUser }) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Smartphone className="size-4" />
-          Número de telefone
+          WhatsApp
         </CardTitle>
       </CardHeader>
 
       <CardContent className="space-y-3">
         <Field>
           <FieldLabel htmlFor="whatsapp-pessoal">
-            Número de telefone com DDD
+            WhatsApp (com DDD)
           </FieldLabel>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input
@@ -106,7 +106,7 @@ function WhatsappDoUsuario({ user }: { user: CurrentUser }) {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Informe o número que você utiliza para conversar pelo WhatsApp.
+            Este é o mesmo número do cadastro do usuário e do vendedor vinculado.
             Quando o agente de IA estiver configurado no WhatsApp institucional
             desta empresa, ele usará este número para identificar você. Ao
             trocar o número, será necessário confirmá-lo novamente.

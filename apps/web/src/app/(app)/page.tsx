@@ -1,8 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowDownToLine,
@@ -183,16 +181,9 @@ function formatarDataHora(isoString: string | null | undefined) {
 }
 
 export default function InicioPage() {
-  const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const permissoes = user?.permissoes;
   const { ativo: whatsappAtivo } = useWhatsappIntegracao();
-
-  useEffect(() => {
-    if (user?.rotinaInicialRota && user.rotinaInicialRota !== "/" && user.rotinaInicialRota !== "") {
-      router.replace(user.rotinaInicialRota);
-    }
-  }, [user?.rotinaInicialRota, router]);
 
   const visiveis = ATALHOS.filter(
     (a) =>

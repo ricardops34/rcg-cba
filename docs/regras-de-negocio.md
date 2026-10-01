@@ -393,3 +393,34 @@ tabela de preço, limite de crédito ou histórico de atendimento — reaproveit
 `clientes` obrigaria toda consulta comercial a filtrar "só os que compram de
 nós". E `produtos.codigoFornecedor` continua sendo outra coisa: é o código do
 item no catálogo do fornecedor, texto solto, e não aponta para o cadastro.
+
+### WhatsApp único do usuário (01/10/2026)
+
+O telefone do usuário é o WhatsApp, único no grupo econômico. `/perfil` e
+`/admin/usuarios` editam o mesmo número, sincronizado com os vendedores vinculados
+nas empresas do grupo. `usuarios.celular` é o campo canônico; `usuarios.telefone`
+é um espelho mantido por compatibilidade. Alterar o número (também via vendedor
+ou integração ERP) invalida as confirmações anteriores em todas as empresas.
+Ao vincular um vendedor a uma conta existente, prevalece o número da conta;
+quando ela não tem número, aproveita-se o do vendedor.
+
+### Modelos de E-mail e Identidade Visual (01/10/2026)
+
+Em `/admin/email`, a plataforma disponibiliza editor visual de modelos de e-mail
+(Cobrança, Nota Fiscal e Boleto) e identidade visual por empresa:
+- **Padrão do Sistema**: Textos e layouts padrão imutáveis definidos em constantes de contrato
+  (`EMAIL_MODELOS_PADRAO`). Quando a empresa não possui customização gravada, o fallback para
+  o padrão é transparente. A ação "Restaurar Padrão" remove os parâmetros customizados da
+  empresa em `parametro_empresas` com isolamento por RLS via `withTenant`.
+- **Tags Dinâmicas**: Suporte a interpolação `{{tag}}` e `{{ tag }}` com catálogo interativo
+  de inserção rápida (`cliente.*`, `empresa.*`, `colaborador.*`, `nota.*`, `boleto.*`, `cobranca.*`).
+- **Logo da Empresa Inline (CID)**: O logotipo da empresa é lido do disco local e anexado com
+  `cid:logo-empresa` (`contentDisposition: 'inline'`). Não depende de download de URLs externas,
+  evitando bloqueio automático de imagens e avisos de segurança no Outlook e Gmail.
+- **Assinatura do Colaborador & Reply-To**: E-mails disparados manualmente injetam no rodapé
+  o card institucional com nome, cargo/departamento e telefone do colaborador logado.
+  O cabeçalho `Reply-To` é configurado com o e-mail do colaborador remetente, garantindo que
+  respostas e comprovantes enviados pelos clientes cheguem diretamente à pessoa responsável.
+- **Pré-visualização em Tempo Real**: Simulador interativo split-screen com dados de demonstração
+  refletindo exatamente o comportamento dos clientes de e-mail corporativos.
+

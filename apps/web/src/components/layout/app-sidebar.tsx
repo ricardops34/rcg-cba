@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, LayoutDashboard } from "lucide-react";
+import { ChevronDown, Home, LayoutDashboard } from "lucide-react";
 import { useMenu, type MenuItem } from "@/hooks/use-menu";
 import { useAuthStore } from "@/stores/auth-store";
 import { DynamicIcon } from "@/lib/dynamic-icon";
@@ -103,6 +103,7 @@ function SidebarContent({
     (empresa) => empresa.empresaId === user.empresaAtivaId,
   );
   const logo = assetUrl(empresaAtiva?.logoUrl);
+  const paginaInicial = user?.rotinaInicialRota || "/";
   const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
   const modulosVisiveis = modulos
     ?.map((modulo) => ({
@@ -175,9 +176,17 @@ function SidebarContent({
         )}
       >
         <NavLink
+          href={paginaInicial}
+          icon={<Home className="size-4" />}
+          label="Página inicial"
+          active={paginaInicial !== "/" && pathname === paginaInicial}
+          collapsed={collapsed}
+          onNavigate={onNavigate}
+        />
+        <NavLink
           href="/"
           icon={<LayoutDashboard className="size-4" />}
-          label="Dashboard"
+          label="Mural de atalhos"
           active={pathname === "/"}
           collapsed={collapsed}
           onNavigate={onNavigate}
@@ -340,6 +349,7 @@ function NavLink({
     <Link
       href={href}
       onClick={onNavigate}
+      aria-label={label}
       className={cn(
         "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/85 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         nivel > 0 && !collapsed && "ml-3 border-l border-sidebar-border pl-4 text-sidebar-foreground/70",

@@ -1,3 +1,4 @@
+import { gravarWhatsappDoUsuario } from '../../../common/usuarios/whatsapp-do-usuario';
 import {
   ConflictException,
   Injectable,
@@ -177,6 +178,9 @@ export class IntegracaoVendedoresService {
           data: { ...dados, ...camposDaDecisao(decisao) },
           include: INCLUDE,
         });
+        if (atualizadoUpsert.usuarioId) {
+          await gravarWhatsappDoUsuario(tx, atualizadoUpsert.usuarioId, empresaId, atualizadoUpsert.telefone, autor);
+        }
         return { registro: this.paraLeitura(atualizadoUpsert), decisao };
       }
 
@@ -289,6 +293,9 @@ export class IntegracaoVendedoresService {
         },
         include: INCLUDE,
       });
+      if (atualizado.usuarioId && input.telefone !== undefined) {
+        await gravarWhatsappDoUsuario(tx, atualizado.usuarioId, empresaId, atualizado.telefone, autor);
+      }
       return this.paraLeitura(atualizado);
     });
   }

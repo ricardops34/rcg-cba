@@ -11,11 +11,13 @@ export interface ConfiguracaoSmtp {
   remetente?: string | null;
 }
 
-/** Arquivo anexado ao e-mail (DANFE, XML, boleto). */
+/** Arquivo anexado ao e-mail (DANFE, XML, boleto ou logo inline). */
 export interface AnexoEmail {
   nome: string;
   conteudo: Buffer;
   mime: string;
+  /** Content-ID para imagens embutidas inline no corpo do HTML (cid:...) */
+  cid?: string;
 }
 
 @Injectable()
@@ -55,6 +57,7 @@ export class MailService {
     html: string,
     daEmpresa?: ConfiguracaoSmtp | null,
     anexos: AnexoEmail[] = [],
+    replyTo?: string | null,
   ): Promise<boolean> {
     const cfg = daEmpresa?.host?.trim() ? daEmpresa : this.doAmbiente;
     if (!cfg) {
@@ -75,12 +78,15 @@ export class MailService {
     await transporter.sendMail({
       from: cfg.remetente || 'no-reply@plataforma.local',
       to,
+      replyTo: replyTo?.trim() || undefined,
       subject,
       html,
       attachments: anexos.map((a) => ({
         filename: a.nome,
         content: a.conteudo,
         contentType: a.mime,
+        cid: a.cid,
+        contentDisposition: a.cid ? ('inline' as const) : ('attachment' as const),
       })),
     });
     this.logger.log(`E-mail enviado para ${String(to)}: ${subject}`);

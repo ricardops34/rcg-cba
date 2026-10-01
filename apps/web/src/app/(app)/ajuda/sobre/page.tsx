@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function SobrePage() {
-  const versao = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0";
+  const versao = process.env.NEXT_PUBLIC_APP_VERSION ?? "1.0";
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -32,11 +32,26 @@ export default function SobrePage() {
           <CardContent className="space-y-3 text-sm">
             <div className="flex justify-between gap-3">
               <span className="text-muted-foreground">Versão</span>
-              <span className="font-mono">{versao}</span>
+              <span className="font-mono font-semibold">{versao}</span>
             </div>
             <div className="flex justify-between gap-3">
               <span className="text-muted-foreground">Aplicação</span>
               <span>Plataforma web</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-muted-foreground">Desenvolvedor</span>
+              <a
+                href="https://www.bjsoft.com.br"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-primary hover:underline"
+              >
+                BJSoft
+              </a>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-muted-foreground">CNPJ</span>
+              <span className="font-mono">19.654.062/0001-45</span>
             </div>
           </CardContent>
         </Card>

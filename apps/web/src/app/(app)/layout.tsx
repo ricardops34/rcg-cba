@@ -16,7 +16,7 @@ import { TourProvider } from "@/components/tour/tour-provider";
 import { RegistroUsoRotina } from "@/components/layout/registro-uso-rotina";
 
 const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
-  "/": { title: "Dashboard", subtitle: "Visão comercial" },
+  "/": { title: "Mural de atalhos", subtitle: "Acesso rápido e comunicados" },
   "/admin/empresas": { title: "Empresas", subtitle: "Cadastro base" },
   "/admin/usuarios": { title: "Usuários", subtitle: "Cadastro e permissões" },
   "/admin/perfis": { title: "Perfis", subtitle: "Papéis e permissões (RBAC)" },

@@ -108,6 +108,14 @@ export const avatarPadraoSchema = z.object({
     "corporativo-02",
     "corporativo-03",
     "corporativo-04",
+    "corporativo-05",
+    "corporativo-06",
+    "corporativo-07",
+    "corporativo-08",
+    "corporativo-09",
+    "corporativo-10",
+    "corporativo-11",
+    "corporativo-12",
   ]),
 });
 export type AvatarPadraoInput = z.infer<typeof avatarPadraoSchema>;

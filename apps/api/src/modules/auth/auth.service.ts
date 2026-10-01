@@ -1,3 +1,4 @@
+import { gravarWhatsappDoUsuario } from '../../common/usuarios/whatsapp-do-usuario';
 import {
   MOTIVO_DESCONECTADO,
   MOTIVO_NOVO_ACESSO,
@@ -771,8 +772,8 @@ export class AuthService {
       id: usuario.id,
       nome: usuario.nome,
       avatarUrl: usuario.avatarUrl,
-      telefoneInstitucional: usuario.telefone ?? null,
-      whatsapp: usuario.celular ?? null,
+      telefoneInstitucional: usuario.celular ?? usuario.telefone ?? null,
+      whatsapp: usuario.celular ?? usuario.telefone ?? null,
       dataNascimento: usuario.dataNascimento?.toISOString().slice(0, 10) ?? null,
       mustCompleteFirstAccess: precisaCompletarPrimeiroAcesso(usuario, usuario),
       email: usuario.email,
@@ -821,21 +822,19 @@ export class AuthService {
         where: { id: usuarioId },
         data: {
           nome: input.nome,
-          telefone: input.telefoneInstitucional,
+          telefone: input.telefoneInstitucional.replace(/\D/g, ''),
           dataNascimento: new Date(`${input.dataNascimento}T00:00:00.000Z`),
           primeiroAcessoConcluidoEm: new Date(),
           updatedBy: usuarioId,
         },
       });
+      await gravarWhatsappDoUsuario(tx, usuarioId, empresaId, input.telefoneInstitucional, usuarioId);
       const vendedores = await tx.vendedor.findMany({
         where: { usuarioId, empresaId, deletedAt: null },
       });
       for (const vendedor of vendedores) {
         const data = {
           ...(vendedor.nome !== input.nome ? { nome: input.nome } : {}),
-          ...(vendedor.telefone !== input.telefoneInstitucional
-            ? { telefone: input.telefoneInstitucional }
-            : {}),
           ...(vendedor.dataNascimento?.toISOString().slice(0, 10) !==
           input.dataNascimento
             ? {
@@ -929,22 +928,7 @@ export class AuthService {
     }
     await this.prisma.withTenant(empresaAtivaId, async (tx) => {
       if (whatsapp !== undefined) {
-        const atual = await tx.usuario.findUniqueOrThrow({
-          where: { id: usuarioId },
-          select: { celular: true },
-        });
-        const celular = whatsapp.replace(/\D/g, '') || null;
-        if (celular !== atual.celular) {
-          await tx.usuario.update({
-            where: { id: usuarioId },
-            data: { celular, updatedBy: usuarioId },
-          });
-          // Número novo desfaz o pareamento confirmado com o antigo. O número é
-          // do usuário (vale no grupo todo), então a confirmação cai em todas as
-          // empresas — o delete sem empresaId alcança as que a RLS mostrar; as
-          // demais caem na próxima identificação, que confere o número.
-          await tx.whatsappVinculoFuncionario.deleteMany({ where: { usuarioId } });
-        }
+        await gravarWhatsappDoUsuario(tx, usuarioId, empresaAtivaId, whatsapp, usuarioId);
       }
       await tx.usuario.update({
         where: { id: usuarioId },

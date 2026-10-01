@@ -34,7 +34,6 @@ interface Dados {
   superiorId: string | null;
   nomeReduzido: string;
   codigoErp: string;
-  telefone: string;
   celular: string;
   /** AAAA-MM-DD, ou vazio. */
   dataNascimento: string;
@@ -44,13 +43,12 @@ const dadosDo = (v: UsuarioDetalhe): Dados => ({
   superiorId: v.superiorId,
   nomeReduzido: v.nomeReduzido ?? "",
   codigoErp: v.codigoErp ?? "",
-  telefone: v.telefone ?? "",
-  celular: v.celular ?? "",
+  celular: v.celular ?? v.telefone ?? "",
   dataNascimento: v.dataNascimento?.slice(0, 10) ?? "",
 });
 
 /**
- * Superior, nome reduzido, código ERP, telefones e nascimento do usuário. O usuário é um
+ * Superior, nome reduzido, código ERP, WhatsApp e nascimento do usuário. O usuário é um
  * só no grupo econômico e esses dados também (decisão de 30/09/2026): moram na
  * conta, e o superior é outro usuário do grupo.
  */
@@ -85,6 +83,8 @@ export function UsuarioDadosGrupo({ usuarioId }: { usuarioId: string }) {
       }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["usuarios", usuarioId] });
+      await qc.invalidateQueries({ queryKey: ["auth", "me"] });
+      await qc.invalidateQueries({ queryKey: ["whatsapp-meu-numero"] });
       toast.success("Dados salvos");
     },
     onError: (err) => toast.error(err instanceof ApiError ? err.message : "Erro ao salvar os dados"),
@@ -113,7 +113,7 @@ export function UsuarioDadosGrupo({ usuarioId }: { usuarioId: string }) {
         </Field>
         <Field>
           <FieldLabel htmlFor="celular">WhatsApp (com DDD)</FieldLabel>
-          <Input id="celular" value={dados.celular} onChange={(e) => editar({ celular: e.target.value })} />
+          <Input type="tel" autoComplete="tel" maxLength={20} id="celular" value={dados.celular} onChange={(e) => editar({ celular: e.target.value })} />
         </Field>
       </div>
       <Field>
@@ -140,10 +140,6 @@ export function UsuarioDadosGrupo({ usuarioId }: { usuarioId: string }) {
         <Field>
           <FieldLabel htmlFor="codigo-erp">Código ERP</FieldLabel>
           <Input id="codigo-erp" placeholder="Ex.: 000315" value={dados.codigoErp} onChange={(e) => editar({ codigoErp: e.target.value })} />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="telefone">Telefone</FieldLabel>
-          <Input id="telefone" value={dados.telefone} onChange={(e) => editar({ telefone: e.target.value })} />
         </Field>
       </div>
       <div className="flex justify-end">

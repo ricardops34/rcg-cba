@@ -210,8 +210,8 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field>
-                  <FieldLabel htmlFor="telefone">Telefone</FieldLabel>
-                  <Input id="telefone" {...form.register("telefone")} />
+                  <FieldLabel htmlFor="telefone">WhatsApp (com DDD)</FieldLabel>
+                  <Input type="tel" id="telefone" {...form.register("telefone")} />
                 </Field>
                 <Field data-invalid={!!form.formState.errors.email}>
                   <FieldLabel htmlFor="email">E-mail</FieldLabel>

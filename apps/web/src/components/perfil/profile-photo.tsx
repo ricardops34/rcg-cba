@@ -16,6 +16,14 @@ const AVATARES_PADRAO = [
   "corporativo-02",
   "corporativo-03",
   "corporativo-04",
+  "corporativo-05",
+  "corporativo-06",
+  "corporativo-07",
+  "corporativo-08",
+  "corporativo-09",
+  "corporativo-10",
+  "corporativo-11",
+  "corporativo-12",
 ] as const;
 
 function iniciais(nome: string) {
@@ -140,7 +148,7 @@ export function ProfilePhoto({
         {podeAlterar ? (
           <div className="mt-4 border-t pt-4">
             <p className="mb-2 text-xs font-medium text-muted-foreground">Avatares corporativos</p>
-            <div className="grid grid-cols-4 gap-2 sm:flex">
+            <div className="grid grid-cols-4 gap-2 sm:flex sm:flex-wrap">
               {AVATARES_PADRAO.map((avatar) => {
                 const src = `/avatares-padrao/${avatar}.jpg`;
                 const selecionado = user.avatarUrl === src;

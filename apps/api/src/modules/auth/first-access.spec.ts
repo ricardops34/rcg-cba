@@ -11,9 +11,11 @@ import { HorarioTrabalhoService } from '../acessos/horario-trabalho.service';
 describe('Primeiro acesso', () => {
   const input = { nome: 'Maria Silva', telefoneInstitucional: '(65) 99999-1234', dataNascimento: '1990-05-12' };
   const tx = {
+    $executeRaw: jest.fn(),
+    whatsappVinculoFuncionario: { deleteMany: jest.fn() },
     usuario: { findUniqueOrThrow: jest.fn(), update: jest.fn() },
     usuarioEmpresa: { findFirst: jest.fn(), update: jest.fn() },
-    vendedor: { findMany: jest.fn(), update: jest.fn() },
+    vendedor: { findMany: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
   };
   const prisma = {
     withTenant: jest.fn(),
@@ -68,14 +70,14 @@ describe('Primeiro acesso', () => {
       where: { id: 'usuario' },
       data: {
         nome: input.nome,
-        telefone: input.telefoneInstitucional,
+        telefone: input.telefoneInstitucional.replace(/\D/g, ''),
         dataNascimento: new Date('1990-05-12T00:00:00Z'),
         primeiroAcessoConcluidoEm: expect.any(Date),
         updatedBy: 'usuario',
       },
     });
     expect(tx.vendedor.findMany).toHaveBeenCalledWith({ where: { usuarioId: 'usuario', empresaId: 'empresa', deletedAt: null } });
-    expect(tx.vendedor.update).toHaveBeenCalledWith({ where: { id: 'vendedor' }, data: { telefone: input.telefoneInstitucional, updatedBy: 'usuario' } });
+    expect(tx.vendedor.updateMany).toHaveBeenCalledWith({ where: { usuarioId: 'usuario', empresaId: 'empresa', deletedAt: null }, data: { telefone: '65999991234', updatedBy: 'usuario' } });
   });
 
   it('não regrava dados na repetição da confirmação', async () => {

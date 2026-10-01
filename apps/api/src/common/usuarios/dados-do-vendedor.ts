@@ -1,4 +1,6 @@
-/** Campos compatíveis com Usuario. Telefone não implica celular/WhatsApp. */
+import { normalizarWhatsapp } from './whatsapp-do-usuario';
+
+/** O telefone do vendedor é o WhatsApp da conta vinculada. */
 export const DADOS_VENDEDOR_SELECT = {
   codigoErp: true,
   nomeReduzido: true,
@@ -18,7 +20,7 @@ export function dadosDoVendedor(vendedores: DadosVendedor[]) {
   const texto = (campo: 'codigoErp' | 'nomeReduzido' | 'telefone') => {
     const valores = [
       ...new Set(
-        vendedores.map((v) => v[campo]?.trim()).filter((v): v is string => !!v),
+        vendedores.map((v) => campo === 'telefone' ? normalizarWhatsapp(v.telefone) : v[campo]?.trim()).filter((v): v is string => !!v),
       ),
     ];
     return valores.length === 1 ? valores[0] : null;
@@ -33,7 +35,8 @@ export function dadosDoVendedor(vendedores: DadosVendedor[]) {
   return {
     codigoErp: texto('codigoErp'),
     nomeReduzido: texto('nomeReduzido'),
-    telefone: texto('telefone'),
+    telefone: normalizarWhatsapp(texto('telefone')),
+    celular: normalizarWhatsapp(texto('telefone')),
     dataNascimento:
       datas.length === 1 ? new Date(`${datas[0]}T00:00:00.000Z`) : null,
   };

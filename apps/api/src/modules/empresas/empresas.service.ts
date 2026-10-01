@@ -250,8 +250,8 @@ export class EmpresasService {
     if (emUso) throw new ConflictException('Alias já em uso por outra empresa');
   }
 
-  /** Define o logo da empresa a partir do arquivo já gravado em disco. */
-  async setLogo(id: string, filename: string, user: AtorEmpresa) {
+  /** Define (ou remove, com null) o logo da empresa a partir do arquivo já gravado em disco. */
+  async setLogo(id: string, filename: string | null, user: AtorEmpresa) {
     await this.garantirEscopo(user, id);
     const empresa = await this.findOne(id);
 
@@ -263,7 +263,7 @@ export class EmpresasService {
 
     return this.prisma.empresa.update({
       where: { id },
-      data: { logoUrl: logoPublicPath(filename), updatedBy: user.id },
+      data: { logoUrl: filename ? logoPublicPath(filename) : null, updatedBy: user.id },
     });
   }
 

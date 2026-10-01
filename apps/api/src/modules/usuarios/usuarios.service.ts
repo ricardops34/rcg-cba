@@ -1,3 +1,4 @@
+import { gravarWhatsappDoUsuario } from '../../common/usuarios/whatsapp-do-usuario';
 import { dadosDoVendedor, DADOS_VENDEDOR_SELECT } from '../../common/usuarios/dados-do-vendedor';
 import {
   BadRequestException,
@@ -399,11 +400,6 @@ export class UsuariosService {
         await garantirVagaDeUsuario(tx, empresaId, usuarioId);
       }
 
-      const celular = input.celular || null;
-      if (usuario.celular !== celular) {
-        // Número novo desfaz o pareamento do WhatsApp confirmado com o antigo.
-        await tx.whatsappVinculoFuncionario.deleteMany({ where: { usuarioId } });
-      }
       await tx.usuario.update({
         where: { id: usuarioId },
         data: {
@@ -411,13 +407,14 @@ export class UsuariosService {
           superiorId,
           codigoErp: input.codigoErp,
           nomeReduzido: input.nomeReduzido,
-          telefone: input.telefone || null,
-          celular,
           dataNascimento: input.dataNascimento,
           grupoEconomicoId: grupo,
           updatedBy: actorId,
         },
       });
+      if (input.celular !== undefined || input.telefone !== undefined) {
+        await gravarWhatsappDoUsuario(tx, usuarioId, empresaId, input.celular ?? input.telefone ?? null, actorId);
+      }
       return tx.usuarioEmpresa.upsert({
         where: { usuarioId_empresaId: { usuarioId, empresaId } },
         create: { usuarioId, empresaId, createdBy: actorId, updatedBy: actorId },

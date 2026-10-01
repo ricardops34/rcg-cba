@@ -8,7 +8,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { EmailConfiguracao } from '@plataforma/contracts';
+import type {
+  EmailConfiguracao,
+  EmailModelosConfiguracao,
+  EmailTesteResultado,
+} from '@plataforma/contracts';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -17,11 +21,15 @@ import {
   type AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
 import { EmailConfigService } from './email-config.service';
-import { EmailConfiguracaoUpdateDto } from './email-config.dto';
+import {
+  EmailConfiguracaoUpdateDto,
+  EmailModelosUpdateDto,
+  EmailModeloRestaurarDto,
+  EmailModeloTesteDto,
+} from './email-config.dto';
 
 /**
- * Administração > E-mail: os parâmetros SMTP_* e EMAIL_* juntos, o teste de
- * envio e o que a tela pode mostrar (mesmo desenho do SMS).
+ * Administração > E-mail: parâmetros SMTP, funcionalidades, modelos de e-mail e identidade visual.
  */
 @ApiTags('email')
 @ApiBearerAuth()
@@ -59,10 +67,9 @@ export class EmailConfigController {
   }
 
   @ApiOperation({
-    summary: 'Enviar e-mail de teste para o próprio usuário',
+    summary: 'Enviar e-mail de teste de conexão para o próprio usuário',
     description:
-      'Usa a configuração gravada, mesmo com o envio desligado. 502 com o erro do servidor de ' +
-      'e-mail quando ele recusa. Requer email.editar.',
+      'Usa a configuração gravada, mesmo com o envio desligado. Requer email.editar.',
   })
   @RequirePermission('email', 'editar')
   @HttpCode(200)
@@ -73,12 +80,63 @@ export class EmailConfigController {
 
   @ApiOperation({
     summary: 'O que de e-mail está disponível para a tela',
-    description:
-      'Só booleanos: envio habilitado (EMAIL_ATIVO e servidor) e cada funcionalidade. É o que ' +
-      'mostra ou esconde os botões de e-mail. Qualquer usuário autenticado.',
   })
   @Get('disponivel')
   disponivel(@CurrentUser() user: AuthenticatedUser) {
     return this.service.disponibilidade(user.empresaAtivaId);
   }
+
+  // -------------------------------------------------------------------------
+  // Modelos de E-mail e Identidade Visual
+  // -------------------------------------------------------------------------
+
+  @ApiOperation({
+    summary: 'Obter modelos de e-mail e configurações de identidade visual',
+  })
+  @RequirePermission('email', 'visualizar')
+  @Get('modelos')
+  obterModelos(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<EmailModelosConfiguracao> {
+    return this.service.obterModelos(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Salvar modelos personalizados de e-mail e identidade visual',
+  })
+  @RequirePermission('email', 'editar')
+  @Put('modelos')
+  salvarModelos(
+    @Body() dto: EmailModelosUpdateDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<EmailModelosConfiguracao> {
+    return this.service.salvarModelos(user.empresaAtivaId, user.id, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Restaurar modelos para o padrão do sistema',
+  })
+  @RequirePermission('email', 'editar')
+  @HttpCode(200)
+  @Post('modelos/restaurar')
+  restaurarModelos(
+    @Body() dto: EmailModeloRestaurarDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<EmailModelosConfiguracao> {
+    return this.service.restaurarModelos(user.empresaAtivaId, user.id, dto.tipo);
+  }
+
+  @ApiOperation({
+    summary: 'Disparar e-mail de teste com modelo renderizado e dados de exemplo',
+  })
+  @RequirePermission('email', 'editar')
+  @HttpCode(200)
+  @Post('modelos/teste')
+  testarModelo(
+    @Body() dto: EmailModeloTesteDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<EmailTesteResultado> {
+    return this.service.enviarTesteModelo(user.empresaAtivaId, user, dto);
+  }
 }
+

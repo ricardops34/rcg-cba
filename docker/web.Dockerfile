@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 # Imagem de PRODUÇÃO do web (Next.js). Usa o output standalone do Next
 # (next.config.ts: output "standalone"), que embute só o necessário no runtime.
 #
@@ -20,6 +19,8 @@ COPY apps/web/package.json apps/web/
 FROM base AS build
 ARG NEXT_PUBLIC_API_URL=https://api.rcgdist.com.br/api/v1
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_APP_VERSION=1.0
+ENV NEXT_PUBLIC_APP_VERSION=$NEXT_PUBLIC_APP_VERSION
 RUN --mount=type=secret,id=npm_ca,required=false \
   --mount=type=cache,id=rcgcba-pnpm-store-node20,target=/root/.local/share/pnpm/store,sharing=locked \
   if [ -f /run/secrets/npm_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/npm_ca; fi; \

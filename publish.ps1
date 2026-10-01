@@ -3,6 +3,7 @@ param(
     [string]$Target = "all",
     [switch]$BuildOnly,
     [switch]$PreflightOnly,
+    [switch]$NoCache,
     [string]$CaCertificatePath = $env:PUBLISH_CA_CERT
 )
 
@@ -85,6 +86,9 @@ function Invoke-ImageBuild {
             "id=npm_ca,src=$script:CaCertificatePath"
         )
     }
+    if ($NoCache) {
+        $dockerArgs += "--no-cache"
+    }
     $dockerArgs += $ExtraBuildArgs
     $dockerArgs += "."
 
@@ -140,7 +144,9 @@ try {
             -Image "bjsoftware/rcgcba-web:latest" `
             -ExtraBuildArgs @(
                 "--build-arg",
-                "NEXT_PUBLIC_API_URL=https://api.rcgdist.com.br/api/v1"
+                "NEXT_PUBLIC_API_URL=https://api.rcgdist.com.br/api/v1",
+                "--build-arg",
+                "NEXT_PUBLIC_APP_VERSION=1.0"
             )
     }
 

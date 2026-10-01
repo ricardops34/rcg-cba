@@ -5,6 +5,8 @@ import { AuthService } from './auth.service';
 describe('número de telefone do perfil', () => {
   function setup() {
     const tx = {
+      $executeRaw: jest.fn(),
+      vendedor: { updateMany: jest.fn() },
       usuario: {
         findUniqueOrThrow: jest.fn().mockResolvedValue({ celular: '65999991234' }),
         update: jest.fn(),
@@ -22,7 +24,7 @@ describe('número de telefone do perfil', () => {
     await service.updateOwnProfile('u', 'e', 'Ana', '(65) 98888-1234');
     expect(tx.usuario.update).toHaveBeenCalledWith({
       where: { id: 'u' },
-      data: { celular: '65988881234', updatedBy: 'u' },
+      data: { celular: '65988881234', telefone: '65988881234', updatedBy: 'u' },
     });
     expect(tx.whatsappVinculoFuncionario.deleteMany).toHaveBeenCalledWith({
       where: { usuarioId: 'u' },
@@ -32,7 +34,7 @@ describe('número de telefone do perfil', () => {
     const { service, tx } = setup();
     await service.updateOwnProfile('u', 'e', 'Ana', '');
     expect(tx.usuario.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { celular: null, updatedBy: 'u' } }),
+      expect.objectContaining({ data: { celular: null, telefone: null, updatedBy: 'u' } }),
     );
     expect(tx.whatsappVinculoFuncionario.deleteMany).toHaveBeenCalled();
   });
