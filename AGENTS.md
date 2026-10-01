@@ -55,4 +55,10 @@ Swagger em `/api/docs` são documentados em [`docs/integração/`](docs/integra�
 
 Ao criar ou alterar rota de integração, atualize a documentação junto —
 documentar é requisito de entrega desta API.
+## Barras de listagem
+
+Ao criar ou alterar listagens, siga [docs/padroes-listagens.md](docs/padroes-listagens.md).
+Use `CrudHeader`; coloque filtros e ações específicas em `actions`, junto de
+Atualizar e Novo, sem criar uma segunda barra de botões independente.
+
 </content>

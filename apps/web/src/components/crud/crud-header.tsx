@@ -13,6 +13,7 @@ interface CrudHeaderProps {
   createLabel?: string;
   isRefreshing?: boolean;
   placeholder?: string;
+  /** Filtros e ações secundárias, antes de Atualizar/Novo. Ver docs/padroes-listagens.md. */
   actions?: ReactNode;
 }
 
