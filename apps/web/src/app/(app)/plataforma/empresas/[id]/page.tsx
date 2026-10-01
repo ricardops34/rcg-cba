@@ -11,7 +11,8 @@ import { PlataformaGuard } from "../../plataforma-guard";
 import { AdministradoresSection } from "./administradores-section";
 import { AssinaturaSection } from "./assinatura-section";
 import { EstruturaEmpresaSection } from "./estrutura-empresa-section";
-import { Building2, CreditCard, Layers, Users } from "lucide-react";
+import { DemoDadosEmpresa } from "@/components/empresa/demo-dados-empresa";
+import { Building2, CreditCard, Layers, Sparkles, Users } from "lucide-react";
 
 export default function EditarEmpresaPlataformaPage() {
   const { id } = useParams<{ id: string }>();
@@ -44,7 +45,7 @@ export default function EditarEmpresaPlataformaPage() {
           </div>
 
           <Tabs defaultValue="cadastro" className="w-full space-y-6">
-            <TabsList className="grid grid-cols-2 md:grid-cols-4 w-full max-w-3xl">
+            <TabsList className="grid grid-cols-2 md:grid-cols-5 w-full max-w-4xl">
               <TabsTrigger value="cadastro" className="gap-2">
                 <Building2 className="w-4 h-4" />
                 Ficha & Cadastro
@@ -60,6 +61,10 @@ export default function EditarEmpresaPlataformaPage() {
               <TabsTrigger value="usuarios" className="gap-2">
                 <Users className="w-4 h-4" />
                 Administradores
+              </TabsTrigger>
+              <TabsTrigger value="demo" className="gap-2">
+                <Sparkles className="w-4 h-4" />
+                Base de Demonstração
               </TabsTrigger>
             </TabsList>
 
@@ -77,6 +82,10 @@ export default function EditarEmpresaPlataformaPage() {
 
             <TabsContent value="usuarios">
               <AdministradoresSection empresaId={empresa.id} />
+            </TabsContent>
+
+            <TabsContent value="demo">
+              <DemoDadosEmpresa empresaId={empresa.id} razaoSocial={empresa.razaoSocial} />
             </TabsContent>
           </Tabs>
         </div>

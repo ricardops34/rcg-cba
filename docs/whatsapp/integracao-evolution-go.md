@@ -1,16 +1,19 @@
-# Integração com Evolution GO
+# Integração com Gateway Evolution GO
 
 ## 1. Objetivo e situação atual
 
 Este documento descreve a integração com a
 [Evolution GO](https://github.com/evolution-foundation/evolution-go) como
-transporte alternativo ao `zapo-js` no Atendimento por WhatsApp.
+gateway unificado de WhatsApp da plataforma comercial.
 
-> **Implementada, e bloqueada por licença do fornecedor.** O provedor, o
-> webhook, a configuração e a tela existem no código (2026-08-27), e as rotas
-> foram conferidas contra o gateway em execução. Mas a versão 0.7.2 **exige
-> licença ativada**: sem ela, toda a API responde `503 LICENSE_REQUIRED`. O
-> transporte em produção continua sendo `zapo`/`zapo-js`. Ver a seção 1.1.
+O gateway atende aos dois modos de atendimento:
+- **Não Oficial**: WhatsApp Web via Baileys e pareamento por QR Code.
+- **Oficial**: Conexão com a WhatsApp Cloud API da Meta através do próprio gateway.
+
+> **Transporte Único (2026-10-01):** A plataforma descontinuou o `zapo-js`
+> (`whatsapp-worker`) e as chamadas diretas à Meta Graph API. Todo o tráfego de WhatsApp
+> é roteado através do Gateway Evolution GO. A ativação por empresa é controlada
+> pelo switch `ativo: boolean` (`WHATSAPP_ATIVO`) em Administração > WhatsApp.
 
 ### 1.1. A licença é um bloqueio, não um detalhe
 

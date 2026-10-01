@@ -187,13 +187,7 @@ export class WhatsappAgendamentoService
     // configurado fica em `erro` uma a uma, e sem esta linha o log não diria
     // que a causa é a mesma para todas.
     const config = await this.config.obter(empresaId);
-    if (config.transporte === 'zapo' && !config.workerUrl) {
-      this.logger.warn(
-        `Empresa ${empresaId} tem mensagem agendada vencida, mas nenhum worker configurado.`,
-      );
-      return;
-    }
-    if (config.transporte === 'evolution_go' && !config.evolutionUrl) {
+    if (!config.evolutionUrl) {
       this.logger.warn(
         `Empresa ${empresaId} tem mensagem agendada vencida, mas a Evolution GO não está configurada.`,
       );

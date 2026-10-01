@@ -152,7 +152,7 @@ export class WhatsappSessaoService {
     // Antes de criar a linha: o que falta é sempre um campo de configuração, e
     // o sintoma sem esta conferência é um 502 na tela do vendedor que não diz
     // qual campo ficou vazio.
-    this.provedores.exigirConfiguracao(config.transporte, config);
+    this.provedores.exigirConfiguracao('evolution_go', config);
 
     const anterior = await this.prisma.withTenant(empresaId, async (tx) => {
       const vendedor = await this.vendedorDoUsuario(tx, empresaId, user);
@@ -171,38 +171,6 @@ export class WhatsappSessaoService {
       return { vendedorId: vendedor.id, vendedorNome: vendedor.nome, atual };
     });
 
-    // Troca de provedor: a sessão do provedor **anterior** precisa morrer
-    // antes.
-    //
-    // Sem isto, uma instância da Evolution GO continuaria pareada ao celular
-    // do vendedor depois que a empresa passou para o zapo — recebendo as
-    // mensagens dele num gateway que a API já não escuta (o webhook passa a
-    // ser recusado). O sintoma seria o pior possível: conversa que acontece no
-    // aparelho e não aparece em lugar nenhum.
-    //
-    // Melhor-esforço: provedor fora do ar não pode impedir o vendedor de
-    // parear no novo. Os campos de instância são limpos junto, para o
-    // pareamento seguinte nascer sem herança do provedor antigo.
-    if (anterior.atual && anterior.atual.transporte !== config.transporte) {
-      await this.provedores
-        .sairDoWhatsapp(empresaId, anterior.atual.id)
-        .catch(() => undefined);
-      await this.prisma.withTenant(empresaId, (tx) =>
-        tx.whatsappSessao.update({
-          where: { id: anterior.atual!.id },
-          data: {
-            instanciaExterna: null,
-            instanciaId: null,
-            instanciaTokenCifrado: null,
-            webhookSegredoCifrado: null,
-            numero: null,
-            jid: null,
-            credencialCifrada: null,
-          },
-        }),
-      );
-    }
-
     const sessao = await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappSessao.upsert({
         where: {
@@ -212,14 +180,14 @@ export class WhatsappSessaoService {
           empresaId,
           vendedorId: anterior.vendedorId,
           status: 'pareando',
-          transporte: config.transporte,
+          transporte: 'evolution_go',
           aceiteEm: new Date(),
           aceiteVersao: input.aceiteVersao ?? WHATSAPP_ACEITE_VERSAO,
           createdBy: user.id,
         },
         update: {
           status: 'pareando',
-          transporte: config.transporte,
+          transporte: 'evolution_go',
           ultimoErro: null,
           aceiteEm: new Date(),
           aceiteVersao: input.aceiteVersao ?? WHATSAPP_ACEITE_VERSAO,
@@ -275,11 +243,7 @@ export class WhatsappSessaoService {
         'O WhatsApp está desativado para esta empresa. Ative em Administração > WhatsApp.',
       );
     }
-    // Provedor desta conexão: o escolhido na tela, ou o padrão da empresa
-    // quando nada foi escolhido. Não grava de volta em `config.transporte` —
-    // é só o transporte desta sessão (ver comentário do campo no schema).
-    const transporteEscolhido = input?.transporte ?? config.transporte;
-    this.provedores.exigirConfiguracao(transporteEscolhido, config);
+    this.provedores.exigirConfiguracao('evolution_go', config);
 
     const atual = await this.daEmpresa(empresaId);
 
@@ -292,35 +256,13 @@ export class WhatsappSessaoService {
       );
     }
 
-    // Troca de provedor: a instância anterior morre antes, pelo mesmo motivo
-    // documentado em `conectar`.
-    if (atual && atual.transporte !== transporteEscolhido) {
-      await this.provedores
-        .sairDoWhatsapp(empresaId, atual.id)
-        .catch(() => undefined);
-      await this.prisma.withTenant(empresaId, (tx) =>
-        tx.whatsappSessao.update({
-          where: { id: atual.id },
-          data: {
-            instanciaExterna: null,
-            instanciaId: null,
-            instanciaTokenCifrado: null,
-            webhookSegredoCifrado: null,
-            numero: null,
-            jid: null,
-            credencialCifrada: null,
-          },
-        }),
-      );
-    }
-
     const sessao = await this.prisma.withTenant(empresaId, async (tx) =>
       atual
         ? tx.whatsappSessao.update({
             where: { id: atual.id },
             data: {
               status: 'pareando',
-              transporte: transporteEscolhido,
+              transporte: 'evolution_go',
               ultimoErro: null,
               aceiteEm: new Date(),
               aceiteVersao: input?.aceiteVersao ?? WHATSAPP_ACEITE_VERSAO,
@@ -330,14 +272,11 @@ export class WhatsappSessaoService {
         : tx.whatsappSessao.create({
             data: {
               empresaId,
-              // Sem vendedor: é o que define a sessão institucional. A
-              // unicidade "uma por empresa" é o índice parcial da migration
-              // 20260904020000 — o @@unique não a cobre, porque vários NULL
-              // não colidem no Postgres.
+              // Sem vendedor: é o que define a sessão institucional.
               vendedorId: null,
               tipo: 'empresa',
               status: 'pareando',
-              transporte: transporteEscolhido,
+              transporte: 'evolution_go',
               aceiteEm: new Date(),
               aceiteVersao: input?.aceiteVersao ?? WHATSAPP_ACEITE_VERSAO,
               createdBy: user.id,

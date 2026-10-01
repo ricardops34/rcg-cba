@@ -5,6 +5,7 @@ import { ParametrosService } from '../parametros/parametros.service';
 import { NotasSaidaService } from '../notas-saida/notas-saida.service';
 import { TitulosReceberService } from '../titulos-receber/titulos-receber.service';
 import { EmailConfigService } from '../email/email-config.service';
+import { EMAIL_MODELOS_PADRAO } from '@plataforma/contracts';
 import {
   DocumentosEmailService,
   extrairEmails,
@@ -46,6 +47,12 @@ describe('DocumentosEmailService', () => {
           razaoSocial: 'REPRESENTACOES CAMPO GRANDE LTDA',
           cnpj: '03715067000109',
           alias: 'rcg',
+        }),
+      },
+      usuario: {
+        findUnique: jest.fn().mockResolvedValue({
+          nome: 'Operador',
+          email: 'operador@rcg.com.br',
         }),
       },
     };
@@ -108,7 +115,10 @@ describe('DocumentosEmailService', () => {
         ],
       }),
     };
-    const emailConfig = { exigir: jest.fn().mockResolvedValue(undefined) };
+    const emailConfig = {
+      exigir: jest.fn().mockResolvedValue(undefined),
+      obterModelos: jest.fn().mockResolvedValue(EMAIL_MODELOS_PADRAO),
+    };
     const service = new DocumentosEmailService(
       prisma as unknown as PrismaService,
       mail as unknown as MailService,
@@ -201,7 +211,7 @@ describe('DocumentosEmailService', () => {
     const [, assunto, html] = mail.send.mock.calls[0];
     expect(assunto).toBe('Títulos em atraso — RCG DISTRIBUIDORA');
     expect(html).toContain('116067/A');
-    expect(html).toContain('Boleto indisponível');
+    expect(html).toContain('Fale conosco');
     expect(tx.atividade.create.mock.calls[0][0].data).toMatchObject({
       tipo: 'email',
       titulo: 'Cobrança de títulos vencidos enviada por e-mail',

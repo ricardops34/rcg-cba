@@ -22,8 +22,6 @@ services:
       PORT: "3001"
       CORS_ORIGIN: ${CORS_ORIGIN}
       AGENTE_IA_CRYPTO_KEY: ${AGENTE_IA_CRYPTO_KEY}
-      # Segredo compartilhado com o whatsapp-worker (mesmo valor nos dois).
-      WHATSAPP_WORKER_TOKEN: ${WHATSAPP_WORKER_TOKEN}
       # Cifra os segredos do WhatsApp gravados no banco: a chave da Evolution
       # GO, o token de cada instância e o segredo do webhook. Chave própria, e
       # não a do agente de IA — donos e ciclos de rotação diferentes.
@@ -52,38 +50,6 @@ services:
         - "traefik.http.routers.plataforma-rcg-api.service=plataforma-rcg-api"
         - "traefik.http.services.plataforma-rcg-api.loadbalancer.server.port=3001"
 
-  # Sessões de WhatsApp dos vendedores. Mesmo stack, mesma rede, mesmo deploy —
-  # é um serviço à parte, não uma stack à parte.
-  #
-  # Por que não roda dentro da API: cada sessão é um WebSocket vivo e com
-  # estado. A API reinicia a cada atualização e pode escalar em réplicas; duas
-  # réplicas com a mesma sessão fazem o WhatsApp derrubar uma delas.
-  #
-  # **replicas: 1 não é ajuste de capacidade, é requisito.** Subir para 2
-  # duplica as conexões e derruba o atendimento.
-  #
-  # Sem labels do Traefik de propósito: este serviço fala pelo WhatsApp dos
-  # vendedores e só deve ser alcançável de dentro da rede, pela API.
-  whatsapp-worker:
-    image: bjsoftware/rcgcba-whatsapp-worker:latest
-    environment:
-      # NÃO é o ${DATABASE_URL} da API. Aquele é o role `plataforma_app`, que
-      # não tem DDL nem acesso ao schema `whatsapp` — e a biblioteca de sessão
-      # roda as migrations dela a cada conexão. O worker usa o role
-      # `whatsapp_store` (migration 20260903150000_whatsapp_store_role), dono do
-      # schema `whatsapp` e sem acesso nenhum às tabelas de negócio.
-      DATABASE_URL: ${WHATSAPP_STORE_DATABASE_URL}
-      WHATSAPP_WORKER_TOKEN: ${WHATSAPP_WORKER_TOKEN}
-      API_URL: http://rcgcba-api:3001
-      PORT: "3100"
-    networks:
-      network_public:
-        aliases:
-          - rcgcba-whatsapp-worker
-    deploy:
-      replicas: 1
-      labels:
-        - "traefik.enable=false"
 
   web:
     image: bjsoftware/rcgcba-web:latest

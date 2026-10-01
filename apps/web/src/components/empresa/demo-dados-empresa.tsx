@@ -29,9 +29,10 @@ export function DemoDadosEmpresa({
   empresaId: string;
   razaoSocial: string;
 }) {
-  const permissoes = useAuthStore((s) => s.user?.permissoes);
-  const podePopular = Boolean(permissoes?.includes("demo-dados.cadastrar"));
-  const podeLimpar = Boolean(permissoes?.includes("demo-dados.excluir"));
+  const user = useAuthStore((s) => s.user);
+  const administradorPlataforma = Boolean(user?.administradorPlataforma);
+  const podePopular = administradorPlataforma;
+  const podeLimpar = administradorPlataforma;
 
   const [confirmacao, setConfirmacao] = useState("");
   const [resumo, setResumo] = useState<DemoResumo | null>(null);

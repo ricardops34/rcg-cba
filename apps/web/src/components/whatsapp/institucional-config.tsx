@@ -31,25 +31,11 @@ const ROTULO: Record<SessaoEmpresa["status"], string> = {
   banida: "Número banido pelo WhatsApp",
 };
 
-/** Provedores que a plataforma sabe operar — mesma lista de WHATSAPP_TRANSPORTES_IMPLEMENTADOS. */
-const PROVEDORES_ESCOLHIVEIS: WhatsappTransporte[] = ["zapo", "evolution_go", "cloud_api"];
-
 /**
  * O número institucional da empresa — a porta de entrada do atendimento por
  * IA (identifica quem escreve e direciona a um vendedor).
  *
- * `empresaId` ausente = a empresa ativa da sessão (usado na aba "Número
- * institucional" de Administração > WhatsApp, endpoints de sessão própria).
- * `empresaId` presente = qualquer empresa (usado no diálogo aberto a partir
- * de Administração > Empresas, endpoints `.../config/empresas/:id/...`,
- * só alcançáveis por administrador da plataforma).
- *
- * Não é a mesma coisa que a conexão de Comercial → Conversas: lá cada
- * vendedor pareia o próprio aparelho. Os dois convivem.
- *
- * Não desaparece com o WhatsApp desligado — mostra o que falta em vez de
- * sumir, para não repetir o problema de quem procurava o pareamento e não
- * achava onde ligá-lo primeiro.
+ * Utiliza o Gateway Evolution GO unificado (suportando conexões Não Oficial e Oficial).
  */
 export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
   const base = empresaId
@@ -64,25 +50,15 @@ export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
   });
 
   const [ocupado, setOcupado] = useState(false);
-  // null = ainda não mexeu no seletor; usa o padrão (sessão atual, ou da
-  // empresa) até o admin escolher outro provedor explicitamente.
-  const [transporteEscolhido, setTransporteEscolhido] =
-    useState<WhatsappTransporte | null>(null);
 
   const { data: sessao, refetch } = useQuery({
     queryKey: ["whatsapp", "sessao-empresa", chaveCache],
     queryFn: () => apiFetch<SessaoEmpresa | null>(sessaoUrl),
     enabled: config?.ativo === true,
-    // Enquanto pareia, o estado muda por fora (o worker avisa a API quando o
-    // QR é lido): sem recarregar, a tela ficaria em "aguardando" para sempre.
     refetchInterval: (q) =>
       (q.state.data as SessaoEmpresa | null)?.status === "pareando" ? 3000 : false,
   });
 
-  // O QR expira em segundos e o provedor renova: buscar uma vez só (como era)
-  // deixava na tela um código já vencido. A rota devolve `qr` — o campo lido
-  // antes era `qrCode`, que nunca existiu, e o código não aparecia com
-  // provedor nenhum.
   const pareandoAgora = sessao?.status === "pareando";
   const {
     data: pareamento,
@@ -125,9 +101,8 @@ export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
             <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
             <p>
               O WhatsApp está desativado para esta empresa. Ligue-o na aba{" "}
-              <strong>zapo-js</strong> ou <strong>Evolution GO</strong> (o switch
-              &quot;Ativo&quot; e o botão de salvar) antes de parear o número
-              institucional.
+              <strong>Gateway Evolution GO</strong> (o interruptor &quot;Habilitar WhatsApp&quot;
+              e o botão de salvar) antes de parear o número institucional.
             </p>
           </div>
         </CardContent>
@@ -135,25 +110,14 @@ export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
     );
   }
 
-  const disponibilidade: Record<WhatsappTransporte, boolean> = {
-    zapo: Boolean(config.workerUrl),
-    evolution_go: Boolean(config.evolutionUrl && config.evolutionApiKeyDefinida),
-    cloud_api: Boolean(
-      config.cloudApiPhoneNumberId &&
-        config.cloudApiBusinessAccountId &&
-        config.cloudApiAccessTokenDefinida &&
-        config.cloudApiAppSecretDefinida,
-    ),
-  };
-  const transporte =
-    transporteEscolhido ?? sessao?.transporte ?? config.transporte;
+  const gatewayConfigurado = Boolean(config.evolutionUrl && config.evolutionApiKeyDefinida);
 
   const conectar = async () => {
     setOcupado(true);
     try {
       await apiFetch(`${sessaoUrl}/conectar`, {
         method: "POST",
-        body: { transporte },
+        body: { transporte: "evolution_go" },
       });
       await refetch();
     } catch (err) {
@@ -228,39 +192,10 @@ export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
           <p className="text-xs text-destructive">{sessao.ultimoErro}</p>
         )}
 
-        {status !== "conectada" && (
-          <div className="space-y-2">
-            <p className="text-xs font-medium">Provedor para este pareamento</p>
-            <div className="flex flex-wrap gap-2">
-              {PROVEDORES_ESCOLHIVEIS.map((p) => {
-                const disponivel = disponibilidade[p];
-                const selecionado = transporte === p;
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    disabled={!disponivel}
-                    onClick={() => setTransporteEscolhido(p)}
-                    title={
-                      disponivel
-                        ? undefined
-                        : `${WHATSAPP_TRANSPORTE_ROTULO[p]} não está configurado — preencha a aba correspondente antes`
-                    }
-                    className={`rounded-md border px-2 py-1 text-xs transition ${
-                      selecionado
-                        ? "border-primary bg-primary/10 text-primary"
-                        : disponivel
-                          ? "hover:bg-muted"
-                          : "cursor-not-allowed opacity-50"
-                    }`}
-                  >
-                    {WHATSAPP_TRANSPORTE_ROTULO[p]}
-                    {!disponivel && " · não configurado"}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+        {status !== "conectada" && !gatewayConfigurado && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            Gateway Evolution GO não está configurado. Preencha o endereço e a chave na aba Gateway Evolution GO antes de parear.
+          </p>
         )}
 
         {status === "pareando" && (
@@ -304,7 +239,7 @@ export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
 
         <div className="flex flex-wrap gap-2">
           {status !== "conectada" && (
-            <Button onClick={conectar} disabled={ocupado || !disponibilidade[transporte]}>
+            <Button onClick={conectar} disabled={ocupado || !gatewayConfigurado}>
               <QrCode className="size-4" />
               {status === "pareando" ? "Recomeçar pareamento" : "Parear número"}
             </Button>

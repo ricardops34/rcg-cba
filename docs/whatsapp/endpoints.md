@@ -50,20 +50,18 @@ Corpo de configuração, com todos os campos opcionais:
 ```json
 {
   "ativo": true,
-  "transporte": "zapo",
-  "workerUrl": "http://rcgcba-whatsapp-worker:3100",
+  "transporte": "evolution_go",
   "evolutionUrl": "http://rcgcba-evolution-go:8080",
   "evolutionApiKey": "chave-administrativa-do-gateway",
   "evolutionVersao": "0.7.2",
   "dddPadrao": "67",
-  "retencaoDias": 365
+  "retencaoDias": 365,
+  "historicoDias": 30
 }
 ```
 
-`transporte` aceita `zapo` e `evolution_go`; `cloud_api` está no enum mas é
-recusado, porque não há adaptador. O que cada transporte exige é conferido na
-hora de conectar: `zapo` precisa de `workerUrl`, `evolution_go` precisa de
-`evolutionUrl` e de uma chave gravada.
+O transporte padrão implementado é `evolution_go`. A configuração exige `evolutionUrl` e `evolutionApiKey` gravada.
+`ativo` controla o canal de WhatsApp para a empresa inteira, seguindo o padrão de E-mail e SMS.
 
 `evolutionApiKey` é **só de escrita**: a API cifra antes de gravar e nenhuma
 rota a devolve. Campo ausente mantém a chave atual; string vazia apaga a
@@ -175,35 +173,9 @@ fora do Swagger e não passa pelo `JwtAuthGuard`.
 Evento sem tratamento responde `200 {"ok": true, "tratado": false}`: devolver
 erro faria o gateway reentregar para sempre algo que nunca seria processado.
 
-A mídia segue a mesma regra do worker — o evento entrega só metadados, a API
-decide se grava, e apenas então `POST /message/download*` é chamado com o
-envelope original que veio na própria requisição.
+A mídia no gateway entrega metadados no evento do webhook; a API decide se grava e, se necessário, chama `POST /message/downloadmedia` com o envelope recebido.
 
-## API privada do worker (transporte `zapo`)
-
-Base configurada em `workerUrl`, normalmente porta 3100. Todas as rotas exigem
-o mesmo Bearer token. O serviço não implementa CORS nem deve ser exposto ao
-navegador.
-
-| Método | Caminho | Corpo/resultado |
-|---|---|---|
-| POST | `/sessoes` | `{ sessaoId, empresaId, transporte, arquivarMensagens? }`; inicia ou restaura |
-| GET | `/sessoes/:id/pareamento` | Estado, QR, número e erro |
-| DELETE | `/sessoes/:id` | Desconecta e limpa o cliente em memória |
-| POST | `/sessoes/:id/mensagens` | `{ jid, texto, respondeuA? }` |
-| POST | `/sessoes/:id/arquivos` | `{ jid, tipo, nome, mime, conteudoBase64, legenda?, ptt? }` |
-| POST | `/sessoes/:id/lida` | `{ jid, externoId }` |
-| POST | `/sessoes/:id/reacoes` | `{ jid, alvoExternoId, alvoNosso, emoji }` |
-| GET | `/sessoes/:id/contatos?busca=` | Contatos do store |
-| GET | `/sessoes/:id/conversas?limite=` | Conversas do store |
-| POST | `/sessoes/:id/agenda/sincronizar` | Solicita sincronização completa |
-| POST | `/sessoes/:id/historico/importar` | `{ dias }`; devolve `{ encontradas, conversas }` e segue entregando em segundo plano |
-| GET | `/saude` | `{ "ok": true }` |
-
-Erros do worker usam JSON `{ "erro": "..." }`. A API converte indisponibilidade,
-timeout ou resposta não 2xx em `502 Bad Gateway` para o navegador.
-
-## Rotas usadas na Evolution GO (transporte `evolution_go`)
+## Rotas usadas no Gateway Evolution GO (transporte `evolution_go`)
 
 Base configurada em `evolutionUrl`, normalmente porta 8080. **Conferido contra
 o Swagger da imagem `evoapicloud/evolution-go:0.7.2` em execução (2026-08-27)** —

@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("all", "api", "web", "worker")]
+    [ValidateSet("all", "api", "web")]
     [string]$Target = "all",
     [switch]$BuildOnly,
     [switch]$PreflightOnly,
@@ -148,13 +148,6 @@ try {
                 "--build-arg",
                 "NEXT_PUBLIC_APP_VERSION=1.0"
             )
-    }
-
-    if ($Target -in @("all", "worker")) {
-        Invoke-ImageBuild `
-            -Label "WhatsApp worker" `
-            -Dockerfile "docker/whatsapp-worker.Dockerfile" `
-            -Image "bjsoftware/rcgcba-whatsapp-worker:latest"
     }
 
     Write-Host "`n=========================================" -ForegroundColor Cyan

@@ -459,8 +459,8 @@ infra. Custa memória — reserve ~1,5 GB para o container.
 
 O serviço está na stack auxiliar `docker/stack.servicos.prod.yml`, junto do
 Evolution GO, como **opcional**: não subi-lo apenas deixa a busca semântica
-desligada. A stack principal `docker/stack.rcgcba.prod.yml` contém API, web e
-whatsapp-worker. Ambas usam a rede externa `network_public`, mantendo os aliases
+desligada. A stack principal `docker/stack.rcgcba.prod.yml` contém API e web.
+Ambas usam a rede externa `network_public`, mantendo os aliases
 `rcgcba-ollama`, `rcgcba-evolution-go` e `rcgcba-api` para comunicação.
 
 No Portainer, crie a stack auxiliar como `rcgcba-servicos`, usando
@@ -619,8 +619,8 @@ arquivos: não envia e não altera nada na base do Protheus. Instalação e uso 
 
 ## Publicar imagens
 
-`publish.ps1` (raiz) builda e **publica no Docker Hub** as **três** imagens
-(`bjsoftware/rcgcba-api`, `-web` e `-whatsapp-worker`, tag `latest`), depois é
+`publish.ps1` (raiz) builda e **publica no Docker Hub** as **duas** imagens
+(`bjsoftware/rcgcba-api` e `-web`, tag `latest`), depois é
 preciso redeploy no Portainer.
 
 O script publica cada imagem **antes** de buildar a próxima — um erro no meio
@@ -629,7 +629,6 @@ deixa o conjunto desalinhado em produção. Rode os builds antes para pegar erro
 ```bash
 docker exec plataforma-comercial-dev-web-1 sh -c "cd /app/apps/web && pnpm exec next build"
 docker exec plataforma-comercial-dev-api-1 sh -c "cd /app/apps/api && pnpm exec nest build"
-docker exec plataforma-comercial-dev-whatsapp-worker-1 sh -c "cd /app/apps/whatsapp-worker && pnpm exec tsc -p tsconfig.json"
 ```
 
 Com os containers de dev **parados** (só a infra de pé), o mesmo type-check sai
@@ -663,83 +662,19 @@ dentro da imagem, e `pnpm` não está no PATH do host.
 
 ---
 
-## WhatsApp em produção (primeiro deploy do worker) **[a confirmar na VPS]**
+## WhatsApp em produção com Gateway Evolution GO **[a confirmar na VPS]**
 
-O `whatsapp-worker` nunca subiu em produção. Três coisas precisam acontecer, na
-ordem — as duas primeiras já estão no repositório, a terceira é manual.
+A plataforma padronizou a integração no **Gateway Evolution GO** como transporte único (suportando os modos Não Oficial via QR Code e Oficial via Cloud API da Meta). O `whatsapp-worker` interno e as chamadas diretas à Meta Graph API foram descontinuados.
 
-**1. Publicar a imagem.** `publish.ps1` agora builda e publica
-`bjsoftware/rcgcba-whatsapp-worker:latest` junto com a API e o web. O
-`docker build` da imagem de produção foi verificado em 2026-08-21 (Node 22 —
-a `zapo-js` usa o `WebSocket` global, que não existe no 20).
-
-**2. Definir `WHATSAPP_STORE_DATABASE_URL` e `WHATSAPP_WORKER_TOKEN`** no
-Portainer (Stacks → rcgcba → Env), conforme `docker/.env.prod.example`.
-
-A `DATABASE_URL` do worker **não é a da API**. A da API é o `plataforma_app`,
-sem DDL e sem acesso ao schema `whatsapp`; a biblioteca de sessão roda as
-migrations dela **a cada conexão**, então com a URL da API o worker não sobe.
-O role certo é o `whatsapp_store`.
-
-**3. Trocar a senha do role `whatsapp_store`.** A migration
-`20260903150000_whatsapp_store_role` cria o role com a senha de placeholder
-`whatsapp_store_dev_only` — mesmo tratamento que o `plataforma_app` recebeu.
-Quem tem essa senha alcança as sessões pareadas, ou seja, **fala pelo WhatsApp
-dos vendedores**. Rode com a role dona, depois do `migrate deploy`:
-
-```bash
-docker exec -e PGPASSWORD="SENHA_DA_ROLE_PLATAFORMA" <container-postgres> \
-  psql -U plataforma -d plataforma_comercial \
-  -c "ALTER ROLE whatsapp_store WITH PASSWORD 'SENHA_FORTE_AQUI';"
-```
-
-A mesma senha vai na `WHATSAPP_STORE_DATABASE_URL` do passo 2 — trocar uma sem
-a outra derruba o worker no boot seguinte.
-
-A senha vai dentro de uma URL (`postgresql://whatsapp_store:SENHA@postgres:...`),
-então **use só letras e números**: `@`, `:`, `/`, `?`, `#` e `%` são separadores
-de URL e quebram a conexão do worker de um jeito que não parece erro de senha.
-Gerar uma sem esses caracteres:
-
-```bash
-openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 40; echo
-```
-
-A migration acima restaura o que a baseline de 28/08 perdeu ao consolidar as 73
-migrations incrementais: numa base criada do zero, o role e o schema `whatsapp`
-não existiam e o worker não subia. Base que já rodou a baseline precisa deste
-`migrate deploy` antes do passo 3. **[verificado em dev, 2026-09-03]** — o
-`migrate deploy` aplicou a migration e o `whatsapp-worker` subiu conectando ao
-store sem erro. Ressalva: no dev o role já existia de antes (roles são objetos
-do cluster, não do banco, e o cluster local nunca foi recriado), então ali a
-migration é no-op. A prova de que ela resolve o caso da VPS veio de um
-`postgres:16-alpine` descartável: baseline sozinha deixa 0 role e 0 schema.
-
-**O que ainda não foi verificado:** nada disso rodou na VPS. Ao executar pela
-primeira vez, confirmar aqui e trocar a marca `[a confirmar na VPS]`.
-
-**Depois do deploy:** cada vendedor pareia o próprio aparelho pela tela (QR),
-com o aceite registrado. `replicas: 1` no worker **é requisito, não
-capacidade** — duas réplicas com a mesma sessão fazem o WhatsApp derrubar uma.
-
-## WhatsApp com Evolution GO (transporte alternativo) **[a confirmar na VPS]**
-
-Alternativa ao `whatsapp-worker`: um gateway de terceiro que mantém as sessões
-no banco dele. A empresa usa **um transporte de cada vez** — a escolha está em
-Administração → WhatsApp, e trocá-la exige que cada vendedor pareie de novo.
-
-Nada disto foi executado na VPS ainda. Ao rodar pela primeira vez, confirme
-cada passo aqui e troque a marca `[a confirmar na VPS]`.
+Além disso, cada empresa possui o controle mestre de ativação do canal (`ativo: boolean` / `WHATSAPP_ATIVO`) na tela **Administração → WhatsApp**, alinhado ao padrão de E-mail e SMS.
 
 **1. Fixar a tag da imagem.** O stack lê `${EVOLUTION_GO_IMAGE}` e não tem valor
 padrão de propósito: `latest` troca o contrato do webhook sem aviso, e nomes de
 rota já divergiram entre versões da Evolution GO.
 
-A imagem é `evoapicloud/evolution-go`, no Docker Hub. Última estável verificada
-em 2026-08-27: **0.7.2** (publicada em 2026-07-03). Há tags `-beta` publicadas
-junto das estáveis — não use em produção. Registre a mesma versão no campo
-"Versão homologada" da tela: é por ela que se investiga evento que parou de
-chegar.
+A imagem é `evoapicloud/evolution-go`, no Docker Hub. Última estável verificada:
+**0.7.2** (publicada em 2026-07-03). Há tags `-beta` publicadas junto das estáveis —
+não use em produção. Registre a mesma versão no campo "Versão homologada" da tela.
 
 ```bash
 docker manifest inspect evoapicloud/evolution-go:0.7.2   # confirma que a tag existe
@@ -805,49 +740,9 @@ curl -H "apikey: $EVOLUTION_GLOBAL_API_KEY" \
 fala pelo WhatsApp dos vendedores, e o webhook trafega só na rede interna.
 `replicas: 1` também aqui é requisito.
 
-## WhatsApp com a Cloud API oficial da Meta (terceiro transporte) **[a confirmar]**
+## WhatsApp Oficial via Gateway Evolution GO
 
-Terceiro provedor, ao lado de `zapo` e `evolution_go`. Diferente dos outros
-dois: **oficial** da Meta, sem pareamento por QR, só na sessão institucional
-(`tipo: 'empresa'`) — não aparece na conexão do vendedor. Desenho completo em
-`docs/planos/whatsapp-api-oficial.md`.
-
-**Migration.** `20260909150000_whatsapp_cloud_api` — campos novos em
-`whatsapp_config`, coluna `ultimaMensagemClienteEm` em `whatsapp_conversas` e
-a tabela `whatsapp_templates` (com RLS). Aplicada pelo procedimento normal
-desta página (`Migrations em produção`), role `plataforma`.
-
-**Diferente do Evolution GO, esta integração ainda não foi testada contra o
-serviço real da Meta** — só o handshake do webhook foi validado localmente
-(token certo devolve o `hub.challenge`, token errado dá 403). Antes de operar
-em produção:
-
-1. **Conta de desenvolvedor Meta + número de teste do Business Manager** —
-   passo manual, gera o Phone Number ID, o Business Account ID, o token de
-   acesso e o App Secret.
-2. **Gravar em Administração > WhatsApp > API Oficial**: os quatro campos
-   acima, mais o Webhook Verify Token (gerado na própria tela — não é
-   segredo de tráfego, só confere o handshake).
-3. **Colar a URL do webhook** (mostrada na mesma tela,
-   `.../api/v1/whatsapp/cloud-api/webhook/<empresaId>`) no painel da Meta —
-   ela chama o `GET` de handshake uma vez, depois só `POST` de eventos.
-4. **Sincronizar templates** (botão na tela) antes de esperar que o envio por
-   template funcione — sem isso a lista fica vazia mesmo com templates
-   aprovados no Business Manager.
-5. Confirmar o fluxo de verdade: mensagem recebida grava a conversa, texto
-   livre sai dentro da janela de 24h, janela fechada oferece o seletor de
-   template na tela de Atendimento (o composer troca sozinho ao receber o
-   409 com `codigo: WHATSAPP_JANELA_FECHADA`).
-
-**Corpo bruto do webhook.** `main.ts` passa `rawBody: true` ao
-`NestFactory.create` — é o que permite ao controller conferir a assinatura
-HMAC-SHA256 (`X-Hub-Signature-256`) contra o corpo exatamente como a Meta o
-mandou. Não afeta nenhuma outra rota da API.
-
-Ao validar pela primeira vez com uma conta real, troque a marca
-**[a confirmar]** acima e registre aqui o que divergiu — o mesmo cuidado já
-tomado com a Evolution GO, cuja documentação (`hub.mode`, nomes de campo do
-payload) pode não bater exatamente com o que a conta em uso devolve.
+A integração Oficial com a Meta (WhatsApp Cloud API) é operada através do **Gateway Evolution GO**. A plataforma comercial conversa exclusivamente com o gateway através de suas rotas REST padronizadas e recebe webhooks unificados em `/api/v1/whatsapp/evolution/webhook/:empresaId/:sessaoId`. Não são feitas chamadas diretas da API da aplicação para a Graph API da Meta nem gerenciados webhooks diretos da Meta.
 
 ## E-mail da empresa (SMTP) **[escrito em 2026-10-01]**
 
@@ -1198,10 +1093,8 @@ arquivo do repo reproduz o sintoma acima até alguém acrescentar a linha lá.
 > editor do Portainer, em vez de editar linha a linha. O arquivo do repo passa
 > a ser a fonte, e as variáveis novas vão junto.
 
-Divergências já encontradas (2026-08-25), do repo para o que rodava na VPS:
-`AGENTE_IA_CRYPTO_KEY`, `WHATSAPP_WORKER_TOKEN` e o serviço
-`whatsapp-worker` inteiro (este último ainda não implantado — ver a seção do
-WhatsApp em produção).
+Divergências históricas já encontradas (2026-08-25), do repo para o que rodava na VPS:
+`AGENTE_IA_CRYPTO_KEY` e `WHATSAPP_CRYPTO_KEY`.
 
 ---
 

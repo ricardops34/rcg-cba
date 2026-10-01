@@ -3,14 +3,14 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cable, CheckCircle2, Cloud, Eraser, History, MoreHorizontal, RefreshCw, Smartphone, Trash2, TriangleAlert, Bot } from "lucide-react";
+import { Cable, CheckCircle2, Eraser, History, MoreHorizontal, RefreshCw, Smartphone, Trash2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
-import { WHATSAPP_AVISO_NAO_OFICIAL, WHATSAPP_TRANSPORTE_ROTULO, type WhatsappConfig, type WhatsappSessao, type WhatsappTemplate } from "@plataforma/contracts";
-import { API_ORIGIN, ApiError, apiFetch } from "@/lib/api-client";
+import { WHATSAPP_AVISO_NAO_OFICIAL, type WhatsappConfig, type WhatsappSessao } from "@plataforma/contracts";
+import { ApiError, apiFetch } from "@/lib/api-client";
 import { InstitucionalConfig } from "@/components/whatsapp/institucional-config";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -20,10 +20,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAuthStore } from "@/stores/auth-store";
 
-type Aba = "zapo" | "evolution-go" | "cloud-api" | "instancias" | "atendimento" | "institucional";
-const ABAS_VALIDAS: Aba[] = ["zapo", "evolution-go", "cloud-api", "instancias", "atendimento", "institucional"];
+type Aba = "evolution-go" | "instancias" | "atendimento" | "institucional";
+const ABAS_VALIDAS: Aba[] = ["evolution-go", "instancias", "atendimento", "institucional"];
 
 const STATUS: Record<WhatsappSessao["status"], { rotulo: string; variant: "success" | "warning" | "destructive" | "secondary" }> = {
   conectada: { rotulo: "Conectada", variant: "success" },
@@ -55,27 +54,19 @@ export default function WhatsappConfigPage() {
     aba ??
     (abaDoLink && ABAS_VALIDAS.includes(abaDoLink as Aba)
       ? (abaDoLink as Aba)
-      : config.transporte === "evolution_go"
-        ? "evolution-go"
-        : config.transporte === "cloud_api"
-          ? "cloud-api"
-          : "zapo");
+      : "evolution-go");
 
   return (
     <div className="space-y-6">
       <ChannelHeader config={config} />
       <Tabs value={abaAtual} onValueChange={(value) => setAba(value as Aba)} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-6 max-w-4xl">
-          <TabsTrigger value="zapo">zapo-js</TabsTrigger>
-          <TabsTrigger value="evolution-go">Evolution GO</TabsTrigger>
-          <TabsTrigger value="cloud-api">API Oficial</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 max-w-2xl">
+          <TabsTrigger value="evolution-go">Gateway Evolution GO</TabsTrigger>
           <TabsTrigger value="instancias">Instâncias</TabsTrigger>
           <TabsTrigger value="atendimento">Atendimento IA</TabsTrigger>
           <TabsTrigger value="institucional">Institucional</TabsTrigger>
         </TabsList>
-        <TabsContent value="zapo" className="pt-4"><ZapoConfig config={config} /></TabsContent>
         <TabsContent value="evolution-go" className="pt-4"><EvolutionConfig config={config} /></TabsContent>
-        <TabsContent value="cloud-api" className="pt-4"><CloudApiConfig config={config} /></TabsContent>
         <TabsContent value="instancias" className="pt-4"><Instancias config={config} /></TabsContent>
         <TabsContent value="atendimento" className="pt-4"><AtendimentoIaConfig config={config} /></TabsContent>
         <TabsContent value="institucional" className="pt-4"><InstitucionalConfig /></TabsContent>
@@ -84,18 +75,343 @@ export default function WhatsappConfigPage() {
   );
 }
 
+function ChannelHeader({ config }: { config: WhatsappConfig }) {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-start gap-3">
+        <div className="rounded-xl bg-emerald-500/10 p-2.5 text-emerald-700 dark:text-emerald-400">
+          <Cable className="size-5" />
+        </div>
+        <div>
+          <h2 className="font-heading text-lg font-semibold">Central de canais WhatsApp</h2>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            Gateway Evolution GO com suporte a integrações Não Oficial (WhatsApp Web) e Oficial (WhatsApp Cloud API Meta), regras da empresa e instâncias.
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="outline">Gateway: Evolution GO</Badge>
+        <Badge variant={config.ativo ? "success" : "secondary"}>
+          {config.ativo ? <CheckCircle2 /> : <TriangleAlert />}
+          {config.ativo ? "WhatsApp ativo" : "WhatsApp desativado"}
+        </Badge>
+      </div>
+    </div>
+  );
+}
 
-/**
- * Atendimento por IA no número institucional.
- *
- * Fica em aba própria, e não dentro de zapo-js/Evolution GO, porque não é
- * configuração de transporte: vale para o número da empresa qualquer que seja
- * o provedor que o mantém conectado.
- *
- * Estes quatro campos existiam só no banco — a migration os criou, a triagem
- * lia dois deles, e não havia nada que os escrevesse. Enquanto isso, o
- * interruptor nascia desligado e a triagem inteira era inalcançável.
- */
+function EvolutionConfig({ config }: { config: WhatsappConfig }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({
+    ativo: config.ativo,
+    evolutionUrl: config.evolutionUrl ?? "",
+    evolutionVersao: config.evolutionVersao ?? "",
+    retencaoDias: config.retencaoDias,
+    historicoDias: config.historicoDias,
+    dddPadrao: config.dddPadrao ?? "",
+    evolutionAlwaysOnline: config.evolutionAlwaysOnline,
+    evolutionIgnoreGroups: config.evolutionIgnoreGroups,
+    evolutionIgnoreStatus: config.evolutionIgnoreStatus,
+    evolutionReadMessages: config.evolutionReadMessages,
+    evolutionRejectCall: config.evolutionRejectCall,
+    evolutionMsgRejectCall: config.evolutionMsgRejectCall ?? "",
+  });
+  const [chave, setChave] = useState("");
+
+  const salvar = useMutation({
+    mutationFn: (opcoes: { apagarChave?: boolean } = {}) =>
+      apiFetch<WhatsappConfig>("/whatsapp/config", {
+        method: "PUT",
+        body: {
+          ...form,
+          transporte: "evolution_go",
+          evolutionUrl: form.evolutionUrl.trim() || null,
+          evolutionVersao: form.evolutionVersao.trim() || null,
+          dddPadrao: form.dddPadrao.trim() || null,
+          evolutionMsgRejectCall: form.evolutionMsgRejectCall.trim() || null,
+          ...(opcoes.apagarChave
+            ? { evolutionApiKey: "" }
+            : chave.trim()
+              ? { evolutionApiKey: chave.trim() }
+              : {}),
+        },
+      }),
+    onSuccess: (_dados, variaveis) => {
+      setChave("");
+      void queryClient.invalidateQueries({ queryKey: ["whatsapp-config"] });
+      void queryClient.invalidateQueries({ queryKey: ["whatsapp", "integracao"] });
+      toast.success(
+        variaveis?.apagarChave
+          ? "Chave da Evolution GO removida"
+          : "Configuração da Evolution GO salva",
+      );
+    },
+    onError: (error) => toast.error(mensagemErro(error, "Erro ao salvar")),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="border-b">
+        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>Gateway Evolution GO</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Serviço central que gerencia as conexões de WhatsApp (Não Oficial e Oficial) e entrega os eventos por webhook.
+            </p>
+          </div>
+          <Badge variant={config.ativo ? "default" : "secondary"}>
+            {config.ativo ? "Habilitado" : "Desabilitado"}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-6 pt-6">
+        <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+          <div>
+            <FieldLabel>Habilitar WhatsApp</FieldLabel>
+            <FieldDescription>
+              Liga o canal de WhatsApp nesta empresa (WHATSAPP_ATIVO). As ações, conversas e o atendimento só funcionam com a integração ligada.
+            </FieldDescription>
+          </div>
+          <Switch
+            checked={form.ativo}
+            onCheckedChange={(ativo) => setForm((f) => ({ ...f, ativo }))}
+          />
+        </div>
+
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-3.5 text-xs">
+          <div className="flex gap-2 font-medium text-foreground">
+            <Cable className="mt-0.5 size-4 shrink-0 text-primary" />
+            Integração Unificada com Gateway Evolution GO
+          </div>
+          <p className="mt-1 pl-6 text-muted-foreground leading-relaxed">
+            A Evolution GO suporta duas modalidades de conexão:
+            <br />
+            • <strong>Não Oficial:</strong> Conexão via WhatsApp Web / Baileys (pareamento por QR Code no aparelho do vendedor ou chip dedicado).
+            <br />
+            • <strong>Oficial:</strong> Conexão via WhatsApp Cloud API da Meta através do próprio gateway, sem risco de bloqueio de número.
+          </p>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="evolutionUrl">Endereço da Evolution GO</FieldLabel>
+              <Input
+                id="evolutionUrl"
+                value={form.evolutionUrl}
+                placeholder="http://rcgcba-evolution-go:8080"
+                onChange={(event) =>
+                  setForm((f) => ({ ...f, evolutionUrl: event.target.value }))
+                }
+              />
+              <FieldDescription>
+                Endereço do gateway Evolution GO: informe o domínio HTTPS (ex.: <code>https://evogo.bjsoft.com.br</code>) ou o endereço interno na rede Docker (ex.: <code>http://rcgcba-evolution-go:8080</code>).
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="evolutionApiKey">Chave de API (GLOBAL_API_KEY)</FieldLabel>
+              <Input
+                id="evolutionApiKey"
+                type="password"
+                autoComplete="off"
+                value={chave}
+                placeholder={
+                  config.evolutionApiKeyDefinida
+                    ? `Chave gravada${config.evolutionApiKeyUltimos4 ? ` (final ${config.evolutionApiKeyUltimos4})` : ""} — preencha só para trocar`
+                    : "Cole a chave administrativa do gateway"
+                }
+                onChange={(event) => setChave(event.target.value)}
+              />
+              <FieldDescription>
+                Guardada cifrada e nunca devolvida pela API. Deixe em branco para manter a atual.
+                {config.evolutionApiKeyDefinida ? (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      className="underline underline-offset-2"
+                      onClick={() => salvar.mutate({ apagarChave: true })}
+                    >
+                      Remover chave gravada
+                    </button>
+                    .
+                  </>
+                ) : null}
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="evolutionVersao">Versão homologada</FieldLabel>
+              <Input
+                id="evolutionVersao"
+                className="max-w-40"
+                placeholder="0.7.2"
+                value={form.evolutionVersao}
+                onChange={(event) =>
+                  setForm((f) => ({ ...f, evolutionVersao: event.target.value }))
+                }
+              />
+              <FieldDescription>
+                Registro de qual imagem está no ar. Diferença de versão é a primeira hipótese quando um evento para de chegar.
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="dddPadraoEvolution">DDD padrão</FieldLabel>
+              <Input
+                id="dddPadraoEvolution"
+                inputMode="numeric"
+                maxLength={2}
+                className="max-w-24"
+                placeholder="67"
+                value={form.dddPadrao}
+                onChange={(event) =>
+                  setForm((f) => ({ ...f, dddPadrao: event.target.value.replace(/\D/g, "") }))
+                }
+              />
+              <FieldDescription>Usado somente quando o telefone do cliente não possui DDD.</FieldDescription>
+            </Field>
+          </FieldGroup>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="retencaoDiasEvolution">Retenção das conversas</FieldLabel>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="retencaoDiasEvolution"
+                  type="number"
+                  min={0}
+                  max={3650}
+                  className="max-w-32"
+                  value={form.retencaoDias}
+                  onChange={(event) =>
+                    setForm((f) => ({ ...f, retencaoDias: Number(event.target.value) }))
+                  }
+                />
+                <span className="text-sm text-muted-foreground">dias</span>
+              </div>
+              <FieldDescription>Zero mantém indefinidamente. O expurgo automático ainda não foi implementado.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="historicoDiasEvolution">Dias de histórico a importar</FieldLabel>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="historicoDiasEvolution"
+                  type="number"
+                  min={0}
+                  max={365}
+                  className="max-w-32"
+                  value={form.historicoDias}
+                  onChange={(event) =>
+                    setForm((f) => ({ ...f, historicoDias: Number(event.target.value) }))
+                  }
+                />
+                <span className="text-sm text-muted-foreground">dias</span>
+              </div>
+              <FieldDescription>
+                Acima de zero, a importação é pedida por instância na aba Instâncias e o gateway entrega o histórico aos poucos, por evento. Só vira conversa o contato vinculado a um cliente.
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel>Comportamento das instâncias</FieldLabel>
+              <FieldDescription>
+                Vale para todas as instâncias desta empresa: vendedor, gerente, supervisor e o número institucional. A alteração alcança as que já existem na próxima conexão de cada uma.
+              </FieldDescription>
+              <div className="grid gap-3 pt-1 sm:grid-cols-2">
+                <label className="flex items-start gap-2 text-sm">
+                  <Switch
+                    checked={form.evolutionIgnoreGroups}
+                    onCheckedChange={(v) => setForm((f) => ({ ...f, evolutionIgnoreGroups: v }))}
+                  />
+                  <span>
+                    Ignorar grupos
+                    <span className="block text-xs text-muted-foreground">
+                      Grupo não faz parte do atendimento; ignorar na origem evita tráfego que a API descartaria.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-sm">
+                  <Switch
+                    checked={form.evolutionIgnoreStatus}
+                    onCheckedChange={(v) => setForm((f) => ({ ...f, evolutionIgnoreStatus: v }))}
+                  />
+                  <span>
+                    Ignorar status
+                    <span className="block text-xs text-muted-foreground">
+                      As publicações de status dos contatos não entram no atendimento.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-sm">
+                  <Switch
+                    checked={form.evolutionReadMessages}
+                    onCheckedChange={(v) => setForm((f) => ({ ...f, evolutionReadMessages: v }))}
+                  />
+                  <span>
+                    Marcar como lida automaticamente
+                    <span className="block text-xs text-muted-foreground">
+                      Ligado, manda o visto azul ao cliente sem ninguém ter lido.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-sm">
+                  <Switch
+                    checked={form.evolutionAlwaysOnline}
+                    onCheckedChange={(v) => setForm((f) => ({ ...f, evolutionAlwaysOnline: v }))}
+                  />
+                  <span>
+                    Sempre online
+                    <span className="block text-xs text-muted-foreground">
+                      Mostra o número como disponível o tempo todo, inclusive fora do expediente.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-sm">
+                  <Switch
+                    checked={form.evolutionRejectCall}
+                    onCheckedChange={(v) => setForm((f) => ({ ...f, evolutionRejectCall: v }))}
+                  />
+                  <span>
+                    Recusar chamadas
+                    <span className="block text-xs text-muted-foreground">
+                      O número não atende ligação: a plataforma é de mensagem.
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </Field>
+            {form.evolutionRejectCall && (
+              <Field>
+                <FieldLabel htmlFor="evolutionMsgRejectCall">Resposta ao recusar uma chamada</FieldLabel>
+                <Input
+                  id="evolutionMsgRejectCall"
+                  maxLength={500}
+                  placeholder="Ex.: Não atendemos por chamada. Me escreva por aqui que eu respondo."
+                  value={form.evolutionMsgRejectCall}
+                  onChange={(event) =>
+                    setForm((f) => ({ ...f, evolutionMsgRejectCall: event.target.value }))
+                  }
+                />
+                <FieldDescription>Em branco, a chamada é recusada sem resposta nenhuma.</FieldDescription>
+              </Field>
+            )}
+            <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 text-sm text-amber-900 dark:text-amber-200">
+              <div className="flex gap-2 font-medium">
+                <TriangleAlert className="mt-0.5 size-4 shrink-0" /> Conexão não oficial
+              </div>
+              <p className="mt-1 pl-6 text-xs opacity-85">
+                {WHATSAPP_AVISO_NAO_OFICIAL} Use um chip dedicado para conexões via WhatsApp Web.
+              </p>
+            </div>
+          </FieldGroup>
+        </div>
+      </CardContent>
+      <CardFooter className="justify-end border-t">
+        <Button onClick={() => salvar.mutate({})} disabled={salvar.isPending}>
+          {salvar.isPending ? "Salvando..." : "Salvar configuração"}
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
+
 function AtendimentoIaConfig({ config }: { config: WhatsappConfig }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
@@ -131,7 +447,7 @@ function AtendimentoIaConfig({ config }: { config: WhatsappConfig }) {
             <p className="mt-1 text-sm text-muted-foreground">
               A triagem que atende quem escreve para o número da empresa:
               identifica, responde o que consegue e entrega a conversa a uma
-              pessoa. Vale para qualquer transporte.
+              pessoa.
             </p>
           </div>
           <label className="flex shrink-0 items-center gap-2 text-sm font-medium">
@@ -244,463 +560,6 @@ function AtendimentoIaConfig({ config }: { config: WhatsappConfig }) {
   );
 }
 
-function ChannelHeader({ config }: { config: WhatsappConfig }) {
-  return (
-    <div className="flex flex-col gap-3 rounded-xl border bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-start gap-3">
-        <div className="rounded-xl bg-emerald-500/10 p-2.5 text-emerald-700 dark:text-emerald-400"><Cable className="size-5" /></div>
-        <div>
-          <h2 className="font-heading text-lg font-semibold">Central de canais WhatsApp</h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Escolha o provedor, defina as regras da empresa e acompanhe cada aparelho conectado.</p>
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        {/* Qual provedor está no ar é a informação que muda o diagnóstico de
-            tudo o mais nesta tela — fica ao lado do estado, não escondida na
-            aba selecionada. */}
-        <Badge variant="outline">Provedor: {WHATSAPP_TRANSPORTE_ROTULO[config.transporte]}</Badge>
-        <Badge variant={config.ativo ? "success" : "secondary"}>
-          {config.ativo ? <CheckCircle2 /> : <TriangleAlert />}
-          {config.ativo ? "WhatsApp ativo" : "WhatsApp desativado"}
-        </Badge>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Aviso de que salvar esta aba troca o provedor da empresa inteira.
- *
- * A empresa opera um transporte de cada vez, e a troca não é retroativa: as
- * instâncias já pareadas continuam no provedor com que foram conectadas até
- * serem reconectadas. Sem este aviso, o administrador salva a aba achando que
- * mudou tudo e fica com metade do time em cada lado sem saber.
- */
-function AvisoTroca({ config, alvo }: { config: WhatsappConfig; alvo: WhatsappConfig["transporte"] }) {
-  if (config.transporte === alvo) {
-    return <Badge variant="success"><CheckCircle2 /> Provedor em uso</Badge>;
-  }
-  return (
-    <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 text-xs text-amber-900 dark:text-amber-200">
-      <div className="flex gap-2 font-medium"><TriangleAlert className="mt-0.5 size-4 shrink-0" /> Hoje a empresa usa {WHATSAPP_TRANSPORTE_ROTULO[config.transporte]}</div>
-      <p className="mt-1 pl-6 opacity-85">
-        Salvar aqui passa a empresa para {WHATSAPP_TRANSPORTE_ROTULO[alvo]}. As instâncias já pareadas continuam no
-        provedor anterior até serem reconectadas — o vendedor precisa parear de novo para migrar, e o histórico
-        de conversas fica onde está.
-      </p>
-    </div>
-  );
-}
-
-function ZapoConfig({ config }: { config: WhatsappConfig }) {
-  const queryClient = useQueryClient();
-  const [form, setForm] = useState({ ativo: config.ativo, workerUrl: config.workerUrl ?? "", retencaoDias: config.retencaoDias, historicoDias: config.historicoDias, dddPadrao: config.dddPadrao ?? "" });
-  const salvar = useMutation({
-    mutationFn: () => apiFetch<WhatsappConfig>("/whatsapp/config", {
-      method: "PUT",
-      body: { ...form, transporte: "zapo", workerUrl: form.workerUrl.trim() || null, dddPadrao: form.dddPadrao.trim() || null },
-    }),
-    // A chave ["whatsapp", "integracao"] é a que o menu e a tela inicial leem
-    // para mostrar o Atendimento: ligar aqui tem de refletir sem recarregar.
-    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["whatsapp-config"] }); void queryClient.invalidateQueries({ queryKey: ["whatsapp", "integracao"] }); toast.success("Configuração do zapo-js salva"); },
-    onError: (error) => toast.error(mensagemErro(error, "Erro ao salvar")),
-  });
-
-  return (
-    <Card>
-      <CardHeader className="border-b">
-        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div><CardTitle>Conexão local por QR Code</CardTitle><p className="mt-1 text-sm text-muted-foreground">Transporte atual pelo worker interno e pela biblioteca zapo-js.</p></div>
-          <label className="flex items-center gap-2 text-sm font-medium"><Switch checked={form.ativo} onCheckedChange={(ativo) => setForm((f) => ({ ...f, ativo }))} />Ativo</label>
-        </div>
-      </CardHeader>
-      <CardContent className="grid gap-6 pt-6 lg:grid-cols-2">
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="workerUrl">Endereço do worker</FieldLabel>
-            <Input id="workerUrl" value={form.workerUrl} placeholder="http://rcgcba-whatsapp-worker:3100" onChange={(event) => setForm((f) => ({ ...f, workerUrl: event.target.value }))} />
-            <FieldDescription>Endereço interno; o worker não deve ser publicado no Traefik.</FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="dddPadrao">DDD padrão</FieldLabel>
-            <Input id="dddPadrao" inputMode="numeric" maxLength={2} className="max-w-24" placeholder="67" value={form.dddPadrao} onChange={(event) => setForm((f) => ({ ...f, dddPadrao: event.target.value.replace(/\D/g, "") }))} />
-            <FieldDescription>Usado somente quando o telefone do cliente não possui DDD.</FieldDescription>
-          </Field>
-        </FieldGroup>
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="retencaoDias">Retenção das conversas</FieldLabel>
-            <div className="flex items-center gap-2"><Input id="retencaoDias" type="number" min={0} max={3650} className="max-w-32" value={form.retencaoDias} onChange={(event) => setForm((f) => ({ ...f, retencaoDias: Number(event.target.value) }))} /><span className="text-sm text-muted-foreground">dias</span></div>
-            <FieldDescription>Zero mantém indefinidamente. O expurgo automático ainda não foi implementado.</FieldDescription>
-          </Field>
-          {/* Retenção olha para a frente (por quanto tempo guardar o que
-              entrou); esta olha para trás (o quanto buscar do que o celular já
-              tinha). Ficam lado a lado porque é justamente aí que se confunde
-              uma com a outra. */}
-          <Field>
-            <FieldLabel htmlFor="historicoDias">Dias de histórico a importar</FieldLabel>
-            <div className="flex items-center gap-2"><Input id="historicoDias" type="number" min={0} max={365} className="max-w-32" value={form.historicoDias} onChange={(event) => setForm((f) => ({ ...f, historicoDias: Number(event.target.value) }))} /><span className="text-sm text-muted-foreground">dias</span></div>
-            <FieldDescription>
-              Zero (padrão) não importa nada — só entra o que chega ao vivo. Acima de zero, o worker passa a
-              arquivar as mensagens do aparelho para poder importá-las, o que inclui as conversas pessoais do
-              vendedor. A instância precisa reconectar para a mudança valer, e a importação é disparada por
-              instância, na aba Instâncias. Continua valendo a regra de sempre: só vira conversa o contato
-              vinculado a um cliente.
-            </FieldDescription>
-          </Field>
-          <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 text-sm text-amber-900 dark:text-amber-200">
-            <div className="flex gap-2 font-medium"><TriangleAlert className="mt-0.5 size-4 shrink-0" /> Integração não oficial</div>
-            {/* Mesmo texto que o vendedor lê ao conectar o aparelho — dois
-                avisos divergentes sobre o mesmo risco é pior do que um. */}
-            <p className="mt-1 pl-6 text-xs opacity-85">{WHATSAPP_AVISO_NAO_OFICIAL} Use um chip dedicado: alterações do WhatsApp podem interromper as sessões.</p>
-          </div>
-        </FieldGroup>
-      </CardContent>
-      <CardFooter className="justify-between gap-3 border-t"><AvisoTroca config={config} alvo="zapo" /><Button onClick={() => salvar.mutate()} disabled={salvar.isPending}>{salvar.isPending ? "Salvando..." : config.transporte === "zapo" ? "Salvar zapo-js" : "Salvar e usar zapo-js"}</Button></CardFooter>
-    </Card>
-  );
-}
-
-function EvolutionConfig({ config }: { config: WhatsappConfig }) {
-  const queryClient = useQueryClient();
-  const [form, setForm] = useState({
-    ativo: config.ativo,
-    evolutionUrl: config.evolutionUrl ?? "",
-    evolutionVersao: config.evolutionVersao ?? "",
-    retencaoDias: config.retencaoDias,
-    historicoDias: config.historicoDias,
-    dddPadrao: config.dddPadrao ?? "",
-    evolutionAlwaysOnline: config.evolutionAlwaysOnline,
-    evolutionIgnoreGroups: config.evolutionIgnoreGroups,
-    evolutionIgnoreStatus: config.evolutionIgnoreStatus,
-    evolutionReadMessages: config.evolutionReadMessages,
-    evolutionRejectCall: config.evolutionRejectCall,
-    evolutionMsgRejectCall: config.evolutionMsgRejectCall ?? "",
-  });
-  // A chave fica fora do `form` de propósito: ela nunca vem da API, então o
-  // campo nasce vazio mesmo com uma chave gravada. Vazio significa "não
-  // mexi" — e é por isso que apagar precisa de um botão próprio.
-  const [chave, setChave] = useState("");
-
-  const salvar = useMutation({
-    mutationFn: (opcoes: { apagarChave?: boolean } = {}) => apiFetch<WhatsappConfig>("/whatsapp/config", {
-      method: "PUT",
-      body: {
-        ...form,
-        transporte: "evolution_go",
-        evolutionUrl: form.evolutionUrl.trim() || null,
-        evolutionVersao: form.evolutionVersao.trim() || null,
-        dddPadrao: form.dddPadrao.trim() || null,
-        evolutionMsgRejectCall: form.evolutionMsgRejectCall.trim() || null,
-        // String vazia apaga do lado da API; ausente mantém a que está lá.
-        ...(opcoes.apagarChave ? { evolutionApiKey: "" } : chave.trim() ? { evolutionApiKey: chave.trim() } : {}),
-      },
-    }),
-    onSuccess: (_dados, variaveis) => {
-      setChave("");
-      void queryClient.invalidateQueries({ queryKey: ["whatsapp-config"] }); void queryClient.invalidateQueries({ queryKey: ["whatsapp", "integracao"] });
-      toast.success(variaveis?.apagarChave ? "Chave da Evolution GO removida" : "Configuração da Evolution GO salva");
-    },
-    onError: (error) => toast.error(mensagemErro(error, "Erro ao salvar")),
-  });
-
-  return (
-    <Card>
-      <CardHeader className="border-b">
-        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div><CardTitle>Gateway Evolution GO</CardTitle><p className="mt-1 text-sm text-muted-foreground">Serviço externo que mantém as instâncias pareadas e devolve os eventos por webhook.</p></div>
-          <label className="flex items-center gap-2 text-sm font-medium"><Switch checked={form.ativo} onCheckedChange={(ativo) => setForm((f) => ({ ...f, ativo }))} />Ativo</label>
-        </div>
-      </CardHeader>
-      <CardContent className="grid gap-6 pt-6 lg:grid-cols-2">
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="evolutionUrl">Endereço da Evolution GO</FieldLabel>
-            <Input id="evolutionUrl" value={form.evolutionUrl} placeholder="http://rcgcba-evolution-go:8080" onChange={(event) => setForm((f) => ({ ...f, evolutionUrl: event.target.value }))} />
-            <FieldDescription>Endereço interno da rede Docker. O gateway não deve ser publicado no Traefik — quem o alcança fala pelo WhatsApp dos vendedores.</FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="evolutionApiKey">Chave de API (GLOBAL_API_KEY)</FieldLabel>
-            <Input id="evolutionApiKey" type="password" autoComplete="off" value={chave} placeholder={config.evolutionApiKeyDefinida ? `Chave gravada${config.evolutionApiKeyUltimos4 ? ` (final ${config.evolutionApiKeyUltimos4})` : ""} — preencha só para trocar` : "Cole a chave administrativa do gateway"} onChange={(event) => setChave(event.target.value)} />
-            <FieldDescription>
-              Guardada cifrada e nunca devolvida pela API. Deixe em branco para manter a atual.
-              {config.evolutionApiKeyDefinida ? <> <button type="button" className="underline underline-offset-2" onClick={() => salvar.mutate({ apagarChave: true })}>Remover chave gravada</button>.</> : null}
-            </FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="evolutionVersao">Versão homologada</FieldLabel>
-            <Input id="evolutionVersao" className="max-w-40" placeholder="0.7.2" value={form.evolutionVersao} onChange={(event) => setForm((f) => ({ ...f, evolutionVersao: event.target.value }))} />
-            <FieldDescription>Registro de qual imagem está no ar. Diferença de versão é a primeira hipótese quando um evento para de chegar.</FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="dddPadraoEvolution">DDD padrão</FieldLabel>
-            <Input id="dddPadraoEvolution" inputMode="numeric" maxLength={2} className="max-w-24" placeholder="67" value={form.dddPadrao} onChange={(event) => setForm((f) => ({ ...f, dddPadrao: event.target.value.replace(/\D/g, "") }))} />
-            <FieldDescription>Usado somente quando o telefone do cliente não possui DDD. É o mesmo campo da aba zapo-js — a configuração é uma só.</FieldDescription>
-          </Field>
-        </FieldGroup>
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="retencaoDiasEvolution">Retenção das conversas</FieldLabel>
-            <div className="flex items-center gap-2"><Input id="retencaoDiasEvolution" type="number" min={0} max={3650} className="max-w-32" value={form.retencaoDias} onChange={(event) => setForm((f) => ({ ...f, retencaoDias: Number(event.target.value) }))} /><span className="text-sm text-muted-foreground">dias</span></div>
-            <FieldDescription>Zero mantém indefinidamente. O expurgo automático ainda não foi implementado.</FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="historicoDiasEvolution">Dias de histórico a importar</FieldLabel>
-            <div className="flex items-center gap-2"><Input id="historicoDiasEvolution" type="number" min={0} max={365} className="max-w-32" value={form.historicoDias} onChange={(event) => setForm((f) => ({ ...f, historicoDias: Number(event.target.value) }))} /><span className="text-sm text-muted-foreground">dias</span></div>
-            <FieldDescription>
-              Acima de zero, a importação é pedida por instância na aba Instâncias e o gateway entrega o histórico
-              aos poucos, por evento — a contagem não aparece na hora, as conversas vão surgindo em Conversas.
-              Continua valendo a regra de sempre: só vira conversa o contato vinculado a um cliente.
-            </FieldDescription>
-          </Field>
-          {/* Política de atendimento do gateway. Vale para TODA instância da
-              empresa — vendedor, gerente, supervisor e o institucional —,
-              porque a regra é de atendimento, não do aparelho. */}
-          <Field>
-            <FieldLabel>Comportamento das instâncias</FieldLabel>
-            <FieldDescription>
-              Vale para todas as instâncias desta empresa: vendedor, gerente, supervisor e o número
-              institucional. A alteração alcança as que já existem na próxima conexão de cada uma.
-            </FieldDescription>
-            <div className="grid gap-3 pt-1 sm:grid-cols-2">
-              <label className="flex items-start gap-2 text-sm">
-                <Switch checked={form.evolutionIgnoreGroups} onCheckedChange={(v) => setForm((f) => ({ ...f, evolutionIgnoreGroups: v }))} />
-                <span>Ignorar grupos<span className="block text-xs text-muted-foreground">Grupo não faz parte do atendimento; ignorar na origem evita tráfego que a API descartaria.</span></span>
-              </label>
-              <label className="flex items-start gap-2 text-sm">
-                <Switch checked={form.evolutionIgnoreStatus} onCheckedChange={(v) => setForm((f) => ({ ...f, evolutionIgnoreStatus: v }))} />
-                <span>Ignorar status<span className="block text-xs text-muted-foreground">As publicações de status dos contatos não entram no atendimento.</span></span>
-              </label>
-              <label className="flex items-start gap-2 text-sm">
-                <Switch checked={form.evolutionReadMessages} onCheckedChange={(v) => setForm((f) => ({ ...f, evolutionReadMessages: v }))} />
-                <span>Marcar como lida automaticamente<span className="block text-xs text-muted-foreground">Ligado, manda o visto azul ao cliente sem ninguém ter lido.</span></span>
-              </label>
-              <label className="flex items-start gap-2 text-sm">
-                <Switch checked={form.evolutionAlwaysOnline} onCheckedChange={(v) => setForm((f) => ({ ...f, evolutionAlwaysOnline: v }))} />
-                <span>Sempre online<span className="block text-xs text-muted-foreground">Mostra o número como disponível o tempo todo, inclusive fora do expediente.</span></span>
-              </label>
-              <label className="flex items-start gap-2 text-sm">
-                <Switch checked={form.evolutionRejectCall} onCheckedChange={(v) => setForm((f) => ({ ...f, evolutionRejectCall: v }))} />
-                <span>Recusar chamadas<span className="block text-xs text-muted-foreground">O número não atende ligação: a plataforma é de mensagem.</span></span>
-              </label>
-            </div>
-          </Field>
-          {/* Só com a recusa ligada: um texto de resposta a chamadas que não
-              são recusadas não vai a lugar nenhum. */}
-          {form.evolutionRejectCall && (
-            <Field>
-              <FieldLabel htmlFor="evolutionMsgRejectCall">Resposta ao recusar uma chamada</FieldLabel>
-              <Input id="evolutionMsgRejectCall" maxLength={500} placeholder="Ex.: Não atendemos por chamada. Me escreva por aqui que eu respondo." value={form.evolutionMsgRejectCall} onChange={(event) => setForm((f) => ({ ...f, evolutionMsgRejectCall: event.target.value }))} />
-              <FieldDescription>Em branco, a chamada é recusada sem resposta nenhuma.</FieldDescription>
-            </Field>
-          )}
-          <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 text-sm text-amber-900 dark:text-amber-200">
-            <div className="flex gap-2 font-medium"><TriangleAlert className="mt-0.5 size-4 shrink-0" /> Integração não oficial</div>
-            {/* O gateway muda quem mantém a sessão, não o fato de o pareamento
-                ser o mesmo do WhatsApp Web. O risco para o número é idêntico. */}
-            <p className="mt-1 pl-6 text-xs opacity-85">{WHATSAPP_AVISO_NAO_OFICIAL} Trocar o worker pelo gateway não muda esse risco: o pareamento continua sendo o do WhatsApp Web.</p>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Fixe uma versão da imagem em produção, mantenha o gateway e o banco técnico dele só na rede interna e
-            confira o Swagger da versão instalada — nomes de rota mudam entre versões. Ver{" "}
-            <code className="rounded bg-muted px-1">docs/whatsapp/integracao-evolution-go.md</code>.
-          </p>
-        </FieldGroup>
-      </CardContent>
-      <CardFooter className="justify-between gap-3 border-t">
-        <AvisoTroca config={config} alvo="evolution_go" />
-        <Button onClick={() => salvar.mutate({})} disabled={salvar.isPending}>{salvar.isPending ? "Salvando..." : config.transporte === "evolution_go" ? "Salvar Evolution GO" : "Salvar e usar Evolution GO"}</Button>
-      </CardFooter>
-    </Card>
-  );
-}
-
-/** Gera um token legível (sem caracteres que quebrem query string) para o handshake do webhook. */
-function gerarVerifyToken(): string {
-  return crypto.randomUUID().replace(/-/g, "");
-}
-
-function CloudApiConfig({ config }: { config: WhatsappConfig }) {
-  const queryClient = useQueryClient();
-  const { user } = useAuthStore();
-  const [form, setForm] = useState({
-    ativo: config.ativo,
-    cloudApiPhoneNumberId: config.cloudApiPhoneNumberId ?? "",
-    cloudApiBusinessAccountId: config.cloudApiBusinessAccountId ?? "",
-    cloudApiWebhookVerifyToken: config.cloudApiWebhookVerifyToken ?? "",
-    retencaoDias: config.retencaoDias,
-    dddPadrao: config.dddPadrao ?? "",
-  });
-  // Os dois nunca vêm da API — vazio significa "não mexi", igual à chave da
-  // Evolution GO.
-  const [accessToken, setAccessToken] = useState("");
-  const [appSecret, setAppSecret] = useState("");
-
-  const webhookUrl = user
-    ? `${API_ORIGIN}/api/v1/whatsapp/cloud-api/webhook/${user.empresaAtivaId}`
-    : "";
-
-  const salvar = useMutation({
-    mutationFn: (opcoes: { apagarAccessToken?: boolean; apagarAppSecret?: boolean } = {}) =>
-      apiFetch<WhatsappConfig>("/whatsapp/config", {
-        method: "PUT",
-        body: {
-          ...form,
-          transporte: "cloud_api",
-          cloudApiPhoneNumberId: form.cloudApiPhoneNumberId.trim() || null,
-          cloudApiBusinessAccountId: form.cloudApiBusinessAccountId.trim() || null,
-          cloudApiWebhookVerifyToken: form.cloudApiWebhookVerifyToken.trim() || null,
-          dddPadrao: form.dddPadrao.trim() || null,
-          ...(opcoes.apagarAccessToken
-            ? { cloudApiAccessToken: "" }
-            : accessToken.trim()
-              ? { cloudApiAccessToken: accessToken.trim() }
-              : {}),
-          ...(opcoes.apagarAppSecret
-            ? { cloudApiAppSecret: "" }
-            : appSecret.trim()
-              ? { cloudApiAppSecret: appSecret.trim() }
-              : {}),
-        },
-      }),
-    onSuccess: () => {
-      setAccessToken("");
-      setAppSecret("");
-      void queryClient.invalidateQueries({ queryKey: ["whatsapp-config"] });
-      void queryClient.invalidateQueries({ queryKey: ["whatsapp", "integracao"] });
-      toast.success("Configuração da API Oficial salva");
-    },
-    onError: (error) => toast.error(mensagemErro(error, "Erro ao salvar")),
-  });
-
-  const templatesQuery = useQuery({
-    queryKey: ["whatsapp-templates"],
-    queryFn: () => apiFetch<WhatsappTemplate[]>("/whatsapp/config/templates"),
-  });
-  const sincronizarTemplates = useMutation({
-    mutationFn: () =>
-      apiFetch<WhatsappTemplate[]>("/whatsapp/config/templates/sincronizar", {
-        method: "POST",
-      }),
-    onSuccess: (templates) => {
-      queryClient.setQueryData(["whatsapp-templates"], templates);
-      toast.success(`${templates.length} template(s) sincronizado(s)`);
-    },
-    onError: (error) => toast.error(mensagemErro(error, "Falha ao sincronizar templates")),
-  });
-
-  return (
-    <div className="space-y-5">
-      <Card>
-        <CardHeader className="border-b">
-          <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2"><Cloud className="size-4" /> WhatsApp Cloud API (Meta)</CardTitle>
-              <p className="mt-1 text-sm text-muted-foreground">Canal oficial — sem pareamento por QR, sem risco de banimento por automação.</p>
-            </div>
-            <label className="flex items-center gap-2 text-sm font-medium"><Switch checked={form.ativo} onCheckedChange={(ativo) => setForm((f) => ({ ...f, ativo }))} />Ativo</label>
-          </div>
-        </CardHeader>
-        <CardContent className="grid gap-6 pt-6 lg:grid-cols-2">
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="cloudApiPhoneNumberId">Phone Number ID</FieldLabel>
-              <Input id="cloudApiPhoneNumberId" value={form.cloudApiPhoneNumberId} onChange={(event) => setForm((f) => ({ ...f, cloudApiPhoneNumberId: event.target.value }))} />
-              <FieldDescription>Do painel do Business Manager — Configuração da API do WhatsApp.</FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="cloudApiBusinessAccountId">Business Account ID</FieldLabel>
-              <Input id="cloudApiBusinessAccountId" value={form.cloudApiBusinessAccountId} onChange={(event) => setForm((f) => ({ ...f, cloudApiBusinessAccountId: event.target.value }))} />
-              <FieldDescription>Usado para buscar os templates aprovados.</FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="cloudApiAccessToken">Token de acesso</FieldLabel>
-              <Input id="cloudApiAccessToken" type="password" autoComplete="off" value={accessToken} placeholder={config.cloudApiAccessTokenDefinida ? "Token gravado — preencha só para trocar" : "Token de acesso permanente"} onChange={(event) => setAccessToken(event.target.value)} />
-              <FieldDescription>
-                Guardado cifrado e nunca devolvido pela API. Deixe em branco para manter o atual.
-                {config.cloudApiAccessTokenDefinida ? <> <button type="button" className="underline underline-offset-2" onClick={() => salvar.mutate({ apagarAccessToken: true })}>Remover token gravado</button>.</> : null}
-              </FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="cloudApiAppSecret">App Secret</FieldLabel>
-              <Input id="cloudApiAppSecret" type="password" autoComplete="off" value={appSecret} placeholder={config.cloudApiAppSecretDefinida ? "App Secret gravado — preencha só para trocar" : "Assina o webhook"} onChange={(event) => setAppSecret(event.target.value)} />
-              <FieldDescription>
-                Assina os eventos do webhook (HMAC-SHA256). Nunca devolvido pela API.
-                {config.cloudApiAppSecretDefinida ? <> <button type="button" className="underline underline-offset-2" onClick={() => salvar.mutate({ apagarAppSecret: true })}>Remover App Secret gravado</button>.</> : null}
-              </FieldDescription>
-            </Field>
-          </FieldGroup>
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="webhookUrl">URL do webhook</FieldLabel>
-              <div className="flex gap-2">
-                <Input id="webhookUrl" readOnly value={webhookUrl} className="font-mono text-xs" />
-                <Button type="button" variant="outline" size="sm" onClick={() => { void navigator.clipboard.writeText(webhookUrl); toast.success("URL copiada"); }}>Copiar</Button>
-              </div>
-              <FieldDescription>Cole no painel da Meta (Configuração do WhatsApp &gt; Webhooks).</FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="cloudApiWebhookVerifyToken">Webhook Verify Token</FieldLabel>
-              <div className="flex gap-2">
-                <Input id="cloudApiWebhookVerifyToken" value={form.cloudApiWebhookVerifyToken} onChange={(event) => setForm((f) => ({ ...f, cloudApiWebhookVerifyToken: event.target.value }))} />
-                <Button type="button" variant="outline" size="sm" onClick={() => setForm((f) => ({ ...f, cloudApiWebhookVerifyToken: gerarVerifyToken() }))}>Gerar</Button>
-              </div>
-              <FieldDescription>Não é segredo de tráfego — só confere o handshake de verificação. Cole o mesmo valor no painel da Meta.</FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="dddPadraoCloudApi">DDD padrão</FieldLabel>
-              <Input id="dddPadraoCloudApi" inputMode="numeric" maxLength={2} className="max-w-24" placeholder="67" value={form.dddPadrao} onChange={(event) => setForm((f) => ({ ...f, dddPadrao: event.target.value.replace(/\D/g, "") }))} />
-              <FieldDescription>Mesmo campo das outras abas — a configuração é uma só.</FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="retencaoDiasCloudApi">Retenção das conversas</FieldLabel>
-              <div className="flex items-center gap-2"><Input id="retencaoDiasCloudApi" type="number" min={0} max={3650} className="max-w-32" value={form.retencaoDias} onChange={(event) => setForm((f) => ({ ...f, retencaoDias: Number(event.target.value) }))} /><span className="text-sm text-muted-foreground">dias</span></div>
-              <FieldDescription>Zero mantém indefinidamente.</FieldDescription>
-            </Field>
-          </FieldGroup>
-        </CardContent>
-        <CardFooter className="justify-between gap-3 border-t">
-          <AvisoTroca config={config} alvo="cloud_api" />
-          <Button onClick={() => salvar.mutate({})} disabled={salvar.isPending}>{salvar.isPending ? "Salvando..." : config.transporte === "cloud_api" ? "Salvar API Oficial" : "Salvar e usar API Oficial"}</Button>
-        </CardFooter>
-      </Card>
-
-      <Card>
-        <CardHeader className="border-b">
-          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div><CardTitle>Templates</CardTitle><p className="mt-1 text-sm text-muted-foreground">Mirror local dos templates aprovados no Business Manager — só um template <strong>Aprovado</strong> pode ser enviado.</p></div>
-            <Button variant="outline" onClick={() => sincronizarTemplates.mutate()} disabled={sincronizarTemplates.isPending}>{sincronizarTemplates.isPending ? "Sincronizando..." : "Sincronizar com a Meta"}</Button>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {templatesQuery.isLoading ? <p className="p-6 text-sm text-muted-foreground">Carregando templates...</p> : null}
-          {!templatesQuery.isLoading && (templatesQuery.data ?? []).length === 0 ? (
-            <div className="flex min-h-40 flex-col items-center justify-center p-6 text-center">
-              <p className="font-medium">Nenhum template sincronizado</p>
-              <p className="mt-1 text-sm text-muted-foreground">Conecte o número institucional e clique em &quot;Sincronizar com a Meta&quot;.</p>
-            </div>
-          ) : null}
-          {(templatesQuery.data ?? []).length > 0 ? (
-            <Table>
-              <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Idioma</TableHead><TableHead>Categoria</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
-              <TableBody>
-                {(templatesQuery.data ?? []).map((t) => (
-                  <TableRow key={t.id}>
-                    <TableCell className="font-medium">{t.nome}</TableCell>
-                    <TableCell>{t.idioma}</TableCell>
-                    <TableCell>{t.categoria}</TableCell>
-                    <TableCell><Badge variant={t.status === "APPROVED" ? "success" : t.status === "REJECTED" || t.status === "DISABLED" ? "destructive" : "secondary"}>{t.status}</Badge></TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : null}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
 function Instancias({ config }: { config: WhatsappConfig }) {
   const queryClient = useQueryClient();
   const [remover, setRemover] = useState<WhatsappSessao | null>(null);
@@ -723,7 +582,6 @@ function Instancias({ config }: { config: WhatsappConfig }) {
     onSuccess: (resultado) => {
       setLimpar(null);
       atualizar();
-      // Também some do Atendimento: o vendedor pode estar com a tela aberta.
       void queryClient.invalidateQueries({ queryKey: ["whatsapp-conversas"] });
       toast.success(resultado.conversas === 0 ? "Esta instância já não tinha conversas" : `${resultado.conversas} conversa(s) e ${resultado.mensagens} mensagem(ns) apagadas`);
     },
@@ -732,87 +590,120 @@ function Instancias({ config }: { config: WhatsappConfig }) {
   const apagarInstancia = useMutation({
     mutationFn: (id: string) => apiFetch(`/whatsapp/config/sessoes/${id}/instancia`, { method: "DELETE" }),
     onSuccess: () => { setApagar(null); atualizar(); toast.success("Instância excluída"); },
-    // A recusa por histórico existente vem da API com o número de conversas —
-    // é a mensagem que diz o que fazer, então não pode virar texto genérico.
     onError: (error) => toast.error(mensagemErro(error, "Falha ao excluir")),
   });
   const importar = useMutation({
     mutationFn: (sessao: WhatsappSessao) => apiFetch<{ dias: number; encontradas: number; conversas: number }>(`/whatsapp/config/sessoes/${sessao.id}/historico`, { method: "POST" }),
-    onSuccess: (r, sessao) => {
+    onSuccess: (r) => {
       atualizar();
-      // A Evolution GO só dispara a sincronização e não sabe o tamanho do
-      // trabalho — o material chega depois, por evento. Zero ali não é "nada
-      // encontrado", e dizer isso seria mentir para quem acabou de pedir.
-      if (sessao.transporte === "evolution_go") {
-        toast.success(`Sincronização dos últimos ${r.dias} dias pedida ao gateway. As conversas aparecem em Conversas conforme chegam.`);
-        return;
-      }
-      toast.success(r.encontradas === 0 ? `Nada encontrado nos últimos ${r.dias} dias no aparelho` : `Importando ${r.encontradas} mensagem(ns) de ${r.conversas} conversa(s). Elas aparecem em Conversas conforme entram.`);
+      toast.success(`Sincronização dos últimos ${r.dias} dias pedida ao gateway. As conversas aparecem em Conversas conforme chegam.`);
     },
     onError: (error) => toast.error(mensagemErro(error, "Falha ao importar histórico")),
   });
 
-  // Vale para `zapo` e `evolution_go`: os dois pareiam o WhatsApp Web ao
-  // aparelho do vendedor, e o risco para o número é o mesmo. O transporte de
-  // cada instância aparece na coluna Provedor. Some quando a empresa inteira
-  // estiver na API oficial.
-  const alguemNaoOficial = data.some((s) => s.transporte !== "cloud_api");
-
   return (
     <>
-      {alguemNaoOficial ? (
-        <div className="mb-4 flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
-          <TriangleAlert className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-          <div className="space-y-1 text-xs">
-            <p className="font-medium text-amber-700 dark:text-amber-400">
-              API não oficial ({WHATSAPP_TRANSPORTE_ROTULO[config.transporte]})
-            </p>
-            <p className="text-muted-foreground">{WHATSAPP_AVISO_NAO_OFICIAL}</p>
-          </div>
-        </div>
-      ) : null}
-
       <Card>
-        <CardHeader className="border-b"><div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"><div><CardTitle>Instâncias dos vendedores</CardTitle><p className="mt-1 text-sm text-muted-foreground">Estado atualizado a cada 10 segundos. A primeira conexão é iniciada pelo vendedor em Conversas.</p></div><Badge variant="outline">{data.length} {data.length === 1 ? "instância" : "instâncias"}</Badge></div></CardHeader>
+        <CardHeader className="border-b">
+          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle>Instâncias dos vendedores</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Estado atualizado a cada 10 segundos. A primeira conexão é iniciada pelo vendedor em Conversas.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={atualizar}>
+                <RefreshCw className="size-4" /> Atualizar
+              </Button>
+              <Badge variant="outline">{data.length} {data.length === 1 ? "instância" : "instâncias"}</Badge>
+            </div>
+          </div>
+        </CardHeader>
         <CardContent className="p-0">
           {isLoading ? <p className="p-6 text-sm text-muted-foreground">Carregando instâncias...</p> : null}
-          {!isLoading && data.length === 0 ? <div className="flex min-h-52 flex-col items-center justify-center p-6 text-center"><Smartphone className="size-8 text-muted-foreground" /><p className="mt-3 font-medium">Nenhuma instância criada</p><p className="mt-1 text-sm text-muted-foreground">O vendedor deve abrir Comercial → Conversas e iniciar o pareamento.</p></div> : null}
+          {!isLoading && data.length === 0 ? (
+            <div className="flex min-h-52 flex-col items-center justify-center p-6 text-center">
+              <Smartphone className="size-8 text-muted-foreground" />
+              <p className="mt-3 font-medium">Nenhuma instância criada</p>
+              <p className="mt-1 text-sm text-muted-foreground">O vendedor deve abrir Comercial → Conversas e iniciar o pareamento.</p>
+            </div>
+          ) : null}
           {data.length > 0 ? (
             <Table>
-              <TableHeader><TableRow><TableHead>Vendedor</TableHead><TableHead>Número</TableHead><TableHead>Provedor</TableHead><TableHead>Estado</TableHead><TableHead>Última conexão</TableHead><TableHead className="w-12" /></TableRow></TableHeader>
-              <TableBody>{data.map((sessao) => (
-                <TableRow key={sessao.id}>
-                  <TableCell className="font-medium">{sessao.vendedorNome}</TableCell><TableCell>{sessao.numero ?? "—"}</TableCell><TableCell>{WHATSAPP_TRANSPORTE_ROTULO[sessao.transporte]}</TableCell>
-                  <TableCell><Badge variant={STATUS[sessao.status].variant}>{STATUS[sessao.status].rotulo}</Badge></TableCell><TableCell>{formatarData(sessao.ultimaConexao)}</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild><Button size="icon-sm" variant="ghost" aria-label={`Ações de ${sessao.vendedorNome}`}><MoreHorizontal /></Button></DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onSelect={() => reconectar.mutate(sessao.id)} disabled={reconectar.isPending}><RefreshCw /> {sessao.status === "desconectada" ? "Conectar" : "Reconectar"}</DropdownMenuItem>
-                        {/* Importar exige aparelho ligado (o material vem de
-                            lá) e dias configurados — sem os dois o item fica
-                            fora, em vez de oferecer algo que responde erro. */}
-                        {config.historicoDias > 0 && sessao.status === "conectada" ? (
-                          <DropdownMenuItem onSelect={() => importar.mutate(sessao)} disabled={importar.isPending}><History /> Importar histórico ({config.historicoDias} dias)</DropdownMenuItem>
-                        ) : null}
-                        <DropdownMenuItem variant="destructive" onSelect={() => setRemover(sessao)}><Trash2 /> Remover conexão</DropdownMenuItem>
-                        <DropdownMenuItem variant="destructive" onSelect={() => setLimpar(sessao)}><Eraser /> Limpar conversas</DropdownMenuItem>
-                        {/* Excluir só a desconectada: é a regra da API, e um
-                            item que sempre responde 400 é pior que nenhum. */}
-                        {sessao.status === "desconectada" ? (
-                          <DropdownMenuItem variant="destructive" onSelect={() => setApagar(sessao)}><Trash2 /> Excluir instância</DropdownMenuItem>
-                        ) : null}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Vendedor</TableHead>
+                  <TableHead>Número</TableHead>
+                  <TableHead>Gateway</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Última conexão</TableHead>
+                  <TableHead className="w-12" />
                 </TableRow>
-              ))}</TableBody>
+              </TableHeader>
+              <TableBody>
+                {data.map((sessao) => (
+                  <TableRow key={sessao.id}>
+                    <TableCell className="font-medium">{sessao.vendedorNome}</TableCell>
+                    <TableCell>{sessao.numero ?? "—"}</TableCell>
+                    <TableCell>Evolution GO</TableCell>
+                    <TableCell>
+                      <Badge variant={STATUS[sessao.status].variant}>{STATUS[sessao.status].rotulo}</Badge>
+                    </TableCell>
+                    <TableCell>{formatarData(sessao.ultimaConexao)}</TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon-sm" variant="ghost" aria-label={`Ações de ${sessao.vendedorNome}`}>
+                            <MoreHorizontal />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onSelect={() => reconectar.mutate(sessao.id)} disabled={reconectar.isPending}>
+                            <RefreshCw /> {sessao.status === "desconectada" ? "Conectar" : "Reconectar"}
+                          </DropdownMenuItem>
+                          {config.historicoDias > 0 && sessao.status === "conectada" ? (
+                            <DropdownMenuItem onSelect={() => importar.mutate(sessao)} disabled={importar.isPending}>
+                              <History /> Importar histórico ({config.historicoDias} dias)
+                            </DropdownMenuItem>
+                          ) : null}
+                          <DropdownMenuItem variant="destructive" onSelect={() => setRemover(sessao)}>
+                            <Trash2 /> Remover conexão
+                          </DropdownMenuItem>
+                          <DropdownMenuItem variant="destructive" onSelect={() => setLimpar(sessao)}>
+                            <Eraser /> Limpar conversas
+                          </DropdownMenuItem>
+                          {sessao.status === "desconectada" ? (
+                            <DropdownMenuItem variant="destructive" onSelect={() => setApagar(sessao)}>
+                              <Trash2 /> Excluir instância
+                            </DropdownMenuItem>
+                          ) : null}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
             </Table>
           ) : null}
         </CardContent>
       </Card>
+
       <Dialog open={Boolean(remover)} onOpenChange={(open) => { if (!open) setRemover(null); }}>
-        <DialogContent><DialogHeader><DialogTitle>Remover conexão?</DialogTitle><DialogDescription>A sessão de {remover?.vendedorNome} será encerrada e marcada como desconectada. O histórico de conversas será preservado.</DialogDescription></DialogHeader><DialogFooter><DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose><Button variant="destructive" disabled={excluir.isPending} onClick={() => remover && excluir.mutate(remover.id)}>{excluir.isPending ? "Removendo..." : "Remover conexão"}</Button></DialogFooter></DialogContent>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remover conexão?</DialogTitle>
+            <DialogDescription>
+              A sessão de {remover?.vendedorNome} será encerrada e marcada como desconectada. O histórico de conversas será preservado.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
+            <Button variant="destructive" disabled={excluir.isPending} onClick={() => remover && excluir.mutate(remover.id)}>
+              {excluir.isPending ? "Removendo..." : "Remover conexão"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
 
       <Dialog open={Boolean(limpar)} onOpenChange={(open) => { if (!open) setLimpar(null); }}>
@@ -820,14 +711,14 @@ function Instancias({ config }: { config: WhatsappConfig }) {
           <DialogHeader>
             <DialogTitle>Limpar as conversas de {limpar?.vendedorNome}?</DialogTitle>
             <DialogDescription>
-              Apaga as conversas, mensagens, reações, agendamentos e ações registradas desta instância, e as
-              notificações do sino que apontavam para elas. Os contatos e o vínculo com o cadastro de clientes
-              continuam — ninguém precisa revincular nada depois. <strong>Não tem volta.</strong>
+              Apaga as conversas, mensagens, reações, agendamentos e ações registradas desta instância, e as notificações do sino que apontavam para elas. Os contatos e o vínculo com o cadastro de clientes continuam. <strong>Não tem volta.</strong>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
-            <Button variant="destructive" disabled={limparConversas.isPending} onClick={() => limpar && limparConversas.mutate(limpar.id)}>{limparConversas.isPending ? "Limpando..." : "Limpar conversas"}</Button>
+            <Button variant="destructive" disabled={limparConversas.isPending} onClick={() => limpar && limparConversas.mutate(limpar.id)}>
+              {limparConversas.isPending ? "Limpando..." : "Limpar conversas"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -837,14 +728,14 @@ function Instancias({ config }: { config: WhatsappConfig }) {
           <DialogHeader>
             <DialogTitle>Excluir a instância de {apagar?.vendedorNome}?</DialogTitle>
             <DialogDescription>
-              A linha some da lista. Só é possível com a instância desconectada e sem conversas no histórico —
-              se ainda houver conversas, limpe-as antes. O vendedor pode parear de novo depois, pela tela de
-              Atendimento.
+              A linha some da lista. Só é possível com a instância desconectada e sem conversas no histórico. O vendedor pode parear de novo depois, pela tela de Atendimento.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
-            <Button variant="destructive" disabled={apagarInstancia.isPending} onClick={() => apagar && apagarInstancia.mutate(apagar.id)}>{apagarInstancia.isPending ? "Excluindo..." : "Excluir instância"}</Button>
+            <Button variant="destructive" disabled={apagarInstancia.isPending} onClick={() => apagar && apagarInstancia.mutate(apagar.id)}>
+              {apagarInstancia.isPending ? "Excluindo..." : "Excluir instância"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

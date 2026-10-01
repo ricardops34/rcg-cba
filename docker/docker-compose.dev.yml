@@ -13,7 +13,6 @@ services:
       - api_node_modules:/app/apps/api/node_modules
       - web_node_modules:/app/apps/web/node_modules
       - contracts_node_modules:/app/packages/contracts/node_modules
-      - whatsapp_worker_node_modules:/app/apps/whatsapp-worker/node_modules
 
   db-init:
     build:
@@ -71,10 +70,6 @@ services:
       SMTP_PORT: 1025
       SMTP_SECURE: "false"
       MAIL_FROM: "Plataforma Comercial <no-reply@plataforma.local>"
-      # Segredo compartilhado com o whatsapp-worker (mesmo valor nos dois
-      # serviços). Sem ele, o worker recusa subir — de propósito: quem alcança
-      # o worker fala pelo WhatsApp dos vendedores.
-      WHATSAPP_WORKER_TOKEN: ${WHATSAPP_WORKER_TOKEN:-desenvolvimento-local-worker}
       # Cifra os segredos do WhatsApp (chave da Evolution GO, token de cada
       # instância, segredo do webhook). 32 bytes em base64, chave própria — a
       # do agente de IA tem outro dono e outro ciclo de rotação.
@@ -100,37 +95,6 @@ services:
       mailhog:
         condition: service_started
 
-  # Sessões de WhatsApp. Réplica única por requisito, não por capacidade: duas
-  # instâncias da mesma sessão fazem o WhatsApp derrubar uma delas.
-  whatsapp-worker:
-    build:
-      context: ..
-      dockerfile: docker/whatsapp-worker.Dockerfile.dev
-    working_dir: /app
-    environment:
-      # Role e schema próprios do store de sessão (migration
-      # 20260903150000_whatsapp_store_role). A biblioteca roda as migrations
-      # dela a cada conexão, então precisa de DDL — mas só dentro do schema
-      # `whatsapp`. Este role não tem acesso nenhum às tabelas de negócio.
-      DATABASE_URL: postgresql://whatsapp_store:whatsapp_store_dev_only@postgres:5432/plataforma_comercial?schema=whatsapp
-      WHATSAPP_WORKER_TOKEN: ${WHATSAPP_WORKER_TOKEN:-desenvolvimento-local-worker}
-      API_URL: http://api:3001
-      PORT: 3100
-      # `debug` mostra as falhas de decifrar addon (reação, voto de enquete),
-      # que a biblioteca registra só nesse nível — em `info` o sintoma é a
-      # reação sumir sem deixar rastro. Ruidoso: use só ao investigar.
-      WHATSAPP_LOG_NIVEL: ${WHATSAPP_LOG_NIVEL:-info}
-    command: pnpm --filter @plataforma/whatsapp-worker start:dev
-    ports:
-      - "127.0.0.1:3100:3100"
-    volumes:
-      - ..:/app
-      - node_modules:/app/node_modules
-      - whatsapp_worker_node_modules:/app/apps/whatsapp-worker/node_modules
-    depends_on:
-      db-init:
-        condition: service_completed_successfully
-
   # Cria o banco técnico da Evolution GO.
   #
   # Separado do `plataforma_comercial` de propósito: o gateway roda as próprias
@@ -153,11 +117,10 @@ services:
       postgres:
         condition: service_healthy
 
-  # Gateway Evolution GO — o segundo transporte de WhatsApp.
+  # Gateway Evolution GO — transporte único do WhatsApp (Oficial Meta e Não Oficial Baileys).
   #
-  # Ao contrário do `whatsapp-worker`, ele **não** é código deste repositório:
-  # é um serviço de terceiro que mantém as sessões, o QR e a reconexão no banco
-  # dele. A API fala com ele por HTTP e recebe os eventos por webhook.
+  # Mantém as sessões, o QR e a reconexão no banco dele. A API fala com ele
+  # por HTTP e recebe os eventos por webhook.
   #
   # Imagem `evoapicloud/evolution-go` (Docker Hub), tag fixa mesmo em dev: o
   # contrato do webhook e os nomes de rota mudam entre versões, e um dev que
@@ -318,5 +281,4 @@ volumes:
   api_node_modules:
   web_node_modules:
   contracts_node_modules:
-  whatsapp_worker_node_modules:
   api_uploads:

@@ -1,7 +1,13 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import type { WhatsappTransporte } from '@plataforma/contracts';
-import { EvolutionGoClient, lista, objeto, texto } from './evolution-go.client';
+import {
+  EvolutionGoClient,
+  EvolutionGoErroHttp,
+  lista,
+  objeto,
+  texto,
+} from './evolution-go.client';
 import type {
   ArquivoParaEnviar,
   ContatoAparelho,
@@ -228,20 +234,65 @@ export class EvolutionGoProvider implements WhatsappProvider {
       // **serviço** (`DATABASE_SAVE_MESSAGES`, `WEBHOOK_FILES`), fixada no
       // stack. Se o gateway subir sem elas, a regra de privacidade depende da
       // API descartar o que chegar a mais.
-      const criada = await this.http.chamar<unknown>(url, '/instance/create', {
-        metodo: 'POST',
-        credencial: this.chaveAdmin(ctx),
-        corpo: {
-          name: nome,
-          token,
-          // Eram fixos aqui até 2026-09-21. Agora vêm da configuração da
-          // empresa (Administração > WhatsApp > Evolution GO), com os mesmos
-          // valores como padrão — ver `configuracoesAvancadas`.
-          advancedSettings: this.configuracoesAvancadas(ctx),
-        },
-      });
-      instanciaId =
-        texto(criada, 'instanceId', 'id', 'instance_id', 'instance.id') ?? null;
+      try {
+        const criada = await this.http.chamar<unknown>(url, '/instance/create', {
+          metodo: 'POST',
+          credencial: this.chaveAdmin(ctx),
+          corpo: {
+            name: nome,
+            token,
+            // Eram fixos aqui até 2026-09-21. Agora vêm da configuração da
+            // empresa (Administração > WhatsApp > Evolution GO), com os mesmos
+            // valores como padrão — ver `configuracoesAvancadas`.
+            advancedSettings: this.configuracoesAvancadas(ctx),
+          },
+        });
+        instanciaId =
+          texto(criada, 'instanceId', 'id', 'instance_id', 'instance.id') ?? null;
+      } catch (erro) {
+        // Se a criação falhou porque a instância já existe órfã no gateway
+        // (400, 409 ou 500 com indicação de duplicidade / already exists),
+        // limpamos a instância órfã e recriamos com as credenciais limpas da sessão atual.
+        const corpo = erro instanceof EvolutionGoErroHttp ? erro.corpo.toLowerCase() : '';
+        const detalhe = erro instanceof EvolutionGoErroHttp ? (erro.detalhe ?? '').toLowerCase() : '';
+        const msg = erro instanceof Error ? erro.message.toLowerCase() : '';
+        const ehDuplicada =
+          corpo.includes('already exists') ||
+          corpo.includes('duplicate') ||
+          corpo.includes('já existe') ||
+          detalhe.includes('already exists') ||
+          msg.includes('already exists') ||
+          (erro instanceof EvolutionGoErroHttp &&
+            (erro.httpStatus === 400 || erro.httpStatus === 409 || erro.httpStatus === 500));
+
+        if (ehDuplicada) {
+          this.logger.warn(
+            `Criação da instância ${nome} falhou (${erro instanceof Error ? erro.message : String(erro)}). ` +
+              'Tentando remover eventual instância órfã no gateway e recriar...',
+          );
+          await this.http
+            .chamar(url, `/instance/delete/${encodeURIComponent(nome)}`, {
+              metodo: 'DELETE',
+              credencial: this.chaveAdmin(ctx),
+              aceitarAusente: true,
+            })
+            .catch(() => undefined);
+
+          const recriada = await this.http.chamar<unknown>(url, '/instance/create', {
+            metodo: 'POST',
+            credencial: this.chaveAdmin(ctx),
+            corpo: {
+              name: nome,
+              token,
+              advancedSettings: this.configuracoesAvancadas(ctx),
+            },
+          });
+          instanciaId =
+            texto(recriada, 'instanceId', 'id', 'instance_id', 'instance.id') ?? null;
+        } else {
+          throw erro;
+        }
+      }
     }
 
     // A política de atendimento é reaplicada a cada conexão, não só na
@@ -272,7 +323,7 @@ export class EvolutionGoProvider implements WhatsappProvider {
 
     await this.http.chamar(url, '/instance/connect', {
       metodo: 'POST',
-      credencial: this.chaveInstancia(ctx),
+      credencial: token,
       corpo: {
         webhookUrl: this.urlWebhook(ctx, webhookSegredo),
         subscribe: [...EVENTOS],

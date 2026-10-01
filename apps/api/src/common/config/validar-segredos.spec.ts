@@ -8,7 +8,6 @@ describe('validarSegredosDoAmbiente', () => {
         JWT_ACCESS_SECRET: 'desenvolvimento-local-access',
         PORTAL_JWT_ACCESS_SECRET: 'prod-portal-secret-32b-ok-12345',
         JWT_REFRESH_SECRET: 'prod-refresh-secret-32b-ok-12345',
-        WHATSAPP_WORKER_TOKEN: 'prod-worker-secret-32b-ok-12345',
       }),
     ).toThrow(/JWT_ACCESS_SECRET/);
   });

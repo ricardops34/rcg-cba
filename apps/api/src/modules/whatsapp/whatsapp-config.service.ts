@@ -84,6 +84,7 @@ export class WhatsappConfigService {
         where: { empresaId },
         data: {
           ...resto,
+          transporte: 'evolution_go',
           ...(evolutionApiKey === undefined
             ? {}
             : {

@@ -14,8 +14,6 @@ import {
 } from '../../../common/prisma/prisma.service';
 import { decifrarSeHouver } from '../whatsapp-cripto';
 import { EvolutionGoProvider } from './evolution-go.provider';
-import { ZapoProvider } from './zapo.provider';
-import { CloudApiProvider } from './cloud-api.provider';
 import type {
   ArquivoParaEnviar,
   ContatoAparelho,
@@ -28,26 +26,13 @@ import type {
 
 /**
  * Porta única do módulo para o mundo do WhatsApp.
- *
- * Antes desta camada, cada service montava à mão o caminho REST do worker
- * (`/sessoes/:id/mensagens`) e passava `config.workerUrl` adiante — o endereço
- * de um provedor específico atravessava cinco arquivos de regra de negócio.
- * Agora o resto do módulo pede "envie este texto por esta sessão" e não sabe
- * quem atende.
- *
- * **A escolha é da sessão, não da tela.** A empresa configura um transporte de
- * cada vez, mas cada sessão guarda com qual provedor foi conectada: trocar o
- * padrão da empresa não pode fazer a API falar Evolution com uma instância que
- * ainda vive no worker do zapo. O erro disso apareceria como "mensagem não
- * enviada", sem dizer por quê.
+ * Centralizada no Gateway Evolution GO, que suporta integrações Não Oficial e Oficial.
  */
 @Injectable()
 export class WhatsappProviderService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly zapo: ZapoProvider,
     private readonly evolution: EvolutionGoProvider,
-    private readonly cloudApi: CloudApiProvider,
   ) {}
 
   // ----------------------------------------------------------------------
@@ -153,15 +138,8 @@ export class WhatsappProviderService {
   }
 
   /** O provedor que atende esta sessão. */
-  provedor(ctx: ContextoSessao): WhatsappProvider {
-    if (!whatsappTransporteImplementado(ctx.transporte)) {
-      throw new BadRequestException(
-        `O transporte ${WHATSAPP_TRANSPORTE_ROTULO[ctx.transporte] ?? ctx.transporte} ` +
-          'ainda não está implementado nesta plataforma.',
-      );
-    }
-    if (ctx.transporte === 'cloud_api') return this.cloudApi;
-    return ctx.transporte === 'evolution_go' ? this.evolution : this.zapo;
+  provedor(_ctx: ContextoSessao): WhatsappProvider {
+    return this.evolution;
   }
 
   /** Atalho para quem só tem os ids em mãos. */
@@ -175,70 +153,24 @@ export class WhatsappProviderService {
   }
 
   /**
-   * Confere que a empresa configurou o que o transporte escolhido exige.
-   *
-   * Vale a conferência antecipada porque o sintoma da falta é sempre o mesmo
-   * (502 na hora de conectar) e nunca diz qual campo ficou vazio.
+   * Confere que a empresa configurou o que o Gateway Evolution GO exige.
    */
   exigirConfiguracao(
-    transporte: WhatsappTransporte,
+    _transporte: WhatsappTransporte,
     config: {
-      workerUrl: string | null;
       evolutionUrl: string | null;
       evolutionApiKeyCifrada: string | null;
-      cloudApiPhoneNumberId?: string | null;
-      cloudApiBusinessAccountId?: string | null;
-      cloudApiAccessTokenCifrada?: string | null;
-      cloudApiAppSecretCifrada?: string | null;
     },
   ): void {
-    // Primeiro o transporte, depois os campos dele. Na ordem inversa, escolher
-    // a API Oficial com o worker em branco reclamaria do endereço do worker —
-    // mandando o administrador preencher um campo que não resolveria nada.
-    if (!whatsappTransporteImplementado(transporte)) {
+    if (!config.evolutionUrl) {
       throw new BadRequestException(
-        `O transporte ${WHATSAPP_TRANSPORTE_ROTULO[transporte] ?? transporte} ` +
-          'ainda não está implementado nesta plataforma.',
+        'Informe o endereço da Evolution GO em Administração > WhatsApp > Gateway Evolution GO antes de conectar.',
       );
     }
-    if (transporte === 'zapo' && !config.workerUrl) {
+    if (!config.evolutionApiKeyCifrada) {
       throw new BadRequestException(
-        'Informe o endereço do worker em Administração > WhatsApp > zapo-js antes de conectar.',
+        'Informe a chave de API da Evolution GO em Administração > WhatsApp > Gateway Evolution GO antes de conectar.',
       );
-    }
-    if (transporte === 'evolution_go') {
-      if (!config.evolutionUrl) {
-        throw new BadRequestException(
-          'Informe o endereço da Evolution GO em Administração > WhatsApp > Evolution GO antes de conectar.',
-        );
-      }
-      if (!config.evolutionApiKeyCifrada) {
-        throw new BadRequestException(
-          'Informe a chave de API da Evolution GO em Administração > WhatsApp > Evolution GO antes de conectar.',
-        );
-      }
-    }
-    if (transporte === 'cloud_api') {
-      if (!config.cloudApiPhoneNumberId) {
-        throw new BadRequestException(
-          'Informe o Phone Number ID em Administração > WhatsApp > API Oficial antes de conectar.',
-        );
-      }
-      if (!config.cloudApiBusinessAccountId) {
-        throw new BadRequestException(
-          'Informe o Business Account ID em Administração > WhatsApp > API Oficial antes de conectar.',
-        );
-      }
-      if (!config.cloudApiAccessTokenCifrada) {
-        throw new BadRequestException(
-          'Informe o token de acesso em Administração > WhatsApp > API Oficial antes de conectar.',
-        );
-      }
-      if (!config.cloudApiAppSecretCifrada) {
-        throw new BadRequestException(
-          'Informe o App Secret em Administração > WhatsApp > API Oficial antes de conectar.',
-        );
-      }
     }
   }
 

@@ -11,24 +11,20 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { DemoService } from './demo.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { PermissionsGuard } from '../../common/guards/permissions.guard';
-import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
 import {
   CurrentUser,
   type AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
 
 /**
- * Base de demonstração de uma empresa, pelo detalhe dela em Empresas.
+ * Base de demonstração de uma empresa.
  *
- * A empresa vem na rota, e **não** é a empresa ativa da sessão: administrar o
- * cadastro de empresas é justamente olhar para outras. Quem checa o alcance é
- * `DemoService.garantirAlcance` — a RLS obedece ao id que o código mandar, e
- * portanto não substitui essa checagem.
+ * Restrito exclusivamente a Administradores da Plataforma.
  */
 @ApiTags('demo')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PlatformAdminGuard)
 @Controller('empresas/:empresaId/demo')
 export class DemoController {
   constructor(private readonly demo: DemoService) {}
@@ -45,7 +41,6 @@ export class DemoController {
   // Uma operação longa e pesada. O limite evita que dois cliques seguidos
   // abram duas transações de dez minutos sobre as mesmas tabelas.
   @Throttle({ default: { limit: 2, ttl: 300_000 } })
-  @RequirePermission('demo-dados', 'cadastrar')
   @Post('dados')
   gerar(
     @Param('empresaId') empresaId: string,
@@ -57,10 +52,8 @@ export class DemoController {
   @ApiOperation({
     summary: 'Remover os dados de demonstração',
     description:
-      'Apaga só o conjunto `DEMO-`. O cadastro feito à mão fica onde está. ' +
-      'Requer demo-dados.cadastrar.',
+      'Apaga só o conjunto `DEMO-`. O cadastro feito à mão fica onde está.',
   })
-  @RequirePermission('demo-dados', 'cadastrar')
   @Delete('dados')
   async removerDemo(
     @Param('empresaId') empresaId: string,
@@ -76,11 +69,9 @@ export class DemoController {
       'Apaga **todo** o dado de negócio da empresa — clientes, produtos, notas, títulos, ' +
       'orçamentos, CRM e conversas —, inclusive o que foi cadastrado à mão. Preserva acesso, ' +
       'configuração, credenciais (chave do agente, pareamento do WhatsApp) e a trilha de ' +
-      'auditoria. **Irreversível.** Exige `confirmacao` igual à razão social da empresa. ' +
-      'Requer demo-dados.excluir e alcance sobre a empresa.',
+      'auditoria. **Irreversível.** Exige `confirmacao` igual à razão social da empresa.',
   })
   @Throttle({ default: { limit: 2, ttl: 300_000 } })
-  @RequirePermission('demo-dados', 'excluir')
   @Delete('base')
   async limparBase(
     @Param('empresaId') empresaId: string,

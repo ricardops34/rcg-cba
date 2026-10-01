@@ -1,7 +1,9 @@
 # Plano — integração unificada de WhatsApp (`zapo-js` e Evolution GO)
 
-> Plano registrado em 2026-08-25. Este documento não representa funcionalidade
-> já implementada. O transporte operacional atual permanece `zapo`/`zapo-js`.
+> **Concluído e consolidado (2026-10-01):** A plataforma padronizou integralmente
+> no **Gateway Evolution GO** como transporte único (suportando Não Oficial via QR e
+> Oficial via Meta Cloud API). O `zapo-js`/`whatsapp-worker` e a Meta Cloud API direta
+> foram descontinuados e removidos.
 
 ## 1. Objetivo
 

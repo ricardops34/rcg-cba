@@ -1,6 +1,21 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 
 /**
+ * Exceção de resposta não-2xx da Evolution GO.
+ * Estende BadGatewayException para manter compatibilidade com filtros NestJS.
+ */
+export class EvolutionGoErroHttp extends BadGatewayException {
+  constructor(
+    public readonly httpStatus: number,
+    public readonly corpo: string,
+    public readonly detalhe?: string,
+  ) {
+    const sufixo = detalhe ? `: ${detalhe}` : '.';
+    super(`A Evolution GO recusou a operação (${httpStatus})${sufixo}`);
+  }
+}
+
+/**
  * Cliente HTTP da Evolution GO.
  *
  * Duas decisões de desenho valem explicação, porque as duas parecem
@@ -105,13 +120,19 @@ export class EvolutionGoClient {
     }
 
     if (!resposta.ok) {
-      const texto = await resposta.text().catch(() => '');
+      const corpo = await resposta.text().catch(() => '');
       this.logger.error(
-        `evolution ${metodo} ${caminho}: ${resposta.status} ${texto.slice(0, 500)}`,
+        `evolution ${metodo} ${caminho}: ${resposta.status} ${corpo.slice(0, 500)}`,
       );
-      throw new BadGatewayException(
-        `A Evolution GO recusou a operação (${resposta.status}).`,
-      );
+      let detalhe: string | undefined;
+      try {
+        const json = JSON.parse(corpo);
+        if (typeof json?.error === 'string') detalhe = json.error;
+        else if (typeof json?.message === 'string') detalhe = json.message;
+      } catch {
+        if (corpo.length > 0 && corpo.length < 150) detalhe = corpo.trim();
+      }
+      throw new EvolutionGoErroHttp(resposta.status, corpo, detalhe);
     }
 
     const tamanho = Number(resposta.headers.get('content-length') ?? 0);

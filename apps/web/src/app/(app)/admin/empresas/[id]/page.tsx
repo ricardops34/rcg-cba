@@ -5,7 +5,6 @@ import { useQuery } from "@tanstack/react-query";
 import type { Empresa } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
 import { EmpresaForm } from "@/components/crud/empresa-form";
-import { DemoDadosEmpresa } from "@/components/empresa/demo-dados-empresa";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function EditarEmpresaPage() {
@@ -32,9 +31,6 @@ export default function EditarEmpresaPage() {
   return (
     <div className="space-y-6">
       <EmpresaForm empresa={empresa} />
-      {/* Popular e limpar a base desta empresa. O bloco some inteiro para quem
-          não tem `demo-dados.*` — ver o componente. */}
-      <DemoDadosEmpresa empresaId={empresa.id} razaoSocial={empresa.razaoSocial} />
     </div>
   );
 }

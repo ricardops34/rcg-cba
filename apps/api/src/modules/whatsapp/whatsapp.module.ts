@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { WhatsappController } from './whatsapp.controller';
-import { WhatsappInternoController } from './whatsapp-interno.controller';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappTriagemService } from './triagem/whatsapp-triagem.service';
 import { WhatsappInatividadeService } from './triagem/whatsapp-inatividade.service';
@@ -13,15 +12,10 @@ import { WhatsappAgendaService } from './whatsapp-agenda.service';
 import { WhatsappAcoesService } from './whatsapp-acoes.service';
 import { WhatsappAgendamentoService } from './whatsapp-agendamento.service';
 import { WhatsappRecadoService } from './whatsapp-recado.service';
-import { WhatsappWorkerClient } from './whatsapp-worker.client';
 import { WhatsappEvolutionController } from './whatsapp-evolution.controller';
 import { WhatsappProviderService } from './providers/whatsapp-provider.service';
-import { ZapoProvider } from './providers/zapo.provider';
 import { EvolutionGoProvider } from './providers/evolution-go.provider';
 import { EvolutionGoClient } from './providers/evolution-go.client';
-import { CloudApiProvider } from './providers/cloud-api.provider';
-import { CloudApiClient } from './providers/cloud-api.client';
-import { WhatsappCloudApiController } from './whatsapp-cloud-api.controller';
 import { TitulosReceberModule } from '../titulos-receber/titulos-receber.module';
 import { NotasSaidaModule } from '../notas-saida/notas-saida.module';
 import { AtividadesModule } from '../atividades/atividades.module';
@@ -49,14 +43,8 @@ import { WhatsappRespostasRapidasService } from './whatsapp-respostas-rapidas.se
   ],
   controllers: [
     WhatsappController,
-    WhatsappInternoController,
-    // Callback da Evolution GO. Fica separado do interno do worker porque a
-    // autenticação é outra: aqui o segredo é por instância, não um token único
-    // compartilhado por todo o serviço.
+    // Callback da Evolution GO.
     WhatsappEvolutionController,
-    // Callback da WhatsApp Cloud API (Meta) — handshake de verificação +
-    // eventos assinados por HMAC com o App Secret da empresa.
-    WhatsappCloudApiController,
   ],
   providers: [
     WhatsappConfigService,
@@ -78,15 +66,10 @@ import { WhatsappRespostasRapidasService } from './whatsapp-respostas-rapidas.se
     // de pareamento.
     WhatsappFuncionarioService,
     TriagemFuncionarioToolsService,
-    // Transporte: o roteador e as duas implementações. Nada fora de
-    // `providers/` conhece worker ou gateway — ver `whatsapp-provider.ts`.
+    // Gateway Evolution GO como transporte unificado
     WhatsappProviderService,
-    ZapoProvider,
     EvolutionGoProvider,
-    CloudApiProvider,
-    WhatsappWorkerClient,
     EvolutionGoClient,
-    CloudApiClient,
   ],
   // Exportado para o feed de notificações somar as não lidas.
   exports: [

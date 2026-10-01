@@ -1,6 +1,10 @@
-# Arquitetura e fluxos do `zapo-js`
+# Arquitetura e fluxos do `zapo-js` (Legado — Descontinuado)
 
-## 1. Fronteiras de segurança
+> **Documentação histórica:** A integração direta com `zapo-js` e o serviço
+> `apps/whatsapp-worker` foram descontinuados em 2026-10-01. A plataforma migrou
+> exclusivamente para o **Gateway Evolution GO** (que suporta tanto WhatsApp Web via
+> Baileys/QR quanto a Cloud API da Meta). Este documento é mantido apenas como
+> referência histórica.
 
 Existem três fronteiras distintas:
 

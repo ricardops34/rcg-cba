@@ -15,24 +15,21 @@ import { z } from "zod";
  */
 
 export const WHATSAPP_TRANSPORTES = [
-  "zapo",
   "evolution_go",
+  "zapo",
   "cloud_api",
 ] as const;
 export const whatsappTransporteSchema = z.enum(WHATSAPP_TRANSPORTES);
 export type WhatsappTransporte = z.infer<typeof whatsappTransporteSchema>;
 
 /**
- * Transportes que a plataforma sabe de fato operar.
+ * Transportes que a plataforma opera.
  *
- * Os três do enum têm adaptador. `cloud_api`, diferente dos outros dois, só
- * entra na sessão institucional (`tipo: 'empresa'`) — não tem pareamento por
- * QR, então não há o que oferecer na tela de conexão do vendedor.
+ * O gateway padrão e único é a Evolution GO, que suporta tanto conexões Não Oficiais
+ * (WhatsApp Web via Baileys) quanto Oficiais (WhatsApp Cloud API da Meta).
  */
 export const WHATSAPP_TRANSPORTES_IMPLEMENTADOS = [
-  "zapo",
   "evolution_go",
-  "cloud_api",
 ] as const;
 export type WhatsappTransporteImplementado =
   (typeof WHATSAPP_TRANSPORTES_IMPLEMENTADOS)[number];
@@ -45,11 +42,11 @@ export function whatsappTransporteImplementado(
   );
 }
 
-/** Rótulo do provedor para telas e mensagens de erro. */
+/** Rótulo do provedor para telas e mensagens. */
 export const WHATSAPP_TRANSPORTE_ROTULO: Record<WhatsappTransporte, string> = {
-  zapo: "zapo-js",
   evolution_go: "Evolution GO",
-  cloud_api: "API Oficial da Meta",
+  zapo: "zapo-js (legado)",
+  cloud_api: "API Oficial da Meta (legado)",
 };
 
 export const WHATSAPP_SESSAO_STATUS = [
@@ -123,8 +120,8 @@ export const whatsappConfigSchema = z.object({
   empresaId: z.string().uuid(),
   ativo: z.boolean(),
   transporte: whatsappTransporteSchema,
-  workerUrl: z.string().nullable(),
-  /** Endereço interno da Evolution GO. Usado só quando o transporte é dela. */
+  workerUrl: z.string().nullable().optional(),
+  /** Endereço interno da Evolution GO. */
   evolutionUrl: z.string().nullable(),
   /**
    * A chave administrativa **nunca** é devolvida: só o rastro de que existe.
@@ -158,21 +155,12 @@ export const whatsappConfigSchema = z.object({
   /** Só sai quando `evolutionRejectCall` está ligado. */
   evolutionMsgRejectCall: z.string().nullable(),
 
-  /** Endereço do número no Business Manager da Meta. Usado só na Cloud API. */
-  cloudApiPhoneNumberId: z.string().nullable(),
-  cloudApiBusinessAccountId: z.string().nullable(),
-  /**
-   * Token de acesso e App Secret **nunca** são devolvidos — só o rastro de
-   * que existem. Mesmo tratamento de `evolutionApiKeyDefinida`.
-   */
-  cloudApiAccessTokenDefinida: z.boolean(),
-  cloudApiAppSecretDefinida: z.boolean(),
-  /**
-   * Não é segredo de tráfego (só confere o handshake do webhook) — por isso,
-   * ao contrário dos dois campos acima, volta em claro: o administrador
-   * precisa relê-lo para colar no painel da Meta.
-   */
-  cloudApiWebhookVerifyToken: z.string().nullable(),
+  /** Campos legados mantidos para compatibilidade de leitura */
+  cloudApiPhoneNumberId: z.string().nullable().optional(),
+  cloudApiBusinessAccountId: z.string().nullable().optional(),
+  cloudApiAccessTokenDefinida: z.boolean().optional(),
+  cloudApiAppSecretDefinida: z.boolean().optional(),
+  cloudApiWebhookVerifyToken: z.string().nullable().optional(),
 
   retencaoDias: z.number().int(),
   historicoDias: z
