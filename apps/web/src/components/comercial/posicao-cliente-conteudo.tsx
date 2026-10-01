@@ -26,6 +26,7 @@ import {
   SegundaViaTitulo,
   useEnvioPorEmail,
   useEnvioPorSms,
+  useSmsDisponivel,
 } from "@/components/comercial/segunda-via";
 import { HistoricoAtendimento } from "@/components/comercial/historico-atendimento";
 import { ArrowLeft, Loader2, Mail, MessageCircle, MessageSquareText, Search } from "lucide-react";
@@ -401,6 +402,7 @@ export function PosicaoClienteConteudo({
   // e-mail do cadastro. Entra no histórico de atendimento.
   const { enviar: enviarEmail, enviando: enviandoCobranca } = useEnvioPorEmail();
   const { enviar: enviarSms, enviando: enviandoCobrancaSms } = useEnvioPorSms();
+  const smsCobranca = useSmsDisponivel()?.cobranca ?? false;
 
   const notas = useMemo(() => posicao?.notas ?? [], [posicao]);
   const comodatos = useMemo(() => posicao?.comodatos ?? [], [posicao]);
@@ -757,6 +759,7 @@ export function PosicaoClienteConteudo({
                   {enviandoCobranca ? <Loader2 className="size-4 animate-spin" /> : <Mail className="size-4" />}
                   Enviar cobrança por e-mail
                 </Button>
+                {smsCobranca && (
                 <Button
                   type="button"
                   variant="outline"
@@ -775,6 +778,7 @@ export function PosicaoClienteConteudo({
                   {enviandoCobrancaSms ? <Loader2 className="size-4 animate-spin" /> : <MessageSquareText className="size-4" />}
                   Cobrança por SMS
                 </Button>
+                )}
               </div>
 
               {titulosOrdenados.length === 0 ? (

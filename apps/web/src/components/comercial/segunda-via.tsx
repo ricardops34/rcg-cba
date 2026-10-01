@@ -1,10 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Barcode, FileDown, FileText, Loader2, Mail, MessageSquareText } from "lucide-react";
-import type { EnvioEmailResultado, EnvioSmsResultado } from "@plataforma/contracts";
+import type {
+  EnvioEmailResultado,
+  EnvioSmsResultado,
+  SmsDisponibilidade,
+} from "@plataforma/contracts";
 import { apiDownload, ApiError, apiFetch } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import {
@@ -132,6 +136,20 @@ O e-mail vai para o endereço do cadastro do cliente.`)) return;
   };
 
   return { enviar, enviando };
+}
+
+/**
+ * O que de SMS esta empresa usa. Cada botão de SMS só aparece com o SMS
+ * habilitado (SMS_ATIVO e token) e a funcionalidade dele ligada — a tela não
+ * oferece o que a empresa não contratou ou desligou.
+ */
+export function useSmsDisponivel(): SmsDisponibilidade | undefined {
+  const { data } = useQuery({
+    queryKey: ["sms", "disponivel"],
+    queryFn: () => apiFetch<SmsDisponibilidade>("/sms/disponivel"),
+    staleTime: 5 * 60_000,
+  });
+  return data;
 }
 
 /**
@@ -301,6 +319,7 @@ export function SegundaViaTitulo({
 
   const { enviar, enviando } = useEnvioPorEmail();
   const sms = useEnvioPorSms();
+  const smsBoleto = useSmsDisponivel()?.boleto ?? false;
   const enviarBoletoSms = (atualizado: boolean) =>
     void sms.enviar(
       `/sms/titulo/${tituloId}`,
@@ -323,13 +342,15 @@ export function SegundaViaTitulo({
           enviando={enviando}
           onEnviar={() => enviarBoleto(true)}
         />
-        <BotaoEmail
-          rotulo="Enviar boleto por SMS ao cliente"
-          motivoIndisponivel={motivo}
-          enviando={sms.enviando}
-          icone={<MessageSquareText className="size-4" />}
-          onEnviar={() => enviarBoletoSms(true)}
-        />
+        {smsBoleto && (
+          <BotaoEmail
+            rotulo="Enviar boleto por SMS ao cliente"
+            motivoIndisponivel={motivo}
+            enviando={sms.enviando}
+            icone={<MessageSquareText className="size-4" />}
+            onEnviar={() => enviarBoletoSms(true)}
+          />
+        )}
         <BotaoDocumento
           rotulo="Baixar boleto"
           motivoIndisponivel={motivo}
@@ -367,12 +388,16 @@ export function SegundaViaTitulo({
           <DropdownMenuItem disabled={enviando} onClick={() => enviarBoleto(false)}>
             <Mail className="size-4" /> Enviar original por e-mail
           </DropdownMenuItem>
-          <DropdownMenuItem disabled={sms.enviando} onClick={() => enviarBoletoSms(true)}>
-            <MessageSquareText className="size-4" /> Enviar atualizado por SMS
-          </DropdownMenuItem>
-          <DropdownMenuItem disabled={sms.enviando} onClick={() => enviarBoletoSms(false)}>
-            <MessageSquareText className="size-4" /> Enviar original por SMS
-          </DropdownMenuItem>
+          {smsBoleto && (
+            <>
+              <DropdownMenuItem disabled={sms.enviando} onClick={() => enviarBoletoSms(true)}>
+                <MessageSquareText className="size-4" /> Enviar atualizado por SMS
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={sms.enviando} onClick={() => enviarBoletoSms(false)}>
+                <MessageSquareText className="size-4" /> Enviar original por SMS
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

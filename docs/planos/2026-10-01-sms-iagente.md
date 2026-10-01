@@ -71,3 +71,19 @@ só no registro de envios.
   aguardando, respostas, por motivo, mês a mês) e histórico com filtros de
   ano, mês, motivo e situação, com as respostas embaixo de cada SMS.
 - `GET /inbound` da iAgente não tem formato documentado; não é usado.
+
+## Habilitar e funcionalidades (usuário, 01/10/2026)
+
+- **Tudo em Parâmetros, sem tabela própria** (o usuário pediu: "o token pegamos
+  na plataforma da iAgente, temos que ter ele em parâmetros, junto com as
+  demais configurações"): `SMS_ATIVO` (nasce desligado), `SMS_TOKEN`,
+  `SMS_BOLETO`, `SMS_COBRANCA`, `SMS_MENSAGEM_LIVRE`,
+  `SMS_SENHA_PROVISORIA` e os `SMS_AVISO_*`. Migration
+  `20261001110000_sms_parametros`.
+- **Administração > SMS** edita esses parâmetros juntos (habilitado, token,
+  uma chave por funcionalidade, aviso automático) e mostra saldo e URL do
+  webhook. O token não volta para a tela; o campo só troca o atual quando
+  preenchido. A tela de Parâmetros continua mostrando e editando os mesmos.
+- **Cada botão de SMS só aparece** com `SMS_ATIVO` ligado, token preenchido e
+  a funcionalidade dele ligada (`GET /sms/disponivel`). O servidor confere de
+  novo no envio: funcionalidade desligada é 409.

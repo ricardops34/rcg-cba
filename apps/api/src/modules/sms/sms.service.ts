@@ -80,6 +80,113 @@ export type SaldoSms = {
   consumoMes: number | null;
 };
 
+/**
+ * Configuração do SMS: parâmetros da empresa (Administração > Parâmetros),
+ * editados juntos pela tela Administração > SMS — sem tabela própria
+ * (decisão do usuário, 01/10/2026). Tipo e descrição servem para criar o
+ * parâmetro se a empresa ainda não o tiver.
+ */
+export const SMS_PARAMETROS = {
+  ativo: {
+    parametro: 'SMS_ATIVO',
+    tipo: 'booleano',
+    tamanho: null,
+    padrao: 'false',
+    descricao: 'Habilita o envio de SMS pela iAgente nesta empresa',
+  },
+  token: {
+    parametro: 'SMS_TOKEN',
+    tipo: 'senha',
+    tamanho: 200,
+    padrao: null,
+    descricao: 'Token da API de SMS da iAgente (sk_live_...), gerado no painel da iAgente',
+  },
+  boleto: {
+    parametro: 'SMS_BOLETO',
+    tipo: 'booleano',
+    tamanho: null,
+    padrao: 'true',
+    descricao: 'Permite enviar boleto por SMS (valor, vencimento e linha digitável)',
+  },
+  cobranca: {
+    parametro: 'SMS_COBRANCA',
+    tipo: 'booleano',
+    tamanho: null,
+    padrao: 'true',
+    descricao: 'Permite enviar cobrança de títulos vencidos por SMS',
+  },
+  mensagemLivre: {
+    parametro: 'SMS_MENSAGEM_LIVRE',
+    tipo: 'booleano',
+    tamanho: null,
+    padrao: 'true',
+    descricao: 'Permite enviar mensagem livre por SMS ao cliente',
+  },
+  senhaProvisoria: {
+    parametro: 'SMS_SENHA_PROVISORIA',
+    tipo: 'booleano',
+    tamanho: null,
+    padrao: 'true',
+    descricao: 'Envia a senha provisória do vendedor também por SMS',
+  },
+  avisoVencimento: {
+    parametro: 'SMS_AVISO_VENCIMENTO_ATIVO',
+    tipo: 'booleano',
+    tamanho: null,
+    padrao: 'false',
+    descricao: 'Envia SMS automático ao cliente antes e depois do vencimento do título (das 8h às 18h)',
+  },
+  avisoDiasAntes: {
+    parametro: 'SMS_AVISO_DIAS_ANTES',
+    tipo: 'numero',
+    tamanho: 2,
+    padrao: '2',
+    descricao: 'Dias antes do vencimento para o aviso por SMS; 0 = não avisa',
+  },
+  avisoDiasDepois: {
+    parametro: 'SMS_AVISO_DIAS_DEPOIS',
+    tipo: 'numero',
+    tamanho: 2,
+    padrao: '3',
+    descricao: 'Dias depois do vencimento para o aviso de atraso por SMS; 0 = não avisa',
+  },
+} as const;
+
+/** A configuração lida dos parâmetros. O token não sai daqui para a tela. */
+export type SmsConfig = {
+  ativo: boolean;
+  token: string | null;
+  boleto: boolean;
+  cobranca: boolean;
+  mensagemLivre: boolean;
+  senhaProvisoria: boolean;
+  avisoVencimento: boolean;
+  avisoDiasAntes: number;
+  avisoDiasDepois: number;
+};
+
+/** O que cada botão/rotina de SMS precisa ligado para existir. */
+export type SmsDisponibilidade = {
+  habilitado: boolean;
+  boleto: boolean;
+  cobranca: boolean;
+  mensagemLivre: boolean;
+  senhaProvisoria: boolean;
+  avisoVencimento: boolean;
+};
+
+const FUNCIONALIDADE_DO_MOTIVO: Record<
+  SmsMotivo,
+  { chave: Exclude<keyof SmsDisponibilidade, 'habilitado'>; nome: string }
+> = {
+  boleto: { chave: 'boleto', nome: 'boleto' },
+  cobranca: { chave: 'cobranca', nome: 'cobrança' },
+  mensagem_livre: { chave: 'mensagemLivre', nome: 'mensagem livre' },
+  senha_provisoria: { chave: 'senhaProvisoria', nome: 'senha provisória' },
+  aviso_antes_vencimento: { chave: 'avisoVencimento', nome: 'aviso de vencimento' },
+  aviso_depois_vencimento: { chave: 'avisoVencimento', nome: 'aviso de vencimento' },
+};
+
 export type EnvioSms = {
   empresaId: string;
   motivo: SmsMotivo;
@@ -101,12 +208,102 @@ export class SmsService {
     private readonly parametros: ParametrosService,
   ) {}
 
-  private token(empresaId: string) {
-    return this.parametros.obterTexto(empresaId, 'SMS_TOKEN');
+  /** A configuração, lida dos parâmetros SMS_* da empresa. */
+  async config(empresaId: string): Promise<SmsConfig> {
+    const P = SMS_PARAMETROS;
+    const bool = (d: (typeof P)[keyof typeof P]) =>
+      this.parametros.obterBoolean(empresaId, d.parametro, d.padrao === 'true');
+    const num = (d: (typeof P)[keyof typeof P]) =>
+      this.parametros.obterNumero(empresaId, d.parametro, Number(d.padrao));
+    const token = (await this.parametros.obterTexto(empresaId, P.token.parametro))?.trim();
+    return {
+      ativo: await bool(P.ativo),
+      token: token || null,
+      boleto: await bool(P.boleto),
+      cobranca: await bool(P.cobranca),
+      mensagemLivre: await bool(P.mensagemLivre),
+      senhaProvisoria: await bool(P.senhaProvisoria),
+      avisoVencimento: await bool(P.avisoVencimento),
+      avisoDiasAntes: await num(P.avisoDiasAntes),
+      avisoDiasDepois: await num(P.avisoDiasDepois),
+    };
   }
 
+  /**
+   * Token para chamar a iAgente. Para enviar, só com o SMS ativo; para
+   * consultar o saldo, basta estar preenchido — o administrador confere antes
+   * de ligar.
+   */
+  private async token(empresaId: string, exigirAtivo = true) {
+    const c = await this.config(empresaId);
+    if (!c.token || (exigirAtivo && !c.ativo)) return null;
+    return c.token;
+  }
+
+  /**
+   * O que está disponível: SMS ativo, com token, e cada funcionalidade ligada.
+   * É o que a tela consulta para mostrar ou esconder os botões.
+   */
+  async disponibilidade(empresaId: string): Promise<SmsDisponibilidade> {
+    const c = await this.config(empresaId);
+    const habilitado = c.ativo && !!c.token;
+    return {
+      habilitado,
+      boleto: habilitado && c.boleto,
+      cobranca: habilitado && c.cobranca,
+      mensagemLivre: habilitado && c.mensagemLivre,
+      senhaProvisoria: habilitado && c.senhaProvisoria,
+      avisoVencimento: habilitado && c.avisoVencimento,
+    };
+  }
+
+  /** SMS ativo e com token. */
   async configurado(empresaId: string) {
-    return !!(await this.token(empresaId))?.trim();
+    return (await this.disponibilidade(empresaId)).habilitado;
+  }
+
+  /**
+   * Grava a tela unificada nos parâmetros SMS_*. O token só muda quando vem
+   * preenchido — a tela não recebe o atual, só se ele existe.
+   */
+  async salvarConfig(
+    empresaId: string,
+    autor: string,
+    dados: Omit<SmsConfig, 'token'> & { token?: string | null },
+  ) {
+    const P = SMS_PARAMETROS;
+    const valores: Array<[(typeof P)[keyof typeof P], string]> = [
+      [P.ativo, String(dados.ativo)],
+      [P.boleto, String(dados.boleto)],
+      [P.cobranca, String(dados.cobranca)],
+      [P.mensagemLivre, String(dados.mensagemLivre)],
+      [P.senhaProvisoria, String(dados.senhaProvisoria)],
+      [P.avisoVencimento, String(dados.avisoVencimento)],
+      [P.avisoDiasAntes, String(dados.avisoDiasAntes)],
+      [P.avisoDiasDepois, String(dados.avisoDiasDepois)],
+    ];
+    if (dados.token?.trim()) valores.push([P.token, dados.token.trim()]);
+
+    await this.prisma.withTenant(empresaId, async (tx) => {
+      for (const [d, conteudo] of valores) {
+        await tx.parametroEmpresa.upsert({
+          where: { empresaId_parametro: { empresaId, parametro: d.parametro } },
+          create: {
+            empresaId,
+            parametro: d.parametro,
+            tipo: d.tipo,
+            tamanho: d.tamanho,
+            conteudo,
+            descricao: d.descricao,
+            createdBy: autor,
+            updatedBy: autor,
+          },
+          // Volta ativo: desativar pela tela de Parâmetros faria o valor sumir
+          // daqui sem aviso.
+          update: { conteudo, ativo: true, deletedAt: null, updatedBy: autor },
+        });
+      }
+    });
   }
 
   /**
@@ -120,7 +317,14 @@ export class SmsService {
     const token = (await this.token(envio.empresaId))?.trim();
     if (!token) {
       throw new ConflictException(
-        'Envio de SMS não configurado. Informe o token da iAgente no parâmetro SMS_TOKEN (Administração > Parâmetros).',
+        'SMS desabilitado ou sem token. Configure em Administração > SMS.',
+      );
+    }
+    const funcionalidade = FUNCIONALIDADE_DO_MOTIVO[envio.motivo];
+    const disponivel = await this.disponibilidade(envio.empresaId);
+    if (!disponivel[funcionalidade.chave]) {
+      throw new ConflictException(
+        `SMS de ${funcionalidade.nome} desabilitado. Ligue em Administração > SMS.`,
       );
     }
     const mensagem = textoSms(envio.mensagem);
@@ -195,7 +399,7 @@ export class SmsService {
 
   /** Saldo na iAgente (`GET /credits`); null sem token. Lança 502 se ela recusar. */
   async saldo(empresaId: string): Promise<SaldoSms | null> {
-    const token = (await this.token(empresaId))?.trim();
+    const token = (await this.token(empresaId, false))?.trim();
     if (!token) return null;
     let resposta: Response;
     try {

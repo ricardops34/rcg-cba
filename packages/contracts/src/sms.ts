@@ -70,8 +70,33 @@ export const smsFiltroSchema = z.object({
 });
 export type SmsFiltro = z.infer<typeof smsFiltroSchema>;
 
-export type SmsConfiguracao = {
-  configurado: boolean;
+/**
+ * Tela Administração > SMS: os parâmetros SMS_* da empresa editados juntos
+ * (decisão do usuário, 01/10/2026 — sem tabela própria). O token nunca volta
+ * para a tela; só se ele está preenchido.
+ */
+export const smsConfiguracaoUpdateSchema = z.object({
+  ativo: z.boolean().describe("SMS_ATIVO — habilita o SMS nesta empresa"),
+  token: z
+    .string()
+    .trim()
+    .max(200)
+    .optional()
+    .describe("SMS_TOKEN — só quando for trocar; vazio mantém o atual"),
+  boleto: z.boolean().describe("SMS_BOLETO"),
+  cobranca: z.boolean().describe("SMS_COBRANCA"),
+  mensagemLivre: z.boolean().describe("SMS_MENSAGEM_LIVRE"),
+  senhaProvisoria: z.boolean().describe("SMS_SENHA_PROVISORIA"),
+  avisoVencimento: z.boolean().describe("SMS_AVISO_VENCIMENTO_ATIVO"),
+  avisoDiasAntes: z.coerce.number().int().min(0).max(30),
+  avisoDiasDepois: z.coerce.number().int().min(0).max(30),
+});
+export type SmsConfiguracaoUpdate = z.infer<typeof smsConfiguracaoUpdateSchema>;
+
+export type SmsConfiguracao = Omit<SmsConfiguracaoUpdate, "token"> & {
+  tokenPreenchido: boolean;
+  /** SMS ativo e com token. */
+  habilitado: boolean;
   saldo: {
     modalidade: string | null;
     disponivel: number | null;
@@ -81,9 +106,16 @@ export type SmsConfiguracao = {
   /** Motivo de não ter saldo quando há token (a iAgente recusou, fora do ar). */
   erroSaldo: string | null;
   webhookUrl: string;
-  avisoVencimentoAtivo: boolean;
-  avisoDiasAntes: number;
-  avisoDiasDepois: number;
+};
+
+/** O que a tela pode mostrar: cada botão de SMS só aparece com o seu ligado. */
+export type SmsDisponibilidade = {
+  habilitado: boolean;
+  boleto: boolean;
+  cobranca: boolean;
+  mensagemLivre: boolean;
+  senhaProvisoria: boolean;
+  avisoVencimento: boolean;
 };
 
 export type SmsEstatisticas = {

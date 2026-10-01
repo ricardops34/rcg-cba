@@ -293,12 +293,52 @@ const PARAMETROS_PADRAO = [
   // SMS pela iAgente (docs/planos/2026-10-01-sms-iagente.md). O aviso
   // automático nasce desligado: manda SMS a cliente sem ninguém clicar.
   {
+    parametro: 'SMS_ATIVO',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'false',
+    descricao:
+      'Habilita o envio de SMS pela iAgente nesta empresa',
+  },
+  {
+    parametro: 'SMS_BOLETO',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'true',
+    descricao:
+      'Permite enviar boleto por SMS (valor, vencimento e linha digitável)',
+  },
+  {
+    parametro: 'SMS_COBRANCA',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'true',
+    descricao:
+      'Permite enviar cobrança de títulos vencidos por SMS',
+  },
+  {
+    parametro: 'SMS_MENSAGEM_LIVRE',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'true',
+    descricao:
+      'Permite enviar mensagem livre por SMS ao cliente',
+  },
+  {
+    parametro: 'SMS_SENHA_PROVISORIA',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'true',
+    descricao:
+      'Envia a senha provisória do vendedor também por SMS',
+  },
+  {
     parametro: 'SMS_TOKEN',
     tipo: 'senha' as const,
     tamanho: 200,
     conteudo: null,
     descricao:
-      'Token da API de SMS da iAgente (sk_live_...); vazio desliga o envio de SMS',
+      'Token da API de SMS da iAgente (sk_live_...), gerado no painel da iAgente',
   },
   {
     parametro: 'SMS_AVISO_VENCIMENTO_ATIVO',

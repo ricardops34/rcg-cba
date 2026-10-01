@@ -3,21 +3,19 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
 import {
   SMS_MOTIVO_ROTULO,
-  type SmsConfiguracao,
   type SmsEnvioLinha,
   type SmsEstatisticas,
   type SmsMotivo,
   type SmsSituacao,
 } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
+import { SmsConfiguracaoCard } from "@/components/admin/sms-configuracao";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -34,7 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronLeft, ChevronRight, Copy, MessageSquareReply } from "lucide-react";
+import { ChevronLeft, ChevronRight, MessageSquareReply } from "lucide-react";
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -94,10 +92,6 @@ export default function SmsPage() {
     ...(motivo !== "todos" ? { motivo } : {}),
   };
 
-  const configuracao = useQuery({
-    queryKey: ["sms", "configuracao"],
-    queryFn: () => apiFetch<SmsConfiguracao>("/sms/configuracao"),
-  });
   const estatisticas = useQuery({
     queryKey: ["sms", "estatisticas", filtro],
     queryFn: () => apiFetch<SmsEstatisticas>("/sms/estatisticas", { query: filtro }),
@@ -118,19 +112,9 @@ export default function SmsPage() {
       ),
   });
 
-  const cfg = configuracao.data;
   const est = estatisticas.data;
   const totalPaginas = Math.max(1, Math.ceil((envios.data?.total ?? 0) / 20));
   const maiorMes = Math.max(1, ...(est?.porMes.map((m) => m.total) ?? [1]));
-
-  const copiar = async (texto: string) => {
-    try {
-      await navigator.clipboard.writeText(texto);
-      toast.success("URL copiada");
-    } catch {
-      toast.error("Não foi possível copiar — selecione e copie manualmente");
-    }
-  };
 
   return (
     <div className="space-y-4">
@@ -141,83 +125,7 @@ export default function SmsPage() {
         </p>
       </div>
 
-      {/* Configuração */}
-      <Card>
-        <CardContent className="space-y-4">
-          {configuracao.isLoading ? (
-            <Skeleton className="h-24 w-full" />
-          ) : !cfg?.configurado ? (
-            <p className="text-sm">
-              SMS não configurado. Informe o token da iAgente no parâmetro{" "}
-              <span className="font-mono">SMS_TOKEN</span> em{" "}
-              <Link href="/admin/parametros" className="underline">
-                Administração › Parâmetros
-              </Link>
-              .
-            </p>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div>
-                <p className="text-xs text-muted-foreground">Saldo disponível</p>
-                {cfg.erroSaldo ? (
-                  <p className="text-sm text-destructive">{cfg.erroSaldo}</p>
-                ) : (
-                  <>
-                    <p className="text-2xl font-semibold tabular-nums">
-                      {numero(cfg.saldo?.disponivel)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {cfg.saldo?.modalidade === "POS" ? "Pós-pago" : cfg.saldo?.modalidade ?? ""}
-                      {cfg.saldo?.limiteSeguranca != null
-                        ? ` · limite ${numero(cfg.saldo.limiteSeguranca)}`
-                        : ""}
-                    </p>
-                  </>
-                )}
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Consumo no mês (iAgente)</p>
-                <p className="text-2xl font-semibold tabular-nums">
-                  {numero(cfg.saldo?.consumoMes)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Aviso automático de vencimento</p>
-                <p className="text-sm font-medium">
-                  {cfg.avisoVencimentoAtivo ? "Ligado" : "Desligado"}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {cfg.avisoVencimentoAtivo
-                    ? `${cfg.avisoDiasAntes} dia(s) antes e ${cfg.avisoDiasDepois} depois · seg. a sáb., 8h–18h`
-                    : "Liga no parâmetro SMS_AVISO_VENCIMENTO_ATIVO"}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {cfg && (
-            <div className="space-y-1.5 border-t pt-4">
-              <FieldLabel>URL do webhook (cadastre no painel da iAgente)</FieldLabel>
-              <div className="flex gap-2">
-                <Input readOnly value={cfg.webhookUrl} className="font-mono text-xs" />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => void copiar(cfg.webhookUrl)}
-                  aria-label="Copiar URL"
-                >
-                  <Copy className="size-4" />
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                É por ela que chegam o status de entrega e as respostas dos clientes, vinculadas ao
-                SMS enviado. Não compartilhe: quem tem a URL consegue gravar respostas.
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <SmsConfiguracaoCard />
 
       {/* Filtros */}
       <div className="flex flex-wrap items-end gap-3">

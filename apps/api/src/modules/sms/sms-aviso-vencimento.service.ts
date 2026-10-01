@@ -13,7 +13,6 @@ import {
 } from '../../common/horario/horario-trabalho';
 import { registrarAtividadeDocumento } from '../../common/atividades/registrar-atividade-documento';
 import { buscarEmpresaDoEmail } from '../../common/mail/email-layout';
-import { ParametrosService } from '../parametros/parametros.service';
 import { TitulosReceberService } from '../titulos-receber/titulos-receber.service';
 import { primeiroCelular, SmsService, textoSms } from './sms.service';
 import { dataSms } from './sms-cliente.service';
@@ -43,15 +42,15 @@ const somarDias = (d: Date, n: number) =>
  *
  * Manda SMS a cliente sem ninguém clicar, então tem três travas:
  *
- * - **Desligado por padrão** (`SMS_AVISO_VENCIMENTO_ATIVO`), por empresa;
+ * - **Desligado por padrão** (Administração > SMS), por empresa;
  * - **Só das 8h às 18h, de segunda a sábado** (horário de Campo Grande) — SMS de
  *   cobrança de madrugada é reclamação certa;
  * - **Um aviso de cada tipo por título**, conferido em `sms_envios` — a
  *   varredura de 30 em 30 minutos não repete.
  *
- * Antes do vencimento: o título que vence em até `SMS_AVISO_DIAS_ANTES` dias,
+ * Antes do vencimento: o título que vence em até os dias de antes dias,
  * com a linha digitável quando há boleto. Depois: o que venceu há
- * `SMS_AVISO_DIAS_DEPOIS` dias (ou um pouco mais, se a API esteve fora), com
+ * os dias de depois dias (ou um pouco mais, se a API esteve fora), com
  * o valor atualizado. Cada envio entra no histórico de atendimento.
  */
 @Injectable()
@@ -64,7 +63,6 @@ export class SmsAvisoVencimentoService
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly parametros: ParametrosService,
     private readonly sms: SmsService,
     private readonly titulos: TitulosReceberService,
   ) {}
@@ -96,15 +94,8 @@ export class SmsAvisoVencimentoService
         select: { id: true },
       });
       for (const { id } of empresas) {
-        if (
-          !(await this.parametros.obterBoolean(
-            id,
-            'SMS_AVISO_VENCIMENTO_ATIVO',
-            false,
-          ))
-        )
-          continue;
-        if (!(await this.sms.configurado(id))) continue;
+        // SMS ativo, com token e o aviso ligado — Administração > SMS.
+        if (!(await this.sms.disponibilidade(id)).avisoVencimento) continue;
         await this.avisarEmpresa(id, hojeCivil(agora));
       }
     } catch (erro) {
@@ -115,16 +106,9 @@ export class SmsAvisoVencimentoService
   }
 
   private async avisarEmpresa(empresaId: string, hoje: Date) {
-    const antes = await this.parametros.obterNumero(
-      empresaId,
-      'SMS_AVISO_DIAS_ANTES',
-      2,
-    );
-    const depois = await this.parametros.obterNumero(
-      empresaId,
-      'SMS_AVISO_DIAS_DEPOIS',
-      3,
-    );
+    const config = await this.sms.config(empresaId);
+    const antes = config?.avisoDiasAntes ?? 0;
+    const depois = config?.avisoDiasDepois ?? 0;
     let restantes = LOTE;
     if (antes > 0) {
       restantes -= await this.avisar(

@@ -449,7 +449,10 @@ export class VendedoresService {
     },
   ): Promise<boolean> {
     const celular = primeiroCelular(dados.telefone);
-    if (!celular || !(await this.sms.configurado(empresaId))) return false;
+    // SMS ativo, com token e a senha provisória ligada (Administração > SMS).
+    if (!celular || !(await this.sms.disponibilidade(empresaId)).senhaProvisoria) {
+      return false;
+    }
     const empresa = await buscarEmpresaDoEmail(this.prisma, empresaId);
     const link = linkDeAcesso(empresa.alias);
     return this.sms.tentar({

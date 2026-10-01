@@ -5,6 +5,7 @@ import {
   HttpCode,
   Param,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -29,7 +30,6 @@ import {
   CurrentUser,
   type AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
-import { ParametrosService } from '../parametros/parametros.service';
 import { segredoWebhook, SmsService } from './sms.service';
 import { SmsClienteService } from './sms-cliente.service';
 import { SmsRelatorioService } from './sms-relatorio.service';
@@ -37,6 +37,7 @@ import { SmsWebhookService, type WebhookSmsQuery } from './sms-webhook.service';
 import {
   EnviarBoletoSmsDto,
   EnviarSmsClienteDto,
+  SmsConfiguracaoUpdateDto,
   SmsFiltroDto,
 } from './sms.dto';
 
@@ -65,7 +66,6 @@ export class SmsController {
     private readonly sms: SmsService,
     private readonly cliente: SmsClienteService,
     private readonly relatorio: SmsRelatorioService,
-    private readonly parametros: ParametrosService,
   ) {}
 
   @ApiOperation({
@@ -145,10 +145,10 @@ export class SmsController {
   }
 
   @ApiOperation({
-    summary: 'Configuração do SMS: saldo, URL do webhook e aviso automático',
+    summary: 'Configuração do SMS (parâmetros SMS_*), saldo e URL do webhook',
     description:
-      'A URL do webhook é a que se cadastra no painel da iAgente para receber status de entrega ' +
-      'e respostas do cliente. Requer sms.visualizar.',
+      'Os parâmetros SMS_* da empresa juntos, sem o token (só se ele está preenchido). A URL do ' +
+      'webhook é a que se cadastra no painel da iAgente. Requer sms.visualizar.',
   })
   @RequirePermission('sms', 'visualizar')
   @Get('configuracao')
@@ -157,10 +157,10 @@ export class SmsController {
     @Req() req: Request,
   ): Promise<SmsConfiguracao> {
     const empresaId = user.empresaAtivaId;
-    const configurado = await this.sms.configurado(empresaId);
+    const { token, ...config } = await this.sms.config(empresaId);
     let saldo: SmsConfiguracao['saldo'] = null;
     let erroSaldo: string | null = null;
-    if (configurado) {
+    if (token) {
       try {
         saldo = await this.sms.saldo(empresaId);
       } catch (erro) {
@@ -168,26 +168,40 @@ export class SmsController {
       }
     }
     return {
-      configurado,
+      ...config,
+      tokenPreenchido: !!token,
+      habilitado: config.ativo && !!token,
       saldo,
       erroSaldo,
       webhookUrl: `${baseDaApi(req)}/api/v1/sms/webhook/${empresaId}/${segredoWebhook(empresaId)}`,
-      avisoVencimentoAtivo: await this.parametros.obterBoolean(
-        empresaId,
-        'SMS_AVISO_VENCIMENTO_ATIVO',
-        false,
-      ),
-      avisoDiasAntes: await this.parametros.obterNumero(
-        empresaId,
-        'SMS_AVISO_DIAS_ANTES',
-        2,
-      ),
-      avisoDiasDepois: await this.parametros.obterNumero(
-        empresaId,
-        'SMS_AVISO_DIAS_DEPOIS',
-        3,
-      ),
     };
+  }
+
+  @ApiOperation({
+    summary: 'Gravar a configuração do SMS',
+    description:
+      'Grava os parâmetros SMS_*. O token só é trocado quando vem preenchido. Requer sms.editar.',
+  })
+  @RequirePermission('sms', 'editar')
+  @Put('configuracao')
+  async salvarConfiguracao(
+    @Body() dto: SmsConfiguracaoUpdateDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: Request,
+  ): Promise<SmsConfiguracao> {
+    await this.sms.salvarConfig(user.empresaAtivaId, user.id, dto);
+    return this.configuracao(user, req);
+  }
+
+  @ApiOperation({
+    summary: 'O que de SMS está disponível para a tela',
+    description:
+      'Só booleanos: SMS habilitado (ativo e com token) e cada funcionalidade. É o que mostra ou ' +
+      'esconde os botões de SMS. Qualquer usuário autenticado.',
+  })
+  @Get('disponivel')
+  disponivel(@CurrentUser() user: AuthenticatedUser) {
+    return this.sms.disponibilidade(user.empresaAtivaId);
   }
 
   @ApiOperation({

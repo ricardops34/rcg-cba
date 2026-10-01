@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, MessageSquareText } from "lucide-react";
 import { SMS_MENSAGEM_MAX, type Atividade } from "@plataforma/contracts";
-import { useEnvioPorSms } from "@/components/comercial/segunda-via";
+import { useEnvioPorSms, useSmsDisponivel } from "@/components/comercial/segunda-via";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -104,6 +104,7 @@ function EnviarSmsCliente({ clienteId }: { clienteId: string }) {
 }
 
 export function HistoricoAtendimento({ clienteId }: { clienteId: string }) {
+  const smsLivre = useSmsDisponivel()?.mensagemLivre ?? false;
   const { data, isLoading, isError } = useQuery({
     queryKey: ["atividades", "cliente", clienteId, "historico"],
     queryFn: () =>
@@ -123,9 +124,11 @@ export function HistoricoAtendimento({ clienteId }: { clienteId: string }) {
   return (
     <Card>
       <CardContent className="space-y-3">
-        <div className="flex justify-end">
-          <EnviarSmsCliente clienteId={clienteId} />
-        </div>
+        {smsLivre && (
+          <div className="flex justify-end">
+            <EnviarSmsCliente clienteId={clienteId} />
+          </div>
+        )}
         {isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-12 w-full" />

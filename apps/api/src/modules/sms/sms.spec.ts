@@ -47,7 +47,10 @@ describe('SmsService.enviar', () => {
     jest.restoreAllMocks();
   });
 
-  function montar(token: string | null) {
+  function montar(
+    token: string | null,
+    flags: Record<string, boolean> = { SMS_ATIVO: true },
+  ) {
     const tx = {
       smsEnvio: {
         create: jest.fn().mockResolvedValue({ id: 'envio-1' }),
@@ -59,7 +62,16 @@ describe('SmsService.enviar', () => {
         fn(tx),
       ),
     };
-    const parametros = { obterTexto: jest.fn().mockResolvedValue(token) };
+    // Parâmetros SMS_*: o que não vier em `flags` fica no padrão.
+    const parametros = {
+      obterTexto: jest.fn().mockResolvedValue(token),
+      obterBoolean: jest.fn((_e: string, p: string, padrao: boolean) =>
+        Promise.resolve(p in flags ? flags[p] : padrao),
+      ),
+      obterNumero: jest.fn((_e: string, _p: string, padrao: number) =>
+        Promise.resolve(padrao),
+      ),
+    };
     const service = new SmsService(
       prisma as unknown as PrismaService,
       parametros as unknown as ParametrosService,
@@ -127,6 +139,27 @@ describe('SmsService.enviar', () => {
     expect(tx.smsEnvio.update.mock.calls[0][0].data).toMatchObject({
       status: 'erro',
       erro: 'Saldo insuficiente. (insufficient_credits)',
+    });
+  });
+
+  it('SMS desligado (SMS_ATIVO): 409, mesmo com token', async () => {
+    const { service, tx } = montar('sk_live_x', { SMS_ATIVO: false });
+    const fetchMock = jest.spyOn(global, 'fetch');
+    await expect(service.enviar(envio)).rejects.toThrow(/Administração > SMS/);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(tx.smsEnvio.create).not.toHaveBeenCalled();
+  });
+
+  it('funcionalidade desligada (SMS_BOLETO): 409, e as outras seguem', async () => {
+    const { service } = montar('sk_live_x', { SMS_ATIVO: true, SMS_BOLETO: false });
+    await expect(service.enviar(envio)).rejects.toThrow(/SMS de boleto desabilitado/);
+    expect(await service.disponibilidade('empresa-1')).toEqual({
+      habilitado: true,
+      boleto: false,
+      cobranca: true,
+      mensagemLivre: true,
+      senhaProvisoria: true,
+      avisoVencimento: false,
     });
   });
 
