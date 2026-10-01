@@ -24,7 +24,10 @@ export type EventoDocumento =
   | 'danfe_whatsapp'
   | 'xml_baixado'
   | 'boleto_gerado'
-  | 'boleto_whatsapp';
+  | 'boleto_whatsapp'
+  | 'danfe_email'
+  | 'boleto_email'
+  | 'cobranca_email';
 
 const TITULO: Record<EventoDocumento, (numero: string) => string> = {
   // Os dois relatórios não têm número de documento: o que sai é a lista do
@@ -36,7 +39,17 @@ const TITULO: Record<EventoDocumento, (numero: string) => string> = {
   xml_baixado: (n) => `XML da NF ${n} baixado`,
   boleto_gerado: (n) => `2ª via de boleto gerada — título ${n}`,
   boleto_whatsapp: (n) => `Boleto enviado pelo WhatsApp — título ${n}`,
+  danfe_email: (n) => `DANFE enviado por e-mail — NF ${n}`,
+  boleto_email: (n) => `Boleto enviado por e-mail — título ${n}`,
+  cobranca_email: () => 'Cobrança de títulos vencidos enviada por e-mail',
 };
+
+/** Envio por e-mail é atividade do tipo e-mail; o resto, tarefa concluída. */
+const POR_EMAIL = new Set<EventoDocumento>([
+  'danfe_email',
+  'boleto_email',
+  'cobranca_email',
+]);
 
 export interface DocumentoParaAtividade {
   empresaId: string;
@@ -90,7 +103,7 @@ export async function registrarAtividadeDocumento(
       empresaId,
       clienteId,
       vendedorId,
-      tipo: 'tarefa',
+      tipo: POR_EMAIL.has(evento) ? 'email' : 'tarefa',
       titulo: TITULO[evento](numero),
       descricao: documento.descricao ?? null,
       dataVencimento: null,

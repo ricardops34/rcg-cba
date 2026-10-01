@@ -7,16 +7,15 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { dadosDoVendedor } from '../../common/usuarios/dados-do-vendedor';
-import { escapeHtml } from '../../common/html/escape-html';
+import { montarEmailAcesso } from '../../common/mail/email-acesso';
+import { buscarEmpresaDoEmail } from '../../common/mail/email-layout';
+import { smtpDaEmpresa } from '../../common/mail/smtp-da-empresa';
 import {
   PrismaService,
   type TenantTx,
 } from '../../common/prisma/prisma.service';
 import { PoliticaSenhaService } from '../politica-senha/politica-senha.service';
-import {
-  MailService,
-  type ConfiguracaoSmtp,
-} from '../../common/mail/mail.service';
+import { MailService } from '../../common/mail/mail.service';
 import { ParametrosService } from '../parametros/parametros.service';
 import {
   buildPaginatedResult,
@@ -372,15 +371,18 @@ export class VendedoresService {
     // Envio fica FORA da transação de propósito: SMTP indisponível derrubava
     // a transação inteira e o usuário nem chegava a ser criado. O acesso é o
     // que importa; o e-mail é entrega, e pode ser refeito por "Reenviar senha".
+    const emailCriado = montarEmailAcesso({
+      empresa: await buscarEmpresaDoEmail(this.prisma, empresaId),
+      nome: criado.nome,
+      login: criado.email,
+      senha: criado.senha,
+      motivo: 'criado',
+    });
     const emailEnviado = await this.enviarSenhaPorEmail(
       empresaId,
       criado.email,
-      'Acesso à Plataforma Comercial',
-      this.buildSenhaProvisoriaEmailHtml(
-        criado.nome,
-        criado.email,
-        criado.senha,
-      ),
+      emailCriado.assunto,
+      emailCriado.html,
     );
 
     return {
@@ -401,33 +403,13 @@ export class VendedoresService {
    * servidor fora do ar é problema de entrega, não motivo para desfazer um
    * acesso já criado.
    */
-  /** SMTP dos parâmetros da empresa; sem host preenchido cai no ambiente. */
-  private async smtpDaEmpresa(
-    empresaId: string,
-  ): Promise<ConfiguracaoSmtp | null> {
-    const host = await this.parametros.obterTexto(empresaId, 'SMTP_HOST');
-    if (!host) return null;
-    return {
-      host,
-      porta: await this.parametros.obterNumero(empresaId, 'SMTP_PORTA', 587),
-      seguro: await this.parametros.obterBoolean(
-        empresaId,
-        'SMTP_SEGURO',
-        false,
-      ),
-      usuario: await this.parametros.obterTexto(empresaId, 'SMTP_USUARIO'),
-      senha: await this.parametros.obterTexto(empresaId, 'SMTP_SENHA'),
-      remetente: await this.parametros.obterTexto(empresaId, 'SMTP_REMETENTE'),
-    };
-  }
-
   private async enviarSenhaPorEmail(
     empresaId: string,
     para: string,
     assunto: string,
     html: string,
   ): Promise<boolean> {
-    const smtp = await this.smtpDaEmpresa(empresaId);
+    const smtp = await smtpDaEmpresa(this.parametros, empresaId);
     if (!this.mailService.configurado(smtp)) return false;
     try {
       return await this.mailService.send(para, assunto, html, smtp);
@@ -437,25 +419,6 @@ export class VendedoresService {
       );
       return false;
     }
-  }
-
-  private buildSenhaProvisoriaEmailHtml(
-    nome: string,
-    email: string,
-    senha: string,
-  ): string {
-    const [nomeSeguro, emailSeguro, senhaSegura] = [nome, email, senha].map(
-      escapeHtml,
-    );
-    return `
-      <p>Olá, ${nomeSeguro}!</p>
-      <p>Foi criado um acesso para você na Plataforma Comercial:</p>
-      <ul>
-        <li><strong>Login:</strong> ${emailSeguro}</li>
-        <li><strong>Senha provisória:</strong> ${senhaSegura}</li>
-      </ul>
-      <p>Por segurança, você precisará trocar essa senha no primeiro acesso.</p>
-    `;
   }
 
   /**
@@ -517,15 +480,18 @@ export class VendedoresService {
     // Mesma razão de criarUsuario: a senha já foi trocada no banco, então
     // falha de SMTP não pode desfazer a operação (nem deixar o vendedor com a
     // senha antiga, que já não vale mais).
+    const emailRedefinida = montarEmailAcesso({
+      empresa: await buscarEmpresaDoEmail(this.prisma, empresaId),
+      nome: redefinida.nome,
+      login: redefinida.email,
+      senha: redefinida.senha,
+      motivo: 'redefinida',
+    });
     const emailEnviado = await this.enviarSenhaPorEmail(
       empresaId,
       redefinida.email,
-      'Nova senha provisória — Plataforma Comercial',
-      this.buildSenhaReenviadaEmailHtml(
-        redefinida.nome,
-        redefinida.email,
-        redefinida.senha,
-      ),
+      emailRedefinida.assunto,
+      emailRedefinida.html,
     );
 
     return {
@@ -533,25 +499,6 @@ export class VendedoresService {
       emailEnviado,
       senhaProvisoria: emailEnviado ? undefined : redefinida.senha,
     };
-  }
-
-  private buildSenhaReenviadaEmailHtml(
-    nome: string,
-    email: string,
-    senha: string,
-  ): string {
-    const [nomeSeguro, emailSeguro, senhaSegura] = [nome, email, senha].map(
-      escapeHtml,
-    );
-    return `
-      <p>Olá, ${nomeSeguro}!</p>
-      <p>Sua senha de acesso à Plataforma Comercial foi redefinida:</p>
-      <ul>
-        <li><strong>Login:</strong> ${emailSeguro}</li>
-        <li><strong>Nova senha provisória:</strong> ${senhaSegura}</li>
-      </ul>
-      <p>Por segurança, você precisará trocar essa senha no primeiro acesso.</p>
-    `;
   }
 
   /**

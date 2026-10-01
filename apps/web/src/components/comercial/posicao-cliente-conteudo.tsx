@@ -21,8 +21,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { NotaSaidaSheet } from "@/components/comercial/nota-saida-detalhe";
 import { TituloReceberSheet } from "@/components/comercial/titulo-receber-detalhe";
 import { ProdutoSheet } from "@/components/comercial/produto-detalhe";
-import { SegundaViaNota, SegundaViaTitulo } from "@/components/comercial/segunda-via";
-import { ArrowLeft, MessageCircle, Search } from "lucide-react";
+import {
+  SegundaViaNota,
+  SegundaViaTitulo,
+  useEnvioPorEmail,
+} from "@/components/comercial/segunda-via";
+import { HistoricoAtendimento } from "@/components/comercial/historico-atendimento";
+import { ArrowLeft, Loader2, Mail, MessageCircle, Search } from "lucide-react";
 
 const LIST_ROUTE = "/comercial/posicao-cliente";
 
@@ -391,6 +396,10 @@ export function PosicaoClienteConteudo({
     queryFn: () => apiFetch<SugestaoCompraCalculada>(`/sugestao-compra/cliente/${id}/calculada`),
   });
 
+  // Cobrança por e-mail: os vencidos do cliente, com boletos e DANFEs, para o
+  // e-mail do cadastro. Entra no histórico de atendimento.
+  const { enviar: enviarEmail, enviando: enviandoCobranca } = useEnvioPorEmail();
+
   const notas = useMemo(() => posicao?.notas ?? [], [posicao]);
   const comodatos = useMemo(() => posicao?.comodatos ?? [], [posicao]);
   const titulos = useMemo(() => posicao?.titulos ?? [], [posicao]);
@@ -652,6 +661,7 @@ export function PosicaoClienteConteudo({
             <TabsTrigger value="titulos">Títulos a receber ({titulos.length})</TabsTrigger>
             <TabsTrigger value="mix">Mix de produtos ({mix.length})</TabsTrigger>
             <TabsTrigger value="sugestao">Sugestão ({sugestaoCalculada?.itens.length ?? 0})</TabsTrigger>
+            <TabsTrigger value="historico">Histórico de atendimento</TabsTrigger>
           </TabsList>
         </div>
 
@@ -723,6 +733,28 @@ export function PosicaoClienteConteudo({
                     <SelectItem value="baixado">Baixados</SelectItem>
                   </SelectContent>
                 </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="ml-auto gap-1.5"
+                  disabled={enviandoCobranca || !titulos.some((t) => t.status === "vencido")}
+                  title={
+                    titulos.some((t) => t.status === "vencido")
+                      ? "Envia os títulos vencidos, com boletos atualizados e DANFEs, para o e-mail do cadastro do cliente"
+                      : "Este cliente não tem títulos vencidos"
+                  }
+                  onClick={() =>
+                    void enviarEmail(
+                      `/documentos-email/cobranca/${id}`,
+                      undefined,
+                      `Enviar a cobrança dos ${titulos.filter((t) => t.status === "vencido").length} título(s) vencido(s), com boletos atualizados e DANFEs, por e-mail?`,
+                    )
+                  }
+                >
+                  {enviandoCobranca ? <Loader2 className="size-4 animate-spin" /> : <Mail className="size-4" />}
+                  Enviar cobrança por e-mail
+                </Button>
               </div>
 
               {titulosOrdenados.length === 0 ? (
@@ -820,6 +852,10 @@ export function PosicaoClienteConteudo({
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="historico">
+          <HistoricoAtendimento clienteId={id} />
         </TabsContent>
 
         <TabsContent value="mix">

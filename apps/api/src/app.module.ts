@@ -26,6 +26,7 @@ import { NotasSaidaModule } from './modules/notas-saida/notas-saida.module';
 import { FornecedoresModule } from './modules/fornecedores/fornecedores.module';
 import { NotasEntradaModule } from './modules/notas-entrada/notas-entrada.module';
 import { TitulosReceberModule } from './modules/titulos-receber/titulos-receber.module';
+import { DocumentosEmailModule } from './modules/documentos-email/documentos-email.module';
 import { ContasBancariasModule } from './modules/contas-bancarias/contas-bancarias.module';
 import { FeriadosModule } from './modules/feriados/feriados.module';
 import { PoliticaSenhaModule } from './modules/politica-senha/politica-senha.module';
@@ -122,6 +123,7 @@ import { GruposEconomicosModule } from './modules/grupos-economicos/grupos-econo
     FornecedoresModule,
     NotasEntradaModule,
     TitulosReceberModule,
+    DocumentosEmailModule,
     ContasBancariasModule,
     FeriadosModule,
     PoliticaSenhaModule,

@@ -11,6 +11,13 @@ export interface ConfiguracaoSmtp {
   remetente?: string | null;
 }
 
+/** Arquivo anexado ao e-mail (DANFE, XML, boleto). */
+export interface AnexoEmail {
+  nome: string;
+  conteudo: Buffer;
+  mime: string;
+}
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -43,15 +50,16 @@ export class MailService {
    * decide se são fatais.
    */
   async send(
-    to: string,
+    to: string | string[],
     subject: string,
     html: string,
     daEmpresa?: ConfiguracaoSmtp | null,
+    anexos: AnexoEmail[] = [],
   ): Promise<boolean> {
     const cfg = daEmpresa?.host?.trim() ? daEmpresa : this.doAmbiente;
     if (!cfg) {
       this.logger.warn(
-        `SMTP não configurado (nem parâmetro da empresa, nem SMTP_HOST) — e-mail para ${to} não enviado: ${subject}`,
+        `SMTP não configurado (nem parâmetro da empresa, nem SMTP_HOST) — e-mail para ${String(to)} não enviado: ${subject}`,
       );
       return false;
     }
@@ -69,8 +77,13 @@ export class MailService {
       to,
       subject,
       html,
+      attachments: anexos.map((a) => ({
+        filename: a.nome,
+        content: a.conteudo,
+        contentType: a.mime,
+      })),
     });
-    this.logger.log(`E-mail enviado para ${to}: ${subject}`);
+    this.logger.log(`E-mail enviado para ${String(to)}: ${subject}`);
     return true;
   }
 }

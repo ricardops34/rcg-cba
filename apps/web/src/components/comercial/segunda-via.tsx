@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Barcode, FileDown, FileText, Loader2 } from "lucide-react";
-import { apiDownload, ApiError } from "@/lib/api-client";
+import { Barcode, FileDown, FileText, Loader2, Mail } from "lucide-react";
+import type { EnvioEmailResultado } from "@plataforma/contracts";
+import { apiDownload, ApiError, apiFetch } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -98,6 +99,76 @@ function BotaoDocumento({
   );
 }
 
+/**
+ * Envio por e-mail ao cliente — sempre para o e-mail do cadastro dele; a API
+ * não aceita outro destinatário. Confirma antes (é um envio para fora) e
+ * avisa para onde foi e o que não pôde ir.
+ */
+export function useEnvioPorEmail() {
+  const queryClient = useQueryClient();
+  const [enviando, setEnviando] = useState(false);
+
+  const enviar = async (
+    caminho: string,
+    body: Record<string, unknown> | undefined,
+    pergunta: string,
+  ) => {
+    if (!confirm(`${pergunta}
+
+O e-mail vai para o endereço do cadastro do cliente.`)) return;
+    setEnviando(true);
+    try {
+      const r = await apiFetch<EnvioEmailResultado>(caminho, { method: "POST", body });
+      toast.success(`Enviado para ${r.enviadoPara.join(", ")}`, {
+        description: r.avisos.length ? r.avisos.join(" · ") : undefined,
+      });
+      // O envio entra no histórico de atendimento do cliente.
+      void queryClient.invalidateQueries({ queryKey: ["atividades"] });
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Não foi possível enviar o e-mail");
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return { enviar, enviando };
+}
+
+function BotaoEmail({
+  rotulo,
+  motivoIndisponivel,
+  onEnviar,
+  enviando,
+}: {
+  rotulo: string;
+  motivoIndisponivel: string | null;
+  onEnviar: () => void;
+  enviando: boolean;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span onClick={semPropagar}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            disabled={!!motivoIndisponivel || enviando}
+            onClick={(ev) => {
+              semPropagar(ev);
+              onEnviar();
+            }}
+            aria-label={rotulo}
+          >
+            {enviando ? <Loader2 className="size-4 animate-spin" /> : <Mail className="size-4" />}
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{motivoIndisponivel ?? rotulo}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 /** DANFE (e XML) de uma nota fiscal. */
 export function SegundaViaNota({
   notaId,
@@ -111,9 +182,22 @@ export function SegundaViaNota({
   const motivo = temXml
     ? null
     : "O XML desta nota ainda não foi enviado pelo ERP — sem ele não há DANFE.";
+  const { enviar, enviando } = useEnvioPorEmail();
 
   return (
     <div className="flex justify-end gap-0.5">
+      <BotaoEmail
+        rotulo="Enviar DANFE e XML por e-mail ao cliente"
+        motivoIndisponivel={motivo}
+        enviando={enviando}
+        onEnviar={() =>
+          void enviar(
+            `/documentos-email/nota/${notaId}`,
+            { incluirXml: true },
+            `Enviar o DANFE e o XML da NF ${numero} por e-mail?`,
+          )
+        }
+      />
       <BotaoDocumento
         rotulo="Baixar DANFE"
         motivoIndisponivel={motivo}
@@ -177,9 +261,23 @@ export function SegundaViaTitulo({
     }
   };
 
+  const { enviar, enviando } = useEnvioPorEmail();
+  const enviarBoleto = (atualizado: boolean) =>
+    void enviar(
+      `/documentos-email/titulo/${tituloId}`,
+      { atualizado },
+      `Enviar o boleto ${atualizado ? "atualizado" : "original"} do título ${numero} por e-mail?`,
+    );
+
   if (!temBoleto || status !== "vencido") {
     return (
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-0.5">
+        <BotaoEmail
+          rotulo="Enviar boleto por e-mail ao cliente"
+          motivoIndisponivel={motivo}
+          enviando={enviando}
+          onEnviar={() => enviarBoleto(true)}
+        />
         <BotaoDocumento
           rotulo="Baixar boleto"
           motivoIndisponivel={motivo}
@@ -210,6 +308,12 @@ export function SegundaViaTitulo({
           </DropdownMenuItem>
           <DropdownMenuItem onClick={(ev) => baixarBoleto(ev, false)}>
             Boleto Original (sem encargos)
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={enviando} onClick={() => enviarBoleto(true)}>
+            <Mail className="size-4" /> Enviar atualizado por e-mail
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={enviando} onClick={() => enviarBoleto(false)}>
+            <Mail className="size-4" /> Enviar original por e-mail
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
