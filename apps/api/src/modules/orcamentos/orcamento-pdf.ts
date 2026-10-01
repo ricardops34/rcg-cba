@@ -84,7 +84,8 @@ const STATUS_LABEL: Record<string, string> = {
 
 /** Só o que o papel precisa — deliberadamente menos do que o registro tem. */
 export interface OrcamentoPdfDados {
-  numero: number;
+  /** Já formatado: o da proposta, ou o do pedido no histórico do ERP. */
+  numero: string;
   status: string;
   createdAt: Date | string;
   dataValidade: Date | string | null;

@@ -280,6 +280,16 @@ const PARAMETROS_PADRAO = [
     conteudo: '15',
     descricao: 'Minutos que a conta fica bloqueada após exceder as tentativas',
   },
+  {
+    // Gravado pela integração (POST /integracao/comunicacao) no fim de cada
+    // execução de envio e retorno do ERP; ISO 8601, hora do servidor.
+    parametro: 'ULTIMA_COMUNICACAO_ERP',
+    tipo: 'data' as const,
+    tamanho: null,
+    conteudo: null,
+    descricao:
+      'Data e hora da última comunicação do ERP com a plataforma (gravada pela integração)',
+  },
 ];
 
 /**

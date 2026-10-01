@@ -1722,7 +1722,8 @@ export class WhatsappTriagemService {
     const take = Math.min(Math.max(quantidade, 1), 10);
     const pedidos = await this.prisma.withTenant(empresaId, (tx) =>
       tx.orcamento.findMany({
-        where: { empresaId, clienteId, deletedAt: null },
+        // Histórico de pedidos do ERP é de uso interno (decisão de 30/09/2026).
+        where: { empresaId, clienteId, deletedAt: null, origem: { not: 'erp' } },
         orderBy: { createdAt: 'desc' },
         take,
         select: {
@@ -1756,7 +1757,13 @@ export class WhatsappTriagemService {
 
     const pedido = await this.prisma.withTenant(empresaId, (tx) =>
       tx.orcamento.findFirst({
-        where: { empresaId, clienteId, deletedAt: null, numero },
+        where: {
+          empresaId,
+          clienteId,
+          deletedAt: null,
+          numero,
+          origem: { not: 'erp' },
+        },
         select: { id: true },
       }),
     );

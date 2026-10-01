@@ -33,6 +33,8 @@ import { IntegracaoOrcamentosController } from './orcamentos/integracao-orcament
 import { IntegracaoOrcamentosService } from './orcamentos/integracao-orcamentos.service';
 import { IntegracaoPedidosController } from './pedidos/integracao-pedidos.controller';
 import { IntegracaoPedidosService } from './pedidos/integracao-pedidos.service';
+import { IntegracaoComunicacaoController } from './comunicacao/integracao-comunicacao.controller';
+import { IntegracaoComunicacaoService } from './comunicacao/integracao-comunicacao.service';
 import { IntegracaoFileController } from './import/integracao-file.controller';
 import { IntegracaoFileService } from './import/integracao-file.service';
 import { IntegracaoCargasController } from './cargas/integracao-cargas.controller';
@@ -63,12 +65,14 @@ import { ApiKeyGuard } from './guards/api-key.guard';
     IntegracaoTitulosReceberController,
     IntegracaoOrcamentosController,
     IntegracaoPedidosController,
+    IntegracaoComunicacaoController,
     IntegracaoFileController,
     IntegracaoCargasController,
     IntegracaoCargasAdminController,
   ],
   providers: [
     ApiKeyGuard,
+    IntegracaoComunicacaoService,
     IntegracaoCategoriasService,
     IntegracaoRegrasDescontoService,
     IntegracaoCondicoesPagamentoService,

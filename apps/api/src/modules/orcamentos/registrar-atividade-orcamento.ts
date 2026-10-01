@@ -1,3 +1,4 @@
+import { numeroOrcamento } from '@plataforma/contracts';
 import type { TenantTx } from '../../common/prisma/prisma.service';
 import {
   registrarNotificacao,
@@ -25,7 +26,7 @@ export type EventoOrcamento =
   | 'autorizacao_solicitada'
   | 'autorizacao_concedida';
 
-const TITULO: Record<EventoOrcamento, (numero: number) => string> = {
+const TITULO: Record<EventoOrcamento, (numero: string) => string> = {
   criacao: (n) => `Orçamento nº ${n} cadastrado`,
   alteracao: (n) => `Orçamento nº ${n} alterado`,
   pdf: (n) => `Proposta em PDF gerada — orçamento nº ${n}`,
@@ -39,7 +40,9 @@ const TITULO: Record<EventoOrcamento, (numero: number) => string> = {
 
 export interface OrcamentoParaAtividade {
   id: string;
-  numero: number;
+  numero: number | null;
+  /** Nº do pedido, mostrado no histórico do ERP (sem número de proposta). */
+  codigoErp?: string | null;
   titulo: string;
   clienteId: string;
   vendedorId: string;
@@ -86,7 +89,12 @@ export async function registrarAtividadeOrcamento(
       orcamentoId: orcamento.id,
       vendedorId: vendedorDestino,
       tipo: 'tarefa',
-      titulo: TITULO[evento](orcamento.numero),
+      titulo: TITULO[evento](
+        numeroOrcamento({
+          numero: orcamento.numero,
+          codigoErp: orcamento.codigoErp ?? null,
+        }),
+      ),
       descricao: descricao ?? orcamento.titulo,
       dataVencimento: pendencia ? agora : null,
       concluida: !pendencia,
@@ -113,7 +121,12 @@ export async function registrarAtividadeOrcamento(
       empresaId,
       usuarioId,
       tipo,
-      titulo: TITULO[evento](orcamento.numero),
+      titulo: TITULO[evento](
+        numeroOrcamento({
+          numero: orcamento.numero,
+          codigoErp: orcamento.codigoErp ?? null,
+        }),
+      ),
       descricao: orcamento.titulo,
       rota: `/crm/orcamentos/${orcamento.id}`,
       referenciaId: orcamento.id,

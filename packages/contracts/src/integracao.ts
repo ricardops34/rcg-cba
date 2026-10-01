@@ -2029,10 +2029,12 @@ export const INTEGRACAO_ORCAMENTO_ERRO_EXAMPLE: IntegracaoOrcamentoErro = {
 // ------------------------------------------------------------------
 // Pedidos de venda (SC5/SC6) — situação do pedido gerado de um orçamento.
 // ------------------------------------------------------------------
-// Não cria nada na plataforma: acha o orçamento pela chave do pedido (a mesma
-// que o PATCH .../pendentes/{id} gravou nele) e atualiza a situação, a quebra
-// e as notas. Pedido digitado direto no ERP não tem orçamento e volta como
-// erro no relatório do lote. "excluido": true = pedido excluído no ERP →
+// Acha o orçamento pela chave do pedido (a mesma que o PATCH
+// .../pendentes/{id} gravou nele) e atualiza a situação, a quebra e as notas.
+// Pedido digitado direto no ERP não tem orçamento: com cliente, vendedor e
+// emissão, entra como histórico (orçamento de origem "erp", espelho do
+// pedido — docs/planos/2026-09-30-historico-pedidos-erp.md); sem eles, volta
+// como erro no relatório do lote. "excluido": true = pedido excluído no ERP →
 // situação Cancelado.
 
 export const integracaoPedidoItemSchema = z.object({
@@ -2084,6 +2086,35 @@ export const integracaoPedidoCreateSchema = z.object({
     .array(integracaoPedidoNotaSchema)
     .default([])
     .describe("Notas de saída do pedido (SD2 pelo D2_PEDIDO)"),
+  // Só usados quando o pedido não tem orçamento (digitado no ERP) e entra
+  // como histórico; no pedido da plataforma são ignorados.
+  clienteChave: z
+    .string()
+    .trim()
+    .min(1)
+    .max(60)
+    .optional()
+    .describe("chave do cliente (SA1) — obrigatório no pedido digitado no ERP"),
+  vendedorChave: z
+    .string()
+    .trim()
+    .min(1)
+    .max(60)
+    .optional()
+    .describe("chave do vendedor (C5_VEND1) — obrigatório no pedido digitado no ERP"),
+  condicaoPagamentoChave: z
+    .string()
+    .trim()
+    .max(60)
+    .nullable()
+    .optional()
+    .describe("chave da condição de pagamento (C5_CONDPAG)"),
+  emissao: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Use AAAA-MM-DD")
+    .optional()
+    .describe("C5_EMISSAO, AAAA-MM-DD — obrigatório no pedido digitado no ERP"),
 });
 export type IntegracaoPedidoCreate = z.infer<
   typeof integracaoPedidoCreateSchema

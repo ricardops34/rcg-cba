@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { Orcamento, StatusOrcamento } from "@plataforma/contracts";
 import {
+  numeroOrcamento,
   ORIGEM_VENDA_ROTULO,
   SITUACAO_INTEGRACAO_ROTULO,
   situacaoIntegracaoOrcamento,
@@ -143,7 +144,7 @@ export default function OrcamentosPage() {
       header: "Nº",
       sortKey: "numero",
       className: "w-16",
-      cell: (o) => <span className="font-mono text-xs">{o.numero}</span>,
+      cell: (o) => <span className="font-mono text-xs">{numeroOrcamento(o)}</span>,
     },
     {
       header: "Título",

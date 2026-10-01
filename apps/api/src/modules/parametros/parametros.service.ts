@@ -30,6 +30,8 @@ export const PARAMETRO_ORCAMENTO_EXIBIR_FOTOS =
   'ORCAMENTO_EXIBIR_FOTOS_PRODUTOS';
 export const PARAMETRO_BOLETO_PRAZO_MAXIMO_REEMISSAO =
   'BOLETO_PRAZO_MAXIMO_REEMISSAO';
+/** Gravado pela integração (POST /integracao/comunicacao), em ISO 8601. */
+export const PARAMETRO_ULTIMA_COMUNICACAO_ERP = 'ULTIMA_COMUNICACAO_ERP';
 
 type ParametroRow = {
   id: string;

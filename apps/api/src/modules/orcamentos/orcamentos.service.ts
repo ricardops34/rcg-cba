@@ -23,10 +23,11 @@ import {
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
 import type { OrigemVenda } from '@prisma/client';
-import type {
-  OrcamentoCreate,
-  OrcamentoQuery,
-  OrcamentoUpdate,
+import {
+  numeroOrcamento,
+  type OrcamentoCreate,
+  type OrcamentoQuery,
+  type OrcamentoUpdate,
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { criarAtividadeRetorno } from './criar-atividade-retorno';
@@ -836,7 +837,7 @@ export class OrcamentosService {
     quem: QuemPede,
     id: string,
     opcoes: { registrarEvento?: boolean } = {},
-  ): Promise<{ conteudo: Buffer; nomeArquivo: string; numero: number }> {
+  ): Promise<{ conteudo: Buffer; nomeArquivo: string; numero: string }> {
     const dados = await this.prisma.withTenant(empresaId, async (tx) => {
       const basico = await this.buscarParaAcao(tx, empresaId, quem, id);
       if (
@@ -885,8 +886,9 @@ export class OrcamentosService {
     });
 
     const { orcamento, cliente, exibirFotosProdutos } = dados;
+    const numero = numeroOrcamento(orcamento);
     const conteudo = await montarOrcamentoPdf({
-      numero: orcamento.numero,
+      numero,
       status: orcamento.status,
       createdAt: orcamento.createdAt,
       dataValidade: orcamento.dataValidade,
@@ -924,8 +926,8 @@ export class OrcamentosService {
 
     return {
       conteudo,
-      nomeArquivo: `orcamento-${orcamento.numero}.pdf`,
-      numero: orcamento.numero,
+      nomeArquivo: `orcamento-${numero}.pdf`,
+      numero,
     };
   }
 

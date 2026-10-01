@@ -3002,16 +3002,19 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim, lEnvDel)
 Return aRet
 
 /*/{Protheus.doc} BJMAPPED
-Situacao dos pedidos de venda que vieram da plataforma - SC5, SC6, SC9 e SD2.
-Nao cria nada la: a plataforma acha o orcamento pela chave do pedido
-(C5_FILIAL-C5_NUM, a mesma que o BJVincula gravou nele) e atualiza a
-situacao, a quebra e as notas. Plano
+Situacao dos pedidos de venda - SC5, SC6, SC9 e SD2.
+O pedido da plataforma (C5_ORGPED = "P", gravado pelo BJGeraPed): a
+plataforma acha o orcamento pela chave do pedido (C5_FILIAL-C5_NUM, a mesma
+que o BJVincula gravou nele) e atualiza a situacao, a quebra e as notas. Plano
 docs/planos/2026-09-28-orcamento-situacao-erp.md (repositorio da plataforma).
-So os pedidos com C5_ORGPED = "P" (plataforma), gravado pelo BJGeraPed.
+O pedido digitado no ERP entra la como historico, se a emissao estiver nos
+ultimos 12 meses (janela movel) - por isso vao junto cliente, vendedor,
+condicao e emissao. Plano docs/planos/2026-09-30-historico-pedidos-erp.md.
 Um pedido muda sem mexer na SC5: a liberacao mexe na SC9 e o faturamento na
 SC6 (C6_QTDENT) e na SD2. Por isso a janela olha o S_T_A_M_P_ das quatro.
 Situacao, na ordem da decisao do usuario (28/09/2026):
    excluido                          -> DELETE (Cancelado la)
+   todo item encerrado, algum por residuo (C6_BLQ = "R") -> cancelado
    todo item com C6_QTDENT = C6_QTDVEN -> faturado
    algum item com C6_QTDENT > 0      -> faturado_parcial
    C5_LIBDESC = "2"                  -> bloqueado_desconto
@@ -3049,10 +3052,14 @@ User Function BJMAPPED(cMarca, cChave, cMarcaFim, lEnvDel)
 	Local lDelet   := .F.
 	Local lTudo    := .F.
 	Local lAlgum   := .F.
+	Local lResid   := .F.
 	Local lCred    := .F.
 	Local lEst     := .F.
 	Local lLib     := .F.
 	Local lLibDesc := SC5->(FieldPos("C5_LIBDESC")) > 0
+	// Historico: pedido digitado no ERP so sobe com emissao nos ultimos 12
+	// meses (decisao do usuario, 30/09/2026). O da plataforma sobe sempre.
+	Local cCorte   := DtoS(MonthSub(dDataBase, 12))
 
 	Default cMarca    := ""
 	Default cChave    := ""
@@ -3060,13 +3067,14 @@ User Function BJMAPPED(cMarca, cChave, cMarcaFim, lEnvDel)
 	Default lEnvDel   := .T.
 
 	// Sem o campo de origem nao ha como separar o pedido da plataforma do
-	// digitado no ERP - e a plataforma so conhece os dela.
+	// digitado no ERP - e o da plataforma sobe sem o corte de 12 meses.
 	If SC5->(FieldPos("C5_ORGPED")) == 0
 		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "C5_ORGPED nao existe no dicionario. Pedidos nao coletados.", 0, 0, {})
 		Return aRet
 	EndIf
 
-	cQuery := "SELECT SC5.C5_FILIAL, SC5.C5_NUM, SC5.D_E_L_E_T_ AS DELETADO "
+	cQuery := "SELECT SC5.C5_FILIAL, SC5.C5_NUM, SC5.D_E_L_E_T_ AS DELETADO, "
+	cQuery += "       SC5.C5_CLIENTE, SC5.C5_LOJACLI, SC5.C5_VEND1, SC5.C5_CONDPAG, SC5.C5_EMISSAO "
 
 	If lLibDesc
 		cQuery += ", SC5.C5_LIBDESC "
@@ -3074,7 +3082,7 @@ User Function BJMAPPED(cMarca, cChave, cMarcaFim, lEnvDel)
 
 	cQuery += "  FROM " + RetSqlName("SC5") + " SC5 "
 	cQuery += " WHERE SC5.C5_FILIAL = ? "
-	cQuery += "   AND SC5.C5_ORGPED = 'P' "   // plataforma
+	cQuery += "   AND (SC5.C5_ORGPED = 'P' OR SC5.C5_EMISSAO >= '" + cCorte + "') "   // plataforma, ou historico
 
 	// Carga inicial (sem marca e sem chave): pedido excluido nunca foi visto
 	// la. Com "Envia deletados? = Nao" o filtro vale em qualquer coleta.
@@ -3150,8 +3158,9 @@ User Function BJMAPPED(cMarca, cChave, cMarcaFim, lEnvDel)
 		aItens := {}
 		lTudo  := .T.
 		lAlgum := .F.
+		lResid := .F.
 
-		cQuery := "SELECT C6_FILIAL, C6_NUM, C6_ITEM, C6_PRODUTO, C6_QTDVEN, C6_PRCVEN, C6_QTDENT "
+		cQuery := "SELECT C6_FILIAL, C6_NUM, C6_ITEM, C6_PRODUTO, C6_QTDVEN, C6_PRCVEN, C6_QTDENT, C6_BLQ "
 		cQuery += "  FROM " + RetSqlName("SC6") + " SC6 "
 		cQuery += " WHERE SC6.D_E_L_E_T_ = ? "
 		cQuery += "   AND SC6.C6_FILIAL  = ? "
@@ -3175,7 +3184,11 @@ User Function BJMAPPED(cMarca, cChave, cMarcaFim, lEnvDel)
 			oItem["quantidadeEntregue"] := (cAliasIt)->C6_QTDENT
 			aAdd(aItens, oItem)
 
-			If (cAliasIt)->C6_QTDENT < (cAliasIt)->C6_QTDVEN
+			// Item encerrado: todo entregue, ou com o saldo eliminado por residuo
+			// (C6_BLQ = "R"), que nao sera mais faturado.
+			If "R" $ (cAliasIt)->C6_BLQ
+				lResid := .T.
+			ElseIf (cAliasIt)->C6_QTDENT < (cAliasIt)->C6_QTDVEN
 				lTudo := .F.
 			EndIf
 
@@ -3266,6 +3279,11 @@ User Function BJMAPPED(cMarca, cChave, cMarcaFim, lEnvDel)
 		// ---- Situacao, na precedencia combinada com o usuario
 		If lDelet
 			cSituac := "pendente"   // so vale para o POST que antecede o DELETE
+		ElseIf lTudo .And. lResid
+			// Encerrado com saldo eliminado: Cancelado (decisao do usuario,
+			// 29/09/2026). O pedido continua existindo, entao vai por POST, com
+			// as notas do que chegou a faturar.
+			cSituac := "cancelado"
 		ElseIf lTudo
 			cSituac := "faturado"
 		ElseIf lAlgum
@@ -3288,6 +3306,18 @@ User Function BJMAPPED(cMarca, cChave, cMarcaFim, lEnvDel)
 		oJson["situacao"]  := cSituac
 		oJson["itens"]     := aItens
 		oJson["notas"]     := aNotas
+
+		// Usados so quando o pedido nao tem orcamento la (digitado no ERP) e
+		// entra como historico; no pedido da plataforma sao ignorados.
+		oJson["clienteChave"]  := FWxFilial("SA1") + "-" + (cAlias)->C5_CLIENTE + "-" + (cAlias)->C5_LOJACLI
+		oJson["vendedorChave"] := FWxFilial("SA3") + "-" + (cAlias)->C5_VEND1
+		If Empty((cAlias)->C5_CONDPAG)
+			oJson["condicaoPagamentoChave"] := Nil
+		Else
+			oJson["condicaoPagamentoChave"] := FWxFilial("SE4") + "-" + (cAlias)->C5_CONDPAG
+		EndIf
+		// C5_EMISSAO vem AAAAMMDD; a API pede AAAA-MM-DD
+		oJson["emissao"] := SubStr((cAlias)->C5_EMISSAO, 1, 4) + "-" + SubStr((cAlias)->C5_EMISSAO, 5, 2) + "-" + SubStr((cAlias)->C5_EMISSAO, 7, 2)
 
 		If lDelet
 			aAdd(aRet, {cChvPed, oJson, "DELETE"})

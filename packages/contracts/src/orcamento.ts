@@ -107,12 +107,17 @@ export function situacaoIntegracaoOrcamento(o: {
  * comissão e a leitura de desempenho não tratarem todas como iguais.
  *
  * Preenchido pelo servidor a partir de quem cria — nunca vem do formulário.
+ *
+ * `erp` é o pedido digitado direto no ERP, recebido como histórico pela
+ * integração (docs/planos/2026-09-30-historico-pedidos-erp.md): sem número de
+ * proposta, espelho do pedido, e fora do alcance do cliente.
  */
 export const origemVendaSchema = z.enum([
   "vendedor",
   "superior",
   "administrador",
   "cliente",
+  "erp",
 ]);
 export type OrigemVenda = z.infer<typeof origemVendaSchema>;
 
@@ -121,7 +126,19 @@ export const ORIGEM_VENDA_ROTULO: Record<OrigemVenda, string> = {
   superior: "Superior",
   administrador: "Administração",
   cliente: "Cliente",
+  erp: "ERP",
 };
+
+/**
+ * Número para mostrar: o da proposta, ou o do pedido no ERP no histórico
+ * (origem `erp`, que não tem número de proposta).
+ */
+export function numeroOrcamento(o: {
+  numero: number | null;
+  codigoErp: string | null;
+}): string {
+  return o.numero != null ? String(o.numero) : o.codigoErp ?? "";
+}
 
 // Linha de item — input de create/update (o server substitui o conjunto
 // inteiro de itens a cada save, sem endpoint por linha, mesmo padrão de
@@ -216,8 +233,9 @@ export const orcamentoSchema = z.object({
   codigoErp: z.string().nullable(),
   // Numeração própria do CRM, sequencial por empresa e atribuída na criação —
   // é o "Nº" que o cliente vê na proposta em PDF. Não confundir com
-  // codigoErp (chave do ERP, preenchida só na integração).
-  numero: z.number().int(),
+  // codigoErp (chave do ERP, preenchida só na integração). Nulo no histórico
+  // de pedidos do ERP (origem "erp") — mostrar com numeroOrcamento().
+  numero: z.number().int().nullable(),
   clienteId: z.string().uuid(),
   vendedorId: z.string().uuid(),
   oportunidadeId: z.string().uuid().nullable(),

@@ -301,6 +301,37 @@ User Function BJHTTP(cVerbo, cRota, cBody, cResp, nHttp, cErro, cTipo)
 
 Return lRet
 
+/*/{Protheus.doc} BJCOMUNICA
+Avisa a plataforma que uma execucao de envio ou de retorno terminou. A
+plataforma grava a data e hora dela (relogio do servidor de la, nao o do
+Protheus) no parametro ULTIMA_COMUNICACAO_ERP da empresa.
+Chamada no fim do U_BJDRENA, do U_BJLOTE e do U_BJRETORNO. Falhar aqui nao
+derruba nada: so registra no log - os dados ja foram trocados.
+@type    User Function
+@author  Ricardo P Sotomayor
+@since   30/09/2026
+@param   cQuem, character, Quem terminou, so para o log. Ex.: "envio", "retorno"
+@return  logical, .T. quando a plataforma registrou
+@example U_BJCOMUNICA("retorno")
+/*/
+User Function BJCOMUNICA(cQuem)
+
+	Local lRet  := .F.
+	Local cResp := ""
+	Local cErro := ""
+	Local nHttp := 0
+
+	Default cQuem := ""
+
+	lRet := U_BJHTTP("POST", "/integracao/comunicacao", "{}", @cResp, @nHttp, @cErro)
+
+	If !lRet
+		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Comunicacao (" + cQuem + ") nao registrada na plataforma - HTTP " + ;
+			cValToChar(nHttp) + " - " + cErro, 0, 0, {})
+	EndIf
+
+Return lRet
+
 /*/{Protheus.doc} BJCHAVE
 Parte uma chave de integracao nos campos que o compoem, prontos para busca.
 @type    User Function

@@ -26,6 +26,11 @@ function conteudoLegivel(p: ParametroEmpresa) {
   if (p.tipo === "senha") return p.preenchido ? "••••••••" : "—";
   if (p.conteudo == null || p.conteudo === "") return "—";
   if (p.tipo === "booleano") return p.conteudo === "true" ? "Sim" : "Não";
+  // Data com hora (ex.: ULTIMA_COMUNICACAO_ERP, gravado em ISO pela integração).
+  if (p.tipo === "data" && p.conteudo.includes("T")) {
+    const d = new Date(p.conteudo);
+    if (!Number.isNaN(d.getTime())) return d.toLocaleString("pt-BR");
+  }
   return p.conteudo;
 }
 

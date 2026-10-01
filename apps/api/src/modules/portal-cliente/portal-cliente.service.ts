@@ -48,6 +48,8 @@ export class PortalClienteService {
           ativo: true,
           deletedAt: null,
           status: { in: ['enviado', 'aprovado', 'recusado', 'expirado'] },
+          // Histórico de pedidos do ERP é de uso interno (decisão de 30/09/2026).
+          origem: { not: 'erp' },
         },
         select: {
           id: true,

@@ -50,7 +50,8 @@ até 1.000 registros de uma vez — ver [Lote](#lote--put-integracaoentidade).
 | `/integracao/notas-entrada` | `chave` | `ativo`, `tipo`, `fornecedorChave`, `clienteChave` | mestre-detalhe (`itens`) + `tipo` decide o participante |
 | `/integracao/titulos-receber` | `chave` | `ativo` | campos de cobrança bancária |
 | `/integracao/orcamentos` | `chave` | `ativo`, `status` | mestre-detalhe (`itens`) + fila de pendentes + recusa do pedido |
-| `/integracao/pedidos` | `chave` | — | `POST`, `PUT` e `DELETE`, sem `GET`: situação do pedido gerado de um orçamento |
+| `/integracao/pedidos` | `chave` | — | `POST`, `PUT` e `DELETE`, sem `GET`: situação do pedido gerado de um orçamento, e histórico do pedido digitado no ERP |
+| `/integracao/comunicacao` | — | — | Só `POST`, sem corpo: registra a última comunicação do ERP |
 | `/integracao/arquivo/importar` | — | — | `POST` envia arquivo TXT/JSON do Protheus e processa em lote |
 | `/integracao/arquivo/exportar` | — | — | `GET` baixa pendências da plataforma em TXT para importar no Protheus |
 
@@ -487,12 +488,11 @@ DELETE /integracao/pedidos/{chave}   pedido excluído → Cancelado
 ```
 
 Acompanhamento do pedido de venda (SC5/SC6) que o ERP gerou a partir de um
-orçamento — plano `docs/planos/2026-09-28-orcamento-situacao-erp.md`. **Não
-cria registro**: a plataforma acha o orçamento pela `chave` do pedido
-(`C5_FILIAL-C5_NUM`, a mesma que o `PATCH .../pendentes/{id}` gravou nele) e
-atualiza nele a situação, a quebra e as notas. `POST` e `DELETE` existem para
-o envio por mensagem do ERP (um registro por chamada, como as outras
-entidades); `POST` e `DELETE` sem orçamento vinculado respondem `404`. Não há
+orçamento — plano `docs/planos/2026-09-28-orcamento-situacao-erp.md`. A
+plataforma acha o orçamento pela `chave` do pedido (`C5_FILIAL-C5_NUM`, a
+mesma que o `PATCH .../pendentes/{id}` gravou nele) e atualiza nele a
+situação, a quebra e as notas. `POST` e `DELETE` existem para o envio por
+mensagem do ERP (um registro por chamada, como as outras entidades). Não há
 `GET`: a situação se lê no próprio orçamento.
 
 ```json
@@ -531,11 +531,35 @@ entidades); `POST` e `DELETE` sem orçamento vinculado respondem `404`. Não há
   quantidade ou preço diferente (tolerância de meio centavo) marcam o orçamento
   **com quebra**. Mande sempre o pedido inteiro.
 - **`notas`** substitui a lista de notas do orçamento.
-- Pedido sem orçamento vinculado (digitado direto no ERP) volta em `erros` no
-  relatório — o ERP deve mandar só os pedidos que vieram da plataforma.
+- **Pedido digitado direto no ERP** (sem orçamento) entra como **histórico**
+  — plano `docs/planos/2026-09-30-historico-pedidos-erp.md`: um orçamento de
+  origem `erp`, aprovado, sem número de proposta, espelho do pedido (cada
+  mensagem regrava cabeçalho e itens; sem quebra). Para isso o pedido precisa
+  de `clienteChave`, `vendedorChave` e `emissao` (`AAAA-MM-DD`), e aceita
+  `condicaoPagamentoChave`; sem eles responde `404` (ou vai em `erros` no
+  lote). Cliente, vendedor, condição ou produto que não existe também é `404`.
+  No pedido da plataforma esses campos são ignorados. O ERP manda os de
+  emissão nos últimos 12 meses.
 
 O status comercial do orçamento (`aprovado`) **não muda**: a situação do
 pedido é um campo à parte.
+
+## Comunicação — `/integracao/comunicacao`
+
+```
+POST /integracao/comunicacao    sem corpo
+```
+
+Chamado pelo integrador no **fim de cada execução** de envio (`U_BJDRENA`,
+`U_BJLOTE`) e de retorno (`U_BJRETORNO`), pelo `U_BJCOMUNICA`. A plataforma
+grava a data e hora **do servidor dela** no parâmetro `ULTIMA_COMUNICACAO_ERP`
+da empresa da chave (Administração > Parâmetros) e responde:
+
+```json
+{ "ultimaComunicacao": "2026-09-30T21:15:04.512Z" }
+```
+
+Não conta como coleta nem envio no monitor da chave.
 
 
 ---

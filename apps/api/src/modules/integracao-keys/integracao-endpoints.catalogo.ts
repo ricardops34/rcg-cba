@@ -113,6 +113,20 @@ export const CATALOGO_ENDPOINTS_INTEGRACAO: IntegracaoEndpointCatalogoItem[] = [
     rota: '/api/v1/integracao/orcamentos',
   },
   {
+    endpointKey: 'pedidos',
+    nome: 'Pedidos de Venda',
+    descricao: 'Situação dos pedidos e histórico dos digitados no ERP.',
+    metodos: ['POST', 'PUT', 'DELETE'],
+    rota: '/api/v1/integracao/pedidos',
+  },
+  {
+    endpointKey: 'comunicacao',
+    nome: 'Comunicação do ERP',
+    descricao: 'Data e hora da última execução de envio ou retorno do ERP.',
+    metodos: ['POST'],
+    rota: '/api/v1/integracao/comunicacao',
+  },
+  {
     endpointKey: 'arquivo',
     nome: 'Arquivos TXT Protheus',
     descricao: 'Importação e exportação de arquivos em lote (TXT/JSON).',

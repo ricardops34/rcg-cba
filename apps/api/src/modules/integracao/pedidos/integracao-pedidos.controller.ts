@@ -45,7 +45,9 @@ export class IntegracaoPedidosController {
     description:
       'Atualiza o orçamento que gerou o pedido: situação no ERP, quebra em ' +
       'relação ao orçamento e notas. O orçamento é achado pela chave do pedido ' +
-      '(C5_FILIAL-C5_NUM), a mesma do vínculo. Não cria registro.',
+      '(C5_FILIAL-C5_NUM), a mesma do vínculo. Pedido digitado direto no ERP ' +
+      '(sem orçamento) entra como histórico — orçamento de origem "erp", ' +
+      'espelho do pedido — e precisa de clienteChave, vendedorChave e emissao.',
   })
   @ApiBodyExample(INTEGRACAO_PEDIDO_CREATE_EXAMPLE)
   @ApiResponse({
@@ -54,7 +56,9 @@ export class IntegracaoPedidosController {
   })
   @ApiResponse({
     status: 404,
-    description: 'Nenhum orçamento vinculado ao pedido',
+    description:
+      'Nenhum orçamento vinculado ao pedido e faltam os campos do histórico, ' +
+      'ou cliente/vendedor/produto/condição não encontrado',
   })
   @HttpCode(200)
   @Post()
@@ -74,7 +78,8 @@ export class IntegracaoPedidosController {
     description:
       'O mesmo do POST, em lote (máx. 1.000 por chamada). "excluido": true ' +
       'marca o orçamento como Cancelado e dispensa os demais campos. Pedido ' +
-      'sem orçamento vinculado volta em "erros". Responde 200 com o relatório.',
+      'sem orçamento entra como histórico; sem os campos do histórico volta ' +
+      'em "erros". Responde 200 com o relatório.',
   })
   @ApiBodyExample({ registros: [INTEGRACAO_PEDIDO_CREATE_EXAMPLE] })
   @ApiResponse({

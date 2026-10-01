@@ -38,6 +38,7 @@ O que os outros três usam. Não depende de nenhum deles.
 |---|---|
 | `U_BJCATALO` | O catálogo: as 15 entidades, na ordem de carga que a API exige |
 | `U_BJHTTP` | O cliente HTTP inteiro numa função: cabeçalho, verbo, execução, erro traduzido e retentativa. PATCH por `HTTPQuote`, o resto por `FWRest` |
+| `U_BJCOMUNICA` | `POST /integracao/comunicacao` no fim do `U_BJDRENA`, do `U_BJLOTE` e do `U_BJRETORNO`: a plataforma grava a hora da última comunicação em `ULTIMA_COMUNICACAO_ERP`. Falha só vai para o log |
 | `U_BJCHAVE` | Parte uma `chave` nos campos do índice, já no tamanho do dicionário |
 | `U_BJPARTES` | Separa uma `chave` pelo `-` **mantendo as partes vazias** (a filial de tabela compartilhada). Use no lugar de `StrTokArr` |
 | `U_BJSEMFIL` | Retorno: converte a chave de integração devolvida pela plataforma (`01-000234`, `-000234`) no valor do ERP, sem filial e sem hífen, pelos campos da chave única. Aceita também a chave sem o prefixo de filial |
@@ -693,8 +694,9 @@ molde do pedido da Máxima, `Faturamento/Maxima/IMPPED.prw`): `C5_ORGPED = "P"`
 
 **Recusa do `MATA410`.** O `BJErroOrc` grava o erro na SZZ e avisa a
 plataforma (`PATCH /integracao/orcamentos/pendentes/{id}/erro`): o orçamento
-mostra **Erro de integração** com o motivo. Continua pendente lá, volta no
-próximo ciclo, e o vínculo limpa o erro.
+mostra **Erro de integração** com o motivo e sai da fila de pendentes — o
+ERP não tenta de novo; o vendedor copia para um novo (decisão de
+29/09/2026).
 
 ### Situação do pedido volta para o orçamento
 
@@ -703,6 +705,13 @@ plataforma). A entidade `pedidos` do catálogo (`U_BJMAPPED`) manda, para cada
 pedido que veio da plataforma, a situação calculada aqui, os itens e as notas.
 A plataforma acha o orçamento pela chave do pedido e calcula a **quebra**
 (item incluído ou retirado, quantidade ou preço diferente do orçamento).
+
+**Pedido digitado no ERP** (30/09/2026, plano
+`docs/planos/2026-09-30-historico-pedidos-erp.md`): o `U_BJMAPPED` também
+manda o pedido sem `C5_ORGPED = 'P'` cuja `C5_EMISSAO` esteja nos últimos 12
+meses (janela móvel), com cliente, vendedor, condição e emissão. A plataforma
+o grava como histórico — orçamento de origem ERP, espelho do pedido, só
+consulta e cópia.
 
 | Situação | Regra, nesta ordem |
 |---|---|

@@ -111,6 +111,9 @@ User Function BJRETORNO(aJob)
 			" em " + cValToChar(Round(Seconds() - nSeg, 0)) + "s")
 	EndIf
 
+	// Fim da execucao: a plataforma registra a ultima comunicacao do ERP
+	U_BJCOMUNICA("retorno")
+
 	UnLockByName(cTrava, .T., .F.)
 
 Return aTotal
@@ -1665,6 +1668,9 @@ User Function BJDRENA(nLimite, cSeqMae, oProcess)
 		" superadas: " + cValToChar(nSuper) + " erros: " + cValToChar(aTotal[3]) + ;
 		" em " + cValToChar(Round(Seconds() - nSeg, 0)) + "s" + Iif(lParou, " (interrompido)", ""))
 
+	// Fim da execucao: a plataforma registra a ultima comunicacao do ERP
+	U_BJCOMUNICA("envio")
+
 	U_BJBATIDA()
 	UnLockByName(cTrava, .T., .F.)
 
@@ -2149,6 +2155,9 @@ User Function BJLOTE(nLimite, oProcess)
 	For nX := 1 To Len(aLotes)
 		BJFechaEnv(aLotes[nX])
 	Next nX
+
+	// Fim da execucao: a plataforma registra a ultima comunicacao do ERP
+	U_BJCOMUNICA("envio em bloco")
 
 	U_BJBATIDA()
 	UnLockByName(cTrava, .T., .F.)

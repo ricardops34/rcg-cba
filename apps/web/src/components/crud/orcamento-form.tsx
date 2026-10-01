@@ -26,6 +26,7 @@ import {
   type Produto,
   type SituacaoIntegracaoOrcamento,
   type StatusOrcamento,
+  numeroOrcamento,
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
 import { apiDownload, apiFetch, ApiError } from "@/lib/api-client";
@@ -946,7 +947,7 @@ export function OrcamentoFormContent({
       // emissão no histórico do orçamento/cliente.
       await apiDownload(
         `/orcamentos/${registro.id}/pdf`,
-        `orcamento-${registro.numero}.pdf`,
+        `orcamento-${numeroOrcamento(registro)}.pdf`,
       );
       void queryClient.invalidateQueries({ queryKey: ["atividades"] });
     } catch (err) {
@@ -1188,7 +1189,9 @@ export function OrcamentoFormContent({
         <CardContent>
           {bloqueado && (
             <p data-tour="orcamento-bloqueio" className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
-              {registro?.status === "expirado"
+              {registro?.origem === "erp"
+                ? "Pedido digitado no ERP — histórico, só para acompanhar. A situação e as notas vêm do ERP. Use “Copiar” para gerar um novo orçamento a partir dele."
+                : registro?.status === "expirado"
                 ? "Orçamento vencido — não pode ser alterado nem efetivado. Use “Copiar” para gerar um novo com a validade reiniciada."
                 : registro?.situacaoErp === "cancelado"
                   ? "Pedido cancelado no ERP — o orçamento não pode mais ser alterado. Use “Copiar” para gerar um novo."
@@ -1944,7 +1947,7 @@ export function OrcamentoFormContent({
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <Field>
                     <FieldLabel>Nº do orçamento</FieldLabel>
-                    <div className="text-sm">{registro.numero}</div>
+                    <div className="text-sm">{numeroOrcamento(registro)}</div>
                   </Field>
                   <Field>
                     <FieldLabel>Status do orçamento</FieldLabel>
@@ -2132,7 +2135,7 @@ export function OrcamentoForm({ orcamento }: { orcamento?: Orcamento }) {
           <ArrowLeft className="size-4" />
         </Button>
         <h1 className="text-xl font-semibold tracking-tight">
-          {orcamento ? `Editar orçamento Nº ${orcamento.numero}` : "Novo orçamento"}
+          {orcamento ? `Editar orçamento Nº ${numeroOrcamento(orcamento)}` : "Novo orçamento"}
         </h1>
       </div>
 

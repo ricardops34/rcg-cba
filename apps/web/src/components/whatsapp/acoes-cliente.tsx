@@ -15,7 +15,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { FichasTecnicasDialog } from "@/components/whatsapp/fichas-tecnicas-dialog";
-import type { Orcamento } from "@plataforma/contracts";
+import { numeroOrcamento, type Orcamento } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { STATUS_ORCAMENTO_LABEL } from "@/components/crud/orcamento-status";
@@ -331,7 +331,7 @@ function OrcamentoDialog({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-medium">
-                      Nº {o.numero} — {o.titulo}
+                      Nº {numeroOrcamento(o)} — {o.titulo}
                     </span>
                     <span className="shrink-0 tabular-nums">{moeda(o.vlrTotal)}</span>
                   </div>

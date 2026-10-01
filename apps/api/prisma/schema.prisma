@@ -3721,11 +3721,16 @@ model Atividade {
 ///
 /// Preenchida pelo servidor a partir de quem cria, comparando com o vendedor
 /// do cliente — nunca vem do payload.
+///
+/// `erp`: pedido digitado direto no ERP, recebido como histórico por
+/// /integracao/pedidos (docs/planos/2026-09-30-historico-pedidos-erp.md).
+/// Não aparece para o cliente (Portal, WhatsApp).
 enum OrigemVenda {
   vendedor
   superior
   administrador
   cliente
+  erp
 }
 
 enum StatusOrcamento {
@@ -3764,8 +3769,9 @@ model Orcamento {
   // Número do orçamento pro cliente (é o que sai na proposta em PDF):
   // sequencial por empresa, atribuído na criação a partir do contador
   // OrcamentoConfig.ultimoNumero. Existe desde o rascunho — diferente do
-  // codigoErp, que só aparece quando o ERP integra.
-  numero              Int
+  // codigoErp, que só aparece quando o ERP integra. Nulo no pedido que veio
+  // do ERP como histórico (origem erp): não é proposta, e mostra o codigoErp.
+  numero              Int?
   clienteId           String
   vendedorId          String
   oportunidadeId      String?

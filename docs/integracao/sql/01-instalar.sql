@@ -1097,7 +1097,10 @@ BEGIN
     -- =======================================================================
     -- pedidos (BJMAPPED): situacao dos pedidos que vieram da plataforma
     -- (C5_ORGPED = 'P'). Precisa que o orcamento ja esteja vinculado la - o
-    -- pedido e achado pela chave C5_FILIAL-C5_NUM. Situacao, nesta ordem
+    -- pedido e achado pela chave C5_FILIAL-C5_NUM. O pedido digitado no ERP
+    -- entra la como historico se a emissao estiver nos ultimos 12 meses
+    -- (decisao do usuario, 30/09/2026); por isso vao cliente, vendedor,
+    -- condicao e emissao. Situacao, nesta ordem
     -- (decisoes do usuario, 28 e 29/09/2026):
     --   todo item encerrado e algum por residuo (C6_BLQ = 'R') -> cancelado
     --   todo item com C6_QTDENT >= C6_QTDVEN                 -> faturado
@@ -1175,10 +1178,18 @@ BEGIN
                               FROM dbo.BJ_SD2 SD2
                              WHERE SD2.D_E_L_E_T_ = ' ' AND SD2.D2_FILIAL = @fSD2 AND SD2.D2_PEDIDO = SC5.C5_NUM) n
                      ORDER BY n.emissao, n.numero
-                       FOR JSON PATH, INCLUDE_NULL_VALUES), N'[]'))                    AS notas
+                       FOR JSON PATH, INCLUDE_NULL_VALUES), N'[]'))                    AS notas,
+                -- Historico: usados so quando o pedido nao tem orcamento la
+                @fSA1 + '-' + SC5.C5_CLIENTE + '-' + SC5.C5_LOJACLI                  AS clienteChave,
+                @fSA3 + '-' + SC5.C5_VEND1                                            AS vendedorChave,
+                CASE WHEN RTRIM(SC5.C5_CONDPAG) = '' THEN NULL
+                     ELSE @fSE4 + '-' + SC5.C5_CONDPAG END                            AS condicaoPagamentoChave,
+                STUFF(STUFF(SC5.C5_EMISSAO, 7, 0, '-'), 5, 0, '-')                    AS emissao
                 FOR JSON PATH, WITHOUT_ARRAY_WRAPPER, INCLUDE_NULL_VALUES) r(j)
          WHERE SC5.D_E_L_E_T_ = ' ' AND SC5.C5_FILIAL = @fSC5
-           AND SC5.C5_ORGPED = 'P'   -- plataforma
+           -- plataforma, ou historico dos ultimos 12 meses
+           AND (SC5.C5_ORGPED = 'P'
+                OR SC5.C5_EMISSAO >= CONVERT(char(8), DATEADD(month, -12, GETDATE()), 112))
            AND (@corte IS NULL
                 OR SC5.S_T_A_M_P_ >= @corte
                 OR EXISTS (SELECT 1 FROM dbo.BJ_SC6 I WHERE I.C6_FILIAL = SC5.C5_FILIAL AND I.C6_NUM = SC5.C5_NUM AND I.S_T_A_M_P_ >= @corte)

@@ -82,8 +82,12 @@ export class ApiKeyGuard implements CanActivate {
       path.includes('/orcamentos/pendentes') ||
       path.includes('/arquivo/exportar');
 
+    // O batimento do fim da execução não é coleta nem envio de dados.
+    const isComunicacao = path.includes('/integracao/comunicacao');
+
     const isColeta =
       !isEnvio &&
+      !isComunicacao &&
       (method === 'POST' ||
         method === 'PUT' ||
         method === 'PATCH' ||
