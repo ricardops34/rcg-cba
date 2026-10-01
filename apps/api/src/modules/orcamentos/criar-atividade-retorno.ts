@@ -1,4 +1,5 @@
 import type { TenantTx } from '../../common/prisma/prisma.service';
+import { carregarCalendarioUtil } from '../../common/horario/calendario-util';
 
 /**
  * dataRetorno definida (na criação, ou numa edição que muda o valor) gera
@@ -21,6 +22,7 @@ export async function criarAtividadeRetorno(
     dataRetorno: Date;
   },
 ) {
+  const calendario = await carregarCalendarioUtil(tx, empresaId);
   await tx.atividade.create({
     data: {
       empresaId,
@@ -30,7 +32,7 @@ export async function criarAtividadeRetorno(
       vendedorId: params.vendedorId,
       tipo: 'ligacao',
       titulo: `Retorno: ${params.titulo}`,
-      dataVencimento: params.dataRetorno,
+      dataVencimento: calendario.ajustar(params.dataRetorno),
       createdBy: autor,
       updatedBy: autor,
     },

@@ -13,6 +13,7 @@ export const atividadeCreateSchema = z.object({
   titulo: z.string().trim().min(1, "Informe um título").max(150),
   descricao: z.string().trim().max(1000).optional().or(z.literal("")),
   dataVencimento: z.coerce.date().nullable().optional(),
+  manterDiaNaoUtil: z.boolean().optional().describe("Confirma agendamento manual em feriado ou fim de semana"),
   concluida: z.boolean().default(false),
   dataConclusao: z.coerce.date().nullable().optional(),
   ativo: z.boolean().default(true),

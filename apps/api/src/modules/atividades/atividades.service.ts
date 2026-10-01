@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { carregarCalendarioUtil } from '../../common/horario/calendario-util';
 import { PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
 import {
   combinarFiltroVendedor,
@@ -42,9 +43,17 @@ const INCLUDE = {
 export class AtividadesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  feriados(empresaId: string) {
+    return this.prisma.withTenant(empresaId, (tx) => tx.feriado.findMany({
+      where: { empresaId }, select: { data: true, descricao: true }, orderBy: { data: 'asc' },
+    }));
+  }
+
   private limpar<T extends Record<string, unknown>>(input: T) {
     const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(input)) out[k] = v === '' ? null : v;
+    for (const [k, v] of Object.entries(input)) {
+      if (k !== 'manterDiaNaoUtil') out[k] = v === '' ? null : v;
+    }
     return out;
   }
 
@@ -214,9 +223,12 @@ export class AtividadesService {
         await this.garantirOrcamentoNoEscopo(tx, empresaId, escopo, input.orcamentoId);
       }
 
+      const calendario = input.dataVencimento && !input.concluida && !input.manterDiaNaoUtil
+        ? await carregarCalendarioUtil(tx, empresaId) : null;
       return tx.atividade.create({
         data: {
           ...(this.limpar(this.normalizarConclusao(input)) as object),
+          ...(calendario && input.dataVencimento ? { dataVencimento: calendario.ajustar(input.dataVencimento) } : {}),
           empresaId,
           createdBy: user.id,
           updatedBy: user.id,
@@ -248,10 +260,13 @@ export class AtividadesService {
         await this.garantirOrcamentoNoEscopo(tx, empresaId, escopo, input.orcamentoId);
       }
 
+      const calendario = input.dataVencimento && !(input.concluida ?? atividade.concluida) && !input.manterDiaNaoUtil
+        ? await carregarCalendarioUtil(tx, empresaId) : null;
       return tx.atividade.update({
         where: { id },
         data: {
           ...(this.limpar(this.normalizarConclusao(input)) as object),
+          ...(calendario && input.dataVencimento ? { dataVencimento: calendario.ajustar(input.dataVencimento) } : {}),
           updatedBy: user.id,
         } as never,
         include: INCLUDE,

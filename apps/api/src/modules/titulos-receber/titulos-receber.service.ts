@@ -1,3 +1,4 @@
+import { carregarCalendarioUtil } from '../../common/horario/calendario-util';
 import {
   ConflictException,
   Injectable,
@@ -63,6 +64,8 @@ export class TitulosReceberService {
       // banco e o cálculo do badge divergirem, a lista mostra "aberto" numa
       // busca por "vencido".
       const hoje = inicioDoDia();
+      const calendario = await carregarCalendarioUtil(tx, empresaId);
+      const corte = calendario.corteVencidos(hoje);
       const condicoesStatus: Prisma.TituloReceberWhereInput[] = [];
       if (query.status === 'baixado') {
         condicoesStatus.push({ dtBaixa: { not: null } });
@@ -71,10 +74,10 @@ export class TitulosReceberService {
       } else if (query.status === 'aberto') {
         condicoesStatus.push(
           { dtBaixa: null },
-          { OR: [{ vencimento: null }, { vencimento: { gte: hoje } }] },
+          { OR: [{ vencimento: null }, { vencimento: { gte: corte } }] },
         );
       } else if (query.status === 'vencido') {
-        condicoesStatus.push({ dtBaixa: null }, { vencimento: { lt: hoje } });
+        condicoesStatus.push({ dtBaixa: null }, { vencimento: { lt: corte } });
       }
       const where = {
         empresaId,
@@ -121,8 +124,9 @@ export class TitulosReceberService {
       );
       const comStatus = data.map((titulo) => ({
         ...titulo,
-        status: calcularStatusTituloReceber(titulo, hoje),
-        temBoleto: podeEmitirBoleto(titulo, temContaPadrao, hoje, prazoMaximoReemissao),
+        vencimentoEfetivo: calendario.vencimento(titulo.vencimento),
+        status: calcularStatusTituloReceber({ ...titulo, vencimento: calendario.vencimento(titulo.vencimento) }, hoje),
+        temBoleto: podeEmitirBoleto({ ...titulo, vencimento: calendario.vencimento(titulo.vencimento) }, temContaPadrao, hoje, prazoMaximoReemissao),
       }));
       return buildPaginatedResult(comStatus, total, query);
     });
@@ -156,10 +160,12 @@ export class TitulosReceberService {
         60,
         tx,
       );
+      const calendario = await carregarCalendarioUtil(tx, empresaId);
       return {
         ...titulo,
-        status: calcularStatusTituloReceber(titulo, inicioDoDia()),
-        temBoleto: podeEmitirBoleto(titulo, temContaPadrao, inicioDoDia(), prazoMaximoReemissao),
+        vencimentoEfetivo: calendario.vencimento(titulo.vencimento),
+        status: calcularStatusTituloReceber({ ...titulo, vencimento: calendario.vencimento(titulo.vencimento) }, inicioDoDia()),
+        temBoleto: podeEmitirBoleto({ ...titulo, vencimento: calendario.vencimento(titulo.vencimento) }, temContaPadrao, inicioDoDia(), prazoMaximoReemissao),
       };
     });
   }
@@ -205,7 +211,8 @@ export class TitulosReceberService {
         include: { cliente: true, contaBancaria: true },
       });
       if (!encontrado) throw new NotFoundException('Título não encontrado');
-      return encontrado;
+      const calendario = await carregarCalendarioUtil(tx, empresaId);
+      return { ...encontrado, vencimentoEfetivo: calendario.vencimento(encontrado.vencimento) };
     });
 
     const prazoMaximoReemissao = await this.parametros.obterNumero(
@@ -216,7 +223,7 @@ export class TitulosReceberService {
 
     // Janela de reemissão: passados os dias configurados do vencimento a cobrança já está
     // em outro rito (negativação, protesto, acordo), e um boleto emitido aqui atropelaria isso.
-    if (foraDoPrazoDeReemissao(titulo.vencimento, new Date(), prazoMaximoReemissao)) {
+    if (foraDoPrazoDeReemissao(titulo.vencimentoEfetivo, new Date(), prazoMaximoReemissao)) {
       throw new ConflictException(
         `O título ${titulo.numero} está vencido há mais de ${prazoMaximoReemissao} dias — ` +
           'a 2ª via não pode mais ser emitida pela plataforma. Fale com o financeiro.',
@@ -239,12 +246,12 @@ export class TitulosReceberService {
     });
 
     const saldo = Number(titulo.saldo) > 0 ? Number(titulo.saldo) : Number(titulo.valor);
-    const emAtraso = diasEmAtraso(titulo.vencimento) > 0;
+    const emAtraso = diasEmAtraso(titulo.vencimentoEfetivo) > 0;
     const usarAtualizado = opcoes.atualizado !== false && emAtraso;
     const encargos = usarAtualizado
       ? calcularEncargos({
           saldo,
-          vencimento: titulo.vencimento,
+          vencimento: titulo.vencimentoEfetivo,
           multaPerc: conta.multaPerc,
           jurosMesPerc: conta.jurosMesPerc,
           multaValor: titulo.multaValor,

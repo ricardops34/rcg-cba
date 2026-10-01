@@ -1,3 +1,4 @@
+import { ajustarValidadeOrcamento } from '../../orcamentos/validade-orcamento';
 import {
   ConflictException,
   Injectable,
@@ -427,7 +428,7 @@ export class IntegracaoOrcamentosService {
         condicaoPagamentoId,
         titulo: input.titulo,
         status: input.status,
-        dataValidade: input.dataValidade ?? null,
+        dataValidade: await ajustarValidadeOrcamento(tx, empresaId, input.dataValidade ?? null),
         dataRetorno: input.dataRetorno ?? null,
         observacao: input.observacao ?? null,
         vlrTotal,
@@ -569,7 +570,7 @@ export class IntegracaoOrcamentosService {
           ...(input.titulo !== undefined ? { titulo: input.titulo } : {}),
           ...(input.status !== undefined ? { status: input.status } : {}),
           ...(input.dataValidade !== undefined
-            ? { dataValidade: input.dataValidade }
+            ? { dataValidade: await ajustarValidadeOrcamento(tx, empresaId, input.dataValidade) }
             : {}),
           ...(dataRetorno !== undefined ? { dataRetorno } : {}),
           ...(input.observacao !== undefined

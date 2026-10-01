@@ -45,6 +45,7 @@ export const tituloReceberSchema = z.object({
   tipo: z.string().nullable(),
   emissao: z.string().datetime().nullable(),
   vencimento: z.string().datetime().nullable(),
+  vencimentoEfetivo: z.string().datetime().nullable().optional(),
   vencimentoReal: z.string().datetime().nullable(),
   valor: z.number(),
   saldo: z.number(),

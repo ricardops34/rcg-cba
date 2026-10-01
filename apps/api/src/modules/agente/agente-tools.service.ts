@@ -294,6 +294,7 @@ interface PosicaoBruta {
     numero: string;
     parcela: string | null;
     vencimento: Date | null;
+    vencimentoEfetivo?: Date | null;
     saldo: number;
     status: string;
   }[];
@@ -362,6 +363,7 @@ function resumirPosicao(p: PosicaoBruta) {
         numero: t.numero,
         parcela: t.parcela,
         vencimento: dia(t.vencimento),
+        vencimentoEfetivo: dia(t.vencimentoEfetivo ?? t.vencimento),
         saldo: t.saldo,
       })),
     },
@@ -1429,6 +1431,19 @@ export class AgenteToolsService {
       },
       // ---- escrita: não executa direto, vira pendência de confirmação ----
       {
+        nome: 'consultar_feriados',
+        descricao: 'Consulta os feriados cadastrados da empresa ativa. Consulte antes de propor retornos e agendamentos. Sábados e domingos também são dias não úteis; agendamentos automáticos passam ao próximo dia útil.',
+        permissao: 'atividades.visualizar',
+        limiteItens: 366,
+        limiteCaracteres: 16000,
+        parametros: { type: 'object', properties: { ano: { type: 'number', description: 'Ano do agendamento' } }, required: ['ano'] },
+        executar: async (a, user) => {
+          const ano = numero(a.ano, new Date().getFullYear());
+          const feriados = await this.atividades.feriados(user.empresaAtivaId);
+          return feriados.filter((f) => f.data.getUTCFullYear() === ano);
+        },
+      },
+      {
         nome: 'agendar_atividade',
         descricao:
           'Marca um compromisso na agenda do CRM: retorno de contato, ligação, ' +
@@ -1450,7 +1465,7 @@ export class AgenteToolsService {
         ],
         resumir: (a) => {
           const quando = texto(a.quando);
-          return `${texto(a.titulo) || 'Compromisso'}${quando ? ` em ${quando.replace('T', ' ').slice(0, 16)}` : ''}`;
+          return `${texto(a.titulo) || 'Compromisso'}${quando ? ` em ${quando.replace('T', ' ').slice(0, 16)}` : ''}. Feriados e fins de semana serão ajustados para o próximo dia útil.`;
         },
         parametros: {
           type: 'object',
@@ -2022,7 +2037,7 @@ export class AgenteToolsService {
           const quando = texto(a.quando).replace('T', ' ').slice(0, 16);
           const msg = texto(a.texto);
           const trecho = msg.length > 80 ? `${msg.slice(0, 80)}…` : msg;
-          return `Mensagem no WhatsApp${quando ? ` em ${quando}` : ''}: "${trecho}"`;
+          return `Mensagem no WhatsApp${quando ? ` em ${quando}` : ''}: "${trecho}". Feriados e fins de semana serão ajustados para o próximo dia útil.`;
         },
         parametros: {
           type: 'object',

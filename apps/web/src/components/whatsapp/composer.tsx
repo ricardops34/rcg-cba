@@ -604,6 +604,7 @@ function AgendarMensagemDialog({
             value={quando}
             onChange={(e) => setQuando(e.target.value)}
           />
+          <p className="text-xs text-muted-foreground">Feriados e fins de semana serão ajustados para o próximo dia útil, mantendo o horário.</p>
 
           {agendadas.length > 0 ? (
             <div className="space-y-1 rounded-md border p-2">

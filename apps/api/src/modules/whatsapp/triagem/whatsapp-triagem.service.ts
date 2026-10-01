@@ -1,3 +1,5 @@
+import { carregarCalendarioUtil } from '../../../common/horario/calendario-util';
+import { inicioDoDia } from '../../titulos-receber/titulo-receber-status';
 import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import type { TenantTx } from '../../../common/prisma/prisma.service';
@@ -681,13 +683,15 @@ export class WhatsappTriagemService {
         saldo: true,
       },
     });
-    const hoje = new Date();
+    const calendario = await carregarCalendarioUtil(tx, empresaId);
+    const hoje = calendario.corteVencidos(inicioDoDia());
     return {
       quantidade: linhas.length,
       titulos: linhas.map((t) => ({
         numero: t.numero,
         parcela: t.parcela,
         vencimento: t.vencimento?.toISOString().slice(0, 10) ?? null,
+        vencimentoEfetivo: calendario.vencimento(t.vencimento)?.toISOString().slice(0, 10) ?? null,
         valor: Number(t.saldo ?? t.valor),
         vencido: t.vencimento ? t.vencimento < hoje : false,
       })),

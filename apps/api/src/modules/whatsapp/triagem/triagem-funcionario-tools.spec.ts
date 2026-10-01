@@ -32,6 +32,7 @@ describe('Ferramentas de consulta do funcionário — recorte de carteira', () =
     };
 
     const tx = {
+      feriado: { findMany: jest.fn(() => Promise.resolve([])) },
       tituloReceber: {
         findMany: jest.fn(registrar('tituloReceber')),
         aggregate: jest.fn((args: { where?: unknown }) => {

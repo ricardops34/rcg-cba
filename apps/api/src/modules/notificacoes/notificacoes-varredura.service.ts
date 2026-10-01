@@ -1,3 +1,5 @@
+import { carregarCalendarioUtil } from '../../common/horario/calendario-util';
+import { inicioDoDia } from '../titulos-receber/titulo-receber-status';
 import {
   Injectable,
   Logger,
@@ -191,10 +193,9 @@ export class NotificacoesVarreduraService
    * `usuarioId` nulo: não há pessoa para avisar.
    */
   private async titulosVencidos(empresaId: string) {
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-
     await this.prisma.withTenant(empresaId, async (tx) => {
+      const calendario = await carregarCalendarioUtil(tx, empresaId);
+      const hoje = calendario.corteVencidos(inicioDoDia());
       // Agregação no banco, e não `findMany` + soma em memória: o `LOTE` aqui
       // precisa limitar **clientes**, não títulos. Contando títulos, um único
       // cliente com centenas de parcelas consumiria a janela inteira e os

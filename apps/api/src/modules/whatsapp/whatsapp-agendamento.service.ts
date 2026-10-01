@@ -6,6 +6,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { carregarCalendarioUtil } from '../../common/horario/calendario-util';
 import { whereEmpresaAcessivel } from '../../common/empresa/situacao-empresa';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappProviderService } from './providers/whatsapp-provider.service';
@@ -76,12 +77,13 @@ export class WhatsappAgendamentoService
         conversaId,
       );
 
+      const calendario = await carregarCalendarioUtil(tx, empresaId);
       return tx.whatsappMensagemAgendada.create({
         data: {
           empresaId,
           conversaId: conversa.id,
           texto: input.texto,
-          enviarEm: input.enviarEm,
+          enviarEm: calendario.ajustar(new Date(input.enviarEm)),
           criadaPor: user.id,
         },
       });
@@ -169,6 +171,9 @@ export class WhatsappAgendamentoService
   }
 
   private async processarEmpresa(empresaId: string) {
+    const agora = new Date();
+    const calendario = await this.prisma.withTenant(empresaId, (tx) => carregarCalendarioUtil(tx, empresaId));
+    if (calendario.ajustar(agora).getTime() !== agora.getTime()) return;
     const vencidas = await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappMensagemAgendada.findMany({
         where: { status: 'pendente', enviarEm: { lte: new Date() } },

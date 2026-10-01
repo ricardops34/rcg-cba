@@ -1445,6 +1445,7 @@ export function OrcamentoFormContent({
                   value={dateToInput(form.watch("dataValidade"))}
                   onChange={(e) => form.setValue("dataValidade", inputToDate(e.target.value))}
                 />
+                <p className="text-xs text-muted-foreground">Ao salvar, validade em feriado ou fim de semana passa para o próximo dia útil.</p>
               </Field>
               <Field>
                 <FieldLabel htmlFor="dataRetorno">Data e hora de retorno</FieldLabel>
@@ -1457,6 +1458,7 @@ export function OrcamentoFormContent({
                     form.setValue("dataRetorno", inputToDateTime(e.target.value));
                   }}
                 />
+                <p className="text-xs text-muted-foreground">O retorno será agendado no próximo dia útil se a data cair em feriado ou fim de semana.</p>
               </Field>
             </div>
 

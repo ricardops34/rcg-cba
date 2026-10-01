@@ -1,3 +1,4 @@
+import { ajustarValidadeOrcamento } from './validade-orcamento';
 import {
   ConflictException,
   Injectable,
@@ -404,6 +405,7 @@ export class OrcamentosService {
         vendedorDoCliente,
       );
       const { itens, ...header } = { ...input, vendedorId, origem };
+      header.dataValidade = await ajustarValidadeOrcamento(tx, empresaId, header.dataValidade);
       const { data: itensData, vlrTotal } = await calcularItensOrcamento(
         tx,
         empresaId,
@@ -527,6 +529,7 @@ export class OrcamentosService {
       this.garantirVendedorNoEscopo(escopo, vendedorId);
 
       const { itens, ...header } = { ...input, vendedorId };
+      header.dataValidade = await ajustarValidadeOrcamento(tx, empresaId, header.dataValidade);
       let itensUpdate: Record<string, unknown> = {};
       if (itens) {
         await tx.orcamentoItem.deleteMany({ where: { orcamentoId: id } });

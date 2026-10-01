@@ -1,3 +1,4 @@
+import { carregarCalendarioUtil } from '../../common/horario/calendario-util';
 import {
   BadRequestException,
   ConflictException,
@@ -1017,10 +1018,12 @@ export class ClientesService {
       // Corte na meia-noite: "Títulos vencidos" soma só quem venceu antes de
       // hoje — quem vence hoje ainda conta como em aberto.
       const hoje = inicioDoDia();
+      const calendario = await carregarCalendarioUtil(tx, empresaId);
       const titulosComStatus = titulos.map((titulo) => ({
         ...titulo,
-        status: calcularStatusTituloReceber(titulo, hoje),
-        temBoleto: podeEmitirBoleto(titulo, temContaPadrao, hoje),
+        vencimentoEfetivo: calendario.vencimento(titulo.vencimento),
+        status: calcularStatusTituloReceber({ ...titulo, vencimento: calendario.vencimento(titulo.vencimento) }, hoje),
+        temBoleto: podeEmitirBoleto({ ...titulo, vencimento: calendario.vencimento(titulo.vencimento) }, temContaPadrao, hoje),
       }));
       const titulosAbertos = titulosComStatus.filter(
         (t) => t.status !== 'baixado',
@@ -1084,6 +1087,8 @@ export class ClientesService {
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const calendario = await carregarCalendarioUtil(tx, empresaId);
+      const corteVencidos = calendario.corteVencidos(inicioDoDia());
 
       const condicoes: Prisma.Sql[] = [
         Prisma.sql`c."empresaId" = ${empresaId}`,
@@ -1129,7 +1134,7 @@ export class ClientesService {
         const temVencidoExpr = Prisma.sql`EXISTS (
           SELECT 1 FROM titulos_receber tv
           WHERE tv."clienteId" = c.id AND tv."empresaId" = c."empresaId"
-            AND tv."deletedAt" IS NULL AND tv."dtBaixa" IS NULL AND tv."vencimento" < CURRENT_DATE
+            AND tv."deletedAt" IS NULL AND tv."dtBaixa" IS NULL AND tv."vencimento" < ${corteVencidos}
         )`;
         condicoes.push(query.temTituloVencido ? temVencidoExpr : Prisma.sql`NOT ${temVencidoExpr}`);
       }
@@ -1187,13 +1192,13 @@ export class ClientesService {
           EXISTS (
             SELECT 1 FROM titulos_receber tv
             WHERE tv."clienteId" = c.id AND tv."empresaId" = c."empresaId"
-              AND tv."deletedAt" IS NULL AND tv."dtBaixa" IS NULL AND tv."vencimento" < CURRENT_DATE
+              AND tv."deletedAt" IS NULL AND tv."dtBaixa" IS NULL AND tv."vencimento" < ${corteVencidos}
           ) AS "temTituloVencido",
           EXISTS (
             SELECT 1 FROM titulos_receber tz
             WHERE tz."clienteId" = c.id AND tz."empresaId" = c."empresaId"
               AND tz."deletedAt" IS NULL AND tz."dtBaixa" IS NULL
-              AND tz."vencimento" >= CURRENT_DATE AND tz."vencimento" < CURRENT_DATE + interval '7 days'
+              AND tz."vencimento" >= ${corteVencidos} AND tz."vencimento" < CURRENT_DATE + interval '7 days'
           ) AS "temTituloVencendo",
           EXISTS (
             SELECT 1 FROM titulos_receber ta

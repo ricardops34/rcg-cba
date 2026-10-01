@@ -737,7 +737,7 @@ export class WhatsappAcoesService {
           detalhe: {
             tipo: input.tipo,
             titulo: input.titulo,
-            dataVencimento: input.dataVencimento?.toISOString() ?? null,
+              dataVencimento: atividade.dataVencimento?.toISOString() ?? null,
           },
         },
       }),

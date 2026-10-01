@@ -46,6 +46,13 @@ export class AtividadesController {
     return this.service.findAll(user.empresaAtivaId, user, query);
   }
 
+  @Get('feriados')
+  @RequirePermission('atividades', 'visualizar')
+  @ApiOperation({ summary: 'Feriados da empresa para a agenda' })
+  feriados(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.feriados(user.empresaAtivaId);
+  }
+
   @ApiOperation({ summary: 'Detalhar atividade', description: 'Requer atividades.visualizar.' })
   @RequirePermission('atividades', 'visualizar')
   @Get(':id')

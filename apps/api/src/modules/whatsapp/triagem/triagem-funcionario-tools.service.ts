@@ -1,3 +1,5 @@
+import { carregarCalendarioUtil } from '../../../common/horario/calendario-util';
+import { inicioDoDia } from '../../titulos-receber/titulo-receber-status';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { TenantTx } from '../../../common/prisma/prisma.service';
@@ -59,7 +61,8 @@ export class TriagemFuncionarioToolsService {
     quantidade: number,
   ) {
     const take = Math.min(Math.max(quantidade || PADRAO_LINHAS, 1), MAX_LINHAS);
-    const hoje = new Date();
+    const calendario = await carregarCalendarioUtil(tx, empresaId);
+    const hoje = calendario.corteVencidos(inicioDoDia());
 
     const linhas = await tx.tituloReceber.findMany({
       where: {
@@ -106,7 +109,8 @@ export class TriagemFuncionarioToolsService {
           t.cliente?.nomeFantasia ?? t.cliente?.razaoSocial ?? 'sem cliente',
         titulo: t.parcela ? `${t.numero}/${t.parcela}` : t.numero,
         vencimento: t.vencimento?.toLocaleDateString('pt-BR'),
-        diasAtraso: t.vencimento ? diasDesde(t.vencimento) : null,
+        vencimentoEfetivo: calendario.vencimento(t.vencimento)?.toISOString().slice(0, 10),
+        diasAtraso: t.vencimento ? diasDesde(calendario.vencimento(t.vencimento)!) : null,
         saldo: reais(t.saldo),
       })),
     };
@@ -207,7 +211,8 @@ export class TriagemFuncionarioToolsService {
     }
 
     const cliente = clientes[0];
-    const hoje = new Date();
+    const calendario = await carregarCalendarioUtil(tx, empresaId);
+    const hoje = calendario.corteVencidos(inicioDoDia());
     const [aberto, vencido, ultima] = await Promise.all([
       tx.tituloReceber.aggregate({
         where: {

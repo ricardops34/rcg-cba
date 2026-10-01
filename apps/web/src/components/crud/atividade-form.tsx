@@ -117,6 +117,16 @@ export function AtividadeForm({
 
   const onSubmit = async (values: AtividadeCreate) => {
     try {
+      if (values.dataVencimento && !values.concluida) {
+        const feriados = await apiFetch<{ data: string; descricao: string }[]>("/atividades/feriados");
+        const dia = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Campo_Grande", year: "numeric", month: "2-digit", day: "2-digit" }).format(values.dataVencimento);
+        const feriado = feriados.find((f) => f.data.slice(0, 10) === dia);
+        const semana = new Date(`${dia}T00:00:00Z`).getUTCDay();
+        if (feriado || semana === 0 || semana === 6) {
+          if (!confirm(`${feriado ? `Feriado: ${feriado.descricao}` : "Fim de semana"}. Deseja manter o compromisso nesta data?`)) return;
+          values = { ...values, manterDiaNaoUtil: true };
+        }
+      }
       if (atividade) {
         await update.mutateAsync({ id: atividade.id, input: values });
         toast.success("Atividade atualizada");

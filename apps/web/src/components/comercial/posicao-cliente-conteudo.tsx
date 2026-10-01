@@ -797,7 +797,7 @@ export function PosicaoClienteConteudo({
                             {t.numero}
                             {t.parcela && `/${t.parcela}`}
                           </TableCell>
-                          <TableCell>{dataBr(t.vencimento)}</TableCell>
+                          <TableCell>{dataBr(t.vencimento)}{t.vencimentoEfetivo && t.vencimentoEfetivo !== t.vencimento && <p className="text-xs text-muted-foreground">Dia útil: {dataBr(t.vencimentoEfetivo)}</p>}</TableCell>
                           <TableCell className="text-right">{moeda(t.valor)}</TableCell>
                           <TableCell className="text-right">{moeda(t.saldo)}</TableCell>
                           <TableCell>

@@ -10,6 +10,15 @@ payload) é gerado a partir do código e vive no Swagger: `/api/docs`. Os schema
 que o geram estão em
 [`packages/contracts/src/integracao.ts`](../../packages/contracts/src/integracao.ts).
 
+## Calendário da empresa
+
+Datas originais de títulos recebidas do ERP são preservadas. A plataforma
+calcula separadamente o próximo dia útil para atraso, juros e multa, usando
+sábados, domingos e os feriados cadastrados na empresa da chave de integração.
+Retornos de orçamento recebidos pela integração geram atividades no próximo dia
+útil, mantendo o horário; a data solicitada no orçamento de origem é preservada.
+Veja [a regra de feriados](../planos/2026-09-30-feriados-agenda-financeiro.md).
+
 ---
 
 ## Visão geral

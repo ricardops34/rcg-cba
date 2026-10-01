@@ -9,6 +9,7 @@ import type {
   TipoAtividade,
 } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
+import { useFeriadosAgenda } from "@/hooks/use-feriados-agenda";
 import {
   useVendedoresEscopo,
   vendedorFiltroLabel,
@@ -93,6 +94,8 @@ export default function AgendaPage() {
   const [somentePendentes, setSomentePendentes] = useState(false);
 
   const vendedoresEscopoQuery = useVendedoresEscopo();
+  const feriadosQuery = useFeriadosAgenda();
+  const feriadosPorDia = new Map((feriadosQuery.data ?? []).map((f) => [f.data.slice(0, 10), f.descricao]));
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
   const mostrarFiltroVendedor = !(
     vendedoresEscopoQuery.data?.ehVendedorPuro ?? false
@@ -176,6 +179,7 @@ export default function AgendaPage() {
 
   return (
     <div data-tour="rotina" className="space-y-4">
+      {feriadosQuery.isError && <p role="alert" className="text-sm text-destructive">Não foi possível consultar os feriados. Atualize a agenda para tentar novamente.</p>}
       <CrudHeader
         actions={
           <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
@@ -226,6 +230,7 @@ export default function AgendaPage() {
         }
         onRefresh={() => {
           void atividadesQuery.refetch();
+          void feriadosQuery.refetch();
           void orcamentosQuery.refetch();
         }}
         isRefreshing={atividadesQuery.isFetching || orcamentosQuery.isFetching}
@@ -296,6 +301,7 @@ export default function AgendaPage() {
             <DayCell
               key={toKey(dia)}
               dia={dia}
+              feriado={feriadosPorDia.get(toKey(dia))}
               noMes={dia.getMonth() === mesAtual.getMonth()}
               hoje={isSameDay(dia, hoje)}
               itens={porDia.get(toKey(dia)) ?? []}
@@ -314,6 +320,7 @@ export default function AgendaPage() {
 
 function DayCell({
   dia,
+  feriado,
   noMes,
   hoje,
   itens,
@@ -322,6 +329,7 @@ function DayCell({
   onSelectItem,
 }: {
   dia: Date;
+  feriado?: string;
   noMes: boolean;
   hoje: boolean;
   itens: AgendaItem[];
@@ -349,6 +357,7 @@ function DayCell({
       >
         {dia.getDate()}
       </span>
+      {feriado && <span className="rounded bg-amber-100 px-1 text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-200" title={feriado}>{feriado}</span>}
 
       {isLoading ? (
         <Skeleton className="h-4 w-full" />

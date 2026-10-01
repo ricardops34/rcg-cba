@@ -132,7 +132,7 @@ export default function TitulosReceberPage() {
     {
       header: "Vencimento",
       sortKey: "vencimento",
-      cell: (t) => dataBr(t.vencimento),
+      cell: (t) => <div>{dataBr(t.vencimento)}{t.vencimentoEfetivo && t.vencimentoEfetivo !== t.vencimento && <p className="text-xs text-muted-foreground">Dia útil: {dataBr(t.vencimentoEfetivo)}</p>}</div>,
     },
     { header: "Valor", sortKey: "valor", cell: (t) => moeda(t.valor) },
     { header: "Saldo", sortKey: "saldo", cell: (t) => moeda(t.saldo) },

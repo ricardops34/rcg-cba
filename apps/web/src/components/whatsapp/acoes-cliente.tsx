@@ -433,6 +433,7 @@ function AgendarDialog({
             value={quando}
             onChange={(e) => setQuando(e.target.value)}
           />
+          <p className="text-xs text-muted-foreground">Feriados e fins de semana serão ajustados para o próximo dia útil, mantendo o horário.</p>
           <Textarea
             placeholder="Observações (opcional)"
             value={descricao}

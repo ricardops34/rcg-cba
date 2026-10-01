@@ -43,6 +43,7 @@ export function TituloReceberDetalheContent({ titulo }: { titulo: TituloReceberD
         <Info label="Forma de pagamento" value={titulo.formaPgto || "—"} />
         <Info label="Emissão" value={dataBr(titulo.emissao)} />
         <Info label="Vencimento" value={dataBr(titulo.vencimento)} />
+        <Info label="Vencimento em dia útil" value={dataBr(titulo.vencimentoEfetivo ?? titulo.vencimento)} />
         <Info label="Vencimento real" value={dataBr(titulo.vencimentoReal)} />
         <Info label="Data de baixa" value={dataBr(titulo.dtBaixa)} />
         <Info label="Valor" value={moeda(titulo.valor)} />
