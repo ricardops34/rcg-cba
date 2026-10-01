@@ -44,17 +44,18 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
 
   const criarUsuario = useMutation({
     mutationFn: () =>
-      apiFetch<{ emailEnviado?: boolean; senhaProvisoria?: string }>(
+      apiFetch<{ emailEnviado?: boolean; smsEnviado?: boolean; senhaProvisoria?: string }>(
         `/vendedores/${vendedor?.id}/criar-usuario`,
         { method: "POST" },
       ),
     // SMTP fora do ar não impede a criação do acesso — a senha provisória vem
     // na resposta pro admin repassar ao vendedor.
     onSuccess: (r) => {
+      const canais = [r.emailEnviado ? "e-mail" : null, r.smsEnviado ? "SMS" : null].filter(Boolean);
       toast.success(
-        r.emailEnviado === false && r.senhaProvisoria
-          ? `Usuário criado, mas o e-mail não pôde ser enviado. Senha provisória: ${r.senhaProvisoria}`
-          : "Usuário criado — senha provisória enviada por e-mail",
+        r.senhaProvisoria
+          ? `Usuário criado, mas nem o e-mail nem o SMS puderam ser enviados. Senha provisória: ${r.senhaProvisoria}`
+          : `Usuário criado — senha provisória enviada por ${canais.join(" e ") || "e-mail"}`,
       );
       queryClient.invalidateQueries({ queryKey: ["vendedores"] });
       queryClient.invalidateQueries({ queryKey: ["usuarios"] });

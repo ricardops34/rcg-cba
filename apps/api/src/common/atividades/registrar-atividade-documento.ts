@@ -27,7 +27,12 @@ export type EventoDocumento =
   | 'boleto_whatsapp'
   | 'danfe_email'
   | 'boleto_email'
-  | 'cobranca_email';
+  | 'cobranca_email'
+  | 'boleto_sms'
+  | 'cobranca_sms'
+  | 'sms_cliente'
+  | 'aviso_vencimento_sms'
+  | 'sms_resposta';
 
 const TITULO: Record<EventoDocumento, (numero: string) => string> = {
   // Os dois relatórios não têm número de documento: o que sai é a lista do
@@ -42,6 +47,11 @@ const TITULO: Record<EventoDocumento, (numero: string) => string> = {
   danfe_email: (n) => `DANFE enviado por e-mail — NF ${n}`,
   boleto_email: (n) => `Boleto enviado por e-mail — título ${n}`,
   cobranca_email: () => 'Cobrança de títulos vencidos enviada por e-mail',
+  boleto_sms: (n) => `Boleto enviado por SMS — título ${n}`,
+  cobranca_sms: () => 'Cobrança de títulos vencidos enviada por SMS',
+  sms_cliente: () => 'SMS enviado ao cliente',
+  aviso_vencimento_sms: (n) => `Aviso de vencimento por SMS — título ${n}`,
+  sms_resposta: () => 'Resposta do cliente por SMS',
 };
 
 /** Envio por e-mail é atividade do tipo e-mail; o resto, tarefa concluída. */

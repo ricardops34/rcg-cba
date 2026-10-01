@@ -5137,3 +5137,66 @@ model UsoRotina {
   @@index([empresaId, dia])
   @@map("uso_rotinas")
 }
+
+/// Por que o SMS saiu (docs/planos/2026-10-01-sms-iagente.md).
+enum SmsMotivo {
+  boleto
+  cobranca
+  mensagem_livre
+  senha_provisoria
+  aviso_antes_vencimento
+  aviso_depois_vencimento
+}
+
+/// Registro de cada SMS enviado pela iAgente — enviado ou recusado. É dele que
+/// o aviso automático tira "este título já foi avisado", e é a resposta a
+/// "o cliente recebeu?".
+model SmsEnvio {
+  id              String    @id @default(uuid())
+  empresaId       String
+  motivo          SmsMotivo
+  celular         String
+  mensagem        String
+  clienteId       String?
+  vendedorId      String?
+  tituloReceberId String?
+  /// Id e status devolvidos pela iAgente no envio (`queued`). Nulo quando o
+  /// envio foi recusado — o motivo fica em `erro`.
+  provedorId      String?
+  /// `queued` na saída; depois, o que o webhook da iAgente informar
+  /// (Entregue, Falha operadora, Recusada...).
+  status          String
+  statusEm        DateTime?
+  erro            String?
+  createdAt       DateTime  @default(now())
+  /// Usuário que pediu; nulo no aviso automático.
+  createdBy       String?
+
+  respostas SmsResposta[]
+
+  @@index([empresaId, createdAt])
+  @@index([empresaId, tituloReceberId, motivo])
+  @@index([empresaId, clienteId])
+  @@map("sms_envios")
+}
+
+/// Resposta do cliente a um SMS, recebida pelo webhook da iAgente. O vínculo
+/// com o envio vem do `codigosms` (o `client_ref` do envio = id do
+/// SmsEnvio); resposta espontânea (palavra-chave) chega sem ele.
+model SmsResposta {
+  id          String    @id @default(uuid())
+  empresaId   String
+  smsEnvioId  String?
+  clienteId   String?
+  celular     String
+  mensagem    String
+  /// Data/hora que a iAgente informou (horário de Brasília), ou a de chegada.
+  recebidaEm  DateTime
+  createdAt   DateTime  @default(now())
+
+  smsEnvio SmsEnvio? @relation(fields: [smsEnvioId], references: [id], onDelete: SetNull)
+
+  @@index([empresaId, smsEnvioId])
+  @@index([empresaId, clienteId])
+  @@map("sms_respostas")
+}

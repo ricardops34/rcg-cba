@@ -16,6 +16,8 @@ import {
 } from '../../common/prisma/prisma.service';
 import { PoliticaSenhaService } from '../politica-senha/politica-senha.service';
 import { MailService } from '../../common/mail/mail.service';
+import { SmsService, primeiroCelular, textoSms } from '../sms/sms.service';
+import { linkDeAcesso } from '../../common/mail/email-acesso';
 import { ParametrosService } from '../parametros/parametros.service';
 import {
   buildPaginatedResult,
@@ -49,6 +51,7 @@ export class VendedoresService {
     private readonly politicaSenhaService: PoliticaSenhaService,
     private readonly mailService: MailService,
     private readonly parametros: ParametrosService,
+    private readonly sms: SmsService,
   ) {}
 
   private limpar<T extends Record<string, unknown>>(input: T) {
@@ -211,7 +214,9 @@ export class VendedoresService {
   ) {
     if (!superiorId) return;
     if (superiorId === id) {
-      throw new BadRequestException('O vendedor não pode ser superior de si mesmo.');
+      throw new BadRequestException(
+        'O vendedor não pode ser superior de si mesmo.',
+      );
     }
 
     let atual: string | null = superiorId;
@@ -233,7 +238,11 @@ export class VendedoresService {
     }
   }
 
-  async create(empresaId: string, user: AuthenticatedUser, input: VendedorCreate) {
+  async create(
+    empresaId: string,
+    user: AuthenticatedUser,
+    input: VendedorCreate,
+  ) {
     return this.prisma.withTenant(empresaId, (tx) =>
       tx.vendedor.create({
         data: {
@@ -258,7 +267,12 @@ export class VendedoresService {
       });
       if (!vendedor) throw new NotFoundException('Vendedor não encontrado');
       if (input.superiorId !== undefined) {
-        await this.garantirHierarquiaSemCiclo(tx, empresaId, id, input.superiorId);
+        await this.garantirHierarquiaSemCiclo(
+          tx,
+          empresaId,
+          id,
+          input.superiorId,
+        );
       }
       return tx.vendedor.update({
         where: { id },
@@ -363,7 +377,14 @@ export class VendedoresService {
           data: { usuarioId: usuario.id, updatedBy: actorId },
         });
 
-        return { usuario, email: vendedor.email, nome: vendedor.nome, senha };
+        return {
+          usuario,
+          email: vendedor.email,
+          nome: vendedor.nome,
+          senha,
+          vendedorId: vendedor.id,
+          telefone: vendedor.telefone,
+        };
       },
       { timeout: 15_000 },
     );
@@ -385,15 +406,24 @@ export class VendedoresService {
       emailCriado.html,
     );
 
+    const smsEnviado = await this.enviarSenhaPorSms(empresaId, {
+      vendedorId: criado.vendedorId,
+      telefone: criado.telefone,
+      login: criado.email,
+      senha: criado.senha,
+      autor: actorId,
+    });
+
     return {
       id: criado.usuario.id,
       nome: criado.usuario.nome,
       email: criado.usuario.email,
       emailEnviado,
-      // Sem e-mail entregue, ninguém saberia a senha e o acesso nasceria
-      // inutilizável. Devolve só nesse caso, para o admin repassar — mesmo
-      // princípio da chave de integração, exibida uma única vez na criação.
-      senhaProvisoria: emailEnviado ? undefined : criado.senha,
+      smsEnviado,
+      // Sem e-mail nem SMS entregue, ninguém saberia a senha e o acesso
+      // nasceria inutilizável. Devolve só nesse caso, para o admin repassar —
+      // mesmo princípio da chave de integração, exibida uma única vez.
+      senhaProvisoria: emailEnviado || smsEnviado ? undefined : criado.senha,
     };
   }
 
@@ -403,6 +433,38 @@ export class VendedoresService {
    * servidor fora do ar é problema de entrega, não motivo para desfazer um
    * acesso já criado.
    */
+  /**
+   * Senha provisória também por SMS, para o celular do vendedor — quando o
+   * e-mail não chega, o SMS chega. Como o e-mail, falha não desfaz o acesso.
+   * Não entra no histórico de atendimento: não é atendimento de cliente.
+   */
+  private async enviarSenhaPorSms(
+    empresaId: string,
+    dados: {
+      vendedorId: string;
+      telefone: string | null;
+      login: string;
+      senha: string;
+      autor: string;
+    },
+  ): Promise<boolean> {
+    const celular = primeiroCelular(dados.telefone);
+    if (!celular || !(await this.sms.configurado(empresaId))) return false;
+    const empresa = await buscarEmpresaDoEmail(this.prisma, empresaId);
+    const link = linkDeAcesso(empresa.alias);
+    return this.sms.tentar({
+      empresaId,
+      motivo: 'senha_provisoria',
+      celular,
+      mensagem: textoSms(
+        `${empresa.nomeFantasia}: acesso a plataforma. Login: ${dados.login} Senha provisoria: ${dados.senha}` +
+          (link ? ` Acesse: ${link}` : ''),
+      ),
+      vendedorId: dados.vendedorId,
+      autor: dados.autor,
+    });
+  }
+
   private async enviarSenhaPorEmail(
     empresaId: string,
     para: string,
@@ -472,7 +534,13 @@ export class VendedoresService {
           },
         });
 
-        return { email: vendedor.email, nome: vendedor.nome, senha };
+        return {
+          email: vendedor.email,
+          nome: vendedor.nome,
+          senha,
+          vendedorId: vendedor.id,
+          telefone: vendedor.telefone,
+        };
       },
       { timeout: 15_000 },
     );
@@ -494,10 +562,20 @@ export class VendedoresService {
       emailRedefinida.html,
     );
 
+    const smsEnviado = await this.enviarSenhaPorSms(empresaId, {
+      vendedorId: redefinida.vendedorId,
+      telefone: redefinida.telefone,
+      login: redefinida.email,
+      senha: redefinida.senha,
+      autor: actorId,
+    });
+
     return {
       success: true,
       emailEnviado,
-      senhaProvisoria: emailEnviado ? undefined : redefinida.senha,
+      smsEnviado,
+      senhaProvisoria:
+        emailEnviado || smsEnviado ? undefined : redefinida.senha,
     };
   }
 

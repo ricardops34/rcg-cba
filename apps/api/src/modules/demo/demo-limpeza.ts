@@ -109,6 +109,10 @@ const ORDEM_DE_EXCLUSAO = [
   'WhatsappRecadoDestinatario',
   'WhatsappRecadoInterno',
   'WhatsappContato',
+  // --- SMS: envios ao cliente e as respostas dele (a resposta aponta para o
+  // envio, então sai antes). O token da iAgente é parâmetro: fica.
+  'SmsResposta',
+  'SmsEnvio',
   // --- movimento ----------------------------------------------------------
   // A carga por arquivo é o dado de negócio ainda em trânsito do ERP: limpar
   // a base e deixar o arquivo para trás faria uma retomada repovoar o que

@@ -1,8 +1,21 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import type { Atividade } from "@plataforma/contracts";
+import { Loader2, MessageSquareText } from "lucide-react";
+import { SMS_MENSAGEM_MAX, type Atividade } from "@plataforma/contracts";
+import { useEnvioPorSms } from "@/components/comercial/segunda-via";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { apiFetch } from "@/lib/api-client";
 import { TIPO_COR, TIPO_LABEL } from "@/components/crud/atividade-tipo";
 import { Card, CardContent } from "@/components/ui/card";
@@ -32,6 +45,64 @@ const dataHora = (v: string | null | undefined) =>
  * mora num lugar só (ver `registrar-atividade-documento.ts`), e a carteira de
  * quem consulta vale aqui como lá.
  */
+/**
+ * SMS livre ao cliente, para o celular do cadastro (a API não aceita outro).
+ * O nome da empresa vai na frente; acima de 160 caracteres vira dois SMS.
+ */
+function EnviarSmsCliente({ clienteId }: { clienteId: string }) {
+  const [aberto, setAberto] = useState(false);
+  const [texto, setTexto] = useState("");
+  const { enviar, enviando } = useEnvioPorSms();
+
+  const confirmar = async () => {
+    const ok = await enviar(`/sms/cliente/${clienteId}`, { mensagem: texto.trim() }, null);
+    if (ok) {
+      setAberto(false);
+      setTexto("");
+    }
+  };
+
+  return (
+    <>
+      <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setAberto(true)}>
+        <MessageSquareText className="size-4" />
+        Enviar SMS
+      </Button>
+      <Dialog open={aberto} onOpenChange={setAberto}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Enviar SMS ao cliente</DialogTitle>
+            <DialogDescription>
+              Vai para o celular do cadastro do cliente, com o nome da empresa na frente. A
+              resposta dele aparece neste histórico.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={texto}
+            maxLength={SMS_MENSAGEM_MAX}
+            rows={4}
+            placeholder="Ex.: Ola! Seu pedido saiu para entrega hoje."
+            onChange={(e) => setTexto(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            {texto.length}/{SMS_MENSAGEM_MAX} caracteres
+            {texto.length > 140 ? " · acima de ~140 (com o nome da empresa) vira dois SMS" : ""}
+          </p>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setAberto(false)}>
+              Cancelar
+            </Button>
+            <Button type="button" disabled={!texto.trim() || enviando} onClick={() => void confirmar()}>
+              {enviando && <Loader2 className="size-4 animate-spin" />}
+              Enviar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 export function HistoricoAtendimento({ clienteId }: { clienteId: string }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["atividades", "cliente", clienteId, "historico"],
@@ -52,6 +123,9 @@ export function HistoricoAtendimento({ clienteId }: { clienteId: string }) {
   return (
     <Card>
       <CardContent className="space-y-3">
+        <div className="flex justify-end">
+          <EnviarSmsCliente clienteId={clienteId} />
+        </div>
         {isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-12 w-full" />

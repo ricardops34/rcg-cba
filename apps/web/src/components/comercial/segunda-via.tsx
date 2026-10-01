@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Barcode, FileDown, FileText, Loader2, Mail } from "lucide-react";
-import type { EnvioEmailResultado } from "@plataforma/contracts";
+import { Barcode, FileDown, FileText, Loader2, Mail, MessageSquareText } from "lucide-react";
+import type { EnvioEmailResultado, EnvioSmsResultado } from "@plataforma/contracts";
 import { apiDownload, ApiError, apiFetch } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import {
@@ -134,16 +134,54 @@ O e-mail vai para o endereço do cadastro do cliente.`)) return;
   return { enviar, enviando };
 }
 
+/**
+ * Envio por SMS ao cliente — sempre para o celular do cadastro. Mesmo
+ * comportamento do e-mail: confirma, avisa para onde foi, entra no histórico.
+ */
+export function useEnvioPorSms() {
+  const queryClient = useQueryClient();
+  const [enviando, setEnviando] = useState(false);
+
+  const enviar = async (
+    caminho: string,
+    body: Record<string, unknown> | undefined,
+    pergunta: string | null,
+  ): Promise<boolean> => {
+    if (pergunta && !confirm(`${pergunta}
+
+O SMS vai para o celular do cadastro do cliente.`)) {
+      return false;
+    }
+    setEnviando(true);
+    try {
+      const r = await apiFetch<EnvioSmsResultado>(caminho, { method: "POST", body });
+      toast.success(`SMS enviado para ${r.celular}`, { description: r.mensagem });
+      void queryClient.invalidateQueries({ queryKey: ["atividades"] });
+      return true;
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Não foi possível enviar o SMS");
+      return false;
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return { enviar, enviando };
+}
+
 function BotaoEmail({
   rotulo,
   motivoIndisponivel,
   onEnviar,
   enviando,
+  icone,
 }: {
   rotulo: string;
   motivoIndisponivel: string | null;
   onEnviar: () => void;
   enviando: boolean;
+  /** Envelope por padrão; o SMS usa o balão. */
+  icone?: React.ReactNode;
 }) {
   return (
     <Tooltip>
@@ -160,7 +198,7 @@ function BotaoEmail({
             }}
             aria-label={rotulo}
           >
-            {enviando ? <Loader2 className="size-4 animate-spin" /> : <Mail className="size-4" />}
+            {enviando ? <Loader2 className="size-4 animate-spin" /> : (icone ?? <Mail className="size-4" />)}
           </Button>
         </span>
       </TooltipTrigger>
@@ -262,6 +300,13 @@ export function SegundaViaTitulo({
   };
 
   const { enviar, enviando } = useEnvioPorEmail();
+  const sms = useEnvioPorSms();
+  const enviarBoletoSms = (atualizado: boolean) =>
+    void sms.enviar(
+      `/sms/titulo/${tituloId}`,
+      { atualizado },
+      `Enviar por SMS o valor${atualizado ? " atualizado" : ""} e a linha digitável do título ${numero}?`,
+    );
   const enviarBoleto = (atualizado: boolean) =>
     void enviar(
       `/documentos-email/titulo/${tituloId}`,
@@ -277,6 +322,13 @@ export function SegundaViaTitulo({
           motivoIndisponivel={motivo}
           enviando={enviando}
           onEnviar={() => enviarBoleto(true)}
+        />
+        <BotaoEmail
+          rotulo="Enviar boleto por SMS ao cliente"
+          motivoIndisponivel={motivo}
+          enviando={sms.enviando}
+          icone={<MessageSquareText className="size-4" />}
+          onEnviar={() => enviarBoletoSms(true)}
         />
         <BotaoDocumento
           rotulo="Baixar boleto"
@@ -314,6 +366,12 @@ export function SegundaViaTitulo({
           </DropdownMenuItem>
           <DropdownMenuItem disabled={enviando} onClick={() => enviarBoleto(false)}>
             <Mail className="size-4" /> Enviar original por e-mail
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={sms.enviando} onClick={() => enviarBoletoSms(true)}>
+            <MessageSquareText className="size-4" /> Enviar atualizado por SMS
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={sms.enviando} onClick={() => enviarBoletoSms(false)}>
+            <MessageSquareText className="size-4" /> Enviar original por SMS
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

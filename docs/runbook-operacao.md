@@ -849,6 +849,29 @@ Ao validar pela primeira vez com uma conta real, troque a marca
 tomado com a Evolution GO, cuja documentação (`hub.mode`, nomes de campo do
 payload) pode não bater exatamente com o que a conta em uso devolve.
 
+## SMS pela iAgente **[a confirmar — escrito em 2026-10-01, sem envio real]**
+
+Plano: `docs/planos/2026-10-01-sms-iagente.md`. As migrations
+`20261001100000_sms_envios` e `20261001100100_perm_sms` entram pelo boot da
+imagem, como as outras; a segunda já cria o menu "SMS" e dá a permissão aos
+perfis de administração. Depois do deploy, por empresa:
+
+1. **Token** — gerar no painel da iAgente um token com os escopos `sms:send`
+   e `credits:read`, e gravar no parâmetro `SMS_TOKEN` (Administração >
+   Parâmetros). Sem ele, as rotas de SMS respondem 409.
+2. **Webhook** — copiar a URL de Administração > SMS e cadastrar no painel da
+   iAgente (método GET). É por ela que chegam status de entrega e as respostas
+   dos clientes. A URL leva um segredo derivado do `JWT_ACCESS_SECRET`:
+   **trocar esse segredo troca a URL**, e é preciso recadastrar.
+3. **Aviso automático** — nasce desligado. Ligar só depois de conferir os
+   textos: `SMS_AVISO_VENCIMENTO_ATIVO` = Sim; dias em
+   `SMS_AVISO_DIAS_ANTES` / `SMS_AVISO_DIAS_DEPOIS` (0 desliga cada um). Roda
+   de segunda a sábado, das 8h às 18h de Campo Grande.
+
+Conferir: o saldo aparece em Administração > SMS; um SMS de teste (mensagem
+livre na Posição de um cliente de teste) aparece no histórico de envios, e a
+resposta dele aparece embaixo, depois que o cliente responder.
+
 ## Armadilha: `HTTP 500 INTERNAL_ERROR` porque o schema andou e a migration não **[verificado em dev, 2026-09-22]**
 
 Sintoma: uma rota que sempre funcionou passa a responder

@@ -169,6 +169,17 @@ export const MENUS: DefinicaoMenu[] = [
     moduloId: MODULO.administracao,
   },
   {
+    // SMS pela iAgente: saldo, URL do webhook e estatística/histórico dos
+    // envios (docs/planos/2026-10-01-sms-iagente.md). O token fica em
+    // Parâmetros, ao lado do SMTP.
+    id: 'seed-menu-sms',
+    nome: 'SMS',
+    rota: '/admin/sms',
+    icone: 'message-square-text',
+    codigo: 'sms',
+    moduloId: MODULO.administracao,
+  },
+  {
     id: 'seed-menu-dashboard-comercial',
     nome: 'Dashboard',
     rota: '/comercial/dashboard',

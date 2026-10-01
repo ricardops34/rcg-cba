@@ -54,6 +54,7 @@ type SimNaoTodos = "todos" | "sim" | "nao";
  * a senha provisória volta aqui pro admin repassar (o acesso já existe). */
 interface AcessoVendedorResposta {
   emailEnviado?: boolean;
+  smsEnviado?: boolean;
   senhaProvisoria?: string;
 }
 
@@ -62,9 +63,11 @@ interface AcessoVendedorResposta {
  * senha provisória vem na resposta pro admin repassar ao vendedor.
  */
 function mensagemAcesso(titulo: string, r: AcessoVendedorResposta) {
-  return r.emailEnviado === false && r.senhaProvisoria
-    ? `${titulo}, mas o e-mail não pôde ser enviado. Senha provisória: ${r.senhaProvisoria}`
-    : `${titulo} — senha provisória enviada por e-mail`;
+  if (r.senhaProvisoria) {
+    return `${titulo}, mas nem o e-mail nem o SMS puderam ser enviados. Senha provisória: ${r.senhaProvisoria}`;
+  }
+  const canais = [r.emailEnviado ? "e-mail" : null, r.smsEnviado ? "SMS" : null].filter(Boolean);
+  return `${titulo} — senha provisória enviada por ${canais.join(" e ") || "e-mail"}`;
 }
 
 export default function VendedoresPage() {

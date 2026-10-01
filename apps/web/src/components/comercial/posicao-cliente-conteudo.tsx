@@ -25,9 +25,10 @@ import {
   SegundaViaNota,
   SegundaViaTitulo,
   useEnvioPorEmail,
+  useEnvioPorSms,
 } from "@/components/comercial/segunda-via";
 import { HistoricoAtendimento } from "@/components/comercial/historico-atendimento";
-import { ArrowLeft, Loader2, Mail, MessageCircle, Search } from "lucide-react";
+import { ArrowLeft, Loader2, Mail, MessageCircle, MessageSquareText, Search } from "lucide-react";
 
 const LIST_ROUTE = "/comercial/posicao-cliente";
 
@@ -399,6 +400,7 @@ export function PosicaoClienteConteudo({
   // Cobrança por e-mail: os vencidos do cliente, com boletos e DANFEs, para o
   // e-mail do cadastro. Entra no histórico de atendimento.
   const { enviar: enviarEmail, enviando: enviandoCobranca } = useEnvioPorEmail();
+  const { enviar: enviarSms, enviando: enviandoCobrancaSms } = useEnvioPorSms();
 
   const notas = useMemo(() => posicao?.notas ?? [], [posicao]);
   const comodatos = useMemo(() => posicao?.comodatos ?? [], [posicao]);
@@ -754,6 +756,24 @@ export function PosicaoClienteConteudo({
                 >
                   {enviandoCobranca ? <Loader2 className="size-4 animate-spin" /> : <Mail className="size-4" />}
                   Enviar cobrança por e-mail
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={enviandoCobrancaSms || !titulos.some((t) => t.status === "vencido")}
+                  title="Envia a quantidade e o total dos títulos vencidos para o celular do cadastro do cliente"
+                  onClick={() =>
+                    void enviarSms(
+                      `/sms/cobranca/${id}`,
+                      undefined,
+                      `Enviar por SMS a cobrança dos ${titulos.filter((t) => t.status === "vencido").length} título(s) vencido(s)?`,
+                    )
+                  }
+                >
+                  {enviandoCobrancaSms ? <Loader2 className="size-4 animate-spin" /> : <MessageSquareText className="size-4" />}
+                  Cobrança por SMS
                 </Button>
               </div>
 

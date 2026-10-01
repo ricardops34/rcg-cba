@@ -124,3 +124,4 @@ export * from "./assinatura";
 export * from "./suporte-acesso";
 export * from "./grupo-economico";
 export * from "./documentos-email";
+export * from "./sms";

@@ -290,6 +290,39 @@ const PARAMETROS_PADRAO = [
     descricao:
       'Data e hora da última comunicação do ERP com a plataforma (gravada pela integração)',
   },
+  // SMS pela iAgente (docs/planos/2026-10-01-sms-iagente.md). O aviso
+  // automático nasce desligado: manda SMS a cliente sem ninguém clicar.
+  {
+    parametro: 'SMS_TOKEN',
+    tipo: 'senha' as const,
+    tamanho: 200,
+    conteudo: null,
+    descricao:
+      'Token da API de SMS da iAgente (sk_live_...); vazio desliga o envio de SMS',
+  },
+  {
+    parametro: 'SMS_AVISO_VENCIMENTO_ATIVO',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'false',
+    descricao:
+      'Envia SMS automático ao cliente antes e depois do vencimento do título (das 8h às 18h)',
+  },
+  {
+    parametro: 'SMS_AVISO_DIAS_ANTES',
+    tipo: 'numero' as const,
+    tamanho: 2,
+    conteudo: '2',
+    descricao: 'Dias antes do vencimento para o aviso por SMS; 0 = não avisa',
+  },
+  {
+    parametro: 'SMS_AVISO_DIAS_DEPOIS',
+    tipo: 'numero' as const,
+    tamanho: 2,
+    conteudo: '3',
+    descricao:
+      'Dias depois do vencimento para o aviso de atraso por SMS; 0 = não avisa',
+  },
 ];
 
 /**
