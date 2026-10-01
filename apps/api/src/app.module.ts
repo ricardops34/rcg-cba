@@ -28,6 +28,7 @@ import { NotasEntradaModule } from './modules/notas-entrada/notas-entrada.module
 import { TitulosReceberModule } from './modules/titulos-receber/titulos-receber.module';
 import { DocumentosEmailModule } from './modules/documentos-email/documentos-email.module';
 import { SmsModule } from './modules/sms/sms.module';
+import { EmailConfigModule } from './modules/email/email-config.module';
 import { ContasBancariasModule } from './modules/contas-bancarias/contas-bancarias.module';
 import { FeriadosModule } from './modules/feriados/feriados.module';
 import { PoliticaSenhaModule } from './modules/politica-senha/politica-senha.module';
@@ -126,6 +127,7 @@ import { GruposEconomicosModule } from './modules/grupos-economicos/grupos-econo
     TitulosReceberModule,
     DocumentosEmailModule,
     SmsModule,
+    EmailConfigModule,
     ContasBancariasModule,
     FeriadosModule,
     PoliticaSenhaModule,

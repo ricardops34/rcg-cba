@@ -69,3 +69,21 @@
 - Um layout só para os e-mails da plataforma: nome da empresa no assunto e
   no rodapé com os dados do cadastro, e o aviso de e-mail automático — o
   mesmo do e-mail de senha.
+
+## Habilitar e funcionalidades (usuário, 01/10/2026)
+
+Mesmo desenho do SMS ("mesma coisa para as configurações do SMTP"):
+
+- **Parâmetros, sem tabela própria:** os `SMTP_*` de antes, mais
+  `EMAIL_ATIVO` e `EMAIL_DOCUMENTOS` (DANFE e XML), `EMAIL_BOLETO`,
+  `EMAIL_COBRANCA`, `EMAIL_SENHA_PROVISORIA`. Migration
+  `20261001120000_email_config`. **`EMAIL_ATIVO` nasce ligado** (o SMS nasce
+  desligado): o e-mail de senha já estava em uso, e desligar no deploy
+  cortaria o envio.
+- **Administração > E-mail** (rotina `email`): edita tudo junto — a senha do
+  SMTP não volta para a tela — e tem **Enviar e-mail de teste**, para o e-mail
+  de quem está logado, com o erro do servidor por inteiro (o que faltou no
+  caso da porta 587 com SSL ligado). Avisa porta e SSL que não combinam.
+- **Cada botão de e-mail só aparece** com o envio habilitado (`EMAIL_ATIVO` e
+  servidor — o da empresa ou o do ambiente), e a funcionalidade dele ligada
+  (`GET /email/disponivel`). O envio confere de novo (409).

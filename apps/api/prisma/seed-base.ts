@@ -293,6 +293,41 @@ const PARAMETROS_PADRAO = [
   // SMS pela iAgente (docs/planos/2026-10-01-sms-iagente.md). O aviso
   // automático nasce desligado: manda SMS a cliente sem ninguém clicar.
   {
+    parametro: 'EMAIL_ATIVO',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'true',
+    descricao: 'Habilita o envio de e-mail nesta empresa',
+  },
+  {
+    parametro: 'EMAIL_DOCUMENTOS',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'true',
+    descricao: 'Permite enviar DANFE e XML por e-mail ao cliente',
+  },
+  {
+    parametro: 'EMAIL_BOLETO',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'true',
+    descricao: 'Permite enviar boleto por e-mail ao cliente',
+  },
+  {
+    parametro: 'EMAIL_COBRANCA',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'true',
+    descricao: 'Permite enviar cobrança de títulos vencidos por e-mail',
+  },
+  {
+    parametro: 'EMAIL_SENHA_PROVISORIA',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'true',
+    descricao: 'Envia a senha provisória do vendedor por e-mail',
+  },
+  {
     parametro: 'SMS_ATIVO',
     tipo: 'booleano' as const,
     tamanho: null,

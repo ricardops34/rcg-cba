@@ -4,6 +4,7 @@ import { MailService } from '../../common/mail/mail.service';
 import { ParametrosService } from '../parametros/parametros.service';
 import { NotasSaidaService } from '../notas-saida/notas-saida.service';
 import { TitulosReceberService } from '../titulos-receber/titulos-receber.service';
+import { EmailConfigService } from '../email/email-config.service';
 import {
   DocumentosEmailService,
   extrairEmails,
@@ -107,14 +108,16 @@ describe('DocumentosEmailService', () => {
         ],
       }),
     };
+    const emailConfig = { exigir: jest.fn().mockResolvedValue(undefined) };
     const service = new DocumentosEmailService(
       prisma as unknown as PrismaService,
       mail as unknown as MailService,
       parametros as unknown as ParametrosService,
       notas as unknown as NotasSaidaService,
       titulos as unknown as TitulosReceberService,
+      emailConfig as unknown as EmailConfigService,
     );
-    return { service, mail, tx, titulos, notas };
+    return { service, mail, tx, titulos, notas, emailConfig };
   }
 
   it('DANFE e XML vão para os e-mails do cadastro do cliente, e o envio entra no histórico', async () => {
@@ -141,6 +144,19 @@ describe('DocumentosEmailService', () => {
       titulo: 'DANFE enviado por e-mail — NF 116067',
       createdBy: 'usuario-1',
     });
+  });
+
+  it('funcionalidade desligada em Administração > E-mail: nada é gerado nem enviado', async () => {
+    const { service, mail, notas, emailConfig } = montar();
+    emailConfig.exigir.mockRejectedValueOnce(
+      new ConflictException('E-mail de DANFE e XML desabilitado.'),
+    );
+    await expect(
+      service.enviarNota(empresaId, user, 'nota-1', { incluirXml: true }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(emailConfig.exigir).toHaveBeenCalledWith(empresaId, 'documentos');
+    expect(notas.gerarDanfe).not.toHaveBeenCalled();
+    expect(mail.send).not.toHaveBeenCalled();
   });
 
   it('cliente sem e-mail no cadastro: 409, e nada é enviado', async () => {

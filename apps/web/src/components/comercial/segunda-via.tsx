@@ -7,6 +7,7 @@ import { Barcode, FileDown, FileText, Loader2, Mail, MessageSquareText } from "l
 import type {
   EnvioEmailResultado,
   EnvioSmsResultado,
+  EmailDisponibilidade,
   SmsDisponibilidade,
 } from "@plataforma/contracts";
 import { apiDownload, ApiError, apiFetch } from "@/lib/api-client";
@@ -143,6 +144,15 @@ O e-mail vai para o endereço do cadastro do cliente.`)) return;
  * habilitado (SMS_ATIVO e token) e a funcionalidade dele ligada — a tela não
  * oferece o que a empresa não contratou ou desligou.
  */
+export function useEmailDisponivel(): EmailDisponibilidade | undefined {
+  const { data } = useQuery({
+    queryKey: ["email", "disponivel"],
+    queryFn: () => apiFetch<EmailDisponibilidade>("/email/disponivel"),
+    staleTime: 5 * 60_000,
+  });
+  return data;
+}
+
 export function useSmsDisponivel(): SmsDisponibilidade | undefined {
   const { data } = useQuery({
     queryKey: ["sms", "disponivel"],
@@ -239,9 +249,11 @@ export function SegundaViaNota({
     ? null
     : "O XML desta nota ainda não foi enviado pelo ERP — sem ele não há DANFE.";
   const { enviar, enviando } = useEnvioPorEmail();
+  const emailDocumentos = useEmailDisponivel()?.documentos ?? false;
 
   return (
     <div className="flex justify-end gap-0.5">
+      {emailDocumentos && (
       <BotaoEmail
         rotulo="Enviar DANFE e XML por e-mail ao cliente"
         motivoIndisponivel={motivo}
@@ -254,6 +266,7 @@ export function SegundaViaNota({
           )
         }
       />
+      )}
       <BotaoDocumento
         rotulo="Baixar DANFE"
         motivoIndisponivel={motivo}
@@ -320,6 +333,7 @@ export function SegundaViaTitulo({
   const { enviar, enviando } = useEnvioPorEmail();
   const sms = useEnvioPorSms();
   const smsBoleto = useSmsDisponivel()?.boleto ?? false;
+  const emailBoleto = useEmailDisponivel()?.boleto ?? false;
   const enviarBoletoSms = (atualizado: boolean) =>
     void sms.enviar(
       `/sms/titulo/${tituloId}`,
@@ -336,12 +350,14 @@ export function SegundaViaTitulo({
   if (!temBoleto || status !== "vencido") {
     return (
       <div className="flex justify-end gap-0.5">
-        <BotaoEmail
-          rotulo="Enviar boleto por e-mail ao cliente"
-          motivoIndisponivel={motivo}
-          enviando={enviando}
-          onEnviar={() => enviarBoleto(true)}
-        />
+        {emailBoleto && (
+          <BotaoEmail
+            rotulo="Enviar boleto por e-mail ao cliente"
+            motivoIndisponivel={motivo}
+            enviando={enviando}
+            onEnviar={() => enviarBoleto(true)}
+          />
+        )}
         {smsBoleto && (
           <BotaoEmail
             rotulo="Enviar boleto por SMS ao cliente"
@@ -382,12 +398,16 @@ export function SegundaViaTitulo({
           <DropdownMenuItem onClick={(ev) => baixarBoleto(ev, false)}>
             Boleto Original (sem encargos)
           </DropdownMenuItem>
-          <DropdownMenuItem disabled={enviando} onClick={() => enviarBoleto(true)}>
-            <Mail className="size-4" /> Enviar atualizado por e-mail
-          </DropdownMenuItem>
-          <DropdownMenuItem disabled={enviando} onClick={() => enviarBoleto(false)}>
-            <Mail className="size-4" /> Enviar original por e-mail
-          </DropdownMenuItem>
+          {emailBoleto && (
+            <>
+              <DropdownMenuItem disabled={enviando} onClick={() => enviarBoleto(true)}>
+                <Mail className="size-4" /> Enviar atualizado por e-mail
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={enviando} onClick={() => enviarBoleto(false)}>
+                <Mail className="size-4" /> Enviar original por e-mail
+              </DropdownMenuItem>
+            </>
+          )}
           {smsBoleto && (
             <>
               <DropdownMenuItem disabled={sms.enviando} onClick={() => enviarBoletoSms(true)}>

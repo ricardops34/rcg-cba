@@ -23,6 +23,7 @@ import type { AuthenticatedUser } from '../../common/decorators/current-user.dec
 import { ParametrosService } from '../parametros/parametros.service';
 import { NotasSaidaService } from '../notas-saida/notas-saida.service';
 import { TitulosReceberService } from '../titulos-receber/titulos-receber.service';
+import { EmailConfigService } from '../email/email-config.service';
 
 /** Teto de títulos numa cobrança: o e-mail tem limite de tamanho. */
 const MAX_TITULOS_COBRANCA = 30;
@@ -80,6 +81,7 @@ export class DocumentosEmailService {
     private readonly parametros: ParametrosService,
     private readonly notas: NotasSaidaService,
     private readonly titulos: TitulosReceberService,
+    private readonly emailConfig: EmailConfigService,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -92,6 +94,8 @@ export class DocumentosEmailService {
     notaId: string,
     input: EnviarNotaEmail,
   ): Promise<EnvioEmailResultado> {
+    // Envio e funcionalidade ligados (Administração > E-mail).
+    await this.emailConfig.exigir(empresaId, 'documentos');
     // O histórico recebe "DANFE enviado por e-mail", não "gerado": uma ação,
     // um registro.
     const danfe = await this.notas.gerarDanfe(
@@ -183,6 +187,7 @@ export class DocumentosEmailService {
     tituloId: string,
     input: EnviarBoletoEmail,
   ): Promise<EnvioEmailResultado> {
+    await this.emailConfig.exigir(empresaId, 'boleto');
     const boleto = await this.titulos.gerarBoleto(
       empresaId,
       { tipo: 'usuario', user },
@@ -266,6 +271,7 @@ export class DocumentosEmailService {
     user: AuthenticatedUser,
     clienteId: string,
   ): Promise<EnvioEmailResultado> {
+    await this.emailConfig.exigir(empresaId, 'cobranca');
     const cliente = await this.cliente(empresaId, clienteId);
     const resultado = (await this.titulos.findAll(empresaId, user, {
       page: 1,

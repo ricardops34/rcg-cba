@@ -17,6 +17,7 @@ import {
 import { PoliticaSenhaService } from '../politica-senha/politica-senha.service';
 import { MailService } from '../../common/mail/mail.service';
 import { SmsService, primeiroCelular, textoSms } from '../sms/sms.service';
+import { EmailConfigService } from '../email/email-config.service';
 import { linkDeAcesso } from '../../common/mail/email-acesso';
 import { ParametrosService } from '../parametros/parametros.service';
 import {
@@ -52,6 +53,7 @@ export class VendedoresService {
     private readonly mailService: MailService,
     private readonly parametros: ParametrosService,
     private readonly sms: SmsService,
+    private readonly emailConfig: EmailConfigService,
   ) {}
 
   private limpar<T extends Record<string, unknown>>(input: T) {
@@ -474,8 +476,12 @@ export class VendedoresService {
     assunto: string,
     html: string,
   ): Promise<boolean> {
+    // Envio habilitado, com servidor e a senha provisória ligada
+    // (Administração > E-mail).
+    if (!(await this.emailConfig.disponibilidade(empresaId)).senhaProvisoria) {
+      return false;
+    }
     const smtp = await smtpDaEmpresa(this.parametros, empresaId);
-    if (!this.mailService.configurado(smtp)) return false;
     try {
       return await this.mailService.send(para, assunto, html, smtp);
     } catch (erro) {

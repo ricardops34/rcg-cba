@@ -849,6 +849,19 @@ Ao validar pela primeira vez com uma conta real, troque a marca
 tomado com a Evolution GO, cuja documentação (`hub.mode`, nomes de campo do
 payload) pode não bater exatamente com o que a conta em uso devolve.
 
+## E-mail da empresa (SMTP) **[escrito em 2026-10-01]**
+
+Administração > E-mail edita os parâmetros `SMTP_*` e `EMAIL_*` juntos e tem
+**Enviar e-mail de teste** (para o e-mail de quem está logado, com o erro do
+servidor inteiro). Migration `20261001120000_email_config`: cria
+`EMAIL_ATIVO` (nasce **ligado**, para não cortar o e-mail de senha que já
+funciona) e uma chave por funcionalidade, e o menu "E-mail" com permissão para
+os perfis de administração.
+
+Porta e SSL: **587 com "SSL/TLS direto" desligado** (STARTTLS) ou **465 com
+ele ligado** — trocar um sem o outro é o erro mais comum (visto em 2026-10-01
+com `mail.rcgdist.com.br`, que aceita os dois).
+
 ## SMS pela iAgente **[a confirmar — escrito em 2026-10-01, sem envio real]**
 
 Plano: `docs/planos/2026-10-01-sms-iagente.md`. As migrations

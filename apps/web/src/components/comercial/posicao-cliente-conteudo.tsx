@@ -26,6 +26,7 @@ import {
   SegundaViaTitulo,
   useEnvioPorEmail,
   useEnvioPorSms,
+  useEmailDisponivel,
   useSmsDisponivel,
 } from "@/components/comercial/segunda-via";
 import { HistoricoAtendimento } from "@/components/comercial/historico-atendimento";
@@ -403,6 +404,7 @@ export function PosicaoClienteConteudo({
   const { enviar: enviarEmail, enviando: enviandoCobranca } = useEnvioPorEmail();
   const { enviar: enviarSms, enviando: enviandoCobrancaSms } = useEnvioPorSms();
   const smsCobranca = useSmsDisponivel()?.cobranca ?? false;
+  const emailCobranca = useEmailDisponivel()?.cobranca ?? false;
 
   const notas = useMemo(() => posicao?.notas ?? [], [posicao]);
   const comodatos = useMemo(() => posicao?.comodatos ?? [], [posicao]);
@@ -737,6 +739,7 @@ export function PosicaoClienteConteudo({
                     <SelectItem value="baixado">Baixados</SelectItem>
                   </SelectContent>
                 </Select>
+                {emailCobranca && (
                 <Button
                   type="button"
                   variant="outline"
@@ -759,6 +762,7 @@ export function PosicaoClienteConteudo({
                   {enviandoCobranca ? <Loader2 className="size-4 animate-spin" /> : <Mail className="size-4" />}
                   Enviar cobrança por e-mail
                 </Button>
+                )}
                 {smsCobranca && (
                 <Button
                   type="button"

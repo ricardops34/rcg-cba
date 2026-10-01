@@ -180,6 +180,16 @@ export const MENUS: DefinicaoMenu[] = [
     moduloId: MODULO.administracao,
   },
   {
+    // E-mail: os parâmetros SMTP_* e EMAIL_* numa tela, com o teste de envio
+    // (mesmo desenho do SMS).
+    id: 'seed-menu-email',
+    nome: 'E-mail',
+    rota: '/admin/email',
+    icone: 'mail',
+    codigo: 'email',
+    moduloId: MODULO.administracao,
+  },
+  {
     id: 'seed-menu-dashboard-comercial',
     nome: 'Dashboard',
     rota: '/comercial/dashboard',
