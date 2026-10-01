@@ -5,6 +5,7 @@ import {
   Logger,
   Param,
   Post,
+  Query,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
@@ -63,8 +64,16 @@ export class WhatsappEvolutionController {
     @Param('sessaoId') sessaoId: string,
     @Body() corpo: unknown,
     @Headers('authorization') authorization?: string,
+    @Headers('apikey') apikey?: string,
+    @Query('secret') querySecret?: string,
   ) {
-    const ctx = await this.autenticar(empresaId, sessaoId, authorization);
+    const ctx = await this.autenticar(
+      empresaId,
+      sessaoId,
+      authorization,
+      apikey,
+      querySecret,
+    );
 
     const evento = this.nomeDoEvento(corpo);
     switch (evento) {
@@ -93,6 +102,8 @@ export class WhatsappEvolutionController {
     empresaId: string,
     sessaoId: string,
     authorization?: string,
+    apikey?: string,
+    querySecret?: string,
   ): Promise<ContextoSessao> {
     const ctx = await this.provedores
       .contexto(empresaId, sessaoId)
@@ -108,7 +119,7 @@ export class WhatsappEvolutionController {
     }
 
     const esperado = ctx.instancia.webhookSegredo;
-    const recebido = this.segredoDaAutorizacao(authorization);
+    const recebido = this.segredoDaAutorizacao(authorization, apikey, querySecret);
     if (!esperado || !this.conferirSegredo(esperado, recebido)) {
       throw new UnauthorizedException();
     }
@@ -116,7 +127,13 @@ export class WhatsappEvolutionController {
     return ctx;
   }
 
-  private segredoDaAutorizacao(authorization?: string): string {
+  private segredoDaAutorizacao(
+    authorization?: string,
+    apikey?: string,
+    querySecret?: string,
+  ): string {
+    if (querySecret) return querySecret;
+    if (apikey) return apikey;
     if (!authorization) return '';
     const bearer = authorization.match(/^Bearer\s+(.+)$/i);
     if (bearer) return bearer[1];

@@ -27,10 +27,10 @@ services:
       # não a do agente de IA — donos e ciclos de rotação diferentes.
       # Trocá-la exige regravar a chave pela tela e reconectar as instâncias.
       WHATSAPP_CRYPTO_KEY: ${WHATSAPP_CRYPTO_KEY}
-      # Endereço com que a Evolution GO chama a API de volta. Precisa ser o
-      # alias interno: o webhook trafega dentro da rede Docker e não deve sair
-      # para a internet só para voltar.
-      WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL: http://rcgcba-api:3001
+      # Endereço com que a Evolution GO chama a API de volta.
+      # Se a Evolution GO estiver externa (outra VPS / nuvem): https://api.rcgdist.com.br
+      # Se estiver na mesma VPS/rede Docker: http://rcgcba-api:3001
+      WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL: ${WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL:-https://api.rcgdist.com.br}
     volumes:
       # Uploads (logos de empresa) persistem fora do container.
       - uploads:/app/apps/api/uploads
