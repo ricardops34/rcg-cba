@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useFieldArray, useForm, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -527,11 +527,14 @@ function compararMix(
 export function OrcamentoFormContent({
   orcamento,
   clienteIdPadrao,
+  iniciarCopia = false,
   onClose,
 }: {
   orcamento?: Orcamento;
   /** Pré-seleciona o cliente ao criar (ex.: "Incluir Orçamento" na Posição de Cliente). */
   clienteIdPadrao?: string | null;
+  /** Abre já em modo cópia ("Copiar" no menu da listagem). */
+  iniciarCopia?: boolean;
   /** Chamado ao cancelar ou depois de salvar com sucesso. */
   onClose: () => void;
 }) {
@@ -1177,6 +1180,16 @@ export function OrcamentoFormContent({
     }
     toast.info("Cópia iniciada — revise os dados e salve para gerar um novo orçamento.");
   };
+
+  // "Copiar" no menu da listagem: abre direto na cópia, o mesmo caminho do
+  // botão. Uma vez só — salvar a cópia não pode disparar outra.
+  const copiaIniciada = useRef(false);
+  useEffect(() => {
+    if (!iniciarCopia || !orcamento || copiaIniciada.current) return;
+    copiaIniciada.current = true;
+    copiar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [iniciarCopia, orcamento]);
 
   return (
     <Card>
@@ -2127,6 +2140,10 @@ export function OrcamentoForm({ orcamento }: { orcamento?: Orcamento }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const clienteIdPadrao = searchParams.get("clienteId");
+  const iniciarCopia = !!orcamento && searchParams.get("copiar") === "1";
+  // Aprovado e vencido não se editam: o título não promete o que a tela recusa.
+  const somenteLeitura =
+    orcamento?.status === "aprovado" || orcamento?.status === "expirado";
 
   return (
     <div className="space-y-4">
@@ -2135,13 +2152,20 @@ export function OrcamentoForm({ orcamento }: { orcamento?: Orcamento }) {
           <ArrowLeft className="size-4" />
         </Button>
         <h1 className="text-xl font-semibold tracking-tight">
-          {orcamento ? `Editar orçamento Nº ${numeroOrcamento(orcamento)}` : "Novo orçamento"}
+          {!orcamento
+            ? "Novo orçamento"
+            : iniciarCopia
+              ? `Novo orçamento — cópia do Nº ${numeroOrcamento(orcamento)}`
+              : somenteLeitura
+                ? `Orçamento Nº ${numeroOrcamento(orcamento)}`
+                : `Editar orçamento Nº ${numeroOrcamento(orcamento)}`}
         </h1>
       </div>
 
       <OrcamentoFormContent
         orcamento={orcamento}
         clienteIdPadrao={clienteIdPadrao}
+        iniciarCopia={iniciarCopia}
         onClose={() => router.push(LIST_ROUTE)}
       />
     </div>

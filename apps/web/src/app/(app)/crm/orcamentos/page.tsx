@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import type { Orcamento, StatusOrcamento } from "@plataforma/contracts";
 import {
   numeroOrcamento,
+  podeExcluirOrcamento,
   ORIGEM_VENDA_ROTULO,
   SITUACAO_INTEGRACAO_ROTULO,
   situacaoIntegracaoOrcamento,
@@ -54,6 +55,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  Copy,
+  Eye,
   MoreHorizontal,
   Pencil,
   Trash2,
@@ -119,6 +122,11 @@ export default function OrcamentosPage() {
   const { remove } = useResourceMutations("orcamentos");
 
   const abrirEdicao = (o: Orcamento) => router.push(`/crm/orcamentos/${o.id}`);
+  // Abre o formulário já em modo cópia: novo orçamento em rascunho, com o
+  // cliente e os itens deste. É o caminho para aprovado, vencido e o
+  // histórico do ERP, que não se editam.
+  const abrirCopia = (o: Orcamento) =>
+    router.push(`/crm/orcamentos/${o.id}?copiar=1`);
 
   const onDelete = async (o: Orcamento) => {
     if (!confirm(`Excluir o orçamento "${o.titulo}"?`)) return;
@@ -233,12 +241,24 @@ export default function OrcamentosPage() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => abrirEdicao(o)}>
-              <Pencil className="size-4" /> Editar
+            {o.status === "aprovado" || o.status === "expirado" ? (
+              <DropdownMenuItem onClick={() => abrirEdicao(o)}>
+                <Eye className="size-4" /> Visualizar
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={() => abrirEdicao(o)}>
+                <Pencil className="size-4" /> Editar
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onClick={() => abrirCopia(o)}>
+              <Copy className="size-4" /> Copiar
             </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={() => onDelete(o)}>
-              <Trash2 className="size-4" /> Excluir
-            </DropdownMenuItem>
+            {/* Só sem integração — o servidor recusa o resto (409) */}
+            {podeExcluirOrcamento(o) && (
+              <DropdownMenuItem variant="destructive" onClick={() => onDelete(o)}>
+                <Trash2 className="size-4" /> Excluir
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       ),

@@ -62,6 +62,15 @@ export const empresaCreateSchema = z.object({
     .nullable()
     .optional()
     .describe("Caminho relativo do logo da empresa (definido via upload)"),
+  logoDanfeUrl: z
+    .string()
+    .trim()
+    .max(500)
+    .nullable()
+    .optional()
+    .describe(
+      "Caminho relativo do logo impresso no DANFE (definido via upload, PNG ou JPEG). Sem ele, o DANFE usa o logo da empresa",
+    ),
   ePlataforma: z
     .boolean()
     .default(false)

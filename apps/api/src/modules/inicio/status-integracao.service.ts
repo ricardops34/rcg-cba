@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { PARAMETRO_ULTIMA_COMUNICACAO_ERP } from '../parametros/parametros.service';
 
 export interface StatusIntegracaoResponse {
   ultimaColeta: string | null;
   ultimoEnvio: string | null;
+  ultimaComunicacao: string | null;
 }
 
 @Injectable()
@@ -11,9 +13,26 @@ export class StatusIntegracaoService {
   constructor(private readonly prisma: PrismaService) {}
 
   async obterStatus(empresaId: string): Promise<StatusIntegracaoResponse> {
-    return this.prisma.withTenant(empresaId, async () => {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      // 0. Gravado pelo próprio ERP no fim de cada execução (POST
+      // /integracao/comunicacao).
+      //
+      // Tudo pela tx: as tabelas de negócio têm RLS, e fora da transação do
+      // withTenant o papel da API (plataforma_app) não enxerga linha nenhuma.
+      const comunicacao = await tx.parametroEmpresa.findFirst({
+        where: {
+          empresaId,
+          parametro: PARAMETRO_ULTIMA_COMUNICACAO_ERP,
+          deletedAt: null,
+        },
+        select: { conteudo: true },
+      });
+      const ultimaComunicacao = comunicacao?.conteudo
+        ? new Date(comunicacao.conteudo)
+        : null;
+
       // 1. Busca timestamps registrados nas chaves de API da empresa
-      const apiKeys = await this.prisma.integracaoApiKey.findMany({
+      const apiKeys = await tx.integracaoApiKey.findMany({
         where: { empresaId, deletedAt: null },
         select: { ultimoUso: true, ultimaColeta: true, ultimoEnvio: true },
       });
@@ -33,27 +52,27 @@ export class StatusIntegracaoService {
       // 2. Fallback para ultimaColeta se ainda for nulo (registros integrados existentes)
       if (!ultimaColeta) {
         const [estoque, notaSaida, titulo, produto, cliente] = await Promise.all([
-          this.prisma.estoque.findFirst({
+          tx.estoque.findFirst({
             where: { empresaId, deletedAt: null },
             orderBy: { dataEnvio: 'desc' },
             select: { dataEnvio: true, updatedAt: true },
           }),
-          this.prisma.notaSaida.findFirst({
+          tx.notaSaida.findFirst({
             where: { empresaId, deletedAt: null },
             orderBy: { updatedAt: 'desc' },
             select: { updatedAt: true },
           }),
-          this.prisma.tituloReceber.findFirst({
+          tx.tituloReceber.findFirst({
             where: { empresaId, deletedAt: null },
             orderBy: { updatedAt: 'desc' },
             select: { updatedAt: true },
           }),
-          this.prisma.produto.findFirst({
+          tx.produto.findFirst({
             where: { empresaId, deletedAt: null },
             orderBy: { updatedAt: 'desc' },
             select: { updatedAt: true },
           }),
-          this.prisma.cliente.findFirst({
+          tx.cliente.findFirst({
             where: { empresaId, deletedAt: null },
             orderBy: { updatedAt: 'desc' },
             select: { updatedAt: true },
@@ -83,7 +102,7 @@ export class StatusIntegracaoService {
 
       // 3. Fallback para ultimoEnvio se nulo (pedidos vinculados ao ERP / API key)
       if (!ultimoEnvio) {
-        const orcamentoVinculado = await this.prisma.orcamento.findFirst({
+        const orcamentoVinculado = await tx.orcamento.findFirst({
           where: { empresaId, codigoErp: { not: null }, deletedAt: null },
           orderBy: { updatedAt: 'desc' },
           select: { updatedAt: true },
@@ -109,6 +128,10 @@ export class StatusIntegracaoService {
       return {
         ultimaColeta: ultimaColeta ? ultimaColeta.toISOString() : null,
         ultimoEnvio: ultimoEnvio ? ultimoEnvio.toISOString() : null,
+        ultimaComunicacao:
+          ultimaComunicacao && !Number.isNaN(ultimaComunicacao.getTime())
+            ? ultimaComunicacao.toISOString()
+            : null,
       };
     });
   }

@@ -1,11 +1,11 @@
 import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import {
   code128cModulos,
   desenharBarras,
   larguraBarras,
 } from '../../common/pdf/barcode';
-import type { NfeDados } from './nfe-xml';
+import type { LogoPdf } from '../../common/pdf/carregar-logo';
+import type { NfeDados, NfeItem } from './nfe-xml';
 
 /**
  * DANFE — a representação impressa da NF-e, montada a partir do **XML
@@ -20,34 +20,49 @@ import type { NfeDados } from './nfe-xml';
  *   arquivo que foi transmitido seria produzir um papel que não corresponde à
  *   nota — e o papel é justamente o que o cliente e o fiscal olham.
  *
- * O layout segue o modelo retrato do Manual de Integração (canhoto, quadros de
- * emitente/destinatário, fatura, impostos, transporte, itens e dados
- * adicionais). Não é a validação oficial de layout, que exige homologação —
- * é a 2ª via que o cliente pediu no WhatsApp.
+ * O layout reproduz o DANFE retrato que o Protheus imprime (pedido do usuário,
+ * 01/10/2026, com o PDF do ERP como modelo): mesmos quadros, na mesma ordem,
+ * com a mesma composição de campos — o cliente recebe pelo WhatsApp o mesmo
+ * papel que receberia do faturamento. Datas e horas saem como estão no XML,
+ * sem conversão de fuso: o protocolo diz "13:27:10" no ERP, e aqui também.
  */
 
-const MARGEM = 8;
+const MARGEM = 7;
 const LARGURA_PAGINA = 210;
-const LARGURA_UTIL = LARGURA_PAGINA - MARGEM * 2;
+const ALTURA_PAGINA = 297;
+const W = LARGURA_PAGINA - MARGEM * 2;
+const FONTE = 'times';
+/** Altura de um quadro de uma linha (rótulo + valor). */
+const H = 7;
 
-const moeda = (v: number | null | undefined) =>
-  v == null
-    ? ''
-    : v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// ---------------------------------------------------------------------------
+// Formatação
+// ---------------------------------------------------------------------------
 
-const quantidade = (v: number | null | undefined) =>
-  v == null ? '' : v.toLocaleString('pt-BR', { maximumFractionDigits: 4 });
+const decimal = (v: number | null | undefined, casas = 2) =>
+  (v ?? 0).toLocaleString('pt-BR', {
+    minimumFractionDigits: casas,
+    maximumFractionDigits: casas,
+  });
 
+const percentual = (v: number | null | undefined) => `${decimal(v)}%`;
+
+/** "2025-06-10T13:27:10-04:00" → "10/06/2025", sem passar por fuso. */
 const dataBr = (v: string | null | undefined) => {
-  if (!v) return '';
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? v : d.toLocaleDateString('pt-BR');
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v ?? '');
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
 };
+
+/** "2025-06-10T13:27:10-04:00" → "13:27:10"; só data, vazio. */
+const horaBr = (v: string | null | undefined) =>
+  /T(\d{2}:\d{2}:\d{2})/.exec(v ?? '')?.[1] ?? '';
 
 const documento = (v: string | null | undefined) => {
   const d = (v ?? '').replace(/\D/g, '');
-  if (d.length === 14) return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
-  if (d.length === 11) return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  if (d.length === 14)
+    return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+  if (d.length === 11)
+    return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
   return v ?? '';
 };
 
@@ -56,23 +71,35 @@ const cep = (v: string | null | undefined) => {
   return d.length === 8 ? d.replace(/(\d{5})(\d{3})/, '$1-$2') : (v ?? '');
 };
 
-/** A chave sai impressa em blocos de quatro — é assim que se confere no portal. */
-const chaveFormatada = (chave: string) => chave.replace(/(\d{4})(?=\d)/g, '$1 ');
+/** Número da nota com 9 dígitos, como o ERP imprime: "N. 000109221". */
+const numeroNota = (v: string | null | undefined) =>
+  v ? `N. ${v.replace(/^0+/, '').padStart(9, '0')}` : 'N.';
 
+/** A chave sai impressa em blocos de quatro — é assim que se confere no portal. */
+const chaveFormatada = (chave: string) =>
+  chave.replace(/(\d{4})(?=\d)/g, '$1 ');
+
+/** Rótulos do modFrete como o DANFE do ERP os escreve. */
 const MODALIDADE_FRETE: Record<string, string> = {
-  '0': '0-EMITENTE',
-  '1': '1-DEST/REM',
+  '0': '0-REMETENTE',
+  '1': '1-DESTINATARIO',
   '2': '2-TERCEIROS',
-  '3': '3-PRÓPRIO/REM',
-  '4': '4-PRÓPRIO/DEST',
+  '3': '3-PROPRIO REMETENTE',
+  '4': '4-PROPRIO DESTINATARIO',
   '9': '9-SEM FRETE',
 };
 
+// ---------------------------------------------------------------------------
+// Primitivas de desenho
+// ---------------------------------------------------------------------------
+
+type Alinhamento = 'left' | 'center' | 'right';
+
 /**
- * Campo do formulário: moldura, rótulo miúdo e valor.
+ * Quadro do formulário: moldura, rótulo miúdo em negrito e valor.
  *
- * `valor` é cortado na largura da caixa em vez de quebrar linha: no DANFE cada
- * quadro tem altura fixa, e texto transbordando invadiria o quadro vizinho.
+ * O valor é cortado na largura do quadro em vez de quebrar linha: no DANFE
+ * cada quadro tem altura fixa, e texto transbordando invadiria o vizinho.
  */
 function campo(
   doc: jsPDF,
@@ -82,29 +109,65 @@ function campo(
   altura: number,
   rotulo: string,
   valor: string,
-  opcoes: { alinhamento?: 'left' | 'center' | 'right'; tamanho?: number; negrito?: boolean } = {},
+  opcoes: {
+    alinhamento?: Alinhamento;
+    tamanho?: number;
+    negrito?: boolean;
+  } = {},
 ) {
-  doc.setLineWidth(0.1);
+  doc.setLineWidth(0.15);
   doc.rect(x, y, largura, altura);
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(4.6);
-  doc.text(rotulo.toUpperCase(), x + 1, y + 2.2);
+  doc.setFont(FONTE, 'bold');
+  // Rótulo longo em quadro estreito ("BASE DE CALCULO DO ICMS SUBSTITUIÇÃO")
+  // encolhe até caber, em vez de invadir o quadro ao lado.
+  let tamanhoRotulo = 5.2;
+  doc.setFontSize(tamanhoRotulo);
+  while (tamanhoRotulo > 3.6 && doc.getTextWidth(rotulo) > largura - 1.6) {
+    tamanhoRotulo -= 0.2;
+    doc.setFontSize(tamanhoRotulo);
+  }
+  doc.text(rotulo, x + 0.8, y + 2.2);
 
-  doc.setFont('helvetica', opcoes.negrito ? 'bold' : 'normal');
-  doc.setFontSize(opcoes.tamanho ?? 7);
-  const texto = doc.splitTextToSize(valor || '', largura - 2)[0] ?? '';
+  doc.setFont(FONTE, opcoes.negrito ? 'bold' : 'normal');
+  doc.setFontSize(opcoes.tamanho ?? 7.5);
+  const texto =
+    (doc.splitTextToSize(valor || '', largura - 1.6) as string[])[0] ?? '';
   const alinhamento = opcoes.alinhamento ?? 'left';
   const posX =
     alinhamento === 'right'
-      ? x + largura - 1
+      ? x + largura - 0.8
       : alinhamento === 'center'
         ? x + largura / 2
-        : x + 1;
-  doc.text(texto, posX, y + altura - 1.5, { align: alinhamento });
+        : x + 0.8;
+  doc.text(texto, posX, y + altura - 1.3, { align: alinhamento });
 }
 
-/** Bloco de texto com moldura, para endereço e observações (quebra linha). */
+/** Linha de quadros lado a lado; as larguras somam a largura útil. */
+function linhaDeCampos(
+  doc: jsPDF,
+  y: number,
+  quadros: Array<{
+    largura: number;
+    rotulo: string;
+    valor: string;
+    alinhamento?: Alinhamento;
+    negrito?: boolean;
+  }>,
+  altura = H,
+) {
+  let x = MARGEM;
+  for (const q of quadros) {
+    campo(doc, x, y, q.largura, altura, q.rotulo, q.valor, {
+      alinhamento: q.alinhamento,
+      negrito: q.negrito,
+    });
+    x += q.largura;
+  }
+  return y + altura;
+}
+
+/** Quadro com texto que quebra linha (dados adicionais). */
 function campoMultilinha(
   doc: jsPDF,
   x: number,
@@ -114,34 +177,27 @@ function campoMultilinha(
   rotulo: string,
   valor: string,
 ) {
-  doc.setLineWidth(0.1);
+  doc.setLineWidth(0.15);
   doc.rect(x, y, largura, altura);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(4.6);
-  doc.text(rotulo.toUpperCase(), x + 1, y + 2.2);
+  doc.setFont(FONTE, 'bold');
+  doc.setFontSize(5.2);
+  doc.text(rotulo, x + 0.8, y + 2.2);
 
-  doc.setFontSize(6);
-  const linhas = doc.splitTextToSize(valor || '', largura - 2) as string[];
-  const cabem = Math.max(0, Math.floor((altura - 3.5) / 2.6));
-  doc.text(linhas.slice(0, cabem), x + 1, y + 5);
+  doc.setFont(FONTE, 'normal');
+  doc.setFontSize(6.5);
+  const linhas = valor
+    .split('\n')
+    .flatMap((parte) => doc.splitTextToSize(parte, largura - 1.6) as string[]);
+  const cabem = Math.max(0, Math.floor((altura - 3.5) / 2.7));
+  doc.text(linhas.slice(0, cabem), x + 0.8, y + 5);
 }
 
-/** Título de seção ("DADOS DO PRODUTO/SERVIÇO"), na régua do formulário. */
+/** Título de seção ("DESTINATARIO/REMETENTE"), em cima do quadro. */
 function secao(doc: jsPDF, y: number, titulo: string) {
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(5.5);
-  doc.text(titulo.toUpperCase(), MARGEM, y);
-}
-
-function enderecoLinha(parte: NfeDados['emitente']) {
-  const e = parte.endereco;
-  return [
-    [e.logradouro, e.numero].filter(Boolean).join(', '),
-    e.complemento,
-    e.bairro,
-  ]
-    .filter(Boolean)
-    .join(' - ');
+  doc.setFont(FONTE, 'bold');
+  doc.setFontSize(6);
+  doc.text(titulo, MARGEM, y + 2.3);
+  return y + 3;
 }
 
 /**
@@ -160,129 +216,156 @@ function carimbo(doc: jsPDF, texto: string) {
   doc.restoreGraphicsState();
 }
 
-export type DanfePdfOpcoes = {
-  /** Marca o papel como reimpressão — é sempre 2ª via quando sai daqui. */
-  segundaVia?: boolean;
-};
+// ---------------------------------------------------------------------------
+// Blocos
+// ---------------------------------------------------------------------------
 
-/** Monta o DANFE e devolve os bytes do PDF. */
-export function montarDanfePdf(nfe: NfeDados, opcoes: DanfePdfOpcoes = {}): Buffer {
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  let y = MARGEM;
+/** Canhoto: recibo de entrega destacável, só na primeira folha. */
+function canhoto(doc: jsPDF, nfe: NfeDados, y: number) {
+  const larguraNota = 30;
+  const larguraRecibo = W - larguraNota;
+  const altura = 16;
 
-  // ------------------------------------------------------------------
-  // Canhoto: recibo de entrega destacável.
-  // ------------------------------------------------------------------
-  const alturaCanhoto = 12;
-  doc.setLineWidth(0.1);
-  doc.rect(MARGEM, y, LARGURA_UTIL - 26, alturaCanhoto);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(5.5);
+  doc.setLineWidth(0.15);
+  doc.rect(MARGEM, y, larguraRecibo, altura);
+  doc.setFont(FONTE, 'normal');
+  doc.setFontSize(6.5);
   doc.text(
     `RECEBEMOS DE ${nfe.emitente.nome ?? ''} OS PRODUTOS CONSTANTES DA NOTA FISCAL INDICADA AO LADO`,
-    MARGEM + 1,
+    MARGEM + 0.8,
     y + 3,
+    { maxWidth: larguraRecibo - 1.6 },
   );
-  doc.line(MARGEM, y + 5, MARGEM + LARGURA_UTIL - 26, y + 5);
-  doc.setFontSize(4.6);
-  doc.text('DATA DE RECEBIMENTO', MARGEM + 1, y + 7.5);
-  doc.text('IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR', MARGEM + 41, y + 7.5);
-  doc.line(MARGEM + 40, y + 5, MARGEM + 40, y + alturaCanhoto);
+  doc.line(MARGEM, y + 5.5, MARGEM + larguraRecibo, y + 5.5);
+  doc.line(MARGEM + 42, y + 5.5, MARGEM + 42, y + altura);
+  doc.setFont(FONTE, 'bold');
+  doc.setFontSize(5.2);
+  doc.text('DATA DE RECEBIMENTO', MARGEM + 0.8, y + 7.8);
+  doc.text('IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR', MARGEM + 42.8, y + 7.8);
 
-  // Identificação da nota, ao lado do canhoto.
-  doc.rect(MARGEM + LARGURA_UTIL - 26, y, 26, alturaCanhoto);
-  doc.setFont('helvetica', 'bold');
+  const xNota = MARGEM + larguraRecibo;
+  doc.rect(xNota, y, larguraNota, altura);
+  doc.setFont(FONTE, 'bold');
   doc.setFontSize(8);
-  doc.text('NF-e', MARGEM + LARGURA_UTIL - 13, y + 4, { align: 'center' });
-  doc.setFontSize(7);
-  doc.text(
-    `Nº ${nfe.numero ?? ''}`,
-    MARGEM + LARGURA_UTIL - 13,
-    y + 7.5,
-    { align: 'center' },
-  );
-  doc.text(`SÉRIE ${nfe.serie ?? ''}`, MARGEM + LARGURA_UTIL - 13, y + 10.5, {
-    align: 'center',
-  });
+  doc.text('NF-e', xNota + 2, y + 4.5);
+  doc.setFont(FONTE, 'normal');
+  doc.setFontSize(7.5);
+  doc.text(numeroNota(nfe.numero), xNota + 2, y + 9);
+  doc.text(`SÉRIE ${nfe.serie ?? ''}`, xNota + 2, y + 13);
 
-  y += alturaCanhoto + 3;
   // Linha de corte.
+  const corte = y + altura + 2;
   doc.setLineDashPattern([1, 1], 0);
-  doc.line(MARGEM, y - 1.5, MARGEM + LARGURA_UTIL, y - 1.5);
+  doc.line(MARGEM, corte, MARGEM + W, corte);
   doc.setLineDashPattern([], 0);
+  return corte + 2;
+}
 
-  // ------------------------------------------------------------------
-  // Cabeçalho: emitente | DANFE | chave de acesso.
-  // ------------------------------------------------------------------
-  const alturaCabecalho = 30;
-  const larguraEmitente = 78;
-  const larguraDanfe = 30;
-  const larguraChave = LARGURA_UTIL - larguraEmitente - larguraDanfe;
+/** Marca onde vai o "FOLHA x/y", preenchido quando o total é conhecido. */
+type MarcaFolha = { pagina: number; x: number; y: number };
 
-  doc.rect(MARGEM, y, larguraEmitente, alturaCabecalho);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.text(
-    doc.splitTextToSize(nfe.emitente.nome ?? '', larguraEmitente - 4) as string[],
-    MARGEM + larguraEmitente / 2,
-    y + 5,
-    { align: 'center' },
-  );
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6);
-  const enderecoEmitente = [
-    enderecoLinha(nfe.emitente),
-    [nfe.emitente.endereco.municipio, nfe.emitente.endereco.uf]
-      .filter(Boolean)
-      .join(' - '),
-    `CEP: ${cep(nfe.emitente.endereco.cep)}`,
-    nfe.emitente.endereco.telefone ? `Fone: ${nfe.emitente.endereco.telefone}` : '',
+/**
+ * Cabeçalho: emitente | DANFE | chave de acesso, mais natureza/protocolo e as
+ * inscrições do emitente. Repete em toda folha.
+ */
+function cabecalho(
+  doc: jsPDF,
+  nfe: NfeDados,
+  y: number,
+  logo: LogoPdf | null,
+  folhas: MarcaFolha[],
+) {
+  const altura = 33;
+  const larguraEmitente = 80;
+  const larguraDanfe = 34;
+  const larguraChave = W - larguraEmitente - larguraDanfe;
+
+  // ---- Emitente
+  doc.setLineWidth(0.15);
+  doc.rect(MARGEM, y, larguraEmitente, altura);
+
+  let xTexto = MARGEM + 2;
+  let larguraTexto = larguraEmitente - 4;
+  if (logo) {
+    try {
+      const props = doc.getImageProperties(logo.dados);
+      const maximo = 26;
+      const escala = Math.min(maximo / props.width, maximo / props.height);
+      const lw = props.width * escala;
+      const lh = props.height * escala;
+      doc.addImage(
+        logo.dados,
+        logo.formato,
+        MARGEM + 2 + (maximo - lw) / 2,
+        y + 4 + (maximo - lh) / 2,
+        lw,
+        lh,
+      );
+      xTexto = MARGEM + 2 + maximo + 2;
+      larguraTexto = larguraEmitente - (maximo + 6);
+    } catch {
+      // Imagem ilegível: o quadro sai só com o texto.
+    }
+  }
+
+  doc.setFont(FONTE, 'bold');
+  doc.setFontSize(7.5);
+  doc.text('Identificação do emitente', xTexto, y + 4);
+  doc.setFontSize(9);
+  const nome = doc.splitTextToSize(
+    nfe.emitente.nome ?? '',
+    larguraTexto,
+  ) as string[];
+  doc.text(nome.slice(0, 2), xTexto, y + 8.5);
+  const e = nfe.emitente.endereco;
+  doc.setFontSize(6.8);
+  const linhasEndereco = [
+    [e.logradouro, e.numero].filter(Boolean).join(', '),
+    [e.complemento].filter(Boolean).join(''),
+    [e.bairro, e.cep ? `Cep:${cep(e.cep)}` : ''].filter(Boolean).join(' '),
+    [e.municipio, e.uf].filter(Boolean).join('/'),
+    e.telefone ? `Fone: ${e.telefone}` : '',
   ].filter(Boolean);
-  doc.text(enderecoEmitente, MARGEM + larguraEmitente / 2, y + 13, {
-    align: 'center',
+  doc.text(linhasEndereco, xTexto, y + 8.5 + nome.slice(0, 2).length * 3.6, {
+    lineHeightFactor: 1.15,
   });
 
-  // Quadro DANFE.
+  // ---- DANFE
   const xDanfe = MARGEM + larguraEmitente;
-  doc.rect(xDanfe, y, larguraDanfe, alturaCabecalho);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.text('DANFE', xDanfe + larguraDanfe / 2, y + 5, { align: 'center' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(4.8);
-  doc.text('DOCUMENTO AUXILIAR DA', xDanfe + larguraDanfe / 2, y + 8, {
-    align: 'center',
-  });
-  doc.text('NOTA FISCAL ELETRÔNICA', xDanfe + larguraDanfe / 2, y + 10.5, {
-    align: 'center',
-  });
-
-  // Entrada/saída: 0 = entrada, 1 = saída (tpNF do XML).
-  const saida = nfe.tipoOperacao !== '0';
-  doc.setFontSize(5);
-  doc.text('0 - ENTRADA', xDanfe + 2, y + 15);
-  doc.text('1 - SAÍDA', xDanfe + 2, y + 18);
-  doc.rect(xDanfe + larguraDanfe - 8, y + 12.5, 6, 6);
-  doc.setFont('helvetica', 'bold');
+  doc.rect(xDanfe, y, larguraDanfe, altura);
+  const centro = xDanfe + larguraDanfe / 2;
+  doc.setFont(FONTE, 'bold');
+  doc.setFontSize(13);
+  doc.text('DANFE', centro, y + 5.5, { align: 'center' });
+  doc.setFont(FONTE, 'normal');
+  doc.setFontSize(6);
+  doc.text('DOCUMENTO AUXILIAR DA', centro, y + 8.5, { align: 'center' });
+  doc.text('NOTA FISCAL ELETRÔNICA', centro, y + 11, { align: 'center' });
+  doc.text('0-ENTRADA', xDanfe + 3, y + 14.5);
+  doc.text('1-SAÍDA', xDanfe + 3, y + 17.5);
+  doc.rect(xDanfe + larguraDanfe - 10, y + 12.8, 5, 5);
+  doc.setFont(FONTE, 'bold');
   doc.setFontSize(8);
-  doc.text(saida ? '1' : '0', xDanfe + larguraDanfe - 5, y + 17, {
-    align: 'center',
-  });
+  // tpNF: 0 = entrada, 1 = saída.
+  doc.text(
+    nfe.tipoOperacao === '0' ? '0' : '1',
+    xDanfe + larguraDanfe - 7.5,
+    y + 16.5,
+    {
+      align: 'center',
+    },
+  );
+  doc.setFontSize(8);
+  doc.text(numeroNota(nfe.numero), centro, y + 22, { align: 'center' });
+  doc.text(`SÉRIE ${nfe.serie ?? ''}`, centro, y + 25.5, { align: 'center' });
+  folhas.push({ pagina: doc.getNumberOfPages(), x: centro, y: y + 29 });
 
-  doc.setFontSize(7);
-  doc.text(`Nº ${nfe.numero ?? ''}`, xDanfe + larguraDanfe / 2, y + 23, {
-    align: 'center',
-  });
-  doc.text(`SÉRIE ${nfe.serie ?? ''}`, xDanfe + larguraDanfe / 2, y + 27, {
-    align: 'center',
-  });
-
-  // Chave de acesso: código de barras Code128C + a chave em dígitos.
+  // ---- Chave de acesso
   const xChave = xDanfe + larguraDanfe;
-  doc.rect(xChave, y, larguraChave, alturaCabecalho);
+  doc.rect(xChave, y, larguraChave, altura);
   const modulos = code128cModulos(nfe.chave);
-  // Encaixa a chave na largura disponível: 44 dígitos em Code128C dão 25
-  // símbolos, e um X fixo estouraria o quadro em papel A4.
+  // 44 dígitos em Code128C dão 25 símbolos; um módulo fixo estouraria o
+  // quadro em A4, então a largura do módulo se ajusta ao espaço.
   const larguraModulo = Math.min(
     0.33,
     (larguraChave - 6) / (larguraBarras(modulos, 1) || 1),
@@ -290,240 +373,584 @@ export function montarDanfePdf(nfe: NfeDados, opcoes: DanfePdfOpcoes = {}): Buff
   const larguraCodigo = larguraBarras(modulos, larguraModulo);
   desenharBarras(doc, modulos, {
     x: xChave + (larguraChave - larguraCodigo) / 2,
-    y: y + 3,
-    altura: 12,
+    y: y + 2,
+    altura: 10,
     larguraModulo,
   });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(4.6);
-  doc.text('CHAVE DE ACESSO', xChave + 1, y + 18.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(6.4);
-  doc.text(chaveFormatada(nfe.chave), xChave + larguraChave / 2, y + 22, {
-    align: 'center',
-  });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(5.2);
+  doc.line(xChave, y + 13.5, xChave + larguraChave, y + 13.5);
+  doc.setFont(FONTE, 'bold');
+  doc.setFontSize(7.5);
+  doc.text('CHAVE DE ACESSO DA NF-E', xChave + 1.5, y + 16.5);
+  doc.setFontSize(8.2);
+  doc.text(chaveFormatada(nfe.chave), xChave + 1.5, y + 20);
+  doc.line(xChave, y + 22, xChave + larguraChave, y + 22);
+  doc.setFont(FONTE, 'normal');
+  doc.setFontSize(7.5);
   doc.text(
-    'Consulta de autenticidade no portal nacional da NF-e (www.nfe.fazenda.gov.br/portal) ou no site da Sefaz autorizadora',
-    xChave + larguraChave / 2,
-    y + 26,
-    { align: 'center', maxWidth: larguraChave - 3 },
-  );
-
-  y += alturaCabecalho;
-
-  // Protocolo de autorização.
-  campo(
-    doc,
-    MARGEM,
-    y,
-    LARGURA_UTIL,
-    7,
-    'Protocolo de autorização de uso',
-    nfe.protocolo
-      ? `${nfe.protocolo} — ${dataBr(nfe.dataProtocolo)}`
-      : 'NOTA SEM PROTOCOLO DE AUTORIZAÇÃO NO ARQUIVO XML',
-    { alinhamento: 'center', negrito: true },
-  );
-  y += 7;
-
-  campo(doc, MARGEM, y, LARGURA_UTIL, 7, 'Natureza da operação', nfe.naturezaOperacao ?? '');
-  y += 7;
-
-  const t3 = LARGURA_UTIL / 3;
-  campo(doc, MARGEM, y, t3, 7, 'CNPJ', documento(nfe.emitente.documento));
-  campo(doc, MARGEM + t3, y, t3, 7, 'Inscrição estadual', nfe.emitente.inscricaoEstadual ?? '');
-  campo(
-    doc,
-    MARGEM + t3 * 2,
-    y,
-    LARGURA_UTIL - t3 * 2,
-    7,
-    'Data de emissão',
-    dataBr(nfe.dataEmissao),
-  );
-  y += 9;
-
-  // ------------------------------------------------------------------
-  // Destinatário / remetente.
-  // ------------------------------------------------------------------
-  secao(doc, y, 'Destinatário / Remetente');
-  y += 1.5;
-  campo(doc, MARGEM, y, LARGURA_UTIL - 42 - 26, 7, 'Nome / razão social', nfe.destinatario.nome ?? '');
-  campo(doc, MARGEM + LARGURA_UTIL - 68, y, 42, 7, 'CNPJ / CPF', documento(nfe.destinatario.documento));
-  campo(doc, MARGEM + LARGURA_UTIL - 26, y, 26, 7, 'Data de saída', dataBr(nfe.dataSaida));
-  y += 7;
-
-  campo(doc, MARGEM, y, LARGURA_UTIL - 60, 7, 'Endereço', enderecoLinha(nfe.destinatario));
-  campo(doc, MARGEM + LARGURA_UTIL - 60, y, 34, 7, 'Município', nfe.destinatario.endereco.municipio ?? '');
-  campo(doc, MARGEM + LARGURA_UTIL - 26, y, 10, 7, 'UF', nfe.destinatario.endereco.uf ?? '');
-  campo(doc, MARGEM + LARGURA_UTIL - 16, y, 16, 7, 'CEP', cep(nfe.destinatario.endereco.cep));
-  y += 7;
-
-  campo(doc, MARGEM, y, LARGURA_UTIL - 60, 7, 'Bairro', nfe.destinatario.endereco.bairro ?? '');
-  campo(doc, MARGEM + LARGURA_UTIL - 60, y, 34, 7, 'Inscrição estadual', nfe.destinatario.inscricaoEstadual ?? '');
-  campo(doc, MARGEM + LARGURA_UTIL - 26, y, 26, 7, 'Telefone', nfe.destinatario.endereco.telefone ?? '');
-  y += 9;
-
-  // ------------------------------------------------------------------
-  // Fatura / duplicatas.
-  // ------------------------------------------------------------------
-  if (nfe.duplicatas.length > 0) {
-    secao(doc, y, 'Fatura / Duplicatas');
-    y += 1.5;
-    const porLinha = 4;
-    const largura = LARGURA_UTIL / porLinha;
-    nfe.duplicatas.slice(0, 12).forEach((dup, i) => {
-      const linha = Math.floor(i / porLinha);
-      const coluna = i % porLinha;
-      campo(
-        doc,
-        MARGEM + coluna * largura,
-        y + linha * 7,
-        largura,
-        7,
-        `Parcela ${dup.numero ?? i + 1} — venc. ${dataBr(dup.vencimento)}`,
-        moeda(dup.valor),
-        { alinhamento: 'right' },
-      );
-    });
-    y += Math.ceil(Math.min(nfe.duplicatas.length, 12) / porLinha) * 7 + 2;
-  }
-
-  // ------------------------------------------------------------------
-  // Cálculo do imposto.
-  // ------------------------------------------------------------------
-  secao(doc, y, 'Cálculo do imposto');
-  y += 1.5;
-  const c5 = LARGURA_UTIL / 5;
-  campo(doc, MARGEM, y, c5, 7, 'Base de cálculo do ICMS', moeda(nfe.totais.baseIcms), { alinhamento: 'right' });
-  campo(doc, MARGEM + c5, y, c5, 7, 'Valor do ICMS', moeda(nfe.totais.valorIcms), { alinhamento: 'right' });
-  campo(doc, MARGEM + c5 * 2, y, c5, 7, 'Base de cálculo ICMS ST', moeda(nfe.totais.baseIcmsSt), { alinhamento: 'right' });
-  campo(doc, MARGEM + c5 * 3, y, c5, 7, 'Valor do ICMS ST', moeda(nfe.totais.valorIcmsSt), { alinhamento: 'right' });
-  campo(doc, MARGEM + c5 * 4, y, c5, 7, 'Valor total dos produtos', moeda(nfe.totais.valorProdutos), { alinhamento: 'right' });
-  y += 7;
-  campo(doc, MARGEM, y, c5, 7, 'Valor do frete', moeda(nfe.totais.valorFrete), { alinhamento: 'right' });
-  campo(doc, MARGEM + c5, y, c5, 7, 'Valor do seguro', moeda(nfe.totais.valorSeguro), { alinhamento: 'right' });
-  campo(doc, MARGEM + c5 * 2, y, c5, 7, 'Desconto', moeda(nfe.totais.valorDesconto), { alinhamento: 'right' });
-  campo(doc, MARGEM + c5 * 3, y, c5, 7, 'Valor do IPI', moeda(nfe.totais.valorIpi), { alinhamento: 'right' });
-  campo(doc, MARGEM + c5 * 4, y, c5, 7, 'Valor total da nota', moeda(nfe.totais.valorTotal), {
-    alinhamento: 'right',
-    negrito: true,
-    tamanho: 8,
-  });
-  y += 9;
-
-  // ------------------------------------------------------------------
-  // Transportador / volumes.
-  // ------------------------------------------------------------------
-  secao(doc, y, 'Transportador / Volumes transportados');
-  y += 1.5;
-  campo(doc, MARGEM, y, LARGURA_UTIL - 76, 7, 'Nome / razão social', nfe.transporte.transportador ?? '');
-  campo(doc, MARGEM + LARGURA_UTIL - 76, y, 30, 7, 'Frete por conta', MODALIDADE_FRETE[nfe.transporte.modalidadeFrete ?? ''] ?? '');
-  campo(doc, MARGEM + LARGURA_UTIL - 46, y, 20, 7, 'Placa', nfe.transporte.placa ?? '');
-  campo(doc, MARGEM + LARGURA_UTIL - 26, y, 26, 7, 'CNPJ / CPF', documento(nfe.transporte.documentoTransportador));
-  y += 7;
-  const c4 = LARGURA_UTIL / 4;
-  campo(doc, MARGEM, y, c4, 7, 'Quantidade', quantidade(nfe.transporte.quantidade));
-  campo(doc, MARGEM + c4, y, c4, 7, 'Espécie', nfe.transporte.especie ?? '');
-  campo(doc, MARGEM + c4 * 2, y, c4, 7, 'Peso bruto', quantidade(nfe.transporte.pesoBruto), { alinhamento: 'right' });
-  campo(doc, MARGEM + c4 * 3, y, c4, 7, 'Peso líquido', quantidade(nfe.transporte.pesoLiquido), { alinhamento: 'right' });
-  y += 9;
-
-  // ------------------------------------------------------------------
-  // Itens.
-  // ------------------------------------------------------------------
-  secao(doc, y, 'Dados do produto / serviço');
-  y += 2;
-
-  autoTable(doc, {
-    startY: y,
-    margin: { left: MARGEM, right: MARGEM },
-    theme: 'grid',
-    styles: { fontSize: 5.6, cellPadding: 0.8, lineWidth: 0.1, textColor: 0 },
-    headStyles: { fillColor: [235, 235, 235], textColor: 0, fontStyle: 'bold' },
-    head: [
-      [
-        'Cód.',
-        'Descrição',
-        'NCM',
-        'CST',
-        'CFOP',
-        'Un.',
-        'Qtd.',
-        'Vl. unit.',
-        'Vl. total',
-        'BC ICMS',
-        'Vl. ICMS',
-        'Vl. IPI',
-        'Alíq. ICMS',
-        'Alíq. IPI',
-      ],
+    [
+      'Consulta de autenticidade no portal nacional da NF-e',
+      'www.nfe.fazenda.gov.br/portal ou no site da SEFAZ Autorizada',
     ],
-    body: nfe.itens.map((item) => [
-      item.codigo ?? '',
-      item.descricao ?? '',
-      item.ncm ?? '',
-      item.cst ?? '',
-      item.cfop ?? '',
-      item.unidade ?? '',
-      quantidade(item.quantidade),
-      moeda(item.valorUnitario),
-      moeda(item.valorTotal),
-      moeda(item.baseIcms),
-      moeda(item.valorIcms),
-      moeda(item.valorIpi),
-      item.aliquotaIcms != null ? `${moeda(item.aliquotaIcms)}%` : '',
-      item.aliquotaIpi != null ? `${moeda(item.aliquotaIpi)}%` : '',
-    ]),
-    columnStyles: {
-      0: { cellWidth: 14 },
-      1: { cellWidth: 'auto' },
-      2: { cellWidth: 11 },
-      3: { cellWidth: 8 },
-      4: { cellWidth: 8 },
-      5: { cellWidth: 6 },
-      6: { cellWidth: 13, halign: 'right' },
-      7: { cellWidth: 14, halign: 'right' },
-      8: { cellWidth: 15, halign: 'right' },
-      9: { cellWidth: 14, halign: 'right' },
-      10: { cellWidth: 13, halign: 'right' },
-      11: { cellWidth: 12, halign: 'right' },
-      12: { cellWidth: 11, halign: 'right' },
-      13: { cellWidth: 10, halign: 'right' },
+    xChave + 1.5,
+    y + 26,
+  );
+
+  y += altura;
+
+  // ---- Natureza da operação | protocolo
+  y = linhaDeCampos(doc, y, [
+    {
+      largura: larguraEmitente + larguraDanfe,
+      rotulo: 'NATUREZA DA OPERAÇÃO',
+      valor: nfe.naturezaOperacao ?? '',
     },
-  });
+    {
+      largura: larguraChave,
+      rotulo: 'PROTOCOLO DE AUTORIZAÇÃO DE USO',
+      valor: nfe.protocolo
+        ? `${nfe.protocolo} ${dataBr(nfe.dataProtocolo)} ${horaBr(nfe.dataProtocolo)}`.trim()
+        : 'NOTA SEM PROTOCOLO DE AUTORIZAÇÃO NO ARQUIVO XML',
+    },
+  ]);
 
-  // jspdf-autotable guarda a última posição em `lastAutoTable`.
-  const depoisDaTabela =
-    (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y;
-  y = depoisDaTabela + 3;
+  // ---- Inscrições do emitente
+  y = linhaDeCampos(doc, y, [
+    {
+      largura: larguraEmitente,
+      rotulo: 'INSCRIÇÃO ESTADUAL',
+      valor: nfe.emitente.inscricaoEstadual ?? '',
+    },
+    {
+      largura: larguraDanfe + 30,
+      rotulo: 'INSC.ESTADUAL DO SUBST.TRIB.',
+      valor: nfe.emitente.inscricaoEstadualSt ?? '',
+    },
+    {
+      largura: larguraChave - 30,
+      rotulo: 'CNPJ/CPF',
+      valor: documento(nfe.emitente.documento),
+    },
+  ]);
+  return y;
+}
 
-  // ------------------------------------------------------------------
-  // Dados adicionais.
-  // ------------------------------------------------------------------
-  const alturaObs = 20;
-  if (y + alturaObs > 290) {
-    doc.addPage();
-    y = MARGEM;
+function destinatario(doc: jsPDF, nfe: NfeDados, y: number) {
+  const d = nfe.destinatario;
+  const e = d.endereco;
+  const larguraData = 30;
+  y = secao(doc, y, 'DESTINATARIO/REMETENTE');
+  y = linhaDeCampos(doc, y, [
+    {
+      largura: W - larguraData - 45,
+      rotulo: 'NOME/RAZÃO SOCIAL',
+      valor: d.nome ?? '',
+    },
+    { largura: 45, rotulo: 'CNPJ/CPF', valor: documento(d.documento) },
+    {
+      largura: larguraData,
+      rotulo: 'DATA DE EMISSÃO',
+      valor: dataBr(nfe.dataEmissao),
+    },
+  ]);
+  y = linhaDeCampos(doc, y, [
+    {
+      largura: W - larguraData - 45 - 25,
+      rotulo: 'ENDEREÇO',
+      valor: [
+        [e.logradouro, e.numero].filter(Boolean).join(', '),
+        e.complemento,
+      ]
+        .filter(Boolean)
+        .join(' - '),
+    },
+    { largura: 45, rotulo: 'BAIRRO/DISTRITO', valor: e.bairro ?? '' },
+    { largura: 25, rotulo: 'CEP', valor: cep(e.cep) },
+    {
+      largura: larguraData,
+      rotulo: 'DATA ENTRADA/SAÍDA',
+      valor: dataBr(nfe.dataSaida),
+    },
+  ]);
+  y = linhaDeCampos(doc, y, [
+    {
+      largura: W - larguraData - 35 - 12 - 43,
+      rotulo: 'MUNICIPIO',
+      valor: e.municipio ?? '',
+    },
+    { largura: 35, rotulo: 'FONE/FAX', valor: e.telefone ?? '' },
+    { largura: 12, rotulo: 'UF', valor: e.uf ?? '' },
+    {
+      largura: 43,
+      rotulo: 'INSCRIÇÃO ESTADUAL',
+      valor: d.inscricaoEstadual ?? '',
+    },
+    {
+      largura: larguraData,
+      rotulo: 'HORA ENTRADA/SAÍDA',
+      valor: horaBr(nfe.dataSaida),
+    },
+  ]);
+  return y;
+}
+
+/**
+ * Fatura: uma faixa de caixas, cada uma com número, vencimento e valor
+ * empilhados — como no DANFE do ERP, que desenha a faixa mesmo vazia.
+ */
+function fatura(doc: jsPDF, nfe: NfeDados, y: number) {
+  y = secao(doc, y, 'FATURA');
+  const porLinha = 10;
+  const largura = W / porLinha;
+  const altura = 10;
+  const linhas = Math.max(1, Math.ceil(nfe.duplicatas.length / porLinha));
+  doc.setLineWidth(0.15);
+  for (let l = 0; l < linhas; l++) {
+    for (let c = 0; c < porLinha; c++) {
+      const x = MARGEM + c * largura;
+      const yl = y + l * altura;
+      doc.rect(x, yl, largura, altura);
+      const dup = nfe.duplicatas[l * porLinha + c];
+      if (!dup) continue;
+      doc.setFont(FONTE, 'normal');
+      doc.setFontSize(6.5);
+      doc.text(
+        [dup.numero ?? '', dataBr(dup.vencimento), decimal(dup.valor)],
+        x + 0.8,
+        yl + 2.8,
+        { lineHeightFactor: 1.1 },
+      );
+    }
   }
-  secao(doc, y, 'Dados adicionais');
-  y += 1.5;
+  return y + linhas * altura;
+}
+
+function imposto(doc: jsPDF, nfe: NfeDados, y: number) {
+  const t = nfe.totais;
+  y = secao(doc, y, 'CALCULO DO IMPOSTO');
+  const c5 = W / 5;
+  y = linhaDeCampos(doc, y, [
+    {
+      largura: c5,
+      rotulo: 'BASE DE CALCULO DO ICMS',
+      valor: decimal(t.baseIcms),
+      alinhamento: 'center',
+    },
+    {
+      largura: c5,
+      rotulo: 'VALOR DO ICMS',
+      valor: decimal(t.valorIcms),
+      alinhamento: 'center',
+    },
+    {
+      largura: c5,
+      rotulo: 'BASE DE CALCULO DO ICMS SUBSTITUIÇÃO',
+      valor: decimal(t.baseIcmsSt),
+      alinhamento: 'center',
+    },
+    {
+      largura: c5,
+      rotulo: 'VALOR DO ICMS SUBSTITUIÇÃO',
+      valor: decimal(t.valorIcmsSt),
+      alinhamento: 'center',
+    },
+    {
+      largura: c5,
+      rotulo: 'VALOR TOTAL DOS PRODUTOS',
+      valor: decimal(t.valorProdutos),
+      alinhamento: 'center',
+    },
+  ]);
+  const c6 = W / 6;
+  y = linhaDeCampos(doc, y, [
+    {
+      largura: c6,
+      rotulo: 'VALOR DO FRETE',
+      valor: decimal(t.valorFrete),
+      alinhamento: 'center',
+    },
+    {
+      largura: c6,
+      rotulo: 'VALOR DO SEGURO',
+      valor: decimal(t.valorSeguro),
+      alinhamento: 'center',
+    },
+    {
+      largura: c6,
+      rotulo: 'DESCONTO',
+      valor: decimal(t.valorDesconto),
+      alinhamento: 'center',
+    },
+    {
+      largura: c6,
+      rotulo: 'OUTRAS DESPESAS ACESSÓRIAS',
+      valor: decimal(t.valorOutros),
+      alinhamento: 'center',
+    },
+    {
+      largura: c6,
+      rotulo: 'VALOR DO IPI',
+      valor: decimal(t.valorIpi),
+      alinhamento: 'center',
+    },
+    {
+      largura: c6,
+      rotulo: 'VALOR TOTAL DA NOTA',
+      valor: decimal(t.valorTotal),
+      alinhamento: 'center',
+      negrito: true,
+    },
+  ]);
+  return y;
+}
+
+function transporte(doc: jsPDF, nfe: NfeDados, y: number) {
+  const t = nfe.transporte;
+  y = secao(doc, y, 'TRANSPORTADOR/VOLUMES TRANSPORTADOS');
+  // Larguras da primeira linha; as de baixo se alinham a elas.
+  const frete = 30;
+  const antt = 22;
+  const placa = 24;
+  const uf = 10;
+  const doc_ = 36;
+  const razao = W - frete - antt - placa - uf - doc_;
+  y = linhaDeCampos(doc, y, [
+    { largura: razao, rotulo: 'RAZÃO SOCIAL', valor: t.transportador ?? '' },
+    {
+      largura: frete,
+      rotulo: 'FRETE POR CONTA',
+      valor: MODALIDADE_FRETE[t.modalidadeFrete ?? ''] ?? '',
+    },
+    { largura: antt, rotulo: 'CÓDIGO ANTT', valor: t.codigoAntt ?? '' },
+    { largura: placa, rotulo: 'PLACA DO VEÍCULO', valor: t.placa ?? '' },
+    { largura: uf, rotulo: 'UF', valor: t.placaUf ?? '' },
+    {
+      largura: doc_,
+      rotulo: 'CNPJ/CPF',
+      valor: documento(t.documentoTransportador),
+    },
+  ]);
+  y = linhaDeCampos(doc, y, [
+    { largura: razao + frete, rotulo: 'ENDEREÇO', valor: t.endereco ?? '' },
+    { largura: antt + placa, rotulo: 'MUNICIPIO', valor: t.municipio ?? '' },
+    { largura: uf, rotulo: 'UF', valor: t.uf ?? '' },
+    {
+      largura: doc_,
+      rotulo: 'INSCRIÇÃO ESTADUAL',
+      valor: t.inscricaoEstadual ?? '',
+    },
+  ]);
+  const c6 = W / 6;
+  y = linhaDeCampos(doc, y, [
+    {
+      largura: c6,
+      rotulo: 'QUANTIDADE',
+      valor: t.quantidade != null ? decimal(t.quantidade, 0) : '',
+    },
+    { largura: c6, rotulo: 'ESPECIE', valor: t.especie ?? '' },
+    { largura: c6, rotulo: 'MARCA', valor: t.marca ?? '' },
+    { largura: c6, rotulo: 'NUMERAÇÃO', valor: t.numeracao ?? '' },
+    {
+      largura: c6,
+      rotulo: 'PESO BRUTO',
+      valor: t.pesoBruto != null ? decimal(t.pesoBruto, 3) : '',
+    },
+    {
+      largura: c6,
+      rotulo: 'PESO LIQUIDO',
+      valor: t.pesoLiquido != null ? decimal(t.pesoLiquido, 3) : '',
+    },
+  ]);
+  return y;
+}
+
+// ---------------------------------------------------------------------------
+// Itens
+// ---------------------------------------------------------------------------
+
+type Coluna = {
+  rotulo: string;
+  largura: number;
+  alinhamento: Alinhamento;
+  valor: (item: NfeItem) => string;
+};
+
+/** Larguras somam a largura útil (196 mm). */
+const COLUNAS: Coluna[] = [
+  {
+    rotulo: 'COD. PROD',
+    largura: 18,
+    alinhamento: 'left',
+    valor: (i) => i.codigo ?? '',
+  },
+  {
+    rotulo: 'DESCRIÇÃO DO PROD./SER.',
+    largura: 50,
+    alinhamento: 'left',
+    valor: (i) => i.descricao ?? '',
+  },
+  {
+    rotulo: 'NCM/SH',
+    largura: 13,
+    alinhamento: 'left',
+    valor: (i) => i.ncm ?? '',
+  },
+  { rotulo: 'CST', largura: 7, alinhamento: 'left', valor: (i) => i.cst ?? '' },
+  {
+    rotulo: 'CFOP',
+    largura: 8,
+    alinhamento: 'left',
+    valor: (i) => i.cfop ?? '',
+  },
+  {
+    rotulo: 'UN',
+    largura: 7,
+    alinhamento: 'left',
+    valor: (i) => i.unidade ?? '',
+  },
+  {
+    rotulo: 'QUANT.',
+    largura: 13,
+    alinhamento: 'right',
+    valor: (i) => decimal(i.quantidade, 4),
+  },
+  {
+    rotulo: 'V.UNITARIO',
+    largura: 14,
+    alinhamento: 'right',
+    valor: (i) => decimal(i.valorUnitario, 4),
+  },
+  {
+    rotulo: 'V.TOTAL',
+    largura: 13,
+    alinhamento: 'right',
+    valor: (i) => decimal(i.valorTotal),
+  },
+  {
+    rotulo: 'BC.ICMS',
+    largura: 12,
+    alinhamento: 'right',
+    valor: (i) => decimal(i.baseIcms),
+  },
+  {
+    rotulo: 'V.ICMS',
+    largura: 11,
+    alinhamento: 'right',
+    valor: (i) => decimal(i.valorIcms),
+  },
+  {
+    rotulo: 'V.IPI',
+    largura: 10,
+    alinhamento: 'right',
+    valor: (i) => decimal(i.valorIpi),
+  },
+  {
+    rotulo: 'A.ICMS',
+    largura: 10,
+    alinhamento: 'right',
+    valor: (i) => percentual(i.aliquotaIcms),
+  },
+  {
+    rotulo: 'A.IPI',
+    largura: 10,
+    alinhamento: 'right',
+    valor: (i) => percentual(i.aliquotaIpi),
+  },
+];
+
+const ALTURA_LINHA_ITEM = 2.7;
+
+/** Quadro dos itens: cabeçalho e as linhas verticais até o fim do quadro. */
+function quadroItens(doc: jsPDF, y: number, fundo: number) {
+  doc.setLineWidth(0.15);
+  doc.rect(MARGEM, y, W, fundo - y);
+  doc.line(MARGEM, y + 5, MARGEM + W, y + 5);
+  doc.setFont(FONTE, 'bold');
+  doc.setFontSize(5.2);
+  let x = MARGEM;
+  COLUNAS.forEach((c, i) => {
+    if (i > 0) doc.line(x, y, x, fundo);
+    doc.text(c.rotulo, x + 0.6, y + 3.3, { maxWidth: c.largura - 1 });
+    x += c.largura;
+  });
+  return y + 5;
+}
+
+/**
+ * Escreve os itens a partir de `inicio` dentro do quadro e devolve quantos
+ * couberam. A descrição quebra linha; as outras colunas ficam na primeira.
+ */
+function escreverItens(
+  doc: jsPDF,
+  itens: NfeItem[],
+  inicio: number,
+  y: number,
+  fundo: number,
+) {
+  let i = inicio;
+  y += 0.6;
+  doc.setFont(FONTE, 'normal');
+  doc.setFontSize(6.5);
+  for (; i < itens.length; i++) {
+    const item = itens[i];
+    const descricao = doc.splitTextToSize(
+      COLUNAS[1].valor(item),
+      COLUNAS[1].largura - 2,
+    ) as string[];
+    const altura = descricao.length * ALTURA_LINHA_ITEM + 1.2;
+    if (y + altura > fundo) break;
+
+    let x = MARGEM;
+    COLUNAS.forEach((c, n) => {
+      const texto = n === 1 ? descricao : c.valor(item);
+      const posX = c.alinhamento === 'right' ? x + c.largura - 0.6 : x + 0.6;
+      doc.text(texto, posX, y + 2.2, {
+        align: c.alinhamento,
+        lineHeightFactor: 1.15,
+      });
+      x += c.largura;
+    });
+    y += altura;
+    // Separador tracejado entre itens, como no DANFE do ERP.
+    doc.setLineDashPattern([0.8, 0.8], 0);
+    doc.line(MARGEM, y, MARGEM + W, y);
+    doc.setLineDashPattern([], 0);
+  }
+  return i;
+}
+
+// ---------------------------------------------------------------------------
+// Rodapé
+// ---------------------------------------------------------------------------
+
+const ALTURA_ADICIONAIS = 34;
+/** ISSQN (título + quadro) e dados adicionais (título + quadro). */
+const ALTURA_RODAPE = 3 + H + 3 + ALTURA_ADICIONAIS;
+
+function rodape(doc: jsPDF, nfe: NfeDados, y: number, opcoes: DanfePdfOpcoes) {
+  y = secao(doc, y, 'CALCULO DO ISSQN');
+  const c4 = W / 4;
+  y = linhaDeCampos(doc, y, [
+    {
+      largura: c4,
+      rotulo: 'INSCRIÇÃO MUNICIPAL',
+      valor: nfe.emitente.inscricaoMunicipal ?? '',
+    },
+    {
+      largura: c4,
+      rotulo: 'VALOR TOTAL DOS SERVIÇOS',
+      valor:
+        nfe.issqn.valorServicos != null ? decimal(nfe.issqn.valorServicos) : '',
+      alinhamento: 'right',
+    },
+    {
+      largura: c4,
+      rotulo: 'BASE DE CÁLCULO DO ISSQN',
+      valor: nfe.issqn.base != null ? decimal(nfe.issqn.base) : '',
+      alinhamento: 'right',
+    },
+    {
+      largura: c4,
+      rotulo: 'VALOR DO ISSQN',
+      valor: nfe.issqn.valor != null ? decimal(nfe.issqn.valor) : '',
+      alinhamento: 'right',
+    },
+  ]);
+
+  y = secao(doc, y, 'DADOS ADICIONAIS');
+  const larguraInfo = 120;
   campoMultilinha(
     doc,
     MARGEM,
     y,
-    LARGURA_UTIL,
-    alturaObs,
-    'Informações complementares',
+    larguraInfo,
+    ALTURA_ADICIONAIS,
+    'INFORMAÇÕES COMPLEMENTARES',
     [
       nfe.informacoesComplementares ?? '',
+      nfe.protocolo ? `Protocolo: ${nfe.protocolo}` : '',
       opcoes.segundaVia ? 'DOCUMENTO REIMPRESSO (2ª VIA).' : '',
     ]
       .filter(Boolean)
-      .join(' '),
+      .join('\n'),
   );
+  campoMultilinha(
+    doc,
+    MARGEM + larguraInfo,
+    y,
+    W - larguraInfo,
+    ALTURA_ADICIONAIS,
+    'RESERVADO AO FISCO',
+    nfe.informacoesFisco ?? '',
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Montagem
+// ---------------------------------------------------------------------------
+
+export type DanfePdfOpcoes = {
+  /** Marca o papel como reimpressão — é sempre 2ª via quando sai daqui. */
+  segundaVia?: boolean;
+  /** Logo do emitente, no quadro de identificação. */
+  logo?: LogoPdf | null;
+};
+
+/** Monta o DANFE e devolve os bytes do PDF. */
+export function montarDanfePdf(
+  nfe: NfeDados,
+  opcoes: DanfePdfOpcoes = {},
+): Buffer {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const logo = opcoes.logo ?? null;
+  const folhas: MarcaFolha[] = [];
+  const fundoPagina = ALTURA_PAGINA - MARGEM;
+
+  // ---- Primeira folha: tudo, com os itens entre o transporte e o rodapé.
+  let y = canhoto(doc, nfe, MARGEM);
+  y = cabecalho(doc, nfe, y, logo, folhas);
+  y = destinatario(doc, nfe, y);
+  y = fatura(doc, nfe, y);
+  y = imposto(doc, nfe, y);
+  y = transporte(doc, nfe, y);
+  y = secao(doc, y, 'DADOS DO PRODUTO / SERVIÇO');
+
+  const fundoItens = fundoPagina - ALTURA_RODAPE;
+  let proximo = escreverItens(
+    doc,
+    nfe.itens,
+    0,
+    quadroItens(doc, y, fundoItens),
+    fundoItens,
+  );
+  rodape(doc, nfe, fundoItens, opcoes);
+
+  // ---- Folhas seguintes: cabeçalho e o resto dos itens até o pé da página.
+  while (proximo < nfe.itens.length) {
+    doc.addPage();
+    let yc = cabecalho(doc, nfe, MARGEM, logo, folhas);
+    yc = secao(doc, yc, 'DADOS DO PRODUTO / SERVIÇO');
+    const antes = proximo;
+    proximo = escreverItens(
+      doc,
+      nfe.itens,
+      proximo,
+      quadroItens(doc, yc, fundoPagina),
+      fundoPagina,
+    );
+    if (proximo === antes) break; // item que não cabe nem numa folha vazia
+  }
+
+  // ---- FOLHA x/y, agora que o total é conhecido.
+  const total = doc.getNumberOfPages();
+  const doisDigitos = (n: number) => String(n).padStart(2, '0');
+  for (const f of folhas) {
+    doc.setPage(f.pagina);
+    doc.setFont(FONTE, 'bold');
+    doc.setFontSize(8);
+    doc.text(`FOLHA ${doisDigitos(f.pagina)}/${doisDigitos(total)}`, f.x, f.y, {
+      align: 'center',
+    });
+  }
 
   // Carimbos vão por último, em todas as páginas, para ficarem por cima.
   const marca = nfe.cancelada
@@ -532,8 +959,7 @@ export function montarDanfePdf(nfe: NfeDados, opcoes: DanfePdfOpcoes = {}): Buff
       ? 'SEM VALOR FISCAL'
       : null;
   if (marca) {
-    const paginas = doc.getNumberOfPages();
-    for (let p = 1; p <= paginas; p++) {
+    for (let p = 1; p <= total; p++) {
       doc.setPage(p);
       carimbo(doc, marca);
     }

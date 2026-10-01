@@ -6,8 +6,12 @@ describe('StatusIntegracaoService', () => {
   it('retorna a ultimaColeta e ultimoEnvio gravados na integracaoApiKey', async () => {
     const dataColeta = new Date('2026-09-25T10:00:00.000Z');
     const dataEnvio = new Date('2026-09-25T11:00:00.000Z');
+    const dataComunicacao = '2026-09-25T11:30:00.000Z';
 
     const mockPrisma = {
+      parametroEmpresa: {
+        findFirst: jest.fn().mockResolvedValue({ conteudo: dataComunicacao }),
+      },
       integracaoApiKey: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -24,7 +28,7 @@ describe('StatusIntegracaoService', () => {
     const moduleRef = await Test.createTestingModule({
       providers: [
         StatusIntegracaoService,
-        { provide: PrismaService, useValue: { withTenant, ...mockPrisma } },
+        { provide: PrismaService, useValue: { withTenant } },
       ],
     }).compile();
 
@@ -35,7 +39,16 @@ describe('StatusIntegracaoService', () => {
     expect(result).toEqual({
       ultimaColeta: dataColeta.toISOString(),
       ultimoEnvio: dataEnvio.toISOString(),
+      ultimaComunicacao: dataComunicacao,
     });
+    expect(mockPrisma.parametroEmpresa.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          empresaId: 'empresa-123',
+          parametro: 'ULTIMA_COMUNICACAO_ERP',
+        }) as unknown,
+      }),
+    );
   });
 
   it('usa fallback em tabelas integradas quando datas na integracaoApiKey forem nulas', async () => {
@@ -43,6 +56,9 @@ describe('StatusIntegracaoService', () => {
     const dataOrcamento = new Date('2026-09-25T12:30:00.000Z');
 
     const mockPrisma = {
+      parametroEmpresa: {
+        findFirst: jest.fn().mockResolvedValue({ conteudo: null }),
+      },
       integracaoApiKey: {
         findMany: jest.fn().mockResolvedValue([]),
       },
@@ -63,7 +79,7 @@ describe('StatusIntegracaoService', () => {
     const moduleRef = await Test.createTestingModule({
       providers: [
         StatusIntegracaoService,
-        { provide: PrismaService, useValue: { withTenant, ...mockPrisma } },
+        { provide: PrismaService, useValue: { withTenant } },
       ],
     }).compile();
 
@@ -73,6 +89,7 @@ describe('StatusIntegracaoService', () => {
     expect(result).toEqual({
       ultimaColeta: dataEstoque.toISOString(),
       ultimoEnvio: dataOrcamento.toISOString(),
+      ultimaComunicacao: null,
     });
   });
 });

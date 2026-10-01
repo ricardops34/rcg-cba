@@ -23,6 +23,10 @@ model Empresa {
   cnpj         String     @unique
   alias        String?    @unique
   logoUrl      String?
+  // Logo impresso no DANFE (quadro do emitente). Separado do logo do sistema
+  // porque o papel pede outra arte (fundo branco, proporção do quadro) e o
+  // PDF só embute PNG/JPEG. Sem ele, o DANFE usa o logoUrl.
+  logoDanfeUrl String?
 
   /// Define se esta empresa é a gestora/administradora da plataforma SaaS.
   ePlataforma  Boolean    @default(false)

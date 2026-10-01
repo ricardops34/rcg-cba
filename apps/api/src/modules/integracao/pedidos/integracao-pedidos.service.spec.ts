@@ -8,7 +8,9 @@ describe('IntegracaoPedidosService — pedido digitado no ERP', () => {
   const empresaId = 'empresa-1';
   const apiKeyId = 'chave-1';
 
-  function montar(existente: { id: string; origem: string } | null) {
+  function montar(
+    existente: { id: string; origem: string; deletedAt?: Date | null } | null,
+  ) {
     const tx = {
       orcamento: {
         findFirst: jest.fn().mockResolvedValue(existente),
@@ -38,7 +40,10 @@ describe('IntegracaoPedidosService — pedido digitado no ERP', () => {
           ),
       },
       cliente: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'cliente-1' }),
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'cliente-1',
+          vendedorId: 'vendedor-do-cliente',
+        }),
       },
       vendedor: {
         findFirst: jest.fn().mockResolvedValue({ id: 'vendedor-1' }),
@@ -161,5 +166,124 @@ describe('IntegracaoPedidosService — pedido digitado no ERP', () => {
         itens: [{ ...pedido.itens[0], produtoChave: '01-NAOEXISTE' }],
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('pedido sem vendedor (C5_VEND1 em branco) fica com o vendedor do cliente', async () => {
+    const { service, tx } = montar(null);
+    await service.atualizar(empresaId, apiKeyId, {
+      ...pedido,
+      vendedorChave: '01-      ',
+    });
+
+    expect(tx.vendedor.findFirst).not.toHaveBeenCalled();
+    expect(tx.orcamento.create.mock.calls[0][0].data.vendedorId).toBe(
+      'vendedor-do-cliente',
+    );
+  });
+
+  it('vendedor que não existe aqui também cai no vendedor do cliente', async () => {
+    const { service, tx } = montar(null);
+    tx.vendedor.findFirst.mockResolvedValue(null);
+    await service.atualizar(empresaId, apiKeyId, pedido);
+
+    expect(tx.orcamento.create.mock.calls[0][0].data.vendedorId).toBe(
+      'vendedor-do-cliente',
+    );
+  });
+
+  it('sem vendedor no pedido nem no cliente é 404', async () => {
+    const { service, tx } = montar(null);
+    tx.vendedor.findFirst.mockResolvedValue(null);
+    tx.cliente.findFirst.mockResolvedValue({
+      id: 'cliente-1',
+      vendedorId: null,
+    });
+    await expect(
+      service.atualizar(empresaId, apiKeyId, pedido),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(tx.orcamento.create).not.toHaveBeenCalled();
+  });
+
+  describe('pedido excluído no ERP', () => {
+    it('histórico do ERP some da plataforma (exclusão lógica)', async () => {
+      const { service, tx } = montar({
+        id: 'orcamento-erp',
+        origem: 'erp',
+        deletedAt: null,
+      });
+      await service.cancelar(empresaId, apiKeyId, '01-004513');
+
+      expect(tx.orcamento.update.mock.calls[0][0].data).toMatchObject({
+        situacaoErp: 'cancelado',
+        deletedBy: 'integracao:chave-1',
+        ativo: false,
+      });
+      expect(
+        tx.orcamento.update.mock.calls[0][0].data.deletedAt,
+      ).toBeInstanceOf(Date);
+    });
+
+    it('orçamento da plataforma fica Cancelado, sem sair da lista', async () => {
+      const { service, tx } = montar({
+        id: 'orcamento-1',
+        origem: 'vendedor',
+        deletedAt: null,
+      });
+      await service.cancelar(empresaId, apiKeyId, '01-004512');
+
+      const { data } = tx.orcamento.update.mock.calls[0][0];
+      expect(data.situacaoErp).toBe('cancelado');
+      expect(data).not.toHaveProperty('deletedAt');
+    });
+
+    it('exclusão repetida do histórico não é erro e não regrava', async () => {
+      const { service, tx } = montar({
+        id: 'orcamento-erp',
+        origem: 'erp',
+        deletedAt: new Date(),
+      });
+      await expect(
+        service.cancelar(empresaId, apiKeyId, '01-004513'),
+      ).resolves.toBeDefined();
+      expect(tx.orcamento.update).not.toHaveBeenCalled();
+    });
+
+    it('orçamento da plataforma já excluído continua 404', async () => {
+      const { service } = montar({
+        id: 'orcamento-1',
+        origem: 'vendedor',
+        deletedAt: new Date(),
+      });
+      await expect(
+        service.cancelar(empresaId, apiKeyId, '01-004512'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('histórico excluído que o ERP manda de novo volta, sem duplicar', async () => {
+      const { service, tx } = montar({
+        id: 'orcamento-erp',
+        origem: 'erp',
+        deletedAt: new Date(),
+      });
+      await service.atualizar(empresaId, apiKeyId, pedido);
+
+      expect(tx.orcamento.create).not.toHaveBeenCalled();
+      expect(tx.orcamento.update.mock.calls[0][0]).toMatchObject({
+        where: { id: 'orcamento-erp' },
+        data: { deletedAt: null, deletedBy: null, ativo: true },
+      });
+    });
+
+    it('situação de pedido cujo orçamento da plataforma foi excluído é 404, não duplica', async () => {
+      const { service, tx } = montar({
+        id: 'orcamento-1',
+        origem: 'vendedor',
+        deletedAt: new Date(),
+      });
+      await expect(
+        service.atualizar(empresaId, apiKeyId, pedido),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(tx.orcamento.create).not.toHaveBeenCalled();
+    });
   });
 });

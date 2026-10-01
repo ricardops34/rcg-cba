@@ -522,8 +522,10 @@ mensagem do ERP (um registro por chamada, como as outras entidades). Não há
   `bloqueado_desconto`, `bloqueado_credito`, `bloqueado_estoque`,
   `faturado_parcial`, `faturado`. Precedência dos bloqueios: desconto
   (`C5_LIBDESC = 2`) → crédito (`C9_BLCRED`) → estoque (`C9_BLEST`).
-- **`"excluido": true`** é o pedido excluído no ERP: o orçamento fica
-  **Cancelado**. Basta a `chave`.
+- **`"excluido": true`** é o pedido excluído no ERP. Basta a `chave`. O
+  orçamento que nasceu na plataforma fica **Cancelado**; o histórico vindo do
+  ERP **sai da plataforma** (exclusão lógica). Repetir a exclusão não é erro, e
+  o histórico excluído que o ERP manda de novo volta, com a mesma chave.
 - **`situacao: "cancelado"`** é o pedido encerrado por eliminação de resíduo:
   ele continua existindo no ERP, então vem completo, com itens e notas.
 - **Quebra** é calculada aqui: os `itens` (todos os ativos do pedido) são

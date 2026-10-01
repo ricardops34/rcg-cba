@@ -344,6 +344,30 @@ export const logoUploadOptions = {
   },
 };
 
+/**
+ * Logo do DANFE: mesma pasta do logo da empresa, mas só PNG e JPEG — o jsPDF
+ * não embute WEBP nem SVG, e no servidor não há canvas para converter. Aceitar
+ * os outros formatos só produziria um DANFE sem logo, sem aviso nenhum.
+ */
+export const logoDanfeUploadOptions = {
+  ...logoUploadOptions,
+  fileFilter: (
+    _req: Request,
+    file: Express.Multer.File,
+    cb: (error: Error | null, acceptFile: boolean) => void,
+  ) => {
+    if (!['image/png', 'image/jpeg'].includes(file.mimetype)) {
+      return cb(
+        new BadRequestException(
+          'Formato inválido para o DANFE. Envie PNG ou JPEG.',
+        ),
+        false,
+      );
+    }
+    cb(null, true);
+  },
+};
+
 export const bancoLogoUploadOptions = {
   storage: diskStorage({
     destination: (_req, _file, cb) => {

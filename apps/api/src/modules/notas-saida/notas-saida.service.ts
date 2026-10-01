@@ -6,6 +6,7 @@ import {
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { extrairNfe, NfeXmlInvalidoError } from './nfe-xml';
 import { montarDanfePdf } from './danfe-pdf';
+import { carregarLogo } from '../../common/pdf/carregar-logo';
 import { comFlagXml } from './nota-flags';
 import {
   registrarAtividadeDocumento,
@@ -206,7 +207,16 @@ export class NotasSaidaService {
     }
 
     const numero = dados.numero ?? nota.numero;
-    const pdf = montarDanfePdf(dados, { segundaVia: true });
+    // Logo do emitente: o do DANFE, ou o da empresa. A empresa não é tabela de
+    // tenant: lida fora da transação, como no PDF do orçamento.
+    const empresa = await this.prisma.empresa.findFirst({
+      where: { id: empresaId, deletedAt: null },
+      select: { logoDanfeUrl: true, logoUrl: true },
+    });
+    const logo =
+      (await carregarLogo(empresa?.logoDanfeUrl)) ??
+      (await carregarLogo(empresa?.logoUrl));
+    const pdf = montarDanfePdf(dados, { segundaVia: true, logo });
 
     // Registrado depois de o PDF existir: XML ilegível vira 409, e o histórico
     // não pode registrar uma 2ª via que ninguém recebeu.

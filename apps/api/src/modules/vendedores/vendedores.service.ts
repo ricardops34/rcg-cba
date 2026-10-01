@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
+import { dadosDoVendedor } from '../../common/usuarios/dados-do-vendedor';
 import { escapeHtml } from '../../common/html/escape-html';
 import {
   PrismaService,
@@ -338,6 +339,7 @@ export class VendedoresService {
           data: {
             nome: vendedor.nome,
             email: vendedor.email,
+            ...dadosDoVendedor([vendedor]),
             senhaHash,
             ativo: true,
             deveTrocarSenha: true,

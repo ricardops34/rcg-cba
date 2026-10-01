@@ -35,6 +35,7 @@ import { CurrentUser, type AuthenticatedUser } from '../../common/decorators/cur
 import { ApiPaginationQuery } from '../../common/decorators/api-pagination-query.decorator';
 import {
   bannerUploadOptions,
+  logoDanfeUploadOptions,
   logoUploadOptions,
 } from '../../common/uploads/uploads.config';
 
@@ -178,6 +179,50 @@ export class EmpresasController {
   ) {
     if (!file) throw new BadRequestException('Nenhum arquivo enviado');
     return this.service.setBanner(id, file.filename, user);
+  }
+
+  @ApiOperation({
+    summary: 'Enviar o logo do DANFE',
+    description:
+      'Faz upload do logo impresso no DANFE (PNG ou JPEG, até 2 MB) e grava o caminho em ' +
+      'logoDanfeUrl. Sem ele, o DANFE usa o logo da empresa. Requer a permissão empresas.editar.',
+  })
+  @ApiParam({ name: 'id', example: EMPRESA_ID_EXAMPLE })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiResponse({ status: 201, schema: { example: EMPRESA_EXAMPLE } })
+  @ApiResponse({ status: 400, description: 'Arquivo ausente ou formato inválido' })
+  @RequirePermission('empresas', 'editar')
+  @Post(':id/logo-danfe')
+  @UseInterceptors(FileInterceptor('file', logoDanfeUploadOptions))
+  uploadLogoDanfe(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    if (!file) throw new BadRequestException('Nenhum arquivo enviado');
+    return this.service.setLogoDanfe(id, file.filename, user);
+  }
+
+  @ApiOperation({
+    summary: 'Remover o logo do DANFE',
+    description:
+      'Apaga o logo do DANFE; o DANFE volta a usar o logo da empresa. Requer a permissão empresas.editar.',
+  })
+  @ApiParam({ name: 'id', example: EMPRESA_ID_EXAMPLE })
+  @ApiResponse({ status: 200, schema: { example: EMPRESA_EXAMPLE } })
+  @RequirePermission('empresas', 'editar')
+  @Delete(':id/logo-danfe')
+  removerLogoDanfe(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.setLogoDanfe(id, null, user);
   }
 
   @ApiOperation({

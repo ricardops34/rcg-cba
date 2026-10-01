@@ -1,15 +1,16 @@
 # Plano: histórico de pedidos do ERP (SC5/SC6) como orçamentos
 
-> **Status (30/09/2026): plataforma, ADVPL e SQL escritos; nada rodou ainda.**
-> Plataforma: migration `20260930290000_historico_pedidos_erp`,
+> **Status (01/10/2026): aplicado em dev; falta compilar o ADVPL e testar.**
+> Plataforma: migration `20260930290000_historico_pedidos_erp` (aplicada em
+> dev em 01/10, junto com `20260930300000_parametro_ultima_comunicacao_erp`),
 > `/integracao/pedidos` cria o histórico, filtros no Portal e na IA do
 > WhatsApp do cliente, número mostrado por `numeroOrcamento()`, aviso na tela.
-> ADVPL: `U_BJMAPPED` na cópia `docs/integracao/advpl/BJPLA003.prw`, que
-> agora reúne a regra do resíduo (só existia na cópia de
-> `C:VPSprotheusrcgPortalBJ`) e as mudanças de 30/09 (só existiam aqui).
-> SQL: bloco `pedidos` do `01-instalar.sql`. **Falta:** aplicar a migration,
-> levar o `BJPLA003.prw` para o `protheusrcg` e compilar, rodar o `01` de
-> novo, a carga de `pedidos` e testar de ponta a ponta.
+> ADVPL: `U_BJMAPPED` em `BJPLA003.prw`. A cópia de `docs/integracao/advpl`
+> reuniu a regra do resíduo (só existia em `C:\VPS\protheusrcg\Portal\BJ`) e
+> as mudanças de 30/09 (só existiam aqui), e foi copiada para o `protheusrcg`
+> em 01/10 com `BJPLA002` e `BJPLA004`. SQL: bloco `pedidos` do
+> `01-instalar.sql`. **Falta:** compilar os três fontes no Protheus, rodar o
+> `01` de novo, a carga de `pedidos` e testar de ponta a ponta.
 > Continuação de `2026-09-28-orcamento-situacao-erp.md`, que trata o pedido
 > que **nasceu** na plataforma. Este trata o pedido digitado **direto no ERP**
 > (televendas, Máxima etc.).
@@ -36,6 +37,17 @@ O SCJ/SCK continua fora (decisão de 21/09/2026); o histórico vem do pedido.
    WhatsApp do cliente continuam vendo só o que nasceu na plataforma.
 4. **Numeração:** o pedido histórico **não recebe número de proposta**; mostra
    o nº do pedido (`C5_NUM`). A sequência das propostas não pula.
+
+## Exclusão (decisão do usuário, 01/10/2026)
+
+- **Orçamento vindo do ERP não se exclui na plataforma** — nem pela tela,
+  nem pela API (`podeExcluirOrcamento`). Na plataforma só se exclui orçamento
+  sem integração: não enviado ao ERP, ou recusado por ele.
+- **Excluir é no ERP, e reflete aqui:** pedido digitado no ERP e excluído lá
+  **some da plataforma** (exclusão lógica, `DELETE /integracao/pedidos`). O
+  orçamento que nasceu na plataforma continua indo para Cancelado.
+- O `U_BJMAPPED` manda a exclusão de pedido do ERP **de qualquer data** — o
+  corte de 12 meses vale só para incluir/atualizar.
 
 ## Desenho
 

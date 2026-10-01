@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ArrowDownToLine,
   ArrowRight,
+  ArrowUpDown,
   ArrowUpFromLine,
   Cake,
   CalendarDays,
@@ -307,7 +308,7 @@ function StatusIntegracaoCard({
         </div>
       </div>
 
-      <div className="flex items-center gap-2.5 pl-1">
+      <div className="flex items-center gap-2.5 pr-4 border-r border-border/60">
         <div className="flex size-8 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 shrink-0">
           <ArrowUpFromLine className="size-4" />
         </div>
@@ -320,6 +321,26 @@ function StatusIntegracaoCard({
               <Skeleton className="h-3.5 w-28 mt-0.5 inline-block" />
             ) : (
               formatarDataHora(status?.ultimoEnvio)
+            )}
+          </span>
+        </div>
+      </div>
+
+      {/* Informada pelo próprio ERP no fim de cada execução de envio ou retorno
+          (parâmetro ULTIMA_COMUNICACAO_ERP). */}
+      <div className="flex items-center gap-2.5 pl-1">
+        <div className="flex size-8 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600 dark:bg-violet-500/20 dark:text-violet-400 shrink-0">
+          <ArrowUpDown className="size-4" />
+        </div>
+        <div>
+          <span className="font-medium text-muted-foreground block">
+            Última Comunicação ERP
+          </span>
+          <span className="font-semibold text-foreground">
+            {carregando ? (
+              <Skeleton className="h-3.5 w-28 mt-0.5 inline-block" />
+            ) : (
+              formatarDataHora(status?.ultimaComunicacao)
             )}
           </span>
         </div>

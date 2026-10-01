@@ -1,4 +1,5 @@
 import { extrairNfe, lerXml, NfeXmlInvalidoError } from './nfe-xml';
+import { montarDanfePdf } from './danfe-pdf';
 
 /**
  * NF-e reduzida, mas com as armadilhas reais do arquivo que o ERP manda:
@@ -11,7 +12,7 @@ const XML = `<?xml version="1.0" encoding="UTF-8"?>
 <NFe><infNFe Id="NFe50260600000000000191550010001160671000116060" versao="4.00">
 <ide><nNF>116067</nNF><serie>1</serie><mod>55</mod><natOp>VENDA DE MERCADORIA</natOp><dhEmi>2026-06-30T10:15:00-04:00</dhEmi><tpNF>1</tpNF></ide>
 <emit><CNPJ>00000000000191</CNPJ><xNome>RCG COMERCIO LTDA</xNome>
-<enderEmit><xLgr>AV BRASIL</xLgr><nro>1500</nro><xMun>CAMPO GRANDE</xMun><UF>MS</UF></enderEmit><IE>123456789</IE></emit>
+<enderEmit><xLgr>AV BRASIL</xLgr><nro>1500</nro><xMun>CAMPO GRANDE</xMun><UF>MS</UF></enderEmit><IE>123456789</IE><IEST>987654321</IEST></emit>
 <dest><CNPJ>11222333000181</CNPJ><xNome>MERCADO DO JOAO LTDA</xNome>
 <enderDest><xLgr>RUA DAS FLORES</xLgr><xMun>DOURADOS</xMun><UF>MS</UF></enderDest></dest>
 <det nItem="1"><prod><cProd>P-1</cProd><xProd>PARAFUSO 3/8 &amp; PORCA</xProd><NCM>73181500</NCM><CFOP>5102</CFOP><uCom>PC</uCom><qCom>100.0000</qCom><vUnCom>2.5000</vUnCom><vProd>250.00</vProd></prod>
@@ -19,15 +20,29 @@ const XML = `<?xml version="1.0" encoding="UTF-8"?>
 <det nItem="2"><prod><cProd>P-2</cProd><xProd><![CDATA[ARRUELA <LISA> 3/8]]></xProd><NCM>73182200</NCM><CFOP>5102</CFOP><uCom>PC</uCom><qCom>50.0000</qCom><vUnCom>0.8000</vUnCom><vProd>40.00</vProd></prod>
 <imposto><ICMS><ICMSSN102><orig>0</orig><CSOSN>102</CSOSN></ICMSSN102></ICMS></imposto></det>
 <total><ICMSTot><vBC>250.00</vBC><vICMS>42.50</vICMS><vProd>290.00</vProd><vFrete>10.00</vFrete><vIPI>12.50</vIPI><vNF>312.50</vNF></ICMSTot></total>
-<transp><modFrete>0</modFrete><transporta><xNome>TRANSPORTES XYZ</xNome><CNPJ>99888777000166</CNPJ><UF>MS</UF></transporta><vol><qVol>2</qVol><esp>CX</esp><pesoB>15.500</pesoB></vol></transp>
+<transp><modFrete>0</modFrete><transporta><xNome>TRANSPORTES XYZ</xNome><CNPJ>99888777000166</CNPJ><IE>ISENTO</IE><xEnder>R. 13 DE MAIO, 1472</xEnder><xMun>CAMPO GRANDE</xMun><UF>MS</UF></transporta><veicTransp><placa>ABC1D23</placa><UF>MS</UF><RNTC>12345678</RNTC></veicTransp><vol><qVol>2</qVol><esp>CX</esp><nVol>1-2</nVol><pesoB>15.500</pesoB></vol></transp>
 <cobr><dup><nDup>001</nDup><dVenc>2026-07-28</dVenc><vDup>312.50</vDup></dup></cobr>
-<infAdic><infCpl>Pedido 4455.</infCpl></infAdic>
+<infAdic><infAdFisco>Operacao sujeita a LC 224</infAdFisco><infCpl>Pedido 4455.</infCpl></infAdic>
 </infNFe></NFe>
 <protNFe><infProt><cStat>100</cStat><nProt>150260000123456</nProt><dhRecbto>2026-06-30T10:20:00-04:00</dhRecbto></infProt></protNFe>
 </nfeProc>`;
 
 describe('extrairNfe', () => {
   const nfe = extrairNfe(XML);
+
+  it('lê o que o quadro de transporte e os dados adicionais do DANFE pedem', () => {
+    expect(nfe.emitente.inscricaoEstadualSt).toBe('987654321');
+    expect(nfe.transporte).toMatchObject({
+      inscricaoEstadual: 'ISENTO',
+      endereco: 'R. 13 DE MAIO, 1472',
+      municipio: 'CAMPO GRANDE',
+      placa: 'ABC1D23',
+      placaUf: 'MS',
+      codigoAntt: '12345678',
+      numeracao: '1-2',
+    });
+    expect(nfe.informacoesFisco).toBe('Operacao sujeita a LC 224');
+  });
 
   it('lê a chave de acesso do atributo Id, sem o prefixo NFe', () => {
     expect(nfe.chave).toBe('50260600000000000191550010001160671000116060');
@@ -72,18 +87,22 @@ describe('extrairNfe', () => {
   });
 
   it('marca como cancelada quando o protocolo é de cancelamento', () => {
-    const cancelada = extrairNfe(XML.replace('<cStat>100</cStat>', '<cStat>101</cStat>'));
+    const cancelada = extrairNfe(
+      XML.replace('<cStat>100</cStat>', '<cStat>101</cStat>'),
+    );
     expect(cancelada.cancelada).toBe(true);
   });
 
   it('recusa XML que não é NF-e', () => {
-    expect(() => extrairNfe('<pedido><item/></pedido>')).toThrow(NfeXmlInvalidoError);
+    expect(() => extrairNfe('<pedido><item/></pedido>')).toThrow(
+      NfeXmlInvalidoError,
+    );
   });
 
   it('recusa NF-e sem chave de 44 dígitos', () => {
-    expect(() => extrairNfe('<NFe><infNFe Id="NFe123"><ide/></infNFe></NFe>')).toThrow(
-      NfeXmlInvalidoError,
-    );
+    expect(() =>
+      extrairNfe('<NFe><infNFe Id="NFe123"><ide/></infNFe></NFe>'),
+    ).toThrow(NfeXmlInvalidoError);
   });
 });
 
@@ -99,5 +118,36 @@ describe('lerXml', () => {
   it('trata tag vazia sem desbalancear a árvore', () => {
     const raiz = lerXml('<a><b/><c>2</c></a>');
     expect(raiz.filhos[0].filhos.map((f) => f.nome)).toEqual(['b', 'c']);
+  });
+});
+
+describe('montarDanfePdf', () => {
+  const texto = (pdf: Buffer) => pdf.toString('latin1');
+
+  it('imprime como o DANFE do ERP: número com 9 dígitos, frete, folha e datas do XML', () => {
+    const pdf = texto(montarDanfePdf(extrairNfe(XML), { segundaVia: true }));
+    expect(pdf.startsWith('%PDF')).toBe(true);
+    expect(pdf).toContain('N. 000116067');
+    expect(pdf).toContain('0-REMETENTE');
+    expect(pdf).toContain('FOLHA 01/01');
+    // Datas lidas como estão no XML: sem fuso, o vencimento não volta um dia
+    // (o gerador antigo convertia pelo fuso do servidor, e abaixo de UTC
+    // imprimia 27/07 para um dVenc 2026-07-28).
+    expect(pdf).toContain('28/07/2026');
+    // Protocolo com data e hora, como no ERP.
+    expect(pdf).toContain('150260000123456 30/06/2026 10:20:00');
+    expect(pdf).toContain('Operacao sujeita a LC 224');
+  });
+
+  it('itens que não cabem na primeira folha continuam na seguinte', () => {
+    const nfe = extrairNfe(XML);
+    nfe.itens = Array.from({ length: 60 }, (_, i) => ({
+      ...nfe.itens[0],
+      codigo: `P-${i + 1}`,
+    }));
+    const pdf = texto(montarDanfePdf(nfe));
+    expect(pdf).toContain('FOLHA 01/02');
+    expect(pdf).toContain('FOLHA 02/02');
+    expect(pdf).toContain('P-60');
   });
 });

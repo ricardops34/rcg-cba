@@ -268,6 +268,28 @@ export class EmpresasService {
   }
 
   /**
+   * Define (ou remove, com `null`) o logo do DANFE a partir do arquivo já
+   * gravado. O anterior sai do disco, como no logo da empresa.
+   */
+  async setLogoDanfe(id: string, filename: string | null, user: AtorEmpresa) {
+    await this.garantirEscopo(user, id);
+    const empresa = await this.findOne(id);
+
+    if (empresa.logoDanfeUrl) {
+      const anterior = join(LOGOS_DIR, basename(empresa.logoDanfeUrl));
+      if (existsSync(anterior)) unlink(anterior, () => undefined);
+    }
+
+    return this.prisma.empresa.update({
+      where: { id },
+      data: {
+        logoDanfeUrl: filename ? logoPublicPath(filename) : null,
+        updatedBy: user.id,
+      },
+    });
+  }
+
+  /**
    * Define a imagem da faixa institucional a partir do arquivo já gravado.
    *
    * Não liga a faixa sozinha: enviar a imagem e decidir exibir são ações

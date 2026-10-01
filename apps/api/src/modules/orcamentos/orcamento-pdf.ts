@@ -2,7 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { LOGOS_DIR, PRODUTOS_DIR } from '../../common/uploads/uploads.config';
+import { PRODUTOS_DIR } from '../../common/uploads/uploads.config';
+import { carregarLogo } from '../../common/pdf/carregar-logo';
 
 /**
  * Proposta comercial em PDF, montada no servidor.
@@ -146,46 +147,6 @@ export interface OrcamentoPdfDados {
   } | null;
 }
 
-/**
- * Lê o logo do disco e devolve um data URL, ou `null`.
- *
- * `logoUrl` é o caminho público (`/uploads/logos/<arquivo>`); só o nome do
- * arquivo é usado para montar o caminho em disco, porque o valor vem do banco
- * e não deve poder apontar para fora de `LOGOS_DIR`.
- *
- * Falha silenciosa em qualquer ponto: sem logo o PDF sai só com o nome da
- * empresa, que é melhor do que não sair.
- */
-async function carregarLogo(
-  logoUrl: string,
-): Promise<{ dados: string; formato: 'PNG' | 'JPEG' } | null> {
-  try {
-    const arquivo = basename(logoUrl);
-    if (!arquivo || arquivo.startsWith('.')) return null;
-
-    const extensao = arquivo.slice(arquivo.lastIndexOf('.')).toLowerCase();
-    // WEBP e SVG são aceitos no upload do logo, mas o jsPDF não os embute e
-    // aqui não há canvas para rasterizar (era o que a versão do navegador
-    // fazia). Nesse caso o cabeçalho sai sem imagem.
-    const formato =
-      extensao === '.png'
-        ? 'PNG'
-        : extensao === '.jpg' || extensao === '.jpeg'
-          ? 'JPEG'
-          : null;
-    if (!formato) return null;
-
-    const conteudo = await readFile(join(LOGOS_DIR, arquivo));
-    const mime = formato === 'PNG' ? 'image/png' : 'image/jpeg';
-    return {
-      dados: `data:${mime};base64,${conteudo.toString('base64')}`,
-      formato,
-    };
-  } catch {
-    return null;
-  }
-}
-
 /** Monta o PDF e devolve os bytes do arquivo. */
 export async function montarOrcamentoPdf(
   dados: OrcamentoPdfDados,
@@ -222,7 +183,7 @@ export async function montarOrcamentoPdf(
 
   // --- Cabeçalho: logo + cadastro da empresa à esquerda, identificação do
   // documento à direita.
-  const logo = empresa?.logoUrl ? await carregarLogo(empresa.logoUrl) : null;
+  const logo = await carregarLogo(empresa?.logoUrl);
   let alturaLogo = 0;
   if (logo) {
     // Mantém a proporção original dentro da caixa do cabeçalho.

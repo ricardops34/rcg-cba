@@ -53,7 +53,12 @@ export class IntegracaoPedidosService {
     });
   }
 
-  /** Pedido excluído no ERP: o orçamento fica Cancelado. */
+  /**
+   * Pedido excluído no ERP. O orçamento que nasceu na plataforma fica
+   * Cancelado e pode ser copiado (decisão de 29/09/2026). O histórico vindo
+   * do ERP some da plataforma (exclusão lógica): é espelho do pedido, e na
+   * plataforma ele não se exclui — só pelo ERP (decisão de 01/10/2026).
+   */
   async cancelar(
     empresaId: string,
     apiKeyId: string,
@@ -62,12 +67,18 @@ export class IntegracaoPedidosService {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const orcamento = await this.orcamentoDoPedido(tx, empresaId, chave);
+      // Exclusão repetida (o ERP reenviou a mensagem): o histórico já saiu.
+      if (orcamento.deletedAt) return this.paraLeitura(chave, orcamento);
+      const agora = new Date();
       const atualizado = await tx.orcamento.update({
         where: { id: orcamento.id },
         data: {
           situacaoErp: 'cancelado',
-          situacaoErpEm: new Date(),
+          situacaoErpEm: agora,
           updatedBy: autor,
+          ...(orcamento.origem === 'erp'
+            ? { deletedAt: agora, deletedBy: autor, ativo: false }
+            : {}),
         },
       });
       return this.paraLeitura(chave, atualizado);
@@ -85,10 +96,18 @@ export class IntegracaoPedidosService {
   ): Promise<IntegracaoPedido> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
+      // Sem filtrar os excluídos: a chave é única mesmo entre eles, e criar
+      // de novo colidiria. Histórico excluído que o ERP manda outra vez volta
+      // (gravarHistorico reativa); orçamento da plataforma excluído, não.
       const orcamento = await tx.orcamento.findFirst({
-        where: { empresaId, chave: pedido.chave, deletedAt: null },
-        select: { id: true, origem: true },
+        where: { empresaId, chave: pedido.chave },
+        select: { id: true, origem: true, deletedAt: true },
       });
+      if (orcamento?.deletedAt && orcamento.origem !== 'erp') {
+        throw new NotFoundException(
+          `Nenhum orçamento vinculado ao pedido '${pedido.chave}'`,
+        );
+      }
       if (!orcamento || orcamento.origem === 'erp') {
         return this.gravarHistorico(
           tx,
@@ -173,12 +192,17 @@ export class IntegracaoPedidosService {
       Math.round(itens.reduce((soma, item) => soma + item.vlrTotal, 0) * 100) /
       100;
 
-    // resolverCliente/resolverVendedor lançam 404 quando não acham.
+    // resolverCliente lança 404 quando não acha.
     const clienteId = pedido.clienteChave
       ? await resolverCliente(tx, empresaId, pedido.clienteChave)
       : null;
     const vendedorId = pedido.vendedorChave
-      ? await resolverVendedor(tx, empresaId, pedido.vendedorChave)
+      ? await this.resolverVendedorDoPedido(
+          tx,
+          empresaId,
+          pedido.vendedorChave,
+          clienteId,
+        )
       : null;
     const dados = {
       ...(clienteId ? { clienteId } : {}),
@@ -206,6 +230,10 @@ export class IntegracaoPedidosService {
       notasErp: pedido.notas,
       itensErp: pedido.itens,
       updatedBy: autor,
+      // Histórico excluído no ERP e mandado de novo volta a aparecer.
+      ativo: true,
+      deletedAt: null,
+      deletedBy: null,
     };
 
     if (orcamentoId) {
@@ -232,6 +260,43 @@ export class IntegracaoPedidosService {
           } as never,
         });
     return this.paraLeitura(pedido.chave, gravado);
+  }
+
+  /**
+   * O vendedor do pedido (C5_VEND1). Pedido digitado no ERP sem vendedor chega
+   * como "01-" (filial e código em branco), e um vendedor que não existe aqui
+   * derrubaria o pedido inteiro da carga: nos dois casos vale o vendedor do
+   * cadastro do cliente, que é com quem a venda fica na plataforma. Sem nenhum
+   * dos dois, 404.
+   */
+  private async resolverVendedorDoPedido(
+    tx: TenantTx,
+    empresaId: string,
+    vendedorChave: string,
+    clienteId: string | null,
+  ): Promise<string> {
+    const codigo = vendedorChave
+      .trim()
+      .replace(/^[^-]*-/, '')
+      .trim();
+    if (codigo) {
+      try {
+        const id = await resolverVendedor(tx, empresaId, vendedorChave);
+        if (id) return id;
+      } catch (erro) {
+        if (!(erro instanceof NotFoundException)) throw erro;
+      }
+    }
+    const cliente = clienteId
+      ? await tx.cliente.findFirst({
+          where: { id: clienteId },
+          select: { vendedorId: true },
+        })
+      : null;
+    if (cliente?.vendedorId) return cliente.vendedorId;
+    throw new NotFoundException(
+      `vendedorChave '${vendedorChave}' não encontrado, e o cliente não tem vendedor`,
+    );
   }
 
   private async resolverCondicaoPagamento(
@@ -273,11 +338,19 @@ export class IntegracaoPedidosService {
     empresaId: string,
     chave: string,
   ) {
+    // O histórico do ERP já excluído conta como achado (a exclusão é
+    // idempotente); o orçamento da plataforma excluído, não.
     const orcamento = await tx.orcamento.findFirst({
-      where: { empresaId, chave, deletedAt: null },
-      select: { id: true },
+      where: { empresaId, chave },
+      select: {
+        id: true,
+        origem: true,
+        deletedAt: true,
+        situacaoErp: true,
+        comQuebra: true,
+      },
     });
-    if (!orcamento) {
+    if (!orcamento || (orcamento.deletedAt && orcamento.origem !== 'erp')) {
       throw new NotFoundException(
         `Nenhum orçamento vinculado ao pedido '${chave}'`,
       );

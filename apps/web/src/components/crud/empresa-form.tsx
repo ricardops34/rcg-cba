@@ -30,7 +30,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Building2, ImageIcon, MapPin, Sparkles, Upload } from "lucide-react";
+import { ArrowLeft, Building2, ImageIcon, MapPin, Sparkles, Trash2, Upload } from "lucide-react";
 
 const LIST_ROUTE = "/admin/empresas";
 
@@ -55,6 +55,8 @@ export function EmpresaForm({
   const [consultandoCnpj, setConsultandoCnpj] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingBanner, setUploadingBanner] = useState(false);
+  const [uploadingLogoDanfe, setUploadingLogoDanfe] = useState(false);
+  const logoDanfeInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<EmpresaCreate>({
@@ -141,6 +143,40 @@ export function EmpresaForm({
       toast.error(err instanceof ApiError ? err.message : "Erro ao enviar logo");
     } finally {
       setUploadingLogo(false);
+    }
+  };
+
+  // Logo do DANFE: separado do logo do sistema, só PNG/JPEG (o PDF não
+  // embute os outros formatos). Sem ele, o DANFE usa o logo da empresa.
+  const handleLogoDanfeUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !current) return;
+    setUploadingLogoDanfe(true);
+    try {
+      const updated = await apiUpload<Empresa>(`/empresas/${current.id}/logo-danfe`, file);
+      setCurrent(updated);
+      toast.success("Logo do DANFE atualizado");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Erro ao enviar o logo do DANFE");
+    } finally {
+      setUploadingLogoDanfe(false);
+    }
+  };
+
+  const handleLogoDanfeRemover = async () => {
+    if (!current) return;
+    setUploadingLogoDanfe(true);
+    try {
+      const updated = await apiFetch<Empresa>(`/empresas/${current.id}/logo-danfe`, {
+        method: "DELETE",
+      });
+      setCurrent(updated);
+      toast.success("Logo do DANFE removido — o DANFE volta a usar o logo da empresa");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Erro ao remover o logo do DANFE");
+    } finally {
+      setUploadingLogoDanfe(false);
     }
   };
 
@@ -475,6 +511,63 @@ export function EmpresaForm({
                     </Field>
                   ) : (
                     <p className="text-xs text-muted-foreground">Cadastre a empresa primeiro para realizar o upload do logo.</p>
+                  )}
+
+                  {current && (
+                    <Field className="pt-4 border-t">
+                      <FieldLabel>Logo do DANFE</FieldLabel>
+                      <FieldDescription>
+                        Impresso no quadro do emitente do DANFE (2ª via da nota). Sem ele, o DANFE usa o logo da empresa.
+                      </FieldDescription>
+                      <div className="flex items-center gap-4 mt-2">
+                        <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-white p-2">
+                          {current.logoDanfeUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={assetUrl(current.logoDanfeUrl) ?? ""}
+                              alt="Logo do DANFE"
+                              className="size-full object-contain"
+                            />
+                          ) : (
+                            <ImageIcon className="size-8 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <input
+                            ref={logoDanfeInputRef}
+                            type="file"
+                            accept="image/png,image/jpeg"
+                            className="hidden"
+                            onChange={handleLogoDanfeUpload}
+                          />
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={uploadingLogoDanfe}
+                              onClick={() => logoDanfeInputRef.current?.click()}
+                            >
+                              <Upload className="size-4" />
+                              {uploadingLogoDanfe ? "Enviando..." : "Enviar logo do DANFE"}
+                            </Button>
+                            {current.logoDanfeUrl && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={uploadingLogoDanfe}
+                                onClick={() => void handleLogoDanfeRemover()}
+                              >
+                                <Trash2 className="size-4" />
+                                Remover
+                              </Button>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">PNG ou JPEG, de preferência com fundo branco (até 2 MB).</p>
+                        </div>
+                      </div>
+                    </Field>
                   )}
 
                   {current && (

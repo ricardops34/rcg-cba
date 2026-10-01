@@ -711,7 +711,9 @@ A plataforma acha o orçamento pela chave do pedido e calcula a **quebra**
 manda o pedido sem `C5_ORGPED = 'P'` cuja `C5_EMISSAO` esteja nos últimos 12
 meses (janela móvel), com cliente, vendedor, condição e emissão. A plataforma
 o grava como histórico — orçamento de origem ERP, espelho do pedido, só
-consulta e cópia.
+consulta e cópia. Ele **não se exclui na plataforma**: excluído no ERP, o
+`DELETE` o tira de lá (01/10/2026). Por isso a exclusão sobe de qualquer
+data, sem o corte de 12 meses.
 
 | Situação | Regra, nesta ordem |
 |---|---|

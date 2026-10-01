@@ -1,3 +1,4 @@
+import { dadosDoVendedor, DADOS_VENDEDOR_SELECT } from '../../common/usuarios/dados-do-vendedor';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { liberarModoSistema, PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
@@ -207,8 +208,20 @@ export class GruposEconomicosService {
       // O perfil é da conta (migration 20260930230000_dados_do_usuario): grava
       // uma vez, e vale em todas as empresas do grupo.
       await this.validarPerfil(tx, perfilDoGrupo, anterior?.perfilId, user, primeira.empresaId);
+      const vendedores = [];
+      if (input.novo) {
+        for (const vinculo of input.vinculos) {
+          await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${vinculo.empresaId}, true)`;
+          vendedores.push(...await tx.vendedor.findMany({
+            where: { empresaId: vinculo.empresaId, email: input.novo.email, usuarioId: null, deletedAt: null },
+            select: DADOS_VENDEDOR_SELECT,
+          }));
+        }
+        await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${primeira.empresaId}, true)`;
+      }
       const usuario = input.novo
         ? await tx.usuario.create({ data: {
+            ...dadosDoVendedor(vendedores),
             grupoEconomicoId: id, perfilId: perfilDoGrupo,
             nome: input.novo.nome, email: input.novo.email, senhaHash: senhaHash!, ativo: true,
             deveTrocarSenha: true, senhaAlteradaEm: new Date(), createdBy: user.id, updatedBy: user.id,

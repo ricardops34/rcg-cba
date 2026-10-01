@@ -1,3 +1,4 @@
+import { dadosDoVendedor, DADOS_VENDEDOR_SELECT } from '../../common/usuarios/dados-do-vendedor';
 import {
   BadRequestException,
   ConflictException,
@@ -235,8 +236,13 @@ export class UsuariosService {
       // Dentro da transação de propósito: conferir a vaga fora dela deixaria
       // dois cadastros simultâneos passarem pelo mesmo último lugar.
       await garantirVagaDeUsuario(tx, empresaId);
+      const vendedores = await tx.vendedor.findMany({
+        where: { empresaId, email: input.email, usuarioId: null, deletedAt: null },
+        select: DADOS_VENDEDOR_SELECT,
+      });
       const usuario = await tx.usuario.create({
         data: {
+          ...dadosDoVendedor(vendedores),
           nome: input.nome,
           email: input.email,
           ativo: input.ativo,

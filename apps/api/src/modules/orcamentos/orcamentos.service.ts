@@ -25,6 +25,7 @@ import {
 import type { OrigemVenda } from '@prisma/client';
 import {
   numeroOrcamento,
+  podeExcluirOrcamento,
   type OrcamentoCreate,
   type OrcamentoQuery,
   type OrcamentoUpdate,
@@ -662,6 +663,13 @@ export class OrcamentosService {
         },
       });
       if (!orcamento) throw new NotFoundException('Orçamento não encontrado');
+      // Só sem integração: não enviado ao ERP, ou recusado por ele. Com pedido
+      // no ERP (ou a caminho dele), excluir perderia o acompanhamento.
+      if (!podeExcluirOrcamento(orcamento)) {
+        throw new ConflictException(
+          'Orçamento integrado ao ERP não pode ser excluído. Só é possível excluir orçamento ainda não aprovado ou recusado pelo ERP.',
+        );
+      }
       return tx.orcamento.update({
         where: { id },
         data: { deletedAt: new Date(), deletedBy: user.id, ativo: false },

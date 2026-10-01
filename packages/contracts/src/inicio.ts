@@ -83,6 +83,8 @@ export const ANIVERSARIANTES_JANELA_DIAS = 30;
 export const statusIntegracaoSchema = z.object({
   ultimaColeta: z.string().datetime().nullable(),
   ultimoEnvio: z.string().datetime().nullable(),
+  /** Parâmetro ULTIMA_COMUNICACAO_ERP: fim da última execução de envio ou retorno do ERP. */
+  ultimaComunicacao: z.string().datetime().nullable(),
 });
 export type StatusIntegracao = z.infer<typeof statusIntegracaoSchema>;
 

@@ -99,6 +99,23 @@ export function situacaoIntegracaoOrcamento(o: {
 }
 
 /**
+ * Só se exclui orçamento sem integração (decisão do usuário, 01/10/2026):
+ * ainda não enviado ao ERP, ou recusado por ele (o pedido nunca existiu).
+ * Aguardando Integração fica de fora porque o ERP pode estar gravando o pedido
+ * naquele instante; com pedido no ERP, ou histórico vindo de lá, excluir
+ * apagaria o acompanhamento de um pedido que existe.
+ */
+export function podeExcluirOrcamento(
+  o: Parameters<typeof situacaoIntegracaoOrcamento>[0] & {
+    origem?: OrigemVenda;
+  },
+): boolean {
+  if (o.origem === "erp") return false;
+  const situacao = situacaoIntegracaoOrcamento(o);
+  return situacao === "nao_enviado" || situacao === "erro_integracao";
+}
+
+/**
  * Quem originou a venda — o executor, não o dono da carteira.
  *
  * A venda fica sempre com o vendedor que atende o cliente; supervisor,

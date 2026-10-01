@@ -40,7 +40,9 @@ function decodificar(texto: string): string {
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(Number(code)))
+    .replace(/&#(\d+);/g, (_, code: string) =>
+      String.fromCharCode(Number(code)),
+    )
     .replace(/&amp;/g, '&');
 }
 
@@ -67,7 +69,8 @@ export function lerXml(conteudo: string): NoXml {
   const raiz: NoXml = { nome: '#raiz', atributos: {}, filhos: [], texto: '' };
   const pilha: NoXml[] = [raiz];
 
-  const tags = /<\s*(\/?)\s*([A-Za-z_][\w.:-]*)((?:\s+[\w.:-]+\s*=\s*"[^"]*")*)\s*(\/?)\s*>/g;
+  const tags =
+    /<\s*(\/?)\s*([A-Za-z_][\w.:-]*)((?:\s+[\w.:-]+\s*=\s*"[^"]*")*)\s*(\/?)\s*>/g;
   let ultimoFim = 0;
   let tag: RegExpExecArray | null;
 
@@ -189,6 +192,9 @@ export type NfeParte = {
   fantasia: string | null;
   documento: string | null;
   inscricaoEstadual: string | null;
+  /** IE do substituto tributário (emitente). */
+  inscricaoEstadualSt: string | null;
+  inscricaoMunicipal: string | null;
   endereco: NfeEndereco;
 };
 
@@ -226,16 +232,28 @@ export type NfeDados = {
     modalidadeFrete: string | null;
     transportador: string | null;
     documentoTransportador: string | null;
+    inscricaoEstadual: string | null;
+    endereco: string | null;
     municipio: string | null;
     uf: string | null;
     placa: string | null;
+    placaUf: string | null;
+    codigoAntt: string | null;
     quantidade: number | null;
     especie: string | null;
     marca: string | null;
+    numeracao: string | null;
     pesoBruto: number | null;
     pesoLiquido: number | null;
   };
+  issqn: {
+    valorServicos: number | null;
+    base: number | null;
+    valor: number | null;
+  };
   informacoesComplementares: string | null;
+  /** infAdFisco — o quadro "Reservado ao fisco" do DANFE. */
+  informacoesFisco: string | null;
 };
 
 function lerEndereco(no: NoXml | null): NfeEndereco {
@@ -259,6 +277,8 @@ function lerParte(no: NoXml | null, tagEndereco: string): NfeParte {
     // física) ou nem ter documento (exportação).
     documento: texto(no, 'CNPJ') ?? texto(no, 'CPF'),
     inscricaoEstadual: texto(no, 'IE'),
+    inscricaoEstadualSt: texto(no, 'IEST'),
+    inscricaoMunicipal: texto(no, 'IM'),
     endereco: lerEndereco(buscar(no, tagEndereco)),
   };
 }
@@ -297,6 +317,8 @@ export function extrairNfe(conteudo: string): NfeDados {
   const veiculo = buscar(transp, 'veicTransp');
   const volume = buscar(transp, 'vol');
   const cobr = buscar(infNFe, 'cobr');
+  const issqnTot = buscar(infNFe, 'ISSQNtot');
+  const infAdic = buscar(infNFe, 'infAdic');
 
   const itens = filhos(infNFe, 'det').map((det): NfeItem => {
     const prod = buscar(det, 'prod');
@@ -327,18 +349,18 @@ export function extrairNfe(conteudo: string): NfeDados {
     };
   });
 
-  const duplicatas = filhos(cobr, 'dup').map(
-    (dup): NfeDuplicata => ({
-      numero: texto(dup, 'nDup'),
-      vencimento: texto(dup, 'dVenc'),
-      valor: numero(dup, 'vDup'),
-    }),
-  );
+  const duplicatas = filhos(cobr, 'dup').map((dup): NfeDuplicata => ({
+    numero: texto(dup, 'nDup'),
+    vencimento: texto(dup, 'dVenc'),
+    valor: numero(dup, 'vDup'),
+  }));
 
   // cStat 101/151/135 são os status de cancelamento homologado. Quando o ERP
   // manda o XML de cancelamento junto, o DANFE precisa sair marcado.
   const statusProtocolo = texto(infProt, 'cStat');
-  const cancelada = ['101', '135', '151', '155'].includes(statusProtocolo ?? '');
+  const cancelada = ['101', '135', '151', '155'].includes(
+    statusProtocolo ?? '',
+  );
 
   return {
     chave,
@@ -374,15 +396,28 @@ export function extrairNfe(conteudo: string): NfeDados {
       transportador: texto(transporta, 'xNome'),
       documentoTransportador:
         texto(transporta, 'CNPJ') ?? texto(transporta, 'CPF'),
-      municipio: texto(transporta, 'xMunFG'),
+      inscricaoEstadual: texto(transporta, 'IE'),
+      endereco: texto(transporta, 'xEnder'),
+      // O município do transportador é xMun; xMunFG ficou como fallback do
+      // leitor antigo (é o do fato gerador, em ide).
+      municipio: texto(transporta, 'xMun') ?? texto(transporta, 'xMunFG'),
       uf: texto(transporta, 'UF'),
       placa: texto(veiculo, 'placa'),
+      placaUf: texto(veiculo, 'UF'),
+      codigoAntt: texto(veiculo, 'RNTC'),
       quantidade: numero(volume, 'qVol'),
       especie: texto(volume, 'esp'),
       marca: texto(volume, 'marca'),
+      numeracao: texto(volume, 'nVol'),
       pesoBruto: numero(volume, 'pesoB'),
       pesoLiquido: numero(volume, 'pesoL'),
     },
-    informacoesComplementares: texto(buscar(infNFe, 'infAdic'), 'infCpl'),
+    issqn: {
+      valorServicos: numero(issqnTot, 'vServ'),
+      base: numero(issqnTot, 'vBC'),
+      valor: numero(issqnTot, 'vISS'),
+    },
+    informacoesComplementares: texto(infAdic, 'infCpl'),
+    informacoesFisco: texto(infAdic, 'infAdFisco'),
   };
 }

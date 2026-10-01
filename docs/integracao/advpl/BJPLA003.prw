@@ -3082,7 +3082,10 @@ User Function BJMAPPED(cMarca, cChave, cMarcaFim, lEnvDel)
 
 	cQuery += "  FROM " + RetSqlName("SC5") + " SC5 "
 	cQuery += " WHERE SC5.C5_FILIAL = ? "
-	cQuery += "   AND (SC5.C5_ORGPED = 'P' OR SC5.C5_EMISSAO >= '" + cCorte + "') "   // plataforma, ou historico
+	// Plataforma; ou historico dos ultimos 12 meses; ou exclusao, de qualquer
+	// data: o historico excluido no ERP sai da plataforma (01/10/2026), e um
+	// carregado ha 11 meses e excluido depois ja passou do corte.
+	cQuery += "   AND (SC5.C5_ORGPED = 'P' OR SC5.C5_EMISSAO >= '" + cCorte + "' OR SC5.D_E_L_E_T_ = '*') "
 
 	// Carga inicial (sem marca e sem chave): pedido excluido nunca foi visto
 	// la. Com "Envia deletados? = Nao" o filtro vale em qualquer coleta.

@@ -79,8 +79,9 @@ INSERT @ordem VALUES
     (11, 'notas-saida',         1),
     (12, 'notas-entrada',       1),
     (13, 'titulos-receber',     1),
-    -- Situacao dos pedidos que vieram da plataforma: por ultimo, porque o
-    -- orcamento ja tem de estar vinculado ao pedido la
+    -- Pedidos: por ultimo. O da plataforma precisa do orcamento ja vinculado
+    -- la; o digitado no ERP (historico, 12 meses) precisa de cliente,
+    -- vendedor, condicao e produtos ja carregados
     (14, 'pedidos',             0);
 
 IF @ENTIDADE IS NOT NULL

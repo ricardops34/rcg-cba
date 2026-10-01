@@ -235,7 +235,14 @@ export function EntityTable<T>({
               rows.map((row) => (
                 <TableRow
                   key={rowKey(row)}
-                  onClick={() => onRowClick?.(row)}
+                  onClick={(e) => {
+                    // Menu de ações, confirmação e diálogos abrem em portal: no
+                    // DOM estão fora da linha, mas no React o clique sobe até
+                    // ela. Sem isto, "Excluir" também abria o registro — que
+                    // acabou de ser excluído ("não encontrado").
+                    if (!e.currentTarget.contains(e.target as Node)) return;
+                    onRowClick?.(row);
+                  }}
                   className={onRowClick ? "cursor-pointer" : undefined}
                 >
                   {colunasVisiveis.map((col) => (

@@ -181,11 +181,20 @@ dali em diante. Não mexe no que já está na SZZ: mensagens pendentes (status
 
 Incluído em 29/09/2026 (Fase 3 do plano
 `docs/planos/2026-09-28-orcamento-situacao-erp.md`). É o espelho do
-`U_BJMAPPED`: a situação dos pedidos que **vieram da plataforma**
-(`C5_ORGPED = 'P'`), com os itens (SC6) e as notas (SD2 pelo `D2_PEDIDO`).
-Sai **por último** na ordem de carga, porque a plataforma acha o orçamento pela
-chave do pedido (`C5_FILIAL-C5_NUM`) — ele já tem de estar vinculado lá. Pedido
-sem orçamento vinculado volta como erro na carga.
+`U_BJMAPPED`, com os itens (SC6) e as notas (SD2 pelo `D2_PEDIDO`). Leva dois
+tipos de pedido:
+
+- o que **veio da plataforma** (`C5_ORGPED = 'P'`), qualquer data: a
+  plataforma acha o orçamento pela chave do pedido (`C5_FILIAL-C5_NUM`) e
+  atualiza a situação;
+- o **digitado no ERP**, com `C5_EMISSAO` nos **últimos 12 meses** (desde
+  30/09/2026, plano `docs/planos/2026-09-30-historico-pedidos-erp.md`): entra
+  lá como histórico, um orçamento de origem ERP. Para isso o registro leva
+  `clienteChave`, `vendedorChave`, `condicaoPagamentoChave` e `emissao`.
+
+Sai **por último** na ordem de carga: o pedido da plataforma precisa do
+orçamento já vinculado, e o histórico precisa de cliente, vendedor, condição e
+produtos já carregados. Cadastro que não existe lá volta como erro na carga.
 
 A situação segue a mesma regra do ADVPL, na mesma ordem: resíduo eliminado em
 todo o saldo → `cancelado`; tudo entregue → `faturado`; algo entregue →
@@ -195,7 +204,21 @@ de `10` → bloqueio de crédito / estoque; SC9 não faturada sem bloqueio →
 `liberado`; senão `pendente`.
 
 O `CORTE` vale como a janela do job: o pedido entra se a SC5, a SC6, a SC9 ou a
-SD2 dele mudou depois do corte. As views novas são `BJ_SC5`, `BJ_SC6` e
+SD2 dele mudou depois do corte.
+
+> **Para trazer o histórico, rode `pedidos` com o `CORTE` vazio.** Com corte,
+> um pedido digitado no ERP há meses e parado desde então fica de fora — e o
+> job do Protheus também não o manda depois, porque ele só olha o que mudou.
+> Numa base que já recebeu a carga dos cadastros, gere só esta entidade:
+>
+> ```sql
+> UPDATE dbo.BJ_CARGA_CONFIG SET valor = NULL WHERE nome = 'CORTE';
+> -- no 02-comandos-exportar.sql: @ENTIDADE = 'pedidos'
+> ```
+>
+> Pedido sem vendedor (`C5_VEND1` em branco) ou com vendedor que não existe na
+> plataforma fica com o vendedor do cadastro do cliente; sem nenhum dos dois,
+> vai para os erros da carga. As views novas são `BJ_SC5`, `BJ_SC6` e
 `BJ_SC9` — rode o `01` de novo para criá-las.
 
 Para ver as linhas antes de gerar o arquivo:
