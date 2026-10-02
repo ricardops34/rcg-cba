@@ -987,6 +987,11 @@ export class EvolutionGoProvider implements WhatsappProvider {
   private externoId(resposta: unknown): string {
     const id = texto(
       resposta,
+      // 0.7.2: `{ message: 'success', data: MessageSendStruct }`, e o
+      // `types.MessageInfo` do whatsmeow serializa sem tag JSON — daí `Info.ID`
+      // em maiúscula (conferido em pkg/sendMessage no fonte da tag 0.7.2).
+      'data.Info.ID',
+      'Info.ID',
       'messageId',
       'key.id',
       'id',

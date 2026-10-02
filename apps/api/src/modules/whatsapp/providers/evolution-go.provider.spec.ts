@@ -234,3 +234,24 @@ describe('EvolutionGoProvider — nome da instância', () => {
     ).toBe('rcg-vendedor-antigo');
   });
 });
+
+describe('EvolutionGoProvider — id da mensagem enviada', () => {
+  const provider = new EvolutionGoProvider({} as never);
+  const extrair = (resposta: unknown): string =>
+    (provider as any).externoId(resposta);
+
+  it('lê o formato da 0.7.2 (data.Info.ID)', () => {
+    expect(
+      extrair({
+        message: 'success',
+        data: { Info: { ID: '3EB0ABC123', Chat: '5511@s.whatsapp.net' } },
+      }),
+    ).toBe('3EB0ABC123');
+  });
+
+  it('sem id, recusa em vez de inventar', () => {
+    expect(() => extrair({ message: 'success', data: {} })).toThrow(
+      BadGatewayException,
+    );
+  });
+});
