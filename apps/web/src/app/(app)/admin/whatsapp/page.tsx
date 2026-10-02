@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Cable, CheckCircle2, Eraser, History, MoreHorizontal, RefreshCw, Smartphone, Trash2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
-import { WHATSAPP_AVISO_NAO_OFICIAL, type WhatsappConfig, type WhatsappSessao } from "@plataforma/contracts";
+import { type WhatsappConfig, type WhatsappSessao } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { InstitucionalConfig } from "@/components/whatsapp/institucional-config";
 import { Badge } from "@/components/ui/badge";
@@ -148,6 +148,28 @@ function EvolutionConfig({ config }: { config: WhatsappConfig }) {
     },
     onError: (error) => toast.error(mensagemErro(error, "Erro ao salvar")),
   });
+
+  const testarConexao = useMutation({
+    mutationFn: () =>
+      apiFetch<{ ok: boolean; mensagem: string; totalInstancias: number }>(
+        "/whatsapp/config/testar-gateway",
+        {
+          method: "POST",
+          body: {
+            evolutionUrl: form.evolutionUrl.trim() || undefined,
+            evolutionApiKey: chave.trim() || undefined,
+          },
+        },
+      ),
+    onSuccess: (resultado) => {
+      toast.success(
+        `${resultado.mensagem} (${resultado.totalInstancias} instância(s) no gateway)`,
+      );
+    },
+    onError: (error) =>
+      toast.error(mensagemErro(error, "Falha na conexão com a Evolution GO")),
+  });
+
 
   return (
     <Card>
@@ -392,18 +414,31 @@ function EvolutionConfig({ config }: { config: WhatsappConfig }) {
                 <FieldDescription>Em branco, a chamada é recusada sem resposta nenhuma.</FieldDescription>
               </Field>
             )}
-            <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 text-sm text-amber-900 dark:text-amber-200">
-              <div className="flex gap-2 font-medium">
-                <TriangleAlert className="mt-0.5 size-4 shrink-0" /> Conexão não oficial
-              </div>
-              <p className="mt-1 pl-6 text-xs opacity-85">
-                {WHATSAPP_AVISO_NAO_OFICIAL} Use um chip dedicado para conexões via WhatsApp Web.
-              </p>
-            </div>
           </FieldGroup>
         </div>
       </CardContent>
-      <CardFooter className="justify-end border-t">
+      <CardFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => testarConexao.mutate()}
+          disabled={
+            testarConexao.isPending ||
+            (!form.evolutionUrl.trim() && !config.evolutionUrl)
+          }
+        >
+          {testarConexao.isPending ? (
+            <>
+              <RefreshCw className="mr-2 size-4 animate-spin" />
+              Testando conexão...
+            </>
+          ) : (
+            <>
+              <Cable className="mr-2 size-4" />
+              Testar conexão com o Gateway
+            </>
+          )}
+        </Button>
         <Button onClick={() => salvar.mutate({})} disabled={salvar.isPending}>
           {salvar.isPending ? "Salvando..." : "Salvar configuração"}
         </Button>

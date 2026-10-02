@@ -92,14 +92,18 @@ export class EvolutionGoClient {
     const url = `${baseUrl.replace(/\/+$/, '')}${caminho}`;
 
     let resposta: Response;
+    const credencialLimpa = credencial?.trim() || null;
     try {
       resposta = await fetch(url, {
         method: metodo,
         signal: controller.signal,
         headers: {
           'content-type': 'application/json',
-          ...(credencial
-            ? { apikey: credencial, authorization: `Bearer ${credencial}` }
+          ...(credencialLimpa
+            ? {
+                apikey: credencialLimpa,
+                authorization: `Bearer ${credencialLimpa}`,
+              }
             : {}),
         },
         ...(corpo !== undefined ? { body: JSON.stringify(corpo) } : {}),

@@ -322,6 +322,12 @@ export const whatsappConfigUpdateSchema = z.object({
 });
 export type WhatsappConfigUpdate = z.infer<typeof whatsappConfigUpdateSchema>;
 
+export const whatsappTestarGatewaySchema = z.object({
+  evolutionUrl: z.string().trim().url().optional(),
+  evolutionApiKey: z.string().trim().optional(),
+});
+export type WhatsappTestarGateway = z.infer<typeof whatsappTestarGatewaySchema>;
+
 /**
  * Se o WhatsApp está ligado para a empresa ativa — o mesmo `ativo` da
  * configuração, exposto sem a configuração inteira.

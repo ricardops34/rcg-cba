@@ -32,6 +32,7 @@ import {
   WhatsappConectarDto,
   WhatsappConectarEmpresaDto,
   WhatsappConfigUpdateDto,
+  WhatsappTestarGatewayDto,
   WhatsappConversaQueryDto,
   WhatsappAgendarMensagemDto,
   WhatsappAgendarVisitaDto,
@@ -136,6 +137,22 @@ export class WhatsappController {
   sincronizarTemplates(@CurrentUser() user: AuthenticatedUser) {
     return this.sessao.sincronizarTemplatesEmpresa(user.empresaAtivaId);
   }
+
+  @ApiOperation({
+    summary: 'Testar conexão com o Gateway Evolution GO',
+    description:
+      'Valida conectividade e autenticação da GLOBAL_API_KEY no Evolution GO. ' +
+      'Requer whatsapp-config.visualizar.',
+  })
+  @RequirePermission('whatsapp-config', 'visualizar')
+  @Post('config/testar-gateway')
+  testarGateway(
+    @Body() dto: WhatsappTestarGatewayDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.config.testarGateway(user.empresaAtivaId, dto);
+  }
+
 
   @ApiOperation({
     summary: 'Se o WhatsApp está ativo para a empresa',

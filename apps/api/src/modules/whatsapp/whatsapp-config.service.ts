@@ -4,6 +4,7 @@ import type { WhatsappConfigUpdate } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { cifrarSegredo, decifrarSeHouver, ultimos4 } from './whatsapp-cripto';
 import type { TemplateSincronizado } from './providers/whatsapp-provider';
+import { WhatsappProviderService } from './providers/whatsapp-provider.service';
 
 /**
  * Configuração do WhatsApp por empresa (singleton, padrão do AgenteConfig e
@@ -22,7 +23,11 @@ import type { TemplateSincronizado } from './providers/whatsapp-provider';
  */
 @Injectable()
 export class WhatsappConfigService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly provider: WhatsappProviderService,
+  ) {}
+
 
   async obter(empresaId: string) {
     return this.prisma.withTenant(empresaId, (tx) =>
@@ -74,6 +79,19 @@ export class WhatsappConfigService {
       ...resto
     } = input;
 
+    const chaveEvolution =
+      evolutionApiKey !== undefined
+        ? evolutionApiKey?.trim() || null
+        : undefined;
+    const chaveCloudToken =
+      cloudApiAccessToken !== undefined
+        ? cloudApiAccessToken?.trim() || null
+        : undefined;
+    const chaveCloudSecret =
+      cloudApiAppSecret !== undefined
+        ? cloudApiAppSecret?.trim() || null
+        : undefined;
+
     return this.prisma.withTenant(empresaId, async (tx) => {
       await tx.whatsappConfig.upsert({
         where: { empresaId },
@@ -85,25 +103,25 @@ export class WhatsappConfigService {
         data: {
           ...resto,
           transporte: 'evolution_go',
-          ...(evolutionApiKey === undefined
+          ...(chaveEvolution === undefined
             ? {}
             : {
-                evolutionApiKeyCifrada: evolutionApiKey
-                  ? cifrarSegredo(evolutionApiKey)
+                evolutionApiKeyCifrada: chaveEvolution
+                  ? cifrarSegredo(chaveEvolution)
                   : null,
               }),
-          ...(cloudApiAccessToken === undefined
+          ...(chaveCloudToken === undefined
             ? {}
             : {
-                cloudApiAccessTokenCifrada: cloudApiAccessToken
-                  ? cifrarSegredo(cloudApiAccessToken)
+                cloudApiAccessTokenCifrada: chaveCloudToken
+                  ? cifrarSegredo(chaveCloudToken)
                   : null,
               }),
-          ...(cloudApiAppSecret === undefined
+          ...(chaveCloudSecret === undefined
             ? {}
             : {
-                cloudApiAppSecretCifrada: cloudApiAppSecret
-                  ? cifrarSegredo(cloudApiAppSecret)
+                cloudApiAppSecretCifrada: chaveCloudSecret
+                  ? cifrarSegredo(chaveCloudSecret)
                   : null,
               }),
           updatedBy: user.id,
@@ -112,6 +130,38 @@ export class WhatsappConfigService {
       return this.sanitizar(atualizada);
     });
   }
+
+  /**
+   * Testa conectividade com o gateway e valida a chave administrativa (GLOBAL_API_KEY).
+   */
+  async testarGateway(
+    empresaId: string,
+    input?: { evolutionUrl?: string; evolutionApiKey?: string },
+  ) {
+    let url = input?.evolutionUrl?.trim();
+    let chave = input?.evolutionApiKey?.trim();
+
+    if (!url || !chave) {
+      const config = await this.prisma.withTenant(empresaId, (tx) =>
+        tx.whatsappConfig.findUnique({
+          where: { empresaId },
+          select: {
+            evolutionUrl: true,
+            evolutionApiKeyCifrada: true,
+          },
+        }),
+      );
+      if (!url) {
+        url = config?.evolutionUrl?.trim() ?? '';
+      }
+      if (!chave && config?.evolutionApiKeyCifrada) {
+        chave = decifrarSeHouver(config.evolutionApiKeyCifrada)?.trim() ?? '';
+      }
+    }
+
+    return this.provider.testarGateway(url ?? '', chave ?? '');
+  }
+
 
   /** Só o verify token — leitura direta, sem upsert (webhook não autenticado). */
   async webhookVerifyToken(empresaId: string): Promise<string | null> {

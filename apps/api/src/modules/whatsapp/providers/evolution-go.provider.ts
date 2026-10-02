@@ -141,21 +141,73 @@ export class EvolutionGoProvider implements WhatsappProvider {
 
   /** Credencial administrativa: cria, conecta e apaga instância. */
   private chaveAdmin(ctx: ContextoSessao): string | null {
-    return ctx.config.evolutionApiKey;
+    return ctx.config.evolutionApiKey?.trim() || null;
   }
 
   /**
-   * Credencial de operação. O token da instância quando existe; a chave
-   * administrativa como retaguarda, para a sessão criada antes de o gateway
-   * passar a devolver token não ficar muda.
+   * Credencial de operação. O token da instância retornado pelo gateway.
+   * Não usar a chave administrativa como retaguarda: as rotas de operação
+   * da Evolution GO buscam a instância pelo token no cabeçalho `apikey`;
+   * a chave global não é token de instância e causa 401 not authorized.
    */
   private chaveInstancia(ctx: ContextoSessao): string | null {
-    return ctx.instancia.token ?? ctx.config.evolutionApiKey;
+    return ctx.instancia.token?.trim() || null;
   }
 
   /** Identificador aceito pelas rotas de operação. */
   private idInstancia(ctx: ContextoSessao): string {
     return ctx.instancia.id ?? this.nomeInstancia(ctx);
+  }
+
+  /**
+   * Testa conectividade com o gateway e valida a chave administrativa (GLOBAL_API_KEY).
+   */
+  async testarGateway(
+    url: string,
+    chaveAdmin: string,
+  ): Promise<{ ok: boolean; mensagem: string; totalInstancias: number }> {
+    const adminKey = chaveAdmin.trim();
+    if (!url) {
+      throw new BadGatewayException('Endereço da Evolution GO não informado.');
+    }
+    if (!adminKey) {
+      throw new BadGatewayException(
+        'Chave de API (GLOBAL_API_KEY) não informada.',
+      );
+    }
+
+    // 1. Testa conectividade básica
+    try {
+      await this.http.chamar<unknown>(url, '/server/ok', {
+        aceitarAusente: false,
+      });
+    } catch (erro) {
+      throw new BadGatewayException(
+        `Não foi possível alcançar a Evolution GO em ${url}. Verifique se o endereço está correto e o serviço está no ar (${erro instanceof Error ? erro.message : String(erro)}).`,
+      );
+    }
+
+    // 2. Testa autenticação da chave administrativa
+    try {
+      const resp = await this.http.chamar<any>(url, '/instance/all', {
+        credencial: adminKey,
+      });
+      const lista = (Array.isArray(resp) ? resp : (resp?.data ?? [])) as any[];
+      return {
+        ok: true,
+        mensagem:
+          'Conexão e chave administrativa validadas com sucesso na Evolution GO.',
+        totalInstancias: lista.length,
+      };
+    } catch (erro) {
+      if (erro instanceof EvolutionGoErroHttp && erro.httpStatus === 401) {
+        throw new BadGatewayException(
+          'A Evolution GO recusou a autenticação (401: not authorized). ' +
+            'A Chave de API informada não confere com a GLOBAL_API_KEY configurada no servidor da Evolution GO.',
+        );
+      }
+      throw erro;
+    }
   }
 
   /**
@@ -215,140 +267,254 @@ export class EvolutionGoProvider implements WhatsappProvider {
     opcoes: { arquivarMensagens: boolean },
   ): Promise<DadosInstancia | null> {
     const url = ctx.config.evolutionUrl;
-    const jaExiste = Boolean(ctx.instancia.nome);
+    const adminKey = this.chaveAdmin(ctx);
+    if (!adminKey) {
+      throw new BadGatewayException(
+        'A Chave de API administrativa (GLOBAL_API_KEY) da Evolution GO não está configurada em Administração > WhatsApp.',
+      );
+    }
 
     const nome = this.nomeInstancia(ctx);
-    // Segredos novos só quando a instância nasce: regerá-los a cada reconexão
-    // invalidaria o webhook já registrado no gateway entre a gravação local e
-    // o próximo `connect`, e mensagens cairiam nesse intervalo.
-    const token = ctx.instancia.token ?? randomBytes(32).toString('hex');
+    let token = ctx.instancia.token ?? randomBytes(32).toString('hex');
     const webhookSegredo =
       ctx.instancia.webhookSegredo ?? randomBytes(32).toString('hex');
-
     let instanciaId = ctx.instancia.id;
 
-    if (!jaExiste) {
-      // Corpo conferido contra o Swagger da 0.7.2: `{name, instanceId?, token,
-      // advancedSettings?, proxy?}`. Não existe campo para desligar o arquivo
-      // de mensagens nem o envio de mídia no webhook — isso é configuração do
-      // **serviço** (`DATABASE_SAVE_MESSAGES`, `WEBHOOK_FILES`), fixada no
-      // stack. Se o gateway subir sem elas, a regra de privacidade depende da
-      // API descartar o que chegar a mais.
+    // 1. Verifica no gateway se a instância já existe de fato
+    let existenteNoGateway: { id?: string; name?: string; token?: string } | null = null;
+    try {
+      const resp = await this.http.chamar<any>(url, '/instance/all', {
+        credencial: adminKey,
+      });
+      const lista = (Array.isArray(resp) ? resp : (resp?.data ?? [])) as any[];
+      existenteNoGateway =
+        lista.find((item: any) => item?.name === nome) ?? null;
+    } catch (erro) {
+      if (erro instanceof EvolutionGoErroHttp && erro.httpStatus === 401) {
+        throw new BadGatewayException(
+          'A Evolution GO recusou a chave administrativa (401: not authorized). ' +
+            'Verifique se a Chave de API (GLOBAL_API_KEY) configurada em Administração > WhatsApp confere com o servidor.',
+        );
+      }
+      this.logger.warn(
+        `Não foi possível verificar instâncias existentes no gateway (${erro instanceof Error ? erro.message : String(erro)}). ` +
+          'Prosseguindo com criação/reconexão.',
+      );
+    }
+
+    if (existenteNoGateway) {
+      instanciaId = existenteNoGateway.id ?? instanciaId;
+      if (existenteNoGateway.token) {
+        token = existenteNoGateway.token;
+      }
+      await this.aplicarConfiguracoes({
+        ...ctx,
+        instancia: { ...ctx.instancia, id: instanciaId, token },
+      });
+    } else {
+      // Cria a instância no gateway
       try {
         const criada = await this.http.chamar<unknown>(url, '/instance/create', {
           metodo: 'POST',
-          credencial: this.chaveAdmin(ctx),
+          credencial: adminKey,
           corpo: {
             name: nome,
             token,
-            // Eram fixos aqui até 2026-09-21. Agora vêm da configuração da
-            // empresa (Administração > WhatsApp > Evolution GO), com os mesmos
-            // valores como padrão — ver `configuracoesAvancadas`.
             advancedSettings: this.configuracoesAvancadas(ctx),
           },
         });
+        const dadosCriada = objeto(criada, 'data') ?? criada;
         instanciaId =
-          texto(criada, 'instanceId', 'id', 'instance_id', 'instance.id') ?? null;
+          texto(dadosCriada, 'id', 'instanceId', 'instance_id', 'instance.id') ??
+          instanciaId;
       } catch (erro) {
-        // Se a criação falhou porque a instância já existe órfã no gateway
-        // (400, 409 ou 500 com indicação de duplicidade / already exists),
-        // limpamos a instância órfã e recriamos com as credenciais limpas da sessão atual.
-        const corpo = erro instanceof EvolutionGoErroHttp ? erro.corpo.toLowerCase() : '';
-        const detalhe = erro instanceof EvolutionGoErroHttp ? (erro.detalhe ?? '').toLowerCase() : '';
-        const msg = erro instanceof Error ? erro.message.toLowerCase() : '';
+        const corpo =
+          erro instanceof EvolutionGoErroHttp ? erro.corpo.toLowerCase() : '';
+        const detalhe =
+          erro instanceof EvolutionGoErroHttp
+            ? (erro.detalhe ?? '').toLowerCase()
+            : '';
         const ehDuplicada =
           corpo.includes('already exists') ||
           corpo.includes('duplicate') ||
           corpo.includes('já existe') ||
           detalhe.includes('already exists') ||
-          msg.includes('already exists') ||
           (erro instanceof EvolutionGoErroHttp &&
-            (erro.httpStatus === 400 || erro.httpStatus === 409 || erro.httpStatus === 500));
+            (erro.httpStatus === 400 ||
+              erro.httpStatus === 409 ||
+              erro.httpStatus === 500));
 
         if (ehDuplicada) {
           this.logger.warn(
-            `Criação da instância ${nome} falhou (${erro instanceof Error ? erro.message : String(erro)}). ` +
-              'Tentando remover eventual instância órfã no gateway e recriar...',
+            `Instância ${nome} já constava no gateway. Buscando UUID real para limpeza...`,
           );
-          await this.http
-            .chamar(url, `/instance/delete/${encodeURIComponent(nome)}`, {
-              metodo: 'DELETE',
-              credencial: this.chaveAdmin(ctx),
-              aceitarAusente: true,
-            })
-            .catch(() => undefined);
-
-          const recriada = await this.http.chamar<unknown>(url, '/instance/create', {
-            metodo: 'POST',
-            credencial: this.chaveAdmin(ctx),
-            corpo: {
-              name: nome,
-              token,
-              advancedSettings: this.configuracoesAvancadas(ctx),
+          const all = await this.http
+            .chamar<any>(url, '/instance/all', { credencial: adminKey })
+            .catch(() => null);
+          const lista = (Array.isArray(all) ? all : (all?.data ?? [])) as any[];
+          const achada = lista.find((item: any) => item?.name === nome);
+          if (achada?.id) {
+            await this.http
+              .chamar(url, `/instance/delete/${encodeURIComponent(achada.id)}`, {
+                metodo: 'DELETE',
+                credencial: adminKey,
+                aceitarAusente: true,
+              })
+              .catch(() => undefined);
+          }
+          const recriada = await this.http.chamar<unknown>(
+            url,
+            '/instance/create',
+            {
+              metodo: 'POST',
+              credencial: adminKey,
+              corpo: {
+                name: nome,
+                token,
+                advancedSettings: this.configuracoesAvancadas(ctx),
+              },
             },
-          });
+          );
+          const dadosRecriada = objeto(recriada, 'data') ?? recriada;
           instanciaId =
-            texto(recriada, 'instanceId', 'id', 'instance_id', 'instance.id') ?? null;
+            texto(
+              dadosRecriada,
+              'id',
+              'instanceId',
+              'instance_id',
+              'instance.id',
+            ) ?? instanciaId;
         } else {
           throw erro;
         }
       }
     }
 
-    // A política de atendimento é reaplicada a cada conexão, não só na
-    // criação: é o que faz uma alteração na tela alcançar as instâncias que já
-    // existiam. Vale para todas — vendedor, gerente, supervisor e o
-    // institucional.
-    if (jaExiste) await this.aplicarConfiguracoes(ctx);
-
-    // `connect` é chamado sempre, inclusive na instância que já existia: é ele
-    // que (re)registra o webhook e a lista de eventos. Uma instância que voltou
-    // do restart do gateway sem webhook fica conectada e muda — o pior estado
-    // possível, porque parece que está funcionando.
-    //
-    // Os nomes vêm do Swagger da 0.7.2: a lista de eventos chama-se
-    // `subscribe` (não `events`) e o callback, `webhookUrl` (não `webhook`).
-    //
-    // `arquivarMensagens` não tem para onde ir no `connect`: o gateway guarda
-    // (ou não) conforme o `DATABASE_SAVE_MESSAGES` do serviço, e o histórico é
-    // pedido depois, por `/chat/history-sync`, quando a administração manda.
-    // Fica no log porque explica por que uma instância "com histórico ligado"
-    // não traz nada sozinha.
     if (opcoes.arquivarMensagens) {
       this.logger.debug(
-        `Sessão ${ctx.sessaoId} conectada com histórico habilitado; a importação ` +
-          'é disparada pela tela, não pelo connect.',
+        `Sessão ${ctx.sessaoId} conectada com histórico habilitado.`,
       );
     }
 
-    await this.http.chamar(url, '/instance/connect', {
-      metodo: 'POST',
-      credencial: token,
-      corpo: {
-        webhookUrl: this.urlWebhook(ctx, webhookSegredo),
-        subscribe: [...EVENTOS],
-      },
-    });
+    try {
+      await this.http.chamar(url, '/instance/connect', {
+        metodo: 'POST',
+        credencial: token,
+        corpo: {
+          webhookUrl: this.urlWebhook(ctx, webhookSegredo),
+          subscribe: [...EVENTOS],
+        },
+      });
+    } catch (erro) {
+      const idParaRemover = existenteNoGateway?.id ?? ctx.instancia.id;
+      const ehErro401 =
+        (erro instanceof EvolutionGoErroHttp && erro.httpStatus === 401) ||
+        (erro instanceof Error && erro.message.includes('401'));
+
+      if (ehErro401 && idParaRemover) {
+        this.logger.warn(
+          `Connect falhou com 401 para ${nome}. Removendo instância antiga e recriando com token novo...`,
+        );
+        await this.http
+          .chamar(
+            url,
+            `/instance/delete/${encodeURIComponent(idParaRemover)}`,
+            {
+              metodo: 'DELETE',
+              credencial: adminKey,
+              aceitarAusente: true,
+            },
+          )
+          .catch(() => undefined);
+
+        token = randomBytes(32).toString('hex');
+        const nova = await this.http.chamar<unknown>(url, '/instance/create', {
+          metodo: 'POST',
+          credencial: adminKey,
+          corpo: {
+            name: nome,
+            token,
+            advancedSettings: this.configuracoesAvancadas(ctx),
+          },
+        });
+        const dadosNova = objeto(nova, 'data') ?? nova;
+        instanciaId =
+          texto(dadosNova, 'id', 'instanceId', 'instance_id', 'instance.id') ??
+          instanciaId;
+        token = texto(dadosNova, 'token', 'instance.token') ?? token;
+
+        await this.http.chamar(url, '/instance/connect', {
+          metodo: 'POST',
+          credencial: token,
+          corpo: {
+            webhookUrl: this.urlWebhook(ctx, webhookSegredo),
+            subscribe: [...EVENTOS],
+          },
+        });
+      } else {
+        throw erro;
+      }
+    }
 
     return { nome, id: instanciaId, token, webhookSegredo };
   }
 
   async pareamento(ctx: ContextoSessao): Promise<EstadoPareamento> {
     const url = ctx.config.evolutionUrl;
+    let token = this.chaveInstancia(ctx);
 
-    // Sem `instanceId` na query: quem identifica a instância é a credencial no
-    // cabeçalho — nenhuma rota de operação da 0.7.2 recebe o id.
-    const estado = await this.http.chamar<unknown>(url, '/instance/status', {
-      credencial: this.chaveInstancia(ctx),
-      aceitarAusente: true,
-    });
+    // Se a instância não tem token gravado localmente, tenta resgatar de /instance/all
+    if (!token) {
+      const adminKey = this.chaveAdmin(ctx);
+      if (adminKey) {
+        try {
+          const resp = await this.http.chamar<any>(url, '/instance/all', {
+            credencial: adminKey,
+            aceitarAusente: true,
+          });
+          const lista = (Array.isArray(resp) ? resp : (resp?.data ?? [])) as any[];
+          const nome = this.nomeInstancia(ctx);
+          const achada = lista.find((i: any) => i?.name === nome);
+          if (achada?.token) {
+            token = achada.token;
+          }
+        } catch {
+          // ignora
+        }
+      }
+    }
 
-    // A Evolution GO embrulha tudo em `{ data, message }` e usa os nomes dos
-    // structs Go (`Connected`, `LoggedIn`, `Qrcode`, `Code`). Lendo só a raiz
-    // em minúsculas nada era encontrado: o status caía em "desconectada" e o
-    // QR nunca aparecia. Os nomes antigos ficam como retaguarda.
+    if (!token) {
+      return {
+        status: 'desconectada',
+        qr: null,
+        numero: null,
+        erro: 'A instância ainda não possui token registrado no gateway. Clique em "Recomeçar pareamento" para conectar.',
+      };
+    }
+
+    let estado: unknown = null;
+    let erroStatus: string | null = null;
+    try {
+      estado = await this.http.chamar<unknown>(url, '/instance/status', {
+        credencial: token,
+        aceitarAusente: true,
+      });
+    } catch (erro) {
+      if (erro instanceof EvolutionGoErroHttp && erro.httpStatus === 401) {
+        return {
+          status: 'desconectada',
+          qr: null,
+          numero: null,
+          erro: 'A Evolution GO não autorizou o token desta instância (401: not authorized). ' +
+            'Clique em "Recomeçar pareamento" para renovar a conexão.',
+        };
+      }
+      erroStatus = erro instanceof Error ? erro.message : String(erro);
+    }
+
     const dadosEstado = objeto(estado, 'data') ?? estado;
-    const status = this.statusDoEstado(dadosEstado);
+    const status = erroStatus ? 'desconectada' : this.statusDoEstado(dadosEstado);
     const numero = this.somenteDigitos(
       texto(
         dadosEstado,
@@ -362,53 +528,30 @@ export class EvolutionGoProvider implements WhatsappProvider {
       ),
     );
 
-    // O QR só é buscado enquanto faz sentido: pedi-lo com a sessão conectada
-    // devolve erro em algumas versões, e o erro apareceria na tela como falha
-    // de uma sessão que está perfeitamente de pé.
     let qr: string | null = null;
-    // Por que a busca do QR falhou, quando falhou.
-    //
-    // Antes o erro era engolido (`.catch(() => null)`) e o sintoma na tela era
-    // uma caixa vazia girando para sempre, sem nada que dissesse o motivo — nem
-    // na tela, nem no log da API. Licença não ativada, chave de instância
-    // errada e rota ausente na versão do gateway produziam exatamente a mesma
-    // imagem. Ver docs/whatsapp/operacao.md, seção Diagnóstico.
     let motivoQr: string | null = null;
-
-    // Sem token da instância, a retaguarda é a chave administrativa — e para
-    // **esta** rota isso não funciona.
-    //
-    // `/instance/qr` não recebe parâmetro nenhum (conferido no Swagger do
-    // gateway em 2026-09-21): quem seleciona a instância é a credencial do
-    // cabeçalho. A documentação oficial é explícita — rota administrativa usa
-    // a `GLOBAL_API_KEY`, rota de operação usa o token da instância. Com a
-    // chave global aqui, o gateway não tem como saber de qual instância se
-    // pede o código, e a tela fica esperando um QR que nunca vem.
-    const semTokenProprio = !ctx.instancia.token;
-    if (semTokenProprio) {
-      this.logger.warn(
-        `A instância ${this.nomeInstancia(ctx)} não tem token próprio gravado; ` +
-          'o QR será pedido com a chave administrativa e provavelmente não virá.',
-      );
-    }
 
     if (status === 'pareando' || status === 'desconectada') {
       const resposta = await this.http
         .chamar<unknown>(url, '/instance/qr', {
-          credencial: this.chaveInstancia(ctx),
+          credencial: token,
           aceitarAusente: true,
         })
         .catch((erro: unknown) => {
-          motivoQr = erro instanceof Error ? erro.message : String(erro);
+          if (erro instanceof EvolutionGoErroHttp && erro.httpStatus === 401) {
+            motivoQr =
+              'A Evolution GO recusou a busca do QR Code (401: not authorized). ' +
+              'Clique em "Recomeçar pareamento".';
+          } else {
+            motivoQr = erro instanceof Error ? erro.message : String(erro);
+          }
           this.logger.error(
             `Falha ao buscar o QR da instância ${this.nomeInstancia(ctx)}: ${motivoQr}`,
           );
           return null;
         });
+
       const dadosQr = objeto(resposta, 'data') ?? resposta;
-      // `Code` é o conteúdo cru do QR (`2@...`) e vem primeiro: a tela desenha
-      // o código a partir dele. `Qrcode` é a imagem PNG pronta em data URL —
-      // a tela também aceita, mas é a segunda opção.
       qr =
         texto(
           dadosQr,
@@ -421,44 +564,31 @@ export class EvolutionGoProvider implements WhatsappProvider {
           'base64',
         ) ?? null;
 
-      // Respondeu, mas sem QR em nenhum dos campos conhecidos. É diferente de
-      // ter falhado: costuma ser a versão do gateway devolvendo o código em
-      // outro nome, e sem esta distinção os dois casos somem na mesma tela
-      // vazia.
       if (!qr && !motivoQr) {
-        motivoQr = semTokenProprio
-          ? 'Esta instância não tem token próprio gravado, e o QR é pedido com ' +
-            'a chave administrativa — que não identifica qual instância é. ' +
-            'Recrie a instância pela aba Instâncias para o gateway devolver um ' +
-            'token e gravá-lo.'
-          : 'O gateway respondeu sem QR Code em nenhum campo conhecido ' +
-            '(qrcode, qr, code, base64). Confira a versão homologada em ' +
-            'EVOLUTION_GO_IMAGE.';
+        motivoQr =
+          'O gateway respondeu sem QR Code em nenhum campo conhecido ' +
+          '(qrcode, qr, code, base64). Confira a versão homologada em ' +
+          'EVOLUTION_GO_IMAGE.';
         this.logger.warn(
-          `QR ausente na resposta da instância ${this.nomeInstancia(ctx)}` +
-            (semTokenProprio ? ' (sem token próprio)' : ''),
+          `QR ausente na resposta da instância ${this.nomeInstancia(ctx)}`,
         );
       }
     }
 
     return {
-      // Sem QR e sem conexão, "pareando" seria mentira para a tela, que ficaria
-      // girando para sempre; com QR na mão, é a verdade.
       status: status === 'desconectada' && qr ? 'pareando' : status,
       qr,
       numero,
-      // O erro do estado vem primeiro: ele explica a conexão inteira, enquanto
-      // o do QR explica só o código que faltou.
-      // `message` fica de fora: na Evolution GO ele vale "success" em toda
-      // resposta boa, e apareceria na tela como se fosse o erro da sessão.
-      erro: texto(dadosEstado, 'error', 'lastError') ?? motivoQr,
+      erro: texto(dadosEstado, 'error', 'lastError') ?? motivoQr ?? erroStatus,
     };
   }
 
   async desconectar(ctx: ContextoSessao): Promise<void> {
+    const token = this.chaveInstancia(ctx);
+    if (!token) return;
     await this.http.chamar(ctx.config.evolutionUrl, '/instance/disconnect', {
       metodo: 'POST',
-      credencial: this.chaveInstancia(ctx),
+      credencial: token,
       aceitarAusente: true,
     });
   }
@@ -469,40 +599,71 @@ export class EvolutionGoProvider implements WhatsappProvider {
    * novo QR.
    */
   async sairDoWhatsapp(ctx: ContextoSessao): Promise<void> {
+    const token = this.chaveInstancia(ctx);
+    if (!token) return;
     await this.http.chamar(ctx.config.evolutionUrl, '/instance/logout', {
       metodo: 'DELETE',
-      credencial: this.chaveInstancia(ctx),
+      credencial: token,
       aceitarAusente: true,
     });
   }
 
   /**
    * Logout e exclusão da instância.
-   *
-   * O logout é melhor-esforço: uma instância já deslogada faz a rota devolver
-   * erro, e isso não pode impedir a exclusão. O que não pode falhar em
-   * silêncio é o `delete` — uma instância órfã no gateway continua guardando a
-   * credencial do WhatsApp do vendedor.
    */
   async removerInstancia(ctx: ContextoSessao): Promise<void> {
-    const id = this.idInstancia(ctx);
+    const adminKey = this.chaveAdmin(ctx);
+    let id = ctx.instancia.id;
+
+    if (!id || !id.includes('-')) {
+      const nome = this.nomeInstancia(ctx);
+      if (adminKey) {
+        try {
+          const resp = await this.http.chamar<any>(
+            ctx.config.evolutionUrl,
+            '/instance/all',
+            {
+              credencial: adminKey,
+              aceitarAusente: true,
+            },
+          );
+          const lista = (Array.isArray(resp) ? resp : (resp?.data ?? [])) as any[];
+          const achada = lista.find((item: any) => item?.name === nome);
+          if (achada?.id) {
+            id = achada.id;
+          }
+        } catch {
+          // ignora
+        }
+      }
+    }
+
+    const idParaDeletar = id ?? this.idInstancia(ctx);
 
     await this.sairDoWhatsapp(ctx).catch((erro: unknown) => {
       this.logger.warn(
-        `logout da instância ${id} falhou, seguindo para o delete: ` +
+        `logout da instância ${idParaDeletar} falhou, seguindo para o delete: ` +
           `${erro instanceof Error ? erro.message : String(erro)}`,
       );
     });
 
-    await this.http.chamar(
-      ctx.config.evolutionUrl,
-      `/instance/delete/${encodeURIComponent(id)}`,
-      {
-        metodo: 'DELETE',
-        credencial: this.chaveAdmin(ctx),
-        aceitarAusente: true,
-      },
-    );
+    if (adminKey) {
+      await this.http
+        .chamar(
+          ctx.config.evolutionUrl,
+          `/instance/delete/${encodeURIComponent(idParaDeletar)}`,
+          {
+            metodo: 'DELETE',
+            credencial: adminKey,
+            aceitarAusente: true,
+          },
+        )
+        .catch((erro) => {
+          this.logger.warn(
+            `delete da instância ${idParaDeletar} falhou (${erro instanceof Error ? erro.message : String(erro)})`,
+          );
+        });
+    }
   }
 
   // ----------------------------------------------------------------------

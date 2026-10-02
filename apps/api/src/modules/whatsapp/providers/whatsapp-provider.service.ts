@@ -390,4 +390,15 @@ export class WhatsappProviderService {
     }
     return provider.sincronizarTemplates(ctx);
   }
+
+  /**
+   * Testa conectividade com a Evolution GO e valida a chave administrativa (GLOBAL_API_KEY).
+   */
+  async testarGateway(
+    url: string,
+    chaveAdmin: string,
+  ): Promise<{ ok: boolean; mensagem: string; totalInstancias: number }> {
+    return this.evolution.testarGateway(url, chaveAdmin);
+  }
 }
+

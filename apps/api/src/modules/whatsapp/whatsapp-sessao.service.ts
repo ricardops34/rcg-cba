@@ -203,10 +203,24 @@ export class WhatsappSessaoService {
     // `arquivarMensagens` liga o arquivo de mensagens do lado do provedor, que
     // é de onde sai o histórico importado depois. Só quem configurou dias de
     // histórico guarda esse material.
-    const instancia = await this.provedores.iniciar(empresaId, sessao.id, {
-      arquivarMensagens: config.historicoDias > 0,
-    });
-    await this.gravarInstancia(empresaId, sessao.id, instancia);
+    try {
+      const instancia = await this.provedores.iniciar(empresaId, sessao.id, {
+        arquivarMensagens: config.historicoDias > 0,
+      });
+      await this.gravarInstancia(empresaId, sessao.id, instancia);
+    } catch (erro) {
+      const msg = erro instanceof Error ? erro.message : String(erro);
+      await this.prisma.withTenant(empresaId, (tx) =>
+        tx.whatsappSessao.update({
+          where: { id: sessao.id },
+          data: {
+            status: 'desconectada',
+            ultimoErro: msg,
+          },
+        }),
+      );
+      throw erro;
+    }
 
     return this.paraLeitura(sessao, anterior.vendedorNome);
   }
@@ -284,10 +298,24 @@ export class WhatsappSessaoService {
           }),
     );
 
-    const instancia = await this.provedores.iniciar(empresaId, sessao.id, {
-      arquivarMensagens: config.historicoDias > 0,
-    });
-    await this.gravarInstancia(empresaId, sessao.id, instancia);
+    try {
+      const instancia = await this.provedores.iniciar(empresaId, sessao.id, {
+        arquivarMensagens: config.historicoDias > 0,
+      });
+      await this.gravarInstancia(empresaId, sessao.id, instancia);
+    } catch (erro) {
+      const msg = erro instanceof Error ? erro.message : String(erro);
+      await this.prisma.withTenant(empresaId, (tx) =>
+        tx.whatsappSessao.update({
+          where: { id: sessao.id },
+          data: {
+            status: 'desconectada',
+            ultimoErro: msg,
+          },
+        }),
+      );
+      throw erro;
+    }
 
     return this.paraLeitura(sessao, 'Empresa');
   }
@@ -359,8 +387,13 @@ export class WhatsappSessaoService {
       throw new NotFoundException('O número da empresa não está pareado.');
     }
     await this.provedores
-      .sairDoWhatsapp(empresaId, sessao.id)
-      .catch(() => undefined);
+      .removerInstancia(empresaId, sessao.id)
+      .catch((erro) => {
+        this.logger.warn(
+          `Falha ao remover instância da empresa ${sessao.id} na desconexão: ` +
+            `${erro instanceof Error ? erro.message : String(erro)}`,
+        );
+      });
     const atualizada = await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappSessao.update({
         where: { id: sessao.id },
@@ -369,6 +402,11 @@ export class WhatsappSessaoService {
           numero: null,
           jid: null,
           credencialCifrada: null,
+          instanciaExterna: null,
+          instanciaId: null,
+          instanciaTokenCifrado: null,
+          webhookSegredoCifrado: null,
+          ultimoErro: null,
           updatedBy: user.id,
         },
       }),
@@ -497,15 +535,27 @@ export class WhatsappSessaoService {
     // não pode impedir a marcação deste lado — a alternativa seria a tela
     // continuar dizendo "conectado" para uma sessão que ele já abandonou.
     await this.provedores
-      .sairDoWhatsapp(empresaId, alvo.sessaoId)
-      .catch(() => undefined);
+      .removerInstancia(empresaId, alvo.sessaoId)
+      .catch((erro) => {
+        this.logger.warn(
+          `Falha ao remover instância ${alvo.sessaoId} na desconexão: ` +
+            `${erro instanceof Error ? erro.message : String(erro)}`,
+        );
+      });
 
     const atualizada = await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappSessao.update({
         where: { id: alvo.sessaoId },
         data: {
           status: 'desconectada',
+          numero: null,
+          jid: null,
           credencialCifrada: null,
+          instanciaExterna: null,
+          instanciaId: null,
+          instanciaTokenCifrado: null,
+          webhookSegredoCifrado: null,
+          ultimoErro: null,
           updatedBy: user.id,
         },
       }),
@@ -589,10 +639,24 @@ export class WhatsappSessaoService {
       );
     }
 
-    const instancia = await this.provedores.iniciar(empresaId, sessao.id, {
-      arquivarMensagens: config.historicoDias > 0,
-    });
-    await this.gravarInstancia(empresaId, sessao.id, instancia);
+    try {
+      const instancia = await this.provedores.iniciar(empresaId, sessao.id, {
+        arquivarMensagens: config.historicoDias > 0,
+      });
+      await this.gravarInstancia(empresaId, sessao.id, instancia);
+    } catch (erro) {
+      const msg = erro instanceof Error ? erro.message : String(erro);
+      await this.prisma.withTenant(empresaId, (tx) =>
+        tx.whatsappSessao.update({
+          where: { id: sessao.id },
+          data: {
+            status: 'desconectada',
+            ultimoErro: msg,
+          },
+        }),
+      );
+      throw erro;
+    }
 
     const atualizada = await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappSessao.update({
@@ -633,8 +697,13 @@ export class WhatsappSessaoService {
     // Melhor-esforço: provedor fora do ar não pode impedir a administração de
     // marcar a instância como desconectada deste lado.
     await this.provedores
-      .sairDoWhatsapp(empresaId, sessao.id)
-      .catch(() => undefined);
+      .removerInstancia(empresaId, sessao.id)
+      .catch((erro) => {
+        this.logger.warn(
+          `Falha ao remover instância ${sessao.id} na administração: ` +
+            `${erro instanceof Error ? erro.message : String(erro)}`,
+        );
+      });
 
     const atualizada = await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappSessao.update({
@@ -644,6 +713,10 @@ export class WhatsappSessaoService {
           numero: null,
           jid: null,
           credencialCifrada: null,
+          instanciaExterna: null,
+          instanciaId: null,
+          instanciaTokenCifrado: null,
+          webhookSegredoCifrado: null,
           ultimoErro: null,
           updatedBy: user.id,
         },
