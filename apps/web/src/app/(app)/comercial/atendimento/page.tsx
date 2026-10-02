@@ -13,18 +13,29 @@ import {
   ArrowLeft,
   BriefcaseBusiness,
   CalendarCheck2,
+  Check,
+  CheckCheck,
+  CheckCircle2,
   DollarSign,
   Link2,
+  Lock,
   MessageCircle,
+  MessageSquare,
   MessageSquarePlus,
+  MoreVertical,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
   Plug,
+  Search,
   ShoppingCart,
+  SlidersHorizontal,
+  Sparkles,
+  TriangleAlert,
   UserRound,
   Unlink,
   Users,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import type {
@@ -66,6 +77,13 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ResizableSheetContent } from "@/components/ui/resizable-sheet-content";
 import { ConexaoSheet } from "@/components/whatsapp/conexao-sheet";
 import { NovaConversaDialog } from "@/components/whatsapp/nova-conversa-dialog";
@@ -91,15 +109,6 @@ const PREF_LISTA = "atendimento-lista-aberta";
 /** Quem redesenha quando uma preferência muda (o localStorage não avisa). */
 const ouvintesDePreferencia = new Set<() => void>();
 
-/**
- * Painel aberto ou fechado, lembrado no `localStorage`.
- *
- * `useSyncExternalStore` em vez de `useState` + `useEffect`: o
- * `localStorage` não existe no servidor, e ler dele depois da montagem para
- * então chamar `setState` provoca uma segunda renderização a cada carga da
- * tela. Aqui o servidor recebe o valor padrão (o terceiro argumento) e o
- * cliente lê o valor real na primeira renderização, sem repique.
- */
 function usePainelAberto(chave: string): [boolean, () => void] {
   const aberto = useSyncExternalStore(
     (redesenhar) => {
@@ -119,14 +128,9 @@ function usePainelAberto(chave: string): [boolean, () => void] {
 }
 
 /**
- * Atendimento por WhatsApp — três colunas: conversas, mensagens e o cliente.
- * A conexão do aparelho é um botão daqui, não uma tela à parte.
- *
- * As duas laterais recolhem: numa tela de 14" o rolo da conversa fica estreito
- * demais com as três colunas fixas, e quem já escolheu a conversa não precisa
- * da lista à vista. A escolha fica no `localStorage` porque é preferência de
- * quem usa, não estado da tela — reabrir a página com tudo aberto de novo
- * anularia o ajuste.
+ * Atendimento por WhatsApp — experiência fluida e nativa no estilo WhatsApp Web,
+ * integrando a plataforma comercial diretamente ao atendimento: dados do cliente,
+ * emissão de orçamentos e histórico de conversas gravado no ERP.
  */
 export default function AtendimentoPage() {
   const podeAcompanharEquipe = useAuthStore(
@@ -135,11 +139,6 @@ export default function AtendimentoPage() {
   );
   const [conexaoAberta, setConexaoAberta] = useState(false);
   const [novaConversaAberta, setNovaConversaAberta] = useState(false);
-  // A conversa aberta mora na URL (`?conversa=<id>`), não em estado local: é
-  // o que faz o link do sino de notificações abrir a conversa certa mesmo
-  // para quem já está nesta tela — sem remontar o componente, um estado
-  // interno ficaria na conversa anterior. `replace` e não `push` porque
-  // trocar de conversa não é navegar: encheria o histórico do navegador.
   const router = useRouter();
   const pathname = usePathname();
   const conversaId = useSearchParams().get("conversa");
@@ -153,26 +152,9 @@ export default function AtendimentoPage() {
   const [busca, setBusca] = useState("");
   const [filtroConversas, setFiltroConversas] =
     useState<FiltroConversas>("todas");
-  /**
-   * Conexão que a lista mostra, pelo `vendedorId` (dono da conexão). `null` =
-   * a do próprio usuário, que é como a tela abre.
-   *
-   * Trocar para a de um colega é **consulta**: o servidor deixa supervisor e
-   * gerente lerem as conversas do time, mas quem responde é o dono do aparelho
-   * (`garantirDono`, na API). A tela avisa isso em vez de deixar digitar para
-   * tomar erro no envio.
-   */
   const [conexaoEscolhida, setConexaoEscolhida] = useState<string | null>(null);
   const [listaPreferida, alternarPreferenciaLista] = usePainelAberto(PREF_LISTA);
 
-  // Quem chega com a conversa já escolhida na URL — o "Atendimento" do menu da
-  // Posição de Cliente, o link do sino — não precisa da lista de contatos à
-  // vista: já sabe com quem vai falar, e a conversa começa ocupando a tela.
-  //
-  // Vale só para ESTA entrada, e por isso não grava no `localStorage`: a
-  // preferência de quem abre a tela pelo menu continua valendo. Só a primeira
-  // renderização conta (`useState` com inicializador), senão trocar de conversa
-  // pela lista tornaria a recolher.
   const [ignorandoPreferencia, setIgnorandoPreferencia] = useState(
     () => !!conversaId,
   );
@@ -180,15 +162,12 @@ export default function AtendimentoPage() {
   const alternarLista = () => {
     if (ignorandoPreferencia) {
       setIgnorandoPreferencia(false);
-      // A preferência guardada era "fechada": abrir agora precisa mudá-la, ou
-      // o clique não faria nada visível.
       if (!listaPreferida) alternarPreferenciaLista();
       return;
     }
     alternarPreferenciaLista();
   };
-  // As ferramentas comerciais abrem em uma cortina sobreposta. A conversa
-  // mantém largura e posição enquanto o vendedor consulta ou edita dados.
+
   const [painelDireito, setPainelDireito] = useState<
     "contato" | "posicao" | "orcamento"
   >("contato");
@@ -206,6 +185,7 @@ export default function AtendimentoPage() {
     setPainelDireito("contato");
     setPainelMovelAberto(false);
   }, []);
+
   const {
     data: sessao,
     isLoading: carregandoSessao,
@@ -213,20 +193,11 @@ export default function AtendimentoPage() {
   } = useQuery({
     queryKey: ["whatsapp-sessao"],
     queryFn: () => apiFetch<WhatsappSessao | null>("/whatsapp/sessao"),
-    // Erros 4xx são condições de cadastro/permissão e não melhoram repetindo.
     retry: false,
-    // Enquanto pareia, o status muda por fora (o celular lê o QR).
     refetchInterval: (q) =>
       q.state.data?.status === "pareando" ? 3000 : false,
   });
 
-  /**
-   * As conexões que este usuário alcança. O servidor já as limita
-   * (`escopoLeituraWhatsapp`): o vendedor recebe só a própria, e quem tem
-   * `whatsapp-equipe.visualizar` — supervisor e gerente — recebe as do seu
-   * time. Por isso o seletor abaixo só existe para eles: para o vendedor a
-   * lista tem uma opção, e um select de uma opção é ruído.
-   */
   const { data: conexoes = [] } = useQuery({
     queryKey: ["whatsapp-sessoes"],
     queryFn: () => apiFetch<WhatsappSessao[]>("/whatsapp/sessoes"),
@@ -234,58 +205,68 @@ export default function AtendimentoPage() {
   });
   const podeTrocarConexao = podeAcompanharEquipe && conexoes.length > 1;
 
-  // `null` = ainda não escolheu, e aí vale a conexão do próprio usuário —
-  // atendimento é conversa de um número só, e abrir com as dos colegas
-  // misturadas confunde quem responde. "todas" é escolha explícita.
-  const conexaoAtual = conexaoEscolhida ?? sessao?.vendedorId ?? null;
+  const sessaoAtivaId = conexaoEscolhida ?? sessao?.id ?? null;
+  const sessaoAtiva = conexoes.find((c) => c.id === sessaoAtivaId) ?? sessao ?? null;
 
   const { data: conversas, isLoading: carregandoConversas } = useQuery({
-    queryKey: ["whatsapp-conversas", busca, conexaoAtual, filtroConversas],
+    queryKey: ["whatsapp-conversas", busca, sessaoAtivaId, filtroConversas],
     queryFn: () => {
       const params = new URLSearchParams();
       if (busca) params.set("busca", busca);
       if (filtroConversas === "sem_vinculo") params.set("semVinculo", "true");
-      // O servidor filtra por vendedor, dono da conexão — e continua aplicando
-      // o escopo por cima: o filtro restringe, nunca amplia.
-      if (conexaoAtual) params.set("vendedorId", conexaoAtual);
+      if (sessaoAtivaId) params.set("sessaoId", sessaoAtivaId);
       const qs = params.toString();
       return apiFetch<ListaConversas>(
         `/whatsapp/conversas${qs ? `?${qs}` : ""}`,
       );
     },
-    // Sem saber qual é a conexão do usuário, buscar traria a lista da equipe
-    // por um instante — que é justamente o que este filtro evita.
-    enabled: !!conexaoAtual,
+    enabled: !!sessaoAtivaId,
     refetchInterval: 15000,
   });
 
-  const conversaSelecionada =
-    conversas?.itens.find((c) => c.id === conversaId) ?? null;
+  const { data: conversaAvulsa } = useQuery({
+    queryKey: ["whatsapp-conversa", conversaId],
+    queryFn: () =>
+      apiFetch<WhatsappConversa>(`/whatsapp/conversas/${conversaId}`),
+    enabled: !!conversaId && !conversas?.itens.some((c) => c.id === conversaId),
+  });
 
-  if (carregandoSessao) {
-    return <Skeleton className="h-96 w-full" />;
+  const conversaSelecionada =
+    conversas?.itens.find((c) => c.id === conversaId) ?? conversaAvulsa ?? null;
+
+  if (
+    carregandoSessao ||
+    (sessao && sessao.status !== "conectada" && carregandoConversas)
+  ) {
+    return <Skeleton className="h-96 w-full rounded-xl" />;
   }
 
-  // Sem sessão, a tela explica em vez de mostrar uma lista vazia sem motivo.
-  if (!sessao || sessao.status !== "conectada") {
+  const temConversasAnteriores = (conversas?.total ?? 0) > 0;
+
+  if (!sessao || (sessao.status !== "conectada" && !temConversasAnteriores)) {
     const mensagemSemSessao =
       erroSessao instanceof ApiError
         ? erroSessao.message
         : "Conecte o aparelho para atender seus clientes por aqui. As conversas com clientes ficam gravadas na plataforma.";
     return (
       <>
-        <div data-tour="atendimento-conexao" className="flex flex-col items-center justify-center gap-4 rounded-lg border border-dashed p-12 text-center">
-          <MessageCircle className="size-10 text-muted-foreground" />
+        <div data-tour="atendimento-conexao" className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed bg-card/60 p-12 text-center backdrop-blur-xs">
+          <div className="flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <MessageCircle className="size-7" />
+          </div>
           <div>
-            <p className="font-medium">
+            <p className="font-semibold text-foreground">
               {erroSessao ? "WhatsApp indisponível para este usuário" : "Seu WhatsApp não está conectado"}
             </p>
-            <p className="text-sm text-muted-foreground">
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">
               {mensagemSemSessao}
             </p>
           </div>
           {!erroSessao ? (
-            <Button onClick={() => setConexaoAberta(true)}>
+            <Button
+              className="gap-2 bg-[#00A884] hover:bg-[#008f6f] text-white font-medium shadow-xs"
+              onClick={() => setConexaoAberta(true)}
+            >
               <Plug className="size-4" />
               Conectar WhatsApp
             </Button>
@@ -302,129 +283,90 @@ export default function AtendimentoPage() {
 
   return (
     <>
-      <div data-tour="atendimento-controles" className="mb-3 flex flex-col gap-2 rounded-xl border bg-card/70 p-2 backdrop-blur-md shadow-xs lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-          <Button
-            variant="outline"
-            size="icon"
-            title={listaAberta ? "Ocultar conversas" : "Mostrar conversas"}
-            onClick={alternarLista}
-            className="hidden md:inline-flex shrink-0"
-          >
-            {listaAberta ? (
-              <PanelLeftClose className="size-4" />
-            ) : (
-              <PanelLeftOpen className="size-4" />
-            )}
-          </Button>
-          <div className="relative w-full lg:w-80">
-            <Input
-              placeholder="Buscar por contato, telefone ou cliente"
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              className="w-full rounded-full bg-background/80 text-xs h-9 pl-3 pr-8"
-            />
+      {sessao && sessao.status !== "conectada" ? (
+        <div className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-800 dark:text-amber-300">
+          <div className="flex items-center gap-2">
+            <TriangleAlert className="size-4 shrink-0" />
+            <span>
+              <strong>WhatsApp desconectado:</strong> Exibindo histórico anterior em modo somente leitura.
+            </span>
           </div>
-          {/* Só para quem alcança mais de uma conexão — supervisor e gerente. */}
-          {podeTrocarConexao ? (
-            <Select
-              value={conexaoAtual ?? ""}
-              onValueChange={setConexaoEscolhida}
-            >
-              <SelectTrigger className="w-full sm:w-60 h-9 text-xs bg-background/80">
-                <SelectValue placeholder="Minha conexão" />
-              </SelectTrigger>
-              <SelectContent>
-                {conexoes
-                  .filter((c): c is typeof c & { vendedorId: string } =>
-                    Boolean(c.vendedorId),
-                  )
-                  .map((c) => (
-                    <SelectItem key={c.id} value={c.vendedorId}>
-                      {c.vendedorId === sessao.vendedorId
-                        ? "Minha conexão"
-                        : c.vendedorNome}
-                      {c.numero ? ` · ${telefoneBonito(c.numero)}` : ""}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          ) : null}
-        </div>
-        <div className="flex items-center justify-end gap-2 overflow-x-auto pb-1 lg:pb-0 [scrollbar-width:none]">
           <Button
-            className="shrink-0 h-9 gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium shadow-xs"
-            onClick={() => setNovaConversaAberta(true)}
-          >
-            <MessageSquarePlus className="size-4" />
-            Nova conversa
-          </Button>
-          <Button
-            className="shrink-0 h-9 gap-2 border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-medium"
+            size="sm"
             variant="outline"
+            className="h-7 gap-1.5 border-amber-500/40 hover:bg-amber-500/20 text-xs"
             onClick={() => setConexaoAberta(true)}
           >
-            <span className="relative flex size-2">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
-            </span>
             <Plug className="size-3.5" />
-            {sessao.numero ? telefoneBonito(sessao.numero) : "Conectar WhatsApp"}
+            Reconectar
           </Button>
         </div>
-      </div>
+      ) : null}
+      {/* Moldura principal preenchendo a altura disponível perfeitamente, sem folgas inferiores */}
+      <div className="flex h-[calc(100dvh-5.25rem)] sm:h-[calc(100dvh-5.75rem)] lg:h-[calc(100dvh-6.75rem)] w-full flex-col overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+          {listaAberta || !conversaId ? (
+            <ColunaRedimensionavel
+              larguraPadrao={380}
+              larguraMinima={300}
+              chaveArmazenamento="atendimento-largura-lista"
+              lado="esquerda"
+              className={conversaId ? "hidden md:block" : "block max-md:!w-full"}
+            >
+              <ListaDeConversas
+                carregando={carregandoConversas}
+                conversas={conversas?.itens ?? []}
+                selecionada={conversaId}
+                onSelecionar={abrirConversa}
+                filtro={filtroConversas}
+                onFiltroChange={setFiltroConversas}
+                busca={busca}
+                onBuscaChange={setBusca}
+                onNovaConversa={() => setNovaConversaAberta(true)}
+                onAbrirConexao={() => setConexaoAberta(true)}
+                sessaoNumero={sessaoAtiva?.numero ?? sessao.numero}
+                podeTrocarConexao={podeTrocarConexao}
+                conexaoAtual={sessaoAtivaId}
+                onConexaoChange={setConexaoEscolhida}
+                conexoes={conexoes}
+                sessaoId={sessao.id}
+                onAlternarLista={alternarLista}
+              />
+            </ColunaRedimensionavel>
+          ) : null}
 
-      {/* As laterais recolhem para a conversa ocupar a tela — em monitor de
-          14", três colunas fixas deixam o rolo estreito demais. A largura
-          vira 0 em vez de a coluna sair do grid: assim a transição desliza,
-          como uma cortina, em vez de a conversa pular de tamanho. */}
-      {/* Altura amarrada à viewport, descontando faixa da marca, topbar,
-          respiro do shell e a barra de botões acima: quem rola é o miolo de
-          cada coluna, não a página. `svh` em vez de `vh` porque no celular a
-          barra do navegador entra na conta de `vh` e corta o compositor. */}
-      <div className="flex h-[calc(100svh-20rem)] flex-col overflow-hidden rounded-xl border bg-background shadow-sm sm:h-[calc(100svh-17rem)] md:flex-row lg:h-[calc(100svh-14rem)]">
-        {listaAberta || !conversaId ? (
-          <ColunaRedimensionavel
-            larguraPadrao={320}
-            chaveArmazenamento="atendimento-largura-lista"
-            lado="esquerda"
-            className={conversaId ? "hidden md:block" : "block max-md:!w-full"}
+          <div
+            className={`h-full min-h-0 min-w-0 flex-1 ${
+              conversaId ? "block" : "hidden md:block"
+            }`}
           >
-            <ListaDeConversas
-              carregando={carregandoConversas}
-              conversas={conversas?.itens ?? []}
-              selecionada={conversaId}
-              onSelecionar={abrirConversa}
-              filtro={filtroConversas}
-              onFiltroChange={setFiltroConversas}
+            <Conversa
+              conversaId={conversaId}
+              conversa={conversaSelecionada}
+              clienteId={conversaSelecionada?.clienteId ?? null}
+              somenteConsulta={
+                sessao.status !== "conectada"
+                  ? {
+                      vendedorNome:
+                        conversaSelecionada?.vendedorNome ?? "Aparelho desconectado",
+                      motivo: "desconectado",
+                    }
+                  : conversaSelecionada &&
+                    conversaSelecionada.sessaoId !== sessao.id
+                    ? { vendedorNome: conversaSelecionada.vendedorNome }
+                    : null
+              }
+              onVoltarLista={() => abrirConversa(null)}
+              onAbrirContato={() => abrirPainel("contato")}
+              onAbrirPosicao={() => abrirPainel("posicao")}
+              onAbrirOrcamento={() => abrirPainel("orcamento")}
+              onNovaConversa={() => setNovaConversaAberta(true)}
+              sessaoNumero={sessaoAtiva?.numero ?? sessao.numero}
+              listaAberta={listaAberta}
+              onAlternarLista={alternarLista}
             />
-          </ColunaRedimensionavel>
-        ) : null}
-
-        {/* min-w-0: sem isso o conteúdo do rolo empurra a coluna e o flex
-            estoura a largura da tela. */}
-        <div
-          className={`h-full min-h-0 min-w-0 flex-1 ${
-            conversaId ? "block" : "hidden md:block"
-          }`}
-        >
-          <Conversa
-            conversaId={conversaId}
-            conversa={conversaSelecionada}
-            clienteId={conversaSelecionada?.clienteId ?? null}
-            somenteConsulta={
-              conversaSelecionada &&
-              conversaSelecionada.vendedorId !== sessao.vendedorId
-                ? { vendedorNome: conversaSelecionada.vendedorNome }
-                : null
-            }
-            onVoltarLista={() => abrirConversa(null)}
-            onAbrirContato={() => abrirPainel("contato")}
-            onAbrirPosicao={() => abrirPainel("posicao")}
-            onAbrirOrcamento={() => abrirPainel("orcamento")}
-          />
+          </div>
         </div>
-
       </div>
 
       <Sheet open={painelMovelAberto} onOpenChange={setPainelMovelAberto}>
@@ -482,6 +424,17 @@ function ListaDeConversas({
   onSelecionar,
   filtro,
   onFiltroChange,
+  busca,
+  onBuscaChange,
+  onNovaConversa,
+  onAbrirConexao,
+  sessaoNumero,
+  podeTrocarConexao,
+  conexaoAtual,
+  onConexaoChange,
+  conexoes = [],
+  sessaoId,
+  onAlternarLista,
 }: {
   carregando: boolean;
   conversas: WhatsappConversa[];
@@ -489,7 +442,26 @@ function ListaDeConversas({
   onSelecionar: (id: string) => void;
   filtro: FiltroConversas;
   onFiltroChange: (filtro: FiltroConversas) => void;
+  busca: string;
+  onBuscaChange: (busca: string) => void;
+  onNovaConversa: () => void;
+  onAbrirConexao: () => void;
+  sessaoNumero?: string | null;
+  podeTrocarConexao?: boolean;
+  conexaoAtual?: string | null;
+  onConexaoChange?: (sessaoId: string) => void;
+  conexoes?: WhatsappSessao[];
+  sessaoId?: string | null;
+  onAlternarLista?: () => void;
 }) {
+  const tabsRef = useRef<HTMLDivElement>(null);
+
+  const handleTabsWheel = (e: React.WheelEvent) => {
+    if (tabsRef.current && e.deltaY !== 0) {
+      tabsRef.current.scrollLeft += e.deltaY;
+    }
+  };
+
   if (carregando) return <Skeleton className="h-full w-full" />;
 
   const visiveis = conversas.filter((conversa) => {
@@ -501,116 +473,409 @@ function ListaDeConversas({
 
   const contagemNaoLidas = conversas.reduce((acc, c) => acc + (c.naoLidas > 0 ? 1 : 0), 0);
   const contagemSemVinculo = conversas.reduce((acc, c) => acc + (!c.clienteId ? 1 : 0), 0);
+  const contagemRetornos = conversas.reduce((acc, c) => acc + (c.proximoRetornoEm ? 1 : 0), 0);
+  const contagemAprovacoes = conversas.reduce((acc, c) => acc + (c.orcamentoAguardandoAprovacao ? 1 : 0), 0);
 
   return (
-    <div data-tour="atendimento-conversas" className="flex h-full w-full flex-col border-r bg-card/40">
-      <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b p-2.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden bg-card/60 backdrop-blur-xs">
-        {(
-          [
-            ["todas", "Todas", conversas.length],
-            ["nao_lidas", "Não lidas", contagemNaoLidas],
-            ["sem_vinculo", "Sem vínculo", contagemSemVinculo],
-            ["retornos", "Retornos", 0],
-            ["aprovacoes", "Aprovações", 0],
-          ] as const
-        ).map(([valor, rotulo, qtd]) => (
-          <Button
-            key={valor}
-            type="button"
-            size="sm"
-            variant={filtro === valor ? "secondary" : "ghost"}
-            className={`h-7 shrink-0 rounded-full px-3 text-xs transition-all ${
-              filtro === valor
-                ? "bg-primary/15 text-primary font-semibold shadow-xs"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-            onClick={() => onFiltroChange(valor)}
-          >
-            {rotulo}
-            {qtd > 0 && valor !== "todas" ? (
-              <span className="ml-1 rounded-full bg-primary/20 px-1.5 py-0.2 text-[10px] font-bold">
-                {qtd}
-              </span>
+    <div className="flex h-full w-full flex-col border-r border-border/60 bg-card/40">
+      {/* Cabeçalho superior da lista estilo WhatsApp Web */}
+      <div className="shrink-0 bg-[#F0F2F5] dark:bg-[#202C33] border-b border-border/40">
+        <div className="flex h-14 items-center justify-between px-3.5">
+          <div className="flex items-center gap-2">
+            {onAlternarLista ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                title="Ocultar painel de conversas"
+                onClick={onAlternarLista}
+                className="hidden md:inline-flex size-8 text-muted-foreground hover:text-foreground"
+              >
+                <PanelLeftClose className="size-4" />
+              </Button>
             ) : null}
-          </Button>
-        ))}
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-      {visiveis.length === 0 ? (
-        <p className="p-4 text-sm text-muted-foreground">
-          {filtro === "nao_lidas"
-            ? "Nenhuma conversa não lida."
-            : filtro === "sem_vinculo"
-              ? "Nenhum contato aguardando vínculo."
-              : filtro === "retornos"
-                ? "Nenhum retorno pendente nesta lista."
-                : filtro === "aprovacoes"
-                  ? "Nenhum orçamento aguardando aprovação nesta lista."
-              : "Nenhuma conversa ainda. Elas aparecem aqui quando um cliente escrever."}
-        </p>
-      ) : (
-        visiveis.map((c) => {
-          const nome = nomeDaConversa(c);
-          return (
+            <span className="text-base font-bold text-foreground tracking-tight select-none">
+              WhatsApp
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1">
             <button
-              key={c.id}
-              data-conversa-id={c.id}
-              aria-label={`Abrir conversa com ${nome}`}
               type="button"
-              onClick={() => onSelecionar(c.id)}
-              className={`relative flex w-full gap-3 border-b border-border/40 p-3 text-left transition-all hover:bg-accent/50 ${
-                selecionada === c.id
-                  ? "bg-accent/80 font-medium border-l-4 border-l-primary shadow-xs"
-                  : ""
-              }`}
+              onClick={onAbrirConexao}
+              title="Status da conexão WhatsApp"
+              className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 transition-colors"
             >
-              <div className="relative shrink-0">
-                <div
-                  className={`flex size-10 items-center justify-center rounded-full text-sm font-semibold shadow-xs ${avatarColorClass(nome)}`}
+              <span className="relative flex size-2">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+              </span>
+              <span className="max-w-[100px] truncate">
+                {sessaoNumero ? telefoneBonito(sessaoNumero) : "Conectar"}
+              </span>
+            </button>
+
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              onClick={onNovaConversa}
+              title="Nova conversa"
+              className="size-8 rounded-full text-foreground hover:bg-black/5 dark:hover:bg-white/10"
+            >
+              <MessageSquarePlus className="size-4.5" />
+            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  title="Mais opções"
+                  className="size-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10"
                 >
-                  {c.contato.fotoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={assetUrl(c.contato.fotoUrl) ?? undefined}
-                      alt=""
-                      className="size-full rounded-full object-cover"
-                    />
-                  ) : (
-                    initials(nome)
-                  )}
-                </div>
-                {c.clienteId ? (
-                  <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full bg-emerald-500 border-2 border-background" title="Cliente Vinculado" />
+                  <MoreVertical className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onClick={onNovaConversa} className="gap-2 cursor-pointer">
+                  <MessageSquarePlus className="size-4" />
+                  Nova conversa
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onAbrirConexao} className="gap-2 cursor-pointer">
+                  <Plug className="size-4" />
+                  Conexão WhatsApp
+                </DropdownMenuItem>
+                {podeTrocarConexao && onConexaoChange ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <div className="px-2 py-1.5 text-[11px] font-semibold text-muted-foreground">
+                      Conexões da equipe
+                    </div>
+                    {conexoes
+                      .map((c) => (
+                        <DropdownMenuItem
+                          key={c.id}
+                          onClick={() => onConexaoChange(c.id)}
+                          className={`gap-2 cursor-pointer ${
+                            conexaoAtual === c.id ? "font-semibold text-primary" : ""
+                          }`}
+                        >
+                          <span className="truncate">
+                            {c.id === sessaoId ? "Minha conexão" : c.vendedorNome}
+                            {c.numero ? ` (${telefoneBonito(c.numero)})` : ""}
+                          </span>
+                        </DropdownMenuItem>
+                      ))}
+                  </>
                 ) : null}
-              </div>
-              <div className="min-w-0 flex-1 space-y-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className={`truncate text-sm ${c.naoLidas > 0 ? "font-bold text-foreground" : "font-semibold text-foreground/90"}`}>{nome}</span>
-                  <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-                    {horaDaConversa(c.ultimaMensagemEm)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                    {c.ultimaMensagemPrevia ??
-                      (c.contato.clienteRazaoSocial
-                        ? c.contato.nomeExibicao
-                        : telefoneBonito(c.contato.telefoneNormalizado)) ??
-                      "Sem mensagens gravadas"}
-                  </span>
-                  {c.naoLidas > 0 ? (
-                    <Badge className="h-5 min-w-5 shrink-0 justify-center rounded-full px-1.5 bg-primary font-bold text-primary-foreground animate-pulse">
-                      {c.naoLidas}
-                    </Badge>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+
+        {/* Campo de pesquisa estilo WhatsApp Web */}
+        <div data-tour="atendimento-controles" className="px-3 pb-2 pt-0.5">
+          <div className="relative flex items-center rounded-lg bg-background dark:bg-[#111B21] border border-border/40 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/20 transition-all">
+            <Search className="pointer-events-none absolute left-3 size-4 text-muted-foreground/70" />
+            <Input
+              value={busca}
+              onChange={(e) => onBuscaChange(e.target.value)}
+              placeholder="Pesquisar ou começar uma nova conversa"
+              className="h-8.5 w-full rounded-lg border-0 bg-transparent pl-9 pr-8 text-xs placeholder:text-muted-foreground/70 shadow-none focus-visible:ring-0"
+            />
+            {busca ? (
+              <button
+                type="button"
+                onClick={() => onBuscaChange("")}
+                className="absolute right-2.5 rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                title="Limpar pesquisa"
+              >
+                <X className="size-3.5" />
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        {/* Abas de filtro estilo WhatsApp Web (Pills com rolagem horizontal) */}
+        <div className="relative border-t border-border/30 bg-[#F0F2F5]/80 dark:bg-[#202C33]/80">
+          <div
+            ref={tabsRef}
+            onWheel={handleTabsWheel}
+            className="flex items-center gap-1.5 overflow-x-auto px-3 py-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {(
+              [
+                ["todas", "Tudo", conversas.length],
+                ["nao_lidas", "Não lidas", contagemNaoLidas],
+                ["sem_vinculo", "Sem vínculo", contagemSemVinculo],
+                ["retornos", "Retornos", contagemRetornos],
+                ["aprovacoes", "Aprovações", contagemAprovacoes],
+              ] as const
+            ).map(([valor, rotulo, qtd]) => {
+              const ativo = filtro === valor;
+              return (
+                <button
+                  key={valor}
+                  type="button"
+                  onClick={() => onFiltroChange(valor)}
+                  className={`h-7 shrink-0 rounded-full px-3 text-xs font-medium transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                    ativo
+                      ? "bg-[#E9EDEF] dark:bg-[#374248] text-[#111B21] dark:text-[#E9EDEF] font-semibold shadow-2xs"
+                      : "border border-border/50 bg-transparent text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 hover:text-foreground"
+                  }`}
+                >
+                  <span>{rotulo}</span>
+                  {qtd > 0 && valor !== "todas" ? (
+                    <span
+                      className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                        ativo
+                          ? "bg-emerald-600 text-white"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {qtd}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Lista de conversas com scroll */}
+      <div data-tour="atendimento-conversas" className="min-h-0 flex-1 overflow-y-auto divide-y divide-border/20">
+        {visiveis.length === 0 ? (
+          <ListaVazia
+            filtro={filtro}
+            busca={busca}
+            onLimparBusca={() => onBuscaChange("")}
+            onResetFiltro={() => onFiltroChange("todas")}
+            onNovaConversa={onNovaConversa}
+          />
+        ) : (
+          visiveis.map((c) => {
+            const nome = nomeDaConversa(c);
+            const selecionado = selecionada === c.id;
+            return (
+              <button
+                key={c.id}
+                data-conversa-id={c.id}
+                aria-label={`Abrir conversa com ${nome}`}
+                type="button"
+                onClick={() => onSelecionar(c.id)}
+                className={`relative flex w-full gap-3 p-3 text-left transition-colors cursor-pointer ${
+                  selecionado
+                    ? "bg-[#F0F2F5] dark:bg-[#2A3942] border-l-4 border-l-[#00A884]"
+                    : "hover:bg-[#F5F6F6] dark:hover:bg-[#202C33]"
+                }`}
+              >
+                <div className="relative shrink-0">
+                  <div
+                    className={`flex size-11 items-center justify-center rounded-full text-sm font-semibold shadow-2xs ${avatarColorClass(nome)}`}
+                  >
+                    {c.contato.fotoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={assetUrl(c.contato.fotoUrl) ?? undefined}
+                        alt=""
+                        className="size-full rounded-full object-cover"
+                      />
+                    ) : (
+                      initials(nome)
+                    )}
+                  </div>
+                  {c.clienteId ? (
+                    <span
+                      className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full bg-[#25D366] border-2 border-background"
+                      title="Cliente Vinculado ao ERP"
+                    />
                   ) : null}
                 </div>
-                <SinaisDoCliente conversa={c} />
-              </div>
-            </button>
-          );
-        })
-      )}
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className={`truncate text-sm ${
+                        c.naoLidas > 0 ? "font-bold text-foreground" : "font-medium text-foreground/90"
+                      }`}
+                    >
+                      {nome}
+                    </span>
+                    <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                      {horaDaConversa(c.ultimaMensagemEm)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground flex items-center gap-1">
+                      {c.ultimaMensagemPrevia ? (
+                        <span>{c.ultimaMensagemPrevia}</span>
+                      ) : (
+                        <span>
+                          {c.contato.clienteRazaoSocial
+                            ? c.contato.nomeExibicao
+                            : telefoneBonito(c.contato.telefoneNormalizado) ?? "Sem mensagens gravadas"}
+                        </span>
+                      )}
+                    </span>
+                    {c.naoLidas > 0 ? (
+                      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[#25D366] text-[10px] font-bold text-white shadow-2xs">
+                        {c.naoLidas}
+                      </span>
+                    ) : null}
+                  </div>
+                  <SinaisDoCliente conversa={c} />
+                </div>
+              </button>
+            );
+          })
+        )}
       </div>
+    </div>
+  );
+}
+
+function ListaVazia({
+  filtro,
+  busca,
+  onLimparBusca,
+  onResetFiltro,
+  onNovaConversa,
+}: {
+  filtro: FiltroConversas;
+  busca: string;
+  onLimparBusca: () => void;
+  onResetFiltro: () => void;
+  onNovaConversa: () => void;
+}) {
+  if (busca) {
+    return (
+      <div className="flex h-full min-h-[260px] flex-col items-center justify-center p-6 text-center select-none">
+        <div className="flex size-12 items-center justify-center rounded-full bg-muted/60 text-muted-foreground mb-3">
+          <Search className="size-6 text-muted-foreground/70" />
+        </div>
+        <p className="text-sm font-medium text-foreground">Nenhum resultado</p>
+        <p className="mt-1 text-xs text-muted-foreground max-w-[220px]">
+          Nenhum contato encontrado para &ldquo;{busca}&rdquo;.
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onLimparBusca}
+          className="mt-3.5 h-8 text-xs"
+        >
+          Limpar busca
+        </Button>
+      </div>
+    );
+  }
+
+  if (filtro === "nao_lidas") {
+    return (
+      <div className="flex h-full min-h-[260px] flex-col items-center justify-center p-6 text-center select-none">
+        <div className="flex size-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mb-3">
+          <CheckCircle2 className="size-6" />
+        </div>
+        <p className="text-sm font-semibold text-foreground">Tudo em dia!</p>
+        <p className="mt-1 text-xs text-muted-foreground max-w-[220px]">
+          Nenhuma mensagem não lida no momento.
+        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onResetFiltro}
+          className="mt-3 h-8 text-xs text-[#00A884]"
+        >
+          Ver todas as conversas
+        </Button>
+      </div>
+    );
+  }
+
+  if (filtro === "sem_vinculo") {
+    return (
+      <div className="flex h-full min-h-[260px] flex-col items-center justify-center p-6 text-center select-none">
+        <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary mb-3">
+          <Link2 className="size-6" />
+        </div>
+        <p className="text-sm font-semibold text-foreground">Todos vinculados</p>
+        <p className="mt-1 text-xs text-muted-foreground max-w-[220px]">
+          Todos os contatos atendidos já estão vinculados a clientes cadastrados.
+        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onResetFiltro}
+          className="mt-3 h-8 text-xs text-[#00A884]"
+        >
+          Ver todas as conversas
+        </Button>
+      </div>
+    );
+  }
+
+  if (filtro === "retornos") {
+    return (
+      <div className="flex h-full min-h-[260px] flex-col items-center justify-center p-6 text-center select-none">
+        <div className="flex size-12 items-center justify-center rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 mb-3">
+          <CalendarCheck2 className="size-6" />
+        </div>
+        <p className="text-sm font-semibold text-foreground">Sem retornos agendados</p>
+        <p className="mt-1 text-xs text-muted-foreground max-w-[220px]">
+          Nenhum contato com retorno comercial pendente nesta lista.
+        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onResetFiltro}
+          className="mt-3 h-8 text-xs text-[#00A884]"
+        >
+          Ver todas as conversas
+        </Button>
+      </div>
+    );
+  }
+
+  if (filtro === "aprovacoes") {
+    return (
+      <div className="flex h-full min-h-[260px] flex-col items-center justify-center p-6 text-center select-none">
+        <div className="flex size-12 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 mb-3">
+          <BriefcaseBusiness className="size-6" />
+        </div>
+        <p className="text-sm font-semibold text-foreground">Sem aprovações</p>
+        <p className="mt-1 text-xs text-muted-foreground max-w-[220px]">
+          Nenhum orçamento aguardando aprovação nesta lista.
+        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onResetFiltro}
+          className="mt-3 h-8 text-xs text-[#00A884]"
+        >
+          Ver todas as conversas
+        </Button>
+      </div>
+    );
+  }
+
+  // Estado padrão: Nenhuma conversa ainda
+  return (
+    <div className="flex h-full min-h-[260px] flex-col items-center justify-center p-6 text-center select-none">
+      <div className="flex size-12 items-center justify-center rounded-full bg-emerald-500/10 text-[#00A884] mb-3">
+        <MessageCircle className="size-6" />
+      </div>
+      <p className="text-sm font-semibold text-foreground">Nenhuma conversa ainda</p>
+      <p className="mt-1 text-xs text-muted-foreground max-w-[230px] leading-relaxed">
+        Elas aparecerão aqui assim que um cliente escrever ou ao iniciar um atendimento.
+      </p>
+      <Button
+        size="sm"
+        onClick={onNovaConversa}
+        className="mt-4 h-8 gap-1.5 text-xs font-medium bg-[#00A884] hover:bg-[#008f6f] text-white shadow-xs"
+      >
+        <MessageSquarePlus className="size-3.5" />
+        Nova conversa
+      </Button>
     </div>
   );
 }
@@ -638,17 +903,6 @@ function horaDaConversa(valor: string | null) {
   return data.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
-/**
- * Os sinais do cliente na linha da conversa: há quanto tempo não compra, como
- * está a cobrança e se outro vendedor também fala com este contato.
- *
- * São ícones, e não texto, porque a linha da lista tem espaço para uma frase
- * só — o nome do contato. O `title` de cada um diz o número por extenso,
- * que é o que o vendedor confere antes de agir.
- *
- * Só aparecem para contato vinculado a cliente: sem vínculo, o servidor manda
- * tudo nulo, e não há posição nem cobrança de que falar.
- */
 function SinaisDoCliente({ conversa }: { conversa: WhatsappConversa }) {
   const {
     diasSemComprar,
@@ -667,8 +921,6 @@ function SinaisDoCliente({ conversa }: { conversa: WhatsappConversa }) {
     return null;
   }
 
-  // Vermelho vencido, azul vencendo em até 7 dias, verde em dia — a mesma
-  // leitura de semáforo usada no resto do sistema.
   const corTitulos =
     situacaoTitulos === "vencido"
       ? "text-destructive"
@@ -683,48 +935,104 @@ function SinaisDoCliente({ conversa }: { conversa: WhatsappConversa }) {
         : "Títulos em dia";
 
   return (
-    <div className="flex items-center gap-2 text-xs">
+    <div className="flex items-center gap-2 text-xs pt-0.5">
       {diasSemComprar != null ? (
         <span
-          className="flex items-center gap-1 text-muted-foreground"
+          className="flex items-center gap-1 text-muted-foreground text-[11px]"
           title={
             diasSemComprar === 0
               ? "Comprou hoje"
               : `Última compra há ${diasSemComprar} dia(s)`
           }
         >
-          <ShoppingCart className="size-3.5" />
+          <ShoppingCart className="size-3" />
           {diasSemComprar}d
         </span>
       ) : null}
 
       {situacaoTitulos ? (
         <span className={corTitulos} title={tituloTitulos}>
-          <DollarSign className="size-3.5" />
+          <DollarSign className="size-3" />
         </span>
       ) : null}
 
       {outrosAtendentes.length > 0 ? (
         <span
-          className="flex items-center gap-1 text-amber-600 dark:text-amber-400"
+          className="flex items-center gap-1 text-amber-600 dark:text-amber-400 text-[11px]"
           title={`Este contato também é atendido por: ${outrosAtendentes.join(", ")}`}
         >
-          <Users className="size-3.5" />
+          <Users className="size-3" />
           {outrosAtendentes.length}
         </span>
       ) : null}
 
       {proximoRetornoEm ? (
-        <span className="rounded-full bg-sky-500/10 px-1.5 py-0.5 text-sky-700 dark:text-sky-300">
+        <span className="rounded-full bg-sky-500/10 px-1.5 py-0.2 text-[10px] text-sky-700 dark:text-sky-300 font-medium">
           Retorno {new Date(proximoRetornoEm).toLocaleDateString("pt-BR")}
         </span>
       ) : null}
 
       {orcamentoAguardandoAprovacao ? (
-        <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:text-amber-300">
+        <span className="rounded-full bg-amber-500/10 px-1.5 py-0.2 text-[10px] text-amber-700 dark:text-amber-300 font-medium">
           Aprovação
         </span>
       ) : null}
+    </div>
+  );
+}
+
+function ConversaVazia({
+  onNovaConversa,
+  sessaoNumero,
+}: {
+  onNovaConversa: () => void;
+  sessaoNumero?: string | null;
+}) {
+  return (
+    <div
+      data-tour="atendimento-mensagens"
+      className="flex h-full min-h-0 flex-col items-center justify-center bg-[#F0F2F5]/70 dark:bg-[#111B21] p-8 text-center select-none"
+    >
+      <div className="relative mb-6">
+        <div className="flex size-20 items-center justify-center rounded-full bg-emerald-500/10 text-[#00A884] ring-8 ring-emerald-500/5">
+          <MessageCircle className="size-10" />
+        </div>
+        <span className="absolute bottom-0 right-0 flex size-6 items-center justify-center rounded-full bg-[#00A884] text-white shadow-xs">
+          <Plug className="size-3" />
+        </span>
+      </div>
+
+      <h3 className="text-xl font-bold tracking-tight text-foreground">
+        WhatsApp Web
+      </h3>
+      <p className="mt-2 max-w-md text-sm text-muted-foreground leading-relaxed">
+        Envie e receba mensagens diretamente pela plataforma comercial. As conversas com clientes vinculados ficam integradas ao ERP e disponíveis para toda a equipe.
+      </p>
+
+      {sessaoNumero ? (
+        <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+          <span className="relative flex size-2">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+          </span>
+          <span>WhatsApp conectado: {telefoneBonito(sessaoNumero)}</span>
+        </div>
+      ) : null}
+
+      <div className="mt-6 flex items-center justify-center gap-3">
+        <Button
+          onClick={onNovaConversa}
+          className="gap-2 bg-[#00A884] hover:bg-[#008f6f] text-white font-medium shadow-xs"
+        >
+          <MessageSquarePlus className="size-4" />
+          Nova conversa
+        </Button>
+      </div>
+
+      <div className="mt-14 flex items-center gap-1.5 text-xs text-muted-foreground/75">
+        <Lock className="size-3.5 text-muted-foreground" />
+        <span>Mensagens sincronizadas com o WhatsApp e gravadas com histórico na plataforma.</span>
+      </div>
     </div>
   );
 }
@@ -738,22 +1046,23 @@ function Conversa({
   onAbrirContato,
   onAbrirPosicao,
   onAbrirOrcamento,
+  onNovaConversa,
+  sessaoNumero,
+  listaAberta,
+  onAlternarLista,
 }: {
   conversaId: string | null;
   conversa: WhatsappConversa | null;
-  /** Null = contato sem vínculo: as ferramentas do sistema não aparecem. */
   clienteId: string | null;
-  /**
-   * Conversa de outra conexão — supervisor ou gerente olhando a do time.
-   * Quem responde é o dono do aparelho: a API recusa o envio
-   * (`garantirDono`), e aqui o campo de mensagem sai de cena em vez de deixar
-   * digitar para tomar erro depois.
-   */
-  somenteConsulta: { vendedorNome: string } | null;
+  somenteConsulta: { vendedorNome: string; motivo?: "desconectado" | "outro" } | null;
   onVoltarLista: () => void;
   onAbrirContato: () => void;
   onAbrirPosicao: () => void;
   onAbrirOrcamento: () => void;
+  onNovaConversa: () => void;
+  sessaoNumero?: string | null;
+  listaAberta?: boolean;
+  onAlternarLista?: () => void;
 }) {
   const queryClient = useQueryClient();
   const [respostaPendente, setRespostaPendente] = useState<{
@@ -779,25 +1088,15 @@ function Conversa({
     refetchInterval: 15000,
   });
 
-  // Conversa abre no fim, como em qualquer mensageiro — e desce a cada
-  // mensagem nova em vez de deixar o vendedor rolando atrás dela.
-  //
-  // `nearest` rola só o container do rolo. Com `end`, o navegador também
-  // ajusta os ancestrais para trazer o elemento à vista, e a página inteira
-  // se mexia a cada mensagem.
   useEffect(() => {
     fimDoRolo.current?.scrollIntoView({ block: "nearest" });
   }, [mensagens?.length, conversaId]);
 
-  // Abrir a conversa é o que a marca como lida — aqui e no celular do
-  // vendedor, que recebe o recibo de leitura.
   useEffect(() => {
     if (!conversaId) return;
     void apiFetch(`/whatsapp/conversas/${conversaId}/lida`, { method: "POST" })
       .then(() => {
         void queryClient.invalidateQueries({ queryKey: ["whatsapp-conversas"] });
-        // O sino conta as mesmas não lidas: sem isto o badge só cairia na
-        // próxima passagem dele, até um minuto depois de a conversa ser lida.
         void queryClient.invalidateQueries({ queryKey: ["notificacoes"] });
       })
       .catch(() => undefined);
@@ -805,9 +1104,10 @@ function Conversa({
 
   if (!conversaId) {
     return (
-      <div className="flex h-full items-center justify-center rounded-lg border text-sm text-muted-foreground">
-        Escolha uma conversa
-      </div>
+      <ConversaVazia
+        onNovaConversa={onNovaConversa}
+        sessaoNumero={sessaoNumero}
+      />
     );
   }
 
@@ -829,7 +1129,8 @@ function Conversa({
 
   return (
     <div data-tour="atendimento-mensagens" className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
-      <div className="flex h-16 shrink-0 items-center justify-between gap-3 border-b bg-card/80 backdrop-blur-md px-4 shadow-2xs">
+      {/* Cabeçalho da conversa estilo WhatsApp Web */}
+      <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/40 bg-[#F0F2F5] dark:bg-[#202C33] px-3.5">
         <div className="flex min-w-0 items-center gap-3">
           <Button
             type="button"
@@ -837,21 +1138,36 @@ function Conversa({
             size="icon"
             onClick={onVoltarLista}
             title="Voltar para conversas"
-            className="-ml-2 md:hidden"
+            className="-ml-1 md:hidden size-8"
           >
             <ArrowLeft className="size-5" />
           </Button>
+
+          {!listaAberta && onAlternarLista ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={onAlternarLista}
+              title="Mostrar lista de conversas"
+              className="hidden md:inline-flex size-8 text-muted-foreground hover:text-foreground"
+            >
+              <PanelLeftOpen className="size-4" />
+            </Button>
+          ) : null}
+
           <button
             type="button"
             onClick={onAbrirContato}
-            title="Abrir dados e opções do contato"
-            className="flex min-w-0 items-center gap-3 text-left group hover:opacity-85 transition-opacity cursor-pointer"
+            title="Ver dados do contato"
+            className="flex min-w-0 items-center gap-3 text-left group hover:opacity-90 transition-opacity cursor-pointer"
           >
             <div
-              className={`relative flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold shadow-xs transition-transform group-hover:scale-105 ${avatarColorClass(conversa ? nomeDaConversa(conversa) : "Contato")}`}
+              className={`relative flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold shadow-2xs ${avatarColorClass(
+                conversa ? nomeDaConversa(conversa) : "Contato",
+              )}`}
             >
               {conversa?.contato.fotoUrl ? (
-                // Foto vem do perfil do WhatsApp e é copiada para o storage local.
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={assetUrl(conversa.contato.fotoUrl) ?? undefined}
@@ -880,34 +1196,61 @@ function Conversa({
               <p className="truncate text-xs text-muted-foreground flex items-center gap-1.5">
                 <span>WhatsApp {telefoneBonito(conversa?.contato.telefoneNormalizado ?? null)}</span>
                 {conversa?.vendedorNome
-                  ? ` · Atendimento de ${conversa.vendedorNome}`
+                  ? ` · Atendente: ${conversa.vendedorNome}`
                   : ""}
               </p>
             </div>
           </button>
         </div>
+
         <div data-tour="atendimento-acoes" className="flex shrink-0 items-center gap-1.5">
           {clienteId ? (
             <>
-              <Button variant="outline" size="sm" onClick={onAbrirPosicao} className="h-8 text-xs gap-1.5 shadow-2xs">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onAbrirPosicao}
+                className="h-8 text-xs gap-1.5 bg-background/80 hover:bg-background shadow-2xs"
+              >
                 <UserRound className="size-3.5 text-primary" />
-                Posição 360°
+                <span className="hidden sm:inline">Posição 360°</span>
               </Button>
-              <Button variant="outline" size="sm" onClick={onAbrirOrcamento} className="h-8 text-xs gap-1.5 shadow-2xs">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onAbrirOrcamento}
+                className="h-8 text-xs gap-1.5 bg-background/80 hover:bg-background shadow-2xs"
+              >
                 <BriefcaseBusiness className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                Orçamento
+                <span className="hidden sm:inline">Orçamento</span>
               </Button>
             </>
           ) : (
-            <Button variant="default" size="sm" onClick={onAbrirContato} className="h-8 text-xs gap-1.5 shadow-2xs">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={onAbrirContato}
+              className="h-8 text-xs gap-1.5 bg-[#00A884] hover:bg-[#008f6f] text-white shadow-2xs font-medium"
+            >
               <Link2 className="size-3.5" />
-              Vincular Cliente
+              <span>Vincular Cliente</span>
             </Button>
           )}
+
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onAbrirContato}
+            title="Dados do contato"
+            className="size-8 text-muted-foreground hover:text-foreground"
+          >
+            <MoreVertical className="size-4" />
+          </Button>
         </div>
       </div>
-      {/* min-h-0 é o que faz a barra de rolagem ficar aqui dentro */}
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-muted/20 via-background to-muted/30 p-4">
+
+      {/* Rolo de mensagens com papel de parede característico do WhatsApp */}
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#EFEAE2] dark:bg-[#0B141A] bg-[radial-gradient(#0000000a_1px,transparent_1px)] dark:bg-[radial-gradient(#ffffff0a_1px,transparent_1px)] [background-size:16px_16px] p-4">
         {linhaDoTempo.map((entrada) =>
           entrada.tipo === "mensagem" ? (
             <MensagemBolha
@@ -938,23 +1281,24 @@ function Conversa({
         <div ref={fimDoRolo} />
       </div>
 
-      {/* shrink-0: o compositor tem altura própria e não deve ser espremido
-          quando o rolo cresce. */}
+      {/* Compositor da mensagem */}
       {somenteConsulta ? (
-        <div className="shrink-0 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-          <p className="font-medium text-amber-700 dark:text-amber-400">
-            Somente consulta
+        <div className="shrink-0 border-t border-amber-500/30 bg-amber-500/10 p-3 text-xs">
+          <p className="font-semibold text-amber-800 dark:text-amber-300">
+            {somenteConsulta.motivo === "desconectado"
+              ? "Aparelho desconectado (somente leitura)"
+              : "Modo somente consulta"}
           </p>
           <p className="text-muted-foreground">
-            Esta conversa é da conexão de {somenteConsulta.vendedorNome}. Quem
-            responde é o dono do aparelho — volte para a sua conexão para
-            atender.
+            {somenteConsulta.motivo === "desconectado"
+              ? "Seu WhatsApp está desconectado. O histórico anterior pode ser consultado normalmente, mas para responder é necessário reconectar o aparelho."
+              : `Esta conversa pertence à conexão de ${somenteConsulta.vendedorNome}. As respostas só podem ser enviadas pelo dono do aparelho.`}
           </p>
         </div>
       ) : (
-        <div data-tour="atendimento-composer" className="flex shrink-0 items-end">
+        <div data-tour="atendimento-composer" className="flex shrink-0 items-end bg-[#F0F2F5] dark:bg-[#202C33]">
           {clienteId ? (
-            <div className="pb-3 pl-2">
+            <div className="pb-2.5 pl-2">
               <AcoesCliente
                 conversaId={conversaId}
                 onAbrirPosicao={onAbrirPosicao}
@@ -978,6 +1322,7 @@ function Conversa({
     </div>
   );
 }
+
 
 function EventoComercial({ evento }: { evento: WhatsappEventoAtendimento }) {
   const titulos: Record<string, string> = {

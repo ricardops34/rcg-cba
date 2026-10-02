@@ -115,9 +115,15 @@ export function AcoesCliente({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button type="button" variant="ghost" size="sm" title="Ferramentas comerciais">
-            <Wrench className="size-5" />
-            <span className="hidden 2xl:inline">Ferramentas</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-9 rounded-full text-muted-foreground hover:text-foreground"
+            title="Ferramentas comerciais"
+            aria-label="Ferramentas comerciais"
+          >
+            <Wrench className="size-4.5" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" side="top" className="w-64">

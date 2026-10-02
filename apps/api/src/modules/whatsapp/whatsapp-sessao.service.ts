@@ -495,7 +495,7 @@ export class WhatsappSessaoService {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const sessao = await tx.whatsappSessao.findFirst({
         where: { id: sessaoId },
-        select: { id: true },
+        select: { id: true, vendedorId: true, numero: true },
       });
       // Sessão apagada enquanto o worker ainda a mantinha viva: nada a gravar,
       // e estourar aqui só encheria o log do worker.
@@ -513,6 +513,53 @@ export class WhatsappSessaoService {
           ...(status === 'conectada' ? { ultimaConexao: new Date() } : {}),
         },
       });
+
+      // Registro de períodos de conexão para auditoria e histórico permanente
+      const numeroEfetivo = dados.numero || sessao.numero;
+      if (status === 'conectada' && numeroEfetivo) {
+        // Encerra qualquer período aberto anterior com número diferente
+        await tx.whatsappSessaoPeriodo.updateMany({
+          where: {
+            empresaId,
+            sessaoId,
+            desconectadoEm: null,
+            numero: { not: numeroEfetivo },
+          },
+          data: { desconectadoEm: new Date() },
+        });
+
+        // Garante que existe período aberto para este número
+        const periodoAberto = await tx.whatsappSessaoPeriodo.findFirst({
+          where: {
+            empresaId,
+            sessaoId,
+            numero: numeroEfetivo,
+            desconectadoEm: null,
+          },
+        });
+        if (!periodoAberto) {
+          await tx.whatsappSessaoPeriodo.create({
+            data: {
+              empresaId,
+              sessaoId,
+              vendedorId: sessao.vendedorId,
+              numero: numeroEfetivo,
+              conectadoEm: new Date(),
+            },
+          });
+        }
+      } else if (status === 'desconectada') {
+        // Encerra períodos abertos desta sessão
+        await tx.whatsappSessaoPeriodo.updateMany({
+          where: {
+            empresaId,
+            sessaoId,
+            desconectadoEm: null,
+          },
+          data: { desconectadoEm: new Date() },
+        });
+      }
+
       return { gravado: true };
     });
   }
@@ -543,8 +590,18 @@ export class WhatsappSessaoService {
         );
       });
 
-    const atualizada = await this.prisma.withTenant(empresaId, (tx) =>
-      tx.whatsappSessao.update({
+    const atualizada = await this.prisma.withTenant(empresaId, async (tx) => {
+      // Fecha período de conexão aberto
+      await tx.whatsappSessaoPeriodo.updateMany({
+        where: {
+          empresaId,
+          sessaoId: alvo.sessaoId,
+          desconectadoEm: null,
+        },
+        data: { desconectadoEm: new Date() },
+      });
+
+      return tx.whatsappSessao.update({
         where: { id: alvo.sessaoId },
         data: {
           status: 'desconectada',
@@ -558,8 +615,8 @@ export class WhatsappSessaoService {
           ultimoErro: null,
           updatedBy: user.id,
         },
-      }),
-    );
+      });
+    });
     return this.paraLeitura(atualizada, alvo.vendedorNome);
   }
 
@@ -740,69 +797,22 @@ export class WhatsappSessaoService {
    * Não há volta e não há exportação antes: quem chama já confirmou na tela.
    */
   async limparConversas(
-    empresaId: string,
-    user: AuthenticatedUser,
-    sessaoId: string,
+    _empresaId: string,
+    _user: AuthenticatedUser,
+    _sessaoId: string,
   ) {
-    const sessao = await this.prisma.withTenant(empresaId, (tx) =>
-      tx.whatsappSessao.findFirst({
-        where: { id: sessaoId },
-        include: { vendedor: { select: { nome: true } } },
-      }),
+    throw new BadRequestException(
+      'O histórico de conversas é permanente e não pode ser apagado.',
     );
-    if (!sessao) throw new NotFoundException('Instância não encontrada');
-
-    return this.prisma.withTenant(empresaId, async (tx) => {
-      const conversas = await tx.whatsappConversa.findMany({
-        where: { sessaoId: sessao.id },
-        select: { id: true },
-      });
-      if (conversas.length === 0) {
-        return {
-          conversas: 0,
-          mensagens: 0,
-          vendedor: sessao.vendedor?.nome ?? 'Empresa',
-        };
-      }
-      const ids = conversas.map((c) => c.id);
-
-      // Contado antes de apagar: depois do delete não há o que contar, e o
-      // número é o que a tela mostra de volta para quem confirmou.
-      const mensagens = await tx.whatsappMensagem.count({
-        where: { conversaId: { in: ids } },
-      });
-
-      // `referenciaId` guarda o id da conversa; sem FK, o cascade não alcança.
-      await tx.notificacao.deleteMany({ where: { referenciaId: { in: ids } } });
-      await tx.whatsappConversa.deleteMany({ where: { id: { in: ids } } });
-
-      await tx.whatsappSessao.update({
-        where: { id: sessao.id },
-        data: { updatedBy: user.id },
-      });
-
-      return {
-        conversas: conversas.length,
-        mensagens,
-        vendedor: sessao.vendedor?.nome ?? 'Empresa',
-      };
-    });
   }
 
   /**
-   * Apaga a instância de vez — a linha, não só a conexão.
+   * Encerra e remove a instância técnica.
    *
-   * Só a desconectada: apagar uma sessão viva deixaria o worker com um cliente
-   * pendurado sem dono deste lado. E só a que não tem histórico: conversa é
-   * registro da empresa, e o banco protege isso com `ON DELETE RESTRICT`. Em
-   * vez de deixar o erro do Postgres chegar cru na tela, o caminho é explícito
-   * — limpe as conversas primeiro, decidindo isso de propósito.
-   *
-   * O que fica do lado do provedor depende do transporte: no zapo, o material
-   * técnico da sessão no store (chaves Signal, agenda) — o `DELETE` encerra o
-   * cliente, mas a biblioteca não expõe expurgo, e não se afirma aqui o que
-   * não se fez. Na Evolution GO, a instância é deslogada e apagada no gateway,
-   * o que aqui sim descarta a credencial.
+   * Se a sessão tiver conversas registradas, o histórico é PERMANENTE: a linha
+   * não é apagada do banco (para manter a integridade das mensagens e períodos),
+   * mas a conexão externa no provedor é removida e as credenciais são limpas.
+   * Se não houver conversas, a linha pode ser excluída de vez.
    */
   async excluirInstancia(
     empresaId: string,
@@ -826,25 +836,58 @@ export class WhatsappSessaoService {
     const conversas = await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappConversa.count({ where: { sessaoId: sessao.id } }),
     );
-    if (conversas > 0) {
-      throw new BadRequestException(
-        `Esta instância tem ${conversas} ${conversas === 1 ? 'conversa' : 'conversas'} no histórico. ` +
-          'Limpe as conversas antes de excluir.',
-      );
-    }
 
     // O provedor pode já não conhecer esta sessão (worker reiniciado,
-    // instância nunca criada): o encerramento é melhor-esforço, e a linha some
-    // deste lado de qualquer forma.
+    // instância nunca criada): o encerramento é melhor-esforço.
     await this.provedores
       .removerInstancia(empresaId, sessao.id)
       .catch(() => undefined);
 
-    await this.prisma.withTenant(empresaId, (tx) =>
-      tx.whatsappSessao.delete({ where: { id: sessao.id } }),
-    );
+    if (conversas > 0) {
+      // O histórico é permanente: arquiva a sessão, limpa credenciais mas mantém a linha
+      await this.prisma.withTenant(empresaId, async (tx) => {
+        await tx.whatsappSessaoPeriodo.updateMany({
+          where: { empresaId, sessaoId: sessao.id, desconectadoEm: null },
+          data: { desconectadoEm: new Date() },
+        });
+
+        await tx.whatsappSessao.update({
+          where: { id: sessao.id },
+          data: {
+            status: 'desconectada',
+            numero: null,
+            jid: null,
+            credencialCifrada: null,
+            instanciaExterna: null,
+            instanciaId: null,
+            instanciaTokenCifrado: null,
+            webhookSegredoCifrado: null,
+            ultimoErro: null,
+            updatedBy: user.id,
+          },
+        });
+      });
+
+      return {
+        excluida: false,
+        arquivada: true,
+        vendedor: sessao.vendedor?.nome ?? 'Empresa',
+        por: user.id,
+        mensagem:
+          'A instância possui conversas no histórico permanente. A conexão foi encerrada e o histórico foi preservado.',
+      };
+    }
+
+    await this.prisma.withTenant(empresaId, async (tx) => {
+      await tx.whatsappSessaoPeriodo.deleteMany({
+        where: { sessaoId: sessao.id },
+      });
+      await tx.whatsappSessao.delete({ where: { id: sessao.id } });
+    });
+
     return {
       excluida: true,
+      arquivada: false,
       vendedor: sessao.vendedor?.nome ?? 'Empresa',
       por: user.id,
     };

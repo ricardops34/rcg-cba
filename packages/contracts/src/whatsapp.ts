@@ -521,10 +521,45 @@ export const whatsappConversaQuerySchema = z.object({
     .describe("Só as conversas de contato ainda não ligado a cliente"),
   // Presente só para supervisor/gerente; vendedor sempre vê a própria carteira.
   vendedorId: z.string().uuid().optional(),
+  // Filtro operacional estrito por sessão conectada (aparelho específico).
+  sessaoId: z.string().uuid().optional(),
   pagina: z.coerce.number().int().min(1).default(1),
   tamanho: z.coerce.number().int().min(1).max(100).default(30),
 });
 export type WhatsappConversaQuery = z.infer<typeof whatsappConversaQuerySchema>;
+
+export const whatsappHistoricoConversaQuerySchema = z.object({
+  busca: z.string().trim().optional(),
+  vendedorId: z.string().uuid().optional(),
+  numero: z.string().trim().optional(),
+  clienteId: z.string().uuid().optional(),
+  de: z.string().trim().optional(),
+  ate: z.string().trim().optional(),
+  pagina: z.coerce.number().int().min(1).default(1),
+  tamanho: z.coerce.number().int().min(1).max(100).default(30),
+});
+export type WhatsappHistoricoConversaQuery = z.infer<
+  typeof whatsappHistoricoConversaQuerySchema
+>;
+
+export const whatsappHistoricoFiltrosSchema = z.object({
+  vendedores: z.array(
+    z.object({
+      id: z.string().uuid(),
+      nome: z.string(),
+      ativo: z.boolean(),
+    }),
+  ),
+  numeros: z.array(
+    z.object({
+      numero: z.string(),
+      vendedorNome: z.string().nullable().optional(),
+    }),
+  ),
+});
+export type WhatsappHistoricoFiltros = z.infer<
+  typeof whatsappHistoricoFiltrosSchema
+>;
 
 // --------------------------------------------------------------------------
 // Agenda do aparelho
@@ -637,6 +672,7 @@ export const whatsappMensagemSchema = z.object({
   respondeuA: z.string().nullable(),
   /** No máximo duas (uma de cada lado): reagir de novo substitui. */
   reacoes: z.array(whatsappReacaoSchema).default([]),
+  numeroSessao: z.string().nullable().optional(),
   criadaEm: z.string().datetime(),
 });
 export type WhatsappMensagem = z.infer<typeof whatsappMensagemSchema>;

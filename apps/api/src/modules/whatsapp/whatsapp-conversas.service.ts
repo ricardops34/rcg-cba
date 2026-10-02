@@ -19,6 +19,7 @@ import {
   PrismaService,
   type TenantTx,
 } from '../../common/prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappSessaoService } from './whatsapp-sessao.service';
 import { WhatsappProviderService } from './providers/whatsapp-provider.service';
@@ -33,9 +34,12 @@ import {
   combinarFiltroVendedor,
   resolverEscopoVendedores,
 } from '../../common/escopo/escopo-vendedores';
+import { escopoHistoricoWhatsapp } from './escopo-whatsapp';
 import { inicioDoDia } from '../titulos-receber/titulo-receber-status';
 import type {
   WhatsappConversaQuery,
+  WhatsappHistoricoConversaQuery,
+  WhatsappHistoricoFiltros,
   WhatsappSituacaoTitulos,
   WhatsappStatusEntrega,
   WhatsappEnviar,
@@ -97,6 +101,7 @@ export class WhatsappConversasService {
     empresaId: string,
     user: AuthenticatedUser,
     vendedorIdQuery?: string,
+    sessaoIdQuery?: string,
   ) {
     const escopo = await this.sessoes.escopoLeitura(tx, empresaId, user);
 
@@ -108,16 +113,16 @@ export class WhatsappConversasService {
     };
 
     if (escopo === null) {
-      // Sem restrição (admin): vê o aparelho de todos e o institucional
-      // inteiro, menos o que está com a IA.
-      return vendedorIdQuery
-        ? {
-            OR: [
-              { sessao: { vendedorId: vendedorIdQuery } },
-              institucional,
-            ],
-          }
-        : { OR: [{ sessao: { vendedorId: { not: null } } }, institucional] };
+      // Sem restrição (admin/diretor):
+      // Quando um filtro operacional específico for pedido (sessão ou vendedor),
+      // restringe estritamente a ele sem vazar outras conexões nem institucional.
+      if (sessaoIdQuery) {
+        return { sessaoId: sessaoIdQuery };
+      }
+      if (vendedorIdQuery) {
+        return { sessao: { vendedorId: vendedorIdQuery } };
+      }
+      return { OR: [{ sessao: { vendedorId: { not: null } } }, institucional] };
     }
 
     const permitidos = vendedorIdQuery
@@ -126,18 +131,34 @@ export class WhatsappConversasService {
         : []
       : escopo;
 
+    if (sessaoIdQuery) {
+      return {
+        sessaoId: sessaoIdQuery,
+        OR: [
+          { sessao: { vendedorId: { in: permitidos } } },
+          institucional,
+        ],
+      };
+    }
+
     return {
       OR: [
         { sessao: { vendedorId: { in: permitidos } } },
-        {
-          ...institucional,
-          OR: [
-            // Direcionada a mim (ou a alguém do meu time).
-            { atendenteVendedorId: { in: permitidos } },
-            // Fila sem dono: quem atende enxerga, e o primeiro assume.
-            ...(permitidos.length > 0 ? [{ atendenteVendedorId: null }] : []),
-          ],
-        },
+        ...(vendedorIdQuery
+          ? []
+          : [
+              {
+                ...institucional,
+                OR: [
+                  // Direcionada a mim (ou a alguém do meu time).
+                  { atendenteVendedorId: { in: permitidos } },
+                  // Fila sem dono: quem atende enxerga, e o primeiro assume.
+                  ...(permitidos.length > 0
+                    ? [{ atendenteVendedorId: null }]
+                    : []),
+                ],
+              },
+            ]),
       ],
     };
   }
@@ -153,46 +174,59 @@ export class WhatsappConversasService {
         empresaId,
         user,
         query.vendedorId,
+        query.sessaoId,
       );
 
-      const where = {
-        ...filtro,
-        arquivada: query.arquivadas,
-        // Conversa que não é com uma pessoa não é atendimento e não tem como
-        // receber mensagem (ver `jidDePessoa`). O filtro existe porque a
-        // listagem da agenda deixou passar `status@broadcast` antes de ser
-        // corrigida, e a conversa criada naquela época continua no banco.
-        contato: {
-          NOT: [
-            { jid: { endsWith: '@broadcast' } },
-            { jid: { endsWith: '@newsletter' } },
-            { jid: { endsWith: '@g.us' } },
-          ],
+      // Usamos AND explícito para garantir que filtro de escopo/sessão NUNCA
+      // seja sobrescrito pelo OR da busca de texto.
+      const andConditions: any[] = [
+        filtro,
+        { arquivada: query.arquivadas },
+        {
+          contato: {
+            NOT: [
+              { jid: { endsWith: '@broadcast' } },
+              { jid: { endsWith: '@newsletter' } },
+              { jid: { endsWith: '@g.us' } },
+            ],
+          },
         },
-        ...(query.semVinculo ? { clienteId: null } : {}),
-        ...(query.busca
-          ? {
-              OR: [
-                {
-                  contato: {
-                    nomeExibicao: {
-                      contains: query.busca,
-                      mode: 'insensitive' as const,
-                    },
-                  },
+      ];
+
+      if (query.sessaoId) {
+        andConditions.push({ sessaoId: query.sessaoId });
+      }
+
+      if (query.semVinculo) {
+        andConditions.push({ clienteId: null });
+      }
+
+      if (query.busca) {
+        andConditions.push({
+          OR: [
+            {
+              contato: {
+                nomeExibicao: {
+                  contains: query.busca,
+                  mode: 'insensitive' as const,
                 },
-                { contato: { telefoneNormalizado: { contains: query.busca } } },
-                {
-                  cliente: {
-                    razaoSocial: {
-                      contains: query.busca,
-                      mode: 'insensitive' as const,
-                    },
-                  },
+              },
+            },
+            { contato: { telefoneNormalizado: { contains: query.busca } } },
+            {
+              cliente: {
+                razaoSocial: {
+                  contains: query.busca,
+                  mode: 'insensitive' as const,
                 },
-              ],
-            }
-          : {}),
+              },
+            },
+          ],
+        });
+      }
+
+      const where = {
+        AND: andConditions,
       };
 
       const [total, linhas] = await Promise.all([
@@ -293,6 +327,94 @@ export class WhatsappConversasService {
             : false,
           outrosAtendentes: outrosAtendentes.get(c.id) ?? [],
         })),
+      };
+    });
+  }
+
+  async obter(empresaId: string, user: AuthenticatedUser, id: string) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      await this.conversaNoEscopo(tx, empresaId, user, id);
+      const c = await tx.whatsappConversa.findUnique({
+        where: { id },
+        include: {
+          contato: true,
+          cliente: {
+            select: {
+              razaoSocial: true,
+              codigoErp: true,
+              telefone: true,
+              telefone2: true,
+              celular: true,
+            },
+          },
+          sessao: {
+            select: {
+              vendedorId: true,
+              numero: true,
+              vendedor: { select: { nome: true } },
+            },
+          },
+          mensagens: {
+            orderBy: { criadaEm: 'desc' },
+            take: 1,
+            select: { conteudo: true, tipo: true },
+          },
+        },
+      });
+      if (!c) throw new NotFoundException('Conversa não encontrada');
+
+      const sinais = await this.sinaisDoCliente(
+        tx,
+        user,
+        c.clienteId ? [c.clienteId] : [],
+      );
+
+      return {
+        id: c.id,
+        empresaId: c.empresaId,
+        sessaoId: c.sessaoId,
+        contatoId: c.contatoId,
+        contato: {
+          id: c.contato.id,
+          nomeExibicao: c.contato.nomeExibicao,
+          telefoneNormalizado: c.contato.telefoneNormalizado,
+          fotoUrl: c.contato.fotoUrl,
+          clienteId: c.contato.clienteId,
+          clienteContatoId: c.contato.clienteContatoId,
+          clienteRazaoSocial: c.cliente?.razaoSocial ?? null,
+          clienteCodigoErp: c.cliente?.codigoErp ?? null,
+          clienteTelefones: [
+            ...new Set(
+              [
+                c.cliente?.telefone,
+                c.cliente?.telefone2,
+                c.cliente?.celular,
+              ].filter((telefone): telefone is string => !!telefone),
+            ),
+          ],
+          ignorado: c.contato.ignorado,
+        },
+        clienteId: c.clienteId,
+        ultimaMensagemEm: c.ultimaMensagemEm,
+        ultimaMensagemPrevia: this.previa(c.mensagens[0]),
+        naoLidas: c.naoLidas,
+        arquivada: c.arquivada,
+        vendedorId: c.sessao.vendedorId,
+        vendedorNome: c.sessao.vendedor?.nome ?? 'Empresa',
+        sessaoNumero: c.sessao.numero,
+        diasSemComprar: c.clienteId
+          ? (sinais.diasSemComprar.get(c.clienteId) ?? null)
+          : null,
+        situacaoTitulos: c.clienteId
+          ? (sinais.situacaoTitulos.get(c.clienteId) ?? null)
+          : null,
+        proximoRetornoEm: c.clienteId
+          ? (sinais.proximoRetornoEm.get(c.clienteId) ?? null)
+          : null,
+        orcamentoAguardandoAprovacao: c.clienteId
+          ? sinais.aprovacaoPendente.has(c.clienteId)
+          : false,
+        outrosAtendentes: [],
       };
     });
   }
@@ -570,11 +692,64 @@ export class WhatsappConversasService {
       include: {
         contato: true,
         sessao: {
-          select: { id: true, vendedorId: true, status: true, tipo: true },
+          select: {
+            id: true,
+            vendedorId: true,
+            status: true,
+            tipo: true,
+            numero: true,
+            vendedor: { select: { nome: true } },
+          },
         },
       },
     });
     // 404 e não 403: fora do escopo, a conversa não deve nem revelar que existe.
+    if (!conversa) throw new NotFoundException('Conversa não encontrada');
+    return conversa;
+  }
+
+  /** Carrega a conversa garantindo que está no escopo gerencial (incluindo vendedores inativos). */
+  private async conversaNoEscopoGerencial(
+    tx: TenantTx,
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+  ) {
+    const escopo = await escopoHistoricoWhatsapp(tx, empresaId, user);
+    if (escopo !== null && escopo.length === 0) {
+      throw new NotFoundException('Conversa não encontrada');
+    }
+
+    const conversa = await tx.whatsappConversa.findFirst({
+      where: {
+        id: conversaId,
+        empresaId,
+        ...(escopo !== null ? { sessao: { vendedorId: { in: escopo } } } : {}),
+      },
+      include: {
+        contato: true,
+        cliente: {
+          select: {
+            razaoSocial: true,
+            codigoErp: true,
+            telefone: true,
+            telefone2: true,
+            celular: true,
+          },
+        },
+        sessao: {
+          select: {
+            id: true,
+            vendedorId: true,
+            status: true,
+            tipo: true,
+            numero: true,
+            vendedor: { select: { id: true, nome: true, deletedAt: true } },
+          },
+        },
+      },
+    });
+
     if (!conversa) throw new NotFoundException('Conversa não encontrada');
     return conversa;
   }
@@ -867,6 +1042,7 @@ export class WhatsappConversasService {
 
       return linhas.reverse().map((mensagem) => ({
         ...mensagem,
+        numeroSessao: mensagem.numeroSessao ?? conversa.sessao.numero,
         enviadaPorNome: mensagem.enviadaPor
           ? nomeUsuario.get(mensagem.enviadaPor) ?? null
           : null,
@@ -877,6 +1053,363 @@ export class WhatsappConversasService {
               ? nomeUsuario.get(mensagem.enviadaPor) ?? 'Atendente'
               : 'Atendente',
       }));
+    });
+  }
+
+  /**
+   * Leitura de mensagens no Histórico Gerencial (somente leitura, com escopo estendido para inativos).
+   */
+  async mensagensGerencial(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    query: WhatsappMensagemQuery,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const conversa = await this.conversaNoEscopoGerencial(
+        tx,
+        empresaId,
+        user,
+        conversaId,
+      );
+
+      const linhas = await tx.whatsappMensagem.findMany({
+        where: {
+          conversaId,
+          ...(query.antesDe
+            ? { criadaEm: { lt: new Date(query.antesDe) } }
+            : {}),
+        },
+        include: {
+          reacoes: { select: { emoji: true, deQuem: true } },
+        },
+        orderBy: { criadaEm: 'desc' },
+        take: query.tamanho,
+      });
+
+      const usuarioIds = [
+        ...new Set(
+          linhas
+            .map((mensagem) => mensagem.enviadaPor)
+            .filter((id): id is string => !!id),
+        ),
+      ];
+      const usuarios = usuarioIds.length
+        ? await tx.usuario.findMany({
+            where: { id: { in: usuarioIds } },
+            select: { id: true, nome: true },
+          })
+        : [];
+      const nomeUsuario = new Map(
+        usuarios.map((usuario) => [usuario.id, usuario.nome]),
+      );
+      const nomeContato =
+        conversa.contato.nomeExibicao ??
+        conversa.contato.telefoneNormalizado ??
+        'Contato';
+
+      return linhas.reverse().map((mensagem) => ({
+        ...mensagem,
+        numeroSessao: mensagem.numeroSessao ?? conversa.sessao.numero,
+        enviadaPorNome: mensagem.enviadaPor
+          ? nomeUsuario.get(mensagem.enviadaPor) ?? null
+          : null,
+        autorNome:
+          mensagem.direcao === 'entrada'
+            ? nomeContato
+            : mensagem.enviadaPor
+              ? nomeUsuario.get(mensagem.enviadaPor) ??
+                conversa.sessao.vendedor?.nome ??
+                'Atendente'
+              : conversa.sessao.vendedor?.nome ?? 'Atendente',
+      }));
+    });
+  }
+
+  /**
+   * Opções de filtros para a rotina Gerencial de Histórico do WhatsApp.
+   * Lista vendedores sob a responsabilidade do usuário (ativos e inativos)
+   * e números de telefone registrados na empresa.
+   */
+  async listarGerencialFiltros(
+    empresaId: string,
+    user: AuthenticatedUser,
+  ): Promise<WhatsappHistoricoFiltros> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await escopoHistoricoWhatsapp(tx, empresaId, user);
+      if (escopo !== null && escopo.length === 0) {
+        return { vendedores: [], numeros: [] };
+      }
+
+      // Vendedores do escopo (ativos e inativos)
+      const vendedoresDb = await tx.vendedor.findMany({
+        where: {
+          empresaId,
+          ...(escopo !== null ? { id: { in: escopo } } : {}),
+        },
+        select: {
+          id: true,
+          nome: true,
+          deletedAt: true,
+        },
+        orderBy: { nome: 'asc' },
+      });
+
+      // Períodos e sessões para obter números utilizados
+      const [periodos, sessoes] = await Promise.all([
+        tx.whatsappSessaoPeriodo.findMany({
+          where: {
+            empresaId,
+            ...(escopo !== null ? { vendedorId: { in: escopo } } : {}),
+          },
+          select: {
+            numero: true,
+            vendedor: { select: { nome: true } },
+          },
+          orderBy: { conectadoEm: 'desc' },
+        }),
+        tx.whatsappSessao.findMany({
+          where: {
+            empresaId,
+            numero: { not: null },
+            ...(escopo !== null ? { vendedorId: { in: escopo } } : {}),
+          },
+          select: {
+            numero: true,
+            vendedor: { select: { nome: true } },
+          },
+        }),
+      ]);
+
+      const mapaNumeros = new Map<string, string | null>();
+      for (const p of periodos) {
+        if (!mapaNumeros.has(p.numero)) {
+          mapaNumeros.set(p.numero, p.vendedor?.nome ?? null);
+        }
+      }
+      for (const s of sessoes) {
+        if (s.numero && !mapaNumeros.has(s.numero)) {
+          mapaNumeros.set(s.numero, s.vendedor?.nome ?? null);
+        }
+      }
+
+      const numeros = Array.from(mapaNumeros.entries())
+        .map(([numero, vendedorNome]) => ({
+          numero,
+          vendedorNome,
+        }))
+        .sort((a, b) => a.numero.localeCompare(b.numero));
+
+      return {
+        vendedores: vendedoresDb.map((v) => ({
+          id: v.id,
+          nome: v.nome,
+          ativo: v.deletedAt === null,
+        })),
+        numeros,
+      };
+    });
+  }
+
+  /**
+   * Lista conversas para a auditoria gerencial do histórico do WhatsApp.
+   * Suporta filtros por vendedor (inclusive inativo), número, cliente, data e busca de texto.
+   */
+  async listarGerencialConversas(
+    empresaId: string,
+    user: AuthenticatedUser,
+    query: WhatsappHistoricoConversaQuery,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await escopoHistoricoWhatsapp(tx, empresaId, user);
+      if (escopo !== null && escopo.length === 0) {
+        return {
+          total: 0,
+          pagina: query.pagina,
+          tamanho: query.tamanho,
+          itens: [],
+        };
+      }
+
+      const andConditions: Prisma.WhatsappConversaWhereInput[] = [
+        { empresaId },
+      ];
+
+      // Escopo hierárquico + filtro específico de vendedor
+      if (query.vendedorId) {
+        if (escopo !== null && !escopo.includes(query.vendedorId)) {
+          return {
+            total: 0,
+            pagina: query.pagina,
+            tamanho: query.tamanho,
+            itens: [],
+          };
+        }
+        andConditions.push({
+          sessao: { vendedorId: query.vendedorId },
+        });
+      } else if (escopo !== null) {
+        andConditions.push({
+          sessao: { vendedorId: { in: escopo } },
+        });
+      }
+
+      // Filtro por cliente
+      if (query.clienteId) {
+        andConditions.push({ clienteId: query.clienteId });
+      }
+
+      // Filtro por número
+      if (query.numero) {
+        const num = query.numero.trim();
+        andConditions.push({
+          OR: [
+            { sessao: { numero: num } },
+            { mensagens: { some: { numeroSessao: num } } },
+            { sessao: { periodos: { some: { numero: num } } } },
+          ],
+        });
+      }
+
+      // Filtro por período de datas (de / ate)
+      if (query.de || query.ate) {
+        const dataCond: Prisma.DateTimeNullableFilter = {};
+        if (query.de) {
+          const deDate = new Date(query.de);
+          if (!isNaN(deDate.getTime())) {
+            dataCond.gte = deDate;
+          }
+        }
+        if (query.ate) {
+          const ateDate = new Date(query.ate);
+          if (!isNaN(ateDate.getTime())) {
+            if (query.ate.length === 10) {
+              ateDate.setHours(23, 59, 59, 999);
+            }
+            dataCond.lte = ateDate;
+          }
+        }
+        andConditions.push({
+          ultimaMensagemEm: dataCond,
+        });
+      }
+
+      // Busca por texto
+      if (query.busca) {
+        const b = query.busca.trim();
+        const digitos = b.replace(/\D/g, '');
+        andConditions.push({
+          OR: [
+            { contato: { nomeExibicao: { contains: b, mode: 'insensitive' } } },
+            ...(digitos ? [{ contato: { telefoneNormalizado: { contains: digitos } } }] : []),
+            { cliente: { razaoSocial: { contains: b, mode: 'insensitive' } } },
+            { cliente: { nomeFantasia: { contains: b, mode: 'insensitive' } } },
+            ...(digitos ? [{ cliente: { cnpjCpf: { contains: digitos } } }] : []),
+            { sessao: { vendedor: { nome: { contains: b, mode: 'insensitive' } } } },
+            { mensagens: { some: { conteudo: { contains: b, mode: 'insensitive' } } } },
+          ],
+        });
+      }
+
+      const where: Prisma.WhatsappConversaWhereInput = {
+        AND: andConditions,
+      };
+
+      const [total, linhas] = await Promise.all([
+        tx.whatsappConversa.count({ where }),
+        tx.whatsappConversa.findMany({
+          where,
+          include: {
+            contato: true,
+            cliente: {
+              select: {
+                razaoSocial: true,
+                codigoErp: true,
+                telefone: true,
+                telefone2: true,
+                celular: true,
+              },
+            },
+            sessao: {
+              select: {
+                vendedorId: true,
+                numero: true,
+                vendedor: { select: { id: true, nome: true, deletedAt: true } },
+              },
+            },
+            mensagens: {
+              orderBy: { criadaEm: 'desc' },
+              take: 1,
+              select: { conteudo: true, tipo: true, criadaEm: true, numeroSessao: true },
+            },
+          },
+          orderBy: [{ ultimaMensagemEm: 'desc' }, { updatedAt: 'desc' }],
+          skip: (query.pagina - 1) * query.tamanho,
+          take: query.tamanho,
+        }),
+      ]);
+
+      const sinais = await this.sinaisDoCliente(
+        tx,
+        user,
+        linhas.map((c) => c.clienteId).filter((id): id is string => !!id),
+      );
+
+      return {
+        total,
+        pagina: query.pagina,
+        tamanho: query.tamanho,
+        itens: linhas.map((c) => ({
+          id: c.id,
+          empresaId: c.empresaId,
+          sessaoId: c.sessaoId,
+          contato: {
+            id: c.contato.id,
+            jid: c.contato.jid,
+            nomeExibicao: c.contato.nomeExibicao,
+            telefoneNormalizado: c.contato.telefoneNormalizado,
+            tipo: c.contato.tipo,
+            email: c.contato.email,
+            fotoUrl: c.contato.fotoUrl,
+            clienteId: c.contato.clienteId,
+            clienteContatoId: c.contato.clienteContatoId,
+            clienteRazaoSocial: c.cliente?.razaoSocial ?? null,
+            clienteCodigoErp: c.cliente?.codigoErp ?? null,
+            clienteTelefones: [
+              ...new Set(
+                [
+                  c.cliente?.telefone,
+                  c.cliente?.telefone2,
+                  c.cliente?.celular,
+                ].filter((tel): tel is string => !!tel),
+              ),
+            ],
+            ignorado: c.contato.ignorado,
+          },
+          clienteId: c.clienteId,
+          ultimaMensagemEm: c.ultimaMensagemEm,
+          ultimaMensagemPrevia: this.previa(c.mensagens[0]),
+          naoLidas: c.naoLidas,
+          arquivada: c.arquivada,
+          vendedorId: c.sessao.vendedorId,
+          vendedorNome: c.sessao.vendedor?.nome ?? 'Empresa',
+          vendedorAtivo: c.sessao.vendedor ? c.sessao.vendedor.deletedAt === null : true,
+          sessaoNumero: c.mensagens[0]?.numeroSessao ?? c.sessao.numero,
+          diasSemComprar: c.clienteId
+            ? (sinais.diasSemComprar.get(c.clienteId) ?? null)
+            : null,
+          situacaoTitulos: c.clienteId
+            ? (sinais.situacaoTitulos.get(c.clienteId) ?? null)
+            : null,
+          proximoRetornoEm: c.clienteId
+            ? (sinais.proximoRetornoEm.get(c.clienteId) ?? null)
+            : null,
+          orcamentoAguardandoAprovacao: c.clienteId
+            ? sinais.aprovacaoPendente.has(c.clienteId)
+            : false,
+          outrosAtendentes: [],
+        })),
+      };
     });
   }
 
@@ -976,6 +1509,7 @@ export class WhatsappConversasService {
           respondeuA: input.respondeuA ?? null,
           enviadaPor: user.id,
           statusEntrega: 'enviada',
+          numeroSessao: conversa.sessao.numero,
         },
       });
 
@@ -1060,6 +1594,7 @@ export class WhatsappConversasService {
           conteudo,
           enviadaPor: user.id,
           statusEntrega: 'enviada',
+          numeroSessao: conversa.sessao.numero,
         },
       });
 
@@ -1185,6 +1720,7 @@ export class WhatsappConversasService {
           arquivoNome: arquivo.nome,
           enviadaPor: user.id,
           statusEntrega: 'enviada',
+          numeroSessao: conversa.sessao.numero,
         },
       });
 
@@ -1679,6 +2215,43 @@ export class WhatsappConversasService {
   }
 
   /**
+   * Busca e salva a foto de perfil do contato em segundo plano quando disponível,
+   * sem bloquear o recebimento de mensagens nem transações ativas.
+   */
+  private buscarFotoContatoAssincrona(
+    empresaId: string,
+    sessaoId: string,
+    contatoId: string,
+    jid: string,
+  ) {
+    setImmediate(async () => {
+      try {
+        const foto = await this.provedores.obterFotoContato(
+          empresaId,
+          sessaoId,
+          jid,
+        );
+        if (!foto?.conteudoBase64 || !foto.mime.startsWith('image/')) return;
+        const arquivo = `${randomUUID()}${extensaoPorMime(foto.mime)}`;
+        await mkdir(WHATSAPP_DIR, { recursive: true });
+        await writeFile(
+          join(WHATSAPP_DIR, arquivo),
+          Buffer.from(foto.conteudoBase64, 'base64'),
+        );
+        const fotoUrl = whatsappPublicPath(arquivo);
+        await this.prisma.withTenant(empresaId, (tx) =>
+          tx.whatsappContato.update({
+            where: { id: contatoId },
+            data: { fotoUrl },
+          }),
+        );
+      } catch {
+        // Falha tolerada para contatos sem foto ou gateway indisponível
+      }
+    });
+  }
+
+  /**
    * Abre (ou reabre) a conversa com um contato — o "começar conversa" da tela.
    *
    * Sem isto o vendedor só conseguia responder quem escrevesse primeiro, que
@@ -2010,7 +2583,7 @@ export class WhatsappConversasService {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const sessao = await tx.whatsappSessao.findFirst({
         where: { id: entrada.sessaoId },
-        select: { id: true, vendedorId: true, tipo: true },
+        select: { id: true, vendedorId: true, tipo: true, numero: true },
       });
       if (!sessao) return { gravada: false, motivo: 'sessao-desconhecida' };
 
@@ -2120,46 +2693,8 @@ export class WhatsappConversasService {
         contato.telefoneNormalizado ??
         contato.jid.split('@')[0];
 
-      // O descarte por falta de vínculo é do **aparelho do vendedor**, e só
-      // dele. Ali chega mensagem de quem quiser — família, amigo, engano — e
-      // guardar esse texto no servidor da empresa seria ler conversa alheia.
-      //
-      // No número institucional a situação se inverte: quem escreve procurou
-      // deliberadamente o WhatsApp de atendimento da empresa, e o desconhecido
-      // é justamente o caso principal — é ele que a triagem precisa entender
-      // para saber a quem entregar. Descartar ali deixaria a IA com um "alguém
-      // escreveu algo" e nada mais.
-      if (!contato.clienteId && sessao.tipo !== 'empresa') {
-        // A conversa existe para o vendedor poder vinculá-la; o conteúdo, não.
-        //
-        // O log existe porque este descarte é indistinguível, de fora, de uma
-        // mensagem que se perdeu: a conversa sobe na lista, o texto não
-        // aparece, e nada em lugar nenhum dizia o motivo. Custou uma
-        // investigação inteira (ver docs/planos/whatsapp-vendedor.md).
-        this.logger.log(
-          `Mensagem descartada por falta de vínculo: conversa ${conversa.id}, contato ${contato.jid}`,
-        );
-        // Notifica mesmo assim: o **fato** de o contato ter escrito não é
-        // conteúdo, e é o que faz o vendedor abrir a conversa e vinculá-la ao
-        // cliente. Sem aviso, mensagem de contato não vinculado não chega a
-        // lugar nenhum — foi exatamente o relato de "mandei e não chegou".
-        // Nada a avisar quando a mensagem é do próprio vendedor.
-        if (destinatario && !minha) {
-          await registrarNotificacao(tx, {
-            empresaId,
-            usuarioId: destinatario,
-            tipo: 'whatsapp_mensagem',
-            titulo: nomeNoAviso,
-            rota: `/comercial/atendimento?conversa=${conversa.id}`,
-            referenciaId: conversa.id,
-            acumular: true,
-          });
-        }
-        return {
-          gravada: false,
-          motivo: 'sem-vinculo',
-          conversaId: conversa.id,
-        };
+      if (!contato.fotoUrl) {
+        this.buscarFotoContatoAssincrona(empresaId, sessao.id, contato.id, contato.jid);
       }
 
       // Se esta mensagem já tinha sido gravada, é reenvio da reconexão: o
@@ -2198,6 +2733,7 @@ export class WhatsappConversasService {
           // ainda não passou por aqui: entra como `enviada`, e o evento
           // `receipt` a leva a entregue/lida como qualquer outra.
           statusEntrega: minha ? 'enviada' : 'entregue',
+          numeroSessao: sessao.numero,
         },
         update: {},
         select: { id: true, arquivoUrl: true },

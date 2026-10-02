@@ -36,12 +36,14 @@ export function MensagemBolha({
   citada,
   onResponder,
   conversaId,
+  somenteLeitura,
 }: {
   mensagem: WhatsappMensagem;
   autorNome?: string | null;
   citada: WhatsappMensagem | null;
-  onResponder: (m: WhatsappMensagem) => void;
+  onResponder?: (m: WhatsappMensagem) => void;
   conversaId: string;
+  somenteLeitura?: boolean;
 }) {
   const minha = mensagem.direcao === "saida";
   // Os arquivos são servidos pela API, que está em outra origem que o front.
@@ -51,7 +53,7 @@ export function MensagemBolha({
 
   return (
     <div className={`group flex items-end gap-1 ${minha ? "justify-end" : ""}`}>
-      {minha ? (
+      {minha && !somenteLeitura && onResponder ? (
         <BarraDeAcoes
           mensagem={mensagem}
           conversaId={conversaId}
@@ -61,18 +63,18 @@ export function MensagemBolha({
       ) : null}
 
       <div
-        className={`max-w-[75%] px-3.5 py-2.5 text-sm shadow-xs transition-all ${
+        className={`max-w-[75%] px-3.5 py-2 text-sm shadow-xs transition-all ${
           minha
-            ? "rounded-2xl rounded-tr-xs bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 text-white shadow-blue-950/20"
-            : "rounded-2xl rounded-tl-xs bg-card border border-border/70 text-card-foreground"
+            ? "rounded-2xl rounded-tr-xs bg-[#D9FDD3] dark:bg-[#005C4B] text-[#111B21] dark:text-[#E9EDEF] shadow-black/5"
+            : "rounded-2xl rounded-tl-xs bg-white dark:bg-[#202C33] text-[#111B21] dark:text-[#E9EDEF] shadow-black/5 border border-border/40 dark:border-transparent"
         }`}
       >
         {citada ? (
           <div
-            className={`mb-1.5 border-l-2 pl-2 text-xs py-0.5 ${
+            className={`mb-1.5 border-l-3 pl-2.5 text-xs py-1 rounded-r ${
               minha
-                ? "border-white/40 text-white/90 bg-white/10 rounded-r"
-                : "border-primary text-muted-foreground bg-accent/40 rounded-r"
+                ? "border-emerald-700 bg-black/5 dark:bg-black/25 text-[#111B21] dark:text-[#E9EDEF]"
+                : "border-emerald-600 bg-muted/60 dark:bg-black/20 text-[#111B21] dark:text-[#E9EDEF]"
             }`}
           >
             <p className="truncate font-medium">
@@ -84,7 +86,7 @@ export function MensagemBolha({
         {autorNome ? (
           <p
             className={`mb-1 text-[11px] font-semibold tracking-wide ${
-              minha ? "text-blue-100" : "text-primary"
+              minha ? "text-emerald-700 dark:text-emerald-300" : "text-emerald-600 dark:text-emerald-400"
             }`}
           >
             {autorNome}
@@ -93,7 +95,7 @@ export function MensagemBolha({
 
         <Conteudo mensagem={mensagem} url={url} />
 
-        <div className="flex items-center justify-end gap-1 pt-1 text-[10px] opacity-70">
+        <div className="flex items-center justify-end gap-1 pt-1 text-[10px] text-[#667781] dark:text-[#8696A0]">
           {new Date(mensagem.criadaEm).toLocaleString("pt-BR", {
             day: "2-digit",
             month: "2-digit",
@@ -120,7 +122,7 @@ export function MensagemBolha({
         ) : null}
       </div>
 
-      {!minha ? (
+      {!minha && !somenteLeitura && onResponder ? (
         <BarraDeAcoes
           mensagem={mensagem}
           conversaId={conversaId}
@@ -241,10 +243,10 @@ function ResumoComercial({ texto }: { texto: string }) {
 
 /** ✓ enviada, ✓✓ entregue, ✓✓ azul lida — a convenção que todo mundo já lê. */
 function Recibo({ status }: { status: WhatsappMensagem["statusEntrega"] }) {
-  if (status === "erro") return <span className="text-destructive">!</span>;
-  if (status === "lida") return <CheckCheck className="size-3 text-sky-300" />;
-  if (status === "entregue") return <CheckCheck className="size-3" />;
-  return <Check className="size-3" />;
+  if (status === "erro") return <span className="text-destructive font-bold">!</span>;
+  if (status === "lida") return <CheckCheck className="size-3.5 text-[#53BDEB]" />;
+  if (status === "entregue") return <CheckCheck className="size-3.5 text-[#8696A0]" />;
+  return <Check className="size-3.5 text-[#8696A0]" />;
 }
 
 /**

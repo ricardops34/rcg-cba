@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cable, CheckCircle2, Eraser, History, MoreHorizontal, RefreshCw, Smartphone, Trash2, TriangleAlert } from "lucide-react";
+import { Cable, CheckCircle2, History, MoreHorizontal, RefreshCw, Smartphone, Trash2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { type WhatsappConfig, type WhatsappSessao } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
@@ -598,7 +598,6 @@ function AtendimentoIaConfig({ config }: { config: WhatsappConfig }) {
 function Instancias({ config }: { config: WhatsappConfig }) {
   const queryClient = useQueryClient();
   const [remover, setRemover] = useState<WhatsappSessao | null>(null);
-  const [limpar, setLimpar] = useState<WhatsappSessao | null>(null);
   const [apagar, setApagar] = useState<WhatsappSessao | null>(null);
   const { data = [], isLoading } = useQuery({ queryKey: ["whatsapp-sessoes"], queryFn: () => apiFetch<WhatsappSessao[]>("/whatsapp/sessoes"), refetchInterval: 10_000 });
   const atualizar = () => { void queryClient.invalidateQueries({ queryKey: ["whatsapp-sessoes"] }); void queryClient.invalidateQueries({ queryKey: ["whatsapp-sessao"] }); };
@@ -611,16 +610,6 @@ function Instancias({ config }: { config: WhatsappConfig }) {
     mutationFn: (id: string) => apiFetch(`/whatsapp/config/sessoes/${id}`, { method: "DELETE" }),
     onSuccess: () => { setRemover(null); atualizar(); toast.success("Conexão removida"); },
     onError: (error) => toast.error(mensagemErro(error, "Falha ao remover")),
-  });
-  const limparConversas = useMutation({
-    mutationFn: (id: string) => apiFetch<{ conversas: number; mensagens: number }>(`/whatsapp/config/sessoes/${id}/conversas`, { method: "DELETE" }),
-    onSuccess: (resultado) => {
-      setLimpar(null);
-      atualizar();
-      void queryClient.invalidateQueries({ queryKey: ["whatsapp-conversas"] });
-      toast.success(resultado.conversas === 0 ? "Esta instância já não tinha conversas" : `${resultado.conversas} conversa(s) e ${resultado.mensagens} mensagem(ns) apagadas`);
-    },
-    onError: (error) => toast.error(mensagemErro(error, "Falha ao limpar conversas")),
   });
   const apagarInstancia = useMutation({
     mutationFn: (id: string) => apiFetch(`/whatsapp/config/sessoes/${id}/instancia`, { method: "DELETE" }),
@@ -705,9 +694,6 @@ function Instancias({ config }: { config: WhatsappConfig }) {
                           <DropdownMenuItem variant="destructive" onSelect={() => setRemover(sessao)}>
                             <Trash2 /> Remover conexão
                           </DropdownMenuItem>
-                          <DropdownMenuItem variant="destructive" onSelect={() => setLimpar(sessao)}>
-                            <Eraser /> Limpar conversas
-                          </DropdownMenuItem>
                           {sessao.status === "desconectada" ? (
                             <DropdownMenuItem variant="destructive" onSelect={() => setApagar(sessao)}>
                               <Trash2 /> Excluir instância
@@ -736,23 +722,6 @@ function Instancias({ config }: { config: WhatsappConfig }) {
             <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
             <Button variant="destructive" disabled={excluir.isPending} onClick={() => remover && excluir.mutate(remover.id)}>
               {excluir.isPending ? "Removendo..." : "Remover conexão"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={Boolean(limpar)} onOpenChange={(open) => { if (!open) setLimpar(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Limpar as conversas de {limpar?.vendedorNome}?</DialogTitle>
-            <DialogDescription>
-              Apaga as conversas, mensagens, reações, agendamentos e ações registradas desta instância, e as notificações do sino que apontavam para elas. Os contatos e o vínculo com o cadastro de clientes continuam. <strong>Não tem volta.</strong>
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
-            <Button variant="destructive" disabled={limparConversas.isPending} onClick={() => limpar && limparConversas.mutate(limpar.id)}>
-              {limparConversas.isPending ? "Limpando..." : "Limpar conversas"}
             </Button>
           </DialogFooter>
         </DialogContent>

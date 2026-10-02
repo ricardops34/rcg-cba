@@ -421,6 +421,14 @@ export const MENUS: DefinicaoMenu[] = [
     moduloId: MODULO.gerencial,
   },
   {
+    id: 'seed-menu-whatsapp-historico',
+    nome: 'Histórico do WhatsApp',
+    rota: '/gerencial/whatsapp',
+    icone: 'history',
+    codigo: 'whatsapp-historico',
+    moduloId: MODULO.gerencial,
+  },
+  {
     id: 'seed-menu-categorias',
     nome: 'Categorias',
     rota: '/cadastros/categorias',

@@ -171,6 +171,7 @@ model Empresa {
   agenteMensagens            AgenteMensagem[]
   whatsappConfig             WhatsappConfig?
   whatsappSessoes            WhatsappSessao[]
+  whatsappSessaoPeriodos     WhatsappSessaoPeriodo[]
   whatsappContatos           WhatsappContato[]
   whatsappConversas          WhatsappConversa[]
   whatsappMensagens          WhatsappMensagem[]
@@ -1606,6 +1607,7 @@ model Vendedor {
   objetivosVendedorMes ObjetivoVendedorMes[]
   orcamentos           Orcamento[]
   whatsappSessoes      WhatsappSessao[]
+  whatsappSessaoPeriodos WhatsappSessaoPeriodo[]
 
   @@unique([empresaId, chave])
   @@index([empresaId, codigoErp])
@@ -4292,6 +4294,7 @@ model WhatsappSessao {
   empresa   Empresa            @relation(fields: [empresaId], references: [id])
   vendedor  Vendedor?          @relation(fields: [vendedorId], references: [id])
   conversas WhatsappConversa[]
+  periodos  WhatsappSessaoPeriodo[]
 
   @@unique([empresaId, vendedorId])
   @@index([empresaId, status])
@@ -4299,6 +4302,33 @@ model WhatsappSessao {
   // sessão: sem este índice, cada mensagem recebida varre a tabela.
   @@index([empresaId, instanciaExterna])
   @@map("whatsapp_sessoes")
+}
+
+/**
+ * Períodos em que um número esteve conectado a uma sessão de WhatsApp.
+ * Permite auditar qual vendedor e qual número respondeu em cada período,
+ * mesmo se o número ou o vendedor mudar.
+ */
+model WhatsappSessaoPeriodo {
+  id             String    @id @default(uuid())
+  empresaId      String
+  sessaoId       String
+  vendedorId     String?
+  numero         String
+  conectadoEm    DateTime  @default(now())
+  desconectadoEm DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa  Empresa        @relation(fields: [empresaId], references: [id])
+  sessao   WhatsappSessao @relation(fields: [sessaoId], references: [id], onDelete: Restrict)
+  vendedor Vendedor?      @relation(fields: [vendedorId], references: [id])
+
+  @@index([empresaId, sessaoId])
+  @@index([empresaId, vendedorId])
+  @@index([empresaId, numero])
+  @@map("whatsapp_sessao_periodos")
 }
 
 /**
@@ -4448,6 +4478,9 @@ model WhatsappMensagem {
   enviadaPor    String?
   statusEntrega WhatsappStatusEntrega @default(pendente)
   respondeuA    String?
+
+  /// Número do WhatsApp da sessão no momento do envio/recebimento desta mensagem.
+  numeroSessao String?
 
   criadaEm DateTime @default(now())
 

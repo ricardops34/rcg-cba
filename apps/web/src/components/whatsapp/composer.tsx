@@ -209,7 +209,7 @@ export function Composer({
       ) : null}
 
       <form
-        className="flex items-center gap-2 p-3"
+        className="flex items-center gap-2 p-2.5 bg-[#F0F2F5] dark:bg-[#202C33] border-t border-border/40"
         onSubmit={(e) => {
           e.preventDefault();
           if (texto.trim()) enviarTexto.mutate();
@@ -224,30 +224,38 @@ export function Composer({
               disabled={ocupado}
               aria-label="Anexar arquivo ou agendar mensagem"
               title="Anexar ou agendar"
+              className="size-9 rounded-full text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10 shrink-0"
             >
               <Plus className="size-5" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="top">
-            <DropdownMenuItem onClick={() => arquivoRef.current?.click()}>
-              <FileText className="size-4" />
-              Documento
+          <DropdownMenuContent align="start" side="top" className="w-56 p-1.5 shadow-lg rounded-xl">
+            <DropdownMenuItem onClick={() => arquivoRef.current?.click()} className="gap-2.5 py-2 cursor-pointer rounded-lg">
+              <span className="flex size-7 items-center justify-center rounded-full bg-purple-500/10 text-purple-600">
+                <FileText className="size-4" />
+              </span>
+              <span className="font-medium text-xs">Documento</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => midiaRef.current?.click()}>
-              <ImageIcon className="size-4" />
-              Fotos e vídeos
+            <DropdownMenuItem onClick={() => midiaRef.current?.click()} className="gap-2.5 py-2 cursor-pointer rounded-lg">
+              <span className="flex size-7 items-center justify-center rounded-full bg-blue-500/10 text-blue-500">
+                <ImageIcon className="size-4" />
+              </span>
+              <span className="font-medium text-xs">Fotos e vídeos</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setGerenciadorRespostasAberto(true)}>
-              <Zap className="size-4 text-amber-500" />
-              Respostas rápidas (/atalhos)
+            <DropdownMenuItem onClick={() => setGerenciadorRespostasAberto(true)} className="gap-2.5 py-2 cursor-pointer rounded-lg">
+              <span className="flex size-7 items-center justify-center rounded-full bg-amber-500/10 text-amber-500">
+                <Zap className="size-4" />
+              </span>
+              <span className="font-medium text-xs">Respostas rápidas (/atalhos)</span>
             </DropdownMenuItem>
             <DropdownMenuItem
-              // Agendar leva o texto já digitado: quem escreveu e percebeu que
-              // é melhor mandar amanhã não deve ter que reescrever.
               onClick={() => setAgendando(true)}
+              className="gap-2.5 py-2 cursor-pointer rounded-lg"
             >
-              <Clock className="size-4" />
-              Agendar mensagem
+              <span className="flex size-7 items-center justify-center rounded-full bg-sky-500/10 text-sky-500">
+                <Clock className="size-4" />
+              </span>
+              <span className="font-medium text-xs">Agendar mensagem</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -286,9 +294,10 @@ export function Composer({
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
             placeholder={
-              gravacao.gravando ? "Gravando áudio…" : "Escreva uma mensagem ou digite / para atalhos"
+              gravacao.gravando ? "Gravando áudio…" : "Digite uma mensagem"
             }
             disabled={gravacao.gravando || ocupado}
+            className="h-10 bg-white dark:bg-[#2A3942] border-0 text-sm rounded-lg shadow-2xs focus-visible:ring-1 focus-visible:ring-emerald-500 placeholder:text-muted-foreground/70"
           />
         </div>
 
@@ -348,6 +357,11 @@ export function Composer({
               size="icon"
               disabled={!texto.trim() || ocupado}
               title="Enviar mensagem"
+              className={`h-9 w-9 shrink-0 rounded-full transition-all ${
+                texto.trim()
+                  ? "bg-[#00A884] hover:bg-[#008f6f] text-white shadow-xs cursor-pointer"
+                  : "bg-muted text-muted-foreground opacity-50 cursor-not-allowed"
+              }`}
             >
               <Send className="size-4" />
             </Button>

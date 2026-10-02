@@ -865,17 +865,53 @@ export class EvolutionGoProvider implements WhatsappProvider {
       .catch(() => null);
     if (!resposta) return null;
 
-    // Algumas versões devolvem a imagem embutida; outras, só a URL dela no CDN
-    // do WhatsApp. Só a primeira é aproveitada: buscar uma URL arbitrária
-    // devolvida por um serviço é exatamente o desenho que vira SSRF, e foto de
-    // contato não vale esse risco — a conversa fica com a inicial do nome.
-    const base64 = texto(resposta, 'base64', 'picture', 'image', 'data');
-    if (!base64) return null;
+    let base64 = texto(resposta, 'base64', 'data');
+    if (!base64 && typeof resposta === 'object' && resposta !== null) {
+      const possivel = texto(resposta, 'picture', 'image');
+      if (possivel && possivel.length > 200 && !possivel.startsWith('http')) {
+        base64 = possivel;
+      }
+    }
 
-    return {
-      conteudoBase64: base64.replace(/^data:[^;]+;base64,/, ''),
-      mime: texto(resposta, 'mimetype', 'mime') ?? 'image/jpeg',
-    };
+    if (base64) {
+      return {
+        conteudoBase64: base64.replace(/^data:[^;]+;base64,/, ''),
+        mime: texto(resposta, 'mimetype', 'mime') ?? 'image/jpeg',
+      };
+    }
+
+    let url = texto(resposta, 'profilePictureUrl', 'url', 'picture', 'image');
+    if (!url) {
+      const resp2 = await this.http
+        .chamar<unknown>(ctx.config.evolutionUrl, '/chat/fetchProfilePictureUrl', {
+          metodo: 'POST',
+          credencial: this.chaveInstancia(ctx),
+          corpo: { number: this.destinatario(jid) },
+          aceitarAusente: true,
+        })
+        .catch(() => null);
+      if (resp2) {
+        url = texto(resp2, 'profilePictureUrl', 'url', 'picture');
+      }
+    }
+
+    if (url && url.startsWith('http')) {
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+        if (res.ok) {
+          const buffer = await res.arrayBuffer();
+          const mime = res.headers.get('content-type') ?? 'image/jpeg';
+          return {
+            conteudoBase64: Buffer.from(buffer).toString('base64'),
+            mime,
+          };
+        }
+      } catch {
+        // Falha no download da URL da foto ignorada com segurança
+      }
+    }
+
+    return null;
   }
 
   /**

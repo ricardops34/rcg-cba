@@ -34,6 +34,7 @@ import {
   WhatsappConfigUpdateDto,
   WhatsappTestarGatewayDto,
   WhatsappConversaQueryDto,
+  WhatsappHistoricoConversaQueryDto,
   WhatsappAgendarMensagemDto,
   WhatsappAgendarVisitaDto,
   WhatsappEnviarArquivoDto,
@@ -573,6 +574,19 @@ export class WhatsappController {
   }
 
   @ApiOperation({
+    summary: 'Detalhes de uma conversa',
+    description: 'Devolve os dados completos da conversa e contato pelo id.',
+  })
+  @RequirePermission('whatsapp-conversas', 'visualizar')
+  @Get('conversas/:id')
+  obterConversa(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversas.obter(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
     summary: 'Mensagens de uma conversa',
     description:
       'Ordem cronológica, paginadas por cursor (`antesDe`) — o rolo carrega ' +
@@ -598,6 +612,55 @@ export class WhatsappController {
   @Get('conversas/:id/eventos')
   eventos(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.conversas.eventos(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Filtros disponíveis para o histórico gerencial do WhatsApp',
+    description:
+      'Lista vendedores do escopo (inclusive inativos) e números registrados.',
+  })
+  @RequirePermission('whatsapp-historico', 'visualizar')
+  @Get('gerencial/filtros')
+  gerencialFiltros(@CurrentUser() user: AuthenticatedUser) {
+    return this.conversas.listarGerencialFiltros(user.empresaAtivaId, user);
+  }
+
+  @ApiOperation({
+    summary: 'Listar conversas para auditoria gerencial do WhatsApp',
+    description:
+      'Histórico permanente e consolidado com filtros de hierarquia, vendedor, número e data.',
+  })
+  @RequirePermission('whatsapp-historico', 'visualizar')
+  @Get('gerencial/conversas')
+  gerencialConversas(
+    @Query() query: WhatsappHistoricoConversaQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversas.listarGerencialConversas(
+      user.empresaAtivaId,
+      user,
+      query,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Mensagens de uma conversa no histórico gerencial',
+    description:
+      'Rolo de mensagens em modo somente leitura para auditoria gerencial.',
+  })
+  @RequirePermission('whatsapp-historico', 'visualizar')
+  @Get('gerencial/conversas/:id/mensagens')
+  gerencialMensagens(
+    @Param('id') id: string,
+    @Query() query: WhatsappMensagemQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversas.mensagensGerencial(
+      user.empresaAtivaId,
+      user,
+      id,
+      query,
+    );
   }
 
   @ApiOperation({

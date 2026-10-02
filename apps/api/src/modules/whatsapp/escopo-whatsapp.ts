@@ -42,3 +42,51 @@ export async function escopoLeituraWhatsapp(
   });
   return vendedor ? [vendedor.id] : [];
 }
+
+/**
+ * Escopo hierárquico para o histórico gerencial do WhatsApp.
+ *
+ * Administrador e usuários com perfil `carteiraCompleta` veem tudo (`null`).
+ * Supervisores veem a si mesmos e toda a árvore abaixo, incluindo
+ * vendedores inativos (`deletedAt IS NOT NULL`) cujo último superior cadastrado
+ * esteja no time do supervisor.
+ */
+export async function escopoHistoricoWhatsapp(
+  tx: TenantTx,
+  empresaId: string,
+  user: AuthenticatedUser,
+): Promise<string[] | null> {
+  if (user.isAdmin) return null;
+
+  const vinculo = await tx.usuarioEmpresa.findFirst({
+    where: { usuarioId: user.id, empresaId, ativo: true },
+    select: {
+      usuario: { select: { perfil: { select: { carteiraCompleta: true } } } },
+    },
+  });
+  if (vinculo?.usuario.perfil.carteiraCompleta) return null;
+
+  const vendedor = await tx.vendedor.findFirst({
+    where: { usuarioId: user.id, empresaId },
+    select: { id: true },
+  });
+  if (!vendedor) return [];
+
+  const linhas = await tx.$queryRaw<{ id: string }[]>`
+    WITH RECURSIVE time_do_vendedor AS (
+      SELECT v."id"
+      FROM "vendedores" v
+      WHERE v."id" = ${vendedor.id}
+        AND v."empresaId" = ${empresaId}
+      UNION
+      SELECT abaixo."id"
+      FROM "vendedores" abaixo
+      JOIN time_do_vendedor t ON abaixo."superiorId" = t."id"
+      WHERE abaixo."empresaId" = ${empresaId}
+    )
+    SELECT "id" FROM time_do_vendedor;
+  `;
+
+  return linhas.map((l) => l.id);
+}
+
