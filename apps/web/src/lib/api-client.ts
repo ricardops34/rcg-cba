@@ -281,7 +281,11 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 
   if (res.status === 204) return undefined as T;
   try {
-    return (await res.json()) as T;
+    // Handler que retorna `null` sai do Nest como 200 de corpo vazio — não é
+    // formato inesperado, é "não existe" (ex.: GET /whatsapp/sessao sem sessão).
+    const corpo = await res.text();
+    if (corpo.trim() === "") return null as T;
+    return JSON.parse(corpo) as T;
   } catch (erro) {
     throw erroDeResposta(erro, {
       rota: url.pathname,
