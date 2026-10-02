@@ -67,19 +67,22 @@ export class EvolutionGoProvider implements WhatsappProvider {
   // ----------------------------------------------------------------------
 
   /**
-   * Nome técnico da instância: `rcg-<vendedor>-<sessaoId>`.
+   * Nome técnico da instância: `<empresa>-<código do vendedor>-<nome>-<id>`,
+   * por exemplo `rcg-distribuidora-000123-marcos-276fc417`. Na sessão da
+   * empresa, `<empresa>-institucional-<id>`.
    *
-   * O `sessaoId` inteiro continua ali, e é ele que garante o que importa —
-   * unicidade entre empresas do mesmo gateway e a possibilidade de reencontrar
-   * a instância. O nome do vendedor entrou na frente porque o gateway tem
-   * painel próprio, e ali `rcg-d10a894d-9db0-…` não diz de quem é: quem
-   * administra precisa abrir a plataforma e cruzar o id à mão para saber qual
-   * aparelho está derrubado.
+   * Legível de propósito: o gateway tem painel próprio, e ali só o id não diz
+   * de quem é o aparelho — quem administra teria de abrir a plataforma e
+   * cruzar à mão para saber qual está derrubado. O `id` no fim são os 8
+   * primeiros caracteres do `sessaoId`: com a empresa na frente, bastam para
+   * não colidir no mesmo gateway, e o nome continua recalculável a partir da
+   * sessão. Peça que faltar (vendedor sem código, empresa ilegível) é omitida.
    *
    * **Uma vez criada, o nome não é recalculado**: ele fica gravado em
    * `instanciaExterna` e é o que esta função devolve. Renomear a pessoa depois
    * não renomeia a instância — o nome é um rótulo do momento da criação, não
-   * uma referência viva ao cadastro.
+   * uma referência viva ao cadastro. Pelo mesmo motivo, instâncias criadas no
+   * formato antigo (`rcg-<vendedor>-<sessaoId>`) mantêm o nome antigo.
    *
    * O risco que isso abre, e que foi aceito em 2026-09-21: se a linha local
    * perder o nome gravado **e** o vendedor tiver sido renomeado no intervalo,
@@ -89,31 +92,39 @@ export class EvolutionGoProvider implements WhatsappProvider {
    */
   private nomeInstancia(ctx: ContextoSessao): string {
     if (ctx.instancia.nome) return ctx.instancia.nome;
-    return `rcg-${this.apelidoDe(ctx)}-${ctx.sessaoId}`;
+    const pecas = ctx.vendedorNome?.trim()
+      ? [
+          this.slug(ctx.empresaNome, 20),
+          this.slug(ctx.vendedorCodigo, 12),
+          this.slug(ctx.vendedorNome.trim().split(/\s+/)[0], 12),
+        ]
+      : [this.slug(ctx.empresaNome, 20), 'institucional'];
+    pecas.push(ctx.sessaoId.replace(/-/g, '').slice(0, 8));
+    return pecas.filter(Boolean).join('-');
   }
 
   /**
-   * Pedaço legível do nome: o vendedor, ou `institucional`.
-   *
-   * Sem acento, sem espaço e curto de propósito — é identificador de instância
-   * num gateway de terceiro, e não há garantia de que ele aceite o resto. O
-   * `sessaoId` ao lado é quem carrega a unicidade, então encurtar aqui não
-   * cria colisão.
+   * Pedaço de nome seguro para o gateway: minúsculo, sem acento, sem espaço e
+   * curto — é identificador de instância num sistema de terceiro, e não há
+   * garantia de que ele aceite o resto.
    */
-  private apelidoDe(ctx: ContextoSessao): string {
-    const bruto = ctx.vendedorNome?.trim();
-    if (!bruto) return 'institucional';
-    const limpo = bruto
-      .normalize('NFD')
-      // `\p{Diacritic}` em vez da faixa `̀-ͯ`: o formatador
-      // transforma aquela nos próprios caracteres combinantes, que são
-      // invisíveis no fonte e ninguém consegue revisar depois.
-      .replace(/\p{Diacritic}/gu, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 24)
-      .replace(/-+$/g, '');
-    return limpo || 'vendedor';
+  private slug(texto: string | null | undefined, limite: number): string {
+    const bruto = texto ?? '';
+    return (
+      bruto
+        .normalize('NFD')
+        // `\p{Diacritic}` em vez da faixa `̀-ͯ`: o formatador
+        // transforma aquela nos próprios caracteres combinantes, que são
+        // invisíveis no fonte e ninguém consegue revisar depois.
+        .replace(/\p{Diacritic}/gu, '')
+        // Minúsculo antes de filtrar: os cadastros vêm do ERP em CAIXA ALTA, e
+        // sem isto o nome inteiro virava traço (era o `rcg-vendedor-…`).
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, limite)
+        .replace(/-+$/g, '')
+    );
   }
 
   /**

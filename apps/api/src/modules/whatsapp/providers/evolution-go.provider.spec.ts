@@ -199,3 +199,38 @@ describe('EvolutionGoProvider — Isolamento de Chaves e Autenticação', () => 
   });
 });
 
+
+describe('EvolutionGoProvider — nome da instância', () => {
+  const provider = new EvolutionGoProvider({} as never);
+  const nome = (ctx: Record<string, unknown>): string =>
+    (provider as any).nomeInstancia({
+      sessaoId: '276fc417-de6a-4be7-b541-8b0000000000',
+      instancia: { nome: null },
+      ...ctx,
+    });
+
+  it('empresa, código e primeiro nome do vendedor, mesmo em CAIXA ALTA', () => {
+    expect(
+      nome({
+        empresaNome: 'RCG Distribuidora',
+        vendedorCodigo: '000123',
+        vendedorNome: 'MÁRCIO DA SILVA',
+      }),
+    ).toBe('rcg-distribuidora-000123-marcio-276fc417');
+  });
+
+  it('omite o código ausente e usa institucional sem vendedor', () => {
+    expect(
+      nome({ empresaNome: 'RCG', vendedorCodigo: null, vendedorNome: 'Ana' }),
+    ).toBe('rcg-ana-276fc417');
+    expect(nome({ empresaNome: 'RCG', vendedorNome: null })).toBe(
+      'rcg-institucional-276fc417',
+    );
+  });
+
+  it('nome já gravado não é recalculado', () => {
+    expect(
+      nome({ instancia: { nome: 'rcg-vendedor-antigo' }, vendedorNome: 'Ana' }),
+    ).toBe('rcg-vendedor-antigo');
+  });
+});

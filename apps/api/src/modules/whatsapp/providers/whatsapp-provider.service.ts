@@ -58,7 +58,7 @@ export class WhatsappProviderService {
         select: {
           id: true,
           vendedorId: true,
-          vendedor: { select: { nome: true } },
+          vendedor: { select: { nome: true, codigoErp: true } },
           transporte: true,
           instanciaExterna: true,
           instanciaId: true,
@@ -89,10 +89,18 @@ export class WhatsappProviderService {
         },
       });
 
-      return { sessao, config };
+      // À parte, e não como relação da sessão: `empresas` tem RLS por grupo, e
+      // uma relação obrigatória oculta derrubaria a consulta inteira. O nome
+      // só enfeita o rótulo da instância; sem ele, segue sem.
+      const empresa = await t.empresa.findFirst({
+        where: { id: empresaId },
+        select: { nomeFantasia: true },
+      });
+
+      return { sessao, config, empresa };
     };
 
-    const { sessao, config } = tx
+    const { sessao, config, empresa } = tx
       ? await carregar(tx)
       : await this.prisma.withTenant(empresaId, carregar);
 
@@ -101,6 +109,8 @@ export class WhatsappProviderService {
       sessaoId: sessao.id,
       vendedorId: sessao.vendedorId,
       vendedorNome: sessao.vendedor?.nome ?? null,
+      vendedorCodigo: sessao.vendedor?.codigoErp ?? null,
+      empresaNome: empresa?.nomeFantasia ?? null,
       // O enum do Prisma e o do contrato são o mesmo conjunto de valores, então
       // não há conversão a fazer aqui.
       transporte: sessao.transporte,

@@ -41,6 +41,10 @@ export interface ContextoSessao {
    * instancia no gateway. Nulo na sessao institucional.
    */
   vendedorNome: string | null;
+  /** Código do vendedor no ERP (`codigoErp`), idem: só para o nome legível. */
+  vendedorCodigo?: string | null;
+  /** Nome fantasia da empresa, idem: só para o nome legível. */
+  empresaNome?: string | null;
   /**
    * O transporte da **sessão**, não o da empresa.
    *
