@@ -212,6 +212,7 @@ export interface WhatsappProvider {
   obterFotoContato(
     ctx: ContextoSessao,
     jid: string,
+    telefone?: string | null,
   ): Promise<FotoContato | null>;
 
   sincronizarAgenda(ctx: ContextoSessao): Promise<void>;

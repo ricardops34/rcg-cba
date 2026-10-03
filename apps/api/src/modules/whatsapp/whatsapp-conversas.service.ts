@@ -122,7 +122,7 @@ export class WhatsappConversasService {
       if (vendedorIdQuery) {
         return { sessao: { vendedorId: vendedorIdQuery } };
       }
-      return { OR: [{ sessao: { vendedorId: { not: null } } }, institucional] };
+      return {};
     }
 
     const permitidos = vendedorIdQuery
@@ -2077,7 +2077,7 @@ export class WhatsappConversasService {
     conversaId: string,
     input: WhatsappVincular,
   ) {
-    return this.prisma.withTenant(empresaId, async (tx) => {
+    const resultado = await this.prisma.withTenant(empresaId, async (tx) => {
       const conversa = await this.conversaNoEscopo(
         tx,
         empresaId,
@@ -2160,26 +2160,6 @@ export class WhatsappConversasService {
         }
       }
 
-      let fotoUrl = conversa.contato.fotoUrl;
-      if (input.clienteId) {
-        // Cosmético e melhor-esforço: provedor que não expõe a foto (ou não
-        // responde) não pode impedir o vínculo, que é o que a tela pediu.
-        const foto = await this.provedores
-          .obterFotoContato(
-            empresaId,
-            conversa.sessaoId,
-            conversa.contato.jid,
-            tx,
-          )
-          .catch(() => null);
-        if (foto?.conteudoBase64 && foto.mime.startsWith('image/')) {
-          const arquivo = `${randomUUID()}${extensaoPorMime(foto.mime)}`;
-          await mkdir(WHATSAPP_DIR, { recursive: true });
-          await writeFile(join(WHATSAPP_DIR, arquivo), Buffer.from(foto.conteudoBase64, 'base64'));
-          fotoUrl = whatsappPublicPath(arquivo);
-        }
-      }
-
       await tx.whatsappContato.update({
         where: { id: conversa.contatoId },
         data: {
@@ -2192,13 +2172,12 @@ export class WhatsappConversasService {
           tipo: input.tipo,
           nomeExibicao: contatoCadastro?.nome ?? input.nome ?? undefined,
           email: contatoCadastro?.email ?? input.email ?? undefined,
-          fotoUrl,
           vinculadoPor: user.id,
           vinculadoEm: input.clienteId ? new Date() : null,
         },
       });
 
-      return tx.whatsappConversa.update({
+      const conversaAtualizada = await tx.whatsappConversa.update({
         where: { id: conversaId },
         data: {
           clienteId: input.clienteId,
@@ -2211,18 +2190,86 @@ export class WhatsappConversasService {
             : {}),
         },
       });
+
+      return {
+        conversa: conversaAtualizada,
+        sessaoId: conversa.sessaoId,
+        contatoId: conversa.contatoId,
+        jid: conversa.contato.jid,
+        telefone: conversa.contato.telefoneNormalizado,
+        temFoto: Boolean(conversa.contato.fotoUrl),
+      };
     });
+
+    if (input.clienteId && !resultado.temFoto) {
+      this.buscarFotoContatoAssincrona(
+        empresaId,
+        resultado.sessaoId,
+        resultado.contatoId,
+        resultado.jid,
+        resultado.telefone,
+      );
+    }
+
+    return resultado.conversa;
+  }
+
+  /**
+   * Força a busca da foto de perfil do contato da conversa no WhatsApp e atualiza no banco.
+   */
+  async atualizarFotoContato(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+  ) {
+    const conversa = await this.prisma.withTenant(empresaId, (tx) =>
+      this.conversaNoEscopo(tx, empresaId, user, conversaId),
+    );
+
+    const foto = await this.provedores
+      .obterFotoContato(
+        empresaId,
+        conversa.sessaoId,
+        conversa.contato.jid,
+        conversa.contato.telefoneNormalizado,
+      )
+      .catch(() => null);
+
+    if (foto?.conteudoBase64 && foto.mime.startsWith('image/')) {
+      const arquivo = `${randomUUID()}${extensaoPorMime(foto.mime)}`;
+      await mkdir(WHATSAPP_DIR, { recursive: true });
+      await writeFile(
+        join(WHATSAPP_DIR, arquivo),
+        Buffer.from(foto.conteudoBase64, 'base64'),
+      );
+      const fotoUrl = whatsappPublicPath(arquivo);
+      await this.prisma.withTenant(empresaId, (tx) =>
+        tx.whatsappContato.update({
+          where: { id: conversa.contatoId },
+          data: { fotoUrl },
+        }),
+      );
+      return { ok: true, fotoUrl };
+    }
+
+    return {
+      ok: false,
+      fotoUrl: conversa.contato.fotoUrl,
+      mensagem:
+        'Foto não encontrada ou o contato possui privacidade restrita no WhatsApp.',
+    };
   }
 
   /**
    * Busca e salva a foto de perfil do contato em segundo plano quando disponível,
    * sem bloquear o recebimento de mensagens nem transações ativas.
    */
-  private buscarFotoContatoAssincrona(
+  buscarFotoContatoAssincrona(
     empresaId: string,
     sessaoId: string,
     contatoId: string,
     jid: string,
+    telefone?: string | null,
   ) {
     setImmediate(async () => {
       try {
@@ -2230,6 +2277,7 @@ export class WhatsappConversasService {
           empresaId,
           sessaoId,
           jid,
+          telefone,
         );
         if (!foto?.conteudoBase64 || !foto.mime.startsWith('image/')) return;
         const arquivo = `${randomUUID()}${extensaoPorMime(foto.mime)}`;
@@ -2390,6 +2438,16 @@ export class WhatsappConversasService {
         // ao procurá-la de novo.
         update: { clienteId: contato.clienteId, arquivada: false },
       });
+
+      if (!contato.fotoUrl) {
+        this.buscarFotoContatoAssincrona(
+          empresaId,
+          sessao.id,
+          contato.id,
+          contato.jid,
+          contato.telefoneNormalizado,
+        );
+      }
 
       return conversa;
     });
@@ -2694,7 +2752,13 @@ export class WhatsappConversasService {
         contato.jid.split('@')[0];
 
       if (!contato.fotoUrl) {
-        this.buscarFotoContatoAssincrona(empresaId, sessao.id, contato.id, contato.jid);
+        this.buscarFotoContatoAssincrona(
+          empresaId,
+          sessao.id,
+          contato.id,
+          contato.jid,
+          contato.telefoneNormalizado,
+        );
       }
 
       // Se esta mensagem já tinha sido gravada, é reenvio da reconexão: o

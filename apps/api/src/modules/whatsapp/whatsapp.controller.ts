@@ -50,6 +50,7 @@ import {
   WhatsappRecadoCriarDto,
   WhatsappRecadoEditarDto,
   WhatsappVincularDto,
+  WhatsappImportarAgendaDto,
 } from './dto/whatsapp.dto';
 import { WhatsappFuncionarioService } from './triagem/whatsapp-funcionario.service';
 import { WhatsappRecadoService } from './whatsapp-recado.service';
@@ -743,6 +744,21 @@ export class WhatsappController {
     return this.conversas.vincular(user.empresaAtivaId, user, id, dto);
   }
 
+  @ApiOperation({
+    summary: 'Buscar ou atualizar foto de perfil do contato no WhatsApp',
+    description:
+      'Consulta o avatar do contato no gateway (Evolution GO) e atualiza ' +
+      'a foto gravada no cadastro. Requer whatsapp-conversas.editar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'editar')
+  @Post('conversas/:id/foto')
+  atualizarFotoContato(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversas.atualizarFotoContato(user.empresaAtivaId, user, id);
+  }
+
   // ---------------- agenda do aparelho ----------------
 
   @ApiOperation({
@@ -783,6 +799,22 @@ export class WhatsappController {
   @Post('agenda/sincronizar')
   sincronizarAgenda(@CurrentUser() user: AuthenticatedUser) {
     return this.agenda.sincronizar(user.empresaAtivaId, user);
+  }
+
+  @ApiOperation({
+    summary: 'Importar contatos do aparelho e salvar vinculados à conexão',
+    description:
+      'Lê os contatos da agenda do aparelho conectado via gateway e salva ' +
+      'no banco vinculados à sessão, criando a conversa para cada contato. ' +
+      'Requer whatsapp-conversas.editar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'editar')
+  @Post('agenda/importar')
+  importarContatos(
+    @Body() dto: WhatsappImportarAgendaDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.agenda.importarContatos(user.empresaAtivaId, user, dto?.sessaoId);
   }
 
   @ApiOperation({

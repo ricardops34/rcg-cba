@@ -780,11 +780,8 @@ export const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
 export const SUPERVISAO_PERMISSOES: Record<string, Acao[]> = {
   ...VENDEDOR_PERMISSOES,
   'whatsapp-equipe': ['visualizar'],
-  // Recado para a equipe: 'visualizar' abre a tela e o histórico do que já foi
-  // mandado; 'cadastrar' é o que de fato dispara. Fora de
-  // VENDEDOR_PERMISSOES de propósito — o alcance é a hierarquia abaixo, e
-  // quem não tem ninguém abaixo só mandaria recado para si mesmo.
   'whatsapp-recados': ['visualizar', 'cadastrar'],
+  'whatsapp-historico': ['visualizar'],
   // Distribuir, descartar e anotar o lead.
   leads: ['visualizar', 'editar'],
 };

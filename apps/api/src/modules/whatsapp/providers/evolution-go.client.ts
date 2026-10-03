@@ -75,6 +75,8 @@ export class EvolutionGoClient {
       credencial?: string | null;
       /** Trata 404 como ausência e devolve `null` em vez de estourar. */
       aceitarAusente?: boolean;
+      /** Tempo limite opcional em ms para esta chamada específica. */
+      timeoutMs?: number;
     } = {},
   ): Promise<T> {
     if (!baseUrl) {
@@ -86,9 +88,10 @@ export class EvolutionGoClient {
       );
     }
 
-    const { metodo = 'GET', corpo, credencial, aceitarAusente } = opcoes;
+    const { metodo = 'GET', corpo, credencial, aceitarAusente, timeoutMs } = opcoes;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const tempoLimite = timeoutMs ?? this.timeoutMs;
+    const timer = setTimeout(() => controller.abort(), tempoLimite);
     const url = `${baseUrl.replace(/\/+$/, '')}${caminho}`;
 
     let resposta: Response;

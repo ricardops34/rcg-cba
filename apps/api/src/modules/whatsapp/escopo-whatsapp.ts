@@ -27,8 +27,17 @@ export async function escopoLeituraWhatsapp(
   empresaId: string,
   user: AuthenticatedUser,
 ): Promise<string[] | null> {
-  const podeVerEquipe =
-    user.isAdmin || user.permissoes.includes('whatsapp-equipe.visualizar');
+  if (user.isAdmin) return null;
+
+  const vinculo = await tx.usuarioEmpresa.findFirst({
+    where: { usuarioId: user.id, empresaId, ativo: true },
+    select: {
+      usuario: { select: { perfil: { select: { carteiraCompleta: true } } } },
+    },
+  });
+  if (vinculo?.usuario.perfil.carteiraCompleta) return null;
+
+  const podeVerEquipe = user.permissoes.includes('whatsapp-equipe.visualizar');
 
   if (podeVerEquipe) {
     // null = sem restrição (admin). Para supervisor/gerente vem a lista do

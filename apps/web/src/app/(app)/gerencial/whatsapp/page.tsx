@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useAuthStore } from "@/stores/auth-store";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -76,12 +77,25 @@ export default function HistoricoWhatsappPage() {
   const [numero, setNumero] = useState<string>("todos");
   const [dataDe, setDataDe] = useState<string>("");
   const [dataAte, setDataAte] = useState<string>("");
+  const empresaId = useAuthStore((s) => s.user?.empresaAtivaId);
   const [conversaId, setConversaId] = useState<string | null>(null);
+
+  // Limpa filtros e seleção ao trocar de empresa
+  useEffect(() => {
+    setConversaId(null);
+    setVendedorId("todos");
+    setNumero("todos");
+    setDataDe("");
+    setDataAte("");
+    setBusca("");
+    setPagina(1);
+  }, [empresaId]);
 
   // Filtros disponíveis (vendedores no escopo hierárquico + números)
   const { data: opcoesFiltro } = useQuery<WhatsappHistoricoFiltros>({
-    queryKey: ["whatsapp-gerencial-filtros"],
+    queryKey: ["whatsapp-gerencial-filtros", empresaId],
     queryFn: () => apiFetch<WhatsappHistoricoFiltros>("/whatsapp/gerencial/filtros"),
+    enabled: !!empresaId,
   });
 
   // Query das conversas auditadas
@@ -93,6 +107,7 @@ export default function HistoricoWhatsappPage() {
   } = useQuery<ListaHistoricoConversas>({
     queryKey: [
       "whatsapp-gerencial-conversas",
+      empresaId,
       busca,
       vendedorId,
       numero,
@@ -113,6 +128,7 @@ export default function HistoricoWhatsappPage() {
         `/whatsapp/gerencial/conversas?${params.toString()}`,
       );
     },
+    enabled: !!empresaId,
   });
 
   const conversas = dadosConversas?.itens ?? [];
@@ -130,12 +146,12 @@ export default function HistoricoWhatsappPage() {
     data: mensagens = [],
     isLoading: carregandoMensagens,
   } = useQuery<WhatsappMensagem[]>({
-    queryKey: ["whatsapp-gerencial-mensagens", conversaId],
+    queryKey: ["whatsapp-gerencial-mensagens", empresaId, conversaId],
     queryFn: () =>
       apiFetch<WhatsappMensagem[]>(
         `/whatsapp/gerencial/conversas/${conversaId}/mensagens?tamanho=100`,
       ),
-    enabled: !!conversaId,
+    enabled: !!empresaId && !!conversaId,
   });
 
   const filtrosAtivos =

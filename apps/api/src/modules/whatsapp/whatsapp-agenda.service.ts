@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
 import { WhatsappSessaoService } from './whatsapp-sessao.service';
 import { WhatsappProviderService } from './providers/whatsapp-provider.service';
+import { WhatsappConversasService } from './whatsapp-conversas.service';
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
@@ -39,6 +40,7 @@ export class WhatsappAgendaService {
     private readonly prisma: PrismaService,
     private readonly sessoes: WhatsappSessaoService,
     private readonly provedores: WhatsappProviderService,
+    private readonly conversas: WhatsappConversasService,
   ) {}
 
   /** Sessão conectada do usuário — sem ela não há agenda a consultar. */
@@ -87,6 +89,169 @@ export class WhatsappAgendaService {
     const sessao = await this.sessaoConectada(empresaId, user);
     await this.provedores.sincronizarAgenda(empresaId, sessao.id);
     return { ok: true };
+  }
+
+  /**
+   * Importa e salva os contatos do aparelho conectado diretamente na plataforma,
+   * vinculando-os à sessão ativa e criando a conversa para cada contato.
+   */
+  async importarContatos(
+    empresaId: string,
+    user: AuthenticatedUser,
+    sessaoId?: string,
+  ) {
+    let sessao: { id: string; vendedorId: string | null; status: string };
+
+    if (sessaoId) {
+      const s = await this.prisma.withTenant(empresaId, (tx) =>
+        tx.whatsappSessao.findFirst({
+          where: { id: sessaoId, empresaId },
+          select: { id: true, vendedorId: true, status: true },
+        }),
+      );
+      if (!s) {
+        throw new BadRequestException('Sessão informada não encontrada.');
+      }
+      sessao = s;
+    } else {
+      const s = await this.sessoes.minha(empresaId, user);
+      if (!s) {
+        throw new BadRequestException(
+          'Nenhuma conexão encontrada para o seu usuário.',
+        );
+      }
+      sessao = s;
+    }
+
+    if (sessao.status !== 'conectada') {
+      throw new BadRequestException(
+        'A conexão de WhatsApp precisa estar conectada para importar contatos.',
+      );
+    }
+
+    const doAparelho: ContatoDoAparelho[] =
+      await this.provedores.listarContatos(empresaId, sessao.id);
+
+    if (doAparelho.length === 0) {
+      return { ok: true, total: 0, criados: 0, atualizados: 0 };
+    }
+
+    const validos = doAparelho.filter(
+      (c) =>
+        c.jid &&
+        !c.jid.endsWith('@g.us') &&
+        !c.jid.includes('broadcast') &&
+        !c.jid.includes('newsletter'),
+    );
+
+    let criados = 0;
+    let atualizados = 0;
+
+    await this.prisma.withTenant(empresaId, async (tx) => {
+      for (const item of validos) {
+        const telefone = item.telefone ? item.telefone.replace(/\D/g, '') : null;
+        const nome = item.nome?.trim() || null;
+
+        const existente = telefone
+          ? await tx.whatsappContato.findFirst({
+              where: { empresaId, telefoneNormalizado: telefone },
+              select: { id: true, clienteId: true, fotoUrl: true },
+            })
+          : null;
+
+        let contatoId: string;
+        let clienteId: string | null = existente?.clienteId ?? null;
+        let temFoto = Boolean(existente?.fotoUrl);
+
+        if (existente) {
+          contatoId = existente.id;
+          if (nome) {
+            await tx.whatsappContato.update({
+              where: { id: existente.id },
+              data: {
+                ...(nome ? { nomeExibicao: nome } : {}),
+              },
+            });
+          }
+        } else {
+          if (telefone && !clienteId) {
+            const clienteCasado = await tx.cliente.findFirst({
+              where: {
+                empresaId,
+                deletedAt: null,
+                ...(sessao.vendedorId ? { vendedorId: sessao.vendedorId } : {}),
+                OR: [
+                  { celular: { endsWith: telefone.slice(-8) } },
+                  { telefone: { endsWith: telefone.slice(-8) } },
+                  { telefone2: { endsWith: telefone.slice(-8) } },
+                ],
+              },
+              select: { id: true },
+            });
+            clienteId = clienteCasado?.id ?? null;
+          }
+
+          const novoContato = await tx.whatsappContato.upsert({
+            where: { empresaId_jid: { empresaId, jid: item.jid } },
+            create: {
+              empresaId,
+              jid: item.jid,
+              nomeExibicao: nome,
+              telefoneNormalizado: telefone,
+              clienteId,
+            },
+            update: {
+              ...(nome ? { nomeExibicao: nome } : {}),
+              ...(telefone ? { telefoneNormalizado: telefone } : {}),
+            },
+          });
+          contatoId = novoContato.id;
+          temFoto = Boolean(novoContato.fotoUrl);
+        }
+
+        const conversaExistente = await tx.whatsappConversa.findFirst({
+          where: {
+            empresaId,
+            sessaoId: sessao.id,
+            contatoId,
+          },
+          select: { id: true },
+        });
+
+        if (!conversaExistente) {
+          await tx.whatsappConversa.create({
+            data: {
+              empresaId,
+              sessaoId: sessao.id,
+              contatoId,
+              clienteId,
+              ultimaMensagemEm: new Date(),
+              naoLidas: 0,
+            },
+          });
+          criados++;
+        } else {
+          atualizados++;
+        }
+
+        if (!temFoto) {
+          this.conversas.buscarFotoContatoAssincrona(
+            empresaId,
+            sessao.id,
+            contatoId,
+            item.jid,
+            telefone,
+          );
+        }
+      }
+    });
+
+    return {
+      ok: true,
+      total: validos.length,
+      criados,
+      atualizados,
+    };
   }
 
   /**

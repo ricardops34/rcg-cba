@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MessageSquarePlus, RefreshCw, Search } from "lucide-react";
+import { Download, MessageSquarePlus, RefreshCw, Search } from "lucide-react";
 import type {
   WhatsappContatoAgenda,
   WhatsappConversa,
@@ -103,6 +103,32 @@ export function NovaConversaDialog({
       ),
   });
 
+  const importarTodos = useMutation({
+    mutationFn: () =>
+      apiFetch<{ ok: boolean; total: number; criados: number; atualizados: number }>(
+        "/whatsapp/agenda/importar",
+        { method: "POST" },
+      ),
+    onSuccess: (res) => {
+      toast.success(
+        res.total === 0
+          ? "Nenhum contato encontrado no aparelho."
+          : `${res.criados} novos contatos importados (${res.atualizados} já existentes atualizados).`,
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["whatsapp-conversas"],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["whatsapp-agenda-contatos"],
+      });
+      onOpenChange(false);
+    },
+    onError: (err) =>
+      toast.error(
+        err instanceof ApiError ? err.message : "Falha ao importar contatos do aparelho",
+      ),
+  });
+
   const abrirDaAgenda = (contato: WhatsappContatoAgenda) => {
     if (contato.conversaId) {
       onAbrirConversa(contato.conversaId);
@@ -159,11 +185,24 @@ export function NovaConversaDialog({
                 size="icon"
                 title="Atualizar a agenda a partir do celular"
                 onClick={() => sincronizar.mutate()}
-                disabled={sincronizar.isPending}
+                disabled={sincronizar.isPending || importarTodos.isPending}
               >
                 <RefreshCw
                   className={`size-4 ${sincronizar.isPending ? "animate-spin" : ""}`}
                 />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs shrink-0"
+                title="Importar todos os contatos do aparelho para a lista de atendimento"
+                onClick={() => importarTodos.mutate()}
+                disabled={importarTodos.isPending || sincronizar.isPending}
+              >
+                <Download
+                  className={`size-3.5 ${importarTodos.isPending ? "animate-spin" : ""}`}
+                />
+                {importarTodos.isPending ? "Importando..." : "Importar todos"}
               </Button>
             </div>
             <ListaDeContatos

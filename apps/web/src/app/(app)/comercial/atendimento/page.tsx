@@ -13,11 +13,16 @@ import {
   ArrowLeft,
   BriefcaseBusiness,
   CalendarCheck2,
+  Camera,
   Check,
   CheckCheck,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   DollarSign,
+  Download,
   Link2,
+  Loader2,
   Lock,
   MessageCircle,
   MessageSquare,
@@ -27,6 +32,7 @@ import {
   PanelLeftOpen,
   Pencil,
   Plug,
+  RefreshCw,
   Search,
   ShoppingCart,
   SlidersHorizontal,
@@ -135,8 +141,11 @@ function usePainelAberto(chave: string): [boolean, () => void] {
 export default function AtendimentoPage() {
   const podeAcompanharEquipe = useAuthStore(
     (state) =>
-      state.user?.permissoes.includes("whatsapp-equipe.visualizar") ?? false,
+      (state.user?.administradorPlataforma ?? false) ||
+      (state.user?.permissoes.includes("whatsapp-equipe.visualizar") ?? false) ||
+      (state.user?.empresas.find((e) => e.empresaId === state.user?.empresaAtivaId)?.perfilNome?.toLowerCase().includes("admin") ?? false),
   );
+  const empresaId = useAuthStore((state) => state.user?.empresaAtivaId);
   const [conexaoAberta, setConexaoAberta] = useState(false);
   const [novaConversaAberta, setNovaConversaAberta] = useState(false);
   const router = useRouter();
@@ -153,6 +162,12 @@ export default function AtendimentoPage() {
   const [filtroConversas, setFiltroConversas] =
     useState<FiltroConversas>("todas");
   const [conexaoEscolhida, setConexaoEscolhida] = useState<string | null>(null);
+
+  // Limpa conexão escolhida ao trocar de empresa para não carregar sessão de outro tenant
+  useEffect(() => {
+    setConexaoEscolhida(null);
+  }, [empresaId]);
+
   const [listaPreferida, alternarPreferenciaLista] = usePainelAberto(PREF_LISTA);
 
   const [ignorandoPreferencia, setIgnorandoPreferencia] = useState(
@@ -191,25 +206,31 @@ export default function AtendimentoPage() {
     isLoading: carregandoSessao,
     error: erroSessao,
   } = useQuery({
-    queryKey: ["whatsapp-sessao"],
+    queryKey: ["whatsapp-sessao", empresaId],
     queryFn: () => apiFetch<WhatsappSessao | null>("/whatsapp/sessao"),
     retry: false,
+    enabled: !!empresaId,
     refetchInterval: (q) =>
       q.state.data?.status === "pareando" ? 3000 : false,
   });
 
   const { data: conexoes = [] } = useQuery({
-    queryKey: ["whatsapp-sessoes"],
+    queryKey: ["whatsapp-sessoes", empresaId],
     queryFn: () => apiFetch<WhatsappSessao[]>("/whatsapp/sessoes"),
-    enabled: podeAcompanharEquipe,
+    enabled: !!empresaId && podeAcompanharEquipe,
   });
   const podeTrocarConexao = podeAcompanharEquipe && conexoes.length > 1;
 
-  const sessaoAtivaId = conexaoEscolhida ?? sessao?.id ?? null;
+  const sessaoAtivaId =
+    conexaoEscolhida ??
+    (sessao?.status === "conectada" ? sessao.id : null) ??
+    (conexoes.find((c) => c.status === "conectada")?.id ?? conexoes[0]?.id) ??
+    sessao?.id ??
+    null;
   const sessaoAtiva = conexoes.find((c) => c.id === sessaoAtivaId) ?? sessao ?? null;
 
   const { data: conversas, isLoading: carregandoConversas } = useQuery({
-    queryKey: ["whatsapp-conversas", busca, sessaoAtivaId, filtroConversas],
+    queryKey: ["whatsapp-conversas", empresaId, busca, sessaoAtivaId, filtroConversas],
     queryFn: () => {
       const params = new URLSearchParams();
       if (busca) params.set("busca", busca);
@@ -220,15 +241,15 @@ export default function AtendimentoPage() {
         `/whatsapp/conversas${qs ? `?${qs}` : ""}`,
       );
     },
-    enabled: !!sessaoAtivaId,
+    enabled: !!empresaId && !!sessaoAtivaId,
     refetchInterval: 15000,
   });
 
   const { data: conversaAvulsa } = useQuery({
-    queryKey: ["whatsapp-conversa", conversaId],
+    queryKey: ["whatsapp-conversa", empresaId, conversaId],
     queryFn: () =>
       apiFetch<WhatsappConversa>(`/whatsapp/conversas/${conversaId}`),
-    enabled: !!conversaId && !conversas?.itens.some((c) => c.id === conversaId),
+    enabled: !!empresaId && !!conversaId && !conversas?.itens.some((c) => c.id === conversaId),
   });
 
   const conversaSelecionada =
@@ -242,8 +263,12 @@ export default function AtendimentoPage() {
   }
 
   const temConversasAnteriores = (conversas?.total ?? 0) > 0;
+  const temConexoesEquipe = conexoes.length > 0;
 
-  if (!sessao || (sessao.status !== "conectada" && !temConversasAnteriores)) {
+  if (
+    (!sessao && !temConexoesEquipe) ||
+    (sessao && sessao.status !== "conectada" && !temConexoesEquipe && !temConversasAnteriores)
+  ) {
     const mensagemSemSessao =
       erroSessao instanceof ApiError
         ? erroSessao.message
@@ -283,7 +308,7 @@ export default function AtendimentoPage() {
 
   return (
     <>
-      {sessao && sessao.status !== "conectada" ? (
+      {sessao && sessao.status !== "conectada" && !temConexoesEquipe ? (
         <div className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-800 dark:text-amber-300">
           <div className="flex items-center gap-2">
             <TriangleAlert className="size-4 shrink-0" />
@@ -324,12 +349,12 @@ export default function AtendimentoPage() {
                 onBuscaChange={setBusca}
                 onNovaConversa={() => setNovaConversaAberta(true)}
                 onAbrirConexao={() => setConexaoAberta(true)}
-                sessaoNumero={sessaoAtiva?.numero ?? sessao.numero}
+                sessaoNumero={sessaoAtiva?.numero ?? sessao?.numero}
                 podeTrocarConexao={podeTrocarConexao}
                 conexaoAtual={sessaoAtivaId}
                 onConexaoChange={setConexaoEscolhida}
                 conexoes={conexoes}
-                sessaoId={sessao.id}
+                sessaoId={sessao?.id ?? sessaoAtivaId ?? ""}
                 onAlternarLista={alternarLista}
               />
             </ColunaRedimensionavel>
@@ -345,14 +370,14 @@ export default function AtendimentoPage() {
               conversa={conversaSelecionada}
               clienteId={conversaSelecionada?.clienteId ?? null}
               somenteConsulta={
-                sessao.status !== "conectada"
+                sessaoAtiva?.status !== "conectada"
                   ? {
                       vendedorNome:
                         conversaSelecionada?.vendedorNome ?? "Aparelho desconectado",
                       motivo: "desconectado",
                     }
                   : conversaSelecionada &&
-                    conversaSelecionada.sessaoId !== sessao.id
+                    conversaSelecionada.sessaoId !== (sessao?.id ?? sessaoAtivaId)
                     ? { vendedorNome: conversaSelecionada.vendedorNome }
                     : null
               }
@@ -361,7 +386,7 @@ export default function AtendimentoPage() {
               onAbrirPosicao={() => abrirPainel("posicao")}
               onAbrirOrcamento={() => abrirPainel("orcamento")}
               onNovaConversa={() => setNovaConversaAberta(true)}
-              sessaoNumero={sessaoAtiva?.numero ?? sessao.numero}
+              sessaoNumero={sessaoAtiva?.numero ?? sessao?.numero}
               listaAberta={listaAberta}
               onAlternarLista={alternarLista}
             />
@@ -406,7 +431,7 @@ export default function AtendimentoPage() {
       <ConexaoSheet
         aberto={conexaoAberta}
         onOpenChange={setConexaoAberta}
-        sessao={sessao}
+        sessao={sessao ?? null}
       />
       <NovaConversaDialog
         aberto={novaConversaAberta}
@@ -455,6 +480,67 @@ function ListaDeConversas({
   onAlternarLista?: () => void;
 }) {
   const tabsRef = useRef<HTMLDivElement>(null);
+  const [podeRolarEsquerda, setPodeRolarEsquerda] = useState(false);
+  const [podeRolarDireita, setPodeRolarDireita] = useState(false);
+  const [dialogImportarAberto, setDialogImportarAberto] = useState(false);
+  const queryClient = useQueryClient();
+
+  const importarMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ ok: boolean; total: number; criados: number; atualizados: number }>(
+        "/whatsapp/agenda/importar",
+        {
+          method: "POST",
+          body: conexaoAtual ? { sessaoId: conexaoAtual } : sessaoId ? { sessaoId } : {},
+        },
+      ),
+    onSuccess: (res) => {
+      toast.success(
+        res.total === 0
+          ? "Nenhum contato encontrado no aparelho."
+          : `${res.criados} novos contatos importados (${res.atualizados} já existentes atualizados).`,
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["whatsapp-conversas"],
+      });
+      setDialogImportarAberto(false);
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : "Não foi possível importar contatos da conexão.",
+      );
+    },
+  });
+
+  const verificarRolagem = useCallback(() => {
+    const el = tabsRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    setPodeRolarEsquerda(scrollLeft > 2);
+    setPodeRolarDireita(scrollLeft + clientWidth < scrollWidth - 2);
+  }, []);
+
+  useEffect(() => {
+    const el = tabsRef.current;
+    if (!el) return;
+    verificarRolagem();
+    el.addEventListener("scroll", verificarRolagem, { passive: true });
+    const ro = new ResizeObserver(verificarRolagem);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", verificarRolagem);
+      ro.disconnect();
+    };
+  }, [verificarRolagem]);
+
+  const rolarTabs = (direcao: "esquerda" | "direita") => {
+    const el = tabsRef.current;
+    if (!el) return;
+    const passo = 130;
+    el.scrollBy({ left: direcao === "esquerda" ? -passo : passo, behavior: "smooth" });
+  };
 
   const handleTabsWheel = (e: React.WheelEvent) => {
     if (tabsRef.current && e.deltaY !== 0) {
@@ -462,10 +548,9 @@ function ListaDeConversas({
     }
   };
 
-  if (carregando) return <Skeleton className="h-full w-full" />;
-
   const visiveis = conversas.filter((conversa) => {
     if (filtro === "nao_lidas") return conversa.naoLidas > 0;
+    if (filtro === "sem_vinculo") return !conversa.clienteId;
     if (filtro === "retornos") return !!conversa.proximoRetornoEm;
     if (filtro === "aprovacoes") return conversa.orcamentoAguardandoAprovacao;
     return true;
@@ -475,6 +560,11 @@ function ListaDeConversas({
   const contagemSemVinculo = conversas.reduce((acc, c) => acc + (!c.clienteId ? 1 : 0), 0);
   const contagemRetornos = conversas.reduce((acc, c) => acc + (c.proximoRetornoEm ? 1 : 0), 0);
   const contagemAprovacoes = conversas.reduce((acc, c) => acc + (c.orcamentoAguardandoAprovacao ? 1 : 0), 0);
+
+  // Recalcular estado de rolagem ao atualizar contagens ou conversas
+  useEffect(() => {
+    verificarRolagem();
+  }, [verificarRolagem, conversas.length, contagemNaoLidas, contagemSemVinculo, contagemRetornos, contagemAprovacoes]);
 
   return (
     <div className="flex h-full w-full flex-col border-r border-border/60 bg-card/40">
@@ -546,6 +636,13 @@ function ListaDeConversas({
                   <Plug className="size-4" />
                   Conexão WhatsApp
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setDialogImportarAberto(true)}
+                  className="gap-2 cursor-pointer"
+                >
+                  <Download className="size-4" />
+                  Importar contatos do WhatsApp
+                </DropdownMenuItem>
                 {podeTrocarConexao && onConexaoChange ? (
                   <>
                     <DropdownMenuSeparator />
@@ -599,10 +696,24 @@ function ListaDeConversas({
 
         {/* Abas de filtro estilo WhatsApp Web (Pills com rolagem horizontal) */}
         <div className="relative border-t border-border/30 bg-[#F0F2F5]/80 dark:bg-[#202C33]/80">
+          {podeRolarEsquerda ? (
+            <div className="absolute left-0 top-0 bottom-0 z-10 flex items-center bg-gradient-to-r from-[#F0F2F5] via-[#F0F2F5]/90 to-transparent dark:from-[#202C33] dark:via-[#202C33]/90 pl-1 pr-3">
+              <button
+                type="button"
+                onClick={() => rolarTabs("esquerda")}
+                className="flex size-6 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground border border-border/50 transition-colors cursor-pointer"
+                title="Rolar filtros para a esquerda"
+                aria-label="Rolar filtros para a esquerda"
+              >
+                <ChevronLeft className="size-3.5" />
+              </button>
+            </div>
+          ) : null}
+
           <div
             ref={tabsRef}
             onWheel={handleTabsWheel}
-            className="flex items-center gap-1.5 overflow-x-auto px-3 py-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            className="flex items-center gap-1.5 overflow-x-auto px-3 py-2 scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
           >
             {(
               [
@@ -618,8 +729,15 @@ function ListaDeConversas({
                 <button
                   key={valor}
                   type="button"
-                  onClick={() => onFiltroChange(valor)}
-                  className={`h-7 shrink-0 rounded-full px-3 text-xs font-medium transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                  onClick={(e) => {
+                    onFiltroChange(valor);
+                    e.currentTarget.scrollIntoView({
+                      behavior: "smooth",
+                      block: "nearest",
+                      inline: "nearest",
+                    });
+                  }}
+                  className={`h-7 shrink-0 rounded-full px-2.5 text-xs font-medium transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
                     ativo
                       ? "bg-[#E9EDEF] dark:bg-[#374248] text-[#111B21] dark:text-[#E9EDEF] font-semibold shadow-2xs"
                       : "border border-border/50 bg-transparent text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 hover:text-foreground"
@@ -641,12 +759,38 @@ function ListaDeConversas({
               );
             })}
           </div>
+
+          {podeRolarDireita ? (
+            <div className="absolute right-0 top-0 bottom-0 z-10 flex items-center bg-gradient-to-l from-[#F0F2F5] via-[#F0F2F5]/90 to-transparent dark:from-[#202C33] dark:via-[#202C33]/90 pr-1 pl-3">
+              <button
+                type="button"
+                onClick={() => rolarTabs("direita")}
+                className="flex size-6 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground border border-border/50 transition-colors cursor-pointer"
+                title="Rolar filtros para a direita"
+                aria-label="Rolar filtros para a direita"
+              >
+                <ChevronRight className="size-3.5" />
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
 
       {/* Lista de conversas com scroll */}
       <div data-tour="atendimento-conversas" className="min-h-0 flex-1 overflow-y-auto divide-y divide-border/20">
-        {visiveis.length === 0 ? (
+        {carregando ? (
+          <div className="space-y-3 p-3">
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 py-1">
+                <Skeleton className="size-11 rounded-full shrink-0" />
+                <div className="flex-1 space-y-2 py-0.5">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : visiveis.length === 0 ? (
           <ListaVazia
             filtro={filtro}
             busca={busca}
@@ -731,6 +875,47 @@ function ListaDeConversas({
           })
         )}
       </div>
+
+      <Dialog open={dialogImportarAberto} onOpenChange={setDialogImportarAberto}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Importar contatos do WhatsApp</DialogTitle>
+            <DialogDescription>
+              Esta ação lerá os contatos da agenda do aparelho conectado e criará a conversa de cada um vinculada a esta conexão de atendimento.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2 text-xs text-muted-foreground space-y-1">
+            <p>• Contatos já existentes serão preservados e atualizados.</p>
+            <p>• As fotos de perfil serão baixadas automaticamente em segundo plano.</p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setDialogImportarAberto(false)}
+              disabled={importarMutation.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => importarMutation.mutate()}
+              disabled={importarMutation.isPending}
+              className="gap-1.5 bg-[#00A884] hover:bg-[#008f6f] text-white"
+            >
+              {importarMutation.isPending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Importando contatos...
+                </>
+              ) : (
+                <>
+                  <Download className="size-4" />
+                  Confirmar importação
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1064,6 +1249,7 @@ function Conversa({
   listaAberta?: boolean;
   onAlternarLista?: () => void;
 }) {
+  const empresaId = useAuthStore((s) => s.user?.empresaAtivaId);
   const queryClient = useQueryClient();
   const [respostaPendente, setRespostaPendente] = useState<{
     conversaId: string;
@@ -1071,15 +1257,20 @@ function Conversa({
   } | null>(null);
   const fimDoRolo = useRef<HTMLDivElement>(null);
 
-  const { data: mensagens } = useQuery({
-    queryKey: ["whatsapp-mensagens", conversaId],
+  const {
+    data: mensagens = [],
+    isLoading: carregandoMensagens,
+    error: erroMensagens,
+    refetch: recarregarMensagens,
+  } = useQuery<WhatsappMensagem[]>({
+    queryKey: ["whatsapp-mensagens", empresaId, conversaId],
     queryFn: () =>
       apiFetch<WhatsappMensagem[]>(`/whatsapp/conversas/${conversaId}/mensagens`),
     enabled: !!conversaId,
     refetchInterval: 8000,
   });
   const { data: eventos = [] } = useQuery({
-    queryKey: ["whatsapp-eventos", conversaId],
+    queryKey: ["whatsapp-eventos", empresaId, conversaId],
     queryFn: () =>
       apiFetch<WhatsappEventoAtendimento[]>(
         `/whatsapp/conversas/${conversaId}/eventos`,
@@ -1251,32 +1442,70 @@ function Conversa({
 
       {/* Rolo de mensagens com papel de parede característico do WhatsApp */}
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#EFEAE2] dark:bg-[#0B141A] bg-[radial-gradient(#0000000a_1px,transparent_1px)] dark:bg-[radial-gradient(#ffffff0a_1px,transparent_1px)] [background-size:16px_16px] p-4">
-        {linhaDoTempo.map((entrada) =>
-          entrada.tipo === "mensagem" ? (
-            <MensagemBolha
-              key={`mensagem-${entrada.item.id}`}
-              mensagem={entrada.item}
-              autorNome={
-                entrada.item.autorNome ??
-                (entrada.item.direcao === "saida"
-                  ? entrada.item.enviadaPorNome ?? conversa?.vendedorNome ?? "Atendente"
-                  : conversa
-                    ? nomeDaConversa(conversa)
-                    : "Contato")
-              }
-              conversaId={conversaId}
-              citada={
-                entrada.item.respondeuA
-                  ? (porExternoId.get(entrada.item.respondeuA) ?? null)
-                  : null
-              }
-              onResponder={(mensagem) =>
-                setRespostaPendente({ conversaId, mensagem })
-              }
-            />
-          ) : (
-            <EventoComercial key={`evento-${entrada.item.id}`} evento={entrada.item} />
-          ),
+        {carregandoMensagens && mensagens.length === 0 ? (
+          <div className="flex h-full min-h-[300px] flex-col items-center justify-center p-6 text-center select-none">
+            <Loader2 className="size-8 animate-spin text-[#00A884] mb-3" />
+            <p className="text-xs text-muted-foreground font-medium">Carregando mensagens...</p>
+          </div>
+        ) : erroMensagens ? (
+          <div className="flex h-full min-h-[300px] flex-col items-center justify-center p-6 text-center select-none">
+            <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10 text-destructive mb-3">
+              <TriangleAlert className="size-6" />
+            </div>
+            <p className="text-sm font-semibold text-foreground">Não foi possível carregar as mensagens</p>
+            <p className="mt-1 text-xs text-muted-foreground max-w-[280px]">
+              {erroMensagens instanceof ApiError ? erroMensagens.message : "Ocorreu um erro ao buscar o histórico desta conversa."}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void recarregarMensagens()}
+              className="mt-3.5 h-8 text-xs gap-1.5"
+            >
+              <RefreshCw className="size-3.5" />
+              Tentar novamente
+            </Button>
+          </div>
+        ) : linhaDoTempo.length === 0 ? (
+          <div className="flex h-full min-h-[300px] flex-col items-center justify-center p-6 text-center select-none">
+            <div className="flex size-12 items-center justify-center rounded-full bg-background/80 text-muted-foreground shadow-2xs border border-border/40 mb-3">
+              <MessageSquare className="size-6 text-[#00A884]" />
+            </div>
+            <p className="text-sm font-semibold text-foreground">Nenhuma mensagem nesta conversa</p>
+            <p className="mt-1 text-xs text-muted-foreground max-w-[320px]">
+              {conversa?.clienteId
+                ? "As mensagens trocadas com este cliente serão exibidas aqui."
+                : "Este contato ainda não possui mensagens gravadas. Envie uma mensagem abaixo para iniciar o atendimento."}
+            </p>
+          </div>
+        ) : (
+          linhaDoTempo.map((entrada) =>
+            entrada.tipo === "mensagem" ? (
+              <MensagemBolha
+                key={`mensagem-${entrada.item.id}`}
+                mensagem={entrada.item}
+                autorNome={
+                  entrada.item.autorNome ??
+                  (entrada.item.direcao === "saida"
+                    ? entrada.item.enviadaPorNome ?? conversa?.vendedorNome ?? "Atendente"
+                    : conversa
+                      ? nomeDaConversa(conversa)
+                      : "Contato")
+                }
+                conversaId={conversaId}
+                citada={
+                  entrada.item.respondeuA
+                    ? (porExternoId.get(entrada.item.respondeuA) ?? null)
+                    : null
+                }
+                onResponder={(mensagem) =>
+                  setRespostaPendente({ conversaId, mensagem })
+                }
+              />
+            ) : (
+              <EventoComercial key={`evento-${entrada.item.id}`} evento={entrada.item} />
+            ),
+          )
         )}
         <div ref={fimDoRolo} />
       </div>
@@ -1434,6 +1663,58 @@ function PainelCliente({
   // daqui em diante), então fica atrás de um lápis em vez de ocupar o painel.
   const [trocandoVinculo, setTrocandoVinculo] = useState(false);
   const [removendoVinculo, setRemovendoVinculo] = useState(false);
+  const queryClient = useQueryClient();
+  const empresaId = useAuthStore((s) => s.user?.empresaAtivaId);
+  const fotoTentadaRef = useRef<string | null>(null);
+
+  const atualizarFotoMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<{ ok: boolean; fotoUrl: string | null; mensagem?: string }>(
+        `/whatsapp/conversas/${id}/foto`,
+        { method: "POST" },
+      ),
+    onSuccess: (res) => {
+      if (res.ok && res.fotoUrl) {
+        toast.success("Foto de perfil atualizada com sucesso!");
+        void queryClient.invalidateQueries({
+          queryKey: ["whatsapp-conversas"],
+        });
+        void queryClient.invalidateQueries({
+          queryKey: ["whatsapp-conversa", empresaId, conversa?.id],
+        });
+      } else {
+        toast.info(res.mensagem ?? "Foto não disponível no WhatsApp.");
+      }
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : "Não foi possível buscar a foto de perfil.",
+      );
+    },
+  });
+
+  useEffect(() => {
+    if (conversa && !conversa.contato.fotoUrl && fotoTentadaRef.current !== conversa.id) {
+      fotoTentadaRef.current = conversa.id;
+      apiFetch<{ ok: boolean; fotoUrl: string | null }>(
+        `/whatsapp/conversas/${conversa.id}/foto`,
+        { method: "POST" },
+      )
+        .then((res) => {
+          if (res.ok && res.fotoUrl) {
+            void queryClient.invalidateQueries({
+              queryKey: ["whatsapp-conversas"],
+            });
+            void queryClient.invalidateQueries({
+              queryKey: ["whatsapp-conversa", empresaId, conversa.id],
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [conversa, empresaId, queryClient]);
 
   if (!conversa) {
     return emCortina ? (
@@ -1468,17 +1749,38 @@ function PainelCliente({
     >
       <div className="flex flex-col items-center gap-2 pt-2 text-center">
         <div
-          className={`flex size-20 items-center justify-center rounded-full text-2xl font-medium ${avatarColorClass(nome)}`}
+          className={`relative flex size-20 items-center justify-center rounded-full text-2xl font-medium overflow-hidden shadow-xs ${avatarColorClass(nome)}`}
         >
-          {initials(nome)}
+          {conversa.contato.fotoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={assetUrl(conversa.contato.fotoUrl) ?? undefined}
+              alt={nome}
+              className="size-full rounded-full object-cover"
+            />
+          ) : (
+            initials(nome)
+          )}
         </div>
-        <div>
-          <p className="font-medium">{nome}</p>
+        <div className="flex flex-col items-center gap-0.5">
+          <p className="font-semibold text-base text-foreground">{nome}</p>
           {telefone ? (
             <p className="text-xs text-muted-foreground">
               WhatsApp da conversa · {telefone}
             </p>
           ) : null}
+          <button
+            type="button"
+            onClick={() => atualizarFotoMutation.mutate(conversa.id)}
+            disabled={atualizarFotoMutation.isPending}
+            className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/40 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+            title="Buscar foto de perfil atualizada no WhatsApp"
+          >
+            <Camera
+              className={`size-3 ${atualizarFotoMutation.isPending ? "animate-spin" : ""}`}
+            />
+            {atualizarFotoMutation.isPending ? "Buscando..." : "Atualizar foto"}
+          </button>
         </div>
       </div>
 

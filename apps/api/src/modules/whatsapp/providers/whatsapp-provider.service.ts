@@ -340,6 +340,7 @@ export class WhatsappProviderService {
     empresaId: string,
     sessaoId: string,
     jid: string,
+    telefone?: string | null,
     tx?: TenantTx,
   ): Promise<FotoContato | null> {
     const { ctx, provider } = await this.provedorDaSessao(
@@ -347,7 +348,7 @@ export class WhatsappProviderService {
       sessaoId,
       tx,
     );
-    return provider.obterFotoContato(ctx, jid);
+    return provider.obterFotoContato(ctx, jid, telefone);
   }
 
   async sincronizarAgenda(empresaId: string, sessaoId: string): Promise<void> {

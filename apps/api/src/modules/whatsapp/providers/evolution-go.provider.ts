@@ -852,62 +852,66 @@ export class EvolutionGoProvider implements WhatsappProvider {
   async obterFotoContato(
     ctx: ContextoSessao,
     jid: string,
+    telefone?: string | null,
   ): Promise<FotoContato | null> {
-    // POST, não GET, e o corpo é `{number, preview}` — conferido no Swagger da
-    // 0.7.2. `preview: false` pede a foto em tamanho cheio.
-    const resposta = await this.http
-      .chamar<unknown>(ctx.config.evolutionUrl, '/user/avatar', {
-        metodo: 'POST',
-        credencial: this.chaveInstancia(ctx),
-        corpo: { number: this.destinatario(jid), preview: false },
-        aceitarAusente: true,
-      })
-      .catch(() => null);
-    if (!resposta) return null;
-
-    let base64 = texto(resposta, 'base64', 'data');
-    if (!base64 && typeof resposta === 'object' && resposta !== null) {
-      const possivel = texto(resposta, 'picture', 'image');
-      if (possivel && possivel.length > 200 && !possivel.startsWith('http')) {
-        base64 = possivel;
-      }
+    // Identificadores candidatos para localizar o avatar na Evolution GO
+    const candidatos: string[] = [];
+    if (jid) {
+      candidatos.push(jid);
+    }
+    const telDigitos = telefone ? telefone.replace(/\D/g, '') : null;
+    if (telDigitos && !candidatos.includes(telDigitos)) {
+      candidatos.push(telDigitos);
+    }
+    const dest = this.destinatario(jid);
+    if (dest && !candidatos.includes(dest)) {
+      candidatos.push(dest);
     }
 
-    if (base64) {
-      return {
-        conteudoBase64: base64.replace(/^data:[^;]+;base64,/, ''),
-        mime: texto(resposta, 'mimetype', 'mime') ?? 'image/jpeg',
-      };
-    }
-
-    let url = texto(resposta, 'profilePictureUrl', 'url', 'picture', 'image');
-    if (!url) {
-      const resp2 = await this.http
-        .chamar<unknown>(ctx.config.evolutionUrl, '/chat/fetchProfilePictureUrl', {
+    for (const num of candidatos) {
+      // POST, não GET, e o corpo é `{number, preview}` — conferido no Swagger da 0.7.2
+      const resposta = await this.http
+        .chamar<unknown>(ctx.config.evolutionUrl, '/user/avatar', {
           metodo: 'POST',
           credencial: this.chaveInstancia(ctx),
-          corpo: { number: this.destinatario(jid) },
+          corpo: { number: num, preview: false },
           aceitarAusente: true,
+          timeoutMs: 4000,
         })
         .catch(() => null);
-      if (resp2) {
-        url = texto(resp2, 'profilePictureUrl', 'url', 'picture');
-      }
-    }
 
-    if (url && url.startsWith('http')) {
-      try {
-        const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-        if (res.ok) {
-          const buffer = await res.arrayBuffer();
-          const mime = res.headers.get('content-type') ?? 'image/jpeg';
+      if (resposta) {
+        let base64 = texto(resposta, 'base64', 'data');
+        if (!base64 && typeof resposta === 'object' && resposta !== null) {
+          const possivel = texto(resposta, 'picture', 'image');
+          if (possivel && possivel.length > 200 && !possivel.startsWith('http')) {
+            base64 = possivel;
+          }
+        }
+
+        if (base64) {
           return {
-            conteudoBase64: Buffer.from(buffer).toString('base64'),
-            mime,
+            conteudoBase64: base64.replace(/^data:[^;]+;base64,/, ''),
+            mime: texto(resposta, 'mimetype', 'mime') ?? 'image/jpeg',
           };
         }
-      } catch {
-        // Falha no download da URL da foto ignorada com segurança
+
+        let url = texto(resposta, 'profilePictureUrl', 'url', 'picture', 'image');
+        if (url && url.startsWith('http')) {
+          try {
+            const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+            if (res.ok) {
+              const buffer = await res.arrayBuffer();
+              const mime = res.headers.get('content-type') ?? 'image/jpeg';
+              return {
+                conteudoBase64: Buffer.from(buffer).toString('base64'),
+                mime,
+              };
+            }
+          } catch {
+            // Falha no download da URL da foto ignorada com segurança
+          }
+        }
       }
     }
 
