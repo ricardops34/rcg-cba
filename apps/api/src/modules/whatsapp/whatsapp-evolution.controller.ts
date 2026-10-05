@@ -325,9 +325,16 @@ export class WhatsappEvolutionController {
     );
     if (!externoId || !jid) return false;
 
-    // Grupo e lista de transmissão não fazem parte do atendimento — a mesma
-    // regra do zapo, e a razão é a mesma: não há um cliente do outro lado.
-    if (jid.endsWith('@g.us') || jid.includes('broadcast')) return false;
+    // Grupo, lista de transmissão e canal não fazem parte do atendimento: não
+    // há um cliente do outro lado. Canal (`@newsletter`) tem id `120363…`,
+    // igual ao de grupo — sem ele aqui, cada postagem virava aviso no sino.
+    if (
+      jid.endsWith('@g.us') ||
+      jid.includes('broadcast') ||
+      jid.endsWith('@newsletter')
+    ) {
+      return false;
+    }
 
     const minha = booleano(bruta, 'key.fromMe', 'Info.IsFromMe', 'fromMe');
     const conteudo = objeto(bruta, 'message', 'Message') ?? {};

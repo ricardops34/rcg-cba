@@ -1124,7 +1124,13 @@ export class EvolutionGoProvider implements WhatsappProvider {
     if (!jid) return null;
     // Grupo não participa da agenda usada para vínculo de cliente — a mesma
     // regra do zapo.
-    if (jid.endsWith('@g.us') || jid.includes('broadcast')) return null;
+    if (
+      jid.endsWith('@g.us') ||
+      jid.includes('broadcast') ||
+      jid.endsWith('@newsletter')
+    ) {
+      return null;
+    }
 
     const naoLidas = Number(
       texto(bruto, 'unreadCount', 'unread', 'naoLidas') ?? 0,

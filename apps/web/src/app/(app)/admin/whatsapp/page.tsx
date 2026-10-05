@@ -227,7 +227,7 @@ function EvolutionConfig({ config }: { config: WhatsappConfig }) {
                 }
               />
               <FieldDescription>
-                Endereço do gateway Evolution GO: informe o domínio HTTPS (ex.: <code>https://evogo.bjsoft.com.br</code>) ou o endereço interno na rede Docker (ex.: <code>http://rcgcba-evolution-go:8080</code>).
+                Endereço do gateway Evolution GO: informe o domínio HTTPS (ex.: <code>https://evolutiongo.seudomino.com.br</code>).
               </FieldDescription>
             </Field>
             <Field>

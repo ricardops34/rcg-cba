@@ -58,6 +58,19 @@ const PREVIA_TAMANHO = 120;
 const MIDIA = ['imagem', 'video', 'audio', 'documento'];
 
 /**
+ * Contato que não é atendimento — grupo, lista de transmissão, status e canal.
+ * Não há um cliente do outro lado; a tela e o sino deixam de fora o que tenha
+ * sido gravado antes de a entrada passar a barrar (ver `receber`).
+ */
+const CONTATO_DE_ATENDIMENTO = {
+  NOT: [
+    { jid: { endsWith: '@broadcast' } },
+    { jid: { endsWith: '@newsletter' } },
+    { jid: { endsWith: '@g.us' } },
+  ],
+};
+
+/**
  * Conversas e mensagens do atendimento.
  *
  * O corte de acesso é sempre pela **sessão**: uma conversa pertence à sessão de
@@ -182,15 +195,7 @@ export class WhatsappConversasService {
       const andConditions: any[] = [
         filtro,
         { arquivada: query.arquivadas },
-        {
-          contato: {
-            NOT: [
-              { jid: { endsWith: '@broadcast' } },
-              { jid: { endsWith: '@newsletter' } },
-              { jid: { endsWith: '@g.us' } },
-            ],
-          },
-        },
+        { contato: CONTATO_DE_ATENDIMENTO },
       ];
 
       if (query.sessaoId) {
@@ -2638,6 +2643,18 @@ export class WhatsappConversasService {
     const { empresaId } = entrada;
     const minha = Boolean(entrada.minha);
 
+    // Grupo, lista de transmissão, status e canal não são atendimento: não há
+    // um cliente do outro lado. A Evolution GO já descarta na origem, mas o
+    // zapo não tem essa opção — barrar aqui vale para qualquer transporte e
+    // evita contato/conversa de grupo gravados que a tela só esconderia.
+    if (
+      entrada.jid.endsWith('@g.us') ||
+      entrada.jid.includes('broadcast') ||
+      entrada.jid.endsWith('@newsletter')
+    ) {
+      return { gravada: false, motivo: 'nao-atendimento' };
+    }
+
     return this.prisma.withTenant(empresaId, async (tx) => {
       const sessao = await tx.whatsappSessao.findFirst({
         where: { id: entrada.sessaoId },
@@ -2988,7 +3005,12 @@ export class WhatsappConversasService {
       const filtro = await this.filtroSessao(tx, empresaId, user);
       const [naoLidas, agendamentos] = await Promise.all([
         tx.whatsappConversa.findMany({
-          where: { ...filtro, naoLidas: { gt: 0 }, arquivada: false },
+          where: {
+            ...filtro,
+            naoLidas: { gt: 0 },
+            arquivada: false,
+            contato: CONTATO_DE_ATENDIMENTO,
+          },
           select: {
             id: true,
             naoLidas: true,
