@@ -35,3 +35,7 @@ docs/integracao/windows/publish/
 *.db-shm
 *.db-wal
 
+
+# Reversa
+.reversa/config.user.toml
+_reversa_sdd/
