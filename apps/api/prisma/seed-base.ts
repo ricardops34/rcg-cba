@@ -17,7 +17,6 @@
  */
 import { Acao, PrismaClient } from '@prisma/client';
 import {
-  ACOES_FORA_DO_DIRETOR,
   ADMINISTRATIVO_PERMISSOES,
   MODULO,
   SUPERVISAO_PERMISSOES,
@@ -723,9 +722,7 @@ async function bootstrapPerfilDiretor(
           !ROTINAS_FORA_DO_DIRETOR.has(rotina.codigo),
       )
       .flatMap((rotina) =>
-        ACOES.filter(
-          (acao) => !ACOES_FORA_DO_DIRETOR[rotina.codigo]?.includes(acao),
-        ).map((acao) => ({
+        ACOES.map((acao) => ({
           perfilId: perfilDiretor.id,
           rotinaId: rotina.id,
           acao,

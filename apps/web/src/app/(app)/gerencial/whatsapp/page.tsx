@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/stores/auth-store";
 import {
   ArrowLeft,
@@ -13,7 +12,6 @@ import {
   Inbox,
   MessageSquare,
   ShieldCheck,
-  Trash2,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -22,22 +20,13 @@ import type {
   WhatsappHistoricoFiltros,
   WhatsappMensagem,
 } from "@plataforma/contracts";
-import { ApiError, apiFetch, assetUrl } from "@/lib/api-client";
+import { apiFetch, assetUrl } from "@/lib/api-client";
 import { avatarColorClass, initials } from "@/lib/avatar-color";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { MensagemBolha } from "@/components/whatsapp/mensagem-bolha";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -163,29 +152,6 @@ export default function HistoricoWhatsappPage() {
         `/whatsapp/gerencial/conversas/${conversaId}/mensagens?tamanho=100`,
       ),
     enabled: !!empresaId && !!conversaId,
-  });
-
-  // O histórico é permanente; só quem tem `whatsapp-historico.excluir` (o
-  // administrador da empresa) apaga. A API confere de novo.
-  const podeExcluir = useAuthStore((s) =>
-    s.hasPermission("whatsapp-historico", "excluir"),
-  );
-  const [excluirAberto, setExcluirAberto] = useState(false);
-  const queryClient = useQueryClient();
-  const excluirConversa = useMutation({
-    mutationFn: (id: string) =>
-      apiFetch<{ conversas: number; mensagens: number }>(
-        `/whatsapp/gerencial/conversas/${id}`,
-        { method: "DELETE" },
-      ),
-    onSuccess: (r) => {
-      setExcluirAberto(false);
-      setConversaId(null);
-      void queryClient.invalidateQueries({ queryKey: ["whatsapp-gerencial-conversas"] });
-      toast.success(`Conversa excluída (${r.mensagens} mensagens).`);
-    },
-    onError: (err) =>
-      toast.error(err instanceof ApiError ? err.message : "Falha ao excluir a conversa"),
   });
 
   const filtrosAtivos =
@@ -593,17 +559,6 @@ export default function HistoricoWhatsappPage() {
                     </Link>
                   </Button>
                 ) : null}
-                {podeExcluir ? (
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    onClick={() => setExcluirAberto(true)}
-                    className="shrink-0 gap-1.5 text-xs text-destructive hover:text-destructive"
-                  >
-                    <Trash2 className="size-3" />
-                    Excluir conversa
-                  </Button>
-                ) : null}
               </div>
 
               {/* Rolo de mensagens auditadas */}
@@ -670,33 +625,6 @@ export default function HistoricoWhatsappPage() {
           )}
         </div>
       </div>
-
-      <Dialog open={excluirAberto} onOpenChange={setExcluirAberto}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Excluir esta conversa do histórico?</DialogTitle>
-            <DialogDescription>
-              A conversa
-              {conversaSelecionada ? ` com ${nomeExibicaoConversa(conversaSelecionada)}` : ""}{" "}
-              e todas as mensagens dela são apagadas de vez — não tem volta. O
-              contato, o vínculo com o cliente e as atividades no histórico do
-              cliente ficam.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancelar</Button>
-            </DialogClose>
-            <Button
-              variant="destructive"
-              disabled={excluirConversa.isPending || !conversaId}
-              onClick={() => conversaId && excluirConversa.mutate(conversaId)}
-            >
-              {excluirConversa.isPending ? "Excluindo..." : "Excluir conversa"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

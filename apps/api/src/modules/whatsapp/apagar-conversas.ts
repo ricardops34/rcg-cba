@@ -3,9 +3,9 @@ import type { TenantTx } from '../../common/prisma/prisma.service';
 /**
  * Apaga conversas de WhatsApp e tudo o que é delas.
  *
- * Ponto único das três exclusões do histórico (uma conversa, o histórico de
- * uma instância, a instância com o histórico), todas atrás de
- * `whatsapp-historico.excluir` — o histórico é permanente para todo o resto.
+ * Ponto único das exclusões do histórico (o histórico de uma instância, a
+ * instância com o histórico), as duas atrás de
+ * `whatsapp-config.excluir` — o histórico é permanente para todo o resto.
  *
  * Pelo cascade do banco vão junto mensagens, reações, agendamentos e o
  * registro de ações enviadas. Duas coisas não têm FK e precisam ser tratadas

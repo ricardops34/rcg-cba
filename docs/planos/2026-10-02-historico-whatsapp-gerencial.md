@@ -95,31 +95,25 @@ O que **some da tela** sem ser apagado:
 
 ## Exceção: exclusão pelo administrador (usuário, 05/10/2026)
 
-O histórico continua permanente para todos, **menos** para quem tem a permissão
-`whatsapp-historico.excluir` — concedida pela migration
-`20261005200000_perm_whatsapp_historico_excluir` só aos perfis `sistemaBase`
-(Administrador Empresa e Administrador da Plataforma). Separada de
-`whatsapp-config.editar` de propósito: quem configura o WhatsApp não apaga
-histórico. O Diretor não recebe (`ACOES_FORA_DO_DIRETOR` no catálogo, aplicado
-pelo seed e pelo `sincronizar-catalogo`).
-
-Três exclusões, todas sem volta e todas pelo helper único `apagarConversas`
-(sino apagado, lead preservado sem o ponteiro, atividades do cliente ficam):
+O histórico continua permanente para todos, **menos** para o administrador da
+empresa, e só em **Administração → WhatsApp → Instâncias** (nada no
+Gerencial, por decisão do usuário). A permissão é `whatsapp-config.excluir`:
+separada de `editar` e que só os perfis administradores têm, então não houve o
+que conceder.
 
 | O quê | Onde | Rota |
 |---|---|---|
-| Uma conversa | Gerencial → Histórico do WhatsApp, "Excluir conversa" | `DELETE /whatsapp/gerencial/conversas/:id` (mesmo escopo da leitura) |
-| Histórico de uma instância | Administração → WhatsApp → Instâncias, "Limpar conversas" | `DELETE /whatsapp/config/sessoes/:id/conversas` |
+| Histórico de uma instância | menu ⋯ da linha, "Limpar conversas" | `DELETE /whatsapp/config/sessoes/:id/conversas` |
 | Instância com histórico | idem, "Excluir instância e histórico" (só desconectada) | `DELETE /whatsapp/config/sessoes/:id/instancia-e-historico` |
 
-Sem auditoria em tabela: cada exclusão deixa uma linha `warn` no log da API com
-quem apagou e quanto. Quem já estava logado precisa sair e entrar de novo para
-o menu enxergar a permissão nova.
+As duas passam pelo helper único `apagarConversas` (sino apagado, lead
+preservado sem o ponteiro, atividades do cliente ficam). Sem auditoria em
+tabela: cada exclusão deixa uma linha `warn` no log da API com quem apagou e
+quanto.
 
-**Correção na produção (05/10/2026):** a rotina `whatsapp-historico` nunca
-chegou ao banco de produção — a migration de 02/10 foi commitada vazia e o
-`sincronizar-catalogo` não rodou depois —, então a concessão de `excluir` não
-achou rotina e o administrador não via as opções (nem o menu). A
-`20261005210000_rotina_whatsapp_historico` cria menu e rotina com os ids do
-catálogo e concede `visualizar` (administradores, Diretor, Gerente, Supervisor)
-e `excluir` (administradores).
+Histórico do caminho: a primeira versão usava `whatsapp-historico.excluir` e
+um botão no Gerencial; saiu. A `20261005200000` (concessão) ficou aplicada e a
+`20261005220000` a desfaz. Na produção, a rotina `whatsapp-historico` não
+existe — a migration de 02/10 foi commitada vazia e o `sincronizar-catalogo`
+não rodou depois —, e o menu Histórico do WhatsApp não aparece para ninguém.
+Isso ficou **em aberto**: é do recurso de 02/10, não desta mudança.

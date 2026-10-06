@@ -513,10 +513,10 @@ export class WhatsappController {
       'Apaga conversas, mensagens, reações, agendamentos e ações da instância, ' +
       'além das notificações do sino que apontavam para elas. Os contatos e o ' +
       'vínculo com o cadastro de clientes são preservados; leads perdem só o ' +
-      'ponteiro para a conversa. Não tem volta. Requer whatsapp-historico.excluir ' +
-      '(o histórico é permanente para quem só configura o WhatsApp).',
+      'ponteiro para a conversa. Não tem volta. Requer whatsapp-config.excluir ' +
+      '(só os administradores; quem edita a configuração não apaga histórico).',
   })
-  @RequirePermission('whatsapp-historico', 'excluir')
+  @RequirePermission('whatsapp-config', 'excluir')
   @Delete('config/sessoes/:id/conversas')
   limparConversas(
     @Param('id') id: string,
@@ -546,9 +546,9 @@ export class WhatsappController {
     description:
       'Só aceita instância desconectada. Remove a instância do gateway e apaga ' +
       'conversas, mensagens, períodos e a linha da instância. Não tem volta. ' +
-      'Requer whatsapp-historico.excluir.',
+      'Requer whatsapp-config.excluir.',
   })
-  @RequirePermission('whatsapp-historico', 'excluir')
+  @RequirePermission('whatsapp-config', 'excluir')
   @Delete('config/sessoes/:id/instancia-e-historico')
   excluirInstanciaComHistorico(
     @Param('id') id: string,
@@ -662,26 +662,6 @@ export class WhatsappController {
       user.empresaAtivaId,
       user,
       query,
-    );
-  }
-
-  @ApiOperation({
-    summary: 'Excluir uma conversa do histórico',
-    description:
-      'Apaga a conversa e as mensagens dela. Mesmo alcance da leitura ' +
-      'gerencial: só se exclui o que se pode ver. Não tem volta. Requer ' +
-      'whatsapp-historico.excluir.',
-  })
-  @RequirePermission('whatsapp-historico', 'excluir')
-  @Delete('gerencial/conversas/:id')
-  gerencialExcluirConversa(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.conversas.excluirConversaGerencial(
-      user.empresaAtivaId,
-      user,
-      id,
     );
   }
 

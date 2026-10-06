@@ -601,7 +601,7 @@ function Instancias({ config }: { config: WhatsappConfig }) {
   const [remover, setRemover] = useState<WhatsappSessao | null>(null);
   const [apagar, setApagar] = useState<WhatsappSessao | null>(null);
   const [apagarHistorico, setApagarHistorico] = useState<{ sessao: WhatsappSessao; comInstancia: boolean } | null>(null);
-  const podeExcluirHistorico = useAuthStore((s) => s.hasPermission("whatsapp-historico", "excluir"));
+  const podeExcluirHistorico = useAuthStore((s) => s.hasPermission("whatsapp-config", "excluir"));
   const { data = [], isLoading } = useQuery({ queryKey: ["whatsapp-sessoes"], queryFn: () => apiFetch<WhatsappSessao[]>("/whatsapp/sessoes"), refetchInterval: 10_000 });
   const atualizar = () => { void queryClient.invalidateQueries({ queryKey: ["whatsapp-sessoes"] }); void queryClient.invalidateQueries({ queryKey: ["whatsapp-sessao"] }); };
   const reconectar = useMutation({
@@ -727,7 +727,7 @@ function Instancias({ config }: { config: WhatsappConfig }) {
                             </DropdownMenuItem>
                           ) : null}
                           {/* Apagar histórico é do administrador da empresa
-                              (`whatsapp-historico.excluir`), não de quem só
+                              (`whatsapp-config.excluir`), não de quem só
                               configura o WhatsApp. */}
                           {podeExcluirHistorico ? (
                             <DropdownMenuItem variant="destructive" onSelect={() => setApagarHistorico({ sessao, comInstancia: false })}>

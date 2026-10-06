@@ -809,7 +809,7 @@ export class WhatsappSessaoService {
     sessaoId: string,
   ) {
     // Histórico permanente para todo o resto: a rota exige
-    // `whatsapp-historico.excluir`, concedida só ao administrador da empresa
+    // `whatsapp-config.excluir`, que só o administrador da empresa tem
     // (decisão de 2026-10-05).
     const sessao = await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappSessao.findFirst({
@@ -847,7 +847,7 @@ export class WhatsappSessaoService {
    *
    * O `excluirInstancia` comum preserva a linha quando há conversas (o
    * histórico é permanente). Este é o caminho do administrador da empresa,
-   * atrás de `whatsapp-historico.excluir`: apaga conversas, mensagens e
+   * atrás de `whatsapp-config.excluir`: apaga conversas, mensagens e
    * períodos e só então a sessão. Mesma exigência de estar desconectada — não
    * se apaga o histórico de um número que continua recebendo.
    */
