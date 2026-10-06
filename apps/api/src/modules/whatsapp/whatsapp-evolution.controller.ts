@@ -350,7 +350,12 @@ export class WhatsappEvolutionController {
   private async tratarUmaMensagem(
     ctx: ContextoSessao,
     bruta: unknown,
-    opcoes: { historico?: boolean; criadaEm?: Date } = {},
+    opcoes: {
+      historico?: boolean;
+      criadaEm?: Date;
+      /** Nome da conversa vindo do histórico (agenda do celular ou apelido). */
+      nomeContato?: string | null;
+    } = {},
   ): Promise<boolean> {
     const externoId = texto(bruta, 'key.id', 'Info.ID', 'id', 'messageId');
     const jid = texto(
@@ -376,9 +381,9 @@ export class WhatsappEvolutionController {
 
     const minha = booleano(bruta, 'key.fromMe', 'Info.IsFromMe', 'fromMe');
     const envelope = objeto(bruta, 'message', 'Message') ?? {};
-    // Edição chega embrulhada (`editedMessage.message`); o que interessa é o
-    // `protocolMessage` de dentro.
-    const conteudo = objeto(envelope, 'editedMessage.message') ?? envelope;
+    // Edição, mensagem temporária, visualização única… chegam embrulhadas; o
+    // que interessa é o conteúdo de dentro (ver `desembrulhar`).
+    const conteudo = this.desembrulhar(envelope);
 
     // Edição, exclusão para todos e mensagens de controle do WhatsApp
     // (mensagem temporária, sincronização…) vêm como `protocolMessage`. Nenhuma
@@ -418,6 +423,13 @@ export class WhatsappEvolutionController {
     // como mensagem, mas com o conteúdo estruturado para a bolha desenhar.
     const estruturado =
       this.respostaInterativa(conteudo) ?? this.enqueteDoCelular(conteudo);
+    if (!midia && !estruturado && this.tipoDaMensagem(conteudo) === 'outro') {
+      // Só os nomes dos campos, nunca o conteúdo: é o que permite reconhecer
+      // o próximo formato sem adivinhação (foi o caso da Panan).
+      this.logger.log(
+        `Mensagem de tipo desconhecido na sessão ${ctx.sessaoId}: campos=${Object.keys(conteudo).join(',') || '(nenhum)'}`,
+      );
+    }
     const resposta = await this.conversas.receber({
       sessaoId: ctx.sessaoId,
       empresaId: ctx.empresaId,
@@ -432,9 +444,9 @@ export class WhatsappEvolutionController {
       minha,
       // Na que saiu do celular, o `pushName` é o do próprio vendedor: usá-lo
       // renomearia o contato com o nome de quem está atendendo.
-      nomeExibicao: minha
-        ? null
-        : texto(bruta, 'pushName', 'Info.PushName', 'notifyName'),
+      nomeExibicao:
+        opcoes.nomeContato ??
+        (minha ? null : texto(bruta, 'pushName', 'Info.PushName', 'notifyName')),
       texto: estruturado?.texto ?? this.textoDaMensagem(conteudo),
       tipo: estruturado?.tipo ?? midia?.tipo ?? this.tipoDaMensagem(conteudo),
       arquivoNome: midia?.nome ?? null,
@@ -510,12 +522,39 @@ export class WhatsappEvolutionController {
     const conversas = lista(historico, 'conversations');
     const limite = Date.now() - dias * 24 * 60 * 60 * 1000;
 
+    // O pacote traz, além das mensagens, o que identifica cada pessoa — e é
+    // daqui que sai nome e telefone, porque o chat costuma vir só como `@lid`
+    // (identificador opaco, sem número) e o gateway não converte depois.
+    //   - `phoneNumberToLidMappings`: `@lid` ↔ telefone;
+    //   - `pushnames`: o apelido que cada um usa no WhatsApp;
+    //   - em cada conversa, `name`/`displayName`: o nome salvo na agenda.
+    const telefonePorLid = new Map<string, string>();
+    for (const m of lista(historico, 'phoneNumberToLidMappings')) {
+      const lid = texto(m, 'lidJID', 'lidJid');
+      const pn = texto(m, 'pnJID', 'pnJid');
+      if (lid && pn) telefonePorLid.set(lid, pn);
+    }
+    const apelidoPorJid = new Map<string, string>();
+    for (const p of lista(historico, 'pushnames')) {
+      const id = texto(p, 'ID', 'id');
+      const nome = texto(p, 'pushname', 'pushName');
+      if (id && nome) apelidoPorJid.set(id, nome);
+    }
+
     void (async () => {
       let gravadas = 0;
       for (const conversa of conversas) {
         const jidConversa = texto(conversa, 'ID', 'id', 'newJID');
         // Telefone de quem está do outro lado quando o chat é `@lid`.
-        const telefoneConversa = texto(conversa, 'pnJID', 'pnJid');
+        const telefoneConversa =
+          texto(conversa, 'pnJID', 'pnJid') ??
+          (jidConversa ? telefonePorLid.get(jidConversa) : undefined) ??
+          null;
+        const nomeConversa =
+          texto(conversa, 'name', 'displayName', 'username') ??
+          (jidConversa ? apelidoPorJid.get(jidConversa) : undefined) ??
+          (telefoneConversa ? apelidoPorJid.get(telefoneConversa) : undefined) ??
+          null;
         for (const item of lista(conversa, 'messages')) {
           const info = objeto(item, 'message') ?? item;
           const segundos = Number(texto(info, 'messageTimestamp') ?? 0);
@@ -544,7 +583,11 @@ export class WhatsappEvolutionController {
                 },
                 Message: conteudo,
               },
-              { historico: true, criadaEm: new Date(segundos * 1000) },
+              {
+                historico: true,
+                criadaEm: new Date(segundos * 1000),
+                nomeContato: nomeConversa,
+              },
             );
             if (gravou) gravadas += 1;
           } catch (erro) {
@@ -557,7 +600,8 @@ export class WhatsappEvolutionController {
       }
       this.logger.log(
         `Histórico da sessão ${ctx.sessaoId}: ${conversas.length} conversas ` +
-          `recebidas, ${gravadas} mensagens gravadas (últimos ${dias} dias).`,
+          `recebidas (${telefonePorLid.size} @lid com telefone, ${apelidoPorJid.size} apelidos), ` +
+          `${gravadas} mensagens gravadas (últimos ${dias} dias).`,
       );
     })();
 
@@ -776,16 +820,54 @@ export class WhatsappEvolutionController {
     return texto(
       conteudo,
       'conversation',
-      'Conversation',
       'extendedTextMessage.text',
-      'ExtendedTextMessage.Text',
       'imageMessage.caption',
       'videoMessage.caption',
       'documentMessage.caption',
-      'ImageMessage.Caption',
-      'VideoMessage.Caption',
+      // Mensagens de empresa (modelo com botões, interativa, lista, produto):
+      // chegavam como "[outro]" — visto na conversa real com a Panan.
+      'templateMessage.hydratedTemplate.hydratedContentText',
+      'templateMessage.hydratedFourRowTemplate.hydratedContentText',
+      'templateMessage.fourRowTemplate.content.namespace',
+      'interactiveMessage.body.text',
+      'buttonsMessage.contentText',
+      'listMessage.description',
+      'productMessage.body',
+      'orderMessage.message',
+      'groupInviteMessage.caption',
+      'eventMessage.name',
       'text',
     );
+  }
+
+  /**
+   * Tira os envelopes que o WhatsApp põe em volta do conteúdo: mensagem
+   * temporária, visualização única, documento com legenda, edição e a
+   * mensagem que o próprio vendedor mandou de outro aparelho
+   * (`deviceSentMessage`). Sem isto, tudo que chega numa conversa com
+   * mensagens temporárias ligadas virava "[outro]".
+   */
+  private desembrulhar(
+    conteudo: Record<string, unknown>,
+  ): Record<string, unknown> {
+    let atual = conteudo;
+    for (let i = 0; i < 4; i++) {
+      const dentro = objeto(
+        atual,
+        'ephemeralMessage.message',
+        'viewOnceMessage.message',
+        'viewOnceMessageV2.message',
+        'viewOnceMessageV2Extension.message',
+        'documentWithCaptionMessage.message',
+        'deviceSentMessage.message',
+        'editedMessage.message',
+        'botInvokeMessage.message',
+        'groupMentionedMessage.message',
+      );
+      if (!dentro) break;
+      atual = dentro;
+    }
+    return atual;
   }
 
   /**

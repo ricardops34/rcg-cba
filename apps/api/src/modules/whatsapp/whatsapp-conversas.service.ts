@@ -3207,8 +3207,24 @@ export class WhatsappConversasService {
             externoId: entrada.externoId,
           },
         },
-        select: { id: true },
+        select: { id: true, tipo: true },
       });
+
+      // Reprocessar (histórico de novo, reenvio) não mexe em mensagem gravada —
+      // exceto a que tinha ficado como `outro` por formato não reconhecido e
+      // agora é: ela ganha o conteúdo certo.
+      if (jaGravada?.tipo === 'outro' && entrada.tipo !== 'outro') {
+        await tx.whatsappMensagem.update({
+          where: { id: jaGravada.id },
+          data: {
+            tipo: entrada.tipo as 'texto',
+            conteudo: entrada.texto,
+            ...(entrada.interativo
+              ? { interativo: entrada.interativo as Prisma.InputJsonValue }
+              : {}),
+          },
+        });
+      }
 
       const mensagem = await tx.whatsappMensagem.upsert({
         // Idempotência da reconexão: o provedor reenvia o que já entregou.

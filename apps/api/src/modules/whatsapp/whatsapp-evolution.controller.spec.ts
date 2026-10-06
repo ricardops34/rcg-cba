@@ -283,3 +283,62 @@ describe('WhatsappEvolutionController — HistorySync (formato whatsmeow)', () =
     expect(conversas.receber).not.toHaveBeenCalled();
   });
 });
+
+describe('WhatsappEvolutionController — HistorySync com @lid', () => {
+  it('tira telefone e nome do próprio pacote', async () => {
+    const conversas = { receber: jest.fn().mockResolvedValue({ gravada: true }) };
+    const controller = new WhatsappEvolutionController(
+      conversas as never,
+      {} as never,
+      {} as never,
+      new EvolutionGoProvider({} as never),
+    );
+    const agora = Math.floor(Date.now() / 1000);
+    (
+      controller as unknown as {
+        tratarHistorico(c: unknown, b: unknown): unknown;
+      }
+    ).tratarHistorico(
+      { empresaId: 'emp', sessaoId: 'sess', config: { historicoDias: 30 } },
+      {
+        event: 'HistorySync',
+        data: {
+          Data: {
+            phoneNumberToLidMappings: [
+              { pnJID: '5567999998888@s.whatsapp.net', lidJID: '237298118@lid' },
+            ],
+            pushnames: [{ ID: '237298118@lid', pushname: 'Edinho' }],
+            conversations: [
+              {
+                ID: '237298118@lid',
+                name: 'Edson Gomes Barbosa',
+                messages: [
+                  {
+                    message: {
+                      key: { remoteJID: '237298118@lid', fromMe: false, ID: 'H-LID' },
+                      message: { ephemeralMessage: { message: { conversation: 'Kkkkk' } } },
+                      messageTimestamp: agora - 3600,
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    );
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(conversas.receber).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jid: '237298118@lid',
+        // Nome da agenda vence o apelido; telefone vem do mapeamento.
+        nomeExibicao: 'Edson Gomes Barbosa',
+        telefone: '5567999998888',
+        // A mensagem temporária é desembrulhada.
+        texto: 'Kkkkk',
+        tipo: 'texto',
+      }),
+    );
+  });
+});
