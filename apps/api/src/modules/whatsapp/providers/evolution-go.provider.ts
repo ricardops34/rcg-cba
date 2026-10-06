@@ -1257,7 +1257,10 @@ export class EvolutionGoProvider implements WhatsappProvider {
   ): Promise<{ conteudoBase64: string; mime: string | null } | null> {
     // Rota **única** (`/message/downloadmedia`), conferida na tabela de rotas
     // da 0.7.2 — não existe uma por tipo de mídia, como a documentação sugeria.
-    // O corpo é `{message: <envelope da mensagem>}`.
+    // O corpo é `{message: <waE2E.Message>}` — o conteúdo com `imageMessage`,
+    // `audioMessage` etc. no primeiro nível (`DownloadMediaStruct`,
+    // `message_service.go`). O evento inteiro (`Info`+`Message`) volta
+    // "invalid media type".
     const resposta = await this.http
       .chamar<unknown>(ctx.config.evolutionUrl, '/message/downloadmedia', {
         metodo: 'POST',
@@ -1277,12 +1280,15 @@ export class EvolutionGoProvider implements WhatsappProvider {
       });
     if (!resposta) return null;
 
-    const base64 = texto(resposta, 'base64', 'data', 'media', 'file');
+    // A 0.7.2 responde `{ data: { base64: "data:<mime>;base64,…" } }`.
+    const dados = objeto(resposta, 'data') ?? resposta;
+    const base64 = texto(dados, 'base64', 'media', 'file');
     if (!base64) return null;
 
+    const prefixo = /^data:([^;,]+)[^,]*,/.exec(base64);
     return {
-      conteudoBase64: base64.replace(/^data:[^;]+;base64,/, ''),
-      mime: texto(resposta, 'mimetype', 'mime'),
+      conteudoBase64: base64.replace(/^data:[^,]*,/, ''),
+      mime: prefixo?.[1] ?? texto(dados, 'mimetype', 'mime'),
     };
   }
 

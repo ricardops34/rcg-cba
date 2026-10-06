@@ -526,7 +526,10 @@ export class WhatsappEvolutionController {
 
     // Segundo passo, e só agora: a API confirmou que gravou a mensagem —
     // baixar antes seria buscar mídia de algo que nem ficou (grupo, canal).
-    const arquivo = await this.evolution.baixarMidia(ctx, bruta);
+    // Vai o **conteúdo** já desembrulhado (`imageMessage`, `audioMessage`…),
+    // não o evento inteiro: a 0.7.2 procura a mídia direto em `message` e,
+    // com `Info`+`Message`, respondia "invalid media type" para tudo.
+    const arquivo = await this.evolution.baixarMidia(ctx, conteudo);
     if (!arquivo) return true;
 
     await this.conversas.gravarArquivoRecebido({

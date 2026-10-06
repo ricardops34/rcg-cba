@@ -195,3 +195,22 @@ describe('EvolutionGoProvider — editar, apagar e presença (0.7.2)', () => {
     });
   });
 });
+
+describe('EvolutionGoProvider.baixarMidia — contrato da 0.7.2', () => {
+  it('manda o conteúdo em "message" e lê data.base64 (data URL)', async () => {
+    const chamar = jest.fn().mockResolvedValue({
+      message: 'success',
+      data: { base64: 'data:image/jpeg;base64,QUJD' },
+    });
+    const provider = new EvolutionGoProvider({ chamar } as unknown as EvolutionGoClient);
+    const conteudo = { imageMessage: { mimetype: 'image/jpeg', URL: 'https://mmg' } };
+    const arquivo = await provider.baixarMidia(
+      { config: { evolutionUrl: 'http://gw' }, instancia: { token: 't' } } as never,
+      conteudo,
+    );
+    const [, rota, { corpo }] = chamar.mock.calls[0];
+    expect(rota).toBe('/message/downloadmedia');
+    expect(corpo).toEqual({ message: conteudo });
+    expect(arquivo).toEqual({ conteudoBase64: 'QUJD', mime: 'image/jpeg' });
+  });
+});
