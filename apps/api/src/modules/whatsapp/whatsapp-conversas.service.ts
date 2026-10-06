@@ -2191,7 +2191,9 @@ export class WhatsappConversasService {
 
     const agenda = await this.provedores
       .listarContatos(empresaId, sessaoId)
-      .catch(() => []);
+      .catch(
+        (): { jid: string; nome: string | null; telefone: string | null }[] => [],
+      );
     const porJid = new Map(
       agenda.filter((c) => c.nome).map((c) => [c.jid, c.nome as string]),
     );
@@ -2216,6 +2218,47 @@ export class WhatsappConversasService {
         atualizados += 1;
       }
       return { atualizados };
+    });
+  }
+
+  /**
+   * Apelidos do WhatsApp que chegam num pacote próprio do histórico
+   * (`pushnames`, milhares de uma vez, separado das conversas). Dá nome a
+   * contato que ainda não tem — caso de conta comercial que não está na
+   * agenda, como a "Panan Refrigeração" do teste real. Casa pelo jid e, para
+   * o jid telefônico, pelo telefone (o contato pode existir como `@lid`).
+   */
+  async aplicarApelidos(empresaId: string, apelidos: [string, string][]) {
+    const porJid = new Map(apelidos);
+    const porTelefone = new Map(
+      apelidos
+        .filter(([jid]) => jid.endsWith('@s.whatsapp.net'))
+        .map(([jid, nome]) => [jid.split('@')[0], nome]),
+    );
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const semNome = await tx.whatsappContato.findMany({
+        where: {
+          empresaId,
+          nomeExibicao: null,
+          OR: [
+            { jid: { in: [...porJid.keys()] } },
+            { telefoneNormalizado: { in: [...porTelefone.keys()] } },
+          ],
+        },
+        select: { id: true, jid: true, telefoneNormalizado: true },
+      });
+      for (const c of semNome) {
+        const nome =
+          porJid.get(c.jid) ??
+          (c.telefoneNormalizado ? porTelefone.get(c.telefoneNormalizado) : null);
+        if (nome) {
+          await tx.whatsappContato.update({
+            where: { id: c.id },
+            data: { nomeExibicao: nome },
+          });
+        }
+      }
+      return { atualizados: semNome.length };
     });
   }
 

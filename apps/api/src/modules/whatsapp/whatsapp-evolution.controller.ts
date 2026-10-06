@@ -450,7 +450,15 @@ export class WhatsappEvolutionController {
       // Só os nomes dos campos, nunca o conteúdo: é o que permite reconhecer
       // o próximo formato sem adivinhação (foi o caso da Panan).
       this.logger.log(
-        `Mensagem de tipo desconhecido na sessão ${ctx.sessaoId}: campos=${Object.keys(conteudo).join(',') || '(nenhum)'}`,
+        `Mensagem de tipo desconhecido na sessão ${ctx.sessaoId}: campos=${
+          Object.entries(conteudo)
+            .map(([k, v]) =>
+              v && typeof v === 'object'
+                ? `${k}{${Object.keys(v as object).join(',')}}`
+                : k,
+            )
+            .join(',') || '(nenhum)'
+        }`,
       );
     }
     const resposta = await this.conversas.receber({
@@ -652,6 +660,18 @@ export class WhatsappEvolutionController {
           `recebidas (${telefonePorLid.size} @lid com telefone, ${apelidoPorJid.size} apelidos), ` +
           `${gravadas} mensagens gravadas (últimos ${dias} dias).`,
       );
+      // O pacote de apelidos chega separado das conversas: aplica direto
+      // aos contatos sem nome que já existem.
+      if (apelidoPorJid.size > 0) {
+        const { atualizados } = await this.conversas
+          .aplicarApelidos(ctx.empresaId, [...apelidoPorJid.entries()])
+          .catch(() => ({ atualizados: 0 }));
+        if (atualizados) {
+          this.logger.log(
+            `Histórico da sessão ${ctx.sessaoId}: ${atualizados} contatos nomeados pelo apelido.`,
+          );
+        }
+      }
       // Contato do histórico costuma chegar só como `@lid`, sem nome: a
       // agenda do aparelho completa (o telefone já veio do mapeamento).
       if (gravadas > 0) {
@@ -888,8 +908,13 @@ export class WhatsappEvolutionController {
       // Mensagens de empresa (modelo com botões, interativa, lista, produto):
       // chegavam como "[outro]" — visto na conversa real com a Panan.
       'templateMessage.hydratedTemplate.hydratedContentText',
+      // `format` é um campo de escolha (oneof) no proto: o Go o serializa
+      // com o nome da opção dentro.
+      'templateMessage.format.hydratedFourRowTemplate.hydratedContentText',
+      'templateMessage.format.interactiveMessageTemplate.body.text',
       'templateMessage.hydratedFourRowTemplate.hydratedContentText',
-      'templateMessage.fourRowTemplate.content.namespace',
+      'templateMessage.interactiveMessageTemplate.body.text',
+      'templateMessage.hydratedTemplate.title',
       'interactiveMessage.body.text',
       'buttonsMessage.contentText',
       'listMessage.description',

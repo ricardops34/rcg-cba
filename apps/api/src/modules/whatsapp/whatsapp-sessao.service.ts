@@ -392,8 +392,14 @@ export class WhatsappSessaoService {
     const doProvedor = await this.provedores.pareamento(empresaId, sessao.id);
     // Mesma regra de `pareamento()`: a gravação não pode derrubar a leitura.
     if (
-      doProvedor.status !== sessao.status ||
-      doProvedor.numero !== sessao.numero
+      (doProvedor.status !== sessao.status ||
+        doProvedor.numero !== sessao.numero) &&
+      // A consulta não rebaixa sessão conectada para "pareando": logo depois
+      // do PairSuccess o gateway responde por um instante "conectado, ainda
+      // não logado", e gravar isso apagava o "conectada" que o webhook tinha
+      // acabado de registrar (visto em 2026-10-06). Queda de verdade chega
+      // por evento (Disconnected/LoggedOut), e esse continua valendo.
+      !(sessao.status === 'conectada' && doProvedor.status === 'pareando')
     ) {
       try {
         const gravado = await this.registrarEstado(empresaId, sessao.id, {
@@ -496,8 +502,14 @@ export class WhatsappSessaoService {
     // ficava em "gerando o código..." para sempre, sem nada no log da API que
     // ligasse uma coisa à outra.
     if (
-      doProvedor.status !== sessao.status ||
-      doProvedor.numero !== sessao.numero
+      (doProvedor.status !== sessao.status ||
+        doProvedor.numero !== sessao.numero) &&
+      // A consulta não rebaixa sessão conectada para "pareando": logo depois
+      // do PairSuccess o gateway responde por um instante "conectado, ainda
+      // não logado", e gravar isso apagava o "conectada" que o webhook tinha
+      // acabado de registrar (visto em 2026-10-06). Queda de verdade chega
+      // por evento (Disconnected/LoggedOut), e esse continua valendo.
+      !(sessao.status === 'conectada' && doProvedor.status === 'pareando')
     ) {
       try {
         const gravado = await this.registrarEstado(empresaId, sessao.id, {
