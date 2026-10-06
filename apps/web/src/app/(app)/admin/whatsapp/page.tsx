@@ -328,7 +328,7 @@ function EvolutionConfig({ config }: { config: WhatsappConfig }) {
                 <span className="text-sm text-muted-foreground">dias</span>
               </div>
               <FieldDescription>
-                Acima de zero, a importação é pedida por instância na aba Instâncias e o gateway entrega o histórico aos poucos, por evento. Só vira conversa o contato vinculado a um cliente.
+                Acima de zero, a importação é pedida por instância na aba Instâncias e o gateway entrega o histórico aos poucos, por evento. Todas as conversas entram, vinculadas ou não a um cliente.
               </FieldDescription>
             </Field>
             <Field>

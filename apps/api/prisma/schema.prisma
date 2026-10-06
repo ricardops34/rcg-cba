@@ -4333,10 +4333,10 @@ model WhatsappSessaoPeriodo {
 
 /**
  * Contato do WhatsApp, identificado pelo `jid` (ex.: `5567999998888@s.whatsapp.net`).
- * `clienteId` é o que separa atendimento de conversa pessoal: sem vínculo, as
- * mensagens **não são persistidas** (ver privacidade no plano). `ignorado`
- * marca o contato que o vendedor declarou como não-cliente, para a tela parar
- * de perguntar.
+ * `clienteId` vazio é o "Sem Vínculo": o possível cliente que ainda não está no
+ * cadastro. As mensagens dele são gravadas assim mesmo, para não perder o
+ * primeiro contato (decisão de 2026-10-05). `ignorado` marca o contato que o
+ * vendedor declarou como não-cliente, para a tela parar de perguntar.
  */
 model WhatsappContato {
   id        String @id @default(uuid())

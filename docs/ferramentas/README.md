@@ -88,7 +88,7 @@ próprio celular.
 
 | | Contato sem cliente vinculado |
 |---|---|
-| Aparelho do vendedor | **conteúdo descartado** — ali chega família, amigo, engano, e guardar esse texto no servidor da empresa seria ler conversa alheia. A conversa fica só para ele poder vinculá-la |
+| Aparelho do vendedor | **guardado** desde 2026-10-05 — o número é da empresa, não de uso pessoal, e o contato sem vínculo é o possível cliente. O aceite da conexão avisa que tudo é monitorado. As ferramentas de dado de cliente continuam só com vínculo (catálogo + guarda em código) |
 | Institucional | **guardado** — o desconhecido é o caso principal, e é ele que a triagem precisa entender para saber a quem entregar |
 
 ### O ciclo da conversa institucional

@@ -310,6 +310,33 @@ export class WhatsappEvolutionController {
     return { ok: true, tratado: true, gravadas };
   }
 
+  /**
+   * Telefone de quem está do outro lado da conversa.
+   *
+   * Na recebida, o remetente é o contato: `Sender`, e o `SenderAlt` quando o
+   * gateway não fez o swap e o `Sender` é `@lid`. Na que saiu do celular, o
+   * `Sender` é o **próprio vendedor** — usá-lo prenderia a conversa ao número
+   * dele; o do contato vem no `RecipientAlt`. `telefoneDoJid` devolve nulo
+   * para `@lid`, então cada candidato opaco simplesmente cede ao próximo.
+   */
+  private telefoneDoContato(
+    bruta: unknown,
+    jid: string,
+    minha: boolean,
+  ): string | null {
+    const candidatos = minha
+      ? [texto(bruta, 'Info.RecipientAlt', 'recipientAlt')]
+      : [
+          texto(bruta, 'Info.Sender', 'key.participant', 'sender', 'phone'),
+          texto(bruta, 'Info.SenderAlt', 'senderAlt'),
+        ];
+    for (const candidato of [...candidatos, jid]) {
+      const telefone = this.evolution.telefoneDoJid(candidato);
+      if (telefone) return telefone;
+    }
+    return null;
+  }
+
   private async tratarUmaMensagem(
     ctx: ContextoSessao,
     bruta: unknown,
@@ -365,13 +392,16 @@ export class WhatsappEvolutionController {
       jid,
       // O jid `@lid` é opaco e não carrega o número; o telefone precisa vir do
       // evento, senão o casamento automático com o cadastro nunca acontece
-      // para esses contatos.
-      telefone:
-        this.evolution.telefoneDoJid(
-          texto(bruta, 'Info.Sender', 'key.participant', 'sender', 'phone'),
-        ) ?? this.evolution.telefoneDoJid(jid),
+      // para esses contatos — e a mesma pessoa vira duas conversas, uma com o
+      // que ela mandou (jid telefônico) e outra com o que o vendedor mandou
+      // pelo celular (`@lid`).
+      telefone: this.telefoneDoContato(bruta, jid, minha),
       minha,
-      nomeExibicao: texto(bruta, 'pushName', 'Info.PushName', 'notifyName'),
+      // Na que saiu do celular, o `pushName` é o do próprio vendedor: usá-lo
+      // renomearia o contato com o nome de quem está atendendo.
+      nomeExibicao: minha
+        ? null
+        : texto(bruta, 'pushName', 'Info.PushName', 'notifyName'),
       texto: this.textoDaMensagem(conteudo),
       tipo: midia?.tipo ?? this.tipoDaMensagem(conteudo),
       arquivoNome: midia?.nome ?? null,
@@ -391,8 +421,8 @@ export class WhatsappEvolutionController {
       'arquivoNecessario' in resposta && resposta.arquivoNecessario;
     if (!precisaArquivo || !midia) return true;
 
-    // Segundo passo, e só agora: a API confirmou que gravou a mensagem. Mídia
-    // de conversa não vinculada a cliente nunca chega até aqui.
+    // Segundo passo, e só agora: a API confirmou que gravou a mensagem —
+    // baixar antes seria buscar mídia de algo que nem ficou (grupo, canal).
     const arquivo = await this.evolution.baixarMidia(ctx, bruta);
     if (!arquivo) return true;
 

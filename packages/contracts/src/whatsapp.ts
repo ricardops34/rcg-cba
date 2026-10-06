@@ -86,7 +86,7 @@ export type WhatsappStatusEntrega = z.infer<typeof whatsappStatusEntregaSchema>;
  * Texto do aceite que o vendedor confirma ao conectar. A versão fica gravada
  * na sessão: mudou o texto, o aceite antigo não vale mais para o novo teor.
  */
-export const WHATSAPP_ACEITE_VERSAO = "2026-08-14";
+export const WHATSAPP_ACEITE_VERSAO = "2026-10-05";
 /**
  * O que o transporte `zapo` é de fato — e por que isso importa para quem
  * conecta o próprio número.
@@ -106,10 +106,18 @@ export const WHATSAPP_AVISO_NAO_OFICIAL =
   "massa, mensagem não solicitada e lista de transmissão. Use como você usaria " +
   "o aplicativo: uma conversa de cada vez, com quem espera seu contato.";
 
+/**
+ * Desde 2026-10-05 o número é tratado como da empresa: tudo o que passa por
+ * ele é gravado, inclusive o contato ainda sem vínculo — o possível cliente.
+ * O texto anterior prometia o contrário, e um aceite não pode prometer o que o
+ * sistema não cumpre.
+ */
 export const WHATSAPP_ACEITE_TEXTO =
-  "Ao conectar, as conversas com contatos vinculados a clientes serão gravadas " +
-  "na plataforma e poderão ser consultadas pelo seu supervisor e pelo gerente. " +
-  "Conversas com contatos não vinculados a clientes não são gravadas.";
+  "Este número é seu, mas foi fornecido pela empresa para o atendimento de " +
+  "clientes — não o use para conversas pessoais. Todas as conversas deste " +
+  "número são monitoradas: " +
+  "ficam gravadas na plataforma, inclusive as de contatos ainda não vinculados " +
+  "a um cliente, e podem ser consultadas pelo seu supervisor e pelo gerente.";
 
 // --------------------------------------------------------------------------
 // Configuração da empresa (Configurações > WhatsApp)

@@ -160,12 +160,17 @@ junto, e o vendedor não responde ao cliente por ali.
 
 Duas travas, e as duas protegem coisas diferentes.
 
-**`procurar_vendedor` não devolve nome nenhum** — só um `vendedorId` opaco. Quem
+**`identificar_cliente` não devolve nome nenhum** — só um `vendedorId` opaco. Quem
 chama essa ferramenta é, por definição, um número que ainda não é de cliente:
 pode ser um concorrente com uma lista de CNPJs. Devolver razão social e nome do
 vendedor confirmaria, um CNPJ por vez, quem é cliente da casa e quem atende cada
 um — **a carteira inteira, mapeada de fora**. O modelo não vaza um nome que não
 recebeu.
+
+`procurar_vendedor`, ao contrário, **devolve nomes** de vendedores — por isso
+só existe com vínculo: fora do catálogo sem cliente e, desde 2026-10-05, com
+guarda no executor (`procurarVendedor` recusa sem `clienteId`), para uma
+chamada alucinada não listar a equipe a um desconhecido.
 
 **O destino de `avisar_equipe` é um papel, nunca um número** que o modelo
 informe: vendedor da carteira ou supervisão, com o telefone saindo do cadastro.

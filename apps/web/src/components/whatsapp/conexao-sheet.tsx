@@ -179,6 +179,14 @@ export function ConexaoSheet({
             </div>
           ) : null}
 
+          {/* Quem conectou antes do texto atual nunca o leu: o aviso fica
+              visível também com o número conectado. */}
+          {conectada || pareando ? (
+            <p className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
+              {WHATSAPP_ACEITE_TEXTO}
+            </p>
+          ) : null}
+
           {conectada || pareando ? (
             <Button
               variant="outline"

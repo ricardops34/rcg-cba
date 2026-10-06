@@ -2614,16 +2614,15 @@ export class WhatsappConversasService {
   }
 
   /**
-   * Recebe uma mensagem vinda do worker.
+   * Recebe uma mensagem vinda do gateway.
    *
-   * **Aqui mora a regra de privacidade do módulo:** só se persiste conversa de
-   * contato ligado a um cliente. Se o vendedor parear um número que também usa
-   * na vida pessoal, o sistema estaria gravando a conversa dele com a família.
+   * Contato sem vínculo com o cadastro também é gravado, com o texto: é o
+   * possível cliente que procurou o vendedor e ainda não está no cadastro, e
+   * perder esse primeiro contato é perder a venda (decisão do usuário,
+   * 2026-10-05). A conversa aparece como "Sem Vínculo" até alguém vincular.
    *
-   * Contato sem cliente gera apenas o registro mínimo de "existe uma conversa
-   * não vinculada" — o texto **não** é gravado. Se o vendedor vincular depois,
-   * a gravação começa dali em diante: **retroativo nunca acontece**, porque o
-   * que não foi gravado não existe para ser recuperado.
+   * O que fica de fora é o que não tem um cliente do outro lado — grupo,
+   * canal, status e lista de transmissão (ver o desvio logo abaixo).
    */
   async receber(entrada: {
     sessaoId: string;

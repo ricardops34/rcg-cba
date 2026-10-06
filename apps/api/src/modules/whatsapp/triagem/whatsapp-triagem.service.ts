@@ -524,6 +524,7 @@ export class WhatsappTriagemService {
             resultado: await this.procurarVendedor(
               tx,
               empresaId,
+              contexto.clienteId,
               String(argumentos.nome ?? ''),
             ),
             direcionou: false,
@@ -1013,8 +1014,13 @@ export class WhatsappTriagemService {
   private async procurarVendedor(
     tx: TenantTx,
     empresaId: string,
+    clienteId: string | null,
     nome: string,
   ) {
+    // O catálogo já não oferece esta ferramenta sem vínculo, mas um tool_call
+    // é texto gerado pelo modelo, não autorização: sem esta guarda, uma chamada
+    // alucinada devolveria nomes de vendedores a um desconhecido.
+    if (!clienteId) return { erro: 'Número não associado a cliente' };
     if (nome.trim().length < 2) return { encontrados: [] };
     const linhas = await tx.vendedor.findMany({
       where: {

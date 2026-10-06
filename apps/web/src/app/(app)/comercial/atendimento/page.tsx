@@ -2121,7 +2121,7 @@ function VincularCliente({
         <p className="text-xs text-muted-foreground">
           {jaVinculado
             ? "A troca vale daqui em diante: as mensagens já gravadas continuam onde estão."
-            : "Enquanto não houver vínculo, as mensagens deste contato não são gravadas e as ações do sistema ficam indisponíveis. O que já passou não volta."}
+            : "As mensagens deste contato ficam gravadas, mas as ações do sistema (títulos, boleto, notas, orçamento) só ficam disponíveis depois de vincular a um cliente."}
         </p>
       </div>
 
