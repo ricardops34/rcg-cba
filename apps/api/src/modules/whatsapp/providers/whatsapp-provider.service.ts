@@ -16,6 +16,7 @@ import {
 import { decifrarSeHouver } from '../whatsapp-cripto';
 import { EvolutionGoProvider } from './evolution-go.provider';
 import type {
+  AncoraHistorico,
   ArquivoParaEnviar,
   ContatoAparelho,
   ContextoSessao,
@@ -418,9 +419,10 @@ export class WhatsappProviderService {
     empresaId: string,
     sessaoId: string,
     dias: number,
+    ancoras: AncoraHistorico[],
   ): Promise<{ encontradas: number; conversas: number }> {
     const { ctx, provider } = await this.provedorDaSessao(empresaId, sessaoId);
-    return provider.importarHistorico(ctx, dias);
+    return provider.importarHistorico(ctx, dias, ancoras);
   }
 
   /**

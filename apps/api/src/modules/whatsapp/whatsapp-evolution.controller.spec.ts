@@ -207,3 +207,79 @@ describe('WhatsappEvolutionController — recebimento (formato da 0.7.2)', () =>
     );
   });
 });
+
+describe('WhatsappEvolutionController — HistorySync (formato whatsmeow)', () => {
+  const montar = (historicoDias: number) => {
+    const conversas = { receber: jest.fn().mockResolvedValue({ gravada: true }) };
+    const controller = new WhatsappEvolutionController(
+      conversas as never,
+      {} as never,
+      {} as never,
+      new EvolutionGoProvider({} as never),
+    );
+    const tratar = (corpo: unknown) =>
+      (
+        controller as unknown as {
+          tratarHistorico(c: unknown, b: unknown): { tratado: boolean };
+        }
+      ).tratarHistorico(
+        { empresaId: 'emp', sessaoId: 'sess', config: { historicoDias } },
+        corpo,
+      );
+    return { conversas, tratar };
+  };
+
+  const agora = Math.floor(Date.now() / 1000);
+  const pacote = {
+    event: 'HistorySync',
+    data: {
+      Data: {
+        syncType: 'RECENT',
+        conversations: [
+          {
+            ID: '5565999990000@s.whatsapp.net',
+            messages: [
+              {
+                message: {
+                  key: { remoteJID: '5565999990000@s.whatsapp.net', fromMe: false, ID: 'H-RECENTE' },
+                  message: { conversation: 'de ontem' },
+                  messageTimestamp: agora - 86400,
+                  pushName: 'Cliente',
+                },
+              },
+              {
+                message: {
+                  key: { remoteJID: '5565999990000@s.whatsapp.net', fromMe: true, ID: 'H-ANTIGA' },
+                  message: { conversation: 'de dois meses atrás' },
+                  messageTimestamp: agora - 60 * 86400,
+                },
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+
+  it('grava só o que cabe nos dias de histórico, com a data original', async () => {
+    const { conversas, tratar } = montar(30);
+    expect(tratar(pacote).tratado).toBe(true);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(conversas.receber).toHaveBeenCalledTimes(1);
+    expect(conversas.receber).toHaveBeenCalledWith(
+      expect.objectContaining({
+        externoId: 'H-RECENTE',
+        texto: 'de ontem',
+        historico: true,
+        criadaEm: new Date((agora - 86400) * 1000),
+      }),
+    );
+  });
+
+  it('com zero dias, nada entra', () => {
+    const { conversas, tratar } = montar(0);
+    expect(tratar(pacote).tratado).toBe(false);
+    expect(conversas.receber).not.toHaveBeenCalled();
+  });
+});

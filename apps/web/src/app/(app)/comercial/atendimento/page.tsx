@@ -1609,15 +1609,30 @@ function telefoneBonito(digitos: string | null) {
   return digitos;
 }
 
+/**
+ * Mesma linha telefônica? Compara **DDD + os 8 últimos dígitos** e ignora o
+ * nono dígito, que é justamente o que diverge: número antigo fica no WhatsApp
+ * sem o 9 (`67 9146-8448`) e no cadastro com ele (`67 99146-8448`). A versão
+ * anterior comparava sufixo dos dígitos e acusava divergência nesse caso.
+ *
+ * O DDD só entra quando os dois lados o têm — cadastro sem DDD (`991468448`)
+ * compara só os 8 finais. Nunca sufixo solto: dois DDDs com o mesmo final são
+ * linhas diferentes.
+ */
 function telefoneEquivalente(a: string | null, b: string) {
-  const limpar = (valor: string) => valor.replace(/\D/g, "").replace(/^55/, "");
-  const primeiro = a ? limpar(a) : "";
-  const segundo = limpar(b);
+  const partes = (valor: string) => {
+    const digitos = valor.replace(/\D/g, "").replace(/^55(?=\d{10,11}$)/, "");
+    if (digitos.length < 8) return null;
+    return {
+      ddd: digitos.length >= 10 ? digitos.slice(0, 2) : null,
+      linha: digitos.slice(-8),
+    };
+  };
+  const primeiro = a ? partes(a) : null;
+  const segundo = partes(b);
   if (!primeiro || !segundo) return false;
-  if (primeiro === segundo) return true;
-  const menor = primeiro.length < segundo.length ? primeiro : segundo;
-  const maior = primeiro.length < segundo.length ? segundo : primeiro;
-  return menor.length >= 8 && maior.endsWith(menor);
+  if (primeiro.linha !== segundo.linha) return false;
+  return !primeiro.ddd || !segundo.ddd || primeiro.ddd === segundo.ddd;
 }
 
 function tituloDoPainel(modo: "contato" | "posicao" | "orcamento") {

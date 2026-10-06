@@ -3028,9 +3028,19 @@ export class WhatsappConversasService {
      * ou a enquete criada no celular (`enquete`).
      */
     interativo?: Record<string, unknown> | null;
+    /** Quando a mensagem aconteceu, segundo o WhatsApp. Sem ela, agora. */
+    criadaEm?: Date | null;
+    /**
+     * Veio da sincronização de histórico (`HistorySync`), não ao vivo. É
+     * passado: entra com a data original, não conta como não lida, não toca o
+     * sino, não reabre triagem e não leva a conversa para o topo da lista.
+     */
+    historico?: boolean;
   }) {
     const { empresaId } = entrada;
     const minha = Boolean(entrada.minha);
+    const historico = Boolean(entrada.historico);
+    const quando = entrada.criadaEm ?? new Date();
 
     // Grupo, lista de transmissão, status e canal não são atendimento: não há
     // um cliente do outro lado. A Evolution GO já descarta na origem, mas o
@@ -3113,26 +3123,33 @@ export class WhatsappConversasService {
           sessaoId: sessao.id,
           contatoId: contato.id,
           clienteId: contato.clienteId,
-          ultimaMensagemEm: new Date(),
+          ultimaMensagemEm: quando,
           // Só conta como "mensagem do cliente" quando não saiu do próprio
           // vendedor — é o que a Cloud API usa para calcular a janela de 24h.
-          ...(minha ? {} : { ultimaMensagemClienteEm: new Date() }),
+          ...(minha ? {} : { ultimaMensagemClienteEm: quando }),
           // A que o próprio vendedor mandou não conta como não lida: ele
           // acabou de escrevê-la. Contar faria o badge subir pela resposta
-          // dele mesmo, e a conversa pedir atenção que já teve.
-          naoLidas: minha ? 0 : 1,
+          // dele mesmo, e a conversa pedir atenção que já teve. Histórico
+          // também não: é passado, já foi lido no celular.
+          naoLidas: minha || historico ? 0 : 1,
           // Conversa nova no número institucional começa com a IA; no aparelho
           // do vendedor, já é dele.
           atendimento: sessao.tipo === 'empresa' ? 'bot' : 'humano',
         },
         update: {
           clienteId: contato.clienteId,
-          ultimaMensagemEm: new Date(),
-          ...(minha
+          // Histórico não mexe na data da conversa aqui: ajustá-la para a
+          // mais recente vem logo abaixo, só se for de fato mais recente.
+          ...(historico
             ? {}
             : {
-                naoLidas: { increment: 1 },
-                ultimaMensagemClienteEm: new Date(),
+                ultimaMensagemEm: new Date(),
+                ...(minha
+                  ? {}
+                  : {
+                      naoLidas: { increment: 1 },
+                      ultimaMensagemClienteEm: new Date(),
+                    }),
               }),
         },
         select: {
@@ -3141,6 +3158,18 @@ export class WhatsappConversasService {
           atendenteVendedorId: true,
         },
       });
+
+      // Mensagem antiga só adianta a data da conversa se for mais nova que a
+      // registrada — o lote do histórico chega fora de ordem.
+      if (historico) {
+        await tx.whatsappConversa.updateMany({
+          where: {
+            id: conversa.id,
+            OR: [{ ultimaMensagemEm: null }, { ultimaMensagemEm: { lt: quando } }],
+          },
+          data: { ultimaMensagemEm: quando },
+        });
+      }
 
       // Quem é avisado pelo sino.
       //
@@ -3207,6 +3236,7 @@ export class WhatsappConversasService {
           // `receipt` a leva a entregue/lida como qualquer outra.
           statusEntrega: minha ? 'enviada' : 'entregue',
           numeroSessao: sessao.numero,
+          criadaEm: quando,
         },
         update: {},
         select: { id: true, arquivoUrl: true },
@@ -3223,7 +3253,7 @@ export class WhatsappConversasService {
           autor: null,
           clienteId: contato.clienteId,
           vendedorId: sessao.vendedorId,
-          quando: new Date(),
+          quando,
         });
       }
 
@@ -3237,6 +3267,7 @@ export class WhatsappConversasService {
       const reabriu =
         sessao.tipo === 'empresa' &&
         !minha &&
+        !historico &&
         conversa.atendimento === 'encerrada';
       if (reabriu) {
         await tx.whatsappConversa.update({
@@ -3260,7 +3291,7 @@ export class WhatsappConversasService {
         (conversa.atendimento === 'bot' || reabriu);
 
       // Mensagem do próprio vendedor não vira aviso para ele mesmo.
-      if (destinatario && !jaGravada && !minha && !emTriagem) {
+      if (destinatario && !jaGravada && !minha && !emTriagem && !historico) {
         await registrarNotificacao(tx, {
           empresaId,
           usuarioId: destinatario,
@@ -3286,7 +3317,7 @@ export class WhatsappConversasService {
         // si roda **fora** desta transação: ela conversa com um provedor de IA
         // pela rede, e segurar a transação do banco durante essa chamada
         // prenderia conexão do pool por segundos a cada mensagem recebida.
-        triagem: emTriagem && !jaGravada && !minha,
+        triagem: emTriagem && !jaGravada && !minha && !historico,
       };
     });
   }

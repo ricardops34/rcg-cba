@@ -1168,13 +1168,38 @@ export class WhatsappSessaoService {
       );
     }
 
-    // O provedor responde com o tamanho do trabalho e segue entregando em
-    // segundo plano: importar meses de conversa não cabe no timeout de uma
-    // requisição. As conversas vão aparecendo na tela de Atendimento.
+    // Âncora de cada conversa: a mensagem mais antiga que já temos. O pedido
+    // da Evolution GO é "N anteriores a esta", por conversa (ver o provider).
+    const ancoras = await this.prisma.withTenant(empresaId, async (tx) => {
+      const conversas = await tx.whatsappConversa.findMany({
+        where: { sessaoId: sessao.id },
+        select: {
+          contato: { select: { jid: true } },
+          mensagens: {
+            orderBy: { criadaEm: 'asc' },
+            take: 1,
+            select: { externoId: true, direcao: true, criadaEm: true },
+          },
+        },
+      });
+      return conversas
+        .filter((c) => c.mensagens.length > 0)
+        .map((c) => ({
+          jid: c.contato.jid,
+          externoId: c.mensagens[0].externoId,
+          minha: c.mensagens[0].direcao === 'saida',
+          criadaEm: c.mensagens[0].criadaEm,
+        }));
+    });
+
+    // O provedor só faz os pedidos; o material chega depois, em segundo
+    // plano, pelo webhook — importar meses de conversa não cabe no timeout de
+    // uma requisição. As conversas vão aparecendo na tela de Atendimento.
     const resultado = await this.provedores.importarHistorico(
       empresaId,
       sessao.id,
       config.historicoDias,
+      ancoras,
     );
 
     await this.prisma.withTenant(empresaId, (tx) =>

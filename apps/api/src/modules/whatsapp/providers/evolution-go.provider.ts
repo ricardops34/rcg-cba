@@ -12,6 +12,7 @@ import {
   texto,
 } from './evolution-go.client';
 import type {
+  AncoraHistorico,
   ArquivoParaEnviar,
   ContatoAparelho,
   ContextoSessao,
@@ -1097,18 +1098,19 @@ export class EvolutionGoProvider implements WhatsappProvider {
     jid: string,
     telefone?: string | null,
   ): Promise<FotoContato | null> {
-    // Identificadores candidatos para localizar o avatar na Evolution GO
+    // Identificadores candidatos para localizar o avatar na Evolution GO.
+    //
+    // Sempre JID completo, nunca o número puro: o `CreateJID` da 0.7.2
+    // prefixa "+" em número solto (`+5567…@s.whatsapp.net`), a consulta de
+    // foto vai ao WhatsApp sem normalização e morre em "info query timed out"
+    // — 15 s no gateway, e a chamada inteira presa por mais de um minuto
+    // (visto em 2026-10-06). Com o JID, a mesma consulta volta em 0,3 s.
     const candidatos: string[] = [];
-    if (jid) {
-      candidatos.push(jid);
-    }
+    if (jid) candidatos.push(jid);
     const telDigitos = telefone ? telefone.replace(/\D/g, '') : null;
-    if (telDigitos && !candidatos.includes(telDigitos)) {
-      candidatos.push(telDigitos);
-    }
-    const dest = this.destinatario(jid);
-    if (dest && !candidatos.includes(dest)) {
-      candidatos.push(dest);
+    const jidTelefone = telDigitos ? `${telDigitos}@s.whatsapp.net` : null;
+    if (jidTelefone && !candidatos.includes(jidTelefone)) {
+      candidatos.push(jidTelefone);
     }
 
     for (const num of candidatos) {
@@ -1124,9 +1126,13 @@ export class EvolutionGoProvider implements WhatsappProvider {
         .catch(() => null);
 
       if (resposta) {
-        let base64 = texto(resposta, 'base64', 'data');
-        if (!base64 && typeof resposta === 'object' && resposta !== null) {
-          const possivel = texto(resposta, 'picture', 'image');
+        // A 0.7.2 embrulha em `data` o `ProfilePictureInfo` do whatsmeow:
+        // `{ data: { URL, ID, Type, DirectPath } }` — a foto vem como URL
+        // pública do WhatsApp, não em base64. Ler só o topo descartava a foto.
+        const dados = objeto(resposta, 'data') ?? resposta;
+        let base64 = texto(dados, 'base64');
+        if (!base64 && typeof dados === 'object' && dados !== null) {
+          const possivel = texto(dados, 'picture', 'image');
           if (possivel && possivel.length > 200 && !possivel.startsWith('http')) {
             base64 = possivel;
           }
@@ -1135,11 +1141,11 @@ export class EvolutionGoProvider implements WhatsappProvider {
         if (base64) {
           return {
             conteudoBase64: base64.replace(/^data:[^;]+;base64,/, ''),
-            mime: texto(resposta, 'mimetype', 'mime') ?? 'image/jpeg',
+            mime: texto(dados, 'mimetype', 'mime') ?? 'image/jpeg',
           };
         }
 
-        let url = texto(resposta, 'profilePictureUrl', 'url', 'picture', 'image');
+        const url = texto(dados, 'URL', 'profilePictureUrl', 'picture', 'image');
         if (url && url.startsWith('http')) {
           try {
             const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
@@ -1178,28 +1184,53 @@ export class EvolutionGoProvider implements WhatsappProvider {
   }
 
   /**
-   * Pede ao gateway o histórico que o aparelho tem.
+   * Pede ao aparelho o histórico de cada conversa.
    *
-   * O corpo real é `{count, messageInfo}` — **não** há parâmetro de dias, ao
-   * contrário do worker, onde o recorte é por data. `count` é o número de
-   * mensagens; a conversão usa uma estimativa grosseira por dia, e o recorte
-   * fino continua sendo da API, que descarta o que não deve gravar.
+   * Na 0.7.2 `/chat/history-sync` é o pedido **sob demanda** do whatsmeow
+   * (`BuildHistorySyncRequest`, `chat_service.go`): "N mensagens anteriores a
+   * esta", **por conversa**, ancorado numa mensagem que já temos —
+   * `{ messageInfo: { Chat, ID, IsFromMe, Timestamp }, count }`. A versão
+   * anterior mandava só `{ count }`, sem conversa nem âncora, e nada voltava.
    *
-   * Devolve zero em `encontradas` porque aqui não há como saber o tamanho do
-   * trabalho: o material chega depois, por eventos, e cada um passa pela mesma
-   * regra de gravação das mensagens ao vivo. Informar um número inventado
-   * seria pior que informar nenhum.
+   * O material chega depois, como evento `HistorySync` no webhook, e o recorte
+   * pelos dias de histórico é feito lá. `count` fica em 50, o lote que o
+   * aparelho atende por pedido; conversa mais longa pede de novo a partir da
+   * nova mensagem mais antiga.
+   *
+   * Conversa sem nenhuma mensagem gravada não tem âncora: o histórico dela só
+   * vem na sincronização automática do pareamento.
    */
   async importarHistorico(
     ctx: ContextoSessao,
-    dias: number,
+    _dias: number,
+    ancoras: AncoraHistorico[],
   ): Promise<{ encontradas: number; conversas: number }> {
-    await this.http.chamar(ctx.config.evolutionUrl, '/chat/history-sync', {
-      metodo: 'POST',
-      credencial: this.chaveInstancia(ctx),
-      corpo: { count: Math.min(Math.max(dias, 1) * 50, 5000) },
-    });
-    return { encontradas: 0, conversas: 0 };
+    let pedidas = 0;
+    for (const ancora of ancoras) {
+      try {
+        await this.http.chamar(ctx.config.evolutionUrl, '/chat/history-sync', {
+          metodo: 'POST',
+          credencial: this.chaveInstancia(ctx),
+          corpo: {
+            count: 50,
+            messageInfo: {
+              Chat: ancora.jid,
+              ID: ancora.externoId,
+              IsFromMe: ancora.minha,
+              IsGroup: false,
+              Timestamp: ancora.criadaEm.toISOString(),
+            },
+          },
+        });
+        pedidas += 1;
+      } catch (erro) {
+        this.logger.warn(
+          `Histórico sob demanda recusado para ${ancora.jid}: ` +
+            `${erro instanceof Error ? erro.message : String(erro)}`,
+        );
+      }
+    }
+    return { encontradas: 0, conversas: pedidas };
   }
 
   // ----------------------------------------------------------------------

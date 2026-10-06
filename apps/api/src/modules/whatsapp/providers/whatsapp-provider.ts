@@ -144,6 +144,17 @@ export interface ArquivoParaEnviar {
   ptt?: boolean;
 }
 
+/**
+ * A mensagem mais antiga que a plataforma já tem de uma conversa. O pedido de
+ * histórico da 0.7.2 é "N mensagens anteriores a esta", por conversa.
+ */
+export interface AncoraHistorico {
+  jid: string;
+  externoId: string;
+  minha: boolean;
+  criadaEm: Date;
+}
+
 export interface WhatsappProvider {
   readonly transporte: WhatsappTransporte;
 
@@ -274,6 +285,7 @@ export interface WhatsappProvider {
   importarHistorico(
     ctx: ContextoSessao,
     dias: number,
+    ancoras: AncoraHistorico[],
   ): Promise<{ encontradas: number; conversas: number }>;
 
   /**

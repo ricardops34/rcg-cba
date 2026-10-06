@@ -83,6 +83,8 @@ export class WhatsappEvolutionController {
         return this.tratarRecibo(ctx, corpo);
       case 'mensagem':
         return this.tratarMensagens(ctx, corpo);
+      case 'historico':
+        return this.tratarHistorico(ctx, corpo);
       default:
         // Evento assinado que ainda não tem tratamento (ou tipo novo de uma
         // versão mais recente): 200 de propósito. Devolver erro faria o
@@ -170,7 +172,7 @@ export class WhatsappEvolutionController {
    */
   private nomeDoEvento(
     corpo: unknown,
-  ): 'mensagem' | 'recibo' | 'conexao' | null {
+  ): 'mensagem' | 'recibo' | 'conexao' | 'historico' | null {
     const bruto = (this.rotuloBruto(corpo) ?? '').toLowerCase();
 
     if (
@@ -193,6 +195,11 @@ export class WhatsappEvolutionController {
     // `ButtonClick` cai em `null` de propósito: é um resumo que a 0.7.2 manda
     // além da própria mensagem, e a escolha já é gravada a partir dela
     // (`respostaInterativa`). Tratar os dois gravaria o clique duas vezes.
+    // O histórico vem aninhado em conversas (`HistorySync`), não como
+    // mensagem solta — tratá-lo como `mensagem` o descartava inteiro.
+    if (bruto.includes('historysync') || bruto.includes('history_sync')) {
+      return 'historico';
+    }
     if (bruto.includes('message') || bruto.includes('history')) {
       return 'mensagem';
     }
@@ -343,6 +350,7 @@ export class WhatsappEvolutionController {
   private async tratarUmaMensagem(
     ctx: ContextoSessao,
     bruta: unknown,
+    opcoes: { historico?: boolean; criadaEm?: Date } = {},
   ): Promise<boolean> {
     const externoId = texto(bruta, 'key.id', 'Info.ID', 'id', 'messageId');
     const jid = texto(
@@ -432,6 +440,8 @@ export class WhatsappEvolutionController {
       arquivoNome: midia?.nome ?? null,
       arquivoMime: midia?.mime ?? null,
       interativo: estruturado?.interativo ?? null,
+      historico: opcoes.historico,
+      criadaEm: opcoes.criadaEm ?? null,
       // O id citado (`stanzaID`) mora no `contextInfo` do tipo da mensagem —
       // texto, mídia ou a resposta a botão/lista, que cita a mensagem de
       // origem. A leitura de caminho já ignora maiúsculas.
@@ -470,6 +480,88 @@ export class WhatsappEvolutionController {
       conteudoBase64: arquivo.conteudoBase64,
     });
     return true;
+  }
+
+  /**
+   * Histórico do aparelho (`HistorySync` da 0.7.2).
+   *
+   * Chega sozinho no pareamento (`INITIAL_BOOTSTRAP`, `RECENT`, `FULL`) e a
+   * cada pedido sob demanda, aninhado em conversas:
+   * `Data.conversations[].messages[].message` — cada item é um
+   * `WebMessageInfo` (`key`, `message`, `messageTimestamp`, `pushName`).
+   *
+   * Só entra o que cabe nos **dias de histórico** da empresa (Administração >
+   * WhatsApp); com zero, nada entra — é a decisão de privacidade de cada
+   * empresa. Cada mensagem passa pelo mesmo caminho da recebida ao vivo
+   * (vínculo, idempotência por `externoId`, mídia), marcada como histórico:
+   * data original, sem não-lida, sem sino.
+   *
+   * Responde na hora e processa em segundo plano: um lote de 30 dias passa
+   * fácil do tempo que o gateway espera pelo webhook, e ele reentregaria.
+   */
+  private tratarHistorico(ctx: ContextoSessao, corpo: unknown) {
+    const dias = ctx.config.historicoDias;
+    if (!dias || dias <= 0) {
+      return { ok: true, tratado: false, motivo: 'historico-desligado' };
+    }
+
+    const envelope = objeto(corpo, 'data', 'Data') ?? corpo;
+    const historico = objeto(envelope, 'Data', 'data') ?? envelope;
+    const conversas = lista(historico, 'conversations');
+    const limite = Date.now() - dias * 24 * 60 * 60 * 1000;
+
+    void (async () => {
+      let gravadas = 0;
+      for (const conversa of conversas) {
+        const jidConversa = texto(conversa, 'ID', 'id', 'newJID');
+        // Telefone de quem está do outro lado quando o chat é `@lid`.
+        const telefoneConversa = texto(conversa, 'pnJID', 'pnJid');
+        for (const item of lista(conversa, 'messages')) {
+          const info = objeto(item, 'message') ?? item;
+          const segundos = Number(texto(info, 'messageTimestamp') ?? 0);
+          if (!segundos || segundos * 1000 < limite) continue;
+
+          const conteudo = objeto(info, 'message');
+          const id = texto(info, 'key.ID');
+          const chat = texto(info, 'key.remoteJID') ?? jidConversa;
+          if (!conteudo || !id || !chat) continue;
+
+          const minha = booleano(info, 'key.fromMe');
+          try {
+            const gravou = await this.tratarUmaMensagem(
+              ctx,
+              {
+                Info: {
+                  ID: id,
+                  Chat: chat,
+                  Sender: minha
+                    ? ''
+                    : (texto(info, 'key.participant', 'participant') ?? chat),
+                  SenderAlt: telefoneConversa ?? undefined,
+                  RecipientAlt: minha ? (telefoneConversa ?? undefined) : undefined,
+                  IsFromMe: minha,
+                  PushName: minha ? undefined : texto(info, 'pushName'),
+                },
+                Message: conteudo,
+              },
+              { historico: true, criadaEm: new Date(segundos * 1000) },
+            );
+            if (gravou) gravadas += 1;
+          } catch (erro) {
+            this.logger.warn(
+              `Histórico: mensagem ${id} da sessão ${ctx.sessaoId} não gravada: ` +
+                `${erro instanceof Error ? erro.message : String(erro)}`,
+            );
+          }
+        }
+      }
+      this.logger.log(
+        `Histórico da sessão ${ctx.sessaoId}: ${conversas.length} conversas ` +
+          `recebidas, ${gravadas} mensagens gravadas (últimos ${dias} dias).`,
+      );
+    })();
+
+    return { ok: true, tratado: true, conversas: conversas.length };
   }
 
   /**
