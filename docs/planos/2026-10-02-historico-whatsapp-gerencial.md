@@ -115,3 +115,11 @@ Três exclusões, todas sem volta e todas pelo helper único `apagarConversas`
 Sem auditoria em tabela: cada exclusão deixa uma linha `warn` no log da API com
 quem apagou e quanto. Quem já estava logado precisa sair e entrar de novo para
 o menu enxergar a permissão nova.
+
+**Correção na produção (05/10/2026):** a rotina `whatsapp-historico` nunca
+chegou ao banco de produção — a migration de 02/10 foi commitada vazia e o
+`sincronizar-catalogo` não rodou depois —, então a concessão de `excluir` não
+achou rotina e o administrador não via as opções (nem o menu). A
+`20261005210000_rotina_whatsapp_historico` cria menu e rotina com os ids do
+catálogo e concede `visualizar` (administradores, Diretor, Gerente, Supervisor)
+e `excluir` (administradores).
