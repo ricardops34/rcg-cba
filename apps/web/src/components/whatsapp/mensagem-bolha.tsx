@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  Ban,
   BarChart3,
   Check,
   CheckCheck,
@@ -24,6 +25,7 @@ import {
   whatsappInterativoSchema,
   type WhatsappInterativo,
   type WhatsappMensagem,
+  type WhatsappVotoEnquete,
 } from "@plataforma/contracts";
 import { API_ORIGIN, ApiError, apiFetch } from "@/lib/api-client";
 import {
@@ -103,9 +105,31 @@ export function MensagemBolha({
           </p>
         ) : null}
 
-        <Conteudo mensagem={mensagem} url={url} />
+        {mensagem.apagadaEm ? (
+          // Apagada para todos no celular. O conteúdo continua aqui, riscado:
+          // o histórico da plataforma é permanente e é auditado no Gerencial.
+          <div className="space-y-1">
+            <p className="flex items-center gap-1.5 text-xs italic opacity-70">
+              <Ban className="size-3.5" />
+              {minha ? "Você apagou esta mensagem no celular" : "O cliente apagou esta mensagem"}
+            </p>
+            <div className="line-through opacity-60">
+              <Conteudo mensagem={mensagem} url={url} />
+            </div>
+          </div>
+        ) : (
+          <Conteudo mensagem={mensagem} url={url} />
+        )}
 
         <div className="flex items-center justify-end gap-1 pt-1 text-[10px] text-[#667781] dark:text-[#8696A0]">
+          {mensagem.editadaEm ? (
+            <span
+              className="italic"
+              title={mensagem.conteudoOriginal ? `Antes: ${mensagem.conteudoOriginal}` : undefined}
+            >
+              editada ·
+            </span>
+          ) : null}
           {new Date(mensagem.criadaEm).toLocaleString("pt-BR", {
             day: "2-digit",
             month: "2-digit",
@@ -165,7 +189,12 @@ function Conteudo({
   // texto, que `conteudo` sempre tem.
   const interativo = whatsappInterativoSchema.safeParse(mensagem.interativo);
   if (interativo.success) {
-    return <ConteudoInterativo m={interativo.data} />;
+    return (
+      <ConteudoInterativo
+        m={interativo.data}
+        votos={(mensagem.enqueteVotos as WhatsappVotoEnquete[] | null | undefined) ?? []}
+      />
+    );
   }
   if (mensagem.tipo === "resposta") {
     return (
@@ -251,7 +280,14 @@ const TIPOS_SEM_ARQUIVO = new Set<WhatsappMensagem["tipo"]>([
  * Como o cliente vê a mensagem interativa — sem os botões funcionarem aqui:
  * quem toca é ele, no celular. O clique volta como mensagem `resposta`.
  */
-function ConteudoInterativo({ m }: { m: WhatsappInterativo }) {
+function ConteudoInterativo({
+  m,
+  votos,
+}: {
+  m: WhatsappInterativo;
+  /** Só na enquete: quem votou em quê, já em texto. */
+  votos: WhatsappVotoEnquete[];
+}) {
   switch (m.tipo) {
     case "botoes":
       return (
@@ -307,11 +343,26 @@ function ConteudoInterativo({ m }: { m: WhatsappInterativo }) {
           <p className="text-xs opacity-70">
             {m.maxRespostas === 1 ? "Escolha uma opção" : "Escolha uma ou mais opções"}
           </p>
-          {m.opcoes.map((o) => (
-            <p key={o} className="rounded border border-black/10 px-2 py-1 dark:border-white/10">
-              {o}
+          {m.opcoes.map((o) => {
+            const quem = votos.filter((v) => v.opcoes.includes(o));
+            return (
+              <p
+                key={o}
+                className="flex items-center justify-between gap-2 rounded border border-black/10 px-2 py-1 dark:border-white/10"
+                title={quem.map((v) => v.nome ?? v.telefone ?? "?").join(", ") || undefined}
+              >
+                <span>{o}</span>
+                {votos.length ? (
+                  <span className="text-xs font-semibold tabular-nums opacity-70">{quem.length}</span>
+                ) : null}
+              </p>
+            );
+          })}
+          {votos.length ? (
+            <p className="text-[11px] opacity-60">
+              {votos.length} {votos.length === 1 ? "voto" : "votos"}
             </p>
-          ))}
+          ) : null}
         </div>
       );
     case "localizacao":

@@ -694,9 +694,25 @@ export const whatsappMensagemSchema = z.object({
    * é o que a bolha desenha. Nulo nos demais tipos.
    */
   interativo: z.unknown().nullable().optional(),
+  /** Editada no celular — `conteudo` já é o texto novo. */
+  editadaEm: z.string().datetime().nullable().optional(),
+  /** Apagada para todos no celular. O texto continua gravado (histórico). */
+  apagadaEm: z.string().datetime().nullable().optional(),
+  /** Texto de antes da edição. */
+  conteudoOriginal: z.string().nullable().optional(),
+  /** Votos da enquete (`WhatsappVotoEnquete[]`), só nas mensagens `enquete`. */
+  enqueteVotos: z.unknown().nullable().optional(),
   criadaEm: z.string().datetime(),
 });
 export type WhatsappMensagem = z.infer<typeof whatsappMensagemSchema>;
+
+/** Um voto de enquete, com as opções já em texto. */
+export type WhatsappVotoEnquete = {
+  nome: string | null;
+  telefone: string | null;
+  opcoes: string[];
+  votadoEm: string | null;
+};
 
 /**
  * Reagir a uma mensagem. **Emoji vazio remove** — é como o WhatsApp desfaz, e

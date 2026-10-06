@@ -6,7 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { whereEmpresaAcessivel } from '../../common/empresa/situacao-empresa';
 import { basename, join } from 'node:path';
@@ -2019,6 +2019,120 @@ export class WhatsappConversasService {
   }
 
   /**
+   * Mensagem editada no celular (de qualquer lado da conversa).
+   *
+   * O histórico é permanente: o texto novo vai para `conteudo` e o de antes
+   * fica em `conteudoOriginal` — só a **primeira** versão, que é a que a
+   * auditoria precisa; reedições não a sobrescrevem. Presa à sessão que
+   * recebeu, como recibo e reação: o mesmo `externoId` pode existir em outra.
+   */
+  async receberEdicao(entrada: {
+    sessaoId: string;
+    empresaId: string;
+    alvoExternoId: string;
+    novoTexto: string;
+  }) {
+    return this.prisma.withTenant(entrada.empresaId, async (tx) => {
+      const mensagem = await tx.whatsappMensagem.findFirst({
+        where: {
+          externoId: entrada.alvoExternoId,
+          conversa: { sessaoId: entrada.sessaoId },
+        },
+        select: { id: true, conteudo: true, conteudoOriginal: true },
+      });
+      if (!mensagem) return { gravada: false, motivo: 'mensagem-desconhecida' };
+
+      await tx.whatsappMensagem.update({
+        where: { id: mensagem.id },
+        data: {
+          conteudo: entrada.novoTexto,
+          conteudoOriginal: mensagem.conteudoOriginal ?? mensagem.conteudo,
+          editadaEm: new Date(),
+        },
+      });
+      return { gravada: true };
+    });
+  }
+
+  /**
+   * Mensagem apagada para todos no celular. Só marca: o texto continua
+   * gravado, e o Gerencial o mostra — histórico permanente (02/10/2026).
+   */
+  async receberExclusao(entrada: {
+    sessaoId: string;
+    empresaId: string;
+    alvoExternoId: string;
+  }) {
+    return this.prisma.withTenant(entrada.empresaId, async (tx) => {
+      const { count } = await tx.whatsappMensagem.updateMany({
+        where: {
+          externoId: entrada.alvoExternoId,
+          conversa: { sessaoId: entrada.sessaoId },
+          apagadaEm: null,
+        },
+        data: { apagadaEm: new Date() },
+      });
+      return { gravada: count > 0 };
+    });
+  }
+
+  /**
+   * Votos de uma enquete, já lidos do gateway (`GET /polls/{id}/results`).
+   *
+   * A 0.7.2 devolve a opção votada como SHA-256 do texto da opção, em hex —
+   * é o hash do próprio protocolo do WhatsApp. A tradução de volta usa as
+   * opções gravadas em `interativo` (enquete enviada daqui ou criada no
+   * celular). Opção que não casa fica com o hash, para não sumir com o voto.
+   */
+  async registrarVotosEnquete(entrada: {
+    sessaoId: string;
+    empresaId: string;
+    enqueteExternoId: string;
+    votantes: {
+      nome: string | null;
+      telefone: string | null;
+      opcoesHash: string[];
+      votadoEm: string | null;
+    }[];
+  }) {
+    return this.prisma.withTenant(entrada.empresaId, async (tx) => {
+      const mensagem = await tx.whatsappMensagem.findFirst({
+        where: {
+          externoId: entrada.enqueteExternoId,
+          tipo: 'enquete',
+          conversa: { sessaoId: entrada.sessaoId },
+        },
+        select: { id: true, interativo: true },
+      });
+      if (!mensagem) return { gravada: false, motivo: 'enquete-desconhecida' };
+
+      const opcoes = Array.isArray(
+        (mensagem.interativo as { opcoes?: unknown } | null)?.opcoes,
+      )
+        ? ((mensagem.interativo as { opcoes: unknown[] }).opcoes.filter(
+            (o): o is string => typeof o === 'string',
+          ))
+        : [];
+      const porHash = new Map(
+        opcoes.map((o) => [createHash('sha256').update(o).digest('hex'), o]),
+      );
+
+      const votos = entrada.votantes.map((v) => ({
+        nome: v.nome,
+        telefone: v.telefone,
+        opcoes: v.opcoesHash.map((h) => porHash.get(h.toLowerCase()) ?? h),
+        votadoEm: v.votadoEm,
+      }));
+
+      await tx.whatsappMensagem.update({
+        where: { id: mensagem.id },
+        data: { enqueteVotos: votos as Prisma.InputJsonValue },
+      });
+      return { gravada: true, votos: votos.length };
+    });
+  }
+
+  /**
    * Grava o arquivo de uma mensagem recebida — segundo passo do recebimento.
    *
    * O worker só chega aqui quando a API confirmou que a mensagem foi gravada;
@@ -2763,6 +2877,11 @@ export class WhatsappConversasService {
     respondeuA?: string | null;
     /** Saiu do aparelho do vendedor (celular), não do cliente. */
     minha?: boolean;
+    /**
+     * Conteúdo estruturado: a escolha do cliente num botão/lista (`resposta`)
+     * ou a enquete criada no celular (`enquete`).
+     */
+    interativo?: Record<string, unknown> | null;
   }) {
     const { empresaId } = entrada;
     const minha = Boolean(entrada.minha);
@@ -2934,6 +3053,9 @@ export class WhatsappConversasService {
           conteudo: entrada.texto,
           arquivoNome: entrada.arquivoNome ?? null,
           respondeuA: entrada.respondeuA ?? null,
+          ...(entrada.interativo
+            ? { interativo: entrada.interativo as Prisma.InputJsonValue }
+            : {}),
           // A do celular já saiu do aparelho, mas o recibo do destinatário
           // ainda não passou por aqui: entra como `enviada`, e o evento
           // `receipt` a leva a entregue/lida como qualquer outra.

@@ -305,6 +305,15 @@ export class WhatsappProviderService {
     return provider.enviarInterativo(ctx, dados);
   }
 
+  async resultadosEnquete(
+    empresaId: string,
+    sessaoId: string,
+    enqueteExternoId: string,
+  ) {
+    const { ctx, provider } = await this.provedorDaSessao(empresaId, sessaoId);
+    return provider.resultadosEnquete(ctx, enqueteExternoId);
+  }
+
   async marcarLida(
     empresaId: string,
     sessaoId: string,

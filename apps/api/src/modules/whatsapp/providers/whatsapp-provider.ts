@@ -206,6 +206,22 @@ export interface WhatsappProvider {
     },
   ): Promise<{ externoId: string }>;
 
+  /**
+   * Quem votou e em quê, numa enquete. As opções voltam como hash (SHA-256
+   * do texto, em hex) — a tradução é de quem tem as opções gravadas.
+   */
+  resultadosEnquete(
+    ctx: ContextoSessao,
+    enqueteExternoId: string,
+  ): Promise<
+    {
+      nome: string | null;
+      telefone: string | null;
+      opcoesHash: string[];
+      votadoEm: string | null;
+    }[]
+  >;
+
   marcarLida(
     ctx: ContextoSessao,
     dados: { jid: string; externoId: string },

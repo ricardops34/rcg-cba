@@ -190,6 +190,9 @@ export class WhatsappEvolutionController {
     ) {
       return 'conexao';
     }
+    // `ButtonClick` cai em `null` de propósito: é um resumo que a 0.7.2 manda
+    // além da própria mensagem, e a escolha já é gravada a partir dela
+    // (`respostaInterativa`). Tratar os dois gravaria o clique duas vezes.
     if (bruto.includes('message') || bruto.includes('history')) {
       return 'mensagem';
     }
@@ -364,7 +367,25 @@ export class WhatsappEvolutionController {
     }
 
     const minha = booleano(bruta, 'key.fromMe', 'Info.IsFromMe', 'fromMe');
-    const conteudo = objeto(bruta, 'message', 'Message') ?? {};
+    const envelope = objeto(bruta, 'message', 'Message') ?? {};
+    // Edição chega embrulhada (`editedMessage.message`); o que interessa é o
+    // `protocolMessage` de dentro.
+    const conteudo = objeto(envelope, 'editedMessage.message') ?? envelope;
+
+    // Edição, exclusão para todos e mensagens de controle do WhatsApp
+    // (mensagem temporária, sincronização…) vêm como `protocolMessage`. Nenhuma
+    // é mensagem nova: sem este desvio viravam bolha vazia no rolo.
+    const protocolo = objeto(conteudo, 'protocolMessage');
+    if (protocolo) return this.tratarProtocolo(ctx, protocolo);
+
+    // Voto de enquete: chega cifrado. Quem decifra e grava é o gateway, de
+    // forma assíncrona — a leitura do resultado vem depois (ver o método).
+    const voto = objeto(conteudo, 'pollUpdateMessage');
+    if (voto) {
+      const enquete = texto(voto, 'pollCreationMessageKey.ID');
+      if (enquete) this.atualizarVotosEnquete(ctx, enquete);
+      return true;
+    }
 
     // Reação vem no mesmo evento da mensagem, mas não é mensagem: ela não
     // entra no rolo da conversa, gruda na mensagem que aponta. Sem este desvio
@@ -385,6 +406,10 @@ export class WhatsappEvolutionController {
     }
 
     const midia = this.midiaDaMensagem(conteudo);
+    // Clique em botão/lista, ou enquete criada no próprio celular: entram
+    // como mensagem, mas com o conteúdo estruturado para a bolha desenhar.
+    const estruturado =
+      this.respostaInterativa(conteudo) ?? this.enqueteDoCelular(conteudo);
     const resposta = await this.conversas.receber({
       sessaoId: ctx.sessaoId,
       empresaId: ctx.empresaId,
@@ -402,16 +427,26 @@ export class WhatsappEvolutionController {
       nomeExibicao: minha
         ? null
         : texto(bruta, 'pushName', 'Info.PushName', 'notifyName'),
-      texto: this.textoDaMensagem(conteudo),
-      tipo: midia?.tipo ?? this.tipoDaMensagem(conteudo),
+      texto: estruturado?.texto ?? this.textoDaMensagem(conteudo),
+      tipo: estruturado?.tipo ?? midia?.tipo ?? this.tipoDaMensagem(conteudo),
       arquivoNome: midia?.nome ?? null,
       arquivoMime: midia?.mime ?? null,
-      respondeuA: texto(
-        conteudo,
-        'extendedTextMessage.contextInfo.stanzaId',
-        'contextInfo.stanzaId',
-        'ExtendedTextMessage.ContextInfo.StanzaID',
-      ),
+      interativo: estruturado?.interativo ?? null,
+      // O id citado (`stanzaID`) mora no `contextInfo` do tipo da mensagem —
+      // texto, mídia ou a resposta a botão/lista, que cita a mensagem de
+      // origem. A leitura de caminho já ignora maiúsculas.
+      respondeuA:
+        estruturado?.origem ??
+        texto(
+          conteudo,
+          'extendedTextMessage.contextInfo.stanzaID',
+          'imageMessage.contextInfo.stanzaID',
+          'videoMessage.contextInfo.stanzaID',
+          'audioMessage.contextInfo.stanzaID',
+          'documentMessage.contextInfo.stanzaID',
+          'stickerMessage.contextInfo.stanzaID',
+          'contextInfo.stanzaID',
+        ),
     });
 
     // `arquivoNecessario` só existe na resposta de quem foi gravada — a
@@ -435,6 +470,213 @@ export class WhatsappEvolutionController {
       conteudoBase64: arquivo.conteudoBase64,
     });
     return true;
+  }
+
+  /**
+   * `protocolMessage`: edição, exclusão para todos ou controle.
+   *
+   * O tipo é o enum do proto (`ProtocolMessage_Type`): `0` REVOKE e `14`
+   * MESSAGE_EDIT. Sai como número no JSON do Go, e o REVOKE — por ser zero —
+   * pode vir **sem** o campo (`omitempty`); daí "sem tipo e sem edição" contar
+   * como exclusão. O nome por extenso também é aceito, caso a serialização
+   * mude. Qualquer outro tipo é controle do WhatsApp e é ignorado.
+   */
+  private async tratarProtocolo(
+    ctx: ContextoSessao,
+    protocolo: Record<string, unknown>,
+  ): Promise<boolean> {
+    const alvo = texto(protocolo, 'key.ID');
+    if (!alvo) return false;
+
+    const tipo = (texto(protocolo, 'type') ?? '').toUpperCase();
+    const editada = objeto(protocolo, 'editedMessage');
+
+    if (tipo === '14' || tipo === 'MESSAGE_EDIT') {
+      const novoTexto = editada ? this.textoDaMensagem(editada) : null;
+      if (!novoTexto) return false;
+      await this.conversas.receberEdicao({
+        sessaoId: ctx.sessaoId,
+        empresaId: ctx.empresaId,
+        alvoExternoId: alvo,
+        novoTexto,
+      });
+      return true;
+    }
+
+    if (tipo === '0' || tipo === 'REVOKE' || (tipo === '' && !editada)) {
+      await this.conversas.receberExclusao({
+        sessaoId: ctx.sessaoId,
+        empresaId: ctx.empresaId,
+        alvoExternoId: alvo,
+      });
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Busca os votos de uma enquete no gateway e grava na mensagem.
+   *
+   * Em segundo plano e com nova tentativa: a 0.7.2 decifra e salva o voto
+   * numa goroutine própria, então no instante do webhook ele pode ainda não
+   * estar lá. Falha aqui não volta ao gateway — o voto seguinte refaz a
+   * leitura inteira.
+   */
+  private atualizarVotosEnquete(ctx: ContextoSessao, enqueteExternoId: string) {
+    const tentar = async (restantes: number[]) => {
+      const [espera, ...depois] = restantes;
+      await new Promise((r) => setTimeout(r, espera));
+      try {
+        const votantes = await this.provedores.resultadosEnquete(
+          ctx.empresaId,
+          ctx.sessaoId,
+          enqueteExternoId,
+        );
+        if (votantes.length === 0 && depois.length) return tentar(depois);
+        await this.conversas.registrarVotosEnquete({
+          sessaoId: ctx.sessaoId,
+          empresaId: ctx.empresaId,
+          enqueteExternoId,
+          votantes,
+        });
+      } catch (erro) {
+        if (depois.length) return tentar(depois);
+        this.logger.warn(
+          `Votos da enquete ${enqueteExternoId} não lidos: ` +
+            `${erro instanceof Error ? erro.message : String(erro)}`,
+        );
+      }
+    };
+    void tentar([1500, 5000]);
+  }
+
+  /**
+   * A escolha do cliente num botão ou lista enviados daqui.
+   *
+   * São quatro formatos no proto, e o `ButtonClick` que a 0.7.2 também
+   * dispara é só um resumo destes — por isso aquele evento é ignorado (ver
+   * `nomeDoEvento`) e a escolha é lida da própria mensagem, que traz o id para
+   * a idempotência e o `stanzaID` da mensagem de origem.
+   */
+  private respostaInterativa(conteudo: Record<string, unknown>): {
+    tipo: 'resposta';
+    texto: string;
+    interativo: Record<string, unknown>;
+    origem: string | null;
+  } | null {
+    const montar = (
+      corpo: Record<string, unknown>,
+      escolhaId: string | null,
+      escolhaTexto: string | null,
+    ) => {
+      const textoFinal = escolhaTexto ?? escolhaId;
+      if (!textoFinal) return null;
+      const origem = texto(corpo, 'contextInfo.stanzaID');
+      return {
+        tipo: 'resposta' as const,
+        texto: textoFinal,
+        origem,
+        interativo: {
+          tipo: 'resposta',
+          escolhaId: escolhaId ?? '',
+          escolhaTexto: textoFinal,
+          origemExternoId: origem,
+        },
+      };
+    };
+
+    const selecao = objeto(conteudo, 'listResponseMessage');
+    if (selecao) {
+      return montar(
+        selecao,
+        texto(selecao, 'singleSelectReply.selectedRowID'),
+        texto(selecao, 'title'),
+      );
+    }
+
+    const botoes = objeto(conteudo, 'buttonsResponseMessage');
+    if (botoes) {
+      return montar(
+        botoes,
+        texto(botoes, 'selectedButtonID'),
+        texto(
+          botoes,
+          'selectedDisplayText',
+          'Response.SelectedDisplayText',
+          'response.selectedDisplayText',
+        ),
+      );
+    }
+
+    const modelo = objeto(conteudo, 'templateButtonReplyMessage');
+    if (modelo) {
+      return montar(
+        modelo,
+        texto(modelo, 'selectedID'),
+        texto(modelo, 'selectedDisplayText'),
+      );
+    }
+
+    // Botões nativos (`/send/button`): a escolha vem num JSON em texto,
+    // `paramsJSON` = { id, display_text }.
+    const interativa = objeto(conteudo, 'interactiveResponseMessage');
+    if (interativa) {
+      const params = texto(
+        interativa,
+        'nativeFlowResponseMessage.paramsJSON',
+        'interactiveResponseMessage.nativeFlowResponseMessage.paramsJSON',
+        'InteractiveResponseMessage.NativeFlowResponseMessage.ParamsJSON',
+      );
+      let id: string | null = null;
+      let rotulo: string | null = null;
+      try {
+        const lido = params ? (JSON.parse(params) as Record<string, unknown>) : {};
+        id = typeof lido.id === 'string' ? lido.id : null;
+        rotulo = typeof lido.display_text === 'string' ? lido.display_text : null;
+      } catch {
+        // paramsJSON malformado: cai no texto do corpo.
+      }
+      return montar(interativa, id, rotulo ?? texto(interativa, 'body.text'));
+    }
+
+    return null;
+  }
+
+  /** Enquete criada pelo vendedor no próprio celular. */
+  private enqueteDoCelular(conteudo: Record<string, unknown>): {
+    tipo: 'enquete';
+    texto: string;
+    interativo: Record<string, unknown>;
+    origem: null;
+  } | null {
+    const enquete = objeto(
+      conteudo,
+      'pollCreationMessage',
+      'pollCreationMessageV2',
+      'pollCreationMessageV3',
+      'pollCreationMessageV4',
+      'pollCreationMessageV5',
+      'pollCreationMessageV6',
+    );
+    if (!enquete) return null;
+    const pergunta = texto(enquete, 'name');
+    const opcoes = lista(enquete, 'options')
+      .map((o) => texto(o, 'optionName'))
+      .filter((o): o is string => Boolean(o));
+    if (!pergunta || opcoes.length === 0) return null;
+    const maximo = Number(texto(enquete, 'selectableOptionsCount') ?? 0);
+    return {
+      tipo: 'enquete',
+      texto: `📊 ${pergunta}\n${opcoes.map((o) => `○ ${o}`).join('\n')}`,
+      origem: null,
+      interativo: {
+        tipo: 'enquete',
+        pergunta,
+        opcoes,
+        maxRespostas: Number.isFinite(maximo) ? maximo : 0,
+      },
+    };
   }
 
   /** Texto da mensagem, onde quer que a versão o tenha colocado. */
@@ -469,12 +711,16 @@ export class WhatsappEvolutionController {
       tipo: 'imagem' | 'video' | 'audio' | 'documento';
       caminhos: string[];
     }[] = [
-      { tipo: 'imagem', caminhos: ['imageMessage', 'ImageMessage'] },
+      // Figurinha é imagem webp: aparece como imagem no rolo, não como anexo.
+      {
+        tipo: 'imagem',
+        caminhos: ['imageMessage', 'ImageMessage', 'stickerMessage'],
+      },
       { tipo: 'video', caminhos: ['videoMessage', 'VideoMessage'] },
       { tipo: 'audio', caminhos: ['audioMessage', 'AudioMessage'] },
       {
         tipo: 'documento',
-        caminhos: ['documentMessage', 'DocumentMessage', 'stickerMessage'],
+        caminhos: ['documentMessage', 'DocumentMessage'],
       },
     ];
 

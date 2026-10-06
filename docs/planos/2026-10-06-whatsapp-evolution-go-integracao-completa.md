@@ -1,6 +1,6 @@
 # Plano: WhatsApp 100% integrado à Evolution GO
 
-> **Status (06/10/2026): fatias 1 e 2 prontas; fatia 3 em implementação.**
+> **Status (06/10/2026): fatias 1, 2 e 3 prontas; fatia 4 em implementação.**
 
 ## Pedido (usuário, 06/10/2026)
 
@@ -64,6 +64,18 @@ ordem de confiança: código (`pkg/sendMessage/handler/send_handler.go`,
   `20261006180000`). Menu "+" do compositor e bolha desenham cada tipo.
   Verificado na API real (cópia da produção): 400 com a regra em português e
   envio parando em "não conectado" — o gateway local está **sem licença**.
+
+- **Fatia 3**: webhook lê o formato real da 0.7.2. Leitura de caminho passou a
+  ignorar maiúsculas — o proto mantém `key.ID` e `contextInfo.stanzaID`, e
+  procurar `key.id`/`stanzaId` **perdia em silêncio citação e reação vindas
+  do celular**. Clique em botão/lista vira mensagem `resposta` (o
+  `ButtonClick` duplicado é ignorado); edição troca o texto e guarda o
+  original em `conteudoOriginal`; exclusão só marca `apagadaEm` (histórico
+  permanente); `protocolMessage` de controle não vira bolha; voto de enquete
+  lê `GET /polls/{id}/results` e traduz o hash SHA-256 de volta para a opção;
+  enquete criada no celular entra com as opções; figurinha entra como imagem.
+  Migration `20261006200000`. Verificado ponta a ponta com sessão sintética
+  na API real (criada e apagada no teste).
 
 ## Regras que valem para todas as fatias
 

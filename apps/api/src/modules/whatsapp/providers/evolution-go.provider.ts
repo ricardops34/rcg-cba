@@ -812,6 +812,39 @@ export class EvolutionGoProvider implements WhatsappProvider {
     return { externoId: this.externoId(resposta) };
   }
 
+  /**
+   * `GET /polls/{id}/results` da 0.7.2 (`poll_handler.go`). O voto chega
+   * **cifrado** no webhook; quem o decifra e grava é o gateway, de forma
+   * assíncrona — por isso a leitura é feita aqui, depois, e não do evento.
+   * Enquete sem voto ainda volta 404: lista vazia.
+   */
+  async resultadosEnquete(
+    ctx: ContextoSessao,
+    enqueteExternoId: string,
+  ): Promise<
+    {
+      nome: string | null;
+      telefone: string | null;
+      opcoesHash: string[];
+      votadoEm: string | null;
+    }[]
+  > {
+    const resposta = await this.http.chamar<unknown>(
+      ctx.config.evolutionUrl,
+      `/polls/${encodeURIComponent(enqueteExternoId)}/results`,
+      { credencial: this.chaveInstancia(ctx), aceitarAusente: true },
+    );
+    const dados = objeto(resposta, 'data') ?? resposta;
+    return lista(dados, 'voters', 'Voters').map((v) => ({
+      nome: texto(v, 'name', 'voterName'),
+      telefone: texto(v, 'phone', 'voterPhone'),
+      opcoesHash: lista(v, 'selectedOptions')
+        .map((o) => (typeof o === 'string' ? o : null))
+        .filter((o): o is string => Boolean(o)),
+      votadoEm: texto(v, 'votedAt'),
+    }));
+  }
+
   /** Traduz o contrato da plataforma para a rota e o corpo da Evolution GO. */
   private corpoInterativo(m: WhatsappInterativo): {
     rota: string;

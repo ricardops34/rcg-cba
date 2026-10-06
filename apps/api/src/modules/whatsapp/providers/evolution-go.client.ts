@@ -174,6 +174,37 @@ export class EvolutionGoClient {
 }
 
 /**
+ * Segue um caminho com ponto (`Info.ID`), um trecho por vez.
+ *
+ * Cada trecho tenta o nome exato e, se não houver, o mesmo nome ignorando
+ * maiúsculas. O motivo é a 0.7.2: o envelope sai com nomes de struct Go
+ * (`Info`, `Message`) e o conteúdo com os nomes do proto do WhatsApp, que
+ * mantêm o `ID` maiúsculo — `key.ID`, `contextInfo.stanzaID`,
+ * `singleSelectReply.selectedRowID`. Procurar `key.id` e `stanzaId`, como a
+ * versão anterior fazia, perdia em silêncio a citação e a reação vindas do
+ * celular.
+ */
+function resolver(fonte: unknown, caminho: string): unknown {
+  let atual: unknown = fonte;
+  for (const parte of caminho.split('.')) {
+    if (atual === null || typeof atual !== 'object') {
+      return undefined;
+    }
+    const registro = atual as Record<string, unknown>;
+    if (parte in registro) {
+      atual = registro[parte];
+      continue;
+    }
+    const minusculo = parte.toLowerCase();
+    const chave = Object.keys(registro).find(
+      (k) => k.toLowerCase() === minusculo,
+    );
+    atual = chave === undefined ? undefined : registro[chave];
+  }
+  return atual;
+}
+
+/**
  * Leitura tolerante de campo textual.
  *
  * Aceita caminho com ponto (`key.id`) porque a Evolution aninha o
@@ -181,14 +212,7 @@ export class EvolutionGoClient {
  */
 export function texto(fonte: unknown, ...caminhos: string[]): string | null {
   for (const caminho of caminhos) {
-    let atual: unknown = fonte;
-    for (const parte of caminho.split('.')) {
-      if (atual === null || typeof atual !== 'object') {
-        atual = undefined;
-        break;
-      }
-      atual = (atual as Record<string, unknown>)[parte];
-    }
+    const atual = resolver(fonte, caminho);
     if (typeof atual === 'string' && atual.trim()) return atual;
     if (typeof atual === 'number') return String(atual);
   }
@@ -201,14 +225,7 @@ export function objeto(
   ...caminhos: string[]
 ): Record<string, unknown> | null {
   for (const caminho of caminhos) {
-    let atual: unknown = fonte;
-    for (const parte of caminho.split('.')) {
-      if (atual === null || typeof atual !== 'object') {
-        atual = undefined;
-        break;
-      }
-      atual = (atual as Record<string, unknown>)[parte];
-    }
+    const atual = resolver(fonte, caminho);
     if (atual && typeof atual === 'object' && !Array.isArray(atual)) {
       return atual as Record<string, unknown>;
     }
@@ -219,14 +236,7 @@ export function objeto(
 /** Leitura tolerante de lista, com a mesma regra de caminhos. */
 export function lista(fonte: unknown, ...caminhos: string[]): unknown[] {
   for (const caminho of caminhos) {
-    let atual: unknown = fonte;
-    for (const parte of caminho.split('.')) {
-      if (atual === null || typeof atual !== 'object') {
-        atual = undefined;
-        break;
-      }
-      atual = (atual as Record<string, unknown>)[parte];
-    }
+    const atual = resolver(fonte, caminho);
     if (Array.isArray(atual)) return atual;
   }
   return Array.isArray(fonte) ? (fonte as unknown[]) : [];
@@ -234,14 +244,7 @@ export function lista(fonte: unknown, ...caminhos: string[]): unknown[] {
 
 export function booleano(fonte: unknown, ...caminhos: string[]): boolean {
   for (const caminho of caminhos) {
-    let atual: unknown = fonte;
-    for (const parte of caminho.split('.')) {
-      if (atual === null || typeof atual !== 'object') {
-        atual = undefined;
-        break;
-      }
-      atual = (atual as Record<string, unknown>)[parte];
-    }
+    const atual = resolver(fonte, caminho);
     if (typeof atual === 'boolean') return atual;
     if (atual === 'true') return true;
     if (atual === 'false') return false;

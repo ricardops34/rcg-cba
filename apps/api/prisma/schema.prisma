@@ -4502,6 +4502,19 @@ model WhatsappMensagem {
   /// `conteudo` guarda o resumo legível.
   interativo Json?
 
+  /// Edição e exclusão feitas no celular (protocolMessage da Evolution GO).
+  /// O histórico é permanente: editar troca `conteudo` e guarda o texto de
+  /// antes em `conteudoOriginal`; apagar para todos só marca `apagadaEm` — o
+  /// texto continua gravado para a auditoria do Gerencial.
+  editadaEm        DateTime?
+  apagadaEm        DateTime?
+  conteudoOriginal String?   @db.Text
+
+  /// Votos da enquete, lidos de `GET /polls/{id}/results` da 0.7.2 a cada
+  /// voto recebido: `[{ nome, telefone, opcoes, votadoEm }]`, com as opções
+  /// já traduzidas do hash para o texto.
+  enqueteVotos Json?
+
   criadaEm DateTime @default(now())
 
   empresa  Empresa          @relation(fields: [empresaId], references: [id])
