@@ -3163,6 +3163,8 @@ export class WhatsappConversasService {
      * ou a enquete criada no celular (`enquete`).
      */
     interativo?: Record<string, unknown> | null;
+    /** O nome veio da agenda do celular (histórico): pode corrigir o atual. */
+    nomeDaAgenda?: boolean;
     /** Quando a mensagem aconteceu, segundo o WhatsApp. Sem ela, agora. */
     criadaEm?: Date | null;
     /**
@@ -3217,10 +3219,16 @@ export class WhatsappConversasService {
           })
         : null;
 
+      // Nome: o apelido de cada mensagem só **preenche** nome vazio. Trocar
+      // sempre apagava o nome salvo na agenda ("Beatriz ❤️") pelo apelido
+      // ("Beatriz Martins") na mensagem seguinte. O nome da conversa no
+      // histórico (agenda do celular) pode corrigir — `nomeDaAgenda`.
+      const nomeNovo = entrada.nomeExibicao ?? null;
+
       const contato = existente
         ? await tx.whatsappContato.update({
             where: { id: existente.id },
-            data: { nomeExibicao: entrada.nomeExibicao ?? undefined },
+            data: {},
           })
         : await tx.whatsappContato.upsert({
             where: { empresaId_jid: { empresaId, jid: entrada.jid } },
@@ -3240,10 +3248,19 @@ export class WhatsappConversasService {
               ),
             },
             update: {
-              nomeExibicao: entrada.nomeExibicao ?? undefined,
               ...(telefone ? { telefoneNormalizado: telefone } : {}),
             },
           });
+
+      if (nomeNovo && (!contato.nomeExibicao || entrada.nomeDaAgenda)) {
+        if (contato.nomeExibicao !== nomeNovo) {
+          await tx.whatsappContato.update({
+            where: { id: contato.id },
+            data: { nomeExibicao: nomeNovo },
+          });
+          contato.nomeExibicao = nomeNovo;
+        }
+      }
 
       const conversa = await tx.whatsappConversa.upsert({
         where: {

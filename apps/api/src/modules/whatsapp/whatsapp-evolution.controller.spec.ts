@@ -381,3 +381,57 @@ describe('WhatsappEvolutionController — roteamento de eventos da 0.7.2', () =>
     expect(rota('OfflineSyncCompleted')).toBeNull();
   });
 });
+
+describe('WhatsappEvolutionController — mensagem de empresa (modelo com botões)', () => {
+  it('vira "botoes" com o texto e os botões, e o nome verificado vence o apelido', async () => {
+    const conversas = { receber: jest.fn().mockResolvedValue({ gravada: true }) };
+    const controller = new WhatsappEvolutionController(
+      conversas as never,
+      {} as never,
+      {} as never,
+      new EvolutionGoProvider({} as never),
+    );
+    await (
+      controller as unknown as {
+        tratarUmaMensagem(c: unknown, b: unknown): Promise<boolean>;
+      }
+    ).tratarUmaMensagem(
+      { empresaId: 'emp', sessaoId: 'sess' },
+      {
+        Info: {
+          ID: 'PANAN-1',
+          Chat: '271562628427859@lid',
+          Sender: '271562628427859@lid',
+          IsFromMe: false,
+          PushName: 'Panan',
+          VerifiedName: { Details: { verifiedName: 'Panan Refrigeração' } },
+        },
+        Message: {
+          templateMessage: {
+            hydratedTemplate: {
+              hydratedContentText: 'Olá, Ana. Podemos agendar?',
+              hydratedButtons: [
+                { quickReplyButton: { displayText: 'Sim, vamos agendar!' } },
+                { quickReplyButton: { displayText: 'Já troquei o meu!' } },
+              ],
+            },
+          },
+        },
+      },
+    );
+    expect(conversas.receber).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nomeExibicao: 'Panan Refrigeração',
+        tipo: 'botoes',
+        interativo: {
+          tipo: 'botoes',
+          texto: 'Olá, Ana. Podemos agendar?',
+          botoes: [
+            { tipo: 'resposta', texto: 'Sim, vamos agendar!' },
+            { tipo: 'resposta', texto: 'Já troquei o meu!' },
+          ],
+        },
+      }),
+    );
+  });
+});

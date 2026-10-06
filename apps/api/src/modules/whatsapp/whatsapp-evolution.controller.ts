@@ -445,7 +445,9 @@ export class WhatsappEvolutionController {
     // Clique em botão/lista, ou enquete criada no próprio celular: entram
     // como mensagem, mas com o conteúdo estruturado para a bolha desenhar.
     const estruturado =
-      this.respostaInterativa(conteudo) ?? this.enqueteDoCelular(conteudo);
+      this.respostaInterativa(conteudo) ??
+      this.enqueteDoCelular(conteudo) ??
+      this.mensagemDeEmpresa(conteudo);
     if (!midia && !estruturado && this.tipoDaMensagem(conteudo) === 'outro') {
       // Só os nomes dos campos, nunca o conteúdo: é o que permite reconhecer
       // o próximo formato sem adivinhação (foi o caso da Panan).
@@ -477,13 +479,26 @@ export class WhatsappEvolutionController {
       // renomearia o contato com o nome de quem está atendendo.
       nomeExibicao:
         opcoes.nomeContato ??
-        (minha ? null : texto(bruta, 'pushName', 'Info.PushName', 'notifyName')),
+        (minha
+          ? null
+          : // Conta comercial: o nome verificado é o que o celular mostra
+            // ("Panan Refrigeração"), e vence o apelido.
+            texto(
+              bruta,
+              'Info.VerifiedName.Details.verifiedName',
+              'Info.VerifiedName',
+              'verifiedBizName',
+              'pushName',
+              'Info.PushName',
+              'notifyName',
+            )),
       texto: estruturado?.texto ?? this.textoDaMensagem(conteudo),
       tipo: estruturado?.tipo ?? midia?.tipo ?? this.tipoDaMensagem(conteudo),
       arquivoNome: midia?.nome ?? null,
       arquivoMime: midia?.mime ?? null,
       interativo: estruturado?.interativo ?? null,
       historico: opcoes.historico,
+      nomeDaAgenda: Boolean(opcoes.nomeContato),
       criadaEm: opcoes.criadaEm ?? null,
       // O id citado (`stanzaID`) mora no `contextInfo` do tipo da mensagem —
       // texto, mídia ou a resposta a botão/lista, que cita a mensagem de
@@ -637,6 +652,8 @@ export class WhatsappEvolutionController {
                   RecipientAlt: minha ? (telefoneConversa ?? undefined) : undefined,
                   IsFromMe: minha,
                   PushName: minha ? undefined : texto(info, 'pushName'),
+                  // Conta comercial: o nome do perfil verificado.
+                  VerifiedName: minha ? undefined : texto(info, 'verifiedBizName'),
                 },
                 Message: conteudo,
               },
@@ -858,6 +875,77 @@ export class WhatsappEvolutionController {
     }
 
     return null;
+  }
+
+  /**
+   * Mensagem de empresa com modelo e botões (`templateMessage`), como a da
+   * Panan no teste real: texto, rodapé e botões de resposta/link/ligação.
+   * Vira `botoes`, para a bolha desenhar como o celular mostra. Os botões
+   * são só ilustração — quem toca é o cliente, no celular dele.
+   *
+   * O modelo pode vir em `hydratedTemplate` ou no oneof `format`; cada botão
+   * também é um oneof (`quickReplyButton`, `urlButton`, `callButton`).
+   */
+  private mensagemDeEmpresa(conteudo: Record<string, unknown>): {
+    tipo: 'botoes';
+    texto: string;
+    interativo: Record<string, unknown>;
+    origem: null;
+  } | null {
+    const modelo = objeto(
+      conteudo,
+      'templateMessage.hydratedTemplate',
+      'templateMessage.format.hydratedFourRowTemplate',
+      'templateMessage.hydratedFourRowTemplate',
+    );
+    if (!modelo) return null;
+    const corpo = texto(modelo, 'hydratedContentText');
+    if (!corpo) return null;
+
+    const botoes = lista(modelo, 'hydratedButtons')
+      .map((b) => {
+        const resposta = texto(
+          b,
+          'quickReplyButton.displayText',
+          'hydratedButton.quickReplyButton.displayText',
+        );
+        if (resposta) return { tipo: 'resposta', texto: resposta.slice(0, 25) };
+        const link = objeto(b, 'urlButton', 'hydratedButton.urlButton');
+        if (link) {
+          return {
+            tipo: 'url',
+            texto: (texto(link, 'displayText') ?? 'Abrir').slice(0, 25),
+            url: texto(link, 'url') ?? '',
+          };
+        }
+        const ligar = objeto(b, 'callButton', 'hydratedButton.callButton');
+        if (ligar) {
+          return {
+            tipo: 'ligar',
+            texto: (texto(ligar, 'displayText') ?? 'Ligar').slice(0, 25),
+            telefone: (texto(ligar, 'phoneNumber') ?? '').replace(/[^\d+]/g, ''),
+          };
+        }
+        return null;
+      })
+      .filter((b): b is NonNullable<typeof b> => b !== null);
+
+    const titulo = texto(modelo, 'hydratedTitleText', 'title');
+    const rodape = texto(modelo, 'hydratedFooterText');
+    return {
+      tipo: 'botoes',
+      texto: [titulo, corpo, ...botoes.map((b) => `[${b.texto}]`)]
+        .filter(Boolean)
+        .join('\n'),
+      origem: null,
+      interativo: {
+        tipo: 'botoes',
+        ...(titulo ? { titulo } : {}),
+        texto: corpo,
+        ...(rodape ? { rodape } : {}),
+        botoes,
+      },
+    };
   }
 
   /** Enquete criada pelo vendedor no próprio celular. */
