@@ -140,6 +140,54 @@ describe('EvolutionGoProvider — Isolamento de Chaves e Autenticação', () => 
     expect(estado.erro).toContain('Recomeçar pareamento');
   });
 
+  it('pareamento continua em "pareando", sem erro, enquanto o gateway ainda gera o QR', async () => {
+    const ctx = {
+      empresaId: 'emp1',
+      sessaoId: 'sess1',
+      vendedorId: null,
+      vendedorNome: null,
+      transporte: 'evolution_go' as const,
+      config: {
+        workerUrl: null,
+        evolutionUrl: 'http://gateway:8080',
+        evolutionApiKey: 'admin-key',
+        historicoDias: 0,
+        evolutionAlwaysOnline: false,
+        evolutionIgnoreGroups: true,
+        evolutionIgnoreStatus: true,
+        evolutionReadMessages: false,
+        evolutionRejectCall: false,
+        evolutionMsgRejectCall: null,
+        cloudApiPhoneNumberId: null,
+        cloudApiBusinessAccountId: null,
+        cloudApiAccessToken: null,
+        cloudApiAppSecret: null,
+      },
+      instancia: {
+        nome: 'empresa_emp1_empresa',
+        id: 'uuid-123',
+        token: 'token-ok',
+        webhookSegredo: null,
+      },
+    };
+
+    // /instance/status: ainda não conectado
+    mockHttp.chamar.mockResolvedValueOnce({ data: { Connected: false } });
+    // /instance/qr: o gateway ainda não gerou o código
+    mockHttp.chamar.mockRejectedValueOnce(
+      new EvolutionGoErroHttp(
+        400,
+        '{"error":"no QR code available. Please wait a moment and try again"}',
+        'no QR code available. Please wait a moment and try again',
+      ),
+    );
+
+    const estado = await provider.pareamento(ctx);
+    expect(estado.status).toBe('pareando');
+    expect(estado.qr).toBeNull();
+    expect(estado.erro).toBeNull();
+  });
+
   it('iniciar recria instância se connect falhar com 401 (token órfão/zumbi)', async () => {
     const ctx = {
       empresaId: 'emp1',

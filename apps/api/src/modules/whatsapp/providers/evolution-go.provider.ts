@@ -541,6 +541,11 @@ export class EvolutionGoProvider implements WhatsappProvider {
 
     let qr: string | null = null;
     let motivoQr: string | null = null;
+    // Logo depois do `/instance/connect` o gateway ainda não gerou o QR e
+    // responde 400 "no QR code available". Não é falha: a tela consulta de
+    // novo e o QR chega em segundos — mostrar erro vermelho nesse intervalo
+    // levava o vendedor a recomeçar o pareamento à toa.
+    let qrAindaGerando = false;
 
     if (status === 'pareando' || status === 'desconectada') {
       const resposta = await this.http
@@ -553,6 +558,15 @@ export class EvolutionGoProvider implements WhatsappProvider {
             motivoQr =
               'A Evolution GO recusou a busca do QR Code (401: not authorized). ' +
               'Clique em "Recomeçar pareamento".';
+          } else if (
+            erro instanceof EvolutionGoErroHttp &&
+            erro.httpStatus === 400 &&
+            `${erro.corpo} ${erro.detalhe ?? ''}`
+              .toLowerCase()
+              .includes('no qr code')
+          ) {
+            qrAindaGerando = true;
+            return null;
           } else {
             motivoQr = erro instanceof Error ? erro.message : String(erro);
           }
@@ -575,7 +589,7 @@ export class EvolutionGoProvider implements WhatsappProvider {
           'base64',
         ) ?? null;
 
-      if (!qr && !motivoQr) {
+      if (!qr && !motivoQr && !qrAindaGerando) {
         motivoQr =
           'O gateway respondeu sem QR Code em nenhum campo conhecido ' +
           '(qrcode, qr, code, base64). Confira a versão homologada em ' +
@@ -587,7 +601,11 @@ export class EvolutionGoProvider implements WhatsappProvider {
     }
 
     return {
-      status: status === 'desconectada' && qr ? 'pareando' : status,
+      // Sem o `qrAindaGerando` aqui, a primeira consulta depois do connect
+      // gravava a sessão como desconectada, a tela parava de consultar (só
+      // consulta em `pareando`) e o QR nunca chegava a aparecer.
+      status:
+        status === 'desconectada' && (qr || qrAindaGerando) ? 'pareando' : status,
       qr,
       numero,
       erro: texto(dadosEstado, 'error', 'lastError') ?? motivoQr ?? erroStatus,
