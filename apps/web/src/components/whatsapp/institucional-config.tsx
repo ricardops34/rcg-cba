@@ -132,7 +132,7 @@ export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
   const desconectar = async () => {
     if (
       !confirm(
-        "Desconectar o número da empresa? O atendimento automático para de receber mensagens. As conversas ficam.",
+        "Desconectar e desabilitar o número institucional? A instância é removida do gateway e o atendimento automático para de receber mensagens. As conversas ficam. Para voltar, use Parear número.",
       )
     )
       return;
@@ -244,9 +244,12 @@ export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
               {status === "pareando" ? "Recomeçar pareamento" : "Parear número"}
             </Button>
           )}
-          {sessao && status !== "desconectada" && (
+          {/* Não depende do status: "desconectada" pode ter vindo de um evento
+              do gateway, com a instância ainda lá (e o número na tela). Só a
+              desconexão por aqui remove a instância e desliga o número. */}
+          {sessao && (
             <Button variant="outline" onClick={desconectar} disabled={ocupado}>
-              <Unplug className="size-4" /> Desconectar
+              <Unplug className="size-4" /> Desconectar e desabilitar
             </Button>
           )}
         </div>

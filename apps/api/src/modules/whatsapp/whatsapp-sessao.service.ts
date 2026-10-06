@@ -394,8 +394,14 @@ export class WhatsappSessaoService {
             `${erro instanceof Error ? erro.message : String(erro)}`,
         );
       });
-    const atualizada = await this.prisma.withTenant(empresaId, (tx) =>
-      tx.whatsappSessao.update({
+    const atualizada = await this.prisma.withTenant(empresaId, async (tx) => {
+      // Mesmo fechamento da desconexão do vendedor: sem ele, o período fica
+      // aberto e a auditoria diz que o número segue conectado.
+      await tx.whatsappSessaoPeriodo.updateMany({
+        where: { empresaId, sessaoId: sessao.id, desconectadoEm: null },
+        data: { desconectadoEm: new Date() },
+      });
+      return tx.whatsappSessao.update({
         where: { id: sessao.id },
         data: {
           status: 'desconectada',
@@ -409,8 +415,8 @@ export class WhatsappSessaoService {
           ultimoErro: null,
           updatedBy: user.id,
         },
-      }),
-    );
+      });
+    });
     return this.paraLeitura(atualizada, 'Empresa');
   }
 
