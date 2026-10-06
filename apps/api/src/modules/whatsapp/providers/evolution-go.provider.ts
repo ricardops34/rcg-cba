@@ -504,8 +504,13 @@ export class EvolutionGoProvider implements WhatsappProvider {
       };
     }
 
+    // Falha ao **consultar** não é desconexão. Devolver `desconectada` aqui
+    // fazia o chamador gravar isso no banco — e em 2026-10-05, com o Postgres
+    // do gateway sem conexões livres (500, e 401 porque a busca do token
+    // falhava), a sessão ficou "desconectada" na tela enquanto as mensagens
+    // continuavam chegando pelo webhook. Estourar mantém o status gravado e
+    // mostra o motivo de verdade.
     let estado: unknown = null;
-    let erroStatus: string | null = null;
     try {
       estado = await this.http.chamar<unknown>(url, '/instance/status', {
         credencial: token,
@@ -513,19 +518,17 @@ export class EvolutionGoProvider implements WhatsappProvider {
       });
     } catch (erro) {
       if (erro instanceof EvolutionGoErroHttp && erro.httpStatus === 401) {
-        return {
-          status: 'desconectada',
-          qr: null,
-          numero: null,
-          erro: 'A Evolution GO não autorizou o token desta instância (401: not authorized). ' +
-            'Clique em "Recomeçar pareamento" para renovar a conexão.',
-        };
+        throw new BadGatewayException(
+          'A Evolution GO não autorizou o token desta instância (401: not authorized). ' +
+            'Se o "Testar conexão com o Gateway" também falha, o problema é o gateway; ' +
+            'senão, clique em "Recomeçar pareamento" para renovar a conexão.',
+        );
       }
-      erroStatus = erro instanceof Error ? erro.message : String(erro);
+      throw erro;
     }
 
     const dadosEstado = objeto(estado, 'data') ?? estado;
-    const status = erroStatus ? 'desconectada' : this.statusDoEstado(dadosEstado);
+    const status = this.statusDoEstado(dadosEstado);
     const numero = this.somenteDigitos(
       texto(
         dadosEstado,
@@ -608,7 +611,7 @@ export class EvolutionGoProvider implements WhatsappProvider {
         status === 'desconectada' && (qr || qrAindaGerando) ? 'pareando' : status,
       qr,
       numero,
-      erro: texto(dadosEstado, 'error', 'lastError') ?? motivoQr ?? erroStatus,
+      erro: texto(dadosEstado, 'error', 'lastError') ?? motivoQr,
     };
   }
 

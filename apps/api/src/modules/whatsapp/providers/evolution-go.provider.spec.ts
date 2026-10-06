@@ -188,6 +188,49 @@ describe('EvolutionGoProvider — Isolamento de Chaves e Autenticação', () => 
     expect(estado.erro).toBeNull();
   });
 
+  it('pareamento estoura (não diz "desconectada") quando a consulta de status falha', async () => {
+    const ctx = {
+      empresaId: 'emp1',
+      sessaoId: 'sess1',
+      vendedorId: null,
+      vendedorNome: null,
+      transporte: 'evolution_go' as const,
+      config: {
+        workerUrl: null,
+        evolutionUrl: 'http://gateway:8080',
+        evolutionApiKey: 'admin-key',
+        historicoDias: 0,
+        evolutionAlwaysOnline: false,
+        evolutionIgnoreGroups: true,
+        evolutionIgnoreStatus: true,
+        evolutionReadMessages: false,
+        evolutionRejectCall: false,
+        evolutionMsgRejectCall: null,
+        cloudApiPhoneNumberId: null,
+        cloudApiBusinessAccountId: null,
+        cloudApiAccessToken: null,
+        cloudApiAppSecret: null,
+      },
+      instancia: {
+        nome: 'empresa_emp1_empresa',
+        id: 'uuid-123',
+        token: 'token-ok',
+        webhookSegredo: null,
+      },
+    };
+
+    // O banco do gateway sem conexões: 500 no status, 401 na busca do token.
+    mockHttp.chamar.mockRejectedValueOnce(
+      new EvolutionGoErroHttp(500, 'too many clients already'),
+    );
+    await expect(provider.pareamento(ctx)).rejects.toThrow(BadGatewayException);
+
+    mockHttp.chamar.mockRejectedValueOnce(
+      new EvolutionGoErroHttp(401, '{"error":"not authorized"}', 'not authorized'),
+    );
+    await expect(provider.pareamento(ctx)).rejects.toThrow('401');
+  });
+
   it('iniciar recria instância se connect falhar com 401 (token órfão/zumbi)', async () => {
     const ctx = {
       empresaId: 'emp1',

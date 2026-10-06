@@ -350,6 +350,7 @@ export default function AtendimentoPage() {
                 onNovaConversa={() => setNovaConversaAberta(true)}
                 onAbrirConexao={() => setConexaoAberta(true)}
                 sessaoNumero={sessaoAtiva?.numero ?? sessao?.numero}
+                sessaoStatus={sessaoAtiva?.status ?? null}
                 podeTrocarConexao={podeTrocarConexao}
                 conexaoAtual={sessaoAtivaId}
                 onConexaoChange={setConexaoEscolhida}
@@ -454,6 +455,7 @@ function ListaDeConversas({
   onNovaConversa,
   onAbrirConexao,
   sessaoNumero,
+  sessaoStatus,
   podeTrocarConexao,
   conexaoAtual,
   onConexaoChange,
@@ -472,6 +474,7 @@ function ListaDeConversas({
   onNovaConversa: () => void;
   onAbrirConexao: () => void;
   sessaoNumero?: string | null;
+  sessaoStatus?: WhatsappSessao["status"] | null;
   podeTrocarConexao?: boolean;
   conexaoAtual?: string | null;
   onConexaoChange?: (sessaoId: string) => void;
@@ -589,18 +592,49 @@ function ListaDeConversas({
           </div>
 
           <div className="flex items-center gap-1">
+            {/* A cor segue o status: verde piscando em qualquer estado fazia o
+                "Conectar" parecer conectado, e ninguém via que é por aqui que
+                se reconecta. */}
             <button
               type="button"
               onClick={onAbrirConexao}
-              title="Status da conexão WhatsApp"
-              className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+              title={
+                sessaoStatus === "conectada"
+                  ? "WhatsApp conectado"
+                  : sessaoStatus === "pareando"
+                    ? "Aguardando leitura do QR — clique para ver"
+                    : "WhatsApp desconectado — clique para conectar"
+              }
+              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                sessaoStatus === "conectada"
+                  ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
+                  : sessaoStatus === "pareando"
+                    ? "border-amber-500/30 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300"
+                    : "border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20"
+              }`}
             >
               <span className="relative flex size-2">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+                {sessaoStatus === "conectada" ? (
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                ) : null}
+                <span
+                  className={`relative inline-flex size-2 rounded-full ${
+                    sessaoStatus === "conectada"
+                      ? "bg-emerald-500"
+                      : sessaoStatus === "pareando"
+                        ? "bg-amber-500"
+                        : "bg-destructive"
+                  }`}
+                />
               </span>
-              <span className="max-w-[100px] truncate">
-                {sessaoNumero ? telefoneBonito(sessaoNumero) : "Conectar"}
+              <span className="max-w-[120px] truncate">
+                {sessaoStatus === "conectada"
+                  ? sessaoNumero
+                    ? telefoneBonito(sessaoNumero)
+                    : "Conectado"
+                  : sessaoStatus === "pareando"
+                    ? "Ler QR"
+                    : "Desconectado — conectar"}
               </span>
             </button>
 
