@@ -2092,12 +2092,21 @@ export class WhatsappConversasService {
   }
 
   /** O WhatsApp mostra a mídia conforme o tipo, não conforme a extensão. */
+  /**
+   * Tipo com que o arquivo sai, limitado ao que a Evolution GO 0.7.2 aceita
+   * (`send_service.go`, que detecta o MIME pelos bytes): imagem só
+   * jpg/png/webp e vídeo só mp4 — o resto o gateway recusa com 500. Esses vão
+   * como **documento**, que ele aceita de qualquer formato: o cliente recebe o
+   * arquivo em vez de a tela mostrar erro. Áudio de qualquer formato é
+   * convertido pelo gateway em mensagem de voz (Opus).
+   */
   private tipoPorMime(
     mime: string,
   ): 'imagem' | 'video' | 'audio' | 'documento' {
-    if (mime.startsWith('image/')) return 'imagem';
-    if (mime.startsWith('video/')) return 'video';
-    if (mime.startsWith('audio/')) return 'audio';
+    const base = mime.split(';')[0].trim().toLowerCase();
+    if (['image/jpeg', 'image/png', 'image/webp'].includes(base)) return 'imagem';
+    if (base === 'video/mp4') return 'video';
+    if (base.startsWith('audio/')) return 'audio';
     return 'documento';
   }
 

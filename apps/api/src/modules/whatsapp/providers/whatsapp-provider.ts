@@ -134,7 +134,10 @@ export interface ArquivoParaEnviar {
   tipo: 'imagem' | 'video' | 'audio' | 'documento';
   conteudoBase64: string;
   legenda?: string | null;
-  /** Áudio gravado na hora: vira mensagem de voz, não anexo. */
+  /**
+   * Áudio gravado na hora. Hoje informativo: a Evolution GO 0.7.2 converte
+   * todo áudio em mensagem de voz, gravado ou anexado.
+   */
   ptt?: boolean;
 }
 

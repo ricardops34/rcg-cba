@@ -96,12 +96,15 @@ export class EvolutionGoClient {
 
     let resposta: Response;
     const credencialLimpa = credencial?.trim() || null;
+    // `FormData` é o envio de arquivo (`/send/media` multipart): o `fetch`
+    // monta o content-type com o boundary, e defini-lo à mão o quebraria.
+    const multipart = corpo instanceof FormData;
     try {
       resposta = await fetch(url, {
         method: metodo,
         signal: controller.signal,
         headers: {
-          'content-type': 'application/json',
+          ...(multipart ? {} : { 'content-type': 'application/json' }),
           ...(credencialLimpa
             ? {
                 apikey: credencialLimpa,
@@ -109,7 +112,9 @@ export class EvolutionGoClient {
               }
             : {}),
         },
-        ...(corpo !== undefined ? { body: JSON.stringify(corpo) } : {}),
+        ...(corpo === undefined
+          ? {}
+          : { body: multipart ? corpo : JSON.stringify(corpo) }),
       });
     } catch (erro) {
       const motivo = erro instanceof Error ? erro.message : String(erro);

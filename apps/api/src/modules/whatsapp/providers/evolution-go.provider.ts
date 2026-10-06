@@ -729,45 +729,44 @@ export class EvolutionGoProvider implements WhatsappProvider {
   }
 
   /**
-   * Envia anexo.
+   * Envia anexo por **multipart** (`file`), o caminho de bytes da 0.7.2
+   * (`send_handler.go`, `SendMedia`). O JSON da mesma rota só aceita `url`,
+   * que o gateway baixa por HTTP — o anexo do vendedor não tem endereço
+   * público, e a versão anterior mandava `data:` URI, que essa busca não lê.
    *
-   * O ponto que mais destoa do worker: a rota recebe **`url`**, não bytes. O
-   * arquivo aqui é upload do vendedor, em memória, e a plataforma não tem
-   * endereço público para ele — servir um só para o gateway buscar exporia
-   * anexo de conversa na internet. Por isso vai como `data:` URI, que é a
-   * forma de entregar os bytes dentro do campo que a API oferece.
-   *
-   * **Não verificado contra um gateway em execução** (a 0.7.2 exige licença
-   * ativada para responder qualquer rota). Se a versão homologada recusar o
-   * `data:` URI, este é o ponto a mudar, e a alternativa é uma rota interna de
-   * arquivo temporário alcançável só pela rede do Docker.
+   * `type` é `image`/`video`/`audio`/`document` e nada mais: qualquer outro
+   * valor volta "invalid media type". Era o caso do `ptt` que mandávamos para
+   * o áudio gravado — a 0.7.2 já converte **todo** `audio` em mensagem de voz
+   * (Opus, `PTT: true`), então não há tipo próprio para isso.
    */
   async enviarArquivo(
     ctx: ContextoSessao,
     dados: { jid: string; arquivo: ArquivoParaEnviar },
   ): Promise<{ externoId: string }> {
     const { arquivo } = dados;
+    const corpo = new FormData();
+    corpo.set('number', this.destinatario(dados.jid));
+    corpo.set('type', this.tipoExterno(arquivo.tipo));
+    corpo.set('filename', arquivo.nome);
+    // Legenda vazia não vai: o gateway a gravaria como `caption: ""`.
+    if (arquivo.legenda) corpo.set('caption', arquivo.legenda);
+    corpo.set(
+      'file',
+      new Blob([Buffer.from(arquivo.conteudoBase64, 'base64')], {
+        type: arquivo.mime,
+      }),
+      arquivo.nome,
+    );
+
     const resposta = await this.http.chamar<unknown>(
       ctx.config.evolutionUrl,
       '/send/media',
       {
         metodo: 'POST',
         credencial: this.chaveInstancia(ctx),
-        corpo: {
-          number: this.destinatario(dados.jid),
-          // `image`/`video`/`audio`/`document` é a nomenclatura do gateway; o
-          // tipo interno da plataforma é português e não pode vazar para cá.
-          //
-          // Áudio gravado na hora vira `ptt`, que é o que faz o WhatsApp
-          // mostrar mensagem de voz em vez de anexo.
-          type:
-            arquivo.tipo === 'audio' && arquivo.ptt
-              ? 'ptt'
-              : this.tipoExterno(arquivo.tipo),
-          url: `data:${arquivo.mime};base64,${arquivo.conteudoBase64}`,
-          filename: arquivo.nome,
-          caption: arquivo.legenda ?? undefined,
-        },
+        corpo,
+        // Áudio passa por conversão no gateway (ffmpeg) antes de subir.
+        timeoutMs: 120_000,
       },
     );
 

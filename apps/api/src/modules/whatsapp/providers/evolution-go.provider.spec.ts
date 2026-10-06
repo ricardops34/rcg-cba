@@ -346,3 +346,63 @@ describe('EvolutionGoProvider — id da mensagem enviada', () => {
     );
   });
 });
+
+describe('EvolutionGoProvider — envio de mídia (contrato da 0.7.2)', () => {
+  const ctx = {
+    empresaId: 'emp1',
+    sessaoId: 'sess1',
+    config: { evolutionUrl: 'http://gateway:8080' },
+    instancia: { token: 'token-da-instancia' },
+  } as never;
+
+  const enviar = async (arquivo: Record<string, unknown>) => {
+    const mockHttp = {
+      chamar: jest
+        .fn()
+        .mockResolvedValue({ data: { Info: { ID: '3EB0MIDIA' } } }),
+    };
+    const provider = new EvolutionGoProvider(
+      mockHttp as unknown as EvolutionGoClient,
+    );
+    const resultado = await provider.enviarArquivo(ctx, {
+      jid: '5511999998888@s.whatsapp.net',
+      arquivo: {
+        nome: 'arquivo',
+        mime: 'application/octet-stream',
+        conteudoBase64: Buffer.from('bytes').toString('base64'),
+        ...arquivo,
+      } as never,
+    });
+    const [, caminho, opcoes] = mockHttp.chamar.mock.calls[0];
+    return { resultado, caminho, corpo: opcoes.corpo as FormData, opcoes };
+  };
+
+  it('manda os bytes por multipart, nunca como data: URI', async () => {
+    const { caminho, corpo, resultado } = await enviar({
+      tipo: 'documento',
+      nome: 'proposta.pdf',
+      mime: 'application/pdf',
+    });
+    expect(caminho).toBe('/send/media');
+    expect(corpo).toBeInstanceOf(FormData);
+    expect(corpo.get('type')).toBe('document');
+    expect(corpo.get('number')).toBe('5511999998888');
+    expect(corpo.get('url')).toBeNull();
+    expect(corpo.get('file')).toBeInstanceOf(Blob);
+    expect(resultado.externoId).toBe('3EB0MIDIA');
+  });
+
+  it('áudio gravado sai como "audio" — a 0.7.2 recusa "ptt"', async () => {
+    const { corpo } = await enviar({
+      tipo: 'audio',
+      mime: 'audio/webm',
+      ptt: true,
+    });
+    expect(corpo.get('type')).toBe('audio');
+  });
+
+  it('legenda vazia não é enviada', async () => {
+    const { corpo } = await enviar({ tipo: 'imagem', legenda: '' });
+    expect(corpo.get('caption')).toBeNull();
+  });
+});
