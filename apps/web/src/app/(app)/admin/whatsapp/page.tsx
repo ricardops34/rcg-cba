@@ -612,8 +612,17 @@ function Instancias({ config }: { config: WhatsappConfig }) {
     onError: (error) => toast.error(mensagemErro(error, "Falha ao remover")),
   });
   const apagarInstancia = useMutation({
-    mutationFn: (id: string) => apiFetch(`/whatsapp/config/sessoes/${id}/instancia`, { method: "DELETE" }),
-    onSuccess: () => { setApagar(null); atualizar(); toast.success("Instância excluída"); },
+    mutationFn: (id: string) =>
+      apiFetch<{ excluida: boolean; arquivada: boolean; mensagem?: string }>(`/whatsapp/config/sessoes/${id}/instancia`, { method: "DELETE" }),
+    // Com conversas, a API não apaga a linha (o histórico é permanente): encerra
+    // a conexão e preserva tudo. Dizer "excluída" nesse caso fazia parecer que
+    // a exclusão tinha falhado, com a linha ainda na lista.
+    onSuccess: (r) => {
+      setApagar(null);
+      atualizar();
+      if (r.arquivada) toast.info(r.mensagem ?? "Conexão encerrada; o histórico foi preservado.");
+      else toast.success("Instância excluída");
+    },
     onError: (error) => toast.error(mensagemErro(error, "Falha ao excluir")),
   });
   const importar = useMutation({
@@ -732,7 +741,7 @@ function Instancias({ config }: { config: WhatsappConfig }) {
           <DialogHeader>
             <DialogTitle>Excluir a instância de {apagar?.vendedorNome}?</DialogTitle>
             <DialogDescription>
-              A linha some da lista. Só é possível com a instância desconectada e sem conversas no histórico. O vendedor pode parear de novo depois, pela tela de Atendimento.
+              Só é possível com a instância desconectada. Sem conversas, a linha some da lista. Com conversas, o histórico é permanente: a conexão com o gateway é removida, mas a linha e todas as conversas ficam. O vendedor pode parear de novo depois, pela tela de Atendimento.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

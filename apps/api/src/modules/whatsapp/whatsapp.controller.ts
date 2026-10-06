@@ -527,9 +527,9 @@ export class WhatsappController {
   @ApiOperation({
     summary: 'Excluir a instância',
     description:
-      'Apaga a linha da instância, e não só a conexão. Só aceita instância ' +
-      'desconectada e sem conversas no histórico — com conversas, responde 400 ' +
-      'pedindo que sejam limpas antes. Requer whatsapp-config.editar.',
+      'Só aceita instância desconectada. Sem conversas, apaga a linha. Com ' +
+      'conversas, o histórico é permanente: remove a conexão no gateway, limpa ' +
+      'as credenciais e preserva a linha (arquivada: true). Requer whatsapp-config.editar.',
   })
   @RequirePermission('whatsapp-config', 'editar')
   @Delete('config/sessoes/:id/instancia')
