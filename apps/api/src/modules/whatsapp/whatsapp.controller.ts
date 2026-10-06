@@ -41,6 +41,7 @@ import {
   WhatsappEnviarBoletoDto,
   WhatsappEnviarDanfeDto,
   WhatsappEnviarDto,
+  WhatsappEnviarInterativoDto,
   WhatsappEnviarOrcamentoDto,
   WhatsappEnviarTemplateDto,
   WhatsappIniciarConversaDto,
@@ -698,6 +699,25 @@ export class WhatsappController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.conversas.enviar(user.empresaAtivaId, user, id, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Enviar mensagem interativa',
+    description:
+      'Botões (resposta, link, ligação, copiar, PIX), lista, enquete, ' +
+      'localização, contato ou link com prévia — os recursos da Evolution GO ' +
+      '0.7.2. As regras de combinação (3 respostas no máximo, PIX sozinho, ' +
+      'até 10 opções na lista) são validadas antes do envio. Requer ' +
+      'whatsapp-conversas.cadastrar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Post('conversas/:id/mensagens/interativa')
+  enviarInterativo(
+    @Param('id') id: string,
+    @Body() dto: WhatsappEnviarInterativoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversas.enviarInterativo(user.empresaAtivaId, user, id, dto);
   }
 
   @ApiOperation({

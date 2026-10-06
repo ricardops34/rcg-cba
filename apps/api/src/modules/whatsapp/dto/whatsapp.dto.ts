@@ -14,6 +14,7 @@ import {
   whatsappEnviarDanfeSchema,
   whatsappEnviarOrcamentoSchema,
   whatsappEnviarSchema,
+  whatsappEnviarInterativoSchema,
   whatsappEnviarTemplateSchema,
   whatsappIniciarConversaSchema,
   whatsappMensagemQuerySchema,
@@ -45,6 +46,9 @@ export class WhatsappMensagemQueryDto extends createZodDto(
   whatsappMensagemQuerySchema,
 ) {}
 export class WhatsappEnviarDto extends createZodDto(whatsappEnviarSchema) {}
+export class WhatsappEnviarInterativoDto extends createZodDto(
+  whatsappEnviarInterativoSchema,
+) {}
 export class WhatsappEnviarArquivoDto extends createZodDto(
   whatsappEnviarArquivoSchema,
 ) {}

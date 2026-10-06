@@ -46,6 +46,7 @@ import type {
   WhatsappSituacaoTitulos,
   WhatsappStatusEntrega,
   WhatsappEnviar,
+  WhatsappEnviarInterativo,
   WhatsappEnviarTemplate,
   WhatsappIniciarConversa,
   WhatsappMensagemQuery,
@@ -53,6 +54,12 @@ import type {
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { mensagemComAutor } from './mensagem-com-autor';
+import {
+  assinarInterativo,
+  prepararInterativo,
+  resumoInterativo,
+  tipoDoInterativo,
+} from './mensagem-interativa';
 import { registrarAtendimentoWhatsapp } from '../../common/atividades/registrar-atendimento-whatsapp';
 
 const PREVIA_TAMANHO = 120;
@@ -1550,6 +1557,75 @@ export class WhatsappConversasService {
 
       // O atendimento entra no histórico do cliente — um registro por dia,
       // atualizado a cada mensagem (ver `registrarAtendimentoWhatsapp`).
+      await registrarAtendimentoWhatsapp(tx, {
+        empresaId,
+        autor: user.id,
+        clienteId: conversa.clienteId,
+        vendedorId: conversa.sessao.vendedorId,
+        quando: mensagem.criadaEm,
+      });
+
+      return mensagem;
+    });
+  }
+
+  /**
+   * Envia mensagem interativa da Evolution GO: botões, lista, enquete,
+   * localização, contato ou link com prévia. Mesmo molde do `enviar` —
+   * escopo, dono da instância, gravação só depois da confirmação do gateway.
+   *
+   * O conteúdo estruturado vai em `interativo` (é o que a bolha desenha) **com
+   * os ids gerados**, para o clique do cliente (`ButtonClick`) achar a opção.
+   */
+  async enviarInterativo(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    input: WhatsappEnviarInterativo,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const conversa = await this.conversaNoEscopo(
+        tx,
+        empresaId,
+        user,
+        conversaId,
+      );
+      await this.garantirDono(tx, empresaId, user, conversa);
+      await this.garantirJanelaAberta(empresaId, conversa, tx);
+
+      const mensagemPronta = prepararInterativo(input.mensagem);
+      const enviada = await this.provedores.enviarInterativo(
+        empresaId,
+        conversa.sessaoId,
+        {
+          jid: conversa.contato.jid,
+          mensagem: assinarInterativo(user.nome, mensagemPronta),
+          respondeuA: input.respondeuA ?? null,
+        },
+        tx,
+      );
+
+      const mensagem = await tx.whatsappMensagem.create({
+        data: {
+          empresaId,
+          conversaId,
+          externoId: enviada.externoId,
+          direcao: 'saida',
+          tipo: tipoDoInterativo(mensagemPronta),
+          conteudo: resumoInterativo(mensagemPronta),
+          interativo: mensagemPronta as Prisma.InputJsonValue,
+          respondeuA: input.respondeuA ?? null,
+          enviadaPor: user.id,
+          statusEntrega: 'enviada',
+          numeroSessao: conversa.sessao.numero,
+        },
+      });
+
+      await tx.whatsappConversa.update({
+        where: { id: conversaId },
+        data: { ultimaMensagemEm: mensagem.criadaEm },
+      });
+
       await registrarAtendimentoWhatsapp(tx, {
         empresaId,
         autor: user.id,

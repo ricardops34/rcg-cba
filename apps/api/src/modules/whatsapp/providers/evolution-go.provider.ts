@@ -1,6 +1,9 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
-import type { WhatsappTransporte } from '@plataforma/contracts';
+import type {
+  WhatsappInterativo,
+  WhatsappTransporte,
+} from '@plataforma/contracts';
 import {
   EvolutionGoClient,
   EvolutionGoErroHttp,
@@ -771,6 +774,141 @@ export class EvolutionGoProvider implements WhatsappProvider {
     );
 
     return { externoId: this.externoId(resposta) };
+  }
+
+  /**
+   * Mensagens interativas — uma rota por tipo, com os nomes de campo da 0.7.2
+   * (`send_service.go`: `ButtonStruct`, `ListStruct`, `PollStruct`,
+   * `LocationStruct`, `ContactStruct`, `LinkStruct`). O contrato da
+   * plataforma é português e não vaza para cá; as regras de combinação já
+   * foram barradas no `whatsappInterativoSchema`.
+   */
+  async enviarInterativo(
+    ctx: ContextoSessao,
+    dados: {
+      jid: string;
+      mensagem: WhatsappInterativo;
+      respondeuA?: string | null;
+    },
+  ): Promise<{ externoId: string }> {
+    const { rota, corpo } = this.corpoInterativo(dados.mensagem);
+    const resposta = await this.http.chamar<unknown>(
+      ctx.config.evolutionUrl,
+      rota,
+      {
+        metodo: 'POST',
+        credencial: this.chaveInstancia(ctx),
+        corpo: {
+          number: this.destinatario(dados.jid),
+          ...corpo,
+          // Botões e lista não têm `quoted` no Swagger da 0.7.2 (só no guia);
+          // mandar não quebra, e a citação aparece onde o gateway a suporta.
+          ...(dados.respondeuA
+            ? { quoted: { messageId: dados.respondeuA } }
+            : {}),
+        },
+      },
+    );
+    return { externoId: this.externoId(resposta) };
+  }
+
+  /** Traduz o contrato da plataforma para a rota e o corpo da Evolution GO. */
+  private corpoInterativo(m: WhatsappInterativo): {
+    rota: string;
+    corpo: Record<string, unknown>;
+  } {
+    switch (m.tipo) {
+      case 'botoes':
+        return {
+          rota: '/send/button',
+          corpo: {
+            ...(m.titulo ? { title: m.titulo } : {}),
+            description: m.texto,
+            // Rodapé vazio quebra a renderização: ou tem texto, ou não vai.
+            ...(m.rodape ? { footer: m.rodape } : {}),
+            buttons: m.botoes.map((b) => {
+              switch (b.tipo) {
+                case 'resposta':
+                  return { type: 'reply', displayText: b.texto, id: b.id };
+                case 'url':
+                  return { type: 'url', displayText: b.texto, url: b.url };
+                case 'ligar':
+                  return {
+                    type: 'call',
+                    displayText: b.texto,
+                    phoneNumber: b.telefone,
+                  };
+                case 'copiar':
+                  return {
+                    type: 'copy',
+                    displayText: b.texto,
+                    copyCode: b.codigo,
+                  };
+                case 'pix':
+                  return {
+                    type: 'pix',
+                    currency: 'BRL',
+                    name: b.nome,
+                    keyType: b.tipoChave,
+                    key: b.chave,
+                  };
+              }
+            }),
+          },
+        };
+      case 'lista':
+        return {
+          rota: '/send/list',
+          corpo: {
+            ...(m.titulo ? { title: m.titulo } : {}),
+            description: m.texto,
+            buttonText: m.textoBotao,
+            ...(m.rodape ? { footerText: m.rodape } : {}),
+            sections: m.secoes.map((s) => ({
+              title: s.titulo,
+              rows: s.linhas.map((l) => ({
+                title: l.titulo,
+                ...(l.descricao ? { description: l.descricao } : {}),
+                rowId: l.id,
+              })),
+            })),
+          },
+        };
+      case 'enquete':
+        return {
+          rota: '/send/poll',
+          corpo: {
+            question: m.pergunta,
+            options: m.opcoes,
+            maxAnswer: m.maxRespostas,
+          },
+        };
+      case 'localizacao':
+        return {
+          rota: '/send/location',
+          corpo: {
+            name: m.nome,
+            address: m.endereco,
+            latitude: m.latitude,
+            longitude: m.longitude,
+          },
+        };
+      case 'contato':
+        return {
+          rota: '/send/contact',
+          corpo: {
+            vcard: {
+              fullName: m.nome,
+              phone: m.telefone.replace(/\D/g, ''),
+              ...(m.empresa ? { organization: m.empresa } : {}),
+            },
+          },
+        };
+      case 'link':
+        // A prévia (título, descrição, imagem) o próprio gateway busca a
+        // partir do primeiro endereço do texto.
+        return { rota: '/send/link', corpo: { text: m.texto } };
+    }
   }
 
   async marcarLida(

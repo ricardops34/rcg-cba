@@ -4,15 +4,25 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  BarChart3,
   Check,
   CheckCheck,
+  Copy,
   Download,
+  ExternalLink,
   FileText,
+  ListChecks,
+  MapPin,
+  MousePointerClick,
+  Phone,
   Reply,
   SmilePlus,
+  UserRound,
 } from "lucide-react";
 import {
   WHATSAPP_REACOES_RAPIDAS,
+  whatsappInterativoSchema,
+  type WhatsappInterativo,
   type WhatsappMensagem,
 } from "@plataforma/contracts";
 import { API_ORIGIN, ApiError, apiFetch } from "@/lib/api-client";
@@ -150,6 +160,25 @@ function Conteudo({
     return <ResumoComercial texto={mensagem.conteudo} />;
   }
 
+  // Interativos da Evolution GO: desenhados a partir do conteúdo estruturado.
+  // Sem ele (mensagem recebida do celular, por exemplo), cai no resumo em
+  // texto, que `conteudo` sempre tem.
+  const interativo = whatsappInterativoSchema.safeParse(mensagem.interativo);
+  if (interativo.success) {
+    return <ConteudoInterativo m={interativo.data} />;
+  }
+  if (mensagem.tipo === "resposta") {
+    return (
+      <p className="flex items-center gap-1.5">
+        <MousePointerClick className="size-3.5 shrink-0 opacity-70" />
+        <span className="whitespace-pre-wrap">{mensagem.conteudo}</span>
+      </p>
+    );
+  }
+  if (TIPOS_SEM_ARQUIVO.has(mensagem.tipo)) {
+    return <p className="whitespace-pre-wrap">{mensagem.conteudo ?? `[${mensagem.tipo}]`}</p>;
+  }
+
   // Mídia ainda baixando: a mensagem chega antes do arquivo, que vem num
   // segundo passo (só é baixado depois de a plataforma decidir que grava).
   if (!url && mensagem.tipo !== "texto") {
@@ -205,6 +234,117 @@ function Conteudo({
   }
 
   return <p className="whitespace-pre-wrap">{mensagem.conteudo ?? `[${mensagem.tipo}]`}</p>;
+}
+
+/** Tipos que nunca têm arquivo — não podem cair no "recebendo arquivo…". */
+const TIPOS_SEM_ARQUIVO = new Set<WhatsappMensagem["tipo"]>([
+  "localizacao",
+  "contato",
+  "botoes",
+  "lista",
+  "enquete",
+  "link",
+  "outro",
+]);
+
+/**
+ * Como o cliente vê a mensagem interativa — sem os botões funcionarem aqui:
+ * quem toca é ele, no celular. O clique volta como mensagem `resposta`.
+ */
+function ConteudoInterativo({ m }: { m: WhatsappInterativo }) {
+  switch (m.tipo) {
+    case "botoes":
+      return (
+        <div className="space-y-1.5">
+          {m.titulo ? <p className="font-semibold">{m.titulo}</p> : null}
+          <p className="whitespace-pre-wrap">{m.texto}</p>
+          {m.rodape ? <p className="text-xs opacity-70">{m.rodape}</p> : null}
+          <div className="space-y-1 border-t border-black/10 pt-1.5 dark:border-white/10">
+            {m.botoes.map((b, i) => (
+              <p
+                key={i}
+                className="flex items-center justify-center gap-1.5 text-center text-[13px] font-medium text-sky-700 dark:text-sky-300"
+              >
+                {b.tipo === "url" ? <ExternalLink className="size-3.5" /> : null}
+                {b.tipo === "ligar" ? <Phone className="size-3.5" /> : null}
+                {b.tipo === "copiar" ? <Copy className="size-3.5" /> : null}
+                {b.tipo === "pix" ? `PIX — ${b.nome} (${b.tipoChave.toUpperCase()} ${b.chave})` : b.texto}
+              </p>
+            ))}
+          </div>
+        </div>
+      );
+    case "lista":
+      return (
+        <div className="space-y-1.5">
+          {m.titulo ? <p className="font-semibold">{m.titulo}</p> : null}
+          <p className="whitespace-pre-wrap">{m.texto}</p>
+          {m.rodape ? <p className="text-xs opacity-70">{m.rodape}</p> : null}
+          <details className="border-t border-black/10 pt-1.5 dark:border-white/10">
+            <summary className="flex cursor-pointer list-none items-center justify-center gap-1.5 text-[13px] font-medium text-sky-700 dark:text-sky-300">
+              <ListChecks className="size-3.5" /> {m.textoBotao}
+            </summary>
+            {m.secoes.map((s, i) => (
+              <div key={i} className="mt-1.5">
+                <p className="text-[11px] font-semibold uppercase opacity-60">{s.titulo}</p>
+                {s.linhas.map((l, j) => (
+                  <div key={j} className="py-0.5">
+                    <p>{l.titulo}</p>
+                    {l.descricao ? <p className="text-xs opacity-70">{l.descricao}</p> : null}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </details>
+        </div>
+      );
+    case "enquete":
+      return (
+        <div className="space-y-1">
+          <p className="flex items-center gap-1.5 font-semibold">
+            <BarChart3 className="size-4" /> {m.pergunta}
+          </p>
+          <p className="text-xs opacity-70">
+            {m.maxRespostas === 1 ? "Escolha uma opção" : "Escolha uma ou mais opções"}
+          </p>
+          {m.opcoes.map((o) => (
+            <p key={o} className="rounded border border-black/10 px-2 py-1 dark:border-white/10">
+              {o}
+            </p>
+          ))}
+        </div>
+      );
+    case "localizacao":
+      return (
+        <a
+          href={`https://maps.google.com/?q=${m.latitude},${m.longitude}`}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-start gap-2 hover:underline"
+        >
+          <MapPin className="mt-0.5 size-4 shrink-0" />
+          <span>
+            <span className="block font-medium">{m.nome}</span>
+            <span className="block text-xs opacity-70">{m.endereco}</span>
+          </span>
+        </a>
+      );
+    case "contato":
+      return (
+        <p className="flex items-start gap-2">
+          <UserRound className="mt-0.5 size-4 shrink-0" />
+          <span>
+            <span className="block font-medium">{m.nome}</span>
+            <span className="block text-xs opacity-70">
+              {m.telefone}
+              {m.empresa ? ` · ${m.empresa}` : ""}
+            </span>
+          </span>
+        </p>
+      );
+    case "link":
+      return <p className="whitespace-pre-wrap break-words">{m.texto}</p>;
+  }
 }
 
 function ResumoComercial({ texto }: { texto: string }) {

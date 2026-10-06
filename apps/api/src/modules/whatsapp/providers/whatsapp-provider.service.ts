@@ -6,6 +6,7 @@ import {
 import {
   WHATSAPP_TRANSPORTE_ROTULO,
   whatsappTransporteImplementado,
+  type WhatsappInterativo,
   type WhatsappTransporte,
 } from '@plataforma/contracts';
 import {
@@ -284,6 +285,24 @@ export class WhatsappProviderService {
       tx,
     );
     return provider.enviarArquivo(ctx, dados);
+  }
+
+  async enviarInterativo(
+    empresaId: string,
+    sessaoId: string,
+    dados: {
+      jid: string;
+      mensagem: WhatsappInterativo;
+      respondeuA?: string | null;
+    },
+    tx?: TenantTx,
+  ): Promise<{ externoId: string }> {
+    const { ctx, provider } = await this.provedorDaSessao(
+      empresaId,
+      sessaoId,
+      tx,
+    );
+    return provider.enviarInterativo(ctx, dados);
   }
 
   async marcarLida(

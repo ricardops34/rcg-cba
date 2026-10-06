@@ -1,6 +1,6 @@
 # Plano: WhatsApp 100% integrado à Evolution GO
 
-> **Status (06/10/2026): fatia 1 pronta; fatia 2 em implementação.**
+> **Status (06/10/2026): fatias 1 e 2 prontas; fatia 3 em implementação.**
 
 ## Pedido (usuário, 06/10/2026)
 
@@ -51,6 +51,19 @@ ordem de confiança: código (`pkg/sendMessage/handler/send_handler.go`,
    originou; voto de enquete; edição e exclusão vindas do celular; figurinha.
 4. **Editar, apagar e presença** a partir da plataforma.
 5. **Carrossel** (exige imagem por URL pública — decidir de onde vem).
+
+## Feito
+
+- **Fatia 1** (`ed8088f`): multipart em `/send/media`; `type=audio` no lugar do `ptt`
+  recusado; imagem fora de jpg/png/webp e vídeo fora de mp4 saem como documento.
+- **Fatia 2**: `POST /whatsapp/conversas/:id/mensagens/interativa` com botões
+  (resposta/url/ligar/copiar/pix), lista, enquete, localização, contato e link.
+  Contrato `whatsappInterativoSchema` com as regras da 0.7.2; ids de botão e
+  linha gerados pela API (`op-xxxxxxxx`) para o clique voltar; coluna
+  `whatsapp_mensagens.interativo` (JSON) e tipos novos no enum (migration
+  `20261006180000`). Menu "+" do compositor e bolha desenham cada tipo.
+  Verificado na API real (cópia da produção): 400 com a regra em português e
+  envio parando em "não conectado" — o gateway local está **sem licença**.
 
 ## Regras que valem para todas as fatias
 

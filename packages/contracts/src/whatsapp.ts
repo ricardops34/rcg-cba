@@ -70,6 +70,14 @@ export const whatsappTipoMensagemSchema = z.enum([
   "localizacao",
   "contato",
   "outro",
+  // Interativos da Evolution GO (2026-10-06): o conteúdo estruturado fica em
+  // `interativo`, e `conteudo` guarda o resumo legível (prévia, busca, agente).
+  "botoes",
+  "lista",
+  "enquete",
+  "link",
+  /** Clique do cliente num botão ou linha de lista (evento `ButtonClick`). */
+  "resposta",
 ]);
 export type WhatsappTipoMensagem = z.infer<typeof whatsappTipoMensagemSchema>;
 
@@ -681,6 +689,11 @@ export const whatsappMensagemSchema = z.object({
   /** No máximo duas (uma de cada lado): reagir de novo substitui. */
   reacoes: z.array(whatsappReacaoSchema).default([]),
   numeroSessao: z.string().nullable().optional(),
+  /**
+   * Conteúdo estruturado das mensagens interativas (`WhatsappInterativo`) —
+   * é o que a bolha desenha. Nulo nos demais tipos.
+   */
+  interativo: z.unknown().nullable().optional(),
   criadaEm: z.string().datetime(),
 });
 export type WhatsappMensagem = z.infer<typeof whatsappMensagemSchema>;
@@ -721,6 +734,155 @@ export const whatsappEnviarSchema = z.object({
   respondeuA: z.string().optional(),
 });
 export type WhatsappEnviar = z.infer<typeof whatsappEnviarSchema>;
+
+// ---------------------------------------------------------------------------
+// Mensagens interativas — espelham o que a Evolution GO 0.7.2 aceita
+// (`pkg/sendMessage/service/send_service.go`). As regras que o gateway ou o
+// WhatsApp recusam estão aqui, para a tela barrar antes e com mensagem clara.
+// ---------------------------------------------------------------------------
+
+const textoBotao = z.string().trim().min(1, "Informe o texto do botão").max(25, "Até 25 caracteres");
+/** Rodapé vazio quebra a renderização em alguns aparelhos: ou tem texto, ou não vai. */
+const rodape = z.string().trim().max(60).optional().transform((v) => v || undefined);
+
+export const whatsappBotaoSchema = z.discriminatedUnion("tipo", [
+  z.object({
+    tipo: z.literal("resposta"),
+    texto: textoBotao,
+    /** Gerado pela API quando ausente — é o que o clique devolve. */
+    id: z.string().trim().max(128).optional(),
+  }),
+  z.object({ tipo: z.literal("url"), texto: textoBotao, url: z.string().trim().url("URL inválida") }),
+  z.object({
+    tipo: z.literal("ligar"),
+    texto: textoBotao,
+    telefone: z.string().trim().regex(/^\+?\d{10,15}$/, "Telefone com DDI e DDD, só números"),
+  }),
+  z.object({ tipo: z.literal("copiar"), texto: textoBotao, codigo: z.string().trim().min(1).max(512) }),
+  z.object({
+    tipo: z.literal("pix"),
+    /** Nome do recebedor, como aparece no app do banco. */
+    nome: z.string().trim().min(1).max(100),
+    tipoChave: z.enum(["cpf", "cnpj", "email", "phone", "random"]),
+    chave: z.string().trim().min(1).max(100),
+  }),
+]);
+export type WhatsappBotao = z.infer<typeof whatsappBotaoSchema>;
+
+export const whatsappInterativoSchema = z.discriminatedUnion("tipo", [
+  z.object({
+    tipo: z.literal("botoes"),
+    titulo: z.string().trim().max(60).optional().transform((v) => v || undefined),
+    texto: z.string().trim().min(1, "Informe o texto").max(1024),
+    rodape,
+    botoes: z.array(whatsappBotaoSchema).min(1, "Inclua ao menos um botão").max(10),
+  }),
+  z
+    .object({
+      tipo: z.literal("lista"),
+      titulo: z.string().trim().max(60).optional().transform((v) => v || undefined),
+      texto: z.string().trim().min(1, "Informe o texto").max(1024),
+      textoBotao: z.string().trim().min(1).max(20).default("Ver opções"),
+      rodape,
+      secoes: z
+        .array(
+          z.object({
+            titulo: z.string().trim().min(1, "Informe o título da seção").max(24),
+            linhas: z
+              .array(
+                z.object({
+                  titulo: z.string().trim().min(1, "Informe a opção").max(24, "Até 24 caracteres"),
+                  descricao: z.string().trim().max(72).optional().transform((v) => v || undefined),
+                  /** Gerado pela API quando ausente — é o que a seleção devolve. */
+                  id: z.string().trim().max(128).optional(),
+                }),
+              )
+              .min(1, "Inclua ao menos uma opção"),
+          }),
+        )
+        .min(1, "Inclua ao menos uma seção"),
+    }),
+  z.object({
+    tipo: z.literal("enquete"),
+    pergunta: z.string().trim().min(1, "Informe a pergunta").max(255),
+    opcoes: z.array(z.string().trim().min(1).max(100)).min(2, "Ao menos 2 opções").max(12, "No máximo 12 opções"),
+    /** Quantas opções cada pessoa pode marcar; 0 = quantas quiser. */
+    maxRespostas: z.number().int().min(0).default(1),
+  }),
+  z.object({
+    tipo: z.literal("localizacao"),
+    nome: z.string().trim().min(1, "Informe o nome do local").max(100),
+    endereco: z.string().trim().min(1, "Informe o endereço").max(255),
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+  }),
+  z.object({
+    tipo: z.literal("contato"),
+    nome: z.string().trim().min(1, "Informe o nome").max(100),
+    telefone: z.string().trim().regex(/^\+?\d{10,15}$/, "Telefone com DDI e DDD, só números"),
+    empresa: z.string().trim().max(100).optional().transform((v) => v || undefined),
+  }),
+  z.object({
+    tipo: z.literal("link"),
+    /** Texto com o endereço — o gateway monta a prévia a partir dele. */
+    texto: z
+      .string()
+      .trim()
+      .min(1)
+      .max(4096)
+      .refine((t) => /https?:\/\/\S+/.test(t), "O texto precisa conter um endereço http(s)"),
+  }),
+])
+  // Regras de combinação num refine só: o `discriminatedUnion` do Zod 3 não
+  // aceita membro com refine. São as mesmas que a 0.7.2 aplica (`SendButton`)
+  // mais os limites do próprio WhatsApp.
+  .superRefine((v, ctx) => {
+    if (v.tipo === "botoes") {
+      const respostas = v.botoes.filter((b) => b.tipo === "resposta").length;
+      if (respostas > 0 && respostas !== v.botoes.length) {
+        ctx.addIssue({ code: "custom", path: ["botoes"], message: "Botões de resposta não podem ser misturados com link, ligação ou cópia" });
+      }
+      if (respostas > 3) {
+        ctx.addIssue({ code: "custom", path: ["botoes"], message: "No máximo 3 botões de resposta" });
+      }
+      if (v.botoes.some((b) => b.tipo === "pix") && v.botoes.length > 1) {
+        ctx.addIssue({ code: "custom", path: ["botoes"], message: "O botão PIX vai sozinho" });
+      }
+    }
+    if (v.tipo === "lista") {
+      // Acima disso a lista não chega ao cliente.
+      const total = v.secoes.reduce((n, s) => n + s.linhas.length, 0);
+      if (total > 10) {
+        ctx.addIssue({ code: "custom", path: ["secoes"], message: "No máximo 10 opções somando todas as seções" });
+      }
+    }
+    if (v.tipo === "enquete") {
+      if (new Set(v.opcoes.map((o) => o.toLowerCase())).size !== v.opcoes.length) {
+        ctx.addIssue({ code: "custom", path: ["opcoes"], message: "Opções repetidas" });
+      }
+      if (v.maxRespostas > v.opcoes.length) {
+        ctx.addIssue({ code: "custom", path: ["maxRespostas"], message: "Maior que o número de opções" });
+      }
+    }
+  });
+export type WhatsappInterativo = z.infer<typeof whatsappInterativoSchema>;
+
+export const whatsappEnviarInterativoSchema = z.object({
+  mensagem: whatsappInterativoSchema,
+  /** Id externo da mensagem citada. */
+  respondeuA: z.string().optional(),
+});
+export type WhatsappEnviarInterativo = z.infer<typeof whatsappEnviarInterativoSchema>;
+
+/** O que o cliente escolheu num botão de resposta ou numa lista. */
+export type WhatsappRespostaInterativa = {
+  tipo: "resposta";
+  /** `id` do botão/linha, como foi enviado. */
+  escolhaId: string;
+  escolhaTexto: string;
+  /** Mensagem de botões/lista que originou o clique, quando conhecida. */
+  origemExternoId: string | null;
+};
 
 /** Anexo de conversa. O arquivo vai no multipart; isto é o resto do corpo. */
 export const whatsappEnviarArquivoSchema = z.object({

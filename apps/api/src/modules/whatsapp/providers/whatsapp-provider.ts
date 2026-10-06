@@ -1,4 +1,7 @@
-import type { WhatsappTransporte } from '@plataforma/contracts';
+import type {
+  WhatsappInterativo,
+  WhatsappTransporte,
+} from '@plataforma/contracts';
 
 /**
  * O contrato que isola o resto do módulo de **qual** WhatsApp está do outro
@@ -187,6 +190,20 @@ export interface WhatsappProvider {
   enviarArquivo(
     ctx: ContextoSessao,
     dados: { jid: string; arquivo: ArquivoParaEnviar },
+  ): Promise<{ externoId: string }>;
+
+  /**
+   * Botões, lista, enquete, localização, contato e link com prévia. Os ids de
+   * botão de resposta e de linha de lista já chegam preenchidos — é o que o
+   * clique do cliente devolve.
+   */
+  enviarInterativo(
+    ctx: ContextoSessao,
+    dados: {
+      jid: string;
+      mensagem: WhatsappInterativo;
+      respondeuA?: string | null;
+    },
   ): Promise<{ externoId: string }>;
 
   marcarLida(

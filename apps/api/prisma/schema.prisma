@@ -4149,6 +4149,13 @@ enum WhatsappTipoMensagem {
   localizacao
   contato
   outro
+  // Interativos da Evolution GO (2026-10-06)
+  botoes
+  lista
+  enquete
+  link
+  /// Clique do cliente num botão ou linha de lista.
+  resposta
 }
 
 enum WhatsappStatusEntrega {
@@ -4489,6 +4496,11 @@ model WhatsappMensagem {
 
   /// Número do WhatsApp da sessão no momento do envio/recebimento desta mensagem.
   numeroSessao String?
+
+  /// Conteúdo estruturado das interativas (botões, lista, enquete, resposta…),
+  /// no formato `WhatsappInterativo` do contrato. É o que a bolha desenha;
+  /// `conteudo` guarda o resumo legível.
+  interativo Json?
 
   criadaEm DateTime @default(now())
 

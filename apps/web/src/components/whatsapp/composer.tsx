@@ -4,8 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  BarChart3,
   Clock,
   FileText,
+  Link2,
+  ListChecks,
+  MapPin,
+  SquareMousePointer,
+  UserRound,
   Image as ImageIcon,
   Mic,
   Paperclip,
@@ -18,6 +24,10 @@ import {
   X,
 } from "lucide-react";
 import { RespostasRapidasPopover } from "@/components/whatsapp/respostas-rapidas-popover";
+import {
+  MensagemInterativaDialog,
+  type TipoInterativo,
+} from "@/components/whatsapp/mensagem-interativa-dialog";
 import { RespostasRapidasDialog } from "@/components/whatsapp/respostas-rapidas-dialog";
 import {
   WHATSAPP_ARQUIVO_MAX_BYTES,
@@ -41,8 +51,24 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
+/** Os interativos da Evolution GO no menu "+", na ordem de uso no balcão. */
+const ITENS_INTERATIVOS: {
+  tipo: TipoInterativo;
+  rotulo: string;
+  Icone: typeof Clock;
+  cor: string;
+}[] = [
+  { tipo: "botoes", rotulo: "Botões", Icone: SquareMousePointer, cor: "bg-emerald-500/10 text-emerald-600" },
+  { tipo: "lista", rotulo: "Lista de opções", Icone: ListChecks, cor: "bg-teal-500/10 text-teal-600" },
+  { tipo: "enquete", rotulo: "Enquete", Icone: BarChart3, cor: "bg-orange-500/10 text-orange-600" },
+  { tipo: "localizacao", rotulo: "Localização", Icone: MapPin, cor: "bg-red-500/10 text-red-500" },
+  { tipo: "contato", rotulo: "Contato", Icone: UserRound, cor: "bg-indigo-500/10 text-indigo-500" },
+  { tipo: "link", rotulo: "Link com prévia", Icone: Link2, cor: "bg-cyan-500/10 text-cyan-600" },
+];
 import {
   Dialog,
   DialogContent,
@@ -80,6 +106,7 @@ export function Composer({
   const [janelaFechada, setJanelaFechada] = useState(false);
   const [templateAberto, setTemplateAberto] = useState(false);
   const [gerenciadorRespostasAberto, setGerenciadorRespostasAberto] = useState(false);
+  const [interativo, setInterativo] = useState<TipoInterativo | null>(null);
   const arquivoRef = useRef<HTMLInputElement>(null);
   const midiaRef = useRef<HTMLInputElement>(null);
 
@@ -104,9 +131,13 @@ export function Composer({
     setJanelaFechada(false);
   }
 
+  // Prefixo só com o nome: a chave da tela é
+  // ["whatsapp-mensagens", empresaId, conversaId], e passar o conversaId na
+  // segunda posição não casava com nada — a mensagem enviada só aparecia no
+  // próximo ciclo de atualização.
   const invalidar = () =>
     void queryClient.invalidateQueries({
-      queryKey: ["whatsapp-mensagens", conversaId],
+      queryKey: ["whatsapp-mensagens"],
     });
 
   const enviarTexto = useMutation({
@@ -257,6 +288,20 @@ export function Composer({
               </span>
               <span className="font-medium text-xs">Agendar mensagem</span>
             </DropdownMenuItem>
+            {/* Recursos interativos da Evolution GO 0.7.2. */}
+            <DropdownMenuSeparator />
+            {ITENS_INTERATIVOS.map(({ tipo, rotulo, Icone, cor }) => (
+              <DropdownMenuItem
+                key={tipo}
+                onClick={() => setInterativo(tipo)}
+                className="gap-2.5 py-2 cursor-pointer rounded-lg"
+              >
+                <span className={`flex size-7 items-center justify-center rounded-full ${cor}`}>
+                  <Icone className="size-4" />
+                </span>
+                <span className="font-medium text-xs">{rotulo}</span>
+              </DropdownMenuItem>
+            ))}
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -379,6 +424,16 @@ export function Composer({
       <RespostasRapidasDialog
         aberto={gerenciadorRespostasAberto}
         onOpenChange={setGerenciadorRespostasAberto}
+      />
+
+      <MensagemInterativaDialog
+        conversaId={conversaId}
+        tipo={interativo}
+        respondeuA={respondendo?.externoId}
+        onOpenChange={(aberto) => {
+          if (!aberto) setInterativo(null);
+        }}
+        onEnviada={onCancelarResposta}
       />
 
       <AgendarMensagemDialog
