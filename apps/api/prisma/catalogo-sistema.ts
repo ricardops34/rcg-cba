@@ -922,6 +922,17 @@ export async function sincronizarEstrutura(prisma: PrismaClient) {
  */
 export const ROTINAS_FORA_DO_DIRETOR = new Set(['whatsapp-equipe']);
 
+/**
+ * Ações que o Diretor não recebe, numa rotina que ele tem.
+ *
+ * `whatsapp-historico.excluir` apaga histórico permanente de atendimento — é
+ * do administrador da empresa (decisão de 2026-10-05). O Diretor segue lendo o
+ * histórico; só não exclui.
+ */
+export const ACOES_FORA_DO_DIRETOR: Record<string, readonly string[]> = {
+  'whatsapp-historico': ['excluir'],
+};
+
 export async function corrigirPermissoesDoDiretor(prisma: PrismaClient) {
   // Todos: o da plataforma e as cópias que cada grupo econômico recebeu dele
   // (migration 20260930200000_perfil_por_grupo).
@@ -943,10 +954,25 @@ export async function corrigirPermissoesDoDiretor(prisma: PrismaClient) {
   });
 
   const alvo = proibidas.map((r) => r.id);
-  if (alvo.length === 0) return 0;
+  const perfilIds = diretores.map((d) => d.id);
 
-  const { count } = await prisma.perfilPermissao.deleteMany({
-    where: { perfilId: { in: diretores.map((d) => d.id) }, rotinaId: { in: alvo } },
-  });
-  return count;
+  const { count } = alvo.length
+    ? await prisma.perfilPermissao.deleteMany({
+        where: { perfilId: { in: perfilIds }, rotinaId: { in: alvo } },
+      })
+    : { count: 0 };
+
+  // Ações avulsas, numa rotina que o Diretor mantém.
+  let avulsas = 0;
+  for (const [codigo, acoes] of Object.entries(ACOES_FORA_DO_DIRETOR)) {
+    const r = await prisma.perfilPermissao.deleteMany({
+      where: {
+        perfilId: { in: perfilIds },
+        rotina: { codigo },
+        acao: { in: acoes as Acao[] },
+      },
+    });
+    avulsas += r.count;
+  }
+  return count + avulsas;
 }

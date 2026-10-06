@@ -92,3 +92,26 @@ O que **some da tela** sem ser apagado:
 - **Nova rotina no Gerencial (`/gerencial/whatsapp`)**:
   - Interface master-detail seguindo padrões do monorepo (`CrudHeader`, `FiltersPopover`: Vendedor com tag de inativo, Número de WhatsApp, Intervalo de datas).
   - Rolo de mensagens estilo WhatsApp em modo somente leitura com suporte a mídias, áudios, anexos, status de entrega e reações.
+
+## Exceção: exclusão pelo administrador (usuário, 05/10/2026)
+
+O histórico continua permanente para todos, **menos** para quem tem a permissão
+`whatsapp-historico.excluir` — concedida pela migration
+`20261005200000_perm_whatsapp_historico_excluir` só aos perfis `sistemaBase`
+(Administrador Empresa e Administrador da Plataforma). Separada de
+`whatsapp-config.editar` de propósito: quem configura o WhatsApp não apaga
+histórico. O Diretor não recebe (`ACOES_FORA_DO_DIRETOR` no catálogo, aplicado
+pelo seed e pelo `sincronizar-catalogo`).
+
+Três exclusões, todas sem volta e todas pelo helper único `apagarConversas`
+(sino apagado, lead preservado sem o ponteiro, atividades do cliente ficam):
+
+| O quê | Onde | Rota |
+|---|---|---|
+| Uma conversa | Gerencial → Histórico do WhatsApp, "Excluir conversa" | `DELETE /whatsapp/gerencial/conversas/:id` (mesmo escopo da leitura) |
+| Histórico de uma instância | Administração → WhatsApp → Instâncias, "Limpar conversas" | `DELETE /whatsapp/config/sessoes/:id/conversas` |
+| Instância com histórico | idem, "Excluir instância e histórico" (só desconectada) | `DELETE /whatsapp/config/sessoes/:id/instancia-e-historico` |
+
+Sem auditoria em tabela: cada exclusão deixa uma linha `warn` no log da API com
+quem apagou e quanto. Quem já estava logado precisa sair e entrar de novo para
+o menu enxergar a permissão nova.

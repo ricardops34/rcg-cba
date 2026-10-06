@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cable, CheckCircle2, History, MoreHorizontal, RefreshCw, Smartphone, Trash2, TriangleAlert } from "lucide-react";
+import { Cable, CheckCircle2, Eraser, History, MoreHorizontal, RefreshCw, Smartphone, Trash2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { type WhatsappConfig, type WhatsappSessao } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
+import { useAuthStore } from "@/stores/auth-store";
 import { InstitucionalConfig } from "@/components/whatsapp/institucional-config";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -599,6 +600,8 @@ function Instancias({ config }: { config: WhatsappConfig }) {
   const queryClient = useQueryClient();
   const [remover, setRemover] = useState<WhatsappSessao | null>(null);
   const [apagar, setApagar] = useState<WhatsappSessao | null>(null);
+  const [apagarHistorico, setApagarHistorico] = useState<{ sessao: WhatsappSessao; comInstancia: boolean } | null>(null);
+  const podeExcluirHistorico = useAuthStore((s) => s.hasPermission("whatsapp-historico", "excluir"));
   const { data = [], isLoading } = useQuery({ queryKey: ["whatsapp-sessoes"], queryFn: () => apiFetch<WhatsappSessao[]>("/whatsapp/sessoes"), refetchInterval: 10_000 });
   const atualizar = () => { void queryClient.invalidateQueries({ queryKey: ["whatsapp-sessoes"] }); void queryClient.invalidateQueries({ queryKey: ["whatsapp-sessao"] }); };
   const reconectar = useMutation({
@@ -624,6 +627,21 @@ function Instancias({ config }: { config: WhatsappConfig }) {
       else toast.success("Instância excluída");
     },
     onError: (error) => toast.error(mensagemErro(error, "Falha ao excluir")),
+  });
+  const excluirHistorico = useMutation({
+    mutationFn: (alvo: { sessao: WhatsappSessao; comInstancia: boolean }) =>
+      apiFetch<{ conversas: number; mensagens: number }>(
+        `/whatsapp/config/sessoes/${alvo.sessao.id}/${alvo.comInstancia ? "instancia-e-historico" : "conversas"}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: (r, alvo) => {
+      setApagarHistorico(null);
+      atualizar();
+      toast.success(
+        `${alvo.comInstancia ? "Instância excluída" : "Histórico apagado"}: ${r.conversas} conversas, ${r.mensagens} mensagens.`,
+      );
+    },
+    onError: (error) => toast.error(mensagemErro(error, "Falha ao apagar o histórico")),
   });
   const importar = useMutation({
     mutationFn: (sessao: WhatsappSessao) => apiFetch<{ dias: number; encontradas: number; conversas: number }>(`/whatsapp/config/sessoes/${sessao.id}/historico`, { method: "POST" }),
@@ -708,6 +726,19 @@ function Instancias({ config }: { config: WhatsappConfig }) {
                               <Trash2 /> Excluir instância
                             </DropdownMenuItem>
                           ) : null}
+                          {/* Apagar histórico é do administrador da empresa
+                              (`whatsapp-historico.excluir`), não de quem só
+                              configura o WhatsApp. */}
+                          {podeExcluirHistorico ? (
+                            <DropdownMenuItem variant="destructive" onSelect={() => setApagarHistorico({ sessao, comInstancia: false })}>
+                              <Eraser /> Limpar conversas
+                            </DropdownMenuItem>
+                          ) : null}
+                          {podeExcluirHistorico && sessao.status === "desconectada" ? (
+                            <DropdownMenuItem variant="destructive" onSelect={() => setApagarHistorico({ sessao, comInstancia: true })}>
+                              <Trash2 /> Excluir instância e histórico
+                            </DropdownMenuItem>
+                          ) : null}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -748,6 +779,33 @@ function Instancias({ config }: { config: WhatsappConfig }) {
             <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
             <Button variant="destructive" disabled={apagarInstancia.isPending} onClick={() => apagar && apagarInstancia.mutate(apagar.id)}>
               {apagarInstancia.isPending ? "Excluindo..." : "Excluir instância"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(apagarHistorico)} onOpenChange={(open) => { if (!open) setApagarHistorico(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {apagarHistorico?.comInstancia
+                ? `Excluir a instância de ${apagarHistorico.sessao.vendedorNome} e todo o histórico?`
+                : `Apagar todas as conversas de ${apagarHistorico?.sessao.vendedorNome}?`}
+            </DialogTitle>
+            <DialogDescription>
+              {apagarHistorico?.comInstancia
+                ? "A instância sai do gateway e da lista, e todas as conversas e mensagens dela são apagadas de vez — não tem volta. O vendedor pode parear de novo depois, começando do zero."
+                : "Todas as conversas e mensagens desta instância são apagadas de vez — não tem volta. A conexão continua como está. Os contatos e o vínculo com clientes ficam."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
+            <Button
+              variant="destructive"
+              disabled={excluirHistorico.isPending}
+              onClick={() => apagarHistorico && excluirHistorico.mutate(apagarHistorico)}
+            >
+              {excluirHistorico.isPending ? "Apagando..." : apagarHistorico?.comInstancia ? "Excluir instância e histórico" : "Apagar conversas"}
             </Button>
           </DialogFooter>
         </DialogContent>

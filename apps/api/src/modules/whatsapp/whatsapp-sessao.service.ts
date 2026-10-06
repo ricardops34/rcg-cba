@@ -14,6 +14,7 @@ import { WhatsappProviderService } from './providers/whatsapp-provider.service';
 import { cifrarSegredo } from './whatsapp-cripto';
 import type { DadosInstancia } from './providers/whatsapp-provider';
 import { escopoLeituraWhatsapp } from './escopo-whatsapp';
+import { apagarConversas } from './apagar-conversas';
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
 import {
   WHATSAPP_ACEITE_VERSAO,
@@ -803,13 +804,102 @@ export class WhatsappSessaoService {
    * Não há volta e não há exportação antes: quem chama já confirmou na tela.
    */
   async limparConversas(
-    _empresaId: string,
-    _user: AuthenticatedUser,
-    _sessaoId: string,
+    empresaId: string,
+    user: AuthenticatedUser,
+    sessaoId: string,
   ) {
-    throw new BadRequestException(
-      'O histórico de conversas é permanente e não pode ser apagado.',
+    // Histórico permanente para todo o resto: a rota exige
+    // `whatsapp-historico.excluir`, concedida só ao administrador da empresa
+    // (decisão de 2026-10-05).
+    const sessao = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappSessao.findFirst({
+        where: { id: sessaoId },
+        include: { vendedor: { select: { nome: true } } },
+      }),
     );
+    if (!sessao) throw new NotFoundException('Instância não encontrada');
+
+    const resultado = await this.prisma.withTenant(empresaId, async (tx) => {
+      const conversas = await tx.whatsappConversa.findMany({
+        where: { sessaoId: sessao.id },
+        select: { id: true },
+      });
+      const apagado = await apagarConversas(
+        tx,
+        conversas.map((c) => c.id),
+      );
+      await tx.whatsappSessao.update({
+        where: { id: sessao.id },
+        data: { updatedBy: user.id },
+      });
+      return apagado;
+    });
+
+    this.logger.warn(
+      `Histórico da instância ${sessao.id} apagado por ${user.id}: ` +
+        `${resultado.conversas} conversas, ${resultado.mensagens} mensagens.`,
+    );
+    return { ...resultado, vendedor: sessao.vendedor?.nome ?? 'Empresa' };
+  }
+
+  /**
+   * Exclui a instância **e** o histórico dela, de vez.
+   *
+   * O `excluirInstancia` comum preserva a linha quando há conversas (o
+   * histórico é permanente). Este é o caminho do administrador da empresa,
+   * atrás de `whatsapp-historico.excluir`: apaga conversas, mensagens e
+   * períodos e só então a sessão. Mesma exigência de estar desconectada — não
+   * se apaga o histórico de um número que continua recebendo.
+   */
+  async excluirInstanciaComHistorico(
+    empresaId: string,
+    user: AuthenticatedUser,
+    sessaoId: string,
+  ) {
+    const sessao = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappSessao.findFirst({
+        where: { id: sessaoId },
+        include: { vendedor: { select: { nome: true } } },
+      }),
+    );
+    if (!sessao) throw new NotFoundException('Instância não encontrada');
+    if (sessao.status !== 'desconectada') {
+      throw new BadRequestException(
+        'Só é possível excluir instância desconectada. Remova a conexão antes.',
+      );
+    }
+
+    // Melhor-esforço, como no `excluirInstancia`: o gateway pode já não
+    // conhecer a instância.
+    await this.provedores
+      .removerInstancia(empresaId, sessao.id)
+      .catch(() => undefined);
+
+    const resultado = await this.prisma.withTenant(empresaId, async (tx) => {
+      const conversas = await tx.whatsappConversa.findMany({
+        where: { sessaoId: sessao.id },
+        select: { id: true },
+      });
+      const apagado = await apagarConversas(
+        tx,
+        conversas.map((c) => c.id),
+      );
+      await tx.whatsappSessaoPeriodo.deleteMany({
+        where: { sessaoId: sessao.id },
+      });
+      await tx.whatsappSessao.delete({ where: { id: sessao.id } });
+      return apagado;
+    });
+
+    this.logger.warn(
+      `Instância ${sessao.id} excluída com o histórico por ${user.id}: ` +
+        `${resultado.conversas} conversas, ${resultado.mensagens} mensagens.`,
+    );
+    return {
+      ...resultado,
+      excluida: true,
+      vendedor: sessao.vendedor?.nome ?? 'Empresa',
+    };
   }
 
   /**

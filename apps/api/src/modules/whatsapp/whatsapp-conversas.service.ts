@@ -50,6 +50,7 @@ import type {
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { mensagemComAutor } from './mensagem-com-autor';
+import { apagarConversas } from './apagar-conversas';
 import { registrarAtendimentoWhatsapp } from '../../common/atividades/registrar-atendimento-whatsapp';
 
 const PREVIA_TAMANHO = 120;
@@ -1064,6 +1065,31 @@ export class WhatsappConversasService {
   /**
    * Leitura de mensagens no Histórico Gerencial (somente leitura, com escopo estendido para inativos).
    */
+  /**
+   * Exclui uma conversa do histórico, com as mensagens.
+   *
+   * O histórico é permanente para todo mundo, menos para quem tem
+   * `whatsapp-historico.excluir` (decisão de 2026-10-05: o administrador da
+   * empresa precisa poder tirar, por exemplo, uma conversa pessoal que entrou
+   * por engano). O alcance é o mesmo da leitura gerencial: só se apaga o que
+   * se pode ver. Não tem volta.
+   */
+  async excluirConversaGerencial(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+  ) {
+    const resultado = await this.prisma.withTenant(empresaId, async (tx) => {
+      await this.conversaNoEscopoGerencial(tx, empresaId, user, conversaId);
+      return apagarConversas(tx, [conversaId]);
+    });
+    this.logger.warn(
+      `Conversa ${conversaId} excluída do histórico por ${user.id} ` +
+        `(${resultado.mensagens} mensagens).`,
+    );
+    return resultado;
+  }
+
   async mensagensGerencial(
     empresaId: string,
     user: AuthenticatedUser,
