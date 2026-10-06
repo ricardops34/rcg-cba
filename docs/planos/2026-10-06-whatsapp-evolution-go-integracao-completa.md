@@ -1,6 +1,6 @@
 # Plano: WhatsApp 100% integrado à Evolution GO
 
-> **Status (06/10/2026): fatias 1, 2 e 3 prontas; fatia 4 em implementação.**
+> **Status (06/10/2026): fatias 1 a 4 prontas; fatia 5 (carrossel e figurinha de saída) pendente de decisão.**
 
 ## Pedido (usuário, 06/10/2026)
 
@@ -76,6 +76,20 @@ ordem de confiança: código (`pkg/sendMessage/handler/send_handler.go`,
   enquete criada no celular entra com as opções; figurinha entra como imagem.
   Migration `20261006200000`. Verificado ponta a ponta com sessão sintética
   na API real (criada e apagada no teste).
+
+- **Fatia 4**: editar (`PATCH .../mensagens/:id`, só texto próprio e até 15
+  min — fora disso o WhatsApp ignora sem erro), apagar para todos
+  (`POST .../apagar`, a plataforma só marca `apagadaEm`) e "digitando /
+  gravando áudio" (`POST .../presenca`, no máximo um sinal a cada 8 s).
+  Corrigida também a invalidação de cache da reação.
+
+## Pendente — fatia 5
+
+Carrossel (`/send/carousel`) e figurinha de saída (`/send/sticker`) só
+aceitam imagem por **URL pública**: o gateway a baixa. A plataforma não expõe
+anexos na internet (decisão de privacidade das conversas). Opções: imagens do
+catálogo de produtos já públicas, ou rota temporária assinada alcançável só pela
+rede do Docker. **Decisão do usuário.**
 
 ## Regras que valem para todas as fatias
 

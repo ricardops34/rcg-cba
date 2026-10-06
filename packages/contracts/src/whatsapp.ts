@@ -890,6 +890,23 @@ export const whatsappEnviarInterativoSchema = z.object({
 });
 export type WhatsappEnviarInterativo = z.infer<typeof whatsappEnviarInterativoSchema>;
 
+/**
+ * Editar mensagem enviada daqui. O WhatsApp só aceita texto próprio e até
+ * 15 minutos depois do envio — fora disso a edição é ignorada em silêncio no
+ * aparelho do cliente, por isso a API recusa antes.
+ */
+export const WHATSAPP_EDICAO_LIMITE_MS = 15 * 60 * 1000;
+export const whatsappEditarMensagemSchema = z.object({
+  texto: z.string().trim().min(1, "Mensagem vazia").max(4096),
+});
+export type WhatsappEditarMensagem = z.infer<typeof whatsappEditarMensagemSchema>;
+
+/** "Digitando…" / "gravando áudio…" no aparelho do cliente. */
+export const whatsappPresencaSchema = z.object({
+  estado: z.enum(["digitando", "gravando", "parou"]),
+});
+export type WhatsappPresenca = z.infer<typeof whatsappPresencaSchema>;
+
 /** O que o cliente escolheu num botão de resposta ou numa lista. */
 export type WhatsappRespostaInterativa = {
   tipo: "resposta";

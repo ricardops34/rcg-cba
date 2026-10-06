@@ -20,6 +20,8 @@ import {
   whatsappMensagemQuerySchema,
   whatsappNovoOrcamentoSchema,
   whatsappReagirSchema,
+  whatsappEditarMensagemSchema,
+  whatsappPresencaSchema,
   whatsappVincularSchema,
   whatsappRecadoCriarSchema,
   whatsappRecadoEditarSchema,
@@ -74,6 +76,10 @@ export class WhatsappNovoOrcamentoDto extends createZodDto(
   whatsappNovoOrcamentoSchema,
 ) {}
 export class WhatsappReagirDto extends createZodDto(whatsappReagirSchema) {}
+export class WhatsappEditarMensagemDto extends createZodDto(
+  whatsappEditarMensagemSchema,
+) {}
+export class WhatsappPresencaDto extends createZodDto(whatsappPresencaSchema) {}
 export class WhatsappVincularDto extends createZodDto(whatsappVincularSchema) {}
 export class WhatsappIniciarConversaDto extends createZodDto(
   whatsappIniciarConversaSchema,

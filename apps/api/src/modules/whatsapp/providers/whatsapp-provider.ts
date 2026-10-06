@@ -206,6 +206,24 @@ export interface WhatsappProvider {
     },
   ): Promise<{ externoId: string }>;
 
+  /** Edita texto enviado daqui (`/message/edit`). */
+  editarMensagem(
+    ctx: ContextoSessao,
+    dados: { jid: string; externoId: string; texto: string },
+  ): Promise<void>;
+
+  /** Apaga para todos uma mensagem enviada daqui (`/message/delete`). */
+  apagarMensagem(
+    ctx: ContextoSessao,
+    dados: { jid: string; externoId: string },
+  ): Promise<void>;
+
+  /** "Digitando…", "gravando áudio…" ou parar (`/message/presence`). */
+  presenca(
+    ctx: ContextoSessao,
+    dados: { jid: string; estado: 'digitando' | 'gravando' | 'parou' },
+  ): Promise<void>;
+
   /**
    * Quem votou e em quê, numa enquete. As opções voltam como hash (SHA-256
    * do texto, em hex) — a tradução é de quem tem as opções gravadas.

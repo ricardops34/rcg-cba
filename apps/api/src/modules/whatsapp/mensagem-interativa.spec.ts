@@ -161,3 +161,37 @@ describe('EvolutionGoProvider.enviarInterativo — nomes de campo da 0.7.2', () 
     });
   });
 });
+
+describe('EvolutionGoProvider — editar, apagar e presença (0.7.2)', () => {
+  const chamarCom = async (
+    acao: (p: EvolutionGoProvider) => Promise<unknown>,
+  ) => {
+    const chamar = jest.fn().mockResolvedValue({});
+    await acao(new EvolutionGoProvider({ chamar } as unknown as EvolutionGoClient));
+    const [, rota, { corpo }] = chamar.mock.calls[0];
+    return { rota, corpo };
+  };
+  const ctx = { config: { evolutionUrl: 'http://gw' }, instancia: { token: 't' } } as never;
+  const jid = '5511999998888@s.whatsapp.net';
+
+  it('editar e apagar mandam o jid em "chat", não o número', async () => {
+    expect(
+      await chamarCom((p) => p.editarMensagem(ctx, { jid, externoId: 'X1', texto: 'novo' })),
+    ).toEqual({ rota: '/message/edit', corpo: { chat: jid, messageId: 'X1', message: 'novo' } });
+    expect(
+      await chamarCom((p) => p.apagarMensagem(ctx, { jid, externoId: 'X1' })),
+    ).toEqual({ rota: '/message/delete', corpo: { chat: jid, messageId: 'X1' } });
+  });
+
+  it('gravando é composing + isAudio; parou é paused', async () => {
+    expect((await chamarCom((p) => p.presenca(ctx, { jid, estado: 'gravando' }))).corpo).toEqual({
+      number: '5511999998888',
+      state: 'composing',
+      isAudio: true,
+    });
+    expect((await chamarCom((p) => p.presenca(ctx, { jid, estado: 'parou' }))).corpo).toMatchObject({
+      state: 'paused',
+      isAudio: false,
+    });
+  });
+});

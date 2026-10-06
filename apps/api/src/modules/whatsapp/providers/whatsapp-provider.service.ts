@@ -305,6 +305,36 @@ export class WhatsappProviderService {
     return provider.enviarInterativo(ctx, dados);
   }
 
+  async editarMensagem(
+    empresaId: string,
+    sessaoId: string,
+    dados: { jid: string; externoId: string; texto: string },
+    tx?: TenantTx,
+  ): Promise<void> {
+    const { ctx, provider } = await this.provedorDaSessao(empresaId, sessaoId, tx);
+    await provider.editarMensagem(ctx, dados);
+  }
+
+  async apagarMensagem(
+    empresaId: string,
+    sessaoId: string,
+    dados: { jid: string; externoId: string },
+    tx?: TenantTx,
+  ): Promise<void> {
+    const { ctx, provider } = await this.provedorDaSessao(empresaId, sessaoId, tx);
+    await provider.apagarMensagem(ctx, dados);
+  }
+
+  async presenca(
+    empresaId: string,
+    sessaoId: string,
+    dados: { jid: string; estado: 'digitando' | 'gravando' | 'parou' },
+    tx?: TenantTx,
+  ): Promise<void> {
+    const { ctx, provider } = await this.provedorDaSessao(empresaId, sessaoId, tx);
+    await provider.presenca(ctx, dados);
+  }
+
   async resultadosEnquete(
     empresaId: string,
     sessaoId: string,

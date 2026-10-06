@@ -15,12 +15,15 @@ import {
   ListChecks,
   MapPin,
   MousePointerClick,
+  Pencil,
   Phone,
   Reply,
   SmilePlus,
+  Trash2,
   UserRound,
 } from "lucide-react";
 import {
+  WHATSAPP_EDICAO_LIMITE_MS,
   WHATSAPP_REACOES_RAPIDAS,
   whatsappInterativoSchema,
   type WhatsappInterativo,
@@ -457,6 +460,19 @@ function BarraDeAcoes({
 }) {
   const queryClient = useQueryClient();
   const [aberto, setAberto] = useState(false);
+  const [editando, setEditando] = useState(false);
+  const [confirmandoApagar, setConfirmandoApagar] = useState(false);
+  const [textoEditado, setTextoEditado] = useState(mensagem.conteudo ?? "");
+  // Relógio lido uma vez, na montagem: a regra de pureza do React não deixa
+  // ler a hora durante a renderização. Se o prazo vencer com a tela aberta,
+  // a API recusa com a mensagem dos 15 minutos.
+  const [montadaEm] = useState(() => Date.now());
+
+  // Prefixo só com o nome: a chave da tela inclui o empresaId antes do
+  // conversaId, e o prefixo antigo (["whatsapp-mensagens", conversaId]) não
+  // casava — a reação só aparecia no próximo ciclo de atualização.
+  const atualizar = () =>
+    void queryClient.invalidateQueries({ queryKey: ["whatsapp-mensagens"] });
 
   const reagir = useMutation({
     mutationFn: (emoji: string) =>
@@ -466,16 +482,127 @@ function BarraDeAcoes({
       ),
     onSuccess: () => {
       setAberto(false);
-      void queryClient.invalidateQueries({
-        queryKey: ["whatsapp-mensagens", conversaId],
-      });
+      atualizar();
     },
     onError: (err) =>
       toast.error(err instanceof ApiError ? err.message : "Falha ao reagir"),
   });
 
+  const editar = useMutation({
+    mutationFn: () =>
+      apiFetch(`/whatsapp/conversas/${conversaId}/mensagens/${mensagem.id}`, {
+        method: "PATCH",
+        body: { texto: textoEditado },
+      }),
+    onSuccess: () => {
+      setEditando(false);
+      atualizar();
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Falha ao editar"),
+  });
+
+  const apagar = useMutation({
+    mutationFn: () =>
+      apiFetch(`/whatsapp/conversas/${conversaId}/mensagens/${mensagem.id}/apagar`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      setConfirmandoApagar(false);
+      atualizar();
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Falha ao apagar"),
+  });
+
+  const minha = mensagem.direcao === "saida";
+  // As mesmas regras da API: só texto próprio e só nos 15 minutos que o
+  // WhatsApp aceita — fora disso o botão nem aparece.
+  const podeEditar =
+    minha &&
+    mensagem.tipo === "texto" &&
+    !mensagem.apagadaEm &&
+    montadaEm - new Date(mensagem.criadaEm).getTime() < WHATSAPP_EDICAO_LIMITE_MS;
+  const podeApagar = minha && !mensagem.apagadaEm;
+
   return (
     <div className="flex items-center gap-1">
+      {podeEditar ? (
+        <Popover open={editando} onOpenChange={setEditando}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              title="Editar"
+              className="opacity-0 transition group-hover:opacity-60 hover:!opacity-100"
+            >
+              <Pencil className="size-4" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-72 space-y-2 p-2" align="end">
+            <textarea
+              value={textoEditado}
+              onChange={(e) => setTextoEditado(e.target.value)}
+              rows={3}
+              maxLength={4096}
+              className="w-full resize-none rounded border bg-background p-2 text-sm"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditando(false)}
+                className="rounded px-2 py-1 text-xs hover:bg-muted"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!textoEditado.trim() || editar.isPending}
+                onClick={() => editar.mutate()}
+                className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground disabled:opacity-50"
+              >
+                {editar.isPending ? "Salvando…" : "Salvar"}
+              </button>
+            </div>
+          </PopoverContent>
+        </Popover>
+      ) : null}
+
+      {podeApagar ? (
+        <Popover open={confirmandoApagar} onOpenChange={setConfirmandoApagar}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              title="Apagar para todos"
+              className="opacity-0 transition group-hover:opacity-60 hover:!opacity-100"
+            >
+              <Trash2 className="size-4" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-64 space-y-2 p-3 text-sm" align="end">
+            <p>Apagar para todos?</p>
+            <p className="text-xs text-muted-foreground">
+              Some do celular do cliente. Aqui ela continua no histórico, marcada como apagada.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmandoApagar(false)}
+                className="rounded px-2 py-1 text-xs hover:bg-muted"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={apagar.isPending}
+                onClick={() => apagar.mutate()}
+                className="rounded bg-destructive px-2 py-1 text-xs text-white disabled:opacity-50"
+              >
+                {apagar.isPending ? "Apagando…" : "Apagar"}
+              </button>
+            </div>
+          </PopoverContent>
+        </Popover>
+      ) : null}
       <button
         type="button"
         onClick={() => onResponder(mensagem)}

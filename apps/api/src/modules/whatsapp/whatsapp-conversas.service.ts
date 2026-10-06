@@ -45,13 +45,16 @@ import type {
   WhatsappHistoricoFiltros,
   WhatsappSituacaoTitulos,
   WhatsappStatusEntrega,
+  WhatsappEditarMensagem,
   WhatsappEnviar,
   WhatsappEnviarInterativo,
   WhatsappEnviarTemplate,
   WhatsappIniciarConversa,
   WhatsappMensagemQuery,
+  WhatsappPresenca,
   WhatsappVincular,
 } from '@plataforma/contracts';
+import { WHATSAPP_EDICAO_LIMITE_MS } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { mensagemComAutor } from './mensagem-com-autor';
 import {
@@ -1859,6 +1862,149 @@ export class WhatsappConversasService {
    * Só o dono da sessão reage — supervisor lê a conversa, mas não fala pelo
    * aparelho de quem ele supervisiona, nem com emoji.
    */
+  /**
+   * Edita texto enviado daqui. Regras do WhatsApp aplicadas antes do gateway,
+   * porque fora delas a edição é ignorada **sem erro** no aparelho do
+   * cliente: só texto, só de saída e até 15 minutos.
+   *
+   * Histórico permanente: o texto de antes fica em `conteudoOriginal`.
+   */
+  async editarMensagem(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    mensagemId: string,
+    input: WhatsappEditarMensagem,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const conversa = await this.conversaParaEnvio(
+        tx,
+        empresaId,
+        user,
+        conversaId,
+      );
+      const mensagem = await tx.whatsappMensagem.findFirst({
+        where: { id: mensagemId, conversaId },
+        select: {
+          id: true,
+          externoId: true,
+          direcao: true,
+          tipo: true,
+          conteudo: true,
+          conteudoOriginal: true,
+          apagadaEm: true,
+          criadaEm: true,
+        },
+      });
+      if (!mensagem) throw new NotFoundException('Mensagem não encontrada');
+      if (mensagem.direcao !== 'saida' || mensagem.tipo !== 'texto') {
+        throw new BadRequestException(
+          'Só dá para editar mensagem de texto enviada por aqui.',
+        );
+      }
+      if (mensagem.apagadaEm) {
+        throw new BadRequestException('A mensagem foi apagada.');
+      }
+      if (Date.now() - mensagem.criadaEm.getTime() > WHATSAPP_EDICAO_LIMITE_MS) {
+        throw new BadRequestException(
+          'O WhatsApp só permite editar até 15 minutos depois do envio.',
+        );
+      }
+
+      await this.provedores.editarMensagem(
+        empresaId,
+        conversa.sessaoId,
+        {
+          jid: conversa.contato.jid,
+          externoId: mensagem.externoId,
+          // Mesma assinatura do envio: o cliente vê quem escreveu.
+          texto: mensagemComAutor(user.nome, input.texto),
+        },
+        tx,
+      );
+
+      return tx.whatsappMensagem.update({
+        where: { id: mensagem.id },
+        data: {
+          conteudo: input.texto,
+          conteudoOriginal: mensagem.conteudoOriginal ?? mensagem.conteudo,
+          editadaEm: new Date(),
+        },
+      });
+    });
+  }
+
+  /**
+   * Apaga para todos uma mensagem enviada daqui. O prazo é do WhatsApp — se
+   * passou, o gateway recusa e o erro chega à tela.
+   *
+   * Na plataforma só marca `apagadaEm`: o conteúdo continua gravado para a
+   * auditoria (histórico permanente, 02/10/2026).
+   */
+  async apagarMensagem(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    mensagemId: string,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const conversa = await this.conversaParaEnvio(
+        tx,
+        empresaId,
+        user,
+        conversaId,
+      );
+      const mensagem = await tx.whatsappMensagem.findFirst({
+        where: { id: mensagemId, conversaId },
+        select: { id: true, externoId: true, direcao: true, apagadaEm: true },
+      });
+      if (!mensagem) throw new NotFoundException('Mensagem não encontrada');
+      if (mensagem.direcao !== 'saida') {
+        throw new BadRequestException(
+          'Só dá para apagar para todos mensagem enviada por aqui.',
+        );
+      }
+      if (mensagem.apagadaEm) return mensagem;
+
+      await this.provedores.apagarMensagem(
+        empresaId,
+        conversa.sessaoId,
+        { jid: conversa.contato.jid, externoId: mensagem.externoId },
+        tx,
+      );
+
+      return tx.whatsappMensagem.update({
+        where: { id: mensagem.id },
+        data: { apagadaEm: new Date() },
+      });
+    });
+  }
+
+  /**
+   * "Digitando…" no aparelho do cliente. Melhor-esforço: é sinal visual, e
+   * falhar aqui não pode virar erro na tela de quem só está digitando.
+   */
+  async presenca(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    input: WhatsappPresenca,
+  ) {
+    const alvo = await this.prisma.withTenant(empresaId, async (tx) => {
+      const conversa = await this.conversaParaEnvio(
+        tx,
+        empresaId,
+        user,
+        conversaId,
+      );
+      return { sessaoId: conversa.sessaoId, jid: conversa.contato.jid };
+    });
+    await this.provedores
+      .presenca(empresaId, alvo.sessaoId, { jid: alvo.jid, estado: input.estado })
+      .catch(() => undefined);
+    return { ok: true };
+  }
+
   async reagir(
     empresaId: string,
     user: AuthenticatedUser,

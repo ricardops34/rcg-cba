@@ -813,6 +813,58 @@ export class EvolutionGoProvider implements WhatsappProvider {
   }
 
   /**
+   * `/message/edit` recebe o **jid** do chat (`chat`), não o `number` das
+   * rotas de envio. A 0.7.2 corrigiu a edição que era ignorada (passou a
+   * mandar `ExtendedTextMessage`, CHANGELOG #16) — antes dela o WhatsApp
+   * descartava a edição sem erro nenhum.
+   */
+  async editarMensagem(
+    ctx: ContextoSessao,
+    dados: { jid: string; externoId: string; texto: string },
+  ): Promise<void> {
+    await this.http.chamar(ctx.config.evolutionUrl, '/message/edit', {
+      metodo: 'POST',
+      credencial: this.chaveInstancia(ctx),
+      corpo: {
+        chat: dados.jid,
+        messageId: dados.externoId,
+        message: dados.texto,
+      },
+    });
+  }
+
+  async apagarMensagem(
+    ctx: ContextoSessao,
+    dados: { jid: string; externoId: string },
+  ): Promise<void> {
+    await this.http.chamar(ctx.config.evolutionUrl, '/message/delete', {
+      metodo: 'POST',
+      credencial: this.chaveInstancia(ctx),
+      corpo: { chat: dados.jid, messageId: dados.externoId },
+    });
+  }
+
+  /**
+   * Gravando áudio é `composing` com `isAudio: true` (o guia da 0.7.2 lista
+   * `recording`, mas é o par composing+isAudio que o handler converte).
+   */
+  async presenca(
+    ctx: ContextoSessao,
+    dados: { jid: string; estado: 'digitando' | 'gravando' | 'parou' },
+  ): Promise<void> {
+    await this.http.chamar(ctx.config.evolutionUrl, '/message/presence', {
+      metodo: 'POST',
+      credencial: this.chaveInstancia(ctx),
+      corpo: {
+        number: this.destinatario(dados.jid),
+        state: dados.estado === 'parou' ? 'paused' : 'composing',
+        isAudio: dados.estado === 'gravando',
+      },
+      timeoutMs: 5000,
+    });
+  }
+
+  /**
    * `GET /polls/{id}/results` da 0.7.2 (`poll_handler.go`). O voto chega
    * **cifrado** no webhook; quem o decifra e grava é o gateway, de forma
    * assíncrona — por isso a leitura é feita aqui, depois, e não do evento.

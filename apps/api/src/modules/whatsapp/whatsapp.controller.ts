@@ -48,6 +48,8 @@ import {
   WhatsappMensagemQueryDto,
   WhatsappNovoOrcamentoDto,
   WhatsappReagirDto,
+  WhatsappEditarMensagemDto,
+  WhatsappPresencaDto,
   WhatsappRecadoCriarDto,
   WhatsappRecadoEditarDto,
   WhatsappVincularDto,
@@ -1028,6 +1030,69 @@ export class WhatsappController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.acoes.novoOrcamento(user.empresaAtivaId, user, id, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Editar mensagem enviada',
+    description:
+      'Só texto enviado por aqui e até 15 minutos — fora disso o WhatsApp ' +
+      'ignora a edição sem erro. O texto anterior fica guardado (histórico ' +
+      'permanente). Requer whatsapp-conversas.cadastrar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Patch('conversas/:id/mensagens/:mensagemId')
+  editarMensagem(
+    @Param('id') id: string,
+    @Param('mensagemId') mensagemId: string,
+    @Body() dto: WhatsappEditarMensagemDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversas.editarMensagem(
+      user.empresaAtivaId,
+      user,
+      id,
+      mensagemId,
+      dto,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Apagar para todos uma mensagem enviada',
+    description:
+      'Apaga no aparelho do cliente. Na plataforma a mensagem só é marcada como ' +
+      'apagada — o conteúdo continua gravado para auditoria. Requer ' +
+      'whatsapp-conversas.cadastrar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Post('conversas/:id/mensagens/:mensagemId/apagar')
+  apagarMensagem(
+    @Param('id') id: string,
+    @Param('mensagemId') mensagemId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversas.apagarMensagem(
+      user.empresaAtivaId,
+      user,
+      id,
+      mensagemId,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Sinal de digitando/gravando',
+    description:
+      'Mostra "digitando…" ou "gravando áudio…" no aparelho do cliente. ' +
+      'Melhor-esforço: falha do gateway não volta erro. Requer ' +
+      'whatsapp-conversas.cadastrar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Post('conversas/:id/presenca')
+  presenca(
+    @Param('id') id: string,
+    @Body() dto: WhatsappPresencaDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversas.presenca(user.empresaAtivaId, user, id, dto);
   }
 
   @ApiOperation({

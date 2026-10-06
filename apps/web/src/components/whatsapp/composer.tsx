@@ -110,6 +110,21 @@ export function Composer({
   const arquivoRef = useRef<HTMLInputElement>(null);
   const midiaRef = useRef<HTMLInputElement>(null);
 
+  // "Digitando…" / "gravando áudio…" no celular do cliente (Evolution GO,
+  // `/message/presence`). No máximo um sinal a cada 8 s: o WhatsApp mantém o
+  // indicador por alguns segundos, e mandar a cada tecla seria uma chamada
+  // por caractere. Melhor-esforço — falha não aparece para o vendedor.
+  const ultimoSinal = useRef(0);
+  const sinalizar = (estado: "digitando" | "gravando", forcar = false) => {
+    const agora = Date.now();
+    if (!forcar && agora - ultimoSinal.current < 8000) return;
+    ultimoSinal.current = agora;
+    void apiFetch(`/whatsapp/conversas/${conversaId}/presenca`, {
+      method: "POST",
+      body: { estado },
+    }).catch(() => undefined);
+  };
+
   const sugerirResposta = useMutation({
     mutationFn: () =>
       apiFetch<{ sugestao: string }>(`/whatsapp/conversas/${conversaId}/sugerir-resposta`, {
@@ -337,7 +352,10 @@ export function Composer({
           ) : null}
           <Input
             value={texto}
-            onChange={(e) => setTexto(e.target.value)}
+            onChange={(e) => {
+              setTexto(e.target.value);
+              if (e.target.value) sinalizar("digitando");
+            }}
             placeholder={
               gravacao.gravando ? "Gravando áudio…" : "Digite uma mensagem"
             }
@@ -391,7 +409,10 @@ export function Composer({
               type="button"
               size="icon"
               variant="ghost"
-              onClick={gravacao.iniciar}
+              onClick={() => {
+                sinalizar("gravando", true);
+                gravacao.iniciar();
+              }}
               disabled={ocupado}
               title="Gravar áudio"
             >
