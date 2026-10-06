@@ -1413,12 +1413,25 @@ export class EvolutionGoProvider implements WhatsappProvider {
 
     return {
       jid,
+      // A 0.7.2 manda `FullName`/`FirstName` (nome salvo na agenda do
+      // celular), `PushName` (apelido) e `BusinessName`. Procurar só `name`
+      // perdia o nome da agenda — o que o vendedor reconhece.
       nome:
-        texto(bruto, 'name', 'pushName', 'notify', 'verifiedName', 'nome') ??
-        null,
+        texto(
+          bruto,
+          'FullName',
+          'FirstName',
+          'BusinessName',
+          'name',
+          'PushName',
+          'notify',
+          'verifiedName',
+          'nome',
+        ) ?? null,
+      // `@lid` é identificador opaco: os dígitos dele não são telefone.
       telefone:
         this.somenteDigitos(texto(bruto, 'phone', 'number', 'telefone')) ??
-        this.somenteDigitos(jid),
+        (jid.endsWith('@lid') ? null : this.somenteDigitos(jid)),
       naoLidas: Number.isFinite(naoLidas) ? naoLidas : 0,
     };
   }

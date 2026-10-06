@@ -2165,6 +2165,61 @@ export class WhatsappConversasService {
   }
 
   /**
+   * Dá nome aos contatos das conversas desta instância que ainda não têm,
+   * a partir da agenda do aparelho (`/user/contacts`).
+   *
+   * Duas chaves, nesta ordem: o **telefone** — a agenda guarda o nome salvo
+   * pelo vendedor no contato telefônico ("Beatriz ❤️") — e o **`@lid`**, que
+   * só tem o apelido do WhatsApp ("Maria da Panan"). Contato vindo do
+   * histórico costuma ser `@lid`; o telefone dele vem do mapeamento do pacote.
+   *
+   * Só completa: nome já preenchido não é trocado. Melhor-esforço — falha na
+   * agenda não pode atrapalhar quem chamou.
+   */
+  async completarNomesPelaAgenda(empresaId: string, sessaoId: string) {
+    const semNome = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappContato.findMany({
+        where: {
+          empresaId,
+          nomeExibicao: null,
+          conversas: { some: { sessaoId } },
+        },
+        select: { id: true, jid: true, telefoneNormalizado: true },
+      }),
+    );
+    if (semNome.length === 0) return { atualizados: 0 };
+
+    const agenda = await this.provedores
+      .listarContatos(empresaId, sessaoId)
+      .catch(() => []);
+    const porJid = new Map(
+      agenda.filter((c) => c.nome).map((c) => [c.jid, c.nome as string]),
+    );
+    const porTelefone = new Map(
+      agenda
+        .filter((c) => c.nome && c.telefone)
+        .map((c) => [c.telefone as string, c.nome as string]),
+    );
+
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      let atualizados = 0;
+      for (const c of semNome) {
+        const nome =
+          (c.telefoneNormalizado ? porTelefone.get(c.telefoneNormalizado) : null) ??
+          porJid.get(c.jid) ??
+          null;
+        if (!nome) continue;
+        await tx.whatsappContato.update({
+          where: { id: c.id },
+          data: { nomeExibicao: nome },
+        });
+        atualizados += 1;
+      }
+      return { atualizados };
+    });
+  }
+
+  /**
    * Completa o contato a partir do que o WhatsApp informa fora das mensagens
    * (`PushName`): telefone de quem só existia como `@lid` e o apelido.
    *

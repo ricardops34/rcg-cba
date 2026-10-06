@@ -252,6 +252,15 @@ export class WhatsappEvolutionController {
       erro: texto(dados, 'error', 'reason', 'message'),
     });
 
+    // Conectou (ou reconectou): completa o nome dos contatos que ainda não
+    // têm, pela agenda do aparelho. Em segundo plano — é uma consulta à
+    // agenda inteira, e o webhook não precisa esperar.
+    if (status === 'conectada') {
+      void this.conversas
+        .completarNomesPelaAgenda(ctx.empresaId, ctx.sessaoId)
+        .catch(() => undefined);
+    }
+
     return { ok: true, tratado: true, status };
   }
 
@@ -643,6 +652,18 @@ export class WhatsappEvolutionController {
           `recebidas (${telefonePorLid.size} @lid com telefone, ${apelidoPorJid.size} apelidos), ` +
           `${gravadas} mensagens gravadas (últimos ${dias} dias).`,
       );
+      // Contato do histórico costuma chegar só como `@lid`, sem nome: a
+      // agenda do aparelho completa (o telefone já veio do mapeamento).
+      if (gravadas > 0) {
+        const { atualizados } = await this.conversas
+          .completarNomesPelaAgenda(ctx.empresaId, ctx.sessaoId)
+          .catch(() => ({ atualizados: 0 }));
+        if (atualizados) {
+          this.logger.log(
+            `Histórico da sessão ${ctx.sessaoId}: ${atualizados} contatos nomeados pela agenda.`,
+          );
+        }
+      }
     })();
 
     return { ok: true, tratado: true, conversas: conversas.length };

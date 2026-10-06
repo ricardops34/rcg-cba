@@ -210,7 +210,10 @@ describe('WhatsappEvolutionController — recebimento (formato da 0.7.2)', () =>
 
 describe('WhatsappEvolutionController — HistorySync (formato whatsmeow)', () => {
   const montar = (historicoDias: number) => {
-    const conversas = { receber: jest.fn().mockResolvedValue({ gravada: true }) };
+    const conversas = {
+      receber: jest.fn().mockResolvedValue({ gravada: true }),
+      completarNomesPelaAgenda: jest.fn().mockResolvedValue({ atualizados: 0 }),
+    };
     const controller = new WhatsappEvolutionController(
       conversas as never,
       {} as never,
@@ -286,7 +289,10 @@ describe('WhatsappEvolutionController — HistorySync (formato whatsmeow)', () =
 
 describe('WhatsappEvolutionController — HistorySync com @lid', () => {
   it('tira telefone e nome do próprio pacote', async () => {
-    const conversas = { receber: jest.fn().mockResolvedValue({ gravada: true }) };
+    const conversas = {
+      receber: jest.fn().mockResolvedValue({ gravada: true }),
+      completarNomesPelaAgenda: jest.fn().mockResolvedValue({ atualizados: 0 }),
+    };
     const controller = new WhatsappEvolutionController(
       conversas as never,
       {} as never,
