@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/stores/auth-store";
 import {
@@ -154,6 +154,14 @@ export default function HistoricoWhatsappPage() {
     enabled: !!empresaId && !!conversaId,
   });
 
+  // Ao abrir a conversa, mostra o fim — a mensagem mais recente —, como no
+  // Atendimento. A rolagem é do próprio rolo (ver a grade de altura fixa).
+  const roloRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const rolo = roloRef.current;
+    if (rolo && mensagens.length) rolo.scrollTop = rolo.scrollHeight;
+  }, [conversaId, mensagens.length]);
+
   const filtrosAtivos =
     vendedorId !== "todos" ||
     numero !== "todos" ||
@@ -183,59 +191,53 @@ export default function HistoricoWhatsappPage() {
         }}
         isRefreshing={recarregandoConversas}
         actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Vendedor e instância à vista: dentro do "Filtros" ninguém achava.
+                A lista traz só quem tem ou teve WhatsApp na equipe do usuário. */}
+            <Select
+              value={vendedorId}
+              onValueChange={(v) => {
+                setVendedorId(v);
+                setPagina(1);
+              }}
+            >
+              <SelectTrigger className="h-9 w-56 text-xs" aria-label="Vendedor">
+                <SelectValue placeholder="Todos os vendedores" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os vendedores</SelectItem>
+                {opcoesFiltro?.vendedores.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>
+                    {v.nome}
+                    {!v.ativo ? " (inativo)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={numero}
+              onValueChange={(v) => {
+                setNumero(v);
+                setPagina(1);
+              }}
+            >
+              <SelectTrigger className="h-9 w-60 text-xs" aria-label="Instância (número)">
+                <SelectValue placeholder="Todas as instâncias" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todas as instâncias</SelectItem>
+                {opcoesFiltro?.numeros.map((n) => (
+                  <SelectItem key={n.numero} value={n.numero}>
+                    {telefoneBonito(n.numero)}
+                    {n.vendedorNome ? ` · ${n.vendedorNome}` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
           <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
             <div className="space-y-3">
-              <div>
-                <Label className="text-xs font-medium text-muted-foreground">
-                  Vendedor (equipe)
-                </Label>
-                <Select
-                  value={vendedorId}
-                  onValueChange={(v) => {
-                    setVendedorId(v);
-                    setPagina(1);
-                  }}
-                >
-                  <SelectTrigger className="w-full mt-1 text-xs">
-                    <SelectValue placeholder="Todos os vendedores" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todos os vendedores</SelectItem>
-                    {opcoesFiltro?.vendedores.map((v) => (
-                      <SelectItem key={v.id} value={v.id}>
-                        {v.nome} {!v.ativo ? " (Inativo)" : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label className="text-xs font-medium text-muted-foreground">
-                  Número do WhatsApp
-                </Label>
-                <Select
-                  value={numero}
-                  onValueChange={(v) => {
-                    setNumero(v);
-                    setPagina(1);
-                  }}
-                >
-                  <SelectTrigger className="w-full mt-1 text-xs">
-                    <SelectValue placeholder="Todos os números" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todos os números</SelectItem>
-                    {opcoesFiltro?.numeros.map((n) => (
-                      <SelectItem key={n.numero} value={n.numero}>
-                        {telefoneBonito(n.numero)}
-                        {n.vendedorNome ? ` (${n.vendedorNome})` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label className="text-xs font-medium text-muted-foreground">
@@ -268,6 +270,7 @@ export default function HistoricoWhatsappPage() {
               </div>
             </div>
           </FiltersPopover>
+          </div>
         }
       />
 
@@ -328,7 +331,10 @@ export default function HistoricoWhatsappPage() {
       )}
 
       {/* Área Master-Detail */}
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-3 min-h-[520px] max-h-[calc(100dvh-10rem)] rounded-xl border border-border/70 overflow-hidden bg-background shadow-xs">
+      {/* Altura fixa e linha limitada (`minmax(0,1fr)`): sem isso a grade crescia
+          com o conteúdo, as colunas nunca ficavam menores que as mensagens e a
+          barra de rolagem da conversa não aparecia. */}
+      <div className="grid grid-cols-1 grid-rows-[minmax(0,1fr)] md:grid-cols-12 gap-3 h-[calc(100dvh-10rem)] min-h-[520px] rounded-xl border border-border/70 overflow-hidden bg-background shadow-xs">
         {/* Painel Esquerdo: Lista de Conversas Auditadas */}
         <div
           className={`flex flex-col border-r border-border/70 bg-card/40 md:col-span-5 lg:col-span-4 min-h-0 ${
@@ -562,7 +568,10 @@ export default function HistoricoWhatsappPage() {
               </div>
 
               {/* Rolo de mensagens auditadas */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#EFEAE2]/60 dark:bg-[#0B141A]/70">
+              <div
+                ref={roloRef}
+                className="min-h-0 flex-1 overflow-y-auto p-4 space-y-3 bg-[#EFEAE2]/60 dark:bg-[#0B141A]/70"
+              >
                 {carregandoMensagens ? (
                   <div className="space-y-4">
                     <Skeleton className="h-12 w-2/3 rounded-xl" />
