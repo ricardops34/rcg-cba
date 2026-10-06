@@ -13,7 +13,18 @@ import { ApiError, apiFetch } from "@/lib/api-client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, QrCode, Smartphone, TriangleAlert, Unplug } from "lucide-react";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Switch } from "@/components/ui/switch";
+import { Loader2, QrCode, Smartphone, TriangleAlert } from "lucide-react";
 import { useImagemQr } from "./use-imagem-qr";
 
 interface SessaoEmpresa {
@@ -50,6 +61,7 @@ export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
   });
 
   const [ocupado, setOcupado] = useState(false);
+  const [confirmarDesligar, setConfirmarDesligar] = useState(false);
 
   const { data: sessao, refetch } = useQuery({
     queryKey: ["whatsapp", "sessao-empresa", chaveCache],
@@ -130,17 +142,12 @@ export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
   };
 
   const desconectar = async () => {
-    if (
-      !confirm(
-        "Desconectar e desabilitar o número institucional? A instância é removida do gateway e o atendimento automático para de receber mensagens. As conversas ficam. Para voltar, use Parear número.",
-      )
-    )
-      return;
     setOcupado(true);
     try {
       await apiFetch(sessaoUrl, { method: "DELETE" });
       await refetch();
-      toast.success("Número desconectado");
+      setConfirmarDesligar(false);
+      toast.success("Número institucional desabilitado");
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "Não foi possível desconectar",
@@ -151,6 +158,11 @@ export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
   };
 
   const status = sessao?.status ?? "desconectada";
+  // Habilitado é ter a instância de pé. "desconectada" com número na tela é
+  // um aviso do gateway, não um desligamento: a instância ainda está lá. Só a
+  // desconexão por aqui apaga o número — e é ela que desliga a chave.
+  const habilitado =
+    Boolean(sessao) && (status !== "desconectada" || Boolean(sessao?.numero));
 
   return (
     <Card>
@@ -167,6 +179,25 @@ export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
           Comercial → Conversas) — os dois convivem, inclusive em provedores
           diferentes.
         </p>
+
+        <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+          <div>
+            <FieldLabel>Habilitar número institucional</FieldLabel>
+            <FieldDescription>
+              Ligar inicia o pareamento por QR. Desligar remove a instância do
+              gateway e o atendimento automático para de receber mensagens. As
+              conversas ficam.
+            </FieldDescription>
+          </div>
+          <Switch
+            checked={habilitado}
+            disabled={ocupado || (!habilitado && !gatewayConfigurado)}
+            onCheckedChange={(ligar) => {
+              if (ligar) void conectar();
+              else setConfirmarDesligar(true);
+            }}
+          />
+        </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <Badge
@@ -237,23 +268,35 @@ export function InstitucionalConfig({ empresaId }: { empresaId?: string }) {
           </div>
         )}
 
-        <div className="flex flex-wrap gap-2">
-          {status !== "conectada" && (
-            <Button onClick={conectar} disabled={ocupado || !gatewayConfigurado}>
-              <QrCode className="size-4" />
-              {status === "pareando" ? "Recomeçar pareamento" : "Parear número"}
-            </Button>
-          )}
-          {/* Não depende do status: "desconectada" pode ter vindo de um evento
-              do gateway, com a instância ainda lá (e o número na tela). Só a
-              desconexão por aqui remove a instância e desliga o número. */}
-          {sessao && (
-            <Button variant="outline" onClick={desconectar} disabled={ocupado}>
-              <Unplug className="size-4" /> Desconectar e desabilitar
-            </Button>
-          )}
-        </div>
+        {/* Habilitado mas sem conexão (QR expirado, aparelho caiu): pareia de
+            novo sem precisar desligar e religar a chave. */}
+        {habilitado && status !== "conectada" && (
+          <Button onClick={conectar} disabled={ocupado || !gatewayConfigurado}>
+            <QrCode className="size-4" /> Recomeçar pareamento
+          </Button>
+        )}
       </CardContent>
+
+      <Dialog open={confirmarDesligar} onOpenChange={setConfirmarDesligar}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Desabilitar o número institucional?</DialogTitle>
+            <DialogDescription>
+              A instância é removida do gateway e o atendimento automático para
+              de receber mensagens. As conversas ficam. Para voltar, ligue a
+              chave de novo e leia o QR.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancelar</Button>
+            </DialogClose>
+            <Button variant="destructive" disabled={ocupado} onClick={() => void desconectar()}>
+              {ocupado ? "Desabilitando..." : "Desabilitar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
