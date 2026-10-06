@@ -1907,8 +1907,9 @@ export class AgenteToolsService {
       // Todas marcadas `exigeWhatsapp`: sem aparelho pareado não há de onde ler
       // nem por onde falar. E todas enxergam **só a própria conexão**, mesmo
       // para quem tem `whatsapp-equipe` — gerente e supervisor monitoram o time
-      // na tela de Atendimento, onde o texto fica; pelo agente ele viajaria
-      // para o provedor de IA. Decisão do usuário em 2026-08-25.
+      // em Gerencial → Histórico do WhatsApp, só leitura; pelo agente o texto
+      // viajaria para o provedor de IA. Decisão do usuário em 2026-08-25; a
+      // tela de Atendimento ficou só com a própria instância em 2026-10-06.
       // ----------------------------------------------------------------------
       {
         nome: 'conversas_whatsapp',
@@ -1920,8 +1921,8 @@ export class AgenteToolsService {
           'outras ferramentas de WhatsApp pedem.',
         instrucoes:
           'São as conversas deste aparelho, e só: nem quem chefia equipe ' +
-          'alcança a dos outros por aqui — se pedirem, aponte a tela de ' +
-          'Atendimento. Diga quem falou por último e há quanto tempo, que é o ' +
+          'alcança a dos outros por aqui — se pedirem, aponte Gerencial → ' +
+          'Histórico do WhatsApp. Diga quem falou por último e há quanto tempo, que é o ' +
           'que indica o que espera resposta. Para o conteúdo, use ' +
           'mensagens_whatsapp em vez de adivinhar pelo resumo.',
         permissao: 'whatsapp-conversas.visualizar',

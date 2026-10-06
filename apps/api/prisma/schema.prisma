@@ -290,6 +290,7 @@ model Usuario {
   sessoes                     Sessao[]
   notificacoes                Notificacao[]
   whatsappVinculos            WhatsappVinculoFuncionario[]
+  whatsappSessoes             WhatsappSessao[]
   termosAceites               TermoAceite[]
   tourExecucoes               TourExecucao[]
   usosRotina                  UsoRotina[]
@@ -4259,6 +4260,12 @@ model WhatsappSessao {
   /// NULL não colidem entre si.
   vendedorId String?
 
+  /// Usuário que conectou esta instância. O Atendimento exige que confira com
+  /// quem está logado, além do vendedor: a instância é da empresa + usuário +
+  /// vendedor + número (decisão do usuário, 06/10/2026). Nulo na
+  /// institucional, que não é de pessoa nenhuma.
+  usuarioId String?
+
   numero     String?
   jid        String?
   status     WhatsappSessaoStatus @default(desconectada)
@@ -4293,6 +4300,7 @@ model WhatsappSessao {
 
   empresa   Empresa            @relation(fields: [empresaId], references: [id])
   vendedor  Vendedor?          @relation(fields: [vendedorId], references: [id])
+  usuario   Usuario?           @relation(fields: [usuarioId], references: [id])
   conversas WhatsappConversa[]
   periodos  WhatsappSessaoPeriodo[]
 

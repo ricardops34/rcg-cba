@@ -50,7 +50,6 @@ import {
   WhatsappRecadoCriarDto,
   WhatsappRecadoEditarDto,
   WhatsappVincularDto,
-  WhatsappImportarAgendaDto,
 } from './dto/whatsapp.dto';
 import { WhatsappFuncionarioService } from './triagem/whatsapp-funcionario.service';
 import { WhatsappRecadoService } from './whatsapp-recado.service';
@@ -831,11 +830,8 @@ export class WhatsappController {
   })
   @RequirePermission('whatsapp-conversas', 'editar')
   @Post('agenda/importar')
-  importarContatos(
-    @Body() dto: WhatsappImportarAgendaDto,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.agenda.importarContatos(user.empresaAtivaId, user, dto?.sessaoId);
+  importarContatos(@CurrentUser() user: AuthenticatedUser) {
+    return this.agenda.importarContatos(user.empresaAtivaId, user);
   }
 
   @ApiOperation({

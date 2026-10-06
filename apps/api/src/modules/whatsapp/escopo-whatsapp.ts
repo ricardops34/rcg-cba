@@ -1,6 +1,41 @@
+import type { Prisma } from '@prisma/client';
 import type { TenantTx } from '../../common/prisma/prisma.service';
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+
+/**
+ * A instância de WhatsApp **deste usuário** — o recorte de tudo que lê ou fala
+ * pelo WhatsApp no sistema (Atendimento, sino, ações, agendamento, agente de
+ * IA, Posição de Cliente). Decisão do usuário, 06/10/2026: a instância é da
+ * empresa + usuário + vendedor + número, e "tudo no sistema tem que respeitar
+ * isso". Equipe se acompanha só em Gerencial → Histórico do WhatsApp
+ * (`escopoHistoricoWhatsapp`, leitura pura).
+ *
+ * - empresa: a ativa (e a RLS);
+ * - vendedor: o cadastro ativo do usuário nesta empresa;
+ * - usuário: quem conectou (`whatsapp_sessoes.usuarioId`) tem de ser quem
+ *   está logado — trocar o vínculo vendedor × usuário não entrega o aparelho;
+ * - número: único entre as sessões conectadas (`whatsapp_numero_em_uso`).
+ *
+ * `null` = o usuário não tem instância (sem cadastro de vendedor): não vê nada.
+ */
+export async function sessaoDoUsuarioWhere(
+  tx: TenantTx,
+  empresaId: string,
+  user: AuthenticatedUser,
+): Promise<Prisma.WhatsappSessaoWhereInput | null> {
+  const vendedor = await tx.vendedor.findFirst({
+    where: { usuarioId: user.id, empresaId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!vendedor) return null;
+  return {
+    empresaId,
+    tipo: 'vendedor',
+    vendedorId: vendedor.id,
+    usuarioId: user.id,
+  };
+}
 
 /**
  * Quais vendedores este usuário pode **ler** no WhatsApp.

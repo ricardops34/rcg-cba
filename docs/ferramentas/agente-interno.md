@@ -235,10 +235,13 @@ usuário *pode* atender por WhatsApp; isto diz que ele *tem* por onde falar.
 É **fail-closed**: sem o filtro carregado, a ferramenta não aparece.
 
 **Pelo agente, cada um lê só a própria conexão.** Nem supervisor nem gerente
-alcançam a equipe por aqui, embora alcancem na tela de Atendimento. Daí
-`mensagensDaPropriaConexao` em vez de `mensagens`. O raciocínio, decidido em
-2026-08-25: monitorar é olhar o que está gravado; perguntar ao assistente manda
-o texto para fora.
+alcançam a equipe por aqui. Daí `mensagensDaPropriaConexao` em vez de
+`mensagens`. O raciocínio, decidido em 2026-08-25: monitorar é olhar o que está
+gravado; perguntar ao assistente manda o texto para fora. Desde 2026-10-06 a
+equipe só é acompanhada em Gerencial → Histórico do WhatsApp (leitura), e a
+"conexão própria" é a instância de empresa + usuário + vendedor
+(`sessaoDoUsuarioWhere`): o `filtroPara` exige `whatsapp_sessoes.usuarioId`
+igual ao usuário logado, não basta o vendedor.
 
 **Governança por empresa** — `agente-ferramentas.service.ts` permite restringir
 o catálogo por empresa. Ele **só restringe, nunca amplia**: uma empresa não

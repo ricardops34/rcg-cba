@@ -93,34 +93,19 @@ export class WhatsappAgendaService {
 
   /**
    * Importa e salva os contatos do aparelho conectado diretamente na plataforma,
-   * vinculando-os à sessão ativa e criando a conversa para cada contato.
+   * vinculando-os à sessão do próprio usuário e criando a conversa para cada
+   * contato.
+   *
+   * **Só a instância do próprio usuário** (regra 1 acima): até 06/10/2026 o
+   * método aceitava `sessaoId` da tela, e quem olhava a conexão de outro
+   * vendedor criava conversas na sessão dele.
    */
-  async importarContatos(
-    empresaId: string,
-    user: AuthenticatedUser,
-    sessaoId?: string,
-  ) {
-    let sessao: { id: string; vendedorId: string | null; status: string };
-
-    if (sessaoId) {
-      const s = await this.prisma.withTenant(empresaId, (tx) =>
-        tx.whatsappSessao.findFirst({
-          where: { id: sessaoId, empresaId },
-          select: { id: true, vendedorId: true, status: true },
-        }),
+  async importarContatos(empresaId: string, user: AuthenticatedUser) {
+    const sessao = await this.sessoes.minha(empresaId, user);
+    if (!sessao) {
+      throw new BadRequestException(
+        'Nenhuma conexão encontrada para o seu usuário.',
       );
-      if (!s) {
-        throw new BadRequestException('Sessão informada não encontrada.');
-      }
-      sessao = s;
-    } else {
-      const s = await this.sessoes.minha(empresaId, user);
-      if (!s) {
-        throw new BadRequestException(
-          'Nenhuma conexão encontrada para o seu usuário.',
-        );
-      }
-      sessao = s;
     }
 
     if (sessao.status !== 'conectada') {

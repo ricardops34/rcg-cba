@@ -224,7 +224,12 @@ export class WhatsappAgendamentoService
               include: {
                 contato: { select: { jid: true } },
                 sessao: {
-                  select: { id: true, status: true, vendedorId: true },
+                  select: {
+                    id: true,
+                    status: true,
+                    vendedorId: true,
+                    usuarioId: true,
+                  },
                 },
               },
             },
@@ -240,6 +245,14 @@ export class WhatsappAgendamentoService
       if (agendada.conversa.sessao.status !== 'conectada') {
         throw new Error(
           'O WhatsApp do vendedor não estava conectado na hora do envio.',
+        );
+      }
+      // Agendar foi autorizado para quem era dono da instância naquele
+      // momento. Se outro usuário a conectou depois, a mensagem não sai pelo
+      // aparelho dele (empresa + usuário + vendedor, 06/10/2026).
+      if (agendada.conversa.sessao.usuarioId !== agendada.criadaPor) {
+        throw new Error(
+          'A instância passou a ser de outro usuário depois do agendamento.',
         );
       }
 

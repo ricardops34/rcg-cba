@@ -302,8 +302,12 @@ export class AgenteFerramentasService {
         // conectar pela tela de Atendimento — melhor do que sumir com a
         // ferramenta e deixar o vendedor sem entender por quê.
         sessaoWhatsapp: await tx.whatsappSessao.findFirst({
+          // A instância é de empresa + usuário + vendedor (06/10/2026): com o
+          // vínculo vendedor × usuário trocado, o aparelho não vem junto.
           where: {
             empresaId,
+            tipo: 'vendedor',
+            usuarioId: user.id,
             vendedor: { usuarioId: user.id, empresaId, deletedAt: null },
           },
           select: { id: true },

@@ -34,7 +34,10 @@ import {
   combinarFiltroVendedor,
   resolverEscopoVendedores,
 } from '../../common/escopo/escopo-vendedores';
-import { escopoHistoricoWhatsapp } from './escopo-whatsapp';
+import {
+  escopoHistoricoWhatsapp,
+  sessaoDoUsuarioWhere,
+} from './escopo-whatsapp';
 import { inicioDoDia } from '../titulos-receber/titulo-receber-status';
 import type {
   WhatsappConversaQuery,
@@ -93,7 +96,31 @@ export class WhatsappConversasService {
   ) {}
 
   /**
-   * O que este usuário enxerga na lista de conversas. `[]` = não vê nada.
+   * O que este usuário enxerga no Atendimento: **só a instância ligada ao
+   * vendedor dele, na empresa ativa** (decisão do usuário, 06/10/2026).
+   *
+   * Nem administrador, nem supervisor, nem gerente alcançam a conversa de
+   * outro vendedor por aqui — a equipe é acompanhada em Gerencial → Histórico
+   * do WhatsApp, que é só leitura. Abrir a equipe nesta tela foi o que fez as
+   * conversas aparecerem "misturadas entre instâncias/vendedores".
+   *
+   * Vale para tudo que passa por `conversaNoEscopo`: lista, leitura, envio,
+   * ações e o sino. O recorte é `sessaoDoUsuarioWhere` (empresa + usuário +
+   * vendedor); sem cadastro de vendedor, não vê nada.
+   */
+  private async filtroSessao(
+    tx: TenantTx,
+    empresaId: string,
+    user: AuthenticatedUser,
+  ): Promise<Prisma.WhatsappConversaWhereInput> {
+    const sessao = await sessaoDoUsuarioWhere(tx, empresaId, user);
+    if (!sessao) return { id: { in: [] } };
+    return { empresaId, sessao };
+  }
+
+  /**
+   * Escopo antigo, de equipe — hoje só para os indicadores do número
+   * institucional, que ficaram fora da revisão de 06/10/2026.
    *
    * São duas origens, e elas não se somam por acaso:
    *
@@ -109,7 +136,7 @@ export class WhatsappConversasService {
    * todos que atendem. É o desenho pedido — "direcionar a um vendedor ativo,
    * para que atenda e associe" —, e o primeiro que assumir leva.
    */
-  private async filtroSessao(
+  private async filtroSessaoEquipe(
     tx: TenantTx,
     empresaId: string,
     user: AuthenticatedUser,
@@ -182,13 +209,9 @@ export class WhatsappConversasService {
     query: WhatsappConversaQuery,
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const filtro = await this.filtroSessao(
-        tx,
-        empresaId,
-        user,
-        query.vendedorId,
-        query.sessaoId,
-      );
+      // `vendedorId`/`sessaoId` da query não ampliam nada: o filtro já é a
+      // instância do próprio usuário, e o `sessaoId` abaixo só pode restringir.
+      const filtro = await this.filtroSessao(tx, empresaId, user);
 
       // Usamos AND explícito para garantir que filtro de escopo/sessão NUNCA
       // seja sobrescrito pelo OR da busca de texto.
@@ -700,6 +723,7 @@ export class WhatsappConversasService {
           select: {
             id: true,
             vendedorId: true,
+            usuarioId: true,
             status: true,
             tipo: true,
             numero: true,
@@ -746,6 +770,7 @@ export class WhatsappConversasService {
           select: {
             id: true,
             vendedorId: true,
+            usuarioId: true,
             status: true,
             tipo: true,
             numero: true,
@@ -846,7 +871,7 @@ export class WhatsappConversasService {
     dias = 30,
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const filtro = await this.filtroSessao(tx, empresaId, user);
+      const filtro = await this.filtroSessaoEquipe(tx, empresaId, user);
       const desde = new Date();
       desde.setDate(desde.getDate() - dias);
 
@@ -1940,8 +1965,14 @@ export class WhatsappConversasService {
     await writeFile(join(WHATSAPP_DIR, arquivo), conteudo);
 
     return this.prisma.withTenant(entrada.empresaId, async (tx) => {
+      // A sessão entra no filtro porque o `externoId` não é único na empresa:
+      // quando dois números da plataforma conversam entre si, a mesma
+      // mensagem existe nas duas sessões — sem isto o arquivo ia para a outra.
       const mensagem = await tx.whatsappMensagem.findFirst({
-        where: { externoId: entrada.externoId },
+        where: {
+          externoId: entrada.externoId,
+          conversa: { sessaoId: entrada.sessaoId },
+        },
         select: { id: true },
       });
       if (!mensagem) return { gravado: false };
@@ -1969,7 +2000,7 @@ export class WhatsappConversasService {
     empresaId: string,
     user: AuthenticatedUser,
     conversa: {
-      sessao: { vendedorId: string | null };
+      sessao: { vendedorId: string | null; usuarioId: string | null };
       atendenteVendedorId?: string | null;
     },
   ) {
@@ -1979,9 +2010,13 @@ export class WhatsappConversasService {
     });
     if (!vendedor) return false;
 
-    // No aparelho do vendedor, dono é o dono da sessão — como sempre foi.
+    // No aparelho do vendedor, dono é quem conectou a instância **e** é o
+    // vendedor dela — o par todo (ver `sessaoDoUsuarioWhere`).
     if (conversa.sessao.vendedorId) {
-      return vendedor.id === conversa.sessao.vendedorId;
+      return (
+        vendedor.id === conversa.sessao.vendedorId &&
+        conversa.sessao.usuarioId === user.id
+      );
     }
 
     // No número institucional não há dono de aparelho: quem fala é quem
@@ -2000,7 +2035,7 @@ export class WhatsappConversasService {
     empresaId: string,
     user: AuthenticatedUser,
     conversa: {
-      sessao: { vendedorId: string | null; status: string };
+      sessao: { vendedorId: string | null; usuarioId: string | null; status: string };
       atendenteVendedorId?: string | null;
     },
   ) {
@@ -2335,9 +2370,14 @@ export class WhatsappConversasService {
 
       const sessao = await tx.whatsappSessao.findUnique({
         where: { empresaId_vendedorId: { empresaId, vendedorId: vendedor.id } },
-        select: { id: true, status: true },
+        select: { id: true, status: true, usuarioId: true },
       });
-      if (!sessao || sessao.status !== 'conectada') {
+      // Instância conectada por outro usuário não é por onde este fala.
+      if (
+        !sessao ||
+        sessao.status !== 'conectada' ||
+        sessao.usuarioId !== user.id
+      ) {
         throw new BadRequestException(
           'Seu WhatsApp não está conectado. Conecte o aparelho para iniciar uma conversa.',
         );

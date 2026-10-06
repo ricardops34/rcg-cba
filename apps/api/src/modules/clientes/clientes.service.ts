@@ -44,7 +44,7 @@ import {
   condicaoBuscaTermosSql,
   filtroBuscaTermos,
 } from '../../common/busca/termos-busca';
-import { escopoLeituraWhatsapp } from '../whatsapp/escopo-whatsapp';
+import { sessaoDoUsuarioWhere } from '../whatsapp/escopo-whatsapp';
 
 /**
  * O que conta como venda na Posição de Cliente — a mesma definição das
@@ -898,21 +898,16 @@ export class ClientesService {
       if (!cliente) throw new NotFoundException('Cliente não encontrado');
 
       // A posição informa o vínculo com o WhatsApp somente quando o usuário
-      // pode abrir a conversa. É o mesmo escopo da Central de Atendimento.
+      // pode abrir a conversa. É o mesmo recorte da Central de Atendimento:
+      // a instância do próprio usuário (`sessaoDoUsuarioWhere`).
       const podeVerWhatsapp =
         user.isAdmin || user.permissoes.includes('whatsapp-conversas.visualizar');
-      const escopoWa = podeVerWhatsapp
-        ? await escopoLeituraWhatsapp(tx, empresaId, user)
-        : [];
-      const conversasWhatsapp = podeVerWhatsapp
+      const sessaoWa = podeVerWhatsapp
+        ? await sessaoDoUsuarioWhere(tx, empresaId, user)
+        : null;
+      const conversasWhatsapp = sessaoWa
         ? await tx.whatsappConversa.findMany({
-            where: {
-              clienteId,
-              empresaId,
-              ...(escopoWa === null
-                ? {}
-                : { sessao: { vendedorId: { in: escopoWa } } }),
-            },
+            where: { clienteId, empresaId, sessao: sessaoWa },
             orderBy: [{ arquivada: 'asc' }, { ultimaMensagemEm: 'desc' }],
             select: {
               id: true,
@@ -1141,17 +1136,14 @@ export class ClientesService {
 
       const where = Prisma.join(condicoes, ' AND ');
 
-      // Escopo de leitura do WhatsApp, que **não** é o mesmo da carteira: ler
-      // conversa da equipe exige `whatsapp-equipe.visualizar`, e quem não tem
-      // cadastro de vendedor não vê nenhuma (ver `escopoLeituraWhatsapp`).
-      // Resolvido aqui, uma vez, e não por linha.
-      const escopoWa = await escopoLeituraWhatsapp(tx, empresaId, user);
-      const escopoWhatsapp =
-        escopoWa === null
-          ? Prisma.sql`true`
-          : escopoWa.length > 0
-            ? Prisma.sql`ws."vendedorId" IN (${Prisma.join(escopoWa)})`
-            : Prisma.sql`false`;
+      // Recorte do WhatsApp, que **não** é o da carteira: "Atendimento" só
+      // aparece para a conversa da instância do próprio usuário — empresa +
+      // usuário + vendedor (ver `sessaoDoUsuarioWhere`). Sem cadastro de
+      // vendedor, nenhuma. Resolvido aqui, uma vez, e não por linha.
+      const sessaoWa = await sessaoDoUsuarioWhere(tx, empresaId, user);
+      const escopoWhatsapp = sessaoWa
+        ? Prisma.sql`ws."tipo" = 'vendedor' AND ws."vendedorId" = ${sessaoWa.vendedorId} AND ws."usuarioId" = ${user.id}`
+        : Prisma.sql`false`;
 
       const sortField =
         query.sortBy && Object.hasOwn(LISTAGEM_POSICAO_SORT_EXPR, query.sortBy) ? query.sortBy : 'ultimaCompra';

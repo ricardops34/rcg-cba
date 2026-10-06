@@ -87,7 +87,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ResizableSheetContent } from "@/components/ui/resizable-sheet-content";
@@ -139,11 +138,15 @@ function usePainelAberto(chave: string): [boolean, () => void] {
  * emissão de orçamentos e histórico de conversas gravado no ERP.
  */
 export default function AtendimentoPage() {
-  const podeAcompanharEquipe = useAuthStore(
-    (state) =>
-      (state.user?.administradorPlataforma ?? false) ||
-      (state.user?.permissoes.includes("whatsapp-equipe.visualizar") ?? false) ||
-      (state.user?.empresas.find((e) => e.empresaId === state.user?.empresaAtivaId)?.perfilNome?.toLowerCase().includes("admin") ?? false),
+  // A tela é da instância do usuário logado (empresa + usuário + vendedor +
+  // número) e segue os direitos dele: responder e iniciar conversa pedem
+  // `cadastrar`; conectar, importar e vincular pedem `editar`. A equipe se
+  // acompanha em Gerencial → Histórico do WhatsApp, só leitura.
+  const podeEnviar = useAuthStore(
+    (state) => state.user?.permissoes.includes("whatsapp-conversas.cadastrar") ?? false,
+  );
+  const podeEditar = useAuthStore(
+    (state) => state.user?.permissoes.includes("whatsapp-conversas.editar") ?? false,
   );
   const empresaId = useAuthStore((state) => state.user?.empresaAtivaId);
   const [conexaoAberta, setConexaoAberta] = useState(false);
@@ -161,13 +164,6 @@ export default function AtendimentoPage() {
   const [busca, setBusca] = useState("");
   const [filtroConversas, setFiltroConversas] =
     useState<FiltroConversas>("todas");
-  const [conexaoEscolhida, setConexaoEscolhida] = useState<string | null>(null);
-
-  // Limpa conexão escolhida ao trocar de empresa para não carregar sessão de outro tenant
-  useEffect(() => {
-    setConexaoEscolhida(null);
-  }, [empresaId]);
-
   const [listaPreferida, alternarPreferenciaLista] = usePainelAberto(PREF_LISTA);
 
   const [ignorandoPreferencia, setIgnorandoPreferencia] = useState(
@@ -214,20 +210,10 @@ export default function AtendimentoPage() {
       q.state.data?.status === "pareando" ? 3000 : false,
   });
 
-  const { data: conexoes = [] } = useQuery({
-    queryKey: ["whatsapp-sessoes", empresaId],
-    queryFn: () => apiFetch<WhatsappSessao[]>("/whatsapp/sessoes"),
-    enabled: !!empresaId && podeAcompanharEquipe,
-  });
-  const podeTrocarConexao = podeAcompanharEquipe && conexoes.length > 1;
-
-  const sessaoAtivaId =
-    conexaoEscolhida ??
-    (sessao?.status === "conectada" ? sessao.id : null) ??
-    (conexoes.find((c) => c.status === "conectada")?.id ?? conexoes[0]?.id) ??
-    sessao?.id ??
-    null;
-  const sessaoAtiva = conexoes.find((c) => c.id === sessaoAtivaId) ?? sessao ?? null;
+  // Uma instância só: a do usuário logado. Sem seletor de "conexões da
+  // equipe" — foi ele que misturou conversas de vendedores nesta tela.
+  const sessaoAtivaId = sessao?.id ?? null;
+  const sessaoAtiva = sessao ?? null;
 
   const { data: conversas, isLoading: carregandoConversas } = useQuery({
     queryKey: ["whatsapp-conversas", empresaId, busca, sessaoAtivaId, filtroConversas],
@@ -263,16 +249,17 @@ export default function AtendimentoPage() {
   }
 
   const temConversasAnteriores = (conversas?.total ?? 0) > 0;
-  const temConexoesEquipe = conexoes.length > 0;
 
   if (
-    (!sessao && !temConexoesEquipe) ||
-    (sessao && sessao.status !== "conectada" && !temConexoesEquipe && !temConversasAnteriores)
+    !sessao ||
+    (sessao.status !== "conectada" && !temConversasAnteriores)
   ) {
     const mensagemSemSessao =
       erroSessao instanceof ApiError
         ? erroSessao.message
-        : "Conecte o aparelho para atender seus clientes por aqui. As conversas com clientes ficam gravadas na plataforma.";
+        : podeEditar
+          ? "Conecte o aparelho para atender seus clientes por aqui. As conversas com clientes ficam gravadas na plataforma."
+          : "Seu perfil não tem permissão para conectar o WhatsApp. Peça ao administrador.";
     return (
       <>
         <div data-tour="atendimento-conexao" className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed bg-card/60 p-12 text-center backdrop-blur-xs">
@@ -287,7 +274,7 @@ export default function AtendimentoPage() {
               {mensagemSemSessao}
             </p>
           </div>
-          {!erroSessao ? (
+          {!erroSessao && podeEditar ? (
             <Button
               className="gap-2 bg-[#00A884] hover:bg-[#008f6f] text-white font-medium shadow-xs"
               onClick={() => setConexaoAberta(true)}
@@ -308,7 +295,7 @@ export default function AtendimentoPage() {
 
   return (
     <>
-      {sessao && sessao.status !== "conectada" && !temConexoesEquipe ? (
+      {sessao.status !== "conectada" ? (
         <div className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-800 dark:text-amber-300">
           <div className="flex items-center gap-2">
             <TriangleAlert className="size-4 shrink-0" />
@@ -316,15 +303,17 @@ export default function AtendimentoPage() {
               <strong>WhatsApp desconectado:</strong> Exibindo histórico anterior em modo somente leitura.
             </span>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 gap-1.5 border-amber-500/40 hover:bg-amber-500/20 text-xs"
-            onClick={() => setConexaoAberta(true)}
-          >
-            <Plug className="size-3.5" />
-            Reconectar
-          </Button>
+          {podeEditar ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1.5 border-amber-500/40 hover:bg-amber-500/20 text-xs"
+              onClick={() => setConexaoAberta(true)}
+            >
+              <Plug className="size-3.5" />
+              Reconectar
+            </Button>
+          ) : null}
         </div>
       ) : null}
       {/* Moldura principal preenchendo a altura disponível perfeitamente, sem folgas inferiores */}
@@ -347,15 +336,11 @@ export default function AtendimentoPage() {
                 onFiltroChange={setFiltroConversas}
                 busca={busca}
                 onBuscaChange={setBusca}
-                onNovaConversa={() => setNovaConversaAberta(true)}
-                onAbrirConexao={() => setConexaoAberta(true)}
+                onNovaConversa={podeEnviar ? () => setNovaConversaAberta(true) : undefined}
+                onAbrirConexao={podeEditar ? () => setConexaoAberta(true) : undefined}
+                podeImportar={podeEditar}
                 sessaoNumero={sessaoAtiva?.numero ?? sessao?.numero}
                 sessaoStatus={sessaoAtiva?.status ?? null}
-                podeTrocarConexao={podeTrocarConexao}
-                conexaoAtual={sessaoAtivaId}
-                onConexaoChange={setConexaoEscolhida}
-                conexoes={conexoes}
-                sessaoId={sessao?.id ?? sessaoAtivaId ?? ""}
                 onAlternarLista={alternarLista}
               />
             </ColunaRedimensionavel>
@@ -377,16 +362,18 @@ export default function AtendimentoPage() {
                         conversaSelecionada?.vendedorNome ?? "Aparelho desconectado",
                       motivo: "desconectado",
                     }
-                  : conversaSelecionada &&
-                    conversaSelecionada.sessaoId !== (sessao?.id ?? sessaoAtivaId)
-                    ? { vendedorNome: conversaSelecionada.vendedorNome }
+                  : !podeEnviar
+                    ? {
+                        vendedorNome: conversaSelecionada?.vendedorNome ?? "",
+                        motivo: "sem-permissao",
+                      }
                     : null
               }
               onVoltarLista={() => abrirConversa(null)}
               onAbrirContato={() => abrirPainel("contato")}
               onAbrirPosicao={() => abrirPainel("posicao")}
               onAbrirOrcamento={() => abrirPainel("orcamento")}
-              onNovaConversa={() => setNovaConversaAberta(true)}
+              onNovaConversa={podeEnviar ? () => setNovaConversaAberta(true) : undefined}
               sessaoNumero={sessaoAtiva?.numero ?? sessao?.numero}
               listaAberta={listaAberta}
               onAlternarLista={alternarLista}
@@ -454,13 +441,9 @@ function ListaDeConversas({
   onBuscaChange,
   onNovaConversa,
   onAbrirConexao,
+  podeImportar,
   sessaoNumero,
   sessaoStatus,
-  podeTrocarConexao,
-  conexaoAtual,
-  onConexaoChange,
-  conexoes = [],
-  sessaoId,
   onAlternarLista,
 }: {
   carregando: boolean;
@@ -471,15 +454,13 @@ function ListaDeConversas({
   onFiltroChange: (filtro: FiltroConversas) => void;
   busca: string;
   onBuscaChange: (busca: string) => void;
-  onNovaConversa: () => void;
-  onAbrirConexao: () => void;
+  /** Ausente quando o usuário não pode iniciar conversa (`cadastrar`). */
+  onNovaConversa?: () => void;
+  /** Ausente quando o usuário não pode conectar (`editar`). */
+  onAbrirConexao?: () => void;
+  podeImportar: boolean;
   sessaoNumero?: string | null;
   sessaoStatus?: WhatsappSessao["status"] | null;
-  podeTrocarConexao?: boolean;
-  conexaoAtual?: string | null;
-  onConexaoChange?: (sessaoId: string) => void;
-  conexoes?: WhatsappSessao[];
-  sessaoId?: string | null;
   onAlternarLista?: () => void;
 }) {
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -494,7 +475,8 @@ function ListaDeConversas({
         "/whatsapp/agenda/importar",
         {
           method: "POST",
-          body: conexaoAtual ? { sessaoId: conexaoAtual } : sessaoId ? { sessaoId } : {},
+          // Sem `sessaoId`: a API importa sempre na instância do usuário.
+          body: {},
         },
       ),
     onSuccess: (res) => {
@@ -598,6 +580,7 @@ function ListaDeConversas({
             <button
               type="button"
               onClick={onAbrirConexao}
+              disabled={!onAbrirConexao}
               title={
                 sessaoStatus === "conectada"
                   ? "WhatsApp conectado"
@@ -638,17 +621,20 @@ function ListaDeConversas({
               </span>
             </button>
 
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              onClick={onNovaConversa}
-              title="Nova conversa"
-              className="size-8 rounded-full text-foreground hover:bg-black/5 dark:hover:bg-white/10"
-            >
-              <MessageSquarePlus className="size-4.5" />
-            </Button>
+            {onNovaConversa ? (
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                onClick={onNovaConversa}
+                title="Nova conversa"
+                className="size-8 rounded-full text-foreground hover:bg-black/5 dark:hover:bg-white/10"
+              >
+                <MessageSquarePlus className="size-4.5" />
+              </Button>
+            ) : null}
 
+            {onNovaConversa || onAbrirConexao || podeImportar ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -662,46 +648,30 @@ function ListaDeConversas({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuItem onClick={onNovaConversa} className="gap-2 cursor-pointer">
-                  <MessageSquarePlus className="size-4" />
-                  Nova conversa
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={onAbrirConexao} className="gap-2 cursor-pointer">
-                  <Plug className="size-4" />
-                  Conexão WhatsApp
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => setDialogImportarAberto(true)}
-                  className="gap-2 cursor-pointer"
-                >
-                  <Download className="size-4" />
-                  Importar contatos do WhatsApp
-                </DropdownMenuItem>
-                {podeTrocarConexao && onConexaoChange ? (
-                  <>
-                    <DropdownMenuSeparator />
-                    <div className="px-2 py-1.5 text-[11px] font-semibold text-muted-foreground">
-                      Conexões da equipe
-                    </div>
-                    {conexoes
-                      .map((c) => (
-                        <DropdownMenuItem
-                          key={c.id}
-                          onClick={() => onConexaoChange(c.id)}
-                          className={`gap-2 cursor-pointer ${
-                            conexaoAtual === c.id ? "font-semibold text-primary" : ""
-                          }`}
-                        >
-                          <span className="truncate">
-                            {c.id === sessaoId ? "Minha conexão" : c.vendedorNome}
-                            {c.numero ? ` (${telefoneBonito(c.numero)})` : ""}
-                          </span>
-                        </DropdownMenuItem>
-                      ))}
-                  </>
+                {onNovaConversa ? (
+                  <DropdownMenuItem onClick={onNovaConversa} className="gap-2 cursor-pointer">
+                    <MessageSquarePlus className="size-4" />
+                    Nova conversa
+                  </DropdownMenuItem>
+                ) : null}
+                {onAbrirConexao ? (
+                  <DropdownMenuItem onClick={onAbrirConexao} className="gap-2 cursor-pointer">
+                    <Plug className="size-4" />
+                    Conexão WhatsApp
+                  </DropdownMenuItem>
+                ) : null}
+                {podeImportar ? (
+                  <DropdownMenuItem
+                    onClick={() => setDialogImportarAberto(true)}
+                    className="gap-2 cursor-pointer"
+                  >
+                    <Download className="size-4" />
+                    Importar contatos do WhatsApp
+                  </DropdownMenuItem>
                 ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
+            ) : null}
           </div>
         </div>
 
@@ -965,7 +935,7 @@ function ListaVazia({
   busca: string;
   onLimparBusca: () => void;
   onResetFiltro: () => void;
-  onNovaConversa: () => void;
+  onNovaConversa?: () => void;
 }) {
   if (busca) {
     return (
@@ -1087,14 +1057,16 @@ function ListaVazia({
       <p className="mt-1 text-xs text-muted-foreground max-w-[230px] leading-relaxed">
         Elas aparecerão aqui assim que um cliente escrever ou ao iniciar um atendimento.
       </p>
-      <Button
-        size="sm"
-        onClick={onNovaConversa}
-        className="mt-4 h-8 gap-1.5 text-xs font-medium bg-[#00A884] hover:bg-[#008f6f] text-white shadow-xs"
-      >
-        <MessageSquarePlus className="size-3.5" />
-        Nova conversa
-      </Button>
+      {onNovaConversa ? (
+        <Button
+          size="sm"
+          onClick={onNovaConversa}
+          className="mt-4 h-8 gap-1.5 text-xs font-medium bg-[#00A884] hover:bg-[#008f6f] text-white shadow-xs"
+        >
+          <MessageSquarePlus className="size-3.5" />
+          Nova conversa
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -1204,7 +1176,7 @@ function ConversaVazia({
   onNovaConversa,
   sessaoNumero,
 }: {
-  onNovaConversa: () => void;
+  onNovaConversa?: () => void;
   sessaoNumero?: string | null;
 }) {
   return (
@@ -1238,15 +1210,17 @@ function ConversaVazia({
         </div>
       ) : null}
 
-      <div className="mt-6 flex items-center justify-center gap-3">
-        <Button
-          onClick={onNovaConversa}
-          className="gap-2 bg-[#00A884] hover:bg-[#008f6f] text-white font-medium shadow-xs"
-        >
-          <MessageSquarePlus className="size-4" />
-          Nova conversa
-        </Button>
-      </div>
+      {onNovaConversa ? (
+        <div className="mt-6 flex items-center justify-center gap-3">
+          <Button
+            onClick={onNovaConversa}
+            className="gap-2 bg-[#00A884] hover:bg-[#008f6f] text-white font-medium shadow-xs"
+          >
+            <MessageSquarePlus className="size-4" />
+            Nova conversa
+          </Button>
+        </div>
+      ) : null}
 
       <div className="mt-14 flex items-center gap-1.5 text-xs text-muted-foreground/75">
         <Lock className="size-3.5 text-muted-foreground" />
@@ -1273,12 +1247,12 @@ function Conversa({
   conversaId: string | null;
   conversa: WhatsappConversa | null;
   clienteId: string | null;
-  somenteConsulta: { vendedorNome: string; motivo?: "desconectado" | "outro" } | null;
+  somenteConsulta: { vendedorNome: string; motivo?: "desconectado" | "sem-permissao" } | null;
   onVoltarLista: () => void;
   onAbrirContato: () => void;
   onAbrirPosicao: () => void;
   onAbrirOrcamento: () => void;
-  onNovaConversa: () => void;
+  onNovaConversa?: () => void;
   sessaoNumero?: string | null;
   listaAberta?: boolean;
   onAlternarLista?: () => void;
@@ -1555,7 +1529,7 @@ function Conversa({
           <p className="text-muted-foreground">
             {somenteConsulta.motivo === "desconectado"
               ? "Seu WhatsApp está desconectado. O histórico anterior pode ser consultado normalmente, mas para responder é necessário reconectar o aparelho."
-              : `Esta conversa pertence à conexão de ${somenteConsulta.vendedorNome}. As respostas só podem ser enviadas pelo dono do aparelho.`}
+              : "Seu perfil não tem permissão para responder pelo WhatsApp. Peça ao administrador."}
           </p>
         </div>
       ) : (
@@ -1699,6 +1673,10 @@ function PainelCliente({
   const [removendoVinculo, setRemovendoVinculo] = useState(false);
   const queryClient = useQueryClient();
   const empresaId = useAuthStore((s) => s.user?.empresaAtivaId);
+  // Vincular/trocar/remover é `editar` — o mesmo que a API exige.
+  const podeEditar = useAuthStore(
+    (s) => s.user?.permissoes.includes("whatsapp-conversas.editar") ?? false,
+  );
   const fotoTentadaRef = useRef<string | null>(null);
 
   const atualizarFotoMutation = useMutation({
@@ -1833,8 +1811,8 @@ function PainelCliente({
               </div>
               {/* Duas ações distintas e visíveis: trocar por outro cliente e
                   remover o vínculo. Remover estava só dentro da troca, e
-                  quem queria desvincular não achava. */}
-              <div className="flex shrink-0 items-center gap-1">
+                  quem queria desvincular não achava. Só com `editar`. */}
+              <div className={`${podeEditar ? "flex" : "hidden"} shrink-0 items-center gap-1`}>
                 <button
                   type="button"
                   title="Trocar cliente vinculado"
@@ -1917,11 +1895,11 @@ function PainelCliente({
             </div>
           ) : null}
         </>
-      ) : (
+      ) : podeEditar ? (
         <div className="border-t pt-3">
           <VincularCliente conversa={conversa} />
         </div>
-      )}
+      ) : null}
 
       {conversa.outrosAtendentes.length > 0 ? (
         // Aviso, não detalhe: a conversa do outro vendedor continua invisível

@@ -42,6 +42,15 @@ import type { AuthenticatedUser } from '../../common/decorators/current-user.dec
  * A leitura da equipe (supervisor) é o único caminho que enxerga sessão
  * alheia, e depende de `whatsapp-equipe.visualizar` — ver `escopoLeitura`.
  */
+/** Por que a conexão foi recusada — mesma frase na tela e no `ultimoErro`. */
+function mensagemNumeroEmUso(numero: string): string {
+  return (
+    `O número ${numero} já está conectado em outra instância da plataforma. ` +
+    'Cada número de WhatsApp só pode estar ligado a um vendedor — ' +
+    'desconecte-o lá antes de conectar aqui.'
+  );
+}
+
 @Injectable()
 export class WhatsappSessaoService {
   private readonly logger = new Logger(WhatsappSessaoService.name);
@@ -131,7 +140,10 @@ export class WhatsappSessaoService {
       const sessao = await tx.whatsappSessao.findUnique({
         where: { empresaId_vendedorId: { empresaId, vendedorId: vendedor.id } },
       });
-      return sessao ? this.paraLeitura(sessao, vendedor.nome) : null;
+      // Instância conectada por outro usuário (vínculo vendedor × usuário
+      // trocado) não é "minha": a tela oferece conectar, e o `conectar` explica.
+      if (!sessao || sessao.usuarioId !== user.id) return null;
+      return this.paraLeitura(sessao, vendedor.nome);
     });
   }
 
@@ -159,8 +171,27 @@ export class WhatsappSessaoService {
       const vendedor = await this.vendedorDoUsuario(tx, empresaId, user);
       const atual = await tx.whatsappSessao.findUnique({
         where: { empresaId_vendedorId: { empresaId, vendedorId: vendedor.id } },
-        select: { id: true, status: true, numero: true, transporte: true },
+        select: {
+          id: true,
+          status: true,
+          numero: true,
+          transporte: true,
+          usuarioId: true,
+        },
       });
+
+      // A instância é de quem a conectou. Com o vínculo vendedor × usuário
+      // trocado, o novo usuário não assume um aparelho que ainda está no ar.
+      if (
+        atual?.status === 'conectada' &&
+        atual.usuarioId &&
+        atual.usuarioId !== user.id
+      ) {
+        throw new BadRequestException(
+          'A instância deste vendedor está conectada por outro usuário. ' +
+            'Peça ao administrador para desconectá-la em Administração > WhatsApp.',
+        );
+      }
 
       // Regra 1: um número por vendedor. Já conectado, o caminho é desconectar
       // primeiro — trocar por baixo derrubaria um atendimento em andamento.
@@ -180,6 +211,7 @@ export class WhatsappSessaoService {
         create: {
           empresaId,
           vendedorId: anterior.vendedorId,
+          usuarioId: user.id,
           status: 'pareando',
           transporte: 'evolution_go',
           aceiteEm: new Date(),
@@ -187,6 +219,9 @@ export class WhatsappSessaoService {
           createdBy: user.id,
         },
         update: {
+          // Reconectar amarra a instância a quem conectou agora (o aceite de
+          // gravação também é dele, logo abaixo).
+          usuarioId: user.id,
           status: 'pareando',
           transporte: 'evolution_go',
           ultimoErro: null,
@@ -361,11 +396,21 @@ export class WhatsappSessaoService {
       doProvedor.numero !== sessao.numero
     ) {
       try {
-        await this.registrarEstado(empresaId, sessao.id, {
+        const gravado = await this.registrarEstado(empresaId, sessao.id, {
           status: doProvedor.status,
           numero: doProvedor.numero,
           erro: doProvedor.erro,
         });
+        // Número já em uso noutra instância: a conexão foi derrubada, e a
+        // tela precisa dizer isso em vez de "conectado".
+        if ('motivo' in gravado && gravado.motivo === 'numero-em-uso') {
+          return {
+            status: 'desconectada' as const,
+            qr: null,
+            numero: null,
+            erro: mensagemNumeroEmUso(doProvedor.numero ?? sessao.numero ?? ''),
+          };
+        }
       } catch (erro) {
         this.logger.error(
           `Falha ao gravar o estado da sessão ${sessao.id} durante o pareamento ` +
@@ -455,11 +500,21 @@ export class WhatsappSessaoService {
       doProvedor.numero !== sessao.numero
     ) {
       try {
-        await this.registrarEstado(empresaId, sessao.id, {
+        const gravado = await this.registrarEstado(empresaId, sessao.id, {
           status: doProvedor.status,
           numero: doProvedor.numero,
           erro: doProvedor.erro,
         });
+        // Número já em uso noutra instância: a conexão foi derrubada, e a
+        // tela precisa dizer isso em vez de "conectado".
+        if ('motivo' in gravado && gravado.motivo === 'numero-em-uso') {
+          return {
+            status: 'desconectada' as const,
+            qr: null,
+            numero: null,
+            erro: mensagemNumeroEmUso(doProvedor.numero ?? sessao.numero ?? ''),
+          };
+        }
       } catch (erro) {
         this.logger.error(
           `Falha ao gravar o estado da sessão ${sessao.id} durante o pareamento ` +
@@ -498,6 +553,27 @@ export class WhatsappSessaoService {
     )
       ? (dados.status as WhatsappSessaoStatus)
       : 'desconectada';
+
+    // O número é único (06/10/2026): conectado em outra sessão, de qualquer
+    // empresa, esta conexão é recusada antes de virar "conectada". Era o mesmo
+    // celular em duas instâncias que fazia a conversa aparecer nas duas.
+    if (status === 'conectada') {
+      const numero =
+        dados.numero ??
+        (
+          await this.prisma.withTenant(empresaId, (tx) =>
+            tx.whatsappSessao.findFirst({
+              where: { id: sessaoId },
+              select: { numero: true },
+            }),
+          )
+        )?.numero ??
+        null;
+      if (numero && (await this.numeroEmUso(empresaId, sessaoId, numero))) {
+        await this.recusarNumeroEmUso(empresaId, sessaoId, numero);
+        return { gravado: false, motivo: 'numero-em-uso' as const };
+      }
+    }
 
     return this.prisma.withTenant(empresaId, async (tx) => {
       const sessao = await tx.whatsappSessao.findFirst({
@@ -571,15 +647,77 @@ export class WhatsappSessaoService {
     });
   }
 
+  /**
+   * O número já está conectado (ou pareando) em **outra** sessão, de qualquer
+   * empresa? A consulta atravessa empresas pela função SECURITY DEFINER
+   * `whatsapp_numero_em_uso`, que devolve só ids.
+   */
+  private async numeroEmUso(
+    empresaId: string,
+    sessaoId: string,
+    numero: string,
+  ): Promise<boolean> {
+    const outras = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.$queryRaw<{ sessaoId: string; empresaId: string }[]>`
+        SELECT * FROM whatsapp_numero_em_uso(${numero}, ${sessaoId})
+      `,
+    );
+    if (outras.length === 0) return false;
+    this.logger.warn(
+      `Número ${numero} recusado na sessão ${sessaoId} (empresa ${empresaId}): ` +
+        `já em uso em ${outras.map((o) => `${o.sessaoId}@${o.empresaId}`).join(', ')}`,
+    );
+    return true;
+  }
+
+  /**
+   * Derruba a conexão que tentou usar um número já em uso: tira o aparelho da
+   * Evolution GO (senão ele segue recebendo tudo) e deixa a sessão
+   * desconectada, com o motivo na tela. O histórico não é tocado.
+   */
+  private async recusarNumeroEmUso(
+    empresaId: string,
+    sessaoId: string,
+    numero: string,
+  ) {
+    await this.provedores.removerInstancia(empresaId, sessaoId).catch((erro) => {
+      this.logger.warn(
+        `Falha ao remover a instância ${sessaoId} com número em uso: ` +
+          `${erro instanceof Error ? erro.message : String(erro)}`,
+      );
+    });
+    await this.prisma.withTenant(empresaId, async (tx) => {
+      await tx.whatsappSessaoPeriodo.updateMany({
+        where: { empresaId, sessaoId, desconectadoEm: null },
+        data: { desconectadoEm: new Date() },
+      });
+      await tx.whatsappSessao.update({
+        where: { id: sessaoId },
+        data: {
+          status: 'desconectada',
+          numero: null,
+          jid: null,
+          credencialCifrada: null,
+          instanciaExterna: null,
+          instanciaId: null,
+          instanciaTokenCifrado: null,
+          webhookSegredoCifrado: null,
+          ultimoErro: mensagemNumeroEmUso(numero),
+        },
+      });
+    });
+  }
+
   /** Desconecta o próprio aparelho. Não aceita id de fora — ver regra 2. */
   async desconectar(empresaId: string, user: AuthenticatedUser) {
     const alvo = await this.prisma.withTenant(empresaId, async (tx) => {
       const vendedor = await this.vendedorDoUsuario(tx, empresaId, user);
       const sessao = await tx.whatsappSessao.findUnique({
         where: { empresaId_vendedorId: { empresaId, vendedorId: vendedor.id } },
-        select: { id: true },
+        select: { id: true, usuarioId: true },
       });
-      if (!sessao)
+      // Só quem conectou desconecta; a de outro usuário é da Administração.
+      if (!sessao || sessao.usuarioId !== user.id)
         throw new NotFoundException('Nenhuma sessão para desconectar');
       return { sessaoId: sessao.id, vendedorNome: vendedor.nome };
     });
