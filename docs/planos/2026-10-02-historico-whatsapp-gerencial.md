@@ -116,4 +116,4 @@ um botão no Gerencial; saiu. A `20261005200000` (concessão) ficou aplicada e a
 `20261005220000` a desfaz. Na produção, a rotina `whatsapp-historico` não
 existe — a migration de 02/10 foi commitada vazia e o `sincronizar-catalogo`
 não rodou depois —, e o menu Histórico do WhatsApp não aparece para ninguém.
-Isso ficou **em aberto**: é do recurso de 02/10, não desta mudança.
+Corrigido pela `20261005230000_rotina_whatsapp_historico`: cria menu e rotina com os ids do catálogo e concede só `visualizar` (administradores, Diretor, Gerente, Supervisor).
