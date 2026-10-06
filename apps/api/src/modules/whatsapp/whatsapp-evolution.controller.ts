@@ -85,6 +85,8 @@ export class WhatsappEvolutionController {
         return this.tratarMensagens(ctx, corpo);
       case 'historico':
         return this.tratarHistorico(ctx, corpo);
+      case 'apelido':
+        return this.tratarApelido(ctx, corpo);
       default:
         // Evento assinado que ainda não tem tratamento (ou tipo novo de uma
         // versão mais recente): 200 de propósito. Devolver erro faria o
@@ -172,7 +174,7 @@ export class WhatsappEvolutionController {
    */
   private nomeDoEvento(
     corpo: unknown,
-  ): 'mensagem' | 'recibo' | 'conexao' | 'historico' | null {
+  ): 'mensagem' | 'recibo' | 'conexao' | 'historico' | 'apelido' | null {
     const bruto = (this.rotuloBruto(corpo) ?? '').toLowerCase();
 
     if (
@@ -182,12 +184,24 @@ export class WhatsappEvolutionController {
     ) {
       return 'recibo';
     }
+    // Apelido do contato (e o par @lid ↔ telefone): não é mensagem.
+    if (bruto.includes('pushname')) return 'apelido';
     if (
+      // `Connected` precisa de nome próprio: a palavra não contém
+      // "connection", e o evento da reconexão automática do gateway era
+      // descartado — a sessão ficava "desconectada" com o aparelho no ar
+      // (visto em 2026-10-06, depois de uma queda de 3 s do WhatsApp).
+      bruto === 'connected' ||
       bruto.includes('connection') ||
       bruto.includes('qrcode') ||
       bruto.includes('qr_code') ||
       bruto.includes('pair') ||
       bruto.includes('logout') ||
+      // `LoggedOut` (aparelho removido pelo celular) não contém "logout" e
+      // também era descartado: a sessão seguia "conectada" para sempre.
+      bruto.includes('loggedout') ||
+      bruto.includes('temporaryban') ||
+      bruto.includes('connectfailure') ||
       bruto.includes('disconnect')
     ) {
       return 'conexao';
@@ -492,6 +506,32 @@ export class WhatsappEvolutionController {
       conteudoBase64: arquivo.conteudoBase64,
     });
     return true;
+  }
+
+  /**
+   * `PushName`: o contato trocou (ou mostrou pela primeira vez) o apelido.
+   * Traz `JID` e `JIDAlt` — um é `@lid`, o outro o telefone —, então serve
+   * também para dar telefone ao contato que só existia como `@lid`. O apelido
+   * só preenche nome vazio: nome vindo da agenda ou digitado não é trocado.
+   */
+  private async tratarApelido(ctx: ContextoSessao, corpo: unknown) {
+    const dados = objeto(corpo, 'data', 'Data') ?? corpo;
+    const jids = [texto(dados, 'JID'), texto(dados, 'JIDAlt')].filter(
+      (j): j is string => Boolean(j),
+    );
+    const nome = texto(dados, 'NewPushName', 'newPushName');
+    if (jids.length === 0) return { ok: true, tratado: false };
+    const telefone =
+      jids
+        .map((j) => (j.endsWith('@lid') ? null : this.evolution.telefoneDoJid(j)))
+        .find(Boolean) ?? null;
+    const resultado = await this.conversas.atualizarContatoPorJid({
+      empresaId: ctx.empresaId,
+      jids,
+      apelido: nome,
+      telefone,
+    });
+    return { ok: true, tratado: true, ...resultado };
   }
 
   /**

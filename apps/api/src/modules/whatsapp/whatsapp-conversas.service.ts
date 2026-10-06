@@ -2165,6 +2165,43 @@ export class WhatsappConversasService {
   }
 
   /**
+   * Completa o contato a partir do que o WhatsApp informa fora das mensagens
+   * (`PushName`): telefone de quem só existia como `@lid` e o apelido.
+   *
+   * Só **completa**: nome já preenchido (agenda, cadastro, digitado) não é
+   * trocado pelo apelido, e telefone existente não é sobrescrito. Contato é
+   * da empresa, não da sessão — por isso o recorte é só `empresaId`.
+   */
+  async atualizarContatoPorJid(entrada: {
+    empresaId: string;
+    jids: string[];
+    apelido: string | null;
+    telefone: string | null;
+  }) {
+    return this.prisma.withTenant(entrada.empresaId, async (tx) => {
+      const contatos = await tx.whatsappContato.findMany({
+        where: { empresaId: entrada.empresaId, jid: { in: entrada.jids } },
+        select: { id: true, nomeExibicao: true, telefoneNormalizado: true },
+      });
+      let atualizados = 0;
+      for (const c of contatos) {
+        const dados = {
+          ...(!c.nomeExibicao && entrada.apelido
+            ? { nomeExibicao: entrada.apelido }
+            : {}),
+          ...(!c.telefoneNormalizado && entrada.telefone
+            ? { telefoneNormalizado: entrada.telefone }
+            : {}),
+        };
+        if (Object.keys(dados).length === 0) continue;
+        await tx.whatsappContato.update({ where: { id: c.id }, data: dados });
+        atualizados += 1;
+      }
+      return { atualizados };
+    });
+  }
+
+  /**
    * Mensagem editada no celular (de qualquer lado da conversa).
    *
    * O histórico é permanente: o texto novo vai para `conteudo` e o de antes

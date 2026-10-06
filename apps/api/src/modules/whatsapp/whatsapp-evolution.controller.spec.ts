@@ -342,3 +342,34 @@ describe('WhatsappEvolutionController — HistorySync com @lid', () => {
     );
   });
 });
+
+describe('WhatsappEvolutionController — roteamento de eventos da 0.7.2', () => {
+  const controller = new WhatsappEvolutionController(
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+  );
+  const rota = (event: string) =>
+    (
+      controller as unknown as { nomeDoEvento(c: unknown): string | null }
+    ).nomeDoEvento({ event });
+
+  it('Connected volta a conexão (era descartado e a sessão ficava desconectada)', () => {
+    expect(rota('Connected')).toBe('conexao');
+    expect(rota('Disconnected')).toBe('conexao');
+    expect(rota('PairSuccess')).toBe('conexao');
+    expect(rota('LoggedOut')).toBe('conexao');
+    expect(rota('TemporaryBan')).toBe('conexao');
+    expect(rota('ConnectFailure')).toBe('conexao');
+  });
+
+  it('demais eventos vão para o tratamento certo', () => {
+    expect(rota('Message')).toBe('mensagem');
+    expect(rota('Receipt')).toBe('recibo');
+    expect(rota('HistorySync')).toBe('historico');
+    expect(rota('PushName')).toBe('apelido');
+    expect(rota('ButtonClick')).toBeNull();
+    expect(rota('OfflineSyncCompleted')).toBeNull();
+  });
+});

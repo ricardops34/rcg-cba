@@ -1355,6 +1355,7 @@ export class EvolutionGoProvider implements WhatsappProvider {
         return 'pareando';
       case 'banned':
       case 'blocked':
+      case 'temporaryban':
         return 'banida';
       default:
         return 'desconectada';
