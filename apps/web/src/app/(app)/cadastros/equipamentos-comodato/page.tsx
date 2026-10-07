@@ -162,6 +162,7 @@ export default function EquipamentosComodatoPage() {
     },
     {
       header: "Categoria",
+      sortKey: "categoria",
       cell: (e) => <span className="text-xs">{e.produto.categoria ?? "—"}</span>,
     },
     {

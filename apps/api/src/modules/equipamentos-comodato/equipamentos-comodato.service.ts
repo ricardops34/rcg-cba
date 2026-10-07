@@ -63,9 +63,18 @@ type EquipamentoLido = Prisma.EquipamentoComodatoGetPayload<{
 
 const ORDENACAO: Record<
   string,
-  (o: Prisma.SortOrder) => Prisma.EquipamentoComodatoOrderByWithRelationInput
+  (
+    o: Prisma.SortOrder,
+  ) =>
+    | Prisma.EquipamentoComodatoOrderByWithRelationInput
+    | Prisma.EquipamentoComodatoOrderByWithRelationInput[]
 > = {
   descricao: (o) => ({ produto: { descricao: o } }),
+  // Dentro da mesma categoria, pela descrição — senão a ordem fica ao acaso.
+  categoria: (o) => [
+    { produto: { categoria: { descricao: o } } },
+    { produto: { descricao: 'asc' } },
+  ],
   codigoErp: (o) => ({ produto: { codigoErp: o } }),
   createdAt: (o) => ({ createdAt: o }),
 };
