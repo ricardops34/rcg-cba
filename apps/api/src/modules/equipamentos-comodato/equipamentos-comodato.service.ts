@@ -26,6 +26,7 @@ import type {
   EquipamentoComodatoEditar,
   EquipamentoComodatoQuery,
   EquipamentoExcluirLote,
+  EquipamentoExcluirLoteResultado,
   EquipamentoPopular,
   EquipamentoPopularCategoria,
   EquipamentoPopularResultado,
@@ -677,13 +678,26 @@ export class EquipamentosComodatoService {
     empresaId: string,
     userId: string,
     { ids }: EquipamentoExcluirLote,
-  ): Promise<{ excluidos: number }> {
+  ): Promise<EquipamentoExcluirLoteResultado> {
     return this.prisma.withTenant(empresaId, async (tx) => {
+      const vivos = { id: { in: ids }, empresaId, deletedAt: null };
+      // Equipamento com produto aplicável não sai em lote: o cadastro dele
+      // deu trabalho, e o lote é para limpar o que o "popular" trouxe a mais.
+      // Quem quiser mesmo excluir abre o equipamento e exclui um a um.
+      const comAplicacoes = await tx.equipamentoComodato.count({
+        where: {
+          ...vivos,
+          produto: { relacionados: { some: { tipo: 'aplicacao' } } },
+        },
+      });
       const { count } = await tx.equipamentoComodato.updateMany({
-        where: { id: { in: ids }, empresaId, deletedAt: null },
+        where: {
+          ...vivos,
+          produto: { relacionados: { none: { tipo: 'aplicacao' } } },
+        },
         data: { deletedAt: new Date(), deletedBy: userId, updatedBy: userId },
       });
-      return { excluidos: count };
+      return { excluidos: count, comAplicacoes };
     });
   }
 

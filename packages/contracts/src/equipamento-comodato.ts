@@ -182,6 +182,15 @@ export const equipamentoExcluirLoteSchema = z.object({
 });
 export type EquipamentoExcluirLote = z.infer<typeof equipamentoExcluirLoteSchema>;
 
+export const equipamentoExcluirLoteResultadoSchema = z.object({
+  excluidos: z.number().int(),
+  /** Selecionados que ficaram por ter produto aplicável cadastrado. */
+  comAplicacoes: z.number().int(),
+});
+export type EquipamentoExcluirLoteResultado = z.infer<
+  typeof equipamentoExcluirLoteResultadoSchema
+>;
+
 export const equipamentoPopularResultadoSchema = z.object({
   /** Equipamentos criados agora. */
   criados: z.number().int(),

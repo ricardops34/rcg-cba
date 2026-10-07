@@ -86,8 +86,9 @@ export class EquipamentosComodatoController {
   @ApiOperation({
     summary: 'Excluir equipamentos em lote',
     description:
-      'Soft delete dos equipamentos informados; os produtos aplicáveis ' +
-      'continuam no produto. Requer equipamentos-comodato.excluir.',
+      'Soft delete dos equipamentos informados. Equipamento com produto ' +
+      'aplicável cadastrado não é excluído (volta contado em comAplicacoes) — ' +
+      'esse só sai pelo detalhe. Requer equipamentos-comodato.excluir.',
   })
   @RequirePermission('equipamentos-comodato', 'excluir')
   @Post('excluir-lote')

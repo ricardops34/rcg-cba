@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { DatabaseZap, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import type {
   EquipamentoComodato,
+  EquipamentoExcluirLoteResultado,
   Produto,
 } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
@@ -97,12 +98,16 @@ export default function EquipamentosComodatoPage() {
 
   const excluirLote = useMutation({
     mutationFn: (ids: string[]) =>
-      apiFetch<{ excluidos: number }>(`/${RECURSO}/excluir-lote`, {
+      apiFetch<EquipamentoExcluirLoteResultado>(`/${RECURSO}/excluir-lote`, {
         method: "POST",
         body: { ids },
       }),
     onSuccess: (r) => {
       toast.success(`${r.excluidos} equipamento(s) excluído(s)`);
+      if (r.comAplicacoes > 0)
+        toast.warning(
+          `${r.comAplicacoes} não excluído(s) por ter produtos aplicáveis — exclua pelo detalhe.`,
+        );
       setSelecionados([]);
       invalidar();
     },
@@ -301,7 +306,15 @@ export default function EquipamentosComodatoPage() {
         }}
         onRowClick={abrir}
         {...(podeExcluir
-          ? { selectedKeys: selecionados, onSelectedKeysChange: setSelecionados }
+          ? {
+              selectedKeys: selecionados,
+              onSelectedKeysChange: setSelecionados,
+              // A API recusa também; aqui só evita marcar o que não vai sair.
+              rowSelectionBlocked: (e: EquipamentoComodato) =>
+                e.totalAplicacoes > 0
+                  ? "Tem produtos aplicáveis: exclua pelo detalhe do equipamento"
+                  : null,
+            }
           : {})}
         emptyMessage="Nenhum equipamento cadastrado. Use “Popular pelas notas” para trazer os que já saíram em comodato."
         sortBy={sortBy}

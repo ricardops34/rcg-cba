@@ -120,6 +120,11 @@ interface EntityTableProps<T> {
    */
   selectedKeys?: string[];
   onSelectedKeysChange?: (keys: string[]) => void;
+  /**
+   * Linha que não pode entrar na seleção: devolve o motivo (vira o title do
+   * checkbox desabilitado) ou null quando pode. Ausente = todas podem.
+   */
+  rowSelectionBlocked?: (row: T) => string | null;
 }
 
 export function EntityTable<T>({
@@ -143,9 +148,12 @@ export function EntityTable<T>({
   storageKey,
   selectedKeys,
   onSelectedKeysChange,
+  rowSelectionBlocked,
 }: EntityTableProps<T>) {
   const selecionavel = !!selectedKeys && !!onSelectedKeysChange;
-  const chavesPagina = selecionavel ? rows.map(rowKey) : [];
+  const chavesPagina = selecionavel
+    ? rows.filter((r) => !rowSelectionBlocked?.(r)).map(rowKey)
+    : [];
   const marcadosNaPagina = chavesPagina.filter((k) => selectedKeys!.includes(k)).length;
   const estadoCabecalho: boolean | "indeterminate" =
     marcadosNaPagina === 0
@@ -221,7 +229,7 @@ export function EntityTable<T>({
                   <Checkbox
                     aria-label="Selecionar todos da página"
                     checked={estadoCabecalho}
-                    disabled={rows.length === 0}
+                    disabled={chavesPagina.length === 0}
                     onCheckedChange={alternarPagina}
                   />
                 </TableHead>
@@ -302,14 +310,16 @@ export function EntityTable<T>({
                     // quadradinho por um pixel não deve navegar.
                     <TableCell
                       className="w-10"
+                      title={rowSelectionBlocked?.(row) ?? undefined}
                       onClick={(e) => {
                         e.stopPropagation();
-                        alternarLinha(rowKey(row));
+                        if (!rowSelectionBlocked?.(row)) alternarLinha(rowKey(row));
                       }}
                     >
                       <Checkbox
                         aria-label="Selecionar linha"
                         checked={selectedKeys!.includes(rowKey(row))}
+                        disabled={!!rowSelectionBlocked?.(row)}
                         onClick={(e) => e.stopPropagation()}
                         onCheckedChange={() => alternarLinha(rowKey(row))}
                       />
