@@ -117,10 +117,15 @@ a nota de origem (D1_NFORI/D1_SERIORI/D1_ITEMORI, que a integração não
 recebe). O saldo em poder do cliente sai do item da remessa: `quantidade −
 quantidadeDev` (D2_QTDEDEV).
 
-A aba **Equipamentos** da Posição de Cliente soma esse saldo por produto, a
-partir do **item** de comodato, e não da nota: o equipamento que foi junto numa
-nota de venda também conta. É a conta das notas desde a primeira remessa
-(2009): equipamento baixado no ERP sem nota de retorno continua como saldo.
+A aba **Equipamentos** da Posição de Cliente usa outra conta, por decisão do
+usuário em 2026-10-07: o saldo é **do produto**, não da remessa. Enviado = itens
+de remessa (5908/6908); devolvido = itens das notas de retorno do cliente
+(1909/2909), sem vínculo entre elas. Conferido contra o D2_QTDEDEV: bate em 93%
+dos pares cliente × produto. Conta o **item** de comodato, e não a nota (o
+equipamento que foi junto numa nota de venda também conta), desde a primeira
+remessa (2009): equipamento baixado no ERP sem nota de retorno continua como
+saldo, e produto que voltou sem remessa nas notas fica com saldo negativo, em
+vermelho.
 
 Como se chegou aqui (2026-09-29, dump da produção e consulta no ERP): o
 critério antigo de "com financeiro" era ter condição de pagamento, mas a nota

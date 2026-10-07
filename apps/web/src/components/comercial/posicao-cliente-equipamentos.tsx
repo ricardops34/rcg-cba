@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { PosicaoClienteEquipamento } from "@plataforma/contracts";
 import { dataCivilBr } from "@/lib/data";
+import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -35,8 +36,8 @@ function comparar(a: string | number | null, b: string | number | null): number 
 
 /**
  * Aba "Equipamentos": o que foi enviado em comodato ao cliente, por produto,
- * e quanto voltou. O saldo é a conta das notas (enviada − devolvida); baixa
- * feita no ERP sem nota não aparece aqui.
+ * e quanto voltou pelas notas de retorno. O saldo é a conta das notas
+ * (enviada − devolvida); baixa feita no ERP sem nota não aparece aqui.
  */
 export function TabelaEquipamentos({
   equipamentos,
@@ -177,7 +178,16 @@ export function TabelaEquipamentos({
                     <TableCell className="text-xs">{e.categoria ?? "—"}</TableCell>
                     <TableCell className="text-right">{qtd(e.quantidadeEnviada)}</TableCell>
                     <TableCell className="text-right">{qtd(e.quantidadeDevolvida)}</TableCell>
-                    <TableCell className="text-right font-medium">{qtd(e.saldo)}</TableCell>
+                    <TableCell
+                      className={cn("text-right font-medium", e.saldo < 0 && "text-destructive")}
+                      title={
+                        e.saldo < 0
+                          ? "Voltou mais do que foi enviado pelas notas: envio anterior à base ou produto trocado no retorno"
+                          : undefined
+                      }
+                    >
+                      {qtd(e.saldo)}
+                    </TableCell>
                     <TableCell>{dataCivilBr(e.ultimaRemessa)}</TableCell>
                   </TableRow>
                 ))}

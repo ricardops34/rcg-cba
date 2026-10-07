@@ -63,10 +63,11 @@ export const posicaoClienteMixSchema = z.object({
 });
 export type PosicaoClienteMix = z.infer<typeof posicaoClienteMixSchema>;
 
-// Equipamentos em comodato: os itens de comodato (CFOP 5908/6908) das notas
-// do cliente, somados por produto. `quantidadeDevolvida` é o D2_QTDEDEV de
-// cada item da remessa — a nota de entrada não diz qual remessa devolve, e é
-// a própria remessa que sabe quanto dela voltou.
+// Equipamentos em comodato, por produto: `quantidadeEnviada` soma os itens de
+// remessa (saída, CFOP 5908/6908) e `quantidadeDevolvida` os itens das notas
+// de retorno do cliente (entrada, CFOP 1909/2909), sem vínculo entre elas —
+// o saldo é do produto. Produto que voltou sem remessa nas notas vem com
+// saldo negativo.
 export const posicaoClienteEquipamentoSchema = z.object({
   produtoId: z.string().uuid().nullable(),
   codigoErp: z.string().nullable(),

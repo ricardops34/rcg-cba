@@ -1076,10 +1076,20 @@ export class ClientesService {
   /**
    * Aba Equipamentos: os itens de comodato do cliente, somados por produto.
    *
-   * Entra o **item** marcado (CFOP 5908/6908), e não a nota: o dispenser que
-   * foi junto numa nota de venda também está com o cliente. A devolução vem
-   * do próprio item da remessa (`quantidadeDev`, o D2_QTDEDEV) — a nota de
-   * entrada não diz qual remessa está devolvendo.
+   * Entra o **item** marcado, e não a nota: o dispenser que foi junto numa
+   * nota de venda também está com o cliente.
+   *
+   * - enviada: itens de remessa (saída, CFOP 5908/6908);
+   * - devolvida: itens das notas de retorno do cliente (entrada, CFOP
+   *   1909/2909), **pelo produto**. A nota de retorno não diz qual remessa
+   *   devolve, e não precisa: o saldo é do produto (decisão do usuário,
+   *   2026-10-07). Conferido contra o D2_QTDEDEV das remessas: bate em 93%
+   *   dos pares cliente × produto, e a diferença é retorno sem baixa na
+   *   remessa.
+   *
+   * Produto que voltou sem remessa nas notas (envio anterior à base, ou
+   * produto trocado no retorno) aparece com saldo negativo — esconder seria
+   * pior: é justamente a inconsistência que alguém precisa olhar.
    */
   private async equipamentosEmComodato(
     tx: TenantTx,
@@ -1099,22 +1109,41 @@ export class ClientesService {
         totalNotas: number;
       }[]
     >`
+      WITH enviado AS (
+        SELECT i."produtoId",
+               SUM(i."quantidade") AS "qtd",
+               MAX(i."dtEmissao") AS "ultimaRemessa",
+               COUNT(DISTINCT i."notaSaidaId") AS "totalNotas"
+          FROM "notas_saida_itens" i
+          JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
+         WHERE i."empresaId" = ${empresaId}
+           AND i."clienteId" = ${clienteId}
+           AND i."comodato" = true
+           AND i."deletedAt" IS NULL AND i."ativo" = true
+           AND n."deletedAt" IS NULL AND n."ativo" = true
+         GROUP BY i."produtoId"
+      ), devolvido AS (
+        SELECT i."produtoId", SUM(i."quantidade") AS "qtd"
+          FROM "notas_entrada_itens" i
+          JOIN "notas_entrada" n ON n."id" = i."notaEntradaId"
+         WHERE i."empresaId" = ${empresaId}
+           AND i."clienteId" = ${clienteId}
+           AND i."comodato" = true
+           AND i."deletedAt" IS NULL AND i."ativo" = true
+           AND n."deletedAt" IS NULL AND n."ativo" = true
+         GROUP BY i."produtoId"
+      )
       SELECT p."id" AS "produtoId", p."codigoErp", p."descricao", p."unidade",
              cat."descricao" AS "categoria",
-             SUM(i."quantidade")::float8 AS "enviada",
-             SUM(COALESCE(i."quantidadeDev", 0))::float8 AS "devolvida",
-             MAX(i."dtEmissao") AS "ultimaRemessa",
-             COUNT(DISTINCT i."notaSaidaId")::int AS "totalNotas"
-        FROM "notas_saida_itens" i
-        JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
-        LEFT JOIN "produtos" p ON p."id" = i."produtoId"
-        LEFT JOIN "categorias" cat ON cat."id" = p."categoriaId"
-       WHERE i."empresaId" = ${empresaId}
-         AND i."clienteId" = ${clienteId}
-         AND i."comodato" = true
-         AND i."deletedAt" IS NULL AND i."ativo" = true
-         AND n."deletedAt" IS NULL AND n."ativo" = true
-       GROUP BY p."id", p."codigoErp", p."descricao", p."unidade", cat."descricao"`;
+             COALESCE(e."qtd", 0)::float8 AS "enviada",
+             COALESCE(d."qtd", 0)::float8 AS "devolvida",
+             e."ultimaRemessa",
+             COALESCE(e."totalNotas", 0)::int AS "totalNotas"
+        FROM enviado e
+        FULL JOIN devolvido d
+          ON COALESCE(d."produtoId", '') = COALESCE(e."produtoId", '')
+        LEFT JOIN "produtos" p ON p."id" = COALESCE(e."produtoId", d."produtoId")
+        LEFT JOIN "categorias" cat ON cat."id" = p."categoriaId"`;
     return linhas.map((l) => ({
       produtoId: l.produtoId,
       codigoErp: l.codigoErp,
