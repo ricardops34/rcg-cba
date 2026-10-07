@@ -816,6 +816,36 @@ export class EvolutionGoProvider implements WhatsappProvider {
     },
   ): Promise<{ externoId: string }> {
     const { rota, corpo } = this.corpoInterativo(dados.mensagem);
+
+    // Link com prévia: o gateway busca a página para montar a prévia e, se a
+    // busca falha (certificado não reconhecido, site fora do ar — visto com
+    // um endereço interno da empresa), cancela o envio inteiro. A mensagem
+    // importa mais que a prévia: sai como texto comum.
+    if (dados.mensagem.tipo === 'link') {
+      const texto = dados.mensagem.texto;
+      try {
+        const resposta = await this.http.chamar<unknown>(
+          ctx.config.evolutionUrl,
+          rota,
+          {
+            metodo: 'POST',
+            credencial: this.chaveInstancia(ctx),
+            corpo: { number: this.destinatario(dados.jid), ...corpo },
+          },
+        );
+        return { externoId: this.externoId(resposta) };
+      } catch (erro) {
+        this.logger.warn(
+          `Prévia do link falhou; enviando como texto: ${erro instanceof Error ? erro.message : String(erro)}`,
+        );
+        return this.enviarTexto(ctx, {
+          jid: dados.jid,
+          texto,
+          respondeuA: dados.respondeuA ?? null,
+        });
+      }
+    }
+
     const resposta = await this.http.chamar<unknown>(
       ctx.config.evolutionUrl,
       rota,

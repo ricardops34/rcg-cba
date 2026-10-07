@@ -26,6 +26,7 @@ import {
   WHATSAPP_EDICAO_LIMITE_MS,
   WHATSAPP_REACOES_RAPIDAS,
   whatsappInterativoSchema,
+  type WhatsappBotao,
   type WhatsappInterativo,
   type WhatsappMensagem,
   type WhatsappVotoEnquete,
@@ -65,6 +66,28 @@ export function MensagemBolha({
   const url = mensagem.arquivoUrl ? `${API_ORIGIN}${mensagem.arquivoUrl}` : null;
   const reacoes = mensagem.reacoes ?? [];
   const minhaReacao = reacoes.find((r) => r.deQuem === "nos")?.emoji ?? null;
+
+  // Resposta rápida a botão de mensagem recebida: vai como texto citando a
+  // mensagem (ver `BotaoDaMensagem`). Só no Atendimento, onde se responde —
+  // no Gerencial (`somenteLeitura`) o botão é só ilustração.
+  const queryClient = useQueryClient();
+  const responderBotao = useMutation({
+    mutationFn: (texto: string) =>
+      apiFetch(`/whatsapp/conversas/${conversaId}/mensagens`, {
+        method: "POST",
+        body: { texto, respondeuA: mensagem.externoId, respostaBotao: true },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["whatsapp-mensagens"] });
+      toast.success("Resposta enviada");
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Falha ao responder"),
+  });
+  const onResponderBotao =
+    !minha && !somenteLeitura && !responderBotao.isPending
+      ? (texto: string) => responderBotao.mutate(texto)
+      : undefined;
 
   return (
     <div className={`group flex items-end gap-1 ${minha ? "justify-end" : ""}`}>
@@ -117,11 +140,11 @@ export function MensagemBolha({
               {minha ? "Você apagou esta mensagem no celular" : "O cliente apagou esta mensagem"}
             </p>
             <div className="line-through opacity-60">
-              <Conteudo mensagem={mensagem} url={url} />
+              <Conteudo mensagem={mensagem} url={url} onResponderBotao={onResponderBotao} />
             </div>
           </div>
         ) : (
-          <Conteudo mensagem={mensagem} url={url} />
+          <Conteudo mensagem={mensagem} url={url} onResponderBotao={onResponderBotao} />
         )}
 
         <div className="flex items-center justify-end gap-1 pt-1 text-[10px] text-[#667781] dark:text-[#8696A0]">
@@ -174,9 +197,11 @@ export function MensagemBolha({
 function Conteudo({
   mensagem,
   url,
+  onResponderBotao,
 }: {
   mensagem: WhatsappMensagem;
   url: string | null;
+  onResponderBotao?: (texto: string) => void;
 }) {
   if (
     mensagem.tipo === "texto" &&
@@ -196,6 +221,7 @@ function Conteudo({
       <ConteudoInterativo
         m={interativo.data}
         votos={(mensagem.enqueteVotos as WhatsappVotoEnquete[] | null | undefined) ?? []}
+        onResponderBotao={onResponderBotao}
       />
     );
   }
@@ -283,13 +309,88 @@ const TIPOS_SEM_ARQUIVO = new Set<WhatsappMensagem["tipo"]>([
  * Como o cliente vê a mensagem interativa — sem os botões funcionarem aqui:
  * quem toca é ele, no celular. O clique volta como mensagem `resposta`.
  */
+/**
+ * Um botão de mensagem interativa.
+ *
+ * Link, ligação e cópia funcionam em qualquer lugar — não falam com ninguém.
+ * Resposta rápida só existe na mensagem **recebida** e para quem pode
+ * responder (`onResponder`): manda o texto do botão citando a mensagem. A
+ * Evolution GO 0.7.2 não tem rota para enviar o "toque no botão" em si, então
+ * vai como texto — o que a maioria dos robôs de empresa aceita. Na mensagem
+ * que saiu daqui, quem toca é o cliente: o botão é só ilustração.
+ */
+function BotaoDaMensagem({
+  botao,
+  onResponder,
+}: {
+  botao: WhatsappBotao;
+  onResponder?: (texto: string) => void;
+}) {
+  const estilo =
+    "flex w-full items-center justify-center gap-1.5 rounded py-0.5 text-center text-[13px] font-medium text-sky-700 dark:text-sky-300";
+  const ativo = `${estilo} cursor-pointer hover:bg-black/5 dark:hover:bg-white/10`;
+
+  switch (botao.tipo) {
+    case "url":
+      return (
+        <a href={botao.url} target="_blank" rel="noreferrer" className={ativo}>
+          <ExternalLink className="size-3.5" /> {botao.texto}
+        </a>
+      );
+    case "ligar":
+      return (
+        <a href={`tel:${botao.telefone}`} className={ativo}>
+          <Phone className="size-3.5" /> {botao.texto}
+        </a>
+      );
+    case "copiar":
+    case "pix": {
+      const valor = botao.tipo === "copiar" ? botao.codigo : botao.chave;
+      return (
+        <button
+          type="button"
+          className={ativo}
+          title="Copiar"
+          onClick={() =>
+            void navigator.clipboard
+              .writeText(valor)
+              .then(() => toast.success("Copiado"))
+              .catch(() => toast.error("Não foi possível copiar"))
+          }
+        >
+          <Copy className="size-3.5" />
+          {botao.tipo === "pix"
+            ? `PIX — ${botao.nome} (${botao.tipoChave.toUpperCase()} ${botao.chave})`
+            : botao.texto}
+        </button>
+      );
+    }
+    case "resposta":
+      return onResponder ? (
+        <button
+          type="button"
+          className={ativo}
+          title="Responder com esta opção"
+          onClick={() => onResponder(botao.texto)}
+        >
+          <Reply className="size-3.5" /> {botao.texto}
+        </button>
+      ) : (
+        <p className={estilo}>{botao.texto}</p>
+      );
+  }
+}
+
 function ConteudoInterativo({
   m,
   votos,
+  onResponderBotao,
 }: {
   m: WhatsappInterativo;
   /** Só na enquete: quem votou em quê, já em texto. */
   votos: WhatsappVotoEnquete[];
+  /** Presente só na mensagem recebida, para quem pode responder. */
+  onResponderBotao?: (texto: string) => void;
 }) {
   switch (m.tipo) {
     case "botoes":
@@ -300,15 +401,7 @@ function ConteudoInterativo({
           {m.rodape ? <p className="text-xs opacity-70">{m.rodape}</p> : null}
           <div className="space-y-1 border-t border-black/10 pt-1.5 dark:border-white/10">
             {m.botoes.map((b, i) => (
-              <p
-                key={i}
-                className="flex items-center justify-center gap-1.5 text-center text-[13px] font-medium text-sky-700 dark:text-sky-300"
-              >
-                {b.tipo === "url" ? <ExternalLink className="size-3.5" /> : null}
-                {b.tipo === "ligar" ? <Phone className="size-3.5" /> : null}
-                {b.tipo === "copiar" ? <Copy className="size-3.5" /> : null}
-                {b.tipo === "pix" ? `PIX — ${b.nome} (${b.tipoChave.toUpperCase()} ${b.chave})` : b.texto}
-              </p>
+              <BotaoDaMensagem key={i} botao={b} onResponder={onResponderBotao} />
             ))}
           </div>
         </div>

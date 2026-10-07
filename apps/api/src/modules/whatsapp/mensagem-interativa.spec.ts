@@ -214,3 +214,20 @@ describe('EvolutionGoProvider.baixarMidia — contrato da 0.7.2', () => {
     expect(arquivo).toEqual({ conteudoBase64: 'QUJD', mime: 'image/jpeg' });
   });
 });
+
+describe('EvolutionGoProvider — link cuja prévia falha', () => {
+  it('sai como texto comum em vez de não sair', async () => {
+    const chamar = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('tls: failed to verify certificate'))
+      .mockResolvedValueOnce({ data: { Info: { ID: '3EB0TEXTO' } } });
+    const provider = new EvolutionGoProvider({ chamar } as unknown as EvolutionGoClient);
+    const r = await provider.enviarInterativo(
+      { config: { evolutionUrl: 'http://gw' }, instancia: { token: 't' } } as never,
+      { jid: '5511999998888@s.whatsapp.net', mensagem: { tipo: 'link', texto: 'veja https://interno' } },
+    );
+    expect(chamar.mock.calls.map((c) => c[1])).toEqual(['/send/link', '/send/text']);
+    expect(chamar.mock.calls[1][2].corpo).toMatchObject({ text: 'veja https://interno' });
+    expect(r.externoId).toBe('3EB0TEXTO');
+  });
+});

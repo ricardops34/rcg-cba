@@ -1534,12 +1534,38 @@ export class WhatsappConversasService {
       await this.garantirDono(tx, empresaId, user, conversa);
       await this.garantirJanelaAberta(empresaId, conversa, tx);
 
+      // Resposta a botão sai sem assinatura — mas só se for mesmo isso:
+      // mensagem citada recebida, com botões, e o texto igual a um deles.
+      // Fora disso a assinatura é obrigatória (regra em código, não na tela).
+      let semAssinatura = false;
+      if (input.respostaBotao) {
+        const citada = input.respondeuA
+          ? await tx.whatsappMensagem.findFirst({
+              where: { conversaId, externoId: input.respondeuA },
+              select: { direcao: true, tipo: true, interativo: true },
+            })
+          : null;
+        const botoes =
+          citada?.direcao === 'entrada' && citada.tipo === 'botoes'
+            ? ((citada.interativo as { botoes?: { texto?: unknown }[] } | null)
+                ?.botoes ?? [])
+            : [];
+        if (!botoes.some((b) => b.texto === input.texto)) {
+          throw new BadRequestException(
+            'Resposta de botão só vale para uma opção da mensagem citada.',
+          );
+        }
+        semAssinatura = true;
+      }
+
       const enviada = await this.provedores.enviarTexto(
         empresaId,
         conversa.sessaoId,
         {
           jid: conversa.contato.jid,
-          texto: mensagemComAutor(user.nome, input.texto),
+          texto: semAssinatura
+            ? input.texto
+            : mensagemComAutor(user.nome, input.texto),
           respondeuA: input.respondeuA ?? null,
         },
         tx,

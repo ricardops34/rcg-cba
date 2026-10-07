@@ -748,6 +748,13 @@ export const whatsappEnviarSchema = z.object({
   texto: z.string().trim().min(1, "Mensagem vazia").max(4096),
   /** Id externo da mensagem citada — é o "responder" do WhatsApp. */
   respondeuA: z.string().optional(),
+  /**
+   * Resposta a botão de mensagem recebida (de empresa): o texto vai exato,
+   * sem a assinatura "*Nome:*" — o robô do outro lado compara o texto. A API
+   * só aceita se `respondeuA` for mensagem recebida com botões e o texto for
+   * um deles.
+   */
+  respostaBotao: z.boolean().optional(),
 });
 export type WhatsappEnviar = z.infer<typeof whatsappEnviarSchema>;
 
