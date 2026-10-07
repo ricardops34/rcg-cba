@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { paginationQuerySchema } from "./common";
+import { booleanQueryParam, paginationQuerySchema } from "./common";
 
 /**
  * Governança do cadastro de cliente: nenhuma origem altera cliente direto.
@@ -80,8 +80,41 @@ export const clienteAlteracaoQuerySchema = paginationQuerySchema.extend({
   status: statusAlteracaoClienteSchema.optional(),
   origem: origemAlteracaoClienteSchema.optional(),
   clienteId: z.string().uuid().optional(),
+  cnaeVazio: booleanQueryParam.describe(
+    "Só solicitações que propõem CNAE para cliente que não tinha nenhum",
+  ),
 });
 export type ClienteAlteracaoQuery = z.infer<typeof clienteAlteracaoQuerySchema>;
+
+/**
+ * Aprovação em lote do **CNAE vazio** das solicitações pendentes: aplica só o
+ * ramo de atividade e o CNAE principal que o cadastro não tinha (o "de" vazio) e
+ * deixa os demais campos pendentes para análise campo a campo. É a regra que a consulta à
+ * Receita passou a seguir em 07/10/2026, aplicada às pendências de antes.
+ *
+ * Sem `ids`, vale para todas as pendentes com CNAE vazio no escopo de quem
+ * aprova.
+ */
+export const clienteAlteracaoAprovarVaziosSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(1000).optional(),
+});
+export type ClienteAlteracaoAprovarVazios = z.infer<
+  typeof clienteAlteracaoAprovarVaziosSchema
+>;
+
+export const clienteAlteracaoAprovarVaziosResultadoSchema = z.object({
+  processadas: z.number().int(),
+  concluidas: z.number().int().describe("Só tinham o CNAE vazio: aprovadas inteiras"),
+  parciais: z
+    .number()
+    .int()
+    .describe("CNAE aplicado; os demais campos continuam pendentes"),
+  semCampoVazio: z.number().int(),
+  falhas: z.number().int().describe("Já analisadas por outra pessoa, ou fora do escopo"),
+});
+export type ClienteAlteracaoAprovarVaziosResultado = z.infer<
+  typeof clienteAlteracaoAprovarVaziosResultadoSchema
+>;
 
 /**
  * Aprovação **campo a campo**: o responsável escolhe o que entra no cadastro.

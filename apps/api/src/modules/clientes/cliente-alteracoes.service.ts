@@ -20,6 +20,7 @@ import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores'
 import { registrarAtividadeAlteracaoCliente } from './registrar-atividade-alteracao-cliente';
 import {
   clienteUpdateSchema,
+  type ClienteAlteracaoAprovarVaziosResultado,
   type ClienteAlteracaoQuery,
   type DiffAlteracao,
   type OrigemAlteracaoCliente,
@@ -512,8 +513,12 @@ export class ClienteAlteracoesService {
       // A fila respeita a carteira: um supervisor só vê pedidos de clientes que
       // ele alcança.
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const idsCnaeVazio = query.cnaeVazio
+        ? await this.idsComCnaeVazio(tx, empresaId)
+        : null;
       const where = {
         empresaId,
+        ...(idsCnaeVazio ? { id: { in: idsCnaeVazio } } : {}),
         ...(query.status ? { status: query.status } : {}),
         ...(query.origem ? { origem: query.origem } : {}),
         ...(query.clienteId ? { clienteId: query.clienteId } : {}),
@@ -739,6 +744,137 @@ export class ClienteAlteracoesService {
   }
 
   // ------------------------------------------------------------------
+
+  /**
+   * Solicitações que propõem CNAE para cliente que não tinha nenhum: a lista
+   * de CNAEs está no diff com o "de" vazio. Filtro no JSON, que o `where` do
+   * Prisma não expressa bem — o resto (escopo, status) fica com o chamador.
+   */
+  private async idsComCnaeVazio(
+    tx: TenantTx,
+    empresaId: string,
+  ): Promise<string[]> {
+    const linhas = await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "cliente_alteracoes"
+       WHERE "empresaId" = ${empresaId}
+         AND ("alteracoes" -> ${CAMPO_CNAES}) IS NOT NULL
+         AND ("alteracoes" -> ${CAMPO_CNAES} ->> 'de') IS NULL`;
+    return linhas.map((l) => l.id);
+  }
+
+  /**
+   * Aprovação em lote do CNAE vazio (ver `clienteAlteracaoAprovarVaziosSchema`).
+   * Uma transação por solicitação: uma que falhe — já analisada por outra
+   * pessoa, por exemplo — não desfaz as outras.
+   */
+  async aprovarVazios(
+    empresaId: string,
+    user: AuthenticatedUser,
+    ids?: string[],
+  ): Promise<ClienteAlteracaoAprovarVaziosResultado> {
+    const alvo =
+      ids ??
+      (await this.prisma.withTenant(empresaId, async (tx) => {
+        const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+        const linhas = await tx.clienteAlteracao.findMany({
+          where: {
+            empresaId,
+            status: 'pendente',
+            id: { in: await this.idsComCnaeVazio(tx, empresaId) },
+            ...(escopo ? { cliente: { vendedorId: { in: escopo } } } : {}),
+          },
+          select: { id: true },
+        });
+        return linhas.map((l) => l.id);
+      }));
+
+    const resultado: ClienteAlteracaoAprovarVaziosResultado = {
+      processadas: 0,
+      concluidas: 0,
+      parciais: 0,
+      semCampoVazio: 0,
+      falhas: 0,
+    };
+    for (const id of alvo) {
+      resultado.processadas++;
+      try {
+        const desfecho = await this.prisma.withTenant(empresaId, (tx) =>
+          this.aprovarCamposVazios(tx, empresaId, user, id),
+        );
+        resultado[desfecho]++;
+      } catch {
+        resultado.falhas++;
+      }
+    }
+    return resultado;
+  }
+
+  private async aprovarCamposVazios(
+    tx: TenantTx,
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+  ): Promise<'concluidas' | 'parciais' | 'semCampoVazio'> {
+    const solicitacao = await this.buscarPendenteNoEscopo(
+      tx,
+      empresaId,
+      user,
+      id,
+    );
+    const proposto = solicitacao.alteracoes as DiffAlteracao;
+    const cliente = await tx.cliente.findFirst({
+      where: { id: solicitacao.clienteId, empresaId, deletedAt: null },
+    });
+    if (!cliente) throw new NotFoundException('Cliente não encontrado');
+
+    // Só o CNAE (ramo e principal) que estava vazio entra sem revisão —
+    // decisão do usuário, 2026-10-07. Dado cadastral vazio (telefone,
+    // bairro...) continua na solicitação, para alguém decidir.
+    const aplicar: DiffAlteracao = {};
+    const restante: DiffAlteracao = {};
+    for (const [campo, valor] of Object.entries(proposto)) {
+      if (CAMPOS_VIRTUAIS.includes(campo) && valor.de === null) {
+        aplicar[campo] = valor;
+      } else {
+        restante[campo] = valor;
+      }
+    }
+    if (Object.keys(aplicar).length === 0) return 'semCampoVazio';
+
+    await this.aplicarNoCliente(
+      tx,
+      empresaId,
+      solicitacao.clienteId,
+      aplicar,
+      user.id,
+    );
+    await this.gravarHistorico(tx, {
+      empresaId,
+      clienteId: solicitacao.clienteId,
+      alteracaoId: solicitacao.id,
+      diff: aplicar,
+      origem: solicitacao.origem,
+      autor: user.id,
+    });
+
+    if (Object.keys(restante).length === 0) {
+      await tx.clienteAlteracao.update({
+        where: { id },
+        data: {
+          status: 'aprovada',
+          analisadoPor: user.id,
+          analisadoEm: new Date(),
+        },
+      });
+      return 'concluidas';
+    }
+    // O que divergia continua pendente, agora sem os campos já aplicados.
+    await tx.clienteAlteracao.update({
+      where: { id },
+      data: { alteracoes: restante },
+    });
+    return 'parciais';
+  }
 
   private async buscarPendenteNoEscopo(
     tx: TenantTx,

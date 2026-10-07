@@ -17,6 +17,7 @@ import { CLIENTE_ALTERACAO_EXAMPLE } from '@plataforma/contracts';
 import { ClienteAlteracoesService } from './cliente-alteracoes.service';
 import {
   ClienteAlteracaoAprovacaoDto,
+  ClienteAlteracaoAprovarVaziosDto,
   ClienteAlteracaoQueryDto,
   ClienteAlteracaoRecusaDto,
 } from './dto/cliente-alteracao.dto';
@@ -61,6 +62,24 @@ export class ClienteAlteracoesController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.findAll(user.empresaAtivaId, user, query);
+  }
+
+  @ApiOperation({
+    summary: 'Aprovar em lote o CNAE vazio das solicitações',
+    description:
+      'Para cada solicitação pendente, aplica só o CNAE (ramo de atividade e CNAE principal) ' +
+      'que estava vazio no cadastro (o "de" vazio) e deixa os demais campos pendentes ' +
+      'para análise campo a campo; se só havia o CNAE, a solicitação é aprovada inteira. ' +
+      'Sem `ids`, vale para todas as pendentes com CNAE vazio no escopo. Requer clientes.aprovar.',
+  })
+  @ApiBodyExample({ ids: ['3d4e5f60-7182-4930-a4b5-c6d7e8f90112'] })
+  @RequirePermission('clientes', 'aprovar')
+  @Post('aprovar-vazios')
+  aprovarVazios(
+    @Body() dto: ClienteAlteracaoAprovarVaziosDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.aprovarVazios(user.empresaAtivaId, user, dto?.ids);
   }
 
   @ApiOperation({
