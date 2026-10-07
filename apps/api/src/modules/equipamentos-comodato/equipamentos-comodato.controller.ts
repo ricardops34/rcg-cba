@@ -21,6 +21,8 @@ import {
 import { EquipamentosComodatoService } from './equipamentos-comodato.service';
 import {
   EquipamentoAplicacaoCriarDto,
+  EquipamentoAplicacaoLoteDto,
+  EquipamentoComunsQueryDto,
   EquipamentoComodatoCriarDto,
   EquipamentoComodatoEditarDto,
   EquipamentoComodatoQueryDto,
@@ -87,6 +89,24 @@ export class EquipamentosComodatoController {
   }
 
   @ApiOperation({
+    summary: 'Itens comuns aos clientes com o equipamento',
+    description:
+      'Entre os clientes que ainda estão com o equipamento e compraram nos ' +
+      'últimos 24 meses, o que eles compram, agrupado por subcategoria, a partir ' +
+      'de uma cobertura mínima (minimo, em %). Só leitura. Requer ' +
+      'equipamentos-comodato.visualizar.',
+  })
+  @RequirePermission('equipamentos-comodato', 'visualizar')
+  @Get(':id/comuns')
+  comuns(
+    @Param('id') id: string,
+    @Query() query: EquipamentoComunsQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.comuns(user.empresaAtivaId, id, query);
+  }
+
+  @ApiOperation({
     summary: 'Cadastrar equipamento',
     description:
       'Um produto excluído antes volta com as aplicações que tinha. ' +
@@ -125,6 +145,28 @@ export class EquipamentosComodatoController {
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.remove(user.empresaAtivaId, user.id, id);
+  }
+
+  @ApiOperation({
+    summary: 'Adicionar vários produtos aplicáveis',
+    description:
+      'A seleção das sugestões. Cada produto passa pela mesma validação da ' +
+      'inclusão unitária; o que não entra volta em `recusados`, com o motivo, ' +
+      'sem desfazer os demais. Requer equipamentos-comodato.editar.',
+  })
+  @RequirePermission('equipamentos-comodato', 'editar')
+  @Post(':id/aplicacoes/lote')
+  adicionarAplicacoesLote(
+    @Param('id') id: string,
+    @Body() dto: EquipamentoAplicacaoLoteDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.adicionarAplicacoesLote(
+      user.empresaAtivaId,
+      user.id,
+      id,
+      dto,
+    );
   }
 
   @ApiOperation({

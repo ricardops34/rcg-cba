@@ -4,15 +4,12 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, Lightbulb, Plus, Trash2 } from "lucide-react";
-import type {
-  EquipamentoComodatoDetalhe,
-  EquipamentoSugestao,
-  Produto,
-} from "@plataforma/contracts";
+import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import type { EquipamentoComodatoDetalhe, Produto } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { ProdutoCombobox } from "@/components/crud/produto-combobox";
+import { EquipamentoSugestoes } from "@/components/crud/equipamento-sugestoes";
 import { StatusDot } from "@/components/crud/status-dot";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,8 +21,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 const RECURSO = "equipamentos-comodato";
 const LIST_ROUTE = "/cadastros/equipamentos-comodato";
-
-const pct = (v: number) => `${v.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -49,12 +44,6 @@ export default function EquipamentoComodatoDetalhePage() {
   const { data: equipamento, isLoading, isError } = useQuery({
     queryKey: [RECURSO, id],
     queryFn: () => apiFetch<EquipamentoComodatoDetalhe>(`/${RECURSO}/${id}`),
-  });
-
-  const { data: sugestoes, isLoading: carregandoSugestoes } = useQuery({
-    queryKey: [RECURSO, id, "sugestoes"],
-    queryFn: () => apiFetch<EquipamentoSugestao[]>(`/${RECURSO}/${id}/sugestoes`),
-    enabled: !!equipamento,
   });
 
   const invalidar = () => void queryClient.invalidateQueries({ queryKey: [RECURSO] });
@@ -252,79 +241,7 @@ export default function EquipamentoComodatoDetalhePage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Lightbulb className="size-4 text-amber-500" />
-            Sugestões pelas notas
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            O que os clientes que receberam este equipamento compram acima da média, nos
-            últimos 24 meses. Descrição parecida com a do equipamento vem primeiro. Nada é
-            gravado sem você adicionar.
-          </p>
-        </CardHeader>
-        <CardContent>
-          {carregandoSugestoes ? (
-            <Skeleton className="h-32 w-full rounded-lg" />
-          ) : !sugestoes || sugestoes.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Sem sugestões: poucos clientes receberam este equipamento, ou nada se destaca
-              nas compras deles.
-            </p>
-          ) : (
-            <div className="rounded-lg border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Código</TableHead>
-                    <TableHead>Produto</TableHead>
-                    <TableHead>Categoria</TableHead>
-                    <TableHead className="text-right">Clientes c/ equipamento</TableHead>
-                    <TableHead className="text-right">Entre todos</TableHead>
-                    {podeEditar && <TableHead className="w-28" />}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sugestoes.map((s) => (
-                    <TableRow key={s.produto.id}>
-                      <TableCell className="font-mono text-xs">{s.produto.codigoErp}</TableCell>
-                      <TableCell>
-                        {s.produto.descricao}
-                        {s.descricaoParecida && (
-                          <Badge variant="outline" className="ml-2 border-amber-500/40 text-amber-700 dark:text-amber-400">
-                            Descrição parecida
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs">{s.produto.categoria ?? "—"}</TableCell>
-                      <TableCell className="text-right">
-                        {s.clientesComEquipamento} ({pct(s.percentualComEquipamento)})
-                      </TableCell>
-                      <TableCell className="text-right text-muted-foreground">
-                        {pct(s.percentualGeral)}
-                      </TableCell>
-                      {podeEditar && (
-                        <TableCell>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={adicionar.isPending}
-                            onClick={() => adicionar.mutate({ produtoId: s.produto.id })}
-                          >
-                            <Plus className="size-4" />
-                            Adicionar
-                          </Button>
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <EquipamentoSugestoes equipamentoId={id} podeEditar={podeEditar} />
     </div>
   );
 }

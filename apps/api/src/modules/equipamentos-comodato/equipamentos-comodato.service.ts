@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  HttpException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -14,6 +15,11 @@ import {
 } from '../../common/pagination/paginate';
 import type {
   EquipamentoAplicacaoCriar,
+  EquipamentoAplicacaoLote,
+  EquipamentoAplicacaoLoteResultado,
+  EquipamentoComumGrupo,
+  EquipamentoComuns,
+  EquipamentoComunsQuery,
   EquipamentoComodato,
   EquipamentoComodatoCriar,
   EquipamentoComodatoDetalhe,
@@ -66,6 +72,8 @@ const SUGESTAO_MIN_CLIENTES = 3;
 const SUGESTAO_MIN_LIFT = 1.5;
 const SUGESTAO_CANDIDATOS = 40;
 const SUGESTAO_LIMITE = 20;
+/** Itens comuns: produtos mostrados por subcategoria (o grupo conta todos). */
+const COMUNS_PRODUTOS_POR_GRUPO = 15;
 
 function produtoRef(p: ProdutoLido) {
   return {
@@ -269,6 +277,205 @@ export class EquipamentosComodatoService {
       },
     );
     return { id: relacao.id };
+  }
+
+  /**
+   * Vários produtos aplicáveis de uma vez — a seleção das sugestões.
+   *
+   * Um a um pelo mesmo `criar` do card "Relacionados", para que a regra de
+   * categoria de equipamento e a recusa de duplicado valham igual. O que não
+   * entra não derruba o resto: volta em `recusados`, com o motivo, porque quem
+   * marcou dez itens quer saber quais ficaram de fora, não refazer a seleção.
+   */
+  async adicionarAplicacoesLote(
+    empresaId: string,
+    userId: string,
+    id: string,
+    input: EquipamentoAplicacaoLote,
+  ): Promise<EquipamentoAplicacaoLoteResultado> {
+    const equipamento = await this.prisma.withTenant(empresaId, (tx) =>
+      this.buscar(tx, empresaId, id),
+    );
+    let adicionados = 0;
+    const recusados: EquipamentoAplicacaoLoteResultado['recusados'] = [];
+    for (const produtoId of new Set(input.produtoIds)) {
+      try {
+        await this.relacionados.criar(
+          empresaId,
+          userId,
+          equipamento.produtoId,
+          {
+            relacionadoId: produtoId,
+            tipo: 'aplicacao',
+            observacao: null,
+            ordem: 0,
+          },
+        );
+        adicionados++;
+      } catch (e) {
+        if (!(e instanceof HttpException)) throw e;
+        recusados.push({ produtoId, motivo: e.message });
+      }
+    }
+    return { adicionados, recusados };
+  }
+
+  /**
+   * Itens comuns aos clientes com o equipamento (ver
+   * `equipamentoComunsSchema`). A base é quem **ainda está** com ele — saldo
+   * de remessa menos retorno, pelo produto — e comprou nos últimos 24 meses:
+   * o cliente que devolveu o equipamento em 2015 não diz nada sobre o que ele
+   * usa hoje.
+   *
+   * A cobertura do grupo conta também os produtos já cadastrados como
+   * aplicáveis (é a família que interessa), mas eles não voltam na lista
+   * para selecionar. Sai o que é equipamento e o que é de categoria de
+   * equipamento, que a gravação recusaria.
+   */
+  comuns(
+    empresaId: string,
+    id: string,
+    query: EquipamentoComunsQuery,
+  ): Promise<EquipamentoComuns> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const equipamento = await this.buscar(tx, empresaId, id);
+      const desde = new Date();
+      desde.setUTCMonth(desde.getUTCMonth() - SUGESTAO_MESES);
+
+      const linhas = await tx.$queryRaw<
+        {
+          total: number;
+          // Nulos na linha única de "nenhum grupo passou do mínimo".
+          produtoId: string | null;
+          subCategoriaId: string | null;
+          clientes: number;
+          grupoClientes: number;
+          jaAplicavel: boolean;
+        }[]
+      >`
+        WITH em_poder AS (
+          SELECT x."clienteId"
+            FROM (
+              SELECT i."clienteId", i."quantidade" AS q
+                FROM "notas_saida_itens" i
+               WHERE i."empresaId" = ${empresaId} AND i."produtoId" = ${equipamento.produtoId}
+                 AND i."comodato" = true AND i."deletedAt" IS NULL AND i."ativo" = true
+              UNION ALL
+              SELECT i."clienteId", -i."quantidade"
+                FROM "notas_entrada_itens" i
+               WHERE i."empresaId" = ${empresaId} AND i."produtoId" = ${equipamento.produtoId}
+                 AND i."comodato" = true AND i."deletedAt" IS NULL AND i."ativo" = true
+            ) x
+           WHERE x."clienteId" IS NOT NULL
+           GROUP BY x."clienteId"
+          HAVING SUM(x.q) > 0
+        ), venda AS (
+          SELECT DISTINCT i."clienteId", i."produtoId"
+            FROM "notas_saida_itens" i
+            JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
+           WHERE i."empresaId" = ${empresaId}
+             AND i."clienteId" IN (SELECT "clienteId" FROM em_poder)
+             AND n."tipo" = 'N' AND n."geraDuplicata" = true AND n."comodato" = false
+             AND n."ativo" = true AND n."deletedAt" IS NULL
+             AND i."ativo" = true AND i."deletedAt" IS NULL AND i."comodato" = false
+             AND i."produtoId" IS NOT NULL
+             AND i."dtEmissao" >= ${desde}
+        ), base AS (
+          SELECT COUNT(DISTINCT "clienteId") AS total FROM venda
+        ), cp AS (
+          SELECT v."clienteId", v."produtoId", p."subCategoriaId"
+            FROM venda v
+            JOIN "produtos" p ON p."id" = v."produtoId"
+            LEFT JOIN "categorias" c1 ON c1."id" = p."categoriaId"
+            LEFT JOIN "categorias" c2 ON c2."id" = p."subCategoriaId"
+           WHERE v."produtoId" <> ${equipamento.produtoId}
+             AND COALESCE(c1."equipamentoComodato", false) = false
+             AND COALESCE(c2."equipamentoComodato", false) = false
+             AND NOT EXISTS (
+                   SELECT 1 FROM "equipamentos_comodato" e
+                    WHERE e."produtoId" = v."produtoId" AND e."deletedAt" IS NULL)
+        ), grupo AS (
+          SELECT "subCategoriaId", COUNT(DISTINCT "clienteId") AS n FROM cp GROUP BY 1
+        ), prod AS (
+          SELECT "produtoId", "subCategoriaId", COUNT(DISTINCT "clienteId") AS n FROM cp GROUP BY 1, 2
+        )
+        -- A partir de base, com LEFT JOIN: sem grupo que passe do mínimo,
+        -- ainda volta uma linha com o total, para a tela dizer "de N
+        -- clientes, nenhum item em X%" em vez de "nenhum cliente".
+        SELECT b.total::int AS "total", s.*
+          FROM base b
+          LEFT JOIN LATERAL (
+            SELECT prod."produtoId", prod."subCategoriaId",
+                   prod.n::int AS "clientes", g.n::int AS "grupoClientes",
+                   EXISTS (
+                     SELECT 1 FROM "produto_relacionados" r
+                      WHERE r."empresaId" = ${empresaId} AND r."produtoId" = ${equipamento.produtoId}
+                        AND r."relacionadoId" = prod."produtoId" AND r."tipo" = 'aplicacao'
+                   ) AS "jaAplicavel"
+              FROM prod
+              JOIN grupo g ON g."subCategoriaId" IS NOT DISTINCT FROM prod."subCategoriaId"
+             WHERE g.n * 100 >= ${query.minimo} * b.total
+          ) s ON true
+         ORDER BY s."grupoClientes" DESC NULLS LAST, s."clientes" DESC`;
+
+      const total = linhas[0]?.total ?? 0;
+      const visiveis = linhas.filter(
+        (l): l is typeof l & { produtoId: string } =>
+          l.produtoId !== null && !l.jaAplicavel,
+      );
+      if (visiveis.length === 0) return { totalClientes: total, grupos: [] };
+
+      const [produtos, subcategorias] = await Promise.all([
+        tx.produto.findMany({
+          where: { empresaId, id: { in: visiveis.map((l) => l.produtoId) } },
+          select: PRODUTO_SELECT,
+        }),
+        tx.categoria.findMany({
+          where: {
+            empresaId,
+            id: {
+              in: [
+                ...new Set(
+                  visiveis.flatMap((l) =>
+                    l.subCategoriaId ? [l.subCategoriaId] : [],
+                  ),
+                ),
+              ],
+            },
+          },
+          select: { id: true, descricao: true },
+        }),
+      ]);
+      const produtoPorId = new Map(produtos.map((p) => [p.id, p]));
+      const subPorId = new Map(subcategorias.map((s) => [s.id, s]));
+
+      const grupos = new Map<string, EquipamentoComumGrupo>();
+      for (const l of visiveis) {
+        const produto = produtoPorId.get(l.produtoId);
+        if (!produto) continue;
+        const chave = l.subCategoriaId ?? '';
+        let grupo = grupos.get(chave);
+        if (!grupo) {
+          grupo = {
+            subcategoria: l.subCategoriaId
+              ? (subPorId.get(l.subCategoriaId) ?? null)
+              : null,
+            clientes: l.grupoClientes,
+            percentual: (100 * l.grupoClientes) / total,
+            produtos: [],
+          };
+          grupos.set(chave, grupo);
+        }
+        if (grupo.produtos.length < COMUNS_PRODUTOS_POR_GRUPO) {
+          grupo.produtos.push({
+            produto: produtoRef(produto),
+            clientes: l.clientes,
+            percentual: (100 * l.clientes) / total,
+          });
+        }
+      }
+      return { totalClientes: total, grupos: [...grupos.values()] };
+    });
   }
 
   /** Só a aplicação **deste** equipamento — o id da relação não basta. */

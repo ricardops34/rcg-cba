@@ -62,4 +62,22 @@ toalha interfolhado.
   equipamentos que o teste criou foram apagados, o primeiro "popular" de
   verdade é do usuário
 - [x] Telas: lista (`/cadastros/equipamentos-comodato`) e detalhe
+- [x] Categoria de equipamento (marcação em Categorias, desce para as
+  subcategorias; subcategoria nova do ERP herda a do pai)
+- [x] Sugestão "Comuns aos clientes" + seleção de vários itens
+  (`GET /:id/comuns?minimo=`, `POST /:id/aplicacoes/lote`). Base: clientes
+  **com o equipamento em poder** (remessa − retorno > 0) que compraram nos
+  últimos 24 meses; agrupado por subcategoria. Medido no EEDTI204: 51
+  clientes, PAPEL TOALHA INTERFOLHADO em 84% — o produto mais comprado sozinho
+  chega a 31%, por isso o agrupamento. Em 100% não aparece nada.
 - [ ] Conferência visual das telas pelo usuário
+
+## Próximo pacote (pedido em 2026-10-07)
+
+- **Aviso + ferramenta de IA:** cliente com equipamento em poder que não
+  comprou, no mês, nenhum dos produtos aplicáveis.
+- **Ícone de aviso** na lista da Posição de Cliente para esse caso.
+- **Comodato baixado:** marcar um comodato como baixado para não entrar no
+  saldo nem no aviso, com filtro para encontrar os marcados e desfazer se a
+  marca estiver errada. A definir com o usuário: o que se marca (o saldo do
+  produto no cliente, ou a remessa) e quem pode marcar.

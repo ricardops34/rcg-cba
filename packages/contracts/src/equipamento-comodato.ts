@@ -91,6 +91,57 @@ export const equipamentoSugestaoSchema = z.object({
 });
 export type EquipamentoSugestao = z.infer<typeof equipamentoSugestaoSchema>;
 
+/**
+ * Itens comuns aos clientes com o equipamento: entre os clientes que **ainda
+ * estão** com ele (enviado − devolvido > 0) e compraram nos últimos 24 meses,
+ * quantos compram cada produto — agrupado por subcategoria, porque cada
+ * cliente compra uma versão diferente do mesmo papel, e é o grupo que mostra
+ * o padrão (medido: 84% por subcategoria contra 31% do produto mais comprado).
+ */
+export const equipamentoComunsQuerySchema = z.object({
+  /** Cobertura mínima do grupo, em % dos clientes com o equipamento. */
+  minimo: z.coerce.number().int().min(1).max(100).default(50),
+});
+export type EquipamentoComunsQuery = z.infer<typeof equipamentoComunsQuerySchema>;
+
+export const equipamentoComumProdutoSchema = z.object({
+  produto: produtoRefSchema,
+  clientes: z.number().int(),
+  percentual: z.number(),
+});
+
+export const equipamentoComumGrupoSchema = z.object({
+  /** Subcategoria do produto; null = produto sem subcategoria. */
+  subcategoria: z.object({ id: z.string().uuid(), descricao: z.string() }).nullable(),
+  /** Clientes com o equipamento que compram qualquer produto do grupo. */
+  clientes: z.number().int(),
+  percentual: z.number(),
+  produtos: z.array(equipamentoComumProdutoSchema),
+});
+export type EquipamentoComumGrupo = z.infer<typeof equipamentoComumGrupoSchema>;
+
+export const equipamentoComunsSchema = z.object({
+  /** Base: clientes com o equipamento em poder que compraram no período. */
+  totalClientes: z.number().int(),
+  grupos: z.array(equipamentoComumGrupoSchema),
+});
+export type EquipamentoComuns = z.infer<typeof equipamentoComunsSchema>;
+
+/** Vários produtos aplicáveis de uma vez (a seleção das sugestões). */
+export const equipamentoAplicacaoLoteSchema = z.object({
+  produtoIds: z.array(z.string().uuid()).min(1).max(100),
+});
+export type EquipamentoAplicacaoLote = z.infer<typeof equipamentoAplicacaoLoteSchema>;
+
+export const equipamentoAplicacaoLoteResultadoSchema = z.object({
+  adicionados: z.number().int(),
+  /** O que não entrou e por quê (já cadastrado, categoria de equipamento…). */
+  recusados: z.array(z.object({ produtoId: z.string().uuid(), motivo: z.string() })),
+});
+export type EquipamentoAplicacaoLoteResultado = z.infer<
+  typeof equipamentoAplicacaoLoteResultadoSchema
+>;
+
 export const equipamentoPopularResultadoSchema = z.object({
   /** Equipamentos criados agora. */
   criados: z.number().int(),

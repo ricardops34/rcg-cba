@@ -1,6 +1,8 @@
 import { createZodDto } from 'nestjs-zod';
 import {
   equipamentoAplicacaoCriarSchema,
+  equipamentoAplicacaoLoteSchema,
+  equipamentoComunsQuerySchema,
   equipamentoComodatoCriarSchema,
   equipamentoComodatoEditarSchema,
   equipamentoComodatoQuerySchema,
@@ -17,4 +19,10 @@ export class EquipamentoComodatoEditarDto extends createZodDto(
 ) {}
 export class EquipamentoAplicacaoCriarDto extends createZodDto(
   equipamentoAplicacaoCriarSchema,
+) {}
+export class EquipamentoComunsQueryDto extends createZodDto(
+  equipamentoComunsQuerySchema,
+) {}
+export class EquipamentoAplicacaoLoteDto extends createZodDto(
+  equipamentoAplicacaoLoteSchema,
 ) {}
