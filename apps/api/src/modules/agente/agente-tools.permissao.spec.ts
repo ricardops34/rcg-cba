@@ -21,6 +21,7 @@ describe('AgenteToolsService — permissão × configuração', () => {
       {} as never, // consultas
       clientes as never, // clientes
       {} as never, // produtos
+      {} as never, // relacionados
       {} as never, // orcamentos
       {} as never, // titulos
       {} as never, // sugestao

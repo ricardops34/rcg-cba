@@ -66,6 +66,8 @@ export const posicaoClienteListQuerySchema = paginationQuerySchema.extend({
   temTituloVencido: booleanQueryParam,
   comodatoSemConsumo: booleanQueryParam,
   comodatoBaixado: booleanQueryParam,
+  /** Está com algum equipamento em comodato (saldo > 0), cadastrado ou não. */
+  comodatoEmPoder: booleanQueryParam,
 });
 export type PosicaoClienteListQuery = z.infer<typeof posicaoClienteListQuerySchema>;
 

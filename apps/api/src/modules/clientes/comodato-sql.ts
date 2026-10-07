@@ -137,6 +137,43 @@ export function comodatoSemConsumoSql(empresaId: string): Prisma.Sql {
   )`;
 }
 
+/**
+ * O cliente está com algum equipamento em comodato: saldo > 0 (enviado −
+ * devolvido − baixado) de qualquer produto que saiu em remessa — cadastrado
+ * em Equipamentos de Comodato ou não, com aplicáveis ou não.
+ *
+ * É a base de "quem tem comodato e está sem compra", que precisa responder
+ * mesmo antes de alguém cadastrar os aplicáveis. Mesmo formato sem correlação
+ * de `comodatoSemConsumoSql`.
+ */
+export function comodatoEmPoderSql(empresaId: string): Prisma.Sql {
+  return Prisma.sql`c."id" IN (
+    SELECT x."clienteId"
+      FROM (
+        SELECT i."clienteId", i."produtoId", i."quantidade" AS q
+          FROM "notas_saida_itens" i
+          JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
+         WHERE i."empresaId" = ${empresaId} AND i."comodato" = true
+           AND i."deletedAt" IS NULL AND i."ativo" = true
+           AND n."deletedAt" IS NULL AND n."ativo" = true
+        UNION ALL
+        SELECT i."clienteId", i."produtoId", -i."quantidade"
+          FROM "notas_entrada_itens" i
+          JOIN "notas_entrada" n ON n."id" = i."notaEntradaId"
+         WHERE i."empresaId" = ${empresaId} AND i."comodato" = true
+           AND i."deletedAt" IS NULL AND i."ativo" = true
+           AND n."deletedAt" IS NULL AND n."ativo" = true
+        UNION ALL
+        SELECT b."clienteId", b."produtoId", -b."quantidade"
+          FROM "comodato_baixas" b
+         WHERE b."empresaId" = ${empresaId} AND b."desfeitaEm" IS NULL
+      ) x
+     WHERE x."clienteId" IS NOT NULL
+     GROUP BY x."clienteId", x."produtoId"
+    HAVING SUM(x.q) > 0
+  )`;
+}
+
 /** O cliente tem alguma baixa de comodato vigente. */
 export const comodatoBaixadoSql = Prisma.sql`EXISTS (
   SELECT 1 FROM "comodato_baixas" b

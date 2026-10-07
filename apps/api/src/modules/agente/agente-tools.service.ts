@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import { ConsultasService } from '../consultas/consultas.service';
 import { ClientesService } from '../clientes/clientes.service';
 import { ProdutosService } from '../produtos/produtos.service';
+import { ProdutoRelacionadosService } from '../produtos/produto-relacionados.service';
 import { OrcamentosService } from '../orcamentos/orcamentos.service';
 import { TitulosReceberService } from '../titulos-receber/titulos-receber.service';
 import { SugestaoCompraService } from '../sugestao-compra/sugestao-compra.service';
@@ -405,6 +406,7 @@ export class AgenteToolsService {
     private readonly consultas: ConsultasService,
     private readonly clientes: ClientesService,
     private readonly produtos: ProdutosService,
+    private readonly relacionados: ProdutoRelacionadosService,
     private readonly orcamentos: OrcamentosService,
     private readonly titulos: TitulosReceberService,
     private readonly sugestao: SugestaoCompraService,
@@ -749,6 +751,65 @@ export class AgenteToolsService {
         },
       },
       {
+        // A relação de aplicação é a mesma do card "Relacionados" e de
+        // Cadastros > Equipamentos de Comodato; lida pelo service deles.
+        nome: 'produtos_aplicaveis',
+        descricao:
+          'O que serve em um equipamento de comodato (dispenser, dosadora…): os ' +
+          'produtos aplicáveis cadastrados para ele — `usaNaAplicacao`. Também o ' +
+          'inverso, em que equipamentos um produto é usado — `usadoEm`. Use para ' +
+          '"que itens servem neste equipamento?", "qual papel vai neste ' +
+          'dispenser?", "este sabonete serve em qual dispenser?".',
+        instrucoes:
+          'Precisa do produtoId: ache o equipamento (ou o produto) com ' +
+          'buscar_produto antes e, com mais de um candidato, pergunte qual. Lista ' +
+          'vazia não é "não serve nada": diga que ainda não há produtos aplicáveis ' +
+          'cadastrados para ele em Cadastros > Equipamentos de Comodato. Cite a ' +
+          'observação quando houver (dose, medida).',
+        permissao: 'produtos.visualizar',
+        exemplos: [
+          'Que itens servem no dispenser EEDTI204?',
+          'Qual papel vai no toalheiro autocorte?',
+          'Este sabonete serve em qual dispenser?',
+        ],
+        parametros: {
+          type: 'object',
+          properties: {
+            produtoId: {
+              type: 'string',
+              description:
+                'Id do produto (o equipamento ou o aplicável), vindo de buscar_produto',
+            },
+          },
+          required: ['produtoId'],
+        },
+        executar: async (a, user) => {
+          const relacoes = await this.relacionados.listar(
+            user.empresaAtivaId,
+            texto(a.produtoId),
+          );
+          const item = (r: (typeof relacoes)[number]) => ({
+            codigoErp: r.codigoErp,
+            descricao: r.descricao,
+            unidade: r.unidade,
+            observacao: r.observacao,
+            ativo: r.ativo,
+          });
+          return {
+            usaNaAplicacao: relacoes
+              .filter((r) => r.tipo === 'aplicacao' && r.origem)
+              .map(item),
+            usadoEm: relacoes
+              .filter((r) => r.tipo === 'aplicacao' && !r.origem)
+              .map(item),
+          };
+        },
+        destino: (a) => ({
+          rotulo: 'Abrir o produto',
+          rota: `/comercial/produtos/${texto(a.produtoId)}`,
+        }),
+      },
+      {
         nome: 'posicao_cliente',
         descricao:
           'Posição de um cliente: mix de produtos que ele compra (com data da ' +
@@ -789,57 +850,50 @@ export class AgenteToolsService {
         }),
       },
       {
-        // Delega à listagem da Posição de Cliente com o mesmo filtro do ícone
-        // da tela: a carteira e a regra do aviso (comodato-sql.ts) vêm de lá,
-        // e a ferramenta não tem parâmetro que escolha de quem é o dado.
+        // Delega a `clientes.comodatoSemCompra`, que passa pela listagem da
+        // Posição: a carteira e as regras (comodato-sql.ts) vêm de lá, e a
+        // ferramenta não tem parâmetro que escolha de quem é o dado.
         nome: 'comodato_sem_consumo',
         descricao:
           'Clientes da carteira do usuário que estão com equipamento em comodato ' +
-          '(dispenser, dosadora…) e NÃO compraram, nos últimos 30 dias, nenhum dos ' +
-          'produtos aplicáveis cadastrados para ele. Devolve `total` e os primeiros ' +
-          'clientes. Use para "quem tem comodato e não está comprando?", ' +
-          '"clientes com equipamento parado".',
+          '(dispenser, dosadora…) e sem compra. Devolve duas listas, cada uma com ' +
+          '`total` e os primeiros clientes: `semCompra30Dias` (com comodato e ' +
+          'NENHUMA compra nos últimos 30 dias) e `semConsumoAplicaveis` (compram ' +
+          'outras coisas, mas nenhum dos produtos aplicáveis ao equipamento em 30 ' +
+          'dias). Use para "quais clientes têm comodato e estão sem compra?", ' +
+          '"tenho dispenser parado?".',
         instrucoes:
-          'Dê o total primeiro. Não afirme que o equipamento está parado: o ' +
-          'cliente pode estar comprando de outro fornecedor, ou o equipamento ' +
-          'pode ter sido recolhido sem baixa registrada — diga "sem compra de ' +
-          'aplicáveis em 30 dias". Para saber qual equipamento e a última ' +
-          'compra, use posicao_cliente do cliente.',
+          'Responda com as duas leituras, nesta ordem: quantos estão sem nenhuma ' +
+          'compra (`semCompra30Dias.total`) e quantos compram, mas não os produtos ' +
+          'do equipamento (`semConsumoAplicaveis.total`). Se ' +
+          '`equipamentosComAplicaveis` for 0, NÃO diga que ninguém está sem ' +
+          'consumo: diga que a segunda leitura depende de cadastrar os produtos ' +
+          'aplicáveis em Cadastros > Equipamentos de Comodato. Não afirme que o ' +
+          'equipamento está parado — pode ter sido recolhido sem baixa ou o ' +
+          'cliente comprar de outro fornecedor. Para o equipamento e a última ' +
+          'compra de um cliente, use posicao_cliente.',
         permissao: 'posicao-cliente.visualizar',
         exemplos: [
+          'Quais clientes têm comodato e estão sem compra?',
           'Quais clientes têm comodato e não compraram os produtos este mês?',
           'Tenho dispenser parado em algum cliente?',
         ],
         limiteItens: 25,
         parametros: { type: 'object', properties: {} },
-        executar: async (_a, user) => {
-          const r = await this.clientes.listagemPosicao(
-            user.empresaAtivaId,
-            user,
-            {
-              page: 1,
-              pageSize: 25,
-              comodatoSemConsumo: true,
-              sortBy: 'ultimaCompra',
-              sortOrder: 'desc',
-            } as never,
-          );
+        executar: (_a, user) =>
+          this.clientes.comodatoSemCompra(user.empresaAtivaId, user),
+        // Abre no filtro que existe para qualquer cadastro: o de aplicáveis só
+        // tem resultado depois que alguém os cadastra.
+        destino: (_a, r) => {
+          const comAviso = (r as { semConsumoAplicaveis?: { total: number } })
+            ?.semConsumoAplicaveis?.total;
           return {
-            total: r.total,
-            clientes: r.data.map((c) => ({
-              id: c.id,
-              codigoErp: c.codigoErp,
-              razaoSocial: c.razaoSocial,
-              municipio: c.municipio,
-              uf: c.uf,
-              ultimaCompra: c.ultimaCompra,
-            })),
+            rotulo: 'Ver na Posição de Cliente',
+            rota: comAviso
+              ? '/comercial/posicao-cliente?comodatoSemConsumo=true'
+              : '/comercial/posicao-cliente',
           };
         },
-        destino: () => ({
-          rotulo: 'Ver na Posição de Cliente',
-          rota: '/comercial/posicao-cliente?comodatoSemConsumo=true',
-        }),
       },
       {
         nome: 'sugerir_compras',

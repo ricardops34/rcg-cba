@@ -1,4 +1,4 @@
-# Agente interno — 29 ferramentas
+# Agente interno — 30 ferramentas
 
 O assistente que o funcionário **logado** usa pelo ícone da topbar, em qualquer
 tela. Ver [o mapa](README.md) para as outras duas famílias.
@@ -38,8 +38,9 @@ em si.
 | `buscar_cliente` | `clientes.visualizar` | leitura | `clientes.findAll` |
 | `verificar_cliente_na_base` | `clientes.visualizar` | leitura | `clientes.verificarTitularidade` |
 | `buscar_produto` | `produtos.visualizar` | leitura | `produtos.findAll` |
+| `produtos_aplicaveis` | `produtos.visualizar` | leitura | `produtoRelacionados.listar` — o que serve no equipamento e em que equipamento o produto é usado |
 | `posicao_cliente` | `posicao-cliente.visualizar` | leitura | `clientes.posicao` |
-| `comodato_sem_consumo` | `posicao-cliente.visualizar` | leitura | `clientes.listagemPosicao` com `comodatoSemConsumo` — a regra do aviso é a de `clientes/comodato-sql.ts`, a mesma do ícone da tela |
+| `comodato_sem_consumo` | `posicao-cliente.visualizar` | leitura | `clientes.comodatoSemCompra` — duas leituras de "sem compra" (nenhuma compra em 30 dias / sem os aplicáveis), pela listagem da Posição; regras em `clientes/comodato-sql.ts` |
 | `sugerir_compras` | `sugestao-compra.visualizar` | leitura | `sugestao.paraCliente` |
 | `titulos_em_aberto` | `titulos-receber.visualizar` | leitura | `titulos.findAll` |
 | `listar_orcamentos` | `orcamentos.visualizar` | leitura | `orcamentos.findAll` |
@@ -263,7 +264,7 @@ Vazio nos dois casos volta ao texto do código. Só as instruções das ferramen
 tem seria ensinar o modelo a se portar com algo que ele nem enxerga, e gastar
 prompt em toda mensagem para isso.
 
-**As 29 têm `instrucoes` no código.** Até 2026-09-19 só quatro tinham, e o
+**As 30 têm `instrucoes` no código.** Até 2026-09-19 só quatro tinham, e o
 efeito não era o campo ficar em branco: era o bloco "COMO USAR CADA FERRAMENTA"
 quase não existir, e a tela de governança abrir vazia em 22 casos — quem fosse
 editar não tinha de onde partir, e o modelo se portava por conta própria em
@@ -307,7 +308,7 @@ entre "v1" e "v2" é escolher no escuro.
 apaga, não reescreve com o texto de hoje, que congelaria a cópia de novo.
 
 **Restaurar todos** (`POST /agente/ferramentas/restaurar-todos`) faz o mesmo nas
-29 de uma vez, numa transação só. Existe porque restaurar uma a uma é onde se
+30 de uma vez, numa transação só. Existe porque restaurar uma a uma é onde se
 desiste no meio, e meia restauração é pior que nenhuma: fica um catálogo em que
 parte fala com a voz da empresa e parte com a do sistema, sem nada na tela
 dizendo qual é qual.

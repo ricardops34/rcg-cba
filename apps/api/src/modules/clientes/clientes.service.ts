@@ -47,6 +47,7 @@ import {
 import { sessaoDoUsuarioWhere } from '../whatsapp/escopo-whatsapp';
 import {
   comodatoBaixadoSql,
+  comodatoEmPoderSql,
   comodatoSemConsumoSql,
   comprouAplicavelSql,
   nomesDeUsuarios,
@@ -1228,6 +1229,74 @@ export class ClientesService {
   }
 
   /**
+   * "Quais clientes têm comodato e estão sem compra?" — as duas leituras que
+   * a pergunta admite, para o assistente (ferramenta `comodato_sem_consumo`):
+   *
+   * - `semConsumoAplicaveis`: o aviso da tela (ver comodato-sql.ts);
+   * - `semCompra30Dias`: com equipamento em poder e **nenhuma** compra em 30
+   *   dias — responde mesmo antes de haver aplicáveis cadastrados.
+   *
+   * `equipamentosComAplicaveis` existe para o assistente não dizer "nenhum
+   * cliente" quando o que falta é cadastro: com zero, o aviso não tem como
+   * acusar ninguém.
+   *
+   * As duas listas passam pela `listagemPosicao`, que aplica a carteira de
+   * quem pergunta.
+   */
+  async comodatoSemCompra(
+    empresaId: string,
+    user: AuthenticatedUser,
+    limite = 10,
+  ) {
+    const base = {
+      page: 1,
+      pageSize: limite,
+      ativo: true,
+      sortBy: 'ultimaCompra',
+      sortOrder: 'desc',
+    } as const;
+    const [aplicaveis, semCompra, equipamentosComAplicaveis] =
+      await Promise.all([
+        this.listagemPosicao(empresaId, user, {
+          ...base,
+          comodatoSemConsumo: true,
+        }),
+        this.listagemPosicao(empresaId, user, {
+          ...base,
+          comodatoEmPoder: true,
+          diasSemComprar: 30,
+        }),
+        this.prisma.withTenant(empresaId, (tx) =>
+          tx.equipamentoComodato.count({
+            where: {
+              empresaId,
+              deletedAt: null,
+              ativo: true,
+              produto: { relacionados: { some: { tipo: 'aplicacao' } } },
+            },
+          }),
+        ),
+      ]);
+    const resumir = (r: typeof aplicaveis) => ({
+      total: r.total,
+      clientes: r.data.map((c) => ({
+        id: c.id,
+        codigoErp: c.codigoErp,
+        razaoSocial: c.razaoSocial,
+        municipio: c.municipio,
+        uf: c.uf,
+        ultimaCompra: c.ultimaCompra,
+        dias: c.dias,
+      })),
+    });
+    return {
+      equipamentosComAplicaveis,
+      semConsumoAplicaveis: resumir(aplicaveis),
+      semCompra30Dias: resumir(semCompra),
+    };
+  }
+
+  /**
    * Listagem de Posição de Cliente: mesma carteira de Clientes, mas com
    * colunas de venda calculadas ao vivo por agregação de notas_saida (venda
    * dos últimos 30 dias, média mensal dos últimos 90 dias, diferença entre
@@ -1299,6 +1368,13 @@ export class ClientesService {
           query.comodatoBaixado
             ? comodatoBaixadoSql
             : Prisma.sql`NOT ${comodatoBaixadoSql}`,
+        );
+      }
+      if (query.comodatoEmPoder !== undefined) {
+        condicoes.push(
+          query.comodatoEmPoder
+            ? comodatoEmPoderSql(empresaId)
+            : Prisma.sql`NOT ${comodatoEmPoderSql(empresaId)}`,
         );
       }
       if (query.temTituloVencido !== undefined) {
