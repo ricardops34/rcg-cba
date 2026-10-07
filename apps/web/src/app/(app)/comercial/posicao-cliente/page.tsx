@@ -27,7 +27,7 @@ import {
 } from "@/components/crud/quick-filter-group";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { ClienteSheet } from "@/components/crud/cliente-form";
-import { OrcamentoSheet } from "@/components/crud/orcamento-form";
+import { OrcamentosClienteSheet } from "@/components/crud/orcamentos-cliente-sheet";
 import { FieldLabel } from "@/components/ui/field";
 import {
   Select,
@@ -51,7 +51,7 @@ import {
 import {
   ClipboardList,
   Eye,
-  FilePlus2,
+  FileText,
   Lock,
   MessageCircle,
   MoreHorizontal,
@@ -114,9 +114,8 @@ export default function PosicaoClientePage() {
   const [comodatoSemConsumo, setComodatoSemConsumo] = useState<true | undefined>(
     searchParams.get("comodatoSemConsumo") === "true" ? true : undefined,
   );
-  const [comodatoBaixado, setComodatoBaixado] = useState<true | undefined>(undefined);
 
-  // Visualizar/Alterar Cliente e Incluir Orçamento abrem em cortina lateral
+  // Visualizar/Alterar Cliente e Orçamentos abrem em cortina lateral
   // (não navegam pra fora desta listagem) — só nesta tela; o cadastro de
   // Clientes continua abrindo em página cheia normalmente.
   const [clienteSheet, setClienteSheet] = useState<{
@@ -133,6 +132,7 @@ export default function PosicaoClientePage() {
   // não oferecer uma ação que vai voltar 403.
   const permissoes = useAuthStore((s) => s.user?.permissoes);
   const podeEditarCliente = Boolean(permissoes?.includes("clientes.editar"));
+  const podeVerOrcamentos = Boolean(permissoes?.includes("orcamentos.visualizar"));
   const podeVerAtendimento = Boolean(
     permissoes?.includes("whatsapp-conversas.visualizar"),
   );
@@ -208,7 +208,6 @@ export default function PosicaoClientePage() {
       ...(diasSemComprar !== undefined ? { diasSemComprar } : {}),
       ...(temTituloVencido !== undefined ? { temTituloVencido } : {}),
       ...(comodatoSemConsumo ? { comodatoSemConsumo } : {}),
-      ...(comodatoBaixado ? { comodatoBaixado } : {}),
     });
 
   // "Ativos" é o status inicial da tela — não conta como filtro "aplicado"
@@ -222,12 +221,10 @@ export default function PosicaoClientePage() {
     carteira !== "todos" ||
     diasSemComprar !== undefined ||
     temTituloVencido !== undefined ||
-    !!comodatoSemConsumo ||
-    !!comodatoBaixado;
+    !!comodatoSemConsumo;
 
   const limparFiltros = () => {
     setComodatoSemConsumo(undefined);
-    setComodatoBaixado(undefined);
     setStatus("ativos");
     setUf(undefined);
     setMunicipio(undefined);
@@ -395,9 +392,11 @@ export default function PosicaoClientePage() {
             >
               <ClipboardList className="size-4" /> Posição do Cliente
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setOrcamentoClienteId(c.id)}>
-              <FilePlus2 className="size-4" /> Incluir Orçamento
-            </DropdownMenuItem>
+            {podeVerOrcamentos && (
+              <DropdownMenuItem onClick={() => setOrcamentoClienteId(c.id)}>
+                <FileText className="size-4" /> Orçamentos
+              </DropdownMenuItem>
+            )}
             {/* Só para quem já tem contato de WhatsApp vinculado: sem conversa
                 não há conversa para abrir, e a ação levaria a uma tela
                 vazia. O backend só devolve a conversa que este usuário pode
@@ -619,16 +618,6 @@ export default function PosicaoClientePage() {
               <Wrench className="size-3.5 text-amber-600 dark:text-amber-400" /> Comodato sem
               consumo
             </QuickFilterButton>
-            {/* Para achar as baixas e corrigir a que estiver errada. */}
-            <QuickFilterButton
-              active={comodatoBaixado === true}
-              onClick={() => {
-                setComodatoBaixado((atual) => (atual ? undefined : true));
-                setPage(1);
-              }}
-            >
-              Comodato baixado
-            </QuickFilterButton>
           </QuickFilterGroup>
         </div>
         <div data-tour="posicao-cliente-filtros-avancados"></div>
@@ -694,7 +683,7 @@ export default function PosicaoClientePage() {
         modo={clienteSheet?.modo ?? "visualizar"}
         onOpenChange={(open) => !open && setClienteSheet(null)}
       />
-      <OrcamentoSheet
+      <OrcamentosClienteSheet
         clienteId={orcamentoClienteId}
         onOpenChange={(open) => !open && setOrcamentoClienteId(null)}
       />

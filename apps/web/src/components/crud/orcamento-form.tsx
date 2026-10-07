@@ -59,6 +59,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Sheet, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ResizableSheetContent } from "@/components/ui/resizable-sheet-content";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -522,7 +523,7 @@ function compararMix(
 /**
  * Corpo do formulário de orçamento (cartão + campos) — usado tanto na página
  * cheia (`OrcamentoForm`) quanto na cortina lateral (`OrcamentoSheet`, aberta
- * a partir da listagem de Posição de Cliente).
+ * sobre a cortina dos orçamentos do cliente, na Posição de Cliente).
  */
 export function OrcamentoFormContent({
   orcamento,
@@ -2172,19 +2173,45 @@ export function OrcamentoForm({ orcamento }: { orcamento?: Orcamento }) {
   );
 }
 
+/** O que a cortina de orçamento abre: um novo para o cliente, ou um existente. */
+export type OrcamentoSheetAlvo =
+  | { modo: "novo"; clienteId: string }
+  | { modo: "editar" | "copiar"; id: string };
+
 /**
- * Cortina lateral pra criar um orçamento já com o cliente pré-selecionado —
- * usada a partir da listagem de Posição de Cliente ("Incluir Orçamento"),
- * pra não perder busca/filtro/paginação de quem está consultando a lista.
+ * Formulário de orçamento em cortina lateral — aberto sobre a cortina dos
+ * orçamentos do cliente (Posição de Cliente), pra não perder
+ * busca/filtro/paginação de quem está consultando a lista.
  */
 export function OrcamentoSheet({
-  clienteId,
+  alvo,
   onOpenChange,
 }: {
-  clienteId: string | null;
+  alvo: OrcamentoSheetAlvo | null;
   onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
+  const id = alvo && alvo.modo !== "novo" ? alvo.id : null;
+
+  const orcamentoQuery = useQuery({
+    queryKey: ["orcamentos", id],
+    queryFn: () => apiFetch<Orcamento>(`/orcamentos/${id}`),
+    enabled: !!id,
+  });
+  const orcamento = id ? orcamentoQuery.data : undefined;
+  // Mesmo título da página cheia (OrcamentoForm).
+  const somenteLeitura =
+    orcamento?.status === "aprovado" || orcamento?.status === "expirado";
+  const titulo =
+    !alvo || alvo.modo === "novo"
+      ? "Novo orçamento"
+      : !orcamento
+        ? "Orçamento"
+        : alvo.modo === "copiar"
+          ? `Novo orçamento — cópia do Nº ${numeroOrcamento(orcamento)}`
+          : somenteLeitura
+            ? `Orçamento Nº ${numeroOrcamento(orcamento)}`
+            : `Editar orçamento Nº ${numeroOrcamento(orcamento)}`;
 
   const handleClose = () => {
     onOpenChange(false);
@@ -2192,14 +2219,26 @@ export function OrcamentoSheet({
   };
 
   return (
-    <Sheet open={!!clienteId} onOpenChange={onOpenChange}>
+    <Sheet open={!!alvo} onOpenChange={onOpenChange}>
       <ResizableSheetContent defaultWidth={860}>
         <SheetHeader>
-          <SheetTitle>Novo orçamento</SheetTitle>
+          <SheetTitle>{titulo}</SheetTitle>
         </SheetHeader>
         <div className="px-4 pb-4">
-          {clienteId && (
-            <OrcamentoFormContent key={clienteId} clienteIdPadrao={clienteId} onClose={handleClose} />
+          {alvo?.modo === "novo" && (
+            <OrcamentoFormContent key={alvo.clienteId} clienteIdPadrao={alvo.clienteId} onClose={handleClose} />
+          )}
+          {id && orcamentoQuery.isLoading && <Skeleton className="h-96 w-full rounded-xl" />}
+          {id && orcamentoQuery.isError && (
+            <p className="text-sm text-muted-foreground">Orçamento não encontrado.</p>
+          )}
+          {alvo && alvo.modo !== "novo" && orcamento && (
+            <OrcamentoFormContent
+              key={`${alvo.modo}-${orcamento.id}`}
+              orcamento={orcamento}
+              iniciarCopia={alvo.modo === "copiar"}
+              onClose={handleClose}
+            />
           )}
         </div>
       </ResizableSheetContent>

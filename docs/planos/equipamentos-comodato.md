@@ -115,8 +115,11 @@ Entregue em 2026-10-07:
 - [x] **Aviso** (`clientes/comodato-sql.ts`): saldo > 0 de equipamento
   cadastrado e ativo com aplicáveis, e nenhuma compra de aplicável (nota de
   saída normal ativa, não só a que gerou duplicata) nos últimos 30 dias. Ícone
-  na lista da Posição (coluna "Aviso"), filtros rápidos "Comodato sem consumo"
-  e "Comodato baixado", ícone na aba Equipamentos. A expressão da lista é um
+  na lista da Posição (coluna "Aviso"), filtro rápido "Comodato sem consumo",
+  ícone na aba Equipamentos. O filtro rápido "Comodato baixado" foi retirado da
+  lista a pedido do usuário (2026-10-07) — confundia com devolução; as baixas
+  continuam visíveis no filtro "Baixados" da aba Equipamentos, e o parâmetro
+  `comodatoBaixado` segue aceito pela API. A expressão da lista é um
   `c.id IN (conjunto)` sem correlação: a versão por cliente levava 5,9 s no
   filtro e estourava a transação; esta, 1,8 s na base de dev.
 - [x] **Ferramenta de IA** `comodato_sem_consumo` (agente interno, leitura,
