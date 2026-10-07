@@ -12,7 +12,9 @@ services:
     environment:
       # O JWT inclui permissões; perfis amplos precisam de mais espaço no Authorization.
       NODE_OPTIONS: "--max-http-header-size=65536"
+      # Runtime: plataforma_app. Migrations do boot: a role dona, à parte.
       DATABASE_URL: ${DATABASE_URL}
+      MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
       REDIS_URL: ${REDIS_URL}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       PORTAL_JWT_ACCESS_SECRET: ${PORTAL_JWT_ACCESS_SECRET}

@@ -52,4 +52,7 @@ COPY --from=build /app/apps/api/dist apps/api/dist
 COPY --from=build /app/apps/api/prisma/dist apps/api/prisma/dist
 WORKDIR /app/apps/api
 EXPOSE 3001
-CMD ["sh", "-c", "pnpm exec prisma migrate deploy && node dist/main.js"]
+# As migrations precisam da role DONA; a API, de plataforma_app (sem ela a RLS
+# não vale). MIGRATION_DATABASE_URL separa as duas; sem ela, migra com a
+# DATABASE_URL, como antes — o que só funciona se esta for a dona.
+CMD ["sh", "-c", "DATABASE_URL=\"${MIGRATION_DATABASE_URL:-$DATABASE_URL}\" pnpm exec prisma migrate deploy && node dist/main.js"]

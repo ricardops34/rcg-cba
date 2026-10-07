@@ -513,13 +513,14 @@ sem reler PDF nenhum — o texto já está gravado desde a importação.
 A imagem de produção da API aplica as migrations pendentes no boot:
 
 ```dockerfile
-CMD ["sh", "-c", "pnpm exec prisma migrate deploy && node dist/main.js"]
+CMD ["sh", "-c", "DATABASE_URL=\"${MIGRATION_DATABASE_URL:-$DATABASE_URL}\" pnpm exec prisma migrate deploy && node dist/main.js"]
 ```
 
-Ou seja: publicar a imagem + redeploy no Portainer já aplica. **Depende de o
-`DATABASE_URL` do stack ter privilégio de DDL** — se estiver com `plataforma_app`, o
-`migrate deploy` falha e, por causa do `&&`, o container não sobe. Nesse caso, aplique
-à parte com a role dona:
+Ou seja: publicar a imagem + redeploy no Portainer já aplica. O `migrate deploy`
+usa a `MIGRATION_DATABASE_URL` (role dona) e a API, a `DATABASE_URL`
+(`plataforma_app`). **Sem a `MIGRATION_DATABASE_URL`, migra com a
+`DATABASE_URL`**: com `plataforma_app` o `migrate deploy` falha e, por causa do
+`&&`, o container não sobe. Para aplicar à parte com a role dona:
 
 ```bash
 docker exec -e DATABASE_URL="postgresql://plataforma:SENHA@HOST:5432/BANCO?schema=public" \
@@ -780,6 +781,86 @@ perfis de administração. Depois do deploy, por empresa:
 Conferir: o saldo aparece em Administração > SMS; um SMS de teste (mensagem
 livre na Posição de um cliente de teste) aparece no histórico de envios, e a
 resposta dele aparece embaixo, depois que o cliente responder.
+
+## Produção: a API conectava como superusuária **[diagnosticado em 2026-10-07, correção a aplicar]**
+
+Conferido na base `plataforma_rcg` da VPS: a API conectava como
+`plataforma_rcg`, que é **dona das tabelas, `SUPERUSER` e `BYPASSRLS`**. Com
+isso nenhuma policy de RLS valia em produção (o isolamento dependia só dos
+filtros do código), e qualquer falha de SQL na API teria o servidor inteiro.
+
+O `plataforma_app` já existia, com o "modo sistema" configurado, mas **31
+tabelas estavam sem GRANT** para ele: a baseline faz `ALTER DEFAULT PRIVILEGES
+FOR ROLE plataforma`, e em produção quem cria as tabelas é `plataforma_rcg`.
+
+Conferências (pgAdmin, role `postgres`; **sem texto selecionado no editor**,
+senão ele roda só a seleção):
+
+```sql
+SELECT rolname, rolsuper, rolbypassrls FROM pg_roles
+WHERE rolname IN ('plataforma_rcg', 'plataforma_app', 'plataforma');
+
+-- tabelas que o plataforma_app não lê (as wa_* ficam de fora de propósito)
+SELECT schemaname, tablename FROM pg_tables
+WHERE schemaname = 'public' AND tablename NOT LIKE 'wa\_%'
+  AND NOT has_table_privilege('plataforma_app', format('%I.%I', schemaname, tablename), 'SELECT');
+```
+
+Correção, nesta ordem:
+
+```sql
+-- 1. senha nova (a da baseline é placeholder de dev)
+ALTER ROLE plataforma_app WITH PASSWORD 'SENHA_FORTE';
+
+-- 2. GRANT no que falta, e nas tabelas que as próximas migrations criarem
+DO $$
+DECLARE t record;
+BEGIN
+  FOR t IN SELECT tablename FROM pg_tables
+           WHERE schemaname = 'public' AND tablename NOT LIKE 'wa\_%'
+  LOOP
+    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO plataforma_app', t.tablename);
+  END LOOP;
+END $$;
+ALTER DEFAULT PRIVILEGES FOR ROLE plataforma_rcg IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO plataforma_app;
+```
+
+3. Publicar a imagem da API com o `CMD` que lê `MIGRATION_DATABASE_URL`.
+4. No Portainer (Stacks → rcgcba → Env): `MIGRATION_DATABASE_URL` com
+   `plataforma_rcg`, e `DATABASE_URL` com `plataforma_app` e
+   `&connection_limit=10`. Redeploy.
+5. Testar login, troca de empresa e um cadastro. Rodar de novo a conferência
+   de GRANT: tem de voltar vazia.
+
+O schema não tem `autoincrement`, então não há sequência a liberar.
+
+## Armadilha: `too many clients already` (P2037) **[diagnosticado em 2026-10-07]**
+
+`max_connections` da produção é 100. Sem `connection_limit` na `DATABASE_URL`,
+cada subida da API abre até `CPUs × 2 + 1` conexões, e um container que morre
+(redeploy, restart, crash) **deixa as dele abertas no servidor** até o
+keepalive TCP desistir — ~2 h no padrão do Linux. Meia dúzia de subidas nesse
+intervalo lota o servidor; depois as órfãs expiram sozinhas, e quando se olha
+o `pg_stat_activity` está tudo limpo.
+
+Prevenção: `&connection_limit=10` na `DATABASE_URL` e keepalive curto no
+servidor (role `postgres`):
+
+```sql
+ALTER SYSTEM SET tcp_keepalives_idle = 60;
+ALTER SYSTEM SET tcp_keepalives_interval = 10;
+ALTER SYSTEM SET tcp_keepalives_count = 6;
+SELECT pg_reload_conf();
+```
+
+Se voltar a acontecer, rode **durante** o erro — conexões `idle` com
+`backend_start` antigo confirmam que são órfãs:
+
+```sql
+SELECT usename, datname, application_name, state, backend_start, state_change
+FROM pg_stat_activity ORDER BY backend_start;
+```
 
 ## Armadilha: `HTTP 500 INTERNAL_ERROR` porque o schema andou e a migration não **[verificado em dev, 2026-09-22]**
 
