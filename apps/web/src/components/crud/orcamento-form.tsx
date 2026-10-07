@@ -26,6 +26,8 @@ import {
   type Produto,
   type SituacaoIntegracaoOrcamento,
   type StatusOrcamento,
+  type SugestaoCompraCalculada,
+  type SugestaoCompraCalculadaItem,
   numeroOrcamento,
 } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
@@ -930,6 +932,17 @@ export function OrcamentoFormContent({
   const mix = mixQuery.data ?? [];
   const mixPorProduto = new Map(mix.map((m) => [m.produtoId, m]));
 
+  // Sugestão de compra já calculada para o cliente — mesma leitura da aba
+  // Sugestão da Posição de Cliente (mesma queryKey, reaproveita o cache).
+  const podeVerSugestao = useAuthStore((s) => s.hasPermission)("sugestao-compra", "visualizar");
+  const sugestaoQuery = useQuery({
+    queryKey: ["sugestao-compra", "calculada", clienteId],
+    queryFn: () =>
+      apiFetch<SugestaoCompraCalculada>(`/sugestao-compra/cliente/${clienteId}/calculada`),
+    enabled: !!clienteId && podeVerSugestao,
+  });
+  const sugestoes = sugestaoQuery.data?.itens ?? [];
+
   const integracao = registro ? situacaoIntegracao(registro) : null;
   const diferencas = registro?.itensErp ? diferencasPedido(registro) : null;
 
@@ -1068,24 +1081,48 @@ export function OrcamentoFormContent({
    * como está — se não houver tabela vigente ou desconto anterior, cai no
    * último preço praticado.
    */
-  const adicionarDoMix = async (produto: PosicaoClienteMix) => {
+  const adicionarDoMix = (produto: PosicaoClienteMix) =>
+    adicionarProduto({
+      produtoId: produto.produtoId,
+      codigoErp: produto.codigoErp,
+      descricao: produto.descricao,
+      vlrTabela: produto.precoTabela,
+      vlrUnitario:
+        produto.precoTabela != null && produto.ultimoDesconto != null
+          ? Math.round(produto.precoTabela * (1 - produto.ultimoDesconto / 100) * 100) / 100
+          : (produto.ultimoPrecoUnitario ?? produto.precoTabela ?? 0),
+    });
+
+  /**
+   * Item vindo da Sugestão de compra: o cliente nunca comprou o produto, então
+   * não há desconto anterior a reaplicar — entra pelo preço da tabela dele.
+   */
+  const adicionarDaSugestao = (item: SugestaoCompraCalculadaItem) =>
+    adicionarProduto({
+      produtoId: item.produtoId,
+      codigoErp: item.codigoErp,
+      descricao: item.descricao,
+      vlrTabela: item.precoTabelaCliente,
+      vlrUnitario: item.precoTabelaCliente ?? 0,
+    });
+
+  const adicionarProduto = async (produto: {
+    produtoId: string;
+    codigoErp: string;
+    descricao: string;
+    vlrTabela: number | null;
+    vlrUnitario: number;
+  }) => {
     if (itensAtuais.some((it) => it.produtoId === produto.produtoId)) {
       toast.info("Produto já está nos itens do orçamento");
       return;
     }
-    const vlrUnitario =
-      produto.precoTabela != null && produto.ultimoDesconto != null
-        ? Math.round(produto.precoTabela * (1 - produto.ultimoDesconto / 100) * 100) / 100
-        : (produto.ultimoPrecoUnitario ?? produto.precoTabela ?? 0);
+    const produtoLabel = `${produto.codigoErp} — ${produto.descricao}`;
     const novoIndex = itensAtuais.length;
-    linhas.append({ produtoId: produto.produtoId, quantidade: 1, vlrUnitario });
+    linhas.append({ produtoId: produto.produtoId, quantidade: 1, vlrUnitario: produto.vlrUnitario });
     setInfoPorLinha((arr) => [
       ...arr,
-      {
-        vlrTabela: produto.precoTabela,
-        saldoEstoque: null,
-        produtoLabel: `${produto.codigoErp} — ${produto.descricao}`,
-      },
+      { vlrTabela: produto.vlrTabela, saldoEstoque: null, produtoLabel },
     ]);
     toast.success("Item adicionado ao orçamento");
 
@@ -1098,10 +1135,10 @@ export function OrcamentoFormContent({
         arr.map((v, i) =>
           i === novoIndex
             ? {
-                vlrTabela: produto.precoTabela,
+                vlrTabela: produto.vlrTabela,
                 saldoEstoque: resp.saldoEstoque,
                 regra: resp.regraDesconto,
-                produtoLabel: `${produto.codigoErp} — ${produto.descricao}`,
+                produtoLabel,
               }
             : v,
         ),
@@ -1271,6 +1308,9 @@ export function OrcamentoFormContent({
               <TabsTrigger value="orcamento">Orçamento</TabsTrigger>
               <TabsTrigger data-tour="orcamento-itens" value="itens">Itens ({linhas.fields.length})</TabsTrigger>
               <TabsTrigger data-tour="orcamento-mix" value="mix">Mix de produtos ({mix.length})</TabsTrigger>
+              {podeVerSugestao && (
+                <TabsTrigger value="sugestao">Sugestão ({sugestoes.length})</TabsTrigger>
+              )}
               <TabsTrigger data-tour="orcamento-advertencias" value="advertencias">
                 <span className="flex items-center gap-1.5">
                   {totalAdvertencias > 0 && (
@@ -1942,6 +1982,82 @@ export function OrcamentoFormContent({
                     </Table>
                   )}
                 </TabsContent>
+
+                {podeVerSugestao && (
+                  <TabsContent value="sugestao" className="space-y-2 pt-3">
+                    {!clienteId && (
+                      <p className="text-sm text-muted-foreground">Selecione um cliente primeiro.</p>
+                    )}
+                    {clienteId && sugestaoQuery.isLoading && (
+                      <p className="text-sm text-muted-foreground">Carregando sugestão de compra...</p>
+                    )}
+                    {clienteId && sugestaoQuery.isError && (
+                      <p className="text-sm text-muted-foreground">
+                        Não foi possível carregar a sugestão deste cliente.
+                      </p>
+                    )}
+                    {clienteId && sugestaoQuery.isSuccess && sugestoes.length === 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        Nenhuma sugestão calculada para este cliente. Ela é gerada em Consultas
+                        &gt; Sugestão de compra.
+                      </p>
+                    )}
+                    {sugestoes.length > 0 && (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-9" />
+                            <TableHead>Produto</TableHead>
+                            <TableHead>Descrição</TableHead>
+                            <TableHead className="text-right">Preço tabela</TableHead>
+                            <TableHead>Motivo da sugestão</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sugestoes.map((s) => {
+                            const jaAdicionado = itensAtuais.some((it) => it.produtoId === s.produtoId);
+                            return (
+                              <TableRow key={s.produtoId}>
+                                <TableCell>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    className="size-7"
+                                    disabled={jaAdicionado || bloqueado}
+                                    title={jaAdicionado ? "Adicionado" : "Adicionar"}
+                                    onClick={() => adicionarDaSugestao(s)}
+                                  >
+                                    <Plus className="size-3.5" />
+                                  </Button>
+                                </TableCell>
+                                <TableCell>{s.codigoErp}</TableCell>
+                                <TableCell className="max-w-56 truncate" title={s.descricao}>
+                                  {s.descricao}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {s.precoTabelaCliente != null ? (
+                                    moeda(s.precoTabelaCliente)
+                                  ) : (
+                                    <span
+                                      className="text-muted-foreground"
+                                      title="Produto fora da tabela de preço do cliente — entra com valor zero."
+                                    >
+                                      Sem preço
+                                    </span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="min-w-56 whitespace-normal text-muted-foreground">
+                                  {s.motivo ?? "—"}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </TabsContent>
+                )}
 
             {clienteId && (
               <TabsContent value="historico" className="space-y-2 pt-3">

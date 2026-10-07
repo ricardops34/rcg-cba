@@ -13,6 +13,7 @@ import {
 } from '../../common/prisma/prisma.service';
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
 import { condicaoBuscaTermosSql } from '../../common/busca/termos-busca';
+import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
 import {
   paginationToSkipTake,
   buildPaginatedResult,
@@ -462,6 +463,18 @@ export class SugestaoCompraService {
         null,
       );
 
+      // Preço de agora, não o do cálculo: é o que entra no orçamento quando o
+      // vendedor adiciona a sugestão. Mesma resolução de tabela do orçamento
+      // (preco-produto), para os dois não divergirem.
+      const precos = itens.length
+        ? await this.precosNaTabelaDoCliente(
+            tx,
+            empresaId,
+            await resolverTabelaPrecoCliente(tx, empresaId, clienteId),
+            itens.map((it) => it.produtoId),
+          )
+        : new Map<string, number>();
+
       return {
         clienteId: cliente.id,
         razaoSocial: cliente.razaoSocial,
@@ -475,6 +488,7 @@ export class SugestaoCompraService {
           motivo: it.motivo,
           origem: it.origem,
           geradaEm: it.geradaEm.toISOString(),
+          precoTabelaCliente: precos.get(it.produtoId) ?? null,
         })),
       };
     });

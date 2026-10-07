@@ -249,6 +249,13 @@ export const sugestaoCompraCalculadaItemSchema = z.object({
   motivo: z.string().nullable(),
   origem: z.enum(["local", "ia"]),
   geradaEm: z.string().datetime(),
+  precoTabelaCliente: z
+    .number()
+    .nullable()
+    .default(null)
+    .describe(
+      "Preço atual na tabela do cliente (mesma regra do orçamento); null se o produto não está na tabela",
+    ),
 });
 export type SugestaoCompraCalculadaItem = z.infer<typeof sugestaoCompraCalculadaItemSchema>;
 
@@ -274,6 +281,7 @@ export const SUGESTAO_COMPRA_CALCULADA_EXAMPLE: SugestaoCompraCalculada = {
       motivo: "24 de 30 clientes parecidos compram este produto",
       origem: "local",
       geradaEm: "2026-09-08T03:00:00.000Z",
+      precoTabelaCliente: 168.9,
     },
   ],
 };
