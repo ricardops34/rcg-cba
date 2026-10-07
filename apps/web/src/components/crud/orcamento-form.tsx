@@ -1262,7 +1262,10 @@ export function OrcamentoFormContent({
               )}
             </div>
           )}
-          <fieldset disabled={bloqueado} className="m-0 min-w-0 border-0 p-0">
+          {/* Aprovado/vencido: a trava (fieldset disabled) fica só no que
+              edita — Orçamento, Itens e o "adicionar" do Mix. Envolver as
+              abas inteiras desativava também os botões das abas, e não dava
+              nem para consultar os itens. */}
           <Tabs defaultValue="orcamento">
             <TabsList data-tour="orcamento-abas">
               <TabsTrigger value="orcamento">Orçamento</TabsTrigger>
@@ -1289,7 +1292,8 @@ export function OrcamentoFormContent({
               {registro && <TabsTrigger data-tour="orcamento-integracao" value="integracao">Aprovação e integração</TabsTrigger>}
             </TabsList>
 
-            <TabsContent value="orcamento" className="space-y-4 pt-3">
+            <TabsContent value="orcamento" asChild>
+            <fieldset disabled={bloqueado} className="m-0 min-w-0 space-y-4 border-0 p-0 pt-3">
             <FieldGroup>
             {/* O título não é campo de tela: ele existe para nomear o
                 orçamento na Agenda e no histórico do cliente, e é montado a
@@ -1498,9 +1502,11 @@ export function OrcamentoFormContent({
             </Field>
 
             </FieldGroup>
+            </fieldset>
             </TabsContent>
 
-            <TabsContent value="itens" className="space-y-2 pt-3">
+            <TabsContent value="itens" asChild>
+            <fieldset disabled={bloqueado} className="m-0 min-w-0 space-y-2 border-0 p-0 pt-3">
                   <div className="flex items-center justify-between">
                     <FieldLabel>Itens</FieldLabel>
                     <Button
@@ -1697,6 +1703,7 @@ export function OrcamentoFormContent({
                       Total: {moeda(totalCalculado)}
                     </div>
                   )}
+                </fieldset>
                 </TabsContent>
 
                 <TabsContent value="advertencias" className="space-y-3 pt-3">
@@ -1909,7 +1916,7 @@ export function OrcamentoFormContent({
                                     variant="outline"
                                     size="icon"
                                     className="size-7"
-                                    disabled={jaAdicionado}
+                                    disabled={jaAdicionado || bloqueado}
                                     title={jaAdicionado ? "Adicionado" : "Adicionar"}
                                     onClick={() => adicionarDoMix(m)}
                                   >
@@ -2079,7 +2086,6 @@ export function OrcamentoFormContent({
               </TabsContent>
             )}
           </Tabs>
-          </fieldset>
         </CardContent>
 
         <CardFooter data-tour="orcamento-acoes" className="flex-wrap justify-end gap-2">
