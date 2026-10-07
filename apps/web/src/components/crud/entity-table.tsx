@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DropdownMenu,
@@ -112,6 +113,13 @@ interface EntityTableProps<T> {
    * antes, sem seletor de colunas.
    */
   storageKey?: string;
+  /**
+   * Seleção para ação em lote: com as duas props, a tabela ganha uma coluna
+   * de checkbox (o do cabeçalho marca/desmarca a página). As chaves são as de
+   * `rowKey` e sobrevivem à troca de página — quem chama decide quando limpar.
+   */
+  selectedKeys?: string[];
+  onSelectedKeysChange?: (keys: string[]) => void;
 }
 
 export function EntityTable<T>({
@@ -133,7 +141,35 @@ export function EntityTable<T>({
   sortOrder = "asc",
   onSortChange,
   storageKey,
+  selectedKeys,
+  onSelectedKeysChange,
 }: EntityTableProps<T>) {
+  const selecionavel = !!selectedKeys && !!onSelectedKeysChange;
+  const chavesPagina = selecionavel ? rows.map(rowKey) : [];
+  const marcadosNaPagina = chavesPagina.filter((k) => selectedKeys!.includes(k)).length;
+  const estadoCabecalho: boolean | "indeterminate" =
+    marcadosNaPagina === 0
+      ? false
+      : marcadosNaPagina === chavesPagina.length
+        ? true
+        : "indeterminate";
+  const alternarPagina = () => {
+    if (!selecionavel) return;
+    onSelectedKeysChange!(
+      estadoCabecalho === true
+        ? selectedKeys!.filter((k) => !chavesPagina.includes(k))
+        : [...new Set([...selectedKeys!, ...chavesPagina])],
+    );
+  };
+  const alternarLinha = (chave: string) => {
+    if (!selecionavel) return;
+    onSelectedKeysChange!(
+      selectedKeys!.includes(chave)
+        ? selectedKeys!.filter((k) => k !== chave)
+        : [...selectedKeys!, chave],
+    );
+  };
+
   const toggleSort = (key: string) => {
     if (!onSortChange) return;
     if (sortBy !== key) onSortChange(key, "asc");
@@ -180,6 +216,16 @@ export function EntityTable<T>({
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
+              {selecionavel && (
+                <TableHead className="w-10">
+                  <Checkbox
+                    aria-label="Selecionar todos da página"
+                    checked={estadoCabecalho}
+                    disabled={rows.length === 0}
+                    onCheckedChange={alternarPagina}
+                  />
+                </TableHead>
+              )}
               {colunasVisiveis.map((col) =>
                 col.sortKey ? (
                   <SortableTableHead
@@ -204,6 +250,7 @@ export function EntityTable<T>({
             {isLoading &&
               Array.from({ length: 6 }).map((_, i) => (
                 <TableRow key={i}>
+                  {selecionavel && <TableCell className="w-10" />}
                   {colunasVisiveis.map((col) => (
                     <TableCell key={col.id ?? col.header}>
                       <Skeleton className="h-4 w-full max-w-36" />
@@ -215,7 +262,7 @@ export function EntityTable<T>({
             {!isLoading && rows.length === 0 && (
               <TableRow className="hover:bg-transparent">
                 <TableCell
-                  colSpan={colunasVisiveis.length}
+                  colSpan={colunasVisiveis.length + (selecionavel ? 1 : 0)}
                   className="h-40 text-center text-muted-foreground"
                 >
                   <div className="flex flex-col items-center gap-2">
@@ -248,7 +295,26 @@ export function EntityTable<T>({
                     onRowClick?.(row);
                   }}
                   className={cn(onRowClick && "cursor-pointer", rowClassName?.(row))}
+                  data-state={selecionavel && selectedKeys!.includes(rowKey(row)) ? "selected" : undefined}
                 >
+                  {selecionavel && (
+                    // Célula inteira clicável e sem abrir o registro: errar o
+                    // quadradinho por um pixel não deve navegar.
+                    <TableCell
+                      className="w-10"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        alternarLinha(rowKey(row));
+                      }}
+                    >
+                      <Checkbox
+                        aria-label="Selecionar linha"
+                        checked={selectedKeys!.includes(rowKey(row))}
+                        onClick={(e) => e.stopPropagation()}
+                        onCheckedChange={() => alternarLinha(rowKey(row))}
+                      />
+                    </TableCell>
+                  )}
                   {colunasVisiveis.map((col) => (
                     <TableCell key={col.id ?? col.header} className={col.className}>
                       {col.cell(row)}

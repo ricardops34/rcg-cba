@@ -6,7 +6,16 @@ import {
   equipamentoComodatoCriarSchema,
   equipamentoComodatoEditarSchema,
   equipamentoComodatoQuerySchema,
+  equipamentoExcluirLoteSchema,
+  equipamentoPopularSchema,
 } from '@plataforma/contracts';
+
+export class EquipamentoPopularDto extends createZodDto(
+  equipamentoPopularSchema,
+) {}
+export class EquipamentoExcluirLoteDto extends createZodDto(
+  equipamentoExcluirLoteSchema,
+) {}
 
 export class EquipamentoComodatoQueryDto extends createZodDto(
   equipamentoComodatoQuerySchema,

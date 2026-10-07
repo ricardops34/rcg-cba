@@ -142,6 +142,46 @@ export type EquipamentoAplicacaoLoteResultado = z.infer<
   typeof equipamentoAplicacaoLoteResultadoSchema
 >;
 
+const dataIso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data no formato AAAA-MM-DD");
+
+/**
+ * Filtros do "Popular pelas notas". Produto bloqueado nunca entra, com ou sem
+ * filtro. Sem categoria = todas; sem data = todo o histórico.
+ */
+export const equipamentoPopularSchema = z
+  .object({
+    /** Categoria ou subcategoria do produto (casa com qualquer das duas). */
+    categoriaIds: z.array(z.string().uuid()).max(200).optional(),
+    /** Emissão da nota de remessa, inclusive. */
+    dataInicio: dataIso.optional(),
+    dataFim: dataIso.optional(),
+  })
+  .refine((v) => !v.dataInicio || !v.dataFim || v.dataInicio <= v.dataFim, {
+    message: "A data inicial não pode ser depois da final",
+    path: ["dataFim"],
+  });
+export type EquipamentoPopular = z.infer<typeof equipamentoPopularSchema>;
+
+/**
+ * Categorias que aparecem nas remessas de comodato — as opções do filtro do
+ * "Popular". `equipamento` = marcada como categoria de equipamento, que o
+ * diálogo já traz selecionada.
+ */
+export const equipamentoPopularCategoriaSchema = z.object({
+  id: z.string().uuid(),
+  codigoErp: z.string().nullable(),
+  descricao: z.string(),
+  equipamento: z.boolean(),
+  /** Produtos ativos dessa categoria que já saíram em remessa de comodato. */
+  produtos: z.number().int(),
+});
+export type EquipamentoPopularCategoria = z.infer<typeof equipamentoPopularCategoriaSchema>;
+
+export const equipamentoExcluirLoteSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(500),
+});
+export type EquipamentoExcluirLote = z.infer<typeof equipamentoExcluirLoteSchema>;
+
 export const equipamentoPopularResultadoSchema = z.object({
   /** Equipamentos criados agora. */
   criados: z.number().int(),

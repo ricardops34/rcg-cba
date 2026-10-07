@@ -26,6 +26,8 @@ import {
   EquipamentoComodatoCriarDto,
   EquipamentoComodatoEditarDto,
   EquipamentoComodatoQueryDto,
+  EquipamentoExcluirLoteDto,
+  EquipamentoPopularDto,
 } from './dto/equipamento-comodato.dto';
 
 @ApiTags('equipamentos-comodato')
@@ -51,18 +53,49 @@ export class EquipamentosComodatoController {
     return this.service.findAll(user.empresaAtivaId, query);
   }
 
-  // Antes de ':id', senão o Nest leria "popular" como id.
+  // Rotas fixas antes de ':id', senão o Nest leria "popular" como id.
   @ApiOperation({
     summary: 'Popular pelas notas de comodato',
     description:
-      'Cadastra como equipamento todo produto que já saiu em remessa de ' +
-      'comodato (CFOP 5908/6908). Não mexe no que já está cadastrado, nem no ' +
-      'excluído. Requer equipamentos-comodato.importar.',
+      'Cadastra como equipamento todo produto ativo que já saiu em remessa de ' +
+      'comodato (CFOP 5908/6908), opcionalmente só das categorias e do período ' +
+      'de emissão informados. Produto bloqueado não entra. Não mexe no que já ' +
+      'está cadastrado, nem no excluído. Requer equipamentos-comodato.importar.',
   })
   @RequirePermission('equipamentos-comodato', 'importar')
   @Post('popular')
-  popular(@CurrentUser() user: AuthenticatedUser) {
-    return this.service.popular(user.empresaAtivaId, user.id);
+  popular(
+    @Body() body: EquipamentoPopularDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.popular(user.empresaAtivaId, user.id, body);
+  }
+
+  @ApiOperation({
+    summary: 'Categorias das remessas de comodato (filtro do Popular)',
+    description:
+      'Categorias raiz dos produtos ativos que já saíram em remessa de ' +
+      'comodato. Requer equipamentos-comodato.importar.',
+  })
+  @RequirePermission('equipamentos-comodato', 'importar')
+  @Get('popular/categorias')
+  categoriasPopular(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.categoriasPopular(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Excluir equipamentos em lote',
+    description:
+      'Soft delete dos equipamentos informados; os produtos aplicáveis ' +
+      'continuam no produto. Requer equipamentos-comodato.excluir.',
+  })
+  @RequirePermission('equipamentos-comodato', 'excluir')
+  @Post('excluir-lote')
+  removerLote(
+    @Body() body: EquipamentoExcluirLoteDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.removerLote(user.empresaAtivaId, user.id, body);
   }
 
   @ApiOperation({

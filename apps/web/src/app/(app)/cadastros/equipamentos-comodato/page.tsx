@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import { DatabaseZap, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import type {
   EquipamentoComodato,
-  EquipamentoPopularResultado,
   Produto,
 } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
@@ -18,6 +17,7 @@ import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
 import { StatusQuickFilter, type StatusFilterValue } from "@/components/crud/status-quick-filter";
 import { ProdutoCombobox } from "@/components/crud/produto-combobox";
+import { EquipamentoPopularDialog } from "@/components/crud/equipamento-popular-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -59,6 +59,9 @@ export default function EquipamentosComodatoPage() {
   const [novoAberto, setNovoAberto] = useState(false);
   const [produto, setProduto] = useState<Produto | null>(null);
   const [popularAberto, setPopularAberto] = useState(false);
+  // Seleção para exclusão em lote; atravessa páginas, mas filtro novo limpa —
+  // senão o lote incluiria linhas que a pessoa já não está vendo.
+  const [selecionados, setSelecionados] = useState<string[]>([]);
 
   const { data, isLoading, isFetching, refetch, error } = useResourceList<EquipamentoComodato>(
     RECURSO,
@@ -92,26 +95,35 @@ export default function EquipamentosComodatoPage() {
       toast.error(e instanceof ApiError ? e.message : "Não foi possível cadastrar"),
   });
 
-  const popular = useMutation({
-    mutationFn: () =>
-      apiFetch<EquipamentoPopularResultado>(`/${RECURSO}/popular`, { method: "POST" }),
+  const excluirLote = useMutation({
+    mutationFn: (ids: string[]) =>
+      apiFetch<{ excluidos: number }>(`/${RECURSO}/excluir-lote`, {
+        method: "POST",
+        body: { ids },
+      }),
     onSuccess: (r) => {
-      setPopularAberto(false);
-      toast.success(
-        r.criados === 0
-          ? "Nenhum equipamento novo: todos os produtos das remessas já estavam no cadastro."
-          : `${r.criados} equipamento(s) cadastrado(s) a partir das notas de comodato.`,
-      );
+      toast.success(`${r.excluidos} equipamento(s) excluído(s)`);
+      setSelecionados([]);
       invalidar();
     },
     onError: (e) =>
-      toast.error(e instanceof ApiError ? e.message : "Não foi possível popular"),
+      toast.error(e instanceof ApiError ? e.message : "Não foi possível excluir"),
   });
+
+  const confirmarExclusaoLote = () => {
+    if (
+      window.confirm(
+        `Excluir ${selecionados.length} equipamento(s) do cadastro? Os produtos aplicáveis continuam no produto e voltam se o equipamento for cadastrado de novo.`,
+      )
+    )
+      excluirLote.mutate(selecionados);
+  };
 
   const excluir = useMutation({
     mutationFn: (id: string) => apiFetch(`/${RECURSO}/${id}`, { method: "DELETE" }),
-    onSuccess: () => {
+    onSuccess: (_r, id) => {
       toast.success("Equipamento excluído");
+      setSelecionados((atual) => atual.filter((s) => s !== id));
       invalidar();
     },
     onError: (e) =>
@@ -208,6 +220,7 @@ export default function EquipamentosComodatoPage() {
         search={search}
         onSearchChange={(v) => {
           setSearch(v);
+          setSelecionados([]);
           setPage(1);
         }}
         onRefresh={() => refetch()}
@@ -235,6 +248,7 @@ export default function EquipamentosComodatoPage() {
           value={status}
           onChange={(v) => {
             setStatus(v);
+            setSelecionados([]);
             setPage(1);
           }}
         />
@@ -243,12 +257,32 @@ export default function EquipamentosComodatoPage() {
             checked={semAplicacao}
             onCheckedChange={(v) => {
               setSemAplicacao(v === true);
+              setSelecionados([]);
               setPage(1);
             }}
           />
           Só os sem produtos aplicáveis
         </label>
       </div>
+
+      {selecionados.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+          <span className="font-medium">{selecionados.length} selecionado(s)</span>
+          <Button variant="ghost" size="sm" onClick={() => setSelecionados([])}>
+            Limpar seleção
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="ml-auto"
+            disabled={excluirLote.isPending}
+            onClick={confirmarExclusaoLote}
+          >
+            <Trash2 className="size-4" />
+            Excluir selecionados
+          </Button>
+        </div>
+      )}
 
       <EntityTable
         columns={columns}
@@ -266,6 +300,9 @@ export default function EquipamentosComodatoPage() {
           setPage(1);
         }}
         onRowClick={abrir}
+        {...(podeExcluir
+          ? { selectedKeys: selecionados, onSelectedKeysChange: setSelecionados }
+          : {})}
         emptyMessage="Nenhum equipamento cadastrado. Use “Popular pelas notas” para trazer os que já saíram em comodato."
         sortBy={sortBy}
         sortOrder={sortOrder}
@@ -296,27 +333,14 @@ export default function EquipamentosComodatoPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={popularAberto} onOpenChange={(o) => !o && setPopularAberto(false)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Popular pelas notas de comodato</DialogTitle>
-            <DialogDescription>
-              Cadastra como equipamento todo produto que já saiu em remessa de comodato
-              (CFOP 5908/6908). O que já está no cadastro não muda, e o que foi excluído
-              continua excluído. Os produtos aplicáveis não são gravados aqui: cada
-              equipamento mostra sugestões no detalhe, para você confirmar.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPopularAberto(false)}>
-              Cancelar
-            </Button>
-            <Button disabled={popular.isPending} onClick={() => popular.mutate()}>
-              Popular
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <EquipamentoPopularDialog
+        open={popularAberto}
+        onOpenChange={setPopularAberto}
+        onPopulado={() => {
+          setPopularAberto(false);
+          invalidar();
+        }}
+      />
     </div>
   );
 }

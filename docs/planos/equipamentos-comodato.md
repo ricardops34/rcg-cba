@@ -16,6 +16,12 @@ dispenser de toalha interfolha, o químico da dosadora).
   cabeçalhos a partir dos produtos que já saíram em remessa de comodato
   (CFOP 5908/6908) e **sugere** os aplicáveis por compra conjunta; a sugestão
   só grava com confirmação, item a item.
+- **2026-10-07 — filtros do "popular" e exclusão em lote (decisão do
+  usuário):** o popular escolhe categorias (casa com categoria ou
+  subcategoria do produto; o diálogo já traz as marcadas como de equipamento)
+  e o período de emissão da remessa, e **nunca** traz produto bloqueado. A
+  listagem exclui em lote (`POST /equipamentos-comodato/excluir-lote`, soft
+  delete); excluído continua fora do próximo popular.
 - **2026-10-07 — acesso (decisão do usuário):** Administrador, Diretor,
   Gerente e Supervisor. Módulo Cadastros.
 - **2026-10-07 — produto de categoria de equipamento não é aplicável**

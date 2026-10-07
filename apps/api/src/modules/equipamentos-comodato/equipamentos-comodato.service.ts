@@ -25,6 +25,9 @@ import type {
   EquipamentoComodatoDetalhe,
   EquipamentoComodatoEditar,
   EquipamentoComodatoQuery,
+  EquipamentoExcluirLote,
+  EquipamentoPopular,
+  EquipamentoPopularCategoria,
   EquipamentoPopularResultado,
   EquipamentoSugestao,
 } from '@plataforma/contracts';
@@ -622,36 +625,96 @@ export class EquipamentosComodatoService {
    * "Popular pelas notas": cadastra como equipamento todo produto que já saiu
    * em remessa de comodato (item com CFOP 5908/6908). O que já está no
    * cadastro fica como está — inclusive o excluído: alguém o tirou de
-   * propósito, e popular de novo não deve desfazer isso.
+   * propósito, e popular de novo não deve desfazer isso. O filtro restringe
+   * por categoria e pela emissão da remessa; produto bloqueado nunca entra.
    */
   popular(
     empresaId: string,
     userId: string,
+    filtro: EquipamentoPopular = {},
   ): Promise<EquipamentoPopularResultado> {
     return this.prisma.withTenant(empresaId, async (tx) => {
+      const remessas = this.produtosDeRemessa(empresaId, filtro);
       const [{ total }] = await tx.$queryRaw<{ total: number }[]>`
-        SELECT COUNT(DISTINCT i."produtoId")::int AS "total"
-          FROM "notas_saida_itens" i
-          JOIN "produtos" p ON p."id" = i."produtoId" AND p."deletedAt" IS NULL
-         WHERE i."empresaId" = ${empresaId}
-           AND i."comodato" = true
-           AND i."deletedAt" IS NULL`;
+        SELECT COUNT(*)::int AS "total" FROM (${remessas}) x`;
       const criados = await tx.$executeRaw`
         INSERT INTO "equipamentos_comodato"
                ("id", "empresaId", "produtoId", "ativo", "createdAt", "updatedAt", "createdBy", "updatedBy")
         SELECT gen_random_uuid(), ${empresaId}, x."produtoId", true, now(), now(), ${userId}, ${userId}
-          FROM (
-            SELECT DISTINCT i."produtoId"
-              FROM "notas_saida_itens" i
-              JOIN "produtos" p ON p."id" = i."produtoId" AND p."deletedAt" IS NULL
-             WHERE i."empresaId" = ${empresaId}
-               AND i."comodato" = true
-               AND i."deletedAt" IS NULL
-          ) x
+          FROM (${remessas}) x
          WHERE NOT EXISTS (
                  SELECT 1 FROM "equipamentos_comodato" e WHERE e."produtoId" = x."produtoId")`;
       return { criados, existentes: total - criados };
     });
+  }
+
+  /**
+   * Opções de categoria do "Popular": as categorias raiz dos produtos ativos
+   * que já saíram em remessa de comodato, com quantos produtos cada uma tem.
+   */
+  categoriasPopular(empresaId: string): Promise<EquipamentoPopularCategoria[]> {
+    return this.prisma.withTenant(
+      empresaId,
+      (tx) =>
+        tx.$queryRaw<EquipamentoPopularCategoria[]>`
+        SELECT c."id", c."codigoErp", c."descricao",
+               c."equipamentoComodato" AS "equipamento",
+               COUNT(DISTINCT p."id")::int AS "produtos"
+          FROM "notas_saida_itens" i
+          JOIN "produtos" p ON p."id" = i."produtoId"
+                           AND p."deletedAt" IS NULL AND p."ativo" = true
+          JOIN "categorias" c ON c."id" = p."categoriaId"
+         WHERE i."empresaId" = ${empresaId}
+           AND i."comodato" = true
+           AND i."deletedAt" IS NULL
+         GROUP BY c."id", c."codigoErp", c."descricao", c."equipamentoComodato"
+         ORDER BY c."descricao"`,
+    );
+  }
+
+  /** Soft delete de vários de uma vez — a seleção da listagem. */
+  removerLote(
+    empresaId: string,
+    userId: string,
+    { ids }: EquipamentoExcluirLote,
+  ): Promise<{ excluidos: number }> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const { count } = await tx.equipamentoComodato.updateMany({
+        where: { id: { in: ids }, empresaId, deletedAt: null },
+        data: { deletedAt: new Date(), deletedBy: userId, updatedBy: userId },
+      });
+      return { excluidos: count };
+    });
+  }
+
+  /**
+   * Produtos distintos que saíram em remessa de comodato, dentro do filtro.
+   * Produto bloqueado (inativo) fica de fora sempre: não se empresta o que não
+   * se vende mais.
+   */
+  private produtosDeRemessa(empresaId: string, filtro: EquipamentoPopular) {
+    const categorias = filtro.categoriaIds?.length
+      ? Prisma.sql`AND (p."categoriaId" IN (${Prisma.join(filtro.categoriaIds)})
+                     OR p."subCategoriaId" IN (${Prisma.join(filtro.categoriaIds)}))`
+      : Prisma.empty;
+    const periodo =
+      filtro.dataInicio || filtro.dataFim
+        ? Prisma.sql`AND EXISTS (
+              SELECT 1 FROM "notas_saida" n
+               WHERE n."id" = i."notaSaidaId"
+                 ${filtro.dataInicio ? Prisma.sql`AND n."dtEmissao" >= ${filtro.dataInicio}::date` : Prisma.empty}
+                 ${filtro.dataFim ? Prisma.sql`AND n."dtEmissao" <= ${filtro.dataFim}::date` : Prisma.empty})`
+        : Prisma.empty;
+    return Prisma.sql`
+      SELECT DISTINCT i."produtoId"
+        FROM "notas_saida_itens" i
+        JOIN "produtos" p ON p."id" = i."produtoId"
+                         AND p."deletedAt" IS NULL AND p."ativo" = true
+       WHERE i."empresaId" = ${empresaId}
+         AND i."comodato" = true
+         AND i."deletedAt" IS NULL
+         ${categorias}
+         ${periodo}`;
   }
 
   private async buscar(tx: TenantTx, empresaId: string, id: string) {
