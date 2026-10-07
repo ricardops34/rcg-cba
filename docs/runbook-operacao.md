@@ -881,9 +881,11 @@ Persisting failed: Another write batch or compaction is already active
 ```
 
 Mesmo sintoma (todas as rotas em 404) e mesma correção acima; o cache tinha ~3 GB.
-Esse aviso pode reaparecer logo depois com o cache novo sem derrubar as rotas — só
-refaça a limpeza se o 404 voltar. Evite reiniciar o web à toa: cada restart no meio
-de uma compactação do Turbopack é uma chance de corromper o cache.
+Esse aviso pode reaparecer logo depois com o cache novo sem derrubar as rotas.
+
+**Na mesma noite, o `docker restart` simples do web corrompeu o cache nas duas
+vezes seguidas.** Quando precisar reiniciar o web (código novo que não recarregou),
+faça direto o `stop` → apagar `.next` → `start` acima, em vez do `restart`.
 
 ## SQL avulso de carga/correção de cadastro (`docs/sql/`)
 

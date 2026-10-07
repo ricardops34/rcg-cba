@@ -4274,6 +4274,14 @@ model WhatsappSessao {
   usuarioId String?
 
   numero     String?
+
+  /// O número conectado é conta comercial (WhatsApp Business)? Lido a cada
+  /// conexão em `/user/check`: só conta comercial tem nome verificado. Decide
+  /// recursos que o WhatsApp só entrega vindo de conta comercial (lista de
+  /// opções). Nulo = ainda não verificado.
+  contaComercial Boolean?
+  /// Nome comercial verificado do número, quando é conta comercial.
+  nomeComercial  String?
   jid        String?
   status     WhatsappSessaoStatus @default(desconectada)
   transporte WhatsappTransporte   @default(zapo)

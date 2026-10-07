@@ -368,6 +368,12 @@ export const whatsappSessaoSchema = z.object({
   vendedorId: z.string().uuid().nullable(),
   vendedorNome: z.string().describe("Desnormalizado para a tela da equipe; 'Empresa' na institucional"),
   numero: z.string().nullable().describe("Número conectado, quando pareado"),
+  /**
+   * Conta comercial (WhatsApp Business)? Nulo = ainda não verificado. Libera
+   * recursos que o WhatsApp só entrega vindo de conta comercial (lista).
+   */
+  contaComercial: z.boolean().nullable().optional(),
+  nomeComercial: z.string().nullable().optional(),
   status: whatsappSessaoStatusSchema,
   transporte: whatsappTransporteSchema,
   ultimaConexao: z.string().datetime().nullable(),
@@ -889,6 +895,13 @@ export const whatsappInterativoSchema = z.discriminatedUnion("tipo", [
     }
   });
 export type WhatsappInterativo = z.infer<typeof whatsappInterativoSchema>;
+
+/**
+ * Tipos interativos que o WhatsApp só entrega vindo de **conta comercial**.
+ * Visto no teste real (2026-10-07): de uma conta comum, a lista foi aceita
+ * pelo gateway e nunca entregue — botões, enquete e link foram.
+ */
+export const WHATSAPP_INTERATIVOS_SO_COMERCIAL: readonly WhatsappInterativo["tipo"][] = ["lista"];
 
 export const whatsappEnviarInterativoSchema = z.object({
   mensagem: whatsappInterativoSchema,

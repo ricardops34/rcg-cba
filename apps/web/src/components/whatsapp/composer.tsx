@@ -31,11 +31,14 @@ import {
 import { RespostasRapidasDialog } from "@/components/whatsapp/respostas-rapidas-dialog";
 import {
   WHATSAPP_ARQUIVO_MAX_BYTES,
+  WHATSAPP_INTERATIVOS_SO_COMERCIAL,
+  type WhatsappSessao,
   type WhatsappMensagem,
   type WhatsappMensagemAgendada,
   type WhatsappTemplate,
 } from "@plataforma/contracts";
 import { ApiError, apiFetch, apiUpload, ehJanelaWhatsappFechada } from "@/lib/api-client";
+import { useAuthStore } from "@/stores/auth-store";
 import {
   Select,
   SelectContent,
@@ -107,6 +110,14 @@ export function Composer({
   const [templateAberto, setTemplateAberto] = useState(false);
   const [gerenciadorRespostasAberto, setGerenciadorRespostasAberto] = useState(false);
   const [interativo, setInterativo] = useState<TipoInterativo | null>(null);
+  // A sessão do usuário (mesma chave da tela de Atendimento, já em cache):
+  // diz se o número é WhatsApp Business, o que libera a lista de opções.
+  const empresaId = useAuthStore((st) => st.user?.empresaAtivaId);
+  const { data: sessao } = useQuery({
+    queryKey: ["whatsapp-sessao", empresaId],
+    queryFn: () => apiFetch<WhatsappSessao | null>("/whatsapp/sessao"),
+    enabled: !!empresaId,
+  });
   const arquivoRef = useRef<HTMLInputElement>(null);
   const midiaRef = useRef<HTMLInputElement>(null);
 
@@ -305,18 +316,35 @@ export function Composer({
             </DropdownMenuItem>
             {/* Recursos interativos da Evolution GO 0.7.2. */}
             <DropdownMenuSeparator />
-            {ITENS_INTERATIVOS.map(({ tipo, rotulo, Icone, cor }) => (
-              <DropdownMenuItem
-                key={tipo}
-                onClick={() => setInterativo(tipo)}
-                className="gap-2.5 py-2 cursor-pointer rounded-lg"
-              >
-                <span className={`flex size-7 items-center justify-center rounded-full ${cor}`}>
-                  <Icone className="size-4" />
-                </span>
-                <span className="font-medium text-xs">{rotulo}</span>
-              </DropdownMenuItem>
-            ))}
+            {ITENS_INTERATIVOS.map(({ tipo, rotulo, Icone, cor }) => {
+              // Recurso que o WhatsApp só entrega vindo de conta comercial:
+              // desabilitado (a API também recusa) quando o número não é Business.
+              const soComercial = WHATSAPP_INTERATIVOS_SO_COMERCIAL.includes(tipo);
+              const bloqueado = soComercial && sessao?.contaComercial !== true;
+              return (
+                <DropdownMenuItem
+                  key={tipo}
+                  disabled={bloqueado}
+                  onClick={() => setInterativo(tipo)}
+                  className="gap-2.5 py-2 cursor-pointer rounded-lg"
+                  title={
+                    bloqueado
+                      ? "O WhatsApp só entrega listas quando o número conectado é WhatsApp Business."
+                      : undefined
+                  }
+                >
+                  <span className={`flex size-7 items-center justify-center rounded-full ${cor}`}>
+                    <Icone className="size-4" />
+                  </span>
+                  <span className="flex flex-col">
+                    <span className="font-medium text-xs">{rotulo}</span>
+                    {bloqueado ? (
+                      <span className="text-[10px] text-muted-foreground">Só com WhatsApp Business</span>
+                    ) : null}
+                  </span>
+                </DropdownMenuItem>
+              );
+            })}
           </DropdownMenuContent>
         </DropdownMenu>
 

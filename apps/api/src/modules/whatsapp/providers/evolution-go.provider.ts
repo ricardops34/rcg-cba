@@ -867,6 +867,32 @@ export class EvolutionGoProvider implements WhatsappProvider {
   }
 
   /**
+   * `POST /user/check` (0.7.2): devolve `VerifiedName` — o nome comercial
+   * verificado, que só conta WhatsApp Business tem. Conferido no teste real:
+   * vazio para o número comum da plataforma, "Panan Refrigeração" para a
+   * conta comercial da Panan. (`/user/info` devolve `VerifiedName: null` para
+   * as duas — não serve.)
+   */
+  async contaComercial(
+    ctx: ContextoSessao,
+    numero: string,
+  ): Promise<{ comercial: boolean; nome: string | null } | null> {
+    const resposta = await this.http
+      .chamar<unknown>(ctx.config.evolutionUrl, '/user/check', {
+        metodo: 'POST',
+        credencial: this.chaveInstancia(ctx),
+        corpo: { number: [numero.replace(/\D/g, '')] },
+        timeoutMs: 15_000,
+      })
+      .catch(() => null);
+    if (!resposta) return null;
+    const usuario = lista(objeto(resposta, 'data') ?? resposta, 'Users', 'users')[0];
+    if (!usuario) return null;
+    const nome = texto(usuario, 'VerifiedName', 'verifiedName');
+    return { comercial: Boolean(nome), nome };
+  }
+
+  /**
    * `/message/edit` recebe o **jid** do chat (`chat`), não o `number` das
    * rotas de envio. A 0.7.2 corrigiu a edição que era ignorada (passou a
    * mandar `ExtendedTextMessage`, CHANGELOG #16) — antes dela o WhatsApp

@@ -221,6 +221,11 @@ export class WhatsappProviderService {
     return provider.pareamento(ctx);
   }
 
+  async contaComercial(empresaId: string, sessaoId: string, numero: string) {
+    const { ctx, provider } = await this.provedorDaSessao(empresaId, sessaoId);
+    return provider.contaComercial(ctx, numero);
+  }
+
   async forcarReconexao(
     empresaId: string,
     sessaoId: string,

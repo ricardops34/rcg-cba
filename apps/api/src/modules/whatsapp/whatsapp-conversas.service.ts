@@ -54,7 +54,10 @@ import type {
   WhatsappPresenca,
   WhatsappVincular,
 } from '@plataforma/contracts';
-import { WHATSAPP_EDICAO_LIMITE_MS } from '@plataforma/contracts';
+import {
+  WHATSAPP_EDICAO_LIMITE_MS,
+  WHATSAPP_INTERATIVOS_SO_COMERCIAL,
+} from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { mensagemComAutor } from './mensagem-com-autor';
 import {
@@ -1628,6 +1631,34 @@ export class WhatsappConversasService {
       );
       await this.garantirDono(tx, empresaId, user, conversa);
       await this.garantirJanelaAberta(empresaId, conversa, tx);
+
+      // Recurso que o WhatsApp só entrega vindo de conta comercial: barrado
+      // aqui, em código — de conta comum o gateway aceita e a mensagem nunca
+      // chega (visto no teste real com a lista). Sessão ainda não verificada
+      // é verificada na hora.
+      if (WHATSAPP_INTERATIVOS_SO_COMERCIAL.includes(input.mensagem.tipo)) {
+        const sessao = await tx.whatsappSessao.findFirst({
+          where: { id: conversa.sessaoId },
+          select: { contaComercial: true, numero: true },
+        });
+        const comercial =
+          sessao?.contaComercial ??
+          (sessao?.numero
+            ? (
+                await this.sessoes.verificarContaComercial(
+                  empresaId,
+                  conversa.sessaoId,
+                  sessao.numero,
+                )
+              )?.comercial
+            : null);
+        if (comercial !== true) {
+          throw new BadRequestException(
+            'A lista de opções só é entregue quando o número conectado é WhatsApp Business. ' +
+              'Use botões de resposta (até 3 opções).',
+          );
+        }
+      }
 
       const mensagemPronta = prepararInterativo(input.mensagem);
       const enviada = await this.provedores.enviarInterativo(

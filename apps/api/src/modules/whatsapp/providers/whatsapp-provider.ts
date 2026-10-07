@@ -223,6 +223,15 @@ export interface WhatsappProvider {
     },
   ): Promise<{ externoId: string }>;
 
+  /**
+   * O número é conta comercial (WhatsApp Business)? Pelo nome comercial
+   * verificado, que só conta comercial tem. `null` se não deu para saber.
+   */
+  contaComercial(
+    ctx: ContextoSessao,
+    numero: string,
+  ): Promise<{ comercial: boolean; nome: string | null } | null>;
+
   /** Edita texto enviado daqui (`/message/edit`). */
   editarMensagem(
     ctx: ContextoSessao,

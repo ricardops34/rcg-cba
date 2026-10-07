@@ -655,8 +655,40 @@ export class WhatsappSessaoService {
         });
       }
 
+      // Conectou: confere se o número é conta comercial. Fora da transação e
+      // sem esperar — é uma consulta ao gateway, e o estado já está gravado.
+      if (status === 'conectada' && numeroEfetivo) {
+        setImmediate(() => {
+          void this.verificarContaComercial(empresaId, sessaoId, numeroEfetivo);
+        });
+      }
+
       return { gravado: true };
     });
+  }
+
+  /**
+   * Grava se o número conectado é conta comercial (WhatsApp Business), pelo
+   * nome comercial verificado que só ela tem. Roda a cada conexão: o número
+   * pode virar Business (ou deixar de ser) entre uma e outra. Falha na
+   * consulta não muda o que estava gravado.
+   */
+  async verificarContaComercial(
+    empresaId: string,
+    sessaoId: string,
+    numero: string,
+  ) {
+    const conta = await this.provedores
+      .contaComercial(empresaId, sessaoId, numero)
+      .catch(() => null);
+    if (!conta) return null;
+    await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappSessao.update({
+        where: { id: sessaoId },
+        data: { contaComercial: conta.comercial, nomeComercial: conta.nome },
+      }),
+    );
+    return conta;
   }
 
   /**
@@ -1294,6 +1326,8 @@ export class WhatsappSessaoService {
       vendedorId: string | null;
       tipo?: string;
       numero: string | null;
+      contaComercial?: boolean | null;
+      nomeComercial?: string | null;
       status: string;
       transporte: string;
       ultimaConexao: Date | null;
@@ -1310,6 +1344,8 @@ export class WhatsappSessaoService {
       vendedorId: sessao.vendedorId,
       vendedorNome,
       numero: sessao.numero,
+      contaComercial: sessao.contaComercial ?? null,
+      nomeComercial: sessao.nomeComercial ?? null,
       status: sessao.status,
       transporte: sessao.transporte,
       ultimaConexao: sessao.ultimaConexao,
