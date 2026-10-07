@@ -51,9 +51,11 @@ export default function ClientesPage() {
   const [pageSize, setPageSize] = useState(10);
   const [sortBy, setSortBy] = useState("razaoSocial");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  // Abre em "Ativos" (pedido do usuário, 2026-10-07); o link que já traz
+  // ?ativo= (assistente) continua mandando.
   const [status, setStatus] = useState<StatusFilterValue>(() => {
     const ativo = urlFiltros.booleano("ativo");
-    return ativo === undefined ? "todos" : ativo ? "ativos" : "inativos";
+    return ativo === undefined ? "ativos" : ativo ? "ativos" : "inativos";
   });
   const [tipoPessoa, setTipoPessoa] = useState<TipoPessoaFiltro>("todos");
   const [uf, setUf] = useState<string | undefined>(() => urlFiltros.texto("uf"));
