@@ -117,6 +117,11 @@ a nota de origem (D1_NFORI/D1_SERIORI/D1_ITEMORI, que a integração não
 recebe). O saldo em poder do cliente sai do item da remessa: `quantidade −
 quantidadeDev` (D2_QTDEDEV).
 
+A aba **Equipamentos** da Posição de Cliente soma esse saldo por produto, a
+partir do **item** de comodato, e não da nota: o equipamento que foi junto numa
+nota de venda também conta. É a conta das notas desde a primeira remessa
+(2009): equipamento baixado no ERP sem nota de retorno continua como saldo.
+
 Como se chegou aqui (2026-09-29, dump da produção e consulta no ERP): o
 critério antigo de "com financeiro" era ter condição de pagamento, mas a nota
 de comodato da RCG também tem. Tentou-se tirar comodato e bonificação por CFOP

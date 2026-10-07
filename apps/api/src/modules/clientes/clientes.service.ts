@@ -1001,6 +1001,11 @@ export class ClientesService {
           this.mixProdutos(tx, empresaId, clienteId, tabelaId),
         ),
       ]);
+      const equipamentos = await this.equipamentosEmComodato(
+        tx,
+        empresaId,
+        clienteId,
+      );
 
       // Conta de cobrança padrão: decide se o título sem conta própria pode
       // oferecer 2ª via de boleto. Uma consulta para a página toda, não uma
@@ -1063,8 +1068,65 @@ export class ClientesService {
         devolucoes,
         titulos: titulosComStatus,
         mix,
+        equipamentos,
       };
     });
+  }
+
+  /**
+   * Aba Equipamentos: os itens de comodato do cliente, somados por produto.
+   *
+   * Entra o **item** marcado (CFOP 5908/6908), e não a nota: o dispenser que
+   * foi junto numa nota de venda também está com o cliente. A devolução vem
+   * do próprio item da remessa (`quantidadeDev`, o D2_QTDEDEV) — a nota de
+   * entrada não diz qual remessa está devolvendo.
+   */
+  private async equipamentosEmComodato(
+    tx: TenantTx,
+    empresaId: string,
+    clienteId: string,
+  ) {
+    const linhas = await tx.$queryRaw<
+      {
+        produtoId: string | null;
+        codigoErp: string | null;
+        descricao: string | null;
+        unidade: string | null;
+        categoria: string | null;
+        enviada: number;
+        devolvida: number;
+        ultimaRemessa: Date | null;
+        totalNotas: number;
+      }[]
+    >`
+      SELECT p."id" AS "produtoId", p."codigoErp", p."descricao", p."unidade",
+             cat."descricao" AS "categoria",
+             SUM(i."quantidade")::float8 AS "enviada",
+             SUM(COALESCE(i."quantidadeDev", 0))::float8 AS "devolvida",
+             MAX(i."dtEmissao") AS "ultimaRemessa",
+             COUNT(DISTINCT i."notaSaidaId")::int AS "totalNotas"
+        FROM "notas_saida_itens" i
+        JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
+        LEFT JOIN "produtos" p ON p."id" = i."produtoId"
+        LEFT JOIN "categorias" cat ON cat."id" = p."categoriaId"
+       WHERE i."empresaId" = ${empresaId}
+         AND i."clienteId" = ${clienteId}
+         AND i."comodato" = true
+         AND i."deletedAt" IS NULL AND i."ativo" = true
+         AND n."deletedAt" IS NULL AND n."ativo" = true
+       GROUP BY p."id", p."codigoErp", p."descricao", p."unidade", cat."descricao"`;
+    return linhas.map((l) => ({
+      produtoId: l.produtoId,
+      codigoErp: l.codigoErp,
+      descricao: l.descricao ?? 'Produto não identificado',
+      unidade: l.unidade,
+      categoria: l.categoria,
+      quantidadeEnviada: l.enviada,
+      quantidadeDevolvida: l.devolvida,
+      saldo: l.enviada - l.devolvida,
+      ultimaRemessa: l.ultimaRemessa,
+      totalNotas: l.totalNotas,
+    }));
   }
 
   /**

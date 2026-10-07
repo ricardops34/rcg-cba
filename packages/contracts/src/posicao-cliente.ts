@@ -63,6 +63,25 @@ export const posicaoClienteMixSchema = z.object({
 });
 export type PosicaoClienteMix = z.infer<typeof posicaoClienteMixSchema>;
 
+// Equipamentos em comodato: os itens de comodato (CFOP 5908/6908) das notas
+// do cliente, somados por produto. `quantidadeDevolvida` é o D2_QTDEDEV de
+// cada item da remessa — a nota de entrada não diz qual remessa devolve, e é
+// a própria remessa que sabe quanto dela voltou.
+export const posicaoClienteEquipamentoSchema = z.object({
+  produtoId: z.string().uuid().nullable(),
+  codigoErp: z.string().nullable(),
+  descricao: z.string(),
+  unidade: z.string().nullable(),
+  categoria: z.string().nullable(),
+  quantidadeEnviada: z.number(),
+  quantidadeDevolvida: z.number(),
+  // Enviada − devolvida: o que, pelas notas, ainda está com o cliente.
+  saldo: z.number(),
+  ultimaRemessa: z.string().datetime().nullable(),
+  totalNotas: z.number().int(),
+});
+export type PosicaoClienteEquipamento = z.infer<typeof posicaoClienteEquipamentoSchema>;
+
 export const posicaoClienteResumoSchema = z.object({
   totalNotas: z.number().int(),
   totalComprado: z.number(),
@@ -99,5 +118,6 @@ export const posicaoClienteSchema = z.object({
   devolucoes: z.array(posicaoClienteDevolucaoSchema),
   titulos: z.array(posicaoClienteTituloSchema),
   mix: z.array(posicaoClienteMixSchema),
+  equipamentos: z.array(posicaoClienteEquipamentoSchema),
 });
-export type PosicaoCliente = z.infer<typeof posicaoClienteSchema>;
+export type PosicaoCliente =z.infer<typeof posicaoClienteSchema>;

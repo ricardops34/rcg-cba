@@ -20,6 +20,7 @@ import { SortableTableHead } from "@/components/crud/sortable-table-head";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { NotaSaidaSheet } from "@/components/comercial/nota-saida-detalhe";
 import { NotaEntradaSheet } from "@/components/compras/nota-entrada-detalhe";
+import { TabelaEquipamentos } from "@/components/comercial/posicao-cliente-equipamentos";
 import { TituloReceberSheet } from "@/components/comercial/titulo-receber-detalhe";
 import { ProdutoSheet } from "@/components/comercial/produto-detalhe";
 import {
@@ -488,6 +489,7 @@ export function PosicaoClienteConteudo({
   const comodatos = useMemo(() => posicao?.comodatos ?? [], [posicao]);
   const titulos = useMemo(() => posicao?.titulos ?? [], [posicao]);
   const mix = useMemo(() => posicao?.mix ?? [], [posicao]);
+  const equipamentos = useMemo(() => posicao?.equipamentos ?? [], [posicao]);
   const devolucoes = useMemo(() => posicao?.devolucoes ?? [], [posicao]);
 
   const titulosFiltrados = useMemo(() => {
@@ -745,6 +747,7 @@ export function PosicaoClienteConteudo({
             <TabsTrigger value="notas">Notas fiscais ({notasEComodatos.length})</TabsTrigger>
             <TabsTrigger value="devolucoes">Devoluções ({devolucoes.length})</TabsTrigger>
             <TabsTrigger value="titulos">Títulos a receber ({titulos.length})</TabsTrigger>
+            <TabsTrigger value="equipamentos">Equipamentos ({equipamentos.length})</TabsTrigger>
             <TabsTrigger value="mix">Mix de produtos ({mix.length})</TabsTrigger>
             <TabsTrigger value="sugestao">Sugestão ({sugestaoCalculada?.itens.length ?? 0})</TabsTrigger>
             <TabsTrigger value="historico">Histórico de atendimento</TabsTrigger>
@@ -952,6 +955,13 @@ export function PosicaoClienteConteudo({
 
         <TabsContent value="historico">
           <HistoricoAtendimento clienteId={id} />
+        </TabsContent>
+
+        <TabsContent value="equipamentos">
+          <TabelaEquipamentos
+            equipamentos={equipamentos}
+            onSelecionarProduto={setProdutoSelecionadoId}
+          />
         </TabsContent>
 
         <TabsContent value="mix">
