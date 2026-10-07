@@ -968,6 +968,13 @@ Esse aviso pode reaparecer logo depois com o cache novo sem derrubar as rotas.
 vezes seguidas.** Quando precisar reiniciar o web (código novo que não recarregou),
 faça direto o `stop` → apagar `.next` → `start` acima, em vez do `restart`.
 
+**Outro sintoma, sem 404 (2026-10-07):** depois de `docker restart` do web, a tela
+continuou com o código **antigo** — a aba nova do orçamento não aparecia e uma
+correção já no fonte (e no container) não fazia efeito. Nenhum erro no log. O cache
+(`.next/dev`, 5,2 GB) servia a compilação anterior; apagá-lo resolveu. Para conferir
+se o código novo entrou, procure um texto dele no build:
+`docker exec plataforma-comercial-dev-web-1 grep -rl '<texto novo>' /app/apps/web/.next/dev`.
+
 ## SQL avulso de carga/correção de cadastro (`docs/sql/`)
 
 Ajustes pontuais de cadastro que não são estrutura (ex.: sincronizar os vendedores
