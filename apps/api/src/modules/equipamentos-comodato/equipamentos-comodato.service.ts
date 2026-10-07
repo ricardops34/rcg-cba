@@ -638,6 +638,23 @@ export class EquipamentosComodatoService {
       const remessas = this.produtosDeRemessa(empresaId, filtro);
       const [{ total }] = await tx.$queryRaw<{ total: number }[]>`
         SELECT COUNT(*)::int AS "total" FROM (${remessas}) x`;
+      // Opcional: devolve ao cadastro o que foi excluído — o padrão continua
+      // respeitando a exclusão. O vínculo (aplicações) nunca saiu do produto.
+      const restaurados = filtro.restaurarExcluidos
+        ? await tx.$executeRaw`
+            UPDATE "equipamentos_comodato" e
+               SET "deletedAt" = NULL, "deletedBy" = NULL,
+                   "updatedAt" = now(), "updatedBy" = ${userId}
+             WHERE e."empresaId" = ${empresaId}
+               AND e."deletedAt" IS NOT NULL
+               AND e."produtoId" IN (SELECT x."produtoId" FROM (${remessas}) x)`
+        : 0;
+      const [{ excluidos }] = await tx.$queryRaw<{ excluidos: number }[]>`
+        SELECT COUNT(*)::int AS "excluidos"
+          FROM "equipamentos_comodato" e
+         WHERE e."empresaId" = ${empresaId}
+           AND e."deletedAt" IS NOT NULL
+           AND e."produtoId" IN (SELECT x."produtoId" FROM (${remessas}) x)`;
       const criados = await tx.$executeRaw`
         INSERT INTO "equipamentos_comodato"
                ("id", "empresaId", "produtoId", "ativo", "createdAt", "updatedAt", "createdBy", "updatedBy")
@@ -645,7 +662,12 @@ export class EquipamentosComodatoService {
           FROM (${remessas}) x
          WHERE NOT EXISTS (
                  SELECT 1 FROM "equipamentos_comodato" e WHERE e."produtoId" = x."produtoId")`;
-      return { criados, existentes: total - criados };
+      return {
+        criados,
+        restaurados,
+        excluidos,
+        existentes: total - criados - restaurados - excluidos,
+      };
     });
   }
 
