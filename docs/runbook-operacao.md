@@ -873,6 +873,18 @@ docker start plataforma-comercial-dev-web-1
 
 A primeira compilação depois disso demora (~25 s por rota); é esperado.
 
+**Visto de novo em 2026-10-07**, com outra mensagem no log — sem o "Out of memory",
+depois de vários `docker restart` seguidos do web:
+
+```
+Persisting failed: Another write batch or compaction is already active
+```
+
+Mesmo sintoma (todas as rotas em 404) e mesma correção acima; o cache tinha ~3 GB.
+Esse aviso pode reaparecer logo depois com o cache novo sem derrubar as rotas — só
+refaça a limpeza se o 404 voltar. Evite reiniciar o web à toa: cada restart no meio
+de uma compactação do Turbopack é uma chance de corromper o cache.
+
 ## SQL avulso de carga/correção de cadastro (`docs/sql/`)
 
 Ajustes pontuais de cadastro que não são estrutura (ex.: sincronizar os vendedores
