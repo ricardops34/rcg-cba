@@ -60,7 +60,8 @@ export class EquipamentosComodatoController {
       'Cadastra como equipamento todo produto ativo que já saiu em remessa de ' +
       'comodato (CFOP 5908/6908), opcionalmente só das categorias e do período ' +
       'de emissão informados. Produto bloqueado não entra. Não mexe no que já ' +
-      'está cadastrado, nem no excluído. Requer equipamentos-comodato.importar.',
+      'está cadastrado; o excluído conta como não cadastrado e volta. ' +
+      'Requer equipamentos-comodato.importar.',
   })
   @RequirePermission('equipamentos-comodato', 'importar')
   @Post('popular')

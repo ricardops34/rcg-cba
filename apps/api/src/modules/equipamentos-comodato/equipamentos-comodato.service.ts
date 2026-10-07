@@ -633,10 +633,11 @@ export class EquipamentosComodatoService {
 
   /**
    * "Popular pelas notas": cadastra como equipamento todo produto que já saiu
-   * em remessa de comodato (item com CFOP 5908/6908). O que já está no
-   * cadastro fica como está — inclusive o excluído: alguém o tirou de
-   * propósito, e popular de novo não deve desfazer isso. O filtro restringe
-   * por categoria e pela emissão da remessa; produto bloqueado nunca entra.
+   * em remessa de comodato (item com CFOP 5908/6908) e ainda não está no
+   * cadastro. Excluído conta como não cadastrado e é gerado de novo (decisão
+   * do usuário, 2026-10-07): quem diz o que é equipamento é o filtro de
+   * categoria, não a exclusão. O filtro restringe por categoria e pela emissão
+   * da remessa; produto bloqueado nunca entra.
    */
   popular(
     empresaId: string,
@@ -647,36 +648,24 @@ export class EquipamentosComodatoService {
       const remessas = this.produtosDeRemessa(empresaId, filtro);
       const [{ total }] = await tx.$queryRaw<{ total: number }[]>`
         SELECT COUNT(*)::int AS "total" FROM (${remessas}) x`;
-      // Opcional: devolve ao cadastro o que foi excluído — o padrão continua
-      // respeitando a exclusão. O vínculo (aplicações) nunca saiu do produto.
-      const restaurados = filtro.restaurarExcluidos
-        ? await tx.$executeRaw`
-            UPDATE "equipamentos_comodato" e
-               SET "deletedAt" = NULL, "deletedBy" = NULL,
-                   "updatedAt" = now(), "updatedBy" = ${userId}
-             WHERE e."empresaId" = ${empresaId}
-               AND e."deletedAt" IS NOT NULL
-               AND e."produtoId" IN (SELECT x."produtoId" FROM (${remessas}) x)`
-        : 0;
-      const [{ excluidos }] = await tx.$queryRaw<{ excluidos: number }[]>`
-        SELECT COUNT(*)::int AS "excluidos"
-          FROM "equipamentos_comodato" e
+      // produtoId é único: o excluído volta na mesma linha, como no cadastro
+      // manual (`create`). As aplicações nunca saíram do produto e voltam junto.
+      const regerados = await tx.$executeRaw`
+        UPDATE "equipamentos_comodato" e
+           SET "deletedAt" = NULL, "deletedBy" = NULL, "ativo" = true,
+               "updatedAt" = now(), "updatedBy" = ${userId}
          WHERE e."empresaId" = ${empresaId}
            AND e."deletedAt" IS NOT NULL
            AND e."produtoId" IN (SELECT x."produtoId" FROM (${remessas}) x)`;
-      const criados = await tx.$executeRaw`
+      const novos = await tx.$executeRaw`
         INSERT INTO "equipamentos_comodato"
                ("id", "empresaId", "produtoId", "ativo", "createdAt", "updatedAt", "createdBy", "updatedBy")
         SELECT gen_random_uuid(), ${empresaId}, x."produtoId", true, now(), now(), ${userId}, ${userId}
           FROM (${remessas}) x
          WHERE NOT EXISTS (
                  SELECT 1 FROM "equipamentos_comodato" e WHERE e."produtoId" = x."produtoId")`;
-      return {
-        criados,
-        restaurados,
-        excluidos,
-        existentes: total - criados - restaurados - excluidos,
-      };
+      const criados = novos + regerados;
+      return { criados, existentes: total - criados };
     });
   }
 

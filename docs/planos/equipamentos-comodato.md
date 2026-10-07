@@ -21,7 +21,13 @@ dispenser de toalha interfolha, o químico da dosadora).
   subcategoria do produto; o diálogo já traz as marcadas como de equipamento)
   e o período de emissão da remessa, e **nunca** traz produto bloqueado. A
   listagem exclui em lote (`POST /equipamentos-comodato/excluir-lote`, soft
-  delete); excluído continua fora do próximo popular.
+  delete), mas não o equipamento que tem produto aplicável — esse só sai pelo
+  detalhe.
+- **2026-10-07 — excluído volta no popular (decisão do usuário):** o popular
+  gera o que não existe e não mexe no que existe; excluído conta como não
+  existente e é gerado de novo. Antes a exclusão servia de marca "não é
+  equipamento", o que perdeu o sentido com o filtro de categoria — e fazia o
+  popular não trazer nada depois de uma exclusão em lote (RCG: 216 de 216).
 - **2026-10-07 — acesso (decisão do usuário):** Administrador, Diretor,
   Gerente e Supervisor. Módulo Cadastros.
 - **2026-10-07 — produto de categoria de equipamento não é aplicável**

@@ -11,7 +11,6 @@ import type {
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { FilterMultiSelect } from "@/components/crud/filter-multi-select";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -62,7 +61,6 @@ function Formulario({
   const [escolhidas, setEscolhidas] = useState<string[] | null>(null);
   const [dataInicio, setDataInicio] = useState("");
   const [dataFim, setDataFim] = useState("");
-  const [restaurar, setRestaurar] = useState(false);
 
   const { data: categorias, isLoading } = useQuery({
     queryKey: [RECURSO, "popular", "categorias"],
@@ -80,7 +78,6 @@ function Formulario({
         ...(categoriaIds.length ? { categoriaIds } : {}),
         ...(dataInicio ? { dataInicio } : {}),
         ...(dataFim ? { dataFim } : {}),
-        ...(restaurar ? { restaurarExcluidos: true } : {}),
       };
       return apiFetch<EquipamentoPopularResultado>(`/${RECURSO}/popular`, {
         method: "POST",
@@ -90,14 +87,12 @@ function Formulario({
     onSuccess: (r) => {
       const partes = [
         r.criados > 0 && `${r.criados} cadastrado(s)`,
-        r.restaurados > 0 && `${r.restaurados} restaurado(s)`,
         r.existentes > 0 && `${r.existentes} já estava(m) no cadastro`,
-        r.excluidos > 0 && `${r.excluidos} excluído(s) mantido(s) fora`,
       ].filter(Boolean);
       const mensagem = partes.length
         ? `${partes.join(" · ")}.`
         : "Nenhuma remessa de comodato com produto ativo nesse filtro.";
-      if (r.criados + r.restaurados > 0) toast.success(mensagem);
+      if (r.criados > 0) toast.success(mensagem);
       else toast.info(mensagem);
       onPopulado();
     },
@@ -111,9 +106,10 @@ function Formulario({
         <DialogTitle>Popular pelas notas de comodato</DialogTitle>
         <DialogDescription>
           Cadastra como equipamento os produtos que saíram em remessa de comodato (CFOP
-          5908/6908). Produto bloqueado não entra, e o que já está no cadastro não muda.
-          Os produtos aplicáveis não são gravados aqui:
-          cada equipamento mostra sugestões no detalhe, para você confirmar.
+          5908/6908) e ainda não estão no cadastro — o que foi excluído é gerado de novo.
+          Produto bloqueado não entra, e o que já está no cadastro não muda. Os produtos
+          aplicáveis não são gravados aqui: cada equipamento mostra sugestões no detalhe,
+          para você confirmar.
         </DialogDescription>
       </DialogHeader>
 
@@ -170,20 +166,6 @@ function Formulario({
             Pela emissão da nota. Em branco, todo o histórico.
           </p>
         )}
-
-        <label className="flex items-start gap-2 text-sm">
-          <Checkbox
-            className="mt-0.5"
-            checked={restaurar}
-            onCheckedChange={(v) => setRestaurar(v === true)}
-          />
-          <span>
-            Trazer de volta os excluídos
-            <span className="block text-xs text-muted-foreground">
-              Sem marcar, equipamento excluído continua fora, mesmo que esteja nas remessas.
-            </span>
-          </span>
-        </label>
       </div>
 
       <DialogFooter>

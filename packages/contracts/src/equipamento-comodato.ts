@@ -155,8 +155,6 @@ export const equipamentoPopularSchema = z
     /** Emissão da nota de remessa, inclusive. */
     dataInicio: dataIso.optional(),
     dataFim: dataIso.optional(),
-    /** Devolve ao cadastro os equipamentos excluídos que caem no filtro. */
-    restaurarExcluidos: z.boolean().optional(),
   })
   .refine((v) => !v.dataInicio || !v.dataFim || v.dataInicio <= v.dataFim, {
     message: "A data inicial não pode ser depois da final",
@@ -196,11 +194,7 @@ export type EquipamentoExcluirLoteResultado = z.infer<
 export const equipamentoPopularResultadoSchema = z.object({
   /** Equipamentos criados agora. */
   criados: z.number().int(),
-  /** Excluídos devolvidos ao cadastro (só com restaurarExcluidos). */
-  restaurados: z.number().int(),
-  /** Excluídos que continuaram excluídos. */
-  excluidos: z.number().int(),
-  /** Produtos de remessa que já estavam no cadastro, sem exclusão. */
+  /** Produtos de remessa que já estavam no cadastro (excluído não conta). */
   existentes: z.number().int(),
 });
 export type EquipamentoPopularResultado = z.infer<typeof equipamentoPopularResultadoSchema>;
