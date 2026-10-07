@@ -25,6 +25,11 @@ import {
 } from '../common/decidir-upsert';
 import { processarLote } from '../common/processar-lote';
 import { criarFilhos, sincronizarFilhos } from '../common/sincronizar-filhos';
+import {
+  CFOPS_RETORNO_COMODATO,
+  itemEhComodato,
+  recalcularComodatoDaNota,
+} from '../common/comodato';
 
 const INCLUDE = {
   fornecedor: { select: { chave: true } },
@@ -219,6 +224,8 @@ export class IntegracaoNotasEntradaService {
           vlrIcmsSt: item.vlrIcmsSt,
           vlrIpi: item.vlrIpi,
           peso: item.peso ?? null,
+          // O ERP não informa: sai só do CFOP (ver `common/comodato`).
+          comodato: itemEhComodato(item.cfop, CFOPS_RETORNO_COMODATO),
           ativo: item.ativo,
         };
       }),
@@ -378,7 +385,10 @@ export class IntegracaoNotasEntradaService {
           },
           include: INCLUDE,
         });
-        return { registro: this.paraLeitura(atualizadaUpsert), decisao };
+        return {
+          registro: await this.comComodatoRecalculado(tx, atualizadaUpsert),
+          decisao,
+        };
       }
 
       const criada = await tx.notaEntrada.create({
@@ -390,7 +400,10 @@ export class IntegracaoNotasEntradaService {
         },
         include: INCLUDE,
       });
-      return { registro: this.paraLeitura(criada), decisao };
+      return {
+        registro: await this.comComodatoRecalculado(tx, criada),
+        decisao,
+      };
     });
   }
 
@@ -531,8 +544,27 @@ export class IntegracaoNotasEntradaService {
         },
         include: INCLUDE,
       });
+      if (input.itens) return this.comComodatoRecalculado(tx, atualizada);
       return this.paraLeitura(atualizada);
     });
+  }
+
+  /**
+   * Marca o cabeçalho como retorno de comodato pelos itens gravados (ver
+   * `recalcularComodatoDaNota`) e relê a nota se a marcação mudou.
+   */
+  private async comComodatoRecalculado(
+    tx: TenantTx,
+    row: NotaComRelacoes,
+  ): Promise<IntegracaoNotaEntrada> {
+    const mudou = await recalcularComodatoDaNota(tx, 'entrada', row.id);
+    if (!mudou) return this.paraLeitura(row);
+    return this.paraLeitura(
+      await tx.notaEntrada.findUniqueOrThrow({
+        where: { id: row.id },
+        include: INCLUDE,
+      }),
+    );
   }
 
   async remove(

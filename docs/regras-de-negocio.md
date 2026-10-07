@@ -92,6 +92,31 @@ WhatsApp do funcionário apuram a venda pelo mesmo corte, `corteDeVenda` em
 
 Mais o corte fixo: nota ativa, tipo Normal, fora de comodato.
 
+### Comodato nas notas
+
+`comodato` existe na nota de saída e na de entrada, no cabeçalho e no item, e
+a integração marca pelo CFOP (`integracao/common/comodato.ts`) desde
+2026-10-06. Antes o campo vinha do ERP, que sempre mandava falso, inclusive
+nas 5 mil remessas:
+
+- **item:** remessa (saída, CFOP 5908/6908) ou retorno (entrada tipo `D`, CFOP
+  1909/2909). O comodato **recebido** de fornecedor (1908/2908, 5909/6909) não
+  é marcado;
+- **cabeçalho:** só quando **todos** os itens vivos são de comodato. A nota
+  mista (a venda que levou um dispenser junto) continua sendo venda, porque
+  as análises tiram a nota inteira quando o cabeçalho é comodato.
+
+A marcação não mexe no corte de venda: a nota só de comodato não gera
+duplicata. A exceção são 4 remessas de dez/2009 (R$ 570) que geraram duplicata
+e saíram da venda daquele mês. Quem muda é a Posição de Cliente, que ainda usa
+o critério de condição de pagamento: a remessa saiu do "total comprado" e foi
+para a aba Comodato.
+
+A devolução não diz qual remessa está devolvendo: a nota de entrada não guarda
+a nota de origem (D1_NFORI/D1_SERIORI/D1_ITEMORI, que a integração não
+recebe). O saldo em poder do cliente sai do item da remessa: `quantidade −
+quantidadeDev` (D2_QTDEDEV).
+
 Como se chegou aqui (2026-09-29, dump da produção e consulta no ERP): o
 critério antigo de "com financeiro" era ter condição de pagamento, mas a nota
 de comodato da RCG também tem. Tentou-se tirar comodato e bonificação por CFOP
@@ -228,8 +253,8 @@ Cada linha devolvida traz `origem`, que é o que decide o rótulo.
 
 Não há flag de "produto de comodato" no cadastro. Ter aplicação **é** o
 sinal, e o flag existente (`notas_saida.comodato`, `notas_saida_itens.comodato`)
-é do ERP e diz outra coisa: que aquela **remessa** foi empréstimo, não venda
-(ver `common/vendas/venda-analitica.ts`).
+diz outra coisa: que aquela **remessa** foi empréstimo, não venda (ver
+"Comodato nas notas", abaixo).
 
 A relação pode ser desfeita **pela ponta que estiver aberta na tela**. Quem vê
 "usado em" está vendo algo cadastrado do outro lado; obrigá-lo a navegar até o

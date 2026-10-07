@@ -36,6 +36,11 @@ import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
 import { resolverVendedor } from '../common/resolver-vendedor';
 import { resolverCliente } from '../common/resolver-cliente';
 import {
+  CFOPS_REMESSA_COMODATO,
+  itemEhComodato,
+  recalcularComodatoDaNota,
+} from '../common/comodato';
+import {
   extrairNfe,
   NFE_XML_MAX_BYTES,
   NfeXmlInvalidoError,
@@ -259,7 +264,11 @@ export class IntegracaoNotasSaidaService {
           quantidadeDev: item.quantidadeDev ?? null,
           vlrDev: item.vlrDev ?? null,
           peso: item.peso ?? null,
-          comodato: item.comodato,
+          comodato: itemEhComodato(
+            item.cfop,
+            CFOPS_REMESSA_COMODATO,
+            item.comodato,
+          ),
           percComissao: item.percComissao ?? null,
           regraDescontoId:
             (await resolverRegraDesconto(
@@ -413,7 +422,14 @@ export class IntegracaoNotasSaidaService {
           },
           include: INCLUDE,
         });
-        return { registro: this.paraLeitura(atualizadoUpsert), decisao };
+        return {
+          registro: await this.comComodatoRecalculado(
+            tx,
+            atualizadoUpsert,
+            input.comodato,
+          ),
+          decisao,
+        };
       }
 
       const criada = await tx.notaSaida.create({
@@ -425,7 +441,10 @@ export class IntegracaoNotasSaidaService {
         },
         include: INCLUDE,
       });
-      return { registro: this.paraLeitura(criada), decisao };
+      return {
+        registro: await this.comComodatoRecalculado(tx, criada, input.comodato),
+        decisao,
+      };
     });
   }
 
@@ -566,8 +585,37 @@ export class IntegracaoNotasSaidaService {
         },
         include: INCLUDE,
       });
+      // Sem itens nem `comodato` no PATCH, nada do que decide o cabeçalho
+      // mudou.
+      if (input.itens || input.comodato !== undefined) {
+        return this.comComodatoRecalculado(tx, atualizada, input.comodato);
+      }
       return this.paraLeitura(atualizada);
     });
+  }
+
+  /**
+   * Marca o cabeçalho como comodato pelos itens gravados (ver
+   * `recalcularComodatoDaNota`) e relê a nota se a marcação mudou.
+   */
+  private async comComodatoRecalculado(
+    tx: TenantTx,
+    row: NotaComRelacoes,
+    informado: boolean | undefined,
+  ): Promise<IntegracaoNotaSaida> {
+    const mudou = await recalcularComodatoDaNota(
+      tx,
+      'saida',
+      row.id,
+      informado ?? false,
+    );
+    if (!mudou) return this.paraLeitura(row);
+    return this.paraLeitura(
+      await tx.notaSaida.findUniqueOrThrow({
+        where: { id: row.id },
+        include: INCLUDE,
+      }),
+    );
   }
 
   async remove(

@@ -3019,6 +3019,8 @@ model NotaSaida {
   chaveNfe String?
   dtNfe    DateTime? @db.Date
   mensagem String?
+  // Remessa de comodato: todos os itens vivos com CFOP 5908/6908, ou o ERP
+  // informou (ver `integracao/common/comodato`).
   comodato Boolean   @default(false)
   ativo    Boolean   @default(true)
 
@@ -3300,6 +3302,9 @@ model NotaEntrada {
   chaveNfe String?
   dtNfe    DateTime? @db.Date
   mensagem String?
+  // Retorno de comodato: todos os itens vivos com CFOP 1909/2909. O ERP não
+  // informa; a integração marca pelo CFOP (ver `integracao/common/comodato`).
+  comodato Boolean   @default(false)
   ativo    Boolean   @default(true)
 
   createdAt DateTime  @default(now())
@@ -3362,8 +3367,10 @@ model NotaEntradaItem {
   vlrIcmsSt   Float @default(0)
   vlrIpi      Float @default(0)
 
-  peso  Float?
-  ativo Boolean @default(true)
+  peso     Float?
+  // CFOP 1909/2909 — retorno de comodato (ver `integracao/common/comodato`).
+  comodato Boolean @default(false)
+  ativo    Boolean @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
