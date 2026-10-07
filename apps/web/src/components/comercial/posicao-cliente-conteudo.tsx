@@ -36,6 +36,7 @@ import { ArrowLeft, Loader2, Mail, MessageCircle, MessageSquareText, Search } fr
 const LIST_ROUTE = "/comercial/posicao-cliente";
 
 type TituloSituacaoFiltro = "todos" | "aberto" | "vencido" | "baixado";
+type NotaTipoFiltro = "todas" | "vendas" | "comodato";
 type SortOrder = "asc" | "desc";
 
 type NotaRow = PosicaoCliente["notas"][number];
@@ -127,18 +128,28 @@ function LinkNota({
   );
 }
 
-/** Busca por número/série — o resto do filtro (ativa, comodato) é do back-end. */
-function filtrarNotas(lista: NotaRow[], busca: string): NotaRow[] {
+/**
+ * Busca por número/série e o recorte venda × comodato. Quem entra em cada
+ * lado é decidido no back-end (venda efetiva; remessa de comodato).
+ */
+function filtrarNotas(lista: NotaRow[], busca: string, tipo: NotaTipoFiltro): NotaRow[] {
   const termo = busca.trim().toLowerCase();
-  if (!termo) return lista;
-  return lista.filter((n) => `${n.numero} ${n.serie ?? ""}`.toLowerCase().includes(termo));
+  return lista.filter((n) => {
+    if (tipo === "vendas" && n.comodato) return false;
+    if (tipo === "comodato" && !n.comodato) return false;
+    return !termo || `${n.numero} ${n.serie ?? ""}`.toLowerCase().includes(termo);
+  });
 }
 
 function ordenarNotas(lista: NotaRow[], sortBy: string, sortOrder: SortOrder): NotaRow[] {
   const valor = (n: NotaRow): string | number | null => {
     switch (sortBy) {
       case "numero":
-        return n.numero;
+        // Pelo valor, não pelo texto: a nota antiga tem 6 dígitos ("068704")
+        // e a nova 9 ("000112832"), e como texto a antiga vinha depois.
+        return /^\d+$/.test(n.numero) ? n.numero.padStart(15, "0") : n.numero;
+      case "comodato":
+        return n.comodato ? 1 : 0;
       case "dtEmissao":
         return n.dtEmissao;
       case "vendedor":
@@ -154,13 +165,16 @@ function ordenarNotas(lista: NotaRow[], sortBy: string, sortOrder: SortOrder): N
 }
 
 /**
- * Tabela das abas de nota — "Notas fiscais" e "Comodato" mostram as mesmas
- * colunas e abrem a mesma cortina de detalhe; só muda a lista de origem.
+ * Aba "Notas fiscais": a venda e a remessa de comodato numa lista só, com a
+ * coluna Comodato e o filtro para separar. Até 2026-10-07 eram duas abas com
+ * as mesmas colunas.
  */
 function TabelaNotas({
   notas,
   busca,
   onBuscaChange,
+  tipo,
+  onTipoChange,
   sortBy,
   sortOrder,
   onToggleSort,
@@ -170,6 +184,8 @@ function TabelaNotas({
   notas: NotaRow[];
   busca: string;
   onBuscaChange: (v: string) => void;
+  tipo: NotaTipoFiltro;
+  onTipoChange: (v: NotaTipoFiltro) => void;
   sortBy: string;
   sortOrder: SortOrder;
   onToggleSort: (key: string) => void;
@@ -179,14 +195,26 @@ function TabelaNotas({
   return (
     <Card>
       <CardContent className="space-y-3">
-        <div className="relative w-full sm:max-w-xs">
-          <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por número..."
-            className="pl-8"
-            value={busca}
-            onChange={(e) => onBuscaChange(e.target.value)}
-          />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-full sm:max-w-xs">
+            <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por número..."
+              className="pl-8"
+              value={busca}
+              onChange={(e) => onBuscaChange(e.target.value)}
+            />
+          </div>
+          <Select value={tipo} onValueChange={(v) => onTipoChange(v as NotaTipoFiltro)}>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas</SelectItem>
+              <SelectItem value="vendas">Vendas</SelectItem>
+              <SelectItem value="comodato">Comodato</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {notas.length === 0 ? (
@@ -221,6 +249,12 @@ function TabelaNotas({
                     order={sortOrder}
                     onClick={() => onToggleSort("vlrBruto")}
                   />
+                  <SortableTableHead
+                    label="Comodato"
+                    active={sortBy === "comodato"}
+                    order={sortOrder}
+                    onClick={() => onToggleSort("comodato")}
+                  />
                   <TableHead className="w-20 text-right">2ª via</TableHead>
                 </TableRow>
               </TableHeader>
@@ -243,6 +277,7 @@ function TabelaNotas({
                       {n.vendedor ? n.vendedor.nomeReduzido || n.vendedor.nome : "—"}
                     </TableCell>
                     <TableCell className="text-right">{moeda(n.vlrBruto)}</TableCell>
+                    <TableCell>{n.comodato ? "Sim" : "Não"}</TableCell>
                     <TableCell className="text-right">
                       <SegundaViaNota notaId={n.id} numero={n.numero} temXml={n.temXml} />
                     </TableCell>
@@ -388,7 +423,7 @@ export function PosicaoClienteConteudo({
   const router = useRouter();
 
   const [notaSearch, setNotaSearch] = useState("");
-  const [comodatoSearch, setComodatoSearch] = useState("");
+  const [notaTipo, setNotaTipo] = useState<NotaTipoFiltro>("todas");
   const [devolucaoSearch, setDevolucaoSearch] = useState("");
   const [tituloSearch, setTituloSearch] = useState("");
   const [tituloSituacao, setTituloSituacao] = useState<TituloSituacaoFiltro>("todos");
@@ -401,10 +436,10 @@ export function PosicaoClienteConteudo({
 
   // Ordenação padrão de cada aba replica a ordem que já vinha do back-end
   // (mais recente/maior valor primeiro) até o usuário clicar num cabeçalho.
-  const [notaSortBy, setNotaSortBy] = useState("dtEmissao");
+  // Notas: pela nota, mais recente primeiro — o pedido do usuário ao juntar
+  // venda e comodato na mesma aba.
+  const [notaSortBy, setNotaSortBy] = useState("numero");
   const [notaSortOrder, setNotaSortOrder] = useState<SortOrder>("desc");
-  const [comodatoSortBy, setComodatoSortBy] = useState("dtEmissao");
-  const [comodatoSortOrder, setComodatoSortOrder] = useState<SortOrder>("desc");
   const [devolucaoSortBy, setDevolucaoSortBy] = useState("dtEmissao");
   const [devolucaoSortOrder, setDevolucaoSortOrder] = useState<SortOrder>("desc");
   const [tituloSortBy, setTituloSortBy] = useState("vencimento");
@@ -476,19 +511,22 @@ export function PosicaoClienteConteudo({
     );
   }, [mix, mixSearch]);
 
-  const notasOrdenadas = useMemo(
-    () => ordenarNotas(filtrarNotas(notas, notaSearch), notaSortBy, notaSortOrder),
-    [notas, notaSearch, notaSortBy, notaSortOrder],
+  // O back-end manda venda e remessa separadas (o resumo de compra é só da
+  // venda); a aba as junta. Os dois conjuntos são disjuntos pelo `comodato`,
+  // mas o Map garante que uma nota nunca apareça duas vezes.
+  const notasEComodatos = useMemo(
+    () => [...new Map([...notas, ...comodatos].map((n) => [n.id, n])).values()],
+    [notas, comodatos],
   );
 
-  const comodatosOrdenados = useMemo(
+  const notasOrdenadas = useMemo(
     () =>
       ordenarNotas(
-        filtrarNotas(comodatos, comodatoSearch),
-        comodatoSortBy,
-        comodatoSortOrder,
+        filtrarNotas(notasEComodatos, notaSearch, notaTipo),
+        notaSortBy,
+        notaSortOrder,
       ),
-    [comodatos, comodatoSearch, comodatoSortBy, comodatoSortOrder],
+    [notasEComodatos, notaSearch, notaTipo, notaSortBy, notaSortOrder],
   );
 
   const devolucoesOrdenadas = useMemo(() => {
@@ -704,8 +742,7 @@ export function PosicaoClienteConteudo({
           data-tour="posicao-cliente-detalhe-abas"
         >
           <TabsList>
-            <TabsTrigger value="notas">Notas fiscais ({notas.length})</TabsTrigger>
-            <TabsTrigger value="comodato">Comodato ({comodatos.length})</TabsTrigger>
+            <TabsTrigger value="notas">Notas fiscais ({notasEComodatos.length})</TabsTrigger>
             <TabsTrigger value="devolucoes">Devoluções ({devolucoes.length})</TabsTrigger>
             <TabsTrigger value="titulos">Títulos a receber ({titulos.length})</TabsTrigger>
             <TabsTrigger value="mix">Mix de produtos ({mix.length})</TabsTrigger>
@@ -719,26 +756,13 @@ export function PosicaoClienteConteudo({
             notas={notasOrdenadas}
             busca={notaSearch}
             onBuscaChange={setNotaSearch}
+            tipo={notaTipo}
+            onTipoChange={setNotaTipo}
             sortBy={notaSortBy}
             sortOrder={notaSortOrder}
             onToggleSort={(k) => toggleSort(k, notaSortBy, setNotaSortBy, setNotaSortOrder)}
             onSelecionar={setNotaSelecionadaId}
             mensagemVazio="Nenhuma nota encontrada."
-          />
-        </TabsContent>
-
-        <TabsContent value="comodato">
-          <TabelaNotas
-            notas={comodatosOrdenados}
-            busca={comodatoSearch}
-            onBuscaChange={setComodatoSearch}
-            sortBy={comodatoSortBy}
-            sortOrder={comodatoSortOrder}
-            onToggleSort={(k) =>
-              toggleSort(k, comodatoSortBy, setComodatoSortBy, setComodatoSortOrder)
-            }
-            onSelecionar={setNotaSelecionadaId}
-            mensagemVazio="Nenhuma nota de comodato encontrada."
           />
         </TabsContent>
 

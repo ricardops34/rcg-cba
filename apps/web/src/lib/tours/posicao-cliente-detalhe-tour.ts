@@ -33,7 +33,7 @@ export const POSICAO_CLIENTE_DETALHE_TOUR: TourDefinicao = {
       seletor: '[data-tour="posicao-cliente-detalhe-abas"]',
       titulo: "Histórico completo",
       descricao:
-        "Navegue entre notas fiscais, comodatos, devoluções, títulos a receber e mix de produtos. Os números nas abas indicam quantos registros existem em cada grupo.",
+        "Navegue entre notas fiscais (vendas e comodatos, com filtro para separar), devoluções, títulos a receber e mix de produtos. Os números nas abas indicam quantos registros existem em cada grupo.",
     },
     {
       seletor: '[data-tour="posicao-cliente-detalhe-conteudo"]',
