@@ -95,16 +95,22 @@ export function ProdutoFotosCard({
     }
   };
 
+  // Sem foto e sem como enviar, o card só ocuparia espaço.
+  if (!permitirEdicao && produto.fotos.length === 0) return null;
+
   return (
     <Card>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-sm font-medium">Fotos do produto</p>
-            <p className="text-xs text-muted-foreground">
-              A foto principal pode aparecer no orçamento conforme o parâmetro da empresa.
-              PNG ou JPEG, até 5 MB cada.
-            </p>
+            {/* Instrução de envio só onde dá para enviar: na consulta é ruído. */}
+            {permitirEdicao ? (
+              <p className="text-xs text-muted-foreground">
+                A foto principal pode aparecer no orçamento conforme o parâmetro da empresa.
+                PNG ou JPEG, até 5 MB cada.
+              </p>
+            ) : null}
           </div>
           {permitirEdicao ? (
             <>

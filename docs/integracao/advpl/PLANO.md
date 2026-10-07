@@ -513,7 +513,7 @@ Ponto de Entrada.
 | Objetivos de venda | Sem origem definida no ERP. A entidade nasce inativa no catálogo, e o mapeador é um esqueleto |
 | Pedido de Venda (SC5/SC6) | Não há model, tabela nem rota na plataforma. Exigiria criar a entidade do lado de lá |
 | Purge físico | Linha removida do banco não aparece em varredura nenhuma. Só por reenvio dirigido pelo monitor |
-| `regraDescontoCodigo` nos itens | Sem campo confirmado na SB1, DA1 ou SD2 deste dicionário. Vai `null` |
+| Regra de desconto no produto e na categoria | SB1 e SBM/SZ1 não têm campo de regra: `regraDescontoChave` vai `null` de propósito. A regra sobe no item da tabela de preço (`DA1_XDESC` → `regraDescontoChave`) e no item da nota (`D2_YDESC` → `regraDescontoCodigo`), quando o campo existe. A plataforma resolve tabela → produto → categoria → padrão; o detalhe do produto mostra a regra na aba Preços |
 | Consultas gerenciais de compra | Decisão da plataforma em 08/09: nasceriam sobre dados que ainda não existem |
 
 ---

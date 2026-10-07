@@ -189,32 +189,79 @@ export class ProdutosService {
   /**
    * Preço de venda do produto em cada tabela de preço ativa — a aba Preços do
    * detalhe. Tabela e item precisam estar ativos.
+   *
+   * Cada linha leva a regra de desconto que vale naquela tabela, na mesma
+   * precedência do orçamento (`resolverRegrasDescontoDosItens`): item da
+   * tabela → produto → categoria → padrão da empresa. No Protheus a regra só
+   * existe no item da tabela (DA1_XDESC) — produto e categoria chegam sem —,
+   * então é aqui, e não no cadastro, que o vendedor a encontra.
    */
   precos(empresaId: string, produtoId: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const itens = await tx.tabelaPrecoItem.findMany({
-        where: {
-          empresaId,
-          produtoId,
-          ativo: true,
-          deletedAt: null,
-          tabelaPreco: { is: { ativo: true, deletedAt: null } },
-        },
+      const regraSelect = {
         select: {
           id: true,
-          preco: true,
-          tabelaPreco: {
-            select: { id: true, codigoErp: true, descricao: true },
-          },
+          codigoErp: true,
+          descricao: true,
+          percDescontoMaximo: true,
         },
-        orderBy: { tabelaPreco: { descricao: 'asc' } },
-      });
+      };
+      const [itens, produto, padrao] = await Promise.all([
+        tx.tabelaPrecoItem.findMany({
+          where: {
+            empresaId,
+            produtoId,
+            ativo: true,
+            deletedAt: null,
+            tabelaPreco: { is: { ativo: true, deletedAt: null } },
+          },
+          select: {
+            id: true,
+            preco: true,
+            tabelaPreco: {
+              select: { id: true, codigoErp: true, descricao: true },
+            },
+            regraDesconto: regraSelect,
+          },
+          orderBy: { tabelaPreco: { descricao: 'asc' } },
+        }),
+        tx.produto.findFirst({
+          where: { id: produtoId, empresaId },
+          select: {
+            regraDesconto: regraSelect,
+            categoria: { select: { regraDesconto: regraSelect } },
+          },
+        }),
+        tx.regraDesconto.findFirst({
+          where: { empresaId, padrao: true, ativo: true, deletedAt: null },
+          ...regraSelect,
+        }),
+      ]);
+
+      const herdada = produto?.regraDesconto
+        ? { regra: produto.regraDesconto, origem: 'produto' as const }
+        : produto?.categoria?.regraDesconto
+          ? {
+              regra: produto.categoria.regraDesconto,
+              origem: 'categoria' as const,
+            }
+          : padrao
+            ? { regra: padrao, origem: 'padrao' as const }
+            : { regra: null, origem: null };
+
       return {
-        data: itens.map((i) => ({
-          id: i.id,
-          preco: i.preco,
-          tabela: i.tabelaPreco,
-        })),
+        data: itens.map((i) => {
+          const { regra, origem } = i.regraDesconto
+            ? { regra: i.regraDesconto, origem: 'tabela' as const }
+            : herdada;
+          return {
+            id: i.id,
+            preco: i.preco,
+            tabela: i.tabelaPreco,
+            regraDesconto: regra,
+            regraDescontoOrigem: origem,
+          };
+        }),
       };
     });
   }

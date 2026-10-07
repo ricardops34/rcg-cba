@@ -9,6 +9,8 @@ export const estoqueSchema = z.object({
   produtoId: z.string().uuid(),
   armazemId: z.string().uuid(),
   saldo: z.number(),
+  // SaldoSB2() do Protheus: o que dá para vender. Nulo = enviado antes de existir.
+  disponivel: z.number().nullable().optional(),
   reserva: z.number().nullable(),
   custo: z.number().nullable(),
   ultimoPreco: z.number().nullable(),

@@ -4,13 +4,13 @@ import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatusDot } from "@/components/crud/status-dot";
 import {
   ProdutoDetalheContent,
+  ProdutoTitulo,
   type ProdutoDetalhe,
 } from "@/components/comercial/produto-detalhe";
+import { ProdutoEstoqueCard } from "@/components/comercial/produto-estoque-card";
 import { ProdutoCamposCard } from "@/components/comercial/produto-campos-card";
 import { ProdutoRelacionadosCard } from "@/components/comercial/produto-relacionados-card";
 import { ProdutoFichasCard } from "@/components/comercial/produto-fichas-card";
@@ -29,6 +29,10 @@ export default function ProdutoDetalhePage() {
   // duas coisas do produto que não vêm do ERP.
   const podeEditar = useAuthStore((state) =>
     state.hasPermission("produtos", "editar"),
+  );
+  // A aba Estoque lê a rota da Consulta de Estoque, que tem permissão própria.
+  const verEstoque = useAuthStore((state) =>
+    state.hasPermission("estoque", "visualizar"),
   );
 
   const {
@@ -57,7 +61,7 @@ export default function ProdutoDetalhePage() {
 
   return (
     <div data-tour="rotina" className="space-y-4">
-      <div className="flex items-center gap-3">
+      <div className="flex items-start gap-3">
         <Button
           variant="ghost"
           size="icon"
@@ -65,16 +69,13 @@ export default function ProdutoDetalhePage() {
         >
           <ArrowLeft className="size-4" />
         </Button>
-        <h1 className="text-xl font-semibold tracking-tight">
-          {produto.descricao}
-        </h1>
-        <StatusDot active={produto.ativo} />
-        {!produto.ativo && <Badge variant="destructive">Inativo</Badge>}
+        <ProdutoTitulo produto={produto} />
       </div>
 
       <Tabs defaultValue="dados">
         <TabsList>
           <TabsTrigger value="dados">Dados gerais</TabsTrigger>
+          {verEstoque && <TabsTrigger value="estoque">Estoque</TabsTrigger>}
           <TabsTrigger value="precos">Preços</TabsTrigger>
           <TabsTrigger value="complementares">Complementares</TabsTrigger>
           <TabsTrigger value="fichas">Fichas técnicas</TabsTrigger>
@@ -84,6 +85,12 @@ export default function ProdutoDetalhePage() {
         <TabsContent value="dados">
           <ProdutoDetalheContent produto={produto} permitirEdicaoFoto={podeEditar} />
         </TabsContent>
+
+        {verEstoque && (
+          <TabsContent value="estoque">
+            <ProdutoEstoqueCard produtoId={produto.id} />
+          </TabsContent>
+        )}
 
         <TabsContent value="precos">
           <ProdutoPrecosCard produtoId={produto.id} />
