@@ -96,10 +96,12 @@ export default function CategoriasPage() {
         body: { equipamentoComodato: valor },
       });
       await refetch();
+      // A API faz a marcação descer para as subcategorias.
+      const alvo = c.categoriaPaiId ? `"${c.descricao}"` : `"${c.descricao}" e subcategorias`;
       toast.success(
         valor
-          ? `Produtos de "${c.descricao}" não entram mais como aplicáveis de equipamento`
-          : `Produtos de "${c.descricao}" voltam a poder ser aplicáveis de equipamento`,
+          ? `Produtos de ${alvo} não entram mais como aplicáveis de equipamento`
+          : `Produtos de ${alvo} voltam a poder ser aplicáveis de equipamento`,
       );
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Erro ao salvar");

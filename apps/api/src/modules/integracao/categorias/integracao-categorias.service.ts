@@ -161,8 +161,23 @@ export class IntegracaoCategoriasService {
         return { registro: this.paraLeitura(atualizadoUpsert), decisao };
       }
 
+      // Subcategoria nova nasce com a marcação de equipamento da categoria-pai,
+      // que a tela de Categorias faz descer para as filhas (ver
+      // CategoriasService.update). Só na criação: depois, a marcação é da
+      // plataforma e o ERP não mexe nela.
+      const pai = categoriaPaiId
+        ? await tx.categoria.findFirst({
+            where: { id: categoriaPaiId },
+            select: { equipamentoComodato: true },
+          })
+        : null;
       const criada = await tx.categoria.create({
-        data: { ...dados, empresaId, createdBy: autor },
+        data: {
+          ...dados,
+          equipamentoComodato: pai?.equipamentoComodato ?? false,
+          empresaId,
+          createdBy: autor,
+        },
         include: INCLUDE,
       });
       return { registro: this.paraLeitura(criada), decisao };

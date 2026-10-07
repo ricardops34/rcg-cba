@@ -106,6 +106,11 @@ export class CategoriasService {
    * seria desfeita na próxima carga da base legada.
    *
    * `null` é estado legítimo, e não "sem valor": é como nasce a subcategoria.
+   *
+   * `equipamentoComodato` desce para as subcategorias, marcando e desmarcando
+   * (decisão do usuário, 2026-10-07): a subcategoria de uma categoria de
+   * equipamento é equipamento também, e deixá-las divergentes só confundiria
+   * quem lê a lista. Na mesma transação, para não ficar meio aplicado.
    */
   async update(empresaId: string, user: AuthenticatedUser, id: string, dto: CategoriaUpdate) {
     return this.prisma.withTenant(empresaId, async (tx) => {
@@ -114,6 +119,16 @@ export class CategoriasService {
         select: { id: true },
       });
       if (!existe) throw new NotFoundException('Categoria não encontrada');
+
+      if (dto.equipamentoComodato !== undefined) {
+        await tx.categoria.updateMany({
+          where: { empresaId, categoriaPaiId: id, deletedAt: null },
+          data: {
+            equipamentoComodato: dto.equipamentoComodato,
+            updatedBy: user.id,
+          },
+        });
+      }
 
       return tx.categoria.update({
         where: { id },
