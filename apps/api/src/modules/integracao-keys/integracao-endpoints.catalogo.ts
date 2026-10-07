@@ -113,6 +113,14 @@ export const CATALOGO_ENDPOINTS_INTEGRACAO: IntegracaoEndpointCatalogoItem[] = [
     rota: '/api/v1/integracao/orcamentos',
   },
   {
+    endpointKey: 'equipamentos-comodato',
+    nome: 'Equipamentos de Comodato',
+    descricao:
+      'Envio ao ERP dos equipamentos com produtos aplicáveis incluídos, alterados ou removidos.',
+    metodos: ['GET', 'PATCH'],
+    rota: '/api/v1/integracao/equipamentos-comodato',
+  },
+  {
     endpointKey: 'pedidos',
     nome: 'Pedidos de Venda',
     descricao: 'Situação dos pedidos e histórico dos digitados no ERP.',

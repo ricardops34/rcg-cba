@@ -127,3 +127,35 @@ Entregue em 2026-10-07:
   `posicao_cliente` passou a trazer os equipamentos em poder com o aviso.
 - [ ] Conferência visual das telas pelo usuário. Hoje nenhum equipamento tem
   aplicáveis cadastrados, então o aviso só aparece depois de cadastrá-los.
+
+## Envio ao ERP (pedido em 2026-10-07)
+
+O Protheus precisa receber os equipamentos de comodato cujos produtos
+aplicáveis foram incluídos ou alterados. Decisões do usuário:
+
+- Fila com controle de envio, para nada deixar de ser enviado.
+- Equipamento sem nenhum aplicável **não** vai para o ERP.
+
+Entregue na plataforma:
+
+- [x] **Fila** `comodato_envios_erp` (migration
+  `20261007220000_comodato_envios_erp`), alimentada por **trigger** em
+  `produto_relacionados` (tipo `aplicacao`) e `equipamentos_comodato`: todo
+  caminho que grava aplicável (card Relacionados, tela de Equipamentos,
+  popular, exclusão em lote) enfileira sem depender do código. Um pendente por
+  equipamento; mudanças seguidas se juntam e atualizam o `alteradoEm`.
+- [x] `GET /integracao/equipamentos-comodato/alteracoes` — pendentes com a
+  **lista completa e atual** de aplicáveis (o ERP substitui a dele; cobre
+  inclusão, alteração e remoção). Equipamento e aplicáveis saem com
+  `produtoChave`, `codigo`, `descricao`; o equipamento traz `ativo` e
+  `excluido`.
+- [x] `PATCH .../alteracoes/{id}/aplicada` com `{ "alteradoEm": "..." }` lido
+  no GET. Se o equipamento mudou depois da leitura: 409 e o item segue
+  pendente com a lista nova.
+- [x] Carga inicial: a migration enfileira todo equipamento que já tem
+  aplicável. Endpoint no catálogo da integração (monitor) e contado como
+  envio na chave de API.
+- [ ] **Lado do Protheus:** rotina que lê a fila e grava — falta definir em
+  que tabela do ERP os aplicáveis ficam.
+- [ ] Equipamento que perde todos os aplicáveis não é enviado (regra acima):
+  o ERP fica com a lista anterior até ele ganhar um de novo.

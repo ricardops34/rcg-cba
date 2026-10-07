@@ -16,6 +16,8 @@ import { IntegracaoVendedoresService } from './vendedores/integracao-vendedores.
 import { IntegracaoClientesController } from './clientes/integracao-clientes.controller';
 import { IntegracaoClientesService } from './clientes/integracao-clientes.service';
 import { IntegracaoClientesAlteracoesService } from './clientes/integracao-clientes-alteracoes.service';
+import { IntegracaoEquipamentosComodatoController } from './equipamentos-comodato/integracao-equipamentos-comodato.controller';
+import { IntegracaoEquipamentosComodatoService } from './equipamentos-comodato/integracao-equipamentos-comodato.service';
 import { IntegracaoTabelasPrecoController } from './tabelas-preco/integracao-tabelas-preco.controller';
 import { IntegracaoTabelasPrecoService } from './tabelas-preco/integracao-tabelas-preco.service';
 import { IntegracaoEstoqueController } from './estoque/integracao-estoque.controller';
@@ -57,6 +59,7 @@ import { ApiKeyGuard } from './guards/api-key.guard';
     IntegracaoProdutosController,
     IntegracaoVendedoresController,
     IntegracaoClientesController,
+    IntegracaoEquipamentosComodatoController,
     IntegracaoTabelasPrecoController,
     IntegracaoEstoqueController,
     IntegracaoObjetivosController,
@@ -82,6 +85,7 @@ import { ApiKeyGuard } from './guards/api-key.guard';
     IntegracaoVendedoresService,
     IntegracaoClientesService,
     IntegracaoClientesAlteracoesService,
+    IntegracaoEquipamentosComodatoService,
     IntegracaoTabelasPrecoService,
     IntegracaoEstoqueService,
     IntegracaoObjetivosService,

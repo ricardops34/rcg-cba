@@ -150,6 +150,7 @@ model Empresa {
   sugestaoCompraExecucoes    SugestaoCompraExecucao[]
   clientesReceitaExecucoes   ClienteReceitaExecucao[]
   clienteEnviosErp           ClienteEnvioErp[]
+  comodatoEnviosErp          ComodatoEnvioErp[]
   integracaoCargaErros       IntegracaoCargaErro[]
   clienteCampoConfigs        ClienteCampoConfig[]
   produtoCampos              ProdutoCampo[]
@@ -1142,6 +1143,7 @@ model Produto {
   relacionados  ProdutoRelacionado[] @relation("ProdutoRelacaoOrigem")
   relacionadoDe ProdutoRelacionado[] @relation("ProdutoRelacaoDestino")
   equipamentoComodato EquipamentoComodato?
+  comodatoEnviosErp   ComodatoEnvioErp[]
   comodatoBaixas      ComodatoBaixa[]
   fichas        ProdutoFicha[]
 
@@ -1467,6 +1469,33 @@ model EquipamentoComodato {
 
   @@index([empresaId])
   @@map("equipamentos_comodato")
+}
+
+enum SituacaoEnvioComodatoErp {
+  pendente
+  enviado
+}
+
+/// Fila de envio ao ERP dos equipamentos de comodato com aplicáveis
+/// incluídos, alterados ou removidos. Alimentada por **trigger** no banco
+/// (migration 20261007220000_comodato_envios_erp), não pelo código: os
+/// aplicáveis são gravados por vários caminhos. Um pendente por equipamento
+/// (índice parcial único); `alteradoEm` é a versão que o ERP confirma.
+model ComodatoEnvioErp {
+  id         String                   @id @default(uuid())
+  empresaId  String
+  /// O equipamento — é um produto.
+  produtoId  String
+  situacao   SituacaoEnvioComodatoErp @default(pendente)
+  criadoEm   DateTime                 @default(now())
+  alteradoEm DateTime                 @default(now())
+  enviadoEm  DateTime?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId, situacao, alteradoEm])
+  @@map("comodato_envios_erp")
 }
 
 /// Baixa de comodato: o saldo de um equipamento num cliente que não deve mais

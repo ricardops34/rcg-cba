@@ -78,8 +78,12 @@ export class ApiKeyGuard implements CanActivate {
       }
     }
 
+    // Envio é a plataforma mandando ao ERP (as filas de retorno), inclusive o
+    // PATCH que confirma — não é coleta.
     const isEnvio =
       path.includes('/orcamentos/pendentes') ||
+      path.includes('/clientes/alteracoes') ||
+      path.includes('/equipamentos-comodato/alteracoes') ||
       path.includes('/arquivo/exportar');
 
     // O batimento do fim da execução não é coleta nem envio de dados.

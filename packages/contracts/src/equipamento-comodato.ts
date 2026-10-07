@@ -198,3 +198,14 @@ export const equipamentoPopularResultadoSchema = z.object({
   existentes: z.number().int(),
 });
 export type EquipamentoPopularResultado = z.infer<typeof equipamentoPopularResultadoSchema>;
+
+/**
+ * Corpo de `PATCH /integracao/equipamentos-comodato/alteracoes/{id}/aplicada`:
+ * o `alteradoEm` que o ERP leu no GET. Se o equipamento mudou depois da
+ * leitura, a confirmação é recusada (409) e o item segue pendente — o ERP lê
+ * de novo e recebe a lista atual.
+ */
+export const integracaoComodatoAplicadaSchema = z.object({
+  alteradoEm: z.string().datetime(),
+});
+export type IntegracaoComodatoAplicada = z.infer<typeof integracaoComodatoAplicadaSchema>;
