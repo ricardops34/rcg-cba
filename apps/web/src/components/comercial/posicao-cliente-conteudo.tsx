@@ -32,7 +32,7 @@ import {
   useSmsDisponivel,
 } from "@/components/comercial/segunda-via";
 import { HistoricoAtendimento } from "@/components/comercial/historico-atendimento";
-import { ArrowLeft, Loader2, Mail, MessageCircle, MessageSquareText, Search } from "lucide-react";
+import { ArrowLeft, Loader2, Mail, MessageCircle, MessageSquareText, Search, Wrench } from "lucide-react";
 
 const LIST_ROUTE = "/comercial/posicao-cliente";
 
@@ -747,7 +747,16 @@ export function PosicaoClienteConteudo({
             <TabsTrigger value="notas">Notas fiscais ({notasEComodatos.length})</TabsTrigger>
             <TabsTrigger value="devolucoes">Devoluções ({devolucoes.length})</TabsTrigger>
             <TabsTrigger value="titulos">Títulos a receber ({titulos.length})</TabsTrigger>
-            <TabsTrigger value="equipamentos">Equipamentos ({equipamentos.length})</TabsTrigger>
+            <TabsTrigger value="equipamentos">
+              {/* O aviso da lista também aqui, para quem já está dentro da posição. */}
+              {equipamentos.some((e) => e.semConsumo) && (
+                <Wrench
+                  className="size-3.5 text-amber-600 dark:text-amber-400"
+                  aria-label="Equipamento sem consumo de aplicáveis em 30 dias"
+                />
+              )}
+              Equipamentos ({equipamentos.length})
+            </TabsTrigger>
             <TabsTrigger value="mix">Mix de produtos ({mix.length})</TabsTrigger>
             <TabsTrigger value="sugestao">Sugestão ({sugestaoCalculada?.itens.length ?? 0})</TabsTrigger>
             <TabsTrigger value="historico">Histórico de atendimento</TabsTrigger>
@@ -959,6 +968,7 @@ export function PosicaoClienteConteudo({
 
         <TabsContent value="equipamentos">
           <TabelaEquipamentos
+            clienteId={id}
             equipamentos={equipamentos}
             onSelecionarProduto={setProdutoSelecionadoId}
           />

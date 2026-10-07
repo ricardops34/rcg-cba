@@ -45,6 +45,12 @@ import {
   filtroBuscaTermos,
 } from '../../common/busca/termos-busca';
 import { sessaoDoUsuarioWhere } from '../whatsapp/escopo-whatsapp';
+import {
+  comodatoBaixadoSql,
+  comodatoSemConsumoSql,
+  comprouAplicavelSql,
+  nomesDeUsuarios,
+} from './comodato-sql';
 
 /**
  * O que conta como venda na Posição de Cliente — a mesma definição das
@@ -95,6 +101,8 @@ interface ListagemPosicaoRawRow {
   vendaMedia90Dias: number;
   difMesEMedia: number;
   comodato: boolean;
+  comodatoSemConsumo: boolean;
+  comodatoBaixado: boolean;
   bloqueado: boolean;
   temTituloVencido: boolean;
   temTituloVencendo: boolean;
@@ -1090,6 +1098,9 @@ export class ClientesService {
    * Produto que voltou sem remessa nas notas (envio anterior à base, ou
    * produto trocado no retorno) aparece com saldo negativo — esconder seria
    * pior: é justamente a inconsistência que alguém precisa olhar.
+   *
+   * As baixas vigentes saem do saldo (ver ComodatoBaixa), e `semConsumo` é o
+   * aviso da lista, pela mesma expressão (`comprouAplicavelSql`).
    */
   private async equipamentosEmComodato(
     tx: TenantTx,
@@ -1105,8 +1116,12 @@ export class ClientesService {
         categoria: string | null;
         enviada: number;
         devolvida: number;
+        baixada: number;
         ultimaRemessa: Date | null;
         totalNotas: number;
+        totalAplicaveis: number;
+        ultimaCompraAplicavel: Date | null;
+        comprouAplicavel: boolean;
       }[]
     >`
       WITH enviado AS (
@@ -1132,30 +1147,84 @@ export class ClientesService {
            AND i."deletedAt" IS NULL AND i."ativo" = true
            AND n."deletedAt" IS NULL AND n."ativo" = true
          GROUP BY i."produtoId"
+      ), baixado AS (
+        SELECT b."produtoId", SUM(b."quantidade") AS "qtd"
+          FROM "comodato_baixas" b
+         WHERE b."empresaId" = ${empresaId} AND b."clienteId" = ${clienteId}
+           AND b."desfeitaEm" IS NULL
+         GROUP BY b."produtoId"
+      ), aplicavel AS (
+        SELECT r."produtoId", COUNT(*) AS "total", MAX(u."dt") AS "ultima"
+          FROM "produto_relacionados" r
+          LEFT JOIN LATERAL (
+            SELECT MAX(i."dtEmissao") AS "dt"
+              FROM "notas_saida_itens" i
+              JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
+             WHERE i."empresaId" = ${empresaId} AND i."clienteId" = ${clienteId}
+               AND i."produtoId" = r."relacionadoId"
+               AND n."tipo" = 'N' AND n."ativo" = true AND n."deletedAt" IS NULL
+               AND i."comodato" = false AND i."ativo" = true AND i."deletedAt" IS NULL
+          ) u ON true
+         WHERE r."empresaId" = ${empresaId} AND r."tipo" = 'aplicacao'
+         GROUP BY r."produtoId"
       )
       SELECT p."id" AS "produtoId", p."codigoErp", p."descricao", p."unidade",
              cat."descricao" AS "categoria",
              COALESCE(e."qtd", 0)::float8 AS "enviada",
              COALESCE(d."qtd", 0)::float8 AS "devolvida",
+             COALESCE(bx."qtd", 0)::float8 AS "baixada",
              e."ultimaRemessa",
-             COALESCE(e."totalNotas", 0)::int AS "totalNotas"
+             COALESCE(e."totalNotas", 0)::int AS "totalNotas",
+             COALESCE(ap."total", 0)::int AS "totalAplicaveis",
+             ap."ultima" AS "ultimaCompraAplicavel",
+             ${comprouAplicavelSql(Prisma.sql`p."id"`)} AS "comprouAplicavel"
         FROM enviado e
         FULL JOIN devolvido d
           ON COALESCE(d."produtoId", '') = COALESCE(e."produtoId", '')
         LEFT JOIN "produtos" p ON p."id" = COALESCE(e."produtoId", d."produtoId")
-        LEFT JOIN "categorias" cat ON cat."id" = p."categoriaId"`;
-    return linhas.map((l) => ({
-      produtoId: l.produtoId,
-      codigoErp: l.codigoErp,
-      descricao: l.descricao ?? 'Produto não identificado',
-      unidade: l.unidade,
-      categoria: l.categoria,
-      quantidadeEnviada: l.enviada,
-      quantidadeDevolvida: l.devolvida,
-      saldo: l.enviada - l.devolvida,
-      ultimaRemessa: l.ultimaRemessa,
-      totalNotas: l.totalNotas,
-    }));
+        LEFT JOIN "categorias" cat ON cat."id" = p."categoriaId"
+        LEFT JOIN baixado bx ON bx."produtoId" = p."id"
+        LEFT JOIN aplicavel ap ON ap."produtoId" = p."id"
+        -- O cliente como \`c\`, para a expressão compartilhada do aviso.
+        CROSS JOIN (SELECT "id", "empresaId" FROM "clientes" WHERE "id" = ${clienteId}) c`;
+
+    const baixas = await tx.comodatoBaixa.findMany({
+      where: { empresaId, clienteId, desfeitaEm: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    const autores = await nomesDeUsuarios(
+      tx,
+      baixas.map((b) => b.createdBy),
+    );
+
+    return linhas.map((l) => {
+      const saldo = l.enviada - l.devolvida - l.baixada;
+      return {
+        produtoId: l.produtoId,
+        codigoErp: l.codigoErp,
+        descricao: l.descricao ?? 'Produto não identificado',
+        unidade: l.unidade,
+        categoria: l.categoria,
+        quantidadeEnviada: l.enviada,
+        quantidadeDevolvida: l.devolvida,
+        quantidadeBaixada: l.baixada,
+        saldo,
+        ultimaRemessa: l.ultimaRemessa,
+        totalNotas: l.totalNotas,
+        totalAplicaveis: l.totalAplicaveis,
+        ultimaCompraAplicavel: l.ultimaCompraAplicavel,
+        semConsumo: saldo > 0 && l.totalAplicaveis > 0 && !l.comprouAplicavel,
+        baixas: baixas
+          .filter((b) => b.produtoId === l.produtoId)
+          .map((b) => ({
+            id: b.id,
+            quantidade: b.quantidade,
+            motivo: b.motivo,
+            createdAt: b.createdAt,
+            autor: b.createdBy ? (autores.get(b.createdBy) ?? null) : null,
+          })),
+      };
+    });
   }
 
   /**
@@ -1216,6 +1285,22 @@ export class ClientesService {
         const bloqueadoExpr = Prisma.sql`(c."dataBloqueio" IS NOT NULL AND (c."dataReativacao" IS NULL OR c."dataReativacao" < c."dataBloqueio"))`;
         condicoes.push(query.bloqueado ? bloqueadoExpr : Prisma.sql`NOT ${bloqueadoExpr}`);
       }
+      // Aviso de comodato sem consumo e baixas: a mesma expressão da coluna
+      // (ver comodato-sql.ts), para o filtro e o ícone dizerem a mesma coisa.
+      if (query.comodatoSemConsumo !== undefined) {
+        condicoes.push(
+          query.comodatoSemConsumo
+            ? comodatoSemConsumoSql(empresaId)
+            : Prisma.sql`NOT ${comodatoSemConsumoSql(empresaId)}`,
+        );
+      }
+      if (query.comodatoBaixado !== undefined) {
+        condicoes.push(
+          query.comodatoBaixado
+            ? comodatoBaixadoSql
+            : Prisma.sql`NOT ${comodatoBaixadoSql}`,
+        );
+      }
       if (query.temTituloVencido !== undefined) {
         const temVencidoExpr = Prisma.sql`EXISTS (
           SELECT 1 FROM titulos_receber tv
@@ -1268,6 +1353,8 @@ export class ClientesService {
             WHERE cm."clienteId" = c.id AND cm."empresaId" = c."empresaId"
               AND cm."comodato" = true AND cm."deletedAt" IS NULL
           ) AS "comodato",
+          ${comodatoSemConsumoSql(empresaId)} AS "comodatoSemConsumo",
+          ${comodatoBaixadoSql} AS "comodatoBaixado",
           (c."dataBloqueio" IS NOT NULL AND (c."dataReativacao" IS NULL OR c."dataReativacao" < c."dataBloqueio")) AS "bloqueado",
           -- Vencimento é data pura: o corte é CURRENT_DATE, não now(), senão
           -- quem vence hoje já apareceria como vencido depois da meia-noite
@@ -1366,6 +1453,8 @@ export class ClientesService {
         vendaMedia90Dias: Number(r.vendaMedia90Dias),
         difMesEMedia: Number(r.difMesEMedia),
         comodato: r.comodato,
+        comodatoSemConsumo: r.comodatoSemConsumo,
+        comodatoBaixado: r.comodatoBaixado,
         bloqueado: r.bloqueado,
         temTituloVencido: r.temTituloVencido,
         temTituloVencendo: r.temTituloVencendo,

@@ -307,7 +307,18 @@ interface PosicaoBruta {
     ultimoDesconto: number | null;
     precoTabela: number | null;
   }[];
+  equipamentos: {
+    codigoErp: string | null;
+    descricao: string;
+    saldo: number;
+    totalAplicaveis: number;
+    ultimaCompraAplicavel: Date | null;
+    semConsumo: boolean;
+  }[];
 }
+
+/** Equipamentos em poder do cliente no resumo — o resto é a aba da tela. */
+const EQUIPAMENTOS_NO_RESUMO = 10;
 
 /**
  * Recorta a Posição de Cliente para o que cabe numa resposta do agente.
@@ -372,6 +383,19 @@ function resumirPosicao(p: PosicaoBruta) {
       dtEmissao: dia(n.dtEmissao),
       vlrBruto: n.vlrBruto,
     })),
+    // Só o que está com o cliente (saldo > 0). `semConsumo` é o aviso da
+    // tela: tem aplicáveis cadastrados e nenhum comprado em 30 dias.
+    equipamentosEmComodato: (p.equipamentos ?? [])
+      .filter((e) => e.saldo > 0)
+      .slice(0, EQUIPAMENTOS_NO_RESUMO)
+      .map((e) => ({
+        codigoErp: e.codigoErp,
+        descricao: e.descricao,
+        saldo: e.saldo,
+        semConsumo: e.semConsumo,
+        temAplicaveisCadastrados: e.totalAplicaveis > 0,
+        ultimaCompraAplicavel: dia(e.ultimaCompraAplicavel),
+      })),
   };
 }
 
@@ -762,6 +786,59 @@ export class AgenteToolsService {
         destino: (a) => ({
           rotulo: 'Ver a posição completa',
           rota: `/comercial/posicao-cliente/${texto(a.clienteId)}`,
+        }),
+      },
+      {
+        // Delega à listagem da Posição de Cliente com o mesmo filtro do ícone
+        // da tela: a carteira e a regra do aviso (comodato-sql.ts) vêm de lá,
+        // e a ferramenta não tem parâmetro que escolha de quem é o dado.
+        nome: 'comodato_sem_consumo',
+        descricao:
+          'Clientes da carteira do usuário que estão com equipamento em comodato ' +
+          '(dispenser, dosadora…) e NÃO compraram, nos últimos 30 dias, nenhum dos ' +
+          'produtos aplicáveis cadastrados para ele. Devolve `total` e os primeiros ' +
+          'clientes. Use para "quem tem comodato e não está comprando?", ' +
+          '"clientes com equipamento parado".',
+        instrucoes:
+          'Dê o total primeiro. Não afirme que o equipamento está parado: o ' +
+          'cliente pode estar comprando de outro fornecedor, ou o equipamento ' +
+          'pode ter sido recolhido sem baixa registrada — diga "sem compra de ' +
+          'aplicáveis em 30 dias". Para saber qual equipamento e a última ' +
+          'compra, use posicao_cliente do cliente.',
+        permissao: 'posicao-cliente.visualizar',
+        exemplos: [
+          'Quais clientes têm comodato e não compraram os produtos este mês?',
+          'Tenho dispenser parado em algum cliente?',
+        ],
+        limiteItens: 25,
+        parametros: { type: 'object', properties: {} },
+        executar: async (_a, user) => {
+          const r = await this.clientes.listagemPosicao(
+            user.empresaAtivaId,
+            user,
+            {
+              page: 1,
+              pageSize: 25,
+              comodatoSemConsumo: true,
+              sortBy: 'ultimaCompra',
+              sortOrder: 'desc',
+            } as never,
+          );
+          return {
+            total: r.total,
+            clientes: r.data.map((c) => ({
+              id: c.id,
+              codigoErp: c.codigoErp,
+              razaoSocial: c.razaoSocial,
+              municipio: c.municipio,
+              uf: c.uf,
+              ultimaCompra: c.ultimaCompra,
+            })),
+          };
+        },
+        destino: () => ({
+          rotulo: 'Ver na Posição de Cliente',
+          rota: '/comercial/posicao-cliente?comodatoSemConsumo=true',
         }),
       },
       {

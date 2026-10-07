@@ -79,5 +79,36 @@ toalha interfolhado.
 - **Ícone de aviso** na lista da Posição de Cliente para esse caso.
 - **Comodato baixado:** marcar um comodato como baixado para não entrar no
   saldo nem no aviso, com filtro para encontrar os marcados e desfazer se a
-  marca estiver errada. A definir com o usuário: o que se marca (o saldo do
-  produto no cliente, ou a remessa) e quem pode marcar.
+  marca estiver errada.
+
+Decisões do usuário (2026-10-07):
+
+- Marca-se o **equipamento no cliente** (o saldo daquele produto naquele
+  cliente), não a nota de remessa.
+- O aviso olha os **últimos 30 dias**: cliente com equipamento em poder sem
+  compra de nenhum aplicável nesse período.
+- Marca e desmarca **quem tem acesso ao cliente**; fica registrado quem marcou,
+  e a marcação entra no **histórico de atendimento** do cliente.
+
+Entregue em 2026-10-07:
+
+- [x] **Baixa** (`comodato_baixas`, migration `20261007150000_comodato_baixas`):
+  guarda a quantidade (o saldo do momento), motivo, autor; desfazer grava
+  `desfeitaEm/Por`. Rota `POST/DELETE /clientes/:id/comodato-baixas` com
+  `posicao-cliente.visualizar` + cliente na carteira (404 fora dela). Cada ação
+  vira atividade concluída no histórico, em nome do vendedor do cliente.
+- [x] **Saldo** = enviado − devolvido − baixas vigentes, na aba Equipamentos
+  (botões Baixar/Desfazer, coluna "Qtd. baixada" com quem/quando/motivo,
+  filtros "Sem consumo" e "Baixados").
+- [x] **Aviso** (`clientes/comodato-sql.ts`): saldo > 0 de equipamento
+  cadastrado e ativo com aplicáveis, e nenhuma compra de aplicável (nota de
+  saída normal ativa, não só a que gerou duplicata) nos últimos 30 dias. Ícone
+  na lista da Posição (coluna "Aviso"), filtros rápidos "Comodato sem consumo"
+  e "Comodato baixado", ícone na aba Equipamentos. A expressão da lista é um
+  `c.id IN (conjunto)` sem correlação: a versão por cliente levava 5,9 s no
+  filtro e estourava a transação; esta, 1,8 s na base de dev.
+- [x] **Ferramenta de IA** `comodato_sem_consumo` (agente interno, leitura,
+  `posicao-cliente.visualizar`) — delega à listagem com o filtro; e
+  `posicao_cliente` passou a trazer os equipamentos em poder com o aviso.
+- [ ] Conferência visual das telas pelo usuário. Hoje nenhum equipamento tem
+  aplicáveis cadastrados, então o aviso só aparece depois de cadastrá-los.

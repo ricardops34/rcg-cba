@@ -6,6 +6,8 @@ import { ClienteCnaesService } from './cliente-cnaes.service';
 import { ClienteAlteracoesController } from './cliente-alteracoes.controller';
 import { ClienteAlteracoesService } from './cliente-alteracoes.service';
 import { EnriquecimentoService } from './enriquecimento.service';
+import { ComodatoBaixasController } from './comodato-baixas.controller';
+import { ComodatoBaixasService } from './comodato-baixas.service';
 import { ClienteCampoConfigModule } from '../cliente-campo-config/cliente-campo-config.module';
 
 @Module({
@@ -16,12 +18,14 @@ import { ClienteCampoConfigModule } from '../cliente-campo-config/cliente-campo-
     ClientesController,
     ClienteCnaesController,
     ClienteAlteracoesController,
+    ComodatoBaixasController,
   ],
   providers: [
     ClientesService,
     ClienteCnaesService,
     ClienteAlteracoesService,
     EnriquecimentoService,
+    ComodatoBaixasService,
   ],
   // ClienteAlteracoesService sai do módulo porque a integração do ERP também
   // enfileira alteração de cliente (ver IntegracaoClientesService).

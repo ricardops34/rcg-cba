@@ -1,4 +1,4 @@
-# Agente interno — 27 ferramentas
+# Agente interno — 29 ferramentas
 
 O assistente que o funcionário **logado** usa pelo ícone da topbar, em qualquer
 tela. Ver [o mapa](README.md) para as outras duas famílias.
@@ -39,6 +39,7 @@ em si.
 | `verificar_cliente_na_base` | `clientes.visualizar` | leitura | `clientes.verificarTitularidade` |
 | `buscar_produto` | `produtos.visualizar` | leitura | `produtos.findAll` |
 | `posicao_cliente` | `posicao-cliente.visualizar` | leitura | `clientes.posicao` |
+| `comodato_sem_consumo` | `posicao-cliente.visualizar` | leitura | `clientes.listagemPosicao` com `comodatoSemConsumo` — a regra do aviso é a de `clientes/comodato-sql.ts`, a mesma do ícone da tela |
 | `sugerir_compras` | `sugestao-compra.visualizar` | leitura | `sugestao.paraCliente` |
 | `titulos_em_aberto` | `titulos-receber.visualizar` | leitura | `titulos.findAll` |
 | `listar_orcamentos` | `orcamentos.visualizar` | leitura | `orcamentos.findAll` |
@@ -262,7 +263,7 @@ Vazio nos dois casos volta ao texto do código. Só as instruções das ferramen
 tem seria ensinar o modelo a se portar com algo que ele nem enxerga, e gastar
 prompt em toda mensagem para isso.
 
-**As 27 têm `instrucoes` no código.** Até 2026-09-19 só quatro tinham, e o
+**As 29 têm `instrucoes` no código.** Até 2026-09-19 só quatro tinham, e o
 efeito não era o campo ficar em branco: era o bloco "COMO USAR CADA FERRAMENTA"
 quase não existir, e a tela de governança abrir vazia em 22 casos — quem fosse
 editar não tinha de onde partir, e o modelo se portava por conta própria em
@@ -306,7 +307,7 @@ entre "v1" e "v2" é escolher no escuro.
 apaga, não reescreve com o texto de hoje, que congelaria a cópia de novo.
 
 **Restaurar todos** (`POST /agente/ferramentas/restaurar-todos`) faz o mesmo nas
-27 de uma vez, numa transação só. Existe porque restaurar uma a uma é onde se
+29 de uma vez, numa transação só. Existe porque restaurar uma a uma é onde se
 desiste no meio, e meia restauração é pior que nenhuma: fica um catálogo em que
 parte fala com a voz da empresa e parte com a do sistema, sem nada na tela
 dizendo qual é qual.

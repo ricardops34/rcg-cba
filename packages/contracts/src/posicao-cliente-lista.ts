@@ -22,6 +22,12 @@ export const posicaoClienteListRowSchema = z.object({
   comodato: z
     .boolean()
     .describe("Existe nota de saída ativa marcada como comodato para este cliente"),
+  comodatoSemConsumo: z
+    .boolean()
+    .describe(
+      "Está com equipamento de comodato que tem produtos aplicáveis e não comprou nenhum deles nos últimos 30 dias (ver docs/planos/equipamentos-comodato.md)",
+    ),
+  comodatoBaixado: z.boolean().describe("Tem baixa de comodato vigente"),
   bloqueado: z
     .boolean()
     .describe("dataBloqueio preenchida sem reativação posterior (dataReativacao)"),
@@ -58,6 +64,8 @@ export const posicaoClienteListQuerySchema = paginationQuerySchema.extend({
     .describe("Filtro rápido: só clientes cuja última compra foi há N+ dias (ou nunca compraram)"),
   bloqueado: booleanQueryParam,
   temTituloVencido: booleanQueryParam,
+  comodatoSemConsumo: booleanQueryParam,
+  comodatoBaixado: booleanQueryParam,
 });
 export type PosicaoClienteListQuery = z.infer<typeof posicaoClienteListQuerySchema>;
 
@@ -74,6 +82,8 @@ export const POSICAO_CLIENTE_LIST_ROW_EXAMPLE: PosicaoClienteListRow = {
   vendaMedia90Dias: 564.67,
   difMesEMedia: 273.33,
   comodato: true,
+  comodatoSemConsumo: false,
+  comodatoBaixado: false,
   bloqueado: false,
   temTituloVencido: false,
   temTituloVencendo: false,

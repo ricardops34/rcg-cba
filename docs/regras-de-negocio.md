@@ -127,6 +127,21 @@ remessa (2009): equipamento baixado no ERP sem nota de retorno continua como
 saldo, e produto que voltou sem remessa nas notas fica com saldo negativo, em
 vermelho.
 
+O equipamento que não volta por nota se **baixa** na própria aba (decisão de
+2026-10-07): a baixa guarda a quantidade, o motivo e quem baixou, sai do saldo
+(enviado − devolvido − baixado) e do aviso, e entra no histórico de
+atendimento do cliente. Desfazer não apaga — marca a baixa como desfeita, com
+quem desfez. Pode baixar quem tem acesso ao cliente (Posição de Cliente, dentro
+da carteira).
+
+**Aviso de comodato sem consumo:** cliente com saldo de um equipamento
+cadastrado (Cadastros > Equipamentos de Comodato, ativo e com produtos
+aplicáveis) que não comprou nenhum aplicável nos **últimos 30 dias**. Conta
+qualquer nota de saída normal ativa — a bonificação do papel também abastece o
+dispenser. Aparece como ícone na lista da Posição, com filtro, e o assistente
+responde pela ferramenta `comodato_sem_consumo`. A regra mora em
+`apps/api/src/modules/clientes/comodato-sql.ts`.
+
 Como se chegou aqui (2026-09-29, dump da produção e consulta no ERP): o
 critério antigo de "com financeiro" era ter condição de pagamento, mas a nota
 de comodato da RCG também tem. Tentou-se tirar comodato e bonificação por CFOP

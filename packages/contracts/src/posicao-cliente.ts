@@ -76,12 +76,39 @@ export const posicaoClienteEquipamentoSchema = z.object({
   categoria: z.string().nullable(),
   quantidadeEnviada: z.number(),
   quantidadeDevolvida: z.number(),
-  // Enviada − devolvida: o que, pelas notas, ainda está com o cliente.
+  /** Soma das baixas vigentes (equipamento perdido, recolhido sem nota…). */
+  quantidadeBaixada: z.number(),
+  // Enviada − devolvida − baixada: o que ainda está com o cliente.
   saldo: z.number(),
   ultimaRemessa: z.string().datetime().nullable(),
   totalNotas: z.number().int(),
+  /** Produtos aplicáveis cadastrados para o equipamento. */
+  totalAplicaveis: z.number().int(),
+  /** Última compra de qualquer aplicável do equipamento pelo cliente. */
+  ultimaCompraAplicavel: z.string().datetime().nullable(),
+  /**
+   * Aviso: saldo > 0, tem aplicáveis cadastrados e nenhum comprado nos
+   * últimos 30 dias. A mesma regra do ícone da lista (ver comodato-sql.ts).
+   */
+  semConsumo: z.boolean(),
+  baixas: z.array(
+    z.object({
+      id: z.string().uuid(),
+      quantidade: z.number(),
+      motivo: z.string().nullable(),
+      createdAt: z.string().datetime(),
+      autor: z.string().nullable(),
+    }),
+  ),
 });
 export type PosicaoClienteEquipamento = z.infer<typeof posicaoClienteEquipamentoSchema>;
+
+/** Baixar o saldo de um equipamento no cliente. */
+export const comodatoBaixaCriarSchema = z.object({
+  produtoId: z.string().uuid(),
+  motivo: z.string().trim().max(300).nullable().optional(),
+});
+export type ComodatoBaixaCriar = z.infer<typeof comodatoBaixaCriarSchema>;
 
 export const posicaoClienteResumoSchema = z.object({
   totalNotas: z.number().int(),

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Wrench } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import type { PosicaoClienteListRow } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
@@ -107,6 +108,13 @@ export default function PosicaoClientePage() {
   const [temTituloVencido, setTemTituloVencido] = useState<boolean | undefined>(
     undefined,
   );
+  // Aviso de comodato sem consumo e baixas (ver comodato-sql.ts na API). O
+  // link da ferramenta de IA abre a lista já filtrada: ?comodatoSemConsumo=true.
+  const searchParams = useSearchParams();
+  const [comodatoSemConsumo, setComodatoSemConsumo] = useState<true | undefined>(
+    searchParams.get("comodatoSemConsumo") === "true" ? true : undefined,
+  );
+  const [comodatoBaixado, setComodatoBaixado] = useState<true | undefined>(undefined);
 
   // Visualizar/Alterar Cliente e Incluir Orçamento abrem em cortina lateral
   // (não navegam pra fora desta listagem) — só nesta tela; o cadastro de
@@ -199,6 +207,8 @@ export default function PosicaoClientePage() {
       ...(carteira !== "todos" ? { carteira: carteira === "sim" } : {}),
       ...(diasSemComprar !== undefined ? { diasSemComprar } : {}),
       ...(temTituloVencido !== undefined ? { temTituloVencido } : {}),
+      ...(comodatoSemConsumo ? { comodatoSemConsumo } : {}),
+      ...(comodatoBaixado ? { comodatoBaixado } : {}),
     });
 
   // "Ativos" é o status inicial da tela — não conta como filtro "aplicado"
@@ -211,9 +221,13 @@ export default function PosicaoClientePage() {
     !!vendedorId ||
     carteira !== "todos" ||
     diasSemComprar !== undefined ||
-    temTituloVencido !== undefined;
+    temTituloVencido !== undefined ||
+    !!comodatoSemConsumo ||
+    !!comodatoBaixado;
 
   const limparFiltros = () => {
+    setComodatoSemConsumo(undefined);
+    setComodatoBaixado(undefined);
     setStatus("ativos");
     setUf(undefined);
     setMunicipio(undefined);
@@ -244,6 +258,24 @@ export default function PosicaoClientePage() {
           </Tooltip>
         );
       },
+    },
+    {
+      header: "Aviso",
+      id: "aviso-comodato",
+      // Aviso: está com equipamento e não comprou nenhum aplicável em 30
+      // dias. O ícone some sem aviso — mesma lógica do $ dos títulos.
+      cell: (c) =>
+        c.comodatoSemConsumo ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Wrench className="size-4 text-amber-600 dark:text-amber-400" />
+            </TooltipTrigger>
+            <TooltipContent>
+              Está com equipamento em comodato e não comprou nenhum produto aplicável
+              nos últimos 30 dias
+            </TooltipContent>
+          </Tooltip>
+        ) : null,
     },
     {
       header: "Situação",
@@ -574,6 +606,28 @@ export default function PosicaoClientePage() {
             >
               <span className="text-destructive font-bold">$</span> Títulos
               vencidos
+            </QuickFilterButton>
+          </QuickFilterGroup>
+          <QuickFilterGroup>
+            <QuickFilterButton
+              active={comodatoSemConsumo === true}
+              onClick={() => {
+                setComodatoSemConsumo((atual) => (atual ? undefined : true));
+                setPage(1);
+              }}
+            >
+              <Wrench className="size-3.5 text-amber-600 dark:text-amber-400" /> Comodato sem
+              consumo
+            </QuickFilterButton>
+            {/* Para achar as baixas e corrigir a que estiver errada. */}
+            <QuickFilterButton
+              active={comodatoBaixado === true}
+              onClick={() => {
+                setComodatoBaixado((atual) => (atual ? undefined : true));
+                setPage(1);
+              }}
+            >
+              Comodato baixado
             </QuickFilterButton>
           </QuickFilterGroup>
         </div>

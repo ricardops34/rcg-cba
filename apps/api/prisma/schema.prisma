@@ -154,6 +154,7 @@ model Empresa {
   produtoCampoValores        ProdutoCampoValor[]
   produtoRelacionados        ProdutoRelacionado[]
   equipamentosComodato       EquipamentoComodato[]
+  comodatoBaixas             ComodatoBaixa[]
   produtoFichas              ProdutoFicha[]
   agenteAnexos               AgenteAnexo[]
   fichaImportacoes           ProdutoFichaImportacao[]
@@ -1139,6 +1140,7 @@ model Produto {
   relacionados  ProdutoRelacionado[] @relation("ProdutoRelacaoOrigem")
   relacionadoDe ProdutoRelacionado[] @relation("ProdutoRelacaoDestino")
   equipamentoComodato EquipamentoComodato?
+  comodatoBaixas      ComodatoBaixa[]
   fichas        ProdutoFicha[]
 
   @@unique([empresaId, chave])
@@ -1465,6 +1467,38 @@ model EquipamentoComodato {
   @@map("equipamentos_comodato")
 }
 
+/// Baixa de comodato: o saldo de um equipamento num cliente que não deve mais
+/// contar — perdido, quebrado, recolhido sem nota (decisão do usuário,
+/// 2026-10-07; ver docs/planos/equipamentos-comodato.md).
+///
+/// Guarda a **quantidade** baixada, e não um "baixado sim/não": se depois sair
+/// uma remessa nova, o saldo novo aparece, em vez de sumir junto. Saldo do
+/// cliente = enviado − devolvido − baixas vigentes.
+///
+/// Desfazer não apaga: grava `desfeitaEm`/`desfeitaPor`, porque a pergunta
+/// "quem baixou e quem desfez" é justamente a que motivou o registro. As duas
+/// ações também viram atividade no histórico de atendimento do cliente.
+model ComodatoBaixa {
+  id         String  @id @default(uuid())
+  empresaId  String
+  clienteId  String
+  produtoId  String
+  quantidade Float
+  motivo     String?
+
+  createdAt   DateTime  @default(now())
+  createdBy   String?
+  desfeitaEm  DateTime?
+  desfeitaPor String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  cliente Cliente @relation(fields: [clienteId], references: [id])
+  produto Produto @relation(fields: [produtoId], references: [id])
+
+  @@index([empresaId, clienteId, produtoId])
+  @@map("comodato_baixas")
+}
+
 /// Tipo de um campo complementar de produto. Decide **como o valor é validado
 /// e exibido** — o valor em si é sempre texto (ver ProdutoCampoValor).
 enum ProdutoCampoTipo {
@@ -1763,6 +1797,7 @@ model Cliente {
   titulosReceber    TituloReceber[]
   oportunidades     Oportunidade[]
   atividades        Atividade[]
+  comodatoBaixas    ComodatoBaixa[]
   orcamentos        Orcamento[]
   cnaes             ClienteCnae[]
   alteracoes        ClienteAlteracao[]
