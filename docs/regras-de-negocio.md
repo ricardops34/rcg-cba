@@ -261,10 +261,13 @@ emprestada ao cliente e os químicos que ela dilui. Cadastra-se no
 equipamento; do lado do consumível a mesma linha é lida como "usado em".
 Cada linha devolvida traz `origem`, que é o que decide o rótulo.
 
-Não há flag de "produto de comodato" no cadastro. Ter aplicação **é** o
-sinal, e o flag existente (`notas_saida.comodato`, `notas_saida_itens.comodato`)
-diz outra coisa: que aquela **remessa** foi empréstimo, não venda (ver
-"Comodato nas notas", abaixo).
+O produto que pode ser comodatado tem cadastro próprio desde 2026-10-07:
+**Cadastros > Equipamentos de Comodato** (`equipamentos_comodato`, ver
+`docs/planos/equipamentos-comodato.md`). É o cabeçalho; os itens dessa tela
+**são** esta relação `aplicacao` — editar lá ou no card "Relacionados" do
+produto dá no mesmo. O flag das notas (`notas_saida.comodato`,
+`notas_saida_itens.comodato`) diz outra coisa: que aquela **remessa** foi
+empréstimo, não venda (ver "Comodato nas notas", abaixo).
 
 A relação pode ser desfeita **pela ponta que estiver aberta na tela**. Quem vê
 "usado em" está vendo algo cadastrado do outro lado; obrigá-lo a navegar até o

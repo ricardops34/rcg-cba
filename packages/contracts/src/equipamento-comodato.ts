@@ -1,0 +1,100 @@
+import { z } from "zod";
+import { booleanQueryParam, paginationQuerySchema } from "./common";
+
+/**
+ * Equipamentos de comodato: o produto que pode ser comodatado (cabeçalho) e
+ * os produtos que se aplicam nele (itens). Ver
+ * docs/planos/equipamentos-comodato.md.
+ *
+ * Os itens são a relação `aplicacao` de produtos relacionados — a mesma do
+ * card "Relacionados" do produto e do assistente. Cadastrar aqui ou lá dá no
+ * mesmo.
+ */
+
+const produtoRefSchema = z.object({
+  id: z.string().uuid(),
+  codigoErp: z.string(),
+  descricao: z.string(),
+  unidade: z.string().nullable(),
+  categoria: z.string().nullable(),
+  ativo: z.boolean(),
+});
+
+export const equipamentoComodatoSchema = z.object({
+  id: z.string().uuid(),
+  produto: produtoRefSchema,
+  observacao: z.string().nullable(),
+  ativo: z.boolean(),
+  /** Quantos produtos aplicáveis estão cadastrados. */
+  totalAplicacoes: z.number().int(),
+  /** Clientes que já receberam o equipamento em remessa de comodato. */
+  totalClientes: z.number().int(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type EquipamentoComodato = z.infer<typeof equipamentoComodatoSchema>;
+
+/** Item do detalhe: um produto aplicável ao equipamento. */
+export const equipamentoAplicacaoSchema = z.object({
+  /** Id da relação em produto_relacionados — é ele que se exclui. */
+  id: z.string().uuid(),
+  produto: produtoRefSchema,
+  observacao: z.string().nullable(),
+});
+export type EquipamentoAplicacao = z.infer<typeof equipamentoAplicacaoSchema>;
+
+export const equipamentoComodatoDetalheSchema = equipamentoComodatoSchema.extend({
+  aplicacoes: z.array(equipamentoAplicacaoSchema),
+});
+export type EquipamentoComodatoDetalhe = z.infer<typeof equipamentoComodatoDetalheSchema>;
+
+export const equipamentoComodatoQuerySchema = paginationQuerySchema.extend({
+  ativo: booleanQueryParam.optional(),
+  /** true = só os que ainda não têm nenhum produto aplicável. */
+  semAplicacao: booleanQueryParam.optional(),
+});
+export type EquipamentoComodatoQuery = z.infer<typeof equipamentoComodatoQuerySchema>;
+
+export const equipamentoComodatoCriarSchema = z.object({
+  produtoId: z.string().uuid(),
+  observacao: z.string().trim().max(500).nullable().optional(),
+});
+export type EquipamentoComodatoCriar = z.infer<typeof equipamentoComodatoCriarSchema>;
+
+export const equipamentoComodatoEditarSchema = z.object({
+  observacao: z.string().trim().max(500).nullable().optional(),
+  ativo: z.boolean().optional(),
+});
+export type EquipamentoComodatoEditar = z.infer<typeof equipamentoComodatoEditarSchema>;
+
+export const equipamentoAplicacaoCriarSchema = z.object({
+  produtoId: z.string().uuid(),
+  observacao: z.string().trim().max(200).nullable().optional(),
+});
+export type EquipamentoAplicacaoCriar = z.infer<typeof equipamentoAplicacaoCriarSchema>;
+
+/**
+ * Sugestão de produto aplicável, por compra conjunta: entre os clientes que
+ * receberam o equipamento, quantos compram o produto, comparado com todos os
+ * clientes. É sugestão — só grava quando alguém confirma.
+ */
+export const equipamentoSugestaoSchema = z.object({
+  produto: produtoRefSchema,
+  /** Clientes com o equipamento que compraram o produto (últimos 24 meses). */
+  clientesComEquipamento: z.number().int(),
+  /** % entre os clientes com o equipamento. */
+  percentualComEquipamento: z.number(),
+  /** % entre todos os clientes que compraram algo no período. */
+  percentualGeral: z.number(),
+  /** A descrição tem palavra em comum com a do equipamento. */
+  descricaoParecida: z.boolean(),
+});
+export type EquipamentoSugestao = z.infer<typeof equipamentoSugestaoSchema>;
+
+export const equipamentoPopularResultadoSchema = z.object({
+  /** Equipamentos criados agora. */
+  criados: z.number().int(),
+  /** Produtos de remessa que já estavam cadastrados (inclusive excluídos). */
+  existentes: z.number().int(),
+});
+export type EquipamentoPopularResultado = z.infer<typeof equipamentoPopularResultadoSchema>;

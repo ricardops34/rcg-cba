@@ -126,3 +126,4 @@ export * from "./grupo-economico";
 export * from "./documentos-email";
 export * from "./sms";
 export * from "./email-config";
+export * from "./equipamento-comodato";

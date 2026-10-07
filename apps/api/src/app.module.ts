@@ -17,6 +17,7 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module';
 import { PerfisModule } from './modules/perfis/perfis.module';
 import { EstruturaModule } from './modules/estrutura/estrutura.module';
 import { ProdutosModule } from './modules/produtos/produtos.module';
+import { EquipamentosComodatoModule } from './modules/equipamentos-comodato/equipamentos-comodato.module';
 import { VendedoresModule } from './modules/vendedores/vendedores.module';
 import { ClientesModule } from './modules/clientes/clientes.module';
 import { CadastrosModule } from './modules/cadastros/cadastros.module';
@@ -116,6 +117,7 @@ import { GruposEconomicosModule } from './modules/grupos-economicos/grupos-econo
     PerfisModule,
     EstruturaModule,
     ProdutosModule,
+    EquipamentosComodatoModule,
     VendedoresModule,
     ClientesModule,
     CadastrosModule,

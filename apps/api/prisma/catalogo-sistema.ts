@@ -238,6 +238,17 @@ export const MENUS: DefinicaoMenu[] = [
     codigo: 'produtos-campos',
     moduloId: MODULO.cadastros,
   },
+  // Equipamento de comodato e os produtos que se aplicam nele (ver
+  // docs/planos/equipamentos-comodato.md). Os itens são a relação `aplicacao`
+  // de produto_relacionados — a mesma do card "Relacionados" do produto.
+  {
+    id: 'seed-menu-equipamentos-comodato',
+    nome: 'Equipamentos de Comodato',
+    rota: '/cadastros/equipamentos-comodato',
+    icone: 'wrench',
+    codigo: 'equipamentos-comodato',
+    moduloId: MODULO.cadastros,
+  },
   {
     id: 'seed-menu-clientes',
     nome: 'Clientes',
@@ -784,6 +795,16 @@ export const SUPERVISAO_PERMISSOES: Record<string, Acao[]> = {
   'whatsapp-historico': ['visualizar'],
   // Distribuir, descartar e anotar o lead.
   leads: ['visualizar', 'editar'],
+  // Cadastro de equipamentos de comodato (decisão do usuário, 2026-10-07):
+  // Gerente e Supervisor mantêm, o Vendedor não. `importar` é o "popular pelas
+  // notas". Espelha a migration 20261007033504_equipamentos_comodato.
+  'equipamentos-comodato': [
+    'visualizar',
+    'cadastrar',
+    'editar',
+    'excluir',
+    'importar',
+  ],
 };
 
 /**

@@ -153,6 +153,7 @@ model Empresa {
   produtoCampos              ProdutoCampo[]
   produtoCampoValores        ProdutoCampoValor[]
   produtoRelacionados        ProdutoRelacionado[]
+  equipamentosComodato       EquipamentoComodato[]
   produtoFichas              ProdutoFicha[]
   agenteAnexos               AgenteAnexo[]
   fichaImportacoes           ProdutoFichaImportacao[]
@@ -1137,6 +1138,7 @@ model Produto {
   /// ProdutoRelacionado.
   relacionados  ProdutoRelacionado[] @relation("ProdutoRelacaoOrigem")
   relacionadoDe ProdutoRelacionado[] @relation("ProdutoRelacaoDestino")
+  equipamentoComodato EquipamentoComodato?
   fichas        ProdutoFicha[]
 
   @@unique([empresaId, chave])
@@ -1429,6 +1431,38 @@ model ProdutoRelacionado {
   /// que responde "em que equipamentos este químico é usado".
   @@index([empresaId, relacionadoId, tipo])
   @@map("produto_relacionados")
+}
+
+/// Produto que pode ser comodatado — o cabeçalho do cadastro "Equipamentos de
+/// comodato" (ver docs/planos/equipamentos-comodato.md).
+///
+/// Os produtos que se aplicam ao equipamento **não** moram aqui: são a
+/// relação `aplicacao` de ProdutoRelacionado, que o card "Relacionados" do
+/// produto e o assistente já leem. Esta tabela só diz "este produto é
+/// equipamento de comodato", o que precisa existir antes de qualquer
+/// aplicação cadastrada.
+///
+/// Excluir é soft delete e não apaga as aplicações: elas são conhecimento do
+/// produto, e restaurar o equipamento as traz de volta.
+model EquipamentoComodato {
+  id         String  @id @default(uuid())
+  empresaId  String
+  produtoId  String  @unique
+  observacao String?
+  ativo      Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId])
+  @@map("equipamentos_comodato")
 }
 
 /// Tipo de um campo complementar de produto. Decide **como o valor é validado
