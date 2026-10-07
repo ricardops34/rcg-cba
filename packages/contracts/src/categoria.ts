@@ -34,7 +34,9 @@ export type CategoriaQuery = z.infer<typeof categoriaQuerySchema>;
  * opcional: o PATCH grava só a que veio.
  *
  * `usado` marca as categorias que a empresa acompanha — é o que o Dashboard
- * Comercial usa para escolher o que entra na tabela de Vendas por Categoria.
+ * Comercial usa para escolher o que entra na tabela de Vendas por Categoria, e
+ * o que a Sugestão de Compra usa para saber o que é mercadoria vendida (só
+ * produto de categoria usada é sugerido; desde 2026-10-07).
  * Vale só para categoria raiz: subcategoria não tem a marcação (nasce nula no
  * import) e não aparece no dashboard.
  *

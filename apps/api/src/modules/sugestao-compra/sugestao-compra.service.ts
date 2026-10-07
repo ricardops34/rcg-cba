@@ -43,7 +43,61 @@ import type { AuthenticatedUser } from '../../common/decorators/current-user.dec
 /** Teto do lote (timeout da transação em `gerarLote`). */
 const TEMPO_MAXIMO_LOTE_MS = 15 * 60_000;
 
-const NOTA_DE_VENDA = Prisma.sql`n."deletedAt" IS NULL AND n."ativo" = true AND n."comodato" = false AND n."tipo" = 'N'`;
+/**
+ * O item de nota que conta como compra do cliente — no cálculo inteiro: a
+ * cesta, a semelhança entre clientes e o que se sugere (decisão do usuário,
+ * 2026-10-07: "só notas com financeiro e de categorias usadas"). `n` é a
+ * nota, `i` o item.
+ *
+ * - Nota de venda: ativa, normal (`tipo = 'N'`), sem comodato e **com
+ *   financeiro** — o mesmo critério de duplicata do Dashboard e das Consultas
+ *   (`common/vendas/venda-analitica.ts`): nota que não gerou duplicata
+ *   (bonificação, transferência, remessa) não é compra. `geraDuplicata` nulo
+ *   é nota de integração antiga e cai na condição de pagamento.
+ * - Item vivo, de produto de categoria **usada** (a raiz, como em
+ *   `PRODUTO_VENDAVEL`).
+ */
+const NOTA_DE_VENDA = Prisma.sql`
+  n."deletedAt" IS NULL AND n."ativo" = true AND n."comodato" = false AND n."tipo" = 'N'
+  AND (n."geraDuplicata" = true OR (n."geraDuplicata" IS NULL AND n."condicaoPagamentoId" IS NOT NULL))
+  AND EXISTS (
+    SELECT 1 FROM "produtos" p_cat
+    JOIN "categorias" cat_i ON cat_i."id" = p_cat."categoriaId"
+    LEFT JOIN "categorias" pai_i ON pai_i."id" = cat_i."categoriaPaiId"
+    WHERE p_cat."id" = i."produtoId"
+      AND COALESCE(pai_i."usado", cat_i."usado") = true
+  )`;
+
+/**
+ * Só se sugere **mercadoria que a empresa vende** (decisão do usuário,
+ * 2026-10-07) — sobre o produto `pr`:
+ *
+ * - ativo (não bloqueado) e não excluído;
+ * - de categoria marcada como **usada** (Cadastros > Categorias, a mesma
+ *   marcação do Dashboard Comercial). Vale a raiz: produto ligado a uma
+ *   subcategoria olha a categoria pai. Fica fora o que não é mercadoria —
+ *   serviços, comodatos, descontinuados, frete, amostras, imobilizado — e o
+ *   produto sem categoria;
+ * - não é equipamento de comodato: nem cadastrado em Equipamentos de
+ *   Comodato, nem de categoria marcada como de equipamento.
+ */
+const PRODUTO_VENDAVEL = Prisma.sql`
+  pr."deletedAt" IS NULL AND pr."ativo" = true
+  AND EXISTS (
+    SELECT 1 FROM "categorias" cat
+    LEFT JOIN "categorias" pai ON pai."id" = cat."categoriaPaiId"
+    WHERE cat."id" = pr."categoriaId"
+      AND COALESCE(pai."usado", cat."usado") = true
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM "equipamentos_comodato" ec
+    WHERE ec."produtoId" = pr."id" AND ec."deletedAt" IS NULL
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM "categorias" ce
+    WHERE ce."id" IN (pr."categoriaId", pr."subCategoriaId")
+      AND ce."equipamentoComodato" = true
+  )`;
 
 /**
  * Tradução do nível numérico que a query devolve (`MAX(nivel)`, do mais
@@ -606,12 +660,16 @@ export class SugestaoCompraService {
           tx,
           empresaId,
           escopo,
-          { codigoDe: filtro.clienteCodigoDe, codigoAte: filtro.clienteCodigoAte },
+          {
+            codigoDe: filtro.clienteCodigoDe,
+            codigoAte: filtro.clienteCodigoAte,
+          },
           true,
         );
         clienteIds = recorte.map((c) => c.id);
       }
-      if (clienteIds.length === 0) return { clientes: 0, sugestoesExcluidas: 0 };
+      if (clienteIds.length === 0)
+        return { clientes: 0, sugestoesExcluidas: 0 };
 
       const afetados = await tx.sugestaoCompraGerada.groupBy({
         by: ['clienteId'],
@@ -725,7 +783,12 @@ export class SugestaoCompraService {
     if (!ramo || ramo.pares.length === 0) return [];
     const pares = ramo.pares.map((clienteId) => ({ clienteId }));
 
-    const cestaAlvo = await this.cestaDoCliente(tx, empresaId, clienteId, desde);
+    const cestaAlvo = await this.cestaDoCliente(
+      tx,
+      empresaId,
+      clienteId,
+      desde,
+    );
 
     // Dentro do ramo, os que compram parecido: Jaccard entre as cestas
     // (interseção sobre união — penaliza quem compra de tudo). Os K mais
@@ -782,7 +845,7 @@ export class SugestaoCompraService {
       FROM "notas_saida_itens" i
       JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
       JOIN "produtos" pr ON pr."id" = i."produtoId"
-           AND pr."deletedAt" IS NULL AND pr."ativo" = true
+           AND ${PRODUTO_VENDAVEL}
       WHERE i."empresaId" = ${empresaId}
         AND i."clienteId" IN (${Prisma.join(referencia)})
         AND i."produtoId" IS NOT NULL
@@ -1390,7 +1453,7 @@ export class SugestaoCompraService {
       FROM "notas_saida_itens" i
       JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
       JOIN "produtos" pr ON pr."id" = i."produtoId"
-           AND pr."deletedAt" IS NULL AND pr."ativo" = true
+           AND ${PRODUTO_VENDAVEL}
       JOIN "clientes" c ON c."id" = i."clienteId"
       WHERE i."empresaId" = ${p.empresaId}
         AND i."clienteId" IN (${Prisma.join(p.semelhantes)})
