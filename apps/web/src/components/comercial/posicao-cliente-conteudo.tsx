@@ -19,6 +19,7 @@ import { TituloStatusBadge } from "@/components/comercial/titulo-status-badge";
 import { SortableTableHead } from "@/components/crud/sortable-table-head";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { NotaSaidaSheet } from "@/components/comercial/nota-saida-detalhe";
+import { NotaEntradaSheet } from "@/components/compras/nota-entrada-detalhe";
 import { TituloReceberSheet } from "@/components/comercial/titulo-receber-detalhe";
 import { ProdutoSheet } from "@/components/comercial/produto-detalhe";
 import {
@@ -94,6 +95,35 @@ function Metrica({ label, value }: { label: string; value: string }) {
       <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
       <p className="mt-1 text-2xl font-semibold tracking-tight">{value}</p>
     </div>
+  );
+}
+
+/**
+ * Número da nota com cara de link. A linha inteira já abre o detalhe, mas só
+ * o cursor dizia isso — o sistema anterior mostrava o número em azul, e é
+ * nele que o usuário procura onde clicar.
+ */
+function LinkNota({
+  numero,
+  serie,
+  onAbrir,
+}: {
+  numero: string;
+  serie: string | null;
+  onAbrir: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="font-mono font-medium text-primary underline-offset-2 hover:underline"
+      onClick={(e) => {
+        e.stopPropagation();
+        onAbrir();
+      }}
+    >
+      {numero}
+      {serie && <span className="text-muted-foreground">/{serie}</span>}
+    </button>
   );
 }
 
@@ -201,9 +231,12 @@ function TabelaNotas({
                     className="cursor-pointer"
                     onClick={() => onSelecionar(n.id)}
                   >
-                    <TableCell className="font-mono font-medium">
-                      {n.numero}
-                      {n.serie && <span className="text-muted-foreground">/{n.serie}</span>}
+                    <TableCell>
+                      <LinkNota
+                        numero={n.numero}
+                        serie={n.serie}
+                        onAbrir={() => onSelecionar(n.id)}
+                      />
                     </TableCell>
                     <TableCell>{dataBr(n.dtEmissao)}</TableCell>
                     <TableCell className="text-xs">
@@ -238,6 +271,7 @@ function TabelaDevolucoes({
   sortBy,
   sortOrder,
   onToggleSort,
+  onSelecionar,
 }: {
   devolucoes: DevolucaoRow[];
   busca: string;
@@ -245,6 +279,7 @@ function TabelaDevolucoes({
   sortBy: string;
   sortOrder: SortOrder;
   onToggleSort: (key: string) => void;
+  onSelecionar: (id: string) => void;
 }) {
   return (
     <Card>
@@ -292,10 +327,17 @@ function TabelaDevolucoes({
               </TableHeader>
               <TableBody>
                 {devolucoes.map((d) => (
-                  <TableRow key={d.id}>
-                    <TableCell className="align-top font-mono font-medium">
-                      {d.numero}
-                      {d.serie && <span className="text-muted-foreground">/{d.serie}</span>}
+                  <TableRow
+                    key={d.id}
+                    className="cursor-pointer"
+                    onClick={() => onSelecionar(d.id)}
+                  >
+                    <TableCell className="align-top">
+                      <LinkNota
+                        numero={d.numero}
+                        serie={d.serie}
+                        onAbrir={() => onSelecionar(d.id)}
+                      />
                     </TableCell>
                     <TableCell className="align-top">{dataBr(d.dtEmissao)}</TableCell>
                     <TableCell className="text-xs">
@@ -353,6 +395,7 @@ export function PosicaoClienteConteudo({
   const [mixSearch, setMixSearch] = useState("");
 
   const [notaSelecionadaId, setNotaSelecionadaId] = useState<string | null>(null);
+  const [devolucaoSelecionadaId, setDevolucaoSelecionadaId] = useState<string | null>(null);
   const [tituloSelecionadoId, setTituloSelecionadoId] = useState<string | null>(null);
   const [produtoSelecionadoId, setProdutoSelecionadoId] = useState<string | null>(null);
 
@@ -709,6 +752,7 @@ export function PosicaoClienteConteudo({
             onToggleSort={(k) =>
               toggleSort(k, devolucaoSortBy, setDevolucaoSortBy, setDevolucaoSortOrder)
             }
+            onSelecionar={setDevolucaoSelecionadaId}
           />
         </TabsContent>
 
@@ -1004,6 +1048,10 @@ export function PosicaoClienteConteudo({
       </Tabs>
 
       <NotaSaidaSheet id={notaSelecionadaId} onOpenChange={(o) => !o && setNotaSelecionadaId(null)} />
+      <NotaEntradaSheet
+        id={devolucaoSelecionadaId}
+        onOpenChange={(o) => !o && setDevolucaoSelecionadaId(null)}
+      />
       <TituloReceberSheet
         id={tituloSelecionadoId}
         onOpenChange={(o) => !o && setTituloSelecionadoId(null)}

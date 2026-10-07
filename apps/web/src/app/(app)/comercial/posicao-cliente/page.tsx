@@ -616,6 +616,14 @@ export default function PosicaoClientePage() {
             setPage(1);
           }}
           onRowClick={(c) => router.push(`/comercial/posicao-cliente/${c.id}`)}
+          // Cliente vendendo abaixo da própria média: a linha inteira em
+          // amarelo, como no sistema anterior — o vermelho só no número
+          // passava despercebido numa lista longa.
+          rowClassName={(c) =>
+            c.difMesEMedia < 0
+              ? "bg-amber-500/15 hover:bg-amber-500/25 dark:bg-amber-500/10 dark:hover:bg-amber-500/20"
+              : undefined
+          }
           emptyMessage="Nenhum cliente encontrado."
           sortBy={sortBy}
           sortOrder={sortOrder}

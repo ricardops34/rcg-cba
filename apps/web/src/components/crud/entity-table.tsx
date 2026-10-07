@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -99,6 +100,8 @@ interface EntityTableProps<T> {
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   onRowClick?: (row: T) => void;
+  /** Classe extra por linha — destaque de uma condição da linha inteira. */
+  rowClassName?: (row: T) => string | undefined;
   sortBy?: string;
   sortOrder?: "asc" | "desc";
   onSortChange?: (sortBy: string, sortOrder: "asc" | "desc") => void;
@@ -125,6 +128,7 @@ export function EntityTable<T>({
   onPageChange,
   onPageSizeChange,
   onRowClick,
+  rowClassName,
   sortBy,
   sortOrder = "asc",
   onSortChange,
@@ -243,7 +247,7 @@ export function EntityTable<T>({
                     if (!e.currentTarget.contains(e.target as Node)) return;
                     onRowClick?.(row);
                   }}
-                  className={onRowClick ? "cursor-pointer" : undefined}
+                  className={cn(onRowClick && "cursor-pointer", rowClassName?.(row))}
                 >
                   {colunasVisiveis.map((col) => (
                     <TableCell key={col.id ?? col.header} className={col.className}>

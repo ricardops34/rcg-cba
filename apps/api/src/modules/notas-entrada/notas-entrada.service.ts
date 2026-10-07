@@ -5,6 +5,8 @@ import {
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
 import type { NotaEntradaQuery } from '@plataforma/contracts';
+import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
 
 const SORT_FIELDS = new Set([
   'numero',
@@ -99,10 +101,34 @@ export class NotasEntradaService {
     });
   }
 
-  findOne(empresaId: string, id: string) {
+  /**
+   * Quem tem `notas-entrada.visualizar` vê qualquer nota, como na tela de
+   * compras. Quem chega só pela Posição de Cliente (`posicao-cliente`) vê só
+   * o que a aba Devoluções lista: devolução (tipo 'D') de cliente da carteira
+   * dele. A nota de compra carrega custo, e o id não pode ser a chave que abre
+   * isso para o vendedor.
+   */
+  findOne(empresaId: string, user: AuthenticatedUser, id: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
+      const veCompras =
+        user.isAdmin || user.permissoes.includes('notas-entrada.visualizar');
+      const escopo = veCompras
+        ? null
+        : await resolverEscopoVendedores(tx, empresaId, user);
       const nota = await tx.notaEntrada.findFirst({
-        where: { id, empresaId, deletedAt: null },
+        where: {
+          id,
+          empresaId,
+          deletedAt: null,
+          ...(veCompras
+            ? {}
+            : {
+                tipo: 'D',
+                cliente: escopo
+                  ? { vendedorId: { in: escopo } }
+                  : { isNot: null },
+              }),
+        },
         include: {
           fornecedor: FORNECEDOR_SELECT,
           cliente: CLIENTE_SELECT,

@@ -45,13 +45,18 @@ export class NotasEntradaController {
     summary: 'Detalhar nota de entrada (com itens)',
     description:
       'Os itens vêm embutidos no detalhe — não têm rotina própria. ' +
-      'Requer notas-entrada.visualizar.',
+      'Requer notas-entrada.visualizar, ou posicao-cliente.visualizar — este só ' +
+      'alcança devolução (tipo D) de cliente da carteira do usuário, a nota que a ' +
+      'aba Devoluções da Posição de Cliente lista.',
   })
   @ApiResponse({ status: 200, schema: { example: NOTA_ENTRADA_EXAMPLE } })
   @ApiResponse({ status: 404, description: 'Nota de entrada não encontrada' })
-  @RequirePermission('notas-entrada', 'visualizar')
+  @RequirePermission('notas-entrada', 'visualizar', [
+    'posicao-cliente',
+    'visualizar',
+  ])
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.findOne(user.empresaAtivaId, id);
+    return this.service.findOne(user.empresaAtivaId, user, id);
   }
 }
