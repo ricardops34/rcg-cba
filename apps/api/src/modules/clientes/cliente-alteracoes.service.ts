@@ -195,6 +195,12 @@ export class ClienteAlteracoesService {
       autorId: string | null;
       aplicarDireto: boolean;
       justificativa?: string | null;
+      /**
+       * Pendência nova vira tarefa na agenda de quem aprova (padrão). O lote
+       * da Receita desliga: centenas de clientes de uma vez virariam centenas
+       * de tarefas — ali o aviso é um só, no sino, ao terminar.
+       */
+      registrarNaAgenda?: boolean;
     },
   ): Promise<
     | { resultado: 'sem-mudanca' }
@@ -210,6 +216,7 @@ export class ClienteAlteracoesService {
       autorId,
       aplicarDireto,
       justificativa,
+      registrarNaAgenda = true,
     } = params;
 
     const diff = calcularDiff(atual, input);
@@ -273,7 +280,7 @@ export class ClienteAlteracoesService {
 
     // Só na criação: reabrir a mesma pendência a cada sincronização do ERP
     // encheria a agenda de quem aprova.
-    if (!pendente) {
+    if (!pendente && registrarNaAgenda) {
       await registrarAtividadeAlteracaoCliente(tx, {
         empresaId,
         clienteId,

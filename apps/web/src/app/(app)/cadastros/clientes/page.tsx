@@ -24,7 +24,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Landmark, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { useAuthStore } from "@/stores/auth-store";
+import {
+  ClientesReceitaFaixa,
+  ClientesReceitaLoteDialog,
+  useExecucaoReceita,
+} from "@/components/crud/clientes-receita-lote";
 
 type SimNaoTodos = "todos" | "sim" | "nao";
 type TipoPessoaFiltro = "todos" | TipoPessoa;
@@ -83,6 +89,12 @@ export default function ClientesPage() {
   });
   const opcoesUf = ufsEscopoQuery.data?.data ?? [];
 
+  // Atualização em lote pela Receita: grava no cadastro de muitos clientes
+  // sem revisão campo a campo, por isso pede a permissão de aprovar (a rota
+  // confere de novo). O andamento aparece para todos que abrem a tela.
+  const podeAtualizarPelaReceita = useAuthStore((s) => s.hasPermission)("clientes", "aprovar");
+  const [receitaAberto, setReceitaAberto] = useState(false);
+
   const { data, isLoading, isFetching, refetch, error } = useResourceList<ClienteRow>("clientes", {
     search,
     page,
@@ -97,6 +109,7 @@ export default function ClientesPage() {
     ...(vendedorId ? { vendedorId } : {}),
     ...(carteira !== "todos" ? { carteira: carteira === "sim" } : {}),
   });
+  const receita = useExecucaoReceita(() => void refetch());
 
   const { remove } = useResourceMutations("clientes");
 
@@ -221,6 +234,18 @@ export default function ClientesPage() {
         onCreate={() => router.push("/cadastros/clientes/novo")}
         createLabel="Novo cliente"
         actions={
+          <>
+          {podeAtualizarPelaReceita && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={receita.rodando}
+              title={receita.rodando ? "Já há uma atualização em andamento" : undefined}
+              onClick={() => setReceitaAberto(true)}
+            >
+              <Landmark className="size-4" /> Atualizar pela Receita
+            </Button>
+          )}
           <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
             <div className="space-y-2">
               <FieldLabel>Tipo de pessoa</FieldLabel>
@@ -340,7 +365,15 @@ export default function ClientesPage() {
               </Select>
             </div>
           </FiltersPopover>
+          </>
         }
+      />
+
+      <ClientesReceitaFaixa execucao={receita.execucao} />
+      <ClientesReceitaLoteDialog
+        open={receitaAberto}
+        onOpenChange={setReceitaAberto}
+        onIniciado={() => void receita.refetch()}
       />
 
       <StatusQuickFilter

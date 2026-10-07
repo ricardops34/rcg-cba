@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -19,9 +20,11 @@ import { CONSULTA_CNPJ_EXAMPLE } from '@plataforma/contracts';
 import { ClientesService } from './clientes.service';
 import { EnriquecimentoService } from './enriquecimento.service';
 import { ClienteAlteracoesService } from './cliente-alteracoes.service';
+import { ClientesReceitaLoteService } from './clientes-receita-lote.service';
 import {
   ClienteContatoCreateDto,
   ClienteCreateDto,
+  ClientesReceitaLoteBodyDto,
   ClienteQueryDto,
   ClienteUpdateDto,
   MunicipiosEscopoQueryDto,
@@ -47,6 +50,7 @@ export class ClientesController {
     private readonly service: ClientesService,
     private readonly enriquecimento: EnriquecimentoService,
     private readonly alteracoes: ClienteAlteracoesService,
+    private readonly receitaLote: ClientesReceitaLoteService,
   ) {}
 
   @ApiOperation({
@@ -168,6 +172,37 @@ export class ClientesController {
   @Get('consulta-cnpj/:cnpj')
   consultarCnpj(@Param('cnpj') cnpj: string) {
     return this.enriquecimento.consultarCnpj(cnpj);
+  }
+
+  @ApiOperation({
+    summary: 'Atualizar clientes pela Receita em lote',
+    description:
+      'Consulta na Receita (MinhaReceita) o CNPJ de cada cliente **ativo** do escopo, a ~1/s, ' +
+      'em segundo plano: responde 202 com a execução e o lote corre depois (aviso no sino ao ' +
+      'terminar). Campo vazio no cadastro — inclusive o CNAE de quem não tem nenhum — é ' +
+      'preenchido direto; valor diferente vira solicitação na fila de aprovação, sem tarefa ' +
+      'de agenda por cliente. 409 se já houver um lote em andamento na empresa. Requer ' +
+      'clientes.aprovar: grava no cadastro de muitos clientes sem revisão.',
+  })
+  @RequirePermission('clientes', 'aprovar')
+  @HttpCode(202)
+  @Post('receita/lote')
+  atualizarPelaReceitaEmLote(
+    @Body() body: ClientesReceitaLoteBodyDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.receitaLote.iniciar(user.empresaAtivaId, user, body);
+  }
+
+  @ApiOperation({
+    summary: 'Última atualização em lote pela Receita',
+    description:
+      'Andamento e resultado do lote mais recente da empresa (null se nunca rodou). Requer clientes.visualizar.',
+  })
+  @RequirePermission('clientes', 'visualizar')
+  @Get('receita/execucoes/ultima')
+  ultimaAtualizacaoPelaReceita(@CurrentUser() user: AuthenticatedUser) {
+    return this.receitaLote.ultimaExecucao(user.empresaAtivaId);
   }
 
   @ApiOperation({

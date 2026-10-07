@@ -13,6 +13,7 @@ import {
   MessageCircle,
   Receipt,
   UserPlus,
+  Building2,
   Lightbulb,
 } from "lucide-react";
 import type {
@@ -45,6 +46,7 @@ const ICONE: Record<NotificacaoTipo, typeof Bell> = {
   lead_novo: UserPlus,
   recado_interno: Bell,
   sugestao_compra_calculada: Lightbulb,
+  clientes_receita_atualizados: Building2,
 };
 
 /** O que aparece em vermelho: prazo estourado ou algo que falhou. */
@@ -61,6 +63,7 @@ const URGENTE: Record<NotificacaoTipo, boolean> = {
   lead_novo: false,
   recado_interno: false,
   sugestao_compra_calculada: false,
+  clientes_receita_atualizados: false,
   titulo_vencido: true,
 };
 

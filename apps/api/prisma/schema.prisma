@@ -148,6 +148,7 @@ model Empresa {
   integracaoEndpointConfigs   IntegracaoEndpointConfig[]
   integracaoCargas           IntegracaoCarga[]
   sugestaoCompraExecucoes    SugestaoCompraExecucao[]
+  clientesReceitaExecucoes   ClienteReceitaExecucao[]
   integracaoCargaErros       IntegracaoCargaErro[]
   clienteCampoConfigs        ClienteCampoConfig[]
   produtoCampos              ProdutoCampo[]
@@ -2469,6 +2470,34 @@ model SugestaoCompraExecucao {
 
   @@index([empresaId, iniciadaEm])
   @@map("sugestao_compra_execucoes")
+}
+
+enum SituacaoExecucaoReceita {
+  rodando
+  concluida
+  falhou
+}
+
+/// Atualização em lote do cadastro de clientes pela Receita (CNAE e demais
+/// dados), em segundo plano — ver ClientesReceitaLoteService.
+model ClienteReceitaExecucao {
+  id          String                  @id @default(uuid())
+  empresaId   String
+  usuarioId   String
+  situacao    SituacaoExecucaoReceita @default(rodando)
+  /// somenteSemCnae, clienteCodigoDe, clienteCodigoAte pedidos.
+  parametros  Json?
+  /// Contadores (total, processados, atualizados, pendentes...), gravados
+  /// durante o lote para a tela mostrar o andamento.
+  resultado   Json?
+  erro        String?
+  iniciadaEm  DateTime                @default(now())
+  concluidaEm DateTime?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@index([empresaId, iniciadaEm])
+  @@map("clientes_receita_execucoes")
 }
 
 // Define, por empresa, quais campos do cadastro de Cliente o formulário
@@ -5063,6 +5092,8 @@ enum NotificacaoTipo {
   recado_interno
   /// O "Calcular" em lote da Sugestão de Compra terminou (ou falhou).
   sugestao_compra_calculada
+  /// A atualização em lote dos clientes pela Receita terminou (ou falhou).
+  clientes_receita_atualizados
 }
 
 /// Em que ponto o lead está. Deliberadamente curto: um funil de lead com sete

@@ -101,3 +101,54 @@ export const CONSULTA_CEP_EXAMPLE: ConsultaCepResultado = {
   estadoId: "1a2b3c4d-5e6f-4071-8293-a4b5c6d7e8f9",
   origem: "viacep",
 };
+
+/**
+ * Atualização em lote do cadastro de clientes pela Receita (botão no Cadastro
+ * de Clientes). Alvo: clientes **ativos** com CNPJ de 14 dígitos, dentro do
+ * escopo de quem pede.
+ *
+ * Regra por campo (decisão do usuário, 2026-10-07): campo **vazio** no
+ * cadastro é preenchido direto; campo **com valor diferente** vira
+ * solicitação na fila de aprovação. O CNAE segue a mesma regra — cliente sem
+ * nenhum ramo recebe principal e secundários na hora.
+ */
+export const clientesReceitaLoteBodySchema = z.object({
+  somenteSemCnae: z
+    .boolean()
+    .default(false)
+    .describe("Só clientes sem nenhum CNAE vinculado"),
+  clienteCodigoDe: z
+    .string()
+    .trim()
+    .optional()
+    .describe("Código ERP inicial da faixa (inclusive). Sem informar, não limita por baixo"),
+  clienteCodigoAte: z
+    .string()
+    .trim()
+    .optional()
+    .describe("Código ERP final da faixa (inclusive). Sem informar, não limita por cima"),
+});
+export type ClientesReceitaLoteBody = z.infer<typeof clientesReceitaLoteBodySchema>;
+
+export const clientesReceitaLoteResultadoSchema = z.object({
+  total: z.number().int().describe("Clientes que entraram no lote"),
+  processados: z.number().int().describe("Já consultados (andamento)"),
+  atualizados: z.number().int().describe("Tiveram campo vazio preenchido direto"),
+  pendentes: z.number().int().describe("Tiveram divergência enviada para aprovação"),
+  cnaesPreenchidos: z.number().int().describe("Estavam sem CNAE e receberam"),
+  semMudanca: z.number().int().describe("Cadastro já batia com a Receita"),
+  naoEncontrados: z.number().int().describe("CNPJ que a Receita não conhece"),
+  falhas: z.number().int().describe("Consulta falhou (serviço fora, limite de acesso)"),
+});
+export type ClientesReceitaLoteResultado = z.infer<typeof clientesReceitaLoteResultadoSchema>;
+
+export const clientesReceitaExecucaoSchema = z.object({
+  id: z.string().uuid(),
+  situacao: z.enum(["rodando", "concluida", "falhou"]),
+  iniciadaEm: z.string().datetime(),
+  concluidaEm: z.string().datetime().nullable(),
+  usuarioNome: z.string().nullable().describe("Quem pediu a atualização"),
+  resultado: clientesReceitaLoteResultadoSchema.nullable(),
+  erro: z.string().nullable(),
+});
+export type ClientesReceitaExecucao = z.infer<typeof clientesReceitaExecucaoSchema>;

@@ -24,6 +24,8 @@ export const NOTIFICACAO_TIPOS = [
   "recado_interno",
   /** O "Calcular" em lote da Sugestão de Compra terminou (ou falhou). */
   "sugestao_compra_calculada",
+  /** A atualização em lote dos clientes pela Receita terminou (ou falhou). */
+  "clientes_receita_atualizados",
 ] as const;
 export const notificacaoTipoSchema = z.enum(NOTIFICACAO_TIPOS);
 export type NotificacaoTipo = z.infer<typeof notificacaoTipoSchema>;
