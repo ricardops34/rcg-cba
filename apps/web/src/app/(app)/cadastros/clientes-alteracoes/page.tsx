@@ -130,9 +130,9 @@ function DiffCampos({
  * Desde a governança do cadastro, nenhuma origem — tela, consulta de CNPJ,
  * integração do ERP ou agente — muda valor do cliente direto: tudo para aqui, e
  * o cadastro só muda quando alguém com `clientes.aprovar` libera. A exceção,
- * desde 07/10/2026, é a consulta à Receita preenchendo direto, mas
- * só para o CNAE vazio (ramo e principal); "Aprovar CNAE vazio" aplica a mesma regra às
- * pendências de antes.
+ * desde 07/10/2026, é a consulta à Receita preenchendo direto o campo vazio.
+ * "Aprovar CNAE vazio" é **temporário**, para corrigir a base: aplica só o CNAE
+ * vazio das pendências abertas antes dessa regra. Pode sair depois da limpeza.
  */
 export default function ClientesAlteracoesPage() {
   const queryClient = useQueryClient();
@@ -162,7 +162,7 @@ export default function ClientesAlteracoesPage() {
     });
 
   // Pendências que propõem CNAE para cliente sem nenhum — candidatas à
-  // aprovação em lote do CNAE vazio.
+  // aprovação em lote do CNAE vazio (temporário, ver acima).
   const [cnaeVazio, setCnaeVazio] = useState(false);
 
   const chave = ["clientes-alteracoes", status, busca, cnaeVazio];

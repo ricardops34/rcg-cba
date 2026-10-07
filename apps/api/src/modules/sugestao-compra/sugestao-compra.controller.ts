@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -21,6 +22,7 @@ import {
 } from '@plataforma/contracts';
 import { SugestaoCompraService } from './sugestao-compra.service';
 import {
+  SugestaoCompraExcluirBodyDto,
   SugestaoCompraGerarClienteBodyDto,
   SugestaoCompraGerarLoteBodyDto,
   SugestaoCompraListQueryDto,
@@ -112,8 +114,10 @@ export class SugestaoCompraController {
   @ApiOperation({
     summary: 'Recalcular a sugestão de um cliente',
     description:
-      'Roda o motor determinístico (cesta + CNAE) para este cliente e substitui o que estava ' +
-      'gravado (`origem: local`) por ele. Recusa cliente inativo ou bloqueado (`dataBloqueio` sem ' +
+      'Roda o motor determinístico (semelhança de compra entre clientes do mesmo CNAE) para este ' +
+      'cliente e substitui o que estava gravado (`origem: local`). CPF ou cliente sem CNAE não ' +
+      'recebe sugestão: a anterior é apagada e `aviso` diz o motivo. Recusa cliente inativo ou ' +
+      'bloqueado (`dataBloqueio` sem ' +
       'reativação posterior). O cliente precisa estar no escopo do usuário. Requer ' +
       'sugestao-compra.cadastrar.',
   })
@@ -135,9 +139,11 @@ export class SugestaoCompraController {
   @ApiOperation({
     summary: 'Gerar sugestões em lote',
     description:
-      'Roda o motor determinístico (cesta + CNAE) para os clientes elegíveis (dentro do escopo ' +
+      'Roda o motor determinístico (semelhança de compra entre clientes do mesmo CNAE) para os ' +
+      'clientes elegíveis (CNPJ com CNAE, dentro do escopo ' +
       'do usuário, ativos, não bloqueados) e grava em `sugestoes_compra` (`origem: local`), ' +
-      'substituindo o que já existia para **cada cliente processado** — quem está fora do ' +
+      'apagando antes a sugestão de **todo o recorte** (escopo + faixa), inclusive de quem não é ' +
+      'mais elegível — quem está fora do ' +
       'escopo/faixa não é tocado. `clienteCodigoDe`/`clienteCodigoAte` restringem por código ERP ' +
       '(faixa inclusiva); sem os dois, roda sobre todo o escopo. Disparo manual — não há ' +
       'agendamento automático. Pode levar minutos numa base grande: uma varredura por cliente, ' +
@@ -154,6 +160,40 @@ export class SugestaoCompraController {
     @Body() body: SugestaoCompraGerarLoteBodyDto,
   ) {
     return this.service.iniciarLote(user.empresaAtivaId, user, body);
+  }
+
+  @ApiOperation({
+    summary: 'Excluir a sugestão calculada de um cliente',
+    description:
+      'Apaga o que está gravado para o cliente (`origem: local`). 409 se houver um cálculo em ' +
+      'lote em andamento. O cliente precisa estar no escopo do usuário. Requer ' +
+      'sugestao-compra.cadastrar — quem calcula é quem exclui.',
+  })
+  @RequirePermission('sugestao-compra', 'cadastrar')
+  @Delete('cliente/:clienteId')
+  excluirDoCliente(
+    @Param('clienteId') clienteId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.excluirCalculo(user.empresaAtivaId, user, {
+      clienteId,
+    });
+  }
+
+  @ApiOperation({
+    summary: 'Excluir a sugestão calculada em lote',
+    description:
+      'Apaga o que está gravado (`origem: local`) para os clientes do escopo do usuário, ' +
+      'restritos à faixa de código quando informada (sem faixa, o escopo inteiro). 409 se houver ' +
+      'um cálculo em lote em andamento. Requer sugestao-compra.cadastrar.',
+  })
+  @RequirePermission('sugestao-compra', 'cadastrar')
+  @Post('excluir')
+  excluirEmLote(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: SugestaoCompraExcluirBodyDto,
+  ) {
+    return this.service.excluirCalculo(user.empresaAtivaId, user, body);
   }
 
   @ApiOperation({

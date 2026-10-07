@@ -179,10 +179,10 @@ export class ClientesController {
     description:
       'Consulta na Receita (MinhaReceita) o CNPJ de cada cliente **ativo** do escopo, a ~1/s, ' +
       'em segundo plano: responde 202 com a execução e o lote corre depois (aviso no sino ao ' +
-      'terminar). CNAE vazio no cadastro (ramo e principal) é preenchido direto; os demais ' +
-      'dados da Receita — inclusive o que o cadastro não tinha — viram solicitação na fila de ' +
-      'aprovação, sem tarefa de agenda por cliente. 409 se já houver um lote em andamento na ' +
-      'empresa. Requer clientes.aprovar: grava o CNAE de muitos clientes sem revisão.',
+      'terminar). Campo vazio no cadastro — inclusive o CNAE de quem não tem nenhum — é ' +
+      'preenchido direto; valor diferente vira solicitação na fila de aprovação, sem tarefa ' +
+      'de agenda por cliente. 409 se já houver um lote em andamento na empresa. Requer ' +
+      'clientes.aprovar: grava no cadastro de muitos clientes sem revisão.',
   })
   @RequirePermission('clientes', 'aprovar')
   @HttpCode(202)

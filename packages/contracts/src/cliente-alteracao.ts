@@ -89,8 +89,11 @@ export type ClienteAlteracaoQuery = z.infer<typeof clienteAlteracaoQuerySchema>;
 /**
  * Aprovação em lote do **CNAE vazio** das solicitações pendentes: aplica só o
  * ramo de atividade e o CNAE principal que o cadastro não tinha (o "de" vazio) e
- * deixa os demais campos pendentes para análise campo a campo. É a regra que a consulta à
- * Receita passou a seguir em 07/10/2026, aplicada às pendências de antes.
+ * deixa os demais campos pendentes para análise campo a campo.
+ *
+ * **Temporário** (pedido do usuário, 2026-10-07): corrige a base das pendências
+ * abertas antes de a consulta à Receita passar a preencher campo vazio direto.
+ * Depois da limpeza, a rota, o filtro e o botão podem sair.
  *
  * Sem `ids`, vale para todas as pendentes com CNAE vazio no escopo de quem
  * aprova.

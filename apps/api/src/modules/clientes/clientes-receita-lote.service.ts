@@ -86,16 +86,15 @@ type Desfecho = 'nao_encontrado' | AplicacaoReceita;
  *
  * Regra por campo (decisões do usuário, 2026-10-07):
  *
- * - **CNAE vazio** (Ramo de atividade e CNAE principal) é preenchimento:
- *   grava direto, registrado na fila como autoaprovado (o rastro de quem e
- *   quando é o mesmo de sempre). Sem nenhum ramo, recebe principal e
- *   secundários; com ramo e sem principal, recebe o principal.
- * - **Todo o resto vai para a fila de aprovação** — dado cadastral diferente
- *   e também o que o cadastro não tinha (telefone, bairro...): só o CNAE
- *   vazio entra sem revisão. Diferença só de grafia (acento, caixa,
- *   pontuação) não conta. Com ramo, a união dos CNAEs vai para aprovação.
+ * - **Campo vazio no cadastro** é preenchimento: o dado da Receita grava
+ *   direto, registrado na fila como autoaprovado (o rastro de quem e quando
+ *   é o mesmo de sempre). Vale para o CNAE: sem nenhum ramo, recebe principal
+ *   e secundários; com ramo e sem principal, recebe o principal.
+ * - **Campo com valor diferente** vai para a fila de aprovação. Diferença só
+ *   de grafia (acento, caixa, pontuação) não conta. Com ramo, a união dos
+ *   CNAEs vai para aprovação.
  *
- * CNAE travado na configuração da empresa nunca é gravado direto — só pode
+ * Campo travado na configuração da empresa nunca é gravado direto — só pode
  * chegar como proposta, para alguém decidir.
  *
  * A mesma regra vale para a consulta de um cliente só
@@ -258,7 +257,7 @@ export class ClientesReceitaLoteService {
       });
       titulo = 'Clientes atualizados pela Receita';
       descricao =
-        `${resultado.processados} consultado(s): ${resultado.cnaesPreenchidos} com CNAE preenchido, ` +
+        `${resultado.processados} consultado(s): ${resultado.atualizados} com campo vazio preenchido (${resultado.cnaesPreenchidos} com CNAE), ` +
         `${resultado.pendentes} com divergência para aprovação` +
         (resultado.naoEncontrados
           ? `, ${resultado.naoEncontrados} não encontrado(s)`
@@ -422,17 +421,16 @@ export class ClientesReceitaLoteService {
       const preencher: Record<string, unknown> = {};
       const propor: Record<string, unknown> = {};
 
-      // Dados cadastrais sempre passam por gente, vazios ou não: só o CNAE
-      // vazio é preenchido direto (abaixo). Telefone ou bairro que o cadastro
-      // não tinha também vão para a fila.
       for (const campo of CAMPOS_RECEITA) {
         const valor = consulta[campo];
         // A Receita sem o dado não é motivo para apagar o que o cadastro tem.
         if (vazio(valor)) continue;
-        if (
-          vazio(atual[campo]) ||
-          comparavel(atual[campo]) !== comparavel(valor)
-        ) {
+        if (vazio(atual[campo])) {
+          // Vazio é preenchimento, não alteração: entra direto — salvo campo
+          // travado na configuração da empresa, que só chega como proposta.
+          if (config[campo] === false) propor[campo] = valor;
+          else preencher[campo] = valor;
+        } else if (comparavel(atual[campo]) !== comparavel(valor)) {
           propor[campo] = valor;
         }
       }
@@ -474,7 +472,7 @@ export class ClientesReceitaLoteService {
         origem: 'enriquecimento',
         autorId: user.id,
         aplicarDireto: true,
-        justificativa: `${opcoes.contexto}: CNAE vazio no cadastro.`,
+        justificativa: `${opcoes.contexto}: campo vazio no cadastro.`,
       });
       const fila = await this.alteracoes.registrar(tx, {
         empresaId,

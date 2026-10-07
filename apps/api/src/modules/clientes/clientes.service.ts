@@ -165,9 +165,9 @@ export class ClientesService {
    * botão da tela de cliente e ferramenta do assistente.
    *
    * Regra por campo (decisões do usuário, 2026-10-07; antes tudo ia para a
-   * fila): **CNAE vazio** (ramo de atividade e CNAE principal) é preenchido
-   * na hora; os **demais dados** — inclusive o que o cadastro não tinha —
-   * viram solicitação, que quem tem `clientes.aprovar` analisa campo a campo. A
+   * fila): campo **vazio** no cadastro — inclusive o CNAE de quem não tem
+   * nenhum — é preenchido na hora; campo **com valor diferente** vira
+   * solicitação, que quem tem `clientes.aprovar` analisa campo a campo. A
    * regra mora em `ClientesReceitaLoteService.aplicarReceita`, a mesma do lote.
    *
    * Campo que a Receita devolve vazio **não** é proposto: a base dela ter um

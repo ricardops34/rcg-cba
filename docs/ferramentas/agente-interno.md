@@ -41,7 +41,7 @@ em si.
 | `produtos_aplicaveis` | `produtos.visualizar` | leitura | `produtoRelacionados.listar` — o que serve no equipamento e em que equipamento o produto é usado |
 | `posicao_cliente` | `posicao-cliente.visualizar` | leitura | `clientes.posicao` |
 | `comodato_sem_consumo` | `posicao-cliente.visualizar` | leitura | `clientes.comodatoSemCompra` — duas leituras de "sem compra" (nenhuma compra em 30 dias / sem os aplicáveis), pela listagem da Posição; regras em `clientes/comodato-sql.ts` |
-| `sugerir_compras` | `sugestao-compra.visualizar` | leitura | `sugestao.paraCliente` |
+| `sugerir_compras` | `sugestao-compra.visualizar` | leitura | `sugestao.paraCliente` — só compara com clientes do mesmo CNAE principal; CPF e cliente sem CNAE voltam com aviso (regra em código, 2026-10-07) |
 | `titulos_em_aberto` | `titulos-receber.visualizar` | leitura | `titulos.findAll` |
 | `listar_orcamentos` | `orcamentos.visualizar` | leitura | `orcamentos.findAll` |
 | `vendas_por_cliente` | `consulta-vendas-cliente.visualizar` | leitura | `consultas.vendasPorCliente` |
@@ -230,10 +230,10 @@ igual pela tela. Consultar o CNPJ, portanto, não é poder alterar o cliente de
 outro vendedor.
 
 O que ela grava também é código (`ClientesReceitaLoteService.aplicarReceita`,
-a mesma regra do lote da tela de Clientes): o **CNAE vazio** (ramo de atividade
-e CNAE principal) é preenchido na hora; os **demais dados** da Receita —
-inclusive o que o cadastro não tinha, como telefone — viram solicitação na fila
-de aprovação. Até 07/10/2026 tudo ia para a fila, inclusive o CNAE vazio.
+a mesma regra do lote da tela de Clientes): campo **vazio** no cadastro —
+inclusive o CNAE de quem não tem nenhum — é preenchido na hora; campo **com
+valor diferente** vira solicitação na fila de aprovação. Até 07/10/2026 tudo ia
+para a fila, inclusive o CNAE vazio.
 
 ## As guardas além da permissão
 

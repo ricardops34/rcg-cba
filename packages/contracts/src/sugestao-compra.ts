@@ -4,12 +4,15 @@ import { booleanQueryParam, paginationQuerySchema } from "./common";
 /**
  * Sugestão de compra: produtos que clientes semelhantes compram e o alvo não.
  *
- * A semelhança tem dois eixos somados, com pesos configuráveis por parâmetro:
+ * **Só entre clientes da mesma atividade** (decisão do usuário, 2026-10-07):
+ * os comparáveis são os clientes cujo CNAE principal é o ramo do alvo, e só
+ * CNPJ com CNAE recebe sugestão. Comparar com a base toda sugeria produto sem
+ * ligação com a atividade do cliente. Dentro do ramo, a semelhança tem dois
+ * eixos somados:
  *
- * - **cesta** — Jaccard entre os conjuntos de produtos comprados. Funciona desde
- *   o dia 1, sobre o histórico de notas que já existe.
- * - **CNAE** — ramo de atividade compartilhado (`cliente_cnaes`, carregado da
- *   Receita). Vale zero para cliente sem CNAE, e aí o peso recai na cesta.
+ * - **cesta** — Jaccard entre os conjuntos de produtos comprados.
+ * - **CNAE** — afinidade dos demais CNAEs (`cliente_cnaes`, carregado da
+ *   Receita).
  *
  * A evidência volta junto de propósito: sem saber *quais* clientes semelhantes
  * compram o produto e quanto, a lista é indistinguível de palpite, e o vendedor
@@ -314,6 +317,21 @@ export const sugestaoCompraGerarLoteBodySchema = z.object({
 });
 export type SugestaoCompraGerarLoteBody = z.infer<typeof sugestaoCompraGerarLoteBodySchema>;
 
+/**
+ * Corpo de `POST /sugestao-compra/excluir` — exclui o cálculo gravado de uma
+ * faixa de código de cliente (sem faixa, de todo o escopo do usuário).
+ */
+export const sugestaoCompraExcluirBodySchema = sugestaoCompraGerarLoteBodySchema.omit({
+  meses: true,
+});
+export type SugestaoCompraExcluirBody = z.infer<typeof sugestaoCompraExcluirBodySchema>;
+
+export const sugestaoCompraExcluirResultadoSchema = z.object({
+  clientes: z.number().int().describe("Clientes que tinham sugestão calculada"),
+  sugestoesExcluidas: z.number().int(),
+});
+export type SugestaoCompraExcluirResultado = z.infer<typeof sugestaoCompraExcluirResultadoSchema>;
+
 export const sugestaoCompraGerarResultadoSchema = z.object({
   loteId: z.string().uuid(),
   clientesProcessados: z
@@ -322,6 +340,11 @@ export const sugestaoCompraGerarResultadoSchema = z.object({
     .describe("Clientes elegíveis (ativos, não bloqueados, dentro do escopo/faixa) considerados"),
   clientesComSugestao: z.number().int().describe("Quantos, dentre os processados, ganharam ao menos uma sugestão"),
   sugestoesGravadas: z.number().int().describe("Total de linhas gravadas em sugestoes_compra"),
+  aviso: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Por que o cliente não recebe sugestão (CPF, sem CNAE) — só no cálculo de um cliente"),
 });
 export type SugestaoCompraGerarResultado = z.infer<typeof sugestaoCompraGerarResultadoSchema>;
 

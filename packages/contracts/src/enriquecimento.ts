@@ -107,10 +107,10 @@ export const CONSULTA_CEP_EXAMPLE: ConsultaCepResultado = {
  * de Clientes). Alvo: clientes **ativos** com CNPJ de 14 dígitos, dentro do
  * escopo de quem pede.
  *
- * Regra por campo (decisões do usuário, 2026-10-07): **CNAE vazio** (ramo de
- * atividade e CNAE principal) é preenchido direto — cliente sem nenhum ramo
- * recebe principal e secundários na hora. Os **demais dados** — inclusive o
- * que o cadastro não tinha — viram solicitação na fila de aprovação.
+ * Regra por campo (decisões do usuário, 2026-10-07): campo **vazio** no
+ * cadastro é preenchido direto — inclusive o CNAE: cliente sem nenhum ramo
+ * recebe principal e secundários na hora. Campo **com valor diferente** vira
+ * solicitação na fila de aprovação.
  */
 export const clientesReceitaLoteBodySchema = z.object({
   somenteSemCnae: z
@@ -133,7 +133,7 @@ export type ClientesReceitaLoteBody = z.infer<typeof clientesReceitaLoteBodySche
 export const clientesReceitaLoteResultadoSchema = z.object({
   total: z.number().int().describe("Clientes que entraram no lote"),
   processados: z.number().int().describe("Já consultados (andamento)"),
-  atualizados: z.number().int().describe("Tiveram CNAE vazio preenchido direto (ramo ou principal)"),
+  atualizados: z.number().int().describe("Tiveram campo vazio preenchido direto"),
   pendentes: z.number().int().describe("Tiveram divergência enviada para aprovação"),
   cnaesPreenchidos: z.number().int().describe("Estavam sem CNAE e receberam"),
   semMudanca: z.number().int().describe("Cadastro já batia com a Receita"),

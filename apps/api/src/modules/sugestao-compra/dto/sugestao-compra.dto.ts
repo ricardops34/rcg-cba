@@ -1,5 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import {
+  sugestaoCompraExcluirBodySchema,
   sugestaoCompraGerarClienteBodySchema,
   sugestaoCompraGerarLoteBodySchema,
   sugestaoCompraListQuerySchema,
@@ -20,4 +21,8 @@ export class SugestaoCompraGerarClienteBodyDto extends createZodDto(
 
 export class SugestaoCompraGerarLoteBodyDto extends createZodDto(
   sugestaoCompraGerarLoteBodySchema,
+) {}
+
+export class SugestaoCompraExcluirBodyDto extends createZodDto(
+  sugestaoCompraExcluirBodySchema,
 ) {}

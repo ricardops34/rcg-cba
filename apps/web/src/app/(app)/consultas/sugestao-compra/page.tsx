@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import type { SugestaoCompraListRow } from "@plataforma/contracts";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
+import type { SugestaoCompraExcluirResultado, SugestaoCompraListRow } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
-import { apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 import {
   useVendedoresEscopo,
@@ -20,7 +21,10 @@ import {
 } from "@/components/crud/status-quick-filter";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { SugestaoCompraCalculadaSheet } from "@/components/crud/sugestao-compra-calculada";
-import { SugestaoCompraGerarDialog } from "@/components/crud/sugestao-compra-gerar-dialog";
+import {
+  SugestaoCompraExcluirDialog,
+  SugestaoCompraGerarDialog,
+} from "@/components/crud/sugestao-compra-gerar-dialog";
 import { SugestaoCompraExecucaoFaixa, useExecucaoSugestao } from "@/components/crud/sugestao-compra-execucao";
 import { FieldLabel } from "@/components/ui/field";
 import {
@@ -44,6 +48,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Calculator,
+  Trash2,
   Eye,
   Lightbulb,
   Lock,
@@ -86,6 +91,7 @@ export default function SugestaoCompraPage() {
     razaoSocial: string;
   } | null>(null);
   const [calcularLote, setCalcularLote] = useState(false);
+  const [excluirLote, setExcluirLote] = useState(false);
 
   const permissoes = useAuthStore((s) => s.user?.permissoes);
   const podeCalcular = Boolean(
@@ -159,6 +165,24 @@ export default function SugestaoCompraPage() {
     rodando: calculoEmAndamento,
     refetch: refetchExecucao,
   } = useExecucaoSugestao(() => void refetch());
+
+  // Exclui a sugestão calculada de um cliente (menu da linha).
+  const excluirDoCliente = useMutation({
+    mutationFn: (clienteId: string) =>
+      apiFetch<SugestaoCompraExcluirResultado>(`/sugestao-compra/cliente/${clienteId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: (r) => {
+      toast.success(
+        r.sugestoesExcluidas > 0
+          ? `${r.sugestoesExcluidas} sugestão(ões) excluída(s).`
+          : "Este cliente não tinha sugestão calculada.",
+      );
+      void refetch();
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Erro ao excluir o cálculo"),
+  });
 
   const filtrosAtivos =
     status !== "ativos" ||
@@ -273,6 +297,19 @@ export default function SugestaoCompraPage() {
                 }
               >
                 <Calculator className="size-4" /> Calcular
+              </DropdownMenuItem>
+            )}
+            {podeCalcular && (
+              <DropdownMenuItem
+                variant="destructive"
+                disabled={c.qtdSugestoes === 0 || calculoEmAndamento}
+                onClick={() => {
+                  if (confirm(`Excluir a sugestão calculada de "${c.razaoSocial}"?`)) {
+                    excluirDoCliente.mutate(c.id);
+                  }
+                }}
+              >
+                <Trash2 className="size-4" /> Excluir cálculo
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>
@@ -397,6 +434,16 @@ export default function SugestaoCompraPage() {
                 {calculoEmAndamento ? "Calculando…" : "Calcular"}
               </Button>
             )}
+            {podeCalcularLote && (
+              <Button
+                variant="outline"
+                disabled={calculoEmAndamento}
+                title={calculoEmAndamento ? "Aguarde o cálculo em andamento terminar" : undefined}
+                onClick={() => setExcluirLote(true)}
+              >
+                <Trash2 className="size-4" /> Excluir cálculo
+              </Button>
+            )}
           </>
         }
       />
@@ -459,6 +506,11 @@ export default function SugestaoCompraPage() {
         open={calcularLote}
         onOpenChange={setCalcularLote}
         onGerado={() => void refetchExecucao()}
+      />
+      <SugestaoCompraExcluirDialog
+        open={excluirLote}
+        onOpenChange={setExcluirLote}
+        onExcluido={() => void refetch()}
       />
     </div>
   );

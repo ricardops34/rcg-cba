@@ -24,6 +24,7 @@ import type {
   ClienteSemelhante,
   ProdutoSugerido,
   SugestaoCompraCalculada,
+  SugestaoCompraExcluirResultado,
   SugestaoCompraExecucao,
   SugestaoCompraGerarLoteBody,
   SugestaoCompraGerarResultado,
@@ -160,6 +161,7 @@ export class SugestaoCompraService {
             municipio: true,
             uf: true,
             tabelaPrecoId: true,
+            cnpjCpf: true,
           },
         });
         if (!alvo) throw new NotFoundException('Cliente não encontrado');
@@ -198,9 +200,26 @@ export class SugestaoCompraService {
           aviso,
         });
 
-        // Sem histórico não há cesta a comparar. Com só CNAE ainda daria para
-        // sugerir o que o ramo compra — fica registrado como evolução; hoje o
-        // motor precisa de pelo menos uma compra.
+        // A comparação é só com clientes da mesma atividade — comparar com a
+        // base toda sugeria produto sem ligação com o ramo (decisão do
+        // usuário, 2026-10-07). CPF e cliente sem CNAE ficam de fora.
+        const inelegivel = await this.motivoInelegivel(
+          tx,
+          empresaId,
+          clienteId,
+          alvo.cnpjCpf,
+        );
+        if (inelegivel) return vazio(inelegivel);
+        const ramo = await this.clientesDoMesmoRamo(tx, empresaId, clienteId);
+        if (!ramo || ramo.pares.length === 0) {
+          return vazio(
+            'Nenhum outro cliente ativo do mesmo ramo (CNAE principal) para comparar.',
+          );
+        }
+
+        // Sem histórico não há cesta a comparar. O cálculo gravado cai no
+        // ramo inteiro nesse caso; aqui, que devolve a evidência de
+        // semelhança, o aviso pede para usar o cálculo.
         if (cestaAlvo.length === 0) {
           return vazio(
             'Este cliente não tem compras no período — sem cesta para comparar. ' +
@@ -218,11 +237,12 @@ export class SugestaoCompraService {
           uf: alvo.uf,
           query,
           hierarquico: query.afinidadeCnae === 'hierarquica',
+          restringirA: ramo.pares,
         });
 
         if (semelhantes.length === 0) {
           return vazio(
-            'Nenhum cliente semelhante encontrado na base dentro do período.',
+            'Nenhum cliente do mesmo ramo com compras no período para comparar.',
           );
         }
 
@@ -506,13 +526,27 @@ export class SugestaoCompraService {
     empresaId: string,
     escopo: string[] | null,
     faixa: { codigoDe?: string; codigoAte?: string } = {},
+    /**
+     * `true` devolve o **recorte inteiro** (escopo + faixa), elegível ou não:
+     * é de quem o lote apaga a sugestão anterior — CPF ou cliente sem CNAE
+     * não pode ficar com a sugestão de um cálculo antigo.
+     */
+    recorteInteiro = false,
   ): Promise<{ id: string }[]> {
     const condicoes: Prisma.Sql[] = [
       Prisma.sql`"empresaId" = ${empresaId}`,
       Prisma.sql`"deletedAt" IS NULL`,
-      Prisma.sql`"ativo" = true`,
-      Prisma.sql`NOT ("dataBloqueio" IS NOT NULL AND ("dataReativacao" IS NULL OR "dataReativacao" < "dataBloqueio"))`,
     ];
+    if (!recorteInteiro) {
+      condicoes.push(
+        Prisma.sql`"ativo" = true`,
+        Prisma.sql`NOT ("dataBloqueio" IS NOT NULL AND ("dataReativacao" IS NULL OR "dataReativacao" < "dataBloqueio"))`,
+        // A sugestão é pelo ramo (ver `gerarLinhasParaCliente`): só CNPJ, e só
+        // com CNAE vinculado.
+        Prisma.sql`length(regexp_replace(COALESCE("cnpjCpf", ''), '[^0-9]', '', 'g')) = 14`,
+        Prisma.sql`EXISTS (SELECT 1 FROM "cliente_cnaes" cc WHERE cc."clienteId" = "clientes"."id" AND cc."deletedAt" IS NULL)`,
+      );
+    }
     if (escopo !== null) {
       condicoes.push(
         escopo.length > 0
@@ -529,10 +563,155 @@ export class SugestaoCompraService {
   }
 
   /**
-   * O motor de `paraCliente`, sem o lookup escopado (quem chama já sabe que o
-   * cliente é elegível) e sem evidência nomeada — devolve as linhas prontas
-   * para `createMany`, não grava nada. Compartilhado por `gerarLote` e
-   * `gerarParaCliente` para as duas rotas nunca divergirem no que calculam.
+   * Exclui a sugestão calculada (`origem: local`): de um cliente, ou do
+   * recorte (escopo do usuário + faixa de código; sem faixa, o escopo
+   * inteiro). Recusa enquanto um "Calcular" em lote roda — ele regravaria
+   * por cima no fim, e quem excluiu acharia que não funcionou.
+   */
+  async excluirCalculo(
+    empresaId: string,
+    user: AuthenticatedUser,
+    filtro: {
+      clienteId?: string;
+      clienteCodigoDe?: string;
+      clienteCodigoAte?: string;
+    },
+  ): Promise<SugestaoCompraExcluirResultado> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const rodando = await tx.sugestaoCompraExecucao.count({
+        where: { empresaId, situacao: 'rodando' },
+      });
+      if (rodando > 0) {
+        throw new ConflictException(
+          'Há um cálculo em andamento nesta empresa. Aguarde ele terminar para excluir.',
+        );
+      }
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+
+      let clienteIds: string[];
+      if (filtro.clienteId) {
+        const cliente = await tx.cliente.findFirst({
+          where: {
+            id: filtro.clienteId,
+            empresaId,
+            deletedAt: null,
+            ...(escopo ? { vendedorId: { in: escopo } } : {}),
+          },
+          select: { id: true },
+        });
+        if (!cliente) throw new NotFoundException('Cliente não encontrado');
+        clienteIds = [cliente.id];
+      } else {
+        const recorte = await this.clientesElegiveis(
+          tx,
+          empresaId,
+          escopo,
+          { codigoDe: filtro.clienteCodigoDe, codigoAte: filtro.clienteCodigoAte },
+          true,
+        );
+        clienteIds = recorte.map((c) => c.id);
+      }
+      if (clienteIds.length === 0) return { clientes: 0, sugestoesExcluidas: 0 };
+
+      const afetados = await tx.sugestaoCompraGerada.groupBy({
+        by: ['clienteId'],
+        where: { empresaId, origem: 'local', clienteId: { in: clienteIds } },
+      });
+      const { count } = await tx.sugestaoCompraGerada.deleteMany({
+        where: { empresaId, origem: 'local', clienteId: { in: clienteIds } },
+      });
+      return { clientes: afetados.length, sugestoesExcluidas: count };
+    });
+  }
+
+  /**
+   * Os clientes do mesmo ramo do cliente — a única base de comparação da
+   * sugestão (gravada ou ao vivo). O ramo é o CNAE principal (sem principal
+   * marcado, todos os CNAEs dele); do mesmo ramo é o cliente ativo da base
+   * inteira cujo CNAE principal é um desses. null quando o cliente não tem
+   * CNAE: sem atividade, não há com quem comparar.
+   */
+  private async clientesDoMesmoRamo(
+    tx: TenantTx,
+    empresaId: string,
+    clienteId: string,
+  ): Promise<{ pares: string[]; rotulo: string } | null> {
+    const vinculos = await tx.clienteCnae.findMany({
+      where: { empresaId, clienteId, deletedAt: null },
+      select: {
+        cnaeId: true,
+        principal: true,
+        cnae: { select: { codigoErp: true, descricao: true } },
+      },
+    });
+    const principais = vinculos.filter((v) => v.principal);
+    const doRamo = principais.length > 0 ? principais : vinculos;
+    if (doRamo.length === 0) return null;
+
+    const pares = await tx.$queryRaw<{ clienteId: string }[]>(Prisma.sql`
+      SELECT DISTINCT cc."clienteId"
+      FROM "cliente_cnaes" cc
+      JOIN "clientes" c ON c."id" = cc."clienteId"
+           AND c."deletedAt" IS NULL AND c."ativo" = true
+      WHERE cc."empresaId" = ${empresaId}
+        AND cc."deletedAt" IS NULL
+        AND cc."principal" = true
+        AND cc."cnaeId" IN (${Prisma.join(doRamo.map((v) => v.cnaeId))})
+        AND cc."clienteId" <> ${clienteId}
+    `);
+
+    const { codigoErp, descricao } = doRamo[0].cnae;
+    const codigo = codigoErp ?? '';
+    const rotulo =
+      codigo.length === 7
+        ? `${codigo.slice(0, 4)}-${codigo[4]}/${codigo.slice(5)} ${descricao}`
+        : descricao;
+    return { pares: pares.map((p) => p.clienteId), rotulo };
+  }
+
+  /**
+   * Por que um cliente não recebe sugestão gravada, ou null se recebe. A
+   * regra é pelo ramo, então CPF e cliente sem CNAE ficam de fora.
+   */
+  private async motivoInelegivel(
+    tx: TenantTx,
+    empresaId: string,
+    clienteId: string,
+    cnpjCpf: string | null,
+  ): Promise<string | null> {
+    if ((cnpjCpf ?? '').replace(/\D/g, '').length !== 14) {
+      return 'A sugestão de compra é pelo ramo de atividade (CNAE) e vale só para CNPJ.';
+    }
+    const cnaes = await tx.clienteCnae.count({
+      where: { empresaId, clienteId, deletedAt: null },
+    });
+    return cnaes === 0
+      ? 'Cliente sem CNAE — a sugestão é pelo ramo de atividade. Atualize o cadastro pela Receita.'
+      : null;
+  }
+
+  /**
+   * O motor da sugestão **gravada** — compartilhado por `gerarLote` e
+   * `gerarParaCliente` para as duas rotas nunca divergirem. Devolve as linhas
+   * prontas para `createMany`, não grava nada.
+   *
+   * Regra (decisão do usuário, 2026-10-07): **semelhança de compra entre
+   * clientes do mesmo CNAE**. "Outro açougue que compra parecido compra o
+   * produto X e este açougue não compra: sugere X." Comparar com qualquer
+   * cliente sugeria produto sem ligação com a atividade.
+   *
+   * 1. O ramo do cliente é o CNAE principal (sem principal marcado, todos os
+   *    CNAEs dele); os do mesmo ramo são os clientes ativos da base inteira
+   *    cujo CNAE principal é um desses — o resultado são produtos, não
+   *    clientes, e o ramo diz mais com a base toda do que com uma carteira.
+   * 2. Dentro do ramo, os K que compram mais parecido (Jaccard das cestas).
+   * 3. O que eles compram e este não, por quantos deles compram.
+   *
+   * Cliente sem compra no período (ou sem ninguém do ramo com produto em
+   * comum) recebe o que o ramo inteiro compra.
+   *
+   * A consulta ao vivo (`paraCliente`, tela e assistente) usa o mesmo recorte
+   * de ramo (`clientesDoMesmoRamo`).
    */
   private async gerarLinhasParaCliente(
     tx: TenantTx,
@@ -542,33 +721,84 @@ export class SugestaoCompraService {
     queryPadrao: SugestaoCompraQuery,
     loteId: string,
   ): Promise<Prisma.SugestaoCompraGeradaCreateManyInput[]> {
+    const ramo = await this.clientesDoMesmoRamo(tx, empresaId, clienteId);
+    if (!ramo || ramo.pares.length === 0) return [];
+    const pares = ramo.pares.map((clienteId) => ({ clienteId }));
+
     const cestaAlvo = await this.cestaDoCliente(tx, empresaId, clienteId, desde);
-    if (cestaAlvo.length === 0) return [];
 
-    const semelhantes = await this.buscarSemelhantes(tx, {
-      empresaId,
-      clienteId,
-      escopo: null,
-      desde,
-      cestaAlvo,
-      municipio: null,
-      uf: null,
-      query: queryPadrao,
-      hierarquico: queryPadrao.afinidadeCnae === 'hierarquica',
-    });
-    if (semelhantes.length === 0) return [];
+    // Dentro do ramo, os que compram parecido: Jaccard entre as cestas
+    // (interseção sobre união — penaliza quem compra de tudo). Os K mais
+    // parecidos viram a referência; sem compra do cliente, ou sem ninguém do
+    // ramo com produto em comum, a referência é o ramo inteiro.
+    const medidas = cestaAlvo.length
+      ? await tx.$queryRaw<
+          { clienteId: string; tamanhoCesta: number; produtosEmComum: number }[]
+        >(Prisma.sql`
+          WITH cestas AS (
+            SELECT i."clienteId", i."produtoId"
+            FROM "notas_saida_itens" i
+            JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
+            WHERE i."empresaId" = ${empresaId}
+              AND i."clienteId" IN (${Prisma.join(pares.map((p) => p.clienteId))})
+              AND i."produtoId" IS NOT NULL
+              AND i."deletedAt" IS NULL
+              AND i."ativo" = true
+              AND i."dtEmissao" >= ${desde}
+              AND ${NOTA_DE_VENDA}
+            GROUP BY i."clienteId", i."produtoId"
+          )
+          SELECT "clienteId",
+                 COUNT(*)::int AS "tamanhoCesta",
+                 COUNT(*) FILTER (WHERE "produtoId" = ANY(${cestaAlvo}::text[]))::int AS "produtosEmComum"
+          FROM cestas
+          GROUP BY "clienteId"
+        `)
+      : [];
+    const parecidos = medidas
+      .filter((m) => m.produtosEmComum > 0)
+      .map((m) => ({
+        clienteId: m.clienteId,
+        indice:
+          m.produtosEmComum /
+          (cestaAlvo.length + m.tamanhoCesta - m.produtosEmComum),
+      }))
+      .sort((a, b) => b.indice - a.indice)
+      .slice(0, queryPadrao.semelhantes);
+    const porCompra = parecidos.length > 0;
+    const referencia = porCompra
+      ? parecidos.map((p) => p.clienteId)
+      : pares.map((p) => p.clienteId);
+    const total = referencia.length;
 
-    const produtos = await this.produtosDosSemelhantes(tx, {
-      empresaId,
-      desde,
-      semelhantes: semelhantes.map((s) => s.clienteId),
-      daCarteira: [],
-      cestaAlvo,
-      limite: queryPadrao.limite,
-    });
+    // Produto que só um da referência compra é idiossincrasia dele, não padrão
+    // — salvo quando a referência tem só um ou dois clientes.
+    const minimo = Math.min(2, total);
+    const produtos = await tx.$queryRaw<
+      { produtoId: string; clientes: number }[]
+    >(Prisma.sql`
+      SELECT pr."id" AS "produtoId",
+             COUNT(DISTINCT i."clienteId")::int AS "clientes"
+      FROM "notas_saida_itens" i
+      JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
+      JOIN "produtos" pr ON pr."id" = i."produtoId"
+           AND pr."deletedAt" IS NULL AND pr."ativo" = true
+      WHERE i."empresaId" = ${empresaId}
+        AND i."clienteId" IN (${Prisma.join(referencia)})
+        AND i."produtoId" IS NOT NULL
+        AND NOT (i."produtoId" = ANY(${cestaAlvo}::text[]))
+        AND i."deletedAt" IS NULL
+        AND i."ativo" = true
+        AND i."dtEmissao" >= ${desde}
+        AND ${NOTA_DE_VENDA}
+      GROUP BY pr."id"
+      HAVING COUNT(DISTINCT i."clienteId") >= ${minimo}
+      ORDER BY "clientes" DESC, SUM(i."vlrTotal") DESC
+      LIMIT ${queryPadrao.limite}
+    `);
     if (produtos.length === 0) return [];
 
-    const total = semelhantes.length;
+    const ramoTexto = ramo.rotulo;
     return produtos.map((p, i) => ({
       empresaId,
       clienteId,
@@ -576,7 +806,9 @@ export class SugestaoCompraService {
       origem: 'local' as const,
       ordem: i + 1,
       score: Math.round((p.clientes / total) * 100) / 100,
-      motivo: `${p.clientes} de ${total} clientes parecidos compram este produto`,
+      motivo: porCompra
+        ? `${p.clientes} de ${total} clientes do mesmo ramo (${ramoTexto}) com compras parecidas compram este produto`
+        : `${p.clientes} de ${total} clientes do mesmo ramo (${ramoTexto}) compram este produto`,
       loteId,
     }));
   }
@@ -649,12 +881,22 @@ export class SugestaoCompraService {
           }
         }
 
-        if (clientes.length > 0) {
+        // Apaga a sugestão anterior do recorte inteiro, não só de quem foi
+        // recalculado: CPF, cliente sem CNAE, inativo ou bloqueado não pode
+        // ficar com a sugestão de um cálculo antigo.
+        const recorte = await this.clientesElegiveis(
+          tx,
+          empresaId,
+          escopo,
+          { codigoDe: body.clienteCodigoDe, codigoAte: body.clienteCodigoAte },
+          true,
+        );
+        if (recorte.length > 0) {
           await tx.sugestaoCompraGerada.deleteMany({
             where: {
               empresaId,
               origem: 'local',
-              clienteId: { in: clientes.map((c) => c.id) },
+              clienteId: { in: recorte.map((c) => c.id) },
             },
           });
         }
@@ -815,6 +1057,7 @@ export class SugestaoCompraService {
             ativo: true,
             dataBloqueio: true,
             dataReativacao: true,
+            cnpjCpf: true,
           },
         });
         if (!cliente) throw new NotFoundException('Cliente não encontrado');
@@ -831,6 +1074,27 @@ export class SugestaoCompraService {
           throw new BadRequestException(
             'Cliente bloqueado — não é possível gerar sugestão de compra',
           );
+        }
+
+        // CPF ou sem CNAE: não há ramo para comparar. A sugestão que tiver
+        // ficado de um cálculo antigo sai, e o motivo volta para a tela.
+        const inelegivel = await this.motivoInelegivel(
+          tx,
+          empresaId,
+          clienteId,
+          cliente.cnpjCpf,
+        );
+        if (inelegivel) {
+          await tx.sugestaoCompraGerada.deleteMany({
+            where: { empresaId, clienteId, origem: 'local' },
+          });
+          return {
+            loteId,
+            clientesProcessados: 1,
+            clientesComSugestao: 0,
+            sugestoesGravadas: 0,
+            aviso: inelegivel,
+          };
         }
 
         const queryPadrao = {
@@ -911,8 +1175,13 @@ export class SugestaoCompraService {
       uf: string | null;
       query: SugestaoCompraQuery;
       hierarquico: boolean;
+      /** Só estes clientes entram na comparação (os do mesmo ramo). */
+      restringirA: string[];
     },
   ): Promise<ClienteSemelhante[]> {
+    // Restrito aos clientes do mesmo ramo (`restringirA`, decisão de
+    // 07/10/2026) — dentro do ramo, a base inteira.
+    //
     // O universo de comparação é a **base inteira**, de propósito: a semelhança
     // por ramo fica muito melhor com 800 clientes do que com os 60 de uma
     // carteira, e o resultado entregue são produtos, não clientes.
@@ -936,6 +1205,7 @@ export class SugestaoCompraService {
              AND c."deletedAt" IS NULL AND c."ativo" = true
         WHERE i."empresaId" = ${p.empresaId}
           AND i."clienteId" <> ${p.clienteId}
+          AND i."clienteId" IN (${Prisma.join(p.restringirA)})
           AND i."produtoId" IS NOT NULL
           AND i."deletedAt" IS NULL
           AND i."ativo" = true

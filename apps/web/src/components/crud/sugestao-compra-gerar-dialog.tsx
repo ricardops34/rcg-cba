@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { SugestaoCompraGerarResultado } from "@plataforma/contracts";
+import type { SugestaoCompraExcluirResultado, SugestaoCompraGerarResultado } from "@plataforma/contracts";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,6 +68,13 @@ export function SugestaoCompraGerarDialog({
       return null;
     },
     onSuccess: (r) => {
+      // CPF ou sem CNAE: não há ramo para comparar — o motivo vem da API.
+      if (r?.aviso) {
+        toast.info(r.aviso);
+        onGerado();
+        onOpenChange(false);
+        return;
+      }
       toast.success(
         r
           ? r.sugestoesGravadas > 0
@@ -93,7 +100,7 @@ export function SugestaoCompraGerarDialog({
           <DialogDescription>
             {clienteId
               ? "Recalcula este cliente e substitui a sugestão gravada para ele."
-              : "Recalcula os clientes ativos e não bloqueados dentro do seu escopo, substituindo a sugestão já gravada para cada um deles. Roda em segundo plano: você não precisa esperar nesta tela."}
+              : "Recalcula os clientes CNPJ com CNAE, ativos e não bloqueados, dentro do seu escopo: sugere o que clientes do mesmo ramo, com compras parecidas, compram e o cliente não. A sugestão anterior da faixa é substituída (CPF e cliente sem CNAE ficam sem). Roda em segundo plano: você não precisa esperar nesta tela."}
           </DialogDescription>
         </DialogHeader>
 
@@ -141,6 +148,81 @@ export function SugestaoCompraGerarDialog({
           </Button>
           <Button onClick={() => gerar.mutate()} disabled={gerar.isPending}>
             {gerar.isPending ? "Calculando..." : "Calcular"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Exclui a sugestão calculada de uma faixa de código de cliente (vazia nas
+ * duas pontas = todo o escopo do usuário). A de um cliente só sai pelo menu
+ * da linha.
+ */
+export function SugestaoCompraExcluirDialog({
+  open,
+  onOpenChange,
+  onExcluido,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onExcluido: () => void;
+}) {
+  const [codigoDe, setCodigoDe] = useState("");
+  const [codigoAte, setCodigoAte] = useState("");
+
+  const excluir = useMutation({
+    mutationFn: () =>
+      apiFetch<SugestaoCompraExcluirResultado>("/sugestao-compra/excluir", {
+        method: "POST",
+        body: {
+          clienteCodigoDe: codigoDe.trim() || undefined,
+          clienteCodigoAte: codigoAte.trim() || undefined,
+        },
+      }),
+    onSuccess: (r) => {
+      toast.success(
+        r.sugestoesExcluidas > 0
+          ? `${r.sugestoesExcluidas} sugestão(ões) excluída(s) de ${r.clientes} cliente(s).`
+          : "Nenhuma sugestão calculada na faixa.",
+      );
+      onExcluido();
+      onOpenChange(false);
+    },
+    onError: (err) => {
+      toast.error(err instanceof ApiError ? err.message : "Erro ao excluir o cálculo");
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Excluir cálculo da sugestão</DialogTitle>
+          <DialogDescription>
+            Apaga a sugestão calculada dos clientes do seu escopo na faixa. Os clientes ficam sem
+            sugestão até o próximo Calcular.
+          </DialogDescription>
+        </DialogHeader>
+
+        <Field>
+          <FieldLabel>Faixa de cliente (código)</FieldLabel>
+          <div className="grid grid-cols-2 gap-2">
+            <Input placeholder="De" value={codigoDe} onChange={(e) => setCodigoDe(e.target.value)} />
+            <Input placeholder="Até" value={codigoAte} onChange={(e) => setCodigoAte(e.target.value)} />
+          </div>
+          <FieldDescription>
+            Em branco não limita aquela ponta — vazio nos dois exclui de todo o seu escopo.
+          </FieldDescription>
+        </Field>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button variant="destructive" onClick={() => excluir.mutate()} disabled={excluir.isPending}>
+            {excluir.isPending ? "Excluindo..." : "Excluir"}
           </Button>
         </DialogFooter>
       </DialogContent>

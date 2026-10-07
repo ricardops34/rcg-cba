@@ -21,14 +21,14 @@ export interface ResultadoReceita {
   cnaesSemReferencia?: string[];
   solicitacaoId?: string | null;
   camposPendentes?: string[];
-  /** Campos de CNAE que estavam vazios e foram preenchidos na hora. */
+  /** Campos que estavam vazios e foram preenchidos na hora. */
   camposAtualizados?: string[];
 }
 
 /**
- * Resultado da consulta do CNPJ de um cliente já cadastrado. O CNAE que estava
- * vazio (ramo e principal) foi preenchido na hora; os demais dados que
- * a Receita traz viraram uma solicitação, que quem tem
+ * Resultado da consulta do CNPJ de um cliente já cadastrado. Campo que estava
+ * vazio — inclusive o CNAE de quem não tinha nenhum — foi preenchido na hora;
+ * o que a Receita tem de diferente virou uma solicitação, que quem tem
  * clientes.aprovar analisa campo a campo em Alterações de clientes.
  */
 export function ResultadoReceitaDialog({
@@ -47,7 +47,7 @@ export function ResultadoReceitaDialog({
         <DialogHeader>
           <DialogTitle>Consulta do CNPJ na Receita</DialogTitle>
           <DialogDescription>
-            CNAE vazio no cadastro (ramo e principal) é preenchido na hora. Os demais dados da Receita vão para análise e
+            Campo vazio no cadastro é preenchido na hora. O que a Receita tem de diferente vai para análise e
             aprovação.
           </DialogDescription>
         </DialogHeader>
@@ -66,7 +66,7 @@ export function ResultadoReceitaDialog({
             )}
             {preenchidos.length > 0 && (
               <div className="space-y-1">
-                <p>Preenchido no cadastro, que estava vazio:</p>
+                <p>Preenchido(s) no cadastro, que estava(m) vazio(s):</p>
                 <div className="flex flex-wrap gap-1">
                   {preenchidos.map((c) => (
                     <Badge key={c} variant="outline">{CAMPO_CLIENTE_LABEL[c] ?? c}</Badge>

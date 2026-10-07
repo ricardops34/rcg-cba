@@ -898,9 +898,11 @@ export class AgenteToolsService {
       {
         nome: 'sugerir_compras',
         descricao:
-          'Sugere produtos para um cliente com base no que clientes semelhantes ' +
-          '(mesmo ramo/CNAE e cesta de compras parecida) compram e ele não. ' +
-          'Devolve a evidência: quantos semelhantes compram e o ticket médio.',
+          'Sugere produtos para um cliente com base no que clientes do mesmo ' +
+          'ramo (CNAE principal) e com cesta de compras parecida compram e ele ' +
+          'não. Só para CNPJ com CNAE: para CPF ou cliente sem CNAE volta um ' +
+          'aviso explicando. Devolve a evidência: quantos semelhantes compram e ' +
+          'o ticket médio.',
         instrucoes:
           'A sugestão é estatística, não promessa: traga junto a evidência que ' +
           'veio (quantos semelhantes compram, ticket médio) para o vendedor ' +
@@ -1802,10 +1804,10 @@ export class AgenteToolsService {
           'Só funciona para cliente que o usuário alcança — o vendedor ' +
           'responsável, quem está acima dele na hierarquia e quem tem acesso ' +
           'total; para os demais o cliente nem é encontrado. ' +
-          'O usuário confirma aqui. O CNAE vazio no cadastro (ramo de atividade e ' +
-          'CNAE principal) é preenchido na hora; os demais dados da Receita — ' +
-          'inclusive o que o cadastro não tinha — vão para a fila de aprovação, onde ' +
-          'o responsável escolhe campo a campo. Para vários clientes, chame uma vez por cliente.',
+          'O usuário confirma aqui. Campo vazio no cadastro — inclusive o CNAE de ' +
+          'quem não tem nenhum — é preenchido na hora; campo com valor diferente ' +
+          'vai para a fila de aprovação, onde o responsável escolhe campo a campo ' +
+          'o que aplicar. Para vários clientes, chame uma vez por cliente.',
         instrucoes:
           'Se o cliente for de outro vendedor, não tente atualizar: diga de quem ' +
           'é e pare por aí. Quem atualiza cadastro é o responsável pela conta.',
@@ -1816,7 +1818,7 @@ export class AgenteToolsService {
         ],
         escrita: true,
         resumir: () =>
-          'Consultar a Receita Federal, preencher o CNAE vazio e enviar os demais dados para aprovação',
+          'Consultar a Receita Federal, preencher o que está vazio no cadastro e enviar as divergências para aprovação',
         parametros: {
           type: 'object',
           properties: { clienteId: { type: 'string' } },
