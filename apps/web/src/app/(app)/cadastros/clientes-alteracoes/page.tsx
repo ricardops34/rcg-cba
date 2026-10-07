@@ -8,7 +8,6 @@ import {
   ORIGEM_ALTERACAO_CLIENTE_LABEL,
   STATUS_ALTERACAO_CLIENTE_LABEL,
   type ClienteAlteracao,
-  type ClienteAlteracaoAprovarVaziosResultado,
   type StatusAlteracaoCliente,
 } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
@@ -17,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CrudHeader } from "@/components/crud/crud-header";
-import { QuickFilterButton, QuickFilterGroup } from "@/components/crud/quick-filter-group";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -131,8 +129,6 @@ function DiffCampos({
  * integração do ERP ou agente — muda valor do cliente direto: tudo para aqui, e
  * o cadastro só muda quando alguém com `clientes.aprovar` libera. A exceção,
  * desde 07/10/2026, é a consulta à Receita preenchendo direto o campo vazio.
- * "Aprovar CNAE vazio" é **temporário**, para corrigir a base: aplica só o CNAE
- * vazio das pendências abertas antes dessa regra. Pode sair depois da limpeza.
  */
 export default function ClientesAlteracoesPage() {
   const queryClient = useQueryClient();
@@ -161,29 +157,15 @@ export default function ClientesAlteracoesPage() {
       };
     });
 
-  // Pendências que propõem CNAE para cliente sem nenhum — candidatas à
-  // aprovação em lote do CNAE vazio (temporário, ver acima).
-  const [cnaeVazio, setCnaeVazio] = useState(false);
-
-  const chave = ["clientes-alteracoes", status, busca, cnaeVazio];
+  const chave = ["clientes-alteracoes", status, busca];
   const { data, isLoading, isFetching, refetch, error } = useQuery({
     queryKey: chave,
     queryFn: () =>
       apiFetch<Pagina<ClienteAlteracao>>("/clientes-alteracoes", {
-        query: {
-          status,
-          search: busca || undefined,
-          cnaeVazio: cnaeVazio || undefined,
-          pageSize: 50,
-        },
+        query: { status, search: busca || undefined, pageSize: 50 },
       }),
   });
   const linhas = data?.data ?? [];
-
-  // Com busca, o lote vale só para o que está na tela; sem busca, para todas
-  // as pendentes com CNAE vazio (a tela mostra no máximo 50).
-  const loteIds = busca ? linhas.map((l) => l.id) : undefined;
-  const loteTotal = busca ? linhas.length : (data?.total ?? 0);
 
   const invalidar = () => {
     void queryClient.invalidateQueries({ queryKey: ["clientes-alteracoes"] });
@@ -207,26 +189,6 @@ export default function ClientesAlteracoesPage() {
     },
     onError: (err) =>
       toast.error(err instanceof ApiError ? err.message : "Erro ao aprovar"),
-  });
-
-  const aprovarVazios = useMutation({
-    mutationFn: () =>
-      apiFetch<ClienteAlteracaoAprovarVaziosResultado>("/clientes-alteracoes/aprovar-vazios", {
-        method: "POST",
-        body: { ids: loteIds },
-      }),
-    onSuccess: (r) => {
-      invalidar();
-      setSelecao({});
-      toast.success(
-        `CNAE aplicado em ${r.concluidas + r.parciais} solicitação(ões)` +
-          (r.parciais ? ` — ${r.parciais} seguem pendentes com as divergências` : "") +
-          (r.falhas ? ` · ${r.falhas} não puderam ser aprovadas` : "") +
-          ".",
-      );
-    },
-    onError: (err) =>
-      toast.error(err instanceof ApiError ? err.message : "Erro ao aprovar em lote"),
   });
 
   const recusar = useMutation({
@@ -254,48 +216,13 @@ export default function ClientesAlteracoesPage() {
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
       />
-      <div className="flex flex-wrap items-center gap-3">
-        <Tabs value={status} onValueChange={(v) => setStatus(v as StatusAlteracaoCliente)}>
-          <TabsList>
-            <TabsTrigger value="pendente">Pendentes</TabsTrigger>
-            <TabsTrigger value="aprovada">Aprovadas</TabsTrigger>
-            <TabsTrigger value="rejeitada">Recusadas</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <QuickFilterGroup>
-          <QuickFilterButton active={cnaeVazio} onClick={() => setCnaeVazio((v) => !v)}>
-            CNAE vazio
-          </QuickFilterButton>
-        </QuickFilterGroup>
-        {status === "pendente" && cnaeVazio && podeAprovar && loteTotal > 0 && (
-          <Button
-            type="button"
-            size="sm"
-            className="ml-auto"
-            disabled={aprovarVazios.isPending}
-            onClick={() => {
-              if (
-                confirm(
-                  `Aplicar o CNAE (ramo e principal) de ${loteTotal} solicitação(ões)? ` +
-                    "Os demais campos (razão social, endereço, telefone...) continuam pendentes para análise.",
-                )
-              )
-                aprovarVazios.mutate();
-            }}
-          >
-            <Check className="size-4" />
-            {aprovarVazios.isPending
-              ? "Aprovando..."
-              : `Aprovar CNAE vazio (${loteTotal})`}
-          </Button>
-        )}
-      </div>
-      {status === "pendente" && cnaeVazio && (
-        <p className="text-xs text-muted-foreground">
-          Clientes que não tinham CNAE. &quot;Aprovar CNAE vazio&quot; aplica o ramo de atividade e o CNAE
-          principal; os demais campos continuam aqui, para análise campo a campo.
-        </p>
-      )}
+      <Tabs value={status} onValueChange={(v) => setStatus(v as StatusAlteracaoCliente)}>
+        <TabsList>
+          <TabsTrigger value="pendente">Pendentes</TabsTrigger>
+          <TabsTrigger value="aprovada">Aprovadas</TabsTrigger>
+          <TabsTrigger value="rejeitada">Recusadas</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {error ? (
         <p role="alert" className="text-sm text-destructive">

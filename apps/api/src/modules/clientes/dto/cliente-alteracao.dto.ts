@@ -1,7 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import {
   clienteAlteracaoAprovacaoSchema,
-  clienteAlteracaoAprovarVaziosSchema,
   clienteAlteracaoQuerySchema,
   clienteAlteracaoRecusaSchema,
 } from '@plataforma/contracts';
@@ -14,7 +13,4 @@ export class ClienteAlteracaoAprovacaoDto extends createZodDto(
 ) {}
 export class ClienteAlteracaoRecusaDto extends createZodDto(
   clienteAlteracaoRecusaSchema,
-) {}
-export class ClienteAlteracaoAprovarVaziosDto extends createZodDto(
-  clienteAlteracaoAprovarVaziosSchema,
 ) {}
