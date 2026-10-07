@@ -336,6 +336,27 @@ export default function ClientesAlteracoesPage() {
                   <Badge variant="outline">
                     {ORIGEM_ALTERACAO_CLIENTE_LABEL[linha.origem]}
                   </Badge>
+                  {/* Fila de envio ao Protheus: só o que foi aprovado vai, e
+                      fica "aguardando" até o ERP confirmar que gravou na SA1. */}
+                  {linha.envioErp && (
+                    <Badge
+                      variant="outline"
+                      className={
+                        linha.envioErp.situacao === "enviado"
+                          ? "border-emerald-500/40 text-emerald-700 dark:text-emerald-400"
+                          : "border-amber-500/40 text-amber-700 dark:text-amber-400"
+                      }
+                      title={
+                        linha.envioErp.situacao === "enviado"
+                          ? `Gravado no Protheus em ${dataHora(linha.envioErp.enviadoEm)}`
+                          : "Na fila: o Protheus grava na SA1 no próximo ciclo do retorno"
+                      }
+                    >
+                      {linha.envioErp.situacao === "enviado"
+                        ? "Enviado ao ERP"
+                        : "Aguardando envio ao ERP"}
+                    </Badge>
+                  )}
                 </div>
 
               </TableCell>

@@ -272,7 +272,7 @@ tem prefixo nenhum.
 | TASK-059 | ⛔ **Acrescentar à SZZ** o campo `ZZ_CODIGO` (C(9), amarração com o lote da SZY) e os dois índices: `ZZ_FILIAL+ZZ_CODIGO+ZZ_SEQUEN` (chave única) e `ZZ_FILIAL+ZZ_CODIGO+ZZ_STATUS+ZZ_SEQUEN`. **Sem o primeiro nada roda** — é por ele que o envio percorre a fila e que a gravação do resultado acha a mensagem |
 | TASK-060 | ⛔ **Entrada de cliente novo.** O escopo da entrada é orçamento aprovado, cliente novo e alteração de cliente aprovada. O `BJPLA004` só sabe *alterar* cliente que já existe na SA1 (`CRMA980`); a **inclusão** não está escrita. Depende do contrato da rota, que a plataforma não expõe — mesma dependência de TASK-051 (**DEP-005**) |
 | TASK-049 | Segunda passada de XML por `?semXml=true`: nota enviada antes da autorização na SEFAZ não tem XML no TSS naquele instante, e é essa varredura que a alcança depois. Hoje o XML é reenviado a cada mudança da SF2 |
-| TASK-051 | **Decidir com a plataforma** o retorno de cliente (novo e alteração) — **spec de desenvolvimento no apêndice C**. A rota `/integracao/clientes/alteracoes` que o `BJPLA004` chama **não existe** — a fila de aprovação é interna. Ou a API expõe a rota, ou TASK-023 sai do escopo e o código é removido |
+| TASK-051 | ✅ **Alteração de cliente — feito na plataforma em 07/10/2026** (ver o fim do apêndice C). `GET /integracao/clientes/alteracoes` e `PATCH .../{id}/aplicada` existem, sobre uma **fila de envio** (`cliente_envios_erp`): só o que foi aprovado, só os campos aprovados, com o valor atual do cadastro. O de-para do `BJPLA004` ganhou o CNAE (`A1_CNAE`). Cliente **novo** segue em TASK-060 |
 | TASK-033 | Compilar os quatro fontes (`BJPLA002` a `BJPLA005`) |
 | TASK-034 | Conferir os payloads contra `testes-swagger.json`, campo a campo |
 | TASK-035 | Cadastrar os agendamentos apontando para `U_BJVARRE` (coleta), `U_BJDRENA` (envio), `U_BJRETORNO` (retorno) e `U_BJEXPURG` (expurgo) — **não existe mais o `BJPLA001`**, removido em 17/09/2026. Cadastrar `MV_BJAPI01` a `MV_BJAPI12` (os oito novos saíram das constantes do fonte em 17/09/2026 — ver a seção daquele dia), cadastrar o menu do monitor e os quatro agendamentos. **Conferir o `MV_BJAPI04`**: o nome já existiu no desenho antigo guardando data, e agora é numérico |
@@ -680,3 +680,28 @@ A consequência precisa ser consciente: **o cadastro editado na tela nunca volta
 para o ERP.** Um telefone corrigido pela equipe interna vale até a próxima
 varredura da SA1, que sobrescreve a correção com o valor antigo do Protheus — e
 ninguém é avisado.
+
+### Como ficou (07/10/2026)
+
+Implementado com uma diferença da spec acima, pedida pelo usuário: em vez de
+marcar a própria `ClienteAlteracao` (`integradoEm`), há uma **fila de envio**
+(`cliente_envios_erp`, migration `20261007210000_cliente_envios_erp`), para
+nada deixar de ser enviado:
+
+- **O que entra:** toda alteração **aplicada** no cadastro — aprovada à mão
+  (inteira ou campo a campo), autoaprovada pela consulta à Receita (campo
+  vazio) ou pelo "Aprovar CNAE vazio". Entram **só os campos aprovados**; o
+  reprovado não volta. O que nasceu no próprio ERP (`origem = integracao`) não
+  entra. Ponto único: `ClienteAlteracoesService.enfileirarEnvioErp`.
+- **O valor** é o **atual** do cadastro na hora do `GET`, não o do momento da
+  aprovação: duas alterações seguidas mandam o valor final.
+- **Nomes no contrato** seguem o que o `BJPLA004` lê, não a tabela acima:
+  `clienteChave`, `vendedorChave`, `tabelaPrecoChave`,
+  `condicaoPagamentoChave`; mais `cnae` (A1_CNAE, com máscara "4639-7/01").
+  Telefone 2 não volta (a SA1 não tem campo).
+- **Pendente até o `PATCH .../aplicada`.** Cliente sem chave (ainda não está
+  na SA1) fica na fila até ganhar chave.
+- **Carga inicial:** a migration enfileira as alterações aprovadas desde
+  07/10/2026. As anteriores não voltam — o ERP já pode ter sobrescrito o campo.
+- **Na tela** (Alterações de clientes), a aprovada mostra "Aguardando envio ao
+  ERP" ou "Enviado ao ERP".

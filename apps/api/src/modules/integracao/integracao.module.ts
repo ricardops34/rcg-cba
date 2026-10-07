@@ -15,6 +15,7 @@ import { IntegracaoVendedoresController } from './vendedores/integracao-vendedor
 import { IntegracaoVendedoresService } from './vendedores/integracao-vendedores.service';
 import { IntegracaoClientesController } from './clientes/integracao-clientes.controller';
 import { IntegracaoClientesService } from './clientes/integracao-clientes.service';
+import { IntegracaoClientesAlteracoesService } from './clientes/integracao-clientes-alteracoes.service';
 import { IntegracaoTabelasPrecoController } from './tabelas-preco/integracao-tabelas-preco.controller';
 import { IntegracaoTabelasPrecoService } from './tabelas-preco/integracao-tabelas-preco.service';
 import { IntegracaoEstoqueController } from './estoque/integracao-estoque.controller';
@@ -80,6 +81,7 @@ import { ApiKeyGuard } from './guards/api-key.guard';
     IntegracaoProdutosService,
     IntegracaoVendedoresService,
     IntegracaoClientesService,
+    IntegracaoClientesAlteracoesService,
     IntegracaoTabelasPrecoService,
     IntegracaoEstoqueService,
     IntegracaoObjetivosService,

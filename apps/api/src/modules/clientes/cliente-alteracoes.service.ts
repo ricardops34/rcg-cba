@@ -86,6 +86,40 @@ export const CAMPO_CNAES = 'cnaes';
  */
 export const CAMPO_CNAE_PRINCIPAL = 'cnaePrincipal';
 
+/**
+ * Campos que voltam ao ERP, com o nome que levam no contrato da integração
+ * (`GET /integracao/clientes/alteracoes`). É a lista branca do `BJCamposAlt`
+ * no `BJPLA004`: o que não estiver aqui não chega à SA1. Referência (vendedor,
+ * tabela, condição) sai como a chave de integração (`...Chave`), que o ERP
+ * desmonta; o CNAE principal sai com a máscara do CC3 ("4639-7/01").
+ * Telefone 2 fica de fora: a SA1 não tem campo para ele.
+ */
+export const CAMPOS_ENVIO_ERP: Record<string, string> = {
+  razaoSocial: 'razaoSocial',
+  nomeFantasia: 'nomeFantasia',
+  cnpjCpf: 'cnpjCpf',
+  inscricaoEstadual: 'inscricaoEstadual',
+  inscricaoMunicipal: 'inscricaoMunicipal',
+  endereco: 'endereco',
+  complemento: 'complemento',
+  bairro: 'bairro',
+  municipio: 'municipio',
+  uf: 'uf',
+  cep: 'cep',
+  contato: 'contato',
+  email: 'email',
+  telefone: 'telefone',
+  celular: 'celular',
+  vendedorId: 'vendedorChave',
+  tabelaPrecoId: 'tabelaPrecoChave',
+  condicaoPagamentoId: 'condicaoPagamentoChave',
+  limiteCredito: 'limiteCredito',
+  vencimentoLimite: 'vencimentoLimite',
+  latitude: 'latitude',
+  longitude: 'longitude',
+  cnaePrincipal: 'cnae',
+};
+
 /** Campos que não são coluna do cliente. */
 const CAMPOS_VIRTUAIS: string[] = [CAMPO_CNAES, CAMPO_CNAE_PRINCIPAL];
 
@@ -237,7 +271,10 @@ export class ClienteAlteracoesService {
           analisadoEm: new Date(),
         },
       });
-      await this.aplicarNoCliente(tx, empresaId, clienteId, diff, autorId);
+      await this.aplicarNoCliente(tx, empresaId, clienteId, diff, autorId, {
+        origem,
+        alteracaoId: solicitacao.id,
+      });
       await this.gravarHistorico(tx, {
         empresaId,
         clienteId,
@@ -305,7 +342,13 @@ export class ClienteAlteracoesService {
     clienteId: string,
     diff: DiffAlteracao,
     autorId: string | null,
+    /** De onde veio e qual alteração aprovada é esta — para a fila do ERP. */
+    envio: { origem: OrigemAlteracaoCliente; alteracaoId: string },
   ) {
+    // É aqui que o cadastro muda de verdade, pelos três caminhos (tela, ERP,
+    // aprovação) — e por isso é aqui que nasce o item da fila de envio ao ERP.
+    await this.enfileirarEnvioErp(tx, empresaId, clienteId, diff, envio);
+
     const bruto: Record<string, unknown> = {};
     for (const [campo, { para }] of Object.entries(diff)) {
       if (CAMPOS_VIRTUAIS.includes(campo)) continue;
@@ -544,6 +587,12 @@ export class ClienteAlteracoesService {
           where,
           include: {
             cliente: { select: { razaoSocial: true, codigoErp: true } },
+            // Situação do envio ao ERP — a "flag" da aba Aprovadas.
+            enviosErp: {
+              select: { situacao: true, enviadoEm: true },
+              orderBy: { criadoEm: 'desc' },
+              take: 1,
+            },
           },
           ...paginationToSkipTake(query),
           // Pendente mais antiga primeiro: é fila, não pilha.
@@ -633,6 +682,7 @@ export class ClienteAlteracoesService {
         solicitacao.clienteId,
         diff,
         user.id,
+        { origem: solicitacao.origem, alteracaoId: solicitacao.id },
       );
       await this.gravarHistorico(tx, {
         empresaId,
@@ -841,23 +891,49 @@ export class ClienteAlteracoesService {
     }
     if (Object.keys(aplicar).length === 0) return 'semCampoVazio';
 
+    const concluida = Object.keys(restante).length === 0;
+    // Só tinha o CNAE: a própria solicitação é a aprovada. Tinha mais: o CNAE
+    // vira uma solicitação aprovada à parte e a original segue pendente com o
+    // resto — assim a fila do ERP e a aba "Aprovadas" só mostram o que de
+    // fato foi aprovado.
+    const aprovadaId = concluida
+      ? solicitacao.id
+      : (
+          await tx.clienteAlteracao.create({
+            data: {
+              empresaId,
+              clienteId: solicitacao.clienteId,
+              origem: solicitacao.origem,
+              status: 'aprovada',
+              alteracoes: aplicar,
+              justificativa: 'Aprovar CNAE vazio (lote).',
+              solicitadoPor: solicitacao.solicitadoPor,
+              solicitadoEm: solicitacao.solicitadoEm,
+              analisadoPor: user.id,
+              analisadoEm: new Date(),
+            },
+            select: { id: true },
+          })
+        ).id;
+
     await this.aplicarNoCliente(
       tx,
       empresaId,
       solicitacao.clienteId,
       aplicar,
       user.id,
+      { origem: solicitacao.origem, alteracaoId: aprovadaId },
     );
     await this.gravarHistorico(tx, {
       empresaId,
       clienteId: solicitacao.clienteId,
-      alteracaoId: solicitacao.id,
+      alteracaoId: aprovadaId,
       diff: aplicar,
       origem: solicitacao.origem,
       autor: user.id,
     });
 
-    if (Object.keys(restante).length === 0) {
+    if (concluida) {
       await tx.clienteAlteracao.update({
         where: { id },
         data: {
@@ -874,6 +950,33 @@ export class ClienteAlteracoesService {
       data: { alteracoes: restante },
     });
     return 'parciais';
+  }
+
+  /**
+   * Item da fila de envio ao ERP para uma alteração aplicada no cadastro.
+   * O que nasceu no próprio ERP não volta (seria laço), e campo que a SA1 não
+   * recebe não entra — sem campo nenhum, não há item. CNAE (lista ou
+   * principal) vira `cnaePrincipal`: a SA1 guarda só o principal (A1_CNAE).
+   */
+  private async enfileirarEnvioErp(
+    tx: TenantTx,
+    empresaId: string,
+    clienteId: string,
+    diff: DiffAlteracao,
+    envio: { origem: OrigemAlteracaoCliente; alteracaoId: string },
+  ) {
+    if (envio.origem === 'integracao') return;
+    const campos = [
+      ...new Set(
+        Object.keys(diff)
+          .map((c) => (c === CAMPO_CNAES ? CAMPO_CNAE_PRINCIPAL : c))
+          .filter((c) => c in CAMPOS_ENVIO_ERP),
+      ),
+    ];
+    if (campos.length === 0) return;
+    await tx.clienteEnvioErp.create({
+      data: { empresaId, clienteId, alteracaoId: envio.alteracaoId, campos },
+    });
   }
 
   private async buscarPendenteNoEscopo(
@@ -928,6 +1031,7 @@ export class ClienteAlteracoesService {
       analisadoEm: Date | null;
       motivoRecusa: string | null;
       cliente?: { razaoSocial: string; codigoErp: string | null } | null;
+      enviosErp?: { situacao: string; enviadoEm: Date | null }[];
     },
     nomes: Map<string, string>,
   ) {
@@ -952,6 +1056,14 @@ export class ClienteAlteracoesService {
         : null,
       analisadoEm: linha.analisadoEm,
       motivoRecusa: linha.motivoRecusa,
+      // null quando a alteração não gerou envio (pendente, recusada, vinda
+      // do próprio ERP, ou só campo que a SA1 não recebe).
+      envioErp: linha.enviosErp?.[0]
+        ? {
+            situacao: linha.enviosErp[0].situacao,
+            enviadoEm: linha.enviosErp[0].enviadoEm,
+          }
+        : null,
     };
   }
 

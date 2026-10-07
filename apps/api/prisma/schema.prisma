@@ -149,6 +149,7 @@ model Empresa {
   integracaoCargas           IntegracaoCarga[]
   sugestaoCompraExecucoes    SugestaoCompraExecucao[]
   clientesReceitaExecucoes   ClienteReceitaExecucao[]
+  clienteEnviosErp           ClienteEnvioErp[]
   integracaoCargaErros       IntegracaoCargaErro[]
   clienteCampoConfigs        ClienteCampoConfig[]
   produtoCampos              ProdutoCampo[]
@@ -1803,6 +1804,7 @@ model Cliente {
   cnaes             ClienteCnae[]
   alteracoes        ClienteAlteracao[]
   historico         ClienteHistorico[]
+  enviosErp         ClienteEnvioErp[]
   sugestoesCompra   SugestaoCompraGerada[]
   whatsappContatos  WhatsappContato[]
   whatsappConversas WhatsappConversa[]
@@ -2016,6 +2018,35 @@ enum StatusHistoricoCliente {
   reprovado
 }
 
+enum SituacaoEnvioErp {
+  pendente
+  enviado
+}
+
+/// Fila de envio ao ERP das alterações de cliente aplicadas na plataforma —
+/// ver ClienteAlteracoesService.enfileirarEnvioErp. Pendente até o Protheus
+/// confirmar que gravou na SA1 (PATCH .../aplicada); o valor enviado é o atual
+/// do cadastro na hora da leitura, então aqui ficam só os campos.
+model ClienteEnvioErp {
+  id          String           @id @default(uuid())
+  empresaId   String
+  clienteId   String
+  alteracaoId String?
+  /// Campos da plataforma que mudaram (razaoSocial, vendedorId, cnaePrincipal...).
+  campos      String[]
+  situacao    SituacaoEnvioErp @default(pendente)
+  criadoEm    DateTime         @default(now())
+  enviadoEm   DateTime?
+
+  empresa   Empresa           @relation(fields: [empresaId], references: [id])
+  cliente   Cliente           @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  alteracao ClienteAlteracao? @relation(fields: [alteracaoId], references: [id], onDelete: SetNull)
+
+  @@index([empresaId, situacao, criadoEm])
+  @@index([alteracaoId])
+  @@map("cliente_envios_erp")
+}
+
 /**
  * Solicitação de alteração de cliente: o "de → para" aguardando aprovação.
  * `alteracoes` é um JSON `{ campo: { de, para } }` calculado sempre contra o
@@ -2046,6 +2077,7 @@ model ClienteAlteracao {
 
   empresa Empresa @relation(fields: [empresaId], references: [id])
   cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  enviosErp ClienteEnvioErp[]
 
   // Índice único parcial (só entre as pendentes) é criado na migration por SQL
   // — o Prisma não modela `WHERE status = 'pendente'`. Uma pendência por

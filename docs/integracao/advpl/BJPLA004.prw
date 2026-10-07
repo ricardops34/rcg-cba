@@ -1045,6 +1045,9 @@ Static Function BJTrataAlt(oAlt, aTotal, cSeqMae)
 	aAdd(aMapa, {"vencimentoLimite"       , "A1_VENCLC" , "D"})
 	aAdd(aMapa, {"latitude"               , "A1_XLAT"   , "C"})
 	aAdd(aMapa, {"longitude"              , "A1_XLNG"   , "C"})
+	// CNAE principal, ja com a mascara do CC3_COD ("4639-7/01"), como o
+	// UPD_SA1 grava. O codigo precisa existir na CC3 (carga do UPD_CC3).
+	aAdd(aMapa, {"cnae"                   , "A1_CNAE"   , "C"})
 
 	For nX := 1 To Len(aMapa)
 

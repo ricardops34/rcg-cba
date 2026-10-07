@@ -24,6 +24,8 @@ import {
   INTEGRACAO_LOTE_RESULTADO_EXAMPLE,
 } from '@plataforma/contracts';
 import { IntegracaoClientesService } from './integracao-clientes.service';
+import { IntegracaoClientesAlteracoesService } from './integracao-clientes-alteracoes.service';
+import { PaginationQueryDto } from '../../../common/dto/pagination.dto';
 import {
   IntegracaoClienteCreateDto,
   IntegracaoClienteLoteDto,
@@ -43,7 +45,50 @@ import { ApiIntegracaoAuthResponses } from '../common/api-integracao-responses.d
 @UseGuards(ApiKeyGuard)
 @Controller('integracao/clientes')
 export class IntegracaoClientesController {
-  constructor(private readonly service: IntegracaoClientesService) {}
+  constructor(
+    private readonly service: IntegracaoClientesService,
+    private readonly alteracoes: IntegracaoClientesAlteracoesService,
+  ) {}
+
+  // Declarado antes de GET :codigo, senão o Nest casa "alteracoes" como :codigo.
+  @ApiOperation({
+    summary: 'Listar alterações de cliente aprovadas pendentes de envio ao ERP',
+    description:
+      'Fila de envio: cada item é uma alteração aprovada na plataforma (à mão, campo a campo, ' +
+      'ou autoaprovada — campo vazio preenchido pela Receita) com **só os campos aprovados**, ' +
+      'achatados e com o valor **atual** do cadastro. Referências saem como chave de integração ' +
+      '(`vendedorChave`, `tabelaPrecoChave`, `condicaoPagamentoChave`) e o CNAE principal como ' +
+      '`cnae` com máscara ("4639-7/01"). Mais antigo primeiro. Cliente sem chave (ainda não está ' +
+      'na SA1) fica de fora até ganhar chave. O item continua aqui até PATCH .../aplicada.',
+  })
+  @ApiPaginationQuery()
+  @Get('alteracoes')
+  listarAlteracoes(
+    @Query() query: PaginationQueryDto,
+    @CurrentIntegracao() integracao: IntegracaoContext,
+  ) {
+    return this.alteracoes.listarPendentes(integracao.empresaId, query);
+  }
+
+  @ApiOperation({
+    summary: 'Confirmar que o ERP aplicou a alteração na SA1',
+    description:
+      'Tira o item da fila (situação "enviado", com a data). 404 se o id não existir; 409 se já ' +
+      'tiver sido confirmado — o ERP reenvia a confirmação depois de uma queda de rede.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'id do item (retornado no GET .../alteracoes)',
+  })
+  @ApiResponse({ status: 404, description: 'Item não encontrado' })
+  @ApiResponse({ status: 409, description: 'Já confirmado' })
+  @Patch('alteracoes/:id/aplicada')
+  marcarAlteracaoAplicada(
+    @Param('id') id: string,
+    @CurrentIntegracao() integracao: IntegracaoContext,
+  ) {
+    return this.alteracoes.marcarAplicada(integracao.empresaId, id);
+  }
 
   @ApiOperation({
     summary: 'Listar clientes',
