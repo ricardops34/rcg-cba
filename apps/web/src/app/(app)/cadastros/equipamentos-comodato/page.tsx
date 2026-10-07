@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { DatabaseZap, Plus } from "lucide-react";
+import { DatabaseZap, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import type {
   EquipamentoComodato,
   EquipamentoPopularResultado,
@@ -29,6 +29,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const RECURSO = "equipamentos-comodato";
 
@@ -41,6 +47,7 @@ export default function EquipamentosComodatoPage() {
   const queryClient = useQueryClient();
   const podeCadastrar = useAuthStore((s) => s.hasPermission(RECURSO, "cadastrar"));
   const podePopular = useAuthStore((s) => s.hasPermission(RECURSO, "importar"));
+  const podeExcluir = useAuthStore((s) => s.hasPermission(RECURSO, "excluir"));
 
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -101,6 +108,30 @@ export default function EquipamentosComodatoPage() {
       toast.error(e instanceof ApiError ? e.message : "Não foi possível popular"),
   });
 
+  const excluir = useMutation({
+    mutationFn: (id: string) => apiFetch(`/${RECURSO}/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      toast.success("Equipamento excluído");
+      invalidar();
+    },
+    onError: (e) =>
+      toast.error(e instanceof ApiError ? e.message : "Não foi possível excluir"),
+  });
+
+  const abrir = (e: EquipamentoComodato) =>
+    router.push(`/cadastros/equipamentos-comodato/${e.id}`);
+
+  // Mesma confirmação do detalhe: excluir daqui poupa abrir o equipamento só
+  // para isso.
+  const confirmarExclusao = (e: EquipamentoComodato) => {
+    if (
+      window.confirm(
+        `Excluir "${e.produto.descricao}" do cadastro? Os produtos aplicáveis continuam no produto e voltam se ele for cadastrado de novo.`,
+      )
+    )
+      excluir.mutate(e.id);
+  };
+
   const columns: ColumnDef<EquipamentoComodato>[] = [
     {
       header: "Código",
@@ -134,6 +165,41 @@ export default function EquipamentosComodatoPage() {
       cell: (e) => e.totalClientes,
     },
     { header: "Status", cell: (e) => <StatusDot active={e.ativo} /> },
+    ...(podeExcluir
+      ? [
+          {
+            header: "",
+            className: "w-10",
+            cell: (e: EquipamentoComodato) => (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8"
+                    aria-label="Ações"
+                    onClick={(ev) => ev.stopPropagation()}
+                  >
+                    <MoreHorizontal className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" onClick={(ev) => ev.stopPropagation()}>
+                  <DropdownMenuItem onClick={() => abrir(e)}>
+                    <Pencil className="size-4" /> Abrir
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    variant="destructive"
+                    disabled={excluir.isPending}
+                    onClick={() => confirmarExclusao(e)}
+                  >
+                    <Trash2 className="size-4" /> Excluir
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ),
+          } satisfies ColumnDef<EquipamentoComodato>,
+        ]
+      : []),
   ];
 
   return (
@@ -199,7 +265,7 @@ export default function EquipamentosComodatoPage() {
           setPageSize(n);
           setPage(1);
         }}
-        onRowClick={(e) => router.push(`/cadastros/equipamentos-comodato/${e.id}`)}
+        onRowClick={abrir}
         emptyMessage="Nenhum equipamento cadastrado. Use “Popular pelas notas” para trazer os que já saíram em comodato."
         sortBy={sortBy}
         sortOrder={sortOrder}
