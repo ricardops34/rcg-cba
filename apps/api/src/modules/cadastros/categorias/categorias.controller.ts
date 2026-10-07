@@ -56,11 +56,12 @@ export class CategoriasController {
   }
 
   @ApiOperation({
-    summary: 'Marcar categoria como usada',
+    summary: 'Marcar categoria (usada / de equipamento)',
     description:
-      'Único campo editável do cadastro — o resto vem do import. `usado` escolhe as ' +
-      'categorias que entram na tabela de Vendas por Categoria do Dashboard Comercial. ' +
-      'Requer categorias.editar.',
+      'Só as marcações da plataforma se editam — o resto vem do import. `usado` escolhe as ' +
+      'categorias que entram na tabela de Vendas por Categoria do Dashboard Comercial; ' +
+      '`equipamentoComodato` impede que produto da categoria entre como aplicável de ' +
+      'equipamento de comodato. Requer categorias.editar.',
   })
   @RequirePermission('categorias', 'editar')
   @Patch(':id')

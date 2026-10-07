@@ -12,6 +12,7 @@ const SORT_FIELDS = new Set([
   'codigoErp',
   'ativo',
   'usado',
+  'equipamentoComodato',
   'categoriaPaiId',
   'createdAt',
 ]);
@@ -116,7 +117,13 @@ export class CategoriasService {
 
       return tx.categoria.update({
         where: { id },
-        data: { usado: dto.usado, updatedBy: user.id },
+        data: {
+          ...(dto.usado !== undefined ? { usado: dto.usado } : {}),
+          ...(dto.equipamentoComodato !== undefined
+            ? { equipamentoComodato: dto.equipamentoComodato }
+            : {}),
+          updatedBy: user.id,
+        },
         include: {
           categoriaPai: PAI_SELECT,
           regraDesconto: REGRA_DESCONTO_SELECT,

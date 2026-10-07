@@ -297,7 +297,9 @@ export class EquipamentosComodatoService {
    *
    * Fica de fora o que já está cadastrado como aplicação e o que é, ele mesmo,
    * equipamento de comodato — o cliente com dispenser de toalha costuma ter o
-   * de sabonete também, e isso não faz de um a aplicação do outro.
+   * de sabonete também, e isso não faz de um a aplicação do outro. Pelo mesmo
+   * motivo sai o produto de categoria marcada como de equipamento, que a
+   * gravação recusaria (ver ProdutoRelacionadosService).
    */
   sugestoes(empresaId: string, id: string): Promise<EquipamentoSugestao[]> {
     return this.prisma.withTenant(empresaId, async (tx) => {
@@ -360,6 +362,12 @@ export class EquipamentosComodatoService {
            AND NOT EXISTS (
                  SELECT 1 FROM "equipamentos_comodato" e
                   WHERE e."produtoId" = a."produtoId" AND e."deletedAt" IS NULL)
+           AND NOT EXISTS (
+                 SELECT 1 FROM "produtos" p
+                   LEFT JOIN "categorias" c1 ON c1."id" = p."categoriaId"
+                   LEFT JOIN "categorias" c2 ON c2."id" = p."subCategoriaId"
+                  WHERE p."id" = a."produtoId"
+                    AND (c1."equipamentoComodato" = true OR c2."equipamentoComodato" = true))
          ORDER BY a."comEquipamento" DESC
          LIMIT ${SUGESTAO_CANDIDATOS}`;
       if (linhas.length === 0) return [];

@@ -120,6 +120,14 @@ export class ProdutoRelacionadosService {
         throw new NotFoundException('Produto não encontrado');
       }
 
+      if (input.tipo === 'aplicacao') {
+        await this.recusarCategoriaDeEquipamento(
+          tx,
+          empresaId,
+          input.relacionadoId,
+        );
+      }
+
       // O similar é simétrico e a leitura já olha os dois lados, então gravar
       // A→B quando B→A existe criaria duas linhas para o mesmo fato — e a
       // tela mostraria o mesmo produto duas vezes.
@@ -157,6 +165,45 @@ export class ProdutoRelacionadosService {
         throw new ConflictException('Esta relação já existe');
       }
     });
+  }
+
+  /**
+   * O que entra na aplicação de um equipamento não pode ser, ele mesmo, de
+   * categoria de equipamento (Cadastros > Categorias, "Equipamento de
+   * comodato"): o dispenser não "usa" outro dispenser. Decisão do usuário,
+   * 2026-10-07.
+   *
+   * Mora aqui, e não na tela de Equipamentos de Comodato, porque o card
+   * "Relacionados" do produto grava a mesma relação — a regra numa tela só
+   * deixaria a outra como atalho para contorná-la.
+   *
+   * Olha categoria **e** subcategoria do produto: a marcação pode estar em
+   * qualquer uma das duas.
+   */
+  private async recusarCategoriaDeEquipamento(
+    tx: TenantTx,
+    empresaId: string,
+    produtoId: string,
+  ) {
+    const produto = await tx.produto.findFirst({
+      where: { id: produtoId, empresaId },
+      select: {
+        descricao: true,
+        categoria: { select: { descricao: true, equipamentoComodato: true } },
+        subCategoria: {
+          select: { descricao: true, equipamentoComodato: true },
+        },
+      },
+    });
+    const marcada = [produto?.categoria, produto?.subCategoria].find(
+      (c) => c?.equipamentoComodato,
+    );
+    if (marcada) {
+      throw new BadRequestException(
+        `${produto!.descricao} é da categoria ${marcada.descricao}, marcada ` +
+          'como categoria de equipamento: não pode ser produto aplicável.',
+      );
+    }
   }
 
   /**

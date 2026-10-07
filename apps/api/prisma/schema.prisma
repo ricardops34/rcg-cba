@@ -2741,6 +2741,11 @@ model Categoria {
   chave          String? // chave de integração (X2_UNICO); codigoErp é informativo
   descricao      String
   usado          Boolean?
+  // Categoria de equipamento de comodato (marcação da plataforma, como
+  // `usado`): produto dela não entra como **aplicável** de equipamento — o
+  // dispenser não "usa" outro dispenser. Decisão do usuário, 2026-10-07; ver
+  // docs/planos/equipamentos-comodato.md.
+  equipamentoComodato Boolean @default(false)
   ativo          Boolean  @default(true)
 
   // Regra de desconto aplicável (SZ0 do ERP). Nulo = sem regra própria;

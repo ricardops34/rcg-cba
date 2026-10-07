@@ -12,6 +12,7 @@ export const categoriaSchema = z.object({
   descricao: z.string(),
   categoriaPaiId: z.string().uuid().nullable(),
   usado: z.boolean().nullable(),
+  equipamentoComodato: z.boolean(),
   ativo: z.boolean(),
   ...regraDescontoVinculoFields,
   ...auditFieldsSchema.shape,
@@ -29,15 +30,20 @@ export const categoriaQuerySchema = paginationQuerySchema.extend({
 export type CategoriaQuery = z.infer<typeof categoriaQuerySchema>;
 
 /**
- * O único campo editável por esta API.
+ * As marcações da plataforma — o resto do cadastro vem do ERP. Cada uma é
+ * opcional: o PATCH grava só a que veio.
  *
  * `usado` marca as categorias que a empresa acompanha — é o que o Dashboard
  * Comercial usa para escolher o que entra na tabela de Vendas por Categoria.
  * Vale só para categoria raiz: subcategoria não tem a marcação (nasce nula no
  * import) e não aparece no dashboard.
+ *
+ * `equipamentoComodato` marca a categoria de equipamento: produto dela não
+ * entra como aplicável de equipamento de comodato.
  */
 export const categoriaUpdateSchema = z.object({
-  usado: z.boolean().nullable(),
+  usado: z.boolean().nullable().optional(),
+  equipamentoComodato: z.boolean().optional(),
 });
 export type CategoriaUpdate = z.infer<typeof categoriaUpdateSchema>;
 
@@ -48,6 +54,7 @@ export const CATEGORIA_EXAMPLE: Categoria = {
   descricao: "COZINHA",
   categoriaPaiId: null,
   usado: true,
+  equipamentoComodato: false,
   ativo: true,
   regraDescontoId: null,
   regraDesconto: null,

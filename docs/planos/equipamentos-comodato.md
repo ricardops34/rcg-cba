@@ -18,6 +18,17 @@ dispenser de toalha interfolha, o químico da dosadora).
   só grava com confirmação, item a item.
 - **2026-10-07 — acesso (decisão do usuário):** Administrador, Diretor,
   Gerente e Supervisor. Módulo Cadastros.
+- **2026-10-07 — produto de categoria de equipamento não é aplicável**
+  (decisão do usuário). Quais categorias são de equipamento a empresa marca em
+  Cadastros > Categorias ("Equipamento de comodato", `categorias.editar`), e
+  não por regra automática: as remessas de comodato também levaram produto de
+  LIMPEZA GERAL, DESCARTÁVEIS e DESCONTINUADOS, e "toda categoria que tem
+  equipamento" bloquearia os químicos das dosadoras e uma das bobinas de
+  papel. Escolhida a marcação na categoria, e não um parâmetro de texto com
+  códigos, porque código digitado errado desligaria a regra sem aviso. A
+  recusa mora em `ProdutoRelacionadosService.criar` — vale para esta tela e
+  para o card "Relacionados" — e olha categoria e subcategoria do produto; as
+  sugestões já não trazem esses produtos.
 - **Excluir o equipamento não apaga as aplicações**: elas são conhecimento do
   produto e continuam no card "Relacionados". Restaurar o cabeçalho as traz de
   volta.

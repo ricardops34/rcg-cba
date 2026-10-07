@@ -88,6 +88,26 @@ export default function CategoriasPage() {
     }
   };
 
+  const alternarEquipamento = async (c: CategoriaRow, valor: boolean) => {
+    setSalvandoId(c.id);
+    try {
+      await apiFetch(`/categorias/${c.id}`, {
+        method: "PATCH",
+        body: { equipamentoComodato: valor },
+      });
+      await refetch();
+      toast.success(
+        valor
+          ? `Produtos de "${c.descricao}" não entram mais como aplicáveis de equipamento`
+          : `Produtos de "${c.descricao}" voltam a poder ser aplicáveis de equipamento`,
+      );
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Erro ao salvar");
+    } finally {
+      setSalvandoId(null);
+    }
+  };
+
   const columns: ColumnDef<CategoriaRow>[] = [
     {
       header: "Descrição",
@@ -127,6 +147,24 @@ export default function CategoriasPage() {
           />
         ) : (
           <span className="text-xs">{c.usado == null ? "—" : c.usado ? "Sim" : "Não"}</span>
+        ),
+    },
+    {
+      header: "Equipamento de comodato",
+      sortKey: "equipamentoComodato",
+      // Vale para categoria e subcategoria: o produto é recusado como
+      // aplicável se qualquer uma das duas dele estiver marcada.
+      cell: (c) =>
+        podeEditar ? (
+          <Switch
+            checked={c.equipamentoComodato}
+            disabled={salvandoId === c.id}
+            onClick={(ev) => ev.stopPropagation()}
+            onCheckedChange={(v) => alternarEquipamento(c, v)}
+            aria-label={`Marcar ${c.descricao} como categoria de equipamento`}
+          />
+        ) : (
+          <span className="text-xs">{c.equipamentoComodato ? "Sim" : "Não"}</span>
         ),
     },
     { header: "Status", sortKey: "ativo", cell: (c) => <StatusDot active={c.ativo} /> },
