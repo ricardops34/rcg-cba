@@ -221,6 +221,15 @@ export class WhatsappProviderService {
     return provider.pareamento(ctx);
   }
 
+  async forcarReconexao(
+    empresaId: string,
+    sessaoId: string,
+    numero: string | null,
+  ): Promise<void> {
+    const { ctx, provider } = await this.provedorDaSessao(empresaId, sessaoId);
+    await provider.forcarReconexao(ctx, numero);
+  }
+
   async desconectar(
     empresaId: string,
     sessaoId: string,

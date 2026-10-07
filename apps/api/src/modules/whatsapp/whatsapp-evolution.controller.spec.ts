@@ -435,3 +435,51 @@ describe('WhatsappEvolutionController — mensagem de empresa (modelo com botõe
     );
   });
 });
+
+describe('WhatsappEvolutionController — retomada depois de queda', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  const montar = () => {
+    const sessoes = {
+      registrarEstado: jest.fn().mockResolvedValue({ gravado: true }),
+      retomarConexao: jest.fn().mockResolvedValue({ retomada: true }),
+    };
+    const conversas = {
+      completarNomesPelaAgenda: jest.fn().mockResolvedValue({ atualizados: 0 }),
+    };
+    const controller = new WhatsappEvolutionController(
+      conversas as never,
+      sessoes as never,
+      {} as never,
+      new EvolutionGoProvider({} as never),
+    );
+    const evento = (event: string, data: Record<string, unknown> = {}) =>
+      (
+        controller as unknown as {
+          tratarConexao(c: unknown, b: unknown): Promise<unknown>;
+        }
+      ).tratarConexao({ empresaId: 'emp', sessaoId: 'sess' }, { event, data });
+    return { sessoes, evento };
+  };
+
+  it('Disconnected agenda a retomada em 1 e 5 minutos', async () => {
+    const { sessoes, evento } = montar();
+    await evento('Disconnected');
+    expect(sessoes.retomarConexao).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(60_000);
+    expect(sessoes.retomarConexao).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(240_000);
+    expect(sessoes.retomarConexao).toHaveBeenCalledTimes(2);
+  });
+
+  it('Connected cancela; LoggedOut não retoma (aparelho removido de propósito)', async () => {
+    const { sessoes, evento } = montar();
+    await evento('Disconnected');
+    await evento('Connected', { status: 'open' });
+    jest.advanceTimersByTime(400_000);
+    await evento('LoggedOut');
+    jest.advanceTimersByTime(400_000);
+    expect(sessoes.retomarConexao).not.toHaveBeenCalled();
+  });
+});

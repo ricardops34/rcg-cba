@@ -827,6 +827,63 @@ export class WhatsappSessaoService {
    * A primeira conexão continua pertencendo ao vendedor porque inclui o aceite
    * de gravação. Aqui só entram sessões que já passaram por esse fluxo.
    */
+  /**
+   * Retoma a conexão que caiu e o gateway não conseguiu reabrir sozinho.
+   *
+   * A Evolution GO 0.7.2 tenta reconectar **uma** vez depois de um
+   * `Disconnected`; se essa tentativa falha (visto em 2026-10-06: o DNS do
+   * Docker não resolveu `web.whatsapp.com` por um instante), a instância fica
+   * em "Reconnecting" para sempre, com o aparelho ainda pareado. Aqui o
+   * `/instance/connect` é pedido de novo — usa o aparelho guardado, sem QR.
+   *
+   * Quem chama é o webhook, agendado depois do `Disconnected` (nunca depois
+   * de `LoggedOut`, que é o vendedor removendo o aparelho). Não faz nada se a
+   * sessão já voltou ou se o gateway já reconectou.
+   */
+  async retomarConexao(empresaId: string, sessaoId: string) {
+    const sessao = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappSessao.findFirst({
+        where: { id: sessaoId },
+        select: { id: true, status: true, instanciaExterna: true, aceiteEm: true },
+      }),
+    );
+    if (!sessao || sessao.status === 'conectada' || !sessao.instanciaExterna) {
+      return { retomada: false, motivo: 'nada-a-fazer' as const };
+    }
+
+    const doGateway = await this.provedores
+      .pareamento(empresaId, sessaoId)
+      .catch(() => null);
+    if (doGateway?.status === 'conectada') {
+      await this.registrarEstado(empresaId, sessaoId, {
+        status: 'conectada',
+        numero: doGateway.numero,
+        erro: null,
+      });
+      return { retomada: false, motivo: 'ja-conectada' as const };
+    }
+
+    const config = await this.config.obter(empresaId);
+    if (!config.ativo) return { retomada: false, motivo: 'whatsapp-inativo' as const };
+
+    // Reconexão **forçada**: `/instance/connect` vê o cliente parado como
+    // "rodando" e só atualiza a configuração (visto no teste real).
+    const atual = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.whatsappSessao.findFirst({
+        where: { id: sessaoId },
+        select: { numero: true },
+      }),
+    );
+    await this.provedores.forcarReconexao(
+      empresaId,
+      sessaoId,
+      atual?.numero ?? null,
+    );
+    this.logger.log(`Conexão da sessão ${sessaoId} retomada após queda.`);
+    // O `Connected` que o gateway manda ao voltar é que grava "conectada".
+    return { retomada: true, motivo: 'reconectando' as const };
+  }
+
   async reconectarAdministracao(
     empresaId: string,
     user: AuthenticatedUser,

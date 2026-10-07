@@ -51,6 +51,13 @@ import type { ContextoSessao } from './providers/whatsapp-provider';
 export class WhatsappEvolutionController {
   private readonly logger = new Logger(WhatsappEvolutionController.name);
 
+  /**
+   * Verificações agendadas depois de uma queda, por sessão — ver
+   * `agendarRetomada`. Ficam em memória: se a API reiniciar no meio, a
+   * próxima queda agenda de novo.
+   */
+  private readonly retomadas = new Map<string, NodeJS.Timeout[]>();
+
   constructor(
     private readonly conversas: WhatsappConversasService,
     private readonly sessoes: WhatsappSessaoService,
@@ -252,6 +259,16 @@ export class WhatsappEvolutionController {
       erro: texto(dados, 'error', 'reason', 'message'),
     });
 
+    // Queda comum (`Disconnected`): o gateway tenta reabrir uma vez só e, se
+    // falhar, desiste. A plataforma confere depois e pede de novo. Remoção do
+    // aparelho (`LoggedOut`) não é retomada — o vendedor tirou de propósito.
+    const evento = (this.rotuloBruto(corpo) ?? '').toLowerCase();
+    if (status === 'conectada' || evento.includes('loggedout')) {
+      this.cancelarRetomada(ctx.sessaoId);
+    } else if (evento === 'disconnected') {
+      this.agendarRetomada(ctx);
+    }
+
     // Conectou (ou reconectou): completa o nome dos contatos que ainda não
     // têm, pela agenda do aparelho. Em segundo plano — é uma consulta à
     // agenda inteira, e o webhook não precisa esperar.
@@ -262,6 +279,29 @@ export class WhatsappEvolutionController {
     }
 
     return { ok: true, tratado: true, status };
+  }
+
+  /** Confere em 1 e em 5 minutos; cada verificação não faz nada se já voltou. */
+  private agendarRetomada(ctx: ContextoSessao) {
+    this.cancelarRetomada(ctx.sessaoId);
+    const timers = [60_000, 300_000].map((espera) =>
+      setTimeout(() => {
+        void this.sessoes
+          .retomarConexao(ctx.empresaId, ctx.sessaoId)
+          .catch((erro) =>
+            this.logger.warn(
+              `Retomada da sessão ${ctx.sessaoId} falhou: ` +
+                `${erro instanceof Error ? erro.message : String(erro)}`,
+            ),
+          );
+      }, espera),
+    );
+    this.retomadas.set(ctx.sessaoId, timers);
+  }
+
+  private cancelarRetomada(sessaoId: string) {
+    for (const t of this.retomadas.get(sessaoId) ?? []) clearTimeout(t);
+    this.retomadas.delete(sessaoId);
   }
 
   // ----------------------------------------------------------------------

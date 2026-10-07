@@ -175,6 +175,12 @@ export interface WhatsappProvider {
   desconectar(ctx: ContextoSessao): Promise<void>;
 
   /**
+   * Reabre a conexão de um aparelho que continua pareado mas caiu, sem QR.
+   * Recusa (erro) se já estiver conectado — quem chama confere antes.
+   */
+  forcarReconexao(ctx: ContextoSessao, numero: string | null): Promise<void>;
+
+  /**
    * Encerra a sessão **no WhatsApp**: o aparelho deixa de aparecer em
    * "Aparelhos conectados" e o próximo uso exige novo QR.
    *

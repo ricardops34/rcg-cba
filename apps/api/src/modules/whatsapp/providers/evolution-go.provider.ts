@@ -619,6 +619,29 @@ export class EvolutionGoProvider implements WhatsappProvider {
     };
   }
 
+  /**
+   * `POST /instance/forcereconnect/{id}` (chave administrativa,
+   * `instance_service.go` `ForceReconnect`): derruba o cliente parado e sobe
+   * um novo com o aparelho guardado — sem QR. É o que destrava a instância
+   * presa em "Reconnecting" depois que a reconexão automática do gateway
+   * falhou; o `/instance/connect` não serve, porque vê o cliente "rodando" e
+   * só atualiza a configuração.
+   */
+  async forcarReconexao(
+    ctx: ContextoSessao,
+    numero: string | null,
+  ): Promise<void> {
+    await this.http.chamar(
+      ctx.config.evolutionUrl,
+      `/instance/forcereconnect/${encodeURIComponent(this.idInstancia(ctx))}`,
+      {
+        metodo: 'POST',
+        credencial: this.chaveAdmin(ctx),
+        corpo: { number: numero ?? '' },
+      },
+    );
+  }
+
   async desconectar(ctx: ContextoSessao): Promise<void> {
     const token = this.chaveInstancia(ctx);
     if (!token) return;
