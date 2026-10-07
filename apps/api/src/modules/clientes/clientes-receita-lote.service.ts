@@ -65,30 +65,42 @@ const CAMPOS_RECEITA = [
   'email',
 ] as const satisfies readonly (keyof ConsultaCnpjResultado)[];
 
-type Desfecho =
-  | 'nao_encontrado'
-  | { atualizou: boolean; pendente: boolean; cnaePreenchido: boolean };
+/** O que a regra fez com um cliente. Só nomes de campo e códigos, sem valores
+ *  — é o que o assistente pode repetir ao modelo (`anonimizar-agente.ts`). */
+export interface AplicacaoReceita {
+  atualizou: boolean;
+  pendente: boolean;
+  cnaePreenchido: boolean;
+  camposAtualizados: string[];
+  camposPendentes: string[];
+  solicitacaoId: string | null;
+  cnaesAplicados: string[];
+}
+
+type Desfecho = 'nao_encontrado' | AplicacaoReceita;
 
 /**
  * Atualização em lote do cadastro de clientes pela Receita Federal
  * (MinhaReceita), em segundo plano — o botão "Atualizar pela Receita" do
  * Cadastro de Clientes.
  *
- * Regra por campo (decisão do usuário, 2026-10-07):
+ * Regra por campo (decisões do usuário, 2026-10-07):
  *
- * - **Vazio no cadastro** é preenchimento: grava direto, registrado na fila
- *   como autoaprovado (o rastro de quem e quando é o mesmo de sempre).
- * - **Com valor diferente** vai para a fila de aprovação, como a consulta de
- *   um cliente só. Diferença só de grafia (acento, caixa, pontuação) não conta.
- * - **CNAE** segue a mesma regra: sem nenhum ramo, recebe principal e
- *   secundários na hora; com ramo, a união vai para aprovação.
+ * - **CNAE vazio** (Ramo de atividade e CNAE principal) é preenchimento:
+ *   grava direto, registrado na fila como autoaprovado (o rastro de quem e
+ *   quando é o mesmo de sempre). Sem nenhum ramo, recebe principal e
+ *   secundários; com ramo e sem principal, recebe o principal.
+ * - **Todo o resto vai para a fila de aprovação** — dado cadastral diferente
+ *   e também o que o cadastro não tinha (telefone, bairro...): só o CNAE
+ *   vazio entra sem revisão. Diferença só de grafia (acento, caixa,
+ *   pontuação) não conta. Com ramo, a união dos CNAEs vai para aprovação.
  *
- * Campo travado na configuração da empresa nunca é gravado direto — só pode
+ * CNAE travado na configuração da empresa nunca é gravado direto — só pode
  * chegar como proposta, para alguém decidir.
  *
- * A consulta de um cliente só (`ClientesService.atualizarPelaReceita`)
- * continua mandando tudo para a fila (decisão de 30/09/2026); a regra acima
- * vale para o lote.
+ * A mesma regra vale para a consulta de um cliente só
+ * (`ClientesService.atualizarPelaReceita`, tela e assistente), que até
+ * 07/10/2026 mandava tudo para a fila (decisão de 30/09/2026).
  */
 @Injectable()
 export class ClientesReceitaLoteService {
@@ -246,7 +258,7 @@ export class ClientesReceitaLoteService {
       });
       titulo = 'Clientes atualizados pela Receita';
       descricao =
-        `${resultado.processados} consultado(s): ${resultado.atualizados} com campo vazio preenchido, ` +
+        `${resultado.processados} consultado(s): ${resultado.cnaesPreenchidos} com CNAE preenchido, ` +
         `${resultado.pendentes} com divergência para aprovação` +
         (resultado.naoEncontrados
           ? `, ${resultado.naoEncontrados} não encontrado(s)`
@@ -365,13 +377,39 @@ export class ClientesReceitaLoteService {
   ): Promise<Desfecho> {
     const consulta = await this.consultar(cnpj);
     if (!consulta) return 'nao_encontrado';
+    return this.aplicarReceita(empresaId, user, clienteId, consulta, {
+      config,
+      registrarNaAgenda: false,
+      contexto: 'Atualização em lote pela Receita',
+    });
+  }
+
+  /**
+   * A regra por campo, num lugar só: usada pelo lote e pela consulta de um
+   * cliente (`ClientesService.atualizarPelaReceita`, tela e assistente).
+   * Quem chama já garantiu que o cliente está no escopo de quem pede.
+   */
+  async aplicarReceita(
+    empresaId: string,
+    user: AuthenticatedUser,
+    clienteId: string,
+    consulta: ConsultaCnpjResultado,
+    opcoes: {
+      config?: ClienteCamposConfig;
+      /** Pendência nova vira tarefa na agenda de quem aprova? */
+      registrarNaAgenda: boolean;
+      /** Início da justificativa gravada na fila ("Atualização em lote..."). */
+      contexto: string;
+    },
+  ): Promise<AplicacaoReceita> {
+    const config =
+      opcoes.config ?? (await this.campoConfig.obterConfig(empresaId));
 
     return this.prisma.withTenant(empresaId, async (tx) => {
       const cliente = await tx.cliente.findFirst({
         where: { id: clienteId, empresaId, deletedAt: null },
       });
-      if (!cliente)
-        return { atualizou: false, pendente: false, cnaePreenchido: false };
+      if (!cliente) throw new NotFoundException('Cliente não encontrado');
       const vinculos = await tx.clienteCnae.findMany({
         where: { empresaId, clienteId, deletedAt: null },
         select: { principal: true, cnae: { select: { codigoErp: true } } },
@@ -384,14 +422,17 @@ export class ClientesReceitaLoteService {
       const preencher: Record<string, unknown> = {};
       const propor: Record<string, unknown> = {};
 
+      // Dados cadastrais sempre passam por gente, vazios ou não: só o CNAE
+      // vazio é preenchido direto (abaixo). Telefone ou bairro que o cadastro
+      // não tinha também vão para a fila.
       for (const campo of CAMPOS_RECEITA) {
         const valor = consulta[campo];
         // A Receita sem o dado não é motivo para apagar o que o cadastro tem.
         if (vazio(valor)) continue;
-        if (vazio(atual[campo])) {
-          if (config[campo] === false) propor[campo] = valor;
-          else preencher[campo] = valor;
-        } else if (comparavel(atual[campo]) !== comparavel(valor)) {
+        if (
+          vazio(atual[campo]) ||
+          comparavel(atual[campo]) !== comparavel(valor)
+        ) {
           propor[campo] = valor;
         }
       }
@@ -401,12 +442,10 @@ export class ClientesReceitaLoteService {
       const principalReceita =
         sugeridos.find((c) => c.principal)?.codigo ?? null;
       const cnaesTravados = config.cnaes === false;
-      let cnaePreenchido = false;
       if (sugeridos.length > 0) {
         if (codigosAtuais.length === 0 && !cnaesTravados) {
           preencher.cnaes = sugeridos.map((c) => c.codigo);
           if (principalReceita) preencher.cnaePrincipal = principalReceita;
-          cnaePreenchido = true;
         } else {
           // União: a fila nunca propõe remover ramo que já está no cadastro.
           propor.cnaes = [
@@ -435,8 +474,7 @@ export class ClientesReceitaLoteService {
         origem: 'enriquecimento',
         autorId: user.id,
         aplicarDireto: true,
-        justificativa:
-          'Atualização em lote pela Receita: campo vazio no cadastro.',
+        justificativa: `${opcoes.contexto}: CNAE vazio no cadastro.`,
       });
       const fila = await this.alteracoes.registrar(tx, {
         empresaId,
@@ -446,15 +484,29 @@ export class ClientesReceitaLoteService {
         origem: 'enriquecimento',
         autorId: user.id,
         aplicarDireto: false,
-        justificativa:
-          'Atualização em lote pela Receita: valor diferente do cadastro.',
-        registrarNaAgenda: false,
+        justificativa: `${opcoes.contexto}: valor diferente do cadastro.`,
+        registrarNaAgenda: opcoes.registrarNaAgenda,
       });
 
+      const camposAtualizados =
+        direto.resultado === 'aplicado' ? Object.keys(direto.diff) : [];
+      const cnaesAplicados =
+        direto.resultado === 'aplicado' && direto.diff.cnaes
+          ? String(direto.diff.cnaes.para ?? '')
+              .split(',')
+              .map((c) => c.trim())
+              .filter(Boolean)
+          : [];
       return {
-        atualizou: direto.resultado === 'aplicado',
+        atualizou: camposAtualizados.length > 0,
         pendente: fila.resultado === 'pendente',
-        cnaePreenchido: cnaePreenchido && direto.resultado === 'aplicado',
+        cnaePreenchido: cnaesAplicados.length > 0,
+        camposAtualizados,
+        camposPendentes:
+          fila.resultado === 'pendente' ? Object.keys(fila.diff) : [],
+        solicitacaoId:
+          fila.resultado === 'pendente' ? fila.solicitacaoId : null,
+        cnaesAplicados,
       };
     });
   }

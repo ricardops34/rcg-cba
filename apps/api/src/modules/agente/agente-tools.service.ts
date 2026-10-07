@@ -1802,11 +1802,10 @@ export class AgenteToolsService {
           'Só funciona para cliente que o usuário alcança — o vendedor ' +
           'responsável, quem está acima dele na hierarquia e quem tem acesso ' +
           'total; para os demais o cliente nem é encontrado. ' +
-          'Nada entra no cadastro sem passar por gente — o usuário confirma aqui ' +
-          'e a alteração vai para a fila de aprovação, onde o responsável escolhe ' +
-          'campo a campo o que aplicar. A única exceção é o cliente sem nenhum ' +
-          'CNAE, cujo ramo é preenchido na hora. Para vários clientes, chame uma ' +
-          'vez por cliente.',
+          'O usuário confirma aqui. O CNAE vazio no cadastro (ramo de atividade e ' +
+          'CNAE principal) é preenchido na hora; os demais dados da Receita — ' +
+          'inclusive o que o cadastro não tinha — vão para a fila de aprovação, onde ' +
+          'o responsável escolhe campo a campo. Para vários clientes, chame uma vez por cliente.',
         instrucoes:
           'Se o cliente for de outro vendedor, não tente atualizar: diga de quem ' +
           'é e pare por aí. Quem atualiza cadastro é o responsável pela conta.',
@@ -1817,7 +1816,7 @@ export class AgenteToolsService {
         ],
         escrita: true,
         resumir: () =>
-          'Consultar a Receita Federal e enviar o cadastro do cliente para aprovação',
+          'Consultar a Receita Federal, preencher o CNAE vazio e enviar os demais dados para aprovação',
         parametros: {
           type: 'object',
           properties: { clienteId: { type: 'string' } },

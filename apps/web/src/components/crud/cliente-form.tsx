@@ -249,9 +249,9 @@ export function ClienteFormContent({
     }
     setConsultandoCnpj(true);
     try {
-      // Cliente já cadastrado: nada é gravado aqui. A API compara com a
-      // Receita e abre uma solicitação — dados, CNAE principal e secundários —
-      // para quem aprova escolher campo a campo (Alterações de clientes).
+      // Cliente já cadastrado: a API compara com a Receita, preenche na hora o
+      // CNAE vazio (ramo e principal) e abre uma solicitação com o resto do que
+      // a Receita traz, para quem aprova escolher campo a campo (Alterações de clientes).
       if (cliente) {
         setResultadoReceita(
           await apiFetch<ResultadoReceita>(`/clientes/${cliente.id}/atualizar-receita`, { method: "POST" }),

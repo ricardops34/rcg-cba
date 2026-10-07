@@ -21,13 +21,15 @@ export interface ResultadoReceita {
   cnaesSemReferencia?: string[];
   solicitacaoId?: string | null;
   camposPendentes?: string[];
+  /** Campos de CNAE que estavam vazios e foram preenchidos na hora. */
+  camposAtualizados?: string[];
 }
 
 /**
- * Resultado da consulta do CNPJ de um cliente já cadastrado. Nada foi
- * gravado: o que a Receita tem de diferente — dados, CNAE principal e
- * secundários — virou uma solicitação, que quem tem clientes.aprovar analisa
- * campo a campo em Alterações de clientes.
+ * Resultado da consulta do CNPJ de um cliente já cadastrado. O CNAE que estava
+ * vazio (ramo e principal) foi preenchido na hora; os demais dados que
+ * a Receita traz viraram uma solicitação, que quem tem
+ * clientes.aprovar analisa campo a campo em Alterações de clientes.
  */
 export function ResultadoReceitaDialog({
   resultado,
@@ -37,6 +39,7 @@ export function ResultadoReceitaDialog({
   onClose: () => void;
 }) {
   const campos = resultado?.camposPendentes ?? [];
+  const preenchidos = resultado?.camposAtualizados ?? [];
   const semReferencia = resultado?.cnaesSemReferencia ?? [];
   return (
     <Dialog open={!!resultado} onOpenChange={(v) => !v && onClose()}>
@@ -44,7 +47,8 @@ export function ResultadoReceitaDialog({
         <DialogHeader>
           <DialogTitle>Consulta do CNPJ na Receita</DialogTitle>
           <DialogDescription>
-            Nada foi gravado no cadastro. O que a Receita tem de diferente vai para análise e aprovação.
+            CNAE vazio no cadastro (ramo e principal) é preenchido na hora. Os demais dados da Receita vão para análise e
+            aprovação.
           </DialogDescription>
         </DialogHeader>
 
@@ -60,8 +64,20 @@ export function ResultadoReceitaDialog({
                 </Badge>
               </p>
             )}
+            {preenchidos.length > 0 && (
+              <div className="space-y-1">
+                <p>Preenchido no cadastro, que estava vazio:</p>
+                <div className="flex flex-wrap gap-1">
+                  {preenchidos.map((c) => (
+                    <Badge key={c} variant="outline">{CAMPO_CLIENTE_LABEL[c] ?? c}</Badge>
+                  ))}
+                </div>
+              </div>
+            )}
             {campos.length === 0 ? (
-              <p>O cadastro já está igual ao da Receita. Nenhuma solicitação foi aberta.</p>
+              preenchidos.length === 0 && (
+                <p>O cadastro já está igual ao da Receita. Nenhuma solicitação foi aberta.</p>
+              )
             ) : (
               <div className="space-y-1">
                 <p>Solicitação aberta com {campos.length} campo(s) para análise:</p>

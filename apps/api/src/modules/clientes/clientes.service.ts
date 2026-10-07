@@ -38,7 +38,7 @@ import { comFlagXml } from '../notas-saida/nota-flags';
 import { ClienteCampoConfigService } from '../cliente-campo-config/cliente-campo-config.service';
 import { ClienteAlteracoesService } from './cliente-alteracoes.service';
 import { EnriquecimentoService } from './enriquecimento.service';
-import { ClienteCnaesService } from './cliente-cnaes.service';
+import { ClientesReceitaLoteService } from './clientes-receita-lote.service';
 import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
 import {
   condicaoBuscaTermosSql,
@@ -157,22 +157,18 @@ export class ClientesService {
     private readonly campoConfig: ClienteCampoConfigService,
     private readonly alteracoes: ClienteAlteracoesService,
     private readonly enriquecimento: EnriquecimentoService,
-    private readonly clienteCnaes: ClienteCnaesService,
+    private readonly receita: ClientesReceitaLoteService,
   ) {}
 
   /**
-   * Atualiza o cadastro a partir do CNPJ na base pública da Receita Federal.
+   * Atualiza o cadastro a partir do CNPJ na base pública da Receita Federal —
+   * botão da tela de cliente e ferramenta do assistente.
    *
-   * Uma rotina, dois desfechos deliberadamente diferentes:
-   *
-   * - **CNAE vazio** (cliente sem nenhum ramo) é preenchimento, não alteração:
-   *   não há o que revisar, e exigir aprovação para sair do zero só deixaria o
-   *   cadastro vazio por mais tempo. Aplica na hora, com o principal fiscal
-   *   que a Receita informou.
-   * - **Todo o resto** — razão social, endereço, contato, e o CNAE quando já
-   *   existe algum — vai para a fila como solicitação. Quem tem
-   *   `clientes.aprovar` escolhe campo a campo o que entra; o que ele não
-   *   marcar fica no histórico como reprovado.
+   * Regra por campo (decisões do usuário, 2026-10-07; antes tudo ia para a
+   * fila): **CNAE vazio** (ramo de atividade e CNAE principal) é preenchido
+   * na hora; os **demais dados** — inclusive o que o cadastro não tinha —
+   * viram solicitação, que quem tem `clientes.aprovar` analisa campo a campo. A
+   * regra mora em `ClientesReceitaLoteService.aplicarReceita`, a mesma do lote.
    *
    * Campo que a Receita devolve vazio **não** é proposto: a base dela ter um
    * telefone a menos não é motivo para apagar o telefone que o vendedor
@@ -187,6 +183,7 @@ export class ClientesService {
     user: AuthenticatedUser,
     clienteId: string,
   ) {
+    // findOne aplica o escopo de carteira: fora dele, o cliente não existe.
     const cliente = await this.findOne(empresaId, user, clienteId);
     const cnpj = (cliente.cnpjCpf ?? '').replace(/\D/g, '');
     if (cnpj.length !== 14) {
@@ -199,78 +196,26 @@ export class ClientesService {
     }
 
     const consulta = await this.enriquecimento.consultarCnpj(cnpj);
-    const atuais = await this.clienteCnaes.findAll(empresaId, user, clienteId);
-    const codigosAtuais = atuais
-      .map((c) => c.codigo)
-      .filter((c): c is string => !!c);
-
-    // Código que a referência local do IBGE não conhece não vira vínculo —
-    // volta como aviso em vez de sumir (na prática, sync do IBGE atrasado).
-    const sugeridos = consulta.cnaes.filter((c) => !!c.cnaeId);
-    const semReferencia = consulta.cnaes
-      .filter((c) => !c.cnaeId)
-      .map((c) => c.codigo);
-
-    // Tudo vai para análise e aprovação, inclusive o ramo de quem ainda não
-    // tem CNAE nenhum (decisão de 30/09/2026 — antes esse caso era gravado
-    // direto). Nada é gravado aqui.
-    const cnaesAplicados: string[] = [];
-    const principalAtual = atuais.find((c) => c.principal)?.codigo ?? null;
-    const principalReceita = sugeridos.find((c) => c.principal)?.codigo ?? null;
-
-    // Só o que a Receita realmente respondeu, e só o que ainda falta.
-    const doCadastro: Record<string, unknown> = {};
-    const propor = (campo: string, valor: string | null) => {
-      if (valor) doCadastro[campo] = valor;
-    };
-    propor('razaoSocial', consulta.razaoSocial);
-    propor('nomeFantasia', consulta.nomeFantasia);
-    propor('endereco', consulta.endereco);
-    propor('complemento', consulta.complemento);
-    propor('bairro', consulta.bairro);
-    propor('municipio', consulta.municipio);
-    propor('uf', consulta.uf);
-    propor('cep', consulta.cep);
-    propor('telefone', consulta.telefone);
-    propor('telefone2', consulta.telefone2);
-    propor('email', consulta.email);
-
-    const input: Record<string, unknown> = {
-      ...doCadastro,
-      // União: a fila nunca propõe remover ramo que já está no cadastro.
-      cnaes: [
-        ...new Set([...codigosAtuais, ...sugeridos.map((c) => c.codigo)]),
-      ],
-      // O principal da Receita entra como proposta própria (de → para).
-      ...(principalReceita ? { cnaePrincipal: principalReceita } : {}),
-    };
-
-    const registro = await this.prisma.withTenant(empresaId, (tx) =>
-      this.alteracoes.registrar(tx, {
-        empresaId,
-        clienteId,
-        atual: { ...cliente, cnaes: codigosAtuais, cnaePrincipal: principalAtual },
-        input,
-        origem: 'enriquecimento',
-        autorId: user.id,
-        // Sempre para a fila, inclusive para quem aprova: a Receita traz o
-        // cadastro inteiro de uma vez, e o ponto desta rotina é alguém olhar
-        // campo a campo antes de sobrescrever o que a equipe cadastrou.
-        aplicarDireto: false,
-      }),
+    const aplicacao = await this.receita.aplicarReceita(
+      empresaId,
+      user,
+      clienteId,
+      consulta,
+      { registrarNaAgenda: true, contexto: 'Consulta do CNPJ na Receita' },
     );
 
-    const camposPendentes =
-      registro.resultado === 'sem-mudanca' ? [] : Object.keys(registro.diff);
-
     return {
-      atualizado: cnaesAplicados.length > 0,
+      atualizado: aplicacao.atualizou,
       situacaoCadastral: consulta.situacaoCadastral,
-      cnaesAplicados,
-      cnaesSemReferencia: semReferencia,
-      solicitacaoId:
-        registro.resultado === 'pendente' ? registro.solicitacaoId : null,
-      camposPendentes,
+      camposAtualizados: aplicacao.camposAtualizados,
+      cnaesAplicados: aplicacao.cnaesAplicados,
+      // Código que a referência local do IBGE não conhece não vira vínculo —
+      // volta como aviso em vez de sumir (na prática, sync do IBGE atrasado).
+      cnaesSemReferencia: consulta.cnaes
+        .filter((c) => !c.cnaeId)
+        .map((c) => c.codigo),
+      solicitacaoId: aplicacao.solicitacaoId,
+      camposPendentes: aplicacao.camposPendentes,
     };
   }
 

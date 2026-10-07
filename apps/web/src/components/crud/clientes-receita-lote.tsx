@@ -90,7 +90,7 @@ export function ClientesReceitaFaixa({ execucao }: { execucao: ClientesReceitaEx
         Última atualização pela Receita em {hora(execucao.concluidaEm ?? execucao.iniciadaEm)}
         {quem}
         {r
-          ? ` · ${r.processados} consultado(s): ${r.atualizados} preenchido(s), ${r.cnaesPreenchidos} com CNAE novo, ` +
+          ? ` · ${r.processados} consultado(s): ${r.atualizados} com CNAE preenchido, ` +
             `${r.pendentes} para aprovação, ${r.semMudanca} sem mudança` +
             (r.naoEncontrados ? `, ${r.naoEncontrados} não encontrado(s)` : "") +
             (r.falhas ? `, ${r.falhas} com falha` : "")
@@ -149,13 +149,13 @@ export function ClientesReceitaLoteDialog({
 
         <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
           <li>
-            Campo <strong className="text-foreground">vazio</strong> no cadastro é preenchido na hora
-            — inclusive o CNAE de quem não tem nenhum.
+            <strong className="text-foreground">CNAE vazio</strong> no cadastro (ramo de atividade e
+            CNAE principal) é preenchido na hora.
           </li>
           <li>
-            Campo com <strong className="text-foreground">valor diferente</strong> vai para a
-            aprovação de alterações de cadastro. Diferença só de acento, maiúscula ou pontuação não
-            conta.
+            Os <strong className="text-foreground">demais dados</strong> — inclusive o que o cadastro
+            não tinha, como telefone — vão para a aprovação de alterações de cadastro. Diferença só de
+            acento, maiúscula ou pontuação não conta.
           </li>
           <li>Uma consulta por segundo: cerca de 15 a 20 minutos para mil clientes.</li>
         </ul>

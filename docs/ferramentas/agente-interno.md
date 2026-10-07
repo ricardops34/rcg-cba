@@ -229,6 +229,12 @@ cliente **nem é encontrado** — a regra é do service, não do prompt, e vale
 igual pela tela. Consultar o CNPJ, portanto, não é poder alterar o cliente de
 outro vendedor.
 
+O que ela grava também é código (`ClientesReceitaLoteService.aplicarReceita`,
+a mesma regra do lote da tela de Clientes): o **CNAE vazio** (ramo de atividade
+e CNAE principal) é preenchido na hora; os **demais dados** da Receita —
+inclusive o que o cadastro não tinha, como telefone — viram solicitação na fila
+de aprovação. Até 07/10/2026 tudo ia para a fila, inclusive o CNAE vazio.
+
 ## As guardas além da permissão
 
 **`exigeWhatsapp`** — as quatro últimas só aparecem para quem tem aparelho
