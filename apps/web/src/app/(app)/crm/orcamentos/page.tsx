@@ -129,7 +129,7 @@ export default function OrcamentosPage() {
     router.push(`/crm/orcamentos/${o.id}?copiar=1`);
 
   const onDelete = async (o: Orcamento) => {
-    if (!confirm(`Excluir o orçamento "${o.titulo}"?`)) return;
+    if (!confirm(`Excluir o orçamento Nº ${numeroOrcamento(o)}?`)) return;
     try {
       await remove.mutateAsync(o.id);
       toast.success("Orçamento excluído");
@@ -153,11 +153,6 @@ export default function OrcamentosPage() {
       sortKey: "numero",
       className: "w-16",
       cell: (o) => <span className="font-mono text-xs">{numeroOrcamento(o)}</span>,
-    },
-    {
-      header: "Título",
-      sortKey: "titulo",
-      cell: (o) => <p className="font-medium">{o.titulo}</p>,
     },
     {
       header: "Cliente",
