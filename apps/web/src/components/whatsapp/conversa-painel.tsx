@@ -33,6 +33,8 @@ import { Badge } from "@/components/ui/badge";
 import { Composer } from "@/components/whatsapp/composer";
 import { MensagemBolha } from "@/components/whatsapp/mensagem-bolha";
 import { AcoesCliente } from "@/components/whatsapp/acoes-cliente";
+import { CopiarBotao } from "@/components/crud/copiar-botao";
+import { codigoClienteErp } from "@/lib/codigo-cliente";
 
 /**
  * Uma conversa de WhatsApp: cabeçalho, rolo de mensagens e o compositor com
@@ -195,6 +197,10 @@ export function Conversa({
   const porExternoId = new Map(
     (mensagens ?? []).map((m) => [m.externoId, m] as const),
   );
+  // Só de contato vinculado: o código é do cliente, não do número.
+  const codigoCliente = conversa?.clienteId
+    ? codigoClienteErp(conversa.contato.clienteCodigoErp)
+    : null;
   const linhaDoTempo = [
     ...(mensagens ?? []).map((item) => ({
       tipo: "mensagem" as const,
@@ -239,10 +245,19 @@ export function Conversa({
             </Button>
           ) : null}
 
-          <button
-            type="button"
+          {/* Elemento clicável, e não <button>: dentro dele fica o botão de
+              copiar o código, e botão dentro de botão não é HTML válido. O
+              copiar para a propagação do clique. */}
+          <div
+            role={onAbrirContato ? "button" : undefined}
+            tabIndex={onAbrirContato ? 0 : undefined}
             onClick={onAbrirContato}
-            disabled={!onAbrirContato}
+            onKeyDown={(e) => {
+              if (onAbrirContato && (e.key === "Enter" || e.key === " ")) {
+                e.preventDefault();
+                onAbrirContato();
+              }
+            }}
             title={onAbrirContato ? "Ver dados do contato" : undefined}
             className={`flex min-w-0 items-center gap-3 text-left group transition-opacity ${
               onAbrirContato ? "cursor-pointer hover:opacity-90" : "cursor-default"
@@ -269,6 +284,12 @@ export function Conversa({
                 <p className="truncate text-sm font-bold text-foreground group-hover:underline">
                   {conversa ? nomeDaConversa(conversa) : "Contato"}
                 </p>
+                {codigoCliente ? (
+                  <span className="flex shrink-0 items-center text-xs font-medium text-muted-foreground tabular-nums">
+                    ({codigoCliente})
+                    <CopiarBotao valor={codigoCliente} rotulo="Código do cliente" />
+                  </span>
+                ) : null}
                 {conversa?.clienteId ? (
                   <Badge variant="outline" className="h-4 px-1.5 text-[10px] font-medium border-emerald-500/30 text-emerald-600 bg-emerald-500/10">
                     Cliente
@@ -286,7 +307,7 @@ export function Conversa({
                   : ""}
               </p>
             </div>
-          </button>
+          </div>
         </div>
 
         <div data-tour="atendimento-acoes" className="flex shrink-0 items-center gap-1.5">
