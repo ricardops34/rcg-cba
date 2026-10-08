@@ -377,13 +377,10 @@ function AgenteJanela() {
           `WhatsApp${clienteWhatsapp ? ` · ${clienteWhatsapp}` : ""}`
         )
       }
-      // Minimizar e fechar são a mesma coisa — os dois voltam ao ícone e a
-      // conversa continua viva. Ficam os dois porque é onde a mão vai: uns
-      // procuram o traço, outros o X. Para apagar a conversa existe a
-      // borracha, ao lado.
-      onMinimizar={minimizar}
+      // Minimizar deixa só a barra do topo, à vista e arrastável (é da própria
+      // moldura). Fechar volta ao ícone da topbar; a conversa continua viva
+      // nos dois. Para apagar a conversa existe a borracha, ao lado.
       onFechar={minimizar}
-      tituloMinimizar="Minimizar para o ícone (a conversa continua)"
       tituloFechar="Fechar (a conversa continua)"
       onPronta={() => setPronta(true)}
       // Ajuda, histórico e borracha são da Bia: na aba WhatsApp não valem.

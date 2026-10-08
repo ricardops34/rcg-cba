@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { Grip, Maximize2, Minimize2, Minus, X } from "lucide-react";
+import { ChevronUp, Grip, Maximize2, Minimize2, Minus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Geometria {
@@ -114,9 +114,7 @@ export function JanelaFlutuante({
   icone,
   titulo,
   acoes,
-  onMinimizar,
   onFechar,
-  tituloMinimizar = "Minimizar",
   tituloFechar = "Fechar",
   larguraPadrao = 420,
   alturaPadrao = 560,
@@ -131,9 +129,7 @@ export function JanelaFlutuante({
   titulo: ReactNode;
   /** Botões extras da barra de título, antes de minimizar/maximizar/fechar. */
   acoes?: ReactNode;
-  onMinimizar: () => void;
   onFechar: () => void;
-  tituloMinimizar?: string;
   tituloFechar?: string;
   larguraPadrao?: number;
   alturaPadrao?: number;
@@ -148,8 +144,16 @@ export function JanelaFlutuante({
   );
   const [geometria, setGeometria] = useState<Geometria | null>(null);
   const [maximizada, setMaximizada] = useState(false);
+  /**
+   * Minimizada, a janela fica só com a barra do topo: continua visível, dá
+   * para arrastar, e reabre no mesmo botão (ou com duplo clique na barra). O
+   * conteúdo segue montado — a conversa e o texto digitado não se perdem.
+   * Fechar (X) é outra coisa: some de vez e volta pelo ícone da topbar.
+   */
+  const [recolhida, setRecolhida] = useState(false);
   const geometriaAnterior = useRef<Geometria | null>(null);
   const alternarMaximizada = () => {
+    setRecolhida(false);
     if (maximizada) setGeometria(acomodar(geometriaAnterior.current ?? geometriaPadrao(padrao), padrao));
     else { geometriaAnterior.current = geometria; setGeometria(geometriaMaximizada()); }
     setMaximizada(!maximizada);
@@ -175,6 +179,37 @@ export function JanelaFlutuante({
       visual?.removeEventListener("scroll", aoRedimensionar);
     };
   }, [maximizada, padrao]);
+
+  /**
+   * A janela fica **sempre por cima** das cortinas. Ela e as cortinas têm o
+   * mesmo z-index, então vale a ordem no documento: quando uma cortina entra
+   * na página, este contêiner volta para o fim do <body>. Não basta subir o
+   * z-index da janela — os menus que ela própria abre (o "+" da conversa, o
+   * seletor de cliente) são portais com o z-index comum e sumiriam por trás
+   * dela.
+   */
+  const [conteiner] = useState<HTMLDivElement | null>(() =>
+    typeof document === "undefined" ? null : document.createElement("div"),
+  );
+  useEffect(() => {
+    if (!conteiner) return;
+    document.body.appendChild(conteiner);
+    const ehCortina = (no: Node) =>
+      no instanceof HTMLElement &&
+      no !== conteiner &&
+      (no.matches('[data-slot="sheet-content"]') ||
+        !!no.querySelector('[data-slot="sheet-content"]'));
+    const observador = new MutationObserver((mudancas) => {
+      if (mudancas.some((m) => Array.from(m.addedNodes).some(ehCortina))) {
+        document.body.appendChild(conteiner);
+      }
+    });
+    observador.observe(document.body, { childList: true });
+    return () => {
+      observador.disconnect();
+      conteiner.remove();
+    };
+  }, [conteiner]);
 
   const possuiGeometria = geometria !== null;
   const avisarPronta = useEffectEvent(() => onPronta?.());
@@ -238,7 +273,7 @@ export function JanelaFlutuante({
     [geometria, maximizada, padrao],
   );
 
-  if (!aberto || !geometria) return null;
+  if (!aberto || !geometria || !conteiner) return null;
 
   return createPortal(
     <div
@@ -250,12 +285,16 @@ export function JanelaFlutuante({
         left: geometria.x,
         top: geometria.y,
         width: geometria.largura,
-        height: geometria.altura,
+        height: recolhida ? ALTURA_TITULO : geometria.altura,
       }}
     >
       <div
         onPointerDown={iniciarGesto("mover")}
-        onDoubleClick={(e) => { if (!(e.target as HTMLElement).closest("button, a")) alternarMaximizada(); }}
+        onDoubleClick={(e) => {
+          if ((e.target as HTMLElement).closest("button, a")) return;
+          if (recolhida) setRecolhida(false);
+          else alternarMaximizada();
+        }}
         className="flex shrink-0 touch-none select-none items-center gap-2 border-b bg-muted/40 px-3 sm:cursor-move"
         style={{ height: ALTURA_TITULO }}
       >
@@ -267,11 +306,12 @@ export function JanelaFlutuante({
           variant="ghost"
           size="icon"
           className="size-7"
-          title={tituloMinimizar}
-          aria-label={tituloMinimizar}
-          onClick={onMinimizar}
+          title={recolhida ? "Reabrir" : "Minimizar (fica só a barra)"}
+          aria-label={recolhida ? "Reabrir" : "Minimizar"}
+          aria-pressed={recolhida}
+          onClick={() => setRecolhida((v) => !v)}
         >
-          <Minus className="size-4" />
+          {recolhida ? <ChevronUp className="size-4" /> : <Minus className="size-4" />}
         </Button>
         <Button type="button" variant="ghost" size="icon" className="size-7"
           title={maximizada ? "Restaurar tamanho" : "Maximizar janela"}
@@ -292,11 +332,13 @@ export function JanelaFlutuante({
         </Button>
       </div>
 
-      {children}
+      <div className={recolhida ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
+        {children}
+      </div>
 
       {/* Alça de redimensionamento. `touch-none` para o gesto não virar
           rolagem no tablet. */}
-      {!maximizada && <div
+      {!maximizada && !recolhida && <div
         onPointerDown={iniciarGesto("redimensionar")}
         role="separator"
         aria-label={`Redimensionar ${rotulo.toLowerCase()}`}
@@ -309,11 +351,11 @@ export function JanelaFlutuante({
             "linear-gradient(135deg, transparent 50%, currentColor 50%)",
         }}
       ><Grip className="size-4" /></div>}
-      {!maximizada && <div onPointerDown={iniciarGesto("redimensionar-inicio")}
+      {!maximizada && !recolhida && <div onPointerDown={iniciarGesto("redimensionar-inicio")}
         role="separator" aria-label="Redimensionar pelo canto superior esquerdo"
         title="Arraste para ajustar o tamanho"
         className="absolute left-0 top-0 hidden size-3 cursor-nwse-resize touch-none border-l-2 border-t-2 border-muted-foreground/60 sm:block" />}
     </div>,
-    document.body
+    conteiner
   );
 }
