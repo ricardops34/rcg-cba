@@ -120,6 +120,19 @@ export const WHATSAPP_AVISO_NAO_OFICIAL =
  * O texto anterior prometia o contrário, e um aceite não pode prometer o que o
  * sistema não cumpre.
  */
+/**
+ * O aparelho que parear fica sendo "o número" — qualquer conta de WhatsApp
+ * que estiver logada nele no momento do QR. Conectar o número pessoal faz
+ * TODA a conversa daquele número (inclusive a de antes, já guardada no
+ * aparelho, e a pessoal futura) passar a contar como conversa de atendimento:
+ * gravada na plataforma e visível ao supervisor. Não tem como desfazer depois
+ * — por isso o aviso precisa pesar **antes** do QR ser escaneado, não depois.
+ */
+export const WHATSAPP_AVISO_NUMERO_PARTICULAR =
+  "Conecte só um número fornecido pela empresa. Nunca pareie o seu número " +
+  "pessoal: a partir da conexão, todo o conteúdo dele passa a ser tratado " +
+  "como atendimento — gravado na plataforma e visível ao seu supervisor.";
+
 export const WHATSAPP_ACEITE_TEXTO =
   "Este número é seu, mas foi fornecido pela empresa para o atendimento de " +
   "clientes — não o use para conversas pessoais. Todas as conversas deste " +

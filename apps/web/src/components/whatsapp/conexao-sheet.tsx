@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import {
   WHATSAPP_ACEITE_TEXTO,
   WHATSAPP_AVISO_NAO_OFICIAL,
+  WHATSAPP_AVISO_NUMERO_PARTICULAR,
   type WhatsappPareamento,
   type WhatsappSessao,
 } from "@plataforma/contracts";
@@ -19,7 +20,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ShieldAlert } from "lucide-react";
 import { useImagemQr } from "./use-imagem-qr";
 
 /**
@@ -90,6 +91,24 @@ export function ConexaoSheet({
         </SheetHeader>
 
         <div className="space-y-4 px-4 pb-6">
+          {/* O primeiro bloco da tela, de propósito: é a decisão que não tem
+              volta (pareou o número pessoal, toda a conversa dele passa a ser
+              gravada) e precisa pesar antes do QR ser escaneado — não
+              dividir atenção com o aviso de API não oficial logo abaixo.
+              Continua visível com o número já conectado, para quem conectou
+              antes deste aviso existir. */}
+          <div className="flex gap-2 rounded-md border-2 border-destructive/50 bg-destructive/10 p-3">
+            <ShieldAlert className="size-5 shrink-0 text-destructive" />
+            <div className="space-y-1 text-xs">
+              <p className="text-sm font-bold text-destructive">
+                Nunca conecte seu número pessoal
+              </p>
+              <p className="font-medium text-foreground">
+                {WHATSAPP_AVISO_NUMERO_PARTICULAR}
+              </p>
+            </div>
+          </div>
+
           {/* Fica no topo, e não junto do botão: é a informação que muda a
               decisão de conectar o próprio número, e quem já está conectado
               precisa continuar vendo. Só some no transporte oficial da Meta —
