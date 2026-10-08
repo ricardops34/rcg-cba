@@ -480,7 +480,48 @@ export class EvolutionGoProvider implements WhatsappProvider {
       }
     }
 
+    if (url && token) await this.aguardarClienteNoGateway(url, token);
+
     return { nome, id: instanciaId, token, webhookSegredo };
+  }
+
+  /**
+   * Espera o cliente que o `/instance/connect` acabou de criar aparecer no
+   * gateway, antes de a tela pedir o QR.
+   *
+   * O connect responde antes de registrar o cliente. Nesse intervalo o
+   * `/instance/status` diz "não conectado" e o `/instance/qr` da 0.7.2, sem
+   * achar cliente, **sobe um segundo** para a mesma instância ("No client
+   * found, starting new instance for QR code"). Os dois disputam o aparelho:
+   * o vendedor pareia num, o outro segue gerando QR, e quando esgota os cinco
+   * emite LoggedOut e derruba o pareamento bom (visto em dev, 2026-10-08:
+   * pareado às 11:29:35, deslogado às 11:31:27).
+   *
+   * Espera só enquanto o gateway disser **explicitamente** `Connected: false`;
+   * resposta sem o campo, ou erro na consulta, encerra a espera. Nunca falha o
+   * connect: no pior caso devolve como antes.
+   */
+  private async aguardarClienteNoGateway(url: string, token: string) {
+    const limite = Date.now() + 5000;
+    while (Date.now() < limite) {
+      const estado = await this.http
+        .chamar<unknown>(url, '/instance/status', {
+          credencial: token,
+          aceitarAusente: true,
+        })
+        .catch(() => null);
+      const dados = objeto(estado, 'data') ?? estado;
+      const conectado =
+        dados && typeof dados === 'object'
+          ? ((dados as Record<string, unknown>).Connected ??
+            (dados as Record<string, unknown>).connected)
+          : undefined;
+      if (conectado !== false) return;
+      await new Promise((resolver) => setTimeout(resolver, 250));
+    }
+    this.logger.warn(
+      'O gateway não registrou o cliente em 5 s depois do connect; o QR pode demorar.',
+    );
   }
 
   async pareamento(ctx: ContextoSessao): Promise<EstadoPareamento> {

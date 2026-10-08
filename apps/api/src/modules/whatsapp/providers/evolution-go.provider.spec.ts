@@ -291,6 +291,73 @@ describe('EvolutionGoProvider — Isolamento de Chaves e Autenticação', () => 
 });
 
 
+describe('EvolutionGoProvider — corrida do connect com o QR', () => {
+  // O `/instance/qr` da 0.7.2 sobe um segundo cliente se o primeiro ainda não
+  // foi registrado; os dois disputam o aparelho e o segundo derruba o
+  // pareamento bom. O `iniciar` só devolve depois de o cliente aparecer.
+  it('iniciar espera o gateway registrar o cliente antes de devolver', async () => {
+    const chamadas: string[] = [];
+    let consultasStatus = 0;
+    const http = {
+      chamar: jest.fn((_url: string, caminho: string) => {
+        chamadas.push(caminho);
+        if (caminho === '/instance/all') {
+          return Promise.resolve({
+            data: [{ id: 'uuid-1', name: 'inst', token: 'tok-1' }],
+          });
+        }
+        if (caminho === '/instance/status') {
+          consultasStatus += 1;
+          return Promise.resolve({
+            data: { Connected: consultasStatus >= 3, LoggedIn: false },
+          });
+        }
+        return Promise.resolve({});
+      }),
+    };
+    const provider = new EvolutionGoProvider(
+      http as unknown as EvolutionGoClient,
+    );
+    const ctx = {
+      empresaId: 'emp1',
+      sessaoId: 'sess1',
+      vendedorId: 'v1',
+      vendedorNome: 'Ana',
+      transporte: 'evolution_go' as const,
+      config: {
+        workerUrl: null,
+        evolutionUrl: 'http://gateway:8080',
+        evolutionApiKey: 'admin-key',
+        historicoDias: 0,
+        evolutionAlwaysOnline: false,
+        evolutionIgnoreGroups: true,
+        evolutionIgnoreStatus: true,
+        evolutionReadMessages: false,
+        evolutionRejectCall: false,
+        evolutionMsgRejectCall: null,
+        cloudApiPhoneNumberId: null,
+        cloudApiBusinessAccountId: null,
+        cloudApiAccessToken: null,
+        cloudApiAppSecret: null,
+      },
+      instancia: {
+        nome: 'inst',
+        id: 'uuid-1',
+        token: 'tok-1',
+        webhookSegredo: null,
+      },
+    };
+
+    await provider.iniciar(ctx, { arquivarMensagens: false });
+
+    expect(consultasStatus).toBe(3);
+    expect(chamadas.indexOf('/instance/status')).toBeGreaterThan(
+      chamadas.indexOf('/instance/connect'),
+    );
+    expect(chamadas).not.toContain('/instance/qr');
+  });
+});
+
 describe('EvolutionGoProvider — nome da instância', () => {
   const provider = new EvolutionGoProvider({} as never);
   const nome = (ctx: Record<string, unknown>): string =>
