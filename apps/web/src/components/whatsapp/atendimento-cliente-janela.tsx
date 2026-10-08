@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  ArrowLeft,
   ExternalLink,
   Loader2,
   MessageSquarePlus,
@@ -34,7 +35,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Conversa } from "@/components/whatsapp/conversa-painel";
+import { Conversa, nomeDaConversa } from "@/components/whatsapp/conversa-painel";
+import { ClienteCombobox } from "@/components/crud/cliente-combobox";
+import { Badge } from "@/components/ui/badge";
 import { ListaDeContatos } from "@/components/whatsapp/nova-conversa-dialog";
 
 const PERMISSAO_VER = "whatsapp-conversas.visualizar";
@@ -86,33 +89,191 @@ export function useAtendimentoDisponivel() {
  */
 export function AbaWhatsapp() {
   const cliente = useAtendimentoJanelaStore((s) => s.cliente);
+  const limpar = useAtendimentoJanelaStore((s) => s.limpar);
 
-  if (!cliente) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-        <div className="flex size-12 items-center justify-center rounded-full bg-emerald-500/10 text-[#00A884]">
-          <IconeWhatsapp className="size-6" />
-        </div>
-        <p className="font-semibold">Nenhum cliente em atendimento</p>
-        <p className="max-w-sm text-sm text-muted-foreground">
-          Abra pela Posição de Cliente, no menu da linha › Atendimento. Para ver
-          todas as conversas, use a tela de Atendimento.
-        </p>
-        <Button asChild variant="outline" size="sm" className="gap-1.5">
-          <Link href="/comercial/atendimento" target="_blank" rel="noopener">
-            <ExternalLink className="size-3.5" /> Abrir Atendimento
-          </Link>
+  if (!cliente) return <ListaConversasJanela />;
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 items-center border-b px-2 py-1">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1 text-xs"
+          onClick={limpar}
+        >
+          <ArrowLeft className="size-3.5" /> Conversas
         </Button>
+      </div>
+      <ConteudoAtendimento
+        key={`${cliente.id ?? ""}:${cliente.conversaId ?? ""}`}
+        clienteId={cliente.id}
+        conversaId={cliente.conversaId ?? null}
+      />
+    </div>
+  );
+}
+
+/**
+ * As conversas do próprio WhatsApp, para a aba sem cliente escolhido — é o
+ * que o número no ícone promete: abrir e ver quem escreveu. Não lidas
+ * primeiro; o resto pela última mensagem. Conversa sem cliente abre igual, e
+ * lá dentro oferece o vínculo.
+ */
+function ListaConversasJanela() {
+  const empresaId = useAuthStore((s) => s.user?.empresaAtivaId);
+  const abrir = useAtendimentoJanelaStore((s) => s.abrir);
+  const sessao = useMinhaSessao(true);
+  const sessaoId = sessao.data?.id ?? null;
+  const conversas = useQuery({
+    queryKey: ["whatsapp-conversas", empresaId, "janela", sessaoId],
+    queryFn: () =>
+      apiFetch<{ total: number; itens: WhatsappConversa[] }>("/whatsapp/conversas", {
+        query: { sessaoId: sessaoId ?? undefined, tamanho: 30 },
+      }),
+    enabled: !!empresaId && !!sessaoId,
+    refetchInterval: 15000,
+  });
+
+  if (sessao.isLoading || (sessaoId && conversas.isLoading)) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <Loader2 className="size-6 animate-spin text-[#00A884]" />
+      </div>
+    );
+  }
+  if (!sessao.data) {
+    return (
+      <Aviso
+        titulo="Seu WhatsApp não está conectado"
+        texto="Conecte o aparelho na tela de Atendimento para conversar com seus clientes por aqui."
+      />
+    );
+  }
+
+  const itens = [...(conversas.data?.itens ?? [])].sort(
+    (x, y) =>
+      Number(y.naoLidas > 0) - Number(x.naoLidas > 0) ||
+      (y.ultimaMensagemEm ?? "").localeCompare(x.ultimaMensagemEm ?? ""),
+  );
+  if (itens.length === 0) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <IconeWhatsapp className="size-8 text-[#00A884]" />
+        <p className="text-sm text-muted-foreground">
+          Nenhuma conversa ainda. Abra o atendimento de um cliente pela Posição de
+          Cliente, no menu da linha › Atendimento.
+        </p>
       </div>
     );
   }
 
   return (
-    <ConteudoAtendimento
-      key={`${cliente.id}:${cliente.conversaId ?? ""}`}
-      clienteId={cliente.id}
-      conversaId={cliente.conversaId ?? null}
-    />
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      {itens.map((c) => (
+        <button
+          key={c.id}
+          type="button"
+          onClick={() =>
+            abrir({ id: c.clienteId, nome: nomeDaConversa(c), conversaId: c.id })
+          }
+          className="flex w-full items-center gap-3 border-b px-3 py-2.5 text-left transition-colors hover:bg-muted/50"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <p className={`truncate text-sm ${c.naoLidas > 0 ? "font-bold" : "font-medium"}`}>
+                {nomeDaConversa(c)}
+              </p>
+              {c.clienteId ? null : (
+                <Badge
+                  variant="outline"
+                  className="h-4 shrink-0 border-amber-500/30 bg-amber-500/10 px-1.5 text-[10px] text-amber-600"
+                >
+                  Sem cliente
+                </Badge>
+              )}
+            </div>
+            <p className="truncate text-xs text-muted-foreground">
+              {c.ultimaMensagemPrevia ?? "—"}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <span className="text-[11px] text-muted-foreground tabular-nums">
+              {c.ultimaMensagemEm
+                ? new Date(c.ultimaMensagemEm).toLocaleString("pt-BR", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : ""}
+            </span>
+            {c.naoLidas > 0 ? (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#00A884] px-1.5 text-[11px] font-semibold text-white">
+                {c.naoLidas}
+              </span>
+            ) : null}
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Conversa ainda sem cliente: vincular a um da carteira do vendedor desta
+ * conversa — a mesma rota e as mesmas regras da tela de Atendimento (só o
+ * dono vincula; a carteira é conferida pela API). É o vínculo que autoriza
+ * gravar as próximas mensagens e liberar as ações do cliente.
+ */
+function VincularConversa({ conversa }: { conversa: WhatsappConversa }) {
+  const queryClient = useQueryClient();
+  const abrir = useAtendimentoJanelaStore((s) => s.abrir);
+  const [clienteId, setClienteId] = useState<string | null>(null);
+  const vincular = useMutation({
+    mutationFn: (destino: string) =>
+      apiFetch(`/whatsapp/conversas/${conversa.id}/vinculo`, {
+        method: "PUT",
+        body: {
+          clienteId: destino,
+          ignorar: false,
+          tipo: conversa.contato.tipo ?? "geral",
+        },
+      }),
+    onSuccess: (_dados, destino) => {
+      toast.success("Conversa vinculada ao cliente");
+      void queryClient.invalidateQueries({ queryKey: ["whatsapp-conversas"] });
+      void queryClient.invalidateQueries({ queryKey: ["whatsapp-conversa"] });
+      abrir({ id: destino, nome: nomeDaConversa(conversa), conversaId: conversa.id });
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Falha ao vincular"),
+  });
+
+  return (
+    <div className="shrink-0 space-y-2 border-b border-amber-500/30 bg-amber-500/10 p-3">
+      <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+        Conversa sem cliente — vincule para gravar as próximas mensagens e liberar
+        as ações do cliente.
+      </p>
+      <div className="flex gap-2">
+        <div className="min-w-0 flex-1">
+          <ClienteCombobox
+            value={clienteId}
+            onChange={setClienteId}
+            vendedorId={conversa.vendedorId}
+          />
+        </div>
+        <Button
+          size="sm"
+          disabled={!clienteId || vincular.isPending}
+          onClick={() => clienteId && vincular.mutate(clienteId)}
+        >
+          Vincular
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -120,7 +281,8 @@ function ConteudoAtendimento({
   clienteId,
   conversaId,
 }: {
-  clienteId: string;
+  /** Nulo quando a conversa foi aberta pela lista e ainda não tem cliente. */
+  clienteId: string | null;
   /** Conversa indicada por quem abriu; sem ela, a mais recente do cliente. */
   conversaId: string | null;
 }) {
@@ -138,9 +300,9 @@ function ConteudoAtendimento({
     queryFn: () =>
       apiFetch<{ total: number; itens: WhatsappConversa[] }>(
         "/whatsapp/conversas",
-        { query: { sessaoId: sessaoId ?? undefined, clienteId, tamanho: 1 } },
+        { query: { sessaoId: sessaoId ?? undefined, clienteId: clienteId ?? undefined, tamanho: 1 } },
       ),
-    enabled: !!empresaId && !!sessaoId && !conversaId,
+    enabled: !!empresaId && !!sessaoId && !conversaId && !!clienteId,
   });
   // A conversa indicada vem pelo id, com a mesma chave da tela de Atendimento.
   // A API só a entrega se for da instância do próprio usuário.
@@ -187,6 +349,14 @@ function ConteudoAtendimento({
   const conectada = sessao.data.status === "conectada";
 
   if (!conversa) {
+    if (!clienteId) {
+      return (
+        <Aviso
+          titulo="Conversa não encontrada"
+          texto="Ela pode ter sido arquivada. Volte para a lista de conversas."
+        />
+      );
+    }
     return (
       <VincularWhatsapp
         clienteId={clienteId}
@@ -197,11 +367,13 @@ function ConteudoAtendimento({
   }
 
   return (
-    <div className="min-h-0 flex-1">
+    <div className="flex min-h-0 flex-1 flex-col">
+      {conversa.clienteId ? null : <VincularConversa conversa={conversa} />}
+      <div className="min-h-0 flex-1">
       <Conversa
         conversaId={conversa.id}
         conversa={conversa}
-        clienteId={clienteId}
+        clienteId={conversa.clienteId}
         somenteConsulta={
           !conectada
             ? { vendedorNome: sessao.data.vendedorNome, motivo: "desconectado" }
@@ -212,6 +384,7 @@ function ConteudoAtendimento({
         // Sem contato, posição e orçamento: a janela abre por cima da Posição de
         // Cliente, que já tem os três, e nada aqui deve tirar o vendedor dela.
       />
+      </div>
     </div>
   );
 }
@@ -573,4 +746,21 @@ function VincularWhatsapp({
       </Tabs>
     </div>
   );
+}
+
+/**
+ * Quantas conversas têm mensagem não lida — o número no ícone do WhatsApp.
+ * A chave começa por "whatsapp-conversas": ler uma conversa (que invalida
+ * essa família) atualiza o número na hora.
+ */
+export function useNaoLidasWhatsapp(habilitado: boolean) {
+  const empresaId = useAuthStore((s) => s.user?.empresaAtivaId);
+  const consulta = useQuery({
+    queryKey: ["whatsapp-conversas", empresaId, "nao-lidas"],
+    queryFn: () =>
+      apiFetch<{ conversas: number }>("/whatsapp/atendimento/nao-lidas"),
+    enabled: habilitado && !!empresaId,
+    refetchInterval: 20000,
+  });
+  return consulta.data?.conversas ?? 0;
 }

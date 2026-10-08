@@ -4,7 +4,8 @@ import { create } from "zustand";
 import { useAgenteUiStore } from "@/stores/agente-ui-store";
 
 interface ClienteDaJanela {
-  id: string;
+  /** Nulo para conversa ainda sem cliente — aberta pela lista da aba. */
+  id: string | null;
   nome: string;
   /**
    * A conversa a abrir, quando quem chama sabe qual é — o cliente pode ter
@@ -25,6 +26,8 @@ interface AtendimentoJanelaState {
   cliente: ClienteDaJanela | null;
   /** Abre a janela já na aba WhatsApp, com a conversa deste cliente. */
   abrir: (cliente: ClienteDaJanela) => void;
+  /** Volta da conversa para a lista de conversas da aba. */
+  limpar: () => void;
 }
 
 /** Só do momento: nada é persistido, reabrir o sistema começa sem cliente. */
@@ -36,6 +39,9 @@ export const useAtendimentoJanelaStore = create<AtendimentoJanelaState>()(
       const ui = useAgenteUiStore.getState();
       ui.setAba("whatsapp");
       ui.abrir();
+    },
+    limpar: () => {
+      set({ cliente: null });
     },
   }),
 );
