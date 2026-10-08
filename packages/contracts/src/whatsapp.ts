@@ -529,6 +529,16 @@ export const whatsappEventoAtendimentoSchema = z.object({
   executadaPorNome: z.string().nullable(),
   criadaEm: z.string().datetime(),
 });
+export const whatsappAnotarSchema = z.object({
+  texto: z
+    .string()
+    .trim()
+    .min(1, "Escreva a anotação")
+    .max(2000, "Use até 2000 caracteres")
+    .describe("Anotação interna: fica na conversa e no histórico, não vai ao cliente"),
+});
+export type WhatsappAnotar = z.infer<typeof whatsappAnotarSchema>;
+
 export type WhatsappEventoAtendimento = z.infer<
   typeof whatsappEventoAtendimentoSchema
 >;

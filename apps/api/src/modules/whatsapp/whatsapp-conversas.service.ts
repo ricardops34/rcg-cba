@@ -1475,45 +1475,100 @@ export class WhatsappConversasService {
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       await this.conversaNoEscopo(tx, empresaId, user, conversaId);
-      const eventos = await tx.whatsappAcaoRegistro.findMany({
-        where: { conversaId },
-        orderBy: { criadaEm: 'asc' },
-      });
-      const usuarioIds = [
-        ...new Set(
-          eventos
-            .map((evento) => evento.executadaPor)
-            .filter((id): id is string => !!id),
-        ),
-      ];
-      const usuarios = usuarioIds.length
-        ? await tx.usuario.findMany({
-            where: { id: { in: usuarioIds } },
-            select: { id: true, nome: true },
-          })
-        : [];
-      const nomePorId = new Map(
-        usuarios.map((usuario) => [usuario.id, usuario.nome]),
-      );
-
-      return eventos.map((evento) => ({
-        id: evento.id,
-        acao: evento.acao,
-        orcamentoId: evento.orcamentoId,
-        atividadeId: evento.atividadeId,
-        tituloReceberId: evento.tituloReceberId,
-        detalhe:
-          evento.detalhe &&
-          typeof evento.detalhe === 'object' &&
-          !Array.isArray(evento.detalhe)
-            ? evento.detalhe
-            : null,
-        executadaPorNome: evento.executadaPor
-          ? (nomePorId.get(evento.executadaPor) ?? null)
-          : null,
-        criadaEm: evento.criadaEm,
-      }));
+      return this.eventosDaConversa(tx, conversaId);
     });
+  }
+
+  /**
+   * Os mesmos eventos, no Histórico do WhatsApp (gerencial, só leitura).
+   *
+   * É onde a anotação interna "fica no histórico": o supervisor lê a
+   * conversa da equipe com as anotações de quem atendeu, no mesmo recorte de
+   * escopo das mensagens dessa tela.
+   */
+  async eventosGerencial(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      await this.conversaNoEscopoGerencial(tx, empresaId, user, conversaId);
+      return this.eventosDaConversa(tx, conversaId);
+    });
+  }
+
+  /**
+   * Anotação interna na conversa: aparece na linha do tempo e no histórico,
+   * e **não vai ao cliente** — não passa pelo provedor em ponto nenhum.
+   *
+   * Mora em `whatsapp_acoes` (acao `anotacao`), a linha de eventos internos
+   * da conversa, e por isso também não entra no histórico que a sugestão de
+   * resposta manda ao provedor de IA, que lê só as mensagens. É registro: não
+   * se edita nem se apaga, como o resto dessa tabela.
+   *
+   * Vale para a instância do próprio usuário (mesmo recorte do Atendimento) e
+   * não exige aparelho conectado — anotar não envia nada.
+   */
+  async anotar(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    texto: string,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      await this.conversaNoEscopo(tx, empresaId, user, conversaId);
+      await tx.whatsappAcaoRegistro.create({
+        data: {
+          empresaId,
+          conversaId,
+          acao: 'anotacao',
+          detalhe: { texto },
+          executadaPor: user.id,
+        },
+      });
+      return this.eventosDaConversa(tx, conversaId);
+    });
+  }
+
+  private async eventosDaConversa(tx: TenantTx, conversaId: string) {
+    const eventos = await tx.whatsappAcaoRegistro.findMany({
+      where: { conversaId },
+      orderBy: { criadaEm: 'asc' },
+    });
+    const usuarioIds = [
+      ...new Set(
+        eventos
+          .map((evento) => evento.executadaPor)
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    const usuarios = usuarioIds.length
+      ? await tx.usuario.findMany({
+          where: { id: { in: usuarioIds } },
+          select: { id: true, nome: true },
+        })
+      : [];
+    const nomePorId = new Map(
+      usuarios.map((usuario) => [usuario.id, usuario.nome]),
+    );
+
+    return eventos.map((evento) => ({
+      id: evento.id,
+      acao: evento.acao,
+      orcamentoId: evento.orcamentoId,
+      atividadeId: evento.atividadeId,
+      tituloReceberId: evento.tituloReceberId,
+      detalhe:
+        evento.detalhe &&
+        typeof evento.detalhe === 'object' &&
+        !Array.isArray(evento.detalhe)
+          ? evento.detalhe
+          : null,
+      executadaPorNome: evento.executadaPor
+        ? (nomePorId.get(evento.executadaPor) ?? null)
+        : null,
+      criadaEm: evento.criadaEm,
+    }));
   }
 
   /**

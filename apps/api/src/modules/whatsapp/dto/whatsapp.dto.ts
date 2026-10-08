@@ -2,6 +2,7 @@ import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import {
   whatsappAgendarMensagemSchema,
+  whatsappAnotarSchema,
   whatsappAgendarVisitaSchema,
   whatsappConectarSchema,
   whatsappConectarEmpresaSchema,
@@ -93,4 +94,4 @@ export class WhatsappRecadoEditarDto extends createZodDto(
   whatsappRecadoEditarSchema,
 ) {}
 
-
+export class WhatsappAnotarDto extends createZodDto(whatsappAnotarSchema) {}

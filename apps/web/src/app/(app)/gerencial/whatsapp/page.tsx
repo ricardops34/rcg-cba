@@ -18,6 +18,7 @@ import Link from "next/link";
 import type {
   WhatsappConversa,
   WhatsappHistoricoFiltros,
+  WhatsappEventoAtendimento,
   WhatsappMensagem,
 } from "@plataforma/contracts";
 import { apiFetch, assetUrl } from "@/lib/api-client";
@@ -25,6 +26,7 @@ import { avatarColorClass, initials } from "@/lib/avatar-color";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { MensagemBolha } from "@/components/whatsapp/mensagem-bolha";
+import { EventoComercial } from "@/components/whatsapp/conversa-painel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -153,6 +155,28 @@ export default function HistoricoWhatsappPage() {
       ),
     enabled: !!empresaId && !!conversaId,
   });
+
+  // Ações comerciais e anotações internas, na mesma linha do tempo. O rolo
+  // traz as últimas 100 mensagens: evento anterior à primeira delas ficaria
+  // solto no topo, fora de contexto, então fica de fora junto com elas.
+  const { data: eventos = [] } = useQuery<WhatsappEventoAtendimento[]>({
+    queryKey: ["whatsapp-gerencial-eventos", empresaId, conversaId],
+    queryFn: () =>
+      apiFetch<WhatsappEventoAtendimento[]>(
+        `/whatsapp/gerencial/conversas/${conversaId}/eventos`,
+      ),
+    enabled: !!empresaId && !!conversaId,
+  });
+  const linhaDoTempo = useMemo(() => {
+    const inicio =
+      mensagens.length >= 100 ? new Date(mensagens[0].criadaEm).getTime() : 0;
+    return [
+      ...mensagens.map((item) => ({ tipo: "mensagem" as const, data: item.criadaEm, item })),
+      ...eventos
+        .filter((e) => new Date(e.criadaEm).getTime() >= inicio)
+        .map((item) => ({ tipo: "evento" as const, data: item.criadaEm, item })),
+    ].sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
+  }, [mensagens, eventos]);
 
   // Ao abrir a conversa, mostra o fim — a mensagem mais recente —, como no
   // Atendimento. A rolagem é do próprio rolo (ver a grade de altura fixa).
@@ -587,20 +611,24 @@ export default function HistoricoWhatsappPage() {
                     </p>
                   </div>
                 ) : (
-                  mensagens.map((m) => (
-                    <MensagemBolha
-                      key={m.id}
-                      mensagem={m}
-                      autorNome={m.autorNome}
-                      citada={
-                        m.respondeuA
-                          ? mensagens.find((item) => item.externoId === m.respondeuA) ?? null
-                          : null
-                      }
-                      conversaId={conversaSelecionada.id}
-                      somenteLeitura={true}
-                    />
-                  ))
+                  linhaDoTempo.map((entrada) =>
+                    entrada.tipo === "evento" ? (
+                      <EventoComercial key={`evento-${entrada.item.id}`} evento={entrada.item} />
+                    ) : (
+                      <MensagemBolha
+                        key={entrada.item.id}
+                        mensagem={entrada.item}
+                        autorNome={entrada.item.autorNome}
+                        citada={
+                          entrada.item.respondeuA
+                            ? mensagens.find((item) => item.externoId === entrada.item.respondeuA) ?? null
+                            : null
+                        }
+                        conversaId={conversaSelecionada.id}
+                        somenteLeitura={true}
+                      />
+                    ),
+                  )
                 )}
               </div>
 

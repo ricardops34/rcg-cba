@@ -16,6 +16,7 @@ import {
   PanelLeftOpen,
   Plug,
   RefreshCw,
+  StickyNote,
   TriangleAlert,
   UserRound,
 } from "lucide-react";
@@ -443,7 +444,38 @@ export function Conversa({
 }
 
 
-function EventoComercial({ evento }: { evento: WhatsappEventoAtendimento }) {
+/**
+ * Anotação interna: nota de quem atende, na linha do tempo da conversa. Visual
+ * de bilhete, e não de balão, para nunca ser confundida com mensagem — ela
+ * não foi ao cliente.
+ */
+function Anotacao({ evento }: { evento: WhatsappEventoAtendimento }) {
+  const texto = typeof evento.detalhe?.texto === "string" ? evento.detalhe.texto : "";
+  return (
+    <div className="mx-auto w-full max-w-[85%] rounded-md border border-amber-400/50 bg-amber-50 px-3 py-2 text-sm shadow-xs dark:border-amber-500/30 dark:bg-amber-950/40">
+      <div className="mb-1 flex items-center gap-1.5 text-xs text-amber-800 dark:text-amber-300">
+        <StickyNote className="size-3.5 shrink-0" />
+        <span className="font-medium">Anotação interna</span>
+        <span className="text-amber-700/80 dark:text-amber-300/70">
+          · não enviada ao cliente
+          {evento.executadaPorNome ? ` · ${evento.executadaPorNome}` : ""}
+        </span>
+        <time className="ml-auto shrink-0 tabular-nums">
+          {new Date(evento.criadaEm).toLocaleString("pt-BR", {
+            day: "2-digit",
+            month: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </time>
+      </div>
+      <p className="whitespace-pre-wrap break-words text-foreground">{texto}</p>
+    </div>
+  );
+}
+
+export function EventoComercial({ evento }: { evento: WhatsappEventoAtendimento }) {
+  if (evento.acao === "anotacao") return <Anotacao evento={evento} />;
   const titulos: Record<string, string> = {
     orcamento: "Orçamento enviado ao cliente",
     agendamento: "Retorno adicionado à agenda",

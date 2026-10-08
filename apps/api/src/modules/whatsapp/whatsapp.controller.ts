@@ -36,6 +36,7 @@ import {
   WhatsappConversaQueryDto,
   WhatsappHistoricoConversaQueryDto,
   WhatsappAgendarMensagemDto,
+  WhatsappAnotarDto,
   WhatsappAgendarVisitaDto,
   WhatsappEnviarArquivoDto,
   WhatsappEnviarBoletoDto,
@@ -64,6 +65,7 @@ import {
   CurrentUser,
   type AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
+import { ApiBodyExample } from '../../common/decorators/api-body-example.decorator';
 
 import { WhatsappRespostasRapidasService } from './whatsapp-respostas-rapidas.service';
 
@@ -699,6 +701,39 @@ export class WhatsappController {
       id,
       query,
     );
+  }
+
+  @ApiOperation({
+    summary: 'Eventos e anotações de uma conversa no histórico gerencial',
+    description:
+      'Ações comerciais e anotações internas da conversa, somente leitura, no mesmo ' +
+      'escopo das mensagens do histórico gerencial.',
+  })
+  @RequirePermission('whatsapp-historico', 'visualizar')
+  @Get('gerencial/conversas/:id/eventos')
+  gerencialEventos(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversas.eventosGerencial(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Adicionar anotação interna à conversa',
+    description:
+      'Fica na linha do tempo da conversa e no histórico gerencial; não é enviada ao ' +
+      'cliente nem ao provedor de IA. Não exige aparelho conectado. Devolve os eventos ' +
+      'da conversa. Requer whatsapp-conversas.cadastrar.',
+  })
+  @ApiBodyExample({ texto: 'Cliente pediu retorno depois do dia 15.' })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Post('conversas/:id/anotacoes')
+  anotar(
+    @Param('id') id: string,
+    @Body() dto: WhatsappAnotarDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversas.anotar(user.empresaAtivaId, user, id, dto.texto);
   }
 
   @ApiOperation({

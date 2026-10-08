@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { AnotacaoDialog } from "@/components/whatsapp/anotacao-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   BarChart3,
   Clock,
+  StickyNote,
   FileText,
   Link2,
   ListChecks,
@@ -102,6 +104,7 @@ export function Composer({
   const queryClient = useQueryClient();
   const [texto, setTexto] = useState("");
   const [agendando, setAgendando] = useState(false);
+  const [anotando, setAnotando] = useState(false);
   // Janela de 24h fechada (só a Cloud API tem essa regra — a própria Meta
   // recusa o envio de texto livre). Reativo: só liga quando um envio de fato
   // é recusado com o código específico, e volta a desligar ao trocar de
@@ -279,8 +282,8 @@ export function Composer({
               variant="ghost"
               size="icon"
               disabled={ocupado}
-              aria-label="Anexar arquivo ou agendar mensagem"
-              title="Anexar ou agendar"
+              aria-label="Anexar arquivo, agendar mensagem ou anotar"
+              title="Anexar, agendar ou anotar"
               className="size-9 rounded-full text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10 shrink-0"
             >
               <Plus className="size-5" />
@@ -313,6 +316,15 @@ export function Composer({
                 <Clock className="size-4" />
               </span>
               <span className="font-medium text-xs">Agendar mensagem</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => setAnotando(true)}
+              className="gap-2.5 py-2 cursor-pointer rounded-lg"
+            >
+              <span className="flex size-7 items-center justify-center rounded-full bg-amber-500/10 text-amber-600">
+                <StickyNote className="size-4" />
+              </span>
+              <span className="font-medium text-xs">Anotação interna</span>
             </DropdownMenuItem>
             {/* Recursos interativos da Evolution GO 0.7.2. */}
             <DropdownMenuSeparator />
@@ -483,6 +495,12 @@ export function Composer({
           if (!aberto) setInterativo(null);
         }}
         onEnviada={onCancelarResposta}
+      />
+
+      <AnotacaoDialog
+        conversaId={conversaId}
+        aberto={anotando}
+        onOpenChange={setAnotando}
       />
 
       <AgendarMensagemDialog
