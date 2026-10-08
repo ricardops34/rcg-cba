@@ -1076,11 +1076,15 @@ export class WhatsappConversasService {
       const usuarios = usuarioIds.length
         ? await tx.usuario.findMany({
             where: { id: { in: usuarioIds } },
-            select: { id: true, nome: true },
+            select: { id: true, nome: true, nomeWhatsapp: true },
           })
         : [];
       const nomeUsuario = new Map(
-        usuarios.map((usuario) => [usuario.id, usuario.nome]),
+        // O mesmo nome que assinou no aparelho do cliente (ver nomeDeAssinatura).
+        usuarios.map((usuario) => [
+          usuario.id,
+          usuario.nomeWhatsapp?.trim() || usuario.nome,
+        ]),
       );
       const nomeContato =
         conversa.contato.nomeExibicao ??
@@ -1144,11 +1148,15 @@ export class WhatsappConversasService {
       const usuarios = usuarioIds.length
         ? await tx.usuario.findMany({
             where: { id: { in: usuarioIds } },
-            select: { id: true, nome: true },
+            select: { id: true, nome: true, nomeWhatsapp: true },
           })
         : [];
       const nomeUsuario = new Map(
-        usuarios.map((usuario) => [usuario.id, usuario.nome]),
+        // O mesmo nome que assinou no aparelho do cliente (ver nomeDeAssinatura).
+        usuarios.map((usuario) => [
+          usuario.id,
+          usuario.nomeWhatsapp?.trim() || usuario.nome,
+        ]),
       );
       const nomeContato =
         conversa.contato.nomeExibicao ??

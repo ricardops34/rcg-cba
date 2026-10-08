@@ -243,7 +243,8 @@ model Usuario {
   codigoErp      String?
   nomeReduzido   String?
   // Assina as mensagens de WhatsApp enviadas pela plataforma ("*Ricardo:*").
-  // Vazio, assina com `nome`. Só o que o cliente vê: a tela segue com `nome`.
+  // Vazio, assina com `nome`. A tela do atendimento mostra o mesmo nome.
+  // Anotação interna e auditoria seguem com `nome`.
   nomeWhatsapp   String?
   telefone       String?
   celular        String?

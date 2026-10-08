@@ -15,8 +15,8 @@ export function mensagemComAutor(nome: string, texto: string): string {
  * um, ou o nome completo.
  *
  * Lido do banco na hora do envio, e não do token: o `user.nome` vem do JWT e
- * só mudaria no próximo login. É só a assinatura que o cliente vê — a tela
- * da plataforma continua mostrando quem enviou pelo nome do cadastro.
+ * só mudaria no próximo login. O balão da tela do atendimento usa o mesmo
+ * nome, para o vendedor ver o que o cliente viu.
  */
 export async function nomeDeAssinatura(
   tx: TenantTx,
