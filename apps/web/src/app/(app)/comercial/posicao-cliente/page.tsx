@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Wrench } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -14,6 +14,11 @@ import {
   vendedorFiltroLabel,
 } from "@/hooks/use-vendedores-escopo";
 import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
+import {
+  guardarRolagem,
+  rolagemGuardada,
+  useEstadoDaTela,
+} from "@/hooks/use-estado-da-tela";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
@@ -94,27 +99,50 @@ function tituloIndicador(
 // detalhada — agrupado de notas, títulos e mix.
 export default function PosicaoClientePage() {
   const router = useRouter();
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [sortBy, setSortBy] = useState("dias");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
-  const [status, setStatus] = useState<StatusFilterValue>("ativos");
-  const [uf, setUf] = useState<string | undefined>(undefined);
-  const [municipio, setMunicipio] = useState<string | undefined>(undefined);
-  const [vendedorId, setVendedorId] = useState<string | undefined>(undefined);
-  const [carteira, setCarteira] = useState<SimNaoTodos>("todos");
-  const [diasSemComprar, setDiasSemComprar] = useState<number | undefined>(
+  // Filtros, página e ordenação sobrevivem a abrir a posição detalhada e
+  // voltar — ver `useEstadoDaTela`.
+  const [search, setSearch] = useEstadoDaTela("posicao-cliente:busca", "");
+  const [page, setPage] = useEstadoDaTela("posicao-cliente:pagina", 1);
+  const [pageSize, setPageSize] = useEstadoDaTela("posicao-cliente:tamanho", 10);
+  const [sortBy, setSortBy] = useEstadoDaTela("posicao-cliente:ordem", "dias");
+  const [sortOrder, setSortOrder] = useEstadoDaTela<"asc" | "desc">(
+    "posicao-cliente:sentido",
+    "asc",
+  );
+  const [status, setStatus] = useEstadoDaTela<StatusFilterValue>(
+    "posicao-cliente:status",
+    "ativos",
+  );
+  const [uf, setUf] = useEstadoDaTela<string | undefined>("posicao-cliente:uf", undefined);
+  const [municipio, setMunicipio] = useEstadoDaTela<string | undefined>(
+    "posicao-cliente:municipio",
     undefined,
   );
-  const [temTituloVencido, setTemTituloVencido] = useState<boolean | undefined>(
+  const [vendedorId, setVendedorId] = useEstadoDaTela<string | undefined>(
+    "posicao-cliente:vendedor",
+    undefined,
+  );
+  const [carteira, setCarteira] = useEstadoDaTela<SimNaoTodos>(
+    "posicao-cliente:carteira",
+    "todos",
+  );
+  const [diasSemComprar, setDiasSemComprar] = useEstadoDaTela<number | undefined>(
+    "posicao-cliente:dias",
+    undefined,
+  );
+  const [temTituloVencido, setTemTituloVencido] = useEstadoDaTela<boolean | undefined>(
+    "posicao-cliente:vencidos",
     undefined,
   );
   // Aviso de comodato sem consumo e baixas (ver comodato-sql.ts na API). O
-  // link da ferramenta de IA abre a lista já filtrada: ?comodatoSemConsumo=true.
+  // link da ferramenta de IA abre a lista já filtrada: ?comodatoSemConsumo=true
+  // — e esse filtro da URL vale acima do que estava guardado.
   const searchParams = useSearchParams();
-  const [comodatoSemConsumo, setComodatoSemConsumo] = useState<true | undefined>(
-    searchParams.get("comodatoSemConsumo") === "true" ? true : undefined,
+  const comodatoNaUrl = searchParams.get("comodatoSemConsumo") === "true";
+  const [comodatoSemConsumo, setComodatoSemConsumo] = useEstadoDaTela<true | undefined>(
+    "posicao-cliente:comodato",
+    comodatoNaUrl ? true : undefined,
+    { ignorarGuardado: comodatoNaUrl },
   );
 
   // Visualizar/Alterar Cliente e Orçamentos abrem em cortina lateral
@@ -210,6 +238,21 @@ export default function PosicaoClientePage() {
       ...(temTituloVencido !== undefined ? { temTituloVencido } : {}),
       ...(comodatoSemConsumo ? { comodatoSemConsumo } : {}),
     });
+
+  // Volta ao mesmo ponto da lista. Quem rola é o <main> do layout, e numa
+  // troca de rota o navegador não restaura a rolagem dele sozinho.
+  useEffect(() => {
+    const main = document.querySelector("main");
+    return () => {
+      if (main) guardarRolagem("posicao-cliente", main.scrollTop);
+    };
+  }, []);
+  const temDados = Boolean(data);
+  useEffect(() => {
+    const topo = rolagemGuardada("posicao-cliente");
+    const main = document.querySelector("main");
+    if (temDados && main && topo) main.scrollTop = topo;
+  }, [temDados]);
 
   // "Ativos" é o status inicial da tela — não conta como filtro "aplicado"
   // pro indicador do botão Filtros; só sai desse estado padrão se o usuário
