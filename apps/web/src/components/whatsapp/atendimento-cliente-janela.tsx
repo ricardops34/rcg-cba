@@ -99,7 +99,7 @@ export function AbaWhatsapp() {
           todas as conversas, use a tela de Atendimento.
         </p>
         <Button asChild variant="outline" size="sm" className="gap-1.5">
-          <Link href="/comercial/atendimento">
+          <Link href="/comercial/atendimento" target="_blank" rel="noopener">
             <ExternalLink className="size-3.5" /> Abrir Atendimento
           </Link>
         </Button>
@@ -107,10 +107,23 @@ export function AbaWhatsapp() {
     );
   }
 
-  return <ConteudoAtendimento key={cliente.id} clienteId={cliente.id} />;
+  return (
+    <ConteudoAtendimento
+      key={`${cliente.id}:${cliente.conversaId ?? ""}`}
+      clienteId={cliente.id}
+      conversaId={cliente.conversaId ?? null}
+    />
+  );
 }
 
-function ConteudoAtendimento({ clienteId }: { clienteId: string }) {
+function ConteudoAtendimento({
+  clienteId,
+  conversaId,
+}: {
+  clienteId: string;
+  /** Conversa indicada por quem abriu; sem ela, a mais recente do cliente. */
+  conversaId: string | null;
+}) {
   const empresaId = useAuthStore((s) => s.user?.empresaAtivaId);
   const podeEnviar = useAuthStore(
     (s) => s.user?.permissoes.includes(PERMISSAO_ENVIAR) ?? false,
@@ -127,10 +140,18 @@ function ConteudoAtendimento({ clienteId }: { clienteId: string }) {
         "/whatsapp/conversas",
         { query: { sessaoId: sessaoId ?? undefined, clienteId, tamanho: 1 } },
       ),
-    enabled: !!empresaId && !!sessaoId,
+    enabled: !!empresaId && !!sessaoId && !conversaId,
   });
+  // A conversa indicada vem pelo id, com a mesma chave da tela de Atendimento.
+  // A API só a entrega se for da instância do próprio usuário.
+  const indicada = useQuery({
+    queryKey: ["whatsapp-conversa", empresaId, conversaId],
+    queryFn: () => apiFetch<WhatsappConversa>(`/whatsapp/conversas/${conversaId}`),
+    enabled: !!empresaId && !!sessaoId && !!conversaId,
+  });
+  const busca = conversaId ? indicada : conversas;
 
-  if (sessao.isLoading || (sessaoId && conversas.isLoading)) {
+  if (sessao.isLoading || (sessaoId && busca.isLoading)) {
     return (
       <div className="flex flex-1 items-center justify-center">
         <Loader2 className="size-6 animate-spin text-[#00A884]" />
@@ -147,20 +168,22 @@ function ConteudoAtendimento({ clienteId }: { clienteId: string }) {
     );
   }
 
-  if (conversas.error) {
+  if (busca.error) {
     return (
       <Aviso
         titulo="Não foi possível buscar a conversa"
         texto={
-          conversas.error instanceof ApiError
-            ? conversas.error.message
+          busca.error instanceof ApiError
+            ? busca.error.message
             : "Tente novamente em instantes."
         }
       />
     );
   }
 
-  const conversa = conversas.data?.itens[0] ?? null;
+  const conversa = conversaId
+    ? (indicada.data ?? null)
+    : (conversas.data?.itens[0] ?? null);
   const conectada = sessao.data.status === "conectada";
 
   if (!conversa) {
@@ -202,7 +225,7 @@ function Aviso({ titulo, texto }: { titulo: string; texto: string }) {
       <p className="font-semibold">{titulo}</p>
       <p className="max-w-sm text-sm text-muted-foreground">{texto}</p>
       <Button asChild variant="outline" size="sm" className="gap-1.5">
-        <Link href="/comercial/atendimento">
+        <Link href="/comercial/atendimento" target="_blank" rel="noopener">
           <ExternalLink className="size-3.5" /> Abrir Atendimento
         </Link>
       </Button>

@@ -6,6 +6,11 @@ import { useAgenteUiStore } from "@/stores/agente-ui-store";
 interface ClienteDaJanela {
   id: string;
   nome: string;
+  /**
+   * A conversa a abrir, quando quem chama sabe qual é — o cliente pode ter
+   * mais de um número. Sem ela, abre a mais recente do cliente.
+   */
+  conversaId?: string;
 }
 
 interface AtendimentoJanelaState {

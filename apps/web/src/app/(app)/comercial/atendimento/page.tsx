@@ -1198,6 +1198,8 @@ function ConteudoFerramenta({
   modo: "posicao" | "orcamento";
   onFechar: () => void;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
   return (
     <div className="min-w-0 p-4">
       {modo === "posicao" ? (
@@ -1205,6 +1207,10 @@ function ConteudoFerramenta({
           clienteId={clienteId}
           mostrarVoltar={false}
           compacto
+          // Aqui o "Abrir" do contato troca a conversa ao lado, sem janela.
+          aoAbrirConversa={(id) =>
+            router.replace(`${pathname}?conversa=${id}`, { scroll: false })
+          }
         />
       ) : (
         <OrcamentoFormContent

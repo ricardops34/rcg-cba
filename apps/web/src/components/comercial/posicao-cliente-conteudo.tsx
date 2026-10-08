@@ -32,6 +32,7 @@ import {
   useSmsDisponivel,
 } from "@/components/comercial/segunda-via";
 import { HistoricoAtendimento } from "@/components/comercial/historico-atendimento";
+import { useAtendimentoJanelaStore } from "@/stores/atendimento-janela-store";
 import { ArrowLeft, Loader2, Mail, MessageCircle, MessageSquareText, Search, Wrench } from "lucide-react";
 
 const LIST_ROUTE = "/comercial/posicao-cliente";
@@ -413,15 +414,23 @@ export function PosicaoClienteConteudo({
   clienteId,
   mostrarVoltar = true,
   compacto = false,
+  aoAbrirConversa,
 }: {
   clienteId: string;
   /** No painel do atendimento não há para onde voltar — a lista fica ao lado. */
   mostrarVoltar?: boolean;
   /** Usa duas colunas nos blocos que ficam encaixados na lateral da conversa. */
   compacto?: boolean;
+  /**
+   * O "Abrir" dos contatos de WhatsApp. Sem ele (a Posição de Cliente), abre a
+   * janela de atendimento por cima da tela — a posição continua aberta atrás.
+   * A tela de Atendimento passa o dela, que troca a conversa ao lado.
+   */
+  aoAbrirConversa?: (conversaId: string) => void;
 }) {
   const id = clienteId;
   const router = useRouter();
+  const abrirAtendimento = useAtendimentoJanelaStore((s) => s.abrir);
 
   const [notaSearch, setNotaSearch] = useState("");
   const [notaTipo, setNotaTipo] = useState<NotaTipoFiltro>("todas");
@@ -696,7 +705,13 @@ export function PosicaoClienteConteudo({
                       size="sm"
                       className="w-fit gap-1.5"
                       onClick={() =>
-                        router.push(`/comercial/atendimento?conversa=${contato.conversaId}`)
+                        aoAbrirConversa
+                          ? aoAbrirConversa(contato.conversaId)
+                          : abrirAtendimento({
+                              id: cliente.id,
+                              nome: cliente.razaoSocial,
+                              conversaId: contato.conversaId,
+                            })
                       }
                     >
                       <MessageCircle className="size-4" />
