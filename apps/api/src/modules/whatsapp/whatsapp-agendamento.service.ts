@@ -237,9 +237,13 @@ export class WhatsappAgendamentoService
         });
         const autor = await tx.usuario.findFirst({
           where: { id: mensagem.criadaPor },
-          select: { nome: true },
+          select: { nome: true, nomeWhatsapp: true },
         });
-        return { ...mensagem, autorNome: autor?.nome ?? 'Atendente' };
+        // Mesma assinatura do envio na hora: o nome no WhatsApp, se houver.
+        return {
+          ...mensagem,
+          autorNome: autor?.nomeWhatsapp?.trim() || autor?.nome || 'Atendente',
+        };
       });
 
       if (agendada.conversa.sessao.status !== 'conectada') {

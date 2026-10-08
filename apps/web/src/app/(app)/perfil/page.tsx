@@ -21,19 +21,29 @@ export default function PerfilPage() {
   const queryClient = useQueryClient();
   const [nomeEditado, setNome] = useState<string | undefined>();
   const [nascimentoEditado, setNascimento] = useState<string | undefined>();
+  const [nomeWhatsappEditado, setNomeWhatsapp] = useState<string | undefined>();
   const nome = nomeEditado ?? user?.nome ?? "";
   const nascimento = nascimentoEditado ?? user?.dataNascimento ?? "";
-  const mudou = nome.trim() !== user?.nome || nascimento !== (user?.dataNascimento ?? "");
+  const nomeWhatsapp = nomeWhatsappEditado ?? user?.nomeWhatsapp ?? "";
+  const mudou =
+    nome.trim() !== user?.nome ||
+    nascimento !== (user?.dataNascimento ?? "") ||
+    nomeWhatsapp.trim() !== (user?.nomeWhatsapp ?? "");
   const salvarDados = useMutation({
     mutationFn: () =>
       apiFetch<CurrentUser>("/auth/me", {
         method: "PATCH",
-        body: { nome: nome.trim(), ...(nascimento ? { dataNascimento: nascimento } : {}) },
+        body: {
+          nome: nome.trim(),
+          nomeWhatsapp: nomeWhatsapp.trim(),
+          ...(nascimento ? { dataNascimento: nascimento } : {}),
+        },
       }),
     onSuccess: (atualizado) => {
       setUser(atualizado);
       setNome(undefined);
       setNascimento(undefined);
+      setNomeWhatsapp(undefined);
       queryClient.setQueryData(["auth", "me"], atualizado);
       toast.success("Dados atualizados");
     },
@@ -80,7 +90,26 @@ export default function PerfilPage() {
                   aria-label="Nome do perfil"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Este nome identifica você no atendimento e assina as mensagens enviadas ao cliente.
+                  Este nome identifica você na plataforma e no atendimento.
+                </p>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="nome-whatsapp">Nome no WhatsApp</FieldLabel>
+                <Input
+                  id="nome-whatsapp"
+                  value={nomeWhatsapp}
+                  onChange={(event) => setNomeWhatsapp(event.target.value)}
+                  maxLength={40}
+                  placeholder={user?.nome}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Assina as mensagens que você envia ao cliente pela plataforma
+                  {nomeWhatsapp.trim() ? (
+                    <>
+                      {" "}— ele verá <span className="font-medium">*{nomeWhatsapp.trim()}:*</span>
+                    </>
+                  ) : null}
+                  . Em branco, assina com o nome completo.
                 </p>
               </Field>
               <Field>

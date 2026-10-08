@@ -216,6 +216,7 @@ export class AuthController {
       dto.nome,
       dto.whatsapp,
       dto.dataNascimento,
+      dto.nomeWhatsapp,
     );
   }
 

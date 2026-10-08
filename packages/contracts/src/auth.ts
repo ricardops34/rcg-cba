@@ -82,6 +82,12 @@ export const updateOwnProfileSchema = z.object({
     "Informe o WhatsApp com DDD (ex.: 65 99999-9999)",
   ).optional(),
   dataNascimento: dataNascimentoSchema.optional(),
+  nomeWhatsapp: z
+    .string()
+    .trim()
+    .max(40, "Use até 40 caracteres")
+    .optional()
+    .describe("Assina as mensagens de WhatsApp; vazio volta a assinar com o nome completo"),
 });
 export type UpdateOwnProfileInput = z.infer<typeof updateOwnProfileSchema>;
 
@@ -126,6 +132,7 @@ export const currentUserSchema = z.object({
   avatarUrl: z.string().nullable(),
   telefoneInstitucional: z.string().nullable(),
   whatsapp: z.string().nullable().optional(),
+  nomeWhatsapp: z.string().nullable().optional().describe("Nome que assina as mensagens de WhatsApp"),
   dataNascimento: z.string().nullable(),
   mustCompleteFirstAccess: z.boolean(),
   email: z.string().email().describe("E-mail do usuário"),

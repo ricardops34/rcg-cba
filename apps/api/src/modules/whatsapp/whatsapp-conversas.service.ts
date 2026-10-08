@@ -59,7 +59,7 @@ import {
   WHATSAPP_INTERATIVOS_SO_COMERCIAL,
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
-import { mensagemComAutor } from './mensagem-com-autor';
+import { mensagemComAutor, nomeDeAssinatura } from './mensagem-com-autor';
 import {
   assinarInterativo,
   prepararInterativo,
@@ -1565,6 +1565,7 @@ export class WhatsappConversasService {
         semAssinatura = true;
       }
 
+      const assinatura = await nomeDeAssinatura(tx, user);
       const enviada = await this.provedores.enviarTexto(
         empresaId,
         conversa.sessaoId,
@@ -1572,7 +1573,7 @@ export class WhatsappConversasService {
           jid: conversa.contato.jid,
           texto: semAssinatura
             ? input.texto
-            : mensagemComAutor(user.nome, input.texto),
+            : mensagemComAutor(assinatura, input.texto),
           respondeuA: input.respondeuA ?? null,
         },
         tx,
@@ -1665,12 +1666,13 @@ export class WhatsappConversasService {
       }
 
       const mensagemPronta = prepararInterativo(input.mensagem);
+      const assinatura = await nomeDeAssinatura(tx, user);
       const enviada = await this.provedores.enviarInterativo(
         empresaId,
         conversa.sessaoId,
         {
           jid: conversa.contato.jid,
-          mensagem: assinarInterativo(user.nome, mensagemPronta),
+          mensagem: assinarInterativo(assinatura, mensagemPronta),
           respondeuA: input.respondeuA ?? null,
         },
         tx,
@@ -1859,6 +1861,7 @@ export class WhatsappConversasService {
       await this.garantirJanelaAberta(empresaId, conversa, tx);
 
       const tipo = this.tipoPorMime(arquivo.mime);
+      const assinatura = await nomeDeAssinatura(tx, user);
       const enviada = await this.provedores.enviarArquivo(
         empresaId,
         conversa.sessaoId,
@@ -1869,8 +1872,8 @@ export class WhatsappConversasService {
             nome: arquivo.nome,
             mime: arquivo.mime,
             legenda: input.legenda
-              ? mensagemComAutor(user.nome, input.legenda)
-              : mensagemComAutor(user.nome, ''),
+              ? mensagemComAutor(assinatura, input.legenda)
+              : mensagemComAutor(assinatura, ''),
             ptt: input.ptt ?? false,
             conteudoBase64: arquivo.conteudo.toString('base64'),
           },
@@ -1979,6 +1982,7 @@ export class WhatsappConversasService {
         );
       }
 
+      const assinatura = await nomeDeAssinatura(tx, user);
       await this.provedores.editarMensagem(
         empresaId,
         conversa.sessaoId,
@@ -1986,7 +1990,7 @@ export class WhatsappConversasService {
           jid: conversa.contato.jid,
           externoId: mensagem.externoId,
           // Mesma assinatura do envio: o cliente vê quem escreveu.
-          texto: mensagemComAutor(user.nome, input.texto),
+          texto: mensagemComAutor(assinatura, input.texto),
         },
         tx,
       );

@@ -774,6 +774,7 @@ export class AuthService {
       avatarUrl: usuario.avatarUrl,
       telefoneInstitucional: usuario.celular ?? usuario.telefone ?? null,
       whatsapp: usuario.celular ?? usuario.telefone ?? null,
+      nomeWhatsapp: usuario.nomeWhatsapp,
       dataNascimento: usuario.dataNascimento?.toISOString().slice(0, 10) ?? null,
       mustCompleteFirstAccess: precisaCompletarPrimeiroAcesso(usuario, usuario),
       email: usuario.email,
@@ -918,6 +919,7 @@ export class AuthService {
     nome: string,
     whatsapp?: string,
     dataNascimento?: string,
+    nomeWhatsapp?: string,
   ) {
     if (dataNascimento !== undefined) {
       await this.gravarDataNascimento(
@@ -932,7 +934,14 @@ export class AuthService {
       }
       await tx.usuario.update({
         where: { id: usuarioId },
-        data: { nome: nome.trim(), updatedBy: usuarioId },
+        data: {
+          nome: nome.trim(),
+          // Vazio limpa: volta a assinar com o nome completo.
+          ...(nomeWhatsapp !== undefined
+            ? { nomeWhatsapp: nomeWhatsapp.trim() || null }
+            : {}),
+          updatedBy: usuarioId,
+        },
       });
     });
     return this.me(usuarioId, empresaAtivaId);
