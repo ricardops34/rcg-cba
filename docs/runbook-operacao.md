@@ -98,6 +98,59 @@ um cliente é consultado.
 
 ---
 
+## Recriar o dev do zero a partir de um backup **[verificado em dev, 2026-10-08]**
+
+Quando o Docker local é apagado inteiro (containers, volumes, imagens) e o dev
+volta a partir de um backup da produção. O backup é o formato *custom* do
+`pg_dump` (o arquivo começa com `PGDMP`, mesmo com extensão `.sql`), então se
+restaura com `pg_restore`, não com `psql`.
+
+```bash
+# Git Bash converte /tmp num caminho do Windows — desligue antes dos docker exec
+export MSYS_NO_PATHCONV=1
+
+# 1. sobe tudo do zero: o db-init cria plataforma_comercial vazia (migrations + seed)
+docker compose -f docker/docker-compose.dev.yml up -d --build
+
+# 2. carrega o backup numa base própria
+docker cp "C:\\temp\\plataforma_rcg.sql" plataforma-comercial-dev-postgres-1:/tmp/plataforma_rcg.sql
+docker exec plataforma-comercial-dev-postgres-1 createdb -U plataforma -O plataforma plataforma_rcg_backup
+docker exec plataforma-comercial-dev-postgres-1 pg_restore -U plataforma -d plataforma_rcg_backup \
+  --no-owner --role=plataforma /tmp/plataforma_rcg.sql
+```
+
+**O `pg_restore` termina com 3 erros, esperados:** `function unaccent(unknown, text)
+does not exist` nos índices `produtos_busca_trgm_idx`, `produto_fichas_busca_trgm_idx`
+e `produto_campo_valores_busca_trgm_idx`. Durante o restore o `search_path` fica
+vazio, e a função `sem_acento` chama `unaccent` sem schema. Os dados entram;
+só os índices ficam de fora. Recrie depois, com o `search_path` normal:
+
+```bash
+docker exec plataforma-comercial-dev-postgres-1 sh -c "pg_restore -f - \
+  -I produto_campo_valores_busca_trgm_idx -I produto_fichas_busca_trgm_idx -I produtos_busca_trgm_idx \
+  /tmp/plataforma_rcg.sql | grep 'CREATE INDEX' | psql -U plataforma -d plataforma_rcg_backup -v ON_ERROR_STOP=1"
+```
+
+**Rode `ANALYZE` depois do restore.** O `pg_restore` não gera estatísticas, e o
+autovacuum demora a gerar. Sem elas o planejador escolhe planos ruins: em
+2026-10-08 a listagem da Posição de Cliente passou de 5 s, estourou o timeout da
+transação do Prisma e a tela mostrou "Erro interno inesperado". O `ANALYZE` leva
+segundos e não altera dados:
+
+```bash
+docker exec plataforma-comercial-dev-postgres-1 psql -U plataforma -d plataforma_comercial -c "ANALYZE"
+```
+
+Depois, siga a seção abaixo ("Base de dev a partir da cópia da produção"). Como a
+`plataforma_comercial` do passo 1 só tem o seed, ela pode ser apagada (`DROP
+DATABASE`) em vez de renomeada.
+
+> **Depois do restore, nunca rode `docker compose up` sem `--no-deps`.** O
+> serviço `db-init` roda `seed-base.ts` a cada `up`, e o seed **apaga os dados de
+> negócio** de `plataforma_comercial`. Para religar os serviços use `docker start`
+> ou `docker restart`; para recriar só a API ou o web, use
+> `docker compose -f docker/docker-compose.dev.yml up -d --no-deps api web`.
+
 ## Base de dev a partir da cópia da produção **[verificado em dev, 2026-09-30]**
 
 O Postgres de dev guarda um dump da produção como `plataforma_rcg_backup`. Para a
