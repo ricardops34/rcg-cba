@@ -1234,6 +1234,7 @@ export class WhatsappConversasService {
           },
           select: {
             numero: true,
+            status: true,
             vendedor: { select: { nome: true } },
           },
         }),
@@ -1251,10 +1252,20 @@ export class WhatsappConversasService {
         }
       }
 
+      // O que está conectado **hoje** — o mesmo critério do painel "Instâncias
+      // dos vendedores". Os demais são números que algum vendedor já usou
+      // (`whatsappSessaoPeriodo`, mantido mesmo depois de a instância ser
+      // excluída pelo Admin): continuam no filtro, para achar conversa antiga,
+      // mas marcados como desconectados — sem isso pareciam instâncias vivas.
+      const numerosConectados = new Set(
+        sessoes.filter((s) => s.status === 'conectada').map((s) => s.numero),
+      );
+
       const numeros = Array.from(mapaNumeros.entries())
         .map(([numero, vendedorNome]) => ({
           numero,
           vendedorNome,
+          conectado: numerosConectados.has(numero),
         }))
         .sort((a, b) => a.numero.localeCompare(b.numero));
 

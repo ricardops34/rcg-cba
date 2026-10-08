@@ -589,6 +589,13 @@ export const whatsappHistoricoFiltrosSchema = z.object({
     z.object({
       numero: z.string(),
       vendedorNome: z.string().nullable().optional(),
+      /**
+       * Se é o número que a instância do vendedor usa **hoje**. `false` é
+       * conexão antiga (vendedor trocou de aparelho/número, ou desconectou) —
+       * continua filtrável, para achar conversa de antes, mas não é uma
+       * instância viva.
+       */
+      conectado: z.boolean(),
     }),
   ),
 });

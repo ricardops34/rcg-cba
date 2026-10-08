@@ -255,6 +255,11 @@ export default function HistoricoWhatsappPage() {
                   <SelectItem key={n.numero} value={n.numero}>
                     {telefoneBonito(n.numero)}
                     {n.vendedorNome ? ` · ${n.vendedorNome}` : ""}
+                    {/* Número que já saiu do ar (trocado, ou instância excluída
+                        pelo Admin): continua no filtro para achar conversa
+                        antiga, mas não é uma instância viva — sem isso parece
+                        uma segunda conexão ativa que não existe. */}
+                    {n.conectado ? "" : " · desconectado"}
                   </SelectItem>
                 ))}
               </SelectContent>
