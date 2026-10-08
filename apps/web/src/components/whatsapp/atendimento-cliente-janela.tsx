@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import {
   ExternalLink,
   Loader2,
-  MessageCircle,
   MessageSquarePlus,
   RefreshCw,
   Search,
@@ -25,6 +24,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { useAtendimentoJanelaStore } from "@/stores/atendimento-janela-store";
 import { useWhatsappIntegracao } from "@/hooks/use-whatsapp-integracao";
 import { Button } from "@/components/ui/button";
+import { IconeWhatsapp } from "@/components/ui/icone-whatsapp";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -91,7 +91,7 @@ export function AbaWhatsapp() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
         <div className="flex size-12 items-center justify-center rounded-full bg-emerald-500/10 text-[#00A884]">
-          <MessageCircle className="size-6" />
+          <IconeWhatsapp className="size-6" />
         </div>
         <p className="font-semibold">Nenhum cliente em atendimento</p>
         <p className="max-w-sm text-sm text-muted-foreground">

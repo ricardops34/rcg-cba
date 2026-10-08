@@ -1,6 +1,7 @@
 "use client";
 
 import { Bot } from "lucide-react";
+import { IconeWhatsapp } from "@/components/ui/icone-whatsapp";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -54,7 +55,11 @@ export function AgenteBotaoTopbar() {
             aberto ? "Minimizar assistente" : rotuloAgente(pendente, novidade)
           }
         >
-          <Bot className="size-4.5" />
+          {disponivel ? (
+            <Bot className="size-4.5" />
+          ) : (
+            <IconeWhatsapp className="size-4.5 text-[#00A884]" />
+          )}
           {!aberto && (pendente || novidade) && (
             <AgenteIndicador pendente={pendente} />
           )}

@@ -33,6 +33,7 @@ import {
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { ClienteSheet } from "@/components/crud/cliente-form";
 import { OrcamentosClienteSheet } from "@/components/crud/orcamentos-cliente-sheet";
+import { IconeWhatsapp } from "@/components/ui/icone-whatsapp";
 import { useAtendimentoDisponivel } from "@/components/whatsapp/atendimento-cliente-janela";
 import { useAtendimentoJanelaStore } from "@/stores/atendimento-janela-store";
 import { FieldLabel } from "@/components/ui/field";
@@ -60,7 +61,6 @@ import {
   Eye,
   FileText,
   Lock,
-  MessageCircle,
   MoreHorizontal,
   Pencil,
 } from "lucide-react";
@@ -451,7 +451,7 @@ export default function PosicaoClientePage() {
                   abrirAtendimento({ id: c.id, nome: c.razaoSocial })
                 }
               >
-                <MessageCircle className="size-4" /> Atendimento
+                <IconeWhatsapp className="size-4 text-[#00A884]" /> Atendimento
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>

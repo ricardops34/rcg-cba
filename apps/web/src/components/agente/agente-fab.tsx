@@ -16,6 +16,7 @@ import type {
 import { ApiError, apiFetch, apiStream, apiUpload } from "@/lib/api-client";
 import { useAgenteUiStore } from "@/stores/agente-ui-store";
 import { JanelaFlutuante } from "@/components/ui/janela-flutuante";
+import { IconeWhatsapp } from "@/components/ui/icone-whatsapp";
 import { useAtendimentoJanelaStore } from "@/stores/atendimento-janela-store";
 import type { AbaJanela } from "@/stores/agente-ui-store";
 import {
@@ -35,7 +36,6 @@ import {
   ExternalLink,
   HelpCircle,
   History,
-  MessageCircle,
   Paperclip,
   Send,
   Sparkles,
@@ -359,7 +359,7 @@ function AgenteJanela() {
         ambas ? null : abaAtiva === "bia" ? (
           <Sparkles className="size-4 shrink-0" />
         ) : (
-          <MessageCircle className="size-4 shrink-0 text-[#00A884]" />
+          <IconeWhatsapp className="size-4 shrink-0 text-[#00A884]" />
         )
       }
       // O nome que a empresa deu ao agente, não um rótulo fixo.
@@ -692,7 +692,7 @@ function AbasJanela({
         onClick={() => onTrocar("whatsapp")}
         title={cliente ?? undefined}
       >
-        <MessageCircle className="size-3.5 shrink-0 text-[#00A884]" />
+        <IconeWhatsapp className="size-3.5 shrink-0 text-[#00A884]" />
         <span className="truncate">{cliente ?? "WhatsApp"}</span>
       </button>
     </span>
