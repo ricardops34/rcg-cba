@@ -372,6 +372,7 @@ function AgenteJanela() {
             abaAtiva={abaAtiva}
             onTrocar={setAba}
             cliente={clienteWhatsapp}
+            naoLidas={naoLidasWhatsapp}
           />
         ) : abaAtiva === "bia" ? (
           nomeAgente
@@ -667,20 +668,30 @@ function AbasJanela({
   abaAtiva,
   onTrocar,
   cliente,
+  naoLidas,
 }: {
   nomeAgente: string;
   abaAtiva: AbaJanela;
   onTrocar: (aba: AbaJanela) => void;
   cliente: string | null;
+  naoLidas: number;
 }) {
+  // Controle segmentado (fundo recuado + pílula na ativa), não só texto mais
+  // escuro: cor de texto sozinha some no tema escuro quando `background` e
+  // `muted` ficam próximos — foi o que aconteceu aqui (2026-10-08), as duas
+  // abas pareciam o mesmo texto solto, sem dar para saber qual estava aberta.
   const classe = (ativa: boolean) =>
-    `flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors ${
+    `relative flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors ${
       ativa
-        ? "bg-background font-medium text-foreground shadow-xs"
-        : "text-muted-foreground hover:text-foreground"
+        ? "bg-background font-medium text-foreground shadow-sm ring-1 ring-border"
+        : "text-muted-foreground hover:bg-background/60 hover:text-foreground"
     }`;
   return (
-    <span role="tablist" aria-label="Janela do assistente" className="flex min-w-0 items-center gap-1">
+    <span
+      role="tablist"
+      aria-label="Janela do assistente"
+      className="flex min-w-0 items-center gap-0.5 rounded-lg bg-black/5 p-0.5 dark:bg-white/5"
+    >
       <button
         type="button"
         role="tab"
@@ -701,6 +712,11 @@ function AbasJanela({
       >
         <IconeWhatsapp className="size-3.5 shrink-0 text-[#00A884]" />
         <span className="truncate">{cliente ?? "WhatsApp"}</span>
+        {abaAtiva !== "whatsapp" && naoLidas > 0 ? (
+          <span className="flex h-3.5 min-w-3.5 shrink-0 items-center justify-center rounded-full bg-[#00A884] px-0.5 text-[9px] font-semibold leading-none text-white">
+            {naoLidas > 9 ? "9+" : naoLidas}
+          </span>
+        ) : null}
       </button>
     </span>
   );
