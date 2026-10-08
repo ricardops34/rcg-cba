@@ -10,7 +10,11 @@ import {
 } from "@/components/ui/tooltip";
 import { useAgenteUiStore } from "@/stores/agente-ui-store";
 import { useAgente } from "@/components/agente/use-agente";
-import { useAtendimentoDisponivel } from "@/components/whatsapp/atendimento-cliente-janela";
+import {
+  useAtendimentoDisponivel,
+  useNaoLidasWhatsapp,
+} from "@/components/whatsapp/atendimento-cliente-janela";
+import { useAtendimentoJanelaStore } from "@/stores/atendimento-janela-store";
 import {
   AgenteIndicador,
   rotuloAgente,
@@ -39,8 +43,20 @@ export function AgenteBotaoTopbar() {
   // A janela também abriga o atendimento de WhatsApp: sem o agente, o ícone
   // continua sendo o caminho de volta para a conversa minimizada.
   const whatsappDisponivel = useAtendimentoDisponivel();
+  // As conversas não lidas contam aqui, e não no sino (decisão de 2026-10-08).
+  const naoLidas = useNaoLidasWhatsapp(whatsappDisponivel);
+  const setAba = useAgenteUiStore((s) => s.setAba);
+  const voltarParaLista = useAtendimentoJanelaStore((s) => s.limpar);
   if (!disponivel && !whatsappDisponivel) return null;
   const rotulo = disponivel ? nomeAgente : "Atendimento WhatsApp";
+  // Com conversa esperando, o clique leva direto à lista de conversas.
+  const abrirJanela = () => {
+    if (naoLidas > 0) {
+      voltarParaLista();
+      setAba("whatsapp");
+    }
+    abrir();
+  };
 
   return (
     <Tooltip>
@@ -48,9 +64,10 @@ export function AgenteBotaoTopbar() {
         <Button
           variant="ghost"
           size="icon"
+          className="relative"
           // Com a janela aberta o mesmo ícone a recolhe: clicar de novo no
           // botão que abriu é o que a mão espera.
-          onClick={aberto ? minimizar : abrir}
+          onClick={aberto ? minimizar : abrirJanela}
           aria-label={
             aberto ? "Minimizar assistente" : rotuloAgente(pendente, novidade)
           }
@@ -63,6 +80,14 @@ export function AgenteBotaoTopbar() {
           {!aberto && (pendente || novidade) && (
             <AgenteIndicador pendente={pendente} />
           )}
+          {naoLidas > 0 ? (
+            <span
+              className="absolute -right-1 -bottom-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#00A884] px-1 text-[10px] font-semibold leading-none text-white"
+              aria-label={`${naoLidas} conversa(s) de WhatsApp não lida(s)`}
+            >
+              {naoLidas > 99 ? "99+" : naoLidas}
+            </span>
+          ) : null}
         </Button>
       </TooltipTrigger>
       <TooltipContent>{rotulo}</TooltipContent>

@@ -1254,6 +1254,19 @@ export class WhatsappController {
     return this.conversas.marcarLida(user.empresaAtivaId, user, id);
   }
 
+  @RequirePermission('whatsapp-conversas', 'visualizar')
+  @Get('atendimento/nao-lidas')
+  @ApiOperation({
+    summary: 'Quantas conversas têm mensagem não lida',
+    description:
+      'O número no ícone do WhatsApp. Conta conversas da instância do próprio ' +
+      'usuário, não mensagens.',
+  })
+  @ApiResponse({ status: 200, schema: { example: { conversas: 3 } } })
+  naoLidas(@CurrentUser() user: AuthenticatedUser) {
+    return this.conversas.contarNaoLidas(user.empresaAtivaId, user);
+  }
+
   @ApiOperation({
     summary: 'Indicadores de espera do atendimento da empresa',
     description:

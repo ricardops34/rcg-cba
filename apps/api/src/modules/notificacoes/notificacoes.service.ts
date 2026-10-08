@@ -24,7 +24,13 @@ export class NotificacoesService {
     user: AuthenticatedUser,
   ): Promise<NotificacoesFeed> {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const where = { usuarioId: user.id, lidaEm: null };
+      // Mensagem de WhatsApp conta no ícone do WhatsApp, não aqui (decisão de
+      // 2026-10-08). O filtro esconde também os avisos gravados antes dela.
+      const where = {
+        usuarioId: user.id,
+        lidaEm: null,
+        tipo: { not: 'whatsapp_mensagem' as const },
+      };
       const [total, linhas] = await Promise.all([
         tx.notificacao.count({ where }),
         tx.notificacao.findMany({

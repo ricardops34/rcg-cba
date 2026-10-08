@@ -25,11 +25,7 @@ import { WhatsappSessaoService } from './whatsapp-sessao.service';
 import { WhatsappProviderService } from './providers/whatsapp-provider.service';
 import { AgenteConfigService } from '../agente/agente-config.service';
 import { ProvedorFactory } from '../agente/provedor.factory';
-import {
-  marcarNotificacoesDaOrigem,
-  registrarNotificacao,
-  usuarioDoVendedor,
-} from '../notificacoes/registrar-notificacao';
+import { marcarNotificacoesDaOrigem } from '../notificacoes/registrar-notificacao';
 import {
   combinarFiltroVendedor,
   resolverEscopoVendedores,
@@ -3575,21 +3571,6 @@ export class WhatsappConversasService {
         });
       }
 
-      // Quem é avisado pelo sino.
-      //
-      // No aparelho, o dono da sessão. No institucional, quem a IA direcionou —
-      // e ninguém, enquanto a triagem está em curso. Sem login vinculado não há
-      // destinatário, e a mensagem só fica na tela.
-      const destinatario = await usuarioDoVendedor(
-        tx,
-        empresaId,
-        sessao.vendedorId ?? conversa.atendenteVendedorId,
-      );
-      const nomeNoAviso =
-        contato.nomeExibicao ??
-        contato.telefoneNormalizado ??
-        contato.jid.split('@')[0];
-
       if (!contato.fotoUrl) {
         this.buscarFotoContatoAssincrona(
           empresaId,
@@ -3710,21 +3691,10 @@ export class WhatsappConversasService {
         sessao.tipo === 'empresa' &&
         (conversa.atendimento === 'bot' || reabriu);
 
-      // Mensagem do próprio vendedor não vira aviso para ele mesmo.
-      if (destinatario && !jaGravada && !minha && !emTriagem && !historico) {
-        await registrarNotificacao(tx, {
-          empresaId,
-          usuarioId: destinatario,
-          tipo: 'whatsapp_mensagem',
-          titulo: nomeNoAviso,
-          // Sem prévia do texto: o sino aparece na tela inteira do sistema, e
-          // a conversa com o cliente não precisa ficar legível por cima do
-          // ombro de quem passa. Quem quer ler abre a conversa.
-          rota: `/comercial/atendimento?conversa=${conversa.id}`,
-          referenciaId: conversa.id,
-          acumular: true,
-        });
-      }
+      // Mensagem recebida **não** vai mais ao sino (decisão de 2026-10-08): o
+      // atendimento conta no ícone do WhatsApp, pelo `naoLidas` da conversa
+      // (ver `contarNaoLidas`). O sino fica para alerta pontual — cliente
+      // aguardando direcionado pela triagem, agendamento que falhou.
 
       return {
         gravada: true,
@@ -3843,6 +3813,26 @@ export class WhatsappConversasService {
    * O escopo é o mesmo da tela (`filtroSessao`): quem não pode ler a conversa
    * do colega também não é notificado por ela.
    */
+  /**
+   * Quantas conversas têm mensagem não lida — o número no ícone do WhatsApp.
+   * Conta conversas, e não mensagens, como o próprio WhatsApp. Mesmo recorte
+   * do sino e da tela (`filtroSessao`): a instância do próprio usuário.
+   */
+  async contarNaoLidas(empresaId: string, user: AuthenticatedUser) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const filtro = await this.filtroSessao(tx, empresaId, user);
+      const conversas = await tx.whatsappConversa.count({
+        where: {
+          ...filtro,
+          naoLidas: { gt: 0 },
+          arquivada: false,
+          contato: CONTATO_DE_ATENDIMENTO,
+        },
+      });
+      return { conversas };
+    });
+  }
+
   async resumoParaNotificacoes(empresaId: string, user: AuthenticatedUser) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const filtro = await this.filtroSessao(tx, empresaId, user);
