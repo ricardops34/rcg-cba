@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useAgenteUiStore } from "@/stores/agente-ui-store";
 import { useAgente } from "@/components/agente/use-agente";
+import { useAtendimentoDisponivel } from "@/components/whatsapp/atendimento-cliente-janela";
 import {
   AgenteIndicador,
   rotuloAgente,
@@ -34,7 +35,11 @@ export function AgenteBotaoTopbar() {
   const abrir = useAgenteUiStore((s) => s.abrir);
   const minimizar = useAgenteUiStore((s) => s.minimizar);
 
-  if (!disponivel) return null;
+  // A janela também abriga o atendimento de WhatsApp: sem o agente, o ícone
+  // continua sendo o caminho de volta para a conversa minimizada.
+  const whatsappDisponivel = useAtendimentoDisponivel();
+  if (!disponivel && !whatsappDisponivel) return null;
+  const rotulo = disponivel ? nomeAgente : "Atendimento WhatsApp";
 
   return (
     <Tooltip>
@@ -55,7 +60,7 @@ export function AgenteBotaoTopbar() {
           )}
         </Button>
       </TooltipTrigger>
-      <TooltipContent>{nomeAgente}</TooltipContent>
+      <TooltipContent>{rotulo}</TooltipContent>
     </Tooltip>
   );
 }

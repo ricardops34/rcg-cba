@@ -543,6 +543,9 @@ export const whatsappConversaQuerySchema = z.object({
     .describe("Só as conversas de contato ainda não ligado a cliente"),
   // Presente só para supervisor/gerente; vendedor sempre vê a própria carteira.
   vendedorId: z.string().uuid().optional(),
+  // Só as conversas deste cliente. Restringe, nunca amplia: o escopo de
+  // sessão continua valendo (usado pelo atendimento da Posição de Cliente).
+  clienteId: z.string().uuid().optional(),
   // Filtro operacional estrito por sessão conectada (aparelho específico).
   sessaoId: z.string().uuid().optional(),
   pagina: z.coerce.number().int().min(1).default(1),

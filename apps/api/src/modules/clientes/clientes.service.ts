@@ -108,7 +108,6 @@ interface ListagemPosicaoRawRow {
   temTituloVencido: boolean;
   temTituloVencendo: boolean;
   temTituloNaoVencido: boolean;
-  whatsappConversaId: string | null;
 }
 
 // Campos que a listagem aceita ordenar por — whitelist pra não repassar
@@ -1333,15 +1332,6 @@ export class ClientesService {
 
       const where = Prisma.join(condicoes, ' AND ');
 
-      // Recorte do WhatsApp, que **não** é o da carteira: "Atendimento" só
-      // aparece para a conversa da instância do próprio usuário — empresa +
-      // usuário + vendedor (ver `sessaoDoUsuarioWhere`). Sem cadastro de
-      // vendedor, nenhuma. Resolvido aqui, uma vez, e não por linha.
-      const sessaoWa = await sessaoDoUsuarioWhere(tx, empresaId, user);
-      const escopoWhatsapp = sessaoWa
-        ? Prisma.sql`ws."tipo" = 'vendedor' AND ws."vendedorId" = ${sessaoWa.vendedorId} AND ws."usuarioId" = ${user.id}`
-        : Prisma.sql`false`;
-
       const sortField =
         query.sortBy && Object.hasOwn(LISTAGEM_POSICAO_SORT_EXPR, query.sortBy) ? query.sortBy : 'ultimaCompra';
       const sortDir = query.sortOrder === 'desc' ? 'DESC' : 'ASC';
@@ -1396,25 +1386,7 @@ export class ClientesService {
             WHERE ta."clienteId" = c.id AND ta."empresaId" = c."empresaId"
               AND ta."deletedAt" IS NULL AND ta."dtBaixa" IS NULL
               AND (ta."vencimento" IS NULL OR ta."vencimento" >= CURRENT_DATE + interval '7 days')
-          ) AS "temTituloNaoVencido",
-          -- Conversa de WhatsApp que ESTE usuário pode abrir, para a ação
-          -- "Atendimento" do menu da linha. Sai nulo quando o cliente não tem
-          -- contato vinculado — e também quando a conversa existe mas é de um
-          -- vendedor fora do escopo de leitura dele: oferecer o atalho já
-          -- contaria que a conversa existe, e conversa de cliente é dado
-          -- pessoal (mesma regra do filtro da tela de Atendimento).
-          --
-          -- Não arquivada primeiro: a arquivada abre, mas o cabeçalho da tela
-          -- se apoia na listagem padrão, que não a traz.
-          (
-            SELECT wc."id" FROM whatsapp_conversas wc
-            JOIN whatsapp_sessoes ws ON ws."id" = wc."sessaoId"
-            WHERE wc."clienteId" = c.id
-              AND wc."empresaId" = c."empresaId"
-              AND ${escopoWhatsapp}
-            ORDER BY wc."arquivada" ASC, wc."ultimaMensagemEm" DESC NULLS LAST
-            LIMIT 1
-          ) AS "whatsappConversaId"
+          ) AS "temTituloNaoVencido"
         FROM clientes c
         -- Última compra considerando apenas notas de saída com financeiro (ver NOTA_DE_VENDA_SQL).
         LEFT JOIN (
@@ -1480,7 +1452,6 @@ export class ClientesService {
         temTituloVencido: r.temTituloVencido,
         temTituloVencendo: r.temTituloVencendo,
         temTituloNaoVencido: r.temTituloNaoVencido,
-        whatsappConversaId: r.whatsappConversaId,
       }));
 
       return buildPaginatedResult(data, countRows[0]?.count ?? 0, query);

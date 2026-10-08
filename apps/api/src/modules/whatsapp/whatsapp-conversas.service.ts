@@ -238,6 +238,10 @@ export class WhatsappConversasService {
         andConditions.push({ sessaoId: query.sessaoId });
       }
 
+      if (query.clienteId) {
+        andConditions.push({ clienteId: query.clienteId });
+      }
+
       if (query.semVinculo) {
         andConditions.push({ clienteId: null });
       }
@@ -2953,15 +2957,20 @@ export class WhatsappConversasService {
           );
         }
         nome = nome ?? cliente.razaoSocial;
-        // Celular primeiro: é o que costuma ter WhatsApp.
-        telefone =
-          telefone ??
-          this.primeiroTelefoneValido([
-            cliente.celular,
-            cliente.telefone,
-            cliente.telefone2,
-          ]);
-        if (!telefone) {
+        // Com contato escolhido (jid), o número é o dele: o do cadastro
+        // sobrescreveria o telefone do contato e recusaria o vínculo de
+        // cliente sem telefone cadastrado. Celular primeiro: é o que costuma
+        // ter WhatsApp.
+        if (!jid) {
+          telefone =
+            telefone ??
+            this.primeiroTelefoneValido([
+              cliente.celular,
+              cliente.telefone,
+              cliente.telefone2,
+            ]);
+        }
+        if (!jid && !telefone) {
           throw new BadRequestException(
             `${cliente.razaoSocial} não tem telefone no cadastro. Informe o número para iniciar a conversa.`,
           );

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type {
@@ -16,6 +15,13 @@ import type {
 } from "@plataforma/contracts";
 import { ApiError, apiFetch, apiStream, apiUpload } from "@/lib/api-client";
 import { useAgenteUiStore } from "@/stores/agente-ui-store";
+import { JanelaFlutuante } from "@/components/ui/janela-flutuante";
+import { useAtendimentoJanelaStore } from "@/stores/atendimento-janela-store";
+import type { AbaJanela } from "@/stores/agente-ui-store";
+import {
+  AbaWhatsapp,
+  useAtendimentoDisponivel,
+} from "@/components/whatsapp/atendimento-cliente-janela";
 import { useAgente } from "@/components/agente/use-agente";
 import { ConteudoMensagem } from "@/components/agente/conteudo-mensagem";
 import { useResumoDiario } from "@/components/agente/use-resumo-diario";
@@ -29,10 +35,7 @@ import {
   ExternalLink,
   HelpCircle,
   History,
-  Maximize2,
-  Minimize2,
-  Grip,
-  Minus,
+  MessageCircle,
   Paperclip,
   Send,
   Sparkles,
@@ -45,80 +48,6 @@ interface Balao {
   resumoDiario?: boolean;
   /** Telas onde ver o que a resposta resumiu — vêm do servidor, por turno. */
   destinos?: AgenteDestino[];
-}
-
-interface Geometria {
-  x: number;
-  y: number;
-  largura: number;
-  altura: number;
-}
-
-const LARGURA_MIN = 320;
-const ALTURA_MIN = 320;
-const MARGEM = 8;
-/** Altura da barra de título — a faixa por onde a janela é arrastada. */
-const ALTURA_TITULO = 44;
-
-function viewport() {
-  const visual = window.visualViewport;
-  return {
-    largura: visual?.width ?? window.innerWidth,
-    altura: visual?.height ?? window.innerHeight,
-    x: visual?.offsetLeft ?? 0,
-    y: visual?.offsetTop ?? 0,
-  };
-}
-
-const limitar = (v: number, min: number, max: number) =>
-  Math.min(Math.max(v, min), Math.max(min, max));
-
-/** Encosta a janela no canto inferior direito, longe do ícone que a abre. */
-function geometriaPadrao(): Geometria {
-  const tela = viewport();
-  const compacta = tela.largura < 640;
-  const largura = Math.max(1, Math.min(compacta ? tela.largura : 420, tela.largura - MARGEM * 2));
-  const altura = Math.max(1, Math.min(compacta ? tela.altura : 560, tela.altura - MARGEM * 2));
-  return {
-    largura,
-    altura,
-    x: tela.x + tela.largura - largura - MARGEM,
-    y: tela.y + tela.altura - altura - MARGEM,
-  };
-}
-
-function geometriaMaximizada(): Geometria {
-  const tela = viewport();
-  return { x: tela.x + MARGEM, y: tela.y + MARGEM,
-    largura: Math.max(1, tela.largura - MARGEM * 2), altura: Math.max(1, tela.altura - MARGEM * 2) };
-}
-
-/**
- * Mantém a janela dentro da viewport.
- *
- * Roda no arrasto, no redimensionamento e quando a **janela do navegador**
- * muda de tamanho: sem isso, quem move o assistente para a direita e depois
- * reduz a tela (ou gira o tablet) perde a barra de título — e com ela o único
- * jeito de trazer a janela de volta.
- */
-function acomodar(g: Geometria): Geometria {
-  const tela = viewport();
-  if (tela.largura < 640) return geometriaPadrao();
-  const larguraDisponivel = Math.max(1, tela.largura - MARGEM * 2);
-  const alturaDisponivel = Math.max(1, tela.altura - MARGEM * 2);
-  const largura = limitar(
-    g.largura,
-    Math.min(LARGURA_MIN, larguraDisponivel),
-    larguraDisponivel,
-  );
-  const altura = limitar(g.altura, Math.min(ALTURA_MIN, alturaDisponivel), alturaDisponivel);
-  return {
-    largura,
-    altura,
-    x: limitar(g.x, tela.x + MARGEM, tela.x + tela.largura - largura - MARGEM),
-    // Preserva também o rodapé com o campo de mensagem, não só o título.
-    y: limitar(g.y, tela.y + MARGEM, tela.y + tela.altura - altura - MARGEM),
-  };
 }
 
 /**
@@ -159,14 +88,17 @@ function AgenteJanela() {
   const minimizar = useAgenteUiStore((s) => s.minimizar);
   const setNovidade = useAgenteUiStore((s) => s.setNovidade);
   const setPendente = useAgenteUiStore((s) => s.setPendente);
-  const [geometria, setGeometria] = useState<Geometria | null>(null);
-  const [maximizada, setMaximizada] = useState(false);
-  const geometriaAnterior = useRef<Geometria | null>(null);
-  const alternarMaximizada = () => {
-    if (maximizada) setGeometria(acomodar(geometriaAnterior.current ?? geometriaPadrao()));
-    else { geometriaAnterior.current = geometria; setGeometria(geometriaMaximizada()); }
-    setMaximizada(!maximizada);
-  };
+  const aba = useAgenteUiStore((s) => s.aba);
+  const setAba = useAgenteUiStore((s) => s.setAba);
+  // A aba WhatsApp só existe com o atendimento disponível (WhatsApp ligado e
+  // instância própria); a da Bia, só com o agente ativo. Com uma só, não há
+  // abas — e a que existe é a visível, qualquer que seja a última escolhida.
+  const whatsappDisponivel = useAtendimentoDisponivel();
+  const clienteWhatsapp = useAtendimentoJanelaStore((s) => s.cliente?.nome ?? null);
+  const ambas = disponivel && whatsappDisponivel;
+  const abaAtiva = !disponivel ? "whatsapp" : !whatsappDisponivel ? "bia" : aba;
+  /** A moldura já apareceu uma vez — a primeira rolagem depende do conteúdo montado. */
+  const [pronta, setPronta] = useState(false);
   const [texto, setTexto] = useState("");
   /**
    * O arquivo anexado ao **próximo** envio.
@@ -198,18 +130,10 @@ function AgenteJanela() {
   const apresentarResumo = useCallback((mensagem: string) => {
     setBaloes((atuais) => [...atuais, { papel: "assistente", texto: mensagem, resumoDiario: true }]);
     setHistoricoAberto(false);
+    useAgenteUiStore.getState().setAba("bia");
     useAgenteUiStore.getState().abrir();
   }, []);
   useResumoDiario(disponivel, apresentarResumo);
-
-  // Cada abertura usa a tela atual, sem coordenadas salvas de outro monitor.
-  useEffect(() => {
-    if (!aberto) return;
-    const frame = window.requestAnimationFrame(() => {
-      setGeometria((g) => maximizada ? geometriaMaximizada() : acomodar(g ?? geometriaPadrao()));
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [aberto, maximizada]);
 
   // Pendência é ação parada esperando gente. Quem mostra o "!" é o ícone da
   // topbar, então o estado tem de chegar até ele.
@@ -218,79 +142,10 @@ function AgenteJanela() {
   }, [pendencias, setPendente]);
 
   useEffect(() => {
-    const aoRedimensionar = () => setGeometria((g) => (g ? maximizada ? geometriaMaximizada() : acomodar(g) : g));
-    const visual = window.visualViewport;
-    window.addEventListener("resize", aoRedimensionar);
-    visual?.addEventListener("resize", aoRedimensionar);
-    visual?.addEventListener("scroll", aoRedimensionar);
-    return () => {
-      window.removeEventListener("resize", aoRedimensionar);
-      visual?.removeEventListener("resize", aoRedimensionar);
-      visual?.removeEventListener("scroll", aoRedimensionar);
-    };
-  }, [maximizada]);
-
-  const possuiGeometria = geometria !== null;
-  useEffect(() => {
     if (!aberto) return;
     if (baloes.at(-1)?.resumoDiario) inicioResumo.current?.scrollIntoView({ block: "start" });
     else fim.current?.scrollIntoView({ behavior: "smooth" });
-  }, [baloes, pendencias, aberto, possuiGeometria]);
-
-  /**
-   * Arrasto e redimensionamento com Pointer Events e captura de ponteiro: o
-   * movimento continua valendo mesmo quando o cursor sai da janela ou passa
-   * por cima de um iframe, o que `mousemove` no documento não garante.
-   */
-  const iniciarGesto = useCallback(
-    (modo: "mover" | "redimensionar" | "redimensionar-inicio") => (e: React.PointerEvent) => {
-      // Só botão principal, e nunca a partir dos botões do cabeçalho.
-      if (e.button !== 0) return;
-      if (maximizada) return;
-      if (viewport().largura < 640) return;
-      if (
-        modo === "mover" &&
-        (e.target as HTMLElement).closest("button, a, input, textarea")
-      ) {
-        return;
-      }
-      e.preventDefault();
-      const alvo = e.currentTarget as HTMLElement;
-      alvo.setPointerCapture(e.pointerId);
-      const inicio = { x: e.clientX, y: e.clientY };
-      const base = geometria;
-      if (!base) return;
-
-      const mover = (ev: PointerEvent) => {
-        const dx = ev.clientX - inicio.x;
-        const dy = ev.clientY - inicio.y;
-        setGeometria(
-          acomodar(
-            modo === "mover"
-              ? { ...base, x: base.x + dx, y: base.y + dy }
-              : modo === "redimensionar-inicio" ? {
-                  ...base, x: base.x + dx, y: base.y + dy,
-                  largura: base.largura - dx, altura: base.altura - dy,
-                } : {
-                  ...base,
-                  largura: base.largura + dx,
-                  altura: base.altura + dy,
-                },
-          ),
-        );
-      };
-      const soltar = () => {
-        alvo.releasePointerCapture(e.pointerId);
-        alvo.removeEventListener("pointermove", mover);
-        alvo.removeEventListener("pointerup", soltar);
-        alvo.removeEventListener("pointercancel", soltar);
-      };
-      alvo.addEventListener("pointermove", mover);
-      alvo.addEventListener("pointerup", soltar);
-      alvo.addEventListener("pointercancel", soltar);
-    },
-    [geometria, maximizada],
-  );
+  }, [baloes, pendencias, aberto, pronta, abaAtiva]);
 
   const enviar = useMutation({
     mutationFn: async ({
@@ -494,31 +349,46 @@ function AgenteJanela() {
       ),
   });
 
-  if (!disponivel || !aberto || !geometria) return null;
+  if (!disponivel && !whatsappDisponivel) return null;
 
-  return createPortal(
-    <div
-      role="dialog"
-      aria-label="Assistente"
-      className="fixed z-50 flex flex-col overflow-hidden rounded-lg border bg-background shadow-2xl"
-      style={{
-        left: geometria.x,
-        top: geometria.y,
-        width: geometria.largura,
-        height: geometria.altura,
-      }}
-    >
-      <div
-        onPointerDown={iniciarGesto("mover")}
-        onDoubleClick={(e) => { if (!(e.target as HTMLElement).closest("button, a")) alternarMaximizada(); }}
-        className="flex shrink-0 touch-none select-none items-center gap-2 border-b bg-muted/40 px-3 sm:cursor-move"
-        style={{ height: ALTURA_TITULO }}
-      >
-        <Sparkles className="size-4 shrink-0" />
-        {/* O nome que a empresa deu ao agente, não um rótulo fixo. */}
-        <span className="flex-1 truncate text-sm font-medium">
-          {nomeAgente}
-        </span>
+  return (
+    <JanelaFlutuante
+      aberto={aberto}
+      rotulo="Assistente"
+      icone={
+        ambas ? null : abaAtiva === "bia" ? (
+          <Sparkles className="size-4 shrink-0" />
+        ) : (
+          <MessageCircle className="size-4 shrink-0 text-[#00A884]" />
+        )
+      }
+      // O nome que a empresa deu ao agente, não um rótulo fixo.
+      titulo={
+        ambas ? (
+          <AbasJanela
+            nomeAgente={nomeAgente}
+            abaAtiva={abaAtiva}
+            onTrocar={setAba}
+            cliente={clienteWhatsapp}
+          />
+        ) : abaAtiva === "bia" ? (
+          nomeAgente
+        ) : (
+          `WhatsApp${clienteWhatsapp ? ` · ${clienteWhatsapp}` : ""}`
+        )
+      }
+      // Minimizar e fechar são a mesma coisa — os dois voltam ao ícone e a
+      // conversa continua viva. Ficam os dois porque é onde a mão vai: uns
+      // procuram o traço, outros o X. Para apagar a conversa existe a
+      // borracha, ao lado.
+      onMinimizar={minimizar}
+      onFechar={minimizar}
+      tituloMinimizar="Minimizar para o ícone (a conversa continua)"
+      tituloFechar="Fechar (a conversa continua)"
+      onPronta={() => setPronta(true)}
+      // Ajuda, histórico e borracha são da Bia: na aba WhatsApp não valem.
+      acoes={abaAtiva !== "bia" ? null : (
+        <>
         <Button
           asChild
           type="button"
@@ -556,40 +426,13 @@ function AgenteJanela() {
         >
           <Eraser className="size-4" />
         </Button>
-        {/* Minimizar e fechar viraram a mesma coisa — os dois voltam ao
-            ícone e a conversa continua viva. Ficam os dois porque é onde a
-            mão vai: uns procuram o traço, outros o X. Para apagar a
-            conversa existe a borracha, ao lado. */}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-7"
-          title="Minimizar para o ícone (a conversa continua)"
-          aria-label="Minimizar para o ícone"
-          onClick={minimizar}
-        >
-          <Minus className="size-4" />
-        </Button>
-        <Button type="button" variant="ghost" size="icon" className="size-7"
-          title={maximizada ? "Restaurar tamanho" : "Maximizar janela"}
-          aria-label={maximizada ? "Restaurar tamanho" : "Maximizar janela"}
-          aria-pressed={maximizada} onClick={alternarMaximizada}>
-          {maximizada ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-7"
-          title="Fechar (a conversa continua)"
-          aria-label="Fechar assistente"
-          onClick={minimizar}
-        >
-          <X className="size-4" />
-        </Button>
-      </div>
-
+        </>
+      )}
+    >
+      {abaAtiva === "whatsapp" ? (
+        <AbaWhatsapp />
+      ) : (
+      <>
       {/* A lista cobre a conversa em vez de dividir a janela: ela já é
           estreita, e partir a altura em duas deixaria as duas ilegíveis.
           Escolher uma conversa fecha o painel e devolve a leitura inteira. */}
@@ -801,27 +644,57 @@ function AgenteJanela() {
           </Button>
         </div>
       </div>
+      </>
+      )}
+    </JanelaFlutuante>
+  );
+}
 
-      {/* Alça de redimensionamento. `touch-none` para o gesto não virar
-              rolagem no tablet. */}
-      {!maximizada && <div
-        onPointerDown={iniciarGesto("redimensionar")}
-        role="separator"
-        aria-label="Redimensionar assistente"
-        title="Arraste para ajustar o tamanho"
-        className="absolute bottom-0 right-0 hidden size-5 cursor-nwse-resize touch-none text-muted-foreground sm:block"
-        style={{
-          // `currentColor` para não depender do formato do token de
-          // cor (hsl/oklch): a cor vem do `text-border` acima.
-          background:
-            "linear-gradient(135deg, transparent 50%, currentColor 50%)",
-        }}
-      ><Grip className="size-4" /></div>}
-      {!maximizada && <div onPointerDown={iniciarGesto("redimensionar-inicio")}
-        role="separator" aria-label="Redimensionar pelo canto superior esquerdo"
-        title="Arraste para ajustar o tamanho"
-        className="absolute left-0 top-0 hidden size-3 cursor-nwse-resize touch-none border-l-2 border-t-2 border-muted-foreground/60 sm:block" />}
-    </div>,
-    document.body
+/**
+ * As abas da janela, no lugar do título: a Bia e o atendimento de WhatsApp.
+ * São botões dentro da barra de título — o arrasto da janela ignora botão,
+ * então trocar de aba nunca vira mover a janela.
+ */
+function AbasJanela({
+  nomeAgente,
+  abaAtiva,
+  onTrocar,
+  cliente,
+}: {
+  nomeAgente: string;
+  abaAtiva: AbaJanela;
+  onTrocar: (aba: AbaJanela) => void;
+  cliente: string | null;
+}) {
+  const classe = (ativa: boolean) =>
+    `flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors ${
+      ativa
+        ? "bg-background font-medium text-foreground shadow-xs"
+        : "text-muted-foreground hover:text-foreground"
+    }`;
+  return (
+    <span role="tablist" aria-label="Janela do assistente" className="flex min-w-0 items-center gap-1">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={abaAtiva === "bia"}
+        className={classe(abaAtiva === "bia")}
+        onClick={() => onTrocar("bia")}
+      >
+        <Sparkles className="size-3.5 shrink-0" />
+        <span className="truncate">{nomeAgente}</span>
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={abaAtiva === "whatsapp"}
+        className={classe(abaAtiva === "whatsapp")}
+        onClick={() => onTrocar("whatsapp")}
+        title={cliente ?? undefined}
+      >
+        <MessageCircle className="size-3.5 shrink-0 text-[#00A884]" />
+        <span className="truncate">{cliente ?? "WhatsApp"}</span>
+      </button>
+    </span>
   );
 }

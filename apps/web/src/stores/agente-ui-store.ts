@@ -2,6 +2,8 @@
 
 import { create } from "zustand";
 
+export type AbaJanela = "bia" | "whatsapp";
+
 interface AgenteUiState {
   /**
    * Janela do assistente visível na tela.
@@ -15,10 +17,16 @@ interface AgenteUiState {
   novidade: boolean;
   /** Ação parada esperando o Confirmar — trava até alguém decidir. */
   pendente: boolean;
+  /**
+   * Aba visível: o assistente ou o atendimento de WhatsApp. A janela é uma só
+   * — trocar de aba não fecha nem reinicia a conversa da outra.
+   */
+  aba: AbaJanela;
   abrir: () => void;
   minimizar: () => void;
   setNovidade: (v: boolean) => void;
   setPendente: (v: boolean) => void;
+  setAba: (aba: AbaJanela) => void;
 }
 
 /**
@@ -31,10 +39,12 @@ export const useAgenteUiStore = create<AgenteUiState>()((set) => ({
   aberto: false,
   novidade: false,
   pendente: false,
+  aba: "bia",
   // Abrir é também "eu li": o aviso de resposta nova morre aqui. A pendência
   // não — ela só sai quando a ação for confirmada ou cancelada.
   abrir: () => set({ aberto: true, novidade: false }),
   minimizar: () => set({ aberto: false }),
   setNovidade: (novidade) => set({ novidade }),
   setPendente: (pendente) => set({ pendente }),
+  setAba: (aba) => set({ aba }),
 }));

@@ -258,7 +258,7 @@ export function NovaConversaDialog({
   );
 }
 
-function ListaDeContatos({
+export function ListaDeContatos({
   carregando,
   contatos,
   vazio,

@@ -28,6 +28,8 @@ import {
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { ClienteSheet } from "@/components/crud/cliente-form";
 import { OrcamentosClienteSheet } from "@/components/crud/orcamentos-cliente-sheet";
+import { useAtendimentoDisponivel } from "@/components/whatsapp/atendimento-cliente-janela";
+import { useAtendimentoJanelaStore } from "@/stores/atendimento-janela-store";
 import { FieldLabel } from "@/components/ui/field";
 import {
   Select,
@@ -133,9 +135,8 @@ export default function PosicaoClientePage() {
   const permissoes = useAuthStore((s) => s.user?.permissoes);
   const podeEditarCliente = Boolean(permissoes?.includes("clientes.editar"));
   const podeVerOrcamentos = Boolean(permissoes?.includes("orcamentos.visualizar"));
-  const podeVerAtendimento = Boolean(
-    permissoes?.includes("whatsapp-conversas.visualizar"),
-  );
+  const atendimentoDisponivel = useAtendimentoDisponivel();
+  const abrirAtendimento = useAtendimentoJanelaStore((s) => s.abrir);
 
   // Opções de vendedor já restritas ao escopo do usuário logado — não usa
   // /vendedores direto (aquele endpoint não tem restrição de carteira).
@@ -397,19 +398,17 @@ export default function PosicaoClientePage() {
                 <FileText className="size-4" /> Orçamentos
               </DropdownMenuItem>
             )}
-            {/* Só para quem já tem contato de WhatsApp vinculado: sem conversa
-                não há conversa para abrir, e a ação levaria a uma tela
-                vazia. O backend só devolve a conversa que este usuário pode
-                ler (ver whatsappConversaId). */}
-            {podeVerAtendimento && c.whatsappConversaId && (
+            {/* Abre a conversa deste cliente numa janela flutuante, ou a opção
+                de vincular um WhatsApp a ele quando ainda não há conversa.
+                Só com WhatsApp ligado e instância própria do usuário — ver
+                useAtendimentoDisponivel. */}
+            {atendimentoDisponivel && (
               <DropdownMenuItem
                 onClick={() =>
-                  router.push(
-                    `/comercial/atendimento?conversa=${c.whatsappConversaId}`,
-                  )
+                  abrirAtendimento({ id: c.id, nome: c.razaoSocial })
                 }
               >
-                <MessageCircle className="size-4" /> Conversa
+                <MessageCircle className="size-4" /> Atendimento
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>
