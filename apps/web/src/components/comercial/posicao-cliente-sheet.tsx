@@ -9,10 +9,14 @@ import { PosicaoClienteConteudo } from "@/components/comercial/posicao-cliente-c
  * Cliente — o mesmo padrão de Visualizar/Alterar Cliente e Orçamentos.
  * Navegar para a página do detalhe e voltar recriava a lista.
  *
- * **Não modal, de propósito.** O "Abrir" dos contatos de WhatsApp abre a
- * janela de atendimento por cima desta cortina; uma cortina modal prende o
- * foco e o clique, e a janela ficaria sem uso. Clique fora fecha a cortina,
- * menos dentro da janela flutuante.
+ * **Modal só quando a janela da Bia/WhatsApp está fechada** — o `<Sheet>`
+ * decide isso sozinho (ver `components/ui/sheet.tsx`). Com a janela aberta, a
+ * cortina abre não modal: uma cortina modal prende foco e clique, e o "Abrir"
+ * dos contatos de WhatsApp, que abre a janela por cima desta cortina, ficaria
+ * sem uso. Clique fora fecha a cortina, menos dentro da janela flutuante.
+ * **Não force `modal={false}` aqui**: foi o que passou por cima dessa
+ * decisão automática e tirou a trava de rolagem do fundo, dobrando a barra de
+ * rolagem quando o conteúdo é mais alto que a tela (2026-10-08).
  *
  * A página `/comercial/posicao-cliente/[id]` continua existindo para quem
  * chega por link (assistente, favoritos).
@@ -25,7 +29,7 @@ export function PosicaoClienteSheet({
   onOpenChange: (aberto: boolean) => void;
 }) {
   return (
-    <Sheet open={!!clienteId} onOpenChange={onOpenChange} modal={false}>
+    <Sheet open={!!clienteId} onOpenChange={onOpenChange}>
       <ResizableSheetContent
         defaultWidth={1100}
         storageKey="plataforma-cortina-largura-posicao-cliente"
