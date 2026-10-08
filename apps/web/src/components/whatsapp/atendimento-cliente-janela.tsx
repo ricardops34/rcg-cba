@@ -20,7 +20,9 @@ import type {
   WhatsappConversa,
   WhatsappSessao,
 } from "@plataforma/contracts";
-import { ApiError, apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch, assetUrl } from "@/lib/api-client";
+import { avatarColorClass, initials } from "@/lib/avatar-color";
+import { codigoClienteErp } from "@/lib/codigo-cliente";
 import { useAuthStore } from "@/stores/auth-store";
 import { useAtendimentoJanelaStore } from "@/stores/atendimento-janela-store";
 import { useWhatsappIntegracao } from "@/hooks/use-whatsapp-integracao";
@@ -180,11 +182,32 @@ function ListaConversasJanela() {
           }
           className="flex w-full items-center gap-3 border-b px-3 py-2.5 text-left transition-colors hover:bg-muted/50"
         >
+          <div
+            className={`relative flex size-12 shrink-0 items-center justify-center rounded-full text-xs font-semibold shadow-2xs ${avatarColorClass(
+              nomeDaConversa(c),
+            )}`}
+          >
+            {c.contato.fotoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={assetUrl(c.contato.fotoUrl) ?? undefined}
+                alt=""
+                className="size-full rounded-full object-cover"
+              />
+            ) : (
+              initials(nomeDaConversa(c))
+            )}
+          </div>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <p className={`truncate text-sm ${c.naoLidas > 0 ? "font-bold" : "font-medium"}`}>
                 {nomeDaConversa(c)}
               </p>
+              {c.clienteId && c.contato.clienteCodigoErp ? (
+                <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                  ({codigoClienteErp(c.contato.clienteCodigoErp)})
+                </span>
+              ) : null}
               {c.clienteId ? null : (
                 <Badge
                   variant="outline"
