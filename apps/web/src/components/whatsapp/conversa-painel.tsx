@@ -287,7 +287,11 @@ export function Conversa({
                 {codigoCliente ? (
                   <span className="flex shrink-0 items-center text-xs font-medium text-muted-foreground tabular-nums">
                     ({codigoCliente})
-                    <CopiarBotao valor={codigoCliente} rotulo="Código do cliente" />
+                    {/* Copia o código como o ERP o grava (00434801), sem a máscara da tela. */}
+                    <CopiarBotao
+                      valor={conversa?.contato.clienteCodigoErp ?? codigoCliente}
+                      rotulo="Código do cliente"
+                    />
                   </span>
                 ) : null}
                 {conversa?.clienteId ? (
