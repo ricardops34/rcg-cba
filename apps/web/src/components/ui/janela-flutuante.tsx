@@ -243,6 +243,7 @@ export function JanelaFlutuante({
   return createPortal(
     <div
       role="dialog"
+      data-janela-flutuante=""
       aria-label={rotulo}
       className="fixed z-50 flex flex-col overflow-hidden rounded-lg border bg-background shadow-2xl"
       style={{

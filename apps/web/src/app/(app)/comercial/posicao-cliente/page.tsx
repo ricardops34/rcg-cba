@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Wrench } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import type { PosicaoClienteListRow } from "@plataforma/contracts";
@@ -33,6 +33,7 @@ import {
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { ClienteSheet } from "@/components/crud/cliente-form";
 import { OrcamentosClienteSheet } from "@/components/crud/orcamentos-cliente-sheet";
+import { PosicaoClienteSheet } from "@/components/comercial/posicao-cliente-sheet";
 import { IconeWhatsapp } from "@/components/ui/icone-whatsapp";
 import { useAtendimentoDisponivel } from "@/components/whatsapp/atendimento-cliente-janela";
 import { useAtendimentoJanelaStore } from "@/stores/atendimento-janela-store";
@@ -98,7 +99,6 @@ function tituloIndicador(
 // (GET /clientes/posicao). O clique na linha abre a Posição de Cliente
 // detalhada — agrupado de notas, títulos e mix.
 export default function PosicaoClientePage() {
-  const router = useRouter();
   // Filtros, página e ordenação sobrevivem a abrir a posição detalhada e
   // voltar — ver `useEstadoDaTela`.
   const [search, setSearch] = useEstadoDaTela("posicao-cliente:busca", "");
@@ -152,6 +152,8 @@ export default function PosicaoClientePage() {
     id: string;
     modo: "visualizar" | "alterar";
   } | null>(null);
+  // A posição detalhada também abre em cortina — ver PosicaoClienteSheet.
+  const [posicaoClienteId, setPosicaoClienteId] = useState<string | null>(null);
   const [orcamentoClienteId, setOrcamentoClienteId] = useState<string | null>(
     null,
   );
@@ -432,7 +434,7 @@ export default function PosicaoClientePage() {
               </DropdownMenuItem>
             )}
             <DropdownMenuItem
-              onClick={() => router.push(`/comercial/posicao-cliente/${c.id}`)}
+              onClick={() => setPosicaoClienteId(c.id)}
             >
               <ClipboardList className="size-4" /> Posição do Cliente
             </DropdownMenuItem>
@@ -700,7 +702,7 @@ export default function PosicaoClientePage() {
             setPageSize(n);
             setPage(1);
           }}
-          onRowClick={(c) => router.push(`/comercial/posicao-cliente/${c.id}`)}
+          onRowClick={(c) => setPosicaoClienteId(c.id)}
           // Cliente vendendo abaixo da própria média: a linha inteira em
           // amarelo, como no sistema anterior — o vermelho só no número
           // passava despercebido numa lista longa.
@@ -724,6 +726,10 @@ export default function PosicaoClientePage() {
         id={clienteSheet?.id ?? null}
         modo={clienteSheet?.modo ?? "visualizar"}
         onOpenChange={(open) => !open && setClienteSheet(null)}
+      />
+      <PosicaoClienteSheet
+        clienteId={posicaoClienteId}
+        onOpenChange={(open) => !open && setPosicaoClienteId(null)}
       />
       <OrcamentosClienteSheet
         clienteId={orcamentoClienteId}
