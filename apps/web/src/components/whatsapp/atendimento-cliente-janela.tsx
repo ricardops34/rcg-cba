@@ -15,6 +15,8 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import type {
+  Cliente,
+  ClienteContato,
   WhatsappContatoAgenda,
   WhatsappConversa,
   WhatsappSessao,
@@ -26,6 +28,13 @@ import { useWhatsappIntegracao } from "@/hooks/use-whatsapp-integracao";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Conversa } from "@/components/whatsapp/conversa-painel";
 import { ListaDeContatos } from "@/components/whatsapp/nova-conversa-dialog";
 
@@ -218,6 +227,10 @@ function Aviso({ titulo, texto }: { titulo: string; texto: string }) {
  * por `POST /whatsapp/conversas` com o `clienteId` — é a API que confere a
  * carteira e grava o vínculo.
  */
+// Sentinelas do seletor de pessoa: o Radix não aceita item com valor vazio.
+const SEM_PESSOA = "__sem__";
+const NOVA_PESSOA = "__nova__";
+
 function VincularWhatsapp({
   clienteId,
   conectada,
@@ -233,6 +246,54 @@ function VincularWhatsapp({
   /** Contato já ligado a outro cliente: trocar o vínculo pede confirmação. */
   const [troca, setTroca] = useState<WhatsappContatoAgenda | null>(null);
   const liberado = conectada && podeEnviar;
+  const podeCadastrarPessoa = useAuthStore(
+    (s) => s.user?.permissoes.includes("clientes.editar") ?? false,
+  );
+
+  // A pessoa do cadastro que atende neste número. É o que "atualiza o
+  // cadastro": a API liga o número a ela e o grava como celular dela quando
+  // estava sem. O telefone do **cliente** não muda — ele vem do ERP.
+  const pessoas = useQuery({
+    queryKey: ["cliente-contatos", clienteId],
+    queryFn: () => apiFetch<ClienteContato[]>(`/clientes/${clienteId}/contatos`),
+    enabled: liberado,
+  });
+  const ativas = (pessoas.data ?? []).filter((p) => p.ativo);
+  // Sugestão: a pessoa principal, ou a única; sem ninguém cadastrado, abre o
+  // cadastro de uma nova (quando o perfil pode). O vendedor troca à vontade.
+  const pessoaSugerida =
+    ativas.find((p) => p.principal)?.id ??
+    (ativas.length === 1 ? ativas[0].id : null) ??
+    (ativas.length === 0 && podeCadastrarPessoa ? NOVA_PESSOA : SEM_PESSOA);
+  const [pessoaEscolhida, setPessoa] = useState<string | null>(null);
+  const pessoaId = pessoaEscolhida ?? pessoaSugerida;
+  const [novaNome, setNovaNome] = useState("");
+  const [novaEmail, setNovaEmail] = useState("");
+  const novaIncompleta =
+    pessoaId === NOVA_PESSOA &&
+    (novaNome.trim().length < 2 || !/^\S+@\S+\.\S+$/.test(novaEmail.trim()));
+
+  // Os números do cadastro, na ordem em que a API escolhe quando o campo fica
+  // em branco (`iniciarConversa`): celular primeiro, que é o que costuma ter
+  // WhatsApp. Mesma chave do `ClienteCombobox`, que já busca este cliente.
+  const cadastro = useQuery({
+    queryKey: ["clientes", clienteId],
+    queryFn: () => apiFetch<Cliente>(`/clientes/${clienteId}`),
+    enabled: liberado,
+  });
+  const numerosCadastro = [
+    { rotulo: "Celular", numero: cadastro.data?.celular },
+    { rotulo: "Telefone", numero: cadastro.data?.telefone },
+    { rotulo: "Telefone 2", numero: cadastro.data?.telefone2 },
+  ].filter(
+    // Mesmo corte do `primeiroTelefoneValido` da API: 8 dígitos é o mínimo de
+    // um número local (a base guarda muitos telefones sem DDD).
+    (n): n is { rotulo: string; numero: string } =>
+      !!n.numero && n.numero.replace(/\D/g, "").length >= 8,
+  );
+  // Campo em branco = o primeiro número do cadastro, então é ele que aparece
+  // marcado até o vendedor escolher ou digitar outro.
+  const numeroMarcado = telefone.trim() || numerosCadastro[0]?.numero || "";
 
   const contatos = useQuery({
     queryKey: ["whatsapp-agenda-contatos", busca],
@@ -250,14 +311,30 @@ function VincularWhatsapp({
   });
 
   const iniciar = useMutation({
-    mutationFn: (corpo: { jid?: string; telefone?: string; nome?: string }) =>
-      apiFetch<WhatsappConversa>("/whatsapp/conversas", {
+    mutationFn: async (corpo: { jid?: string; telefone?: string; nome?: string }) => {
+      let clienteContatoId: string | undefined =
+        pessoaId === SEM_PESSOA || pessoaId === NOVA_PESSOA ? undefined : pessoaId;
+      if (pessoaId === NOVA_PESSOA) {
+        // Sem celular: quem grava o número é a API, já no formato do WhatsApp.
+        const criada = await apiFetch<ClienteContato>(`/clientes/${clienteId}/contatos`, {
+          method: "POST",
+          body: { nome: novaNome.trim(), email: novaEmail.trim(), principal: false },
+        });
+        clienteContatoId = criada.id;
+      }
+      return apiFetch<WhatsappConversa>("/whatsapp/conversas", {
         method: "POST",
-        body: { ...corpo, clienteId },
-      }),
+        body: { ...corpo, clienteId, clienteContatoId },
+      });
+    },
     onSuccess: () => {
       setTroca(null);
-      toast.success("WhatsApp vinculado ao cliente");
+      toast.success(
+        pessoaId === SEM_PESSOA
+          ? "WhatsApp vinculado ao cliente"
+          : "WhatsApp vinculado ao cliente e ao contato do cadastro",
+      );
+      void queryClient.invalidateQueries({ queryKey: ["cliente-contatos", clienteId] });
       void queryClient.invalidateQueries({ queryKey: ["whatsapp-conversas"] });
       void queryClient.invalidateQueries({ queryKey: ["whatsapp-agenda-contatos"] });
       void queryClient.invalidateQueries({ queryKey: ["whatsapp-agenda-conversas"] });
@@ -314,7 +391,7 @@ function VincularWhatsapp({
           <div className="flex gap-2">
             <Button
               size="sm"
-              disabled={iniciar.isPending}
+              disabled={iniciar.isPending || novaIncompleta}
               onClick={() =>
                 iniciar.mutate({ jid: troca.jid, nome: troca.nome ?? undefined })
               }
@@ -327,6 +404,47 @@ function VincularWhatsapp({
           </div>
         </div>
       ) : null}
+
+      <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+        <p className="text-xs font-medium">Contato do cadastro que atende neste número</p>
+        <Select value={pessoaId} onValueChange={setPessoa}>
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ativas.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.nome}
+                {p.celular ? ` · ${p.celular}` : " · sem celular"}
+              </SelectItem>
+            ))}
+            {podeCadastrarPessoa ? (
+              <SelectItem value={NOVA_PESSOA}>Cadastrar novo contato</SelectItem>
+            ) : null}
+            <SelectItem value={SEM_PESSOA}>Não ligar a um contato</SelectItem>
+          </SelectContent>
+        </Select>
+        {pessoaId === NOVA_PESSOA ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Input
+              placeholder="Nome"
+              value={novaNome}
+              onChange={(e) => setNovaNome(e.target.value)}
+            />
+            <Input
+              placeholder="E-mail"
+              type="email"
+              value={novaEmail}
+              onChange={(e) => setNovaEmail(e.target.value)}
+            />
+          </div>
+        ) : null}
+        <p className="text-xs text-muted-foreground">
+          {pessoaId === SEM_PESSOA
+            ? "O número fica vinculado só ao cliente."
+            : "O número entra no cadastro como celular do contato, se ele ainda não tiver um."}
+        </p>
+      </div>
 
       <Tabs defaultValue="cadastro">
         <TabsList className="w-full">
@@ -342,19 +460,57 @@ function VincularWhatsapp({
         </TabsList>
 
         <TabsContent value="cadastro" className="space-y-3">
+          {cadastro.isLoading ? (
+            <div className="flex justify-center py-2">
+              <Loader2 className="size-4 animate-spin text-muted-foreground" />
+            </div>
+          ) : numerosCadastro.length > 0 ? (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground">
+                Números do cadastro
+              </p>
+              {numerosCadastro.map((n) => {
+                const marcado = n.numero === numeroMarcado;
+                return (
+                  <button
+                    key={n.rotulo}
+                    type="button"
+                    onClick={() => setTelefone(n.numero)}
+                    className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                      marcado
+                        ? "border-[#00A884] bg-emerald-500/10"
+                        : "hover:bg-muted"
+                    }`}
+                  >
+                    <span className="font-medium">{n.numero}</span>
+                    <span className="text-xs text-muted-foreground">{n.rotulo}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-amber-600">
+              O cliente não tem telefone no cadastro. Informe o número abaixo.
+            </p>
+          )}
           <Input
-            placeholder="Número com DDD (opcional)"
+            placeholder={
+              numerosCadastro.length > 0
+                ? "Outro número com DDD (opcional)"
+                : "Número com DDD"
+            }
             inputMode="numeric"
             value={telefone}
             onChange={(e) => setTelefone(e.target.value)}
           />
-          <p className="text-xs text-muted-foreground">
-            Em branco, usa o telefone do cadastro do cliente (o celular, se
-            houver).
-          </p>
+          {numerosCadastro.length > 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Em branco, usa o número marcado do cadastro.
+            </p>
+          ) : null}
           <Button
             className="w-full gap-2 bg-[#00A884] text-white hover:bg-[#008f6f]"
-            disabled={iniciar.isPending}
+            disabled={iniciar.isPending || novaIncompleta}
             onClick={() => iniciar.mutate({ telefone: telefone.trim() || undefined })}
           >
             <MessageSquarePlus className="size-4" />
@@ -377,7 +533,7 @@ function VincularWhatsapp({
             contatos={contatos.data ?? []}
             vazio="Nenhum contato na agenda. Atualize a agenda pela Nova conversa, na tela de Atendimento."
             onEscolher={escolher}
-            desabilitado={iniciar.isPending}
+            desabilitado={iniciar.isPending || novaIncompleta}
           />
         </TabsContent>
 
@@ -395,7 +551,7 @@ function VincularWhatsapp({
             contatos={conversasAparelho.data ?? []}
             vazio="Nenhuma conversa veio do celular."
             onEscolher={escolher}
-            desabilitado={iniciar.isPending}
+            desabilitado={iniciar.isPending || novaIncompleta}
           />
         </TabsContent>
       </Tabs>

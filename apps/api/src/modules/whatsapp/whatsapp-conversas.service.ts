@@ -2996,6 +2996,8 @@ export class WhatsappConversasService {
       let nome = input.nome ?? null;
       // DDD de outro telefone do mesmo cliente, para o número gravado sem DDD.
       let dddDoCadastro: string | null = null;
+      // A pessoa do cadastro que atende neste número, quando o vendedor indicou.
+      let pessoa: { id: string; celular: string | null } | null = null;
 
       if (clienteId) {
         const escopo = await resolverEscopoVendedores(tx, empresaId, user);
@@ -3023,6 +3025,22 @@ export class WhatsappConversasService {
           cliente.telefone,
           cliente.telefone2,
         ]);
+        if (input.clienteContatoId) {
+          pessoa = await tx.clienteContato.findFirst({
+            where: {
+              id: input.clienteContatoId,
+              empresaId,
+              clienteId,
+              ativo: true,
+            },
+            select: { id: true, celular: true },
+          });
+          if (!pessoa) {
+            throw new NotFoundException(
+              'Contato não encontrado no cadastro deste cliente.',
+            );
+          }
+        }
         // Com contato escolhido (jid), o número é o dele: o do cadastro
         // sobrescreveria o telefone do contato e recusaria o vínculo de
         // cliente sem telefone cadastrado. Celular primeiro: é o que costuma
@@ -3072,6 +3090,7 @@ export class WhatsappConversasService {
           ...(clienteId
             ? { vinculadoPor: user.id, vinculadoEm: new Date() }
             : {}),
+          ...(pessoa ? { clienteContatoId: pessoa.id } : {}),
         },
         update: {
           // Vínculo existente não é sobrescrito por um "iniciar conversa":
@@ -3081,8 +3100,23 @@ export class WhatsappConversasService {
             : {}),
           ...(nome ? { nomeExibicao: nome } : {}),
           ...(telefone ? { telefoneNormalizado: telefone } : {}),
+          ...(pessoa ? { clienteContatoId: pessoa.id } : {}),
         },
       });
+
+      // O número atendido passa a constar no cadastro da pessoa quando lá não
+      // havia nenhum — a mesma regra do vínculo pela tela de Atendimento. É o
+      // cadastro da plataforma (`cliente_contatos`), não o telefone do
+      // cliente, que vem do ERP. Celular já preenchido não é sobrescrito.
+      const numeroDoJid = jid.endsWith('@s.whatsapp.net')
+        ? jid.split('@')[0].replace(/^55(?=\d{10,11}$)/, '')
+        : null;
+      if (pessoa && !pessoa.celular && numeroDoJid) {
+        await tx.clienteContato.update({
+          where: { id: pessoa.id },
+          data: { celular: numeroDoJid, updatedBy: user.id },
+        });
+      }
 
       const conversa = await tx.whatsappConversa.upsert({
         where: {

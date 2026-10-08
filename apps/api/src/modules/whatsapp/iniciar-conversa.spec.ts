@@ -23,8 +23,13 @@ describe('WhatsappConversasService.iniciarConversa — contato escolhido', () =>
   const montar = (
     cliente: Record<string, string | null>,
     config: { dddPadrao: string | null } = { dddPadrao: null },
+    pessoa: { id: string; celular: string | null } | null = null,
   ) => {
     const tx = {
+      clienteContato: {
+        findFirst: jest.fn().mockResolvedValue(pessoa),
+        update: jest.fn().mockResolvedValue({}),
+      },
       vendedor: { findFirst: jest.fn().mockResolvedValue({ id: 'v1' }) },
       whatsappSessao: {
         findUnique: jest.fn().mockResolvedValue({
@@ -143,6 +148,61 @@ describe('WhatsappConversasService.iniciarConversa — contato escolhido', () =>
       await expect(
         service.iniciarConversa('e1', user, { clienteId: CLIENTE }),
       ).rejects.toThrow(/sem DDD/);
+      expect(tx.whatsappContato.upsert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('pessoa do cadastro', () => {
+    const PESSOA = '22222222-2222-2222-2222-222222222222';
+
+    it('liga o número à pessoa e grava o celular que ela não tinha', async () => {
+      const { service, tx } = montar(
+        { celular: '67991468448', telefone: null, telefone2: null },
+        { dddPadrao: null },
+        { id: PESSOA, celular: null },
+      );
+
+      await service.iniciarConversa('e1', user, {
+        clienteId: CLIENTE,
+        clienteContatoId: PESSOA,
+      });
+
+      const args = tx.whatsappContato.upsert.mock.calls[0][0];
+      expect(args.create).toMatchObject({ clienteContatoId: PESSOA });
+      expect(tx.clienteContato.update).toHaveBeenCalledWith({
+        where: { id: PESSOA },
+        data: { celular: '67991468448', updatedBy: 'u1' },
+      });
+    });
+
+    it('não sobrescreve o celular que a pessoa já tem', async () => {
+      const { service, tx } = montar(
+        { celular: '67991468448', telefone: null, telefone2: null },
+        { dddPadrao: null },
+        { id: PESSOA, celular: '67988887777' },
+      );
+
+      await service.iniciarConversa('e1', user, {
+        clienteId: CLIENTE,
+        clienteContatoId: PESSOA,
+      });
+
+      expect(tx.clienteContato.update).not.toHaveBeenCalled();
+    });
+
+    it('pessoa de outro cliente não é aceita', async () => {
+      const { service, tx } = montar(
+        { celular: '67991468448', telefone: null, telefone2: null },
+        { dddPadrao: null },
+        null,
+      );
+
+      await expect(
+        service.iniciarConversa('e1', user, {
+          clienteId: CLIENTE,
+          clienteContatoId: PESSOA,
+        }),
+      ).rejects.toThrow('Contato não encontrado no cadastro deste cliente.');
       expect(tx.whatsappContato.upsert).not.toHaveBeenCalled();
     });
   });

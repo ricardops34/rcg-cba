@@ -641,6 +641,16 @@ export const whatsappIniciarConversaSchema = z
     jid: z.string().optional(),
     telefone: z.string().trim().optional(),
     nome: z.string().trim().optional(),
+    clienteContatoId: z
+      .string()
+      .uuid()
+      .optional()
+      .describe(
+        "Pessoa do cadastro (cliente_contatos) que atende neste número; recebe o número como celular se estiver sem",
+      ),
+  })
+  .refine((v) => !v.clienteContatoId || v.clienteId, {
+    message: "Escolha o cliente antes de indicar a pessoa do cadastro",
   })
   .refine((v) => v.clienteId || v.jid || v.telefone, {
     message: "Informe o cliente, o contato da agenda ou o número",
