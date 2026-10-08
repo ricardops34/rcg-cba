@@ -106,11 +106,6 @@ export function OrcamentosClienteSheet({
       cell: (o) => dataCivilBr(o.createdAt),
     },
     {
-      header: "Título",
-      className: "whitespace-normal",
-      cell: (o) => <span className="block max-w-56 font-medium">{o.titulo}</span>,
-    },
-    {
       header: "Status",
       cell: (o) => <Badge variant={STATUS_ORCAMENTO_VARIANT[o.status]}>{STATUS_ORCAMENTO_LABEL[o.status]}</Badge>,
     },
