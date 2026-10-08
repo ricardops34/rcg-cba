@@ -424,6 +424,15 @@ export class WhatsappProviderService {
     return provider.obterFotoContato(ctx, jid, telefone);
   }
 
+  async definirFotoPerfil(
+    empresaId: string,
+    sessaoId: string,
+    urlImagem: string,
+  ): Promise<void> {
+    const { ctx, provider } = await this.provedorDaSessao(empresaId, sessaoId);
+    await provider.definirFotoPerfil(ctx, urlImagem);
+  }
+
   async sincronizarAgenda(empresaId: string, sessaoId: string): Promise<void> {
     const { ctx, provider } = await this.provedorDaSessao(empresaId, sessaoId);
     await provider.sincronizarAgenda(ctx);

@@ -50,6 +50,10 @@ COPY --from=build /app/apps/api/dist apps/api/dist
 # DATABASE_URL com a role DONA (não plataforma_app): os scripts rodam fora do
 # Nest e setam o tenant na mão, então precisam contornar a RLS.
 COPY --from=build /app/apps/api/prisma/dist apps/api/prisma/dist
+# Avatares corporativos: o web os serve à tela, e a API lê os mesmos arquivos
+# para aplicar a foto do perfil no WhatsApp (whatsapp/foto-perfil-whatsapp.ts).
+# Mesmo caminho relativo do repositório, para dev e produção lerem igual.
+COPY apps/web/public/avatares-padrao apps/web/public/avatares-padrao
 WORKDIR /app/apps/api
 EXPOSE 3001
 # As migrations precisam da role DONA; a API, de plataforma_app (sem ela a RLS

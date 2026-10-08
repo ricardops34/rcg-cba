@@ -307,6 +307,20 @@ export class WhatsappController {
   }
 
   @ApiOperation({
+    summary: 'Usar a foto do perfil como foto do WhatsApp',
+    description:
+      'Aplica o avatar do usuário logado (corporativo ou foto enviada, em JPEG) na ' +
+      'conta de WhatsApp da instância dele, que precisa estar conectada. Requer ' +
+      'whatsapp-conversas.editar, a mesma permissão de conectar o aparelho.',
+  })
+  @ApiResponse({ status: 201, schema: { example: { ok: true } } })
+  @RequirePermission('whatsapp-conversas', 'editar')
+  @Post('sessao/foto-perfil')
+  aplicarFotoDoPerfil(@CurrentUser() user: AuthenticatedUser) {
+    return this.sessao.aplicarFotoDoPerfil(user.empresaAtivaId, user);
+  }
+
+  @ApiOperation({
     summary: 'Conectar o WhatsApp do vendedor (iniciar pareamento)',
     description:
       'Um número por vendedor: com uma sessão já conectada, é preciso desconectar ' +

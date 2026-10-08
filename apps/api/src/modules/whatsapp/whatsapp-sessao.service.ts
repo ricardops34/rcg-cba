@@ -24,6 +24,16 @@ import {
   type WhatsappSessaoStatus,
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { randomUUID } from 'node:crypto';
+import { mkdir, unlink, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import {
+  WHATSAPP_DIR,
+  whatsappPublicPath,
+} from '../../common/uploads/uploads.config';
+import { assinarUrl } from '../../common/uploads/link-assinado';
+import { baseDaApiParaOGateway } from './providers/evolution-go.provider';
+import { jpegDoAvatar } from './foto-perfil-whatsapp';
 
 /**
  * Sessão de WhatsApp do vendedor.
@@ -145,6 +155,60 @@ export class WhatsappSessaoService {
       if (!sessao || sessao.usuarioId !== user.id) return null;
       return this.paraLeitura(sessao, vendedor.nome);
     });
+  }
+
+  /**
+   * Leva a foto do perfil da plataforma para a conta de WhatsApp do próprio
+   * usuário — o botão "Usar no WhatsApp" do perfil.
+   *
+   * Só a instância **dele** e conectada: é a foto que os clientes passam a
+   * ver, e trocá-la é ação explícita de quem é dono do aparelho, nunca efeito
+   * colateral de mudar o avatar.
+   *
+   * O gateway só aceita URL e baixa ele mesmo. A cópia em JPEG vai para
+   * `/uploads/whatsapp/`, que só entrega com link assinado e no prazo, e é
+   * apagada assim que o gateway responde — ele baixa durante a chamada.
+   */
+  async aplicarFotoDoPerfil(empresaId: string, user: AuthenticatedUser) {
+    const { sessaoId, avatarUrl } = await this.prisma.withTenant(
+      empresaId,
+      async (tx) => {
+        const vendedor = await this.vendedorDoUsuario(tx, empresaId, user);
+        const sessao = await tx.whatsappSessao.findUnique({
+          where: {
+            empresaId_vendedorId: { empresaId, vendedorId: vendedor.id },
+          },
+          select: { id: true, status: true, usuarioId: true },
+        });
+        if (
+          !sessao ||
+          sessao.usuarioId !== user.id ||
+          sessao.status !== 'conectada'
+        ) {
+          throw new BadRequestException(
+            'Seu WhatsApp não está conectado. Conecte o aparelho na tela de Atendimento.',
+          );
+        }
+        const usuario = await tx.usuario.findUnique({
+          where: { id: user.id },
+          select: { avatarUrl: true },
+        });
+        return { sessaoId: sessao.id, avatarUrl: usuario?.avatarUrl ?? null };
+      },
+    );
+
+    const bytes = await jpegDoAvatar(avatarUrl);
+    const arquivo = `perfil-${randomUUID()}.jpg`;
+    const caminho = join(WHATSAPP_DIR, arquivo);
+    await mkdir(WHATSAPP_DIR, { recursive: true });
+    await writeFile(caminho, bytes);
+    try {
+      const url = `${baseDaApiParaOGateway()}${assinarUrl(whatsappPublicPath(arquivo))}`;
+      await this.provedores.definirFotoPerfil(empresaId, sessaoId, url);
+    } finally {
+      await unlink(caminho).catch(() => undefined);
+    }
+    return { ok: true };
   }
 
   /**

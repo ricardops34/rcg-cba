@@ -23,6 +23,17 @@ import type {
 } from './whatsapp-provider';
 
 /**
+ * Endereço pelo qual o **gateway** alcança a API — não o do navegador. Em dev é
+ * o nome do serviço na rede do compose. Serve ao webhook e a todo arquivo que
+ * o gateway precise baixar da API (a foto do perfil).
+ */
+export function baseDaApiParaOGateway(): string {
+  return (
+    process.env.WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL ?? 'http://api:3001'
+  ).replace(/\/+$/, '');
+}
+
+/**
  * Eventos que a instância assina ao conectar.
  *
  * É a lista mínima para o atendimento funcionar como funciona hoje no zapo:
@@ -143,9 +154,7 @@ export class EvolutionGoProvider implements WhatsappProvider {
    * segredo, ao contrário de uma query string.
    */
   private urlWebhook(ctx: ContextoSessao, segredo: string): string {
-    const base = (
-      process.env.WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL ?? 'http://api:3001'
-    ).replace(/\/+$/, '');
+    const base = baseDaApiParaOGateway();
     const url = new URL(
       `${base}/api/v1/whatsapp/evolution/webhook/${ctx.empresaId}/${ctx.sessaoId}`,
     );
@@ -1088,6 +1097,19 @@ export class EvolutionGoProvider implements WhatsappProvider {
         number: this.destinatario(dados.jid),
         id: [dados.externoId],
       },
+    });
+  }
+
+  async definirFotoPerfil(
+    ctx: ContextoSessao,
+    urlImagem: string,
+  ): Promise<void> {
+    // `{image}` é URL, não base64: o gateway faz o GET e repassa os bytes ao
+    // WhatsApp sem converter (conferido no fonte do evolution-go).
+    await this.http.chamar(ctx.config.evolutionUrl, '/user/profilePicture', {
+      metodo: 'POST',
+      credencial: this.chaveInstancia(ctx),
+      corpo: { image: urlImagem },
     });
   }
 

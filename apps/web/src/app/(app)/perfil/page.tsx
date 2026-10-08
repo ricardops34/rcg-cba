@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { TermosAceitosCard } from "@/components/perfil/termos-aceitos-card";
 import { ProfilePhoto } from "@/components/perfil/profile-photo";
 import { TelaInicialCard } from "@/components/perfil/tela-inicial-card";
+import { UsarFotoNoWhatsapp } from "@/components/perfil/usar-foto-no-whatsapp";
 
 export default function PerfilPage() {
   const { user, setUser } = useAuthStore();
@@ -65,6 +66,7 @@ export default function PerfilPage() {
           <CardContent>
             <FieldGroup>
               {user && <ProfilePhoto user={user} />}
+              <UsarFotoNoWhatsapp />
               {/* Só leitura: quem muda é o administrador. Fica acima dos campos
                   editáveis para o "Salvar dados" não parecer valer para eles. */}
               <dl className="grid grid-cols-1 gap-3 rounded-lg border bg-muted/20 p-3 text-sm sm:grid-cols-3">

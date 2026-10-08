@@ -297,6 +297,14 @@ export interface WhatsappProvider {
 
   sincronizarAgenda(ctx: ContextoSessao): Promise<void>;
 
+  /**
+   * Troca a foto da **própria conta** de WhatsApp da instância.
+   *
+   * `urlImagem` é baixada pelo gateway, que não converte nada: tem de ser
+   * JPEG, que é o que o WhatsApp aceita.
+   */
+  definirFotoPerfil(ctx: ContextoSessao, urlImagem: string): Promise<void>;
+
   importarHistorico(
     ctx: ContextoSessao,
     dias: number,
