@@ -17,9 +17,13 @@ describe('WhatsappConversasService.iniciarConversa — contato escolhido', () =>
   type Upsert = {
     create: Record<string, unknown>;
     update: Record<string, unknown>;
+    where: { empresaId_jid: { jid: string } };
   };
 
-  const montar = (cliente: Record<string, string | null>) => {
+  const montar = (
+    cliente: Record<string, string | null>,
+    config: { dddPadrao: string | null } = { dddPadrao: null },
+  ) => {
     const tx = {
       vendedor: { findFirst: jest.fn().mockResolvedValue({ id: 'v1' }) },
       whatsappSessao: {
@@ -50,7 +54,7 @@ describe('WhatsappConversasService.iniciarConversa — contato escolhido', () =>
     };
     const service = new WhatsappConversasService(
       prisma as never,
-      {} as never,
+      { obter: jest.fn().mockResolvedValue(config) } as never,
       {} as never,
       {} as never,
       {} as never,
@@ -101,5 +105,45 @@ describe('WhatsappConversasService.iniciarConversa — contato escolhido', () =>
       service.iniciarConversa('e1', user, { clienteId: CLIENTE }),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(tx.whatsappContato.upsert).not.toHaveBeenCalled();
+  });
+
+  describe('número do cadastro sem DDD', () => {
+    const jidCriado = (tx: ReturnType<typeof montar>['tx']) =>
+      tx.whatsappContato.upsert.mock.calls[0][0].where.empresaId_jid.jid;
+
+    it('usa o DDD de outro telefone do mesmo cliente', async () => {
+      const { service, tx } = montar(
+        { celular: '991468448', telefone: '(67) 3321-0000', telefone2: null },
+        { dddPadrao: '65' },
+      );
+
+      await service.iniciarConversa('e1', user, { clienteId: CLIENTE });
+
+      expect(jidCriado(tx)).toBe('5567991468448@s.whatsapp.net');
+    });
+
+    it('sem pista no cadastro, cai no DDD padrão da empresa', async () => {
+      const { service, tx } = montar(
+        { celular: '991468448', telefone: null, telefone2: null },
+        { dddPadrao: '65' },
+      );
+
+      await service.iniciarConversa('e1', user, { clienteId: CLIENTE });
+
+      expect(jidCriado(tx)).toBe('5565991468448@s.whatsapp.net');
+    });
+
+    it('sem pista e sem DDD padrão, recusa em vez de chutar', async () => {
+      const { service, tx } = montar({
+        celular: '991468448',
+        telefone: null,
+        telefone2: null,
+      });
+
+      await expect(
+        service.iniciarConversa('e1', user, { clienteId: CLIENTE }),
+      ).rejects.toThrow(/sem DDD/);
+      expect(tx.whatsappContato.upsert).not.toHaveBeenCalled();
+    });
   });
 });

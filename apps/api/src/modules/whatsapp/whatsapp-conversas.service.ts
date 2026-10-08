@@ -2994,6 +2994,8 @@ export class WhatsappConversasService {
       let telefone = input.telefone ? input.telefone.replace(/\D/g, '') : null;
       const clienteId = input.clienteId ?? null;
       let nome = input.nome ?? null;
+      // DDD de outro telefone do mesmo cliente, para o número gravado sem DDD.
+      let dddDoCadastro: string | null = null;
 
       if (clienteId) {
         const escopo = await resolverEscopoVendedores(tx, empresaId, user);
@@ -3016,6 +3018,11 @@ export class WhatsappConversasService {
           );
         }
         nome = nome ?? cliente.razaoSocial;
+        dddDoCadastro = this.dddDoCadastro([
+          cliente.celular,
+          cliente.telefone,
+          cliente.telefone2,
+        ]);
         // Com contato escolhido (jid), o número é o dele: o do cadastro
         // sobrescreveria o telefone do contato e recusaria o vínculo de
         // cliente sem telefone cadastrado. Celular primeiro: é o que costuma
@@ -3040,7 +3047,7 @@ export class WhatsappConversasService {
         if (!telefone) {
           throw new BadRequestException('Informe o cliente ou o número.');
         }
-        jid = `${await this.numeroCompleto(empresaId, telefone)}@s.whatsapp.net`;
+        jid = `${await this.numeroCompleto(empresaId, telefone, dddDoCadastro)}@s.whatsapp.net`;
       }
 
       // Feed de status, lista de transmissão, canal e grupo não são
@@ -3131,6 +3138,25 @@ export class WhatsappConversasService {
     return destino.endsWith('@s.whatsapp.net') || destino.endsWith('@lid');
   }
 
+  /**
+   * O DDD do primeiro telefone do cadastro que o traz (10 ou 11 dígitos, com
+   * ou sem o 55 na frente). Serve ao número do mesmo cliente gravado sem DDD.
+   */
+  private dddDoCadastro(candidatos: (string | null)[]): string | null {
+    for (const bruto of candidatos) {
+      const digitos = (bruto ?? '')
+        .replace(/\D/g, '')
+        .replace(/^55(?=\d{10,11}$)/, '');
+      if (
+        (digitos.length === 10 || digitos.length === 11) &&
+        /^[1-9][1-9]/.test(digitos)
+      ) {
+        return digitos.slice(0, 2);
+      }
+    }
+    return null;
+  }
+
   private primeiroTelefoneValido(candidatos: (string | null)[]): string | null {
     for (const bruto of candidatos) {
       const digitos = (bruto ?? '').replace(/\D/g, '');
@@ -3149,13 +3175,23 @@ export class WhatsappConversasService {
    * cidade da empresa — manda mensagem para um desconhecido em outro DDD.
    * Por isso o DDD padrão é configuração explícita da empresa, e sem ela o
    * sistema recusa em vez de chutar.
+   *
+   * A exceção é a pista do **próprio cadastro** (decisão de 2026-10-08): se
+   * outro telefone do mesmo cliente tem DDD, ele vale antes do DDD padrão. É
+   * o mesmo cliente, e os números dele são da mesma praça quase sempre — bem
+   * mais forte que a UF ou a cidade da empresa.
    */
-  private async numeroCompleto(empresaId: string, telefone: string) {
+  private async numeroCompleto(
+    empresaId: string,
+    telefone: string,
+    dddDoCadastro: string | null = null,
+  ) {
     const digitos = telefone.replace(/\D/g, '');
     // Já veio com DDI (55 + DDD + 8/9 dígitos).
     if (digitos.length >= 12) return digitos;
     // DDD presente, DDI ausente.
     if (digitos.length >= 10) return `55${digitos}`;
+    if (dddDoCadastro) return `55${dddDoCadastro}${digitos}`;
 
     const config = await this.config.obter(empresaId);
     if (!config.dddPadrao) {
