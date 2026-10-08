@@ -130,9 +130,10 @@ export function Conversa({
   somenteConsulta: { vendedorNome: string; motivo?: "desconectado" | "sem-permissao" } | null;
   /** Sem lista ao lado (a janela da Posição de Cliente), o botão não aparece. */
   onVoltarLista?: () => void;
-  onAbrirContato: () => void;
-  onAbrirPosicao: () => void;
-  onAbrirOrcamento: () => void;
+  /** Sem ela (janela da Posição de Cliente), nada no cabeçalho leva para outra tela. */
+  onAbrirContato?: () => void;
+  onAbrirPosicao?: () => void;
+  onAbrirOrcamento?: () => void;
   onNovaConversa?: () => void;
   sessaoNumero?: string | null;
   listaAberta?: boolean;
@@ -241,8 +242,11 @@ export function Conversa({
           <button
             type="button"
             onClick={onAbrirContato}
-            title="Ver dados do contato"
-            className="flex min-w-0 items-center gap-3 text-left group hover:opacity-90 transition-opacity cursor-pointer"
+            disabled={!onAbrirContato}
+            title={onAbrirContato ? "Ver dados do contato" : undefined}
+            className={`flex min-w-0 items-center gap-3 text-left group transition-opacity ${
+              onAbrirContato ? "cursor-pointer hover:opacity-90" : "cursor-default"
+            }`}
           >
             <div
               className={`relative flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold shadow-2xs ${avatarColorClass(
@@ -288,26 +292,30 @@ export function Conversa({
         <div data-tour="atendimento-acoes" className="flex shrink-0 items-center gap-1.5">
           {clienteId ? (
             <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onAbrirPosicao}
-                className="h-8 text-xs gap-1.5 bg-background/80 hover:bg-background shadow-2xs"
-              >
-                <UserRound className="size-3.5 text-primary" />
-                <span className="hidden sm:inline">Posição 360°</span>
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onAbrirOrcamento}
-                className="h-8 text-xs gap-1.5 bg-background/80 hover:bg-background shadow-2xs"
-              >
-                <BriefcaseBusiness className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span className="hidden sm:inline">Orçamento</span>
-              </Button>
+              {onAbrirPosicao ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onAbrirPosicao}
+                  className="h-8 text-xs gap-1.5 bg-background/80 hover:bg-background shadow-2xs"
+                >
+                  <UserRound className="size-3.5 text-primary" />
+                  <span className="hidden sm:inline">Posição 360°</span>
+                </Button>
+              ) : null}
+              {onAbrirOrcamento ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onAbrirOrcamento}
+                  className="h-8 text-xs gap-1.5 bg-background/80 hover:bg-background shadow-2xs"
+                >
+                  <BriefcaseBusiness className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span className="hidden sm:inline">Orçamento</span>
+                </Button>
+              ) : null}
             </>
-          ) : (
+          ) : onAbrirContato ? (
             <Button
               variant="default"
               size="sm"
@@ -317,17 +325,19 @@ export function Conversa({
               <Link2 className="size-3.5" />
               <span>Vincular Cliente</span>
             </Button>
-          )}
+          ) : null}
 
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onAbrirContato}
-            title="Dados do contato"
-            className="size-8 text-muted-foreground hover:text-foreground"
-          >
-            <MoreVertical className="size-4" />
-          </Button>
+          {onAbrirContato ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onAbrirContato}
+              title="Dados do contato"
+              className="size-8 text-muted-foreground hover:text-foreground"
+            >
+              <MoreVertical className="size-4" />
+            </Button>
+          ) : null}
         </div>
       </div>
 

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -112,7 +111,6 @@ export function AbaWhatsapp() {
 }
 
 function ConteudoAtendimento({ clienteId }: { clienteId: string }) {
-  const router = useRouter();
   const empresaId = useAuthStore((s) => s.user?.empresaAtivaId);
   const podeEnviar = useAuthStore(
     (s) => s.user?.permissoes.includes(PERMISSAO_ENVIAR) ?? false,
@@ -188,13 +186,8 @@ function ConteudoAtendimento({ clienteId }: { clienteId: string }) {
               ? { vendedorNome: sessao.data.vendedorNome, motivo: "sem-permissao" }
               : null
         }
-        // Dados do contato e troca de vínculo ficam na tela de Atendimento,
-        // que tem o painel completo para isso.
-        onAbrirContato={() =>
-          router.push(`/comercial/atendimento?conversa=${conversa.id}`)
-        }
-        onAbrirPosicao={() => router.push(`/comercial/posicao-cliente/${clienteId}`)}
-        onAbrirOrcamento={() => router.push(`/crm/orcamentos/novo?clienteId=${clienteId}`)}
+        // Sem contato, posição e orçamento: a janela abre por cima da Posição de
+        // Cliente, que já tem os três, e nada aqui deve tirar o vendedor dela.
       />
     </div>
   );

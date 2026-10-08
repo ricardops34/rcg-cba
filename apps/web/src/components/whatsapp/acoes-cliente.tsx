@@ -60,8 +60,8 @@ export function AcoesCliente({
    * empurra a conversa em vez de cobri-la. Quem controla essa coluna é a
    * tela, então a decisão sobe — este componente só avisa.
    */
-  onAbrirPosicao: () => void;
-  onAbrirOrcamento: () => void;
+  onAbrirPosicao?: () => void;
+  onAbrirOrcamento?: () => void;
 }) {
   const queryClient = useQueryClient();
   const [agendando, setAgendando] = useState(false);
@@ -168,19 +168,21 @@ export function AcoesCliente({
               Enviar DANFE (2ª via)
             </DropdownMenuItem>
           ) : null}
-          {podePosicao || podeCriarOrcamento || podeOrcamento ? (
+          {(podePosicao && onAbrirPosicao) ||
+          (podeCriarOrcamento && onAbrirOrcamento) ||
+          podeOrcamento ? (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Comercial</DropdownMenuLabel>
             </>
           ) : null}
-          {podePosicao ? (
+          {podePosicao && onAbrirPosicao ? (
             <DropdownMenuItem onClick={onAbrirPosicao}>
               <BarChart3 className="size-4" />
               Ver posição do cliente
             </DropdownMenuItem>
           ) : null}
-          {podeCriarOrcamento ? (
+          {podeCriarOrcamento && onAbrirOrcamento ? (
             <DropdownMenuItem onClick={onAbrirOrcamento}>
               <FilePlus2 className="size-4" />
               Montar orçamento
