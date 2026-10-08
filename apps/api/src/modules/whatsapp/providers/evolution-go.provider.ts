@@ -923,6 +923,35 @@ export class EvolutionGoProvider implements WhatsappProvider {
    * conta comercial da Panan. (`/user/info` devolve `VerifiedName: null` para
    * as duas — não serve.)
    */
+  /**
+   * `POST /user/check` também devolve o `JID` com que o número existe no
+   * WhatsApp — conferido em dev (2026-10-08): `5567991468448` volta como
+   * `556791468448@s.whatsapp.net`, sem o nono dígito, e `IsInWhatsapp`.
+   */
+  async verificarNumero(
+    ctx: ContextoSessao,
+    numero: string,
+  ): Promise<{ existe: boolean; jid: string | null } | null> {
+    const resposta = await this.http
+      .chamar<unknown>(ctx.config.evolutionUrl, '/user/check', {
+        metodo: 'POST',
+        credencial: this.chaveInstancia(ctx),
+        corpo: { number: [numero.replace(/\D/g, '')] },
+        timeoutMs: 4000,
+      })
+      .catch(() => null);
+    if (!resposta) return null;
+    const usuario = lista(
+      objeto(resposta, 'data') ?? resposta,
+      'Users',
+      'users',
+    )[0];
+    if (!usuario || typeof usuario !== 'object') return null;
+    const existe = (usuario as Record<string, unknown>).IsInWhatsapp;
+    if (typeof existe !== 'boolean') return null;
+    return { existe, jid: texto(usuario, 'JID', 'jid', 'RemoteJID') };
+  }
+
   async contaComercial(
     ctx: ContextoSessao,
     numero: string,

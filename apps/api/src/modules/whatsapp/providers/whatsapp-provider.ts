@@ -227,6 +227,17 @@ export interface WhatsappProvider {
    * O número é conta comercial (WhatsApp Business)? Pelo nome comercial
    * verificado, que só conta comercial tem. `null` se não deu para saber.
    */
+  /**
+   * O identificador real de um número no WhatsApp (`/user/check`). Número
+   * antigo pode existir sem o nono dígito: mandar para a forma com o 9
+   * funciona, mas o eco volta pelo jid real e vira outro contato. Nulo quando
+   * o gateway não respondeu — quem chama segue com o número montado.
+   */
+  verificarNumero(
+    ctx: ContextoSessao,
+    numero: string,
+  ): Promise<{ existe: boolean; jid: string | null } | null>;
+
   contaComercial(
     ctx: ContextoSessao,
     numero: string,

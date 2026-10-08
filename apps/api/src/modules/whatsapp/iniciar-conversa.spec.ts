@@ -57,15 +57,24 @@ describe('WhatsappConversasService.iniciarConversa — contato escolhido', () =>
     const prisma = {
       withTenant: (_empresa: string, fn: (t: typeof tx) => unknown) => fn(tx),
     };
+    // Sem resposta do gateway por padrão: o número montado segue como está.
+    const provedores = {
+      verificarNumero: jest
+        .fn<
+          Promise<{ existe: boolean; jid: string | null } | null>,
+          [string, string, string]
+        >()
+        .mockResolvedValue(null),
+    };
     const service = new WhatsappConversasService(
       prisma as never,
       { obter: jest.fn().mockResolvedValue(config) } as never,
       {} as never,
-      {} as never,
+      provedores as never,
       {} as never,
       {} as never,
     );
-    return { service, tx };
+    return { service, tx, provedores };
   };
 
   it('vincula cliente sem telefone no cadastro', async () => {
@@ -204,6 +213,65 @@ describe('WhatsappConversasService.iniciarConversa — contato escolhido', () =>
         }),
       ).rejects.toThrow('Contato não encontrado no cadastro deste cliente.');
       expect(tx.whatsappContato.upsert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('jid real do número (nono dígito)', () => {
+    it('grava o contato pelo jid que o WhatsApp devolve', async () => {
+      const { service, tx, provedores } = montar({
+        celular: '67991468448',
+        telefone: null,
+        telefone2: null,
+      });
+      provedores.verificarNumero.mockResolvedValue({
+        existe: true,
+        jid: '556791468448@s.whatsapp.net',
+      });
+
+      await service.iniciarConversa('e1', user, { clienteId: CLIENTE });
+
+      expect(provedores.verificarNumero).toHaveBeenCalledWith(
+        'e1',
+        's1',
+        '5567991468448@s.whatsapp.net',
+      );
+      const args = tx.whatsappContato.upsert.mock.calls[0][0];
+      expect(args.where.empresaId_jid.jid).toBe('556791468448@s.whatsapp.net');
+      expect(args.create).toMatchObject({
+        telefoneNormalizado: '556791468448',
+      });
+    });
+
+    it('número sem WhatsApp é recusado antes de criar a conversa', async () => {
+      const { service, tx, provedores } = montar({
+        celular: '67991468448',
+        telefone: null,
+        telefone2: null,
+      });
+      provedores.verificarNumero.mockResolvedValue({
+        existe: false,
+        jid: null,
+      });
+
+      await expect(
+        service.iniciarConversa('e1', user, { clienteId: CLIENTE }),
+      ).rejects.toThrow('não tem WhatsApp');
+      expect(tx.whatsappContato.upsert).not.toHaveBeenCalled();
+    });
+
+    it('contato escolhido da agenda não é conferido de novo', async () => {
+      const { service, provedores } = montar({
+        celular: null,
+        telefone: null,
+        telefone2: null,
+      });
+
+      await service.iniciarConversa('e1', user, {
+        jid: JID,
+        clienteId: CLIENTE,
+      });
+
+      expect(provedores.verificarNumero).not.toHaveBeenCalled();
     });
   });
 });

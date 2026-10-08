@@ -2964,7 +2964,10 @@ export class WhatsappConversasService {
     user: AuthenticatedUser,
     input: WhatsappIniciarConversa,
   ) {
-    return this.prisma.withTenant(empresaId, async (tx) => {
+    // Três tempos: validar e montar o número (banco), conferir o número no
+    // WhatsApp (rede, fora da transação — o gateway remoto pode levar
+    // segundos, e a transação tem 5 s) e gravar (banco).
+    const preparo = await this.prisma.withTenant(empresaId, async (tx) => {
       const vendedor = await tx.vendedor.findFirst({
         where: { usuarioId: user.id, empresaId, deletedAt: null },
         select: { id: true },
@@ -3079,6 +3082,45 @@ export class WhatsappConversasService {
         );
       }
 
+      return {
+        sessaoId: sessao.id,
+        jid,
+        telefone,
+        nome,
+        clienteId,
+        pessoa,
+        // Contato escolhido da agenda já vem com o jid real; número digitado
+        // ou do cadastro foi montado aqui e precisa ser conferido.
+        montado: !input.jid,
+      };
+    });
+
+    // Número antigo pode existir no WhatsApp sem o nono dígito. Mandar para a
+    // forma montada funciona, mas o eco da própria mensagem volta pelo jid
+    // real e criava um segundo contato — e uma segunda conversa — para a
+    // mesma pessoa (dev, 2026-10-08). Sem resposta do gateway, segue como
+    // antes; número que não está no WhatsApp é recusado aqui, e não depois
+    // de a conversa existir na tela.
+    let { jid, telefone } = preparo;
+    if (preparo.montado) {
+      const real = await this.provedores.verificarNumero(
+        empresaId,
+        preparo.sessaoId,
+        jid,
+      );
+      if (real && !real.existe) {
+        throw new BadRequestException(
+          `O número ${telefone ?? jid.split('@')[0]} não tem WhatsApp.`,
+        );
+      }
+      if (real?.jid && this.jidDePessoa(real.jid)) {
+        jid = real.jid;
+        telefone = real.jid.split('@')[0];
+      }
+    }
+
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const { sessaoId, nome, clienteId, pessoa } = preparo;
       const contato = await tx.whatsappContato.upsert({
         where: { empresaId_jid: { empresaId, jid } },
         create: {
@@ -3122,13 +3164,13 @@ export class WhatsappConversasService {
         where: {
           empresaId_sessaoId_contatoId: {
             empresaId,
-            sessaoId: sessao.id,
+            sessaoId: sessaoId,
             contatoId: contato.id,
           },
         },
         create: {
           empresaId,
-          sessaoId: sessao.id,
+          sessaoId: sessaoId,
           contatoId: contato.id,
           clienteId: contato.clienteId,
         },
@@ -3140,7 +3182,7 @@ export class WhatsappConversasService {
       if (!contato.fotoUrl) {
         this.buscarFotoContatoAssincrona(
           empresaId,
-          sessao.id,
+          sessaoId,
           contato.id,
           contato.jid,
           contato.telefoneNormalizado,
