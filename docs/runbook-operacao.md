@@ -1299,3 +1299,66 @@ cada erro gravado.
 captura no navegador não era. O que continua fora do alcance dela: erro na tela
 de login (a rota de report exige sessão) e queda do próprio Postgres (o log
 grava nele). Nesses dois casos, o rastro é o console do container.
+
+---
+
+## Armadilha: `whatsapp_contatos` de outra empresa derruba o Histórico do WhatsApp **[diagnosticado em dev, 2026-10-08]**
+
+Sintoma: `GET /whatsapp/gerencial/conversas` responde 500
+(`{"code":"INTERNAL_ERROR"}`) para uma empresa inteira — a tela de
+**Gerencial > Histórico do WhatsApp** fica vazia/quebrada, mesmo para quem
+tem `whatsapp-historico.visualizar`. No log da API:
+
+```
+PrismaClientUnknownRequestError: Invalid `tx.whatsappConversa.count()` invocation
+Error in batch request 1: Inconsistent query result: Field contato is required to return data, got `null` instead.
+```
+
+Causa: alguma `whatsapp_conversas.contatoId` aponta para uma linha de
+`whatsapp_contatos` que pertence a **outra** empresa. `whatsapp_contatos` tem
+RLS por `empresaId` (correto) — a trava barra a leitura, e isso é o esperado;
+o problema é que a relação (`contato`) é obrigatória no schema, e
+`listarGerencialConversas` não filtra por `CONTATO_DE_ATENDIMENTO` (de
+propósito: o gerencial audita até `@lid`/`@newsletter`, que o Atendimento
+normal esconde) — então essa linha corrompida aparece na consulta e o
+`findMany` inteiro estoura, derrubando a página para todo mundo da empresa,
+não só a conversa quebrada.
+
+Encontrado em dev ao investigar `/gerencial/whatsapp` vazia para a RCG: dois
+`whatsapp_contatos` de jid `@lid` (identificador interno do WhatsApp, visto
+em `/user/check` — ver a seção de verificação de número) tinham sido
+gravados sob a BJSoftware em vez da RCG. **A base de dev é cópia da
+produção — o mesmo problema pode estar lá.**
+
+Detectar (rode por empresa, ou sem o `where` para a base inteira):
+
+```sql
+SELECT c.id, c."empresaId" emp_conversa, ct."empresaId" emp_contato, ct.jid
+FROM whatsapp_conversas c
+JOIN whatsapp_contatos ct ON ct.id = c."contatoId"
+WHERE c."empresaId" <> ct."empresaId";
+```
+
+Corrigir, linha por linha: se já existir um `whatsapp_contatos` correto com o
+mesmo `jid` na empresa certa, repor o ponteiro da conversa para ele
+(confira que não é a mesma `sessaoId` de outra conversa já nesse contato —
+`@@unique(empresaId, sessaoId, contatoId)`). Senão, criar um
+`whatsapp_contatos` novo, escopado à empresa certa, copiando
+`nomeExibicao`/`telefoneNormalizado`/`tipo` do errado, e repor o ponteiro —
+nunca mude o `empresaId` do contato errado: outra empresa pode legitimamente
+ter uma conversa apontando para ele.
+
+```sql
+BEGIN;
+UPDATE whatsapp_conversas SET "contatoId" = '<contato-certo>' WHERE id = '<conversa-quebrada>';
+-- ou, sem contato certo existente:
+INSERT INTO whatsapp_contatos (id, "empresaId", jid, "nomeExibicao", "telefoneNormalizado", tipo, ignorado, "createdAt", "updatedAt")
+VALUES (gen_random_uuid()::text, '<empresa-certa>', '<jid>', '<nome>', '<telefone>', 'geral', false, now(), now())
+RETURNING id \gset novo_
+UPDATE whatsapp_conversas SET "contatoId" = :'novo_id' WHERE id = '<conversa-quebrada>';
+COMMIT;
+```
+
+**Não investigado:** como o contato nasceu na empresa errada. Antes de
+aplicar essa correção em produção, vale achar a causa — senão o problema
+volta na próxima mensagem desse tipo.
