@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { ChevronUp, Grip, Maximize2, Minimize2, Minus, X } from "lucide-react";
+import { Grip, Maximize2, Minimize2, Minus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Geometria {
@@ -120,6 +120,8 @@ export function JanelaFlutuante({
   alturaPadrao = 560,
   afastamentoDireita = 0,
   onPronta,
+  iconeMinimizada,
+  seloMinimizada,
   children,
 }: {
   aberto: boolean;
@@ -136,6 +138,10 @@ export function JanelaFlutuante({
   afastamentoDireita?: number;
   /** Chamado quando a janela aparece pela primeira vez (o conteúdo já está montado). */
   onPronta?: () => void;
+  /** Ícone do botão redondo em que a janela vira ao minimizar. */
+  iconeMinimizada?: ReactNode;
+  /** Número no botão minimizado (ex.: conversas não lidas); 0 esconde. */
+  seloMinimizada?: number;
   children: ReactNode;
 }) {
   const padrao = useMemo<Padrao>(
@@ -145,12 +151,46 @@ export function JanelaFlutuante({
   const [geometria, setGeometria] = useState<Geometria | null>(null);
   const [maximizada, setMaximizada] = useState(false);
   /**
-   * Minimizada, a janela fica só com a barra do topo: continua visível, dá
-   * para arrastar, e reabre no mesmo botão (ou com duplo clique na barra). O
-   * conteúdo segue montado — a conversa e o texto digitado não se perdem.
+   * Minimizada, a janela vira um botão redondo no canto inferior direito, que
+   * a reabre no mesmo lugar e tamanho. O conteúdo segue montado — a conversa
+   * e o texto digitado não se perdem.
    * Fechar (X) é outra coisa: some de vez e volta pelo ícone da topbar.
    */
   const [recolhida, setRecolhida] = useState(false);
+  /**
+   * Onde o ícone minimizado está, quando o vendedor o arrastou; nulo é o
+   * canto inferior direito. Arrastar move; clicar sem arrastar reabre.
+   */
+  const [posicaoIcone, setPosicaoIcone] = useState<{ x: number; y: number } | null>(null);
+  const arrastouIcone = useRef(false);
+  const arrastarIcone = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (e.button !== 0) return;
+    const alvo = e.currentTarget;
+    const caixa = alvo.getBoundingClientRect();
+    const inicio = { x: e.clientX, y: e.clientY };
+    arrastouIcone.current = false;
+    alvo.setPointerCapture(e.pointerId);
+    const mover = (ev: PointerEvent) => {
+      const dx = ev.clientX - inicio.x;
+      const dy = ev.clientY - inicio.y;
+      if (!arrastouIcone.current && Math.hypot(dx, dy) < 5) return;
+      arrastouIcone.current = true;
+      const tela = viewport();
+      setPosicaoIcone({
+        x: limitar(caixa.left + dx, MARGEM, tela.largura - caixa.width - MARGEM),
+        y: limitar(caixa.top + dy, MARGEM, tela.altura - caixa.height - MARGEM),
+      });
+    };
+    const soltar = () => {
+      alvo.releasePointerCapture(e.pointerId);
+      alvo.removeEventListener("pointermove", mover);
+      alvo.removeEventListener("pointerup", soltar);
+      alvo.removeEventListener("pointercancel", soltar);
+    };
+    alvo.addEventListener("pointermove", mover);
+    alvo.addEventListener("pointerup", soltar);
+    alvo.addEventListener("pointercancel", soltar);
+  };
   const geometriaAnterior = useRef<Geometria | null>(null);
   const alternarMaximizada = () => {
     setRecolhida(false);
@@ -275,25 +315,55 @@ export function JanelaFlutuante({
 
   if (!aberto || !geometria || !conteiner) return null;
 
+  // Minimizada, vira um botão redondo no canto inferior direito, por cima de
+  // tudo. A janela continua montada (escondida): a conversa e o texto
+  // digitado voltam do jeito que estavam, no mesmo lugar e tamanho.
+  const botaoMinimizada = recolhida ? (
+    <button
+      type="button"
+      onPointerDown={arrastarIcone}
+      onClick={() => {
+        if (!arrastouIcone.current) setRecolhida(false);
+      }}
+      style={posicaoIcone ? { left: posicaoIcone.x, top: posicaoIcone.y } : undefined}
+      title={`Reabrir ${rotulo.toLowerCase()} (arraste para mover)`}
+      aria-label={`Reabrir ${rotulo.toLowerCase()}`}
+      className={`fixed z-50 flex size-12 touch-none cursor-grab items-center justify-center rounded-full border bg-background shadow-2xl transition-transform hover:scale-105 ${
+        posicaoIcone ? "" : "right-4 bottom-4"
+      }`}
+    >
+      {iconeMinimizada ?? icone}
+      {seloMinimizada ? (
+        <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#00A884] px-1 text-[11px] font-semibold text-white">
+          {seloMinimizada > 99 ? "99+" : seloMinimizada}
+        </span>
+      ) : null}
+    </button>
+  ) : null;
+
   return createPortal(
+    <>
+    {botaoMinimizada}
     <div
       role="dialog"
+
       data-janela-flutuante=""
       aria-label={rotulo}
-      className="fixed z-50 flex flex-col overflow-hidden rounded-lg border bg-background shadow-2xl"
+      className={`fixed z-50 flex-col overflow-hidden rounded-lg border bg-background shadow-2xl ${
+        recolhida ? "hidden" : "flex"
+      }`}
       style={{
         left: geometria.x,
         top: geometria.y,
         width: geometria.largura,
-        height: recolhida ? ALTURA_TITULO : geometria.altura,
+        height: geometria.altura,
       }}
     >
       <div
         onPointerDown={iniciarGesto("mover")}
         onDoubleClick={(e) => {
           if ((e.target as HTMLElement).closest("button, a")) return;
-          if (recolhida) setRecolhida(false);
-          else alternarMaximizada();
+          alternarMaximizada();
         }}
         className="flex shrink-0 touch-none select-none items-center gap-2 border-b bg-muted/40 px-3 sm:cursor-move"
         style={{ height: ALTURA_TITULO }}
@@ -306,12 +376,11 @@ export function JanelaFlutuante({
           variant="ghost"
           size="icon"
           className="size-7"
-          title={recolhida ? "Reabrir" : "Minimizar (fica só a barra)"}
-          aria-label={recolhida ? "Reabrir" : "Minimizar"}
-          aria-pressed={recolhida}
-          onClick={() => setRecolhida((v) => !v)}
+          title="Minimizar para o canto da tela"
+          aria-label="Minimizar"
+          onClick={() => setRecolhida(true)}
         >
-          {recolhida ? <ChevronUp className="size-4" /> : <Minus className="size-4" />}
+          <Minus className="size-4" />
         </Button>
         <Button type="button" variant="ghost" size="icon" className="size-7"
           title={maximizada ? "Restaurar tamanho" : "Maximizar janela"}
@@ -332,13 +401,13 @@ export function JanelaFlutuante({
         </Button>
       </div>
 
-      <div className={recolhida ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
+      <div className="flex min-h-0 flex-1 flex-col">
         {children}
       </div>
 
       {/* Alça de redimensionamento. `touch-none` para o gesto não virar
           rolagem no tablet. */}
-      {!maximizada && !recolhida && <div
+      {!maximizada && <div
         onPointerDown={iniciarGesto("redimensionar")}
         role="separator"
         aria-label={`Redimensionar ${rotulo.toLowerCase()}`}
@@ -351,11 +420,12 @@ export function JanelaFlutuante({
             "linear-gradient(135deg, transparent 50%, currentColor 50%)",
         }}
       ><Grip className="size-4" /></div>}
-      {!maximizada && !recolhida && <div onPointerDown={iniciarGesto("redimensionar-inicio")}
+      {!maximizada && <div onPointerDown={iniciarGesto("redimensionar-inicio")}
         role="separator" aria-label="Redimensionar pelo canto superior esquerdo"
         title="Arraste para ajustar o tamanho"
         className="absolute left-0 top-0 hidden size-3 cursor-nwse-resize touch-none border-l-2 border-t-2 border-muted-foreground/60 sm:block" />}
-    </div>,
+    </div>
+    </>,
     conteiner
   );
 }

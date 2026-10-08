@@ -22,6 +22,7 @@ import type { AbaJanela } from "@/stores/agente-ui-store";
 import {
   AbaWhatsapp,
   useAtendimentoDisponivel,
+  useNaoLidasWhatsapp,
 } from "@/components/whatsapp/atendimento-cliente-janela";
 import { useAgente } from "@/components/agente/use-agente";
 import { ConteudoMensagem } from "@/components/agente/conteudo-mensagem";
@@ -94,6 +95,7 @@ function AgenteJanela() {
   // instância própria); a da Bia, só com o agente ativo. Com uma só, não há
   // abas — e a que existe é a visível, qualquer que seja a última escolhida.
   const whatsappDisponivel = useAtendimentoDisponivel();
+  const naoLidasWhatsapp = useNaoLidasWhatsapp(whatsappDisponivel);
   const clienteWhatsapp = useAtendimentoJanelaStore((s) => s.cliente?.nome ?? null);
   const ambas = disponivel && whatsappDisponivel;
   const abaAtiva = !disponivel ? "whatsapp" : !whatsappDisponivel ? "bia" : aba;
@@ -383,6 +385,14 @@ function AgenteJanela() {
       onFechar={minimizar}
       tituloFechar="Fechar (a conversa continua)"
       onPronta={() => setPronta(true)}
+      iconeMinimizada={
+        abaAtiva === "whatsapp" ? (
+          <IconeWhatsapp className="size-6 text-[#00A884]" />
+        ) : (
+          <Sparkles className="size-5" />
+        )
+      }
+      seloMinimizada={naoLidasWhatsapp}
       // Ajuda, histórico e borracha são da Bia: na aba WhatsApp não valem.
       acoes={abaAtiva !== "bia" ? null : (
         <>

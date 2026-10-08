@@ -15,12 +15,32 @@ import { useAgenteUiStore } from "@/stores/agente-ui-store"
  * com o cliente enquanto montava o orçamento dele. Quem passa `modal`
  * explicitamente decide por si.
  */
-function Sheet({ modal, ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
+function Sheet({
+  modal,
+  open,
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Root>) {
   const janelaAberta = useAgenteUiStore((s) => s.aberto)
+  const naoModal = modal === undefined && janelaAberta
+  // O Radix só trava a rolagem de fundo em modo modal — de propósito, para
+  // não modal. Sem repor isso à mão, uma cortina mais alta que a tela também
+  // rola o <main> por trás dela: duas barras de rolagem visíveis ao mesmo
+  // tempo (conferido em 2026-10-08, na Posição do cliente).
+  React.useEffect(() => {
+    if (!naoModal || !open) return
+    const main = document.querySelector("main")
+    if (!main) return
+    const anterior = main.style.overflow
+    main.style.overflow = "hidden"
+    return () => {
+      main.style.overflow = anterior
+    }
+  }, [naoModal, open])
   return (
     <SheetPrimitive.Root
       data-slot="sheet"
       modal={modal ?? !janelaAberta}
+      open={open}
       {...props}
     />
   )
