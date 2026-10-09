@@ -141,6 +141,9 @@ export default function ClientesAlteracoesPage() {
   // Campos marcados por solicitação. Sem entrada = tudo marcado, que é o caso
   // comum: quem abre a fila costuma aprovar a solicitação inteira.
   const [selecao, setSelecao] = useState<Record<string, string[]>>({});
+  // Aprovar/recusar todas as pendentes da página, de uma vez.
+  const [lote, setLote] = useState<"aprovar" | "recusar" | null>(null);
+  const [processandoLote, setProcessandoLote] = useState(false);
 
   const camposDe = (linha: ClienteAlteracao) =>
     Object.keys(linha.alteracoes ?? {});
@@ -207,6 +210,44 @@ export default function ClientesAlteracoesPage() {
       toast.error(err instanceof ApiError ? err.message : "Erro ao recusar"),
   });
 
+  const pendentes = linhas.filter((l) => l.status === "pendente");
+  // Em cada uma vale o que está marcado nela; sem campo marcado fica de fora
+  // da aprovação em lote (aprovar nada é recusar, e recusa pede motivo).
+  const aprovaveis = pendentes.filter((l) => marcadosDe(l).length > 0);
+
+  // Uma por vez, pelas mesmas rotas da linha: a API confere permissão e escopo
+  // de cada uma, e a falha de uma não impede as outras.
+  const executarLote = async () => {
+    if (!lote) return;
+    const alvo = lote === "aprovar" ? aprovaveis : pendentes;
+    setProcessandoLote(true);
+    let ok = 0;
+    const falhas: string[] = [];
+    for (const linha of alvo) {
+      try {
+        await apiFetch(`/clientes-alteracoes/${linha.id}/${lote}`, {
+          method: "POST",
+          body: lote === "aprovar" ? { campos: marcadosDe(linha) } : { motivo },
+        });
+        ok += 1;
+      } catch (err) {
+        falhas.push(
+          `${linha.clienteRazaoSocial ?? "Cliente"}: ${err instanceof ApiError ? err.message : "erro"}`,
+        );
+      }
+    }
+    setProcessandoLote(false);
+    setLote(null);
+    setMotivo("");
+    setSelecao({});
+    invalidar();
+    const verbo = lote === "aprovar" ? "aprovada(s)" : "recusada(s)";
+    if (ok > 0) toast.success(`${ok} alteração(ões) ${verbo}`);
+    if (falhas.length > 0) {
+      toast.error(`${falhas.length} não foram processadas: ${falhas.slice(0, 3).join(" · ")}`);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <CrudHeader
@@ -223,6 +264,33 @@ export default function ClientesAlteracoesPage() {
           <TabsTrigger value="rejeitada">Recusadas</TabsTrigger>
         </TabsList>
       </Tabs>
+
+      {status === "pendente" && podeAprovar && pendentes.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className="mr-auto text-sm text-muted-foreground">
+            {pendentes.length} alteração(ões) pendente(s) nesta página
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setLote("recusar")}
+            disabled={processandoLote}
+          >
+            <X className="size-4" />
+            Recusar todas
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setLote("aprovar")}
+            disabled={processandoLote || aprovaveis.length === 0}
+          >
+            <Check className="size-4" />
+            Aprovar todas
+          </Button>
+        </div>
+      )}
 
       {error ? (
         <p role="alert" className="text-sm text-destructive">
@@ -390,6 +458,63 @@ export default function ClientesAlteracoesPage() {
               disabled={motivo.trim().length < 3 || recusar.isPending}
             >
               Recusar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!lote}
+        onOpenChange={(open) => !open && !processandoLote && setLote(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {lote === "aprovar"
+                ? `Aprovar ${aprovaveis.length} alteração(ões)`
+                : `Recusar ${pendentes.length} alteração(ões)`}
+            </DialogTitle>
+            <DialogDescription>
+              {lote === "aprovar"
+                ? "Cada cadastro recebe os campos que estão marcados na linha dele. Os desmarcados vão para o histórico como reprovados."
+                : "Nenhum cadastro será alterado. O motivo fica registrado em todas, para quem solicitou saber o que corrigir."}
+              {lote === "aprovar" && aprovaveis.length < pendentes.length && (
+                <>
+                  {" "}
+                  {pendentes.length - aprovaveis.length} sem nenhum campo marcado
+                  ficam de fora.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {lote === "recusar" && (
+            <Textarea
+              placeholder="Motivo da recusa"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              rows={3}
+            />
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setLote(null)}
+              disabled={processandoLote}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => void executarLote()}
+              disabled={
+                processandoLote ||
+                (lote === "recusar" && motivo.trim().length < 3)
+              }
+            >
+              {processandoLote
+                ? "Processando..."
+                : lote === "aprovar"
+                  ? "Aprovar todas"
+                  : "Recusar todas"}
             </Button>
           </DialogFooter>
         </DialogContent>
