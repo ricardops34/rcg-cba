@@ -36,8 +36,14 @@ services:
     volumes:
       # Uploads (logos de empresa) persistem fora do container.
       - uploads:/app/apps/api/uploads
+    # Duas redes: RCGNet é a do Traefik (entrada pública); network_public é a
+    # do Postgres, do Redis e do Evolution GO. Só na RCGNet, o boot morre em
+    # P1001 "Can't reach database server at postgres:5432".
     networks:
       RCGNet:
+        aliases:
+          - rcgcba-api
+      network_public:
         aliases:
           - rcgcba-api
     deploy:
@@ -85,4 +91,6 @@ volumes:
 
 networks:
   RCGNet:
+    external: true
+  network_public:
     external: true
