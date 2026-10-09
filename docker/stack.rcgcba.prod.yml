@@ -65,19 +65,30 @@ services:
         - "traefik.enable=true"
         - "traefik.swarm.network=RCGNet"
         # Um só serviço atende as duas marcas; a empresa vem do domínio.
-        - "traefik.http.routers.plataforma-rcg-web.rule=Host(`crm.rcgdist.com.br`) || Host(`crm.cbadist.com.br`)"
-        # Entrada pela raiz exata (sem caminho nem query) vai para o login da
-        # empresa do domínio: crm.rcgdist → ?empresa=rcg, crm.cbadist → ?empresa=cba.
-        # A navegação interna do Next (/?_rsc=...) não casa e passa direto.
-        # `$$` é o `$` literal, escapado da interpolação do compose.
-        - "traefik.http.routers.plataforma-rcg-web.middlewares=plataforma-rcg-web-login"
-        - "traefik.http.middlewares.plataforma-rcg-web-login.redirectregex.regex=^https?://crm\\.(rcg|cba)dist\\.com\\.br/?$$"
-        - "traefik.http.middlewares.plataforma-rcg-web-login.redirectregex.replacement=https://crm.$${1}dist.com.br/login?empresa=$${1}"
-        - "traefik.http.middlewares.plataforma-rcg-web-login.redirectregex.permanent=false"
+        # Um roteador por domínio, e não `Host(a) || Host(b)` num só: o
+        # Traefik pede um certificado por roteador com todos os hosts da
+        # regra, e se o DNS de um deles ainda não aponta para a VPS o Let's
+        # Encrypt recusa o pedido inteiro — os dois domínios ficavam com o
+        # certificado padrão do Traefik ("Não seguro").
+        - "traefik.http.routers.plataforma-rcg-web.rule=Host(`crm.rcgdist.com.br`)"
         - "traefik.http.routers.plataforma-rcg-web.entrypoints=websecure"
         - "traefik.http.routers.plataforma-rcg-web.tls=true"
         - "traefik.http.routers.plataforma-rcg-web.tls.certresolver=letsencryptresolver"
         - "traefik.http.routers.plataforma-rcg-web.service=plataforma-rcg-web"
+        - "traefik.http.routers.plataforma-rcg-web.middlewares=plataforma-rcg-web-login"
+        - "traefik.http.routers.plataforma-cba-web.rule=Host(`crm.cbadist.com.br`)"
+        - "traefik.http.routers.plataforma-cba-web.entrypoints=websecure"
+        - "traefik.http.routers.plataforma-cba-web.tls=true"
+        - "traefik.http.routers.plataforma-cba-web.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.plataforma-cba-web.service=plataforma-rcg-web"
+        - "traefik.http.routers.plataforma-cba-web.middlewares=plataforma-rcg-web-login"
+        # Entrada pela raiz exata (sem caminho nem query) vai para o login da
+        # empresa do domínio: crm.rcgdist → ?empresa=rcg, crm.cbadist → ?empresa=cba.
+        # A navegação interna do Next (/?_rsc=...) não casa e passa direto.
+        # `$$` é o `$` literal, escapado da interpolação do compose.
+        - "traefik.http.middlewares.plataforma-rcg-web-login.redirectregex.regex=^https?://crm\\.(rcg|cba)dist\\.com\\.br/?$$"
+        - "traefik.http.middlewares.plataforma-rcg-web-login.redirectregex.replacement=https://crm.$${1}dist.com.br/login?empresa=$${1}"
+        - "traefik.http.middlewares.plataforma-rcg-web-login.redirectregex.permanent=false"
         - "traefik.http.services.plataforma-rcg-web.loadbalancer.server.port=3000"
 
 volumes:
