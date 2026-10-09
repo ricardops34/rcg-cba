@@ -842,6 +842,49 @@ Static Function BJLogAuto()
 
 Return SubStr(cRet, 1, 400)
 
+/*/{Protheus.doc} BJErroMVC
+Devolve o erro guardado no modelo MVC como texto de uma linha: campo, motivo
+e solucao, como a tela mostraria. Precisa ser lido antes do DeActivate().
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   09/10/2026
+@param   oModel, object, Modelo que recusou a operacao
+@return  character, Erro do modelo, ou vazio quando nao ha
+/*/
+Static Function BJErroMVC(oModel)
+
+	Local cRet  := ""
+	Local aErro := {}
+
+	If oModel == Nil
+		Return ""
+	EndIf
+
+	// [4] campo do erro, [5] id, [6] mensagem, [7] solucao, [8] valor atribuido
+	aErro := oModel:GetErrorMessage()
+
+	If ValType(aErro) != "A" .Or. Len(aErro) < 6 .Or. Empty(aErro[6])
+		Return ""
+	EndIf
+
+	If !Empty(aErro[4])
+		cRet += "Campo " + AllTrim(cValToChar(aErro[4])) + ": "
+	EndIf
+
+	cRet += AllTrim(cValToChar(aErro[6]))
+
+	If Len(aErro) >= 7 .And. !Empty(aErro[7])
+		cRet += " Solucao: " + AllTrim(cValToChar(aErro[7]))
+	EndIf
+
+	If Len(aErro) >= 8 .And. !Empty(aErro[8])
+		cRet += " Valor: " + AllTrim(cValToChar(aErro[8]))
+	EndIf
+
+	cRet := StrTran(StrTran(cRet, Chr(13), " "), Chr(10), " ")
+
+Return SubStr(cRet, 1, 400)
+
 /*/{Protheus.doc} BJErroOrc
 Grava a falha da criacao do pedido na mensagem e no log, e avisa a
 plataforma: o orcamento passa a mostrar "Erro de integracao" com o motivo, em
@@ -1138,9 +1181,10 @@ Grava a alteracao no cadastro de clientes pelo modelo MVC.
 /*/
 Static Function BJGravSA1(aCampos, cErro)
 
-	Local lRet   := .F.
-	Local oModel := Nil
-	Local bErro  := ErrorBlock({|e| Break(e)})
+	Local lRet     := .F.
+	Local oModel   := Nil
+	Local oErrExec := Nil
+	Local bErro    := ErrorBlock({|e| Break(e)})
 
 	Private lMsErroAuto    := .F.
 	Private lMsHelpAuto    := .T.
@@ -1172,16 +1216,29 @@ Static Function BJGravSA1(aCampos, cErro)
 			cErro := BJLogAuto()
 		EndIf
 
+		// No MVC a recusa de uma validacao (campo obrigatorio, CNAE fora da CC3)
+		// fica no proprio modelo e nem sempre chega ao log da rotina automatica:
+		// sem ler daqui, o motivo se perdia no Destroy() logo abaixo.
+		If !lRet .And. (Empty(cErro) .Or. "Sem detalhamento" $ cErro)
+			cErro := BJErroMVC(oModel)
+		EndIf
+
 		If !lRet .And. Empty(cErro)
 			cErro := "CRMA980 recusou a alteracao sem detalhamento."
 		EndIf
 
-	Recover
+	Recover Using oErrExec
 
 		lRet := .F.
 
+		// oErrExec vem do ErrorBlock (erro de execucao); o Break() manual do
+		// modelo nao carregado chega aqui sem ele, ja com cErro preenchido.
 		If Empty(cErro)
 			cErro := "Erro nao tratado ao alterar o cliente pelo CRMA980."
+			If ValType(oErrExec) == "O"
+				cErro += " " + AllTrim(StrTran(StrTran(oErrExec:Description, Chr(13), " "), Chr(10), " "))
+			EndIf
+			cErro := SubStr(cErro, 1, 400)
 		EndIf
 
 	End Sequence
