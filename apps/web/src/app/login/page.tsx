@@ -33,7 +33,7 @@ import {
   type EmpresaBranding,
 } from "@plataforma/contracts";
 import { apiFetch, ApiError, assetUrl } from "@/lib/api-client";
-import { useAuthStore } from "@/stores/auth-store";
+import { ultimaEmpresaDoLogin, useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -67,7 +67,10 @@ function LoginForm() {
 
   // Branding da empresa: quando o alias resolve, exibimos logo e nome dela e
   // escondemos o campo de digitação. Sem alias resolvido, mostramos o campo.
-  const [alias, setAlias] = useState(urlAlias);
+  // Sem ?empresa na URL (logout, sessão expirada), abre com a empresa em que o
+  // usuário estava. Ler o localStorage aqui é seguro: o useSearchParams faz
+  // este formulário renderizar só no cliente (o Suspense de LoginPage).
+  const [alias, setAlias] = useState(() => urlAlias || ultimaEmpresaDoLogin());
   const [branding, setBranding] = useState<EmpresaBranding | null>(null);
   const [brandingLoading, setBrandingLoading] = useState(false);
   const aliasInputRef = useRef<HTMLInputElement>(null);
