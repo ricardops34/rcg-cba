@@ -955,7 +955,20 @@ apareceram.
    -- plataforma_rcg | {app.plataforma=on}
    ```
    (`::regdatabase` não existe no Postgres 16.)
-6. **Seed** — **[pendente]**: com a API no ar (`Nest application successfully
+6. **`CORS_ORIGIN`** — o endereço exato da página de login
+   (`https://crm.rcgdist.com.br`; com o cba, separado por vírgula). A API
+   compara texto por texto ([main.ts](../apps/api/src/main.ts), `enableCors`):
+   aspas, colchetes, barra no fim ou um subdomínio digitado errado (em
+   2026-10-09 estava `https://rcg.rcgdist.com.br`) recusam tudo, e a tela diz
+   só "Não foi possível falar com o servidor". Conferir de fora, sem login:
+   ```bash
+   curl -s -D - -o /dev/null -H "Origin: https://crm.rcgdist.com.br" \
+     "https://api.rcgdist.com.br/api/v1/auth/empresa-branding?alias=bjs" \
+     | grep -i access-control-allow-origin
+   ```
+   Tem de voltar a linha `Access-Control-Allow-Origin: https://crm.rcgdist.com.br`.
+   **[verificado em 2026-10-09]**
+7. **Seed** — **[pendente]**: com a API no ar (`Nest application successfully
    started`), a base ainda está sem empresa, admin,
    menus nem perfis. Comando para rodar no container de produção ainda não
    registrado. Candidata: a imagem de `docker/api-scripts.Dockerfile`
