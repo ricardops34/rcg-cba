@@ -916,7 +916,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE plataforma_rcg IN SCHEMA public
 
 O schema não tem `autoincrement`, então não há sequência a liberar.
 
-## Produção: base nova num Postgres novo **[feito na VPS em 2026-10-09; seed ainda não rodado]**
+## Produção: base nova num Postgres novo **[feito na VPS em 2026-10-09 — API sobe; seed ainda não rodado]**
 
 Postgres `pgvector/pgvector:pg16` na stack `postgres` (serviço
 `postgres_postgres`, rede `RCGNet`), base `plataforma_rcg` vazia, dona
@@ -955,9 +955,13 @@ apareceram.
    -- plataforma_rcg | {app.plataforma=on}
    ```
    (`::regdatabase` não existe no Postgres 16.)
-6. **Seed** — **[pendente]**: a base sai das migrations sem empresa, admin,
+6. **Seed** — **[pendente]**: com a API no ar (`Nest application successfully
+   started`), a base ainda está sem empresa, admin,
    menus nem perfis. Comando para rodar no container de produção ainda não
-   registrado.
+   registrado. Candidata: a imagem de `docker/api-scripts.Dockerfile`
+   (`node prisma/dist/seed-base.js`, `DATABASE_URL` com a role dona), que o
+   `publish.ps1` **não** publica — confirmar antes de usar. O seed cria o admin
+   `admin@bjsoft.com.br` com a senha fixa `Admin@123`: trocar no primeiro acesso.
 
 ## Armadilha: `too many clients already` (P2037) **[diagnosticado em 2026-10-07]**
 
