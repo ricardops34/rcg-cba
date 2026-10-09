@@ -916,6 +916,49 @@ ALTER DEFAULT PRIVILEGES FOR ROLE plataforma_rcg IN SCHEMA public
 
 O schema não tem `autoincrement`, então não há sequência a liberar.
 
+## Produção: base nova num Postgres novo **[feito na VPS em 2026-10-09; seed ainda não rodado]**
+
+Postgres `pgvector/pgvector:pg16` na stack `postgres` (serviço
+`postgres_postgres`, rede `RCGNet`), base `plataforma_rcg` vazia, dona
+`plataforma_rcg` (SUPERUSER). O boot da API aplica as migrations sozinho: os
+passos abaixo são o que precisou ser feito à mão, na ordem em que os erros
+apareceram.
+
+1. **Host nas URLs: `postgres_postgres`**, e não `postgres` — ver "Rede da VPS
+   desde 2026-10-09". Com o nome curto: `P1001`.
+2. **Valor da variável sem aspas** no Portainer. Com aspas, o Prisma recusa
+   antes de conectar: `P1012 ... the URL must start with the protocol`.
+3. **A baseline cita a role `plataforma`** (`ALTER DEFAULT PRIVILEGES FOR ROLE
+   plataforma`, linha ~2555). Num Postgres sem essa role ela falha com
+   `42704 role "plataforma" does not exist`. O Postgres desfaz a migration
+   inteira, mas o Prisma deixa o registro como falho e recusa tudo depois
+   (`P3009`). Conserto, **só com a base vazia** (conferir antes:
+   `SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'`
+   = 1, só a `_prisma_migrations`):
+   ```sql
+   CREATE ROLE plataforma NOLOGIN;
+   DELETE FROM _prisma_migrations
+    WHERE migration_name = '20260828220000_baseline' AND finished_at IS NULL;
+   ```
+   Redeploy: as 130 migrations entram. O erro real de uma migration falha está
+   em `SELECT logs FROM _prisma_migrations WHERE finished_at IS NULL`.
+4. **Senha e GRANT da `plataforma_app`**: a baseline cria a role com senha de
+   exemplo, e a API cai em `P1000 Authentication failed ... plataforma_app`.
+   Rodar a "Correção" da seção acima (senha = a da `DATABASE_URL`, GRANT e
+   `ALTER DEFAULT PRIVILEGES FOR ROLE plataforma_rcg`) e as conferências.
+5. **Modo sistema** — conferir que a migration configurou sozinha:
+   ```sql
+   SELECT d.datname, s.setconfig
+     FROM pg_db_role_setting s
+     LEFT JOIN pg_database d ON d.oid = s.setdatabase
+    WHERE s.setrole = 'plataforma_app'::regrole;
+   -- plataforma_rcg | {app.plataforma=on}
+   ```
+   (`::regdatabase` não existe no Postgres 16.)
+6. **Seed** — **[pendente]**: a base sai das migrations sem empresa, admin,
+   menus nem perfis. Comando para rodar no container de produção ainda não
+   registrado.
+
 ## Armadilha: `too many clients already` (P2037) **[diagnosticado em 2026-10-07]**
 
 `max_connections` da produção é 100. Sem `connection_limit` na `DATABASE_URL`,
