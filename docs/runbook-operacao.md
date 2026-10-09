@@ -516,13 +516,6 @@ desligada. A stack principal `docker/stack.rcgcba.prod.yml` contém API e web.
 Ambas usam a rede externa `network_public`, mantendo os aliases
 `rcgcba-ollama`, `rcgcba-evolution-go` e `rcgcba-api` para comunicação.
 
-Desde 2026-10-09 o Traefik das URLs `crm.*` e `api.rcgdist` está na rede
-`RCGNet`. O web fica só nela. A API fica nas **duas**: na `RCGNet` para receber
-pelo Traefik, e na `network_public` para alcançar o Postgres, o Redis e o
-Evolution GO. Com a API só na `RCGNet`, o `migrate deploy` do boot falha com
-`P1001: Can't reach database server at postgres:5432`. **[a confirmar na VPS]**
-em qual rede o Postgres está de fato.
-
 No Portainer, crie a stack auxiliar como `rcgcba-servicos`, usando
 `docker/.env.servicos.prod.example` como referência das variáveis.
 **[a confirmar na VPS]** Se esses serviços já estiverem na stack principal,
