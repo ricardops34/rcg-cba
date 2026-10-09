@@ -306,9 +306,12 @@ _reimprime_ o que já existe:
   boleto: a numeração é de quem registrou a cobrança no banco.
 
 **Título vencido sai com valor atualizado** — saldo + multa (uma vez) + juros
-pro rata die, pelos percentuais do convênio. Sem percentual cadastrado, não há
-encargo: multa "padrão" cobraria do cliente o que a empresa nunca combinou. A
-composição do valor é impressa nas instruções da ficha.
+por dia × dias de atraso, **com os valores que o ERP manda no título**
+(`multaValor`, `jurosValorDia`: o que o BjBoletos calculou e imprimiu). Desde
+2026-10-09 (decisão do usuário) o percentual da conta bancária não entra:
+título sem esses valores não tem encargo, porque cobrar o que o boleto na mão
+do cliente não diz seria cobrar o que ninguém combinou. A composição do valor é
+impressa nas instruções da ficha.
 
 **A emissão para em 30 dias de atraso.** Do 31º dia em diante nem a rota emite
 nem a tela oferece o botão — passado esse prazo a cobrança já costuma estar em

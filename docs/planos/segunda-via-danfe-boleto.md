@@ -53,11 +53,13 @@ Consequências que valem registrar:
 
 ## Regra de cobrança em atraso (decidida em 2026-08-21)
 
-O boleto de **título vencido sai com valor atualizado**: saldo + multa
-(percentual fixo, uma vez) + juros (percentual ao mês convertido em taxa
-diária, pro rata pelos dias de atraso). Os percentuais vêm do convênio
-cadastrado — sem percentual, não há encargo, porque inventar multa padrão
-cobraria do cliente o que a empresa nunca combinou.
+O boleto de **título vencido sai com valor atualizado**: saldo + multa (uma
+vez) + juros pro rata pelos dias de atraso. ~~Os percentuais vêm do convênio
+cadastrado.~~ **Mudou em 2026-10-09 (decisão do usuário):** multa e juros são
+só os valores que o ERP manda no título (`multaValor`, `jurosValorDia`); o
+percentual da conta bancária não entra. Sem valor do ERP, não há encargo,
+porque inventar multa padrão cobraria do cliente o que a empresa nunca
+combinou.
 
 A composição do valor sai impressa nas instruções da ficha (valor original,
 multa, juros, total, data da atualização): o cliente precisa entender por que
