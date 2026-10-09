@@ -487,8 +487,6 @@ async function limparDados() {
   await prisma.termoAceite.deleteMany();
   await prisma.usuario.updateMany({ data: { superiorId: null } });
   await prisma.usuarioEmpresa.deleteMany();
-  await prisma.perfilPermissao.deleteMany();
-  await prisma.perfil.deleteMany();
   // Limpeza pontual: "Itens de NF de Saída" foi unificado dentro do
   // mestre-detalhe de Notas de Saída — remove a rotina/menu órfãos de bases
   // já seedadas (bootstrapMenu só faz upsert, não apaga o que saiu da lista).
@@ -507,6 +505,12 @@ async function limparDados() {
   await prisma.whatsappConfig.deleteMany();
   await prisma.comunicadoPerfil.deleteMany();
   await prisma.comunicado.deleteMany();
+  // Perfil depois de usuário e de comunicado_perfis, que apontam para ele
+  // (`usuarios.perfilId`). Na ordem inversa a limpeza morria em
+  // `usuarios_perfilId_fkey` sempre que a base já tinha um usuário — em
+  // 2026-10-09, o de um seed anterior que caiu no meio.
+  await prisma.perfilPermissao.deleteMany();
+  await prisma.perfil.deleteMany();
   await prisma.contaBancaria.deleteMany();
   await prisma.produtoFoto.deleteMany();
   await prisma.produtoCampoValor.deleteMany();
