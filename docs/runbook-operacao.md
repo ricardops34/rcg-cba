@@ -875,10 +875,16 @@ senão ele roda só a seleção):
 SELECT rolname, rolsuper, rolbypassrls FROM pg_roles
 WHERE rolname IN ('plataforma_rcg', 'plataforma_app', 'plataforma');
 
--- tabelas que o plataforma_app não lê (as wa_* ficam de fora de propósito)
-SELECT schemaname, tablename FROM pg_tables
-WHERE schemaname = 'public' AND tablename NOT LIKE 'wa\_%'
-  AND NOT has_table_privilege('plataforma_app', format('%I.%I', schemaname, tablename), 'SELECT');
+-- tabelas que o plataforma_app não lê (as wa_* ficam de fora de propósito).
+-- Pelo oid, e não por format('public.%I'): o Postgres não garante a ordem do
+-- WHERE e pode chamar has_table_privilege em tabela de sistema antes do filtro
+-- de schema — falhou assim em 2026-10-09 ("public.pg_statistic does not exist").
+SELECT c.relname
+  FROM pg_class c
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+ WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+   AND c.relname NOT LIKE 'wa\_%'
+   AND NOT has_table_privilege('plataforma_app', c.oid, 'SELECT');
 ```
 
 Correção, nesta ordem:
