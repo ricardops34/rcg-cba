@@ -23,6 +23,12 @@ const nextConfig: NextConfig = {
         destination: "/cadastros/clientes/:path*",
         permanent: true,
       },
+      // Equipamentos de Comodato saiu de Cadastros para o Gerencial.
+      {
+        source: "/cadastros/equipamentos-comodato/:path*",
+        destination: "/gerencial/equipamentos-comodato/:path*",
+        permanent: true,
+      },
     ];
   },
   async rewrites() {

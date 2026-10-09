@@ -238,17 +238,6 @@ export const MENUS: DefinicaoMenu[] = [
     codigo: 'produtos-campos',
     moduloId: MODULO.cadastros,
   },
-  // Equipamento de comodato e os produtos que se aplicam nele (ver
-  // docs/planos/equipamentos-comodato.md). Os itens são a relação `aplicacao`
-  // de produto_relacionados — a mesma do card "Relacionados" do produto.
-  {
-    id: 'seed-menu-equipamentos-comodato',
-    nome: 'Equipamentos de Comodato',
-    rota: '/cadastros/equipamentos-comodato',
-    icone: 'wrench',
-    codigo: 'equipamentos-comodato',
-    moduloId: MODULO.cadastros,
-  },
   {
     id: 'seed-menu-clientes',
     nome: 'Clientes',
@@ -437,6 +426,19 @@ export const MENUS: DefinicaoMenu[] = [
     rota: '/gerencial/whatsapp',
     icone: 'history',
     codigo: 'whatsapp-historico',
+    moduloId: MODULO.gerencial,
+  },
+  // Equipamento de comodato e os produtos que se aplicam nele (ver
+  // docs/planos/equipamentos-comodato.md). Os itens são a relação `aplicacao`
+  // de produto_relacionados — a mesma do card "Relacionados" do produto.
+  // Saiu de Cadastros para o Gerencial em 2026-10-09 (decisão do usuário).
+  // Mesma rotina e mesmo código: as permissões já concedidas acompanham.
+  {
+    id: 'seed-menu-equipamentos-comodato',
+    nome: 'Equipamentos de Comodato',
+    rota: '/gerencial/equipamentos-comodato',
+    icone: 'wrench',
+    codigo: 'equipamentos-comodato',
     moduloId: MODULO.gerencial,
   },
   {

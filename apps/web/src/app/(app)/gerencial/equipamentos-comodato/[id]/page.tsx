@@ -20,7 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const RECURSO = "equipamentos-comodato";
-const LIST_ROUTE = "/cadastros/equipamentos-comodato";
+const LIST_ROUTE = "/gerencial/equipamentos-comodato";
 
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (

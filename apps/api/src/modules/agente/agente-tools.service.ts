@@ -752,7 +752,7 @@ export class AgenteToolsService {
       },
       {
         // A relação de aplicação é a mesma do card "Relacionados" e de
-        // Cadastros > Equipamentos de Comodato; lida pelo service deles.
+        // Gerencial > Equipamentos de Comodato; lida pelo service deles.
         nome: 'produtos_aplicaveis',
         descricao:
           'O que serve em um equipamento de comodato (dispenser, dosadora…): os ' +
@@ -764,7 +764,7 @@ export class AgenteToolsService {
           'Precisa do produtoId: ache o equipamento (ou o produto) com ' +
           'buscar_produto antes e, com mais de um candidato, pergunte qual. Lista ' +
           'vazia não é "não serve nada": diga que ainda não há produtos aplicáveis ' +
-          'cadastrados para ele em Cadastros > Equipamentos de Comodato. Cite a ' +
+          'cadastrados para ele em Gerencial > Equipamentos de Comodato. Cite a ' +
           'observação quando houver (dose, medida).',
         permissao: 'produtos.visualizar',
         exemplos: [
@@ -868,7 +868,7 @@ export class AgenteToolsService {
           'do equipamento (`semConsumoAplicaveis.total`). Se ' +
           '`equipamentosComAplicaveis` for 0, NÃO diga que ninguém está sem ' +
           'consumo: diga que a segunda leitura depende de cadastrar os produtos ' +
-          'aplicáveis em Cadastros > Equipamentos de Comodato. Não afirme que o ' +
+          'aplicáveis em Gerencial > Equipamentos de Comodato. Não afirme que o ' +
           'equipamento está parado — pode ter sido recolhido sem baixa ou o ' +
           'cliente comprar de outro fornecedor. Para o equipamento e a última ' +
           'compra de um cliente, use posicao_cliente.',

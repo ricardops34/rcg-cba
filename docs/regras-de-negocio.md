@@ -135,7 +135,7 @@ quem desfez. Pode baixar quem tem acesso ao cliente (Posição de Cliente, dentr
 da carteira).
 
 **Aviso de comodato sem consumo:** cliente com saldo de um equipamento
-cadastrado (Cadastros > Equipamentos de Comodato, ativo e com produtos
+cadastrado (Gerencial > Equipamentos de Comodato, ativo e com produtos
 aplicáveis) que não comprou nenhum aplicável nos **últimos 30 dias**. Conta
 qualquer nota de saída normal ativa — a bonificação do papel também abastece o
 dispenser. Aparece como ícone na lista da Posição, com filtro, e o assistente
@@ -277,7 +277,7 @@ equipamento; do lado do consumível a mesma linha é lida como "usado em".
 Cada linha devolvida traz `origem`, que é o que decide o rótulo.
 
 O produto que pode ser comodatado tem cadastro próprio desde 2026-10-07:
-**Cadastros > Equipamentos de Comodato** (`equipamentos_comodato`, ver
+**Gerencial > Equipamentos de Comodato** (`equipamentos_comodato`, ver
 `docs/planos/equipamentos-comodato.md`). É o cabeçalho; os itens dessa tela
 **são** esta relação `aplicacao` — editar lá ou no card "Relacionados" do
 produto dá no mesmo. O flag das notas (`notas_saida.comodato`,

@@ -90,7 +90,7 @@ export default function EquipamentosComodatoPage() {
       setNovoAberto(false);
       setProduto(null);
       invalidar();
-      router.push(`/cadastros/equipamentos-comodato/${r.id}`);
+      router.push(`/gerencial/equipamentos-comodato/${r.id}`);
     },
     onError: (e) =>
       toast.error(e instanceof ApiError ? e.message : "Não foi possível cadastrar"),
@@ -136,7 +136,7 @@ export default function EquipamentosComodatoPage() {
   });
 
   const abrir = (e: EquipamentoComodato) =>
-    router.push(`/cadastros/equipamentos-comodato/${e.id}`);
+    router.push(`/gerencial/equipamentos-comodato/${e.id}`);
 
   // Mesma confirmação do detalhe: excluir daqui poupa abrir o equipamento só
   // para isso.

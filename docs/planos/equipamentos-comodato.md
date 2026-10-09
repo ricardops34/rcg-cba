@@ -29,7 +29,13 @@ dispenser de toalha interfolha, o químico da dosadora).
   equipamento", o que perdeu o sentido com o filtro de categoria — e fazia o
   popular não trazer nada depois de uma exclusão em lote (RCG: 216 de 216).
 - **2026-10-07 — acesso (decisão do usuário):** Administrador, Diretor,
-  Gerente e Supervisor. Módulo Cadastros.
+  Gerente e Supervisor. Módulo Cadastros (movido para o Gerencial em
+  2026-10-09, ver abaixo).
+- **2026-10-09 — tela vai para o Gerencial** (decisão do usuário):
+  `/cadastros/equipamentos-comodato` → `/gerencial/equipamentos-comodato`.
+  Só o menu muda de módulo, pelo catálogo (`sincronizar-catalogo`); a rotina
+  `equipamentos-comodato` é a mesma, então as permissões dos perfis ficam como
+  estavam, sem migration. O caminho antigo redireciona (`next.config.ts`).
 - **2026-10-07 — produto de categoria de equipamento não é aplicável**
   (decisão do usuário). Quais categorias são de equipamento a empresa marca em
   Cadastros > Categorias ("Equipamento de comodato", `categorias.editar`), e
@@ -73,7 +79,7 @@ toalha interfolhado.
   ponta em 2026-10-07 com token de Gerente (403 sem a permissão); os 267
   equipamentos que o teste criou foram apagados, o primeiro "popular" de
   verdade é do usuário
-- [x] Telas: lista (`/cadastros/equipamentos-comodato`) e detalhe
+- [x] Telas: lista (`/gerencial/equipamentos-comodato`) e detalhe
 - [x] Categoria de equipamento (marcação em Categorias, desce para as
   subcategorias; subcategoria nova do ERP herda a do pai)
 - [x] Sugestão "Comuns aos clientes" + seleção de vários itens
