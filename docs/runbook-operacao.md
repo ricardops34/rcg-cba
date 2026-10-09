@@ -744,6 +744,20 @@ docker build -f docker/web.Dockerfile -t rcgcba-web:check .
 docker build -f docker/api.Dockerfile -t rcgcba-api:check .
 ```
 
+**Push falhando com `failed to fetch oauth token ... auth.docker.io/token ...
+timeout awaiting response headers`** **[visto em 2026-10-09]**. Rede/Docker Hub
+instável no momento do push, não a imagem: o build da API já tinha terminado.
+Como o script faz build e push imagem por imagem, ele para no `push de API` e o
+web nem é construído. Retomar sem refazer o build da API:
+
+```powershell
+docker push bjsoftware/rcgcba-api:latest
+.\publish.ps1 -Target web
+```
+
+Se repetir sempre, suspeitar do Kaspersky interceptando o Docker Desktop (o
+script só trata o certificado dele para o npm). **[causa a confirmar]**
+
 **Push falhando com `image ... was found but does not provide any platform`**
 **[verificado em 2026-09-30, Docker Desktop 29.6.1]**. O build passa e as camadas
 sobem, mas o manifesto não: o armazenamento containerd do Docker Desktop monta um
