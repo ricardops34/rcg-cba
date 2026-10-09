@@ -16,6 +16,8 @@ interface MinhaReceitaResposta {
   nome_fantasia?: string;
   descricao_situacao_cadastral?: string;
   data_situacao_cadastral?: string;
+  /** "AVENIDA", "RUA"... — o `logradouro` vem sem ele. */
+  descricao_tipo_de_logradouro?: string;
   logradouro?: string;
   numero?: string;
   complemento?: string;
@@ -96,8 +98,16 @@ export class EnriquecimentoService {
       dados.codigo_municipio_ibge,
     );
 
-    // Logradouro e número chegam separados; o cadastro tem um campo só.
-    const logradouro = texto(dados.logradouro);
+    // Tipo, logradouro e número chegam separados; o cadastro tem um campo só.
+    // Sem o tipo, "AV. ZILA CORREA MACHADO" virava "ZILA CORREA MACHADO" na
+    // proposta. Por extenso, como a fonte manda: abreviar ("AV.", "R.")
+    // seria adivinhar a convenção de cada cadastro.
+    const tipo = texto(dados.descricao_tipo_de_logradouro);
+    const nome = texto(dados.logradouro);
+    const logradouro =
+      tipo && nome && !nome.toUpperCase().startsWith(`${tipo.toUpperCase()} `)
+        ? `${tipo} ${nome}`
+        : nome;
     const numero = texto(dados.numero);
     const endereco = logradouro
       ? [logradouro, numero].filter(Boolean).join(', ')
