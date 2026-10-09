@@ -37,14 +37,14 @@ services:
       # Uploads (logos de empresa) persistem fora do container.
       - uploads:/app/apps/api/uploads
     networks:
-      network_public:
+      RCGNet:
         aliases:
           - rcgcba-api
     deploy:
       replicas: 1
       labels:
         - "traefik.enable=true"
-        - "traefik.swarm.network=network_public"
+        - "traefik.swarm.network=RCGNet"
         - "traefik.http.routers.plataforma-rcg-api.rule=Host(`api.rcgdist.com.br`)"
         - "traefik.http.routers.plataforma-rcg-api.entrypoints=websecure"
         - "traefik.http.routers.plataforma-rcg-api.tls=true"
@@ -56,15 +56,24 @@ services:
   web:
     image: bjsoftware/rcgcba-web:latest
     networks:
-      network_public:
+      RCGNet:
         aliases:
           - rcgcba-web
     deploy:
       replicas: 1
       labels:
         - "traefik.enable=true"
-        - "traefik.swarm.network=network_public"
-        - "traefik.http.routers.plataforma-rcg-web.rule=Host(`plataforma.rcgdist.com.br`)"
+        - "traefik.swarm.network=RCGNet"
+        # Um só serviço atende as duas marcas; a empresa vem do domínio.
+        - "traefik.http.routers.plataforma-rcg-web.rule=Host(`crm.rcgdist.com.br`) || Host(`crm.cbadist.com.br`)"
+        # Entrada pela raiz exata (sem caminho nem query) vai para o login da
+        # empresa do domínio: crm.rcgdist → ?empresa=rcg, crm.cbadist → ?empresa=cba.
+        # A navegação interna do Next (/?_rsc=...) não casa e passa direto.
+        # `$$` é o `$` literal, escapado da interpolação do compose.
+        - "traefik.http.routers.plataforma-rcg-web.middlewares=plataforma-rcg-web-login"
+        - "traefik.http.middlewares.plataforma-rcg-web-login.redirectregex.regex=^https?://crm\\.(rcg|cba)dist\\.com\\.br/?$$"
+        - "traefik.http.middlewares.plataforma-rcg-web-login.redirectregex.replacement=https://crm.$${1}dist.com.br/login?empresa=$${1}"
+        - "traefik.http.middlewares.plataforma-rcg-web-login.redirectregex.permanent=false"
         - "traefik.http.routers.plataforma-rcg-web.entrypoints=websecure"
         - "traefik.http.routers.plataforma-rcg-web.tls=true"
         - "traefik.http.routers.plataforma-rcg-web.tls.certresolver=letsencryptresolver"
@@ -75,5 +84,5 @@ volumes:
   uploads:
 
 networks:
-  network_public:
+  RCGNet:
     external: true
