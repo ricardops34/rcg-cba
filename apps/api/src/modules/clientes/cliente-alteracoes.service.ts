@@ -19,6 +19,11 @@ import {
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
 import { registrarAtividadeAlteracaoCliente } from './registrar-atividade-alteracao-cliente';
 import {
+  enderecoCanonico,
+  telefoneCanonico,
+  textoCanonico,
+} from './endereco-equivalente';
+import {
   clienteUpdateSchema,
   type ClienteAlteracaoQuery,
   type DiffAlteracao,
@@ -158,6 +163,43 @@ function serializar(valor: unknown): ValorSerializado {
   return null;
 }
 
+const CAMPOS_TELEFONE = new Set(['telefone', 'telefone2', 'celular']);
+
+/** Texto livre: comparado sem acento, sem "Ç", sem caixa. */
+const CAMPOS_TEXTO = new Set([
+  'razaoSocial',
+  'nomeFantasia',
+  'contato',
+  'complemento',
+  'bairro',
+  'municipio',
+]);
+
+/**
+ * Valores escritos de outro jeito que dizem a mesma coisa não são alteração
+ * (decisão do usuário, 2026-10-09): endereço que só difere na abreviatura do
+ * tipo ("AV." × "AVENIDA"), na pontuação ou no acento; texto que só difere no
+ * acento, no "Ç" ou na caixa; telefone que só difere no zero do DDD. Sem isso
+ * a consulta à Receita propunha "mudar" quase todo cadastro.
+ */
+function mesmoValor(
+  campo: string,
+  de: ValorSerializado,
+  para: ValorSerializado,
+): boolean {
+  if (typeof de !== 'string' || typeof para !== 'string') return false;
+  if (campo === 'endereco') {
+    return enderecoCanonico(de) === enderecoCanonico(para);
+  }
+  if (CAMPOS_TELEFONE.has(campo)) {
+    return telefoneCanonico(de) === telefoneCanonico(para);
+  }
+  if (CAMPOS_TEXTO.has(campo)) {
+    return textoCanonico(de) === textoCanonico(para);
+  }
+  return false;
+}
+
 /**
  * Calcula o que muda de fato entre o cliente atual e o payload. Só entra campo
  * acompanhado, presente no payload e com valor diferente — é o que faz o ERP
@@ -172,7 +214,7 @@ export function calcularDiff(
     if (!(campo in input)) continue;
     const de = serializar(atual[campo]);
     const para = serializar(input[campo]);
-    if (de === para) continue;
+    if (de === para || mesmoValor(campo, de, para)) continue;
     diff[campo] = { de, para };
   }
 

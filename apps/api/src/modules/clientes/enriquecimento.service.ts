@@ -8,6 +8,7 @@ import type {
   CnaeSugerido,
   ConsultaCnpjResultado,
 } from '@plataforma/contracts';
+import { abreviarTipoLogradouro } from './endereco-equivalente';
 
 /** Resposta da MinhaReceita — só os campos que consumimos. */
 interface MinhaReceitaResposta {
@@ -100,12 +101,16 @@ export class EnriquecimentoService {
 
     // Tipo, logradouro e número chegam separados; o cadastro tem um campo só.
     // Sem o tipo, "AV. ZILA CORREA MACHADO" virava "ZILA CORREA MACHADO" na
-    // proposta. Por extenso, como a fonte manda: abreviar ("AV.", "R.")
-    // seria adivinhar a convenção de cada cadastro.
-    const tipo = texto(dados.descricao_tipo_de_logradouro);
+    // proposta. Abreviado ("AVENIDA" → "AV."), como o cadastro do Protheus
+    // grava — decisão do usuário, 2026-10-09. Que "AV." e "AVENIDA" contam
+    // como o mesmo endereço é do diff (calcularDiff).
+    const tipoReceita = texto(dados.descricao_tipo_de_logradouro);
+    const tipo = tipoReceita ? abreviarTipoLogradouro(tipoReceita) : null;
     const nome = texto(dados.logradouro);
     const logradouro =
-      tipo && nome && !nome.toUpperCase().startsWith(`${tipo.toUpperCase()} `)
+      tipoReceita &&
+      nome &&
+      !nome.toUpperCase().startsWith(`${tipoReceita.toUpperCase()} `)
         ? `${tipo} ${nome}`
         : nome;
     const numero = texto(dados.numero);

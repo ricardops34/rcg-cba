@@ -16,6 +16,83 @@ describe('calcularDiff', () => {
     ).toEqual({});
   });
 
+  describe('endereço que só muda na escrita', () => {
+    it('abreviatura do tipo e pontuação não são alteração', () => {
+      expect(
+        calcularDiff(
+          { endereco: 'AV. ZILA CORREA MACHADO,11440' },
+          { endereco: 'AVENIDA ZILA CORREA MACHADO, 11440' },
+        ),
+      ).toEqual({});
+      expect(
+        calcularDiff(
+          { endereco: 'R. Ada Teixeira dos Santos, 99' },
+          { endereco: 'RUA ADA TEIXEIRA DOS SANTOS, 99' },
+        ),
+      ).toEqual({});
+    });
+
+    it('nome ou número diferente continua sendo alteração', () => {
+      expect(
+        calcularDiff(
+          { endereco: 'R. ADA TEIXEIRA DOS SANTOS, 99' },
+          { endereco: 'R. ADA TEIXEIRA DOS SANTOS PEREIRA, 99' },
+        ).endereco,
+      ).toBeDefined();
+      expect(
+        calcularDiff(
+          { endereco: 'AV. ZILA CORREA MACHADO, 11440' },
+          { endereco: 'AV. ZILA CORREA MACHADO, 11450' },
+        ).endereco,
+      ).toBeDefined();
+    });
+
+    it('tipo diferente continua sendo alteração', () => {
+      expect(
+        calcularDiff(
+          { endereco: 'R. BRASIL, 10' },
+          { endereco: 'AV. BRASIL, 10' },
+        ).endereco,
+      ).toBeDefined();
+    });
+  });
+
+  describe('texto que só muda no acento, no Ç ou na caixa', () => {
+    it('não é alteração', () => {
+      expect(
+        calcularDiff(
+          { razaoSocial: 'PAÇOCA COMÉRCIO LTDA', bairro: 'São José' },
+          { razaoSocial: 'PACOCA COMERCIO LTDA', bairro: 'SAO JOSE' },
+        ),
+      ).toEqual({});
+      expect(
+        calcularDiff(
+          { endereco: 'R. CONCEIÇÃO, 5' },
+          { endereco: 'RUA CONCEICAO, 5' },
+        ),
+      ).toEqual({});
+    });
+
+    it('palavra diferente continua sendo alteração', () => {
+      expect(
+        calcularDiff(
+          { razaoSocial: '7M ALIMENTOS LTDA' },
+          { razaoSocial: 'GRANEL NUTRI LTDA' },
+        ).razaoSocial,
+      ).toBeDefined();
+    });
+  });
+
+  it('telefone que só difere no zero do DDD não é alteração', () => {
+    expect(
+      calcularDiff({ telefone: '06733546642' }, { telefone: '6733546642' }),
+    ).toEqual({});
+    expect(
+      calcularDiff({ celular: '067999358925' }, { celular: '6733989160' })
+        .celular,
+    ).toBeDefined();
+  });
+
   describe(`campo virtual ${CAMPO_CNAES}`, () => {
     it('compara como lista ordenada de códigos', () => {
       const diff = calcularDiff(
