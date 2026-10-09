@@ -228,7 +228,9 @@ export class AuthService {
 
     const accessToken = await this.jwt.signAsync(payload, {
       secret: process.env.JWT_ACCESS_SECRET,
-      expiresIn: (process.env.JWT_ACCESS_EXPIRES_IN ?? '15m') as never,
+      // `||`, e não `??`: o stack sempre passa a variável, e ausente no
+      // Portainer ela chega como "" — o jsonwebtoken recusa e o login morre.
+      expiresIn: (process.env.JWT_ACCESS_EXPIRES_IN?.trim() || '15m') as never,
     });
 
     return { accessToken, vinculo };
