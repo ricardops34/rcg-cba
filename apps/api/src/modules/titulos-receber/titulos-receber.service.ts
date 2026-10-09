@@ -252,8 +252,6 @@ export class TitulosReceberService {
       ? calcularEncargos({
           saldo,
           vencimento: titulo.vencimentoEfetivo,
-          multaPerc: conta.multaPerc,
-          jurosMesPerc: conta.jurosMesPerc,
           multaValor: titulo.multaValor,
           jurosValorDia: titulo.jurosValorDia,
         })
@@ -330,7 +328,7 @@ export class TitulosReceberService {
           impressoPor: quem.tipo === 'usuario' ? quem.user.nome : 'Plataforma',
         },
         localPagamento: titulo.localPagamento ?? conta.localPagamento,
-        instrucoes: montarInstrucoes(titulo, conta, encargos, usarAtualizado),
+        instrucoes: montarInstrucoes(titulo, conta, usarAtualizado),
         demonstrativo: conta.demonstrativo,
         marcaDagua,
         codigo: {
@@ -508,18 +506,16 @@ export function montarInstrucoes(
   },
   conta: {
     instrucoes: string | null;
-    multaPerc: number | null;
-    jurosMesPerc: number | null;
     diasProtesto: number | null;
   },
-  encargos: EncargosCalculados,
   usarAtualizado?: boolean,
 ): string[] {
   const linhas: string[] = [];
 
-  // 1. Instruções de encargo (formato do ERP Bradesco)
-  const jurosDia = titulo.jurosValorDia ?? (encargos.saldo * (conta.jurosMesPerc ?? 0) / 100 / 30);
-  const multaVal = titulo.multaValor ?? (encargos.saldo * (conta.multaPerc ?? 0) / 100);
+  // 1. Instruções de encargo (formato do ERP Bradesco). Só o que o ERP mandou
+  // no título: o percentual da conta não entra (ver calcularEncargos).
+  const jurosDia = titulo.jurosValorDia ?? 0;
+  const multaVal = titulo.multaValor ?? 0;
 
   if (jurosDia > 0) {
     linhas.push(`Importancia por Dia de Atraso de ${moedaFormato(jurosDia)}`);

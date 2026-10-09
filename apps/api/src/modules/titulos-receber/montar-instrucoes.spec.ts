@@ -10,11 +10,10 @@ describe('montarInstrucoes', () => {
     multaValor: 22.78,
     jurosValorDia: 2.28,
   };
-  const conta = { instrucoes: null, multaPerc: null, jurosMesPerc: null, diasProtesto: null };
-  const encargos = { saldo: 1139 } as Parameters<typeof montarInstrucoes>[2];
+  const conta = { instrucoes: null, diasProtesto: null };
 
   it('não repete as linhas de encargo que vieram do ERP', () => {
-    expect(montarInstrucoes(titulo, conta, encargos, true)).toEqual([
+    expect(montarInstrucoes(titulo, conta, true)).toEqual([
       'Importancia por Dia de Atraso de R$ 2,28',
       'Após Vencimento Cobrar Multa de R$ 22,78',
       ' - - - 2º Via - - -',
@@ -28,7 +27,7 @@ describe('montarInstrucoes', () => {
       instrucoes: `${titulo.instrucoes}\r\nConceder Desconto de R$ 10,00 ate o vencimento.`,
     };
 
-    expect(montarInstrucoes(comDesconto, conta, encargos, false)).toEqual([
+    expect(montarInstrucoes(comDesconto, conta, false)).toEqual([
       'Importancia por Dia de Atraso de R$ 2,28',
       'Após Vencimento Cobrar Multa de R$ 22,78',
       'Conceder Desconto de R$ 10,00 ate o vencimento.',

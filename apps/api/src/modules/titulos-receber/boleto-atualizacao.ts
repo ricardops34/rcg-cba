@@ -57,21 +57,15 @@ export type EncargosCalculados = {
 /**
  * Valor atualizado do título até hoje.
  *
- * - **Multa**: percentual fixo, aplicado uma única vez a partir do primeiro
- *   dia de atraso.
- * - **Juros**: percentual ao mês convertido em taxa diária (mês comercial de
- *   30 dias, como a cobrança bancária faz) e multiplicado pelos dias de
- *   atraso.
+ * - **Multa**: o valor em reais do título, aplicado uma única vez a partir do
+ *   primeiro dia de atraso.
+ * - **Juros**: o valor por dia de atraso do título, multiplicado pelos dias.
  *
- * Sem percentual cadastrado no convênio não há encargo — a conta devolve o
- * próprio saldo. Isso é deliberado: inventar multa padrão cobraria do cliente
- * um valor que a empresa nunca combinou.
- *
- * **Valor do ERP vence percentual do convênio.** Quando o título traz
- * `multaValor` ou `jurosValorDia` — o que o ERP calculou e imprimiu no boleto
- * original —, é esse número que entra. Recalcular pelo percentual daria outro
- * resultado se alguém tiver mexido no cadastro depois da emissão, e aí o papel
- * na mão do cliente e a 2ª via diriam valores diferentes.
+ * **Só o valor do ERP** (decisão do usuário, 2026-10-09): `multaValor` e
+ * `jurosValorDia`, o que o Protheus calculou e imprimiu no boleto original. O
+ * percentual da conta bancária não entra mais — título sem valor do ERP não
+ * tem encargo, e a conta devolve o próprio saldo. Inventar encargo cobraria do
+ * cliente um valor que o boleto na mão dele não diz.
  *
  * Tudo é arredondado ao centavo no fim, e não a cada parcela, para o total
  * impresso bater com a soma das linhas do demonstrativo.
@@ -79,11 +73,9 @@ export type EncargosCalculados = {
 export function calcularEncargos(entrada: {
   saldo: number;
   vencimento: Date | null;
-  multaPerc: number | null;
-  jurosMesPerc: number | null;
-  /** Multa em reais, como o ERP calculou. Vence `multaPerc`. */
+  /** Multa em reais, como o ERP calculou. */
   multaValor?: number | null;
-  /** Juros por dia de atraso, em reais, como o ERP calculou. Vence `jurosMesPerc`. */
+  /** Juros por dia de atraso, em reais, como o ERP calculou. */
   jurosValorDia?: number | null;
   hoje?: Date;
 }): EncargosCalculados {
@@ -95,15 +87,8 @@ export function calcularEncargos(entrada: {
     return { valor: saldo, saldo, multa: 0, juros: 0, diasAtraso: 0, atualizadoAte: hoje };
   }
 
-  const multa =
-    entrada.multaValor != null
-      ? centavos(entrada.multaValor)
-      : centavos((saldo * (entrada.multaPerc ?? 0)) / 100);
-
-  const juros =
-    entrada.jurosValorDia != null
-      ? centavos(entrada.jurosValorDia * diasAtraso)
-      : centavos(saldo * ((entrada.jurosMesPerc ?? 0) / 30 / 100) * diasAtraso);
+  const multa = centavos(entrada.multaValor ?? 0);
+  const juros = centavos((entrada.jurosValorDia ?? 0) * diasAtraso);
 
   return {
     valor: centavos(saldo + multa + juros),

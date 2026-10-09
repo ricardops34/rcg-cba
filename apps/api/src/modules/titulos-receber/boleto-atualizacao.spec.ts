@@ -37,16 +37,16 @@ describe('foraDoPrazoDeReemissao', () => {
 });
 
 describe('calcularEncargos', () => {
-  it('atualiza o valor do título vencido com multa e juros pro rata', () => {
+  it('atualiza o título vencido com a multa e os juros por dia do ERP', () => {
     const encargos = calcularEncargos({
       saldo: 1260.5,
       vencimento: VENCIDO_24_DIAS,
-      multaPerc: 2,
-      jurosMesPerc: 1,
+      multaValor: 25.21,
+      jurosValorDia: 0.42,
       hoje: HOJE,
     });
 
-    // Multa: 2% de 1260,50. Juros: 1%/30 ao dia × 24 dias.
+    // Multa: o valor do título. Juros: R$ 0,42 ao dia × 24 dias.
     expect(encargos.multa).toBe(25.21);
     expect(encargos.juros).toBe(10.08);
     expect(encargos.valor).toBe(1295.79);
@@ -57,8 +57,8 @@ describe('calcularEncargos', () => {
     const encargos = calcularEncargos({
       saldo: 1260.5,
       vencimento: new Date(2026, 8, 30),
-      multaPerc: 2,
-      jurosMesPerc: 1,
+      multaValor: 25.21,
+      jurosValorDia: 0.42,
       hoje: HOJE,
     });
     expect(encargos.valor).toBe(1260.5);
@@ -66,14 +66,15 @@ describe('calcularEncargos', () => {
     expect(encargos.juros).toBe(0);
   });
 
-  it('sem percentual cadastrado no convênio, não inventa encargo', () => {
-    // Cobrar multa "padrão" seria cobrar do cliente o que a empresa nunca
+  it('sem valor do ERP no título, não inventa encargo', () => {
+    // O percentual da conta não entra mais (decisão de 2026-10-09): cobrar
+    // encargo que o boleto do cliente não diz seria cobrar o que ninguém
     // combinou com ele.
     const encargos = calcularEncargos({
       saldo: 1000,
       vencimento: VENCIDO_24_DIAS,
-      multaPerc: null,
-      jurosMesPerc: null,
+      multaValor: null,
+      jurosValorDia: null,
       hoje: HOJE,
     });
     expect(encargos.valor).toBe(1000);

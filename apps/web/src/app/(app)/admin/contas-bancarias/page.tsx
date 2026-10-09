@@ -600,6 +600,13 @@ export default function ContasBancariasPage() {
             </div>
 
             <div className="grid gap-4 sm:grid-cols-3">
+              {/* Desde 2026-10-09 o boleto usa só a multa e os juros que o
+                  ERP manda em cada título (calcularEncargos, na API). Os
+                  percentuais daqui são opcionais e ficam só de referência. */}
+              <p className="text-xs text-muted-foreground sm:col-span-3">
+                Multa e juros são opcionais e não entram no boleto: vale o valor que
+                vem do ERP em cada título.
+              </p>
               <div className="space-y-1.5">
                 <FieldLabel htmlFor="multaPerc">Multa (%)</FieldLabel>
                 <Input
