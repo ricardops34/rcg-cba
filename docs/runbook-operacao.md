@@ -518,12 +518,13 @@ Ambas usam a rede externa `network_public`, mantendo os aliases
 
 **Rede da VPS desde 2026-10-09: `RCGNet`** (confirmado pelos stacks da VPS
 mostrados pelo usuário). Postgres (`pgvector/pgvector:pg16`, com pgAdmin em
-`pga.rcgdist.com.br`), Redis, Traefik, API e web estão todos nela. O parágrafo
+`pga.rcgdist.com.br`), Redis, Evolution GO, Traefik, API e web estão todos nela. O parágrafo
 acima, sobre `network_public`, é da instalação anterior. **[a confirmar]** a
-rede do Evolution GO e do Ollama.
+rede do Ollama.
 
 **Host do banco e do Redis nas URLs:** prefira o nome completo do serviço no
-Swarm (`<stack>_postgres`, `<stack>_redis`; veja com `docker service ls`) ao
+Swarm (o Postgres é `postgres_postgres`, o mesmo que o Evolution GO já usa;
+o Redis, `<stack>_redis`, veja com `docker service ls`) ao
 nome curto. O nome curto (`postgres`, `redis`) vale para a rede inteira, e se
 outra stack na `RCGNet` tiver um serviço com o mesmo nome, ele aponta para os
 dois. Em 2026-10-09 o boot da API falhou com `P1001: Can't reach database
