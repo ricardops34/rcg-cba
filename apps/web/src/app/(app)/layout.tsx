@@ -41,7 +41,7 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
     title: "Agente IA",
     subtitle: "Chave de API, personalidade e ajustes do assistente",
   },
-  "/consultas/sugestao-compra": {
+  "/gerencial/sugestao-compra": {
     title: "Sugestão de Compra",
     subtitle: "O que clientes parecidos compram e este ainda não",
   },

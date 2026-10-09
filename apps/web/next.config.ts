@@ -29,6 +29,13 @@ const nextConfig: NextConfig = {
         destination: "/gerencial/equipamentos-comodato/:path*",
         permanent: true,
       },
+      // Sugestão de Compra saiu de Consultas para o Gerencial — inclusive as
+      // notificações já gravadas, que guardam a rota antiga.
+      {
+        source: "/consultas/sugestao-compra/:path*",
+        destination: "/gerencial/sugestao-compra/:path*",
+        permanent: true,
+      },
     ];
   },
   async rewrites() {

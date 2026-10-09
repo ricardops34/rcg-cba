@@ -2,7 +2,9 @@
 
 ## Decisão (30/09/2026)
 
-O usuário pediu que o **Calcular** de `/consultas/sugestao-compra` rode em
+O usuário pediu que o **Calcular** de `/consultas/sugestao-compra` (desde
+2026-10-09 `/gerencial/sugestao-compra`, no módulo Gerencial — decisão do
+usuário; o caminho antigo redireciona) rode em
 segundo plano. O lote recalcula cliente a cliente sobre a base inteira e
 prendia a requisição por até 15 minutos, com a tela esperando.
 

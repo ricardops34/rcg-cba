@@ -124,7 +124,7 @@ const ATALHOS: Atalho[] = [
     permissao: "produtos.visualizar",
   },
   {
-    href: "/consultas/sugestao-compra",
+    href: "/gerencial/sugestao-compra",
     titulo: "Sugestão de Compra",
     descricao: "O que oferecer a cada cliente",
     icone: ShoppingCart,

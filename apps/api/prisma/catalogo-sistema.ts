@@ -441,6 +441,21 @@ export const MENUS: DefinicaoMenu[] = [
     codigo: 'equipamentos-comodato',
     moduloId: MODULO.gerencial,
   },
+  // Criada originalmente pela migration 20260814192300_sugestao_compra e
+  // ausente daqui até 2026-08-25 — base nova nascia sem a rotina, e a
+  // ferramenta `sugerir_compras` do agente ficava fora do catálogo do
+  // vendedor. Toda rotina que nasce numa migration precisa vir para cá
+  // também: são as duas metades do mesmo estado esperado.
+  // Saiu de Consultas para o Gerencial em 2026-10-09 (decisão do usuário).
+  // Mesma rotina e mesmo código: as permissões já concedidas acompanham.
+  {
+    id: 'seed-menu-sugestao-compra',
+    nome: 'Sugestão de Compra',
+    rota: '/gerencial/sugestao-compra',
+    icone: 'lightbulb',
+    codigo: 'sugestao-compra',
+    moduloId: MODULO.gerencial,
+  },
   {
     id: 'seed-menu-categorias',
     nome: 'Categorias',
@@ -621,19 +636,6 @@ export const MENUS: DefinicaoMenu[] = [
     rota: '/consultas/evolucao',
     icone: 'trending-up',
     codigo: 'consulta-evolucao',
-    moduloId: MODULO.consultas,
-  },
-  // Criada originalmente pela migration 20260814192300_sugestao_compra e
-  // ausente daqui até 2026-08-25 — base nova nascia sem a rotina, e a
-  // ferramenta `sugerir_compras` do agente ficava fora do catálogo do
-  // vendedor. Toda rotina que nasce numa migration precisa vir para cá
-  // também: são as duas metades do mesmo estado esperado.
-  {
-    id: 'seed-menu-sugestao-compra',
-    nome: 'Sugestão de Compra',
-    rota: '/consultas/sugestao-compra',
-    icone: 'lightbulb',
-    codigo: 'sugestao-compra',
     moduloId: MODULO.consultas,
   },
   // A tela que guarda a chave da API de IA e a conta conectada — exclusiva do

@@ -939,7 +939,7 @@ export class AgenteToolsService {
         },
         destino: () => ({
           rotulo: 'Abrir Sugestão de compra',
-          rota: '/consultas/sugestao-compra',
+          rota: '/gerencial/sugestao-compra',
         }),
       },
       {

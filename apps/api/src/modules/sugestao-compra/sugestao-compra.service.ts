@@ -1063,7 +1063,7 @@ export class SugestaoCompraService {
             tipo: 'sugestao_compra_calculada',
             titulo,
             descricao,
-            rota: '/consultas/sugestao-compra',
+            rota: '/gerencial/sugestao-compra',
             referenciaId: execucaoId,
             ocorridaEm: new Date(),
           },

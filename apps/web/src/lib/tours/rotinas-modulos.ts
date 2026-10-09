@@ -1007,7 +1007,7 @@ export const ROTINAS_GUIADAS: RotinaGuiada[] = [
   },
   {
     "codigo": "consulta-sugestao-compra",
-    "rota": "/consultas/sugestao-compra",
+    "rota": "/gerencial/sugestao-compra",
     "titulo": "Sugestão de Compra",
     "resumo": "Acompanhe, por cliente, quando a sugestão de produtos foi calculada pela última vez.",
     "resultado": "Visualize a sugestão já calculada de um cliente ou dispare um novo cálculo, linha a linha ou em lote.",
