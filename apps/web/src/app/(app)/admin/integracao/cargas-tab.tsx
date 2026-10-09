@@ -58,7 +58,7 @@ const CHAVE_CARGAS = ["integracao-cargas"] as const;
  * cliente, cliente antes de título. Ela processa na ordem de chegada, então é
  * a ordem do upload que decide. A mesma do catálogo do Protheus (BJCATALO).
  */
-const ORDEM_CARGA = [
+export const ORDEM_CARGA = [
   "regras-desconto",
   "categorias",
   "condicoes-pagamento",

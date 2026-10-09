@@ -686,6 +686,35 @@ então o script depois não encontra nada a fazer. Modelo:
 
 ---
 
+## Carga de objetivos (metas) a partir do portal antigo **[arquivo gerado e validado em 2026-10-09; upload na produção a confirmar]**
+
+Objetivos **não têm origem no Protheus** (ver `docs/integracao/advpl/PLANO.md`):
+a carga inicial por SQL não os gera. As metas vêm do portal antigo
+(`rcgdistc_portal`, MySQL), exportadas pelo phpMyAdmin com as tabelas
+`vendedor`, `meta_vendedor_mes` e `meta_vendedor_categoria` (as três no mesmo
+`.sql`; `categoria` e `sub_categoria` podem vir junto, não são lidas).
+
+```bash
+# só analisa: quantas metas, período, vendedores e categorias usados
+node docs/integracao/portal-antigo/converter-metas.js "<dump.sql>"
+
+# gera o arquivo de carga; período opcional (AAAA-MM), inclusivo
+node docs/integracao/portal-antigo/converter-metas.js "<dump.sql>" objetivos-carga.json [desde] [ate]
+```
+
+Regras do conversor (decididas com o usuário em 2026-10-09):
+- meta ou divisão por categoria com `dt_delete` fica de fora;
+- mais de uma meta para o mesmo vendedor/mês: fica a alterada por último;
+- `vendedorChave` = `-` + `vendedor.cod_erp`, `categoriaChave` = `-` + `cod_erp`
+  da categoria (filial em branco, como a base grava); chave da meta
+  `-<vendedor>-<AAAA>-<MM>` — reenviar atualiza, não duplica.
+
+Antes de subir, confira que **vendedores e categorias já estão na base**: meta
+de vendedor desconhecido é recusada. Subir em **Administração → Integração →
+Upload**, com a chave de API da empresa, e **Processar**. Conferir em
+Gerencial → Objetivos. O dump de 09/10/2026 deu 329 metas (07/2022 a 09/2026),
+25 vendedores — todos existentes na cópia da produção.
+
 ## Carga inicial da integração por SQL **[escrito em 2026-09-28, não rodado]**
 
 Gera os arquivos JSON da carga inicial direto do SQL Server do Protheus, um

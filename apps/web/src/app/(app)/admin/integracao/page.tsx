@@ -66,6 +66,7 @@ import {
   ListChecks,
 } from "lucide-react";
 import { ProcessamentoCargasTab, UploadCargasTab } from "./cargas-tab";
+import { FormatosCarga } from "./formatos-carga";
 
 const dataBr = (v: string | null) => {
   if (!v) return "Nunca";
@@ -534,6 +535,7 @@ export default function IntegracaoPage() {
 
         <TabsContent value="upload" className="space-y-6">
           <UploadCargasTab onEnviados={() => setAbaAtiva("processamento")} />
+          <FormatosCarga />
         </TabsContent>
 
         <TabsContent value="processamento" className="space-y-6">

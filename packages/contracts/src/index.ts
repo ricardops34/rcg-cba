@@ -50,6 +50,7 @@ export * from "./integracao";
 export * from "./integracao-api-key";
 export * from "./integracao-endpoint";
 export * from "./integracao-carga";
+export * from "./integracao-carga-formatos";
 export * from "./auth";
 export * from "./politica-senha";
 export * from "./usuario-horario";
