@@ -1,6 +1,8 @@
 # Evolution GO isolada para Portainer / Docker Swarm.
 # Variaveis: .env.evolution-go.prod.example. Instrucoes: README.evolution-go.md.
-# Usa o PostgreSQL existente na network_public; nao cria Postgres nem Redis.
+# Usa o PostgreSQL existente (servico postgres_postgres) na RCGNet; nao cria
+# Postgres nem Redis. O traefik.swarm.network precisa ser a mesma rede do
+# servico: com rede diferente o Traefik nao alcanca o container (404/502).
 version: "3.8"
 
 services:
@@ -16,7 +18,7 @@ services:
       WEBHOOK_FILES: "false"
       DATABASE_SAVE_MESSAGES: "false"
     networks:
-      - network_public
+      - RCGNet
     deploy:
       # Uma replica para evitar disputa pelas mesmas sessoes do WhatsApp.
       replicas: 1
@@ -33,7 +35,7 @@ services:
         order: stop-first
       labels:
         - "traefik.enable=true"
-        - "traefik.swarm.network=network_public"
+        - "traefik.swarm.network=RCGNet"
         - "traefik.http.routers.evogo.rule=Host(`${EVOLUTION_GO_HOST:-evogo.bjsoft.com.br}`)"
         - "traefik.http.routers.evogo.entrypoints=websecure"
         - "traefik.http.routers.evogo.tls=true"
@@ -43,5 +45,5 @@ services:
         - "traefik.http.services.evogo.loadbalancer.passhostheader=true"
 
 networks:
-  network_public:
+  RCGNet:
     external: true
