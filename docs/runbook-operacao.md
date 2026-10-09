@@ -617,6 +617,13 @@ docker exec -e DATABASE_URL="postgresql://plataforma:plataforma@postgres:5432/pl
 Saída esperada quando não há nada a fazer: `Nada a fazer: a base já estava em dia
 com o catálogo.`
 
+**A saída só conta o que foi criado.** Atualização de nome, rota, ícone, ordem
+ou módulo de um menu que já existe sai com a mesma mensagem "Nada a fazer", e
+foi aplicada. Para conferir uma mudança, olhe no banco, ex.:
+`SELECT rota, "moduloId" FROM menus WHERE id = '<id do catálogo>'`
+**[verificado em dev, 2026-10-09** — Equipamentos de Comodato, de Cadastros
+para o Gerencial**]**.
+
 Precisa da role dona (`plataforma`), como as migrations. É idempotente e **não
 apaga nada**: cria o que falta e atualiza nome/rota/ícone/ordem e o
 **módulo** do menu — mover um item de módulo no catálogo (como o "Recado para a
