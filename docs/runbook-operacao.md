@@ -516,6 +516,20 @@ desligada. A stack principal `docker/stack.rcgcba.prod.yml` contém API e web.
 Ambas usam a rede externa `network_public`, mantendo os aliases
 `rcgcba-ollama`, `rcgcba-evolution-go` e `rcgcba-api` para comunicação.
 
+**Rede da VPS desde 2026-10-09: `RCGNet`** (confirmado pelos stacks da VPS
+mostrados pelo usuário). Postgres (`pgvector/pgvector:pg16`, com pgAdmin em
+`pga.rcgdist.com.br`), Redis, Traefik, API e web estão todos nela. O parágrafo
+acima, sobre `network_public`, é da instalação anterior. **[a confirmar]** a
+rede do Evolution GO e do Ollama.
+
+**Host do banco e do Redis nas URLs:** prefira o nome completo do serviço no
+Swarm (`<stack>_postgres`, `<stack>_redis`; veja com `docker service ls`) ao
+nome curto. O nome curto (`postgres`, `redis`) vale para a rede inteira, e se
+outra stack na `RCGNet` tiver um serviço com o mesmo nome, ele aponta para os
+dois. Em 2026-10-09 o boot da API falhou com `P1001: Can't reach database
+server at postgres:5432` com API e Postgres na mesma rede. **[causa a
+confirmar]** — a suspeita é esse nome ambíguo.
+
 No Portainer, crie a stack auxiliar como `rcgcba-servicos`, usando
 `docker/.env.servicos.prod.example` como referência das variáveis.
 **[a confirmar na VPS]** Se esses serviços já estiverem na stack principal,
