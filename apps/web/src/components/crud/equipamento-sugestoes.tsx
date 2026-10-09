@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Lightbulb, Plus } from "lucide-react";
 import type {
   EquipamentoAplicacaoLoteResultado,
+  EquipamentoCategoriaOpcao,
   EquipamentoComuns,
   EquipamentoSugestao,
 } from "@plataforma/contracts";
@@ -22,6 +23,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 const RECURSO = "equipamentos-comodato";
 const pct = (v: number) => `${v.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%`;
 const MINIMOS = [100, 80, 50, 30];
+const TODAS = "todas";
 
 /**
  * Sugestões de produtos aplicáveis, em duas leituras das notas:
@@ -32,7 +34,8 @@ const MINIMOS = [100, 80, 50, 30];
  * - **Acima da média**: o que eles compram mais do que os demais clientes.
  *
  * Nas duas, marca-se um ou mais itens e adiciona-se de uma vez. Nada é gravado
- * sem esse clique.
+ * sem esse clique. O filtro de categoria vale para as duas e é aplicado na
+ * API, antes dos cortes — filtrar aqui esconderia o que o corte deixou de fora.
  */
 export function EquipamentoSugestoes({
   equipamentoId,
@@ -44,20 +47,34 @@ export function EquipamentoSugestoes({
   const queryClient = useQueryClient();
   const [aba, setAba] = useState("comuns");
   const [minimo, setMinimo] = useState(50);
+  const [categoria, setCategoria] = useState(TODAS);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const categoriaId = categoria === TODAS ? undefined : categoria;
+
+  const categorias = useQuery({
+    queryKey: [RECURSO, "sugestoes", "categorias"],
+    queryFn: () =>
+      apiFetch<EquipamentoCategoriaOpcao[]>(`/${RECURSO}/sugestoes/categorias`),
+  });
 
   const comuns = useQuery({
-    queryKey: [RECURSO, equipamentoId, "comuns", minimo],
+    queryKey: [RECURSO, equipamentoId, "comuns", minimo, categoriaId],
     queryFn: () =>
-      apiFetch<EquipamentoComuns>(`/${RECURSO}/${equipamentoId}/comuns`, { query: { minimo } }),
+      apiFetch<EquipamentoComuns>(`/${RECURSO}/${equipamentoId}/comuns`, {
+        query: { minimo, categoriaId },
+      }),
     enabled: aba === "comuns",
   });
 
   const acima = useQuery({
-    queryKey: [RECURSO, equipamentoId, "sugestoes"],
-    queryFn: () => apiFetch<EquipamentoSugestao[]>(`/${RECURSO}/${equipamentoId}/sugestoes`),
+    queryKey: [RECURSO, equipamentoId, "sugestoes", categoriaId],
+    queryFn: () =>
+      apiFetch<EquipamentoSugestao[]>(`/${RECURSO}/${equipamentoId}/sugestoes`, {
+        query: { categoriaId },
+      }),
     enabled: aba === "acima",
   });
+  const nomeCategoria = categorias.data?.find((c) => c.id === categoriaId)?.descricao;
 
   // Ids que a aba aberta mostra: a seleção é da aba, e trocar de aba não pode
   // levar marcados que a pessoa não está vendo.
@@ -122,7 +139,24 @@ export function EquipamentoSugestoes({
           )}
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Categoria</span>
+          <Select value={categoria} onValueChange={setCategoria}>
+            <SelectTrigger size="sm" className="w-64">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={TODAS}>Todas as categorias</SelectItem>
+              {(categorias.data ?? []).map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.descricao}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         <Tabs value={aba} onValueChange={setAba}>
           <TabsList>
             <TabsTrigger value="comuns">Comuns aos clientes</TabsTrigger>
@@ -159,9 +193,10 @@ export function EquipamentoSugestoes({
               </p>
             ) : comuns.data.grupos.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Nenhum grupo de produtos é comprado por{" "}
-                {minimo === 100 ? "todos" : `${minimo}% ou mais`} desses{" "}
-                {comuns.data.totalClientes} clientes. Experimente uma cobertura menor.
+                Nenhum grupo de produtos{nomeCategoria ? ` de ${nomeCategoria}` : ""} é
+                comprado por {minimo === 100 ? "todos" : `${minimo}% ou mais`} desses{" "}
+                {comuns.data.totalClientes} clientes. Experimente uma cobertura menor
+                {nomeCategoria ? " ou outra categoria" : ""}.
               </p>
             ) : (
               <div className="rounded-lg border">
@@ -229,8 +264,9 @@ export function EquipamentoSugestoes({
               <Skeleton className="h-40 w-full rounded-lg" />
             ) : !acima.data || acima.data.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Sem sugestões: poucos clientes receberam este equipamento, ou nada se destaca nas
-                compras deles.
+                {nomeCategoria
+                  ? `Nada de ${nomeCategoria} se destaca nas compras dos clientes que receberam este equipamento.`
+                  : "Sem sugestões: poucos clientes receberam este equipamento, ou nada se destaca nas compras deles."}
               </p>
             ) : (
               <div className="rounded-lg border">

@@ -19,6 +19,7 @@ import type {
   EquipamentoAplicacaoLoteResultado,
   EquipamentoComumGrupo,
   EquipamentoComuns,
+  EquipamentoCategoriaOpcao,
   EquipamentoComunsQuery,
   EquipamentoComodato,
   EquipamentoComodatoCriar,
@@ -30,6 +31,7 @@ import type {
   EquipamentoPopular,
   EquipamentoPopularCategoria,
   EquipamentoPopularResultado,
+  EquipamentoSugestoesQuery,
   EquipamentoSugestao,
 } from '@plataforma/contracts';
 import { ProdutoRelacionadosService } from '../produtos/produto-relacionados.service';
@@ -78,6 +80,16 @@ const ORDENACAO: Record<
   codigoErp: (o) => ({ produto: { codigoErp: o } }),
   createdAt: (o) => ({ createdAt: o }),
 };
+
+/**
+ * Filtro de categoria das sugestões: o produto entra se a categoria escolhida
+ * é a raiz dele ou a subcategoria. `p` é o alias de "produtos" na consulta.
+ */
+function filtroCategoria(categoriaId: string | undefined) {
+  return categoriaId
+    ? Prisma.sql`AND (p."categoriaId" = ${categoriaId} OR p."subCategoriaId" = ${categoriaId})`
+    : Prisma.empty;
+}
 
 /** Sugestões: janela de compra e cortes medidos em 2026-10-07 (ver o plano). */
 const SUGESTAO_MESES = 24;
@@ -404,6 +416,7 @@ export class EquipamentosComodatoService {
            WHERE v."produtoId" <> ${equipamento.produtoId}
              AND COALESCE(c1."equipamentoComodato", false) = false
              AND COALESCE(c2."equipamentoComodato", false) = false
+             ${filtroCategoria(query.categoriaId)}
              AND NOT EXISTS (
                    SELECT 1 FROM "equipamentos_comodato" e
                     WHERE e."produtoId" = v."produtoId" AND e."deletedAt" IS NULL)
@@ -521,7 +534,11 @@ export class EquipamentosComodatoService {
    * motivo sai o produto de categoria marcada como de equipamento, que a
    * gravação recusaria (ver ProdutoRelacionadosService).
    */
-  sugestoes(empresaId: string, id: string): Promise<EquipamentoSugestao[]> {
+  sugestoes(
+    empresaId: string,
+    id: string,
+    query: EquipamentoSugestoesQuery,
+  ): Promise<EquipamentoSugestao[]> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const equipamento = await this.buscar(tx, empresaId, id);
       const desde = new Date();
@@ -588,6 +605,13 @@ export class EquipamentosComodatoService {
                    LEFT JOIN "categorias" c2 ON c2."id" = p."subCategoriaId"
                   WHERE p."id" = a."produtoId"
                     AND (c1."equipamentoComodato" = true OR c2."equipamentoComodato" = true))
+           ${
+             query.categoriaId
+               ? Prisma.sql`AND EXISTS (
+                   SELECT 1 FROM "produtos" p
+                    WHERE p."id" = a."produtoId" ${filtroCategoria(query.categoriaId)})`
+               : Prisma.empty
+           }
          ORDER BY a."comEquipamento" DESC
          LIMIT ${SUGESTAO_CANDIDATOS}`;
       if (linhas.length === 0) return [];
@@ -690,6 +714,26 @@ export class EquipamentosComodatoService {
            AND i."deletedAt" IS NULL
          GROUP BY c."id", c."codigoErp", c."descricao", c."equipamentoComodato"
          ORDER BY c."descricao"`,
+    );
+  }
+
+  /**
+   * Opções do filtro de categoria das sugestões: categorias raiz ativas, fora
+   * as de equipamento (produto delas nunca é aplicável, ver `sugestoes`).
+   */
+  categoriasSugestoes(empresaId: string): Promise<EquipamentoCategoriaOpcao[]> {
+    return this.prisma.withTenant(empresaId, (tx) =>
+      tx.categoria.findMany({
+        where: {
+          empresaId,
+          categoriaPaiId: null,
+          ativo: true,
+          deletedAt: null,
+          equipamentoComodato: false,
+        },
+        select: { id: true, codigoErp: true, descricao: true },
+        orderBy: { descricao: 'asc' },
+      }),
     );
   }
 

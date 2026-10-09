@@ -28,6 +28,7 @@ import {
   EquipamentoComodatoQueryDto,
   EquipamentoExcluirLoteDto,
   EquipamentoPopularDto,
+  EquipamentoSugestoesQueryDto,
 } from './dto/equipamento-comodato.dto';
 
 @ApiTags('equipamentos-comodato')
@@ -85,6 +86,20 @@ export class EquipamentosComodatoController {
   }
 
   @ApiOperation({
+    summary: 'Categorias para filtrar as sugestões',
+    description:
+      'Categorias raiz ativas, fora as marcadas como de equipamento — as ' +
+      'opções do filtro de categoria das sugestões pelas notas. Própria do ' +
+      'módulo para não exigir categorias.visualizar de quem mantém os ' +
+      'equipamentos. Requer equipamentos-comodato.visualizar.',
+  })
+  @RequirePermission('equipamentos-comodato', 'visualizar')
+  @Get('sugestoes/categorias')
+  categoriasSugestoes(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.categoriasSugestoes(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
     summary: 'Excluir equipamentos em lote',
     description:
       'Soft delete dos equipamentos informados. Equipamento com produto ' +
@@ -119,8 +134,12 @@ export class EquipamentosComodatoController {
   })
   @RequirePermission('equipamentos-comodato', 'visualizar')
   @Get(':id/sugestoes')
-  sugestoes(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.sugestoes(user.empresaAtivaId, id);
+  sugestoes(
+    @Param('id') id: string,
+    @Query() query: EquipamentoSugestoesQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.sugestoes(user.empresaAtivaId, id, query);
   }
 
   @ApiOperation({

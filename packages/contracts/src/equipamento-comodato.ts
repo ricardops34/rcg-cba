@@ -101,8 +101,28 @@ export type EquipamentoSugestao = z.infer<typeof equipamentoSugestaoSchema>;
 export const equipamentoComunsQuerySchema = z.object({
   /** Cobertura mínima do grupo, em % dos clientes com o equipamento. */
   minimo: z.coerce.number().int().min(1).max(100).default(50),
+  /** Só produtos desta categoria (raiz ou subcategoria). A base de clientes não muda. */
+  categoriaId: z.string().uuid().optional(),
 });
 export type EquipamentoComunsQuery = z.infer<typeof equipamentoComunsQuerySchema>;
+
+/**
+ * Filtro das sugestões "acima da média". Aplicado antes do corte de
+ * candidatos: filtrar só na tela esconderia o que ficou de fora do corte.
+ */
+export const equipamentoSugestoesQuerySchema = z.object({
+  /** Só produtos desta categoria (raiz ou subcategoria). */
+  categoriaId: z.string().uuid().optional(),
+});
+export type EquipamentoSugestoesQuery = z.infer<typeof equipamentoSugestoesQuerySchema>;
+
+/** Opção do filtro de categoria das sugestões: categoria raiz, ativa. */
+export const equipamentoCategoriaOpcaoSchema = z.object({
+  id: z.string().uuid(),
+  codigoErp: z.string().nullable(),
+  descricao: z.string(),
+});
+export type EquipamentoCategoriaOpcao = z.infer<typeof equipamentoCategoriaOpcaoSchema>;
 
 export const equipamentoComumProdutoSchema = z.object({
   produto: produtoRefSchema,

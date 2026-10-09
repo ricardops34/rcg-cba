@@ -88,6 +88,16 @@ toalha interfolhado.
   últimos 24 meses; agrupado por subcategoria. Medido no EEDTI204: 51
   clientes, PAPEL TOALHA INTERFOLHADO em 84% — o produto mais comprado sozinho
   chega a 31%, por isso o agrupamento. Em 100% não aparece nada.
+- [x] Filtro de categoria nas duas abas das sugestões (pedido de 2026-10-09:
+  no dispenser de papel higiênico interfolhado, achar fácil os de PAPEIS).
+  `?categoriaId=` em `/:id/comuns` e `/:id/sugestoes`, casando raiz **ou**
+  subcategoria do produto, aplicado **antes** dos cortes (no "Acima da
+  média" o corte é de 40 candidatos; filtrar na tela esconderia o que ficou
+  fora). Em "Comuns" a base de clientes não muda: o % continua sendo dos
+  clientes com o equipamento. Opções em `GET /sugestoes/categorias` (raízes
+  ativas, fora as de equipamento), sob `equipamentos-comodato.visualizar` —
+  o `/categorias` pediria `categorias.visualizar`, que Gerente e Supervisor
+  podem não ter. Não testado ponta a ponta (API de dev parada).
 - [ ] Conferência visual das telas pelo usuário
 
 ## Próximo pacote (pedido em 2026-10-07)

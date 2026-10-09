@@ -8,6 +8,7 @@ import {
   equipamentoComodatoQuerySchema,
   equipamentoExcluirLoteSchema,
   equipamentoPopularSchema,
+  equipamentoSugestoesQuerySchema,
 } from '@plataforma/contracts';
 
 export class EquipamentoPopularDto extends createZodDto(
@@ -31,6 +32,9 @@ export class EquipamentoAplicacaoCriarDto extends createZodDto(
 ) {}
 export class EquipamentoComunsQueryDto extends createZodDto(
   equipamentoComunsQuerySchema,
+) {}
+export class EquipamentoSugestoesQueryDto extends createZodDto(
+  equipamentoSugestoesQuerySchema,
 ) {}
 export class EquipamentoAplicacaoLoteDto extends createZodDto(
   equipamentoAplicacaoLoteSchema,
