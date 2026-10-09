@@ -43,6 +43,11 @@ export class IntegracaoClientesAlteracoesService {
         empresaId,
         situacao: 'pendente' as const,
         cliente: { chave: { not: null }, deletedAt: null },
+        // Envio sem campo que a SA1 receba sairia vazio, e o BJPLA004 o
+        // recusaria a cada ciclo ("sem nenhum campo reconhecido no de-para").
+        // Foi o que a carga inicial da fila deixou (migration
+        // 20261009180000_cliente_envios_erp_campos).
+        campos: { hasSome: Object.keys(CAMPOS_ENVIO_ERP) },
       };
       const [itens, total] = await Promise.all([
         tx.clienteEnvioErp.findMany({
