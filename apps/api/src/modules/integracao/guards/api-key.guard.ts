@@ -4,6 +4,7 @@ import {
   ExecutionContext,
   ForbiddenException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import type { Request } from 'express';
@@ -30,6 +31,8 @@ const ULTIMO_USO_THROTTLE_MS = 60_000;
  */
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
+  private readonly logger = new Logger(ApiKeyGuard.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -61,15 +64,24 @@ export class ApiKeyGuard implements CanActivate {
     const match = path.match(/\/integracao\/([a-z0-9-]+)/i);
     const endpointKey = match ? match[1] : null;
 
+    // `integracao_endpoint_configs` tem RLS por empresa, e a requisição por
+    // chave de API não leva contexto ao banco (ver PrismaService): fora de
+    // `withTenant` a leitura volta vazia — desativar no monitor não bloqueava
+    // nada — e a gravação do uso abaixo era recusada em silêncio, deixando o
+    // contador em zero.
     if (endpointKey) {
-      const endpointConfig = await this.prisma.integracaoEndpointConfig.findUnique({
-        where: {
-          empresaId_endpointKey: {
-            empresaId: apiKey.empresaId,
-            endpointKey,
-          },
-        },
-      });
+      const endpointConfig = await this.prisma.withTenant(
+        apiKey.empresaId,
+        (tx) =>
+          tx.integracaoEndpointConfig.findUnique({
+            where: {
+              empresaId_endpointKey: {
+                empresaId: apiKey.empresaId,
+                endpointKey,
+              },
+            },
+          }),
+      );
 
       if (endpointConfig && !endpointConfig.ativo) {
         throw new ForbiddenException(
@@ -133,28 +145,36 @@ export class ApiKeyGuard implements CanActivate {
       );
       const nome = itemCatalogo ? itemCatalogo.nome : endpointKey;
 
-      void this.prisma.integracaoEndpointConfig
-        .upsert({
-          where: {
-            empresaId_endpointKey: {
+      // Fire-and-forget como o `ultimoUso` da chave, mas sem engolir o erro:
+      // foi o `catch` mudo que escondeu a gravação recusada pela RLS.
+      void this.prisma
+        .withTenant(apiKey.empresaId, (tx) =>
+          tx.integracaoEndpointConfig.upsert({
+            where: {
+              empresaId_endpointKey: {
+                empresaId: apiKey.empresaId,
+                endpointKey,
+              },
+            },
+            create: {
               empresaId: apiKey.empresaId,
               endpointKey,
+              nome,
+              ativo: true,
+              ultimoUso: agora,
+              totalChamadas: 1,
             },
-          },
-          create: {
-            empresaId: apiKey.empresaId,
-            endpointKey,
-            nome,
-            ativo: true,
-            ultimoUso: agora,
-            totalChamadas: 1,
-          },
-          update: {
-            ultimoUso: agora,
-            totalChamadas: { increment: 1 },
-          },
-        })
-        .catch(() => undefined);
+            update: {
+              ultimoUso: agora,
+              totalChamadas: { increment: 1 },
+            },
+          }),
+        )
+        .catch((erro: unknown) =>
+          this.logger.warn(
+            `Uso do endpoint '${endpointKey}' não registrado: ${erro instanceof Error ? erro.message : String(erro)}`,
+          ),
+        );
     }
 
     return true;

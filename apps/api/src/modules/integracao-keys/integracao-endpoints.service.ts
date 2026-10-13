@@ -74,45 +74,4 @@ export class IntegracaoEndpointsService {
       };
     });
   }
-
-  async registrarUsoEndpoint(empresaId: string, endpointKey: string): Promise<void> {
-    const itemCatalogo = CATALOGO_ENDPOINTS_INTEGRACAO.find(
-      (c) => c.endpointKey === endpointKey,
-    );
-    const nome = itemCatalogo ? itemCatalogo.nome : endpointKey;
-
-    await this.prisma.integracaoEndpointConfig.upsert({
-      where: {
-        empresaId_endpointKey: {
-          empresaId,
-          endpointKey,
-        },
-      },
-      create: {
-        empresaId,
-        endpointKey,
-        nome,
-        ativo: true,
-        ultimoUso: new Date(),
-        totalChamadas: 1,
-      },
-      update: {
-        ultimoUso: new Date(),
-        totalChamadas: { increment: 1 },
-      },
-    }).catch(() => undefined);
-  }
-
-  async isEndpointAtivo(empresaId: string, endpointKey: string): Promise<boolean> {
-    const config = await this.prisma.integracaoEndpointConfig.findUnique({
-      where: {
-        empresaId_endpointKey: {
-          empresaId,
-          endpointKey,
-        },
-      },
-      select: { ativo: true },
-    });
-    return config ? config.ativo : true;
-  }
 }
