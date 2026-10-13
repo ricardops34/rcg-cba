@@ -595,6 +595,22 @@ docker exec -e DATABASE_URL="postgresql://plataforma:SENHA@HOST:5432/BANCO?schem
   <container-api> sh -c "cd /app/apps/api && pnpm exec prisma migrate deploy"
 ```
 
+### Dependência nova (pacote no `package.json`) em dev **[verificado em 2026-10-13]**
+
+Os contêineres guardam o `node_modules` em volumes próprios (`node_modules`,
+`api_node_modules`…), separados do host. Depois de adicionar um pacote e
+atualizar o `pnpm-lock.yaml`, quem instala nos volumes é o serviço `deps` do
+compose:
+
+```bash
+docker compose -f docker/docker-compose.dev.yml up --no-deps deps
+```
+
+Depois, `prisma generate` dentro do contêiner da API se o schema mudou, e
+`docker compose -f docker/docker-compose.dev.yml up -d --no-deps api` (recria a
+API, inclusive com variável de ambiente nova). Conferir no log que as rotas
+novas foram mapeadas — ver "rota nova da API não aparece".
+
 ### Criar migration em dev
 
 `prisma migrate dev` pede reset do banco quando detecta drift, e não roda
@@ -906,7 +922,7 @@ Stack própria na VPS, fora deste repositório. O que ela define:
 
 | Item | Valor |
 |---|---|
-| Serviço | `minio` (imagem `quay.io/minio/aistor/minio:RELEASE.2026-03-26T21-24-40Z`) |
+| Serviço | `minio` (imagem `edkaba/minio:RELEASE.2024-01-13T07-53-03Z-cpuv1-amd64` desde 2026-10-13; antes `quay.io/minio/aistor/minio:RELEASE.2026-03-26T21-24-40Z`) |
 | Rede | `RCGNet` — a mesma da API; de dentro dela: `http://minio:9000` |
 | API S3 (externa) | `https://s3.rcgdist.com.br` (porta 9000 via Traefik) |
 | Console | `https://minio.rcgdist.com.br` (porta 9001 via Traefik) |
@@ -921,10 +937,23 @@ Stack própria na VPS, fora deste repositório. O que ela define:
 - Nos labels do Traefik os nomes dos roteadores estão trocados
   (`minio_public` aponta para a API S3, `minio_console` para o console).
   Funciona; só não se guie pelo nome.
+- **A imagem `edkaba/minio` é build de terceiro**, não da MinIO (feita para
+  processador sem as instruções novas). A MinIO tirou as imagens oficiais do
+  Docker Hub e o `quay.io/minio/minio` nega o pull (testado em 2026-10-13).
+  Ela traz o servidor e o `mc` na mesma versão.
+- **MinIO local (dev):** serviços `minio` e `minio-init` do
+  `docker/docker-compose.dev.yml`, mesma imagem. Console em
+  http://localhost:9001 (`minio-dev` / `minio-dev-only`); o `minio-init` cria
+  o bucket `plataforma` e o usuário `plataforma-api` a cada subida.
 - **Sem backup** em 2026-10-13. O plano está em
   `docs/planos/2026-10-13-armazenamento-arquivos-minio.md`.
 
-### Backup por empresa **[escrito em 2026-10-13, não rodado]**
+### Backup por empresa **[verificado em dev, 2026-10-13 — com o MinIO local]**
+
+Em dev: migration aplicada, backup de duas empresas gerado pela API, baixado
+pelo link assinado (sem assinatura: 403; com: 302 para o MinIO), zip aberto —
+contagens iguais às do banco, senhas e chaves vazias, arquivos que faltam
+listados em `arquivosAusentes`. A tela ainda não foi conferida visualmente.
 
 Precisa da migration `20261013180000_backup_empresas` aplicada (como as demais —
 seção "Migrations em produção"). Depois: Plataforma → Backups de empresas.

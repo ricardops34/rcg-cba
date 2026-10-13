@@ -78,6 +78,17 @@ services:
       # serviço na rede do compose: `localhost` aqui apontaria para dentro do
       # container do gateway, e nenhum evento chegaria.
       WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL: ${WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL:-http://api:3001}
+      # Armazenamento no MinIO local (serviço `minio` abaixo), como na VPS.
+      # A API fala com ele pela rede do compose; o navegador abre o link
+      # temporário em localhost:9000 — por isso os dois endereços. Para voltar
+      # tudo ao disco: ARMAZENAMENTO_S3_PASTAS= (vazio) no .env da raiz.
+      S3_ENDPOINT: http://minio:9000
+      S3_ENDPOINT_PUBLICO: http://localhost:9000
+      S3_REGIAO: eu-south
+      S3_BUCKET: plataforma
+      S3_ACCESS_KEY: plataforma-api
+      S3_SECRET_KEY: plataforma-api-dev-only
+      ARMAZENAMENTO_S3_PASTAS: ${ARMAZENAMENTO_S3_PASTAS-whatsapp,backups-empresas}
     command: pnpm --filter @plataforma/api start:dev
     ports:
       - "3001:3001"
@@ -94,6 +105,8 @@ services:
         condition: service_healthy
       mailhog:
         condition: service_started
+      minio-init:
+        condition: service_completed_successfully
 
   # Cria o banco técnico da Evolution GO.
   #
@@ -265,6 +278,42 @@ services:
       timeout: 5s
       retries: 10
 
+  # MinIO local — o mesmo papel do MinIO da VPS (runbook, seção "MinIO").
+  #
+  # A mesma imagem da VPS (`edkaba/minio`, build de terceiro): a MinIO tirou as
+  # imagens oficiais do Docker Hub e do quay.io (pull negado em 2026-10-13), e
+  # assim o dev reproduz a versão da produção. Traz o `mc` junto.
+  # Console em http://localhost:9001 (minio-dev / minio-dev-only).
+  minio:
+    image: edkaba/minio:RELEASE.2024-01-13T07-53-03Z-cpuv1-amd64
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio-dev
+      MINIO_ROOT_PASSWORD: minio-dev-only
+      MINIO_REGION_NAME: eu-south
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio_data:/data
+
+  # Bucket e usuário de serviço da API, como no runbook ("Ligar o MinIO na
+  # API"): a API nunca usa o root. Idempotente — roda a cada subida e sai.
+  # Usa o `mc` que vem na própria imagem do servidor.
+  minio-init:
+    image: edkaba/minio:RELEASE.2024-01-13T07-53-03Z-cpuv1-amd64
+    depends_on:
+      - minio
+    entrypoint: >-
+      sh -c "until mc alias set local http://minio:9000 minio-dev minio-dev-only >/dev/null 2>&1; do sleep 1; done &&
+      mc mb --ignore-existing local/plataforma &&
+      printf '%s' '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::plataforma\"]},{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:PutObject\",\"s3:DeleteObject\"],\"Resource\":[\"arn:aws:s3:::plataforma/*\"]}]}' > /tmp/politica.json &&
+      mc admin policy create local plataforma-api /tmp/politica.json &&
+      mc admin user add local plataforma-api plataforma-api-dev-only &&
+      mc admin policy attach local plataforma-api --user plataforma-api || true"
+    restart: "no"
+
   # Captura os e-mails enviados pela API em dev, sem enviar de verdade. UI web
   # em http://localhost:8025; a API fala SMTP com ele na porta 1025.
   mailhog:
@@ -282,3 +331,4 @@ volumes:
   web_node_modules:
   contracts_node_modules:
   api_uploads:
+  minio_data:
