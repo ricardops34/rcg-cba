@@ -6,6 +6,7 @@ import {
   AlignJustify,
   AlignLeft,
   Bold,
+  Building2,
   Eye,
   FileText,
   Heading1,
@@ -45,14 +46,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface EmpresaTermosEditorProps {
   valor: string | null | undefined;
@@ -71,8 +65,8 @@ export function EmpresaTermosEditor({
   empresaCnpj,
   disabled = false,
 }: EmpresaTermosEditorProps) {
+  const [subAba, setSubAba] = useState<"empresa" | "plataforma">("empresa");
   const [visualizacaoAtiva, setVisualizacaoAtiva] = useState<"editor" | "preview">("editor");
-  const [dialogPlataformaAberto, setDialogPlataformaAberto] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
   const estaFocadoRef = useRef(false);
 
@@ -100,7 +94,6 @@ export function EmpresaTermosEditor({
   const executarComando = (comando: string, parametro: string | undefined = undefined) => {
     if (disabled || !editorRef.current) return;
     editorRef.current.focus();
-    // Executa comando nativo do navegador para Rich Text
     document.execCommand(comando, false, parametro);
     atualizarValor();
   };
@@ -151,465 +144,492 @@ export function EmpresaTermosEditor({
   };
 
   return (
-    <div className="space-y-6">
-      {/* 1. TERMOS DA PLATAFORMA (FIXOS) */}
-      <Card className="border-border/70 bg-muted/20">
-        <CardHeader className="pb-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <ShieldCheck className="size-4" />
-              </div>
-              <div>
-                <CardTitle className="text-base flex items-center gap-2">
-                  Termos de Uso da Plataforma
-                  <Badge variant="secondary" className="text-[11px] font-normal">
-                    Fixo · Global
-                  </Badge>
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Condições contratuais gerais de segurança, infraestrutura e auditoria do sistema SaaS.
-                </CardDescription>
-              </div>
-            </div>
+    <div className="space-y-4">
+      {/* SELETOR DE SUB-ABAS NO MESMO PADRÃO DA APLICAÇÃO (SEM JANELAS FINAS) */}
+      <Tabs
+        value={subAba}
+        onValueChange={(v) => setSubAba(v as "empresa" | "plataforma")}
+        className="w-full space-y-4"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b pb-3">
+          <div>
+            <h3 className="text-base font-semibold tracking-tight text-foreground">
+              Documentos e Termos de Uso
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Alterne entre as normas internas customizáveis da empresa e os termos de uso fixos da plataforma.
+            </p>
+          </div>
 
-            <Dialog
-              open={dialogPlataformaAberto}
-              onOpenChange={setDialogPlataformaAberto}
-            >
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 gap-1.5 shrink-0">
-                  <Eye className="size-3.5" />
-                  Visualizar Termos da Plataforma
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <ShieldCheck className="size-5 text-primary" />
-                    Termos de Uso da Plataforma Comercial
-                  </DialogTitle>
-                  <DialogDescription>
-                    Documento global imutável aplicável a todas as empresas e usuários da plataforma.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="mt-2 rounded-lg border bg-card p-5">
-                  <VisualizadorTermos conteudo={TERMOS_USO_PLATAFORMA_PADRAO} />
+          <TabsList className="grid grid-cols-2 w-full sm:w-auto h-9">
+            <TabsTrigger value="empresa" className="gap-2 text-xs">
+              <Building2 className="size-3.5" />
+              <span>Termos da Empresa</span>
+            </TabsTrigger>
+            <TabsTrigger value="plataforma" className="gap-2 text-xs">
+              <ShieldCheck className="size-3.5" />
+              <span>Termos da Plataforma (Fixo)</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        {/* ============================================================== */}
+        {/* ABA 1: TERMOS DE USO E NORMAS DA EMPRESA (PERSONALIZÁVEIS)    */}
+        {/* ============================================================== */}
+        <TabsContent value="empresa" className="space-y-4 pt-1 mt-0">
+          <Card className="border-border shadow-xs">
+            <CardHeader className="pb-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <FileText className="size-5 text-primary" />
+                    <CardTitle className="text-lg">
+                      Termos de Uso e Normas da Empresa
+                    </CardTitle>
+                    {textoPlano.length > 0 ? (
+                      <Badge
+                        variant="outline"
+                        className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs"
+                      >
+                        Personalizado
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-xs">
+                        Não configurado
+                      </Badge>
+                    )}
+                  </div>
+                  <CardDescription className="mt-1 text-xs">
+                    Edite as normas internas, política de confidencialidade e regras de orçamento de{" "}
+                    <span className="font-medium text-foreground">{empresaNome || "sua empresa"}</span>.
+                    O texto é formatado visualmente em tempo real.
+                  </CardDescription>
                 </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </CardHeader>
-      </Card>
 
-      {/* 2. EDITOR VISUAL DOS TERMOS DA EMPRESA (WYSIWYG) */}
-      <Card className="border-border shadow-xs">
-        <CardHeader className="pb-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <FileText className="size-5 text-primary" />
-                <CardTitle className="text-lg">
-                  Termos de Uso e Normas da Empresa
-                </CardTitle>
-                {textoPlano.length > 0 ? (
-                  <Badge
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
                     variant="outline"
-                    className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs"
+                    size="sm"
+                    onClick={carregarSugestao}
+                    disabled={disabled}
+                    className="gap-1.5 h-8 text-xs font-medium border-primary/30 text-primary hover:bg-primary/5"
+                    title="Insere um modelo completo pré-formatado com os dados da empresa"
                   >
-                    Personalizado
-                  </Badge>
-                ) : (
-                  <Badge variant="secondary" className="text-xs">
-                    Não configurado
-                  </Badge>
-                )}
+                    <Sparkles className="size-3.5" />
+                    Carregar sugestão padrão
+                  </Button>
+                  {textoPlano.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={limparConteudo}
+                      disabled={disabled}
+                      className="h-8 text-xs text-muted-foreground hover:text-destructive gap-1"
+                    >
+                      <Trash2 className="size-3.5" />
+                      Limpar
+                    </Button>
+                  )}
+                </div>
               </div>
-              <CardDescription className="mt-1 text-xs">
-                Edite as normas internas, política de confidencialidade e regras de orçamento de{" "}
-                <span className="font-medium text-foreground">{empresaNome || "sua empresa"}</span>.
-                O texto é formatado visualmente em tempo real.
-              </CardDescription>
-            </div>
+            </CardHeader>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={carregarSugestao}
-                disabled={disabled}
-                className="gap-1.5 h-8 text-xs font-medium border-primary/30 text-primary hover:bg-primary/5"
-                title="Insere um modelo completo pré-formatado com os dados da empresa"
-              >
-                <Sparkles className="size-3.5" />
-                Carregar sugestão padrão
-              </Button>
-              {textoPlano.length > 0 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={limparConteudo}
-                  disabled={disabled}
-                  className="h-8 text-xs text-muted-foreground hover:text-destructive gap-1"
-                >
-                  <Trash2 className="size-3.5" />
-                  Limpar
-                </Button>
+            <CardContent className="space-y-2 pt-0">
+              {/* BARRA DE FERRAMENTAS VISUAL (TOOLBAR WYSIWYG) */}
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-lg border border-b-0 bg-muted/40 p-2">
+                <div className="flex flex-wrap items-center gap-0.5">
+                  {/* Estilos de Título */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Título Principal"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      executarComando("formatBlock", "<h1>");
+                    }}
+                    disabled={disabled || visualizacaoAtiva === "preview"}
+                  >
+                    <Heading1 className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Título de Seção"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      executarComando("formatBlock", "<h2>");
+                    }}
+                    disabled={disabled || visualizacaoAtiva === "preview"}
+                  >
+                    <Heading2 className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Subtítulo"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      executarComando("formatBlock", "<h3>");
+                    }}
+                    disabled={disabled || visualizacaoAtiva === "preview"}
+                  >
+                    <Heading3 className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Texto Normal (Parágrafo)"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      executarComando("formatBlock", "<p>");
+                    }}
+                    disabled={disabled || visualizacaoAtiva === "preview"}
+                  >
+                    <Pilcrow className="size-4" />
+                  </Button>
+
+                  <div className="mx-1 h-4 w-px bg-border" />
+
+                  {/* Formatação Básica: Negrito, Itálico, Sublinhado */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 font-bold"
+                    title="Negrito (Ctrl+B)"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      executarComando("bold");
+                    }}
+                    disabled={disabled || visualizacaoAtiva === "preview"}
+                  >
+                    <Bold className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Itálico (Ctrl+I)"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      executarComando("italic");
+                    }}
+                    disabled={disabled || visualizacaoAtiva === "preview"}
+                  >
+                    <Italic className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Sublinhado (Ctrl+U)"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      executarComando("underline");
+                    }}
+                    disabled={disabled || visualizacaoAtiva === "preview"}
+                  >
+                    <Underline className="size-4" />
+                  </Button>
+
+                  <div className="mx-1 h-4 w-px bg-border" />
+
+                  {/* Listas */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Lista com Marcadores"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      executarComando("insertUnorderedList");
+                    }}
+                    disabled={disabled || visualizacaoAtiva === "preview"}
+                  >
+                    <List className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Lista Numerada"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      executarComando("insertOrderedList");
+                    }}
+                    disabled={disabled || visualizacaoAtiva === "preview"}
+                  >
+                    <ListOrdered className="size-4" />
+                  </Button>
+
+                  <div className="mx-1 h-4 w-px bg-border" />
+
+                  {/* Alinhamento */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Alinhar à Esquerda"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      executarComando("justifyLeft");
+                    }}
+                    disabled={disabled || visualizacaoAtiva === "preview"}
+                  >
+                    <AlignLeft className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Centralizar"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      executarComando("justifyCenter");
+                    }}
+                    disabled={disabled || visualizacaoAtiva === "preview"}
+                  >
+                    <AlignCenter className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Justificar"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      executarComando("justifyFull");
+                    }}
+                    disabled={disabled || visualizacaoAtiva === "preview"}
+                  >
+                    <AlignJustify className="size-4" />
+                  </Button>
+
+                  <div className="mx-1 h-4 w-px bg-border" />
+
+                  {/* Destaque / Citação e Divisor */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Citação / Destaque"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      executarComando("formatBlock", "<blockquote>");
+                    }}
+                    disabled={disabled || visualizacaoAtiva === "preview"}
+                  >
+                    <Quote className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Linha Divisória"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      executarComando("insertHorizontalRule");
+                    }}
+                    disabled={disabled || visualizacaoAtiva === "preview"}
+                  >
+                    <Minus className="size-4" />
+                  </Button>
+
+                  <div className="mx-1 h-4 w-px bg-border" />
+
+                  {/* Ações */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Desfazer (Ctrl+Z)"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      executarComando("undo");
+                    }}
+                    disabled={disabled || visualizacaoAtiva === "preview"}
+                  >
+                    <Undo className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Refazer (Ctrl+Y)"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      executarComando("redo");
+                    }}
+                    disabled={disabled || visualizacaoAtiva === "preview"}
+                  >
+                    <Redo className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Limpar Formatação da Seleção"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      executarComando("removeFormat");
+                    }}
+                    disabled={disabled || visualizacaoAtiva === "preview"}
+                  >
+                    <RemoveFormatting className="size-4" />
+                  </Button>
+                </div>
+
+                {/* Alternador Modo: Editor Visual vs Leitura */}
+                <div className="flex items-center gap-1 rounded-lg border bg-background p-0.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setVisualizacaoAtiva("editor")}
+                    className={`flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors ${
+                      visualizacaoAtiva === "editor"
+                        ? "bg-primary text-primary-foreground font-medium shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Pencil className="size-3.5" />
+                    <span>Editor</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVisualizacaoAtiva("preview")}
+                    className={`flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors ${
+                      visualizacaoAtiva === "preview"
+                        ? "bg-primary text-primary-foreground font-medium shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Eye className="size-3.5" />
+                    <span>Pré-visualização</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* ÁREA DE EDIÇÃO WYSIWYG */}
+              {visualizacaoAtiva === "editor" ? (
+                <div
+                  ref={editorRef}
+                  contentEditable={!disabled}
+                  onFocus={() => {
+                    estaFocadoRef.current = true;
+                  }}
+                  onBlur={() => {
+                    estaFocadoRef.current = false;
+                    atualizarValor();
+                  }}
+                  onInput={atualizarValor}
+                  dangerouslySetInnerHTML={{ __html: htmlInicial }}
+                  className={`min-h-[460px] max-h-[750px] overflow-y-auto rounded-b-lg border border-t-0 bg-background p-6 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring select-text ${
+                    disabled ? "cursor-not-allowed opacity-60" : ""
+                  } [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:tracking-tight [&_h1]:text-foreground [&_h1]:mb-3 [&_h1]:mt-6 [&_h1:first-child]:mt-0
+                  [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:tracking-tight [&_h2]:text-foreground [&_h2]:border-b [&_h2]:border-border/50 [&_h2]:pb-1.5 [&_h2]:mb-2 [&_h2]:mt-6 [&_h2:first-child]:mt-0
+                  [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:mb-2 [&_h3]:mt-4 [&_h3:first-child]:mt-0
+                  [&_p]:my-2.5 [&_p]:leading-relaxed [&_p]:text-foreground/90
+                  [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:my-3 [&_ul]:space-y-1.5 [&_ul]:text-foreground/90
+                  [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:my-3 [&_ol]:space-y-1.5 [&_ol]:text-foreground/90
+                  [&_li]:leading-relaxed
+                  [&_blockquote]:border-l-4 [&_blockquote]:border-primary/50 [&_blockquote]:bg-primary/5 [&_blockquote]:px-4 [&_blockquote]:py-2 [&_blockquote]:my-3 [&_blockquote]:italic [&_blockquote]:text-foreground/80 [&_blockquote]:rounded-r-md
+                  [&_hr]:my-5 [&_hr]:border-border/80
+                  [&_strong]:font-semibold [&_strong]:text-foreground
+                  [&_em]:italic [&_em]:text-foreground
+                  [&_u]:underline
+                  `}
+                  aria-label="Editor visual de termos de uso da empresa"
+                />
+              ) : (
+                <div className="min-h-[460px] max-h-[750px] overflow-y-auto rounded-b-lg border border-t-0 bg-card p-6 shadow-inner">
+                  <VisualizadorTermos
+                    conteudo={valor}
+                    placeholder="Nenhum conteúdo definido. Volte à aba 'Editor' ou clique em 'Carregar sugestão padrão' para adicionar o texto."
+                  />
+                </div>
               )}
-            </div>
-          </div>
-        </CardHeader>
 
-        <CardContent className="space-y-2 pt-0">
-          {/* BARRA DE FERRAMENTAS VISUAL (TOOLBAR WYSIWYG) */}
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-lg border border-b-0 bg-muted/40 p-2">
-            <div className="flex flex-wrap items-center gap-0.5">
-              {/* Estilos de Título */}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Título Principal"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  executarComando("formatBlock", "<h1>");
-                }}
-                disabled={disabled || visualizacaoAtiva === "preview"}
-              >
-                <Heading1 className="size-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Título de Seção"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  executarComando("formatBlock", "<h2>");
-                }}
-                disabled={disabled || visualizacaoAtiva === "preview"}
-              >
-                <Heading2 className="size-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Subtítulo"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  executarComando("formatBlock", "<h3>");
-                }}
-                disabled={disabled || visualizacaoAtiva === "preview"}
-              >
-                <Heading3 className="size-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Texto Normal (Parágrafo)"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  executarComando("formatBlock", "<p>");
-                }}
-                disabled={disabled || visualizacaoAtiva === "preview"}
-              >
-                <Pilcrow className="size-4" />
-              </Button>
+              {/* RODAPÉ DO EDITOR COM CONTADORES E DICAS */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs text-muted-foreground">
+                <span>
+                  Editor visual: selecione qualquer trecho para formatar ou use os atalhos{" "}
+                  <strong>Ctrl+B</strong> (negrito), <strong>Ctrl+I</strong> (itálico) e{" "}
+                  <strong>Ctrl+U</strong> (sublinhado).
+                </span>
+                <span className="font-medium">
+                  {totalPalavras} palavras · {totalCaracteres} caracteres
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-              <div className="mx-1 h-4 w-px bg-border" />
+        {/* ============================================================== */}
+        {/* ABA 2: TERMOS DE USO DA PLATAFORMA (NO MESMO PADRÃO, SEM MODAL) */}
+        {/* ============================================================== */}
+        <TabsContent value="plataforma" className="space-y-4 pt-1 mt-0">
+          <Card className="border-border shadow-xs">
+            <CardHeader className="pb-4 border-b bg-muted/10">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="size-5 text-primary" />
+                    <CardTitle className="text-lg">
+                      Termos de Uso da Plataforma Comercial
+                    </CardTitle>
+                    <Badge variant="secondary" className="text-xs">
+                      Fixo · Global
+                    </Badge>
+                  </div>
+                  <CardDescription className="mt-1 text-xs">
+                    Condições gerais de infraestrutura, segurança, integridade e uso adequado do SaaS, comuns a todas as empresas.
+                  </CardDescription>
+                </div>
 
-              {/* Formatação Básica: Negrito, Itálico, Sublinhado */}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 font-bold"
-                title="Negrito (Ctrl+B)"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  executarComando("bold");
-                }}
-                disabled={disabled || visualizacaoAtiva === "preview"}
-              >
-                <Bold className="size-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Itálico (Ctrl+I)"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  executarComando("italic");
-                }}
-                disabled={disabled || visualizacaoAtiva === "preview"}
-              >
-                <Italic className="size-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Sublinhado (Ctrl+U)"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  executarComando("underline");
-                }}
-                disabled={disabled || visualizacaoAtiva === "preview"}
-              >
-                <Underline className="size-4" />
-              </Button>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary text-xs">
+                    Documento Oficial Imutável
+                  </Badge>
+                </div>
+              </div>
+            </CardHeader>
 
-              <div className="mx-1 h-4 w-px bg-border" />
+            <CardContent className="pt-6 space-y-4">
+              <div className="rounded-lg border bg-card p-6 sm:p-8 shadow-xs">
+                <VisualizadorTermos conteudo={TERMOS_USO_PLATAFORMA_PADRAO} />
+              </div>
 
-              {/* Listas */}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Lista com Marcadores"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  executarComando("insertUnorderedList");
-                }}
-                disabled={disabled || visualizacaoAtiva === "preview"}
-              >
-                <List className="size-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Lista Numerada"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  executarComando("insertOrderedList");
-                }}
-                disabled={disabled || visualizacaoAtiva === "preview"}
-              >
-                <ListOrdered className="size-4" />
-              </Button>
-
-              <div className="mx-1 h-4 w-px bg-border" />
-
-              {/* Alinhamento */}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Alinhar à Esquerda"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  executarComando("justifyLeft");
-                }}
-                disabled={disabled || visualizacaoAtiva === "preview"}
-              >
-                <AlignLeft className="size-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Centralizar"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  executarComando("justifyCenter");
-                }}
-                disabled={disabled || visualizacaoAtiva === "preview"}
-              >
-                <AlignCenter className="size-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Justificar"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  executarComando("justifyFull");
-                }}
-                disabled={disabled || visualizacaoAtiva === "preview"}
-              >
-                <AlignJustify className="size-4" />
-              </Button>
-
-              <div className="mx-1 h-4 w-px bg-border" />
-
-              {/* Destaque / Citação e Divisor */}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Citação / Destaque"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  executarComando("formatBlock", "<blockquote>");
-                }}
-                disabled={disabled || visualizacaoAtiva === "preview"}
-              >
-                <Quote className="size-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Linha Divisória"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  executarComando("insertHorizontalRule");
-                }}
-                disabled={disabled || visualizacaoAtiva === "preview"}
-              >
-                <Minus className="size-4" />
-              </Button>
-
-              <div className="mx-1 h-4 w-px bg-border" />
-
-              {/* Ações */}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Desfazer (Ctrl+Z)"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  executarComando("undo");
-                }}
-                disabled={disabled || visualizacaoAtiva === "preview"}
-              >
-                <Undo className="size-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Refazer (Ctrl+Y)"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  executarComando("redo");
-                }}
-                disabled={disabled || visualizacaoAtiva === "preview"}
-              >
-                <Redo className="size-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Limpar Formatação da Seleção"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  executarComando("removeFormat");
-                }}
-                disabled={disabled || visualizacaoAtiva === "preview"}
-              >
-                <RemoveFormatting className="size-4" />
-              </Button>
-            </div>
-
-            {/* Alternador Modo: Editor Visual vs Leitura */}
-            <div className="flex items-center gap-1 rounded-lg border bg-background p-0.5 text-xs">
-              <button
-                type="button"
-                onClick={() => setVisualizacaoAtiva("editor")}
-                className={`flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors ${
-                  visualizacaoAtiva === "editor"
-                    ? "bg-primary text-primary-foreground font-medium shadow-xs"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Pencil className="size-3.5" />
-                <span>Editor</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setVisualizacaoAtiva("preview")}
-                className={`flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors ${
-                  visualizacaoAtiva === "preview"
-                    ? "bg-primary text-primary-foreground font-medium shadow-xs"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Eye className="size-3.5" />
-                <span>Pré-visualização</span>
-              </button>
-            </div>
-          </div>
-
-          {/* ÁREA DE EDIÇÃO WYSIWYG */}
-          {visualizacaoAtiva === "editor" ? (
-            <div
-              ref={editorRef}
-              contentEditable={!disabled}
-              onFocus={() => {
-                estaFocadoRef.current = true;
-              }}
-              onBlur={() => {
-                estaFocadoRef.current = false;
-                atualizarValor();
-              }}
-              onInput={atualizarValor}
-              dangerouslySetInnerHTML={{ __html: htmlInicial }}
-              className={`min-h-[460px] max-h-[750px] overflow-y-auto rounded-b-lg border border-t-0 bg-background p-6 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring select-text ${
-                disabled ? "cursor-not-allowed opacity-60" : ""
-              } [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:tracking-tight [&_h1]:text-foreground [&_h1]:mb-3 [&_h1]:mt-6 [&_h1:first-child]:mt-0
-              [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:tracking-tight [&_h2]:text-foreground [&_h2]:border-b [&_h2]:border-border/50 [&_h2]:pb-1.5 [&_h2]:mb-2 [&_h2]:mt-6 [&_h2:first-child]:mt-0
-              [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:mb-2 [&_h3]:mt-4 [&_h3:first-child]:mt-0
-              [&_p]:my-2.5 [&_p]:leading-relaxed [&_p]:text-foreground/90
-              [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:my-3 [&_ul]:space-y-1.5 [&_ul]:text-foreground/90
-              [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:my-3 [&_ol]:space-y-1.5 [&_ol]:text-foreground/90
-              [&_li]:leading-relaxed
-              [&_blockquote]:border-l-4 [&_blockquote]:border-primary/50 [&_blockquote]:bg-primary/5 [&_blockquote]:px-4 [&_blockquote]:py-2 [&_blockquote]:my-3 [&_blockquote]:italic [&_blockquote]:text-foreground/80 [&_blockquote]:rounded-r-md
-              [&_hr]:my-5 [&_hr]:border-border/80
-              [&_strong]:font-semibold [&_strong]:text-foreground
-              [&_em]:italic [&_em]:text-foreground
-              [&_u]:underline
-              `}
-              aria-label="Editor visual de termos de uso da empresa"
-            />
-          ) : (
-            <div className="min-h-[460px] max-h-[750px] overflow-y-auto rounded-b-lg border border-t-0 bg-card p-6 shadow-inner">
-              <VisualizadorTermos
-                conteudo={valor}
-                placeholder="Nenhum conteúdo definido. Volte à aba 'Editor' ou clique em 'Carregar sugestão padrão' para adicionar o texto."
-              />
-            </div>
-          )}
-
-          {/* RODAPÉ DO EDITOR COM CONTADORES E DICAS */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs text-muted-foreground">
-            <span>
-              Editor visual: selecione qualquer trecho para formatar ou use os atalhos{" "}
-              <strong>Ctrl+B</strong> (negrito), <strong>Ctrl+I</strong> (itálico) e{" "}
-              <strong>Ctrl+U</strong> (sublinhado).
-            </span>
-            <span className="font-medium">
-              {totalPalavras} palavras · {totalCaracteres} caracteres
-            </span>
-          </div>
-        </CardContent>
-      </Card>
+              <div className="flex items-center gap-2 rounded-md bg-muted/40 p-3 text-xs text-muted-foreground border">
+                <ShieldCheck className="size-4 text-primary shrink-0" />
+                <span>
+                  Estes termos regem a infraestrutura e segurança da plataforma comercial em nível global. As normas operacionais específicas de sua empresa são configuradas na aba <strong>Termos da Empresa</strong>.
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
-
