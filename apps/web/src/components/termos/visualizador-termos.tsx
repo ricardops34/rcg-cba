@@ -1,5 +1,8 @@
+"use client";
+
 import React from "react";
 import { cn } from "@/lib/utils";
+import { ehHtml, markdownParaHtml, sanitizarHtml } from "@/lib/termos-formatacao";
 
 interface VisualizadorTermosProps {
   conteudo: string | null | undefined;
@@ -7,43 +10,10 @@ interface VisualizadorTermosProps {
   placeholder?: string;
 }
 
-/** Formata trechos inline com negrito (**), itálico (*) e código (`). */
-function formatarInline(texto: string): React.ReactNode {
-  const partes = texto.split(/(\*\*[\s\S]*?\*\*|\*[\s\S]*?\*|`[\s\S]*?`)/g);
-
-  return partes.map((parte, i) => {
-    if (parte.startsWith("**") && parte.endsWith("**") && parte.length >= 4) {
-      return (
-        <strong key={i} className="font-semibold text-foreground">
-          {formatarInline(parte.slice(2, -2))}
-        </strong>
-      );
-    }
-    if (parte.startsWith("*") && parte.endsWith("*") && parte.length >= 2) {
-      return (
-        <em key={i} className="italic text-foreground">
-          {parte.slice(1, -1)}
-        </em>
-      );
-    }
-    if (parte.startsWith("`") && parte.endsWith("`") && parte.length >= 2) {
-      return (
-        <code
-          key={i}
-          className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-primary"
-        >
-          {parte.slice(1, -1)}
-        </code>
-      );
-    }
-    return parte;
-  });
-}
-
 /**
- * Renderizador de Termos de Uso e documentos legais em Markdown formatado.
- * Suporta cabeçalhos (#, ##, ###), listas ordenadas/não-ordenadas, citações, divisores e negrito.
- * Renderização puramente em React sem dependências externas nem risco de XSS.
+ * Renderizador de Termos de Uso e documentos legais.
+ * Suporta tanto HTML formatado visualmente (WYSIWYG) quanto Markdown tradicional.
+ * Sanitiza o conteúdo para prevenir vulnerabilidades XSS e aplica tipografia consistente.
  */
 export function VisualizadorTermos({
   conteudo,
@@ -63,191 +33,32 @@ export function VisualizadorTermos({
     );
   }
 
-  const linhas = conteudo.replace(/\r\n/g, "\n").split("\n");
-  const elementos: React.ReactNode[] = [];
-
-  let itensLista: string[] = [];
-  let tipoLista: "ul" | "ol" | null = null;
-  let blocoCitacao: string[] = [];
-
-  const descarregarLista = () => {
-    if (!tipoLista || itensLista.length === 0) return;
-    const chave = `lista-${elementos.length}`;
-    if (tipoLista === "ul") {
-      elementos.push(
-        <ul
-          key={chave}
-          className="my-3 list-disc space-y-1.5 pl-6 text-sm text-foreground/90 marker:text-primary"
-        >
-          {itensLista.map((it, idx) => (
-            <li key={idx} className="leading-relaxed">
-              {formatarInline(it)}
-            </li>
-          ))}
-        </ul>,
-      );
-    } else {
-      elementos.push(
-        <ol
-          key={chave}
-          className="my-3 list-decimal space-y-1.5 pl-6 text-sm text-foreground/90 marker:font-semibold marker:text-primary"
-        >
-          {itensLista.map((it, idx) => (
-            <li key={idx} className="leading-relaxed">
-              {formatarInline(it)}
-            </li>
-          ))}
-        </ol>,
-      );
-    }
-    itensLista = [];
-    tipoLista = null;
-  };
-
-  const descarregarCitacao = () => {
-    if (blocoCitacao.length === 0) return;
-    const chave = `citacao-${elementos.length}`;
-    elementos.push(
-      <blockquote
-        key={chave}
-        className="my-3 rounded-r-md border-l-4 border-primary/50 bg-primary/5 px-4 py-2 text-sm italic text-foreground/80"
-      >
-        {blocoCitacao.map((c, idx) => (
-          <p key={idx} className="leading-relaxed">
-            {formatarInline(c)}
-          </p>
-        ))}
-      </blockquote>,
-    );
-    blocoCitacao = [];
-  };
-
-  for (let idx = 0; idx < linhas.length; idx++) {
-    const linha = linhas[idx].trim();
-
-    // Linha vazia fecha listas ou citações abertas
-    if (!linha) {
-      descarregarLista();
-      descarregarCitacao();
-      continue;
-    }
-
-    // Divisor horizontal
-    if (/^(\-{3,}|\*{3,}|_{3,})$/.test(linha)) {
-      descarregarLista();
-      descarregarCitacao();
-      elementos.push(
-        <hr key={`hr-${idx}`} className="my-5 border-border/80" />,
-      );
-      continue;
-    }
-
-    // Citação
-    if (linha.startsWith(">")) {
-      descarregarLista();
-      blocoCitacao.push(linha.replace(/^>\s?/, ""));
-      continue;
-    } else {
-      descarregarCitacao();
-    }
-
-    // Título H1
-    if (linha.startsWith("# ")) {
-      descarregarLista();
-      elementos.push(
-        <h1
-          key={`h1-${idx}`}
-          className="mt-6 mb-3 text-xl font-bold tracking-tight text-foreground sm:text-2xl first:mt-0"
-        >
-          {formatarInline(linha.slice(2))}
-        </h1>,
-      );
-      continue;
-    }
-
-    // Título H2
-    if (linha.startsWith("## ")) {
-      descarregarLista();
-      elementos.push(
-        <h2
-          key={`h2-${idx}`}
-          className="mt-6 mb-2 border-b border-border/50 pb-1.5 text-lg font-semibold tracking-tight text-foreground sm:text-xl first:mt-0"
-        >
-          {formatarInline(linha.slice(3))}
-        </h2>,
-      );
-      continue;
-    }
-
-    // Título H3
-    if (linha.startsWith("### ")) {
-      descarregarLista();
-      elementos.push(
-        <h3
-          key={`h3-${idx}`}
-          className="mt-4 mb-2 text-base font-semibold text-foreground first:mt-0"
-        >
-          {formatarInline(linha.slice(4))}
-        </h3>,
-      );
-      continue;
-    }
-
-    // Título H4
-    if (linha.startsWith("#### ")) {
-      descarregarLista();
-      elementos.push(
-        <h4
-          key={`h4-${idx}`}
-          className="mt-3 mb-1 text-sm font-semibold uppercase tracking-wider text-muted-foreground first:mt-0"
-        >
-          {formatarInline(linha.slice(5))}
-        </h4>,
-      );
-      continue;
-    }
-
-    // Item de lista não-ordenada (- ou *)
-    if (/^[-*]\s+/.test(linha)) {
-      if (tipoLista && tipoLista !== "ul") descarregarLista();
-      tipoLista = "ul";
-      itensLista.push(linha.replace(/^[-*]\s+/, ""));
-      continue;
-    }
-
-    // Item de lista ordenada (1. , 2. )
-    if (/^\d+\.\s+/.test(linha)) {
-      if (tipoLista && tipoLista !== "ol") descarregarLista();
-      tipoLista = "ol";
-      itensLista.push(linha.replace(/^\d+\.\s+/, ""));
-      continue;
-    }
-
-    // Linha de texto comum (parágrafo)
-    descarregarLista();
-    elementos.push(
-      <p
-        key={`p-${idx}`}
-        className="my-2.5 text-sm leading-relaxed text-foreground/90 first:mt-0 last:mb-0"
-      >
-        {formatarInline(linha)}
-      </p>,
-    );
-  }
-
-  // Descarrega o que sobrou no final
-  descarregarLista();
-  descarregarCitacao();
+  // Se já for HTML, sanitiza; se for Markdown, converte para HTML sanitizado
+  const htmlFinal = ehHtml(conteudo)
+    ? sanitizarHtml(conteudo)
+    : sanitizarHtml(markdownParaHtml(conteudo));
 
   return (
     <div
       className={cn(
-        "prose prose-sm dark:prose-invert max-w-none text-foreground select-text",
+        "select-text text-foreground text-sm leading-relaxed",
+        "[&_h1]:text-2xl [&_h1]:font-bold [&_h1]:tracking-tight [&_h1]:text-foreground [&_h1]:mb-3 [&_h1]:mt-6 [&_h1:first-child]:mt-0",
+        "[&_h2]:text-xl [&_h2]:font-semibold [&_h2]:tracking-tight [&_h2]:text-foreground [&_h2]:border-b [&_h2]:border-border/50 [&_h2]:pb-1.5 [&_h2]:mb-2 [&_h2]:mt-6 [&_h2:first-child]:mt-0",
+        "[&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:mb-2 [&_h3]:mt-4 [&_h3:first-child]:mt-0",
+        "[&_h4]:text-sm [&_h4]:font-semibold [&_h4]:uppercase [&_h4]:tracking-wider [&_h4]:text-muted-foreground [&_h4]:mb-1 [&_h4]:mt-3",
+        "[&_p]:my-2.5 [&_p]:text-foreground/90 [&_p]:leading-relaxed",
+        "[&_ul]:list-disc [&_ul]:pl-6 [&_ul]:my-3 [&_ul]:space-y-1.5 [&_ul]:text-foreground/90 [&_ul_li]:marker:text-primary",
+        "[&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:my-3 [&_ol]:space-y-1.5 [&_ol]:text-foreground/90 [&_ol_li]:marker:font-semibold [&_ol_li]:marker:text-primary",
+        "[&_li]:leading-relaxed",
+        "[&_blockquote]:border-l-4 [&_blockquote]:border-primary/50 [&_blockquote]:bg-primary/5 [&_blockquote]:px-4 [&_blockquote]:py-2 [&_blockquote]:my-3 [&_blockquote]:italic [&_blockquote]:text-foreground/80 [&_blockquote]:rounded-r-md",
+        "[&_hr]:my-5 [&_hr]:border-border/80",
+        "[&_strong]:font-semibold [&_strong]:text-foreground",
+        "[&_em]:italic [&_em]:text-foreground",
+        "[&_u]:underline",
+        "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-xs [&_code]:text-primary",
         className,
       )}
-    >
-      {elementos}
-    </div>
+      dangerouslySetInnerHTML={{ __html: htmlFinal }}
+    />
   );
 }
-
