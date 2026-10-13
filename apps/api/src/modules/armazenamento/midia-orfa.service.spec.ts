@@ -12,19 +12,29 @@ import { Armazenamento } from '../../common/armazenamento/armazenamento';
 import { MidiaOrfaService } from './midia-orfa.service';
 
 const DIA = 24 * 60 * 60 * 1000;
-const P = 'teste-orfa-';
+
 // Pasta temporária: a varredura apaga tudo o que não reconhece, e a pasta real
 // do dev tem arquivos de verdade.
 let RAIZ = '';
-let PASTA = '';
-const nomes = {
-  daMensagem: `${P}mensagem.jpg`,
-  daFoto: `${P}foto.jpg`,
-  orfao: `${P}orfao.pdf`,
-  recente: `${P}recente.jpg`,
+
+/** Caminhos dentro de `whatsapp/`: soltos (antes de 2026-10-13) e na pasta da empresa. */
+const ARQ = {
+  daMensagem: 'mensagem.jpg',
+  daFoto: 'foto.jpg',
+  orfao: 'orfao.pdf',
+  recente: 'recente.jpg',
+  daMensagemNaEmpresa: 'emp-1/nova.jpg',
+  orfaoNaEmpresa: 'emp-1/orfao-novo.jpg',
 };
 
-const doTeste = (lista: string[]) => lista.filter((n) => n.startsWith(P));
+async function naPasta() {
+  const soltos = await readdir(join(RAIZ, 'whatsapp'), { withFileTypes: true });
+  const daEmpresa = await readdir(join(RAIZ, 'whatsapp', 'emp-1'));
+  return [
+    ...soltos.filter((e) => e.isFile()).map((e) => e.name),
+    ...daEmpresa.map((n) => `emp-1/${n}`),
+  ].sort();
+}
 
 function montar(mensagens: string[], fotos: string[]) {
   const tx = {
@@ -58,40 +68,43 @@ describe('MidiaOrfaService', () => {
 
   beforeEach(async () => {
     RAIZ = await mkdtemp(join(tmpdir(), 'midia-orfa-'));
-    PASTA = join(RAIZ, 'whatsapp');
-    await mkdir(PASTA);
+    await mkdir(join(RAIZ, 'whatsapp', 'emp-1'), { recursive: true });
     const antigo = new Date(agora - 2 * DIA);
-    for (const nome of Object.values(nomes)) {
-      await writeFile(join(PASTA, nome), 'x'.repeat(10));
-      if (nome !== nomes.recente)
-        await utimes(join(PASTA, nome), antigo, antigo);
+    for (const rel of Object.values(ARQ)) {
+      const caminho = join(RAIZ, 'whatsapp', ...rel.split('/'));
+      await writeFile(caminho, 'x'.repeat(10));
+      if (rel !== ARQ.recente) await utimes(caminho, antigo, antigo);
     }
   });
 
   afterEach(() => rm(RAIZ, { recursive: true, force: true }));
 
-  it('lista sem apagar: só o antigo que ninguém referencia é órfão', async () => {
-    const { service, prisma } = montar([nomes.daMensagem], [nomes.daFoto]);
+  const usados = () =>
+    montar([ARQ.daMensagem, ARQ.daMensagemNaEmpresa], [ARQ.daFoto]);
+
+  it('lista sem apagar: só os antigos sem referência são órfãos, soltos ou na pasta da empresa', async () => {
+    const { service, prisma } = usados();
 
     const r = await service.varrer(false, agora);
 
-    expect(doTeste(r.amostra)).toEqual([nomes.orfao]);
-    expect(r.apagados).toBe(0);
-    expect(doTeste(await readdir(PASTA)).sort()).toEqual(
-      Object.values(nomes).sort(),
-    );
+    expect(r.amostra.sort()).toEqual([ARQ.orfaoNaEmpresa, ARQ.orfao].sort());
+    expect(r).toMatchObject({
+      arquivosNaPasta: 6,
+      recentesIgnorados: 1,
+      apagados: 0,
+    });
+    expect(await naPasta()).toEqual(Object.values(ARQ).sort());
     // Mensagens e contatos lidos dentro do contexto da empresa (RLS).
     expect(prisma.withTenant).toHaveBeenCalledWith('e1', expect.any(Function));
   });
 
-  it('apaga o órfão e deixa o referenciado e o recente', async () => {
-    const { service } = montar([nomes.daMensagem], [nomes.daFoto]);
+  it('apaga os órfãos e deixa os referenciados e o recente', async () => {
+    const { service } = usados();
 
     await service.varrer(true, agora);
 
-    const restantes = doTeste(await readdir(PASTA)).sort();
-    expect(restantes).toEqual(
-      [nomes.daFoto, nomes.daMensagem, nomes.recente].sort(),
+    expect(await naPasta()).toEqual(
+      [ARQ.daFoto, ARQ.daMensagem, ARQ.daMensagemNaEmpresa, ARQ.recente].sort(),
     );
   });
 
@@ -99,6 +112,6 @@ describe('MidiaOrfaService', () => {
     const { service } = montar([], []);
 
     await expect(service.varrer(true, agora)).rejects.toThrow(/não apaga nada/);
-    expect(doTeste(await readdir(PASTA))).toHaveLength(4);
+    expect(await naPasta()).toHaveLength(6);
   });
 });

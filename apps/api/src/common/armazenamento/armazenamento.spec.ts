@@ -215,3 +215,54 @@ describe('migrarParaS3', () => {
     );
   });
 });
+
+describe('subpastas (whatsapp/<empresaId>/, desde 2026-10-13)', () => {
+  let raiz = '';
+  beforeEach(async () => {
+    raiz = await mkdtemp(join(tmpdir(), 'armazenamento-'));
+    await mkdir(join(raiz, 'whatsapp', 'emp-1'), { recursive: true });
+    await writeFile(join(raiz, 'whatsapp', 'antigo.jpg'), 'a');
+    await writeFile(join(raiz, 'whatsapp', 'emp-1', 'novo.jpg'), 'bb');
+  });
+  afterEach(() => rm(raiz, { recursive: true, force: true }));
+
+  it('lista e conta o que está solto e o que está na pasta da empresa', async () => {
+    const a = new Armazenamento({ raizDisco: raiz, pastasS3: ['whatsapp'] });
+
+    const chaves = (await a.listar('whatsapp')).map((x) => x.chave).sort();
+    expect(chaves).toEqual(['whatsapp/antigo.jpg', 'whatsapp/emp-1/novo.jpg']);
+  });
+
+  it('a cópia para o S3 leva também as subpastas, na mesma chave', async () => {
+    const send: jest.SpyInstance = jest.spyOn(S3Client.prototype, 'send');
+    send.mockImplementation(
+      (c: { constructor: { name: string }; input: { Key: string } }) =>
+        Promise.resolve(
+          c.constructor.name === 'HeadObjectCommand'
+            ? { ContentLength: c.input.Key.endsWith('novo.jpg') ? 2 : 1 }
+            : {},
+        ),
+    );
+    const a = new Armazenamento({
+      raizDisco: raiz,
+      s3: S3,
+      pastasS3: ['whatsapp'],
+    });
+
+    const r = await a.migrarParaS3('whatsapp');
+
+    expect(r).toMatchObject({ copiados: 2, falhas: [], restantes: 0 });
+    const enviados = send.mock.calls
+      .map(
+        ([c]) => c as { constructor: { name: string }; input: { Key: string } },
+      )
+      .filter((c) => c.constructor.name === 'PutObjectCommand')
+      .map((c) => c.input.Key)
+      .sort();
+    expect(enviados).toEqual([
+      'whatsapp/antigo.jpg',
+      'whatsapp/emp-1/novo.jpg',
+    ]);
+    send.mockRestore();
+  });
+});

@@ -214,19 +214,11 @@ export class Armazenamento {
     validarChave(pasta);
     const porChave = new Map<string, ArquivoListado>();
 
-    const raiz = this.caminhoDisco(pasta);
-    const nomes = await readdir(raiz).catch((erro: NodeJS.ErrnoException) => {
-      if (erro.code === 'ENOENT') return [] as string[];
-      throw erro;
-    });
-    for (const nome of nomes) {
-      const info = await stat(join(raiz, nome)).catch(() => null);
-      if (!info?.isFile()) continue;
-      const chave = `${pasta}/${nome}`;
-      porChave.set(chave, {
-        chave,
-        bytes: info.size,
-        modificadoEm: info.mtimeMs,
+    for (const a of await this.arquivosNoDisco(pasta)) {
+      porChave.set(a.chave, {
+        chave: a.chave,
+        bytes: a.bytes,
+        modificadoEm: a.modificadoEm,
       });
     }
 
@@ -260,9 +252,7 @@ export class Armazenamento {
     const pastas = await Promise.all(
       this.config.pastasS3.map(async (pasta) => ({
         pasta,
-        noDisco: (
-          await readdir(this.caminhoDisco(pasta)).catch(() => [] as string[])
-        ).length,
+        noDisco: (await this.arquivosNoDisco(pasta)).length,
       })),
     );
     return {
@@ -283,20 +273,12 @@ export class Armazenamento {
     if (!this.noS3(`${pasta}/x`)) {
       throw new Error(`A pasta ${pasta} não está configurada para o S3.`);
     }
-    const raiz = this.caminhoDisco(pasta);
-    const nomes = await readdir(raiz).catch((erro: NodeJS.ErrnoException) => {
-      if (erro.code === 'ENOENT') return [] as string[];
-      throw erro;
-    });
+    const noDisco = await this.arquivosNoDisco(pasta);
 
     let copiados = 0;
     let bytes = 0;
     const falhas: string[] = [];
-    for (const nome of nomes.slice(0, limite)) {
-      const caminho = join(raiz, nome);
-      const info = await stat(caminho).catch(() => null);
-      if (!info?.isFile()) continue;
-      const chave = `${pasta}/${nome}`;
+    for (const { chave, caminho, bytes: tamanho } of noDisco.slice(0, limite)) {
       try {
         await this.s3!.send(
           new PutObjectCommand({
@@ -308,18 +290,59 @@ export class Armazenamento {
         const conferido = await this.s3!.send(
           new HeadObjectCommand({ Bucket: this.config.s3!.bucket, Key: chave }),
         );
-        if (conferido.ContentLength !== info.size)
+        if (conferido.ContentLength !== tamanho)
           throw new Error('tamanho diferente');
         await unlink(caminho);
         copiados += 1;
-        bytes += info.size;
+        bytes += tamanho;
       } catch {
-        falhas.push(nome);
+        falhas.push(chave.slice(pasta.length + 1));
       }
     }
 
-    const restantes = (await readdir(raiz).catch(() => [] as string[])).length;
+    const restantes = (await this.arquivosNoDisco(pasta)).length;
     return { copiados, bytes, falhas, restantes };
+  }
+
+  /**
+   * Os arquivos de uma pasta no disco, **com as subpastas**: desde 2026-10-13
+   * a mídia do WhatsApp fica em `whatsapp/<empresaId>/`, e os arquivos de
+   * antes, soltos em `whatsapp/`.
+   */
+  private async arquivosNoDisco(pasta: string) {
+    const achados: {
+      chave: string;
+      caminho: string;
+      bytes: number;
+      modificadoEm: number;
+    }[] = [];
+    const visitar = async (relativo: string) => {
+      const dir = this.caminhoDisco(relativo);
+      const entradas = await readdir(dir, { withFileTypes: true }).catch(
+        (erro: NodeJS.ErrnoException) => {
+          if (erro.code === 'ENOENT') return [];
+          throw erro;
+        },
+      );
+      for (const e of entradas) {
+        const chave = `${relativo}/${e.name}`;
+        if (e.isDirectory()) {
+          await visitar(chave);
+        } else if (e.isFile()) {
+          const caminho = join(dir, e.name);
+          const info = await stat(caminho).catch(() => null);
+          if (info)
+            achados.push({
+              chave,
+              caminho,
+              bytes: info.size,
+              modificadoEm: info.mtimeMs,
+            });
+        }
+      }
+    };
+    await visitar(validarChave(pasta));
+    return achados;
   }
 
   private caminhoDisco(chave: string) {

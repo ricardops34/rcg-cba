@@ -1952,23 +1952,23 @@ export class WhatsappConversasService {
         tx,
       );
 
-      let emDisco = arquivo.arquivoEmDisco;
-      if (!emDisco) {
-        emDisco = `${randomUUID()}${extensaoPorMime(arquivo.mime)}`;
-        await armazenamento().gravar(
-          `whatsapp/${emDisco}`,
-          arquivo.conteudo,
-          arquivo.mime,
+      // Pasta da empresa (`whatsapp/<empresaId>/`): espaço, limite, exclusão e
+      // exportação por empresa no armazenamento (decisão de 2026-10-13). O
+      // anexo que o multer gravou solto em WHATSAPP_DIR é só o temporário:
+      // vai para a pasta da empresa e sai de lá.
+      const nome =
+        arquivo.arquivoEmDisco ??
+        `${randomUUID()}${extensaoPorMime(arquivo.mime)}`;
+      const emDisco = `${empresaId}/${nome}`;
+      await armazenamento().gravar(
+        `whatsapp/${emDisco}`,
+        arquivo.conteudo,
+        arquivo.mime,
+      );
+      if (arquivo.arquivoEmDisco) {
+        await unlink(join(WHATSAPP_DIR, arquivo.arquivoEmDisco)).catch(
+          () => undefined,
         );
-      } else if (armazenamento().noS3(`whatsapp/${emDisco}`)) {
-        // O multer gravou no disco, mas a pasta está no S3: sobe e tira do
-        // disco, para o arquivo não ficar nos dois lugares.
-        await armazenamento().gravar(
-          `whatsapp/${emDisco}`,
-          arquivo.conteudo,
-          arquivo.mime,
-        );
-        await unlink(join(WHATSAPP_DIR, emDisco)).catch(() => undefined);
       }
 
       const mensagem = await tx.whatsappMensagem.create({
@@ -2585,7 +2585,7 @@ export class WhatsappConversasService {
     const conteudo = Buffer.from(entrada.conteudoBase64, 'base64');
     const mime = entrada.mime ?? 'application/octet-stream';
     // Nome opaco em disco; o nome que o cliente deu fica só na coluna.
-    const arquivo = `${randomUUID()}${extensaoPorMime(mime)}`;
+    const arquivo = `${entrada.empresaId}/${randomUUID()}${extensaoPorMime(mime)}`;
 
     await armazenamento().gravar(`whatsapp/${arquivo}`, conteudo, mime);
 
@@ -2910,7 +2910,7 @@ export class WhatsappConversasService {
       .catch(() => null);
 
     if (foto?.conteudoBase64 && foto.mime.startsWith('image/')) {
-      const arquivo = `${randomUUID()}${extensaoPorMime(foto.mime)}`;
+      const arquivo = `${empresaId}/${randomUUID()}${extensaoPorMime(foto.mime)}`;
       await armazenamento().gravar(
         `whatsapp/${arquivo}`,
         Buffer.from(foto.conteudoBase64, 'base64'),
@@ -2954,7 +2954,7 @@ export class WhatsappConversasService {
           telefone,
         );
         if (!foto?.conteudoBase64 || !foto.mime.startsWith('image/')) return;
-        const arquivo = `${randomUUID()}${extensaoPorMime(foto.mime)}`;
+        const arquivo = `${empresaId}/${randomUUID()}${extensaoPorMime(foto.mime)}`;
         await armazenamento().gravar(
           `whatsapp/${arquivo}`,
           Buffer.from(foto.conteudoBase64, 'base64'),

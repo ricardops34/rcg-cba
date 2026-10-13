@@ -12,6 +12,14 @@
   `whatsapp-historico.excluir`). **Sem rotina de retenção por prazo.**
   Decisão do usuário (13/10/2026), que substitui o "apagar depois de um
   prazo" anotado antes no mesmo dia.
+- **Uma pasta por empresa no mesmo MinIO** (`whatsapp/<empresaId>/...`;
+  backups já em `backups-empresas/<empresaId>/`), e **não** um S3 por cliente.
+  Decisão do usuário (13/10/2026), pela recomendação: dá espaço, limite,
+  exclusão e exportação por empresa com um MinIO só. S3 próprio por cliente
+  (configurado no cadastro) fica para quando um cliente exigir — a pasta por
+  empresa já é o primeiro passo dele. A mídia de antes da troca fica solta em
+  `whatsapp/` e continua servida; a varredura de órfãos e a cópia para o MinIO
+  percorrem as subpastas.
 
 ## Como é hoje
 

@@ -7,13 +7,15 @@ describe('arquivoDaMidia', () => {
   it('tira o nome do endereço da pasta da mídia, com ou sem assinatura', () => {
     expect(arquivoDaMidia('/uploads/whatsapp/a.jpg')).toBe('a.jpg');
     expect(arquivoDaMidia('/uploads/whatsapp/a.jpg?exp=1&sig=x')).toBe('a.jpg');
+    // Desde 2026-10-13 a mídia fica na pasta da empresa.
+    expect(arquivoDaMidia('/uploads/whatsapp/emp-1/a.jpg')).toBe('emp-1/a.jpg');
   });
 
   it('ignora o que não é da pasta da mídia e não sai dela', () => {
     expect(arquivoDaMidia(null)).toBeNull();
     expect(arquivoDaMidia('/uploads/logos/a.png')).toBeNull();
     expect(arquivoDaMidia('https://cdn.exemplo/a.jpg')).toBeNull();
-    expect(arquivoDaMidia('/uploads/whatsapp/../logos/a.png')).toBe('a.png');
+    expect(arquivoDaMidia('/uploads/whatsapp/../logos/a.png')).toBeNull();
     expect(arquivoDaMidia('/uploads/whatsapp/..')).toBeNull();
   });
 });
