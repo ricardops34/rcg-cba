@@ -11,6 +11,7 @@ import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { ErrosLogService } from './modules/erros/erros-log.service';
 import { executarComContexto } from './common/prisma/contexto-banco';
 import { linkValido, PREFIXO_ASSINADO } from './common/uploads/link-assinado';
+import { armazenamento, chaveDoEndereco } from './common/armazenamento/armazenamento';
 import { posix } from 'node:path';
 
 async function bootstrap() {
@@ -86,7 +87,15 @@ async function bootstrap() {
     if (caminho.startsWith(PREFIXO_ASSINADO) && !linkValido(caminho, req.query?.exp, req.query?.sig)) {
       return res.status(403).end();
     }
-    next();
+    // Pasta no S3 (ARMAZENAMENTO_S3_PASTAS): redireciona para o link
+    // temporário do MinIO, depois das conferências acima. Sem objeto lá — o
+    // arquivo é de antes da troca — segue para o estático do disco.
+    const chave = chaveDoEndereco(caminho);
+    if (!chave || !armazenamento().noS3(chave)) return next();
+    armazenamento()
+      .linkTemporario(chave)
+      .then((link) => (link ? res.redirect(302, link) : next()))
+      .catch(() => res.status(502).end());
   });
 
   // Os parsers abaixo valem para todas as rotas (o Nest não os limita por

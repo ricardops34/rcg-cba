@@ -1,8 +1,9 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { readdir, stat, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { WHATSAPP_DIR } from '../../common/uploads/uploads.config';
+import {
+  armazenamento,
+  type Armazenamento,
+} from '../../common/armazenamento/armazenamento';
 import { arquivoDaMidia } from '../whatsapp/midia-arquivos';
 
 /**
@@ -44,8 +45,11 @@ export interface ResultadoMidiaOrfa {
 export class MidiaOrfaService {
   private readonly logger = new Logger(MidiaOrfaService.name);
 
-  /** A pasta varrida. Fica numa propriedade para o teste usar uma temporária. */
-  pasta = WHATSAPP_DIR;
+  /**
+   * Disco e S3 juntos (`listar` une os dois). Propriedade para o teste usar um
+   * armazenamento numa pasta temporária.
+   */
+  armazenamento: Armazenamento = armazenamento();
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -80,11 +84,10 @@ export class MidiaOrfaService {
       }
       for (const { nome } of orfaos) {
         try {
-          await unlink(join(this.pasta, nome));
+          await this.armazenamento.apagar(`whatsapp/${nome}`);
           apagados += 1;
-        } catch (erro) {
-          if ((erro as NodeJS.ErrnoException).code === 'ENOENT') apagados += 1;
-          else falhas += 1;
+        } catch {
+          falhas += 1;
         }
       }
       this.logger.warn(
@@ -105,21 +108,12 @@ export class MidiaOrfaService {
   }
 
   private async arquivosDaPasta() {
-    let nomes: string[];
-    try {
-      nomes = await readdir(this.pasta);
-    } catch (erro) {
-      if ((erro as NodeJS.ErrnoException).code === 'ENOENT') return [];
-      throw erro;
-    }
-    const arquivos: { nome: string; bytes: number; modificadoEm: number }[] =
-      [];
-    for (const nome of nomes) {
-      const info = await stat(join(this.pasta, nome)).catch(() => null);
-      if (!info?.isFile()) continue;
-      arquivos.push({ nome, bytes: info.size, modificadoEm: info.mtimeMs });
-    }
-    return arquivos;
+    const lista = await this.armazenamento.listar('whatsapp');
+    return lista.map((a) => ({
+      nome: a.chave.slice('whatsapp/'.length),
+      bytes: a.bytes,
+      modificadoEm: a.modificadoEm,
+    }));
   }
 
   private async referenciados() {

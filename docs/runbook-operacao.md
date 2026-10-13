@@ -924,6 +924,57 @@ Stack própria na VPS, fora deste repositório. O que ela define:
 - **Sem backup** em 2026-10-13. O plano está em
   `docs/planos/2026-10-13-armazenamento-arquivos-minio.md`.
 
+### Ligar o MinIO na API **[escrito em 2026-10-13, não rodado]**
+
+Sem as variáveis, a API grava tudo em disco, como sempre. O código lê as pastas
+listadas em `ARMAZENAMENTO_S3_PASTAS` do bucket e cai no disco para o que ainda
+não foi copiado — então ligar não quebra a mídia existente.
+
+1. **Bucket e usuário de serviço da API** (com o `mc`, de qualquer máquina que
+   alcance `https://s3.rcgdist.com.br`; a senha root fica só nesse comando):
+
+   ```bash
+   mc alias set rcg https://s3.rcgdist.com.br AdminRcg '<senha root>'
+   mc mb rcg/plataforma
+   cat > politica-api.json <<'JSON'
+   {
+     "Version": "2012-10-17",
+     "Statement": [
+       { "Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": ["arn:aws:s3:::plataforma"] },
+       { "Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+         "Resource": ["arn:aws:s3:::plataforma/*"] }
+     ]
+   }
+   JSON
+   mc admin policy create rcg plataforma-api politica-api.json
+   mc admin user add rcg plataforma-api '<senha forte gerada>'
+   mc admin policy attach rcg plataforma-api --user plataforma-api
+   ```
+
+   O bucket fica **privado** (padrão do `mc mb`): o navegador só abre pelo link
+   temporário que a API gera.
+
+2. **Variáveis da API** na stack `rcgcba` (Portainer), todas descritas em
+   `docker/.env.prod.example`:
+   `S3_ENDPOINT=http://minio:9000`, `S3_ENDPOINT_PUBLICO=https://s3.rcgdist.com.br`,
+   `S3_REGIAO=eu-south`, `S3_BUCKET=plataforma`, `S3_ACCESS_KEY=plataforma-api`,
+   `S3_SECRET_KEY=<a senha do passo 1>`, `ARMAZENAMENTO_S3_PASTAS=whatsapp`.
+   Redeploy da API.
+
+3. **Conferir** em Plataforma → Armazenamento: "MinIO configurado (bucket
+   plataforma)" e a pasta `whatsapp` com N arquivos no disco. Mandar uma mídia
+   numa conversa de teste e abri-la: o endereço final no navegador deve ser
+   `s3.rcgdist.com.br/plataforma/whatsapp/...`.
+
+4. **Copiar o que está em disco**: botão "Copiar para o MinIO" na mesma tela.
+   Roda em rodadas de 200, confere o tamanho no MinIO antes de apagar do disco
+   e para quando zera ou quando uma rodada não avança (o que sobrou são falhas —
+   ver o log da API).
+
+**Voltar atrás:** tirar `whatsapp` de `ARMAZENAMENTO_S3_PASTAS` faz a API voltar
+a gravar e ler do disco — mas o que já foi copiado (e saiu do disco) passa a
+faltar. Antes de voltar, copiar o bucket de volta para o volume (`mc mirror`).
+
 ## Produção: a API conectava como superusuária **[diagnosticado em 2026-10-07, correção a aplicar]**
 
 Conferido na base `plataforma_rcg` da VPS: a API conectava como

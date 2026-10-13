@@ -7,9 +7,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile, unlink } from 'node:fs/promises';
 import { whereEmpresaAcessivel } from '../../common/empresa/situacao-empresa';
 import { basename, join } from 'node:path';
+import { armazenamento } from '../../common/armazenamento/armazenamento';
 import {
   extensaoPorMime,
   whatsappPublicPath,
@@ -1904,7 +1905,7 @@ export class WhatsappConversasService {
    * Envia conteúdo que a própria plataforma produziu — hoje a proposta de
    * orçamento em PDF (ver `WhatsappAcoesService.enviarOrcamento`).
    *
-   * Sem `arquivoEmDisco`, o arquivo é gravado em `WHATSAPP_DIR` **depois** da
+   * Sem `arquivoEmDisco`, o arquivo é gravado no armazenamento (disco ou S3) **depois** da
    * confirmação do provedor, com nome opaco: se o envio falhar não fica lixo
    * no disco, e a conversa não exibe anexo que o cliente nunca recebeu.
    */
@@ -1954,8 +1955,20 @@ export class WhatsappConversasService {
       let emDisco = arquivo.arquivoEmDisco;
       if (!emDisco) {
         emDisco = `${randomUUID()}${extensaoPorMime(arquivo.mime)}`;
-        await mkdir(WHATSAPP_DIR, { recursive: true });
-        await writeFile(join(WHATSAPP_DIR, emDisco), arquivo.conteudo);
+        await armazenamento().gravar(
+          `whatsapp/${emDisco}`,
+          arquivo.conteudo,
+          arquivo.mime,
+        );
+      } else if (armazenamento().noS3(`whatsapp/${emDisco}`)) {
+        // O multer gravou no disco, mas a pasta está no S3: sobe e tira do
+        // disco, para o arquivo não ficar nos dois lugares.
+        await armazenamento().gravar(
+          `whatsapp/${emDisco}`,
+          arquivo.conteudo,
+          arquivo.mime,
+        );
+        await unlink(join(WHATSAPP_DIR, emDisco)).catch(() => undefined);
       }
 
       const mensagem = await tx.whatsappMensagem.create({
@@ -2574,8 +2587,7 @@ export class WhatsappConversasService {
     // Nome opaco em disco; o nome que o cliente deu fica só na coluna.
     const arquivo = `${randomUUID()}${extensaoPorMime(mime)}`;
 
-    await mkdir(WHATSAPP_DIR, { recursive: true });
-    await writeFile(join(WHATSAPP_DIR, arquivo), conteudo);
+    await armazenamento().gravar(`whatsapp/${arquivo}`, conteudo, mime);
 
     return this.prisma.withTenant(entrada.empresaId, async (tx) => {
       // A sessão entra no filtro porque o `externoId` não é único na empresa:
@@ -2899,10 +2911,10 @@ export class WhatsappConversasService {
 
     if (foto?.conteudoBase64 && foto.mime.startsWith('image/')) {
       const arquivo = `${randomUUID()}${extensaoPorMime(foto.mime)}`;
-      await mkdir(WHATSAPP_DIR, { recursive: true });
-      await writeFile(
-        join(WHATSAPP_DIR, arquivo),
+      await armazenamento().gravar(
+        `whatsapp/${arquivo}`,
         Buffer.from(foto.conteudoBase64, 'base64'),
+        foto.mime,
       );
       const fotoUrl = whatsappPublicPath(arquivo);
       await this.prisma.withTenant(empresaId, (tx) =>
@@ -2943,10 +2955,10 @@ export class WhatsappConversasService {
         );
         if (!foto?.conteudoBase64 || !foto.mime.startsWith('image/')) return;
         const arquivo = `${randomUUID()}${extensaoPorMime(foto.mime)}`;
-        await mkdir(WHATSAPP_DIR, { recursive: true });
-        await writeFile(
-          join(WHATSAPP_DIR, arquivo),
+        await armazenamento().gravar(
+          `whatsapp/${arquivo}`,
           Buffer.from(foto.conteudoBase64, 'base64'),
+          foto.mime,
         );
         const fotoUrl = whatsappPublicPath(arquivo);
         await this.prisma.withTenant(empresaId, (tx) =>

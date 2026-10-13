@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { HardDrive, Loader2, Search, Trash2 } from "lucide-react";
+import { CloudUpload, HardDrive, Loader2, Search, Trash2 } from "lucide-react";
 import { PlataformaGuard } from "../plataforma-guard";
 
 interface ResultadoMidiaOrfa {
@@ -26,6 +26,19 @@ interface ResultadoMidiaOrfa {
   amostra: string[];
   apagados: number;
   falhas: number;
+}
+
+interface SituacaoArmazenamento {
+  s3Configurado: boolean;
+  bucket: string | null;
+  pastas: { pasta: string; noDisco: number }[];
+}
+
+interface RodadaMigracao {
+  copiados: number;
+  bytes: number;
+  falhas: string[];
+  restantes: number;
 }
 
 const numero = (v: number) => v.toLocaleString("pt-BR");
@@ -47,6 +60,100 @@ function Numero({ rotulo, valor }: { rotulo: string; valor: string }) {
       <p className="text-xs text-muted-foreground">{rotulo}</p>
       <p className="text-lg font-semibold">{valor}</p>
     </div>
+  );
+}
+
+/**
+ * Onde os arquivos estão: disco ou MinIO, por pasta. A troca de pasta é por
+ * variável de ambiente (`ARMAZENAMENTO_S3_PASTAS`, ver o runbook); aqui só se
+ * vê a situação e se copia para o MinIO o que ficou no disco de antes da troca.
+ * A cópia vai em rodadas de até 200 arquivos — cada uma confere o tamanho no
+ * MinIO antes de tirar do disco — até zerar ou uma rodada não avançar.
+ */
+function Situacao() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["plataforma", "armazenamento", "situacao"],
+    queryFn: () => apiFetch<SituacaoArmazenamento>("/plataforma/armazenamento/situacao"),
+  });
+  const [copiando, setCopiando] = useState<string | null>(null);
+  const [progresso, setProgresso] = useState({ copiados: 0, bytes: 0, falhas: 0 });
+
+  async function copiar(pasta: string) {
+    setCopiando(pasta);
+    const total = { copiados: 0, bytes: 0, falhas: 0 };
+    setProgresso(total);
+    try {
+      for (;;) {
+        const r = await apiFetch<RodadaMigracao>("/plataforma/armazenamento/migrar", {
+          method: "POST",
+          body: { pasta },
+        });
+        total.copiados += r.copiados;
+        total.bytes += r.bytes;
+        total.falhas = r.falhas.length;
+        setProgresso({ ...total });
+        // Sem avanço, as que sobraram são falhas: parar em vez de repetir.
+        if (r.restantes === 0 || r.copiados === 0) break;
+      }
+      toast.success(
+        `${numero(total.copiados)} arquivos copiados para o MinIO` +
+          (total.falhas ? `; ${numero(total.falhas)} ficaram no disco.` : "."),
+      );
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setCopiando(null);
+      void queryClient.invalidateQueries({ queryKey: ["plataforma", "armazenamento", "situacao"] });
+    }
+  }
+
+  if (!data) return null;
+
+  return (
+    <Card>
+      <CardContent className="space-y-3">
+        <div>
+          <h2 className="font-semibold">Onde os arquivos estão</h2>
+          <p className="text-sm text-muted-foreground">
+            {data.s3Configurado
+              ? `MinIO configurado (bucket ${data.bucket}). As pastas abaixo gravam no MinIO; as demais seguem em disco.`
+              : "Sem MinIO configurado: todos os arquivos estão em disco, no volume da API."}
+          </p>
+        </div>
+        {data.s3Configurado && data.pastas.length === 0 && (
+          <p className="text-sm text-muted-foreground">Nenhuma pasta configurada para o MinIO ainda.</p>
+        )}
+        {data.pastas.map(({ pasta, noDisco }) => (
+          <div key={pasta} className="flex flex-wrap items-center gap-3 rounded-lg border p-3">
+            <div className="min-w-0 flex-1">
+              <p className="font-mono text-sm">{pasta}</p>
+              <p className="text-xs text-muted-foreground">
+                {noDisco === 0
+                  ? "Tudo no MinIO."
+                  : `${numero(noDisco)} arquivos ainda no disco (servidos normalmente até a cópia).`}
+              </p>
+              {copiando === pasta && (
+                <p className="text-xs text-muted-foreground">
+                  Copiados até agora: {numero(progresso.copiados)} ({tamanho(progresso.bytes)})
+                </p>
+              )}
+            </div>
+            {noDisco > 0 && (
+              <Button
+                variant="outline"
+                className="gap-1.5"
+                disabled={!!copiando}
+                onClick={() => void copiar(pasta)}
+              >
+                {copiando === pasta ? <Loader2 className="size-4 animate-spin" /> : <CloudUpload className="size-4" />}
+                Copiar para o MinIO
+              </Button>
+            )}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -191,6 +298,7 @@ export default function PlataformaArmazenamentoPage() {
           </div>
         </div>
 
+        <Situacao />
         <MidiaOrfa />
       </div>
     </PlataformaGuard>

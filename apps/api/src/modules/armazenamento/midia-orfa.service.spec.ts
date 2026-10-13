@@ -1,12 +1,21 @@
-import { mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  rm,
+  utimes,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Armazenamento } from '../../common/armazenamento/armazenamento';
 import { MidiaOrfaService } from './midia-orfa.service';
 
 const DIA = 24 * 60 * 60 * 1000;
 const P = 'teste-orfa-';
 // Pasta temporária: a varredura apaga tudo o que não reconhece, e a pasta real
 // do dev tem arquivos de verdade.
+let RAIZ = '';
 let PASTA = '';
 const nomes = {
   daMensagem: `${P}mensagem.jpg`,
@@ -40,7 +49,7 @@ function montar(mensagens: string[], fotos: string[]) {
     withTenant: jest.fn((_id: string, fn: (t: typeof tx) => unknown) => fn(tx)),
   };
   const service = new MidiaOrfaService(prisma as never);
-  service.pasta = PASTA;
+  service.armazenamento = new Armazenamento({ raizDisco: RAIZ, pastasS3: [] });
   return { service, prisma };
 }
 
@@ -48,7 +57,9 @@ describe('MidiaOrfaService', () => {
   const agora = Date.now();
 
   beforeEach(async () => {
-    PASTA = await mkdtemp(join(tmpdir(), 'midia-orfa-'));
+    RAIZ = await mkdtemp(join(tmpdir(), 'midia-orfa-'));
+    PASTA = join(RAIZ, 'whatsapp');
+    await mkdir(PASTA);
     const antigo = new Date(agora - 2 * DIA);
     for (const nome of Object.values(nomes)) {
       await writeFile(join(PASTA, nome), 'x'.repeat(10));
@@ -57,7 +68,7 @@ describe('MidiaOrfaService', () => {
     }
   });
 
-  afterEach(() => rm(PASTA, { recursive: true, force: true }));
+  afterEach(() => rm(RAIZ, { recursive: true, force: true }));
 
   it('lista sem apagar: só o antigo que ninguém referencia é órfão', async () => {
     const { service, prisma } = montar([nomes.daMensagem], [nomes.daFoto]);

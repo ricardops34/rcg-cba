@@ -1,11 +1,10 @@
-import { unlink } from 'node:fs/promises';
-import { basename, join } from 'node:path';
-import { WHATSAPP_DIR } from '../../common/uploads/uploads.config';
+import { basename } from 'node:path';
+import { armazenamento } from '../../common/armazenamento/armazenamento';
 
 const PREFIXO = '/uploads/whatsapp/';
 
 /**
- * Nome do arquivo em `WHATSAPP_DIR` a partir do `arquivoUrl` gravado, ou
+ * Nome do arquivo na pasta `whatsapp` do armazenamento a partir do `arquivoUrl` gravado, ou
  * `null` se o endereço não é da pasta da mídia. O `basename` impede que um
  * valor adulterado no banco (`../`) apague fora da pasta.
  */
@@ -18,7 +17,7 @@ export function arquivoDaMidia(url: string | null | undefined): string | null {
 }
 
 /**
- * Apaga do disco a mídia de mensagens já excluídas do banco. Chamar **depois**
+ * Apaga do armazenamento (disco e S3) a mídia de mensagens já excluídas do banco. Chamar **depois**
  * do commit (ver `apagarConversas`). Arquivo que já não existe conta como
  * apagado; outra falha não desfaz nada — volta na lista para o log, e a
  * varredura de órfãos recolhe depois.
@@ -31,11 +30,11 @@ export async function apagarArquivosDaMidia(urls: (string | null)[]) {
   const falhas: string[] = [];
   for (const nome of nomes) {
     try {
-      await unlink(join(WHATSAPP_DIR, nome));
+      // Já não existir não é erro: `apagar` ignora.
+      await armazenamento().apagar(`whatsapp/${nome}`);
       apagados += 1;
-    } catch (erro) {
-      if ((erro as NodeJS.ErrnoException).code === 'ENOENT') apagados += 1;
-      else falhas.push(nome);
+    } catch {
+      falhas.push(nome);
     }
   }
   return { apagados, falhas };
