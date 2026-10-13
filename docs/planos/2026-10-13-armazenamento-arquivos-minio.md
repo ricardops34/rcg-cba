@@ -48,16 +48,24 @@ máquina de backup, e é de **leitura**. Se a VPS for invadida, quem está nela
 não tem como apagar nem cifrar a cópia — com replicação empurrada pela VPS
 (`mc replicate`), teria.
 
-- Na máquina externa: um MinIO próprio (ou só disco) e o cliente `mc`.
+- **A máquina é um NAS no escritório** (usuário, 13/10/2026). Encaixa no
+  "puxar": o NAS só faz conexões de saída (para `s3.rcgdist.com.br` e o SSH
+  da VPS) — nenhuma porta aberta no escritório.
+- No NAS: a cópia em pastas comuns, sem MinIO. A tarefa roda num contêiner
+  agendado (`rclone` ou `mc` para o S3, `ssh`/`rsync` para o volume e o
+  banco), ou na ferramenta de sincronização S3 do próprio NAS, se ela fizer
+  só download — depende da marca.
+- O "volta atrás" é o **snapshot do NAS** (Btrfs/ZFS), diário e guardado 30
+  dias, no lugar do versionamento de bucket: mais simples, e cobre também o
+  banco e o volume.
 - Na VPS: um usuário de serviço do MinIO só com `s3:GetObject` e
   `s3:ListBucket` nos buckets da plataforma. Nunca o root.
 - Cópia incremental por agendamento (cron/systemd timer):
   `mc mirror --remove origem/ destino/` — de hora em hora para a mídia do
   WhatsApp; uma vez por dia basta para o resto.
-- **Versionamento ligado no bucket de destino**, com expiração das versões
-  antigas em 30 dias (`mc ilm`). Assim a exclusão do administrador chega ao
-  backup (é a decisão: mídia excluída sai), mas fica recuperável por 30 dias
-  — e um apagão por engano ou ataque também.
+- Com o `--remove` a exclusão do administrador chega ao backup (é a decisão:
+  mídia excluída sai), mas os snapshots a deixam recuperável por 30 dias — e
+  um apagão por engano ou ataque também.
 - **Banco junto:** o `pg_dump` (formato custom, o do runbook) puxado pela
   mesma máquina, diário, com alguns dias guardados. Arquivo sem o banco que
   o referencia não restaura nada.
@@ -119,9 +127,10 @@ pequenos e não crescem com o uso.
 
 ## Pendências (decisão do usuário)
 
-1. **A máquina externa:** onde fica (escritório, outra VPS, NAS), sistema
-   operacional, espaço em disco, e se tem saída para a internet (precisa
-   alcançar `s3.rcgdist.com.br` e o SSH da VPS).
+1. ~~A máquina externa~~ — **NAS no escritório** (13/10). Falta: marca e
+   modelo (Synology, QNAP, TrueNAS… — muda a ferramenta), se roda contêiner,
+   espaço livre, se faz snapshot, e o tamanho atual do volume `uploads` e do
+   MinIO (a primeira cópia desce tudo pela internet do escritório).
 2. **Como o backup do banco é feito hoje** na produção (o runbook descreve
    restaurar, não gerar): para não duplicar nem conflitar.
 3. ~~Campo "Retenção das conversas"~~ — **resolvido 13/10**: saiu da tela; a
