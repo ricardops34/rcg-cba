@@ -159,6 +159,18 @@ export const MENUS: DefinicaoMenu[] = [
     moduloId: MODULO.administracao,
   },
   {
+    // Backup da própria empresa: gerar, baixar e excluir o pacote (dados e
+    // arquivos). Só o administrador da empresa — rotina de Administração, que
+    // os outros perfis nunca recebem. O agendamento é da plataforma
+    // (Plataforma > Backups de empresas). docs/planos/2026-10-13-backup-por-empresa.md
+    id: 'seed-menu-backups',
+    nome: 'Backups',
+    rota: '/admin/backups',
+    icone: 'archive',
+    codigo: 'backups',
+    moduloId: MODULO.administracao,
+  },
+  {
     // Ao lado de Acessos: quem usa os feriados é a trava de horário de
     // trabalho — no feriado, quem tem "restringir horário" não entra.
     id: 'seed-menu-feriados',

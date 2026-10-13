@@ -197,6 +197,17 @@ export class BackupEmpresaService {
     return saida;
   }
 
+  /** Os backups de uma empresa só — a tela do administrador da empresa. */
+  async listarDaEmpresa(empresaId: string): Promise<BackupResumo[]> {
+    const backups = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.empresaBackup.findMany({
+        where: { empresaId },
+        orderBy: { iniciadoEm: 'desc' },
+      }),
+    );
+    return backups.map(resumo);
+  }
+
   /**
    * Link de download: o caminho `/uploads/<chave>` assinado por 5 minutos. O
    * `main.ts` confere a assinatura e serve do disco ou redireciona ao MinIO.

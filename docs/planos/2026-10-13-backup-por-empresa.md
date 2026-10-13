@@ -5,8 +5,18 @@
 - **Finalidade: as duas.** O mesmo pacote serve para **entregar ao cliente**
   (fim de contrato, LGPD, conferência) e para **restaurar a empresa** na
   plataforma sem restaurar a base inteira — que voltaria todas as empresas.
-- **Quem gera e baixa: só o administrador da plataforma** (RCG), na área da
-  Plataforma, escolhendo a empresa. O administrador da empresa não tem acesso.
+- **Quem gera e baixa:** a administração da plataforma (Plataforma → Backups
+  de empresas, qualquer empresa) **e o administrador de cada empresa, só da
+  própria** (Administração → Backups). A segunda parte é decisão do usuário de
+  13/10/2026, que mudou o "só a plataforma" anotado antes no mesmo dia. O
+  agendamento continua só da plataforma.
+  - A API da empresa (`/backups`) usa sempre a empresa ativa do token, sem
+    `empresaId` em rota nenhuma; backup de outra empresa pelo id dá 404.
+    Verificado em dev: admin da empresa vê só os dela e leva 403 na área da
+    plataforma; usuário comum leva 403.
+  - Rotina `backups` em Administração (catálogo; `sincronizar-catalogo`).
+    Rotina de Administração vai só para o perfil administrador (`sistemaBase`,
+    que tem tudo pelo `isAdmin`) — sem migration de permissão.
 - **Conteúdo: dados e arquivos** da empresa — mídia do WhatsApp, fichas,
   fotos, logos, banners.
 - **Quando: sob demanda e agendado.** O agendado grava no MinIO, e o NAS do
