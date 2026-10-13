@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FirstAccessForm } from "@/components/perfil/first-access-form";
+import { VisualizadorTermos } from "@/components/termos/visualizador-termos";
 
 export function PlataformaAccessGate({ children }: { children: React.ReactNode }) {
   const accessToken = useAuthStore((state) => state.accessToken);
@@ -110,7 +111,7 @@ function TermoObrigatorio({ termo }: { termo: TermoDocumento }) {
             tabIndex={0}
             aria-label={`Conteúdo de ${termo.titulo}`}
           >
-            {termo.conteudo}
+            <VisualizadorTermos conteudo={termo.conteudo} />
           </div>
 
           <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/40">

@@ -3,6 +3,7 @@ import { ArrowLeft, FileCheck2, Info, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GaleriaAjuda } from "@/components/ajuda/galeria-ajuda";
+import { DialogConsultaTermos } from "@/components/termos/dialog-consulta-termos";
 
 const IMAGENS_SOBRE = [
   {
@@ -114,6 +115,7 @@ export default function SobrePage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
+          <DialogConsultaTermos rotulo="Termos de uso e normas" />
           <Button asChild variant="outline">
             <Link href="/perfil">Consultar termos aceitos</Link>
           </Button>

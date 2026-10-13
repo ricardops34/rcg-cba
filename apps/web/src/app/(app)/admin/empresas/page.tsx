@@ -21,7 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MessageCircle, MoreHorizontal, Pencil, Trash2, Building2, CheckCircle2, Plus } from "lucide-react";
+import { MessageCircle, MoreHorizontal, Pencil, Trash2, Building2, CheckCircle2, Plus, FileText } from "lucide-react";
 
 export default function EmpresasPage() {
   const router = useRouter();
@@ -105,6 +105,9 @@ export default function EmpresasPage() {
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => openEdit(e)}>
               <Pencil className="mr-2 h-4 w-4" /> Editar cadastro
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push(`/admin/empresas/${e.id}?aba=termos`)}>
+              <FileText className="mr-2 h-4 w-4" /> Termos de uso
             </DropdownMenuItem>
             {administradorPlataforma && (
               <DropdownMenuItem onClick={() => setWhatsappAlvo(e)}>

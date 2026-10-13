@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -30,7 +30,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Building2, ImageIcon, MapPin, Sparkles, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, Building2, FileText, ImageIcon, MapPin, Sparkles, Trash2, Upload } from "lucide-react";
+import { EmpresaTermosEditor } from "@/components/crud/empresa-termos-editor";
 
 const LIST_ROUTE = "/admin/empresas";
 
@@ -45,6 +46,9 @@ export function EmpresaForm({
   grupoEconomicoId?: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const abaUrl = searchParams?.get("aba") || searchParams?.get("tab");
+  const [tabAtiva, setTabAtiva] = useState(abaUrl || "geral");
   const setUser = useAuthStore((state) => state.setUser);
   const administradorPlataforma = useAuthStore(
     (state) => state.user?.administradorPlataforma,
@@ -87,6 +91,7 @@ export function EmpresaForm({
           fundadaEm: empresa.fundadaEm ?? null,
           segmentos: empresa.segmentos ?? "",
           historia: empresa.historia ?? "",
+          termosUso: empresa.termosUso ?? "",
           bannerAtivo: empresa.bannerAtivo,
           bannerCor: empresa.bannerCor ?? "",
           bannerImagemUrl: empresa.bannerImagemUrl ?? null,
@@ -100,6 +105,7 @@ export function EmpresaForm({
           situacao: "ativa",
           bannerAtivo: false,
           bannerCor: "",
+          termosUso: "",
         },
   });
 
@@ -231,8 +237,8 @@ export function EmpresaForm({
       <Card>
         <form id="empresa-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
           <CardContent className="pt-6">
-            <Tabs defaultValue="geral" className="w-full">
-              <TabsList className="grid grid-cols-2 md:grid-cols-4 mb-6">
+            <Tabs value={tabAtiva} onValueChange={setTabAtiva} className="w-full">
+              <TabsList className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 mb-6">
                 <TabsTrigger value="geral" className="gap-2">
                   <Building2 className="w-4 h-4" />
                   Dados Gerais
@@ -248,6 +254,10 @@ export function EmpresaForm({
                 <TabsTrigger value="ia" className="gap-2">
                   <Sparkles className="w-4 h-4" />
                   Atendimento IA
+                </TabsTrigger>
+                <TabsTrigger value="termos" className="gap-2">
+                  <FileText className="w-4 h-4" />
+                  Termos de Uso
                 </TabsTrigger>
               </TabsList>
 
@@ -715,6 +725,17 @@ export function EmpresaForm({
                     <FieldError errors={[form.formState.errors.historia]} />
                   </Field>
                 </FieldGroup>
+              </TabsContent>
+
+              {/* ABA 5: TERMOS DE USO */}
+              <TabsContent value="termos" className="space-y-4">
+                <EmpresaTermosEditor
+                  valor={form.watch("termosUso")}
+                  onChange={(novo) => form.setValue("termosUso", novo, { shouldDirty: true })}
+                  empresaNome={form.watch("nomeFantasia") || empresa?.nomeFantasia}
+                  empresaRazaoSocial={form.watch("razaoSocial") || empresa?.razaoSocial}
+                  empresaCnpj={form.watch("cnpj") || empresa?.cnpj}
+                />
               </TabsContent>
             </Tabs>
           </CardContent>

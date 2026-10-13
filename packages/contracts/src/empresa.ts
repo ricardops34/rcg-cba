@@ -154,6 +154,16 @@ export const empresaCreateSchema = z.object({
     .describe("Data de fundação; vira 'no mercado desde' na resposta da IA"),
   historia: opt(4000).describe("A história da empresa, escrita por ela"),
   segmentos: opt(300).describe("Em que a empresa atua, em uma linha"),
+  termosUso: z
+    .string()
+    .trim()
+    .max(100_000)
+    .nullable()
+    .optional()
+    .or(z.literal(""))
+    .describe(
+      "Termos de uso customizados da empresa (em Markdown formatado). Se vazio, pode adotar a sugestão padrão da plataforma",
+    ),
   grupoEconomicoId: z
     .string()
     .uuid()
@@ -211,6 +221,7 @@ export const EMPRESA_CREATE_EXAMPLE: EmpresaCreate = {
   telefone: "6733214000",
   email: "comercial@andrade.com.br",
   site: "www.andrade.com.br",
+  termosUso: null,
 };
 
 export const EMPRESA_EXAMPLE: Empresa = {
