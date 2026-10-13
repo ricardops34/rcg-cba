@@ -32,6 +32,17 @@ import {
   useSmsDisponivel,
 } from "@/components/comercial/segunda-via";
 import { HistoricoAtendimento } from "@/components/comercial/historico-atendimento";
+import { Paginacao } from "@/components/crud/paginacao";
+import {
+  CorpoPorAno,
+  FiltroAno,
+  TODOS_OS_ANOS,
+  agruparPorAno,
+  anosDisponiveis,
+  filtrarPorAno,
+  resumoPorAno,
+  usePaginaLocal,
+} from "@/components/comercial/posicao-cliente-ano";
 import { useAtendimentoJanelaStore } from "@/stores/atendimento-janela-store";
 import { ArrowLeft, Loader2, Mail, MessageCircle, MessageSquareText, Search, Wrench } from "lucide-react";
 
@@ -182,7 +193,11 @@ function TabelaNotas({
   onToggleSort,
   onSelecionar,
   mensagemVazio,
+  anos,
+  ano,
+  onAnoChange,
 }: {
+  /** Já filtradas, ordenadas e agrupadas por ano de emissão. */
   notas: NotaRow[];
   busca: string;
   onBuscaChange: (v: string) => void;
@@ -193,7 +208,17 @@ function TabelaNotas({
   onToggleSort: (key: string) => void;
   onSelecionar: (id: string) => void;
   mensagemVazio: string;
+  anos: string[];
+  ano: string;
+  onAnoChange: (ano: string) => void;
 }) {
+  const resumo = useMemo(
+    () =>
+      resumoPorAno(notas, (n) => n.dtEmissao, { singular: "nota", plural: "notas" }, (n) => n.vlrBruto),
+    [notas],
+  );
+  const { itens, paginacao } = usePaginaLocal(notas);
+
   return (
     <Card className="min-h-0">
       <CardContent className="flex min-h-0 flex-col gap-3">
@@ -217,6 +242,7 @@ function TabelaNotas({
               <SelectItem value="comodato">Comodato</SelectItem>
             </SelectContent>
           </Select>
+          <FiltroAno anos={anos} valor={ano} onChange={onAnoChange} />
         </div>
 
         {notas.length === 0 ? (
@@ -260,10 +286,15 @@ function TabelaNotas({
                   <TableHead className="w-20 text-right">2ª via</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
-                {notas.map((n) => (
+              <CorpoPorAno
+                itens={itens}
+                data={(n) => n.dtEmissao}
+                colunas={6}
+                resumo={resumo}
+                chave={(n) => n.id}
+              >
+                {(n) => (
                   <TableRow
-                    key={n.id}
                     className="cursor-pointer"
                     onClick={() => onSelecionar(n.id)}
                   >
@@ -284,11 +315,12 @@ function TabelaNotas({
                       <SegundaViaNota notaId={n.id} numero={n.numero} temXml={n.temXml} />
                     </TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
+                )}
+              </CorpoPorAno>
             </Table>
           </div>
         )}
+        {notas.length > 0 && <Paginacao {...paginacao} />}
       </CardContent>
     </Card>
   );
@@ -309,7 +341,11 @@ function TabelaDevolucoes({
   sortOrder,
   onToggleSort,
   onSelecionar,
+  anos,
+  ano,
+  onAnoChange,
 }: {
+  /** Já filtradas, ordenadas e agrupadas por ano de emissão. */
   devolucoes: DevolucaoRow[];
   busca: string;
   onBuscaChange: (v: string) => void;
@@ -317,18 +353,36 @@ function TabelaDevolucoes({
   sortOrder: SortOrder;
   onToggleSort: (key: string) => void;
   onSelecionar: (id: string) => void;
+  anos: string[];
+  ano: string;
+  onAnoChange: (ano: string) => void;
 }) {
+  const resumo = useMemo(
+    () =>
+      resumoPorAno(
+        devolucoes,
+        (d) => d.dtEmissao,
+        { singular: "devolução", plural: "devoluções" },
+        (d) => d.vlrBruto,
+      ),
+    [devolucoes],
+  );
+  const { itens, paginacao } = usePaginaLocal(devolucoes);
+
   return (
     <Card className="min-h-0">
       <CardContent className="flex min-h-0 flex-col gap-3">
-        <div className="relative w-full sm:max-w-xs">
-          <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por número..."
-            className="pl-8"
-            value={busca}
-            onChange={(e) => onBuscaChange(e.target.value)}
-          />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-full sm:max-w-xs">
+            <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por número..."
+              className="pl-8"
+              value={busca}
+              onChange={(e) => onBuscaChange(e.target.value)}
+            />
+          </div>
+          <FiltroAno anos={anos} valor={ano} onChange={onAnoChange} />
         </div>
 
         {devolucoes.length === 0 ? (
@@ -362,10 +416,15 @@ function TabelaDevolucoes({
                   />
                 </TableRow>
               </TableHeader>
-              <TableBody>
-                {devolucoes.map((d) => (
+              <CorpoPorAno
+                itens={itens}
+                data={(d) => d.dtEmissao}
+                colunas={4}
+                resumo={resumo}
+                chave={(d) => d.id}
+              >
+                {(d) => (
                   <TableRow
-                    key={d.id}
                     className="cursor-pointer"
                     onClick={() => onSelecionar(d.id)}
                   >
@@ -395,11 +454,12 @@ function TabelaDevolucoes({
                     </TableCell>
                     <TableCell className="align-top text-right">{moeda(d.vlrBruto)}</TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
+                )}
+              </CorpoPorAno>
             </Table>
           </div>
         )}
+        {devolucoes.length > 0 && <Paginacao {...paginacao} />}
       </CardContent>
     </Card>
   );
@@ -444,6 +504,11 @@ export function PosicaoClienteConteudo({
   const [tituloSearch, setTituloSearch] = useState("");
   const [tituloSituacao, setTituloSituacao] = useState<TituloSituacaoFiltro>("todos");
   const [mixSearch, setMixSearch] = useState("");
+  // Ano de cada aba datada: emissão nas notas e devoluções, vencimento nos
+  // títulos (é a data que a tabela mostra e a que importa na cobrança).
+  const [notaAno, setNotaAno] = useState(TODOS_OS_ANOS);
+  const [devolucaoAno, setDevolucaoAno] = useState(TODOS_OS_ANOS);
+  const [tituloAno, setTituloAno] = useState(TODOS_OS_ANOS);
 
   const [notaSelecionadaId, setNotaSelecionadaId] = useState<string | null>(null);
   const [devolucaoSelecionadaId, setDevolucaoSelecionadaId] = useState<string | null>(null);
@@ -509,7 +574,7 @@ export function PosicaoClienteConteudo({
 
   const titulosFiltrados = useMemo(() => {
     const termo = tituloSearch.trim().toLowerCase();
-    return titulos.filter((t) => {
+    return filtrarPorAno(titulos, (t) => t.vencimento, tituloAno).filter((t) => {
       if (tituloSituacao !== "todos" && t.status !== tituloSituacao) return false;
       if (
         termo &&
@@ -518,7 +583,7 @@ export function PosicaoClienteConteudo({
         return false;
       return true;
     });
-  }, [titulos, tituloSituacao, tituloSearch]);
+  }, [titulos, tituloSituacao, tituloSearch, tituloAno]);
 
   const mixFiltrado = useMemo(() => {
     const termo = mixSearch.trim().toLowerCase();
@@ -536,23 +601,39 @@ export function PosicaoClienteConteudo({
     [notas, comodatos],
   );
 
+  const anosNotas = useMemo(
+    () => anosDisponiveis(notasEComodatos, (n) => n.dtEmissao),
+    [notasEComodatos],
+  );
+  const anosDevolucoes = useMemo(
+    () => anosDisponiveis(devolucoes, (d) => d.dtEmissao),
+    [devolucoes],
+  );
+  const anosTitulos = useMemo(() => anosDisponiveis(titulos, (t) => t.vencimento), [titulos]);
+
+  // Agrupadas por ano: a ordem escolhida vale dentro de cada ano.
   const notasOrdenadas = useMemo(
     () =>
-      ordenarNotas(
-        filtrarNotas(notasEComodatos, notaSearch, notaTipo),
-        notaSortBy,
-        notaSortOrder,
+      agruparPorAno(
+        ordenarNotas(
+          filtrarPorAno(filtrarNotas(notasEComodatos, notaSearch, notaTipo), (n) => n.dtEmissao, notaAno),
+          notaSortBy,
+          notaSortOrder,
+        ),
+        (n) => n.dtEmissao,
+        notaSortBy === "dtEmissao" && notaSortOrder === "asc",
       ),
-    [notasEComodatos, notaSearch, notaTipo, notaSortBy, notaSortOrder],
+    [notasEComodatos, notaSearch, notaTipo, notaAno, notaSortBy, notaSortOrder],
   );
 
   const devolucoesOrdenadas = useMemo(() => {
     const termo = devolucaoSearch.trim().toLowerCase();
+    const doAno = filtrarPorAno(devolucoes, (d) => d.dtEmissao, devolucaoAno);
     const filtradas = termo
-      ? devolucoes.filter((d) =>
+      ? doAno.filter((d) =>
           `${d.numero} ${d.serie ?? ""}`.toLowerCase().includes(termo),
         )
-      : devolucoes;
+      : doAno;
     const valor = (d: DevolucaoRow): string | number | null => {
       switch (devolucaoSortBy) {
         case "numero":
@@ -568,8 +649,12 @@ export function PosicaoClienteConteudo({
     const ordenadas = [...filtradas].sort((a, b) =>
       compareValores(valor(a), valor(b)),
     );
-    return devolucaoSortOrder === "desc" ? ordenadas.reverse() : ordenadas;
-  }, [devolucoes, devolucaoSearch, devolucaoSortBy, devolucaoSortOrder]);
+    return agruparPorAno(
+      devolucaoSortOrder === "desc" ? ordenadas.reverse() : ordenadas,
+      (d) => d.dtEmissao,
+      devolucaoSortBy === "dtEmissao" && devolucaoSortOrder === "asc",
+    );
+  }, [devolucoes, devolucaoSearch, devolucaoAno, devolucaoSortBy, devolucaoSortOrder]);
 
   const titulosOrdenados = useMemo(() => {
     const valor = (t: TituloRow): string | number | null => {
@@ -591,8 +676,23 @@ export function PosicaoClienteConteudo({
       }
     };
     const ordenados = [...titulosFiltrados].sort((a, b) => compareValores(valor(a), valor(b)));
-    return tituloSortOrder === "desc" ? ordenados.reverse() : ordenados;
+    return agruparPorAno(
+      tituloSortOrder === "desc" ? ordenados.reverse() : ordenados,
+      (t) => t.vencimento,
+      tituloSortBy === "vencimento" && tituloSortOrder === "asc",
+    );
   }, [titulosFiltrados, tituloSortBy, tituloSortOrder]);
+  const resumoTitulos = useMemo(
+    () =>
+      resumoPorAno(
+        titulosOrdenados,
+        (t) => t.vencimento,
+        { singular: "título", plural: "títulos" },
+        (t) => t.valor,
+      ),
+    [titulosOrdenados],
+  );
+  const titulosPagina = usePaginaLocal(titulosOrdenados);
 
   const mixOrdenado = useMemo(() => {
     const valor = (m: MixRow): string | number | null => {
@@ -618,6 +718,8 @@ export function PosicaoClienteConteudo({
     const ordenado = [...mixFiltrado].sort((a, b) => compareValores(valor(a), valor(b)));
     return mixSortOrder === "desc" ? ordenado.reverse() : ordenado;
   }, [mixFiltrado, mixSortBy, mixSortOrder]);
+  // O mix é por produto, sem data própria para agrupar: só pagina.
+  const mixPagina = usePaginaLocal(mixOrdenado);
 
   if (isLoading) {
     return (
@@ -803,6 +905,9 @@ export function PosicaoClienteConteudo({
             onToggleSort={(k) => toggleSort(k, notaSortBy, setNotaSortBy, setNotaSortOrder)}
             onSelecionar={setNotaSelecionadaId}
             mensagemVazio="Nenhuma nota encontrada."
+            anos={anosNotas}
+            ano={notaAno}
+            onAnoChange={setNotaAno}
           />
         </TabsContent>
 
@@ -817,6 +922,9 @@ export function PosicaoClienteConteudo({
               toggleSort(k, devolucaoSortBy, setDevolucaoSortBy, setDevolucaoSortOrder)
             }
             onSelecionar={setDevolucaoSelecionadaId}
+            anos={anosDevolucoes}
+            ano={devolucaoAno}
+            onAnoChange={setDevolucaoAno}
           />
         </TabsContent>
 
@@ -847,6 +955,7 @@ export function PosicaoClienteConteudo({
                     <SelectItem value="baixado">Baixados</SelectItem>
                   </SelectContent>
                 </Select>
+                <FiltroAno anos={anosTitulos} valor={tituloAno} onChange={setTituloAno} />
                 {emailCobranca && (
                 <Button
                   type="button"
@@ -953,10 +1062,15 @@ export function PosicaoClienteConteudo({
                         <TableHead className="w-16 text-right">Boleto</TableHead>
                       </TableRow>
                     </TableHeader>
-                    <TableBody>
-                      {titulosOrdenados.map((t) => (
+                    <CorpoPorAno
+                      itens={titulosPagina.itens}
+                      data={(t) => t.vencimento}
+                      colunas={7}
+                      resumo={resumoTitulos}
+                      chave={(t) => t.id}
+                    >
+                      {(t) => (
                         <TableRow
-                          key={t.id}
                           className="cursor-pointer"
                           onClick={() => setTituloSelecionadoId(t.id)}
                         >
@@ -981,11 +1095,12 @@ export function PosicaoClienteConteudo({
                             />
                           </TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
+                      )}
+                    </CorpoPorAno>
                   </Table>
                 </div>
               )}
+              {titulosOrdenados.length > 0 && <Paginacao {...titulosPagina.paginacao} />}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1078,7 +1193,7 @@ export function PosicaoClienteConteudo({
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {mixOrdenado.map((m) => (
+                      {mixPagina.itens.map((m) => (
                         <TableRow
                           key={m.produtoId}
                           className="cursor-pointer"
@@ -1102,6 +1217,7 @@ export function PosicaoClienteConteudo({
                   </Table>
                 </div>
               )}
+              {mixOrdenado.length > 0 && <Paginacao {...mixPagina.paginacao} />}
             </CardContent>
           </Card>
         </TabsContent>

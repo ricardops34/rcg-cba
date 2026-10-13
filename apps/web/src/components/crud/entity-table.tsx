@@ -6,7 +6,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -16,14 +15,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SortableTableHead } from "@/components/crud/sortable-table-head";
+import { Paginacao } from "@/components/crud/paginacao";
 import { useAuthStore } from "@/stores/auth-store";
 import { ApiError } from "@/lib/api-client";
-import { Input } from "@/components/ui/input";
 import {
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   Inbox,
   Settings2,
   TriangleAlert,
@@ -345,111 +340,15 @@ export function EntityTable<T>({
         </Table>
       </div>
 
-      <div className="flex flex-col items-center justify-between gap-3 border-t border-border/60 px-4 py-2.5 sm:flex-row">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>
-            {total === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} de {total}
-          </span>
-          <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
-            <SelectTrigger size="sm" className="w-[7.5rem]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[10, 20, 50].map((n) => (
-                <SelectItem key={n} value={String(n)}>
-                  {n} / página
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            title="Primeira página"
-            aria-label="Primeira página"
-            disabled={page <= 1}
-            onClick={() => onPageChange(1)}
-          >
-            <ChevronsLeft className="size-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            title="Página anterior"
-            aria-label="Página anterior"
-            disabled={page <= 1}
-            onClick={() => onPageChange(page - 1)}
-          >
-            <ChevronLeft className="size-4" />
-          </Button>
-          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            Página
-            {/* key: volta a mostrar a página atual quando ela muda por fora (setas, filtro). */}
-            <IrParaPagina key={page} page={page} totalPages={Math.max(totalPages, 1)} onPageChange={onPageChange} />
-            de {Math.max(totalPages, 1)}
-          </div>
-          <Button
-            variant="outline"
-            size="icon"
-            title="Próxima página"
-            aria-label="Próxima página"
-            disabled={page >= totalPages}
-            onClick={() => onPageChange(page + 1)}
-          >
-            <ChevronRight className="size-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            title="Última página"
-            aria-label="Última página"
-            disabled={page >= totalPages}
-            onClick={() => onPageChange(totalPages)}
-          >
-            <ChevronsRight className="size-4" />
-          </Button>
-        </div>
-      </div>
+      <Paginacao
+        className="border-t border-border/60 px-4 py-2.5"
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        totalPages={totalPages}
+        onPageChange={onPageChange}
+        onPageSizeChange={onPageSizeChange}
+      />
     </div>
-  );
-}
-
-/** Campo "Página [n]": aplica no Enter ou ao sair; valor inválido volta ao atual. */
-function IrParaPagina({
-  page,
-  totalPages,
-  onPageChange,
-}: {
-  page: number;
-  totalPages: number;
-  onPageChange: (page: number) => void;
-}) {
-  const [valor, setValor] = useState(String(page));
-
-  function aplicar() {
-    const n = Number(valor);
-    if (!Number.isInteger(n) || n < 1) return setValor(String(page));
-    const destino = Math.min(n, totalPages);
-    if (destino !== page) onPageChange(destino);
-    else setValor(String(page));
-  }
-
-  return (
-    <Input
-      inputMode="numeric"
-      aria-label="Ir para a página"
-      className="h-8 w-14 text-center"
-      value={valor}
-      disabled={totalPages <= 1}
-      onChange={(e) => setValor(e.target.value.replace(/\D/g, ""))}
-      onBlur={aplicar}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") aplicar();
-        if (e.key === "Escape") setValor(String(page));
-      }}
-    />
   );
 }
