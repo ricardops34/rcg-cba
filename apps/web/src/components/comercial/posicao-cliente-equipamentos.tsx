@@ -215,7 +215,7 @@ export function TabelaEquipamentos({
               : "Nenhum equipamento encontrado com esses filtros."}
           </p>
         ) : (
-          <div className="max-h-[440px] overflow-y-auto rounded-lg border">
+          <div className="rounded-lg border">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-card">
                 <TableRow>

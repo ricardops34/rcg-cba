@@ -222,7 +222,7 @@ function TabelaNotas({
         {notas.length === 0 ? (
           <p className="text-sm text-muted-foreground">{mensagemVazio}</p>
         ) : (
-          <div className="max-h-[440px] overflow-y-auto rounded-lg border">
+          <div className="rounded-lg border">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-card">
                 <TableRow>
@@ -336,7 +336,7 @@ function TabelaDevolucoes({
             Nenhuma devolução deste cliente.
           </p>
         ) : (
-          <div className="max-h-[440px] overflow-y-auto rounded-lg border">
+          <div className="rounded-lg border">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-card">
                 <TableRow>
@@ -755,7 +755,7 @@ export function PosicaoClienteConteudo({
 
       <Tabs defaultValue="notas" data-tour="posicao-cliente-detalhe-conteudo">
         <div
-          className="-mx-1 overflow-x-auto px-1 pb-1"
+          className="-mx-1 overflow-x-auto overflow-y-hidden px-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
           data-tour="posicao-cliente-detalhe-abas"
         >
           <TabsList>
@@ -883,7 +883,7 @@ export function PosicaoClienteConteudo({
               {titulosOrdenados.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhum título encontrado.</p>
               ) : (
-                <div className="max-h-[440px] overflow-y-auto rounded-lg border">
+                <div className="rounded-lg border">
                   <Table>
                     <TableHeader className="sticky top-0 z-10 bg-card">
                       <TableRow>
@@ -1005,7 +1005,7 @@ export function PosicaoClienteConteudo({
               {mixOrdenado.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhum produto encontrado.</p>
               ) : (
-                <div className="max-h-[440px] overflow-y-auto rounded-lg border">
+                <div className="rounded-lg border">
                   <Table>
                     <TableHeader className="sticky top-0 z-10 bg-card">
                       <TableRow>
