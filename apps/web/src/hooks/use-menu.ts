@@ -138,6 +138,15 @@ const MODULO_PLATAFORMA: ModuloComMenus = {
       disponivelTelaPequena: false,
       rotinas: [],
     },
+    {
+      id: "plataforma-backups",
+      nome: "Backups de empresas",
+      icone: "archive",
+      rota: "/plataforma/backups",
+      ordem: 8,
+      disponivelTelaPequena: false,
+      rotinas: [],
+    },
   ],
 };
 

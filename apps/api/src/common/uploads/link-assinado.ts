@@ -70,3 +70,21 @@ export function assinarNaResposta<T>(valor: T): T {
   }
   return valor;
 }
+
+/**
+ * Pacotes de backup das empresas (`/uploads/backups-empresas/`): a empresa
+ * inteira num arquivo, então **sempre** com link assinado, curto, e só
+ * gerado para o administrador da plataforma (`BackupEmpresaService.link`).
+ * Não passa pelo `assinarNaResposta`: ninguém recebe esse caminho por acaso.
+ */
+export const PREFIXO_BACKUPS = '/uploads/backups-empresas/';
+
+/** Assina qualquer caminho de `/uploads/` com a validade pedida. */
+export function assinarCaminho(
+  caminho: string,
+  segundos: number,
+  agora = Date.now(),
+): string {
+  const exp = Math.floor(agora / 1000) + segundos;
+  return `${caminho}?exp=${exp}&sig=${assinatura(caminho, exp)}`;
+}

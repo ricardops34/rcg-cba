@@ -10,7 +10,7 @@ import { IntegracaoModule } from './modules/integracao/integracao.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { ErrosLogService } from './modules/erros/erros-log.service';
 import { executarComContexto } from './common/prisma/contexto-banco';
-import { linkValido, PREFIXO_ASSINADO } from './common/uploads/link-assinado';
+import { linkValido, PREFIXO_ASSINADO, PREFIXO_BACKUPS } from './common/uploads/link-assinado';
 import { armazenamento, chaveDoEndereco } from './common/armazenamento/armazenamento';
 import { posix } from 'node:path';
 
@@ -81,10 +81,19 @@ async function bootstrap() {
       return res.status(400).end();
     }
     if (!caminho.startsWith('/uploads/')) return next();
-    if (caminho.startsWith('/uploads/agente/') || caminho.startsWith('/uploads/fichas-importacao/')) {
+    if (
+      caminho.startsWith('/uploads/agente/') ||
+      caminho.startsWith('/uploads/fichas-importacao/') ||
+      // Pacote de backup em montagem (BackupEmpresaService).
+      caminho.startsWith('/uploads/.tmp/')
+    ) {
       return res.status(404).end();
     }
     if (caminho.startsWith(PREFIXO_ASSINADO) && !linkValido(caminho, req.query?.exp, req.query?.sig)) {
+      return res.status(403).end();
+    }
+    // Backup de empresa: a empresa inteira num arquivo — só com link assinado.
+    if (caminho.startsWith(PREFIXO_BACKUPS) && !linkValido(caminho, req.query?.exp, req.query?.sig)) {
       return res.status(403).end();
     }
     // Pasta no S3 (ARMAZENAMENTO_S3_PASTAS): redireciona para o link

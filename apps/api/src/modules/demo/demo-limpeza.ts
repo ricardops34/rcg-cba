@@ -43,6 +43,8 @@ const PRESERVADOS = [
   'AcessoLog',
   'PlataformaAuditoria',
   'ErroLog',
+  // os backups da empresa: são o caminho de volta de uma limpeza feita por engano
+  'EmpresaBackup',
   // configuração da empresa
   'ParametroEmpresa',
   'IntegracaoApiKey',

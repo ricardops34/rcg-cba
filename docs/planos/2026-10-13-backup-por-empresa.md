@@ -13,6 +13,32 @@
   escritório puxa junto com o resto (ver
   `2026-10-13-armazenamento-arquivos-minio.md`).
 
+
+## Situação (13/10/2026)
+
+**Fases 1 a 3 feitas** — código, testes e tela; **falta aplicar a migration**
+`20261013180000_backup_empresas` (dev e produção) e rodar um backup de verdade.
+A Fase 4 (restaurar) não começou.
+
+- Catálogo: `apps/api/src/modules/backup-empresa/backup-catalogo.ts`, com o
+  teste de cobertura (model novo sem decisão, ou campo novo com cara de
+  credencial, quebra o teste).
+- Gerador: `backup-gerador.ts` — páginas de 1000 por chave primária, JSONL e CSV
+  (`;`, BOM) por tabela, arquivos do disco em stream e do MinIO um a um,
+  `manifesto.json` e `LEIA-ME.txt`. Arquivo referenciado que não existe vai em
+  `arquivosAusentes`, sem derrubar o backup.
+- O zip é montado em `uploads/.tmp/` (no volume, não na camada do contêiner) e
+  gravado em `backups-empresas/<empresaId>/` pela camada de armazenamento —
+  ponha `backups-empresas` em `ARMAZENAMENTO_S3_PASTAS` para ir ao MinIO.
+- `/uploads/backups-empresas/` **só** com link assinado (5 min) e `/uploads/.tmp/`
+  fechado, no `main.ts`.
+- Tela: Plataforma → Backups de empresas.
+- `EmpresaBackup` entrou nos **preservados** da limpeza de base
+  (`demo-limpeza.ts`): é o caminho de volta de uma limpeza por engano.
+
+Decididas pela recomendação, sem resposta do usuário (o usuário mandou
+executar): restauração por **script** (Fase 4), agendamento **único** com
+padrão semanal guardando 4 (editável na tela), pacote **sem senha**.
 ## O que é diferente do backup da base
 
 O backup da base (`pg_dump`, Fase 0 do plano do MinIO) é o seguro contra perder

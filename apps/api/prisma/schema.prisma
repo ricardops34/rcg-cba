@@ -148,6 +148,7 @@ model Empresa {
   integracaoEndpointConfigs   IntegracaoEndpointConfig[]
   integracaoCargas           IntegracaoCarga[]
   sugestaoCompraExecucoes    SugestaoCompraExecucao[]
+  backups                    EmpresaBackup[]
   clientesReceitaExecucoes   ClienteReceitaExecucao[]
   clienteEnviosErp           ClienteEnvioErp[]
   comodatoEnviosErp          ComodatoEnvioErp[]
@@ -5451,4 +5452,57 @@ model SmsResposta {
   @@index([empresaId, smsEnvioId])
   @@index([empresaId, clienteId])
   @@map("sms_respostas")
+}
+
+/// Pacote de backup de uma empresa: dados (JSONL e CSV) e arquivos num zip, no
+/// armazenamento (`backups-empresas/<empresaId>/...`). Só a administração da
+/// plataforma gera e baixa. Ver docs/planos/2026-10-13-backup-por-empresa.md.
+model EmpresaBackup {
+  id            String              @id @default(uuid())
+  empresaId     String
+  origem        BackupEmpresaOrigem
+  situacao      BackupEmpresaSituacao @default(gerando)
+  /// Chave no armazenamento; nula enquanto gera ou se falhou.
+  chave         String?
+  bytes         BigInt?
+  registros     Int?
+  arquivos      Int?
+  erro          String?
+  /// Quem pediu; nulo no agendado.
+  solicitadoPor String?
+  iniciadoEm    DateTime            @default(now())
+  concluidoEm   DateTime?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@index([empresaId, iniciadoEm])
+  @@map("empresa_backups")
+}
+
+enum BackupEmpresaOrigem {
+  manual
+  agendado
+}
+
+enum BackupEmpresaSituacao {
+  gerando
+  pronto
+  falhou
+}
+
+/// Agendamento do backup das empresas — um só, para todas (decisão de
+/// 2026-10-13). Linha única, como `ErroLogConfig`.
+model BackupEmpresaConfig {
+  id             String  @id @default("unico")
+  ativo          Boolean @default(true)
+  /// A cada quantos dias cada empresa ganha um backup agendado.
+  frequenciaDias Int     @default(7)
+  /// Quantos backups agendados guardar por empresa; os mais antigos saem.
+  /// Os manuais ficam até alguém excluir.
+  manter         Int     @default(4)
+
+  atualizadoEm  DateTime @updatedAt
+  atualizadoPor String?
+
+  @@map("backup_empresas_config")
 }

@@ -924,6 +924,20 @@ Stack própria na VPS, fora deste repositório. O que ela define:
 - **Sem backup** em 2026-10-13. O plano está em
   `docs/planos/2026-10-13-armazenamento-arquivos-minio.md`.
 
+### Backup por empresa **[escrito em 2026-10-13, não rodado]**
+
+Precisa da migration `20261013180000_backup_empresas` aplicada (como as demais —
+seção "Migrations em produção"). Depois: Plataforma → Backups de empresas.
+
+- O zip é montado em `apps/api/uploads/.tmp/` — **no volume `uploads`**: o
+  disco livre do volume tem de comportar o maior pacote (a mídia da empresa
+  inteira). A API limpa sobras dali ao subir.
+- Com MinIO: incluir `backups-empresas` em `ARMAZENAMENTO_S3_PASTAS`
+  (ex.: `whatsapp,backups-empresas`) para os pacotes irem ao bucket; o usuário
+  de serviço da API já tem acesso ao bucket inteiro.
+- O agendamento roda dentro da API (de hora em hora, a primeira 5 min depois
+  de subir), uma empresa por vez.
+
 ### Ligar o MinIO na API **[escrito em 2026-10-13, não rodado]**
 
 Sem as variáveis, a API grava tudo em disco, como sempre. O código lê as pastas

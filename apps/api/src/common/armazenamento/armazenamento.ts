@@ -1,4 +1,5 @@
 import {
+  copyFile,
   mkdir,
   readdir,
   readFile,
@@ -6,6 +7,7 @@ import {
   unlink,
   writeFile,
 } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import { dirname, join, normalize, sep } from 'node:path';
 import {
   DeleteObjectCommand,
@@ -114,6 +116,30 @@ export class Armazenamento {
     await writeFile(caminho, conteudo);
   }
 
+  /**
+   * Grava um arquivo local grande (o pacote de backup) sem carregá-lo na
+   * memória: stream para o S3, cópia para o disco. O local fica onde está.
+   */
+  async gravarArquivo(chave: string, caminhoLocal: string, mime?: string) {
+    validarChave(chave);
+    if (this.noS3(chave)) {
+      const { size } = await stat(caminhoLocal);
+      await this.s3!.send(
+        new PutObjectCommand({
+          Bucket: this.config.s3!.bucket,
+          Key: chave,
+          Body: createReadStream(caminhoLocal),
+          ContentLength: size,
+          ContentType: mime,
+        }),
+      );
+      return;
+    }
+    const destino = this.caminhoDisco(chave);
+    await mkdir(dirname(destino), { recursive: true });
+    await copyFile(caminhoLocal, destino);
+  }
+
   /** Conteúdo do arquivo, ou `null` se não existe em lugar nenhum. */
   async ler(chave: string): Promise<Buffer | null> {
     validarChave(chave);
@@ -133,6 +159,17 @@ export class Armazenamento {
         throw erro;
       },
     );
+  }
+
+  /**
+   * Caminho no disco, se o arquivo está lá — para quem lê em stream (o zip do
+   * backup) não carregar o arquivo na memória. `null` se só existe no S3 ou
+   * em lugar nenhum.
+   */
+  async caminhoNoDisco(chave: string): Promise<string | null> {
+    const caminho = this.caminhoDisco(validarChave(chave));
+    const info = await stat(caminho).catch(() => null);
+    return info?.isFile() ? caminho : null;
   }
 
   /** Apaga dos dois lugares. Já não existir não é erro. */
