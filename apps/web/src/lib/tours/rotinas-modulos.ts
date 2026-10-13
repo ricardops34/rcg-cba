@@ -856,6 +856,64 @@ export const ROTINAS_GUIADAS: RotinaGuiada[] = [
     "prerequisitos": "É necessário ter permissão para recados e destinatários disponíveis no seu escopo de equipe. Os recados são para a equipe, não para clientes. O tour não envia nem agenda mensagens."
   },
   {
+    "codigo": "equipamentos-comodato",
+    "rota": "/gerencial/equipamentos-comodato",
+    "titulo": "Equipamentos em Comodato",
+    "resumo": "Gerencie os equipamentos disponíveis para comodato e seus produtos aplicáveis.",
+    "resultado": "Abra um equipamento para vincular refis e insumos obrigatórios por modelo.",
+    "passos": [
+      {
+        "seletor": "[data-tour=\"crud-busca\"]",
+        "titulo": "Localize os equipamentos",
+        "descricao": "Pesquise por descrição ou código do equipamento e use Atualizar para recarregar."
+      },
+      {
+        "seletor": "[data-tour=\"crud-lista\"]",
+        "titulo": "Consulte a lista",
+        "descricao": "Confira código, descrição, categoria, clientes atendidos e quantidade de produtos aplicáveis."
+      }
+    ],
+    "seletorPronto": "[data-tour=\"rotina\"]"
+  },
+  {
+    "codigo": "equipamento-comodato-detalhe",
+    "rota": "/gerencial/equipamentos-comodato",
+    "modoRota": "descendente",
+    "titulo": "Detalhe do Equipamento em Comodato",
+    "resumo": "Consulte o equipamento e configure os produtos aplicáveis (refis e peças).",
+    "resultado": "Os produtos aplicáveis cadastrados serão sugeridos automaticamente nas rotinas comerciais.",
+    "passos": [
+      {
+        "titulo": "Dados do equipamento",
+        "descricao": "Confira código ERP, categoria, unidade e quantidade de clientes que já receberam o item."
+      },
+      {
+        "titulo": "Produtos aplicáveis",
+        "descricao": "Adicione refis e insumos compatíveis para apoiar as sugestões de compra e orçamentos."
+      }
+    ],
+    "seletorPronto": "[data-tour=\"rotina\"]"
+  },
+  {
+    "codigo": "gerencial-whatsapp",
+    "rota": "/gerencial/whatsapp",
+    "titulo": "Histórico de WhatsApp",
+    "resumo": "Consulte o histórico centralizado de conversas e mensagens de WhatsApp de toda a equipe.",
+    "resultado": "Localize atendimentos anteriores, filtre por vendedor ou instância e audite os diálogos registrados.",
+    "passos": [
+      {
+        "seletor": "[data-tour=\"crud-busca\"]",
+        "titulo": "Busca nas conversas",
+        "descricao": "Pesquise por contato, cliente, telefone, vendedor ou conteúdo da mensagem."
+      },
+      {
+        "titulo": "Filtro por vendedor e instância",
+        "descricao": "Selecione o vendedor e a linha de WhatsApp desejada para auditar os atendimentos."
+      }
+    ],
+    "seletorPronto": "[data-tour=\"rotina\"]"
+  },
+  {
     "codigo": "consulta-vendas-cliente",
     "rota": "/consultas/vendas-cliente",
     "titulo": "Vendas por Cliente",

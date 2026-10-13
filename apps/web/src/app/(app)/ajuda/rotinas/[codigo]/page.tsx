@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, BookOpen, CirclePlay } from "lucide-react";
 import { notFound } from "next/navigation";
 import { ajudaPorCodigo } from "@/lib/ajuda-rotinas";
+import { GaleriaAjuda } from "@/components/ajuda/galeria-ajuda";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -37,6 +38,11 @@ export default async function AjudaRotinaPage({
           {ajuda.finalidade}
         </p>
       </header>
+
+      {/* Galeria de capturas de tela e visão do sistema */}
+      {ajuda.imagens && ajuda.imagens.length > 0 ? (
+        <GaleriaAjuda imagens={ajuda.imagens} />
+      ) : null}
 
       <div className="space-y-3">
         {ajuda.secoes.map((secao) => (

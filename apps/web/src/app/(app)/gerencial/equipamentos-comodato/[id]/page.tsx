@@ -103,7 +103,7 @@ export default function EquipamentoComodatoDetalhePage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div data-tour="rotina" className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="ghost" size="icon" onClick={() => router.push(LIST_ROUTE)}>
           <ArrowLeft className="size-4" />

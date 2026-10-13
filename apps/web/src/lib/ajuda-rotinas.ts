@@ -1,4 +1,7 @@
 import { AJUDAS_MODULOS } from "./tours/rotinas-modulos";
+import { IMAGENS_POR_ROTINA, type ImagemAjuda } from "./ajuda-imagens";
+
+export type { ImagemAjuda };
 
 export interface SecaoAjuda {
   titulo: string;
@@ -14,9 +17,10 @@ export interface AjudaRotina {
   resumo: string;
   finalidade: string;
   secoes: SecaoAjuda[];
+  imagens?: ImagemAjuda[];
 }
 
-export const AJUDAS_ROTINAS: AjudaRotina[] = [
+const ROTINAS_BASE: AjudaRotina[] = [
   ...AJUDAS_MODULOS,
   {
     codigo: "orcamentos",
@@ -190,7 +194,21 @@ export const AJUDAS_ROTINAS: AjudaRotina[] = [
   },
 ];
 
+export const AJUDAS_ROTINAS: AjudaRotina[] = ROTINAS_BASE.map((r) => ({
+  ...r,
+  imagens: IMAGENS_POR_ROTINA[r.codigo] ?? [],
+}));
+
 export function ajudaPorCodigo(codigo: string) {
+  const item = AJUDAS_ROTINAS.find((ajuda) => ajuda.codigo === codigo);
+  if (!item) return undefined;
+  return {
+    ...item,
+    imagens: IMAGENS_POR_ROTINA[codigo] ?? item.imagens ?? [],
+  };
+}
+
+function _oldAjudaPorCodigo(codigo: string) {
   return AJUDAS_ROTINAS.find((ajuda) => ajuda.codigo === codigo);
 }
 

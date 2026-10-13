@@ -1,13 +1,44 @@
 import Link from "next/link";
-import { FileCheck2, Info, ShieldCheck } from "lucide-react";
+import { ArrowLeft, FileCheck2, Info, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { GaleriaAjuda } from "@/components/ajuda/galeria-ajuda";
+
+const IMAGENS_SOBRE = [
+  {
+    src: "/imagens/ajuda/print_central_ajuda.png",
+    titulo: "Central de Ajuda e Manuais",
+    descricao: "Painel de consulta a guias passo a passo, orientações operacionais e manuais visuais.",
+  },
+  {
+    src: "/imagens/ajuda/print_mural_atalhos.png",
+    titulo: "Mural de Acesso Rápido e Notificações",
+    descricao: "Visão inicial com atalhos para as rotinas mais usadas e alertas em tempo real.",
+  },
+  {
+    src: "/imagens/ajuda/print_meu_perfil.png",
+    titulo: "Perfil do Usuário e Segurança",
+    descricao: "Gestão de dados cadastrais, alteração de senha e número de WhatsApp.",
+  },
+  {
+    src: "/imagens/ajuda/print_login.png",
+    titulo: "Acesso Seguro e Multiempresa",
+    descricao: "Autenticação corporativa com isolamento de dados por empresa e perfis de permissão.",
+  },
+];
 
 export default function SobrePage() {
   const versao = process.env.NEXT_PUBLIC_APP_VERSION ?? "1.0";
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
+      <Button asChild variant="ghost" className="-ml-2">
+        <Link href="/ajuda">
+          <ArrowLeft data-icon="inline-start" />
+          Central de ajuda
+        </Link>
+      </Button>
+
       <header className="space-y-3">
         <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
           <Info className="size-5" />
@@ -23,6 +54,9 @@ export default function SobrePage() {
           isolamento dos dados de cada empresa.
         </p>
       </header>
+
+      {/* Galeria de telas da plataforma */}
+      <GaleriaAjuda imagens={IMAGENS_SOBRE} />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Card>

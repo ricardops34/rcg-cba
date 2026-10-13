@@ -201,7 +201,7 @@ export default function HistoricoWhatsappPage() {
   };
 
   return (
-    <div className="flex flex-col gap-3 min-h-[calc(100dvh-5.5rem)]">
+    <div data-tour="rotina" className="flex flex-col gap-3 min-h-[calc(100dvh-5.5rem)]">
       {/* Barra de cabeçalho padrão com busca e filtros no popover */}
       <CrudHeader
         search={busca}
