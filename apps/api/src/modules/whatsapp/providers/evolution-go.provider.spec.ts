@@ -1,5 +1,8 @@
 import { BadGatewayException } from '@nestjs/common';
-import { EvolutionGoProvider } from './evolution-go.provider';
+import {
+  baseDaApiParaOGateway,
+  EvolutionGoProvider,
+} from './evolution-go.provider';
 import { EvolutionGoClient, EvolutionGoErroHttp } from './evolution-go.client';
 
 describe('EvolutionGoProvider — URL do webhook', () => {
@@ -23,6 +26,39 @@ describe('EvolutionGoProvider — URL do webhook', () => {
     expect(url.pathname).toBe(
       '/api/v1/whatsapp/evolution/webhook/empresa/sessao',
     );
+  });
+});
+
+describe('baseDaApiParaOGateway — valor vindo do Portainer', () => {
+  const original = process.env.WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL;
+  afterEach(() => {
+    if (original === undefined)
+      delete process.env.WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL;
+    else process.env.WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL = original;
+  });
+  const com = (valor: string | undefined) => {
+    if (valor === undefined)
+      delete process.env.WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL;
+    else process.env.WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL = valor;
+    return baseDaApiParaOGateway();
+  };
+
+  it('tira aspas, espaços e barra final', () => {
+    expect(com(' "https://api.rcgdist.com.br/" ')).toBe(
+      'https://api.rcgdist.com.br',
+    );
+  });
+
+  it('vazio cai no padrão de dev', () => {
+    expect(com('')).toBe('http://api:3001');
+    expect(com(undefined)).toBe('http://api:3001');
+  });
+
+  it('sem http(s) recusa com o nome da variável', () => {
+    expect(() => com('api.rcgdist.com.br')).toThrow(
+      /WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL/,
+    );
+    expect(() => com('rcgcba-api:3001')).toThrow(BadGatewayException);
   });
 });
 

@@ -26,11 +26,24 @@ import type {
  * Endereço pelo qual o **gateway** alcança a API — não o do navegador. Em dev é
  * o nome do serviço na rede do compose. Serve ao webhook e a todo arquivo que
  * o gateway precise baixar da API (a foto do perfil).
+ *
+ * O valor vem do Portainer, digitado à mão: aspas coladas do `.env` de exemplo
+ * e espaços saem aqui. O que sobrar sem `http(s)://` é recusado com o nome da
+ * variável — sem isto o sintoma era um "Invalid URL" cru na tela do vendedor.
  */
 export function baseDaApiParaOGateway(): string {
-  return (
-    process.env.WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL ?? 'http://api:3001'
-  ).replace(/\/+$/, '');
+  const bruto = process.env.WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL?.trim();
+  const base = (bruto || 'http://api:3001')
+    .replace(/^["']+|["']+$/g, '')
+    .trim()
+    .replace(/\/+$/, '');
+  if (!/^https?:\/\/[^/\s]+/i.test(base) || !URL.canParse(base)) {
+    throw new BadGatewayException(
+      'WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL inválida na API: informe o endereço ' +
+        'completo, com http:// ou https:// e sem aspas (ex.: https://api.rcgdist.com.br).',
+    );
+  }
+  return base;
 }
 
 /**
