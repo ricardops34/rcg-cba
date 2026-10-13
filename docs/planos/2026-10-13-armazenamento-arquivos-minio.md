@@ -1,4 +1,4 @@
-# Arquivos no MinIO, com backup e prazo para a mídia do WhatsApp
+# Arquivos no MinIO, com backup e exclusão da mídia do WhatsApp
 
 ## Decisões (13/10/2026)
 
@@ -7,8 +7,11 @@
 - **O MinIO hoje não tem backup** — o usuário quer montar. Sem cópia para fora
   da VPS, o MinIO só troca o lugar do risco; o backup faz parte do plano, não é
   extra.
-- **Mídia antiga do WhatsApp pode ser apagada** depois de um prazo. Decisão do
-  usuário ("se possível, sim").
+- **Mídia do WhatsApp só sai pela exclusão do administrador** (excluir o
+  histórico de uma instância, ou a instância com o histórico — permissão
+  `whatsapp-historico.excluir`). **Sem rotina de retenção por prazo.**
+  Decisão do usuário (13/10/2026), que substitui o "apagar depois de um
+  prazo" anotado antes no mesmo dia.
 
 ## Como é hoje
 
@@ -22,9 +25,16 @@
   - o resto (logos, banners, fotos de produto, fichas, avatares) é aberto.
 - O runbook cobre backup do **banco**, não do volume de arquivos. Perder o
   volume deixa mensagens e cadastros apontando para arquivos que não existem.
+- **A exclusão do administrador apaga as linhas, não os arquivos.**
+  `limparConversas` e `excluirInstanciaComHistorico`
+  (`whatsapp-sessao.service.ts`) passam por `apagarConversas`
+  (`apagar-conversas.ts`), que remove conversas e mensagens do banco; a mídia
+  delas fica em `uploads/whatsapp` sem nada que aponte para ela, para sempre.
+  Toda exclusão feita até hoje deixou arquivo órfão.
 - `WhatsappConfig.retencaoDias` existe, aparece na tela de WhatsApp como
   "Retenção das conversas", e **nada o aplica** — o comentário no schema deixa
-  a rotina para a "Fatia 3 (governança)".
+  a rotina para a "Fatia 3 (governança)". Pela decisão de 13/10 não haverá
+  essa rotina; o campo engana quem o preenche (ver Pendências).
 
 ## Plano
 
@@ -64,16 +74,22 @@ inclusive Sem Vínculo) e a privada.
 - `arquivoUrl` das mensagens já gravadas: migrar para a chave, ou o serviço
   aceitar os dois formatos durante a transição.
 
-### Fase 3 — prazo da mídia do WhatsApp
+### Fase 3 — a exclusão do administrador leva os arquivos junto
 
-- Rotina diária que, por empresa, apaga a **mídia** das mensagens com
-  `criadaEm` além do prazo. A mensagem continua no histórico (texto, quem
-  mandou, quando) e mostra "Mídia expirada" no lugar do arquivo.
-- O prazo usa `retencaoDias` (0 = guarda tudo, como hoje). O rótulo da tela
-  muda para dizer que é da mídia — ver Pendências sobre o texto.
-- Alternativa no próprio MinIO: regra de ciclo de vida (lifecycle) no bucket.
-  Mais simples, mas o prazo fica igual para todas as empresas e o banco não
-  fica sabendo que o arquivo sumiu. Recomendação: a rotina na API.
+Não depende do MinIO: vale já com o disco, pela camada da Fase 1 (ou direto,
+se vier antes).
+
+- `apagarConversas` junta os `arquivoUrl` das mensagens antes do delete e,
+  **depois do commit** da transação, apaga os arquivos. Ordem importa: apagar
+  o arquivo antes e a transação falhar deixaria mensagem sem mídia; o inverso
+  (linha apagada, arquivo não) só sobra lixo, e a varredura abaixo recolhe.
+- Falha ao apagar um arquivo não desfaz a exclusão — vai para o log.
+- **Varredura de órfãos**, uma vez, para o que as exclusões já feitas
+  deixaram: arquivo de `whatsapp/` que nenhuma mensagem referencia. Roda em
+  modo "listar" primeiro (quantidade e tamanho), apaga só depois de conferido.
+  Cuidado com arquivo recém-gravado cuja mensagem ainda não foi salva (corte
+  por data de modificação).
+- Sem rotina de retenção por prazo e sem regra de ciclo de vida no bucket.
 
 ### Fase 4 — demais pastas
 
@@ -86,10 +102,8 @@ pequenos e não crescem com o uso.
 
 1. **Destino do backup** fora da VPS: outro provedor S3 (Backblaze B2,
    Wasabi, AWS), um storage box, outro servidor? E a frequência.
-2. **Prazo da mídia** do WhatsApp: quantos dias? Vale o mesmo para todas as
-   empresas ou cada uma escolhe na tela (como o campo já permite)?
-3. **Só a mídia ou a conversa inteira?** O plano apaga só o arquivo e guarda o
-   texto. Apagar também o texto é o que o rótulo atual ("Retenção das
-   conversas") sugere — e perde histórico comercial.
-4. **Dados de acesso do MinIO** (endereço interno, bucket, usuário de
+2. **Campo "Retenção das conversas"** na tela de WhatsApp: sem rotina que o
+   aplique, ele promete algo que não acontece. Recomendação: tirar da tela
+   (a coluna pode ficar no banco, sem uso).
+3. **Dados de acesso do MinIO** (endereço interno, bucket, usuário de
    serviço): seguir o runbook; o que não estiver lá, perguntar e registrar.
