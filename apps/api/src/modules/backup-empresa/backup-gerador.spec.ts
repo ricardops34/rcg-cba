@@ -41,7 +41,7 @@ const DADOS: Record<string, Record<string, unknown>[]> = {
   usuario: [{ id: 'u1', nome: 'Fulana', senhaHash: 'hash-da-senha-secreta' }],
 };
 
-function montarPrisma() {
+function montarPrisma(dados = DADOS) {
   const consultas: { delegate: string; where: unknown }[] = [];
   const tx = new Proxy(
     {},
@@ -49,7 +49,7 @@ function montarPrisma() {
       get: (_alvo, nome: string) => ({
         findMany: ({ where, skip }: { where: unknown; skip: number }) => {
           consultas.push({ delegate: nome, where });
-          return Promise.resolve(skip === 0 ? (DADOS[nome] ?? []) : []);
+          return Promise.resolve(skip === 0 ? (dados[nome] ?? []) : []);
         },
       }),
     },
@@ -77,8 +77,8 @@ describe('BackupGerador', () => {
   });
   afterEach(() => rm(raiz, { recursive: true, force: true }));
 
-  async function gerar() {
-    const { prisma, consultas } = montarPrisma();
+  async function gerar(dados = DADOS) {
+    const { prisma, consultas } = montarPrisma(dados);
     const armazenamento = new Armazenamento({
       raizDisco: join(raiz, 'uploads'),
       pastasS3: [],
@@ -156,5 +156,34 @@ describe('BackupGerador', () => {
     expect(zip).toMatch(/"arquivosAusentes": \[\s*"whatsapp\/sumiu.jpg"\s*\]/);
     expect(r.arquivos).toBe(2);
     expect(r.registros).toBe(9);
+  });
+
+  it('um registro de outra empresa derruba o backup em vez de entrar no pacote', async () => {
+    // Simula a RLS e o filtro falhando juntos numa tabela.
+    const vazado = {
+      ...DADOS,
+      cliente: [
+        {
+          id: 'c-de-outra',
+          empresaId: 'OUTRA-EMPRESA',
+          razaoSocial: 'Cliente alheio',
+        },
+      ],
+    };
+
+    await expect(gerar(vazado)).rejects.toThrow(
+      /fora da empresa.*Cliente.*c-de-outra/,
+    );
+  });
+
+  it('usuário sem vínculo com a empresa também derruba', async () => {
+    const vazado = {
+      ...DADOS,
+      usuario: [...DADOS.usuario, { id: 'u-de-outra', nome: 'Alheio' }],
+    };
+
+    await expect(gerar(vazado)).rejects.toThrow(
+      /fora da empresa.*Usuario.*u-de-outra/,
+    );
   });
 });

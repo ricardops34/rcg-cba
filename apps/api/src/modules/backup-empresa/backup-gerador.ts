@@ -73,6 +73,8 @@ export class BackupGerador {
   private readonly contagem: Record<string, number> = {};
   private readonly arquivosReferenciados = new Set<string>();
   private readonly usuarioIds = new Set<string>();
+  /** O grupo para o qual a linha da empresa aponta. */
+  private grupoId: string | undefined;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -114,6 +116,7 @@ export class BackupGerador {
         id: this.empresaId,
       });
       const grupoId = empresa[0]?.grupoEconomicoId as string | undefined;
+      this.grupoId = grupoId;
       if (grupoId)
         await this.exportarTabela(zip, modelPorNome('GrupoEconomico'), {
           id: grupoId,
@@ -186,6 +189,7 @@ export class BackupGerador {
         }),
       );
       for (const r of pagina) {
+        this.conferirDono(m, r);
         const limpo = this.limpar(m, r);
         this.observar(m, limpo);
         await escrever(outJson, linhaJson(limpo, campos) + '\n');
@@ -204,6 +208,29 @@ export class BackupGerador {
     this.contagem[nome] = total;
     this.registros += total;
     return guardar;
+  }
+
+  /**
+   * Última barreira contra dado de outra empresa no pacote: cada registro é
+   * conferido antes de ser escrito, e um só fora do lugar **derruba o
+   * backup** em vez de entregá-lo. A RLS e o `where` já impedem — isto pega
+   * o dia em que um dos dois falhar (policy esquecida numa tabela nova,
+   * filtro trocado num refactor).
+   */
+  private conferirDono(m: ModelDoBackup, r: Registro) {
+    const dono =
+      m.name === 'Empresa'
+        ? r.id === this.empresaId
+        : m.name === 'GrupoEconomico'
+          ? !!this.grupoId && r.id === this.grupoId
+          : m.name === 'Usuario'
+            ? this.usuarioIds.has(r.id as string)
+            : r.empresaId === this.empresaId;
+    if (!dono) {
+      throw new Error(
+        `Registro fora da empresa no backup (${m.name}, id ${String(r.id)}): pacote descartado.`,
+      );
+    }
   }
 
   /** Tira credenciais: campos mascarados e parâmetros secretos vão vazios. */
