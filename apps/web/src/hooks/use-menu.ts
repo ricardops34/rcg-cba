@@ -129,6 +129,15 @@ const MODULO_PLATAFORMA: ModuloComMenus = {
       disponivelTelaPequena: false,
       rotinas: [],
     },
+    {
+      id: "plataforma-armazenamento",
+      nome: "Armazenamento",
+      icone: "hard-drive",
+      rota: "/plataforma/armazenamento",
+      ordem: 7,
+      disponivelTelaPequena: false,
+      rotinas: [],
+    },
   ],
 };
 

@@ -17,14 +17,23 @@ import type { TenantTx } from '../../common/prisma/prisma.service';
  *
  * As atividades no histórico do cliente ficam: são por cliente e por dia, e
  * não apontam para a conversa.
+ *
+ * A mídia das mensagens está em disco (ou no armazenamento), fora do banco:
+ * o cascade não a alcança. Devolvemos os endereços para quem chamou apagar os
+ * arquivos **depois** do commit (`apagarArquivosDaMidia`) — apagar antes e a
+ * transação falhar deixaria mensagem sem mídia.
  */
 export async function apagarConversas(tx: TenantTx, ids: string[]) {
-  if (ids.length === 0) return { conversas: 0, mensagens: 0 };
+  if (ids.length === 0) return { conversas: 0, mensagens: 0, arquivos: [] };
 
   // Contado antes: depois do delete não há o que contar, e o número é o que a
   // tela devolve a quem confirmou.
   const mensagens = await tx.whatsappMensagem.count({
     where: { conversaId: { in: ids } },
+  });
+  const comArquivo = await tx.whatsappMensagem.findMany({
+    where: { conversaId: { in: ids }, arquivoUrl: { not: null } },
+    select: { arquivoUrl: true },
   });
 
   await tx.notificacao.deleteMany({ where: { referenciaId: { in: ids } } });
@@ -36,5 +45,6 @@ export async function apagarConversas(tx: TenantTx, ids: string[]) {
     where: { id: { in: ids } },
   });
 
-  return { conversas: count, mensagens };
+  const arquivos = comArquivo.map((m) => m.arquivoUrl as string);
+  return { conversas: count, mensagens, arquivos };
 }

@@ -15,6 +15,7 @@ import { cifrarSegredo } from './whatsapp-cripto';
 import type { DadosInstancia } from './providers/whatsapp-provider';
 import { escopoLeituraWhatsapp } from './escopo-whatsapp';
 import { apagarConversas } from './apagar-conversas';
+import { apagarArquivosDaMidia } from './midia-arquivos';
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
 import {
   WHATSAPP_ACEITE_VERSAO,
@@ -765,8 +766,10 @@ export class WhatsappSessaoService {
     sessaoId: string,
     numero: string,
   ): Promise<boolean> {
-    const outras = await this.prisma.withTenant(empresaId, (tx) =>
-      tx.$queryRaw<{ sessaoId: string; empresaId: string }[]>`
+    const outras = await this.prisma.withTenant(
+      empresaId,
+      (tx) =>
+        tx.$queryRaw<{ sessaoId: string; empresaId: string }[]>`
         SELECT * FROM whatsapp_numero_em_uso(${numero}, ${sessaoId})
       `,
     );
@@ -788,12 +791,14 @@ export class WhatsappSessaoService {
     sessaoId: string,
     numero: string,
   ) {
-    await this.provedores.removerInstancia(empresaId, sessaoId).catch((erro) => {
-      this.logger.warn(
-        `Falha ao remover a instância ${sessaoId} com número em uso: ` +
-          `${erro instanceof Error ? erro.message : String(erro)}`,
-      );
-    });
+    await this.provedores
+      .removerInstancia(empresaId, sessaoId)
+      .catch((erro) => {
+        this.logger.warn(
+          `Falha ao remover a instância ${sessaoId} com número em uso: ` +
+            `${erro instanceof Error ? erro.message : String(erro)}`,
+        );
+      });
     await this.prisma.withTenant(empresaId, async (tx) => {
       await tx.whatsappSessaoPeriodo.updateMany({
         where: { empresaId, sessaoId, desconectadoEm: null },
@@ -940,7 +945,12 @@ export class WhatsappSessaoService {
     const sessao = await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappSessao.findFirst({
         where: { id: sessaoId },
-        select: { id: true, status: true, instanciaExterna: true, aceiteEm: true },
+        select: {
+          id: true,
+          status: true,
+          instanciaExterna: true,
+          aceiteEm: true,
+        },
       }),
     );
     if (!sessao || sessao.status === 'conectada' || !sessao.instanciaExterna) {
@@ -960,7 +970,8 @@ export class WhatsappSessaoService {
     }
 
     const config = await this.config.obter(empresaId);
-    if (!config.ativo) return { retomada: false, motivo: 'whatsapp-inativo' as const };
+    if (!config.ativo)
+      return { retomada: false, motivo: 'whatsapp-inativo' as const };
 
     // Reconexão **forçada**: `/instance/connect` vê o cliente parado como
     // "rodando" e só atualiza a configuração (visto no teste real).
@@ -1138,11 +1149,15 @@ export class WhatsappSessaoService {
       return apagado;
     });
 
+    const { arquivos, ...apagado } = resultado;
+    const midia = await apagarArquivosDaMidia(arquivos);
     this.logger.warn(
       `Histórico da instância ${sessao.id} apagado por ${user.id}: ` +
-        `${resultado.conversas} conversas, ${resultado.mensagens} mensagens.`,
+        `${apagado.conversas} conversas, ${apagado.mensagens} mensagens, ` +
+        `${midia.apagados} arquivos de mídia` +
+        (midia.falhas.length ? ` (${midia.falhas.length} não apagados).` : '.'),
     );
-    return { ...resultado, vendedor: sessao.vendedor?.nome ?? 'Empresa' };
+    return { ...apagado, vendedor: sessao.vendedor?.nome ?? 'Empresa' };
   }
 
   /**
@@ -1194,12 +1209,16 @@ export class WhatsappSessaoService {
       return apagado;
     });
 
+    const { arquivos, ...apagado } = resultado;
+    const midia = await apagarArquivosDaMidia(arquivos);
     this.logger.warn(
       `Instância ${sessao.id} excluída com o histórico por ${user.id}: ` +
-        `${resultado.conversas} conversas, ${resultado.mensagens} mensagens.`,
+        `${apagado.conversas} conversas, ${apagado.mensagens} mensagens, ` +
+        `${midia.apagados} arquivos de mídia` +
+        (midia.falhas.length ? ` (${midia.falhas.length} não apagados).` : '.'),
     );
     return {
-      ...resultado,
+      ...apagado,
       excluida: true,
       vendedor: sessao.vendedor?.nome ?? 'Empresa',
     };

@@ -2,7 +2,15 @@ import { apagarConversas } from './apagar-conversas';
 
 describe('apagarConversas', () => {
   const montarTx = () => ({
-    whatsappMensagem: { count: jest.fn().mockResolvedValue(7) },
+    whatsappMensagem: {
+      count: jest.fn().mockResolvedValue(7),
+      findMany: jest
+        .fn()
+        .mockResolvedValue([
+          { arquivoUrl: '/uploads/whatsapp/a.jpg' },
+          { arquivoUrl: '/uploads/whatsapp/b.pdf' },
+        ]),
+    },
     notificacao: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
     lead: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     whatsappConversa: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
@@ -12,7 +20,16 @@ describe('apagarConversas', () => {
     const tx = montarTx();
     const r = await apagarConversas(tx as never, ['c1', 'c2']);
 
-    expect(r).toEqual({ conversas: 2, mensagens: 7 });
+    // A mídia volta para quem chamou apagar depois do commit.
+    expect(r).toEqual({
+      conversas: 2,
+      mensagens: 7,
+      arquivos: ['/uploads/whatsapp/a.jpg', '/uploads/whatsapp/b.pdf'],
+    });
+    expect(tx.whatsappMensagem.findMany).toHaveBeenCalledWith({
+      where: { conversaId: { in: ['c1', 'c2'] }, arquivoUrl: { not: null } },
+      select: { arquivoUrl: true },
+    });
     expect(tx.notificacao.deleteMany).toHaveBeenCalledWith({
       where: { referenciaId: { in: ['c1', 'c2'] } },
     });
@@ -29,7 +46,7 @@ describe('apagarConversas', () => {
     const tx = montarTx();
     const r = await apagarConversas(tx as never, []);
 
-    expect(r).toEqual({ conversas: 0, mensagens: 0 });
+    expect(r).toEqual({ conversas: 0, mensagens: 0, arquivos: [] });
     expect(tx.whatsappConversa.deleteMany).not.toHaveBeenCalled();
     expect(tx.notificacao.deleteMany).not.toHaveBeenCalled();
   });
