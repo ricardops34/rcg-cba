@@ -14,6 +14,9 @@ import { CopiarBotao } from "@/components/crud/copiar-botao";
 import { ProdutoFotosCard } from "@/components/crud/produto-fotos-card";
 import { ProdutoEstoqueCard } from "@/components/comercial/produto-estoque-card";
 import { ProdutoPrecosCard } from "@/components/comercial/produto-precos-card";
+import { ProdutoCamposCard } from "@/components/comercial/produto-campos-card";
+import { ProdutoFichasCard } from "@/components/comercial/produto-fichas-card";
+import { ProdutoRelacionadosCard } from "@/components/comercial/produto-relacionados-card";
 import { regraDescontoLabel } from "@/lib/regra-desconto";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -159,18 +162,86 @@ export function ProdutoDetalheContent({
 }
 
 /**
- * Cortina lateral com o detalhe do produto — usada dentro da Posição de
- * Cliente (aba Mix) pra não perder a busca/scroll/aba de quem está
- * consultando a posição.
+ * As abas do detalhe do produto — a mesma tela na página cheia e na cortina.
+ * `completo` liga as abas que só a rotina de Produtos mostra (Complementares,
+ * Fichas técnicas, Relacionados) e a edição do que não vem do ERP, conforme a
+ * permissão; sem ele fica a consulta rápida de quem está na Posição de
+ * Cliente: dados, estoque e preços.
+ */
+export function ProdutoAbas({
+  produto,
+  completo = false,
+}: {
+  produto: ProdutoDetalhe;
+  completo?: boolean;
+}) {
+  // A mesma permissão vale para a foto e para os dados complementares: são as
+  // duas coisas do produto que não vêm do ERP.
+  const podeEditar = useAuthStore((state) => state.hasPermission("produtos", "editar"));
+  // A aba Estoque lê a rota da Consulta de Estoque, que tem permissão própria.
+  const verEstoque = useAuthStore((state) => state.hasPermission("estoque", "visualizar"));
+  const editar = completo && podeEditar;
+
+  return (
+    // key: ao trocar de produto a cortina volta para Dados gerais.
+    <Tabs key={produto.id} defaultValue="dados">
+      {/* Rola de lado em tela estreita, sem barra à vista. */}
+      <div className="-mx-1 overflow-x-auto overflow-y-hidden px-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <TabsList>
+          <TabsTrigger value="dados">Dados gerais</TabsTrigger>
+          {verEstoque && <TabsTrigger value="estoque">Estoque</TabsTrigger>}
+          <TabsTrigger value="precos">Preços</TabsTrigger>
+          {completo && (
+            <>
+              <TabsTrigger value="complementares">Complementares</TabsTrigger>
+              <TabsTrigger value="fichas">Fichas técnicas</TabsTrigger>
+              <TabsTrigger value="relacionados">Relacionados</TabsTrigger>
+            </>
+          )}
+        </TabsList>
+      </div>
+      <TabsContent value="dados">
+        <ProdutoDetalheContent produto={produto} permitirEdicaoFoto={editar} />
+      </TabsContent>
+      {verEstoque && (
+        <TabsContent value="estoque">
+          <ProdutoEstoqueCard produtoId={produto.id} />
+        </TabsContent>
+      )}
+      <TabsContent value="precos">
+        <ProdutoPrecosCard produtoId={produto.id} />
+      </TabsContent>
+      {completo && (
+        <>
+          <TabsContent value="complementares">
+            <ProdutoCamposCard produtoId={produto.id} permitirEdicao={editar} />
+          </TabsContent>
+          <TabsContent value="fichas">
+            <ProdutoFichasCard produtoId={produto.id} permitirEdicao={editar} />
+          </TabsContent>
+          <TabsContent value="relacionados">
+            <ProdutoRelacionadosCard produtoId={produto.id} permitirEdicao={editar} />
+          </TabsContent>
+        </>
+      )}
+    </Tabs>
+  );
+}
+
+/**
+ * Cortina lateral com o detalhe do produto. Na Posição de Cliente (aba Mix)
+ * abre a consulta rápida; na lista de Produtos abre `completo`, com todas as
+ * abas — a lista fica por baixo, com busca, filtros e página intactos.
  */
 export function ProdutoSheet({
   id,
   onOpenChange,
+  completo = false,
 }: {
   id: string | null;
   onOpenChange: (open: boolean) => void;
+  completo?: boolean;
 }) {
-  const verEstoque = useAuthStore((state) => state.hasPermission("estoque", "visualizar"));
   const {
     data: produto,
     isLoading,
@@ -183,7 +254,10 @@ export function ProdutoSheet({
 
   return (
     <Sheet open={!!id} onOpenChange={onOpenChange}>
-      <ResizableSheetContent defaultWidth={560}>
+      <ResizableSheetContent
+        defaultWidth={completo ? 900 : 560}
+        storageKey={completo ? "plataforma-cortina-largura-produto" : undefined}
+      >
         <SheetHeader className="pr-10">
           {produto ? (
             <ProdutoTitulo produto={produto} titulo={SheetTitle} />
@@ -198,27 +272,7 @@ export function ProdutoSheet({
               Produto não encontrado.
             </p>
           )}
-          {produto && (
-            // key: ao trocar de produto a cortina volta para Dados gerais.
-            <Tabs key={produto.id} defaultValue="dados">
-              <TabsList>
-                <TabsTrigger value="dados">Dados gerais</TabsTrigger>
-                {verEstoque && <TabsTrigger value="estoque">Estoque</TabsTrigger>}
-                <TabsTrigger value="precos">Preços</TabsTrigger>
-              </TabsList>
-              <TabsContent value="dados">
-                <ProdutoDetalheContent produto={produto} />
-              </TabsContent>
-              {verEstoque && (
-                <TabsContent value="estoque">
-                  <ProdutoEstoqueCard produtoId={produto.id} />
-                </TabsContent>
-              )}
-              <TabsContent value="precos">
-                <ProdutoPrecosCard produtoId={produto.id} />
-              </TabsContent>
-            </Tabs>
-          )}
+          {produto && <ProdutoAbas produto={produto} completo={completo} />}
         </div>
       </ResizableSheetContent>
     </Sheet>

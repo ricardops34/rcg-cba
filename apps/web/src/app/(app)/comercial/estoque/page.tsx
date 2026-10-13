@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import type {
   Armazem,
@@ -23,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { EstoqueSheet } from "@/components/comercial/estoque-detalhe";
 
 // Consulta read-only: os saldos entram pelo import do ERP. Uma linha por
 // produto, com o saldo somado em todos os armazéns (ou só no armazém
@@ -32,7 +32,6 @@ const quantidade = (v: number) =>
   v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function EstoquePage() {
-  const router = useRouter();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -41,6 +40,8 @@ export default function EstoquePage() {
   const [armazemId, setArmazemId] = useState<string | undefined>(undefined);
   const [categoriaId, setCategoriaId] = useState<string | undefined>(undefined);
   const [comSaldo, setComSaldo] = useState<"todos" | "sim" | "nao">("sim");
+  // O detalhe abre em cortina por cima da lista: navegar e voltar recriava a lista.
+  const [estoqueId, setEstoqueId] = useState<string | null>(null);
 
   const armazensQuery = useQuery({
     queryKey: ["armazens", "select", "revenda"],
@@ -220,7 +221,7 @@ export default function EstoquePage() {
           setPageSize(n);
           setPage(1);
         }}
-        onRowClick={(p) => router.push(`/comercial/estoque/${p.id}`)}
+        onRowClick={(p) => setEstoqueId(p.id)}
         emptyMessage="Nenhum registro de estoque."
         sortBy={sortBy}
         sortOrder={sortOrder}
@@ -228,6 +229,13 @@ export default function EstoquePage() {
           setSortBy(key);
           setSortOrder(order);
           setPage(1);
+        }}
+      />
+
+      <EstoqueSheet
+        id={estoqueId}
+        onOpenChange={(aberto) => {
+          if (!aberto) setEstoqueId(null);
         }}
       />
     </div>

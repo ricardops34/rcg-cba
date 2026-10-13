@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { ProdutoSheet } from "@/components/comercial/produto-detalhe";
 import { FileText, Images } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -45,6 +46,9 @@ export default function ProdutosPage() {
   // Abre nos ativos: é o catálogo que se vende. Os demais seguem a um clique.
   const [status, setStatus] = useState<StatusFilterValue>("ativos");
   const [categoriaId, setCategoriaId] = useState<string | undefined>(undefined);
+  // O detalhe abre em cortina por cima da lista, como em Clientes e na
+  // Posição de Cliente: navegar e voltar recriava a lista.
+  const [produtoId, setProdutoId] = useState<string | null>(null);
 
   const categoriasQuery = useQuery({
     queryKey: ["categorias", "select", "raizes"],
@@ -195,13 +199,21 @@ export default function ProdutosPage() {
           setPageSize(n);
           setPage(1);
         }}
-        onRowClick={(p) => router.push(`/comercial/produtos/${p.id}`)}
+        onRowClick={(p) => setProdutoId(p.id)}
         emptyMessage="Nenhum produto cadastrado."
         sortBy={sortBy}
         sortOrder={sortOrder}
         onSortChange={(key, order) => {
           setSortBy(key);
           setSortOrder(order);
+        }}
+      />
+
+      <ProdutoSheet
+        id={produtoId}
+        completo
+        onOpenChange={(aberto) => {
+          if (!aberto) setProdutoId(null);
         }}
       />
     </div>

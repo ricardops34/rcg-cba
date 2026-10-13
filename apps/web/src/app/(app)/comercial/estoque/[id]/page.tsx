@@ -5,43 +5,17 @@ import { useQuery } from "@tanstack/react-query";
 import type { EstoqueDetalhe } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  EstoqueBloqueadoBadge,
+  EstoqueDetalheConteudo,
+} from "@/components/comercial/estoque-detalhe";
 import { ArrowLeft } from "lucide-react";
 
 const LIST_ROUTE = "/comercial/estoque";
 
-const moeda = (v: number | null | undefined) =>
-  v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
-// Saldo sempre com duas casas e sem unidade de medida: o número é o que o ERP
-// guarda, e a unidade do cadastro confundia (produto "5KG" com saldo "3 KG").
-const quantidade = (v: number) =>
-  v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const dataBr = (v: string | null | undefined) => {
-  if (!v) return "—";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
-};
-
-function Info({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-sm">{value ?? "—"}</p>
-    </div>
-  );
-}
-
-// Detalhe read-only: abre o saldo do produto por armazém.
+// Detalhe read-only: abre o saldo do produto por armazém. A lista abre o mesmo
+// conteúdo em cortina (EstoqueSheet); esta página fica para quem chega por link.
 export default function EstoqueDetalhePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -64,9 +38,6 @@ export default function EstoqueDetalhePage() {
     return <p className="text-sm text-muted-foreground">Produto não encontrado.</p>;
   }
 
-  const { produto, saldos } = detalhe;
-  const saldoTotal = saldos.reduce((acc, s) => acc + s.saldo, 0);
-
   return (
     <div data-tour="rotina" className="space-y-4">
       <div className="flex items-center gap-3">
@@ -74,72 +45,12 @@ export default function EstoqueDetalhePage() {
           <ArrowLeft className="size-4" />
         </Button>
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold tracking-tight">{produto.descricao}</h1>
-          {!produto.ativo && (
-            <Badge
-              variant="outline"
-              className="border-amber-500/40 bg-amber-500/10 text-xs text-amber-600 dark:text-amber-400"
-            >
-              Bloqueado
-            </Badge>
-          )}
+          <h1 className="text-xl font-semibold tracking-tight">{detalhe.produto.descricao}</h1>
+          {!detalhe.produto.ativo && <EstoqueBloqueadoBadge />}
         </div>
       </div>
 
-      <Card>
-        <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Info label="Código ERP" value={produto.codigoErp} />
-          <Info label="Categoria" value={produto.categoria?.descricao ?? "—"} />
-          <Info label="Saldo total" value={quantidade(saldoTotal)} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent>
-          <p className="mb-3 text-sm font-medium">Saldo por armazém ({saldos.length})</p>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Armazém</TableHead>
-                  <TableHead className="text-right">Saldo</TableHead>
-                  <TableHead className="text-right">Reserva</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {saldos.map((s) => (
-                  <TableRow key={s.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-1.5">
-                        <p>{s.armazem.descricao}</p>
-                        {!s.armazem.ativo && (
-                          <Badge
-                            variant="outline"
-                            className="border-amber-500/40 bg-amber-500/10 text-[10px] text-amber-600 dark:text-amber-400 shrink-0"
-                          >
-                            Bloqueado
-                          </Badge>
-                        )}
-                      </div>
-                      {s.armazem.codigoErp && (
-                        <p className="font-mono text-xs text-muted-foreground">{s.armazem.codigoErp}</p>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className={s.saldo > 0 ? "" : "text-muted-foreground"}>
-                        {quantidade(s.saldo)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {s.reserva != null ? quantidade(s.reserva) : "—"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      <EstoqueDetalheConteudo detalhe={detalhe} />
     </div>
   );
 }
