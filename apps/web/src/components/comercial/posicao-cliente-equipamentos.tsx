@@ -169,8 +169,8 @@ export function TabelaEquipamentos({
   );
 
   return (
-    <Card>
-      <CardContent className="space-y-3">
+    <Card className="min-h-0">
+      <CardContent className="flex min-h-0 flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative w-full sm:max-w-xs">
             <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -215,7 +215,7 @@ export function TabelaEquipamentos({
               : "Nenhum equipamento encontrado com esses filtros."}
           </p>
         ) : (
-          <div className="rounded-lg border">
+          <div className="min-h-0 flex-1 overflow-auto rounded-lg border [&>[data-slot=table-container]]:overflow-visible">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-card">
                 <TableRow>

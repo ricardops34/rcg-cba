@@ -33,6 +33,10 @@ export function PosicaoClienteSheet({
       <ResizableSheetContent
         defaultWidth={1100}
         storageKey="plataforma-cortina-largura-posicao-cliente"
+        // A cortina não rola: a listagem da aba ocupa o que sobra da altura e
+        // é ela que rola (ver `preencherAltura`). Só numa tela baixa demais o
+        // corpo abaixo rola, para a tabela não sumir.
+        className="overflow-y-hidden"
         onInteractOutside={(e) => {
           const alvo = e.target as HTMLElement | null;
           if (alvo?.closest("[data-janela-flutuante]")) e.preventDefault();
@@ -44,9 +48,9 @@ export function PosicaoClienteSheet({
             Notas, títulos, mix e histórico do cliente
           </SheetDescription>
         </SheetHeader>
-        <div className="px-4 pb-4">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4">
           {clienteId ? (
-            <PosicaoClienteConteudo clienteId={clienteId} mostrarVoltar={false} />
+            <PosicaoClienteConteudo clienteId={clienteId} mostrarVoltar={false} preencherAltura />
           ) : null}
         </div>
       </ResizableSheetContent>

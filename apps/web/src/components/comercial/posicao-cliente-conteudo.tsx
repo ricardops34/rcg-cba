@@ -195,8 +195,8 @@ function TabelaNotas({
   mensagemVazio: string;
 }) {
   return (
-    <Card>
-      <CardContent className="space-y-3">
+    <Card className="min-h-0">
+      <CardContent className="flex min-h-0 flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative w-full sm:max-w-xs">
             <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -222,7 +222,7 @@ function TabelaNotas({
         {notas.length === 0 ? (
           <p className="text-sm text-muted-foreground">{mensagemVazio}</p>
         ) : (
-          <div className="rounded-lg border">
+          <div className="min-h-0 flex-1 overflow-auto rounded-lg border [&>[data-slot=table-container]]:overflow-visible">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-card">
                 <TableRow>
@@ -319,8 +319,8 @@ function TabelaDevolucoes({
   onSelecionar: (id: string) => void;
 }) {
   return (
-    <Card>
-      <CardContent className="space-y-3">
+    <Card className="min-h-0">
+      <CardContent className="flex min-h-0 flex-col gap-3">
         <div className="relative w-full sm:max-w-xs">
           <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -336,7 +336,7 @@ function TabelaDevolucoes({
             Nenhuma devolução deste cliente.
           </p>
         ) : (
-          <div className="rounded-lg border">
+          <div className="min-h-0 flex-1 overflow-auto rounded-lg border [&>[data-slot=table-container]]:overflow-visible">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-card">
                 <TableRow>
@@ -414,6 +414,7 @@ export function PosicaoClienteConteudo({
   clienteId,
   mostrarVoltar = true,
   compacto = false,
+  preencherAltura = false,
   aoAbrirConversa,
 }: {
   clienteId: string;
@@ -421,6 +422,11 @@ export function PosicaoClienteConteudo({
   mostrarVoltar?: boolean;
   /** Usa duas colunas nos blocos que ficam encaixados na lateral da conversa. */
   compacto?: boolean;
+  /**
+   * Ocupa a altura do contêiner (a cortina) sem passar dela: dados e totais
+   * ficam fixos e a listagem da aba rola por dentro — sem barra na cortina.
+   */
+  preencherAltura?: boolean;
   /**
    * O "Abrir" dos contatos de WhatsApp. Sem ele (a Posição de Cliente), abre a
    * janela de atendimento por cima da tela — a posição continua aberta atrás.
@@ -628,9 +634,12 @@ export function PosicaoClienteConteudo({
   }
 
   const { cliente, resumo } = posicao;
+  // Na cortina, cada aba é o que rola quando o conteúdo dela não encolhe
+  // (Histórico, Sugestão); as listagens encolhem e rolam só a tabela.
+  const rolagemAba = preencherAltura ? "flex min-h-0 flex-col overflow-y-auto" : undefined;
 
   return (
-    <div className="space-y-4">
+    <div className={preencherAltura ? "flex min-h-0 flex-1 flex-col gap-4" : "space-y-4"}>
       <div
         className="flex min-w-0 items-center gap-3"
         data-tour="posicao-cliente-detalhe-cabecalho"
@@ -753,7 +762,11 @@ export function PosicaoClienteConteudo({
         )}
       </div>
 
-      <Tabs defaultValue="notas" data-tour="posicao-cliente-detalhe-conteudo">
+      <Tabs
+        defaultValue="notas"
+        data-tour="posicao-cliente-detalhe-conteudo"
+        className={preencherAltura ? "min-h-[280px] flex-1" : undefined}
+      >
         <div
           className="-mx-1 overflow-x-auto overflow-y-hidden px-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
           data-tour="posicao-cliente-detalhe-abas"
@@ -778,7 +791,7 @@ export function PosicaoClienteConteudo({
           </TabsList>
         </div>
 
-        <TabsContent value="notas">
+        <TabsContent value="notas" className={rolagemAba}>
           <TabelaNotas
             notas={notasOrdenadas}
             busca={notaSearch}
@@ -793,7 +806,7 @@ export function PosicaoClienteConteudo({
           />
         </TabsContent>
 
-        <TabsContent value="devolucoes">
+        <TabsContent value="devolucoes" className={rolagemAba}>
           <TabelaDevolucoes
             devolucoes={devolucoesOrdenadas}
             busca={devolucaoSearch}
@@ -807,9 +820,9 @@ export function PosicaoClienteConteudo({
           />
         </TabsContent>
 
-        <TabsContent value="titulos">
-          <Card>
-            <CardContent className="space-y-3">
+        <TabsContent value="titulos" className={rolagemAba}>
+          <Card className="min-h-0">
+            <CardContent className="flex min-h-0 flex-col gap-3">
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative w-full sm:max-w-xs">
                   <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -883,7 +896,7 @@ export function PosicaoClienteConteudo({
               {titulosOrdenados.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhum título encontrado.</p>
               ) : (
-                <div className="rounded-lg border">
+                <div className="min-h-0 flex-1 overflow-auto rounded-lg border [&>[data-slot=table-container]]:overflow-visible">
                   <Table>
                     <TableHeader className="sticky top-0 z-10 bg-card">
                       <TableRow>
@@ -977,11 +990,11 @@ export function PosicaoClienteConteudo({
           </Card>
         </TabsContent>
 
-        <TabsContent value="historico">
+        <TabsContent value="historico" className={rolagemAba}>
           <HistoricoAtendimento clienteId={id} />
         </TabsContent>
 
-        <TabsContent value="equipamentos">
+        <TabsContent value="equipamentos" className={rolagemAba}>
           <TabelaEquipamentos
             clienteId={id}
             equipamentos={equipamentos}
@@ -989,9 +1002,9 @@ export function PosicaoClienteConteudo({
           />
         </TabsContent>
 
-        <TabsContent value="mix">
-          <Card>
-            <CardContent className="space-y-3">
+        <TabsContent value="mix" className={rolagemAba}>
+          <Card className="min-h-0">
+            <CardContent className="flex min-h-0 flex-col gap-3">
               <div className="relative w-full sm:max-w-xs">
                 <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -1005,7 +1018,7 @@ export function PosicaoClienteConteudo({
               {mixOrdenado.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhum produto encontrado.</p>
               ) : (
-                <div className="rounded-lg border">
+                <div className="min-h-0 flex-1 overflow-auto rounded-lg border [&>[data-slot=table-container]]:overflow-visible">
                   <Table>
                     <TableHeader className="sticky top-0 z-10 bg-card">
                       <TableRow>
@@ -1093,7 +1106,7 @@ export function PosicaoClienteConteudo({
           </Card>
         </TabsContent>
 
-        <TabsContent value="sugestao">
+        <TabsContent value="sugestao" className={rolagemAba}>
           <Card>
             <CardContent>
               <SugestaoCompraCalculadaTabela
