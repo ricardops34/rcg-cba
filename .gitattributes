@@ -1,0 +1,20 @@
+# Normalização de quebras de linha entre Linux, macOS e Windows
+* text=auto eol=lf
+
+# Scripts e executáveis específicos do Windows
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Arquivos binários
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
