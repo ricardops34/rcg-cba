@@ -4971,8 +4971,9 @@ model WhatsappConfig {
   // dedução manda mensagem para a pessoa errada.
   dddPadrao String?
 
-  // 0 = sem expurgo. A rotina que apaga é da Fatia 3 (governança); a decisão
-  // de por quanto tempo guardar é da empresa e nasce aqui.
+  // Sem uso. Não haverá expurgo por prazo: a mídia e o histórico só saem pela
+  // exclusão do administrador (decisão de 2026-10-13; ver
+  // docs/planos/2026-10-13-armazenamento-arquivos-minio.md). Saiu da tela.
   retencaoDias Int @default(0)
 
   // ---------------------------------------------------------------

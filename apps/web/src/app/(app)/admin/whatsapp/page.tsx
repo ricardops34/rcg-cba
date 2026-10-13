@@ -107,7 +107,6 @@ function EvolutionConfig({ config }: { config: WhatsappConfig }) {
     ativo: config.ativo,
     evolutionUrl: config.evolutionUrl ?? "",
     evolutionVersao: config.evolutionVersao ?? "",
-    retencaoDias: config.retencaoDias,
     historicoDias: config.historicoDias,
     dddPadrao: config.dddPadrao ?? "",
     evolutionAlwaysOnline: config.evolutionAlwaysOnline,
@@ -294,24 +293,6 @@ function EvolutionConfig({ config }: { config: WhatsappConfig }) {
             </Field>
           </FieldGroup>
           <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="retencaoDiasEvolution">Retenção das conversas</FieldLabel>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="retencaoDiasEvolution"
-                  type="number"
-                  min={0}
-                  max={3650}
-                  className="max-w-32"
-                  value={form.retencaoDias}
-                  onChange={(event) =>
-                    setForm((f) => ({ ...f, retencaoDias: Number(event.target.value) }))
-                  }
-                />
-                <span className="text-sm text-muted-foreground">dias</span>
-              </div>
-              <FieldDescription>Zero mantém indefinidamente. O expurgo automático ainda não foi implementado.</FieldDescription>
-            </Field>
             <Field>
               <FieldLabel htmlFor="historicoDiasEvolution">Dias de histórico a importar</FieldLabel>
               <div className="flex items-center gap-2">
