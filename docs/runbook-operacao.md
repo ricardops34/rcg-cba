@@ -900,6 +900,30 @@ Conferir: o saldo aparece em Administração > SMS; um SMS de teste (mensagem
 livre na Posição de um cliente de teste) aparece no histórico de envios, e a
 resposta dele aparece embaixo, depois que o cliente responder.
 
+## MinIO (armazenamento de arquivos) **[stack informada pelo usuário em 2026-10-13; a plataforma ainda não usa]**
+
+Stack própria na VPS, fora deste repositório. O que ela define:
+
+| Item | Valor |
+|---|---|
+| Serviço | `minio` (imagem `quay.io/minio/aistor/minio:RELEASE.2026-03-26T21-24-40Z`) |
+| Rede | `RCGNet` — a mesma da API; de dentro dela: `http://minio:9000` |
+| API S3 (externa) | `https://s3.rcgdist.com.br` (porta 9000 via Traefik) |
+| Console | `https://minio.rcgdist.com.br` (porta 9001 via Traefik) |
+| Região | `eu-south` |
+| Volume | `minio_data` (externo) |
+| Nó | `node.role == manager`, 1 réplica |
+
+- As credenciais de root ficam na stack (`MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`);
+  **não as copie para cá nem para o `.env` da API.** A API e o backup usam,
+  cada um, um usuário de serviço próprio com política restrita ao bucket — a
+  criar quando a migração começar.
+- Nos labels do Traefik os nomes dos roteadores estão trocados
+  (`minio_public` aponta para a API S3, `minio_console` para o console).
+  Funciona; só não se guie pelo nome.
+- **Sem backup** em 2026-10-13. O plano está em
+  `docs/planos/2026-10-13-armazenamento-arquivos-minio.md`.
+
 ## Produção: a API conectava como superusuária **[diagnosticado em 2026-10-07, correção a aplicar]**
 
 Conferido na base `plataforma_rcg` da VPS: a API conectava como

@@ -38,16 +38,35 @@
 
 ## Plano
 
-### Fase 0 — backup do que já existe (antes de qualquer código)
+### Fase 0 — backup numa máquina externa (antes de qualquer código)
 
-Independe do MinIO e protege o que está em produção hoje.
+Destino: **uma máquina fora da VPS** (decisão do usuário, 13/10/2026). Os
+dados da stack do MinIO estão no runbook, seção "MinIO".
 
-- Cópia periódica do volume `uploads` e dos buckets do MinIO para **fora da
-  VPS**. Destino em aberto (ver Pendências).
-- O MinIO tem replicação de bucket (`mc replicate`) para outro S3/MinIO, e o
-  `mc mirror` serve para cópia agendada. Qual usar depende do destino.
-- Procedimento vai para o `docs/runbook-operacao.md` — testado com uma
-  restauração, não só com a cópia.
+**A máquina externa busca; a VPS não empurra.** A credencial fica só na
+máquina de backup, e é de **leitura**. Se a VPS for invadida, quem está nela
+não tem como apagar nem cifrar a cópia — com replicação empurrada pela VPS
+(`mc replicate`), teria.
+
+- Na máquina externa: um MinIO próprio (ou só disco) e o cliente `mc`.
+- Na VPS: um usuário de serviço do MinIO só com `s3:GetObject` e
+  `s3:ListBucket` nos buckets da plataforma. Nunca o root.
+- Cópia incremental por agendamento (cron/systemd timer):
+  `mc mirror --remove origem/ destino/` — de hora em hora para a mídia do
+  WhatsApp; uma vez por dia basta para o resto.
+- **Versionamento ligado no bucket de destino**, com expiração das versões
+  antigas em 30 dias (`mc ilm`). Assim a exclusão do administrador chega ao
+  backup (é a decisão: mídia excluída sai), mas fica recuperável por 30 dias
+  — e um apagão por engano ou ataque também.
+- **Banco junto:** o `pg_dump` (formato custom, o do runbook) puxado pela
+  mesma máquina, diário, com alguns dias guardados. Arquivo sem o banco que
+  o referencia não restaura nada.
+- Até a mídia ir para o MinIO (Fase 2), o volume `uploads` entra no mesmo
+  esquema por `rsync` sobre SSH, também puxado pela máquina externa, com uma
+  chave SSH restrita àquele comando.
+- **Restauração testada**, não só a cópia: subir o backup numa base e num
+  MinIO de teste e abrir uma conversa com mídia. O procedimento vai para o
+  runbook.
 
 ### Fase 1 — camada única de armazenamento
 
@@ -100,10 +119,12 @@ pequenos e não crescem com o uso.
 
 ## Pendências (decisão do usuário)
 
-1. **Destino do backup** fora da VPS: outro provedor S3 (Backblaze B2,
-   Wasabi, AWS), um storage box, outro servidor? E a frequência.
-2. **Campo "Retenção das conversas"** na tela de WhatsApp: sem rotina que o
-   aplique, ele promete algo que não acontece. Recomendação: tirar da tela
-   (a coluna pode ficar no banco, sem uso).
-3. **Dados de acesso do MinIO** (endereço interno, bucket, usuário de
-   serviço): seguir o runbook; o que não estiver lá, perguntar e registrar.
+1. **A máquina externa:** onde fica (escritório, outra VPS, NAS), sistema
+   operacional, espaço em disco, e se tem saída para a internet (precisa
+   alcançar `s3.rcgdist.com.br` e o SSH da VPS).
+2. **Como o backup do banco é feito hoje** na produção (o runbook descreve
+   restaurar, não gerar): para não duplicar nem conflitar.
+3. ~~Campo "Retenção das conversas"~~ — **resolvido 13/10**: saiu da tela; a
+   coluna fica no banco, sem uso.
+4. ~~Dados do MinIO~~ — **recebidos 13/10**: stack registrada no runbook. Os
+   usuários de serviço (API e backup) ainda vão ser criados.
