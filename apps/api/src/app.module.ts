@@ -54,6 +54,7 @@ import { AcessosModule } from './modules/acessos/acessos.module';
 import { ErrosModule } from './modules/erros/erros.module';
 import { ArmazenamentoModule } from './modules/armazenamento/armazenamento.module';
 import { BackupEmpresaModule } from './modules/backup-empresa/backup-empresa.module';
+import { RecuperacaoSenhaModule } from './modules/recuperacao-senha/recuperacao-senha.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { ProdutoCamposModule } from './modules/produto-campos/produto-campos.module';
 import { PortalClienteModule } from './modules/portal-cliente/portal-cliente.module';
@@ -156,6 +157,7 @@ import { GruposEconomicosModule } from './modules/grupos-economicos/grupos-econo
     ErrosModule,
     ArmazenamentoModule,
     BackupEmpresaModule,
+    RecuperacaoSenhaModule,
     LeadsModule,
     ProdutoCamposModule,
   ],

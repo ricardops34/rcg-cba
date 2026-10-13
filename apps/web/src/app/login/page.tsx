@@ -38,6 +38,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { EsqueciSenhaDialog } from "./esqueci-senha-dialog";
 
 const SERVICOS = [
   { icon: TrendingUp, label: "Histórico e tendências" },
@@ -64,6 +65,7 @@ function LoginForm() {
   const { accessToken, user, setTokens, setUser, logout } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
+  const [esqueciAberto, setEsqueciAberto] = useState(false);
 
   // Branding da empresa: quando o alias resolve, exibimos logo e nome dela e
   // escondemos o campo de digitação. Sem alias resolvido, mostramos o campo.
@@ -318,14 +320,20 @@ function LoginForm() {
                 </label>
                 <button
                   type="button"
-                  onClick={() =>
-                    toast.info("Fale com o administrador do sistema para redefinir sua senha.")
-                  }
+                  onClick={() => setEsqueciAberto(true)}
                   className="text-sm font-medium text-primary hover:underline"
                 >
                   Esqueci minha senha
                 </button>
               </div>
+              {esqueciAberto && (
+                <EsqueciSenhaDialog
+                  aberto
+                  onOpenChange={setEsqueciAberto}
+                  emailInicial={form.getValues("email") ?? ""}
+                  empresaAlias={branding?.alias}
+                />
+              )}
 
               <Button type="submit" size="lg" className="w-full" disabled={form.formState.isSubmitting}>
                 <span className="flex-1 text-center">

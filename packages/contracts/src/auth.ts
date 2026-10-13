@@ -19,6 +19,32 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
+/**
+ * "Esqueci minha senha": pede o link por e-mail. A resposta é sempre a mesma,
+ * exista o e-mail ou não — a tela não revela quem tem conta.
+ */
+export const esqueciSenhaSchema = z.object({
+  email: z.string().trim().email("Informe um e-mail válido").describe("E-mail cadastrado"),
+  empresaAlias: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(1)
+    .optional()
+    .describe("Alias da empresa da tela de login: o e-mail sai no nome e no servidor dela"),
+});
+export type EsqueciSenhaInput = z.infer<typeof esqueciSenhaSchema>;
+
+/** Cria a senha nova a partir do link recebido por e-mail. */
+export const redefinirSenhaSchema = z.object({
+  token: z.string().trim().min(20).describe("O token do link (uso único)"),
+  novaSenha: z
+    .string()
+    .min(1, "Informe a nova senha")
+    .describe("Validada pela política de senha da empresa do usuário"),
+});
+export type RedefinirSenhaInput = z.infer<typeof redefinirSenhaSchema>;
+
 export const authTokensSchema = z.object({
   accessToken: z
     .string()

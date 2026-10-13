@@ -46,6 +46,7 @@ export const FORA: Record<string, string> = {
   Cnae: 'referência pública',
   // Segredo ou sessão: restaurar não deve trazer de volta.
   SenhaHistorico: 'hash de senhas antigas',
+  SenhaRedefinicao: 'link de redefinição de senha',
   PortalClienteSessao: 'sessão do portal',
   RefreshToken: 'sessão de login',
   Sessao: 'sessão de login',

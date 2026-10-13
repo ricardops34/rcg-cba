@@ -112,6 +112,10 @@ model Empresa {
   /// é com a empresa, e taxonomia exigiria um cadastro que ninguém pediu.
   segmentos String?
 
+  /// Termos de uso customizados da empresa (em Markdown formatado). Se nulo, a empresa
+  /// pode adotar a sugestão padrão da plataforma.
+  termosUso String? @db.Text
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -295,6 +299,7 @@ model Usuario {
   refreshTokens               RefreshToken[]
   vendedores                  Vendedor[]
   senhaHistorico              SenhaHistorico[]
+  senhaRedefinicoes           SenhaRedefinicao[]
   horarios                    UsuarioHorario[]
   acessos                     AcessoLog[]
   sessoes                     Sessao[]
@@ -909,6 +914,9 @@ enum AcessoEvento {
   sessao_substituida
   // Sessão encerrada pela administração (Acessos > Sessões > Desconectar).
   sessao_desconectada
+  // "Esqueci minha senha" (2026-10-13): o pedido do link e a senha trocada por ele.
+  senha_redefinicao_pedida
+  senha_redefinida
 }
 
 /**
@@ -5505,4 +5513,24 @@ model BackupEmpresaConfig {
   atualizadoPor String?
 
   @@map("backup_empresas_config")
+}
+
+/// Pedido de "Esqueci minha senha": um link de uso único, por e-mail. Guarda
+/// só o hash do token (como `refresh_tokens`); o token em si vai no link e
+/// em nenhum outro lugar. Sem `empresaId` e sem RLS: o pedido chega antes do
+/// login, e o usuário é da conta, não de uma empresa.
+model SenhaRedefinicao {
+  id        String    @id @default(uuid())
+  usuarioId String
+  tokenHash String    @unique
+  expiraEm  DateTime
+  /// Preenchido ao usar o link — ou ao pedir outro, que invalida este.
+  usadoEm   DateTime?
+  ip        String?
+  criadoEm  DateTime  @default(now())
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@map("senha_redefinicoes")
 }
