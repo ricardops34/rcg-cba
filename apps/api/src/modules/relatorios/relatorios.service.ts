@@ -6,10 +6,14 @@ import type {
   RelatorioEstoqueCompraLinha,
   RelatorioEstoqueCompraQuery,
   RelatorioEstoqueCompraResultado,
+  RelatorioOpcao,
+  RelatorioOpcaoTipo,
   RelatorioResultado,
   RelatorioVendasLinha,
   RelatorioVendasQuery,
 } from '@plataforma/contracts';
+import { RELATORIO_OPCOES_LIMITE } from '@plataforma/contracts';
+import { condicaoBuscaTermosSql } from '../../common/busca/termos-busca';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { corteDeVenda } from '../../common/vendas/venda-analitica';
 
@@ -40,10 +44,14 @@ export function periodo(inicio: string, fim: string) {
 export const ESPECIES_DE_COMPRA = ['SPED', 'NFE', 'NF', 'NFA'];
 const NOTA_DE_COMPRA_SQL = Prisma.sql`n."tipo" = 'N' AND n."especieFiscal" IN (${Prisma.join(ESPECIES_DE_COMPRA)})`;
 
-/** Produto da categoria ou da subcategoria escolhida. */
-const daCategoria = (id: string): Prisma.ProdutoWhereInput => ({
-  OR: [{ categoriaId: id }, { subCategoriaId: id }],
+/** Produto de uma das categorias ou subcategorias escolhidas. */
+const dasCategorias = (ids: string[]): Prisma.ProdutoWhereInput => ({
+  OR: [{ categoriaId: { in: ids } }, { subCategoriaId: { in: ids } }],
 });
+
+/** CNPJ/CPF só com dígitos, para casar a busca com ou sem pontuação. */
+const SO_DIGITOS = (coluna: Prisma.Sql) =>
+  Prisma.sql`regexp_replace(COALESCE(${coluna}, ''), '[^0-9]', '', 'g')`;
 
 const contem = (texto: string) => ({
   contains: texto,
@@ -110,48 +118,14 @@ export class RelatoriosService {
         },
       },
     ];
-    if (q.categoriaId)
-      filtros.push({ produto: { is: daCategoria(q.categoriaId) } });
+    if (q.categoriaIds?.length)
+      filtros.push({ produto: { is: dasCategorias(q.categoriaIds) } });
     if (q.documento)
       filtros.push({ notaEntrada: { is: { numero: contem(q.documento) } } });
-    if (q.produto) {
-      filtros.push({
-        produto: {
-          is: {
-            OR: [
-              { codigoErp: contem(q.produto) },
-              { descricao: contem(q.produto) },
-            ],
-          },
-        },
-      });
-    }
-    if (q.fornecedor) {
-      filtros.push({
-        OR: [
-          {
-            fornecedor: {
-              is: {
-                OR: [
-                  { codigoErp: contem(q.fornecedor) },
-                  { razaoSocial: contem(q.fornecedor) },
-                ],
-              },
-            },
-          },
-          {
-            cliente: {
-              is: {
-                OR: [
-                  { codigoErp: contem(q.fornecedor) },
-                  { razaoSocial: contem(q.fornecedor) },
-                ],
-              },
-            },
-          },
-        ],
-      });
-    }
+    if (q.produtoIds?.length) filtros.push({ produtoId: { in: q.produtoIds } });
+    // Nota de compra é tipo N: o participante é sempre fornecedor.
+    if (q.fornecedorIds?.length)
+      filtros.push({ fornecedorId: { in: q.fornecedorIds } });
     const where: Prisma.NotaEntradaItemWhereInput = { AND: filtros };
 
     return this.ler(empresaId, async (tx) => {
@@ -247,21 +221,9 @@ export class RelatoriosService {
           notaSaida: { is: { vendedorId: { in: q.vendedorIds } } },
         });
       }
-      if (q.cliente) {
+      if (q.clienteIds?.length) {
         filtros.push({
-          notaSaida: {
-            is: {
-              cliente: {
-                is: {
-                  OR: [
-                    { codigoErp: contem(q.cliente) },
-                    { razaoSocial: contem(q.cliente) },
-                    { nomeFantasia: contem(q.cliente) },
-                  ],
-                },
-              },
-            },
-          },
+          notaSaida: { is: { clienteId: { in: q.clienteIds } } },
         });
       }
       if (q.municipio) {
@@ -271,16 +233,12 @@ export class RelatoriosService {
           },
         });
       }
-      if (q.categoriaId)
-        filtros.push({ produto: { is: daCategoria(q.categoriaId) } });
+      if (q.categoriaIds?.length)
+        filtros.push({ produto: { is: dasCategorias(q.categoriaIds) } });
       if (q.notaFiscal)
         filtros.push({ notaSaida: { is: { numero: contem(q.notaFiscal) } } });
-      if (q.produtoCodigo)
-        filtros.push({
-          produto: { is: { codigoErp: contem(q.produtoCodigo) } },
-        });
-      if (q.produtoNome)
-        filtros.push({ produto: { is: { descricao: contem(q.produtoNome) } } });
+      if (q.produtoIds?.length)
+        filtros.push({ produtoId: { in: q.produtoIds } });
       const where: Prisma.NotaSaidaItemWhereInput = { AND: filtros };
 
       const total = await tx.notaSaidaItem.count({ where });
@@ -371,23 +329,22 @@ export class RelatoriosService {
       Prisma.sql`p."empresaId" = ${empresaId}`,
       Prisma.sql`p."deletedAt" IS NULL`,
     ];
-    if (q.produto) {
-      const t = `%${q.produto}%`;
+    if (q.produtoIds?.length)
+      filtros.push(Prisma.sql`p."id" IN (${Prisma.join(q.produtoIds)})`);
+    if (q.categoriaIds?.length) {
+      const cats = Prisma.join(q.categoriaIds);
       filtros.push(
-        Prisma.sql`(p."codigoErp" ILIKE ${t} OR p."descricao" ILIKE ${t})`,
-      );
-    }
-    if (q.categoriaId) {
-      filtros.push(
-        Prisma.sql`(p."categoriaId" = ${q.categoriaId} OR p."subCategoriaId" = ${q.categoriaId})`,
+        Prisma.sql`(p."categoriaId" IN (${cats}) OR p."subCategoriaId" IN (${cats}))`,
       );
     }
     if (q.codigoCorp)
       filtros.push(
         Prisma.sql`p."codigoFabricante" ILIKE ${`%${q.codigoCorp}%`}`,
       );
-    if (q.fornecedor)
-      filtros.push(Prisma.sql`ult."fornecedor" ILIKE ${`%${q.fornecedor}%`}`);
+    if (q.fornecedorIds?.length)
+      filtros.push(
+        Prisma.sql`ult."fornecedorId" IN (${Prisma.join(q.fornecedorIds)})`,
+      );
     if (q.comMovimento) {
       filtros.push(
         Prisma.sql`(COALESCE(est."saldo", 0) <> 0 OR COALESCE(ent."qtd", 0) <> 0 OR COALESCE(sai."qtd", 0) <> 0)`,
@@ -444,7 +401,8 @@ export class RelatoriosService {
         -- transportadora (tipo C, quantidade 0) leva o código do produto no
         -- ERP e virava o "fornecedor" — visto em dev em 2026-10-13.
         ult AS (
-          SELECT DISTINCT ON (i."produtoId") i."produtoId", f."razaoSocial" AS "fornecedor",
+          SELECT DISTINCT ON (i."produtoId") i."produtoId", f."id" AS "fornecedorId",
+                 f."razaoSocial" AS "fornecedor",
                  i."vlrUnitario" AS "precoCompra"
           FROM "notas_entrada_itens" i
           JOIN "notas_entrada" n ON n."id" = i."notaEntradaId"
@@ -489,5 +447,89 @@ export class RelatoriosService {
         };
       }),
     };
+  }
+
+  /**
+   * Opções dos filtros de produto, fornecedor e cliente: busca por termos no
+   * código, nome, CNPJ/CPF (com ou sem pontuação) e, no produto, Cod. Corp. e
+   * código de barras. Inativos entram depois — relatório olha o passado.
+   */
+  async opcoes(
+    empresaId: string,
+    tipo: RelatorioOpcaoTipo,
+    busca: string | undefined,
+  ): Promise<RelatorioOpcao[]> {
+    const tabela = {
+      produtos: {
+        sql: Prisma.sql`SELECT t."id", t."codigoErp" AS "codigo", t."descricao" AS "nome",
+                 NULLIF(CONCAT_WS(' · ',
+                   CASE WHEN t."codigoFabricante" <> '' THEN 'Cod. Corp. ' || t."codigoFabricante" END,
+                   CASE WHEN NOT t."ativo" THEN 'inativo' END), '') AS "detalhe",
+                 t."ativo"
+          FROM "produtos" t`,
+        ordem: Prisma.sql`t."ativo" DESC, t."descricao"`,
+        colunas: [
+          Prisma.sql`t."codigoErp"`,
+          Prisma.sql`t."descricao"`,
+          Prisma.sql`t."codigoFabricante"`,
+          Prisma.sql`t."codigoBarras"`,
+        ],
+      },
+      fornecedores: {
+        sql: Prisma.sql`SELECT t."id", t."codigoErp" AS "codigo", t."razaoSocial" AS "nome",
+                 NULLIF(CONCAT_WS(' · ', t."cnpjCpf",
+                   NULLIF(CONCAT_WS('/', t."municipio", t."uf"), ''),
+                   CASE WHEN NOT t."ativo" THEN 'inativo' END), '') AS "detalhe",
+                 t."ativo"
+          FROM "fornecedores" t`,
+        ordem: Prisma.sql`t."ativo" DESC, t."razaoSocial"`,
+        colunas: [
+          Prisma.sql`t."codigoErp"`,
+          Prisma.sql`t."razaoSocial"`,
+          Prisma.sql`t."nomeFantasia"`,
+          Prisma.sql`t."cnpjCpf"`,
+          SO_DIGITOS(Prisma.sql`t."cnpjCpf"`),
+        ],
+      },
+      clientes: {
+        sql: Prisma.sql`SELECT t."id", t."codigoErp" AS "codigo", t."razaoSocial" AS "nome",
+                 NULLIF(CONCAT_WS(' · ', t."cnpjCpf",
+                   NULLIF(CONCAT_WS('/', t."municipio", t."uf"), ''),
+                   CASE WHEN NOT t."ativo" THEN 'inativo' END), '') AS "detalhe",
+                 t."ativo"
+          FROM "clientes" t`,
+        ordem: Prisma.sql`t."ativo" DESC, t."razaoSocial"`,
+        colunas: [
+          Prisma.sql`t."codigoErp"`,
+          Prisma.sql`t."razaoSocial"`,
+          Prisma.sql`t."nomeFantasia"`,
+          Prisma.sql`t."cnpjCpf"`,
+          SO_DIGITOS(Prisma.sql`t."cnpjCpf"`),
+        ],
+      },
+    }[tipo];
+
+    const condicoes = [
+      Prisma.sql`t."empresaId" = ${empresaId}`,
+      Prisma.sql`t."deletedAt" IS NULL`,
+    ];
+    const buscaSql = condicaoBuscaTermosSql(busca, tabela.colunas);
+    if (buscaSql) condicoes.push(buscaSql);
+
+    const linhas = await this.ler(
+      empresaId,
+      (tx) =>
+        tx.$queryRaw<RelatorioOpcao[]>`
+        ${tabela.sql}
+        WHERE ${Prisma.join(condicoes, ' AND ')}
+        ORDER BY ${tabela.ordem}
+        LIMIT ${RELATORIO_OPCOES_LIMITE}`,
+    );
+    return linhas.map(({ id, codigo, nome, detalhe }) => ({
+      id,
+      codigo,
+      nome,
+      detalhe,
+    }));
   }
 }

@@ -4,8 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import type { Categoria } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { FilterMultiSelect } from "@/components/crud/filter-multi-select";
 
 /** Hoje e o primeiro dia do ano, em AAAA-MM-DD (data local). */
 export function hojeIso() {
@@ -98,36 +98,31 @@ export function useCategoriasRelatorio() {
   });
 }
 
-/** Descrição da categoria escolhida, para o cabeçalho do PDF e do Excel. */
-export function useDescricaoCategoria(id: string | undefined) {
+/** Descrição de cada categoria, para os chips e o cabeçalho do PDF e do Excel. */
+export function useNomeCategoria() {
   const { data } = useCategoriasRelatorio();
-  return id ? data?.data.find((c) => c.id === id)?.descricao ?? id : undefined;
+  return (id: string) => data?.data.find((c) => c.id === id)?.descricao ?? id;
 }
 
-export function CampoCategoria({
+/** Categorias com seleção múltipla; vazio = todas. */
+export function CampoCategorias({
   valor,
   onChange,
 }: {
-  valor: string;
-  onChange: (id: string) => void;
+  valor: string[];
+  onChange: (ids: string[]) => void;
 }) {
   const { data } = useCategoriasRelatorio();
   return (
-    <div className="space-y-1">
+    <div className="min-w-0 space-y-1">
       <Label>Categoria</Label>
-      <Select value={valor || "todas"} onValueChange={(v) => onChange(v === "todas" ? "" : v)}>
-        <SelectTrigger className="w-48">
-          <SelectValue placeholder="Todas" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="todas">Todas</SelectItem>
-          {(data?.data ?? []).map((c) => (
-            <SelectItem key={c.id} value={c.id}>
-              {c.descricao}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <FilterMultiSelect
+        value={valor}
+        onChange={onChange}
+        placeholder="Todas"
+        searchPlaceholder="Buscar categoria..."
+        options={(data?.data ?? []).map((c) => ({ value: c.id, label: c.descricao }))}
+      />
     </div>
   );
 }

@@ -2,6 +2,8 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  Param,
+  ParseEnumPipe,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -10,7 +12,10 @@ import { createZodDto } from 'nestjs-zod';
 import {
   relatorioComprasQuerySchema,
   relatorioEstoqueCompraQuerySchema,
+  relatorioOpcoesQuerySchema,
   relatorioVendasQuerySchema,
+  RELATORIO_OPCAO_TIPOS,
+  type RelatorioOpcaoTipo,
 } from '@plataforma/contracts';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -41,6 +46,11 @@ function exigirExportarSeGrande(
   }
 }
 
+/** Enum do ParseEnumPipe a partir da lista dos contratos. */
+const TIPOS_DE_OPCAO = Object.fromEntries(
+  RELATORIO_OPCAO_TIPOS.map((t) => [t, t]),
+);
+
 class RelatorioComprasQueryDto extends createZodDto(
   relatorioComprasQuerySchema,
 ) {}
@@ -49,6 +59,9 @@ class RelatorioVendasQueryDto extends createZodDto(
 ) {}
 class RelatorioEstoqueCompraQueryDto extends createZodDto(
   relatorioEstoqueCompraQuerySchema,
+) {}
+class RelatorioOpcoesQueryDto extends createZodDto(
+  relatorioOpcoesQuerySchema,
 ) {}
 
 /**
@@ -100,5 +113,27 @@ export class RelatoriosController {
     @Query() q: RelatorioEstoqueCompraQueryDto,
   ) {
     return this.service.estoqueCompra(user.empresaAtivaId, q);
+  }
+
+  @ApiOperation({
+    summary:
+      'Opções dos filtros (produtos, fornecedores, clientes) para quem tem algum relatório',
+  })
+  // Quem tem um relatório nem sempre tem o cadastro (o Gerente não tem o de
+  // fornecedores); a rota devolve só código, nome e um detalhe.
+  @RequirePermission(
+    'relatorio-compras',
+    'visualizar',
+    ['relatorio-vendas', 'visualizar'],
+    ['relatorio-estoque-compra', 'visualizar'],
+  )
+  @Get('opcoes/:tipo')
+  opcoes(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('tipo', new ParseEnumPipe(TIPOS_DE_OPCAO))
+    tipo: RelatorioOpcaoTipo,
+    @Query() q: RelatorioOpcoesQueryDto,
+  ) {
+    return this.service.opcoes(user.empresaAtivaId, tipo, q.busca);
   }
 }

@@ -1,21 +1,29 @@
 "use client";
 
 import { useState } from "react";
-import type { RelatorioComprasLinha, RelatorioResultado } from "@plataforma/contracts";
+import type { RelatorioComprasLinha, RelatorioOpcao, RelatorioResultado } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { RelatorioPaginado } from "@/components/relatorios/relatorio-paginado";
 import {
-  CampoCategoria,
+  CampoCategorias,
   CampoData,
   CampoTexto,
   descreverFiltros,
   hojeIso,
   inicioDoAnoIso,
   semVazios,
-  useDescricaoCategoria,
+  useNomeCategoria,
 } from "@/components/relatorios/filtros";
+import {
+  BuscaMultiSelect,
+  CampoFiltro,
+  PainelFiltros,
+  filtrosEmTexto,
+  idsDe,
+  rotuloOpcao,
+  type FiltroAtivo,
+} from "@/components/relatorios/filtros-selecao";
 import type { ColunaRelatorio } from "@/lib/relatorio-export";
 import { PackagePlus } from "lucide-react";
 
@@ -43,14 +51,50 @@ export default function RelatorioComprasPage() {
   const [inicio, setInicio] = useState(inicioDoAnoIso);
   const [fim, setFim] = useState(hojeIso);
   const [documento, setDocumento] = useState("");
-  const [produto, setProduto] = useState("");
-  const [fornecedor, setFornecedor] = useState("");
-  const [categoriaId, setCategoriaId] = useState("");
+  const [produtos, setProdutos] = useState<RelatorioOpcao[]>([]);
+  const [fornecedores, setFornecedores] = useState<RelatorioOpcao[]>([]);
+  const [categoriaIds, setCategoriaIds] = useState<string[]>([]);
   const [consulta, setConsulta] = useState<Record<string, string | number> | null>(null);
+  // Texto dos filtros do que foi gerado, para o PDF e o Excel.
+  const [filtrosGerados, setFiltrosGerados] = useState<[string, string | undefined][]>([]);
+  const nomeCategoria = useNomeCategoria();
 
-  const categoriaTexto = useDescricaoCategoria(consulta?.categoriaId as string | undefined);
+  const ativos: FiltroAtivo[] = [
+    {
+      rotulo: "Documento",
+      valores: documento.trim() ? [{ id: "doc", texto: documento.trim() }] : [],
+      remover: () => setDocumento(""),
+    },
+    {
+      rotulo: "Produto",
+      valores: produtos.map((o) => ({ id: o.id, texto: rotuloOpcao(o) })),
+      remover: (id) => setProdutos((v) => v.filter((o) => o.id !== id)),
+    },
+    {
+      rotulo: "Categoria",
+      valores: categoriaIds.map((id) => ({ id, texto: nomeCategoria(id) })),
+      remover: (id) => setCategoriaIds((v) => v.filter((c) => c !== id)),
+    },
+    {
+      rotulo: "Fornecedor",
+      valores: fornecedores.map((o) => ({ id: o.id, texto: rotuloOpcao(o) })),
+      remover: (id) => setFornecedores((v) => v.filter((o) => o.id !== id)),
+    },
+  ];
 
-  const gerar = () => setConsulta(semVazios({ inicio, fim, documento, produto, fornecedor, categoriaId }));
+  const gerar = () => {
+    setConsulta(
+      semVazios({
+        inicio,
+        fim,
+        documento,
+        produtoIds: idsDe(produtos),
+        fornecedorIds: idsDe(fornecedores),
+        categoriaIds: categoriaIds.join(","),
+      }),
+    );
+    setFiltrosGerados(filtrosEmTexto(ativos));
+  };
 
   return (
     <div className="space-y-6">
@@ -69,21 +113,35 @@ export default function RelatorioComprasPage() {
 
       <Card>
         <CardContent>
-          <form
-            className="flex flex-wrap items-end gap-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              gerar();
-            }}
+          <PainelFiltros
+            ativos={ativos}
+            onGerar={gerar}
+            principais={
+              <>
+                <CampoData id="c-inicio" rotulo="De" valor={inicio} onChange={setInicio} />
+                <CampoData id="c-fim" rotulo="Até" valor={fim} onChange={setFim} />
+              </>
+            }
           >
-            <CampoData id="c-inicio" rotulo="De" valor={inicio} onChange={setInicio} />
-            <CampoData id="c-fim" rotulo="Até" valor={fim} onChange={setFim} />
-            <CampoTexto id="c-doc" rotulo="Documento" valor={documento} onChange={setDocumento} largura="w-36" />
-            <CampoTexto id="c-prod" rotulo="Produto" valor={produto} onChange={setProduto} placeholder="Código ou descrição" />
-            <CampoCategoria valor={categoriaId} onChange={setCategoriaId} />
-            <CampoTexto id="c-forn" rotulo="Fornecedor" valor={fornecedor} onChange={setFornecedor} placeholder="Código ou razão social" />
-            <Button type="submit">Gerar</Button>
-          </form>
+            <CampoFiltro rotulo="Produto">
+              <BuscaMultiSelect
+                tipo="produtos"
+                value={produtos}
+                onChange={setProdutos}
+                buscaPlaceholder="Código, descrição, Cod. Corp. ou EAN..."
+              />
+            </CampoFiltro>
+            <CampoFiltro rotulo="Fornecedor">
+              <BuscaMultiSelect
+                tipo="fornecedores"
+                value={fornecedores}
+                onChange={setFornecedores}
+                buscaPlaceholder="Código, razão social, fantasia ou CNPJ..."
+              />
+            </CampoFiltro>
+            <CampoCategorias valor={categoriaIds} onChange={setCategoriaIds} />
+            <CampoTexto id="c-doc" rotulo="Documento" valor={documento} onChange={setDocumento} largura="w-full" placeholder="Número da nota" />
+          </PainelFiltros>
         </CardContent>
       </Card>
 
@@ -94,12 +152,7 @@ export default function RelatorioComprasPage() {
         consulta={consulta}
         filtrosTexto={
           consulta
-            ? descreverFiltros({ inicio: String(consulta.inicio), fim: String(consulta.fim) }, [
-                ["Documento", consulta.documento as string | undefined],
-                ["Produto", consulta.produto as string | undefined],
-                ["Categoria", categoriaTexto],
-                ["Fornecedor", consulta.fornecedor as string | undefined],
-              ])
+            ? descreverFiltros({ inicio: String(consulta.inicio), fim: String(consulta.fim) }, filtrosGerados)
             : []
         }
         buscar={(page, pageSize) =>

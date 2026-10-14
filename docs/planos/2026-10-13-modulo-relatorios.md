@@ -94,3 +94,31 @@ têm tudo pelo `isAdmin`.
 - **Filtro de categoria** nos três relatórios (categoria ou subcategoria do
   produto). A lista de categorias passa a valer para quem tem um relatório
   (o Gerente não tem o cadastro de categorias).
+
+## Filtros com seleção múltipla e cortina (14/10/2026, usuário)
+
+Pedido: em produto, fornecedor e categoria, pesquisar por nome, código, CNPJ,
+razão social e ir selecionando vários; tela mais enxuta.
+
+- **Produto, fornecedor e cliente** viram seleção múltipla com busca no
+  servidor (`BuscaMultiSelect`, `components/relatorios/filtros-selecao.tsx`).
+  A busca é por termos: produto em código, descrição, Cod. Corp. e EAN;
+  fornecedor/cliente em código, razão social, fantasia e CNPJ/CPF (com ou sem
+  pontuação). Até 100 resultados; "Marcar todos os N resultados" substitui o
+  antigo filtro "contém" (buscar `HIGIN` e marcar tudo).
+- **Categoria** também múltipla (lista local).
+- A API passa a receber ids (`produtoIds`, `fornecedorIds`, `clienteIds`,
+  `categoriaIds`, separados por vírgula) e deixa de aceitar os textos
+  `produto`, `fornecedor`, `cliente`, `produtoCodigo`, `produtoNome`,
+  `categoriaId`. Ficam como texto: documento/NF, cidade e Cod. Corp.
+- **Opções**: rota própria `GET /relatorios/opcoes/:tipo` para quem tem
+  qualquer relatório — o Gerente não tem o cadastro de fornecedores; a rota
+  devolve só id, código, nome e um detalhe (CNPJ, cidade, Cod. Corp.).
+- **Cortina**: período, **Filtros (n)** e **Gerar** sempre à vista; os demais
+  numa área recolhível que fecha ao gerar. O que está escolhido aparece como
+  chip com × para tirar.
+- Estoque e compra: o filtro de fornecedor é pelo **id do fornecedor da
+  última compra** (antes, texto na razão social).
+
+**Situação:** tipos (api/web), lint e testes do módulo ok; **não validado
+ponta a ponta** — Docker parado em 14/10. Falta a conferência na tela.

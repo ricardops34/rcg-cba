@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import type {
   RelatorioEstoqueCompraLinha,
   RelatorioEstoqueCompraResultado,
+  RelatorioOpcao,
 } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
@@ -17,14 +18,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { usePaginaLocal } from "@/components/comercial/posicao-cliente-ano";
 import {
-  CampoCategoria,
+  CampoCategorias,
   CampoData,
   CampoTexto,
   dataBr,
   hojeIso,
   semVazios,
-  useDescricaoCategoria,
+  useNomeCategoria,
 } from "@/components/relatorios/filtros";
+import {
+  BuscaMultiSelect,
+  CampoFiltro,
+  PainelFiltros,
+  filtrosEmTexto,
+  idsDe,
+  rotuloOpcao,
+  type FiltroAtivo,
+} from "@/components/relatorios/filtros-selecao";
 import {
   ehNumerica,
   exportarRelatorioExcel,
@@ -56,13 +66,15 @@ export default function RelatorioEstoqueCompraPage() {
   const [fim, setFim] = useState(hojeIso);
   const [inicio, setInicio] = useState(() => mesesAntes(hojeIso(), 3));
   const [mesesCompra, setMesesCompra] = useState("6");
-  const [produto, setProduto] = useState("");
+  const [produtos, setProdutos] = useState<RelatorioOpcao[]>([]);
   const [codigoCorp, setCodigoCorp] = useState("");
-  const [fornecedor, setFornecedor] = useState("");
-  const [categoriaId, setCategoriaId] = useState("");
+  const [fornecedores, setFornecedores] = useState<RelatorioOpcao[]>([]);
+  const [categoriaIds, setCategoriaIds] = useState<string[]>([]);
   const [comMovimento, setComMovimento] = useState(true);
   const [consulta, setConsulta] = useState<Record<string, string | number> | null>(null);
-  const categoriaTexto = useDescricaoCategoria(consulta?.categoriaId as string | undefined);
+  // Texto dos filtros do que foi gerado, para o PDF e o Excel.
+  const [filtrosGerados, setFiltrosGerados] = useState<[string, string | undefined][]>([]);
+  const nomeCategoria = useNomeCategoria();
   const [ordem, setOrdem] = useState<Ordem>({ coluna: "codigo", sentido: "asc" });
   // PDF e Excel só com a ação Exportar da rotina.
   const podeExportar = useAuthStore((s) => s.hasPermission("relatorio-estoque-compra", "exportar"));
@@ -72,20 +84,45 @@ export default function RelatorioEstoqueCompraPage() {
     if (valor !== "datas") setInicio(mesesAntes(fim, Number(valor)));
   };
 
-  const gerar = () =>
+  const ativos: FiltroAtivo[] = [
+    {
+      rotulo: "Produto",
+      valores: produtos.map((o) => ({ id: o.id, texto: rotuloOpcao(o) })),
+      remover: (id) => setProdutos((v) => v.filter((o) => o.id !== id)),
+    },
+    {
+      rotulo: "Fornecedor",
+      valores: fornecedores.map((o) => ({ id: o.id, texto: rotuloOpcao(o) })),
+      remover: (id) => setFornecedores((v) => v.filter((o) => o.id !== id)),
+    },
+    {
+      rotulo: "Categoria",
+      valores: categoriaIds.map((id) => ({ id, texto: nomeCategoria(id) })),
+      remover: (id) => setCategoriaIds((v) => v.filter((c) => c !== id)),
+    },
+    {
+      rotulo: "Cod. Corp.",
+      valores: codigoCorp.trim() ? [{ id: "corp", texto: codigoCorp.trim() }] : [],
+      remover: () => setCodigoCorp(""),
+    },
+  ];
+
+  const gerar = () => {
     setConsulta(
       semVazios({
         inicio,
         fim,
         mesesPeriodo: atalho === "datas" ? undefined : Number(atalho),
         mesesCompra,
-        produto,
+        produtoIds: idsDe(produtos),
         codigoCorp,
-        fornecedor,
-        categoriaId,
+        fornecedorIds: idsDe(fornecedores),
+        categoriaIds: categoriaIds.join(","),
         comMovimento: String(comMovimento),
       }),
     );
+    setFiltrosGerados(filtrosEmTexto(ativos));
+  };
 
   const { data, isLoading, isFetching, error } = useQuery({
     queryKey: ["relatorios", "estoque-compra", consulta],
@@ -134,14 +171,7 @@ export default function RelatorioEstoqueCompraPage() {
         `Movimento: ${dataBr(String(consulta.inicio))} a ${dataBr(String(consulta.fim))}` +
           (data ? ` (${data.mesesPeriodo.toLocaleString("pt-BR")} meses)` : ""),
         `Compra para ${String(consulta.mesesCompra)} meses · Estoque dos armazéns de revenda`,
-        ...[
-          ["Produto", consulta.produto],
-          ["Cod. Corp.", consulta.codigoCorp],
-          ["Fornecedor", consulta.fornecedor],
-          ["Categoria", categoriaTexto],
-        ]
-          .filter(([, v]) => v)
-          .map(([r, v]) => `${String(r)}: ${String(v)}`),
+        ...filtrosGerados.filter(([, v]) => v).map(([r, v]) => `${r}: ${v}`),
       ]
     : [];
 
@@ -175,69 +205,83 @@ export default function RelatorioEstoqueCompraPage() {
 
       <Card>
         <CardContent>
-          <form
-            className="flex flex-wrap items-end gap-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              gerar();
-            }}
+          <PainelFiltros
+            ativos={ativos}
+            onGerar={gerar}
+            principais={
+              <>
+                <div className="space-y-1">
+                  <Label>Período do movimento</Label>
+                  <Select value={atalho} onValueChange={escolherAtalho}>
+                    <SelectTrigger className="w-36">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["3", "4", "5", "6"].map((m) => (
+                        <SelectItem key={m} value={m}>
+                          {m} meses
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="datas">Escolher datas</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <CampoData
+                  id="e-inicio"
+                  rotulo="De"
+                  valor={inicio}
+                  onChange={(v) => {
+                    setInicio(v);
+                    setAtalho("datas");
+                  }}
+                />
+                <CampoData
+                  id="e-fim"
+                  rotulo="Até"
+                  valor={fim}
+                  onChange={(v) => {
+                    setFim(v);
+                    if (atalho !== "datas") setInicio(mesesAntes(v, Number(atalho)));
+                  }}
+                />
+                <div className="space-y-1">
+                  <Label htmlFor="e-meses">Comprar para (meses)</Label>
+                  <Input
+                    id="e-meses"
+                    type="number"
+                    min={1}
+                    max={24}
+                    className="w-28"
+                    value={mesesCompra}
+                    onChange={(e) => setMesesCompra(e.target.value)}
+                  />
+                </div>
+              </>
+            }
           >
-            <div className="space-y-1">
-              <Label>Período do movimento</Label>
-              <Select value={atalho} onValueChange={escolherAtalho}>
-                <SelectTrigger className="w-36">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {["3", "4", "5", "6"].map((m) => (
-                    <SelectItem key={m} value={m}>
-                      {m} meses
-                    </SelectItem>
-                  ))}
-                  <SelectItem value="datas">Escolher datas</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <CampoData
-              id="e-inicio"
-              rotulo="De"
-              valor={inicio}
-              onChange={(v) => {
-                setInicio(v);
-                setAtalho("datas");
-              }}
-            />
-            <CampoData
-              id="e-fim"
-              rotulo="Até"
-              valor={fim}
-              onChange={(v) => {
-                setFim(v);
-                if (atalho !== "datas") setInicio(mesesAntes(v, Number(atalho)));
-              }}
-            />
-            <div className="space-y-1">
-              <Label htmlFor="e-meses">Comprar para (meses)</Label>
-              <Input
-                id="e-meses"
-                type="number"
-                min={1}
-                max={24}
-                className="w-28"
-                value={mesesCompra}
-                onChange={(e) => setMesesCompra(e.target.value)}
+            <CampoFiltro rotulo="Produto">
+              <BuscaMultiSelect
+                tipo="produtos"
+                value={produtos}
+                onChange={setProdutos}
+                buscaPlaceholder="Código, descrição, Cod. Corp. ou EAN..."
               />
-            </div>
-            <CampoTexto id="e-prod" rotulo="Nosso código e produto" valor={produto} onChange={setProduto} />
-            <CampoTexto id="e-corp" rotulo="Cod. Corp." valor={codigoCorp} onChange={setCodigoCorp} largura="w-36" />
-            <CampoCategoria valor={categoriaId} onChange={setCategoriaId} />
-            <CampoTexto id="e-forn" rotulo="Fornecedor" valor={fornecedor} onChange={setFornecedor} />
-            <div className="flex items-center gap-2 pb-2">
+            </CampoFiltro>
+            <CampoFiltro rotulo="Fornecedor (da última compra)">
+              <BuscaMultiSelect
+                tipo="fornecedores"
+                value={fornecedores}
+                onChange={setFornecedores}
+                buscaPlaceholder="Código, razão social, fantasia ou CNPJ..."
+              />
+            </CampoFiltro>
+            <CampoCategorias valor={categoriaIds} onChange={setCategoriaIds} />
+            <CampoTexto id="e-corp" rotulo="Cod. Corp." valor={codigoCorp} onChange={setCodigoCorp} largura="w-full" placeholder="Contém" />
+            <div className="flex items-center gap-2 self-end pb-2">
               <Switch id="e-mov" checked={comMovimento} onCheckedChange={setComMovimento} />
               <Label htmlFor="e-mov">Só com estoque ou movimento</Label>
             </div>
-            <Button type="submit">Gerar</Button>
-          </form>
+          </PainelFiltros>
         </CardContent>
       </Card>
 

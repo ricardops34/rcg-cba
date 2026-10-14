@@ -13,6 +13,14 @@ const dataSchema = z
 
 const textoOpcional = z.string().trim().min(1).optional();
 
+/** Ids separados por vírgula na query; vazio = todos. */
+const ids = (descricao: string) =>
+  z
+    .string()
+    .optional()
+    .transform((v) => (v ? v.split(",").map((s) => s.trim()).filter(Boolean) : undefined))
+    .describe(`${descricao}, ids separados por vírgula; vazio = todos`);
+
 /** Compras e Vendas paginam; a exportação pede páginas grandes até o teto. */
 const paginacaoSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -27,9 +35,9 @@ export const relatorioComprasQuerySchema = paginacaoSchema.extend({
   inicio: dataSchema.describe("Início do período (data de digitação)"),
   fim: dataSchema.describe("Fim do período (data de digitação)"),
   documento: textoOpcional.describe("Número da nota contém"),
-  categoriaId: textoOpcional.describe("Categoria (ou subcategoria) do produto"),
-  produto: textoOpcional.describe("Código ou descrição do produto contém"),
-  fornecedor: textoOpcional.describe("Código ou razão social do fornecedor/cliente contém"),
+  categoriaIds: ids("Categorias (ou subcategorias) do produto"),
+  produtoIds: ids("Produtos"),
+  fornecedorIds: ids("Fornecedores"),
 });
 export type RelatorioComprasQuery = z.infer<typeof relatorioComprasQuerySchema>;
 
@@ -55,17 +63,12 @@ export interface RelatorioComprasLinha {
 export const relatorioVendasQuerySchema = paginacaoSchema.extend({
   inicio: dataSchema.describe("Início do período (emissão)"),
   fim: dataSchema.describe("Fim do período (emissão)"),
-  vendedorIds: z
-    .string()
-    .optional()
-    .transform((v) => (v ? v.split(",").map((s) => s.trim()).filter(Boolean) : undefined))
-    .describe("Vendedores, ids separados por vírgula; vazio = todos"),
-  cliente: textoOpcional.describe("Código, razão social ou fantasia do cliente contém"),
+  vendedorIds: ids("Vendedores"),
+  clienteIds: ids("Clientes"),
   municipio: textoOpcional.describe("Município do cliente contém"),
   notaFiscal: textoOpcional.describe("Número da nota contém"),
-  categoriaId: textoOpcional.describe("Categoria (ou subcategoria) do produto"),
-  produtoCodigo: textoOpcional.describe("Código do produto contém"),
-  produtoNome: textoOpcional.describe("Descrição do produto contém"),
+  categoriaIds: ids("Categorias (ou subcategorias) do produto"),
+  produtoIds: ids("Produtos"),
 });
 export type RelatorioVendasQuery = z.infer<typeof relatorioVendasQuerySchema>;
 
@@ -101,10 +104,10 @@ export const relatorioEstoqueCompraQuerySchema = z.object({
     .max(24)
     .default(6)
     .describe("Para quantos meses comprar: a comprar = média × meses − estoque"),
-  produto: textoOpcional.describe("Nosso código ou descrição contém"),
+  produtoIds: ids("Produtos"),
   codigoCorp: textoOpcional.describe("Cod. Corp. (B1_XFOR) contém"),
-  categoriaId: textoOpcional.describe("Categoria (ou subcategoria) do produto"),
-  fornecedor: textoOpcional.describe("Fornecedor da última compra contém"),
+  categoriaIds: ids("Categorias (ou subcategorias) do produto"),
+  fornecedorIds: ids("Fornecedor da última compra"),
   comMovimento: z
     .enum(["true", "false"])
     .default("false")
@@ -125,6 +128,36 @@ export interface RelatorioEstoqueCompraLinha {
   ultimoPreco: number | null;
   media: number;
   aComprar: number;
+}
+
+// ------------------------------------------------- Opções dos filtros
+
+/**
+ * Busca das opções dos filtros de produto, fornecedor e cliente. Rota própria
+ * do módulo: quem tem um relatório nem sempre tem o cadastro (o Gerente não
+ * tem o de fornecedores), e aqui só sai o necessário para escolher.
+ */
+export const RELATORIO_OPCAO_TIPOS = ["produtos", "fornecedores", "clientes"] as const;
+export type RelatorioOpcaoTipo = (typeof RELATORIO_OPCAO_TIPOS)[number];
+
+export const relatorioOpcoesQuerySchema = z.object({
+  busca: z
+    .string()
+    .trim()
+    .optional()
+    .describe("Código, nome, CNPJ/CPF ou Cod. Corp. (produto); por termos"),
+});
+export type RelatorioOpcoesQuery = z.infer<typeof relatorioOpcoesQuerySchema>;
+
+/** Teto de opções por busca. */
+export const RELATORIO_OPCOES_LIMITE = 100;
+
+export interface RelatorioOpcao {
+  id: string;
+  codigo: string | null;
+  nome: string;
+  /** CNPJ, município, Cod. Corp. — o que separa nomes parecidos. */
+  detalhe: string | null;
 }
 
 export interface RelatorioResultado<T> {
