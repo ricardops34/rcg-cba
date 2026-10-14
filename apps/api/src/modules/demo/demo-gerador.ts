@@ -909,6 +909,12 @@ export async function gerarDemo(
     const cesta = cestaDoRamo[cliente.ramo];
 
     for (const m of MESES) {
+      // Nota fiscal não tem emissão no futuro — o mês seguinte (deslocamento
+      // 1) é povoado para orçamento e meta, não para nota/título já emitido.
+      // Gerar `dtEmissao` ali (e a `emissao` do título, que é a mesma data)
+      // deixava "dias sem comprar" negativo na Posição de Cliente.
+      if (m.deslocamento > 0) continue;
+
       // Nem todo cliente compra todo mês: positivação de 100% da base não
       // existe, e é justamente o número em destaque no Dashboard Comercial.
       //
