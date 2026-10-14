@@ -48,9 +48,21 @@ describe('jpegDoAvatar', () => {
 });
 
 describe('nomeDeAssinatura', () => {
-  const tx = (usuario: { nome: string; nomeWhatsapp: string | null } | null) =>
+  const tx = (
+    usuario: {
+      nome: string;
+      nomeWhatsapp: string | null;
+      usarNomeWhatsapp?: boolean;
+    } | null,
+  ) =>
     ({
-      usuario: { findUnique: jest.fn().mockResolvedValue(usuario) },
+      usuario: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue(
+            usuario && { usarNomeWhatsapp: true, ...usuario },
+          ),
+      },
     }) as never;
   const user = { id: 'u1', nome: 'Nome do Token' };
 
@@ -67,6 +79,19 @@ describe('nomeDeAssinatura', () => {
     await expect(
       nomeDeAssinatura(
         tx({ nome: 'Ricardo Patay Sotomayor', nomeWhatsapp: '  ' }),
+        user,
+      ),
+    ).resolves.toBe('Ricardo Patay Sotomayor');
+  });
+
+  it('desligado, assina com o nome completo mesmo com o texto preenchido', async () => {
+    await expect(
+      nomeDeAssinatura(
+        tx({
+          nome: 'Ricardo Patay Sotomayor',
+          nomeWhatsapp: 'Ricardo',
+          usarNomeWhatsapp: false,
+        }),
         user,
       ),
     ).resolves.toBe('Ricardo Patay Sotomayor');

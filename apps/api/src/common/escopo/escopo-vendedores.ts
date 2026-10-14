@@ -108,6 +108,27 @@ export async function resolverEscopoDoUsuario(
  * sobrescrever a restrição: um vendedorId fora do escopo força resultado
  * vazio em vez de vazar carteiras de fora do time.
  */
+/**
+ * Este vendedor pode atender e usar as ferramentas do WhatsApp (2ª via de
+ * título, XML, boleto, orçamento) para cliente de carteira alheia?
+ *
+ * Permissão por vendedor (`Vendedor.atendeOutrasCarteiras`), não por perfil —
+ * decisão de 2026-10-14. Vale só dentro do atendimento de WhatsApp
+ * (`WhatsappAcoesService`); nenhuma outra tela olha este campo.
+ */
+export async function podeAtenderOutraCarteira(
+  tx: TenantTx,
+  empresaId: string,
+  vendedorId: string | null,
+): Promise<boolean> {
+  if (!vendedorId) return false;
+  const vendedor = await tx.vendedor.findFirst({
+    where: { id: vendedorId, empresaId },
+    select: { atendeOutrasCarteiras: true },
+  });
+  return vendedor?.atendeOutrasCarteiras ?? false;
+}
+
 export function combinarFiltroVendedor(escopo: EscopoVendedores, vendedorIdQuery?: string) {
   if (escopo === null) return vendedorIdQuery ? { vendedorId: vendedorIdQuery } : {};
   if (!vendedorIdQuery) return { vendedorId: { in: escopo } };

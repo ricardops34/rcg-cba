@@ -296,9 +296,18 @@ export class OrcamentosService {
     });
   }
 
-  findAll(empresaId: string, user: AuthenticatedUser, query: OrcamentoQuery) {
+  findAll(
+    empresaId: string,
+    user: AuthenticatedUser,
+    query: OrcamentoQuery,
+    opcoes: { ignorarEscopo?: boolean } = {},
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      // `ignorarEscopo`: só o atendimento de WhatsApp fora da carteira usa
+      // isto (`Vendedor.atendeOutrasCarteiras`).
+      const escopo = opcoes.ignorarEscopo
+        ? null
+        : await resolverEscopoVendedores(tx, empresaId, user);
       const numeroBuscado = query.search ? numeroDeBusca(query.search) : null;
       const where = {
         empresaId,
@@ -357,9 +366,16 @@ export class OrcamentosService {
     });
   }
 
-  async findOne(empresaId: string, user: AuthenticatedUser, id: string) {
+  async findOne(
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+    opcoes: { ignorarEscopo?: boolean } = {},
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const escopo = opcoes.ignorarEscopo
+        ? null
+        : await resolverEscopoVendedores(tx, empresaId, user);
       const orcamento = await tx.orcamento.findFirst({
         where: {
           id,
@@ -378,9 +394,19 @@ export class OrcamentosService {
     });
   }
 
-  create(empresaId: string, user: AuthenticatedUser, input: OrcamentoCreate) {
+  create(
+    empresaId: string,
+    user: AuthenticatedUser,
+    input: OrcamentoCreate,
+    opcoes: { ignorarEscopo?: boolean } = {},
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      // `ignorarEscopo`: só o atendimento de WhatsApp fora da carteira usa
+      // isto (`Vendedor.atendeOutrasCarteiras`) — cria o orçamento em nome do
+      // cliente mesmo fora da hierarquia de quem está atendendo.
+      const escopo = opcoes.ignorarEscopo
+        ? null
+        : await resolverEscopoVendedores(tx, empresaId, user);
       const vendedorDoCliente = await this.garantirClienteNoEscopo(
         tx,
         empresaId,

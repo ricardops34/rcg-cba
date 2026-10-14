@@ -109,6 +109,7 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
     tipo: "vendedor",
     vinculo: null,
     usaDashboard: true,
+    atendeOutrasCarteiras: false,
     superiorId: null,
     ativo: true,
     desligado: false,
@@ -127,6 +128,7 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
           tipo: vendedor.tipo,
           vinculo: vendedor.vinculo ?? null,
           usaDashboard: vendedor.usaDashboard,
+          atendeOutrasCarteiras: vendedor.atendeOutrasCarteiras,
           superiorId: vendedor.superiorId ?? null,
           ativo: vendedor.ativo,
           desligado: vendedor.desligado,
@@ -367,6 +369,16 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
                     onCheckedChange={(v) => form.setValue("usaDashboard", v === true)}
                   />
                   Usa em Dashboard
+                </label>
+                {/* Vale só dentro do atendimento de WhatsApp — libera este
+                    vendedor a usar 2ª via/XML/boleto/orçamento e a vincular
+                    contato a cliente de carteira alheia. */}
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={form.watch("atendeOutrasCarteiras")}
+                    onCheckedChange={(v) => form.setValue("atendeOutrasCarteiras", v === true)}
+                  />
+                  Atende clientes de outras carteiras (WhatsApp)
                 </label>
                 {/* Desligado é o que inativa: o servidor mantém `ativo` como
                     espelho, e é `ativo` que os selects do sistema consultam. */}

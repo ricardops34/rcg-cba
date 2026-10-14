@@ -504,6 +504,12 @@ export const whatsappConversaSchema = z.object({
    */
   vendedorId: z.string().uuid(),
   vendedorNome: z.string(),
+  /**
+   * Dono da carteira do cliente (`cliente.vendedorId`) — pode ser diferente
+   * de `vendedorNome` acima, que é quem está atendendo esta conversa. Null
+   * sem cliente vinculado, ou sem vendedor no cadastro dele.
+   */
+  clienteVendedorNome: z.string().nullable(),
   sessaoNumero: z
     .string()
     .nullable()

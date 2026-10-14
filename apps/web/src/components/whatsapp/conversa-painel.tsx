@@ -303,6 +303,15 @@ export function Conversa({
                     Sem Vínculo
                   </Badge>
                 )}
+                {/* Dono da carteira do cliente — pode ser outro vendedor que
+                    não quem está atendendo esta conversa (ver "Atendente"
+                    abaixo). Só aparece com cliente vinculado e vendedor
+                    cadastrado. */}
+                {conversa?.clienteVendedorNome ? (
+                  <Badge variant="outline" className="h-4 px-1.5 text-[10px] font-medium">
+                    Carteira: {conversa.clienteVendedorNome}
+                  </Badge>
+                ) : null}
               </div>
               <p className="truncate text-xs text-muted-foreground flex items-center gap-1.5">
                 <span>WhatsApp {telefoneBonito(conversa?.contato.telefoneNormalizado ?? null)}</span>

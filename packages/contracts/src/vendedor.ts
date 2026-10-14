@@ -50,6 +50,13 @@ export const vendedorCreateSchema = z.object({
   vinculo: vinculoVendedorSchema.nullable().optional(),
   /** Aparece nas telas gerenciais (dashboard, objetivos). */
   usaDashboard: z.boolean().default(true),
+  /**
+   * Libera, só pra este vendedor, atender e usar as ferramentas do WhatsApp
+   * (2ª via, XML, boleto, orçamento) para cliente de carteira alheia, e
+   * vincular contato sem cliente a cliente de outro vendedor. Vale só dentro
+   * do atendimento de WhatsApp.
+   */
+  atendeOutrasCarteiras: z.boolean().default(false),
   /** A quem este cadastro responde. Nulo no topo da hierarquia. */
   superiorId: z.string().uuid().nullable().optional(),
   // `desligado` é o controle de saída do vendedor e o que a tela mostra; o
@@ -104,6 +111,7 @@ export const VENDEDOR_EXAMPLE: Vendedor = {
   tipo: "vendedor",
   vinculo: "clt",
   usaDashboard: true,
+  atendeOutrasCarteiras: false,
   superiorId: null,
   ativo: true,
   desligado: false,
@@ -127,6 +135,7 @@ export const VENDEDOR_CREATE_EXAMPLE: VendedorCreate = {
   tipo: "vendedor",
   vinculo: "clt",
   usaDashboard: true,
+  atendeOutrasCarteiras: false,
   superiorId: null,
   ativo: true,
   desligado: false,

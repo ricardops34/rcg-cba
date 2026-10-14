@@ -10,6 +10,7 @@ import { AtividadesService } from '../atividades/atividades.service';
 import { OrcamentosService } from '../orcamentos/orcamentos.service';
 import { registrarAtividadeOrcamento } from '../orcamentos/registrar-atividade-orcamento';
 import { registrarAtividadeDocumento } from '../../common/atividades/registrar-atividade-documento';
+import { podeAtenderOutraCarteira } from '../../common/escopo/escopo-vendedores';
 import type {
   WhatsappAgendarVisita,
   WhatsappEnviarBoleto,
@@ -82,24 +83,36 @@ export class WhatsappAcoesService {
       }),
     );
 
-    // De quem é a ação, quando ela precisa de um vendedor (a visita agendada
-    // vira atividade dele).
-    //
-    // No aparelho do vendedor a resposta é imediata: a sessão é dele. No número
-    // institucional não há dono, e a pergunta passa a ter ordem: quem assumiu a
-    // conversa, e na falta dele o vendedor da carteira do cliente. Se nem isso
-    // existir, a ação não tem a quem pertencer — e atribuí-la a alguém
-    // arbitrário criaria tarefa na agenda de quem não a combinou.
-    const vendedorId =
-      conversa.sessao.vendedorId ??
-      conversa.atendenteVendedorId ??
-      cliente?.vendedorId ??
-      null;
+    // Quem de fato está atendendo: no aparelho do vendedor a resposta é
+    // imediata (a sessão é dele); no número institucional não há dono, e vale
+    // quem assumiu a conversa.
+    const vendedorAtendimentoId =
+      conversa.sessao.vendedorId ?? conversa.atendenteVendedorId ?? null;
+
+    // O dono da carteira vem primeiro: é nele que a agenda/histórico do
+    // cliente precisa aparecer, não em quem por acaso atendeu. Cai no
+    // atendente só quando o cliente não tem vendedor nenhum cadastrado — se
+    // nem isso existir, a ação não tem a quem pertencer.
+    const vendedorId = cliente?.vendedorId ?? vendedorAtendimentoId ?? null;
+
+    // Libera as ferramentas (título, nota, boleto, orçamento) pra carteira
+    // alheia quando quem atende tem `Vendedor.atendeOutrasCarteiras` — vale só
+    // aqui, dentro do atendimento desta conversa.
+    const ignorarEscopo = await this.prisma.withTenant(empresaId, (tx) =>
+      podeAtenderOutraCarteira(tx, empresaId, vendedorAtendimentoId),
+    );
 
     return {
       clienteId: conversa.clienteId,
       clienteNome: cliente?.razaoSocial ?? 'cliente',
       vendedorId,
+      // Só preenchido quando quem atendeu não é o dono da carteira — nulo no
+      // caso comum, pra não gravar um campo redundante em toda atividade.
+      vendedorAtendimentoId:
+        vendedorAtendimentoId && vendedorAtendimentoId !== vendedorId
+          ? vendedorAtendimentoId
+          : null,
+      ignorarEscopo,
     };
   }
 
@@ -115,21 +128,23 @@ export class WhatsappAcoesService {
     user: AuthenticatedUser,
     conversaId: string,
   ) {
-    const { clienteId, vendedorId } = await this.contexto(
+    const { clienteId, vendedorId, vendedorAtendimentoId, ignorarEscopo } =
+      await this.contexto(empresaId, user, conversaId);
+
+    const resultado = (await this.titulos.findAll(
       empresaId,
       user,
-      conversaId,
-    );
-
-    const resultado = (await this.titulos.findAll(empresaId, user, {
-      page: 1,
-      pageSize: 20,
-      sortBy: 'vencimento',
-      sortOrder: 'asc',
-      status: 'em_aberto',
-      ativo: true,
-      clienteId,
-    } as never)) as { data: TituloLinha[] };
+      {
+        page: 1,
+        pageSize: 20,
+        sortBy: 'vencimento',
+        sortOrder: 'asc',
+        status: 'em_aberto',
+        ativo: true,
+        clienteId,
+      } as never,
+      { ignorarEscopo },
+    )) as { data: TituloLinha[] };
 
     const linhas = resultado.data ?? [];
     if (linhas.length === 0) {
@@ -167,6 +182,7 @@ export class WhatsappAcoesService {
         evento: 'titulos_whatsapp',
         clienteId,
         vendedorId,
+        vendedorAtendimentoId,
         numero: '',
         descricao: `${linhas.length} título(s) · ${this.moeda(total)}`,
       }),
@@ -187,16 +203,25 @@ export class WhatsappAcoesService {
     user: AuthenticatedUser,
     conversaId: string,
   ) {
-    const { clienteId } = await this.contexto(empresaId, user, conversaId);
-    return this.titulos.findAll(empresaId, user, {
-      page: 1,
-      pageSize: 30,
-      sortBy: 'vencimento',
-      sortOrder: 'asc',
-      status: 'em_aberto',
-      ativo: true,
-      clienteId,
-    } as never);
+    const { clienteId, ignorarEscopo } = await this.contexto(
+      empresaId,
+      user,
+      conversaId,
+    );
+    return this.titulos.findAll(
+      empresaId,
+      user,
+      {
+        page: 1,
+        pageSize: 30,
+        sortBy: 'vencimento',
+        sortOrder: 'asc',
+        status: 'em_aberto',
+        ativo: true,
+        clienteId,
+      } as never,
+      { ignorarEscopo },
+    );
   }
 
   /** Notas do cliente com a informação de quais têm XML — o seletor do DANFE. */
@@ -205,14 +230,23 @@ export class WhatsappAcoesService {
     user: AuthenticatedUser,
     conversaId: string,
   ) {
-    const { clienteId } = await this.contexto(empresaId, user, conversaId);
-    return this.notas.findAll(empresaId, user, {
-      page: 1,
-      pageSize: 30,
-      sortBy: 'dtEmissao',
-      sortOrder: 'desc',
-      clienteId,
-    } as never);
+    const { clienteId, ignorarEscopo } = await this.contexto(
+      empresaId,
+      user,
+      conversaId,
+    );
+    return this.notas.findAll(
+      empresaId,
+      user,
+      {
+        page: 1,
+        pageSize: 30,
+        sortBy: 'dtEmissao',
+        sortOrder: 'desc',
+        clienteId,
+      } as never,
+      { ignorarEscopo },
+    );
   }
 
   /**
@@ -233,16 +267,14 @@ export class WhatsappAcoesService {
     conversaId: string,
     input: WhatsappEnviarDanfe,
   ) {
-    const { clienteId, clienteNome } = await this.contexto(
-      empresaId,
-      user,
-      conversaId,
-    );
+    const { clienteId, clienteNome, vendedorAtendimentoId, ignorarEscopo } =
+      await this.contexto(empresaId, user, conversaId);
 
     const nota = (await this.notas.findOne(
       empresaId,
       user,
       input.notaSaidaId,
+      { ignorarEscopo },
     )) as { clienteId: string | null; numero: string };
     if (nota.clienteId !== clienteId) {
       throw new BadRequestException(
@@ -334,6 +366,7 @@ export class WhatsappAcoesService {
         evento: 'danfe_whatsapp',
         clienteId: danfe.clienteId,
         vendedorId: danfe.vendedorId,
+        vendedorAtendimentoId,
         numero: String(danfe.numero),
         descricao: [
           `Enviado para ${clienteNome} pelo WhatsApp`,
@@ -363,16 +396,14 @@ export class WhatsappAcoesService {
     conversaId: string,
     input: WhatsappEnviarBoleto,
   ) {
-    const { clienteId, clienteNome } = await this.contexto(
-      empresaId,
-      user,
-      conversaId,
-    );
+    const { clienteId, clienteNome, vendedorAtendimentoId, ignorarEscopo } =
+      await this.contexto(empresaId, user, conversaId);
 
     const titulo = (await this.titulos.findOne(
       empresaId,
       user,
       input.tituloReceberId,
+      { ignorarEscopo },
     )) as { clienteId: string | null };
     if (titulo.clienteId !== clienteId) {
       throw new BadRequestException(
@@ -427,6 +458,7 @@ export class WhatsappAcoesService {
         evento: 'boleto_whatsapp',
         clienteId: boleto.clienteId,
         vendedorId: boleto.vendedorId,
+        vendedorAtendimentoId,
         numero: boleto.numeroDocumento,
         descricao: `Enviado para ${clienteNome} pelo WhatsApp · ${this.titulos.descreverBoleto(
           boleto.vencimento,
@@ -484,22 +516,24 @@ export class WhatsappAcoesService {
     user: AuthenticatedUser,
     conversaId: string,
   ) {
-    const { clienteId, vendedorId } = await this.contexto(
+    const { clienteId, vendedorId, vendedorAtendimentoId, ignorarEscopo } =
+      await this.contexto(empresaId, user, conversaId);
+
+    const resultado = (await this.notas.findAll(
       empresaId,
       user,
-      conversaId,
-    );
-
-    const resultado = (await this.notas.findAll(empresaId, user, {
-      // Pede mais do que vai mandar porque a base legada tem notas com valor
-      // zerado (devolução, ajuste), e uma lista com "R$ 0,00" no WhatsApp do
-      // cliente só gera pergunta.
-      page: 1,
-      pageSize: 30,
-      sortBy: 'dtEmissao',
-      sortOrder: 'desc',
-      clienteId,
-    } as never)) as { data: NotaLinha[] };
+      {
+        // Pede mais do que vai mandar porque a base legada tem notas com
+        // valor zerado (devolução, ajuste), e uma lista com "R$ 0,00" no
+        // WhatsApp do cliente só gera pergunta.
+        page: 1,
+        pageSize: 30,
+        sortBy: 'dtEmissao',
+        sortOrder: 'desc',
+        clienteId,
+      } as never,
+      { ignorarEscopo },
+    )) as { data: NotaLinha[] };
 
     const linhas = (resultado.data ?? [])
       .filter((n) => Number(n.vlrBruto ?? 0) > 0)
@@ -534,6 +568,7 @@ export class WhatsappAcoesService {
         evento: 'notas_whatsapp',
         clienteId,
         vendedorId,
+        vendedorAtendimentoId,
         numero: '',
         descricao: `${linhas.length} nota(s) fiscal(is)`,
       }),
@@ -553,14 +588,23 @@ export class WhatsappAcoesService {
     user: AuthenticatedUser,
     conversaId: string,
   ) {
-    const { clienteId } = await this.contexto(empresaId, user, conversaId);
-    return this.orcamentos.findAll(empresaId, user, {
-      page: 1,
-      pageSize: 20,
-      sortBy: 'createdAt',
-      sortOrder: 'desc',
-      clienteId,
-    } as never);
+    const { clienteId, ignorarEscopo } = await this.contexto(
+      empresaId,
+      user,
+      conversaId,
+    );
+    return this.orcamentos.findAll(
+      empresaId,
+      user,
+      {
+        page: 1,
+        pageSize: 20,
+        sortBy: 'createdAt',
+        sortOrder: 'desc',
+        clienteId,
+      } as never,
+      { ignorarEscopo },
+    );
   }
 
   /**
@@ -583,23 +627,28 @@ export class WhatsappAcoesService {
     conversaId: string,
     input: WhatsappNovoOrcamento,
   ) {
-    const { clienteId, vendedorId } = await this.contexto(
+    const { clienteId, vendedorId, ignorarEscopo } = await this.contexto(
       empresaId,
       user,
       conversaId,
     );
 
-    const orcamento = (await this.orcamentos.create(empresaId, user, {
-      clienteId,
-      vendedorId,
-      titulo: input.titulo,
-      status: 'rascunho',
-      condicaoPagamentoId: input.condicaoPagamentoId ?? null,
-      dataValidade: input.dataValidade ?? null,
-      ...(input.observacao ? { observacao: input.observacao } : {}),
-      ativo: true,
-      itens: input.itens,
-    } as never)) as { id: string; numero: number };
+    const orcamento = (await this.orcamentos.create(
+      empresaId,
+      user,
+      {
+        clienteId,
+        vendedorId,
+        titulo: input.titulo,
+        status: 'rascunho',
+        condicaoPagamentoId: input.condicaoPagamentoId ?? null,
+        dataValidade: input.dataValidade ?? null,
+        ...(input.observacao ? { observacao: input.observacao } : {}),
+        ativo: true,
+        itens: input.itens,
+      } as never,
+      { ignorarEscopo },
+    )) as { id: string; numero: number };
 
     if (!input.enviar) return { orcamento, enviado: false as const };
 
@@ -634,7 +683,7 @@ export class WhatsappAcoesService {
     conversaId: string,
     input: WhatsappEnviarOrcamento,
   ) {
-    const { clienteId, clienteNome } = await this.contexto(
+    const { clienteId, clienteNome, ignorarEscopo } = await this.contexto(
       empresaId,
       user,
       conversaId,
@@ -644,6 +693,7 @@ export class WhatsappAcoesService {
       empresaId,
       user,
       input.orcamentoId,
+      { ignorarEscopo },
     );
     if (orcamento.clienteId !== clienteId) {
       throw new BadRequestException(
@@ -702,11 +752,8 @@ export class WhatsappAcoesService {
     conversaId: string,
     input: WhatsappAgendarVisita,
   ) {
-    const { clienteId, vendedorId } = await this.contexto(
-      empresaId,
-      user,
-      conversaId,
-    );
+    const { clienteId, vendedorId, vendedorAtendimentoId, ignorarEscopo } =
+      await this.contexto(empresaId, user, conversaId);
 
     if (!vendedorId) {
       throw new BadRequestException(
@@ -715,16 +762,21 @@ export class WhatsappAcoesService {
       );
     }
 
-    const atividade = await this.atividades.create(empresaId, user, {
-      tipo: input.tipo,
-      titulo: input.titulo,
-      ...(input.descricao ? { descricao: input.descricao } : {}),
-      dataVencimento: input.dataVencimento ?? null,
-      clienteId,
-      vendedorId,
-      concluida: false,
-      ativo: true,
-    });
+    const atividade = await this.atividades.create(
+      empresaId,
+      user,
+      {
+        tipo: input.tipo,
+        titulo: input.titulo,
+        ...(input.descricao ? { descricao: input.descricao } : {}),
+        dataVencimento: input.dataVencimento ?? null,
+        clienteId,
+        vendedorId,
+        concluida: false,
+        ativo: true,
+      },
+      { ignorarEscopo, vendedorAtendimentoId },
+    );
 
     await this.prisma.withTenant(empresaId, (tx) =>
       tx.whatsappAcaoRegistro.create({

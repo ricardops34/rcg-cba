@@ -11,6 +11,7 @@ import { WhatsappPareamentoCard } from "@/components/perfil/whatsapp-pareamento-
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { TermosAceitosCard } from "@/components/perfil/termos-aceitos-card";
 import { ProfilePhoto } from "@/components/perfil/profile-photo";
@@ -23,13 +24,16 @@ export default function PerfilPage() {
   const [nomeEditado, setNome] = useState<string | undefined>();
   const [nascimentoEditado, setNascimento] = useState<string | undefined>();
   const [nomeWhatsappEditado, setNomeWhatsapp] = useState<string | undefined>();
+  const [usarNomeWhatsappEditado, setUsarNomeWhatsapp] = useState<boolean | undefined>();
   const nome = nomeEditado ?? user?.nome ?? "";
   const nascimento = nascimentoEditado ?? user?.dataNascimento ?? "";
   const nomeWhatsapp = nomeWhatsappEditado ?? user?.nomeWhatsapp ?? "";
+  const usarNomeWhatsapp = usarNomeWhatsappEditado ?? user?.usarNomeWhatsapp ?? true;
   const mudou =
     nome.trim() !== user?.nome ||
     nascimento !== (user?.dataNascimento ?? "") ||
-    nomeWhatsapp.trim() !== (user?.nomeWhatsapp ?? "");
+    nomeWhatsapp.trim() !== (user?.nomeWhatsapp ?? "") ||
+    usarNomeWhatsapp !== (user?.usarNomeWhatsapp ?? true);
   const salvarDados = useMutation({
     mutationFn: () =>
       apiFetch<CurrentUser>("/auth/me", {
@@ -37,6 +41,7 @@ export default function PerfilPage() {
         body: {
           nome: nome.trim(),
           nomeWhatsapp: nomeWhatsapp.trim(),
+          usarNomeWhatsapp,
           ...(nascimento ? { dataNascimento: nascimento } : {}),
         },
       }),
@@ -45,6 +50,7 @@ export default function PerfilPage() {
       setNome(undefined);
       setNascimento(undefined);
       setNomeWhatsapp(undefined);
+      setUsarNomeWhatsapp(undefined);
       queryClient.setQueryData(["auth", "me"], atualizado);
       toast.success("Dados atualizados");
     },
@@ -96,22 +102,33 @@ export default function PerfilPage() {
                 </p>
               </Field>
               <Field>
-                <FieldLabel htmlFor="nome-whatsapp">Nome no WhatsApp</FieldLabel>
+                <div className="flex items-center justify-between gap-2">
+                  <FieldLabel htmlFor="nome-whatsapp">Nome no WhatsApp</FieldLabel>
+                  <label className="flex shrink-0 items-center gap-2 text-xs font-normal text-muted-foreground">
+                    <Switch
+                      checked={usarNomeWhatsapp}
+                      onCheckedChange={setUsarNomeWhatsapp}
+                      aria-label="Usar o nome do WhatsApp na assinatura"
+                    />
+                    Usar
+                  </label>
+                </div>
                 <Input
                   id="nome-whatsapp"
                   value={nomeWhatsapp}
                   onChange={(event) => setNomeWhatsapp(event.target.value)}
                   maxLength={40}
                   placeholder={user?.nome}
+                  disabled={!usarNomeWhatsapp}
                 />
                 <p className="text-xs text-muted-foreground">
                   Assina as mensagens que você envia ao cliente pela plataforma
-                  {nomeWhatsapp.trim() ? (
+                  {usarNomeWhatsapp && nomeWhatsapp.trim() ? (
                     <>
                       {" "}— ele verá <span className="font-medium">*{nomeWhatsapp.trim()}:*</span>
                     </>
                   ) : null}
-                  . Em branco, assina com o nome completo.
+                  . {usarNomeWhatsapp ? "Em branco, assina com o nome completo." : "Desligado, assina com o nome completo mesmo com o texto preenchido."}
                 </p>
               </Field>
               <Field>

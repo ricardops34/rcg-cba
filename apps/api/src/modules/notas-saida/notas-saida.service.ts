@@ -63,9 +63,18 @@ export class NotasSaidaService {
     private readonly parametros: ParametrosService,
   ) {}
 
-  findAll(empresaId: string, user: AuthenticatedUser, query: NotaSaidaQuery) {
+  findAll(
+    empresaId: string,
+    user: AuthenticatedUser,
+    query: NotaSaidaQuery,
+    opcoes: { ignorarEscopo?: boolean } = {},
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      // `ignorarEscopo`: só o atendimento de WhatsApp fora da carteira usa
+      // isto (`Vendedor.atendeOutrasCarteiras`).
+      const escopo = opcoes.ignorarEscopo
+        ? null
+        : await resolverEscopoVendedores(tx, empresaId, user);
       // Devolução de compra não é de cliente nenhum: o escopo por carteira não
       // se aplica, e só quem enxerga todas as notas (sem escopo) as vê.
       const filtroDono =
@@ -133,9 +142,16 @@ export class NotasSaidaService {
     });
   }
 
-  async findOne(empresaId: string, user: AuthenticatedUser, id: string) {
+  async findOne(
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+    opcoes: { ignorarEscopo?: boolean } = {},
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const escopo = opcoes.ignorarEscopo
+        ? null
+        : await resolverEscopoVendedores(tx, empresaId, user);
       const nota = await tx.notaSaida.findFirst({
         where: {
           id,

@@ -249,8 +249,11 @@ model Usuario {
   nomeReduzido   String?
   // Assina as mensagens de WhatsApp enviadas pela plataforma ("*Ricardo:*").
   // Vazio, assina com `nome`. A tela do atendimento mostra o mesmo nome.
-  // Anotação interna e auditoria seguem com `nome`.
-  nomeWhatsapp   String?
+  // Anotação interna e auditoria seguem com `nome`. `usarNomeWhatsapp` liga/
+  // desliga sem apagar o texto salvo (antes disso, o único jeito de voltar a
+  // assinar com `nome` era esvaziar o campo).
+  nomeWhatsapp     String?
+  usarNomeWhatsapp Boolean @default(true)
   telefone       String?
   celular        String?
   dataNascimento DateTime?
@@ -1690,6 +1693,13 @@ model Vendedor {
   // vendedor sem carteira normalmente ficam de fora.
   usaDashboard Boolean          @default(true)
 
+  /// Libera, só pra este vendedor, atender e usar as ferramentas do WhatsApp
+  /// (2ª via de título, XML, boleto, orçamento) para cliente de carteira
+  /// alheia — e vincular contato sem cliente a cliente de outro vendedor. Vale
+  /// só dentro do atendimento de WhatsApp; nenhuma outra tela do sistema olha
+  /// este campo. Decisão de 2026-10-14.
+  atendeOutrasCarteiras Boolean @default(false)
+
   /// A quem este cadastro responde. Nulo no topo da hierarquia.
   superiorId String?
 
@@ -1716,7 +1726,10 @@ model Vendedor {
   notasSaidaItens      NotaSaidaItem[]
   titulosReceber       TituloReceber[]
   oportunidades        Oportunidade[]
-  atividades           Atividade[]
+  /// Atividades da própria carteira — ver `atividadesAtendidas` para o que
+  /// este vendedor atendeu fora dela.
+  atividades           Atividade[]           @relation("AtividadeVendedorCarteira")
+  atividadesAtendidas  Atividade[]           @relation("AtividadeVendedorAtendimento")
   objetivosVendedorMes ObjetivoVendedorMes[]
   orcamentos           Orcamento[]
   whatsappSessoes      WhatsappSessao[]
@@ -3869,7 +3882,12 @@ model Atividade {
   clienteId      String?
   oportunidadeId String?
   orcamentoId    String?
+  /// Dono da carteira — é nele que a agenda/histórico do cliente aparece.
   vendedorId     String
+  /// Quem de fato atendeu, só quando é diferente do dono da carteira
+  /// (atendimento de WhatsApp fora da própria carteira, liberado por
+  /// `Vendedor.atendeOutrasCarteiras`). Nulo no caso comum.
+  vendedorAtendimentoId String?
   tipo           TipoAtividade @default(tarefa)
   titulo         String
   descricao      String?
@@ -3889,9 +3907,11 @@ model Atividade {
   cliente      Cliente?      @relation(fields: [clienteId], references: [id])
   oportunidade Oportunidade? @relation(fields: [oportunidadeId], references: [id])
   orcamento    Orcamento?    @relation(fields: [orcamentoId], references: [id])
-  vendedor     Vendedor      @relation(fields: [vendedorId], references: [id])
+  vendedor     Vendedor      @relation("AtividadeVendedorCarteira", fields: [vendedorId], references: [id])
+  vendedorAtendimento Vendedor? @relation("AtividadeVendedorAtendimento", fields: [vendedorAtendimentoId], references: [id])
 
   @@index([empresaId, vendedorId])
+  @@index([empresaId, vendedorAtendimentoId])
   @@index([empresaId, clienteId])
   @@index([empresaId, oportunidadeId])
   @@index([empresaId, orcamentoId])

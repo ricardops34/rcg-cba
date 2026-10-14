@@ -777,6 +777,7 @@ export class AuthService {
       telefoneInstitucional: usuario.celular ?? usuario.telefone ?? null,
       whatsapp: usuario.celular ?? usuario.telefone ?? null,
       nomeWhatsapp: usuario.nomeWhatsapp,
+      usarNomeWhatsapp: usuario.usarNomeWhatsapp,
       dataNascimento: usuario.dataNascimento?.toISOString().slice(0, 10) ?? null,
       mustCompleteFirstAccess: precisaCompletarPrimeiroAcesso(usuario, usuario),
       email: usuario.email,
@@ -923,6 +924,7 @@ export class AuthService {
     whatsapp?: string,
     dataNascimento?: string,
     nomeWhatsapp?: string,
+    usarNomeWhatsapp?: boolean,
   ) {
     if (dataNascimento !== undefined) {
       await this.gravarDataNascimento(
@@ -943,6 +945,7 @@ export class AuthService {
           ...(nomeWhatsapp !== undefined
             ? { nomeWhatsapp: nomeWhatsapp.trim() || null }
             : {}),
+          ...(usarNomeWhatsapp !== undefined ? { usarNomeWhatsapp } : {}),
           updatedBy: usuarioId,
         },
       });

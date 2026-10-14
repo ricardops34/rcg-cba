@@ -211,9 +211,20 @@ export class AtividadesService {
     return vendedor;
   }
 
-  create(empresaId: string, user: AuthenticatedUser, input: AtividadeCreate) {
+  create(
+    empresaId: string,
+    user: AuthenticatedUser,
+    input: AtividadeCreate,
+    opcoes: { ignorarEscopo?: boolean; vendedorAtendimentoId?: string | null } = {},
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      // `ignorarEscopo`/`vendedorAtendimentoId`: só o atendimento de WhatsApp
+      // fora da carteira usa isto (`Vendedor.atendeOutrasCarteiras`) — a
+      // atividade registra, nos dois campos, de quem é a carteira
+      // (`vendedorId`, já no input) e quem de fato atendeu.
+      const escopo = opcoes.ignorarEscopo
+        ? null
+        : await resolverEscopoVendedores(tx, empresaId, user);
       this.garantirVendedorNoEscopo(escopo, input.vendedorId);
       if (input.clienteId) await this.garantirClienteNoEscopo(tx, empresaId, escopo, input.clienteId);
       if (input.oportunidadeId) {
@@ -230,6 +241,7 @@ export class AtividadesService {
           ...(this.limpar(this.normalizarConclusao(input)) as object),
           ...(calendario && input.dataVencimento ? { dataVencimento: calendario.ajustar(input.dataVencimento) } : {}),
           empresaId,
+          vendedorAtendimentoId: opcoes.vendedorAtendimentoId ?? null,
           createdBy: user.id,
           updatedBy: user.id,
         } as never,

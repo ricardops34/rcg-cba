@@ -64,6 +64,7 @@ import {
   tipoDoInterativo,
 } from './mensagem-interativa';
 import { registrarAtendimentoWhatsapp } from '../../common/atividades/registrar-atendimento-whatsapp';
+import { podeAtenderOutraCarteira } from '../../common/escopo/escopo-vendedores';
 
 const PREVIA_TAMANHO = 120;
 
@@ -284,6 +285,9 @@ export class WhatsappConversasService {
                 telefone: true,
                 telefone2: true,
                 celular: true,
+                // Dono da carteira do cliente — pode ser outro vendedor que
+                // não o da sessão/atendente desta conversa (etiqueta na tela).
+                vendedor: { select: { nome: true } },
               },
             },
             sessao: {
@@ -354,6 +358,7 @@ export class WhatsappConversasService {
           arquivada: c.arquivada,
           vendedorId: c.sessao.vendedorId,
           vendedorNome: c.sessao.vendedor?.nome ?? "Empresa",
+          clienteVendedorNome: c.cliente?.vendedor?.nome ?? null,
           sessaoNumero: c.sessao.numero,
           diasSemComprar: c.clienteId
             ? (sinais.diasSemComprar.get(c.clienteId) ?? null)
@@ -387,6 +392,7 @@ export class WhatsappConversasService {
               telefone: true,
               telefone2: true,
               celular: true,
+              vendedor: { select: { nome: true } },
             },
           },
           sessao: {
@@ -443,6 +449,7 @@ export class WhatsappConversasService {
         arquivada: c.arquivada,
         vendedorId: c.sessao.vendedorId,
         vendedorNome: c.sessao.vendedor?.nome ?? 'Empresa',
+        clienteVendedorNome: c.cliente?.vendedor?.nome ?? null,
         sessaoNumero: c.sessao.numero,
         diasSemComprar: c.clienteId
           ? (sinais.diasSemComprar.get(c.clienteId) ?? null)
@@ -1073,14 +1080,14 @@ export class WhatsappConversasService {
       const usuarios = usuarioIds.length
         ? await tx.usuario.findMany({
             where: { id: { in: usuarioIds } },
-            select: { id: true, nome: true, nomeWhatsapp: true },
+            select: { id: true, nome: true, nomeWhatsapp: true, usarNomeWhatsapp: true },
           })
         : [];
       const nomeUsuario = new Map(
         // O mesmo nome que assinou no aparelho do cliente (ver nomeDeAssinatura).
         usuarios.map((usuario) => [
           usuario.id,
-          usuario.nomeWhatsapp?.trim() || usuario.nome,
+          (usuario.usarNomeWhatsapp && usuario.nomeWhatsapp?.trim()) || usuario.nome,
         ]),
       );
       const nomeContato =
@@ -1145,14 +1152,14 @@ export class WhatsappConversasService {
       const usuarios = usuarioIds.length
         ? await tx.usuario.findMany({
             where: { id: { in: usuarioIds } },
-            select: { id: true, nome: true, nomeWhatsapp: true },
+            select: { id: true, nome: true, nomeWhatsapp: true, usarNomeWhatsapp: true },
           })
         : [];
       const nomeUsuario = new Map(
         // O mesmo nome que assinou no aparelho do cliente (ver nomeDeAssinatura).
         usuarios.map((usuario) => [
           usuario.id,
-          usuario.nomeWhatsapp?.trim() || usuario.nome,
+          (usuario.usarNomeWhatsapp && usuario.nomeWhatsapp?.trim()) || usuario.nome,
         ]),
       );
       const nomeContato =
@@ -1410,6 +1417,7 @@ export class WhatsappConversasService {
                 telefone: true,
                 telefone2: true,
                 celular: true,
+                vendedor: { select: { nome: true } },
               },
             },
             sessao: {
@@ -1475,6 +1483,7 @@ export class WhatsappConversasService {
           arquivada: c.arquivada,
           vendedorId: c.sessao.vendedorId,
           vendedorNome: c.sessao.vendedor?.nome ?? 'Empresa',
+          clienteVendedorNome: c.cliente?.vendedor?.nome ?? null,
           vendedorAtivo: c.sessao.vendedor ? c.sessao.vendedor.deletedAt === null : true,
           sessaoNumero: c.mensagens[0]?.numeroSessao ?? c.sessao.numero,
           diasSemComprar: c.clienteId
@@ -2786,12 +2795,22 @@ export class WhatsappConversasService {
         // escopo de quem está mexendo: um supervisor enxerga a equipe inteira,
         // e vincular ali um cliente de outro vendedor criaria atendimento
         // cruzado — o dono da conversa passaria a ver posição, títulos e
-        // orçamentos de um cliente que não é dele.
+        // orçamentos de um cliente que não é dele. Exceção: o próprio dono da
+        // conversa com `atendeOutrasCarteiras` pode vincular a qualquer
+        // cliente da empresa — é a mesma permissão que libera as ferramentas
+        // de carteira alheia no atendimento (decisão de 2026-10-14).
+        const podeOutraCarteira = await podeAtenderOutraCarteira(
+          tx,
+          empresaId,
+          conversa.sessao.vendedorId,
+        );
         const cliente = await tx.cliente.findFirst({
           where: {
             id: input.clienteId,
             deletedAt: null,
-            vendedorId: conversa.sessao.vendedorId,
+            ...(podeOutraCarteira
+              ? {}
+              : { vendedorId: conversa.sessao.vendedorId }),
           },
           select: { id: true },
         });

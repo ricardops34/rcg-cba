@@ -57,9 +57,19 @@ export class TitulosReceberService {
     private readonly parametros: ParametrosService,
   ) {}
 
-  findAll(empresaId: string, user: AuthenticatedUser, query: TituloReceberQuery) {
+  findAll(
+    empresaId: string,
+    user: AuthenticatedUser,
+    query: TituloReceberQuery,
+    opcoes: { ignorarEscopo?: boolean } = {},
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      // `ignorarEscopo`: só o atendimento de WhatsApp fora da carteira usa
+      // isto (`Vendedor.atendeOutrasCarteiras`) — `escopo === null` já é o
+      // "sem restrição" que o resto do método entende.
+      const escopo = opcoes.ignorarEscopo
+        ? null
+        : await resolverEscopoVendedores(tx, empresaId, user);
       // Mesmo corte usado por calcularStatusTituloReceber — se o filtro do
       // banco e o cálculo do badge divergirem, a lista mostra "aberto" numa
       // busca por "vencido".
@@ -132,9 +142,16 @@ export class TitulosReceberService {
     });
   }
 
-  async findOne(empresaId: string, user: AuthenticatedUser, id: string) {
+  async findOne(
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+    opcoes: { ignorarEscopo?: boolean } = {},
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const escopo = opcoes.ignorarEscopo
+        ? null
+        : await resolverEscopoVendedores(tx, empresaId, user);
       const titulo = await tx.tituloReceber.findFirst({
         where: {
           id,

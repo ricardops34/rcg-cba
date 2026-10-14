@@ -24,7 +24,11 @@ export async function nomeDeAssinatura(
 ): Promise<string> {
   const usuario = await tx.usuario.findUnique({
     where: { id: user.id },
-    select: { nome: true, nomeWhatsapp: true },
+    select: { nome: true, nomeWhatsapp: true, usarNomeWhatsapp: true },
   });
-  return usuario?.nomeWhatsapp?.trim() || usuario?.nome || user.nome;
+  return (
+    (usuario?.usarNomeWhatsapp && usuario?.nomeWhatsapp?.trim()) ||
+    usuario?.nome ||
+    user.nome
+  );
 }

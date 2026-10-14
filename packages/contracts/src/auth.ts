@@ -114,6 +114,10 @@ export const updateOwnProfileSchema = z.object({
     .max(40, "Use até 40 caracteres")
     .optional()
     .describe("Assina as mensagens de WhatsApp; vazio volta a assinar com o nome completo"),
+  usarNomeWhatsapp: z
+    .boolean()
+    .optional()
+    .describe("Liga/desliga o nome do WhatsApp sem apagar o texto salvo"),
 });
 export type UpdateOwnProfileInput = z.infer<typeof updateOwnProfileSchema>;
 
@@ -159,6 +163,7 @@ export const currentUserSchema = z.object({
   telefoneInstitucional: z.string().nullable(),
   whatsapp: z.string().nullable().optional(),
   nomeWhatsapp: z.string().nullable().optional().describe("Nome que assina as mensagens de WhatsApp"),
+  usarNomeWhatsapp: z.boolean().describe("Liga/desliga o nome do WhatsApp sem apagar o texto salvo"),
   dataNascimento: z.string().nullable(),
   mustCompleteFirstAccess: z.boolean(),
   email: z.string().email().describe("E-mail do usuário"),
@@ -260,6 +265,7 @@ export const AUTH_TOKENS_EXAMPLE: AuthTokens = {
 export const CURRENT_USER_EXAMPLE: CurrentUser = {
   avatarUrl: null,
   telefoneInstitucional: null,
+  usarNomeWhatsapp: true,
   dataNascimento: null,
   mustCompleteFirstAccess: false,
   id: "827167a9-93f9-4fd8-9cc5-dcd8077c600d",

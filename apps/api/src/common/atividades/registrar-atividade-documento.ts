@@ -81,6 +81,12 @@ export interface DocumentoParaAtividade {
    */
   vendedorId: string | null;
   /**
+   * Quem de fato atendeu, só quando é diferente do dono da carteira
+   * (`vendedorId`) — atendimento de WhatsApp fora da própria carteira,
+   * liberado por `Vendedor.atendeOutrasCarteiras`. Nulo no caso comum.
+   */
+  vendedorAtendimentoId?: string | null;
+  /**
    * Número visível do documento — NF ou título, como sai impresso. Os eventos
    * de relatório (`titulos_whatsapp`, `notas_whatsapp`) não usam.
    */
@@ -113,6 +119,7 @@ export async function registrarAtividadeDocumento(
       empresaId,
       clienteId,
       vendedorId,
+      vendedorAtendimentoId: documento.vendedorAtendimentoId ?? null,
       tipo: POR_EMAIL.has(evento) ? 'email' : 'tarefa',
       titulo: TITULO[evento](numero),
       descricao: documento.descricao ?? null,
