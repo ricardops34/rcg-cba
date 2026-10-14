@@ -18,6 +18,7 @@
 import { Acao, PrismaClient } from '@prisma/client';
 import {
   ADMINISTRATIVO_PERMISSOES,
+  RELATORIOS_PERMISSOES,
   MODULO,
   SUPERVISAO_PERMISSOES,
   ROTINAS_FORA_DO_DIRETOR,
@@ -677,11 +678,16 @@ async function bootstrapPerfis(rotinas: { id: string; codigo: string }[]) {
     const perfil = await prisma.perfil.create({
       data: { nome, descricao, sistemaBase: false },
     });
+    // O Gerente também tem os Relatórios; o Supervisor não.
+    const permissoes: Record<string, Acao[]> =
+      nome === 'Gerente'
+        ? { ...SUPERVISAO_PERMISSOES, ...RELATORIOS_PERMISSOES }
+        : SUPERVISAO_PERMISSOES;
     await prisma.perfilPermissao.createMany({
       data: rotinas
-        .filter((rotina) => rotina.codigo in SUPERVISAO_PERMISSOES)
+        .filter((rotina) => rotina.codigo in permissoes)
         .flatMap((rotina) =>
-          SUPERVISAO_PERMISSOES[rotina.codigo].map((acao) => ({
+          permissoes[rotina.codigo].map((acao) => ({
             perfilId: perfil.id,
             rotinaId: rotina.id,
             acao,

@@ -223,6 +223,8 @@ export class IntegracaoNotasEntradaService {
           vlrIcms: item.vlrIcms,
           vlrIcmsSt: item.vlrIcmsSt,
           vlrIpi: item.vlrIpi,
+          aliqIpi: item.aliqIpi ?? null,
+          aliqIcms: item.aliqIcms ?? null,
           peso: item.peso ?? null,
           // O ERP não informa: sai só do CFOP (ver `common/comodato`).
           comodato: itemEhComodato(item.cfop, CFOPS_RETORNO_COMODATO),

@@ -45,6 +45,7 @@ export const MODULO = {
   gerencial: 'seed-modulo-gerencial',
   cadastros: 'seed-modulo-cadastros',
   consultas: 'seed-modulo-consultas',
+  relatorios: 'seed-modulo-relatorios',
 } as const;
 
 export const MODULOS = [
@@ -59,6 +60,9 @@ export const MODULOS = [
   { id: MODULO.gerencial, nome: 'Gerencial', icone: 'users-round', ordem: 4 },
   { id: MODULO.consultas, nome: 'Consultas', icone: 'chart-column', ordem: 4 },
   { id: MODULO.cadastros, nome: 'Cadastros', icone: 'database', ordem: 5 },
+  // Relatórios com filtros, tela, PDF e Excel — Gerente, Administrativo e
+  // administradores (docs/planos/2026-10-13-modulo-relatorios.md).
+  { id: MODULO.relatorios, nome: 'Relatórios', icone: 'file-text', ordem: 6 },
 ];
 
 /**
@@ -662,6 +666,30 @@ export const MENUS: DefinicaoMenu[] = [
     codigo: 'agente-config',
     moduloId: MODULO.administracao,
   },
+  {
+    id: 'seed-menu-relatorio-compras',
+    nome: 'Compras',
+    rota: '/relatorios/compras',
+    icone: 'package-plus',
+    codigo: 'relatorio-compras',
+    moduloId: MODULO.relatorios,
+  },
+  {
+    id: 'seed-menu-relatorio-vendas',
+    nome: 'Vendas por vendedor',
+    rota: '/relatorios/vendas',
+    icone: 'receipt',
+    codigo: 'relatorio-vendas',
+    moduloId: MODULO.relatorios,
+  },
+  {
+    id: 'seed-menu-relatorio-estoque-compra',
+    nome: 'Estoque e compra',
+    rota: '/relatorios/estoque-compra',
+    icone: 'boxes',
+    codigo: 'relatorio-estoque-compra',
+    moduloId: MODULO.relatorios,
+  },
 ];
 
 /**
@@ -839,7 +867,20 @@ export const SUPERVISAO_PERMISSOES: Record<string, Acao[]> = {
  * mesmo critério do Vendedor. Sem `estados`/`municipios`/`ceps`: o formulário
  * de cliente consulta `/ceps/consulta/:cep`, que não exige permissão.
  */
+/**
+ * Módulo de Relatórios: Gerente e Administrativo (e os administradores, pelo
+ * isAdmin). Não entra em SUPERVISAO_PERMISSOES, que o Supervisor também usa —
+ * o seed a soma só ao Gerente. Base existente: migration
+ * 20261013230000_modulo_relatorios.
+ */
+export const RELATORIOS_PERMISSOES: Record<string, Acao[]> = {
+  'relatorio-compras': ['visualizar', 'exportar'],
+  'relatorio-vendas': ['visualizar', 'exportar'],
+  'relatorio-estoque-compra': ['visualizar', 'exportar'],
+};
+
 export const ADMINISTRATIVO_PERMISSOES: Record<string, Acao[]> = {
+  ...RELATORIOS_PERMISSOES,
   clientes: ['visualizar', 'cadastrar', 'editar', 'aprovar'],
   'clientes-alteracoes': ['visualizar'],
   produtos: ['visualizar', 'cadastrar', 'editar'],

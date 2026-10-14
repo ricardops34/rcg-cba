@@ -3543,6 +3543,10 @@ model NotaEntradaItem {
   vlrIcms     Float @default(0)
   vlrIcmsSt   Float @default(0)
   vlrIpi      Float @default(0)
+  /// Alíquotas do item no ERP (D1_IPI, D1_PICM), em %. Nulas até a integração
+  /// mandar (2026-10-13).
+  aliqIpi    Float?
+  aliqIcms   Float?
 
   peso     Float?
   // CFOP 1909/2909 — retorno de comodato (ver `integracao/common/comodato`).

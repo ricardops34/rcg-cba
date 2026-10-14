@@ -1279,6 +1279,11 @@ export const integracaoNotaEntradaItemSchema = z.object({
   vlrIcms: z.coerce.number().default(0),
   vlrIcmsSt: z.coerce.number().default(0),
   vlrIpi: z.coerce.number().default(0),
+  // Alíquotas do item (D1_IPI, D1_PICM): o relatório de Compras as mostra, e
+  // calcular pelo valor erra com base reduzida e ST. Opcionais: a integração
+  // que ainda não as manda continua aceita.
+  aliqIpi: z.coerce.number().nullable().optional().describe("Alíquota de IPI do item (D1_IPI), em %"),
+  aliqIcms: z.coerce.number().nullable().optional().describe("Alíquota de ICMS do item (D1_PICM), em %"),
   peso: z.coerce.number().nullable().optional(),
   ativo: z.boolean().default(true),
 });
