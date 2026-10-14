@@ -74,10 +74,9 @@ têm tudo pelo `isAdmin`.
 
 - **Fornecedor** saía como a transportadora: o CT-e de frete (tipo C,
   quantidade 0) leva o código do produto no ERP. Corrigido: só nota de compra.
-- **Últ. preço**: no cadastro está 0 para vários produtos; passa a usar o da
-  última compra quando o do cadastro é zero. O 139,18 da planilha não aparece
-  em lugar nenhum da base — de onde a planilha tira (B1_UPRC? outra unidade?)
-  **a confirmar**.
+- **Últ. preço**: **o unitário da última nota de compra** (decisão do usuário,
+  13/10/2026). O `ultimoPreco` do cadastro vem do `B1_PRV1` (preço de
+  venda, no BJPLA003) e não é usado aqui.
 - **Saída-Qtd**: a planilha diz 6; a base tem 2 em notas de saída no período
   (todas de venda). As 4 restantes vêm de outro período ou de movimento
   interno do ERP (requisição/SD3) que não é integrado — **a confirmar**.

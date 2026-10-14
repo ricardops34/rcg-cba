@@ -332,7 +332,8 @@ export class RelatoriosService {
    *   `corteDeVenda`), sem o filtro de categoria "usada nas análises" — esse
    *   é das análises de venda; aqui zeraria a saída de produto que sai;
    * - **Fornecedor**: o da última nota de compra (sem o CT-e de frete);
-   * - **Últ. preço**: o do cadastro; zerado lá, o unitário da última compra;
+   * - **Últ. preço**: o unitário da última nota de compra (o do cadastro é o
+   *   preço de venda, B1_PRV1);
    * - **Média** = saída ÷ meses do período; **a comprar** = média × meses de
    *   compra − estoque (negativo = sobra), como na planilha da compra.
    */
@@ -435,8 +436,10 @@ export class RelatoriosService {
                COALESCE(est."saldo", 0)::float8 AS "estoque",
                COALESCE(ent."qtd", 0)::float8 AS "entradas",
                COALESCE(sai."qtd", 0)::float8 AS "saidas",
-               -- O do cadastro (B1_UPRC); zerado lá, o da última compra.
-               COALESCE(NULLIF(p."ultimoPreco", 0), ult."precoCompra") AS "ultimoPreco"
+               -- Preço unitário da última nota de compra (decisão do usuário,
+               -- 2026-10-13). O "ultimoPreco" do cadastro é o B1_PRV1, preço de
+               -- venda — não serve aqui.
+               ult."precoCompra" AS "ultimoPreco"
         FROM "produtos" p
         LEFT JOIN est ON est."produtoId" = p."id"
         LEFT JOIN ent ON ent."produtoId" = p."id"
