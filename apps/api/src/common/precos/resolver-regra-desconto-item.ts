@@ -37,13 +37,19 @@ const SELECT = {
 };
 
 /**
- * Resolve a regra de desconto de um produto seguindo a precedência combinada
- * com o comercial, do mais específico para o mais genérico:
+ * Resolve a regra de desconto de um produto nesta precedência:
  *
- * 1. item da **tabela de preço** do cliente (sobrepõe o produto);
- * 2. **produto** (sobrepõe a categoria);
+ * 1. **produto** (B1_XDESC no ERP) — preenchida, vale ela;
+ * 2. item da **tabela de preço** do cliente (DA1_XDESC), quando o produto
+ *    não tem;
  * 3. **categoria** do produto;
  * 4. **regra padrão** da empresa, quando nenhum dos três tem vínculo.
+ *
+ * A ordem entre produto e tabela é decisão do usuário de 2026-10-13 ("se
+ * estiver preenchido no produto usamos a do produto, se estiver vazio usamos
+ * a da tabela de preços"). Até então a tabela vinha primeiro — e o BJPLA003
+ * nem mandava o B1_XDESC, então a regra do produto só existia se cadastrada
+ * na plataforma.
  *
  * Devolve null só quando nem regra padrão existe. Resolve um lote de produtos
  * de uma vez porque o uso é por orçamento inteiro — quatro consultas no total,
@@ -96,8 +102,8 @@ export async function resolverRegrasDescontoDosItens(
   for (const produto of produtos) {
     resultado.set(
       produto.id,
-      porTabela.get(produto.id) ??
-        produto.regraDesconto ??
+      produto.regraDesconto ??
+        porTabela.get(produto.id) ??
         produto.categoria?.regraDesconto ??
         padrao ??
         null,

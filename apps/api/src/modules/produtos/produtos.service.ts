@@ -191,10 +191,9 @@ export class ProdutosService {
    * detalhe. Tabela e item precisam estar ativos.
    *
    * Cada linha leva a regra de desconto que vale naquela tabela, na mesma
-   * precedência do orçamento (`resolverRegrasDescontoDosItens`): item da
-   * tabela → produto → categoria → padrão da empresa. No Protheus a regra só
-   * existe no item da tabela (DA1_XDESC) — produto e categoria chegam sem —,
-   * então é aqui, e não no cadastro, que o vendedor a encontra.
+   * precedência do orçamento (`resolverRegrasDescontoDosItens`): produto
+   * (B1_XDESC) → item da tabela (DA1_XDESC) → categoria → padrão da empresa.
+   * Produto antes da tabela desde 2026-10-13 (decisão do usuário).
    */
   precos(empresaId: string, produtoId: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
@@ -238,22 +237,23 @@ export class ProdutosService {
         }),
       ]);
 
-      const herdada = produto?.regraDesconto
-        ? { regra: produto.regraDesconto, origem: 'produto' as const }
-        : produto?.categoria?.regraDesconto
-          ? {
-              regra: produto.categoria.regraDesconto,
-              origem: 'categoria' as const,
-            }
-          : padrao
-            ? { regra: padrao, origem: 'padrao' as const }
-            : { regra: null, origem: null };
+      // Sem regra no produto nem no item da tabela: categoria, depois padrão.
+      const herdada = produto?.categoria?.regraDesconto
+        ? {
+            regra: produto.categoria.regraDesconto,
+            origem: 'categoria' as const,
+          }
+        : padrao
+          ? { regra: padrao, origem: 'padrao' as const }
+          : { regra: null, origem: null };
 
       return {
         data: itens.map((i) => {
-          const { regra, origem } = i.regraDesconto
-            ? { regra: i.regraDesconto, origem: 'tabela' as const }
-            : herdada;
+          const { regra, origem } = produto?.regraDesconto
+            ? { regra: produto.regraDesconto, origem: 'produto' as const }
+            : i.regraDesconto
+              ? { regra: i.regraDesconto, origem: 'tabela' as const }
+              : herdada;
           return {
             id: i.id,
             preco: i.preco,

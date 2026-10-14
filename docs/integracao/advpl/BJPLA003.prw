@@ -1416,6 +1416,7 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim, lEnvDel)
 	Local lXFor  := SB1->(FieldPos("B1_XFOR"))    > 0
 	Local lXDesF := SB1->(FieldPos("B1_XDESFOR")) > 0
 	Local lXTec  := SB1->(FieldPos("B1_XTEC"))    > 0
+	Local lXDesc := SB1->(FieldPos("B1_XDESC"))   > 0
 
 	Default cMarca    := ""
 	Default cChave    := ""
@@ -1447,6 +1448,9 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim, lEnvDel)
 	EndIf
 	If lXTec
 		cQuery += ", B1_XTEC "
+	EndIf
+	If lXDesc
+		cQuery += ", B1_XDESC "
 	EndIf
 
 	cQuery += "  FROM " + RetSQLName("SB1") + " SB1 "
@@ -1568,6 +1572,16 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim, lEnvDel)
 			oJson["descricaoFabricante"] := AllTrim((cAlias)->B1_XDESFOR)
 		Else
 			oJson["descricaoFabricante"] := Nil
+		EndIf
+
+		// Regra de desconto do produto (decisao do usuario, 13/10/2026): preenchida
+		// no B1_XDESC, vale a do produto; vazia, vale a do item da tabela de preco
+		// (DA1_XDESC). Por isso o vazio vai como Nil: limpa a regra do produto na
+		// plataforma, e o orcamento volta a usar a da tabela. Mesma chave do DA1.
+		If lXDesc .And. !Empty((cAlias)->B1_XDESC)
+			oJson["regraDescontoChave"] := FWxFilial("SZ0") + "-" + AllTrim((cAlias)->B1_XDESC) // SB1.B1_XDESC -> produto.regraDesconto
+		Else
+			oJson["regraDescontoChave"] := Nil
 		EndIf
 
 		If lXTec .And. !Empty((cAlias)->B1_XTEC)
@@ -3616,6 +3630,8 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim, lEnvDel)
 	Local lItIcms  := SD1->(FieldPos("D1_VALICM"))  > 0
 	Local lItSt    := SD1->(FieldPos("D1_ICMSRET")) > 0
 	Local lItIpi   := SD1->(FieldPos("D1_VALIPI"))  > 0
+	Local lItAlIpi := SD1->(FieldPos("D1_IPI"))     > 0
+	Local lItAlIcm := SD1->(FieldPos("D1_PICM"))    > 0
 	Local lItPeso  := SD1->(FieldPos("D1_PESO"))    > 0
 	Local nRecAnt  := 0
 
@@ -3679,6 +3695,12 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim, lEnvDel)
 	EndIf
 	If lItIpi
 		cQuery += ", D1_VALIPI "
+	EndIf
+	If lItAlIpi
+		cQuery += ", D1_IPI "
+	EndIf
+	If lItAlIcm
+		cQuery += ", D1_PICM "
 	EndIf
 	If lItPeso
 		cQuery += ", D1_PESO "
@@ -3972,6 +3994,17 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim, lEnvDel)
 				oItem["vlrIpi"] := (cAlias)->D1_VALIPI
 			Else
 				oItem["vlrIpi"] := 0
+			EndIf
+
+			// Aliquotas do item para o relatorio de Compras (decisao do usuario,
+			// 13/10/2026): calcular pelo valor erra com base reduzida e ST, entao
+			// vao as do proprio documento. Sem o campo, nao manda: a plataforma
+			// guarda nulo, e nao um zero que pareceria isento.
+			If lItAlIpi
+				oItem["aliqIpi"] := (cAlias)->D1_IPI // SD1.D1_IPI -> notas_entrada_itens.aliqIpi
+			EndIf
+			If lItAlIcm
+				oItem["aliqIcms"] := (cAlias)->D1_PICM // SD1.D1_PICM -> notas_entrada_itens.aliqIcms
 			EndIf
 
 			If lItPeso
