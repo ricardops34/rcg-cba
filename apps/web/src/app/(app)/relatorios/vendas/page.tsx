@@ -9,12 +9,14 @@ import { Label } from "@/components/ui/label";
 import { VendedoresMultiSelect } from "@/components/crud/vendedores-multi-select";
 import { RelatorioPaginado } from "@/components/relatorios/relatorio-paginado";
 import {
+  CampoCategoria,
   CampoData,
   CampoTexto,
   descreverFiltros,
   hojeIso,
   inicioDoAnoIso,
   semVazios,
+  useDescricaoCategoria,
 } from "@/components/relatorios/filtros";
 import type { ColunaRelatorio } from "@/lib/relatorio-export";
 import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
@@ -47,8 +49,10 @@ export default function RelatorioVendasPage() {
   const [notaFiscal, setNotaFiscal] = useState("");
   const [produtoCodigo, setProdutoCodigo] = useState("");
   const [produtoNome, setProdutoNome] = useState("");
+  const [categoriaId, setCategoriaId] = useState("");
   const [consulta, setConsulta] = useState<Record<string, string | number> | null>(null);
   const { data: vendedores } = useVendedoresEscopo();
+  const categoriaTexto = useDescricaoCategoria(consulta?.categoriaId as string | undefined);
 
   const gerar = () =>
     setConsulta(
@@ -61,6 +65,7 @@ export default function RelatorioVendasPage() {
         notaFiscal,
         produtoCodigo,
         produtoNome,
+        categoriaId,
       }),
     );
 
@@ -107,6 +112,7 @@ export default function RelatorioVendasPage() {
             <CampoTexto id="v-mun" rotulo="Cidade" valor={municipio} onChange={setMunicipio} largura="w-40" />
             <CampoTexto id="v-nf" rotulo="NF" valor={notaFiscal} onChange={setNotaFiscal} largura="w-32" />
             <CampoTexto id="v-pcod" rotulo="Código produto" valor={produtoCodigo} onChange={setProdutoCodigo} largura="w-36" />
+            <CampoCategoria valor={categoriaId} onChange={setCategoriaId} />
             <CampoTexto id="v-pnome" rotulo="Nome produto" valor={produtoNome} onChange={setProdutoNome} />
             <Button type="submit">Gerar</Button>
           </form>
@@ -129,6 +135,7 @@ export default function RelatorioVendasPage() {
                   ["NF", consulta.notaFiscal as string | undefined],
                   ["Código produto", consulta.produtoCodigo as string | undefined],
                   ["Nome produto", consulta.produtoNome as string | undefined],
+                  ["Categoria", categoriaTexto],
                 ],
               )
             : []

@@ -1,6 +1,10 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
+import type { Categoria } from "@plataforma/contracts";
+import { apiFetch } from "@/lib/api-client";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
 /** Hoje e o primeiro dia do ano, em AAAA-MM-DD (data local). */
@@ -77,4 +81,53 @@ export function semVazios(obj: Record<string, string | number | undefined>) {
   return Object.fromEntries(
     Object.entries(obj).filter(([, v]) => v !== undefined && String(v).trim() !== ""),
   ) as Record<string, string | number>;
+}
+
+/**
+ * Categorias principais ativas, para o filtro dos relatórios. Sem o corte de
+ * "usada nas análises": compra de serviço e de consumo também é compra.
+ */
+export function useCategoriasRelatorio() {
+  return useQuery({
+    queryKey: ["categorias", "select", "raizes", "relatorios"],
+    queryFn: () =>
+      apiFetch<{ data: Categoria[] }>("/categorias", {
+        query: { pageSize: 100, raiz: true, ativo: true },
+      }),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Descrição da categoria escolhida, para o cabeçalho do PDF e do Excel. */
+export function useDescricaoCategoria(id: string | undefined) {
+  const { data } = useCategoriasRelatorio();
+  return id ? data?.data.find((c) => c.id === id)?.descricao ?? id : undefined;
+}
+
+export function CampoCategoria({
+  valor,
+  onChange,
+}: {
+  valor: string;
+  onChange: (id: string) => void;
+}) {
+  const { data } = useCategoriasRelatorio();
+  return (
+    <div className="space-y-1">
+      <Label>Categoria</Label>
+      <Select value={valor || "todas"} onValueChange={(v) => onChange(v === "todas" ? "" : v)}>
+        <SelectTrigger className="w-48">
+          <SelectValue placeholder="Todas" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="todas">Todas</SelectItem>
+          {(data?.data ?? []).map((c) => (
+            <SelectItem key={c.id} value={c.id}>
+              {c.descricao}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
 }

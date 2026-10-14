@@ -27,6 +27,7 @@ export const relatorioComprasQuerySchema = paginacaoSchema.extend({
   inicio: dataSchema.describe("Início do período (data de digitação)"),
   fim: dataSchema.describe("Fim do período (data de digitação)"),
   documento: textoOpcional.describe("Número da nota contém"),
+  categoriaId: textoOpcional.describe("Categoria (ou subcategoria) do produto"),
   produto: textoOpcional.describe("Código ou descrição do produto contém"),
   fornecedor: textoOpcional.describe("Código ou razão social do fornecedor/cliente contém"),
 });
@@ -62,6 +63,7 @@ export const relatorioVendasQuerySchema = paginacaoSchema.extend({
   cliente: textoOpcional.describe("Código, razão social ou fantasia do cliente contém"),
   municipio: textoOpcional.describe("Município do cliente contém"),
   notaFiscal: textoOpcional.describe("Número da nota contém"),
+  categoriaId: textoOpcional.describe("Categoria (ou subcategoria) do produto"),
   produtoCodigo: textoOpcional.describe("Código do produto contém"),
   produtoNome: textoOpcional.describe("Descrição do produto contém"),
 });
@@ -101,6 +103,7 @@ export const relatorioEstoqueCompraQuerySchema = z.object({
     .describe("Para quantos meses comprar: a comprar = média × meses − estoque"),
   produto: textoOpcional.describe("Nosso código ou descrição contém"),
   codigoCorp: textoOpcional.describe("Cod. Corp. (B1_XFOR) contém"),
+  categoriaId: textoOpcional.describe("Categoria (ou subcategoria) do produto"),
   fornecedor: textoOpcional.describe("Fornecedor da última compra contém"),
   comMovimento: z
     .enum(["true", "false"])

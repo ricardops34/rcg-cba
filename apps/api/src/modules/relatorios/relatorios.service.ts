@@ -31,6 +31,20 @@ export function periodo(inicio: string, fim: string) {
   return { de, ate };
 }
 
+/**
+ * O que é **compra** (decisão do usuário, 2026-10-14): NF de entrada do tipo
+ * normal, de mercadoria. Fora: CT-e/CTR (frete), NFS/RPS/NFPS (serviço),
+ * energia (NF3E, NFCEE), telecom (NTST, NFSC, NTSC), cupom (NFCE), fatura
+ * (NFFA) e devolução de cliente (tipo D). Espécies vistas na base da RCG.
+ */
+export const ESPECIES_DE_COMPRA = ['SPED', 'NFE', 'NF', 'NFA'];
+const NOTA_DE_COMPRA_SQL = Prisma.sql`n."tipo" = 'N' AND n."especieFiscal" IN (${Prisma.join(ESPECIES_DE_COMPRA)})`;
+
+/** Produto da categoria ou da subcategoria escolhida. */
+const daCategoria = (id: string): Prisma.ProdutoWhereInput => ({
+  OR: [{ categoriaId: id }, { subCategoriaId: id }],
+});
+
 const contem = (texto: string) => ({
   contains: texto,
   mode: 'insensitive' as const,
@@ -70,9 +84,9 @@ export class RelatoriosService {
   }
 
   /**
-   * Compras: itens das notas de entrada não canceladas no período da data de
-   * digitação (`dtEntrada`; a de emissão quando a nota não tem entrada).
-   * Compra e devolução de cliente — por isso "Cód. For/Cli".
+   * Compras: itens das notas de **compra** (`ESPECIES_DE_COMPRA`, tipo
+   * normal) não canceladas, no período da data de digitação (`dtEntrada`; a
+   * de emissão quando a nota não tem entrada).
    */
   async compras(
     empresaId: string,
@@ -86,6 +100,8 @@ export class RelatoriosService {
           is: {
             deletedAt: null,
             ativo: true,
+            tipo: 'N',
+            especieFiscal: { in: ESPECIES_DE_COMPRA },
             OR: [
               { dtEntrada: { gte: de, lt: ate } },
               { dtEntrada: null, dtEmissao: { gte: de, lt: ate } },
@@ -94,6 +110,8 @@ export class RelatoriosService {
         },
       },
     ];
+    if (q.categoriaId)
+      filtros.push({ produto: { is: daCategoria(q.categoriaId) } });
     if (q.documento)
       filtros.push({ notaEntrada: { is: { numero: contem(q.documento) } } });
     if (q.produto) {
@@ -253,6 +271,8 @@ export class RelatoriosService {
           },
         });
       }
+      if (q.categoriaId)
+        filtros.push({ produto: { is: daCategoria(q.categoriaId) } });
       if (q.notaFiscal)
         filtros.push({ notaSaida: { is: { numero: contem(q.notaFiscal) } } });
       if (q.produtoCodigo)
@@ -327,7 +347,7 @@ export class RelatoriosService {
   /**
    * Estoque e compra, por produto:
    * - **Estoque**: soma dos armazéns de revenda;
-   * - **Entrada-Qtd**: itens das notas de entrada não canceladas no período;
+   * - **Entrada-Qtd**: itens das notas de compra (`ESPECIES_DE_COMPRA`) no período;
    * - **Saída-Qtd**: itens das notas de **venda** no período (cabeçalho de
    *   `corteDeVenda`), sem o filtro de categoria "usada nas análises" — esse
    *   é das análises de venda; aqui zeraria a saída de produto que sai;
@@ -355,6 +375,11 @@ export class RelatoriosService {
       const t = `%${q.produto}%`;
       filtros.push(
         Prisma.sql`(p."codigoErp" ILIKE ${t} OR p."descricao" ILIKE ${t})`,
+      );
+    }
+    if (q.categoriaId) {
+      filtros.push(
+        Prisma.sql`(p."categoriaId" = ${q.categoriaId} OR p."subCategoriaId" = ${q.categoriaId})`,
       );
     }
     if (q.codigoCorp)
@@ -401,7 +426,7 @@ export class RelatoriosService {
           FROM "notas_entrada_itens" i
           JOIN "notas_entrada" n ON n."id" = i."notaEntradaId"
           WHERE i."empresaId" = ${empresaId} AND i."deletedAt" IS NULL AND i."ativo" = true
-            AND n."deletedAt" IS NULL AND n."ativo" = true
+            AND n."deletedAt" IS NULL AND n."ativo" = true AND ${NOTA_DE_COMPRA_SQL}
             AND COALESCE(n."dtEntrada", n."dtEmissao") >= ${de}
             AND COALESCE(n."dtEntrada", n."dtEmissao") < ${ate}
           GROUP BY i."produtoId"
@@ -426,7 +451,7 @@ export class RelatoriosService {
           JOIN "fornecedores" f ON f."id" = n."fornecedorId"
           WHERE i."empresaId" = ${empresaId} AND i."deletedAt" IS NULL AND i."ativo" = true
             AND n."deletedAt" IS NULL AND n."ativo" = true
-            AND n."tipo" = 'N' AND n."especieFiscal" IS DISTINCT FROM 'CTE'
+            AND ${NOTA_DE_COMPRA_SQL}
             AND i."quantidade" > 0
           ORDER BY i."produtoId", COALESCE(n."dtEntrada", n."dtEmissao") DESC NULLS LAST,
                    i."vlrUnitario" DESC

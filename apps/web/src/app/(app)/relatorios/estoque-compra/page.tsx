@@ -16,7 +16,15 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { usePaginaLocal } from "@/components/comercial/posicao-cliente-ano";
-import { CampoData, CampoTexto, dataBr, hojeIso, semVazios } from "@/components/relatorios/filtros";
+import {
+  CampoCategoria,
+  CampoData,
+  CampoTexto,
+  dataBr,
+  hojeIso,
+  semVazios,
+  useDescricaoCategoria,
+} from "@/components/relatorios/filtros";
 import {
   ehNumerica,
   exportarRelatorioExcel,
@@ -51,8 +59,10 @@ export default function RelatorioEstoqueCompraPage() {
   const [produto, setProduto] = useState("");
   const [codigoCorp, setCodigoCorp] = useState("");
   const [fornecedor, setFornecedor] = useState("");
+  const [categoriaId, setCategoriaId] = useState("");
   const [comMovimento, setComMovimento] = useState(true);
   const [consulta, setConsulta] = useState<Record<string, string | number> | null>(null);
+  const categoriaTexto = useDescricaoCategoria(consulta?.categoriaId as string | undefined);
   const [ordem, setOrdem] = useState<Ordem>({ coluna: "codigo", sentido: "asc" });
   // PDF e Excel só com a ação Exportar da rotina.
   const podeExportar = useAuthStore((s) => s.hasPermission("relatorio-estoque-compra", "exportar"));
@@ -72,6 +82,7 @@ export default function RelatorioEstoqueCompraPage() {
         produto,
         codigoCorp,
         fornecedor,
+        categoriaId,
         comMovimento: String(comMovimento),
       }),
     );
@@ -127,6 +138,7 @@ export default function RelatorioEstoqueCompraPage() {
           ["Produto", consulta.produto],
           ["Cod. Corp.", consulta.codigoCorp],
           ["Fornecedor", consulta.fornecedor],
+          ["Categoria", categoriaTexto],
         ]
           .filter(([, v]) => v)
           .map(([r, v]) => `${String(r)}: ${String(v)}`),
@@ -218,6 +230,7 @@ export default function RelatorioEstoqueCompraPage() {
             </div>
             <CampoTexto id="e-prod" rotulo="Nosso código e produto" valor={produto} onChange={setProduto} />
             <CampoTexto id="e-corp" rotulo="Cod. Corp." valor={codigoCorp} onChange={setCodigoCorp} largura="w-36" />
+            <CampoCategoria valor={categoriaId} onChange={setCategoriaId} />
             <CampoTexto id="e-forn" rotulo="Fornecedor" valor={fornecedor} onChange={setFornecedor} />
             <div className="flex items-center gap-2 pb-2">
               <Switch id="e-mov" checked={comMovimento} onCheckedChange={setComMovimento} />

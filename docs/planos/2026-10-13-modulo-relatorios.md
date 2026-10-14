@@ -80,3 +80,17 @@ têm tudo pelo `isAdmin`.
 - **Saída-Qtd**: a planilha diz 6; a base tem 2 em notas de saída no período
   (todas de venda). As 4 restantes vêm de outro período ou de movimento
   interno do ERP (requisição/SD3) que não é integrado — **a confirmar**.
+
+## Ajustes de 14/10/2026 (usuário)
+
+- **Compra = NF de entrada do tipo normal, de mercadoria** — sem CT-e e sem
+  serviço. Na base, "tipo N" sozinho não basta (25 mil CT-e são tipo N), então
+  o corte é `tipo = 'N'` **e** espécie `SPED`, `NFE`, `NF` ou `NFA`
+  (`ESPECIES_DE_COMPRA` em `relatorios.service.ts`). Fora: CTE/CTR (frete),
+  NFS/RPS/NFPS (serviço), NF3E/NFCEE (energia), NTST/NFSC/NTSC (telecom),
+  NFCE (cupom), NFFA (fatura) e devolução (tipo D). Vale para o relatório de
+  Compras, a Entrada-Qtd e o fornecedor/preço da última compra. RCG jan–set:
+  4.437 → 2.333 itens. **Conferir a lista de espécies com o usuário.**
+- **Filtro de categoria** nos três relatórios (categoria ou subcategoria do
+  produto). A lista de categorias passa a valer para quem tem um relatório
+  (o Gerente não tem o cadastro de categorias).

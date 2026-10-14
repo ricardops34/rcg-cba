@@ -7,12 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { RelatorioPaginado } from "@/components/relatorios/relatorio-paginado";
 import {
+  CampoCategoria,
   CampoData,
   CampoTexto,
   descreverFiltros,
   hojeIso,
   inicioDoAnoIso,
   semVazios,
+  useDescricaoCategoria,
 } from "@/components/relatorios/filtros";
 import type { ColunaRelatorio } from "@/lib/relatorio-export";
 import { PackagePlus } from "lucide-react";
@@ -27,14 +29,14 @@ const COLUNAS: ColunaRelatorio<RelatorioComprasLinha>[] = [
   { titulo: "Alíq. IPI", valor: (l) => l.aliqIpi, formato: "percentual" },
   { titulo: "Vlr. Total", valor: (l) => l.vlrTotal, formato: "moeda" },
   { titulo: "Alíq. ICMS", valor: (l) => l.aliqIcms, formato: "percentual" },
-  { titulo: "Cód. For/Cli", valor: (l) => l.codigoForCli },
+  { titulo: "Cód. Fornecedor", valor: (l) => l.codigoForCli },
   { titulo: "Razão Social", valor: (l) => l.razaoSocial },
   { titulo: "Dt. Digitação", valor: (l) => l.dtDigitacao, formato: "data" },
 ];
 
 /**
- * Relatório de Compras: itens das notas de entrada no período da data de
- * digitação. As alíquotas vêm do ERP (D1_IPI, D1_PICM) — vazias até a
+ * Relatório de Compras: itens das notas de compra (NF de entrada tipo normal,
+ * de mercadoria — sem CT-e, serviço e devolução) no período da digitação. As alíquotas vêm do ERP (D1_IPI, D1_PICM) — vazias até a
  * integração mandar.
  */
 export default function RelatorioComprasPage() {
@@ -43,9 +45,12 @@ export default function RelatorioComprasPage() {
   const [documento, setDocumento] = useState("");
   const [produto, setProduto] = useState("");
   const [fornecedor, setFornecedor] = useState("");
+  const [categoriaId, setCategoriaId] = useState("");
   const [consulta, setConsulta] = useState<Record<string, string | number> | null>(null);
 
-  const gerar = () => setConsulta(semVazios({ inicio, fim, documento, produto, fornecedor }));
+  const categoriaTexto = useDescricaoCategoria(consulta?.categoriaId as string | undefined);
+
+  const gerar = () => setConsulta(semVazios({ inicio, fim, documento, produto, fornecedor, categoriaId }));
 
   return (
     <div className="space-y-6">
@@ -56,8 +61,8 @@ export default function RelatorioComprasPage() {
         <div>
           <h1 className="text-xl font-bold tracking-tight">Relatório de Compras</h1>
           <p className="text-xs text-muted-foreground">
-            Itens das notas de entrada no período da data de digitação — compras e devoluções de
-            cliente.
+            Itens das notas de compra (NF de entrada tipo normal — sem CT-e, serviço e devolução) no
+            período da data de digitação.
           </p>
         </div>
       </div>
@@ -75,7 +80,8 @@ export default function RelatorioComprasPage() {
             <CampoData id="c-fim" rotulo="Até" valor={fim} onChange={setFim} />
             <CampoTexto id="c-doc" rotulo="Documento" valor={documento} onChange={setDocumento} largura="w-36" />
             <CampoTexto id="c-prod" rotulo="Produto" valor={produto} onChange={setProduto} placeholder="Código ou descrição" />
-            <CampoTexto id="c-forn" rotulo="Fornecedor/Cliente" valor={fornecedor} onChange={setFornecedor} placeholder="Código ou razão social" />
+            <CampoCategoria valor={categoriaId} onChange={setCategoriaId} />
+            <CampoTexto id="c-forn" rotulo="Fornecedor" valor={fornecedor} onChange={setFornecedor} placeholder="Código ou razão social" />
             <Button type="submit">Gerar</Button>
           </form>
         </CardContent>
@@ -91,7 +97,8 @@ export default function RelatorioComprasPage() {
             ? descreverFiltros({ inicio: String(consulta.inicio), fim: String(consulta.fim) }, [
                 ["Documento", consulta.documento as string | undefined],
                 ["Produto", consulta.produto as string | undefined],
-                ["Fornecedor/Cliente", consulta.fornecedor as string | undefined],
+                ["Categoria", categoriaTexto],
+                ["Fornecedor", consulta.fornecedor as string | undefined],
               ])
             : []
         }

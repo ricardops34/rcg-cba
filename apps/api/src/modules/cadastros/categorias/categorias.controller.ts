@@ -36,7 +36,15 @@ export class CategoriasController {
       'Busca por descrição ou código ERP. Requer categorias.visualizar.',
   })
   @ApiPaginationQuery()
-  @RequirePermission('categorias', 'visualizar')
+  // Os relatórios filtram por categoria, e o Gerente não tem o cadastro de
+  // categorias: ler a lista (só nomes) vale para quem tem um relatório.
+  @RequirePermission(
+    'categorias',
+    'visualizar',
+    ['relatorio-compras', 'visualizar'],
+    ['relatorio-vendas', 'visualizar'],
+    ['relatorio-estoque-compra', 'visualizar'],
+  )
   @Get()
   findAll(
     @Query() query: CategoriaQueryDto,
