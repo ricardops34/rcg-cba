@@ -115,6 +115,7 @@ export default function RelatorioVendasPage() {
 
       <RelatorioPaginado
         titulo="Vendas por vendedor"
+        rotina="relatorio-vendas"
         chave="vendas"
         consulta={consulta}
         filtrosTexto={

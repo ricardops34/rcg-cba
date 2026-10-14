@@ -54,6 +54,8 @@ export default function RelatorioEstoqueCompraPage() {
   const [comMovimento, setComMovimento] = useState(true);
   const [consulta, setConsulta] = useState<Record<string, string | number> | null>(null);
   const [ordem, setOrdem] = useState<Ordem>({ coluna: "codigo", sentido: "asc" });
+  // PDF e Excel só com a ação Exportar da rotina.
+  const podeExportar = useAuthStore((s) => s.hasPermission("relatorio-estoque-compra", "exportar"));
 
   const escolherAtalho = (valor: string) => {
     setAtalho(valor);
@@ -239,14 +241,18 @@ export default function RelatorioEstoqueCompraPage() {
                 : "Carregando..."}
               {isFetching && !isLoading && <Loader2 className="ml-2 inline size-3 animate-spin" />}
             </p>
-            <Button variant="outline" className="gap-1.5" disabled={!data?.linhas.length} onClick={() => exportar("pdf")}>
-              <FileText className="size-4" />
-              PDF
-            </Button>
-            <Button variant="outline" className="gap-1.5" disabled={!data?.linhas.length} onClick={() => exportar("xlsx")}>
-              <FileSpreadsheet className="size-4" />
-              Excel
-            </Button>
+            {podeExportar && (
+              <>
+                <Button variant="outline" className="gap-1.5" disabled={!data?.linhas.length} onClick={() => exportar("pdf")}>
+                  <FileText className="size-4" />
+                  PDF
+                </Button>
+                <Button variant="outline" className="gap-1.5" disabled={!data?.linhas.length} onClick={() => exportar("xlsx")}>
+                  <FileSpreadsheet className="size-4" />
+                  Excel
+                </Button>
+              </>
+            )}
           </div>
           <EntityTable
             columns={colunasTabela}

@@ -26,6 +26,7 @@ import { FileSpreadsheet, FileText, Loader2 } from "lucide-react";
  */
 export function RelatorioPaginado<T>({
   titulo,
+  rotina,
   chave,
   consulta,
   filtrosTexto,
@@ -35,6 +36,8 @@ export function RelatorioPaginado<T>({
   totais,
 }: {
   titulo: string;
+  /** Código da rotina: PDF e Excel só com a ação `exportar` dela. */
+  rotina: string;
   chave: string;
   consulta: Record<string, unknown> | null;
   /** Período e filtros, para o cabeçalho do PDF e do Excel. */
@@ -48,6 +51,7 @@ export function RelatorioPaginado<T>({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [exportando, setExportando] = useState<"pdf" | "xlsx" | null>(null);
+  const podeExportar = useAuthStore((s) => s.hasPermission(rotina, "exportar"));
   const empresaNome = useAuthStore(
     (s) => s.user?.empresas.find((e) => e.empresaId === s.user?.empresaAtivaId)?.nomeFantasia,
   );
@@ -115,6 +119,8 @@ export function RelatorioPaginado<T>({
           {data ? `${data.total.toLocaleString("pt-BR")} linhas` : "Carregando..."}
           {isFetching && !isLoading && <Loader2 className="ml-2 inline size-3 animate-spin" />}
         </p>
+        {podeExportar && (
+          <>
         <Button
           variant="outline"
           className="gap-1.5"
@@ -137,6 +143,8 @@ export function RelatorioPaginado<T>({
           )}
           Excel
         </Button>
+          </>
+        )}
       </div>
 
       {linhaTotais && data && data.total > 0 && (

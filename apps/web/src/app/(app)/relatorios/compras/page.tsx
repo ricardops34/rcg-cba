@@ -83,6 +83,7 @@ export default function RelatorioComprasPage() {
 
       <RelatorioPaginado
         titulo="Relatório de Compras"
+        rotina="relatorio-compras"
         chave="compras"
         consulta={consulta}
         filtrosTexto={

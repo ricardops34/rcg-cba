@@ -1,4 +1,10 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  ForbiddenException,
+  Get,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { createZodDto } from 'nestjs-zod';
 import {
@@ -14,6 +20,26 @@ import {
   type AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
 import { RelatoriosService } from './relatorios.service';
+
+/** Página maior que isto é exportação (PDF/Excel), não tela. */
+const MAXIMO_DA_TELA = 200;
+
+/**
+ * Exportar é ação própria do perfil: a tela pagina de até 200 linhas, e pedir
+ * mais que isso é baixar o relatório. O administrador tem tudo pelo isAdmin.
+ */
+function exigirExportarSeGrande(
+  user: AuthenticatedUser,
+  rotina: string,
+  pageSize: number,
+) {
+  if (pageSize <= MAXIMO_DA_TELA || user.isAdmin) return;
+  if (!user.permissoes.includes(`${rotina}.exportar`)) {
+    throw new ForbiddenException(
+      'Seu perfil pode ver este relatório, mas não exportar (PDF/Excel).',
+    );
+  }
+}
 
 class RelatorioComprasQueryDto extends createZodDto(
   relatorioComprasQuerySchema,
@@ -46,6 +72,7 @@ export class RelatoriosController {
     @CurrentUser() user: AuthenticatedUser,
     @Query() q: RelatorioComprasQueryDto,
   ) {
+    exigirExportarSeGrande(user, 'relatorio-compras', q.pageSize);
     return this.service.compras(user.empresaAtivaId, q);
   }
 
@@ -58,6 +85,7 @@ export class RelatoriosController {
     @CurrentUser() user: AuthenticatedUser,
     @Query() q: RelatorioVendasQueryDto,
   ) {
+    exigirExportarSeGrande(user, 'relatorio-vendas', q.pageSize);
     return this.service.vendas(user.empresaAtivaId, q);
   }
 
