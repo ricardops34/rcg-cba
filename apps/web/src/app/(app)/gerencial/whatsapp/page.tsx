@@ -100,6 +100,23 @@ export default function HistoricoWhatsappPage() {
     enabled: !!empresaId,
   });
 
+  // Escolhido um vendedor, a combo de instância só mostra os números dele —
+  // "Todas as instâncias" continua valendo pra não restringir demais.
+  const numerosDoVendedor = useMemo(() => {
+    const todos = opcoesFiltro?.numeros ?? [];
+    if (vendedorId === "todos") return todos;
+    return todos.filter((n) => n.vendedorId === vendedorId);
+  }, [opcoesFiltro, vendedorId]);
+
+  // Trocar de vendedor com um número de outro vendedor já escolhido deixaria
+  // o filtro contraditório (nenhum resultado, sem explicar por quê) — volta
+  // pra "todas as instâncias" nesse caso.
+  useEffect(() => {
+    if (numero !== "todos" && !numerosDoVendedor.some((n) => n.numero === numero)) {
+      setNumero("todos");
+    }
+  }, [numerosDoVendedor, numero]);
+
   // Query das conversas auditadas
   const {
     data: dadosConversas,
@@ -251,7 +268,7 @@ export default function HistoricoWhatsappPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="todos">Todas as instâncias</SelectItem>
-                {opcoesFiltro?.numeros.map((n) => (
+                {numerosDoVendedor.map((n) => (
                   <SelectItem key={n.numero} value={n.numero}>
                     {telefoneBonito(n.numero)}
                     {n.vendedorNome ? ` · ${n.vendedorNome}` : ""}

@@ -1223,6 +1223,7 @@ export class WhatsappConversasService {
           },
           select: {
             numero: true,
+            vendedorId: true,
             vendedor: { select: { nome: true } },
           },
           orderBy: { conectadoEm: 'desc' },
@@ -1236,20 +1237,30 @@ export class WhatsappConversasService {
           select: {
             numero: true,
             status: true,
+            vendedorId: true,
             vendedor: { select: { nome: true } },
           },
         }),
       ]);
 
-      const mapaNumeros = new Map<string, string | null>();
+      const mapaNumeros = new Map<
+        string,
+        { vendedorId: string | null; vendedorNome: string | null }
+      >();
       for (const p of periodos) {
         if (!mapaNumeros.has(p.numero)) {
-          mapaNumeros.set(p.numero, p.vendedor?.nome ?? null);
+          mapaNumeros.set(p.numero, {
+            vendedorId: p.vendedorId,
+            vendedorNome: p.vendedor?.nome ?? null,
+          });
         }
       }
       for (const s of sessoes) {
         if (s.numero && !mapaNumeros.has(s.numero)) {
-          mapaNumeros.set(s.numero, s.vendedor?.nome ?? null);
+          mapaNumeros.set(s.numero, {
+            vendedorId: s.vendedorId,
+            vendedorNome: s.vendedor?.nome ?? null,
+          });
         }
       }
 
@@ -1263,9 +1274,10 @@ export class WhatsappConversasService {
       );
 
       const numeros = Array.from(mapaNumeros.entries())
-        .map(([numero, vendedorNome]) => ({
+        .map(([numero, dono]) => ({
           numero,
-          vendedorNome,
+          vendedorId: dono.vendedorId,
+          vendedorNome: dono.vendedorNome,
           conectado: numerosConectados.has(numero),
         }))
         .sort((a, b) => a.numero.localeCompare(b.numero));

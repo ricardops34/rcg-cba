@@ -583,6 +583,16 @@ function Instancias({ config }: { config: WhatsappConfig }) {
   const [apagar, setApagar] = useState<WhatsappSessao | null>(null);
   const [apagarHistorico, setApagarHistorico] = useState<{ sessao: WhatsappSessao; comInstancia: boolean } | null>(null);
   const podeExcluirHistorico = useAuthStore((s) => s.hasPermission("whatsapp-config", "excluir"));
+  const usuario = useAuthStore((s) => s.user);
+  const empresaAtivaId = usuario?.empresaAtivaId;
+  // Defesa extra: a API já escopa `/whatsapp/sessoes` pela empresa ativa (RLS +
+  // filtro explícito por empresaId), então toda linha devolvida já deveria ser
+  // desta empresa. Conferir de novo aqui, na tela, é o que torna visível — em
+  // vez de silencioso — o dia em que isso deixar de ser verdade, e trava as
+  // ações destrutivas (excluir/remover/apagar histórico) numa linha que não bate.
+  const empresaDaLinha = (sessao: WhatsappSessao) =>
+    usuario?.empresas.find((e) => e.empresaId === sessao.empresaId)?.nomeFantasia ?? sessao.empresaId;
+  const linhaDeOutraEmpresa = (sessao: WhatsappSessao) => sessao.empresaId !== empresaAtivaId;
   const { data = [], isLoading } = useQuery({ queryKey: ["whatsapp-sessoes"], queryFn: () => apiFetch<WhatsappSessao[]>("/whatsapp/sessoes"), refetchInterval: 10_000 });
   const atualizar = () => { void queryClient.invalidateQueries({ queryKey: ["whatsapp-sessoes"] }); void queryClient.invalidateQueries({ queryKey: ["whatsapp-sessao"] }); };
   const reconectar = useMutation({
@@ -666,6 +676,7 @@ function Instancias({ config }: { config: WhatsappConfig }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Vendedor</TableHead>
+                  <TableHead>Empresa</TableHead>
                   <TableHead>Número</TableHead>
                   <TableHead>Gateway</TableHead>
                   <TableHead>Estado</TableHead>
@@ -674,9 +685,20 @@ function Instancias({ config }: { config: WhatsappConfig }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.map((sessao) => (
+                {data.map((sessao) => {
+                  const foraDaEmpresa = linhaDeOutraEmpresa(sessao);
+                  return (
                   <TableRow key={sessao.id}>
                     <TableCell className="font-medium">{sessao.vendedorNome}</TableCell>
+                    <TableCell>
+                      {foraDaEmpresa ? (
+                        <Badge variant="destructive" title="Esta linha não pertence à empresa ativa — ações bloqueadas.">
+                          <TriangleAlert /> {empresaDaLinha(sessao)}
+                        </Badge>
+                      ) : (
+                        empresaDaLinha(sessao)
+                      )}
+                    </TableCell>
                     <TableCell>{sessao.numero ?? "—"}</TableCell>
                     <TableCell>Evolution GO</TableCell>
                     <TableCell>
@@ -686,7 +708,7 @@ function Instancias({ config }: { config: WhatsappConfig }) {
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button size="icon-sm" variant="ghost" aria-label={`Ações de ${sessao.vendedorNome}`}>
+                          <Button size="icon-sm" variant="ghost" aria-label={`Ações de ${sessao.vendedorNome}`} disabled={foraDaEmpresa}>
                             <MoreHorizontal />
                           </Button>
                         </DropdownMenuTrigger>
@@ -724,7 +746,8 @@ function Instancias({ config }: { config: WhatsappConfig }) {
                       </DropdownMenu>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           ) : null}

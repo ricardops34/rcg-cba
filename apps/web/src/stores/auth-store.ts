@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { CurrentUser } from "@plataforma/contracts";
+import { queryClient } from "@/app/providers";
 
 // Alias da empresa ativa, guardado fora do estado da sessão: o logout limpa
 // a sessão, e a tela de login ainda precisa saber de qual empresa o usuário
@@ -48,7 +49,16 @@ export const useAuthStore = create<AuthState>()(
         lembrarEmpresaDoLogin(user);
         set({ user });
       },
-      logout: () => set({ accessToken: null, refreshToken: null, user: null }),
+      logout: () => {
+        // Sem isto, a consulta em cache de QUALQUER tela (não só WhatsApp)
+        // sobrevive ao logout — a navegação pro /login é do lado do
+        // cliente, não recarrega a página — e aparece, por alguns segundos,
+        // pro próximo usuário logado neste navegador. Visto em 2026-10-14:
+        // instância de WhatsApp da BJSoftware na tela da RCG, depois de
+        // trocar de login sem fechar o navegador.
+        queryClient.clear();
+        set({ accessToken: null, refreshToken: null, user: null });
+      },
       hasPermission: (rotinaCodigo, acao) => {
         const user = get().user;
         if (!user) return false;

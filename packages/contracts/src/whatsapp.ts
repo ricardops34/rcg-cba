@@ -601,6 +601,12 @@ export const whatsappHistoricoFiltrosSchema = z.object({
   numeros: z.array(
     z.object({
       numero: z.string(),
+      vendedorId: z
+        .string()
+        .uuid()
+        .nullable()
+        .optional()
+        .describe("Dono do número, para a tela cruzar com o filtro de vendedor"),
       vendedorNome: z.string().nullable().optional(),
       /**
        * Se é o número que a instância do vendedor usa **hoje**. `false` é
