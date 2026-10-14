@@ -12,6 +12,7 @@ import { dirname, join, normalize, sep } from 'node:path';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadBucketCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
@@ -258,8 +259,23 @@ export class Armazenamento {
     return {
       s3Configurado: !!this.s3,
       bucket: this.config.s3?.bucket ?? null,
+      // null = sem S3; 'ok' = o bucket responde com a credencial da API; senão,
+      // o motivo — é a primeira coisa a ver depois de preencher as variáveis.
+      conexao: this.s3 ? await this.testarConexao() : null,
       pastas,
     };
+  }
+
+  /** Confere se o bucket responde com a credencial configurada. */
+  private async testarConexao(): Promise<string> {
+    try {
+      await this.s3!.send(
+        new HeadBucketCommand({ Bucket: this.config.s3!.bucket }),
+      );
+      return 'ok';
+    } catch (erro) {
+      return explicarErroS3(erro, this.config.s3!.bucket) ?? String(erro);
+    }
   }
 
   /**
@@ -423,4 +439,48 @@ let padrao: Armazenamento | undefined;
 export function armazenamento() {
   padrao ??= new Armazenamento(configDoAmbiente());
   return padrao;
+}
+
+/**
+ * Erro do S3 (MinIO) em português, com o que conferir — ou `null` se não é
+ * erro do S3. A tela mostrava "Erro interno inesperado" e o motivo só ficava
+ * no log (visto na primeira subida em produção, 2026-10-13).
+ */
+export function explicarErroS3(
+  erro: unknown,
+  bucket = 'plataforma',
+): string | null {
+  const e = erro as {
+    name?: string;
+    code?: string;
+    message?: string;
+    $metadata?: { httpStatusCode?: number };
+    cause?: { code?: string };
+  };
+  const codigo = e?.code ?? e?.cause?.code;
+  const status = e?.$metadata?.httpStatusCode;
+  if (
+    codigo === 'ECONNREFUSED' ||
+    codigo === 'ENOTFOUND' ||
+    codigo === 'EAI_AGAIN' ||
+    codigo === 'ETIMEDOUT'
+  ) {
+    return `MinIO fora de alcance (${codigo}): confira S3_ENDPOINT e se a API está na mesma rede do MinIO.`;
+  }
+  if (
+    e?.name === 'NoSuchBucket' ||
+    (e?.name === 'NotFound' && status === 404)
+  ) {
+    return `O bucket "${bucket}" não existe no MinIO: crie-o ou confira S3_BUCKET.`;
+  }
+  if (e?.name === 'InvalidAccessKeyId' || e?.name === 'SignatureDoesNotMatch') {
+    return 'MinIO recusou a credencial: confira S3_ACCESS_KEY e S3_SECRET_KEY.';
+  }
+  if (e?.name === 'AccessDenied' || status === 403) {
+    return `MinIO negou acesso ao bucket "${bucket}": confira a política do usuário da API (precisa de ListBucket, GetObject, PutObject e DeleteObject nesse bucket).`;
+  }
+  if (status !== undefined || e?.$metadata) {
+    return `MinIO respondeu com erro (${e?.name ?? status}): ${e?.message ?? ''}`.trim();
+  }
+  return null;
 }

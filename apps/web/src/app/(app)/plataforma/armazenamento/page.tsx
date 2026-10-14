@@ -31,6 +31,8 @@ interface ResultadoMidiaOrfa {
 interface SituacaoArmazenamento {
   s3Configurado: boolean;
   bucket: string | null;
+  /** null = sem MinIO; "ok" = o bucket responde; senão, o motivo da falha. */
+  conexao: string | null;
   pastas: { pasta: string; noDisco: number }[];
 }
 
@@ -120,6 +122,12 @@ function Situacao() {
               ? `MinIO configurado (bucket ${data.bucket}). As pastas abaixo gravam no MinIO; as demais seguem em disco.`
               : "Sem MinIO configurado: todos os arquivos estão em disco, no volume da API."}
           </p>
+          {data.conexao === "ok" && (
+            <p className="text-sm text-emerald-600 dark:text-emerald-400">Conexão com o MinIO: OK.</p>
+          )}
+          {data.conexao && data.conexao !== "ok" && (
+            <p className="text-sm text-destructive">Falha na conexão com o MinIO: {data.conexao}</p>
+          )}
         </div>
         {data.s3Configurado && data.pastas.length === 0 && (
           <p className="text-sm text-muted-foreground">Nenhuma pasta configurada para o MinIO ainda.</p>

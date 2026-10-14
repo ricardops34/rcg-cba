@@ -9,7 +9,21 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IsBoolean, IsString, Matches } from 'class-validator';
-import { armazenamento } from '../../common/armazenamento/armazenamento';
+import {
+  armazenamento,
+  explicarErroS3,
+} from '../../common/armazenamento/armazenamento';
+
+/** Erro do MinIO vira 400 com o motivo; o resto segue para o filtro global. */
+async function comMotivo<T>(acao: () => Promise<T>): Promise<T> {
+  try {
+    return await acao();
+  } catch (erro) {
+    const motivo = explicarErroS3(erro);
+    if (motivo) throw new BadRequestException(motivo);
+    throw erro;
+  }
+}
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
 import { MidiaOrfaService } from './midia-orfa.service';
@@ -47,7 +61,7 @@ export class PlataformaArmazenamentoController {
   @Post('midia-orfa')
   @HttpCode(200)
   varrerMidiaOrfa(@Body() dto: VarrerMidiaOrfaDto) {
-    return this.midiaOrfa.varrer(dto.apagar);
+    return comMotivo(() => this.midiaOrfa.varrer(dto.apagar));
   }
 
   @ApiOperation({
@@ -72,7 +86,9 @@ export class PlataformaArmazenamentoController {
     try {
       return await armazenamento().migrarParaS3(dto.pasta);
     } catch (erro) {
-      throw new BadRequestException((erro as Error).message);
+      throw new BadRequestException(
+        explicarErroS3(erro) ?? (erro as Error).message,
+      );
     }
   }
 }

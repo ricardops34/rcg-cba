@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { S3Client } from '@aws-sdk/client-s3';
 import {
   Armazenamento,
+  explicarErroS3,
   chaveDoEndereco,
   configDoAmbiente,
   validarChave,
@@ -204,6 +205,7 @@ describe('migrarParaS3', () => {
     expect(await a.situacao()).toEqual({
       s3Configurado: true,
       bucket: 'plataforma',
+      conexao: 'ok',
       pastas: [{ pasta: 'whatsapp', noDisco: 1 }],
     });
   });
@@ -264,5 +266,35 @@ describe('subpastas (whatsapp/<empresaId>/, desde 2026-10-13)', () => {
       'whatsapp/emp-1/novo.jpg',
     ]);
     send.mockRestore();
+  });
+});
+
+describe('explicarErroS3', () => {
+  it('diz o que conferir para cada falha comum do MinIO', () => {
+    expect(explicarErroS3({ code: 'ECONNREFUSED' })).toMatch(
+      /fora de alcance.*S3_ENDPOINT/,
+    );
+    expect(
+      explicarErroS3({
+        name: 'NoSuchBucket',
+        $metadata: { httpStatusCode: 404 },
+      }),
+    ).toMatch(/bucket "plataforma" não existe/);
+    expect(
+      explicarErroS3({
+        name: 'InvalidAccessKeyId',
+        $metadata: { httpStatusCode: 403 },
+      }),
+    ).toMatch(/S3_ACCESS_KEY e S3_SECRET_KEY/);
+    expect(
+      explicarErroS3({
+        name: 'AccessDenied',
+        $metadata: { httpStatusCode: 403 },
+      }),
+    ).toMatch(/política do usuário/);
+  });
+
+  it('erro que não é do S3 não é traduzido', () => {
+    expect(explicarErroS3(new Error('outra coisa'))).toBeNull();
   });
 });
