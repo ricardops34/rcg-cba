@@ -97,6 +97,7 @@ interface ListagemPosicaoRawRow {
   municipio: string | null;
   uf: string | null;
   ativo: boolean;
+  vendedorNome: string | null;
   ultimaCompra: Date | null;
   vendaUltimos30Dias: number;
   vendaMedia90Dias: number;
@@ -1355,6 +1356,7 @@ export class ClientesService {
           c."municipio",
           c."uf",
           c."ativo",
+          v."nome" AS "vendedorNome",
           COALESCE(u."ultimaData", c."ultimaCompra") AS "ultimaCompra",
           COALESCE(v30.total, 0) AS "vendaUltimos30Dias",
           COALESCE(v90.total, 0) / 3.0 AS "vendaMedia90Dias",
@@ -1388,6 +1390,7 @@ export class ClientesService {
               AND (ta."vencimento" IS NULL OR ta."vencimento" >= CURRENT_DATE + interval '7 days')
           ) AS "temTituloNaoVencido"
         FROM clientes c
+        LEFT JOIN vendedores v ON v.id = c."vendedorId"
         -- Última compra considerando apenas notas de saída com financeiro (ver NOTA_DE_VENDA_SQL).
         LEFT JOIN (
           SELECT "clienteId", MAX("dtEmissao") AS "ultimaData"
@@ -1440,6 +1443,7 @@ export class ClientesService {
         municipio: r.municipio,
         uf: r.uf,
         ativo: r.ativo,
+        vendedorNome: r.vendedorNome,
         ultimaCompra: r.ultimaCompra ? r.ultimaCompra.toISOString() : null,
         dias: r.ultimaCompra ? Math.floor((agora - r.ultimaCompra.getTime()) / 86_400_000) : null,
         vendaUltimos30Dias: Number(r.vendaUltimos30Dias),

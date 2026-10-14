@@ -345,6 +345,22 @@ export default function PosicaoClientePage() {
         <span className="block max-w-56 font-medium">{c.razaoSocial}</span>
       ),
     },
+    // Vendedor puro é sempre o dono da própria carteira — a coluna só
+    // acrescenta ruído pra quem já sabe. Administrador/gerente/supervisor
+    // veem carteiras de mais de uma pessoa, e é aí que identificar o
+    // responsável importa (mesma condição do filtro "Vendedor").
+    ...(mostrarFiltroVendedor
+      ? [
+          {
+            header: "Vendedor",
+            cell: (c: PosicaoClienteListRow) => (
+              <span className="block max-w-32 truncate" title={c.vendedorNome ?? undefined}>
+                {c.vendedorNome || "—"}
+              </span>
+            ),
+          },
+        ]
+      : []),
     {
       header: "Cidade",
       sortKey: "municipio",

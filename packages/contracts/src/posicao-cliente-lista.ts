@@ -14,6 +14,10 @@ export const posicaoClienteListRowSchema = z.object({
   municipio: z.string().nullable(),
   uf: z.string().nullable(),
   ativo: z.boolean(),
+  vendedorNome: z
+    .string()
+    .nullable()
+    .describe("Vendedor responsável pela carteira; null sem vínculo"),
   ultimaCompra: z.string().datetime().nullable(),
   dias: z.number().int().nullable().describe("Dias desde a última compra; null se o cliente nunca comprou"),
   vendaUltimos30Dias: z.number(),
@@ -71,6 +75,7 @@ export const POSICAO_CLIENTE_LIST_ROW_EXAMPLE: PosicaoClienteListRow = {
   municipio: "CAMPO GRANDE",
   uf: "MS",
   ativo: true,
+  vendedorNome: "MARCOS ANTONIO",
   ultimaCompra: "2026-07-28T00:00:00.000Z",
   dias: 0,
   vendaUltimos30Dias: 838.0,
