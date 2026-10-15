@@ -201,3 +201,13 @@ para "1", `false` para "2" e `null` para vazio/outro valor (não informado
 nunca vira "Não"). Tela do produto: Sim / Não / —. Na busca dos
 relatórios aparece "Allia" no detalhe do produto marcado; não é mais termo de
 busca. **Aplicada em dev.**
+
+## Barra alinhada; fornecedor só ativo (14/10/2026, usuário)
+
+- **Barra de filtros desalinhada**: o campo de data do navegador passa do
+  `h-8` dos outros controles. Agora tudo na barra é `h-9`, espaço igual entre
+  os campos (`gap-3`) e Filtros/Gerar logo depois dos campos (sem o vão).
+- **Fornecedor na busca do filtro: só ativo** (A2_MSBLQL = 1 chega como
+  `ativo = false` pelo BJPLA003). RCG: 11 bloqueados de 1.529. É só a lista:
+  nota antiga de fornecedor bloqueado continua no relatório. **Verificado em
+  dev** pela API (código de bloqueado não volta na busca).

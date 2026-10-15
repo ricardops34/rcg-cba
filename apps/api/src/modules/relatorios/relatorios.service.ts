@@ -608,6 +608,10 @@ export class RelatoriosService {
       condicoes.push(
         Prisma.sql`EXISTS (SELECT 1 FROM "categorias" cu WHERE cu."id" = t."categoriaId" AND cu."usado" = true)`,
       );
+    // Fornecedor bloqueado (A2_MSBLQL = 1 → ativo false) não aparece para
+    // escolher (usuário, 14/10/2026). Só a lista: a nota antiga dele continua
+    // no relatório.
+    if (tipo === 'fornecedores') condicoes.push(Prisma.sql`t."ativo" = true`);
     const buscaSql = condicaoBuscaTermosSql(busca, tabela.colunas);
     if (buscaSql) condicoes.push(buscaSql);
 

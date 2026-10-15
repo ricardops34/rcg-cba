@@ -211,14 +211,16 @@ export function PainelFiltros({
   return (
     <div className="space-y-2 rounded-xl border bg-card px-3 py-2.5">
       <form
-        className="flex flex-wrap items-end gap-2"
+        // Uma altura só na barra: o campo de data do navegador passa do h-8 dos
+        // outros controles e desalinhava a linha (visto em 14/10/2026).
+        className="flex flex-wrap items-end gap-3 [&_[data-slot=button]]:h-9! [&_[data-slot=input]]:h-9! [&_[data-slot=select-trigger]]:h-9!"
         onSubmit={(e) => {
           e.preventDefault();
           onGerar();
         }}
       >
         {principais}
-        <div className="ml-auto flex items-end gap-2">
+        <div className="flex items-end gap-2">
           <Button type="button" variant="outline" onClick={() => setAberto(true)}>
             <SlidersHorizontal className="size-4" />
             Filtros

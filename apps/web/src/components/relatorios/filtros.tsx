@@ -31,7 +31,7 @@ export function CampoData({
   return (
     <div className="space-y-1">
       <Label htmlFor={id}>{rotulo}</Label>
-      <Input id={id} type="date" className="w-40" value={valor} onChange={(e) => onChange(e.target.value)} />
+      <Input id={id} type="date" className="w-36" value={valor} onChange={(e) => onChange(e.target.value)} />
     </div>
   );
 }
