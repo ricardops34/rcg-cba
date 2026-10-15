@@ -10,12 +10,20 @@ import type {
   RelatorioOpcaoTipo,
   RelatorioResultado,
   RelatorioVendasLinha,
+  RelatorioVendasPorVendedorLinha,
+  RelatorioVendasPorVendedorMes,
+  RelatorioVendasPorVendedorQuery,
+  RelatorioVendasPorVendedorResultado,
   RelatorioVendasQuery,
 } from '@plataforma/contracts';
-import { RELATORIO_OPCOES_LIMITE } from '@plataforma/contracts';
+import {
+  PARAMETRO_RELATORIO_VENDAS_QUEBRA_VENDEDOR,
+  RELATORIO_OPCOES_LIMITE,
+} from '@plataforma/contracts';
 import { condicaoBuscaTermosSql } from '../../common/busca/termos-busca';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { corteDeVenda } from '../../common/vendas/venda-analitica';
+import { ParametrosService } from '../parametros/parametros.service';
 
 const DIA = 24 * 60 * 60 * 1000;
 /** Tempo máximo de uma leitura de relatório. */
@@ -156,7 +164,10 @@ function paginar(total: number, page: number, pageSize: number) {
  */
 @Injectable()
 export class RelatoriosService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly parametros: ParametrosService,
+  ) {}
 
   /**
    * Leitura no contexto da empresa com mais tempo que o padrão do Prisma
@@ -408,6 +419,138 @@ export class RelatoriosService {
   }
 
   /**
+   * Vendas por vendedor, mensal: uma linha por cliente (e vendedor, sempre
+   * apurado — a tela decide se agrupa), uma coluna por mês do período. Mesmo
+   * corte de venda das outras telas (`corteDeVenda`, categoria "usada").
+   *
+   * Período limitado a `RELATORIO_VENDAS_POR_VENDEDOR_MAX_MESES`: é uma
+   * matriz cliente × mês, e sem o teto uma consulta de anos vira uma grade
+   * larga demais para a tela e para o Excel/PDF.
+   */
+  async vendasPorVendedor(
+    empresaId: string,
+    q: RelatorioVendasPorVendedorQuery,
+  ): Promise<RelatorioVendasPorVendedorResultado> {
+    const { de, ate } = periodo(q.inicio, q.fim);
+
+    const meses: string[] = [];
+    let ano = Number(q.inicio.slice(0, 4));
+    let mes = Number(q.inicio.slice(5, 7));
+    const anoFim = Number(q.fim.slice(0, 4));
+    const mesFim = Number(q.fim.slice(5, 7));
+    while (ano < anoFim || (ano === anoFim && mes <= mesFim)) {
+      meses.push(`${ano}-${String(mes).padStart(2, '0')}`);
+      mes += 1;
+      if (mes > 12) {
+        mes = 1;
+        ano += 1;
+      }
+    }
+
+    const filtros: Prisma.Sql[] = [
+      Prisma.sql`i."empresaId" = ${empresaId}`,
+      Prisma.sql`i."deletedAt" IS NULL`,
+      Prisma.sql`i."ativo" = true`,
+      DE_CATEGORIA_USADA_SQL,
+    ];
+    if (q.vendedorIds?.length)
+      filtros.push(Prisma.sql`n."vendedorId" IN (${Prisma.join(q.vendedorIds)})`);
+    if (q.clienteIds?.length)
+      filtros.push(Prisma.sql`n."clienteId" IN (${Prisma.join(q.clienteIds)})`);
+    if (q.produtoIds?.length)
+      filtros.push(Prisma.sql`i."produtoId" IN (${Prisma.join(q.produtoIds)})`);
+    if (q.categoriaIds?.length) {
+      const cats = Prisma.join(q.categoriaIds);
+      filtros.push(
+        Prisma.sql`(p."categoriaId" IN (${cats}) OR p."subCategoriaId" IN (${cats}))`,
+      );
+    }
+
+    const { brutas, quebraPorVendedor } = await this.ler(empresaId, async (tx) => {
+      const corte = await corteDeVenda(tx, empresaId);
+      const brutas = await tx.$queryRaw<
+        {
+          vendedorId: string | null;
+          vendedor: string | null;
+          clienteId: string;
+          clienteCodigo: string | null;
+          clienteNome: string | null;
+          mes: string;
+          quantidade: number;
+          valor: number;
+        }[]
+      >`
+        SELECT n."vendedorId" AS "vendedorId",
+               COALESCE(v."nomeReduzido", v."nome") AS "vendedor",
+               n."clienteId" AS "clienteId",
+               c."codigoErp" AS "clienteCodigo",
+               c."razaoSocial" AS "clienteNome",
+               to_char(n."dtEmissao", 'YYYY-MM') AS "mes",
+               SUM(i."quantidade")::float8 AS "quantidade",
+               SUM(i."vlrTotal")::float8 AS "valor"
+        FROM "notas_saida_itens" i
+        JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
+        JOIN "produtos" p ON p."id" = i."produtoId"
+        LEFT JOIN "vendedores" v ON v."id" = n."vendedorId"
+        LEFT JOIN "clientes" c ON c."id" = n."clienteId"
+        WHERE ${Prisma.join(filtros, ' AND ')}
+          AND ${Prisma.join(corte.notaSql, ' AND ')}
+          AND n."dtEmissao" >= ${de} AND n."dtEmissao" < ${ate}
+        -- "mes" não pode ir pelo alias no GROUP BY/ORDER BY: notas_saida_itens
+        -- já tem uma coluna própria "mes" (do ERP), e o bare "mes" fica
+        -- ambíguo entre ela e o alias da expressão.
+        GROUP BY n."vendedorId", v."nomeReduzido", v."nome", n."clienteId",
+                 c."codigoErp", c."razaoSocial", to_char(n."dtEmissao", 'YYYY-MM')
+        ORDER BY "vendedor" NULLS LAST, "clienteNome", to_char(n."dtEmissao", 'YYYY-MM')`;
+      // Controle da tela tem prioridade; sem ele, vale o parâmetro da empresa.
+      const quebraPorVendedor =
+        q.quebraPorVendedor ??
+        (await this.parametros.obterBoolean(
+          empresaId,
+          PARAMETRO_RELATORIO_VENDAS_QUEBRA_VENDEDOR,
+          true,
+          tx,
+        ));
+      return { brutas, quebraPorVendedor };
+    });
+
+    const porChave = new Map<string, RelatorioVendasPorVendedorLinha>();
+    for (const b of brutas) {
+      const chave = `${b.vendedorId ?? ''}::${b.clienteId}`;
+      let linha = porChave.get(chave);
+      if (!linha) {
+        linha = {
+          vendedorId: b.vendedorId,
+          vendedor: b.vendedor,
+          clienteId: b.clienteId,
+          clienteCodigo: b.clienteCodigo,
+          clienteNome: b.clienteNome,
+          meses: meses.map((m): RelatorioVendasPorVendedorMes => ({ mes: m, quantidade: 0, valor: 0 })),
+          totalQuantidade: 0,
+          totalValor: 0,
+        };
+        porChave.set(chave, linha);
+      }
+      const item = linha.meses.find((m) => m.mes === b.mes);
+      if (item) {
+        item.quantidade = arred(b.quantidade, 4);
+        item.valor = arred(b.valor);
+      }
+      linha.totalQuantidade = arred(linha.totalQuantidade + b.quantidade, 4);
+      linha.totalValor = arred(linha.totalValor + b.valor);
+    }
+
+    const linhas = [...porChave.values()];
+    return {
+      meses,
+      quebraPorVendedor,
+      linhas,
+      totalQuantidade: arred(linhas.reduce((s, l) => s + l.totalQuantidade, 0), 4),
+      totalValor: arred(linhas.reduce((s, l) => s + l.totalValor, 0)),
+    };
+  }
+
+  /**
    * Estoque e compra, por produto:
    * - **Estoque**: soma dos armazéns de revenda;
    * - **Entrada-Qtd**: itens das notas de compra (`ESPECIES_DE_COMPRA`) no período;
@@ -502,23 +645,6 @@ export class RelatoriosService {
             AND ${Prisma.join(corte.notaSql, ' AND ')}
             AND n."dtEmissao" >= ${de} AND n."dtEmissao" < ${ate}
           GROUP BY i."produtoId"
-        ),
-        -- Última **compra**: nota normal com quantidade. O CT-e da
-        -- transportadora (tipo C, quantidade 0) leva o código do produto no
-        -- ERP e virava o "fornecedor" — visto em dev em 2026-10-13.
-        ult AS (
-          SELECT DISTINCT ON (i."produtoId") i."produtoId", f."id" AS "fornecedorId",
-                 f."razaoSocial" AS "fornecedor",
-                 i."vlrUnitario" AS "precoCompra"
-          FROM "notas_entrada_itens" i
-          JOIN "notas_entrada" n ON n."id" = i."notaEntradaId"
-          JOIN "fornecedores" f ON f."id" = n."fornecedorId"
-          WHERE i."empresaId" = ${empresaId} AND i."deletedAt" IS NULL AND i."ativo" = true
-            AND n."deletedAt" IS NULL AND n."ativo" = true
-            AND ${NOTA_DE_COMPRA_SQL}
-            AND i."quantidade" > 0
-          ORDER BY i."produtoId", COALESCE(n."dtEntrada", n."dtEmissao") DESC NULLS LAST,
-                   i."vlrUnitario" DESC
         )
         SELECT p."id" AS "produtoId", p."codigoErp" AS "codigo", p."descricao",
                p."codigoFabricante" AS "codigoCorp", ult."fornecedor",
@@ -533,7 +659,26 @@ export class RelatoriosService {
         LEFT JOIN est ON est."produtoId" = p."id"
         LEFT JOIN ent ON ent."produtoId" = p."id"
         LEFT JOIN sai ON sai."produtoId" = p."id"
-        LEFT JOIN ult ON ult."produtoId" = p."id"
+        -- Última **compra**, por produto (LATERAL, não CTE): calculada só
+        -- para os produtos que sobrevivem ao filtro, em vez de ordenar o
+        -- histórico de compra inteiro da empresa a cada "Gerar" — era o
+        -- gargalo do relatório (2026-10-15). Nota normal com quantidade; o
+        -- CT-e da transportadora (tipo C, quantidade 0) leva o código do
+        -- produto no ERP e virava o "fornecedor" — visto em dev em 2026-10-13.
+        LEFT JOIN LATERAL (
+          SELECT f."id" AS "fornecedorId", f."razaoSocial" AS "fornecedor",
+                 i."vlrUnitario" AS "precoCompra"
+          FROM "notas_entrada_itens" i
+          JOIN "notas_entrada" n ON n."id" = i."notaEntradaId"
+          JOIN "fornecedores" f ON f."id" = n."fornecedorId"
+          WHERE i."produtoId" = p."id"
+            AND i."empresaId" = ${empresaId} AND i."deletedAt" IS NULL AND i."ativo" = true
+            AND n."deletedAt" IS NULL AND n."ativo" = true
+            AND ${NOTA_DE_COMPRA_SQL}
+            AND i."quantidade" > 0
+          ORDER BY COALESCE(n."dtEntrada", n."dtEmissao") DESC NULLS LAST, i."vlrUnitario" DESC
+          LIMIT 1
+        ) ult ON true
         WHERE ${Prisma.join(filtros, ' AND ')}
         ORDER BY p."codigoErp"`;
     });

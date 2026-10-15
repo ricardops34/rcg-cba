@@ -14,6 +14,13 @@ export function hojeIso() {
 }
 export const inicioDoAnoIso = () => `${hojeIso().slice(0, 4)}-01-01`;
 
+/** `2026-10-15` menos N meses → `2026-05-15` (data civil, sem fuso). */
+export function mesesAntesIso(iso: string, meses: number) {
+  const [a, m, d] = iso.split("-").map(Number);
+  const data = new Date(Date.UTC(a, m - 1 - meses, d));
+  return data.toISOString().slice(0, 10);
+}
+
 /** `2026-01-07` → `07/01/2026`. */
 export const dataBr = (iso: string) => iso.split("-").reverse().join("/");
 

@@ -13,6 +13,7 @@ import {
   relatorioComprasQuerySchema,
   relatorioEstoqueCompraQuerySchema,
   relatorioOpcoesQuerySchema,
+  relatorioVendasPorVendedorQuerySchema,
   relatorioVendasQuerySchema,
   RELATORIO_OPCAO_TIPOS,
   type RelatorioOpcaoTipo,
@@ -60,6 +61,9 @@ class RelatorioVendasQueryDto extends createZodDto(
 class RelatorioEstoqueCompraQueryDto extends createZodDto(
   relatorioEstoqueCompraQuerySchema,
 ) {}
+class RelatorioVendasPorVendedorQueryDto extends createZodDto(
+  relatorioVendasPorVendedorQuerySchema,
+) {}
 class RelatorioOpcoesQueryDto extends createZodDto(
   relatorioOpcoesQuerySchema,
 ) {}
@@ -100,6 +104,19 @@ export class RelatoriosController {
   ) {
     exigirExportarSeGrande(user, 'relatorio-vendas', q.pageSize);
     return this.service.vendas(user.empresaAtivaId, q);
+  }
+
+  @ApiOperation({
+    summary:
+      'Vendas por vendedor, mensal: cliente × mês (até 12 meses), quebra por vendedor conforme parâmetro',
+  })
+  @RequirePermission('relatorio-vendas', 'visualizar')
+  @Get('vendas-por-vendedor')
+  vendasPorVendedor(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() q: RelatorioVendasPorVendedorQueryDto,
+  ) {
+    return this.service.vendasPorVendedor(user.empresaAtivaId, q);
   }
 
   @ApiOperation({

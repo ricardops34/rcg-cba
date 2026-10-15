@@ -64,9 +64,9 @@ export function RelatorioPaginado<T>({
   const [ordem, setOrdem] = useState<{ campo?: string; sentido: "asc" | "desc" }>({ sentido: "asc" });
   const [exportando, setExportando] = useState<"pdf" | "xlsx" | null>(null);
   const podeExportar = useAuthStore((s) => s.hasPermission(rotina, "exportar"));
-  const empresaNome = useAuthStore(
-    (s) => s.user?.empresas.find((e) => e.empresaId === s.user?.empresaAtivaId)?.nomeFantasia,
-  );
+  const empresaAtiva = useAuthStore((s) => s.user?.empresas.find((e) => e.empresaId === s.user?.empresaAtivaId));
+  const empresaNome = empresaAtiva?.nomeFantasia;
+  const logoUrl = empresaAtiva?.logoUrl;
   const { visiveis, ocultas, alternar, mostrarTodas } = useColunasEscolhidas(chave, colunas);
 
   // Filtro novo volta à primeira página.
@@ -103,13 +103,14 @@ export function RelatorioPaginado<T>({
       const params = {
         titulo,
         empresaNome,
+        logoUrl,
         filtros: filtrosTexto,
         colunas: visiveis,
         linhas: tudo.linhas,
         totais: linhaDeTotais(visiveis, tudo.totais),
       };
-      if (formato === "pdf") exportarRelatorioPdf(params);
-      else exportarRelatorioExcel(params);
+      if (formato === "pdf") await exportarRelatorioPdf(params);
+      else await exportarRelatorioExcel(params);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível gerar o arquivo.");
     } finally {

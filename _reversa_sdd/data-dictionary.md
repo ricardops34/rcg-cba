@@ -1037,3 +1037,96 @@ banco rejeitar).
 | `ClienteParaAnonimizar` | `id`, `codigoErp`, `razaoSocial?`, `nomeFantasia?`, `cnpjCpf?`, `municipio?`, `uf?`, `limiteCredito?`, `cnaes[]`, `produtos[]` | entrada bruta, como sai do banco — contém propositalmente os campos que NÃO podem trafegar |
 | `ClienteAnonimo` | `ref` (`"C0"`, `"C1"`...), `cnaes: string[]`, `produtos: string[]` | o que efetivamente é enviado à IA — só códigos |
 | `PayloadAnonimo` | `alvo: ClienteAnonimo`, `comparaveis: ClienteAnonimo[]` | payload completo da consulta |
+
+---
+
+## Módulo `orcamentos`
+
+### `Orcamento` (tabela `orcamentos`) 🟢
+
+Proposta comercial — nasce na plataforma (diferente das notas, que são espelho do ERP).
+Único módulo comercial com CRUD completo analisado até aqui.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | PK |
+| `empresaId` | String | RLS |
+| `codigoErp` | String? | número do Pedido de Venda gerado a partir do orçamento aprovado; nulo até o ERP integrar, nulo para sempre no orçamento que não vira pedido |
+| `chave` | String? | chave de integração (X2_UNICO); `@@unique([empresaId, chave])` |
+| `numero` | Int? | número sequencial por empresa, visível desde o rascunho (ver `proximoNumeroOrcamento`, code-analysis §3.6); nulo no pedido vindo do ERP como histórico (`origem: 'erp'`), que mostra `codigoErp` no lugar (ver `numeroOrcamento()`) |
+| `clienteId`, `vendedorId` | String | FK; `vendedorId` sempre herdado do cadastro do cliente (code-analysis §3.2) |
+| `oportunidadeId` | String? FK `Oportunidade` | |
+| `condicaoPagamentoId` | String? FK `CondicaoPagamento` | |
+| `titulo` | String | |
+| `status` | enum `StatusOrcamento` (`rascunho`/`enviado`/`aprovado`/`recusado`/`expirado`) | default `rascunho`; máquina de estado — ver code-analysis §3.4 |
+| `origem` | enum `OrigemVenda` (`vendedor`/`superior`/`administrador`/`cliente`/`erp`) | default `vendedor`; quem de fato montou o orçamento — ver code-analysis §3.2. Histórico anterior a 02/09/2026 gravado como `vendedor` por padrão (não recuperável) |
+| `dataValidade` | DateTime? (date) | ajustada para dia útil só na ponta final (`ajustarValidadeOrcamento`) |
+| `dataRetorno` | DateTime? | ao ser definida/alterada, gera `Atividade` de follow-up (`criarAtividadeRetorno`) |
+| `observacao` | String? | |
+| `vlrTotal` | Float | default `0`; soma dos itens, recalculada a cada save |
+| `ativo` | Boolean | default `true` |
+| `situacaoErp` | enum `SituacaoErpOrcamento`? | gravada só pela integração (`PUT /integracao/pedidos`); nula até o ERP mandar o pedido pela 1ª vez |
+| `situacaoErpEm` | DateTime? | |
+| `comQuebra` | Boolean | default `false`; pedido no ERP difere do orçamento aprovado (item incluído/retirado, quantidade/preço diferente) — calculado comparando `itensErp` com os itens do orçamento (fora deste módulo) |
+| `erroIntegracao` | String? | motivo da recusa do pedido pelo ERP (MATA410); orçamento recusado sai da fila de pendentes e fica assim — caminho é copiar (decisão 29/09/2026) |
+| `erroIntegracaoEm` | DateTime? | |
+| `notasErp` | Json? | `[{numero, serie, emissao}]` das notas do pedido |
+| `itensErp` | Json? | `[{chave, produtoChave, quantidade, vlrUnitario, quantidadeEntregue}]` como o ERP mandou por último |
+| `descontoSolicitadoEm`/`Por`, `descontoAutorizadoEm`/`Por` | DateTime?/String? | fluxo de autorização em duas etapas — ver code-analysis §3.3; zeradas quando os itens mudam |
+| `clienteDecididoEm` | DateTime? | quando o cliente respondeu (aprovou/recusou) |
+| `clienteDecididoPorContatoId` | String? FK `ClienteContato` | qual contato do cliente decidiu (relação nomeada `OrcamentoDecisaoContato`) |
+| `clienteDecisao` | String? | |
+| `clienteDecisaoObservacao` | String? | |
+
+Índices: `@@unique([empresaId, chave])`; `@@unique([empresaId, numero])`;
+`[empresaId, codigoErp]`; `[empresaId, vendedorId]`; `[empresaId, clienteId]`;
+`[empresaId, status]`; `[empresaId, clienteDecididoPorContatoId]`.
+
+### `OrcamentoItem` (tabela `orcamento_itens`) 🟢
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | PK |
+| `empresaId`, `orcamentoId`, `produtoId` | String | FK; `orcamento` com `onDelete: Cascade`, `produto` com `onDelete: Restrict` (não se apaga produto referenciado por orçamento) |
+| `chave` | String? | chave de integração (X2_UNICO); nula no item criado pela tela (caso normal aqui — orçamento nasce na plataforma); `@@unique([orcamentoId, chave])` |
+| `quantidade` | Float | default `1` |
+| `vlrTabela` | Float? | preço da Tabela de Preço do cliente; `null` sem tabela aplicável/preço cadastrado — ver code-analysis §3.1 |
+| `vlrUnitario` | Float | default `0`; informado pelo vendedor, preço praticado (líquido) |
+| `percDesconto`, `vlrDesconto` | Float?/Float | calculados a partir de `vlrTabela` vs. `vlrUnitario`; `vlrDesconto` default `0` |
+| `vlrTotal` | Float | default `0`; `vlrUnitario * quantidade` |
+| `regraDescontoId` | String? FK `RegraDesconto` | regra aplicável resolvida (tabela de preço > produto > categoria > regra padrão); nulo = sem regra própria |
+| `percComissao` | Float? | apurado a partir do `percComissao` base do vendedor + faixa da regra de desconto; `null` = sem percentual base cadastrado (não apurável), nunca `0` |
+
+Índices: `[empresaId, produtoId]`; `[orcamentoId]`; `[empresaId, regraDescontoId]`.
+
+### `OrcamentoConfig` (tabela `orcamento_config`) 🟢
+
+Só o contador do número sequencial (code-analysis §3.6) — não confundir com o módulo
+`orcamento-config` (pendente de análise), que pode ter regras de negócio adicionais sobre
+orçamento além deste contador.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | PK |
+| `empresaId` | String | `@unique` — uma linha por empresa |
+| `ultimoNumero` | Int | default `0`; incrementado atomicamente por `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` (`proximoNumeroOrcamento`) |
+
+### DTOs (Zod, `@plataforma/contracts`) 🟢
+
+| DTO | Campos | Observação |
+|---|---|---|
+| `OrcamentoCreate` | `clienteId`, `vendedorId` (sobrescrito pelo do cliente quando houver), `oportunidadeId?`, `condicaoPagamentoId?`, `titulo` (1–150), `status` (default `rascunho`), `dataValidade?`, `dataRetorno?`, `observacao?` (≤1000), `ativo` (default `true`), `itens[]` (default `[]`) | |
+| `OrcamentoUpdate` | `OrcamentoCreate.partial()` | quando `itens` é enviado, substitui o conjunto inteiro (sem endpoint por linha) |
+| `OrcamentoItemLinha` | `produtoId`, `quantidade` (inteiro positivo), `vlrUnitario` (≥0) | input de item — o resto (`vlrTabela`/`percDesconto`/`vlrDesconto`/`vlrTotal`) é calculado pelo servidor |
+| `OrcamentoQuery` | paginação + `ativo?`, `status?`, `origem?`, `vendedorId?`, `clienteId?`, `oportunidadeId?`, `dataInicio?`, `dataFim?` (sobre `createdAt`, uso: tela de Agenda) | |
+| `Orcamento` (leitura) | espelha a tabela | |
+| `OrcamentoItem` (leitura) | espelha a tabela do item + `produto` embutido (evita segundo fetch no form) | |
+
+### Funções/helpers compartilhados (não persistidos) 🟢
+
+| Função | Arquivo | Observação |
+|---|---|---|
+| `situacaoIntegracaoOrcamento(o)` | `@plataforma/contracts` | deriva `SituacaoIntegracaoOrcamento` (`nao_enviado`/`aguardando`/`erro_integracao` + os valores de `SituacaoErpOrcamento`) combinando `status`, `chave`/`codigoErp`, `situacaoErp`, `erroIntegracao` — usada pela listagem e pela aba de integração |
+| `podeExcluirOrcamento(o)` | `@plataforma/contracts` | `origem === 'erp'` nunca pode; senão, só `situacao === 'nao_enviado'` ou `'erro_integracao'` — ver code-analysis §6 |
+| `numeroOrcamento(o)` | `@plataforma/contracts` | `numero` como string, ou `codigoErp` quando `numero` é nulo (pedido histórico do ERP) |
+| `calcularComissaoItem(regra, percDesconto, percBaseVendedor)` | `@plataforma/contracts` | aplica a faixa da regra de desconto sobre o percentual base do vendedor — usado por `calcularItensOrcamento` |

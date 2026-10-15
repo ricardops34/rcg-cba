@@ -373,6 +373,35 @@
       ],
       "test_files": ["anonimizar.spec.ts"],
       "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "orcamentos",
+      "path": "apps/api/src/modules/orcamentos",
+      "responsibility": "Proposta comercial (CRUD completo, nasce na plataforma, diferente das notas que so espelham o ERP). Calcula preco/desconto/comissao a partir da Tabela de Preco do cliente, fluxo de autorizacao de desconto em duas etapas, maquina de estado de status, geracao de PDF da proposta (mesmo arquivo que o WhatsApp anexa) e rastreamento de integracao com o pedido de venda do ERP.",
+      "files": [
+        "orcamentos.module.ts", "orcamentos.controller.ts", "orcamentos.service.ts",
+        "dto/orcamento.dto.ts", "calcular-itens-orcamento.ts",
+        "registrar-atividade-orcamento.ts", "criar-atividade-retorno.ts",
+        "validade-orcamento.ts", "proximo-numero-orcamento.ts", "orcamento-pdf.ts"
+      ],
+      "entities": ["Orcamento", "OrcamentoItem", "OrcamentoConfig"],
+      "main_functions": [
+        "precoProduto", "findAll", "findOne", "create", "update", "remove",
+        "solicitarAutorizacaoDesconto", "autorizarDesconto", "gerarPdf",
+        "calcularItensOrcamento", "registrarAtividadeOrcamento", "origemDaVenda"
+      ],
+      "dependencies": [
+        "PrismaService", "ParametrosService (DESCONTO_ACIMA_LIMITE_BLOQUEIA, PARAMETRO_ORCAMENTO_EXIBIR_FOTOS, COMISSAO_OCULTA_PARA_TODOS)",
+        "resolverEscopoVendedores + combinarFiltroVendedor (common/escopo)",
+        "QuemPede + recorteDoSolicitante + autorDoEvento (common/escopo/quem-pede)",
+        "resolverTabelaPrecoCliente + resolverRegrasDescontoDosItens (common/precos)",
+        "common/permissoes/pode-ver-comissao", "common/horario/calendario-util",
+        "common/pdf/carregar-logo", "common/uploads/uploads.config",
+        "modules/notificacoes (registrarNotificacao, usuarioDoVendedor)",
+        "jspdf + jspdf-autotable", "@plataforma/contracts"
+      ],
+      "test_files": ["validade-orcamento.spec.ts", "pode-excluir-orcamento.spec.ts"],
+      "confidence": "CONFIRMADO"
     }
   ]
 }

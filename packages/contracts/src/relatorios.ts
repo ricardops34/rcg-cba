@@ -97,6 +97,66 @@ export interface RelatorioVendasLinha {
   vlrItem: number;
 }
 
+// ----------------------------------------- Vendas por vendedor (mensal)
+
+/** Parâmetro da empresa que liga/desliga o agrupamento por vendedor na grade. */
+export const PARAMETRO_RELATORIO_VENDAS_QUEBRA_VENDEDOR = "RELATORIO_VENDAS_QUEBRA_VENDEDOR";
+
+export const RELATORIO_VENDAS_POR_VENDEDOR_MAX_MESES = 12;
+
+export const relatorioVendasPorVendedorQuerySchema = z
+  .object({
+    inicio: dataSchema.describe("Início do período (emissão)"),
+    fim: dataSchema.describe("Fim do período (emissão)"),
+    vendedorIds: ids("Vendedores"),
+    clienteIds: ids("Clientes"),
+    categoriaIds: ids("Categorias (ou subcategorias) do produto"),
+    produtoIds: ids("Produtos"),
+    quebraPorVendedor: z
+      .enum(["true", "false"])
+      .optional()
+      .transform((v) => (v === undefined ? undefined : v === "true"))
+      .describe("Agrupa a grade por vendedor; sem informar, vale o parâmetro da empresa"),
+  })
+  .refine(
+    (q) => {
+      const [ai, mi] = q.inicio.split("-").map(Number);
+      const [af, mf] = q.fim.split("-").map(Number);
+      return (af - ai) * 12 + (mf - mi) >= 0 && (af - ai) * 12 + (mf - mi) < RELATORIO_VENDAS_POR_VENDEDOR_MAX_MESES;
+    },
+    { message: `O período não pode passar de ${RELATORIO_VENDAS_POR_VENDEDOR_MAX_MESES} meses`, path: ["fim"] },
+  );
+export type RelatorioVendasPorVendedorQuery = z.infer<typeof relatorioVendasPorVendedorQuerySchema>;
+
+export interface RelatorioVendasPorVendedorMes {
+  /** `AAAA-MM` */
+  mes: string;
+  quantidade: number;
+  valor: number;
+}
+
+export interface RelatorioVendasPorVendedorLinha {
+  vendedorId: string | null;
+  vendedor: string | null;
+  clienteId: string;
+  clienteCodigo: string | null;
+  clienteNome: string | null;
+  /** Um item por mês do período, na mesma ordem de `resultado.meses`. */
+  meses: RelatorioVendasPorVendedorMes[];
+  totalQuantidade: number;
+  totalValor: number;
+}
+
+export interface RelatorioVendasPorVendedorResultado {
+  /** `AAAA-MM`, em ordem crescente — as colunas da grade. */
+  meses: string[];
+  /** Do parâmetro `RELATORIO_VENDAS_QUEBRA_VENDEDOR` da empresa. */
+  quebraPorVendedor: boolean;
+  linhas: RelatorioVendasPorVendedorLinha[];
+  totalQuantidade: number;
+  totalValor: number;
+}
+
 // ------------------------------------------------------- Estoque e compra
 
 export const relatorioEstoqueCompraQuerySchema = z.object({

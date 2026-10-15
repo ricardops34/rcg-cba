@@ -26,9 +26,9 @@
       ]
     },
     "archaeologist": {
-      "modules_analyzed": ["auth", "clientes", "empresas", "grupos-economicos", "usuarios", "perfis", "acessos", "produtos", "produto-campos", "cliente-campo-config", "estoque", "estrutura", "fornecedores", "notas-entrada", "notas-saida", "sugestao-compra"],
+      "modules_analyzed": ["auth", "clientes", "empresas", "grupos-economicos", "usuarios", "perfis", "acessos", "produtos", "produto-campos", "cliente-campo-config", "estoque", "estrutura", "fornecedores", "notas-entrada", "notas-saida", "sugestao-compra", "orcamentos"],
       "modules_pending": [
-        "orcamentos", "orcamento-config", "titulos-receber",
+        "orcamento-config", "titulos-receber",
         "contas-bancarias", "equipamentos-comodato", "vendedores", "leads",
         "oportunidades", "atividades", "objetivos", "meus-atendimentos",
         "consultas", "relatorios", "whatsapp", "agente", "notificacoes",
