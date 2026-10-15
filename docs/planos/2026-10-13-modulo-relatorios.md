@@ -122,3 +122,21 @@ razão social e ir selecionando vários; tela mais enxuta.
 
 **Situação:** tipos (api/web), lint e testes do módulo ok; **não validado
 ponta a ponta** — Docker parado em 14/10. Falta a conferência na tela.
+
+## Códigos do fabricante e Allia no produto (14/10/2026, usuário)
+
+O produto não tinha `B1_XCOD` (Cod. Fabric.), `B1_XXDESC` (Desc. Fabric) e
+`B1_XALLIA` (Prod. Allia). O que a tela chamava de "código/descrição no
+fabricante" era `B1_XFOR`/`B1_XDESFOR` — do **fornecedor**.
+
+- Campos novos em `produtos`: `codigoNoFabricante` (B1_XCOD),
+  `descricaoNoFabricante` (B1_XXDESC), `codigoAllia` (B1_XALLIA) — migration
+  `20261014230000_produto_codigos_fabricante_allia`. Os antigos mantêm o nome
+  (`codigoFabricante` = B1_XFOR, `descricaoFabricante` = B1_XDESFOR); a tela
+  passou a chamá-los de "no fornecedor".
+- BJPLA003 (`BJMAPPRD`) envia os três (com `FieldPos`, vazio = Nil).
+- Cadastro do produto (aba Fabricante) mostra os cinco; a busca do cadastro e
+  a dos relatórios encontram por Cod. Corp., Cód. no fabricante e Allia.
+
+**Falta:** aplicar a migration, compilar o BJPLA003 no Protheus e reenviar os
+produtos (os campos só chegam quando o produto for reenviado).

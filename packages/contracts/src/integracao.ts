@@ -283,8 +283,41 @@ export const integracaoProdutoCreateSchema = z.object({
   fabricanteChave: chaveOpcionalSchema(60).describe(
     "chave do fabricante/fornecedor (A2_FILIAL-A2_COD-A2_LOJA)",
   ),
-  codigoFabricante: z.string().trim().max(60).nullable().optional(),
-  descricaoFabricante: z.string().trim().max(120).nullable().optional(),
+  codigoFabricante: z
+    .string()
+    .trim()
+    .max(60)
+    .nullable()
+    .optional()
+    .describe("Código no fornecedor (B1_XFOR, Cod. Fornec)"),
+  descricaoFabricante: z
+    .string()
+    .trim()
+    .max(120)
+    .nullable()
+    .optional()
+    .describe("Descrição no fornecedor (B1_XDESFOR)"),
+  codigoNoFabricante: z
+    .string()
+    .trim()
+    .max(60)
+    .nullable()
+    .optional()
+    .describe("Código no fabricante (B1_XCOD, Cod. Fabric.)"),
+  descricaoNoFabricante: z
+    .string()
+    .trim()
+    .max(250)
+    .nullable()
+    .optional()
+    .describe("Descrição no fabricante (B1_XXDESC, Desc. Fabric)"),
+  codigoAllia: z
+    .string()
+    .trim()
+    .max(60)
+    .nullable()
+    .optional()
+    .describe("Código do produto na Allia (B1_XALLIA, Prod. Allia)"),
   dadosTecnicos: z.string().trim().max(1000).nullable().optional(),
   regraDescontoChave: chaveOpcionalSchema().describe(
     "chave da regra de desconto (Z0_FILIAL-Z0_CODIGO)",

@@ -165,6 +165,20 @@ export class ProdutosService {
                     mode: 'insensitive' as const,
                   },
                 },
+                // Códigos de fora: fornecedor (B1_XFOR), fabricante (B1_XCOD)
+                // e Allia (B1_XALLIA).
+                ...(
+                  [
+                    'codigoFabricante',
+                    'codigoNoFabricante',
+                    'codigoAllia',
+                  ] as const
+                ).map((campo) => ({
+                  [campo]: {
+                    contains: query.search,
+                    mode: 'insensitive' as const,
+                  },
+                })),
               ],
             }
           : {}),

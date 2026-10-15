@@ -332,13 +332,26 @@ export function ProdutoForm({
                       <FieldLabel>Chave de integração do produto</FieldLabel>
                       <Input className="font-mono" disabled value={produto?.chave || "—"} />
                     </Field>
+                    {/* codigoFabricante/descricaoFabricante guardam o B1_XFOR/B1_XDESFOR, do fornecedor. */}
                     <Field>
-                      <FieldLabel>Código no fabricante</FieldLabel>
+                      <FieldLabel>Cód. no fornecedor (Cod. Corp.)</FieldLabel>
                       <Input disabled value={produto?.codigoFabricante || "—"} />
                     </Field>
                     <Field className="sm:col-span-2">
-                      <FieldLabel>Descrição no fabricante</FieldLabel>
+                      <FieldLabel>Descrição no fornecedor</FieldLabel>
                       <Input disabled value={produto?.descricaoFabricante || "—"} />
+                    </Field>
+                    <Field>
+                      <FieldLabel>Cód. no fabricante</FieldLabel>
+                      <Input disabled value={produto?.codigoNoFabricante || "—"} />
+                    </Field>
+                    <Field className="sm:col-span-2">
+                      <FieldLabel>Descrição no fabricante</FieldLabel>
+                      <Input disabled value={produto?.descricaoNoFabricante || "—"} />
+                    </Field>
+                    <Field>
+                      <FieldLabel>Prod. Allia</FieldLabel>
+                      <Input disabled value={produto?.codigoAllia || "—"} />
                     </Field>
                   </div>
                   <Field>

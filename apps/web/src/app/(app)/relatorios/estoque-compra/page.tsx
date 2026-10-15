@@ -264,7 +264,7 @@ export default function RelatorioEstoqueCompraPage() {
                 tipo="produtos"
                 value={produtos}
                 onChange={setProdutos}
-                buscaPlaceholder="Código, descrição, Cod. Corp. ou EAN..."
+                buscaPlaceholder="Código, descrição, Cod. Corp., Fabric., Allia ou EAN..."
               />
             </CampoFiltro>
             <CampoFiltro rotulo="Fornecedor (da última compra)">

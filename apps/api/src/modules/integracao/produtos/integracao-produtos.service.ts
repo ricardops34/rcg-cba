@@ -64,6 +64,9 @@ export class IntegracaoProdutosService {
       fabricanteChave: row.fabricante?.chave ?? null,
       codigoFabricante: row.codigoFabricante ?? null,
       descricaoFabricante: row.descricaoFabricante ?? null,
+      codigoNoFabricante: row.codigoNoFabricante ?? null,
+      descricaoNoFabricante: row.descricaoNoFabricante ?? null,
+      codigoAllia: row.codigoAllia ?? null,
       dadosTecnicos: row.dadosTecnicos ?? null,
       marca: row.marca,
       codigoBarras: row.codigoBarras,
@@ -188,6 +191,9 @@ export class IntegracaoProdutosService {
         fabricanteId,
         codigoFabricante: input.codigoFabricante ?? null,
         descricaoFabricante: input.descricaoFabricante ?? null,
+        codigoNoFabricante: input.codigoNoFabricante ?? null,
+        descricaoNoFabricante: input.descricaoNoFabricante ?? null,
+        codigoAllia: input.codigoAllia ?? null,
         dadosTecnicos: input.dadosTecnicos ?? null,
         marca: input.marca ?? null,
         codigoBarras: input.codigoBarras ?? null,
@@ -306,6 +312,15 @@ export class IntegracaoProdutosService {
             : {}),
           ...(input.descricaoFabricante !== undefined
             ? { descricaoFabricante: input.descricaoFabricante }
+            : {}),
+          ...(input.codigoNoFabricante !== undefined
+            ? { codigoNoFabricante: input.codigoNoFabricante }
+            : {}),
+          ...(input.descricaoNoFabricante !== undefined
+            ? { descricaoNoFabricante: input.descricaoNoFabricante }
+            : {}),
+          ...(input.codigoAllia !== undefined
+            ? { codigoAllia: input.codigoAllia }
             : {}),
           ...(input.dadosTecnicos !== undefined
             ? { dadosTecnicos: input.dadosTecnicos }

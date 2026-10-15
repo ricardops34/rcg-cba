@@ -80,6 +80,9 @@ export const produtoSchema = produtoCreateSchema.extend({
   fabricanteChave: z.string().nullable().optional(),
   codigoFabricante: z.string().nullable().optional(),
   descricaoFabricante: z.string().nullable().optional(),
+  codigoNoFabricante: z.string().nullable().optional(),
+  descricaoNoFabricante: z.string().nullable().optional(),
+  codigoAllia: z.string().nullable().optional(),
   dadosTecnicos: z.string().nullable().optional(),
   fabricante: z
     .object({

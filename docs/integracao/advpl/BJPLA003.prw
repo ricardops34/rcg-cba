@@ -1417,6 +1417,9 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim, lEnvDel)
 	Local lXDesF := SB1->(FieldPos("B1_XDESFOR")) > 0
 	Local lXTec  := SB1->(FieldPos("B1_XTEC"))    > 0
 	Local lXDesc := SB1->(FieldPos("B1_XDESC"))   > 0
+	Local lXCod  := SB1->(FieldPos("B1_XCOD"))    > 0
+	Local lXXDes := SB1->(FieldPos("B1_XXDESC"))  > 0
+	Local lXAll  := SB1->(FieldPos("B1_XALLIA"))  > 0
 
 	Default cMarca    := ""
 	Default cChave    := ""
@@ -1451,6 +1454,15 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim, lEnvDel)
 	EndIf
 	If lXDesc
 		cQuery += ", B1_XDESC "
+	EndIf
+	If lXCod
+		cQuery += ", B1_XCOD "
+	EndIf
+	If lXXDes
+		cQuery += ", B1_XXDESC "
+	EndIf
+	If lXAll
+		cQuery += ", B1_XALLIA "
 	EndIf
 
 	cQuery += "  FROM " + RetSQLName("SB1") + " SB1 "
@@ -1572,6 +1584,27 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim, lEnvDel)
 			oJson["descricaoFabricante"] := AllTrim((cAlias)->B1_XDESFOR)
 		Else
 			oJson["descricaoFabricante"] := Nil
+		EndIf
+
+		// Codigo e descricao no fabricante e codigo Allia (pedido do usuario,
+		// 14/10/2026). O codigoFabricante acima e o B1_XFOR (do fornecedor);
+		// estes sao os do fabricante de fato. Vazio vai Nil para limpar.
+		If lXCod .And. !Empty((cAlias)->B1_XCOD)
+			oJson["codigoNoFabricante"] := AllTrim((cAlias)->B1_XCOD) // SB1.B1_XCOD -> produto.codigoNoFabricante
+		Else
+			oJson["codigoNoFabricante"] := Nil
+		EndIf
+
+		If lXXDes .And. !Empty((cAlias)->B1_XXDESC)
+			oJson["descricaoNoFabricante"] := AllTrim((cAlias)->B1_XXDESC) // SB1.B1_XXDESC -> produto.descricaoNoFabricante
+		Else
+			oJson["descricaoNoFabricante"] := Nil
+		EndIf
+
+		If lXAll .And. !Empty((cAlias)->B1_XALLIA)
+			oJson["codigoAllia"] := AllTrim((cAlias)->B1_XALLIA) // SB1.B1_XALLIA -> produto.codigoAllia
+		Else
+			oJson["codigoAllia"] := Nil
 		EndIf
 
 		// Regra de desconto do produto (decisao do usuario, 13/10/2026): preenchida

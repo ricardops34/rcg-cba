@@ -1115,8 +1115,14 @@ model Produto {
   codigoBarras        String?
   codigoFornecedor    String?
   fabricanteId        String?
+  // Nomes antigos: estes dois guardam o código e a descrição no FORNECEDOR
+  // (B1_XFOR, B1_XDESFOR), não no fabricante.
   codigoFabricante    String?
   descricaoFabricante String?
+  // No fabricante de fato (B1_XCOD, B1_XXDESC) e o código Allia (B1_XALLIA).
+  codigoNoFabricante    String?
+  descricaoNoFabricante String?
+  codigoAllia           String?
   dadosTecnicos       String?
   ncm                 String?
   qtdEmbalagem        Float?

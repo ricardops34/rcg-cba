@@ -158,7 +158,7 @@ export default function RelatorioVendasPage() {
                 tipo="produtos"
                 value={produtos}
                 onChange={setProdutos}
-                buscaPlaceholder="Código, descrição, Cod. Corp. ou EAN..."
+                buscaPlaceholder="Código, descrição, Cod. Corp., Fabric., Allia ou EAN..."
               />
             </CampoFiltro>
             <CampoCategorias valor={categoriaIds} onChange={setCategoriaIds} />
