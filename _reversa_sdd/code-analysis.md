@@ -1730,3 +1730,411 @@ cabeçalho a partir do CFOP dos itens (`common/comodato`) — ver `NotaEntrada`/
 `notas-entrada.service.spec.ts` cobre as 3 ramificações de permissão do `findOne`
 (§3.1). `findAll` e os filtros de busca (`search` por número/chaveNfe/razão social) não
 têm teste.
+
+---
+
+## Módulo `notas-saida`
+
+**Caminho:** `apps/api/src/modules/notas-saida/`
+**Arquivos (7):** `notas-saida.module.ts`, `notas-saida.controller.ts`,
+`notas-saida.service.ts`, `dto/nota-saida.dto.ts`, `nota-flags.ts`, `nfe-xml.ts`,
+`danfe-pdf.ts`, `nfe-xml.spec.ts`.
+
+### 1. Responsabilidade 🟢
+
+Consulta read-only das notas fiscais de **venda**, espelho do ERP (SF2): listagem
+paginada, detalhe com itens e, exclusivo deste módulo, a **2ª via de DANFE** (PDF) e o
+**XML autorizado** da NF-e para download — ambos renderizados/lidos sob demanda a partir
+do XML que o ERP empurrou pela integração (não deste módulo). `tipo` separa dois
+documentos: venda normal e `'D'` devolução de compra (participante = fornecedor, não
+cliente). Dados entram só pela API de integração (módulo irmão, fora deste); sem
+create/update/delete aqui. Compartilha com `notas-entrada` a estrutura geral, mas tem
+responsabilidade extra (parsing de XML + geração de PDF) que o módulo de compra não tem.
+
+### 2. Fluxo de controle — funções principais 🟢
+
+| Função | Entrada | Saída | Complexidade |
+|---|---|---|---|
+| `findAll(empresaId, user, query, opcoes?)` | filtros (`ativo`, `clienteId`, `vendedorId`, `comodato`, `tipo`, `devolucao`, `ano`, `mes`, `search`) + paginação/ordenação | lista paginada com `cliente`/`fornecedor`/`vendedor` embutidos + flag `temXml` | Média — escopo por carteira + filtro de devolução (§3.1) |
+| `findOne(empresaId, user, id, opcoes?)` | id da nota | nota com cliente, fornecedor, vendedor, condição de pagamento e itens (produto, regra de desconto); comissão ocultada conforme parâmetro | Média — escopo por carteira + ocultação de comissão |
+| `gerarDanfe(empresaId, quem, id, opcoes?)` | id da nota | `{ conteudo: Buffer PDF, nomeArquivo, chave, cancelada, numero, clienteId, vendedorId }` | Alta — lê XML, extrai dados, monta PDF, registra evento condicional (ver flowchart de função) |
+| `obterXml(empresaId, user, id, opcoes?)` | id da nota | `{ conteudo: Buffer XML, nomeArquivo, clienteId, vendedorId }` | Baixa — delega a `lerXml`, registra evento |
+| `lerXml(empresaId, quem, id)` *(privado)* | id da nota | `{ nota, conteudo: Buffer }` | Média — resolve escopo por `QuemPede` (usuário ou cliente no WhatsApp), 404/409 |
+| `registrarEvento(...)` *(privado)* | nota, autor, evento, detalhes | grava atividade no histórico do cliente | Baixa |
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Escopo por carteira usa o vendedor do **cliente**, não o da nota 🟢
+
+Comentário explícito no topo do service: `notaSaida.vendedorId` é quem efetivamente fez a
+venda (exibido na tela), mas o filtro de "quem pode ver esta nota" usa
+`cliente.vendedorId` (o vendedor do CADASTRO do cliente). Efeito: uma nota registrada por
+outro vendedor cobrindo a carteira continua visível para quem enxerga aquele cliente.
+Implementado via `combinarFiltroVendedor(escopo, query.vendedorId)` sobre a relação
+`cliente` em `findAll`, e via `cliente: { vendedorId: { in: escopo } }` em `findOne`
+(mesmo mecanismo de `resolverEscopoVendedores` usado em `clientes`/`notas-entrada`).
+
+#### 3.2 Devolução de compra (`tipo = 'D'`) não tem dono de carteira 🟢
+
+`query.devolucao === true`: filtro vira `{ tipo: 'D' }` e **ignora** o filtro de
+vendedor/cliente — se `escopo` não é `null` (usuário restrito), o `where` força
+`{ id: { in: [] } }` (nunca retorna nada), porque a devolução não tem cliente associado
+(destinatário é fornecedor) e não há carteira que a enxergue. Só quem vê tudo
+(`escopo === null`) lista devoluções. `query.devolucao === false` exclui esse tipo
+explicitamente (`tipo: null OU tipo != 'D'`); `devolucao` ausente não filtra por tipo.
+Mesmo padrão do `TIPO_DEVOLUCAO` em `notas-entrada`, mas invertido (lá a devolução é do
+cliente; aqui, do fornecedor).
+
+#### 3.3 `lerXml` — leitura em duas etapas, sem o XML na consulta de escopo 🟢
+
+O `select` da consulta de nota **não inclui** `xml.conteudo`: o conteúdo mora em
+`NotaSaidaXml`, tabela acessória, e só é buscado (`findUnique` por `notaSaidaId`) depois
+que o escopo já aprovou o acesso à nota. Isto evita que a listagem ou qualquer consulta
+intermediária arraste megabytes de XML sem necessidade (mesmo racional de design documentado
+no schema da tabela). Resolve o recorte via `recorteDoSolicitante(tx, empresaId, quem)`
+— `quem` é `QuemPede` (`{ tipo: 'usuario', user }` ou cliente via WhatsApp), que devolve
+tanto `escopoVendedores` (lista ou null) quanto `clienteId` (quando quem pede é o próprio
+cliente, recorte adicional por `clienteId`). Nota inexistente/fora de escopo → 404; nota
+sem XML ainda recebido → 409 com mensagem explicando que o ERP precisa enviá-lo antes.
+
+#### 3.4 `gerarDanfe` — XML → dados → PDF → evento condicional 🟢
+
+Ver `flowcharts/notas-saida-gerarDanfe.md` para o fluxo completo. Pontos centrais:
+- Erro de parsing do XML (`NfeXmlInvalidoError`) vira 409 com o número da nota e a causa —
+  nunca um PDF vazio ou "inventado" a partir das colunas da tabela (comentário explícito em
+  `danfe-pdf.ts`: o documento é a representação do que a SEFAZ autorizou, não um recálculo).
+- Logo do emitente: tenta `empresa.logoDanfeUrl` primeiro, cai para `empresa.logoUrl`; a
+  consulta de `Empresa` é feita **fora** da transação de tenant (`Empresa` não é tabela de
+  tenant), mesmo padrão do PDF de orçamento.
+- O evento no histórico (`danfe_gerado`) só é registrado **depois** que o PDF existe — XML
+  ilegível vira 409 sem deixar rastro de uma 2ª via que ninguém recebeu.
+- `opcoes.registrarEvento === false` desliga o registro automático para quem já grava um
+  evento mais específico (ex.: o fluxo de WhatsApp grava "DANFE enviado" em vez de "DANFE
+  gerado").
+
+#### 3.5 Parser de XML próprio, com defesas explícitas contra XXE (`nfe-xml.ts`) 🟢
+
+`lerXml` (em `nfe-xml.ts`, não confundir com o método privado do service de mesmo nome)
+constrói a árvore do documento com regex, não com um parser XML genérico. Comentário no
+topo do arquivo justifica a escolha: o XML já veio validado pela SEFAZ contra o schema da
+NF-e, então não há necessidade de um parser completo — e trazer um parser genérico
+traria junto a superfície de XXE (entidades externas, DTD). Duas garantias de segurança:
+- **DOCTYPE, `<!ENTITY>` e instruções de processamento são descartados** no pré-processo,
+  antes de qualquer parsing — sem resolução de entidade não há XXE nem billion-laughs.
+- **Profundidade máxima de pilha = 60** (`PROFUNDIDADE_MAXIMA`): um XML forjado com
+  aninhamento profundo lança `NfeXmlInvalidoError` em vez de estourar a pilha do processo.
+- `NFE_XML_MAX_BYTES = 5 MiB` é o teto aceito na ingestão (não reforçado neste arquivo —
+  é um limite documentado para quem grava `NotaSaidaXml`, já que uma NF-e de 990 itens
+  não passa de ~2 MB).
+
+`extrairNfe` aceita tanto `nfeProc` (nota + protocolo de autorização — o que o ERP deve
+mandar) quanto `NFe` sozinha; sem `nfeProc` o DANFE sai sem protocolo, carimbado "SEM VALOR
+FISCAL" (ver §3.6), nunca como se tivesse sido autorizado. Cancelamento é inferido do
+`cStat` do protocolo (`101`, `135`, `151`, `155` = cancelamento homologado).
+
+#### 3.6 `montarDanfePdf` — paginação de itens e carimbos (`danfe-pdf.ts`) 🟡
+
+Reproduz o layout do DANFE retrato que o Protheus imprime (pedido do usuário, 01/10/2026,
+tendo o PDF do ERP como modelo) — mesmos quadros, mesma ordem, mesma composição de campos.
+Primeira folha: canhoto, cabeçalho, destinatário, fatura, impostos, transporte e o quadro
+de itens que cabem antes do rodapé fixo (`ALTURA_RODAPE`); itens que não couberem
+continuam em folhas seguintes, cada uma repetindo o cabeçalho. `escreverItens` devolve o
+índice de parada quando a próxima linha não cabe mais no quadro (considerando que a
+descrição pode quebrar em várias linhas); se um item sozinho não cabe nem numa folha vazia,
+o loop para (`proximo === antes`) para não entrar em loop infinito. O número de folhas só
+é conhecido no final — por isso "FOLHA x/y" é escrito numa segunda passada
+(`folhas: MarcaFolha[]` guarda página/posição de cada cabeçalho). Carimbo
+("NF-e CANCELADA" ou "SEM VALOR FISCAL") é desenhado por último, em todas as páginas, para
+ficar por cima do conteúdo. **Não recalcula nenhum valor fiscal** — todo número vem
+literalmente do XML (`decimal()` só formata).
+
+### 4. Estruturas de dados 🟢
+
+Ver `data-dictionary.md`, seção `notas-saida`.
+
+### 5. Metadados e configurações 🟢
+
+| Constante | Valor | Uso |
+|---|---|---|
+| `SORT_FIELDS` | `numero`/`dtEmissao`/`vlrItens`/`vlrBruto`/`ativo`/`createdAt` | whitelist de ordenação; fora da lista cai no default |
+| default de ordenação | `dtEmissao desc` | quando `sortBy` não é informado ou não está na whitelist |
+| `TIPO_DEVOLUCAO` | `'D'` | marca devolução de compra (destinatário = fornecedor) |
+| `NFE_XML_MAX_BYTES` (`nfe-xml.ts`) | 5 MiB | teto do XML aceito na ingestão |
+| `PROFUNDIDADE_MAXIMA` (`nfe-xml.ts`) | 60 | teto de aninhamento do parser próprio |
+| `MODALIDADE_FRETE` (`danfe-pdf.ts`) | mapa `0`–`4`,`9` → rótulo | tradução do `modFrete` do XML para o texto impresso no DANFE |
+| cStat de cancelamento (`nfe-xml.ts`) | `101`/`135`/`151`/`155` | marca `cancelada: true` em `extrairNfe` |
+
+### 6. Segurança / integridade 🟢
+
+- RLS por `empresaId` via `withTenant` em todas as funções.
+- Escopo por carteira em `findAll`/`findOne`/`lerXml`, resolvido sobre o vendedor do
+  **cliente**, não o da nota (§3.1) — e com a ramificação própria da devolução (§3.2).
+- `gerarDanfe`/`obterXml` aceitam tanto usuário logado quanto cliente via WhatsApp
+  (`QuemPede`/`recorteDoSolicitante`), cada um com seu recorte (carteira ou só as próprias
+  notas) — mesmo endpoint de serviço, duas origens de chamada (controller HTTP e ações de
+  conversa).
+- XML nunca trafega na consulta de escopo (§3.3) — só é lido depois que o acesso à nota já
+  foi confirmado.
+- Parser de XML próprio recusa DOCTYPE/ENTITY e limita profundidade de aninhamento (§3.5) —
+  decisão deliberada para não importar um parser genérico com superfície de XXE.
+- Sem XML autorizado na plataforma → 409 explícito (nunca PDF/XML vazio ou inventado).
+- Sem rota de escrita nesta API interna — mutação só pela API de integração (fora deste
+  módulo), que recebe o XML e grava em `NotaSaidaXml`.
+- Download de DANFE/XML grava evento no histórico do cliente (`registrarAtividadeDocumento`)
+  — rastreabilidade de quando um documento fiscal foi entregue a alguém.
+
+### 7. Dependências do módulo 🟢
+
+`PrismaService`, `ParametrosService` (parâmetro `COMISSAO_OCULTA_PARA_TODOS`),
+`common/pagination/paginate`, `common/escopo/escopo-vendedores`
+(`resolverEscopoVendedores`, `combinarFiltroVendedor`), `common/escopo/quem-pede`
+(`QuemPede`, `recorteDoSolicitante`, `autorDoEvento`),
+`common/atividades/registrar-atividade-documento`, `common/permissoes/pode-ver-comissao`
+(`ocultarComissaoDosItens`), `common/pdf/carregar-logo`, `common/pdf/barcode`
+(`code128cModulos`, `desenharBarras`, `larguraBarras` — usado no código de barras da chave
+de acesso), `jspdf`, `@plataforma/contracts`. Exportado (`NotasSaidaModule.exports`) para
+as ações da conversa de WhatsApp, que delegam aqui em vez de consultar a nota por conta
+própria — mesmo padrão de reuso documentado no comentário do módulo. Consultado por
+`clientes.posicao` (histórico/posição do cliente) e por `relatorios` (apuração de venda,
+ainda não analisado).
+
+### 8. Cobertura de testes 🟢
+
+`nfe-xml.spec.ts` (153 linhas) cobre os três pontos mais sensíveis do módulo:
+- `extrairNfe`: namespace, `nfeProc` com protocolo, decodificação de entidade e CDATA,
+  leitura de ICMS independente do grupo de tributação (ICMS00 vs ICMSSN102 — Simples
+  Nacional), totais/duplicatas/transporte, marcação de cancelada por `cStat`, e as duas
+  rejeições (XML que não é NF-e; chave sem 44 dígitos).
+- `lerXml`: **teste explícito de XXE** — DOCTYPE com `<!ENTITY xxe SYSTEM "file:///etc/passwd">`
+  é descartado sem resolver a entidade — e tag vazia sem desbalancear a árvore.
+- `montarDanfePdf`: formatação igual ao ERP (número com 9 dígitos, frete, datas sem
+  conversão de fuso — regressão documentada no próprio teste: "o gerador antigo convertia
+  pelo fuso do servidor e voltava um dia"), e paginação (60 itens forçando "FOLHA 01/02" /
+  "FOLHA 02/02").
+
+Sem spec para `notas-saida.service.ts`: a lógica de escopo por carteira (§3.1–3.3), o
+tratamento de devolução (§3.2) e o fluxo completo de `gerarDanfe`/`obterXml` (§3.4),
+incluindo os 404/409 e o registro condicional de evento, não têm teste automatizado —
+mesma lacuna de `notas-entrada`, mas aqui o risco é maior porque há mais ramificações
+(duas origens de chamada via `QuemPede`, condição de devolução).
+
+---
+
+## Módulo `sugestao-compra`
+
+**Caminho:** `apps/api/src/modules/sugestao-compra/`
+**Arquivos (6):** `sugestao-compra.module.ts`, `sugestao-compra.controller.ts`,
+`sugestao-compra.service.ts` (1502 linhas — o maior arquivo de service analisado até
+aqui), `dto/sugestao-compra.dto.ts`, `anonimizar.ts`, `anonimizar.spec.ts`.
+
+### 1. Responsabilidade 🟢
+
+Motor de recomendação de cross-sell: *"clientes parecidos com este compram algo que ele
+não compra?"*. Dois modos que **compartilham o mesmo motor** (`gerarLinhasParaCliente`/
+cálculo ao vivo com a mesma regra de semelhança) para nunca divergirem:
+- **Ao vivo** (`paraCliente`): calcula na hora, devolve evidência completa (quem compra,
+  quanto, preço na tabela do cliente). Usado pela tela e por uma ferramenta do agente de
+  IA interno (módulo exportado — ver §7).
+- **Gravado** (`gerarLote`/`gerarParaCliente` + `calculadaDoCliente`): roda o motor e
+  grava em `sugestoes_compra` (`origem: 'local'`), para o catálogo de sugestões não
+  depender de uma consulta cara a cada leitura — é o que o WhatsApp de funcionário
+  (`clientes_sem_compra_no_mes`, módulo não analisado) espera encontrar já pronto. O lote
+  roda em segundo plano (`iniciarLote`/`executarLote`), com acompanhamento por
+  `ultimaExecucao` e notificação no sino ao terminar. Disparo manual — não há scheduler.
+
+### 2. Fluxo de controle — funções principais 🟢
+
+| Função | Entrada | Saída | Complexidade |
+|---|---|---|---|
+| `paraCliente(empresaId, user, clienteId, query)` | cliente + parâmetros de ajuste (`meses`, `limite`, `semelhantes`, `baseSemelhanca`, `afinidadeCnae`) | `SugestaoCompraResultado` com evidência completa | Alta — orquestra elegibilidade, ramo, semelhança e produtos (ver flowchart de função) |
+| `listagem(empresaId, user, query)` | filtros (`ativo`, `uf`, `municipio`, `vendedorId`, `bloqueado`, `search`) + paginação | 1 linha por cliente com `ultimoCalculo`/`qtdSugestoes` (SQL raw com subquery agregada) | Média |
+| `calculadaDoCliente(empresaId, user, clienteId)` | id do cliente | o que está gravado em `sugestoes_compra`, com preço **atual** da tabela | Baixa |
+| `gerarLinhasParaCliente(...)` *(privado)* | cliente, janela de datas | linhas prontas para `createMany` (não grava) | Alta — o motor determinístico, compartilhado por lote e individual |
+| `gerarLote(empresaId, user, body)` | escopo + faixa de código opcional | grava sugestões do recorte inteiro, apagando o anterior | Alta — sequencial por cliente, transação de até 15 min |
+| `iniciarLote`/`executarLote` | mesmo body | `202` imediato; grava `SugestaoCompraExecucao` e roda `gerarLote` sem `await` | Média — orquestração assíncrona + notificação |
+| `gerarParaCliente(empresaId, user, clienteId, meses?)` | 1 cliente | recalcula e grava só este cliente; 400 se inativo/bloqueado | Média |
+| `excluirCalculo(empresaId, user, filtro)` | 1 cliente ou recorte (escopo + faixa) | apaga `origem: 'local'`; 409 se lote rodando | Baixa |
+| `ultimaExecucao(empresaId)` | — | última `SugestaoCompraExecucao` da empresa, com nome do usuário | Baixa |
+| `clientesDoMesmoRamo`/`motivoInelegivel`/`clientesElegiveis` *(privados)* | cliente/escopo | listas/motivos de elegibilidade reusados pelas funções acima | Média |
+| `buscarSemelhantes`/`produtosDosSemelhantes`/`cestaDoCliente`/`precosNaTabelaDoCliente` *(privados)* | parâmetros de cálculo | os blocos de SQL que `paraCliente` e `gerarLinhasParaCliente` montam em cima | Alta — SQL raw com CTEs (ver §3.3) |
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Elegibilidade: só CNPJ com CNAE, só o ramo como universo de comparação 🟢
+
+`motivoInelegivel`: CPF (documento com 11 dígitos) ou cliente sem nenhum `ClienteCnae`
+nunca recebe sugestão — decisão do usuário de 07/10/2026, documentada em comentário no
+código: comparar com a base toda sugeriria produto sem ligação com a atividade.
+`clientesDoMesmoRamo` define o universo: o CNAE **principal** do cliente (ou, sem
+principal marcado, todos os CNAEs dele), e "do mesmo ramo" é qualquer cliente ativo da
+**base inteira** (não só a carteira) cujo CNAE principal bate com um desses. Retorna
+`null` quando o cliente não tem CNAE algum — sem atividade, não há com quem comparar.
+
+#### 3.2 Escopo decide quem é identificado, não quem entra no cálculo 🟢
+
+Comentário no topo da classe é explícito sobre a inversão: o **alvo** precisa estar na
+carteira do usuário (consulta de cliente alheio continua vedada), mas os **comparáveis**
+vêm da base inteira — "a semelhança por ramo diz muito mais com 800 clientes do que com
+os 60 de uma carteira, e o que se entrega são produtos, não clientes". O corte acontece
+na **saída**: em `paraCliente`, cada `clienteSemelhante` fora da carteira
+(`naCarteira: false`) volta anonimizado (`clienteId: ''`, sem razão social, sem
+município) — contribuiu para o padrão sem ser revelado. Em `produtosDosSemelhantes`, a
+evidência (`ARRAY_AGG` de razão social) só nomeia quem está em `daCarteira`; quem está
+fora vira a contagem agregada `outrosClientes` ("+N cliente(s) do mesmo perfil em outras
+carteiras"). Comentário de alerta no código: todo campo novo acrescentado a
+`clientesSemelhantes` precisa passar pelo mesmo corte, ou vaza identidade de cliente de
+outra carteira.
+
+#### 3.3 Score de semelhança — dois eixos combinados, com peso de hierarquia de CNAE 🟢
+
+`buscarSemelhantes` roda uma única consulta SQL com CTEs (`cestas`, `medidas`,
+`cnae_alvo`, `cnae_pares`, `cnae_medidas`) e calcula em JS por cima:
+
+- **Eixo cesta** (peso 0,6): índice de **Jaccard** entre os produtos comprados por cada
+  par de clientes (interseção / união) — penaliza naturalmente o cliente que compra de
+  tudo e por isso "parece" com todo mundo.
+- **Eixo CNAE** (peso 0,4): dois sub-casos —
+  - Subclasse idêntica (`nivel = 'subclasse'`): fórmula fixa `min(afinidade*0.65 + 0.35
+    se mesmo CNAE principal, 1)`, onde `afinidade` satura em 3 CNAEs em comum (`min(n,3)/3`)
+    — comentário explícito: esta fórmula **não pode mudar** quando a comparação por
+    hierarquia foi introduzida (25/08/2026), senão a regra nova invalidaria scores que a
+    regra antiga já validava.
+  - Ramo vizinho (classe/grupo/divisão, só quando `afinidadeCnae: 'hierarquica'`):
+    `PESO_NIVEL_CNAE[nivel] * TETO_VIZINHO (0.2)` — teto calculado para nunca ultrapassar
+    o piso do caso exato (0,217), garantindo que "mesmo ramo" sempre vença "ramo
+    parecido". Decisão de 25/08/2026 documentada no contrato: a regra antiga (só
+    subclasse idêntica) ignorava 90 mil pares de clientes que a RCG mediu como do mesmo
+    ramo em nível de classe.
+- **Desempate por região** (+0,05 fixo): mesmo município/UF do alvo — só desempata,
+  nunca promove cliente de outro ramo.
+- `baseSemelhanca` (`'ambos'`/`'cesta'`/`'cnae'`) zera um dos dois pesos para permitir
+  isolar o eixo na tela (comparação de resultados).
+- Linhas sem nenhuma afinidade (sem produto em comum **e** sem CNAE em comum) são
+  descartadas antes do score — "não é pouco parecido, é outro negócio".
+- Top-K (`query.semelhantes`, 3–100) depois de ordenar por score desc.
+
+#### 3.4 `gerarLinhasParaCliente` — o motor gravado, espelho do ao vivo com uma diferença 🟢
+
+Compartilhado por `gerarLote` e `gerarParaCliente`, mas **não** é o mesmo código de
+`buscarSemelhantes`: usa `Jaccard` puro (sem o eixo CNAE) para escolher os K clientes de
+referência dentro do ramo — citação do código: "o resultado são produtos, não clientes,
+então o CNAE já fez seu papel ao definir o ramo; dentro dele, só a cesta decide quem é
+referência". Sem compra do alvo no período, ou sem ninguém do ramo com produto em comum,
+a referência vira o **ramo inteiro** (`porCompra = false`), e o `motivo` gravado muda de
+texto para refletir isso. Produto sugerido precisa de no mínimo `min(2, total)`
+compradores na referência — salvo quando a referência tem 1 ou 2 clientes — para não
+gravar idiossincrasia de um único cliente como padrão.
+
+#### 3.5 "O que conta como venda" — mesmo critério do Dashboard e das Consultas 🟢
+
+A constante SQL `NOTA_DE_VENDA` (nota ativa, tipo `'N'`, sem comodato, **e com
+financeiro** — `geraDuplicata = true`, ou `null` com `condicaoPagamentoId` preenchido,
+critério de fallback para integrações antigas) e `PRODUTO_VENDAVEL` (categoria marcada
+como usada, sem ser equipamento de comodato) são reaproveitadas de
+`common/vendas/venda-analitica.ts`/Dashboard, citadas explicitamente no comentário — a
+cesta de compras tem que concordar com o que as outras telas chamam de venda, senão o
+vendedor vê números que não batem entre telas.
+
+#### 3.6 Lote: substituição por **recorte inteiro**, não por quem foi recalculado 🟢
+
+`gerarLote` apaga a sugestão anterior de **todo o recorte elegível** (escopo + faixa de
+código, `recorteInteiro: true` em `clientesElegiveis` — inclui inativo/bloqueado/sem CNAE,
+não só quem passou no filtro de elegibilidade), não só de quem recebeu linha nova.
+Racional: cliente que deixou de ser elegível (virou CPF, perdeu o CNAE, foi bloqueado)
+não pode continuar com a sugestão de um cálculo antigo. Rodar só a faixa "004000 a
+004999" não apaga quem está fora da faixa. Processamento é **sequencial** por cliente, de
+propósito (comentário explícito): cada cliente já dispara uma varredura pesada sobre a
+base inteira — em paralelo isso satura o pool de conexões do Postgres sem acelerar nada,
+porque a base comparada é a mesma para todo mundo.
+
+#### 3.7 Lote em segundo plano: 202 imediato, execução sem `await`, notificação no fim 🟢
+
+`iniciarLote`: antes de criar a execução, marca como `falhou` qualquer execução que
+ficou `rodando` além de `TEMPO_MAXIMO_LOTE_MS + 5min` (a API reiniciou no meio) — sem
+isso, uma execução travada em `rodando` bloquearia a empresa para sempre, já que uma
+única execução por empresa é garantida por índice parcial único da migration (não por
+checagem em código; colisão gera `P2002` → 409). O disparo do trabalho real
+(`executarLote`) é **sem `await`** (comentário: "é isto que tira o cálculo da
+requisição") — o controller responde 202 na hora, e a tela acompanha por
+`ultimaExecucao`. Sucesso ou falha, o fim sempre grava `SugestaoCompraExecucao` e cria
+uma `Notificacao` (`sugestao_compra_calculada`) para quem pediu; a notificação falhando
+é logada e engolida (`.catch`), para não derrubar o fluxo principal.
+
+#### 3.8 `anonimizar.ts` — fronteira de dados para a IA, preparada mas não conectada 🟡
+
+Arquivo isolado, pequeno de propósito (comentário explícito: "é aqui que a regra pode ser
+quebrada sem ninguém notar"). Monta um payload com **só códigos opacos** (`C0`, `C1`...
++ códigos de CNAE/produto) para uma eventual consulta de semelhança via IA — nunca razão
+social, CNPJ, endereço, valores ou descrição. `garantirPayloadAnonimo` é uma segunda
+barreira em runtime: varre o JSON serializado atrás de qualquer chave da lista
+`CAMPOS_PROIBIDOS` e lança em vez de enviar. Testado exaustivamente
+(`anonimizar.spec.ts`, 8 casos). **Porém**: nenhuma função deste service (`paraCliente`,
+`gerarLinhasParaCliente` etc.) chama `montarPayloadAnonimo`/`garantirPayloadAnonimo` —
+toda a sugestão hoje roda pelo motor determinístico (`origem: 'local'`); `origem: 'ia'`
+existe no enum do Prisma e no schema (`sugestaoCompraCalculadaItemSchema.origem`), mas
+sem produtor. O arquivo é citado como precedente pelo módulo `agente`
+(`anonimizar-agente.ts`), que aplica a mesma regra no chat do agente de IA — ver esse
+módulo (não analisado nesta passada) para o consumidor real do padrão.
+
+### 4. Estruturas de dados 🟢
+
+Ver `data-dictionary.md`, seção `sugestao-compra`.
+
+### 5. Metadados e configurações 🟢
+
+| Constante | Valor | Uso |
+|---|---|---|
+| `TEMPO_MAXIMO_LOTE_MS` | 15 min | timeout da transação do lote e janela de "execução travada" em `iniciarLote` |
+| `TETO_VIZINHO` | 0,2 | teto do sinal de ramo vizinho — ver §3.3 |
+| `PESO_NIVEL_CNAE` (`@plataforma/contracts`) | subclasse 1 / classe 0,7 / grupo 0,4 / divisão 0,2 | peso por nível de parentesco hierárquico de CNAE |
+| `NIVEL_CNAE` | `{4: subclasse, 3: classe, 2: grupo, 1: divisao}` | traduz o `MAX(nivel)` numérico do SQL para o nome |
+| parâmetro `SUGESTAO_COMPRA_MESES` (`ParametrosService`) | configurável por empresa, default do schema = 12 | janela de histórico quando a query não informa `meses` |
+| `sugestaoCompraQuerySchema` defaults | `meses:12 (1–60)`, `limite:10 (1–50)`, `semelhantes:30 (3–100)`, `baseSemelhanca:'ambos'`, `afinidadeCnae:'hierarquica'` | parâmetros ajustáveis da consulta ao vivo |
+| `CAMPOS_PROIBIDOS` (`anonimizar.ts`) | 16 chaves (`razaoSocial`, `cnpjCpf`, `valorTotal`, `preco`...) | lista de bloqueio da barreira em runtime (§3.8) |
+
+### 6. Segurança / integridade 🟢
+
+- RLS por `empresaId` via `withTenant` em todas as funções; SQL raw (`$queryRaw`) sempre
+  com `Prisma.sql`/`Prisma.join` parametrizado — nenhuma interpolação de string crua
+  encontrada nesta passada.
+- Alvo sempre restrito ao escopo de carteira do usuário (`resolverEscopoVendedores`);
+  comparáveis da base inteira, mas com anonimização obrigatória na saída (§3.2) — é a
+  principal superfície de vazamento do módulo se um campo novo for acrescentado sem
+  passar pelo corte (alerta já deixado no comentário do código).
+- `anonimizar.ts`: dupla barreira (montagem campo a campo + varredura em runtime) contra
+  vazamento de dado de negócio para a IA — mas sem consumidor neste módulo hoje (§3.8),
+  então a proteção ainda não está em um caminho de execução real aqui.
+- `excluirCalculo`/`gerarLote` recusam com 409 enquanto outro lote está `rodando` —
+  evita apagar/regravar por cima de um cálculo em andamento.
+- Índice parcial único (migration, fora deste módulo) garante uma execução de lote por
+  empresa — a checagem em código (`P2002`) é a segunda linha de defesa, não a primeira.
+- Sem rota de escrita de dado de origem — a tabela de sugestão só é escrita por este
+  módulo (`origem: 'local'`), não por integração externa.
+
+### 7. Dependências do módulo 🟢
+
+`PrismaService`, `ParametrosService` (parâmetro `SUGESTAO_COMPRA_MESES`),
+`common/escopo/escopo-vendedores` (`resolverEscopoVendedores`),
+`common/busca/termos-busca` (`condicaoBuscaTermosSql`),
+`common/precos/resolver-tabela-preco-cliente`, `common/pagination/paginate`,
+`@plataforma/contracts` (schemas + `PESO_NIVEL_CNAE`). Lê `notas_saida_itens`/
+`notas_saida` (SQL raw — módulo `notas-saida`), `produtos`/`categorias`/
+`equipamentos_comodato` (SQL raw), `cliente_cnaes`/`cnaes` (SQL raw),
+`tabela_preco_item` (Prisma Client), grava `Notificacao` (módulo `notificacoes`, não
+analisado). **Exportado** (`SugestaoCompraModule.exports`) para o módulo `agente`
+consumir como ferramenta do assistente de IA interno (comentário explícito no módulo:
+"Bloco D") — e citado como precedente de design por `agente/anonimizar-agente.ts`, mesmo
+sem dependência de código direta entre os dois arquivos de anonimização.
+
+### 8. Cobertura de testes 🟡
+
+`anonimizar.spec.ts` (122 linhas, 8 casos) cobre exaustivamente a fronteira de dados para
+IA: nenhum campo proibido escapa, os códigos necessários sobrevivem, rótulo opaco sem
+UUID/código do ERP, CNAE sem código descartado, e as duas falhas da barreira em runtime
+(campo solto no payload; campo aninhado dentro de um array). **Sem nenhum spec para
+`sugestao-compra.service.ts`** — o arquivo com toda a lógica de negócio (1502 linhas): o
+score de semelhança (§3.3), a elegibilidade (§3.1), o corte de escopo na saída (§3.2), o
+motor gravado (§3.4), a substituição por recorte (§3.6) e a orquestração assíncrona do
+lote (§3.7) não têm teste automatizado algum. É a maior lacuna de cobertura encontrada
+até agora nesta extração, pela combinação de tamanho do arquivo e ausência total de spec
+— ao contrário de `notas-saida`, que ao menos cobre o parser de XML e o PDF.

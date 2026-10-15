@@ -850,3 +850,190 @@ o dado.
 | `NotaEntradaQuery` | paginação + `ativo?`, `fornecedorId?`, `clienteId?`, `tipo?` (máx. 10 chars), `ano?`, `mes?` (1–12) | sem `search` tipado explícito no schema — tratado como string livre no service |
 | `NotaEntrada` (leitura) | espelha a tabela, sem campos de NF-e de saída (`situacaoNfe`/`protocoloNfe`/`temXml`) — o documento de entrada foi emitido por terceiro, a plataforma não reimprime segunda via | |
 | `NotaEntradaItem` (leitura) | espelha a tabela do item | |
+
+---
+
+## Módulo `notas-saida`
+
+### `NotaSaida` (tabela `notas_saida`) 🟢
+
+Espelho read-only da SF2 — cabeçalho da nota de venda; entra e sai só por
+`/integracao/notas-saida` (módulo irmão, não analisado nesta passada). É o único dos dois
+(venda/compra) com 2ª via de documento fiscal (DANFE/XML) — a nota de entrada foi emitida
+por terceiro, a plataforma não reimprime.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | PK |
+| `empresaId` | String | RLS |
+| `codigoErp` | String? | informativo |
+| `chave` | String? | chave de integração (`X2_UNICO`); `@@unique([empresaId, chave])` — o que o upsert do import casa |
+| `clienteId` | String? FK `Cliente` | nulo na devolução de compra (`tipo = 'D'`) |
+| `fornecedorId` | String? FK `Fornecedor` | só preenchido na devolução de compra — espelho invertido de `NotaEntrada.clienteId` |
+| `vendedorId` | String? FK `Vendedor` | quem efetivamente fez a venda (exibido na tela); **não** é o que decide quem enxerga a nota — ver `Cliente.vendedorId` e §3.1 do code-analysis |
+| `condicaoPagamentoId` | String? FK `CondicaoPagamento` | |
+| `numero` | String | obrigatório |
+| `serie`, `especieFiscal` | String? | |
+| `tipo` | String? | `'D'` = devolução de compra (destinatário é fornecedor); apurações de venda filtram tipo ≠ `'D'` |
+| `dtEmissao` | DateTime? (date) | alimenta `ano`/`mes` |
+| `ano`, `mes` | Int? | derivados de `dtEmissao` |
+| `vlrBruto`, `vlrMercadoria`, `vlrItens`, `vlrDesconto` | Float | default `0` |
+| `vlrIcms`, `vlrIpi`, `vlrFrete`, `vlrDevolucao` | Float | default `0` |
+| `chaveNfe` | String? | chave de acesso da NF-e (44 dígitos) |
+| `dtNfe` | DateTime? (date) | |
+| `mensagem` | String? | |
+| `comodato` | Boolean | default `false`; todos os itens vivos com CFOP 5908/6908, ou o ERP informou |
+| `ativo` | Boolean | default `true` |
+| `duplicata` | String? | F2_DUPL — número da duplicata gerada pela nota |
+| `geraDuplicata` | Boolean? | `true`/`false` = ERP informou; `null` = integração anterior ao campo (cai no critério antigo: condição de pagamento) — é o que decide se a nota conta como venda nas análises (nota sem duplicata pode ser remessa em comodato, bonificação, transferência) |
+| `xmlRecebidoEm` | DateTime? | não-nulo = "tem 2ª via?" sem tocar no XML (ver `comFlagXml`); metadado curto que a tela usa, propositalmente fora da tabela acessória |
+| `protocoloNfe` | String? | protocolo de autorização (infProt/nProt) |
+| `situacaoNfe` | String? | `"autorizada"` \| `"cancelada"` \| `"denegada"`, como veio do ERP |
+
+Índices: `@@unique([empresaId, chave])`; `[empresaId, codigoErp]`; `[empresaId, numero]`;
+`[empresaId, vendedorId, ano, mes]`; `[empresaId, clienteId]`; `[empresaId, fornecedorId]`;
+`[empresaId, dtEmissao]`.
+
+**Nota de design:** o XML autorizado **não** é coluna de `NotaSaida` — vive em
+`NotaSaidaXml` à parte, porque o Prisma traz todas as colunas quando a consulta não tem
+`select` explícito, e tanto a listagem paginada quanto a Posição de Cliente (que carrega o
+histórico inteiro sem paginar) fariam toda abertura de tela arrastar megabytes de XML. O
+DANFE também **não é cacheado** — é sempre renderizado sob demanda a partir do XML
+(cachear um PDF barato de refazer só criaria risco de layout desatualizado).
+
+### `NotaSaidaXml` (tabela `nota_saida_xml`) 🟢
+
+Tabela acessória 1:1 com `NotaSaida` (`notaSaidaId` único, `onDelete: Cascade`). Um XML
+por nota — reenvio do ERP substitui o anterior (a nota autorizada é uma só; versionar um
+documento fiscal corrigido só criaria dúvida sobre qual vale).
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | PK |
+| `empresaId`, `notaSaidaId` | String | FK; `notaSaidaId` único |
+| `conteudo` | String (TEXT) | o XML completo; Postgres TOAST comprime automaticamente (~5–8x em XML), sem compressão em código |
+| `tamanhoBytes` | Int | tamanho do que foi recebido — tela de operação confere sem ler o XML inteiro |
+| `recebidoEm` | DateTime | default `now()` |
+| `recebidoPor` | String? | chave de API da integração que enviou |
+
+Índice: `[empresaId, recebidoEm]`.
+
+### `NotaSaidaItem` (tabela `notas_saida_itens`) 🟢
+
+Item de nota com `empresaId`/`clienteId`/`vendedorId`/`produtoId`/`dtEmissao`/`ano`/`mes`
+denormalizados do cabeçalho (mesma decisão de `NotaEntradaItem`): viabiliza a tela própria
+de itens com RLS e escopo sem join na nota, e alimenta a Sugestão de Compra (índice
+dedicado) e a apuração por produto sem varrer o cabeçalho.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | PK |
+| `empresaId`, `notaSaidaId` | String | FK |
+| `chave` | String? | chave de integração (X2_UNICO), única dentro do cabeçalho (`@@unique([notaSaidaId, chave])`) — upsert casa item a item, não apaga/recria o conjunto |
+| `clienteId`, `vendedorId`, `produtoId` | String? | espelham o participante/vendedor/produto do cabeçalho |
+| `item` | Int? | número do item na nota |
+| `dtEmissao`, `ano`, `mes` | — | denormalizados do cabeçalho |
+| `cfop` | String? | 5908/6908 = remessa de comodato (ver `NotaSaida.comodato`) |
+| `tipo` | String? | espelha o tipo do cabeçalho |
+| `quantidade`, `vlrUnitario`, `vlrDesconto`, `vlrTotal` | Float | default `0` |
+| `vlrTabela` | Float? | preço de tabela antes do desconto |
+| `percDesconto` | Float? | percentual de desconto aplicado |
+| `quantidadeDev`, `vlrDev` | Float? | quantidade/valor devolvido deste item (devolução de venda — distinto do cabeçalho `tipo='D'`, que é devolução de *compra*) |
+| `peso` | Float? | |
+| `comodato` | Boolean | default `false`; calculado por item a partir do CFOP |
+| `ativo` | Boolean | default `true` |
+| `percComissao` | Float? | percentual de comissão apurado pela regra de desconto; nulo = ainda não apurado. Ocultado da resposta da API quando `COMISSAO_OCULTA_PARA_TODOS` está ligado e o usuário não pode ver comissão (`ocultarComissaoDosItens`) |
+| `regraDescontoId` | String? FK `RegraDesconto` | regra de desconto aplicada (SZ0 do ERP); nulo = sem regra própria |
+
+Índices: `[notaSaidaId]`; `[empresaId, produtoId]`; `[empresaId, vendedorId, dtEmissao]`;
+`[empresaId, regraDescontoId]`; `[empresaId, clienteId, produtoId]` (Sugestão de Compra).
+
+### DTOs (Zod, `@plataforma/contracts`) 🟢
+
+| DTO | Campos | Observação |
+|---|---|---|
+| `NotaSaidaQuery` | paginação + `ativo?`, `clienteId?`, `vendedorId?`, `comodato?`, `tipo?` (máx. 10 chars), `devolucao?` (bool), `ano?`, `mes?` (1–12) | `devolucao`: `true` = só tipo `'D'`; `false` = exclui tipo `'D'`; ausente = todas (ver §3.2 do code-analysis) |
+| `NotaSaida` (leitura) | espelha a tabela + `temXml: boolean` calculado (`comFlagXml`, não persistido) | inclui campos de NF-e de saída que `NotaEntrada` não tem (`situacaoNfe`/`protocoloNfe`/`temXml`) |
+| `NotaSaidaItem` (leitura) | espelha a tabela do item, incluindo `percComissao` (opcional) e os campos de vínculo de `RegraDesconto` | |
+
+### Estruturas internas de `nfe-xml.ts` (não persistidas) 🟢
+
+Tipos usados só na extração do XML para o DANFE — não são tabela, não são DTO de API:
+
+| Tipo | Campos principais | Observação |
+|---|---|---|
+| `NoXml` | `nome`, `atributos`, `filhos`, `texto` | nó genérico da árvore que `lerXml` produz a partir do XML bruto |
+| `NfeDados` | `chave`, `numero`, `emitente`/`destinatario` (`NfeParte`), `itens` (`NfeItem[]`), `duplicatas`, `totais`, `transporte`, `issqn`, `cancelada`, `protocolo` | "o que o DANFE precisa do XML — nem mais, nem menos" (comentário no código) |
+| `NfeItem` | `codigo`, `descricao`, `ncm`, `cst`, `cfop`, `unidade`, `quantidade`, `valorUnitario`, `valorTotal`, bases/valores/alíquotas de ICMS e IPI | `cst` concatena `orig` + (`CST` ou `CSOSN`, conforme o regime tributário do item) |
+| `NfeParte` | `nome`, `fantasia`, `documento` (CNPJ ou CPF), `inscricaoEstadual`, `inscricaoEstadualSt`, `inscricaoMunicipal`, `endereco` | usado para emitente e destinatário |
+
+---
+
+## Módulo `sugestao-compra`
+
+### `SugestaoCompraGerada` (tabela `sugestoes_compra`) 🟢
+
+O resultado **gravado** do motor — o que `calculadaDoCliente`/a aba "Visualizar" leem.
+Uma linha por produto sugerido a um cliente; `gerarLote`/`gerarParaCliente` apagam e
+recriam por cliente a cada rodada (nunca `update`).
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | PK |
+| `empresaId`, `clienteId`, `produtoId` | String | FK; `cliente` com `onDelete: Cascade` |
+| `origem` | enum `OrigemSugestaoCompra` (`local` \| `ia`) | hoje só `local` é gravado (motor determinístico) — `ia` existe no schema mas sem produtor neste módulo (ver `anonimizar.ts`, code-analysis §3.8) |
+| `ordem` | Int | posição de exibição (1 = mais relevante) |
+| `score` | Float? | `clientes / total` da referência (§3.4 do code-analysis) |
+| `motivo` | String? | frase pronta para a tela ("N de M clientes do mesmo ramo... compram este produto") |
+| `modelo` | String? | reservado para quando `origem = 'ia'` registrar qual modelo gerou — não preenchido hoje |
+| `loteId` | String | agrupa as linhas de uma mesma rodada (`randomUUID()` por chamada de `gerarLote`/`gerarParaCliente`) |
+| `geradaEm` | DateTime | default `now()` |
+
+Índices: `@@unique([clienteId, produtoId, origem])` — upsert natural por recálculo;
+`[empresaId, clienteId, origem, ordem]` (leitura ordenada por cliente);
+`[empresaId, loteId]` (auditoria de uma rodada).
+
+### `SugestaoCompraExecucao` (tabela `sugestao_compra_execucoes`) 🟢
+
+Acompanhamento do "Calcular" em lote, que roda em segundo plano (§3.7 do code-analysis).
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | PK |
+| `empresaId`, `usuarioId` | String | quem disparou |
+| `situacao` | enum `SituacaoExecucaoSugestao` (`rodando` \| `concluida` \| `falhou`) | default `rodando` |
+| `parametros` | Json? | `meses`/`clienteCodigoDe`/`clienteCodigoAte` do pedido |
+| `resultado` | Json? | `clientesProcessados`/`clientesComSugestao`/`sugestoesGravadas`, só quando concluída |
+| `erro` | String? | mensagem truncada em 1000 chars quando falhou |
+| `iniciadaEm`, `concluidaEm` | DateTime | `concluidaEm` nulo enquanto roda |
+
+Índice: `[empresaId, iniciadaEm]`. **Uma execução `rodando` por empresa** garantida por
+índice parcial único da migration `20260930190000_sugestao_compra_execucoes` (não
+reforçado em código — a checagem do service existe só para devolver 409 amigável antes do
+banco rejeitar).
+
+### DTOs (Zod, `@plataforma/contracts`) 🟢
+
+| DTO | Campos | Observação |
+|---|---|---|
+| `SugestaoCompraQuery` | `meses` (1–60, default 12), `limite` (1–50, default 10), `semelhantes` (3–100, default 30), `baseSemelhanca` (`ambos`\|`cesta`\|`cnae`), `afinidadeCnae` (`hierarquica`\|`exata`) | parâmetros da consulta ao vivo (`paraCliente`) |
+| `SugestaoCompraResultado` | `clienteId`, `razaoSocial`, `produtosNaCesta`, `cnaes[]`, `clientesSemelhantes[]`, `sugestoes[]`, `aviso` | `aviso` não-nulo = diagnóstico de por que não há sugestão (cliente inelegível, sem cesta, sem semelhante...) em vez de lista vazia muda |
+| `ClienteSemelhante` | `clienteId` (string, não uuid — pode vir `''`), `razaoSocial`, `codigoErp`, `municipio`, `uf`, `score`, `indiceCesta`, `cnaesEmComum`, `nivelCnae`, `naCarteira`, `mesmoCnaePrincipal`, `mesmaRegiao`, `produtosEmComum` | campos de identificação ficam vazios/nulos quando `naCarteira = false` (ver code-analysis §3.2) |
+| `ProdutoSugerido` | `produtoId`, `codigoErp`, `descricao`, `score`, `semelhantesQueCompram`, `totalSemelhantes`, `cobertura`, `valorMedio`, `ultimaCompraNoGrupo`, `precoTabelaCliente`, `evidencia[]` | `evidencia` só nomeia clientes da carteira do usuário |
+| `SugestaoCompraListQuery` | paginação + `ativo?`, `uf?`, `municipio?`, `vendedorId?`, `bloqueado?` | consulta da listagem administrativa |
+| `SugestaoCompraListRow` | `id`, `codigoErp`, `razaoSocial`, `municipio`, `uf`, `ativo`, `bloqueado`, `ultimoCalculo`, `qtdSugestoes` | uma linha por cliente, não por produto |
+| `SugestaoCompraCalculada` / `SugestaoCompraCalculadaItem` | cliente + itens gravados (`produtoId`, `ordem`, `score`, `motivo`, `origem`, `geradaEm`, `precoTabelaCliente`) | preço é recalculado na leitura (tabela atual), não o do momento do cálculo |
+| `SugestaoCompraGerarClienteBody` | `meses?` (1–60) | corpo de `POST .../gerar` (1 cliente) |
+| `SugestaoCompraGerarLoteBody` | `meses?`, `clienteCodigoDe?`, `clienteCodigoAte?` | corpo de `POST /sugestao-compra/gerar` (lote) |
+| `SugestaoCompraExcluirBody` | `clienteCodigoDe?`, `clienteCodigoAte?` (sem `meses`) | corpo de `POST /sugestao-compra/excluir` |
+| `SugestaoCompraExcluirResultado` | `clientes`, `sugestoesExcluidas` | contadores do que foi apagado |
+| `SugestaoCompraGerarResultado` | `loteId`, `clientesProcessados`, `clientesComSugestao`, `sugestoesGravadas`, `aviso?` | resultado síncrono de `gerarParaCliente`/`gerarLote` |
+| `SugestaoCompraExecucao` | `id`, `situacao`, `iniciadaEm`, `concluidaEm`, `usuarioNome`, `resultado`, `erro` | o que `GET /sugestao-compra/execucoes/ultima` devolve |
+
+### Estruturas internas de `anonimizar.ts` (não persistidas) 🟢
+
+| Tipo | Campos | Observação |
+|---|---|---|
+| `ClienteParaAnonimizar` | `id`, `codigoErp`, `razaoSocial?`, `nomeFantasia?`, `cnpjCpf?`, `municipio?`, `uf?`, `limiteCredito?`, `cnaes[]`, `produtos[]` | entrada bruta, como sai do banco — contém propositalmente os campos que NÃO podem trafegar |
+| `ClienteAnonimo` | `ref` (`"C0"`, `"C1"`...), `cnaes: string[]`, `produtos: string[]` | o que efetivamente é enviado à IA — só códigos |
+| `PayloadAnonimo` | `alvo: ClienteAnonimo`, `comparaveis: ClienteAnonimo[]` | payload completo da consulta |

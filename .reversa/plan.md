@@ -32,8 +32,8 @@
 - [x] **Arqueólogo** — Análise do módulo `estrutura`
 - [x] **Arqueólogo** — Análise do módulo `fornecedores`
 - [x] **Arqueólogo** — Análise do módulo `notas-entrada`
-- [ ] **Arqueólogo** — Análise do módulo `notas-saida`
-- [ ] **Arqueólogo** — Análise do módulo `sugestao-compra`
+- [x] **Arqueólogo** — Análise do módulo `notas-saida`
+- [x] **Arqueólogo** — Análise do módulo `sugestao-compra`
 - [ ] **Arqueólogo** — Análise do módulo `orcamentos`
 - [ ] **Arqueólogo** — Análise do módulo `orcamento-config`
 - [ ] **Arqueólogo** — Análise do módulo `titulos-receber`

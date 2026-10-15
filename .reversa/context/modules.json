@@ -323,6 +323,56 @@
       ],
       "test_files": ["notas-entrada.service.spec.ts"],
       "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "notas-saida",
+      "path": "apps/api/src/modules/notas-saida",
+      "responsibility": "Consulta read-only das notas fiscais de venda (espelho do ERP/SF2): listagem paginada, detalhe com itens, 2a via de DANFE (PDF) e download do XML autorizado da NF-e, renderizados sob demanda a partir do XML que a integracao gravou. Tipo 'D' = devolucao de compra (fornecedor, nao cliente). Dados entram so pela API de integracao.",
+      "files": [
+        "notas-saida.module.ts", "notas-saida.controller.ts",
+        "notas-saida.service.ts", "dto/nota-saida.dto.ts", "nota-flags.ts",
+        "nfe-xml.ts", "danfe-pdf.ts"
+      ],
+      "entities": ["NotaSaida", "NotaSaidaItem", "NotaSaidaXml"],
+      "main_functions": ["findAll", "findOne", "gerarDanfe", "obterXml", "lerXml", "extrairNfe", "montarDanfePdf"],
+      "dependencies": [
+        "PrismaService", "ParametrosService", "common/pagination/paginate",
+        "resolverEscopoVendedores + combinarFiltroVendedor (common/escopo/escopo-vendedores)",
+        "QuemPede + recorteDoSolicitante + autorDoEvento (common/escopo/quem-pede)",
+        "registrarAtividadeDocumento (common/atividades)",
+        "ocultarComissaoDosItens (common/permissoes/pode-ver-comissao)",
+        "carregarLogo (common/pdf/carregar-logo)",
+        "code128cModulos + desenharBarras + larguraBarras (common/pdf/barcode)",
+        "jspdf", "@plataforma/contracts"
+      ],
+      "test_files": ["nfe-xml.spec.ts"],
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "sugestao-compra",
+      "path": "apps/api/src/modules/sugestao-compra",
+      "responsibility": "Motor de cross-sell: produtos que clientes do mesmo ramo (CNAE) e com cesta de compra parecida compram e o cliente-alvo nao compra. Dois modos com o mesmo motor: ao vivo (paraCliente, tela + agente de IA) e gravado em lote ou por cliente (sugestoes_compra), com execucao em segundo plano acompanhada por SugestaoCompraExecucao. Alvo restrito a carteira do usuario; comparaveis da base inteira, anonimizados na saida quando fora da carteira.",
+      "files": [
+        "sugestao-compra.module.ts", "sugestao-compra.controller.ts",
+        "sugestao-compra.service.ts", "dto/sugestao-compra.dto.ts", "anonimizar.ts"
+      ],
+      "entities": ["SugestaoCompraGerada", "SugestaoCompraExecucao"],
+      "main_functions": [
+        "paraCliente", "listagem", "calculadaDoCliente", "gerarLinhasParaCliente",
+        "gerarLote", "iniciarLote", "executarLote", "gerarParaCliente",
+        "excluirCalculo", "ultimaExecucao", "buscarSemelhantes", "produtosDosSemelhantes"
+      ],
+      "dependencies": [
+        "PrismaService", "ParametrosService (SUGESTAO_COMPRA_MESES)",
+        "resolverEscopoVendedores (common/escopo/escopo-vendedores)",
+        "condicaoBuscaTermosSql (common/busca/termos-busca)",
+        "resolverTabelaPrecoCliente (common/precos)", "common/pagination/paginate",
+        "@plataforma/contracts (PESO_NIVEL_CNAE)",
+        "notas_saida_itens/notas_saida (SQL raw, modulo notas-saida)",
+        "cliente_cnaes/cnaes (SQL raw)", "Notificacao (modulo notificacoes)"
+      ],
+      "test_files": ["anonimizar.spec.ts"],
+      "confidence": "CONFIRMADO"
     }
   ]
 }
