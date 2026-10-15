@@ -288,7 +288,12 @@ export function ProdutoForm({
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
                     <Field>
                       <FieldLabel htmlFor="codigoFornecedor">Código do fornecedor</FieldLabel>
-                      <Input id="codigoFornecedor" maxLength={60} disabled={doErp} {...form.register("codigoFornecedor")} />
+                      {/* Do ERP, o código do fornecedor é o B1_XFOR (codigoFabricante), só leitura. */}
+                      {doErp ? (
+                        <Input id="codigoFornecedor" disabled value={produto?.codigoFornecedor || produto?.codigoFabricante || ""} />
+                      ) : (
+                        <Input id="codigoFornecedor" maxLength={60} {...form.register("codigoFornecedor")} />
+                      )}
                     </Field>
                     <Field data-invalid={!!form.formState.errors.qtdEmbalagem}>
                       <FieldLabel htmlFor="qtdEmbalagem">Qtd. por embalagem</FieldLabel>

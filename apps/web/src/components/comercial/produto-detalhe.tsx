@@ -122,7 +122,9 @@ export function ProdutoDetalheContent({
         <CardContent className="@container space-y-5">
           <Secao titulo="Identificação">
             <Info label="Código ERP" value={produto.codigoErp} copiavel mono />
-            <Info label="Código do fornecedor" value={produto.codigoFornecedor} copiavel mono />
+            {/* Do ERP, o código do fornecedor é o B1_XFOR, gravado em codigoFabricante;
+                codigoFornecedor só existe em produto cadastrado na plataforma. */}
+            <Info label="Código do fornecedor" value={produto.codigoFornecedor || produto.codigoFabricante} copiavel mono />
             <Info label="Código de barras" value={produto.codigoBarras} copiavel mono />
             <Info label="NCM" value={produto.ncm} copiavel mono />
           </Secao>
@@ -146,6 +148,15 @@ export function ProdutoDetalheContent({
                 <p className="text-sm text-muted-foreground">Por tabela de preço — ver aba Preços</p>
               </div>
             )}
+          </Secao>
+          <Secao titulo="Fornecedor e fabricante">
+            <Info label="Descrição no fornecedor" value={produto.descricaoFabricante} />
+            <Info label="Cód. no fabricante" value={produto.codigoNoFabricante} copiavel mono />
+            <Info label="Descrição no fabricante" value={produto.descricaoNoFabricante} />
+            <Info
+              label="Prod. Allia"
+              value={produto.produtoAllia == null ? null : produto.produtoAllia ? "Sim" : "Não"}
+            />
           </Secao>
           {produto.observacao && (
             <section className="space-y-1">

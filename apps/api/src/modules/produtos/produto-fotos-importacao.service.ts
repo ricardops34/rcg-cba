@@ -38,8 +38,12 @@ export class ProdutoFotosImportacaoService {
       const resultado: ProdutoFotoImportacaoItem[] = [];
       for (const file of files) {
         const candidatos = codigosDoNome(file.originalname);
-        const campo =
-          criterio === 'codigo_erp' ? 'codigoErp' : 'codigoFornecedor';
+        // Do ERP, o código do fornecedor é o B1_XFOR, gravado em
+        // codigoFabricante; codigoFornecedor só existe em produto da plataforma.
+        const campos =
+          criterio === 'codigo_erp'
+            ? ['codigoErp']
+            : ['codigoFornecedor', 'codigoFabricante'];
         let produtos: { id: string; codigoErp: string; descricao: string }[] =
           [];
         if (criterio !== 'manual') {
@@ -50,7 +54,9 @@ export class ProdutoFotosImportacaoService {
               where: {
                 empresaId,
                 deletedAt: null,
-                [campo]: { equals: codigo, mode: 'insensitive' as const },
+                OR: campos.map((campo) => ({
+                  [campo]: { equals: codigo, mode: 'insensitive' as const },
+                })),
               },
               select: { id: true, codigoErp: true, descricao: true },
               take: 2,

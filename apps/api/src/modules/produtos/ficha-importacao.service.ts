@@ -479,6 +479,10 @@ export class FichaImportacaoService implements OnModuleInit, OnModuleDestroy {
               {
                 codigoFornecedor: { equals: lido.codigo, mode: 'insensitive' },
               },
+              // Do ERP, o código do fornecedor é o B1_XFOR (codigoFabricante).
+              {
+                codigoFabricante: { equals: lido.codigo, mode: 'insensitive' },
+              },
               { codigoErp: { equals: lido.codigo, mode: 'insensitive' } },
               { codigoBarras: { equals: lido.codigo, mode: 'insensitive' } },
             ],
