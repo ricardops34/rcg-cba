@@ -42,7 +42,13 @@ export function periodo(inicio: string, fim: string) {
  * (NFFA) e devolução de cliente (tipo D). Espécies vistas na base da RCG.
  */
 export const ESPECIES_DE_COMPRA = ['SPED', 'NFE', 'NF', 'NFA'];
-const NOTA_DE_COMPRA_SQL = Prisma.sql`n."tipo" = 'N' AND n."especieFiscal" IN (${Prisma.join(ESPECIES_DE_COMPRA)})`;
+/**
+ * E de fornecedor **ativo** (decisão do usuário, 14/10/2026, só para os
+ * relatórios): bloqueado no ERP (A2_MSBLQL = 1) não sai nem na lista do filtro
+ * nem nos itens — Compras, Entrada-Qtd e o fornecedor/preço da última compra.
+ */
+const NOTA_DE_COMPRA_SQL = Prisma.sql`n."tipo" = 'N' AND n."especieFiscal" IN (${Prisma.join(ESPECIES_DE_COMPRA)})
+  AND EXISTS (SELECT 1 FROM "fornecedores" fa WHERE fa."id" = n."fornecedorId" AND fa."ativo" = true)`;
 
 /** Produto de uma das categorias ou subcategorias escolhidas. */
 const dasCategorias = (ids: string[]): Prisma.ProdutoWhereInput => ({
@@ -176,6 +182,7 @@ export class RelatoriosService {
             ativo: true,
             tipo: 'N',
             especieFiscal: { in: ESPECIES_DE_COMPRA },
+            fornecedor: { is: { ativo: true } },
             OR: [
               { dtEntrada: { gte: de, lt: ate } },
               { dtEntrada: null, dtEmissao: { gte: de, lt: ate } },
