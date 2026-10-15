@@ -3,7 +3,6 @@
 import { useState } from "react";
 import type { RelatorioOpcao, RelatorioResultado, RelatorioVendasLinha } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
-import { Card, CardContent } from "@/components/ui/card";
 import { VendedoresMultiSelect } from "@/components/crud/vendedores-multi-select";
 import { RelatorioPaginado } from "@/components/relatorios/relatorio-paginado";
 import {
@@ -30,17 +29,17 @@ import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
 import { Receipt } from "lucide-react";
 
 const COLUNAS: ColunaRelatorio<RelatorioVendasLinha>[] = [
-  { titulo: "Vendedor", valor: (l) => l.vendedor },
-  { titulo: "Cód. Cliente", valor: (l) => l.clienteCodigo },
-  { titulo: "Nome Cliente", valor: (l) => l.clienteNome },
-  { titulo: "Município", valor: (l) => l.municipio },
-  { titulo: "Emissão", valor: (l) => l.emissao, formato: "data" },
-  { titulo: "Nota Fiscal", valor: (l) => l.notaFiscal },
-  { titulo: "Cód. Prod.", valor: (l) => l.produtoCodigo },
-  { titulo: "Produto", valor: (l) => l.produto },
-  { titulo: "Quantidade", valor: (l) => l.quantidade, formato: "quantidade" },
-  { titulo: "Vlr. Produto", valor: (l) => l.vlrProduto, formato: "moeda" },
-  { titulo: "Vlr. Item", valor: (l) => l.vlrItem, formato: "moeda" },
+  { campo: "vendedor", titulo: "Vendedor", valor: (l) => l.vendedor },
+  { campo: "clienteCodigo", titulo: "Cód. Cliente", valor: (l) => l.clienteCodigo },
+  { campo: "clienteNome", titulo: "Nome Cliente", valor: (l) => l.clienteNome },
+  { campo: "municipio", titulo: "Município", valor: (l) => l.municipio },
+  { campo: "emissao", titulo: "Emissão", valor: (l) => l.emissao, formato: "data" },
+  { campo: "notaFiscal", titulo: "Nota Fiscal", valor: (l) => l.notaFiscal },
+  { campo: "produtoCodigo", titulo: "Cód. Prod.", valor: (l) => l.produtoCodigo },
+  { campo: "produto", titulo: "Produto", valor: (l) => l.produto },
+  { campo: "quantidade", titulo: "Quantidade", valor: (l) => l.quantidade, formato: "quantidade" },
+  { campo: "vlrProduto", titulo: "Vlr. Produto", valor: (l) => l.vlrProduto, formato: "moeda" },
+  { campo: "vlrItem", titulo: "Vlr. Item", valor: (l) => l.vlrItem, formato: "moeda" },
 ];
 
 /**
@@ -114,13 +113,13 @@ export default function RelatorioVendasPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <div className="flex items-center gap-3">
-        <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-xs">
-          <Receipt className="size-5" />
+        <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-xs">
+          <Receipt className="size-4" />
         </div>
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Vendas por vendedor</h1>
+          <h1 className="text-lg font-bold tracking-tight">Vendas por vendedor</h1>
           <p className="text-xs text-muted-foreground">
             Itens vendidos no período de emissão, pelo mesmo critério das Consultas e do Dashboard
             (sem comodato e devolução).
@@ -128,45 +127,41 @@ export default function RelatorioVendasPage() {
         </div>
       </div>
 
-      <Card>
-        <CardContent>
-          <PainelFiltros
-            ativos={ativos}
-            onGerar={gerar}
-            principais={
-              <>
-                <CampoData id="v-inicio" rotulo="De" valor={inicio} onChange={setInicio} />
-                <CampoData id="v-fim" rotulo="Até" valor={fim} onChange={setFim} />
-                <div className="w-56">
-                  <CampoFiltro rotulo="Vendedor">
-                    <VendedoresMultiSelect value={vendedorIds} onChange={setVendedorIds} />
-                  </CampoFiltro>
-                </div>
-              </>
-            }
-          >
-            <CampoFiltro rotulo="Cliente">
-              <BuscaMultiSelect
-                tipo="clientes"
-                value={clientes}
-                onChange={setClientes}
-                buscaPlaceholder="Código, razão social, fantasia ou CNPJ..."
-              />
-            </CampoFiltro>
-            <CampoFiltro rotulo="Produto">
-              <BuscaMultiSelect
-                tipo="produtos"
-                value={produtos}
-                onChange={setProdutos}
-                buscaPlaceholder="Código, descrição, Cod. Corp., Fabric., Allia ou EAN..."
-              />
-            </CampoFiltro>
-            <CampoCategorias valor={categoriaIds} onChange={setCategoriaIds} />
-            <CampoTexto id="v-mun" rotulo="Cidade" valor={municipio} onChange={setMunicipio} largura="w-full" placeholder="Contém" />
-            <CampoTexto id="v-nf" rotulo="NF" valor={notaFiscal} onChange={setNotaFiscal} largura="w-full" placeholder="Número da nota" />
-          </PainelFiltros>
-        </CardContent>
-      </Card>
+      <PainelFiltros
+        ativos={ativos}
+        onGerar={gerar}
+        principais={
+          <>
+            <CampoData id="v-inicio" rotulo="De" valor={inicio} onChange={setInicio} />
+            <CampoData id="v-fim" rotulo="Até" valor={fim} onChange={setFim} />
+            <div className="w-56">
+              <CampoFiltro rotulo="Vendedor">
+                <VendedoresMultiSelect value={vendedorIds} onChange={setVendedorIds} />
+              </CampoFiltro>
+            </div>
+          </>
+        }
+      >
+        <CampoFiltro rotulo="Cliente">
+          <BuscaMultiSelect
+            tipo="clientes"
+            value={clientes}
+            onChange={setClientes}
+            buscaPlaceholder="Código, razão social, fantasia ou CNPJ..."
+          />
+        </CampoFiltro>
+        <CampoFiltro rotulo="Produto">
+          <BuscaMultiSelect
+            tipo="produtos"
+            value={produtos}
+            onChange={setProdutos}
+            buscaPlaceholder="Código, descrição, Cod. Corp., Fabric., Allia ou EAN..."
+          />
+        </CampoFiltro>
+        <CampoCategorias valor={categoriaIds} onChange={setCategoriaIds} />
+        <CampoTexto id="v-mun" rotulo="Cidade" valor={municipio} onChange={setMunicipio} largura="w-full" placeholder="Contém" />
+        <CampoTexto id="v-nf" rotulo="NF" valor={notaFiscal} onChange={setNotaFiscal} largura="w-full" placeholder="Número da nota" />
+      </PainelFiltros>
 
       <RelatorioPaginado
         titulo="Vendas por vendedor"
@@ -181,24 +176,13 @@ export default function RelatorioVendasPage() {
               )
             : []
         }
-        buscar={(page, pageSize) =>
+        buscar={(p) =>
           apiFetch<RelatorioResultado<RelatorioVendasLinha>>("/relatorios/vendas", {
-            query: { ...consulta, page, pageSize },
+            query: { ...consulta, ...p },
           })
         }
         colunas={COLUNAS}
         rowKey={(l) => l.id}
-        totais={(r) =>
-          COLUNAS.map((c, i) =>
-            i === 0
-              ? "Total"
-              : c.titulo === "Quantidade"
-                ? (r.totais.quantidade ?? null)
-                : c.titulo === "Vlr. Item"
-                  ? (r.totais.vlrItem ?? null)
-                  : null,
-          )
-        }
       />
     </div>
   );

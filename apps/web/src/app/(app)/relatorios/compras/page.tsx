@@ -3,7 +3,6 @@
 import { useState } from "react";
 import type { RelatorioComprasLinha, RelatorioOpcao, RelatorioResultado } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
-import { Card, CardContent } from "@/components/ui/card";
 import { RelatorioPaginado } from "@/components/relatorios/relatorio-paginado";
 import {
   CampoCategorias,
@@ -28,18 +27,21 @@ import type { ColunaRelatorio } from "@/lib/relatorio-export";
 import { PackagePlus } from "lucide-react";
 
 const COLUNAS: ColunaRelatorio<RelatorioComprasLinha>[] = [
-  { titulo: "Documento", valor: (l) => l.documento },
-  { titulo: "Produto", valor: (l) => l.produtoCodigo },
-  { titulo: "Descrição", valor: (l) => l.descricao },
-  { titulo: "Quantidade", valor: (l) => l.quantidade, formato: "quantidade" },
-  { titulo: "UM", valor: (l) => l.unidade },
-  { titulo: "Vlr. Unitário", valor: (l) => l.vlrUnitario, formato: "moeda" },
-  { titulo: "Alíq. IPI", valor: (l) => l.aliqIpi, formato: "percentual" },
-  { titulo: "Vlr. Total", valor: (l) => l.vlrTotal, formato: "moeda" },
-  { titulo: "Alíq. ICMS", valor: (l) => l.aliqIcms, formato: "percentual" },
-  { titulo: "Cód. Fornecedor", valor: (l) => l.codigoForCli },
-  { titulo: "Razão Social", valor: (l) => l.razaoSocial },
-  { titulo: "Dt. Digitação", valor: (l) => l.dtDigitacao, formato: "data" },
+  { campo: "documento", titulo: "Documento", valor: (l) => l.documento },
+  { campo: "produtoCodigo", titulo: "Produto", valor: (l) => l.produtoCodigo },
+  { campo: "descricao", titulo: "Descrição", valor: (l) => l.descricao },
+  { campo: "quantidade", titulo: "Quantidade", valor: (l) => l.quantidade, formato: "quantidade" },
+  { campo: "unidade", titulo: "UM", valor: (l) => l.unidade },
+  { campo: "vlrUnitario", titulo: "Vlr. Unitário", valor: (l) => l.vlrUnitario, formato: "moeda" },
+  { campo: "aliqIpi", titulo: "Alíq. IPI", valor: (l) => l.aliqIpi, formato: "percentual" },
+  { campo: "vlrIpi", titulo: "Vlr. IPI", valor: (l) => l.vlrIpi, formato: "moeda" },
+  { campo: "vlrTotal", titulo: "Vlr. Total", valor: (l) => l.vlrTotal, formato: "moeda" },
+  { campo: "aliqIcms", titulo: "Alíq. ICMS", valor: (l) => l.aliqIcms, formato: "percentual" },
+  { campo: "vlrIcms", titulo: "Vlr. ICMS", valor: (l) => l.vlrIcms, formato: "moeda" },
+  { campo: "vlrIcmsSt", titulo: "Vlr. ICMS ST", valor: (l) => l.vlrIcmsSt, formato: "moeda" },
+  { campo: "codigoForCli", titulo: "Cód. Fornecedor", valor: (l) => l.codigoForCli },
+  { campo: "razaoSocial", titulo: "Razão Social", valor: (l) => l.razaoSocial },
+  { campo: "dtDigitacao", titulo: "Dt. Digitação", valor: (l) => l.dtDigitacao, formato: "data" },
 ];
 
 /**
@@ -97,13 +99,13 @@ export default function RelatorioComprasPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <div className="flex items-center gap-3">
-        <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-xs">
-          <PackagePlus className="size-5" />
+        <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-xs">
+          <PackagePlus className="size-4" />
         </div>
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Relatório de Compras</h1>
+          <h1 className="text-lg font-bold tracking-tight">Relatório de Compras</h1>
           <p className="text-xs text-muted-foreground">
             Itens das notas de compra (NF de entrada tipo normal — sem CT-e, serviço e devolução) no
             período da data de digitação.
@@ -111,39 +113,35 @@ export default function RelatorioComprasPage() {
         </div>
       </div>
 
-      <Card>
-        <CardContent>
-          <PainelFiltros
-            ativos={ativos}
-            onGerar={gerar}
-            principais={
-              <>
-                <CampoData id="c-inicio" rotulo="De" valor={inicio} onChange={setInicio} />
-                <CampoData id="c-fim" rotulo="Até" valor={fim} onChange={setFim} />
-              </>
-            }
-          >
-            <CampoFiltro rotulo="Produto">
-              <BuscaMultiSelect
-                tipo="produtos"
-                value={produtos}
-                onChange={setProdutos}
-                buscaPlaceholder="Código, descrição, Cod. Corp., Fabric., Allia ou EAN..."
-              />
-            </CampoFiltro>
-            <CampoFiltro rotulo="Fornecedor">
-              <BuscaMultiSelect
-                tipo="fornecedores"
-                value={fornecedores}
-                onChange={setFornecedores}
-                buscaPlaceholder="Código, razão social, fantasia ou CNPJ..."
-              />
-            </CampoFiltro>
-            <CampoCategorias valor={categoriaIds} onChange={setCategoriaIds} />
-            <CampoTexto id="c-doc" rotulo="Documento" valor={documento} onChange={setDocumento} largura="w-full" placeholder="Número da nota" />
-          </PainelFiltros>
-        </CardContent>
-      </Card>
+      <PainelFiltros
+        ativos={ativos}
+        onGerar={gerar}
+        principais={
+          <>
+            <CampoData id="c-inicio" rotulo="De" valor={inicio} onChange={setInicio} />
+            <CampoData id="c-fim" rotulo="Até" valor={fim} onChange={setFim} />
+          </>
+        }
+      >
+        <CampoFiltro rotulo="Produto">
+          <BuscaMultiSelect
+            tipo="produtos"
+            value={produtos}
+            onChange={setProdutos}
+            buscaPlaceholder="Código, descrição, Cod. Corp., Fabric., Allia ou EAN..."
+          />
+        </CampoFiltro>
+        <CampoFiltro rotulo="Fornecedor">
+          <BuscaMultiSelect
+            tipo="fornecedores"
+            value={fornecedores}
+            onChange={setFornecedores}
+            buscaPlaceholder="Código, razão social, fantasia ou CNPJ..."
+          />
+        </CampoFiltro>
+        <CampoCategorias valor={categoriaIds} onChange={setCategoriaIds} />
+        <CampoTexto id="c-doc" rotulo="Documento" valor={documento} onChange={setDocumento} largura="w-full" placeholder="Número da nota" />
+      </PainelFiltros>
 
       <RelatorioPaginado
         titulo="Relatório de Compras"
@@ -155,24 +153,13 @@ export default function RelatorioComprasPage() {
             ? descreverFiltros({ inicio: String(consulta.inicio), fim: String(consulta.fim) }, filtrosGerados)
             : []
         }
-        buscar={(page, pageSize) =>
+        buscar={(p) =>
           apiFetch<RelatorioResultado<RelatorioComprasLinha>>("/relatorios/compras", {
-            query: { ...consulta, page, pageSize },
+            query: { ...consulta, ...p },
           })
         }
         colunas={COLUNAS}
         rowKey={(l) => l.id}
-        totais={(r) =>
-          COLUNAS.map((c, i) =>
-            i === 0
-              ? "Total"
-              : c.titulo === "Quantidade"
-                ? (r.totais.quantidade ?? null)
-                : c.titulo === "Vlr. Total"
-                  ? (r.totais.vlrTotal ?? null)
-                  : null,
-          )
-        }
       />
     </div>
   );

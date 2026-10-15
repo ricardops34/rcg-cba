@@ -10,7 +10,6 @@ import type {
 import { apiFetch } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -42,6 +41,7 @@ import {
   formatar,
   type ColunaRelatorio,
 } from "@/lib/relatorio-export";
+import { SeletorColunas, useColunasEscolhidas } from "@/components/relatorios/colunas";
 import { Boxes, FileSpreadsheet, FileText, Loader2 } from "lucide-react";
 
 /** `2026-10-13` menos 3 meses → `2026-07-13`, como o período da planilha. */
@@ -133,22 +133,20 @@ export default function RelatorioEstoqueCompraPage() {
 
   const colunas: ColunaRelatorio<RelatorioEstoqueCompraLinha>[] = useMemo(
     () => [
-      { titulo: "Código", valor: (l) => l.codigo },
-      { titulo: "Descrição", valor: (l) => l.descricao },
-      { titulo: "Cod. Corp.", valor: (l) => l.codigoCorp },
-      { titulo: "Fornecedor", valor: (l) => l.fornecedor },
-      { titulo: "Estoque", valor: (l) => l.estoque, formato: "numero" },
-      { titulo: "Entrada-Qtd", valor: (l) => l.entradas, formato: "numero" },
-      { titulo: "Saída-Qtd", valor: (l) => l.saidas, formato: "numero" },
-      { titulo: "Últ. Preço", valor: (l) => l.ultimoPreco, formato: "moeda" },
-      { titulo: "Média", valor: (l) => l.media, formato: "numero" },
-      { titulo: `Comprar (${data?.mesesCompra ?? mesesCompra} meses)`, valor: (l) => l.aComprar, formato: "numero" },
+      { campo: "codigo", titulo: "Código", valor: (l) => l.codigo },
+      { campo: "descricao", titulo: "Descrição", valor: (l) => l.descricao },
+      { campo: "codigoCorp", titulo: "Cod. Corp.", valor: (l) => l.codigoCorp },
+      { campo: "fornecedor", titulo: "Fornecedor", valor: (l) => l.fornecedor },
+      { campo: "estoque", titulo: "Estoque", valor: (l) => l.estoque, formato: "numero" },
+      { campo: "entradas", titulo: "Entrada-Qtd", valor: (l) => l.entradas, formato: "numero" },
+      { campo: "saidas", titulo: "Saída-Qtd", valor: (l) => l.saidas, formato: "numero" },
+      { campo: "ultimoPreco", titulo: "Últ. Preço", valor: (l) => l.ultimoPreco, formato: "moeda" },
+      { campo: "media", titulo: "Média", valor: (l) => l.media, formato: "numero" },
+      { campo: "aComprar", titulo: `Comprar (${data?.mesesCompra ?? mesesCompra} meses)`, valor: (l) => l.aComprar, formato: "numero" },
     ],
     [data?.mesesCompra, mesesCompra],
   );
-  const chaves: (keyof RelatorioEstoqueCompraLinha)[] = [
-    "codigo", "descricao", "codigoCorp", "fornecedor", "estoque", "entradas", "saidas", "ultimoPreco", "media", "aComprar",
-  ];
+  const { visiveis, ocultas, alternar, mostrarTodas } = useColunasEscolhidas("estoque-compra", colunas);
 
   const ordenadas = useMemo(() => {
     const linhas = [...(data?.linhas ?? [])];
@@ -176,26 +174,27 @@ export default function RelatorioEstoqueCompraPage() {
     : [];
 
   const exportar = (formato: "pdf" | "xlsx") => {
-    const params = { titulo: "Estoque e compra", empresaNome, filtros: filtrosTexto, colunas, linhas: ordenadas };
+    const params = { titulo: "Estoque e compra", empresaNome, filtros: filtrosTexto, colunas: visiveis, linhas: ordenadas };
     if (formato === "pdf") exportarRelatorioPdf(params);
     else exportarRelatorioExcel(params);
   };
 
-  const colunasTabela: ColumnDef<RelatorioEstoqueCompraLinha>[] = colunas.map((c, i) => ({
+  const colunasTabela: ColumnDef<RelatorioEstoqueCompraLinha>[] = visiveis.map((c) => ({
+    id: c.campo,
     header: c.titulo,
-    sortKey: chaves[i],
+    sortKey: c.campo,
     className: ehNumerica(c.formato) ? "text-right whitespace-nowrap" : undefined,
     cell: (l) => formatar(c.valor(l), c.formato),
   }));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <div className="flex items-center gap-3">
-        <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-xs">
-          <Boxes className="size-5" />
+        <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-xs">
+          <Boxes className="size-4" />
         </div>
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Estoque e compra</h1>
+          <h1 className="text-lg font-bold tracking-tight">Estoque e compra</h1>
           <p className="text-xs text-muted-foreground">
             Média mensal de saída no período e quanto comprar: média × meses de compra − estoque
             (negativo = sobra). Estoque dos armazéns de revenda; fornecedor da última compra.
@@ -203,94 +202,90 @@ export default function RelatorioEstoqueCompraPage() {
         </div>
       </div>
 
-      <Card>
-        <CardContent>
-          <PainelFiltros
-            ativos={ativos}
-            onGerar={gerar}
-            principais={
-              <>
-                <div className="space-y-1">
-                  <Label>Período do movimento</Label>
-                  <Select value={atalho} onValueChange={escolherAtalho}>
-                    <SelectTrigger className="w-36">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {["3", "4", "5", "6"].map((m) => (
-                        <SelectItem key={m} value={m}>
-                          {m} meses
-                        </SelectItem>
-                      ))}
-                      <SelectItem value="datas">Escolher datas</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <CampoData
-                  id="e-inicio"
-                  rotulo="De"
-                  valor={inicio}
-                  onChange={(v) => {
-                    setInicio(v);
-                    setAtalho("datas");
-                  }}
-                />
-                <CampoData
-                  id="e-fim"
-                  rotulo="Até"
-                  valor={fim}
-                  onChange={(v) => {
-                    setFim(v);
-                    if (atalho !== "datas") setInicio(mesesAntes(v, Number(atalho)));
-                  }}
-                />
-                <div className="space-y-1">
-                  <Label htmlFor="e-meses">Comprar para (meses)</Label>
-                  <Input
-                    id="e-meses"
-                    type="number"
-                    min={1}
-                    max={24}
-                    className="w-28"
-                    value={mesesCompra}
-                    onChange={(e) => setMesesCompra(e.target.value)}
-                  />
-                </div>
-              </>
-            }
-          >
-            <CampoFiltro rotulo="Produto">
-              <BuscaMultiSelect
-                tipo="produtos"
-                value={produtos}
-                onChange={setProdutos}
-                buscaPlaceholder="Código, descrição, Cod. Corp., Fabric., Allia ou EAN..."
-              />
-            </CampoFiltro>
-            <CampoFiltro rotulo="Fornecedor (da última compra)">
-              <BuscaMultiSelect
-                tipo="fornecedores"
-                value={fornecedores}
-                onChange={setFornecedores}
-                buscaPlaceholder="Código, razão social, fantasia ou CNPJ..."
-              />
-            </CampoFiltro>
-            <CampoCategorias valor={categoriaIds} onChange={setCategoriaIds} />
-            <CampoTexto id="e-corp" rotulo="Cod. Corp." valor={codigoCorp} onChange={setCodigoCorp} largura="w-full" placeholder="Contém" />
-            <div className="flex items-center gap-2 self-end pb-2">
-              <Switch id="e-mov" checked={comMovimento} onCheckedChange={setComMovimento} />
-              <Label htmlFor="e-mov">Só com estoque ou movimento</Label>
+      <PainelFiltros
+        ativos={ativos}
+        onGerar={gerar}
+        principais={
+          <>
+            <div className="space-y-1">
+              <Label>Período do movimento</Label>
+              <Select value={atalho} onValueChange={escolherAtalho}>
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {["3", "4", "5", "6"].map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {m} meses
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="datas">Escolher datas</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-          </PainelFiltros>
-        </CardContent>
-      </Card>
+            <CampoData
+              id="e-inicio"
+              rotulo="De"
+              valor={inicio}
+              onChange={(v) => {
+                setInicio(v);
+                setAtalho("datas");
+              }}
+            />
+            <CampoData
+              id="e-fim"
+              rotulo="Até"
+              valor={fim}
+              onChange={(v) => {
+                setFim(v);
+                if (atalho !== "datas") setInicio(mesesAntes(v, Number(atalho)));
+              }}
+            />
+            <div className="space-y-1">
+              <Label htmlFor="e-meses">Comprar para (meses)</Label>
+              <Input
+                id="e-meses"
+                type="number"
+                min={1}
+                max={24}
+                className="w-28"
+                value={mesesCompra}
+                onChange={(e) => setMesesCompra(e.target.value)}
+              />
+            </div>
+          </>
+        }
+      >
+        <CampoFiltro rotulo="Produto">
+          <BuscaMultiSelect
+            tipo="produtos"
+            value={produtos}
+            onChange={setProdutos}
+            buscaPlaceholder="Código, descrição, Cod. Corp., Fabric., Allia ou EAN..."
+          />
+        </CampoFiltro>
+        <CampoFiltro rotulo="Fornecedor (da última compra)">
+          <BuscaMultiSelect
+            tipo="fornecedores"
+            value={fornecedores}
+            onChange={setFornecedores}
+            buscaPlaceholder="Código, razão social, fantasia ou CNPJ..."
+          />
+        </CampoFiltro>
+        <CampoCategorias valor={categoriaIds} onChange={setCategoriaIds} />
+        <CampoTexto id="e-corp" rotulo="Cod. Corp." valor={codigoCorp} onChange={setCodigoCorp} largura="w-full" placeholder="Contém" />
+        <div className="flex items-center gap-2 self-end pb-2">
+          <Switch id="e-mov" checked={comMovimento} onCheckedChange={setComMovimento} />
+          <Label htmlFor="e-mov">Só com estoque ou movimento</Label>
+        </div>
+      </PainelFiltros>
 
       {consulta === null ? (
         <p className="text-sm text-muted-foreground">
           Escolha o período e os filtros e clique em <strong>Gerar</strong>.
         </p>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <p className="flex-1 text-sm text-muted-foreground">
               {data
@@ -298,6 +293,7 @@ export default function RelatorioEstoqueCompraPage() {
                 : "Carregando..."}
               {isFetching && !isLoading && <Loader2 className="ml-2 inline size-3 animate-spin" />}
             </p>
+            <SeletorColunas colunas={colunas} ocultas={ocultas} alternar={alternar} mostrarTodas={mostrarTodas} />
             {podeExportar && (
               <>
                 <Button variant="outline" className="gap-1.5" disabled={!data?.linhas.length} onClick={() => exportar("pdf")}>

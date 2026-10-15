@@ -2,13 +2,20 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ChevronDown, ChevronsUpDown, Loader2, SlidersHorizontal, X } from "lucide-react";
+import { Check, ChevronsUpDown, Loader2, SlidersHorizontal, X } from "lucide-react";
 import type { RelatorioOpcao, RelatorioOpcaoTipo } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Command,
@@ -178,9 +185,10 @@ export const filtrosEmTexto = (filtros: FiltroAtivo[]): [string, string | undefi
   filtros.map((f) => [f.rotulo, f.valores.map((v) => v.texto).join(", ") || undefined]);
 
 /**
- * Painel de filtros dos relatórios: o período e o **Gerar** sempre à vista; o
- * resto numa cortina que recolhe ao gerar, para a tabela ganhar a tela. O que
- * está escolhido continua visível como chip, com o × para tirar.
+ * Barra de filtros dos relatórios, numa linha só: o período (e o que mais a
+ * página puser em `principais`), os chips do que está escolhido, **Filtros**
+ * e **Gerar**. Os demais filtros ficam numa cortina lateral — não empurram a
+ * tabela para baixo (pedido do usuário, 14/10/2026).
  */
 export function PainelFiltros({
   principais,
@@ -195,72 +203,91 @@ export function PainelFiltros({
   ativos: FiltroAtivo[];
   onGerar: () => void;
 }) {
-  const [aberto, setAberto] = useState(true);
+  const [aberto, setAberto] = useState(false);
   const preenchidos = ativos.filter((f) => f.valores.length > 0);
   const quantos = preenchidos.reduce((n, f) => n + f.valores.length, 0);
+  const limpar = () => preenchidos.forEach((f) => f.valores.forEach((v) => f.remover(v.id)));
 
   return (
-    <Collapsible open={aberto} onOpenChange={setAberto}>
+    <div className="space-y-2 rounded-xl border bg-card px-3 py-2.5">
       <form
-        className="space-y-3"
+        className="flex flex-wrap items-end gap-2"
         onSubmit={(e) => {
           e.preventDefault();
           onGerar();
-          setAberto(false);
         }}
       >
-        <div className="flex flex-wrap items-end gap-3">
-          {principais}
-          <div className="ml-auto flex items-end gap-2">
-            <CollapsibleTrigger asChild>
-              <Button type="button" variant="outline">
-                <SlidersHorizontal className="size-4" />
-                Filtros
-                {quantos > 0 && (
-                  <span className="rounded-full bg-primary px-1.5 text-xs leading-5 text-primary-foreground">
-                    {quantos}
-                  </span>
-                )}
-                <ChevronDown className={cn("size-4 transition-transform", aberto && "rotate-180")} />
-              </Button>
-            </CollapsibleTrigger>
-            <Button type="submit">Gerar</Button>
-          </div>
-        </div>
-
-        <CollapsibleContent>
-          <div className="grid gap-3 border-t pt-3 sm:grid-cols-2 lg:grid-cols-3">{children}</div>
-        </CollapsibleContent>
-
-        {preenchidos.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            {preenchidos.flatMap((f) =>
-              f.valores.map((v) => (
-                <span
-                  key={`${f.rotulo}-${v.id}`}
-                  className="inline-flex max-w-full items-center gap-1 rounded-full border bg-muted/50 py-0.5 pr-1 pl-2.5 text-xs"
-                >
-                  <span className="text-muted-foreground">{f.rotulo}:</span>
-                  <span className="max-w-64 truncate">{v.texto}</span>
-                  <button
-                    type="button"
-                    aria-label={`Tirar ${v.texto}`}
-                    className="rounded-full p-0.5 hover:bg-muted-foreground/20"
-                    onClick={() => f.remover(v.id)}
-                  >
-                    <X className="size-3" />
-                  </button>
-                </span>
-              )),
+        {principais}
+        <div className="ml-auto flex items-end gap-2">
+          <Button type="button" variant="outline" onClick={() => setAberto(true)}>
+            <SlidersHorizontal className="size-4" />
+            Filtros
+            {quantos > 0 && (
+              <span className="rounded-full bg-primary px-1.5 text-xs leading-5 text-primary-foreground">
+                {quantos}
+              </span>
             )}
-          </div>
-        )}
+          </Button>
+          <Button type="submit">Gerar</Button>
+        </div>
       </form>
-    </Collapsible>
+
+      {preenchidos.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {preenchidos.flatMap((f) =>
+            f.valores.map((v) => (
+              <span
+                key={`${f.rotulo}-${v.id}`}
+                className="inline-flex max-w-full items-center gap-1 rounded-full border bg-muted/50 py-0.5 pr-1 pl-2.5 text-xs"
+              >
+                <span className="text-muted-foreground">{f.rotulo}:</span>
+                <span className="max-w-64 truncate">{v.texto}</span>
+                <button
+                  type="button"
+                  aria-label={`Tirar ${v.texto}`}
+                  className="rounded-full p-0.5 hover:bg-muted-foreground/20"
+                  onClick={() => f.remover(v.id)}
+                >
+                  <X className="size-3" />
+                </button>
+              </span>
+            )),
+          )}
+          <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={limpar}>
+            Limpar filtros
+          </button>
+        </div>
+      )}
+
+      <Sheet open={aberto} onOpenChange={setAberto}>
+        <SheetContent className="w-full gap-0 sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Filtros</SheetTitle>
+            <SheetDescription>Escolha e clique em Aplicar para gerar o relatório.</SheetDescription>
+          </SheetHeader>
+          <form
+            className="flex min-h-0 flex-1 flex-col"
+            onSubmit={(e) => {
+              e.preventDefault();
+              onGerar();
+              setAberto(false);
+            }}
+          >
+            <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-4">{children}</div>
+            <SheetFooter className="flex-row justify-end border-t">
+              <Button type="button" variant="ghost" onClick={limpar} disabled={quantos === 0}>
+                Limpar
+              </Button>
+              <Button type="submit">Aplicar</Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
+    </div>
   );
 }
 
-/** Rótulo em cima do campo, ocupando a célula da grade da cortina. */
+/** Rótulo em cima do campo. */
 export function CampoFiltro({ rotulo, htmlFor, children }: { rotulo: string; htmlFor?: string; children: ReactNode }) {
   return (
     <div className="min-w-0 space-y-1">

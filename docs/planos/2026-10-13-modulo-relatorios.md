@@ -140,3 +140,28 @@ fabricante" era `B1_XFOR`/`B1_XDESFOR` — do **fornecedor**.
 
 **Falta:** aplicar a migration, compilar o BJPLA003 no Protheus e reenviar os
 produtos (os campos só chegam quando o produto for reenviado).
+
+## Tela mais enxuta, ordenação, colunas e valores de imposto (14/10/2026, usuário)
+
+- **Filtros numa linha**: período (e vendedor, nas Vendas), chips do que está
+  escolhido, **Filtros** e **Gerar**. Os demais filtros abrem numa cortina
+  lateral (Sheet) com **Aplicar** e **Limpar** — não empurram a tabela.
+  Cabeçalho da página menor; contagem, totais, Colunas, PDF e Excel numa
+  barra só.
+- **Ordenar por qualquer coluna**: Compras e Vendas no servidor (`ordem`,
+  `sentido`; lista fechada em `ORDEM_COMPRAS`/`ORDEM_VENDAS`, fora dela vale a
+  padrão, que também desempata). PDF e Excel saem na mesma ordem. Estoque e
+  compra já ordenava no navegador.
+- **Escolher colunas** (`components/relatorios/colunas.tsx`): vale para a
+  tela, o PDF e o Excel; guardado no navegador, por usuário. O total segue a
+  coluna (`totais[campo]`), não a posição.
+- **Compras: Vlr. IPI, Vlr. ICMS e Vlr. ICMS ST** do item (já vinham do
+  BJPLA003: `D1_VALIPI`, `D1_VALICM`, ICMS ST), com total.
+
+**Verificado em dev (14/10)**, com token de Gerente: busca de
+fornecedor/produto/cliente (inclusive CNPJ só dígitos), tipo inválido = 400,
+ordenação de Compras e Vendas, `ordem=__proto__` cai na padrão, filtros por
+id nos três relatórios. RCG jan–set: 2.333 itens; IPI R$ 38.417,34, ICMS
+R$ 127.707,92, ICMS ST R$ 307.623,10. Telas compilam (HTTP 200). Migrations
+`20261014213147` e `20261014230000` aplicadas na base de dev. **Falta a
+conferência visual** no navegador.

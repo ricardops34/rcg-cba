@@ -25,6 +25,13 @@ const ids = (descricao: string) =>
 const paginacaoSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(20000).default(50),
+  ordem: z
+    .string()
+    .trim()
+    .max(40)
+    .optional()
+    .describe("Campo da linha para ordenar (ex.: vlrTotal); fora da lista, vale a ordem padrão"),
+  sentido: z.enum(["asc", "desc"]).default("asc"),
 });
 
 export const RELATORIO_TETO_EXPORTACAO = 20000;
@@ -51,8 +58,11 @@ export interface RelatorioComprasLinha {
   unidade: string | null;
   vlrUnitario: number;
   aliqIpi: number | null;
+  vlrIpi: number;
   vlrTotal: number;
   aliqIcms: number | null;
+  vlrIcms: number;
+  vlrIcmsSt: number;
   codigoForCli: string | null;
   razaoSocial: string | null;
   dtDigitacao: string | null;

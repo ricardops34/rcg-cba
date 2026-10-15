@@ -62,6 +62,61 @@ const dataIso = (d: Date | null | undefined) =>
 const arred = (v: number, casas = 2) =>
   Math.round(v * 10 ** casas) / 10 ** casas;
 
+type Sentido = 'asc' | 'desc';
+
+/**
+ * Ordenação pela coluna clicada na tela: o campo da linha → o `orderBy` do
+ * Prisma. Fora da lista (ou sem ordem), só a padrão. A padrão vem depois como
+ * desempate — a página seguinte não repete nem pula linhas.
+ */
+export const ORDEM_COMPRAS: Record<
+  string,
+  (s: Sentido) => Prisma.NotaEntradaItemOrderByWithRelationInput
+> = {
+  documento: (s) => ({ notaEntrada: { numero: s } }),
+  produtoCodigo: (s) => ({ produto: { codigoErp: s } }),
+  descricao: (s) => ({ produto: { descricao: s } }),
+  quantidade: (s) => ({ quantidade: s }),
+  unidade: (s) => ({ produto: { unidade: s } }),
+  vlrUnitario: (s) => ({ vlrUnitario: s }),
+  aliqIpi: (s) => ({ aliqIpi: s }),
+  vlrTotal: (s) => ({ vlrTotal: s }),
+  aliqIcms: (s) => ({ aliqIcms: s }),
+  vlrIpi: (s) => ({ vlrIpi: s }),
+  vlrIcms: (s) => ({ vlrIcms: s }),
+  vlrIcmsSt: (s) => ({ vlrIcmsSt: s }),
+  codigoForCli: (s) => ({ fornecedor: { codigoErp: s } }),
+  razaoSocial: (s) => ({ fornecedor: { razaoSocial: s } }),
+  dtDigitacao: (s) => ({ notaEntrada: { dtEntrada: s } }),
+};
+
+const ORDEM_VENDAS: Record<
+  string,
+  (s: Sentido) => Prisma.NotaSaidaItemOrderByWithRelationInput
+> = {
+  vendedor: (s) => ({ notaSaida: { vendedor: { nome: s } } }),
+  clienteCodigo: (s) => ({ notaSaida: { cliente: { codigoErp: s } } }),
+  clienteNome: (s) => ({ notaSaida: { cliente: { razaoSocial: s } } }),
+  municipio: (s) => ({ notaSaida: { cliente: { municipio: s } } }),
+  emissao: (s) => ({ notaSaida: { dtEmissao: s } }),
+  notaFiscal: (s) => ({ notaSaida: { numero: s } }),
+  produtoCodigo: (s) => ({ produto: { codigoErp: s } }),
+  produto: (s) => ({ produto: { descricao: s } }),
+  quantidade: (s) => ({ quantidade: s }),
+  vlrProduto: (s) => ({ vlrUnitario: s }),
+  vlrItem: (s) => ({ vlrTotal: s }),
+};
+
+export function ordenar<O>(
+  mapa: Record<string, (s: Sentido) => O>,
+  q: { ordem?: string; sentido: Sentido },
+  padrao: O[],
+): O[] {
+  const escolhida =
+    q.ordem && Object.hasOwn(mapa, q.ordem) ? mapa[q.ordem](q.sentido) : null;
+  return escolhida ? [escolhida, ...padrao] : padrao;
+}
+
 function paginar(total: number, page: number, pageSize: number) {
   return {
     total,
@@ -134,15 +189,22 @@ export class RelatoriosService {
       const total = await tx.notaEntradaItem.count({ where });
       const somas = await tx.notaEntradaItem.aggregate({
         where,
-        _sum: { quantidade: true, vlrTotal: true },
+        _sum: {
+          quantidade: true,
+          vlrTotal: true,
+          vlrIpi: true,
+          vlrIcms: true,
+          vlrIcmsSt: true,
+        },
       });
       const itens = await tx.notaEntradaItem.findMany({
         where,
-        orderBy: [
+        orderBy: ordenar(ORDEM_COMPRAS, q, [
           { notaEntrada: { dtEntrada: 'asc' } },
           { notaEntrada: { numero: 'asc' } },
           { item: 'asc' },
-        ],
+          { id: 'asc' },
+        ]),
         skip: (q.page - 1) * q.pageSize,
         take: q.pageSize,
         select: {
@@ -152,6 +214,9 @@ export class RelatoriosService {
           vlrTotal: true,
           aliqIpi: true,
           aliqIcms: true,
+          vlrIpi: true,
+          vlrIcms: true,
+          vlrIcmsSt: true,
           notaEntrada: {
             select: {
               numero: true,
@@ -181,6 +246,9 @@ export class RelatoriosService {
           aliqIpi: i.aliqIpi,
           vlrTotal: i.vlrTotal,
           aliqIcms: i.aliqIcms,
+          vlrIpi: i.vlrIpi,
+          vlrIcms: i.vlrIcms,
+          vlrIcmsSt: i.vlrIcmsSt,
           codigoForCli: quem?.codigoErp ?? null,
           razaoSocial: quem?.razaoSocial ?? null,
           dtDigitacao: dataIso(
@@ -194,6 +262,9 @@ export class RelatoriosService {
         totais: {
           quantidade: arred(somas._sum.quantidade ?? 0, 4),
           vlrTotal: arred(somas._sum.vlrTotal ?? 0),
+          vlrIpi: arred(somas._sum.vlrIpi ?? 0),
+          vlrIcms: arred(somas._sum.vlrIcms ?? 0),
+          vlrIcmsSt: arred(somas._sum.vlrIcmsSt ?? 0),
         },
       };
     });
@@ -248,12 +319,13 @@ export class RelatoriosService {
       });
       const itens = await tx.notaSaidaItem.findMany({
         where,
-        orderBy: [
+        orderBy: ordenar(ORDEM_VENDAS, q, [
           { notaSaida: { vendedor: { nome: 'asc' } } },
           { notaSaida: { dtEmissao: 'asc' } },
           { notaSaida: { numero: 'asc' } },
           { item: 'asc' },
-        ],
+          { id: 'asc' },
+        ]),
         skip: (q.page - 1) * q.pageSize,
         take: q.pageSize,
         select: {
