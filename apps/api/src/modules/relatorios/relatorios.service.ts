@@ -49,6 +49,17 @@ const dasCategorias = (ids: string[]): Prisma.ProdutoWhereInput => ({
   OR: [{ categoriaId: { in: ids } }, { subCategoriaId: { in: ids } }],
 });
 
+/**
+ * Relatório só traz produto de categoria marcada como **Usada** (decisão do
+ * usuário, 14/10/2026, só para os relatórios). Mais estrito que o
+ * `corteDeVenda` do Dashboard, onde categoria em branco conta: aqui em branco
+ * fica de fora — por isso o Relatório de Vendas pode dar menos que o Dashboard.
+ */
+const DE_CATEGORIA_USADA: Prisma.ProdutoWhereInput = {
+  categoria: { is: { usado: true } },
+};
+const DE_CATEGORIA_USADA_SQL = Prisma.sql`EXISTS (SELECT 1 FROM "categorias" cu WHERE cu."id" = p."categoriaId" AND cu."usado" = true)`;
+
 /** CNPJ/CPF só com dígitos, para casar a busca com ou sem pontuação. */
 const SO_DIGITOS = (coluna: Prisma.Sql) =>
   Prisma.sql`regexp_replace(COALESCE(${coluna}, ''), '[^0-9]', '', 'g')`;
@@ -172,6 +183,7 @@ export class RelatoriosService {
           },
         },
       },
+      { produto: { is: DE_CATEGORIA_USADA } },
     ];
     if (q.categoriaIds?.length)
       filtros.push({ produto: { is: dasCategorias(q.categoriaIds) } });
@@ -304,6 +316,7 @@ export class RelatoriosService {
           },
         });
       }
+      filtros.push({ produto: { is: DE_CATEGORIA_USADA } });
       if (q.categoriaIds?.length)
         filtros.push({ produto: { is: dasCategorias(q.categoriaIds) } });
       if (q.notaFiscal)
@@ -400,6 +413,7 @@ export class RelatoriosService {
     const filtros: Prisma.Sql[] = [
       Prisma.sql`p."empresaId" = ${empresaId}`,
       Prisma.sql`p."deletedAt" IS NULL`,
+      DE_CATEGORIA_USADA_SQL,
     ];
     if (q.produtoIds?.length)
       filtros.push(Prisma.sql`p."id" IN (${Prisma.join(q.produtoIds)})`);
@@ -590,6 +604,11 @@ export class RelatoriosService {
       Prisma.sql`t."empresaId" = ${empresaId}`,
       Prisma.sql`t."deletedAt" IS NULL`,
     ];
+    // Produto que o relatório nunca traz não aparece para escolher.
+    if (tipo === 'produtos')
+      condicoes.push(
+        Prisma.sql`EXISTS (SELECT 1 FROM "categorias" cu WHERE cu."id" = t."categoriaId" AND cu."usado" = true)`,
+      );
     const buscaSql = condicaoBuscaTermosSql(busca, tabela.colunas);
     if (buscaSql) condicoes.push(buscaSql);
 

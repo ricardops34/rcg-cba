@@ -174,3 +174,20 @@ relatórios lista só as raízes com `usado = true` (RCG: 17 de 35; somem
 OUTROS ×6, PECAS, SERVICOS, CONSUMO, FRETE…). Revoga o "sem o corte de usada"
 de 14/10 de manhã. É só a lista do filtro: sem categoria escolhida, o
 relatório continua trazendo todas. **Verificado em dev** pela API.
+
+## Relatórios só com categoria **Usada** (14/10/2026, usuário)
+
+"Não quero que liste categorias não usadas" — e a regra é **só dos
+relatórios** ("estamos trabalhando nos relatórios"; o Dashboard não muda).
+Nos três relatórios entra só produto cuja categoria está com Usada = **sim**;
+em branco também fica de fora (`DE_CATEGORIA_USADA` em
+`relatorios.service.ts`). A busca de produto dos filtros segue a mesma regra.
+
+- Mais estrito que o `corteDeVenda` (Dashboard/Consultas), onde em branco
+  conta: o **Relatório de Vendas pode dar menos que o Dashboard**. RCG set/2026:
+  1.217 → 1.165 itens.
+- Compras RCG jan–set: 2.333 → 784 itens; R$ 2.494.029,05 → R$ 2.212.499,39.
+- Produtos em categoria Usada: 1.252 de 8.032.
+- Para uma categoria voltar aos relatórios: marcar Usada no cadastro.
+
+**Verificado em dev** pela API.
