@@ -37,5 +37,5 @@ docs/integracao/windows/publish/
 
 
 # Reversa
-.reversa/config.user.toml
-_reversa_sdd/
+#.reversa/config.user.toml
+#_reversa_sdd/
