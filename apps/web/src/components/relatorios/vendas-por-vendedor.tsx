@@ -61,7 +61,7 @@ function mediaComMovimento(l: LinhaPivot): number {
 /** Uma linha por cliente (e por vendedor, quando a quebra está ligada) — a base do grid e da exportação. */
 interface LinhaPivot {
   chave: string;
-  tipo: "dado" | "subtotal" | "total";
+  tipo: "dado" | "cabecalho" | "subtotal" | "total";
   vendedorId: string | null;
   vendedor: string | null;
   clienteId: string | null;
@@ -91,22 +91,30 @@ function somar(linhas: LinhaPivot[], meses: string[]): Pick<LinhaPivot, "porMes"
   return { porMes, totalQuantidade, totalValor };
 }
 
-/** Insere uma linha de subtotal ao fim de cada vendedor (quando agrupado) e o total geral ao fim da grade. */
+const SEM_VALORES = (meses: string[]) => new Map(meses.map((m) => [m, { quantidade: 0, valor: 0 }]));
+
+/**
+ * Agrupado: o vendedor não é coluna — vira uma linha de cabeçalho (só o
+ * nome) antes do grupo e repete no subtotal do fim, sem repetir em cada
+ * linha de cliente. Sem agrupar: lista plana, sem cabeçalho nem subtotal —
+ * a coluna Vendedor (fora daqui, em `colunas`) é quem identifica a linha.
+ * Nos dois casos, o total geral fecha a grade.
+ */
 function comSubtotais(linhas: LinhaPivot[], meses: string[], quebraPorVendedor: boolean): LinhaPivot[] {
   if (!linhas.length) return linhas;
   const resultado: LinhaPivot[] = [];
   if (quebraPorVendedor) {
-    let vendedorAtual: string | null = linhas[0].vendedorId;
+    let vendedorAtual: string | null | undefined;
     let grupo: LinhaPivot[] = [];
     const fecharGrupo = () => {
       if (!grupo.length) return;
       resultado.push({
         chave: `subtotal::${vendedorAtual}`,
         tipo: "subtotal",
-        vendedorId: vendedorAtual,
+        vendedorId: vendedorAtual ?? null,
         vendedor: grupo[0].vendedor,
         clienteId: null,
-        clienteCodigo: null,
+        clienteCodigo: grupo[0].vendedor,
         clienteNome: "Subtotal",
         ...somar(grupo, meses),
       });
@@ -116,6 +124,18 @@ function comSubtotais(linhas: LinhaPivot[], meses: string[], quebraPorVendedor: 
         fecharGrupo();
         vendedorAtual = l.vendedorId;
         grupo = [];
+        resultado.push({
+          chave: `cabecalho::${vendedorAtual}`,
+          tipo: "cabecalho",
+          vendedorId: vendedorAtual ?? null,
+          vendedor: l.vendedor,
+          clienteId: null,
+          clienteCodigo: l.vendedor,
+          clienteNome: null,
+          porMes: SEM_VALORES(meses),
+          totalQuantidade: 0,
+          totalValor: 0,
+        });
       }
       resultado.push(l);
       grupo.push(l);
@@ -253,26 +273,32 @@ export function VendasPorVendedorGrid() {
   );
 
   const colunas: ColunaRelatorio<LinhaPivot>[] = useMemo(() => {
-    const base: ColunaRelatorio<LinhaPivot>[] = [
-      { campo: "vendedor", titulo: "Vendedor", valor: (l) => l.vendedor },
+    // Agrupado: o vendedor vai pela linha de cabeçalho/subtotal, não por
+    // coluna — repetiria em toda linha de cliente à toa. Sem agrupar, a
+    // coluna é a única forma de saber de quem é cada linha.
+    const base: ColunaRelatorio<LinhaPivot>[] = data?.quebraPorVendedor
+      ? []
+      : [{ campo: "vendedor", titulo: "Vendedor", valor: (l) => l.vendedor }];
+    base.push(
       { campo: "clienteCodigo", titulo: "Cód. Cliente", valor: (l) => l.clienteCodigo },
       { campo: "clienteNome", titulo: "Cliente", valor: (l) => l.clienteNome },
-    ];
+    );
     for (const mes of data?.meses ?? []) {
       base.push({
         campo: mes,
         titulo: rotuloMes(mes),
-        valor: (l) => l.porMes.get(mes)?.valor ?? 0,
+        // Linha de cabeçalho (só o nome do vendedor) fica em branco, não "R$ 0,00".
+        valor: (l) => (l.tipo === "cabecalho" ? null : l.porMes.get(mes)?.valor ?? 0),
         formato: "moeda",
       });
     }
     base.push(
-      { campo: "totalValor", titulo: "Total", valor: (l) => l.totalValor, formato: "moeda" },
+      { campo: "totalValor", titulo: "Total", valor: (l) => (l.tipo === "cabecalho" ? null : l.totalValor), formato: "moeda" },
       // Média só dos meses com movimento — mês parado não puxa a média para baixo.
-      { campo: "mediaValor", titulo: "Média", valor: (l) => mediaComMovimento(l), formato: "moeda" },
+      { campo: "mediaValor", titulo: "Média", valor: (l) => (l.tipo === "cabecalho" ? null : mediaComMovimento(l)), formato: "moeda" },
     );
     return base;
-  }, [data?.meses]);
+  }, [data?.quebraPorVendedor, data?.meses]);
 
   const filtrosTexto = consulta
     ? descreverFiltros({ inicio: String(consulta.inicio), fim: String(consulta.fim), rotulo: "Emissão" }, filtrosGerados)
@@ -427,6 +453,7 @@ export function VendasPorVendedorGrid() {
                         key={l.chave}
                         className={cn(
                           "hover:bg-transparent",
+                          l.tipo === "cabecalho" && "font-semibold border-t-2",
                           l.tipo === "subtotal" && "bg-muted/50 font-medium",
                           l.tipo === "total" && "bg-muted font-semibold border-t-2",
                         )}
