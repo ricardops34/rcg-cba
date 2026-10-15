@@ -195,9 +195,9 @@ em branco também fica de fora (`DE_CATEGORIA_USADA` em
 ### B1_XALLIA é sim/não (14/10/2026, usuário)
 
 O B1_XALLIA é combo **1=Sim; 2=Não**, não código. A coluna de texto
- (que nunca recebeu valor) virou  booleano —
-migration . O BJPLA003 manda
- para "1",  para "2" e  para vazio/outro valor (não
-informado nunca vira "Não"). Tela do produto: Sim / Não / —. Na busca dos
+`codigoAllia` (que nunca recebeu valor) virou `produtoAllia` booleano —
+migration `20261015010000_produto_allia_sim_nao`. O BJPLA003 manda `true`
+para "1", `false` para "2" e `null` para vazio/outro valor (não informado
+nunca vira "Não"). Tela do produto: Sim / Não / —. Na busca dos
 relatórios aparece "Allia" no detalhe do produto marcado; não é mais termo de
 busca. **Aplicada em dev.**
