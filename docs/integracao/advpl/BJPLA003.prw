@@ -1586,7 +1586,7 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim, lEnvDel)
 			oJson["descricaoFabricante"] := Nil
 		EndIf
 
-		// Codigo e descricao no fabricante e codigo Allia (pedido do usuario,
+		// Codigo e descricao no fabricante e marcacao Allia (pedido do usuario,
 		// 14/10/2026). O codigoFabricante acima e o B1_XFOR (do fornecedor);
 		// estes sao os do fabricante de fato. Vazio vai Nil para limpar.
 		If lXCod .And. !Empty((cAlias)->B1_XCOD)
@@ -1601,10 +1601,14 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim, lEnvDel)
 			oJson["descricaoNoFabricante"] := Nil
 		EndIf
 
-		If lXAll .And. !Empty((cAlias)->B1_XALLIA)
-			oJson["codigoAllia"] := AllTrim((cAlias)->B1_XALLIA) // SB1.B1_XALLIA -> produto.codigoAllia
+		// B1_XALLIA e combo 1=Sim;2=Nao (usuario, 14/10/2026): vai como logico.
+		// Outro valor ou vazio vai Nil (nao informado), nunca vira "Nao".
+		If lXAll .And. AllTrim((cAlias)->B1_XALLIA) == "1"
+			oJson["produtoAllia"] := .T. // SB1.B1_XALLIA "1" -> produto.produtoAllia true
+		ElseIf lXAll .And. AllTrim((cAlias)->B1_XALLIA) == "2"
+			oJson["produtoAllia"] := .F. // SB1.B1_XALLIA "2" -> produto.produtoAllia false
 		Else
-			oJson["codigoAllia"] := Nil
+			oJson["produtoAllia"] := Nil
 		EndIf
 
 		// Regra de desconto do produto (decisao do usuario, 13/10/2026): preenchida

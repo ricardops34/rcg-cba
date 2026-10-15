@@ -1119,10 +1119,11 @@ model Produto {
   // (B1_XFOR, B1_XDESFOR), não no fabricante.
   codigoFabricante    String?
   descricaoFabricante String?
-  // No fabricante de fato (B1_XCOD, B1_XXDESC) e o código Allia (B1_XALLIA).
+  // No fabricante de fato (B1_XCOD, B1_XXDESC) e se é produto Allia
+  // (B1_XALLIA: 1=Sim, 2=Não; nulo = não informado).
   codigoNoFabricante    String?
   descricaoNoFabricante String?
-  codigoAllia           String?
+  produtoAllia          Boolean?
   dadosTecnicos       String?
   ncm                 String?
   qtdEmbalagem        Float?

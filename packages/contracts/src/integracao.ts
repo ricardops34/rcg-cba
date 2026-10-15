@@ -311,13 +311,11 @@ export const integracaoProdutoCreateSchema = z.object({
     .nullable()
     .optional()
     .describe("Descrição no fabricante (B1_XXDESC, Desc. Fabric)"),
-  codigoAllia: z
-    .string()
-    .trim()
-    .max(60)
+  produtoAllia: z
+    .boolean()
     .nullable()
     .optional()
-    .describe("Código do produto na Allia (B1_XALLIA, Prod. Allia)"),
+    .describe("Produto Allia (B1_XALLIA: 1=Sim → true, 2=Não → false; vazio → null)"),
   dadosTecnicos: z.string().trim().max(1000).nullable().optional(),
   regraDescontoChave: chaveOpcionalSchema().describe(
     "chave da regra de desconto (Z0_FILIAL-Z0_CODIGO)",

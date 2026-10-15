@@ -351,7 +351,7 @@ export function ProdutoForm({
                     </Field>
                     <Field>
                       <FieldLabel>Prod. Allia</FieldLabel>
-                      <Input disabled value={produto?.codigoAllia || "—"} />
+                      <Input disabled value={produto?.produtoAllia == null ? "—" : produto.produtoAllia ? "Sim" : "Não"} />
                     </Field>
                   </div>
                   <Field>

@@ -66,7 +66,7 @@ export class IntegracaoProdutosService {
       descricaoFabricante: row.descricaoFabricante ?? null,
       codigoNoFabricante: row.codigoNoFabricante ?? null,
       descricaoNoFabricante: row.descricaoNoFabricante ?? null,
-      codigoAllia: row.codigoAllia ?? null,
+      produtoAllia: row.produtoAllia ?? null,
       dadosTecnicos: row.dadosTecnicos ?? null,
       marca: row.marca,
       codigoBarras: row.codigoBarras,
@@ -193,7 +193,7 @@ export class IntegracaoProdutosService {
         descricaoFabricante: input.descricaoFabricante ?? null,
         codigoNoFabricante: input.codigoNoFabricante ?? null,
         descricaoNoFabricante: input.descricaoNoFabricante ?? null,
-        codigoAllia: input.codigoAllia ?? null,
+        produtoAllia: input.produtoAllia ?? null,
         dadosTecnicos: input.dadosTecnicos ?? null,
         marca: input.marca ?? null,
         codigoBarras: input.codigoBarras ?? null,
@@ -319,8 +319,8 @@ export class IntegracaoProdutosService {
           ...(input.descricaoNoFabricante !== undefined
             ? { descricaoNoFabricante: input.descricaoNoFabricante }
             : {}),
-          ...(input.codigoAllia !== undefined
-            ? { codigoAllia: input.codigoAllia }
+          ...(input.produtoAllia !== undefined
+            ? { produtoAllia: input.produtoAllia }
             : {}),
           ...(input.dadosTecnicos !== undefined
             ? { dadosTecnicos: input.dadosTecnicos }

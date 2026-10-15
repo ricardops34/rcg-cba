@@ -130,7 +130,7 @@ O produto não tinha `B1_XCOD` (Cod. Fabric.), `B1_XXDESC` (Desc. Fabric) e
 fabricante" era `B1_XFOR`/`B1_XDESFOR` — do **fornecedor**.
 
 - Campos novos em `produtos`: `codigoNoFabricante` (B1_XCOD),
-  `descricaoNoFabricante` (B1_XXDESC), `codigoAllia` (B1_XALLIA) — migration
+  `descricaoNoFabricante` (B1_XXDESC), `produtoAllia` (B1_XALLIA, ver abaixo) — migration
   `20261014230000_produto_codigos_fabricante_allia`. Os antigos mantêm o nome
   (`codigoFabricante` = B1_XFOR, `descricaoFabricante` = B1_XDESFOR); a tela
   passou a chamá-los de "no fornecedor".
@@ -191,3 +191,13 @@ em branco também fica de fora (`DE_CATEGORIA_USADA` em
 - Para uma categoria voltar aos relatórios: marcar Usada no cadastro.
 
 **Verificado em dev** pela API.
+
+### B1_XALLIA é sim/não (14/10/2026, usuário)
+
+O B1_XALLIA é combo **1=Sim; 2=Não**, não código. A coluna de texto
+ (que nunca recebeu valor) virou  booleano —
+migration . O BJPLA003 manda
+ para "1",  para "2" e  para vazio/outro valor (não
+informado nunca vira "Não"). Tela do produto: Sim / Não / —. Na busca dos
+relatórios aparece "Allia" no detalhe do produto marcado; não é mais termo de
+busca. **Aplicada em dev.**

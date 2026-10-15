@@ -128,7 +128,7 @@ export default function RelatorioComprasPage() {
             tipo="produtos"
             value={produtos}
             onChange={setProdutos}
-            buscaPlaceholder="Código, descrição, Cod. Corp., Fabric., Allia ou EAN..."
+            buscaPlaceholder="Código, descrição, Cod. Corp., Cód. fabricante ou EAN..."
           />
         </CampoFiltro>
         <CampoFiltro rotulo="Fornecedor">

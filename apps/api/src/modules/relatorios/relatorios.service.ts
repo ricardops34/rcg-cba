@@ -551,7 +551,7 @@ export class RelatoriosService {
                  NULLIF(CONCAT_WS(' · ',
                    CASE WHEN t."codigoFabricante" <> '' THEN 'Cod. Corp. ' || t."codigoFabricante" END,
                    CASE WHEN t."codigoNoFabricante" <> '' THEN 'Fabric. ' || t."codigoNoFabricante" END,
-                   CASE WHEN t."codigoAllia" <> '' THEN 'Allia ' || t."codigoAllia" END,
+                   CASE WHEN t."produtoAllia" THEN 'Allia' END,
                    CASE WHEN NOT t."ativo" THEN 'inativo' END), '') AS "detalhe",
                  t."ativo"
           FROM "produtos" t`,
@@ -562,7 +562,6 @@ export class RelatoriosService {
           Prisma.sql`t."codigoFabricante"`,
           Prisma.sql`t."codigoNoFabricante"`,
           Prisma.sql`t."descricaoNoFabricante"`,
-          Prisma.sql`t."codigoAllia"`,
           Prisma.sql`t."codigoBarras"`,
         ],
       },
