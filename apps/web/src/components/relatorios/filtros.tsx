@@ -84,15 +84,17 @@ export function semVazios(obj: Record<string, string | number | undefined>) {
 }
 
 /**
- * Categorias principais ativas, para o filtro dos relatórios. Sem o corte de
- * "usada nas análises": compra de serviço e de consumo também é compra.
+ * Categorias do filtro dos relatórios: as principais marcadas como **Usada**
+ * no cadastro — é o que a empresa chama de categoria ativa (decisão do
+ * usuário, 14/10/2026; o `ativo` vem do ERP e está ligado em todas). Só a
+ * lista do filtro: sem categoria escolhida, o relatório traz tudo.
  */
 export function useCategoriasRelatorio() {
   return useQuery({
-    queryKey: ["categorias", "select", "raizes", "relatorios"],
+    queryKey: ["categorias", "select", "raizes", "usadas", "relatorios"],
     queryFn: () =>
       apiFetch<{ data: Categoria[] }>("/categorias", {
-        query: { pageSize: 100, raiz: true, ativo: true },
+        query: { pageSize: 100, raiz: true, ativo: true, usado: true },
       }),
     staleTime: 5 * 60_000,
   });

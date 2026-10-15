@@ -165,3 +165,12 @@ id nos três relatórios. RCG jan–set: 2.333 itens; IPI R$ 38.417,34, ICMS
 R$ 127.707,92, ICMS ST R$ 307.623,10. Telas compilam (HTTP 200). Migrations
 `20261014213147` e `20261014230000` aplicadas na base de dev. **Falta a
 conferência visual** no navegador.
+
+## Categoria do filtro = categoria **Usada** (14/10/2026, usuário)
+
+"Categoria ativa" para a empresa é a marcação **Usada** do cadastro de
+categorias — o `ativo` vem do ERP e está ligado em todas. O filtro dos três
+relatórios lista só as raízes com `usado = true` (RCG: 17 de 35; somem
+OUTROS ×6, PECAS, SERVICOS, CONSUMO, FRETE…). Revoga o "sem o corte de usada"
+de 14/10 de manhã. É só a lista do filtro: sem categoria escolhida, o
+relatório continua trazendo todas. **Verificado em dev** pela API.
