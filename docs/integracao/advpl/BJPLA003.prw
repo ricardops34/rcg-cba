@@ -1417,6 +1417,9 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim, lEnvDel)
 	Local lXDesF := SB1->(FieldPos("B1_XDESFOR")) > 0
 	Local lXTec  := SB1->(FieldPos("B1_XTEC"))    > 0
 	Local lXDesc := SB1->(FieldPos("B1_XDESC"))   > 0
+	Local lXCod  := SB1->(FieldPos("B1_XCOD"))    > 0
+	Local lXXDes := SB1->(FieldPos("B1_XXDESC"))  > 0
+	Local lXAll  := SB1->(FieldPos("B1_XALLIA"))  > 0
 
 	Default cMarca    := ""
 	Default cChave    := ""
@@ -1451,6 +1454,15 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim, lEnvDel)
 	EndIf
 	If lXDesc
 		cQuery += ", B1_XDESC "
+	EndIf
+	If lXCod
+		cQuery += ", B1_XCOD "
+	EndIf
+	If lXXDes
+		cQuery += ", B1_XXDESC "
+	EndIf
+	If lXAll
+		cQuery += ", B1_XALLIA "
 	EndIf
 
 	cQuery += "  FROM " + RetSQLName("SB1") + " SB1 "
@@ -1572,6 +1584,31 @@ User Function BJMAPPRD(cMarca, cChave, cMarcaFim, lEnvDel)
 			oJson["descricaoFabricante"] := AllTrim((cAlias)->B1_XDESFOR)
 		Else
 			oJson["descricaoFabricante"] := Nil
+		EndIf
+
+		// Codigo e descricao no fabricante e marcacao Allia (pedido do usuario,
+		// 14/10/2026). O codigoFabricante acima e o B1_XFOR (do fornecedor);
+		// estes sao os do fabricante de fato. Vazio vai Nil para limpar.
+		If lXCod .And. !Empty((cAlias)->B1_XCOD)
+			oJson["codigoNoFabricante"] := AllTrim((cAlias)->B1_XCOD) // SB1.B1_XCOD -> produto.codigoNoFabricante
+		Else
+			oJson["codigoNoFabricante"] := Nil
+		EndIf
+
+		If lXXDes .And. !Empty((cAlias)->B1_XXDESC)
+			oJson["descricaoNoFabricante"] := AllTrim((cAlias)->B1_XXDESC) // SB1.B1_XXDESC -> produto.descricaoNoFabricante
+		Else
+			oJson["descricaoNoFabricante"] := Nil
+		EndIf
+
+		// B1_XALLIA e combo 1=Sim;2=Nao (usuario, 14/10/2026): vai como logico.
+		// Outro valor ou vazio vai Nil (nao informado), nunca vira "Nao".
+		If lXAll .And. AllTrim((cAlias)->B1_XALLIA) == "1"
+			oJson["produtoAllia"] := .T. // SB1.B1_XALLIA "1" -> produto.produtoAllia true
+		ElseIf lXAll .And. AllTrim((cAlias)->B1_XALLIA) == "2"
+			oJson["produtoAllia"] := .F. // SB1.B1_XALLIA "2" -> produto.produtoAllia false
+		Else
+			oJson["produtoAllia"] := Nil
 		EndIf
 
 		// Regra de desconto do produto (decisao do usuario, 13/10/2026): preenchida
@@ -3641,7 +3678,7 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim, lEnvDel)
 	Default lEnvDel   := .T.
 
 	cQuery := "SELECT SF1.R_E_C_N_O_ AS REC_CAB, F1_FILIAL, F1_DOC, F1_SERIE, F1_FORNECE, F1_LOJA, F1_FORMUL, SF1.D_E_L_E_T_ AS DELETADO, "
-	cQuery += "       F1_TIPO, F1_ESPECIE, F1_EMISSAO, F1_CHVNFE, F1_VALBRUT, "
+	cQuery += "       F1_TIPO, F1_ESPECIE, F1_EMISSAO, F1_CHVNFE, F1_VALBRUT, F1_DUPL, "
 	cQuery += "       D1_FILIAL, D1_DOC, D1_SERIE, D1_FORNECE, D1_LOJA, D1_ITEM, D1_COD, "
 	cQuery += "       D1_QUANT, D1_TOTAL, D1_CF, SD1.D_E_L_E_T_ AS ITEM_DELETADO "
 
@@ -3848,6 +3885,11 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim, lEnvDel)
 			oJson["especieFiscal"] := IIf(Empty((cAlias)->F1_ESPECIE), Nil, AllTrim((cAlias)->F1_ESPECIE))
 			oJson["tipo"]          := IIf(Empty((cAlias)->F1_TIPO), Nil, AllTrim((cAlias)->F1_TIPO))
 			oJson["chaveNfe"]      := IIf(Empty((cAlias)->F1_CHVNFE), Nil, AllTrim((cAlias)->F1_CHVNFE))
+
+			// F1_DUPL diz se a nota gerou contas a pagar (usuario, 14/10/2026),
+			// como o F2_DUPL na saida. Vai sempre, mesmo vazio - vazio e "nao
+			// gerou"; omitido a plataforma trataria como "nao sei".
+			oJson["duplicata"]     := AllTrim((cAlias)->F1_DUPL) // SF1.F1_DUPL -> notaEntrada.duplicata/geraDuplicata
 
 			oJson["dtEmissao"] := Nil
 			If !Empty((cAlias)->F1_EMISSAO)

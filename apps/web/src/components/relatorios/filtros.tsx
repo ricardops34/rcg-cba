@@ -4,8 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import type { Categoria } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { FilterMultiSelect } from "@/components/crud/filter-multi-select";
 
 /** Hoje e o primeiro dia do ano, em AAAA-MM-DD (data local). */
 export function hojeIso() {
@@ -31,7 +31,7 @@ export function CampoData({
   return (
     <div className="space-y-1">
       <Label htmlFor={id}>{rotulo}</Label>
-      <Input id={id} type="date" className="w-40" value={valor} onChange={(e) => onChange(e.target.value)} />
+      <Input id={id} type="date" className="w-36" value={valor} onChange={(e) => onChange(e.target.value)} />
     </div>
   );
 }
@@ -84,50 +84,47 @@ export function semVazios(obj: Record<string, string | number | undefined>) {
 }
 
 /**
- * Categorias principais ativas, para o filtro dos relatórios. Sem o corte de
- * "usada nas análises": compra de serviço e de consumo também é compra.
+ * Categorias do filtro dos relatórios: as principais marcadas como **Usada**
+ * no cadastro — é o que a empresa chama de categoria ativa (decisão do
+ * usuário, 14/10/2026; o `ativo` vem do ERP e está ligado em todas). Só a
+ * lista do filtro: sem categoria escolhida, o relatório traz tudo.
  */
 export function useCategoriasRelatorio() {
   return useQuery({
-    queryKey: ["categorias", "select", "raizes", "relatorios"],
+    queryKey: ["categorias", "select", "raizes", "usadas", "relatorios"],
     queryFn: () =>
       apiFetch<{ data: Categoria[] }>("/categorias", {
-        query: { pageSize: 100, raiz: true, ativo: true },
+        query: { pageSize: 100, raiz: true, ativo: true, usado: true },
       }),
     staleTime: 5 * 60_000,
   });
 }
 
-/** Descrição da categoria escolhida, para o cabeçalho do PDF e do Excel. */
-export function useDescricaoCategoria(id: string | undefined) {
+/** Descrição de cada categoria, para os chips e o cabeçalho do PDF e do Excel. */
+export function useNomeCategoria() {
   const { data } = useCategoriasRelatorio();
-  return id ? data?.data.find((c) => c.id === id)?.descricao ?? id : undefined;
+  return (id: string) => data?.data.find((c) => c.id === id)?.descricao ?? id;
 }
 
-export function CampoCategoria({
+/** Categorias com seleção múltipla; vazio = todas. */
+export function CampoCategorias({
   valor,
   onChange,
 }: {
-  valor: string;
-  onChange: (id: string) => void;
+  valor: string[];
+  onChange: (ids: string[]) => void;
 }) {
   const { data } = useCategoriasRelatorio();
   return (
-    <div className="space-y-1">
+    <div className="min-w-0 space-y-1">
       <Label>Categoria</Label>
-      <Select value={valor || "todas"} onValueChange={(v) => onChange(v === "todas" ? "" : v)}>
-        <SelectTrigger className="w-48">
-          <SelectValue placeholder="Todas" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="todas">Todas</SelectItem>
-          {(data?.data ?? []).map((c) => (
-            <SelectItem key={c.id} value={c.id}>
-              {c.descricao}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <FilterMultiSelect
+        value={valor}
+        onChange={onChange}
+        placeholder="Todas"
+        searchPlaceholder="Buscar categoria..."
+        options={(data?.data ?? []).map((c) => ({ value: c.id, label: c.descricao }))}
+      />
     </div>
   );
 }

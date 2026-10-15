@@ -1115,8 +1115,15 @@ model Produto {
   codigoBarras        String?
   codigoFornecedor    String?
   fabricanteId        String?
+  // Nomes antigos: estes dois guardam o código e a descrição no FORNECEDOR
+  // (B1_XFOR, B1_XDESFOR), não no fabricante.
   codigoFabricante    String?
   descricaoFabricante String?
+  // No fabricante de fato (B1_XCOD, B1_XXDESC) e se é produto Allia
+  // (B1_XALLIA: 1=Sim, 2=Não; nulo = não informado).
+  codigoNoFabricante    String?
+  descricaoNoFabricante String?
+  produtoAllia          Boolean?
   dadosTecnicos       String?
   ncm                 String?
   qtdEmbalagem        Float?
@@ -3496,6 +3503,11 @@ model NotaEntrada {
   // informa; a integração marca pelo CFOP (ver `integracao/common/comodato`).
   comodato Boolean   @default(false)
   ativo    Boolean   @default(true)
+
+  // Número da duplicata (F1_DUPL): a nota gerou contas a pagar. Como na
+  // NotaSaida: true/false = o ERP informou; null = ainda não mandava o campo.
+  duplicata     String?
+  geraDuplicata Boolean?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

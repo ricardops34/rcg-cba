@@ -1,37 +1,47 @@
 "use client";
 
 import { useState } from "react";
-import type { RelatorioComprasLinha, RelatorioResultado } from "@plataforma/contracts";
+import type { RelatorioComprasLinha, RelatorioOpcao, RelatorioResultado } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { RelatorioPaginado } from "@/components/relatorios/relatorio-paginado";
 import {
-  CampoCategoria,
+  CampoCategorias,
   CampoData,
   CampoTexto,
   descreverFiltros,
   hojeIso,
   inicioDoAnoIso,
   semVazios,
-  useDescricaoCategoria,
+  useNomeCategoria,
 } from "@/components/relatorios/filtros";
+import {
+  BuscaMultiSelect,
+  CampoFiltro,
+  PainelFiltros,
+  filtrosEmTexto,
+  idsDe,
+  rotuloOpcao,
+  type FiltroAtivo,
+} from "@/components/relatorios/filtros-selecao";
 import type { ColunaRelatorio } from "@/lib/relatorio-export";
 import { PackagePlus } from "lucide-react";
 
 const COLUNAS: ColunaRelatorio<RelatorioComprasLinha>[] = [
-  { titulo: "Documento", valor: (l) => l.documento },
-  { titulo: "Produto", valor: (l) => l.produtoCodigo },
-  { titulo: "Descrição", valor: (l) => l.descricao },
-  { titulo: "Quantidade", valor: (l) => l.quantidade, formato: "quantidade" },
-  { titulo: "UM", valor: (l) => l.unidade },
-  { titulo: "Vlr. Unitário", valor: (l) => l.vlrUnitario, formato: "moeda" },
-  { titulo: "Alíq. IPI", valor: (l) => l.aliqIpi, formato: "percentual" },
-  { titulo: "Vlr. Total", valor: (l) => l.vlrTotal, formato: "moeda" },
-  { titulo: "Alíq. ICMS", valor: (l) => l.aliqIcms, formato: "percentual" },
-  { titulo: "Cód. Fornecedor", valor: (l) => l.codigoForCli },
-  { titulo: "Razão Social", valor: (l) => l.razaoSocial },
-  { titulo: "Dt. Digitação", valor: (l) => l.dtDigitacao, formato: "data" },
+  { campo: "documento", titulo: "Documento", valor: (l) => l.documento },
+  { campo: "produtoCodigo", titulo: "Produto", valor: (l) => l.produtoCodigo },
+  { campo: "descricao", titulo: "Descrição", valor: (l) => l.descricao },
+  { campo: "quantidade", titulo: "Quantidade", valor: (l) => l.quantidade, formato: "quantidade" },
+  { campo: "unidade", titulo: "UM", valor: (l) => l.unidade },
+  { campo: "vlrUnitario", titulo: "Vlr. Unitário", valor: (l) => l.vlrUnitario, formato: "moeda" },
+  { campo: "aliqIpi", titulo: "Alíq. IPI", valor: (l) => l.aliqIpi, formato: "percentual" },
+  { campo: "vlrIpi", titulo: "Vlr. IPI", valor: (l) => l.vlrIpi, formato: "moeda" },
+  { campo: "vlrTotal", titulo: "Vlr. Total", valor: (l) => l.vlrTotal, formato: "moeda" },
+  { campo: "aliqIcms", titulo: "Alíq. ICMS", valor: (l) => l.aliqIcms, formato: "percentual" },
+  { campo: "vlrIcms", titulo: "Vlr. ICMS", valor: (l) => l.vlrIcms, formato: "moeda" },
+  { campo: "vlrIcmsSt", titulo: "Vlr. ICMS ST", valor: (l) => l.vlrIcmsSt, formato: "moeda" },
+  { campo: "codigoForCli", titulo: "Cód. Fornecedor", valor: (l) => l.codigoForCli },
+  { campo: "razaoSocial", titulo: "Razão Social", valor: (l) => l.razaoSocial },
+  { campo: "dtDigitacao", titulo: "Dt. Digitação", valor: (l) => l.dtDigitacao, formato: "data" },
 ];
 
 /**
@@ -43,23 +53,59 @@ export default function RelatorioComprasPage() {
   const [inicio, setInicio] = useState(inicioDoAnoIso);
   const [fim, setFim] = useState(hojeIso);
   const [documento, setDocumento] = useState("");
-  const [produto, setProduto] = useState("");
-  const [fornecedor, setFornecedor] = useState("");
-  const [categoriaId, setCategoriaId] = useState("");
+  const [produtos, setProdutos] = useState<RelatorioOpcao[]>([]);
+  const [fornecedores, setFornecedores] = useState<RelatorioOpcao[]>([]);
+  const [categoriaIds, setCategoriaIds] = useState<string[]>([]);
   const [consulta, setConsulta] = useState<Record<string, string | number> | null>(null);
+  // Texto dos filtros do que foi gerado, para o PDF e o Excel.
+  const [filtrosGerados, setFiltrosGerados] = useState<[string, string | undefined][]>([]);
+  const nomeCategoria = useNomeCategoria();
 
-  const categoriaTexto = useDescricaoCategoria(consulta?.categoriaId as string | undefined);
+  const ativos: FiltroAtivo[] = [
+    {
+      rotulo: "Documento",
+      valores: documento.trim() ? [{ id: "doc", texto: documento.trim() }] : [],
+      remover: () => setDocumento(""),
+    },
+    {
+      rotulo: "Produto",
+      valores: produtos.map((o) => ({ id: o.id, texto: rotuloOpcao(o) })),
+      remover: (id) => setProdutos((v) => v.filter((o) => o.id !== id)),
+    },
+    {
+      rotulo: "Categoria",
+      valores: categoriaIds.map((id) => ({ id, texto: nomeCategoria(id) })),
+      remover: (id) => setCategoriaIds((v) => v.filter((c) => c !== id)),
+    },
+    {
+      rotulo: "Fornecedor",
+      valores: fornecedores.map((o) => ({ id: o.id, texto: rotuloOpcao(o) })),
+      remover: (id) => setFornecedores((v) => v.filter((o) => o.id !== id)),
+    },
+  ];
 
-  const gerar = () => setConsulta(semVazios({ inicio, fim, documento, produto, fornecedor, categoriaId }));
+  const gerar = () => {
+    setConsulta(
+      semVazios({
+        inicio,
+        fim,
+        documento,
+        produtoIds: idsDe(produtos),
+        fornecedorIds: idsDe(fornecedores),
+        categoriaIds: categoriaIds.join(","),
+      }),
+    );
+    setFiltrosGerados(filtrosEmTexto(ativos));
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <div className="flex items-center gap-3">
-        <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-xs">
-          <PackagePlus className="size-5" />
+        <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-xs">
+          <PackagePlus className="size-4" />
         </div>
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Relatório de Compras</h1>
+          <h1 className="text-lg font-bold tracking-tight">Relatório de Compras</h1>
           <p className="text-xs text-muted-foreground">
             Itens das notas de compra (NF de entrada tipo normal — sem CT-e, serviço e devolução) no
             período da data de digitação.
@@ -67,25 +113,35 @@ export default function RelatorioComprasPage() {
         </div>
       </div>
 
-      <Card>
-        <CardContent>
-          <form
-            className="flex flex-wrap items-end gap-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              gerar();
-            }}
-          >
+      <PainelFiltros
+        ativos={ativos}
+        onGerar={gerar}
+        principais={
+          <>
             <CampoData id="c-inicio" rotulo="De" valor={inicio} onChange={setInicio} />
             <CampoData id="c-fim" rotulo="Até" valor={fim} onChange={setFim} />
-            <CampoTexto id="c-doc" rotulo="Documento" valor={documento} onChange={setDocumento} largura="w-36" />
-            <CampoTexto id="c-prod" rotulo="Produto" valor={produto} onChange={setProduto} placeholder="Código ou descrição" />
-            <CampoCategoria valor={categoriaId} onChange={setCategoriaId} />
-            <CampoTexto id="c-forn" rotulo="Fornecedor" valor={fornecedor} onChange={setFornecedor} placeholder="Código ou razão social" />
-            <Button type="submit">Gerar</Button>
-          </form>
-        </CardContent>
-      </Card>
+          </>
+        }
+      >
+        <CampoFiltro rotulo="Produto">
+          <BuscaMultiSelect
+            tipo="produtos"
+            value={produtos}
+            onChange={setProdutos}
+            buscaPlaceholder="Código, descrição, Cod. Corp., Cód. fabricante ou EAN..."
+          />
+        </CampoFiltro>
+        <CampoFiltro rotulo="Fornecedor">
+          <BuscaMultiSelect
+            tipo="fornecedores"
+            value={fornecedores}
+            onChange={setFornecedores}
+            buscaPlaceholder="Código, razão social, fantasia ou CNPJ..."
+          />
+        </CampoFiltro>
+        <CampoCategorias valor={categoriaIds} onChange={setCategoriaIds} />
+        <CampoTexto id="c-doc" rotulo="Documento" valor={documento} onChange={setDocumento} largura="w-full" placeholder="Número da nota" />
+      </PainelFiltros>
 
       <RelatorioPaginado
         titulo="Relatório de Compras"
@@ -94,32 +150,16 @@ export default function RelatorioComprasPage() {
         consulta={consulta}
         filtrosTexto={
           consulta
-            ? descreverFiltros({ inicio: String(consulta.inicio), fim: String(consulta.fim) }, [
-                ["Documento", consulta.documento as string | undefined],
-                ["Produto", consulta.produto as string | undefined],
-                ["Categoria", categoriaTexto],
-                ["Fornecedor", consulta.fornecedor as string | undefined],
-              ])
+            ? descreverFiltros({ inicio: String(consulta.inicio), fim: String(consulta.fim) }, filtrosGerados)
             : []
         }
-        buscar={(page, pageSize) =>
+        buscar={(p) =>
           apiFetch<RelatorioResultado<RelatorioComprasLinha>>("/relatorios/compras", {
-            query: { ...consulta, page, pageSize },
+            query: { ...consulta, ...p },
           })
         }
         colunas={COLUNAS}
         rowKey={(l) => l.id}
-        totais={(r) =>
-          COLUNAS.map((c, i) =>
-            i === 0
-              ? "Total"
-              : c.titulo === "Quantidade"
-                ? (r.totais.quantidade ?? null)
-                : c.titulo === "Vlr. Total"
-                  ? (r.totais.vlrTotal ?? null)
-                  : null,
-          )
-        }
       />
     </div>
   );

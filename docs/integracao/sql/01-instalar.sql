@@ -86,7 +86,7 @@ INSERT @tabs VALUES
     ('NNR', 'NNR_MSBLQL:c'),
     ('SA3', 'A3_COMIS:n,A3_SUPER:c,A3_GEREN:c,A3_CEL:c,A3_MSBLQL:c'),
     ('SA2', 'A2_CEL:c,A2_INSCRM:c,A2_MSBLQL:c'),
-    ('SB1', 'B1_QE:n,B1_PRV1:n,B1_CODGTIN:c,B1_PESO:n,B1_PROC:c,B1_LOJPROC:c,B1_XFOR:c,B1_XDESFOR:c,B1_XTEC:c,B1_TPRCG:c,B1_MSBLQL:c'),
+    ('SB1', 'B1_QE:n,B1_PRV1:n,B1_CODGTIN:c,B1_PESO:n,B1_PROC:c,B1_LOJPROC:c,B1_XFOR:c,B1_XDESFOR:c,B1_XTEC:c,B1_XCOD:c,B1_XXDESC:c,B1_XALLIA:c,B1_TPRCG:c,B1_MSBLQL:c'),
     ('SB2', 'B2_CM1:n,B2_DTUCOM:c'),
     ('DA0', ''),
     ('DA1', 'DA1_XDESC:c'),
@@ -681,7 +681,12 @@ BEGIN
                 CASE WHEN SB1.B1_PROC > '' THEN @fSA2 + '-' + LTRIM(RTRIM(SB1.B1_PROC)) + '-' + LTRIM(RTRIM(SB1.B1_LOJPROC)) END AS fabricanteChave,
                 NULLIF(LTRIM(RTRIM(SB1.B1_XFOR)), '')                    AS codigoFabricante,
                 NULLIF(LTRIM(RTRIM(SB1.B1_XDESFOR)), '')                 AS descricaoFabricante,
-                NULLIF(LTRIM(RTRIM(SB1.B1_XTEC)), '')                    AS dadosTecnicos
+                NULLIF(LTRIM(RTRIM(SB1.B1_XTEC)), '')                    AS dadosTecnicos,
+                NULLIF(LTRIM(RTRIM(SB1.B1_XCOD)), '')                    AS codigoNoFabricante,
+                NULLIF(LTRIM(RTRIM(SB1.B1_XXDESC)), '')                  AS descricaoNoFabricante,
+                -- B1_XALLIA e combo 1=Sim;2=Nao: outro valor ou vazio = nao informado.
+                CASE LTRIM(RTRIM(SB1.B1_XALLIA)) WHEN '1' THEN CAST(1 AS bit)
+                                                 WHEN '2' THEN CAST(0 AS bit) END AS produtoAllia
                 FOR JSON PATH, WITHOUT_ARRAY_WRAPPER, INCLUDE_NULL_VALUES) r(j)
          WHERE SB1.D_E_L_E_T_ = ' ' AND SB1.B1_FILIAL = @fSB1
            AND (@corte IS NULL OR SB1.S_T_A_M_P_ >= @corte)
@@ -908,6 +913,9 @@ BEGIN
                 NULLIF(LTRIM(RTRIM(SF1.F1_ESPECIE)), '')                              AS especieFiscal,
                 NULLIF(LTRIM(RTRIM(SF1.F1_TIPO)), '')                                 AS tipo,
                 NULLIF(LTRIM(RTRIM(SF1.F1_CHVNFE)), '')                               AS chaveNfe,
+                -- F1_DUPL: a nota gerou contas a pagar. Vai sempre, mesmo vazio,
+                -- como o F2_DUPL ('' = nao gerou; nulo = "nao sei").
+                ISNULL(LTRIM(RTRIM(SF1.F1_DUPL)), '')                                 AS duplicata,
                 CASE WHEN SF1.F1_EMISSAO > '' THEN STUFF(STUFF(SF1.F1_EMISSAO, 7, 0, '-'), 5, 0, '-') END AS dtEmissao,
                 CASE WHEN SF1.F1_EMISSAO > '' AND SF1.F1_CHVNFE > '' THEN STUFF(STUFF(SF1.F1_EMISSAO, 7, 0, '-'), 5, 0, '-') END AS dtNfe,
                 CASE WHEN SF1.F1_DTDIGIT > '' THEN STUFF(STUFF(SF1.F1_DTDIGIT, 7, 0, '-'), 5, 0, '-') END AS dtEntrada,

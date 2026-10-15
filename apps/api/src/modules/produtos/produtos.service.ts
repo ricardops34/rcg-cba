@@ -165,6 +165,15 @@ export class ProdutosService {
                     mode: 'insensitive' as const,
                   },
                 },
+                // Códigos de fora: fornecedor (B1_XFOR) e fabricante (B1_XCOD).
+                ...(['codigoFabricante', 'codigoNoFabricante'] as const).map(
+                  (campo) => ({
+                    [campo]: {
+                      contains: query.search,
+                      mode: 'insensitive' as const,
+                    },
+                  }),
+                ),
               ],
             }
           : {}),

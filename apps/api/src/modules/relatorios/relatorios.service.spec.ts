@@ -1,5 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
-import { RelatoriosService, periodo } from './relatorios.service';
+import {
+  ORDEM_COMPRAS,
+  RelatoriosService,
+  ordenar,
+  periodo,
+} from './relatorios.service';
 
 describe('periodo', () => {
   it('é fechado nos dois dias', () => {
@@ -117,5 +122,26 @@ describe('RelatoriosService.estoqueCompra', () => {
       expect.any(Function),
       expect.anything(),
     );
+  });
+});
+
+describe('ordenar', () => {
+  const padrao = [{ id: 'asc' as const }];
+
+  it('coluna clicada vem primeiro, a padrão desempata', () => {
+    expect(
+      ordenar(ORDEM_COMPRAS, { ordem: 'vlrTotal', sentido: 'desc' }, padrao),
+    ).toEqual([{ vlrTotal: 'desc' }, { id: 'asc' }]);
+    expect(
+      ordenar(ORDEM_COMPRAS, { ordem: 'razaoSocial', sentido: 'asc' }, padrao),
+    ).toEqual([{ fornecedor: { razaoSocial: 'asc' } }, { id: 'asc' }]);
+  });
+
+  it('campo fora da lista (ou herdado do Object) fica só na padrão', () => {
+    for (const ordem of [undefined, 'senha', 'constructor', '__proto__']) {
+      expect(ordenar(ORDEM_COMPRAS, { ordem, sentido: 'asc' }, padrao)).toEqual(
+        padrao,
+      );
+    }
   });
 });

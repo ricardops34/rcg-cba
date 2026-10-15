@@ -18,6 +18,7 @@ import type {
   IntegracaoLoteResultado,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
+import { dadosDuplicata } from '../common/duplicata';
 import {
   camposDaDecisao,
   decidirUpsert,
@@ -81,6 +82,7 @@ export class IntegracaoNotasEntradaService {
       vlrSeguro: row.vlrSeguro,
       vlrDespesa: row.vlrDespesa,
       chaveNfe: row.chaveNfe,
+      duplicata: row.duplicata,
       dtNfe: row.dtNfe,
       mensagem: row.mensagem,
       ativo: row.ativo,
@@ -368,6 +370,7 @@ export class IntegracaoNotasEntradaService {
         chaveNfe: input.chaveNfe ?? null,
         dtNfe: input.dtNfe ?? null,
         mensagem: input.mensagem ?? null,
+        ...dadosDuplicata(input.duplicata),
         ativo: input.ativo,
         updatedBy: autor,
       };
@@ -540,6 +543,7 @@ export class IntegracaoNotasEntradaService {
           ...(input.chaveNfe !== undefined ? { chaveNfe: input.chaveNfe } : {}),
           ...(input.dtNfe !== undefined ? { dtNfe: input.dtNfe } : {}),
           ...(input.mensagem !== undefined ? { mensagem: input.mensagem } : {}),
+          ...dadosDuplicata(input.duplicata),
           ...(input.ativo !== undefined ? { ativo: input.ativo } : {}),
           updatedBy: autor,
           ...itensUpdate,

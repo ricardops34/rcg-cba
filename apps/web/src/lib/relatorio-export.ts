@@ -12,6 +12,11 @@ import * as XLSX from "xlsx";
 export type FormatoColuna = "texto" | "numero" | "quantidade" | "moeda" | "percentual" | "data";
 
 export interface ColunaRelatorio<T> {
+  /**
+   * Campo da linha: a ordenação no servidor, a escolha de colunas guardada no
+   * navegador e o total (`totais[campo]`) saem dele.
+   */
+  campo: string;
   titulo: string;
   valor: (linha: T) => string | number | null;
   formato?: FormatoColuna;

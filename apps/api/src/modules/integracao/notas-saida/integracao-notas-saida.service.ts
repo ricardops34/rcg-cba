@@ -25,6 +25,7 @@ import type {
   IntegracaoLoteResultado,
 } from '@plataforma/contracts';
 import { autorIntegracao } from '../common/autor-integracao';
+import { dadosDuplicata } from '../common/duplicata';
 import {
   camposDaDecisao,
   decidirUpsert,
@@ -65,19 +66,6 @@ type NotaComRelacoes = Prisma.NotaSaidaGetPayload<{ include: typeof INCLUDE }>;
  * cliente. Ver `resolverRefs`.
  */
 const TIPOS_DE_FORNECEDOR = ['D'];
-
-/**
- * F2_DUPL → colunas da nota. Omitido não mexe em nada: uma integração que
- * ainda não manda o campo não pode apagar o que outra já informou, nem marcar
- * a nota como "sem financeiro" — `geraDuplicata` nulo é o "não sei" que faz a
- * análise cair no critério antigo. Vazio (o Protheus manda o campo com
- * espaços) é "não gerou".
- */
-function dadosDuplicata(duplicata: string | null | undefined) {
-  if (duplicata === undefined) return {};
-  const numero = duplicata?.trim() || null;
-  return { duplicata: numero, geraDuplicata: numero !== null };
-}
 
 /**
  * Fornecedor pela chave do ERP (A2_FILIAL-A2_COD-A2_LOJA), com a mesma

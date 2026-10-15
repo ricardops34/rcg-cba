@@ -94,3 +94,139 @@ têm tudo pelo `isAdmin`.
 - **Filtro de categoria** nos três relatórios (categoria ou subcategoria do
   produto). A lista de categorias passa a valer para quem tem um relatório
   (o Gerente não tem o cadastro de categorias).
+
+## Filtros com seleção múltipla e cortina (14/10/2026, usuário)
+
+Pedido: em produto, fornecedor e categoria, pesquisar por nome, código, CNPJ,
+razão social e ir selecionando vários; tela mais enxuta.
+
+- **Produto, fornecedor e cliente** viram seleção múltipla com busca no
+  servidor (`BuscaMultiSelect`, `components/relatorios/filtros-selecao.tsx`).
+  A busca é por termos: produto em código, descrição, Cod. Corp. e EAN;
+  fornecedor/cliente em código, razão social, fantasia e CNPJ/CPF (com ou sem
+  pontuação). Até 100 resultados; "Marcar todos os N resultados" substitui o
+  antigo filtro "contém" (buscar `HIGIN` e marcar tudo).
+- **Categoria** também múltipla (lista local).
+- A API passa a receber ids (`produtoIds`, `fornecedorIds`, `clienteIds`,
+  `categoriaIds`, separados por vírgula) e deixa de aceitar os textos
+  `produto`, `fornecedor`, `cliente`, `produtoCodigo`, `produtoNome`,
+  `categoriaId`. Ficam como texto: documento/NF, cidade e Cod. Corp.
+- **Opções**: rota própria `GET /relatorios/opcoes/:tipo` para quem tem
+  qualquer relatório — o Gerente não tem o cadastro de fornecedores; a rota
+  devolve só id, código, nome e um detalhe (CNPJ, cidade, Cod. Corp.).
+- **Cortina**: período, **Filtros (n)** e **Gerar** sempre à vista; os demais
+  numa área recolhível que fecha ao gerar. O que está escolhido aparece como
+  chip com × para tirar.
+- Estoque e compra: o filtro de fornecedor é pelo **id do fornecedor da
+  última compra** (antes, texto na razão social).
+
+**Situação:** tipos (api/web), lint e testes do módulo ok; **não validado
+ponta a ponta** — Docker parado em 14/10. Falta a conferência na tela.
+
+## Códigos do fabricante e Allia no produto (14/10/2026, usuário)
+
+O produto não tinha `B1_XCOD` (Cod. Fabric.), `B1_XXDESC` (Desc. Fabric) e
+`B1_XALLIA` (Prod. Allia). O que a tela chamava de "código/descrição no
+fabricante" era `B1_XFOR`/`B1_XDESFOR` — do **fornecedor**.
+
+- Campos novos em `produtos`: `codigoNoFabricante` (B1_XCOD),
+  `descricaoNoFabricante` (B1_XXDESC), `produtoAllia` (B1_XALLIA, ver abaixo) — migration
+  `20261014230000_produto_codigos_fabricante_allia`. Os antigos mantêm o nome
+  (`codigoFabricante` = B1_XFOR, `descricaoFabricante` = B1_XDESFOR); a tela
+  passou a chamá-los de "no fornecedor".
+- BJPLA003 (`BJMAPPRD`) envia os três (com `FieldPos`, vazio = Nil).
+- Cadastro do produto (aba Fabricante) mostra os cinco; a busca do cadastro e
+  a dos relatórios encontram por Cod. Corp., Cód. no fabricante e Allia.
+
+**Falta:** aplicar a migration, compilar o BJPLA003 no Protheus e reenviar os
+produtos (os campos só chegam quando o produto for reenviado).
+
+## Tela mais enxuta, ordenação, colunas e valores de imposto (14/10/2026, usuário)
+
+- **Filtros numa linha**: período (e vendedor, nas Vendas), chips do que está
+  escolhido, **Filtros** e **Gerar**. Os demais filtros abrem numa cortina
+  lateral (Sheet) com **Aplicar** e **Limpar** — não empurram a tabela.
+  Cabeçalho da página menor; contagem, totais, Colunas, PDF e Excel numa
+  barra só.
+- **Ordenar por qualquer coluna**: Compras e Vendas no servidor (`ordem`,
+  `sentido`; lista fechada em `ORDEM_COMPRAS`/`ORDEM_VENDAS`, fora dela vale a
+  padrão, que também desempata). PDF e Excel saem na mesma ordem. Estoque e
+  compra já ordenava no navegador.
+- **Escolher colunas** (`components/relatorios/colunas.tsx`): vale para a
+  tela, o PDF e o Excel; guardado no navegador, por usuário. O total segue a
+  coluna (`totais[campo]`), não a posição.
+- **Compras: Vlr. IPI, Vlr. ICMS e Vlr. ICMS ST** do item (já vinham do
+  BJPLA003: `D1_VALIPI`, `D1_VALICM`, ICMS ST), com total.
+
+**Verificado em dev (14/10)**, com token de Gerente: busca de
+fornecedor/produto/cliente (inclusive CNPJ só dígitos), tipo inválido = 400,
+ordenação de Compras e Vendas, `ordem=__proto__` cai na padrão, filtros por
+id nos três relatórios. RCG jan–set: 2.333 itens; IPI R$ 38.417,34, ICMS
+R$ 127.707,92, ICMS ST R$ 307.623,10. Telas compilam (HTTP 200). Migrations
+`20261014213147` e `20261014230000` aplicadas na base de dev. **Falta a
+conferência visual** no navegador.
+
+## Categoria do filtro = categoria **Usada** (14/10/2026, usuário)
+
+"Categoria ativa" para a empresa é a marcação **Usada** do cadastro de
+categorias — o `ativo` vem do ERP e está ligado em todas. O filtro dos três
+relatórios lista só as raízes com `usado = true` (RCG: 17 de 35; somem
+OUTROS ×6, PECAS, SERVICOS, CONSUMO, FRETE…). Revoga o "sem o corte de usada"
+de 14/10 de manhã. É só a lista do filtro: sem categoria escolhida, o
+relatório continua trazendo todas. **Verificado em dev** pela API.
+
+## Relatórios só com categoria **Usada** (14/10/2026, usuário)
+
+"Não quero que liste categorias não usadas" — e a regra é **só dos
+relatórios** ("estamos trabalhando nos relatórios"; o Dashboard não muda).
+Nos três relatórios entra só produto cuja categoria está com Usada = **sim**;
+em branco também fica de fora (`DE_CATEGORIA_USADA` em
+`relatorios.service.ts`). A busca de produto dos filtros segue a mesma regra.
+
+- Mais estrito que o `corteDeVenda` (Dashboard/Consultas), onde em branco
+  conta: o **Relatório de Vendas pode dar menos que o Dashboard**. RCG set/2026:
+  1.217 → 1.165 itens.
+- Compras RCG jan–set: 2.333 → 784 itens; R$ 2.494.029,05 → R$ 2.212.499,39.
+- Produtos em categoria Usada: 1.252 de 8.032.
+- Para uma categoria voltar aos relatórios: marcar Usada no cadastro.
+
+**Verificado em dev** pela API.
+
+### B1_XALLIA é sim/não (14/10/2026, usuário)
+
+O B1_XALLIA é combo **1=Sim; 2=Não**, não código. A coluna de texto
+`codigoAllia` (que nunca recebeu valor) virou `produtoAllia` booleano —
+migration `20261015010000_produto_allia_sim_nao`. O BJPLA003 manda `true`
+para "1", `false` para "2" e `null` para vazio/outro valor (não informado
+nunca vira "Não"). Tela do produto: Sim / Não / —. Na busca dos
+relatórios aparece "Allia" no detalhe do produto marcado; não é mais termo de
+busca. **Aplicada em dev.**
+
+## Barra alinhada; fornecedor só ativo (14/10/2026, usuário)
+
+- **Barra de filtros desalinhada**: o campo de data do navegador passa do
+  `h-8` dos outros controles. Agora tudo na barra é `h-9`, espaço igual entre
+  os campos (`gap-3`) e Filtros/Gerar logo depois dos campos (sem o vão).
+- **Fornecedor na busca do filtro: só ativo** (A2_MSBLQL = 1 chega como
+  `ativo = false` pelo BJPLA003). RCG: 11 bloqueados de 1.529. É só a lista:
+  nota antiga de fornecedor bloqueado continua no relatório. **Verificado em
+  dev** pela API (código de bloqueado não volta na busca).
+
+## Fornecedor bloqueado e nota sem financeiro saem dos relatórios (14/10/2026, usuário)
+
+- **Fornecedor bloqueado** (A2_MSBLQL = 1) sai também dos itens, não só da
+  lista do filtro ("estamos trabalhando nos relatórios"). RCG 2009–2016:
+  3.157 → 3.079 itens; nenhum bloqueado tem nota em 2026.
+- **Nota de entrada sem contas a pagar sai** — o F1_DUPL, como o F2_DUPL já
+  faz na venda. Campos novos `duplicata`/`geraDuplicata` em `notas_entrada`
+  (migration `20261015020000_nota_entrada_duplicata`), gravados pela mesma
+  função da saída (`integracao/common/duplicata.ts`). O BJPLA003 e a carga
+  por SQL (`docs/integracao/sql/01-instalar.sql`) mandam o F1_DUPL sempre,
+  vazio = "não gerou".
+- Até o BJPLA003 novo reenviar as notas, `geraDuplicata` fica nulo e a nota
+  **continua entrando** (senão o relatório zeraria). Vale para Compras,
+  Entrada-Qtd e a última compra (`NOTA_DE_COMPRA_SQL`).
+- A carga por SQL também ganhou B1_XCOD, B1_XXDESC e B1_XALLIA (1/2 → sim/não).
+
+**Verificado em dev:** nota de mar/2026 com `geraDuplicata` nulo/true entra
+(43 itens), false sai (42).

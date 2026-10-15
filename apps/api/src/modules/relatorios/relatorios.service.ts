@@ -6,10 +6,14 @@ import type {
   RelatorioEstoqueCompraLinha,
   RelatorioEstoqueCompraQuery,
   RelatorioEstoqueCompraResultado,
+  RelatorioOpcao,
+  RelatorioOpcaoTipo,
   RelatorioResultado,
   RelatorioVendasLinha,
   RelatorioVendasQuery,
 } from '@plataforma/contracts';
+import { RELATORIO_OPCOES_LIMITE } from '@plataforma/contracts';
+import { condicaoBuscaTermosSql } from '../../common/busca/termos-busca';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { corteDeVenda } from '../../common/vendas/venda-analitica';
 
@@ -38,12 +42,40 @@ export function periodo(inicio: string, fim: string) {
  * (NFFA) e devolução de cliente (tipo D). Espécies vistas na base da RCG.
  */
 export const ESPECIES_DE_COMPRA = ['SPED', 'NFE', 'NF', 'NFA'];
-const NOTA_DE_COMPRA_SQL = Prisma.sql`n."tipo" = 'N' AND n."especieFiscal" IN (${Prisma.join(ESPECIES_DE_COMPRA)})`;
+/**
+ * E de fornecedor **ativo** (decisão do usuário, 14/10/2026, só para os
+ * relatórios): bloqueado no ERP (A2_MSBLQL = 1) não sai nem na lista do filtro
+ * nem nos itens — Compras, Entrada-Qtd e o fornecedor/preço da última compra.
+ *
+ * E que **gerou contas a pagar** (F1_DUPL; usuário, 14/10/2026), como a venda
+ * pelo F2_DUPL. `geraDuplicata` nulo — a nota chegou antes de o BJPLA003
+ * mandar o campo — continua entrando: senão o relatório zeraria até a
+ * integração reenviar as notas. Escrito pelo lado de quem passa (true ou
+ * nulo), pela armadilha do `NOT` com nulo descrita em `venda-analitica.ts`.
+ */
+const NOTA_DE_COMPRA_SQL = Prisma.sql`n."tipo" = 'N' AND n."especieFiscal" IN (${Prisma.join(ESPECIES_DE_COMPRA)})
+  AND n."geraDuplicata" IS DISTINCT FROM false
+  AND EXISTS (SELECT 1 FROM "fornecedores" fa WHERE fa."id" = n."fornecedorId" AND fa."ativo" = true)`;
 
-/** Produto da categoria ou da subcategoria escolhida. */
-const daCategoria = (id: string): Prisma.ProdutoWhereInput => ({
-  OR: [{ categoriaId: id }, { subCategoriaId: id }],
+/** Produto de uma das categorias ou subcategorias escolhidas. */
+const dasCategorias = (ids: string[]): Prisma.ProdutoWhereInput => ({
+  OR: [{ categoriaId: { in: ids } }, { subCategoriaId: { in: ids } }],
 });
+
+/**
+ * Relatório só traz produto de categoria marcada como **Usada** (decisão do
+ * usuário, 14/10/2026, só para os relatórios). Mais estrito que o
+ * `corteDeVenda` do Dashboard, onde categoria em branco conta: aqui em branco
+ * fica de fora — por isso o Relatório de Vendas pode dar menos que o Dashboard.
+ */
+const DE_CATEGORIA_USADA: Prisma.ProdutoWhereInput = {
+  categoria: { is: { usado: true } },
+};
+const DE_CATEGORIA_USADA_SQL = Prisma.sql`EXISTS (SELECT 1 FROM "categorias" cu WHERE cu."id" = p."categoriaId" AND cu."usado" = true)`;
+
+/** CNPJ/CPF só com dígitos, para casar a busca com ou sem pontuação. */
+const SO_DIGITOS = (coluna: Prisma.Sql) =>
+  Prisma.sql`regexp_replace(COALESCE(${coluna}, ''), '[^0-9]', '', 'g')`;
 
 const contem = (texto: string) => ({
   contains: texto,
@@ -53,6 +85,61 @@ const dataIso = (d: Date | null | undefined) =>
   d ? d.toISOString().slice(0, 10) : null;
 const arred = (v: number, casas = 2) =>
   Math.round(v * 10 ** casas) / 10 ** casas;
+
+type Sentido = 'asc' | 'desc';
+
+/**
+ * Ordenação pela coluna clicada na tela: o campo da linha → o `orderBy` do
+ * Prisma. Fora da lista (ou sem ordem), só a padrão. A padrão vem depois como
+ * desempate — a página seguinte não repete nem pula linhas.
+ */
+export const ORDEM_COMPRAS: Record<
+  string,
+  (s: Sentido) => Prisma.NotaEntradaItemOrderByWithRelationInput
+> = {
+  documento: (s) => ({ notaEntrada: { numero: s } }),
+  produtoCodigo: (s) => ({ produto: { codigoErp: s } }),
+  descricao: (s) => ({ produto: { descricao: s } }),
+  quantidade: (s) => ({ quantidade: s }),
+  unidade: (s) => ({ produto: { unidade: s } }),
+  vlrUnitario: (s) => ({ vlrUnitario: s }),
+  aliqIpi: (s) => ({ aliqIpi: s }),
+  vlrTotal: (s) => ({ vlrTotal: s }),
+  aliqIcms: (s) => ({ aliqIcms: s }),
+  vlrIpi: (s) => ({ vlrIpi: s }),
+  vlrIcms: (s) => ({ vlrIcms: s }),
+  vlrIcmsSt: (s) => ({ vlrIcmsSt: s }),
+  codigoForCli: (s) => ({ fornecedor: { codigoErp: s } }),
+  razaoSocial: (s) => ({ fornecedor: { razaoSocial: s } }),
+  dtDigitacao: (s) => ({ notaEntrada: { dtEntrada: s } }),
+};
+
+const ORDEM_VENDAS: Record<
+  string,
+  (s: Sentido) => Prisma.NotaSaidaItemOrderByWithRelationInput
+> = {
+  vendedor: (s) => ({ notaSaida: { vendedor: { nome: s } } }),
+  clienteCodigo: (s) => ({ notaSaida: { cliente: { codigoErp: s } } }),
+  clienteNome: (s) => ({ notaSaida: { cliente: { razaoSocial: s } } }),
+  municipio: (s) => ({ notaSaida: { cliente: { municipio: s } } }),
+  emissao: (s) => ({ notaSaida: { dtEmissao: s } }),
+  notaFiscal: (s) => ({ notaSaida: { numero: s } }),
+  produtoCodigo: (s) => ({ produto: { codigoErp: s } }),
+  produto: (s) => ({ produto: { descricao: s } }),
+  quantidade: (s) => ({ quantidade: s }),
+  vlrProduto: (s) => ({ vlrUnitario: s }),
+  vlrItem: (s) => ({ vlrTotal: s }),
+};
+
+export function ordenar<O>(
+  mapa: Record<string, (s: Sentido) => O>,
+  q: { ordem?: string; sentido: Sentido },
+  padrao: O[],
+): O[] {
+  const escolhida =
+    q.ordem && Object.hasOwn(mapa, q.ordem) ? mapa[q.ordem](q.sentido) : null;
+  return escolhida ? [escolhida, ...padrao] : padrao;
+}
 
 function paginar(total: number, page: number, pageSize: number) {
   return {
@@ -102,56 +189,30 @@ export class RelatoriosService {
             ativo: true,
             tipo: 'N',
             especieFiscal: { in: ESPECIES_DE_COMPRA },
-            OR: [
-              { dtEntrada: { gte: de, lt: ate } },
-              { dtEntrada: null, dtEmissao: { gte: de, lt: ate } },
+            fornecedor: { is: { ativo: true } },
+            AND: [
+              {
+                OR: [
+                  { dtEntrada: { gte: de, lt: ate } },
+                  { dtEntrada: null, dtEmissao: { gte: de, lt: ate } },
+                ],
+              },
+              // Gerou contas a pagar, ou ainda não informado (NOTA_DE_COMPRA_SQL).
+              { OR: [{ geraDuplicata: true }, { geraDuplicata: null }] },
             ],
           },
         },
       },
+      { produto: { is: DE_CATEGORIA_USADA } },
     ];
-    if (q.categoriaId)
-      filtros.push({ produto: { is: daCategoria(q.categoriaId) } });
+    if (q.categoriaIds?.length)
+      filtros.push({ produto: { is: dasCategorias(q.categoriaIds) } });
     if (q.documento)
       filtros.push({ notaEntrada: { is: { numero: contem(q.documento) } } });
-    if (q.produto) {
-      filtros.push({
-        produto: {
-          is: {
-            OR: [
-              { codigoErp: contem(q.produto) },
-              { descricao: contem(q.produto) },
-            ],
-          },
-        },
-      });
-    }
-    if (q.fornecedor) {
-      filtros.push({
-        OR: [
-          {
-            fornecedor: {
-              is: {
-                OR: [
-                  { codigoErp: contem(q.fornecedor) },
-                  { razaoSocial: contem(q.fornecedor) },
-                ],
-              },
-            },
-          },
-          {
-            cliente: {
-              is: {
-                OR: [
-                  { codigoErp: contem(q.fornecedor) },
-                  { razaoSocial: contem(q.fornecedor) },
-                ],
-              },
-            },
-          },
-        ],
-      });
-    }
+    if (q.produtoIds?.length) filtros.push({ produtoId: { in: q.produtoIds } });
+    // Nota de compra é tipo N: o participante é sempre fornecedor.
+    if (q.fornecedorIds?.length)
+      filtros.push({ fornecedorId: { in: q.fornecedorIds } });
     const where: Prisma.NotaEntradaItemWhereInput = { AND: filtros };
 
     return this.ler(empresaId, async (tx) => {
@@ -160,15 +221,22 @@ export class RelatoriosService {
       const total = await tx.notaEntradaItem.count({ where });
       const somas = await tx.notaEntradaItem.aggregate({
         where,
-        _sum: { quantidade: true, vlrTotal: true },
+        _sum: {
+          quantidade: true,
+          vlrTotal: true,
+          vlrIpi: true,
+          vlrIcms: true,
+          vlrIcmsSt: true,
+        },
       });
       const itens = await tx.notaEntradaItem.findMany({
         where,
-        orderBy: [
+        orderBy: ordenar(ORDEM_COMPRAS, q, [
           { notaEntrada: { dtEntrada: 'asc' } },
           { notaEntrada: { numero: 'asc' } },
           { item: 'asc' },
-        ],
+          { id: 'asc' },
+        ]),
         skip: (q.page - 1) * q.pageSize,
         take: q.pageSize,
         select: {
@@ -178,6 +246,9 @@ export class RelatoriosService {
           vlrTotal: true,
           aliqIpi: true,
           aliqIcms: true,
+          vlrIpi: true,
+          vlrIcms: true,
+          vlrIcmsSt: true,
           notaEntrada: {
             select: {
               numero: true,
@@ -207,6 +278,9 @@ export class RelatoriosService {
           aliqIpi: i.aliqIpi,
           vlrTotal: i.vlrTotal,
           aliqIcms: i.aliqIcms,
+          vlrIpi: i.vlrIpi,
+          vlrIcms: i.vlrIcms,
+          vlrIcmsSt: i.vlrIcmsSt,
           codigoForCli: quem?.codigoErp ?? null,
           razaoSocial: quem?.razaoSocial ?? null,
           dtDigitacao: dataIso(
@@ -220,6 +294,9 @@ export class RelatoriosService {
         totais: {
           quantidade: arred(somas._sum.quantidade ?? 0, 4),
           vlrTotal: arred(somas._sum.vlrTotal ?? 0),
+          vlrIpi: arred(somas._sum.vlrIpi ?? 0),
+          vlrIcms: arred(somas._sum.vlrIcms ?? 0),
+          vlrIcmsSt: arred(somas._sum.vlrIcmsSt ?? 0),
         },
       };
     });
@@ -247,21 +324,9 @@ export class RelatoriosService {
           notaSaida: { is: { vendedorId: { in: q.vendedorIds } } },
         });
       }
-      if (q.cliente) {
+      if (q.clienteIds?.length) {
         filtros.push({
-          notaSaida: {
-            is: {
-              cliente: {
-                is: {
-                  OR: [
-                    { codigoErp: contem(q.cliente) },
-                    { razaoSocial: contem(q.cliente) },
-                    { nomeFantasia: contem(q.cliente) },
-                  ],
-                },
-              },
-            },
-          },
+          notaSaida: { is: { clienteId: { in: q.clienteIds } } },
         });
       }
       if (q.municipio) {
@@ -271,16 +336,13 @@ export class RelatoriosService {
           },
         });
       }
-      if (q.categoriaId)
-        filtros.push({ produto: { is: daCategoria(q.categoriaId) } });
+      filtros.push({ produto: { is: DE_CATEGORIA_USADA } });
+      if (q.categoriaIds?.length)
+        filtros.push({ produto: { is: dasCategorias(q.categoriaIds) } });
       if (q.notaFiscal)
         filtros.push({ notaSaida: { is: { numero: contem(q.notaFiscal) } } });
-      if (q.produtoCodigo)
-        filtros.push({
-          produto: { is: { codigoErp: contem(q.produtoCodigo) } },
-        });
-      if (q.produtoNome)
-        filtros.push({ produto: { is: { descricao: contem(q.produtoNome) } } });
+      if (q.produtoIds?.length)
+        filtros.push({ produtoId: { in: q.produtoIds } });
       const where: Prisma.NotaSaidaItemWhereInput = { AND: filtros };
 
       const total = await tx.notaSaidaItem.count({ where });
@@ -290,12 +352,13 @@ export class RelatoriosService {
       });
       const itens = await tx.notaSaidaItem.findMany({
         where,
-        orderBy: [
+        orderBy: ordenar(ORDEM_VENDAS, q, [
           { notaSaida: { vendedor: { nome: 'asc' } } },
           { notaSaida: { dtEmissao: 'asc' } },
           { notaSaida: { numero: 'asc' } },
           { item: 'asc' },
-        ],
+          { id: 'asc' },
+        ]),
         skip: (q.page - 1) * q.pageSize,
         take: q.pageSize,
         select: {
@@ -370,24 +433,24 @@ export class RelatoriosService {
     const filtros: Prisma.Sql[] = [
       Prisma.sql`p."empresaId" = ${empresaId}`,
       Prisma.sql`p."deletedAt" IS NULL`,
+      DE_CATEGORIA_USADA_SQL,
     ];
-    if (q.produto) {
-      const t = `%${q.produto}%`;
+    if (q.produtoIds?.length)
+      filtros.push(Prisma.sql`p."id" IN (${Prisma.join(q.produtoIds)})`);
+    if (q.categoriaIds?.length) {
+      const cats = Prisma.join(q.categoriaIds);
       filtros.push(
-        Prisma.sql`(p."codigoErp" ILIKE ${t} OR p."descricao" ILIKE ${t})`,
-      );
-    }
-    if (q.categoriaId) {
-      filtros.push(
-        Prisma.sql`(p."categoriaId" = ${q.categoriaId} OR p."subCategoriaId" = ${q.categoriaId})`,
+        Prisma.sql`(p."categoriaId" IN (${cats}) OR p."subCategoriaId" IN (${cats}))`,
       );
     }
     if (q.codigoCorp)
       filtros.push(
         Prisma.sql`p."codigoFabricante" ILIKE ${`%${q.codigoCorp}%`}`,
       );
-    if (q.fornecedor)
-      filtros.push(Prisma.sql`ult."fornecedor" ILIKE ${`%${q.fornecedor}%`}`);
+    if (q.fornecedorIds?.length)
+      filtros.push(
+        Prisma.sql`ult."fornecedorId" IN (${Prisma.join(q.fornecedorIds)})`,
+      );
     if (q.comMovimento) {
       filtros.push(
         Prisma.sql`(COALESCE(est."saldo", 0) <> 0 OR COALESCE(ent."qtd", 0) <> 0 OR COALESCE(sai."qtd", 0) <> 0)`,
@@ -444,7 +507,8 @@ export class RelatoriosService {
         -- transportadora (tipo C, quantidade 0) leva o código do produto no
         -- ERP e virava o "fornecedor" — visto em dev em 2026-10-13.
         ult AS (
-          SELECT DISTINCT ON (i."produtoId") i."produtoId", f."razaoSocial" AS "fornecedor",
+          SELECT DISTINCT ON (i."produtoId") i."produtoId", f."id" AS "fornecedorId",
+                 f."razaoSocial" AS "fornecedor",
                  i."vlrUnitario" AS "precoCompra"
           FROM "notas_entrada_itens" i
           JOIN "notas_entrada" n ON n."id" = i."notaEntradaId"
@@ -489,5 +553,102 @@ export class RelatoriosService {
         };
       }),
     };
+  }
+
+  /**
+   * Opções dos filtros de produto, fornecedor e cliente: busca por termos no
+   * código, nome, CNPJ/CPF (com ou sem pontuação) e, no produto, Cod. Corp. e
+   * código de barras. Inativos entram depois — relatório olha o passado.
+   */
+  async opcoes(
+    empresaId: string,
+    tipo: RelatorioOpcaoTipo,
+    busca: string | undefined,
+  ): Promise<RelatorioOpcao[]> {
+    const tabela = {
+      produtos: {
+        sql: Prisma.sql`SELECT t."id", t."codigoErp" AS "codigo", t."descricao" AS "nome",
+                 NULLIF(CONCAT_WS(' · ',
+                   CASE WHEN t."codigoFabricante" <> '' THEN 'Cod. Corp. ' || t."codigoFabricante" END,
+                   CASE WHEN t."codigoNoFabricante" <> '' THEN 'Fabric. ' || t."codigoNoFabricante" END,
+                   CASE WHEN t."produtoAllia" THEN 'Allia' END,
+                   CASE WHEN NOT t."ativo" THEN 'inativo' END), '') AS "detalhe",
+                 t."ativo"
+          FROM "produtos" t`,
+        ordem: Prisma.sql`t."ativo" DESC, t."descricao"`,
+        colunas: [
+          Prisma.sql`t."codigoErp"`,
+          Prisma.sql`t."descricao"`,
+          Prisma.sql`t."codigoFabricante"`,
+          Prisma.sql`t."codigoNoFabricante"`,
+          Prisma.sql`t."descricaoNoFabricante"`,
+          Prisma.sql`t."codigoBarras"`,
+        ],
+      },
+      fornecedores: {
+        sql: Prisma.sql`SELECT t."id", t."codigoErp" AS "codigo", t."razaoSocial" AS "nome",
+                 NULLIF(CONCAT_WS(' · ', t."cnpjCpf",
+                   NULLIF(CONCAT_WS('/', t."municipio", t."uf"), ''),
+                   CASE WHEN NOT t."ativo" THEN 'inativo' END), '') AS "detalhe",
+                 t."ativo"
+          FROM "fornecedores" t`,
+        ordem: Prisma.sql`t."ativo" DESC, t."razaoSocial"`,
+        colunas: [
+          Prisma.sql`t."codigoErp"`,
+          Prisma.sql`t."razaoSocial"`,
+          Prisma.sql`t."nomeFantasia"`,
+          Prisma.sql`t."cnpjCpf"`,
+          SO_DIGITOS(Prisma.sql`t."cnpjCpf"`),
+        ],
+      },
+      clientes: {
+        sql: Prisma.sql`SELECT t."id", t."codigoErp" AS "codigo", t."razaoSocial" AS "nome",
+                 NULLIF(CONCAT_WS(' · ', t."cnpjCpf",
+                   NULLIF(CONCAT_WS('/', t."municipio", t."uf"), ''),
+                   CASE WHEN NOT t."ativo" THEN 'inativo' END), '') AS "detalhe",
+                 t."ativo"
+          FROM "clientes" t`,
+        ordem: Prisma.sql`t."ativo" DESC, t."razaoSocial"`,
+        colunas: [
+          Prisma.sql`t."codigoErp"`,
+          Prisma.sql`t."razaoSocial"`,
+          Prisma.sql`t."nomeFantasia"`,
+          Prisma.sql`t."cnpjCpf"`,
+          SO_DIGITOS(Prisma.sql`t."cnpjCpf"`),
+        ],
+      },
+    }[tipo];
+
+    const condicoes = [
+      Prisma.sql`t."empresaId" = ${empresaId}`,
+      Prisma.sql`t."deletedAt" IS NULL`,
+    ];
+    // Produto que o relatório nunca traz não aparece para escolher.
+    if (tipo === 'produtos')
+      condicoes.push(
+        Prisma.sql`EXISTS (SELECT 1 FROM "categorias" cu WHERE cu."id" = t."categoriaId" AND cu."usado" = true)`,
+      );
+    // Fornecedor bloqueado (A2_MSBLQL = 1 → ativo false) não aparece para
+    // escolher (usuário, 14/10/2026). Só a lista: a nota antiga dele continua
+    // no relatório.
+    if (tipo === 'fornecedores') condicoes.push(Prisma.sql`t."ativo" = true`);
+    const buscaSql = condicaoBuscaTermosSql(busca, tabela.colunas);
+    if (buscaSql) condicoes.push(buscaSql);
+
+    const linhas = await this.ler(
+      empresaId,
+      (tx) =>
+        tx.$queryRaw<RelatorioOpcao[]>`
+        ${tabela.sql}
+        WHERE ${Prisma.join(condicoes, ' AND ')}
+        ORDER BY ${tabela.ordem}
+        LIMIT ${RELATORIO_OPCOES_LIMITE}`,
+    );
+    return linhas.map(({ id, codigo, nome, detalhe }) => ({
+      id,
+      codigo,
+      nome,
+      detalhe,
+    }));
   }
 }
