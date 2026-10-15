@@ -1366,6 +1366,17 @@ export const integracaoNotaEntradaCreateSchema = z.object({
   // Mensagem da nota (F2_MENNOTA/F1_MENNOTA é memo no Protheus): no banco é
   // texto sem limite. Os 500 de antes recusavam a nota inteira.
   mensagem: z.string().trim().max(10000).nullable().optional(),
+  // F1_DUPL: a nota gerou contas a pagar. Mesmo comportamento da saída
+  // (F2_DUPL): vazio = não gerou; omitido = a plataforma não sabe.
+  duplicata: z
+    .string()
+    .trim()
+    .max(20)
+    .nullable()
+    .optional()
+    .describe(
+      "F1_DUPL — número da duplicata gerada; vazio ou null = a nota não gerou financeiro",
+    ),
   ativo: z.boolean().default(true),
   itens: z
     .array(integracaoNotaEntradaItemSchema)

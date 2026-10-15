@@ -211,3 +211,22 @@ busca. **Aplicada em dev.**
   `ativo = false` pelo BJPLA003). RCG: 11 bloqueados de 1.529. É só a lista:
   nota antiga de fornecedor bloqueado continua no relatório. **Verificado em
   dev** pela API (código de bloqueado não volta na busca).
+
+## Fornecedor bloqueado e nota sem financeiro saem dos relatórios (14/10/2026, usuário)
+
+- **Fornecedor bloqueado** (A2_MSBLQL = 1) sai também dos itens, não só da
+  lista do filtro ("estamos trabalhando nos relatórios"). RCG 2009–2016:
+  3.157 → 3.079 itens; nenhum bloqueado tem nota em 2026.
+- **Nota de entrada sem contas a pagar sai** — o F1_DUPL, como o F2_DUPL já
+  faz na venda. Campos novos `duplicata`/`geraDuplicata` em `notas_entrada`
+  (migration `20261015020000_nota_entrada_duplicata`), gravados pela mesma
+  função da saída (`integracao/common/duplicata.ts`). O BJPLA003 e a carga
+  por SQL (`docs/integracao/sql/01-instalar.sql`) mandam o F1_DUPL sempre,
+  vazio = "não gerou".
+- Até o BJPLA003 novo reenviar as notas, `geraDuplicata` fica nulo e a nota
+  **continua entrando** (senão o relatório zeraria). Vale para Compras,
+  Entrada-Qtd e a última compra (`NOTA_DE_COMPRA_SQL`).
+- A carga por SQL também ganhou B1_XCOD, B1_XXDESC e B1_XALLIA (1/2 → sim/não).
+
+**Verificado em dev:** nota de mar/2026 com `geraDuplicata` nulo/true entra
+(43 itens), false sai (42).

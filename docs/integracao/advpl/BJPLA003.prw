@@ -3678,7 +3678,7 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim, lEnvDel)
 	Default lEnvDel   := .T.
 
 	cQuery := "SELECT SF1.R_E_C_N_O_ AS REC_CAB, F1_FILIAL, F1_DOC, F1_SERIE, F1_FORNECE, F1_LOJA, F1_FORMUL, SF1.D_E_L_E_T_ AS DELETADO, "
-	cQuery += "       F1_TIPO, F1_ESPECIE, F1_EMISSAO, F1_CHVNFE, F1_VALBRUT, "
+	cQuery += "       F1_TIPO, F1_ESPECIE, F1_EMISSAO, F1_CHVNFE, F1_VALBRUT, F1_DUPL, "
 	cQuery += "       D1_FILIAL, D1_DOC, D1_SERIE, D1_FORNECE, D1_LOJA, D1_ITEM, D1_COD, "
 	cQuery += "       D1_QUANT, D1_TOTAL, D1_CF, SD1.D_E_L_E_T_ AS ITEM_DELETADO "
 
@@ -3885,6 +3885,11 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim, lEnvDel)
 			oJson["especieFiscal"] := IIf(Empty((cAlias)->F1_ESPECIE), Nil, AllTrim((cAlias)->F1_ESPECIE))
 			oJson["tipo"]          := IIf(Empty((cAlias)->F1_TIPO), Nil, AllTrim((cAlias)->F1_TIPO))
 			oJson["chaveNfe"]      := IIf(Empty((cAlias)->F1_CHVNFE), Nil, AllTrim((cAlias)->F1_CHVNFE))
+
+			// F1_DUPL diz se a nota gerou contas a pagar (usuario, 14/10/2026),
+			// como o F2_DUPL na saida. Vai sempre, mesmo vazio - vazio e "nao
+			// gerou"; omitido a plataforma trataria como "nao sei".
+			oJson["duplicata"]     := AllTrim((cAlias)->F1_DUPL) // SF1.F1_DUPL -> notaEntrada.duplicata/geraDuplicata
 
 			oJson["dtEmissao"] := Nil
 			If !Empty((cAlias)->F1_EMISSAO)

@@ -3504,6 +3504,11 @@ model NotaEntrada {
   comodato Boolean   @default(false)
   ativo    Boolean   @default(true)
 
+  // Número da duplicata (F1_DUPL): a nota gerou contas a pagar. Como na
+  // NotaSaida: true/false = o ERP informou; null = ainda não mandava o campo.
+  duplicata     String?
+  geraDuplicata Boolean?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?

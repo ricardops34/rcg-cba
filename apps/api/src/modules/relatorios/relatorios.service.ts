@@ -46,8 +46,15 @@ export const ESPECIES_DE_COMPRA = ['SPED', 'NFE', 'NF', 'NFA'];
  * E de fornecedor **ativo** (decisão do usuário, 14/10/2026, só para os
  * relatórios): bloqueado no ERP (A2_MSBLQL = 1) não sai nem na lista do filtro
  * nem nos itens — Compras, Entrada-Qtd e o fornecedor/preço da última compra.
+ *
+ * E que **gerou contas a pagar** (F1_DUPL; usuário, 14/10/2026), como a venda
+ * pelo F2_DUPL. `geraDuplicata` nulo — a nota chegou antes de o BJPLA003
+ * mandar o campo — continua entrando: senão o relatório zeraria até a
+ * integração reenviar as notas. Escrito pelo lado de quem passa (true ou
+ * nulo), pela armadilha do `NOT` com nulo descrita em `venda-analitica.ts`.
  */
 const NOTA_DE_COMPRA_SQL = Prisma.sql`n."tipo" = 'N' AND n."especieFiscal" IN (${Prisma.join(ESPECIES_DE_COMPRA)})
+  AND n."geraDuplicata" IS DISTINCT FROM false
   AND EXISTS (SELECT 1 FROM "fornecedores" fa WHERE fa."id" = n."fornecedorId" AND fa."ativo" = true)`;
 
 /** Produto de uma das categorias ou subcategorias escolhidas. */
@@ -183,9 +190,15 @@ export class RelatoriosService {
             tipo: 'N',
             especieFiscal: { in: ESPECIES_DE_COMPRA },
             fornecedor: { is: { ativo: true } },
-            OR: [
-              { dtEntrada: { gte: de, lt: ate } },
-              { dtEntrada: null, dtEmissao: { gte: de, lt: ate } },
+            AND: [
+              {
+                OR: [
+                  { dtEntrada: { gte: de, lt: ate } },
+                  { dtEntrada: null, dtEmissao: { gte: de, lt: ate } },
+                ],
+              },
+              // Gerou contas a pagar, ou ainda não informado (NOTA_DE_COMPRA_SQL).
+              { OR: [{ geraDuplicata: true }, { geraDuplicata: null }] },
             ],
           },
         },
