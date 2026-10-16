@@ -85,6 +85,18 @@ const estaVencida = (a: Atividade) =>
   !!a.dataVencimento &&
   new Date(a.dataVencimento).getTime() < Date.now();
 
+/**
+ * Orçamento que merece aparecer entre os agendamentos: aberto (rascunho ou
+ * enviado), dentro da validade e ainda não faturado. Aprovado/recusado já
+ * tiveram desfecho; vencido não há mais o que retomar.
+ */
+function orcamentoAgendado(o: Orcamento, hojeKey: string) {
+  if (o.status !== "rascunho" && o.status !== "enviado") return false;
+  if (o.situacaoErp === "faturado" || o.situacaoErp === "faturado_parcial") return false;
+  if (o.dataValidade && o.dataValidade.slice(0, 10) < hojeKey) return false;
+  return true;
+}
+
 export default function AgendaPage() {
   const router = useRouter();
   // No celular a Agenda é de agendamentos: só o que ainda está por fazer.
@@ -149,11 +161,13 @@ export default function AgendaPage() {
 
   // Orçamentos entram na Agenda pela data de criação — registro do que foi
   // feito naquele dia, ao lado dos agendamentos/atividades.
+  // No celular entra só o orçamento com retorno agendado, pelo dia do retorno
+  // (e a tela descarta depois o vencido e o faturado).
   const orcamentosQuery = useResourceList<Orcamento>("orcamentos", {
-    dataInicio: toKey(gridStart),
-    dataFim: toKey(gridEnd),
-    // Orçamento é registro do que já foi feito: o celular não o mostra.
-    pageSize: celular ? 1 : 100,
+    ...(celular
+      ? { retornoInicio: toKey(gridStart), retornoFim: toKey(gridEnd) }
+      : { dataInicio: toKey(gridStart), dataFim: toKey(gridEnd) }),
+    pageSize: 100,
     sortBy: "createdAt",
     sortOrder: "asc",
     ...(vendedorId ? { vendedorId } : {}),
@@ -186,18 +200,41 @@ export default function AgendaPage() {
     return mapa;
   }, [atividadesQuery.data, orcamentosQuery.data]);
 
-  // O que o celular mostra: atividades **ainda por fazer**. Concluída e
-  // orçamento (registro do que já aconteceu) ficam de fora. Filtrado aqui, e não
-  // só na consulta, porque os blocos do celular e do computador são desenhados
+  // O que o celular mostra: **agendamentos**. Atividade ainda por fazer e
+  // orçamento com retorno marcado que segue de pé. Concluída, orçamento vencido
+  // ou faturado e orçamento sem retorno ficam de fora. Montado aqui, e não só
+  // na consulta, porque os blocos do celular e do computador são desenhados
   // juntos e escondidos por CSS — o que vale é o que cada um recebe.
   const porDiaCelular = useMemo(() => {
     const mapa = new Map<string, AgendaItem[]>();
-    for (const [dia, itens] of porDia) {
-      const pendentes = itens.filter((i) => i.kind === "atividade" && !i.data.concluida);
-      if (pendentes.length > 0) mapa.set(dia, pendentes);
+    const add = (dia: string, item: AgendaItem) =>
+      mapa.set(dia, [...(mapa.get(dia) ?? []), item]);
+
+    const pendentes = (atividadesQuery.data?.data ?? []).filter(
+      (a) => !a.concluida && !!a.dataVencimento,
+    );
+    for (const a of pendentes) {
+      add(toKey(new Date(a.dataVencimento!)), { kind: "atividade", id: a.id, data: a });
+    }
+
+    if (celular) {
+      const hojeKey = toKey(new Date());
+      // O retorno do orçamento já gera uma atividade de ligação: se ela está
+      // na lista, é ela que representa o retorno — mostrar os dois seria
+      // duplicar a mesma providência.
+      const comAtividade = new Set(
+        pendentes.map((a) => a.orcamentoId).filter((id): id is string => !!id),
+      );
+      for (const o of orcamentosQuery.data?.data ?? []) {
+        if (!o.dataRetorno || comAtividade.has(o.id)) continue;
+        if (!orcamentoAgendado(o, hojeKey)) continue;
+        // dataRetorno é uma data, sem hora: o dia é o do próprio texto, para o
+        // fuso não empurrar o retorno para o dia anterior.
+        add(o.dataRetorno.slice(0, 10), { kind: "orcamento", id: o.id, data: o });
+      }
     }
     return mapa;
-  }, [porDia]);
+  }, [atividadesQuery.data, orcamentosQuery.data, celular]);
 
   const hoje = new Date();
   // A semana vai de domingo a sábado, como a grade do mês. No celular a
@@ -345,7 +382,7 @@ export default function AgendaPage() {
       </div>
 
       <p className="text-xs text-muted-foreground md:hidden">
-        Aqui aparecem só os agendamentos pendentes; o que já foi feito não é mostrado.
+        Aqui aparecem só os agendamentos pendentes e os orçamentos com retorno marcado; o que já foi feito não é mostrado.
       </p>
       <div className="hidden flex-wrap items-center justify-between gap-2 md:flex">
         <QuickFilterGroup>
@@ -650,7 +687,7 @@ function DiaDetalhe({
                 ? [TIPO_LABEL[item.data.tipo], item.data.cliente?.razaoSocial]
                     .filter(Boolean)
                     .join(" · ")
-                : `Orçamento · ${STATUS_ORCAMENTO_LABEL[item.data.status]}`;
+                : `Retorno do orçamento · ${STATUS_ORCAMENTO_LABEL[item.data.status]}`;
             return (
               <li key={`${item.kind}-${item.id}`}>
                 <button

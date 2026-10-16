@@ -39,6 +39,8 @@ describe('WhatsappAgendamentoService — agenda', () => {
     it('cria a atividade na agenda do vendedor dono do aparelho, ligada à conversa', async () => {
       const tx = {
         feriado: { findMany: jest.fn().mockResolvedValue([]) },
+        // Sem cadastro de expediente: só valem os dias úteis.
+        usuario: { findUnique: jest.fn().mockResolvedValue(null) },
         atividade: { create: jest.fn().mockResolvedValue({ id: 'a1' }) },
         whatsappMensagemAgendada: {
           create: jest.fn().mockResolvedValue({ id: 'm1' }),
@@ -73,6 +75,8 @@ describe('WhatsappAgendamentoService — agenda', () => {
     it('agenda mesmo sem vendedor no aparelho, só que fora da agenda', async () => {
       const tx = {
         feriado: { findMany: jest.fn().mockResolvedValue([]) },
+        // Sem cadastro de expediente: só valem os dias úteis.
+        usuario: { findUnique: jest.fn().mockResolvedValue(null) },
         atividade: { create: jest.fn() },
         whatsappMensagemAgendada: {
           create: jest.fn().mockResolvedValue({ id: 'm1' }),
@@ -99,6 +103,8 @@ describe('WhatsappAgendamentoService — agenda', () => {
     it('recusa quando a mensagem já saiu ou está em envio', async () => {
       const tx = {
         feriado: { findMany: jest.fn().mockResolvedValue([]) },
+        // Sem cadastro de expediente: só valem os dias úteis.
+        usuario: { findUnique: jest.fn().mockResolvedValue(null) },
         whatsappMensagemAgendada: {
           updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
@@ -118,6 +124,8 @@ describe('WhatsappAgendamentoService — agenda', () => {
       const novoHorario = new Date('2030-03-13T14:00:00.000Z');
       const tx = {
         feriado: { findMany: jest.fn().mockResolvedValue([]) },
+        // Sem cadastro de expediente: só valem os dias úteis.
+        usuario: { findUnique: jest.fn().mockResolvedValue(null) },
         whatsappMensagemAgendada: {
           updateMany: jest.fn().mockResolvedValue({ count: 1 }),
           findFirstOrThrow: jest.fn().mockResolvedValue({
@@ -232,6 +240,8 @@ describe('WhatsappAgendamentoService — agenda', () => {
     it('mudar a hora zera o aviso já gravado, para avisar de novo na nova hora', async () => {
       const tx = {
         feriado: { findMany: jest.fn().mockResolvedValue([]) },
+        // Sem cadastro de expediente: só valem os dias úteis.
+        usuario: { findUnique: jest.fn().mockResolvedValue(null) },
         atividade: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
         notificacao: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
       };
@@ -256,6 +266,8 @@ describe('WhatsappAgendamentoService — agenda', () => {
     it('mudar só o título não mexe no aviso', async () => {
       const tx = {
         feriado: { findMany: jest.fn().mockResolvedValue([]) },
+        // Sem cadastro de expediente: só valem os dias úteis.
+        usuario: { findUnique: jest.fn().mockResolvedValue(null) },
         atividade: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
         notificacao: { deleteMany: jest.fn() },
       };

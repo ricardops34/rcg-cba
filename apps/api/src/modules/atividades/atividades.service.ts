@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { ajustarAoExpediente, carregarExpedienteUsuario } from '../../common/horario/expediente';
 import { carregarCalendarioUtil } from '../../common/horario/calendario-util';
 import { PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
 import {
@@ -243,10 +244,22 @@ export class AtividadesService {
 
       const calendario = input.dataVencimento && !input.concluida && !input.manterDiaNaoUtil
         ? await carregarCalendarioUtil(tx, empresaId) : null;
+      // Atendimento agendado pela conversa (avisa e abre o WhatsApp na hora):
+      // além do dia útil, respeita o expediente de quem atende.
+      const dataAjustada =
+        calendario && input.dataVencimento
+          ? opcoes.iniciarConversa
+            ? ajustarAoExpediente(
+                input.dataVencimento,
+                calendario,
+                await carregarExpedienteUsuario(tx, user.id),
+              )
+            : calendario.ajustar(input.dataVencimento)
+          : null;
       return tx.atividade.create({
         data: {
           ...(this.limpar(this.normalizarConclusao(input)) as object),
-          ...(calendario && input.dataVencimento ? { dataVencimento: calendario.ajustar(input.dataVencimento) } : {}),
+          ...(dataAjustada ? { dataVencimento: dataAjustada } : {}),
           empresaId,
           vendedorAtendimentoId: opcoes.vendedorAtendimentoId ?? null,
           conversaId: opcoes.conversaId ?? null,

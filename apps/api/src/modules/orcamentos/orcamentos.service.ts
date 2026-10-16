@@ -1,4 +1,5 @@
 import { ajustarValidadeOrcamento } from './validade-orcamento';
+import { ajustarRetornoOrcamento } from './retorno-orcamento';
 import {
   ConflictException,
   Injectable,
@@ -343,6 +344,16 @@ export class OrcamentosService {
               },
             }
           : {}),
+        // Retorno agendado: o orçamento entra na agenda pelo dia em que o
+        // vendedor deve retomar o contato, não pelo dia em que foi criado.
+        ...(query.retornoInicio || query.retornoFim
+          ? {
+              dataRetorno: {
+                ...(query.retornoInicio ? { gte: query.retornoInicio } : {}),
+                ...(query.retornoFim ? { lte: query.retornoFim } : {}),
+              },
+            }
+          : {}),
       };
       const sortField =
         query.sortBy && SORT_FIELDS.has(query.sortBy)
@@ -434,6 +445,19 @@ export class OrcamentosService {
       );
       const { itens, ...header } = { ...input, vendedorId, origem };
       header.dataValidade = await ajustarValidadeOrcamento(tx, empresaId, header.dataValidade);
+      if (header.dataRetorno) {
+        header.dataRetorno = await ajustarRetornoOrcamento(tx, empresaId, {
+          retorno: header.dataRetorno,
+          validade: header.dataValidade,
+          vendedorUsuarioId: (
+            await tx.vendedor.findUnique({
+              where: { id: vendedorId },
+              select: { usuarioId: true },
+            })
+          )?.usuarioId,
+          autorId: user.id,
+        });
+      }
       const { data: itensData, vlrTotal } = await calcularItensOrcamento(
         tx,
         empresaId,
@@ -558,6 +582,27 @@ export class OrcamentosService {
 
       const { itens, ...header } = { ...input, vendedorId };
       header.dataValidade = await ajustarValidadeOrcamento(tx, empresaId, header.dataValidade);
+      // Retorno e validade se conferem sempre que um dos dois vem no payload:
+      // mudar só a validade para antes do retorno gravado também é erro.
+      if (header.dataRetorno || header.dataValidade) {
+        const retorno = header.dataRetorno ?? orcamento.dataRetorno;
+        if (retorno) {
+          const ajustado = await ajustarRetornoOrcamento(tx, empresaId, {
+            retorno,
+            validade: header.dataValidade ?? orcamento.dataValidade,
+            vendedorUsuarioId: (
+              await tx.vendedor.findUnique({
+                where: { id: vendedorId },
+                select: { usuarioId: true },
+              })
+            )?.usuarioId,
+            autorId: user.id,
+          });
+          // Só regrava o retorno que veio no payload; o que já estava gravado
+          // é conferido, não reescrito.
+          if (header.dataRetorno) header.dataRetorno = ajustado;
+        }
+      }
       let itensUpdate: Record<string, unknown> = {};
       if (itens) {
         await tx.orcamentoItem.deleteMany({ where: { orcamentoId: id } });

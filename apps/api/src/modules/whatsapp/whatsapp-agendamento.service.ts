@@ -7,6 +7,10 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { carregarCalendarioUtil } from '../../common/horario/calendario-util';
+import {
+  ajustarAoExpediente,
+  carregarExpedienteUsuario,
+} from '../../common/horario/expediente';
 import { whereEmpresaAcessivel } from '../../common/empresa/situacao-empresa';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappProviderService } from './providers/whatsapp-provider.service';
@@ -88,7 +92,13 @@ export class WhatsappAgendamentoService
       );
 
       const calendario = await carregarCalendarioUtil(tx, empresaId);
-      const enviarEm = calendario.ajustar(new Date(input.enviarEm));
+      // Sai em dia útil e dentro do expediente de quem agenda: mensagem ao
+      // cliente fora do horário é o que o vendedor não faria à mão.
+      const enviarEm = ajustarAoExpediente(
+        new Date(input.enviarEm),
+        calendario,
+        await carregarExpedienteUsuario(tx, user.id),
+      );
 
       // O agendamento entra na Agenda do vendedor, ligado à conversa e ao
       // cliente — é o que o torna visível (e alterável) fora da tela de
@@ -147,7 +157,11 @@ export class WhatsappAgendamentoService
       if (input.texto !== undefined) dados.texto = input.texto;
       if (input.enviarEm !== undefined) {
         const calendario = await carregarCalendarioUtil(tx, empresaId);
-        dados.enviarEm = calendario.ajustar(new Date(input.enviarEm));
+        dados.enviarEm = ajustarAoExpediente(
+          new Date(input.enviarEm),
+          calendario,
+          await carregarExpedienteUsuario(tx, user.id),
+        );
       }
 
       const { count } = await tx.whatsappMensagemAgendada.updateMany({
@@ -315,8 +329,10 @@ export class WhatsappAgendamentoService
       if (input.descricao !== undefined) dados.descricao = input.descricao;
       if (input.dataVencimento !== undefined) {
         const calendario = await carregarCalendarioUtil(tx, empresaId);
-        dados.dataVencimento = calendario.ajustar(
+        dados.dataVencimento = ajustarAoExpediente(
           new Date(input.dataVencimento),
+          calendario,
+          await carregarExpedienteUsuario(tx, user.id),
         );
       }
 

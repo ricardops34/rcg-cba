@@ -14,7 +14,14 @@ describe('Agendamento com feriados', () => {
           .fn()
           .mockResolvedValue([{ data: new Date('2026-10-12T00:00:00Z') }]),
       },
-      atividade: { create },
+      atividade: {
+        create,
+        // Sem retorno anterior em aberto: cria um novo.
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn(),
+      },
+      vendedor: { findUnique: jest.fn().mockResolvedValue(null) },
+      usuario: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     const service = new AtividadesService({
       withTenant: (_empresa: string, fn: (t: typeof tx) => unknown) => fn(tx),
@@ -65,6 +72,25 @@ describe('Agendamento com feriados', () => {
     });
     expect(m.create.mock.calls[0][0].data.dataVencimento).toEqual(
       new Date('2026-10-13T14:00:00Z'),
+    );
+  });
+  it('mudar a data do retorno reagenda o lembrete existente, sem duplicar', async () => {
+    const m = montar();
+    const update = m.tx.atividade.update;
+    m.tx.atividade.findFirst.mockResolvedValue({ id: 'ativ-antiga' });
+
+    await criarAtividadeRetorno(m.tx as never, 'e', 'u', {
+      orcamentoId: 'o',
+      titulo: 'Orçamento',
+      clienteId: 'c',
+      vendedorId: 'v',
+      oportunidadeId: null,
+      dataRetorno: input.dataVencimento,
+    });
+
+    expect(m.create).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'ativ-antiga' } }),
     );
   });
 });

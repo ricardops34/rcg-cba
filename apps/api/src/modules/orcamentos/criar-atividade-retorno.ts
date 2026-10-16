@@ -1,5 +1,9 @@
 import type { TenantTx } from '../../common/prisma/prisma.service';
 import { carregarCalendarioUtil } from '../../common/horario/calendario-util';
+import {
+  ajustarAoExpediente,
+  carregarExpedienteUsuario,
+} from '../../common/horario/expediente';
 
 /**
  * dataRetorno definida (na criação, ou numa edição que muda o valor) gera
@@ -23,6 +27,46 @@ export async function criarAtividadeRetorno(
   },
 ) {
   const calendario = await carregarCalendarioUtil(tx, empresaId);
+  // O retorno é do vendedor: cai em dia útil e dentro do expediente dele.
+  const vendedor = await tx.vendedor.findUnique({
+    where: { id: params.vendedorId },
+    select: { usuarioId: true },
+  });
+  const expediente = await carregarExpedienteUsuario(
+    tx,
+    vendedor?.usuarioId ?? autor,
+  );
+  const quando = ajustarAoExpediente(
+    params.dataRetorno,
+    calendario,
+    expediente,
+  );
+
+  // Mudar a data do retorno **reagenda** o lembrete que já existe, em vez de
+  // deixar dois na agenda — o antigo ficaria como pendência fantasma.
+  const existente = await tx.atividade.findFirst({
+    where: {
+      empresaId,
+      orcamentoId: params.orcamentoId,
+      tipo: 'ligacao',
+      titulo: { startsWith: 'Retorno:' },
+      concluida: false,
+      deletedAt: null,
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  });
+  if (existente) {
+    await tx.atividade.update({
+      where: { id: existente.id },
+      data: {
+        titulo: `Retorno: ${params.titulo}`,
+        dataVencimento: quando,
+        updatedBy: autor,
+      },
+    });
+    return;
+  }
   await tx.atividade.create({
     data: {
       empresaId,
@@ -32,7 +76,7 @@ export async function criarAtividadeRetorno(
       vendedorId: params.vendedorId,
       tipo: 'ligacao',
       titulo: `Retorno: ${params.titulo}`,
-      dataVencimento: calendario.ajustar(params.dataRetorno),
+      dataVencimento: quando,
       createdBy: autor,
       updatedBy: autor,
     },

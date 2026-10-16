@@ -348,6 +348,14 @@ export const orcamentoQuerySchema = paginationQuerySchema.extend({
     .date()
     .optional()
     .describe("Filtra createdAt <= dataFim (uso: agenda)"),
+  retornoInicio: z.coerce
+    .date()
+    .optional()
+    .describe("Filtra dataRetorno >= retornoInicio (uso: agenda no celular)"),
+  retornoFim: z.coerce
+    .date()
+    .optional()
+    .describe("Filtra dataRetorno <= retornoFim (uso: agenda no celular)"),
 });
 export type OrcamentoQuery = z.infer<typeof orcamentoQuerySchema>;
 
