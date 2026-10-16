@@ -671,11 +671,23 @@ export function OrcamentoFormContent({
   // enquanto o vendedor não mexer manualmente no campo de retorno.
   const [retornoTocado, setRetornoTocado] = useState(false);
   const dataValidadeAtual = form.watch("dataValidade");
+  const dataRetornoAtual = form.watch("dataRetorno");
+  // O retorno é um dia e uma hora: o padrão é o dia da validade, às 09:00 (e
+  // não à meia-noite, que ficaria fora de qualquer expediente). O servidor
+  // ainda leva ao próximo momento de expediente de quem vai ligar.
   useEffect(() => {
     if (!orcamento && !retornoTocado) {
-      form.setValue("dataRetorno", dataValidadeAtual ?? null);
+      form.setValue(
+        "dataRetorno",
+        dataValidadeAtual ? inputToDateTime(`${dateToInput(dataValidadeAtual)}T09:00`) : null,
+      );
     }
   }, [orcamento, retornoTocado, dataValidadeAtual, form]);
+  // O retorno não pode passar da validade (vale até o fim do dia dela).
+  const retornoAlemDaValidade =
+    !!dataRetornoAtual &&
+    !!dataValidadeAtual &&
+    dateTimeToInput(dataRetornoAtual).slice(0, 10) > dateToInput(dataValidadeAtual);
 
   // Cadastro completo do cliente escolhido (mesma queryKey do ClienteCombobox,
   // reaproveita o cache) — fonte dos padrões de Título/Condição de pagamento
@@ -1158,6 +1170,10 @@ export function OrcamentoFormContent({
    * daí o cast.
    */
   const salvar = async (values: OrcamentoCreate, fechar: boolean) => {
+    if (retornoAlemDaValidade) {
+      toast.error("A data de retorno não pode ser posterior à validade do orçamento.");
+      return;
+    }
     try {
       const salvo = registro
         ? ((await update.mutateAsync({ id: registro.id, input: values })) as Orcamento)
@@ -1214,7 +1230,9 @@ export function OrcamentoFormContent({
       const validade = new Date();
       validade.setDate(validade.getDate() + diasValidade);
       form.setValue("dataValidade", validade);
-      if (!retornoTocado) form.setValue("dataRetorno", validade);
+      if (!retornoTocado) {
+        form.setValue("dataRetorno", inputToDateTime(`${dateToInput(validade)}T09:00`));
+      }
     }
     toast.info("Cópia iniciada — revise os dados e salve para gerar um novo orçamento.");
   };
@@ -1228,6 +1246,66 @@ export function OrcamentoFormContent({
     copiar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [iniciarCopia, orcamento]);
+
+  /**
+   * Tudo o que uma linha de item precisa para ser desenhada — o mesmo cálculo
+   * serve à tabela (computador) e ao cartão (celular).
+   */
+  const dadosLinha = (index: number) => {
+    const calc = linhasCalculadas[index];
+    const info = calc?.info ?? infoPorLinha[index] ?? null;
+    const produtoId = itensAtuais[index]?.produtoId;
+    const quantidade = calc?.quantidade ?? 0;
+    const vlrUnitario = calc?.vlrUnitario ?? 0;
+    const vlrTabela = calc?.vlrTabela ?? null;
+    const desconto = calc?.desconto ?? null;
+    const mixInfo = produtoId ? mixPorProduto.get(produtoId) : undefined;
+    const ultimaVenda = mixInfo?.ultimaCompra ?? null;
+    const ultimoPreco = mixInfo?.ultimoPrecoUnitario ?? null;
+    const regraDaLinha = calc?.regra ?? null;
+    const comissao = calc?.comissao;
+    const advertencias = calc?.advertencias ?? [];
+    const nivel = calc?.nivel ?? null;
+    // A escala do desconto manda no ícone; um problema
+    // crítico de estoque puxa para vermelho quando a
+    // escala estaria em verde/azul/amarelo — o único
+    // sinal mais forte que o vermelho é o preto da faixa
+    // de aprovação.
+    const corSinal =
+      nivel?.chave === "faixa-aprovacao"
+        ? nivel.corIcone
+        : calc?.temCritico
+          ? "text-destructive"
+          : (nivel?.corIcone ??
+            (advertencias.length > 0 ? "text-amber-500" : null));
+    const IconeSinal =
+      nivel?.chave === "normal"
+        ? CircleCheck
+        : nivel?.chave === "acima-tabela"
+          ? Info
+          : TriangleAlert;
+    const textoVermelho =
+      nivel?.textoVermelho === true ? "text-destructive" : "";
+    return {
+      calc,
+      info,
+      produtoId,
+      quantidade,
+      vlrUnitario,
+      vlrTabela,
+      desconto,
+      mixInfo,
+      ultimaVenda,
+      ultimoPreco,
+      regraDaLinha,
+      comissao,
+      advertencias,
+      nivel,
+      corSinal,
+      IconeSinal,
+      textoVermelho,
+    };
+  };
 
   return (
     <Card>
@@ -1513,13 +1591,24 @@ export function OrcamentoFormContent({
                 <Input
                   id="dataRetorno"
                   type="datetime-local"
+                  aria-invalid={retornoAlemDaValidade}
+                  max={dataValidadeAtual ? `${dateToInput(dataValidadeAtual)}T23:59` : undefined}
                   value={dateTimeToInput(form.watch("dataRetorno"))}
                   onChange={(e) => {
                     setRetornoTocado(true);
                     form.setValue("dataRetorno", inputToDateTime(e.target.value));
                   }}
                 />
-                <p className="text-xs text-muted-foreground">O retorno será agendado no próximo dia útil se a data cair em feriado ou fim de semana.</p>
+                {retornoAlemDaValidade ? (
+                  <p role="alert" className="text-xs text-destructive">
+                    O retorno não pode ser depois da validade ({dateToInput(dataValidadeAtual).split("-").reverse().join("/")}). Escolha uma data até lá.
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Ao salvar, cria o lembrete na Agenda. Se cair em feriado, fim de semana ou fora do seu
+                    expediente, passa para o próximo momento útil — sempre até a validade.
+                  </p>
+                )}
               </Field>
             </div>
 
@@ -1569,6 +1658,7 @@ export function OrcamentoFormContent({
                   )}
 
                   {linhas.fields.length > 0 && (
+                    <div className="hidden md:block">
                     <Table className="text-xs">
                       <TableHeader>
                         <TableRow>
@@ -1593,40 +1683,25 @@ export function OrcamentoFormContent({
                       </TableHeader>
                       <TableBody>
                         {linhas.fields.map((linha, index) => {
-                          const calc = linhasCalculadas[index];
-                          const info = calc?.info ?? infoPorLinha[index] ?? null;
-                          const produtoId = itensAtuais[index]?.produtoId;
-                          const quantidade = calc?.quantidade ?? 0;
-                          const vlrUnitario = calc?.vlrUnitario ?? 0;
-                          const vlrTabela = calc?.vlrTabela ?? null;
-                          const desconto = calc?.desconto ?? null;
-                          const mixInfo = produtoId ? mixPorProduto.get(produtoId) : undefined;
-                          const ultimaVenda = mixInfo?.ultimaCompra ?? null;
-                          const ultimoPreco = mixInfo?.ultimoPrecoUnitario ?? null;
-                          const regraDaLinha = calc?.regra ?? null;
-                          const comissao = calc?.comissao;
-                          const advertencias = calc?.advertencias ?? [];
-                          const nivel = calc?.nivel ?? null;
-                          // A escala do desconto manda no ícone; um problema
-                          // crítico de estoque puxa para vermelho quando a
-                          // escala estaria em verde/azul/amarelo — o único
-                          // sinal mais forte que o vermelho é o preto da faixa
-                          // de aprovação.
-                          const corSinal =
-                            nivel?.chave === "faixa-aprovacao"
-                              ? nivel.corIcone
-                              : calc?.temCritico
-                                ? "text-destructive"
-                                : (nivel?.corIcone ??
-                                  (advertencias.length > 0 ? "text-amber-500" : null));
-                          const IconeSinal =
-                            nivel?.chave === "normal"
-                              ? CircleCheck
-                              : nivel?.chave === "acima-tabela"
-                                ? Info
-                                : TriangleAlert;
-                          const textoVermelho =
-                            nivel?.textoVermelho === true ? "text-destructive" : "";
+                          const {
+                            info,
+                            produtoId,
+                            quantidade,
+                            vlrUnitario,
+                            vlrTabela,
+                            desconto,
+                            mixInfo,
+                            ultimaVenda,
+                            ultimoPreco,
+                            regraDaLinha,
+                            comissao,
+                            advertencias,
+                            nivel,
+                            corSinal,
+                            IconeSinal,
+                            textoVermelho,
+                            calc,
+                          } = dadosLinha(index);
                           return (
                             <TableRow
                               key={linha.id}
@@ -1736,6 +1811,141 @@ export function OrcamentoFormContent({
                         })}
                       </TableBody>
                     </Table>
+                    </div>
+                  )}
+
+                  {/* Celular: um cartão por item, no lugar da tabela de 14
+                      colunas. Os campos que o vendedor edita (produto,
+                      quantidade, preço, desconto) vêm primeiro; o resto é
+                      consulta e fica em "Detalhes". */}
+                  {linhas.fields.length > 0 && (
+                    <div className="space-y-3 md:hidden">
+                      {linhas.fields.map((linha, index) => {
+                        const {
+                          info,
+                          produtoId,
+                          quantidade,
+                          vlrUnitario,
+                          vlrTabela,
+                          desconto,
+                          mixInfo,
+                          ultimaVenda,
+                          ultimoPreco,
+                          regraDaLinha,
+                          comissao,
+                          advertencias,
+                          nivel,
+                          calc,
+                          corSinal,
+                          IconeSinal,
+                          textoVermelho,
+                        } = dadosLinha(index);
+                        return (
+                          <div
+                            key={linha.id}
+                            className={`space-y-3 rounded-lg border p-3 text-sm ${
+                              nivel?.linhaDestacada || calc?.temCritico
+                                ? "border-destructive/40 bg-destructive/10"
+                                : "bg-card"
+                            }`}
+                          >
+                            <div className="flex items-start gap-2">
+                              <div className="min-w-0 flex-1">
+                                <ProdutoCombobox
+                                  value={produtoId || null}
+                                  onChange={(produto) => onSelecionarProduto(index, produto)}
+                                />
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="size-9 shrink-0"
+                                aria-label="Remover item"
+                                onClick={() => removerItem(index)}
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2">
+                              <label className="space-y-1">
+                                <span className="text-xs text-muted-foreground">Qtd.</span>
+                                <QuantidadeInput
+                                  className="w-full text-right"
+                                  value={quantidade}
+                                  onChange={(v) => form.setValue(`itens.${index}.quantidade`, v)}
+                                />
+                              </label>
+                              <label className="space-y-1">
+                                <span className="text-xs text-muted-foreground">Preço</span>
+                                <MaskedNumberInput
+                                  className={`w-full text-right ${textoVermelho}`}
+                                  value={vlrUnitario}
+                                  onChange={(v) => form.setValue(`itens.${index}.vlrUnitario`, v)}
+                                />
+                              </label>
+                              <label className="space-y-1">
+                                <span className="text-xs text-muted-foreground">Desc. %</span>
+                                <MaskedNumberInput
+                                  className={`w-full text-right ${textoVermelho}`}
+                                  disabled={vlrTabela == null}
+                                  value={desconto ?? 0}
+                                  onChange={(v) => aplicarDesconto(index, v)}
+                                />
+                              </label>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">Total do item</span>
+                              <span className={`font-semibold ${textoVermelho}`}>
+                                {moeda(quantidade * vlrUnitario)}
+                              </span>
+                            </div>
+
+                            {/* No computador o aviso é um tooltip no ícone; no
+                                toque não há hover, então ele vira texto. */}
+                            {corSinal && (nivel || advertencias.length > 0) && (
+                              <div className={`flex items-start gap-2 text-xs ${corSinal}`}>
+                                <IconeSinal className="mt-0.5 size-3.5 shrink-0" />
+                                <ul className="space-y-0.5">
+                                  {nivel && <li>{nivel.legenda}</li>}
+                                  {advertencias.map((a) => (
+                                    <li key={a.titulo}>
+                                      <span className="font-medium">{a.titulo}</span> — {a.detalhe}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            <details className="text-xs">
+                              <summary className="cursor-pointer text-muted-foreground">Detalhes</summary>
+                              <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
+                                <dt className="text-muted-foreground">Estoque</dt>
+                                <dd className="text-right">{numero(info?.saldoEstoque)}</dd>
+                                <dt className="text-muted-foreground">Preço de tabela</dt>
+                                <dd className="text-right">{moeda(vlrTabela)}</dd>
+                                <dt className="text-muted-foreground">Último preço</dt>
+                                <dd className="text-right">{moeda(ultimoPreco)}</dd>
+                                <dt className="text-muted-foreground">Último desconto</dt>
+                                <dd className="text-right">{percentual(mixInfo?.ultimoDesconto ?? null)}</dd>
+                                <dt className="text-muted-foreground">Última venda</dt>
+                                <dd className="text-right">{dataBr(ultimaVenda)}</dd>
+                                {podeVerComissao && (
+                                  <>
+                                    <dt className="text-muted-foreground">% Comissão</dt>
+                                    <dd className="text-right">{percentual(comissao?.percComissao ?? null)}</dd>
+                                  </>
+                                )}
+                                <dt className="text-muted-foreground">Regra de desconto</dt>
+                                <dd className="text-right">{regraDescontoLabel(regraDaLinha)}</dd>
+                              </dl>
+                            </details>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
 
                   {linhas.fields.length > 0 && (
@@ -2204,14 +2414,17 @@ export function OrcamentoFormContent({
           </Tabs>
         </CardContent>
 
-        <CardFooter data-tour="orcamento-acoes" className="flex-wrap justify-end gap-2">
+        <CardFooter
+          data-tour="orcamento-acoes"
+          className="grid grid-cols-2 gap-2 max-sm:sticky max-sm:bottom-0 max-sm:z-10 max-sm:border-t max-sm:bg-card sm:flex sm:flex-wrap sm:justify-end"
+        >
           {/* PDF só depois de salvo — precisa dos itens com produto e do total
               consolidado pelo servidor. */}
           {registro && (
             <Button
               type="button"
               variant="outline"
-              className="mr-auto"
+              className="col-span-2 sm:col-span-1 sm:mr-auto"
               disabled={gerandoPdf || travadoPorDesconto}
               title={
                 travadoPorDesconto
