@@ -13,6 +13,7 @@ import { WhatsappAcoesService } from './whatsapp-acoes.service';
 import { WhatsappAgendamentoService } from './whatsapp-agendamento.service';
 import { WhatsappRecadoService } from './whatsapp-recado.service';
 import { WhatsappEvolutionController } from './whatsapp-evolution.controller';
+import { ClientesModule } from '../clientes/clientes.module';
 import { WhatsappProviderService } from './providers/whatsapp-provider.service';
 import { EvolutionGoProvider } from './providers/evolution-go.provider';
 import { EvolutionGoClient } from './providers/evolution-go.client';
@@ -29,6 +30,8 @@ import { WhatsappRespostasRapidasService } from './whatsapp-respostas-rapidas.se
   // — nada de consulta própria, para o escopo de carteira e o RLS não serem
   // reimplementados aqui.
   imports: [
+    // Contatos do cliente no vínculo da conversa (ver WhatsappConversasService.contatosParaVinculo).
+    ClientesModule,
     TitulosReceberModule,
     NotasSaidaModule,
     AtividadesModule,

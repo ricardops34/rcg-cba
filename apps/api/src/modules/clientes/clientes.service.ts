@@ -491,13 +491,18 @@ export class ClientesService {
    * cadastro que o Portal do Cliente usa para dar acesso e que a tela de
    * atendimento vincula ao número do WhatsApp.
    */
+  /**
+   * `ignorarEscopo`: só o atendimento de WhatsApp passa `true`, depois de ele
+   * mesmo ter autorizado o cliente (vendedor com "atende outras carteiras").
+   */
   listarContatos(
     empresaId: string,
     user: AuthenticatedUser,
     clienteId: string,
+    ignorarEscopo = false,
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      await this.exigirClienteNoEscopo(tx, empresaId, user, clienteId);
+      await this.exigirClienteNoEscopo(tx, empresaId, user, clienteId, ignorarEscopo);
       const contatos = await tx.clienteContato.findMany({
         where: { empresaId, clienteId },
         orderBy: [{ principal: 'desc' }, { nome: 'asc' }],
@@ -562,8 +567,11 @@ export class ClientesService {
     empresaId: string,
     user: AuthenticatedUser,
     clienteId: string,
+    ignorarEscopo = false,
   ) {
-    const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+    const escopo = ignorarEscopo
+      ? null
+      : await resolverEscopoVendedores(tx, empresaId, user);
     const cliente = await tx.cliente.findFirst({
       where: {
         id: clienteId,

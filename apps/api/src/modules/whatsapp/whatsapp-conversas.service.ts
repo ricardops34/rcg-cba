@@ -21,6 +21,8 @@ import {
   type TenantTx,
 } from '../../common/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { ClientesService } from '../clientes/clientes.service';
+import { filtroBuscaTermos } from '../../common/busca/termos-busca';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappSessaoService } from './whatsapp-sessao.service';
 import { WhatsappProviderService } from './providers/whatsapp-provider.service';
@@ -104,7 +106,123 @@ export class WhatsappConversasService {
     private readonly provedores: WhatsappProviderService,
     private readonly agenteConfig: AgenteConfigService,
     private readonly provedorIaFactory: ProvedorFactory,
+    private readonly clientes: ClientesService,
   ) {}
+
+  /**
+   * Quem pode vincular o contato a quais clientes: só o dono da conversa, e a
+   * carteira que vale é a do vendedor da sessão — toda a empresa quando ele
+   * tem `atendeOutrasCarteiras`. É a mesma regra do `vincular`, que continua
+   * sendo a barreira final; isto só alimenta a tela de escolha.
+   */
+  private async autorizarVinculo(
+    tx: TenantTx,
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+  ) {
+    const conversa = await this.conversaNoEscopo(tx, empresaId, user, conversaId);
+    if (!(await this.ehDono(tx, empresaId, user, conversa))) {
+      throw new ForbiddenException(
+        'Só o vendedor dono da conversa pode vincular o contato a um cliente.',
+      );
+    }
+    const todaEmpresa = await podeAtenderOutraCarteira(
+      tx,
+      empresaId,
+      conversa.sessao.vendedorId,
+    );
+    return { todaEmpresa, vendedorId: conversa.sessao.vendedorId };
+  }
+
+  /** Clientes que esta conversa pode vincular (ver `autorizarVinculo`). */
+  async clientesParaVinculo(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    busca: { search?: string; id?: string },
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const { todaEmpresa, vendedorId } = await this.autorizarVinculo(
+        tx,
+        empresaId,
+        user,
+        conversaId,
+      );
+      const base = {
+        empresaId,
+        deletedAt: null,
+        ...(todaEmpresa ? {} : { vendedorId }),
+      };
+      const select = {
+        id: true,
+        razaoSocial: true,
+        nomeFantasia: true,
+        codigoErp: true,
+      };
+      // O cliente já escolhido, para a tela mostrar o nome mesmo fora da página.
+      if (busca.id) {
+        const cliente = await tx.cliente.findFirst({
+          where: { ...base, id: busca.id },
+          select,
+        });
+        return { data: cliente ? [cliente] : [] };
+      }
+      const data = await tx.cliente.findMany({
+        where: {
+          ...base,
+          ativo: true,
+          ...filtroBuscaTermos(busca.search, [
+            'razaoSocial',
+            'nomeFantasia',
+            'codigoErp',
+            'cnpjCpf',
+          ]),
+        },
+        select,
+        orderBy: { razaoSocial: 'asc' },
+        take: 50,
+      });
+      return { data };
+    });
+  }
+
+  private async exigirClienteVinculavel(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    clienteId: string,
+  ) {
+    await this.prisma.withTenant(empresaId, async (tx) => {
+      const { todaEmpresa, vendedorId } = await this.autorizarVinculo(
+        tx,
+        empresaId,
+        user,
+        conversaId,
+      );
+      const cliente = await tx.cliente.findFirst({
+        where: {
+          id: clienteId,
+          empresaId,
+          deletedAt: null,
+          ...(todaEmpresa ? {} : { vendedorId }),
+        },
+        select: { id: true },
+      });
+      if (!cliente) throw new NotFoundException('Cliente não encontrado');
+    });
+  }
+
+  /** Contatos de um cliente que esta conversa pode vincular. */
+  async contatosParaVinculo(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    clienteId: string,
+  ) {
+    await this.exigirClienteVinculavel(empresaId, user, conversaId, clienteId);
+    return this.clientes.listarContatos(empresaId, user, clienteId, true);
+  }
 
   /**
    * O que este usuário enxerga no Atendimento: **só a instância ligada ao

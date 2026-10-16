@@ -46,6 +46,7 @@ describe('WhatsappConversasService.anotar', () => {
       provedores as never,
       {} as never,
       {} as never,
+      {} as never,
     );
     const escopo = jest
       .spyOn(

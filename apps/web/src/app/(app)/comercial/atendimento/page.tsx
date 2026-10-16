@@ -1619,8 +1619,11 @@ function VincularCliente({
   // Os contatos são do cliente escolhido agora, não do vinculado antes: trocar
   // o cliente troca a lista de pessoas.
   const contatos = useQuery({
-    queryKey: ["cliente-contatos", clienteId],
-    queryFn: () => apiFetch<ClienteContato[]>(`/clientes/${clienteId}/contatos`),
+    queryKey: ["cliente-contatos", clienteId, conversa.id],
+    queryFn: () =>
+      apiFetch<ClienteContato[]>(
+        `/whatsapp/conversas/${conversa.id}/clientes/${clienteId}/contatos`,
+      ),
     enabled: Boolean(clienteId),
   });
 
@@ -1706,13 +1709,13 @@ function VincularCliente({
         </p>
       </div>
 
-      {/* Só a carteira do vendedor desta conversa: é a mesma regra que o
-          servidor aplica, e oferecer na busca o que a rota vai recusar seria
-          convidar ao erro. */}
+      {/* A lista vem do atendimento: carteira do vendedor desta conversa, ou a
+          empresa toda quando ele "atende clientes de outras carteiras" — a
+          mesma regra que o servidor aplica ao vincular. */}
       <ClienteCombobox
         value={clienteId}
         onChange={setClienteId}
-        vendedorId={conversa.vendedorId}
+        conversaId={conversa.id}
       />
 
       {/* A pessoa. Enquanto não houver cliente não há cadastro onde procurá-la,

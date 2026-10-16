@@ -836,6 +836,40 @@ export class WhatsappController {
   }
 
   @ApiOperation({
+    summary: 'Clientes que a conversa pode vincular',
+    description:
+      'Busca para a tela de vínculo: a carteira do vendedor da conversa, ou toda a empresa quando ele ' +
+      'tem "atende clientes de outras carteiras". Só o dono da conversa. Requer whatsapp-conversas.editar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'editar')
+  @Get('conversas/:id/clientes-vinculaveis')
+  clientesVinculaveis(
+    @Param('id') id: string,
+    @Query('search') search: string | undefined,
+    @Query('id') clienteId: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversas.clientesParaVinculo(user.empresaAtivaId, user, id, {
+      search,
+      id: clienteId,
+    });
+  }
+
+  @ApiOperation({
+    summary: 'Contatos de um cliente vinculável',
+    description: 'Mesma regra de carteira do vínculo. Requer whatsapp-conversas.editar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'editar')
+  @Get('conversas/:id/clientes/:clienteId/contatos')
+  contatosVinculaveis(
+    @Param('id') id: string,
+    @Param('clienteId') clienteId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversas.contatosParaVinculo(user.empresaAtivaId, user, id, clienteId);
+  }
+
+  @ApiOperation({
     summary: 'Buscar ou atualizar foto de perfil do contato no WhatsApp',
     description:
       'Consulta o avatar do contato no gateway (Evolution GO) e atualiza ' +

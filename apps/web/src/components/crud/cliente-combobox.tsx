@@ -27,6 +27,7 @@ export function ClienteCombobox({
   placeholder = "Selecionar cliente",
   disabled = false,
   vendedorId,
+  conversaId,
 }: {
   value: string | null;
   onChange: (id: string | null) => void;
@@ -41,21 +42,31 @@ export function ClienteCombobox({
    * conversa**, não a de quem está mexendo.
    */
   vendedorId?: string | null;
+  /**
+   * Vínculo de conversa do WhatsApp: a lista vem do atendimento, que aplica a
+   * carteira do vendedor da conversa (ou a empresa toda, com "atende clientes
+   * de outras carteiras"). Tem precedência sobre `vendedorId`.
+   */
+  conversaId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
   const { data } = useQuery({
-    queryKey: ["clientes", "combobox", search, vendedorId],
+    queryKey: ["clientes", "combobox", search, vendedorId, conversaId],
     queryFn: () =>
-      apiFetch<{ data: Cliente[] }>("/clientes", {
-        query: {
-          pageSize: 50,
-          search: search || undefined,
-          ativo: true,
-          ...(vendedorId ? { vendedorId } : {}),
-        },
-      }),
+      conversaId
+        ? apiFetch<{ data: Cliente[] }>(`/whatsapp/conversas/${conversaId}/clientes-vinculaveis`, {
+            query: { search: search || undefined },
+          })
+        : apiFetch<{ data: Cliente[] }>("/clientes", {
+            query: {
+              pageSize: 50,
+              search: search || undefined,
+              ativo: true,
+              ...(vendedorId ? { vendedorId } : {}),
+            },
+          }),
     enabled: open,
   });
   const opcoesBusca = data?.data ?? [];
@@ -63,8 +74,14 @@ export function ClienteCombobox({
   // Mantém o rótulo do valor selecionado mesmo quando ele não está na página
   // atual de resultados da busca.
   const selecionadoQuery = useQuery({
-    queryKey: ["clientes", value],
-    queryFn: () => apiFetch<Cliente>(`/clientes/${value}`),
+    queryKey: ["clientes", value, conversaId],
+    queryFn: async () => {
+      if (!conversaId) return apiFetch<Cliente>(`/clientes/${value}`);
+      const r = await apiFetch<{ data: Cliente[] }>(`/whatsapp/conversas/${conversaId}/clientes-vinculaveis`, {
+        query: { id: value ?? undefined },
+      });
+      return r.data[0] ?? null;
+    },
     enabled: !!value,
   });
   const rotulo = value

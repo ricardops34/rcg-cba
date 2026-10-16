@@ -73,6 +73,7 @@ describe('WhatsappConversasService.iniciarConversa — contato escolhido', () =>
       provedores as never,
       {} as never,
       {} as never,
+      {} as never,
     );
     return { service, tx, provedores };
   };
