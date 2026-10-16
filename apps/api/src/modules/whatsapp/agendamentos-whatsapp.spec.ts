@@ -238,7 +238,7 @@ describe('WhatsappAgendamentoService — agenda', () => {
       const { servico } = montar(tx);
 
       await servico.atualizarAtendimento('e1', user, 'c1', 'a1', {
-        dataVencimento: new Date('2030-03-13T14:00:00.000Z),
+        dataVencimento: new Date('2030-03-13T14:00:00.000Z'),
       });
 
       expect(chamada(tx.atividade.updateMany).where).toMatchObject({
