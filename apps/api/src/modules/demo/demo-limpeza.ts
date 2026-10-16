@@ -111,6 +111,9 @@ const ORDEM_DE_EXCLUSAO = [
   'WhatsappRecadoDestinatario',
   'WhatsappRecadoInterno',
   'WhatsappContato',
+  // Histórico de qual número cada vendedor usou em cada sessão — uso, não o
+  // aparelho: a sessão fica, e a próxima conexão abre um período novo.
+  'WhatsappSessaoPeriodo',
   // --- SMS: envios ao cliente e as respostas dele (a resposta aponta para o
   // envio, então sai antes). O token da iAgente é parâmetro: fica.
   'SmsResposta',
@@ -145,10 +148,19 @@ const ORDEM_DE_EXCLUSAO = [
   // --- mural --------------------------------------------------------------
   'ComunicadoPerfil',
   'Comunicado',
+  // --- comodato: a baixa aponta para cliente e produto ------------------
+  'ComodatoBaixa',
+  'ComodatoEnvioErp',
+  'EquipamentoComodato',
   // --- cliente e o que pende dele ----------------------------------------
   'PortalClienteAcessoLog',
   'PortalClienteCredencial',
   'PortalClienteHabilitacao',
+  // Fila de envio da alteração do cliente ao ERP: aponta para a alteração.
+  'ClienteEnvioErp',
+  // Histórico das execuções da consulta à Receita: dado de negócio, como o
+  // da Sugestão de Compra.
+  'ClienteReceitaExecucao',
   'ClienteAlteracao',
   'ClienteHistorico',
   'ClienteCnae',
