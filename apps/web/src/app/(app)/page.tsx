@@ -232,7 +232,10 @@ export default function InicioPage() {
           <p className="text-muted-foreground first-letter:uppercase">{hoje}</p>
         </div>
 
+        {/* No celular a faixa do ERP vai para o fim da página: é informação de
+            suporte, e não deve empurrar os atalhos para baixo. */}
         <StatusIntegracaoCard
+          className="hidden sm:flex"
           status={statusIntegracaoQuery.data}
           carregando={statusIntegracaoQuery.isLoading}
         />
@@ -276,6 +279,12 @@ export default function InicioPage() {
           carregando={aniversariantesQuery.isLoading}
         />
       </div>
+
+      <StatusIntegracaoCard
+        className="sm:hidden"
+        status={statusIntegracaoQuery.data}
+        carregando={statusIntegracaoQuery.isLoading}
+      />
     </div>
   );
 }
@@ -283,12 +292,19 @@ export default function InicioPage() {
 function StatusIntegracaoCard({
   status,
   carregando,
+  className,
 }: {
   status: StatusIntegracao | undefined;
   carregando: boolean;
+  className?: string;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-3 rounded-xl border bg-card p-3.5 shadow-xs text-xs sm:flex sm:flex-wrap sm:items-center">
+    <div
+      className={cn(
+        "grid grid-cols-1 gap-3 rounded-xl border bg-card p-3.5 shadow-xs text-xs sm:flex sm:flex-wrap sm:items-center",
+        className,
+      )}
+    >
       <div className="flex items-center gap-2.5 sm:border-r sm:border-border/60 sm:pr-4">
         <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 shrink-0">
           <ArrowDownToLine className="size-4" />
