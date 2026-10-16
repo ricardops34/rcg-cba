@@ -29,7 +29,7 @@ listados. Os de segurança mais graves já saíram antes, nesta mesma data:
 - [x] 3. Empresa nova em grupo existente: limite de empresas do plano e
       situação/limite do contrato
 - [x] 4. Planos: validar o corpo com o Zod do contrato
-- [ ] 5. Assinatura: propagar situação e limite só quando mudam
+- [x] 5. Assinatura: propagar situação e limite só quando mudam
 - [x] 6. Desvincular administrador: só quem é administrador
 - [x] 7. Revogar administrador da plataforma: serializado, sem zerar a lista
 - [ ] 8. Parâmetros: chave não renomeável; recriar a excluída reativa

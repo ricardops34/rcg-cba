@@ -151,17 +151,32 @@ export class AssinaturasService {
         },
         update: { ...input, updatedBy: actorId },
       });
+      // Propaga às empresas só o que mudou no contrato. Antes, qualquer
+      // alteração (o dia de vencimento, o valor) reaplicava a situação e o
+      // limite do plano a todas as empresas — desfazendo em silêncio uma
+      // suspensão feita em Plataforma > Empresas, ou um limite ajustado à mão.
+      // Compara com o atual: a tela manda a situação em todo salvamento.
+      const mudouSituacao =
+        !atual ||
+        (input.situacao !== undefined && input.situacao !== atual.situacao);
+      const mudouPlano = !atual || atual.planoId !== planoId;
       const situacao =
         assinatura.situacao === 'atrasada' ? 'suspensa' : assinatura.situacao;
-      await tx.empresa.updateMany({
-        where: { grupoEconomicoId, deletedAt: null },
-        data: {
-          situacao,
-          limiteUsuarios: plano.limiteUsuarios,
-          updatedBy: actorId,
-          ...(situacao !== 'teste' ? { testeExpiraEm: null } : {}),
-        },
-      });
+      if (mudouSituacao || mudouPlano) {
+        await tx.empresa.updateMany({
+          where: { grupoEconomicoId, deletedAt: null },
+          data: {
+            ...(mudouSituacao
+              ? {
+                  situacao,
+                  ...(situacao !== 'teste' ? { testeExpiraEm: null } : {}),
+                }
+              : {}),
+            ...(mudouPlano ? { limiteUsuarios: plano.limiteUsuarios } : {}),
+            updatedBy: actorId,
+          },
+        });
+      }
       return {
         ...assinatura,
         valorMensalidade: Number(assinatura.valorMensalidade),
