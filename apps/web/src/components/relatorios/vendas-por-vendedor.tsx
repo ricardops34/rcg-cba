@@ -196,6 +196,7 @@ export function VendasPorVendedorGrid() {
   const { data: vendedores } = useVendedoresEscopo();
   const nomeCategoria = useNomeCategoria();
   const empresaAtiva = useAuthStore((s) => s.user?.empresas.find((e) => e.empresaId === s.user?.empresaAtivaId));
+  const usuarioNome = useAuthStore((s) => s.user?.nome);
   const podeExportar = useAuthStore((s) => s.hasPermission("relatorio-vendas", "exportar"));
 
   const nomeVendedor = (id: string) => {
@@ -315,6 +316,7 @@ export function VendasPorVendedorGrid() {
       titulo: "Vendas por vendedor (mensal)",
       empresaNome: empresaAtiva?.nomeFantasia,
       logoUrl: empresaAtiva?.logoUrl,
+      usuarioNome,
       filtros: filtrosTexto,
       colunas,
       // Com os subtotais por vendedor e o total geral — o arquivo sai igual à tela.

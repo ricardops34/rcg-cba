@@ -67,6 +67,7 @@ export function RelatorioPaginado<T>({
   const empresaAtiva = useAuthStore((s) => s.user?.empresas.find((e) => e.empresaId === s.user?.empresaAtivaId));
   const empresaNome = empresaAtiva?.nomeFantasia;
   const logoUrl = empresaAtiva?.logoUrl;
+  const usuarioNome = useAuthStore((s) => s.user?.nome);
   const { visiveis, ocultas, alternar, mostrarTodas } = useColunasEscolhidas(chave, colunas);
 
   // Filtro novo volta à primeira página.
@@ -104,6 +105,7 @@ export function RelatorioPaginado<T>({
         titulo,
         empresaNome,
         logoUrl,
+        usuarioNome,
         filtros: filtrosTexto,
         colunas: visiveis,
         linhas: tudo.linhas,

@@ -62,6 +62,7 @@ export default function RelatorioEstoqueCompraPage() {
   const empresaAtiva = useAuthStore((s) => s.user?.empresas.find((e) => e.empresaId === s.user?.empresaAtivaId));
   const empresaNome = empresaAtiva?.nomeFantasia;
   const logoUrl = empresaAtiva?.logoUrl;
+  const usuarioNome = useAuthStore((s) => s.user?.nome);
   const [atalho, setAtalho] = useState("3");
   const [fim, setFim] = useState(hojeIso);
   const [inicio, setInicio] = useState(() => mesesAntes(hojeIso(), 3));
@@ -174,7 +175,7 @@ export default function RelatorioEstoqueCompraPage() {
     : [];
 
   const exportar = async (formato: "pdf" | "xlsx") => {
-    const params = { titulo: "Estoque e compra", empresaNome, logoUrl, filtros: filtrosTexto, colunas: visiveis, linhas: ordenadas };
+    const params = { titulo: "Estoque e compra", empresaNome, usuarioNome, logoUrl, filtros: filtrosTexto, colunas: visiveis, linhas: ordenadas };
     if (formato === "pdf") await exportarRelatorioPdf(params);
     else await exportarRelatorioExcel(params);
   };

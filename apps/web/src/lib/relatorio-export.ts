@@ -57,6 +57,8 @@ export function formatar(valor: string | number | null, formato: FormatoColuna =
 export interface ExportRelatorio<T> {
   titulo: string;
   empresaNome?: string | null;
+  /** Quem gerou o arquivo — vai no rodapé do PDF. */
+  usuarioNome?: string | null;
   /** Caminho do logo da empresa ativa (`user.empresas[].logoUrl`) — PNG/JPEG. */
   logoUrl?: string | null;
   /** Linhas de contexto: período e filtros aplicados. */
@@ -168,6 +170,8 @@ export async function exportarRelatorioPdf<T>(p: ExportRelatorio<T>): Promise<vo
     head: [p.colunas.map((c) => c.titulo)],
     body: corpo,
     foot: totais ? [totais] : undefined,
+    // O total fecha o relatório: aparece só na última página, não em todas.
+    showFoot: "lastPage",
     styles: { fontSize: 7, cellPadding: 1.2, overflow: "linebreak" },
     headStyles: { fillColor: AZUL_RGB, textColor: 255 },
     footStyles: { fillColor: [241, 245, 249], textColor: 20, fontStyle: "bold" },
@@ -176,10 +180,6 @@ export async function exportarRelatorioPdf<T>(p: ExportRelatorio<T>): Promise<vo
     ),
     didDrawPage: (dados) => {
       if (dados.pageNumber > 1) cabecalho();
-      const paginas = doc.getNumberOfPages();
-      doc.setFontSize(7);
-      doc.setTextColor(120);
-      doc.text(`Página ${paginas}`, doc.internal.pageSize.getWidth() - margem - 15, doc.internal.pageSize.getHeight() - 5);
     },
   });
 
@@ -220,6 +220,23 @@ export async function exportarRelatorioPdf<T>(p: ExportRelatorio<T>): Promise<vo
   py += 2;
   doc.setTextColor(120);
   doc.text(`Emitido em ${new Date().toLocaleString("pt-BR")}`, margem, py);
+
+  // Rodapé em todas as páginas, com o total de páginas já conhecido.
+  const geradoEm = new Date().toLocaleString("pt-BR");
+  const total = doc.getNumberOfPages();
+  const larg = doc.internal.pageSize.getWidth();
+  const alt = doc.internal.pageSize.getHeight();
+  for (let pg = 1; pg <= total; pg++) {
+    doc.setPage(pg);
+    doc.setFontSize(7);
+    doc.setTextColor(120);
+    doc.text(
+      `Gerado em ${geradoEm}${p.usuarioNome ? ` por ${p.usuarioNome}` : ""}`,
+      margem,
+      alt - 5,
+    );
+    doc.text(`Página ${pg}/${total}`, larg - margem, alt - 5, { align: "right" });
+  }
 
   doc.save(nomeArquivo(p.titulo, "pdf"));
 }
