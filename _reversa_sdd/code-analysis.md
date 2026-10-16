@@ -5167,7 +5167,8 @@ registro). Manuais nunca são podados.
   (`versaoSchema`, JSONL tipado), mas não há código que leia um pacote: o plano diz que
   a Fase 4 (restaurar, por script) "não começou". Hoje é exportação, não backup
   restaurável; as credenciais mascaradas também não voltariam.
-- 🟡 **O link de 5 min vira 1 h no MinIO.** Com `backups-empresas` em
+- ✅ **Corrigido em 4c52520** (o link do MinIO vale só o que resta do `exp`). Achado original:
+  🟡 **O link de 5 min vira 1 h no MinIO.** Com `backups-empresas` em
   `ARMAZENAMENTO_S3_PASTAS` (padrão no `docker-compose.dev.yml`, recomendado pelo plano
   para a produção), o `main.ts` confere a assinatura de 5 min e redireciona
   para o link pré-assinado do S3, que vale **1 h** (`VALIDADE_LINK_SEGUNDOS` do
@@ -5613,7 +5614,8 @@ Constantes exportadas: `ARMAZEM_PADRAO`, `TABELA_PRECO_PADRAO`, `TABELA_PRECO_CA
   procura a chave pelo nome: renomear `SMTP_SENHA` desliga o e-mail em silêncio.
 - 🟡 **Recriar depois de excluir dá 500.** O `@@unique([empresaId, parametro])` inclui as
   linhas excluídas, mas o `create` só confere as não excluídas.
-- 🟡 **Segredos sem cifra.** `SMTP_SENHA` e `SMS_TOKEN` ficam em texto puro em
+- ✅ **Corrigido em 9b6277d** (`PARAMETROS_CRYPTO_KEY`, cifragem dos existentes na subida). Achado original:
+  🟡 **Segredos sem cifra.** `SMTP_SENHA` e `SMS_TOKEN` ficam em texto puro em
   `parametros_empresa.conteudo` (as chaves do agente e do WhatsApp são cifradas).
 - 🟡 **`validarConteudo` é permissivo.** `Number('')` e `Number(' ')` valem 0; `data`
   aceita qualquer coisa que o `Date` do JavaScript entenda (`"1"`, `"2026"`).
@@ -5825,7 +5827,8 @@ A senha atual continua valendo até o link ser usado.
 
 - 🔴 **Política padrão na redefinição** — ver `politica-senha` §3.5: sem contexto, a
   política que valida a senha nova tende a ser a padrão, não a das empresas da conta.
-- 🟡 **Resposta igual, tempo diferente.** A resposta é sempre `{ok: true}`, mas com conta
+- ✅ **Corrigido em 4c52520** (a rota responde antes de procurar a conta). Achado original:
+  🟡 **Resposta igual, tempo diferente.** A resposta é sempre `{ok: true}`, mas com conta
   existente o servidor grava, monta e envia o e-mail antes de responder; a diferença de
   tempo revela quem tem conta (enumeração por tempo).
 - 🟡 **Throttle só por IP.** Rotação de IP permite encher a caixa de uma pessoa; não há

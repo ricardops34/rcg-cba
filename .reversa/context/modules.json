@@ -2310,7 +2310,7 @@
       "gaps": [
         "poda conta os falhos e pode apagar backups bons",
         "nao existe restauracao",
-        "link de 5 min vira 1 h no MinIO",
+        "CORRIGIDO em 4c52520: link do MinIO limitado ao exp",
         "pacote sem cifra",
         "leitura nao e retrato consistente",
         "paginacao por skip quadratica",
@@ -2594,7 +2594,7 @@
         "CORRIGIDO em 5eba615: sair do tipo senha descarta o segredo",
         "chave renomeavel sem conferencia",
         "recriar chave excluida da 500",
-        "SMTP_SENHA e SMS_TOKEN sem cifra",
+        "CORRIGIDO em 9b6277d: parametros senha cifrados (PARAMETROS_CRYPTO_KEY)",
         "validacao permissiva de numero e data",
         "troca de tipo nao revalida conteudo existente"
       ],
@@ -2760,7 +2760,7 @@
       ],
       "gaps": [
         "politica padrao na redefinicao (ver politica-senha)",
-        "enumeracao por tempo de resposta",
+        "CORRIGIDO em 4c52520: responde antes de procurar a conta",
         "throttle so por IP",
         "token na query string",
         "links usados nao sao limpos"
