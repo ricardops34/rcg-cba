@@ -70,3 +70,107 @@ describe('BackupEmpresaService.agendados', () => {
     expect(gerarAgora).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('BackupEmpresaService — poda dos agendados', () => {
+  type Linha = {
+    id: string;
+    situacao: 'pronto' | 'falhou';
+    iniciadoEm: Date;
+    chave: string | null;
+  };
+  type Filtro = {
+    where: { situacao: string; iniciadoEm?: { lt: Date } };
+    skip?: number;
+  };
+
+  /** Banco em memória com o que a poda usa: filtro, ordem decrescente e skip. */
+  function montarPoda(linhas: Linha[], manter: number) {
+    const apagados: string[] = [];
+    const tx = {
+      empresaBackup: {
+        findMany: jest.fn(({ where, skip = 0 }: Filtro) =>
+          Promise.resolve(
+            linhas
+              .filter(
+                (l) =>
+                  l.situacao === where.situacao &&
+                  (!where.iniciadoEm || l.iniciadoEm < where.iniciadoEm.lt),
+              )
+              .sort((a, b) => b.iniciadoEm.getTime() - a.iniciadoEm.getTime())
+              .slice(skip),
+          ),
+        ),
+        delete: jest.fn(({ where }: { where: { id: string } }) => {
+          apagados.push(where.id);
+          return Promise.resolve();
+        }),
+      },
+    };
+    const prisma = {
+      withTenant: jest.fn((_id: string, fn: (t: typeof tx) => unknown) =>
+        fn(tx),
+      ),
+      backupEmpresaConfig: {
+        upsert: jest
+          .fn()
+          .mockResolvedValue({ ativo: true, frequenciaDias: 7, manter }),
+      },
+    };
+    const service = new BackupEmpresaService(prisma as never);
+    const apagar = jest.fn().mockResolvedValue(undefined);
+    service.armazenamento = { apagar } as never;
+    const podar = (sucesso: Date) =>
+      (
+        service as unknown as {
+          podarAgendados: (e: string, s: Date) => Promise<void>;
+        }
+      ).podarAgendados('e1', sucesso);
+    return { podar, apagados, apagar };
+  }
+
+  const dia = (n: number) => new Date(AGORA - n * DIA);
+  const linha = (id: string, situacao: Linha['situacao'], dias: number) => ({
+    id,
+    situacao,
+    iniciadoEm: dia(dias),
+    chave: situacao === 'pronto' ? `backups-empresas/e1/${id}.zip` : null,
+  });
+
+  it('falhas recentes não empurram os backups bons para fora', async () => {
+    // Do mais novo ao mais antigo: o pronto de agora, três falhas, três prontos.
+    const { podar, apagados, apagar } = montarPoda(
+      [
+        linha('agora', 'pronto', 0),
+        linha('f1', 'falhou', 1),
+        linha('f2', 'falhou', 2),
+        linha('f3', 'falhou', 3),
+        linha('p1', 'pronto', 7),
+        linha('p2', 'pronto', 14),
+        linha('p3', 'pronto', 21),
+      ],
+      4,
+    );
+
+    await podar(dia(0));
+
+    // Os quatro prontos ficam; só as falhas, que não têm pacote, saem.
+    expect(apagados.sort()).toEqual(['f1', 'f2', 'f3']);
+    expect(apagar).not.toHaveBeenCalled();
+  });
+
+  it('com mais prontos que o limite, apaga o pacote e o registro dos mais antigos', async () => {
+    const { podar, apagados, apagar } = montarPoda(
+      [
+        linha('agora', 'pronto', 0),
+        linha('p1', 'pronto', 7),
+        linha('p2', 'pronto', 14),
+      ],
+      2,
+    );
+
+    await podar(dia(0));
+
+    expect(apagados).toEqual(['p2']);
+    expect(apagar).toHaveBeenCalledWith('backups-empresas/e1/p2.zip');
+  });
+});

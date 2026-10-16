@@ -158,7 +158,7 @@ export class BackupEmpresaService {
         `Backup ${backup.id} da empresa ${backup.empresaId}: ${r.registros} registros, ${r.arquivos} arquivos, ${r.bytes} bytes.`,
       );
       if (backup.origem === 'agendado')
-        await this.podarAgendados(backup.empresaId);
+        await this.podarAgendados(backup.empresaId, backup.iniciadoEm);
       return resumo(pronto);
     } catch (erro) {
       const mensagem = erro instanceof Error ? erro.message : String(erro);
@@ -287,20 +287,32 @@ export class BackupEmpresaService {
     return { gerados };
   }
 
-  /** Guarda só os `manter` agendados mais recentes da empresa. */
-  private async podarAgendados(empresaId: string) {
+  /**
+   * Guarda só os `manter` agendados **prontos** mais recentes da empresa.
+   *
+   * Só os prontos contam: antes a conta incluía os que falharam, e um pronto
+   * seguido de três falhas (a varredura tenta de hora em hora enquanto o
+   * problema dura) apagava todos os backups bons mais antigos. Os que falharam
+   * antes de `sucesso` — o pronto que acabou de terminar — não servem mais para
+   * diagnóstico e saem (não têm pacote).
+   */
+  private async podarAgendados(empresaId: string, sucesso: Date) {
     const { manter } = await this.lerConfig();
-    const antigos = await this.prisma.withTenant(empresaId, (tx) =>
-      tx.empresaBackup.findMany({
+    const antigos = await this.prisma.withTenant(empresaId, async (tx) => [
+      ...(await tx.empresaBackup.findMany({
+        where: { empresaId, origem: 'agendado', situacao: 'pronto' },
+        orderBy: { iniciadoEm: 'desc' },
+        skip: Math.max(manter, 1),
+      })),
+      ...(await tx.empresaBackup.findMany({
         where: {
           empresaId,
           origem: 'agendado',
-          situacao: { in: ['pronto', 'falhou'] },
+          situacao: 'falhou',
+          iniciadoEm: { lt: sucesso },
         },
-        orderBy: { iniciadoEm: 'desc' },
-        skip: Math.max(manter, 1),
-      }),
-    );
+      })),
+    ]);
     for (const b of antigos) {
       if (b.chave)
         await this.armazenamento.apagar(b.chave).catch(() => undefined);
