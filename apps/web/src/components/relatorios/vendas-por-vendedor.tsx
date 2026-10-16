@@ -296,6 +296,13 @@ export function VendasPorVendedorGrid() {
       { campo: "totalValor", titulo: "Total", valor: (l) => (l.tipo === "cabecalho" ? null : l.totalValor), formato: "moeda" },
       // Média só dos meses com movimento — mês parado não puxa a média para baixo.
       { campo: "mediaValor", titulo: "Média", valor: (l) => (l.tipo === "cabecalho" ? null : mediaComMovimento(l)), formato: "moeda" },
+      // Média geral: total ÷ todos os meses do período, com ou sem movimento.
+      {
+        campo: "mediaGeralValor",
+        titulo: "Média Geral",
+        valor: (l) => (l.tipo === "cabecalho" ? null : l.totalValor / Math.max(1, data?.meses.length ?? 1)),
+        formato: "moeda",
+      },
     );
     return base;
   }, [data?.quebraPorVendedor, data?.meses]);
