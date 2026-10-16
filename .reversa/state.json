@@ -79,15 +79,15 @@
         "portal-cliente",
         "cadastros",
         "feriados",
-        "erros"
+        "erros",
+        "termos"
       ],
       "modules_pending": [
-        "termos",
         "tours",
         "inicio",
         "demo"
       ],
-      "last_update": "2026-10-16T11:32:34.058Z"
+      "last_update": "2026-10-16T11:38:31.993Z"
     }
   },
   "engines": [

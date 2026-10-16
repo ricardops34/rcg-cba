@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-16T11:32:34.056Z",
+  "generated_at": "2026-10-16T11:38:31.991Z",
   "modules": [
     {
       "name": "auth",
@@ -3303,6 +3303,78 @@
       ],
       "test_files": [
         "erros-log.service.spec.ts"
+      ],
+      "complexity": "medium",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "termos",
+      "path": "apps/api/src/modules/termos",
+      "responsibility": "Termos da plataforma com versao e aceite por usuario (bloqueio no JwtAuthGuard ate aceitar) e termos de uso da empresa (texto livre informativo, sem aceite).",
+      "files": [
+        "termos.module.ts",
+        "termos.controller.ts",
+        "termos.service.ts",
+        "termo-pendente.exception.ts",
+        "dto/termo.dto.ts",
+        "../../common/decorators/permitir-termo-pendente.decorator.ts",
+        "web: lib/termos-formatacao.ts",
+        "web: components/termos/*",
+        "web: components/crud/empresa-termos-editor.tsx"
+      ],
+      "entities": [
+        "TermoDocumento",
+        "TermoAceite",
+        "TermoTipo",
+        "Empresa.termosUso"
+      ],
+      "main_functions": [
+        "TermosService.temPendente/status/aceitar",
+        "JwtAuthGuard (bloqueio TERMO_PENDENTE)",
+        "sanitizarHtml",
+        "markdownParaHtml",
+        "gerarSugestaoTermosEmpresa"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "JwtAuthGuard (toda requisicao autenticada)",
+        "auth e politica-senha (rotas liberadas)",
+        "seed-base",
+        "plataforma-access-gate",
+        "perfil",
+        "cadastro de empresa"
+      ],
+      "business_rules": [
+        {
+          "description": "Pendencia = documento obrigatorio, publicado e vigente, nao revogado, sem aceite do usuario; aceite e por versao",
+          "location": "termos.service.ts:temPendente",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Aceite exige o hash do conteudo vigente (409 se divergir) e grava evidencia com o hash do banco; upsert mantem o primeiro aceite",
+          "location": "termos.service.ts:aceitar",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Termos da empresa sao informativos: sem versao, sem aceite, sem pendencia",
+          "location": "empresas.termosUso; dialog-consulta-termos.tsx",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "sanitizarHtml e por regex e renderiza com dangerouslySetInnerHTML o texto livre da empresa: svg/onload e similares nao sao cobertos (nao reproduzido)",
+        "consulta e editor mostram a constante TERMOS_USO_PLATAFORMA_PADRAO, nao o texto aceito do banco",
+        "nao ha rota, tela nem script para publicar nova versao; conteudoHash nunca e calculado nem conferido",
+        "cache de pendencia de 60 s e por processo (aceite nao libera nas outras replicas)",
+        "integracao, portal do cliente e rotas publicas ficam fora do bloqueio; contato do portal nao aceita nada",
+        "termos da empresa sem versao, sem aceite e sem historico",
+        "aviso_privacidade e obrigatorio=false existem no modelo sem nenhum fluxo; revisao juridica do texto nao confirmada"
+      ],
+      "test_files": [
+        "termos.service.spec.ts"
       ],
       "complexity": "medium",
       "confidence": "CONFIRMADO"

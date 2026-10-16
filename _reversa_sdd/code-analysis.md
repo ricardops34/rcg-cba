@@ -6857,3 +6857,80 @@ Janela de colapso 60 s (500 entradas); cache de configuração 30 s; padrão de 
 ### 7. Dependências e testes
 
 `PrismaService` apenas; `ErrosLogService` é exportado porque `main.ts` o injeta no filtro global. Produtores: `AllExceptionsFilter` (todo o servidor) e `erro-report.ts` (navegador). Rota de leitura só para `PlatformAdminGuard`. **Testes cobrem normalização e colapso; filtro, controllers, varredura e consultas sem teste.**
+
+---
+
+## Módulo `termos`
+
+**Caminho:** `apps/api/src/modules/termos/` (controller, service, DTO, exceção, module — 245 linhas, mais o spec) + `common/decorators/permitir-termo-pendente.decorator.ts` + o trecho do `JwtAuthGuard` que bloqueia. Front: `components/termos/` (`dialog-consulta-termos`, `visualizador-termos`), `components/auth/plataforma-access-gate.tsx` (a tela de aceite), `components/perfil/termos-aceitos-card.tsx`, `components/crud/empresa-termos-editor.tsx`, `lib/termos-formatacao.ts`. Contrato em `packages/contracts/src/termo.ts`.
+**Testes:** `termos.service.spec.ts` (4 casos: pendência, status, termo fora de vigência, hash antigo + evidências). **Sem teste** do guard com termo pendente, do controller, nem do front (incluindo o sanitizador).
+
+### 1. Responsabilidade 🟢
+
+Dois assuntos com o mesmo nome, que **não se tocam**:
+
+- **Termos da plataforma (obrigatórios, com aceite):** documentos globais versionados (`termo_documentos`) e o aceite por usuário (`termo_aceites`), com evidência (data do servidor, IP, navegador, hash do conteúdo, declaração, empresa de contexto). Enquanto houver documento obrigatório, vigente e não aceito, o `JwtAuthGuard` responde 403 `TERMO_PENDENTE` em toda rota autenticada, exceto as marcadas `@PermitirTermoPendente`.
+- **Termos da empresa (informativos, sem aceite):** texto livre em Markdown/HTML na coluna `empresas.termosUso`, mostrado na consulta "Termos de Uso e Normas". Se vazio, a tela mostra uma sugestão gerada no navegador (`gerarSugestaoTermosEmpresa`, com nome e CNPJ). Não gera pendência, não tem versão, não tem aceite.
+
+### 2. Rotas 🟢
+
+`JwtAuthGuard` (sem `PermissionsGuard`: vale para qualquer usuário logado, sobre a própria conta).
+
+| Rota | Comportamento |
+|---|---|
+| `GET /termos/status` | pendentes (com o conteúdo) e histórico de aceites do usuário; reabastece o cache de pendência |
+| `POST /termos/:id/aceite` | confere vigência e hash, grava o aceite com `upsert` (idempotente) e descarta o cache do usuário |
+
+Rotas liberadas com termo pendente (`@PermitirTermoPendente`): as duas acima, três rotas de `auth` (linhas 136, 153 e 199 do controller) e uma de `politica-senha`.
+
+### 3. Algoritmos 🟢
+
+- **Pendência:** existe `termo_documentos` com `obrigatorio`, `publicadoEm ≤ agora`, `vigenteEm ≤ agora`, `revogadoEm` nulo e **sem** aceite do usuário. Aceite é por **versão** (`termoId`), então uma nova versão volta a bloquear todo mundo.
+- **Cache de pendência:** por usuário, em memória do processo, 60 s; `status` e `aceitar` o atualizam/descartam. Roda a cada requisição autenticada, **depois** da sessão e do horário de trabalho.
+- **Aceite:** o cliente envia `aceite: true` e o `conteudoHash` que viu; divergência do hash do banco → 409 ("recarregue"). O hash gravado no aceite é o do banco, não o enviado. `upsert` com `update: {}` mantém o primeiro aceite (evidência não é sobrescrita).
+- **Seed:** `seed-base.ts` aceita a versão vigente para o administrador da base nova (IP `127.0.0.1`, navegador "Seed Automático").
+
+### 4. Achados
+
+#### 4.1 HTML do termo da empresa é sanitizado por regex, e o contorno é simples 🟡
+
+`termosUso` é texto livre de até 100.000 caracteres, gravado como veio (a API não sanitiza nem valida formato) e renderizado com `dangerouslySetInnerHTML` depois de `sanitizarHtml`, que só remove com expressões regulares `<script>`, `<iframe>`, `<object>`, `<embed>`, `<style>`, atributos `on…=` precedidos de espaço e `href="javascript:"`. Um `<svg/onload=…>` (a barra no lugar do espaço), `<img src=x onerror=…>` com o atributo grudado de outro jeito, `<a href="data:…">` ou `<form action="javascript:…">` não são cobertos. **Quem escreve:** administrador da empresa (e o administrador da plataforma, ao editar a empresa). **Quem lê:** todos os usuários da empresa, na consulta, e o administrador da plataforma, no editor de empresas, ou seja, um administrador de empresa pode executar script no navegador de outros usuários, inclusive no do SaaS. Achado por leitura, **não reproduzido**: para confirmar, gravar `<svg/onload=alert(1)>` em Empresas > Termos de uso e abrir a consulta.
+
+#### 4.2 Dois "textos oficiais" da plataforma, e a tela mostra o que não é aceito 🟡
+
+O que o usuário **aceita** é o texto gravado no banco (migration `20260909130000`, versão 1.0, em caixa alta). O que a consulta e o editor da empresa **mostram** como "termos oficiais" é a constante `TERMOS_USO_PLATAFORMA_PADRAO`, em Markdown, que tem o mesmo conteúdo com outra formatação. Hoje dizem a mesma coisa; na primeira nova versão publicada no banco, a consulta continuará mostrando a constante do código até alguém lembrar de editá-la. O aceite referencia o hash do banco, então a evidência está certa; o que desencontra é o que o usuário consulta depois.
+
+#### 4.3 Não há como publicar versão nova pelo sistema 🟡
+
+Não existe rota, tela nem script de importação para `termo_documentos`: a versão 1.0 nasceu em migration (com `conteudoHash` pré-calculado à mão) e as seguintes dependem de nova migration ou de SQL manual. Nada recalcula nem confere `conteudoHash` contra `conteudo` (SHA-256 aparente, 🔴 confirmar o algoritmo): um hash errado grava evidência que não prova o texto. A migration também registra que o texto "deve passar por revisão jurídica antes da publicação em produção". 🔴 confirmar se essa revisão aconteceu.
+
+#### 4.4 Cache de pendência é por processo 🟡
+
+Com mais de uma réplica da API, o aceite descarta o cache só da instância que o recebeu: nas outras o usuário continua bloqueado por até 60 s (a tela de aceite fica "presa" após aceitar). Em sentido inverso, uma nova versão demora até 60 s para bloquear quem já tinha cache. 🔴 confirmar o número de réplicas.
+
+#### 4.5 Quem fica de fora do bloqueio 🟡
+
+O bloqueio vive no `JwtAuthGuard`. Não passam por ele: a API de integração (chave de API, sem usuário), o portal do cliente (identidade do contato, não do usuário) e as rotas públicas. Faz sentido para chave de integração e contato externo, mas significa que **só o usuário interno aceita termos**; o contato do portal não aceita nada. Também não há revogação de aceite nem aceite por empresa: o aceite é da conta, mesmo quando a pessoa atende duas empresas.
+
+#### 4.6 Termos da empresa: sem versão, sem aceite, sem rastro 🟡
+
+Editar `empresas.termosUso` sobrescreve o texto sem histórico (só `updatedAt`/`updatedBy` da empresa), e ninguém precisa aceitar. Se a intenção do texto ("normas internas") é ter força disciplinar, falta a evidência de que cada pessoa leu a versão vigente. 🔴 confirmar se o aceite dos termos da empresa está previsto.
+
+#### 4.7 Detalhes menores 🟡
+
+- `status` carrega e devolve o `conteudo` completo de cada pendente a cada chamada, e a tela de aceite chama a cada carga.
+- O texto da declaração (`DECLARACAO_ACEITE`) é fixo no código; o seed usa outro ("Li e concordo com os Termos de Uso.").
+- `obrigatorio = false` existe no modelo, mas nenhum fluxo mostra ou oferece aceite de documento não obrigatório (`status` só lista obrigatórios).
+- `aviso_privacidade` está no enum e a consulta fala em "Aviso de Privacidade aplicável", mas **nenhum documento desse tipo existe** nem é exibido.
+
+### 5. Estruturas de dados 🟢
+
+`TermoDocumento`, `TermoAceite` (únicos `(codigo, versao)` e `(termoId, usuarioId)`; ambos globais, sem RLS), enum `TermoTipo`, e a coluna `empresas.termosUso`. Ver `data-dictionary.md`, seção `termos`.
+
+### 6. Metadados 🟢
+
+Cache de pendência 60 s; declaração fixa do aceite; limite de 100.000 caracteres para `termosUso`; variáveis `{{NOME_EMPRESA}}` e `{{CNPJ_TEXTO}}` da sugestão; código `TERMO_PENDENTE` (403). O catálogo de backup lista `TermoDocumento` ("termos da plataforma") e `TermoAceite` ("aceite é da pessoa, não da empresa") como fora do backup da empresa.
+
+### 7. Dependências e testes
+
+`PrismaService`; módulo `@Global` que exporta `TermosService` ao `JwtAuthGuard`. Consumidores: `JwtAuthGuard` (cada requisição), `auth` e `politica-senha` (rotas liberadas), seed, tela de aceite (`plataforma-access-gate`), perfil (histórico) e cadastro de empresa (editor). **Testes cobrem só o service.**

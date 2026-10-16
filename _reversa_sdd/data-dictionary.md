@@ -2471,3 +2471,48 @@ de desconto exige `percFinal ≥ percInicial` por faixa; a consulta de CEP é `G
 ### DTOs 🟢
 
 `erroClienteReportSchema` (1 a 50 itens; item: `tipo` de rede/resposta/javascript/promessa, `ocorridoEm`, `rota` ≤ 500, `metodo` ≤ 10, `status` 0–599, `pagina` ≤ 500, `mensagem` ≤ 1.000, `stack` ≤ 8.000), `erroLogQuerySchema` (paginação + origem, tipo, empresaId, dataInicio, dataFim, search), `erroLogOcorrenciaQuerySchema` (assinatura), `erroLogConfigUpdateSchema` (retenção 0–3650, teto 0–1.000.000, 4xx).
+
+
+---
+
+## `termos`
+
+### Tabela `termo_documentos` (global, sem RLS) 🟢
+
+| Campo | Tipo | Obrigatório | Observação |
+|---|---|---|---|
+| `id` | uuid | sim | |
+| `codigo` | texto | sim | ex.: `termos-uso-plataforma`; único com `versao` |
+| `versao` | texto | sim | ex.: `1.0` |
+| `tipo` | `TermoTipo` | sim | `termos_uso` ou `aviso_privacidade` (este sem nenhum documento) |
+| `titulo`, `resumo`, `conteudo` | texto | sim | |
+| `conteudoHash` | texto | sim | 64 hex; **nada o calcula nem confere** |
+| `obrigatorio` | booleano | sim, padrão true | só os obrigatórios entram em pendência |
+| `publicadoEm`, `vigenteEm` | data/hora | sim | pendência exige ambos ≤ agora |
+| `revogadoEm` | data/hora | não | preenchido = fora de vigência |
+| `createdAt` | data/hora | sim | |
+
+Índices: único `(codigo, versao)`; `(obrigatorio, vigenteEm)`. Uma linha semeada pela migration (1.0).
+
+### Tabela `termo_aceites` (global, sem RLS) 🟢
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | uuid | |
+| `termoId` | texto | FK `termo_documentos`, RESTRICT |
+| `usuarioId` | texto | FK `usuarios`, RESTRICT |
+| `empresaContextoId` | texto, opcional | empresa ativa na sessão; sem FK |
+| `aceitoEm` | data/hora | hora do servidor |
+| `ip`, `userAgent` | texto, opcionais | |
+| `conteudoHash` | texto | hash do banco no momento do aceite |
+| `declaracao` | texto | "Li e concordo com esta versão do documento apresentado." |
+
+Índices: único `(termoId, usuarioId)` (um aceite por versão e pessoa); `(usuarioId, aceitoEm)`.
+
+### Coluna `empresas.termosUso` 🟢
+
+Texto, opcional, até 100.000 caracteres, Markdown ou HTML. Sem versão, sem aceite. Migration `20261013210000`.
+
+### DTOs 🟢
+
+`termoAceiteInputSchema` (`aceite: true` literal, `conteudoHash` 64 hex), resposta de aceite (`aceito`, `termoId`, `aceitoEm`), `termosStatusSchema` (`possuiPendencia`, `pendentes[]` com conteúdo, `aceites[]` resumidos).
