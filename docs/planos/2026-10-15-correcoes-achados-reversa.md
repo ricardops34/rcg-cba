@@ -28,7 +28,7 @@ listados. Os de segurança mais graves já saíram antes, nesta mesma data:
 - [x] 2. Mídia órfã do WhatsApp: trava por empresa, não só pelo total
 - [x] 3. Empresa nova em grupo existente: limite de empresas do plano e
       situação/limite do contrato
-- [ ] 4. Planos: validar o corpo com o Zod do contrato
+- [x] 4. Planos: validar o corpo com o Zod do contrato
 - [ ] 5. Assinatura: propagar situação e limite só quando mudam
 - [x] 6. Desvincular administrador: só quem é administrador
 - [x] 7. Revogar administrador da plataforma: serializado, sem zerar a lista

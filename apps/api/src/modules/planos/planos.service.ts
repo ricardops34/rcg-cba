@@ -27,6 +27,8 @@ export class PlanosService {
     return planos.map((p) => ({
       ...p,
       valorMensal: Number(p.valorMensal),
+      valorTrimestral: Number(p.valorTrimestral),
+      valorSemestral: Number(p.valorSemestral),
       valorAnual: Number(p.valorAnual),
       moduloIds: p.modulos.map((m) => m.moduloId),
       menuIds: p.menus.map((m) => m.menuId),
@@ -52,6 +54,8 @@ export class PlanosService {
     return {
       ...plano,
       valorMensal: Number(plano.valorMensal),
+      valorTrimestral: Number(plano.valorTrimestral),
+      valorSemestral: Number(plano.valorSemestral),
       valorAnual: Number(plano.valorAnual),
       moduloIds: plano.modulos.map((m) => m.moduloId),
       menuIds: plano.menus.map((m) => m.menuId),
@@ -60,11 +64,18 @@ export class PlanosService {
   }
 
   async createPlano(input: PlanoCreate, actorId: string) {
+    // O código é único também entre os excluídos (`@unique` no banco):
+    // conferir só os vivos deixava passar e o banco recusava com 500.
     const existente = await this.prisma.plano.findFirst({
-      where: { codigo: input.codigo, deletedAt: null },
+      where: { codigo: input.codigo },
+      select: { deletedAt: true },
     });
     if (existente) {
-      throw new BadRequestException('Já existe um plano com este código.');
+      throw new BadRequestException(
+        existente.deletedAt
+          ? 'Este código já foi usado por um plano excluído. Escolha outro.'
+          : 'Já existe um plano com este código.',
+      );
     }
 
     const { moduloIds, menuIds, rotinaIds, ...data } = input;
@@ -102,6 +113,18 @@ export class PlanosService {
 
   async updatePlano(id: string, input: PlanoUpdate, actorId: string) {
     await this.getPlano(id);
+
+    if (input.codigo !== undefined) {
+      const outro = await this.prisma.plano.findFirst({
+        where: { codigo: input.codigo, id: { not: id } },
+        select: { id: true },
+      });
+      if (outro) {
+        throw new BadRequestException(
+          'Já existe um plano com este código, ou um excluído que o usou.',
+        );
+      }
+    }
 
     const { moduloIds, menuIds, rotinaIds, ...data } = input;
 
@@ -146,8 +169,16 @@ export class PlanosService {
   }
 
   async removePlano(id: string, actorId: string) {
+    // Só os contratos vivos: assinatura de grupo excluído e a antiga por
+    // empresa (sem grupo) não usam mais o plano, e contá-las travava a
+    // exclusão para sempre. O plano só é marcado como excluído; a referência
+    // delas continua válida.
     const assinaturasCount = await this.prisma.assinatura.count({
-      where: { planoId: id },
+      where: {
+        planoId: id,
+        grupoEconomicoId: { not: null },
+        grupoEconomico: { deletedAt: null },
+      },
     });
     if (assinaturasCount > 0) {
       throw new BadRequestException(

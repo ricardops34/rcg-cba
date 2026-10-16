@@ -21,6 +21,13 @@ import {
   type AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
 import { PlanosService } from './planos.service';
+import { createZodDto } from 'nestjs-zod';
+import { planoCreateSchema, planoUpdateSchema } from '@plataforma/contracts';
+
+// O contrato já tinha o Zod; o controller recebia `any` e mandava o corpo
+// direto ao Prisma (campo errado dava 500, e qualquer coluna era gravável).
+class PlanoCreateDto extends createZodDto(planoCreateSchema) {}
+class PlanoUpdateDto extends createZodDto(planoUpdateSchema) {}
 
 @ApiTags('plataforma-planos')
 @ApiBearerAuth()
@@ -45,7 +52,7 @@ export class PlanosController {
   @ApiOperation({ summary: 'Criar plano de funcionalidades' })
   @Post()
   createPlano(
-    @Body() dto: any,
+    @Body() dto: PlanoCreateDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.createPlano(dto, user.id);
@@ -56,7 +63,7 @@ export class PlanosController {
   @Patch(':id')
   updatePlano(
     @Param('id') id: string,
-    @Body() dto: any,
+    @Body() dto: PlanoUpdateDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.updatePlano(id, dto, user.id);
