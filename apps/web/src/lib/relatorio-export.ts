@@ -65,6 +65,10 @@ export interface ExportRelatorio<T> {
   linhas: T[];
   /** Linha de totais, alinhada às colunas (null = célula vazia). */
   totais?: (string | number | null)[];
+  /** Excel: linha em negrito (ex.: subtotal e total). */
+  negritoNoExcel?: (linha: T) => boolean;
+  /** Excel: deixa uma linha vazia depois desta (ex.: após o subtotal). */
+  linhaVaziaAposNoExcel?: (linha: T) => boolean;
 }
 
 const slug = (v: string) =>
@@ -324,7 +328,9 @@ function montarAbaRelatorio<T>(
     row.eachCell((cel, col) => {
       cel.alignment = { horizontal: alinhamento(p.colunas[col - 1]) };
       if (i % 2 === 1) cel.fill = { type: "pattern", pattern: "solid", fgColor: { argb: CINZA_CLARO } };
+      if (p.negritoNoExcel?.(l)) cel.font = { bold: true };
     });
+    if (p.linhaVaziaAposNoExcel?.(l)) aba.addRow([]);
   });
 
   if (p.totais) {

@@ -320,6 +320,9 @@ export function VendasPorVendedorGrid() {
       colunas,
       // Com os subtotais por vendedor e o total geral — o arquivo sai igual à tela.
       linhas: comTotais,
+      // Excel: subtotal e total em negrito, e uma linha vazia depois de cada subtotal.
+      negritoNoExcel: (l: LinhaPivot) => l.tipo === "subtotal" || l.tipo === "total",
+      linhaVaziaAposNoExcel: (l: LinhaPivot) => l.tipo === "subtotal",
     };
     if (formato === "pdf") await exportarRelatorioPdf(params);
     else await exportarRelatorioExcel(params);
