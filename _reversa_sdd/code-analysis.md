@@ -4980,7 +4980,8 @@ gravou.
 
 #### 3.5 Achados
 
-- 🟡 **A trava só pega o vazio total.** Se a leitura de **uma** empresa voltar vazia sem
+- ✅ **Corrigido em 5f8d319** (trava por empresa). Achado original:
+  🟡 **A trava só pega o vazio total.** Se a leitura de **uma** empresa voltar vazia sem
   erro (o mesmo cenário de RLS que a trava cita) e as outras não, os arquivos daquela
   empresa passam por órfãos e são apagados. Não há conferência por empresa (por exemplo,
   "a empresa tem mensagens com arquivo, mas nenhuma foi lida").
@@ -5371,17 +5372,21 @@ o plano libera. A aplicação dessa allowlist acontece em `estrutura`
 
 ### 4. Achados
 
-- 🟡 **O controller não valida o corpo.** `@Body() dto: any`, sem o DTO Zod que o
+- ✅ **Corrigido em 9dd58d3** (DTOs Zod do contrato). Achado original:
+  🟡 **O controller não valida o corpo.** `@Body() dto: any`, sem o DTO Zod que o
   contrato já tem (`planoCreateSchema`/`planoUpdateSchema`). O corpo vai direto ao
   `prisma.plano.create/update` (`...data`): campo errado dá 500, e qualquer coluna pode
   ser gravada (`deletedAt`, `createdBy`, `id`). Restrito ao administrador da plataforma,
   mas sem os padrões do Zod (`ativo`, `limiteEmpresas`) e sem as mensagens de validação.
-- 🟡 **Valores pela metade.** `listPlanos`/`getPlano` convertem `valorMensal` e
+- ✅ **Corrigido em 9dd58d3** (os quatro valores como número). Achado original:
+  🟡 **Valores pela metade.** `listPlanos`/`getPlano` convertem `valorMensal` e
   `valorAnual` para número, mas `valorTrimestral`/`valorSemestral` saem como `Decimal`
   (texto no JSON). A tela de assinatura usa os quatro.
-- 🟡 **Exclusão travada por assinaturas mortas.** A contagem inclui assinaturas de grupos
+- ✅ **Corrigido em 9dd58d3** (só contratos de grupos vivos). Achado original:
+  🟡 **Exclusão travada por assinaturas mortas.** A contagem inclui assinaturas de grupos
   excluídos e as antigas por empresa: um plano pode nunca mais poder ser excluído.
-- 🟡 **Código duplicado por corrida.** A unicidade é conferida fora da transação; o
+- ✅ **Corrigido em 9dd58d3** (código conferido inclusive entre excluídos). Achado original:
+  🟡 **Código duplicado por corrida.** A unicidade é conferida fora da transação; o
   `@unique` do banco segura, mas com erro 500 (P2002) em vez de 400. O `@unique` também
   vale para planos excluídos, então o código de um plano excluído não pode ser reusado
   (a conferência do serviço olha só os não excluídos e deixaria passar até o banco
@@ -5500,14 +5505,17 @@ Atualiza só os campos enviados (Zod exige ao menos um). Grava `empresa.situacao
 
 #### 3.6 Achados
 
-- 🟡 **Empresa nova num grupo existente fura o limite do plano.** Quando o administrador
+- ✅ **Corrigido em 202e7ff** (garantirVagaDeEmpresa e contrato do grupo). Achado original:
+  🟡 **Empresa nova num grupo existente fura o limite do plano.** Quando o administrador
   já tem conta, a empresa entra no grupo dele **sem `garantirVagaDeEmpresa`**, que o
   módulo `empresas` e o `grupos-economicos` chamam. O grupo passa do `limiteEmpresas`
   contratado.
-- 🟡 **Empresa nova ignora a assinatura do grupo.** Nasce com a situação e o limite de
+- ✅ **Corrigido em 202e7ff** (situação e limite do contrato). Achado original:
+  🟡 **Empresa nova ignora a assinatura do grupo.** Nasce com a situação e o limite de
   usuários do payload (padrão `teste`, sem limite), mesmo que o grupo tenha contrato
   `ativa` com limite; só a próxima alteração da assinatura alinha.
-- 🟡 **Duas fontes para a situação da empresa.** `alterarSituacao` muda a empresa
+- ✅ **Corrigido em 766cfcc** (a assinatura só propaga o que mudou). Achado original:
+  🟡 **Duas fontes para a situação da empresa.** `alterarSituacao` muda a empresa
   direto; `assinaturas` sobrescreve todas as empresas do grupo a cada alteração do
   contrato. Uma suspensão feita aqui some quando alguém muda o dia de vencimento lá (e o
   inverso).
@@ -5515,9 +5523,11 @@ Atualiza só os campos enviados (Zod exige ao menos um). Grava `empresa.situacao
   conta: um vendedor de uma empresa do grupo, vinculado como administrador de outra,
   passa a administrar **todas** as empresas do grupo. Está nos comentários, mas a tela
   fala em "administrar esta empresa".
-- 🟡 **Desvincular remove qualquer vínculo**, não só de administrador: a rota confere
+- ✅ **Corrigido em 202e7ff** (só administrador, com trava). Achado original:
+  🟡 **Desvincular remove qualquer vínculo**, não só de administrador: a rota confere
   que há mais de um administrador, mas não que o `usuarioId` alvo é um deles.
-- 🟡 **Revogação concorrente.** "Não revogar o último" conta os administradores fora da
+- ✅ **Corrigido em 202e7ff** (contagem dentro da transação, com trava). Achado original:
+  🟡 **Revogação concorrente.** "Não revogar o último" conta os administradores fora da
   transação; dois administradores revogando um ao outro ao mesmo tempo podem zerar a
   lista (saída só por UPDATE no banco).
 - 🟡 **Senha provisória sem a política de senha** (só 8–72 caracteres pelo Zod).
@@ -5610,10 +5620,12 @@ Constantes exportadas: `ARMAZEM_PADRAO`, `TABELA_PRECO_PADRAO`, `TABELA_PRECO_CA
   mantido (a regra "senha em branco mantém" olha o tipo **atual**) e passa a sair em
   texto puro no `GET`. Quem tem `parametros.editar` lê a credencial que a API promete
   nunca devolver.
-- 🟡 **A chave pode ser renomeada** pelo `PATCH` (`parametro` está no parcial), sem
+- ✅ **Corrigido em 7acadee** (chave fixa). Achado original:
+  🟡 **A chave pode ser renomeada** pelo `PATCH` (`parametro` está no parcial), sem
   conferir duplicidade (o `@@unique` do banco devolve 500) e sem aviso de que o código
   procura a chave pelo nome: renomear `SMTP_SENHA` desliga o e-mail em silêncio.
-- 🟡 **Recriar depois de excluir dá 500.** O `@@unique([empresaId, parametro])` inclui as
+- ✅ **Corrigido em 7acadee** (reativa a linha). Achado original:
+  🟡 **Recriar depois de excluir dá 500.** O `@@unique([empresaId, parametro])` inclui as
   linhas excluídas, mas o `create` só confere as não excluídas.
 - ✅ **Corrigido em 9b6277d** (`PARAMETROS_CRYPTO_KEY`, cifragem dos existentes na subida). Achado original:
   🟡 **Segredos sem cifra.** `SMTP_SENHA` e `SMS_TOKEN` ficam em texto puro em
@@ -5832,7 +5844,8 @@ A senha atual continua valendo até o link ser usado.
   🟡 **Resposta igual, tempo diferente.** A resposta é sempre `{ok: true}`, mas com conta
   existente o servidor grava, monta e envia o e-mail antes de responder; a diferença de
   tempo revela quem tem conta (enumeração por tempo).
-- 🟡 **Throttle só por IP.** Rotação de IP permite encher a caixa de uma pessoa; não há
+- ✅ **Corrigido em 0dacf4a** (3 links por conta por hora). Achado original:
+  🟡 **Throttle só por IP.** Rotação de IP permite encher a caixa de uma pessoa; não há
   limite por conta (cada pedido invalida o anterior, mas manda outro e-mail).
 - 🟡 **O link vai na query string** (`?token=`): fica no histórico do navegador e pode
   vazar por `Referer` se a página de redefinição carregar recurso externo.
