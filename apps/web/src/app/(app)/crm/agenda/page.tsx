@@ -46,6 +46,8 @@ import { AlertTriangle, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
 type TipoFiltro = "todos" | TipoAtividade;
 type Visao = "mes" | "semana" | "dia";
+/** Computador: o que fazer com os orçamentos na agenda. */
+type OrcamentosModo = "todos" | "abertos" | "nenhum";
 type AgendaItem =
   | { kind: "atividade"; id: string; data: Atividade }
   | { kind: "orcamento"; id: string; data: Orcamento };
@@ -90,6 +92,14 @@ const estaVencida = (a: Atividade) =>
  * enviado), dentro da validade e ainda não faturado. Aprovado/recusado já
  * tiveram desfecho; vencido não há mais o que retomar.
  */
+/**
+ * O dia do retorno. Retorno antigo é só uma data (meia-noite UTC), e o dia é o
+ * do próprio texto; o novo tem hora e vale o dia local de quem olha.
+ */
+function diaDoRetorno(iso: string) {
+  return iso.endsWith("T00:00:00.000Z") ? iso.slice(0, 10) : toKey(new Date(iso));
+}
+
 function orcamentoAgendado(o: Orcamento, hojeKey: string) {
   if (o.status !== "rascunho" && o.status !== "enviado") return false;
   if (o.situacaoErp === "faturado" || o.situacaoErp === "faturado_parcial") return false;
@@ -120,6 +130,7 @@ export default function AgendaPage() {
     urlFiltros.texto("vendedorId"),
   );
   const [tipo, setTipo] = useState<TipoFiltro>("todos");
+  const [orcamentosModo, setOrcamentosModo] = useState<OrcamentosModo>("todos");
   const [somentePendentes, setSomentePendentes] = useState(false);
   // No celular o mês é um mapa de pontos e o detalhe é o dia escolhido.
   const diaSelecionado = ancora;
@@ -190,7 +201,11 @@ export default function AgendaPage() {
         data: a,
       });
     }
+    const hojeKey = toKey(new Date());
     for (const o of orcamentosQuery.data?.data ?? []) {
+      // Vencido e faturado só entram se o filtro deixar (no celular, nunca).
+      if (orcamentosModo === "nenhum") continue;
+      if (orcamentosModo === "abertos" && !orcamentoAgendado(o, hojeKey)) continue;
       add(toKey(new Date(o.createdAt)), {
         kind: "orcamento",
         id: o.id,
@@ -198,7 +213,7 @@ export default function AgendaPage() {
       });
     }
     return mapa;
-  }, [atividadesQuery.data, orcamentosQuery.data]);
+  }, [atividadesQuery.data, orcamentosQuery.data, orcamentosModo]);
 
   // O que o celular mostra: **agendamentos**. Atividade ainda por fazer e
   // orçamento com retorno marcado que segue de pé. Concluída, orçamento vencido
@@ -228,9 +243,7 @@ export default function AgendaPage() {
       for (const o of orcamentosQuery.data?.data ?? []) {
         if (!o.dataRetorno || comAtividade.has(o.id)) continue;
         if (!orcamentoAgendado(o, hojeKey)) continue;
-        // dataRetorno é uma data, sem hora: o dia é o do próprio texto, para o
-        // fuso não empurrar o retorno para o dia anterior.
-        add(o.dataRetorno.slice(0, 10), { kind: "orcamento", id: o.id, data: o });
+        add(diaDoRetorno(o.dataRetorno), { kind: "orcamento", id: o.id, data: o });
       }
     }
     return mapa;
@@ -260,10 +273,11 @@ export default function AgendaPage() {
       ? `${a.getDate()} a ${b.getDate()} de ${MESES[b.getMonth()]} de ${b.getFullYear()}`
       : `${a.getDate()} de ${MESES[a.getMonth()].slice(0, 3)} a ${b.getDate()} de ${MESES[b.getMonth()].slice(0, 3)} de ${b.getFullYear()}`;
 
-  const filtrosAtivos = tipo !== "todos" || !!vendedorId;
+  const filtrosAtivos = tipo !== "todos" || !!vendedorId || orcamentosModo !== "todos";
   const limparFiltros = () => {
     setTipo("todos");
     setVendedorId(undefined);
+    setOrcamentosModo("todos");
   };
 
   const onSelectItem = (item: AgendaItem) => {
@@ -293,6 +307,23 @@ export default function AgendaPage() {
                       {t.label}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <FieldLabel>Orçamentos</FieldLabel>
+              <Select
+                value={orcamentosModo}
+                onValueChange={(v) => setOrcamentosModo(v as OrcamentosModo)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos (inclusive vencidos e faturados)</SelectItem>
+                  <SelectItem value="abertos">Só abertos (sem vencidos nem faturados)</SelectItem>
+                  <SelectItem value="nenhum">Não mostrar orçamentos</SelectItem>
                 </SelectContent>
               </Select>
             </div>
