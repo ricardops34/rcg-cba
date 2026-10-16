@@ -5158,7 +5158,8 @@ registro). Manuais nunca são podados.
 
 #### 3.5 Achados
 
-- 🔴 **A poda conta os que falharam.** `podarAgendados` mantém os `manter` mais recentes
+- ✅ **Corrigido em fb73c46** (só os prontos contam; falhas anteriores ao pronto saem). Achado original:
+  🔴 **A poda conta os que falharam.** `podarAgendados` mantém os `manter` mais recentes
   entre `pronto` **e** `falhou`. Com `manter=4`, um pronto seguido de três falhas
   (gerados de hora em hora enquanto o problema persiste) apaga **todos os backups bons
   mais antigos**, ficando um só pronto. As falhas deveriam sair da conta ou ser podadas

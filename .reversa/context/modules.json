@@ -2308,7 +2308,7 @@
         }
       ],
       "gaps": [
-        "poda conta os falhos e pode apagar backups bons",
+        "CORRIGIDO em fb73c46: poda conta so os prontos",
         "nao existe restauracao",
         "CORRIGIDO em 4c52520: link do MinIO limitado ao exp",
         "pacote sem cifra",
