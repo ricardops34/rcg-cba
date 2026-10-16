@@ -101,8 +101,14 @@ async function bootstrap() {
     // arquivo é de antes da troca — segue para o estático do disco.
     const chave = chaveDoEndereco(caminho);
     if (!chave || !armazenamento().noS3(chave)) return next();
+    // O link do MinIO não pode durar mais que o nosso: o do backup vale 5 min,
+    // e o padrão de 1 h do armazenamento estendia o download da empresa
+    // inteira para quem pegasse o segundo link. Vale o que resta do `exp`.
+    const prazo = caminho.startsWith(PREFIXO_BACKUPS)
+      ? Math.max(1, Number(req.query?.exp) - Math.floor(Date.now() / 1000))
+      : undefined;
     armazenamento()
-      .linkTemporario(chave)
+      .linkTemporario(chave, prazo)
       .then((link) => (link ? res.redirect(302, link) : next()))
       .catch(() => res.status(502).end());
   });

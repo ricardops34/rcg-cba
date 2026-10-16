@@ -36,7 +36,11 @@ export class RecuperacaoSenhaController {
   @Post('esqueci')
   @HttpCode(200)
   esqueci(@Body() dto: EsqueciSenhaDto, @Req() req: Request) {
-    return this.service.pedir(dto, this.meta(req));
+    // Responde antes de procurar a conta: esperar o envio fazia a resposta de
+    // um e-mail cadastrado demorar mais que a de um não cadastrado, e o tempo
+    // revelava quem tem conta. `pedir` não lança — falha vai só para o log.
+    void this.service.pedir(dto, this.meta(req));
+    return { ok: true };
   }
 
   @ApiOperation({
