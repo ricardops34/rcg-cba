@@ -34,5 +34,5 @@ listados. Os de segurança mais graves já saíram antes, nesta mesma data:
 - [x] 7. Revogar administrador da plataforma: serializado, sem zerar a lista
 - [x] 8. Parâmetros: chave não renomeável; recriar a excluída reativa
 - [x] 9. "Esqueci minha senha": limite por conta
-- [ ] 10. Recompilar o `contracts` e conferir o `tsc`
+- [x] 10. Recompilar o `contracts` e conferir o `tsc`
 - [ ] 11. Validar a cifragem dos parâmetros no dev (recriar o container da API)

@@ -31,7 +31,11 @@ describe('RelatoriosService.estoqueCompra', () => {
         fn(tx),
       ),
     };
-    return { service: new RelatoriosService(prisma as never), prisma };
+    return {
+      // O estoqueCompra não lê parâmetros; o construtor pede o service desde fb22c6e.
+      service: new RelatoriosService(prisma as never, {} as never),
+      prisma,
+    };
   }
 
   const base = {
