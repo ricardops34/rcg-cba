@@ -20,6 +20,14 @@ export interface ResultadoMidiaOrfa {
   arquivosNaPasta: number;
   referenciados: number;
   recentesIgnorados: number;
+  /**
+   * Sem referência, mas na pasta de uma empresa cuja leitura não trouxe
+   * nenhuma referência (ou de uma empresa que não existe): não entram como
+   * órfãos. Ver `varrer`.
+   */
+  protegidos: number;
+  /** As pastas de empresa protegidas, para a tela mostrar. */
+  pastasProtegidas: string[];
   orfaos: number;
   bytesOrfaos: number;
   amostra: string[];
@@ -58,14 +66,29 @@ export class MidiaOrfaService {
     agora = Date.now(),
   ): Promise<ResultadoMidiaOrfa> {
     const naPasta = await this.arquivosDaPasta();
-    const referenciados = await this.referenciados();
+    const { referenciados, porEmpresa } = await this.referenciados();
 
     let recentesIgnorados = 0;
+    let protegidos = 0;
+    const pastasProtegidas = new Set<string>();
     const orfaos: { nome: string; bytes: number }[] = [];
     for (const arquivo of naPasta) {
       if (referenciados.has(arquivo.nome)) continue;
       if (agora - arquivo.modificadoEm < IDADE_MINIMA_MS) {
         recentesIgnorados += 1;
+        continue;
+      }
+      // Trava por empresa: a mídia desde 2026-10-13 fica em
+      // `whatsapp/<empresaId>/`. Se a leitura daquela empresa não trouxe
+      // nenhuma referência — o mesmo caso de RLS sem contexto da trava geral,
+      // só que numa empresa —, os arquivos dela não são órfãos confiáveis.
+      // Pasta de empresa que não existe fica também: não há como conferir.
+      const pasta = arquivo.nome.includes('/')
+        ? arquivo.nome.split('/')[0]
+        : null;
+      if (pasta !== null && !(porEmpresa.get(pasta)?.size ?? 0)) {
+        protegidos += 1;
+        pastasProtegidas.add(pasta);
         continue;
       }
       orfaos.push(arquivo);
@@ -99,6 +122,8 @@ export class MidiaOrfaService {
       arquivosNaPasta: naPasta.length,
       referenciados: referenciados.size,
       recentesIgnorados,
+      protegidos,
+      pastasProtegidas: [...pastasProtegidas].sort(),
       orfaos: orfaos.length,
       bytesOrfaos: orfaos.reduce((acc, o) => acc + o.bytes, 0),
       amostra: orfaos.slice(0, AMOSTRA).map((o) => o.nome),
@@ -125,7 +150,10 @@ export class MidiaOrfaService {
     );
 
     const nomes = new Set<string>();
+    const porEmpresa = new Map<string, Set<string>>();
     for (const { id } of empresas) {
+      const daEmpresa = new Set<string>();
+      porEmpresa.set(id, daEmpresa);
       // Em sequência: consulta paralela numa transação interativa não é
       // garantida pelo Prisma.
       const [mensagens, contatos] = await this.prisma.withTenant(
@@ -142,15 +170,16 @@ export class MidiaOrfaService {
             }),
           ] as const,
       );
-      for (const m of mensagens) {
-        const nome = arquivoDaMidia(m.arquivoUrl);
-        if (nome) nomes.add(nome);
-      }
-      for (const c of contatos) {
-        const nome = arquivoDaMidia(c.fotoUrl);
-        if (nome) nomes.add(nome);
+      for (const url of [
+        ...mensagens.map((m) => m.arquivoUrl),
+        ...contatos.map((c) => c.fotoUrl),
+      ]) {
+        const nome = arquivoDaMidia(url);
+        if (!nome) continue;
+        nomes.add(nome);
+        daEmpresa.add(nome);
       }
     }
-    return nomes;
+    return { referenciados: nomes, porEmpresa };
   }
 }

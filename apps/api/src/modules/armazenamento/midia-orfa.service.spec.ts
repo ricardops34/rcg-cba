@@ -36,22 +36,35 @@ async function naPasta() {
   ].sort();
 }
 
-function montar(mensagens: string[], fotos: string[]) {
+type Referencias = Record<string, { mensagens: string[]; fotos: string[] }>;
+
+/** O que cada empresa referencia; a leitura é filtrada pelo `empresaId`. */
+function montarPorEmpresa(refs: Referencias) {
+  const daEmpresa = (where: { empresaId: string }) =>
+    refs[where.empresaId] ?? { mensagens: [], fotos: [] };
   const tx = {
-    empresa: { findMany: jest.fn().mockResolvedValue([{ id: 'e1' }]) },
-    whatsappMensagem: {
+    empresa: {
       findMany: jest
         .fn()
-        .mockResolvedValue(
-          mensagens.map((n) => ({ arquivoUrl: `/uploads/whatsapp/${n}` })),
+        .mockResolvedValue(Object.keys(refs).map((id) => ({ id }))),
+    },
+    whatsappMensagem: {
+      findMany: jest.fn(({ where }: { where: { empresaId: string } }) =>
+        Promise.resolve(
+          daEmpresa(where).mensagens.map((n) => ({
+            arquivoUrl: `/uploads/whatsapp/${n}`,
+          })),
         ),
+      ),
     },
     whatsappContato: {
-      findMany: jest
-        .fn()
-        .mockResolvedValue(
-          fotos.map((n) => ({ fotoUrl: `/uploads/whatsapp/${n}` })),
+      findMany: jest.fn(({ where }: { where: { empresaId: string } }) =>
+        Promise.resolve(
+          daEmpresa(where).fotos.map((n) => ({
+            fotoUrl: `/uploads/whatsapp/${n}`,
+          })),
         ),
+      ),
     },
   };
   const prisma = {
@@ -62,6 +75,10 @@ function montar(mensagens: string[], fotos: string[]) {
   service.armazenamento = new Armazenamento({ raizDisco: RAIZ, pastasS3: [] });
   return { service, prisma };
 }
+
+/** Tudo referenciado pela `emp-1`, dona da pasta `whatsapp/emp-1/`. */
+const montar = (mensagens: string[], fotos: string[]) =>
+  montarPorEmpresa({ 'emp-1': { mensagens, fotos } });
 
 describe('MidiaOrfaService', () => {
   const agora = Date.now();
@@ -95,7 +112,43 @@ describe('MidiaOrfaService', () => {
     });
     expect(await naPasta()).toEqual(Object.values(ARQ).sort());
     // Mensagens e contatos lidos dentro do contexto da empresa (RLS).
-    expect(prisma.withTenant).toHaveBeenCalledWith('e1', expect.any(Function));
+    expect(prisma.withTenant).toHaveBeenCalledWith(
+      'emp-1',
+      expect.any(Function),
+    );
+  });
+
+  it('não apaga a pasta de uma empresa cuja leitura voltou vazia, nem a de empresa desconhecida', async () => {
+    const antigo = new Date(agora - 2 * DIA);
+    for (const pasta of ['emp-2', 'emp-x']) {
+      await mkdir(join(RAIZ, 'whatsapp', pasta), { recursive: true });
+      const caminho = join(RAIZ, 'whatsapp', pasta, 'midia.jpg');
+      await writeFile(caminho, 'x');
+      await utimes(caminho, antigo, antigo);
+    }
+    // A emp-2 existe, mas a leitura dela não trouxe nada (RLS sem contexto,
+    // por exemplo); as outras empresas leram normalmente.
+    const { service } = montarPorEmpresa({
+      'emp-1': {
+        mensagens: [ARQ.daMensagem, ARQ.daMensagemNaEmpresa],
+        fotos: [ARQ.daFoto],
+      },
+      'emp-2': { mensagens: [], fotos: [] },
+    });
+
+    const r = await service.varrer(true, agora);
+
+    expect(r).toMatchObject({
+      protegidos: 2,
+      pastasProtegidas: ['emp-2', 'emp-x'],
+    });
+    expect(r.amostra.sort()).toEqual([ARQ.orfaoNaEmpresa, ARQ.orfao].sort());
+    expect(await readdir(join(RAIZ, 'whatsapp', 'emp-2'))).toEqual([
+      'midia.jpg',
+    ]);
+    expect(await readdir(join(RAIZ, 'whatsapp', 'emp-x'))).toEqual([
+      'midia.jpg',
+    ]);
   });
 
   it('apaga os órfãos e deixa os referenciados e o recente', async () => {

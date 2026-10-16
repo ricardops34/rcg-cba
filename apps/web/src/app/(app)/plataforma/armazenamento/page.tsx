@@ -21,6 +21,8 @@ interface ResultadoMidiaOrfa {
   arquivosNaPasta: number;
   referenciados: number;
   recentesIgnorados: number;
+  protegidos: number;
+  pastasProtegidas: string[];
   orfaos: number;
   bytesOrfaos: number;
   amostra: string[];
@@ -236,6 +238,14 @@ function MidiaOrfa() {
               <p className="text-xs text-muted-foreground">
                 {numero(resultado.recentesIgnorados)} arquivos sem uso com menos de 24 h ficaram de
                 fora.
+              </p>
+            )}
+            {resultado.protegidos > 0 && (
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                {numero(resultado.protegidos)} arquivos sem uso ficaram de fora por segurança: estão
+                na pasta de uma empresa cuja leitura não trouxe nenhum arquivo em uso, ou de uma
+                empresa que não existe ({resultado.pastasProtegidas.join(", ")}). Confira essas
+                pastas antes de apagar à mão.
               </p>
             )}
             {resultado.amostra.length > 0 && (
