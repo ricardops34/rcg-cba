@@ -225,7 +225,7 @@ export function NovaConversaDialog({
           </TabsContent>
 
           <TabsContent value="cliente" className="space-y-3">
-            <ClienteCombobox value={clienteId} onChange={setClienteId} />
+            <ClienteCombobox value={clienteId} onChange={setClienteId} paraNovaConversa />
             <Input
               placeholder="Número com DDD (opcional)"
               inputMode="numeric"

@@ -28,6 +28,7 @@ export function ClienteCombobox({
   disabled = false,
   vendedorId,
   conversaId,
+  paraNovaConversa,
 }: {
   value: string | null;
   onChange: (id: string | null) => void;
@@ -48,15 +49,22 @@ export function ClienteCombobox({
    * de outras carteiras"). Tem precedência sobre `vendedorId`.
    */
   conversaId?: string;
+  /** "Nova conversa": a lista vem do atendimento, com a mesma regra de carteira do vínculo. */
+  paraNovaConversa?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const urlVinculaveis = conversaId
+    ? `/whatsapp/conversas/${conversaId}/clientes-vinculaveis`
+    : paraNovaConversa
+      ? "/whatsapp/clientes-vinculaveis"
+      : null;
 
   const { data } = useQuery({
-    queryKey: ["clientes", "combobox", search, vendedorId, conversaId],
+    queryKey: ["clientes", "combobox", search, vendedorId, conversaId, paraNovaConversa],
     queryFn: () =>
-      conversaId
-        ? apiFetch<{ data: Cliente[] }>(`/whatsapp/conversas/${conversaId}/clientes-vinculaveis`, {
+      urlVinculaveis
+        ? apiFetch<{ data: Cliente[] }>(urlVinculaveis, {
             query: { search: search || undefined },
           })
         : apiFetch<{ data: Cliente[] }>("/clientes", {
@@ -74,10 +82,10 @@ export function ClienteCombobox({
   // Mantém o rótulo do valor selecionado mesmo quando ele não está na página
   // atual de resultados da busca.
   const selecionadoQuery = useQuery({
-    queryKey: ["clientes", value, conversaId],
+    queryKey: ["clientes", value, conversaId, paraNovaConversa],
     queryFn: async () => {
-      if (!conversaId) return apiFetch<Cliente>(`/clientes/${value}`);
-      const r = await apiFetch<{ data: Cliente[] }>(`/whatsapp/conversas/${conversaId}/clientes-vinculaveis`, {
+      if (!urlVinculaveis) return apiFetch<Cliente>(`/clientes/${value}`);
+      const r = await apiFetch<{ data: Cliente[] }>(urlVinculaveis, {
         query: { id: value ?? undefined },
       });
       return r.data[0] ?? null;

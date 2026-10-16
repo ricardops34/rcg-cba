@@ -836,6 +836,25 @@ export class WhatsappController {
   }
 
   @ApiOperation({
+    summary: 'Clientes que o usuário pode escolher ao começar uma conversa',
+    description:
+      'Toda a empresa quando o vendedor tem "atende clientes de outras carteiras"; senão, o escopo de ' +
+      'carteira de sempre. Requer whatsapp-conversas.cadastrar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Get('clientes-vinculaveis')
+  clientesNovaConversa(
+    @Query('search') search: string | undefined,
+    @Query('id') clienteId: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversas.clientesParaNovaConversa(user.empresaAtivaId, user, {
+      search,
+      id: clienteId,
+    });
+  }
+
+  @ApiOperation({
     summary: 'Clientes que a conversa pode vincular',
     description:
       'Busca para a tela de vínculo: a carteira do vendedor da conversa, ou toda a empresa quando ele ' +

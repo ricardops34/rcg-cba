@@ -149,42 +149,80 @@ export class WhatsappConversasService {
         user,
         conversaId,
       );
-      const base = {
-        empresaId,
-        deletedAt: null,
-        ...(todaEmpresa ? {} : { vendedorId }),
-      };
-      const select = {
-        id: true,
-        razaoSocial: true,
-        nomeFantasia: true,
-        codigoErp: true,
-      };
-      // O cliente já escolhido, para a tela mostrar o nome mesmo fora da página.
-      if (busca.id) {
-        const cliente = await tx.cliente.findFirst({
-          where: { ...base, id: busca.id },
-          select,
-        });
-        return { data: cliente ? [cliente] : [] };
-      }
-      const data = await tx.cliente.findMany({
-        where: {
-          ...base,
-          ativo: true,
-          ...filtroBuscaTermos(busca.search, [
-            'razaoSocial',
-            'nomeFantasia',
-            'codigoErp',
-            'cnpjCpf',
-          ]),
-        },
-        select,
-        orderBy: { razaoSocial: 'asc' },
-        take: 50,
-      });
-      return { data };
+      return this.buscarClientes(
+        tx,
+        { empresaId, deletedAt: null, ...(todaEmpresa ? {} : { vendedorId }) },
+        busca,
+      );
     });
+  }
+
+  /**
+   * Clientes que o usuário pode escolher ao começar uma conversa: a empresa
+   * toda quando o vendedor dele tem `atendeOutrasCarteiras`; senão, o escopo
+   * de carteira de sempre.
+   */
+  async clientesParaNovaConversa(
+    empresaId: string,
+    user: AuthenticatedUser,
+    busca: { search?: string; id?: string },
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const vendedor = await tx.vendedor.findFirst({
+        where: { usuarioId: user.id, empresaId, deletedAt: null },
+        select: { id: true },
+      });
+      const todaEmpresa = await podeAtenderOutraCarteira(
+        tx,
+        empresaId,
+        vendedor?.id ?? null,
+      );
+      const escopo = todaEmpresa
+        ? null
+        : await resolverEscopoVendedores(tx, empresaId, user);
+      return this.buscarClientes(
+        tx,
+        { empresaId, deletedAt: null, ...combinarFiltroVendedor(escopo) },
+        busca,
+      );
+    });
+  }
+
+  private async buscarClientes(
+    tx: TenantTx,
+    base: Prisma.ClienteWhereInput,
+    busca: { search?: string; id?: string },
+  ) {
+    const select = {
+      id: true,
+      razaoSocial: true,
+      nomeFantasia: true,
+      codigoErp: true,
+    };
+    // O cliente já escolhido, para a tela mostrar o nome mesmo fora da página.
+    if (busca.id) {
+      const cliente = await tx.cliente.findFirst({
+        where: { ...base, id: busca.id },
+        select,
+      });
+      return { data: cliente ? [cliente] : [] };
+    }
+    const data = await tx.cliente.findMany({
+      where: {
+        ...base,
+        ativo: true,
+        ...filtroBuscaTermos(busca.search, [
+          'razaoSocial',
+          'nomeFantasia',
+          'codigoErp',
+          'cnpjCpf',
+        ]),
+      },
+      select,
+      orderBy: { razaoSocial: 'asc' },
+      take: 50,
+    });
+    return { data };
   }
 
   private async exigirClienteVinculavel(
@@ -3179,10 +3217,19 @@ export class WhatsappConversasService {
       let pessoa: { id: string; celular: string | null } | null = null;
 
       if (clienteId) {
-        const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+        // Com "atende clientes de outras carteiras", qualquer cliente da empresa.
+        const todaEmpresa = await podeAtenderOutraCarteira(
+          tx,
+          empresaId,
+          vendedor.id,
+        );
+        const escopo = todaEmpresa
+          ? null
+          : await resolverEscopoVendedores(tx, empresaId, user);
         const cliente = await tx.cliente.findFirst({
           where: {
             id: clienteId,
+            empresaId,
             deletedAt: null,
             ...combinarFiltroVendedor(escopo),
           },
