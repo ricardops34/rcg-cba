@@ -7,6 +7,21 @@
 > avisa o vendedor na plataforma e inicia uma conversa por WhatsApp.
 > Todos os agendamentos se registram em **Atendimentos** e **Agenda**, e podem ser **alterados ou cancelados antes do envio**.
 
+## ⚠ Perguntas em aberto — responder aqui
+
+Preencha a coluna **Resposta** (ou me diga no chat que eu preencho). As propostas são minhas; basta concordar ou corrigir.
+
+| # | Pergunta | Proposta | Resposta |
+|---|----------|----------|----------|
+| D3 | Quem recebe o aviso? | O vendedor dono da conversa; supervisor/gerente só enxergam na agenda | _assumido, não confirmado_ |
+| R1 | Quem gera? | O vendedor para si; supervisor/gerente para a equipe (dentro do escopo) | _pendente_ |
+| R2 | Critérios de escolha dos clientes | Dias sem comprar, título vencido, positivação do mês, carteira/segmento, sem atendimento há N dias, ordenação e limite (N clientes por dia) | _pendente_ |
+| R3 | Parâmetros do roteiro | Dias da semana, horário inicial e final de cada dia, **intervalo entre conversas** (ex.: 30 min), pausa de almoço, respeitar feriados | _pendente_ |
+| R4 | Cliente sem conversa de WhatsApp ainda | Cria a conversa (precisa de telefone/contato); sem contato, fica fora e aparece como "não agendado" | _pendente_ |
+| R5 | Prévia antes de gravar | Sim: lista editável (tirar cliente, mudar horário) e só então **Gerar** | _pendente_ |
+| R6 | Onde fica a tela | Em Comercial › Atendimento (botão "Roteiro da semana") ou rotina própria | _pendente_ |
+| R7 | Regerar a mesma semana | Substituir ou acrescentar? Proposta: oferecer cancelar o roteiro anterior ainda não iniciado | _pendente_ |
+
 ## 1. O que já existe (verificado no código em 2026-10-16)
 
 | Recurso | Situação hoje | Onde |
@@ -56,7 +71,7 @@
 |---|---|---|---|
 | D1 | Na hora do atendimento agendado, o que acontece com a conversa? | Avisa o vendedor e **abre a conversa pronta, sem enviar nada** — quem decide o que dizer é o vendedor | **Aprovado (2026-10-16)** |
 | D2 | O que se pode alterar numa mensagem agendada? | Texto e data/hora, enquanto `pendente` | **Aprovado (2026-10-16)** |
-| D3 | Quem recebe o aviso? | O vendedor dono da conversa; supervisor/gerente só enxergam na agenda | _assumido, não confirmado_ |
+| D3 | Quem recebe o aviso? | _ver quadro no topo_ | _ver quadro no topo_ |
 
 ## 5. Fases e controle
 
@@ -84,15 +99,8 @@
 
 É a F2 em lote: cada linha do roteiro é um **atendimento agendado** (Atividade com `iniciarConversa`), e o que se agendou vale o aviso na hora e abrir a conversa. Falta decidir:
 
-| # | Pergunta | Proposta inicial | Resposta |
-|---|---|---|---|
-| R1 | Quem gera? | O vendedor para si; supervisor/gerente para a equipe (dentro do escopo) | _pendente_ |
-| R2 | Critérios de escolha dos clientes | Dias sem comprar, título vencido, positivação do mês, carteira/segmento, sem atendimento há N dias, ordenação e limite (N clientes por dia) | _pendente_ |
-| R3 | Parâmetros do roteiro | Dias da semana, horário inicial e final de cada dia, **intervalo entre conversas** (ex.: 30 min), pausa de almoço, respeitar feriados | _pendente_ |
-| R4 | Cliente sem conversa de WhatsApp ainda | Cria a conversa (precisa de telefone/contato); sem contato, fica fora e aparece como "não agendado" | _pendente_ |
-| R5 | Prévia antes de gravar | Sim: lista editável (tirar cliente, mudar horário) e só então **Gerar** | _pendente_ |
-| R6 | Onde fica a tela | Em Comercial › Atendimento (botão "Roteiro da semana") ou rotina própria | _pendente_ |
-| R7 | Regerar a mesma semana | Substituir ou acrescentar? Proposta: oferecer cancelar o roteiro anterior ainda não iniciado | _pendente_ |
+As perguntas desta fase (R1 a R7) estão no quadro **"Perguntas em aberto"**, no topo deste documento.
+
 
 ## 8. Registro
 
