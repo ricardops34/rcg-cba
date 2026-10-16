@@ -35,4 +35,17 @@ listados. Os de segurança mais graves já saíram antes, nesta mesma data:
 - [x] 8. Parâmetros: chave não renomeável; recriar a excluída reativa
 - [x] 9. "Esqueci minha senha": limite por conta
 - [x] 10. Recompilar o `contracts` e conferir o `tsc`
-- [ ] 11. Validar a cifragem dos parâmetros no dev (recriar o container da API)
+- [x] 11. Validar a cifragem dos parâmetros no dev (recriar o container da API)
+
+## Validação em dev (2026-10-16)
+
+- API recriada com `docker compose -f docker/docker-compose.dev.yml up -d --no-deps api`
+  (comando do runbook): subiu sem erro e sem o aviso de `PARAMETROS_CRYPTO_KEY`
+  ausente; a variável chegou ao container (44 caracteres).
+- A base de dev não tinha `SMTP_SENHA` nem `SMS_TOKEN` preenchidos: a varredura
+  da subida não tinha o que cifrar. Roundtrip `cifrarParametro`/`abrirParametro`
+  conferido dentro do container.
+- `POST /auth/senha/esqueci`: com e sem conta, 6–16 ms (sem a diferença de antes);
+  o limite por IP respondeu 429 na 6ª chamada. Dois links criados para a conta
+  usada no teste (e-mail retido no MailHog).
+- Suíte da API: 118 suítes, 832 testes passando; `tsc` da API limpo.
