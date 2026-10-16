@@ -3,18 +3,22 @@ import { CrudHeader } from "@/components/crud/crud-header";
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type {
-  Atividade,
-  Orcamento,
-  TipoAtividade,
-} from "@plataforma/contracts";
+import type { Atividade, Orcamento } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
 import { useFeriadosAgenda } from "@/hooks/use-feriados-agenda";
 import {
   useVendedoresEscopo,
   vendedorFiltroLabel,
 } from "@/hooks/use-vendedores-escopo";
-import { TIPOS, TIPO_COR, TIPO_LABEL } from "@/components/crud/atividade-tipo";
+import { TIPO_COR } from "@/components/crud/atividade-tipo";
+import {
+  CATEGORIAS_EVENTO,
+  ROTULO_EVENTO_UNITARIO,
+  categoriaDoEvento,
+  type CategoriaEvento,
+} from "@/components/crud/agenda-eventos";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import {
   STATUS_ORCAMENTO_COR,
   STATUS_ORCAMENTO_LABEL,
@@ -44,10 +48,7 @@ import { useFiltrosUrl } from "@/hooks/use-filtros-url";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { AlertTriangle, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
-type TipoFiltro = "todos" | TipoAtividade;
 type Visao = "mes" | "semana" | "dia";
-/** Computador: o que fazer com os orçamentos na agenda. */
-type OrcamentosModo = "todos" | "abertos" | "nenhum";
 type AgendaItem =
   | { kind: "atividade"; id: string; data: Atividade }
   | { kind: "orcamento"; id: string; data: Orcamento };
@@ -129,8 +130,15 @@ export default function AgendaPage() {
   const [vendedorId, setVendedorId] = useState<string | undefined>(() =>
     urlFiltros.texto("vendedorId"),
   );
-  const [tipo, setTipo] = useState<TipoFiltro>("todos");
-  const [orcamentosModo, setOrcamentosModo] = useState<OrcamentosModo>("todos");
+  // Natureza dos eventos que aparecem; começa com todas.
+  const [categorias, setCategorias] = useState<CategoriaEvento[]>(() =>
+    CATEGORIAS_EVENTO.map((c) => c.value),
+  );
+  // Computador: orçamento vencido ou faturado entra ou não. No celular nunca.
+  const [incluirEncerrados, setIncluirEncerrados] = useState(true);
+  const todasAsCategorias = categorias.length === CATEGORIAS_EVENTO.length;
+  const alternarCategoria = (c: CategoriaEvento, ligada: boolean) =>
+    setCategorias((atual) => (ligada ? [...atual, c] : atual.filter((x) => x !== c)));
   const [somentePendentes, setSomentePendentes] = useState(false);
   // No celular o mês é um mapa de pontos e o detalhe é o dia escolhido.
   const diaSelecionado = ancora;
@@ -166,7 +174,6 @@ export default function AgendaPage() {
     sortOrder: "asc",
     ...(vendedorId ? { vendedorId } : {}),
     ...(clienteId ? { clienteId } : {}),
-    ...(tipo !== "todos" ? { tipo } : {}),
     ...(somentePendentes || celular ? { concluida: false } : {}),
   });
 
@@ -195,25 +202,20 @@ export default function AgendaPage() {
     };
     for (const a of atividadesQuery.data?.data ?? []) {
       if (!a.dataVencimento) continue;
-      add(toKey(new Date(a.dataVencimento)), {
-        kind: "atividade",
-        id: a.id,
-        data: a,
-      });
+      const item: AgendaItem = { kind: "atividade", id: a.id, data: a };
+      if (!categorias.includes(categoriaDoEvento(item))) continue;
+      add(toKey(new Date(a.dataVencimento)), item);
     }
     const hojeKey = toKey(new Date());
     for (const o of orcamentosQuery.data?.data ?? []) {
+      const item: AgendaItem = { kind: "orcamento", id: o.id, data: o };
+      if (!categorias.includes("orcamento")) continue;
       // Vencido e faturado só entram se o filtro deixar (no celular, nunca).
-      if (orcamentosModo === "nenhum") continue;
-      if (orcamentosModo === "abertos" && !orcamentoAgendado(o, hojeKey)) continue;
-      add(toKey(new Date(o.createdAt)), {
-        kind: "orcamento",
-        id: o.id,
-        data: o,
-      });
+      if (!incluirEncerrados && !orcamentoAgendado(o, hojeKey)) continue;
+      add(toKey(new Date(o.createdAt)), item);
     }
     return mapa;
-  }, [atividadesQuery.data, orcamentosQuery.data, orcamentosModo]);
+  }, [atividadesQuery.data, orcamentosQuery.data, categorias, incluirEncerrados]);
 
   // O que o celular mostra: **agendamentos**. Atividade ainda por fazer e
   // orçamento com retorno marcado que segue de pé. Concluída, orçamento vencido
@@ -229,10 +231,12 @@ export default function AgendaPage() {
       (a) => !a.concluida && !!a.dataVencimento,
     );
     for (const a of pendentes) {
-      add(toKey(new Date(a.dataVencimento!)), { kind: "atividade", id: a.id, data: a });
+      const item: AgendaItem = { kind: "atividade", id: a.id, data: a };
+      if (!categorias.includes(categoriaDoEvento(item))) continue;
+      add(toKey(new Date(a.dataVencimento!)), item);
     }
 
-    if (celular) {
+    if (celular && categorias.includes("orcamento")) {
       const hojeKey = toKey(new Date());
       // O retorno do orçamento já gera uma atividade de ligação: se ela está
       // na lista, é ela que representa o retorno — mostrar os dois seria
@@ -247,7 +251,7 @@ export default function AgendaPage() {
       }
     }
     return mapa;
-  }, [atividadesQuery.data, orcamentosQuery.data, celular]);
+  }, [atividadesQuery.data, orcamentosQuery.data, celular, categorias]);
 
   const hoje = new Date();
   // A semana vai de domingo a sábado, como a grade do mês. No celular a
@@ -273,11 +277,11 @@ export default function AgendaPage() {
       ? `${a.getDate()} a ${b.getDate()} de ${MESES[b.getMonth()]} de ${b.getFullYear()}`
       : `${a.getDate()} de ${MESES[a.getMonth()].slice(0, 3)} a ${b.getDate()} de ${MESES[b.getMonth()].slice(0, 3)} de ${b.getFullYear()}`;
 
-  const filtrosAtivos = tipo !== "todos" || !!vendedorId || orcamentosModo !== "todos";
+  const filtrosAtivos = !todasAsCategorias || !incluirEncerrados || !!vendedorId;
   const limparFiltros = () => {
-    setTipo("todos");
+    setCategorias(CATEGORIAS_EVENTO.map((c) => c.value));
+    setIncluirEncerrados(true);
     setVendedorId(undefined);
-    setOrcamentosModo("todos");
   };
 
   const onSelectItem = (item: AgendaItem) => {
@@ -292,41 +296,44 @@ export default function AgendaPage() {
         actions={
           <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
             <div className="space-y-2">
-              <FieldLabel>Tipo</FieldLabel>
-              <Select
-                value={tipo}
-                onValueChange={(v) => setTipo(v as TipoFiltro)}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  {TIPOS.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center justify-between">
+                <FieldLabel>Eventos da agenda</FieldLabel>
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() =>
+                    setCategorias(todasAsCategorias ? [] : CATEGORIAS_EVENTO.map((c) => c.value))
+                  }
+                >
+                  {todasAsCategorias ? "Desmarcar todos" : "Marcar todos"}
+                </button>
+              </div>
+              <div className="space-y-1.5">
+                {CATEGORIAS_EVENTO.map((c) => (
+                  <label key={c.value} className="flex cursor-pointer items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={categorias.includes(c.value)}
+                      onCheckedChange={(v) => alternarCategoria(c.value, v === true)}
+                    />
+                    {c.label}
+                  </label>
+                ))}
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <FieldLabel>Orçamentos</FieldLabel>
-              <Select
-                value={orcamentosModo}
-                onValueChange={(v) => setOrcamentosModo(v as OrcamentosModo)}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos (inclusive vencidos e faturados)</SelectItem>
-                  <SelectItem value="abertos">Só abertos (sem vencidos nem faturados)</SelectItem>
-                  <SelectItem value="nenhum">Não mostrar orçamentos</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <label className="flex cursor-pointer items-start justify-between gap-3 text-sm">
+              <span>
+                Orçamentos vencidos e faturados
+                <span className="block text-xs text-muted-foreground">
+                  No celular nunca aparecem.
+                </span>
+              </span>
+              <Switch
+                checked={incluirEncerrados}
+                disabled={!categorias.includes("orcamento")}
+                onCheckedChange={setIncluirEncerrados}
+              />
+            </label>
 
             {mostrarFiltroVendedor && (
               <div className="space-y-2">
@@ -715,7 +722,7 @@ function DiaDetalhe({
             const concluida = item.kind === "atividade" && item.data.concluida;
             const detalhe =
               item.kind === "atividade"
-                ? [TIPO_LABEL[item.data.tipo], item.data.cliente?.razaoSocial]
+                ? [ROTULO_EVENTO_UNITARIO[categoriaDoEvento(item)], item.data.cliente?.razaoSocial]
                     .filter(Boolean)
                     .join(" · ")
                 : `Retorno do orçamento · ${STATUS_ORCAMENTO_LABEL[item.data.status]}`;

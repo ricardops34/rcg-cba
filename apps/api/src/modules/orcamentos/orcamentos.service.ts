@@ -1,5 +1,11 @@
 import { ajustarValidadeOrcamento } from './validade-orcamento';
 import { ajustarRetornoOrcamento } from './retorno-orcamento';
+import { diaLocal } from '../../common/horario/expediente';
+import type {
+  Prisma,
+  SituacaoErpOrcamento,
+  StatusOrcamento,
+} from '@prisma/client';
 import {
   ConflictException,
   Injectable,
@@ -297,6 +303,43 @@ export class OrcamentosService {
     });
   }
 
+  /**
+   * A situação do orçamento como o vendedor a enxerga, num filtro só:
+   * - **aberto:** rascunho ou enviado, dentro da validade, ainda não faturado;
+   * - **vencido:** expirado, ou aberto cuja validade já passou (a baixa de
+   *   `expirado` pode demorar um dia para rodar);
+   * - **faturado:** pedido faturado no ERP, total ou parcial.
+   *
+   * `situacaoErp` é nula até o ERP responder, e `NOT IN` descarta nulo no SQL —
+   * por isso o "não faturado" é escrito como "nulo OU fora da lista".
+   */
+  private filtroSituacao(
+    situacao: OrcamentoQuery['situacao'],
+  ): Prisma.OrcamentoWhereInput | null {
+    if (!situacao) return null;
+    const hoje = new Date(`${diaLocal(new Date())}T00:00:00.000Z`);
+    const faturados: SituacaoErpOrcamento[] = ['faturado', 'faturado_parcial'];
+    const abertos: StatusOrcamento[] = ['rascunho', 'enviado'];
+    if (situacao === 'faturado') return { situacaoErp: { in: faturados } };
+    if (situacao === 'vencido') {
+      return {
+        OR: [
+          { status: 'expirado' },
+          { status: { in: abertos }, dataValidade: { lt: hoje } },
+        ],
+      };
+    }
+    return {
+      AND: [
+        { status: { in: abertos } },
+        { OR: [{ dataValidade: null }, { dataValidade: { gte: hoje } }] },
+        {
+          OR: [{ situacaoErp: null }, { situacaoErp: { notIn: faturados } }],
+        },
+      ],
+    };
+  }
+
   findAll(
     empresaId: string,
     user: AuthenticatedUser,
@@ -310,6 +353,7 @@ export class OrcamentosService {
         ? null
         : await resolverEscopoVendedores(tx, empresaId, user);
       const numeroBuscado = query.search ? numeroDeBusca(query.search) : null;
+      const situacaoWhere = this.filtroSituacao(query.situacao);
       const where = {
         empresaId,
         deletedAt: null,
@@ -341,6 +385,15 @@ export class OrcamentosService {
               createdAt: {
                 ...(query.dataInicio ? { gte: query.dataInicio } : {}),
                 ...(query.dataFim ? { lte: query.dataFim } : {}),
+              },
+            }
+          : {}),
+        ...(situacaoWhere ? { AND: [situacaoWhere] } : {}),
+        ...(query.validadeInicio || query.validadeFim
+          ? {
+              dataValidade: {
+                ...(query.validadeInicio ? { gte: query.validadeInicio } : {}),
+                ...(query.validadeFim ? { lte: query.validadeFim } : {}),
               },
             }
           : {}),

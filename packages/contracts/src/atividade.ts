@@ -29,6 +29,12 @@ export const atividadeSchema = z.object({
   clienteId: z.string().uuid().nullable(),
   oportunidadeId: z.string().uuid().nullable(),
   orcamentoId: z.string().uuid().nullable(),
+  /** Conversa de WhatsApp de origem (mensagem ou atendimento agendados). */
+  conversaId: z.string().nullable().optional(),
+  /** Atendimento agendado: avisa o vendedor e abre a conversa na hora marcada. */
+  iniciarConversa: z.boolean().optional(),
+  /** Mensagem agendada: o sistema envia sozinho, não é tarefa do vendedor. */
+  automatica: z.boolean().optional(),
   vendedorId: z.string().uuid(),
   tipo: tipoAtividadeSchema,
   titulo: z.string(),

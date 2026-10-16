@@ -25,7 +25,7 @@ export function FiltersPopover({
           {active && <span className="absolute -top-1 -right-1 size-2 rounded-full bg-primary" />}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-72 p-4" align="end">
+      <PopoverContent className="max-h-[75dvh] w-72 overflow-y-auto p-4" align="end">
         <div className="space-y-3">
           {children}
           {active && (

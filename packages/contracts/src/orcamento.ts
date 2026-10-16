@@ -356,6 +356,21 @@ export const orcamentoQuerySchema = paginationQuerySchema.extend({
     .date()
     .optional()
     .describe("Filtra dataRetorno <= retornoFim (uso: agenda no celular)"),
+  validadeInicio: z.coerce
+    .date()
+    .optional()
+    .describe("Filtra dataValidade >= validadeInicio"),
+  validadeFim: z.coerce
+    .date()
+    .optional()
+    .describe("Filtra dataValidade <= validadeFim"),
+  /**
+   * Situação em um só filtro: **aberto** (rascunho ou enviado, dentro da
+   * validade e ainda não faturado), **vencido** (expirado, ou aberto com a
+   * validade já passada) e **faturado** (pedido faturado, total ou parcial, no
+   * ERP).
+   */
+  situacao: z.enum(["aberto", "vencido", "faturado"]).optional(),
 });
 export type OrcamentoQuery = z.infer<typeof orcamentoQuerySchema>;
 

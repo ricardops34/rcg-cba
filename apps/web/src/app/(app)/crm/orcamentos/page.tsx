@@ -36,6 +36,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -63,6 +64,14 @@ import {
 } from "lucide-react";
 
 type StatusFiltro = "todos" | StatusOrcamento;
+type SituacaoFiltro = "todas" | "aberto" | "vencido" | "faturado";
+
+/** Datas de um filtro de período (AAAA-MM-DD, como o campo de data entrega). */
+interface Periodo {
+  de: string;
+  ate: string;
+}
+const SEM_PERIODO: Periodo = { de: "", ate: "" };
 
 const moeda = (v: number) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -95,6 +104,10 @@ export default function OrcamentosPage() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [status_, setStatus] = useState<StatusFilterValue>("ativos");
   const [statusOrcamento, setStatusOrcamento] = useState<StatusFiltro>("todos");
+  const [situacao, setSituacao] = useState<SituacaoFiltro>("todas");
+  const [criado, setCriado] = useState<Periodo>(SEM_PERIODO);
+  const [validade, setValidade] = useState<Periodo>(SEM_PERIODO);
+  const [retorno, setRetorno] = useState<Periodo>(SEM_PERIODO);
   const [clienteId] = useState(() => urlFiltros.texto("clienteId"));
   const [vendedorId, setVendedorId] = useState<string | undefined>(() =>
     urlFiltros.texto("vendedorId"),
@@ -115,6 +128,14 @@ export default function OrcamentosPage() {
       sortOrder,
       ...(status_ !== "todos" ? { ativo: status_ === "ativos" } : {}),
       ...(statusOrcamento !== "todos" ? { status: statusOrcamento } : {}),
+      ...(situacao !== "todas" ? { situacao } : {}),
+      ...(criado.de ? { dataInicio: criado.de } : {}),
+      // O dia inteiro: "até 15/10" inclui o que foi criado durante o dia 15.
+      ...(criado.ate ? { dataFim: `${criado.ate}T23:59:59` } : {}),
+      ...(validade.de ? { validadeInicio: validade.de } : {}),
+      ...(validade.ate ? { validadeFim: validade.ate } : {}),
+      ...(retorno.de ? { retornoInicio: retorno.de } : {}),
+      ...(retorno.ate ? { retornoFim: retorno.ate } : {}),
       ...(clienteId ? { clienteId } : {}),
       ...(vendedorId ? { vendedorId } : {}),
     });
@@ -140,12 +161,52 @@ export default function OrcamentosPage() {
     }
   };
 
-  const filtrosAtivos = statusOrcamento !== "todos" || !!vendedorId;
+  const filtrosAtivos =
+    statusOrcamento !== "todos" ||
+    situacao !== "todas" ||
+    !!vendedorId ||
+    [criado, validade, retorno].some((p) => p.de || p.ate);
   const limparFiltros = () => {
     setStatusOrcamento("todos");
+    setSituacao("todas");
+    setCriado(SEM_PERIODO);
+    setValidade(SEM_PERIODO);
+    setRetorno(SEM_PERIODO);
     setVendedorId(undefined);
     setPage(1);
   };
+  /** Par de datas "de — até" de um filtro de período. */
+  const campoPeriodo = (
+    rotulo: string,
+    valor: Periodo,
+    alterar: (p: Periodo) => void,
+  ) => (
+    <div className="space-y-2">
+      <FieldLabel>{rotulo}</FieldLabel>
+      <div className="grid grid-cols-2 gap-2">
+        <Input
+          type="date"
+          aria-label={`${rotulo} — de`}
+          value={valor.de}
+          max={valor.ate || undefined}
+          onChange={(e) => {
+            alterar({ ...valor, de: e.target.value });
+            setPage(1);
+          }}
+        />
+        <Input
+          type="date"
+          aria-label={`${rotulo} — até`}
+          value={valor.ate}
+          min={valor.de || undefined}
+          onChange={(e) => {
+            alterar({ ...valor, ate: e.target.value });
+            setPage(1);
+          }}
+        />
+      </div>
+    </div>
+  );
 
   const menuAcoes = (o: Orcamento) => (
     <DropdownMenu>
@@ -278,6 +339,27 @@ export default function OrcamentosPage() {
           actions={
             <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
               <div className="space-y-2">
+                <FieldLabel>Situação</FieldLabel>
+                <Select
+                  value={situacao}
+                  onValueChange={(v) => {
+                    setSituacao(v as SituacaoFiltro);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todas">Todas</SelectItem>
+                    <SelectItem value="aberto">Abertos (dentro da validade)</SelectItem>
+                    <SelectItem value="vencido">Vencidos</SelectItem>
+                    <SelectItem value="faturado">Faturados</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
                 <FieldLabel>Status</FieldLabel>
                 <Select
                   value={statusOrcamento}
@@ -324,6 +406,10 @@ export default function OrcamentosPage() {
                   </Select>
                 </div>
               )}
+
+              {campoPeriodo("Criado entre", criado, setCriado)}
+              {campoPeriodo("Válido até entre", validade, setValidade)}
+              {campoPeriodo("Retorno entre", retorno, setRetorno)}
             </FiltersPopover>
           }
         />
