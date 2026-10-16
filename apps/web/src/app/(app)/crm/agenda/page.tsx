@@ -14,8 +14,11 @@ import {
   useVendedoresEscopo,
   vendedorFiltroLabel,
 } from "@/hooks/use-vendedores-escopo";
-import { TIPOS, TIPO_COR } from "@/components/crud/atividade-tipo";
-import { STATUS_ORCAMENTO_COR } from "@/components/crud/orcamento-status";
+import { TIPOS, TIPO_COR, TIPO_LABEL } from "@/components/crud/atividade-tipo";
+import {
+  STATUS_ORCAMENTO_COR,
+  STATUS_ORCAMENTO_LABEL,
+} from "@/components/crud/orcamento-status";
 import {
   QuickFilterButton,
   QuickFilterGroup,
@@ -37,7 +40,7 @@ import {
 } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFiltrosUrl } from "@/hooks/use-filtros-url";
-import { AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
 type TipoFiltro = "todos" | TipoAtividade;
 type AgendaItem =
@@ -92,6 +95,8 @@ export default function AgendaPage() {
   );
   const [tipo, setTipo] = useState<TipoFiltro>("todos");
   const [somentePendentes, setSomentePendentes] = useState(false);
+  // No celular o mês é um mapa de pontos e o detalhe é o dia escolhido.
+  const [diaSelecionado, setDiaSelecionado] = useState(() => new Date());
 
   const vendedoresEscopoQuery = useVendedoresEscopo();
   const feriadosQuery = useFeriadosAgenda();
@@ -245,24 +250,33 @@ export default function AgendaPage() {
           <Button
             variant="outline"
             size="icon"
-            onClick={() =>
-              setMesAtual((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))
-            }
+            aria-label="Mês anterior"
+            onClick={() => {
+              const novo = new Date(mesAtual.getFullYear(), mesAtual.getMonth() - 1, 1);
+              setMesAtual(novo);
+              setDiaSelecionado(novo);
+            }}
           >
             <ChevronLeft className="size-4" />
           </Button>
           <Button
             variant="outline"
-            onClick={() => setMesAtual(startOfMonth(new Date()))}
+            onClick={() => {
+              setMesAtual(startOfMonth(new Date()));
+              setDiaSelecionado(new Date());
+            }}
           >
             Hoje
           </Button>
           <Button
             variant="outline"
             size="icon"
-            onClick={() =>
-              setMesAtual((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))
-            }
+            aria-label="Próximo mês"
+            onClick={() => {
+              const novo = new Date(mesAtual.getFullYear(), mesAtual.getMonth() + 1, 1);
+              setMesAtual(novo);
+              setDiaSelecionado(novo);
+            }}
           >
             <ChevronRight className="size-4" />
           </Button>
@@ -281,12 +295,34 @@ export default function AgendaPage() {
         </QuickFilterGroup>
       </div>
 
-      <p className="text-xs text-muted-foreground sm:hidden">
-        Deslize o calendário para consultar todos os dias da semana.
-      </p>
+      {/* Celular: o mês vira um mapa de pontos e o detalhe é o dia escolhido,
+          em lista — a grade de 7 colunas legíveis não cabe em 390 px. */}
+      <div className="space-y-3 md:hidden">
+        <MesCompacto
+          dias={dias}
+          mesAtual={mesAtual}
+          hoje={hoje}
+          selecionado={diaSelecionado}
+          feriadosPorDia={feriadosPorDia}
+          porDia={porDia}
+          isLoading={isLoading}
+          onSelecionar={setDiaSelecionado}
+        />
+        <DiaDetalhe
+          dia={diaSelecionado}
+          feriado={feriadosPorDia.get(toKey(diaSelecionado))}
+          itens={porDia.get(toKey(diaSelecionado)) ?? []}
+          isLoading={isLoading}
+          onSelectItem={onSelectItem}
+          onNovo={() =>
+            router.push(`/crm/atividades/novo?data=${toKey(diaSelecionado)}`)
+          }
+        />
+      </div>
+
       <div
         data-tour="agenda-calendario"
-        className="overflow-x-auto rounded-lg border"
+        className="hidden overflow-x-auto rounded-lg border md:block"
       >
         <div className="grid min-w-[700px] grid-cols-7 gap-px overflow-hidden bg-border">
           {DIAS_SEMANA.map((d) => (
@@ -315,6 +351,190 @@ export default function AgendaPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** A hora marcada da atividade; vazio quando é de dia inteiro (00:00). */
+function horaDoItem(item: AgendaItem): string | null {
+  if (item.kind !== "atividade" || !item.data.dataVencimento) return null;
+  const d = new Date(item.data.dataVencimento);
+  if (Number.isNaN(d.getTime()) || (d.getHours() === 0 && d.getMinutes() === 0)) return null;
+  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+const corDoItem = (item: AgendaItem) =>
+  item.kind === "atividade" ? TIPO_COR[item.data.tipo] : STATUS_ORCAMENTO_COR[item.data.status];
+
+/** Mês em miniatura para o celular: número do dia e até 3 pontos coloridos. */
+function MesCompacto({
+  dias,
+  mesAtual,
+  hoje,
+  selecionado,
+  feriadosPorDia,
+  porDia,
+  isLoading,
+  onSelecionar,
+}: {
+  dias: Date[];
+  mesAtual: Date;
+  hoje: Date;
+  selecionado: Date;
+  feriadosPorDia: Map<string, string>;
+  porDia: Map<string, AgendaItem[]>;
+  isLoading: boolean;
+  onSelecionar: (d: Date) => void;
+}) {
+  return (
+    <div data-tour="agenda-calendario" className="overflow-hidden rounded-lg border">
+      <div className="grid grid-cols-7 gap-px bg-border">
+        {DIAS_SEMANA.map((d) => (
+          <div
+            key={d}
+            className="bg-muted py-1 text-center text-[11px] font-medium text-muted-foreground"
+          >
+            {d}
+          </div>
+        ))}
+        {dias.map((dia) => {
+          const chave = toKey(dia);
+          const itens = porDia.get(chave) ?? [];
+          const ehHoje = isSameDay(dia, hoje);
+          const ehSelecionado = isSameDay(dia, selecionado);
+          const feriado = feriadosPorDia.has(chave);
+          return (
+            <button
+              key={chave}
+              type="button"
+              onClick={() => onSelecionar(dia)}
+              aria-pressed={ehSelecionado}
+              aria-label={`${dia.getDate()} de ${MESES[dia.getMonth()]}, ${itens.length} ${itens.length === 1 ? "item" : "itens"}`}
+              className={`flex h-12 flex-col items-center justify-start gap-0.5 bg-background pt-1 text-xs transition-colors ${
+                dia.getMonth() === mesAtual.getMonth() ? "" : "text-muted-foreground/50"
+              } ${feriado ? "bg-amber-50 dark:bg-amber-950/40" : ""} ${
+                ehSelecionado ? "ring-2 ring-inset ring-primary" : ""
+              }`}
+            >
+              <span
+                className={`flex size-5 items-center justify-center rounded-full tabular-nums ${
+                  ehHoje ? "bg-primary font-medium text-primary-foreground" : ""
+                }`}
+              >
+                {dia.getDate()}
+              </span>
+              <span className="flex h-1.5 items-center gap-0.5">
+                {!isLoading &&
+                  itens.slice(0, 3).map((item) => (
+                    <span
+                      key={`${item.kind}-${item.id}`}
+                      className={`size-1.5 rounded-full ${corDoItem(item)}`}
+                    />
+                  ))}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** O dia escolhido no celular, item por item, com área de toque confortável. */
+function DiaDetalhe({
+  dia,
+  feriado,
+  itens,
+  isLoading,
+  onSelectItem,
+  onNovo,
+}: {
+  dia: Date;
+  feriado?: string;
+  itens: AgendaItem[];
+  isLoading: boolean;
+  onSelectItem: (item: AgendaItem) => void;
+  onNovo: () => void;
+}) {
+  // Com hora primeiro, em ordem; o resto (dia inteiro, orçamentos) depois.
+  const ordenados = [...itens].sort((a, b) => {
+    const ha = horaDoItem(a);
+    const hb = horaDoItem(b);
+    if (ha && hb) return ha.localeCompare(hb);
+    if (ha) return -1;
+    if (hb) return 1;
+    return 0;
+  });
+
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold capitalize">
+          {dia.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}
+        </h2>
+        <Button size="sm" variant="outline" onClick={onNovo}>
+          <Plus className="size-4" />
+          Neste dia
+        </Button>
+      </div>
+      {feriado ? (
+        <p className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          {feriado}
+        </p>
+      ) : null}
+
+      {isLoading ? (
+        <Skeleton className="h-16 w-full" />
+      ) : ordenados.length === 0 ? (
+        <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+          Nada marcado para este dia.
+        </p>
+      ) : (
+        <ul className="divide-y rounded-lg border bg-card">
+          {ordenados.map((item) => {
+            const hora = horaDoItem(item);
+            const vencida = item.kind === "atividade" && estaVencida(item.data);
+            const concluida = item.kind === "atividade" && item.data.concluida;
+            const detalhe =
+              item.kind === "atividade"
+                ? [TIPO_LABEL[item.data.tipo], item.data.cliente?.razaoSocial]
+                    .filter(Boolean)
+                    .join(" · ")
+                : `Orçamento · ${STATUS_ORCAMENTO_LABEL[item.data.status]}`;
+            return (
+              <li key={`${item.kind}-${item.id}`}>
+                <button
+                  type="button"
+                  onClick={() => onSelectItem(item)}
+                  className="flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted/50"
+                >
+                  <span className={`size-2.5 shrink-0 rounded-full ${corDoItem(item)}`} />
+                  <span className="w-11 shrink-0 text-xs tabular-nums text-muted-foreground">
+                    {hora ?? "Dia"}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span
+                      className={`block break-words text-sm ${
+                        concluida
+                          ? "text-muted-foreground line-through"
+                          : vencida
+                            ? "text-destructive"
+                            : ""
+                      }`}
+                    >
+                      {item.data.titulo}
+                    </span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {detalhe}
+                    </span>
+                  </span>
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground/50" />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
 

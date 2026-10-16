@@ -138,4 +138,5 @@ Colunas: *Tipo* = como a tela é construída (lista usa EntityTable; consulta e 
 
 | Data | O quê |
 |------|-------|
+| 2026-10-16 | Agenda (/crm/agenda) adaptada ao celular. |
 | 2026-10-16 | Dashboards Gerencial e Comercial; interruptor Celular por empresa (migration `20261016120000`); diálogos do WhatsApp; tela inicial; bloqueio de rolagem lateral. Levantamento criado. |
