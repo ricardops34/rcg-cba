@@ -7,20 +7,9 @@
 > avisa o vendedor na plataforma e inicia uma conversa por WhatsApp.
 > Todos os agendamentos se registram em **Atendimentos** e **Agenda**, e podem ser **alterados ou cancelados antes do envio**.
 
-## ⚠ Perguntas em aberto — responder aqui
+## ⚠ Perguntas em aberto
 
-Preencha a coluna **Resposta** (ou me diga no chat que eu preencho). As propostas são minhas; basta concordar ou corrigir.
-
-| # | Pergunta | Proposta | Resposta |
-|---|----------|----------|----------|
-| D3 | Quem recebe o aviso? | O vendedor dono da conversa; supervisor/gerente só enxergam na agenda | _assumido, não confirmado_ |
-| R1 | Quem gera? | O vendedor para si; supervisor/gerente para a equipe (dentro do escopo) | _pendente_ |
-| R2 | Critérios de escolha dos clientes | Dias sem comprar, título vencido, positivação do mês, carteira/segmento, sem atendimento há N dias, ordenação e limite (N clientes por dia) | _pendente_ |
-| R3 | Parâmetros do roteiro | Dias da semana, horário inicial e final de cada dia, **intervalo entre conversas** (ex.: 30 min), pausa de almoço, respeitar feriados | _pendente_ |
-| R4 | Cliente sem conversa de WhatsApp ainda | Cria a conversa (precisa de telefone/contato); sem contato, fica fora e aparece como "não agendado" | _pendente_ |
-| R5 | Prévia antes de gravar | Sim: lista editável (tirar cliente, mudar horário) e só então **Gerar** | _pendente_ |
-| R6 | Onde fica a tela | Em Comercial › Atendimento (botão "Roteiro da semana") ou rotina própria | _pendente_ |
-| R7 | Regerar a mesma semana | Substituir ou acrescentar? Proposta: oferecer cancelar o roteiro anterior ainda não iniciado | _pendente_ |
+**Responda o questionário:** [2026-10-16-questionario-roteiro-semanal.md](2026-10-16-questionario-roteiro-semanal.md) — são 8 perguntas em linguagem simples, para marcar `[x]`. Cobre a pergunta D3 (quem recebe o aviso) e o roteiro semanal (R1 a R7). Respondido, eu registro as decisões aqui e implemento.
 
 ## 1. O que já existe (verificado no código em 2026-10-16)
 
