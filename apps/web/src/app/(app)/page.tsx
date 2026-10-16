@@ -280,8 +280,8 @@ function StatusIntegracaoCard({
   carregando: boolean;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3.5 shadow-xs text-xs">
-      <div className="flex items-center gap-2.5 pr-4 border-r border-border/60">
+    <div className="grid grid-cols-1 gap-3 rounded-xl border bg-card p-3.5 shadow-xs text-xs sm:flex sm:flex-wrap sm:items-center">
+      <div className="flex items-center gap-2.5 sm:border-r sm:border-border/60 sm:pr-4">
         <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 shrink-0">
           <ArrowDownToLine className="size-4" />
         </div>
@@ -299,7 +299,7 @@ function StatusIntegracaoCard({
         </div>
       </div>
 
-      <div className="flex items-center gap-2.5 pr-4 border-r border-border/60">
+      <div className="flex items-center gap-2.5 sm:border-r sm:border-border/60 sm:pr-4">
         <div className="flex size-8 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 shrink-0">
           <ArrowUpFromLine className="size-4" />
         </div>
@@ -319,7 +319,7 @@ function StatusIntegracaoCard({
 
       {/* Informada pelo próprio ERP no fim de cada execução de envio ou retorno
           (parâmetro ULTIMA_COMUNICACAO_ERP). */}
-      <div className="flex items-center gap-2.5 pl-1">
+      <div className="flex items-center gap-2.5 sm:pl-1">
         <div className="flex size-8 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600 dark:bg-violet-500/20 dark:text-violet-400 shrink-0">
           <ArrowUpDown className="size-4" />
         </div>
