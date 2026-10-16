@@ -12,6 +12,7 @@ import {
 } from '../../common/pagination/paginate';
 import { podeAcessar } from '../../common/empresa/situacao-empresa';
 import { garantirVagaDeUsuario } from '../../common/empresa/limite-usuarios';
+import { garantirVagaDeEmpresa } from '../../common/empresa/limite-empresas';
 import type {
   PlataformaAuditoriaQuery,
   PlataformaEmpresa,
@@ -229,6 +230,20 @@ export class PlataformaService {
       : await bcrypt.hash(input.admin.senha as string, SALT_ROUNDS);
 
     return this.prisma.$transaction(async (tx) => {
+      // Grupo que já existe (o da conta do administrador): a empresa entra no
+      // contrato dele — respeitando o limite de empresas do plano, como no
+      // cadastro pela própria empresa (`EmpresasService.createDoAtor`) — e com
+      // a situação e o limite de usuários do contrato, não os do formulário.
+      // Antes entrava sem conferir a vaga e nascia em teste, sem limite.
+      const grupoExistente = contaExistente?.grupoEconomicoId ?? null;
+      const contrato = grupoExistente
+        ? await garantirVagaDeEmpresa(tx, grupoExistente)
+        : null;
+      const situacao = contrato
+        ? contrato.situacao === 'teste'
+          ? ('teste' as const)
+          : ('ativa' as const)
+        : input.situacao;
       const empresa = await tx.empresa.create({
         data: {
           inscricaoEstadual: input.inscricaoEstadual,
@@ -252,11 +267,14 @@ export class PlataformaService {
           nomeFantasia: input.nomeFantasia,
           cnpj: input.cnpj,
           alias: input.alias ?? null,
-          situacao: input.situacao,
-          testeExpiraEm: input.testeExpiraEm
-            ? new Date(input.testeExpiraEm)
-            : null,
-          limiteUsuarios: input.limiteUsuarios ?? null,
+          situacao,
+          testeExpiraEm:
+            situacao === 'teste' && input.testeExpiraEm
+              ? new Date(input.testeExpiraEm)
+              : null,
+          limiteUsuarios: contrato
+            ? contrato.plano.limiteUsuarios
+            : (input.limiteUsuarios ?? null),
           // Toda empresa tem grupo econômico. Administrador com conta já
           // existente traz a empresa para o grupo dele (a conta é de um grupo
           // só); conta nova ganha um grupo com o nome da empresa, que a
@@ -574,6 +592,24 @@ export class PlataformaService {
     if (!perfilAdmin) throw new NotFoundException('Perfil Administrador Empresa não encontrado');
 
     return this.prisma.withTenant(empresaId, async (tx) => {
+      // Dois pedidos ao mesmo tempo, cada um removendo um dos dois últimos
+      // administradores, contariam 2 e deixariam a empresa sem nenhum. A trava
+      // (até o fim da transação) põe um depois do outro.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`admins-empresa:${empresaId}`}))`;
+
+      // A rota é de administrador: um vínculo de vendedor não sai por aqui
+      // (antes saía, e o "último administrador" nem entrava na conta).
+      const vinculo = await tx.usuarioEmpresa.findUnique({
+        where: { usuarioId_empresaId: { usuarioId, empresaId } },
+        select: {
+          ativo: true,
+          usuario: { select: { email: true, perfilId: true } },
+        },
+      });
+      if (!vinculo?.ativo || vinculo.usuario.perfilId !== perfilAdmin.id) {
+        throw new NotFoundException('Esta conta não administra esta empresa');
+      }
+
       const admins = await tx.usuarioEmpresa.count({
         where: { empresaId, ativo: true, usuario: { perfilId: perfilAdmin.id } },
       });
@@ -581,14 +617,6 @@ export class PlataformaService {
         throw new ConflictException(
           'Esta é a única conta que administra a empresa. Vincule outra antes de remover esta.',
         );
-      }
-
-      const vinculo = await tx.usuarioEmpresa.findUnique({
-        where: { usuarioId_empresaId: { usuarioId, empresaId } },
-        select: { ativo: true, usuario: { select: { email: true } } },
-      });
-      if (!vinculo?.ativo) {
-        throw new NotFoundException('Esta conta não administra esta empresa');
       }
 
       await tx.usuarioEmpresa.update({
@@ -788,11 +816,7 @@ export class PlataformaService {
           'Você não pode remover a si mesmo da administração da plataforma.',
         );
       }
-      if (admins.length <= 1) {
-        throw new ConflictException(
-          'Este é o único administrador da plataforma. Promova outro antes de remover este.',
-        );
-      }
+      // "Não é o último" é conferido de novo dentro da transação, com trava.
     } else if (jaEhAdmin) {
       return { id: usuario.id, nome: usuario.nome, email: usuario.email, administradorPlataforma: true };
     }
@@ -817,6 +841,20 @@ export class PlataformaService {
     );
 
     return this.prisma.$transaction(async (tx) => {
+      if (!administradorPlataforma) {
+        // Dois administradores revogando um ao outro ao mesmo tempo contariam
+        // 2 fora da transação e zerariam a lista — a saída seria um UPDATE no
+        // banco. A trava põe um depois do outro, e a contagem é refeita aqui.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('admins-plataforma'))`;
+        const restantes = await tx.usuario.count({
+          where: { perfilId: perfilPlataforma.id, deletedAt: null },
+        });
+        if (restantes <= 1) {
+          throw new ConflictException(
+            'Este é o único administrador da plataforma. Promova outro antes de remover este.',
+          );
+        }
+      }
       await tx.usuario.update({
         where: { id: usuario.id },
         data: { perfilId: perfilAlvo.id, updatedBy: ator.id },

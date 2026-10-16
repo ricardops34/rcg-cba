@@ -26,12 +26,12 @@ listados. Os de segurança mais graves já saíram antes, nesta mesma data:
 - [x] 1. Limpeza da base de demonstração: classificar as tabelas com
       `empresaId` que ficaram de fora (`demo-limpeza.spec.ts`)
 - [x] 2. Mídia órfã do WhatsApp: trava por empresa, não só pelo total
-- [ ] 3. Empresa nova em grupo existente: limite de empresas do plano e
+- [x] 3. Empresa nova em grupo existente: limite de empresas do plano e
       situação/limite do contrato
 - [ ] 4. Planos: validar o corpo com o Zod do contrato
 - [ ] 5. Assinatura: propagar situação e limite só quando mudam
-- [ ] 6. Desvincular administrador: só quem é administrador
-- [ ] 7. Revogar administrador da plataforma: serializado, sem zerar a lista
+- [x] 6. Desvincular administrador: só quem é administrador
+- [x] 7. Revogar administrador da plataforma: serializado, sem zerar a lista
 - [ ] 8. Parâmetros: chave não renomeável; recriar a excluída reativa
 - [ ] 9. "Esqueci minha senha": limite por conta
 - [ ] 10. Recompilar o `contracts` e conferir o `tsc`
