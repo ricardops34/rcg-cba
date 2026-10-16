@@ -3075,6 +3075,92 @@
       ],
       "complexity": "medium",
       "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "cadastros",
+      "path": "apps/api/src/modules/cadastros",
+      "responsibility": "Tabelas auxiliares do menu Cadastros: por empresa (categorias, condicoes de pagamento, armazens, tabelas de preco, regras de desconto) e globais compartilhadas (paises, estados, municipios, ceps, cnaes); consulta de CEP com cache e ViaCEP.",
+      "files": [
+        "cadastros.module.ts",
+        "categorias/*",
+        "condicoes-pagamento/*",
+        "armazens/*",
+        "tabelas-preco/*",
+        "regras-desconto/*",
+        "estados/*",
+        "municipios/*",
+        "paises/*",
+        "ceps/*",
+        "cnaes/*"
+      ],
+      "entities": [
+        "Categoria",
+        "CondicaoPagamento",
+        "Armazem",
+        "TabelaPreco",
+        "TabelaPrecoItem",
+        "RegraDesconto",
+        "RegraDescontoFaixa",
+        "Pais",
+        "Estado",
+        "Municipio",
+        "Cep",
+        "Cnae"
+      ],
+      "main_functions": [
+        "RegrasDescontoService.create/update/validarFaixas/garantirPadraoUnico",
+        "CategoriasService.update (desce equipamentoComodato)",
+        "CepsService.consultar",
+        "<Entidade>Service.findAll/findOne/create/update/remove"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "ExternalHttpService (ViaCEP)",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "telas de Cadastros",
+        "cadastro de clientes (CEP, estado, municipio, CNAE)",
+        "orcamentos (regras, tabela de preco)",
+        "relatorios (categorias)",
+        "dashboard comercial (usado)",
+        "comodato (equipamentoComodato)",
+        "integracao (grava as tabelas por empresa)"
+      ],
+      "business_rules": [
+        {
+          "description": "Tabelas por empresa so leitura pela API, exceto regras de desconto (CRUD) e as marcacoes usado/equipamentoComodato de categoria; o resto vem do ERP",
+          "location": "cadastros/*/controller.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "equipamentoComodato da categoria desce para as subcategorias na mesma transacao; o ERP nao sobrescreve usado nem equipamentoComodato",
+          "location": "categorias/categorias.service.ts:update",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Faixas de regra de desconto: sequencia unica, sem sobreposicao; enviar faixas substitui o conjunto; so uma regra padrao por empresa",
+          "location": "regras-desconto/regras-desconto.service.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "CEP: cache primeiro, ViaCEP no miss, persistindo o resultado",
+          "location": "ceps/ceps.service.ts:consultar",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "estados, municipios, paises, ceps e cnaes sao globais sem RLS e o CRUD esta liberado a perfis de empresa (Diretor recebe tudo fora de Administracao): uma empresa altera dado de todas (inferido do seed)",
+        "create com codigo ja usado ou recriar excluido da erro 500 (unico conta excluidos; P2002 sem traducao)",
+        "remover regra de desconto em uso nao confere; regra da tela sem chave pode duplicar codigoErp com a do ERP",
+        "ERP e tela escrevem a mesma regra de desconto; carga completa sobrescreve a edicao da tela",
+        "consulta de CEP sem limite proprio e cache sem expiracao; CEP excluido nunca volta ao cache",
+        "categorias lista com permissao de relatorio devolvendo o registro todo",
+        "sem testes"
+      ],
+      "test_files": [],
+      "complexity": "medium",
+      "confidence": "CONFIRMADO"
     }
   ]
 }

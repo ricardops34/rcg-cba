@@ -2365,3 +2365,45 @@ RLS por empresa e **policy só de INSERT** para o login inválido (por isso o `c
 (`refreshToken` ≥32), `portalClienteContatoCreateSchema` (`clienteId`, `perfilId?`, `nome` 2–120,
 `email` ≤160, `telefone`/`celular`/`cargo`, `principal` padrão `false`, `ativo` padrão `true`,
 `senhaInicial` 8–128), `portalClienteConfigSchema`. Decisão: `{observacao?}` ≤1000 (DTO local).
+
+---
+
+## Módulo `cadastros`
+
+Campos de auditoria (`createdAt`, `updatedAt`, `createdBy`, `updatedBy`, `deletedAt`, `deletedBy`) omitidos.
+
+### Por empresa (RLS) 🟢
+
+Todas com `empresaId`, `@@unique([empresaId, chave])` e `chave` = chave de integração (FILIAL-COD); `codigoErp` é só o
+código de origem mostrado na tela.
+
+- **`Categoria`** (`categorias`): `categoriaPaiId?` (2 níveis), `codigoErp`, `chave?`, `descricao`, `usado Boolean?`,
+  `equipamentoComodato` (padrão `false`), `ativo`, `regraDescontoId?`. Índices `[empresaId, codigoErp|descricao|regraDescontoId]`.
+- **`CondicaoPagamento`** (`condicoes_pagamento`): `codigoErp`, `chave?`, `descricao`, `forma?`, `ativo`.
+- **`Armazem`** (`armazens`): `codigoErp`, `chave?`, `descricao`, `ativo`, `revenda` (padrão `true`).
+- **`TabelaPreco`** (`tabelas_preco`): `codigoErp`, `chave?`, `descricao`, `dtInicio?`, `dtFim?` (date), `ativo`.
+- **`TabelaPrecoItem`** (`tabela_preco_itens`): `tabelaPrecoId`, `produtoId`, `chave?` (única no cabeçalho),
+  `preco Float`, `ativo`, `regraDescontoId?`.
+- **`RegraDesconto`** (`regras_desconto`): `codigoErp?`, `chave?`, `descricao`, `percDescontoAutorizado`,
+  `percDescontoMaximo`, `percComissao` (todos Float, padrão 0), `padrao` (uma por empresa, por código), `ativo`.
+- **`RegraDescontoFaixa`** (`regras_desconto_faixas`): `regraDescontoId`, `sequencia` (única na regra),
+  `percInicial`, `percFinal`, `percBaseComissao`.
+
+### Globais, sem RLS 🟢
+
+| Tabela | Campos | Único |
+|---|---|---|
+| `paises` | `codigoErp?`, `nome`, `sigla?`, `comexId?`, `ativo` | `codigoErp` |
+| `estados` | `codigoErp?`, `sigla`, `descricao`, `codigoIbge?`, `ativo` | `sigla` |
+| `municipios` | `estadoId?`, `codigoErp?`, `descricao`, `codigoIbge?`, `ativo` | `codigoErp`, `codigoIbge` |
+| `ceps` | `cep`, `estadoId?`, `municipioId?`, `bairro?`, `endereco?`, `latitude?`, `longitude?`, `origem?` (`viacep`), `ativo` | `cep` |
+| `cnaes` | `codigoErp?`, `secao?`, `divisao?`, `grupo?`, `classe?`, `subclasse?`, `descricao`, `ativo` | `codigoErp` |
+
+Todos os índices únicos **contam as linhas excluídas** (soft delete).
+
+### DTOs 🟢
+
+Um schema Zod de criação, atualização e consulta por entidade em `packages/contracts/src/`. A regra
+de desconto exige `percFinal ≥ percInicial` por faixa; a consulta de CEP é `GET /ceps/consulta/:cep`
+(`ConsultaCepResultado`: `cep`, `endereco`, `bairro`, `municipio`, `municipioId`, `uf`, `estadoId`,
+`origem: cache | viacep`).

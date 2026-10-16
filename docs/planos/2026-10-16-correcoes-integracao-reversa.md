@@ -85,3 +85,29 @@ Achados do módulo `portal-cliente` (`_reversa_sdd/code-analysis.md`, seção 4.
 - [ ] 23. **4.7/P.4** tela de administração, desativar/redefinir acesso, troca de senha
 - [ ] 24. **4.9/P.2** ler (ou remover) as opções da configuração; respeitar `exibirDesconto`
 - [ ] 25. **4.10** refresh atômico e detecção de reuso, limpeza de log/sessões, testes do módulo
+
+## Cadastros (escavação de 2026-10-16)
+
+Achados do módulo `cadastros` (`_reversa_sdd/code-analysis.md`, seção 4.x do módulo). Também
+**anotados, sem correção e sem reprodução**.
+
+### Decisões pendentes do usuário
+
+- **C.1 — escrita nas tabelas globais** (`estados`, `municipios`, `paises`, `ceps`, `cnaes`): deve
+  ser só da plataforma? Hoje o Diretor e o administrador de qualquer empresa alteram dado que vale para
+  todas (conferir primeiro, na base, quais perfis têm `editar`/`excluir` nessas rotinas).
+- **C.2 — regras de desconto vindas do ERP:** a tela deve poder editá-las, ou só as criadas na tela?
+
+### Etapas
+
+- [ ] 26. **C.1/4.1** restringir a escrita das cinco tabelas globais à plataforma (guard, ou tirar
+      `cadastrar`/`editar`/`excluir` dos perfis de empresa por migration, **e** no catálogo para não
+      voltar pelo seed)
+- [ ] 27. **4.2** unicidade: conferir antes de criar, 409 claro, e recriar o excluído reativa a linha
+      (mesmo padrão do lote de 15/10); CEP excluído volta ao cache
+- [ ] 28. **4.3** regra de desconto: bloquear excluir em uso (ou avisar), trava para padrão e código,
+      `chave` na regra criada pela tela
+- [ ] 29. **4.4/C.2** definir quem manda na regra de desconto (ERP × tela)
+- [ ] 30. **4.5** limite próprio para `ceps/consulta` e validade do cache de CEP
+- [ ] 31. **4.6** observações (permissão de relatório em categorias, `limpar` nos campos obrigatórios)
+- [ ] 32. Testes do módulo (regras de desconto, categorias, CEP, unicidade das globais)

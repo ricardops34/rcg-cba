@@ -6556,3 +6556,146 @@ carrinho).
 (`portal-cliente.service.spec.ts`: aprovar um orçamento `enviado`; recusar o que não está
 `enviado`). **Sem teste** para: login e bloqueio, refresh, `contexto`, `criarAcesso`, validade
 vencida, trava de desconto.
+
+---
+
+## Módulo `cadastros`
+
+**Caminho:** `apps/api/src/modules/cadastros/` — 10 submódulos (controller + service + DTO Zod do contrato),
+~2.100 linhas, **nenhum teste**. Módulo Nest único (`CadastrosModule`), sem exportar service.
+Origem dos dados: o **ERP** (pela API de integração, `integracao`) ou os scripts de import
+(`prisma/import-auxiliares.ts`, `sync-ibge.ts`, `enrich-cnae.ts`); a plataforma só grava uma parte,
+ver a tabela.
+
+### 1. Responsabilidade 🟢
+
+Tabelas auxiliares do menu "Cadastros". Dois grupos, com regra de isolamento **diferente**:
+
+- **Por empresa (RLS, `withTenant`):** `categorias`, `condicoes-pagamento`, `armazens`,
+  `tabelas-preco`, `regras-desconto`.
+- **Globais, compartilhadas entre todas as empresas (sem `empresaId`, sem RLS, `this.prisma` direto):**
+  `paises`, `estados`, `municipios`, `ceps`, `cnaes`.
+
+### 2. Rotas 🟢
+
+`JwtAuthGuard` + `PermissionsGuard`; permissão = rotina de mesmo nome.
+
+| Submódulo | Leitura | Escrita pela API |
+|---|---|---|
+| `armazens`, `condicoes-pagamento`, `tabelas-preco` (+ `:id/itens`) | `visualizar` | **nenhuma** (só consulta; entram pelo ERP) |
+| `categorias` | `visualizar` (aceita também a permissão de 3 relatórios) | só `PATCH :id` (`editar`): `usado` e `equipamentoComodato` |
+| `regras-desconto` | `visualizar` | CRUD completo (`cadastrar`/`editar`/`excluir`) com faixas embutidas |
+| `paises`, `estados`, `municipios`, `cnaes`, `ceps` | `visualizar` | CRUD completo (`cadastrar`/`editar`/`excluir`) |
+| `GET /ceps/consulta/:cep` | só login | autopreenchimento de endereço |
+
+### 3. Algoritmos e lógica
+
+#### 3.1 Listagens 🟢
+
+Padrão único: `where` com `deletedAt: null`, filtros opcionais (`ativo`, e por entidade),
+`search` em `contains` sem diferenciar maiúsculas, `sortBy` restrito a uma lista de campos
+(`SORT_FIELDS`), `paginationToSkipTake`. Itens de tabela de preço ordenam também por colunas do
+produto (`orderBy` aninhado).
+
+#### 3.2 Regras de desconto 🟢
+
+`validarFaixas`: sequência única e faixas que não se sobrepõem (ordenadas por `percInicial`, cada
+`percInicial` precisa ser **maior** que o `percFinal` anterior); o contrato Zod já exige
+`percFinal ≥ percInicial`. `garantirPadraoUnico` (a nova regra padrão tira o padrão da anterior) e
+`garantirCodigoErpLivre` (409; só confere as não excluídas). No `PATCH`, **enviar `faixas`
+substitui o conjunto** (apaga e recria); omitir mantém. Exclusão é soft delete com `padrao = false`.
+
+#### 3.3 Categorias 🟢
+
+Duas marcações da plataforma, que o ERP **não** sobrescreve (a integração só grava descrição, pai,
+regra e `ativo`): `usado` (entra em "Vendas por Categoria" do dashboard; `null` é o estado da
+subcategoria) e `equipamentoComodato`, que **desce** para as subcategorias na mesma transação (decisão
+de 2026-10-07). Subcategoria nova criada pelo ERP herda a marcação do pai (só na criação).
+
+#### 3.4 CEP: cache primeiro, ViaCEP no miss 🟢
+
+`consultar`: 8 dígitos (senão 400); procura em `ceps`; no miss chama o ViaCEP (`ExternalHttpService`;
+`erro: true` vira 404, queda vira 502), resolve **estado** pela sigla e **município** pelo código IBGE na
+referência local, **grava** (`upsert`, `origem = viacep`) e devolve `origem: cache | viacep`. A tela de
+cliente usa isso para autopreencher.
+
+#### 3.5 CRUDs globais 🟢
+
+`create`/`update` fazem `limpar(input)` (texto vazio vira `null`) e gravam com `createdBy`/`updatedBy`;
+`remove` é soft delete (`deletedAt`, `ativo = false`).
+
+### 4. Achados
+
+#### 4.1 Qualquer empresa edita as tabelas que todas compartilham 🔴
+
+`estados`, `municipios`, `paises`, `ceps` e `cnaes` **não têm `empresaId` nem RLS**, mas o CRUD
+completo é liberado por permissão de rotina — e as cinco rotinas estão no módulo **Cadastros**
+(`catalogo-sistema.ts`), não em Administração. O seed do perfil Diretor dá permissão explícita em tudo
+que **não** é de Administração (`bootstrapPerfilDiretor`), e a correção `corrigirPermissoesDoDiretor`
+só retira Administração e `whatsapp-equipe`. Pelo desenho, **o Diretor (e o administrador) de qualquer
+empresa pode alterar ou excluir um estado, município, país, CNAE ou CEP e isso vale para todas as
+empresas** — exclusão de município quebra o autopreenchimento e os cadastros de clientes de todo mundo.
+Inferido do código do seed (não conferi ação por ação nem a base real). 🔴 confirmar com o usuário se
+a escrita nessas cinco tabelas deve ser só da plataforma (o sistema já distingue `administradorPlataforma` e empresa `ePlataforma`; só falta usar aqui).
+
+#### 4.2 Criar com código já usado dá 500, e o excluído nunca volta 🟡
+
+Estas tabelas têm índice único em `sigla`, `codigoErp`, `codigoIbge` ou `cep`, que **conta as linhas
+excluídas**, e os `create` não conferem nada antes. Duplicata ativa e recriar o que foi excluído caem
+na violação de unicidade (`P2002`); não achei tradução disso em `common/`, então o usuário vê erro
+genérico. É o mesmo padrão que o lote de 15/10 corrigiu em planos e parâmetros ("recriar a excluída
+reativa a linha"). Nos CEPs há o efeito oposto: `consultar` ignora o CEP excluído, vai ao ViaCEP toda vez e
+o `upsert` não limpa `deletedAt`, então ele nunca volta ao cache.
+
+#### 4.3 `regras-desconto`: excluir uma regra em uso e o código sem chave 🟡
+
+`remove` não confere uso: categorias, produtos e itens de tabela de preço continuam com
+`regraDescontoId` apontando para a regra excluída, e a regra padrão pode deixar a empresa sem padrão. Além
+disso, a regra criada pela tela nasce **sem `chave`** (chave de integração) e só com `codigoErp`
+opcional; o ERP cria a sua com `chave` e, se o `codigoErp` coincidir, `resolverRegraDesconto` por
+código responde "identifica mais de uma regra" (inferido, não reproduzido). `garantirPadraoUnico` e
+`garantirCodigoErpLivre` são lê-e-grava sem trava (duas gravações simultâneas passam).
+
+#### 4.4 O ERP e a tela escrevem a mesma regra de desconto 🟡
+
+A integração faz upsert por `chave` e sobrescreve descrição, percentuais, `padrao` e faixas; a tela edita os
+mesmos campos. Quem editou na tela perde na próxima carga completa do ERP (e a regra criada pela tela não
+é tocada pelo ERP). Pode ser intencional (ERP é a fonte da verdade) 🔴 confirmar se a edição na tela deve
+existir para regras que vêm do ERP.
+
+#### 4.5 Consultar CEP: sem limite e o cache não expira 🟡
+
+`GET /ceps/consulta/:cep` exige só login e cada CEP novo vira uma chamada ao ViaCEP sem limite próprio
+(só o throttle global): um usuário que varre CEPs esgota a cota do serviço para todas as empresas. Os
+CEPs gravados nunca são renovados (sem TTL), e uma edição manual em `ceps` vale para todos.
+
+#### 4.6 Observações 🟡
+
+- `categorias` aceita a permissão de três relatórios para listar; o comentário diz "só nomes", mas a
+  resposta traz o registro todo, com a regra de desconto vinculada.
+- Alterar `equipamentoComodato` de uma **subcategoria** não é bloqueado quando o pai é equipamento
+  (só a descida pai→filho existe); desmarcar `usado` do pai não desce.
+- `TabelaPrecoItem`: a listagem não filtra produto excluído nem item de tabela inativa.
+- `consultar` usa o município por `codigoIbge` sem filtrar excluídos.
+- `limpar` troca `''` por `null` em **todos** os campos, inclusive obrigatórios (`sigla`, `descricao`):
+  o DTO precisa barrar antes, senão vira erro de banco.
+- Sem nenhum teste.
+
+### 5. Estruturas de dados 🟢
+
+`Categoria`, `CondicaoPagamento`, `Armazem`, `TabelaPreco`, `TabelaPrecoItem`, `RegraDesconto`,
+`RegraDescontoFaixa` (por empresa) e `Pais`, `Estado`, `Municipio`, `Cep`, `Cnae` (globais). Ver
+`data-dictionary.md`, seção `cadastros`.
+
+### 6. Metadados 🟢
+
+Listas `SORT_FIELDS` por submódulo; `chave` de integração nas por empresa (`@@unique([empresaId, chave])`,
+com `codigoErp` só informativo); origem do CEP (`viacep`); ações da regra de desconto
+(`regras-desconto.*`); permissões de relatório aceitas em `categorias`.
+
+### 7. Dependências e testes
+
+`PrismaService`, `ExternalHttpService` (ViaCEP), `@plataforma/contracts`. Consumidores:
+telas de Cadastros, cadastro de clientes (CEP, estado, município, CNAE), orçamentos (regras, tabela de
+preço), relatórios (categorias), dashboard comercial (`usado`), equipamentos de comodato
+(`equipamentoComodato`), módulo `integracao` (grava as mesmas tabelas por empresa). **Sem testes.**

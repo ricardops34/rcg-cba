@@ -76,10 +76,10 @@
         "suporte-acesso",
         "integracao",
         "integracao-keys",
-        "portal-cliente"
+        "portal-cliente",
+        "cadastros"
       ],
       "modules_pending": [
-        "cadastros",
         "feriados",
         "erros",
         "termos",
@@ -87,7 +87,7 @@
         "inicio",
         "demo"
       ],
-      "last_update": "2026-10-16T10:59:17.539Z"
+      "last_update": "2026-10-16T11:04:19.550Z"
     }
   },
   "engines": [
