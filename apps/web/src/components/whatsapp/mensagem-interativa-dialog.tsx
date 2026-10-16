@@ -222,7 +222,7 @@ export function MensagemInterativaDialog({
 
           {tipo === "lista" ? (
             <>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <Campo rotulo="Texto do botão">
                   <Input value={textoBotao} onChange={(e) => setTextoBotao(e.target.value)} maxLength={20} />
                 </Campo>

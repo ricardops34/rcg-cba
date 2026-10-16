@@ -63,7 +63,7 @@ function Opcao({
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-medium">{titulo}</span>
+        <span className="min-w-0 break-words font-medium">{titulo}</span>
         <span className="shrink-0 tabular-nums">{valor}</span>
       </div>
       {!disponivel && (
@@ -149,7 +149,7 @@ export function BoletoDialog({
               Este cliente não tem títulos em aberto.
             </p>
           ) : (
-            <div className="max-h-64 space-y-1 overflow-y-auto">
+            <div className="max-h-[40dvh] space-y-1 overflow-y-auto sm:max-h-64">
               {titulos.map((t) => (
                 <Opcao
                   key={t.id}
@@ -272,7 +272,7 @@ export function DanfeDialog({
               Este cliente não tem notas fiscais.
             </p>
           ) : (
-            <div className="max-h-64 space-y-1 overflow-y-auto">
+            <div className="max-h-[40dvh] space-y-1 overflow-y-auto sm:max-h-64">
               {notas.map((n) => (
                 <Opcao
                   key={n.id}
