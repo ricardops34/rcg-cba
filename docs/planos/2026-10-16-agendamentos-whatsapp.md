@@ -62,13 +62,39 @@
 
 | Fase | Entrega | Situação |
 |---|---|---|
-| F1 | Mensagem agendada: **alterar**, e registro na **Agenda/Atendimentos** (Atividade ligada) | ⬜ |
-| F2 | Atendimento agendado: ligação com a conversa, aviso na hora, abrir conversa | ⬜ |
-| F3 | Painel "Agendamentos" na conversa (alterar/cancelar), desktop e celular | ⬜ |
+| F1 | Mensagem agendada: **alterar**, e registro na **Agenda/Atendimentos** (Atividade ligada) | ✅ código (6f54c7e) · 📱 pendente |
+| F2 | Atendimento agendado: ligação com a conversa, aviso na hora, abrir conversa | ✅ código (6f54c7e, afcb855) · 📱 pendente |
+| F3 | Alterar/cancelar na própria conversa (listas dentro de *Agendar mensagem* e *Agendar atendimento*) | ✅ código · 📱 pendente |
 | F4 | Notas: distinção visual e conferência de visibilidade por perfil | ⬜ |
-| F5 | Testes (API) e conferência em aparelho | ⬜ |
+| F5b | Testes de API (11 casos em `agendamentos-whatsapp.spec.ts`) | ✅ |
+| F5 | Conferência em aparelho (fluxo completo, inclusive o aviso na hora marcada) | ⬜ |
+| F6 | **Gerador de roteiro semanal de atendimentos** (ver seção 7) | ⬜ desenho |
 
-## 6. Registro
+## 6. Como ficou (F1–F3)
+
+- **Mensagem agendada:** ao agendar, nasce uma Atividade (`automatica = true`) na agenda do vendedor dono do aparelho, ligada ao cliente e à conversa. Alterar texto e/ou hora acompanha a atividade; cancelar a tira da agenda; enviar a conclui. Só se altera enquanto `pendente`.
+- **Atendimento agendado:** *Agendar atendimento* (antes "visita/retorno") ganhou a opção **Avisar no sino e abrir a conversa na hora marcada** (ligada por padrão, exige data/hora). A rotina de 1 min grava a notificação `atendimento_agendado`, com link `/comercial/atendimento?conversa=ID`. **Nada é enviado ao cliente.** Um aviso por atividade; mudar a hora zera o aviso para valer na nova hora.
+- **Sem duplicar aviso:** a varredura de "atividade vence hoje" ignora atividade `automatica` e `iniciarConversa`.
+- **Endpoints novos:** `PATCH conversas/:id/agendamentos/:agendamentoId`, `GET/PATCH/DELETE conversas/:id/atendimentos-agendados[/:atividadeId]`.
+- **Migration:** `20261016130000_agendamentos_whatsapp` — **aplicada em dev; produção precisa de `migrate deploy` antes do deploy** (a API consulta as colunas novas).
+
+## 7. F6 — Gerador de roteiro semanal (pedido em 2026-10-16)
+
+> *"Gerar atendimento de WhatsApp, gravando na agenda do vendedor, atendimentos para a semana com intervalos parametrizáveis entre conversas, e critérios de escolha de clientes. Segunda 08:00 Cliente X, Segunda 08:30 Cliente Y, Segunda 09:00 Cliente W."*
+
+É a F2 em lote: cada linha do roteiro é um **atendimento agendado** (Atividade com `iniciarConversa`), e o que se agendou vale o aviso na hora e abrir a conversa. Falta decidir:
+
+| # | Pergunta | Proposta inicial | Resposta |
+|---|---|---|---|
+| R1 | Quem gera? | O vendedor para si; supervisor/gerente para a equipe (dentro do escopo) | _pendente_ |
+| R2 | Critérios de escolha dos clientes | Dias sem comprar, título vencido, positivação do mês, carteira/segmento, sem atendimento há N dias, ordenação e limite (N clientes por dia) | _pendente_ |
+| R3 | Parâmetros do roteiro | Dias da semana, horário inicial e final de cada dia, **intervalo entre conversas** (ex.: 30 min), pausa de almoço, respeitar feriados | _pendente_ |
+| R4 | Cliente sem conversa de WhatsApp ainda | Cria a conversa (precisa de telefone/contato); sem contato, fica fora e aparece como "não agendado" | _pendente_ |
+| R5 | Prévia antes de gravar | Sim: lista editável (tirar cliente, mudar horário) e só então **Gerar** | _pendente_ |
+| R6 | Onde fica a tela | Em Comercial › Atendimento (botão "Roteiro da semana") ou rotina própria | _pendente_ |
+| R7 | Regerar a mesma semana | Substituir ou acrescentar? Proposta: oferecer cancelar o roteiro anterior ainda não iniciado | _pendente_ |
+
+## 8. Registro
 
 | Data | O quê |
 |---|---|

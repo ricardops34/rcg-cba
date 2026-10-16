@@ -24,6 +24,8 @@ import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { AtendimentosAgendadosLista } from "@/components/whatsapp/agendamentos-lista";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -204,7 +206,7 @@ export function AcoesCliente({
               <DropdownMenuLabel>Relacionamento</DropdownMenuLabel>
               <DropdownMenuItem onClick={() => setAgendando(true)}>
                 <CalendarPlus className="size-4" />
-                Agendar visita/retorno
+                Agendar atendimento
               </DropdownMenuItem>
             </>
           ) : null}
@@ -392,6 +394,8 @@ function AgendarDialog({
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
   const [quando, setQuando] = useState("");
+  // Ligado por padrão: agendar atendimento é, quase sempre, para ser lembrado na hora.
+  const [avisar, setAvisar] = useState(true);
 
   const agendar = useMutation({
     mutationFn: () =>
@@ -402,10 +406,19 @@ function AgendarDialog({
           titulo,
           descricao: descricao || undefined,
           dataVencimento: quando ? new Date(quando).toISOString() : null,
+          iniciarConversa: avisar && !!quando,
         },
       }),
     onSuccess: () => {
-      toast.success("Agendado na sua agenda de atividades");
+      toast.success(
+        avisar && quando
+          ? "Atendimento agendado: você será avisado na hora"
+          : "Agendado na sua agenda de atividades",
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["whatsapp-atendimentos-agendados", conversaId],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["atividades"] });
       setTitulo("");
       setDescricao("");
       setQuando("");
@@ -423,10 +436,10 @@ function AgendarDialog({
     <Dialog open={aberto} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Agendar visita ou retorno</DialogTitle>
+          <DialogTitle>Agendar atendimento</DialogTitle>
           <DialogDescription>
-            Fica na sua agenda de atividades, ligada a este cliente. O cliente
-            não recebe mensagem por isso.
+            Fica na sua agenda, ligado a este cliente. O cliente não recebe
+            mensagem por isso: na hora marcada é você quem é avisado.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
@@ -447,6 +460,22 @@ function AgendarDialog({
             value={descricao}
             onChange={(e) => setDescricao(e.target.value)}
           />
+          <label className="flex cursor-pointer items-start gap-2 text-sm">
+            <Checkbox
+              className="mt-0.5"
+              checked={avisar && !!quando}
+              disabled={!quando}
+              onCheckedChange={(v) => setAvisar(v === true)}
+            />
+            <span>
+              Avisar no sino e abrir esta conversa na hora marcada
+              <span className="block text-xs text-muted-foreground">
+                Nada é enviado ao cliente. Precisa de data e hora.
+              </span>
+            </span>
+          </label>
+
+          <AtendimentosAgendadosLista conversaId={conversaId} aberto={aberto} />
         </div>
         <DialogFooter>
           <Button

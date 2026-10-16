@@ -1,4 +1,5 @@
 "use client";
+import { MensagensAgendadasLista } from "@/components/whatsapp/agendamentos-lista";
 import { useAgente } from "@/components/agente/use-agente";
 import { useEffect, useRef, useState } from "react";
 import { AnotacaoDialog } from "@/components/whatsapp/anotacao-dialog";
@@ -36,7 +37,6 @@ import {
   WHATSAPP_INTERATIVOS_SO_COMERCIAL,
   type WhatsappSessao,
   type WhatsappMensagem,
-  type WhatsappMensagemAgendada,
   type WhatsappTemplate,
 } from "@plataforma/contracts";
 import { ApiError, apiFetch, apiUpload, ehJanelaWhatsappFechada } from "@/lib/api-client";
@@ -679,14 +679,6 @@ function AgendarMensagemDialog({
   const [quando, setQuando] = useState("");
 
   const chave = ["whatsapp-agendamentos", conversaId];
-  const agendadasQuery = useQuery({
-    queryKey: chave,
-    queryFn: () =>
-      apiFetch<WhatsappMensagemAgendada[]>(
-        `/whatsapp/conversas/${conversaId}/agendamentos`,
-      ),
-    enabled: aberto,
-  });
 
   const agendar = useMutation({
     mutationFn: () =>
@@ -706,21 +698,6 @@ function AgendarMensagemDialog({
     onError: (err) =>
       toast.error(err instanceof ApiError ? err.message : "Falha ao agendar"),
   });
-
-  const cancelar = useMutation({
-    mutationFn: (id: string) =>
-      apiFetch(`/whatsapp/conversas/${conversaId}/agendamentos/${id}`, {
-        method: "DELETE",
-      }),
-    onSuccess: () => {
-      toast.success("Agendamento cancelado");
-      void queryClient.invalidateQueries({ queryKey: chave });
-    },
-    onError: (err) =>
-      toast.error(err instanceof ApiError ? err.message : "Falha ao cancelar"),
-  });
-
-  const agendadas = agendadasQuery.data ?? [];
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
@@ -747,41 +724,7 @@ function AgendarMensagemDialog({
           />
           <p className="text-xs text-muted-foreground">Feriados e fins de semana serão ajustados para o próximo dia útil, mantendo o horário.</p>
 
-          {agendadas.length > 0 ? (
-            <div className="space-y-1 rounded-md border p-2">
-              <p className="text-xs font-medium text-muted-foreground">
-                Já agendadas
-              </p>
-              {agendadas.map((a) => (
-                <div
-                  key={a.id}
-                  className="flex items-start justify-between gap-2 text-sm"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate">{a.texto}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(a.enviarEm).toLocaleString("pt-BR")}
-                      {a.status === "erro" ? (
-                        <span className="text-destructive">
-                          {" "}
-                          — falhou: {a.erro}
-                        </span>
-                      ) : null}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    title="Cancelar"
-                    disabled={cancelar.isPending}
-                    onClick={() => cancelar.mutate(a.id)}
-                    className="shrink-0 text-muted-foreground hover:text-destructive"
-                  >
-                    <X className="size-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : null}
+          <MensagensAgendadasLista conversaId={conversaId} aberto={aberto} />
         </div>
 
         <DialogFooter>
