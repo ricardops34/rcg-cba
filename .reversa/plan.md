@@ -35,24 +35,24 @@
 - [x] **Arqueólogo** — Análise do módulo `notas-saida`
 - [x] **Arqueólogo** — Análise do módulo `sugestao-compra`
 - [x] **Arqueólogo** — Análise do módulo `orcamentos`
-- [ ] **Arqueólogo** — Análise do módulo `orcamento-config`
-- [ ] **Arqueólogo** — Análise do módulo `titulos-receber`
-- [ ] **Arqueólogo** — Análise do módulo `contas-bancarias`
-- [ ] **Arqueólogo** — Análise do módulo `equipamentos-comodato`
-- [ ] **Arqueólogo** — Análise do módulo `vendedores`
-- [ ] **Arqueólogo** — Análise do módulo `leads`
-- [ ] **Arqueólogo** — Análise do módulo `oportunidades`
-- [ ] **Arqueólogo** — Análise do módulo `atividades`
-- [ ] **Arqueólogo** — Análise do módulo `objetivos`
-- [ ] **Arqueólogo** — Análise do módulo `meus-atendimentos`
-- [ ] **Arqueólogo** — Análise do módulo `consultas`
-- [ ] **Arqueólogo** — Análise do módulo `relatorios`
-- [ ] **Arqueólogo** — Análise do módulo `whatsapp`
-- [ ] **Arqueólogo** — Análise do módulo `agente`
-- [ ] **Arqueólogo** — Análise do módulo `notificacoes`
-- [ ] **Arqueólogo** — Análise do módulo `email`
-- [ ] **Arqueólogo** — Análise do módulo `documentos-email`
-- [ ] **Arqueólogo** — Análise do módulo `sms`
+- [x] **Arqueólogo** — Análise do módulo `orcamento-config`
+- [x] **Arqueólogo** — Análise do módulo `titulos-receber`
+- [x] **Arqueólogo** — Análise do módulo `contas-bancarias`
+- [x] **Arqueólogo** — Análise do módulo `equipamentos-comodato`
+- [x] **Arqueólogo** — Análise do módulo `vendedores`
+- [x] **Arqueólogo** — Análise do módulo `leads`
+- [x] **Arqueólogo** — Análise do módulo `oportunidades`
+- [x] **Arqueólogo** — Análise do módulo `atividades`
+- [x] **Arqueólogo** — Análise do módulo `objetivos`
+- [x] **Arqueólogo** — Análise do módulo `meus-atendimentos`
+- [x] **Arqueólogo** — Análise do módulo `consultas`
+- [x] **Arqueólogo** — Análise do módulo `relatorios`
+- [x] **Arqueólogo** — Análise do módulo `whatsapp`
+- [x] **Arqueólogo** — Análise do módulo `agente`
+- [x] **Arqueólogo** — Análise do módulo `notificacoes`
+- [x] **Arqueólogo** — Análise do módulo `email`
+- [x] **Arqueólogo** — Análise do módulo `documentos-email`
+- [x] **Arqueólogo** — Análise do módulo `sms`
 - [ ] **Arqueólogo** — Análise do módulo `armazenamento`
 - [ ] **Arqueólogo** — Análise do módulo `backup-empresa`
 - [ ] **Arqueólogo** — Análise do módulo `assinaturas`

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-15T00:00:00Z",
+  "generated_at": "2026-10-16T01:24:27.197Z",
   "modules": [
     {
       "name": "auth",
@@ -12,19 +12,39 @@
         "dto/auth.dto.ts",
         "strategies/jwt.strategy.ts"
       ],
-      "entities": ["Usuario", "UsuarioEmpresa", "RefreshToken", "Sessao"],
+      "entities": [
+        "Usuario",
+        "UsuarioEmpresa",
+        "RefreshToken",
+        "Sessao"
+      ],
       "main_functions": [
-        "login", "refresh", "logout", "switchEmpresa", "me",
-        "completeFirstAccess", "changePassword", "buildAccessToken",
-        "uploadOwnAvatar", "selectDefaultAvatar", "updateOwnProfile",
-        "updateRotinaInicial", "telasIniciais"
+        "login",
+        "refresh",
+        "logout",
+        "switchEmpresa",
+        "me",
+        "completeFirstAccess",
+        "changePassword",
+        "buildAccessToken",
+        "uploadOwnAvatar",
+        "selectDefaultAvatar",
+        "updateOwnProfile",
+        "updateRotinaInicial",
+        "telasIniciais"
       ],
       "dependencies": [
-        "PrismaService", "JwtService", "PoliticaSenhaService",
-        "AcessosService", "HorarioTrabalhoService", "@plataforma/contracts"
+        "PrismaService",
+        "JwtService",
+        "PoliticaSenhaService",
+        "AcessosService",
+        "HorarioTrabalhoService",
+        "@plataforma/contracts"
       ],
       "test_files": [
-        "auth.service.spec.ts", "auth-whatsapp.spec.ts", "first-access.spec.ts"
+        "auth.service.spec.ts",
+        "auth-whatsapp.spec.ts",
+        "first-access.spec.ts"
       ],
       "confidence": "CONFIRMADO"
     },
@@ -33,36 +53,74 @@
       "path": "apps/api/src/modules/clientes",
       "responsibility": "CRUD de cliente com escopo hierárquico de carteira, fila de aprovação de alterações cadastrais, enriquecimento via Receita Federal, CNAEs, Posição de Cliente e baixas de comodato.",
       "files": [
-        "clientes.module.ts", "clientes.controller.ts", "clientes.service.ts",
-        "cliente-alteracoes.controller.ts", "cliente-alteracoes.service.ts",
-        "cliente-cnaes.controller.ts", "cliente-cnaes.service.ts",
-        "clientes-receita-lote.service.ts", "comodato-baixas.controller.ts",
-        "comodato-baixas.service.ts", "comodato-sql.ts",
-        "enriquecimento.service.ts", "endereco-equivalente.ts",
-        "registrar-atividade-alteracao-cliente.ts", "dto/cliente.dto.ts",
-        "dto/cliente-alteracao.dto.ts", "dto/cliente-cnae.dto.ts",
+        "clientes.module.ts",
+        "clientes.controller.ts",
+        "clientes.service.ts",
+        "cliente-alteracoes.controller.ts",
+        "cliente-alteracoes.service.ts",
+        "cliente-cnaes.controller.ts",
+        "cliente-cnaes.service.ts",
+        "clientes-receita-lote.service.ts",
+        "comodato-baixas.controller.ts",
+        "comodato-baixas.service.ts",
+        "comodato-sql.ts",
+        "enriquecimento.service.ts",
+        "endereco-equivalente.ts",
+        "registrar-atividade-alteracao-cliente.ts",
+        "dto/cliente.dto.ts",
+        "dto/cliente-alteracao.dto.ts",
+        "dto/cliente-cnae.dto.ts",
         "dto/comodato-baixa.dto.ts"
       ],
       "entities": [
-        "Cliente", "ClienteContato", "ClienteAlteracao", "ClienteHistorico",
-        "ClienteEnvioErp", "ClienteCnae", "ClienteReceitaExecucao",
+        "Cliente",
+        "ClienteContato",
+        "ClienteAlteracao",
+        "ClienteHistorico",
+        "ClienteEnvioErp",
+        "ClienteCnae",
+        "ClienteReceitaExecucao",
         "ComodatoBaixa"
       ],
       "main_functions": [
-        "findAll", "findOne", "create", "update", "remove", "posicao", "mix",
-        "verificarTitularidade", "titularidadePorCnpj", "atualizarPelaReceita",
-        "listagemPosicao", "vendedoresEscopo", "municipiosEscopo", "ufsEscopo",
-        "registrar", "aprovar", "recusar", "consultarCnpj", "aplicarReceita",
-        "iniciar (lote Receita)", "baixar", "desfazer"
+        "findAll",
+        "findOne",
+        "create",
+        "update",
+        "remove",
+        "posicao",
+        "mix",
+        "verificarTitularidade",
+        "titularidadePorCnpj",
+        "atualizarPelaReceita",
+        "listagemPosicao",
+        "vendedoresEscopo",
+        "municipiosEscopo",
+        "ufsEscopo",
+        "registrar",
+        "aprovar",
+        "recusar",
+        "consultarCnpj",
+        "aplicarReceita",
+        "iniciar (lote Receita)",
+        "baixar",
+        "desfazer"
       ],
       "dependencies": [
-        "PrismaService", "ClienteCampoConfigService", "ExternalHttpService",
-        "resolverEscopoVendedores", "titulos-receber (status/boleto)",
-        "notas-saida (comFlagXml)", "common/precos", "whatsapp (escopo)",
-        "notificacoes", "@plataforma/contracts"
+        "PrismaService",
+        "ClienteCampoConfigService",
+        "ExternalHttpService",
+        "resolverEscopoVendedores",
+        "titulos-receber (status/boleto)",
+        "notas-saida (comFlagXml)",
+        "common/precos",
+        "whatsapp (escopo)",
+        "notificacoes",
+        "@plataforma/contracts"
       ],
       "test_files": [
-        "cliente-alteracoes.diff.spec.ts", "endereco-equivalente.spec.ts"
+        "cliente-alteracoes.diff.spec.ts",
+        "endereco-equivalente.spec.ts"
       ],
       "confidence": "CONFIRMADO"
     },
@@ -71,20 +129,38 @@
       "path": "apps/api/src/modules/empresas",
       "responsibility": "Cadastro de empresas (tenants), escopo por grupo econômico, campos exclusivos da plataforma, upload de logo/banner/logo-DANFE.",
       "files": [
-        "empresas.module.ts", "empresas.controller.ts", "empresas.service.ts",
+        "empresas.module.ts",
+        "empresas.controller.ts",
+        "empresas.service.ts",
         "dto/empresa.dto.ts"
       ],
-      "entities": ["Empresa"],
+      "entities": [
+        "Empresa"
+      ],
       "main_functions": [
-        "findAll", "findOne", "findOneDoAtor", "create", "createDoAtor",
-        "update", "setLogo", "setLogoDanfe", "setBanner", "remove",
-        "garantirEscopo", "ensureAliasDisponivel"
+        "findAll",
+        "findOne",
+        "findOneDoAtor",
+        "create",
+        "createDoAtor",
+        "update",
+        "setLogo",
+        "setLogoDanfe",
+        "setBanner",
+        "remove",
+        "garantirEscopo",
+        "ensureAliasDisponivel"
       ],
       "dependencies": [
-        "PrismaService", "garantirVagaDeEmpresa", "validarDocumentoEmpresa",
-        "EnriquecimentoService (clientes)", "common/uploads"
+        "PrismaService",
+        "garantirVagaDeEmpresa",
+        "validarDocumentoEmpresa",
+        "EnriquecimentoService (clientes)",
+        "common/uploads"
       ],
-      "test_files": ["empresa-plano-grupo.spec.ts"],
+      "test_files": [
+        "empresa-plano-grupo.spec.ts"
+      ],
       "confidence": "CONFIRMADO"
     },
     {
@@ -92,17 +168,28 @@
       "path": "apps/api/src/modules/grupos-economicos",
       "responsibility": "Hierarquia Grupo Econômico → Empresa: composição de empresas no grupo (mover entre grupos), usuários do grupo (perfil único por conta) e remoção de acesso.",
       "files": [
-        "grupos-economicos.module.ts", "grupos-economicos.controller.ts",
+        "grupos-economicos.module.ts",
+        "grupos-economicos.controller.ts",
         "grupos-economicos.service.ts"
       ],
-      "entities": ["GrupoEconomico"],
+      "entities": [
+        "GrupoEconomico"
+      ],
       "main_functions": [
-        "contexto", "salvar", "usuarios", "salvarUsuario", "removerAcesso",
-        "validarPerfil", "empresasAdministradas"
+        "contexto",
+        "salvar",
+        "usuarios",
+        "salvarUsuario",
+        "removerAcesso",
+        "validarPerfil",
+        "empresasAdministradas"
       ],
       "dependencies": [
-        "PrismaService", "PoliticaSenhaService", "garantirVagaDeUsuario",
-        "garantirVagaDeEmpresa", "common/perfil/perfil-do-grupo",
+        "PrismaService",
+        "PoliticaSenhaService",
+        "garantirVagaDeUsuario",
+        "garantirVagaDeEmpresa",
+        "common/perfil/perfil-do-grupo",
         "dadosDoVendedor"
       ],
       "test_files": [],
@@ -113,20 +200,43 @@
       "path": "apps/api/src/modules/usuarios",
       "responsibility": "CRUD da conta Usuario no escopo da empresa ativa, vínculo usuário×empresa (perfil RBAC, superior, dados pessoais), reset de senha por admin e horário de trabalho (restrição de expediente).",
       "files": [
-        "usuarios.module.ts", "usuarios.controller.ts", "usuarios.service.ts",
-        "dto/usuario.dto.ts", "common/usuarios/whatsapp-do-usuario.ts",
+        "usuarios.module.ts",
+        "usuarios.controller.ts",
+        "usuarios.service.ts",
+        "dto/usuario.dto.ts",
+        "common/usuarios/whatsapp-do-usuario.ts",
         "common/usuarios/dados-do-vendedor.ts"
       ],
-      "entities": ["Usuario", "UsuarioEmpresa", "UsuarioHorario"],
+      "entities": [
+        "Usuario",
+        "UsuarioEmpresa",
+        "UsuarioHorario"
+      ],
       "main_functions": [
-        "findAll", "findOne", "create", "update", "resetSenha", "remove",
-        "vincularEmpresa", "desvincularEmpresa", "obterHorarios", "salvarHorarios",
-        "empresasNoAlcance", "garantirPodeAtribuirPerfil"
+        "findAll",
+        "findOne",
+        "create",
+        "update",
+        "resetSenha",
+        "remove",
+        "vincularEmpresa",
+        "desvincularEmpresa",
+        "obterHorarios",
+        "salvarHorarios",
+        "empresasNoAlcance",
+        "garantirPodeAtribuirPerfil"
       ],
       "dependencies": [
-        "PrismaService", "PoliticaSenhaService", "HorarioTrabalhoService",
-        "garantirVagaDeUsuario", "garantirPerfilDoGrupo", "grupoDaEmpresa",
-        "gravarWhatsappDoUsuario", "dadosDoVendedor", "AuthModule", "bcryptjs",
+        "PrismaService",
+        "PoliticaSenhaService",
+        "HorarioTrabalhoService",
+        "garantirVagaDeUsuario",
+        "garantirPerfilDoGrupo",
+        "grupoDaEmpresa",
+        "gravarWhatsappDoUsuario",
+        "dadosDoVendedor",
+        "AuthModule",
+        "bcryptjs",
         "@plataforma/contracts"
       ],
       "test_files": [
@@ -140,18 +250,34 @@
       "path": "apps/api/src/modules/perfis",
       "responsibility": "CRUD do catálogo de perfis RBAC (Perfil) e permissões por rotina/ação (PerfilPermissao), com corte entre perfil da plataforma (modelo global) e perfil do grupo econômico.",
       "files": [
-        "perfis.module.ts", "perfis.controller.ts", "perfis.service.ts",
+        "perfis.module.ts",
+        "perfis.controller.ts",
+        "perfis.service.ts",
         "dto/perfil.dto.ts"
       ],
-      "entities": ["Perfil", "PerfilPermissao"],
+      "entities": [
+        "Perfil",
+        "PerfilPermissao"
+      ],
       "main_functions": [
-        "findAll", "findOne", "create", "update", "remove", "updatePermissoes",
-        "visiveis", "garantirPodeAlterar", "grupoDoAtor"
+        "findAll",
+        "findOne",
+        "create",
+        "update",
+        "remove",
+        "updatePermissoes",
+        "visiveis",
+        "garantirPodeAlterar",
+        "grupoDoAtor"
       ],
       "dependencies": [
-        "PrismaService", "grupoDaEmpresa", "Prisma (namespace)"
+        "PrismaService",
+        "grupoDaEmpresa",
+        "Prisma (namespace)"
       ],
-      "test_files": ["perfis.service.spec.ts"],
+      "test_files": [
+        "perfis.service.spec.ts"
+      ],
       "confidence": "CONFIRMADO"
     },
     {
@@ -159,18 +285,39 @@
       "path": "apps/api/src/modules/acessos",
       "responsibility": "Auditoria de acesso só-leitura (eventos de login, sessões com tempo de uso, uso por rotina) e a restrição de expediente (HorarioTrabalhoService) consultada pelo JwtAuthGuard em toda requisição.",
       "files": [
-        "acessos.module.ts", "acessos.controller.ts", "uso-rotina.controller.ts",
-        "acessos.service.ts", "horario-trabalho.service.ts", "dto/acesso.dto.ts"
+        "acessos.module.ts",
+        "acessos.controller.ts",
+        "uso-rotina.controller.ts",
+        "acessos.service.ts",
+        "horario-trabalho.service.ts",
+        "dto/acesso.dto.ts"
       ],
-      "entities": ["Sessao", "AcessoLog", "UsoRotina", "UsuarioHorario"],
+      "entities": [
+        "Sessao",
+        "AcessoLog",
+        "UsoRotina",
+        "UsuarioHorario"
+      ],
       "main_functions": [
-        "registrar", "abrirSessao", "tocarSessao", "encerrarSessao", "situacaoSessao",
-        "encerrarSessoes", "registrarUso", "usoPorRotina", "desconectar",
-        "encerrarSessoesDoUsuario", "listarEventos", "listarSessoes", "resumo",
-        "HorarioTrabalhoService.verificar", "HorarioTrabalhoService.invalidar"
+        "registrar",
+        "abrirSessao",
+        "tocarSessao",
+        "encerrarSessao",
+        "situacaoSessao",
+        "encerrarSessoes",
+        "registrarUso",
+        "usoPorRotina",
+        "desconectar",
+        "encerrarSessoesDoUsuario",
+        "listarEventos",
+        "listarSessoes",
+        "resumo",
+        "HorarioTrabalhoService.verificar",
+        "HorarioTrabalhoService.invalidar"
       ],
       "dependencies": [
-        "PrismaService", "common/horario/horario-trabalho.ts",
+        "PrismaService",
+        "common/horario/horario-trabalho.ts",
         "common/sessao/sessao-encerrada.exception.ts"
       ],
       "test_files": [],
@@ -181,38 +328,80 @@
       "path": "apps/api/src/modules/produtos",
       "responsibility": "CRUD do catálogo de produtos (ERP ou nativo da plataforma) com trava de campos do ERP, preços por tabela, fotos, fichas técnicas (extração por IA + indexação semântica), produtos relacionados (similares/aplicação) e o recorte do que a IA pode falar de um produto — nunca preço.",
       "files": [
-        "produtos.module.ts", "produtos.controller.ts", "produtos.service.ts",
-        "produto-relacionados.service.ts", "produto-fichas.service.ts",
-        "ficha-importacao.controller.ts", "ficha-importacao.service.ts",
-        "ficha-embedding.service.ts", "partir-ficha.ts", "sem-preco.ts",
+        "produtos.module.ts",
+        "produtos.controller.ts",
+        "produtos.service.ts",
+        "produto-relacionados.service.ts",
+        "produto-fichas.service.ts",
+        "ficha-importacao.controller.ts",
+        "ficha-importacao.service.ts",
+        "ficha-embedding.service.ts",
+        "partir-ficha.ts",
+        "sem-preco.ts",
         "produto-fotos-importacao.controller.ts",
-        "produto-fotos-importacao.service.ts", "produto-para-agente.service.ts",
+        "produto-fotos-importacao.service.ts",
+        "produto-para-agente.service.ts",
         "dto/produto.dto.ts"
       ],
       "entities": [
-        "Produto", "ProdutoFoto", "ProdutoFicha", "ProdutoFichaTrecho",
-        "ProdutoFichaImportacao", "ProdutoRelacionado"
+        "Produto",
+        "ProdutoFoto",
+        "ProdutoFicha",
+        "ProdutoFichaTrecho",
+        "ProdutoFichaImportacao",
+        "ProdutoRelacionado"
       ],
       "main_functions": [
-        "findAll", "findOne", "create", "update", "remove", "precos",
-        "opcoesFiltro", "setFoto", "setFotoDeArquivo", "definirFotoPrincipal",
-        "removerFoto", "listar (relacionados)", "criar (relacionado)",
-        "remover (relacionado)", "listar (fichas)", "criar (ficha)",
-        "atualizar (ficha)", "remover (ficha)", "receber (importação ficha)",
-        "varrer", "processarItem", "lerPdf", "procurarProduto", "gravarFicha",
-        "vincular (importação ficha/foto)", "indexar", "vetorizarPendentes",
-        "partirFicha", "semPreco", "linhaTemPreco", "procurarHibrido",
-        "procurar", "palavrasDaBusca", "detalhar", "importar (fotos)",
+        "findAll",
+        "findOne",
+        "create",
+        "update",
+        "remove",
+        "precos",
+        "opcoesFiltro",
+        "setFoto",
+        "setFotoDeArquivo",
+        "definirFotoPrincipal",
+        "removerFoto",
+        "listar (relacionados)",
+        "criar (relacionado)",
+        "remover (relacionado)",
+        "listar (fichas)",
+        "criar (ficha)",
+        "atualizar (ficha)",
+        "remover (ficha)",
+        "receber (importação ficha)",
+        "varrer",
+        "processarItem",
+        "lerPdf",
+        "procurarProduto",
+        "gravarFicha",
+        "vincular (importação ficha/foto)",
+        "indexar",
+        "vetorizarPendentes",
+        "partirFicha",
+        "semPreco",
+        "linhaTemPreco",
+        "procurarHibrido",
+        "procurar",
+        "palavrasDaBusca",
+        "detalhar",
+        "importar (fotos)",
         "codigosDoNome"
       ],
       "dependencies": [
-        "PrismaService", "ProvedorIaModule/ProvedorFactory",
-        "AgenteConfigService (agente)", "EmbeddingsService (agente)",
-        "common/uploads/uploads.config", "common/empresa/situacao-empresa",
+        "PrismaService",
+        "ProvedorIaModule/ProvedorFactory",
+        "AgenteConfigService (agente)",
+        "EmbeddingsService (agente)",
+        "common/uploads/uploads.config",
+        "common/empresa/situacao-empresa",
         "@plataforma/contracts"
       ],
       "test_files": [
-        "palavras-da-busca.spec.ts", "partir-ficha.spec.ts", "sem-preco.spec.ts",
+        "palavras-da-busca.spec.ts",
+        "partir-ficha.spec.ts",
+        "sem-preco.spec.ts",
         "produto-relacionados.service.spec.ts",
         "produto-fotos-importacao.service.spec.ts"
       ],
@@ -223,17 +412,33 @@
       "path": "apps/api/src/modules/produto-campos",
       "responsibility": "Cadastro de campos complementares de produto (definição por empresa) e preenchimento desses campos por produto, com validação/normalização de valor por tipo e recorte visivelAgente para a IA.",
       "files": [
-        "produto-campos.module.ts", "produto-campos.controller.ts",
-        "produto-campos.service.ts", "normalizar-valor.ts",
+        "produto-campos.module.ts",
+        "produto-campos.controller.ts",
+        "produto-campos.service.ts",
+        "normalizar-valor.ts",
         "dto/produto-campo.dto.ts"
       ],
-      "entities": ["ProdutoCampo", "ProdutoCampoValor"],
-      "main_functions": [
-        "listar", "criar", "atualizar", "remover", "valoresDoProduto",
-        "valoresDoProdutoTx", "gravarValores", "normalizarValorDoCampo"
+      "entities": [
+        "ProdutoCampo",
+        "ProdutoCampoValor"
       ],
-      "dependencies": ["PrismaService", "@plataforma/contracts"],
-      "test_files": ["normalizar-valor.spec.ts"],
+      "main_functions": [
+        "listar",
+        "criar",
+        "atualizar",
+        "remover",
+        "valoresDoProduto",
+        "valoresDoProdutoTx",
+        "gravarValores",
+        "normalizarValorDoCampo"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "@plataforma/contracts"
+      ],
+      "test_files": [
+        "normalizar-valor.spec.ts"
+      ],
       "confidence": "CONFIRMADO"
     },
     {
@@ -241,12 +446,22 @@
       "path": "apps/api/src/modules/cliente-campo-config",
       "responsibility": "Configuração por empresa de quais campos do cadastro de Cliente podem ser editados; consultada por qualquer usuário autenticado e reforçada no servidor pelos serviços de clientes que gravam.",
       "files": [
-        "cliente-campo-config.module.ts", "cliente-campo-config.controller.ts",
-        "cliente-campo-config.service.ts", "dto/cliente-campo-config.dto.ts"
+        "cliente-campo-config.module.ts",
+        "cliente-campo-config.controller.ts",
+        "cliente-campo-config.service.ts",
+        "dto/cliente-campo-config.dto.ts"
       ],
-      "entities": ["ClienteCampoConfig"],
-      "main_functions": ["obterConfig", "atualizar"],
-      "dependencies": ["PrismaService", "@plataforma/contracts"],
+      "entities": [
+        "ClienteCampoConfig"
+      ],
+      "main_functions": [
+        "obterConfig",
+        "atualizar"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "@plataforma/contracts"
+      ],
       "test_files": [],
       "confidence": "CONFIRMADO"
     },
@@ -255,15 +470,27 @@
       "path": "apps/api/src/modules/estoque",
       "responsibility": "Consulta só-leitura de saldo de estoque, agregada por produto (soma nos armazéns de revenda) e detalhada por armazém; dados entram só pelo import do ERP.",
       "files": [
-        "estoque.module.ts", "estoque.controller.ts", "estoque.service.ts",
+        "estoque.module.ts",
+        "estoque.controller.ts",
+        "estoque.service.ts",
         "dto/estoque.dto.ts"
       ],
-      "entities": ["Estoque", "Armazem"],
-      "main_functions": ["findAll", "findByProduto"],
-      "dependencies": [
-        "PrismaService", "common/pagination/paginate", "@plataforma/contracts"
+      "entities": [
+        "Estoque",
+        "Armazem"
       ],
-      "test_files": ["estoque.service.spec.ts"],
+      "main_functions": [
+        "findAll",
+        "findByProduto"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "common/pagination/paginate",
+        "@plataforma/contracts"
+      ],
+      "test_files": [
+        "estoque.service.spec.ts"
+      ],
       "confidence": "CONFIRMADO"
     },
     {
@@ -271,21 +498,43 @@
       "path": "apps/api/src/modules/estrutura",
       "responsibility": "Catálogo global do menu (Módulo/Menu/Rotina), mantido por administrador da plataforma, e o liga/desliga desse catálogo por empresa e por plano de assinatura.",
       "files": [
-        "estrutura.module.ts", "estrutura.controller.ts", "estrutura.service.ts",
+        "estrutura.module.ts",
+        "estrutura.controller.ts",
+        "estrutura.service.ts",
         "dto/estrutura.dto.ts"
       ],
       "entities": [
-        "Modulo", "Menu", "Rotina", "EmpresaModulo", "EmpresaMenu", "EmpresaRotina"
+        "Modulo",
+        "Menu",
+        "Rotina",
+        "EmpresaModulo",
+        "EmpresaMenu",
+        "EmpresaRotina"
       ],
       "main_functions": [
-        "listModulos", "listArvore", "desativadosDaEmpresa",
-        "definirModuloDaEmpresa", "definirMenuDaEmpresa", "definirRotinaDaEmpresa",
-        "createModulo", "updateModulo", "removeModulo", "listMenus", "createMenu",
-        "updateMenu", "removeMenu", "validarMenuPai", "listRotinas",
-        "createRotina", "updateRotina", "removeRotina"
+        "listModulos",
+        "listArvore",
+        "desativadosDaEmpresa",
+        "definirModuloDaEmpresa",
+        "definirMenuDaEmpresa",
+        "definirRotinaDaEmpresa",
+        "createModulo",
+        "updateModulo",
+        "removeModulo",
+        "listMenus",
+        "createMenu",
+        "updateMenu",
+        "removeMenu",
+        "validarMenuPai",
+        "listRotinas",
+        "createRotina",
+        "updateRotina",
+        "removeRotina"
       ],
       "dependencies": [
-        "PrismaService", "PlatformAdminGuard", "@plataforma/contracts",
+        "PrismaService",
+        "PlatformAdminGuard",
+        "@plataforma/contracts",
         "Assinatura/Plano (assinaturas/planos)"
       ],
       "test_files": [],
@@ -296,13 +545,22 @@
       "path": "apps/api/src/modules/fornecedores",
       "responsibility": "Cadastro de fornecedor espelhado do ERP, só-leitura pela API interna — dados entram e saem só pela API de integração.",
       "files": [
-        "fornecedores.module.ts", "fornecedores.controller.ts",
-        "fornecedores.service.ts", "dto/fornecedor.dto.ts"
+        "fornecedores.module.ts",
+        "fornecedores.controller.ts",
+        "fornecedores.service.ts",
+        "dto/fornecedor.dto.ts"
       ],
-      "entities": ["Fornecedor"],
-      "main_functions": ["findAll", "findOne"],
+      "entities": [
+        "Fornecedor"
+      ],
+      "main_functions": [
+        "findAll",
+        "findOne"
+      ],
       "dependencies": [
-        "PrismaService", "common/pagination/paginate", "@plataforma/contracts"
+        "PrismaService",
+        "common/pagination/paginate",
+        "@plataforma/contracts"
       ],
       "test_files": [],
       "confidence": "CONFIRMADO"
@@ -312,16 +570,28 @@
       "path": "apps/api/src/modules/notas-entrada",
       "responsibility": "Consulta read-only das notas fiscais de compra (espelho do ERP/SF1): listagem paginada e detalhe com itens embutidos. Tipo 'N' = compra (fornecedor), 'D' = devolução de venda (cliente). Dados entram só pela API de integração.",
       "files": [
-        "notas-entrada.module.ts", "notas-entrada.controller.ts",
-        "notas-entrada.service.ts", "dto/nota-entrada.dto.ts"
+        "notas-entrada.module.ts",
+        "notas-entrada.controller.ts",
+        "notas-entrada.service.ts",
+        "dto/nota-entrada.dto.ts"
       ],
-      "entities": ["NotaEntrada", "NotaEntradaItem"],
-      "main_functions": ["findAll", "findOne"],
+      "entities": [
+        "NotaEntrada",
+        "NotaEntradaItem"
+      ],
+      "main_functions": [
+        "findAll",
+        "findOne"
+      ],
       "dependencies": [
-        "PrismaService", "common/pagination/paginate",
-        "resolverEscopoVendedores (common/escopo)", "@plataforma/contracts"
+        "PrismaService",
+        "common/pagination/paginate",
+        "resolverEscopoVendedores (common/escopo)",
+        "@plataforma/contracts"
       ],
-      "test_files": ["notas-entrada.service.spec.ts"],
+      "test_files": [
+        "notas-entrada.service.spec.ts"
+      ],
       "confidence": "CONFIRMADO"
     },
     {
@@ -329,23 +599,44 @@
       "path": "apps/api/src/modules/notas-saida",
       "responsibility": "Consulta read-only das notas fiscais de venda (espelho do ERP/SF2): listagem paginada, detalhe com itens, 2a via de DANFE (PDF) e download do XML autorizado da NF-e, renderizados sob demanda a partir do XML que a integracao gravou. Tipo 'D' = devolucao de compra (fornecedor, nao cliente). Dados entram so pela API de integracao.",
       "files": [
-        "notas-saida.module.ts", "notas-saida.controller.ts",
-        "notas-saida.service.ts", "dto/nota-saida.dto.ts", "nota-flags.ts",
-        "nfe-xml.ts", "danfe-pdf.ts"
+        "notas-saida.module.ts",
+        "notas-saida.controller.ts",
+        "notas-saida.service.ts",
+        "dto/nota-saida.dto.ts",
+        "nota-flags.ts",
+        "nfe-xml.ts",
+        "danfe-pdf.ts"
       ],
-      "entities": ["NotaSaida", "NotaSaidaItem", "NotaSaidaXml"],
-      "main_functions": ["findAll", "findOne", "gerarDanfe", "obterXml", "lerXml", "extrairNfe", "montarDanfePdf"],
+      "entities": [
+        "NotaSaida",
+        "NotaSaidaItem",
+        "NotaSaidaXml"
+      ],
+      "main_functions": [
+        "findAll",
+        "findOne",
+        "gerarDanfe",
+        "obterXml",
+        "lerXml",
+        "extrairNfe",
+        "montarDanfePdf"
+      ],
       "dependencies": [
-        "PrismaService", "ParametrosService", "common/pagination/paginate",
+        "PrismaService",
+        "ParametrosService",
+        "common/pagination/paginate",
         "resolverEscopoVendedores + combinarFiltroVendedor (common/escopo/escopo-vendedores)",
         "QuemPede + recorteDoSolicitante + autorDoEvento (common/escopo/quem-pede)",
         "registrarAtividadeDocumento (common/atividades)",
         "ocultarComissaoDosItens (common/permissoes/pode-ver-comissao)",
         "carregarLogo (common/pdf/carregar-logo)",
         "code128cModulos + desenharBarras + larguraBarras (common/pdf/barcode)",
-        "jspdf", "@plataforma/contracts"
+        "jspdf",
+        "@plataforma/contracts"
       ],
-      "test_files": ["nfe-xml.spec.ts"],
+      "test_files": [
+        "nfe-xml.spec.ts"
+      ],
       "confidence": "CONFIRMADO"
     },
     {
@@ -353,25 +644,45 @@
       "path": "apps/api/src/modules/sugestao-compra",
       "responsibility": "Motor de cross-sell: produtos que clientes do mesmo ramo (CNAE) e com cesta de compra parecida compram e o cliente-alvo nao compra. Dois modos com o mesmo motor: ao vivo (paraCliente, tela + agente de IA) e gravado em lote ou por cliente (sugestoes_compra), com execucao em segundo plano acompanhada por SugestaoCompraExecucao. Alvo restrito a carteira do usuario; comparaveis da base inteira, anonimizados na saida quando fora da carteira.",
       "files": [
-        "sugestao-compra.module.ts", "sugestao-compra.controller.ts",
-        "sugestao-compra.service.ts", "dto/sugestao-compra.dto.ts", "anonimizar.ts"
+        "sugestao-compra.module.ts",
+        "sugestao-compra.controller.ts",
+        "sugestao-compra.service.ts",
+        "dto/sugestao-compra.dto.ts",
+        "anonimizar.ts"
       ],
-      "entities": ["SugestaoCompraGerada", "SugestaoCompraExecucao"],
+      "entities": [
+        "SugestaoCompraGerada",
+        "SugestaoCompraExecucao"
+      ],
       "main_functions": [
-        "paraCliente", "listagem", "calculadaDoCliente", "gerarLinhasParaCliente",
-        "gerarLote", "iniciarLote", "executarLote", "gerarParaCliente",
-        "excluirCalculo", "ultimaExecucao", "buscarSemelhantes", "produtosDosSemelhantes"
+        "paraCliente",
+        "listagem",
+        "calculadaDoCliente",
+        "gerarLinhasParaCliente",
+        "gerarLote",
+        "iniciarLote",
+        "executarLote",
+        "gerarParaCliente",
+        "excluirCalculo",
+        "ultimaExecucao",
+        "buscarSemelhantes",
+        "produtosDosSemelhantes"
       ],
       "dependencies": [
-        "PrismaService", "ParametrosService (SUGESTAO_COMPRA_MESES)",
+        "PrismaService",
+        "ParametrosService (SUGESTAO_COMPRA_MESES)",
         "resolverEscopoVendedores (common/escopo/escopo-vendedores)",
         "condicaoBuscaTermosSql (common/busca/termos-busca)",
-        "resolverTabelaPrecoCliente (common/precos)", "common/pagination/paginate",
+        "resolverTabelaPrecoCliente (common/precos)",
+        "common/pagination/paginate",
         "@plataforma/contracts (PESO_NIVEL_CNAE)",
         "notas_saida_itens/notas_saida (SQL raw, modulo notas-saida)",
-        "cliente_cnaes/cnaes (SQL raw)", "Notificacao (modulo notificacoes)"
+        "cliente_cnaes/cnaes (SQL raw)",
+        "Notificacao (modulo notificacoes)"
       ],
-      "test_files": ["anonimizar.spec.ts"],
+      "test_files": [
+        "anonimizar.spec.ts"
+      ],
       "confidence": "CONFIRMADO"
     },
     {
@@ -379,28 +690,1463 @@
       "path": "apps/api/src/modules/orcamentos",
       "responsibility": "Proposta comercial (CRUD completo, nasce na plataforma, diferente das notas que so espelham o ERP). Calcula preco/desconto/comissao a partir da Tabela de Preco do cliente, fluxo de autorizacao de desconto em duas etapas, maquina de estado de status, geracao de PDF da proposta (mesmo arquivo que o WhatsApp anexa) e rastreamento de integracao com o pedido de venda do ERP.",
       "files": [
-        "orcamentos.module.ts", "orcamentos.controller.ts", "orcamentos.service.ts",
-        "dto/orcamento.dto.ts", "calcular-itens-orcamento.ts",
-        "registrar-atividade-orcamento.ts", "criar-atividade-retorno.ts",
-        "validade-orcamento.ts", "proximo-numero-orcamento.ts", "orcamento-pdf.ts"
+        "orcamentos.module.ts",
+        "orcamentos.controller.ts",
+        "orcamentos.service.ts",
+        "dto/orcamento.dto.ts",
+        "calcular-itens-orcamento.ts",
+        "registrar-atividade-orcamento.ts",
+        "criar-atividade-retorno.ts",
+        "validade-orcamento.ts",
+        "proximo-numero-orcamento.ts",
+        "orcamento-pdf.ts"
       ],
-      "entities": ["Orcamento", "OrcamentoItem", "OrcamentoConfig"],
+      "entities": [
+        "Orcamento",
+        "OrcamentoItem",
+        "OrcamentoConfig"
+      ],
       "main_functions": [
-        "precoProduto", "findAll", "findOne", "create", "update", "remove",
-        "solicitarAutorizacaoDesconto", "autorizarDesconto", "gerarPdf",
-        "calcularItensOrcamento", "registrarAtividadeOrcamento", "origemDaVenda"
+        "precoProduto",
+        "findAll",
+        "findOne",
+        "create",
+        "update",
+        "remove",
+        "solicitarAutorizacaoDesconto",
+        "autorizarDesconto",
+        "gerarPdf",
+        "calcularItensOrcamento",
+        "registrarAtividadeOrcamento",
+        "origemDaVenda"
       ],
       "dependencies": [
-        "PrismaService", "ParametrosService (DESCONTO_ACIMA_LIMITE_BLOQUEIA, PARAMETRO_ORCAMENTO_EXIBIR_FOTOS, COMISSAO_OCULTA_PARA_TODOS)",
+        "PrismaService",
+        "ParametrosService (DESCONTO_ACIMA_LIMITE_BLOQUEIA, PARAMETRO_ORCAMENTO_EXIBIR_FOTOS, COMISSAO_OCULTA_PARA_TODOS)",
         "resolverEscopoVendedores + combinarFiltroVendedor (common/escopo)",
         "QuemPede + recorteDoSolicitante + autorDoEvento (common/escopo/quem-pede)",
         "resolverTabelaPrecoCliente + resolverRegrasDescontoDosItens (common/precos)",
-        "common/permissoes/pode-ver-comissao", "common/horario/calendario-util",
-        "common/pdf/carregar-logo", "common/uploads/uploads.config",
+        "common/permissoes/pode-ver-comissao",
+        "common/horario/calendario-util",
+        "common/pdf/carregar-logo",
+        "common/uploads/uploads.config",
         "modules/notificacoes (registrarNotificacao, usuarioDoVendedor)",
-        "jspdf + jspdf-autotable", "@plataforma/contracts"
+        "jspdf + jspdf-autotable",
+        "@plataforma/contracts"
       ],
-      "test_files": ["validade-orcamento.spec.ts", "pode-excluir-orcamento.spec.ts"],
+      "test_files": [
+        "validade-orcamento.spec.ts",
+        "pode-excluir-orcamento.spec.ts"
+      ],
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "orcamento-config",
+      "path": "apps/api/src/modules/orcamento-config",
+      "responsibility": "Fachada de leitura do parametro ORCAMENTO_DIAS_VALIDADE (padrao 30) para o formulario de Orcamento sugerir a validade; sem permissao propria. Nao usa a tabela orcamento_config (que guarda so o contador do numero, do modulo orcamentos).",
+      "files": [
+        "orcamento-config.module.ts",
+        "orcamento-config.controller.ts",
+        "orcamento-config.service.ts"
+      ],
+      "entities": [],
+      "main_functions": [
+        "getVigente"
+      ],
+      "dependencies": [
+        "ParametrosService.obterNumero",
+        "PrismaService.withTenant",
+        "@plataforma/contracts (ORCAMENTO_CONFIG_EXAMPLE)"
+      ],
+      "consumers": [
+        "apps/web/src/components/crud/orcamento-form.tsx"
+      ],
+      "business_rules": [
+        {
+          "description": "diasValidade = parametro ORCAMENTO_DIAS_VALIDADE; ausente, vazio ou NaN = 30",
+          "location": "apps/api/src/modules/parametros/parametros.service.ts:258",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Validade e so sugestao no navegador (criar/copiar); servidor nao valida a data contra o parametro",
+          "location": "apps/web/src/components/crud/orcamento-form.tsx:656",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Parametro aceita 0, negativo e fracao (validacao so de numero e tamanho 3); contrato diz int>=1 sem validar a saida",
+          "location": "apps/api/src/modules/parametros/parametros.service.ts:78",
+          "confidence": "INFERIDO"
+        }
+      ],
+      "gaps": [
+        "orcamentoConfigUpdateSchema sem endpoint (contrato morto)",
+        "updatedAt = new Date() quando nao ha linha do parametro",
+        "comentario desatualizado em orcamentos/proximo-numero-orcamento.ts:12"
+      ],
+      "test_files": [],
+      "complexity": "low",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "titulos-receber",
+      "path": "apps/api/src/modules/titulos-receber",
+      "responsibility": "Consulta somente-leitura do contas a receber integrado do ERP, no escopo hierarquico, e 2a via de boleto Bradesco em PDF (reimpressao, nunca registro): valor atualizado com multa/juros do ERP, janela de reemissao por parametro, codigo de barras FEBRABAN.",
+      "files": [
+        "titulos-receber.module.ts",
+        "titulos-receber.controller.ts",
+        "titulos-receber.service.ts",
+        "titulo-receber-status.ts",
+        "boleto-atualizacao.ts",
+        "boleto-codigo.ts",
+        "boleto-pdf.ts",
+        "dto/titulo-receber.dto.ts"
+      ],
+      "entities": [
+        "TituloReceber",
+        "TituloReceberBaixa"
+      ],
+      "main_functions": [
+        "findAll",
+        "findOne",
+        "gerarBoleto",
+        "descreverBoleto",
+        "calcularStatusTituloReceber",
+        "calcularEncargos",
+        "podeEmitirBoleto",
+        "foraDoPrazoDeReemissao",
+        "montarBoleto",
+        "fatorVencimento",
+        "campoLivreBradesco",
+        "montarBoletoPdf",
+        "montarInstrucoes"
+      ],
+      "dependencies": [
+        "ContasBancariasService.contaPadrao",
+        "ParametrosService (BOLETO_PRAZO_MAXIMO_REEMISSAO)",
+        "common/horario/calendario-util",
+        "common/escopo (resolverEscopoVendedores, recorteDoSolicitante, autorDoEvento)",
+        "common/atividades/registrar-atividade-documento",
+        "common/pdf/barcode",
+        "jspdf"
+      ],
+      "consumers": [
+        "clientes (posicao)",
+        "agente-tools",
+        "documentos-email",
+        "sms-aviso-vencimento",
+        "whatsapp",
+        "demo"
+      ],
+      "business_rules": [
+        {
+          "description": "Status: baixado se dtBaixa; vencido se vencimento efetivo (feriados) anterior a hoje UTC; senao aberto",
+          "location": "titulo-receber-status.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Boleto vencido sai atualizado: saldo + multaValor + jurosValorDia x dias, so valores do ERP; vencimento impresso = hoje",
+          "location": "boleto-atualizacao.ts:calcularEncargos",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Emissao recusada apos BOLETO_PRAZO_MAXIMO_REEMISSAO dias de atraso (padrao 60)",
+          "location": "titulos-receber.service.ts:243",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Codigo de barras/linha digitavel do ERP prevalecem, exceto no boleto atualizado",
+          "location": "boleto-codigo.ts:montarBoleto",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Fator de vencimento reinicia em 1000 apos 9999 (21/02/2025)",
+          "location": "boleto-codigo.ts:fatorVencimento",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Titulo baixado NAO e recusado (doc diz que e); podeEmitirBoleto ignora dtBaixa; saldo 0 imprime valor original",
+          "location": "titulos-receber.service.ts:265; boleto-atualizacao.ts:podeEmitirBoleto",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Titulo parcialmente baixado em dia com codigo de barras do ERP: ficha mostra saldo, codigo de barras traz valor original",
+          "location": "titulos-receber.service.ts:359",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "decidir regra do titulo baixado",
+        "conciliar valor da ficha x codigo de barras do ERP",
+        "dois inicioDoDia (UTC x local)",
+        "nossoNumeroDac, descontoValor, vencimentoReal nao usados",
+        "logo do banco lida do disco local",
+        "comentario de 30 dias desatualizado"
+      ],
+      "test_files": [
+        "boleto-atualizacao.spec.ts",
+        "boleto-codigo.spec.ts",
+        "boleto-pdf.spec.ts",
+        "montar-instrucoes.spec.ts",
+        "titulos-feriados.spec.ts"
+      ],
+      "complexity": "high",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "contas-bancarias",
+      "path": "apps/api/src/modules/contas-bancarias",
+      "responsibility": "CRUD do convenio de cobranca da empresa (insumo da 2a via de boleto): banco, agencia, conta, carteira, beneficiario, textos da ficha, logo do banco e uma conta padrao por empresa.",
+      "files": [
+        "contas-bancarias.module.ts",
+        "contas-bancarias.controller.ts",
+        "contas-bancarias.service.ts",
+        "dto/conta-bancaria.dto.ts"
+      ],
+      "entities": [
+        "ContaBancaria"
+      ],
+      "main_functions": [
+        "findAll",
+        "findOne",
+        "create",
+        "update",
+        "remove",
+        "setLogo",
+        "removeLogo",
+        "contaPadrao",
+        "desmarcarOutrosPadroes"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "common/uploads/uploads.config (BANCOS_DIR, bancoLogoUploadOptions)",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "titulos-receber (gerarBoleto, findAll, findOne)",
+        "apps/web admin/contas-bancarias"
+      ],
+      "business_rules": [
+        {
+          "description": "Uma conta padrao por empresa: ao gravar padrao=true, desmarca as outras (sem indice unico)",
+          "location": "contas-bancarias.service.ts:desmarcarOutrosPadroes",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Exclusao e soft delete e mantem o vinculo dos titulos com a conta",
+          "location": "contas-bancarias.service.ts:remove",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "contaPadrao exige padrao, ativo e nao excluida; conta padrao inativa deixa a empresa sem padrao",
+          "location": "contas-bancarias.service.ts:contaPadrao",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Contrato aceita agencia ate 5 e conta ate 9 digitos; gerador Bradesco recusa acima de 4 e 7",
+          "location": "packages/contracts/src/conta-bancaria.ts:62",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "jurosMesPerc/multaPerc nao usados e tela contraditoria (page.tsx:607 x 642)",
+        "logo WEBP/SVG aceito e nao desenhado no boleto",
+        "arquivo orfao no upload de logo com 404",
+        "corrida pode deixar duas contas padrao"
+      ],
+      "test_files": [],
+      "complexity": "low",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "equipamentos-comodato",
+      "path": "apps/api/src/modules/equipamentos-comodato",
+      "responsibility": "Cadastro dos equipamentos emprestados em comodato e dos produtos aplicaveis (relacao aplicacao de produto_relacionados), com Popular pelas notas de remessa, sugestoes por compra conjunta (lift) e itens comuns por subcategoria entre quem esta com o equipamento.",
+      "files": [
+        "equipamentos-comodato.module.ts",
+        "equipamentos-comodato.controller.ts",
+        "equipamentos-comodato.service.ts",
+        "descricao-parecida.ts",
+        "dto/equipamento-comodato.dto.ts"
+      ],
+      "entities": [
+        "EquipamentoComodato",
+        "ProdutoRelacionado (tipo aplicacao)"
+      ],
+      "main_functions": [
+        "findAll",
+        "findOne",
+        "create",
+        "update",
+        "remove",
+        "removerLote",
+        "adicionarAplicacao",
+        "adicionarAplicacoesLote",
+        "removerAplicacao",
+        "sugestoes",
+        "comuns",
+        "popular",
+        "categoriasPopular",
+        "categoriasSugestoes",
+        "raizesDoEquipamento",
+        "raizesEmComum"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "ProdutoRelacionadosService (produtos)",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "clientes (posicao, comodato-sql, comodato-baixas)",
+        "agente-tools"
+      ],
+      "algorithms": [
+        "lift de compra conjunta (>1,5x taxa geral, min 3 clientes, 24 meses)",
+        "cobertura por subcategoria entre clientes em poder (remessa - retorno > 0)",
+        "raizes de 5 letras para descricao parecida"
+      ],
+      "business_rules": [
+        {
+          "description": "Um equipamento por produto; excluido e reaproveitado com as aplicacoes",
+          "location": "equipamentos-comodato.service.ts:create",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Popular regera excluidos: quem decide o que e equipamento e o filtro de categoria (usuario, 2026-10-07)",
+          "location": "equipamentos-comodato.service.ts:popular",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Exclusao em lote poupa equipamento com aplicacoes",
+          "location": "equipamentos-comodato.service.ts:removerLote",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Produto de categoria de equipamento nao pode ser aplicavel (regra na gravacao)",
+          "location": "produtos/produto-relacionados.service.ts:criar",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "sugestoes usam quem um dia recebeu; itens comuns usam quem ainda esta com o equipamento",
+        "totalClientes conta quem ja recebeu, nao quem tem hoje",
+        "leitura final de produtos sem filtro de deletedAt"
+      ],
+      "test_files": [
+        "descricao-parecida.spec.ts"
+      ],
+      "complexity": "high",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "vendedores",
+      "path": "apps/api/src/modules/vendedores",
+      "responsibility": "Cadastro de vendedores (carteira e hierarquia, base do escopo de visibilidade), criacao do usuario de acesso com perfil Vendedor e senha provisoria por e-mail/SMS, reenvio de senha, bloqueio conjunto vendedor+usuario e resolucao do vendedor do usuario logado.",
+      "files": [
+        "vendedores.module.ts",
+        "vendedores.controller.ts",
+        "vendedores.service.ts",
+        "dto/vendedor.dto.ts"
+      ],
+      "entities": [
+        "Vendedor"
+      ],
+      "main_functions": [
+        "findAll",
+        "findOne",
+        "create",
+        "update",
+        "remove",
+        "criarUsuario",
+        "reenviarSenha",
+        "bloquear",
+        "desbloquear",
+        "vendedorDoUsuario",
+        "garantirHierarquiaSemCiclo",
+        "espelharDesligado"
+      ],
+      "dependencies": [
+        "PrismaService (withTenant, withSistema)",
+        "PoliticaSenhaService",
+        "MailService",
+        "EmailConfigService",
+        "SmsService",
+        "ParametrosService",
+        "common/usuarios (gravarWhatsappDoUsuario, dadosDoVendedor)",
+        "common/perfil/perfil-do-grupo"
+      ],
+      "consumers": [
+        "common/escopo (escopo hierarquico)",
+        "agente-tools (vendedorDoUsuario)",
+        "whatsapp (atendeOutrasCarteiras)",
+        "dashboard/objetivos (usaDashboard)",
+        "integracao"
+      ],
+      "business_rules": [
+        {
+          "description": "desligado e o controle de saida; ativo = !desligado quando desligado vem na gravacao",
+          "location": "vendedores.service.ts:espelharDesligado",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Hierarquia sem ciclo, subindo a cadeia ate 50 degraus (so no update)",
+          "location": "vendedores.service.ts:garantirHierarquiaSemCiclo",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Usuario do vendedor: e-mail unico global, perfil Vendedor do grupo ou plataforma, senha provisoria; envio fora da transacao; senha volta so sem entrega",
+          "location": "vendedores.service.ts:criarUsuario",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Bloquear vendedor bloqueia o usuario em todas as empresas",
+          "location": "vendedores.service.ts:bloquear",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "usuarioId nao unico: vendedorDoUsuario ambiguo",
+        "remove nao desativa o usuario",
+        "desbloquear reativa usuario inativo por outro motivo",
+        "reenviarSenha informa e-mail do vendedor como login",
+        "usuario de outro grupo vira 500",
+        "docblock de criarUsuario desatualizado"
+      ],
+      "test_files": [],
+      "complexity": "medium",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "leads",
+      "path": "apps/api/src/modules/leads",
+      "responsibility": "Distribuicao dos leads captados pela IA no WhatsApp institucional: fila por temperatura e antiguidade, entrega a vendedor com aviso, devolucao a fila, conversao e descarte. A captacao fica em whatsapp/triagem.",
+      "files": [
+        "leads.module.ts",
+        "leads.controller.ts",
+        "leads.service.ts",
+        "dto/lead.dto.ts"
+      ],
+      "entities": [
+        "Lead"
+      ],
+      "main_functions": [
+        "listar",
+        "atualizar",
+        "distribui",
+        "avisarVendedor"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "common/escopo/escopo-vendedores",
+        "notificacoes/registrar-notificacao",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "apps/web /comercial/leads"
+      ],
+      "business_rules": [
+        {
+          "description": "Quem distribui (escopo livre, sem cadastro de vendedor ou com subordinado) ve a fila inteira; os demais so os seus",
+          "location": "leads.service.ts:distribui",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Situacao acompanha o dono quando nao informada: entregar novo -> em_atendimento; devolver em_atendimento -> novo",
+          "location": "leads.service.ts:atualizar",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Fila: quente primeiro, mais antigo primeiro dentro da temperatura",
+          "location": "leads.service.ts:listar",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "atualizar sem o recorte do listar (qualquer lead da empresa)",
+        "vendedorId sem FK nem validacao",
+        "assumidoPor grava quem entregou"
+      ],
+      "test_files": [],
+      "complexity": "low",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "oportunidades",
+      "path": "apps/api/src/modules/oportunidades",
+      "responsibility": "Funil de vendas do CRM: CRUD de oportunidades com estagio, valor e previsao, recortado pelo escopo hierarquico na leitura e na escrita; soft delete. Reusado pelo agente interno.",
+      "files": [
+        "oportunidades.module.ts",
+        "oportunidades.controller.ts",
+        "oportunidades.service.ts",
+        "dto/oportunidade.dto.ts"
+      ],
+      "entities": [
+        "Oportunidade"
+      ],
+      "main_functions": [
+        "findAll",
+        "findOne",
+        "create",
+        "update",
+        "remove",
+        "normalizarFechamento",
+        "garantirVendedorNoEscopo",
+        "garantirClienteNoEscopo"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "common/escopo/escopo-vendedores",
+        "common/pagination/paginate",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "agente/agente-tools.service.ts (listar_oportunidades, registrar_oportunidade, mover_oportunidade, historicoAtendimento)",
+        "atividades e orcamentos (oportunidadeId)",
+        "demo",
+        "apps/web /crm/oportunidades (lista, kanban, detalhe)"
+      ],
+      "business_rules": [
+        {
+          "description": "Leitura e escrita recortadas por vendedorId no escopo hierarquico; fora do escopo = 404",
+          "location": "oportunidades.service.ts:findAll/findOne/update/remove",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Vendedor e cliente (pela carteira) precisam estar no escopo ao criar/editar",
+          "location": "oportunidades.service.ts:garantirVendedorNoEscopo/garantirClienteNoEscopo",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Estagio ganha/perdida sem dataFechamento no payload grava a data atual",
+          "location": "oportunidades.service.ts:normalizarFechamento",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Agente: registrar usa o vendedor do usuario; mover barra vendedor puro em oportunidade de outro",
+          "location": "agente/agente-tools.service.ts",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "motivoPerda obrigatorio so no prompt do agente e no kanban, nao no service",
+        "sair de ganha/perdida nao limpa dataFechamento/motivoPerda",
+        "reenviar estagio ganha sem data sobrescreve a data de fechamento",
+        "cliente e vendedor podem ser de carteiras diferentes dentro do escopo",
+        "valorPrevisto Float",
+        "ativo independente do estagio"
+      ],
+      "test_files": [],
+      "complexity": "low",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "atividades",
+      "path": "apps/api/src/modules/atividades",
+      "responsibility": "Agenda e historico de atendimento do CRM: tarefas futuras e registros do que ja aconteceu, ligados a cliente, oportunidade e orcamento; vencimento ajustado ao dia util pelos feriados da empresa. Varios modulos gravam historico automatico direto na tabela.",
+      "files": [
+        "atividades.module.ts",
+        "atividades.controller.ts",
+        "atividades.service.ts",
+        "dto/atividade.dto.ts",
+        "atividades-feriados.spec.ts"
+      ],
+      "entities": [
+        "Atividade"
+      ],
+      "main_functions": [
+        "findAll",
+        "feriados",
+        "findOne",
+        "create",
+        "update",
+        "remove",
+        "vendedorDoUsuario",
+        "normalizarConclusao"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "common/escopo/escopo-vendedores",
+        "common/horario/calendario-util",
+        "common/pagination/paginate",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "agente/agente-tools.service.ts (agendar_atividade, historico do cliente)",
+        "whatsapp/whatsapp-acoes.service.ts (agendar visita, ignorarEscopo)",
+        "common/atividades/registrar-atendimento-whatsapp.ts",
+        "common/atividades/registrar-atividade-documento.ts",
+        "orcamentos/registrar-atividade-orcamento.ts",
+        "orcamentos/criar-atividade-retorno.ts",
+        "clientes/comodato-baixas.service.ts",
+        "clientes/registrar-atividade-alteracao-cliente.ts",
+        "portal-cliente/portal-cliente.service.ts",
+        "apps/web /crm/agenda"
+      ],
+      "business_rules": [
+        {
+          "description": "Leitura e escrita recortadas pelo escopo; cada vinculo (vendedor, cliente, oportunidade, orcamento) conferido no escopo",
+          "location": "atividades.service.ts:garantir*NoEscopo",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Vencimento de atividade aberta avanca ao proximo dia util (fim de semana e feriado, fuso Campo Grande) salvo manterDiaNaoUtil",
+          "location": "atividades.service.ts:create/update + common/horario/calendario-util.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Concluir sem data grava agora; reabrir limpa dataConclusao",
+          "location": "atividades.service.ts:normalizarConclusao",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Atividade fica no dono da carteira; vendedorAtendimentoId guarda quem atendeu quando difere (WhatsApp fora da carteira)",
+          "location": "atividades.service.ts:create + whatsapp-acoes.service.ts:contexto",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Atendimento por WhatsApp vira uma atividade concluida por cliente por dia",
+          "location": "common/atividades/registrar-atendimento-whatsapp.ts",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "agente converte AAAA-MM-DDTHH:mm sem fuso (depende do TZ do container)",
+        "vencidas e dataInicio/dataFim se sobrescrevem no where",
+        "registros automaticos editaveis/excluiveis e sem marca de origem",
+        "reenviar concluida=true sem data troca a data de conclusao",
+        "vinculos nao conferidos entre si"
+      ],
+      "test_files": [
+        "atividades-feriados.spec.ts"
+      ],
+      "complexity": "medium",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "objetivos",
+      "path": "apps/api/src/modules/objetivos",
+      "responsibility": "Metas mensais por vendedor (valor, positivacao, linhas por categoria) com copia de periodo, e os Dashboards Comercial e Gerencial que comparam meta com realizado apurado ao vivo das notas de saida pelo corteDeVenda.",
+      "files": [
+        "objetivos.module.ts",
+        "objetivos.controller.ts",
+        "objetivos.service.ts",
+        "dto/objetivo.dto.ts"
+      ],
+      "entities": [
+        "ObjetivoVendedorMes",
+        "ObjetivoVendedorCategoria"
+      ],
+      "main_functions": [
+        "findAll",
+        "findOne",
+        "create",
+        "update",
+        "remove",
+        "copiarPeriodo",
+        "dashboard",
+        "municipiosDashboard",
+        "dashboardGerencial",
+        "dashboardGerencialVendedor",
+        "clientesSemVendedor"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "ParametrosService",
+        "common/escopo/escopo-vendedores",
+        "common/vendas/venda-analitica",
+        "common/pagination/paginate",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "apps/web Dashboard Comercial, Dashboard Gerencial, /comercial/objetivos",
+        "integracao/objetivos (carga do ERP nas mesmas tabelas)",
+        "whatsapp/triagem/triagem-funcionario-tools.service.ts (ferramenta objetivos)",
+        "demo"
+      ],
+      "business_rules": [
+        {
+          "description": "Venda = nota ativa, nao comodato, tipo N, com duplicata, nas series do parametro VENDAS_SERIES_NOTA; item ativo de categoria nao recusada; realizado = vlrTotal - vlrDev",
+          "location": "common/vendas/venda-analitica.ts:corteDeVenda",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Dashboard Gerencial: linhas so de tipo vendedor com usaDashboard; cartoes somam a operacao inteira do escopo",
+          "location": "objetivos.service.ts:dashboardGerencial",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Positivacao do cartao gerencial = soma das linhas (cliente de dois vendedores conta duas vezes), decisao de 2026-09-30",
+          "location": "objetivos.service.ts:dashboardGerencial",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Ticket medio = realizado / notas distintas com item no realizado e vendedor",
+          "location": "objetivos.service.ts:dashboardGerencial",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Cliente sem vendedor ativo = vendedorId nulo ou vendedor inativo/excluido; so com escopo livre",
+          "location": "objetivos.service.ts:CLIENTE_SEM_VENDEDOR_ATIVO",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Copia de periodo reajusta valores em R$, nao reajusta quantidades e pula vendedor que ja tem meta no destino",
+          "location": "objetivos.service.ts:copiarPeriodo",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Um objetivo por vendedor/mes/ano",
+          "location": "objetivos.service.ts:garantirSemDuplicidade + schema @@unique",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "@@unique(vendedor, mes, ano) sem deletedAt: recriar apos excluir e copiarPeriodo sobre excluido dao 500",
+        "update de categorias faz delete fisico e perde chave de integracao",
+        "lista de clientes sem vendedor cortada em 1000 alfabeticamente antes de ordenar por ultima compra",
+        "positivacao diverge entre Comercial (distinta) e Gerencial (soma)",
+        "detalhe do vendedor mostra categoria recusada com meta",
+        "valores e contagens em Float"
+      ],
+      "test_files": [],
+      "complexity": "high",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "meus-atendimentos",
+      "path": "apps/api/src/modules/meus-atendimentos",
+      "responsibility": "Linha do tempo somente leitura do que o vendedor (ou a equipe) fez, lida apenas de atividades; feed por cursor, contadores do periodo e categoria inferida do titulo. Reusado pelo agente.",
+      "files": [
+        "meus-atendimentos.module.ts",
+        "meus-atendimentos.controller.ts",
+        "meus-atendimentos.service.ts",
+        "dto/meus-atendimentos.dto.ts",
+        "meus-atendimentos.categoria.spec.ts"
+      ],
+      "entities": [],
+      "main_functions": [
+        "resumo",
+        "carteiras",
+        "categoriaDoTitulo",
+        "codificarCursor",
+        "decodificarCursor"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "common/escopo/escopo-vendedores",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "agente/agente-tools.service.ts",
+        "apps/web Meus atendimentos"
+      ],
+      "business_rules": [
+        {
+          "description": "Proprio = carteira do vendedor do login ou o que o usuario criou; equipe = escopo menos ele mesmo, so quando ha subordinados",
+          "location": "meus-atendimentos.service.ts:resumo/carteiras",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Periodo: concluida ou criada dentro da janela de dias (inclui hoje)",
+          "location": "meus-atendimentos.service.ts:resumo",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Condicoes compostas sempre em AND para o OR do cursor nao sobrescrever o recorte",
+          "location": "meus-atendimentos.service.ts:resumo",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Categoria pelo titulo: whatsapp, orcamento, documento, senao agenda",
+          "location": "meus-atendimentos.service.ts:categoriaDoTitulo",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "categoria por texto livre classifica errado titulos digitados e registros de outros helpers",
+        "inicio do dia no fuso do processo Node",
+        "teto de 5000 nos contadores sem sinal na resposta",
+        "summary diz 1 a 7 dias, contrato aceita ate 365",
+        "sem teste de regressao do vazamento por paginacao"
+      ],
+      "test_files": [
+        "meus-atendimentos.categoria.spec.ts"
+      ],
+      "complexity": "medium",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "consultas",
+      "path": "apps/api/src/modules/consultas",
+      "responsibility": "Consultas gerenciais de venda em pivo mensal (ate 12 meses) por cliente, vendedor, produto, arvore de categorias e evolucao por vendedor (vendas, positivados, novos, inativados), em SQL bruto sobre o corteDeVenda, com base de credito do vendedor configuravel.",
+      "files": [
+        "consultas.module.ts",
+        "consultas.controller.ts",
+        "consultas.service.ts",
+        "dto/consulta.dto.ts"
+      ],
+      "entities": [],
+      "main_functions": [
+        "vendasPorCliente",
+        "vendasPorVendedor",
+        "vendasPorProduto",
+        "vendasPorCategoria",
+        "evolucao",
+        "evolucaoSobreNotas",
+        "evolucaoNovos",
+        "evolucaoInativados",
+        "pivotar",
+        "montarArvore",
+        "condicaoEscopoClientes",
+        "condicaoFiltroVendedor",
+        "baseVendedor"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "ParametrosService",
+        "common/escopo/escopo-vendedores",
+        "common/vendas/venda-analitica",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "agente/agente-tools.service.ts (vendasPorCliente, vendasPorProduto)",
+        "apps/web Consultas (com exportacao PDF/Excel no navegador)"
+      ],
+      "business_rules": [
+        {
+          "description": "Base do vendedor: query ganha, senao parametro CONSULTA_VENDAS_BASE_VENDEDOR (padrao nota); nota credita quem vendeu, cliente o titular da carteira",
+          "location": "consultas.service.ts:baseVendedor",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Dupla trava: cliente na carteira do escopo e coluna da base no escopo; filtro de vendedor fora do escopo resulta vazio, nunca todos",
+          "location": "consultas.service.ts:condicaoEscopoClientes/condicaoFiltroVendedor",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Media = total / meses com valor diferente de zero",
+          "location": "consultas.service.ts:mediaMesesComMovimento",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Novo cliente = primeira nota de venda de todo o historico cai no mes; inativado = dataBloqueio no mes, sempre pelo titular",
+          "location": "consultas.service.ts:evolucaoNovos/evolucaoInativados",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Produto sem categoria/subcategoria vai para no sintetico para o total bater com a consulta por produto",
+          "location": "consultas.service.ts:montarArvore",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "Consultas somam vlrTotal sem descontar vlrDev; Dashboard/Objetivos descontam",
+        "cliente/vendedor/evolucao usam vendedor e mes do cabecalho; produto/categoria usam os do item",
+        "evolucaoNovos varre todo o historico a cada chamada",
+        "vendedoresRef devolve nome de vendedor fora do escopo"
+      ],
+      "test_files": [],
+      "complexity": "high",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "relatorios",
+      "path": "apps/api/src/modules/relatorios",
+      "responsibility": "Relatorios operacionais da empresa inteira para Gerente/Administrativo: compras (itens de entrada de mercadoria), vendas (itens), vendas mensais cliente x mes por vendedor, estoque e compra com sugestao de quanto comprar, e opcoes dos filtros.",
+      "files": [
+        "relatorios.module.ts",
+        "relatorios.controller.ts",
+        "relatorios.service.ts",
+        "relatorios.service.spec.ts"
+      ],
+      "entities": [],
+      "main_functions": [
+        "compras",
+        "vendas",
+        "vendasPorVendedor",
+        "estoqueCompra",
+        "opcoes",
+        "periodo",
+        "ordenar",
+        "exigirExportarSeGrande"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "ParametrosService",
+        "common/vendas/venda-analitica",
+        "common/busca/termos-busca",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "apps/web Relatorios (exportacao PDF/Excel no navegador)"
+      ],
+      "business_rules": [
+        {
+          "description": "Compra = nota de entrada tipo N, especie SPED/NFE/NF/NFA, com duplicata (ou nula), de fornecedor ativo, pela data de digitacao",
+          "location": "relatorios.service.ts:ESPECIES_DE_COMPRA/NOTA_DE_COMPRA_SQL/compras",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Relatorios so trazem produto de categoria usado=true (em branco fica de fora, mais estrito que o Dashboard)",
+          "location": "relatorios.service.ts:DE_CATEGORIA_USADA",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "pageSize acima de 200 exige permissao exportar (exceto admin), em compras e vendas",
+          "location": "relatorios.controller.ts:exigirExportarSeGrande",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "A comprar = (saidas / meses do periodo) x meses de compra - estoque de revenda; ultimo preco e fornecedor da ultima compra com quantidade > 0",
+          "location": "relatorios.service.ts:estoqueCompra",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Quebra por vendedor do relatorio mensal: tela, senao parametro RELATORIO_VENDAS_QUEBRA_VENDEDOR (true)",
+          "location": "relatorios.service.ts:vendasPorVendedor",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "sem escopo hierarquico: a permissao e a unica barreira",
+        "vendas-por-vendedor e estoque-compra sem trava de exportar",
+        "saidas do estoque-compra ignoram comodato e bonificacao",
+        "comentarios contraditorios sobre fornecedor bloqueado",
+        "mes por dtEmissao no mensal x ano/mes do ERP nas Consultas"
+      ],
+      "test_files": [
+        "relatorios.service.spec.ts"
+      ],
+      "complexity": "high",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "whatsapp",
+      "path": "apps/api/src/modules/whatsapp",
+      "responsibility": "Atendimento por WhatsApp sobre o gateway Evolution GO: webhook de recebimento, conversas do aparelho do vendedor (isoladas por usuario) e do numero institucional (triagem por IA para cliente e funcionario), acoes de CRM na conversa, agendamento, recados internos, sessoes, historico gerencial e exclusao de historico.",
+      "files": [
+        "whatsapp.module.ts",
+        "whatsapp.controller.ts",
+        "whatsapp-evolution.controller.ts",
+        "whatsapp-conversas.service.ts",
+        "whatsapp-sessao.service.ts",
+        "whatsapp-acoes.service.ts",
+        "whatsapp-agendamento.service.ts",
+        "whatsapp-recado.service.ts",
+        "whatsapp-agenda.service.ts",
+        "whatsapp-config.service.ts",
+        "whatsapp-respostas-rapidas.service.ts",
+        "whatsapp-cripto.ts",
+        "escopo-whatsapp.ts",
+        "apagar-conversas.ts",
+        "mensagem-interativa.ts",
+        "mensagem-com-autor.ts",
+        "midia-arquivos.ts",
+        "foto-perfil-whatsapp.ts",
+        "dto/whatsapp.dto.ts",
+        "providers/whatsapp-provider.service.ts",
+        "providers/whatsapp-provider.ts",
+        "providers/evolution-go.provider.ts",
+        "providers/evolution-go.client.ts",
+        "triagem/whatsapp-triagem.service.ts",
+        "triagem/triagem-prompt.ts",
+        "triagem/triagem-ferramentas.ts",
+        "triagem/triagem-ferramentas-funcionario.ts",
+        "triagem/triagem-funcionario-tools.service.ts",
+        "triagem/whatsapp-funcionario.service.ts",
+        "triagem/whatsapp-inatividade.service.ts",
+        "triagem/ficha-da-empresa.ts",
+        "triagem/proximo-expediente.ts",
+        "triagem/telefone-equipe.ts",
+        "triagem/sem-credencial.ts"
+      ],
+      "entities": [
+        "WhatsappSessao",
+        "WhatsappSessaoPeriodo",
+        "WhatsappContato",
+        "WhatsappConversa",
+        "WhatsappMensagem",
+        "WhatsappReacao",
+        "WhatsappMensagemAgendada",
+        "WhatsappRecadoInterno",
+        "WhatsappRecadoDestinatario",
+        "WhatsappAcaoRegistro",
+        "WhatsappVinculoFuncionario",
+        "WhatsappConfig",
+        "WhatsappTemplate",
+        "WhatsappRespostaRapida"
+      ],
+      "main_functions": [
+        "WhatsappEvolutionController.webhook",
+        "WhatsappConversasService.receber",
+        "WhatsappConversasService.casarCliente",
+        "WhatsappConversasService.listar/obter/enviar/vincular/iniciarConversa",
+        "WhatsappConversasService.assumirAtendimento/encerrarAtendimento",
+        "WhatsappTriagemService.processar",
+        "WhatsappFuncionarioService.identificar",
+        "WhatsappAcoesService.*",
+        "WhatsappAgendamentoService.agendar/varrer",
+        "WhatsappInatividadeService.varrer",
+        "sessaoDoUsuarioWhere/escopoLeituraWhatsapp/escopoHistoricoWhatsapp",
+        "apagarConversas"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "TitulosReceberModule",
+        "NotasSaidaModule",
+        "AtividadesModule",
+        "OrcamentosModule",
+        "ProdutosModule (ProdutoParaAgenteService)",
+        "ProvedorIaModule / AgenteConfigService",
+        "common/escopo/escopo-vendedores, quem-pede",
+        "common/atividades/registrar-atendimento-whatsapp",
+        "armazenamento (disco/MinIO)",
+        "notificacoes/registrar-notificacao",
+        "Evolution GO 0.7.2 (externo)"
+      ],
+      "consumers": [
+        "agente (ferramentas de WhatsApp via WhatsappAcoesService/Agendamento)",
+        "notificacoes (nao lidas)",
+        "meu perfil (codigo de pareamento)",
+        "clientes / Posicao de Cliente (escopoLeituraWhatsapp)",
+        "leads (captacao via registrar_lead)",
+        "apps/web /comercial/atendimento, Gerencial > Historico do WhatsApp, Administracao > WhatsApp"
+      ],
+      "business_rules": [
+        {
+          "description": "Webhook autenticado por segredo por instancia, cifrado, comparado em tempo constante; empresa e sessao na URL por causa da RLS",
+          "location": "whatsapp-evolution.controller.ts:autenticar",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Grupo, broadcast, status e canal nao sao atendimento; mensagem idempotente por externoId; atendimento vira uma atividade por cliente por dia",
+          "location": "whatsapp-conversas.service.ts:receber",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Atendimento so ve a sessao do proprio usuario (tipo vendedor, vendedor e usuarioId do logado); equipe so no Gerencial, leitura",
+          "location": "escopo-whatsapp.ts:sessaoDoUsuarioWhere + conversas.filtroSessao",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Institucional: bot -> aguardando -> humano -> encerrada; mensagem nova apos encerrada volta para bot; inatividade encerra bot parado",
+          "location": "conversas.receber/assumirAtendimento + triagem/whatsapp-inatividade.service.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Triagem fail-closed: catalogo de cliente so com vinculo; modelo nao ve id; produto sem preco; avisar_equipe por papel com teto 3; so registrar_lead grava",
+          "location": "triagem/whatsapp-triagem.service.ts + triagem-ferramentas.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Funcionario no institucional: telefone com DDD + codigo de 6 digitos (10 min, 5 tentativas) confirmado vale 30 dias; so leitura",
+          "location": "triagem/whatsapp-funcionario.service.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Agendamento autorizado na criacao; envio com trava pendente->enviando; falha vira erro visivel",
+          "location": "whatsapp-agendamento.service.ts",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "triagem por IA nao e chamada desde o commit d7d3205 (01/10/2026): institucional sem resposta, sem lead, sem pareamento de funcionario",
+        "vinculo automatico com cliente pelos 8 ultimos digitos na base inteira libera boleto/DANFE, contra a documentacao que diz vinculo manual",
+        "fila do institucional sem caminho de atendimento na tela desde 06/10 (conhecido, adiado)",
+        "identificar_cliente responde encontrado true/false por CNPJ e acha cliente por 3 letras do nome",
+        "contato compartilhado e vinculo decidido so na criacao; telefone com/sem 9 digito duplica contato",
+        "segredo do webhook aceito em query string",
+        "4 voltas sem texto final nao respondem",
+        "comentarios desatualizados sobre descarte sem vinculo e leitura de equipe"
+      ],
+      "test_files": [
+        "triagem/seguranca.spec.ts",
+        "triagem/triagem-funcionario-tools.spec.ts",
+        "triagem/whatsapp-funcionario-identidade.spec.ts",
+        "triagem/telefone-equipe.spec.ts",
+        "triagem/proximo-expediente.spec.ts",
+        "triagem/ficha-da-empresa.spec.ts",
+        "triagem/triagem-ferramentas.spec.ts",
+        "whatsapp-evolution.controller.spec.ts",
+        "providers/evolution-go.provider.spec.ts",
+        "iniciar-conversa.spec.ts",
+        "mensagem-interativa.spec.ts",
+        "escopo-whatsapp.spec.ts",
+        "anotacao.spec.ts",
+        "apagar-conversas.spec.ts",
+        "foto-perfil-whatsapp.spec.ts",
+        "midia-arquivos.spec.ts"
+      ],
+      "complexity": "very_high",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "agente",
+      "path": "apps/api/src/modules/agente",
+      "responsibility": "Assistente de IA interno do funcionario logado: chat com 31 ferramentas que delegam aos services das telas (escrita so com confirmacao), fronteira de dados por mascaramento, governanca do catalogo por empresa, configuracao e credenciais dos provedores (Anthropic, OpenAI-compativel, Codex OAuth), anexos, abertura do dia. Fornece a camada de provedor para a triagem do WhatsApp.",
+      "files": [
+        "agente.module.ts",
+        "agente.controller.ts",
+        "agente-chat.service.ts",
+        "agente-tools.service.ts",
+        "agente-ferramentas.service.ts",
+        "agente-config.service.ts",
+        "agente-referencias.service.ts",
+        "anonimizar-agente.ts",
+        "agente-anexos.service.ts",
+        "agente-meu-dia.service.ts",
+        "agente-resumo-diario.service.ts",
+        "agente-prompt-versoes.ts",
+        "agente-progresso.ts",
+        "agente-cripto.ts",
+        "embeddings.service.ts",
+        "provedor-ia.ts",
+        "provedor-ia.module.ts",
+        "provedor.factory.ts",
+        "anthropic.client.ts",
+        "openai-compativel.client.ts",
+        "codex.client.ts",
+        "codex-oauth.service.ts",
+        "dia-operacional.ts",
+        "dto/agente.dto.ts"
+      ],
+      "entities": [
+        "AgenteConfig",
+        "AgenteCredencial",
+        "AgenteConversa",
+        "AgenteMensagem",
+        "AgenteFerramenta",
+        "AgenteFerramentaPerfil",
+        "AgenteFerramentaAuditoria",
+        "AgenteAnexo",
+        "AgenteResumoExibido"
+      ],
+      "main_functions": [
+        "AgenteChatService.enviar",
+        "AgenteChatService.confirmar/cancelar",
+        "AgenteChatService.montarContexto",
+        "AgenteToolsService.disponiveisPara/garantirPermissao/executar",
+        "AgenteFerramentasService.filtroPara/atualizar",
+        "mascarar/garantirMascarado",
+        "AgenteReferenciasService.resolverIds/remontarTexto",
+        "AgenteConfigService.paraUso",
+        "CodexOauthService"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "ConsultasService, ClientesService, ProdutosService, ProdutoRelacionadosService, OrcamentosService, TitulosReceberService, SugestaoCompraService, ObjetivosService, EnriquecimentoService, AtividadesService, OportunidadesService, VendedoresService, MeusAtendimentosService, ProdutoFichasService",
+        "WhatsappConversasService, WhatsappAcoesService, WhatsappAgendamentoService",
+        "common/cripto/segredo-cifrado",
+        "Anthropic / OpenAI-compativel / Codex (externos)"
+      ],
+      "consumers": [
+        "apps/web assistente e Administracao > Agente IA",
+        "whatsapp/triagem (ProvedorIaModule, AgenteConfigService)"
+      ],
+      "business_rules": [
+        {
+          "description": "Permissao checada no catalogo e de novo na execucao; ferramenta desligada pela empresa tambem e barrada na execucao",
+          "location": "agente-chat.service.ts:enviar + agente-tools.service.ts:disponiveisPara",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Escrita nunca executa direto: vira pendencia confirmada na tela, com permissao revalidada",
+          "location": "agente-chat.service.ts:enviar/confirmar",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Nome de cliente/produto/vendedor e identificadores nao vao ao provedor (referencia por codigo); valores vao; so consultar_cnpj passa bloco publico",
+          "location": "anonimizar-agente.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Governanca por empresa so restringe; desligada vale ate para admin; restricao por perfil nao vale para admin",
+          "location": "agente-tools.service.ts:liberadaPelaConfig",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "anexoId e ids sao injetados/resolvidos pelo servidor, nunca escolhidos pelo modelo",
+          "location": "agente-chat.service.ts:enviar + agente-anexos.service.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Conversa do agente e privada do usuario (nem admin le)",
+          "location": "agente-chat.service.ts:minhaConversa",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "confirmar sem trava de concorrencia: duplo clique executa duas vezes",
+        "confirmar nao revalida governanca nem exigeWhatsapp",
+        "pendencia sem validade",
+        "nome e e-mail do usuario vao ao provedor",
+        "agendamento converte hora sem fuso",
+        "Codex OAuth com client_id do CLI oficial",
+        "doc lista 30 ferramentas, codigo tem 31 (consultar_feriados)"
+      ],
+      "test_files": [
+        "agente-tools.permissao.spec.ts",
+        "anonimizar-agente.spec.ts",
+        "agente-meu-dia.spec.ts",
+        "agente-resumo-diario.spec.ts",
+        "agente-resumo-metas.spec.ts"
+      ],
+      "complexity": "very_high",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "notificacoes",
+      "path": "apps/api/src/modules/notificacoes",
+      "responsibility": "Sino: tabela unica de notificacoes por usuario, gravada na transacao de quem provoca o fato com deduplicacao por origem pendente; varredura periodica para atividades e titulos vencidos.",
+      "files": [
+        "notificacoes.module.ts",
+        "notificacoes.controller.ts",
+        "notificacoes.service.ts",
+        "registrar-notificacao.ts",
+        "notificacoes-varredura.service.ts"
+      ],
+      "entities": [
+        "Notificacao"
+      ],
+      "main_functions": [
+        "feed",
+        "marcarLida",
+        "marcarTodasLidas",
+        "registrarNotificacao",
+        "marcarNotificacoesDaOrigem",
+        "usuarioDoVendedor",
+        "NotificacoesVarreduraService.varrer"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "common/horario/calendario-util",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "leads",
+        "orcamentos",
+        "clientes",
+        "whatsapp",
+        "sugestao-compra",
+        "apps/web sino"
+      ],
+      "business_rules": [
+        {
+          "description": "Uma notificacao pendente por (usuario, tipo, origem) via indice unico parcial e INSERT ON CONFLICT; acumular soma contador",
+          "location": "registrar-notificacao.ts:registrarNotificacao",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Autor igual ao destinatario nao gera notificacao",
+          "location": "registrar-notificacao.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Atividade vencida avisa uma vez; titulo vencido uma linha por cliente, so vendedor ativo com login, nao insiste apos leitura sem novidade",
+          "location": "notificacoes-varredura.service.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Mensagem de WhatsApp fora do sino (decisao 2026-10-08)",
+          "location": "notificacoes.service.ts:feed",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "jaAvisados carrega todos os ids ja notificados a cada 30 min (cresce sem limite)",
+        "atividade reatribuida nao avisa o novo dono",
+        "fim do dia no fuso do servidor",
+        "tres gravadores usam notificacao.create direto",
+        "sem limpeza de lidas antigas"
+      ],
+      "test_files": [],
+      "complexity": "medium",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "email",
+      "path": "apps/api/src/modules/email",
+      "responsibility": "Configuracao do e-mail da empresa em parametros (SMTP, interruptores por funcionalidade, modelos e identidade visual), disponibilidade para as telas e e-mails de teste.",
+      "files": [
+        "email-config.module.ts",
+        "email-config.controller.ts",
+        "email-config.service.ts",
+        "email-config.dto.ts",
+        "email-config.service.spec.ts"
+      ],
+      "entities": [],
+      "main_functions": [
+        "configuracao",
+        "disponibilidade",
+        "exigir",
+        "salvar",
+        "obterModelos",
+        "salvarModelos",
+        "restaurarModelos",
+        "enviarTesteModelo",
+        "enviarTeste"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "ParametrosService",
+        "MailService",
+        "common/mail/*"
+      ],
+      "consumers": [
+        "documentos-email",
+        "senha provisoria / recuperacao-senha",
+        "apps/web Administracao > E-mail"
+      ],
+      "business_rules": [
+        {
+          "description": "Habilitado = EMAIL_ATIVO e SMTP configurado (empresa ou ambiente); cada funcionalidade exige o seu interruptor",
+          "location": "email-config.service.ts:disponibilidade/exigir",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Senha SMTP nunca sai da API e so muda quando enviada preenchida",
+          "location": "email-config.service.ts:salvar + parametros.service.ts",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "SMTP_SENHA sem cifra no banco",
+        "teste de modelo aceita destinatario arbitrario",
+        "uma consulta por parametro"
+      ],
+      "test_files": [
+        "email-config.service.spec.ts"
+      ],
+      "complexity": "low",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "documentos-email",
+      "path": "apps/api/src/modules/documentos-email",
+      "responsibility": "Envio por e-mail, ao cadastro do cliente, da 2a via do DANFE (com XML), do boleto e da cobranca de titulos vencidos, com identidade visual e registro no historico de atendimento.",
+      "files": [
+        "documentos-email.module.ts",
+        "documentos-email.controller.ts",
+        "documentos-email.service.ts",
+        "documentos-email.dto.ts",
+        "documentos-email.service.spec.ts"
+      ],
+      "entities": [],
+      "main_functions": [
+        "enviarNota",
+        "enviarBoleto",
+        "enviarCobranca",
+        "notasDosTitulos",
+        "extrairEmails"
+      ],
+      "dependencies": [
+        "MailService",
+        "ParametrosService",
+        "NotasSaidaService",
+        "TitulosReceberService",
+        "EmailConfigService",
+        "common/atividades/registrar-atividade-documento"
+      ],
+      "consumers": [
+        "apps/web Posicao de Cliente, Notas, Titulos"
+      ],
+      "business_rules": [
+        {
+          "description": "Destinatario sempre o e-mail do cadastro do cliente",
+          "location": "documentos-email.service.ts:cliente/extrairEmails",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Escopo de carteira vem dos geradores de documento (QuemPede usuario)",
+          "location": "documentos-email.service.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Cobranca: ate 30 titulos vencidos com boleto atualizado e DANFE das notas de origem; falha individual vira aviso",
+          "location": "documentos-email.service.ts:enviarCobranca",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "cobranca busca o cliente sem escopo antes e expoe razao social no erro",
+        "nota de origem achada pelo numero do titulo",
+        "teto de 30 sem aviso do excedente"
+      ],
+      "test_files": [
+        "documentos-email.service.spec.ts"
+      ],
+      "complexity": "medium",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "sms",
+      "path": "apps/api/src/modules/sms",
+      "responsibility": "SMS ao cliente pela iAgente: boleto, cobranca, mensagem livre, senha provisoria e aviso automatico de vencimento; webhook de status e respostas; estatisticas e historico.",
+      "files": [
+        "sms.module.ts",
+        "sms.controller.ts",
+        "sms.service.ts",
+        "sms-cliente.service.ts",
+        "sms-aviso-vencimento.service.ts",
+        "sms-webhook.service.ts",
+        "sms-relatorio.service.ts",
+        "sms.dto.ts",
+        "sms.spec.ts"
+      ],
+      "entities": [
+        "SmsEnvio",
+        "SmsResposta"
+      ],
+      "main_functions": [
+        "SmsService.enviar/config/disponibilidade/saldo",
+        "SmsClienteService.enviarBoleto/enviarCobranca/enviarMensagem",
+        "SmsAvisoVencimentoService.varrer",
+        "SmsWebhookService.processar",
+        "SmsRelatorioService.estatisticas/envios",
+        "segredoWebhook",
+        "normalizarCelular/primeiroCelular/textoSms"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "ParametrosService",
+        "TitulosReceberService",
+        "common/escopo/escopo-vendedores",
+        "common/horario/horario-trabalho",
+        "common/atividades/registrar-atividade-documento",
+        "iAgente (externo)"
+      ],
+      "consumers": [
+        "apps/web Posicao de Cliente, Titulos, Administracao > SMS",
+        "senha provisoria"
+      ],
+      "business_rules": [
+        {
+          "description": "Destinatario so do cadastro (primeiro celular); cliente buscado com escopo de carteira",
+          "location": "sms-cliente.service.ts:cliente",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Aviso automatico desligado por padrao, so seg-sab 8h-18h Campo Grande, um por titulo e motivo, ate 100 por empresa por passagem",
+          "location": "sms-aviso-vencimento.service.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Webhook publico autenticado por HMAC do empresaId na URL; resposta liga ao envio por client_ref ou ao ultimo envio do celular",
+          "location": "sms-webhook.service.ts",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "segredo do webhook derivado de JWT_ACCESS_SECRET",
+        "segredo no caminho da URL",
+        "resposta espontanea atribuida ao ultimo envio do celular",
+        "deduplicacao de resposta depende da data do webhook",
+        "SMS_TOKEN sem cifra",
+        "trava de concorrencia so em memoria"
+      ],
+      "test_files": [
+        "sms.spec.ts"
+      ],
+      "complexity": "medium",
       "confidence": "CONFIRMADO"
     }
   ]

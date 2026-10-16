@@ -1130,3 +1130,753 @@ orçamento além deste contador.
 | `podeExcluirOrcamento(o)` | `@plataforma/contracts` | `origem === 'erp'` nunca pode; senão, só `situacao === 'nao_enviado'` ou `'erro_integracao'` — ver code-analysis §6 |
 | `numeroOrcamento(o)` | `@plataforma/contracts` | `numero` como string, ou `codigoErp` quando `numero` é nulo (pedido histórico do ERP) |
 | `calcularComissaoItem(regra, percDesconto, percBaseVendedor)` | `@plataforma/contracts` | aplica a faixa da regra de desconto sobre o percentual base do vendedor — usado por `calcularItensOrcamento` |
+
+---
+
+## Módulo `orcamento-config`
+
+Sem entidade própria. **Não usa a tabela `orcamento_config`** (que, apesar do nome,
+guarda só o contador `ultimoNumero` do módulo `orcamentos` — ver acima). A nota da seção
+`OrcamentoConfig` que previa "regras de negócio adicionais" neste módulo fica respondida:
+não há.
+
+### Fonte do dado: `ParametroEmpresa` (tabela `parametros_empresa`) 🟢
+
+| Campo | Valor para este módulo |
+|---|---|
+| `parametro` | `ORCAMENTO_DIAS_VALIDADE` |
+| `tipo` | `numero` (seed) |
+| `tamanho` | `3` (seed) |
+| `conteudo` | `'30'` (seed); validação só "é número" + tamanho — aceita `0`, negativo e fração 🟡 |
+
+### Resposta `OrcamentoConfig` (`@plataforma/contracts`) 🟢
+
+| Campo | Tipo | Origem | Observação |
+|---|---|---|---|
+| `diasValidade` | number | `obterNumero(…, 30)` | contrato diz `int ≥ 1`, não validado na saída |
+| `updatedAt` | string (datetime) | `parametros_empresa.updatedAt` | sem linha: instante da consulta (`new Date()`) 🟡 |
+
+### `OrcamentoConfigUpdate` 🟡
+
+`{ diasValidade: int ≥ 1 }` — declarado no contrato, **sem endpoint nem uso**.
+
+---
+
+## Módulo `titulos-receber`
+
+### `TituloReceber` (tabela `titulos_receber`) 🟢
+
+Espelho do contas a receber do ERP (SE1); só a integração grava. `@@unique([empresaId, chave])`.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | PK |
+| `empresaId` | String | tenant (RLS) |
+| `chave` / `codigoErp` | String? | chave de integração (X2_UNICO) / código informativo |
+| `clienteId`, `vendedorId` | String? | FKs; o `vendedorId` define o escopo hierárquico |
+| `numero`, `parcela`, `prefixo`, `tipo` | String / String? | `numero` obrigatório; impresso como `numero/parcela` |
+| `emissao`, `vencimento` | Date? | data pura (00:00 UTC) |
+| `vencimentoReal` | Date? | vem do ERP; **não usado** pelo módulo (o ajuste é pelo calendário de feriados) 🟡 |
+| `valor`, `saldo` | Float, default 0 | o boleto cobra `saldo` (ou `valor` se saldo = 0) |
+| `acrescimo`, `decrescimo` | Float? | informativos |
+| `dtBaixa` | Date? | presente = `baixado` |
+| `formaPgto`, `historico` | String? | informativos |
+| `ativo` | Boolean, default true | filtro `ativo` da listagem |
+| `contaBancariaId` | String? | conta de cobrança do registro; nulo = conta padrão |
+| `nossoNumero` | String? | sem ele não há 2ª via |
+| `nossoNumeroDac` | String? | DV do ERP; **não usado** (DV recalculado) 🟡 |
+| `carteira` | String? | sobrepõe a da conta |
+| `codigoBarras`, `linhaDigitavel` | String? | **como o banco registrou**; prevalecem sobre o cálculo, exceto no boleto atualizado |
+| `banco`, `bancoNome`, `bancoCodigoCompensacao`, `agencia`, `agenciaDv`, `conta`, `contaDv` | String? | desenho do boleto vindo do ERP; preenchido vence a conta de cobrança |
+| `beneficiarioNome`, `beneficiarioDocumento`, `beneficiarioEndereco`, `localPagamento`, `aceite`, `especieDocumento` | String? | idem — precedência título → conta → empresa |
+| `jurosValorDia`, `multaValor` | Float? | encargos em reais calculados pelo ERP; **únicos** usados no valor atualizado |
+| `descontoValor` | Float? | **não usado** pelo módulo 🟡 |
+| `instrucoes` | String? | instruções do ERP; linhas de encargo descartadas para não duplicar |
+| auditoria | `createdAt`, `updatedAt`, `deletedAt`, `createdBy`, `updatedBy`, `deletedBy` | soft delete |
+
+### `TituloReceberBaixa` (tabela `titulo_receber_baixas`) 🟢
+
+Movimentos de baixa (SE5), carregados só no detalhe (`findOne`), ordenados por `data`.
+`@@unique([tituloReceberId, chave])`; `onDelete: Cascade` a partir do título.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `chave` | String? | chave do movimento no ERP — o upsert casa baixa a baixa |
+| `data` | DateTime? | data da baixa |
+| `valor` | Float | principal amortizado |
+| `juros`, `multa`, `desconto`, `abatimento`, `impostosRetidos` | Float, default 0 | **sempre positivos** — o sinal está no nome do campo |
+| `motivo` | String? | E5_MOTBX (NOR, CMP, DAC…) |
+| `historico` | String? | texto do ERP |
+| `banco`, `agencia`, `conta` | String? | onde o dinheiro entrou (texto solto, não FK de conta de cobrança) |
+
+### Campos derivados na resposta (não persistidos) 🟢
+
+| Campo | Regra |
+|---|---|
+| `vencimentoEfetivo` | `vencimento` empurrado para o próximo dia útil (feriados da empresa) |
+| `status` | `baixado` (tem `dtBaixa`) / `vencido` (efetivo < hoje UTC) / `aberto` |
+| `temBoleto` | `podeEmitirBoleto`: tem `nossoNumero`, dentro da janela de reemissão, e há `contaBancariaId` ou conta padrão — **não olha `dtBaixa`** 🔴 |
+
+### Query (`tituloReceberQuerySchema`) 🟢
+
+Paginação padrão + `ativo`, `clienteId`, `vendedorId`, `status` ∈ {`aberto`, `vencido`,
+`baixado`, `em_aberto`} (`em_aberto` = qualquer título sem baixa), `search` (número ou
+razão social), `sortBy` ∈ `SORT_FIELDS`.
+
+### `EncargosCalculados` (`boleto-atualizacao.ts`) 🟢
+
+| Campo | Significado |
+|---|---|
+| `valor` | saldo + multa + juros, ao centavo — vai no código de barras |
+| `saldo`, `multa`, `juros` | parcelas, cada uma ao centavo |
+| `diasAtraso` | dias corridos desde o vencimento efetivo |
+| `atualizadoAte` | hoje (meia-noite local) — data impressa como vencimento no boleto atualizado |
+
+### `BoletoCalculado` (`boleto-codigo.ts`) 🟢
+
+`codigoBarras` (44), `linhaDigitavel` (47), `linhaDigitavelFormatada` (5 blocos),
+`nossoNumeroFormatado` (`CC/NNNNNNNNNNN-D`), `doErp` (true quando veio pronto do ERP).
+
+---
+
+## Módulo `contas-bancarias`
+
+### `ContaBancaria` (tabela `contas_bancarias`) 🟢
+
+Índice `@@index([empresaId, ativo])`; **sem** índice único para `padrao`.
+
+| Campo | Tipo | Obrig. | Padrão | Validação no contrato | Observação |
+|---|---|---|---|---|---|
+| `id` | String (uuid) | sim | uuid | — | PK |
+| `empresaId` | String | sim | — | — | tenant (RLS) |
+| `descricao` | String | sim | — | 1–80 | nome nas telas |
+| `banco` | String | sim | — | `enum(['237'])` | código de compensação (string pelo zero à esquerda) |
+| `agencia` | String | sim | — | só dígitos, até **5** | gerador aceita até **4** 🟡 |
+| `agenciaDv` | String? | não | — | 1 dígito | |
+| `conta` | String | sim | — | só dígitos, até **9** | gerador aceita até **7** 🟡 |
+| `contaDv` | String? | não | — | 1 dígito | |
+| `carteira` | String | sim | — | só dígitos, até 2 | entra no campo livre |
+| `logoUrl` | String? | não | — | texto livre | `/uploads/bancos/<uuid>.<ext>` pelo upload |
+| `beneficiarioNome` / `Documento` / `Endereco` | String? | não | — | 120 / 20 / 200 | nulo = dados da empresa |
+| `localPagamento` | String | sim | "Pagável em qualquer banco até o vencimento" | até 120 | |
+| `aceite` | String | sim | `N` | 1 | |
+| `especieDocumento` | String | sim | `DM` | até 5 | |
+| `instrucoes` | String? | não | — | até 1000 | uma por linha; somadas às do título |
+| `demonstrativo` | String? | não | — | até 1000 | |
+| `jurosMesPerc`, `multaPerc` | Float? | não | — | 0–100 | **não usados** pelo boleto 🟡 |
+| `diasProtesto` | Int? | não | — | 0–999 | vira a linha "Protestar após N dias corridos" |
+| `padrao` | Boolean | sim | false | — | uma por empresa (no service) |
+| `ativo` | Boolean | sim | true | — | |
+| auditoria | `createdAt`, `updatedAt`, `deletedAt`, `createdBy`, `updatedBy`, `deletedBy` | | | | soft delete |
+
+Relação: `titulos TituloReceber[]` (pelo `contaBancariaId` do título).
+
+### Query (`contaBancariaQuerySchema`) 🟢
+
+Paginação padrão + `ativo`; `search` em `descricao` (sem caixa), `agencia`, `conta`.
+
+---
+
+## Módulo `equipamentos-comodato`
+
+### `EquipamentoComodato` (tabela `equipamentos_comodato`) 🟢
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | PK |
+| `empresaId` | String | tenant (RLS); `@@index([empresaId])` |
+| `produtoId` | String | **`@unique`** — um equipamento por produto; FK `onDelete: Cascade` |
+| `observacao` | String? | livre |
+| `ativo` | Boolean, default true | editável |
+| auditoria | `createdAt`, `updatedAt`, `deletedAt`, `createdBy`, `updatedBy`, `deletedBy` | soft delete; excluído é **reaproveitado** no `create` e no Popular |
+
+### Itens: `ProdutoRelacionado` com `tipo = 'aplicacao'` (tabela `produto_relacionados`) 🟢
+
+Do módulo `produtos`. Para o equipamento: `produtoId` = produto do equipamento,
+`relacionadoId` = produto aplicável, `observacao`, `ordem` (gravado 0 por esta tela).
+`@@unique([empresaId, produtoId, relacionadoId, tipo])`; índice pela ponta de destino.
+
+### Campos de categoria usados 🟢
+
+`categorias.equipamentoComodato` (Boolean): produto de categoria (raiz ou sub) marcada não
+pode ser aplicável e sai das sugestões; também separa as opções de categoria.
+
+### Flags de nota usadas 🟢
+
+| Tabela.campo | Uso |
+|---|---|
+| `notas_saida_itens.comodato` | remessa (CFOP 5908/6908): quem recebeu, Popular |
+| `notas_entrada_itens.comodato` | retorno: desconta no `em_poder` dos itens comuns |
+| `notas_saida.tipo`/`geraDuplicata`/`comodato` | define "venda" nas sugestões e itens comuns |
+
+### Respostas (contracts) 🟢
+
+| Tipo | Campos |
+|---|---|
+| `EquipamentoComodato` | `id`, `produto` (id, codigoErp, descricao, unidade, categoria, ativo), `observacao`, `ativo`, `totalAplicacoes`, `totalClientes` (já receberam), `createdAt`, `updatedAt` |
+| `EquipamentoComodatoDetalhe` | + `aplicacoes[]` (`id` da relação, `produto`, `observacao`) |
+| `EquipamentoSugestao` | `produto`, `clientesComEquipamento`, `percentualComEquipamento`, `percentualGeral`, `descricaoParecida` |
+| `EquipamentoComuns` | `totalClientes`, `grupos[]` (`subcategoria`, `clientes`, `percentual`, `produtos[]` com `clientes`/`percentual`) |
+| `EquipamentoPopularResultado` | `criados`, `existentes` |
+| `EquipamentoAplicacaoLoteResultado` | `adicionados`, `recusados[]` (`produtoId`, `motivo`) |
+| `EquipamentoExcluirLoteResultado` | `excluidos`, `comAplicacoes` |
+
+### Entradas (contracts) 🟢
+
+`EquipamentoPopular` { `categoriaIds?` (≤ 200), `dataInicio?`, `dataFim?` (início ≤ fim) };
+`EquipamentoComunsQuery` { `minimo` 1–100 = 50, `categoriaId?` };
+`EquipamentoSugestoesQuery` { `categoriaId?` }; `EquipamentoAplicacaoLote` { `produtoIds` 1–100 }.
+
+---
+
+## Módulo `vendedores`
+
+### `Vendedor` (tabela `vendedores`) 🟢
+
+`@@unique([empresaId, chave])`; índices por `codigoErp`, `nome`, `superiorId`. **Sem**
+unicidade de `usuarioId`.
+
+| Campo | Tipo | Obrig. | Padrão | Observação |
+|---|---|---|---|---|
+| `id` | String (uuid) | sim | uuid | PK |
+| `empresaId` | String | sim | — | tenant (RLS) |
+| `usuarioId` | String? | não | — | login do vendedor; FK `Usuario` |
+| `codigoErp` / `chave` | String? | não | — | código informativo / chave de integração |
+| `nome` | String | sim | — | 1–100 |
+| `nomeReduzido` | String? | não | — | até 50; usado nos rótulos |
+| `telefone` | String? | não | — | até 15; origem do celular do SMS e do WhatsApp do usuário |
+| `email` | String? | não | — | e-mail válido; obrigatório para criar usuário |
+| `dataNascimento` | Date? | não | — | |
+| `percComissao` | Float? | não | — | **só leitura** na tela; mantido pelo ERP; base da comissão do orçamento |
+| `tipo` | `TipoVendedor` | sim | `vendedor` | inclui `superior` (usado em `origemDaVenda`) |
+| `vinculo` | `VinculoVendedor`? | não | — | filtro da listagem |
+| `usaDashboard` | Boolean | sim | true | aparece nas telas gerenciais |
+| `atendeOutrasCarteiras` | Boolean | sim | false | WhatsApp: atende e usa ferramentas para carteira alheia |
+| `superiorId` | String? | não | — | hierarquia (um ponteiro, sem teto de níveis); sem ciclo |
+| `ativo` | Boolean | sim | true | o que os selects filtram; espelho de `desligado` |
+| `desligado` | Boolean | sim | false | controle de saída mostrado na tela |
+| auditoria | `createdAt`, `updatedAt`, `deletedAt`, `createdBy`, `updatedBy`, `deletedBy` | | | soft delete |
+
+Relações: `superior`/`subordinados`, `clientes`, `notasSaida`, `notasSaidaItens`,
+`titulosReceber`, `oportunidades`, `atividades` (carteira e atendimento), `objetivosVendedorMes`,
+`orcamentos`, `whatsappSessoes`, `whatsappSessaoPeriodos`.
+
+### Query (`vendedorQuerySchema`) 🟢
+
+Paginação + `ativo`, `tipo`, `vinculo`, `usaDashboard`, `desligado`, `superiorId`;
+`search` em nome, código e e-mail.
+
+### Respostas derivadas 🟢
+
+| Campo | Regra |
+|---|---|
+| `clientesAtivos` / `clientesInativos` | contagem de clientes não excluídos do vendedor, por `ativo` (só na listagem) |
+| `criarUsuario` → `{id, nome, email, emailEnviado, smsEnviado, senhaProvisoria?}` | `senhaProvisoria` só quando nenhum canal entregou |
+| `reenviarSenha` → `{success, emailEnviado, smsEnviado, senhaProvisoria?}` | idem |
+
+---
+
+## Módulo `leads`
+
+### `Lead` (tabela `leads`) 🟢
+
+`@@unique([empresaId, conversaId])` (um lead por conversa); `@@index([empresaId, situacao, createdAt])`.
+Sem `deletedAt` e **sem relação declarada com `Vendedor`**.
+
+| Campo | Tipo | Padrão | Observação |
+|---|---|---|---|
+| `id` | String (uuid) | uuid | PK |
+| `empresaId` | String | — | tenant (RLS) |
+| `nome`, `empresaInformada`, `documento` | String? | — | o que a pessoa disse; **não verificado** |
+| `telefone` | String | — | origem — o único dado confiável |
+| `interesse` | Text | — | uma linha escrita pela IA |
+| `temperatura` | `LeadTemperatura` | `morno` | `quente` / `morno` / `frio` |
+| `motivoClassificacao` | Text? | — | por que a IA classificou assim |
+| `situacao` | `LeadSituacao` | `novo` | `novo` / `em_atendimento` / `convertido` / `descartado` |
+| `vendedorId` | String? | — | dono; **sem FK** 🔴 |
+| `assumidoPor` | String? | — | id do **usuário que entregou** |
+| `assumidoEm` | DateTime? | — | quando foi entregue |
+| `conversaId` | String? | — | conversa de origem |
+| `observacao` | Text? | — | até 2000 no contrato |
+| `createdAt`, `updatedAt` | DateTime | | |
+
+### Entradas (contracts) 🟢
+
+`LeadQuery`: paginação + `situacao?`, `temperatura?`, `search?`.
+`LeadAtualizar`: `situacao?`, `vendedorId?` (uuid ou `null` = devolve à fila), `observacao?`.
+
+### Resposta derivada 🟢
+
+`vendedorNome`: nome do vendedor do lead (null sem dono ou com id inválido).
+
+## Módulo `oportunidades`
+
+### `Oportunidade` (tabela `oportunidades`) 🟢
+
+Índices: `[empresaId, vendedorId]`, `[empresaId, clienteId]`, `[empresaId, estagio]`.
+Relações: `Empresa`, `Cliente`, `Vendedor` (FKs obrigatórias); `atividades[]`, `orcamentos[]`.
+
+| Campo | Tipo | Padrão | Observação |
+|---|---|---|---|
+| `id` | String (uuid) | uuid | PK |
+| `empresaId` | String | — | tenant (RLS) |
+| `clienteId` | String | — | FK `Cliente`; precisa estar na carteira do escopo |
+| `vendedorId` | String | — | FK `Vendedor`; precisa estar no escopo |
+| `titulo` | String | — | 1–150 |
+| `estagio` | `EstagioOportunidade` | `prospeccao` | ver enum |
+| `valorPrevisto` | Float? | — | ≥ 0; ponto flutuante 🟡 |
+| `dataPrevisao` | DateTime? | — | previsão de fechamento |
+| `dataFechamento` | DateTime? | — | automática (agora) ao ir para `ganha`/`perdida` sem data |
+| `motivoPerda` | String? | — | até 300; **não obrigatório** em código |
+| `observacao` | String? | — | até 1000 |
+| `ativo` | Boolean | `true` | independente do estágio; `false` no soft delete |
+| `createdAt`, `updatedAt`, `deletedAt` | DateTime | | soft delete |
+| `createdBy`, `updatedBy`, `deletedBy` | String? | | id do usuário |
+
+### `EstagioOportunidade` 🟢
+
+`prospeccao` → `qualificacao` → `proposta` → `negociacao` → `ganha` | `perdida`.
+Não há máquina de estados em código: qualquer transição é aceita, inclusive para trás.
+
+### Entradas (contracts) 🟢
+
+`OportunidadeCreate`: `clienteId`, `vendedorId`, `titulo` obrigatórios; `estagio`
+(padrão `prospeccao`), `valorPrevisto`, `dataPrevisao`, `dataFechamento`, `motivoPerda`,
+`observacao`, `ativo` (padrão `true`). `''` vira `null` no service.
+`OportunidadeUpdate`: `OportunidadeCreate.partial()`.
+`OportunidadeQuery`: paginação + `ativo?`, `estagio?`, `vendedorId?`, `clienteId?`, `search?`.
+
+### Resposta 🟢
+
+Registro + `cliente { id, razaoSocial, nomeFantasia }` + `vendedor { id, nome, nomeReduzido }`.
+
+## Módulo `atividades`
+
+### `Atividade` (tabela `atividades`) 🟢
+
+Índices: `[empresaId, vendedorId]`, `[empresaId, vendedorAtendimentoId]`,
+`[empresaId, clienteId]`, `[empresaId, oportunidadeId]`, `[empresaId, orcamentoId]`,
+`[empresaId, dataVencimento]`.
+
+| Campo | Tipo | Padrão | Observação |
+|---|---|---|---|
+| `id` | String (uuid) | uuid | PK |
+| `empresaId` | String | — | tenant (RLS) |
+| `clienteId` | String? | — | FK `Cliente`; conferido pela carteira |
+| `oportunidadeId` | String? | — | FK `Oportunidade` |
+| `orcamentoId` | String? | — | FK `Orcamento` |
+| `vendedorId` | String | — | FK `Vendedor` (relação `AtividadeVendedorCarteira`) — dono da carteira, onde a agenda aparece |
+| `vendedorAtendimentoId` | String? | — | FK `Vendedor` (`AtividadeVendedorAtendimento`) — quem atendeu, só quando difere do dono |
+| `tipo` | `TipoAtividade` | `tarefa` | |
+| `titulo` | String | — | 1–150 |
+| `descricao` | String? | — | até 1000 |
+| `dataVencimento` | DateTime? | — | ajustada ao dia útil (fuso Campo Grande) salvo `manterDiaNaoUtil` ou concluída |
+| `concluida` | Boolean | `false` | |
+| `dataConclusao` | DateTime? | — | automática ao concluir; limpa ao reabrir |
+| `ativo` | Boolean | `true` | `false` no soft delete |
+| `createdAt`, `updatedAt`, `deletedAt` | DateTime | | soft delete |
+| `createdBy`, `updatedBy`, `deletedBy` | String? | | |
+
+Sem campo que distinga atividade **manual** de **registro automático** 🟡.
+
+### Entradas (contracts) 🟢
+
+`AtividadeCreate`: `vendedorId` e `titulo` obrigatórios; `clienteId?`, `oportunidadeId?`,
+`orcamentoId?` (uuid ou null), `tipo` (padrão `tarefa`), `descricao?`, `dataVencimento?`,
+`manterDiaNaoUtil?` (controle, não persiste), `concluida` (padrão `false`),
+`dataConclusao?`, `ativo` (padrão `true`).
+`AtividadeUpdate`: `AtividadeCreate.partial()`.
+`AtividadeQuery`: paginação + `ativo?`, `tipo?`, `vendedorId?`, `clienteId?`,
+`oportunidadeId?`, `orcamentoId?`, `concluida?`, `vencidas?`, `dataInicio?`, `dataFim?`.
+
+### Resposta 🟢
+
+Registro + `cliente`, `vendedor`, `oportunidade { id, titulo }`, `orcamento { id, titulo }`.
+`GET /atividades/feriados`: `[{ data, descricao }]`.
+
+## Módulo `objetivos`
+
+### `ObjetivoVendedorMes` (tabela `objetivos_vendedor_mes`) 🟢
+
+`@@unique([empresaId, vendedorId, mes, ano])` — **sem `deletedAt`** 🔴;
+`@@unique([empresaId, chave])`; índices `[empresaId, codigoErp]`, `[empresaId, ano, mes]`.
+
+| Campo | Tipo | Padrão | Observação |
+|---|---|---|---|
+| `id` | String (uuid) | uuid | PK |
+| `empresaId` | String | — | tenant (RLS) |
+| `vendedorId` | String | — | FK `Vendedor`; precisa estar no escopo |
+| `codigoErp` | String? | — | informativo; nulo na cópia |
+| `chave` | String? | — | chave de integração (`X2_UNICO`) |
+| `mes` | Int | — | 1–12 |
+| `ano` | Int | — | 2000–2100 |
+| `valor` | Float | 0 | meta em R$ |
+| `numeroCliente` | Float? | — | meta de positivação (contagem) |
+| `novoCliente` | Float? | — | meta de clientes novos (contagem) |
+| `tipo` | String? | — | 1 caractere; `''` → `null` |
+| `ativo` | Boolean | `true` | só objetivos ativos entram nos dashboards |
+| `createdAt`, `updatedAt`, `deletedAt` | DateTime | | soft delete |
+| `createdBy`, `updatedBy`, `deletedBy` | String? | | |
+
+### `ObjetivoVendedorCategoria` (tabela `objetivos_vendedor_categoria`) 🟢
+
+`@@unique([objetivoVendedorMesId, categoriaId])`, `@@unique([objetivoVendedorMesId, chave])`;
+`onDelete: Cascade` do objetivo.
+
+| Campo | Tipo | Padrão | Observação |
+|---|---|---|---|
+| `id` | String (uuid) | uuid | PK |
+| `empresaId` | String | — | tenant |
+| `objetivoVendedorMesId` | String | — | FK cabeçalho |
+| `categoriaId` | String | — | FK `Categoria` |
+| `chave` | String? | — | chave de integração, única no cabeçalho |
+| `valor` | Float | 0 | meta da categoria em R$ |
+| auditoria + `deletedAt` | | | o `update` apaga fisicamente, não usa `deletedAt` 🟡 |
+
+### Entradas (contracts) 🟢
+
+- `ObjetivoVendedorMesCreate`: `vendedorId`, `mes`, `ano`, `valor` (padrão 0),
+  `numeroCliente?`, `novoCliente?`, `tipo?` (máx. 1), `ativo` (padrão `true`),
+  `categorias[]` (`categoriaId`, `valor`; padrão `[]`).
+- `ObjetivoVendedorMesUpdate`: o mesmo, parcial. `categorias` enviada substitui todas as
+  linhas.
+- `ObjetivoCopiarPeriodo`: `mesOrigem`, `anoOrigem`, `mesDestino`, `anoDestino`,
+  `percReajuste` (−100..1000, padrão 0); destino ≠ origem.
+- `ObjetivoDashboardQuery`: `mes`, `ano`, `vendedorId?`, `municipio?`.
+- `ObjetivoDashboardMunicipiosQuery`: `mes`, `ano`, `vendedorId?`.
+- `DashboardGerencialQuery` / `DashboardGerencialVendedorQuery`: `mes`, `ano` (+
+  `vendedorId?` no primeiro).
+
+### Respostas derivadas 🟢
+
+- **Dashboard Comercial:** `objetivoValor`, `realizadoValor`, `percRealizado`,
+  `objetivoClientes`, `clientesPositivados`, `percClientes`, `baseTotal`, `percBase`,
+  `devolucaoTotal`, `municipio`, `categorias[{ categoriaId, codigoErp, descricao,
+  realizado, objetivo }]`.
+- **Dashboard Gerencial:** `periodo { mes, ano, label }`; `resumo { realizado, objetivo,
+  percRealizado, clientesPositivados, objetivoClientes, percClientes, devolucao,
+  baseTotal, percBase, clientesSemVendedor, totalNotas, ticketMedio }`; `linhas[{
+  vendedorId, nome, tipo, superiorId, positivacaoObjetivo, positivacaoRealizado,
+  percPositivacao, objetivo, realizado, percRealizado }]`; `responsaveis[{ id, nome,
+  tipo:'superior' }]`; `agruparPorHierarquia`.
+- **Detalhe do vendedor:** `vendedorId`, `nome`, `periodo`, `objetivo`, `realizado`,
+  `percRealizado`, `categorias[…, percRealizado]`, `realizadoSemCategoria`.
+- **Clientes sem vendedor:** `total`, `limite`, `linhas[{ clienteId, codigo, nome,
+  cnpjCpf, ultimaCompra }]`.
+- **Cópia:** `copiados`, `pulados`, `vendedoresPulados[]`.
+
+## Módulo `meus-atendimentos`
+
+Sem tabela própria: lê `Atividade` (ver seção `atividades`).
+
+### Entrada — `MeusAtendimentosQuery` 🟢
+
+| Campo | Tipo | Padrão | Observação |
+|---|---|---|---|
+| `dias` | int 1–365 | — | ausente = sem recorte; inclui hoje |
+| `clienteId` | uuid? | — | só o que foi feito para o cliente |
+| `escopo` | `proprio` \| `equipe` | `proprio` | `equipe` só vale com subordinados |
+| `cursor` | string? | — | opaco, `base64url(ISO|id)` |
+| `limite` | int 1–50 | 25 | |
+
+### Resposta — `MeusAtendimentos` 🟢
+
+| Campo | Observação |
+|---|---|
+| `dias`, `de`, `ate` | janela efetiva |
+| `proximoCursor` | null quando não há mais |
+| `escopo` | o efetivamente aplicado |
+| `podeVerEquipe` | tem subordinados (ou escopo livre) |
+| `totais { registros, clientes, whatsapp, documento, orcamento, agenda }` | do período inteiro, até 5000 |
+| `itens[{ id, quando, titulo, descricao, categoria, clienteId, clienteNome, vendedorNome, concluida }]` | `quando = dataConclusao ?? createdAt`; `clienteNome = nomeFantasia ‖ razaoSocial` |
+
+## Módulo `consultas`
+
+Sem tabela própria (SQL bruto sobre `notas_saida`, `notas_saida_itens`, `clientes`,
+`vendedores`, `produtos`, `categorias`).
+
+### Entradas (contracts) 🟢
+
+Comum: `anoInicial`, `mesInicial`, `anoFinal`, `mesFinal` (até 12 meses),
+`vendedorIds?` (até 50), `baseVendedor?` (`nota` | `cliente`).
+
+| Query | Campos extras |
+|---|---|
+| `ConsultaVendasClienteQuery` / `ConsultaVendasVendedorQuery` | — |
+| `ConsultaVendasProdutoQuery` | `categoriaId?` |
+| `ConsultaVendasCategoriaQuery` | `categoriaId?` (raiz), `subCategoriaId?` |
+| `ConsultaEvolucaoQuery` | `indicador` (`vendas` padrão, `positivados`, `novos`, `inativados`) |
+
+### Resposta — `ConsultaVendasResultado` 🟢
+
+| Campo | Observação |
+|---|---|
+| `periodo { anoInicial, mesInicial, anoFinal, mesFinal, label }` | label "MM/AAAA a MM/AAAA" |
+| `colunas[{ ano, mes, … }]` | um por mês |
+| `baseVendedor` | a base efetivamente usada |
+| `vendedores[{ id, nome }]` | nomes dos filtrados, por nome |
+| `categoria` | `{ id, descricao }` ou null |
+| `linhas[{ id, codigo, descricao, valores[], total, media }]` | ordenadas por total desc; `media` = total ÷ meses com valor ≠ 0 |
+| `totais[]`, `total`, `media` | rodapé |
+
+`ConsultaVendasCategoriaResultado`: idem + `subCategoria`; `linhas` em árvore (`filhos`)
+categoria → subcategoria → produto.
+`ConsultaEvolucaoResultado`: idem + `indicador`, `formato` (`moeda` | `quantidade`).
+
+## Módulo `relatorios`
+
+Sem tabela própria (lê `notas_entrada(_itens)`, `notas_saida(_itens)`, `estoques`,
+`armazens`, `produtos`, `categorias`, `fornecedores`, `clientes`, `vendedores`).
+
+### Entradas (contracts) 🟢
+
+| Query | Campos |
+|---|---|
+| `RelatorioComprasQuery` | `inicio`, `fim` (AAAA-MM-DD), `page`, `pageSize` (1–20000), `ordem?`, `sentido`, `categoriaIds?`, `documento?`, `produtoIds?`, `fornecedorIds?` |
+| `RelatorioVendasQuery` | `inicio`, `fim`, paginação/ordem, `vendedorIds?`, `clienteIds?`, `municipio?`, `categoriaIds?`, `notaFiscal?`, `produtoIds?` |
+| `RelatorioVendasPorVendedorQuery` | `inicio`, `fim` (até 12 meses), `vendedorIds?`, `clienteIds?`, `produtoIds?`, `categoriaIds?`, `quebraPorVendedor?` |
+| `RelatorioEstoqueCompraQuery` | `inicio`, `fim`, `mesesPeriodo?` (atalho), `mesesCompra`, `produtoIds?`, `categoriaIds?`, `codigoCorp?`, `fornecedorIds?`, `comMovimento?` |
+| `RelatorioOpcoesQuery` | `busca?` (+ `:tipo` = `produtos` \| `fornecedores` \| `clientes`) |
+
+### Respostas 🟢
+
+- `RelatorioResultado<L>`: `linhas`, `total`, `page`, `pageSize`, `totalPages`, `totais`.
+- `RelatorioComprasLinha`: `id`, `documento`, `serie`, `produtoCodigo`, `descricao`,
+  `quantidade`, `unidade`, `vlrUnitario`, `aliqIpi`, `vlrTotal`, `aliqIcms`, `vlrIpi`,
+  `vlrIcms`, `vlrIcmsSt`, `codigoForCli`, `razaoSocial`, `dtDigitacao`. Totais:
+  `quantidade`, `vlrTotal`, `vlrIpi`, `vlrIcms`, `vlrIcmsSt`.
+- `RelatorioVendasLinha`: `id`, `vendedor`, `clienteCodigo`, `clienteNome`, `municipio`,
+  `emissao`, `notaFiscal`, `produtoCodigo`, `produto`, `quantidade`, `vlrProduto`,
+  `vlrItem`. Totais: `quantidade`, `vlrItem`.
+- `RelatorioVendasPorVendedorResultado`: `meses[]` ("AAAA-MM"), `quebraPorVendedor`,
+  `linhas[{ vendedorId, vendedor, clienteId, clienteCodigo, clienteNome, meses[{ mes,
+  quantidade, valor }], totalQuantidade, totalValor }]`, `totalQuantidade`, `totalValor`.
+- `RelatorioEstoqueCompraResultado`: `mesesPeriodo`, `mesesCompra`, `linhas[{
+  produtoId, codigo, descricao, codigoCorp, fornecedor, estoque, entradas, saidas,
+  ultimoPreco, media, aComprar }]`.
+- `RelatorioOpcao`: `id`, `codigo`, `nome`, `detalhe`.
+
+## Módulo `whatsapp`
+
+Todas as tabelas `whatsapp_*` têm `empresaId` e RLS.
+
+### `WhatsappSessao` (tabela `whatsapp_sessoes`) 🟢
+
+`@@unique([empresaId, vendedorId])` (um número por vendedor); índices `[empresaId, status]`,
+`[empresaId, instanciaExterna]`. Número único entre sessões conectadas de qualquer
+empresa pela função `whatsapp_numero_em_uso`.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `tipo` | `WhatsappSessaoTipo` | `vendedor` (padrão) \| `empresa` (institucional) |
+| `vendedorId` | String? | nulo no institucional |
+| `usuarioId` | String? | quem pareou; precisa ser o logado para ver |
+| `numero`, `jid` | String? | número conectado |
+| `contaComercial`, `nomeComercial` | Boolean?, String? | WhatsApp Business |
+| `status` | `WhatsappSessaoStatus` | `desconectada` (padrão), `pareando`, `conectada`, `banida` |
+| `transporte` | `WhatsappTransporte` | padrão `zapo` no schema; em uso `evolution_go` |
+| `credencialCifrada` | Text? | legado zapo |
+| `instanciaExterna`, `instanciaId` | String? | instância no gateway |
+| `instanciaTokenCifrado`, `webhookSegredoCifrado` | Text? | AES-256-GCM (`WHATSAPP_CRYPTO_KEY`) |
+| `ultimaConexao`, `ultimoErro` | | estado |
+| `aceiteEm`, `aceiteVersao` | | ciência de que tudo é monitorado |
+
+`WhatsappSessaoPeriodo`: períodos de conexão da sessão.
+
+### `WhatsappContato` (tabela `whatsapp_contatos`) 🟢
+
+`@@unique([empresaId, jid])`; índices por `telefoneNormalizado`, `clienteId`, `clienteContatoId`.
+**Compartilhado entre as sessões da empresa.**
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `jid` | String | `@s.whatsapp.net` ou `@lid` (opaco) |
+| `nomeExibicao` | String? | apelido só preenche vazio; agenda pode corrigir |
+| `telefoneNormalizado` | String? | só dígitos |
+| `tipo` | `WhatsappTipoContato` | `geral`, `financeiro`, `compras`, `contabilidade_fiscal`, `outros` |
+| `email`, `fotoUrl` | String? | |
+| `clienteId` | String? | **autoriza as ferramentas de cliente**; preenchido manualmente ou por `casarCliente` (8 últimos dígitos) |
+| `clienteContatoId` | String? | pessoa em `cliente_contatos` |
+| `vinculadoPor`, `vinculadoEm` | | só no vínculo manual |
+| `ignorado` | Boolean | `false` |
+
+### `WhatsappConversa` (tabela `whatsapp_conversas`) 🟢
+
+`@@unique([empresaId, sessaoId, contatoId])`.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `sessaoId`, `contatoId` | String | `onDelete: Restrict` |
+| `clienteId` | String? | copiado do contato |
+| `ultimaMensagemEm`, `ultimaMensagemClienteEm` | DateTime? | a segunda é a janela de 24 h |
+| `naoLidas` | Int | 0 |
+| `arquivada` | Boolean | false |
+| `atendimento` | `WhatsappAtendimentoStatus` | `humano` (padrão; `bot` no institucional novo), `aguardando`, `encerrada` |
+| `saudadoEm` | DateTime? | saudação já enviada |
+| `atendenteVendedorId` | String? | a quem a triagem direcionou / quem assumiu |
+| `assunto` | String? | até 200 |
+| `direcionadaEm`, `assumidaEm`, `clienteVinculadoEm` | DateTime? | marcos dos indicadores |
+
+### `WhatsappMensagem` (tabela `whatsapp_mensagens`) 🟢
+
+`@@unique([empresaId, conversaId, externoId])` (idempotência da reentrega).
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `externoId` | String | id do WhatsApp |
+| `direcao` | `entrada` \| `saida` | |
+| `tipo` | `WhatsappTipoMensagem` | 13 valores, inclui interativos |
+| `conteudo` | Text? | texto |
+| `arquivoUrl`, `arquivoNome`, `arquivoMime` | String? | mídia em disco/MinIO, por empresa |
+| `enviadaPor` | String? | usuário, `triagem-ia` ou `triagem-ia-aviso` |
+| `statusEntrega` | `WhatsappStatusEntrega` | `pendente`…`lida`, `erro` |
+| `respondeuA` | String? | id citado |
+| `numeroSessao` | String? | número que recebeu/enviou |
+| `interativo`, `enqueteVotos` | Json? | botões, lista, enquete |
+| `editadaEm`, `apagadaEm`, `conteudoOriginal` | | edição e exclusão preservam o original |
+| `criadaEm` | DateTime | data do WhatsApp |
+
+### Demais tabelas 🟢
+
+| Model | Para quê |
+|---|---|
+| `WhatsappReacao` | reações (`WhatsappLadoReacao`) |
+| `WhatsappMensagemAgendada` | envio futuro; `WhatsappAgendamentoStatus` (`pendente`, `enviando`, `enviada`, `erro`, `cancelada`) |
+| `WhatsappRecadoInterno` / `WhatsappRecadoDestinatario` | recado da empresa para a própria equipe, pelo institucional |
+| `WhatsappAcaoRegistro` | registro das ações enviadas na conversa (título, boleto, visita…) |
+| `WhatsappVinculoFuncionario` | pareamento do telefone do funcionário: código, tentativas, `confirmadoEm`, `validoAte` (30 dias) |
+| `WhatsappConfig` | singleton por empresa: `ativo`, `transporte`, Evolution (`evolutionUrl`, chave cifrada, flags `alwaysOnline`/`ignoreGroups`/`ignoreStatus`/`readMessages`/`rejectCall`), colunas legadas Cloud API, `dddPadrao`, `retencaoDias`, `historicoDias`, triagem (`atendimentoIaAtivo` false, `atendimentoSaudacao`, `atendimentoInformacoes`, `atendimentoInatividadeMin` 30) |
+| `WhatsappTemplate` | templates sincronizados |
+| `WhatsappRespostaRapida` | atalhos de texto |
+| `Lead` | captado por `registrar_lead` (ver `leads`) |
+
+## Módulo `agente`
+
+### `AgenteConfig` (tabela `agente_config`) 🟢
+
+Singleton por empresa (`empresaId` único).
+
+| Campo | Tipo | Padrão | Observação |
+|---|---|---|---|
+| `ativo` | Boolean | false | |
+| `provedor` | String | `anthropic` | `anthropic`, OpenAI-compatível, `codex` |
+| `baseUrl` | String | `https://api.anthropic.com` | |
+| `modelo` | String | `claude-opus-5` | |
+| `apiKeyCifrada`, `apiKeyUltimos4` | String? | | legado; a credencial atual fica em `AgenteCredencial` |
+| `embeddingBaseUrl`, `embeddingModelo`, `embeddingApiKeyCifrada`, `embeddingApiKeyUltimos4` | String? | | embeddings opcionais |
+| `nomeAgente` | String | "Assistente" | |
+| `mensagemBoasVindas`, `systemPrompt` | Text? | | personalidade |
+| `temperatura` | Float | 0,3 | |
+| `maxTokens` | Int | 2048 | |
+| `maxIteracoesFerramentas` | Int | 5 | voltas por turno |
+| `historicoMensagens` | Int | 20 | contexto |
+| `termosPromptAceitosEm`, `termosPromptAceitosPor` | | | aceite para editar prompts |
+
+### `AgenteCredencial` (tabela `agente_credenciais`) 🟢
+
+`@@unique([empresaId, provedor])`. `apiKeyCifrada`/`apiKeyUltimos4`, `modelo`; para o Codex:
+`accessTokenCifrado`, `refreshTokenCifrado`, `contaId` (header `ChatGPT-Account-ID`),
+`contaEmail`, `tokenExpiraEm`.
+
+### `AgenteConversa` (tabela `agente_conversas`) 🟢
+
+`usuarioId` (dono, único que lê), `titulo` (60 primeiros caracteres), `arquivada`.
+
+### `AgenteMensagem` (tabela `agente_mensagens`) 🟢
+
+Índice `[empresaId, conversaId, criadaEm]`.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `papel` | `AgentePapel` | `usuario`, `assistente`, `ferramenta` |
+| `conteudo` | Text? | assistente gravado **mascarado**; ferramenta = resumo da ação |
+| `ferramenta`, `argumentos` | String?, Json? | chamada |
+| `resultado` | Json? | leitura: `{ resumo }` mascarado; escrita confirmada: resultado da execução |
+| `pendente` | Boolean | escrita aguardando confirmação |
+| `confirmadaEm`, `confirmadaPor` | | |
+| `tokensEntrada`, `tokensSaida` | Int? | consumo |
+
+### Governança 🟢
+
+- `AgenteFerramenta` (`agente_ferramentas`, único `[empresaId, chave]`): `ativa`, `nome`,
+  `descricao`, `instrucoes`, `versaoPrompt`, perfis.
+- `AgenteFerramentaPerfil` (único `[ferramentaId, perfilId]`): restrição por perfil.
+- `AgenteFerramentaAuditoria`: `chave`, `campo`, `valorAnterior`, `valorNovo`,
+  `autorId`, `autorEmail`, `criadoEm`.
+
+### Outras 🟢
+
+- `AgenteAnexo` (`agente_anexos`): `usuarioId`, `arquivo`, `arquivoNome`, `mime`,
+  `tamanho`, `conversaId?`, `consumidoEm?`.
+- `AgenteResumoExibido` (PK `[empresaId, usuarioId]`): `data` do último resumo diário
+  mostrado.
+
+## Módulo `notificacoes`
+
+### `Notificacao` (tabela `notificacoes`) 🟢
+
+Índices: `[empresaId, usuarioId, lidaEm, ocorridaEm]` (o sino), `[empresaId, tipo, referenciaId]`
+(fechar em lote) e o **único parcial** `notificacoes_pendente_por_referencia`
+`(empresaId, usuarioId, tipo, referenciaId) WHERE lidaEm IS NULL AND referenciaId IS NOT NULL`
+(migration `20260902180000_notificacoes_indice_pendente`).
+
+| Campo | Tipo | Padrão | Observação |
+|---|---|---|---|
+| `id` | String (uuid) | uuid | PK |
+| `empresaId` | String | — | tenant (RLS) |
+| `usuarioId` | String | — | destinatário (FK `Usuario`) |
+| `tipo` | `NotificacaoTipo` | — | 11 valores |
+| `titulo` | String | — | |
+| `descricao` | String? | — | |
+| `rota` | String? | — | para onde a linha leva |
+| `referenciaId` | String? | — | origem (conversa, atividade, cliente…); deduplica a pendente |
+| `contador` | Int | 1 | ocorrências agrupadas |
+| `ocorridaEm` | DateTime | — | ordena o feed; pode ser anterior a `criadaEm` |
+| `lidaEm` | DateTime? | — | nula = no sino |
+| `criadaEm`, `atualizadaEm` | DateTime | | |
+
+### Resposta — `NotificacoesFeed` 🟢
+
+`total` (não lidas, sem `whatsapp_mensagem`), `itens[{ id, tipo, titulo, descricao, data, rota, contador }]` (até 20).
+
+## Módulos `email` e `documentos-email`
+
+Sem tabelas próprias: a configuração fica em `parametros_empresa` (ver a tabela de
+parâmetros em `code-analysis.md`, módulo `email`).
+
+### Contracts 🟢
+
+- `EmailConfiguracao`: `ativo`, `host`, `porta`, `seguro`, `usuario`, `senhaPreenchida`,
+  `remetente`, `documentos`, `boleto`, `cobranca`, `senhaProvisoria`,
+  `usaServidorDoAmbiente`, `smtpConfigurado`, `habilitado`.
+- `EmailConfiguracaoUpdate`: o mesmo, com `senha` (vazia mantém a atual).
+- `EmailDisponibilidade`: `habilitado`, `documentos`, `boleto`, `cobranca`, `senhaProvisoria`.
+- `EmailModelosConfiguracao` / `EmailModelosUpdate`: assunto e texto de cobrança, nota e
+  boleto; `corCabecalho`; `replyToUsuario`, `incluirAssinaturaUsuario`,
+  `incluirTelefoneUsuario`, `incluirEmailUsuario`.
+- `EmailModeloTesteInput`: o modelo e um `destinatario?`.
+- `EnviarNotaEmail`: `incluirXml`. `EnviarBoletoEmail`: atualizado ou original.
+- `EnvioEmailResultado`: `enviadoPara[]`, `anexos[]`, `avisos[]`.
+
+## Módulo `sms`
+
+### `SmsEnvio` (tabela `sms_envios`) 🟢
+
+Índices: `[empresaId, createdAt]`, `[empresaId, tituloReceberId, motivo]` (um aviso por
+título e tipo), `[empresaId, clienteId]`.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | também vai como `client_ref` à iAgente |
+| `motivo` | `SmsMotivo` | `boleto`, `cobranca`, `mensagem_livre`, `senha_provisoria`, `aviso_antes_vencimento`, `aviso_depois_vencimento` |
+| `celular`, `mensagem` | String | |
+| `clienteId`, `vendedorId`, `tituloReceberId` | String? | sem FK declarada |
+| `provedorId` | String? | id na iAgente |
+| `status` | String | texto livre da iAgente (agrupado por `situacaoDoStatus`) |
+| `statusEm`, `erro` | | |
+| `createdAt`, `createdBy` | | |
+
+### `SmsResposta` (tabela `sms_respostas`) 🟢
+
+`smsEnvioId?` (`onDelete: SetNull`), `clienteId?`, `celular`, `mensagem`, `recebidaEm`,
+`createdAt`. Índices `[empresaId, smsEnvioId]`, `[empresaId, clienteId]`.

@@ -2376,3 +2376,2511 @@ status (§3.4), o fluxo de autorização de desconto em duas etapas (§3.3), a r
 vendedor/origem (§3.2) e o cálculo de preço/comissão (§3.1) não têm teste automatizado.
 Mesmo padrão de `sugestao-compra`: lógica de negócio extensa, cobertura concentrada em
 funções auxiliares pequenas e isoláveis, não no fluxo principal do service.
+
+---
+
+## Módulo `orcamento-config`
+
+**Caminho:** `apps/api/src/modules/orcamento-config/`
+**Arquivos (3):** `orcamento-config.module.ts`, `orcamento-config.controller.ts`,
+`orcamento-config.service.ts` (35 linhas). Contrato em
+`packages/contracts/src/orcamento-config.ts`. Sem spec.
+
+### 1. Responsabilidade 🟢
+
+Apesar do nome, **não lê nem grava a tabela `orcamento_config`**. É uma fachada de
+leitura de um único parâmetro de sistema, `ORCAMENTO_DIAS_VALIDADE` (Administração >
+Parâmetros), exposta sem permissão própria porque quem precisa dela — o vendedor, no
+formulário de Orçamento — não tem acesso à tela de Parâmetros. A tabela
+`orcamento_config` sobrou só com o contador do número do orçamento, usado por
+`orcamentos/proximo-numero-orcamento.ts` (ver módulo `orcamentos` §3.6). O nome do módulo
+é herança de quando a validade morava nessa tabela 🟡 (inferido do comentário do service
+e de `proximo-numero-orcamento.ts`, que ainda cita um `diasValidade` na tabela).
+
+### 2. Fluxo de controle — funções principais 🟢
+
+| Função | Entrada | Saída | Complexidade |
+|---|---|---|---|
+| `OrcamentoConfigController.getVigente(user)` — `GET /orcamento-config` | usuário autenticado (empresa ativa) | `{ diasValidade, updatedAt }` | Baixa |
+| `OrcamentoConfigService.getVigente(empresaId)` | empresa | `diasValidade` via `ParametrosService.obterNumero(…, 'ORCAMENTO_DIAS_VALIDADE', 30)` + `updatedAt` da linha em `parametros_empresa` | Baixa — duas leituras, fora de uma transação comum |
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Valor com padrão em cascata 🟢
+
+`obterNumero` (`parametros.service.ts:258`) devolve o padrão **30** quando o parâmetro
+não existe, está vazio ou não é número (`Number.isNaN`). O seed (`seed-base.ts:111`) cria
+o parâmetro com `tipo: 'numero'`, `tamanho: 3`, `conteudo: '30'`. Em dev, as três empresas
+têm `30`.
+
+#### 3.2 A validade é só sugestão, aplicada no navegador 🟢
+
+O servidor não usa `diasValidade` para nada. Quem aplica é `orcamento-form.tsx:656-668`:
+ao **criar**, uma única vez, `dataValidade = hoje + diasValidade` (data local do
+navegador); a cópia de orçamento (`copiar`, linha ~1209) reinicia a validade do mesmo
+jeito. O vendedor pode trocar a data livremente, e nem `OrcamentosService.create` nem a
+API de integração validam a data contra o parâmetro.
+
+#### 3.3 `updatedAt` inventado quando não há linha 🟡
+
+Sem linha do parâmetro em `parametros_empresa`, a resposta traz
+`updatedAt: new Date()` — o instante da consulta, não uma alteração real. Nenhum
+consumidor lê `updatedAt` hoje (o formulário usa só `diasValidade`), então o efeito é
+nulo; mas o contrato o descreve como "data/hora da última alteração do parâmetro".
+
+### 4. Estruturas de dados 🟢
+
+Ver `data-dictionary.md`, seção `orcamento-config`. Nenhuma entidade própria: lê
+`ParametroEmpresa`.
+
+### 5. Metadados e configurações 🟢
+
+| Constante | Valor | Onde | Uso |
+|---|---|---|---|
+| `PARAMETRO_DIAS_VALIDADE` | `'ORCAMENTO_DIAS_VALIDADE'` | `orcamento-config.service.ts:5` (exportada, sem outro importador) | nome do parâmetro |
+| `DIAS_VALIDADE_PADRAO` | `30` | `orcamento-config.service.ts:6` | padrão sem parâmetro/valor inválido |
+| parâmetro `ORCAMENTO_DIAS_VALIDADE` | `numero`, tamanho 3, seed `'30'` | `seed-base.ts:111` | editável em Administração > Parâmetros |
+
+### 6. Segurança / integridade
+
+- 🟢 `GET /orcamento-config` só com `JwtAuthGuard`, **sem `@RequirePermission`** — decisão
+  explícita no `ApiOperation` ("Não colocar @RequirePermission aqui"). Expõe um único
+  número não sensível; leitura dentro de `withTenant` da empresa ativa.
+- 🟡 **Validação fraca do valor.** `validarConteudo` (`parametros.service.ts:78`) só exige
+  que o conteúdo seja número e caiba em 3 caracteres: `0`, `-5` ou `2.5` passam. O
+  contrato (`orcamentoConfigSchema`) diz `int().min(1)`, mas a resposta não é validada
+  contra ele. Com `0` a validade sugerida é hoje; com negativo, uma data **no passado**
+  (o orçamento nasceria vencido); com fração, o `Date.setDate` trunca. Risco baixo
+  (só o admin edita), sem guarda em código.
+- 🟡 **Contrato morto.** `orcamentoConfigUpdateSchema`/`OrcamentoConfigUpdate` não têm
+  endpoint nem consumidor — sobra de quando a validade era editada por este módulo.
+- 🟡 **Comentário desatualizado** em `orcamentos/proximo-numero-orcamento.ts:12` ("o
+  `diasValidade` fica no default") — a tabela não tem mais essa coluna.
+
+### 7. Dependências do módulo 🟢
+
+| Depende de | Para quê |
+|---|---|
+| `ParametrosModule` / `ParametrosService.obterNumero` | ler o parâmetro com padrão |
+| `PrismaService.withTenant` | ler `updatedAt` da linha do parâmetro |
+| `@plataforma/contracts` (`ORCAMENTO_CONFIG_EXAMPLE`) | exemplo do Swagger |
+
+Consumidor único: `apps/web/src/components/crud/orcamento-form.tsx` (query
+`["orcamento-config"]`). O módulo exporta `OrcamentoConfigService`, mas nenhum outro
+módulo da API o importa.
+
+### 8. Cobertura de testes 🟢
+
+Nenhum teste. Pouco a cobrir: a lógica relevante (padrão em cascata) mora em
+`ParametrosService.obterNumero`.
+
+---
+
+## Módulo `titulos-receber`
+
+**Caminho:** `apps/api/src/modules/titulos-receber/`
+**Arquivos (13):** `titulos-receber.module.ts`, `titulos-receber.controller.ts`,
+`titulos-receber.service.ts` (573 linhas), `titulo-receber-status.ts`,
+`boleto-atualizacao.ts`, `boleto-codigo.ts` (279), `boleto-pdf.ts` (690),
+`dto/titulo-receber.dto.ts` e 5 specs (`boleto-atualizacao`, `boleto-codigo`,
+`boleto-pdf`, `montar-instrucoes`, `titulos-feriados` — 27 casos).
+
+### 1. Responsabilidade 🟢
+
+Consulta somente-leitura das contas a receber que o ERP integra (`TituloReceber` +
+`TituloReceberBaixa`), no escopo hierárquico do usuário, e **2ª via de boleto em PDF**
+(Bradesco/237) — reimpressão de cobrança já registrada pelo ERP, nunca registro novo.
+Atualiza o valor do título vencido com multa e juros do próprio ERP e encerra a emissão
+depois de um prazo de atraso configurável. É o serviço por trás de outros consumidores
+além da tela: Posição de Cliente (`clientes.service`), agente de IA
+(`agente-tools.service`), envio por e-mail (`documentos-email`), aviso de vencimento por
+SMS (`sms-aviso-vencimento`) e a conversa de WhatsApp (que chama `gerarBoleto` com
+`registrarEvento: false`).
+
+### 2. Fluxo de controle — funções principais 🟢
+
+| Função | Entrada | Saída | Complexidade |
+|---|---|---|---|
+| `findAll(empresaId, user, query, {ignorarEscopo?})` — `GET /titulos-receber` (`titulos-receber.visualizar`) | filtros (status, cliente, vendedor, ativo, busca), paginação, ordem | página com `vencimentoEfetivo`, `status`, `temBoleto` por linha | Média — status filtrado no banco com o mesmo corte do badge |
+| `findOne(…, id, {ignorarEscopo?})` — `GET /titulos-receber/:id` (+ `posicao-cliente.visualizar`) | id | título + `baixas` (só no detalhe) + os mesmos derivados | Baixa |
+| `gerarBoleto(empresaId, quem, id, {registrarEvento?, atualizado?})` — `GET /:id/boleto?atualizado=` | `QuemPede` (usuário ou cliente do WhatsApp), id | `{conteudo: Buffer, nomeArquivo, numeroDocumento, valor, encargos, …}` | Alta — ver §3.3 e `flowcharts/titulos-receber-gerarBoleto.md` |
+| `descreverBoleto(vencimento, encargos)` | — | linha do histórico ("Venc. … · R$ … · valor atualizado — N dia(s)…") | Baixa |
+| `calcularStatusTituloReceber(titulo, hoje)` (`titulo-receber-status.ts`) | `dtBaixa`, `vencimento` | `baixado` / `vencido` / `aberto` | Baixa — compartilhado com a Posição de Cliente |
+| `calcularEncargos`, `diasEmAtraso`, `foraDoPrazoDeReemissao`, `podeEmitirBoleto` (`boleto-atualizacao.ts`) | saldo, vencimento, multa/juros do ERP | valor atualizado / decisão | Média — puro, testado |
+| `montarBoleto`, `fatorVencimento`, `campoLivreBradesco`, DVs (`boleto-codigo.ts`) | dados de cobrança | código de barras (44), linha digitável (47), nosso número formatado | Alta — FEBRABAN, puro, testado; ver `flowcharts/titulos-receber-montarBoleto.md` |
+| `montarBoletoPdf` (`boleto-pdf.ts`) | dados já resolvidos | PDF A4 com 3 vias (Empresa, Pagador, Ficha de Compensação) | Média — layout jsPDF |
+| `montarInstrucoes(titulo, conta, usarAtualizado)` (exportada) | instruções do título e da conta | linhas ao caixa, sem duplicar encargo | Baixa |
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Status e "vencimento efetivo" com feriados 🟢
+
+- `calcularStatusTituloReceber`: `dtBaixa` → `baixado`; vencimento **anterior** a hoje →
+  `vencido` (quem vence hoje ainda está em aberto); senão `aberto`. `hoje = inicioDoDia()`
+  em **UTC** (`titulo-receber-status.ts`), porque o vencimento é data pura gravada 00:00 UTC.
+- O status é calculado sobre o `vencimentoEfetivo` = `calendario.vencimento(vencimento)`
+  (`common/horario/calendario-util.ts`): vencimento em fim de semana ou feriado da
+  empresa vai para o próximo dia útil.
+- O filtro de status **no banco** usa `calendario.corteVencidos(hoje)` — o dia seguinte
+  ao último dia útil anterior a hoje — para a busca "vencido" bater com o badge calculado
+  em memória. `em_aberto` = sem baixa (aberto + vencido).
+- 🟡 Com o container em UTC (confirmado em dev: `TZ` vazio), "hoje" vira às 20h/21h no
+  horário de MS/MT: um título que vence hoje passa a "vencido" à noite, no horário local.
+
+#### 3.2 Valor atualizado do título vencido (`calcularEncargos`) 🟢
+
+Regra fechada com o usuário em 2026-08-21, ajustada em 2026-10-09:
+- Sem atraso → valor = saldo.
+- Com atraso: **multa** = `multaValor` do título (em reais, uma vez); **juros** =
+  `jurosValorDia × diasAtraso`. **Só o valor que o ERP mandou** — o percentual da conta
+  bancária não entra; título sem esses valores sai sem encargo.
+- Arredondamento ao centavo só no total (`Math.round((v + EPSILON)·100)/100`).
+- `diasAtraso` conta dias corridos sobre o **vencimento efetivo** (feriado não gera juros).
+- No PDF atualizado: vencimento impresso = hoje (`atualizadoAte`), instrução "Boleto
+  atualizado para pagamento apenas nesta data." e o código de barras do ERP é
+  **ignorado** (o valor mudou; recalcula localmente).
+- `?atualizado=false` na rota força o valor original mesmo em atraso.
+
+#### 3.3 `gerarBoleto` — ordem das guardas e precedência dos dados 🟢
+
+1. Recorte por quem pede (`recorteDoSolicitante`): usuário → escopo de vendedores;
+   cliente do WhatsApp → só os títulos dele. 404 fora do recorte.
+2. Janela de reemissão: `diasEmAtraso(vencimentoEfetivo) > BOLETO_PRAZO_MAXIMO_REEMISSAO`
+   (parâmetro, padrão 60) → 409 "fale com o financeiro".
+3. Conta de cobrança: `titulo.contaBancaria ?? contaPadrao` → 409 se não houver.
+4. Valor base = `saldo` se > 0, senão o `valor` original.
+5. Monta o PDF com precedência **título → conta → empresa** em todo campo (banco,
+   beneficiário, agência/conta, carteira, espécie, aceite, local de pagamento): quem
+   registrou o boleto foi o ERP.
+6. `BoletoInvalidoError` (banco sem gerador, sem nosso número, sem vencimento, valor
+   zero, campos acima do tamanho) vira 409 com o motivo.
+7. **Depois** do PDF pronto, grava a atividade `boleto_gerado` no histórico do cliente
+   (salvo `registrarEvento: false`) — nunca "gerado" sem arquivo.
+
+#### 3.4 Código de barras FEBRABAN + campo livre Bradesco 🟢
+
+- Fator de vencimento: dias desde 07/10/1997; abaixo de 1000 é inválido; **depois de 9999
+  (21/02/2025) recomeça em 1000**, em ciclo de 9000 — títulos antigos mantêm o fator linear.
+- DV geral: módulo 11, pesos 2..9, resto 0/10/11 → 1. DVs da linha digitável: módulo 10.
+- Campo livre Bradesco: agência(4) + carteira(2) + nosso número(11) + conta(7, sem DV) + `0`.
+- DV do nosso número (só impresso): módulo 11, pesos 2..7, sobre carteira + nosso número;
+  resto 1 → `P`.
+- Valor em centavos com `Math.round` (evita perder 1 centavo em `1260.5 × 100`).
+- **Código de barras e linha digitável do ERP prevalecem** quando vêm com 44/47 dígitos.
+- Só o banco **237** tem gerador (`BANCOS_SUPORTADOS`).
+
+#### 3.5 Instruções ao caixa sem duplicar encargo 🟢
+
+`montarInstrucoes` gera "Importancia por Dia de Atraso…" e "Após Vencimento Cobrar
+Multa…" a partir dos valores do título e **descarta** as linhas equivalentes que o ERP
+manda em `instrucoes` (`BJInstrBol` no BJPLA003; comparação sem acento e em minúsculas) —
+antes saíam duplicadas. Depois: instruções restantes do título e da conta, protesto
+(`conta.diasProtesto`), a marca "2º Via" e o aviso de valor atualizado.
+
+#### 3.6 Achados — onde o comentário e o código divergem
+
+- 🔴 **Título baixado.** O `ApiOperation` da rota diz "Recusa com 409 quando … o título já
+  está baixado", e o comentário de `podeEmitirBoleto` diz que a rota usa a mesma regra da
+  tela. Nenhum dos dois acontece: `gerarBoleto` **não chama** `podeEmitirBoleto` nem testa
+  `dtBaixa`, e `podeEmitirBoleto` recebe `dtBaixa` sem usá-lo. Título baixado dentro da
+  janela sai com `temBoleto: true` e gera PDF com marca d'água "TÍTULO BAIXADO" — e, com
+  saldo 0, com o **valor original** (passo 4 de §3.3). Precisa de decisão: bloquear, ou
+  manter a reimpressão com marca d'água e corrigir a documentação.
+- 🔴 **Título parcialmente baixado, em dia, com código de barras do ERP.** A ficha imprime
+  o **saldo** em "Valor do Documento", mas o código de barras do ERP sai como veio, com o
+  **valor do registro original**. O caixa cobra o valor do código de barras; ficha e
+  código divergem, e nada no código concilia os dois.
+- 🟡 `nossoNumero` vazio: a lista já não oferece o boleto (`podeEmitirBoleto`), e a rota
+  só recusa lá no gerador (409 do `BoletoInvalidoError`) — mesmo resultado, caminho diferente.
+- 🟡 O cabeçalho de `boleto-atualizacao.ts` diz que "a emissão para depois de 30 dias"; o
+  código usa o parâmetro, com padrão 60.
+- 🟡 Dois `inicioDoDia` diferentes: UTC em `titulo-receber-status.ts`, **local** em
+  `boleto-atualizacao.ts`. Coincidem hoje porque o container é UTC; com `TZ` definido
+  (ex.: America/Campo_Grande), `diasEmAtraso` passa a contar **um dia a mais** de juros
+  (o vencimento 00:00 UTC vira 20:00 do dia anterior antes do `setHours(0)`).
+- 🟡 Campos gravados e **não usados** pelo módulo: `nossoNumeroDac` (DV do ERP — a ficha
+  imprime o DV calculado localmente), `descontoValor`, `vencimentoReal` (o ajuste de
+  vencimento vem do calendário de feriados da plataforma, não do ERP).
+- 🟡 Logo do banco lida do **disco local** (`process.cwd()` + `logoUrl`); com o
+  armazenamento em MinIO, logo fora do disco cai silenciosamente no nome em texto.
+- 🟡 `formatarCodigoBanco` usa `-9` como DV de banco desconhecido (irrelevante enquanto só
+  o 237 é suportado).
+- 🟡 `Promise.all` de `findMany` + `count` dentro da transação interativa — o próprio
+  projeto evita esse padrão em `relatorios.service` ("consulta paralela numa transação
+  interativa não é garantida pelo Prisma").
+
+### 4. Estruturas de dados 🟢
+
+Ver `data-dictionary.md`, seção `titulos-receber`.
+
+### 5. Metadados e configurações 🟢
+
+| Constante / parâmetro | Valor | Onde |
+|---|---|---|
+| `BOLETO_PRAZO_MAXIMO_REEMISSAO` (parâmetro) | padrão **60** dias | `parametros.service`; lido em `findAll`, `findOne` e `gerarBoleto` |
+| `PRAZO_MAXIMO_REEMISSAO_DIAS` | 60 | `boleto-atualizacao.ts` (padrão das funções puras) |
+| `BANCOS_SUPORTADOS` | `['237']` | `boleto-codigo.ts` |
+| `SORT_FIELDS` | numero, emissao, vencimento, valor, saldo, dtBaixa, createdAt | service; padrão `vencimento desc` |
+| Data-base FEBRABAN | 07/10/1997; reinício do fator em 22/02/2025 | `fatorVencimento` |
+| Busca (`search`) | `numero` ou `cliente.razaoSocial` (sem fantasia, código ou CNPJ) | `findAll` |
+
+### 6. Segurança / integridade 🟢
+
+- Rotas com `JwtAuthGuard` + `PermissionsGuard`; detalhe e boleto aceitam
+  `posicao-cliente.visualizar` como alternativa (a cortina da Posição abre o título).
+- Escopo hierárquico de vendedores em `findAll`/`findOne`; `ignorarEscopo` só para o
+  atendimento de WhatsApp fora da carteira (`Vendedor.atendeOutrasCarteiras`).
+- No boleto, `recorteDoSolicitante` limita o **cliente do WhatsApp** aos próprios
+  títulos — acesso em código, não em prompt.
+- Leituras em `withTenant`; a empresa emitente é lida fora da transação
+  (`prisma.empresa`), coberta pela RLS por grupo econômico.
+- Nada grava em `titulos_receber`: os dados vêm só da integração.
+
+### 7. Dependências do módulo 🟢
+
+| Depende de | Para quê |
+|---|---|
+| `ContasBancariasModule` (`contaPadrao`) | convênio de cobrança quando o título não traz conta |
+| `ParametrosModule` | prazo máximo de reemissão |
+| `common/horario/calendario-util` | vencimento efetivo e corte de vencidos com feriados |
+| `common/escopo` (`resolverEscopoVendedores`, `combinarFiltroVendedor`, `recorteDoSolicitante`, `autorDoEvento`) | recorte por quem pede |
+| `common/atividades/registrar-atividade-documento` | histórico "boleto gerado" |
+| `common/pdf/barcode` (`itfModulos`, `desenharBarras`) | barras Interleaved 2 of 5 |
+| `jspdf` | PDF |
+
+Consumidores: tela de títulos, Posição de Cliente, agente, documentos-email, SMS de aviso
+de vencimento, WhatsApp e o gerador de demonstração.
+
+### 8. Cobertura de testes 🟡
+
+27 casos nas funções puras: fator de vencimento (inclusive o reinício de 2025), DVs,
+campo livre, linha digitável, encargos, janela de reemissão, instruções sem duplicata,
+feriados e layout do PDF. **Sem teste** do `TitulosReceberService` — nem das guardas de
+`gerarBoleto` (onde estão os dois achados 🔴 de §3.6) nem do filtro de status no banco.
+
+---
+
+## Módulo `contas-bancarias`
+
+**Caminho:** `apps/api/src/modules/contas-bancarias/`
+**Arquivos (4):** `contas-bancarias.module.ts`, `contas-bancarias.controller.ts`,
+`contas-bancarias.service.ts` (211 linhas), `dto/conta-bancaria.dto.ts`. Contrato em
+`packages/contracts/src/conta-bancaria.ts`; tela em
+`apps/web/src/app/(app)/admin/contas-bancarias/page.tsx`. Sem spec.
+
+### 1. Responsabilidade 🟢
+
+CRUD do **convênio de cobrança** da empresa — o insumo da 2ª via de boleto
+(`titulos-receber`). Guarda banco, agência, conta, carteira, beneficiário, textos da
+ficha e o logo do banco, e marca **uma** conta padrão por empresa, usada por todo título
+que não aponta conta (o caso de todo título importado do legado). Sem escopo de vendedor:
+é dado da empresa; o corte por tenant é a RLS.
+
+### 2. Fluxo de controle — funções principais 🟢
+
+| Função / rota | Permissão | Comportamento |
+|---|---|---|
+| `findAll` — `GET /contas-bancarias` | `contas-bancarias.visualizar` | busca em descrição (sem caixa), agência e conta; filtro `ativo`; ordem padrão `descricao` |
+| `findOne` — `GET /:id` | `visualizar` | 404 se excluída |
+| `create` — `POST` | `cadastrar` | grava; se `padrao`, desmarca as outras |
+| `update` — `PATCH /:id` | `editar` | 404 se excluída; se ficar `padrao`, desmarca as outras |
+| `setLogo` — `POST /:id/logo` (multipart `file`) | `editar` | apaga o arquivo anterior do disco e grava `logoUrl = /uploads/bancos/<uuid>.<ext>` |
+| `removeLogo` — `DELETE /:id/logo` | `editar` | apaga o arquivo e zera `logoUrl` |
+| `remove` — `DELETE /:id` | `excluir` | soft delete + `ativo=false` + `padrao=false`; **títulos continuam apontando** para a conta |
+| `contaPadrao(empresaId)` (exportada) | — | a conta `padrao`, `ativo`, não excluída; `null` se não houver |
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Uma conta padrão por empresa, por atualização em massa 🟢
+
+`desmarcarOutrosPadroes` roda **depois** de gravar: marcar a nova como padrão é o jeito de
+trocar a padrão, e validar antes obrigaria a desmarcar a antiga primeiro. Não há índice
+único no banco.
+- 🟡 Duas gravações simultâneas marcando contas diferentes como padrão podem terminar
+  com **duas** padrão (cada transação desmarca só o que já estava confirmado), e
+  `contaPadrao` usa `findFirst` sem ordem — escolha indefinida.
+- 🟡 Uma conta pode ficar `padrao: true` e `ativo: false` (edição que só desliga o ativo):
+  `contaPadrao` exige `ativo`, então a empresa fica **sem** padrão sem nenhum aviso, e a
+  2ª via passa a responder 409 "nenhuma conta padrão".
+
+#### 3.2 Exclusão preserva o vínculo dos títulos 🟢
+
+Soft delete sem tocar `titulos_receber.contaBancariaId`: a 2ª via de um boleto antigo
+precisa do convênio que o registrou. Observação: `gerarBoleto` lê
+`include: { contaBancaria: true }` sem filtrar `deletedAt`, então título com conta
+excluída **continua** emitindo com ela — coerente com a intenção.
+
+#### 3.3 Logo do banco em disco local 🟢
+
+Upload `multer` em `BANCOS_DIR` (`uploads/bancos`), nome `uuid` + extensão pelo MIME
+(nunca pelo nome enviado), até **2 MB**, MIME em PNG/JPEG/**WEBP/SVG**. Servido estático e
+sem login em `/uploads/bancos/…` (como os demais logos).
+- 🟡 O boleto (`boleto-pdf.ts:carregarBancoLogo`) só desenha **PNG e JPEG**: logo em WEBP ou
+  SVG é aceito no upload e some do boleto em silêncio (cai no nome do banco em texto).
+- 🟡 `setLogo` grava o arquivo (pelo multer) **antes** de checar se a conta existe: em 404
+  o arquivo fica órfão no disco. E apaga o logo anterior antes de atualizar o banco: se o
+  update falhar, a conta aponta para um arquivo que já não existe.
+- 🟡 Pasta única para todas as empresas, fora do armazenamento por empresa (MinIO);
+  `logoUrl` também aceita qualquer texto no `create`/`update` (URL externa), que o boleto
+  ignora porque só lê do disco.
+
+#### 3.4 Validação do contrato × gerador do boleto 🟡
+
+O contrato aceita `agencia` até **5** dígitos e `conta` até **9**, mas o gerador Bradesco
+(`campoLivreBradesco`) recusa agência com mais de 4 e conta com mais de 7. Uma conta salva
+dentro do contrato pode **nunca** gerar boleto (409 "Agência com mais de 4 dígitos").
+`banco` é `enum(['237'])` — coerente com `BANCOS_SUPORTADOS`.
+
+#### 3.5 Percentuais de multa e juros: guardados e não usados 🟡
+
+`jurosMesPerc` e `multaPerc` são gravados e listados (`Multa 2% · Juros 1%/mês`), mas
+nenhum código de boleto os lê desde a decisão de 2026-10-09 (só os valores do ERP no
+título). O comentário do schema ("Encargos impressos nas instruções") está
+desatualizado, e a tela se contradiz: `page.tsx:607` diz que "não entram no boleto",
+`page.tsx:642` diz que "são calculados na atualização do valor da 2ª via".
+
+### 4. Estruturas de dados 🟢
+
+Ver `data-dictionary.md`, seção `contas-bancarias`.
+
+### 5. Metadados e configurações 🟢
+
+| Constante | Valor | Onde |
+|---|---|---|
+| `bancoBoletoSchema` | `enum(['237'])` | contracts |
+| `SORT_FIELDS` | descricao, banco, agencia, ativo, createdAt | service |
+| `LOGO_MAX_BYTES` | 2 MB | `common/uploads/uploads.config.ts` |
+| `LOGO_MIME_TYPES` | png, jpeg, webp, svg+xml | idem |
+| Padrões da ficha | local "Pagável em qualquer banco até o vencimento", aceite `N`, espécie `DM` | contrato e schema |
+
+### 6. Segurança / integridade 🟢
+
+- Ações separadas `visualizar` / `cadastrar` / `editar` / `excluir`; upload e remoção de
+  logo exigem `editar`.
+- Tudo em `withTenant`; `update`/`remove` conferem a existência na empresa antes (404).
+- Arquivo de logo com nome gerado pelo servidor e MIME em lista — sem path traversal pelo
+  nome; a remoção usa `basename` do caminho gravado.
+- Logo público (sem login), por desenho: é imagem de banco, não dado da empresa.
+
+### 7. Dependências do módulo 🟢
+
+`PrismaService`, `common/uploads/uploads.config` (`BANCOS_DIR`, `bancoLogoPublicPath`,
+`bancoLogoUploadOptions`), `@plataforma/contracts`. Consumidor na API:
+`TitulosReceberService` (`contaPadrao` e a relação `contaBancaria` do título).
+
+### 8. Cobertura de testes 🟡
+
+Nenhum teste do módulo — nem da regra de conta padrão única.
+
+---
+
+## Módulo `equipamentos-comodato`
+
+**Caminho:** `apps/api/src/modules/equipamentos-comodato/`
+**Arquivos (6):** `equipamentos-comodato.module.ts`, `equipamentos-comodato.controller.ts`
+(260 linhas, 15 rotas), `equipamentos-comodato.service.ts` (842), `descricao-parecida.ts`,
+`dto/equipamento-comodato.dto.ts`, `descricao-parecida.spec.ts` (4 casos). Plano em
+`docs/planos/equipamentos-comodato.md`.
+
+### 1. Responsabilidade 🟢
+
+Cadastro dos **equipamentos emprestados em comodato** (dispenser, saboneteira…) e dos
+**produtos aplicáveis** a cada um (o refil, o papel, o sabonete). O cabeçalho é
+`equipamentos_comodato` (um por produto); os itens **não** são tabela própria — são a
+relação `aplicacao` de `produto_relacionados`, a mesma que o card "Relacionados" do
+produto edita (as duas telas mexem no mesmo dado, pelo mesmo `ProdutoRelacionadosService.criar`).
+Ajuda a montar o cadastro com dados: "Popular pelas notas" (cria equipamento para todo
+produto que já saiu em remessa de comodato), **sugestões** por compra conjunta e **itens
+comuns** aos clientes que estão com o equipamento.
+
+### 2. Fluxo de controle — funções principais 🟢
+
+| Função / rota | Permissão | Comportamento |
+|---|---|---|
+| `findAll` — `GET /equipamentos-comodato` | `visualizar` | filtros `ativo`, `semAplicacao`, busca em descrição/código do produto; ordem descricao/categoria/codigoErp/createdAt; `totalClientes` e `totalAplicacoes` por linha |
+| `findOne` — `GET /:id` | `visualizar` | equipamento + aplicações (ordem, descrição) |
+| `create` — `POST` | `cadastrar` | produto da empresa e não excluído; 409 se já é equipamento; **excluído volta** na mesma linha, com as aplicações |
+| `update` — `PATCH /:id` | `editar` | só `observacao` e `ativo` |
+| `remove` — `DELETE /:id` | `excluir` | soft delete; aplicações ficam (são do produto) |
+| `removerLote` — `POST /excluir-lote` | `excluir` | soft delete só dos **sem** aplicação; devolve quantos ficaram por ter |
+| `adicionarAplicacao` / `adicionarAplicacoesLote` — `POST /:id/aplicacoes[/lote]` | `editar` | via `ProdutoRelacionadosService.criar`; o lote (até 100) segue item a item e devolve `recusados` com o motivo |
+| `removerAplicacao` — `DELETE /:id/aplicacoes/:relacaoId` | `editar` | só a relação **deste** equipamento (confere `produtoId` e `tipo`) |
+| `sugestoes` — `GET /:id/sugestoes?categoriaId=` | `visualizar` | compra conjunta acima da média (§3.1) |
+| `comuns` — `GET /:id/comuns?minimo=&categoriaId=` | `visualizar` | itens por subcategoria entre quem está com o equipamento (§3.2) |
+| `popular` — `POST /popular` | `importar` | cria/regera equipamentos a partir das remessas (§3.3) |
+| `categoriasPopular` — `GET /popular/categorias` | `importar` | categorias raiz dos produtos que saíram em comodato, com contagem |
+| `categoriasSugestoes` — `GET /sugestoes/categorias` | `visualizar` | categorias raiz ativas que **não** são de equipamento |
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Sugestões por compra conjunta ("lift") 🟢 — `flowcharts/equipamentos-comodato-sugestoes.md`
+
+- `cli_eq`: clientes que **algum dia** receberam o equipamento (item `comodato = true`).
+- `venda`: pares (cliente, produto) de venda nos últimos **24 meses** — nota tipo `N`,
+  `geraDuplicata`, não comodato.
+- Para cada produto: `comEquipamento` = clientes com equipamento que compraram; `geral` =
+  todos que compraram. Entra se `comEquipamento ≥ 3` **e** a taxa entre quem tem o
+  equipamento for **mais de 1,5×** a taxa geral (`comEq/totalComEq > 1,5 · geral/totalGeral`).
+- Saem: o próprio equipamento, o que já é aplicação, o que é equipamento, o de categoria
+  marcada `equipamentoComodato`; filtro opcional de categoria **antes** do corte.
+- Corte de 40 candidatos por `comEquipamento`; depois reordena pela **descrição parecida**
+  (§3.4) e devolve 20.
+- Constantes "medidas em 2026-10-07": `SUGESTAO_MESES=24`, `MIN_CLIENTES=3`, `MIN_LIFT=1.5`,
+  `CANDIDATOS=40`, `LIMITE=20`.
+
+#### 3.2 Itens comuns por subcategoria 🟢 — `flowcharts/equipamentos-comodato-comuns.md`
+
+- `em_poder`: clientes **ainda** com o equipamento — remessa (saída comodato) menos
+  retorno (entrada comodato), `SUM > 0`.
+- Base = os que compraram algo nos últimos 24 meses; agrupa os produtos comprados por
+  **subcategoria** e mantém os grupos com cobertura `≥ minimo%` da base (padrão 50).
+- A cobertura do grupo conta os produtos já aplicáveis (é a família que importa), mas
+  eles não voltam para seleção; até 15 produtos por grupo.
+- Sem grupo que passe do mínimo, ainda devolve `totalClientes` (a tela diz "de N clientes,
+  nenhum item em X%").
+
+#### 3.3 "Popular pelas notas" 🟢
+
+Produtos distintos de itens de saída `comodato = true` (CFOP 5908/6908), **produto ativo e
+não excluído**, filtráveis por categoria/subcategoria e emissão. Em uma transação:
+regera os excluídos (decisão do usuário, 2026-10-07: "quem diz o que é equipamento é o
+filtro de categoria, não a exclusão") e insere os que não existem. Devolve `criados`
+(novos + regerados) e `existentes`.
+
+#### 3.4 Descrição parecida (`descricao-parecida.ts`) 🟢
+
+Raízes de 5 letras das palavras da descrição do equipamento, **sem a primeira palavra**
+(no cadastro é a marca), sem números e sem raízes genéricas (`DISPE`, `SUPOR`, cores,
+materiais, `COMOD`). Conta quantas raízes aparecem na descrição do produto: mais raízes
+primeiro — "TOALHA INTERF." casa `TOALH`+`INTER` e passa à frente do "PAPEL HIGIENICO INTER.".
+
+#### 3.5 Aplicações pertencem ao produto, não ao equipamento 🟢
+
+Excluir o equipamento não apaga as aplicações; recadastrá-lo (manual ou pelo Popular)
+traz de volta as que existiam. `produtoId` é `@unique` em `equipamentos_comodato`.
+
+#### 3.6 Achados
+
+- 🟡 **Bases diferentes entre as duas ferramentas.** Sugestões usam quem **um dia** recebeu
+  o equipamento (inclui quem devolveu em 2015); "itens comuns" usam quem **ainda está** com
+  ele. O mesmo equipamento pode ter sugestões puxadas por clientes que já não o têm.
+- 🟡 `totalClientes` da listagem/detalhe conta clientes que **algum dia** receberam (sem
+  descontar retorno e sem filtrar item `ativo`) — não "clientes com o equipamento hoje".
+- 🟡 Em `sugestoes` e `comuns`, a leitura final de produtos (`findMany` por id) não filtra
+  `deletedAt`: produto excluído depois da venda pode aparecer como sugestão.
+- 🟡 `cli_eq` e `clientesPorProduto` não filtram `ativo` do item; `em_poder` filtra.
+- 🟡 `Promise.all` dentro da transação interativa (`findAll`, `findOne`, `comuns`).
+- 🟢 O aviso de "equipamento sem consumo em 30 dias" não é deste módulo: mora em
+  `clientes/comodato-sql.ts` e usa a relação `aplicacao` cadastrada aqui.
+
+### 4. Estruturas de dados 🟢
+
+Ver `data-dictionary.md`, seção `equipamentos-comodato`.
+
+### 5. Metadados e configurações 🟢
+
+| Constante | Valor | Uso |
+|---|---|---|
+| `SUGESTAO_MESES` | 24 | janela de compra (sugestões e comuns) |
+| `SUGESTAO_MIN_CLIENTES` | 3 | mínimo de clientes com equipamento que compram |
+| `SUGESTAO_MIN_LIFT` | 1,5 | quanto acima da taxa geral |
+| `SUGESTAO_CANDIDATOS` / `SUGESTAO_LIMITE` | 40 / 20 | corte antes e depois da descrição parecida |
+| `COMUNS_PRODUTOS_POR_GRUPO` | 15 | produtos mostrados por subcategoria |
+| `minimo` (query de comuns) | 1–100, padrão 50 | cobertura mínima do grupo |
+| `RAIZES_IGNORADAS`, `TAMANHO_RAIZ` | 10 raízes, 5 letras | descrição parecida |
+| Lote de aplicações | até 100 ids | contrato |
+
+### 6. Segurança / integridade 🟢
+
+- Ações `visualizar`, `cadastrar`, `editar`, `excluir` e `importar` (Popular).
+- Tudo em `withTenant`; SQL bruto sempre com `empresaId` parametrizado.
+- `removerAplicacao` confere que a relação é do equipamento da URL (o id sozinho não basta).
+- A regra "produto de categoria de equipamento não é aplicável" é aplicada no
+  `ProdutoRelacionadosService.criar` (gravação), não só filtrada na sugestão.
+- Exclusão em lote poupa equipamento com aplicações (o lote é para limpar o excesso do Popular).
+
+### 7. Dependências do módulo 🟢
+
+`PrismaService`, `ProdutoRelacionadosService` (módulo `produtos`), `@plataforma/contracts`.
+Lê `notas_saida_itens`, `notas_entrada_itens` (flag `comodato`), `notas_saida`
+(`geraDuplicata`), `produtos`, `categorias` (`equipamentoComodato`), `produto_relacionados`.
+Consumidores: `clientes` (Posição/aviso de comodato, `comodato-baixas`), agente de IA.
+
+### 8. Cobertura de testes 🟡
+
+Só `descricao-parecida` (4 casos). Sem teste das consultas de sugestão, itens comuns e
+Popular, nem do reaproveitamento do excluído no `create`.
+
+---
+
+## Módulo `vendedores`
+
+**Caminho:** `apps/api/src/modules/vendedores/`
+**Arquivos (4):** `vendedores.module.ts`, `vendedores.controller.ts` (124 linhas, 9 rotas),
+`vendedores.service.ts` (658), `dto/vendedor.dto.ts`. Sem spec.
+
+### 1. Responsabilidade 🟢
+
+Cadastro dos vendedores da empresa — a peça que define **carteira** (cliente →
+vendedor) e **hierarquia** (`superiorId`), base do escopo de visibilidade de quase todo o
+sistema (`common/escopo/escopo-vendedores.ts`). Além do CRUD, cria o **usuário de acesso**
+do vendedor (perfil "Vendedor" do grupo ou da plataforma, senha provisória por e-mail e/ou
+SMS), reenvia senha, bloqueia/desbloqueia vendedor e usuário juntos, e responde "qual
+vendedor **este usuário é**" (`vendedorDoUsuario`, usado pelo agente de IA). O ERP também
+grava vendedores pela integração (comissão `percComissao` é só do ERP).
+
+### 2. Fluxo de controle — funções principais 🟢
+
+| Função / rota | Permissão | Comportamento |
+|---|---|---|
+| `findAll` — `GET /vendedores` | `vendedores.visualizar` | filtros `ativo`, `tipo`, `vinculo`, `usaDashboard`, `desligado`, `superiorId`; busca nome/código/e-mail; `clientesAtivos`/`clientesInativos` por linha |
+| `findOne` — `GET /:id` | `visualizar` | 404 se excluído |
+| `create` — `POST` | `cadastrar` | `''` → null; `desligado` espelha `ativo`; com `usuarioId`, grava o WhatsApp do usuário |
+| `update` — `PATCH /:id` | `editar` | barra ciclo de hierarquia; espelha `desligado`; regrava o WhatsApp do usuário quando muda telefone ou usuário |
+| `remove` — `DELETE /:id` | `excluir` | soft delete + `ativo=false` |
+| `criarUsuario` — `POST /:id/criar-usuario` | `editar` | §3.3 |
+| `reenviarSenha` — `POST /:id/reenviar-senha` | `editar` | nova senha provisória, histórico de senha, destrava tentativas |
+| `bloquear` / `desbloquear` — `PATCH /:id/(des)bloquear` | `vendedores.bloquear` | `ativo` do vendedor **e** do usuário vinculado |
+| `vendedorDoUsuario(empresaId, user)` | — (serviço) | o cadastro com `usuarioId = user.id`, ou `null` |
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 `desligado` como controle de saída, `ativo` como espelho 🟢
+
+`espelharDesligado`: quando a gravação traz `desligado`, `ativo = !desligado` — os selects
+do sistema filtram por `ativo`. Gravar só `ativo` (ex.: integração, bloquear) continua
+valendo enquanto `desligado` não vier junto. Consequência: `bloquear` deixa
+`ativo=false` com `desligado=false` (estado "bloqueado, não desligado").
+
+#### 3.2 Hierarquia sem ciclo 🟢
+
+`garantirHierarquiaSemCiclo` (só no `update`): recusa ser superior de si mesmo e sobe a
+cadeia a partir do superior escolhido até 50 degraus; se encontrar o próprio cadastro,
+400 "Hierarquia circular". O teto evita laço infinito se já existir ciclo gravado. No
+`create` não há verificação — um cadastro novo ainda não pode estar acima de ninguém.
+
+#### 3.3 Criação do usuário de acesso 🟢
+
+Na transação (timeout 15 s): vendedor sem usuário e com e-mail; e-mail livre na **base
+inteira** (`withSistema` — e-mail é login único global); perfil "Vendedor" do grupo da
+empresa, senão o da plataforma (`orderBy grupoEconomicoId nulls last`); senha provisória
+pela política de senha (bcrypt 12); usuário com `deveTrocarSenha`, dados copiados do
+vendedor (`dadosDoVendedor`), grupo da empresa e vínculo com a empresa; liga
+`vendedor.usuarioId`. **Fora** da transação: e-mail (se habilitado em Administração >
+E-mail) e SMS (se habilitado em Administração > SMS, para o primeiro celular do telefone
+do vendedor). A senha só volta na resposta quando **nenhum** canal entregou — o admin
+repassa.
+
+#### 3.4 Carteira na listagem 🟢
+
+`groupBy(vendedorId, ativo)` nos clientes da página. Comentário PENDENTE: cliente PJ com
+CNPJ baixado deveria sair da conta, falta trazer a situação cadastral do legado.
+
+#### 3.5 Achados
+
+- 🟡 **`bloquear` derruba o usuário na plataforma inteira.** `usuario.ativo=false` vale para
+  todas as empresas e grupos do usuário, não só para esta empresa. E `desbloquear`
+  reativa o usuário mesmo que ele estivesse inativo por outro motivo.
+- 🟡 **`remove` não mexe no usuário vinculado** — vendedor excluído com usuário ativo
+  continua entrando; o `bloquear` faz, o excluir não.
+- 🟡 **`usuarioId` não é único** em `vendedores`: o mesmo usuário pode ficar ligado a dois
+  cadastros da empresa, e `vendedorDoUsuario` (`findFirst` sem ordem) — que o agente usa
+  para limitar a carteira de quem pergunta — escolhe um ao acaso. `create`/`update` não
+  conferem se o usuário já é de outro vendedor.
+- 🟡 `create`/`update` com `usuarioId` de outro grupo: `usuario.findUniqueOrThrow` dentro
+  de `withTenant` (RLS por grupo) lança erro do Prisma, que vira 500 em vez de 404/400.
+- 🟡 `reenviarSenha` informa como login o **e-mail do vendedor**; o login é o e-mail do
+  **usuário**. Se os dois divergirem (e-mail trocado em um só lugar), a mensagem manda o
+  login errado.
+- 🟡 Documentação desatualizada: o docblock de `criarUsuario` diz que falha de e-mail
+  desfaz a criação (o envio foi tirado da transação); um docblock de
+  `enviarSenhaPorEmail` ficou solto acima de `enviarSenhaPorSms`.
+- 🟡 Tipagem contornada com `as never` nos `data` de `create`/`update`.
+- 🟡 `Promise.all` dentro da transação interativa (`findAll`).
+
+### 4. Estruturas de dados 🟢
+
+Ver `data-dictionary.md`, seção `vendedores`.
+
+### 5. Metadados e configurações 🟢
+
+| Constante / config | Valor | Uso |
+|---|---|---|
+| `SORT_FIELDS` | nome, codigoErp, email, ativo, createdAt | ordem padrão `nome` |
+| `SALT_ROUNDS` | 12 | bcrypt da senha provisória |
+| timeout das transações de usuário | 15 s | `criarUsuario`, `reenviarSenha` |
+| Teto da subida de hierarquia | 50 degraus | `garantirHierarquiaSemCiclo` |
+| Perfil padrão | nome `"Vendedor"` (grupo, senão plataforma) | `criarUsuario` |
+| E-mail / SMS de senha | `disponibilidade().senhaProvisoria` | Administração > E-mail / SMS |
+
+### 6. Segurança / integridade 🟢
+
+- Ações `visualizar`, `cadastrar`, `editar`, `excluir` e `bloquear` (separada de editar).
+- Criar usuário e reenviar senha exigem `vendedores.editar` — quem edita vendedor cria
+  login com perfil "Vendedor" (perfil fixo, sem escolha de perfil pela rota).
+- E-mail único checado em modo sistema (correto pelo CLAUDE.md: unicidade global).
+- Senha provisória em texto vai por SMS e e-mail, e na resposta só sem entrega.
+- Sem escopo hierárquico nas rotas: quem tem `vendedores.visualizar` vê todos da empresa.
+
+### 7. Dependências do módulo 🟢
+
+`PrismaService` (`withTenant`, `withSistema`), `PoliticaSenhaService`
+(`gerarSenhaProvisoria`, `registrarHistorico`), `MailService` + `smtpDaEmpresa` +
+`montarEmailAcesso`/`buscarEmpresaDoEmail`/`linkDeAcesso`, `EmailConfigService`,
+`SmsService` (`primeiroCelular`, `textoSms`), `ParametrosService`,
+`common/usuarios` (`gravarWhatsappDoUsuario`, `dadosDoVendedor`),
+`common/perfil/perfil-do-grupo` (`grupoDaEmpresa`). Consumidores: escopo hierárquico
+(todo o sistema), agente (`vendedorDoUsuario`), WhatsApp (`atendeOutrasCarteiras`),
+dashboard/objetivos (`usaDashboard`), integração.
+
+### 8. Cobertura de testes 🟡
+
+Nenhum teste do módulo — nem da trava de ciclo, nem do espelho `desligado`/`ativo`, nem
+da criação de usuário.
+
+---
+
+## Módulo `leads`
+
+**Caminho:** `apps/api/src/modules/leads/`
+**Arquivos (4):** `leads.module.ts`, `leads.controller.ts` (2 rotas), `leads.service.ts`
+(219 linhas), `dto/lead.dto.ts`. Sem spec.
+
+### 1. Responsabilidade 🟢
+
+Lado da **distribuição** dos leads que a IA capta no número institucional de WhatsApp.
+A captação (criar/reescrever o lead, um por conversa) mora em
+`WhatsappTriagemService.registrarLead` (módulo `whatsapp`); aqui a supervisão vê a fila,
+entrega a um vendedor, devolve à fila, converte ou descarta. Lead é anterior ao cliente:
+não tem carteira.
+
+### 2. Fluxo de controle — funções principais 🟢
+
+| Função / rota | Permissão | Comportamento |
+|---|---|---|
+| `listar` — `GET /leads` | `leads.visualizar` | filtros `situacao`, `temperatura`, busca em nome/empresa informada/interesse; ordem **quente → frio**, e dentro da temperatura **mais antigo primeiro**; `vendedorNome` por linha |
+| `atualizar` — `PATCH /leads/:id` | `leads.editar` | muda `situacao`, `observacao`, `vendedorId`; avisa o vendedor que recebeu |
+| `distribui(tx, empresa, user, escopo)` (privada) | — | quem "distribui" vê a fila inteira |
+| `avisarVendedor` (privada) | — | notificação `lead_novo` para o usuário do vendedor |
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Recorte próprio: quem distribui vê tudo 🟢
+
+`distribui` = escopo sem restrição (Administrador, Diretor), **ou** usuário sem cadastro de
+vendedor, **ou** vendedor com pelo menos um subordinado direto. Quem distribui vê **todos**
+os leads da empresa (não só os da equipe); quem não distribui vê só
+`vendedorId ∈ escopo`. Justificativa no código: o escopo de carteira esconderia da
+supervisão justamente os leads sem dono.
+
+#### 3.2 Situação acompanha o dono 🟢
+
+No `atualizar`, quando `vendedorId` muda e `situacao` **não** veio no mesmo PATCH:
+- entregar a alguém com o lead em `novo` → `em_atendimento`;
+- devolver à fila (`vendedorId: null`) com o lead em `em_atendimento` → `novo`
+  (corrigido após teste em dev, 2026-09-05: sem isso o lead ficava sem dono e fora da aba
+  padrão).
+`situacao` explícita sempre ganha. Entregar grava `assumidoPor` (quem entregou, não quem
+recebeu) e `assumidoEm`; devolver limpa os dois.
+
+#### 3.3 Aviso ao vendedor 🟢
+
+Só quando o dono **mudou** para alguém (não na devolução): notificação `lead_novo` com o
+título "Lead para você: <empresa informada | nome | telefone>", rota
+`/comercial/leads?lead=<id>`. Vendedor sem usuário não recebe (silencioso).
+
+#### 3.4 Achados
+
+- 🔴 **`atualizar` não aplica o recorte de `listar`.** Qualquer usuário com `leads.editar`
+  — inclusive o vendedor sem equipe, que na lista só vê os próprios — pode, pela API,
+  reatribuir, devolver, converter ou descartar **qualquer** lead da empresa conhecendo o
+  id. Pela regra do projeto ("acesso é código"), o recorte do `listar` precisa valer
+  também na escrita.
+- 🔴 **`vendedorId` sem chave estrangeira.** O model `Lead` não declara relação com
+  `Vendedor`, e o service não valida o id recebido: aceita vendedor inexistente,
+  excluído, desligado ou de **outra empresa**. O lead some da fila (passa a
+  `em_atendimento`), ninguém é avisado (`avisarVendedor` não acha o vendedor) e a lista
+  mostra `vendedorNome: null`.
+- 🟡 `assumidoPor` grava **quem entregou**, não quem recebeu — o nome sugere o contrário.
+- 🟡 A supervisão com equipe vê leads de **toda** a empresa, inclusive os entregues a
+  vendedores de outra equipe — intencional pelo comentário, mas mais largo que "distribuir".
+- 🟡 Sem soft delete em `leads` (não há `deletedAt`); descarte é por `situacao`.
+- 🟡 `Promise.all` dentro da transação interativa (`listar`).
+
+### 4. Estruturas de dados 🟢
+
+Ver `data-dictionary.md`, seção `leads`.
+
+### 5. Metadados e configurações 🟢
+
+| Item | Valor |
+|---|---|
+| `LeadSituacao` | `novo`, `em_atendimento`, `convertido`, `descartado` |
+| `LeadTemperatura` | `quente`, `morno`, `frio` (a ordem do enum é a ordem da fila) |
+| Notificação | tipo `lead_novo`, rota `/comercial/leads?lead=<id>` |
+| `observacao` | até 2000 caracteres |
+
+### 6. Segurança / integridade
+
+- 🟢 `leads.visualizar` / `leads.editar`; `withTenant` em tudo.
+- 🔴 Escrita sem recorte e `vendedorId` sem validação (§3.4).
+- 🟢 Os dados do lead são o que a pessoa disse à IA — o schema marca "nada aqui é
+  verificado"; só `telefone` é confiável.
+
+### 7. Dependências do módulo 🟢
+
+`PrismaService`, `common/escopo/escopo-vendedores` (`resolverEscopoVendedores`),
+`notificacoes/registrar-notificacao`, `@plataforma/contracts`. Origem dos dados:
+`whatsapp/triagem/whatsapp-triagem.service.ts` (`registrarLead`).
+
+### 8. Cobertura de testes 🟡
+
+Nenhum teste — nem da regra "situação acompanha o dono", que já teve bug em dev.
+
+## Módulo `oportunidades`
+
+**Caminho:** `apps/api/src/modules/oportunidades/`
+**Arquivos (4):** `oportunidades.module.ts`, `oportunidades.controller.ts` (5 rotas),
+`oportunidades.service.ts` (195 linhas), `dto/oportunidade.dto.ts`. Sem spec.
+
+### 1. Responsabilidade 🟢
+
+Funil de vendas do CRM: CRUD de oportunidades (cliente + vendedor + título + estágio +
+valor/previsão), com soft delete. É o "guarda-chuva" a que `atividades` e `orcamentos`
+podem se ligar (`oportunidadeId`). O service é exportado e reusado pelo agente interno
+(`listar_oportunidades`, `registrar_oportunidade`, `mover_oportunidade` e o histórico
+do cliente).
+
+### 2. Fluxo de controle — funções principais 🟢
+
+| Função / rota | Permissão | Comportamento |
+|---|---|---|
+| `findAll` — `GET /oportunidades` | `oportunidades.visualizar` | paginado; filtros `vendedorId` (combinado ao escopo), `clienteId`, `estagio`, `ativo`, `search` (só no **título**, case-insensitive); ordenação por whitelist, padrão `createdAt` |
+| `findOne` — `GET /oportunidades/:id` | `oportunidades.visualizar` | 404 se fora do escopo ou excluída |
+| `create` — `POST /oportunidades` | `oportunidades.cadastrar` | vendedor e cliente precisam estar no escopo; grava `createdBy`/`updatedBy` |
+| `update` — `PATCH /oportunidades/:id` | `oportunidades.editar` | a oportunidade precisa estar no escopo; revalida vendedor/cliente **se vierem** |
+| `remove` — `DELETE /oportunidades/:id` | `oportunidades.excluir` | soft delete: `deletedAt`, `deletedBy`, `ativo=false` |
+| `limpar` (privada) | — | `''` → `null` em todos os campos |
+| `normalizarFechamento` (privada) | — | estágio `ganha`/`perdida` sem `dataFechamento` → `now()` |
+| `garantirVendedorNoEscopo` / `garantirClienteNoEscopo` (privadas) | — | 404 "fora do seu escopo" |
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Recorte por escopo hierárquico 🟢
+
+Todas as rotas resolvem `resolverEscopoVendedores` (`null` = sem restrição; senão a
+lista de vendedores do usuário e subordinados). Leitura e escrita aplicam o mesmo
+recorte `vendedorId IN escopo` — diferente de `leads`, aqui a escrita **é** recortada.
+No `findAll`, `combinarFiltroVendedor` cruza o filtro pedido com o escopo: vendedor
+fora do escopo vira `IN []` (lista vazia, não erro).
+
+#### 3.2 Cliente precisa ser da carteira do escopo 🟢
+
+`garantirClienteNoEscopo`: cliente existe na empresa, não excluído, e — com escopo
+restrito — tem `vendedorId` dentro do escopo. Cliente **sem vendedor** fica inacessível
+para quem tem escopo restrito. O mesmo padrão aparece em `atividades` e `orcamentos`
+(`garantirOportunidadeNoEscopo`), que checam o `vendedorId` da oportunidade.
+
+#### 3.3 Data de fechamento automática 🟢
+
+Ao gravar com `estagio` `ganha` ou `perdida` e sem `dataFechamento` no payload, o
+service usa a data atual. Só olha o **payload**, não o registro.
+
+#### 3.4 Uso pelo agente interno 🟢
+
+- `registrar_oportunidade`: força `vendedorId` = vendedor do usuário logado
+  (`atividades.vendedorDoUsuario`) e valida o cliente com `garantirClienteNoAlcance`.
+- `mover_oportunidade`: `garantirOportunidadeNoAlcance` — o vendedor "puro" só mexe na
+  própria oportunidade (403); supervisores seguem o escopo do service.
+- As duas são ferramentas de escrita com confirmação na tela.
+
+#### 3.5 Achados
+
+- 🔴 **"Motivo obrigatório ao marcar como perdida" vive só no prompt e na tela.** O
+  contrato aceita `motivoPerda` vazio e o service não exige; o kanban pergunta o motivo,
+  mas o formulário e a API gravam `perdida` sem ele. Pela regra "acesso é código,
+  comportamento é prompt" isso é comportamento — se a análise de perdas depende do
+  motivo, a regra precisa ir para o service/contrato.
+- 🟡 **Sair de `ganha`/`perdida` não limpa `dataFechamento` nem `motivoPerda`.**
+  Arrastar de volta para `negociacao` no kanban deixa a oportunidade aberta com data de
+  fechamento e motivo de perda antigos.
+- 🟡 **Fechamento sobrescrito.** Um PATCH que reenvie `estagio: ganha` sem
+  `dataFechamento` troca a data de fechamento original pela de hoje.
+- 🟡 **Cliente e vendedor podem divergir.** O service só exige que **ambos** estejam no
+  escopo; um supervisor pode abrir oportunidade do vendedor A para cliente da carteira
+  do vendedor B.
+- 🟡 `ativo` e `estagio` são independentes (oportunidade `ganha` e `ativo=true`, ou
+  `negociacao` e `ativo=false`); só o soft delete força `ativo=false`.
+- 🟡 `valorPrevisto` é `Float` (valor monetário em ponto flutuante).
+- 🟡 `search` não procura no nome do cliente.
+- 🟡 Excluir não mexe nas atividades/orçamentos vinculados: eles continuam apontando
+  para uma oportunidade com `deletedAt`, e o `include` deles ainda mostra o título.
+- 🟡 `Promise.all` dentro da transação interativa (`findAll`) — mesmo padrão visto em
+  outros módulos.
+
+### 4. Estruturas de dados 🟢
+
+Ver `data-dictionary.md`, seção `oportunidades`.
+
+### 5. Metadados e configurações 🟢
+
+| Item | Valor |
+|---|---|
+| `EstagioOportunidade` | `prospeccao` (padrão), `qualificacao`, `proposta`, `negociacao`, `ganha`, `perdida` |
+| Estágios terminais | `ganha`, `perdida` (disparam `dataFechamento` automática) |
+| `SORT_FIELDS` | `titulo`, `estagio`, `valorPrevisto`, `dataPrevisao`, `dataFechamento`, `ativo`, `createdAt` |
+| Limites | `titulo` 150, `motivoPerda` 300, `observacao` 1000 |
+
+### 6. Segurança / integridade
+
+- 🟢 Quatro permissões (`visualizar`, `cadastrar`, `editar`, `excluir`); `withTenant` em tudo.
+- 🟢 Escopo hierárquico na leitura **e** na escrita; id fora do escopo dá 404 (não
+  revela existência).
+- 🟢 FKs reais para `Empresa`, `Cliente` e `Vendedor` (ao contrário de `leads`).
+- 🔴 Regra do motivo de perda só no prompt (§3.5).
+
+### 7. Dependências do módulo 🟢
+
+`PrismaService`, `common/escopo/escopo-vendedores` (`resolverEscopoVendedores`,
+`combinarFiltroVendedor`), `common/pagination/paginate`, `@plataforma/contracts`.
+Consumidores: `agente/agente-tools.service.ts`, `atividades` e `orcamentos` (vínculo por
+`oportunidadeId`), `demo` (gerador e limpeza), web `/crm/oportunidades` (lista, kanban,
+detalhe).
+
+### 8. Cobertura de testes 🟡
+
+Nenhum teste no módulo. O agente tem `agente-tools.permissao.spec.ts`, que cobre as
+permissões declaradas das ferramentas, não as regras do service.
+
+## Módulo `atividades`
+
+**Caminho:** `apps/api/src/modules/atividades/`
+**Arquivos (5):** `atividades.module.ts`, `atividades.controller.ts` (6 rotas),
+`atividades.service.ts` (307 linhas), `dto/atividade.dto.ts`,
+`atividades-feriados.spec.ts` (4 testes).
+
+### 1. Responsabilidade 🟢
+
+Agenda e histórico de atendimento do CRM. Uma atividade é **tarefa futura** (ligação,
+reunião, e-mail, visita, tarefa com vencimento) **ou registro do que já aconteceu**
+(entra concluída). Pode se ligar a cliente, oportunidade e orçamento. O service é
+exportado e reusado pelo agente interno (`agendar_atividade`, histórico do cliente) e
+pelo WhatsApp (`whatsapp-acoes.service.ts`, agendar visita). Boa parte das atividades,
+porém, **não passa por este service**: é gravada direto por outros módulos como
+histórico automático (§3.5).
+
+### 2. Fluxo de controle — funções principais 🟢
+
+| Função / rota | Permissão | Comportamento |
+|---|---|---|
+| `findAll` — `GET /atividades` | `atividades.visualizar` | paginado; filtros `vendedorId` (combinado ao escopo), `clienteId`, `oportunidadeId`, `orcamentoId`, `tipo`, `concluida`, `ativo`, `vencidas`, `dataInicio`/`dataFim`, `search` (título); ordem padrão `dataVencimento` |
+| `feriados` — `GET /atividades/feriados` | `atividades.visualizar` | feriados da empresa (data, descrição) para a agenda |
+| `findOne` — `GET /atividades/:id` | `atividades.visualizar` | 404 fora do escopo |
+| `create` — `POST /atividades` | `atividades.cadastrar` | valida vendedor, cliente, oportunidade e orçamento no escopo; ajusta vencimento para dia útil |
+| `update` — `PATCH /atividades/:id` | `atividades.editar` | atividade no escopo; revalida vínculos que vierem; ajusta vencimento |
+| `remove` — `DELETE /atividades/:id` | `atividades.excluir` | soft delete (`deletedAt`, `deletedBy`, `ativo=false`) |
+| `vendedorDoUsuario` (pública) | — | o vendedor **que o usuário é**; 404 com instrução se não houver vínculo |
+| `normalizarConclusao` (privada) | — | `concluida=true` sem data → agora; `concluida=false` → limpa a data |
+| `limpar` (privada) | — | `''` → `null` e descarta `manterDiaNaoUtil` |
+| `garantir{Vendedor,Cliente,Oportunidade,Orcamento}NoEscopo` (privadas) | — | 404 "fora do seu escopo" |
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Escopo hierárquico e vínculos 🟢
+
+Mesmo padrão de `oportunidades`: leitura e escrita recortadas por `vendedorId IN escopo`.
+Na escrita, **cada vínculo** informado é conferido: cliente pela carteira (`vendedorId`
+do cliente no escopo; cliente sem vendedor fica de fora), oportunidade e orçamento pelo
+`vendedorId` deles.
+
+#### 3.2 Vencimento em dia útil 🟢
+
+`create`/`update` carregam `carregarCalendarioUtil` (feriados da empresa) quando há
+`dataVencimento`, a atividade **não** está concluída e o chamador **não** mandou
+`manterDiaNaoUtil`. `CalendarioUtil.ajustar` avança de 24 h em 24 h (mantendo o horário)
+até cair num dia que não seja sábado, domingo nem feriado, avaliando o dia **no fuso
+`America/Campo_Grande`**; desiste após 370 dias. Concluída preserva a data histórica;
+`manterDiaNaoUtil` é a confirmação manual da tela e não é persistido. Coberto por
+`atividades-feriados.spec.ts`.
+
+#### 3.3 Conclusão 🟢
+
+`concluida=true` sem `dataConclusao` → agora; `concluida=false` → `dataConclusao=null`.
+
+#### 3.4 Dono da carteira × quem atendeu 🟢
+
+`create(…, { ignorarEscopo, vendedorAtendimentoId })` existe só para o atendimento de
+WhatsApp fora da carteira (`Vendedor.atendeOutrasCarteiras`). A atividade fica no
+`vendedorId` do **dono da carteira** (é na agenda dele que aparece) e
+`vendedorAtendimentoId` guarda quem de fato atendeu, só quando é outra pessoa.
+`findAll` filtra só por `vendedorId`, então o atendente não vê na própria agenda o que
+agendou para a carteira alheia (por desenho).
+
+#### 3.5 Atividades gravadas fora do service 🟢
+
+Sete pontos gravam `tx.atividade.create` direto, sem escopo e sem ajuste de calendário
+(exceto o retorno de orçamento, que ajusta):
+
+| Origem | Tipo / estado | O que registra |
+|---|---|---|
+| `common/atividades/registrar-atendimento-whatsapp.ts` | `tarefa`, concluída | "Atendimento por WhatsApp" — **um por cliente por dia**, contagem relida do banco |
+| `common/atividades/registrar-atividade-documento.ts` | `email`/`tarefa`, concluída | envio de 2ª via, documentos |
+| `orcamentos/registrar-atividade-orcamento.ts` | `tarefa`; pendente se houver pendência | eventos do orçamento |
+| `orcamentos/criar-atividade-retorno.ts` | `ligacao`, pendente | "Retorno: <título>" com data ajustada ao dia útil |
+| `clientes/comodato-baixas.service.ts` | `tarefa`, concluída | baixa de comodato e estorno |
+| `clientes/registrar-atividade-alteracao-cliente.ts` | `tarefa`, pendente | alteração de cadastro aguardando aprovação |
+| `portal-cliente/portal-cliente.service.ts` | `tarefa`, concluída | orçamento aprovado/recusado pelo cliente |
+
+#### 3.6 Uso pelo agente e WhatsApp 🟢
+
+- `agendar_atividade` (agente): vendedor = `vendedorDoUsuario`; cliente conferido com
+  `garantirClienteNoAlcance`; `quando` no formato `AAAA-MM-DDTHH:mm` vira
+  `new Date(texto)`.
+- `whatsapp-acoes.service.ts` (agendar visita): dono = vendedor do cliente, senão o
+  atendente; sem nenhum dos dois, 400.
+
+#### 3.7 Achados
+
+- 🔴 **Hora do agente sem fuso.** `new Date('2026-09-23T14:00')` é interpretado no fuso
+  do processo Node. Nenhum `TZ` é definido no compose/Dockerfile; se o container roda em
+  UTC, "terça às 14h" é gravado como 14:00Z = 10:00 em Campo Grande. Requer validação.
+- 🟡 **`vencidas` e `dataInicio`/`dataFim` se sobrescrevem.** Os dois montam
+  `dataVencimento` no mesmo objeto; com ambos, o intervalo vence e o `lt: agora` some
+  (continua só `concluida=false`).
+- 🟡 **Histórico automático é editável e excluível.** Os registros da §3.5 são
+  atividades comuns: quem tem `atividades.editar`/`excluir` no escopo pode alterar ou
+  apagar o registro de atendimento, de baixa de comodato ou da decisão do cliente no
+  portal. Não há marca de origem (`origem`/`automatica`) no model.
+- 🟡 **Reenviar `concluida=true` sem data troca a data de conclusão** pela de hoje.
+- 🟡 Cliente, oportunidade e orçamento vinculados não são conferidos **entre si** (a
+  oportunidade pode ser de outro cliente).
+- 🟡 O ajuste ao dia útil só ocorre quando `dataVencimento` vem no payload; mudar só
+  `concluida` para `false` reabre a atividade sem reajustar a data.
+- 🟡 `Promise.all` dentro da transação interativa (`findAll`).
+
+### 4. Estruturas de dados 🟢
+
+Ver `data-dictionary.md`, seção `atividades`.
+
+### 5. Metadados e configurações 🟢
+
+| Item | Valor |
+|---|---|
+| `TipoAtividade` | `ligacao`, `reuniao`, `email`, `visita`, `tarefa` (padrão) |
+| `SORT_FIELDS` | `titulo`, `tipo`, `dataVencimento` (padrão), `concluida`, `ativo`, `createdAt` |
+| Fuso do calendário | `HORARIO_TIMEZONE = 'America/Campo_Grande'` (`common/horario/horario-trabalho.ts`) |
+| Limite do ajuste | 370 dias |
+| Limites | `titulo` 150, `descricao` 1000 |
+
+### 6. Segurança / integridade
+
+- 🟢 Quatro permissões; `withTenant` em tudo; escopo na leitura e na escrita; cada
+  vínculo conferido no escopo.
+- 🟢 `ignorarEscopo` só é passado pelo WhatsApp, depois de `podeAtenderOutraCarteira`.
+- 🟡 Registros automáticos mutáveis (§3.7).
+
+### 7. Dependências do módulo 🟢
+
+`PrismaService`, `common/escopo/escopo-vendedores`, `common/horario/calendario-util`,
+`common/pagination/paginate`, `@plataforma/contracts`. Consumidores:
+`agente/agente-tools.service.ts`, `whatsapp/whatsapp-acoes.service.ts`, os sete
+gravadores diretos da §3.5, `demo`, web `/crm/agenda` e telas de cliente.
+
+### 8. Cobertura de testes 🟡
+
+`atividades-feriados.spec.ts`: ajuste no caminho do agente, `manterDiaNaoUtil`, data
+histórica de concluída e retorno de orçamento. Sem teste de escopo, de conclusão nem do
+filtro `vencidas`.
+
+## Módulo `objetivos`
+
+**Caminho:** `apps/api/src/modules/objetivos/`
+**Arquivos (4):** `objetivos.module.ts` (importa `ParametrosModule`),
+`objetivos.controller.ts` (11 rotas), `objetivos.service.ts` (1017 linhas),
+`dto/objetivo.dto.ts`. Sem spec próprio; o corte de venda que ele usa tem
+`common/vendas/venda-analitica.spec.ts`.
+
+### 1. Responsabilidade 🟢
+
+Duas coisas no mesmo módulo:
+
+1. **Cadastro de metas** — objetivo mensal por vendedor (valor em R$, nº de clientes,
+   novos clientes) com linhas de meta por categoria; CRUD e cópia de período com reajuste.
+2. **Dashboards** — Comercial (meta × realizado do escopo, por categoria, filtro de
+   município) e Gerencial (o mesmo mês por vendedor, agrupado por hierarquia, com
+   indicadores de topo e detalhe por categoria). O realizado é apurado **ao vivo** de
+   `notas_saida_itens` pelo corte comum `corteDeVenda`.
+
+Os objetivos também chegam do ERP pela integração (`integracao/objetivos`, chave
+`X2_UNICO`), que fica fora deste módulo.
+
+### 2. Fluxo de controle — funções principais 🟢
+
+| Função / rota | Permissão | Comportamento |
+|---|---|---|
+| `dashboard` — `GET /objetivos/dashboard` | `dashboard-comercial.visualizar` | meta × realizado do mês no escopo (ou no vendedor); positivação, base, devolução, tabela por categoria **usada** |
+| `municipiosDashboard` — `GET /objetivos/dashboard/municipios` | `dashboard-comercial.visualizar` | municípios distintos dos clientes **com venda** no mês |
+| `dashboardGerencial` — `GET /objetivos/dashboard-gerencial` | `dashboard-gerencial.visualizar` | linhas por vendedor + resumo + responsáveis + parâmetro de agrupamento |
+| `clientesSemVendedor` — `GET …/dashboard-gerencial/clientes-sem-vendedor` | `dashboard-gerencial.visualizar` | detalhe do card; vazio em escopo restrito |
+| `dashboardGerencialVendedor` — `GET …/dashboard-gerencial/vendedor/:vendedorId` | `dashboard-gerencial.visualizar` | mês do vendedor por categoria; 404 fora do escopo |
+| `findAll` — `GET /objetivos` | `objetivos.visualizar` | paginado; `ano`, `mes`, `vendedorId`, `ativo`; ordem padrão `ano` + `mes desc` |
+| `findOne` — `GET /objetivos/:id` | `objetivos.visualizar` | 404 fora do escopo |
+| `create` — `POST /objetivos` | `objetivos.cadastrar` | vendedor no escopo; sem duplicidade vendedor/mês/ano; cria as linhas por categoria |
+| `copiarPeriodo` — `POST /objetivos/copiar-periodo` | `objetivos.cadastrar` | replica o mês de origem com reajuste; pula quem já tem meta no destino |
+| `update` — `PATCH /objetivos/:id` | `objetivos.editar` | revalida duplicidade; `categorias` enviadas **substituem** o conjunto inteiro |
+| `remove` — `DELETE /objetivos/:id` | `objetivos.excluir` | soft delete (`deletedAt`, `deletedBy`, `ativo=false`) |
+
+As rotas `dashboard*` são declaradas antes de `GET :id` para o Nest não casar
+"dashboard" como id.
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 O que é "venda" — `corteDeVenda` 🟢
+
+Regra única para Dashboards, Objetivos e Consultas (`common/vendas/venda-analitica.ts`).
+
+- **Cabeçalho:** nota não excluída e ativa, `comodato=false`, `tipo='N'` e **gerou
+  duplicata** (`geraDuplicata=true`, ou `geraDuplicata` nulo com condição de pagamento,
+  para nota de integração antiga). Se o parâmetro `VENDAS_SERIES_NOTA` estiver
+  preenchido, só entram essas séries.
+- **Item:** não excluído e ativo, e a categoria do produto **não** está recusada
+  (`usado` verdadeiro ou nulo; item sem produto ou sem categoria conta).
+- Conferido no ERP em 2026-09-29: 10 de 11 vendedores bateram ao centavo.
+
+**Realizado** por item = `vlrTotal − vlrDev`. É uma aproximação do `vlr_liquido` do
+legado, que não foi importado no item.
+
+#### 3.2 Dashboard Comercial 🟢
+
+- Meta: soma dos objetivos **ativos** do mês no filtro de vendedor; `numeroCliente`
+  somado; meta por categoria somada das linhas.
+- Realizado: `groupBy produtoId` dos itens → categoria do produto → mapa por categoria.
+- Positivação: clientes distintos com item no mês.
+- Base: clientes ativos da carteira (`cliente.vendedorId`) no filtro.
+- `municipio` recorta venda e base, **não** a meta (não existe meta por município).
+- Tabela: só categorias com `usado=true`, ordenadas por `codigoErp`. Categoria em branco
+  entra no KPI, mas não ganha linha.
+- `perc(n, d)` = `round(n×10000/d)/100`; zero quando `d=0`.
+
+#### 3.3 Dashboard Gerencial 🟢
+
+- Seis leituras em paralelo: objetivos do mês, realizado por vendedor, pares
+  (vendedor, cliente), base, clientes sem vendedor ativo e pares (nota, vendedor).
+- **Linhas:** só vendedores com meta ou movimento, `tipo='vendedor'` **e**
+  `usaDashboard=true`. Supervisor e gerente não viram linha: a venda é sempre do
+  vendedor que atende o cliente. Eles aparecem em `responsaveis` como agrupadores (pelo
+  `superiorId`).
+- **Cartões do topo:** somam a operação inteira do escopo, **inclusive** quem não vira
+  linha (ESCRITÓRIO, E-COMMERCE). É intencional, para bater com o Comercial e as
+  Consultas.
+- **Positivação do cartão** = soma das linhas: o cliente que comprou de dois vendedores
+  conta duas vezes. Decisão do usuário em 2026-09-30, para bater com o sistema anterior.
+- **Ticket médio** = realizado ÷ nº de notas distintas **com item que entrou no
+  realizado** e com vendedor. Nota só de comodato ou de categoria recusada não conta (em
+  09/2026 eram 147 de 621).
+- **Clientes sem vendedor ativo** = cliente ativo com `vendedorId` nulo, ou com vendedor
+  inativo ou excluído. Só é calculado com escopo livre; em escopo restrito vale 0.
+- O parâmetro `DASHBOARD_GERENCIAL_HIERARQUIA` (padrão `true`) diz se a tela agrupa por
+  hierarquia.
+
+#### 3.4 Detalhe do vendedor 🟢
+
+O vendedor fora do escopo ou inexistente responde 404. A meta e o realizado saem por
+categoria (inclusive categoria só com meta ou só com venda), e o realizado de produto
+sem categoria vem à parte (`realizadoSemCategoria`). **Não** filtra `usado=true`, ao
+contrário do Comercial.
+
+#### 3.5 Clientes sem vendedor 🟢
+
+Até 1000 clientes (`LIMITE_CLIENTES_SEM_VENDEDOR`) em ordem alfabética, com o `total`
+real. A "última compra" é a mais recente entre `cliente.ultimaCompra` (do import) e a
+última nota de venda. A lista sai ordenada por última compra, decrescente.
+
+#### 3.6 Cópia de período 🟢
+
+`fator = 1 + percReajuste/100` (de −100 a 1000); `ajustar(v) = round(v×fator×100)/100`
+aplicado à meta e às linhas por categoria. As quantidades (`numeroCliente`,
+`novoCliente`) são copiadas sem reajuste. O vendedor que já tem objetivo no destino é
+**pulado**, e o retorno diz quantos e quais foram. Respeita o escopo. `codigoErp` e
+`chave` ficam nulos na cópia. O contrato proíbe destino igual à origem.
+
+#### 3.7 Achados
+
+- 🔴 **A unicidade ignora o soft delete.** O schema tem
+  `@@unique([empresaId, vendedorId, mes, ano])` sem `deletedAt`, e o projeto não tem
+  filtro global para `P2002`. Consequências:
+  - excluir o objetivo de um vendedor e criar de novo no mesmo mês passa por
+    `garantirSemDuplicidade` (que filtra `deletedAt: null`) e estoura erro 500 no banco;
+  - `copiarPeriodo` para um mês com objetivo excluído do mesmo vendedor derruba a
+    transação inteira, e **nenhum** objetivo é copiado.
+- 🟡 **`update` com `categorias` apaga as linhas fisicamente** (`deleteMany`), embora a
+  tabela tenha colunas de soft delete. As linhas que vieram do ERP (`chave`) perdem a
+  chave, e a próxima carga da integração tende a recriá-las.
+- 🟡 **Lista de clientes sem vendedor cortada antes de ordenar.** O `take: 1000` é
+  aplicado em ordem alfabética, e só depois a lista é reordenada por última compra. Com
+  mais de 1000 clientes, quem comprou recentemente pode ficar de fora.
+- 🟡 **Positivação diferente entre os dashboards.** O Comercial conta clientes
+  distintos; o Gerencial soma as linhas (§3.3). Pela decisão do usuário, o mesmo mês
+  pode mostrar dois números.
+- 🟡 **Categoria recusada no detalhe.** O detalhe do vendedor lista categorias com meta
+  mesmo quando estão marcadas como não usadas. O realizado delas é sempre 0 (o corte
+  exclui), e a linha aparece com 0% de atingimento.
+- 🟡 **Base × positivação em dimensões diferentes.** A base filtra pela carteira do
+  cliente (`cliente.vendedorId`); a positivação e o realizado, pelo `vendedorId` do
+  **item** da nota.
+- 🟡 Valores em `Float` (`valor`, `numeroCliente`, `novoCliente`). Os dois últimos são
+  contagens de clientes.
+- 🟡 `copiarPeriodo` copia também objetivos `ativo=false` e linhas de categorias que
+  podem ter sido desativadas.
+- 🟡 `Promise.all` dentro da transação interativa (vários pontos).
+
+### 4. Estruturas de dados 🟢
+
+Ver `data-dictionary.md`, seção `objetivos`.
+
+### 5. Metadados e configurações 🟢
+
+| Item | Valor |
+|---|---|
+| `SORT_FIELDS` | `ano` (padrão), `mes`, `valor`, `ativo`, `createdAt` |
+| `CLIENTE_SEM_VENDEDOR_ATIVO` | `vendedorId` nulo, ou vendedor `ativo=false`, ou vendedor excluído |
+| `LIMITE_CLIENTES_SEM_VENDEDOR` | 1000 |
+| Parâmetro `DASHBOARD_GERENCIAL_HIERARQUIA` | booleano, padrão `true` |
+| Parâmetro `VENDAS_SERIES_NOTA` | séries que contam como venda; vazio = todas (via `corteDeVenda`) |
+| `percReajuste` | −100 a 1000, padrão 0 |
+| Permissões | `objetivos.*`, `dashboard-comercial.visualizar`, `dashboard-gerencial.visualizar` |
+
+### 6. Segurança / integridade
+
+- 🟢 Escopo hierárquico em todas as rotas; o detalhe do vendedor fora do escopo dá 404;
+  clientes sem vendedor só com escopo livre.
+- 🟢 Os dashboards têm permissões próprias, separadas do cadastro de metas.
+- 🔴 Unicidade sem `deletedAt` (§3.7).
+
+### 7. Dependências do módulo 🟢
+
+`PrismaService`, `ParametrosService`, `common/escopo/escopo-vendedores`,
+`common/vendas/venda-analitica` (`corteDeVenda`), `common/pagination/paginate`,
+`@plataforma/contracts`. Também mexem nas mesmas tabelas:
+`integracao/objetivos/integracao-objetivos.service.ts` (carga do ERP),
+`whatsapp/triagem/triagem-funcionario-tools.service.ts` (ferramenta `objetivos` do
+WhatsApp do funcionário) e `demo`. Web: `/comercial/objetivos`, Dashboard Comercial e
+Dashboard Gerencial.
+
+### 8. Cobertura de testes 🟡
+
+Nenhum teste no módulo. `venda-analitica.spec.ts` cobre o corte de venda, mas nada
+cobre a agregação dos dashboards, a cópia de período nem a duplicidade.
+
+## Módulo `meus-atendimentos`
+
+**Caminho:** `apps/api/src/modules/meus-atendimentos/`
+**Arquivos (5):** `meus-atendimentos.module.ts`, `meus-atendimentos.controller.ts`
+(1 rota), `meus-atendimentos.service.ts` (323 linhas), `dto/meus-atendimentos.dto.ts`,
+`meus-atendimentos.categoria.spec.ts`.
+
+### 1. Responsabilidade 🟢
+
+Linha do tempo **somente leitura** do que o vendedor logado fez (ou, para quem
+supervisiona, do que a equipe fez). Lê **só** a tabela `atividades`, onde os módulos
+de atendimento já gravam cada passo como atividade (WhatsApp, documentos, orçamento,
+agenda), para não criar uma segunda definição de "atendimento". O service é exportado
+e reusado pelo agente interno (ferramenta de resumo dos atendimentos).
+
+### 2. Fluxo de controle — funções principais 🟢
+
+| Função / rota | Permissão | Comportamento |
+|---|---|---|
+| `resumo` — `GET /meus-atendimentos` | `meus-atendimentos.visualizar` | feed paginado por cursor + contadores do período; `dias?`, `clienteId?`, `escopo` (`proprio`/`equipe`), `cursor?`, `limite` |
+| `carteiras` (privada) | — | `proprio` = vendedor ligado ao login; `equipe` = escopo **menos** ele mesmo (escopo livre = todos os vendedores ativos) |
+| `vazio` (privada) | — | resposta zerada para quem não tem vendedor nem equipe |
+| `codificarCursor` / `decodificarCursor` | — | `base64url("<ISO>|<id>")`; cursor ilegível = sem cursor |
+| `categoriaDoTitulo` (exportada) | — | classifica a atividade pela frase do título |
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Janela de dias 🟢
+
+`dias` conta dias inteiros **incluindo hoje**: `de = hoje − (dias − 1)` às 00:00,
+`ate = agora`. Sem `dias` o feed não tem começo. Contrato: 1 a 365
+(`DIAS_MAX_HISTORICO`); o agente limita a 1–7.
+
+#### 3.2 De quem 🟢
+
+- `proprio` (padrão): `vendedorId = proprio` **ou** `createdBy = usuário`. A segunda
+  metade é o que o supervisor ou gerente executou na carteira do subordinado, onde o
+  registro fica.
+- `equipe`: `vendedorId IN equipe`. Só vale se `equipe` não estiver vazia; senão cai
+  em `proprio`, e o service decide (o agente não consegue ampliar o alcance).
+- Sem vendedor e sem equipe: resposta vazia, nunca a de outra pessoa.
+
+#### 3.3 No período 🟢
+
+`dataConclusao` dentro da janela **ou** `createdAt` dentro da janela: um retorno
+agendado hoje para a semana que vem conta como trabalho de hoje.
+
+#### 3.4 `AND` em vez de `OR` na raiz 🟢
+
+Todas as condições compostas entram em `AND`. A versão anterior tinha o escopo num
+`OR` de raiz, e o `OR` do cursor sobrescrevia a chave no spread. Da segunda página em
+diante, o feed devolvia atividade de **qualquer** vendedor da empresa. Corrigido; o
+comentário no código registra o porquê.
+
+#### 3.5 Paginação por cursor 🟢
+
+Ordem `createdAt desc, id desc`; busca `limite + 1` linhas, e a linha a mais indica que
+há próxima página. Cursor = (`createdAt`, `id`) do último item, com desempate por id.
+`quando` mostrado = `dataConclusao ?? createdAt`.
+
+#### 3.6 Contadores do topo 🟢
+
+Contam o **período inteiro**, não a página, numa segunda consulta com até
+`TETO_TOTAIS` = 5000 linhas (só `titulo` e `clienteId`): `registros`, `clientes`
+distintos e um contador por categoria.
+
+#### 3.7 Categoria pelo título 🟢
+
+| Regra (título em minúsculas) | Categoria |
+|---|---|
+| começa com "atendimento por whatsapp" | `whatsapp` |
+| contém "orçamento" ou "proposta" | `orcamento` |
+| contém "2ª via", "danfe", "boleto", "xml", "títulos em aberto" ou "notas fiscais" | `documento` |
+| qualquer outro | `agenda` |
+
+A tabela não tem coluna de origem. O spec amarra os títulos fixos dos três helpers
+(`registrar-atendimento-whatsapp`, `registrar-atividade-documento`,
+`registrar-atividade-orcamento`).
+
+#### 3.8 Achados
+
+- 🟡 **Categoria por texto livre.** A atividade digitada à mão com "orçamento",
+  "proposta" ou "boleto" no título ("Ligar sobre o orçamento") sai como
+  `orcamento`/`documento`, não `agenda`. Os registros automáticos que não vêm dos três
+  helpers caem em `agenda`, entre eles "Comodato baixado", "Alteração de cadastro
+  aguardando aprovação" e o "Retorno: <título>" do orçamento (a menos que o título do
+  orçamento contenha a palavra). O mesmo problema do módulo `atividades`: falta uma
+  coluna de origem.
+- 🟡 **"Hoje" no fuso do servidor.** `setHours(0,0,0,0)` usa o fuso do processo Node.
+  Em container UTC, "hoje" começa às 20:00 do dia anterior em Campo Grande. É a mesma
+  lacuna de fuso de `atividades`.
+- 🟡 **O teto não aparece na resposta.** Com mais de 5000 registros os contadores param
+  em 5000, sem nenhum campo que diga isso. O comentário fala em "mais de", mas a
+  resposta não traz esse sinal.
+- 🟡 **Documentação divergente.** O `summary` da rota diz "1 a 7 dias", mas o contrato
+  aceita até 365 ou nenhum recorte. O limite de 7 é só do agente.
+- 🟡 Na visão `equipe` com escopo livre, ficam de fora as atividades de vendedores
+  **inativos** (`ativo: true` em `carteiras`).
+- 🟡 Pendências criadas no período aparecem como "o que fiz", com `quando = createdAt`.
+
+### 4. Estruturas de dados 🟢
+
+Não tem tabela própria; lê `Atividade`. Ver `data-dictionary.md`, seção
+`meus-atendimentos`.
+
+### 5. Metadados e configurações 🟢
+
+| Item | Valor |
+|---|---|
+| `CategoriaAtendimento` | `whatsapp`, `documento`, `orcamento`, `agenda` |
+| `EscopoAtendimento` | `proprio` (padrão), `equipe` |
+| `DIAS_MIN_ATENDIMENTOS` / `DIAS_MAX_ATENDIMENTOS` / `DIAS_MAX_HISTORICO` | 1 / 7 (agente) / 365 |
+| `PAGINA_ATENDIMENTOS` / `PAGINA_MAX_ATENDIMENTOS` | 25 / 50 (o agente usa 40) |
+| `TETO_TOTAIS` | 5000 |
+
+### 6. Segurança / integridade
+
+- 🟢 O recorte sai de `resolverEscopoVendedores`, o mesmo das telas; `equipe` nunca
+  amplia o alcance.
+- 🟢 Não há rota de escrita.
+- 🟢 A correção do vazamento entre vendedores pela paginação está documentada no código
+  (§3.4). Ainda não há teste que a proteja.
+
+### 7. Dependências do módulo 🟢
+
+`PrismaService`, `common/escopo/escopo-vendedores`, `@plataforma/contracts`.
+Consumidores: `agente/agente-tools.service.ts` e a tela web "Meus atendimentos".
+Fontes dos dados: os gravadores de atividade listados em `atividades` §3.5.
+
+### 8. Cobertura de testes 🟡
+
+`meus-atendimentos.categoria.spec.ts` cobre `categoriaDoTitulo`. Nenhum teste cobre o
+recorte `proprio`/`equipe`, a paginação (o bug do `OR` não tem teste de regressão) nem a
+janela de dias.
+
+## Módulo `consultas`
+
+**Caminho:** `apps/api/src/modules/consultas/`
+**Arquivos (4):** `consultas.module.ts` (importa `ParametrosModule`),
+`consultas.controller.ts` (5 rotas), `consultas.service.ts` (917 linhas),
+`dto/consulta.dto.ts`. Sem spec.
+
+### 1. Responsabilidade 🟢
+
+Consultas gerenciais de venda em formato **pivô mensal** (uma linha por entidade, uma
+coluna por mês, no máximo 12 meses): por cliente, vendedor, produto, árvore
+categoria → subcategoria → produto, e evolução por vendedor em quatro indicadores. Usa
+SQL bruto (`$queryRaw`), porque o query builder não pivota e a coluna do vendedor muda
+conforme o parâmetro da empresa. Exportação PDF/Excel é montada no navegador; a
+permissão `exportar` só controla os botões. O service é exportado e reusado pelo agente
+(`vendasPorCliente`, `vendasPorProduto`).
+
+### 2. Fluxo de controle — funções principais 🟢
+
+| Função / rota | Permissão | Agrupa por | Vendedor (base `nota`) | Mês de |
+|---|---|---|---|---|
+| `vendasPorCliente` — `GET /consultas/vendas-cliente` | `consulta-vendas-cliente.visualizar` | cliente | `n.vendedorId` | `n.ano/mes` |
+| `vendasPorVendedor` — `GET /consultas/vendas-vendedor` | `consulta-vendas-vendedor.visualizar` | vendedor | `n.vendedorId` | `n.ano/mes` |
+| `vendasPorProduto` — `GET /consultas/vendas-produto` | `consulta-vendas-produto.visualizar` | produto (+ `categoriaId?`) | `i.vendedorId` | `i.ano/mes` |
+| `vendasPorCategoria` — `GET /consultas/vendas-categoria` | `consulta-vendas-categoria.visualizar` | categoria → sub → produto | `i.vendedorId` | `i.ano/mes` |
+| `evolucao` — `GET /consultas/evolucao` | `consulta-evolucao.visualizar` | vendedor, por indicador | ver §3.6 | ver §3.6 |
+
+Com a base `cliente`, a coluna do vendedor é `c.vendedorId` em todas as consultas.
+
+Auxiliares privadas: `baseVendedor`, `condicaoEscopoClientes`, `condicaoFiltroVendedor`,
+`condicoesDeVenda`, `condicaoPeriodo`, `pivotar`, `montarArvore`/`fecharNivel`/`folha`,
+`mediaMesesComMovimento`, `vendedoresRef`, `cabecalho`, `evolucaoSobreNotas`,
+`evolucaoNovos` e `evolucaoInativados`.
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Base do vendedor 🟢
+
+`baseVendedor`: a escolha da consulta (`?baseVendedor=`) ganha; senão vale o parâmetro
+`CONSULTA_VENDAS_BASE_VENDEDOR` (padrão `nota`). Com `nota`, a venda é creditada a quem
+vendeu; com `cliente`, ao titular da carteira.
+
+#### 3.2 Dupla trava de visibilidade 🟢
+
+1. `condicaoEscopoClientes`: com escopo restrito, só clientes cujo `c.vendedorId` está
+   no escopo. Escopo vazio vira `false`.
+2. `condicaoFiltroVendedor`: sem filtro pedido, a **coluna da base** também precisa
+   estar no escopo (regra de 30/09/2026: o vendedor vê só os próprios dados, o
+   supervisor vê os do time). Com filtro pedido, os ids fora do escopo são descartados;
+   se não sobrar nenhum, o resultado é vazio (`false`), nunca "todos".
+
+#### 3.3 O que é venda e o valor 🟢
+
+`corteDeVenda` (ver `objetivos` §3.1), nas formas `notaSql` e `itemSql`. O valor é
+`SUM(i.vlrTotal)`, que é o **item**, e não mais o `vlrBruto` do cabeçalho, para
+respeitar a categoria. Em troca, IPI/ST e frete do cabeçalho deixam de entrar. A
+Posição de Cliente continua no `vlrBruto`.
+
+#### 3.4 Período e pivô 🟢
+
+- Período: `(ano×12 + mes) BETWEEN emMeses(inicial) AND emMeses(final)`, com no máximo
+  12 meses (`MAX_MESES_CONSULTA`, validado no contrato).
+- `pivotar`: soma cada (entidade, ano, mês) na coluna do mês, ordena pelo total
+  decrescente e calcula os totais por coluna.
+- **Média = total ÷ meses com valor diferente de zero**, e não ÷ tamanho do período: é
+  o quanto o cliente compra quando compra.
+
+#### 3.5 Árvore de categorias 🟢
+
+Uma passada: cada linha (produto, ano, mês) soma no produto, na subcategoria, na
+categoria e no rodapé ao mesmo tempo, então os níveis não divergem. Produto sem
+classificação vai para os nós `sem-categoria` / `sem-subcategoria`, para o total bater
+com a consulta por produto. Cada nível sai ordenado pelo total.
+
+#### 3.6 Evolução 🟢
+
+| Indicador | Medida | Origem | Base |
+|---|---|---|---|
+| `vendas` | `SUM(i.vlrTotal)` | notas de venda | escolhida |
+| `positivados` | `COUNT(DISTINCT n.clienteId)` | notas de venda (item acompanhado) | escolhida |
+| `novos` | nº de clientes cuja **primeira** nota de venda de todo o histórico cai no mês | CTE `DISTINCT ON (clienteId)` ordenada por ano, mês, `dtEmissao` | escolhida (`nota` = quem emitiu a primeira) |
+| `inativados` | nº de clientes com `dataBloqueio` no mês | cadastro do cliente | sempre `cliente` (a resposta devolve `cliente`) |
+
+`novos` e `positivados` também usam o corte por item: o cliente não "estreia" numa
+remessa de brinde. `inativados` conta o bloqueio registrado mesmo se o cliente foi
+reativado depois.
+
+#### 3.7 Achados
+
+- 🟡 **Devolução fora das Consultas** (🟡 INFERIDO quanto ao impacto). As Consultas somam
+  `vlrTotal`; Dashboard e Objetivos somam `vlrTotal − vlrDev`. A nota de devolução já sai
+  pelo `tipo='N'`, mas o `vlrDev` lançado no item original só é descontado nos
+  Dashboards. O comentário de `mediaMesesComMovimento` fala em "líquido", mas o valor
+  das Consultas é bruto de devolução. Os documentos das rotas dizem que as três telas
+  usam a "mesma base". Para o mesmo mês, os números divergem sempre que houver `vlrDev`.
+- 🟡 **Cabeçalho × item no vendedor e no mês.** Cliente, vendedor e evolução usam
+  `n.vendedorId` e `n.ano/mes`; produto e categoria usam `i.vendedorId` e `i.ano/mes`.
+  Se o vendedor ou o mês do item diferir do cabeçalho, o total por vendedor e o total
+  por produto filtrado pelo mesmo vendedor não batem. O Dashboard usa os campos do item.
+- 🟡 `evolucaoNovos` varre **todo o histórico** de notas de venda a cada chamada para
+  achar a primeira compra.
+- 🟡 `vendedoresRef` devolve o nome de qualquer vendedor da empresa cujo id venha na
+  query, mesmo fora do escopo. Os números não vazam (o filtro descarta), só o nome no
+  cabeçalho.
+- 🟡 Mês de `inativados` sai de `EXTRACT` sobre `dataBloqueio` no fuso do banco.
+- 🟡 Exportar é decidido só na tela (os dados já chegaram a quem visualiza). Está
+  documentado como intencional.
+
+### 4. Estruturas de dados 🟢
+
+Sem tabela própria. Lê `notas_saida`, `notas_saida_itens`, `clientes`, `vendedores`,
+`produtos` e `categorias`. Ver `data-dictionary.md`, seção `consultas`.
+
+### 5. Metadados e configurações 🟢
+
+| Item | Valor |
+|---|---|
+| Parâmetro `CONSULTA_VENDAS_BASE_VENDEDOR` | `nota` (padrão) \| `cliente` |
+| Parâmetro `VENDAS_SERIES_NOTA` | via `corteDeVenda` |
+| `MAX_MESES_CONSULTA` | 12 |
+| `MAX_VENDEDORES_FILTRO` | 50 (`vendedorIds` repetido ou separado por vírgula) |
+| `INDICADORES_EVOLUCAO` | `vendas` (moeda), `positivados`, `novos`, `inativados` (quantidade) |
+| Nós sintéticos | `sem-categoria`, `sem-subcategoria` |
+| Permissões | `consulta-vendas-cliente`, `consulta-vendas-vendedor`, `consulta-vendas-produto`, `consulta-vendas-categoria`, `consulta-evolucao` (`.visualizar`; `exportar` só na tela) |
+
+### 6. Segurança / integridade
+
+- 🟢 SQL bruto todo parametrizado (`Prisma.sql`/`Prisma.join`); a coluna variável vem de
+  um conjunto fechado de fragmentos, nunca de entrada.
+- 🟢 Dupla trava de escopo (carteira do cliente e coluna da base) e filtro de vendedor
+  que nunca vira "todos".
+- 🟢 `withTenant` + `n/i/c."empresaId"` explícitos.
+
+### 7. Dependências do módulo 🟢
+
+`PrismaService`, `ParametrosService`, `common/escopo/escopo-vendedores`,
+`common/vendas/venda-analitica` (`corteDeVenda`, `JOIN_CATEGORIA_DO_ITEM_SQL`),
+`@plataforma/contracts` (`colunasDoPeriodo`, `emMeses`, `rotuloMes`, constantes).
+Consumidores: `agente/agente-tools.service.ts` e as telas web de Consultas (com
+exportação PDF/Excel no cliente).
+
+### 8. Cobertura de testes 🟡
+
+Nenhum teste no módulo. O pivô, a árvore, a média e as duas travas de escopo não têm
+teste; só o corte de venda é testado (`venda-analitica.spec.ts`).
+
+## Módulo `relatorios`
+
+**Caminho:** `apps/api/src/modules/relatorios/`
+**Arquivos (4):** `relatorios.module.ts` (importa `ParametrosModule`),
+`relatorios.controller.ts` (5 rotas), `relatorios.service.ts` (799 linhas),
+`relatorios.service.spec.ts` (7 testes). Plano: `docs/planos/2026-10-13-modulo-relatorios.md`.
+
+### 1. Responsabilidade 🟢
+
+Relatórios operacionais em linhas de item, para os perfis **Gerente**, **Administrativo**
+e administradores, sempre da empresa ativa inteira:
+
+- **Compras**: itens de nota de entrada de mercadoria;
+- **Vendas**: itens de venda;
+- **Vendas por vendedor (mensal)**: matriz cliente × mês;
+- **Estoque e compra**: estoque, entradas, saídas, média e sugestão de compra por produto;
+- **Opções** dos filtros (produtos, fornecedores, clientes).
+
+A exportação PDF/Excel é feita no navegador. A página grande é tratada como exportação
+e exige `exportar` (§3.1).
+
+### 2. Fluxo de controle — funções principais 🟢
+
+| Função / rota | Permissão | Comportamento |
+|---|---|---|
+| `compras` — `GET /relatorios/compras` | `relatorio-compras.visualizar` (+ `exportar` se `pageSize` > 200) | paginado, totais de quantidade/valor/IPI/ICMS/ST |
+| `vendas` — `GET /relatorios/vendas` | `relatorio-vendas.visualizar` (+ `exportar` se `pageSize` > 200) | paginado, totais de quantidade e valor |
+| `vendasPorVendedor` — `GET /relatorios/vendas-por-vendedor` | `relatorio-vendas.visualizar` | matriz cliente × mês (até 12), quebra por vendedor |
+| `estoqueCompra` — `GET /relatorios/estoque-compra` | `relatorio-estoque-compra.visualizar` | uma linha por produto, sem paginação |
+| `opcoes` — `GET /relatorios/opcoes/:tipo` | qualquer um dos três `visualizar` | até 100 opções (`produtos`, `fornecedores`, `clientes`): código, nome, detalhe |
+
+Funções exportadas: `periodo` (período civil fechado), `ordenar`, `ESPECIES_DE_COMPRA`,
+`ORDEM_COMPRAS`. A leitura passa por `ler`: `withTenant` com timeout de 60 s (o padrão
+de 5 s expirava em 9 meses de vendas da RCG).
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Exportar = página grande 🟢
+
+`exigirExportarSeGrande`: com `pageSize` acima de 200 (`MAXIMO_DA_TELA`), exige
+`<rotina>.exportar`, exceto para `isAdmin`. O contrato aceita `pageSize` até 20000.
+
+#### 3.2 Período civil 🟢
+
+`periodo(inicio, fim)`: `[inicio 00:00Z, fim + 1 dia)`. Fim antes do início dá 400.
+
+#### 3.3 O que é compra (decisões do usuário, 13–14/10/2026) 🟢
+
+- Nota de entrada `tipo='N'`, espécie em `SPED`, `NFE`, `NF`, `NFA` (fora CT-e, serviço,
+  energia, telecom, cupom, fatura e devolução de cliente).
+- Gerou contas a pagar (`geraDuplicata` verdadeiro **ou nulo**, para a nota que chegou
+  antes de a integração mandar o campo).
+- Fornecedor **ativo** (bloqueado no ERP fica de fora dos itens e da lista do filtro).
+- Período pela data de digitação (`dtEntrada`, ou `dtEmissao` quando não houver).
+
+#### 3.4 Categoria "usada", mais estrita que o Dashboard 🟢
+
+Os relatórios só trazem produto de categoria com `usado = true`; a categoria **em
+branco fica de fora**. No `corteDeVenda` do Dashboard e das Consultas ela conta, e por
+isso o Relatório de Vendas pode dar **menos** que o Dashboard (decisão de 14/10/2026,
+registrada no código). O filtro de categoria aceita a categoria **ou** a subcategoria.
+
+#### 3.5 Vendas 🟢
+
+`corteDeVenda.item` + emissão no período + categoria usada; filtros de vendedor (pelo
+**cabeçalho**), cliente, município (`contains`), categoria, número da nota e produto.
+Ordem padrão: vendedor, emissão, número, item, id. A coluna clicada vem primeiro, e a
+padrão desempata (sem repetir nem pular linha entre páginas).
+
+#### 3.6 Vendas por vendedor (mensal) 🟢
+
+SQL bruto agrupando (vendedor do cabeçalho, cliente, `to_char(dtEmissao,'YYYY-MM')`),
+com a lista de meses gerada do início ao fim (até 12, pelo contrato). Monta uma linha
+por (vendedor, cliente) com quantidade e valor por mês e no total. `quebraPorVendedor` =
+controle da tela, senão o parâmetro `RELATORIO_VENDAS_QUEBRA_VENDEDOR` (padrão `true`).
+A linha **sempre** vem por vendedor; a tela decide se agrupa. O mês **não** pode ir pelo
+alias no `GROUP BY`, porque `notas_saida_itens` já tem uma coluna `mes`.
+
+#### 3.7 Estoque e compra 🟢
+
+- **Estoque** = soma do saldo dos armazéns com `revenda = true`.
+- **Entradas** = quantidade das notas de compra (§3.3) no período.
+- **Saídas** = quantidade dos itens das notas de **venda** (cabeçalho de `corteDeVenda`)
+  no período, sem o filtro de categoria do item.
+- **Fornecedor e último preço** = os da última nota de compra com quantidade > 0
+  (`LATERAL ... LIMIT 1`, ordenado por data desc e, no empate, pelo maior unitário).
+  Isso exclui o CT-e de frete, que levava o código do produto. Depois de 15/10/2026 o
+  cálculo roda só para os produtos filtrados, porque era o gargalo.
+- `mesesPeriodo` = atalho da tela (3 a 6) ou dias ÷ 30,44.
+- **Média** = saídas ÷ `mesesPeriodo`. **A comprar** = média × `mesesCompra` − estoque,
+  com 1 casa; negativo significa sobra. É a fórmula da planilha de compra, coberta pelo spec.
+- Produto inativo só entra se tiver saldo ou movimento; `comMovimento` exige movimento
+  de todos.
+
+#### 3.8 Opções 🟢
+
+A busca por termos (`condicaoBuscaTermosSql`) cobre código, nome, fantasia e CNPJ/CPF
+(também só com dígitos); no produto, também Cod. Corp., código e descrição no
+fabricante e código de barras. Os ativos vêm antes. Produtos só de categoria usada;
+fornecedores só ativos. Limite de 100.
+
+#### 3.9 Achados
+
+- 🟡 **Sem escopo hierárquico.** Nenhuma rota chama `resolverEscopoVendedores`: quem tem
+  a permissão vê a empresa inteira (vendas de todos os vendedores, todos os clientes nas
+  opções). Para Gerente e Administrativo isso é o desenho do plano. Mas a barreira é só
+  a permissão: um perfil de Vendedor que receba `relatorio-vendas` passa a ver a venda
+  de todos, ao contrário das Consultas.
+- 🟡 **Exportar não vale em duas rotas.** `vendas-por-vendedor` e `estoque-compra`
+  devolvem tudo sem paginação e sem `exigirExportarSeGrande`. Quem só tem `visualizar`
+  já recebe o conjunto inteiro, e a trava de exportar fica só no botão.
+- 🟡 **Saídas sem comodato nem bonificação** (🟡 INFERIDO quanto ao efeito). As saídas
+  usam o corte de **venda** (comodato e nota sem duplicata ficam de fora). Remessa de
+  comodato, bonificação e transferência também tiram produto do estoque, então a média
+  de saída e o "a comprar" podem ficar **abaixo** do consumo real.
+- 🟡 **Comentários contraditórios sobre o fornecedor bloqueado.** O topo do arquivo
+  diz que ele sai "nem na lista do filtro nem nos itens", e o código das compras
+  realmente o exclui. O comentário em `opcoes` diz que "a nota antiga dele continua no
+  relatório".
+- 🟡 **Mês por emissão** (`to_char(dtEmissao)`) no relatório mensal, enquanto as
+  Consultas usam `n.ano/mes` do ERP. O mesmo período pode distribuir valores em meses
+  diferentes se as duas datas divergirem.
+- 🟡 Compras e Vendas não têm limite de período; com `pageSize` 20000 e 60 s de timeout,
+  a exportação de períodos longos depende do tempo do banco.
+
+### 4. Estruturas de dados 🟢
+
+Sem tabela própria. Ver `data-dictionary.md`, seção `relatorios`.
+
+### 5. Metadados e configurações 🟢
+
+| Item | Valor |
+|---|---|
+| `MAXIMO_DA_TELA` | 200 (acima disso exige `exportar`) |
+| `pageSize` | 1–20000, padrão 50 |
+| `TEMPO_MAXIMO_MS` | 60000 |
+| `DIAS_POR_MES` | 30,44 |
+| `ESPECIES_DE_COMPRA` | `SPED`, `NFE`, `NF`, `NFA` |
+| `RELATORIO_VENDAS_POR_VENDEDOR_MAX_MESES` | 12 |
+| `RELATORIO_OPCOES_LIMITE` | 100 |
+| Parâmetro `RELATORIO_VENDAS_QUEBRA_VENDEDOR` | booleano, padrão `true` |
+| Permissões | `relatorio-compras`, `relatorio-vendas`, `relatorio-estoque-compra` (`visualizar`, `exportar`) |
+
+### 6. Segurança / integridade
+
+- 🟢 `withTenant` + `empresaId` explícito em todo SQL; SQL bruto parametrizado.
+- 🟢 Ordenação por whitelist (`Object.hasOwn`, que não aceita propriedade herdada do
+  `Object`).
+- 🟢 `opcoes` devolve só código, nome e detalhe a quem não tem o cadastro.
+- 🟡 Sem escopo e exportar parcial (§3.9).
+
+### 7. Dependências do módulo 🟢
+
+`PrismaService`, `ParametrosService`, `common/vendas/venda-analitica`,
+`common/busca/termos-busca`, `@plataforma/contracts`. Consumidor: telas web de
+Relatórios.
+
+### 8. Cobertura de testes 🟢
+
+`relatorios.service.spec.ts`: `periodo` (fechado e inválido), `estoqueCompra` (fórmula
+da média e do "a comprar", média por dias, leitura no tenant) e `ordenar` (coluna
+clicada e propriedade herdada). Não cobre o filtro de compra (espécie, duplicata,
+fornecedor ativo), a trava de exportar nem a matriz mensal.
+
+## Módulo `whatsapp`
+
+**Caminho:** `apps/api/src/modules/whatsapp/`
+**Tamanho:** 50 arquivos `.ts`, ~21.400 linhas. Os maiores:
+`whatsapp-conversas.service.ts` (4011), `triagem/whatsapp-triagem.service.ts` (1994),
+`providers/evolution-go.provider.ts` (1638), `whatsapp-sessao.service.ts` (1441),
+`whatsapp.controller.ts` (1369, ~90 rotas), `whatsapp-evolution.controller.ts` (1146,
+webhook), `whatsapp-acoes.service.ts` (903), `triagem/triagem-funcionario-tools.service.ts`
+(795). 16 specs.
+**Documentação viva relacionada:** `docs/ferramentas/README.md`,
+`whatsapp-cliente.md`, `whatsapp-funcionario.md` (inventário das ferramentas de IA,
+com a regra "acesso é código, comportamento é prompt").
+
+### 1. Responsabilidade 🟢
+
+Atendimento por WhatsApp integrado ao CRM, sobre o gateway **Evolution GO** (transporte
+único desde 01/10/2026; `zapo` e `cloud_api` ficaram no enum e em colunas legadas).
+Dois tipos de sessão:
+
+| Sessão | `tipo` | Dono | IA |
+|---|---|---|---|
+| Aparelho do vendedor | `vendedor` | vendedor + usuário que pareou | nenhuma: conversa humana |
+| Número institucional | `empresa` | ninguém (`vendedorId` nulo) | **triagem** atende cliente/desconhecido e funcionário, com catálogos separados |
+
+Blocos funcionais:
+
+- **Recebimento** (`WhatsappEvolutionController` → `WhatsappConversasService.receber`):
+  webhook autenticado por segredo da instância, grava contato, conversa e mensagem,
+  baixa a mídia depois de gravar e registra o atendimento no histórico do cliente.
+- **Atendimento** (`WhatsappConversasService`): lista, mensagens, envio (texto, mídia,
+  interativo, template), edição, exclusão, reação, presença, vínculo com cliente,
+  iniciar conversa, assumir/encerrar no institucional, indicadores, sugestão de resposta.
+- **Ações na conversa** (`WhatsappAcoesService`): títulos, boleto, DANFE, notas,
+  orçamentos, fichas técnicas, agendar visita. Delega aos services das telas.
+- **Triagem por IA** (`triagem/`): cliente ou desconhecido (13 ferramentas, só
+  `registrar_lead` grava) e funcionário pareado por código (8 ferramentas, só leitura).
+- **Sessões** (`WhatsappSessaoService`): parear, desconectar, reconectar, estado,
+  aceite, administração (limpar histórico, excluir instância, importar histórico).
+- **Agendamento** de mensagens, **recado interno** para a equipe, **inatividade** da
+  triagem, **agenda do aparelho**, **respostas rápidas**, **configuração**.
+- **Gerencial**: Histórico do WhatsApp da equipe, só leitura.
+
+### 2. Rotas (resumo) 🟢
+
+| Grupo | Rotas | Permissão |
+|---|---|---|
+| Configuração | `GET/PUT config`, templates, `testar-gateway` | `whatsapp-config.visualizar/editar` |
+| Status | `GET integracao`, `GET meu-numero` | **sem permissão** (só JWT), de propósito |
+| Recados internos | `GET/POST/PUT/DELETE recados…`, `PATCH recados/:id/lido` | `whatsapp-recados.*` |
+| Minha sessão | `GET sessao`, `POST sessao/conectar`, `GET sessao/pareamento`, `DELETE sessao`, foto, `GET sessoes` | `whatsapp-conversas.*` |
+| Número institucional | `config/sessao-empresa…` | `whatsapp-config.*` |
+| Institucional de outra empresa | `config/empresas/:empresaId/…` | `whatsapp-config.*` + `PlatformAdminGuard` |
+| Administração de instâncias | `config/sessoes/:id/{reconectar, conversas, instancia, instancia-e-historico, historico}` | `whatsapp-config.editar/excluir` |
+| Conversas | `GET conversas`, `GET conversas/:id(/mensagens,/eventos)`, `POST conversas`, mensagens, interativa, arquivos, template, editar, apagar, reação, presença, vínculo, foto, `lida`, anotações, agendamentos, `assumir`, `encerrar`, `sugerir-resposta` | `whatsapp-conversas.*` |
+| Ações | `conversas/:id/acoes/{titulos, notas, danfe, boleto, agendar, orcamentos, orcamento, orcamento/novo, fichas, ficha}` | a rotina dona do dado (`titulos-receber`, `notas-saida`, `atividades`, `orcamentos`, `produtos`) |
+| Agenda do aparelho | `agenda/{contatos, conversas, sincronizar, importar}` | `whatsapp-conversas.*` |
+| Gerencial | `gerencial/{filtros, conversas, conversas/:id/mensagens, conversas/:id/eventos}` | `whatsapp-historico.visualizar` |
+| Indicadores | `atendimento/nao-lidas`, `atendimento/indicadores` | `whatsapp-conversas.visualizar` |
+| Respostas rápidas | CRUD `respostas-rapidas` | `whatsapp-conversas.*` |
+| Webhook | `POST whatsapp/evolution/webhook/:empresaId/:sessaoId` | sem JWT; segredo da instância |
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Webhook da Evolution GO 🟢
+
+- Empresa e sessão vêm na URL, porque com RLS a API não acharia a sessão sem o tenant.
+- **O segredo é por instância**, guardado cifrado (`WHATSAPP_CRYPTO_KEY`, separada da
+  chave do agente). É aceito em `?secret=`, no header `apikey`, como `Bearer` ou como
+  senha de `Basic`. A comparação é `timingSafeEqual`. Sessão inexistente responde 401,
+  não 404.
+- Tipo do evento por substring, sem diferenciar maiúsculas, tolerando as variações de
+  nome entre versões: `recibo`, `apelido`, `conexao` (inclui `connected` e `loggedout`,
+  que eram perdidos), `historico` e `mensagem`. Evento desconhecido responde 200 para
+  não haver reentrega infinita.
+- Lote processado mensagem a mensagem; a falha de uma vai para o log e não derruba as
+  outras.
+- A mídia só é baixada **depois** de a API confirmar a gravação.
+
+#### 3.2 `receber` — gravação da mensagem 🟢
+
+1. Descarta grupo (`@g.us`), lista de transmissão, status e canal (`@newsletter`).
+2. Telefone: o resolvido pelo evento; o do `jid` só quando não é `@lid` (opaco).
+3. Contato: procura primeiro pelo `telefoneNormalizado` (evita duas conversas para
+   `@lid` e `@s.whatsapp.net`); senão faz upsert por `(empresaId, jid)`. **Na criação**,
+   tenta `casarCliente` (§3.3). O apelido só preenche nome vazio; o nome da agenda do
+   celular pode corrigir.
+4. Conversa: upsert por `(empresaId, sessaoId, contatoId)`; a nova no institucional nasce
+   `bot`, a do aparelho nasce `humano`. A mensagem de saída do celular não conta como não
+   lida; histórico também não. O histórico só adianta `ultimaMensagemEm` se for mais novo.
+5. Idempotência: `(empresaId, conversaId, externoId)` único; a mensagem gravada antes
+   como `outro` é corrigida se agora o tipo for reconhecido.
+6. Mensagem nova grava `registrarAtendimentoWhatsapp`: uma atividade concluída por
+   cliente por dia, só com cliente e vendedor.
+7. Institucional `encerrada` que recebe mensagem nova do cliente **reabre em `bot`** e
+   zera atendente, assunto e saudação.
+8. Devolve `triagem: true` quando é institucional em `bot`, mensagem nova, do cliente e
+   não histórico. Mensagem recebida não toca o sino (decisão de 08/10/2026); conta no
+   ícone pelo `naoLidas`.
+
+#### 3.3 Vínculo automático com cliente — `casarCliente` 🟢
+
+Na criação do contato: compara os **últimos 8 dígitos** do telefone com `telefone`,
+`telefone2` e `celular` dos clientes. No aparelho do vendedor, só dentro da carteira
+dele; **no institucional, na base inteira** (`vendedorId` nulo). Exatamente um candidato
+→ grava `clienteId` no contato (sem `vinculadoPor`); dois ou mais → não vincula.
+
+#### 3.4 Escopo de leitura e escrita 🟢
+
+- **Atendimento** (`filtroSessao` / `conversaNoEscopo`): só a sessão do usuário logado:
+  `tipo='vendedor'`, vendedor do usuário e `sessao.usuarioId = usuário`
+  (`sessaoDoUsuarioWhere`, decisão de 06/10/2026). Sem cadastro de vendedor, não vê nada.
+  Fora do escopo dá 404. Vale para lista, mensagens, envio, ações, agendamento, não lidas.
+- **Gerencial** (`escopoHistoricoWhatsapp`): admin ou perfil `carteiraCompleta` vê tudo;
+  os demais veem a própria árvore (CTE recursiva por `superiorId`, inclusive vendedores
+  inativos). Só leitura.
+- **Indicadores do institucional** (`filtroSessaoEquipe`): o escopo antigo, de equipe.
+  A conversa em `bot` não é de ninguém; a direcionada é de quem recebeu; a fila sem dono
+  aparece para todos que atendem.
+- `escopoLeituraWhatsapp` (função solta): usado fora do módulo (Posição de Cliente);
+  exige `whatsapp-equipe.visualizar` para ver o time.
+
+#### 3.5 Triagem do institucional 🟢
+
+`WhatsappTriagemService.processar` nunca lança: falha vira log e `paraFila` (a conversa
+fica `aguardando`, sem dono, e quem está trabalhando é avisado).
+
+1. Contexto: só sessão `empresa` com a conversa em `bot`. Carrega a ficha da empresa (do
+   **cadastro**), as informações e a saudação da config, os vendedores presentes e as 12
+   últimas mensagens.
+2. IA desligada (`atendimentoIaAtivo=false`) → fila.
+3. **Funcionário?** `WhatsappFuncionarioService.identificar`: os últimos 8 dígitos
+   filtram, a **chave com DDD** decide, o vínculo usuário×empresa precisa estar ativo e a
+   resposta precisa ser única. Pendente → `parear` (código de 6 dígitos, válido 10 min,
+   5 tentativas, mostrado só em `GET meu-numero`); confirmado (30 dias) →
+   `atenderFuncionario`, com catálogo próprio e só leitura. Falha **não** vai para a
+   fila.
+4. Saudação literal (sem passar pelo modelo) na primeira vez.
+5. Agente da empresa (`AgenteConfigService.paraUso`); sem agente → fila.
+6. Catálogo `ferramentasDaTriagem(temCliente)` **fail-closed**: sem cliente vinculado, as
+   ferramentas de dado nem são descritas ao modelo, e o executor confere de novo
+   (`clienteId` nulo → erro).
+7. Até `MAX_VOLTAS` = 4 rodadas de ferramenta; ao direcionar, o modelo para de falar.
+8. Ferramentas que valem citar:
+   - `identificar_cliente`: por CNPJ/CPF ou nome (≥ 3 letras); devolve só `encontrado` e
+     um `vendedorId` opaco;
+   - `direcionar_para_vendedor` / `direcionar_para_administrativo`: o `vendedorId` do
+     modelo é conferido (existe, da empresa, ativo); senão, fila sem dono. Grava
+     `aguardando`, `atendenteVendedorId`, `assunto` (até 200) e `direcionadaEm`, e avisa:
+     o destinatário escolhido ou, sem dono, quem está em expediente com sessão aberta;
+   - `avisar_equipe`: o destino é um **papel**, nunca um número; até 3 por conversa;
+     assinado como automático;
+   - `registrar_lead`: a única que grava (ver módulo `leads`);
+   - `sobre_produto`: dossiê **sem preço por construção** (`ProdutoParaAgenteService`);
+   - documentos (boleto, DANFE, pedido): três travas em série — o catálogo, a resolução
+     número → id recortada pelo cliente da conversa e o gerador recortando de novo por
+     `QuemPede`.
+
+#### 3.6 Ciclo do institucional 🟢
+
+`bot` → `aguardando` (direcionada) → `humano` (`assumir`, só sessão `empresa`, não em
+`bot`, sem tomar de quem está atendendo) → `encerrada` (`encerrar` ou inatividade).
+Mensagem nova depois de `encerrada` volta a `bot`. `WhatsappInatividadeService` roda a
+cada 5 min e encerra conversas `bot` paradas há `atendimentoInatividadeMin` (padrão 30;
+0 desliga), até um lote por empresa.
+
+#### 3.7 Rotinas agendadas 🟢
+
+- **Mensagem agendada** (`WhatsappAgendamentoService`, a cada 60 s): autorizada na
+  criação; no envio não há usuário. A trava é `updateMany pendente → enviando`. Falha vira
+  `erro` visível; nada some em silêncio. Sessão desconectada não envia.
+- **Recado interno** (`WhatsappRecadoService`): para a equipe, pelo número institucional;
+  nunca alcança cliente.
+- As duas, mais a inatividade, varrem empresa a empresa (`empresas` não tem RLS) e
+  guardam timers em memória.
+
+#### 3.8 Exclusão de histórico 🟢
+
+`apagar-conversas.ts`: ponto único, atrás de `whatsapp-config.excluir`. Apaga em cascata
+mensagens, reações, agendamentos e ações; apaga a notificação do sino
+(`referenciaId`); o lead **fica** sem `conversaId`; as atividades ficam. A mídia em
+disco/MinIO é apagada **depois** do commit.
+
+#### 3.9 Achados
+
+- 🔴 **A triagem por IA não roda desde 01/10/2026.** O commit `d7d3205` ("evogo")
+  removeu `whatsapp-interno.controller.ts`, que chamava `triagem.processar()` depois de
+  `receber`. O `WhatsappEvolutionController` só usa `arquivoNecessario`, e nada no código
+  chama `WhatsappTriagemService.processar` (o service continua registrado no módulo).
+  Efeito no número institucional: a mensagem é gravada e fica em `bot`, sem saudação,
+  sem resposta, sem direcionamento, sem lead e sem aviso a ninguém, até a varredura de
+  inatividade encerrá-la (30 min). O atendimento a funcionário (pareamento e consultas)
+  e a captação de leads param junto. Os specs (`seguranca.spec.ts` etc.) testam o
+  service isolado e continuam passando.
+- 🔴 **Vínculo automático com cliente pelos 8 últimos dígitos, na base inteira.** A
+  documentação (`docs/ferramentas/whatsapp-cliente.md`) diz que o vínculo número ↔
+  cliente "é feito por um vendedor, na tela, e é ele que autoriza tudo o que vem depois —
+  inclusive mandar boleto e nota fiscal para aquele número". O código vincula
+  **sozinho**, na criação do contato, quando os 8 últimos dígitos casam com exatamente um
+  cliente. No institucional a busca é na base inteira, sem DDD. Um número de outro DDD
+  com o mesmo final, um número de celular reciclado pela operadora ou o telefone do
+  contador cadastrado no cliente ganham as ferramentas de cliente: títulos, 2ª via de
+  boleto, DANFE, pedidos. A identificação de funcionário, no mesmo módulo, exige a chave
+  **com DDD** justamente por isso. O vínculo automático não grava `vinculadoPor`, então
+  dá para distingui-lo do manual. Requer decisão: restringir ao vínculo manual nas
+  ferramentas de documento, ou exigir DDD.
+- 🔴 **A fila do institucional não tem caminho de atendimento** (conhecido: o
+  institucional "ficou fora" da revisão de 06/10/2026). `conversaNoEscopo` só aceita
+  sessão `tipo='vendedor'` do próprio usuário, e `assumirAtendimento` exige
+  `sessao.tipo === 'empresa'` depois disso, então nunca passa (404). A conversa
+  institucional direcionada não aparece na lista, não abre, não é assumida nem
+  encerrada pela tela. No Gerencial só o admin ou `carteiraCompleta` a vê (a sessão não
+  tem `vendedorId`). Os avisos de "cliente aguardando" levam a uma conversa que o
+  destinatário não abre.
+- 🟡 **`identificar_cliente` ainda é um oráculo.** O nome do cliente e o do vendedor não
+  voltam ao modelo, mas `encontrado: true/false` por CNPJ confirma quem é cliente. A busca
+  por nome usa `contains` com 3 letras e `findFirst`, então "mercado" acha um cliente
+  qualquer e direciona a conversa ao vendedor dele.
+- 🟡 **Contato único por empresa, vínculo decidido uma vez.** `WhatsappContato` é único
+  por `(empresaId, jid)` e compartilhado entre as sessões. `casarCliente` só roda na
+  **criação**, com o recorte da sessão que viu o número primeiro: se foi um vendedor sem o
+  cliente na carteira, o institucional nunca o reconhece depois. Além disso, a busca do
+  contato existente é pela **igualdade** do telefone normalizado; com e sem 9º dígito ou
+  DDI viram dois contatos.
+- 🟡 **Segredo do webhook aceito na query string** (`?secret=`): ele acaba nos logs de
+  acesso do proxy e do gateway.
+- 🟡 **Quatro rodadas sem texto final.** Se o modelo usa as 4 voltas chamando ferramentas
+  sem direcionar nem responder, nada é enviado ao cliente e a conversa fica em `bot` até a
+  inatividade encerrá-la.
+- 🟡 **Triagem em paralelo** (quando voltar a ser chamada): nada serializa por conversa;
+  duas mensagens seguidas disparariam duas execuções, com respostas duplicadas ou
+  direcionamentos concorrentes.
+- 🟡 **Comentários desatualizados.** O cabeçalho do webhook diz que "conversa de contato
+  sem cliente vinculado não é gravada", mas desde 05/10 tudo é gravado. O de
+  `WhatsappSessaoService` e o de `WhatsappAgendaService` ainda falam do supervisor lendo
+  a equipe pelo Atendimento, o que acabou em 06/10.
+- 🟡 Os timers de retomada, agendamento, recado e inatividade ficam em memória e varrem
+  todas as empresas em série. Com mais de uma instância da API rodando, a inatividade e
+  o recado dependem das próprias travas para não duplicar.
+- 🟡 `ultimaMensagemEm` usa `new Date()` no update e `quando` (a data do WhatsApp) na
+  criação.
+
+### 4. Estruturas de dados 🟢
+
+Ver `data-dictionary.md`, seção `whatsapp`.
+
+### 5. Metadados e configurações 🟢
+
+| Item | Valor |
+|---|---|
+| `WhatsappSessaoTipo` | `vendedor`, `empresa` |
+| `WhatsappAtendimentoStatus` | `bot`, `aguardando`, `humano`, `encerrada` |
+| `WhatsappSessaoStatus` | `desconectada`, `pareando`, `conectada`, `banida` |
+| `WhatsappTransporte` | `zapo`, `evolution_go` (o único em uso), `cloud_api` |
+| `WhatsappTipoMensagem` | `texto`, `imagem`, `documento`, `audio`, `video`, `localizacao`, `contato`, `outro`, `botoes`, `lista`, `enquete`, `link`, `resposta` |
+| `WhatsappStatusEntrega` | `pendente`, `enviada`, `entregue`, `lida`, `erro` |
+| `WhatsappAgendamentoStatus` | `pendente`, `enviando`, `enviada`, `erro`, `cancelada` |
+| Triagem | `MAX_VOLTAS` 4, `HISTORICO` 12 mensagens, `MAX_AVISOS_POR_CONVERSA` 3, `PRESENCA_MIN` 30 |
+| Pareamento de funcionário | código de 6 dígitos, válido 10 min, 5 tentativas; confirmação vale 30 dias |
+| Inatividade | varredura a cada 5 min; `atendimentoInatividadeMin` padrão 30 (0 desliga) |
+| Agendamento | varredura a cada 60 s |
+| Segredos | `WHATSAPP_CRYPTO_KEY` (AES-256-GCM): chave da Evolution, token e segredo do webhook de cada instância |
+| Aceite | `WHATSAPP_ACEITE_TEXTO`, versão `2026-10-05` (tudo é monitorado) |
+| Permissões | `whatsapp-config`, `whatsapp-conversas`, `whatsapp-recados`, `whatsapp-historico`, `whatsapp-equipe` + as das rotinas das ações |
+
+### 6. Segurança / integridade
+
+- 🟢 Webhook com segredo por instância, cifrado, comparado em tempo constante.
+- 🟢 A sessão é sempre resolvida pelo usuário logado; nenhum `sessaoId` da tela amplia o
+  alcance.
+- 🟢 As ações delegam aos services das telas (escopo e RLS valem) e exigem a permissão da
+  rotina dona do dado.
+- 🟢 A triagem é fail-closed: o catálogo depende do vínculo, o modelo nunca vê id
+  interno, o produto vem sem preço, `avisar_equipe` usa papel em vez de número, e
+  funcionário só lê, com código confirmado.
+- 🔴 Vínculo automático pelos 8 últimos dígitos (§3.9).
+- 🟡 Segredo na query string; `identificar_cliente` como oráculo.
+
+### 7. Dependências do módulo 🟢
+
+Importa `TitulosReceberModule`, `NotasSaidaModule`, `AtividadesModule`,
+`OrcamentosModule`, `ProdutosModule` (`ProdutoParaAgenteService`) e `ProvedorIaModule`;
+usa `AgenteConfigService`, `common/escopo/*` (`resolverEscopoVendedores`, `quem-pede`),
+`common/atividades/registrar-atendimento-whatsapp`, o armazenamento (disco/MinIO) e
+`registrar-notificacao`. Exporta config, sessão, conversas, respostas rápidas, ações,
+agendamento e funcionário para: agente interno (ferramentas de WhatsApp), notificações
+(não lidas), Meu perfil (código de pareamento), Posição de Cliente
+(`escopoLeituraWhatsapp`) e `leads`. Externo: o gateway Evolution GO 0.7.2. O
+`apps/whatsapp-worker` (zapo) ainda existe no repositório, mas não é mais transporte
+ativo.
+
+### 8. Cobertura de testes 🟡
+
+16 specs, entre eles: `seguranca.spec.ts` (invariantes e lista exata do que o
+desconhecido alcança), `triagem-funcionario-tools.spec.ts` (recorte de carteira),
+`whatsapp-funcionario-identidade.spec.ts`, `telefone-equipe.spec.ts`,
+`proximo-expediente.spec.ts`, `ficha-da-empresa.spec.ts`, `triagem-ferramentas.spec.ts`,
+`whatsapp-evolution.controller.spec.ts`, `evolution-go.provider.spec.ts`,
+`iniciar-conversa.spec.ts`, `mensagem-interativa.spec.ts`, `escopo-whatsapp.spec.ts`,
+`anotacao.spec.ts`, `apagar-conversas.spec.ts`, `foto-perfil-whatsapp.spec.ts` e
+`midia-arquivos.spec.ts`. **Nenhum teste liga o recebimento à triagem**, que é a lacuna
+que deixou a remoção da chamada passar despercebida. Também não há teste de
+`casarCliente`.
+
+## Módulo `agente`
+
+**Caminho:** `apps/api/src/modules/agente/`
+**Tamanho:** 29 arquivos, ~9.500 linhas. Os maiores: `agente-tools.service.ts` (2463,
+o catálogo), `agente-chat.service.ts` (939, o laço), `agente-ferramentas.service.ts`
+(620, governança), `agente-config.service.ts` (575), `agente.controller.ts` (543, 29
+rotas), `codex.client.ts` (467), `codex-oauth.service.ts` (407). 6 specs.
+**Documentação viva:** `docs/ferramentas/agente-interno.md` (inventário com permissão,
+tipo e delegação de cada ferramenta) e `docs/ferramentas/README.md`.
+
+### 1. Responsabilidade 🟢
+
+Assistente de IA interno para o funcionário **logado**: chat com ferramentas que
+consultam e (com confirmação) gravam no CRM, delegando aos services das telas. Também
+contém:
+
+- a camada de **provedor de IA** reaproveitada pela triagem do WhatsApp
+  (`ProvedorIaModule`: Anthropic Messages, OpenAI-compatível e Codex Responses por OAuth);
+- a **configuração por empresa** (provedor, chave cifrada, modelo, temperatura, limites,
+  personalidade, embeddings);
+- a **governança do catálogo** (ligar/desligar ferramenta, restringir por perfil,
+  reescrever descrição e instruções, versões de prompt, termos de aceite, auditoria);
+- a **abertura do dia** (`meu_dia`, resumo diário) e os **anexos** (ficha técnica em PDF,
+  foto de produto).
+
+### 2. Rotas 🟢
+
+| Grupo | Rotas | Permissão |
+|---|---|---|
+| Uso | `GET apresentacao`, `GET resumo-diario`, `POST resumo-diario/:data/exibido`, `GET ferramentas-disponiveis` | `agente.visualizar` |
+| Conversa | `GET conversas`, `GET conversas/:id`, `POST conversas/mensagens`, `POST conversas/mensagens/stream` (SSE), `POST anexos`, `POST conversas/:id/confirmar/:pendenciaId`, `POST conversas/:id/cancelar/:pendenciaId` | `agente.visualizar` |
+| Configuração | `GET/PUT config`, `POST config/testar`, `config/oauth/{iniciar, concluir, importar, desconectar}` | `agente-config.visualizar/editar` |
+| Governança | `GET ferramentas`, `PUT ferramentas/:chave`, `GET/POST ferramentas/termos`, `POST ferramentas/restaurar-todos`, `POST ferramentas/:chave/restaurar`, `GET ferramentas/auditoria` | `agente-config.*` |
+| Prompt | `POST prompt/previa` (sem custo), `POST prompt/testar` (consome tokens) | `agente-config.visualizar/editar` |
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 O turno — `AgenteChatService.enviar` 🟢
+
+1. `config.paraUso` (credencial em claro, só em memória); confere o anexo (`anexos.meu`)
+   **antes** de criar a conversa.
+2. A conversa é sempre do usuário (`minhaConversa`: `usuarioId`; nem o admin lê a dos
+   outros). Na primeira mensagem, título = 60 primeiros caracteres.
+3. Grava a mensagem do usuário (**sem máscara**: texto livre vai ao provedor como foi
+   digitado).
+4. `governanca.filtroPara` (config da empresa + perfil + WhatsApp vinculado) **antes**
+   do contexto, para a lista no prompt bater com o catálogo enviado.
+5. Na conversa nova, `aberturaDoDia` (`AgenteMeuDiaService`: agenda, meta, sino e
+   aniversário, cada bloco só com a permissão de origem).
+6. `montarContexto`: system prompt da empresa + bloco do servidor (nome e e-mail do
+   usuário, data de hoje em `America/Campo_Grande`, ferramentas liberadas, regra das
+   referências `«CLI:…»`, "não afirme que gravou", "não invente número") + instruções
+   por ferramenta + `REGRAS_FIXAS_AGENTE_INTERNO` + as últimas `historicoMensagens`.
+7. Até `maxIteracoesFerramentas` voltas (padrão 5). Em cada chamada:
+   - ferramenta inexistente → erro ao modelo;
+   - **segunda trava**: `garantirPermissao` **e** estar entre as `disponiveisPara` (pega
+     a ferramenta desligada que o modelo "lembra" do histórico);
+   - `referencias.resolverIds`: troca `«CLI:código»` pelo id real nos argumentos;
+   - `usaAnexo`: o `anexoId` é **injetado pelo servidor**, sobrescrevendo o que o modelo
+     tenha inventado;
+   - `escrita: true` → **não executa**: grava `AgenteMensagem` com `pendente=true`,
+     argumentos e resumo, e diz ao modelo que nada foi gravado;
+   - leitura → `executarLeitura`; erro de negócio volta como resultado; grava a
+     auditoria com o **resumo mascarado**, não o payload cru (`posicao_cliente` tinha
+     ~400 KB).
+8. Sem texto final nas voltas → mensagem fixa "não consegui concluir…".
+9. A resposta é gravada **mascarada** e devolvida remontada (`remontarTexto`) com até 2
+   destinos (botões de tela, montados pelo servidor a partir do resultado real).
+
+#### 3.2 Fronteira de dados — `anonimizar-agente.ts` 🟢
+
+Mascara **por nome de chave conhecida** (não por heurística de texto): nome de cliente,
+produto e vendedor viram `«CLI:código»`, `«PRD:código»`, `«VND:código»` (determinístico,
+pelo código ERP, sem mapa por conversa); CNPJ/CPF, e-mail, telefone, endereço e contato
+não vão. Valores, quantidades e datas **vão** (decisão de 25/08/2026). A ordem é
+mascarar → podar listas (`limiteItens`, padrão 8; profundidade 4) → `garantirMascarado`
+(falha a resposta se um campo de identificação escapou) → cortar no teto (padrão 4.000
+caracteres). Exceção única: `identificacaoPublica` (só `consultar_cnpj`), cujo bloco
+`receitaFederal` passa inteiro; o resto do payload continua sob a trava, e
+`agente-tools.permissao.spec.ts` reprova se outra ferramenta declarar a exceção.
+
+#### 3.3 Confirmação — `confirmar` / `cancelar` 🟢
+
+`confirmar`: a conversa é do usuário, a pendência existe nela e ainda está `pendente`, a
+ferramenta existe e `garantirPermissao` continua valendo. Executa
+`ferramenta.executar(argumentos gravados)` e marca `pendente=false`, `confirmadaEm`,
+`confirmadaPor` e `resultado`. `cancelar` só fecha a pendência e anota "(cancelada)".
+
+#### 3.4 Catálogo e alcance 🟢
+
+- **31 ferramentas** no código: 22 de leitura e 9 de escrita (4 exigem WhatsApp
+  pareado, 2 exigem anexo). A doc lista 30; `consultar_feriados`
+  (`atividades.visualizar`, leitura) não está na tabela.
+- `disponiveisPara` = RBAC (`isAdmin` ou permissão) ∧ config da empresa (desligada vale
+  até para o admin; restrição por perfil não vale para o admin; sem config carregada, o
+  catálogo é puro) ∧ `exigeWhatsapp` (**fail-closed**) ∧ `usaAnexo` (só com arquivo no
+  turno).
+- `filtroCarteira`: só o vendedor "puro" (`tipo='vendedor'`) ganha `vendedorId` explícito;
+  supervisor, gerente, diretor, admin e quem não tem cadastro ficam no escopo do service.
+  É defesa em profundidade, porque o service já aplica `resolverEscopoVendedores`.
+  `garantirClienteNoAlcance` e `garantirOportunidadeNoAlcance` barram o vendedor puro em
+  id alheio (403).
+- WhatsApp pelo agente: cada um lê **só a própria conexão**, inclusive supervisor
+  (`mensagensDaPropriaConexao`, `historicoDoClienteNaPropriaConexao`).
+
+#### 3.5 Governança — `AgenteFerramentasService` 🟢
+
+Uma linha por (empresa, ferramenta): `ativa`, `nome`, `descricao`, `instrucoes`,
+`versaoPrompt`, perfis. **Só restringe, nunca amplia.** Editar texto exige aceite dos
+termos (`termosPromptAceitosEm/Por`); toda mudança grava `AgenteFerramentaAuditoria`
+(campo, valor anterior e novo, autor). Versões (`agente-prompt-versoes.ts`): a v1 é o
+texto do catálogo; `versaoPrompt` nulo acompanha a mais recente, preenchido trava;
+reescrita da empresa vence a versão. Prévia do prompt (sem custo) e teste (consome
+tokens).
+
+#### 3.6 Provedores e credenciais 🟢
+
+- `AgenteCredencial` por (empresa, provedor): trocar de provedor mantém as duas chaves e
+  o modelo de cada um. A chave é cifrada (AES-256-GCM, chave mestra própria do agente,
+  separada da do WhatsApp); a leitura só mostra os últimos 4 caracteres.
+- **Codex por OAuth** (assinatura ChatGPT): usa o `CLIENT_ID` do CLI oficial e o
+  `redirect_uri` fixo `localhost:1455`. O fluxo é em duas etapas: o administrador cola a
+  URL de retorno, e o `code_verifier` do PKCE nunca sai da API. O refresh token é
+  cifrado e a renovação é antecipada pela `tokenExpiraEm`.
+- **Embeddings**: endpoint OpenAI-compatível opcional; sem configuração, `disponivel()`
+  = false e a busca segue só lexical (decisão de 05/09/2026, infraestrutura desligada).
+
+#### 3.7 Anexos 🟢
+
+Material de passagem: o modelo lê uma vez (o PDF vira Markdown na ficha técnica, a foto
+vai para o produto). Travas em código: `withTenant`, `usuarioId` (`meu`), `consumidoEm`
+(não reusa o upload), `usaAnexo` (some do catálogo sem arquivo) e lista branca de MIME.
+O anexo vale para a conversa até ser consumido (`doTurno`). A OpenAI-compatível não lê
+PDF e recusa com mensagem clara.
+
+#### 3.8 Achados
+
+- 🟡 **Confirmação não é atômica.** `confirmar` lê `pendente=true`, executa e só depois
+  grava `pendente=false`, sem trava. Dois cliques ou duas abas confirmando a mesma
+  pendência ao mesmo tempo executam **duas vezes** (dois orçamentos, duas atividades,
+  duas mensagens agendadas). Falta um `updateMany … where pendente=true` antes de
+  executar.
+- 🟡 **A confirmação revalida só a permissão.** A doc diz que "na confirmação tudo é
+  revalidado", mas `confirmar` não reconfere a governança da empresa (ferramenta
+  desligada ou restrita por perfil depois de preparada) nem `exigeWhatsapp`. Os services
+  de destino ainda aplicam escopo, então o efeito é limitado à governança.
+- 🟡 **Pendência sem validade.** Uma ação preparada semanas atrás continua confirmável
+  com os argumentos da época (data de agendamento no passado, preço antigo).
+- 🟡 **Nome e e-mail do usuário vão ao provedor**, no bloco de contexto. O nome do
+  vendedor é mascarado nos resultados, mas o de quem está logado vai em claro.
+- 🟡 **Hora do agendamento sem fuso.** O prompt informa a data em Campo Grande, mas
+  `agendar_atividade` faz `new Date('AAAA-MM-DDTHH:mm')` no fuso do processo (ver
+  `atividades` §3.7).
+- 🟡 **Codex com o cliente OAuth do CLI oficial** num backend: depende de restrições de
+  um cliente que não é nosso (redirect fixo, possível revogação) e do uso da assinatura
+  ChatGPT fora do CLI. Isso é risco operacional e contratual a avaliar.
+- 🟡 `todas()` recria as 31 ferramentas (com closures) a cada `buscar`/`disponiveisPara`,
+  várias vezes por turno.
+- 🟡 A doc lista 30 ferramentas; o código tem 31 (`consultar_feriados`).
+- 🟡 `AgenteConversa` não tem índice por `(empresaId, usuarioId)`, a chave da listagem.
+
+### 4. Estruturas de dados 🟢
+
+Ver `data-dictionary.md`, seção `agente`.
+
+### 5. Metadados e configurações 🟢
+
+| Item | Valor |
+|---|---|
+| Padrões de `AgenteConfig` | `ativo=false`, provedor `anthropic`, `baseUrl` `https://api.anthropic.com`, modelo `claude-opus-5`, temperatura 0,3, `maxTokens` 2048, `maxIteracoesFerramentas` 5, `historicoMensagens` 20, nome "Assistente" |
+| Resultado ao modelo | teto 4.000 caracteres, 8 itens por lista (ajustável por ferramenta) |
+| Destinos por turno | até 2 (`MAX_DESTINOS`) |
+| Referências | `«CLI:código»`, `«PRD:código»`, `«VND:código»` |
+| Fuso do contexto | `America/Campo_Grande` |
+| Permissões | `agente.visualizar`, `agente-config.visualizar/editar` + a de cada ferramenta |
+
+### 6. Segurança / integridade
+
+- 🟢 Duas travas de permissão (catálogo e execução), escrita sempre como pendência, anexo e
+  ids injetados pelo servidor, conversa privada por usuário.
+- 🟢 Fronteira de dados por chave conhecida com verificação final (`garantirMascarado`);
+  histórico gravado mascarado.
+- 🟢 Credenciais cifradas com chave mestra própria; nunca retornadas.
+- 🟡 Confirmação sem trava de concorrência e sem revalidar governança (§3.8).
+
+### 7. Dependências do módulo 🟢
+
+Delega a `ConsultasService`, `ClientesService`, `ProdutosService`,
+`ProdutoRelacionadosService`, `OrcamentosService`, `TitulosReceberService`,
+`SugestaoCompraService`, `ObjetivosService`, `EnriquecimentoService`,
+`AtividadesService`, `OportunidadesService`, `WhatsappConversasService`,
+`VendedoresService`, `WhatsappAcoesService`, `WhatsappAgendamentoService`,
+`MeusAtendimentosService`, `ProdutoFichasService`. Exporta `ProvedorIaModule`
+(`ProvedorFactory`, `AgenteConfigService`) para a triagem do WhatsApp. Externos: API
+Anthropic, provedores OpenAI-compatíveis, backend Codex (OAuth ChatGPT) e endpoint de
+embeddings.
+
+### 8. Cobertura de testes 🟢
+
+`agente-tools.permissao.spec.ts` (toda ferramenta tem permissão; governança só
+restringe; só `consultar_cnpj` declara dado público), `anonimizar-agente.spec.ts` (falha
+se campo novo escapar), `agente-meu-dia.spec.ts`, `agente-resumo-diario.spec.ts`,
+`agente-resumo-metas.spec.ts`. Falta teste da confirmação (concorrência, revalidação) e
+do laço `enviar`.
+
+## Módulo `notificacoes`
+
+**Caminho:** `apps/api/src/modules/notificacoes/`
+**Arquivos (5):** `notificacoes.module.ts`, `notificacoes.controller.ts` (3 rotas),
+`notificacoes.service.ts` (94), `registrar-notificacao.ts` (133, funções exportadas),
+`notificacoes-varredura.service.ts` (337). Sem spec.
+
+### 1. Responsabilidade 🟢
+
+O **sino**: uma tabela única (`notificacoes`) endereçada a um usuário. Quem provoca o
+fato grava a linha **dentro da própria transação** (`registrarNotificacao`). A única
+exceção é o prazo que vence com o tempo (atividade vencida, título vencido), que uma
+varredura periódica grava.
+
+### 2. Fluxo de controle — funções principais 🟢
+
+| Função / rota | Guarda | Comportamento |
+|---|---|---|
+| `feed` — `GET /notificacoes` | só JWT | não lidas do usuário, sem `whatsapp_mensagem` (decisão de 08/10/2026); total + 20 mais recentes por `ocorridaEm` |
+| `marcarLida` — `POST /notificacoes/:id/lida` | só JWT | `updateMany` com `usuarioId` no filtro; repetir conta como sucesso; id alheio dá 404 |
+| `marcarTodasLidas` — `POST /notificacoes/lidas` | só JWT | todas do usuário |
+| `registrarNotificacao(tx, n)` | — | upsert atômico (`INSERT … ON CONFLICT` no índice parcial) |
+| `marcarNotificacoesDaOrigem(tx, …)` | — | fecha as pendentes de uma origem (conversa aberta, atividade concluída) |
+| `usuarioDoVendedor(tx, …)` | — | destinatário de tudo que é da carteira; vendedor sem login → `null` (não notifica) |
+| `NotificacoesVarreduraService.varrer` | timer 30 min + uma vez no boot | atividades vencidas e títulos vencidos, empresa a empresa |
+
+Sem `PermissionsGuard` de propósito: a notificação foi endereçada na origem, onde o
+escopo era conhecido. Não se refiltra na leitura.
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Deduplicação — `registrarNotificacao` 🟢
+
+- Autor = destinatário → não grava.
+- Índice único **parcial** `notificacoes_pendente_por_referencia`
+  `(empresaId, usuarioId, tipo, referenciaId) WHERE lidaEm IS NULL AND referenciaId IS
+  NOT NULL`: só uma pendente por origem. Sem `referenciaId`, sempre insere.
+- `acumular=true` (fato que se soma): `contador+1` e `ocorridaEm` novo (volta ao topo).
+  `false` (fato reafirmado): mantém o contador e a data. Título, descrição e rota são
+  sempre reescritos.
+- `ON CONFLICT` em vez de "procura e grava": duas gravações simultâneas não derrubam a
+  transação de quem provocou o fato.
+
+#### 3.2 Atividade vencida 🟢
+
+Atividade aberta, ativa, com vencimento **até o fim de hoje**, de vendedor com login, que
+**nunca** foi avisada (`jaAvisados`, lidas ou não, para a janela andar e não ressuscitar
+o que o usuário limpou). Lote de 200 por empresa, as mais antigas primeiro.
+`ocorridaEm` = data do prazo; rota `/crm/atividades/:id`. Depois, fecha as notificações
+de atividades concluídas, inativas ou excluídas.
+
+#### 3.3 Título vencido — uma linha por cliente 🟢
+
+- Agrega no banco por (cliente, usuário do vendedor): quantidade, total, mais antigo e
+  `novidadeEm = MAX(GREATEST(vencimento, createdAt))`. O `createdAt` entra porque o
+  import do ERP traz parcela já vencida.
+- Corte "vencido": `vencimento < calendario.corteVencidos(hoje)`, considerando os dias
+  úteis com feriados.
+- Só vendedor `tipo='vendedor'`, ativo, não desligado, com login. Supervisor, gerente e
+  os cadastros de sistema ficam de fora.
+- Lote de 200 **clientes**, os mais atrasados primeiro.
+- Não insiste: se o usuário leu e nada venceu nem entrou depois (`ultimaLeitura ≥
+  novidadeEm`), pula. Senão faz o upsert, que reescreve a contagem e o total da linha
+  pendente. Título: razão social; descrição: "N títulos vencidos · R$ X"; rota
+  `/comercial/posicao-cliente/:clienteId`.
+- Fecha a linha do cliente que não tem mais título vencido daquele usuário. Isso também
+  aposenta as notificações do desenho antigo, uma por título.
+
+#### 3.4 Achados
+
+- 🟡 **`jaAvisados` cresce sem limite.** A cada 30 min, para cada empresa, carrega
+  **todos** os `referenciaId` já notificados do tipo e os passa num `notIn`. Sem
+  retenção na tabela, a consulta piora com o tempo.
+- 🟡 **Atividade reatribuída não avisa o novo dono.** `jaAvisados` não considera o
+  `usuarioId`: se a atividade já gerou aviso para o vendedor anterior, o novo nunca
+  recebe.
+- 🟡 **"Fim de hoje" no fuso do servidor.** `setHours(23,59,59)` usa o fuso do processo,
+  a mesma lacuna de `atividades`.
+- 🟡 **Três gravações por fora do `registrarNotificacao`.** `sugestao-compra`,
+  `clientes-receita-lote` e `whatsapp-recado` usam `tx.notificacao.create` e não passam
+  pela deduplicação nem pela regra "autor = destinatário".
+- 🟡 Não há limpeza de notificações lidas antigas.
+- 🟡 `Promise.all` dentro da transação interativa (`feed`).
+
+### 4. Estruturas de dados 🟢
+
+Ver `data-dictionary.md`, seção `notificacoes`.
+
+### 5. Metadados e configurações 🟢
+
+| Item | Valor |
+|---|---|
+| `NotificacaoTipo` | `whatsapp_mensagem` (fora do sino desde 08/10), `whatsapp_agendamento_erro`, `atividade_vencimento`, `orcamento_aprovado`, `orcamento_recusado`, `cliente_atribuido`, `titulo_vencido`, `whatsapp_aguardando`, `lead_novo`, `recado_interno`, `sugestao_compra_calculada` |
+| `LIMITE_ITENS` (sino) | 20 |
+| Varredura | a cada 30 min + no boot; `LOTE` 200 por tipo e empresa |
+
+Quem grava: `leads`, `orcamentos/registrar-atividade-orcamento`,
+`clientes/cliente-alteracoes` (`cliente_atribuido`), `whatsapp/triagem` (2 pontos),
+`whatsapp-agendamento` (erro de envio), `whatsapp-recado`, `sugestao-compra`,
+`clientes-receita-lote` e a varredura.
+
+### 6. Segurança / integridade
+
+- 🟢 Toda leitura e escrita filtra por `usuarioId` do logado; `marcarLida` não revela a
+  notificação alheia.
+- 🟢 A gravação junto do fato, na mesma transação, garante que os dois existem ou nenhum.
+
+### 7. Dependências do módulo 🟢
+
+`PrismaService`, `common/horario/calendario-util`, `whereEmpresaAcessivel`,
+`@plataforma/contracts`. Consumidores: os gravadores acima e o sino da web.
+
+### 8. Cobertura de testes 🟡
+
+Nenhum teste no módulo: nem a deduplicação do `ON CONFLICT`, nem as regras de "não
+insistir" dos títulos.
+
+## Módulo `email`
+
+**Caminho:** `apps/api/src/modules/email/`
+**Arquivos (5):** `email-config.module.ts`, `email-config.controller.ts` (8 rotas),
+`email-config.service.ts` (711), `email-config.dto.ts`, `email-config.service.spec.ts`.
+
+### 1. Responsabilidade 🟢
+
+Configuração do e-mail por empresa (Administração > E-mail): servidor SMTP, interruptores
+por funcionalidade, modelos de assunto e texto, e identidade visual. **Sem tabela
+própria**: tudo vive em `parametros_empresa` (decisão do usuário de 01/10/2026, mesmo
+desenho do SMS). O envio em si é do `common/mail` (`MailService`, `layoutEmail`,
+`substituirTags`, `smtpDaEmpresa`).
+
+### 2. Rotas 🟢
+
+| Rota | Permissão | Comportamento |
+|---|---|---|
+| `GET /email/configuracao` | `email.visualizar` | parâmetros SMTP e interruptores; senha só como `senhaPreenchida` |
+| `PUT /email/configuracao` | `email.editar` | upsert dos parâmetros; a senha só muda quando vem preenchida |
+| `POST /email/teste` | `email.editar` | e-mail de teste **para o próprio usuário**, mesmo com o envio desligado |
+| `GET /email/disponivel` | só JWT | o que a tela pode oferecer (`habilitado`, `documentos`, `boleto`, `cobranca`, `senhaProvisoria`) |
+| `GET /email/modelos` | `email.visualizar` | modelos + identidade visual (padrões do sistema quando vazios) |
+| `PUT /email/modelos` | `email.editar` | grava os modelos |
+| `POST /email/modelos/restaurar` | `email.editar` | volta ao padrão |
+| `POST /email/modelos/teste` | `email.editar` | renderiza o modelo com dados de exemplo e envia (`destinatario` opcional, senão o próprio usuário) |
+
+### 3. Algoritmos e lógica não-trivial 🟢
+
+- **Disponibilidade:** `habilitado = EMAIL_ATIVO ∧ SMTP configurado` (da empresa, ou do
+  **ambiente** quando `SMTP_HOST` está vazio). Cada funcionalidade só fica disponível com
+  `habilitado` e o seu interruptor ligado. `exigir(empresa, funcionalidade)` responde 409
+  com a mensagem do que ligar, e é chamado por quem envia.
+- **SMTP da empresa** (`smtpDaEmpresa`): sem `SMTP_HOST`, devolve `null` e o
+  `MailService` usa a configuração do ambiente. O mesmo SMTP serve à senha provisória e
+  aos documentos.
+- **Modelos:** tags `{{ chave.sub }}` substituídas por `substituirTags`. No corpo,
+  `formatarTextoHtml` escapa **depois** da substituição (o dado do cliente não injeta
+  HTML) e troca as quebras de linha por `<br />`. Cor do cabeçalho em `#rrggbb`. A
+  assinatura do colaborador e o `reply-to` para o remetente são configuráveis.
+
+### 4. Achados
+
+- 🟡 **Senha SMTP em texto puro no banco.** `SMTP_SENHA` é um parâmetro de tipo
+  `senha`: a API não a devolve, mas ela fica sem cifra em `parametros_empresa.conteudo`.
+  As chaves do agente e da Evolution GO são cifradas com AES-256-GCM (chave mestra
+  própria), e esta não.
+- 🟡 `POST /email/modelos/teste` aceita qualquer `destinatario`: quem tem `email.editar`
+  manda e-mail com a identidade da empresa para um endereço arbitrário (só com dados de
+  exemplo).
+- 🟡 `configuracao()` faz uma leitura de parâmetro por campo, cerca de 12 consultas por
+  chamada. `GET /email/disponivel` é chamado pelas telas que mostram os botões.
+
+### 5. Metadados e configurações 🟢
+
+| Parâmetro | Tipo | Padrão |
+|---|---|---|
+| `EMAIL_ATIVO` | booleano | `true` |
+| `SMTP_HOST`, `SMTP_PORTA`, `SMTP_SEGURO`, `SMTP_USUARIO`, `SMTP_SENHA` (senha), `SMTP_REMETENTE` | — | vazio (porta 587 no envio; `SEGURO` false) |
+| `EMAIL_DOCUMENTOS`, `EMAIL_BOLETO`, `EMAIL_COBRANCA`, `EMAIL_SENHA_PROVISORIA` | booleano | `true` |
+| `EMAIL_MODELO_{COBRANCA,NOTA,BOLETO}_{ASSUNTO,TEXTO}` | texto 200/2000 | padrão do sistema (`EMAIL_MODELOS_PADRAO`) |
+| `EMAIL_COR_CABECALHO` | texto 10 | — |
+| `EMAIL_REPLY_TO_USUARIO`, `EMAIL_ASSINATURA_USUARIO`, `EMAIL_ASSINATURA_TELEFONE`, `EMAIL_ASSINATURA_EMAIL` | booleano | `true` |
+
+### 6. Dependências e testes
+
+`PrismaService`, `ParametrosService`, `MailService` e `common/mail/*`. Consumidores:
+`documentos-email`, `recuperacao-senha`/senha provisória e as telas. Spec:
+`email-config.service.spec.ts`.
+
+## Módulo `documentos-email`
+
+**Caminho:** `apps/api/src/modules/documentos-email/`
+**Arquivos (5):** `documentos-email.module.ts`, `documentos-email.controller.ts`
+(3 rotas), `documentos-email.service.ts` (700), `documentos-email.dto.ts`,
+`documentos-email.service.spec.ts`.
+
+### 1. Responsabilidade 🟢
+
+Envio por e-mail ao **e-mail do cadastro do cliente**: 2ª via do DANFE (com XML
+opcional), 2ª via do boleto e cobrança dos títulos vencidos. Usa a identidade visual da
+empresa e a assinatura do colaborador, e registra no histórico de atendimento
+(`registrarAtividadeDocumento`).
+
+### 2. Rotas 🟢
+
+| Rota | Permissão (qualquer uma) | Comportamento |
+|---|---|---|
+| `POST /documentos-email/nota/:id` | `notas-saida.visualizar` ou `posicao-cliente.visualizar` | `exigir('documentos')` → `notas.gerarDanfe` (escopo do usuário) → XML opcional → envio → atividade `danfe_email` |
+| `POST /documentos-email/titulo/:id` | `titulos-receber.visualizar` ou `posicao-cliente.visualizar` | `exigir('boleto')` → boleto atualizado ou original → envio → atividade |
+| `POST /documentos-email/cobranca/:clienteId` | `titulos-receber.visualizar` ou `posicao-cliente.visualizar` | `exigir('cobranca')` → até 30 títulos vencidos (escopo do usuário) → boleto atualizado de cada um + DANFE das notas de origem → envio |
+
+### 3. Algoritmos e lógica não-trivial 🟢
+
+- **O destinatário é sempre o cadastro.** `extrairEmails` aceita vários e-mails
+  separados por `;`, `,` ou espaço, com validação simples e sem repetição. Não há campo
+  de destinatário livre na API.
+- **O escopo vem dos geradores:** `gerarDanfe`, `obterXml`, `gerarBoleto` e
+  `titulos.findAll` recebem o `{ tipo: 'usuario', user }` e aplicam a carteira.
+- **Cobrança:** título sem boleto ou cujo boleto falha vira `aviso` em vez de derrubar o
+  envio. As notas de origem são achadas pelo **número** do título (com e sem zeros à
+  esquerda, completado para 6 e para 9 dígitos), do mesmo cliente, com XML recebido, uma
+  por número.
+- `dataBr`/`diasDeAtraso` tratam o vencimento como **data civil** (sem fuso).
+- Recusa do servidor SMTP → 502 com a mensagem do servidor; sem SMTP → 409.
+
+### 4. Achados
+
+- 🟡 **Cobrança revela o nome do cliente fora do escopo.** `enviarCobranca` busca o
+  cliente (`cliente()`, sem escopo) **antes** dos títulos. Para um `clienteId` fora da
+  carteira sem e-mail cadastrado, a resposta é "O cliente <razão social> não tem e-mail
+  válido…"; com e-mail, 409 "não tem títulos vencidos". Nos dois casos não sai documento,
+  mas a primeira mensagem expõe a razão social.
+- 🟡 **Casamento título → nota pelo número.** O título não tem vínculo com a nota; a
+  busca é pelo número com variações de zeros. Uma nota de outra série com o mesmo número,
+  do mesmo cliente, pode ser anexada como "nota de origem".
+- 🟡 O teto de 30 títulos corta sem avisar quantos ficaram de fora.
+
+### 5. Dependências e testes
+
+`MailService`, `ParametrosService`, `NotasSaidaService`, `TitulosReceberService`,
+`EmailConfigService`, `common/mail/*`, `common/atividades/registrar-atividade-documento`.
+Spec: `documentos-email.service.spec.ts`.
+
+## Módulo `sms`
+
+**Caminho:** `apps/api/src/modules/sms/`
+**Arquivos (9):** `sms.module.ts`, `sms.controller.ts` (2 controllers, 9 rotas),
+`sms.service.ts` (446), `sms-cliente.service.ts` (230), `sms-aviso-vencimento.service.ts`
+(255), `sms-webhook.service.ts` (152), `sms-relatorio.service.ts` (188), `sms.dto.ts`,
+`sms.spec.ts` (324). Plano: `docs/planos/2026-10-01-sms-iagente.md`.
+
+### 1. Responsabilidade 🟢
+
+SMS ao cliente pelo provedor **iAgente** (`https://api.iagentesms.com.br/api/v2`):
+boleto (com a linha digitável, porque SMS não leva anexo), cobrança, mensagem livre,
+senha provisória e **aviso automático de vencimento**. Recebe pelo webhook o status de
+entrega e as **respostas do cliente**. Tem estatística e histórico. A configuração vive
+em parâmetros da empresa, como no e-mail.
+
+### 2. Rotas 🟢
+
+| Rota | Permissão | Comportamento |
+|---|---|---|
+| `POST /sms/titulo/:id` | `titulos-receber.visualizar` ou alternativa | boleto: valor (atualizado se vencido), vencimento e linha digitável |
+| `POST /sms/cobranca/:clienteId` | `titulos-receber.visualizar` ou alternativa | quantidade e total dos vencidos + contato da empresa |
+| `POST /sms/cliente/:clienteId` | `posicao-cliente.visualizar` ou alternativa | mensagem livre |
+| `GET/PUT /sms/configuracao` | `sms.visualizar/editar` | parâmetros, saldo e URL do webhook |
+| `GET /sms/disponivel` | só JWT | o que a tela oferece |
+| `GET /sms/estatisticas`, `GET /sms/envios` | `sms.visualizar` | por ano/mês; histórico com respostas |
+| `GET /sms/webhook/:empresaId/:segredo` | **público**, `@SkipThrottle` | status e resposta (a iAgente não autentica) |
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Envio pela tela — `SmsClienteService` 🟢
+
+As mesmas regras do e-mail: o destinatário vem **só do cadastro**
+(`primeiroCelular(celular, telefone, telefone2)`; sem celular → 409); o documento vem dos
+serviços da tela com a carteira de quem pede; todo envio entra no histórico de
+atendimento. O cliente é buscado **com o escopo** (`resolverEscopoVendedores`); fora da
+carteira → 404. `textoSms` normaliza o texto para SMS.
+
+#### 3.2 `SmsService.enviar` 🟢
+
+Grava `SmsEnvio` (motivo, celular, mensagem, cliente, vendedor, título, autor), chama a
+iAgente com `client_ref` = id do envio, e grava `status`, `provedorId` ou `erro`. A
+disponibilidade = `SMS_ATIVO` ∧ token ∧ o interruptor do motivo.
+
+#### 3.3 Aviso automático de vencimento 🟢
+
+Timer de 30 min, com flag `rodando` para não sobrepor. Três travas:
+
+- **Desligado por padrão** (`SMS_AVISO_VENCIMENTO_ATIVO=false`), por empresa.
+- **Só de segunda a sábado, das 8h às 18h**, em Campo Grande (`podeEnviarAgora`).
+- **Um aviso de cada tipo por título**, conferido em `sms_envios`
+  (`[empresaId, tituloReceberId, motivo]`).
+
+Intervalos, com "hoje" como data civil no fuso da operação:
+- **antes**: vence entre hoje e hoje + `SMS_AVISO_DIAS_ANTES` (padrão 2), com a linha
+  digitável quando há boleto;
+- **depois**: venceu entre hoje − (`DIAS_DEPOIS` + 7) e hoje − `DIAS_DEPOIS` (padrão 3),
+  com o valor atualizado.
+
+A tolerância de 7 dias cobre a API fora do ar. Teto de 100 SMS por empresa por passagem.
+
+#### 3.4 Webhook 🟢
+
+- **Segredo na URL**: `HMAC-SHA256(JWT_ACCESS_SECRET, "sms-webhook:v1:<empresaId>")`,
+  32 caracteres em base64url, comparado em tempo constante. `empresaId` precisa ser
+  UUID. Errado → 404 sem motivo.
+- **Status de entrega**: `codigosms` = id do `SmsEnvio` (`client_ref`) → atualiza
+  `status`/`statusEm`. A data vem em "dd/mm/aaaa hh:mm:ss" de Brasília (`-03:00`).
+- **Resposta do cliente**: liga ao envio pelo `codigosms`; sem ele (resposta espontânea),
+  ao **último envio para o mesmo celular**. Deduplica por (celular, mensagem,
+  `recebidaEm`), porque a iAgente repete até 10 vezes. Grava `SmsResposta` e a
+  atividade `sms_resposta` no histórico do cliente (sem autor).
+- Responde 200 ("OK") a tudo que tenha o segredo certo.
+
+#### 3.5 Relatório 🟢
+
+`situacaoDoStatus` agrupa os status textuais da iAgente em entregue, falha e pendente;
+estatística por ano/mês; envios com as respostas.
+
+#### 3.6 Achados
+
+- 🟡 **O segredo do webhook deriva de `JWT_ACCESS_SECRET`.** Trocar a chave do JWT (por
+  incidente, por exemplo) muda a URL de todas as empresas e quebra o webhook em silêncio
+  até alguém reconfigurar na iAgente. Uma chave vazada do webhook não entrega a do JWT
+  (é HMAC), mas os dois segredos ficam acoplados.
+- 🟡 **O segredo vai no caminho da URL** (limitação da iAgente) e acaba nos logs de
+  acesso.
+- 🟡 **Resposta espontânea pelo último envio.** Celular compartilhado por dois clientes
+  (o mesmo contador, por exemplo) registra a resposta no histórico de quem recebeu o
+  último SMS.
+- 🟡 **Deduplicação frágil.** Com a data do webhook ilegível, `recebidaEm = agora`, e
+  cada repetição da iAgente vira uma resposta nova.
+- 🟡 **`SMS_TOKEN` em texto puro** em `parametros_empresa`, como o `SMTP_SENHA`.
+- 🟡 **Trava de concorrência só em memória.** Com duas instâncias da API, as duas
+  varrem; a conferência em `sms_envios` não é atômica e pode mandar o mesmo aviso duas
+  vezes.
+
+### 4. Estruturas de dados 🟢
+
+Ver `data-dictionary.md`, seção `sms`.
+
+### 5. Metadados e configurações 🟢
+
+| Parâmetro | Padrão |
+|---|---|
+| `SMS_ATIVO` | `false` |
+| `SMS_TOKEN` | — |
+| `SMS_BOLETO`, `SMS_COBRANCA`, `SMS_MENSAGEM_LIVRE`, `SMS_SENHA_PROVISORIA` | `true` |
+| `SMS_AVISO_VENCIMENTO_ATIVO` | `false` |
+| `SMS_AVISO_DIAS_ANTES` / `SMS_AVISO_DIAS_DEPOIS` | 2 / 3 |
+| Varredura | 30 min, até 100 por empresa, tolerância de 7 dias, seg–sáb 8h–18h (Campo Grande) |
+
+### 6. Dependências e testes
+
+`PrismaService`, `ParametrosService`, `TitulosReceberService`,
+`common/escopo/escopo-vendedores`, `common/horario/horario-trabalho`,
+`common/atividades/registrar-atividade-documento`, `common/mail/email-layout`
+(dados da empresa). Externo: iAgente. `sms.spec.ts` cobre normalização de celular e texto, `enviar` (client_ref, recusa 502, desligado e sem token 409), webhook (vínculo da resposta, repetição, status, segredo errado, data) e a janela e as situações do aviso. Não cobre a seleção de títulos do aviso automático.
