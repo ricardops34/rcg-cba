@@ -775,7 +775,13 @@ export class WhatsappAcoesService {
         concluida: false,
         ativo: true,
       },
-      { ignorarEscopo, vendedorAtendimentoId },
+      {
+        ignorarEscopo,
+        vendedorAtendimentoId,
+        conversaId,
+        // Sem data não há hora para avisar.
+        iniciarConversa: !!input.iniciarConversa && !!input.dataVencimento,
+      },
     );
 
     await this.prisma.withTenant(empresaId, (tx) =>

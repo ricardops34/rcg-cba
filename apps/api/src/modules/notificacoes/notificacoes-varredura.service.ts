@@ -128,6 +128,11 @@ export class NotificacoesVarreduraService
           deletedAt: null,
           ativo: true,
           concluida: false,
+          // Mensagem agendada o sistema envia sozinho, e atendimento agendado
+          // avisa na hora marcada (`atendimento_agendado`): um "vence hoje"
+          // por cima seria aviso duplicado.
+          automatica: false,
+          iniciarConversa: false,
           dataVencimento: { not: null, lte: fimDeHoje },
           id: { notIn: avisadas },
           // Vendedor sem login não tem a quem notificar. O filtro é da

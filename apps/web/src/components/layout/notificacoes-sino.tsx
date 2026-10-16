@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlarmClockOff,
+  CalendarClock,
   Bell,
   CheckCheck,
   CircleCheck,
@@ -47,6 +48,7 @@ const ICONE: Record<NotificacaoTipo, typeof Bell> = {
   recado_interno: Bell,
   sugestao_compra_calculada: Lightbulb,
   clientes_receita_atualizados: Building2,
+  atendimento_agendado: CalendarClock,
 };
 
 /** O que aparece em vermelho: prazo estourado ou algo que falhou. */
@@ -64,6 +66,7 @@ const URGENTE: Record<NotificacaoTipo, boolean> = {
   recado_interno: false,
   sugestao_compra_calculada: false,
   clientes_receita_atualizados: false,
+  atendimento_agendado: false,
   titulo_vencido: true,
 };
 

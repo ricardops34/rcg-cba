@@ -17,8 +17,17 @@ import {
   registrarNotificacao,
   usuarioDoVendedor,
 } from '../notificacoes/registrar-notificacao';
-import type { WhatsappAgendarMensagem } from '@plataforma/contracts';
+import type {
+  WhatsappAgendarMensagem,
+  WhatsappAtualizarAgendamento,
+} from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+
+/** Título da atividade da Agenda: o começo do texto, para reconhecer de relance. */
+function tituloDaAtividade(texto: string) {
+  const linha = texto.replace(/\s+/g, ' ').trim();
+  return `Mensagem agendada: ${linha.length > 60 ? `${linha.slice(0, 57)}...` : linha}`;
+}
 
 /** De quanto em quanto tempo a rotina procura mensagem vencida. */
 const INTERVALO_MS = 60_000;
@@ -78,15 +87,93 @@ export class WhatsappAgendamentoService
       );
 
       const calendario = await carregarCalendarioUtil(tx, empresaId);
+      const enviarEm = calendario.ajustar(new Date(input.enviarEm));
+
+      // O agendamento entra na Agenda do vendedor, ligado à conversa e ao
+      // cliente — é o que o torna visível (e alterável) fora da tela de
+      // WhatsApp. O vendedor é o dono do aparelho que vai enviar.
+      const vendedorId = conversa.sessao.vendedorId;
+      const atividade = vendedorId
+        ? await tx.atividade.create({
+            data: {
+              empresaId,
+              vendedorId,
+              clienteId: conversa.clienteId ?? null,
+              conversaId: conversa.id,
+              tipo: 'tarefa',
+              titulo: tituloDaAtividade(input.texto),
+              descricao: input.texto,
+              dataVencimento: enviarEm,
+              automatica: true,
+              createdBy: user.id,
+              updatedBy: user.id,
+            },
+            select: { id: true },
+          })
+        : null;
+
       return tx.whatsappMensagemAgendada.create({
         data: {
           empresaId,
           conversaId: conversa.id,
           texto: input.texto,
-          enviarEm: calendario.ajustar(new Date(input.enviarEm)),
+          enviarEm,
+          atividadeId: atividade?.id ?? null,
           criadaPor: user.id,
         },
       });
+    });
+  }
+
+  /**
+   * Altera texto e/ou data e hora de uma mensagem **ainda pendente**.
+   *
+   * O `updateMany` com o status no filtro é a mesma trava do cancelamento:
+   * se a rotina já pegou a mensagem (`enviando`), alterar chegaria tarde e
+   * mentiria para o vendedor. A atividade da Agenda acompanha a mudança.
+   */
+  async atualizar(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    agendamentoId: string,
+    input: WhatsappAtualizarAgendamento,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      await this.conversas.conversaParaEnvio(tx, empresaId, user, conversaId);
+
+      const dados: { texto?: string; enviarEm?: Date } = {};
+      if (input.texto !== undefined) dados.texto = input.texto;
+      if (input.enviarEm !== undefined) {
+        const calendario = await carregarCalendarioUtil(tx, empresaId);
+        dados.enviarEm = calendario.ajustar(new Date(input.enviarEm));
+      }
+
+      const { count } = await tx.whatsappMensagemAgendada.updateMany({
+        where: { id: agendamentoId, conversaId, status: 'pendente' },
+        data: dados,
+      });
+      if (count === 0) {
+        throw new NotFoundException(
+          'Agendamento não encontrado, já enviado ou em envio.',
+        );
+      }
+
+      const atual = await tx.whatsappMensagemAgendada.findFirstOrThrow({
+        where: { id: agendamentoId },
+      });
+      if (atual.atividadeId) {
+        await tx.atividade.updateMany({
+          where: { id: atual.atividadeId, empresaId },
+          data: {
+            titulo: tituloDaAtividade(atual.texto),
+            descricao: atual.texto,
+            dataVencimento: atual.enviarEm,
+            updatedBy: user.id,
+          },
+        });
+      }
+      return atual;
     });
   }
 
@@ -118,6 +205,7 @@ export class WhatsappAgendamentoService
         enviarEm: l.enviarEm,
         status: l.status,
         erro: l.erro,
+        atividadeId: l.atividadeId,
         criadaPor: l.criadaPor,
         criadaPorNome: nomePorId.get(l.criadaPor) ?? null,
         criadaEm: l.criadaEm,
@@ -145,6 +233,23 @@ export class WhatsappAgendamentoService
           'Agendamento não encontrado ou já em envio.',
         );
       }
+      // Cancelado não é tarefa pendente: sai da agenda. O registro do
+      // cancelamento fica no próprio agendamento (`status: cancelada`).
+      const cancelada = await tx.whatsappMensagemAgendada.findFirst({
+        where: { id: agendamentoId },
+        select: { atividadeId: true },
+      });
+      if (cancelada?.atividadeId) {
+        await tx.atividade.updateMany({
+          where: { id: cancelada.atividadeId, empresaId, deletedAt: null },
+          data: {
+            ativo: false,
+            deletedAt: new Date(),
+            deletedBy: user.id,
+            updatedBy: user.id,
+          },
+        });
+      }
       return { cancelada: true };
     });
   }
@@ -164,10 +269,82 @@ export class WhatsappAgendamentoService
       });
       for (const empresa of empresas) {
         await this.processarEmpresa(empresa.id);
+        // Isolado: uma falha ao avisar não pode parar a varredura das demais.
+        await this.avisarAtendimentosAgendados(empresa.id).catch((erro) =>
+          this.logger.error(
+            `Falha ao avisar atendimentos agendados (${empresa.id}): ${erro}`,
+          ),
+        );
       }
     } catch (erro) {
       this.logger.error(`Falha na rotina de mensagens agendadas: ${erro}`);
     }
+  }
+
+  /**
+   * Chegou a hora de um atendimento agendado: avisa o vendedor no sino, com o
+   * link que abre a conversa. **Não envia nada ao cliente** — quem decide o que
+   * dizer é o vendedor.
+   *
+   * Um aviso por atividade, para sempre: a conferência é na própria tabela de
+   * notificações (qualquer estado), então reiniciar a API ou ler o aviso não o
+   * recria. Vendedor sem login não tem a quem avisar e fica de fora no filtro.
+   */
+  private async avisarAtendimentosAgendados(empresaId: string) {
+    await this.prisma.withTenant(empresaId, async (tx) => {
+      const atividades = await tx.atividade.findMany({
+        where: {
+          empresaId,
+          deletedAt: null,
+          ativo: true,
+          concluida: false,
+          iniciarConversa: true,
+          conversaId: { not: null },
+          dataVencimento: { not: null, lte: new Date() },
+          vendedor: { usuarioId: { not: null } },
+        },
+        select: {
+          id: true,
+          titulo: true,
+          conversaId: true,
+          dataVencimento: true,
+          vendedor: { select: { usuarioId: true } },
+          cliente: { select: { razaoSocial: true } },
+        },
+        orderBy: { dataVencimento: 'asc' },
+        take: 50,
+      });
+      if (atividades.length === 0) return;
+
+      const jaAvisadas = new Set(
+        (
+          await tx.notificacao.findMany({
+            where: {
+              empresaId,
+              tipo: 'atendimento_agendado',
+              referenciaId: { in: atividades.map((a) => a.id) },
+            },
+            select: { referenciaId: true },
+          })
+        ).map((n) => n.referenciaId),
+      );
+
+      for (const atividade of atividades) {
+        if (jaAvisadas.has(atividade.id)) continue;
+        await registrarNotificacao(tx, {
+          empresaId,
+          usuarioId: atividade.vendedor.usuarioId!,
+          tipo: 'atendimento_agendado',
+          titulo: atividade.cliente?.razaoSocial
+            ? `Hora de atender ${atividade.cliente.razaoSocial}`
+            : 'Hora de um atendimento agendado',
+          descricao: atividade.titulo,
+          rota: `/comercial/atendimento?conversa=${atividade.conversaId}`,
+          referenciaId: atividade.id,
+          ocorridaEm: atividade.dataVencimento ?? new Date(),
+        });
+      }
+    });
   }
 
   private async processarEmpresa(empresaId: string) {
@@ -296,6 +473,13 @@ export class WhatsappAgendamentoService
           where: { id },
           data: { status: 'enviada', mensagemId: mensagem.id, erro: null },
         });
+        // A agenda deixa de ter pendência: o envio aconteceu.
+        if (agendada.atividadeId) {
+          await tx.atividade.updateMany({
+            where: { id: agendada.atividadeId, empresaId },
+            data: { concluida: true, dataConclusao: new Date() },
+          });
+        }
         // A programada é atendimento como qualquer outra mensagem: entra no
         // histórico do cliente pelo mesmo registro diário. Este envio não passa
         // por `WhatsappConversasService.enviar` — ele grava a mensagem aqui,

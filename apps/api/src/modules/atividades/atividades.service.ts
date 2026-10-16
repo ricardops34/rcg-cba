@@ -215,7 +215,14 @@ export class AtividadesService {
     empresaId: string,
     user: AuthenticatedUser,
     input: AtividadeCreate,
-    opcoes: { ignorarEscopo?: boolean; vendedorAtendimentoId?: string | null } = {},
+    opcoes: {
+      ignorarEscopo?: boolean;
+      vendedorAtendimentoId?: string | null;
+      /** Conversa de WhatsApp de origem (agendamento feito de dentro dela). */
+      conversaId?: string | null;
+      /** Avisa o vendedor e leva à conversa na hora marcada. */
+      iniciarConversa?: boolean;
+    } = {},
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       // `ignorarEscopo`/`vendedorAtendimentoId`: só o atendimento de WhatsApp
@@ -242,6 +249,8 @@ export class AtividadesService {
           ...(calendario && input.dataVencimento ? { dataVencimento: calendario.ajustar(input.dataVencimento) } : {}),
           empresaId,
           vendedorAtendimentoId: opcoes.vendedorAtendimentoId ?? null,
+          conversaId: opcoes.conversaId ?? null,
+          iniciarConversa: opcoes.iniciarConversa ?? false,
           createdBy: user.id,
           updatedBy: user.id,
         } as never,

@@ -26,6 +26,8 @@ export const NOTIFICACAO_TIPOS = [
   "sugestao_compra_calculada",
   /** A atualização em lote dos clientes pela Receita terminou (ou falhou). */
   "clientes_receita_atualizados",
+  /** Chegou a hora de um atendimento agendado por WhatsApp. */
+  "atendimento_agendado",
 ] as const;
 export const notificacaoTipoSchema = z.enum(NOTIFICACAO_TIPOS);
 export type NotificacaoTipo = z.infer<typeof notificacaoTipoSchema>;

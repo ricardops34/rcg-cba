@@ -1074,6 +1074,27 @@ export type WhatsappAgendarMensagem = z.infer<
   typeof whatsappAgendarMensagemSchema
 >;
 
+/**
+ * Alteração de uma mensagem ainda pendente: o texto, a data/hora ou os dois.
+ * Depois que a rotina pega a mensagem para enviar, a API recusa.
+ */
+export const whatsappAtualizarAgendamentoSchema = z
+  .object({
+    texto: z.string().trim().min(1, "Mensagem vazia").max(4096).optional(),
+    enviarEm: z.coerce
+      .date()
+      .refine((d) => d.getTime() > Date.now(), {
+        message: "Escolha uma data e hora no futuro",
+      })
+      .optional(),
+  })
+  .refine((v) => v.texto !== undefined || v.enviarEm !== undefined, {
+    message: "Informe o texto ou a data e hora",
+  });
+export type WhatsappAtualizarAgendamento = z.infer<
+  typeof whatsappAtualizarAgendamentoSchema
+>;
+
 export const whatsappMensagemAgendadaSchema = z.object({
   id: z.string().uuid(),
   conversaId: z.string().uuid(),
@@ -1081,6 +1102,8 @@ export const whatsappMensagemAgendadaSchema = z.object({
   enviarEm: z.string().datetime(),
   status: whatsappAgendamentoStatusSchema,
   erro: z.string().nullable(),
+  /** Atividade da Agenda que representa este agendamento. */
+  atividadeId: z.string().uuid().nullable().optional(),
   criadaPor: z.string().uuid(),
   criadaPorNome: z.string().nullable(),
   criadaEm: z.string().datetime(),
@@ -1108,6 +1131,11 @@ export const whatsappAgendarVisitaSchema = z.object({
   titulo: z.string().trim().min(1, "Informe o que será feito").max(150),
   descricao: z.string().trim().max(1000).optional(),
   dataVencimento: z.coerce.date().nullable().optional(),
+  /**
+   * Na data e hora marcadas, avisa o vendedor no sino e leva à conversa. Sem
+   * data, não há o que avisar: a API ignora.
+   */
+  iniciarConversa: z.boolean().default(false),
 });
 export type WhatsappAgendarVisita = z.infer<typeof whatsappAgendarVisitaSchema>;
 

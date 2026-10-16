@@ -36,6 +36,7 @@ import {
   WhatsappConversaQueryDto,
   WhatsappHistoricoConversaQueryDto,
   WhatsappAgendarMensagemDto,
+  WhatsappAtualizarAgendamentoDto,
   WhatsappAnotarDto,
   WhatsappAgendarVisitaDto,
   WhatsappEnviarArquivoDto,
@@ -1276,6 +1277,31 @@ export class WhatsappController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.agendamento.listar(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Alterar uma mensagem agendada',
+    description:
+      'Texto e/ou data e hora, **enquanto estiver pendente**. Recusa com 404 quando a ' +
+      'rotina já pegou a mensagem para enviar. A atividade da Agenda acompanha. ' +
+      'Requer whatsapp-conversas.cadastrar.',
+  })
+  @ApiBodyExample({ enviarEm: '2026-10-20T14:00:00.000Z' })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Patch('conversas/:id/agendamentos/:agendamentoId')
+  atualizarAgendamento(
+    @Param('id') id: string,
+    @Param('agendamentoId') agendamentoId: string,
+    @Body() dto: WhatsappAtualizarAgendamentoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.agendamento.atualizar(
+      user.empresaAtivaId,
+      user,
+      id,
+      agendamentoId,
+      dto,
+    );
   }
 
   @ApiOperation({

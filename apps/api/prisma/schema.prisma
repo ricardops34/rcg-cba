@@ -3906,6 +3906,12 @@ model Atividade {
   /// (atendimento de WhatsApp fora da própria carteira, liberado por
   /// `Vendedor.atendeOutrasCarteiras`). Nulo no caso comum.
   vendedorAtendimentoId String?
+  /// Conversa de WhatsApp de onde veio o agendamento (mensagem ou atendimento agendados).
+  conversaId     String?
+  /// Na data e hora marcadas, avisa o vendedor e leva à conversa (atendimento agendado).
+  iniciarConversa Boolean      @default(false)
+  /// Registro de algo que o sistema executa sozinho na hora (mensagem agendada): aparece na agenda, mas não é tarefa do vendedor e não gera aviso de vencimento.
+  automatica     Boolean       @default(false)
   tipo           TipoAtividade @default(tarefa)
   titulo         String
   descricao      String?
@@ -3930,6 +3936,7 @@ model Atividade {
 
   @@index([empresaId, vendedorId])
   @@index([empresaId, vendedorAtendimentoId])
+  @@index([empresaId, conversaId])
   @@index([empresaId, clienteId])
   @@index([empresaId, oportunidadeId])
   @@index([empresaId, orcamentoId])
@@ -4827,6 +4834,11 @@ model WhatsappMensagemAgendada {
    * Mensagem criada no envio, para ligar o agendamento ao que saiu.
    */
   mensagemId String?
+  /**
+   * Atividade da Agenda que representa este agendamento: alterar ou cancelar
+   * a mensagem acompanha a atividade, e enviar a conclui.
+   */
+  atividadeId String?
 
   criadaPor    String
   criadaEm     DateTime @default(now())
@@ -5211,6 +5223,8 @@ enum NotificacaoTipo {
   sugestao_compra_calculada
   /// A atualização em lote dos clientes pela Receita terminou (ou falhou).
   clientes_receita_atualizados
+  /// Chegou a hora de um atendimento agendado por WhatsApp.
+  atendimento_agendado
 }
 
 /// Em que ponto o lead está. Deliberadamente curto: um funil de lead com sete
