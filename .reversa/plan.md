@@ -70,7 +70,7 @@
 - [x] **Arqueólogo** — Análise do módulo `feriados`
 - [x] **Arqueólogo** — Análise do módulo `erros`
 - [x] **Arqueólogo** — Análise do módulo `termos`
-- [ ] **Arqueólogo** — Análise do módulo `tours`
+- [x] **Arqueólogo** — Análise do módulo `tours`
 - [ ] **Arqueólogo** — Análise do módulo `inicio`
 - [ ] **Arqueólogo** — Análise do módulo `demo`
 

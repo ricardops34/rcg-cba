@@ -80,14 +80,14 @@
         "cadastros",
         "feriados",
         "erros",
-        "termos"
+        "termos",
+        "tours"
       ],
       "modules_pending": [
-        "tours",
         "inicio",
         "demo"
       ],
-      "last_update": "2026-10-16T11:38:31.993Z"
+      "last_update": "2026-10-16T12:35:57.011Z"
     }
   },
   "engines": [

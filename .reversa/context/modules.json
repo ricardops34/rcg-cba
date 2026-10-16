@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-16T11:38:31.991Z",
+  "generated_at": "2026-10-16T12:35:57.008Z",
   "modules": [
     {
       "name": "auth",
@@ -3377,6 +3377,70 @@
         "termos.service.spec.ts"
       ],
       "complexity": "medium",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "tours",
+      "path": "apps/api/src/modules/tours",
+      "responsibility": "Historico do tour guiado por usuario e empresa (qual versao foi exibida, ate que passo, como terminou); o conteudo dos tours vive no front e e compartilhado com a ajuda contextual.",
+      "files": [
+        "tours.module.ts",
+        "tours.controller.ts",
+        "tours.service.ts",
+        "dto/tour.dto.ts",
+        "web: components/tour/*",
+        "web: lib/tours/*"
+      ],
+      "entities": [
+        "TourExecucao",
+        "TourOrigem",
+        "TourStatus"
+      ],
+      "main_functions": [
+        "ToursService.estado/iniciar/atualizar",
+        "TourProvider (consulta, inicia e salva)",
+        "tourPorRota",
+        "GuidedTour"
+      ],
+      "dependencies": [
+        "PrismaService (withTenant)",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "TourProvider (layout do app)",
+        "botao de replay na barra superior",
+        "ajuda contextual (AJUDAS_MODULOS)"
+      ],
+      "business_rules": [
+        {
+          "description": "Tour automatico so abre quando nao existe execucao da versao para o usuario na empresa; abandonar no meio conta como exibido; replay manual sempre cria execucao nova",
+          "location": "tours.service.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Subir a versao na definicao do front faz o tour reaparecer para todos",
+          "location": "web lib/tours/*",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Passos cujo seletor nao existe ou esta sem tamanho sao descartados ao iniciar",
+          "location": "web components/tour/tour-provider.tsx",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "iniciar automatico e find+create sem indice unico: duas abas duplicam; o teste de concorrencia usa mocks",
+        "API aceita qualquer codigo e versao; replay cria linha sem teto nem expurgo",
+        "atualizar nao valida transicao nem passoAtual; salvamento sem esperar pode gravar fora de ordem",
+        "historico por empresa: quem atende duas empresas ve o tour de novo (intencao nao confirmada)",
+        "sessao sem empresa ativa (suporte) provavelmente da 500 em withTenant e polui o log de erros (nao reproduzido)",
+        "bordas do front: tour sem passo sem seletor pode salvar passo -1; mudanca de data-tour some o passo em silencio; textos nao consideram permissao",
+        "testes so do service, com mocks"
+      ],
+      "test_files": [
+        "tours.service.spec.ts"
+      ],
+      "complexity": "low",
       "confidence": "CONFIRMADO"
     }
   ]

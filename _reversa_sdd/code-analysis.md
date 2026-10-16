@@ -6934,3 +6934,72 @@ Cache de pendência 60 s; declaração fixa do aceite; limite de 100.000 caracte
 ### 7. Dependências e testes
 
 `PrismaService`; módulo `@Global` que exporta `TermosService` ao `JwtAuthGuard`. Consumidores: `JwtAuthGuard` (cada requisição), `auth` e `politica-senha` (rotas liberadas), seed, tela de aceite (`plataforma-access-gate`), perfil (histórico) e cadastro de empresa (editor). **Testes cobrem só o service.**
+
+---
+
+## Módulo `tours`
+
+**Caminho:** `apps/api/src/modules/tours/` (controller, service, DTO, module — 209 linhas, mais o spec) + `packages/contracts/src/tour.ts`. Front: `components/tour/tour-provider.tsx` (166 linhas, decide quando iniciar e salva), `components/tour/guided-tour.tsx` (308, a camada visual) e `lib/tours/` (definições: 7 tours escritos à mão e **37 rotinas guiadas** geradas de `rotinas-modulos.ts`, 1.128 linhas).
+**Testes:** `tours.service.spec.ts` (4 casos). **Sem teste** do controller, do provider, do `guided-tour` nem das definições.
+
+### 1. Responsabilidade 🟢
+
+Tour guiado por tela: na primeira visita a uma tela com tour, o navegador pergunta à API se aquela **versão** do tour já foi exibida àquele usuário naquela empresa; se não foi, abre sozinho. A API guarda só o **histórico** (quem viu qual versão, até que passo, como terminou). O **conteúdo** dos tours (passos, textos, seletores de tela) vive no código do front, não no banco, e é compartilhado com a ajuda contextual (`AJUDAS_MODULOS`).
+
+### 2. Rotas 🟢
+
+`JwtAuthGuard` apenas (sem `PermissionsGuard`: é dado do próprio usuário). RLS por empresa na tabela.
+
+| Rota | Comportamento |
+|---|---|
+| `GET /tours/:codigo/estado?versao=` | `deveIniciarAutomaticamente = (nenhuma execução desta versão)`; devolve a última execução |
+| `POST /tours/:codigo/execucoes` `{versao, origem}` | `automatico`: devolve a execução existente da versão, se houver; senão cria. `manual` (replay): **sempre cria** outra |
+| `PATCH /tours/execucoes/:id` `{passoAtual, status}` | atualiza só linha do próprio usuário e empresa ativa (`updateMany`); 404 se não for; `finalizadoEm` nulo em `em_andamento`, agora nos demais |
+
+### 3. Algoritmos 🟢
+
+- **Primeira exibição:** é "nunca houve execução da versão", qualquer que seja o status. Fechar o navegador no meio (`em_andamento`) conta como exibido e **não reabre sozinho**; o replay é manual (botão na barra superior).
+- **Nova versão:** subir `versao` na definição faz o tour aparecer de novo para todo mundo (não há migração de dados: a chave é `(empresa, usuário, código, versão)`).
+- **Front:** `tourPorRota(pathname)` escolhe a definição (rota exata, ou descendente para detalhes). Só consulta depois que o `seletorPronto` existe na tela (observa o DOM; espera 650 ms), uma vez por tour e versão por sessão do navegador (`consultados`, em memória). Erro de rede libera nova tentativa e **nunca** atrapalha o uso. Ao iniciar, descarta os passos cujo seletor não existe ou está sem tamanho (tela sem permissão para aquele bloco), e salva a cada passo (`PATCH`) sem esperar a resposta.
+- **Teclado:** `Esc` pula (`dispensado`), setas navegam.
+
+### 4. Achados
+
+#### 4.1 Duas abas podem abrir o mesmo tour automático duas vezes 🟡
+
+`iniciar` automático faz `findFirst` e depois `create` sem índice único em `(empresaId, usuarioId, tourCodigo, versao)` (o índice existente não é único). O teste "não duplica uma inicialização automática concorrente" usa mocks e não cobre a corrida real entre duas transações. Efeito prático pequeno (duas linhas de histórico; `estado` devolve a mais recente), mas o teste dá uma garantia que o banco não dá.
+
+#### 4.2 A API aceita qualquer tour e qualquer versão 🟡
+
+`codigo` só precisa casar `[a-z0-9-]{1,80}` e `versao` ser inteiro positivo: a API não conhece o catálogo de tours (ele está no front). Um usuário logado pode gravar execuções de códigos inexistentes. Cada replay manual cria uma linha nova, sem teto nem expurgo: a tabela só cresce, e o único limite é o throttle global (200/min). Sem relevância hoje; vira volume se o tour passar a disparar em mais telas.
+
+#### 4.3 Estado e transições sem validação 🟡
+
+`atualizar` não confere a transição: uma execução `concluido` pode voltar a `em_andamento`, e `passoAtual` é qualquer inteiro ≥ 0 (sem comparar com o número de passos). Como o front salva sem esperar, duas respostas fora de ordem podem gravar um passo anterior depois de um posterior.
+
+#### 4.4 O histórico é por empresa, o tour é da pessoa 🟡
+
+A chave inclui `empresaId` (RLS): quem atende duas empresas vê o tour de boas-vindas de novo em cada uma e a cada empresa nova. Pode ser desejado (o tour apresenta "a sua empresa"), mas diverge do aceite de termos, que é da conta. 🔴 confirmar a intenção.
+
+#### 4.5 Sessão sem empresa ativa não está tratada 🟡
+
+`empresaAtivaId` é `string` no tipo e entra direto em `withTenant`/`empresaId`. Em sessão sem vínculo (o "Entrar como suporte" cria sessão sem vínculo, segundo o registro do módulo `suporte-acesso`), o contexto de RLS fica sem empresa e a gravação do `POST` deve falhar com 500, gerando linha no log de erros a cada tela com tour. O front engole o erro. Achado por leitura, **não reproduzido**: abrir `/` numa sessão de suporte e olhar Plataforma > Erros.
+
+#### 4.6 Casos de borda no front 🟡
+
+- Se **todos** os passos forem filtrados por seletor ausente (só quando o tour não tem passo sem seletor), `onConcluir` salva `passoAtual = passos.length − 1 = −1`, que o contrato recusa (400), silenciado.
+- Passos escritos à mão podem apontar para `data-tour` que mudou de nome: o passo some em silêncio, sem teste que avise. As 37 rotinas guiadas dependem de três atributos (`crud-busca`, `crud-filtros`, `crud-lista`) e de `data-tour="rotina"` em cada página.
+- O tour de módulo não sabe das permissões: o texto descreve ações ("mantém fotos, fichas técnicas…") que o usuário pode não ter; só o filtro de seletor visível ameniza.
+- As rotas `/tours/*` não são `@PermitirTermoPendente`: com termo pendente respondem 403, o front ignora, e o tour não abre até o aceite (comportamento aceitável).
+
+### 5. Estruturas de dados 🟢
+
+`TourExecucao` (tabela `tour_execucoes`, RLS por empresa, FKs RESTRICT para empresa e usuário), enums `TourOrigem` (`automatico`, `manual`) e `TourStatus` (`em_andamento`, `concluido`, `dispensado`). Ver `data-dictionary.md`, seção `tours`.
+
+### 6. Metadados 🟢
+
+Definições no front: `TourDefinicao {codigo, versao, rota, modoRota (exata|descendente), seletorPronto, passos[]}`; tours de código `inicio` (v1, rota `/`), dashboard comercial, posição de cliente (lista e detalhe), orçamentos (lista, novo, detalhe) e as 37 rotinas de `ROTINAS_GUIADAS`. Atraso de 650 ms antes de consultar, 250 ms para posicionar o realce.
+
+### 7. Dependências e testes
+
+`PrismaService` (`withTenant`). Consumidores: `TourProvider` no layout do app, botão de replay na barra superior e a ajuda contextual (mesmo conteúdo). A limpeza do modo demonstração apaga `TourExecucao`. **Testes cobrem só o service, com mocks.**

@@ -2516,3 +2516,34 @@ Texto, opcional, até 100.000 caracteres, Markdown ou HTML. Sem versão, sem ace
 ### DTOs 🟢
 
 `termoAceiteInputSchema` (`aceite: true` literal, `conteudoHash` 64 hex), resposta de aceite (`aceito`, `termoId`, `aceitoEm`), `termosStatusSchema` (`possuiPendencia`, `pendentes[]` com conteúdo, `aceites[]` resumidos).
+
+
+---
+
+## `tours`
+
+### Tabela `tour_execucoes` (RLS por `empresaId`) 🟢
+
+| Campo | Tipo | Obrigatório | Observação |
+|---|---|---|---|
+| `id` | uuid | sim | |
+| `empresaId` | texto | sim | FK `empresas`, RESTRICT |
+| `usuarioId` | texto | sim | FK `usuarios`, RESTRICT |
+| `tourCodigo` | texto | sim | `[a-z0-9-]`, até 80; a API não confere contra um catálogo |
+| `versao` | inteiro | sim | positivo; a versão vive na definição do front |
+| `origem` | `TourOrigem` | sim | `automatico` ou `manual` (replay) |
+| `status` | `TourStatus` | sim, padrão `em_andamento` | `concluido`, `dispensado` |
+| `passoAtual` | inteiro | sim, padrão 0 | sem limite superior |
+| `iniciadoEm` | data/hora | sim | |
+| `finalizadoEm` | data/hora | não | nulo em `em_andamento` |
+| `updatedAt` | data/hora | sim | |
+
+Índice (não único): `(empresaId, usuarioId, tourCodigo, versao, iniciadoEm)`.
+
+### Definições de tour (no código do front, não no banco) 🟢
+
+`TourDefinicao`: `codigo`, `versao`, `rota`, `modoRota` (`exata`/`descendente`), `seletorPronto`, `passos[]` (`seletor?`, `titulo`, `descricao`). Fontes: `lib/tours/*.ts` (7 à mão) e `ROTINAS_GUIADAS` (37 rotinas).
+
+### DTOs 🟢
+
+`iniciarTourInputSchema` (`versao`, `origem`), `atualizarTourInputSchema` (`passoAtual` ≥ 0, `status`), `tourEstadoSchema` (`deveIniciarAutomaticamente`, `ultimaExecucao`).
