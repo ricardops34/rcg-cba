@@ -94,7 +94,7 @@ const NUM_FMT: Record<FormatoColuna, string | undefined> = {
   texto: undefined,
   data: undefined,
   numero: "#,##0.00",
-  quantidade: "#,##0",
+  quantidade: "#,##0.####",
   // Contábil: "R$" à esquerda da célula, valor à direita, zero como "-".
   moeda: '_("R$"* #,##0.00_);_("R$"* (#,##0.00);_("R$"* "-"??_);_(@_)',
   // O valor já é em pontos percentuais (3,25 = 3,25%): "%" literal, sem o ×100 do formato `0.00%`.
@@ -317,19 +317,6 @@ function montarAbaRelatorio<T>(
 ) {
   const aba = livro.addWorksheet("Relatório");
 
-  // Quantidade: "#,##0.####" deixa a vírgula pendurada ("112,") quando não há
-  // decimal. O formato acompanha as casas que a coluna realmente usa (até 4).
-  const formatoQuantidade = p.colunas.map((c) => {
-    if (c.formato !== "quantidade") return undefined;
-    let casas = 0;
-    for (const l of p.linhas) {
-      const v = c.valor(l);
-      if (typeof v !== "number") continue;
-      const dec = (String(Math.round(v * 1e4) / 1e4).split(".")[1] ?? "").length;
-      if (dec > casas) casas = dec;
-    }
-    return casas ? `#,##0.${"0".repeat(casas)}` : "#,##0";
-  });
   aba.columns = p.colunas.map((c) => ({
     key: c.campo,
     width: ehNumerica(c.formato) ? 14 : Math.max(12, c.titulo.length + 2),
@@ -358,8 +345,6 @@ function montarAbaRelatorio<T>(
     const row = aba.addRow(valores);
     row.eachCell((cel, col) => {
       cel.alignment = { horizontal: alinhamento(p.colunas[col - 1]) };
-      const fq = formatoQuantidade[col - 1];
-      if (fq) cel.numFmt = fq;
       if (i % 2 === 1) cel.fill = { type: "pattern", pattern: "solid", fgColor: { argb: CINZA_CLARO } };
       if (p.negritoNoExcel?.(l)) cel.font = { bold: true };
     });
@@ -372,8 +357,6 @@ function montarAbaRelatorio<T>(
       cel.font = { bold: true };
       cel.border = { top: { style: "double", color: { argb: "FF94A3B8" } } };
       cel.alignment = { horizontal: alinhamento(p.colunas[col - 1]) };
-      const fq = formatoQuantidade[col - 1];
-      if (fq) cel.numFmt = fq;
     });
   }
 
