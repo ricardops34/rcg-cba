@@ -202,15 +202,24 @@ export class ParametrosService {
         input.tamanho !== undefined ? input.tamanho : atual.tamanho,
       );
 
+      // Sair do tipo senha descarta o segredo gravado: sem isso, trocar o tipo
+      // para texto (sem mandar conteúdo) passava a devolver a senha no GET.
+      const deixaDeSerSenha =
+        atual.tipo === 'senha' &&
+        input.tipo !== undefined &&
+        input.tipo !== 'senha';
+
       const row = await tx.parametroEmpresa.update({
         where: { id },
         data: {
           ...input,
-          // Senha em branco no formulário significa "manter a atual", e não
-          // "apagar" — o valor nunca é exibido para ser redigitado.
-          ...(atual.tipo === 'senha' && !input.conteudo
-            ? { conteudo: atual.conteudo }
-            : {}),
+          ...(deixaDeSerSenha
+            ? { conteudo: input.conteudo || null }
+            : // Senha em branco no formulário significa "manter a atual", e
+              // não "apagar" — o valor nunca é exibido para ser redigitado.
+              atual.tipo === 'senha' && !input.conteudo
+              ? { conteudo: atual.conteudo }
+              : {}),
           updatedBy: user.id,
         },
       });

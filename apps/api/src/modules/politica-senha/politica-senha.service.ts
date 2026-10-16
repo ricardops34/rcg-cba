@@ -125,12 +125,19 @@ export class PoliticaSenhaService {
    *
    * Usuário sem empresa ativa (ainda não vinculado) cai no padrão: é o mesmo
    * comportamento de antes, e negar login por falta de política seria pior.
+   *
+   * `usuario_empresas` tem RLS por empresa **ou** pelo próprio usuário. Sem
+   * `withUsuario`, o login e o "esqueci minha senha" (sem contexto) liam zero
+   * vínculos e caíam no padrão, e a requisição logada via só o vínculo da
+   * empresa ativa — os parâmetros das outras empresas eram ignorados.
    */
   async getVigenteParaUsuario(usuarioId: string): Promise<PoliticaSenha> {
-    const vinculos = await this.prisma.usuarioEmpresa.findMany({
-      where: { usuarioId, ativo: true },
-      select: { empresaId: true },
-    });
+    const vinculos = await this.prisma.withUsuario(usuarioId, (tx) =>
+      tx.usuarioEmpresa.findMany({
+        where: { usuarioId, ativo: true },
+        select: { empresaId: true },
+      }),
+    );
     if (vinculos.length === 0) return POLITICA_PADRAO;
 
     const politicas = await Promise.all(
