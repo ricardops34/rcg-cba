@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFiltrosUrl } from "@/hooks/use-filtros-url";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { AlertTriangle, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
 type TipoFiltro = "todos" | TipoAtividade;
@@ -86,6 +87,8 @@ const estaVencida = (a: Atividade) =>
 
 export default function AgendaPage() {
   const router = useRouter();
+  // No celular a Agenda é de agendamentos: só o que ainda está por fazer.
+  const celular = useIsMobile();
   // Celular abre no dia (o que importa na rua); computador, no mês. A tela só
   // monta depois de a sessão carregar, então já se sabe a largura.
   const [visao, setVisao] = useState<Visao>(() =>
@@ -141,7 +144,7 @@ export default function AgendaPage() {
     ...(vendedorId ? { vendedorId } : {}),
     ...(clienteId ? { clienteId } : {}),
     ...(tipo !== "todos" ? { tipo } : {}),
-    ...(somentePendentes ? { concluida: false } : {}),
+    ...(somentePendentes || celular ? { concluida: false } : {}),
   });
 
   // Orçamentos entram na Agenda pela data de criação — registro do que foi
@@ -149,7 +152,8 @@ export default function AgendaPage() {
   const orcamentosQuery = useResourceList<Orcamento>("orcamentos", {
     dataInicio: toKey(gridStart),
     dataFim: toKey(gridEnd),
-    pageSize: 100,
+    // Orçamento é registro do que já foi feito: o celular não o mostra.
+    pageSize: celular ? 1 : 100,
     sortBy: "createdAt",
     sortOrder: "asc",
     ...(vendedorId ? { vendedorId } : {}),
@@ -182,6 +186,19 @@ export default function AgendaPage() {
     return mapa;
   }, [atividadesQuery.data, orcamentosQuery.data]);
 
+  // O que o celular mostra: atividades **ainda por fazer**. Concluída e
+  // orçamento (registro do que já aconteceu) ficam de fora. Filtrado aqui, e não
+  // só na consulta, porque os blocos do celular e do computador são desenhados
+  // juntos e escondidos por CSS — o que vale é o que cada um recebe.
+  const porDiaCelular = useMemo(() => {
+    const mapa = new Map<string, AgendaItem[]>();
+    for (const [dia, itens] of porDia) {
+      const pendentes = itens.filter((i) => i.kind === "atividade" && !i.data.concluida);
+      if (pendentes.length > 0) mapa.set(dia, pendentes);
+    }
+    return mapa;
+  }, [porDia]);
+
   const hoje = new Date();
   // A semana vai de domingo a sábado, como a grade do mês. No celular a
   // semana mostra só de segunda a sexta (sábado e domingo ficam de fora).
@@ -190,7 +207,7 @@ export default function AgendaPage() {
   const diasUteis = diasSemana.filter((d) => d.getDay() >= 1 && d.getDay() <= 5);
   const itensFimDeSemana = diasSemana
     .filter((d) => d.getDay() === 0 || d.getDay() === 6)
-    .reduce((n, d) => n + (porDia.get(toKey(d))?.length ?? 0), 0);
+    .reduce((n, d) => n + (porDiaCelular.get(toKey(d))?.length ?? 0), 0);
 
   const mover = (sentido: 1 | -1) =>
     setAncora((a) =>
@@ -327,7 +344,10 @@ export default function AgendaPage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <p className="text-xs text-muted-foreground md:hidden">
+        Aqui aparecem só os agendamentos pendentes; o que já foi feito não é mostrado.
+      </p>
+      <div className="hidden flex-wrap items-center justify-between gap-2 md:flex">
         <QuickFilterGroup>
           <QuickFilterButton
             active={somentePendentes}
@@ -340,16 +360,28 @@ export default function AgendaPage() {
       </div>
 
       {visao === "dia" ? (
-        <div className="mx-auto w-full max-w-2xl">
-          <DiaDetalhe
-            dia={ancora}
-            feriado={feriadosPorDia.get(toKey(ancora))}
-            itens={porDia.get(toKey(ancora)) ?? []}
-            isLoading={isLoading}
-            onSelectItem={onSelectItem}
-            onNovo={() => router.push(`/crm/atividades/novo?data=${toKey(ancora)}`)}
-          />
-        </div>
+        <>
+          <div className="md:hidden">
+            <DiaDetalhe
+              dia={ancora}
+              feriado={feriadosPorDia.get(toKey(ancora))}
+              itens={porDiaCelular.get(toKey(ancora)) ?? []}
+              isLoading={isLoading}
+              onSelectItem={onSelectItem}
+              onNovo={() => router.push(`/crm/atividades/novo?data=${toKey(ancora)}`)}
+            />
+          </div>
+          <div className="mx-auto hidden w-full max-w-2xl md:block">
+            <DiaDetalhe
+              dia={ancora}
+              feriado={feriadosPorDia.get(toKey(ancora))}
+              itens={porDia.get(toKey(ancora)) ?? []}
+              isLoading={isLoading}
+              onSelectItem={onSelectItem}
+              onNovo={() => router.push(`/crm/atividades/novo?data=${toKey(ancora)}`)}
+            />
+          </div>
+        </>
       ) : null}
 
       {visao === "semana" ? (
@@ -394,7 +426,7 @@ export default function AgendaPage() {
                 key={toKey(dia)}
                 dia={dia}
                 feriado={feriadosPorDia.get(toKey(dia))}
-                itens={porDia.get(toKey(dia)) ?? []}
+                itens={porDiaCelular.get(toKey(dia)) ?? []}
                 isLoading={isLoading}
                 onSelectItem={onSelectItem}
                 onNovo={() => router.push(`/crm/atividades/novo?data=${toKey(dia)}`)}
@@ -421,14 +453,14 @@ export default function AgendaPage() {
           hoje={hoje}
           selecionado={diaSelecionado}
           feriadosPorDia={feriadosPorDia}
-          porDia={porDia}
+          porDia={porDiaCelular}
           isLoading={isLoading}
           onSelecionar={setDiaSelecionado}
         />
         <DiaDetalhe
           dia={diaSelecionado}
           feriado={feriadosPorDia.get(toKey(diaSelecionado))}
-          itens={porDia.get(toKey(diaSelecionado)) ?? []}
+          itens={porDiaCelular.get(toKey(diaSelecionado)) ?? []}
           isLoading={isLoading}
           onSelectItem={onSelectItem}
           onNovo={() =>
