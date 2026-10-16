@@ -73,11 +73,11 @@
         "escopo",
         "politica-senha",
         "recuperacao-senha",
-        "suporte-acesso"
+        "suporte-acesso",
+        "integracao",
+        "integracao-keys"
       ],
       "modules_pending": [
-        "integracao",
-        "integracao-keys",
         "portal-cliente",
         "cadastros",
         "feriados",
@@ -87,7 +87,7 @@
         "inicio",
         "demo"
       ],
-      "last_update": "2026-10-16T07:50:54.582Z"
+      "last_update": "2026-10-16T10:54:33.300Z"
     }
   },
   "engines": [

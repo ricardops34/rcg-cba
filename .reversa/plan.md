@@ -63,8 +63,8 @@
 - [x] **Arqueólogo** — Análise do módulo `politica-senha`
 - [x] **Arqueólogo** — Análise do módulo `recuperacao-senha`
 - [x] **Arqueólogo** — Análise do módulo `suporte-acesso`
-- [ ] **Arqueólogo** — Análise do módulo `integracao`
-- [ ] **Arqueólogo** — Análise do módulo `integracao-keys`
+- [x] **Arqueólogo** — Análise do módulo `integracao`
+- [x] **Arqueólogo** — Análise do módulo `integracao-keys`
 - [ ] **Arqueólogo** — Análise do módulo `portal-cliente`
 - [ ] **Arqueólogo** — Análise do módulo `cadastros`
 - [ ] **Arqueólogo** — Análise do módulo `feriados`

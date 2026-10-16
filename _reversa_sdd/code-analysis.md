@@ -5968,3 +5968,375 @@ lista de logs limitada a 500.
 `PrismaService`. Consumidores: `apps/web` Administração > Suporte
 (`admin/suporte-acesso/page.tsx`) e o layout (aviso de liberação ativa). **Sem
 testes** — nenhum teste pegaria a ordem dos guards.
+
+---
+
+## Módulo `integracao`
+
+**Caminho:** `apps/api/src/modules/integracao/` (~13,2 mil linhas, 21 controllers, 20 services,
+20 specs). Contratos: `packages/contracts/src/integracao.ts`, `integracao-carga.ts`,
+`integracao-carga-formatos.ts`. Documentação pública: `docs/integracao/` (Swagger em `/api/docs`).
+O gerenciamento das chaves e do monitor fica em outro módulo (`integracao-keys`).
+
+### 1. Responsabilidade 🟢
+
+**API pública de integração com o ERP (Protheus), por chave de API, nunca por JWT.** Faz dois
+trabalhos:
+
+1. **Coleta** — o ERP empurra cadastros e movimento para a plataforma (`PUT` em lote, `POST`/`PATCH`/
+   `DELETE` unitários, carga por arquivo, importação TXT). Regra fechada: **o ERP é a fonte da
+   verdade** e todo `POST`/`PUT` é um *upsert* pela `chave`.
+2. **Envio** — a plataforma devolve ao ERP o que nasceu ou mudou aqui, em três filas: orçamentos
+   aprovados sem pedido (`orcamentos/pendentes`), alterações de cliente aprovadas
+   (`clientes/alteracoes`) e equipamentos de comodato (`equipamentos-comodato/alteracoes`),
+   cada uma com confirmação por `PATCH`.
+
+### 2. Estrutura 🟢
+
+Uma pasta por entidade (controller + service + DTO Zod do contrato), mais `common/`, `guards/`,
+`decorators/`, `import/`, `cargas/`, `comunicacao/`, `pedidos/`.
+
+| Entidade (`endpointKey`) | Coleta | Envio ao ERP | Particularidade |
+|---|---|---|---|
+| `categorias`, `armazens`, `condicoes-pagamento`, `fornecedores`, `vendedores` | PUT/POST/PATCH/DELETE | — | vendedor com `supervisorChave` e tipo `superior`; `usuarioId` nunca é tocado |
+| `regras-desconto` | idem | — | valida faixas sem sobreposição; só uma regra padrão por empresa |
+| `produtos` | idem | — | armazém: valor do ERP, senão `ARMAZEM_PADRAO`; fabricante inexistente vira `null` |
+| `estoque` | idem | — | acha o saldo por `chave` **ou** por produto+armazém |
+| `tabelas-preco` | idem | — | itens por `resolverProduto` (busca aproximada) |
+| `clientes` | PUT/POST direto; **PATCH vira solicitação** | `alteracoes` | duas portas com regras diferentes (ver 4.4) |
+| `titulos-receber` | idem | — | baixas filhas; dados do boleto; conta bancária por descrição |
+| `notas-saida` / `notas-entrada` | idem | — | itens filhos; comodato por CFOP; XML na saída |
+| `objetivos` | idem | — | objetivo por vendedor/mês |
+| `orcamentos` | idem | `pendentes` (+ `PATCH` vincular / erro) | recalcula preço pela Tabela de Preço |
+| `pedidos` | POST/PUT/DELETE | — | não é registro: atualiza o orçamento que gerou o pedido, ou cria histórico `origem=erp` |
+| `equipamentos-comodato` | — | `alteracoes` (+ `PATCH` aplicada) | lista completa de aplicáveis; confirmação com versão (`alteradoEm`) |
+| `comunicacao` | POST | — | batimento: grava `ULTIMA_COMUNICACAO_ERP` |
+| `arquivo` | `importar` (TXT/JSON) | `exportar` | caminho legado, ver 4.2 e 4.3 |
+| `cargas` | POST de arquivo gzip/NDJSON | — | processamento em segundo plano |
+
+### 3. Algoritmos e lógica
+
+#### 3.1 Autenticação e medição — `ApiKeyGuard` 🟢
+
+1. Header `x-api-key` ausente → 401. Chave = `itg_` + 30 bytes base64url; no banco só o
+   **SHA-256** (`chaveHash`, único). Chave inexistente, `ativo=false`, `deletedAt` ou
+   `expiraEm` vencido → 401.
+2. Põe `request.integracao = {empresaId, apiKeyId}`; toda query dali em diante usa
+   `withTenant(empresaId)` (a requisição por chave não leva contexto de RLS ao banco).
+3. **Endpoint desativado** no monitor: o guard extrai o primeiro segmento depois de
+   `/integracao/` (regex), lê `integracao_endpoint_configs` e responde 403 se `ativo=false`.
+4. **Classificação do uso** (para o painel de status): *envio* = caminho contém
+   `orcamentos/pendentes`, `clientes/alteracoes`, `equipamentos-comodato/alteracoes` ou
+   `arquivo/exportar`; *comunicação* = `/integracao/comunicacao`; *coleta* = o resto que
+   for POST/PUT/PATCH/DELETE, ou `arquivo/importar`. Grava `ultimoUso` (no máximo 1×/min) e
+   `ultimaColeta`/`ultimoEnvio` (na primeira vez ou após 1 min), sem esperar (fire-and-forget).
+5. Contador por endpoint (`totalChamadas`) em upsert fire-and-forget, com `warn` no log se falhar.
+
+Todos os controllers declaram `@Throttle(60 req/min)` (por IP, via `ThrottlerGuard` global).
+
+#### 3.2 Upsert por `chave` — `decidirUpsert` + `camposDaDecisao` 🟢
+
+`chave` nova → **criar**; existe e ativa → **atualizar** com o payload inteiro; existe e excluída →
+**reativar** (atualiza e zera `deletedAt/deletedBy`). Nunca 409. Todo service repete o mesmo
+esqueleto: `findFirst({empresaId, chave})` (sem filtrar `deletedAt`) → resolve referências →
+monta `dados` → `update`/`create` dentro de **uma** `withTenant`. Campo omitido no `PUT` vira
+`null` (o ERP manda o registro inteiro); no `PATCH` `undefined` não mexe.
+
+#### 3.3 Lote — `processarLote` 🟢
+
+`PUT /integracao/<entidade>` com `{registros: [...]}` (1 a 1.000, `INTEGRACAO_LOTE_MAX`).
+Aplica **em sequência, na ordem recebida** (dependência dentro do lote e para evitar deadlock
+entre duas linhas da mesma chave). Cada item roda na **própria transação**; um erro vira
+`{indice, chave, mensagem}` e o lote segue. Responde **200** com
+`{processados, criados, atualizados, excluidos, erros[]}`. `excluido: true` faz soft delete e
+dispensa os outros campos. A mensagem do erro é a de `response.message` do Nest (string ou array).
+
+#### 3.4 Resolução de referências 🟢
+
+`resolverCliente` e `resolverVendedor` aceitam: `chave` exata/aparada, `codigoErp`
+(exato/aparado/sem hífens à frente), `chave` terminando em `-<código>`. `resolverProduto`
+aceita `chave` ou `codigoErp` exatos e, **se nada casar, qualquer produto cuja `chave` ou
+`codigoErp` *contenha* o texto** (sem ordenação). `normalizarChaveOpcional` trata `"01-"`
+(filial + código em branco) como ausência. As demais referências (categoria, armazém,
+condição, tabela, regra) são por `chave` exata.
+
+#### 3.5 Filhos — `sincronizarFilhos` / `criarFilhos` / `consolidarFilhos` 🟢
+
+Itens, baixas e faixas casam por `chave` **dentro do cabeçalho** (`@@unique([cabecalhoId, chave])`).
+`delete: true` remove; ativo faz upsert; **ausente não é excluído** (o ERP manda tudo sem filtrar
+`D_E_L_E_T_`). Repetição da mesma chave no payload: a versão ativa vence a excluída; duas ativas
+diferentes → 400.
+
+#### 3.6 Carga por arquivo 🟢
+
+- **Recebimento** (`POST /integracao/cargas`, ERP; ou `POST /integracao-cargas`, tela com JWT +
+  `integracao.cadastrar`): corpo `application/gzip` ou `application/x-ndjson` (parser `raw` de
+  100 MB só nesses tipos, e só nessa rota — filtro em `main.ts` devolve 415 nas outras). Confere
+  a estrutura **do arquivo inteiro** (cada linha JSON, entidade aceita, `registro` objeto; até 20
+  problemas listados) e recusa o arquivo todo com 400 se falhar. Teto de 512 MB descompactado
+  (`maxOutputLength`). Guarda o arquivo **compactado no banco** (`Bytes`) e responde 202.
+  Do ERP entra como `recebida`; da tela como `aguardando` até `POST /processar`.
+- **Processamento** (`CargasProcessador`, varredura de 15 s): para cada empresa sem carga rodando
+  neste processo, `reservar` pega a mais antiga em `recebida`/`processando` por `createdAt`;
+  `updateMany` condicional é a trava entre réplicas. `processando` com `updatedAt` recente impede
+  as seguintes (ordem de dependência); parada há 10 min é tomada de volta (`tentativas++`);
+  5 tentativas → `erro`.
+- **Bloco**: linhas seguidas da mesma entidade, até 1.000. Cada linha passa pelo **mesmo schema Zod**
+  do `PUT` (`aplicarBloco`); linha inválida vira erro da linha e o resto segue; os válidos vão ao
+  `upsertLote` da entidade. Erros do bloco e o checkpoint (`ultimaLinha`, contadores) gravam na
+  **mesma transação**. Cancelamento (`cancelarSolicitado`) é atendido no fim do bloco.
+- **Operações da tela:** processar, reprocessar (volta para `recebida`, apaga erros, mesma
+  `createdAt`), cancelar, excluir (só `aguardando` ou terminada), limpar por grupo.
+
+#### 3.7 Filas de envio ao ERP 🟢
+
+- **Orçamentos pendentes:** `chave = null`, `status = aprovado`, sem `erroIntegracao`, ordem de
+  criação. `PATCH pendentes/:id` (vincular) grava a chave do SC5 e a de cada item (SC6) — só
+  uma vez; 409 se já vinculado, não aprovado, chave repetida ou item de outro orçamento.
+  `PATCH pendentes/:id/erro` tira da fila e grava o motivo.
+- **Alterações de cliente:** itens `pendente` da `cliente_envios_erp`, só de cliente com chave e com
+  ao menos um campo do de-para `CAMPOS_ENVIO_ERP`; devolve **só os campos aprovados**, com o
+  valor **atual** do cadastro, vendedor/tabela/condição como chave e CNAE com máscara.
+  `PATCH alteracoes/:id/aplicada` → `enviado` (409 se repetido).
+- **Comodato:** devolve a lista completa e atual de aplicáveis; a confirmação leva `alteradoEm`
+  (versão) e o `UPDATE` condicional impede engolir mudança posterior (409 → ler de novo).
+
+#### 3.8 Pedidos 🟢
+
+`pedidos` não tem tabela: acha o orçamento pela chave do pedido (`C5_FILIAL-C5_NUM`) e grava
+`situacaoErp`, `comQuebra` (`pedidoTemQuebra` compara itens do orçamento e do pedido), `notasErp`,
+`itensErp`. Sem orçamento (pedido digitado no ERP) cria um **histórico**: orçamento `origem=erp`,
+`status=aprovado`, sem número de proposta, itens e preços como vieram, `createdAt` = emissão
+(meio-dia UTC). Cliente sem vendedor ou vendedor inexistente → vendedor do cadastro do cliente.
+Exclusão: orçamento da plataforma vira `situacaoErp=cancelado`; histórico do ERP sai (soft delete).
+
+#### 3.9 Comodato por CFOP 🟢
+
+`itemEhComodato`: item é comodato se o ERP informou **ou** o CFOP é 5908/6908 (saída) ou
+1909/2909 (entrada). O cabeçalho é comodato se **todos** os itens vivos são (nota mista continua
+venda). `recalcularComodatoDaNota` roda depois de gravar. A lista é a mesma da migration
+`20261007030000_comodato_por_cfop`.
+
+#### 3.10 Outras regras 🟢
+
+- Duplicata (`F1_DUPL`/`F2_DUPL`): omitido não mexe; vazio = "não gerou" (`geraDuplicata=false`).
+- Título: `nossoNumero`/`carteira`/linha digitável só dígitos; código de barras só se tiver **44**
+  dígitos, senão `null` (e o título entra). Vendedor vazio/desconhecido → `null`, sem 404.
+- Nota de entrada: armazém do item inexistente → item sem armazém; participante conforme `tipo`
+  (devolução de venda aponta para **cliente**).
+- Nota de saída: `tipo` de fornecedor (devolução de compra) aponta para fornecedor.
+- Cliente `PATCH`: diff contra o estado atual via `ClienteAlteracoesService.registrar` com
+  `aplicarDireto: false`; reenviar o mesmo cadastro não gera solicitação.
+- Batimento `POST /integracao/comunicacao`: upsert do parâmetro `ULTIMA_COMUNICACAO_ERP`.
+
+### 4. Achados
+
+#### 4.1 `conferirEndpointsAtivos` lê sob RLS sem contexto — endpoint desligado não bloqueia a carga 🟡
+
+`IntegracaoCargasService.conferirEndpointsAtivos` usa `this.prisma.integracaoEndpointConfig.findMany`
+**fora de `withTenant`**, em tabela com RLS por empresa. O próprio `ApiKeyGuard` documenta que
+esse padrão volta vazio quando a requisição é por chave de API ("desativar no monitor não
+bloqueava nada"). Na carga isso vale para **as duas chamadas**: no recebimento pelo ERP e a cada
+bloco no `CargasProcessador` (job, sem contexto nenhum). Só o caminho da tela (JWT) leva a empresa
+ao banco. Efeito: desligar `titulos-receber` para o `PUT` **não impede** a mesma carga de entrar
+por arquivo, que é justamente o que o comentário diz evitar. Inferido da leitura (não executado).
+🔴 confirmar com um teste: desativar a entidade, subir carga com a chave.
+
+#### 4.2 `arquivo/importar` ignora validação e o monitor 🔴
+
+`IntegracaoFileService.importarArquivo` (TXT/JSON legado) chama `service.upsert(empresaId, apiKeyId,
+item.payload)` com `payload: any`: **não passa pelo schema Zod** do item (que o `PUT` e a carga
+aplicam), nem por `conferirEndpointsAtivos`; o guard só vê a chave `arquivo`. Consequências: campo
+faltando ou com tipo errado chega ao Prisma (erro por item, ou gravação de texto onde se espera número);
+entidade desativada continua entrando; linha que não é JSON é **ignorada em silêncio** (nem entra
+em `erros`); `orcamentos` e `pedidos` não têm `case` (apesar de `orcamentosService` estar injetado,
+sem uso). O corpo é JSON de até 24 MB e não tem o teto de 1.000 do lote.
+
+#### 4.3 `exportar` não exporta a fila de alterações de cliente 🔴
+
+`GET arquivo/exportar` monta `clientes-alteracoes` com `clientesService.findAll` — as **500 primeiras
+razões sociais do cadastro**, com o cliente inteiro como `payload` — e não a fila `cliente_envios_erp`
+que `GET clientes/alteracoes` entrega (só campos aprovados). Os `orcamentos-pendentes` usam
+`findAllPendentes` limitado a 500, e esse caminho não confirma nada (o `PATCH` de vínculo é outro
+endpoint). Se o ERP consumir o TXT, vai reaplicar o cadastro inteiro como se fosse alteração, e a
+fila nunca é confirmada.
+
+#### 4.4 Duas portas para o cliente, com regras diferentes 🟡
+
+Decisão de 2026-08-14: o ERP **não grava direto** em cliente, tudo entra pela fila de aprovação.
+Só vale no `PATCH`. `POST`, `PUT` em lote e carga por arquivo gravam **direto** (`upsert` com
+`update` do payload inteiro, campo omitido vira `null`), e a sincronização completa do ERP sobrescreve
+o que uma pessoa aprovou na plataforma (inclusive `vendedorId`, `tabelaPrecoId`, e-mail, telefone).
+Pode ser intencional (o cadastro nasce no ERP). 🔴 confirmar com o usuário qual é a regra para
+carga/`PUT`.
+
+#### 4.5 Conta bancária criada em silêncio, contra o comentário 🟡
+
+`resolverContaBancaria` (títulos) diz em comentário que falhar com 404 quando a descrição não
+bate é **proposital**, para o boleto não sair com o convênio errado; o código, porém, no passo 3
+**cria a conta** com valores padrão (banco `237`, agência `0000`, conta `000000`, carteira `09`
+quando a descrição não tem partes). Uma descrição com erro de digitação gera conta nova, sem
+convênio, e a 2ª via sai por ela. Aparece em `contas-bancarias` sem ninguém ter cadastrado.
+
+#### 4.6 `resolverProduto` por substring escolhe produto errado em silêncio 🟡
+
+Quando `chave`/`codigoErp` não casam exatamente, o `findFirst` com `contains` (sem `orderBy`)
+devolve o primeiro produto cujo código **contenha** o texto: `"001"` acha `"A001"`. Usado em
+`estoque` e `tabelas-preco` — o preço de um item da tabela pode ir para outro produto. O resto
+do módulo (notas, orçamentos, pedidos) usa `chave` exata, e vira 404. Dois comportamentos para o
+mesmo campo `produtoChave`.
+
+#### 4.7 `PUT` de orçamento sobrescreve orçamento aprovado 🟡
+
+`PATCH` recusa alterar orçamento `aprovado` (409). O `upsert` (POST/PUT/carga) **não confere o
+status**: atualiza itens, preços (recalculados), `status` e `ativo` de um orçamento já aprovado,
+vinculado ou de `origem=erp` (histórico de pedido, de mesma chave). `remove` também não confere.
+
+#### 4.8 Item e cabeçalho divergem em nota quando só o cabeçalho muda 🟡
+
+Itens de nota guardam cópia de `clienteId`, `vendedorId`, `dtEmissao`, `ano`, `mes` (usada nas
+análises). No `PATCH` que muda `dtEmissao` ou cliente **sem reenviar `itens`**, só o cabeçalho
+muda; os itens ficam com a data/cliente antigos. No `PUT` o mesmo ocorre com item ausente do
+payload (não é excluído nem recalculado).
+
+#### 4.9 `estoque`: dois critérios para achar a linha → colisão de chave 🟡
+
+`findFirst({OR:[{chave},{produtoId, armazemId}]})` pode devolver a linha de uma chave e, ao
+atualizar com `chave: input.chave`, bater no índice único da outra (erro por item no lote).
+Considera também linhas excluídas.
+
+#### 4.10 Demais 🟡
+
+- `pedidos.upsertLote` conta tudo como `atualizado`, mesmo quando criou histórico.
+- `tabelas-preco`: o comentário diz "linha que não veio mais não existe", mas `sincronizarFilhos`
+  só remove `delete: true`; item retirado no ERP sem a marca fica na tabela.
+- `clientes`: `vendedorChave = "01-"` (filial sem código) → 404, enquanto tabela/condição
+  usam `normalizarChaveOpcional` e títulos/pedidos tratam o vazio.
+- Filas com paginação por `skip/take` sobre um filtro que o `PATCH` esvazia: o ERP que processa a
+  página 1 e pede a 2 pula registros (seguro só se ele sempre lê a página 1).
+- `vincular` lê e grava sem lock: dois vínculos simultâneos com chaves diferentes passam os dois.
+- Limite 60 req/min por IP e não por chave: vários ambientes atrás do mesmo IP dividem a cota.
+- A chave de API não tem escopo: uma chave lê e grava **todas** as entidades; sem lista de IPs.
+
+### 5. Estruturas de dados 🟢
+
+`IntegracaoApiKey`, `IntegracaoEndpointConfig`, `IntegracaoCarga`, `IntegracaoCargaErro`,
+`ClienteEnvioErp`, `ComodatoEnvioErp` (e as entidades de negócio, descritas nos módulos próprios).
+Ver `data-dictionary.md`, seção `integracao`.
+
+### 6. Metadados 🟢
+
+`INTEGRACAO_LOTE_MAX = 1000`; `INTEGRACAO_CARGA_MAX_BYTES = 100 MB`; `CARGA_MAX_DESCOMPACTADO = 512 MB`;
+varredura 15 s; parada 10 min; 5 tentativas; `ULTIMO_USO_THROTTLE_MS = 60 s`; `UPSERT_TIMEOUT_MS`
+nas tabelas de preço; CFOPs de comodato `5908/6908/1909/2909`; `PARAMETRO_ULTIMA_COMUNICACAO_ERP`;
+parâmetros lidos: `ARMAZEM_PADRAO`, `DESCONTO_ACIMA_LIMITE_BLOQUEIA`.
+
+### 7. Dependências e testes
+
+`PrismaService`, `ParametrosModule` (orçamentos, produtos), `ClientesModule`
+(`ClienteAlteracoesService`), módulo `orcamentos` (cálculo, numeração, validade, atividade de
+retorno), `integracao-keys` (catálogo de endpoints). Consumidores: o ERP Protheus (fontes
+AdvPL `BJPLA002`–`BJPLA005`), Administração > Integração (cargas, monitor), painel Início
+(`status-integracao.service`). **Testes:** 20 specs (contrato de chave, chaves opcionais, datas
+civis, lote, exclusão de itens, comodato, cargas — formatos, leitura de arquivo e bloco —,
+clientes, comunicação). **Sem teste** para: `ApiKeyGuard`, `arquivo/importar|exportar`, filas de
+envio, `pedidos`, `estoque`, `conferirEndpointsAtivos`.
+
+---
+
+## Módulo `integracao-keys`
+
+**Caminho:** `apps/api/src/modules/integracao-keys/` — `integracao-keys.controller.ts` (136),
+`integracao-keys.service.ts` (~130), `integracao-endpoints.service.ts` (~70),
+`integracao-endpoints.catalogo.ts`, `dto/integracao-api-key.dto.ts`, 1 spec. Contratos:
+`packages/contracts/src/integracao-api-key.ts`, `integracao-endpoint.ts`.
+
+### 1. Responsabilidade 🟢
+
+Administração, **com login de usuário**, de quem pode chamar a API de integração: emitir, listar,
+revogar e excluir **chaves de API** da empresa ativa, e o **monitor de endpoints** (ligar/desligar
+cada um dos 20 endpoints da integração por empresa, com último uso e total de chamadas).
+
+### 2. Rotas 🟢
+
+`JwtAuthGuard` + `PermissionsGuard`, empresa = a ativa do token, rotina `integracao`.
+
+| Rota | Permissão | Comportamento |
+|---|---|---|
+| `GET /integracao-keys/endpoints` | `visualizar` | catálogo + estado por empresa (sem linha = ativo) |
+| `PATCH /integracao-keys/endpoints/:endpointKey` `{ativo}` | `editar` | upsert da configuração; 404 se a chave não está no catálogo |
+| `GET /integracao-keys` | `visualizar` | paginada, filtro `ativo` e `search` por nome |
+| `GET /integracao-keys/:id` | `visualizar` | uma chave da empresa |
+| `POST /integracao-keys` `{nome, expiraEm?}` | `cadastrar` | cria; **devolve a chave em claro uma única vez** |
+| `PATCH /integracao-keys/:id` `{nome?, ativo?, expiraEm?}` | `editar` | edita/revoga |
+| `DELETE /integracao-keys/:id` | `excluir` | soft delete e `ativo=false` |
+
+### 3. Algoritmos e lógica
+
+#### 3.1 Emissão da chave 🟢
+
+`itg_` + `randomBytes(30)` em base64url (40 caracteres). Guarda só o **SHA-256** em `chaveHash`
+(único) e o `prefixo` (12 primeiros caracteres) para identificar na tela e no log. A resposta de
+criação é a única em que a chave existe fora do cliente. Não há rotação: perdeu, revoga e cria outra.
+Nenhuma leitura devolve `chaveHash` (`SELECT_SEGURO`).
+
+#### 3.2 Isolamento 🟢
+
+`integracao_api_keys` **não tem RLS** (o `ApiKeyGuard` a consulta antes de existir empresa de
+contexto); o filtro `empresaId` em todas as queries do service é a única barreira entre empresas,
+e o comentário do arquivo manda nunca removê-lo. Conferido: `findAll`, `findOne`, `update`
+(via `findOne`) e `remove` (via `findOne`) filtram sempre.
+
+#### 3.3 Revogação 🟢
+
+`ativo=false`, `deletedAt` ou `expiraEm` vencido: o `ApiKeyGuard` lê o banco a cada requisição, então
+vale **na hora** para as chamadas novas.
+
+#### 3.4 Monitor 🟢
+
+`listarEndpoints` cruza `CATALOGO_ENDPOINTS_INTEGRACAO` (20 entradas, uma por controller) com
+`integracao_endpoint_configs`. `alternarStatus` faz upsert da linha. O `ApiKeyGuard` e as cargas
+consultam essa mesma tabela (ver `integracao`, 4.1).
+
+### 4. Achados
+
+#### K.1 Carga em andamento não confere a chave 🟡
+
+`CargasProcessador.processar` lê só `carga.apiKeyId` para a autoria dos registros e **nunca confere**
+se a chave ainda está ativa, dentro da validade ou sem `deletedAt`. Quem revoga ou exclui uma chave
+suspeita pela tela não interrompe uma carga já recebida: ela segue na fila e grava (em nome da chave
+revogada) até terminar. Cancelar a carga é um passo separado, que ninguém sabe que precisa fazer.
+
+#### K.2 `PATCH endpoints/:endpointKey` sem DTO 🟡
+
+`@Body('ativo') ativo: boolean` sem schema, seguido de `Boolean(ativo)`: corpo sem o campo vira
+`false` (**desativa** o endpoint), e o texto `"false"` vira `true`. O pipe global de Zod só valida
+DTOs; aqui nada valida. A tela envia booleano, então só aparece com chamada manual ou cliente novo.
+
+#### K.3 Sem rastro de quem mudou o monitor, e validade no passado 🟡
+
+`alternarStatus` não grava `createdBy`/`updatedBy`: quem desligou `titulos-receber` não fica
+registrado (e o ERP começa a levar 403). `expiraEm` no passado é aceito na criação (a chave nasce
+vencida). Sem limite de chaves por empresa.
+
+#### K.4 Observações 🟢
+
+- O catálogo é fixo no código, sem teste que o compare com os controllers: endpoint novo sem entrada
+  no catálogo some do monitor (e o guard o mede com o nome cru da chave).
+- Desligar `comunicacao` ou `cargas` pelo monitor também vale, mas não há aviso na tela do que isso
+  interrompe.
+
+### 5. Estruturas de dados 🟢
+
+`IntegracaoApiKey` e `IntegracaoEndpointConfig` — ver `data-dictionary.md`, seção `integracao`.
+
+### 6. Metadados 🟢
+
+Prefixo `itg_`; 30 bytes aleatórios; prefixo exibido com 12 caracteres; nome 1–100; 20 endpoints no catálogo.
+
+### 7. Dependências e testes
+
+`PrismaService`, `@plataforma/contracts`. Consumidores: `apps/web` Administração > Integração
+(chaves, monitor, cargas) e o `ApiKeyGuard`/`IntegracaoCargasService` (leem o monitor). Testes: só
+`integracao-endpoints.service.spec.ts`. **Sem teste** do `IntegracaoKeysService` (emissão, hash,
+isolamento por empresa, `SELECT_SEGURO`).

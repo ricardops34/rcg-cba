@@ -2189,3 +2189,107 @@ Sem tabela própria. Resposta de `GET /escopo/vendedores`:
 ### `ConcederSuporte` (Zod, não aplicado no controller) 🟢
 
 `motivo` (5–500), `duracaoHoras` (inteiro 1–72, padrão 4).
+
+---
+
+## Módulo `integracao`
+
+As entidades de negócio que a API grava (`Produto`, `Cliente`, `TituloReceber`, `NotaSaida`...) estão
+nos módulos de cada uma. Aqui ficam as tabelas **da própria integração**.
+
+### `IntegracaoApiKey` (tabela `integracao_api_keys`) 🟢
+
+**Sem RLS** de propósito (o `ApiKeyGuard` consulta por `chaveHash` antes de existir empresa de
+contexto); o filtro por `empresaId` é a única barreira nas telas. Índice `[empresaId]`.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | |
+| `empresaId` | String | FK `Empresa` |
+| `nome` | String | 1–100 |
+| `chaveHash` | String | **único**; SHA-256 da chave em claro |
+| `prefixo` | String | 12 primeiros caracteres (`itg_xxxxxxxx`) |
+| `ativo` | Boolean | padrão `true`; `false` revoga na hora |
+| `expiraEm` | DateTime? | nulo = não expira |
+| `ultimoUso`, `ultimaColeta`, `ultimoEnvio` | DateTime? | batimento do guard (no máximo 1×/min) |
+| `createdAt`, `updatedAt`, `deletedAt`, `createdBy`, `updatedBy`, `deletedBy` | | auditoria e soft delete |
+
+### `IntegracaoEndpointConfig` (tabela `integracao_endpoint_configs`) 🟢
+
+RLS por empresa. Único `[empresaId, endpointKey]`. Sem linha = endpoint **ativo**.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `endpointKey` | String | uma das 20 chaves do catálogo |
+| `nome` | String | do catálogo |
+| `ativo` | Boolean | padrão `true` |
+| `ultimoUso`, `totalChamadas` | DateTime?, Int | estatística gravada pelo guard |
+| auditoria e soft delete | | |
+
+### `IntegracaoCarga` (tabela `integracao_cargas`) 🟢
+
+RLS por empresa. Índice `[empresaId, situacao, createdAt]`.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `apiKeyId` | String | chave em nome da qual a carga corre (a tela escolhe uma da empresa) |
+| `descricao` | String? | até 200 |
+| `arquivo` | Bytes | **sempre gzip**, no banco (sobrevive a redeploy) |
+| `tamanho` | Int | bytes recebidos |
+| `entidades` | Json | linhas por entidade, contadas no recebimento |
+| `situacao` | enum | `aguardando` (tela) · `recebida` (fila) · `processando` · `concluida` · `cancelada` · `erro` |
+| `totalLinhas`, `linhasProcessadas` | Int | progresso |
+| `ultimaLinha` | Int | checkpoint de retomada (linha em branco conta na posição) |
+| `criados`, `atualizados`, `excluidos`, `erros` | Int | contadores |
+| `mensagem` | String? | motivo quando a carga inteira parou |
+| `cancelarSolicitado` | Boolean | atendido no fim do bloco |
+| `tentativas` | Int | passou de 5 → `erro` |
+| `iniciadaEm`, `concluidaEm`, `createdAt`, `updatedAt` | DateTime | `updatedAt` é o batimento (parado 10 min = retomar) |
+
+### `IntegracaoCargaErro` (tabela `integracao_carga_erros`) 🟢
+
+RLS por empresa; `onDelete: Cascade` da carga. Índice `[cargaId, linha]`.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `cargaId` | String | FK |
+| `linha` | Int | linha do arquivo |
+| `entidade` | String | |
+| `chave` | String? | até 200 |
+| `mensagem` | String | até 1000 |
+
+### Filas de envio ao ERP 🟢
+
+- `ClienteEnvioErp` (`cliente_envios_erp`): `clienteId`, `alteracaoId?` (`SetNull`), `campos String[]`
+  (campos da plataforma que mudaram), `situacao` (`pendente`/`enviado`), `criadoEm`, `enviadoEm?`.
+  Índice `[empresaId, situacao, criadoEm]`.
+- `ComodatoEnvioErp` (`comodato_envios_erp`): `produtoId` (o equipamento), `situacao`, `criadoEm`,
+  `alteradoEm` (**versão** devolvida na confirmação), `enviadoEm?`. Alimentada por **trigger**.
+- Orçamento pendente não tem fila própria: é o filtro `chave = null AND status = aprovado AND
+  erroIntegracao = null` sobre `orcamentos` (campos `erroIntegracao`, `erroIntegracaoEm`).
+
+### Contrato do lote (Zod, `packages/contracts/src/integracao.ts`) 🟢
+
+Item de lote = schema de criação **parcial** + `chave` + `excluido?` (`integracao<Entidade>LoteItemSchema`).
+Resposta `IntegracaoLoteResultado`: `processados`, `criados`, `atualizados`, `excluidos`,
+`erros[{indice, chave|null, mensagem}]`. Linha de carga: `{"entidade": "<rota>", "registro": {...}}`;
+entidades aceitas (`INTEGRACAO_CARGA_ENTIDADES`): as 16 com `PUT`, **sem** `equipamentos-comodato`,
+`comunicacao`.
+
+### Marcas de auditoria 🟢
+
+`updatedBy`/`createdBy`/`deletedBy` = `integracao:<apiKeyId>` (`autorIntegracao`).
+
+---
+
+## Módulo `integracao-keys`
+
+Sem tabela própria: usa `IntegracaoApiKey` e `IntegracaoEndpointConfig` (ver seção `integracao`).
+
+### DTOs (Zod, `packages/contracts/src/integracao-api-key.ts`) 🟢
+
+- `integracaoApiKeyCreateSchema`: `nome` (1–100), `expiraEm` (data, nulo = não expira).
+- `integracaoApiKeyUpdateSchema`: `nome?`, `ativo?` (`false` revoga), `expiraEm?`.
+- `integracaoApiKeyCriadaSchema`: a leitura + `chave` em claro (só na resposta do `POST`).
+- Leitura nunca traz `chaveHash`; traz `prefixo`, `ultimoUso`, `expiraEm`.
+- `PATCH endpoints/:endpointKey`: **sem DTO** — corpo cru `{ativo}`.

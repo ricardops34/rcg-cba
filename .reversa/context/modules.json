@@ -2824,6 +2824,169 @@
       "test_files": [],
       "complexity": "low",
       "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "integracao",
+      "path": "apps/api/src/modules/integracao",
+      "responsibility": "API publica de integracao com o ERP por chave de API: coleta (upsert por chave, lote, carga por arquivo, TXT legado) e tres filas de envio ao ERP (orcamentos pendentes, alteracoes de cliente, comodato).",
+      "files": [
+        "integracao.module.ts",
+        "guards/api-key.guard.ts",
+        "common/*",
+        "cargas/*",
+        "import/*",
+        "comunicacao/*",
+        "pedidos/*",
+        "<entidade>/*.controller.ts|service.ts (16 entidades)"
+      ],
+      "entities": [
+        "IntegracaoApiKey",
+        "IntegracaoEndpointConfig",
+        "IntegracaoCarga",
+        "IntegracaoCargaErro",
+        "ClienteEnvioErp",
+        "ComodatoEnvioErp"
+      ],
+      "main_functions": [
+        "ApiKeyGuard.canActivate",
+        "processarLote",
+        "decidirUpsert/camposDaDecisao",
+        "sincronizarFilhos/consolidarFilhos",
+        "resolverCliente/resolverVendedor/resolverProduto",
+        "CargasProcessador.varrer/reservar/processar",
+        "aplicarBloco",
+        "IntegracaoCargasService.receber/reprocessar/cancelar",
+        "IntegracaoFileService.importarArquivo/exportarArquivo",
+        "IntegracaoOrcamentosService.upsert/vincular/registrarErro/findAllPendentes",
+        "IntegracaoPedidosService.atualizar/cancelar/gravarHistorico",
+        "IntegracaoClientesAlteracoesService.listarPendentes/marcarAplicada",
+        "IntegracaoEquipamentosComodatoService.listarPendentes/marcarAplicada",
+        "recalcularComodatoDaNota",
+        "IntegracaoTitulosReceberService.resolverContaBancaria"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "ParametrosModule",
+        "ClientesModule (ClienteAlteracoesService)",
+        "modulo orcamentos (calculo, numeracao, validade)",
+        "integracao-keys (catalogo de endpoints)",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "ERP Protheus (BJPLA002-005)",
+        "apps/web Administracao > Integracao",
+        "painel Inicio (status-integracao)"
+      ],
+      "business_rules": [
+        {
+          "description": "ERP e a fonte da verdade: POST/PUT sao upsert por chave; excluido reativa; nunca 409",
+          "location": "common/decidir-upsert.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Lote em serie, ate 1000, um item ruim nao derruba os demais; 200 com relatorio",
+          "location": "common/processar-lote.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Carga por arquivo: uma por vez por empresa, retomavel por checkpoint, 5 tentativas, mesmo schema do PUT",
+          "location": "cargas/*",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Comodato por CFOP (5908/6908 saida, 1909/2909 entrada); cabecalho so se todos os itens",
+          "location": "common/comodato.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Cliente via PATCH entra na fila de aprovacao; via POST/PUT/carga grava direto (intencao a confirmar)",
+          "location": "clientes/integracao-clientes.service.ts",
+          "confidence": "INFERIDO"
+        }
+      ],
+      "gaps": [
+        "conferirEndpointsAtivos le sob RLS sem contexto: endpoint desligado nao bloqueia a carga (inferido, nao executado)",
+        "arquivo/importar sem schema Zod e sem monitor; linha invalida ignorada em silencio; orcamentos e pedidos sem case",
+        "arquivo/exportar exporta cadastro de clientes em vez da fila de alteracoes",
+        "PUT/carga de cliente grava direto, contra a decisao de fila de aprovacao (so PATCH respeita) - confirmar",
+        "resolverContaBancaria cria conta em silencio, contra o comentario de 404 proposital",
+        "resolverProduto por substring em estoque e tabelas-preco",
+        "upsert de orcamento ignora status aprovado e origem erp",
+        "itens de nota divergem do cabecalho quando so o cabecalho muda",
+        "estoque: busca por chave OU produto+armazem pode colidir",
+        "sem testes: ApiKeyGuard, arquivo, filas de envio, pedidos, estoque"
+      ],
+      "test_files": [
+        "chave-integracao.contract.spec.ts",
+        "chaves-opcionais.contract.spec.ts",
+        "data-civil.contract.spec.ts",
+        "itens-delete.contract.spec.ts",
+        "lote.contract.spec.ts",
+        "common/*.spec.ts",
+        "cargas/*.spec.ts",
+        "clientes/integracao-clientes.service.spec.ts",
+        "comunicacao/integracao-comunicacao.service.spec.ts"
+      ],
+      "complexity": "high",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "integracao-keys",
+      "path": "apps/api/src/modules/integracao-keys",
+      "responsibility": "Administracao (com login) das chaves de API da integracao ERP e do monitor que liga/desliga cada um dos 20 endpoints por empresa.",
+      "files": [
+        "integracao-keys.module.ts",
+        "integracao-keys.controller.ts",
+        "integracao-keys.service.ts",
+        "integracao-endpoints.service.ts",
+        "integracao-endpoints.catalogo.ts",
+        "dto/integracao-api-key.dto.ts"
+      ],
+      "entities": [
+        "IntegracaoApiKey",
+        "IntegracaoEndpointConfig"
+      ],
+      "main_functions": [
+        "IntegracaoKeysService.create/findAll/findOne/update/remove",
+        "IntegracaoEndpointsService.listarEndpoints/alternarStatus"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "apps/web Administracao > Integracao (chaves, monitor, cargas)",
+        "ApiKeyGuard e IntegracaoCargasService (leem o monitor)"
+      ],
+      "business_rules": [
+        {
+          "description": "Chave itg_ + 30 bytes base64url; so o SHA-256 fica no banco; chave em claro aparece uma unica vez",
+          "location": "integracao-keys.service.ts:create",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "integracao_api_keys sem RLS: o filtro empresaId e a unica barreira entre empresas",
+          "location": "integracao-keys.service.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Endpoint sem linha no monitor = ativo",
+          "location": "integracao-endpoints.service.ts:listarEndpoints",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "carga ja recebida continua processando depois que a chave e revogada, expirada ou excluida",
+        "PATCH endpoints/:endpointKey sem DTO: corpo sem ativo desativa, \"false\" ativa",
+        "monitor sem updatedBy; expiraEm no passado aceito; sem limite de chaves por empresa",
+        "catalogo fixo sem teste contra os controllers",
+        "sem teste do IntegracaoKeysService"
+      ],
+      "test_files": [
+        "integracao-endpoints.service.spec.ts"
+      ],
+      "complexity": "low",
+      "confidence": "CONFIRMADO"
     }
   ]
 }
