@@ -186,8 +186,13 @@
   }
   body {
     @apply bg-background text-foreground;
+    overflow-x: clip;
+    max-width: 100%;
   }
   html {
     @apply font-sans;
+    /* Nada na página pode abrir rolagem lateral: no iPhone, um elemento que
+       passa da borda alarga o documento inteiro, topbar incluída. */
+    overflow-x: clip;
   }
 }

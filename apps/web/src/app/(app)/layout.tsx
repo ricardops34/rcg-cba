@@ -81,7 +81,7 @@ export default function AppShellLayout({
     <PlataformaAccessGate>
       <TourProvider>
         <RegistroUsoRotina />
-        <div className="flex min-h-svh flex-col">
+        <div className="flex min-h-svh w-full max-w-full min-w-0 flex-col overflow-x-clip">
           <FaixaInstitucional />
           <AvisoAvaliacao />
           <AvisoSuportePlataforma />
