@@ -2987,6 +2987,94 @@
       ],
       "complexity": "low",
       "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "portal-cliente",
+      "path": "apps/api/src/modules/portal-cliente",
+      "responsibility": "Area externa do contato do cliente: login por e-mail e senha (JWT proprio de 15 min + refresh rotativo de 30 dias) e decisao (aprovar/recusar) dos orcamentos enviados; administracao do acesso pela empresa.",
+      "files": [
+        "portal-cliente.module.ts",
+        "portal-cliente-auth.controller.ts",
+        "portal-cliente-auth.service.ts",
+        "portal-cliente.controller.ts",
+        "portal-cliente.service.ts",
+        "portal-cliente-admin.controller.ts",
+        "portal-cliente-admin.service.ts",
+        "portal-cliente.strategy.ts",
+        "portal-cliente.guard.ts",
+        "portal-cliente-auth.types.ts",
+        "portal-cliente-user.decorator.ts",
+        "dto/portal-cliente.dto.ts",
+        "apps/portal-cliente (web)"
+      ],
+      "entities": [
+        "PortalClienteConfig",
+        "PortalClientePerfil",
+        "PortalClienteRotina",
+        "PortalClientePerfilPermissao",
+        "PortalClienteHabilitacao",
+        "PortalClienteCredencial",
+        "PortalClienteSessao",
+        "PortalClienteAcessoLog"
+      ],
+      "main_functions": [
+        "PortalClienteAuthService.login/refresh/logout/emitir/contexto",
+        "PortalClienteService.me/listarOrcamentos/decidirOrcamento",
+        "PortalClienteAdminService.salvarConfig/criarAcesso",
+        "PortalClienteStrategy.validate"
+      ],
+      "dependencies": [
+        "PrismaService (withPortalCredential, withPortalAudit, withTenant)",
+        "@nestjs/jwt",
+        "bcryptjs",
+        "whereEmpresaAcessivel",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "apps/portal-cliente (web externa)",
+        "integracao (orcamentos/pendentes enxerga o orcamento aprovado)"
+      ],
+      "business_rules": [
+        {
+          "description": "Identidade do portal vem de ClienteContato; credencial separada, sem base propria de pessoas",
+          "location": "portal-cliente-admin.service.ts:criarAcesso",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Login so com contato, cliente, habilitacao e config ativos; 5 falhas bloqueiam 15 min",
+          "location": "portal-cliente-auth.service.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Orcamento so recebe decisao do cliente se estiver enviado; aprovado entra na fila do ERP",
+          "location": "portal-cliente.service.ts:decidirOrcamento",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Historico de pedidos do ERP (origem erp) nao aparece no portal (decisao de 30/09/2026)",
+          "location": "portal-cliente.service.ts:listarOrcamentos",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "aprovacao pelo portal ignora orcamentoExigeAutorizacao (trava de desconto) e vai direto para a fila do ERP",
+        "validade vencida: update expirado e revertido pela excecao na mesma transacao; nenhum caminho grava expirado",
+        "decisao sem condicao de status no UPDATE (aprovar e recusar simultaneos)",
+        "decisao nao gera o evento aprovacao_cliente/recusa_cliente do historico interno nem notifica o vendedor",
+        "permissoes e ativo valem ate o token vencer (15 min); situacao da empresa nunca conferida",
+        "login: 423 revela conta existente, sem bcrypt quando nao existe, contador nao zera ao vencer o bloqueio",
+        "sem troca/recuperacao de senha, sem listar/desativar acessos; administracao sem tela",
+        "criarAcesso sobrescreve principal/ativo do contato existente e nao liga config inativa; alias copiado para a credencial",
+        "configuracao do portal quase toda sem leitor; exibirDesconto nao respeitado",
+        "observacao do orcamento exposta ao cliente sem distinguir nota interna",
+        "refresh nao atomico, sem deteccao de reuso; log e sessoes sem limpeza",
+        "so 1 spec: sem teste de login, refresh, criarAcesso, validade e trava de desconto"
+      ],
+      "test_files": [
+        "portal-cliente.service.spec.ts"
+      ],
+      "complexity": "medium",
+      "confidence": "CONFIRMADO"
     }
   ]
 }

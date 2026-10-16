@@ -2293,3 +2293,75 @@ Sem tabela própria: usa `IntegracaoApiKey` e `IntegracaoEndpointConfig` (ver se
 - `integracaoApiKeyCriadaSchema`: a leitura + `chave` em claro (só na resposta do `POST`).
 - Leitura nunca traz `chaveHash`; traz `prefixo`, `ultimoUso`, `expiraEm`.
 - `PATCH endpoints/:endpointKey`: **sem DTO** — corpo cru `{ativo}`.
+
+---
+
+## Módulo `portal-cliente`
+
+### `PortalClienteConfig` (tabela `portal_cliente_configs`) 🟢
+
+RLS por empresa. Uma linha por empresa (`empresaId` único). **Só `ativo` é lido pelo código.**
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `ativo` | Boolean | padrão `false`; exigido no login |
+| `permitirAtualizarCadastro`, `permitirManterContatos` | Boolean | padrão `false`; sem leitor |
+| `exibirDesconto` | Boolean | padrão `false`; **não respeitado** na listagem de orçamentos |
+| `permitirSolicitarDesconto` | Boolean | padrão `false`; sem leitor |
+| `descontoMaximoSolicitavel` | Float | 0–100; sem leitor |
+| `exibirEstoque` | Boolean | padrão `false`; sem leitor |
+| `permitirProdutoForaMix` | Boolean | padrão `true`; sem leitor |
+| `diasValidadeCarrinho` | Int | 1–90, padrão 7; sem leitor |
+| `updatedBy` | String? | nunca gravado |
+
+### `PortalClientePerfil` / `PortalClienteRotina` / `PortalClientePerfilPermissao` 🟢
+
+- Perfil: `empresaId`, `nome` (único por empresa), `descricao`, `sistemaBase`, `ativo`. O perfil base é
+  **"Administrador do cliente"**.
+- Rotina (catálogo global, sem `empresaId`): `id`, `codigo` (único), `nome`, `ordem`, `ativo`.
+  Códigos: `cadastro`, `contatos`, `notas`, `compras`, `titulos`, `orcamentos`, `catalogo`, `carrinho`.
+- Permissão: `(perfilId, rotinaId, acao)` único, `permitido`. Ações: `visualizar`, `cadastrar`, `editar`,
+  `segunda-via`, `aprovar`, `recusar`, `comprar` (conforme a rotina). No JWT vira `"<codigo>.<acao>"`.
+  **Implementadas hoje:** `orcamentos.visualizar|aprovar|recusar`.
+
+### `PortalClienteHabilitacao` (tabela `portal_cliente_habilitacoes`) 🟢
+
+RLS por empresa. `clienteId` único, `ativo` (padrão `false`), `updatedBy`. Liga o portal por cliente.
+
+### `PortalClienteCredencial` (tabela `portal_cliente_credenciais`) 🟢
+
+**Com RLS especial:** policy de tenant + policy "de login" que abre só a linha cujo `id` (ou
+`empresaAlias` + `emailNormalizado`) está nas variáveis da transação (`withPortalCredential`).
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `empresaId` | String | |
+| `contatoId` | String | **único**; FK `ClienteContato` (`Cascade`) |
+| `empresaAlias` | String | cópia do alias **no momento da criação** |
+| `emailNormalizado` | String | minúsculas; único com `empresaAlias` |
+| `senhaHash` | String | bcrypt custo 12 |
+| `tentativasFalhas`, `bloqueadoAte` | Int, DateTime? | 5 falhas → 15 min |
+| `ultimoLogin`, `ativo` | | |
+
+### `PortalClienteSessao` (tabela `portal_cliente_sessoes`) 🟢
+
+**Sem RLS** (o refresh acontece antes de existir tenant). `tokenHash` (SHA-256 do refresh, único),
+`expiresAt` (30 dias), `revogadoEm`, `ip`, `userAgent`. `onDelete: Cascade` da credencial. Sem limpeza.
+
+### `PortalClienteAcessoLog` (tabela `portal_cliente_acessos_log`) 🟢
+
+RLS por empresa e **policy só de INSERT** para o login inválido (por isso o `createMany`). Campos:
+`empresaId?`, `contatoId?`, `email`, `evento` (`login_falha`, `login_sucesso`), `detalhe?`, `ip`,
+`userAgent`, `criadoEm`. Sem limpeza.
+
+### Campos em outras tabelas 🟢
+
+`Orcamento`: `clienteDecididoEm`, `clienteDecididoPorContatoId`, `clienteDecisao`,
+`clienteDecisaoObservacao`. `ClienteContato`: `perfilId` (perfil do portal).
+
+### DTOs (Zod, `packages/contracts/src/portal-cliente.ts`) 🟢
+
+`portalClienteLoginSchema` (`empresaAlias` ≤60, `email`, `senha` 8–128), `portalClienteRefreshSchema`
+(`refreshToken` ≥32), `portalClienteContatoCreateSchema` (`clienteId`, `perfilId?`, `nome` 2–120,
+`email` ≤160, `telefone`/`celular`/`cargo`, `principal` padrão `false`, `ativo` padrão `true`,
+`senhaInicial` 8–128), `portalClienteConfigSchema`. Decisão: `{observacao?}` ≤1000 (DTO local).

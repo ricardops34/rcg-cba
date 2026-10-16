@@ -75,10 +75,10 @@
         "recuperacao-senha",
         "suporte-acesso",
         "integracao",
-        "integracao-keys"
+        "integracao-keys",
+        "portal-cliente"
       ],
       "modules_pending": [
-        "portal-cliente",
         "cadastros",
         "feriados",
         "erros",
@@ -87,7 +87,7 @@
         "inicio",
         "demo"
       ],
-      "last_update": "2026-10-16T10:54:33.300Z"
+      "last_update": "2026-10-16T10:59:17.539Z"
     }
   },
   "engines": [

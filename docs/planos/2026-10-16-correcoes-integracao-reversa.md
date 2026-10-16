@@ -51,3 +51,37 @@ dependem de decisão ou são menores.
 - As duas decisões de comportamento que mexem no contrato com o ERP (4.4 e 4.5) precisam de
   aviso a quem mantém o Protheus (fontes `BJPLA002`–`BJPLA005`) antes do deploy.
 - Registrar no runbook qualquer comando novo que a validação exigir.
+
+## Portal do cliente (escavação de 2026-10-16)
+
+Achados do módulo `portal-cliente` (`_reversa_sdd/code-analysis.md`, seção 4.x do módulo). Também
+**anotados, sem correção e sem reprodução**.
+
+### Decisões pendentes do usuário
+
+- **P.1 — cliente pode efetivar orçamento com desconto acima do máximo?** Hoje a aprovação pelo portal
+  pula `orcamentoExigeAutorizacao` e o orçamento vai à fila do ERP. Se a resposta for "não", o portal
+  deve devolver o 409 da aprovação interna (ou deixar o orçamento em "aguardando autorização").
+- **P.2 — escopo do portal:** as rotinas `notas`, `compras`, `titulos`, `catalogo`, `carrinho`,
+  `cadastro`, `contatos` e as opções da configuração são para fazer ou para tirar do catálogo? E o
+  desconto deve aparecer para o cliente (`exibirDesconto`)?
+- **P.3 — o que `observacao` guarda** na tela de orçamentos (texto da proposta ou nota interna).
+- **P.4 — administração do portal:** criar a tela (config, acessos, desativar, redefinir senha) e a
+  troca/recuperação de senha do contato.
+
+### Etapas
+
+- [ ] 16. **P.1** trava de desconto na decisão do cliente (depende da decisão acima)
+- [ ] 17. **4.2** validade vencida: gravar `expirado` **fora** da transação que lança (ou sem lançar),
+      e conferir o dia da validade
+- [ ] 18. **4.3** decisão com condição de status no `UPDATE` (`updateMany`)
+- [ ] 19. **4.4** decisão do cliente gera `aprovacao_cliente`/`recusa_cliente` e notifica o vendedor
+- [ ] 20. **4.5** conferir contato/cliente/habilitação/config/situação da empresa na decisão (ou token
+      mais curto) e a situação da empresa no login e no refresh
+- [ ] 21. **4.6** login: mesma resposta para conta bloqueada, `bcrypt` com hash falso quando não há
+      credencial, zerar o contador ao vencer o bloqueio, incremento atômico
+- [ ] 22. **4.8** `criarAcesso`: não sobrescrever `principal`/`ativo` do contato; avisar quando a
+      config está inativa; login pelo alias atual (não o copiado)
+- [ ] 23. **4.7/P.4** tela de administração, desativar/redefinir acesso, troca de senha
+- [ ] 24. **4.9/P.2** ler (ou remover) as opções da configuração; respeitar `exibirDesconto`
+- [ ] 25. **4.10** refresh atômico e detecção de reuso, limpeza de log/sessões, testes do módulo

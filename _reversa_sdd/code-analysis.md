@@ -6340,3 +6340,219 @@ Prefixo `itg_`; 30 bytes aleatórios; prefixo exibido com 12 caracteres; nome 1�
 (chaves, monitor, cargas) e o `ApiKeyGuard`/`IntegracaoCargasService` (leem o monitor). Testes: só
 `integracao-endpoints.service.spec.ts`. **Sem teste** do `IntegracaoKeysService` (emissão, hash,
 isolamento por empresa, `SELECT_SEGURO`).
+
+---
+
+## Módulo `portal-cliente`
+
+**Caminho:** `apps/api/src/modules/portal-cliente/` (12 arquivos, ~720 linhas, 1 spec) + app web
+`apps/portal-cliente/` (Next.js; `layout.tsx` e uma única `page.tsx`). Contrato:
+`packages/contracts/src/portal-cliente.ts`. Variável obrigatória: `PORTAL_JWT_ACCESS_SECRET`.
+
+### 1. Responsabilidade 🟢
+
+Área externa onde o **contato de um cliente** (não um usuário da empresa) entra com e-mail e senha e
+**vê e decide os orçamentos enviados a ele** (aprovar ou recusar). A identidade vem do cadastro de
+contatos do cliente (`ClienteContato`, sem base separada); a empresa libera o acesso, escolhe o perfil
+de permissões e liga o portal. Existem três controllers: login (público), portal (token do contato)
+e administração (usuário da empresa, JWT interno).
+
+**Estado real:** só `orcamentos` está implementado (listar, aprovar, recusar). O catálogo de
+rotinas do portal prevê `cadastro`, `contatos`, `notas`, `compras`, `titulos`, `catalogo`,
+`carrinho`, e a configuração tem 9 opções (desconto, estoque, carrinho...); **nenhuma delas tem
+rota nem é lida pelo código**, exceto `ativo`.
+
+### 2. Rotas 🟢
+
+| Rota | Guard | Comportamento |
+|---|---|---|
+| `POST /portal-cliente/auth/login` | público, `@Throttle` 10/min | `{empresaAlias, email, senha}` → `{accessToken, refreshToken, expiresIn: 900}` |
+| `POST /portal-cliente/auth/refresh` | público | troca o refresh por um novo par (rotação) |
+| `POST /portal-cliente/auth/logout` | público | revoga a sessão do refresh enviado |
+| `GET /portal-cliente/me` | `PortalClienteGuard` | contato, cliente, empresa, permissões, config |
+| `GET /portal-cliente/orcamentos` | idem + `orcamentos.visualizar` | orçamentos do cliente em `enviado/aprovado/recusado/expirado`, `origem ≠ erp` |
+| `PATCH /portal-cliente/orcamentos/:id/aprovar` `{observacao?}` | idem + `orcamentos.aprovar` | decide |
+| `PATCH /portal-cliente/orcamentos/:id/recusar` `{observacao?}` | idem + `orcamentos.recusar` | decide |
+| `GET/PUT /portal-cliente-admin/config` | JWT interno, `clientes.visualizar`/`editar` | lê/grava a configuração da empresa |
+| `POST /portal-cliente-admin/acessos` | JWT interno, `clientes.editar` | cria o acesso de um contato |
+
+### 3. Algoritmos e lógica
+
+#### 3.1 Login 🟢
+
+1. `empresaAlias` e `email` em minúsculas; busca a credencial por `(empresaAlias, emailNormalizado)`
+   com `withPortalCredential` (policy pré-tenant da tabela `portal_cliente_credenciais`, que abre
+   só a linha exata do contexto).
+2. `bloqueadoAte` no futuro → **423** "Conta temporariamente bloqueada" (antes de conferir a senha).
+3. Credencial inexistente, inativa ou senha errada (`bcrypt`) → grava `login_falha` em
+   `portal_cliente_acessos_log` (policy só de INSERT) e, se a credencial existe, soma
+   `tentativasFalhas`; **5 falhas → bloqueio de 15 min**. Resposta 401 "Credenciais inválidas".
+4. Senha certa: `emitir`, zera tentativas, grava `ultimoLogin` e `login_sucesso`.
+
+#### 3.2 `emitir` e `contexto` 🟢
+
+`contexto` (em `withTenant`) exige: contato `ativo`, cliente `ativo`, `portalHabilitacao.ativo` do
+cliente e `portalClienteConfig.ativo` da empresa — senão 401 "Acesso ao portal não habilitado".
+As permissões viram `"<rotina>.<acao>"` do perfil do contato (só `permitido = true`).
+O **access token** (JWT, secret próprio, `aud: portal-cliente`, **15 min**) leva `empresaId`,
+`clienteId`, `contatoId`, `perfilId`, nome, e-mail e a **lista de permissões**. O **refresh** é
+`randomBytes(48)` base64url, guardado só como SHA-256 em `portal_cliente_sessoes` (30 dias, com IP e
+navegador).
+
+#### 3.3 Refresh 🟢
+
+Acha a sessão pelo hash; recusa se não existe, está revogada, vencida ou se a credencial está
+inativa (401 "Sessão inválida"). **Revoga a sessão antiga e emite outra** (rotação), e `emitir`
+refaz o `contexto` (refaz as permissões a partir do banco). Logout revoga sem exigir token válido.
+
+#### 3.4 Guard e estratégia 🟢
+
+`PortalClienteStrategy` valida só a assinatura e a validade (`audience` fixo); **não consulta o banco**:
+o usuário da requisição é o conteúdo do token. A API **não sobe** sem `PORTAL_JWT_ACCESS_SECRET`
+(erro no construtor da estratégia), mesmo sem nenhum cliente usando o portal.
+
+#### 3.5 Orçamentos do portal 🟢
+
+- **Listar:** `withTenant`, filtra por empresa **e** `clienteId` do token. Devolve itens,
+  `percDesconto`, nome do vendedor, condição de pagamento, `observacao` e a decisão anterior.
+- **Decidir:** exige a permissão `orcamentos.aprovar` ou `.recusar` do token. Acha o orçamento da empresa
+  e do cliente. Já decidido igual → devolve o registro (idempotente). Status ≠ `enviado` → 409.
+  Validade vencida → tenta gravar `expirado` e responde 409. Senão grava `status`, `clienteDecididoEm`,
+  `clienteDecididoPorContatoId`, `clienteDecisao`, `clienteDecisaoObservacao`,
+  `updatedBy = portal-cliente:<contatoId>` e cria uma **Atividade** concluída (`tarefa`) na timeline do cliente.
+
+Efeito colateral do `aprovado`: o orçamento passa a atender o filtro da fila
+`GET /integracao/orcamentos/pendentes` (`status = aprovado`, sem chave, sem erro) e **vai ao ERP**.
+
+#### 3.6 Administração: criar acesso 🟢
+
+Em uma transação: exige `empresa.alias` e empresa acessível (`whereEmpresaAcessivel`); cliente
+ativo da empresa. Sem `perfilId`, cria/reativa o perfil **"Administrador do cliente"**
+(`sistemaBase`) com **todas** as rotinas ativas do catálogo (ações por rotina em `ACOES`) — erro
+se o catálogo estiver vazio. Com `perfilId`, confere que existe e está ativo. O contato é
+procurado por e-mail no cliente (sem diferenciar maiúsculas): existindo, **atualiza** nome,
+telefone, celular, cargo, `principal`, `ativo` e perfil; senão, cria. Se o contato ou o par
+`(alias, e-mail)` já tem credencial → 409. Liga a habilitação do cliente, cria a config da empresa
+(`ativo: true`, se não existir) e a credencial com `senhaInicial` em `bcrypt` custo 12.
+
+### 4. Achados
+
+#### 4.1 A aprovação pelo portal ignora a trava de desconto 🔴
+
+A aprovação interna (`OrcamentosService`, no cadastro e na atualização) recusa efetivar o orçamento
+quando alguma linha bate ou passa o desconto máximo da regra e não há autorização
+(`orcamentoExigeAutorizacao` → 409 "solicite a autorização de desconto antes de efetivar").
+`decidirOrcamento` grava `status = aprovado` direto, **sem chamar essa checagem**. Um orçamento
+enviado com desconto acima do limite, ou cujo desconto o vendedor ainda ia pedir, é aprovado pelo
+cliente e **entra na fila do ERP** (4.1 do módulo `integracao`: o ERP é quem cria o pedido), sem
+que ninguém da empresa tenha olhado. É o sentido mais sensível da integração
+(orçamento → ERP). 🔴 confirmar com o usuário se o cliente pode efetivar nesses casos.
+
+#### 4.2 A validade vencida nunca vira `expirado` 🟡
+
+`decidirOrcamento` faz `update({status: 'expirado'})` e **em seguida lança**
+`ConflictException`. Tudo roda numa transação (`withTenant`), e a exceção a desfaz: o `update` nunca
+persiste. Em `modules/`, nenhum outro caminho grava `expirado` (a lista do portal e o tipo do status
+o preveem). O cliente vê o orçamento vencido como `enviado` e recebe o 409 toda vez; o vendedor
+também. Além disso, `dataValidade < agora` compara uma data (meia-noite) com o instante atual: no
+**próprio dia de validade** o orçamento já conta como vencido, a depender de como a data é guardada.
+
+#### 4.3 A decisão não tem condição no `UPDATE` 🟡
+
+Lê o orçamento e atualiza por `id`, sem exigir `status = enviado` na própria gravação. Aprovar e
+recusar ao mesmo tempo (duas abas, ou o vendedor mudando o orçamento) passam as duas pelo teste e
+a última grava. A idempotência só cobre repetir a mesma decisão.
+
+#### 4.4 A decisão do cliente não vira o evento do histórico interno 🟡
+
+A aprovação interna do cliente registra `aprovacao_cliente`/`recusa_cliente`
+(`registrarAtividadeOrcamento`), que a tela já sabe mostrar. O portal cria uma `tarefa` genérica
+("Orçamento #N aprovado pelo cliente"), com a observação do cliente como descrição, e não notifica o
+vendedor (nenhuma notificação no código do módulo). Quem acompanha o histórico vê dois tipos de
+evento para a mesma coisa.
+
+#### 4.5 Permissões e "ativo" valem só até o token vencer 🟡
+
+A estratégia não consulta o banco, e as permissões vão **dentro do token** (15 min). Desativar o
+contato, o cliente, a habilitação ou o portal, ou tirar uma permissão do perfil, não corta quem
+já tem token: pode listar e **aprovar orçamentos** por até 15 minutos. `listarOrcamentos` e
+`decidirOrcamento` não conferem nada além do token; só `/me` e o refresh reconsultam.
+A situação da empresa (suspensa, cancelada, teste vencido) **nunca** é conferida no login nem no
+refresh: o contato de uma empresa suspensa continua entrando e aprovando.
+
+#### 4.6 Login: bloqueio e enumeração de conta 🟡
+
+- **Enumeração:** conta bloqueada responde **423** (e a inexistente, 401): revela que o e-mail existe.
+  Com credencial inexistente o `bcrypt.compare` não roda, então a resposta é mais rápida — o tipo
+  de diferença de tempo que o lote de 15/10 corrigiu no "esqueci minha senha".
+- **Bloqueio por terceiros:** 5 senhas erradas bloqueiam a conta real por 15 min, para quem for.
+  O limite (10/min) é por IP.
+- **Contador não zera ao vencer o bloqueio:** depois dos 15 min, **uma** falha leva a 6 e bloqueia de
+  novo; o contador só zera no login certo. O incremento também não é atômico.
+
+#### 4.7 Sem como o contato trocar ou recuperar a senha 🟡
+
+Não há rota de troca, recuperação nem redefinição no portal; a senha é a `senhaInicial` definida pelo
+administrador da empresa (mínimo 8, sem a política de senha da plataforma), que a conhece. Também
+não há rota para **listar, desativar ou excluir** acessos: `criarAcesso` só cria, e o desligamento só
+existe pelo banco. E a administração **não tem tela** (4.10): hoje criar um acesso exige chamar a API
+à mão. Contato já cadastrado com e-mail só em outra caixa/alias, ou credencial com
+alias antigo, ficam sem caminho de correção.
+
+#### 4.8 `criarAcesso` mexe no que não devia e confunde o resultado 🟡
+
+- **Sobrescreve um contato existente** com os campos do formulário, inclusive `principal` (padrão
+  `false`) e `ativo`: liberar o portal para o contato principal do cadastro **tira a marca de
+  principal** e pode reativar um contato desativado.
+- **Config existente com `ativo = false`:** `upsert ... update: {}` não liga; o administrador recebe
+  sucesso, mas o contato **não consegue entrar** ("Acesso ao portal não habilitado") até alguém ligar o
+  portal na configuração.
+- **`empresaAlias` copiado para a credencial:** a chave de login é o alias no momento da criação. Se o
+  alias da empresa mudar, todos os acessos deixam de casar e ninguém entra, sem aviso.
+- `salvarConfig` recebe `usuarioId` e não grava `updatedBy`.
+
+#### 4.9 A configuração do portal é quase toda decorativa 🟡
+
+`exibirDesconto` (padrão `false`) não é lida: `listarOrcamentos` devolve `percDesconto` de todos os
+itens mesmo com a opção desligada. As demais (`permitirAtualizarCadastro`, `permitirManterContatos`,
+`permitirSolicitarDesconto`, `descontoMaximoSolicitavel`, `exibirEstoque`, `permitirProdutoForaMix`,
+`diasValidadeCarrinho`) só aparecem no contrato e no schema: nenhum código as lê (busca em `apps/`
+e `packages/`, fora de `dist`). 🔴 confirmar com o usuário se o desconto deve
+aparecer ao cliente, e o que de fato é escopo do portal.
+
+#### 4.10 Observações 🟡
+
+- A administração (`portal-cliente-admin`: config e criar acesso) **não tem tela** em `apps/web`.
+- `observacao` do orçamento vai ao cliente sem distinguir nota interna de texto da proposta. 🔴
+  confirmar o que o campo guarda na tela de orçamentos.
+- `logout` e `refresh` públicos, sem `@Throttle` próprio (só o global); o refresh vence em 30 dias
+  sem teto absoluto de sessão e **não há detecção de reuso** de refresh revogado.
+- `refresh` não é atômico: dois pedidos com o mesmo refresh passam os dois e geram dois pares.
+- `portal_cliente_acessos_log` e `portal_cliente_sessoes` crescem sem limpeza.
+- O app web é um esqueleto de uma página (login, lista, aprovar/recusar); não há `Trocar senha`,
+  catálogo nem carrinho.
+- O texto da decisão (`observacao`) é gravado como veio (até 1000 caracteres): quem renderiza precisa escapar.
+
+### 5. Estruturas de dados 🟢
+
+`PortalClienteConfig`, `PortalClientePerfil`, `PortalClienteRotina`, `PortalClientePerfilPermissao`,
+`PortalClienteHabilitacao`, `PortalClienteCredencial`, `PortalClienteSessao`, `PortalClienteAcessoLog`;
+campos novos em `Orcamento` (`clienteDecididoEm`, `clienteDecididoPorContatoId`, `clienteDecisao`,
+`clienteDecisaoObservacao`) e `ClienteContato.perfilId`. Ver `data-dictionary.md`, seção
+`portal-cliente`.
+
+### 6. Metadados 🟢
+
+Access token 15 min (900 s); refresh 30 dias; bloqueio 15 min após 5 falhas; throttle de login
+10/min; `bcrypt` custo 12; senha 8–128; `aud = portal-cliente`; perfil base "Administrador do cliente";
+ações por rotina em `ACOES` (cadastro, contatos, notas, compras, titulos, orcamentos, catalogo,
+carrinho).
+
+### 7. Dependências e testes
+
+`PrismaService` (`withPortalCredential`, `withPortalAudit`, `withTenant`), `@nestjs/jwt`,
+`bcryptjs`, `whereEmpresaAcessivel`, `@plataforma/contracts`. Consumidores: `apps/portal-cliente`
+(web externa). **A administração (`portal-cliente-admin`) não tem tela:** nada em `apps/web` a chama, então a config e a criação de acesso só acontecem por chamada direta à API. **Testes:** 1 spec
+(`portal-cliente.service.spec.ts`: aprovar um orçamento `enviado`; recusar o que não está
+`enviado`). **Sem teste** para: login e bloqueio, refresh, `contexto`, `criarAcesso`, validade
+vencida, trava de desconto.
