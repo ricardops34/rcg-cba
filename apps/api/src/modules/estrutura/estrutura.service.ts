@@ -489,9 +489,13 @@ export class EstruturaService {
   }
 
   private async ensureExists(entity: 'modulo' | 'menu' | 'rotina', id: string) {
-    const record = await (this.prisma[entity] as any).findFirst({
-      where: { id, deletedAt: null },
-    });
+    const where = { id, deletedAt: null };
+    const record =
+      entity === 'modulo'
+        ? await this.prisma.modulo.findFirst({ where })
+        : entity === 'menu'
+          ? await this.prisma.menu.findFirst({ where })
+          : await this.prisma.rotina.findFirst({ where });
     if (!record) {
       throw new NotFoundException(
         `${entity.charAt(0).toUpperCase()}${entity.slice(1)} não encontrado`,
