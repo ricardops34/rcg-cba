@@ -38,6 +38,16 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // O navegador precisa rechecar o service worker a cada visita; com cache
+  // HTTP ele ficaria preso numa versão antiga.
+  async headers() {
+    return [
+      {
+        source: "/sw.js",
+        headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }],
+      },
+    ];
+  },
   async rewrites() {
     const apiTarget = process.env.INTERNAL_API_URL ?? "http://api:3001";
     return [
