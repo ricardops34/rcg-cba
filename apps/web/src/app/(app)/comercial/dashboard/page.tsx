@@ -57,19 +57,19 @@ function StatCard({
 }) {
   return (
     <div
-      className={`relative overflow-hidden rounded-xl bg-linear-to-br p-4 text-white shadow-md ${gradient}`}
+      className={`relative overflow-hidden rounded-xl bg-linear-to-br p-3 sm:p-4 text-white shadow-md ${gradient}`}
     >
       <div
         aria-hidden
         className="pointer-events-none absolute -top-6 -right-6 size-24 rounded-full bg-white/10 blur-xl"
       />
       <div className="flex items-start justify-between">
-        <p className="text-xs font-semibold tracking-wider uppercase opacity-90">{label}</p>
-        <span className="flex size-9 items-center justify-center rounded-lg bg-white/20">
+        <p className="min-w-0 text-[11px] font-semibold tracking-wider uppercase opacity-90 sm:text-xs">{label}</p>
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/20 sm:size-9">
           <Icon className="size-4.5" />
         </span>
       </div>
-      <p className="mt-1 min-w-0 break-words text-xl font-bold tracking-tight sm:text-2xl">{value}</p>
+      <p className="mt-1 min-w-0 break-words text-lg font-bold tracking-tight sm:text-xl xl:text-2xl">{value}</p>
       <p className="mt-0.5 text-xs opacity-80">{suffix}</p>
     </div>
   );
@@ -266,14 +266,14 @@ export default function DashboardComercialPage() {
 
       <div data-tour="dashboard-comercial-resultados">
         {isLoading ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="h-28 w-full rounded-xl" />
             ))}
           </div>
         ) : data ? (
           <div className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-4">
               <StatCard
                 icon={Banknote}
                 label="Sugestão de Venda"

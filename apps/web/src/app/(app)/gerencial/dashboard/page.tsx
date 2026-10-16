@@ -88,7 +88,7 @@ function StatCard({
   return (
     <Elemento
       {...(onClick ? { type: "button" as const, onClick } : {})}
-      className={`relative min-w-0 overflow-hidden rounded-xl bg-linear-to-br p-4 text-left text-white shadow-md ${gradient} ${
+      className={`relative min-w-0 overflow-hidden rounded-xl bg-linear-to-br p-3 sm:p-4 text-left text-white shadow-md ${gradient} ${
         onClick
           ? "cursor-pointer transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           : ""
@@ -99,12 +99,12 @@ function StatCard({
         className="pointer-events-none absolute -top-6 -right-6 size-24 rounded-full bg-white/10 blur-xl"
       />
       <div className="flex items-start justify-between">
-        <p className="text-xs font-semibold tracking-wider uppercase opacity-90">{label}</p>
-        <span className="flex size-9 items-center justify-center rounded-lg bg-white/20">
+        <p className="min-w-0 text-[11px] font-semibold tracking-wider uppercase opacity-90 sm:text-xs">{label}</p>
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/20 sm:size-9">
           <Icon className="size-4.5" />
         </span>
       </div>
-      <p className="mt-1 min-w-0 break-words text-xl font-bold tracking-tight sm:text-2xl">{value}</p>
+      <p className="mt-1 min-w-0 break-words text-lg font-bold tracking-tight sm:text-xl xl:text-2xl">{value}</p>
       <p className="mt-0.5 text-xs opacity-80">{suffix}</p>
     </Elemento>
   );
@@ -128,7 +128,7 @@ function BarraMeta({ perc }: { perc: number }) {
           : "bg-destructive";
   return (
     <div className="flex items-center gap-2">
-      <div className="h-2.5 min-w-24 flex-1 overflow-hidden rounded-full bg-muted">
+      <div className="h-2.5 min-w-16 flex-1 overflow-hidden rounded-full bg-muted">
         <div className={`h-full rounded-full ${cor}`} style={{ width: `${largura}%` }} />
       </div>
       <span className="w-16 text-right text-xs tabular-nums">{percento(perc)}</span>
@@ -392,7 +392,7 @@ export default function DashboardGerencialPage() {
       {isLoading || !resumo ? (
         <Skeleton className="h-32 w-full rounded-xl" />
       ) : (
-        <div data-tour="gerencial-indicadores" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div data-tour="gerencial-indicadores" className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-6">
           <StatCard
             icon={Banknote}
             label="Realizado"
@@ -458,15 +458,15 @@ export default function DashboardGerencialPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Vendedor</TableHead>
+                    <TableHead className="sticky left-0 z-10 bg-card">Vendedor</TableHead>
                     {mostrarValores && <TableHead className="text-right">Positivação</TableHead>}
                     {mostrarValores && (
                       <TableHead className="text-right">Posit. realizada</TableHead>
                     )}
-                    <TableHead className="w-52">% Positivação</TableHead>
+                    <TableHead className="w-40 lg:w-52">% Positivação</TableHead>
                     {mostrarValores && <TableHead className="text-right">Objetivo</TableHead>}
                     {mostrarValores && <TableHead className="text-right">Realizado</TableHead>}
-                    <TableHead className="w-52">% Realizado</TableHead>
+                    <TableHead className="w-40 lg:w-52">% Realizado</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -482,7 +482,7 @@ export default function DashboardGerencialPage() {
                             className="cursor-pointer bg-muted/40 hover:bg-muted/60"
                             onClick={() => alternarGrupo(grupo.chave)}
                           >
-                            <TableCell className="font-semibold">
+                            <TableCell className="sticky left-0 z-10 bg-muted font-semibold">
                               <span className="flex items-center gap-1.5">
                                 <ChevronRight
                                   className={cn(
@@ -538,7 +538,7 @@ export default function DashboardGerencialPage() {
                       className="cursor-pointer"
                       onClick={() => setDetalheVendedorId(l.vendedorId)}
                     >
-                      <TableCell className="font-medium">{l.nome}</TableCell>
+                      <TableCell className="sticky left-0 z-10 bg-card font-medium">{l.nome}</TableCell>
                       {mostrarValores && (
                         <TableCell className="text-right tabular-nums">
                           <DashboardMetaEditor vendedorId={l.vendedorId} nome={l.nome} mes={filtros.mes} ano={filtros.ano} campo="numeroCliente">
@@ -585,7 +585,7 @@ export default function DashboardGerencialPage() {
                 </TableBody>
                 <TableFooter>
                   <TableRow>
-                    <TableCell className="font-medium">
+                    <TableCell className="sticky left-0 z-10 bg-muted font-medium">
                       {linhas.length} {linhas.length === 1 ? "vendedor" : "vendedores"}
                     </TableCell>
                     {mostrarValores && (
