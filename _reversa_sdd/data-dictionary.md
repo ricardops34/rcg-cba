@@ -1880,3 +1880,277 @@ título e tipo), `[empresaId, clienteId]`.
 
 `smsEnvioId?` (`onDelete: SetNull`), `clienteId?`, `celular`, `mensagem`, `recebidaEm`,
 `createdAt`. Índices `[empresaId, smsEnvioId]`, `[empresaId, clienteId]`.
+
+---
+
+## Módulo `armazenamento`
+
+Sem tabela própria: guarda arquivos em disco (`uploads/`) ou no MinIO; o banco guarda só o
+endereço `/uploads/<chave>` nas tabelas dos outros módulos.
+
+### `ConfigArmazenamento` / `ConfigS3` 🟢
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `raizDisco` | string | `UPLOADS_DIR` = `<cwd>/uploads` |
+| `pastasS3` | string[] | de `ARMAZENAMENTO_S3_PASTAS` |
+| `s3.endpoint` | string | rede interna (`http://minio:9000`) |
+| `s3.endpointPublico` | string | host que o navegador alcança; assina o link |
+| `s3.regiao` | string | padrão `us-east-1` |
+| `s3.bucket`, `s3.accessKey`, `s3.secretKey` | string | |
+
+### `ArquivoListado` 🟢
+
+`chave` (relativa a `uploads/`), `bytes`, `modificadoEm` (ms; no S3 = `LastModified`).
+
+### `ResultadoMidiaOrfa` 🟢
+
+`arquivosNaPasta`, `referenciados`, `recentesIgnorados`, `orfaos`, `bytesOrfaos`,
+`amostra` (até 20 nomes, relativos a `whatsapp/`), `apagados`, `falhas`.
+
+### Resultado de `migrarParaS3` 🟢
+
+`copiados`, `bytes`, `falhas` (nomes relativos à pasta), `restantes` (ainda em disco).
+
+### Resultado de `situacao` 🟢
+
+`s3Configurado`, `bucket` (ou `null`), `conexao` (`null` sem S3, `'ok'` ou o motivo em
+português), `pastas: [{pasta, noDisco}]`.
+
+### DTOs 🟢
+
+- `VarrerMidiaOrfaDto`: `apagar: boolean`.
+- `MigrarPastaDto`: `pasta: string` (`^[a-z0-9-]+$`).
+
+---
+
+## Módulo `backup-empresa`
+
+### `EmpresaBackup` (tabela `empresa_backups`) 🟢
+
+RLS por empresa (`tenant_isolation_empresa_backups`). Índices: `[empresaId, iniciadoEm]`
+e o único parcial `empresa_backups_um_gerando` (um `gerando` por empresa).
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | |
+| `empresaId` | String | FK `Empresa` |
+| `origem` | `BackupEmpresaOrigem` | `manual`, `agendado` |
+| `situacao` | `BackupEmpresaSituacao` | `gerando` (padrão), `pronto`, `falhou` |
+| `chave` | String? | chave no armazenamento; nula gerando ou com falha |
+| `bytes` | BigInt? | devolvido como `number` no resumo |
+| `registros`, `arquivos` | Int? | |
+| `erro` | String? | até 2000 caracteres |
+| `solicitadoPor` | String? | usuário; nulo no agendado (sem FK) |
+| `iniciadoEm` | DateTime | `now()` |
+| `concluidoEm` | DateTime? | |
+
+### `BackupEmpresaConfig` (tabela `backup_empresas_config`) 🟢
+
+Linha única (`id = 'unico'`, criada por `upsert` na primeira leitura).
+
+| Campo | Tipo | Padrão |
+|---|---|---|
+| `ativo` | Boolean | `true` |
+| `frequenciaDias` | Int | 7 (DTO: 1–90) |
+| `manter` | Int | 4 (DTO: 1–52) — só agendados |
+| `atualizadoEm`, `atualizadoPor` | | |
+
+### Estrutura do pacote (formato 1) 🟢
+
+| Caminho no zip | Conteúdo |
+|---|---|
+| `dados/<tabela>.jsonl` | uma linha JSON por registro, campos escalares na ordem do schema |
+| `planilhas/<tabela>.csv` | o mesmo em CSV (BOM, `;`) |
+| `arquivos/<chave>` | arquivos referenciados, na mesma chave do armazenamento |
+| `manifesto.json` | `formato`, `empresaId`, `geradoEm`, `origem`, `versaoSchema`, `registros`, `tabelas{}`, `arquivos`, `arquivosAusentes[]`, `mascarados{campos, parametros}`, `especiais`, `fora` |
+| `LEIA-ME.txt` | explicação em português |
+
+### `BackupResumo` (resposta da API) 🟢
+
+`id`, `empresaId`, `origem`, `situacao`, `bytes`, `registros`, `arquivos`, `erro`,
+`iniciadoEm`, `concluidoEm`. `EmpresaComBackups` = `{empresa{id, razaoSocial,
+nomeFantasia, cnpj}, backups[]}`.
+
+---
+
+## Módulo `assinaturas`
+
+### `Assinatura` (tabela `assinaturas`) 🟢
+
+Sem RLS de empresa (lida pela administração da plataforma).
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | |
+| `grupoEconomicoId` | String? `@unique` | o contrato atual: um por grupo |
+| `empresaId` | String? `@unique` | resquício da assinatura por empresa (`onDelete: Restrict`) |
+| `planoId` | String | FK `Plano` |
+| `situacao` | `SituacaoAssinatura` | `ativa` (padrão), `teste`, `atrasada`, `suspensa`, `cancelada` |
+| `ciclo` | `CicloPagamento` | `mensal` (padrão), `trimestral`, `semestral`, `anual` |
+| `valorMensalidade` | Decimal(12,2) | **valor cobrado por ciclo** (nome histórico); padrão 0 |
+| `diaVencimento` | Int | 1–31 (Zod), padrão 10 |
+| `inicioEm` | DateTime | `now()` |
+| `proximoVencimentoEm`, `canceladaEm` | DateTime? | não calculados por código |
+| `observacoes` | Text? | |
+| `createdAt/By`, `updatedAt/By` | | |
+
+### `AssinaturaUpdate` (Zod) 🟢
+
+`planoId?` (uuid), `situacao?`, `ciclo?`, `valorMensalidade?` (≥ 0), `diaVencimento?`
+(1–31), `observacoes?`.
+
+### Propagação para `Empresa` 🟢
+
+| Assinatura | Empresa (`situacao`) | Outros campos |
+|---|---|---|
+| `ativa` | `ativa` | `testeExpiraEm = null` |
+| `teste` | `teste` | `testeExpiraEm` mantido |
+| `atrasada` | **`suspensa`** | `testeExpiraEm = null` |
+| `suspensa` / `cancelada` | igual | `testeExpiraEm = null` |
+| sempre | | `limiteUsuarios = plano.limiteUsuarios` |
+
+---
+
+## Módulo `planos`
+
+### `Plano` (tabela `planos`) 🟢
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | |
+| `nome` | String | até 100 (Zod) |
+| `codigo` | String `@unique` | até 50; único inclusive entre excluídos |
+| `descricao` | Text? | até 500 |
+| `valorMensal`, `valorTrimestral`, `valorSemestral`, `valorAnual` | Decimal(12,2) | padrão 0 |
+| `limiteUsuarios` | Int? | nulo = sem limite |
+| `limiteEmpresas` | Int | padrão 1 (Zod: 1–10000) — empresas por grupo |
+| `ativo` | Boolean | inativo não aceita assinatura nova |
+| `createdAt/By`, `updatedAt/By`, `deletedAt/By` | | soft delete |
+
+### `PlanoModulo` / `PlanoMenu` / `PlanoRotina` 🟢
+
+Chave composta `(planoId, moduloId|menuId|rotinaId)`. Allowlist: lista vazia = sem
+restrição.
+
+### `PlanoCreate` (Zod; `PlanoUpdate` = parcial) 🟢
+
+`nome`, `codigo`, `descricao?`, `valorMensal`, `valorTrimestral=0`, `valorSemestral=0`,
+`valorAnual=0`, `limiteUsuarios?`, `limiteEmpresas=1`, `ativo=true`, `moduloIds=[]`,
+`menuIds=[]`, `rotinaIds=[]`. **Não aplicado pelo controller** (`dto: any`).
+
+---
+
+## Módulo `plataforma`
+
+### `PlataformaAuditoria` (tabela `plataforma_auditoria`) 🟢
+
+Sem RLS de empresa e sem FK (o log sobrevive à exclusão do usuário e da empresa).
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | |
+| `usuarioId`, `usuarioEmail` | String | quem executou |
+| `empresaId`, `empresaRazaoSocial` | String? | empresa afetada; o nome vai junto |
+| `acao` | String | `empresa.criada`, `empresa.situacao_alterada`, `empresa.teste_alterado`, `empresa.limite_alterado`, `empresa.admin_vinculado`, `empresa.admin_desvinculado`, `admin.promovido`, `admin.revogado` |
+| `valorAnterior`, `valorNovo` | String? | o motivo vai como sufixo `(motivo)` |
+| `createdAt` | DateTime | |
+
+### `PlataformaEmpresa` (linha da listagem) 🟢
+
+`id`, `razaoSocial`, `nomeFantasia`, `cnpj`, `alias`, `situacao`, `testeExpiraEm`,
+`limiteUsuarios`, `usuariosAtivos`, `testeExpirado`, `ultimoAcesso`, `createdAt`.
+
+### `PlataformaEmpresaCreate` (Zod) 🟢
+
+Campos cadastrais de `empresaCreateSchema` + `razaoSocial`/`nomeFantasia` (2–150),
+`tipoPessoa`, `cnpj`, `alias?` (2–40, `^[a-z0-9-]+$`), `situacao` (padrão `teste`),
+`testeExpiraEm?`, `limiteUsuarios?` (≥ 1), `admin{nome? (2–120), email, senha? (8–72)}`.
+
+### `PlataformaSituacaoUpdate` (Zod) 🟢
+
+`situacao?`, `testeExpiraEm?` (ISO ou `null` = sem prazo), `limiteUsuarios?` (≥ 1 ou
+`null` = sem limite), `motivo?` (até 500). Ao menos um dos três primeiros.
+
+### `PlataformaEmpresaAdmin` 🟢
+
+`usuarioId`, `nome`, `email`, `ativo`, `empresasQueAdministra`, `ultimoLogin`.
+
+---
+
+## Módulo `parametros`
+
+### `ParametroEmpresa` (tabela `parametros_empresa`) 🟢
+
+RLS por empresa. `@@unique([empresaId, parametro])` (inclui excluídos),
+`@@index([empresaId, parametro])`.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | |
+| `empresaId` | String | |
+| `parametro` | String | chave `^[A-Z0-9_]+$`, 2–60 |
+| `tipo` | `TipoParametro` | `texto` (padrão), `numero`, `booleano`, `data`, `senha` |
+| `tamanho` | Int? | 1–4000; limite do conteúdo |
+| `conteudo` | String? | até 4000; **texto puro, inclusive para `senha`** |
+| `descricao` | String? | até 255 |
+| `ativo` | Boolean | inativo = lido como inexistente |
+| `createdAt/By`, `updatedAt/By`, `deletedAt/By` | | soft delete |
+
+Na resposta da API: `conteudo = null` para `senha` e `preenchido: boolean`.
+
+### Parâmetros com constante no código 🟢
+
+`ARMAZEM_PADRAO`, `TABELA_PRECO_PADRAO`, `TABELA_PRECO_CAPITAL`,
+`TABELA_PRECO_INTERIOR`, `ORCAMENTO_EXIBIR_FOTOS_PRODUTOS`,
+`BOLETO_PRAZO_MAXIMO_REEMISSAO`, `ULTIMA_COMUNICACAO_ERP` (ISO 8601, gravado pela
+integração). Os de SMTP (`SMTP_*`), SMS (`SMS_*`) e outros estão nas seções dos módulos
+que os leem.
+
+---
+
+## Módulo `escopo`
+
+Sem tabela própria. Resposta de `GET /escopo/vendedores`:
+`{ data: [{id, nome, nomeReduzido}], restrito: boolean }`.
+
+---
+
+## Módulos `politica-senha` e `recuperacao-senha`
+
+### `PoliticaSenha` (contrato, resolvida dos parâmetros) 🟢
+
+| Campo | Parâmetro | Padrão | Combinação entre empresas |
+|---|---|---|---|
+| `tamanhoMinimo` | `SENHA_TAMANHO_MINIMO` | 8 | maior |
+| `tamanhoMaximo` | `SENHA_TAMANHO_MAXIMO` | 0 = sem máximo | menor não zero |
+| `exigirMaiuscula` | `SENHA_EXIGIR_MAIUSCULA` | `true` | OU |
+| `exigirMinuscula` | `SENHA_EXIGIR_MINUSCULA` | `false` | OU |
+| `exigirNumero` | `SENHA_EXIGIR_NUMERO` | `true` | OU |
+| `exigirEspecial` | `SENHA_EXIGIR_ESPECIAL` | `false` | OU |
+| `diasParaExpirar` | `SENHA_DIAS_PARA_EXPIRAR` | 0 = não expira | menor não zero |
+| `historicoQuantidade` | `SENHA_HISTORICO_QUANTIDADE` | 0 | maior |
+| `tentativasAntesBloqueio` | `SENHA_TENTATIVAS_ANTES_BLOQUEIO` | 5 | menor não zero |
+| `minutosBloqueio` | `SENHA_MINUTOS_BLOQUEIO` | 15 | maior |
+
+### `SenhaHistorico` (tabela `senha_historico`) 🟢
+
+`id`, `usuarioId` (FK), `senhaHash` (o hash **substituído**), `createdAt`. Índice
+`[usuarioId, createdAt]`. Fora do backup por empresa.
+
+### `SenhaRedefinicao` (tabela `senha_redefinicoes`) 🟢
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | |
+| `usuarioId` | String | FK `Usuario`, `onDelete: Cascade` |
+| `tokenHash` | String `@unique` | SHA-256 hex do token (o token só vai no e-mail) |
+| `expiraEm` | DateTime | criação + 30 min |
+| `usadoEm` | DateTime? | ao usar ou ao pedir outro link |
+| `ip` | String? | de quem pediu |
+| `criadoEm` | DateTime | |
+
+### Entradas (Zod) 🟢
+
+`EsqueciSenhaInput` = `{email, empresaAlias?}`; `RedefinirSenhaInput` =
+`{token, novaSenha}`.

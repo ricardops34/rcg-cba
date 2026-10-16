@@ -4884,3 +4884,968 @@ Ver `data-dictionary.md`, seção `sms`.
 `common/escopo/escopo-vendedores`, `common/horario/horario-trabalho`,
 `common/atividades/registrar-atividade-documento`, `common/mail/email-layout`
 (dados da empresa). Externo: iAgente. `sms.spec.ts` cobre normalização de celular e texto, `enviar` (client_ref, recusa 502, desligado e sem token 409), webhook (vínculo da resposta, repetição, status, segredo errado, data) e a janela e as situações do aviso. Não cobre a seleção de títulos do aviso automático.
+
+---
+
+## Módulo `armazenamento`
+
+**Caminho:** `apps/api/src/modules/armazenamento/` + núcleo em
+`apps/api/src/common/armazenamento/armazenamento.ts` (486).
+**Arquivos (4 + 2):** `armazenamento.module.ts`, `plataforma-armazenamento.controller.ts`
+(94, 3 rotas), `midia-orfa.service.ts` (156), `midia-orfa.service.spec.ts` (117);
+`common/armazenamento/armazenamento.ts`, `armazenamento.spec.ts` (300).
+Plano: `docs/planos/2026-10-13-armazenamento-arquivos-minio.md`.
+
+### 1. Responsabilidade 🟢
+
+Onde a plataforma guarda arquivos: **em disco** (`apps/api/uploads`, o volume `uploads`)
+ou num **S3, o MinIO da VPS**, escolhido **por pasta** (o primeiro segmento da chave).
+A **chave é o caminho relativo a `uploads/`** (`whatsapp/<empresaId>/<uuid>.jpg`) e o
+endereço gravado no banco continua `/uploads/<chave>`: trocar uma pasta para o S3 não
+muda nada no banco nem na tela. O módulo Nest expõe à administração da plataforma a
+**situação** do armazenamento, a **cópia disco→S3 em rodadas** e a **varredura de mídia
+órfã do WhatsApp**.
+
+### 2. Rotas 🟢
+
+Todas com `JwtAuthGuard` + `PlatformAdminGuard` (só administrador da plataforma).
+
+| Rota | Comportamento |
+|---|---|
+| `GET /plataforma/armazenamento/situacao` | S3 configurado?, bucket, teste de conexão (`HeadBucket`) e, por pasta do S3, quantos arquivos ainda estão em disco |
+| `POST /plataforma/armazenamento/migrar` `{pasta}` | uma rodada de até 200 arquivos do disco para o S3; `pasta` casa `^[a-z0-9-]+$` |
+| `POST /plataforma/armazenamento/midia-orfa` `{apagar}` | `false` lista os órfãos; `true` apaga |
+
+Erros do MinIO viram **400 com o motivo em português** (`explicarErroS3`); o resto segue
+para o filtro global.
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 A classe `Armazenamento` (núcleo) 🟢
+
+- **Singleton por função** (`armazenamento()`), não injeção do Nest, porque quem grava
+  inclui funções soltas (`apagarArquivosDaMidia`) e o middleware do `main.ts`.
+- **`configDoAmbiente`**: S3 só existe com as **quatro** variáveis preenchidas
+  (`S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`); faltando uma, tudo fica
+  em disco sem aviso. `S3_ENDPOINT_PUBLICO` cai no interno; região padrão `us-east-1`;
+  `forcePathStyle: true` (MinIO).
+- **Dois clientes S3**: o interno (`http://minio:9000`) para gravar e ler, e o **público**
+  (`https://s3.rcgdist.com.br`) só para **assinar** o link temporário, porque a
+  assinatura cobre o host.
+- **`noS3(chave)`** = há S3 ∧ primeiro segmento ∈ `ARMAZENAMENTO_S3_PASTAS`.
+- **Gravar** vai para um lugar só (S3 se a pasta está nele, senão disco).
+  `gravarArquivo` faz stream para o S3 (pacote de backup) ou `copyFile` no disco.
+- **Ler** procura no S3 e, não achando (404/`NoSuchKey`), no disco: os arquivos de antes
+  da troca continuam servidos até serem copiados. Não existe em lugar nenhum → `null`.
+- **Apagar** remove dos dois; não existir não é erro.
+- **`listar(pasta)`** une disco (recursivo, com subpastas) e S3 (`ListObjectsV2` paginado)
+  num `Map` por chave; o S3 sobrescreve o disco.
+- **`validarChave`**: recusa vazio, `/` inicial, `\`, segmentos `.`/`..`/vazios e qualquer
+  chave que `normalize` altere. Um nome vindo do banco nunca escapa de `uploads/`.
+- **`chaveDoEndereco`**: `/uploads/x?exp=…` → `x` (decodificado e validado); outro
+  endereço → `null`.
+
+#### 3.2 Servir `/uploads` (middleware do `main.ts`) 🟢
+
+Ordem das conferências: caminho normalizado → `agente/`, `fichas-importacao/` e `.tmp/`
+dão **404** → prefixo assinado (mídia do WhatsApp) e `backups/` exigem **link assinado
+válido** (403) → se a chave está numa pasta do S3, `linkTemporario` faz `HeadObject` e
+**redireciona (302)** para o link pré-assinado de **1 h**; sem o objeto lá, segue para o
+estático do disco; erro do S3 → 502.
+
+#### 3.3 Migração disco → S3 em rodadas — `migrarParaS3(pasta, 200)` 🟢
+
+Só para pasta já configurada no S3. Para cada um dos primeiros 200 arquivos em disco:
+`PutObject` com o conteúdo lido inteiro (`readFile`) → `HeadObject` confere
+`ContentLength` = tamanho em disco → só então `unlink`. Falha de um arquivo entra em
+`falhas` e não interrompe. Devolve `{copiados, bytes, falhas, restantes}`; a tela chama
+de novo até `restantes` zerar.
+
+#### 3.4 Varredura de mídia órfã do WhatsApp — `MidiaOrfaService.varrer` 🟢
+
+Origem dos órfãos: até 2026-10-13 a exclusão do histórico apagava mensagens e deixava os
+arquivos; a foto de contato substituída fica; anexo cujo envio falhou fica como o multer
+gravou.
+
+1. Lista `whatsapp/` (disco + S3, inclusive `whatsapp/<empresaId>/` e os soltos).
+2. **Referenciados** = `whatsapp_mensagens.arquivoUrl` ∪ `whatsapp_contatos.fotoUrl` de
+   **todas** as empresas: lista as empresas em **modo sistema** (inclusive excluídas) e
+   lê cada uma **em sequência** com `withTenant` (as tabelas têm RLS por empresa).
+3. Órfão = não referenciado ∧ **mais de 24 h** (o multer grava o anexo antes de a
+   mensagem existir; os mais novos contam em `recentesIgnorados`).
+4. Com `apagar`: **trava** — se o conjunto de referenciados veio vazio, 400 e não apaga
+   nada (uma leitura vazia sem erro, como RLS sem contexto, faria tudo parecer órfão).
+   Apaga um a um, contando `apagados`/`falhas`, e loga em `warn`.
+5. Devolve contagens, bytes e uma **amostra de 20 nomes** para a tela conferir.
+
+#### 3.5 Achados
+
+- 🟡 **A trava só pega o vazio total.** Se a leitura de **uma** empresa voltar vazia sem
+  erro (o mesmo cenário de RLS que a trava cita) e as outras não, os arquivos daquela
+  empresa passam por órfãos e são apagados. Não há conferência por empresa (por exemplo,
+  "a empresa tem mensagens com arquivo, mas nenhuma foi lida").
+- 🟡 **Falha de exclusão é engolida** (`catch {}` sem log do motivo): a tela vê só o
+  número de `falhas`.
+- 🟡 **A migração lê o arquivo inteiro na memória** (`readFile`), diferente do
+  `gravarArquivo`, que faz stream. Com vídeos grandes, 200 por rodada pesam na memória
+  da API.
+- 🟡 **Falhas persistentes travam a migração.** A rodada pega sempre os primeiros 200 do
+  disco; os que falham continuam no começo da lista. Com 200 falhas seguidas a rodada
+  não copia nada e o restante nunca é tentado.
+- 🟡 **Arquivo migrado parece novo.** No S3, `modificadoEm` = `LastModified` = momento da
+  cópia; logo depois de uma migração, a varredura conta órfãos antigos como recentes e
+  os ignora por 24 h (seguro, mas confunde a leitura).
+- 🟡 **Mensagem de erro com o bucket errado.** O controller chama `explicarErroS3(erro)`
+  sem o bucket, que cai no padrão `"plataforma"`: com outro `S3_BUCKET`, o texto aponta
+  o bucket errado. A `situacao` passa o bucket certo.
+- 🟡 **S3 meio configurado cai em disco em silêncio.** Faltando uma das quatro
+  variáveis, `s3Configurado=false` e nada avisa no boot; só a tela de situação mostra.
+- 🟡 **Cada acesso a arquivo no S3 faz um `HeadObject`** antes do redirecionamento: uma
+  ida extra ao MinIO por imagem servida.
+- 🟡 **A leitura dos referenciados carrega todas as URLs** de mensagens com arquivo de
+  todas as empresas num `Set` em memória.
+
+### 4. Estruturas de dados 🟢
+
+Sem tabela própria. Interfaces `ConfigS3`, `ConfigArmazenamento`, `ArquivoListado`,
+`ResultadoMidiaOrfa`; DTOs `VarrerMidiaOrfaDto`, `MigrarPastaDto`. Ver
+`data-dictionary.md`, seção `armazenamento`.
+
+### 5. Metadados e configurações 🟢
+
+| Variável / constante | Padrão | Uso |
+|---|---|---|
+| `ARMAZENAMENTO_S3_PASTAS` | vazio | pastas (1º segmento) que vão para o S3, separadas por vírgula |
+| `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` | — | as quatro são obrigatórias para haver S3 |
+| `S3_ENDPOINT_PUBLICO` | = `S3_ENDPOINT` | host do link assinado |
+| `S3_REGIAO` | `us-east-1` | |
+| `VALIDADE_LINK_SEGUNDOS` | 3600 | link temporário |
+| `IDADE_MINIMA_MS` (órfãos) | 24 h | |
+| `AMOSTRA` | 20 | nomes devolvidos |
+| limite da rodada de migração | 200 | |
+
+### 6. Dependências e testes
+
+`PrismaService` (`withSistema`, `withTenant`), `whatsapp/midia-arquivos`
+(`arquivoDaMidia`), `common/uploads/uploads.config` (`UPLOADS_DIR`),
+`@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`. Consumidores do núcleo: `main.ts`,
+`whatsapp-conversas.service.ts`, `whatsapp/midia-arquivos.ts`,
+`backup-empresa.service.ts`. Testes: `armazenamento.spec.ts` (chave, configuração, disco,
+S3 por pasta, leitura com fallback, link com host público, migração com conferência,
+subpastas, tradução de erros) e `midia-orfa.service.spec.ts` (listar sem apagar, apagar
+só órfãos antigos, recusa com referência vazia). Não há teste para a leitura vazia de
+**uma** empresa nem para falhas repetidas na migração.
+
+---
+
+## Módulo `backup-empresa`
+
+**Caminho:** `apps/api/src/modules/backup-empresa/`
+**Arquivos (11):** `backup-empresa.module.ts`, `plataforma-backups.controller.ts` (102,
+6 rotas), `backups.controller.ts` (70, 4 rotas), `backup-empresa.service.ts` (383),
+`backup-empresa-varredura.service.ts` (60), `backup-gerador.ts` (303),
+`backup-catalogo.ts` (152), `backup-serializar.ts` (46) e três specs
+(`backup-catalogo`, `backup-empresa.service`, `backup-gerador`).
+Plano: `docs/planos/2026-10-13-backup-por-empresa.md`. Migration:
+`20261013180000_backup_empresas`.
+
+### 1. Responsabilidade 🟢
+
+Gera um **pacote zip com a empresa inteira**: os dados de todas as tabelas com
+`empresaId` (JSONL para restaurar e CSV para o Excel), os arquivos que esses registros
+referenciam, um manifesto e um LEIA-ME. O backup pode ser **manual** (pela plataforma ou
+pelo administrador da empresa) ou **agendado** (a cada N dias, guardando os M mais
+recentes). O pacote vai para o armazenamento (`backups-empresas/<empresaId>/…zip`, disco
+ou MinIO) e é baixado por **link assinado de 5 min**. **Não há restauração
+implementada**: o formato está pronto para ela (manifesto com a versão do schema), mas
+nenhum código lê o pacote de volta.
+
+### 2. Rotas 🟢
+
+**Administração da plataforma** (`JwtAuthGuard` + `PlatformAdminGuard`, prefixo
+`/plataforma/backups`):
+
+| Rota | Comportamento |
+|---|---|
+| `GET /` | todas as empresas (inclusive excluídas) com seus backups |
+| `GET /config`, `PATCH /config` | `ativo`, `frequenciaDias` (1–90), `manter` (1–52) |
+| `POST /:empresaId` | gera agora (202, em segundo plano) |
+| `GET /:empresaId/:id/link` | link de download de 5 min |
+| `DELETE /:empresaId/:id` | apaga o pacote e o registro |
+
+**Administrador da empresa** (`JwtAuthGuard` + `PermissionsGuard`, prefixo `/backups`):
+a empresa é **sempre a ativa do token** — nenhuma rota recebe `empresaId`.
+
+| Rota | Permissão |
+|---|---|
+| `GET /backups` | `backups.visualizar` |
+| `POST /backups` (202) | `backups.exportar` |
+| `GET /backups/:id/link` | `backups.exportar` |
+| `DELETE /backups/:id` | `backups.excluir` |
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Catálogo — o que entra (`backup-catalogo.ts`) 🟢
+
+- **Regra:** todo model do Prisma com `empresaId` entra, lido do DMMF
+  (`Prisma.dmmf.datamodel.models`), exceto os listados em `FORA` com o motivo
+  (catálogo global, perfis, termos, referência pública como município/CEP/CNAE, sessões,
+  histórico de senha, links de redefinição e os próprios backups).
+- **Especiais** (sem `empresaId`): a linha da `Empresa`, o `GrupoEconomico` dela e os
+  `Usuario` com vínculo em `usuario_empresas`.
+- **Campos mascarados** (vão `null`): hashes de senha, hash de chave de API, chaves e
+  tokens cifrados do agente e do WhatsApp. **Parâmetros secretos**: `SMTP_SENHA` e
+  `SMS_TOKEN` saem com `conteudo = null`.
+- **Arquivos por nome**: `ProdutoFicha.arquivo` (`fichas/`),
+  `ProdutoFichaImportacao.arquivo` (`fichas-importacao/`), `AgenteAnexo.arquivo`
+  (`agente/`); os demais campos guardam `/uploads/...` inteiro e são achados em qualquer
+  texto.
+- **Testes de cobertura** garantem que um model novo não some sem decisão: todo model
+  está em exatamente uma lista, e todo campo de texto que casa
+  `/senha|hash|token|secret|segredo|cifrad|apikey|password/i` está mascarado ou liberado
+  explicitamente (`NAO_SAO_SEGREDO`).
+
+#### 3.2 Geração do pacote — `BackupGerador.gerar` 🟢
+
+1. Zip em `uploads/.tmp/backup-<id>/pacote.zip` (no volume; o `main.ts` dá 404 para
+   `/uploads/.tmp/`), `archiver` com zlib nível 6.
+2. Exporta cada tabela da empresa, com **`UsuarioEmpresa` primeiro** (é dela que saem os
+   usuários). Leitura **em páginas de 1000 por `skip/take`**, ordenada pela chave
+   primária, cada página num `withTenant(empresaId)` **e** com `where empresaId` em
+   código (cobre as tabelas com `empresaId` sem RLS). Cada linha vai para
+   `dados/<tabela>.jsonl` e `planilhas/<tabela>.csv` (BOM, separador `;`), escritos em
+   stream com respeito a `drain`.
+3. Depois, `Empresa` (por id), `GrupoEconomico` (pelo `grupoEconomicoId` da empresa) e
+   `Usuario` (ids coletados).
+4. **`conferirDono`** — última barreira: um registro de outra empresa (ou usuário sem
+   vínculo, ou grupo diferente) **derruba o backup inteiro** em vez de entrar no pacote.
+5. **`observar`** coleta as chaves de arquivo; **`juntarArquivos`** põe cada uma no zip,
+   uma por vez (espera o evento `entry`): do disco em stream; do S3 lido inteiro. Os que
+   não existem vão para `arquivosAusentes` no manifesto.
+6. `manifesto.json` (formato 1, empresa, data, origem, `versaoSchema` = última migration
+   aplicada, contagem por tabela, arquivos, ausentes, o que foi mascarado, especiais e
+   fora) e `LEIA-ME.txt`.
+
+Serialização (`backup-serializar.ts`): data em ISO, `BigInt` e `Decimal` como texto (sem
+perder precisão), bytes em base64; no CSV, aspas quando há `;`, `"` ou quebra de linha,
+e campo JSON como JSON.
+
+#### 3.3 Ciclo de vida — `BackupEmpresaService` 🟢
+
+- **`solicitar`** (manual): `encerrarInterrompidos` (gerando há mais de **6 h** vira
+  `falhou`) → cria `EmpresaBackup(gerando)`; o **índice único parcial**
+  `empresa_backups_um_gerando` segura **um gerando por empresa** (P2002 → 409) → dispara
+  `gerar` sem esperar e responde 202.
+- **`gerar`**: gera, grava em `backups-empresas/<empresaId>/<iniciadoEm>-<origem>.zip`
+  (`gravarArquivo`, stream para o S3), marca `pronto` com bytes/registros/arquivos; se
+  agendado, poda. Em erro: `falhou` com a mensagem (até 2000 caracteres). Sempre apaga
+  o temporário.
+- **`link`**: só `pronto` com chave; `assinarCaminho('/uploads/<chave>', 300 s)`. O
+  `main.ts` exige assinatura válida para `/uploads/backups-empresas/`.
+- **`excluir`**: recusa `gerando` (409); apaga o arquivo e o registro.
+- **`aoSubir`**: na subida da API, todo `gerando` de todas as empresas vira `falhou` e os
+  temporários `backup-*` são apagados.
+
+#### 3.4 Agendamento — `BackupEmpresaVarreduraService` + `agendados` 🟢
+
+`setInterval` de **1 h** (primeira passagem 5 min depois do boot), flag `rodando` em
+memória. Com a configuração ativa, para cada empresa **não excluída**: se o último
+agendado `pronto` ou `gerando` começou há menos de `frequenciaDias`, pula; senão gera
+**e espera** (uma empresa por vez). Falha numa empresa não para as outras.
+**Poda** (`podarAgendados`, depois de cada agendado pronto): mantém os `manter` mais
+recentes entre os agendados `pronto` **ou `falhou`** e apaga os demais (arquivo e
+registro). Manuais nunca são podados.
+
+#### 3.5 Achados
+
+- 🔴 **A poda conta os que falharam.** `podarAgendados` mantém os `manter` mais recentes
+  entre `pronto` **e** `falhou`. Com `manter=4`, um pronto seguido de três falhas
+  (gerados de hora em hora enquanto o problema persiste) apaga **todos os backups bons
+  mais antigos**, ficando um só pronto. As falhas deveriam sair da conta ou ser podadas
+  à parte.
+- 🔴 **Não existe restauração.** O pacote e o manifesto foram desenhados para ela
+  (`versaoSchema`, JSONL tipado), mas não há código que leia um pacote: o plano diz que
+  a Fase 4 (restaurar, por script) "não começou". Hoje é exportação, não backup
+  restaurável; as credenciais mascaradas também não voltariam.
+- 🟡 **O link de 5 min vira 1 h no MinIO.** Com `backups-empresas` em
+  `ARMAZENAMENTO_S3_PASTAS` (padrão no `docker-compose.dev.yml`, recomendado pelo plano
+  para a produção), o `main.ts` confere a assinatura de 5 min e redireciona
+  para o link pré-assinado do S3, que vale **1 h** (`VALIDADE_LINK_SEGUNDOS` do
+  armazenamento). Quem tiver esse segundo link baixa a empresa inteira durante a hora.
+- 🟡 **O pacote não é cifrado.** A empresa inteira (clientes, títulos, conversas de
+  WhatsApp, usuários) fica num zip aberto no disco/MinIO e no computador de quem baixa.
+- 🟡 **Não é um retrato consistente.** Cada página é uma transação separada e as tabelas
+  são lidas em sequência; com a empresa operando, o pacote mistura momentos (um item de
+  orçamento sem o cabeçalho, por exemplo).
+- 🟡 **Paginação por `skip`** fica quadrática nas tabelas grandes
+  (`whatsapp_mensagens`, notas): cada página relê as anteriores.
+- 🟡 **Pacote órfão no armazenamento.** Se `gravarArquivo` dá certo e o `update` para
+  `pronto` falha, o catch marca `falhou` sem `chave`; o zip fica no armazenamento sem
+  registro que o aponte. O mesmo na poda, que engole a falha de `apagar`.
+- 🟡 **`aoSubir` marca como falhou o que outra instância está gerando.** Com duas
+  instâncias da API, reiniciar uma derruba o registro do backup que a outra gera (que
+  depois sobrescreve com `pronto`). A flag `rodando` também é só em memória.
+- 🟡 **`versaoSchema` pode sair "desconhecida".** Lê `_prisma_migrations` com o papel
+  da aplicação (`plataforma_app`); sem permissão de leitura, o `catch` devolve
+  `'desconhecida'` em silêncio, e a restauração futura não teria como conferir.
+- 🟡 **Manuais acumulam sem limite** (só saem por exclusão).
+- 🟡 **`solicitar` é *fire-and-forget*.** Se o `update` dentro do `catch` de `gerar`
+  falhar, a rejeição fica sem tratamento, e o registro só sai de `gerando` em 6 h ou na
+  próxima subida.
+- 🟡 **O administrador da empresa baixa os dados de todos** os usuários e conversas da
+  empresa com `backups.exportar`; é decisão de 2026-10-13, mas faz dessa permissão uma
+  das mais sensíveis do catálogo.
+
+### 4. Estruturas de dados 🟢
+
+`EmpresaBackup` (`empresa_backups`, RLS por empresa), `BackupEmpresaConfig`
+(`backup_empresas_config`, linha única `id='unico'`), enums `BackupEmpresaOrigem` e
+`BackupEmpresaSituacao`; estrutura do pacote. Ver `data-dictionary.md`, seção
+`backup-empresa`.
+
+### 5. Metadados e configurações 🟢
+
+| Item | Valor |
+|---|---|
+| `frequenciaDias` / `manter` / `ativo` | 7 / 4 / `true` (padrões do banco) |
+| Link de download | 300 s |
+| Gerando além de | 6 h → interrompido |
+| Varredura | a cada 1 h; primeira em 5 min |
+| Página de leitura | 1000 |
+| Compressão | zlib 6 |
+| `VERSAO_FORMATO` | 1 |
+| Pasta temporária | `uploads/.tmp/backup-<id>` |
+| Chave do pacote | `backups-empresas/<empresaId>/<iniciadoEm ISO sem : e .>-<origem>.zip` |
+
+### 6. Dependências e testes
+
+`PrismaService` (`withTenant`, `withSistema`, `$queryRaw`), `common/armazenamento`,
+`common/uploads/link-assinado` (`assinarCaminho`), `common/uploads/uploads.config`,
+`archiver`, DMMF do Prisma. Testes: `backup-catalogo.spec.ts` (todo model decidido, sem
+duplicata, segredos mascarados, chave primária, tabelas grandes presentes),
+`backup-gerador.spec.ts` (leitura no contexto e filtrada, sem credencial, conteúdo do
+pacote, registro de outra empresa e usuário sem vínculo derrubam),
+`backup-empresa.service.spec.ts` (agendados: frequência, desligado, falha isolada). Não
+cobrem a poda, o link nem `aoSubir`.
+
+---
+
+## Módulo `assinaturas`
+
+**Caminho:** `apps/api/src/modules/assinaturas/`
+**Arquivos (4):** `assinaturas.module.ts`, `assinaturas.controller.ts` (78, 6 rotas),
+`assinaturas.service.ts` (171), `assinaturas-grupo.spec.ts` (78). Contrato:
+`packages/contracts/src/assinatura.ts`.
+
+### 1. Responsabilidade 🟢
+
+O **contrato SaaS** da plataforma: **uma assinatura por grupo econômico** (plano, ciclo,
+valor cobrado, dia de vencimento, situação). Alterar a assinatura **propaga para todas as
+empresas ativas do grupo** a situação de acesso e o limite de usuários do plano. Também dá
+o resumo comercial (MRR, ativas, em teste, inadimplentes). Só administração da
+plataforma.
+
+### 2. Rotas 🟢
+
+`JwtAuthGuard` + `PlatformAdminGuard`, prefixo `/plataforma`. Corpo validado por Zod
+(`assinaturaUpdateSchema`).
+
+| Rota | Comportamento |
+|---|---|
+| `GET /grupos/:grupoId/assinatura` | contrato do grupo, ou `null` (não cria assinatura gratuita) |
+| `PATCH /grupos/:grupoId/assinatura` | cria ou altera e propaga às empresas |
+| `GET /empresas/:empresaId/assinatura` | resolve o grupo da empresa e devolve o contrato dele |
+| `PATCH /empresas/:empresaId/assinatura` | idem, alterando |
+| `GET /assinaturas` | assinaturas de grupos não excluídos, com plano e número de empresas ativas |
+| `GET /assinaturas/resumo` | MRR, total de empresas, ativas, em teste, inadimplentes |
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 `updateAssinaturaGrupo` 🟢
+
+Numa transação:
+1. **`SELECT … FROM grupos_economicos … FOR UPDATE`**: serializa alterações concorrentes
+   do mesmo grupo.
+2. Grupo não excluído (404). Plano = `input.planoId` ou o atual; sem nenhum → 400.
+   Plano excluído → 400. **Plano inativo só é recusado para quem troca para ele**: quem já
+   está no plano continua alterando o resto.
+3. `upsert` por `grupoEconomicoId`; na criação, `valorMensalidade` padrão =
+   `plano.valorMensal`.
+4. **Propaga às empresas não excluídas do grupo** (`updateMany`):
+   - `situacao` da empresa = a da assinatura, **exceto `atrasada` → `suspensa`**;
+   - `limiteUsuarios` = o do plano (sobrescreve o que havia na empresa);
+   - fora de `teste`, `testeExpiraEm = null`.
+
+A situação da empresa é a única decisão de acesso (`common/empresa/situacao-empresa.ts`,
+`podeAcessar`): `ativa` entra; `teste` entra até `testeExpiraEm` (sem data, sem prazo);
+`suspensa` e `cancelada` não entram. Portanto **marcar a assinatura como atrasada bloqueia
+na hora o login de todas as empresas do grupo**.
+
+#### 3.2 Resumo SaaS — MRR 🟢
+
+`MRR = Σ (valorMensalidade / meses do ciclo)` das assinaturas `ativa` de grupos não
+excluídos (mensal 1, trimestral 3, semestral 6, anual 12), arredondado a centavos. A tela
+(`assinatura-section.tsx`) trata `valorMensalidade` como **"Valor Cobrado" por ciclo** e
+o preenche com o preço do plano para o ciclo escolhido — coerente com a divisão.
+
+#### 3.3 Achados
+
+- 🟡 **`valorMensalidade` é o valor do ciclo, não da mensalidade.** O nome engana, e o
+  padrão da API na criação é sempre `plano.valorMensal`, qualquer que seja o ciclo: uma
+  assinatura anual criada sem valor (fora da tela) entra no MRR como `valorMensal/12`.
+- 🟡 **`atrasada` suspende na hora, sem carência.** Não há passo intermediário (aviso,
+  prazo); o efeito é imediato para todas as empresas e usuários do grupo.
+- 🟡 **Não há cobrança automática.** `diaVencimento` e `proximoVencimentoEm` só são
+  gravados e exibidos; nada calcula o vencimento nem muda a situação para `atrasada`. A
+  inadimplência é marcada à mão.
+- 🟡 **O limite de usuários da empresa é sobrescrito** pelo do plano a cada alteração da
+  assinatura, mesmo que só tenha mudado o dia de vencimento: um limite ajustado à mão na
+  empresa se perde.
+- 🟡 **`teste` não define prazo.** Pôr a assinatura em `teste` mantém o `testeExpiraEm`
+  que a empresa tinha; sem ele, é avaliação sem prazo (entra até alguém encerrar).
+- 🟡 **Resquício por empresa.** O model ainda tem `empresaId @unique` (assinatura por
+  empresa, anterior ao contrato por grupo); as listagens filtram
+  `grupoEconomicoId not null`, mas as linhas antigas continuam no banco e contam para
+  `removePlano` (ver `planos`).
+- 🟡 **`totalEmpresas` do resumo** conta todas as empresas não excluídas, inclusive as
+  de grupos sem assinatura, e não bate com a soma por assinatura.
+
+### 4. Estruturas de dados 🟢
+
+`Assinatura` (`assinaturas`), enums `SituacaoAssinatura` e `CicloPagamento`. Ver
+`data-dictionary.md`, seção `assinaturas`.
+
+### 5. Metadados e configurações 🟢
+
+Padrões do banco: situação `ativa`, ciclo `mensal`, `valorMensalidade` 0,
+`diaVencimento` 10. Divisores do MRR: 1/3/6/12. Mapeamento de situação assinatura →
+empresa: `atrasada` → `suspensa`; as demais iguais.
+
+### 6. Dependências e testes
+
+`PrismaService` (transação com `FOR UPDATE`), `@plataforma/contracts`. Consumidores:
+`apps/web` Plataforma > Assinaturas e a seção de assinatura da empresa;
+`common/empresa/limite-empresas.ts` lê o plano da assinatura para limitar empresas.
+`assinaturas-grupo.spec.ts`: duas empresas leem o mesmo contrato, consulta sem contrato
+não cria gratuita, atualização propaga situação e limite. Não cobre o MRR, a recusa de
+plano inativo nem a troca de plano.
+
+---
+
+## Módulo `planos`
+
+**Caminho:** `apps/api/src/modules/planos/`
+**Arquivos (3):** `planos.module.ts`, `planos.controller.ts` (74, 5 rotas),
+`planos.service.ts` (164). Contrato: `packages/contracts/src/plano.ts`.
+
+### 1. Responsabilidade 🟢
+
+Catálogo dos **pacotes SaaS** (Básico, Profissional…): preço por ciclo, limite de
+usuários, limite de empresas por grupo e a **allowlist de módulos, menus e rotinas** que
+o plano libera. A aplicação dessa allowlist acontece em `estrutura`
+(`desativadosDaEmpresa`): plano com lista vazia não restringe nada.
+
+### 2. Rotas 🟢
+
+`JwtAuthGuard` + `PlatformAdminGuard`, prefixo `/plataforma/planos`.
+
+| Rota | Comportamento |
+|---|---|
+| `GET /` | planos não excluídos por `valorMensal`, com ids liberados e `totalEmpresas` (assinaturas de grupos ativos) |
+| `GET /:id` | detalhe com ids liberados |
+| `POST /` | cria; código único entre os não excluídos |
+| `PATCH /:id` | altera; listas de ids enviadas **substituem** as atuais |
+| `DELETE /:id` | soft delete (`ativo=false`); recusa se há assinaturas |
+
+### 3. Algoritmos e lógica não-trivial
+
+- **Criar**: confere `codigo` fora da transação; cria o plano e as três listas
+  (`createMany`) numa transação.
+- **Alterar**: para cada lista (`moduloIds`, `menuIds`, `rotinaIds`) **enviada**, apaga e
+  recria; lista omitida fica como está. A mudança vale na próxima montagem do menu de
+  cada empresa do plano (não há cópia por empresa).
+- **Excluir**: conta **todas** as assinaturas do plano (inclusive de grupos excluídos e as
+  antigas por empresa) e recusa se houver.
+
+### 4. Achados
+
+- 🟡 **O controller não valida o corpo.** `@Body() dto: any`, sem o DTO Zod que o
+  contrato já tem (`planoCreateSchema`/`planoUpdateSchema`). O corpo vai direto ao
+  `prisma.plano.create/update` (`...data`): campo errado dá 500, e qualquer coluna pode
+  ser gravada (`deletedAt`, `createdBy`, `id`). Restrito ao administrador da plataforma,
+  mas sem os padrões do Zod (`ativo`, `limiteEmpresas`) e sem as mensagens de validação.
+- 🟡 **Valores pela metade.** `listPlanos`/`getPlano` convertem `valorMensal` e
+  `valorAnual` para número, mas `valorTrimestral`/`valorSemestral` saem como `Decimal`
+  (texto no JSON). A tela de assinatura usa os quatro.
+- 🟡 **Exclusão travada por assinaturas mortas.** A contagem inclui assinaturas de grupos
+  excluídos e as antigas por empresa: um plano pode nunca mais poder ser excluído.
+- 🟡 **Código duplicado por corrida.** A unicidade é conferida fora da transação; o
+  `@unique` do banco segura, mas com erro 500 (P2002) em vez de 400. O `@unique` também
+  vale para planos excluídos, então o código de um plano excluído não pode ser reusado
+  (a conferência do serviço olha só os não excluídos e deixaria passar até o banco
+  recusar).
+- 🟡 **Ids das listas não são conferidos**: id inexistente vira erro de FK (500).
+- 🟡 **Plano vazio libera tudo** (regra de `estrutura`): tirar o último módulo da lista
+  libera **todos** os módulos, o oposto do que a tela sugere.
+
+### 5. Estruturas de dados 🟢
+
+`Plano` (`planos`), `PlanoModulo`, `PlanoMenu`, `PlanoRotina`. Ver `data-dictionary.md`,
+seção `planos`.
+
+### 6. Dependências e testes
+
+`PrismaService`. Consumidores: `assinaturas` (plano do grupo e limite de usuários),
+`estrutura` (allowlist), `common/empresa/limite-empresas.ts` (`limiteEmpresas`),
+`empresas` (limite de usuários na criação), `apps/web` Plataforma > Planos. **Sem
+testes.**
+
+---
+
+## Módulo `plataforma`
+
+**Caminho:** `apps/api/src/modules/plataforma/`
+**Arquivos (6):** `plataforma.module.ts`, `plataforma.controller.ts` (271, 12 rotas),
+`plataforma.service.ts` (857), `dto/plataforma.dto.ts` (Zod de
+`packages/contracts/src/plataforma.ts`), `plataforma-empresa-create.spec.ts` (48),
+`plataforma-uso.spec.ts` (186).
+
+### 1. Responsabilidade 🟢
+
+A **administração do SaaS**: quem tem acesso, por quanto tempo e com quantos usuários.
+Lista as empresas com uso e último acesso; cria empresa **com o primeiro administrador
+na mesma transação**; altera situação, prazo de teste e limite de usuários; vincula e
+desvincula administradores de empresa; promove e revoga **administradores da
+plataforma**; consulta CNPJ; e mantém um **log próprio** (`plataforma_auditoria`).
+
+**Sem `PermissionsGuard`, de propósito:** os perfis são globais e compartilhados, e dar
+uma permissão ao Administrador daria a todo administrador de tenant. O corte é o
+`PlatformAdminGuard` (perfil com `administraPlataforma`, que só seed e migration
+concedem).
+
+### 2. Rotas 🟢
+
+Prefixo `/plataforma`, `JwtAuthGuard` + `PlatformAdminGuard`, corpo e query em Zod.
+
+| Rota | Comportamento |
+|---|---|
+| `GET /consulta-cnpj/:cnpj` | delega a `EnriquecimentoService.consultarCnpj` (módulo `clientes`) |
+| `GET /empresas` | paginada; filtros `situacao`, `apenasExpiradas`, `search` (razão, fantasia, CNPJ) |
+| `POST /empresas` | empresa + administrador (conta nova ou existente) |
+| `PATCH /empresas/:id/situacao` | situação, `testeExpiraEm`, `limiteUsuarios`, com `motivo` no log |
+| `GET /contas?email=` | existe conta com o e-mail? (a tela decide se pede nome e senha) |
+| `GET /empresas/:id/administradores` | contas com perfil Administrador Empresa vinculadas, e em quantas empresas cada uma está |
+| `POST /empresas/:id/administradores` | vincula conta existente como administradora |
+| `DELETE /empresas/:id/administradores/:usuarioId` | desativa o vínculo; recusa o último administrador |
+| `GET /admins`, `POST /admins` `{email}`, `PATCH /admins/:usuarioId` | lista, promove por e-mail, promove ou revoga |
+| `GET /auditoria` | log, filtrado por empresa e ação, mais recente primeiro |
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Listagem com uso — RLS e N+1 consciente 🟢
+
+`empresa.findMany` + `count` em paralelo. Uso (vínculos ativos e último login) **por
+empresa, dentro de `withTenant`**: `usuario_empresas` tem RLS, e fora do contexto a
+leitura volta **zero sem erro** (aconteceu na primeira versão: "0 usuários" para empresa
+com dez). O N+1 é aceito (20 por página). `testeExpirado` usa o mesmo `podeAcessar` do
+login, no servidor, para não divergir pelo fuso do navegador.
+
+#### 3.2 `criarEmpresa` — empresa e primeiro administrador 🟢
+
+1. `validarDocumentoEmpresa` (CPF/CNPJ conforme `tipoPessoa`); CNPJ em uso → 409.
+2. Conta com o e-mail:
+   - é **administrador da plataforma** → 409 (a conta passaria a pertencer ao grupo do
+     cliente; uma conta é de um grupo só);
+   - **não existe** → exige `nome` e `senha` provisória (8–72);
+   - **existe** → é vinculada; nome e senha do payload são ignorados.
+3. Alias em uso → 409.
+4. Transação: cria a empresa (situação padrão **`teste`**). **Grupo econômico**: o da
+   conta existente, se ela tiver; senão um grupo novo com o nome fantasia. Perfil
+   "Administrador Empresa" (global, `grupoEconomicoId null`) obrigatório; sem ele, 404
+   ("rode o seed"). `set_config('app.current_empresa_id')` na transação para o insert em
+   `usuario_empresas` passar no `WITH CHECK`.
+   - Conta existente: cria o vínculo, move a conta para o grupo da empresa e, **se o
+     perfil dela não é `sistemaBase`**, troca para Administrador Empresa ("promovida").
+   - Conta nova: `bcrypt` (12 rodadas), `deveTrocarSenha = true`, perfil administrador,
+     vínculo.
+5. Log `empresa.criada` com situação, admin e o caso (nova, vinculada, promovida).
+
+#### 3.3 Administradores da empresa 🟢
+
+- **Listar**: vínculos ativos com perfil Administrador Empresa (`withTenant`); a
+  contagem de empresas de cada conta usa **`withUsuario`** (policy
+  `self_usuario_empresas`), porque um `groupBy` fora de contexto devolve zero.
+- **Vincular**: conta precisa existir, não ser admin da plataforma e ser do **mesmo
+  grupo** (ou sem grupo) — 409 se de outro grupo (decisão de 30/09/2026). Já
+  administradora → 409. **Vaga** do limite de usuários só é consumida se o vínculo não
+  estava ativo (`garantirVagaDeUsuario`). Upsert do vínculo e **perfil da conta =
+  Administrador Empresa** (vale em todas as empresas do grupo).
+- **Desvincular**: recusa se há ≤ 1 administrador ativo; desativa o vínculo (não apaga
+  nem troca o perfil).
+
+#### 3.4 Administradores da plataforma 🟢
+
+O perfil é da conta (migration `20260930230000_dados_do_usuario`). `definirAdmin`:
+promover quem já é → no-op; revogar quem não é → no-op (sem sobrescrever o perfil real);
+**recusa revogar a si mesmo** e **revogar o último**. Revogar devolve a conta para
+"Administrador Empresa". O log leva a primeira empresa da conta (`withUsuario`).
+
+#### 3.5 Alterar situação — um registro de log por campo 🟢
+
+Atualiza só os campos enviados (Zod exige ao menos um). Grava `empresa.situacao_alterada`
+(se mudou), `empresa.teste_alterado` e `empresa.limite_alterado` separados, com
+`motivo` como sufixo — "quando esta empresa foi suspensa" acha-se direto.
+
+#### 3.6 Achados
+
+- 🟡 **Empresa nova num grupo existente fura o limite do plano.** Quando o administrador
+  já tem conta, a empresa entra no grupo dele **sem `garantirVagaDeEmpresa`**, que o
+  módulo `empresas` e o `grupos-economicos` chamam. O grupo passa do `limiteEmpresas`
+  contratado.
+- 🟡 **Empresa nova ignora a assinatura do grupo.** Nasce com a situação e o limite de
+  usuários do payload (padrão `teste`, sem limite), mesmo que o grupo tenha contrato
+  `ativa` com limite; só a próxima alteração da assinatura alinha.
+- 🟡 **Duas fontes para a situação da empresa.** `alterarSituacao` muda a empresa
+  direto; `assinaturas` sobrescreve todas as empresas do grupo a cada alteração do
+  contrato. Uma suspensão feita aqui some quando alguém muda o dia de vencimento lá (e o
+  inverso).
+- 🟡 **Vincular como administrador promove a conta no grupo inteiro.** O perfil é da
+  conta: um vendedor de uma empresa do grupo, vinculado como administrador de outra,
+  passa a administrar **todas** as empresas do grupo. Está nos comentários, mas a tela
+  fala em "administrar esta empresa".
+- 🟡 **Desvincular remove qualquer vínculo**, não só de administrador: a rota confere
+  que há mais de um administrador, mas não que o `usuarioId` alvo é um deles.
+- 🟡 **Revogação concorrente.** "Não revogar o último" conta os administradores fora da
+  transação; dois administradores revogando um ao outro ao mesmo tempo podem zerar a
+  lista (saída só por UPDATE no banco).
+- 🟡 **Senha provisória sem a política de senha** (só 8–72 caracteres pelo Zod).
+- 🟡 **`sortBy` livre** na listagem (`z.string()`): campo inexistente vira erro do Prisma
+  (500), não 400.
+- 🟡 **`empresa.teste_alterado` registrado mesmo sem mudança** (diferente da situação,
+  que confere).
+- 🟡 **CNPJ e alias conferidos fora da transação**: a corrida esbarra no `@unique` e dá
+  500 em vez de 409.
+
+### 4. Estruturas de dados 🟢
+
+`PlataformaAuditoria` (`plataforma_auditoria`, sem FK de usuário nem de empresa, para o
+log sobreviver às exclusões); usa `Empresa`, `Usuario`, `UsuarioEmpresa`, `Perfil`,
+`GrupoEconomico`. Ver `data-dictionary.md`, seção `plataforma`.
+
+### 5. Metadados e configurações 🟢
+
+| Item | Valor |
+|---|---|
+| `SALT_ROUNDS` | 12 |
+| Perfis por nome | "Administrador Empresa" (`grupoEconomicoId null`); o da plataforma por `administraPlataforma = true` |
+| Situação padrão na criação | `teste` |
+| Ações do log | `empresa.criada`, `empresa.situacao_alterada`, `empresa.teste_alterado`, `empresa.limite_alterado`, `empresa.admin_vinculado`, `empresa.admin_desvinculado`, `admin.promovido`, `admin.revogado` |
+
+### 6. Dependências e testes
+
+`PrismaService` (`withTenant`, `withUsuario`, `$transaction`, `set_config`),
+`EnriquecimentoService` (de `clientes`), `common/empresa/documento-empresa`,
+`common/empresa/situacao-empresa`, `common/empresa/limite-usuarios`, `bcryptjs`,
+`@plataforma/contracts`. Testes: `plataforma-empresa-create.spec.ts` (criação com conta
+existente/nova) e `plataforma-uso.spec.ts` (uso lido dentro do tenant, contagem por
+`withUsuario`). Sem teste para `definirAdmin`, desvincular nem `alterarSituacao`.
+
+---
+
+## Módulo `parametros`
+
+**Caminho:** `apps/api/src/modules/parametros/`
+**Arquivos (3):** `parametros.module.ts`, `parametros.controller.ts` (120, 5 rotas),
+`parametros.service.ts` (290), `dto/parametro.dto.ts` (Zod de
+`packages/contracts/src/parametro.ts`).
+
+### 1. Responsabilidade 🟢
+
+Parâmetros do sistema **por empresa** (chave/valor tipado, tabela
+`parametros_empresa`). Duas funções:
+- o **CRUD** da tela Administração > Parâmetros;
+- a **leitura tipada** para o resto do backend (`obterNumero`, `obterBoolean`,
+  `obterTexto`), com valor padrão quando o parâmetro não existe, está inativo ou vazio.
+
+É a fonte de configuração de SMTP, SMS, tabelas de preço, validade do orçamento,
+reemissão de boleto, armazém padrão e outras. Não tem rota em `/integracao` de
+propósito, com uma exceção: o ERP grava `ULTIMA_COMUNICACAO_ERP` pela rota de
+comunicação da integração.
+
+### 2. Rotas 🟢
+
+`JwtAuthGuard` + `PermissionsGuard`; a empresa é sempre a ativa do token.
+
+| Rota | Permissão | Comportamento |
+|---|---|---|
+| `GET /parametros` | `parametros.visualizar` | paginada; busca por chave ou descrição; filtros `ativo`, `tipo`; ordenação só por `parametro`, `tipo`, `ativo`, `createdAt` |
+| `GET /parametros/:id` | `parametros.visualizar` | |
+| `POST /parametros` | `parametros.cadastrar` | chave única na empresa (409) |
+| `PATCH /parametros/:id` | `parametros.editar` | senha em branco mantém a atual |
+| `DELETE /parametros/:id` | `parametros.excluir` | soft delete (`ativo=false`) |
+
+### 3. Algoritmos e lógica não-trivial 🟢
+
+- **Tipo `senha`**: `paraLeitura` devolve `conteudo = null` e `preenchido = !!conteudo`;
+  no `update`, conteúdo vazio num parâmetro que **já era** senha mantém o valor atual.
+- **`validarConteudo`**: `numero` (`Number()` não pode dar `NaN`), `booleano`
+  (`"true"`/`"false"`), `data` (`new Date` válido) e `tamanho` máximo. Conteúdo vazio
+  passa sempre.
+- **Chave**: `^[A-Z0-9_]+$`, 2–60 (Zod).
+- **Leitura tipada**: só parâmetro `ativo` e não excluído; vazio ou nulo → padrão;
+  `obterNumero` com texto inválido → padrão; `obterBoolean` → `conteudo === 'true'`
+  (qualquer outra coisa é `false`). Aceita a transação do chamador.
+
+Constantes exportadas: `ARMAZEM_PADRAO`, `TABELA_PRECO_PADRAO`, `TABELA_PRECO_CAPITAL`,
+`TABELA_PRECO_INTERIOR`, `ORCAMENTO_EXIBIR_FOTOS_PRODUTOS`,
+`BOLETO_PRAZO_MAXIMO_REEMISSAO`, `ULTIMA_COMUNICACAO_ERP`.
+
+### 4. Achados
+
+- ✅ **Corrigido em 5eba615** (2026-10-15: sair do tipo `senha` descarta o segredo gravado). Achado original:
+  🔴 **Trocar o tipo revela a senha.** O `PATCH` aceita `tipo`. Com
+  `{"tipo": "texto"}` num parâmetro `senha` (`SMTP_SENHA`, `SMS_TOKEN`), o conteúdo é
+  mantido (a regra "senha em branco mantém" olha o tipo **atual**) e passa a sair em
+  texto puro no `GET`. Quem tem `parametros.editar` lê a credencial que a API promete
+  nunca devolver.
+- 🟡 **A chave pode ser renomeada** pelo `PATCH` (`parametro` está no parcial), sem
+  conferir duplicidade (o `@@unique` do banco devolve 500) e sem aviso de que o código
+  procura a chave pelo nome: renomear `SMTP_SENHA` desliga o e-mail em silêncio.
+- 🟡 **Recriar depois de excluir dá 500.** O `@@unique([empresaId, parametro])` inclui as
+  linhas excluídas, mas o `create` só confere as não excluídas.
+- 🟡 **Segredos sem cifra.** `SMTP_SENHA` e `SMS_TOKEN` ficam em texto puro em
+  `parametros_empresa.conteudo` (as chaves do agente e do WhatsApp são cifradas).
+- 🟡 **`validarConteudo` é permissivo.** `Number('')` e `Number(' ')` valem 0; `data`
+  aceita qualquer coisa que o `Date` do JavaScript entenda (`"1"`, `"2026"`).
+- 🟡 **Mudar o tipo não revalida o conteúdo existente** quando o `PATCH` não traz
+  `conteudo`: um `texto` "abc" passa a `numero` e os leitores caem no padrão em
+  silêncio.
+
+### 5. Estruturas de dados 🟢
+
+`ParametroEmpresa` (`parametros_empresa`), enum `TipoParametro`. Ver
+`data-dictionary.md`, seção `parametros`.
+
+### 6. Dependências e testes
+
+`PrismaService`, `common/pagination`, `@plataforma/contracts`. Consumidores (via
+`ParametrosService`): e-mail/SMTP, SMS, orçamentos, títulos (boleto), integração
+(produtos, comunicação), WhatsApp e outros. Parâmetros padrão criados por migrations de
+backfill (`20260923162000_parametros_padrao_backfill` e as de cada módulo) e pelo
+`seed-base.ts`. **Sem testes próprios.**
+
+---
+
+## Módulo `escopo`
+
+**Caminho:** `apps/api/src/modules/escopo/`
+**Arquivos (3):** `escopo.module.ts`, `escopo.controller.ts` (31), `escopo.service.ts` (30).
+
+### 1. Responsabilidade e rota 🟢
+
+`GET /escopo/vendedores` (só `JwtAuthGuard`, **sem permissão de rotina**, de propósito):
+os vendedores **dentro do escopo hierárquico** do usuário (`id`, `nome`,
+`nomeReduzido`), para os filtros "Vendedor" das telas escopadas (notas, itens,
+títulos), sem expor o `VendedoresController`, que não restringe carteira. Devolve
+`{data, restrito}`; `restrito = false` significa acesso total.
+
+### 2. Lógica 🟢
+
+Dentro de `withTenant(empresaAtiva)`: `resolverEscopoVendedores(tx, empresaId, user)`
+(`common/escopo/escopo-vendedores.ts`) devolve `null` (sem restrição: perfil
+`sistemaBase` ou `carteiraCompleta`) ou a lista de ids (o vendedor do usuário e o time
+abaixo dele na árvore `superiorId`; sem vendedor ligado, lista vazia). Lista os
+vendedores não excluídos, ordenados por nome.
+
+### 3. Achados
+
+- 🟡 **Inclui vendedores inativos** (filtra só `deletedAt`); o filtro mostra quem já
+  saiu. Pode ser desejado para histórico (notas antigas) — 🔴 confirmar com o negócio.
+- 🟡 Sem permissão de rotina, qualquer usuário logado lista os nomes dos vendedores
+  do próprio escopo; para quem tem acesso total, todos da empresa. Decisão registrada
+  no código (baixa sensibilidade).
+
+### 4. Dependências e testes
+
+`PrismaService`, `common/escopo/escopo-vendedores` (o mesmo usado por notas, títulos,
+clientes, SMS e outros). Sem testes próprios (o resolvedor tem os seus em `common`).
+
+---
+
+## Módulo `politica-senha`
+
+**Caminho:** `apps/api/src/modules/politica-senha/`
+**Arquivos (3):** `politica-senha.module.ts`, `politica-senha.controller.ts` (81, 3 rotas
+só de leitura), `politica-senha.service.ts` (309).
+
+### 1. Responsabilidade 🟢
+
+A **política de senha por empresa**, guardada como parâmetros (`SENHA_*` em
+Administração > Parâmetros desde 2026-08-26; antes era uma tabela global com tela
+própria). O serviço resolve a política vigente, **valida** senhas (fonte de verdade da
+força da senha; o Zod só garante o formato básico), valida **reuso** contra o histórico,
+grava o histórico e **gera senha provisória**. Consumidores: `auth` (login, bloqueio,
+expiração, troca), `usuarios` (criação e reset), `vendedores` (usuário provisório) e
+`recuperacao-senha`.
+
+### 2. Rotas 🟢
+
+| Rota | Guarda | Política devolvida |
+|---|---|---|
+| `GET /politica-senha` | JWT, `@PermitirTermoPendente` | a da própria conta (`getVigenteParaUsuario`) |
+| `GET /politica-senha/empresa-ativa` | JWT | a da empresa ativa (senha inicial de usuário novo) |
+| `GET /politica-senha/usuario/:id` | `usuarios.editar` | a do usuário alvo (reset feito por admin) |
+
+São três porque cada uma espelha a validação que o backend fará naquele fluxo.
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Política da empresa 🟢
+
+Dez parâmetros lidos com `obterNumero`/`obterBoolean` (padrão quando ausentes):
+
+| Parâmetro | Padrão |
+|---|---|
+| `SENHA_TAMANHO_MINIMO` / `SENHA_TAMANHO_MAXIMO` | 8 / 0 (sem máximo) |
+| `SENHA_EXIGIR_MAIUSCULA` / `_MINUSCULA` / `_NUMERO` / `_ESPECIAL` | sim / não / sim / não |
+| `SENHA_DIAS_PARA_EXPIRAR` | 0 (não expira) |
+| `SENHA_HISTORICO_QUANTIDADE` | 0 (não confere reuso além da atual) |
+| `SENHA_TENTATIVAS_ANTES_BLOQUEIO` / `SENHA_MINUTOS_BLOQUEIO` | 5 / 15 |
+
+`sanear`: máximo > 0 e menor que o mínimo é tratado como "sem máximo" (cada parâmetro
+é editado sozinho na tela de Parâmetros, e o par incoerente recusaria toda senha).
+
+#### 3.2 Política da conta — a mais restritiva 🟢
+
+A senha é da **conta**, não da empresa: vale a **mais restritiva entre as empresas com
+vínculo ativo** (decisão de 2026-08-26). `maisRestritiva`, regra a regra: maior mínimo;
+`menorNaoZero` para máximo, dias para expirar e tentativas (zero = sem limite e perde de
+qualquer número); `OR` nas exigências; maior histórico; mais minutos de bloqueio. Sem
+vínculo → padrão.
+
+#### 3.3 Validação, reuso e histórico 🟢
+
+- `validarSenhaContra` junta todas as violações numa mensagem só (400).
+- `validarSenhaDoUsuario` (conta existente) e `validarSenhaDaEmpresa` (usuário em
+  criação, sem vínculo ainda).
+- `validarReuso`: recusa a senha atual (bcrypt) e as últimas N de `senha_historico`.
+- `registrarHistorico` grava o hash **substituído**, aceitando a transação do chamador.
+
+#### 3.4 Senha provisória 🟢
+
+`max(mínimo da política, 14)` caracteres, limitado ao máximo; sempre as quatro
+categorias, de um alfabeto sem ambíguos (sem `0/O`, `1/l/I`); sorteio e embaralhamento
+(Fisher-Yates) com `crypto.randomInt`.
+
+#### 3.5 Achados
+
+- ✅ **Corrigido em 5eba615** (2026-10-15; confirmado na base de dev: 0 vínculos lidos sem contexto contra 16 ativos — agora lê com `withUsuario`). Achado original:
+  🔴 **A "mais restritiva" provavelmente não é calculada.** `getVigenteParaUsuario` lê
+  `usuario_empresas` com `this.prisma.usuarioEmpresa.findMany`, **sem `withUsuario`**.
+  A tabela tem duas policies: `tenant_isolation` (`empresaId = app.current_empresa_id`)
+  e `self` (`usuarioId = app.current_usuario_id`). O contexto automático do
+  `PrismaService` só informa `app.current_empresa_id` (e só em requisição de usuário
+  logado); `app.current_usuario_id` só existe dentro de `withUsuario`. Daí, 🟡 inferido
+  do código e das policies:
+  - **login** (sem contexto) e **"esqueci minha senha"** (sem contexto): a leitura
+    volta vazia → **`POLITICA_PADRAO`**. O bloqueio por tentativas (5/15 min), a
+    expiração e a força da senha nova ignoram os parâmetros das empresas.
+  - **requisição logada** (troca da própria senha, `me()`): enxerga só o vínculo da
+    **empresa ativa** → vale a política dela, não a mais restritiva da conta.
+  É o mesmo padrão que o próprio código descreve em `plataforma.service.ts` e
+  `recuperacao-senha.service.ts` ("sem `withUsuario` a consulta volta vazia, sem
+  erro"). **Confirmar contra o banco** com o papel `plataforma_app`.
+- 🟡 **Senha atual nunca é revalidada** quando a política aperta ou a conta ganha
+  vínculo com empresa mais exigente (comportamento declarado; só a expiração força a
+  troca).
+- 🟡 **Senha provisória pode violar o máximo.** Com `tamanhoMaximo` < 4, o gerador ainda
+  põe as quatro categorias e passa do máximo (o `sanear` só corrige máximo < mínimo).
+- 🟡 **Especial = qualquer coisa fora de `[A-Za-z0-9]`**, inclusive espaço e letras
+  acentuadas; "maiúscula" é só `[A-Z]` (um `É` não conta).
+- 🟡 **Leituras por empresa sem cache:** dez consultas por empresa a cada login falho,
+  carga de `me()` e troca de senha.
+
+### 4. Estruturas de dados 🟢
+
+`PoliticaSenha` (contrato), `SenhaHistorico` (`senha_historico`); parâmetros `SENHA_*`
+em `parametros_empresa`. Ver `data-dictionary.md`, seção `politica-senha`.
+
+### 5. Dependências e testes
+
+`PrismaService`, `ParametrosService`, `bcryptjs`, `node:crypto`. Testes indiretos nos
+consumidores (`auth`, `recuperacao-senha`, que simula o `withUsuario` no próprio
+serviço). **Sem teste do cálculo da mais restritiva** contra a RLS.
+
+---
+
+## Módulo `recuperacao-senha`
+
+**Caminho:** `apps/api/src/modules/recuperacao-senha/`
+**Arquivos (4):** `recuperacao-senha.module.ts`, `recuperacao-senha.controller.ts` (54,
+2 rotas públicas), `recuperacao-senha.service.ts` (239), `recuperacao-senha.service.spec.ts`
+(253). Plano: `docs/planos/2026-10-13-esqueci-minha-senha.md`.
+
+### 1. Responsabilidade 🟢
+
+"Esqueci minha senha" por **link de uso único de 30 minutos** enviado por e-mail. Rotas
+públicas, como o login; roda no "modo sistema" do papel `plataforma_app` para ler
+`usuarios`/`empresas`.
+
+### 2. Rotas 🟢
+
+| Rota | Throttle por IP | Comportamento |
+|---|---|---|
+| `POST /auth/senha/esqueci` `{email, empresaAlias?}` | 5 / 15 min | resposta **sempre** `{ok: true}` |
+| `POST /auth/senha/redefinir` `{token, novaSenha}` | 10 / 15 min | troca a senha |
+
+### 3. Algoritmos e lógica não-trivial 🟢
+
+**Pedir** (`pedir` → `enviarLink`; qualquer erro só vai para o log):
+1. Conta por e-mail (sem diferenciar maiúsculas), não excluída e **ativa**; senão, nada.
+2. Empresa do pedido (`withUsuario`): a do alias da tela de login, se a conta tem vínculo
+   ativo com ela; senão a primeira com vínculo; senão nenhuma.
+3. Sem `WEB_URL`/`CORS_ORIGIN` → só log.
+4. Token `randomBytes(32)` base64url; guarda **só o SHA-256**. Numa transação: invalida
+   os links vivos da conta (`usadoEm = agora`) e cria o novo com `expiraEm` e IP.
+5. E-mail com o layout da empresa; **SMTP da empresa** se ela liberou o e-mail de acesso
+   (`disponibilidade().senhaProvisoria`), senão o da plataforma.
+6. Registro `senha_redefinicao_pedida` em acessos.
+A senha atual continua valendo até o link ser usado.
+
+**Redefinir**:
+1. Busca pelo hash do token; inválido, usado, vencido, conta excluída ou inativa → a
+   mesma mensagem genérica (400).
+2. Política (`validarSenhaDoUsuario`) e reuso (`validarReuso`).
+3. Transação: marca o uso **condicionado a `usadoEm null`** (dois envios simultâneos não
+   trocam duas vezes), grava o hash antigo no histórico, troca a senha, zera
+   `deveTrocarSenha`, tentativas e bloqueio, e **revoga os refresh tokens**.
+4. Encerra as sessões abertas (`senha_redefinida`) e registra o evento.
+
+### 4. Achados
+
+- 🔴 **Política padrão na redefinição** — ver `politica-senha` §3.5: sem contexto, a
+  política que valida a senha nova tende a ser a padrão, não a das empresas da conta.
+- 🟡 **Resposta igual, tempo diferente.** A resposta é sempre `{ok: true}`, mas com conta
+  existente o servidor grava, monta e envia o e-mail antes de responder; a diferença de
+  tempo revela quem tem conta (enumeração por tempo).
+- 🟡 **Throttle só por IP.** Rotação de IP permite encher a caixa de uma pessoa; não há
+  limite por conta (cada pedido invalida o anterior, mas manda outro e-mail).
+- 🟡 **O link vai na query string** (`?token=`): fica no histórico do navegador e pode
+  vazar por `Referer` se a página de redefinição carregar recurso externo.
+- 🟡 **Conta bloqueada pode redefinir** e o bloqueio é zerado — desejado para quem
+  esqueceu a senha, mas também é o caminho de quem tem acesso ao e-mail da vítima.
+- 🟡 **Links usados e vencidos não são limpos** (`senha_redefinicoes` cresce).
+
+### 5. Estruturas de dados 🟢
+
+`SenhaRedefinicao` (`senha_redefinicoes`). Ver `data-dictionary.md`.
+
+### 6. Dependências e testes
+
+`PrismaService` (`withUsuario`, `$transaction`), `MailService`, `smtpDaEmpresa`,
+`buscarEmpresaDoEmail`, `urlDoSistema`, `montarEmailRedefinicao`, `EmailConfigService`,
+`ParametrosService`, `PoliticaSenhaService`, `AcessosService`. `recuperacao-senha.service.spec.ts`
+cobre: resposta igual sem conta, link único que invalida o anterior, empresa pelo alias,
+SMTP da empresa ou da plataforma, token inválido/vencido/usado, troca com histórico,
+desbloqueio e revogação, e a corrida do uso duplo. A política é simulada (não pega o
+achado da RLS).

@@ -53,15 +53,15 @@
 - [x] **Arqueólogo** — Análise do módulo `email`
 - [x] **Arqueólogo** — Análise do módulo `documentos-email`
 - [x] **Arqueólogo** — Análise do módulo `sms`
-- [ ] **Arqueólogo** — Análise do módulo `armazenamento`
-- [ ] **Arqueólogo** — Análise do módulo `backup-empresa`
-- [ ] **Arqueólogo** — Análise do módulo `assinaturas`
-- [ ] **Arqueólogo** — Análise do módulo `planos`
-- [ ] **Arqueólogo** — Análise do módulo `plataforma`
-- [ ] **Arqueólogo** — Análise do módulo `parametros`
-- [ ] **Arqueólogo** — Análise do módulo `escopo`
-- [ ] **Arqueólogo** — Análise do módulo `politica-senha`
-- [ ] **Arqueólogo** — Análise do módulo `recuperacao-senha`
+- [x] **Arqueólogo** — Análise do módulo `armazenamento`
+- [x] **Arqueólogo** — Análise do módulo `backup-empresa`
+- [x] **Arqueólogo** — Análise do módulo `assinaturas`
+- [x] **Arqueólogo** — Análise do módulo `planos`
+- [x] **Arqueólogo** — Análise do módulo `plataforma`
+- [x] **Arqueólogo** — Análise do módulo `parametros`
+- [x] **Arqueólogo** — Análise do módulo `escopo`
+- [x] **Arqueólogo** — Análise do módulo `politica-senha`
+- [x] **Arqueólogo** — Análise do módulo `recuperacao-senha`
 - [ ] **Arqueólogo** — Análise do módulo `suporte-acesso`
 - [ ] **Arqueólogo** — Análise do módulo `integracao`
 - [ ] **Arqueólogo** — Análise do módulo `integracao-keys`

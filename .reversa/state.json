@@ -63,9 +63,7 @@
         "notificacoes",
         "email",
         "documentos-email",
-        "sms"
-      ],
-      "modules_pending": [
+        "sms",
         "armazenamento",
         "backup-empresa",
         "assinaturas",
@@ -74,7 +72,9 @@
         "parametros",
         "escopo",
         "politica-senha",
-        "recuperacao-senha",
+        "recuperacao-senha"
+      ],
+      "modules_pending": [
         "suporte-acesso",
         "integracao",
         "integracao-keys",
@@ -87,7 +87,7 @@
         "inicio",
         "demo"
       ],
-      "last_update": "2026-10-16T02:12:19.353Z"
+      "last_update": "2026-10-16T02:34:34.769Z"
     }
   },
   "engines": [

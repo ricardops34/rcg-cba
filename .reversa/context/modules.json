@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-16T01:24:27.197Z",
+  "generated_at": "2026-10-16T02:34:34.767Z",
   "modules": [
     {
       "name": "auth",
@@ -2145,6 +2145,628 @@
       ],
       "test_files": [
         "sms.spec.ts"
+      ],
+      "complexity": "medium",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "armazenamento",
+      "path": "apps/api/src/modules/armazenamento",
+      "responsibility": "Armazenamento de arquivos em disco ou no MinIO (S3) por pasta, com chave = caminho relativo a uploads/; administracao da plataforma: situacao, migracao disco->S3 em rodadas e varredura de midia orfa do WhatsApp.",
+      "files": [
+        "armazenamento.module.ts",
+        "plataforma-armazenamento.controller.ts",
+        "midia-orfa.service.ts",
+        "midia-orfa.service.spec.ts",
+        "../../common/armazenamento/armazenamento.ts",
+        "../../common/armazenamento/armazenamento.spec.ts"
+      ],
+      "entities": [],
+      "main_functions": [
+        "Armazenamento.gravar/gravarArquivo/ler/apagar/listar",
+        "Armazenamento.linkTemporario",
+        "Armazenamento.migrarParaS3",
+        "Armazenamento.situacao",
+        "validarChave/chaveDoEndereco/configDoAmbiente/explicarErroS3",
+        "MidiaOrfaService.varrer"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "whatsapp/midia-arquivos",
+        "common/uploads/uploads.config",
+        "@aws-sdk/client-s3",
+        "@aws-sdk/s3-request-presigner",
+        "MinIO (externo)"
+      ],
+      "consumers": [
+        "main.ts (middleware /uploads)",
+        "whatsapp-conversas.service.ts",
+        "whatsapp/midia-arquivos.ts",
+        "backup-empresa.service.ts",
+        "apps/web Plataforma > Armazenamento"
+      ],
+      "business_rules": [
+        {
+          "description": "Pasta vai para o S3 so se as quatro variaveis S3 estao preenchidas e o primeiro segmento esta em ARMAZENAMENTO_S3_PASTAS; leitura cai no disco quando o objeto nao esta no S3",
+          "location": "common/armazenamento/armazenamento.ts:noS3/ler",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Arquivo de pasta no S3 e servido por 302 para link pre-assinado de 1 h, assinado com o host publico, depois das conferencias de link assinado",
+          "location": "main.ts middleware /uploads",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Migracao: ate 200 por rodada; so apaga do disco depois de conferir o tamanho no S3",
+          "location": "common/armazenamento/armazenamento.ts:migrarParaS3",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Midia orfa = nao referenciada por mensagem nem foto de contato de nenhuma empresa e com mais de 24 h; recusa apagar se nenhuma referencia foi lida",
+          "location": "midia-orfa.service.ts:varrer",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Chave sem '..', '.', barra inicial, contrabarra ou segmento vazio",
+          "location": "common/armazenamento/armazenamento.ts:validarChave",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "trava da varredura so pega leitura vazia total, nao de uma empresa",
+        "falha de exclusao engolida sem log",
+        "migracao le o arquivo inteiro na memoria",
+        "falhas persistentes no inicio da lista travam a migracao",
+        "explicarErroS3 no controller usa o bucket padrao 'plataforma'",
+        "S3 meio configurado cai em disco sem aviso",
+        "HeadObject por acesso a arquivo no S3"
+      ],
+      "test_files": [
+        "midia-orfa.service.spec.ts",
+        "../../common/armazenamento/armazenamento.spec.ts"
+      ],
+      "complexity": "medium",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "backup-empresa",
+      "path": "apps/api/src/modules/backup-empresa",
+      "responsibility": "Pacote zip com a empresa inteira (JSONL, CSV, arquivos referenciados, manifesto), manual ou agendado, guardado no armazenamento e baixado por link assinado; para a administracao da plataforma e para o administrador da empresa ativa. Sem restauracao.",
+      "files": [
+        "backup-empresa.module.ts",
+        "plataforma-backups.controller.ts",
+        "backups.controller.ts",
+        "backup-empresa.service.ts",
+        "backup-empresa-varredura.service.ts",
+        "backup-gerador.ts",
+        "backup-catalogo.ts",
+        "backup-serializar.ts",
+        "backup-catalogo.spec.ts",
+        "backup-empresa.service.spec.ts",
+        "backup-gerador.spec.ts"
+      ],
+      "entities": [
+        "EmpresaBackup",
+        "BackupEmpresaConfig"
+      ],
+      "main_functions": [
+        "BackupEmpresaService.solicitar/gerarAgora/gerar",
+        "BackupEmpresaService.agendados/podarAgendados",
+        "BackupEmpresaService.link/excluir/listar/listarDaEmpresa",
+        "BackupEmpresaService.aoSubir/encerrarInterrompidos",
+        "BackupGerador.gerar/exportarTabela/conferirDono/limpar/observar/juntarArquivos",
+        "modelsDaEmpresa/camposEscalares/camposDaChave",
+        "linhaJson/linhaCsv/valorParaJson"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "common/armazenamento",
+        "common/uploads/link-assinado",
+        "common/uploads/uploads.config",
+        "archiver",
+        "Prisma DMMF"
+      ],
+      "consumers": [
+        "apps/web Plataforma > Backups",
+        "apps/web Administracao > Backups"
+      ],
+      "business_rules": [
+        {
+          "description": "Todo model com empresaId entra no backup, salvo os listados em FORA com motivo; teste falha com model nao decidido",
+          "location": "backup-catalogo.ts + backup-catalogo.spec.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Credenciais vao nulas: campos mascarados e parametros SMTP_SENHA/SMS_TOKEN",
+          "location": "backup-catalogo.ts:CAMPOS_MASCARADOS/PARAMETROS_SECRETOS; backup-gerador.ts:limpar",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Registro de outra empresa, usuario sem vinculo ou outro grupo derruba o pacote inteiro",
+          "location": "backup-gerador.ts:conferirDono",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Um backup gerando por empresa (indice unico parcial); gerando ha mais de 6 h vira falhou",
+          "location": "migration 20261013180000_backup_empresas; backup-empresa.service.ts:registrar/encerrarInterrompidos",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Agendado a cada frequenciaDias por empresa nao excluida; guarda os manter mais recentes; manuais nunca podados",
+          "location": "backup-empresa.service.ts:agendados/podarAgendados",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Administrador da empresa so ve e gera backup da empresa ativa do token",
+          "location": "backups.controller.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Download por link assinado de 5 minutos",
+          "location": "backup-empresa.service.ts:link; main.ts PREFIXO_BACKUPS",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "poda conta os falhos e pode apagar backups bons",
+        "nao existe restauracao",
+        "link de 5 min vira 1 h no MinIO",
+        "pacote sem cifra",
+        "leitura nao e retrato consistente",
+        "paginacao por skip quadratica",
+        "pacote orfao se o update para pronto falhar",
+        "aoSubir derruba gerando de outra instancia",
+        "versaoSchema pode sair desconhecida sem permissao em _prisma_migrations",
+        "manuais acumulam sem limite"
+      ],
+      "test_files": [
+        "backup-catalogo.spec.ts",
+        "backup-empresa.service.spec.ts",
+        "backup-gerador.spec.ts"
+      ],
+      "complexity": "high",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "assinaturas",
+      "path": "apps/api/src/modules/assinaturas",
+      "responsibility": "Contrato SaaS unico por grupo economico (plano, ciclo, valor por ciclo, vencimento, situacao) que propaga situacao de acesso e limite de usuarios a todas as empresas do grupo; resumo MRR.",
+      "files": [
+        "assinaturas.module.ts",
+        "assinaturas.controller.ts",
+        "assinaturas.service.ts",
+        "assinaturas-grupo.spec.ts"
+      ],
+      "entities": [
+        "Assinatura"
+      ],
+      "main_functions": [
+        "AssinaturasService.updateAssinaturaGrupo/updateAssinaturaEmpresa",
+        "AssinaturasService.getAssinaturaGrupo/getAssinaturaEmpresa",
+        "AssinaturasService.listAssinaturas",
+        "AssinaturasService.getResumoSaaS"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "apps/web Plataforma > Assinaturas",
+        "apps/web Plataforma > Empresas > assinatura",
+        "common/empresa/limite-empresas.ts",
+        "common/empresa/situacao-empresa.ts (efeito)"
+      ],
+      "business_rules": [
+        {
+          "description": "Uma assinatura por grupo economico; consulta sem contrato devolve null",
+          "location": "assinaturas.service.ts:getAssinaturaGrupo",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Alterar a assinatura propaga a todas as empresas nao excluidas do grupo: situacao (atrasada vira suspensa), limiteUsuarios do plano, testeExpiraEm nulo fora de teste",
+          "location": "assinaturas.service.ts:updateAssinaturaGrupo",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Plano inativo so e recusado para quem troca para ele",
+          "location": "assinaturas.service.ts:updateAssinaturaGrupo",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "MRR = soma de valorMensalidade / meses do ciclo das assinaturas ativas",
+          "location": "assinaturas.service.ts:getResumoSaaS",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "valorMensalidade e valor por ciclo; padrao da API = valorMensal",
+        "atrasada suspende na hora sem carencia",
+        "sem cobranca automatica; vencimento nao calculado",
+        "limiteUsuarios da empresa sobrescrito a cada alteracao",
+        "teste sem prazo definido aqui",
+        "resquicio empresaId @unique"
+      ],
+      "test_files": [
+        "assinaturas-grupo.spec.ts"
+      ],
+      "complexity": "low",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "planos",
+      "path": "apps/api/src/modules/planos",
+      "responsibility": "Catalogo de pacotes SaaS: precos por ciclo, limites de usuarios e de empresas por grupo, e allowlist de modulos/menus/rotinas aplicada em estrutura.",
+      "files": [
+        "planos.module.ts",
+        "planos.controller.ts",
+        "planos.service.ts"
+      ],
+      "entities": [
+        "Plano",
+        "PlanoModulo",
+        "PlanoMenu",
+        "PlanoRotina"
+      ],
+      "main_functions": [
+        "PlanosService.listPlanos/getPlano",
+        "PlanosService.createPlano/updatePlano",
+        "PlanosService.removePlano"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "@plataforma/contracts (tipos)"
+      ],
+      "consumers": [
+        "assinaturas",
+        "estrutura (allowlist)",
+        "common/empresa/limite-empresas.ts",
+        "empresas",
+        "apps/web Plataforma > Planos"
+      ],
+      "business_rules": [
+        {
+          "description": "Codigo do plano unico entre os nao excluidos (o @unique do banco vale para todos)",
+          "location": "planos.service.ts:createPlano; schema Plano.codigo",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Lista enviada substitui a atual; lista omitida fica",
+          "location": "planos.service.ts:updatePlano",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Nao exclui plano com assinaturas; exclusao e soft delete com ativo=false",
+          "location": "planos.service.ts:removePlano",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Lista vazia no plano = sem restricao",
+          "location": "estrutura.service.ts:desativadosDaEmpresa",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "controller com dto any, sem validacao Zod",
+        "valorTrimestral/valorSemestral saem como Decimal",
+        "exclusao travada por assinaturas de grupos excluidos",
+        "corrida no codigo unico vira 500",
+        "ids das listas nao conferidos",
+        "plano vazio libera tudo"
+      ],
+      "test_files": [],
+      "complexity": "low",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "plataforma",
+      "path": "apps/api/src/modules/plataforma",
+      "responsibility": "Administracao do SaaS: empresas com uso, criacao de empresa com o primeiro administrador, situacao/prazo de teste/limite de usuarios, administradores de empresa e da plataforma, consulta CNPJ e log proprio.",
+      "files": [
+        "plataforma.module.ts",
+        "plataforma.controller.ts",
+        "plataforma.service.ts",
+        "dto/plataforma.dto.ts",
+        "plataforma-empresa-create.spec.ts",
+        "plataforma-uso.spec.ts"
+      ],
+      "entities": [
+        "PlataformaAuditoria"
+      ],
+      "main_functions": [
+        "PlataformaService.listarEmpresas",
+        "PlataformaService.criarEmpresa",
+        "PlataformaService.alterarSituacao",
+        "PlataformaService.listarAdministradoresDaEmpresa/vincularAdministrador/desvincularAdministrador",
+        "PlataformaService.listarAdmins/promoverPorEmail/definirAdmin",
+        "PlataformaService.listarAuditoria/procurarConta"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "EnriquecimentoService (clientes)",
+        "common/empresa/documento-empresa",
+        "common/empresa/situacao-empresa",
+        "common/empresa/limite-usuarios",
+        "bcryptjs",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "apps/web Plataforma > Empresas, Administradores, Auditoria"
+      ],
+      "business_rules": [
+        {
+          "description": "So PlatformAdminGuard (perfil administraPlataforma), sem PermissionsGuard, porque perfis sao globais",
+          "location": "plataforma.controller.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Empresa nasce com o primeiro administrador na mesma transacao; conta existente e vinculada sem trocar senha; conta nova com senha provisoria e deveTrocarSenha",
+          "location": "plataforma.service.ts:criarEmpresa",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Conta de administrador da plataforma nao vira administradora de cliente; conta de outro grupo nao pode ser vinculada",
+          "location": "plataforma.service.ts:criarEmpresa/vincularAdministrador",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Vaga do limite de usuarios so e consumida por vinculo novo ou reativado",
+          "location": "plataforma.service.ts:vincularAdministrador",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Nao remove o ultimo administrador da empresa; nao revoga a si mesmo nem o ultimo administrador da plataforma",
+          "location": "plataforma.service.ts:desvincularAdministrador/definirAdmin",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Um registro de log por campo alterado, gravado na mesma transacao",
+          "location": "plataforma.service.ts:alterarSituacao/registrar",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "empresa em grupo existente sem garantirVagaDeEmpresa",
+        "empresa nova ignora a assinatura do grupo",
+        "duas fontes da situacao da empresa (plataforma e assinaturas)",
+        "vincular como admin promove a conta no grupo inteiro",
+        "desvincular nao confere se o alvo e admin",
+        "revogacao concorrente pode zerar admins",
+        "senha provisoria sem politica de senha",
+        "sortBy livre gera 500"
+      ],
+      "test_files": [
+        "plataforma-empresa-create.spec.ts",
+        "plataforma-uso.spec.ts"
+      ],
+      "complexity": "medium",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "parametros",
+      "path": "apps/api/src/modules/parametros",
+      "responsibility": "Parametros chave/valor tipados por empresa: CRUD da tela e leitura tipada com padrao para o resto do backend (SMTP, SMS, precos, orcamento, boleto, integracao).",
+      "files": [
+        "parametros.module.ts",
+        "parametros.controller.ts",
+        "parametros.service.ts",
+        "dto/parametro.dto.ts"
+      ],
+      "entities": [
+        "ParametroEmpresa"
+      ],
+      "main_functions": [
+        "ParametrosService.findAll/findOne/create/update/remove",
+        "ParametrosService.validarConteudo/paraLeitura",
+        "ParametrosService.obterNumero/obterBoolean/obterTexto"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "common/pagination",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "email",
+        "sms",
+        "orcamentos",
+        "titulos-receber",
+        "integracao",
+        "whatsapp",
+        "apps/web Administracao > Parametros"
+      ],
+      "business_rules": [
+        {
+          "description": "Parametro tipo senha nunca devolve o conteudo; vazio no update mantem o atual",
+          "location": "parametros.service.ts:paraLeitura/update",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Conteudo validado contra tipo (numero, booleano, data) e tamanho",
+          "location": "parametros.service.ts:validarConteudo",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Leitura tipada so de parametro ativo; vazio ou inexistente cai no padrao; booleano so 'true'",
+          "location": "parametros.service.ts:obterNumero/obterBoolean/obterTexto",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "CORRIGIDO em 5eba615: sair do tipo senha descarta o segredo",
+        "chave renomeavel sem conferencia",
+        "recriar chave excluida da 500",
+        "SMTP_SENHA e SMS_TOKEN sem cifra",
+        "validacao permissiva de numero e data",
+        "troca de tipo nao revalida conteudo existente"
+      ],
+      "test_files": [],
+      "complexity": "low",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "escopo",
+      "path": "apps/api/src/modules/escopo",
+      "responsibility": "Lista os vendedores dentro do escopo hierarquico do usuario para os filtros das telas escopadas.",
+      "files": [
+        "escopo.module.ts",
+        "escopo.controller.ts",
+        "escopo.service.ts"
+      ],
+      "entities": [],
+      "main_functions": [
+        "EscopoService.vendedores"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "common/escopo/escopo-vendedores"
+      ],
+      "consumers": [
+        "apps/web filtros de notas, itens, titulos"
+      ],
+      "business_rules": [
+        {
+          "description": "Sem permissao de rotina; devolve so vendedores do escopo; restrito=false para acesso total",
+          "location": "escopo.controller.ts/escopo.service.ts",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "inclui vendedores inativos (confirmar com o negocio)"
+      ],
+      "test_files": [],
+      "complexity": "low",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "politica-senha",
+      "path": "apps/api/src/modules/politica-senha",
+      "responsibility": "Politica de senha por empresa (parametros SENHA_*), politica da conta como a mais restritiva entre as empresas, validacao de forca e reuso, historico e senha provisoria.",
+      "files": [
+        "politica-senha.module.ts",
+        "politica-senha.controller.ts",
+        "politica-senha.service.ts"
+      ],
+      "entities": [
+        "SenhaHistorico"
+      ],
+      "main_functions": [
+        "PoliticaSenhaService.getVigenteDaEmpresa/getVigenteParaUsuario",
+        "PoliticaSenhaService.maisRestritiva/sanear",
+        "PoliticaSenhaService.validarSenhaContra/validarSenhaDoUsuario/validarSenhaDaEmpresa",
+        "PoliticaSenhaService.validarReuso/registrarHistorico",
+        "PoliticaSenhaService.gerarSenhaProvisoria"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "ParametrosService",
+        "bcryptjs",
+        "node:crypto"
+      ],
+      "consumers": [
+        "auth",
+        "usuarios",
+        "vendedores",
+        "recuperacao-senha",
+        "apps/web telas de senha"
+      ],
+      "business_rules": [
+        {
+          "description": "Politica da conta = a mais restritiva entre as empresas com vinculo ativo; zero nos limites que liberam significa sem limite",
+          "location": "politica-senha.service.ts:getVigenteParaUsuario/maisRestritiva",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Maximo menor que o minimo e tratado como sem maximo",
+          "location": "politica-senha.service.ts:sanear",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Nova senha nao pode ser a atual nem uma das ultimas N",
+          "location": "politica-senha.service.ts:validarReuso",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Senha provisoria com as quatro categorias, sem caracteres ambiguos, gerada com crypto.randomInt",
+          "location": "politica-senha.service.ts:gerarSenhaProvisoria",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "CORRIGIDO em 5eba615: getVigenteParaUsuario agora le com withUsuario",
+        "senha atual nao revalidada quando a politica aperta",
+        "senha provisoria pode passar do maximo < 4",
+        "especial aceita espaco e acentos; maiuscula so [A-Z]",
+        "dez leituras por empresa sem cache"
+      ],
+      "test_files": [],
+      "complexity": "medium",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "recuperacao-senha",
+      "path": "apps/api/src/modules/recuperacao-senha",
+      "responsibility": "Esqueci minha senha: link de uso unico de 30 min por e-mail, redefinicao com politica e historico, desbloqueio e encerramento das sessoes.",
+      "files": [
+        "recuperacao-senha.module.ts",
+        "recuperacao-senha.controller.ts",
+        "recuperacao-senha.service.ts",
+        "recuperacao-senha.service.spec.ts"
+      ],
+      "entities": [
+        "SenhaRedefinicao"
+      ],
+      "main_functions": [
+        "RecuperacaoSenhaService.pedir/enviarLink/empresaDoPedido",
+        "RecuperacaoSenhaService.redefinir",
+        "hashDoToken"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "MailService",
+        "common/mail (smtpDaEmpresa, email-layout, email-acesso, email-redefinicao)",
+        "EmailConfigService",
+        "ParametrosService",
+        "PoliticaSenhaService",
+        "AcessosService"
+      ],
+      "consumers": [
+        "apps/web login > Esqueci minha senha, /redefinir-senha"
+      ],
+      "business_rules": [
+        {
+          "description": "Resposta sempre igual exista ou nao a conta; falhas so no log",
+          "location": "recuperacao-senha.service.ts:pedir",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Um link vivo por conta; token guardado so como SHA-256; validade 30 min",
+          "location": "recuperacao-senha.service.ts:enviarLink",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Uso unico garantido por update condicionado a usadoEm null",
+          "location": "recuperacao-senha.service.ts:redefinir",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Redefinir zera bloqueio e tentativas, revoga refresh tokens e encerra sessoes",
+          "location": "recuperacao-senha.service.ts:redefinir",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "SMTP da empresa quando ela liberou o e-mail de acesso; senao o da plataforma",
+          "location": "recuperacao-senha.service.ts:enviarLink",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "politica padrao na redefinicao (ver politica-senha)",
+        "enumeracao por tempo de resposta",
+        "throttle so por IP",
+        "token na query string",
+        "links usados nao sao limpos"
+      ],
+      "test_files": [
+        "recuperacao-senha.service.spec.ts"
       ],
       "complexity": "medium",
       "confidence": "CONFIRMADO"
