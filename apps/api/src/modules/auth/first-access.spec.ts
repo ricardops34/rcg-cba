@@ -7,6 +7,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { PoliticaSenhaService } from '../politica-senha/politica-senha.service';
 import { AcessosService } from '../acessos/acessos.service';
 import { HorarioTrabalhoService } from '../acessos/horario-trabalho.service';
+import { SuporteAcessoService } from '../suporte-acesso/suporte-acesso.service';
 
 describe('Primeiro acesso', () => {
   const input = { nome: 'Maria Silva', telefoneInstitucional: '(65) 99999-1234', dataNascimento: '1990-05-12' };
@@ -32,7 +33,7 @@ describe('Primeiro acesso', () => {
     const module = await Test.createTestingModule({ providers: [
       AuthService,
       { provide: PrismaService, useValue: prisma },
-      ...[JwtService, PoliticaSenhaService, AcessosService, HorarioTrabalhoService].map((provide) => ({ provide, useValue: {} })),
+      ...[JwtService, PoliticaSenhaService, AcessosService, HorarioTrabalhoService, SuporteAcessoService].map((provide) => ({ provide, useValue: {} })),
     ] }).compile();
     service = module.get(AuthService);
     jest.spyOn(service, 'me').mockResolvedValue({} as Awaited<ReturnType<AuthService['me']>>);

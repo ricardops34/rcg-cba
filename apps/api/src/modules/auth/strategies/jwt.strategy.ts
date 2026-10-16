@@ -14,6 +14,8 @@ export interface JwtPayload {
   permissoes: string[];
   /** Sessão do login: o JwtAuthGuard confere a cada requisição se segue aberta. */
   sid?: string;
+  /** Sessão de suporte: a liberação do cliente que a autoriza (ver entrarComoSuporte). */
+  suporte?: string;
 }
 
 @Injectable()
@@ -52,6 +54,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       administradorPlataforma: payload.administradorPlataforma === true,
       permissoes: payload.permissoes ?? [],
       sessaoId: payload.sid,
+      suporteAcessoId: payload.suporte,
     };
   }
 }

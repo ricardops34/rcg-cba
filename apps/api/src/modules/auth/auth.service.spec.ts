@@ -37,6 +37,7 @@ describe('AuthService', () => {
   };
   let jwt: { signAsync: jest.Mock };
   let acessosMock: Record<string, jest.Mock>;
+  let suporteMock: Record<string, jest.Mock>;
 
   const usuarioAtivo = {
     id: 'usuario-1',
@@ -149,6 +150,11 @@ describe('AuthService', () => {
       situacaoSessao: jest.fn().mockResolvedValue({ aberta: true, motivo: null }),
     };
     acessosMock = acessos;
+    // Sem liberação de suporte: a sessão comum não passa por ela.
+    suporteMock = {
+      concessaoVigente: jest.fn().mockResolvedValue(null),
+      registrarLogSuporte: jest.fn().mockResolvedValue(undefined),
+    };
     const horarios = {
       verificar: jest.fn().mockResolvedValue({ dentro: true, motivo: '' }),
     };
@@ -158,6 +164,7 @@ describe('AuthService', () => {
       politicaSenhaService as any,
       acessos as any,
       horarios as any,
+      suporteMock as any,
     );
   });
 

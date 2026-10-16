@@ -19,6 +19,7 @@ import {
 } from '@nestjs/swagger';
 import { PLATAFORMA_EMPRESA_EXAMPLE } from '@plataforma/contracts';
 import { PlataformaService } from './plataforma.service';
+import { SuporteAcessoService } from '../suporte-acesso/suporte-acesso.service';
 import {
   PlataformaAdminPromoverDto,
   PlataformaAdminUpdateDto,
@@ -54,6 +55,7 @@ export class PlataformaController {
   constructor(
     private readonly service: PlataformaService,
     private readonly enriquecimento: EnriquecimentoService,
+    private readonly suporte: SuporteAcessoService,
   ) {}
 
   @Get('consulta-cnpj/:cnpj')
@@ -200,6 +202,25 @@ export class PlataformaController {
       usuarioId,
       this.ator(user),
     );
+  }
+
+  @ApiOperation({
+    summary: 'Liberação de suporte vigente do cliente',
+    description:
+      'O que o botão "Entrar como suporte" consulta: a liberação que o cliente deu em ' +
+      'Administração > Liberação de Suporte (com o prazo), ou null. A entrada é POST /auth/suporte/:empresaId.',
+  })
+  @ApiParam({ name: 'id', description: 'Id da empresa' })
+  @Get('empresas/:id/suporte')
+  async liberacaoDeSuporte(@Param('id') id: string) {
+    const concessao = await this.suporte.concessaoVigente(id);
+    return concessao
+      ? {
+          id: concessao.id,
+          motivo: concessao.motivo,
+          validoAte: concessao.validoAte.toISOString(),
+        }
+      : null;
   }
 
   @ApiOperation({ summary: 'Listar administradores da plataforma' })

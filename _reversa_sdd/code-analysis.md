@@ -5914,34 +5914,42 @@ grava o log da ação.
 
 #### 3.3 Achados
 
-- 🔴 **O guard não faz nada.** É registrado como `APP_GUARD` e guards globais rodam
+- ✅ **Corrigido no lote de 2026-10-16** (virou interceptor, que roda depois do JwtAuthGuard). Achado original:
+  🔴 **O guard não faz nada.** É registrado como `APP_GUARD` e guards globais rodam
   **antes** dos guards do controller; o `JwtAuthGuard` só existe nos controllers (o
   único outro global é o `ThrottlerGuard`). Quando o `SuporteAcessoGuard` roda,
   `request.user` ainda não existe, e a primeira linha devolve `true`. Nenhuma
   requisição é bloqueada e **nenhum log de suporte é gravado**, nunca (0 linhas em
   `empresa_suporte_logs` no dev e no dump da produção).
-- 🔴 **As exceções de caminho nunca casam.** `request.path` traz o prefixo global
+- ✅ **Corrigido no lote de 2026-10-16** (caminho sem o prefixo /api/v1). Achado original:
+  🔴 **As exceções de caminho nunca casam.** `request.path` traz o prefixo global
   (`/api/v1/plataforma/...`), e o guard compara com `/plataforma`. Se o guard passasse
   a ver o usuário, ele bloquearia e registraria também as rotas da plataforma, de
   login e da integração.
-- 🟡 **Não há como o suporte entrar no cliente.** A troca de empresa
+- ✅ **Corrigido no lote de 2026-10-16** ("Entrar como suporte", decisão do usuário em 2026-10-16). Achado original:
+  🟡 **Não há como o suporte entrar no cliente.** A troca de empresa
   (`AuthService.switchEmpresa`) exige vínculo em `usuario_empresas`, e tanto
   `plataforma.criarEmpresa` quanto `vincularAdministrador` recusam conta de
   administrador da plataforma. A tela de liberação existe (Administração > Suporte),
   o cliente concede, e nada usa a concessão. Por isso o guard inerte não é
   explorável hoje — mas o primeiro caminho de entrada que surgir chega sem bloqueio
   nem auditoria. 🔴 confirmar com o usuário como o suporte deveria entrar.
-- 🟡 **`conceder` sem validação.** `@Body() dto: any`, apesar do
+- ✅ **Corrigido no lote de 2026-10-16** (DTO Zod do contrato). Achado original:
+  🟡 **`conceder` sem validação.** `@Body() dto: any`, apesar do
   `concederSuporteSchema` no contrato. `duracaoHoras` ausente vira data inválida
   (500); como texto, `getHours() + "100"` concatena ("13100") e a liberação dura
   meses; o limite de 72 h não vale.
-- 🟡 **Logs e histórico sem permissão de rotina**: qualquer usuário da empresa lê as
+- ✅ **Corrigido no lote de 2026-10-16** (rotina suporte-acesso, com menu). Achado original:
+  🟡 **Logs e histórico sem permissão de rotina**: qualquer usuário da empresa lê as
   ações do suporte, inclusive o corpo das requisições.
-- 🟡 **O corpo vai inteiro para o log** (até 2000 caracteres), sem mascarar senha:
+- ✅ **Corrigido no lote de 2026-10-16** (campos de senha/token mascarados). Achado original:
+  🟡 **O corpo vai inteiro para o log** (até 2000 caracteres), sem mascarar senha:
   uma troca de senha feita pelo suporte ficaria gravada em texto puro.
-- 🟡 **Revogar não confere estado**: revogar de novo, ou uma concessão já vencida,
+- ✅ **Corrigido no lote de 2026-10-16** (409 para liberação encerrada). Achado original:
+  🟡 **Revogar não confere estado**: revogar de novo, ou uma concessão já vencida,
   sobrescreve `revogadoEm`/`revogadoPorId`.
-- 🟡 **Conceder não é atômico**: revogar as vigentes e criar a nova são duas
+- ✅ **Corrigido no lote de 2026-10-16** (uma transação só). Achado original:
+  🟡 **Conceder não é atômico**: revogar as vigentes e criar a nova são duas
   transações; dois pedidos simultâneos deixam duas vigentes.
 
 ### 4. Estruturas de dados 🟢

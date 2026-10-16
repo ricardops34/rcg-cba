@@ -175,6 +175,17 @@ export const MENUS: DefinicaoMenu[] = [
     moduloId: MODULO.administracao,
   },
   {
+    // O cliente libera, por prazo, o suporte da plataforma no ambiente dele e
+    // lê o log do que o suporte fez. Só o administrador da empresa. A tela
+    // existia sem menu — ninguém chegava nela. docs/planos/2026-10-16-entrar-como-suporte.md
+    id: 'seed-menu-suporte-acesso',
+    nome: 'Liberação de Suporte',
+    rota: '/admin/suporte-acesso',
+    icone: 'life-buoy',
+    codigo: 'suporte-acesso',
+    moduloId: MODULO.administracao,
+  },
+  {
     // Ao lado de Acessos: quem usa os feriados é a trava de horário de
     // trabalho — no feriado, quem tem "restringir horário" não entra.
     id: 'seed-menu-feriados',

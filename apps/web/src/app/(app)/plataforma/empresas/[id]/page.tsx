@@ -11,6 +11,7 @@ import { PlataformaGuard } from "../../plataforma-guard";
 import { AdministradoresSection } from "./administradores-section";
 import { AssinaturaSection } from "./assinatura-section";
 import { EstruturaEmpresaSection } from "./estrutura-empresa-section";
+import { EntrarSuporteButton } from "./entrar-suporte-button";
 import { DemoDadosEmpresa } from "@/components/empresa/demo-dados-empresa";
 import { Building2, CreditCard, Layers, Sparkles, Users } from "lucide-react";
 
@@ -42,6 +43,7 @@ export default function EditarEmpresaPlataformaPage() {
               <h1 className="text-2xl font-bold font-heading">{empresa.nomeFantasia}</h1>
               <p className="text-sm text-muted-foreground">{empresa.razaoSocial} — CNPJ/CPF: {empresa.cnpj}</p>
             </div>
+            {!empresa.ePlataforma && <EntrarSuporteButton empresaId={empresa.id} />}
           </div>
 
           <Tabs defaultValue="cadastro" className="w-full space-y-6">

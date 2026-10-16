@@ -1,5 +1,5 @@
 import {
-  BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -11,13 +11,19 @@ import type { ConcederSuporte } from '@plataforma/contracts';
 export class SuporteAcessoService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async concederAcesso(empresaId: string, input: ConcederSuporte, actorId: string) {
+  async concederAcesso(
+    empresaId: string,
+    input: ConcederSuporte,
+    actorId: string,
+  ) {
     const validoAte = new Date();
     validoAte.setHours(validoAte.getHours() + input.duracaoHoras);
 
-    // Desativa concessões ativas anteriores se houver
-    await this.prisma.withTenant(empresaId, (tx) =>
-      tx.empresaSuporteAcesso.updateMany({
+    // Uma vigente por vez: revoga as anteriores e cria a nova na mesma
+    // transação (antes eram duas, e dois pedidos juntos deixavam duas
+    // vigentes).
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      await tx.empresaSuporteAcesso.updateMany({
         where: {
           empresaId,
           validoAte: { gt: new Date() },
@@ -27,11 +33,8 @@ export class SuporteAcessoService {
           revogadoEm: new Date(),
           revogadoPorId: actorId,
         },
-      }),
-    );
-
-    const concessao = await this.prisma.withTenant(empresaId, (tx) =>
-      tx.empresaSuporteAcesso.create({
+      });
+      return tx.empresaSuporteAcesso.create({
         data: {
           empresaId,
           concedidoPorId: actorId,
@@ -43,10 +46,8 @@ export class SuporteAcessoService {
             select: { id: true, nome: true, email: true },
           },
         },
-      }),
-    );
-
-    return concessao;
+      });
+    });
   }
 
   async revogarAcesso(empresaId: string, id: string, actorId: string) {
@@ -58,6 +59,10 @@ export class SuporteAcessoService {
 
     if (!concessao) {
       throw new NotFoundException('Concessão de acesso não encontrada');
+    }
+    // Já encerrada: revogar de novo apagaria quem revogou e quando.
+    if (concessao.revogadoEm || concessao.validoAte <= new Date()) {
+      throw new ConflictException('Esta liberação já está encerrada.');
     }
 
     return this.prisma.withTenant(empresaId, (tx) =>
@@ -110,18 +115,32 @@ export class SuporteAcessoService {
   }
 
   async listLogs(empresaId: string) {
-    return this.prisma.withTenant(empresaId, (tx) =>
+    const logs = await this.prisma.withTenant(empresaId, (tx) =>
       tx.empresaSuporteLog.findMany({
         where: { empresaId },
-        include: {
-          usuarioPlataforma: {
-            select: { id: true, nome: true, email: true },
-          },
-        },
         orderBy: { createdAt: 'desc' },
         take: 500,
       }),
     );
+    // Quem agiu é da plataforma, outro grupo econômico: `usuarios` tem RLS por
+    // grupo, e o `include` voltava nulo para o cliente — "Inconsistent query
+    // result" assim que o primeiro log existiu. Modo sistema só para o nome e
+    // o e-mail de quem atuou no ambiente dele, que é o que a tela existe para
+    // mostrar (operação já autorizada: rota da empresa ativa, com permissão).
+    const ids = [...new Set(logs.map((l) => l.usuarioPlataformaId))];
+    const usuarios = ids.length
+      ? await this.prisma.withSistema((tx) =>
+          tx.usuario.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, nome: true, email: true },
+          }),
+        )
+      : [];
+    const porId = new Map(usuarios.map((u) => [u.id, u]));
+    return logs.map((l) => ({
+      ...l,
+      usuarioPlataforma: porId.get(l.usuarioPlataformaId) ?? null,
+    }));
   }
 
   async registrarLogSuporte(data: {
@@ -151,18 +170,25 @@ export class SuporteAcessoService {
   }
 
   /**
+   * A liberação vigente da empresa, ou null. Lida no contexto da empresa
+   * (`empresa_suporte_acessos` tem RLS): roda também na renovação do token,
+   * que não tem usuário logado.
+   */
+  concessaoVigente(empresaId: string) {
+    return this.prisma.withTenant(empresaId, (tx) =>
+      tx.empresaSuporteAcesso.findFirst({
+        where: { empresaId, validoAte: { gt: new Date() }, revogadoEm: null },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+  }
+
+  /**
    * Verifica se existe concessão de acesso de suporte ativa para esta empresa.
-   * Usado pelos Guards para impedir acesso não autorizado da Plataforma.
+   * Usado pela sessão de suporte para impedir acesso sem liberação.
    */
   async validarAcessoSuporteAtivo(empresaId: string) {
-    const agora = new Date();
-    const concessao = await this.prisma.empresaSuporteAcesso.findFirst({
-      where: {
-        empresaId,
-        validoAte: { gt: agora },
-        revogadoEm: null,
-      },
-    });
+    const concessao = await this.concessaoVigente(empresaId);
 
     if (!concessao) {
       throw new ForbiddenException(

@@ -944,6 +944,34 @@ Conferir: o saldo aparece em Administração > SMS; um SMS de teste (mensagem
 livre na Posição de um cliente de teste) aparece no histórico de envios, e a
 resposta dele aparece embaixo, depois que o cliente responder.
 
+## Suporte no ambiente do cliente ("Entrar como suporte") **[verificado em dev, 2026-10-16]**
+
+Plano: `docs/planos/2026-10-16-entrar-como-suporte.md`.
+
+**Deploy:** a migration `20261016100000_menu_suporte_acesso` cria o menu
+Administração > **Liberação de Suporte** e dá a permissão aos perfis
+administradores; entra pelo `migrate deploy` de sempre, seguido do
+`sincronizar-catalogo` (seção "Menu, rotina ou módulo novo"). Nada de variável
+nova.
+
+**Uso:**
+
+1. O **cliente** libera: Administração > Liberação de Suporte → motivo e prazo
+   (1 a 72 h). Pode revogar a qualquer momento; vale na hora.
+2. A **plataforma** entra: Plataforma > Empresas → a empresa → **Entrar como
+   suporte** (habilitado só com a liberação vigente, mostrando até quando).
+3. No ambiente do cliente aparece a faixa amarela com o prazo e **Sair do
+   ambiente do cliente**, que volta para a empresa da plataforma.
+
+Não cria vínculo em `usuario_empresas` (não ocupa vaga do limite de usuários).
+Toda requisição da sessão de suporte vai para o log que o cliente lê, com
+campos de senha/token mascarados. Vencida ou revogada a liberação, as ações
+recebem 403 e a renovação do token volta para a empresa da plataforma.
+
+**Conferir:** `SELECT "metodoHttp", rota FROM empresa_suporte_logs ORDER BY
+"createdAt" DESC LIMIT 5` — a entrada aparece como "entrada no ambiente (Entrar
+como suporte)", e o evento em Acessos é `troca_empresa` com esse detalhe.
+
 ## MinIO (armazenamento de arquivos) **[stack informada pelo usuário em 2026-10-13; a plataforma ainda não usa]**
 
 Stack própria na VPS, fora deste repositório. O que ela define:

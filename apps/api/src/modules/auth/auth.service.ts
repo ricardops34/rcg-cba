@@ -23,6 +23,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { PoliticaSenhaService } from '../politica-senha/politica-senha.service';
 import { AcessosService } from '../acessos/acessos.service';
 import { HorarioTrabalhoService } from '../acessos/horario-trabalho.service';
+import { SuporteAcessoService } from '../suporte-acesso/suporte-acesso.service';
 import { ForaDoExpedienteException } from '../../common/horario/horario-trabalho';
 import {
   motivoBloqueio,
@@ -134,6 +135,7 @@ export class AuthService {
     private readonly politicaSenhaService: PoliticaSenhaService,
     private readonly acessos: AcessosService,
     private readonly horarios: HorarioTrabalhoService,
+    private readonly suporte: SuporteAcessoService,
   ) {}
 
   private hashToken(token: string) {
@@ -234,6 +236,181 @@ export class AuthService {
     });
 
     return { accessToken, vinculo };
+  }
+
+  /**
+   * A liberação que deixa esta conta entrar como suporte nesta empresa, ou
+   * null: a conta administra a plataforma, a empresa é de cliente (não a da
+   * plataforma), existe e não está excluída, e o cliente liberou o suporte
+   * (Administração > Suporte) com prazo vigente.
+   *
+   * É a regra única da sessão de suporte — entrada, renovação do token e
+   * `me()` passam por aqui (ver docs/planos/2026-10-16-entrar-como-suporte.md).
+   */
+  async suporteDaConta(usuarioId: string, empresaId: string) {
+    const perfil = await this.prisma.withUsuario(usuarioId, async (tx) => {
+      const usuario = await tx.usuario.findFirst({
+        where: { id: usuarioId, ativo: true, deletedAt: null },
+        select: { perfilId: true },
+      });
+      return usuario
+        ? tx.perfil.findUnique({
+            where: { id: usuario.perfilId },
+            select: { administraPlataforma: true },
+          })
+        : null;
+    });
+    if (!perfil?.administraPlataforma) return null;
+    const empresa = await this.prisma.withSistema((tx) =>
+      tx.empresa.findFirst({
+        where: { id: empresaId, deletedAt: null, ePlataforma: false },
+        select: { id: true, nomeFantasia: true },
+      }),
+    );
+    if (!empresa) return null;
+    const concessao = await this.suporte.concessaoVigente(empresaId);
+    return concessao ? { concessao, empresa } : null;
+  }
+
+  /**
+   * Token da sessão de suporte: a empresa ativa é a do cliente, **sem
+   * vínculo**, e o payload leva a concessão (`suporte`) — é por ela que cada
+   * requisição confere a liberação e vai para o log que o cliente lê
+   * (`SuporteAcessoInterceptor`). Os poderes são os do perfil da conta dentro
+   * do que o plano e os módulos do cliente liberam, como numa troca de
+   * empresa. Não passa do fim da liberação.
+   */
+  private async buildAccessTokenSuporte(
+    usuarioId: string,
+    empresaId: string,
+    concessao: { id: string; validoAte: Date },
+    sessaoId: string | null,
+  ) {
+    const usuario = await this.prisma.withUsuario(usuarioId, async (tx) => {
+      const u = await tx.usuario.findUniqueOrThrow({
+        where: { id: usuarioId },
+        select: { id: true, nome: true, email: true, perfilId: true },
+      });
+      const perfil = await tx.perfil.findUniqueOrThrow({
+        where: { id: u.perfilId },
+        include: {
+          permissoes: {
+            where: { permitido: true },
+            include: { rotina: { include: ROTINA_COM_ARVORE } },
+          },
+        },
+      });
+      return { ...u, perfil };
+    });
+    const perfil = usuario.perfil;
+    const permissoes = perfil.sistemaBase
+      ? []
+      : await (async () => {
+          const daEmpresa = await this.desativadosDaEmpresa(empresaId);
+          return perfil.permissoes
+            .filter(
+              (p) =>
+                p.rotina.menu.moduloId !== MODULO_ADMINISTRACAO_ID &&
+                rotinaNoAr(p.rotina, daEmpresa),
+            )
+            .map((p) => `${p.rotina.codigo}.${p.acao}`);
+        })();
+
+    const restante = Math.floor(
+      (concessao.validoAte.getTime() - Date.now()) / 1000,
+    );
+    const accessToken = await this.jwt.signAsync(
+      {
+        sub: usuario.id,
+        nome: usuario.nome,
+        email: usuario.email,
+        empresaAtivaId: empresaId,
+        isAdmin: perfil.sistemaBase,
+        administradorPlataforma: perfil.administraPlataforma,
+        permissoes,
+        suporte: concessao.id,
+        ...(sessaoId ? { sid: sessaoId } : {}),
+      },
+      {
+        secret: process.env.JWT_ACCESS_SECRET,
+        expiresIn: Math.max(1, Math.min(15 * 60, restante)),
+      },
+    );
+    return accessToken;
+  }
+
+  /**
+   * "Entrar como suporte" (Plataforma > Empresas): troca a empresa ativa para
+   * a do cliente sem vínculo, desde que ele tenha liberado o suporte. Mesma
+   * sessão do login, como a troca de empresa comum.
+   */
+  async entrarComoSuporte(
+    usuarioId: string,
+    empresaId: string,
+    meta: RequestMeta,
+    sessaoAtual?: string,
+  ) {
+    const suporte = await this.suporteDaConta(usuarioId, empresaId);
+    if (!suporte) {
+      throw new ForbiddenException(
+        'Acesso ao ambiente do cliente bloqueado. Solicite ao cliente a liberação de acesso de suporte (Administração > Suporte).',
+      );
+    }
+
+    const aberta = sessaoAtual
+      ? { id: sessaoAtual }
+      : await this.prisma.sessao.findFirst({
+          where: { usuarioId, encerradaEm: null },
+          orderBy: { iniciadaEm: 'desc' },
+          select: { id: true },
+        });
+    const sessaoId =
+      aberta?.id ??
+      (await this.acessos.abrirSessao({
+        usuarioId,
+        empresaId,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+      }));
+    const accessToken = await this.buildAccessTokenSuporte(
+      usuarioId,
+      empresaId,
+      suporte.concessao,
+      sessaoId,
+    );
+    const refreshToken = await this.issueRefreshToken(
+      usuarioId,
+      empresaId,
+      meta,
+      sessaoId,
+    );
+    await this.acessos.tocarSessao(sessaoId, empresaId);
+
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { id: usuarioId },
+      select: { email: true },
+    });
+    // `troca_empresa` com o motivo no detalhe: o evento é enum no banco, e a
+    // entrada de suporte é uma troca de empresa sem vínculo.
+    await this.acessos.registrar({
+      evento: 'troca_empresa',
+      email: usuario?.email ?? '',
+      usuarioId,
+      empresaId,
+      detalhe: `Entrada como suporte da plataforma (liberação ${suporte.concessao.id})`,
+      ...meta,
+    });
+    await this.suporte.registrarLogSuporte({
+      empresaId,
+      suporteAcessoId: suporte.concessao.id,
+      usuarioPlataformaId: usuarioId,
+      metodoHttp: 'POST',
+      rota: 'entrada no ambiente (Entrar como suporte)',
+      ip: meta.ip ?? undefined,
+      userAgent: meta.userAgent ?? undefined,
+    });
+
+    return { accessToken, refreshToken, expiresIn: 15 * 60 };
   }
 
   private async findVinculoAtivo(usuarioId: string, empresaId?: string) {
@@ -554,10 +731,40 @@ export class AuthService {
 
     // Mantém a mesma empresa ativa da sessão original; só cai para a
     // primeira disponível se aquele vínculo específico não existir mais.
+    const vinculoDaSessao = stored.empresaId
+      ? await this.findVinculoAtivo(stored.usuarioId, stored.empresaId)
+      : null;
+
+    // Sessão de suporte (empresa de cliente, sem vínculo): segue enquanto a
+    // liberação valer. Revogada ou vencida, cai abaixo na empresa da própria
+    // conta — a tela percebe a troca e recarrega o usuário (api-client.ts).
+    if (stored.empresaId && !vinculoDaSessao) {
+      const suporte = await this.suporteDaConta(
+        stored.usuarioId,
+        stored.empresaId,
+      );
+      if (suporte) {
+        const accessToken = await this.buildAccessTokenSuporte(
+          stored.usuarioId,
+          stored.empresaId,
+          suporte.concessao,
+          stored.sessaoId,
+        );
+        const refreshToken = await this.issueRefreshToken(
+          stored.usuarioId,
+          stored.empresaId,
+          meta,
+          stored.sessaoId,
+        );
+        if (stored.sessaoId) {
+          await this.acessos.tocarSessao(stored.sessaoId, stored.empresaId);
+        }
+        return { accessToken, refreshToken, expiresIn: 15 * 60 };
+      }
+    }
+
     const vinculo =
-      (stored.empresaId
-        ? await this.findVinculoAtivo(stored.usuarioId, stored.empresaId)
-        : null) ?? (await this.findVinculoAtivo(stored.usuarioId));
+      vinculoDaSessao ?? (await this.findVinculoAtivo(stored.usuarioId));
     if (!vinculo) {
       throw new UnauthorizedException('Usuário sem empresa ativa vinculada');
     }
@@ -735,10 +942,22 @@ export class AuthService {
     );
 
     const ativo = vinculos.find((v) => v.empresaId === empresaAtivaId);
-    const daEmpresa = ativo
-      ? await this.desativadosDaEmpresa(ativo.empresaId)
+    // Sessão de suporte: a empresa ativa é de cliente, sem vínculo, liberada
+    // por ele (ver entrarComoSuporte). Conta como empresa ativa aqui.
+    const suporte =
+      !ativo && empresaAtivaId
+        ? await this.suporteDaConta(usuarioId, empresaAtivaId)
+        : null;
+    const empresaSuporte = suporte
+      ? await this.prisma.withSistema((tx) =>
+          tx.empresa.findUniqueOrThrow({ where: { id: empresaAtivaId } }),
+        )
+      : null;
+    const emUso = !!ativo || !!suporte;
+    const daEmpresa = emUso
+      ? await this.desativadosDaEmpresa(empresaAtivaId)
       : { modulos: new Set<string>(), menus: new Set<string>() };
-    const permissoes = ativo
+    const permissoes = emUso
       ? (
           await this.prisma.withUsuario(usuarioId, (tx) =>
             tx.perfilPermissao.findMany({
@@ -782,19 +1001,34 @@ export class AuthService {
       mustCompleteFirstAccess: precisaCompletarPrimeiroAcesso(usuario, usuario),
       email: usuario.email,
       // Sem acesso à empresa ativa, nenhuma autoridade (ver buildAccessToken).
-      administradorPlataforma: ativo ? perfil.administraPlataforma : false,
+      administradorPlataforma: emUso ? perfil.administraPlataforma : false,
+      // Preenchido só na sessão de suporte: a tela mostra o aviso com o prazo
+      // e o "Sair do ambiente do cliente".
+      suporte:
+        suporte && empresaSuporte
+          ? {
+              empresaId: empresaSuporte.id,
+              nomeFantasia: empresaSuporte.nomeFantasia,
+              validoAte: suporte.concessao.validoAte.toISOString(),
+            }
+          : null,
       empresaAtivaId,
-      empresas: vinculos.map((v) => ({
-        empresaId: v.empresaId,
-        nomeFantasia: v.empresa.nomeFantasia,
-        alias: v.empresa.alias,
-        logoUrl: v.empresa.logoUrl,
-        bannerAtivo: v.empresa.bannerAtivo,
-        bannerCor: v.empresa.bannerCor,
-        bannerImagemUrl: v.empresa.bannerImagemUrl,
-        situacao: v.empresa.situacao,
-        testeExpiraEm: v.empresa.testeExpiraEm?.toISOString() ?? null,
-        ePlataforma: v.empresa.ePlataforma,
+      // Na sessão de suporte a empresa do cliente entra no fim da lista, para
+      // a tela achar a empresa ativa (nome, logo, banner) como sempre.
+      empresas: [
+        ...vinculos.map((v) => v.empresa),
+        ...(empresaSuporte ? [empresaSuporte] : []),
+      ].map((e) => ({
+        empresaId: e.id,
+        nomeFantasia: e.nomeFantasia,
+        alias: e.alias,
+        logoUrl: e.logoUrl,
+        bannerAtivo: e.bannerAtivo,
+        bannerCor: e.bannerCor,
+        bannerImagemUrl: e.bannerImagemUrl,
+        situacao: e.situacao,
+        testeExpiraEm: e.testeExpiraEm?.toISOString() ?? null,
+        ePlataforma: e.ePlataforma,
         // O mesmo em todas: o perfil é do usuário. Mantido por empresa para
         // não mudar o contrato de quem já lê daqui.
         perfilId: usuario.perfilId,

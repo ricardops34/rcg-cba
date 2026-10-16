@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Patch,
   Post,
   Query,
@@ -38,6 +39,7 @@ import {
   UpdateRotinaInicialDto,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
 import { ApiBodyExample } from '../../common/decorators/api-body-example.decorator';
 import {
   CurrentUser,
@@ -156,6 +158,31 @@ export class AuthController {
     @Req() req: Request,
   ) {
     return this.authService.switchEmpresa(user.id, dto.empresaId, this.meta(req), user.sessaoId);
+  }
+
+  @ApiOperation({
+    summary: 'Entrar como suporte no ambiente de um cliente',
+    description:
+      'Para administradores da plataforma (Plataforma > Empresas). Emite um par de tokens com a empresa do ' +
+      'cliente como ativa, sem vínculo, enquanto a liberação de suporte dele estiver vigente. Toda ação da ' +
+      'sessão vai para o log de suporte que o cliente lê. 403 sem liberação.',
+  })
+  @ApiResponse({ status: 201, schema: { example: AUTH_TOKENS_EXAMPLE } })
+  @ApiResponse({ status: 403, description: 'O cliente não liberou o suporte' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, PlatformAdminGuard)
+  @Post('suporte/:empresaId')
+  entrarComoSuporte(
+    @Param('empresaId') empresaId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: Request,
+  ) {
+    return this.authService.entrarComoSuporte(
+      user.id,
+      empresaId,
+      this.meta(req),
+      user.sessaoId,
+    );
   }
 
   @ApiOperation({

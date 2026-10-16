@@ -10,6 +10,11 @@ export interface AuthenticatedUser {
   permissoes: string[];
   /** Sessão do login (tabela `sessoes`) — ausente em token emitido antes dela. */
   sessaoId?: string;
+  /**
+   * Sessão de suporte da plataforma no ambiente de um cliente, sem vínculo: a
+   * liberação dele (`empresa_suporte_acessos`) que a autoriza.
+   */
+  suporteAcessoId?: string;
 }
 
 export const CurrentUser = createParamDecorator(

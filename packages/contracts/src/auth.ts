@@ -177,6 +177,18 @@ export const currentUserSchema = z.object({
     .string()
     .uuid()
     .describe("Empresa atualmente ativa na sessão"),
+  suporte: z
+    .object({
+      empresaId: z.string().uuid(),
+      nomeFantasia: z.string(),
+      validoAte: z.string().datetime(),
+    })
+    .nullable()
+    .optional()
+    .describe(
+      "Preenchido na sessão de suporte da plataforma no ambiente de um cliente " +
+        "(Entrar como suporte), com o prazo da liberação dele; null fora dela",
+    ),
   empresas: z
     .array(
       z.object({
