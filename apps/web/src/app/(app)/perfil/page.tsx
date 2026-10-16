@@ -29,6 +29,8 @@ export default function PerfilPage() {
   const nascimento = nascimentoEditado ?? user?.dataNascimento ?? "";
   const nomeWhatsapp = nomeWhatsappEditado ?? user?.nomeWhatsapp ?? "";
   const usarNomeWhatsapp = usarNomeWhatsappEditado ?? user?.usarNomeWhatsapp ?? true;
+  // Ligado, o nome que assina é obrigatório.
+  const faltaNomeWhatsapp = usarNomeWhatsapp && !nomeWhatsapp.trim();
   const mudou =
     nome.trim() !== user?.nome ||
     nascimento !== (user?.dataNascimento ?? "") ||
@@ -118,8 +120,10 @@ export default function PerfilPage() {
                   value={nomeWhatsapp}
                   onChange={(event) => setNomeWhatsapp(event.target.value)}
                   maxLength={40}
-                  placeholder={user?.nome}
+                  placeholder="Como você quer assinar"
                   disabled={!usarNomeWhatsapp}
+                  required={usarNomeWhatsapp}
+                  aria-invalid={faltaNomeWhatsapp}
                 />
                 <p className="text-xs text-muted-foreground">
                   Assina as mensagens que você envia ao cliente pela plataforma
@@ -128,8 +132,11 @@ export default function PerfilPage() {
                       {" "}— ele verá <span className="font-medium">*{nomeWhatsapp.trim()}:*</span>
                     </>
                   ) : null}
-                  . {usarNomeWhatsapp ? "Em branco, assina com o nome completo." : "Desligado, assina com o nome completo mesmo com o texto preenchido."}
+                  . {usarNomeWhatsapp ? "Obrigatório enquanto estiver ligado." : "Desligado, as mensagens saem sem assinatura."}
                 </p>
+                {faltaNomeWhatsapp ? (
+                  <p className="text-xs text-destructive">Informe o nome que assina as mensagens ou desligue o "Usar".</p>
+                ) : null}
               </Field>
               <Field>
                 <FieldLabel htmlFor="nascimento">Data de nascimento</FieldLabel>
@@ -144,7 +151,7 @@ export default function PerfilPage() {
               <div className="flex justify-end">
                 <Button
                   type="button"
-                  disabled={nome.trim().length < 2 || !mudou || salvarDados.isPending}
+                  disabled={nome.trim().length < 2 || faltaNomeWhatsapp || !mudou || salvarDados.isPending}
                   onClick={() => salvarDados.mutate()}
                 >
                   {salvarDados.isPending ? "Salvando…" : "Salvar dados"}

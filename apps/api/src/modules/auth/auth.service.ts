@@ -1168,6 +1168,21 @@ export class AuthService {
       );
     }
     await this.prisma.withTenant(empresaAtivaId, async (tx) => {
+      // Ligado, o nome que assina as mensagens é obrigatório — a regra é do
+      // servidor, a tela só antecipa o aviso.
+      if (nomeWhatsapp !== undefined || usarNomeWhatsapp !== undefined) {
+        const atual = await tx.usuario.findUnique({
+          where: { id: usuarioId },
+          select: { nomeWhatsapp: true, usarNomeWhatsapp: true },
+        });
+        const usar = usarNomeWhatsapp ?? atual?.usarNomeWhatsapp ?? false;
+        const nomeFinal = nomeWhatsapp !== undefined ? nomeWhatsapp : atual?.nomeWhatsapp;
+        if (usar && !nomeFinal?.trim()) {
+          throw new BadRequestException(
+            'Informe o Nome no WhatsApp ou desligue o "Usar".',
+          );
+        }
+      }
       if (whatsapp !== undefined) {
         await gravarWhatsappDoUsuario(tx, usuarioId, empresaAtivaId, whatsapp, usuarioId);
       }
@@ -1175,7 +1190,7 @@ export class AuthService {
         where: { id: usuarioId },
         data: {
           nome: nome.trim(),
-          // Vazio limpa: volta a assinar com o nome completo.
+          // Vazio só é aceito com o "Usar" desligado (checado acima).
           ...(nomeWhatsapp !== undefined
             ? { nomeWhatsapp: nomeWhatsapp.trim() || null }
             : {}),
