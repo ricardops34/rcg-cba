@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   whatsappAgendarMensagemSchema,
   whatsappAtualizarAgendamentoSchema,
+  whatsappAtualizarAtendimentoSchema,
   whatsappAnotarSchema,
   whatsappAgendarVisitaSchema,
   whatsappConectarSchema,
@@ -64,6 +65,9 @@ export class WhatsappAgendarMensagemDto extends createZodDto(
 ) {}
 export class WhatsappAtualizarAgendamentoDto extends createZodDto(
   whatsappAtualizarAgendamentoSchema,
+) {}
+export class WhatsappAtualizarAtendimentoDto extends createZodDto(
+  whatsappAtualizarAtendimentoSchema,
 ) {}
 export class WhatsappAgendarVisitaDto extends createZodDto(
   whatsappAgendarVisitaSchema,

@@ -1112,6 +1112,46 @@ export type WhatsappMensagemAgendada = z.infer<
   typeof whatsappMensagemAgendadaSchema
 >;
 
+/**
+ * Atendimento agendado pela conversa: na data e hora marcadas o vendedor é
+ * avisado no sino e a conversa abre. É uma Atividade da Agenda (tipo visita,
+ * ligação…) com `iniciarConversa`.
+ */
+export const whatsappAtendimentoAgendadoSchema = z.object({
+  id: z.string().uuid(),
+  conversaId: z.string().uuid(),
+  tipo: z.enum(["visita", "ligacao", "reuniao", "tarefa", "email"]),
+  titulo: z.string(),
+  descricao: z.string().nullable(),
+  dataVencimento: z.string().datetime(),
+});
+export type WhatsappAtendimentoAgendado = z.infer<
+  typeof whatsappAtendimentoAgendadoSchema
+>;
+
+/** Alteração de um atendimento agendado ainda em aberto. */
+export const whatsappAtualizarAtendimentoSchema = z
+  .object({
+    titulo: z.string().trim().min(1, "Informe o que será feito").max(150).optional(),
+    descricao: z.string().trim().max(1000).nullable().optional(),
+    dataVencimento: z.coerce
+      .date()
+      .refine((d) => d.getTime() > Date.now(), {
+        message: "Escolha uma data e hora no futuro",
+      })
+      .optional(),
+  })
+  .refine(
+    (v) =>
+      v.titulo !== undefined ||
+      v.descricao !== undefined ||
+      v.dataVencimento !== undefined,
+    { message: "Informe o que mudar" },
+  );
+export type WhatsappAtualizarAtendimento = z.infer<
+  typeof whatsappAtualizarAtendimentoSchema
+>;
+
 /** Teto do WhatsApp para anexo; a tela avisa antes de subir o arquivo. */
 export const WHATSAPP_ARQUIVO_MAX_BYTES = 16 * 1024 * 1024;
 

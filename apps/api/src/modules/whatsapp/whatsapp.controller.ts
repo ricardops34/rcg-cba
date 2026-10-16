@@ -37,6 +37,7 @@ import {
   WhatsappHistoricoConversaQueryDto,
   WhatsappAgendarMensagemDto,
   WhatsappAtualizarAgendamentoDto,
+  WhatsappAtualizarAtendimentoDto,
   WhatsappAnotarDto,
   WhatsappAgendarVisitaDto,
   WhatsappEnviarArquivoDto,
@@ -1323,6 +1324,64 @@ export class WhatsappController {
       user,
       id,
       agendamentoId,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Atendimentos agendados da conversa',
+    description:
+      'Os que ainda estão em aberto: na hora marcada o vendedor é avisado e a conversa ' +
+      'abre. Requer whatsapp-conversas.visualizar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'visualizar')
+  @Get('conversas/:id/atendimentos-agendados')
+  listarAtendimentosAgendados(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.agendamento.listarAtendimentos(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Alterar um atendimento agendado',
+    description:
+      'Título, observação e/ou data e hora. Mudar a hora faz o aviso valer para o novo ' +
+      'horário. Requer whatsapp-conversas.cadastrar.',
+  })
+  @ApiBodyExample({ dataVencimento: '2026-10-21T13:00:00.000Z' })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Patch('conversas/:id/atendimentos-agendados/:atividadeId')
+  atualizarAtendimentoAgendado(
+    @Param('id') id: string,
+    @Param('atividadeId') atividadeId: string,
+    @Body() dto: WhatsappAtualizarAtendimentoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.agendamento.atualizarAtendimento(
+      user.empresaAtivaId,
+      user,
+      id,
+      atividadeId,
+      dto,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Cancelar um atendimento agendado',
+    description: 'Sai da agenda e deixa de avisar. Requer whatsapp-conversas.cadastrar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Delete('conversas/:id/atendimentos-agendados/:atividadeId')
+  cancelarAtendimentoAgendado(
+    @Param('id') id: string,
+    @Param('atividadeId') atividadeId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.agendamento.cancelarAtendimento(
+      user.empresaAtivaId,
+      user,
+      id,
+      atividadeId,
     );
   }
 

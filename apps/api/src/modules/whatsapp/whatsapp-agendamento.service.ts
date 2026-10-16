@@ -20,6 +20,7 @@ import {
 import type {
   WhatsappAgendarMensagem,
   WhatsappAtualizarAgendamento,
+  WhatsappAtualizarAtendimento,
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
@@ -251,6 +252,134 @@ export class WhatsappAgendamentoService
         });
       }
       return { cancelada: true };
+    });
+  }
+
+  /** Atendimentos agendados da conversa que ainda estão em aberto. */
+  async listarAtendimentos(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      await this.conversas.conversaNoEscopoPublica(
+        tx,
+        empresaId,
+        user,
+        conversaId,
+      );
+      const linhas = await tx.atividade.findMany({
+        where: {
+          empresaId,
+          conversaId,
+          iniciarConversa: true,
+          concluida: false,
+          ativo: true,
+          deletedAt: null,
+        },
+        orderBy: { dataVencimento: 'asc' },
+        select: {
+          id: true,
+          conversaId: true,
+          tipo: true,
+          titulo: true,
+          descricao: true,
+          dataVencimento: true,
+        },
+      });
+      return linhas;
+    });
+  }
+
+  /**
+   * Altera um atendimento agendado em aberto. Mudar a data e hora zera o aviso
+   * já gravado: sem isso, quem reagenda depois de ter sido avisado nunca
+   * receberia o aviso da nova hora (um aviso por atividade).
+   */
+  async atualizarAtendimento(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    atividadeId: string,
+    input: WhatsappAtualizarAtendimento,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      await this.conversas.conversaParaEnvio(tx, empresaId, user, conversaId);
+
+      const dados: {
+        titulo?: string;
+        descricao?: string | null;
+        dataVencimento?: Date;
+      } = {};
+      if (input.titulo !== undefined) dados.titulo = input.titulo;
+      if (input.descricao !== undefined) dados.descricao = input.descricao;
+      if (input.dataVencimento !== undefined) {
+        const calendario = await carregarCalendarioUtil(tx, empresaId);
+        dados.dataVencimento = calendario.ajustar(
+          new Date(input.dataVencimento),
+        );
+      }
+
+      const { count } = await tx.atividade.updateMany({
+        where: {
+          id: atividadeId,
+          empresaId,
+          conversaId,
+          iniciarConversa: true,
+          concluida: false,
+          deletedAt: null,
+        },
+        data: { ...dados, updatedBy: user.id },
+      });
+      if (count === 0) {
+        throw new NotFoundException(
+          'Atendimento agendado não encontrado ou já concluído.',
+        );
+      }
+      if (dados.dataVencimento) {
+        await tx.notificacao.deleteMany({
+          where: {
+            empresaId,
+            tipo: 'atendimento_agendado',
+            referenciaId: atividadeId,
+          },
+        });
+      }
+      return { atualizado: true };
+    });
+  }
+
+  /** Cancela um atendimento agendado: sai da agenda e não avisa mais. */
+  async cancelarAtendimento(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    atividadeId: string,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      await this.conversas.conversaParaEnvio(tx, empresaId, user, conversaId);
+      const { count } = await tx.atividade.updateMany({
+        where: {
+          id: atividadeId,
+          empresaId,
+          conversaId,
+          iniciarConversa: true,
+          concluida: false,
+          deletedAt: null,
+        },
+        data: {
+          ativo: false,
+          deletedAt: new Date(),
+          deletedBy: user.id,
+          updatedBy: user.id,
+        },
+      });
+      if (count === 0) {
+        throw new NotFoundException(
+          'Atendimento agendado não encontrado ou já concluído.',
+        );
+      }
+      return { cancelado: true };
     });
   }
 

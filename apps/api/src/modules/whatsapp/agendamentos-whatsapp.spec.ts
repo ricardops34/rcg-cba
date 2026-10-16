@@ -227,4 +227,69 @@ describe('WhatsappAgendamentoService — agenda', () => {
       expect(tx.notificacao.findMany).not.toHaveBeenCalled();
     });
   });
+
+  describe('atendimento agendado — alterar e cancelar', () => {
+    it('mudar a hora zera o aviso já gravado, para avisar de novo na nova hora', async () => {
+      const tx = {
+        feriado: { findMany: jest.fn().mockResolvedValue([]) },
+        atividade: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+        notificacao: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      };
+      const { servico } = montar(tx);
+
+      await servico.atualizarAtendimento('e1', user, 'c1', 'a1', {
+        dataVencimento: new Date('2030-03-13T14:00:00.000Z),
+      });
+
+      expect(chamada(tx.atividade.updateMany).where).toMatchObject({
+        id: 'a1',
+        conversaId: 'c1',
+        iniciarConversa: true,
+        concluida: false,
+      });
+      expect(chamada(tx.notificacao.deleteMany).where).toMatchObject({
+        tipo: 'atendimento_agendado',
+        referenciaId: 'a1',
+      });
+    });
+
+    it('mudar só o título não mexe no aviso', async () => {
+      const tx = {
+        feriado: { findMany: jest.fn().mockResolvedValue([]) },
+        atividade: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+        notificacao: { deleteMany: jest.fn() },
+      };
+      const { servico } = montar(tx);
+
+      await servico.atualizarAtendimento('e1', user, 'c1', 'a1', {
+        titulo: 'Novo título',
+      });
+
+      expect(tx.notificacao.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('recusa atendimento de outra conversa ou já concluído', async () => {
+      const tx = {
+        atividade: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      };
+      const { servico } = montar(tx);
+
+      await expect(
+        servico.cancelarAtendimento('e1', user, 'c1', 'a1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('cancelar tira da agenda', async () => {
+      const tx = {
+        atividade: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      };
+      const { servico } = montar(tx);
+
+      await servico.cancelarAtendimento('e1', user, 'c1', 'a1');
+
+      expect(chamada(tx.atividade.updateMany).data).toMatchObject({
+        ativo: false,
+      });
+    });
+  });
 });
