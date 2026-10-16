@@ -147,6 +147,41 @@ export default function OrcamentosPage() {
     setPage(1);
   };
 
+  const menuAcoes = (o: Orcamento) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          onClick={(ev) => ev.stopPropagation()}
+        >
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {o.status === "aprovado" || o.status === "expirado" ? (
+          <DropdownMenuItem onClick={() => abrirEdicao(o)}>
+            <Eye className="size-4" /> Visualizar
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem onClick={() => abrirEdicao(o)}>
+            <Pencil className="size-4" /> Editar
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem onClick={() => abrirCopia(o)}>
+          <Copy className="size-4" /> Copiar
+        </DropdownMenuItem>
+        {/* Só sem integração — o servidor recusa o resto (409) */}
+        {podeExcluirOrcamento(o) && (
+          <DropdownMenuItem variant="destructive" onClick={() => onDelete(o)}>
+            <Trash2 className="size-4" /> Excluir
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   const columns: ColumnDef<Orcamento>[] = [
     {
       header: "Nº",
@@ -223,40 +258,7 @@ export default function OrcamentosPage() {
     {
       header: "",
       className: "w-10",
-      cell: (o) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              onClick={(ev) => ev.stopPropagation()}
-            >
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {o.status === "aprovado" || o.status === "expirado" ? (
-              <DropdownMenuItem onClick={() => abrirEdicao(o)}>
-                <Eye className="size-4" /> Visualizar
-              </DropdownMenuItem>
-            ) : (
-              <DropdownMenuItem onClick={() => abrirEdicao(o)}>
-                <Pencil className="size-4" /> Editar
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuItem onClick={() => abrirCopia(o)}>
-              <Copy className="size-4" /> Copiar
-            </DropdownMenuItem>
-            {/* Só sem integração — o servidor recusa o resto (409) */}
-            {podeExcluirOrcamento(o) && (
-              <DropdownMenuItem variant="destructive" onClick={() => onDelete(o)}>
-                <Trash2 className="size-4" /> Excluir
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
+      cell: (o) => menuAcoes(o),
     },
   ];
 
@@ -365,6 +367,48 @@ export default function OrcamentosPage() {
             setSortOrder(order);
           }}
           storageKey="orcamentos"
+          mobileCard={(o) => {
+            const indicador = integracaoIndicador(o);
+            const Icone = indicador?.icone;
+            return (
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-xs text-muted-foreground">
+                      Nº {numeroOrcamento(o)}
+                    </span>
+                    <Badge variant={STATUS_ORCAMENTO_VARIANT[o.status]}>
+                      {STATUS_ORCAMENTO_LABEL[o.status]}
+                    </Badge>
+                    {indicador && Icone ? (
+                      <Icone className={`size-4 ${indicador.cor}`} aria-label={indicador.legenda} />
+                    ) : null}
+                    {!o.ativo ? <span className="text-xs text-muted-foreground">inativo</span> : null}
+                  </div>
+                  <p className="break-words text-sm font-medium">
+                    {o.cliente.nomeFantasia || o.cliente.razaoSocial}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {o.vendedor.nomeReduzido || o.vendedor.nome}
+                    {o.dataValidade ? ` · válido até ${dataBr(o.dataValidade)}` : ""}
+                  </p>
+                  {o.dataRetorno ? (
+                    <p className="text-xs text-muted-foreground">
+                      Retorno{" "}
+                      {new Date(o.dataRetorno).toLocaleString("pt-BR", {
+                        dateStyle: "short",
+                        timeStyle: "short",
+                      })}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <span className="text-sm font-semibold tabular-nums">{moeda(o.vlrTotal)}</span>
+                  {menuAcoes(o)}
+                </div>
+              </div>
+            );
+          }}
         />
       </div>
     </div>

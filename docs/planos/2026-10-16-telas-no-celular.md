@@ -36,12 +36,12 @@ Corrigir aqui melhora muitas telas de uma vez.
 
 | Componente | Usado por | Situação | Observação |
 |-----------|-----------|----------|-----------|
-| `crud/entity-table` | ~25 listas (Cadastros, Orçamentos, Produtos, Clientes…) | ⬜ | Rola para o lado, com seletor de colunas; sem coluna fixa nem modo cartão |
+| `crud/entity-table` | ~25 listas (Cadastros, Orçamentos, Produtos, Clientes…) | 🔎 Parcial | Ganhou `mobileCard` (cartão no lugar da tabela no celular, opcional por tela); só Orçamentos usa. Demais listas seguem com rolagem lateral |
 | `crud/crud-header` + `filters-popover` | as mesmas listas | ⬜ | Filtros em popover: conferir largura e rolagem |
 | `crud/paginacao` | listas e consultas | ⬜ | |
 | `consultas/consulta-vendas-view` | 5 Consultas | ⬜ | |
 | `relatorios/relatorio-paginado` | 3 Relatórios | ⬜ | |
-| `crud/orcamento-form` | Orçamentos (2369 linhas) | ⬜ | Formulário grande: o mais crítico para o vendedor |
+| `crud/orcamento-form` | Orçamentos (2369 linhas) | ✅ código · 📱 pendente | Itens em cartões no celular (tabela de 14 colunas só no computador), rodapé de ações fixo, retorno com hora e limitado pela validade |
 | `crud/oportunidades-kanban` | Oportunidades | ⬜ | Kanban no celular: colunas por rolagem/aba |
 | `ui/janela-flutuante` | Assistente e atendimento | ✅ | Tela cheia abaixo de 640 px; sem botão maximizar |
 | `ui/resizable-sheet-content` | cortinas | ✅ | Já ocupa a tela inteira no celular |
@@ -139,4 +139,5 @@ Colunas: *Tipo* = como a tela é construída (lista usa EntityTable; consulta e 
 | Data | O quê |
 |------|-------|
 | 2026-10-16 | Agenda (/crm/agenda) adaptada ao celular. |
+| 2026-10-16 | Orçamentos: lista em cartões e edição (página, cortina da Posição de Cliente e painel do WhatsApp) adaptadas ao celular. |
 | 2026-10-16 | Dashboards Gerencial e Comercial; interruptor Celular por empresa (migration `20261016120000`); diálogos do WhatsApp; tela inicial; bloqueio de rolagem lateral. Levantamento criado. |

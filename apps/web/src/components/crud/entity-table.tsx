@@ -128,6 +128,12 @@ interface EntityTableProps<T> {
    * Linha que não pode entrar na seleção: devolve o motivo (vira o title do
    * checkbox desabilitado) ou null quando pode. Ausente = todas podem.
    */
+  /**
+   * Como a linha aparece no **celular**: um cartão no lugar da tabela. Sem esta
+   * prop, o celular segue com a tabela rolando para o lado. Não vale junto com
+   * seleção em lote (que depende da coluna de checkbox).
+   */
+  mobileCard?: (row: T) => React.ReactNode;
   rowSelectionBlocked?: (row: T) => string | null;
 }
 
@@ -153,6 +159,7 @@ export function EntityTable<T>({
   selectedKeys,
   onSelectedKeysChange,
   rowSelectionBlocked,
+  mobileCard,
 }: EntityTableProps<T>) {
   const selecionavel = !!selectedKeys && !!onSelectedKeysChange;
   const chavesPagina = selecionavel
@@ -190,6 +197,8 @@ export function EntityTable<T>({
 
   const columnIds = columns.map((col) => col.id ?? col.header);
   const { hidden, toggle, ativo: seletorAtivo } = useColumnVisibility(columnIds, storageKey);
+  // Cartões só sem seleção em lote: ela precisa da coluna de checkbox.
+  const usaCartoes = !!mobileCard && !selecionavel;
   const colunasVisiveis = seletorAtivo
     ? columns.filter((col) => !hidden.includes(col.id ?? col.header))
     : columns;
@@ -197,7 +206,12 @@ export function EntityTable<T>({
   return (
     <div data-tour="crud-lista" className="overflow-hidden rounded-xl border border-border/70 bg-card">
       {seletorAtivo && (
-        <div className="flex items-center justify-end border-b border-border/60 px-2 py-1">
+        <div
+          className={cn(
+            "flex items-center justify-end border-b border-border/60 px-2 py-1",
+            usaCartoes && "max-md:hidden",
+          )}
+        >
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon-sm" aria-label="Escolher colunas visíveis">
@@ -224,7 +238,54 @@ export function EntityTable<T>({
           </DropdownMenu>
         </div>
       )}
-      <div className="overflow-x-auto">
+      {usaCartoes && (
+        <div className="divide-y divide-border/60 md:hidden">
+          {isLoading &&
+            Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="space-y-2 px-3 py-3">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            ))}
+          {!isLoading && rows.length === 0 && (
+            <div className="flex flex-col items-center gap-2 px-3 py-12 text-center text-sm text-muted-foreground">
+              {error ? (
+                <>
+                  <TriangleAlert className="size-6 text-amber-500" />
+                  {mensagemDeErro(error)}
+                </>
+              ) : (
+                <>
+                  <Inbox className="size-6" />
+                  {emptyMessage}
+                </>
+              )}
+            </div>
+          )}
+          {!isLoading &&
+            rows.map((row) => (
+              <div
+                key={rowKey(row)}
+                role={onRowClick ? "button" : undefined}
+                tabIndex={onRowClick ? 0 : undefined}
+                onClick={(e) => {
+                  // Mesmo cuidado da tabela: menus e diálogos abrem em portal e
+                  // o clique deles sobe pelo React até aqui.
+                  if (!e.currentTarget.contains(e.target as Node)) return;
+                  onRowClick?.(row);
+                }}
+                className={cn(
+                  "px-3 py-3",
+                  onRowClick && "cursor-pointer active:bg-muted/60",
+                  rowClassName?.(row),
+                )}
+              >
+                {mobileCard!(row)}
+              </div>
+            ))}
+        </div>
+      )}
+      <div className={cn("overflow-x-auto", usaCartoes && "max-md:hidden")}>
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
