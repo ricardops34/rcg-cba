@@ -246,8 +246,9 @@ function ListaConversasJanela() {
 
 /**
  * Conversa ainda sem cliente: vincular a um da carteira do vendedor desta
- * conversa — a mesma rota e as mesmas regras da tela de Atendimento (só o
- * dono vincula; a carteira é conferida pela API). É o vínculo que autoriza
+ * conversa (ou de qualquer uma, com "atende clientes de outras carteiras") — a
+ * mesma rota e as mesmas regras da tela de Atendimento (só o dono vincula; a
+ * carteira é conferida pela API). É o vínculo que autoriza
  * gravar as próximas mensagens e liberar as ações do cliente.
  */
 function VincularConversa({ conversa }: { conversa: WhatsappConversa }) {
@@ -285,7 +286,7 @@ function VincularConversa({ conversa }: { conversa: WhatsappConversa }) {
           <ClienteCombobox
             value={clienteId}
             onChange={setClienteId}
-            vendedorId={conversa.vendedorId}
+            conversaId={conversa.id}
           />
         </div>
         <Button
