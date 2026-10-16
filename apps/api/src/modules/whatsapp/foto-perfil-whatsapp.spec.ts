@@ -84,7 +84,7 @@ describe('nomeDeAssinatura', () => {
     ).resolves.toBe('Ricardo Patay Sotomayor');
   });
 
-  it('desligado, assina com o nome completo mesmo com o texto preenchido', async () => {
+  it('desligado, não assina, mesmo com o texto preenchido', async () => {
     await expect(
       nomeDeAssinatura(
         tx({
@@ -94,12 +94,10 @@ describe('nomeDeAssinatura', () => {
         }),
         user,
       ),
-    ).resolves.toBe('Ricardo Patay Sotomayor');
+    ).resolves.toBeNull();
   });
 
-  it('sem leitura do cadastro, cai no nome do token', async () => {
-    await expect(nomeDeAssinatura(tx(null), user)).resolves.toBe(
-      'Nome do Token',
-    );
+  it('sem leitura do cadastro, não assina', async () => {
+    await expect(nomeDeAssinatura(tx(null), user)).resolves.toBeNull();
   });
 });

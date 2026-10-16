@@ -42,7 +42,7 @@ export function prepararInterativo(m: WhatsappInterativo): WhatsappInterativo {
  * botões, lista e link. Enquete, localização e contato não têm onde assinar.
  */
 export function assinarInterativo(
-  nome: string,
+  nome: string | null,
   m: WhatsappInterativo,
 ): WhatsappInterativo {
   if (m.tipo === 'botoes' || m.tipo === 'lista' || m.tipo === 'link') {

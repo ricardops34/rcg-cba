@@ -10,7 +10,7 @@ import { carregarCalendarioUtil } from '../../common/horario/calendario-util';
 import { whereEmpresaAcessivel } from '../../common/empresa/situacao-empresa';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappProviderService } from './providers/whatsapp-provider.service';
-import { mensagemComAutor } from './mensagem-com-autor';
+import { assinaturaDoUsuario, mensagemComAutor } from './mensagem-com-autor';
 import { registrarAtendimentoWhatsapp } from '../../common/atividades/registrar-atendimento-whatsapp';
 import { WhatsappConversasService } from './whatsapp-conversas.service';
 import {
@@ -239,9 +239,10 @@ export class WhatsappAgendamentoService
           where: { id: mensagem.criadaPor },
           select: { nome: true, nomeWhatsapp: true, usarNomeWhatsapp: true },
         });
-        // Mesma assinatura do envio na hora: o nome no WhatsApp, se ligado.
+        // Mesma assinatura do envio na hora: só assina quem ligou o nome no WhatsApp.
         return {
           ...mensagem,
+          assinatura: assinaturaDoUsuario(autor),
           autorNome:
             (autor?.usarNomeWhatsapp && autor?.nomeWhatsapp?.trim()) ||
             autor?.nome ||
@@ -268,7 +269,7 @@ export class WhatsappAgendamentoService
         agendada.conversa.sessaoId,
         {
           jid: agendada.conversa.contato.jid,
-          texto: mensagemComAutor(agendada.autorNome, agendada.texto),
+          texto: mensagemComAutor(agendada.assinatura, agendada.texto),
           respondeuA: null,
         },
       );

@@ -1635,7 +1635,7 @@ export class WhatsappConversasService {
 
       // Resposta a botão sai sem assinatura — mas só se for mesmo isso:
       // mensagem citada recebida, com botões, e o texto igual a um deles.
-      // Fora disso a assinatura é obrigatória (regra em código, não na tela).
+      // Fora disso, assina quem ligou "Usar" no perfil (ver nomeDeAssinatura).
       let semAssinatura = false;
       if (input.respostaBotao) {
         const citada = input.respondeuA
