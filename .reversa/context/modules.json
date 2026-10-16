@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-16T07:50:54.579Z",
+  "generated_at": "2026-10-16T11:09:04.647Z",
   "modules": [
     {
       "name": "auth",
@@ -3160,6 +3160,78 @@
       ],
       "test_files": [],
       "complexity": "medium",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "feriados",
+      "path": "apps/api/src/modules/feriados",
+      "responsibility": "Cadastro de feriados por empresa; gera os nacionais do ano (fixos e moveis pela Pascoa) e alimenta a trava de horario, o ajuste para dia util e a ferramenta do agente.",
+      "files": [
+        "feriados.module.ts",
+        "feriados.controller.ts",
+        "feriados.service.ts",
+        "dto/feriado.dto.ts",
+        "../../common/horario/feriados-nacionais.ts",
+        "../../common/horario/calendario-util.ts"
+      ],
+      "entities": [
+        "Feriado",
+        "OrigemFeriado"
+      ],
+      "main_functions": [
+        "FeriadosService.findAll/findOne/create/update/remove/gerarNacionais",
+        "feriadosNacionais",
+        "domingoDePascoa",
+        "HorarioTrabalhoService.feriadoDeHoje/invalidarFeriados",
+        "CalendarioUtil.util/ajustar"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "HorarioTrabalhoService",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "auth (login)",
+        "JwtAuthGuard",
+        "atividades",
+        "titulos-receber",
+        "orcamentos",
+        "clientes",
+        "notificacoes",
+        "whatsapp (triagem e agendamento)",
+        "agente (consultar_feriados)"
+      ],
+      "business_rules": [
+        {
+          "description": "Feriado so bloqueia acesso de quem tem restringirHorario; falha ao ler o feriado nao derruba o login",
+          "location": "common/horario/horario-trabalho.ts; acessos/horario-trabalho.service.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Gerar nacionais usa skipDuplicates: data que ja tem feriado nao e tocada; editar um feriado forca origem manual",
+          "location": "feriados.service.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Moveis = Pascoa -47 (Carnaval), -2 (Sexta Santa), +60 (Corpus Christi); Consciencia Negra e fixa e nacional",
+          "location": "common/horario/feriados-nacionais.ts",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "Empresa.fusoHorario existe mas feriado, momentoLocal e CalendarioUtil usam a constante America/Campo_Grande",
+        "cache de feriado de hoje e por processo: com varias replicas, o feriado novo demora ate 10 min nas outras",
+        "update sempre grava origem manual, mesmo sem mudanca; exclusao fisica sem registro de quem excluiu",
+        "update/remove: findOne fora da transacao; exclusao concorrente cai em P2025 (500)",
+        "sem teste de service, controller nem cache"
+      ],
+      "test_files": [
+        "feriados-nacionais.spec.ts",
+        "calendario-util.spec.ts",
+        "atividades-feriados.spec.ts",
+        "horario-trabalho.spec.ts"
+      ],
+      "complexity": "low",
       "confidence": "CONFIRMADO"
     }
   ]

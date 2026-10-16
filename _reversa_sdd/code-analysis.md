@@ -6699,3 +6699,76 @@ com `codigoErp` só informativo); origem do CEP (`viacep`); ações da regra de 
 telas de Cadastros, cadastro de clientes (CEP, estado, município, CNAE), orçamentos (regras, tabela de
 preço), relatórios (categorias), dashboard comercial (`usado`), equipamentos de comodato
 (`equipamentoComodato`), módulo `integracao` (grava as mesmas tabelas por empresa). **Sem testes.**
+
+---
+
+## Módulo `feriados`
+
+**Caminho:** `apps/api/src/modules/feriados/` (controller, service, DTO, module — 273 linhas) + `apps/api/src/common/horario/feriados-nacionais.ts` (cálculo puro) + `calendario-util.ts` (consumidor) + `apps/web/src/app/(app)/admin/feriados/` (lista, novo, `[id]`).
+**Testes:** só do cálculo puro (`feriados-nacionais.spec.ts`, `calendario-util.spec.ts`, `atividades-feriados.spec.ts`); **o service e o controller não têm teste**.
+
+### 1. Responsabilidade 🟢
+
+Cadastro dos dias em que a empresa não atende, **por empresa** (RLS, `withTenant`): os municipais mudam de uma cidade para outra. O sistema gera os feriados nacionais do ano; a empresa acrescenta os locais. É dado de apoio para três consumidores: a trava de horário de trabalho (login e cada requisição), o ajuste de datas para o próximo dia útil (atividades, vencimento de título, validade de orçamento, WhatsApp) e a ferramenta `consultar_feriados` do agente interno.
+
+### 2. Rotas 🟢
+
+`JwtAuthGuard` + `PermissionsGuard`; permissão = rotina `feriados`.
+
+| Rota | Permissão | Comportamento |
+|---|---|---|
+| `GET /feriados?ano=` | `visualizar` | lista o ano (padrão: ano atual no fuso `America/Campo_Grande`), ordenada por data |
+| `GET /feriados/:id` | `visualizar` | detalhe; 404 se não for da empresa |
+| `POST /feriados` | `cadastrar` | cria com `origem = manual`; data repetida → 409 |
+| `POST /feriados/gerar-nacionais` | `cadastrar` | `createMany(skipDuplicates)` com os 12 nacionais; devolve `{criados, existentes}` |
+| `PATCH /feriados/:id` | `editar` | altera data/descrição e **força `origem = manual`**; data repetida → 409 |
+| `DELETE /feriados/:id` | `excluir` | exclusão física |
+
+### 3. Algoritmos 🟢
+
+- **Páscoa** por Meeus/Jones/Butcher (`domingoDePascoa`); os três móveis são deslocamentos dela: Carnaval −47, Sexta-feira Santa −2, Corpus Christi +60.
+- **Fixos (9):** 01/01, 21/04, 01/05, 07/09, 12/10, 02/11, 15/11, 20/11 (Consciência Negra, nacional desde a Lei 14.759/2023), 25/12. Total de 12 por ano. Ponto facultativo, estadual e municipal ficam de fora.
+- **Datas de calendário:** o dia é guardado como `date` e lido/gravado como meia-noite UTC (`paraData`/`paraDia`), para o dia não mudar com o fuso do servidor.
+- **Regeração:** `skipDuplicates` pela unicidade `(empresaId, data)`: data que já tem feriado (inclusive nacional editado ou apagado e recriado à mão) não é tocada.
+- **Cache da trava de horário:** `HorarioTrabalhoService.feriadoDeHoje` guarda a descrição do feriado de hoje por `empresaId:dia` (TTL 10 min = `10 × TTL_MS`, teto de 5.000 chaves, limpa tudo ao estourar). Toda gravação chama `invalidarFeriados(empresaId)`.
+- **Efeito da trava:** `dentroDoExpediente` devolve `Feriado: <descrição>` e bloqueia **só quem tem `restringirHorario`**. Falha ao ler o feriado vira log e segue sem ele (não derruba o login).
+- **Dia útil:** `CalendarioUtil.util(dia)` = não é sábado, domingo nem feriado cadastrado; `ajustar` avança até 370 dias.
+
+### 4. Achados
+
+#### 4.1 O fuso por empresa existe, mas feriado ignora 🟡
+
+`Empresa.fusoHorario` foi criado para o "hoje" de cada empresa não depender do servidor, mas só o `proximo-expediente` do WhatsApp o lê. O "hoje" do feriado (`feriadoDeHoje`), o ano padrão do `findAll`, `momentoLocal` e `CalendarioUtil` usam a constante `HORARIO_TIMEZONE = America/Campo_Grande`. Para uma empresa em outro fuso, o feriado "de hoje" vira o dia errado nas horas em que os dois fusos divergem. 🔴 confirmar se há ou haverá empresa fora do fuso de Campo Grande.
+
+#### 4.2 Cache de feriado é por processo 🟡
+
+`invalidarFeriados` limpa só o `Map` da instância que recebeu a gravação. Com mais de uma réplica da API, as outras seguem com o valor antigo por até 10 minutos: o feriado de hoje, incluído ou excluído, não vale na hora em todas. 🔴 confirmar quantas réplicas rodam em produção.
+
+#### 4.3 Editar para "nada" ainda vira manual 🟡
+
+`update` grava `origem = manual` mesmo quando o corpo não muda nada (ou repete os valores). Abrir um nacional e salvar o tira da condição de "gerado pelo sistema", o que hoje não tem efeito prático (a regeração nunca sobrescreve), mas torna o campo `origem` pouco confiável para relatório.
+
+#### 4.4 Exclusão física, sem rastro 🟡
+
+`remove` usa `delete` (os demais cadastros usam soft delete) e não registra quem excluiu. Combinado com 4.3, não há como saber depois quem tirou ou alterou um feriado que mexeu no acesso de usuários. `createdBy`/`updatedBy` existem só para criação e edição.
+
+#### 4.5 Concorrência e janelas pequenas 🟡
+
+- `update` e `remove` chamam `findOne` antes, em outra transação: duas exclusões simultâneas fazem a segunda cair em `P2025` sem tradução (500, não 404).
+- `gerarNacionais` aceita qualquer ano de 2000 a 2100; para anos passados grava feriados que não afetam nada além do calendário.
+
+#### 4.6 Formatos diferentes entre os dois leitores 🟢
+
+`AtividadesService.feriados` devolve `data` como `Date` de todos os anos (sem filtro), enquanto `FeriadosService` devolve texto `AAAA-MM-DD`. Os dois formatos convivem; o agente (`consultar_feriados`) filtra por ano em memória.
+
+### 5. Estruturas de dados 🟢
+
+`Feriado` (RLS por empresa; único `(empresaId, data)`, índice `(empresaId, data)`) e o enum `OrigemFeriado` (`nacional_fixo`, `nacional_movel`, `manual`). Ver `data-dictionary.md`, seção `feriados`.
+
+### 6. Metadados 🟢
+
+`FIXOS` (lista dos 9 fixos), deslocamentos da Páscoa, `HORARIO_TIMEZONE`, TTL do cache (10 min), limites de ano 2000–2100 e descrição de 1 a 120 caracteres. Permissões: as 9 ações da rotina `feriados`, concedidas por migration (`20260930280000_perm_feriados`) aos perfis `sistemaBase`; os demais perfis dependem da tela de Perfis.
+
+### 7. Dependências e testes
+
+`PrismaService`, `HorarioTrabalhoService` (módulo `acessos`), `feriados-nacionais`, `@plataforma/contracts`. Consumidores: `auth` (login), `JwtAuthGuard` (a cada requisição), `atividades`, `titulos-receber`, `orcamentos` (validade e atividade de retorno), `clientes`, `notificacoes` (varredura), `whatsapp` (triagem e agendamento), `agente` (`consultar_feriados`). A limpeza do modo demonstração apaga a tabela. **Testes só do cálculo; nenhum do service, do controller nem do cache.**

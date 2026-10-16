@@ -2407,3 +2407,30 @@ Um schema Zod de criação, atualização e consulta por entidade em `packages/c
 de desconto exige `percFinal ≥ percInicial` por faixa; a consulta de CEP é `GET /ceps/consulta/:cep`
 (`ConsultaCepResultado`: `cep`, `endereco`, `bairro`, `municipio`, `municipioId`, `uf`, `estadoId`,
 `origem: cache | viacep`).
+
+
+---
+
+## `feriados`
+
+### Tabela `feriados` (RLS por `empresaId`) 🟢
+
+| Campo | Tipo | Obrigatório | Observação |
+|---|---|---|---|
+| `id` | texto (uuid) | sim | chave |
+| `empresaId` | texto | sim | FK `empresas`, RESTRICT |
+| `data` | `date` | sim | dia inteiro, sem hora; único com `empresaId` |
+| `descricao` | texto | sim | 1 a 120 caracteres; coluna era `nome` até a migration `20260930270000` |
+| `origem` | `OrigemFeriado` | sim, padrão `manual` | |
+| `createdAt`, `updatedAt` | data/hora | sim | |
+| `createdBy`, `updatedBy` | texto | não | usuário que criou/editou; **sem campo de quem excluiu** |
+
+Índices: único `(empresaId, data)`; `(empresaId, data)`.
+
+### Enum `OrigemFeriado` 🟢
+
+`nacional_fixo` (gerado), `nacional_movel` (gerado, derivado da Páscoa), `manual` (cadastrado ou editado pela empresa).
+
+### DTOs 🟢
+
+`feriadoCreateSchema` (`data` AAAA-MM-DD, `descricao`), `feriadoUpdateSchema` (parcial), `feriadoQuerySchema` (`ano` 2000–2100, opcional), `feriadoGerarNacionaisSchema` (`ano` obrigatório). Resposta: `data` como texto AAAA-MM-DD.
