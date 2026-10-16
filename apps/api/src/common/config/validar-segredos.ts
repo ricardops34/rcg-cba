@@ -4,6 +4,7 @@ const SEGREDOS_PUBLICOS = new Set([
   'desenvolvimento-local-refresh',
   'ZGV2LW9ubHktbmFvLXVzZS1lbS1wcm9kdWNhby0zMmI=',
   'ZGV2LW9ubHktd2hhdHNhcHAtY3J5cHRvLWtleS0zMmI=',
+  'ZGV2LW9ubHktcGFyYW1ldHJvcy1jcnlwdG8ta2V5ISE=',
 ]);
 
 const VARIAVEIS = [
@@ -12,6 +13,7 @@ const VARIAVEIS = [
   'JWT_REFRESH_SECRET',
   'AGENTE_IA_CRYPTO_KEY',
   'WHATSAPP_CRYPTO_KEY',
+  'PARAMETROS_CRYPTO_KEY',
 ] as const;
 
 const VARIAVEIS_OBRIGATORIAS_PROD = [

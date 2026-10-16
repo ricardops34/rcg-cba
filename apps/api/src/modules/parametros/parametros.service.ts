@@ -2,12 +2,18 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
   PrismaService,
   type TenantTx,
 } from '../../common/prisma/prisma.service';
+import {
+  abrirParametro,
+  cifrarParametro,
+  estaCifrado,
+} from './parametros-cripto';
 import {
   buildPaginatedResult,
   paginationToSkipTake,
@@ -58,6 +64,8 @@ type ParametroRow = {
  */
 @Injectable()
 export class ParametrosService {
+  private readonly logger = new Logger(ParametrosService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   /** Conteúdo de tipo senha nunca sai da API — só a informação de que existe. */
@@ -172,7 +180,10 @@ export class ParametrosService {
       const row = await tx.parametroEmpresa.create({
         data: {
           ...input,
-          conteudo: input.conteudo ?? null,
+          conteudo:
+            input.tipo === 'senha' && input.conteudo
+              ? cifrarParametro(input.conteudo)
+              : (input.conteudo ?? null),
           descricao: input.descricao ?? null,
           tamanho: input.tamanho ?? null,
           empresaId,
@@ -204,24 +215,30 @@ export class ParametrosService {
 
       // Sair do tipo senha descarta o segredo gravado: sem isso, trocar o tipo
       // para texto (sem mandar conteúdo) passava a devolver a senha no GET.
-      const deixaDeSerSenha =
-        atual.tipo === 'senha' &&
-        input.tipo !== undefined &&
-        input.tipo !== 'senha';
+      const tipoFinal = input.tipo ?? atual.tipo;
+      const deixaDeSerSenha = atual.tipo === 'senha' && tipoFinal !== 'senha';
+
+      let conteudo: { conteudo?: string | null } = {};
+      if (deixaDeSerSenha) {
+        conteudo = { conteudo: input.conteudo || null };
+      } else if (tipoFinal === 'senha') {
+        // Senha em branco no formulário significa "manter a atual", e não
+        // "apagar" — o valor nunca é exibido para ser redigitado. O que fica
+        // gravado vai sempre cifrado (inclusive o texto de um parâmetro que
+        // acabou de virar senha).
+        const valor = input.conteudo || atual.conteudo;
+        conteudo = {
+          conteudo: !valor
+            ? null
+            : estaCifrado(valor)
+              ? valor
+              : cifrarParametro(valor),
+        };
+      }
 
       const row = await tx.parametroEmpresa.update({
         where: { id },
-        data: {
-          ...input,
-          ...(deixaDeSerSenha
-            ? { conteudo: input.conteudo || null }
-            : // Senha em branco no formulário significa "manter a atual", e
-              // não "apagar" — o valor nunca é exibido para ser redigitado.
-              atual.tipo === 'senha' && !input.conteudo
-              ? { conteudo: atual.conteudo }
-              : {}),
-          updatedBy: user.id,
-        },
+        data: { ...input, ...conteudo, updatedBy: user.id },
       });
       return this.paraLeitura(row);
     });
@@ -246,7 +263,15 @@ export class ParametrosService {
   // Leitura tipada, para o resto do backend
   // ------------------------------------------------------------------
 
-  /** Conteúdo cru de um parâmetro ativo, ou null. Aceita tx pra reaproveitar a transação. */
+  /**
+   * Conteúdo de um parâmetro ativo, ou null — já decifrado, quando é segredo.
+   * Aceita tx pra reaproveitar a transação.
+   *
+   * Segredo que não decifra (chave mestra ausente ou trocada) vira null, como
+   * um parâmetro vazio: a tela mostra a senha como não preenchida, o envio fica
+   * desligado e o motivo vai ao log — em vez de cada tela de E-mail/SMS e cada
+   * envio quebrar com erro interno.
+   */
   private async conteudoDe(
     empresaId: string,
     parametro: string,
@@ -259,9 +284,18 @@ export class ParametrosService {
       });
       return row?.conteudo ?? null;
     };
-    return tx
-      ? buscar(tx)
-      : this.prisma.withTenant(empresaId, (t) => buscar(t));
+    const guardado = tx
+      ? await buscar(tx)
+      : await this.prisma.withTenant(empresaId, (t) => buscar(t));
+    if (!guardado || !estaCifrado(guardado)) return guardado;
+    try {
+      return abrirParametro(guardado);
+    } catch (erro) {
+      this.logger.error(
+        `Parâmetro ${parametro} da empresa ${empresaId} não decifrou: ${(erro as Error).message}`,
+      );
+      return null;
+    }
   }
 
   async obterNumero(

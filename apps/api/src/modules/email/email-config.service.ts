@@ -16,6 +16,7 @@ import {
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { MailService, type AnexoEmail } from '../../common/mail/mail.service';
 import { smtpDaEmpresa } from '../../common/mail/smtp-da-empresa';
+import { cifrarParametro } from '../parametros/parametros-cripto';
 import {
   buscarEmpresaDoEmail,
   carregarLogoEmail,
@@ -302,7 +303,9 @@ export class EmailConfigService {
       [P.cobranca, String(dados.cobranca)],
       [P.senhaProvisoria, String(dados.senhaProvisoria)],
     ];
-    if (dados.senha) valores.push([P.senha, dados.senha]);
+    // Vai cifrada (PARAMETROS_CRYPTO_KEY); cifrar antes da transação faz uma
+    // chave ausente recusar o salvamento inteiro, sem gravar a metade.
+    if (dados.senha) valores.push([P.senha, cifrarParametro(dados.senha)]);
 
     await this.prisma.withTenant(empresaId, async (tx) => {
       for (const [d, conteudo] of valores) {

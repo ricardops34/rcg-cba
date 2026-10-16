@@ -8,6 +8,7 @@ import {
 import type { SmsMotivo } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { ParametrosService } from '../parametros/parametros.service';
+import { cifrarParametro } from '../parametros/parametros-cripto';
 
 /**
  * Envio de SMS pela iAgente (docs/planos/2026-10-01-sms-iagente.md).
@@ -282,7 +283,10 @@ export class SmsService {
       [P.avisoDiasAntes, String(dados.avisoDiasAntes)],
       [P.avisoDiasDepois, String(dados.avisoDiasDepois)],
     ];
-    if (dados.token?.trim()) valores.push([P.token, dados.token.trim()]);
+    // Vai cifrado (PARAMETROS_CRYPTO_KEY); cifrar antes da transação faz uma
+    // chave ausente recusar o salvamento inteiro, sem gravar a metade.
+    if (dados.token?.trim())
+      valores.push([P.token, cifrarParametro(dados.token.trim())]);
 
     await this.prisma.withTenant(empresaId, async (tx) => {
       for (const [d, conteudo] of valores) {

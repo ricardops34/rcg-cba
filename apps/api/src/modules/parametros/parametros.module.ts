@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { ParametrosController } from './parametros.controller';
 import { ParametrosService } from './parametros.service';
+import { ParametrosCifragemService } from './parametros-cifragem.service';
 
 // Exporta o service: outros módulos leem parâmetros (validade do orçamento,
 // visibilidade de comissão, SMTP) através dele.
 @Module({
   controllers: [ParametrosController],
-  providers: [ParametrosService],
+  providers: [ParametrosService, ParametrosCifragemService],
   exports: [ParametrosService],
 })
 export class ParametrosModule {}

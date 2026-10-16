@@ -29,6 +29,10 @@ services:
       # não a do agente de IA — donos e ciclos de rotação diferentes.
       # Trocá-la exige regravar a chave pela tela e reconectar as instâncias.
       WHATSAPP_CRYPTO_KEY: ${WHATSAPP_CRYPTO_KEY}
+      # Cifra os parâmetros de tipo senha (SMTP_SENHA, SMS_TOKEN). Chave
+      # própria. Sem ela, salvar a senha do e-mail ou o token do SMS é
+      # recusado; trocá-la exige regravar os dois pelas telas.
+      PARAMETROS_CRYPTO_KEY: ${PARAMETROS_CRYPTO_KEY}
       # Endereço com que a Evolution GO chama a API de volta.
       # Se a Evolution GO estiver externa (outra VPS / nuvem): https://api.rcgdist.com.br
       # Se estiver na mesma VPS/rede Docker: http://rcgcba-api:3001

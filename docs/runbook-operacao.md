@@ -892,6 +892,34 @@ Porta e SSL: **587 com "SSL/TLS direto" desligado** (STARTTLS) ou **465 com
 ele ligado** — trocar um sem o outro é o erro mais comum (visto em 2026-10-01
 com `mail.rcgdist.com.br`, que aceita os dois).
 
+### Pré-requisito: `PARAMETROS_CRYPTO_KEY` **[escrito em 2026-10-15, não rodado na VPS]**
+
+Desde 2026-10-15, `SMTP_SENHA` e `SMS_TOKEN` (todo parâmetro de tipo `senha`)
+ficam **cifrados** no banco, com chave própria. Antes do deploy que traz isso,
+na stack principal (Stacks → rcgcba → Env), definir:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+# → PARAMETROS_CRYPTO_KEY=<o valor gerado>
+```
+
+A variável já está em `docker/stack.rcgcba.prod.yml`; como o YML do Portainer
+diverge do repo (ver "Armadilha: variável do Portainer que não chega ao
+container"), confira que ela chegou ao container.
+
+- **Na primeira subida com a chave**, a API cifra os valores que estavam em
+  texto puro, em todas as empresas. O log da API mostra
+  `Parâmetros de senha cifrados na subida: N`.
+- **Sem a chave**, nada quebra no que já está gravado (a leitura aceita texto
+  puro e o log avisa), mas **salvar** a senha do e-mail ou o token do SMS é
+  recusado.
+- **Trocar a chave depois** torna os valores gravados ilegíveis: a tela passa
+  a mostrar a senha como não preenchida e o envio fica desligado até alguém
+  regravar em Administração > E-mail e > SMS. Guarde a chave junto das outras.
+
+Conferir: `SELECT parametro, left(conteudo, 11) FROM parametros_empresa WHERE tipo = 'senha' AND conteudo IS NOT NULL`
+deve devolver só `cifrado:v1:`; e o **Enviar e-mail de teste** continua funcionando.
+
 ## SMS pela iAgente **[a confirmar — escrito em 2026-10-01, sem envio real]**
 
 Plano: `docs/planos/2026-10-01-sms-iagente.md`. As migrations

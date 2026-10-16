@@ -74,6 +74,9 @@ services:
       # instância, segredo do webhook). 32 bytes em base64, chave própria — a
       # do agente de IA tem outro dono e outro ciclo de rotação.
       WHATSAPP_CRYPTO_KEY: ${WHATSAPP_CRYPTO_KEY:-ZGV2LW9ubHktd2hhdHNhcHAtY3J5cHRvLWtleS0zMmI=}
+      # Cifra os parâmetros de tipo senha (SMTP_SENHA, SMS_TOKEN). Chave
+      # própria, como as do agente e do WhatsApp.
+      PARAMETROS_CRYPTO_KEY: ${PARAMETROS_CRYPTO_KEY:-ZGV2LW9ubHktcGFyYW1ldHJvcy1jcnlwdG8ta2V5ISE=}
       # Endereço que a Evolution GO usa para chamar a API de volta. É o nome do
       # serviço na rede do compose: `localhost` aqui apontaria para dentro do
       # container do gateway, e nenhum evento chegaria.
