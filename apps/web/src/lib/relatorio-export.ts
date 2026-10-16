@@ -39,6 +39,7 @@ export function formatar(valor: string | number | null, formato: FormatoColuna =
     case "moeda":
       return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
     case "percentual":
+      return `${valor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
     case "numero":
       return valor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     case "quantidade":
@@ -85,7 +86,8 @@ const NUM_FMT: Record<FormatoColuna, string | undefined> = {
   quantidade: "#,##0.####",
   // Contábil: "R$" à esquerda da célula, valor à direita, zero como "-".
   moeda: '_("R$"* #,##0.00_);_("R$"* (#,##0.00);_("R$"* "-"??_);_(@_)',
-  percentual: "0.00%",
+  // O valor já é em pontos percentuais (3,25 = 3,25%): "%" literal, sem o ×100 do formato `0.00%`.
+  percentual: '0.00"%"',
 };
 
 function arrayBufferParaBase64(buffer: ArrayBuffer): string {
