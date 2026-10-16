@@ -874,7 +874,7 @@ function ListaDeConversas({
       </div>
 
       <Dialog open={dialogImportarAberto} onOpenChange={setDialogImportarAberto}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Importar contatos do WhatsApp</DialogTitle>
             <DialogDescription>

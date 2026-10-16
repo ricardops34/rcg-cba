@@ -55,7 +55,7 @@ export function AnotacaoDialog({
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <StickyNote className="size-4 text-amber-600" /> Anotação interna

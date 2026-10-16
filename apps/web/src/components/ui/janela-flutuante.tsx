@@ -382,7 +382,7 @@ export function JanelaFlutuante({
         >
           <Minus className="size-4" />
         </Button>
-        <Button type="button" variant="ghost" size="icon" className="size-7"
+        <Button type="button" variant="ghost" size="icon" className="hidden size-7 sm:inline-flex"
           title={maximizada ? "Restaurar tamanho" : "Maximizar janela"}
           aria-label={maximizada ? "Restaurar tamanho" : "Maximizar janela"}
           aria-pressed={maximizada} onClick={alternarMaximizada}>

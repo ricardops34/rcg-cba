@@ -36,7 +36,7 @@ export function RespostasRapidasPopover({
   );
 
   return (
-    <div className="absolute bottom-full left-0 mb-2 w-80 max-h-64 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md z-50 p-1 space-y-1">
+    <div className="absolute bottom-full left-0 mb-2 w-80 max-w-[calc(100vw-1.5rem)] max-h-64 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md z-50 p-1 space-y-1">
       <div className="flex items-center justify-between border-b px-2 py-1 text-xs text-muted-foreground">
         <span className="flex items-center gap-1 font-medium">
           <Zap className="size-3 text-amber-500" />
