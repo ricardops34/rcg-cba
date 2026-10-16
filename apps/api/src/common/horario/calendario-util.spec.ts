@@ -40,7 +40,9 @@ describe('Calendário útil da empresa', () => {
   });
   it('não cobra encargos até o vencimento efetivo, cobrando a partir do dia seguinte', () => {
     const vencimento = calendario.vencimento(new Date('2026-10-10T00:00:00Z'));
-    const base = { saldo: 100, vencimento, multaPerc: 2, jurosMesPerc: 3 };
+    // Multa e juros em reais, como o ERP manda no título (desde 2026-10-09 o
+    // percentual da conta bancária não entra no cálculo).
+    const base = { saldo: 100, vencimento, multaValor: 2, jurosValorDia: 0.1 };
     const noDia = calcularEncargos({
       ...base,
       hoje: new Date('2026-10-13T00:00:00Z'),
