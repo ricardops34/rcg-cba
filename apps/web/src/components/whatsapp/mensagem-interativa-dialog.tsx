@@ -410,7 +410,7 @@ function EditorBotoes({
         <div key={i} className="space-y-1.5 rounded-lg border p-2">
           <div className="flex items-center gap-2">
             <Select value={botao.tipo} onValueChange={(t) => trocar(i, botaoVazio(t as WhatsappBotao["tipo"]))}>
-              <SelectTrigger className="w-40">
+              <SelectTrigger className="w-36 shrink-0 sm:w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

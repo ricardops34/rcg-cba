@@ -96,7 +96,7 @@ export function FichasTecnicasDialog({
             />
           </div>
 
-          <div className="max-h-64 overflow-y-auto space-y-1.5 border rounded-md p-1.5">
+          <div className="max-h-[40dvh] overflow-y-auto space-y-1.5 sm:max-h-64 border rounded-md p-1.5">
             {isLoading ? (
               <p className="p-4 text-center text-xs text-muted-foreground">Carregando fichas técnicas...</p>
             ) : fichas.length === 0 ? (

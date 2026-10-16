@@ -126,7 +126,7 @@ export function AcoesCliente({
             <Wrench className="size-4.5" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" side="top" className="w-64">
+        <DropdownMenuContent align="start" side="top" className="w-64 max-w-[calc(100vw-1rem)]">
           <DropdownMenuLabel>Financeiro</DropdownMenuLabel>
           <DropdownMenuSeparator />
           {podeTitulos ? (
@@ -324,7 +324,7 @@ function OrcamentoDialog({
               Este cliente não tem orçamento cadastrado.
             </p>
           ) : (
-            <div className="max-h-64 space-y-1 overflow-y-auto">
+            <div className="max-h-[40dvh] space-y-1 overflow-y-auto sm:max-h-64">
               {orcamentos.map((o) => (
                 <button
                   key={o.id}
@@ -338,7 +338,7 @@ function OrcamentoDialog({
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">
+                    <span className="min-w-0 break-words font-medium">
                       Nº {numeroOrcamento(o)} — {o.titulo}
                     </span>
                     <span className="shrink-0 tabular-nums">{moeda(o.vlrTotal)}</span>

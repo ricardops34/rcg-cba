@@ -277,7 +277,7 @@ export function ListaDeContatos({
   }
 
   return (
-    <div className="max-h-80 overflow-y-auto rounded-md border">
+    <div className="max-h-[45dvh] overflow-y-auto rounded-md border sm:max-h-80">
       {contatos.map((c) => (
         <button
           key={c.jid}
