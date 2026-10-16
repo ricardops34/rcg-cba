@@ -25,6 +25,7 @@ import {
 } from "@/components/crud/quick-filter-group";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FieldLabel } from "@/components/ui/field";
 import {
   Select,
@@ -43,6 +44,7 @@ import { useFiltrosUrl } from "@/hooks/use-filtros-url";
 import { AlertTriangle, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
 type TipoFiltro = "todos" | TipoAtividade;
+type Visao = "mes" | "semana" | "dia";
 type AgendaItem =
   | { kind: "atividade"; id: string; data: Atividade }
   | { kind: "orcamento"; id: string; data: Orcamento };
@@ -84,7 +86,16 @@ const estaVencida = (a: Atividade) =>
 
 export default function AgendaPage() {
   const router = useRouter();
-  const [mesAtual, setMesAtual] = useState(() => startOfMonth(new Date()));
+  // Celular abre no dia (o que importa na rua); computador, no mês. A tela só
+  // monta depois de a sessão carregar, então já se sabe a largura.
+  const [visao, setVisao] = useState<Visao>(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches
+      ? "dia"
+      : "mes",
+  );
+  // O dia em foco: o mês, a semana e o dia mostrados saem dele.
+  const [ancora, setAncora] = useState(() => new Date());
+  const mesAtual = useMemo(() => startOfMonth(ancora), [ancora]);
   // Filtros que podem vir do link do assistente — ver `useFiltrosUrl`. O
   // cliente é só leitura: quem chegou por "a agenda do cliente X" tira o
   // recorte saindo da tela, não mexendo num controle.
@@ -96,7 +107,8 @@ export default function AgendaPage() {
   const [tipo, setTipo] = useState<TipoFiltro>("todos");
   const [somentePendentes, setSomentePendentes] = useState(false);
   // No celular o mês é um mapa de pontos e o detalhe é o dia escolhido.
-  const [diaSelecionado, setDiaSelecionado] = useState(() => new Date());
+  const diaSelecionado = ancora;
+  const setDiaSelecionado = setAncora;
 
   const vendedoresEscopoQuery = useVendedoresEscopo();
   const feriadosQuery = useFeriadosAgenda();
@@ -171,6 +183,29 @@ export default function AgendaPage() {
   }, [atividadesQuery.data, orcamentosQuery.data]);
 
   const hoje = new Date();
+  // A semana vai de domingo a sábado, como a grade do mês. No celular a
+  // semana mostra só de segunda a sexta (sábado e domingo ficam de fora).
+  const inicioSemana = addDays(ancora, -ancora.getDay());
+  const diasSemana = Array.from({ length: 7 }, (_, i) => addDays(inicioSemana, i));
+  const diasUteis = diasSemana.filter((d) => d.getDay() >= 1 && d.getDay() <= 5);
+  const itensFimDeSemana = diasSemana
+    .filter((d) => d.getDay() === 0 || d.getDay() === 6)
+    .reduce((n, d) => n + (porDia.get(toKey(d))?.length ?? 0), 0);
+
+  const mover = (sentido: 1 | -1) =>
+    setAncora((a) =>
+      visao === "mes"
+        ? new Date(a.getFullYear(), a.getMonth() + sentido, 1)
+        : addDays(a, (visao === "semana" ? 7 : 1) * sentido),
+    );
+  const rotuloAnterior = { mes: "Mês anterior", semana: "Semana anterior", dia: "Dia anterior" }[visao];
+  const rotuloProximo = { mes: "Próximo mês", semana: "Próxima semana", dia: "Próximo dia" }[visao];
+
+  const intervalo = (a: Date, b: Date) =>
+    a.getMonth() === b.getMonth()
+      ? `${a.getDate()} a ${b.getDate()} de ${MESES[b.getMonth()]} de ${b.getFullYear()}`
+      : `${a.getDate()} de ${MESES[a.getMonth()].slice(0, 3)} a ${b.getDate()} de ${MESES[b.getMonth()].slice(0, 3)} de ${b.getFullYear()}`;
+
   const filtrosAtivos = tipo !== "todos" || !!vendedorId;
   const limparFiltros = () => {
     setTipo("todos");
@@ -244,39 +279,48 @@ export default function AgendaPage() {
       />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold capitalize tracking-tight">
-          {MESES[mesAtual.getMonth()]} de {mesAtual.getFullYear()}
+          {visao === "mes" ? (
+            <>
+              {MESES[mesAtual.getMonth()]} de {mesAtual.getFullYear()}
+            </>
+          ) : visao === "semana" ? (
+            <>
+              <span className="md:hidden">{intervalo(diasUteis[0], diasUteis[diasUteis.length - 1])}</span>
+              <span className="hidden md:inline">{intervalo(diasSemana[0], diasSemana[6])}</span>
+            </>
+          ) : (
+            ancora.toLocaleDateString("pt-BR", {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            })
+          )}
         </h1>
         <div className="flex flex-wrap items-center gap-2">
+          <Tabs value={visao} onValueChange={(v) => setVisao(v as Visao)}>
+            <TabsList aria-label="Visão da agenda">
+              <TabsTrigger value="mes">Mês</TabsTrigger>
+              <TabsTrigger value="semana">Semana</TabsTrigger>
+              <TabsTrigger value="dia">Dia</TabsTrigger>
+            </TabsList>
+          </Tabs>
           <Button
             variant="outline"
             size="icon"
-            aria-label="Mês anterior"
-            onClick={() => {
-              const novo = new Date(mesAtual.getFullYear(), mesAtual.getMonth() - 1, 1);
-              setMesAtual(novo);
-              setDiaSelecionado(novo);
-            }}
+            aria-label={rotuloAnterior}
+            onClick={() => mover(-1)}
           >
             <ChevronLeft className="size-4" />
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => {
-              setMesAtual(startOfMonth(new Date()));
-              setDiaSelecionado(new Date());
-            }}
-          >
+          <Button variant="outline" onClick={() => setAncora(new Date())}>
             Hoje
           </Button>
           <Button
             variant="outline"
             size="icon"
-            aria-label="Próximo mês"
-            onClick={() => {
-              const novo = new Date(mesAtual.getFullYear(), mesAtual.getMonth() + 1, 1);
-              setMesAtual(novo);
-              setDiaSelecionado(novo);
-            }}
+            aria-label={rotuloProximo}
+            onClick={() => mover(1)}
           >
             <ChevronRight className="size-4" />
           </Button>
@@ -295,6 +339,79 @@ export default function AgendaPage() {
         </QuickFilterGroup>
       </div>
 
+      {visao === "dia" ? (
+        <div className="mx-auto w-full max-w-2xl">
+          <DiaDetalhe
+            dia={ancora}
+            feriado={feriadosPorDia.get(toKey(ancora))}
+            itens={porDia.get(toKey(ancora)) ?? []}
+            isLoading={isLoading}
+            onSelectItem={onSelectItem}
+            onNovo={() => router.push(`/crm/atividades/novo?data=${toKey(ancora)}`)}
+          />
+        </div>
+      ) : null}
+
+      {visao === "semana" ? (
+        <>
+          {/* Computador e tablet: os sete dias lado a lado, com todos os itens. */}
+          <div
+            data-tour="agenda-calendario"
+            className="hidden overflow-x-auto rounded-lg border md:block"
+          >
+            <div className="grid min-w-[700px] grid-cols-7 gap-px overflow-hidden bg-border">
+              {diasSemana.map((d) => (
+                <div
+                  key={`cab-${toKey(d)}`}
+                  className="bg-muted px-2 py-1.5 text-center text-xs font-medium text-muted-foreground"
+                >
+                  {DIAS_SEMANA[d.getDay()]}
+                </div>
+              ))}
+              {diasSemana.map((dia) => (
+                <DayCell
+                  key={toKey(dia)}
+                  dia={dia}
+                  feriado={feriadosPorDia.get(toKey(dia))}
+                  noMes
+                  hoje={isSameDay(dia, hoje)}
+                  itens={porDia.get(toKey(dia)) ?? []}
+                  isLoading={isLoading}
+                  limite={Infinity}
+                  alto
+                  onSelectDia={() => router.push(`/crm/atividades/novo?data=${toKey(dia)}`)}
+                  onSelectItem={onSelectItem}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Celular: segunda a sexta, um bloco por dia. Sábado e domingo ficam
+              de fora de propósito; se houver algo neles, a linha abaixo avisa. */}
+          <div className="space-y-5 md:hidden">
+            {diasUteis.map((dia) => (
+              <DiaDetalhe
+                key={toKey(dia)}
+                dia={dia}
+                feriado={feriadosPorDia.get(toKey(dia))}
+                itens={porDia.get(toKey(dia)) ?? []}
+                isLoading={isLoading}
+                onSelectItem={onSelectItem}
+                onNovo={() => router.push(`/crm/atividades/novo?data=${toKey(dia)}`)}
+              />
+            ))}
+            {itensFimDeSemana > 0 ? (
+              <p className="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">
+                Há {itensFimDeSemana} {itensFimDeSemana === 1 ? "item" : "itens"} no fim de
+                semana, que não aparece aqui. Veja pela visão Dia ou Mês.
+              </p>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+
+      {visao === "mes" ? (
+        <>
       {/* Celular: o mês vira um mapa de pontos e o detalhe é o dia escolhido,
           em lista — a grade de 7 colunas legíveis não cabe em 390 px. */}
       <div className="space-y-3 md:hidden">
@@ -350,6 +467,8 @@ export default function AgendaPage() {
           ))}
         </div>
       </div>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -545,6 +664,8 @@ function DayCell({
   hoje,
   itens,
   isLoading,
+  limite = MAX_VISIVEL,
+  alto = false,
   onSelectDia,
   onSelectItem,
 }: {
@@ -554,15 +675,19 @@ function DayCell({
   hoje: boolean;
   itens: AgendaItem[];
   isLoading: boolean;
+  /** Quantos itens mostrar antes do "+N mais"; a semana mostra todos. */
+  limite?: number;
+  /** Célula mais alta, para a visão de semana. */
+  alto?: boolean;
   onSelectDia: () => void;
   onSelectItem: (item: AgendaItem) => void;
 }) {
-  const visiveis = itens.slice(0, MAX_VISIVEL);
+  const visiveis = itens.slice(0, limite);
   const resto = itens.length - visiveis.length;
 
   return (
     <div
-      className={`flex min-h-28 flex-col gap-1 bg-background p-1.5 transition-colors hover:bg-muted/40 ${
+      className={`flex ${alto ? "min-h-72" : "min-h-28"} flex-col gap-1 bg-background p-1.5 transition-colors hover:bg-muted/40 ${
         noMes ? "text-muted-foreground" : ""
       }`}
       onClick={onSelectDia}

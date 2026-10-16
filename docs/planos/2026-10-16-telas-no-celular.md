@@ -89,7 +89,7 @@ Colunas: *Tipo* = como a tela é construída (lista usa EntityTable; consulta e 
 | CRM | Leads | `/comercial/leads` | Tela própria | 327 | ligado | ⬜ Não revisada | Manter — revisar |  |
 | CRM | Oportunidades | `/crm/oportunidades` | Lista (EntityTable) | 336 | ligado | ⬜ Não revisada | Manter — revisar |  |
 | CRM | Atividades | `/crm/atividades` | Lista (EntityTable) | 316 | ligado | ⬜ Não revisada | Manter — revisar |  |
-| CRM | Agenda | `/crm/agenda` | Tela própria | 461 | ligado | ✅ Ajustada | Manter | Celular: mês em miniatura (pontos coloridos) + lista do dia escolhido; grade completa só de 768 px para cima |
+| CRM | Agenda | `/crm/agenda` | Tela própria | 461 | ligado | ✅ Ajustada | Manter | Visões Mês, Semana e Dia; celular abre no Dia, semana só seg–sex, mês em miniatura; grade completa só de 768 px para cima |
 | Gerencial | Vendedores | `/gerencial/vendedores` | Lista (EntityTable) | 507 | ligado | ⬜ Não revisada | Manter — revisar |  |
 | Gerencial | Objetivos | `/gerencial/objetivos` | Lista (EntityTable) | 305 | ligado | ⬜ Não revisada | Manter — revisar |  |
 | Gerencial | Recado para a equipe | `/gerencial/recados` | Tela própria | 691 | ligado | ⬜ Não revisada | Manter — revisar |  |
