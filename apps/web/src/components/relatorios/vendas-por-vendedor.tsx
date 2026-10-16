@@ -114,7 +114,7 @@ function comSubtotais(linhas: LinhaPivot[], meses: string[], quebraPorVendedor: 
         vendedorId: vendedorAtual ?? null,
         vendedor: grupo[0].vendedor,
         clienteId: null,
-        clienteCodigo: grupo[0].vendedor,
+        clienteCodigo: null,
         clienteNome: "Subtotal",
         ...somar(grupo, meses),
       });
@@ -130,7 +130,7 @@ function comSubtotais(linhas: LinhaPivot[], meses: string[], quebraPorVendedor: 
           vendedorId: vendedorAtual ?? null,
           vendedor: l.vendedor,
           clienteId: null,
-          clienteCodigo: l.vendedor,
+          clienteCodigo: null,
           clienteNome: null,
           porMes: SEM_VALORES(meses),
           totalQuantidade: 0,
@@ -273,12 +273,11 @@ export function VendasPorVendedorGrid() {
   );
 
   const colunas: ColunaRelatorio<LinhaPivot>[] = useMemo(() => {
-    // Agrupado: o vendedor vai pela linha de cabeçalho/subtotal, não por
-    // coluna — repetiria em toda linha de cliente à toa. Sem agrupar, a
-    // coluna é a única forma de saber de quem é cada linha.
-    const base: ColunaRelatorio<LinhaPivot>[] = data?.quebraPorVendedor
-      ? []
-      : [{ campo: "vendedor", titulo: "Vendedor", valor: (l) => l.vendedor }];
+    // A coluna Vendedor existe nos dois modos; "Agrupar por vendedor" só liga a
+    // linha de cabeçalho e o subtotal de cada vendedor.
+    const base: ColunaRelatorio<LinhaPivot>[] = [
+      { campo: "vendedor", titulo: "Vendedor", valor: (l) => l.vendedor },
+    ];
     base.push(
       { campo: "clienteCodigo", titulo: "Cód. Cliente", valor: (l) => l.clienteCodigo },
       { campo: "clienteNome", titulo: "Cliente", valor: (l) => l.clienteNome },
@@ -305,7 +304,7 @@ export function VendasPorVendedorGrid() {
       },
     );
     return base;
-  }, [data?.quebraPorVendedor, data?.meses]);
+  }, [data?.meses]);
 
   const filtrosTexto = consulta
     ? descreverFiltros({ inicio: String(consulta.inicio), fim: String(consulta.fim), rotulo: "Emissão" }, filtrosGerados)
